@@ -148,7 +148,7 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 	defer cancel()
 	class := strings.ToLower(strings.TrimSpace(req.QueryClass))
 	personRoute := class == "person"
-	editorialRoute := class == "organization" || class == "location" || class == "object"
+	editorialRoute := class == "organization" || class == "brand" || class == "location" || class == "object"
 	var results []imagesrouting.ImageSearchResult
 	if editorialRoute {
 		if explicit, ok := a.resolver.(interface {

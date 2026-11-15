@@ -94,7 +94,7 @@ func TestBuildPlanProducesVariedPhraseAndImageMotions(t *testing.T) {
 	}
 }
 
-func TestBuildPlanHonorsRuntimeStyleCountsPerSubfamily(t *testing.T) {
+func TestBuildPlanHonorsRuntimeStyleCountsForNonPhraseLanes(t *testing.T) {
 	phrases := make([]TimedAnnotation, 6)
 	images := make([]ImageCandidate, 6)
 	for i := 0; i < 6; i++ {
@@ -120,11 +120,16 @@ func TestBuildPlanHonorsRuntimeStyleCountsPerSubfamily(t *testing.T) {
 	for _, motion := range imageOverlayMotions(plan.Items) {
 		imageStyles[motion] = true
 	}
-	if len(phraseStyles) > 3 || len(imageStyles) > 2 {
-		t.Fatalf("runtime style count exceeded its per-family cap: phrases=%d images=%d", len(phraseStyles), len(imageStyles))
+	if len(imageStyles) > 2 {
+		t.Fatalf("runtime image style count exceeded its cap: images=%d", len(imageStyles))
 	}
-	if len(phraseStyles) < 2 || len(imageStyles) != 2 {
-		t.Fatalf("runtime style pools were not exercised: phrases=%d images=%d; want phrase variety and exactly two image styles", len(phraseStyles), len(imageStyles))
+	if len(imageStyles) != 2 {
+		t.Fatalf("image style pool was not exercised: images=%d, want exactly two", len(imageStyles))
+	}
+	// Phrase counts are preview hints, not runtime caps: the six long phrases
+	// must rotate beyond the three-entry preview window.
+	if len(phraseStyles) <= 3 {
+		t.Fatalf("phrase rotation was truncated by the preview cap: phrases=%d, want more than 3", len(phraseStyles))
 	}
 }
 

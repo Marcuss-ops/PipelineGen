@@ -1,10 +1,10 @@
 package clipswiring
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"time"
 
 	clipscap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -15,7 +15,7 @@ import (
 //
 //	cfg.Storage.X for MediaPath / TempPath / DataDir / YoutubeClipsPath / AssetsPath
 //
-// HC-1 (June 2026): `timeouts appjobs.TimeoutResolver` is the typed
+// HC-1 (June 2026): `timeouts jobscheduling.TimeoutResolver` is the typed
 // config-port for per-job-type execution timeouts (replaces the pre-HC-1
 // package-level `var jobTimeoutRegistry` global in worker.go + the
 // hard-coded `context.WithTimeout(ctx, 2*time.Hour)` in bulk_upload_worker.go).
@@ -23,7 +23,7 @@ import (
 // passes jobs.Compose() (canonical *jobs.Registry).
 type clipsCfgAdapter struct {
 	cfg      *config.Config
-	timeouts appjobs.TimeoutResolver
+	timeouts jobscheduling.TimeoutResolver
 }
 
 // Compile-time assertion: clipsCfgAdapter satisfies clips.ClipConfigPort.
@@ -36,8 +36,8 @@ var _ clipscap.ClipConfigPort = (*clipsCfgAdapter)(nil)
 //
 // HC-1 signature change vs the pre-HC-1 single-arg ctor: `timeouts` is
 // the new 2nd positional argument. The composition root supplies
-// appjobs.Compose() explicitly.
-func NewConfigAdapter(cfg *config.Config, timeouts appjobs.TimeoutResolver) clipscap.ClipConfigPort {
+// jobscheduling.Compose() explicitly.
+func NewConfigAdapter(cfg *config.Config, timeouts jobscheduling.TimeoutResolver) clipscap.ClipConfigPort {
 	if cfg == nil && timeouts == nil {
 		return nil
 	}
@@ -114,7 +114,7 @@ func (a *clipsCfgAdapter) AssetsStoragePath() string {
 //
 // HC-1 code-review cleanup: trust the typed-port contract in production
 // (composition root unconditionally passes non-nil cfg + non-nil
-// appjobs.Compose()), but defend against the typed-nil receiver pattern
+// jobscheduling.Compose()), but defend against the typed-nil receiver pattern
 // that Go interfaces inherit — a nil interface VALUE carrying a nil
 // pointer dereferences on first field access without this guard.
 func (a *clipsCfgAdapter) JobTimeout(jobType string) time.Duration {

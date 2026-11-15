@@ -24,12 +24,24 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 
 	"go.uber.org/zap"
 )
+
+func scriptVisualCandidateScorer(root *ComposeRoot) adapters.SemanticCandidateScorer {
+	if root == nil || root.AI == nil || root.AI.ScriptGen == nil {
+		return nil
+	}
+	client := root.AI.ScriptGen.GetClient()
+	if client == nil {
+		return nil
+	}
+	return ollamaadapters.NewOllamaPersonImageScorer(client)
+}
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
 func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, searchFanOut assetsearch.SearchFanOut, stockPrefetcher scriptports.StockPrefetcher) error {

@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// maxImageFrameShadowBlurPX is the strict-Vulkan separable-blur ceiling the
+// native image-card path certifies. ImageFrame and the flat runtime override
+// must use the same ceiling: the flat key is consumed by frameFromImageParams
+// and would otherwise overwrite the capped Frame.
+const maxImageFrameShadowBlurPX = 10.0
+
 // BackgroundFromPayload projects a kernel background into the render plan
 // domain while retaining verified asset references and style fields.
 func BackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capmodel.OverlayBackground {
@@ -75,21 +81,23 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 		}
 		params["style"] = mergeStyleParam(params["style"], map[string]any{"background": plate})
 	}
-	// Chronon's runtime text override treats an explicit zero-size glow/stroke
-	// as a layer effect override. On standalone overlay clips this can lower the
-	// glyph pass to a fully transparent/black frame. Omit disabled effects; the
-	// renderer's preset defaults already have no glow or stroke for documentary
-	// text, and non-zero user choices still travel through the runtime contract.
-	if style.GlowSize != nil && *style.GlowSize > 0 {
+	// Explicit zero disables the effect. The renderer consumes the zero in
+	// applyTextRuntimeOverrides and clears the preset/role effect there; omitting
+	// the key instead would let the phrase preset's glow (42) and stroke (3.5)
+	// survive a payload that asked for neither. GlowColor is independent of the
+	// radius: a color-only override recolors an existing motion/preset glow.
+	if style.GlowSize != nil {
 		params["glow_size"] = *style.GlowSize
 	}
-	if style.GlowSize != nil && *style.GlowSize > 0 && style.GlowColor != "" {
+	if style.GlowColor != "" {
 		params["glow_color"] = style.GlowColor
-		params["style"] = mergeStyleParam(params["style"], map[string]any{
-			"glow": map[string]any{"color": style.GlowColor},
-		})
+		if style.GlowSize != nil && *style.GlowSize > 0 {
+			params["style"] = mergeStyleParam(params["style"], map[string]any{
+				"glow": map[string]any{"color": style.GlowColor},
+			})
+		}
 	}
-	if style.StrokeSize != nil && *style.StrokeSize > 0 {
+	if style.StrokeSize != nil {
 		params["stroke_size"] = *style.StrokeSize
 	}
 	if cursor := style.Cursor; cursor != nil {
@@ -135,6 +143,23 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 		if image.Fit != "" {
 			params["image_fit"] = image.Fit
 		}
+		if image.Glow != nil {
+			radius, intensity, color := 24.0, 0.25, "#FFFFFF"
+			if image.Glow.Radius != nil {
+				radius = *image.Glow.Radius
+			}
+			if image.Glow.Intensity != nil {
+				intensity = *image.Glow.Intensity
+			}
+			if image.Glow.Color != "" {
+				color = image.Glow.Color
+			}
+			if radius > 0 && intensity > 0 {
+				params["image_glow_radius"] = radius
+				params["image_glow_intensity"] = intensity
+				params["image_glow_color"] = color
+			}
+		}
 		if image.Border != nil {
 			params["image_border_width"] = image.Border.Width
 			if image.Border.Color != "" {
@@ -159,7 +184,10 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 				params["image_shadow_opacity"] = *image.Shadow.Opacity
 			}
 			if image.Shadow.Blur != nil {
-				params["image_shadow_blur"] = *image.Shadow.Blur
+				// Keep the flat override inside the same native GPU range as the
+				// capped Frame; frameFromImageParams would otherwise overwrite
+				// the 10 px Frame value with the larger flat one.
+				params["image_shadow_blur"] = min(*image.Shadow.Blur, maxImageFrameShadowBlurPX)
 			}
 			if len(image.Shadow.Offset) >= 1 {
 				params["image_shadow_offset_x"] = image.Shadow.Offset[0]
@@ -223,7 +251,7 @@ func ImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capmodel.OverlayItemFra
 			shadow.Opacity = *style.Shadow.Opacity
 		}
 		if style.Shadow.Blur != nil {
-			shadow.BlurPX = min(*style.Shadow.Blur, 10)
+			shadow.BlurPX = min(*style.Shadow.Blur, maxImageFrameShadowBlurPX)
 		}
 		if len(style.Shadow.Offset) > 0 {
 			shadow.OffsetXP = style.Shadow.Offset[0]
@@ -291,6 +319,12 @@ func ImageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
 	all := StyleParams(&scriptpkg.OverlayStyleSpec{Image: style})
 	out := make(map[string]any)
 	for key, value := range all {
+		if strings.HasPrefix(key, "image_glow_") {
+			// Glow keeps its image_ prefix so it cannot collide with the
+			// caption's text glow_color on a captioned entity image.
+			out[key] = value
+			continue
+		}
 		if strings.HasPrefix(key, "image_") {
 			out[strings.TrimPrefix(key, "image_")] = value
 		}
@@ -343,6 +377,10 @@ func ApplyImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageSt
 			item.Params = map[string]any{}
 		}
 		for key, value := range params {
+			if strings.HasPrefix(key, "image_glow_") {
+				item.Params[key] = value
+				continue
+			}
 			if strings.HasPrefix(key, "image_") {
 				item.Params[strings.TrimPrefix(key, "image_")] = value
 			}
@@ -363,6 +401,10 @@ func ApplyImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageSt
 			item.ImageLayers[i].Params = map[string]any{}
 		}
 		for key, value := range params {
+			if strings.HasPrefix(key, "image_glow_") {
+				item.ImageLayers[i].Params[key] = value
+				continue
+			}
 			if strings.HasPrefix(key, "image_") {
 				item.ImageLayers[i].Params[strings.TrimPrefix(key, "image_")] = value
 			}
@@ -436,6 +478,7 @@ func IsRuntimeImageParam(key string) bool {
 	switch key {
 	case "image_width", "image_height", "image_position_x", "image_position_y", "image_radius",
 		"image_bounded", "image_fit",
+		"image_glow_radius", "image_glow_intensity", "image_glow_color",
 		"image_border_width", "image_border_color", "image_border_radius",
 		"image_stroke_width", "image_stroke_color",
 		"image_shadow_enabled", "image_shadow_color", "image_shadow_opacity", "image_shadow_blur",

@@ -235,8 +235,15 @@ var animationLaneKeys = map[string][]string{
 
 // laneAnimationCount resolves one canonical lane through its alias table.
 // The first positive alias wins, mirroring the legacy inline order, so
-// existing payloads keep their limits bit for bit.
+// existing payloads keep their limits bit for bit. Phrase lanes are the
+// exception: their animation_counts entries are UI preview hints, not runtime
+// caps. Honoring 10/20 here truncated the certified rotation and made 25+
+// phrase runs repeat the same motions after the window was exhausted.
 func laneAnimationCount(counts map[string]int, lane string) int {
+	switch lane {
+	case laneImportantPhrase, laneShortPhrase:
+		return 0
+	}
 	keys, ok := animationLaneKeys[lane]
 	if !ok {
 		return 0

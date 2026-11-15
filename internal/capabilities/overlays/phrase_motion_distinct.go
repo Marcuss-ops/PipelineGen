@@ -154,7 +154,7 @@ func excludeRemovedGeneratedPhraseMotions(candidates []string) []string {
 // EnsureDistinctNumberMotionsPinned is the policy-aware form for date/metric
 // cards: pinned indexes keep their MotionID while unpinned duplicates rotate
 // away. See EnsureDistinctPhraseMotionsPinned.
-func EnsureDistinctNumberMotionsPinned(items []capmodel.OverlayItem, animationCounts map[string]int, pinned map[int]bool) {
+func EnsureDistinctNumberMotionsPinned(items []capmodel.OverlayItem, input PlanInput, pinned map[int]bool) {
 	used := map[string]map[string]struct{}{}
 	for i := range items {
 		if !pinned[i] || items[i].Kind != "number" {
@@ -178,12 +178,12 @@ func EnsureDistinctNumberMotionsPinned(items []capmodel.OverlayItem, animationCo
 		switch item.TemplateID {
 		case "TIMELINE_DATE_CARD":
 			key = item.TemplateID
-			candidates = DatePresentationMotionCandidates()
-			limit = laneAnimationCount(animationCounts, laneTimelineDate)
+			candidates = DateMotionFamilyCandidates(input.DateMotionFamily)
+			limit = laneAnimationCount(input.AnimationCounts, laneTimelineDate)
 		case "METRIC_STAT_CARD":
 			key = item.TemplateID
 			candidates = MetricPresentationMotionCandidates()
-			limit = laneAnimationCount(animationCounts, laneMetricStat)
+			limit = laneAnimationCount(input.AnimationCounts, laneMetricStat)
 		default:
 			continue
 		}
@@ -197,7 +197,15 @@ func EnsureDistinctNumberMotionsPinned(items []capmodel.OverlayItem, animationCo
 			used[key][item.MotionID] = struct{}{}
 			continue
 		}
-		candidates = limitedMotionPool(candidates, limit)
+		// Use the same seeded shuffled window as the initial presentation
+		// selection. The catalog prefix is not a style pool: rotating there
+		// would keep date cards inside the first family even after the caller
+		// widened the lane count.
+		family := "date_presentation"
+		if key == "METRIC_STAT_CARD" {
+			family = "metric_presentation"
+		}
+		candidates = limitedShuffledMotionPool(candidates, limit, input.PlanID+"\x00"+family)
 		rotateMotionPastUsed(item, candidates, used[key])
 	}
 }
@@ -207,7 +215,7 @@ func phraseMotionCandidatesForItem(item capmodel.OverlayItem, input PlanInput, s
 	var candidates []string
 	switch {
 	case item.Params != nil && item.Params["editorial_role"] == ChapterBulletRole:
-		return excludeRemovedGeneratedPhraseMotions(append([]string(nil), text3DMotionCandidates...))
+		return excludeRemovedGeneratedPhraseMotions(ChapterBulletMotionCandidates())
 	case EditorialSectionForItem(item) == EditorialSectionShortPhrase:
 		candidates = ShortPhraseVisibleMotionCandidates()
 		recipes := ShortPhraseMotionsForWordCount(words)

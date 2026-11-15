@@ -263,6 +263,7 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		Background: built.background, BackgroundMode: built.backgroundMode, BackgroundKind: built.backgroundKind,
 		Overlays:               built.overlays,
 		ForegroundScalePercent: in.Render.ForegroundScalePercent,
+		SourceFrame:            renderSourceFrame(in.Render.SourceFrame),
 		SubtitlesStyle:         subtitleStyle(in),
 		OnRendered: func(artifact localization.LocalizedClipArtifact) error {
 			if in.OnRenderReady == nil {
@@ -278,6 +279,32 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 			})
 		},
 	}
+}
+
+// renderSourceFrame projects the script boundary's card declaration onto the
+// clip.render plan's sealed block. It is a field-for-field projection: the
+// kernel shape owns the wire keys (output.render.source_frame), the plan owns
+// the render semantics. A nil block stays nil (bare clip).
+func renderSourceFrame(in *scriptpkg.VideoSourceFrameSpec) *cliprender.PlanSourceFrame {
+	if in == nil {
+		return nil
+	}
+	out := &cliprender.PlanSourceFrame{ClipRadiusPX: in.ClipRadiusPX}
+	if in.Border != nil {
+		out.Border = &cliprender.PlanFrameBorder{
+			WidthPX: in.Border.WidthPX, Color: in.Border.Color, RadiusPX: in.Border.RadiusPX,
+		}
+	}
+	if in.Shadow != nil {
+		out.Shadow = &cliprender.PlanFrameShadow{
+			Color: in.Shadow.Color, Opacity: in.Shadow.Opacity, BlurPX: in.Shadow.BlurPX,
+			OffsetXP: in.Shadow.OffsetXP, OffsetYP: in.Shadow.OffsetYP,
+		}
+	}
+	if in.Stroke != nil {
+		out.Stroke = &cliprender.PlanFrameStroke{WidthPX: in.Stroke.WidthPX, Color: in.Stroke.Color}
+	}
+	return out
 }
 
 func subtitleStyle(in scriptgeneration.LocalizedRenderInput) *scriptpkg.VideoVisualStyleSpec {

@@ -28,18 +28,28 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func applyMapPresentationToItems(items []capmodel.OverlayItem, mapType, cameraAnimation, labelAnimation, mapAnimation string) error {
+func applyMapPresentationToItems(items []capmodel.OverlayItem, mapType, cameraAnimation, labelAnimation, mapAnimation, mapLevel string) error {
 	mapType = strings.ToLower(strings.TrimSpace(mapType))
 	if mapType == "" {
-		// The native renderer's certified basemap: the raster tile families
-		// are demolition debt and can no longer be a default.
+		// Legacy map_type requests keep the offline editorial default; the
+		// unified map_presentation contract defaults to modern_map_1.
 		mapType = "chronon_editorial"
 	}
 	if !capabilityoverlay.AnimationSupportsMapType(mapType) {
-		return fmt.Errorf("map_type %q is unsupported; choose chronon_editorial (aliases chronon, editorial), satellite, roadmap, terrain, or random", mapType)
+		return fmt.Errorf("map_type %q is unsupported; choose classic/chronon_editorial, modern_map_1/esri_topo, satellite/esri_sat, or random", mapType)
 	}
 	if basemap, ok := capabilityoverlay.AnimationMapTypeBasemap(mapType); ok && !capabilityoverlay.NativeMapBasemaps()[basemap] {
-		return fmt.Errorf("map_type %q selects basemap %q: the raster tile family is not ported to the native map renderer (demolition debt, TICKET-MAPS-NATIVE-PORT); declare chronon_editorial or random", mapType, basemap)
+		return fmt.Errorf("map_type %q selects basemap %q: it is not available in the native map renderer; choose classic/chronon_editorial, modern_map_1/esri_topo, satellite/esri_sat, or random", mapType, basemap)
+	}
+	mapLevel = strings.ToLower(strings.TrimSpace(mapLevel))
+	switch mapLevel {
+	case "", "auto":
+		mapLevel = ""
+	case "comune":
+		mapLevel = "municipality"
+	case "continent", "country", "region", "municipality":
+	default:
+		return fmt.Errorf("map_level %q is unsupported; choose continent, country, region or municipality", mapLevel)
 	}
 	if err := validateRuntimeMapAnimation("map_camera_animation", cameraAnimation, mapCameraAnimationsCertified()); err != nil {
 		return err
@@ -70,6 +80,9 @@ func applyMapPresentationToItems(items []capmodel.OverlayItem, mapType, cameraAn
 		}
 		if mapAnimation != "" && !capabilityoverlay.MapAnimationPlaceholder(mapAnimation) {
 			items[i].Params["map_animation"] = mapAnimation
+		}
+		if mapLevel != "" {
+			items[i].Params["map_level"] = mapLevel
 		}
 	}
 	return nil
@@ -161,9 +174,19 @@ func recapItemsByScene(items []capmodel.OverlayItem) map[string]int {
 // item: font size for phrases and presentation cards, the image frame, and the
 // per-image-layer params for composite entity images. Extracted verbatim from
 // the sealing path so the file-size split changes no behaviour.
+// imageStyleParamName preserves image_glow_* so the image halo cannot collide
+// with the caption's text glow_color or be stripped into an unread key.
+func imageStyleParamName(key string) string {
+	if strings.HasPrefix(key, "image_glow_") {
+		return key
+	}
+	return strings.TrimPrefix(key, "image_")
+}
+
 func applyOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
 	styleParams := overlayStyleParams(canvas.Style)
 	runGlowDisabled := canvas.Style != nil && canvas.Style.GlowSize != nil && *canvas.Style.GlowSize <= 0
+	runStrokeDisabled := canvas.Style != nil && canvas.Style.StrokeSize != nil && *canvas.Style.StrokeSize <= 0
 	for i := range items {
 		merged := map[string]any{}
 		for k, v := range items[i].Params {
@@ -171,24 +194,26 @@ func applyOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvas
 		}
 		for k, v := range styleParams {
 			hasEntityCaption := strings.TrimSpace(items[i].EntityCaption) != ""
-			if isRuntimeTextStyleParam(k) && ((isImageOverlayItem(items[i]) && !hasEntityCaption) || (!isTextOverlayKind(items[i].Kind) && !hasEntityCaption && items[i].Map == nil)) {
+			if isRuntimeTextStyleParam(k) && (isImageOverlayItem(items[i]) || strings.TrimSpace(items[i].Kind) == "entity_image" || (!isTextOverlayKind(items[i].Kind) && !hasEntityCaption && items[i].Map == nil)) {
 				continue
 			}
 			if strings.HasPrefix(k, "image_") {
 				if !isImageOverlayItem(items[i]) {
 					continue
 				}
-				key := strings.TrimPrefix(k, "image_")
-				merged[key] = v
+				merged[imageStyleParamName(k)] = v
 				continue
 			}
 			if k == "style" {
+				if (isImageOverlayItem(items[i]) || strings.TrimSpace(items[i].Kind) == "entity_image") && items[i].Map == nil {
+					continue
+				}
 				merged[k] = mergeStyleParam(merged[k], v.(map[string]any))
 				// Motion presets also carry a top-level Style map. Keep explicit
 				// run typography/color/effect choices in sync there; chain
 				// coalescing copies this map into each ChainSegment, and the
 				// renderer gives it precedence over Params.style.
-				if isTextOverlayKind(items[i].Kind) || strings.TrimSpace(items[i].EntityCaption) != "" || items[i].Map != nil {
+				if (!isImageOverlayItem(items[i]) && strings.TrimSpace(items[i].Kind) != "entity_image" && isTextOverlayKind(items[i].Kind)) || items[i].Map != nil {
 					items[i].Style = mergeStyleParam(items[i].Style, v.(map[string]any))
 				}
 			} else if isRuntimeTextStyleParam(k) {
@@ -200,17 +225,23 @@ func applyOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvas
 				merged[k] = v
 			}
 		}
-		// A run-level glow of zero means "no glow". StyleParams omits disabled
-		// glows (an explicit zero renders black frames in Chronon), so the
-		// animation's own glow must be removed here or it would survive the run choice.
+		// A run-level zero is an explicit disable. StyleParams carries the zero
+		// through to the renderer, which clears the preset/role effect; also drop
+		// any animation-authored nested effect so it cannot win afterwards.
 		if runGlowDisabled && (isTextOverlayKind(items[i].Kind) || strings.TrimSpace(items[i].EntityCaption) != "") && items[i].Map == nil && !isImageOverlayItem(items[i]) {
-			delete(merged, "glow_size")
+			merged["glow_size"] = 0.0
 			delete(merged, "glow_color")
 			if nested, ok := merged["style"].(map[string]any); ok {
 				delete(nested, "glow")
 			}
 			if items[i].Style != nil {
 				delete(items[i].Style, "glow")
+			}
+		}
+		if runStrokeDisabled && (isTextOverlayKind(items[i].Kind) || strings.TrimSpace(items[i].EntityCaption) != "") && items[i].Map == nil && !isImageOverlayItem(items[i]) {
+			merged["stroke_size"] = 0.0
+			if items[i].Style != nil {
+				delete(items[i].Style, "stroke")
 			}
 		}
 		items[i].Params = merged
@@ -262,8 +293,7 @@ func applyOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvas
 				}
 				for key, value := range styleParams {
 					if strings.HasPrefix(key, "image_") {
-						name := strings.TrimPrefix(key, "image_")
-						childParams[name] = value
+						childParams[imageStyleParamName(key)] = value
 					}
 				}
 				child.Params = childParams

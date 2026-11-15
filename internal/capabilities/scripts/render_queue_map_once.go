@@ -157,10 +157,14 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 	// requests a precise failure, never a guessed name that the renderer would
 	// refuse deep inside its render loop.
 	territoryFeature := ""
+	territoryScope := ""
 	if len(plan.Items[0].Map.Pins) > 0 {
 		pin := plan.Items[0].Map.Pins[0]
-		if resolved, ok := capoverlay.ResolveMapTerritoryFeature(capoverlay.MapTerritoryCatalogDir(), pin.Latitude, pin.Longitude); ok {
-			territoryFeature = resolved
+		territoryScope = pin.Scope
+		if capoverlay.MapTerritoryFeatureScopeCompatible(pin.Scope) {
+			if resolved, ok := capoverlay.ResolveMapTerritoryFeature(capoverlay.MapTerritoryCatalogDir(), pin.Latitude, pin.Longitude); ok {
+				territoryFeature = resolved
+			}
 		}
 	}
 	mapAnimation, mapFallbackReason, err := resolveMapCompositionFor(compositionChoice, seed, mapStyleSlot, mapCompositionInput{
@@ -171,6 +175,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 		Camera:           cameraAnimation,
 		Label:            labelAnimation,
 		TerritoryFeature: territoryFeature,
+		TerritoryScope:   territoryScope,
 		AreaGlowRadiusKM: plan.Items[0].Map.AreaGlowRadiusKM,
 	})
 	if err != nil {
@@ -181,6 +186,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 		labelAnimation = "none"
 	}
 	mapType, _ := plan.Items[0].Params["map_type"].(string)
+	mapLevel, _ := plan.Items[0].Params["map_level"].(string)
 	basemapStyle, err := resolveMapBasemap(mapType, seed, mapStyleSlot)
 	if err != nil {
 		return "", err
@@ -274,6 +280,17 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 	if sendZooms {
 		payload["camera_start_zoom"] = cameraStartZoom
 		payload["camera_end_zoom"] = cameraEndZoom
+	}
+	// The requested cartographic level owns the scale envelope: continent,
+	// country, region and municipality are four visibly different views of the
+	// same real basemap, not a label swap. It is sent as data too, so the wire
+	// and the decision report keep the caller's intent.
+	if mapLevel = strings.ToLower(strings.TrimSpace(mapLevel)); mapLevel != "" && mapLevel != "auto" {
+		if start, end, ok := mapLevelCameraZooms(mapLevel); ok {
+			payload["map_level"] = mapLevel
+			payload["camera_start_zoom"] = start
+			payload["camera_end_zoom"] = end
+		}
 	}
 	// Native-payload DATA fields (parity landed): the wire carries exactly
 	// what the composition was admitted for — the renderer validates them at

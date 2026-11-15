@@ -488,15 +488,9 @@ func (r *Runner) SetVidRushPipeline(pipeline *VidRushPipeline) {
 	}
 }
 
-// SetImageSearchResolver wires the deterministic Image Search Intent
-// resolver (capabilities/imagesearch) into the run. It is the same resolver
-// the golden battery certifies; the composition root builds it over the same
-// entity extractor the VidRush pipeline uses. Nil keeps the legacy ad-hoc
-// query builders as the fallback.
-func (r *Runner) SetImageSearchResolver(resolver *capabilityimagesearch.Resolver) {
-	if r != nil {
-		r.imageSearchResolver = resolver
-	}
+// SetImageSearchResolver is retained for source compatibility. Production
+// identity and query semantics are supplied by BrainRust.
+func (r *Runner) SetImageSearchResolver(_ *capabilityimagesearch.Resolver) {
 }
 
 // SetSemanticSearchBatchPlanner wires the real-provider executor for the

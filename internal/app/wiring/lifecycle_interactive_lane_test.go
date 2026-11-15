@@ -1,11 +1,10 @@
 package wiring
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"slices"
 	"strings"
 	"testing"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 func TestInteractiveWorkerBudgetDefault(t *testing.T) {
@@ -40,7 +39,7 @@ func TestInteractiveWorkerBudgetEnvOverrideAndClamp(t *testing.T) {
 // everything — the lane would go DARK with no error. The registry is the
 // source of truth, so both lane types must be registered in it.
 func TestInteractiveJobTypesAreRegistered(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	for _, jt := range interactiveJobTypes() {
 		if !reg.IsRegistered(jt) {
 			t.Fatalf("interactive type %q is not registered in the canonical registry — the lane would silently claim nothing", jt)

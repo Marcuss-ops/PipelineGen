@@ -458,27 +458,42 @@ func TestPhraseMotionEntranceUsesOneThirdPhraseDuration(t *testing.T) {
 	}
 }
 
-// TestPhraseExitIsDisabled pins the shared phrase exit: every run sends an
-// explicit zero so RenderingGen skips the mirrored exit tracks entirely.
-// Any positive window drove the settled phrase back through the authoring
-// gray on the way out; the phrase must hold settled and cut hard instead.
-func TestPhraseExitIsDisabled(t *testing.T) {
+// TestPhraseExitIsOpacityFade pins the shared phrase exit: every run reserves
+// a short fade-out so the card leaves screen instead of cutting hard.
+// RenderingGen holds non-opacity tracks during that window, so the exit cannot
+// replay the entrance and drag the settled text back through the authoring gray.
+func TestPhraseExitIsOpacityFade(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		fpsNum int
 		fpsDen int
+		want   int64
 	}{
-		{name: "24 fps", fpsNum: 24, fpsDen: 1},
-		{name: "25 fps", fpsNum: 25, fpsDen: 1},
-		{name: "30 fps", fpsNum: 30, fpsDen: 1},
-		{name: "29.97 fps", fpsNum: 30000, fpsDen: 1001},
+		{name: "24 fps", fpsNum: 24, fpsDen: 1, want: 8},
+		{name: "25 fps", fpsNum: 25, fpsDen: 1, want: 8},
+		{name: "30 fps", fpsNum: 30, fpsDen: 1, want: 8},
+		{name: "29.97 fps", fpsNum: 30000, fpsDen: 1001, want: 8},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			params := phraseMotionParams(TimedAnnotation{StartMs: 0, EndMs: 3000, DurationUS: 3_000_000}, tc.fpsNum, tc.fpsDen)
-			if got := params["exit_frames"]; got != 0 {
-				t.Fatalf("exit_frames = %v, want explicit 0 (disabled exit) at %d/%d fps", got, tc.fpsNum, tc.fpsDen)
+			durationUS := int64(3_000_000)
+			params := phraseMotionParams(TimedAnnotation{StartMs: 0, EndMs: 3000, DurationUS: durationUS}, tc.fpsNum, tc.fpsDen)
+			got, ok := params["exit_frames"].(int)
+			if !ok || int64(got) != tc.want {
+				t.Fatalf("exit_frames = %v, want %d-frame opacity fade at %d/%d fps", params["exit_frames"], tc.want, tc.fpsNum, tc.fpsDen)
+			}
+			if int64(got) >= PhraseEntranceFrames(durationUS, tc.fpsNum, tc.fpsDen)+2 {
+				t.Fatalf("exit_frames = %d leaves no readable hold after the entrance", got)
 			}
 		})
+	}
+}
+
+func TestPhraseExitShrinksOnVeryShortCards(t *testing.T) {
+	if got := PhraseExitFrames(500_000, 24, 1); got != 3 {
+		t.Fatalf("500ms exit = %d, want 3 frames (quarter of 12 frames)", got)
+	}
+	if got := PhraseExitFrames(100_000, 24, 1); got != 0 {
+		t.Fatalf("100ms exit = %d, want no fade on a two-frame card", got)
 	}
 }
 

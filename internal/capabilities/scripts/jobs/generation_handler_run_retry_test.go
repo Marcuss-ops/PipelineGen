@@ -164,3 +164,29 @@ func TestIncompleteRunError_NilRunStaysTerminal(t *testing.T) {
 		t.Fatalf("a missing run must not defer, got %v", err)
 	}
 }
+
+// TestIncompleteRunError_IncludesRunStageAndCodeWhenMessageMissing pins the
+// diagnostic contract for the run8 failure: a generic "durable run did not
+// complete" is not actionable. The error must name the run, status, stage,
+// attempt, error code and an explicit missing-message marker.
+func TestIncompleteRunError_IncludesRunStageAndCodeWhenMessageMissing(t *testing.T) {
+	run := &scriptgen.GenerationRun{
+		ID:           "run_no_message",
+		Status:       scriptgen.RunStatusFailed,
+		FailedStage:  scriptgen.StageCompilingAudio,
+		ErrorCode:    "IMAGE_PREFLIGHT_FAILED",
+		AttemptCount: 2,
+	}
+	err := incompleteRunError(run)
+	if err == nil {
+		t.Fatal("an incomplete run must fail the job")
+	}
+	for _, want := range []string{
+		"run_no_message", string(scriptgen.RunStatusFailed), string(scriptgen.StageCompilingAudio),
+		"run attempt 2/3", "IMAGE_PREFLIGHT_FAILED", "no error message recorded",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("diagnostic %q must name %q", err.Error(), want)
+		}
+	}
+}

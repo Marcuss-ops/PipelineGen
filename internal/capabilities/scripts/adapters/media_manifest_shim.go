@@ -250,6 +250,7 @@ func segmentAssetCandidateFromPin(entry mediaManifestEntry, seg scriptpkg.VidRus
 		Query:                  entry.Query,
 		SemanticStatus:         entitycatalog.CandidateSemanticAccepted,
 		SemanticScore:          1.0,
+		VerifierVersion:        entitycatalog.CandidateVerifierVersionPinned,
 		QualityReason:          "pinned by media_manifest.v1: offline sha256 verify",
 		SourceURL:              sourceURL,
 		DriveLink:              link,

@@ -128,6 +128,11 @@ type LocalizedClipPlan struct {
 
 	// ForegroundScalePercent scales the foreground video clip (1..100).
 	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
+	// SourceFrame is the card treatment of the clip (bounding frame, drop
+	// shadow, perimeter stroke, corner radius), projected field-for-field from
+	// output.render.source_frame. It is sealed here so the per-clip render
+	// carries the requested box instead of the bare clip.
+	SourceFrame *cliprender.PlanSourceFrame `json:"source_frame,omitempty"`
 
 	// ── Reused entity overlays ───────────────────────────────────
 	// Overlays carries one certified lineage per rendered overlay segment the
@@ -255,6 +260,13 @@ func (p LocalizedClipPlan) Validate() error {
 		}
 	} else if p.BackgroundMode == cliprender.BackgroundModeAsset {
 		return fmt.Errorf("%w: background mode=asset requires background_kind (image | video)", ErrInvalidLocalizedClipPlan)
+	}
+	// The card declaration shares its validator with the clip.render request
+	// and the sealed plan: a border with no inset would be rendered outside the
+	// canvas, an unknown colour would be re-parsed by the worker, and neither is
+	// discoverable after the render. Fail closed here instead.
+	if err := cliprender.ValidatePlanSourceFrame(p.SourceFrame, p.ForegroundScalePercent); err != nil {
+		return fmt.Errorf("%w: source_frame: %w", ErrInvalidLocalizedClipPlan, err)
 	}
 	// Overlay lineages are all-or-nothing, EACH of them: a variant that
 	// composites reused overlays must carry the complete chain (render job id +

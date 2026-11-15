@@ -35,20 +35,32 @@ type Context struct {
 	// Country names the country already grounded elsewhere in the scene
 	// (entity name or ISO code).
 	Country string `json:"country,omitempty"`
+	// CountryCode is the ISO 3166-1 alpha-2 code (lowercase) of a place
+	// already grounded in the scene. It disambiguates namesakes even when the
+	// provider returns the country in a different language.
+	CountryCode string `json:"country_code,omitempty"`
 	// Region names the administrative region already grounded in the scene.
 	Region string `json:"region,omitempty"`
 }
 
 // IsZero reports whether the context carries no hint at all.
 func (c Context) IsZero() bool {
-	return strings.TrimSpace(c.Country) == "" && strings.TrimSpace(c.Region) == ""
+	return strings.TrimSpace(c.Country) == "" &&
+		strings.TrimSpace(c.CountryCode) == "" &&
+		strings.TrimSpace(c.Region) == ""
 }
 
 // Key is the canonical cache identity of the context. Two lookups share a
 // cache entry only when their contexts match, so a name resolved inside one
 // country can never be silently reused for a namesake elsewhere.
 func (c Context) Key() string {
-	return strings.ToLower(strings.TrimSpace(c.Country)) + "\x1f" + strings.ToLower(strings.TrimSpace(c.Region))
+	key := strings.ToLower(strings.TrimSpace(c.Country)) + "\x1f" + strings.ToLower(strings.TrimSpace(c.Region))
+	// Keep the pre-country-code key byte-identical for contexts that do not
+	// carry a code, so existing durable caches stay addressable.
+	if code := strings.ToLower(strings.TrimSpace(c.CountryCode)); code != "" {
+		key += "\x1f" + code
+	}
+	return key
 }
 
 // Result is the WGS84 point returned by a geocoder. Coordinates use degrees.
@@ -60,6 +72,11 @@ type Result struct {
 	Longitude   float64 `json:"longitude"`
 	DisplayName string  `json:"display_name,omitempty"`
 	Scope       string  `json:"scope,omitempty"`
+	// Country and CountryCode are the provider's addressed country for this
+	// hit. They let the scene adopt grounded country context from any resolved
+	// place (a city included) and let a cached hit remain auditable.
+	Country     string `json:"country,omitempty"`
+	CountryCode string `json:"country_code,omitempty"`
 	// Provider identifies the adapter (and endpoint) that produced the hit.
 	Provider string `json:"provider,omitempty"`
 	// PlaceID is the provider's own stable identity for the place.

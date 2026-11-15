@@ -3,6 +3,8 @@ package scriptgeneration
 import (
 	"strings"
 	"testing"
+
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 func planIdentities() []SemanticIdentity {
@@ -92,6 +94,38 @@ func TestGroundedContextQueryWinsScarceSlotOverBareEntity(t *testing.T) {
 	}
 	if plan.Units[1].Status != ProductionUnitDroppedBudget {
 		t.Fatalf("bare identity should remain available after the slot is spent: %+v", plan.Units[1])
+	}
+}
+
+func TestSemanticPlanSkipsBarePlaceAndAbstractVisualQueries(t *testing.T) {
+	identities := []SemanticIdentity{
+		{ID: "location_01", CanonicalSurface: "Stati Uniti", Kind: "LOCATION"},
+		{ID: "concept_01", CanonicalSurface: "biografia sportiva", Kind: "VISUAL_CONCEPT"},
+		{ID: "location_02", CanonicalSurface: "Grand Rapids", Kind: "LOCATION"},
+	}
+	consolidation := planConsolidation([]SemanticProductionCandidate{
+		planCandidate("vc_place", "entity_search", "s01", 1, []string{"location_01"}, "entity:location_01",
+			SemanticSearchQuery{Kind: "exact_mention", Text: "Stati Uniti", Origin: "literal"}),
+		planCandidate("vc_concept", "entity_search", "s01", 2, []string{"concept_01"}, "entity:concept_01",
+			SemanticSearchQuery{Kind: "exact_mention", Text: "biografia sportiva", Origin: "literal"}),
+		planCandidate("vc_context", "entity_search", "s02", 3, []string{"location_02"}, "entity:location_02",
+			SemanticSearchQuery{Kind: "context_phrase", Text: "Floyd Mayweather Grand Rapids", Origin: "derived_from_source_context", Evidence: "Floyd Mayweather was born in Grand Rapids.", Components: []SemanticSearchQueryComponent{{Text: "Floyd Mayweather"}, {Text: "Grand Rapids"}}}),
+	}, nil)
+	plan, err := BuildSemanticProductionPlan(consolidation, identities, DefaultSemanticProductionPlanConfig())
+	if err != nil {
+		t.Fatalf("plan build failed: %v", err)
+	}
+	byID := map[string]SemanticProductionUnit{}
+	for _, unit := range plan.Units {
+		byID[unit.CandidateID] = unit
+	}
+	for _, id := range []string{"vc_place", "vc_concept"} {
+		if byID[id].Status != ProductionUnitSkipped || !strings.Contains(byID[id].DroppedReason, "weak_visual_query") {
+			t.Fatalf("bare location/concept query should be skipped with a reason: %+v", byID[id])
+		}
+	}
+	if byID["vc_context"].Status != ProductionUnitPlanned || byID["vc_context"].SearchStatus != ProductionSearchPending {
+		t.Fatalf("grounded source context should remain searchable: %+v", byID["vc_context"])
 	}
 }
 
@@ -209,6 +243,33 @@ func TestPlanScriptProductionCarriesTheConsolidatedViewAndFeedback(t *testing.T)
 	}
 }
 
+func TestCallerImageSearchesEnterTheSceneLadderAndRespectLockedAssignments(t *testing.T) {
+	query := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	candidate := planCandidate("vc_0001", "entity_search", "scene_01", 1, []string{"person_01"}, "entity:person_01", query)
+	candidate.SceneIDs = []string{"segment_01"}
+	plan, err := BuildSemanticProductionPlan(planConsolidation([]SemanticProductionCandidate{candidate}, nil), planIdentities(), DefaultSemanticProductionPlanConfig())
+	if err != nil {
+		t.Fatalf("plan build failed: %v", err)
+	}
+	searches := []mediadomain.SegmentMediaSearch{
+		{SegmentID: "segment_01", Slot: mediadomain.SlotSecondaryImage, Query: "Stasi processo Milano", Providers: []string{"internet_images"}, MediaTypes: []string{"image"}},
+	}
+	added := ApplyCallerImageSearches(plan, searches, nil)
+	if added != 1 || plan.Metrics.PlannedQueries != 2 {
+		t.Fatalf("caller search was not included in plan metrics: added=%d metrics=%+v", added, plan.Metrics)
+	}
+	attempt, ok := plan.NextSearchAttempt()
+	if !ok || attempt.QueryOrigin != "caller_media_plan" || attempt.Query != "Stasi processo Milano" {
+		t.Fatalf("caller query must pass through unchanged and run first: %+v ok=%v", attempt, ok)
+	}
+	locked := &SemanticProductionPlan{Units: append([]SemanticProductionUnit(nil), plan.Units...), identityByID: plan.identityByID}
+	locked.Metrics.PlannedQueries = plan.Metrics.PlannedQueries
+	added = ApplyCallerImageSearches(locked, searches, []mediadomain.SegmentMediaAssignment{{SegmentID: "segment_01", Slot: mediadomain.SlotSecondaryImage, Locked: true}})
+	if added != 0 || locked.Metrics.PlannedQueries != plan.Metrics.PlannedQueries {
+		t.Fatalf("locked image assignment must suppress caller search: added=%d metrics=%+v", added, locked.Metrics)
+	}
+}
+
 func TestAdoptSemanticPlannerViewRecordsThePlan(t *testing.T) {
 	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
@@ -217,12 +278,18 @@ func TestAdoptSemanticPlannerViewRecordsThePlan(t *testing.T) {
 	bundles := map[string]*SemanticCandidateBundle{"s01": {Identities: planIdentities(), Consolidation: consolidation}}
 	runner := &Runner{}
 	out := &phraseImpactEnrichment{}
-	runner.adoptSemanticPlannerView(out, bundles, GenerateRequest{})
+	req := GenerateRequest{MediaPlan: mediadomain.MediaPlanSpec{Searches: []mediadomain.SegmentMediaSearch{{
+		SegmentID: "s01", Slot: mediadomain.SlotSecondaryImage, Query: "Alberto Stasi trial Milan",
+	}}}}
+	runner.adoptSemanticPlannerView(out, bundles, req)
 	if out.consolidation != consolidation || out.productionPlan == nil || out.searchFeedback == nil {
 		t.Fatalf("the enrichment must carry the planner view: %+v", out)
 	}
 	if len(out.searchFeedback.Entries) != 1 || out.searchFeedback.Entries[0].ProposalID != "vc_0001" {
 		t.Fatalf("feedback must be projected onto the enrichment: %+v", out.searchFeedback)
+	}
+	if got := out.productionPlan.Units[0].Queries[0].Origin; got != "caller_media_plan" {
+		t.Fatalf("caller media search was not carried into the runtime plan: %q", got)
 	}
 	empty := &phraseImpactEnrichment{}
 	(&Runner{}).adoptSemanticPlannerView(empty, nil, GenerateRequest{})

@@ -49,13 +49,31 @@ func PhraseEntranceFrames(durationUS int64, fpsNum, fpsDen int) int64 {
 	return frames
 }
 
+// PhraseExitFrames returns the visible opacity fade-out window. A phrase must
+// leave screen instead of cutting hard, but the exit is a fade ONLY: mirroring
+// the entrance position/scale tracks is what drove settled text back through
+// the authoring gray. The window is ~8 frames (about 0.33s at 24fps), bounded
+// to a quarter of the card so a very short phrase keeps readable hold time.
+func PhraseExitFrames(durationUS int64, fpsNum, fpsDen int) int64 {
+	if durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return 0
+	}
+	totalFrames := (durationUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen))
+	exitFrames := int64(8)
+	if maxExit := totalFrames / 4; exitFrames > maxExit {
+		exitFrames = maxExit
+	}
+	if exitFrames < 2 {
+		return 0
+	}
+	return exitFrames
+}
+
 // phraseMotionParams gives the entrance one third of the phrase's on-screen
-// duration and disables the exit outright. Motion catalog windows are frame
-// counts, so convert the entrance duration at the output frame rate before
-// sending the plan. An explicit zero exit_frames tells RenderingGen to skip
-// the mirrored exit tracks entirely: they drove the settled phrase back
-// through the authoring gray on the way out, and the phrase must hold settled
-// and cut hard instead.
+// duration and reserves a short opacity-only exit. Motion catalog windows are
+// frame counts, so convert both durations at the output frame rate before
+// sending the plan. RenderingGen holds non-opacity tracks during the exit, so
+// the card fades without replaying the entrance transforms.
 func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]any {
 	if fpsNum <= 0 || fpsDen <= 0 {
 		return nil
@@ -68,7 +86,8 @@ func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]a
 	if frames < 1 {
 		frames = 1
 	}
-	return map[string]any{"enter_frames": int(frames), "exit_frames": 0}
+	exitFrames := PhraseExitFrames(phraseDurationUS, fpsNum, fpsDen)
+	return map[string]any{"enter_frames": int(frames), "exit_frames": int(exitFrames)}
 }
 
 // validatePhraseMotionPool fails closed on a caller-supplied motion pool that
@@ -109,6 +128,63 @@ func validatePhraseMotionPool(pool []string) error {
 	return nil
 }
 
+// normalizePinnedPhraseMotion validates and canonicalizes one lane-wide
+// payload pin. A pin is an explicit caller choice, so it is not intersected
+// with the phrase pool: it replaces the lane's rotation for the whole run.
+// Short pins must be general short-lane entrances because one id is applied to
+// phrases of different word counts; exact-cardinality short recipes cannot be
+// used as a single lane-wide choice. Long pins must belong to the certified
+// long-phrase lane and must not be a known long-copy crash.
+func normalizePinnedPhraseMotion(id, lane string) (string, error) {
+	id = ResolveDocumentaryPhraseMotion(strings.TrimSpace(id))
+	if id == "" {
+		return "", nil
+	}
+	if IsRemovedGeneratedPhraseMotion(id) {
+		return "", fmt.Errorf("overlay planner: %s_phrase_motion %q was retired from generated overlays", lane, id)
+	}
+	switch lane {
+	case "short":
+		if !containsMotion(ShortPhraseVisibleMotionCandidates(), id) && !IsShortPhraseRecipe(id) {
+			return "", fmt.Errorf("overlay planner: short_phrase_motion %q is not a short-phrase entrance", id)
+		}
+	case "long":
+		if !containsMotion(LongPhraseMotionCandidates(), id) {
+			return "", fmt.Errorf("overlay planner: long_phrase_motion %q is not a certified long-phrase motion", id)
+		}
+		if isLongCopyCrashingMotion(id) {
+			return "", fmt.Errorf("overlay planner: long_phrase_motion %q is unsafe on long copy", id)
+		}
+	default:
+		return "", fmt.Errorf("overlay planner: unknown phrase-motion lane %q", lane)
+	}
+	return id, nil
+}
+
+// validateShortPhraseRecipePin keeps an exact-cardinality recipe safe when it
+// is used as a lane-wide pin: the same id must be valid for every short phrase
+// in the run, so mixed word counts would hand the renderer a recipe authored
+// for a different count. General short entrances are valid for every count.
+func validateShortPhraseRecipePin(id string, scenes []SceneInput) error {
+	want, recipe := ShortPhraseMotionWordCount(id)
+	if !recipe {
+		return nil
+	}
+	for _, scene := range scenes {
+		for _, phrase := range scene.Phrases {
+			if phrase.PresentationRole == ChapterBulletRole {
+				continue
+			}
+			words := len(strings.Fields(phrase.Text))
+			if words < 1 || words >= 6 || words == want {
+				continue
+			}
+			return fmt.Errorf("overlay planner: short_phrase_motion %q is a %d-word recipe but phrase %q has %d words", id, want, phrase.Text, words)
+		}
+	}
+	return nil
+}
+
 func validateImageMotionPool(pool []string) error {
 	if len(pool) == 0 {
 		return nil
@@ -124,6 +200,38 @@ func validateImageMotionPool(pool []string) error {
 		}
 		if seen[id] {
 			return fmt.Errorf("overlay planner: image motion pool repeats %q", id)
+		}
+		seen[id] = true
+	}
+	return nil
+}
+
+// imageWithTextPoolFor returns the caller's captioned-image pool, or the
+// certified full seeded pool when the payload omits it.
+func imageWithTextPoolFor(input PlanInput) []string {
+	if len(input.ImageWithTextMotions) > 0 {
+		return input.ImageWithTextMotions
+	}
+	return ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
+}
+
+// validateImageWithTextMotionPool fails closed on an id outside the certified
+// image-with-text catalog or on duplicates.
+func validateImageWithTextMotionPool(pool []string) error {
+	if len(pool) == 0 {
+		return nil
+	}
+	certified := make(map[string]bool)
+	for _, id := range ImageWithTextMotionPool(0) {
+		certified[id] = true
+	}
+	seen := make(map[string]bool, len(pool))
+	for _, id := range pool {
+		if !certified[id] {
+			return fmt.Errorf("overlay planner: image_with_text motion %q is not in the certified image-with-text pool", id)
+		}
+		if seen[id] {
+			return fmt.Errorf("overlay planner: image_with_text motion pool repeats %q", id)
 		}
 		seen[id] = true
 	}

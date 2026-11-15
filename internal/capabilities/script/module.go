@@ -28,8 +28,8 @@ package script
 
 import (
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/gin-gonic/gin"
@@ -174,7 +174,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	}, nil
 }
 
-// Compile-time guard: appjobs.Registry is a non-nil sentinel
+// Compile-time guard: jobscheduling.Registry is a non-nil sentinel
 // that the slim ScriptFlowDeps references transitively. This is
 // the canonical Pattern 0 build-failure lock per AGENTS.md.
-var _ *appjobs.Registry = nil
+var _ *jobscheduling.Registry = nil

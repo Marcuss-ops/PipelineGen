@@ -162,6 +162,7 @@ func (acceptingPersonImageScorer) ScoreImageCandidates(_ context.Context, _ stri
 	for i := range out {
 		out[i].SemanticStatus = entitycatalog.CandidateSemanticAccepted
 		out[i].SemanticScore = 0.95
+		out[i].VerifierVersion = entitycatalog.CandidateVerifierVersion
 		out[i].QualityReason = "Ollama visual identity verification confirmed one portrait subject"
 	}
 	return out, nil
@@ -174,14 +175,15 @@ type catalogIntegrationSearcher struct {
 func (s *catalogIntegrationSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	s.calls.Add(1)
 	return []scriptpkg.SegmentAssetCandidate{
-		{AssetID: "provider-1", Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query, Entity: req.Entity, SourceURL: "https://images.example/" + req.Query + "/1.jpg", SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, QualityReason: "manual visual identity review confirmed"},
-		{AssetID: "provider-2", Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query, Entity: req.Entity, SourceURL: "https://images.example/" + req.Query + "/2.jpg", SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, QualityReason: "manual visual identity review confirmed"},
+		{AssetID: "provider-1", Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query, Entity: req.Entity, SourceURL: "https://images.example/" + req.Query + "/1.jpg", SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, VerifierVersion: entitycatalog.CandidateVerifierVersion, QualityReason: "manual visual identity review confirmed"},
+		{AssetID: "provider-2", Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query, Entity: req.Entity, SourceURL: "https://images.example/" + req.Query + "/2.jpg", SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, VerifierVersion: entitycatalog.CandidateVerifierVersion, QualityReason: "manual visual identity review confirmed"},
 	}, nil
 }
 
 func resetEntityImageCatalogCaches() {
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	entityImageLocks = concurrent.NewKeyedLocker()
+	entityImageDiscoveryLocks = concurrent.NewKeyedLocker()
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 }
 
@@ -224,7 +226,7 @@ func seedCatalogPerson(t *testing.T, repo *integrationEntityImageCatalog, name s
 			parsed.Path = "/" + nameSlug + "/" + strings.TrimLeft(parsed.Path, "/")
 			url = parsed.String()
 		}
-		if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{CanonicalEntityID: identity.CanonicalEntityID, Provider: "duckduckgo", Rank: i + 1, SourceURL: url, Status: entitycatalog.CandidateStatusActive, SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, QualityReason: "manual visual identity review confirmed"}); err != nil {
+		if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{CanonicalEntityID: identity.CanonicalEntityID, Provider: "duckduckgo", Rank: i + 1, SourceURL: url, Status: entitycatalog.CandidateStatusActive, SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, VerifierVersion: entitycatalog.CandidateVerifierVersion, QualityReason: "manual visual identity review confirmed"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -428,5 +430,88 @@ func TestVidRushProviderFanoutCatalogHitSkipsProvider(t *testing.T) {
 	}
 	if len(result.Assets.SecondaryImages) != 1 {
 		t.Fatalf("fanout catalog candidates = %d, want 1", len(result.Assets.SecondaryImages))
+	}
+}
+
+func TestPersistEntityImageCatalogCandidatesKeepsConcreteRetrievalProvider(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := strings.Repeat("c", 64)
+	result := scriptpkg.SegmentAssetCandidate{
+		AssetID:               "provider-provenance",
+		Provider:              scriptpkg.VidRushProviderInternetImages,
+		RetrievalProvider:     "wikimedia_commons",
+		Query:                 "Michael Jordan",
+		Entity:                "Michael Jordan",
+		SourceURL:             "https://images.example/michael-jordan/provenance.jpg",
+		SourcePageURL:         "https://example.org/michael-jordan",
+		SemanticStatus:        entitycatalog.CandidateSemanticAccepted,
+		SemanticScore:         0.9,
+		TechnicalQualityScore: 0.9,
+		QualityReason:         "manual visual identity review confirmed",
+		ContentSHA256:         hash,
+		VerifierVersion:       entitycatalog.CandidateVerifierVersion,
+	}
+	if err := persistEntityImageCatalogCandidates(context.Background(), repo, identity, []scriptpkg.SegmentAssetCandidate{result}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows=%d err=%v, want 1", len(rows), err)
+	}
+	if rows[0].Provider != "wikimedia_commons" {
+		t.Fatalf("catalog provider = %q, want the concrete retriever", rows[0].Provider)
+	}
+	if rows[0].ContentSHA256 != hash {
+		t.Fatalf("catalog content hash = %q, want %q", rows[0].ContentSHA256, hash)
+	}
+	if rows[0].VerifierVersion != entitycatalog.CandidateVerifierVersion {
+		t.Fatalf("catalog verifier version = %q, want %q", rows[0].VerifierVersion, entitycatalog.CandidateVerifierVersion)
+	}
+}
+
+// catalogLockObservingSearcher verifies that the per-entity catalog lock is
+// not held while the provider is doing network work. It attempts the same key
+// from inside SearchImages; a held lock would block past the timeout.
+type catalogLockObservingSearcher struct {
+	key     string
+	blocked atomic.Bool
+}
+
+func (s *catalogLockObservingSearcher) SearchImages(context.Context, InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	acquired := make(chan struct{})
+	go func() {
+		release := entityImageLocks.Lock(s.key)
+		close(acquired)
+		release()
+	}()
+	select {
+	case <-acquired:
+	case <-time.After(250 * time.Millisecond):
+		s.blocked.Store(true)
+	}
+	return []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "lock-observed", Provider: scriptpkg.VidRushProviderInternetImages,
+		Query: "Michael Jordan", Entity: "Michael Jordan",
+		SourceURL: "https://images.example/michael-jordan/lock.jpg",
+	}}, nil
+}
+
+func TestEntityImageProviderSearchDoesNotHoldCatalogLock(t *testing.T) {
+	resetEntityImageCatalogCaches()
+	searcher := &catalogLockObservingSearcher{key: "entity-catalog:person:michael-jordan"}
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, newIntegrationEntityImageCatalog())
+	plan := catalogPersonPlan()
+	plan.MediaPlan.ForceRefreshAssets = true
+	plan.ForceRefresh = true
+
+	if _, err := processor.Process(context.Background(), plan, catalogPersonInput("lock-scene", "Michael Jordan")); err != nil {
+		t.Fatal(err)
+	}
+	if searcher.blocked.Load() {
+		t.Fatal("catalog lock remained held during the provider search")
 	}
 }

@@ -6,9 +6,12 @@
 package renderinggen
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -325,6 +328,24 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 		OverlaySpec: rawPlan,
 		Assets:      scriptAssets(assets),
 	})
+	if submitErr != nil && errors.Is(submitErr, scriptgen.ErrRenderRequestConflict) {
+		// The queue's immutable request includes parent_job_id (the producing
+		// run's correlation id), so the SAME content-addressed plan submitted
+		// by a new run collides even though it asks for identical bytes.
+		// Recover only when the existing job carries an equivalent plan; a
+		// genuinely different plan under the same id stays a fail-closed
+		// conflict. The job id is the sealed plan revision, so an equivalent
+		// plan means this render, not a different one wearing its id.
+		existing, getErr := e.queue.Get(ctx, plan.RunID)
+		if getErr == nil && jsonEquivalent(existing.OverlaySpec, rawPlan) {
+			if existing.State == scriptgen.RenderQueueStateFailed {
+				if rearmErr := scriptgen.RearmFailedRenderJob(ctx, e.queue, plan.RunID); rearmErr != nil {
+					return fmt.Errorf("renderinggen clip executor: submit: %w", rearmErr)
+				}
+			}
+			submitErr = nil
+		}
+	}
 	if submitErr != nil && !errors.Is(submitErr, scriptgen.ErrJobExists) {
 		return fmt.Errorf("renderinggen clip executor: submit: %w", submitErr)
 	}
@@ -338,6 +359,21 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 		}
 	}
 	return nil
+}
+
+// jsonEquivalent compares two JSON documents semantically. The queue may
+// re-serialise a stored plan (jsonb key order/whitespace), so a byte compare
+// would reject a rerun whose bytes are identical in meaning. Malformed JSON is
+// never equivalent: the recovery must not admit what it cannot prove.
+func jsonEquivalent(a, b []byte) bool {
+	if bytes.Equal(a, b) {
+		return true
+	}
+	var left, right any
+	if json.Unmarshal(a, &left) != nil || json.Unmarshal(b, &right) != nil {
+		return false
+	}
+	return reflect.DeepEqual(left, right)
 }
 
 // chunkPolicy is transport optimisation only: a single source-video graph is

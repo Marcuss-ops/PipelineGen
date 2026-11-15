@@ -382,7 +382,11 @@ func TestNativeMapRenderEndToEnd(t *testing.T) {
 			},
 		}},
 	}
-	path, err := renderDynamicMapVideoOnce(context.Background(), plan, nil, t.TempDir())
+	// The production gate is a shared flock; this test exercises the renderer
+	// boundary, so it uses the always-granting double (the admission path has
+	// its own cache/gate tests). Passing nil here can never reach the renderer:
+	// that was a latent defect in this host-gated e2e.
+	path, err := renderDynamicMapVideoOnce(context.Background(), plan, &fakeDynamicMapGPUGate{}, t.TempDir())
 	require.NoError(t, err, "the native renderer must execute the realtime wire contract")
 	require.FileExists(t, path)
 	// The artifact identity is the parity anchor for repeated runs: the same
@@ -448,7 +452,7 @@ func TestNativeMapRenderEndToEnd(t *testing.T) {
 	// VELOX_MAP_E2E_PARITY=1 after a tile-cache change; the default single
 	// render keeps the host-gated test at one render of cost.
 	if os.Getenv("VELOX_MAP_E2E_PARITY") == "1" {
-		second, err := renderDynamicMapVideoOnce(context.Background(), plan, nil, t.TempDir())
+		second, err := renderDynamicMapVideoOnce(context.Background(), plan, &fakeDynamicMapGPUGate{}, t.TempDir())
 		require.NoError(t, err, "the parity render must execute the same wire contract")
 		secondHash, secondSize, err := digest.SHA256File(second)
 		require.NoError(t, err)
@@ -456,4 +460,71 @@ func TestNativeMapRenderEndToEnd(t *testing.T) {
 		require.Equal(t, firstHash, secondHash, "two renders of one plan must be byte-identical (tile-cache parity)")
 		t.Logf("native map e2e parity sha256=%s bytes=%d", secondHash, secondSize)
 	}
+}
+
+// TestNativeMapRenderCountryRegionCityScopes is the scope-level counterpart:
+// one real render carries a country, a region and a city pin, and the decision
+// report must present all three. It exercises the same native boundary as the
+// production map phase, including the Toscana coordinates that the geocoder
+// previously resolved to Venezuela.
+func TestNativeMapRenderCountryRegionCityScopes(t *testing.T) {
+	renderer := strings.TrimSpace(os.Getenv("VELOX_MAP_NATIVE_RENDERER_PATH"))
+	if renderer == "" {
+		t.Skip("VELOX_MAP_NATIVE_RENDERER_PATH not configured; native map render e2e is host-gated")
+	}
+	plan := capmodel.OverlayPlan{
+		PlanID: "map-scopes", VideoID: "map-scopes-video", Fingerprint: "map-scopes-fingerprint",
+		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationMS: 9000,
+		Items: []capmodel.OverlayItem{{
+			ID: "map-scopes-item", Kind: "map",
+			StartMs: 0, EndMs: 9000, StartUS: 0, DurationUS: 9_000_000,
+			Map: &capmodel.MapOverlay{
+				Pins: []capmodel.MapOverlayPin{
+					{ID: "country:italia", Label: "Italia", Latitude: 42.5048, Longitude: 12.5725, Scope: "country", Color: "#FF3B30"},
+					{ID: "region:toscana", Label: "Toscana", Latitude: 43.4586541, Longitude: 11.1389204, Scope: "region"},
+					{ID: "city:firenze", Label: "Firenze", Latitude: 43.7697955, Longitude: 11.2556404, Scope: "city"},
+				},
+				AreaGlowRadiusKM: 5,
+			},
+			Params: map[string]any{
+				"map_type":           "chronon_editorial",
+				"map_group_strategy": "multi_pin",
+				"map_pin_timing": map[string]map[string]any{
+					"country:italia": {"start_us": int64(0), "duration_us": int64(2_500_000)},
+					"region:toscana": {"start_us": int64(3_000_000), "duration_us": int64(2_500_000)},
+					"city:firenze":   {"start_us": int64(6_000_000), "duration_us": int64(2_500_000)},
+				},
+			},
+		}},
+	}
+	path, err := renderDynamicMapVideoOnce(context.Background(), plan, &fakeDynamicMapGPUGate{}, t.TempDir())
+	require.NoError(t, err, "the native renderer must execute the country/region/city map wire contract")
+	require.FileExists(t, path)
+	reportPath := filepath.Join(filepath.Dir(path), "map-scopes-item.map-decision.json")
+	raw, err := os.ReadFile(reportPath)
+	require.NoError(t, err)
+	var report struct {
+		Schema string `json:"schema"`
+		Places []struct {
+			EntityID  string `json:"entity_id"`
+			Label     string `json:"label"`
+			Scope     string `json:"scope"`
+			State     string `json:"state"`
+			Presented bool   `json:"presented"`
+		} `json:"places"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &report))
+	require.Equal(t, "pipelinegen.map-decision.v1", report.Schema)
+	require.Len(t, report.Places, 3)
+	wantScopes := map[string]string{
+		"country:italia": "country",
+		"region:toscana": "region",
+		"city:firenze":   "city",
+	}
+	for _, place := range report.Places {
+		require.Equal(t, "rendered", place.State, "place %s", place.EntityID)
+		require.True(t, place.Presented, "place %s", place.EntityID)
+		require.Equal(t, wantScopes[place.EntityID], place.Scope, "place %s", place.EntityID)
+	}
+	t.Logf("country/region/city map artifact=%s", path)
 }

@@ -58,16 +58,28 @@ type GenerateRequest struct {
 	ChannelID string `json:"channel_id,omitempty"`
 	// PhraseMotions and ImageMotions are optional payload-selected certified
 	// animation pools. Empty delegates to the complete seeded random catalog.
-	PhraseMotions      []string `json:"phrase_motions,omitempty"`
-	PhraseMotionFamily string   `json:"phrase_motion_family,omitempty"`
+	PhraseMotions []string `json:"phrase_motions,omitempty"`
+	// ShortPhraseMotion and LongPhraseMotion pin one animation for every
+	// 1-5-word and 6+-word phrase respectively. A pin bypasses the seeded
+	// rotation and the phrase_motions pool; empty keeps the existing lane
+	// behaviour. Validation happens at plan compilation.
+	ShortPhraseMotion  string `json:"short_phrase_motion,omitempty"`
+	LongPhraseMotion   string `json:"long_phrase_motion,omitempty"`
+	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
+	// DateMotionFamily narrows date-card motion selection to a certified
+	// ChrononTemplate date family (auto, date_v1, didone, typewriter).
+	DateMotionFamily string `json:"date_motion_family,omitempty"`
 	// MotionSeed is the per-render entropy for automatic motion rotation.
 	// Empty preserves the historical PlanID/VideoID behavior (byte-identical
 	// retries); a fresh value per render rotates the catalogs.
 	MotionSeed string `json:"motion_seed,omitempty"`
 	// CoherenceSeed picks the run's dominant horizontal direction; empty derives
 	// it from MotionSeed. Opt-in: omitting it keeps plans byte-identical.
-	CoherenceSeed        string   `json:"coherence_seed,omitempty"`
-	ImageMotions         []string `json:"image_motions,omitempty"`
+	CoherenceSeed string   `json:"coherence_seed,omitempty"`
+	ImageMotions  []string `json:"image_motions,omitempty"`
+	// ImageWithTextMotions narrows the certified pool for captioned images.
+	// Empty keeps the full seeded catalog.
+	ImageWithTextMotions []string `json:"image_with_text_motions,omitempty"`
 	EntityImageMotions   []string `json:"entity_image_motions,omitempty"`
 	EntityCaptionMotions []string `json:"entity_caption_motions,omitempty"`
 	// AnimationPolicies is the retired pre-v2 contract, carried only so the
@@ -82,6 +94,7 @@ type GenerateRequest struct {
 	MapCameraAnimation            string                                         `json:"map_camera_animation,omitempty"`
 	MapLabelAnimation             string                                         `json:"map_label_animation,omitempty"`
 	MapAnimation                  string                                         `json:"map_animation,omitempty"`
+	MapLevel                      string                                         `json:"map_level,omitempty"`
 	// MapPresentation is the RESOLVED unified map configuration. When set it
 	// is the single source of the four legacy map_* fields above plus the
 	// grouping policy (group_nearby_places / max_pins_per_group / allow_route).

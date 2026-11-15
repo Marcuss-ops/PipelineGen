@@ -39,10 +39,16 @@ GO_LINKER_FLAGS := $(shell if command -v $(GO_LINKER) >/dev/null 2>&1; then prin
 
 # Rust execution plane: BrainRust owns the toolchain, ICU linkage, tests and
 # release artifacts. PipelineGen consumes only checksum-verified binaries.
-RUST_VERSION ?= v0.1.0
+# Read the canonical release ABI pin, not pkg-config's possibly different
+# development-header major. rust-fetch separately checks the runtime sonames.
+BRAINRUST_VERSION ?= v0.2.0
 RUST_FETCH_BASE_URL ?= https://github.com/Marcuss-ops/BrainRust/releases/download
+# Optional checksum-verified local copy of the same release assets (offline/CI
+# cache). The v0.2.0 bundle is built by BrainRust's Bookworm release workflow.
+RUST_ARTIFACTS_DIR ?=
 RUST_BIN_DIR ?= $(CURDIR)/bin
-ICU_MAJOR ?= $(shell pkg-config --modversion icu-i18n 2>/dev/null | cut -d. -f1)
+RUST_ICU_MAJOR_FILE ?= $(abspath ../BrainRust/ICU_MAJOR)
+ICU_MAJOR ?= $(shell if [ -r "$(RUST_ICU_MAJOR_FILE)" ]; then tr -dc '0-9' < "$(RUST_ICU_MAJOR_FILE)"; else pkg-config --modversion icu-i18n 2>/dev/null | cut -d. -f1; fi)
 
 # Canonical token-file SSOT (AGENTS.md "Authentication SSOT (Velox admin token)").
 # Agents normally load via scripts/with-velox-auth; exporting TOKEN_FILE here is a
@@ -90,13 +96,14 @@ go-version-check:
 #                       users running the long-running worker on a
 #
 # Install the pinned BrainRust release: 4 binaries, 6 names in bin/.
-# ICU_MAJOR is the runtime major, so a 72-linked artifact is refused on a host
-# that only has ICU 70. RUST_ARTIFACTS_DIR may point at a local copy of the
-# release assets for offline installs; it is still a release bundle, not source.
+# ICU_MAJOR is the pinned release ABI. RUST_ARTIFACTS_DIR may point at a local
+# copy of the release assets for offline installs; it is still a release bundle,
+# not source.
 rust-fetch:
-	@test -n "$(ICU_MAJOR)" || (echo "ICU4C runtime libraries are required to validate the BrainRust artifact (pkg-config icu-i18n); override with ICU_MAJOR=<major>" >&2; exit 1)
-	@RUST_VERSION="$(RUST_VERSION)" \
+	@test -n "$(ICU_MAJOR)" || (echo "BrainRust ICU ABI pin is missing at $(RUST_ICU_MAJOR_FILE), and pkg-config cannot provide a fallback" >&2; exit 1)
+	@BRAINRUST_VERSION="$(BRAINRUST_VERSION)" \
 	 RUST_FETCH_BASE_URL="$(RUST_FETCH_BASE_URL)" \
+	 RUST_ARTIFACTS_DIR="$(RUST_ARTIFACTS_DIR)" \
 	 RUST_ICU_MAJOR="$(ICU_MAJOR)" \
 	 RUST_BIN_DIR="$(RUST_BIN_DIR)" \
 	 bash scripts/ci/rust-fetch.sh

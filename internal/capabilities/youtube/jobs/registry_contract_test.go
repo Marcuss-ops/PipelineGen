@@ -25,11 +25,10 @@
 package jobs
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"testing"
 	"time"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // TestYouTubeClipExtract_RoutesToLegacyComplete pins the registry
@@ -49,21 +48,21 @@ import (
 func TestYouTubeClipExtract_RoutesToLegacyComplete(t *testing.T) {
 	const wantDescription = "YouTube clip extraction (per-segment artifacts persisted inside the per-segment caller-owned tx via process_segment + ClipAtomicWriter; broker's legacy Complete is the canonical mark-SUCCEEDED seam)"
 
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	if reg == nil {
-		t.Fatal("appjobs.Compose() returned nil registry")
+		t.Fatal("jobscheduling.Compose() returned nil registry")
 	}
-	if !reg.IsRegistered(appjobs.TypeYouTubeClipExtract) {
-		t.Fatalf("job type %q must be registered (Compose missing this entry)", appjobs.TypeYouTubeClipExtract)
+	if !reg.IsRegistered(jobscheduling.TypeYouTubeClipExtract) {
+		t.Fatalf("job type %q must be registered (Compose missing this entry)", jobscheduling.TypeYouTubeClipExtract)
 	}
-	entry, _ := reg.Get(appjobs.TypeYouTubeClipExtract)
-	if reg.ProducesArtifacts(appjobs.TypeYouTubeClipExtract) {
-		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-YT-FIX mirrors the voiceover db2f3b1e fix; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", appjobs.TypeYouTubeClipExtract)
+	entry, _ := reg.Get(jobscheduling.TypeYouTubeClipExtract)
+	if reg.ProducesArtifacts(jobscheduling.TypeYouTubeClipExtract) {
+		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-YT-FIX mirrors the voiceover db2f3b1e fix; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", jobscheduling.TypeYouTubeClipExtract)
 	}
-	if got, want := reg.Timeout(appjobs.TypeYouTubeClipExtract), 60*time.Minute; got != want {
+	if got, want := reg.Timeout(jobscheduling.TypeYouTubeClipExtract), 60*time.Minute; got != want {
 		t.Fatalf("registry.Timeout(%q) = %s; want %s", job.TypeYouTubeClipExtract, got, want)
 	}
-	if got, want := reg.DefaultMaxRetries(appjobs.TypeYouTubeClipExtract), 2; got != want {
+	if got, want := reg.DefaultMaxRetries(jobscheduling.TypeYouTubeClipExtract), 2; got != want {
 		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", job.TypeYouTubeClipExtract, got, want)
 	}
 	if got := entry.Description; got != wantDescription {
@@ -79,12 +78,12 @@ func TestYouTubeClipExtract_RoutesToLegacyComplete(t *testing.T) {
 // between the two would silently let the gate re-allow the legacy
 // path for this job type.
 func TestYouTubeClipExtract_NotInProducesArtifactsMap(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	m := reg.ProducesArtifactsMap()
 	if m == nil {
 		t.Fatal("ProducesArtifactsMap() returned nil map")
 	}
-	if m[appjobs.TypeYouTubeClipExtract] {
-		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-YT-FIX)", appjobs.TypeYouTubeClipExtract)
+	if m[jobscheduling.TypeYouTubeClipExtract] {
+		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-YT-FIX)", jobscheduling.TypeYouTubeClipExtract)
 	}
 }

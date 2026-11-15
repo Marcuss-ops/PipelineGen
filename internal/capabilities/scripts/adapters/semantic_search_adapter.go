@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // semanticProductionProvider is the provenance stamped on assets retrieved by
@@ -20,16 +21,21 @@ const semanticProductionProvider = "semantic_production_plan"
 // so the measured hit rate and latency describe the real retrieval surface.
 type SemanticAssetSearch struct {
 	searcher InternetImageSearcher
+	scorer   SemanticCandidateScorer
 }
 
 // NewSemanticAssetSearch builds the adapter. A nil searcher yields a nil
 // adapter, which the wiring treats as "planner unavailable" instead of
 // registering a port that can only fail.
-func NewSemanticAssetSearch(searcher InternetImageSearcher) *SemanticAssetSearch {
+func NewSemanticAssetSearch(searcher InternetImageSearcher, scorers ...SemanticCandidateScorer) *SemanticAssetSearch {
 	if searcher == nil {
 		return nil
 	}
-	return &SemanticAssetSearch{searcher: searcher}
+	var scorer SemanticCandidateScorer
+	if len(scorers) > 0 {
+		scorer = scorers[0]
+	}
+	return &SemanticAssetSearch{searcher: searcher, scorer: scorer}
 }
 
 var _ scriptgen.SemanticAssetSearchPort = (*SemanticAssetSearch)(nil)
@@ -58,11 +64,30 @@ func (s *SemanticAssetSearch) Search(ctx context.Context, req scriptgen.Semantic
 	if err != nil {
 		return scriptgen.SemanticAssetSearchResponse{}, err
 	}
+	for i := range candidates {
+		if candidates[i].RetrievalProvider == "" && strings.TrimSpace(candidates[i].Provider) != "" &&
+			!strings.EqualFold(strings.TrimSpace(candidates[i].Provider), scriptpkg.VidRushProviderInternetImages) {
+			candidates[i].RetrievalProvider = strings.TrimSpace(candidates[i].Provider)
+		}
+		candidates[i].Provider = scriptpkg.VidRushProviderInternetImages
+	}
+	class := strings.TrimSpace(req.QueryClass)
+	if class == "" {
+		class = "generic"
+	}
+	candidates, err = resolveEntityVisualCandidates(ctx, s.scorer, class, req.SceneContext, candidates)
+	if err != nil {
+		return scriptgen.SemanticAssetSearchResponse{}, fmt.Errorf("semantic candidate verification: %w", err)
+	}
 	response := scriptgen.SemanticAssetSearchResponse{
 		Hits:     make([]scriptgen.SemanticAssetHit, 0, len(candidates)),
 		Provider: semanticProductionProvider,
 	}
 	for _, candidate := range candidates {
+		if isPlaceholderImageReference(candidate.SourceURL, candidate.MIMEType) ||
+			isPlaceholderImageReference(candidate.PreviewURL, candidate.MIMEType) {
+			continue
+		}
 		assetID := strings.TrimSpace(candidate.AssetID)
 		if assetID == "" {
 			assetID = strings.TrimSpace(candidate.ContentSHA256)
@@ -81,7 +106,10 @@ func (s *SemanticAssetSearch) Search(ctx context.Context, req scriptgen.Semantic
 		// by. When a cascade returns several providers, the answer is attributed
 		// to the first one that produced a hit, not to whichever candidate
 		// happened to be appended last.
-		provider := strings.TrimSpace(candidate.Provider)
+		provider := strings.TrimSpace(candidate.RetrievalProvider)
+		if provider == "" {
+			provider = strings.TrimSpace(candidate.Provider)
+		}
 		if provider != "" && response.Provider == semanticProductionProvider {
 			response.Provider = provider
 		}
@@ -90,6 +118,10 @@ func (s *SemanticAssetSearch) Search(ctx context.Context, req scriptgen.Semantic
 			DriveLink: strings.TrimSpace(candidate.DriveLink), MediaType: strings.TrimSpace(candidate.MIMEType),
 			Provider: provider, Entity: strings.TrimSpace(candidate.Entity),
 			Width: candidate.Width, Height: candidate.Height,
+			Score: candidate.Score, RelevanceScore: candidate.RelevanceScore,
+			SemanticScore: candidate.SemanticScore, TechnicalQualityScore: candidate.TechnicalQualityScore,
+			SemanticStatus:  strings.TrimSpace(candidate.SemanticStatus),
+			VerifierVersion: strings.TrimSpace(candidate.VerifierVersion),
 		})
 	}
 	return response, nil

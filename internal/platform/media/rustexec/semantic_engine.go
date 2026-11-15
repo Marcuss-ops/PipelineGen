@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -21,14 +20,10 @@ import (
 // the same scene. The engine keeps every candidate; selection (top-N, chart
 // admission, overlay budget) stays in PipelineGen.
 type SemanticEngineAdapter struct {
-	executor        *Executor
-	embedder        passageBatchEmbedder
-	entityCacheMu   sync.RWMutex
-	entityCache     map[string][]scriptgen.SemanticEntityCandidate
-	entityCacheFIFO []string
+	executor *Executor
+	embedder passageBatchEmbedder
 }
 
-const semanticEntityCacheCapacity = 512
 const semanticEngineOutputLimit = 8 << 20
 
 // NewSemanticEngineExecutor reserves bounded response headroom for whole-
@@ -44,7 +39,7 @@ func NewSemanticEngineAdapter(executor *Executor) (*SemanticEngineAdapter, error
 	if executor == nil {
 		return nil, fmt.Errorf("semantic-engine: executor is required")
 	}
-	return &SemanticEngineAdapter{executor: executor, entityCache: make(map[string][]scriptgen.SemanticEntityCandidate)}, nil
+	return &SemanticEngineAdapter{executor: executor}, nil
 }
 
 const semanticManifestV2 = "semantic_manifest.v2"
@@ -152,7 +147,6 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		}
 		if scene.Status != "valid" {
 			bundles[scene.SceneID] = bundle
-			a.cacheEntities(manifest.Language, source, nil)
 			continue
 		}
 		if bundle.Entities, err = projectSemanticEntities(source, scene.Entities); err != nil {
@@ -211,7 +205,6 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
 		}
 		bundles[scene.SceneID] = bundle
-		a.cacheEntities(manifest.Language, source, bundle.Entities)
 	}
 	if err := validateSemanticScriptViews(texts, manifest.StoryGraph, manifest.VisualCoverage, bundles); err != nil {
 		return nil, nil, fmt.Errorf("semantic-engine: %w", err)
@@ -252,58 +245,46 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 	return bundles, editorialResult, nil
 }
 
-func semanticEntityCacheKey(language, source string) string {
-	return strings.ToLower(strings.TrimSpace(language)) + "\x00" + source
-}
-
-func cloneSemanticEntities(entities []scriptgen.SemanticEntityCandidate) []scriptgen.SemanticEntityCandidate {
-	return append([]scriptgen.SemanticEntityCandidate(nil), entities...)
-}
-
-func (a *SemanticEngineAdapter) cacheEntities(language, source string, entities []scriptgen.SemanticEntityCandidate) {
-	key := semanticEntityCacheKey(language, source)
-	a.entityCacheMu.Lock()
-	defer a.entityCacheMu.Unlock()
-	if _, exists := a.entityCache[key]; !exists {
-		a.entityCacheFIFO = append(a.entityCacheFIFO, key)
-		if len(a.entityCacheFIFO) > semanticEntityCacheCapacity {
-			delete(a.entityCache, a.entityCacheFIFO[0])
-			a.entityCacheFIFO = a.entityCacheFIFO[1:]
-		}
-	}
-	a.entityCache[key] = cloneSemanticEntities(entities)
-}
-
-func (a *SemanticEngineAdapter) cachedEntities(language, source string) ([]scriptgen.SemanticEntityCandidate, bool) {
-	a.entityCacheMu.RLock()
-	entities, ok := a.entityCache[semanticEntityCacheKey(language, source)]
-	cloned := cloneSemanticEntities(entities)
-	a.entityCacheMu.RUnlock()
-	return cloned, ok
-}
-
 // Extract adapts the unified semantic worker to the existing SceneIR/asset
-// search port. When the same source text was already included in a script
-// batch, it reuses those entities without another Rust request.
+// search port. It intentionally analyses the scene in its own document
+// context: a scene-text-only cache can leak coreference and entity-linking
+// decisions between scripts that happen to contain the same sentence.
 func (a *SemanticEngineAdapter) Extract(
 	ctx context.Context,
 	language string,
 	sourceText string,
 	_ int,
 ) ([]scriptgen.VisualEntity, error) {
-	entities, ok := a.cachedEntities(language, sourceText)
-	if !ok {
-		bundle, err := a.SemanticCandidates(ctx, language, sourceText, 0)
-		if err != nil {
-			return nil, err
-		}
-		entities = cloneSemanticEntities(bundle.Entities)
+	bundle, err := a.SemanticCandidates(ctx, language, sourceText, 0)
+	if err != nil {
+		return nil, err
 	}
-	out := make([]scriptgen.VisualEntity, 0, len(entities))
-	for _, entity := range entities {
+	out := make([]scriptgen.VisualEntity, 0, len(bundle.Entities))
+	queriesByIdentity := make(map[string][]string)
+	if bundle.Consolidation != nil {
+		for _, candidate := range bundle.Consolidation.ProductionCandidates {
+			for _, identityID := range candidate.EntityIDs {
+				for _, query := range candidate.Queries {
+					// The entity image lane has a primary identity intent. Fact
+					// context belongs to later reranking, not provider query text.
+					if query.Kind == "exact_mention" && strings.TrimSpace(query.Text) != "" {
+						if len(queriesByIdentity[identityID]) == 0 {
+							queriesByIdentity[identityID] = []string{query.Text}
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, entity := range bundle.Entities {
+		canonicalID := ""
+		if entity.IdentityID != "" {
+			canonicalID = "local:" + bundle.Fingerprint + ":" + entity.IdentityID
+		}
 		out = append(out, scriptgen.VisualEntity{
 			Text: entity.Text, Type: scriptpkg.EntityType(entity.Kind), Score: float32(entity.Score),
-			Start: entity.Start, End: entity.End, Evidence: entity.Evidence,
+			Start: entity.Start, End: entity.End, Evidence: entity.Evidence, IdentityID: entity.IdentityID, CanonicalID: canonicalID,
+			SearchIntents: append([]string(nil), queriesByIdentity[entity.IdentityID]...),
 		})
 	}
 	return out, nil

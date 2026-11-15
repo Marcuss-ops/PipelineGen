@@ -98,6 +98,9 @@ func TestRetryWithUnchangedPlanReusesCertifiedArtifactWithoutReencoding(t *testi
 	if cache.stored != 1 || first.Artifact == nil || first.Artifact.SHA256 != artifact.SHA256 {
 		t.Fatalf("first attempt did not certify the artifact: stored=%d artifact=%+v", cache.stored, first.Artifact)
 	}
+	if first.CacheHits != 0 || first.RenderedItems != 1 {
+		t.Fatalf("first attempt cache accounting = hits:%d rendered:%d, want 0/1", first.CacheHits, first.RenderedItems)
+	}
 
 	// The retry replays the exact same plan from a FRESH enqueuer (a new
 	// attempt/process) sharing only the durable index. The cache key is
@@ -123,5 +126,8 @@ func TestRetryWithUnchangedPlanReusesCertifiedArtifactWithoutReencoding(t *testi
 	}
 	if retry.Artifact == nil || retry.Artifact.SHA256 != artifact.SHA256 || retry.Artifact.SizeBytes != artifact.SizeBytes {
 		t.Fatalf("retry artifact = %+v, want the certified identity %s", retry.Artifact, artifact.SHA256)
+	}
+	if retry.CacheHits != 1 || retry.RenderedItems != 0 {
+		t.Fatalf("retry cache accounting = hits:%d rendered:%d, want 1/0", retry.CacheHits, retry.RenderedItems)
 	}
 }

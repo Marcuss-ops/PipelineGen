@@ -101,14 +101,14 @@ func TestSemanticEngineAnalysesEverySceneInOneBatchCall(t *testing.T) {
 	if len(bundles) != 2 {
 		t.Fatalf("bundles=%d, want 2", len(bundles))
 	}
-	// VidRush's NER/image-search port must reuse the script batch extraction
-	// when the exact scene text is requested again.
+	// A scene-only extraction is isolated from document-level identity context;
+	// same-sentence text in another script must not inherit cached coreference.
 	visualEntities, err := adapter.Extract(context.Background(), "en", semanticSceneOne, 3)
 	if err != nil {
-		t.Fatalf("reuse batch entities: %v", err)
+		t.Fatalf("extract scene entities: %v", err)
 	}
-	if len(visualEntities) != 1 || visualEntities[0].Text != "Marco Rossi" || runner.calls != 1 {
-		t.Fatalf("visual entities=%+v worker calls=%d; want cached entity and one batch call", visualEntities, runner.calls)
+	if len(visualEntities) != 1 || visualEntities[0].Text != "Marco Rossi" || runner.calls != 2 {
+		t.Fatalf("visual entities=%+v worker calls=%d; want isolated scene analysis and two worker calls", visualEntities, runner.calls)
 	}
 	first := bundles["scene_01"]
 	if len(first.Bullets) != 2 || first.Bullets[0].Text != "Marco Rossi founded the studio." {

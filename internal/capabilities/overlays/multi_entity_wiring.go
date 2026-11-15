@@ -30,9 +30,9 @@ type MultiEntityCandidate struct {
 	Priority int
 }
 
-// MultiEntityGroup is an editorial grouping, not a renderer animation. Each
-// child image receives its own normal image motion; phrase content stays on
-// the existing important_phrase primitive.
+// MultiEntityGroup is the editorial source for a composite image sequence.
+// Image candidates share one group choreography and keep their own captions;
+// phrase content stays on the existing important_phrase primitive.
 type MultiEntityGroup struct {
 	GroupID       string
 	SceneID       string
@@ -169,9 +169,11 @@ func createGroupFromCluster(items []MultiEntityCandidate) MultiEntityGroup {
 }
 
 // WireMultiEntityOverlays lowers a group to the existing semantic primitives.
-// Image children use image_layers with independent certified motions. Phrase
-// children remain separate IMPORTANT_PHRASE items to preserve their own timing.
-// Mixed groups produce both types rather than inventing a composite renderer.
+// Image children use image_layers over the shared group window; the planner
+// assigns one certified group choreography, so the children must not carry
+// competing per-image motions. Phrase children remain separate
+// IMPORTANT_PHRASE items to preserve their own timing. Mixed groups produce
+// both types rather than inventing a composite renderer.
 func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight int) ([]capmodel.OverlayItem, error) {
 	if strings.TrimSpace(group.GroupID) == "" || strings.TrimSpace(group.SceneID) == "" || group.StartMS < 0 || group.EndMS <= group.StartMS || len(group.Items) == 0 || len(group.Items) > 5 || canvasWidth <= 0 || canvasHeight <= 0 {
 		return nil, fmt.Errorf("multi-entity wiring: invalid group identity, timing, or contents")
@@ -184,13 +186,58 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 			imageCount++
 		}
 	}
-	// A sequence camera is meaningful only when at least two images share the
-	// group; a single portrait keeps the ordinary image entrance.
-	cameraMotionID := ""
-	if imageCount >= 2 {
-		cameraMotionID = SelectEntitySequenceCameraMotion(group.GroupID, group.SceneID, group.GroupID)
-	}
 	var out []capmodel.OverlayItem
+	if imageCount >= 2 {
+		groupDurationMS := group.EndMS - group.StartMS
+		assets := make([]capmodel.OverlayAssetRef, 0, imageCount)
+		layers := make([]capmodel.OverlayImageLayer, 0, imageCount)
+		seenGroupAssets := make(map[string]struct{}, imageCount)
+		seenGroupIDs := make(map[string]struct{}, imageCount)
+		for index, candidate := range group.Items {
+			if candidate.Kind != MultiEntityKindImage {
+				continue
+			}
+			if candidate.StartMS < group.StartMS || candidate.EndMS > group.EndMS || candidate.EndMS <= candidate.StartMS {
+				return nil, fmt.Errorf("multi-entity wiring: candidate %q falls outside group window", candidate.ID)
+			}
+			if candidate.SceneID != "" && candidate.SceneID != group.SceneID {
+				return nil, fmt.Errorf("multi-entity wiring: candidate %q belongs to scene %q, not %q", candidate.ID, candidate.SceneID, group.SceneID)
+			}
+			if candidate.AssetRef == nil || strings.TrimSpace(candidate.AssetRef.AssetID) == "" || strings.TrimSpace(candidate.AssetRef.SHA256) == "" {
+				return nil, fmt.Errorf("multi-entity wiring: image candidate %q requires a content-addressed asset", candidate.ID)
+			}
+			ref := *candidate.AssetRef
+			if _, exists := seenGroupAssets[ref.AssetID]; exists {
+				return nil, fmt.Errorf("multi-entity wiring: duplicate image asset %q", ref.AssetID)
+			}
+			seenGroupAssets[ref.AssetID] = struct{}{}
+			imageID := strings.TrimSpace(candidate.ID)
+			if imageID == "" {
+				imageID = fmt.Sprintf("%s-image-%d", group.GroupID, index+1)
+			}
+			if _, exists := seenGroupIDs[imageID]; exists {
+				return nil, fmt.Errorf("multi-entity wiring: duplicate image candidate id %q", imageID)
+			}
+			seenGroupIDs[imageID] = struct{}{}
+			// A composite is one render surface: every layer shares the group
+			// window so the group choreography can place it from frame zero.
+			layers = append(layers, capmodel.OverlayImageLayer{
+				ID: imageID, AssetID: ref.AssetID, StartMS: 0, EndMS: groupDurationMS,
+				PresetID: selectImagePreset(group.GroupID, group.SceneID, imageID),
+				Caption:  strings.TrimSpace(candidate.Name),
+				CaptionMotionID: RuntimeEntityCaptionMotionAtOffset(
+					ImageMotionOffsetForSeed(group.GroupID+"\x00"+group.SceneID), len(layers)),
+			})
+			assets = append(assets, ref)
+		}
+		out = append(out, capmodel.OverlayItem{
+			ID: group.GroupID + "-images", SceneID: group.SceneID, GroupID: group.GroupID,
+			Kind: string(capmodel.KindEntityImage), TemplateID: "IMAGE_OVERLAY",
+			StartMs: group.StartMS, EndMs: group.EndMS,
+			StartUS: group.StartMS * 1000, DurationUS: (group.EndMS - group.StartMS) * 1000,
+			AssetRefs: assets, ImageLayers: layers,
+		})
+	}
 	for index, candidate := range group.Items {
 		if candidate.StartMS < group.StartMS || candidate.EndMS > group.EndMS || candidate.EndMS <= candidate.StartMS {
 			return nil, fmt.Errorf("multi-entity wiring: candidate %q falls outside group window", candidate.ID)
@@ -200,6 +247,9 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 		}
 		switch candidate.Kind {
 		case MultiEntityKindImage:
+			if imageCount >= 2 {
+				continue
+			}
 			if candidate.AssetRef == nil || strings.TrimSpace(candidate.AssetRef.AssetID) == "" || strings.TrimSpace(candidate.AssetRef.SHA256) == "" {
 				return nil, fmt.Errorf("multi-entity wiring: image candidate %q requires a content-addressed asset", candidate.ID)
 			}
@@ -223,7 +273,6 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 				PresetID:        selectImagePreset(group.GroupID, group.SceneID, imageID),
 				MotionID:        EntityImageMotionAtOffset(motionOffset, index),
 				CaptionMotionID: RuntimeEntityCaptionMotionAtOffset(motionOffset, index),
-				CameraMotionID:  cameraMotionID,
 				EntityCaption:   strings.TrimSpace(candidate.Name),
 				StartMs:         candidate.StartMS, EndMs: candidate.EndMS,
 				StartUS: candidate.StartMS * 1000, DurationUS: (candidate.EndMS - candidate.StartMS) * 1000,

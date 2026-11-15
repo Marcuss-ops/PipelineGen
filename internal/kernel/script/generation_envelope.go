@@ -144,9 +144,19 @@ type GenerationItemV2 struct {
 	MapPresentation *MapPresentationSpec `json:"map_presentation,omitempty"`
 	// Motion pools are optional caller choices. Empty pools use the runtime's
 	// seeded random rotation across the complete certified catalogs.
-	PhraseMotions      []string `json:"phrase_motions,omitempty"`
-	ImageMotions       []string `json:"image_motions,omitempty"`
-	EntityImageMotions []string `json:"entity_image_motions,omitempty"`
+	PhraseMotions []string `json:"phrase_motions,omitempty"`
+	// ShortPhraseMotion and LongPhraseMotion pin one certified phrase motion
+	// for every phrase in that word-count lane. A pin bypasses the seeded
+	// rotation and the phrase_motions pool for the whole run; invalid or
+	// lane-incompatible ids fail closed at plan compilation. Empty keeps the
+	// existing pool/rotation behaviour for that lane.
+	ShortPhraseMotion string   `json:"short_phrase_motion,omitempty"`
+	LongPhraseMotion  string   `json:"long_phrase_motion,omitempty"`
+	ImageMotions      []string `json:"image_motions,omitempty"`
+	// ImageWithTextMotions narrows the certified pool used when an image
+	// carries a caption. Empty keeps the runtime's seeded full catalog.
+	ImageWithTextMotions []string `json:"image_with_text_motions,omitempty"`
+	EntityImageMotions   []string `json:"entity_image_motions,omitempty"`
 	// EntityCaptionMotions is the optional run-level caption pool for
 	// automatic entity-caption assignment. Empty keeps the certified
 	// camera-safe automatic pool. Entries must name automatic-pool motions.
@@ -186,6 +196,12 @@ type GenerationItemV2 struct {
 	// family. With no explicit pool or family, the runtime rotates through its
 	// seeded random sequence over the full certified animation catalog.
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
+	// DateMotionFamily optionally restricts date-card motion selection to one
+	// certified ChrononTemplate date family. Empty or "auto" keeps the full
+	// certified date pool; "typewriter" selects the ten date_typewriter_*
+	// presets, "didone" the date_didone_* presets, and "date_v1" the classic
+	// presets. Unknown families fail closed at plan compilation.
+	DateMotionFamily string `json:"date_motion_family,omitempty"`
 	// MotionSeed is the per-render entropy for automatic motion rotation
 	// (phrases, short phrases, images, captions, entity styles). Empty keeps
 	// the historical deterministic behavior derived from plan/video/project

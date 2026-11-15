@@ -3,13 +3,13 @@
 package lifecycle
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -64,7 +64,7 @@ func workerBudget(env string, defaultBudget int) int {
 // GeneralPoolJobTypes returns the positive registry complement of enabled
 // dedicated lanes. An empty registry/complement preserves unfiltered claiming.
 func GeneralPoolJobTypes() []string {
-	all := appjobs.Compose().AllTypes()
+	all := jobscheduling.Compose().AllTypes()
 	if len(all) == 0 {
 		return nil
 	}

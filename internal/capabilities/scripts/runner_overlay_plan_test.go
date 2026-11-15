@@ -305,8 +305,9 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		},
 	})
 	// The two grounded dates start at 1.7s and 1.9s. Keep five seconds of
-	// audible scene after them so both cards fit inside the scene without
-	// crossing into scene-1; the word boundaries themselves stay at 100ms.
+	// audible scene after them so the final card fits inside the scene; the
+	// earlier card is sequenced to end before the next spoken date, so the
+	// word boundaries themselves stay at 100ms.
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{tailUS: 5_000_000})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
@@ -336,7 +337,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 			latestDateTailMS = item.EndMs
 		}
 	}
-	require.GreaterOrEqual(t, latestDateTailMS, int64(6900), "both grounded dates retain their five-second display tails")
+	require.GreaterOrEqual(t, latestDateTailMS, int64(6900), "the final grounded date retains its five-second display tail")
 	require.GreaterOrEqual(t, res.OverlayPlan.DurationMS, latestDateTailMS, "plan canvas covers the date tail")
 	datePayload, err := marshalRenderingGenOverlayPlan(*res.OverlayPlan)
 	require.NoError(t, err)
@@ -350,14 +351,15 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(datePayload, &wire))
 	require.GreaterOrEqual(t, wire.DurationMS, latestDateTailMS, "overlay payload must cover the complete Date display tail")
-	dateCount := 0
+	dateDurations := map[string]int64{}
 	for _, item := range wire.Items {
 		if item.TemplateID == "TIMELINE_DATE_CARD" {
-			dateCount++
-			require.Equal(t, int64(5000), item.DurationMS, "Date item payload duration must be five seconds")
+			dateDurations[item.Text] = item.DurationMS
 		}
 	}
-	require.Equal(t, 2, dateCount, "both certified date candidates survive the run-level budget")
+	require.Len(t, dateDurations, 2, "both certified date candidates survive the run-level budget")
+	require.Equal(t, int64(100), dateDurations["2025"], "the earlier date is sequenced before the next spoken date")
+	require.Equal(t, int64(5000), dateDurations["March 5, 2026"], "the final date keeps its five-second presentation")
 	finalAudioDurationUS := res.FinalAudio.DurationUS
 	if finalAudioDurationUS <= 0 {
 		finalAudioDurationUS = res.FinalAudio.DurationMS * 1000
@@ -449,7 +451,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		motionPool     []string
 		start, end     int64
 	}{
-		{"2025", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1700, 6700},
+		{"2025", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1700, 1800},
 		{"March 5, 2026", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1900, 6900},
 		{"25%", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2300, 2400},
 		{"$2 million", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2500, 2700},
@@ -467,7 +469,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		require.Equal(t, tc.start, item.StartMs, "typed value must start at its certified spoken word boundary")
 		require.Equal(t, tc.end, item.EndMs, "typed value must retain its full planned display window")
 		if tc.template == "TIMELINE_DATE_CARD" {
-			require.GreaterOrEqual(t, item.DurationUS, int64(5_000_000), "each Date item must carry a five-second duration")
+			require.Equal(t, (tc.end-tc.start)*1000, item.DurationUS, "each Date item must carry its planned display window")
 		}
 		if tc.template == "TIMELINE_DATE_CARD" || tc.template == "METRIC_STAT_CARD" {
 			require.Equal(t, 140.0, item.Params["font_size_px"], "Date and Metric use the shared text size +28px")

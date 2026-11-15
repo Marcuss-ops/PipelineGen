@@ -144,7 +144,11 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 				sceneTexts[index] = scene.Text
 			}
 		}
-		wantMaps := req.MapsOnly || req.AnimationCounts["maps"] > 0 || req.AnimationCounts["one_map"] > 0 || req.AnimationCounts["two_maps"] > 0
+		// A positive map budget is itself an explicit request for automatic
+		// place discovery. Without this, the geocoder enriched only entities
+		// already found by semantic extraction and skipped grounded country and
+		// region names appearing in the spoken scene text.
+		wantMaps := req.MapsOnly || req.MaxMapOverlays > 0 || req.AnimationCounts["maps"] > 0 || req.AnimationCounts["one_map"] > 0 || req.AnimationCounts["two_maps"] > 0
 		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{SceneTexts: sceneTexts, MapsOnly: wantMaps}); err != nil {
 			return vidRushPrepareResult{}, err
 		}

@@ -1,0 +1,132 @@
+{
+  "schema": "entity_image_catalog_policy.v1",
+  "verifier_version": "entity-image-visual/v3",
+  "cases": [
+    {
+      "name": "accepted_current_verifier",
+      "want_eligible": true,
+      "candidate": {
+        "candidate_id": 1,
+        "canonical_entity_id": "person:contract-person",
+        "provider": "wikimedia_commons",
+        "rank": 1,
+        "source_url": "https://images.example/contract-person/portrait.jpg",
+        "width": 1200,
+        "height": 800,
+        "status": "fresh",
+        "semantic_status": "accepted",
+        "semantic_score": 0.92,
+        "technical_score": 0.88,
+        "quality_reason": "manual visual identity review confirmed"
+      }
+    },
+    {
+      "name": "rejected_status",
+      "want_eligible": false,
+      "candidate": {
+        "candidate_id": 2,
+        "canonical_entity_id": "person:contract-person",
+        "provider": "wikimedia_commons",
+        "rank": 1,
+        "source_url": "https://images.example/contract-person/rejected.jpg",
+        "width": 1200,
+        "height": 800,
+        "status": "fresh",
+        "semantic_status": "rejected",
+        "semantic_score": 0.92,
+        "technical_score": 0.88,
+        "quality_reason": "manual visual identity review confirmed"
+      }
+    },
+    {
+      "name": "unknown_status_is_not_certified",
+      "want_eligible": false,
+      "candidate": {
+        "candidate_id": 3,
+        "canonical_entity_id": "person:contract-person",
+        "provider": "wikimedia_commons",
+        "rank": 1,
+        "source_url": "https://images.example/contract-person/unknown.jpg",
+        "width": 1200,
+        "height": 800,
+        "status": "fresh",
+        "semantic_status": "unknown",
+        "semantic_score": 0.92,
+        "technical_score": 0.88,
+        "quality_reason": "manual visual identity review confirmed"
+      }
+    },
+    {
+      "name": "semantic_score_below_floor",
+      "want_eligible": false,
+      "candidate": {
+        "candidate_id": 4,
+        "canonical_entity_id": "person:contract-person",
+        "provider": "wikimedia_commons",
+        "rank": 1,
+        "source_url": "https://images.example/contract-person/low-semantic.jpg",
+        "width": 1200,
+        "height": 800,
+        "status": "fresh",
+        "semantic_status": "accepted",
+        "semantic_score": 0.4,
+        "technical_score": 0.88,
+        "quality_reason": "manual visual identity review confirmed"
+      }
+    },
+    {
+      "name": "technical_score_below_floor",
+      "want_eligible": false,
+      "candidate": {
+        "candidate_id": 5,
+        "canonical_entity_id": "person:contract-person",
+        "provider": "wikimedia_commons",
+        "rank": 1,
+        "source_url": "https://images.example/contract-person/low-technical.jpg",
+        "width": 1200,
+        "height": 800,
+        "status": "fresh",
+        "semantic_status": "accepted",
+        "semantic_score": 0.92,
+        "technical_score": 0.4,
+        "quality_reason": "manual visual identity review confirmed"
+      }
+    },
+    {
+      "name": "dimensions_below_catalog_floor",
+      "want_eligible": false,
+      "candidate": {
+        "candidate_id": 6,
+        "canonical_entity_id": "person:contract-person",
+        "provider": "wikimedia_commons",
+        "rank": 1,
+        "source_url": "https://images.example/contract-person/small.jpg",
+        "width": 500,
+        "height": 400,
+        "status": "fresh",
+        "semantic_status": "accepted",
+        "semantic_score": 0.92,
+        "technical_score": 0.88,
+        "quality_reason": "manual visual identity review confirmed"
+      }
+    },
+    {
+      "name": "accepted_without_visual_provenance",
+      "want_eligible": false,
+      "candidate": {
+        "candidate_id": 7,
+        "canonical_entity_id": "person:contract-person",
+        "provider": "wikimedia_commons",
+        "rank": 1,
+        "source_url": "https://images.example/contract-person/metadata-only.jpg",
+        "width": 1200,
+        "height": 800,
+        "status": "fresh",
+        "semantic_status": "accepted",
+        "semantic_score": 0.92,
+        "technical_score": 0.88,
+        "quality_reason": "query matched the entity name"
+      }
+    }
+  ]
+}

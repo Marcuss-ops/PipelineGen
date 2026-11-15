@@ -16,18 +16,17 @@ package youtube
 import (
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"path"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	transport "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // Extract enqueues a YouTube clip extraction job. When Destination.Group
@@ -69,7 +68,7 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 	}
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type:    appjobs.TypeYouTubeClipExtract,
+		Type:    jobscheduling.TypeYouTubeClipExtract,
 		Payload: payloadMap,
 	}, "YouTube clip extraction job enqueued."); ok {
 		return

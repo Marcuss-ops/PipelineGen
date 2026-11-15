@@ -174,7 +174,7 @@ func (d *Dispatcher) SetEnqueuer(p EnqueuePort) *Dispatcher {
 // Why the jobType parameter type is `string` (not `job.Type`): the
 // codebase has no `job.Type` defined-alias; `Type` is a struct field on
 // JobDefinition and the canonical value-space is string-based
-// (TypeScriptGenerate = "script.generate", etc.). The parameter type
+// (jobscheduling.TypeScriptGenerate = "script.generate", etc.). The parameter type
 // follows the existing EnqueueRequest.Type convention. A typed alias
 // can be added in a future migration without breaking this signature.
 func (d *Dispatcher) Enqueue(ctx context.Context, jobType string, payload any) (*job.Job, error) {

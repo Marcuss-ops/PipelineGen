@@ -8,9 +8,9 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -40,16 +40,15 @@ type VidRushIncrementalCoordinator struct {
 	backpressure VidRushBackpressure
 	gate         *GenerationGate
 
-	// providerResolveBudget bounds one scene's provider fan-out. Zero uses
-	// vidRushProviderResolveTimeout; tests shorten it to exercise degradation.
+	// providerResolveBudget bounds the WHOLE run's provider fan-out, not each
+	// scene independently: a late scene must not get a fresh budget after the
+	// barrier has already waited. Zero uses vidRushProviderResolveTimeout;
+	// tests shorten it to exercise degradation.
 	providerResolveBudget time.Duration
-
-	// imageSearchResolver is the deterministic Image Search Intent resolver
-	// (capabilities/imagesearch) whose canonical_entity_id decisions are
-	// stamped into every segment's insights, so the annotation projection
-	// joins entity cards and media on the SAME identity the resolver chose.
-	// Nil keeps the legacy deterministic derivation (from (type, name)).
-	imageSearchResolver *capabilityimagesearch.Resolver
+	// providerBudgetStart is the first provider fan-out observation of this
+	// run. It is guarded by mu and set lazily so construction/generation time
+	// is not charged to the provider stage.
+	providerBudgetStart time.Time
 
 	metrics VidRushMetrics
 
@@ -59,6 +58,7 @@ type VidRushIncrementalCoordinator struct {
 	records        map[int]segmentResultRecord
 	sceneDone      map[int]chan struct{}
 	staleCount     int
+	staleScenes    []StaleScene
 	extractSem     chan struct{}
 	providerSem    chan struct{}
 	materializeSem chan struct{}
@@ -162,16 +162,10 @@ func (c *VidRushIncrementalCoordinator) SetGenerationGate(gate *GenerationGate) 
 	}
 }
 
-// SetImageSearchResolver wires the deterministic Image Search Intent
-// resolver into the enrichment chain. When wired, every segment result is
-// stamped with the canonical_entity_id the resolver chose for its entities
-// (Insights.ImageEntityCanonicalIDs + Insights.ImagePrimaryCanonicalID) so
-// the annotation projection never re-derives an identity the resolver
-// already disambiguated. Nil keeps the legacy deterministic derivation.
-func (c *VidRushIncrementalCoordinator) SetImageSearchResolver(resolver *capabilityimagesearch.Resolver) {
-	if c != nil {
-		c.imageSearchResolver = resolver
-	}
+// SetImageSearchResolver is retained for source compatibility. BrainRust now
+// owns semantic identity and query intents; the Go resolver is not wired into
+// this path.
+func (c *VidRushIncrementalCoordinator) SetImageSearchResolver(_ *capabilityimagesearch.Resolver) {
 }
 
 // stampImageSearchDecision runs the Image Search Intent resolver on the
@@ -183,51 +177,9 @@ func (c *VidRushIncrementalCoordinator) SetImageSearchResolver(resolver *capabil
 // DATE / EVENT) are stamped too: their canonical id is the same deterministic
 // derivation, so stamping is harmless and keeps one identity owner.
 func (c *VidRushIncrementalCoordinator) stampImageSearchDecision(ctx context.Context, result scriptpkg.VidRushSegmentResult, text, language string) (scriptpkg.VidRushSegmentResult, error) {
-	if c == nil || c.imageSearchResolver == nil {
-		return result, nil
-	}
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return result, nil
-	}
-	decision := c.imageSearchResolver.Resolve(ctx, capabilityimagesearch.Request{
-		Text:     text,
-		Language: language,
-	})
-	if decision.Primary != nil && strings.TrimSpace(decision.Primary.CanonicalID) != "" {
-		result.Insights.ImagePrimaryCanonicalID = decision.Primary.CanonicalID
-	}
-	ids := make(map[string]string, len(decision.Entities)+len(decision.Visual))
-	names := make(map[string]string, len(decision.Entities)+len(decision.Visual))
-	stamp := func(entities []capabilityimagesearch.ResolvedEntity) {
-		for _, e := range entities {
-			if strings.TrimSpace(e.CanonicalID) == "" {
-				continue
-			}
-			if key := strings.ToLower(strings.TrimSpace(e.Text)); key != "" {
-				ids[key] = e.CanonicalID
-				canonicalName := strings.TrimSpace(e.QueryName)
-				if canonicalName == "" {
-					canonicalName = strings.TrimSpace(e.Text)
-				}
-				names[key] = canonicalName
-			}
-			if verbatim := strings.ToLower(strings.TrimSpace(e.Verbatim)); verbatim != "" {
-				ids[verbatim] = e.CanonicalID
-				canonicalName := strings.TrimSpace(e.QueryName)
-				if canonicalName == "" {
-					canonicalName = strings.TrimSpace(e.Text)
-				}
-				names[verbatim] = canonicalName
-			}
-		}
-	}
-	stamp(decision.Entities)
-	stamp(decision.Visual)
-	if len(ids) > 0 {
-		result.Insights.ImageEntityCanonicalIDs = ids
-		result.Insights.ImageEntityCanonicalNames = names
-	}
+	// Kept as a compatibility seam for existing coordinator construction.
+	// Identity and query intent are now emitted together by BrainRust; this
+	// stage must not run a second Go-side resolver over the same text.
 	return result, nil
 }
 
@@ -312,8 +264,21 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 	}
 	go func() {
 		defer c.wg.Done()
-		enrichCtx, cancel := context.WithTimeout(ctx, vidRushSceneEnrichmentTimeout)
+		// Scene generation owns its own ctx and may cancel it when it advances
+		// or returns. Enrichment is run-scoped work that must outlive that
+		// caller: strip cancellation/deadline while preserving values (run
+		// observer, tracing), then apply the scene's own budget.
+		enrichCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), vidRushSceneEnrichmentTimeout)
 		defer cancel()
+		completed := false
+		defer func() {
+			if recovered := recover(); recovered != nil && !completed {
+				// A provider/materializer panic must become this scene's error,
+				// not kill the worker and leave every other scene waiting on a
+				// WaitGroup that can never finish.
+				c.recordResult(event, scriptpkg.VidRushSegmentResult{}, fmt.Errorf("vidrush scene %q enrichment panic: %v", event.SceneID, recovered))
+			}
+		}()
 		c.markEnrichmentStart()
 		if c.metrics != nil {
 			c.metrics.EnrichmentStarted()
@@ -328,6 +293,7 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 			err = validateVidRushResultIdentity(event, result)
 		}
 		c.recordResult(event, result, err)
+		completed = true
 		if c.metrics != nil {
 			c.metrics.EnrichmentCompleted(time.Since(start))
 		}
@@ -423,6 +389,19 @@ func (c *VidRushIncrementalCoordinator) recordResult(event SceneCommitted, resul
 	latest, ok := c.latest[event.SceneIndex]
 	if !ok || latest.Revision != event.Revision || latest.TextHash != event.TextHash {
 		c.staleCount++
+		reason := "scene was not committed"
+		if ok {
+			switch {
+			case latest.Revision != event.Revision:
+				reason = fmt.Sprintf("revision %d superseded by %d", event.Revision, latest.Revision)
+			default:
+				reason = "text hash superseded"
+			}
+		}
+		c.staleScenes = append(c.staleScenes, StaleScene{
+			SceneID: event.SceneID, SceneIndex: event.SceneIndex, Revision: event.Revision,
+			TextHash: event.TextHash, Reason: reason,
+		})
 		if c.metrics != nil {
 			c.metrics.StaleResult()
 		}
@@ -535,10 +514,53 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 	for idx := range c.latest {
 		indexes = append(indexes, idx)
 	}
+	expectedScenes := 0
+	if c.plan != nil {
+		expectedScenes = len(c.plan.Segments)
+		// Fixed intro/outro sections are committed as real SpecScenes with
+		// their own SceneIndex; they are not part of the generated body
+		// segments. Only an explicit body plan defines an exact expected
+		// count, so a run without explicit segments keeps the dynamic
+		// scene-count contract and skips this barrier.
+		if expectedScenes > 0 {
+			if c.plan.Intro != nil {
+				expectedScenes++
+			}
+			if c.plan.Outro != nil {
+				expectedScenes++
+			}
+		}
+	}
 	c.mu.Unlock()
 	sort.Ints(indexes)
+	if expectedScenes > 0 {
+		committed := make(map[int]struct{}, len(indexes))
+		for _, idx := range indexes {
+			committed[idx] = struct{}{}
+		}
+		missing := make([]int, 0, expectedScenes)
+		for idx := 0; idx < expectedScenes; idx++ {
+			if _, ok := committed[idx]; !ok {
+				missing = append(missing, idx)
+			}
+		}
+		extra := make([]int, 0)
+		for _, idx := range indexes {
+			if idx < 0 || idx >= expectedScenes {
+				extra = append(extra, idx)
+			}
+		}
+		switch {
+		case len(missing) > 0 && len(extra) > 0:
+			return nil, fmt.Errorf("vidrush barrier: expected %d committed scenes, got %d (missing indexes %v, extra indexes %v)", expectedScenes, len(indexes), missing, extra)
+		case len(missing) > 0:
+			return nil, fmt.Errorf("vidrush barrier: expected %d committed scenes, got %d (missing indexes %v)", expectedScenes, len(indexes), missing)
+		case len(extra) > 0:
+			return nil, fmt.Errorf("vidrush barrier: expected %d committed scenes, got %d (extra indexes %v)", expectedScenes, len(indexes), extra)
+		}
+	}
 
-	var resultErr error
+	var resultErrors []error
 	results := make([]scriptpkg.VidRushSegmentResult, 0, len(indexes))
 	for _, idx := range indexes {
 		c.mu.Lock()
@@ -549,8 +571,11 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 			continue
 		}
 		if record.err != nil {
-			resultErr = fmt.Errorf("vidrush scene %q (index %d) enrichment: %w", latest.SceneID, idx, record.err)
-			break
+			// Keep the successful scenes. A single failed scene must not
+			// discard the rest of the run's enrichment data: the caller gets
+			// partial results plus one aggregated, scene-attributed error.
+			resultErrors = append(resultErrors, fmt.Errorf("vidrush scene %q (index %d) enrichment: %w", latest.SceneID, idx, record.err))
+			continue
 		}
 		if latest.ExtractEntities == scriptpkg.ToggleDisabled {
 			// Keep the fence record internal to the barrier; disabled scenes do
@@ -564,15 +589,13 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 		}
 		results = append(results, record.result)
 	}
+	resultErr := errors.Join(resultErrors...)
 	if resultErr == nil && c.metrics != nil {
 		c.metrics.BarrierWait(barrierEnd.Sub(barrierStart).Seconds())
 		c.metrics.GenerationOverlap(float64(overlapMS) / 1000.0)
 	}
 	c.recordSceneAnalysisStage(ctx, firstStart, barrierEnd, resultErr)
-	if resultErr != nil {
-		return nil, resultErr
-	}
-	return results, nil
+	return results, resultErr
 }
 
 // recordSceneAnalysisStage projects the owner-measured scene_analysis fan-out
@@ -596,4 +619,21 @@ func (c *VidRushIncrementalCoordinator) StaleResults() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.staleCount
+}
+
+// StaleScene is the observability record for one superseded enrichment. The
+// counter alone hides which scene was discarded and why.
+type StaleScene struct {
+	SceneID    string `json:"scene_id"`
+	SceneIndex int    `json:"scene_index"`
+	Revision   int64  `json:"revision"`
+	TextHash   string `json:"text_hash"`
+	Reason     string `json:"reason"`
+}
+
+// StaleSceneDetails returns a copy of the superseded scene records.
+func (c *VidRushIncrementalCoordinator) StaleSceneDetails() []StaleScene {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]StaleScene(nil), c.staleScenes...)
 }

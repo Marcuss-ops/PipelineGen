@@ -275,6 +275,14 @@ func (p *ClipRenderPublisher) publishAsyncDrive(
 		FolderID: in.DriveFolderID, ContentHash: contentHash, SizeBytes: size,
 		Sidecar: sidecar,
 	}
+	// Durability invariant: the committed row must describe bytes a later outbox
+	// consumer can actually obtain. An intent with neither a staged local copy
+	// nor a certified locator committed a media_assets row the remote resolver
+	// could not read once the per-job temp workspace had been cleaned — the
+	// cliprender card failure of 2026-11-14.
+	if err := validateDeliveryIntent(payload, stagedPath); err != nil {
+		return nil, fmt.Errorf("clip.render publisher: %w", err)
+	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal Drive delivery intent: %w", err)

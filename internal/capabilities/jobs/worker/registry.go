@@ -145,7 +145,7 @@ func (r *Registry) SetProducesArtifacts(jobType string, v bool) *Registry {
 }
 
 // SeedProducesArtifacts bulk-seeds the producesArtifacts map from a
-// pre-built map (typically jobs.Compose().ProducesArtifactsMap()).
+// pre-built map (typically jobscheduling.Compose().ProducesArtifactsMap()).
 // Unlike SetProducesArtifacts, this accepts a batch map so the caller
 // doesn't need to iterate in application code. Nil-safe no-op.
 func (r *Registry) SeedProducesArtifacts(m map[string]bool) {

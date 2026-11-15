@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -75,6 +76,20 @@ func TestVidRushFanoutPlanIncludesBrandImageQueries(t *testing.T) {
 	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
 	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Apple" {
 		t.Fatalf("brand image queries = %#v, want only Apple", fanout.imageQueries)
+	}
+}
+
+func TestVidRushAcronymOrganizationQueriesDoNotInjectTopicSpecificTerms(t *testing.T) {
+	segment := scriptpkg.VidRushSegmentResult{Insights: scriptpkg.SegmentInsights{
+		Entities: []scriptpkg.ExtractedEntity{
+			{Value: "NASA", Type: "ORG"}, {Value: "ESA", Type: "ORG"},
+			{Value: "CERN", Type: "ORG"}, {Value: "ANSA", Type: "ORG"},
+		},
+	}}
+	queries := sceneScopedImageQueriesForTypes(segment, []string{"ORG"})
+	want := []string{"NASA", "ESA", "CERN", "ANSA"}
+	if !reflect.DeepEqual(queries, want) {
+		t.Fatalf("organization acronym queries = %#v, want identity-only queries %#v", queries, want)
 	}
 }
 
@@ -164,11 +179,12 @@ func TestVidRushFanoutMergeKeepsCandidatesWithoutSelectingWinner(t *testing.T) {
 	}
 }
 
-// An explicit scene-image budget larger than the provider default must fill
-// with generic scene imagery even when identity images are scoped per scene.
-// Entity searches yield one image per identity, so a single-place scene would
-// otherwise stop at one frame despite images_per_scene=10.
-func TestVidRushFanoutPlanPerSceneExplicitBudgetAddsGenericLadderAfterEntities(t *testing.T) {
+// Entity-image mode is a narrow identity contract: an explicit scene budget
+// must not append the generic semantic ladder after the identity queries.
+// That ladder was the r44 fanout (420 acquires / 326 publishes for 20 used
+// images) and retrieved unrelated people/places. Generic scene imagery remains
+// available in generic mode, where no entity surface owns the lane.
+func TestVidRushFanoutPlanEntityModeDoesNotAddGenericLadder(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ImagesPerScene: 10,
 		MediaPlan: mediadomain.MediaPlanSpec{
@@ -188,20 +204,16 @@ func TestVidRushFanoutPlanPerSceneExplicitBudgetAddsGenericLadderAfterEntities(t
 		},
 	}
 	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
-	if len(fanout.imageQueries) < 4 {
-		t.Fatalf("image queries = %#v, want the generic ladder after the two identities", fanout.imageQueries)
+	if len(fanout.imageQueries) != 2 {
+		t.Fatalf("image queries = %#v, want only the two identity queries", fanout.imageQueries)
 	}
 	if fanout.imageQueries[0] != "Alberto Stasi" || fanout.imageQueries[1] != "Garlasco" {
-		t.Fatalf("entity queries must stay first: %#v", fanout.imageQueries)
+		t.Fatalf("entity queries = %#v, want the two identities in order", fanout.imageQueries)
 	}
-	found := false
 	for _, query := range fanout.imageQueries {
 		if strings.Contains(query, "piazza duomo") {
-			found = true
+			t.Fatalf("entity mode leaked a generic scene query: %#v", fanout.imageQueries)
 		}
-	}
-	if !found {
-		t.Fatalf("image queries = %#v, want a generic scene query", fanout.imageQueries)
 	}
 }
 

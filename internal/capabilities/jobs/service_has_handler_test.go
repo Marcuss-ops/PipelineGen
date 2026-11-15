@@ -21,6 +21,7 @@ package jobs
 
 import (
 	"context"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 
 	"go.uber.org/zap"
@@ -45,10 +46,10 @@ func TestService_HasHandler(t *testing.T) {
 	// handler for `script.generate`. The remaining test cases
 	// derive from this base (nil receiver, nil dispatcher, etc.).
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(TypeScriptGenerate, fakeHandler); err != nil {
+	if err := dispatcher.Register(jobscheduling.TypeScriptGenerate, fakeHandler); err != nil {
 		t.Fatalf("register fake handler: %v", err)
 	}
-	svc, err := NewService(nakedJobBroker{}, dispatcher, zap.NewNop(), Compose())
+	svc, err := NewService(nakedJobBroker{}, dispatcher, zap.NewNop(), jobscheduling.Compose())
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -63,7 +64,7 @@ func TestService_HasHandler(t *testing.T) {
 		{
 			name:     "nil receiver returns false (defensive guard)",
 			svc:      nil,
-			jobType:  TypeScriptGenerate,
+			jobType:  jobscheduling.TypeScriptGenerate,
 			wantHave: false,
 		},
 		{
@@ -74,7 +75,7 @@ func TestService_HasHandler(t *testing.T) {
 				log:        nil,
 				registry:   nil,
 			},
-			jobType:  TypeScriptGenerate,
+			jobType:  jobscheduling.TypeScriptGenerate,
 			wantHave: false,
 		},
 		{
@@ -86,13 +87,13 @@ func TestService_HasHandler(t *testing.T) {
 		{
 			name:     "registered type returns true (canonical happy path)",
 			svc:      svc,
-			jobType:  TypeScriptGenerate,
+			jobType:  jobscheduling.TypeScriptGenerate,
 			wantHave: true,
 		},
 		{
 			name:     "unregistered type returns false (negative path)",
 			svc:      svc,
-			jobType:  TypeMediaExtract, // not registered in this test's Dispatcher
+			jobType:  jobscheduling.TypeMediaExtract, // not registered in this test's Dispatcher
 			wantHave: false,
 		},
 	}
@@ -118,13 +119,13 @@ func TestService_HasHandler_AfterRegister_ReflectsNewState(t *testing.T) {
 	t.Parallel()
 
 	dispatcher2 := NewDispatcher()
-	svc, err := NewService(nakedJobBroker{}, dispatcher2, zap.NewNop(), Compose())
+	svc, err := NewService(nakedJobBroker{}, dispatcher2, zap.NewNop(), jobscheduling.Compose())
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
 
 	// Pre-condition: unregistered.
-	if svc.HasHandler(TypeMediaExtract) {
+	if svc.HasHandler(jobscheduling.TypeMediaExtract) {
 		t.Fatal("pre-condition violated: HasHandler should be false before Register")
 	}
 
@@ -132,12 +133,12 @@ func TestService_HasHandler_AfterRegister_ReflectsNewState(t *testing.T) {
 	fakeHandler := HandlerFunc(func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error) {
 		return nil, nil
 	})
-	if err := dispatcher2.Register(TypeMediaExtract, fakeHandler); err != nil {
+	if err := dispatcher2.Register(jobscheduling.TypeMediaExtract, fakeHandler); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
 	// Post-condition: registered.
-	if !svc.HasHandler(TypeMediaExtract) {
+	if !svc.HasHandler(jobscheduling.TypeMediaExtract) {
 		t.Error("HasHandler should be true after Register")
 	}
 }

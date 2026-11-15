@@ -47,6 +47,7 @@ SERVICE="${DEPLOY_SERVICE:-pipelinegen.service}"
 BASE_URL="${VELOX_BASE_URL:-http://127.0.0.1:8000}"
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-90}"
 READY_TIMEOUT="${DEPLOY_READY_TIMEOUT:-90}"
+DRAIN_SECONDS="${DEPLOY_DRAIN_SECONDS:-15}"
 
 MAKE_BIN="${DEPLOY_MAKE_BIN:-make}"
 CURL_BIN="${DEPLOY_CURL_BIN:-curl}"
@@ -135,7 +136,23 @@ step_install() {
   log "install: $BIN_PATH is already the unit's ExecStart path — no sudo install"
 }
 
-# ── 3. restart ────────────────────────────────────────────────────────
+# ── 3. drain ──────────────────────────────────────────────────────────
+# pipelinegen has no active-job query endpoint, so the deploy reserves an
+# explicit window before SIGTERM. It is configurable per environment; 0 skips
+# the wait for hermetic tests. A restart is never silent: the window is logged.
+step_drain() {
+  if [ "$SKIP_RESTART" = "1" ]; then
+    log "drain: skipped (--skip-restart)"
+    return 0
+  fi
+  case "$DRAIN_SECONDS" in
+    ''|*[!0-9]*) die "DEPLOY_DRAIN_SECONDS must be a non-negative integer (got '$DRAIN_SECONDS')" ;;
+  esac
+  log "drain: waiting ${DRAIN_SECONDS}s before restart for in-flight jobs"
+  sleep "$DRAIN_SECONDS"
+}
+
+# ── 4. restart ────────────────────────────────────────────────────────
 step_restart() {
   if [ "$SKIP_RESTART" = "1" ]; then
     log "restart: skipped (--skip-restart)"
@@ -200,6 +217,7 @@ if [ "$DRY_RUN" = "1" ]; then
   log "  base url:     $BASE_URL"
   log "  binary:       $BIN_PATH"
   log "  build:        $([ "$SKIP_BUILD" = "1" ] && echo skip || echo 'make build-server')"
+  log "  drain:        $([ "$SKIP_RESTART" = "1" ] && echo skip || echo "${DRAIN_SECONDS}s before restart")"
   log "  restart:      $([ "$SKIP_RESTART" = "1" ] && echo skip || echo "$PIPELINEGENCTL_BIN restart")"
   if [ "$SKIP_RESTART" = "1" ]; then
     log "  preflight:    restart skipped, pipelinegenctl not required"
@@ -221,6 +239,7 @@ fi
 step_preflight
 step_build
 step_install
+step_drain
 step_restart
 step_wait_health
 step_identity

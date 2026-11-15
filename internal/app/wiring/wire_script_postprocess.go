@@ -371,11 +371,9 @@ func registerAIBackedProcessors(
 			imageStage = imageStage.WithMediaManifestPins(pins)
 			log.Info("InternetImagesProcessor media_manifest fast-path enabled", zap.Int("pinned_entries", pins.EntryCount()))
 		}
-		if root != nil && root.AI != nil && root.AI.ScriptGen != nil {
-			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-				imageStage.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))
-				log.Info("InternetImagesProcessor wired with GPU-capable Ollama person-image verification", zap.String("model", ollamaClient.Model()))
-			}
+		if scorer := scriptVisualCandidateScorer(root); scorer != nil {
+			imageStage.WithSemanticScorer(scorer)
+			log.Info("InternetImagesProcessor wired with the shared visual identity verifier")
 		}
 		if !ppReg.Register(imageStage) {
 			return fmt.Errorf("register internet_images processor: composition bug")

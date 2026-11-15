@@ -25,9 +25,13 @@ func mapMotionIDs() []string {
 // One certified marker treatment for every grounded place, so a map's pins are
 // deterministic and never invented per item.
 const (
-	mapPinColor                = "#FF3B30"
-	mapPinRadiusPX             = 10.0
-	mapCameraDurationUS  int64 = 8_000_000
+	mapPinColor               = "#FF3B30"
+	mapPinRadiusPX            = 10.0
+	mapCameraDurationUS int64 = 8_000_000
+	// mapMaxPresentationUS is the hard render ceiling for one map item. A
+	// longer spoken span is segmented into consecutive bounded map items; a
+	// map is never stretched across minutes of narration.
+	mapMaxPresentationUS int64 = 10_000_000
 	mapPinReadDurationUS int64 = 1_000_000
 	mapCameraLeadUS      int64 = 2_000_000
 )
@@ -361,22 +365,31 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 	units := make([]unit, 0, len(order))
 	for _, key := range order {
 		entry := groups[key]
-		if len(entry.plate.LODs) >= 2 {
-			// A camera flyover is one certified route; it is kept whole.
-			units = append(units, unit{key: key, plate: entry.plate, places: entry.places})
-			continue
-		}
-		// Narrative proximity groups STATIC map groups: places spoken in quick
-		// succession become one MapGroup, split only above the pin cap. A
-		// plate with LODs is already one camera journey (explicit movement
-		// between places), so its stops stay in plain spoken-order chunks.
-		// The unified map_presentation contract can narrow the pin cap or turn
-		// narrative grouping/journeys off entirely.
+		// A candidate can represent a place mentioned repeatedly across a
+		// long scene. For a map shot, retain its first grounded mention and
+		// bound the pin's active window; later repeats must not stretch the
+		// basemap to minutes of narration. This applies to flyovers too: a
+		// route may cover several scenes, but each rendered map item still
+		// has the same ten-second budget as a static plate.
 		pinCap := grouping.Pins()
-		chunks := groupMapPlacesByNarrativeProximity(entry.places, pinCap)
-		if grouping.NoNarrativeGrouping || len(entry.plate.LODs) > 0 {
-			chunks = chunkMapPlaces(entry.places, pinCap)
+		shotPlaces := mapPlacesForShortPresentation(entry.places)
+		var chunks [][]MapCandidate
+		if len(entry.plate.LODs) >= 2 {
+			// A flyover is a camera journey, not a reason to bypass the
+			// presentation budget: chunk its stops by spoken order and then
+			// split any chunk that still spans more than ten seconds.
+			chunks = chunkMapPlaces(shotPlaces, pinCap)
+		} else {
+			// Narrative proximity groups STATIC map groups: places spoken in
+			// quick succession become one MapGroup, split above the pin cap or
+			// the presentation ceiling. The unified map_presentation contract
+			// can narrow the pin cap or turn narrative grouping off entirely.
+			chunks = groupMapPlacesByNarrativeProximity(shotPlaces, pinCap)
+			if grouping.NoNarrativeGrouping {
+				chunks = chunkMapPlaces(shotPlaces, pinCap)
+			}
 		}
+		chunks = splitMapChunksByPresentationDuration(chunks, mapMaxPresentationUS)
 		for index, chunk := range chunks {
 			unitKey := key
 			if index > 0 {

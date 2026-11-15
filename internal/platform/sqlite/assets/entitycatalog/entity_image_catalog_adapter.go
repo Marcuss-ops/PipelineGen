@@ -86,11 +86,11 @@ func (a *SQLiteEntityImageCatalogAdapter) GetEntity(ctx context.Context, canonic
 		}
 		return nil, fmt.Errorf("entity image catalog: get entity: %w", err)
 	}
-	out.FirstSeenAt = parseCatalogTime(firstSeen)
-	out.LastSeenAt = parseCatalogTime(lastSeen)
-	out.LastRefreshAt = parseCatalogTime(lastRefresh)
-	out.CreatedAt = parseCatalogTime(createdAt)
-	out.UpdatedAt = parseCatalogTime(updatedAt)
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.FirstSeenAt, firstSeen)
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.LastSeenAt, lastSeen) || out.LegacyTimestamp
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.LastRefreshAt, lastRefresh) || out.LegacyTimestamp
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.CreatedAt, createdAt) || out.LegacyTimestamp
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.UpdatedAt, updatedAt) || out.LegacyTimestamp
 	return &out, nil
 }
 
@@ -139,205 +139,53 @@ func (a *SQLiteEntityImageCatalogAdapter) SetRefreshState(ctx context.Context, c
 // accepted/rejected verdict. Re-observing a URL is a retrieval fact, not a
 // re-certification; the verdict is rewritten only by a real verification
 // outcome (accepted/rejected) through the same surface.
-func (a *SQLiteEntityImageCatalogAdapter) UpsertCandidate(ctx context.Context, candidate capentity.Candidate) (int64, error) {
+func (a *SQLiteEntityImageCatalogAdapter) ClaimRefresh(ctx context.Context, canonicalID string, now time.Time, lease time.Duration) (bool, error) {
 	if a == nil || a.db == nil {
-		return 0, fmt.Errorf("entity image catalog: database unavailable")
-	}
-	if err := capentity.ValidateCandidate(candidate); err != nil {
-		return 0, err
-	}
-	canonicalID := capentity.NormalizePersonEntityID(candidate.CanonicalEntityID)
-	status := candidate.Status
-	if status == "" || status == capentity.CandidateStatusActive {
-		status = capentity.CandidateStatusFresh
-	}
-	_, err := a.db.ExecContext(ctx, `
-		INSERT INTO entity_image_catalog_candidates (
-			canonical_entity_id, provider, rank, source_url, source_page_url, thumbnail_url,
-			width, height, status, semantic_status, semantic_score,
-			technical_score, quality_reason, first_seen_at, last_seen_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(canonical_entity_id, provider, source_url) DO UPDATE SET
-			rank = excluded.rank,
-			thumbnail_url = excluded.thumbnail_url,
-			source_page_url = excluded.source_page_url,
-			width = excluded.width,
-			height = excluded.height,
-			status = CASE
-				WHEN entity_image_catalog_candidates.status IN ('broken', 'retired') THEN entity_image_catalog_candidates.status
-				ELSE excluded.status
-			END,
-			semantic_status = CASE
-				WHEN excluded.semantic_status = 'unknown'
-					AND entity_image_catalog_candidates.semantic_status IN ('accepted', 'rejected')
-					THEN entity_image_catalog_candidates.semantic_status
-				ELSE excluded.semantic_status
-			END,
-			semantic_score = CASE
-				WHEN excluded.semantic_status = 'unknown'
-					AND entity_image_catalog_candidates.semantic_status IN ('accepted', 'rejected')
-					THEN entity_image_catalog_candidates.semantic_score
-				ELSE excluded.semantic_score
-			END,
-			technical_score = excluded.technical_score,
-			quality_reason = CASE
-				WHEN excluded.semantic_status = 'unknown'
-					AND entity_image_catalog_candidates.semantic_status IN ('accepted', 'rejected')
-					THEN entity_image_catalog_candidates.quality_reason
-				ELSE excluded.quality_reason
-			END,
-			last_seen_at = CURRENT_TIMESTAMP,
-			updated_at = CURRENT_TIMESTAMP
-	`, canonicalID, strings.TrimSpace(candidate.Provider), candidate.Rank,
-		strings.TrimSpace(candidate.SourceURL), strings.TrimSpace(candidate.SourcePageURL), strings.TrimSpace(candidate.ThumbnailURL),
-		candidate.Width, candidate.Height, status,
-		defaultSemanticStatus(candidate.SemanticStatus), candidate.SemanticScore,
-		candidate.TechnicalScore, strings.TrimSpace(candidate.QualityReason))
-	if err != nil {
-		return 0, fmt.Errorf("entity image catalog: upsert candidate: %w", err)
-	}
-	var id int64
-	err = a.db.QueryRowContext(ctx, `
-		SELECT candidate_id
-		FROM entity_image_catalog_candidates
-		WHERE canonical_entity_id = ? AND provider = ? AND source_url = ?
-	`, canonicalID, strings.TrimSpace(candidate.Provider), strings.TrimSpace(candidate.SourceURL)).Scan(&id)
-	if err != nil {
-		return 0, fmt.Errorf("entity image catalog: read candidate id: %w", err)
-	}
-	return id, nil
-}
-
-func (a *SQLiteEntityImageCatalogAdapter) SetCandidateStatus(ctx context.Context, candidateID int64, status string) error {
-	if a == nil || a.db == nil {
-		return fmt.Errorf("entity image catalog: database unavailable")
-	}
-	if candidateID < 1 {
-		return capentity.ErrCandidateNotFound
-	}
-	if err := capentity.ValidateCandidateStatus(status); err != nil {
-		return err
-	}
-	status = strings.ToLower(strings.TrimSpace(status))
-	result, err := a.db.ExecContext(ctx, `
-		UPDATE entity_image_catalog_candidates
-		SET status = ?, updated_at = CURRENT_TIMESTAMP,
-		    last_seen_at = CASE WHEN ? = 'fresh' THEN CURRENT_TIMESTAMP ELSE last_seen_at END,
-		    validation_attempts = CASE WHEN ? = 'fresh' THEN 0 ELSE validation_attempts END,
-		    last_validation_at = CASE WHEN ? = 'fresh' THEN '' ELSE last_validation_at END,
-		    next_retry_at = CASE WHEN ? = 'fresh' THEN '' ELSE next_retry_at END,
-		    last_validation_error = CASE WHEN ? = 'fresh' THEN '' ELSE last_validation_error END
-		WHERE candidate_id = ?
-	`, status, status, status, status, status, status, candidateID)
-	if err != nil {
-		return fmt.Errorf("entity image catalog: set candidate status: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("entity image catalog: inspect candidate status: %w", err)
-	}
-	if rows == 0 {
-		return capentity.ErrCandidateNotFound
-	}
-	return nil
-}
-
-func (a *SQLiteEntityImageCatalogAdapter) ListCandidates(ctx context.Context, canonicalID string, limit int) ([]capentity.Candidate, error) {
-	if a == nil || a.db == nil {
-		return nil, fmt.Errorf("entity image catalog: database unavailable")
+		return false, fmt.Errorf("entity image catalog: database unavailable")
 	}
 	canonicalID = capentity.NormalizePersonEntityID(canonicalID)
 	if canonicalID == "" {
-		return nil, capentity.ErrEntityNotFound
+		return false, capentity.ErrEntityNotFound
 	}
-	if limit <= 0 {
-		limit = defaultEntityImageCandidateLimit
+	if lease <= 0 {
+		lease = time.Hour
 	}
-	if limit > maxEntityImageCandidateLimit {
-		limit = maxEntityImageCandidateLimit
-	}
-	rows, err := a.db.QueryContext(ctx, `
-		SELECT candidate_id, canonical_entity_id, provider, rank, source_url,
-		       source_page_url, thumbnail_url, width, height, status, semantic_status,
-		       semantic_score, technical_score, quality_reason,
-		       first_seen_at, last_seen_at, updated_at
-		FROM entity_image_catalog_candidates
+	cutoff := now.UTC().Add(-lease).Format(time.RFC3339)
+	result, err := a.db.ExecContext(ctx, `
+		UPDATE entity_image_catalog_entities
+		SET refresh_status = 'running', last_refresh_at = ?, last_error = '', updated_at = CURRENT_TIMESTAMP
 		WHERE canonical_entity_id = ?
-		ORDER BY rank ASC, candidate_id ASC
-		LIMIT ?
-	`, canonicalID, limit)
+		  AND (refresh_status != 'running' OR last_refresh_at < ?)
+	`, now.UTC().Format(time.RFC3339), canonicalID, cutoff)
 	if err != nil {
-		return nil, fmt.Errorf("entity image catalog: list candidates: %w", err)
+		return false, fmt.Errorf("entity image catalog: claim refresh: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-	out := make([]capentity.Candidate, 0, limit)
-	for rows.Next() {
-		var candidate capentity.Candidate
-		var firstSeen, lastSeen, updatedAt string
-		if err := rows.Scan(
-			&candidate.ID, &candidate.CanonicalEntityID, &candidate.Provider,
-			&candidate.Rank, &candidate.SourceURL, &candidate.SourcePageURL, &candidate.ThumbnailURL,
-			&candidate.Width, &candidate.Height, &candidate.Status,
-			&candidate.SemanticStatus, &candidate.SemanticScore,
-			&candidate.TechnicalScore, &candidate.QualityReason,
-			&firstSeen, &lastSeen, &updatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("entity image catalog: scan candidate: %w", err)
-		}
-		candidate.FirstSeenAt = parseCatalogTime(firstSeen)
-		candidate.LastSeenAt = parseCatalogTime(lastSeen)
-		candidate.UpdatedAt = parseCatalogTime(updatedAt)
-		out = append(out, candidate)
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("entity image catalog: claim refresh rows: %w", err)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("entity image catalog: list candidates rows: %w", err)
-	}
-	return out, nil
+	return rows == 1, nil
 }
 
-func (a *SQLiteEntityImageCatalogAdapter) UpsertMaterialization(ctx context.Context, materialization capentity.Materialization) error {
+// RecoverStaleRefresh moves a crashed running refresh to failed with a
+// diagnostic. It is the bounded timeout side of ClaimRefresh.
+func (a *SQLiteEntityImageCatalogAdapter) RecoverStaleRefresh(ctx context.Context, olderThan time.Time) (int64, error) {
 	if a == nil || a.db == nil {
-		return fmt.Errorf("entity image catalog: database unavailable")
+		return 0, fmt.Errorf("entity image catalog: database unavailable")
 	}
-	if err := capentity.ValidateMaterialization(materialization); err != nil {
-		return err
-	}
-	status := materialization.Status
-	if status == "" {
-		status = capentity.MaterializationStatusPending
-	}
-	materializedAt := ""
-	if !materialization.MaterializedAt.IsZero() {
-		materializedAt = materialization.MaterializedAt.UTC().Format(time.RFC3339)
-	}
-	verifiedAt := ""
-	if !materialization.LastVerifiedAt.IsZero() {
-		verifiedAt = materialization.LastVerifiedAt.UTC().Format(time.RFC3339)
-	}
-	_, err := a.db.ExecContext(ctx, `
-		INSERT INTO entity_image_catalog_materializations (
-			candidate_id, asset_id, content_sha256, drive_file_id, drive_link,
-			status, materialized_at, last_verified_at, last_error,
-			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		ON CONFLICT(candidate_id) DO UPDATE SET
-			asset_id = excluded.asset_id,
-			content_sha256 = excluded.content_sha256,
-			drive_file_id = excluded.drive_file_id,
-			drive_link = excluded.drive_link,
-			status = excluded.status,
-			materialized_at = excluded.materialized_at,
-			last_verified_at = excluded.last_verified_at,
-			last_error = excluded.last_error,
-			updated_at = CURRENT_TIMESTAMP
-	`, materialization.CandidateID, strings.TrimSpace(materialization.AssetID),
-		strings.TrimSpace(materialization.ContentSHA256), strings.TrimSpace(materialization.DriveFileID),
-		strings.TrimSpace(materialization.DriveLink),
-		status, materializedAt, verifiedAt, materialization.LastError)
+	result, err := a.db.ExecContext(ctx, `
+		UPDATE entity_image_catalog_entities
+		SET refresh_status = 'failed', last_error = 'refresh lease expired', updated_at = CURRENT_TIMESTAMP
+		WHERE refresh_status = 'running' AND last_refresh_at < ?
+	`, olderThan.UTC().Format(time.RFC3339))
 	if err != nil {
-		return fmt.Errorf("entity image catalog: upsert materialization: %w", err)
+		return 0, fmt.Errorf("entity image catalog: recover stale refresh: %w", err)
 	}
-	return nil
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("entity image catalog: recover stale refresh rows: %w", err)
+	}
+	return rows, nil
 }
 
 // ListCandidatesForRecertification returns a bounded, deterministic work set:
@@ -372,11 +220,12 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 		SELECT c.candidate_id, c.canonical_entity_id, c.provider, c.rank,
 		       c.source_url, c.thumbnail_url, c.width, c.height, c.status,
 		       c.semantic_status, c.semantic_score, c.technical_score,
-		       c.quality_reason, c.first_seen_at, c.last_seen_at, c.updated_at,
+		       c.quality_reason, c.content_sha256, c.verifier_version,
+		       c.first_seen_at, c.last_seen_at, c.updated_at,
 		       c.validation_attempts, c.last_validation_at, c.next_retry_at,
 		       c.last_validation_error
 		FROM entity_image_catalog_candidates c
-		WHERE c.semantic_status = ?
+		WHERE c.semantic_status IN (?, ?)
 		  AND (
 			(c.status IN (?, ?, ?) AND c.last_seen_at < datetime(?))
 			OR
@@ -385,7 +234,7 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 		  )
 		ORDER BY c.last_seen_at ASC, c.rank ASC, c.candidate_id ASC
 		LIMIT ?
-	`, capentity.CandidateSemanticAccepted,
+	`, capentity.CandidateSemanticAccepted, capentity.CandidateSemanticRejected,
 		capentity.CandidateStatusFresh, capentity.CandidateStatusActive, capentity.CandidateStatusStale,
 		cutoff, capentity.CandidateStatusBroken, maxAttempts, nowValue, limit)
 	if err != nil {
@@ -402,14 +251,18 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 			&item.ID, &item.CanonicalEntityID, &item.Provider, &item.Rank,
 			&item.SourceURL, &item.ThumbnailURL, &item.Width, &item.Height, &item.Status,
 			&item.SemanticStatus, &item.SemanticScore, &item.TechnicalScore,
-			&item.QualityReason, &firstSeen, &lastSeen, &updatedAt,
+			&item.QualityReason, &item.ContentSHA256, &item.VerifierVersion,
+			&firstSeen, &lastSeen, &updatedAt,
 			&validationAttempts, &lastValidationAt, &nextRetryAt, &item.LastValidationError,
 		); err != nil {
 			return nil, fmt.Errorf("entity image catalog: scan recertification candidate: %w", err)
 		}
-		item.FirstSeenAt, item.LastSeenAt, item.UpdatedAt = parseCatalogTime(firstSeen.String), parseCatalogTime(lastSeen.String), parseCatalogTime(updatedAt.String)
+		item.LegacyTimestamp = parseCatalogTimeInto(&item.FirstSeenAt, firstSeen.String)
+		item.LegacyTimestamp = parseCatalogTimeInto(&item.LastSeenAt, lastSeen.String) || item.LegacyTimestamp
+		item.LegacyTimestamp = parseCatalogTimeInto(&item.UpdatedAt, updatedAt.String) || item.LegacyTimestamp
 		item.FailureCount = validationAttempts
-		item.LastValidationAt, item.NextRetryAt = parseCatalogTime(lastValidationAt.String), parseCatalogTime(nextRetryAt.String)
+		item.LegacyTimestamp = parseCatalogTimeInto(&item.LastValidationAt, lastValidationAt.String) || item.LegacyTimestamp
+		item.LegacyTimestamp = parseCatalogTimeInto(&item.NextRetryAt, nextRetryAt.String) || item.LegacyTimestamp
 		out = append(out, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -430,16 +283,20 @@ func (a *SQLiteEntityImageCatalogAdapter) RecordCandidateValidation(ctx context.
 	}
 	checkedAt := result.CheckedAt.UTC().Format(time.RFC3339)
 	if result.Success {
+		// A successful URL probe restores the remote source. The materialization
+		// row is deliberately untouched: if the old Drive asset was broken, the
+		// common finalizer must acquire and persist the URL again. Keeping the
+		// candidate 'broken' here made every recovered source a permanent dead
+		// end, because the recertification selector only retries broken rows.
 		res, err := a.db.ExecContext(ctx, `
 			UPDATE entity_image_catalog_candidates
-			SET status = CASE WHEN status = ? THEN ? ELSE ? END,
+			SET status = ?,
 			    last_seen_at = ?, updated_at = CURRENT_TIMESTAMP,
-			    validation_attempts = CASE WHEN status = ? THEN ? ELSE 0 END,
+			    validation_attempts = 0,
 			    last_validation_at = ?, next_retry_at = '',
 			    last_validation_error = ''
 			WHERE candidate_id = ?
-		`, capentity.CandidateStatusBroken, capentity.CandidateStatusBroken, capentity.CandidateStatusFresh,
-			checkedAt, capentity.CandidateStatusBroken, result.FailureCount, checkedAt, candidateID)
+		`, capentity.CandidateStatusFresh, checkedAt, checkedAt, candidateID)
 		if err != nil {
 			return fmt.Errorf("entity image catalog: record validation success: %w", err)
 		}
@@ -471,6 +328,28 @@ func (a *SQLiteEntityImageCatalogAdapter) RecordCandidateValidation(ctx context.
 	return nil
 }
 
+// PruneRetiredCandidates enforces the catalog retention policy. Active,
+// fresh, stale and broken rows are retained because recertification owns their
+// retry lifecycle; only old rejected/retired rows are removed.
+func (a *SQLiteEntityImageCatalogAdapter) PruneRetiredCandidates(ctx context.Context, cutoff time.Time) (int64, error) {
+	if a == nil || a.db == nil {
+		return 0, fmt.Errorf("entity image catalog: database unavailable")
+	}
+	result, err := a.db.ExecContext(ctx, `
+		DELETE FROM entity_image_catalog_candidates
+		WHERE updated_at < ?
+		  AND (status = 'retired' OR semantic_status = 'rejected')`,
+		cutoff.UTC().Format("2006-01-02 15:04:05"))
+	if err != nil {
+		return 0, fmt.Errorf("entity image catalog: prune retired candidates: %w", err)
+	}
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("entity image catalog: prune rows affected: %w", err)
+	}
+	return removed, nil
+}
+
 func (a *SQLiteEntityImageCatalogAdapter) GetMaterialization(ctx context.Context, candidateID int64) (*capentity.Materialization, error) {
 	if a == nil || a.db == nil {
 		return nil, fmt.Errorf("entity image catalog: database unavailable")
@@ -497,10 +376,10 @@ func (a *SQLiteEntityImageCatalogAdapter) GetMaterialization(ctx context.Context
 		}
 		return nil, fmt.Errorf("entity image catalog: get materialization: %w", err)
 	}
-	out.MaterializedAt = parseCatalogTime(materializedAt)
-	out.LastVerifiedAt = parseCatalogTime(verifiedAt)
-	out.CreatedAt = parseCatalogTime(createdAt)
-	out.UpdatedAt = parseCatalogTime(updatedAt)
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.MaterializedAt, materializedAt)
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.LastVerifiedAt, verifiedAt) || out.LegacyTimestamp
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.CreatedAt, createdAt) || out.LegacyTimestamp
+	out.LegacyTimestamp = parseCatalogTimeInto(&out.UpdatedAt, updatedAt) || out.LegacyTimestamp
 	return &out, nil
 }
 
@@ -520,9 +399,20 @@ func defaultRefreshStatus(status string) string {
 }
 
 func parseCatalogTime(value string) time.Time {
+	parsed, _ := parseCatalogTimeWithLegacy(value)
+	return parsed
+}
+
+func parseCatalogTimeInto(target *time.Time, value string) bool {
+	parsed, legacy := parseCatalogTimeWithLegacy(value)
+	*target = parsed
+	return legacy
+}
+
+func parseCatalogTimeWithLegacy(value string) (time.Time, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return time.Time{}
+		return time.Time{}, false
 	}
 	for _, layout := range []string{
 		"2006-01-02 15:04:05",
@@ -530,8 +420,8 @@ func parseCatalogTime(value string) time.Time {
 		time.RFC3339Nano,
 	} {
 		if parsed, err := time.Parse(layout, value); err == nil {
-			return parsed
+			return parsed, false
 		}
 	}
-	return time.Time{}
+	return time.Time{}, true
 }

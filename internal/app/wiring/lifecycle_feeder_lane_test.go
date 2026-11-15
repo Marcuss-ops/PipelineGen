@@ -10,10 +10,9 @@ package wiring
 // lifecycle_feeder_lane_starvation_test.go.
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"slices"
 	"testing"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 func TestFeederWorkerBudgetDefault(t *testing.T) {
@@ -50,7 +49,7 @@ func TestFeederWorkerBudgetEnvOverrideAndClamp(t *testing.T) {
 // drifted type constant would make the lane claim a type nobody enqueues and
 // the family would go back to the general pool-orphaned state with no error.
 func TestFeederJobTypesAreRegistered(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	for _, jt := range feederJobTypes() {
 		if !reg.IsRegistered(jt) {
 			t.Fatalf("feeder type %q is not registered in the canonical registry — the lane would silently claim nothing", jt)

@@ -62,23 +62,23 @@ var runtimeJobEvidenceByType = map[string]jobRuntimeEvidence{
 	},
 	"media.artlist": {
 		RegistryExpressions: []string{"TypeArtlistRun"},
-		HandlerExpressions:  []string{"media.TypeArtlistRun", "appjobs.TypeArtlistRun"},
+		HandlerExpressions:  []string{"media.TypeArtlistRun", "appjobs.TypeArtlistRun", "jobscheduling.TypeArtlistRun"},
 	},
 	"youtube_clip.extract": {
 		RegistryExpressions: []string{"TypeYouTubeClipExtract"},
-		HandlerExpressions:  []string{"jobyoutube.TypeClipExtract", "appjobs.TypeYouTubeClipExtract"},
+		HandlerExpressions:  []string{"jobyoutube.TypeClipExtract", "appjobs.TypeYouTubeClipExtract", "jobscheduling.TypeYouTubeClipExtract"},
 	},
 	"media.stock": {
 		RegistryExpressions: []string{"TypeMediaStock"},
-		HandlerExpressions:  []string{"appjobs.TypeMediaStock"},
+		HandlerExpressions:  []string{"appjobs.TypeMediaStock", "jobscheduling.TypeMediaStock"},
 	},
 	"system.cleanup": {
 		RegistryExpressions: []string{"TypeSystemCleanup"},
-		HandlerExpressions:  []string{"appjobs.TypeSystemCleanup"},
+		HandlerExpressions:  []string{"appjobs.TypeSystemCleanup", "jobscheduling.TypeSystemCleanup"},
 	},
 	"catalog.sync": {
 		RegistryExpressions: []string{"TypeCatalogSync"},
-		HandlerExpressions:  []string{"appjobs.TypeCatalogSync"},
+		HandlerExpressions:  []string{"appjobs.TypeCatalogSync", "jobscheduling.TypeCatalogSync"},
 	},
 }
 

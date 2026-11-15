@@ -3,10 +3,12 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/providerbudget"
 )
 
@@ -14,7 +16,7 @@ import (
 // pool. A worker owns its candidate's ladder end to end: after recording an
 // outcome it enqueues the next rung of the SAME candidate. Different candidates
 // are independent and may run at once.
-func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *SemanticProductionPlan, initial []SemanticSearchAttempt, language string) ([]SemanticSearchAttemptResult, string) {
+func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *SemanticProductionPlan, initial []SemanticSearchAttempt, language, planFingerprint string, forceRefresh bool) ([]SemanticSearchAttemptResult, string) {
 	if len(initial) == 0 {
 		return nil, ""
 	}
@@ -59,7 +61,7 @@ func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *Semanti
 		go func() {
 			defer workerWG.Done()
 			for attempt := range jobs {
-				row, next := p.runAttempt(ctx, plan, attempt, language)
+				row, next := p.runAttempt(ctx, plan, attempt, language, planFingerprint, forceRefresh)
 				results <- row
 				if next != nil {
 					enqueue(*next)
@@ -92,15 +94,21 @@ func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *Semanti
 
 // runAttempt executes exactly one rung, records its outcome on the plan and
 // returns the next rung of the same candidate, if the ladder has one.
-func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *SemanticProductionPlan, attempt SemanticSearchAttempt, language string) (SemanticSearchAttemptResult, *SemanticSearchAttempt) {
+func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *SemanticProductionPlan, attempt SemanticSearchAttempt, language, planFingerprint string, forceRefresh bool) (SemanticSearchAttemptResult, *SemanticSearchAttempt) {
 	row := SemanticSearchAttemptResult{
 		CandidateID: attempt.CandidateID, SceneID: attempt.SceneID,
 		Query: attempt.Query, QueryKind: attempt.QueryKind, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
 		Illustrative: attempt.Illustrative, Rung: attempt.Rung,
 		Rank: attempt.Rank, Class: attempt.Class, Entity: attempt.Entity,
 	}
-	key := cacheKey(attempt, language)
-	response, cached, latency, rateLimited, searchErr := p.fetch(ctx, attempt, language, key)
+	key := cacheKey(attempt, language, attempt.Class.ProviderLane(), p.cfg.Limit, planFingerprint)
+	response, cached, latency, rateLimited, searchErr := p.fetch(ctx, attempt, language, key, forceRefresh)
+	// The planner cache may still hold a response produced before the
+	// placeholder filter existed. Filter after fetch so cached and fresh
+	// responses obey the same contract: an SVG/icon/spacer is never a resolved
+	// documentary image.
+	response = filterSemanticPlaceholderHits(response)
+	response = rankSemanticAssetHits(response)
 	row.Cached = cached
 	row.LatencyMS = latency
 	row.RateLimited = rateLimited
@@ -109,6 +117,7 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 	switch {
 	case searchErr != nil:
 		row.Status = "error"
+		row.ProviderError = true
 		row.Error = searchErr.Error()
 		outcome.Error = row.Error
 	case len(response.Hits) == 0:
@@ -120,6 +129,7 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 		row.Provider = strings.TrimSpace(response.Provider)
 		outcome.Found = true
 		outcome.AssetID = strings.TrimSpace(response.Hits[0].AssetID)
+		outcome.VerifierVersion = strings.TrimSpace(response.Hits[0].VerifierVersion)
 		for _, hit := range response.Hits {
 			if id := strings.TrimSpace(hit.AssetID); id != "" {
 				row.AssetIDs = append(row.AssetIDs, id)
@@ -152,7 +162,8 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 				AssetID: outcome.AssetID, URL: strings.TrimSpace(first.URL),
 				DriveLink: strings.TrimSpace(first.DriveLink), SHA256: strings.TrimSpace(first.SHA256),
 				MediaType: strings.TrimSpace(first.MediaType), Provider: provider,
-				Query: attempt.Query, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
+				VerifierVersion: strings.TrimSpace(first.VerifierVersion),
+				Query:           attempt.Query, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
 				Illustrative: attempt.Illustrative, Entity: strings.TrimSpace(first.Entity),
 				Width: first.Width, Height: first.Height,
 			}
@@ -167,10 +178,42 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 	return row, &nextAttempt
 }
 
+// rankSemanticAssetHits applies the same evidence ordering to fresh and cached
+// answers. Provider order is not an editorial quality signal. Explicitly
+// rejected candidates are removed; accepted visual verdicts, relevance,
+// semantic score, technical quality and provider score break ties in that
+// order. Stable sorting preserves upstream order only when evidence is equal.
+func rankSemanticAssetHits(response SemanticAssetSearchResponse) SemanticAssetSearchResponse {
+	kept := make([]SemanticAssetHit, 0, len(response.Hits))
+	for _, hit := range response.Hits {
+		// Search results are untrusted candidates. Only a pixel-level accepted
+		// verdict with a named verifier may satisfy a plan or enter its cache.
+		if strings.EqualFold(strings.TrimSpace(hit.SemanticStatus), "accepted") &&
+			strings.TrimSpace(hit.VerifierVersion) != "" && digest.IsSHA256(hit.SHA256) {
+			kept = append(kept, hit)
+		}
+	}
+	sort.SliceStable(kept, func(i, j int) bool {
+		a, b := kept[i], kept[j]
+		if accepted := strings.EqualFold(strings.TrimSpace(a.SemanticStatus), "accepted"); accepted != strings.EqualFold(strings.TrimSpace(b.SemanticStatus), "accepted") {
+			return accepted
+		}
+		for _, pair := range [][2]float64{{a.RelevanceScore, b.RelevanceScore}, {a.SemanticScore, b.SemanticScore}, {a.TechnicalQualityScore, b.TechnicalQualityScore}, {a.Score, b.Score}} {
+			if pair[0] != pair[1] {
+				return pair[0] > pair[1]
+			}
+		}
+		return false
+	})
+	response.Hits = kept
+	return response
+}
+
 // fetch serves the answer from the plan cache when possible and otherwise
 // performs one budgeted provider call. The keyed lock collapses duplicate
 // same-entity fetches inside a single run; different entities stay independent.
-func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt SemanticSearchAttempt, language, key string) (SemanticAssetSearchResponse, bool, int64, bool, error) {
+func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt SemanticSearchAttempt, language, key string, forceRefresh ...bool) (SemanticAssetSearchResponse, bool, int64, bool, error) {
+	bypassCache := len(forceRefresh) > 0 && forceRefresh[0]
 	if p.cfg.Cache == nil {
 		response, latency, rateLimited, err := p.searchWithBudget(ctx, attempt, language)
 		return response, false, latency, rateLimited, err
@@ -181,11 +224,13 @@ func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt Semantic
 	if attempt.Class == SearchClassLocation || attempt.Class == SearchClassOrganization {
 		cacheTTL = p.cfg.StableEntityCacheTTL
 	}
-	if entry, ok := p.cfg.Cache.Get(ctx, key); ok && p.nowTime().Sub(entry.StoredAt) <= cacheTTL {
-		return entry.Response, true, 0, false, nil
+	if !bypassCache {
+		if entry, ok := p.cfg.Cache.Get(ctx, key); ok && p.nowTime().Sub(entry.StoredAt) <= cacheTTL {
+			return entry.Response, true, 0, false, nil
+		}
 	}
 	response, latency, rateLimited, err := p.searchWithBudget(ctx, attempt, language)
-	if err == nil && len(response.Hits) > 0 {
+	if err == nil && hasVerifiedSemanticAssetHit(response) {
 		storedAt := p.nowTime()
 		p.cfg.Cache.Put(ctx, key, SemanticSearchCacheEntry{
 			Response: response, StoredAt: storedAt, ExpiresAt: storedAt.Add(cacheTTL),
@@ -193,6 +238,60 @@ func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt Semantic
 		})
 	}
 	return response, false, latency, rateLimited, err
+}
+
+func hasVerifiedSemanticAssetHit(response SemanticAssetSearchResponse) bool {
+	for _, hit := range response.Hits {
+		if strings.EqualFold(strings.TrimSpace(hit.SemanticStatus), "accepted") &&
+			strings.TrimSpace(hit.VerifierVersion) != "" && digest.IsSHA256(hit.SHA256) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterSemanticPlaceholderHits removes vector-icon and spacer assets from a
+// planner response. This is the final gate before SemanticsResolvedImage is
+// created, so a cached historical response cannot reintroduce them.
+func filterSemanticPlaceholderHits(response SemanticAssetSearchResponse) SemanticAssetSearchResponse {
+	if len(response.Hits) == 0 {
+		return response
+	}
+	kept := make([]SemanticAssetHit, 0, len(response.Hits))
+	for _, hit := range response.Hits {
+		if isPlaceholderSemanticAssetURL(hit.URL) {
+			continue
+		}
+		kept = append(kept, hit)
+	}
+	response.Hits = kept
+	return response
+}
+
+func isPlaceholderSemanticAssetURL(rawURL string) bool {
+	u := strings.ToLower(strings.TrimSpace(rawURL))
+	if u == "" {
+		return false
+	}
+	if strings.HasPrefix(u, "data:") {
+		return true
+	}
+	path := u
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	if strings.HasSuffix(path, ".svg") {
+		return true
+	}
+	for _, marker := range []string{
+		"lucide-static", "/devicons/", "/icons/", "icon-", "placeholder",
+		"spacer.", "/1x1.", "pixel.gif", "transparent.png",
+	} {
+		if strings.Contains(u, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // cacheAnswerProvider names the provider that actually answered. The adapter
@@ -223,7 +322,7 @@ func (p *SemanticSearchBatchPlanner) searchWithBudget(ctx context.Context, attem
 		CandidateID: attempt.CandidateID, SceneID: attempt.SceneID,
 		Query: attempt.Query, QueryKind: attempt.QueryKind, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
 		Illustrative: attempt.Illustrative, Rung: attempt.Rung,
-		Entity: attempt.Entity, QueryClass: string(attempt.Class), ProviderLane: lane,
+		Entity: attempt.Entity, QueryClass: string(attempt.Class), SceneContext: attempt.Evidence, ProviderLane: lane,
 		Language: strings.TrimSpace(language), Limit: p.cfg.Limit,
 	}
 	var latencyMS int64
@@ -255,6 +354,27 @@ func maxLatencyMS(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+// semanticPlanFingerprint hashes the immutable planning inputs. It is
+// computed once before dispatch: execution mutates unit status and resolved
+// images, and those runtime fields must not change a cache identity.
+func semanticPlanFingerprint(plan *SemanticProductionPlan) string {
+	if plan == nil {
+		return ""
+	}
+	var b strings.Builder
+	_, _ = fmt.Fprintf(&b, "%s\x00%#v\x00", plan.Schema, plan.Identity)
+	for _, unit := range plan.Units {
+		_, _ = fmt.Fprintf(&b, "%s|%s|%d|%g|%s|%s|%s|%s|%d|%d|%s|%t|", unit.CandidateID, unit.Recipe,
+			unit.Rank, unit.Priority, unit.SceneID, strings.Join(unit.SceneIDs, ","),
+			strings.Join(unit.EntityIDs, ","), strings.Join(unit.FactIDs, ","), unit.Start, unit.End,
+			unit.AssetKey, unit.RequiresMedia)
+		for _, query := range unit.Queries {
+			_, _ = fmt.Fprintf(&b, "%s=%s;", query.Kind, query.Text)
+		}
+	}
+	return digest.SHA256Bytes([]byte(b.String()))[:16]
 }
 
 func planUnitByCandidate(plan *SemanticProductionPlan, candidateID string) *SemanticProductionUnit {

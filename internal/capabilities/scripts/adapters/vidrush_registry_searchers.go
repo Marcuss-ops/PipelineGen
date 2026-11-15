@@ -55,7 +55,8 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 			defer func() { <-vidRushImageSearchSlots }()
 			found, err := s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
 				SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: query,
-				Query: query, Entity: req.Entity, QueryClass: req.QueryClass, Limit: req.Limit,
+				Query: query, Entity: req.Entity, QueryClass: req.QueryClass, Language: req.Language,
+				ForceRefresh: req.ForceRefresh, Limit: req.Limit,
 			})
 			resultSets[i], queryErrors[i] = found, err
 		}()
@@ -218,9 +219,26 @@ func (f *VidRushProviderFanout) resolveYouTubeCandidates(ctx context.Context, pl
 
 func (f *VidRushProviderFanout) verifySegmentImageCandidates(ctx context.Context, segment scriptpkg.VidRushSegmentResult, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
 	personCandidates := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	entityCandidates := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	contextCandidates := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		_, personQuery, err := personCatalogIdentityForSegmentQuery(segment, candidate.Query)
+		_, personQuery, err := personCatalogIdentityForSegmentQuery(segment, candidate.Entity)
+		if err != nil {
+			return nil, err
+		}
+		if personQuery {
+			personCandidates = append(personCandidates, candidate)
+			continue
+		}
+		class := searchClassForEntityQuery(segment.Insights.Entities, candidate.Entity)
+		if class == "" {
+			class = searchClassForEntityQuery(segment.Insights.Entities, candidate.Query)
+		}
+		if class != "" {
+			entityCandidates = append(entityCandidates, candidate)
+			continue
+		}
+		_, personQuery, err = personCatalogIdentityForSegmentQuery(segment, candidate.Query)
 		if err != nil {
 			return nil, err
 		}
@@ -234,8 +252,53 @@ func (f *VidRushProviderFanout) verifySegmentImageCandidates(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
+	verifiedEntities, err := f.verifyTypedEntityImageCandidates(ctx, segment, entityCandidates)
+	if err != nil {
+		return nil, err
+	}
 	verifiedContext := filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(contextCandidates, "")))
-	return AppendProviderCandidatesUnique(verifiedPeople, verifiedContext), nil
+	return AppendProviderCandidatesUnique(append(verifiedPeople, verifiedEntities...), verifiedContext), nil
+}
+
+// Non-person entity images need the same pixel-level semantic boundary as
+// portraits. Previously only PERSON queries reached the scorer, while entity
+// binding required SemanticStatus=accepted for every type; organizations,
+// places and products therefore could never bind their discovered images.
+func (f *VidRushProviderFanout) verifyTypedEntityImageCandidates(ctx context.Context, segment scriptpkg.VidRushSegmentResult, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	if len(candidates) == 0 || f == nil || f.semanticScorer == nil {
+		return candidates, nil
+	}
+	// Keep the source scene separate from the provider query. Retrieval needs
+	// short high-recall identity queries; the scene is evidence for the visual
+	// verifier and must not become a keyword constraint.
+	context := strings.TrimSpace(segment.Text)
+	if len([]rune(context)) > 1200 {
+		context = string([]rune(context)[:1200])
+	}
+	byClass := make(map[string][]scriptpkg.SegmentAssetCandidate)
+	for _, candidate := range candidates {
+		candidate.EntityContext = context
+		class := searchClassForEntityQuery(segment.Insights.Entities, candidate.Entity)
+		if class == "" {
+			class = searchClassForEntityQuery(segment.Insights.Entities, candidate.Query)
+		}
+		byClass[class] = append(byClass[class], candidate)
+	}
+	verified := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for class, batch := range byClass {
+		scored, err := resolveEntityVisualCandidates(ctx, f.semanticScorer, class, context, batch)
+		if err != nil {
+			// Scoring failure leaves candidates pending and therefore cannot
+			// satisfy the accepted-status binding contract.
+			verified = append(verified, batch...)
+			continue
+		}
+		if scored == nil {
+			scored = batch
+		}
+		verified = append(verified, scored...)
+	}
+	return filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(verified, "entity image"))), nil
 }
 
 func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
@@ -265,7 +328,7 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context,
 		recordEntityImageVisualOutcomes(f.metrics, candidates, nil)
 		return filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), "person entity image"))), nil
 	}
-	scored, err := f.semanticScorer.ScoreImageCandidates(ctx, "person entity image", candidates)
+	scored, err := resolveEntityVisualCandidates(ctx, f.semanticScorer, "person", "", candidates)
 	if err != nil {
 		verified := filterVerifiedPersonImageCandidates(candidates)
 		recordEntityImageVisualOutcomes(f.metrics, verified, err)
@@ -280,18 +343,6 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context,
 	}
 	recordEntityImageVisualOutcomes(f.metrics, scored, nil)
 	return filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(scored, "person entity image"))), nil
-}
-
-func personImageSearchQuery(canonicalName string, isPerson bool) string {
-	canonicalName = strings.TrimSpace(canonicalName)
-	if !isPerson || canonicalName == "" {
-		return canonicalName
-	}
-	// Keep the retrieval intent ("photo") without forcing a tight headshot.
-	// The old "single-person portrait headshot photo" suffix excluded editorial
-	// and environmental photographs before the identity/quality gate could see
-	// them. Canonical entity identity remains a separate provider request field.
-	return canonicalName + " photo"
 }
 
 // The YouTube source-hint helpers live in

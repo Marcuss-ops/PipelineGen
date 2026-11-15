@@ -57,6 +57,12 @@ func (f *fakeSegmentEnricher) callCount() int {
 	return len(f.calls)
 }
 
+type panicSegmentEnricher struct{}
+
+func (panicSegmentEnricher) Enrich(context.Context, *scriptpkg.ResolvedGenerationPlan, scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
+	panic("enricher exploded")
+}
+
 // blockingSegmentEnricher holds enrichments until released, letting tests
 // commit superseding scenes before any enrichment result is recorded.
 type blockingSegmentEnricher struct {
@@ -443,6 +449,37 @@ func TestIncrementalCoordinator_FailureAttributedToCorrectScene(t *testing.T) {
 	assert.Contains(t, err.Error(), "extraction exploded")
 }
 
+func TestIncrementalCoordinator_RecoversScenePanic(t *testing.T) {
+	coordinator := NewVidRushIncrementalCoordinator(panicSegmentEnricher{}, nil, 1)
+	commit(t, coordinator, "run-panic", "scene-0", 0, "A scene", 1)
+
+	results, err := coordinator.WaitForVidRush(context.Background(), "run-panic")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "panic")
+	assert.Contains(t, err.Error(), "enricher exploded")
+	assert.Empty(t, results)
+}
+
+func TestIncrementalCoordinator_ReturnsPartialResultsWithAllSceneErrors(t *testing.T) {
+	enricher := &fakeSegmentEnricher{errs: map[string]error{
+		"scene-0": errors.New("first failed"),
+		"scene-2": errors.New("third failed"),
+	}}
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
+	commit(t, coordinator, "run-partial", "scene-0", 0, "First scene", 1)
+	commit(t, coordinator, "run-partial", "scene-1", 1, "Second scene", 1)
+	commit(t, coordinator, "run-partial", "scene-2", 2, "Third scene", 1)
+
+	results, err := coordinator.WaitForVidRush(context.Background(), "run-partial")
+	require.Error(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "scene-1", results[0].SceneID)
+	assert.Contains(t, err.Error(), "scene-0")
+	assert.Contains(t, err.Error(), "first failed")
+	assert.Contains(t, err.Error(), "scene-2")
+	assert.Contains(t, err.Error(), "third failed")
+}
+
 func TestIncrementalCoordinator_MissingEnricherDoesNotLeakWaitGroup(t *testing.T) {
 	coordinator := NewVidRushIncrementalCoordinator(nil, nil, 4)
 	event := SceneCommitted{
@@ -458,4 +495,27 @@ func TestIncrementalCoordinator_MissingEnricherDoesNotLeakWaitGroup(t *testing.T
 	if _, err := coordinator.Wait(ctx); err != nil {
 		t.Fatalf("Wait() after rejected scene = %v, want no leaked pending enrichment", err)
 	}
+}
+
+// TestIncrementalCoordinator_EnrichmentSurvivesCallerCancellation pins the
+// run-scoped context contract: scene generation cancels its own context when
+// it advances, but the per-scene enrichment must still finish. The old code
+// derived the enrichment context from the caller and turned every cancellation
+// into a scene error at the barrier.
+func TestIncrementalCoordinator_EnrichmentSurvivesCallerCancellation(t *testing.T) {
+	enricher := newBlockingSegmentEnricher()
+	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	event := SceneCommitted{
+		RunID: "run-cancel", SceneID: "scene-0", SceneIndex: 0,
+		Text: "A scene", TextHash: SceneTextHash("A scene"), Revision: 1, Language: "en",
+	}
+	require.NoError(t, coordinator.OnSceneCommitted(ctx, event))
+	cancel()
+	close(enricher.release)
+
+	results, err := coordinator.WaitForVidRush(context.Background(), "run-cancel")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "scene-0", results[0].SceneID)
 }

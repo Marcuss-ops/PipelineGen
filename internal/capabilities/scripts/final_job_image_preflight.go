@@ -4,20 +4,25 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	_ "golang.org/x/image/webp"
 )
 
 // final_job_image_preflight.go: the pre-enqueue entity-image gate (the r10
@@ -38,6 +43,10 @@ import (
 // verified, renderable identity: a 64-hex content address plus a locator
 // (Drive/public URL or a usable local path) the worker can actually fetch.
 func finalJobImageVerifiedRef(ref capmodel.OverlayAssetRef) bool {
+	return finalJobImageVerifiedRefContext(context.Background(), ref)
+}
+
+func finalJobImageVerifiedRefContext(ctx context.Context, ref capmodel.OverlayAssetRef) bool {
 	sha := strings.TrimSpace(ref.SHA256)
 	if len(sha) != 64 {
 		return false
@@ -61,7 +70,7 @@ func finalJobImageVerifiedRef(ref capmodel.OverlayAssetRef) bool {
 		}
 	}
 	if location := strings.TrimSpace(ref.URL); location != "" {
-		return finalJobImageURLVerified(location, sha)
+		return finalJobImageURLVerified(ctx, location, sha)
 	}
 	return false
 }
@@ -75,7 +84,8 @@ func finalJobImageBytesVerified(reader io.Reader, sha string) bool {
 		return false
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
-	return err == nil && config.Width > 0 && config.Height > 0 && (format == "jpeg" || format == "png" || format == "gif")
+	return err == nil && config.Width > 0 && config.Height > 0 &&
+		(format == "jpeg" || format == "png" || format == "gif" || format == "webp")
 }
 
 const (
@@ -94,18 +104,38 @@ const (
 	finalJobImageFetchAttempts = 3
 )
 
+var (
+	// finalJobImageAllowLoopback exists only for httptest-backed preflight
+	// tests. Production code leaves it false; the package test helper flips it
+	// for the duration of a test and restores it in Cleanup.
+	finalJobImageAllowLoopback atomic.Bool
+	finalJobImageHTTPClient    = newFinalJobImageHTTPClient()
+)
+
 // finalJobImageURLVerified fetches the remote bytes and verifies the content
 // address. The retry wraps the WHOLE fetch+verify, not only the HTTP status:
 // a 200 response with an HTML interstitial or a truncated body is exactly the
 // r47 failure class, and it must not turn a valid image into a full-run
 // preflight rejection on the first attempt.
-func finalJobImageURLVerified(location, sha string) bool {
-	client := &http.Client{Timeout: finalJobImageFetchTimeout}
+func finalJobImageURLVerified(ctx context.Context, location, sha string) bool {
+	if err := validateFinalJobImageURL(ctx, location); err != nil {
+		return false
+	}
 	for attempt := 0; attempt < finalJobImageFetchAttempts; attempt++ {
 		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * 300 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				return false
+			case <-time.After(time.Duration(attempt) * 300 * time.Millisecond):
+			}
 		}
-		response, err := client.Get(location)
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, location, nil)
+		if err != nil {
+			return false
+		}
+		request.Header.Set("User-Agent", "PipelineGen-final-job-image-preflight/1")
+		request.Header.Set("Accept", "image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8")
+		response, err := finalJobImageHTTPClient.Do(request)
 		if err != nil {
 			continue
 		}
@@ -121,9 +151,97 @@ func finalJobImageURLVerified(location, sha string) bool {
 	return false
 }
 
+func newFinalJobImageHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	dialer := &net.Dialer{Timeout: finalJobImageFetchTimeout, KeepAlive: 30 * time.Second}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, fmt.Errorf("final_job preflight: invalid upstream address: %w", err)
+		}
+		if err := validateFinalJobImageHost(ctx, host); err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil || len(ips) == 0 {
+			return nil, fmt.Errorf("final_job preflight: resolve upstream %q: %w", host, err)
+		}
+		for _, resolved := range ips {
+			if isFinalJobPrivateIP(resolved.IP) && !(finalJobImageAllowLoopback.Load() && resolved.IP.IsLoopback()) {
+				continue
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(resolved.IP.String(), port))
+		}
+		return nil, fmt.Errorf("final_job preflight: upstream %q resolved to a blocked address", host)
+	}
+	client := &http.Client{Transport: transport, Timeout: finalJobImageFetchTimeout}
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) > 3 {
+			return fmt.Errorf("final_job preflight: too many redirects")
+		}
+		if err := validateFinalJobImageURL(req.Context(), req.URL.String()); err != nil {
+			return err
+		}
+		return validateFinalJobImageHost(req.Context(), req.URL.Hostname())
+	}
+	return client
+}
+
+func validateFinalJobImageURL(ctx context.Context, raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed == nil || parsed.Hostname() == "" {
+		return fmt.Errorf("final_job preflight: invalid image URL")
+	}
+	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil {
+		return fmt.Errorf("final_job preflight: image URL must be absolute HTTP(S)")
+	}
+	return validateFinalJobImageHost(ctx, parsed.Hostname())
+}
+
+func validateFinalJobImageHost(ctx context.Context, host string) error {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if host == "" || host == "metadata.google.internal" {
+		return fmt.Errorf("final_job preflight: blocked image host")
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		if finalJobImageAllowLoopback.Load() {
+			return nil
+		}
+		return fmt.Errorf("final_job preflight: blocked loopback image host")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if isFinalJobPrivateIP(ip) && !(finalJobImageAllowLoopback.Load() && ip.IsLoopback()) {
+			return fmt.Errorf("final_job preflight: blocked private image host")
+		}
+		return nil
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return fmt.Errorf("final_job preflight: resolve image host: %w", err)
+	}
+	if len(ips) == 0 {
+		return fmt.Errorf("final_job preflight: image host resolved to no address")
+	}
+	for _, resolved := range ips {
+		if isFinalJobPrivateIP(resolved.IP) && !(finalJobImageAllowLoopback.Load() && resolved.IP.IsLoopback()) {
+			return fmt.Errorf("final_job preflight: image host resolved to a blocked address")
+		}
+	}
+	return nil
+}
+
+func isFinalJobPrivateIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
+}
+
 func anyFinalJobImageVerifiedRef(refs []capmodel.OverlayAssetRef) bool {
+	return anyFinalJobImageVerifiedRefContext(context.Background(), refs)
+}
+
+func anyFinalJobImageVerifiedRefContext(ctx context.Context, refs []capmodel.OverlayAssetRef) bool {
 	for _, ref := range refs {
-		if finalJobImageVerifiedRef(ref) {
+		if finalJobImageVerifiedRefContext(ctx, ref) {
 			return true
 		}
 	}
@@ -139,19 +257,23 @@ func anyFinalJobImageVerifiedRef(refs []capmodel.OverlayAssetRef) bool {
 //     The composite's structural multiplicity (>=2 layers, >=2 refs) is
 //     already the model validator's contract; this checks content identity.
 func finalJobImageVerifiedItem(item capmodel.OverlayItem) bool {
+	return finalJobImageVerifiedItemContext(context.Background(), item)
+}
+
+func finalJobImageVerifiedItemContext(ctx context.Context, item capmodel.OverlayItem) bool {
 	if len(item.ImageLayers) > 0 {
 		if len(item.AssetRefs) < len(item.ImageLayers) {
 			return false
 		}
 		verified := 0
 		for _, ref := range item.AssetRefs {
-			if finalJobImageVerifiedRef(ref) {
+			if finalJobImageVerifiedRefContext(ctx, ref) {
 				verified++
 			}
 		}
 		return verified >= len(item.ImageLayers)
 	}
-	return anyFinalJobImageVerifiedRef(item.AssetRefs)
+	return anyFinalJobImageVerifiedRefContext(ctx, item.AssetRefs)
 }
 
 // finalJobImageRequested reports whether the payload asked for entity images.
@@ -164,9 +286,6 @@ func finalJobImageVerifiedItem(item capmodel.OverlayItem) bool {
 // contract that already owns this question (see kernel/media plan.go); the
 // preflight must ask it instead of re-deriving a narrower condition.
 func finalJobImageRequested(req GenerateRequest) bool {
-	if !req.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
-		return false
-	}
 	// Present 0 disables the group in the payload contract. Temporal absence
 	// is not a budget mismatch; the zero value keeps the certified default.
 	if limit, ok := req.OverlayGroupLimits[overlayGroupImages]; ok && limit == 0 {
@@ -178,10 +297,16 @@ func finalJobImageRequested(req GenerateRequest) bool {
 	if hasCategory && toggle == scriptpkg.ToggleDisabled {
 		return false
 	}
-	// Any explicit entity-image request is an image contract by itself. Do not
-	// make it depend on a second, unrelated overlay budget/category toggle.
+	// Entity-image extraction is an independent surface. It must be checked
+	// before the legacy internet-images provider toggle: a payload can request
+	// entity cards through the extraction surface while the generic provider
+	// policy is absent or disabled, and skipping the preflight there produced
+	// the silent image-free render this gate exists to prevent.
 	if req.MediaPlan.Extraction.EntityImages.Enabled || req.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
 		return true
+	}
+	if !req.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
+		return false
 	}
 	if req.MaxImageOverlays > 0 || req.GenerateSceneImages == scriptpkg.ToggleEnabled {
 		return true
@@ -237,10 +362,17 @@ func finalJobEntityImageGate(audit *OverlayAudit, imageRequested bool) error {
 }
 
 func finalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]struct{}, imageRequested bool) error {
+	return finalJobImagePreflightContext(context.Background(), items, clipScenes, imageRequested)
+}
+
+func finalJobImagePreflightContext(ctx context.Context, items []capmodel.OverlayItem, clipScenes map[string]struct{}, imageRequested bool) error {
 	candidates := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
 		kind := strings.ToLower(strings.TrimSpace(item.Kind))
-		if !strings.Contains(kind, "image") && len(item.ImageLayers) == 0 {
+		// An entity card is not required to carry "image" in its kind. Any
+		// item with an image binding is part of the image contract and must be
+		// validated; only truly image-free items are skipped.
+		if !strings.Contains(kind, "image") && len(item.ImageLayers) == 0 && len(item.AssetRefs) == 0 {
 			continue
 		}
 		if _, dropped := clipScenes[strings.TrimSpace(item.SceneID)]; dropped {
@@ -259,9 +391,9 @@ func finalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]
 	// nil error: a failed image is data for the aggregate verdict, not a
 	// reason to cancel the remaining checks (the error would hide how many
 	// assets are actually invalid).
-	verified, err := concurrent.Map(context.Background(), candidates, finalJobImagePreflightWorkers,
+	verified, err := concurrent.Map(ctx, candidates, finalJobImagePreflightWorkers,
 		func(_ context.Context, _ int, item capmodel.OverlayItem) (bool, error) {
-			return finalJobImageVerifiedItem(item), nil
+			return finalJobImageVerifiedItemContext(ctx, item), nil
 		})
 	if err != nil {
 		// The callback never returns an error; a recovered panic/abort must

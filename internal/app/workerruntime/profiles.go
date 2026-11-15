@@ -21,6 +21,7 @@ package workerruntime
 import (
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"sort"
 	"strings"
 
@@ -69,7 +70,7 @@ func NewProfileRegistry() *WorkerProfileRegistry {
 					job.TypeScriptGenerate,
 					job.TypeVoiceoverGenerateItem,
 					job.TypeImageGenerateGoogle,
-					appjobs.TypeMediaStock,
+					jobscheduling.TypeMediaStock,
 				},
 				MaxParallel: 1, // script generation is memory-heavy
 			},
@@ -79,9 +80,9 @@ func NewProfileRegistry() *WorkerProfileRegistry {
 					job.TypeScriptGenerate,
 					job.TypeVoiceoverGenerate,
 					job.TypeVoiceoverGenerateItem,
-					appjobs.TypeMediaStock,
-					appjobs.TypeYouTubeClipExtract,
-					appjobs.TypeImageGenerateGoogle,
+					jobscheduling.TypeMediaStock,
+					jobscheduling.TypeYouTubeClipExtract,
+					jobscheduling.TypeImageGenerateGoogle,
 					job.TypeClipRender,
 				},
 				MaxParallel: 2,

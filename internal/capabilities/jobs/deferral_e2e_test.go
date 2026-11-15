@@ -7,7 +7,7 @@ package jobs
 //	real migrations (migrations/sqlite_jobs, scope "jobs") on a temp DB
 //	  → real *sqljobs.SQLiteStore
 //	  → real queue Service (admission + persistence)
-//	  → real Dispatcher + Registry
+//	  → real Dispatcher + jobscheduling.Registry
 //	  → real Worker.Start poll loop (claim → runJob → finalize → requeue sweep)
 //
 // The handler defers on its first attempt and succeeds on the second — the
@@ -27,6 +27,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,7 +44,7 @@ import (
 )
 
 const (
-	deferralE2EJobType = TypeScriptGenerate
+	deferralE2EJobType = jobscheduling.TypeScriptGenerate
 	// deferralE2EDelay is the wait the handler states. Deliberately short so
 	// the test observes the re-dispatch in real time instead of sleeping for a
 	// production cadence.
@@ -70,12 +71,12 @@ func TestDeferredJobRunsThroughTheRealQueue(t *testing.T) {
 	// The registry is the typed per-job-type policy (timeout + retry budget).
 	// A deferral must survive even at retry_count == max_retries, so the budget
 	// is the smallest interesting value: ONE allowed retry, spent by NOTHING.
-	reg := NewRegistry()
-	if err := reg.Register(RegistryEntry{
-		Completion: CompletionDeclaration{
+	reg := jobscheduling.NewRegistry()
+	if err := reg.Register(jobscheduling.RegistryEntry{
+		Completion: jobscheduling.CompletionDeclaration{
 			JobType:              deferralE2EJobType,
-			ArtifactOwnership:    ArtifactOwnershipNone,
-			FinalizationStrategy: FinalizationStrategyLegacyComplete,
+			ArtifactOwnership:    jobscheduling.ArtifactOwnershipNone,
+			FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete,
 		},
 		Description:       "deferral e2e job",
 		Timeout:           30 * time.Second,
@@ -267,12 +268,12 @@ func TestDeferredRowSurvivesTheRetryBudgetBeingExhausted(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
 
-	reg := NewRegistry()
-	if err := reg.Register(RegistryEntry{
-		Completion: CompletionDeclaration{
+	reg := jobscheduling.NewRegistry()
+	if err := reg.Register(jobscheduling.RegistryEntry{
+		Completion: jobscheduling.CompletionDeclaration{
 			JobType:              deferralE2EJobType,
-			ArtifactOwnership:    ArtifactOwnershipNone,
-			FinalizationStrategy: FinalizationStrategyLegacyComplete,
+			ArtifactOwnership:    jobscheduling.ArtifactOwnershipNone,
+			FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete,
 		},
 		Description:       "deferral e2e budget job",
 		Timeout:           30 * time.Second,

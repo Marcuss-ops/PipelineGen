@@ -18,6 +18,16 @@ func TestInternetImageCandidateLimit(t *testing.T) {
 	}
 }
 
+func TestInternetImagePerQueryLimitSharesSceneBudgetAcrossEntities(t *testing.T) {
+	for _, tc := range []struct{ sceneLimit, queries, want int }{
+		{30, 1, 30}, {30, 5, 6}, {30, 10, 3}, {30, 15, 2},
+	} {
+		if got := internetImagePerQueryLimit(tc.sceneLimit, tc.queries); got != tc.want {
+			t.Errorf("per-query limit for scene budget %d across %d queries = %d, want %d", tc.sceneLimit, tc.queries, got, tc.want)
+		}
+	}
+}
+
 func TestInternetImageCacheReadable(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{}
 	if !internetImageCacheReadable(plan, internetImageProcessOptions{cacheOnly: true}) {

@@ -5,6 +5,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // SemanticProductionPlanSchema versions the planner-owned execution view.
@@ -94,6 +96,7 @@ type SemanticProductionUnit struct {
 	Rank                int
 	Priority            float64
 	SceneID             string
+	SceneIDs            []string
 	EntityIDs           []string
 	FactIDs             []string
 	Title, Evidence     string
@@ -106,14 +109,9 @@ type SemanticProductionUnit struct {
 	ReusedFrom string
 	// Queries is the current widening ladder. It is empty for text/data
 	// compositions and for asset reuse.
-	Queries []SemanticSearchQuery
-	// EntityLadders keeps one exact-name ladder per identity the composition
-	// mentions but its main ladder never searched, so a failed multi-name
-	// search can drop a name instead of the whole composition.
-	EntityLadders   []SemanticNameLadder
+	Queries         []SemanticSearchQuery
 	SearchStatus    string
 	Rung            int
-	DroppedEntities int
 	ResolvedAssetID string
 	Retry           *SemanticSearchRetry
 	// ResolvedImage is the first hit a satisfied search produced, carried
@@ -127,16 +125,11 @@ type SemanticProductionUnit struct {
 // becomes a rendered overlay asset.
 type SemanticResolvedImage struct {
 	AssetID, URL, DriveLink, SHA256, MediaType, Provider, Query, Entity string
+	VerifierVersion                                                     string
 	QueryOrigin                                                         string
 	TemplateID                                                          string
 	Illustrative                                                        bool
 	Width, Height                                                       int
-}
-
-// SemanticNameLadder is the untried exact-name fallback of one identity.
-type SemanticNameLadder struct {
-	EntityID string
-	Queries  []SemanticSearchQuery
 }
 
 // SemanticProductionCoverage accounts for every canonical fact after the run
@@ -175,7 +168,7 @@ type SemanticProductionMetrics struct {
 	SearchesFailed       int
 	SearchesSkipped      int
 	SearchBroadens       int
-	EntityDrops          int
+	SearchesTooLate      int
 	DuplicateQueriesDrop int
 }
 
@@ -262,10 +255,6 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 	for _, identity := range identities {
 		knownIdentities[identity.ID] = identity
 	}
-	surfaceOf := func(entityID string) string {
-		return strings.TrimSpace(knownIdentities[entityID].CanonicalSurface)
-	}
-
 	candidates := append([]SemanticProductionCandidate(nil), consolidation.ProductionCandidates...)
 	sort.SliceStable(candidates, func(i, j int) bool {
 		leftScore := semanticPlannerPriority(candidates[i], knownIdentities)
@@ -318,6 +307,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 			CandidateID: candidate.ID, Recipe: candidate.Recipe, Rank: candidate.Rank,
 			Priority:  semanticPlannerPriority(candidate, knownIdentities),
 			SceneID:   candidate.SceneID,
+			SceneIDs:  append([]string(nil), candidate.SceneIDs...),
 			EntityIDs: append([]string(nil), candidate.EntityIDs...),
 			FactIDs:   append([]string(nil), candidate.FactIDs...),
 			Title:     candidate.Title, Evidence: candidate.Evidence, Start: candidate.Start, End: candidate.End,
@@ -331,7 +321,13 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 			return nil, fmt.Errorf("semantic production plan: media candidate %q has no asset key", candidate.ID)
 		}
 		if candidate.RequiresMedia {
-			if owner, reused := assetOwner[candidate.AssetKey]; reused {
+			if reason := weakVisualEntityQuery(candidate, knownIdentities); reason != "" {
+				unit.Status = ProductionUnitSkipped
+				unit.SearchStatus = ProductionSearchFailed
+				unit.DroppedReason = reason
+				unit.Queries = nil
+				// No retrieval was attempted, so this is not a skipped search.
+			} else if owner, reused := assetOwner[candidate.AssetKey]; reused {
 				// One retrieval per asset key: the later composition reuses the
 				// bytes and must not issue a second external search.
 				unit.Status = ProductionUnitReuse
@@ -341,21 +337,18 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 					plan.Metrics.DuplicateQueriesDrop += len(unit.Queries)
 					unit.Queries = nil
 				}
-				unit.EntityLadders = nil
 				plan.Metrics.ReusedAssets++
 			} else if sceneMedia[candidate.SceneID] >= config.MaxMediaUnitsPerScene {
 				unit.Status = ProductionUnitDroppedSceneBudget
 				unit.SearchStatus = ProductionSearchFailed
 				unit.DroppedReason = fmt.Sprintf("scene %q already holds %d searched compositions", candidate.SceneID, config.MaxMediaUnitsPerScene)
 				unit.Queries = nil
-				unit.EntityLadders = nil
 				plan.Metrics.DroppedSceneBudget++
 			} else if mediaUnits >= config.MaxMediaUnits {
 				unit.Status = ProductionUnitDroppedBudget
 				unit.SearchStatus = ProductionSearchFailed
-				unit.DroppedReason = fmt.Sprintf("run budget of %d searched compositions exhausted", config.MaxMediaUnits)
+				unit.DroppedReason = fmt.Sprintf("dropped by the run budget: %d searched compositions exhausted", config.MaxMediaUnits)
 				unit.Queries = nil
-				unit.EntityLadders = nil
 				plan.Metrics.DroppedBudget++
 			} else {
 				if len(unit.Queries) == 0 {
@@ -366,7 +359,8 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 				mediaUnits++
 				plan.Metrics.MediaUnits++
 				plan.Metrics.PlannedQueries += len(unit.Queries)
-				unit.EntityLadders = exactNameLadders(unit.Queries, unit.EntityIDs, surfaceOf)
+				// Query intents are emitted by BrainRust. Go preserves their order
+				// and never invents a per-identity fallback query from display names.
 			}
 		} else {
 			unit.SearchStatus = ProductionSearchReuse
@@ -401,6 +395,12 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 			continue
 		}
 		reason := fmt.Sprintf("representation %q was dropped by the run budget", fact.Representation.CandidateID)
+		for _, unit := range plan.Units {
+			if unit.CandidateID == fact.Representation.CandidateID && strings.TrimSpace(unit.DroppedReason) != "" {
+				reason = unit.DroppedReason
+				break
+			}
+		}
 		plan.Coverage.DeferredFacts++
 		plan.Coverage.Deferred = append(plan.Coverage.Deferred, SemanticDeferredFact{FactID: fact.ID, Reason: reason})
 	}
@@ -441,6 +441,170 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 	sort.Slice(plan.Identity, func(i, j int) bool { return plan.Identity[i].ID < plan.Identity[j].ID })
 	plan.factsByCandidate = candidateFacts
 	return plan, nil
+}
+
+// weakVisualEntityQuery suppresses an image search for an abstract visual
+// concept or a bare place name unless the source provides a contextual query
+// with multiple grounded components. Those bare terms routinely return
+// generic biographies, maps, or unrelated venue pages. Contextual scene
+// searches and person identities remain eligible.
+func weakVisualEntityQuery(candidate SemanticProductionCandidate, identities map[string]SemanticIdentity) string {
+	if candidate.Recipe != "entity_search" || len(candidate.EntityIDs) != 1 {
+		return ""
+	}
+	kind := strings.ToUpper(strings.TrimSpace(identities[candidate.EntityIDs[0]].Kind))
+	if kind != "VISUAL_CONCEPT" && kind != "LOCATION" && kind != "PLACE" && kind != "GPE" {
+		return ""
+	}
+	surface := strings.ToLower(strings.TrimSpace(identities[candidate.EntityIDs[0]].CanonicalSurface))
+	for _, query := range candidate.Queries {
+		if query.Kind == "context_phrase" && strings.TrimSpace(query.Evidence) != "" && len(query.Components) >= 2 {
+			return ""
+		}
+		// A full source sentence naming the identity is source-grounded
+		// context, not a bare place query. The scheduler keeps that sentence as
+		// its own rung; skipping the unit before the ladder runs discarded a
+		// concrete place because only context_phrase was recognized.
+		if query.Kind == "source_sentence" && surface != "" &&
+			strings.Contains(strings.ToLower(query.Text), surface) {
+			return ""
+		}
+	}
+	return fmt.Sprintf("weak_visual_query: %s identity has no source-grounded contextual query", strings.ToLower(kind))
+}
+
+// ApplyCallerImageSearches adds explicit, caller-authored image searches to
+// the matching semantic scene ladder. These searches are kept in the same
+// planner/report path as inferred searches, so an operator can see the exact
+// query and its result. A manual query is attached to at most one production
+// unit per scene to avoid multiplying provider calls across co-mentioned
+// entities.
+func ApplyCallerImageSearches(plan *SemanticProductionPlan, searches []mediadomain.SegmentMediaSearch, assignments []mediadomain.SegmentMediaAssignment) int {
+	if plan == nil || len(searches) == 0 {
+		return 0
+	}
+	added := 0
+	for _, search := range searches {
+		if !callerImageSearchAllowed(search) || callerImageSearchLocked(search, assignments) {
+			continue
+		}
+		query := strings.TrimSpace(search.Query)
+		if query == "" {
+			continue
+		}
+		matched := make([]int, 0)
+		duplicate := false
+		late := false
+		for index := range plan.Units {
+			unit := &plan.Units[index]
+			if !unit.RequiresMedia || unit.Status != ProductionUnitPlanned || !unitMatchesScene(unit, search.SegmentID) {
+				continue
+			}
+			if unit.SearchStatus != ProductionSearchPending {
+				late = true
+				continue
+			}
+			if semanticQueryPresent(unit.Queries, query) {
+				duplicate = true
+				break
+			}
+			matched = append(matched, index)
+		}
+		if duplicate || len(matched) == 0 {
+			if late && !duplicate {
+				plan.Metrics.SearchesTooLate++
+			}
+			continue
+		}
+		// Give different authored queries independent composition units in
+		// the same scene before turning them into fallback rungs on one unit.
+		selected := matched[0]
+		for _, index := range matched {
+			if !unitHasCallerQuery(&plan.Units[index]) {
+				selected = index
+				break
+			}
+		}
+		unit := &plan.Units[selected]
+		unit.Queries = append([]SemanticSearchQuery{{Kind: "context_phrase", Text: query, Origin: "caller_media_plan"}}, unit.Queries...)
+		plan.Metrics.PlannedQueries++
+		added++
+	}
+	return added
+}
+
+func callerImageSearchAllowed(search mediadomain.SegmentMediaSearch) bool {
+	switch search.Slot {
+	case mediadomain.SlotSecondaryImage, mediadomain.SlotPortrait, mediadomain.SlotEvidenceOverlay, mediadomain.SlotBackground:
+	default:
+		return false
+	}
+	if len(search.Providers) > 0 {
+		allowed := false
+		for _, provider := range search.Providers {
+			if strings.EqualFold(strings.TrimSpace(provider), "internet_images") || strings.EqualFold(strings.TrimSpace(provider), "semantic_production_plan") {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return false
+		}
+	}
+	if len(search.MediaTypes) > 0 {
+		allowed := false
+		for _, mediaType := range search.MediaTypes {
+			if strings.EqualFold(strings.TrimSpace(mediaType), "image") || strings.EqualFold(strings.TrimSpace(mediaType), "image/*") {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return false
+		}
+	}
+	return strings.TrimSpace(search.SegmentID) != ""
+}
+
+func callerImageSearchLocked(search mediadomain.SegmentMediaSearch, assignments []mediadomain.SegmentMediaAssignment) bool {
+	for _, assignment := range assignments {
+		if assignment.Locked && assignment.SegmentID == search.SegmentID && assignment.Slot == search.Slot {
+			return true
+		}
+	}
+	return false
+}
+
+func unitMatchesScene(unit *SemanticProductionUnit, sceneID string) bool {
+	if unit == nil || strings.TrimSpace(sceneID) == "" {
+		return false
+	}
+	if unit.SceneID == sceneID || slices.Contains(unit.SceneIDs, sceneID) {
+		return true
+	}
+	return false
+}
+
+func semanticQueryPresent(queries []SemanticSearchQuery, query string) bool {
+	want := normalizeIdentitySurface(query)
+	for _, existing := range queries {
+		if normalizeIdentitySurface(existing.Text) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func unitHasCallerQuery(unit *SemanticProductionUnit) bool {
+	if unit == nil {
+		return false
+	}
+	for _, query := range unit.Queries {
+		if query.Origin == "caller_media_plan" {
+			return true
+		}
+	}
+	return false
 }
 
 // semanticPlannerPriority gives a source-grounded composed query a chance to
@@ -523,36 +687,6 @@ func (p *SemanticProductionPlan) revokeSkippedUnit(unit *SemanticProductionUnit,
 			}
 		}
 	}
-}
-
-// exactNameLadders lists the identities a composition mentions but its main
-// ladder never searched, one exact-name fallback each. Only a composition
-// carrying several names can be narrowed by dropping one.
-func exactNameLadders(queries []SemanticSearchQuery, entityIDs []string, surfaceOf func(string) string) []SemanticNameLadder {
-	if len(entityIDs) < 2 {
-		return nil
-	}
-	tried := make(map[string]struct{}, len(queries))
-	for _, query := range queries {
-		if query.Kind == "exact_mention" {
-			tried[normalizeIdentitySurface(query.Text)] = struct{}{}
-		}
-	}
-	var ladders []SemanticNameLadder
-	for _, entityID := range entityIDs {
-		surface := surfaceOf(entityID)
-		if surface == "" {
-			continue
-		}
-		if _, ok := tried[normalizeIdentitySurface(surface)]; ok {
-			continue
-		}
-		ladders = append(ladders, SemanticNameLadder{
-			EntityID: entityID,
-			Queries:  []SemanticSearchQuery{{Kind: "exact_mention", Text: surface}},
-		})
-	}
-	return ladders
 }
 
 // IdentitiesAdmittedForMedia returns the canonical surfaces the plan admitted

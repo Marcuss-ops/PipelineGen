@@ -6,15 +6,23 @@ package entitycatalog
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"net"
+	"net/url"
 	"strings"
 	"time"
-
-	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 )
 
 const (
 	EntityTypePerson = "PERSON"
+
+	// CatalogImageMinLongSide and CatalogImageMinPixels are the durable
+	// catalog quality floor. The acquisition gate may accept smaller bytes for
+	// technical inspection, but only these dimensions can enter the reusable
+	// identity pool.
+	CatalogImageMinLongSide = 800
+	CatalogImageMinPixels   = 400000
 
 	// CandidateStatusFresh is the current healthy URL state. Active is kept
 	// as a legacy read-compatible value for rows created before migration 225.
@@ -36,6 +44,15 @@ const (
 	MaterializationStatusPending      = "pending"
 	MaterializationStatusMaterialized = "materialized"
 	MaterializationStatusFailed       = "failed"
+
+	// CandidateVerifierVersion is the visual policy that produced an
+	// accepted/rejected entity-image verdict. Bump this whenever the model, prompt, or
+	// scoring thresholds change: a verdict from another version is evidence
+	// about different pixels under different rules, so it is not reusable.
+	CandidateVerifierVersion = "entity-image-visual/v3"
+	// CandidateVerifierVersionPinned is the offline media-manifest verifier.
+	// It is trusted for its exact content hash, but it is not a VLM verdict.
+	CandidateVerifierVersionPinned = "media-manifest.v1/pinned"
 )
 
 var (
@@ -58,6 +75,9 @@ type Entity struct {
 	LastError         string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	// LegacyTimestamp is true when at least one persisted timestamp was not
+	// parseable. Callers must not treat the zero time as "never seen".
+	LegacyTimestamp bool
 }
 
 // Candidate stores one stable remote image URL for one canonical entity.
@@ -77,9 +97,18 @@ type Candidate struct {
 	SemanticScore     float64
 	TechnicalScore    float64
 	QualityReason     string
-	FirstSeenAt       time.Time
-	LastSeenAt        time.Time
-	UpdatedAt         time.Time
+	// ContentSHA256 is the digest of the bytes this URL resolved to. Empty
+	// means the candidate was only discovered; a changed non-empty digest
+	// invalidates the visual verdict attached to the old bytes.
+	ContentSHA256 string
+	// VerifierVersion names the policy that produced SemanticStatus. Empty
+	// is a metadata-only discovery row, never a usable visual verdict.
+	VerifierVersion string
+	FirstSeenAt     time.Time
+	LastSeenAt      time.Time
+	UpdatedAt       time.Time
+	// LegacyTimestamp marks an unparseable persisted timestamp.
+	LegacyTimestamp bool
 }
 
 // Materialization is intentionally separate from Candidate. It records which
@@ -106,6 +135,21 @@ type Materialization struct {
 	LastError      string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+	// LegacyTimestamp marks an unparseable persisted timestamp.
+	LegacyTimestamp bool
+}
+
+// MaterializationAttempt is one append-only observation of a materialization
+// write. The current materialization row is the latest state; attempts preserve
+// the history that produced it, including failures.
+type MaterializationAttempt struct {
+	ID            int64
+	CandidateID   int64
+	AssetID       string
+	ContentSHA256 string
+	Status        string
+	LastError     string
+	AttemptedAt   time.Time
 }
 
 // Repository is the persistence port for the catalog. Implementations must
@@ -124,41 +168,46 @@ type Repository interface {
 	GetMaterialization(context.Context, int64) (*Materialization, error)
 }
 
+// CandidatePageReader is the optional paged scan. The bounded ListCandidates
+// remains for compatibility; production readers page until the requested pool
+// is satisfied instead of hiding a valid row after the first 100.
+type CandidatePageReader interface {
+	ListCandidatesPage(context.Context, string, int, int) ([]Candidate, error)
+}
+
+// MaterializationBatchReader removes the N+1 lookup from catalog pool reads.
+type MaterializationBatchReader interface {
+	GetMaterializations(context.Context, []int64) (map[int64]*Materialization, error)
+}
+
 // PersonIdentity is the canonical identity pair used by the catalog.
 // CanonicalEntityID is owned by capabilities/entities; CanonicalName only
 // normalizes surrounding and internal whitespace while preserving spelling.
 type PersonIdentity struct {
 	CanonicalEntityID string
 	CanonicalName     string
+	// Disambiguator is set when the identity was explicitly minted for a
+	// homonym (for example "actor" for one of several John Smiths).
+	Disambiguator string
+	// Unresolved is true when the surface is known to belong to more than one
+	// identity and no owner was selected. Such an identity is not selectable.
+	Unresolved bool
+	// Candidates lists the possible owners when Unresolved is true.
+	Candidates []string
 }
 
 // CanonicalizePersonName derives the stable PERSON identity through the
 // repository-wide canonical resolver. Casing and whitespace variants collapse
 // to one ID, while meaningful name tokens remain part of the slug.
 func CanonicalizePersonName(name string) (PersonIdentity, error) {
-	canonicalName := strings.Join(strings.Fields(strings.TrimSpace(name)), " ")
-	canonicalID := capabilityentities.CanonicalEntityID(EntityTypePerson, canonicalName)
-	if canonicalID == "" {
-		return PersonIdentity{}, errors.New("entity image catalog: PERSON name cannot produce a canonical entity id")
-	}
-	return PersonIdentity{CanonicalEntityID: canonicalID, CanonicalName: canonicalName}, nil
+	return CanonicalizePersonNameWithAliases(name, nil)
 }
 
 // CanonicalizePersonIdentity derives the ID from the name and, when a caller
 // supplied one, verifies that it is the same identity. An empty supplied ID is
 // accepted so callers can safely provide only the canonical display name.
 func CanonicalizePersonIdentity(name, suppliedID string) (PersonIdentity, error) {
-	identity, err := CanonicalizePersonName(name)
-	if err != nil {
-		return PersonIdentity{}, err
-	}
-	if supplied := NormalizePersonEntityID(suppliedID); supplied != "" && supplied != identity.CanonicalEntityID {
-		return PersonIdentity{}, errors.New("entity image catalog: supplied PERSON entity id does not match canonical name")
-	}
-	if strings.TrimSpace(suppliedID) != "" && NormalizePersonEntityID(suppliedID) == "" {
-		return PersonIdentity{}, errors.New("entity image catalog: supplied PERSON entity id is invalid")
-	}
-	return identity, nil
+	return CanonicalizePersonIdentityWithAliases(name, suppliedID, nil)
 }
 
 // NormalizePersonEntityID validates and normalizes an already-derived ID.
@@ -179,6 +228,41 @@ func ValidateEntity(entity Entity) error {
 	return err
 }
 
+// NormalizeSourceURL is the identity form used by the candidate unique key.
+// Scheme/host case, default ports, fragments and common tracking parameters
+// are retrieval noise: the same image must not mint two catalog rows because
+// a provider appended utm_source or changed the host casing.
+func NormalizeSourceURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return raw
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	host := strings.ToLower(parsed.Hostname())
+	port := parsed.Port()
+	if (parsed.Scheme == "http" && port == "80") || (parsed.Scheme == "https" && port == "443") {
+		port = ""
+	}
+	if port != "" {
+		parsed.Host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") {
+		parsed.Host = "[" + host + "]"
+	} else {
+		parsed.Host = host
+	}
+	parsed.Fragment = ""
+	query := parsed.Query()
+	for key := range query {
+		lower := strings.ToLower(key)
+		if strings.HasPrefix(lower, "utm_") || lower == "fbclid" || lower == "gclid" || lower == "mc_cid" || lower == "mc_eid" || lower == "igshid" {
+			query.Del(key)
+		}
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
 func ValidateCandidate(candidate Candidate) error {
 	if NormalizePersonEntityID(candidate.CanonicalEntityID) == "" {
 		return errors.New("entity image catalog: candidate canonical PERSON entity id is required")
@@ -195,6 +279,14 @@ func ValidateCandidate(candidate Candidate) error {
 	}
 	if page := strings.ToLower(strings.TrimSpace(candidate.SourcePageURL)); page != "" && !strings.HasPrefix(page, "http://") && !strings.HasPrefix(page, "https://") {
 		return errors.New("entity image catalog: candidate source page URL must be absolute HTTP(S)")
+	}
+	if hash := strings.ToLower(strings.TrimSpace(candidate.ContentSHA256)); hash != "" {
+		if !IsValidContentSHA256(hash) {
+			return errors.New("entity image catalog: candidate content_sha256 must be 64 hex characters")
+		}
+	}
+	if len(strings.TrimSpace(candidate.VerifierVersion)) > 128 {
+		return errors.New("entity image catalog: candidate verifier version is too long")
 	}
 	if candidate.Width < 0 || candidate.Height < 0 {
 		return errors.New("entity image catalog: candidate dimensions cannot be negative")
@@ -238,6 +330,9 @@ func IsUsableCandidateQuality(candidate Candidate) bool {
 	if semanticStatus != CandidateSemanticAccepted {
 		return false
 	}
+	if !IsCurrentCandidateVerifierVersion(candidate.VerifierVersion) {
+		return false
+	}
 	// The accepted bit is reusable only when its provenance records a visual
 	// identity decision. Historical catalog writes also set `accepted` from a
 	// query/name match plus dimensions; those rows are useful for audit and
@@ -254,16 +349,48 @@ func IsUsableCandidateQuality(candidate Candidate) bool {
 	if candidate.TechnicalScore > 0 && candidate.TechnicalScore < 0.50 {
 		return false
 	}
-	if candidate.Width > 0 && candidate.Height > 0 {
-		longSide := candidate.Width
-		if candidate.Height > longSide {
-			longSide = candidate.Height
-		}
-		if longSide < 800 || candidate.Width*candidate.Height < 400000 {
-			return false
-		}
+	if candidate.Width > 0 && candidate.Height > 0 && !ImageMeetsCatalogMinimum(candidate.Width, candidate.Height) {
+		return false
 	}
 	return true
+}
+
+// ImageMeetsCatalogMinimum is the one dimension predicate shared by catalog
+// admission, discovery filtering and recertification validation.
+func ImageMeetsCatalogMinimum(width, height int) bool {
+	if width <= 0 || height <= 0 {
+		return false
+	}
+	longSide := width
+	if height > longSide {
+		longSide = height
+	}
+	return longSide >= CatalogImageMinLongSide && width*height >= CatalogImageMinPixels
+}
+
+// IsValidContentSHA256 reports whether value is a canonical 64-hex content
+// address. Callers use it to distinguish "no content identity yet" from a
+// digest about actual bytes.
+func IsValidContentSHA256(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if len(value) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+// IsCurrentCandidateVerifierVersion reports whether a verdict was produced by
+// a policy this build still trusts. Pinned media-manifest rows are trusted by
+// their exact content hash; every other verdict must name the current visual
+// policy. Legacy/empty versions fail closed.
+func IsCurrentCandidateVerifierVersion(version string) bool {
+	switch strings.TrimSpace(version) {
+	case CandidateVerifierVersion, CandidateVerifierVersionPinned:
+		return true
+	default:
+		return false
+	}
 }
 
 func ValidateSemanticStatus(status string) error {
@@ -287,6 +414,9 @@ func ValidateCandidateStatus(status string) error {
 func ValidateMaterialization(materialization Materialization) error {
 	if materialization.CandidateID < 1 {
 		return errors.New("entity image catalog: materialization candidate id is required")
+	}
+	if hash := strings.TrimSpace(materialization.ContentSHA256); hash != "" && !IsValidContentSHA256(hash) {
+		return errors.New("entity image catalog: materialization content_sha256 must be 64 hex characters")
 	}
 	if materialization.Status == "" {
 		return nil

@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -17,7 +18,7 @@ type Runner struct {
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	cfg        RunnerConfig
-	reg        *Registry
+	reg        *jobscheduling.Registry
 	broker     CompletionPort
 	jobLedger  capjobregistry.Registry
 	observer   *kernobs.RunObserver
@@ -54,7 +55,7 @@ func NewRunner(repo job.Store, dispatcher *Dispatcher, log *zap.Logger, cfg Runn
 	}
 }
 
-func (r *Runner) WithRegistry(reg *Registry) *Runner {
+func (r *Runner) WithRegistry(reg *jobscheduling.Registry) *Runner {
 	r.reg = reg
 	return r
 }

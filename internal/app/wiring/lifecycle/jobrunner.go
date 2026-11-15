@@ -206,7 +206,7 @@ func newJobRunnerPool(deps JobRunnerDeps, name string, cfg appjobs.RunnerConfig)
 	} else if calendarURL != "" || calendarKey != "" {
 		deps.Log.Warn("InstaEdit calendar reporter disabled: both URL and API key are required")
 	}
-	runner.WithRegistry(appjobs.Compose())
+	runner.WithRegistry(jobscheduling.Compose())
 	runner.WithClaimSnapshotter(deps.Execution.ClaimSnapshotter)
 	if deps.Execution.Broker != nil {
 		// The raw local broker remains on JobsBundle for server-side APIs that

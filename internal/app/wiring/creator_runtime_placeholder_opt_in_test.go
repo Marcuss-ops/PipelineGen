@@ -30,6 +30,7 @@ package wiring
 import (
 	"context"
 	"errors"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -53,20 +54,20 @@ func TestRegisterVoiceoverGenerateItemPlaceholder_BindsHandler(t *testing.T) {
 
 	// Verify the handler was bound via the canonical AllHandlers() map.
 	all := dispatcher.AllHandlers()
-	bound, ok := all[appjobs.TypeVoiceoverGenerateItem]
+	bound, ok := all[jobscheduling.TypeVoiceoverGenerateItem]
 	if !ok {
 		t.Fatalf("dispatcher.AllHandlers() map is missing %q after placeholder registration",
-			appjobs.TypeVoiceoverGenerateItem)
+			jobscheduling.TypeVoiceoverGenerateItem)
 	}
 	if bound == nil {
 		t.Fatalf("dispatcher.AllHandlers()[%q] is nil; the handler should be a non-nil HandlerFunc",
-			appjobs.TypeVoiceoverGenerateItem)
+			jobscheduling.TypeVoiceoverGenerateItem)
 	}
 
 	// Dispatch through the bound handler directly. The handler is the
 	// appjobs.HandlerFunc signature: (ctx, *job.Job, *appjobs.JobTools)
 	// → (map[string]any, error).
-	stubJob := &job.Job{ID: "stub-job-id", Type: appjobs.TypeVoiceoverGenerateItem, Payload: nil}
+	stubJob := &job.Job{ID: "stub-job-id", Type: jobscheduling.TypeVoiceoverGenerateItem, Payload: nil}
 	res, err := bound(context.Background(), stubJob, nil)
 	if err == nil {
 		t.Fatalf("placeholder dispatch must surface a godlike/07 typed error; got result=%v, err=nil", res)
@@ -86,7 +87,7 @@ func TestRegisterVoiceoverGenerateItemPlaceholder_BindsHandler(t *testing.T) {
 // contract. A future maintainer who accidentally returns
 // (map[string]any, err) would surface here as a CI failure.
 func TestVoiceoverPlaceholderHandler_FailsClosed(t *testing.T) {
-	stubJob := &job.Job{ID: "stub", Type: appjobs.TypeVoiceoverGenerateItem, Payload: nil}
+	stubJob := &job.Job{ID: "stub", Type: jobscheduling.TypeVoiceoverGenerateItem, Payload: nil}
 	res, err := voiceoverPlaceholderHandler(context.Background(), stubJob, nil)
 	if err == nil {
 		t.Fatalf("voiceoverPlaceholderHandler must return error; got result=%v, err=nil", res)

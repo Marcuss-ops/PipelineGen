@@ -1,6 +1,10 @@
 package scriptgeneration
 
-import "testing"
+import (
+	"testing"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
 
 // runner_render_units_test.go pins the used-as-stock render contract
 // (payload script_params.segments[].stock_clip_ids): a scene whose clips are
@@ -71,6 +75,46 @@ func TestRenderUnitsForScene_VisualSceneKeepsHistoricalFanout(t *testing.T) {
 	}
 	if units := RenderUnitsForScene(Scene{ID: "scene-bare"}); len(units) != 0 {
 		t.Fatalf("clip-less scene must produce no units, got %+v", units)
+	}
+}
+
+// TestSceneRenderSpec_BurnsCaptionsOnClipOnlyMainClips pins the per-clip
+// subtitle contract: in a clip_only run the visual is the clip itself (a
+// rendered card such as cliprender_*), not a yt_ library clip, and it must
+// still inherit the requested caption burn. Treating only yt_ clips as source
+// footage silently delivered un-subtitled main clips.
+func TestSceneRenderSpec_BurnsCaptionsOnClipOnlyMainClips(t *testing.T) {
+	req := GenerateRequest{
+		MediaMode: scriptpkg.MediaMode("clip_only"),
+		Render: scriptpkg.VideoRenderSpec{
+			Subtitles: &scriptpkg.VideoSubtitlesSpec{Enabled: true, Mode: "burn"},
+		},
+	}
+	scene := Scene{ID: "scene-main", Clip: visualClip("cliprender_abc")}
+	spec := sceneRenderSpec(req, scene)
+	if spec.Subtitles == nil || !spec.Subtitles.Enabled {
+		t.Fatal("a clip_only main clip must keep the requested caption burn")
+	}
+}
+
+// TestSceneRenderSpec_StockVisualNeverInheritsCaptions keeps the other half:
+// a stock-owned visual (or a stock_only body scene) never burns narration
+// captions onto the stock plate, because those captions belong to the clips.
+func TestSceneRenderSpec_StockVisualNeverInheritsCaptions(t *testing.T) {
+	req := GenerateRequest{
+		MediaMode: scriptpkg.MediaMode("stock_only"),
+		Render: scriptpkg.VideoRenderSpec{
+			Subtitles: &scriptpkg.VideoSubtitlesSpec{Enabled: true, Mode: "burn"},
+		},
+	}
+	for _, scene := range []Scene{
+		{ID: "scene-stock", Clip: visualClip("cliprender_abc"), Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}},
+		{ID: "scene-body", Clip: visualClip("cliprender_abc")},
+	} {
+		spec := sceneRenderSpec(req, scene)
+		if spec.Subtitles != nil && spec.Subtitles.Enabled {
+			t.Fatalf("scene %q must not burn captions onto a stock visual", scene.ID)
+		}
 	}
 }
 

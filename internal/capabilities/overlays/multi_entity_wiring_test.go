@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
@@ -41,63 +42,65 @@ func TestGroupNearbyEntities_DuoImages(t *testing.T) {
 		t.Errorf("expected group_type=image, got %s", g.GroupType)
 	}
 	items, err := WireMultiEntityOverlays(g, 1920, 1080)
-	if err != nil || len(items) != 2 {
-		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want two timed image items", len(items), err)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want one sequenced image group", len(items), err)
+	}
+	if len(items[0].ImageLayers) != 2 || items[0].CameraMotionID != "" || items[0].GroupMotionID != "" {
+		t.Fatalf("wiring must leave one shared window and no camera before the planner chooses the group choreography: %+v", items[0])
 	}
 	for i, want := range []struct {
 		id, caption string
-		start, end  int64
 	}{
-		{"ent_1", "Entity Alpha", 1000, 2500}, {"ent_2", "Entity Beta", 2800, 4500},
+		{"ent_1", "Entity Alpha"}, {"ent_2", "Entity Beta"},
 	} {
-		item := items[i]
-		if item.Kind != string(capmodel.KindEntityImage) || item.TemplateID != "IMAGE_OVERLAY" || len(item.ImageLayers) != 0 {
-			t.Errorf("image %d must remain an independent entity_image item: %+v", i, item)
+		item := items[0].ImageLayers[i]
+		if item.ID != want.id || item.Caption != want.caption {
+			t.Errorf("image %d identity/caption = %q/%q, want %q/%q", i, item.ID, item.Caption, want.id, want.caption)
 		}
-		if item.ID != want.id || item.EntityCaption != want.caption || item.StartMs != want.start || item.EndMs != want.end {
-			t.Errorf("image %d lost its own identity/caption/timing: %+v", i, item)
+		if item.StartMS != 0 || item.EndMS != g.EndMS-g.StartMS {
+			t.Errorf("image %d is not on the shared group window: %+v", i, item)
 		}
-		if item.MotionID == "" || !containsString(CertifiedSingleImageMotions(), item.MotionID) || item.PresetID == "" {
-			t.Errorf("image must have its own certified motion and preset: %+v", item)
+		if item.CaptionMotionID == "" || item.PresetID == "" || item.MotionID != "" {
+			t.Errorf("image member should keep caption/preset and leave motion to the group choreography: %+v", item)
 		}
-	}
-	if items[0].MotionID == items[1].MotionID {
-		t.Errorf("adjacent images should use independent motions: %q", items[0].MotionID)
 	}
 }
 
-func TestWireMultiEntityAddsSequenceCameraForMultiImageGroups(t *testing.T) {
+func TestWireMultiEntityLeavesGroupChoreographyToPlanner(t *testing.T) {
 	group := MultiEntityGroup{
-		GroupID: "camera-group", SceneID: "scene-camera", GroupType: MultiEntityKindImage,
-		Count: 2, StartMS: 0, EndMS: 5000,
+		GroupID: "group-window", SceneID: "scene-window", GroupType: MultiEntityKindImage,
+		Count: 2, StartMS: 100, EndMS: 5100,
 		Items: []MultiEntityCandidate{
-			{ID: "a", SceneID: "scene-camera", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &capmodel.OverlayAssetRef{AssetID: "a", SHA256: strings.Repeat("a", 64)}},
-			{ID: "b", SceneID: "scene-camera", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &capmodel.OverlayAssetRef{AssetID: "b", SHA256: strings.Repeat("b", 64)}},
+			{ID: "a", SceneID: "scene-window", Kind: MultiEntityKindImage, StartMS: 100, EndMS: 3000, AssetRef: &capmodel.OverlayAssetRef{AssetID: "a", SHA256: strings.Repeat("a", 64)}},
+			{ID: "b", SceneID: "scene-window", Kind: MultiEntityKindImage, StartMS: 2200, EndMS: 5100, AssetRef: &capmodel.OverlayAssetRef{AssetID: "b", SHA256: strings.Repeat("b", 64)}},
 		},
 	}
 	items, err := WireMultiEntityOverlays(group, 1280, 720)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, item := range items {
-		if item.CameraMotionID == "" {
-			t.Fatalf("image %d lost the sequence camera", i)
-		}
-		if !AnimationSelectable(item.CameraMotionID, "entity.sequence_camera") {
-			t.Fatalf("image %d camera %q is not certified", i, item.CameraMotionID)
+	if len(items) != 1 || len(items[0].ImageLayers) != 2 {
+		t.Fatalf("image group did not become one composite: %+v", items)
+	}
+	if items[0].CameraMotionID != "" || items[0].GroupMotionID != "" {
+		t.Fatalf("wiring pre-empted the planner's group choreography: camera=%q group=%q", items[0].CameraMotionID, items[0].GroupMotionID)
+	}
+	for _, layer := range items[0].ImageLayers {
+		if layer.StartMS != 0 || layer.EndMS != 5000 {
+			t.Fatalf("layer %q is not on the shared group window: %+v", layer.ID, layer)
 		}
 	}
 
 	single := group
 	single.Items = group.Items[:1]
 	single.Count = 1
-	single.GroupID = "single-camera"
+	single.GroupID = "single-window"
 	singleItems, err := WireMultiEntityOverlays(single, 1280, 720)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if singleItems[0].CameraMotionID != "" {
-		t.Fatalf("single image received a sequence camera: %q", singleItems[0].CameraMotionID)
+	if len(singleItems) != 1 || len(singleItems[0].ImageLayers) != 0 || singleItems[0].CameraMotionID != "" {
+		t.Fatalf("single image must stay a standalone image: %+v", singleItems)
 	}
 }
 
@@ -125,13 +128,11 @@ func TestGroupNearbyEntities_TrioQuadPenta(t *testing.T) {
 	}
 
 	items, err := WireMultiEntityOverlays(g, 1920, 1080)
-	if err != nil || len(items) != 5 {
-		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want five timed images", len(items), err)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want one timed image group", len(items), err)
 	}
-	for i, item := range items {
-		if len(item.ImageLayers) != 0 || item.AssetRefs[0].AssetID != string(rune('A'+i)) {
-			t.Errorf("image %d should be an independent item, got %+v", i, item)
-		}
+	if len(items[0].ImageLayers) != 5 || len(items[0].AssetRefs) != 5 {
+		t.Fatalf("image group has %d layers/%d assets, want five: %+v", len(items[0].ImageLayers), len(items[0].AssetRefs), items[0])
 	}
 }
 
@@ -273,16 +274,26 @@ func TestBuildPlanLowersEditorialGroupsToCanonicalRenderPrimitives(t *testing.T)
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("canonical grouped plan failed validation: %v", err)
 	}
-	if len(plan.Items) != 2 {
-		t.Fatalf("group plan emitted %d items, want two independently timed images", len(plan.Items))
+	if len(plan.Items) != 1 {
+		t.Fatalf("group plan emitted %d items, want one sequenced image group", len(plan.Items))
 	}
-	for _, item := range plan.Items {
-		if item.Kind != string(capmodel.KindEntityImage) || len(item.ImageLayers) != 0 || item.MotionID == "" {
-			t.Fatalf("group plan did not preserve independent animated images: %+v", item)
+	item := plan.Items[0]
+	if item.Kind != string(capmodel.KindEntityImage) || len(item.ImageLayers) != 2 || item.GroupMotionID == "" {
+		t.Fatalf("group plan did not preserve its sequenced image group: %+v", item)
+	}
+	if item.CameraMotionID != "" || item.MotionID != "" {
+		t.Fatalf("group plan must have one owner: camera=%q parent=%q", item.CameraMotionID, item.MotionID)
+	}
+	if !AnimationSelectable(item.GroupMotionID, "image.group.count_2") {
+		t.Fatalf("group motion %q is not certified for a two-image composite", item.GroupMotionID)
+	}
+	for _, layer := range item.ImageLayers {
+		if layer.MotionID != "" || layer.StartMS != 0 || layer.EndMS != 5000 {
+			t.Fatalf("group-owned layer %q must be motion-free on the shared window: %+v", layer.ID, layer)
 		}
 	}
-	if EditorialSectionForItem(plan.Items[0]) != EditorialSectionSingleImage {
-		t.Fatalf("image editorial section=%q, want %q", EditorialSectionForItem(plan.Items[0]), EditorialSectionSingleImage)
+	if EditorialSectionForItem(item) != EditorialSectionImageStack {
+		t.Fatalf("image editorial section=%q, want %q", EditorialSectionForItem(item), EditorialSectionImageStack)
 	}
 }
 
@@ -310,10 +321,10 @@ func TestWireMultiEntityOverlaysSeparatesMixedContentIntoExistingKinds(t *testin
 	}
 }
 
-// Group motion offsets must be seeded by group identity: rewiring the same
-// group is bit-identical (retries), while distinct groups vary (previously a
-// hardcoded offset 0 gave every group in every job the same entrances).
-func TestWireMultiEntityMotionsSeededByGroup(t *testing.T) {
+// Group choreography is seeded by group identity: the same group plans
+// bit-identically on retries, while distinct groups draw different entrances
+// from the certified image.group.count_N pool.
+func TestBuildPlanGroupMotionsSeededByGroup(t *testing.T) {
 	mkGroup := func(groupID string) MultiEntityGroup {
 		return MultiEntityGroup{
 			GroupID: groupID, SceneID: "scene-1", StartMS: 0, EndMS: 5000,
@@ -323,33 +334,46 @@ func TestWireMultiEntityMotionsSeededByGroup(t *testing.T) {
 			},
 		}
 	}
-	wire := func(groupID string) []capmodel.OverlayItem {
+	planFor := func(groupID string) capmodel.OverlayItem {
 		t.Helper()
-		items, err := WireMultiEntityOverlays(mkGroup(groupID), 1280, 720)
+		group := mkGroup(groupID)
+		scenes := []SceneInput{{ID: "scene-1", EndUS: 5_000_000, MultiEntityGroups: []MultiEntityGroup{group}}}
+		plan, err := BuildPlan(PlanInput{
+			PlanID: "plan-" + groupID, VideoID: "video", MotionSeed: "group-seed",
+			Width: 1280, Height: 720, FPSNum: 24, FPSDen: 1, Scenes: scenes,
+		}, AllCandidatesPlannerConfig(scenes))
 		if err != nil {
-			t.Fatalf("wire %s: %v", groupID, err)
+			t.Fatalf("plan %s: %v", groupID, err)
 		}
-		if len(items) != 2 || len(items[0].ImageLayers) != 0 || len(items[1].ImageLayers) != 0 {
-			t.Fatalf("wire %s = %+v, want two independent image items", groupID, items)
+		if len(plan.Items) != 1 || len(plan.Items[0].ImageLayers) != 2 {
+			t.Fatalf("plan %s = %+v, want one two-image composite", groupID, plan.Items)
 		}
-		return items
+		item := plan.Items[0]
+		if item.GroupMotionID == "" || item.CameraMotionID != "" || item.MotionID != "" {
+			t.Fatalf("plan %s owners = group:%q camera:%q parent:%q", groupID, item.GroupMotionID, item.CameraMotionID, item.MotionID)
+		}
+		if !AnimationSelectable(item.GroupMotionID, "image.group.count_2") {
+			t.Fatalf("plan %s group motion %q is not certified", groupID, item.GroupMotionID)
+		}
+		for _, layer := range item.ImageLayers {
+			if layer.MotionID != "" {
+				t.Fatalf("plan %s layer %q has a competing motion %q", groupID, layer.ID, layer.MotionID)
+			}
+			if layer.CaptionMotionID == "" {
+				t.Fatalf("plan %s layer %q lost its caption entrance", groupID, layer.ID)
+			}
+		}
+		return item
 	}
-	first, again := wire("group-1"), wire("group-1")
-	for i := range first {
-		if first[i].MotionID != again[i].MotionID || first[i].CaptionMotionID != again[i].CaptionMotionID {
-			t.Fatalf("rewire not deterministic: %+v vs %+v", first, again)
-		}
-		if first[i].MotionID == "" || first[i].CaptionMotionID == "" {
-			t.Fatalf("empty motion on layer %d: %+v", i, first[i])
-		}
+	first, again := planFor("group-1"), planFor("group-1")
+	if first.GroupMotionID != again.GroupMotionID {
+		t.Fatalf("same group selected %q then %q", first.GroupMotionID, again.GroupMotionID)
 	}
 	seen := map[string]bool{}
-	for _, groupID := range []string{"group-1", "group-2", "group-3", "group-4", "group-5", "group-6", "group-7", "group-8"} {
-		for _, layer := range wire(groupID) {
-			seen[layer.MotionID] = true
-		}
+	for i := 1; i <= 8; i++ {
+		seen[planFor(fmt.Sprintf("group-%d", i)).GroupMotionID] = true
 	}
 	if len(seen) < 2 {
-		t.Errorf("eight distinct groups share one image motion %v: offset seed has no effect", seen)
+		t.Errorf("eight distinct groups share one group motion %v: group seed has no effect", seen)
 	}
 }

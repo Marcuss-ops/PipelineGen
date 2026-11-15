@@ -1,0 +1,31 @@
+name: BrainRust ICU runtime contract
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  icu-runtime:
+    name: pinned ICU ABI + rust-fetch contract
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Install the pinned ICU 72 runtime
+        run: sudo scripts/deploy/install_icu72_runtime.sh
+
+      - name: Verify the Rust fetch ABI checks
+        run: scripts/ci/test-rust-fetch.sh
+
+      - name: Verify the container runtime pin
+        run: grep -q 'RUST_ICU_MAJOR_VERSION_NUMBER=72' Dockerfile
+
+      - name: Verify the release annotation pin
+        run: test -r BrainRust/ICU_MAJOR && test "$(tr -dc '0-9' < BrainRust/ICU_MAJOR)" = "72"

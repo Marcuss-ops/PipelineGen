@@ -9,9 +9,8 @@ import "strings"
 //   - replace punctuation with spaces
 //   - collapse whitespace
 //
-// The exact rule set is duplicated in pkg/sqlutil.BuildFallbackLikeConditions
-// so the two stay in sync (token gating at >=3 chars on tokens level,
-// NOT on search_text level — LIKE handles that).
+// FindSimilarChunksBySearchText MUST mirror this rule set (token gating at
+// >=3 chars on token level, NOT on search_text level — LIKE handles that).
 func NormalizeSearchText(s string) string {
 	s = strings.ToLower(s)
 	s = strings.NewReplacer(

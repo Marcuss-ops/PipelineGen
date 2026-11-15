@@ -13,8 +13,8 @@ func chapterTestPhrase(text string) TimedAnnotation {
 	}
 }
 
-func in3DPool(id string) bool {
-	for _, candidate := range text3DMotionCandidates {
+func inChapterPool(id string) bool {
+	for _, candidate := range ChapterBulletMotionCandidates() {
 		if candidate == id {
 			return true
 		}
@@ -22,7 +22,7 @@ func in3DPool(id string) bool {
 	return false
 }
 
-func TestChapterBulletGets3DMotion(t *testing.T) {
+func TestChapterBulletAvoids3DMotion(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "chapter-3d", VideoID: "video-chapter-3d",
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -40,15 +40,18 @@ func TestChapterBulletGets3DMotion(t *testing.T) {
 	if item.Params["editorial_role"] != ChapterBulletRole {
 		t.Fatalf("editorial_role = %v, want chapter_bullet", item.Params["editorial_role"])
 	}
-	if !in3DPool(item.MotionID) {
-		t.Fatalf("chapter motion = %q, want text_3d family %v", item.MotionID, text3DMotionCandidates)
+	if !inChapterPool(item.MotionID) {
+		t.Fatalf("chapter motion = %q, want safe long-copy family %v", item.MotionID, ChapterBulletMotionCandidates())
+	}
+	if strings.HasPrefix(item.MotionID, "text_3d_") {
+		t.Fatalf("chapter motion = %q, want no text_3d family (blank on the light canvas)", item.MotionID)
 	}
 	if item.Params["position"] != "center" {
 		t.Fatalf("position = %v, want center", item.Params["position"])
 	}
 }
 
-func TestChapterBulletsRotateDistinct3DMotions(t *testing.T) {
+func TestChapterBulletsRotateDistinctSafeMotions(t *testing.T) {
 	scenes := make([]SceneInput, 0, 3)
 	for i, text := range []string{
 		"Prima scena del capitolo con testo lungo abbastanza per il conteggio",
@@ -69,8 +72,8 @@ func TestChapterBulletsRotateDistinct3DMotions(t *testing.T) {
 		if item.Params["editorial_role"] != ChapterBulletRole {
 			continue
 		}
-		if !in3DPool(item.MotionID) {
-			t.Fatalf("chapter motion = %q, want text_3d family", item.MotionID)
+		if !inChapterPool(item.MotionID) || strings.HasPrefix(item.MotionID, "text_3d_") {
+			t.Fatalf("chapter motion = %q, want a safe non-3D long-copy entrance", item.MotionID)
 		}
 		if _, dup := seen[item.MotionID]; dup {
 			t.Fatalf("duplicate chapter motion %q: chapters must not share entrances", item.MotionID)
@@ -82,9 +85,9 @@ func TestChapterBulletsRotateDistinct3DMotions(t *testing.T) {
 	}
 }
 
-func TestChapterBulletShortCopyStaysIn3DFamily(t *testing.T) {
+func TestChapterBulletShortCopyUsesSafeFamily(t *testing.T) {
 	// Four words would take the short-phrase catalog as an ordinary phrase;
-	// as a chapter card it must keep the 3D family and the long section.
+	// as a chapter card it must use the safe long-copy family and the long section.
 	short := chapterTestPhrase("Quattro parole capitolo qui")
 	item := capmodel.OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: short.Text,
 		Params: map[string]any{"editorial_role": ChapterBulletRole}}
@@ -96,8 +99,11 @@ func TestChapterBulletShortCopyStaysIn3DFamily(t *testing.T) {
 		t.Fatal("no chapter candidates")
 	}
 	for _, id := range candidates {
-		if !in3DPool(id) {
-			t.Fatalf("chapter candidate %q escapes the 3D family", id)
+		if strings.HasPrefix(id, "text_3d_") {
+			t.Fatalf("chapter candidate %q is the blank-on-white 3D family", id)
+		}
+		if !inChapterPool(id) {
+			t.Fatalf("chapter candidate %q escapes the safe long-copy family", id)
 		}
 		if strings.Contains(id, "short") || IsShortPhraseRecipe(id) {
 			t.Fatalf("chapter candidate %q leaks the short catalog", id)

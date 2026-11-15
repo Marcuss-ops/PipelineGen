@@ -40,6 +40,15 @@ func (e *GenerationEnvelopeV2) Validate() error {
 				},
 			}
 		}
+		// final_job hands the item to the remote render boundary. Accepting
+		// it with render disabled only fails after generation, when the
+		// operator has already paid for the script; reject it at ingress.
+		if e.FinalJob && !item.Output.Render.Enabled {
+			return &PlanInvalidError{
+				ItemID:  item.ID,
+				Details: []string{ref + ": output.render.enabled must be true when final_job=true"},
+			}
+		}
 
 		// Deprecated-field fence: source.intro_clip_ids is removed from the
 		// contract, so any payload still carrying it fails closed here —

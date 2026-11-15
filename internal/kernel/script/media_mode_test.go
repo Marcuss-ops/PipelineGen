@@ -149,19 +149,23 @@ func TestMediaModeStockOnlyRejectsDeprecatedIntroClipIDs(t *testing.T) {
 	}
 }
 
-func TestMediaModeStockOnlyRejectsAssetID(t *testing.T) {
+func TestMediaModeStockOnlyAcceptsDirectAssetID(t *testing.T) {
 	i := stockOnlyItem()
-	i.Output.StockBindings[0].AssetID = "file-1"
-	if got := validateMediaItem(t, i).Code; got != "STOCK_ONLY_FILE_REFERENCE_FORBIDDEN" {
-		t.Fatalf("code=%s", got)
+	i.Output.StockBindings[0].AssetID = "cliprender_aa0918e0ef885811b1990c13"
+	i.Output.StockBindings[0].FolderID = ""
+	i.Output.StockBindings[0].FolderLink = ""
+	if err := (&GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{i}}).Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestMediaModeStockOnlyRejectsDriveFileLink(t *testing.T) {
+func TestMediaModeStockOnlyAcceptsDriveFileLink(t *testing.T) {
 	i := stockOnlyItem()
 	i.Output.StockBindings[0].DriveLink = "https://drive.google.com/file/d/file-1/view"
-	if got := validateMediaItem(t, i).Code; got != "STOCK_ONLY_FILE_REFERENCE_FORBIDDEN" {
-		t.Fatalf("code=%s", got)
+	i.Output.StockBindings[0].FolderID = ""
+	i.Output.StockBindings[0].FolderLink = ""
+	if err := (&GenerationEnvelopeV2{Version: 2, Items: []GenerationItemV2{i}}).Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -63,6 +63,11 @@ type SourceInput struct {
 	// ForegroundScalePercent scales the foreground video clip (1..100).
 	ForegroundScalePercent int
 
+	// SourceFrame is the caller's card treatment of the clip (bounding frame,
+	// drop shadow, perimeter stroke, corner radius). It travels verbatim into
+	// the sealed plan; empty means "bare clip" (the historical default).
+	SourceFrame *cliprender.PlanSourceFrame
+
 	// SubtitlesStyle is the caller's subtitle visual override block.
 	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
 
@@ -204,6 +209,7 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			BackgroundMode:         source.BackgroundMode,
 			BackgroundKind:         source.BackgroundKind,
 			ForegroundScalePercent: source.ForegroundScalePercent,
+			SourceFrame:            source.SourceFrame,
 			SubtitlesStyle:         subtitlesStyle,
 			// Language-independent reuse: the SAME overlay identities land on
 			// every plan, so one certified overlay render per item serves all N

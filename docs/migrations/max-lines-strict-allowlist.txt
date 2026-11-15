@@ -1,9 +1,14 @@
 # docs/migrations/max-lines-strict-allowlist.txt
 # ──────────────────────────────────────────────────────────────────────────────
-# Allowlist for the strict 600-LOC per-file cap (cmd/archcheck::max_lines_per_
+# Allowlist for the strict 800-LOC per-file cap (cmd/archcheck::max_lines_per_
 # file_strict, added July 2026 per godlike/08 §"Forward-prevention gates").
 #
-# STATUS (2026-09-18): ALLOWLIST EMPTY — ZERO ACTIVE ENTRIES
+# 2026-11-15 OWNER DECISION: cap raised 600 -> 800 after 11 files sat at
+# 606-853 lines and repeated same-directory split waves raised package file
+# counts. The allowlist remains EMPTY: the 853-line entity catalog adapter was
+# split by cohesive candidate/materialization responsibility instead.
+#
+# STATUS (2026-11-15): ALLOWLIST EMPTY — ZERO ACTIVE ENTRIES
 # ────────────────────────────────────────────────────────────
 # Census re-confirmed on 2026-09-18: zero production .go files under internal/
 # + cmd/ exceed 600 lines, so this file carries no exempting paths. Every
@@ -43,5 +48,5 @@
 #   - internal/capabilities/voiceover/service/process_segment.go: already 450
 #     (stale entry removed)
 #
-# POLICY: any NEW file exceeding 600 LOC must be split before merge
+# POLICY: any NEW file exceeding 800 LOC must be split before merge
 # and cannot be added to this allowlist. The gate is hard-fail-closed.

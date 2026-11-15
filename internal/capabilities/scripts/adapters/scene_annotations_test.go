@@ -6,30 +6,15 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func TestClassifyDiscoveredEntityPortuguesePlacesAndOperations(t *testing.T) {
-	for _, tc := range []struct{ name, want string }{
-		{"São Paulo", "GPE"},
-		{"Brasília", "GPE"},
-		{"Operação Vectura Corrupta", "EVENT"},
-		{"Operacao Decurio", "EVENT"},
-		{"Villa Pamphili", "GPE"},
-		{"Milton Leite", "PERSON"},
-	} {
-		if got := classifyDiscoveredEntity(tc.name); got != tc.want {
-			t.Errorf("classifyDiscoveredEntity(%q) = %q, want %q", tc.name, got, tc.want)
-		}
-	}
-}
-
-func TestSceneAnnotationsCorrectsPlaceShapedPerson(t *testing.T) {
+func TestSceneAnnotationsPreservesBrainRustEntityType(t *testing.T) {
 	text := "Il 7 giugno 2025 i corpi furono trovati a Villa Pamphili."
 	ann := sceneAnnotations(text, "it", scriptpkg.VidRushSegmentResult{SegmentID: "scene-1", Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
 		{Value: "Villa Pamphili", Type: "PERSON", Confidence: .9},
 	}}})
 	for _, entity := range ann.PrimaryEntities {
 		if entity.CanonicalName == "Villa Pamphili" {
-			if entity.Type != "GPE" {
-				t.Fatalf("Villa Pamphili type = %q, want GPE", entity.Type)
+			if entity.Type != "PERSON" {
+				t.Fatalf("Villa Pamphili type = %q, want source PERSON label", entity.Type)
 			}
 			return
 		}
@@ -37,12 +22,18 @@ func TestSceneAnnotationsCorrectsPlaceShapedPerson(t *testing.T) {
 	t.Fatalf("Villa Pamphili missing from primary entities: %+v", ann.PrimaryEntities)
 }
 
-func TestSceneAnnotationsCorrectsKnownPortugueseEntityTypesFromNLP(t *testing.T) {
+func TestSceneAnnotationsUsesResolverIdentityType(t *testing.T) {
 	text := "São Paulo recebeu a Operação Vectura Corrupta."
-	ann := sceneAnnotations(text, "pt", scriptpkg.VidRushSegmentResult{SegmentID: "scene-1", Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
-		{Value: "São Paulo", Type: "PERSON", Confidence: .9},
-		{Value: "Operação Vectura Corrupta", Type: "PERSON", Confidence: .9},
-	}}})
+	ann := sceneAnnotations(text, "pt", scriptpkg.VidRushSegmentResult{SegmentID: "scene-1", Insights: scriptpkg.SegmentInsights{
+		Entities: []scriptpkg.ExtractedEntity{
+			{Value: "São Paulo", Type: "PERSON", Confidence: .9},
+			{Value: "Operação Vectura Corrupta", Type: "PERSON", Confidence: .9},
+		},
+		ImageEntityCanonicalIDs: map[string]string{
+			"são paulo":                 "place:sao-paulo",
+			"operação vectura corrupta": "event:operacao-vectura-corrupta",
+		},
+	}})
 	kinds := map[string]string{}
 	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
 		kinds[entity.CanonicalName] = entity.Type
@@ -101,13 +92,20 @@ func TestSceneAnnotationsGroundsExplicitNumberWithUnit(t *testing.T) {
 	}
 }
 
-func TestSceneAnnotationsDropsMissingPhrase(t *testing.T) {
+func TestSceneAnnotationsDoesNotInventMissingPhrase(t *testing.T) {
 	ann := sceneAnnotations("Mike Tyson allenava potenza.", "it", scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1",
 		Insights:  scriptpkg.SegmentInsights{ImportantPhrases: []string{"Muhammad Ali vinse tutto"}},
 	})
-	if len(ann.ImportantPhrases) != 1 || ann.ImportantPhrases[0].Text != "Mike Tyson allenava potenza." {
-		t.Fatalf("final-text phrase was not selected: %+v", ann.ImportantPhrases)
+	if len(ann.ImportantPhrases) != 0 {
+		t.Fatalf("Go synthesized an unprovided phrase: %+v", ann.ImportantPhrases)
+	}
+}
+
+func TestRebaseDoesNotReextractEntitiesFromText(t *testing.T) {
+	ann := rebaseSceneAnnotations(&scriptpkg.SceneAnnotations{}, "NASA e ESA hanno annunciato un progetto a Roma.")
+	if len(ann.PrimaryEntities)+len(ann.SecondaryEntities) != 0 {
+		t.Fatalf("rebasing synthesized entities outside BrainRust: %+v", ann)
 	}
 }
 
@@ -227,9 +225,8 @@ func TestSceneAnnotations_SkipsKeywordAndVisualSubject(t *testing.T) {
 		},
 	}
 	ann := sceneAnnotations("Apple changed everything.", "en", seg)
-	// The rebase may still synthesize a fallback important phrase from the
-	// text; the contract under test is that KEYWORD / VISUAL_SUBJECT never
-	// become annotation entities.
+	// The projection may retain only BrainRust-provided annotations;
+	// KEYWORD / VISUAL_SUBJECT never become annotation entities.
 	if ann != nil {
 		if len(ann.PrimaryEntities)+len(ann.SecondaryEntities) != 0 {
 			t.Fatalf("KEYWORD/VISUAL_SUBJECT became entities: %+v", ann)

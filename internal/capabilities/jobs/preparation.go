@@ -5,7 +5,7 @@
 package jobs
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
+	scheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 

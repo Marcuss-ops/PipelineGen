@@ -75,6 +75,7 @@ func TestEntityImageCatalogAcceptsCachedGenericFilenameWithVisualVerdict(t *test
 		SourceURL:         "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg",
 		Status:            entitycatalog.CandidateStatusFresh,
 		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
+		VerifierVersion:   entitycatalog.CandidateVerifierVersion,
 		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	}); err != nil {
 		t.Fatal(err)
@@ -114,6 +115,7 @@ func TestDurableEntityImagePoolForSegmentAttachesVerifiedRows(t *testing.T) {
 		Status:            entitycatalog.CandidateStatusFresh,
 		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
 		SemanticScore:     0.9,
+		VerifierVersion:   entitycatalog.CandidateVerifierVersion,
 		QualityReason:     "Ollama visual identity verification confirmed one dominant subject",
 	}); err != nil {
 		t.Fatal(err)

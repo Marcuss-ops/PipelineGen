@@ -4,10 +4,10 @@ package wiring
 
 import (
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
 	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -38,7 +38,7 @@ func validateRequiredProcessors(registry *adapters.PostProcessorRegistry) *scrip
 //
 // The 3 invariants:
 //
-//	(a) Registry has the type. Looks up appjobs.Compose().IsRegistered
+//	(a) Registry has the type. Looks up jobscheduling.Compose().IsRegistered
 //	    for script.generate -- the canonical job-type registry built
 //	    in module_media.go::BuildJobsBundle.
 //
@@ -67,9 +67,9 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	// (a) Registry has the type. Direct query against the canonical
 	//     composition-time registry. The registry is frozen after
 	//     Compose(); this query is branch-free.
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	if !reg.IsRegistered(scriptpkg.TypeGenerate) {
-		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", scriptpkg.TypeGenerate)
+		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild jobscheduling.Compose()", scriptpkg.TypeGenerate)
 	}
 
 	// (b) Broker has the handler. The RegisterJobs success above is

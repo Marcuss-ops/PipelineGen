@@ -10,6 +10,7 @@ package adapters
 // publishAsyncDrive stay in cliprender_publisher.go.
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -107,6 +108,45 @@ func (p *ClipRenderPublisher) detachToStaging(source, destination string) error 
 	}
 	if err := os.Remove(source); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove workspace artifact after staging: %w", err)
+	}
+	return nil
+}
+
+// validateDeliveryIntent enforces the durability invariant of the asynchronous
+// publication boundary: the committed asset row must always name bytes a later
+// outbox consumer can obtain.
+//
+// Two shapes are valid — a staged local copy outside the per-job workspace, or
+// a certified object-store locator. Anything else is unresolvable: committing
+// it produces a media_assets row that uploads/uploads-read to nothing once the
+// job's temp directory is gone. The live failure this guards is the cliprender
+// card batch of 2026-11-14, whose rows carried a Drive reference but neither a
+// local copy nor a locator, so the remote resolver had no bytes to read.
+//
+// The check runs immediately before CommitAsset, while the staged file still
+// exists, so a size or existence problem fails the render instead of shipping a
+// dangling row.
+func validateDeliveryIntent(payload cliprender.ClipRenderDriveDeliveryRequest, stagedPath string) error {
+	local := strings.TrimSpace(payload.LocalPath)
+	locator := strings.TrimSpace(payload.ArtifactURL)
+	if local == "" && locator == "" {
+		return errors.New("delivery intent has neither a staged local path nor an artifact locator")
+	}
+	if stagedPath != "" && local != stagedPath {
+		return fmt.Errorf("staged path %q differs from the committed local path %q", stagedPath, local)
+	}
+	if local == "" {
+		return nil
+	}
+	info, err := os.Stat(local)
+	if err != nil {
+		return fmt.Errorf("staged artifact %q is not readable at commit time: %w", local, err)
+	}
+	if info.IsDir() || info.Size() <= 0 {
+		return fmt.Errorf("staged artifact %q is empty", local)
+	}
+	if payload.SizeBytes > 0 && info.Size() != payload.SizeBytes {
+		return fmt.Errorf("staged artifact %q size=%d, certified %d", local, info.Size(), payload.SizeBytes)
 	}
 	return nil
 }

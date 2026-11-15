@@ -161,6 +161,11 @@ type VideoRenderSpec struct {
 	Background   *VideoBackgroundSpec `json:"background,omitempty"`
 	Watermark    *VideoWatermarkSpec  `json:"watermark,omitempty"`
 	Subtitles    *VideoSubtitlesSpec  `json:"subtitles,omitempty"`
+	// SourceFrame is the optional card treatment of each rendered clip: the
+	// bounding frame behind the clip plus its drop shadow, perimeter stroke
+	// and corner radius. It is the payload owner of "the clip is a card with
+	// a visible box"; the clip.render boundary transports it verbatim.
+	SourceFrame *VideoSourceFrameSpec `json:"source_frame,omitempty"`
 	// SubtitlePresets are reusable request-local styles selected by
 	// subtitles.preset or subtitles.style_id.
 	SubtitlePresets        map[string]VideoVisualStyleSpec `json:"subtitle_presets,omitempty"`
@@ -259,6 +264,47 @@ type VideoTransitionSpec struct {
 	DurationMS int64  `json:"duration_ms,omitempty"`
 }
 
+// VideoSourceFrameSpec is the canonical card declaration of a rendered clip:
+// the bounding frame painted BEHIND the clip, the card's drop shadow, a thin
+// perimeter stroke and the clip's own corner radius. The JSON keys are the
+// clip.render output contract's keys, so the script boundary projects the
+// caller's block verbatim instead of spelling it a second time.
+//
+// It is what makes the payload express "show this clip inside a box of this
+// size with this shadow colour over this background" without business logic in
+// the render worker: the producer owns the intent, the renderer owns geometry.
+type VideoSourceFrameSpec struct {
+	Border       *VideoFrameBorderSpec `json:"border,omitempty"`
+	Shadow       *VideoFrameShadowSpec `json:"shadow,omitempty"`
+	Stroke       *VideoFrameStrokeSpec `json:"stroke,omitempty"`
+	ClipRadiusPX float64               `json:"clip_radius_px,omitempty"`
+}
+
+// VideoFrameBorderSpec is the visible frame around the clip. WidthPX is the
+// thickness in output pixels, Color is #RRGGBB, RadiusPX the outer radius.
+type VideoFrameBorderSpec struct {
+	WidthPX  float64 `json:"width_px"`
+	Color    string  `json:"color"`
+	RadiusPX float64 `json:"radius_px,omitempty"`
+}
+
+// VideoFrameShadowSpec is the drop shadow of the card (the frame when a border
+// exists, the clip itself otherwise). Color is #RRGGBB; offsets are pixels.
+type VideoFrameShadowSpec struct {
+	Color    string  `json:"color"`
+	Opacity  float64 `json:"opacity,omitempty"`
+	BlurPX   float64 `json:"blur_px,omitempty"`
+	OffsetXP float64 `json:"offset_x_px,omitempty"`
+	OffsetYP float64 `json:"offset_y_px,omitempty"`
+}
+
+// VideoFrameStrokeSpec is a thin outline painted ON the clip perimeter (unlike
+// the border, it adds no padded plate behind the media).
+type VideoFrameStrokeSpec struct {
+	WidthPX float64 `json:"width_px"`
+	Color   string  `json:"color"`
+}
+
 type VideoWatermarkSpec struct {
 	Enabled  bool                  `json:"enabled,omitempty"`
 	Text     string                `json:"text,omitempty"`
@@ -352,6 +398,10 @@ func (r *VideoRenderSpec) Normalize() {
 		if r.Background.Mode != "none" {
 			r.Enabled = true
 		}
+	}
+	if r.SourceFrame != nil {
+		// A declared card is a visual layer: the clip must be rendered.
+		r.Enabled = true
 	}
 	if r.Watermark != nil && r.Watermark.Enabled {
 		r.Enabled = true

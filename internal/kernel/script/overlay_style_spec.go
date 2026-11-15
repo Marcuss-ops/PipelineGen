@@ -103,8 +103,12 @@ type OverlayImageStyleSpec struct {
 	Border    *OverlayImageBorder `json:"border,omitempty"`
 	Stroke    *OverlayImageStroke `json:"stroke,omitempty"`
 	Shadow    *OverlayShadowSpec  `json:"shadow,omitempty"`
-	Bounded   *bool               `json:"bounded,omitempty"`
-	Fit       string              `json:"fit,omitempty"`
+	// Glow is the halo around the image card, lowered to Chronon's native
+	// glow effect. Radius 0 disables it; color defaults to white and
+	// intensity defaults to 0.25.
+	Glow    *OverlayImageGlowSpec `json:"glow,omitempty"`
+	Bounded *bool                 `json:"bounded,omitempty"`
+	Fit     string                `json:"fit,omitempty"`
 	// Backdrop reuses a standalone image as a softly blurred full-canvas
 	// background and can add one light canvas grid over it. Composite images
 	// and groups keep their independent member frames, so the field is applied
@@ -142,6 +146,16 @@ type OverlayImageBorder struct {
 type OverlayImageStroke struct {
 	Width float64 `json:"width"`
 	Color string  `json:"color"`
+}
+
+// OverlayImageGlowSpec controls the halo around a generated image card.
+// Radius follows Chronon's native glow range [0,256] and 0 disables it;
+// intensity is [0,4] and defaults to 0.25; color is #RRGGBB and defaults to
+// #FFFFFF. The block is image-only and never styles caption text.
+type OverlayImageGlowSpec struct {
+	Radius    *float64 `json:"radius,omitempty"`
+	Intensity *float64 `json:"intensity,omitempty"`
+	Color     string   `json:"color,omitempty"`
 }
 
 // Validate checks caller-controlled text runtime overrides before they reach
@@ -249,6 +263,17 @@ func (s *OverlayStyleSpec) Validate() error {
 			}
 			if image.Shadow.Color != "" && !isStyleHexColor(image.Shadow.Color) {
 				return fmt.Errorf("overlay_style.image.shadow.color must be #RRGGBB")
+			}
+		}
+		if image.Glow != nil {
+			if image.Glow.Radius != nil && (math.IsNaN(*image.Glow.Radius) || math.IsInf(*image.Glow.Radius, 0) || *image.Glow.Radius < 0 || *image.Glow.Radius > 256) {
+				return fmt.Errorf("overlay_style.image.glow.radius must be between 0 and 256 pixels")
+			}
+			if image.Glow.Intensity != nil && (math.IsNaN(*image.Glow.Intensity) || math.IsInf(*image.Glow.Intensity, 0) || *image.Glow.Intensity < 0 || *image.Glow.Intensity > 4) {
+				return fmt.Errorf("overlay_style.image.glow.intensity must be between 0 and 4")
+			}
+			if image.Glow.Color != "" && !isStyleHexColor(image.Glow.Color) {
+				return fmt.Errorf("overlay_style.image.glow.color must be #RRGGBB")
 			}
 		}
 		if err := validateImageBackdrop(image.Backdrop); err != nil {

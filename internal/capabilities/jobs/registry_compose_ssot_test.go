@@ -4,28 +4,28 @@
 // per-job-type execution timeouts. HC-1 replaced the pre-HC-1
 // hard-coded `context.WithTimeout(ctx, 2*time.Hour)` literal in
 // internal/application/clips/bulk_upload_worker.go with a typed
-// lookup rooted on *Registry.JobTimeout(t). The contract under
+// lookup rooted on *jobscheduling.Registry.JobTimeout(t). The contract under
 // guard:
 //
-//	(a) FORWARD: every entry registered in Compose() has a
+//	(a) FORWARD: every entry registered in jobscheduling.Compose() has a
 //	    non-zero Timeout. Zero collapses to the canonical 10-minute
 //	    fallback — exactly the regression signature we're guarding
 //	    against (an inadvertent 2*time.Hour / 0 in a register call
 //	    would re-introduce the pre-HC-1 drift).
 //
 //	(b) REVERSE: every canonical Type* constant declared in this
-//	    package is registered in Compose(). A new Type* constant
-//	    added without a corresponding r.Register(JobPolicy{...})
+//	    package is registered in jobscheduling.Compose(). A new Type* constant
+//	    added without a corresponding r.Register(jobscheduling.JobPolicy{...})
 //	    call would silently fall through to the canonical 10-minute
 //	    default at worker dispatch time — a real risk because
 //	    handlers/dispatchers/jobs.Service code references Type*
 //	    constants directly, not the lookup result.
 //
-//	(c) CHAIN: the TimeoutResolver interface dispatch, the
-//	    Registry.JobTimeout method dispatch, and the Compose()
+//	(c) CHAIN: the jobscheduling.TimeoutResolver interface dispatch, the
+//	    jobscheduling.Registry.JobTimeout method dispatch, and the jobscheduling.Compose()
 //	    snapshot lookup ALL agree on the same value for any given
 //	    job type. The composition root (internal/app/clips_adapters_cfg.go)
-//	    consumes via the TimeoutResolver interface; future drifts
+//	    consumes via the jobscheduling.TimeoutResolver interface; future drifts
 //	    between the dispatch surfaces would silently diverge from
 //	    the SSOT.
 //
@@ -41,22 +41,23 @@
 package jobs
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 	"time"
 )
 
 // TestCompose_AllEntriesHaveNonZeroTimeout — forward SSOT direction.
-// For every entry registered in Compose(), Timeout > 0 must hold.
+// For every entry registered in jobscheduling.Compose(), Timeout > 0 must hold.
 // A zero value silently collapses to the canonical 10-minute fallback
-// (Registry.Timeout's last-line default), which is exactly the
+// (jobscheduling.Registry.Timeout's last-line default), which is exactly the
 // signature of the pre-HC-1 hard-coded-literal regression we want to
 // catch permanently.
 func TestCompose_AllEntriesHaveNonZeroTimeout(t *testing.T) {
 	t.Parallel()
 
-	reg := Compose()
+	reg := jobscheduling.Compose()
 	if typs := reg.AllTypes(); len(typs) == 0 {
-		t.Fatal("Compose() returned empty registry; expected 23+ entries (see registry.go::Compose())")
+		t.Fatal("jobscheduling.Compose() returned empty registry; expected 23+ entries (see registry.go::jobscheduling.Compose())")
 	}
 
 	for _, typ := range reg.AllTypes() {
@@ -66,19 +67,19 @@ func TestCompose_AllEntriesHaveNonZeroTimeout(t *testing.T) {
 			continue
 		}
 		if entry.Timeout <= 0 {
-			t.Errorf("Registry[%q].Timeout = %v (zero or negative); Compose() MUST register every entry with a non-zero Timeout — the pre-HC-1 hard-coded 2*time.Hour literal must NEVER come back", typ, entry.Timeout)
+			t.Errorf("jobscheduling.Registry[%q].Timeout = %v (zero or negative); jobscheduling.Compose() MUST register every entry with a non-zero Timeout — the pre-HC-1 hard-coded 2*time.Hour literal must NEVER come back", typ, entry.Timeout)
 		}
 	}
 }
 
 // TestCompose_AllCanonicalTypesAreRegistered — reverse SSOT direction.
-// For every Type* constant declared in this package, Compose() must
+// For every Type* constant declared in this package, jobscheduling.Compose() must
 // contain an entry. This guards against the "new Type* constant added
 // without registering" drift — handlers/dispatchers reference
 // Type* constants directly, and un-registered types silently fall
 // through to the canonical 10-minute default.
 //
-// The expected-names list mirrors registry.go::Compose() 1-to-1; if
+// The expected-names list mirrors registry.go::jobscheduling.Compose() 1-to-1; if
 // a future Type* constant is added, this test MUST be updated to
 // include it. The cross-check between registry.go's (a) compose
 // register calls and (b) this list is the SSOT seam marker: any
@@ -86,46 +87,46 @@ func TestCompose_AllEntriesHaveNonZeroTimeout(t *testing.T) {
 func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 	t.Parallel()
 
-	reg := Compose()
+	reg := jobscheduling.Compose()
 
 	cases := []struct {
 		name string
 		typ  string
 	}{
 		// ── Script generation ──
-		{"TypeScriptGenerate", TypeScriptGenerate},
-		{"TypeMediaCurate", TypeMediaCurate},
+		{"jobscheduling.TypeScriptGenerate", jobscheduling.TypeScriptGenerate},
+		{"jobscheduling.TypeMediaCurate", jobscheduling.TypeMediaCurate},
 
 		// ── Media processing ──
-		{"TypeMediaExtract", TypeMediaExtract},
-		{"TypeMediaStock", TypeMediaStock},
-		{"TypeMediaGenerate", TypeMediaGenerate},
-		{"TypeMediaEnrich", TypeMediaEnrich},
-		{"TypeBulkUploadYouTubeClips", TypeBulkUploadYouTubeClips}, // HC-1 anchor
+		{"jobscheduling.TypeMediaExtract", jobscheduling.TypeMediaExtract},
+		{"jobscheduling.TypeMediaStock", jobscheduling.TypeMediaStock},
+		{"jobscheduling.TypeMediaGenerate", jobscheduling.TypeMediaGenerate},
+		{"jobscheduling.TypeMediaEnrich", jobscheduling.TypeMediaEnrich},
+		{"jobscheduling.TypeBulkUploadYouTubeClips", jobscheduling.TypeBulkUploadYouTubeClips}, // HC-1 anchor
 
 		// ── YouTube ──
-		{"TypeYouTubeUpload", TypeYouTubeUpload},
-		{"TypeYouTubeClipExtract", TypeYouTubeClipExtract},
-		{"TypeYouTubeRebuildST", TypeYouTubeRebuildST},
+		{"jobscheduling.TypeYouTubeUpload", jobscheduling.TypeYouTubeUpload},
+		{"jobscheduling.TypeYouTubeClipExtract", jobscheduling.TypeYouTubeClipExtract},
+		{"jobscheduling.TypeYouTubeRebuildST", jobscheduling.TypeYouTubeRebuildST},
 
 		// ── Voiceover / subtitles ──
-		{"TypeVoiceoverBatch", TypeVoiceoverBatch},
-		{"TypeVoiceoverPromo", TypeVoiceoverPromo},
-		{"TypeSubtitleGenerate", TypeSubtitleGenerate},
+		{"jobscheduling.TypeVoiceoverBatch", jobscheduling.TypeVoiceoverBatch},
+		{"jobscheduling.TypeVoiceoverPromo", jobscheduling.TypeVoiceoverPromo},
+		{"jobscheduling.TypeSubtitleGenerate", jobscheduling.TypeSubtitleGenerate},
 
 		// ── Catalog / sync ──
-		{"TypeCatalogSync", TypeCatalogSync},
-		{"TypeArtlistRun", TypeArtlistRun},
-		{"TypeDriveFolderSync", TypeDriveFolderSync},
+		{"jobscheduling.TypeCatalogSync", jobscheduling.TypeCatalogSync},
+		{"jobscheduling.TypeArtlistRun", jobscheduling.TypeArtlistRun},
+		{"jobscheduling.TypeDriveFolderSync", jobscheduling.TypeDriveFolderSync},
 
 		// ── System ──
-		{"TypeSystemCleanup", TypeSystemCleanup},
+		{"jobscheduling.TypeSystemCleanup", jobscheduling.TypeSystemCleanup},
 
 		// ── AI Image Generation ──
-		{"TypeImageGenerateGoogle", TypeImageGenerateGoogle},
+		{"jobscheduling.TypeImageGenerateGoogle", jobscheduling.TypeImageGenerateGoogle},
 
 		// ── Clip registration (async batch, PR-BATCH-REGISTER-ASYNC) ──
-		{"TypeClipRegister", TypeClipRegister},
+		{"jobscheduling.TypeClipRegister", jobscheduling.TypeClipRegister},
 	}
 
 	for _, c := range cases {
@@ -133,27 +134,27 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 			t.Parallel()
 
 			if !reg.IsRegistered(c.typ) {
-				t.Fatalf("Type* %s (%q) is NOT registered in Compose(); handlers/dispatchers referencing this constant will silently fall back to the canonical 10-minute default — add an r.Register(JobPolicy{...}) call in registry.go::Compose()", c.name, c.typ)
+				t.Fatalf("Type* %s (%q) is NOT registered in jobscheduling.Compose(); handlers/dispatchers referencing this constant will silently fall back to the canonical 10-minute default — add an r.Register(jobscheduling.JobPolicy{...}) call in registry.go::jobscheduling.Compose()", c.name, c.typ)
 			}
 
 			// Cross-direction SSOT: even if registered, a zero Timeout
 			// would collapse to the canonical default. Assert non-zero.
 			entry, _ := reg.Get(c.typ)
 			if entry.Timeout <= 0 {
-				t.Fatalf("Registry[%q].Timeout = %v (zero); Compose() MUST register every entry with a non-zero Timeout", c.typ, entry.Timeout)
+				t.Fatalf("jobscheduling.Registry[%q].Timeout = %v (zero); jobscheduling.Compose() MUST register every entry with a non-zero Timeout", c.typ, entry.Timeout)
 			}
 
 			// Wave 19 (June 2026) typed accessor contract: after
-			// applyDefaults() (invoked by Compose), every registered
+			// applyDefaults() (invoked by jobscheduling.Compose), every registered
 			// entry's Queue must read non-empty via Queue(t) and
 			// Concurrency must read >= 1 via Concurrency(t). These
 			// accessors are the canonical SSOT surface for those
 			// fields, not the raw entry.Queue / entry.Concurrency.
 			if q := reg.Queue(c.typ); q == "" {
-				t.Fatalf("Registry.Queue(%q) = %q (empty); Compose() must normalise zero/empty Queue via applyDefaults()", c.typ, q)
+				t.Fatalf("jobscheduling.Registry.Queue(%q) = %q (empty); jobscheduling.Compose() must normalise zero/empty Queue via applyDefaults()", c.typ, q)
 			}
-			if cc := reg.Concurrency(c.typ); cc < DefaultConcurrency {
-				t.Fatalf("Registry.Concurrency(%q) = %d (< DefaultConcurrency=%d); Compose() must normalise zero/negative Concurrency via applyDefaults()", c.typ, cc, DefaultConcurrency)
+			if cc := reg.Concurrency(c.typ); cc < jobscheduling.DefaultConcurrency {
+				t.Fatalf("jobscheduling.Registry.Concurrency(%q) = %d (< jobscheduling.DefaultConcurrency=%d); jobscheduling.Compose() must normalise zero/negative Concurrency via applyDefaults()", c.typ, cc, jobscheduling.DefaultConcurrency)
 			}
 		})
 	}
@@ -163,14 +164,14 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 // SSOT direction. The HC-1 lookup chain has THREE independent
 // dispatch surfaces:
 //
-//  1. REGISTRY DIRECT: reg.JobTimeout(TypeBulkUploadYouTubeClips)
-//     — the canonical method on Registry. Used by JobsHandler
+//  1. REGISTRY DIRECT: reg.JobTimeout(jobscheduling.TypeBulkUploadYouTubeClips)
+//     — the canonical method on jobscheduling.Registry. Used by JobsHandler
 //     directly via Worker.WithRegistry.
-//  2. INTERFACE: typed-port TimeoutResolver.JobTimeout(...) —
+//  2. INTERFACE: typed-port jobscheduling.TimeoutResolver.JobTimeout(...) —
 //     the alias that internal/app/clips_adapters_cfg.go::clipsCfgAdapter
 //     forwards to. Used by the bulk_upload worker via the typed
 //     ClipConfigPort.JobTimeout method.
-//  3. SNAPSHOT: the typed-port TimeoutMap returned by reg.Compose()
+//  3. SNAPSHOT: the typed-port jobscheduling.TimeoutMap returned by reg.Compose()
 //     — held by each Worker as w.timeouts and indexed per
 //     j.Type at runJob time.
 //
@@ -180,41 +181,41 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 // propagate inconsistently across the three readers.
 //
 // Pin is anchored at 120 minutes (the registered value) — if
-// Compose() ever changes the canonical timeout for this type, this
+// jobscheduling.Compose() ever changes the canonical timeout for this type, this
 // test surface is the seam marker that forces an explicit review.
 func TestCompose_BulkUploadTimeoutResolvesThroughAllSurfaces(t *testing.T) {
 	t.Parallel()
 
-	reg := Compose()
+	reg := jobscheduling.Compose()
 
 	const wantTimeout = 120 * time.Minute
 
-	// Surface 1: Registry.JobTimeout (direct method).
-	if got := reg.JobTimeout(TypeBulkUploadYouTubeClips); got != wantTimeout {
-		t.Fatalf("Registry.JobTimeout(%q) = %v; want canonical %v (width-SSOT, HC-1 SSOT pin)",
-			TypeBulkUploadYouTubeClips, got, wantTimeout)
+	// Surface 1: jobscheduling.Registry.JobTimeout (direct method).
+	if got := reg.JobTimeout(jobscheduling.TypeBulkUploadYouTubeClips); got != wantTimeout {
+		t.Fatalf("jobscheduling.Registry.JobTimeout(%q) = %v; want canonical %v (width-SSOT, HC-1 SSOT pin)",
+			jobscheduling.TypeBulkUploadYouTubeClips, got, wantTimeout)
 	}
 
-	// Surface 2: TimeoutResolver interface dispatch.
+	// Surface 2: jobscheduling.TimeoutResolver interface dispatch.
 	// This is the surface internal/app/clips_adapters_cfg.go consumes
 	// and forwards to the bulk_upload_worker's ClipConfigPort.JobTimeout.
-	var resolver TimeoutResolver = reg
-	if got := resolver.JobTimeout(TypeBulkUploadYouTubeClips); got != wantTimeout {
-		t.Fatalf("TimeoutResolver.JobTimeout(%q) via interface = %v; want %v (interface dispatch MUST agree with direct method — composability invariant of HC-1)",
-			TypeBulkUploadYouTubeClips, got, wantTimeout)
+	var resolver jobscheduling.TimeoutResolver = reg
+	if got := resolver.JobTimeout(jobscheduling.TypeBulkUploadYouTubeClips); got != wantTimeout {
+		t.Fatalf("jobscheduling.TimeoutResolver.JobTimeout(%q) via interface = %v; want %v (interface dispatch MUST agree with direct method — composability invariant of HC-1)",
+			jobscheduling.TypeBulkUploadYouTubeClips, got, wantTimeout)
 	}
 
-	// Surface 3: Compose() snapshot (the typed-port TimeoutMap held
+	// Surface 3: jobscheduling.Compose() snapshot (the typed-port jobscheduling.TimeoutMap held
 	// by each Worker internally as w.timeouts).
 	snap := reg.Compose()
-	got, ok := snap[TypeBulkUploadYouTubeClips]
+	got, ok := snap[jobscheduling.TypeBulkUploadYouTubeClips]
 	if !ok {
-		t.Fatalf("Compose() snapshot missing entry for %q; Worker.timeouts index lookup would silently fall through to canonical 10m default",
-			TypeBulkUploadYouTubeClips)
+		t.Fatalf("jobscheduling.Compose() snapshot missing entry for %q; Worker.timeouts index lookup would silently fall through to canonical 10m default",
+			jobscheduling.TypeBulkUploadYouTubeClips)
 	}
 	if got != wantTimeout {
-		t.Fatalf("Compose()[%q] = %v; want %v (snapshot lookup MUST agree with direct method — Worker.jobTimeoutFor uses this snapshot)",
-			TypeBulkUploadYouTubeClips, got, wantTimeout)
+		t.Fatalf("jobscheduling.Compose()[%q] = %v; want %v (snapshot lookup MUST agree with direct method — Worker.jobTimeoutFor uses this snapshot)",
+			jobscheduling.TypeBulkUploadYouTubeClips, got, wantTimeout)
 	}
 
 	// Negative control: an unregistered type must NOT collide with
@@ -223,7 +224,7 @@ func TestCompose_BulkUploadTimeoutResolvesThroughAllSurfaces(t *testing.T) {
 	// value — this guarantees Worker.jobTimeoutFor's job-type → map
 	// hit/miss semantics remain consistent across the SSOT chain.
 	if v, ok := snap["definitely.not.a.real.type"]; ok {
-		t.Fatalf("Compose() snapshot has entry for unknown type \"definitely.not.a.real.type\" = %v; the snapshot MUST only carry entries with Timeout > 0 (Registry.Compose() filters zero-timeouts per HC-1 code-review DISCUSS)", v)
+		t.Fatalf("jobscheduling.Compose() snapshot has entry for unknown type \"definitely.not.a.real.type\" = %v; the snapshot MUST only carry entries with Timeout > 0 (jobscheduling.Registry.Compose() filters zero-timeouts per HC-1 code-review DISCUSS)", v)
 	}
 }
 
@@ -241,26 +242,26 @@ func TestCompose_BulkUploadTimeoutResolvesThroughAllSurfaces(t *testing.T) {
 func TestCompose_ScriptGenerateItem_ProducesArtifactsFalse(t *testing.T) {
 	t.Parallel()
 
-	reg := Compose()
+	reg := jobscheduling.Compose()
 
-	if !reg.IsRegistered(TypeScriptGenerateItem) {
-		t.Fatal("TypeScriptGenerateItem must be registered in Compose()")
+	if !reg.IsRegistered(jobscheduling.TypeScriptGenerateItem) {
+		t.Fatal("jobscheduling.TypeScriptGenerateItem must be registered in jobscheduling.Compose()")
 	}
 
-	if reg.ProducesArtifacts(TypeScriptGenerateItem) {
-		t.Fatal("TypeScriptGenerateItem must set ProducesArtifacts=false (pure-data child job; produces only a result map — no artifact manifest). " +
+	if reg.ProducesArtifacts(jobscheduling.TypeScriptGenerateItem) {
+		t.Fatal("jobscheduling.TypeScriptGenerateItem must set ProducesArtifacts=false (pure-data child job; produces only a result map — no artifact manifest). " +
 			"ProducesArtifacts=true breaks the state-machine: SQLiteStore.Complete rejects completions and demands CompleteWithArtifacts, " +
 			"but the child handler never builds an artifact manifest.")
 	}
 }
 
 // TestCompose_SnapshotFiltersZeroTimeoutEntries — pins the
-// documented "Zero-filter semantics" of Registry.Compose()
-// (registry.go::Compose() doc, HC-1 code-review DISCUSS).
+// documented "Zero-filter semantics" of jobscheduling.Registry.Compose()
+// (registry.go::jobscheduling.Compose() doc, HC-1 code-review DISCUSS).
 //
 // The promise: a registered entry with Timeout=0 MUST be filtered
-// out of the Compose() snapshot. Without this guarantee, a future
-// contributor who registers `JobPolicy{Timeout: 0}` would have its
+// out of the jobscheduling.Compose() snapshot. Without this guarantee, a future
+// contributor who registers `jobscheduling.JobPolicy{Timeout: 0}` would have its
 // entry present in the snapshot — Worker.jobTimeoutFor would then
 // return 0 instead of the canonical 10m default, silently breaking
 // the SSOT boundary.
@@ -275,15 +276,15 @@ func TestCompose_SnapshotFiltersZeroTimeoutEntries(t *testing.T) {
 
 	const zeroTimeoutType = "ssot-test-zero-timeout"
 
-	reg := NewRegistry()
-	if err := reg.Register(RegistryEntry{
-		Completion: CompletionDeclaration{
+	reg := jobscheduling.NewRegistry()
+	if err := reg.Register(jobscheduling.RegistryEntry{
+		Completion: jobscheduling.CompletionDeclaration{
 			JobType:              zeroTimeoutType,
-			ArtifactOwnership:    ArtifactOwnershipNone,
-			FinalizationStrategy: FinalizationStrategyLegacyComplete,
+			ArtifactOwnership:    jobscheduling.ArtifactOwnershipNone,
+			FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete,
 		},
 		Description:       "ssot zero-timeout filter pin",
-		Timeout:           0, // explicit zero — must be filtered by Compose()
+		Timeout:           0, // explicit zero — must be filtered by jobscheduling.Compose()
 		DefaultMaxRetries: 1,
 	}); err != nil {
 		t.Fatalf("register: %v", err)
@@ -293,19 +294,19 @@ func TestCompose_SnapshotFiltersZeroTimeoutEntries(t *testing.T) {
 
 	// (1) Filter semantic: Timeout=0 entries MUST be absent from the snapshot.
 	if v, ok := snap[zeroTimeoutType]; ok {
-		t.Fatalf("Compose() snapshot has entry for zero-timeout type: %v; the doc-promised filter is broken — Worker.jobTimeoutFor's branch-free timeouts[j.Type] lookup would silently read 0 from the snapshot instead of falling through to the canonical 10m default", v)
+		t.Fatalf("jobscheduling.Compose() snapshot has entry for zero-timeout type: %v; the doc-promised filter is broken — Worker.jobTimeoutFor's branch-free timeouts[j.Type] lookup would silently read 0 from the snapshot instead of falling through to the canonical 10m default", v)
 	}
 
-	// (2) Cross-check: direct method (Registry.JobTimeout) returns
+	// (2) Cross-check: direct method (jobscheduling.Registry.JobTimeout) returns
 	// canonical 10m for registered-but-zero-timeout type — proves
 	// the filter and the typed accessor agree on the same default.
 	if got := reg.JobTimeout(zeroTimeoutType); got != 10*time.Minute {
-		t.Fatalf("Registry.JobTimeout(%q) for zero-timeout registered type = %v; want canonical 10m (the typed accessor MUST agree with the snapshot filter semantic)", zeroTimeoutType, got)
+		t.Fatalf("jobscheduling.Registry.JobTimeout(%q) for zero-timeout registered type = %v; want canonical 10m (the typed accessor MUST agree with the snapshot filter semantic)", zeroTimeoutType, got)
 	}
 
 	// (3) IsRegistered still returns true (the type IS in the registry;
 	// only the snapshot filters it out — these are independent surfaces).
 	if !reg.IsRegistered(zeroTimeoutType) {
-		t.Fatalf("Registry.IsRegistered(%q) = false (registered-but-zero-timeout must still report registered)", zeroTimeoutType)
+		t.Fatalf("jobscheduling.Registry.IsRegistered(%q) = false (registered-but-zero-timeout must still report registered)", zeroTimeoutType)
 	}
 }

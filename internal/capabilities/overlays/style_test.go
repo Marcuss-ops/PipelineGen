@@ -36,14 +36,15 @@ func TestStyleParamsProjectsPerTextCardBackground(t *testing.T) {
 	require.Equal(t, []float64{20, 12}, plate["padding"])
 }
 
-func TestStyleParamsOmitsDisabledTextEffects(t *testing.T) {
+func TestStyleParamsCarriesExplicitZeroDisables(t *testing.T) {
 	zero := 0.0
 	got := StyleParams(&scriptpkg.OverlayStyleSpec{
 		GlowSize: &zero, GlowColor: "#000000", StrokeSize: &zero,
 	})
-	require.NotContains(t, got, "glow_size")
-	require.NotContains(t, got, "glow_color")
-	require.NotContains(t, got, "stroke_size")
+	// Zero must travel: the renderer clears the preset glow/stroke on it.
+	require.Equal(t, zero, got["glow_size"])
+	require.Equal(t, "#000000", got["glow_color"])
+	require.Equal(t, zero, got["stroke_size"])
 
 	positive := 2.0
 	got = StyleParams(&scriptpkg.OverlayStyleSpec{
@@ -52,6 +53,71 @@ func TestStyleParamsOmitsDisabledTextEffects(t *testing.T) {
 	require.Equal(t, positive, got["glow_size"])
 	require.Equal(t, "#FFFFFF", got["glow_color"])
 	require.Equal(t, positive, got["stroke_size"])
+
+	// A color-only override is legal and recolors the preset glow without
+	// inventing a radius.
+	colorOnly := StyleParams(&scriptpkg.OverlayStyleSpec{GlowColor: "#FF3355"})
+	require.NotContains(t, colorOnly, "glow_size")
+	require.Equal(t, "#FF3355", colorOnly["glow_color"])
+}
+
+func TestStyleParamsProjectsImageGlow(t *testing.T) {
+	radius, intensity := 24.0, 0.35
+	style := &scriptpkg.OverlayImageStyleSpec{Glow: &scriptpkg.OverlayImageGlowSpec{
+		Radius: &radius, Intensity: &intensity, Color: "#FF3355",
+	}}
+	got := StyleParams(&scriptpkg.OverlayStyleSpec{Image: style})
+	require.Equal(t, 24.0, got["image_glow_radius"])
+	require.Equal(t, 0.35, got["image_glow_intensity"])
+	require.Equal(t, "#FF3355", got["image_glow_color"])
+
+	item := capmodel.OverlayItem{
+		Kind:        "image",
+		Params:      map[string]any{},
+		ImageLayers: []capmodel.OverlayImageLayer{{Params: map[string]any{}}},
+	}
+	ApplyImageStyle(&item, style)
+	// The image_glow_ prefix survives the generic image_ strip so it can
+	// never overwrite a captioned item's text glow_color.
+	require.Equal(t, 24.0, item.Params["image_glow_radius"])
+	require.Equal(t, 0.35, item.Params["image_glow_intensity"])
+	require.Equal(t, "#FF3355", item.Params["image_glow_color"])
+	require.Equal(t, 24.0, item.ImageLayers[0].Params["image_glow_radius"])
+	require.True(t, IsRuntimeImageParam("image_glow_radius"))
+
+	defaults := StyleParams(&scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{
+		Glow: &scriptpkg.OverlayImageGlowSpec{},
+	}})
+	require.Equal(t, 24.0, defaults["image_glow_radius"])
+	require.Equal(t, 0.25, defaults["image_glow_intensity"])
+	require.Equal(t, "#FFFFFF", defaults["image_glow_color"])
+
+	zero := 0.0
+	disabled := StyleParams(&scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{
+		Glow: &scriptpkg.OverlayImageGlowSpec{Radius: &zero},
+	}})
+	require.NotContains(t, disabled, "image_glow_radius")
+}
+
+func TestOverlayImageGlowValidation(t *testing.T) {
+	validRadius, validIntensity := 24.0, 0.35
+	valid := &scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{
+		Glow: &scriptpkg.OverlayImageGlowSpec{Radius: &validRadius, Intensity: &validIntensity, Color: "#FFFFFF"},
+	}}
+	require.NoError(t, valid.Validate())
+
+	badRadius := 257.0
+	valid.Image.Glow.Radius = &badRadius
+	require.ErrorContains(t, valid.Validate(), "image.glow.radius")
+
+	valid.Image.Glow.Radius = &validRadius
+	badIntensity := 4.1
+	valid.Image.Glow.Intensity = &badIntensity
+	require.ErrorContains(t, valid.Validate(), "image.glow.intensity")
+
+	valid.Image.Glow.Intensity = &validIntensity
+	valid.Image.Glow.Color = "#GG0000"
+	require.ErrorContains(t, valid.Validate(), "image.glow.color")
 }
 
 func TestImageFrameAndEntityImageNormalization(t *testing.T) {
@@ -86,6 +152,13 @@ func TestImageFrameShadowStaysWithinNativeGPUBlurLimit(t *testing.T) {
 	require.NotNil(t, frame)
 	require.NotNil(t, frame.Shadow)
 	require.Equal(t, 10.0, frame.Shadow.BlurPX)
+
+	// The flat image_shadow_blur key reaches frameFromImageParams and would
+	// overwrite the capped Frame, so it must be capped at the same boundary.
+	params := StyleParams(&scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &largeBlur},
+	}})
+	require.Equal(t, maxImageFrameShadowBlurPX, params["image_shadow_blur"])
 }
 
 func TestStyleParamsProjectsCursorAndBoundedImage(t *testing.T) {

@@ -86,7 +86,7 @@ var TestOnlySupportFiles = map[string]bool{
 	"internal/platform/sqlite/assets/imagesregistry/testsupport/sqlite_asset_committer_testdouble.go": true,
 	// sqlite_asset_committer_surface.go was split OUT of
 	// sqlite_asset_committer_testdouble.go on 2026-09-18 to bring that file
-	// back under the 600-LOC strict cap: the commit-normalisation helpers and
+	// back under the 800-LOC strict cap: the commit-normalisation helpers and
 	// the media-asset mutation surface moved verbatim. Same package, same
 	// test-only import discipline (verified: only _test.go files import this
 	// package). It is a reviewable addition to the closed set, NOT a directory

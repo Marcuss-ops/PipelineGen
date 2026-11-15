@@ -326,7 +326,7 @@ func (p *vidRushInternetImageProvider) Search(ctx context.Context, req scriptpor
 	if entity == "" {
 		entity = req.Query
 	}
-	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Position: req.Position, Query: req.Query, Entity: entity, QueryClass: req.QueryClass, TextHash: req.TextHash, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
+	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Position: req.Position, Query: req.Query, Entity: entity, QueryClass: req.QueryClass, TextHash: req.TextHash, Language: req.Language, ForceRefresh: req.ForceRefresh, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
 	return results, err
 }
 func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {

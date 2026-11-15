@@ -258,7 +258,7 @@ func mapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1, includeAudio boo
 		if subStyle.HeightPX <= 0 {
 			subStyle.HeightPX = subtitleBoxHeightPX(subStyle.FontSizePX)
 		}
-		op.Subtitles = &overlaySubtitles{
+		subs := &overlaySubtitles{
 			Mode:    plan.Subtitles.Mode,
 			StyleID: plan.Subtitles.StyleID,
 			// The typed style block MUST be carried verbatim: the worker-side
@@ -271,6 +271,23 @@ func mapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1, includeAudio boo
 				MediaType: "text/x-ass",
 			}},
 		}
+		// Burn mode needs the actual font bytes: the worker lowers ASS cues to
+		// GPU text layers and rasterizes them with THIS font. Emitting only the
+		// family name let the worker pick the first materialized .ttf, so a
+		// requested "Inter"/"Anton"/"Poppins" produced an arbitrary face.
+		if plan.Subtitles.Mode == cliprender.SubtitlesModeBurn {
+			fontID := fontAssetID(plan.Subtitles.Style)
+			font, fontErr := ResolveFontAsset(fontID)
+			if fontErr != nil {
+				return nil, fmt.Errorf("clip plan mapper: subtitle font %q: %w", fontID, fontErr)
+			}
+			mediaType := "font/ttf"
+			if strings.HasSuffix(strings.ToLower(font.LogicalPath), ".otf") {
+				mediaType = "font/otf"
+			}
+			subs.FontRef = &overlayAssetRef{AssetID: fontID, SHA256: font.Hash, URL: font.LogicalPath, MediaType: mediaType}
+		}
+		op.Subtitles = subs
 	}
 
 	// Watermark
@@ -460,8 +477,44 @@ func watermarkFontAsset() (assetRef, error) {
 	return ResolveFontAsset(FontMontserratBold)
 }
 
+// fontAssetByFamily is the SINGLE mapping from the payload's font family to a
+// registered font asset. Only families with a checked-in asset are listed: a
+// miss falls back to the canonical default instead of shipping a typography
+// the renderer cannot resolve (which would burn an empty glyph run).
+var fontAssetByFamily = map[string]string{
+	"poppins":                 FontPoppinsBold,
+	"montserrat":              FontMontserratBold,
+	"inter":                   FontInter,
+	"manrope":                 FontManrope,
+	"dm sans":                 FontDMSans,
+	"dmsans":                  FontDMSans,
+	"instrument sans":         FontInstrumentSans,
+	"plus jakarta sans":       FontPlusJakartaSans,
+	"jakarta":                 FontPlusJakartaSans,
+	"sora":                    FontSora,
+	"space grotesk":           FontSpaceGrotesk,
+	"outfit":                  FontOutfit,
+	"urbanist":                FontUrbanist,
+	"bricolage grotesque":     FontBricolageGrotesque,
+	"playfair display":        FontPlayfairDisplayItalic,
+	"playfair display italic": FontPlayfairDisplayItalic,
+	"google sans":             FontGoogleSans,
+	"changa one":              FontChangaOne,
+	"dm serif display":        FontDMSerifDisplay,
+	"dm serif display italic": FontDMSerifDisplayItalic,
+	"sf pro display":          FontSFProDisplay,
+	"dejavu sans":             FontDejaVuSans,
+}
+
 func fontAssetID(style *scriptpkg.VideoVisualStyleSpec) string {
-	if style != nil && strings.Contains(strings.ToLower(strings.TrimSpace(style.Font)), "poppins") {
+	if style == nil {
+		return FontMontserratBold
+	}
+	family := strings.ToLower(strings.TrimSpace(style.Font))
+	if id, ok := fontAssetByFamily[family]; ok {
+		return id
+	}
+	if strings.Contains(family, "poppins") {
 		return FontPoppinsBold
 	}
 	return FontMontserratBold

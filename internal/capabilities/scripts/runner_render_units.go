@@ -159,7 +159,12 @@ func sceneRenderSpec(req GenerateRequest, scene Scene) kernelscript.VideoRenderS
 	// which must be burned into the localized intro render. The stock-only mode
 	// suppresses subtitles for generated body scenes; it must not suppress the
 	// fixed intro's title.
-	sourceFootage := scene.Stock == nil && (scene.ExecutionMode.IsFixedMedia() || (req.MediaMode != kernelscript.MediaModeStockOnly && sceneHasYouTubeSourceClip(scene)))
+	// Source footage is a clip that owns its own caption: the yt_ library
+	// clips AND the pipeline-rendered cliprender_* cards (the "main clips" of
+	// a clip_only run). Stock b-roll (artlist_*) never inherits narration
+	// subtitles, a stock-owned visual never does, and stock_only keeps
+	// suppressing them on the generated body.
+	sourceFootage := scene.Stock == nil && (scene.ExecutionMode.IsFixedMedia() || (req.MediaMode != kernelscript.MediaModeStockOnly && sceneClipOwnsCaption(scene)))
 	if !sourceFootage || (scene.ExecutionMode.IsFixedMedia() && localizedRenderCaptionText(req, scene) == "") {
 		if spec.Subtitles != nil {
 			subtitles := *spec.Subtitles
@@ -170,9 +175,17 @@ func sceneRenderSpec(req GenerateRequest, scene Scene) kernelscript.VideoRenderS
 	return spec
 }
 
-func sceneHasYouTubeSourceClip(scene Scene) bool {
+// sceneClipOwnsCaption reports whether the scene's visual clip is footage the
+// caller asked to caption. The identity prefix is the clip's provenance: yt_
+// is a library source clip and cliprender_ is a card this pipeline rendered.
+// Stock b-roll (artlist_*) is deliberately excluded.
+func sceneClipOwnsCaption(scene Scene) bool {
 	clip := primaryVisualClip(scene)
-	return clip != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(clip.ID)), "yt_")
+	if clip == nil {
+		return false
+	}
+	id := strings.ToLower(strings.TrimSpace(clip.ID))
+	return strings.HasPrefix(id, "yt_") || strings.HasPrefix(id, "cliprender_")
 }
 
 // RenderUnitCount returns the total number of localized render units across

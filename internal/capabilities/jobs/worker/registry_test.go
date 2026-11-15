@@ -11,6 +11,7 @@ package worker
 
 import (
 	"context"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -58,12 +59,12 @@ func TestStageStatusIsDerivedFromTheWiredBroker(t *testing.T) {
 		t.Fatal("a stage-aware broker must expose its sink")
 	}
 
-	tools := translateToolsToExecutionTools(context.Background(), &Tools{broker: aware}, appjobs.TypeScriptGenerate)
+	tools := translateToolsToExecutionTools(context.Background(), &Tools{broker: aware}, jobscheduling.TypeScriptGenerate)
 	if tools == nil || tools.StageStatus == nil {
 		t.Fatal("JobExecutionTools must expose the stage sink to handlers")
 	}
 
-	notAware := translateToolsToExecutionTools(context.Background(), &Tools{broker: plain}, appjobs.TypeScriptGenerate)
+	notAware := translateToolsToExecutionTools(context.Background(), &Tools{broker: plain}, jobscheduling.TypeScriptGenerate)
 	if notAware == nil || notAware.StageStatus != nil {
 		t.Fatal("handlers on a broker without the port must get a nil sink, not a broken one")
 	}

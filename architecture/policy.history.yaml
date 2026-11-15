@@ -66,6 +66,19 @@ package_hotspot_baselines:
       strict-600 gate fired and was cleared by compressing added comments).
       Owner/deadline/targets unchanged; global cap remains 65.
 
+max_lines_per_file_strict:
+  current: 800
+  history:
+    - date: "2026-11-15"
+      change: "600 -> 800"
+      note: |
+        Owner decision after the strict gate reported 11 files at 606-853
+        lines and repeated same-directory split waves increased package file
+        counts. The cap is now 800, leaving a 200-line margin before the
+        1000-line hard cap. The 853-line entity catalog adapter was split by
+        cohesive candidate/materialization responsibility in the same change,
+        and the strict allowlist remains empty.
+
 max_files_per_package:
   current: 65
   history:

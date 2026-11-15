@@ -19,6 +19,18 @@ func chainFixture(kind, sceneID, text string, startUS, durationUS int64, motion 
 
 // Without chain keys the legacy direct-call path is intact: items pass through untouched.
 // Production enables chaining via cloneAnimationCounts (default 5000ms gap).
+func TestCompositeImageGroupStaysStandalone(t *testing.T) {
+	item := OverlayItem{
+		ID: "group", SceneID: "s1", Kind: "entity_image", TemplateID: "IMAGE_OVERLAY",
+		GroupMotionID: "duo_split_reveal", StartMs: 0, EndMs: 5_000,
+		AssetRefs:   []OverlayAssetRef{{AssetID: "a"}},
+		ImageLayers: []OverlayImageLayer{{ID: "a", AssetID: "a", StartMS: 0, EndMS: 5_000}},
+	}
+	if chainable(item) {
+		t.Fatal("a composite image group must stay standalone so its group choreography survives fusion")
+	}
+}
+
 func TestCoalesceDisabledByDefault(t *testing.T) {
 	items := []OverlayItem{
 		chainFixture("text_phrase", "s1", "alpha", 100_000, 500_000, "motion_a"),
@@ -179,6 +191,42 @@ func TestCoalesceFusesNumberPhrase(t *testing.T) {
 	if len(got) != 1 || got[0].Kind != KindPhraseChain {
 		t.Fatalf("number+phrase must fuse as phrase_chain: %+v", got)
 	}
+}
+
+// A text-only entity card inherits the portrait the plan already resolved for
+// the same entity, so the fused segment cannot render a name without its image.
+func TestCoalesceAttachesResolvedEntityPortraitToTextCard(t *testing.T) {
+	portrait := OverlayAssetRef{AssetID: "portrait-ada", SHA256: strings.Repeat("a", 64)}
+	image := chainFixture("entity_image", "s1", "", 8_000_000, 2_500_000, "image_focus_reveal")
+	image.TemplateID = "image_popup"
+	image.EntityID = "ent_ada"
+	image.AssetRefs = []OverlayAssetRef{portrait}
+	card := chainFixture("entity_card", "s1", "Ada Lovelace", 10_500_000, 2_500_000, "card_motion")
+	card.TemplateID = "person_default"
+	card.EntityID = "ent_ada"
+	card.ImagePresetID = "image_fade_in"
+	phrase := chainFixture("text_phrase", "s1", "la frase", 12_000_000, 2_000_000, "phrase_motion")
+
+	got := CoalesceChainedOverlays([]OverlayItem{image, card, phrase}, map[string]int{"chain_enabled": 1})
+	for _, item := range got {
+		if item.Kind != KindMixedChain {
+			continue
+		}
+		segments, ok := DecodeChainSegments(item.Params)
+		if !ok {
+			t.Fatalf("chain segments undecodable: %+v", item.Params["chain_segments"])
+		}
+		for _, seg := range segments {
+			if seg.EntityID != "ent_ada" || seg.Kind != "entity_card" {
+				continue
+			}
+			if len(seg.Assets) != 1 || seg.Assets[0].AssetID != portrait.AssetID {
+				t.Fatalf("entity card segment has no resolved portrait: %+v", seg)
+			}
+			return
+		}
+	}
+	t.Fatalf("mixed chain with the entity card not found: %+v", got)
 }
 
 // Entity card + phrase fuse as mixed_chain keeping caption and text.

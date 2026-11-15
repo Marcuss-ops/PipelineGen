@@ -32,17 +32,33 @@ func assignPlannerItemMotions(plan *capmodel.OverlayPlan, input PlanInput, motio
 		switch plan.Items[i].Kind {
 		case "text_phrase":
 			if plan.Items[i].Params != nil && plan.Items[i].Params["editorial_role"] == ChapterBulletRole {
-				// Chapter openings keep the text_3d family and rotate one distinct
-				// entrance per chapter, regardless of copy length.
-				plan.Items[i].MotionID = selectMotionFromPool(motionSeed, "chapter_bullet", "chapter_bullet", chapterOrdinal, text3DMotionCandidates)
+				// Chapter openings rotate one distinct entrance per chapter,
+				// regardless of copy length. The pool excludes text_3d_*: those
+				// motions render a blank white frame on this light canvas.
+				plan.Items[i].MotionID = selectMotionFromPool(motionSeed, "chapter_bullet", "chapter_bullet", chapterOrdinal, ChapterBulletMotionCandidates())
 				chapterOrdinal++
+				continue
+			}
+			words := len(strings.Fields(plan.Items[i].Text))
+			// Lane pins are explicit caller choices: apply them before the
+			// pool/rotation selectors and keep every phrase of that lane on the
+			// same motion for the whole run. The ordinals still advance so any
+			// unpinned lane keeps its existing deterministic sequence.
+			if words >= 6 && input.LongPhraseMotion != "" {
+				plan.Items[i].MotionID = input.LongPhraseMotion
+				phraseOrdinal++
+				continue
+			}
+			if words < 6 && input.ShortPhraseMotion != "" {
+				plan.Items[i].MotionID = input.ShortPhraseMotion
+				phraseOrdinal++
+				shortPhraseOrdinal++
 				continue
 			}
 			if EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase {
 				// Short phrases use the renderer-supported phrase entrance pool.
 				// Keep selection seeded per run, but advance the ordinal so each
 				// phrase gets a different entrance until the pool is exhausted.
-				words := len(strings.Fields(plan.Items[i].Text))
 				plan.Items[i].MotionID = selectShortPhraseMotionLimited(
 					motionSeed,
 					"short_phrase_group",
@@ -56,7 +72,6 @@ func assignPlannerItemMotions(plan *capmodel.OverlayPlan, input PlanInput, motio
 				continue
 			}
 			if len(input.PhraseMotions) == 0 {
-				words := len(strings.Fields(plan.Items[i].Text))
 				switch {
 				case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
 					plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
@@ -98,7 +113,7 @@ func assignPlannerItemMotions(plan *capmodel.OverlayPlan, input PlanInput, motio
 			} else {
 				if plan.Items[i].Kind == "entity_image" {
 					if plan.Items[i].EntityCaption != "" {
-						pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
+						pool := imageWithTextPoolFor(input)
 						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
 						plan.Items[i].CaptionMotionID = SelectEntityCaptionMotionAt(imageSeed, input.VideoID, imageOrdinal)
 					} else {
@@ -106,7 +121,7 @@ func assignPlannerItemMotions(plan *capmodel.OverlayPlan, input PlanInput, motio
 					}
 				} else {
 					if plan.Items[i].EntityCaption != "" {
-						pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
+						pool := imageWithTextPoolFor(input)
 						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
 					} else {
 						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, input.ImageMotions)

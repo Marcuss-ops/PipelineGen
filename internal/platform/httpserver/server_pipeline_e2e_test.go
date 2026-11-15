@@ -41,6 +41,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -61,7 +62,6 @@ import (
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stock"
 	cliphttp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/youtube"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
@@ -439,7 +439,7 @@ func TestPipelineE2E(t *testing.T) {
 
 		require.Equal(t, 1, h.jobs.count())
 		enqueued := h.jobs.last(t)
-		require.Equal(t, appjobs.TypeYouTubeClipExtract, enqueued.Type)
+		require.Equal(t, jobscheduling.TypeYouTubeClipExtract, enqueued.Type)
 		payload, ok := enqueued.Payload.(map[string]any)
 		require.True(t, ok, "payload must be a JSON object")
 		segments, ok := payload["segments"].([]any)

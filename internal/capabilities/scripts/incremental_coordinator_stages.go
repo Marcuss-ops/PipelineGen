@@ -20,16 +20,21 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// ErrProviderResolveBudget marks a provider fan-out that exhausted its
-// per-scene budget while the scene context was still alive. The coordinator
+// ErrProviderResolveBudget marks a provider fan-out that exhausted the run's
+// provider budget while the scene context was still alive. The coordinator
 // degrades such a scene to its already-enriched text instead of failing the
 // whole run: missing media is a quality regression, a failed run is a
 // delivery regression.
 var ErrProviderResolveBudget = errors.New("vidrush provider resolve budget exhausted")
 
-// vidRushProviderResolveTimeout leaves at least ten of the scene's fifteen
-// minutes for acquisition/verification after a stalled provider fan-out.
-const vidRushProviderResolveTimeout = 5 * time.Minute
+// vidRushProviderResolveTimeout bounds the provider fan-out of the WHOLE run.
+// The measured tail (Nov 2026: 5.92 h of provider resolve across 96 runs,
+// 16 scenes parked on the old five-minute per-scene cap) showed that a
+// per-scene cap only multiplied the wait by the number of slow scenes.
+// Two minutes is still ~17x the measured median (6.8 s) and leaves thirteen
+// of the scene's fifteen minutes for acquisition/verification, while a
+// stalled provider can no longer hold the run barrier for five minutes.
+const vidRushProviderResolveTimeout = 2 * time.Minute
 
 func (c *VidRushIncrementalCoordinator) providerResolveTimeout() time.Duration {
 	if c != nil && c.providerResolveBudget > 0 {
@@ -38,8 +43,29 @@ func (c *VidRushIncrementalCoordinator) providerResolveTimeout() time.Duration {
 	return vidRushProviderResolveTimeout
 }
 
+// remainingProviderBudget starts the run-scoped provider clock on the first
+// fan-out and returns what is left of it. A scene that begins after the budget
+// is exhausted gets no provider work at all; the caller degrades it to text.
+func (c *VidRushIncrementalCoordinator) remainingProviderBudget() time.Duration {
+	if c == nil {
+		return 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.providerBudgetStart.IsZero() {
+		c.providerBudgetStart = time.Now()
+	}
+	remaining := time.Until(c.providerBudgetStart.Add(c.providerResolveTimeout()))
+	if remaining <= 0 {
+		return 0
+	}
+	return remaining
+}
+
 // searchProviders runs the provider fan-out stage under its own bounded
-// semaphore, independent of the extraction limit.
+// semaphore, independent of the extraction limit, and under the run-scoped
+// provider budget: every scene shares one clock, so a late scene cannot
+// restart the wait after the barrier has already been held.
 func (c *VidRushIncrementalCoordinator) researchSegment(ctx context.Context, result scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
 	if c.research == nil {
 		return result, nil
@@ -65,11 +91,16 @@ func (c *VidRushIncrementalCoordinator) searchProviders(ctx context.Context, res
 	if c.resolver == nil {
 		return result, nil
 	}
+	timeout := c.remainingProviderBudget()
+	if timeout <= 0 {
+		result.Warnings = append(result.Warnings, fmt.Sprintf(
+			"provider resolve exceeded %s; continuing without provider candidates", c.providerResolveTimeout()))
+		return result, nil
+	}
 	if err := c.acquire(ctx, c.providerSem); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
 	defer c.release(c.providerSem)
-	timeout := c.providerResolveTimeout()
 	// The scene context may live longer than a stalled provider deserves. A
 	// separate deadline lets the enrichment continue with the text it already
 	// has instead of burning the whole scene budget on one fan-out.

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"strings"
 )
 
@@ -40,7 +40,6 @@ type FinalJobStockFile struct{ ID, Name string }
 
 type FinalJobAssetResolver interface {
 	ResolveFinalJobAsset(context.Context, string) (map[string]any, error)
-	ListFinalJobStockFolder(context.Context, string) ([]FinalJobStockFile, error)
 	// FinalJobPublishedFileSize reports the byte size of a published Drive
 	// file. A clip-only scene is sent as the CERTIFIED localized render this
 	// pipeline produced (background, watermark and burnt subtitles included),
@@ -61,6 +60,56 @@ func resolveFinalJobStockAsset(ctx context.Context, resolver FinalJobAssetResolv
 		return stockResolver.ResolveFinalJobStockAsset(ctx, id)
 	}
 	return resolveFinalJobAsset(ctx, resolver, id)
+}
+
+// finalJobStockBindingAsset resolves the stock reference. The binding must
+// name the exact clip or Drive file selected for the scene; a folder alone is
+// not a concrete visual and cannot be handed to the render worker.
+func finalJobStockBindingAsset(ctx context.Context, resolver FinalJobAssetResolver, binding *scriptpkg.StockBinding) (map[string]any, int64, error) {
+	assetID := strings.TrimSpace(binding.AssetID)
+	driveLink := strings.TrimSpace(binding.DriveLink)
+	if assetID == "" && driveLink == "" {
+		if folderID := strings.TrimSpace(binding.FolderID); folderID != "" {
+			return nil, 0, fmt.Errorf("folder-only stock binding %q has no selected clip file; provide asset_id or drive_link", folderID)
+		}
+		return nil, 0, fmt.Errorf("stock binding has neither a Drive file nor a folder")
+	}
+	driveID := assetID
+	if driveLink != "" {
+		if id, err := urlutil.FileIDFromDriveLink(driveLink); err == nil && strings.TrimSpace(id) != "" {
+			driveID = id
+		}
+	}
+	windowMS := binding.DurationMs
+	if windowMS <= 0 && binding.EndMs > binding.StartMs {
+		windowMS = binding.EndMs - binding.StartMs
+	}
+	if driveID == "" {
+		return nil, 0, fmt.Errorf("stock binding has no usable Drive file identity")
+	}
+	asset, err := resolveFinalJobStockAsset(ctx, resolver, driveID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if asset == nil {
+		return nil, 0, fmt.Errorf("stock binding %q resolved no metadata", driveID)
+	}
+	if windowMS <= 0 {
+		windowMS = finalJobInt64(asset["duration_ms"])
+	}
+	if windowMS <= 0 {
+		return nil, 0, fmt.Errorf("stock binding %q has no positive window duration", driveID)
+	}
+	asset["start_ms"] = binding.StartMs
+	return asset, windowMS, nil
+}
+
+func hasFinalJobConcreteStockAsset(binding *scriptpkg.StockBinding) bool {
+	return binding != nil && (strings.TrimSpace(binding.AssetID) != "" || strings.TrimSpace(binding.DriveLink) != "")
+}
+
+func hasFinalJobStockBinding(binding *scriptpkg.StockBinding) bool {
+	return binding != nil && (strings.TrimSpace(binding.FolderID) != "" || hasFinalJobConcreteStockAsset(binding))
 }
 
 func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
@@ -154,15 +203,7 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		return nil, nil, err
 	}
 	if imageRequested {
-		clipScenes := make(map[string]struct{})
-		for sceneID := range finalJobIntermediateClipWindows(result) {
-			clipScenes[sceneID] = struct{}{}
-		}
-		var overlayItems []capmodel.OverlayItem
-		if result.OverlayPlan != nil {
-			overlayItems = result.OverlayPlan.Items
-		}
-		if err := finalJobImagePreflight(overlayItems, clipScenes, true); err != nil {
+		if err := finalJobImagePreflightOnce(ctx, true, result); err != nil {
 			overlaystatus.Update(runID, func(status *overlaystatus.Status) {
 				status.Stage = "preflight_failed"
 				status.Error = err.Error()
@@ -180,10 +221,6 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	for _, scene := range result.Scenes {
 		scenesByID[scene.ID] = scene
 	}
-	// The stock selection rule lives in finalJobStockPlanner; one planner per
-	// handoff keeps the folder cursors shared across scenes. Resolution is
-	// metadata-only: the Master downloads and processes the stock Drive source.
-	stockPlanner := newFinalJobStockPlanner(runID)
 	remoteScenes := make([]map[string]any, 0, len(result.CanonicalTimeline.Segments))
 	clipOrdinal := 0
 	var plannedDurationMS int64
@@ -304,18 +341,13 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		if !sceneExists {
 			return nil, nil, fmt.Errorf("final_job scene %q has no generated scene", segment.ID)
 		}
-		if req.MediaMode == scriptpkg.MediaModeStockOnly && (localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "") {
-			return nil, nil, fmt.Errorf("final_job stock_only scene %q has no stock folder binding; refusing to route it through the clip path", segment.ID)
+		if req.MediaMode == scriptpkg.MediaModeStockOnly && !hasFinalJobStockBinding(localScene.Stock) {
+			return nil, nil, fmt.Errorf("final_job stock_only scene %q has no stock binding (folder or concrete); refusing to route it through the clip path", segment.ID)
 		}
-		// A scene whose clips are ALL stock-marked is audio-only by contract:
-		// clip render was deliberately skipped for it, so no certified clip
-		// render exists. Its video MUST come from its stock folder binding;
-		// without one there is no visual source and the remote worker would
-		// receive a scene it cannot composite.
-		if sceneVisualClipsAreStockOnly(localScene) && (localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "") {
-			return nil, nil, fmt.Errorf("final_job scene %q has only stock-marked clips and no stock folder binding; its video must come from a stock folder (segments[].stock_folder_id)", segment.ID)
+		if sceneVisualClipsAreStockOnly(localScene) && !hasFinalJobStockBinding(localScene.Stock) {
+			return nil, nil, fmt.Errorf("final_job scene %q has only stock-marked clips and no stock binding (folder or concrete)", segment.ID)
 		}
-		if localScene.Stock == nil || strings.TrimSpace(localScene.Stock.FolderID) == "" {
+		if !hasFinalJobStockBinding(localScene.Stock) {
 			// Clip-only scene: the runtime receives the clip THIS pipeline
 			// produced, never the unmodified source clip from the library.
 			var asset map[string]any
@@ -368,20 +400,19 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			}
 			continue
 		}
-		folderID := strings.TrimSpace(localScene.Stock.FolderID)
 		sceneText := firstFinalJobValue(localScene.Text[req.SourceLanguage], req.Title, localScene.ID)
-		clips, err := stockPlanner.sceneClips(ctx, resolver, folderID, segment.DurationUS)
+		stockAsset, stockWindowMS, err := finalJobStockBindingAsset(ctx, resolver, localScene.Stock)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("final_job scene %q: %w", segment.ID, err)
 		}
-		for _, clip := range clips {
-			// Stock may be sourced from Drive, but the worker only receives its
-			// immutable HTTPS Objectstore reference.
-			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "stock", clip.Asset)
-			remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", clip.Asset, clip.ChunkMS, sceneText))
-			plannedDurationMS += clip.ChunkMS
-			clipOrdinal++
+		sceneMS := (segment.DurationUS + 999) / 1000
+		if stockWindowMS != sceneMS {
+			return nil, nil, fmt.Errorf("final_job scene %q stock binding window %dms does not match canonical scene duration %dms; the stockpipeline must bind the scene window", segment.ID, stockWindowMS, sceneMS)
 		}
+		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "stock", stockAsset)
+		remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", stockAsset, stockWindowMS, sceneText))
+		plannedDurationMS += stockWindowMS
+		clipOrdinal++
 		if text := localScene.Text[req.SourceLanguage]; text != "" {
 			scriptText.WriteString(text)
 			scriptText.WriteByte('\n')

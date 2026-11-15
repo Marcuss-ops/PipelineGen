@@ -12,8 +12,8 @@ import (
 // staying stable for retries of the same run.
 func TestFinalJobVideoNameIsRunScoped(t *testing.T) {
 	req := GenerateRequest{
-		Title:      "MILTON LEITE: a decisão do STJ",
-		OutputName: "MILTON LEITE: a decisão do STJ",
+		Title:      "MILTON LEITE: a decisao do STJ",
+		OutputName: "MILTON LEITE: a decisao do STJ",
 	}
 	const runOne = "run_1790318876036014800_2a5c45bb"
 	const runTwo = "run_1790420124179913810_a294cb"
@@ -36,6 +36,31 @@ func TestFinalJobVideoNameIsRunScoped(t *testing.T) {
 	// terminates in a constant, and the caller guarantees a run id in practice).
 	if got := finalJobVideoName(GenerateRequest{Title: "Dolly"}, ""); got != "Dolly" {
 		t.Fatalf("empty run id must keep the base name, got %q", got)
+	}
+}
+
+// TestFinalJobVideoNameSanitizesNonASCII pins the ASCII-only Master identity:
+// the 2026-11-14 live run with an em-dash title stalled the artifact-upload ack
+// for 300 s; the same plan with an ASCII title completed in 1.37 s.
+func TestFinalJobVideoNameSanitizesNonASCII(t *testing.T) {
+	req := GenerateRequest{Title: "Subs style E2E — Poppins, stroke e shadow"}
+	const runID = "run_a9a76f28-80c1-4f3a-92c4-0ce8070128d5"
+
+	got := finalJobVideoName(req, runID)
+	for _, r := range got {
+		if r > 0x7f {
+			t.Fatalf("video_name %q contains non-ASCII rune %q", got, r)
+		}
+	}
+	if !strings.HasPrefix(got, "Subs style E2E - Poppins, stroke e shadow [") {
+		t.Fatalf("video_name = %q, want the sanitized readable prefix", got)
+	}
+	if !strings.Contains(got, finalJobIdentitySuffix(runID)) {
+		t.Fatalf("video_name = %q, want the run-scoped suffix", got)
+	}
+
+	if onlyUnsafe := finalJobVideoName(GenerateRequest{Title: "—"}, runID); !strings.HasPrefix(onlyUnsafe, "final-job [") {
+		t.Fatalf("video_name = %q, want the final-job fallback", onlyUnsafe)
 	}
 }
 

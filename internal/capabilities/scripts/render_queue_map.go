@@ -217,7 +217,7 @@ func resolveMapBasemap(mapType, seed, slot string) (string, error) {
 		return "", fmt.Errorf("unsupported runtime map_type %q", mapType)
 	}
 	if !servable[id] {
-		return "", fmt.Errorf("basemap %q (map_type %q) is not ported to the native map renderer (raster tile family, demolition debt, TICKET-MAPS-NATIVE-PORT): declare map_type chronon_editorial", id, mapType)
+		return "", fmt.Errorf("basemap %q (map_type %q) is not available in the native map renderer: declare classic/chronon_editorial, modern_map_1/esri_topo, or satellite/esri_sat", id, mapType)
 	}
 	return id, nil
 }
@@ -327,6 +327,28 @@ func (b *boundedMapRenderOutput) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return string(b.data)
+}
+
+// mapLevelCameraZooms maps the four cartographic levels onto the camera
+// envelope used by the native tile pyramid. The values are deliberately
+// distinct at 1920x1080: a continent view spans thousands of km, a municipality
+// view a few km around the pins.
+func mapLevelCameraZooms(level string) (float64, float64, bool) {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "continent":
+		return 5.0, 5.4, true
+	case "country":
+		return 6.2, 6.8, true
+	case "region":
+		// The native tile/NVENC path has an availability ceiling at z8.0:
+		// above it the multi-tile prefetch can stall. The region envelope is
+		// deliberately capped there.
+		return 7.4, 8.0, true
+	case "municipality":
+		return 10.0, 11.2, true
+	default:
+		return 0, 0, false
+	}
 }
 
 // mapBasemapStyles returns the active cartographic palette for map_type=random.

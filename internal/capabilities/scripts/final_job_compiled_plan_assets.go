@@ -202,6 +202,12 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 	sourceStartFrame := finalJobFrameAtUS(segment.SourceInUS, fpsNum, fpsDen)
 	missing := neededFrames - endFrame
 	available := totalFrames - sourceStartFrame - segment.FrameCount
+	if segment.SourceInUS+segment.SourceDurationUS < asset.DurationUS {
+		// A short source window is deliberate (stockpipeline binding or a
+		// certified fragment). Never pull frames from outside the declared
+		// window to close the timeline; hold the last displayed frame instead.
+		available = 0
+	}
 	if available > 0 {
 		extend := min(available, missing)
 		segment.FrameCount += extend

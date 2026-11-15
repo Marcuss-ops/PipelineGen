@@ -3,8 +3,7 @@ package workerruntime
 import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 )
 
@@ -72,7 +71,7 @@ func BuildProfileWorkerRegistry(root *wiring.ComposeRoot, allowedTypes []string)
 		return nil, nil, worker.ErrNoHandlers
 	}
 
-	reg.SeedProducesArtifacts(appjobs.Compose().ProducesArtifactsMap())
+	reg.SeedProducesArtifacts(jobscheduling.Compose().ProducesArtifactsMap())
 
 	// Creator invariant: script.generate MUST be present.
 	// A profile that omits script generation is a composition-level
@@ -125,7 +124,7 @@ func BuildWorkerRegistry(root *wiring.ComposeRoot) (*worker.Registry, []string, 
 	// false in production, and every artifact job hits the
 	// SQL-layer ErrCompleteJobPathViolation gate after a costly
 	// retry cycle.
-	reg.SeedProducesArtifacts(appjobs.Compose().ProducesArtifactsMap())
+	reg.SeedProducesArtifacts(jobscheduling.Compose().ProducesArtifactsMap())
 
 	caps := reg.JobTypes()
 	return reg, caps, nil

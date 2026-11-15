@@ -41,6 +41,10 @@ type MapCompositionInput struct {
 	// incompatible (TICKET map parity: the renderer matches the payload value
 	// EXACTLY against the ADM3 catalog, so callers may never guess a name).
 	TerritoryFeature string
+	// TerritoryScope is the grounded scope of that same pin. The current
+	// territory dataset contains Italian ADM3/locality polygons, so it cannot
+	// stand in for a country or a first-order region boundary.
+	TerritoryScope string
 	// AreaGlowRadiusKM carries the plan item's area glow radius: the ported
 	// area_glow_pulse composition refuses to render without a positive one.
 	AreaGlowRadiusKM float64
@@ -186,8 +190,13 @@ func EligibleMapCompositionsFor(input MapCompositionInput, certified []string) [
 // explicit admission (AdmitMapComposition). One rule set, two surfacings:
 // random skips, exact requests fail closed with the reason.
 func mapCompositionWireDataCompatible(id string, input MapCompositionInput) error {
-	if MapTerritoryOverlayRequired(id) && strings.TrimSpace(input.TerritoryFeature) == "" {
-		return fmt.Errorf("map_animation %q requires an ADM3 territory_feature resolvable for the map's first pin", id)
+	if MapTerritoryOverlayRequired(id) {
+		if !MapTerritoryFeatureScopeCompatible(input.TerritoryScope) {
+			return fmt.Errorf("map_animation %q requires a locality-level ADM3 territory, got scope %q", id, input.TerritoryScope)
+		}
+		if strings.TrimSpace(input.TerritoryFeature) == "" {
+			return fmt.Errorf("map_animation %q requires an ADM3 territory_feature resolvable for the map's first pin", id)
+		}
 	}
 	if id == "area_glow_pulse" && input.AreaGlowRadiusKM <= 0 {
 		return fmt.Errorf("map_animation %q requires a positive area_glow_radius_km payload", id)

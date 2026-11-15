@@ -20,7 +20,8 @@ const semanticSearchBatchTimeout = 5 * time.Minute
 // records the measured outcomes and publishes the report on the result. It is
 // fail-soft: a provider outage degrades to `skip_visual` feedback (and a
 // warning), never to a failed generation.
-func (r *Runner) executeSemanticSearchBatch(ctx context.Context, language Language, result *GenerateResult) {
+func (r *Runner) executeSemanticSearchBatch(ctx context.Context, language Language, result *GenerateResult, forceRefresh ...bool) {
+	bypassCache := len(forceRefresh) > 0 && forceRefresh[0]
 	if r == nil || r.semanticSearchPlanner == nil || result == nil || result.SemanticProductionPlan == nil {
 		return
 	}
@@ -29,7 +30,7 @@ func (r *Runner) executeSemanticSearchBatch(ctx context.Context, language Langua
 	}
 	batchCtx, cancel := context.WithTimeout(ctx, semanticSearchBatchTimeout)
 	defer cancel()
-	report, err := r.semanticSearchPlanner.Run(batchCtx, result.SemanticProductionPlan, string(language))
+	report, err := r.semanticSearchPlanner.Run(batchCtx, result.SemanticProductionPlan, string(language), bypassCache)
 	if report != nil {
 		result.SemanticSearchReport = report
 		result.SemanticSearchFeedback = report.Feedback

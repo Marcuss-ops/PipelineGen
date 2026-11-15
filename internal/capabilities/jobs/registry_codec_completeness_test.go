@@ -29,6 +29,7 @@
 package jobs
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -41,9 +42,9 @@ import (
 //  2. Define a parallel codecFor() helper;
 //  3. Add a parallel TestCodecCompleteness_RoundTrip_* test.
 var canonicalWiredJobTypes = []string{
-	TypeScriptGenerate,
-	TypeImagesGenerate,
-	TypeAssetsResolve,
+	jobscheduling.TypeScriptGenerate,
+	jobscheduling.TypeImagesGenerate,
+	jobscheduling.TypeAssetsResolve,
 }
 
 // scriptGenerateCodec returns the canonical PayloadCodec + ResultCodec
@@ -54,21 +55,21 @@ var canonicalWiredJobTypes = []string{
 // force duplication of the SchemaVersion / JobType / reflect surface.
 func scriptGenerateCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
 	t.Helper()
-	inner := NewTypedCodec[ScriptGeneratePayload, ScriptGenerateResult](TypeScriptGenerate)
+	inner := NewTypedCodec[ScriptGeneratePayload, ScriptGenerateResult](jobscheduling.TypeScriptGenerate)
 	adapter := NewTypedCodecAdapter(inner, "pipelinegen.script.generate.v1")
 	return adapter, adapter
 }
 
 func imagesGenerateCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
 	t.Helper()
-	inner := NewTypedCodec[ImagesGeneratePayload, ImagesGenerateResult](TypeImagesGenerate)
+	inner := NewTypedCodec[ImagesGeneratePayload, ImagesGenerateResult](jobscheduling.TypeImagesGenerate)
 	adapter := NewTypedCodecAdapter(inner, "pipelinegen.images.generate.v1")
 	return adapter, adapter
 }
 
 func assetsResolveCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
 	t.Helper()
-	inner := NewTypedCodec[AssetsResolvePayload, AssetsResolveResult](TypeAssetsResolve)
+	inner := NewTypedCodec[AssetsResolvePayload, AssetsResolveResult](jobscheduling.TypeAssetsResolve)
 	adapter := NewTypedCodecAdapter(inner, "pipelinegen.assets.resolve.v1")
 	return adapter, adapter
 }
@@ -78,11 +79,11 @@ func assetsResolveCodec(t *testing.T) (job.PayloadCodec, job.ResultCodec) {
 func codecFor(t *testing.T, jobType string) (job.PayloadCodec, job.ResultCodec) {
 	t.Helper()
 	switch jobType {
-	case TypeScriptGenerate:
+	case jobscheduling.TypeScriptGenerate:
 		return scriptGenerateCodec(t)
-	case TypeImagesGenerate:
+	case jobscheduling.TypeImagesGenerate:
 		return imagesGenerateCodec(t)
-	case TypeAssetsResolve:
+	case jobscheduling.TypeAssetsResolve:
 		return assetsResolveCodec(t)
 	default:
 		t.Fatalf("codecFor: unknown canonical job type %q (add a helper here)", jobType)

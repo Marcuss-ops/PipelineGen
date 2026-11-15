@@ -136,9 +136,23 @@ type PlanInput struct {
 	// and an id outside CertifiedPhraseMotions() is a compile failure: the
 	// rotation must never hand the renderer a motion it cannot run.
 	PhraseMotions []string
+	// ShortPhraseMotion pins one certified motion for every 1-5-word phrase.
+	// A pin bypasses the seeded short-lane rotation and PhraseMotions for the
+	// run; empty keeps the existing lane behaviour. The id must be a general
+	// short-phrase entrance, not a word-count-specific recipe.
+	ShortPhraseMotion string
+	// LongPhraseMotion pins one certified motion for every 6+-word phrase.
+	// A pin bypasses the seeded long-lane rotation and PhraseMotions for the
+	// run; empty keeps the existing lane behaviour.
+	LongPhraseMotion string
 	// PhraseMotionFamily optionally limits automatic phrase-motion selection
 	// to a certified family and applies the one sampled motion to every phrase.
 	PhraseMotionFamily string
+	// DateMotionFamily optionally narrows date-card motion selection to one
+	// certified ChrononTemplate date family: "date_v1", "didone"
+	// (date_didone_v1), or "typewriter" (date_typewriter_v1). Empty or "auto"
+	// keeps the full certified date pool. Unknown families fail closed.
+	DateMotionFamily string
 	// HeavyPhrasePriority, when POSITIVE, splits the phrase lane by editorial
 	// weight: a phrase whose priority (the score the candidate was admitted
 	// with) is at least this value is HEAVY and takes a distinct, prominent
@@ -149,10 +163,17 @@ type PlanInput struct {
 	HeavyPhrasePriority float64
 	// ImageMotions optionally narrows the certified layer-only image motion pool.
 	ImageMotions []string
+	// ImageWithTextMotions optionally narrows the certified pool for images
+	// that carry a caption. Empty keeps the full seeded catalog.
+	ImageWithTextMotions []string
 	// AnimationCounts caps the distinct style pool for each runtime subfamily.
 	// Missing or non-positive entries keep the FULL certified catalog so runs
-	// rotate every entrance; a positive value bounds the window. Chain tuning
-	// rides here too: chain_gap_ms, chain_max_segments, chain_disabled.
+	// rotate every entrance; a positive value bounds the window for dates,
+	// images, entities, maps and metrics. The important_phrase and
+	// short_important_phrase entries are UI preview hints only: the runtime
+	// always walks the full compatible phrase pool, because capping it made
+	// long runs repeat the same handful of motions. Chain tuning rides here
+	// too: chain_gap_ms, chain_max_segments, chain_disabled.
 	// Lane keys are canonicalized by animationLaneKeys (preset_motion_selection.go):
 	// images, images_with_text, entities, important_phrase, short_important_phrase,
 	// maps, timeline_date, metric_stat — each with documented aliases resolved

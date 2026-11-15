@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"errors"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 )
 
@@ -10,24 +11,24 @@ func TestRegistry_CompletionDeclarationRejectsIncoherentPolicies(t *testing.T) {
 
 	cases := []struct {
 		name  string
-		owner ArtifactOwnership
-		final FinalizationStrategy
+		owner jobscheduling.ArtifactOwnership
+		final jobscheduling.FinalizationStrategy
 	}{
-		{"worker spine cannot use legacy complete", ArtifactOwnershipWorkerSpine, FinalizationStrategyLegacyComplete},
-		{"application transaction cannot use artifact completion", ArtifactOwnershipApplication, FinalizationStrategyCompleteWithArtifacts},
-		{"artifact free cannot use artifact completion", ArtifactOwnershipNone, FinalizationStrategyCompleteWithArtifacts},
-		{"unknown owner is rejected", ArtifactOwnership("unknown"), FinalizationStrategyLegacyComplete},
-		{"unknown strategy is rejected", ArtifactOwnershipNone, FinalizationStrategy("unknown")},
+		{"worker spine cannot use legacy complete", jobscheduling.ArtifactOwnershipWorkerSpine, jobscheduling.FinalizationStrategyLegacyComplete},
+		{"application transaction cannot use artifact completion", jobscheduling.ArtifactOwnershipApplication, jobscheduling.FinalizationStrategyCompleteWithArtifacts},
+		{"artifact free cannot use artifact completion", jobscheduling.ArtifactOwnershipNone, jobscheduling.FinalizationStrategyCompleteWithArtifacts},
+		{"unknown owner is rejected", jobscheduling.ArtifactOwnership("unknown"), jobscheduling.FinalizationStrategyLegacyComplete},
+		{"unknown strategy is rejected", jobscheduling.ArtifactOwnershipNone, jobscheduling.FinalizationStrategy("unknown")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			entry := RegistryEntry{Completion: CompletionDeclaration{JobType: "test.completion", ArtifactOwnership: tc.owner, FinalizationStrategy: tc.final}}
-			if err := entry.ValidateCompletion(); !errors.Is(err, ErrInvalidCompletionDeclaration) {
-				t.Fatalf("ValidateCompletion() error = %v, want ErrInvalidCompletionDeclaration", err)
+			entry := jobscheduling.RegistryEntry{Completion: jobscheduling.CompletionDeclaration{JobType: "test.completion", ArtifactOwnership: tc.owner, FinalizationStrategy: tc.final}}
+			if err := entry.ValidateCompletion(); !errors.Is(err, jobscheduling.ErrInvalidCompletionDeclaration) {
+				t.Fatalf("ValidateCompletion() error = %v, want jobscheduling.ErrInvalidCompletionDeclaration", err)
 			}
-			reg := NewRegistry()
-			if err := reg.Register(entry); !errors.Is(err, ErrInvalidCompletionDeclaration) {
-				t.Fatalf("Register() error = %v, want ErrInvalidCompletionDeclaration", err)
+			reg := jobscheduling.NewRegistry()
+			if err := reg.Register(entry); !errors.Is(err, jobscheduling.ErrInvalidCompletionDeclaration) {
+				t.Fatalf("Register() error = %v, want jobscheduling.ErrInvalidCompletionDeclaration", err)
 			}
 		})
 	}
@@ -38,23 +39,23 @@ func TestRegistry_CompletionDeclarationAcceptsCanonicalPolicies(t *testing.T) {
 
 	for _, tc := range []struct {
 		name  string
-		owner ArtifactOwnership
-		final FinalizationStrategy
+		owner jobscheduling.ArtifactOwnership
+		final jobscheduling.FinalizationStrategy
 	}{
-		{"artifact free", ArtifactOwnershipNone, FinalizationStrategyLegacyComplete},
-		{"application transaction", ArtifactOwnershipApplication, FinalizationStrategyLegacyComplete},
-		{"worker spine", ArtifactOwnershipWorkerSpine, FinalizationStrategyCompleteWithArtifacts},
+		{"artifact free", jobscheduling.ArtifactOwnershipNone, jobscheduling.FinalizationStrategyLegacyComplete},
+		{"application transaction", jobscheduling.ArtifactOwnershipApplication, jobscheduling.FinalizationStrategyLegacyComplete},
+		{"worker spine", jobscheduling.ArtifactOwnershipWorkerSpine, jobscheduling.FinalizationStrategyCompleteWithArtifacts},
 		// The staged pair is deliberate, not a synonym: the worker still
 		// publishes its own spine artifacts, but the terminal flip is deferred
 		// to the parent aggregator (TICKET-CORE-READY-DURABLE-DAG blocker B1).
-		{"worker spine then defer", ArtifactOwnershipWorkerSpine, FinalizationStrategyCompleteWithArtifactsThenDefer},
+		{"worker spine then defer", jobscheduling.ArtifactOwnershipWorkerSpine, jobscheduling.FinalizationStrategyCompleteWithArtifactsThenDefer},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			entry := RegistryEntry{Completion: CompletionDeclaration{JobType: "test." + tc.name, ArtifactOwnership: tc.owner, FinalizationStrategy: tc.final}}
+			entry := jobscheduling.RegistryEntry{Completion: jobscheduling.CompletionDeclaration{JobType: "test." + tc.name, ArtifactOwnership: tc.owner, FinalizationStrategy: tc.final}}
 			if err := entry.ValidateCompletion(); err != nil {
 				t.Fatalf("ValidateCompletion() = %v, want nil", err)
 			}
-			reg := NewRegistry()
+			reg := jobscheduling.NewRegistry()
 			if err := reg.Register(entry); err != nil {
 				t.Fatalf("Register() = %v, want nil", err)
 			}
@@ -65,18 +66,18 @@ func TestRegistry_CompletionDeclarationAcceptsCanonicalPolicies(t *testing.T) {
 func TestCompose_CompletionPolicyHasOneCanonicalProjection(t *testing.T) {
 	t.Parallel()
 
-	reg := Compose()
+	reg := jobscheduling.Compose()
 	artifactTypes := reg.ProducesArtifactsMap()
 	for _, jobType := range reg.AllTypes() {
 		// The projection is OWNERSHIP-derived, because that is what the
 		// production path reads: finalizeJob branches on
 		// reg.ProducesArtifacts(j.Type) and JobTypeRegistry.ProducesArtifacts
-		// keys on ArtifactOwnership == WorkerSpine. Asserting the strategy
+		// keys on jobscheduling.ArtifactOwnership == WorkerSpine. Asserting the strategy
 		// itself would have made every WorkerSpine job whose strategy is not
 		// EXACTLY CompleteWithArtifacts read as a regression, even though its
 		// ownership — and therefore the whole production projection — is
 		// unchanged. The staged strategy exists precisely to be such a job.
-		want := reg.ArtifactOwnership(jobType) == ArtifactOwnershipWorkerSpine
+		want := reg.ArtifactOwnership(jobType) == jobscheduling.ArtifactOwnershipWorkerSpine
 		_, got := artifactTypes[jobType]
 		if want != got {
 			t.Fatalf("completion policy drift for %q: ownership=%q (produces artifacts=%t), map membership=%t", jobType, reg.ArtifactOwnership(jobType), want, got)
@@ -94,20 +95,20 @@ func TestCompose_CompletionPolicyHasOneCanonicalProjection(t *testing.T) {
 func TestCompose_CompletionPolicyPinsCanonicalOwners(t *testing.T) {
 	t.Parallel()
 
-	reg := Compose()
+	reg := jobscheduling.Compose()
 	cases := []struct {
 		name  string
 		typ   string
-		owner ArtifactOwnership
-		final FinalizationStrategy
+		owner jobscheduling.ArtifactOwnership
+		final jobscheduling.FinalizationStrategy
 	}{
-		{name: "stock uses JobFinalizer spine", typ: TypeMediaStock, owner: ArtifactOwnershipWorkerSpine, final: FinalizationStrategyCompleteWithArtifacts},
+		{name: "stock uses JobFinalizer spine", typ: jobscheduling.TypeMediaStock, owner: jobscheduling.ArtifactOwnershipWorkerSpine, final: jobscheduling.FinalizationStrategyCompleteWithArtifacts},
 		// The script parent publishes its own spine AND defers the terminal flip
 		// to the aggregator (the only job type with both roles).
-		{name: "script parent uses JobFinalizer spine", typ: TypeScriptGenerate, owner: ArtifactOwnershipWorkerSpine, final: FinalizationStrategyCompleteWithArtifactsThenDefer},
-		{name: "voiceover batch uses application finalizer", typ: TypeVoiceoverBatch, owner: ArtifactOwnershipApplication, final: FinalizationStrategyLegacyComplete},
-		{name: "voiceover child uses application finalizer", typ: TypeVoiceoverGenerateItem, owner: ArtifactOwnershipApplication, final: FinalizationStrategyLegacyComplete},
-		{name: "youtube clip uses application finalizer", typ: TypeYouTubeClipExtract, owner: ArtifactOwnershipApplication, final: FinalizationStrategyLegacyComplete},
+		{name: "script parent uses JobFinalizer spine", typ: jobscheduling.TypeScriptGenerate, owner: jobscheduling.ArtifactOwnershipWorkerSpine, final: jobscheduling.FinalizationStrategyCompleteWithArtifactsThenDefer},
+		{name: "voiceover batch uses application finalizer", typ: jobscheduling.TypeVoiceoverBatch, owner: jobscheduling.ArtifactOwnershipApplication, final: jobscheduling.FinalizationStrategyLegacyComplete},
+		{name: "voiceover child uses application finalizer", typ: jobscheduling.TypeVoiceoverGenerateItem, owner: jobscheduling.ArtifactOwnershipApplication, final: jobscheduling.FinalizationStrategyLegacyComplete},
+		{name: "youtube clip uses application finalizer", typ: jobscheduling.TypeYouTubeClipExtract, owner: jobscheduling.ArtifactOwnershipApplication, final: jobscheduling.FinalizationStrategyLegacyComplete},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -23,6 +23,7 @@ package jobs
 
 import (
 	"context"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"sync"
 	"testing"
 	"time"
@@ -71,7 +72,7 @@ func newObservedWorker(t *testing.T, rec *obsCaptureRecorder, handler Handler) (
 	broker.revision = 1
 
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(TypeScriptGenerate, handler); err != nil {
+	if err := dispatcher.Register(jobscheduling.TypeScriptGenerate, handler); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
 
@@ -85,7 +86,7 @@ func newObservedWorker(t *testing.T, rec *obsCaptureRecorder, handler Handler) (
 		LeaseTTL:   5 * time.Minute, // renew tick = 100s — never fires during the test
 		PollEvery:  2 * time.Second,
 		Backoff:    BackoffConfig{},
-		Types:      []string{TypeScriptGenerate},
+		Types:      []string{jobscheduling.TypeScriptGenerate},
 	}).WithObserver(observer)
 	return worker, broker, observer
 }
@@ -112,7 +113,7 @@ func TestWorker_RunJob_ProducesRunReport(t *testing.T) {
 		defer close(done)
 		worker.runJob(context.Background(), &job.Job{
 			ID:          "obs-job-1",
-			Type:        TypeScriptGenerate,
+			Type:        jobscheduling.TypeScriptGenerate,
 			Status:      job.StatusRunning,
 			LeaseID:     "lease-obs-1",
 			LeaseExpiry: &leaseExpiry,
@@ -132,7 +133,7 @@ func TestWorker_RunJob_ProducesRunReport(t *testing.T) {
 		t.Fatalf("persisted reports = %d, want 1", rec.count())
 	}
 	rep := rec.last()
-	if rep.JobID != "obs-job-1" || rep.JobType != TypeScriptGenerate {
+	if rep.JobID != "obs-job-1" || rep.JobType != jobscheduling.TypeScriptGenerate {
 		t.Fatalf("identity = %q/%q", rep.JobID, rep.JobType)
 	}
 	if rep.Status != kernobs.StatusSucceeded {
@@ -180,7 +181,7 @@ func TestWorker_RunJob_FailedAttempt_FinishesFailed(t *testing.T) {
 		defer close(done)
 		worker.runJob(context.Background(), &job.Job{
 			ID:         "obs-job-fail",
-			Type:       TypeScriptGenerate,
+			Type:       jobscheduling.TypeScriptGenerate,
 			Status:     job.StatusRunning,
 			LeaseID:    "lease-obs-fail",
 			RetryCount: 1,
@@ -277,7 +278,7 @@ func TestEnqueue_RegistersChildOnParentRun(t *testing.T) {
 	obs := kernobs.NewRunObserver(nil)
 	run := obs.StartRun(context.Background(), kernobs.RunInfo{
 		JobID:     "parent-1",
-		JobType:   TypeScriptGenerate,
+		JobType:   jobscheduling.TypeScriptGenerate,
 		AttemptID: "parent-attempt-1",
 	})
 	ctx := kernobs.WithRun(context.Background(), run)
@@ -331,7 +332,7 @@ func TestEnqueue_EnqueueErrorRegistersFailedChild(t *testing.T) {
 	}
 
 	obs := kernobs.NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "parent-2", JobType: TypeScriptGenerate, AttemptID: "parent-attempt-2"})
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "parent-2", JobType: jobscheduling.TypeScriptGenerate, AttemptID: "parent-attempt-2"})
 	ctx := kernobs.WithRun(context.Background(), run)
 
 	// Unregistered job type → strict typed lookup returns

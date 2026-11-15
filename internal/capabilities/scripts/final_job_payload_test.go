@@ -221,6 +221,16 @@ func decodeFinalJobPlanForTest(t *testing.T, payload map[string]any) finalJobCom
 	return plan
 }
 
+// concreteStockBinding models the stockpipeline handoff: one selected Drive
+// asset and the exact scene window. The Producer never chooses the file or the
+// window; it only carries these fields into the plan.
+func concreteStockBinding(id string, startMS, endMS int64) *scriptpkg.StockBinding {
+	return &scriptpkg.StockBinding{
+		AssetID: id, DriveLink: "https://drive.google.com/file/d/" + id + "/view",
+		StartMs: startMS, EndMs: endMS, DurationMs: endMS - startMS,
+	}
+}
+
 func phraseOnlyFinalJobResult(sceneID string) *GenerateResult {
 	artifact := certifiedPhraseVideoArtifact()
 	item := capmodel.OverlayItem{ID: "phrase-item", SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Garlasco, provincia di Pavia.", StartUS: 0, DurationUS: 5_000_000}
@@ -281,7 +291,7 @@ func TestBuildFinalJobPayloadsUsesPublishedPhraseVideoForPhraseOnlyScene(t *test
 
 func TestBuildFinalJobPayloadsDropsFullyReplacedStockFromRuntimeAssets(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
-	result.Scenes[0].Stock = &scriptpkg.StockBinding{FolderID: "folder-1"}
+	result.Scenes[0].Stock = concreteStockBinding("drive-asset-5000", 0, 5000)
 	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-phrase", GenerateRequest{
 		Title: "Garlasco", SourceLanguage: "it",
 	}, result, finalJobPayloadResolver{})
@@ -481,7 +491,7 @@ func TestBuildFinalJobPayloadsRequiresPublishedOverlayAssets(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
 		FinalAudio:        &FinalAudioReference{AssetID: "audio-1", DriveLink: "https://drive.google.com/file/d/audio-drive-id/view", FinalAudioSHA256: strings.Repeat("a", 64), SizeBytes: 12, DurationMS: 1000, Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", FinalMix: true, CopyEligible: true},
-		Scenes:            []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
+		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-1000", 0, 1000)}},
 		OverlayPlan: &capmodel.OverlayPlan{
 			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -517,7 +527,7 @@ func TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder(t *testing.T) {
 		Scenes: []Scene{{
 			ID:    "scene-1",
 			Clips: []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000}},
-			Stock: &scriptpkg.StockBinding{FolderID: "folder-1"},
+			Stock: concreteStockBinding("drive-asset", 0, 2000),
 		}},
 	}
 	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
@@ -695,98 +705,6 @@ func TestFinalJobAudioInputAddsIntermediateClipAudioBesideVoiceover(t *testing.T
 	}
 	if len(eventsForRole(plan, capabilityaudio.TrackClipAudio)) != 1 || len(eventsForRole(plan, capabilityaudio.TrackVoiceover)) != 1 {
 		t.Fatalf("compiled intermediate mix must contain both source clip and voiceover tracks: %#v", plan.Tracks)
-	}
-}
-
-// TestFinalJobAudioInputAlignsStockScenesToWholeFiles pins the r59b fix: a
-// stock scene whose TTS ends mid-file is extended to the next whole multiple
-// of the binding's file duration, while non-stock scenes keep their exact
-// duration. The voiceover source stays the certified TTS; the extra window is
-// silence the renderer fills, never a local stock cut.
-func TestFinalJobAudioInputAlignsStockScenesToWholeFiles(t *testing.T) {
-	result := GenerateResult{Scenes: []Scene{
-		{
-			ID: "scene-stock", Index: 0, DurationUS: 9_624_000, DurationMS: 9_624,
-			Stock:     &scriptpkg.StockBinding{FolderID: "folder-1", DurationMs: 5_000},
-			Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.m4a", Duration: 9.624}},
-		},
-		{
-			ID: "scene-clip", Index: 1, DurationUS: 9_624_000, DurationMS: 9_624,
-			Voiceover: map[Language]AudioReference{"pt": {ID: "vo-clip", FilePath: "/tmp/vo-clip.m4a", Duration: 9.624}},
-		},
-	}, ResolvedScenes: []ResolvedScene{
-		{ID: "scene-stock", Index: 0, DurationUS: 9_624_000},
-		{ID: "scene-clip", Index: 1, DurationUS: 9_624_000},
-	}}
-	projected := finalJobAudioInput(result, "pt")
-	if projected.Scenes[0].DurationUS != 10_000_000 || projected.Scenes[0].DurationMS != 10_000 {
-		t.Fatalf("stock scene duration = %dus/%dms, want 10000000us/10000ms", projected.Scenes[0].DurationUS, projected.Scenes[0].DurationMS)
-	}
-	if projected.Scenes[1].DurationUS != 9_624_000 {
-		t.Fatalf("non-stock scene duration = %dus, want the exact TTS duration 9624000us", projected.Scenes[1].DurationUS)
-	}
-	if projected.ResolvedScenes[0].DurationUS != 10_000_000 || projected.ResolvedScenes[1].DurationUS != 9_624_000 {
-		t.Fatalf("resolved stock/clip durations = %d/%d, want 10000000/9624000", projected.ResolvedScenes[0].DurationUS, projected.ResolvedScenes[1].DurationUS)
-	}
-	if result.Scenes[0].DurationUS != 9_624_000 || result.ResolvedScenes[0].DurationUS != 9_624_000 {
-		t.Fatalf("alignment mutated the caller result: scene=%d resolved=%d", result.Scenes[0].DurationUS, result.ResolvedScenes[0].DurationUS)
-	}
-	// The fixture ResolvedScenes only carry the aligned duration; let the
-	// compiler resolve the full audio/video projection from the scenes.
-	projected.ResolvedScenes = nil
-	timeline, _, _, _, err := CompileCanonicalAudioPlanAudioOnly(projected, "pt", capabilityaudio.DefaultAudioProfile())
-	if err != nil {
-		t.Fatalf("compile aligned final-job audio: %v", err)
-	}
-	if timeline.DurationUS != 19_624_000 {
-		t.Fatalf("aligned timeline duration = %dus, want 19624000us", timeline.DurationUS)
-	}
-	if timeline.Segments[0].DurationUS != 10_000_000 {
-		t.Fatalf("stock segment window = %dus, want 10000000us", timeline.Segments[0].DurationUS)
-	}
-}
-
-// TestAlignFinalJobStockSceneDurationsFeedsResolvedTimeline pins the durable
-// half of the r59b fix: the runner aligns result.Scenes in place before the
-// audio compile, so the later ResolveScenes pass and the persisted canonical
-// timeline observe the same extended window as the compiled audio plan.
-func TestAlignFinalJobStockSceneDurationsFeedsResolvedTimeline(t *testing.T) {
-	result := &GenerateResult{Scenes: []Scene{{
-		ID: "scene-stock", Index: 0, DurationUS: 9_624_000, DurationMS: 9_624,
-		Stock:     &scriptpkg.StockBinding{FolderID: "folder-1", DurationMs: 5_000},
-		Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.m4a", Duration: 9.624}},
-	}}}
-	alignFinalJobStockSceneDurations(result)
-	resolved, err := ResolveScenes(result.Scenes, "pt", capabilityaudio.AudioModeCombinedTimeline, false)
-	if err != nil {
-		t.Fatalf("resolve aligned scenes: %v", err)
-	}
-	if resolved[0].DurationUS != 10_000_000 {
-		t.Fatalf("resolved durable scene = %dus, want 10000000us", resolved[0].DurationUS)
-	}
-}
-
-func TestFinalJobAudioInputKeepsWholeFileStockScenesUnchanged(t *testing.T) {
-	result := GenerateResult{Scenes: []Scene{{
-		ID: "scene-stock", Index: 0, DurationUS: 10_000_000, DurationMS: 10_000,
-		Stock:     &scriptpkg.StockBinding{FolderID: "folder-1", DurationMs: 5_000},
-		Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.m4a", Duration: 10}},
-	}}}
-	projected := finalJobAudioInput(result, "pt")
-	if projected.Scenes[0].DurationUS != 10_000_000 {
-		t.Fatalf("already-aligned stock scene = %dus, want 10000000us", projected.Scenes[0].DurationUS)
-	}
-}
-
-func TestFinalJobAudioInputLeavesStockScenesWithoutQuantumUnchanged(t *testing.T) {
-	result := GenerateResult{Scenes: []Scene{{
-		ID: "scene-stock", Index: 0, DurationUS: 9_624_000, DurationMS: 9_624,
-		Stock:     &scriptpkg.StockBinding{FolderID: "folder-1"},
-		Voiceover: map[Language]AudioReference{"pt": {ID: "vo-pt", FilePath: "/tmp/vo.m4a", Duration: 9.624}},
-	}}}
-	projected := finalJobAudioInput(result, "pt")
-	if projected.Scenes[0].DurationUS != 9_624_000 {
-		t.Fatalf("stock scene without a declared whole-file quantum = %dus, want 9624000us", projected.Scenes[0].DurationUS)
 	}
 }
 
@@ -1103,7 +1021,7 @@ func TestBuildFinalJobPayloadsDoesNotSendSubtitlesWithStockChunks(t *testing.T) 
 			Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}},
 		},
 		FinalAudio: &FinalAudioReference{AssetID: "audio-1", DriveLink: "https://drive.google.com/file/d/audio-drive-id/view", FinalAudioSHA256: strings.Repeat("a", 64), SizeBytes: 12, DurationMS: 5000, Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", FinalMix: true, CopyEligible: true},
-		Scenes:     []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
+		Scenes:     []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
 	}
 	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -1157,7 +1075,7 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}}},
 		FinalAudio:        certifiedFinalAudio(5000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
+		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
 		OverlayPlan: &capmodel.OverlayPlan{
 			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,

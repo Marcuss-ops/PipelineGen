@@ -21,13 +21,39 @@ import (
 // second submission collide on the Master's replace_overlap guard (HTTP 422).
 // A run-scoped suffix keeps the readable title prefix while guaranteeing the
 // identity is unique per run and stable across retries of the same run.
+//
+// The readable prefix is ASCII-only. The Master's artifact commit path must not
+// depend on UTF-8: a 2026-11-14 live run whose title contained an em dash
+// stalled the worker's artifact-upload ack for 300 s, while the same plan with
+// an ASCII prefix completed in 1.37 s. Non-ASCII runes are replaced by '-' so
+// the identity stays filesystem- and URL-safe.
 func finalJobVideoName(req GenerateRequest, runID string) string {
-	base := firstFinalJobValue(req.OutputName, req.Title, "final-job")
+	base := finalJobSafeBase(firstFinalJobValue(req.OutputName, req.Title, "final-job"))
 	suffix := finalJobIdentitySuffix(runID)
 	if suffix == "" {
 		return base
 	}
 	return base + " [" + suffix + "]"
+}
+
+// finalJobSafeBase keeps printable ASCII in the readable Master identity and
+// replaces every other rune with '-'. A base with nothing safe left falls back
+// to the constant so the identity can never be empty.
+func finalJobSafeBase(base string) string {
+	var b strings.Builder
+	b.Grow(len(base))
+	for _, r := range base {
+		if r >= 0x20 && r <= 0x7e {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('-')
+	}
+	safe := strings.TrimSpace(b.String())
+	if strings.Trim(safe, "-") == "" {
+		return "final-job"
+	}
+	return safe
 }
 
 // finalJobIdentitySuffix reduces the run id to a deterministic, filesystem- and

@@ -13,7 +13,6 @@ import (
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
-	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -171,15 +170,6 @@ type Runner struct {
 	// when the preflight is not wired; non-fixed legacy tests may omit it.
 	mediaPreflight  MediaPreflight
 	stockPrefetcher scriptports.StockPrefetcher
-	// imageSearchResolver is the deterministic Image Search Intent resolver
-	// (capabilities/imagesearch): the editorial/visual decision layer the
-	// golden battery certifies (entity typing + canonicalization + query
-	// order + no-image gate + negation + coreference). It consumes the SAME
-	// entity extractor the VidRush pipeline uses, so production sees the
-	// same deterministic path the battery certifies. Nil means the image
-	// search decision surface is not wired (queries fall back to the legacy
-	// ad-hoc builders).
-	imageSearchResolver *capabilityimagesearch.Resolver
 	// semanticSearchPlanner executes the semantic production plan's exact
 	// source queries against the real retrieval provider and records the
 	// measured outcomes. Nil keeps planning offline: the plan and its
@@ -301,10 +291,6 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	coordinator.SetSegmentProviderResolver(providerResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)
 	coordinator.SetMetrics(p.Metrics)
-	// The deterministic Image Search Intent resolver rides the run: its
-	// canonical_entity_id decisions are stamped into every segment so the
-	// annotation/media projection joins on the identity it chose.
-	coordinator.SetImageSearchResolver(r.imageSearchResolver)
 	coordinator.SetGenerationGate(r.nlpGenerationGate)
 	// Entity extraction uses its OWN gate. There is deliberately NO fallback
 	// to the scene-text generation gate: that compatibility branch was a legacy

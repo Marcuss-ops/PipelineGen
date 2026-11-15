@@ -4,20 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"net/http"
 	"net/http/httptest"
 	"path"
 	"testing"
 
-	"github.com/gin-gonic/gin"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 type recordingYouTubeClipService struct {
@@ -392,7 +391,7 @@ func TestYouTubeClipHandler_Extract_PreparesThreeSegmentPayload(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.NotNil(t, jobsSvc.lastReq)
-	require.Equal(t, appjobs.TypeYouTubeClipExtract, jobsSvc.lastReq.Type)
+	require.Equal(t, jobscheduling.TypeYouTubeClipExtract, jobsSvc.lastReq.Type)
 
 	payload, ok := jobsSvc.lastReq.Payload.(map[string]any)
 	require.True(t, ok, "payload must be a JSON object map")

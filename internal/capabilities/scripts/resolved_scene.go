@@ -143,10 +143,12 @@ func ResolveScenes(scenes []Scene, language Language, mode audio.AudioMode, clip
 		if err != nil {
 			return nil, err
 		}
+		intents = fitAudioIntentsToScene(intents, durationUS)
 		videos, err := resolvedVideos(scene, intents)
 		if err != nil {
 			return nil, err
 		}
+		videos = fitVideoSegmentsToScene(videos, durationUS)
 		var video audio.VideoSegment
 		if len(videos) > 0 {
 			video = videos[0]
@@ -168,6 +170,69 @@ func ResolveScenes(scenes []Scene, language Language, mode audio.AudioMode, clip
 		startUS += durationUS
 	}
 	return resolved, nil
+}
+
+// fitVideoSegmentsToScene clamps the materialized clip windows to the sealed
+// scene duration. A clip longer than its narration must contribute only the
+// narrated span: carrying the whole clip makes the canonical timeline's video
+// segment longer than its scene, which Validate rejects. When the clip is
+// shorter, the remainder is covered by freezeTailedVideoSegments.
+func fitVideoSegmentsToScene(videos []audio.VideoSegment, durationUS int64) []audio.VideoSegment {
+	if durationUS <= 0 || len(videos) == 0 {
+		return videos
+	}
+	out := make([]audio.VideoSegment, 0, len(videos))
+	var offset int64
+	for _, video := range videos {
+		remaining := durationUS - offset
+		if remaining <= 0 {
+			break
+		}
+		if video.TimelineDurationUS <= 0 {
+			continue
+		}
+		if video.TimelineDurationUS > remaining {
+			video.TimelineDurationUS = remaining
+			if !video.Freeze {
+				video.SourceDurationUS = remaining
+			}
+		}
+		video.TimelineOffsetUS = offset
+		offset += video.TimelineDurationUS
+		out = append(out, video)
+	}
+	return out
+}
+
+// fitAudioIntentsToScene clamps clip audio intents to the sealed scene
+// duration. The clip may be longer than the narration; carrying the full clip
+// audio window makes Validate reject the segment with "audio source range"
+// after the video window has been trimmed.
+func fitAudioIntentsToScene(intents []audio.AudioIntent, durationUS int64) []audio.AudioIntent {
+	if durationUS <= 0 || len(intents) == 0 {
+		return intents
+	}
+	out := append([]audio.AudioIntent(nil), intents...)
+	for i := range out {
+		intent := &out[i]
+		if intent.Mode != audio.AudioClip {
+			continue
+		}
+		if intent.TimelineOffsetUS < 0 {
+			intent.TimelineOffsetUS = 0
+		}
+		if intent.TimelineOffsetUS >= durationUS {
+			continue
+		}
+		remaining := durationUS - intent.TimelineOffsetUS
+		if intent.TimelineDurationUS <= 0 || intent.TimelineDurationUS > remaining {
+			intent.TimelineDurationUS = remaining
+		}
+		if intent.SourceDurationUS > intent.TimelineDurationUS {
+			intent.SourceDurationUS = intent.TimelineDurationUS
+		}
+	}
+	return out
 }
 
 // protectedFixedAudioIntents applies the fixed section's audio policy.

@@ -59,7 +59,7 @@ func TestVidRushImageTargetForSegmentKeepsEntityCoverageAboveCeiling(t *testing.
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: media.MediaPlanSpec{
 		Planner: media.MediaPlannerPolicy{MaxImagesPerScene: 2},
 		Extraction: media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{
-			Enabled: true, Scope: "per_scene", MaxPerEntity: 1,
+			Enabled: true, Scope: "per_scene", MaxPerEntity: 3,
 		}},
 		ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
 	}}
@@ -68,5 +68,34 @@ func TestVidRushImageTargetForSegmentKeepsEntityCoverageAboveCeiling(t *testing.
 	}}}
 	if got := vidRushImageTargetForSegment(plan, segment); got != 3 {
 		t.Fatalf("entity coverage target = %d, want 3", got)
+	}
+}
+
+// TestVidRushImageGroupCanonicalizesRetrievalQualifier pins the Floyd/Gotti
+// failure: providers expand "John Cena" into "John Cena photo" and the old
+// group key created a second slot for the same person. The canonical entity
+// must win, and retrieval-only suffixes must not split the group.
+func TestVidRushImageGroupCanonicalizesRetrievalQualifier(t *testing.T) {
+	cases := []struct {
+		name   string
+		entity string
+		query  string
+		want   string
+	}{
+		{"entity wins over expanded query", "John Cena", "John Cena photo", "john cena"},
+		{"query fallback strips photo", "", "John Cena photo", "john cena"},
+		{"strips portrait", "Floyd Mayweather Jr", "Floyd Mayweather Jr portrait", "floyd mayweather jr"},
+		{"keeps a real surname", "Michael Jordan", "Michael Jordan", "michael jordan"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := vidRushImageGroup(scriptpkg.SegmentAssetCandidate{Entity: tc.entity, Query: tc.query})
+			if got != tc.want {
+				t.Fatalf("group = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	if got := vidRushImageGroup(scriptpkg.SegmentAssetCandidate{AssetID: "a-1"}); got != "asset:a-1" {
+		t.Fatalf("asset fallback = %q, want asset:a-1", got)
 	}
 }

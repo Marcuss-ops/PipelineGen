@@ -527,3 +527,58 @@ func TestClipRenderPublisher_UnlocalizedRenderKeepsTitleFilename(t *testing.T) {
 		}
 	}
 }
+
+// TestValidateDeliveryIntent_FailsClosed pins the durability invariant of the
+// asynchronous publication boundary: the committed asset row must always name
+// bytes the outbox can still obtain. The live failure it guards is the
+// cliprender card batch of 2026-11-14, whose media_assets rows carried a Drive
+// reference but neither a staged local copy nor a locator, so the remote
+// resolver had nothing to read once the per-job temp workspace was cleaned.
+func TestValidateDeliveryIntent_FailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	staged := filepath.Join(dir, "cliprender_abc.mp4")
+	body := []byte("staged-bytes")
+	if err := os.WriteFile(staged, body, 0o644); err != nil {
+		t.Fatalf("write staged artifact: %v", err)
+	}
+	empty := filepath.Join(dir, "empty.mp4")
+	if err := os.WriteFile(empty, nil, 0o644); err != nil {
+		t.Fatalf("write empty artifact: %v", err)
+	}
+
+	valid := cliprender.ClipRenderDriveDeliveryRequest{
+		AssetID: "cliprender_abc", LocalPath: staged, SizeBytes: int64(len(body)),
+	}
+	cases := []struct {
+		name    string
+		payload cliprender.ClipRenderDriveDeliveryRequest
+		staged  string
+		wantErr bool
+	}{
+		{name: "staged local copy", payload: valid, staged: staged},
+		{name: "locator only", payload: cliprender.ClipRenderDriveDeliveryRequest{
+			AssetID: "cliprender_abc", ArtifactURL: "http://objectstore/objects/abc", SizeBytes: 12,
+		}},
+		{name: "neither local nor locator", payload: cliprender.ClipRenderDriveDeliveryRequest{
+			AssetID: "cliprender_abc", SizeBytes: 12,
+		}, wantErr: true},
+		{name: "staged path missing on disk", payload: cliprender.ClipRenderDriveDeliveryRequest{
+			AssetID: "cliprender_abc", LocalPath: filepath.Join(dir, "gone.mp4"), SizeBytes: 12,
+		}, wantErr: true},
+		{name: "staged path is an empty file", payload: cliprender.ClipRenderDriveDeliveryRequest{
+			AssetID: "cliprender_abc", LocalPath: empty, SizeBytes: 12,
+		}, wantErr: true},
+		{name: "size disagrees with certified bytes", payload: cliprender.ClipRenderDriveDeliveryRequest{
+			AssetID: "cliprender_abc", LocalPath: staged, SizeBytes: 999,
+		}, wantErr: true},
+		{name: "staging path differs from committed path", payload: valid,
+			staged: filepath.Join(dir, "other.mp4"), wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := validateDeliveryIntent(tc.payload, tc.staged); tc.wantErr != (err != nil) {
+				t.Fatalf("validateDeliveryIntent() error = %v, wantErr = %v", err, tc.wantErr)
+			}
+		})
+	}
+}

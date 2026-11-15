@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"sync"
 	"testing"
 	"time"
@@ -133,17 +134,17 @@ func setupTestService(t *testing.T) (*Service, *sqljobs.Broker, func()) {
 	t.Helper()
 	db := setupTestDB(t)
 	store := sqljobs.NewBroker(sqljobs.NewSQLiteStore(db, zap.NewNop()))
-	reg := Compose()
+	reg := jobscheduling.Compose()
 	// Register ad-hoc test job types so the fail-closed Enqueue gate
 	// (handler check + typed MaxRetries lookup) does not reject the
 	// arbitrary types used by these tests.
-	testTypes := []RegistryEntry{
-		{Completion: CompletionDeclaration{JobType: "test_job", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "test job", DefaultMaxRetries: 1},
-		{Completion: CompletionDeclaration{JobType: "unknown_type", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "unknown type", DefaultMaxRetries: 1},
-		{Completion: CompletionDeclaration{JobType: "concurrent_job", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "concurrent job", DefaultMaxRetries: 1},
-		{Completion: CompletionDeclaration{JobType: "idem_test", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "idempotency test", DefaultMaxRetries: 1},
-		{Completion: CompletionDeclaration{JobType: "rescue_test", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "rescue test", DefaultMaxRetries: 1},
-		{Completion: CompletionDeclaration{JobType: "concurrent_idem", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "concurrent idempotency test", DefaultMaxRetries: 1},
+	testTypes := []jobscheduling.RegistryEntry{
+		{Completion: jobscheduling.CompletionDeclaration{JobType: "test_job", ArtifactOwnership: jobscheduling.ArtifactOwnershipNone, FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete}, Description: "test job", DefaultMaxRetries: 1},
+		{Completion: jobscheduling.CompletionDeclaration{JobType: "unknown_type", ArtifactOwnership: jobscheduling.ArtifactOwnershipNone, FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete}, Description: "unknown type", DefaultMaxRetries: 1},
+		{Completion: jobscheduling.CompletionDeclaration{JobType: "concurrent_job", ArtifactOwnership: jobscheduling.ArtifactOwnershipNone, FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete}, Description: "concurrent job", DefaultMaxRetries: 1},
+		{Completion: jobscheduling.CompletionDeclaration{JobType: "idem_test", ArtifactOwnership: jobscheduling.ArtifactOwnershipNone, FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete}, Description: "idempotency test", DefaultMaxRetries: 1},
+		{Completion: jobscheduling.CompletionDeclaration{JobType: "rescue_test", ArtifactOwnership: jobscheduling.ArtifactOwnershipNone, FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete}, Description: "rescue test", DefaultMaxRetries: 1},
+		{Completion: jobscheduling.CompletionDeclaration{JobType: "concurrent_idem", ArtifactOwnership: jobscheduling.ArtifactOwnershipNone, FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete}, Description: "concurrent idempotency test", DefaultMaxRetries: 1},
 	}
 	for _, e := range testTypes {
 		if err := reg.Register(e); err != nil {
@@ -342,7 +343,7 @@ func TestSQLiteStore_MarkRunningJobsOlderThanFailed(t *testing.T) {
 	leaseExpired := oldTime.Add(-5 * time.Minute) // lease expired long ago
 	oldJob := &Job{
 		ID:          "job-old-running",
-		Type:        TypeArtlistRun,
+		Type:        jobscheduling.TypeArtlistRun,
 		Status:      job.StatusRunning,
 		UpdatedAt:   oldTime,
 		CreatedAt:   oldTime,
@@ -355,7 +356,7 @@ func TestSQLiteStore_MarkRunningJobsOlderThanFailed(t *testing.T) {
 	freshLease := time.Now().UTC().Add(30 * time.Minute)
 	freshJob := &Job{
 		ID:          "job-fresh-running",
-		Type:        TypeArtlistRun,
+		Type:        jobscheduling.TypeArtlistRun,
 		Status:      job.StatusRunning,
 		UpdatedAt:   time.Now().UTC(),
 		CreatedAt:   time.Now().UTC(),
@@ -367,7 +368,7 @@ func TestSQLiteStore_MarkRunningJobsOlderThanFailed(t *testing.T) {
 	// Insert completed job (should not be affected)
 	completedJob := &Job{
 		ID:        "job-completed",
-		Type:      TypeArtlistRun,
+		Type:      jobscheduling.TypeArtlistRun,
 		Status:    job.StatusSucceeded,
 		UpdatedAt: time.Now().UTC().Add(-30 * time.Minute),
 		CreatedAt: time.Now().UTC().Add(-30 * time.Minute),
@@ -570,8 +571,8 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	// but NOT the in-process enqueueMu.
 	storeA := sqljobs.NewBroker(sqljobs.NewSQLiteStore(db, zap.NewNop()))
 	storeB := sqljobs.NewBroker(sqljobs.NewSQLiteStore(db, zap.NewNop()))
-	reg := Compose()
-	if err := reg.Register(RegistryEntry{Completion: CompletionDeclaration{JobType: "rescue_test", ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "rescue test", DefaultMaxRetries: 1}); err != nil {
+	reg := jobscheduling.Compose()
+	if err := reg.Register(jobscheduling.RegistryEntry{Completion: jobscheduling.CompletionDeclaration{JobType: "rescue_test", ArtifactOwnership: jobscheduling.ArtifactOwnershipNone, FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete}, Description: "rescue test", DefaultMaxRetries: 1}); err != nil {
 		t.Fatalf("register rescue_test: %v", err)
 	}
 	svcA, errA := NewService(storeA, nil, zap.NewNop(), reg)

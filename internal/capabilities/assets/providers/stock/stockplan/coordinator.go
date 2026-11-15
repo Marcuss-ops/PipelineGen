@@ -3,13 +3,13 @@ package stockplan
 import (
 	"context"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strconv"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -204,7 +204,7 @@ func (c *Coordinator) createGroupAndEnqueue(ctx context.Context, batchID string,
 	}
 
 	jobID, err := c.enqueuer.Enqueue(ctx, &job.EnqueueRequest{
-		Type:    appjobs.TypeMediaStock,
+		Type:    jobscheduling.TypeMediaStock,
 		Payload: cmd.ToJobPayload(),
 	})
 	if err != nil {

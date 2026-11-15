@@ -86,7 +86,12 @@ func TestIncrementalFanoutAllowsOnlyExplicitEntityImageSidecarForStock(t *testin
 	plan.MediaPlan.Extraction.EntityImages = mediadomain.EntityImagePolicy{
 		Enabled: true, Scope: "per_scene", EntityTypes: []string{"PERSON"},
 	}
-	got, err := fanout.ResolveProviders(context.Background(), plan, stockGateSegment())
+	// The sidecar is an entity lane: the fixture must carry the PERSON the
+	// explicit policy authorizes, otherwise the entity-only fanout correctly
+	// has no query and the test would assert the wrong contract.
+	segment := stockGateSegment()
+	segment.Insights.Entities = []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON"}}
+	got, err := fanout.ResolveProviders(context.Background(), plan, segment)
 	if err != nil {
 		t.Fatal(err)
 	}

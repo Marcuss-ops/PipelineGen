@@ -376,6 +376,33 @@ func TestClientGetDecodesArtifact(t *testing.T) {
 	}
 }
 
+// TestMaterializeArtifactSendsObjectStoreToken pins the download side of the
+// coordinated object-store auth: the certified artifact is served by the same
+// protected store that accepted the upload, so the GET must carry the bearer
+// token. Without it the store answers 401 after the GPU render already
+// succeeded and the certified bytes are lost.
+func TestMaterializeArtifactSendsObjectStoreToken(t *testing.T) {
+	const token = "store-token"
+	t.Setenv("OBJECTSTORE_TOKEN", token)
+	payload := []byte("certified clip bytes")
+	sum := sha256.Sum256(payload)
+	hash := hex.EncodeToString(sum[:])
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+token {
+			t.Errorf("Authorization = %q, want bearer token", got)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+
+	out := filepath.Join(t.TempDir(), "result.mp4")
+	if _, _, err := materializeArtifact(context.Background(), srv.URL+"/objects/"+hash, out, int64(len(payload)), hash); err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+}
+
 // TestMaterializeArtifactHashesStreamedBytes pins the single-pass download
 // contract: the certified bytes are written to disk and hashed by the same
 // copy, so the materialized file is byte-exact without a second read pass.

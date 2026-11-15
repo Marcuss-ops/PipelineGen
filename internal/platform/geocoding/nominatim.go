@@ -187,6 +187,8 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	}
 	result.DisplayName = best.DisplayName
 	result.Scope = classifyScope(req.Query, best.Category, best.Type, best.Addresstype, best.Address)
+	result.Country = strings.TrimSpace(best.Address["country"])
+	result.CountryCode = strings.ToLower(strings.TrimSpace(best.Address["country_code"]))
 	result.Provider = n.providerIdentity()
 	result.PlaceID = best.PlaceID.String()
 	result.Score = score
@@ -409,6 +411,10 @@ func nameMatches(query string, hit searchHit) bool {
 }
 
 func contextMatchesCountry(ctx capgeocoding.Context, hit searchHit) bool {
+	if wantCode := normalizePlaceToken(ctx.CountryCode); wantCode != "" &&
+		normalizePlaceToken(hit.Address["country_code"]) == wantCode {
+		return true
+	}
 	want := normalizePlaceToken(ctx.Country)
 	if want == "" {
 		return false

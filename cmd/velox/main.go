@@ -66,6 +66,8 @@ func run(args []string) int {
 		return cmdDownload(rest)
 	case "download-final":
 		return cmdDownloadFinal(rest)
+	case "burn-subtitles":
+		return cmdBurnSubtitles(rest)
 	case "search":
 		return cmdSearch(rest)
 	case "jobs":

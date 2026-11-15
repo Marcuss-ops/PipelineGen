@@ -191,11 +191,10 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 	}
 	// Image preflight (the r10 class): promised entity-image overlays must be
 	// backed by a verified content address BEFORE a worker attempt exists.
-	clipScenes := make(map[string]struct{})
-	for sceneID := range finalJobIntermediateClipWindows(result) {
-		clipScenes[sceneID] = struct{}{}
-	}
-	if err := finalJobImagePreflight(result.OverlayPlan.Items, clipScenes, imageRequested); err != nil {
+	// The render boundary already verified this plan; the digest-bound marker
+	// makes this check free when the plan did not change and still fail-closed
+	// when it did.
+	if err := finalJobImagePreflightOnce(ctx, imageRequested, result); err != nil {
 		return nil, nil, err
 	}
 	fpsNum, fpsDen := result.OverlayPlan.FPSNum, result.OverlayPlan.FPSDen

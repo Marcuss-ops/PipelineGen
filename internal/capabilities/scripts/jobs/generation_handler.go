@@ -24,6 +24,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
@@ -251,6 +252,9 @@ func (h *GenerateJobHandler) Handle(
 			return nil, fmt.Errorf("generate job handler: read durable run result: %w", getErr)
 		}
 		if updated == nil || updated.Status != scriptgen.RunStatusCompleted {
+			if stalled := stalledRunError(updated, time.Now().UTC()); stalled != nil {
+				return nil, stalled
+			}
 			// A failed run that still has its OWN retry budget left is WAITING,
 			// not dead. The run scheduled its next attempt (NextRetryAt) before
 			// ending this one — the same shape as any other external wait — so the
@@ -333,20 +337,42 @@ func (h *GenerateJobHandler) Handle(
 // run's canonical document intent. Submission payload and pipeline_run are
 // committed by separate boundaries, so the persisted run—not a potentially
 // divergent job envelope—owns whether Docs publication was requested.
-func buildDurableRunRequest(env *domainScript.GenerationEnvelopeV2, run *scriptgen.GenerationRun) (scriptgen.GenerateRequest, error) {
+func buildDurableRunRequest(_ *domainScript.GenerationEnvelopeV2, run *scriptgen.GenerationRun) (scriptgen.GenerateRequest, error) {
 	if run == nil {
 		return scriptgen.GenerateRequest{}, fmt.Errorf("generate job handler: durable run is required")
 	}
-	req, err := scriptgen.BuildGenerateRequest(env, run.Request.IdempotencyKey)
-	if err != nil {
-		return scriptgen.GenerateRequest{}, err
+	// The persisted request is the canonical execution payload. Rebuilding it
+	// from the job envelope lets a retry execute a payload that differs from
+	// the one the run ledger approved. The envelope is only the submission
+	// shape; it is never a second source for a durable run.
+	return run.Request, nil
+}
+
+const runStalledAfter = 30 * time.Minute
+
+// RunStalledError is the typed terminal classification for a RUNNING run whose
+// lease has expired. It is deliberately distinct from a retryable failure.
+type RunStalledError struct {
+	RunID string
+	Age   time.Duration
+}
+
+func (e *RunStalledError) Error() string {
+	if e == nil {
+		return "RUN_STALLED"
 	}
-	// Preserve the persisted Google Docs tombstone so a run created before the
-	// capability was retired still fails closed on resume instead of silently
-	// completing without the documents it asked for (NO-FAKE-AVAILABILITY).
-	req.Docs = run.Request.Docs
-	req.DocsEnabled = run.Request.Docs.Enabled
-	return req, nil
+	return fmt.Sprintf("RUN_STALLED: run %s has been RUNNING for %s without a lease", e.RunID, e.Age.Round(time.Second))
+}
+
+func stalledRunError(run *scriptgen.GenerationRun, now time.Time) error {
+	if run == nil || run.Status != scriptgen.RunStatusRunning || run.UpdatedAt.IsZero() {
+		return nil
+	}
+	age := now.Sub(run.UpdatedAt)
+	if age <= runStalledAfter {
+		return nil
+	}
+	return &RunStalledError{RunID: run.ID, Age: age}
 }
 
 // durableRunOutcomeReadTimeout bounds the detached re-read of the durable run
@@ -370,16 +396,33 @@ func (h *GenerateJobHandler) readRunOutcomeDetached(ctx context.Context, runID s
 // It is the ONE owner of that translation, so the handler body stays a straight
 // line and the decision is unit-testable without a Runner.
 func incompleteRunError(updated *scriptgen.GenerationRun) error {
+	if updated == nil {
+		return fmt.Errorf("generate job handler: durable run did not complete: run ledger row is missing")
+	}
+	status := strings.TrimSpace(string(updated.Status))
+	if status == "" {
+		status = "UNKNOWN_STATUS"
+	}
+	stage := strings.TrimSpace(string(updated.FailedStage))
+	if stage == "" {
+		stage = "UNKNOWN_STAGE"
+	}
+	code := strings.TrimSpace(updated.ErrorCode)
+	if code == "" {
+		code = "NO_ERROR_CODE"
+	}
+	message := strings.TrimSpace(updated.ErrorMessage)
+	if message == "" {
+		message = "no error message recorded"
+	}
+	summary := fmt.Sprintf(
+		"run=%s status=%s stage=%s run attempt %d/%d code=%s message=%s",
+		updated.ID, status, stage, updated.AttemptCount, scriptgen.MaxRetries, code, message)
 	if delay, pending := pendingRunRetry(updated); pending {
 		return job.DeferredAfter(delay, fmt.Sprintf(
-			"durable run %s failed at %s and retries at %s (run attempt %d/%d): %s",
-			updated.ID, updated.FailedStage, updated.NextRetryAt.UTC().Format(time.RFC3339),
-			updated.AttemptCount, scriptgen.MaxRetries, updated.ErrorMessage))
+			"durable run %s retry_at=%s", summary, updated.NextRetryAt.UTC().Format(time.RFC3339)))
 	}
-	if updated != nil && updated.ErrorMessage != "" {
-		return fmt.Errorf("generate job handler: durable run failed: %s", updated.ErrorMessage)
-	}
-	return fmt.Errorf("generate job handler: durable run did not complete")
+	return fmt.Errorf("generate job handler: durable run failed: %s", summary)
 }
 
 // pendingRunRetry reports whether a durable run that did NOT complete is still

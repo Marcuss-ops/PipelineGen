@@ -12,11 +12,80 @@ type FrameRate struct {
 	Denominator int64 `json:"denominator"`
 }
 
+// MaxRenderFrameRateDenominator is the largest denominator the Chronon canvas
+// schema accepts. Standard NTSC rates (24000/1001, 30000/1001, 60000/1001)
+// sit exactly at the bound; the average rate ffprobe reports for a VFR or
+// remuxed source can exceed it wildly (e.g. 81920/3399 for a 24 fps clip).
+const MaxRenderFrameRateDenominator int64 = 1001
+
+// canonicalFrameRates are the standard broadcast/editing rates a noisy
+// ffprobe average rate may be snapped to. Exact NTSC rationals come first so
+// they win over their integer neighbour when both are within tolerance.
+var canonicalFrameRates = []FrameRate{
+	{Numerator: 24000, Denominator: 1001},
+	{Numerator: 24, Denominator: 1},
+	{Numerator: 25, Denominator: 1},
+	{Numerator: 30000, Denominator: 1001},
+	{Numerator: 30, Denominator: 1},
+	{Numerator: 48, Denominator: 1},
+	{Numerator: 50, Denominator: 1},
+	{Numerator: 60000, Denominator: 1001},
+	{Numerator: 60, Denominator: 1},
+}
+
 func (r FrameRate) Validate() error {
 	if r.Numerator <= 0 || r.Denominator <= 0 {
 		return fmt.Errorf("invalid frame rate %d/%d", r.Numerator, r.Denominator)
 	}
 	return nil
+}
+
+// Reduced returns the rate in lowest terms. Invalid rates are returned
+// unchanged; callers that need fail-closed behaviour call Validate first.
+func (r FrameRate) Reduced() FrameRate {
+	if r.Numerator <= 0 || r.Denominator <= 0 {
+		return r
+	}
+	a, b := r.Numerator, r.Denominator
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return FrameRate{Numerator: r.Numerator / a, Denominator: r.Denominator / a}
+}
+
+// Normalize bounds the denominator to maxDenominator so the rate is accepted
+// by consumers with a rational-frame-rate limit (Chronon caps fps_den at
+// MaxRenderFrameRateDenominator). A noisy average rate is snapped to the
+// CLOSEST canonical rate within 1%; if none matches, a rate already within
+// the bound is reduced, and one outside it is projected onto maxDenominator
+// with the closest numerator. Invalid rates are returned unchanged.
+func (r FrameRate) Normalize(maxDenominator int64) FrameRate {
+	if r.Validate() != nil {
+		return r
+	}
+	if maxDenominator <= 0 {
+		maxDenominator = MaxRenderFrameRateDenominator
+	}
+	fps := float64(r.Numerator) / float64(r.Denominator)
+	best := FrameRate{}
+	bestDiff := math.Inf(1)
+	for _, canonical := range canonicalFrameRates {
+		canonicalFPS := float64(canonical.Numerator) / float64(canonical.Denominator)
+		diff := math.Abs(fps - canonicalFPS)
+		if diff <= canonicalFPS*0.01 && diff < bestDiff {
+			best, bestDiff = canonical, diff
+		}
+	}
+	if bestDiff < math.Inf(1) {
+		return best
+	}
+	if reduced := r.Reduced(); reduced.Denominator <= maxDenominator {
+		return reduced
+	}
+	return FrameRate{
+		Numerator:   int64(math.Round(fps * float64(maxDenominator))),
+		Denominator: maxDenominator,
+	}.Reduced()
 }
 
 func IntegerFrameRate(fps int) FrameRate {

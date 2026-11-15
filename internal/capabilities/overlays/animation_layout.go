@@ -14,7 +14,36 @@ import (
 // It mutates items in place and is idempotent: a second pass finds no
 // duplicates and changes nothing.
 func ApplyAnimationConsistency(items []capmodel.OverlayItem, input PlanInput) {
-	ApplyAnimationConsistencyPinned(items, input, nil)
+	ApplyAnimationConsistencyPinned(items, input, pinnedPhraseMotionIndexes(items, input))
+}
+
+// pinnedPhraseMotionIndexes marks the items whose MotionID is the lane-wide
+// pin from the payload. The final duplicate-rotation pass must leave those
+// items alone: their sameness is the point of the pin, not an accidental
+// collision.
+func pinnedPhraseMotionIndexes(items []capmodel.OverlayItem, input PlanInput) map[int]bool {
+	shortPin := ResolveDocumentaryPhraseMotion(strings.TrimSpace(input.ShortPhraseMotion))
+	longPin := ResolveDocumentaryPhraseMotion(strings.TrimSpace(input.LongPhraseMotion))
+	if shortPin == "" && longPin == "" {
+		return nil
+	}
+	pinned := make(map[int]bool)
+	for i := range items {
+		if items[i].Kind != "text_phrase" || strings.TrimSpace(items[i].MotionID) == "" {
+			continue
+		}
+		if items[i].Params != nil && items[i].Params["editorial_role"] == ChapterBulletRole {
+			continue
+		}
+		words := len(strings.Fields(items[i].Text))
+		if words >= 6 && longPin != "" && items[i].MotionID == longPin {
+			pinned[i] = true
+		}
+		if words < 6 && shortPin != "" && items[i].MotionID == shortPin {
+			pinned[i] = true
+		}
+	}
+	return pinned
 }
 
 // ApplyAnimationConsistencyPinned is the policy-aware form. Indexes in pinned
@@ -22,7 +51,7 @@ func ApplyAnimationConsistency(items []capmodel.OverlayItem, input PlanInput) {
 // are pre-registered as used so unpinned siblings rotate away.
 func ApplyAnimationConsistencyPinned(items []capmodel.OverlayItem, input PlanInput, pinned map[int]bool) {
 	EnsureDistinctPhraseMotionsPinned(items, input, pinned)
-	EnsureDistinctNumberMotionsPinned(items, input.AnimationCounts, pinned)
+	EnsureDistinctNumberMotionsPinned(items, input, pinned)
 }
 
 // PrepareCompiledAnimationLayout runs the pre-policy stages of the compile
@@ -47,6 +76,9 @@ func FinalizeCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInp
 		}
 	}
 	items = capmodel.CoalesceChainedOverlaysWithSceneEnds(items, input.AnimationCounts, sceneEnds)
+	if input.AnimationCounts["chain_disabled"] <= 0 {
+		items = capmodel.CoalesceCaptionedEntityImageCards(items, sceneEnds)
+	}
 	return items
 }
 
@@ -90,7 +122,15 @@ func ResolveAnimationSelections(items []capmodel.OverlayItem) error {
 		}
 		if it.Kind == string(capmodel.KindEntityImage) && len(it.ImageLayers) > 0 {
 			if strings.TrimSpace(it.MotionID) != "" {
-				return fmt.Errorf("animation selector: composite parent %q must not carry MotionID (child layers own it)", it.ID)
+				return fmt.Errorf("animation selector: composite parent %q must not carry MotionID (the group or child layers own it)", it.ID)
+			}
+			if strings.TrimSpace(it.GroupMotionID) != "" {
+				for _, layer := range it.ImageLayers {
+					if strings.TrimSpace(layer.MotionID) != "" {
+						return fmt.Errorf("animation selector: group-owned composite child %q:%q must not carry MotionID", it.ID, layer.ID)
+					}
+				}
+				continue
 			}
 			for _, layer := range it.ImageLayers {
 				if strings.TrimSpace(layer.MotionID) == "" {

@@ -127,30 +127,40 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			return nil, false
 		}
 		result = &GenerateResult{
-			SourceLanguage:     req.SourceLanguage,
-			SourceTrace:        generatedTrace,
-			Render:             req.Render,
-			Output:             output,
-			WordCount:          output.WordCount,
-			Scenes:             scenes,
-			Title:              req.Title,
-			OutputName:         req.OutputName,
-			VoiceoverGroup:     req.ScriptParams.VoiceoverGroup,
-			TranslationMetrics: streamTranslationMetrics,
-			AudioMetrics:       streamAudioMetrics,
+			SourceLanguage:           req.SourceLanguage,
+			SourceTrace:              generatedTrace,
+			Render:                   req.Render,
+			Output:                   output,
+			WordCount:                output.WordCount,
+			Scenes:                   scenes,
+			Title:                    req.Title,
+			OutputName:               req.OutputName,
+			VoiceoverGroup:           req.ScriptParams.VoiceoverGroup,
+			TranslationMetrics:       streamTranslationMetrics,
+			AudioMetrics:             streamAudioMetrics,
+			EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan),
 		}
 		setSceneRenderExpectations(req, scenes, result)
 		r.applySceneEditorialEnrichment(ctx, runID, req, result, scenes, output.Text, hb)
-		// The plan is only useful if its exact-source ladder is executed
-		// against the real provider. This phase is optional: an unwired
-		// planner leaves the plan and its feedback pending, unchanged.
-		hb.setOp("semantic_search_batch")
-		r.executeSemanticSearchBatch(ctx, req.SourceLanguage, result)
-		// Consume what the batch resolved. Only content-addressed hits bind,
-		// and only where the media stage has not already chosen an asset, so
-		// this can add coverage but can never overwrite verified media.
-		if bound := ApplySemanticResolvedImages(result); bound > 0 {
-			r.log.Info("semantic plan resolved images bound to scene entities", zap.Int("bindings", bound))
+		// IMG-002: one owner per retrieval decision. When the VidRush
+		// entity-image lane is active, it owns query generation, candidate
+		// discovery and selection for entity images. The semantic plan must
+		// exit instead of running a second retrieval/binding flow over the
+		// same identities. Overlay-only plans keep the semantic fallback.
+		if vidRushEntityImageOwnsDiscovery(req.MediaPlan) {
+			r.log.Info("semantic search batch skipped: VidRush entity-image lane owns discovery")
+		} else {
+			// The plan is only useful if its exact-source ladder is executed
+			// against the real provider. This phase is optional: an unwired
+			// planner leaves the plan and its feedback pending, unchanged.
+			hb.setOp("semantic_search_batch")
+			r.executeSemanticSearchBatch(ctx, req.SourceLanguage, result, req.MediaPlan.ForceRefreshAssets)
+			// Consume what the batch resolved. Only content-addressed hits bind,
+			// and only where the media stage has not already chosen an asset, so
+			// this can add coverage but can never overwrite verified media.
+			if bound := ApplySemanticResolvedImages(result); bound > 0 {
+				r.log.Info("semantic plan resolved images bound to scene entities", zap.Int("bindings", bound))
+			}
 		}
 		// Explicit clip workflows may request real video reconstruction without
 		// generating TTS. The historical fan-out was only entered after a
@@ -235,8 +245,9 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 
 	// Nil guard: result must be non-nil before downstream stages.
 	if result == nil {
-		result = &GenerateResult{SourceLanguage: req.SourceLanguage, Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup}
+		result = &GenerateResult{SourceLanguage: req.SourceLanguage, Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup, EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan)}
 	}
+	attachBuildIdentity(result)
 
 	return result, true
 }

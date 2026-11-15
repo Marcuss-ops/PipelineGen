@@ -57,6 +57,12 @@ var (
 	// sync.Map-of-mutexes registry it never leaks entries — the key is removed
 	// when the last holder releases (pkg/concurrent.KeyedLocker).
 	entityImageLocks = concurrent.NewKeyedLocker()
+	// entityImageDiscoveryLocks serializes the first provider discovery for a
+	// canonical entity. It is deliberately separate from entityImageLocks:
+	// the catalog-state lock must be released before network I/O, while this
+	// lock keeps concurrent cold requests for the same identity from fanning
+	// out N provider calls. Different entities use different keys.
+	entityImageDiscoveryLocks = concurrent.NewKeyedLocker()
 )
 
 // MediaResolverImageStage handles image discovery for the canonical media

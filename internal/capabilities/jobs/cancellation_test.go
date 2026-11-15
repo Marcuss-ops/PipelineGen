@@ -54,6 +54,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -400,7 +401,7 @@ func (m *mockCancelBroker) Get(_ context.Context, id string) (*job.Job, error) {
 	m.lastGetRev = m.revision
 	return &job.Job{
 		ID:         id,
-		Type:       TypeScriptGenerate,
+		Type:       jobscheduling.TypeScriptGenerate,
 		Status:     m.jobStatus,
 		Revision:   m.revision,
 		MaxRetries: 2,
@@ -532,7 +533,7 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 	})
 
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(TypeScriptGenerate, handler); err != nil {
+	if err := dispatcher.Register(jobscheduling.TypeScriptGenerate, handler); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
 
@@ -549,7 +550,7 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 			JitterFraction:            0,
 			ConsecutiveEmptyThreshold: 0,
 		},
-		Types: []string{TypeScriptGenerate},
+		Types: []string{jobscheduling.TypeScriptGenerate},
 	})
 
 	parentCtx, parentCancel := context.WithCancel(context.Background())
@@ -560,7 +561,7 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 		defer close(done)
 		worker.runJob(parentCtx, &job.Job{
 			ID:         "test-job-id",
-			Type:       TypeScriptGenerate,
+			Type:       jobscheduling.TypeScriptGenerate,
 			Status:     job.StatusRunning,
 			MaxRetries: 2,
 			RetryCount: 0,
@@ -606,7 +607,7 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 	})
 
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(TypeScriptGenerate, handler); err != nil {
+	if err := dispatcher.Register(jobscheduling.TypeScriptGenerate, handler); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
 
@@ -623,7 +624,7 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 			JitterFraction:            0,
 			ConsecutiveEmptyThreshold: 0,
 		},
-		Types: []string{TypeScriptGenerate},
+		Types: []string{jobscheduling.TypeScriptGenerate},
 	})
 
 	parentCtx, cancel := context.WithCancel(context.Background())
@@ -634,7 +635,7 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 		defer close(done)
 		worker.runJob(parentCtx, &job.Job{
 			ID:         "revision-test-job",
-			Type:       TypeScriptGenerate,
+			Type:       jobscheduling.TypeScriptGenerate,
 			Status:     job.StatusRunning,
 			WorkerID:   "worker-1",
 			LeaseID:    "lease-1",

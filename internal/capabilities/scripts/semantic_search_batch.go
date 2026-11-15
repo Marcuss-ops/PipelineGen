@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/providerbudget"
 )
@@ -29,6 +31,9 @@ type SemanticAssetSearchRequest struct {
 	Rung         int
 	Entity       string
 	QueryClass   string
+	// SceneContext is evidence supplied by the semantic plan for downstream
+	// verification. It is never appended to Query by the transport adapter.
+	SceneContext string
 	// ProviderLane is the budget lane this query charges. It is derived from
 	// QueryClass and is stable enough to appear in an operator report.
 	ProviderLane string
@@ -36,10 +41,9 @@ type SemanticAssetSearchRequest struct {
 	Limit        int
 }
 
-// SemanticAssetHit is one certified candidate returned by the provider. The
-// location fields are carried because a hit is only consumable downstream when
-// it names verified bytes: the overlay binder needs the content address and the
-// materializer needs the fetchable location, not just an opaque id.
+// SemanticAssetHit is one untrusted retrieval candidate. It becomes consumable
+// only after the verifier stamps an accepted verdict and version. The location
+// fields then carry the exact materialization reference and content address.
 type SemanticAssetHit struct {
 	AssetID string
 	URL     string
@@ -53,6 +57,15 @@ type SemanticAssetHit struct {
 	Entity    string
 	Width     int
 	Height    int
+	// Ranking evidence is preserved from the canonical image search result so
+	// the production planner can choose the strongest hit instead of treating
+	// provider order as quality. Identity rejection is a hard exclusion.
+	Score                 float64
+	RelevanceScore        float64
+	SemanticScore         float64
+	TechnicalQualityScore float64
+	SemanticStatus        string
+	VerifierVersion       string
 }
 
 // SemanticAssetSearchResponse is the provider answer for one query.
@@ -197,7 +210,7 @@ type SemanticSearchAttemptResult struct {
 	Provider  string
 	Error     string
 	// RetryAction is the planner decision this attempt produced (`broaden`,
-	// `drop_entity`, `skip_visual` or empty on a hit).
+	// `skip_visual` or empty on a hit).
 	RetryAction string
 	AssetIDs    []string
 	// Cached reports a plan-cache hit: no provider call was made.
@@ -207,6 +220,9 @@ type SemanticSearchAttemptResult struct {
 	// RouteSkip reports a composition settled without a provider call because
 	// the wired port does not serve its query class.
 	RouteSkip bool
+	// ProviderError distinguishes a failed provider call from a provider that
+	// answered with no candidates. The two are never the same empty result.
+	ProviderError bool
 }
 
 // SemanticSearchBatchMetrics are measured counts and latencies for one batch.
@@ -218,7 +234,6 @@ type SemanticSearchBatchMetrics struct {
 	Errors           int
 	Skipped          int
 	Broadens         int
-	EntityDrops      int
 	CacheHits        int
 	ProviderQueries  int
 	RateLimitRetries int
@@ -234,12 +249,29 @@ type SemanticSearchBatchMetrics struct {
 // every attempt with its latency and outcome, the aggregates, and the plan's
 // feedback after the batch.
 type SemanticSearchBatchReport struct {
-	Schema       string
-	Metrics      SemanticSearchBatchMetrics
-	Attempts     []SemanticSearchAttemptResult
-	Feedback     *SemanticSearchFeedback
-	PlanMetrics  SemanticProductionMetrics
-	AbortedError string
+	Schema         string
+	Metrics        SemanticSearchBatchMetrics
+	Attempts       []SemanticSearchAttemptResult
+	Feedback       *SemanticSearchFeedback
+	PlanMetrics    SemanticProductionMetrics
+	AbortedError   string
+	ProviderErrors int
+	ProviderError  string
+}
+
+// SemanticSearchProviderError is a failed retrieval, not an empty result. It
+// keeps a run with no usable hit out of the green path while preserving the
+// measured report for the operator.
+type SemanticSearchProviderError struct {
+	Failures int
+	First    string
+}
+
+func (e *SemanticSearchProviderError) Error() string {
+	if e == nil {
+		return "semantic search provider failed"
+	}
+	return fmt.Sprintf("semantic search provider failed (%d attempt(s)): %s", e.Failures, e.First)
 }
 
 // SemanticSearchBatchPlanner executes a production plan against a real
@@ -284,7 +316,8 @@ func NewSemanticSearchBatchPlanner(port SemanticAssetSearchPort, config ...Seman
 // Run executes every pending media ladder of the plan, records each outcome and
 // returns the measured report. A provider error is a miss, never a failed run;
 // only cancellation of the parent context or the query budget aborts the batch.
-func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProductionPlan, language string) (*SemanticSearchBatchReport, error) {
+func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProductionPlan, language string, forceRefresh ...bool) (*SemanticSearchBatchReport, error) {
+	bypassCache := len(forceRefresh) > 0 && forceRefresh[0]
 	if p == nil || p.port == nil {
 		return nil, fmt.Errorf("semantic search batch: planner is not configured")
 	}
@@ -311,7 +344,8 @@ func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProd
 	report.Attempts = append(report.Attempts, routeRows...)
 
 	started := p.nowTime()
-	rows, abortReason := p.dispatch(runCtx, plan, supported, language)
+	planFingerprint := semanticPlanFingerprint(plan)
+	rows, abortReason := p.dispatch(runCtx, plan, supported, language, planFingerprint, bypassCache)
 	report.Attempts = append(report.Attempts, rows...)
 	sortAttemptRows(report.Attempts)
 
@@ -333,6 +367,21 @@ func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProd
 	if abortReason != "" {
 		report.AbortedError = abortReason
 		return report, fmt.Errorf("semantic search batch: %s", abortReason)
+	}
+	providerFailures := 0
+	firstProviderError := ""
+	for _, row := range report.Attempts {
+		if row.ProviderError {
+			providerFailures++
+			if firstProviderError == "" {
+				firstProviderError = row.Error
+			}
+		}
+	}
+	report.ProviderErrors = providerFailures
+	report.ProviderError = firstProviderError
+	if providerFailures > 0 && report.Metrics.Hits == 0 {
+		return report, &SemanticSearchProviderError{Failures: providerFailures, First: firstProviderError}
 	}
 	return report, nil
 }
@@ -401,17 +450,25 @@ func sortAttemptRows(rows []SemanticSearchAttemptResult) {
 	})
 }
 
-// cacheKey scopes an answer to both the canonical identity and the grounded
-// retrieval context. A name alone is not a safe cache identity: short or
-// translated place names can refer to different subjects, and a previous
-// exact-surface hit must not override a more specific query/evidence pair.
-func cacheKey(attempt SemanticSearchAttempt, language string) string {
+const semanticSearchCacheModel = "semantic-ranker-v1"
+
+// cacheKey scopes an answer to the canonical identity, the grounded retrieval
+// context and the exact plan that produced it. The provider lane, ranker model
+// version, query limit and plan fingerprint are part of the identity: a cache
+// entry produced by another provider, model configuration or plan shape must
+// never be served as if it were this run's evidence.
+func cacheKey(attempt SemanticSearchAttempt, language, provider string, limit int, planFingerprint string) string {
 	subject := normalizeIdentitySurface(attempt.Entity)
 	if subject == "" {
 		subject = normalizeIdentitySurface(attempt.Query)
 	}
 	return strings.Join([]string{
-		"semantic-search-v2",
+		"semantic-search-v3",
+		strings.ToLower(strings.TrimSpace(provider)),
+		semanticSearchCacheModel,
+		entitycatalog.CandidateVerifierVersion,
+		strconv.Itoa(limit),
+		strings.TrimSpace(planFingerprint),
 		subject,
 		string(attempt.Class),
 		strings.ToLower(strings.TrimSpace(language)),
@@ -447,16 +504,14 @@ func summarizeSemanticSearchBatch(report *SemanticSearchBatchReport) {
 		case "hit":
 			report.Metrics.Hits++
 		case "error":
+			// A provider error is not an empty provider answer.
 			report.Metrics.Errors++
-			report.Metrics.Misses++
 		default:
 			report.Metrics.Misses++
 		}
 		switch row.RetryAction {
 		case "broaden":
 			report.Metrics.Broadens++
-		case "drop_entity":
-			report.Metrics.EntityDrops++
 		case "skip_visual":
 			report.Metrics.Skipped++
 		}

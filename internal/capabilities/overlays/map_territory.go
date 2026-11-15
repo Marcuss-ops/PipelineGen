@@ -26,6 +26,20 @@ import (
 	"sync"
 )
 
+// MapTerritoryFeatureScopeCompatible states what the shipped ADM3 dataset can
+// truthfully draw: a local municipality/settlement around a grounded point.
+// Country and first-order region pins must retain their own geography instead
+// of being silently converted to whichever Italian ADM3 polygon contains the
+// coordinate (for example, an Italy centroid falling inside Terni).
+func MapTerritoryFeatureScopeCompatible(scope string) bool {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "city", "locality", "town", "municipality":
+		return true
+	default:
+		return false
+	}
+}
+
 // MapTerritoryOverlayCompositions lists the compositions served BY the
 // ported map producer that require `territory_feature` on the wire (the
 // renderer's payload validation refuses them without it). The full renderer

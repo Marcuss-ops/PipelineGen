@@ -149,6 +149,23 @@ func TestResolveAnimationSelectionsRejectsContainerMotions(t *testing.T) {
 	}
 }
 
+func TestResolveAnimationSelectionsAcceptsGroupOwnedComposite(t *testing.T) {
+	good := []capmodel.OverlayItem{{
+		ID: "img", Kind: string(capmodel.KindEntityImage), GroupMotionID: "duo_split_reveal",
+		ImageLayers: []capmodel.OverlayImageLayer{{ID: "a"}, {ID: "b"}},
+	}}
+	if err := ResolveAnimationSelections(good); err != nil {
+		t.Fatalf("group-owned composite must keep its children motion-free: %v", err)
+	}
+	bad := []capmodel.OverlayItem{{
+		ID: "img", Kind: string(capmodel.KindEntityImage), GroupMotionID: "duo_split_reveal",
+		ImageLayers: []capmodel.OverlayImageLayer{{ID: "a", MotionID: "image_fade_reveal"}, {ID: "b"}},
+	}}
+	if err := ResolveAnimationSelections(bad); err == nil {
+		t.Fatal("group-owned composite with a competing child motion must fail")
+	}
+}
+
 func TestFinalizeCompiledAnimationLayoutKeepsOverflowingImageRunStandalone(t *testing.T) {
 	items := make([]capmodel.OverlayItem, 0, 4)
 	for i := 0; i < 4; i++ {

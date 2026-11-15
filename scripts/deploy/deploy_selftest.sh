@@ -84,6 +84,7 @@ run_deploy() {
     DEPLOY_CURL_BIN="$TMP/curl" \
     DEPLOY_HEALTH_TIMEOUT=10 \
     DEPLOY_READY_TIMEOUT=5 \
+    DEPLOY_DRAIN_SECONDS=0 \
     DEPLOY_PROC_ROOT="/proc" \
     FAKE_CURL_STATE="$CURL_STATE" \
     "$@"
@@ -134,6 +135,18 @@ else
   else
     fail "restart refusal fails with the right message ($(tail -1 "$TMP/c3.out"))"
   fi
+fi
+
+# ── Case 3b: the drain window is explicit and precedes the restart ─────
+: > "$RESTART_LOG"; printf '0' > "$CURL_STATE"
+if run_deploy FAKE_MAIN_PID="$FAKE_PID2" DEPLOY_DRAIN_SECONDS=1 bash "$DEPLOY" --skip-build >"$TMP/c3b.out" 2>&1; then
+  if grep -q 'drain: waiting 1s before restart' "$TMP/c3b.out"; then
+    pass "drain window is logged before restart"
+  else
+    fail "drain window is logged before restart"
+  fi
+else
+  fail "drain window run exits 0 ($(tail -1 "$TMP/c3b.out"))"
 fi
 
 # ── Case 4: deploy-status verdicts ────────────────────────────────────

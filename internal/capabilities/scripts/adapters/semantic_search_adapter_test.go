@@ -27,7 +27,8 @@ func (s *semanticAdapterFakeSearcher) SearchImages(_ context.Context, req Intern
 func TestSemanticAssetSearchProjectsTheCanonicalSearcher(t *testing.T) {
 	searcher := &semanticAdapterFakeSearcher{candidates: []scriptpkg.SegmentAssetCandidate{
 		{AssetID: "asset_1", PreviewURL: "https://assets.invalid/1.jpg", ContentSHA256: strings.Repeat("a", 64), Provider: "internet_images",
-			DriveLink: "https://drive.invalid/asset_1", MIMEType: "image/jpeg", Entity: "Alberto Stasi", Width: 1600, Height: 900},
+			DriveLink: "https://drive.invalid/asset_1", MIMEType: "image/jpeg", Entity: "Alberto Stasi", Width: 1600, Height: 900,
+			Score: 0.8, RelevanceScore: 0.7, SemanticScore: 0.9, TechnicalQualityScore: 0.6, SemanticStatus: "accepted"},
 		{PreviewURL: "https://assets.invalid/2.jpg", SourceURL: "https://source.invalid/2.jpg"},
 		{ContentSHA256: strings.Repeat("b", 64)},
 		{},
@@ -58,7 +59,8 @@ func TestSemanticAssetSearchProjectsTheCanonicalSearcher(t *testing.T) {
 		t.Fatalf("first hit: %+v", response.Hits[0])
 	}
 	if got := response.Hits[0]; got.SHA256 != strings.Repeat("a", 64) || got.DriveLink != "https://drive.invalid/asset_1" ||
-		got.MediaType != "image/jpeg" || got.Entity != "Alberto Stasi" || got.Width != 1600 || got.Height != 900 {
+		got.MediaType != "image/jpeg" || got.Entity != "Alberto Stasi" || got.Width != 1600 || got.Height != 900 ||
+		got.Score != 0.8 || got.RelevanceScore != 0.7 || got.SemanticScore != 0.9 || got.TechnicalQualityScore != 0.6 || got.SemanticStatus != "accepted" {
 		t.Fatalf("hit must carry the content address and locations the overlay binder needs: %+v", got)
 	}
 	if response.Hits[1].AssetID != "https://assets.invalid/2.jpg" || response.Hits[1].URL != "https://assets.invalid/2.jpg" {
@@ -69,6 +71,21 @@ func TestSemanticAssetSearchProjectsTheCanonicalSearcher(t *testing.T) {
 	}
 	if response.Provider != "internet_images" {
 		t.Fatalf("provider provenance: %q", response.Provider)
+	}
+}
+
+func TestSemanticAssetSearchRejectsPlaceholderIcons(t *testing.T) {
+	searcher := &semanticAdapterFakeSearcher{candidates: []scriptpkg.SegmentAssetCandidate{
+		{AssetID: "photo", PreviewURL: "https://images.example/pacquiao.jpg"},
+		{AssetID: "icon", PreviewURL: "https://cdn.jsdelivr.net/npm/lucide-static/icons/backpack.svg"},
+		{AssetID: "vector", PreviewURL: "https://images.example/vector", MIMEType: "image/svg+xml"},
+	}}
+	response, err := NewSemanticAssetSearch(searcher).Search(context.Background(), scriptgen.SemanticAssetSearchRequest{Query: "Manny Pacquiao", Limit: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Hits) != 1 || response.Hits[0].AssetID != "photo" {
+		t.Fatalf("semantic search kept placeholder hits: %+v", response.Hits)
 	}
 }
 

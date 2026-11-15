@@ -53,7 +53,23 @@ func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, err
 	if err := validatePhraseMotionPool(input.PhraseMotions); err != nil {
 		return capmodel.OverlayPlan{}, err
 	}
+	shortPin, err := normalizePinnedPhraseMotion(input.ShortPhraseMotion, "short")
+	if err != nil {
+		return capmodel.OverlayPlan{}, err
+	}
+	input.ShortPhraseMotion = shortPin
+	if err := validateShortPhraseRecipePin(input.ShortPhraseMotion, input.Scenes); err != nil {
+		return capmodel.OverlayPlan{}, err
+	}
+	longPin, err := normalizePinnedPhraseMotion(input.LongPhraseMotion, "long")
+	if err != nil {
+		return capmodel.OverlayPlan{}, err
+	}
+	input.LongPhraseMotion = longPin
 	if err := validateImageMotionPool(input.ImageMotions); err != nil {
+		return capmodel.OverlayPlan{}, err
+	}
+	if err := validateImageWithTextMotionPool(input.ImageWithTextMotions); err != nil {
 		return capmodel.OverlayPlan{}, err
 	}
 	entityStyleSelector := strings.TrimSpace(input.EntityStyleID)
@@ -65,10 +81,27 @@ func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, err
 	if len(input.ImageMotions) == 0 {
 		input.ImageMotions = limitedMotionPool(automaticSingleImageMotionCandidates, imageMotionLimit)
 	}
+	imageWithTextLimit := laneAnimationCount(input.AnimationCounts, laneImagesWithText)
+	input.ImageWithTextMotions = limitedMotionPool(input.ImageWithTextMotions, imageWithTextLimit)
+	if len(input.ImageWithTextMotions) == 0 {
+		input.ImageWithTextMotions = ImageWithTextMotionPool(imageWithTextLimit)
+	}
+	dateMotions := DatePresentationMotionCandidates()
+	if family := strings.TrimSpace(input.DateMotionFamily); family != "" && !strings.EqualFold(family, "auto") {
+		dateMotions = DateMotionFamilyCandidates(family)
+		if len(dateMotions) == 0 {
+			return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: date motion family %q has no certified motions", input.DateMotionFamily)
+		}
+	}
 	if input.PhraseMotionFamily != "" {
 		familyPool := certifiedPhraseFamily(input.PhraseMotionFamily)
 		if len(familyPool) == 0 {
 			return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: phrase motion family %q has no certified motions", input.PhraseMotionFamily)
+		}
+		for _, pin := range []string{input.ShortPhraseMotion, input.LongPhraseMotion} {
+			if pin != "" && !containsMotion(familyPool, pin) {
+				return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: phrase motion %q is outside family %q", pin, input.PhraseMotionFamily)
+			}
 		}
 		if len(input.PhraseMotions) > 0 {
 			allowed := make(map[string]bool, len(familyPool))
@@ -105,7 +138,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, err
 	//	important words            z=80
 	//	important phrases          z=100
 	imageOrdinal := 0
-	nextImageOrdinal, err := appendSceneOverlayItems(&plan, input, config, imageSeed, motionSeed, entityStyleSelector, entityImageMotionForPlan, imageOrdinal)
+	nextImageOrdinal, err := appendSceneOverlayItems(&plan, input, config, imageSeed, motionSeed, entityStyleSelector, entityImageMotionForPlan, imageOrdinal, dateMotions)
 	if err != nil {
 		return capmodel.OverlayPlan{}, err
 	}
@@ -185,7 +218,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, err
 				item.MotionParams = make(map[string]any)
 			}
 			item.MotionParams["enter_frames"] = int(PhraseEntranceFrames(durationUS, input.FPSNum, input.FPSDen))
-			item.MotionParams["exit_frames"] = 0
+			item.MotionParams["exit_frames"] = int(PhraseExitFrames(durationUS, input.FPSNum, input.FPSDen))
 		}
 	}
 	input.MotionSeed = motionSeed
@@ -211,7 +244,18 @@ func appendPlannerMapItems(plan *capmodel.OverlayPlan, input PlanInput, config P
 	// animation counts ask for several maps. Multiple basemaps with competing
 	// camera moves confused viewers; the editorial budget below then keeps
 	// the highest-priority journey map.
-	if laneAnimationCount(input.AnimationCounts, laneMaps) > 1 && config.RunLevelMapOverlayLimit != 1 {
+	// A positive map budget is an explicit multi-map request even when the
+	// caller did not also provide AnimationCounts["maps"]. Keeping this keyed
+	// only to animation counts merged every place in the run into one journey
+	// (which could span an entire long scene and make one enormous map render).
+	if config.RunLevelMapOverlayLimit > 1 || laneAnimationCount(input.AnimationCounts, laneMaps) > 1 {
+		mapGroups := input.MapGroups
+		if config.RunLevelMapOverlayLimit > 1 {
+			// Multiple requested maps are independent, short place cards. A
+			// cross-place camera route would collapse them back into one long
+			// render and defeat the run-level map budget.
+			mapGroups.NoRoutes = true
+		}
 		seenMapEntities := make(map[string]struct{})
 		for i := range input.Scenes {
 			scene := input.Scenes[i]
@@ -229,8 +273,8 @@ func appendPlannerMapItems(plan *capmodel.OverlayPlan, input PlanInput, config P
 				}
 				uniqueMaps = append(uniqueMaps, candidate)
 			}
-			plans := mapPlansForScene(input.PlateResolver, uniqueMaps, input.Width, input.Height, input.MapGroups)
-			for _, mapItem := range mapItemsForScene(scene.ID, plans, input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps), input.MotionSeed, input.MapGroups) {
+			plans := mapPlansForScene(input.PlateResolver, uniqueMaps, input.Width, input.Height, mapGroups)
+			for _, mapItem := range mapItemsForScene(scene.ID, plans, input.Width, input.Height, mapOrdinal, laneAnimationCount(input.AnimationCounts, laneMaps), input.MotionSeed, mapGroups) {
 				plan.Items = append(plan.Items, mapItem)
 				mapOrdinal++
 			}
@@ -295,7 +339,7 @@ func appendVisualLane(plan *capmodel.OverlayPlan, sceneID string, lane visualLan
 	}
 }
 
-func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config PlannerConfig, imageSeed, motionSeed, entityStyleSelector string, entityImageMotionForPlan func(ordinal, limit int) string, imageOrdinal int) (int, error) {
+func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config PlannerConfig, imageSeed, motionSeed, entityStyleSelector string, entityImageMotionForPlan func(ordinal, limit int) string, imageOrdinal int, dateMotions []string) (int, error) {
 	for _, scene := range input.Scenes {
 		if strings.TrimSpace(scene.ID) == "" {
 			return imageOrdinal, fmt.Errorf("overlay planner: scene id is required")
@@ -343,7 +387,7 @@ func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config
 				dateWindowCap = sceneCap
 			}
 			dateWindowCap = dateCardWindowCapBeforeImage(number, images, dateWindowCap)
-			plan.Items = append(plan.Items, numberOverlayItem(input.PlanID, scene.ID, number, input.AnimationCounts, dateWindowCap))
+			plan.Items = append(plan.Items, numberOverlayItem(input.PlanID, scene.ID, number, input.AnimationCounts, dateMotions, dateWindowCap))
 		}
 
 		brandTexts := rankedValid(scene.BrandTexts, 0)
@@ -438,7 +482,6 @@ func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config
 		allGroups := append([]MultiEntityGroup(nil), scene.MultiEntityGroups...)
 		previousGroupMotion := ""
 		for _, group := range allGroups {
-			groupLane := laneEntities
 			if group.SceneID != "" && group.SceneID != scene.ID {
 				return imageOrdinal, fmt.Errorf("overlay planner: multi-entity group %q belongs to scene %q, not %q", group.GroupID, group.SceneID, scene.ID)
 			}
@@ -452,26 +495,30 @@ func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config
 			for _, item := range groupItems {
 				if item.Kind == string(capmodel.KindEntityImage) {
 					if len(item.ImageLayers) > 0 {
+						item.MotionID = ""
+						item.CameraMotionID = ""
 						for layerIndex := range item.ImageLayers {
 							layer := &item.ImageLayers[layerIndex]
-							imageLimit := laneAnimationCount(input.AnimationCounts, groupLane)
+							layer.MotionID = ""
+							layer.MotionParams = nil
 							if layer.Caption != "" {
-								pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
-								layer.MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
 								layer.CaptionMotionID = SelectEntityCaptionMotionAt(imageSeed, input.VideoID, imageOrdinal)
 							} else {
-								layer.MotionID = entityImageMotionForPlan(imageOrdinal, imageLimit)
 								layer.CaptionMotionID = ""
 							}
 							layer.PresetID = selectImagePreset(input.PlanID, item.SceneID, item.ID+":"+layer.ID)
 							imageOrdinal++
 						}
-						// One seeded choreography for the whole group; no later step rewrites it.
-						item.GroupMotionID = SelectImageGroupMotion(input.MotionSeed, input.VideoID, item.ID, len(item.ImageLayers), previousGroupMotion)
-						previousGroupMotion = item.GroupMotionID
+						// The composite group owns one choreography. Child layers
+						// stay motion-free so the renderer cannot apply two competing
+						// animations to the same pixels.
+						item.GroupMotionID = SelectImageGroupMotion(motionSeed, input.VideoID, item.ID, len(item.ImageLayers), previousGroupMotion)
+						if item.GroupMotionID != "" {
+							previousGroupMotion = item.GroupMotionID
+						}
 					} else {
 						if item.EntityCaption != "" {
-							pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
+							pool := imageWithTextPoolFor(input)
 							item.MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
 							item.CaptionMotionID = SelectEntityCaptionMotionAt(imageSeed, input.VideoID, imageOrdinal)
 							if entityStyleSelector != "" {

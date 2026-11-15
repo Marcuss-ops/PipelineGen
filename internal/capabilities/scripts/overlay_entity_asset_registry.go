@@ -238,7 +238,7 @@ func applyVerifiedEntityAssets(items []capmodel.OverlayItem, planID string) []ca
 			item.AssetRefs = []capmodel.OverlayAssetRef{ref}
 			item.RenderKey = ""
 			out = append(out, item)
-		case "image_chain":
+		case "image_chain", "mixed_chain", "phrase_chain", "map_chain":
 			out = append(out, bindVerifiedChainAssets(item, registry, seen))
 		default:
 			out = append(out, item)
@@ -255,12 +255,12 @@ func planUsesRegisteredEntity(items []capmodel.OverlayItem, registry map[string]
 			}
 			continue
 		}
-		if strings.TrimSpace(item.Kind) == "image_chain" {
-			for _, segment := range chainSegments(item) {
-				caption, _ := segment["entity_caption"].(string)
-				if len(registry[normalizeEntityAssetKey(caption)]) > 0 {
-					return true
-				}
+		for _, segment := range chainSegments(item) {
+			if !chainEntitySegment(segment) {
+				continue
+			}
+			if len(registry[normalizeEntityAssetKey(chainSegmentName(segment))]) > 0 {
+				return true
 			}
 		}
 	}
@@ -273,9 +273,14 @@ func bindVerifiedChainAssets(item capmodel.OverlayItem, registry map[string][]ca
 		return item
 	}
 	bound := false
-	for index, segment := range segments {
-		caption, _ := segment["entity_caption"].(string)
-		key := normalizeEntityAssetKey(caption)
+	for _, segment := range segments {
+		if !chainEntitySegment(segment) {
+			continue
+		}
+		if assets, _ := segment["assets"].([]any); len(assets) > 0 {
+			continue
+		}
+		key := normalizeEntityAssetKey(chainSegmentName(segment))
 		refs := registry[key]
 		if len(refs) == 0 {
 			continue
@@ -283,9 +288,7 @@ func bindVerifiedChainAssets(item capmodel.OverlayItem, registry map[string][]ca
 		ref := refs[seen[key]%len(refs)]
 		seen[key]++
 		setChainSegmentAsset(segment, ref)
-		if index < len(item.AssetRefs) {
-			item.AssetRefs[index] = ref
-		}
+		item.AssetRefs = appendUniqueAssetRef(item.AssetRefs, ref)
 		bound = true
 	}
 	if bound {
@@ -295,6 +298,39 @@ func bindVerifiedChainAssets(item capmodel.OverlayItem, registry map[string][]ca
 		item.RenderKey = ""
 	}
 	return item
+}
+
+// chainEntitySegment limits registry binding to segments that can actually
+// render an image. A phrase segment must never acquire a portrait just because
+// its text happens to match an entity registry key.
+func chainEntitySegment(segment map[string]any) bool {
+	kind, _ := segment["kind"].(string)
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "entity_image", "entity_card", "location", "organization", "concept":
+		return true
+	case "image":
+		caption, _ := segment["entity_caption"].(string)
+		return strings.TrimSpace(caption) != ""
+	default:
+		return false
+	}
+}
+
+func chainSegmentName(segment map[string]any) string {
+	if caption, _ := segment["entity_caption"].(string); strings.TrimSpace(caption) != "" {
+		return caption
+	}
+	text, _ := segment["text"].(string)
+	return text
+}
+
+func appendUniqueAssetRef(refs []capmodel.OverlayAssetRef, ref capmodel.OverlayAssetRef) []capmodel.OverlayAssetRef {
+	for _, existing := range refs {
+		if existing.AssetID == ref.AssetID {
+			return refs
+		}
+	}
+	return append(refs, ref)
 }
 
 func chainSegments(item capmodel.OverlayItem) []map[string]any {
@@ -320,6 +356,9 @@ func chainSegments(item capmodel.OverlayItem) []map[string]any {
 }
 
 func setChainSegmentAsset(segment map[string]any, ref capmodel.OverlayAssetRef) {
+	if preset, _ := segment["image_preset_id"].(string); strings.TrimSpace(preset) == "" {
+		segment["image_preset_id"] = "image_fade_in"
+	}
 	segment["asset_id"] = ref.AssetID
 	segment["sha256"] = ref.SHA256
 	segment["media_type"] = ref.MediaType

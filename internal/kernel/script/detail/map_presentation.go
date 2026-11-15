@@ -29,12 +29,15 @@ type MapPresentationSpec struct {
 	// MaxPinsPerGroup caps one map group at this many pins (1..5). Zero uses
 	// the certified default of 5; above 5 fails closed (the renderer budget).
 	MaxPinsPerGroup int `json:"max_pins_per_group,omitempty"`
-	// Style is the basemap treatment: chronon_editorial (aliases chronon,
-	// editorial; default — the only style the native renderer serves), the
-	// raster families satellite/roadmap/terrain (demolition debt: rejected
-	// until their parity gates land) or random (seeded draw over the
-	// servable styles).
+	// Style selects the cartographic look: classic (aliases chronon,
+	// chronon_editorial, editorial) draws the editorial vector basemap;
+	// modern_map_1 (aliases modern, topo, terrain, esri_topo) draws the real
+	// Esri World Topo Map; satellite/esri_sat draws Esri World Imagery;
+	// random draws over the servable styles. Empty means modern_map_1.
 	Style string `json:"style,omitempty"`
+	// Level selects the cartographic scale: continent, country, region or
+	// municipality (alias comune). Empty keeps the camera's own envelope.
+	Level string `json:"level,omitempty"`
 	// Animation is the composition id, "random" (family-based seeded draw) or
 	// empty (same as random).
 	Animation string `json:"animation,omitempty"`
@@ -56,6 +59,7 @@ type MapPresentation struct {
 	GroupNearbyPlaces bool   `json:"group_nearby_places"`
 	MaxPinsPerGroup   int    `json:"max_pins_per_group"`
 	Style             string `json:"style"`
+	Level             string `json:"level"`
 	Animation         string `json:"animation"`
 	Camera            string `json:"camera"`
 	AllowRoute        bool   `json:"allow_route"`
@@ -75,7 +79,7 @@ func (s *MapPresentationSpec) Normalize() (MapPresentation, error) {
 		Mode:              "auto",
 		GroupNearbyPlaces: true,
 		MaxPinsPerGroup:   DefaultMaxPinsPerGroup,
-		Style:             "chronon_editorial",
+		Style:             "esri_topo",
 		Animation:         "random",
 		Camera:            "auto",
 		AllowRoute:        true,
@@ -114,16 +118,30 @@ func (s *MapPresentationSpec) Normalize() (MapPresentation, error) {
 	}
 	if style := strings.TrimSpace(s.Style); style != "" {
 		switch strings.ToLower(style) {
-		case "chronon_editorial", "chronon", "editorial", "random":
-			resolved.Style = strings.ToLower(style)
-		case "satellite", "roadmap", "terrain":
-			// The raster tile families are demolition debt: the native map
-			// renderer draws the editorial vector basemap only. Rejecting here
-			// fails closed at submit with the reason — never a silent style
-			// swap, never a job that dies later inside the render queue.
-			return MapPresentation{}, fmt.Errorf("map_presentation.style %q selects the raster basemap family: not ported to the native map renderer (demolition debt, TICKET-MAPS-NATIVE-PORT); declare chronon_editorial or random", s.Style)
+		case "classic", "chronon_editorial", "chronon", "editorial":
+			resolved.Style = "chronon_editorial"
+		case "modern_map_1", "modernmap1", "modern", "topo", "terrain", "esri_topo":
+			resolved.Style = "esri_topo"
+		case "satellite", "esri_sat":
+			resolved.Style = "esri_sat"
+		case "random":
+			resolved.Style = "random"
+		case "roadmap", "esri_light":
+			return MapPresentation{}, fmt.Errorf("map_presentation.style %q is not available natively; choose classic (editorial vector) or modern_map_1 (Esri World Topo)", s.Style)
 		default:
-			return MapPresentation{}, fmt.Errorf("map_presentation.style %q is unsupported; choose chronon_editorial (aliases chronon, editorial) or random", s.Style)
+			return MapPresentation{}, fmt.Errorf("map_presentation.style %q is unsupported; choose classic or modern_map_1", s.Style)
+		}
+	}
+	if level := strings.ToLower(strings.TrimSpace(s.Level)); level != "" {
+		switch level {
+		case "continent", "country", "region", "municipality":
+			resolved.Level = level
+		case "comune":
+			resolved.Level = "municipality"
+		case "auto":
+			resolved.Level = ""
+		default:
+			return MapPresentation{}, fmt.Errorf("map_presentation.level %q is unsupported; choose continent, country, region or municipality", s.Level)
 		}
 	}
 	if animation := strings.TrimSpace(s.Animation); animation != "" {

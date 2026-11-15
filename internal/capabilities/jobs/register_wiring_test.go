@@ -50,6 +50,7 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	images "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 
@@ -61,7 +62,7 @@ import (
 // canonical NewService signature (4-arg, godlike/07 fail-closed) requires
 // a non-nil broker; the test fixtures never exercise any broker method
 // because they only call svc.ValidateHandlerCompleteness + svc.HasHandler
-// (which read Registry directly, NOT the broker). Embedding the interface
+// (which read jobscheduling.Registry directly, NOT the broker). Embedding the interface
 // makes nakedJobBroker satisfy job.JobBroker structurally (forward-promoted
 // method set), but the embedded interface itself is nil — any method
 // dispatch on the broker would nil-panic. Scope is explicitly limited
@@ -196,7 +197,7 @@ func TestErrMissingDeps_IsExportedSentinel(t *testing.T) {
 // them. ValidateHandlerCompleteness closes this gap by failing-closed
 // BEFORE the first job is accepted.
 //
-// Test strategy: build a real Service + Dispatcher + Registry (no mocks),
+// Test strategy: build a real Service + Dispatcher + jobscheduling.Registry (no mocks),
 // register ONLY the parent handler, and assert ValidateHandlerCompleteness
 // returns a non-nil error referencing the missing voiceover.generate_item.
 // Then register the child handler and assert the check passes.
@@ -204,9 +205,9 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	dispatcher := jobs.NewDispatcher()
 
 	// Build a minimal registry scoped to ONLY the voiceover
-	// parent-child pair. Using Compose() would register ALL job
+	// parent-child pair. Using jobscheduling.Compose() would register ALL job
 	// types (media.reindex, books.process, etc.); for a focused
-	// §15.9 test a custom Registry isolates the surface to the
+	// §15.9 test a custom jobscheduling.Registry isolates the surface to the
 	// voiceover pair without polluting the test fixture.
 	//
 	// The same `registry` instance is (a) attached to the Service
@@ -216,12 +217,12 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	// ValidateHandlerCompleteness(reg) at the assertion sites.
 	// Using ONE registry for both surfaces avoids drift between
 	// the SSOT job-type list and the resolver lookup.
-	registry := jobs.NewRegistry()
-	if err := registry.Register(jobs.JobPolicy{
-		Completion: jobs.CompletionDeclaration{
-			JobType:              jobs.TypeVoiceoverGenerate,
-			ArtifactOwnership:    jobs.ArtifactOwnershipApplication,
-			FinalizationStrategy: jobs.FinalizationStrategyLegacyComplete,
+	registry := jobscheduling.NewRegistry()
+	if err := registry.Register(jobscheduling.JobPolicy{
+		Completion: jobscheduling.CompletionDeclaration{
+			JobType:              jobscheduling.TypeVoiceoverGenerate,
+			ArtifactOwnership:    jobscheduling.ArtifactOwnershipApplication,
+			FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete,
 		},
 		Description:       "Voiceover single generation",
 		Timeout:           30 * time.Minute,
@@ -229,11 +230,11 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("§15.9: register voiceover.generate in test registry: %v", err)
 	}
-	if err := registry.Register(jobs.JobPolicy{
-		Completion: jobs.CompletionDeclaration{
-			JobType:              jobs.TypeVoiceoverGenerateItem,
-			ArtifactOwnership:    jobs.ArtifactOwnershipApplication,
-			FinalizationStrategy: jobs.FinalizationStrategyLegacyComplete,
+	if err := registry.Register(jobscheduling.JobPolicy{
+		Completion: jobscheduling.CompletionDeclaration{
+			JobType:              jobscheduling.TypeVoiceoverGenerateItem,
+			ArtifactOwnership:    jobscheduling.ArtifactOwnershipApplication,
+			FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete,
 		},
 		Description:       "Voiceover per-language child",
 		Timeout:           10 * time.Minute,
@@ -250,19 +251,19 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 
 	// Step 1: register ONLY the parent — child is missing.
 	// The zero-value GenerateJobHandler{}.Register only does
-	// jobsSvc.RegisterHandler(jobs.TypeVoiceoverGenerate, ...) — it
+	// jobsSvc.RegisterHandler(jobscheduling.TypeVoiceoverGenerate, ...) — it
 	// does NOT register voiceover.generate_item.
 	if err := (&voiceoverjobs.GenerateJobHandler{}).Register(svc); err != nil {
 		t.Fatalf("§15.9: Register parent (GenerateJobHandler) failed: %v", err)
 	}
 
 	// Parent IS consumable.
-	if !svc.HasHandler(jobs.TypeVoiceoverGenerate) {
+	if !svc.HasHandler(jobscheduling.TypeVoiceoverGenerate) {
 		t.Fatal("§15.9: after Register, parent handler must be present (HasHandler returned false)")
 	}
 
 	// Child is NOT consumable — the gap that ValidateHandlerCompleteness must detect.
-	if svc.HasHandler(jobs.TypeVoiceoverGenerateItem) {
+	if svc.HasHandler(jobscheduling.TypeVoiceoverGenerateItem) {
 		t.Fatal("§15.9: child handler must NOT be present yet (only parent registered)")
 	}
 
@@ -273,9 +274,9 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	} else {
 		// The error must reference the missing job type so operators can
 		// grep the boot log for the specific gap.
-		if !containsString(err.Error(), jobs.TypeVoiceoverGenerateItem) {
+		if !containsString(err.Error(), jobscheduling.TypeVoiceoverGenerateItem) {
 			t.Fatalf("§15.9: ValidateHandlerCompleteness error must mention the missing job type %q, got: %v",
-				jobs.TypeVoiceoverGenerateItem, err)
+				jobscheduling.TypeVoiceoverGenerateItem, err)
 		}
 		t.Logf("§15.9 parent-only check passed: %v", err)
 	}
@@ -289,10 +290,10 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	}
 
 	// Both handlers must be consumable.
-	if !svc.HasHandler(jobs.TypeVoiceoverGenerate) {
+	if !svc.HasHandler(jobscheduling.TypeVoiceoverGenerate) {
 		t.Fatal("§15.9: after child register, parent handler must still be present")
 	}
-	if !svc.HasHandler(jobs.TypeVoiceoverGenerateItem) {
+	if !svc.HasHandler(jobscheduling.TypeVoiceoverGenerateItem) {
 		t.Fatal("§15.9: after child register, child handler must be present")
 	}
 

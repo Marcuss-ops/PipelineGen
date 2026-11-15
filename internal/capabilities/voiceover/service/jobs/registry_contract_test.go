@@ -34,10 +34,9 @@
 package jobs
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 	"time"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // TestVoiceoverBatch_RoutesToLegacyComplete pins the registry contract
@@ -58,22 +57,22 @@ import (
 func TestVoiceoverBatch_RoutesToLegacyComplete(t *testing.T) {
 	const wantDescription = "Voiceover batch generation (per-item artifacts persisted inside the per-item caller-owned tx via Service.GenerateBatch → finalizeStage → voiceover.Finalizer.Finalize → tx.Commit; broker's legacy Complete is the canonical mark-SUCCEEDED seam)"
 
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	if reg == nil {
-		t.Fatal("appjobs.Compose() returned nil registry")
+		t.Fatal("jobscheduling.Compose() returned nil registry")
 	}
-	if !reg.IsRegistered(appjobs.TypeVoiceoverBatch) {
-		t.Fatalf("job type %q must be registered (Compose missing this entry)", appjobs.TypeVoiceoverBatch)
+	if !reg.IsRegistered(jobscheduling.TypeVoiceoverBatch) {
+		t.Fatalf("job type %q must be registered (Compose missing this entry)", jobscheduling.TypeVoiceoverBatch)
 	}
-	entry, _ := reg.Get(appjobs.TypeVoiceoverBatch)
-	if reg.ProducesArtifacts(appjobs.TypeVoiceoverBatch) {
-		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-BATCH mirrors the voiceover db2f3b1e + YouTube b8c96035 fixes; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", appjobs.TypeVoiceoverBatch)
+	entry, _ := reg.Get(jobscheduling.TypeVoiceoverBatch)
+	if reg.ProducesArtifacts(jobscheduling.TypeVoiceoverBatch) {
+		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-BATCH mirrors the voiceover db2f3b1e + YouTube b8c96035 fixes; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", jobscheduling.TypeVoiceoverBatch)
 	}
-	if got, want := reg.Timeout(appjobs.TypeVoiceoverBatch), 30*time.Minute; got != want {
-		t.Fatalf("registry.Timeout(%q) = %s; want %s", appjobs.TypeVoiceoverBatch, got, want)
+	if got, want := reg.Timeout(jobscheduling.TypeVoiceoverBatch), 30*time.Minute; got != want {
+		t.Fatalf("registry.Timeout(%q) = %s; want %s", jobscheduling.TypeVoiceoverBatch, got, want)
 	}
-	if got, want := reg.DefaultMaxRetries(appjobs.TypeVoiceoverBatch), 2; got != want {
-		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", appjobs.TypeVoiceoverBatch, got, want)
+	if got, want := reg.DefaultMaxRetries(jobscheduling.TypeVoiceoverBatch), 2; got != want {
+		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", jobscheduling.TypeVoiceoverBatch, got, want)
 	}
 	if got := entry.Description; got != wantDescription {
 		t.Fatalf("Description drifted (audit-pin):\n  got:  %q\n  want: %q\nIf the wording change is intentional, update this test in lockstep.", got, wantDescription)
@@ -88,13 +87,13 @@ func TestVoiceoverBatch_RoutesToLegacyComplete(t *testing.T) {
 // between the two would silently let the gate re-allow the legacy
 // path for this job type.
 func TestVoiceoverBatch_NotInProducesArtifactsMap(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	m := reg.ProducesArtifactsMap()
 	if m == nil {
 		t.Fatal("ProducesArtifactsMap() returned nil map")
 	}
-	if m[appjobs.TypeVoiceoverBatch] {
-		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-BATCH)", appjobs.TypeVoiceoverBatch)
+	if m[jobscheduling.TypeVoiceoverBatch] {
+		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-BATCH)", jobscheduling.TypeVoiceoverBatch)
 	}
 }
 
@@ -121,22 +120,22 @@ func TestVoiceoverBatch_NotInProducesArtifactsMap(t *testing.T) {
 func TestVoiceoverPromo_RoutesToLegacyComplete(t *testing.T) {
 	const wantDescription = "Voiceover promo generation (translate + generate) (per-item artifacts persisted inside the per-item caller-owned tx via Service.GeneratePromo → promo.NewGenerator → promoVoiceoverAdapter → ProcessVoiceoverItemUseCase.Execute → ProcessSegmentUseCase.Execute → voiceover.Finalizer.Finalize → tx.Commit; broker's legacy Complete is the canonical mark-SUCCEEDED seam)"
 
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	if reg == nil {
-		t.Fatal("appjobs.Compose() returned nil registry")
+		t.Fatal("jobscheduling.Compose() returned nil registry")
 	}
-	if !reg.IsRegistered(appjobs.TypeVoiceoverPromo) {
-		t.Fatalf("job type %q must be registered (Compose missing this entry)", appjobs.TypeVoiceoverPromo)
+	if !reg.IsRegistered(jobscheduling.TypeVoiceoverPromo) {
+		t.Fatalf("job type %q must be registered (Compose missing this entry)", jobscheduling.TypeVoiceoverPromo)
 	}
-	entry, _ := reg.Get(appjobs.TypeVoiceoverPromo)
-	if reg.ProducesArtifacts(appjobs.TypeVoiceoverPromo) {
-		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-PROMO mirrors the voiceover db2f3b1e + YouTube b8c96035 fixes; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", appjobs.TypeVoiceoverPromo)
+	entry, _ := reg.Get(jobscheduling.TypeVoiceoverPromo)
+	if reg.ProducesArtifacts(jobscheduling.TypeVoiceoverPromo) {
+		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-PROMO mirrors the voiceover db2f3b1e + YouTube b8c96035 fixes; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", jobscheduling.TypeVoiceoverPromo)
 	}
-	if got, want := reg.Timeout(appjobs.TypeVoiceoverPromo), 30*time.Minute; got != want {
-		t.Fatalf("registry.Timeout(%q) = %s; want %s", appjobs.TypeVoiceoverPromo, got, want)
+	if got, want := reg.Timeout(jobscheduling.TypeVoiceoverPromo), 30*time.Minute; got != want {
+		t.Fatalf("registry.Timeout(%q) = %s; want %s", jobscheduling.TypeVoiceoverPromo, got, want)
 	}
-	if got, want := reg.DefaultMaxRetries(appjobs.TypeVoiceoverPromo), 2; got != want {
-		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", appjobs.TypeVoiceoverPromo, got, want)
+	if got, want := reg.DefaultMaxRetries(jobscheduling.TypeVoiceoverPromo), 2; got != want {
+		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", jobscheduling.TypeVoiceoverPromo, got, want)
 	}
 	if got := entry.Description; got != wantDescription {
 		t.Fatalf("Description drifted (audit-pin):\n  got:  %q\n  want: %q\nIf the wording change is intentional, update this test in lockstep.", got, wantDescription)
@@ -149,12 +148,12 @@ func TestVoiceoverPromo_RoutesToLegacyComplete(t *testing.T) {
 // (ProducesArtifactsMap) would silently let the SQLiteStore gate
 // re-allow the legacy path for this job type.
 func TestVoiceoverPromo_NotInProducesArtifactsMap(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	m := reg.ProducesArtifactsMap()
 	if m == nil {
 		t.Fatal("ProducesArtifactsMap() returned nil map")
 	}
-	if m[appjobs.TypeVoiceoverPromo] {
-		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-PROMO)", appjobs.TypeVoiceoverPromo)
+	if m[jobscheduling.TypeVoiceoverPromo] {
+		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-FIX-TYPE-VOICEOVER-PROMO)", jobscheduling.TypeVoiceoverPromo)
 	}
 }

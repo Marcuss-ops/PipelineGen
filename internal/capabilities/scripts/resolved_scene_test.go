@@ -120,6 +120,48 @@ func TestSceneDurationResolverCombinedClipBoundClipWinsWhenLonger(t *testing.T) 
 	}
 }
 
+func TestResolvedScenesTrimVideoWindowToVoiceoverGovernedDuration(t *testing.T) {
+	// A 43s materialized clip under an 18.672s narration must contribute only
+	// 18.672s to the canonical timeline. Carrying the full clip made Validate
+	// reject the segment with "invalid canonical timeline: segment 1 video
+	// source range".
+	clip := &ClipReference{ID: "clip-43", SourceInMS: 0, SourceOutMS: 43000, AudioPath: "/media/clip-43.m4a"}
+	scenes := []Scene{{
+		ID:    "scene-1",
+		Index: 0,
+		Clip:  clip,
+		Clips: []*ClipReference{clip},
+		Audio: audio.AudioIntent{Mode: audio.AudioClip, ClipAssetID: "clip-43", SourceInUS: 0, SourceDurationUS: 43_000_000, TimelineDurationUS: 43_000_000, UseOriginalAudio: true},
+		AudioIntents: []audio.AudioIntent{
+			{Mode: audio.AudioClip, ClipAssetID: "clip-43", SourceInUS: 0, SourceDurationUS: 43_000_000, TimelineDurationUS: 43_000_000, UseOriginalAudio: true},
+		},
+		Voiceover: map[Language]AudioReference{"it": {ID: "vo-1", FilePath: "/media/vo-1.m4a", Duration: 18.672}},
+	}}
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeCombinedTimeline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].DurationUS; got != 18_672_000 {
+		t.Fatalf("scene duration = %dus, want 18672000us (voiceover-governed)", got)
+	}
+	if len(resolved[0].VideoSegments) != 1 {
+		t.Fatalf("video segments = %d, want 1", len(resolved[0].VideoSegments))
+	}
+	video := resolved[0].VideoSegments[0]
+	if video.TimelineDurationUS != 18_672_000 || video.SourceDurationUS != 18_672_000 {
+		t.Fatalf("video window = timeline %dus source %dus, want 18672000us/18672000us", video.TimelineDurationUS, video.SourceDurationUS)
+	}
+	if resolved[0].Video.SourceDurationUS != 18_672_000 {
+		t.Fatalf("primary video source duration = %dus, want 18672000us", resolved[0].Video.SourceDurationUS)
+	}
+	if len(resolved[0].AudioIntents) != 1 {
+		t.Fatalf("audio intents = %d, want 1", len(resolved[0].AudioIntents))
+	}
+	if got := resolved[0].AudioIntents[0]; got.TimelineDurationUS != 18_672_000 || got.SourceDurationUS != 18_672_000 {
+		t.Fatalf("clip audio window = timeline %dus source %dus, want 18672000us/18672000us", got.TimelineDurationUS, got.SourceDurationUS)
+	}
+}
+
 func TestSceneDurationResolverNonCombinedKeepsEditorialDuration(t *testing.T) {
 	// max() belongs to COMBINED_TIMELINE only. In any other mode the explicit
 	// editorial duration still wins, even when the narration is longer.

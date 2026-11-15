@@ -96,6 +96,7 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		PresetID                         string `json:"preset_id,omitempty"`
 		ImagePresetID                    string `json:"image_preset_id,omitempty"`
 		MotionID                         string `json:"motion_id,omitempty"`
+		GroupMotionID                    string `json:"group_motion_id,omitempty"`
 		MotionParams                     string `json:"motion_params,omitempty"`
 		ImageLayers                      string `json:"image_layers,omitempty"`
 		EntityCaption                    string `json:"entity_caption,omitempty"`
@@ -109,7 +110,7 @@ func ComputeRenderKey(p OverlayPlan, item OverlayItem) string {
 		Map                              string `json:"map,omitempty"`
 	}{
 		item.TemplateID, item.Text, string(params), renderer, assetHashes, p.Width, p.Height, p.FPSNum, p.FPSDen, item.StartMs, item.EndMs, item.StartUS, item.DurationUS,
-		item.PresetID, item.ImagePresetID, item.MotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), item.EntityCaption, item.EntityStyleID, item.CaptionMotionID, captionMotionParamsJSON, captionStyleJSON, styleJSON, soundEffectJSON, frameJSON, mapJSON,
+		item.PresetID, item.ImagePresetID, item.MotionID, item.GroupMotionID, motionParamsJSON(item.MotionParams), imageLayersJSON(item.ImageLayers), item.EntityCaption, item.EntityStyleID, item.CaptionMotionID, captionMotionParamsJSON, captionStyleJSON, styleJSON, soundEffectJSON, frameJSON, mapJSON,
 	}
 	b, _ := json.Marshal(input)
 	h := digest.SHA256Bytes(b)

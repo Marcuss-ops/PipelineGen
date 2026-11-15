@@ -86,15 +86,15 @@ func cloneImageSearchCandidates(in []scriptpkg.SegmentAssetCandidate) []scriptpk
 	return append([]scriptpkg.SegmentAssetCandidate(nil), in...)
 }
 
-// imageSearchCacheKey is the canonical identity of one retrieval subject.
-// Provider and QueryClass are intentionally excluded: they describe how a
-// caller labels the request, not which subject is being retrieved. Including
-// them is what made the semantic planner and the per-segment portrait search
-// miss each other's cache even though they ask for the same person.
+// imageSearchCacheKey isolates semantic routes because different query classes
+// select different provider strategies. Provider provenance itself stays out
+// of the key so callers share a result when they ask the same identity through
+// the same route.
 func imageSearchCacheKey(req adapters.InternetImageSearchRequest) string {
 	return fmt.Sprintf(
-		"image-search:v1:%s|%s|%d",
+		"image-search:v2:%s|%s|%s|%d",
 		imageSearchSubject(req.Entity, req.Query),
+		strings.ToLower(strings.TrimSpace(req.QueryClass)),
 		imageSearchLanguage(req.Language),
 		imageSearchLimitBucket(req.Limit),
 	)

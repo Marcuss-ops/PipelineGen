@@ -100,6 +100,7 @@ package wiring
 import (
 	"context"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
 	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
@@ -364,7 +365,7 @@ func BuildJobsBundle(
 	}
 
 	repo := sqljobs.NewSQLiteStore(db.DB, log)
-	registry := appjobs.Compose()
+	registry := jobscheduling.Compose()
 	repo.SetProducesArtifacts(registry.ProducesArtifactsMap())
 
 	jobLedger, err := platformjobregistry.New(db.DB)

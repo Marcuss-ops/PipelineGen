@@ -5,7 +5,9 @@
 package adapters
 
 import (
+	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
@@ -48,10 +50,6 @@ func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 	if plan == nil || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
 		return target
 	}
-	maxPerEntity := plan.MediaPlan.Extraction.EntityImages.MaxPerEntity
-	if maxPerEntity <= 0 {
-		maxPerEntity = 1
-	}
 	// The set is keyed by identity family, not by spelling: a policy that
 	// allows ORGANIZATION must also allow COMPANY, and a segment annotated
 	// GPE is the same PLACE a later pass calls LOCATION.
@@ -83,7 +81,9 @@ func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 			}
 		}
 	}
-	entityTarget := len(seen) * maxPerEntity
+	// MaxPerEntity limits variants after discovery; it is not a quota. The
+	// minimum scene target is one candidate per distinct imageable entity.
+	entityTarget := len(seen)
 	if entityTarget > target {
 		return entityTarget
 	}
@@ -102,7 +102,9 @@ func dropPerceptualDuplicates(candidates []scriptpkg.SegmentAssetCandidate) []sc
 	kept := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		hash := strings.TrimSpace(candidate.PerceptualHash)
-		if hash != "" {
+		if hash == "" {
+			candidate.PerceptualDedupStatus = "UNHASHED"
+		} else {
 			duplicate := false
 			for _, seen := range kept {
 				if distance, ok := digest.PerceptualHashDistance(hash, seen); ok && distance <= vidRushPerceptualDuplicateDistance {
@@ -113,11 +115,48 @@ func dropPerceptualDuplicates(candidates []scriptpkg.SegmentAssetCandidate) []sc
 			if duplicate {
 				continue
 			}
+			candidate.PerceptualDedupStatus = "HASHED"
 			kept = append(kept, hash)
 		}
 		out = append(out, candidate)
 	}
 	return out
+}
+
+// preferSelectableVidRushImages keeps a force-refresh diagnostic row (legacy,
+// lifecycle stripped) from winning a slot while a lifecycle-aware candidate is
+// available. When every candidate is legacy, the existing contract is
+// preserved; when a real content address exists, it breaks the tie.
+func preferSelectableVidRushImages(in []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+	lifecycle := make([]scriptpkg.SegmentAssetCandidate, 0, len(in))
+	for _, candidate := range in {
+		if !candidate.IsLegacyCandidate() {
+			lifecycle = append(lifecycle, candidate)
+		}
+	}
+	if len(lifecycle) > 0 {
+		return lifecycle
+	}
+	addressed := make([]scriptpkg.SegmentAssetCandidate, 0, len(in))
+	for _, candidate := range in {
+		if isHexSHA256(candidate.ContentSHA256) {
+			addressed = append(addressed, candidate)
+		}
+	}
+	if len(addressed) > 0 {
+		return addressed
+	}
+	return in
+}
+
+func vidRushImageSelectionScore(candidate scriptpkg.SegmentAssetCandidate) float64 {
+	if candidate.SemanticScore > 0 {
+		return candidate.SemanticScore
+	}
+	if candidate.Score > 0 {
+		return candidate.Score
+	}
+	return candidate.TechnicalQualityScore
 }
 
 func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
@@ -134,17 +173,42 @@ func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []script
 }
 
 // vidRushImageGroup is the identity used by image-only selection. The entity
-// image policy may permit multiple distinct images for one query; otherwise
-// the default remains one image per entity/query.
+// image policy may permit multiple distinct images for one entity; otherwise
+// the default remains one image per entity/query. The canonical entity wins
+// over the provider query because adapters expand an identity query with a
+// retrieval qualifier ("John Cena" -> "John Cena photo"); grouping by the raw
+// query created two slots for the same person and silently doubled the pool.
 func vidRushImageGroup(candidate scriptpkg.SegmentAssetCandidate) string {
-	group := strings.ToLower(strings.TrimSpace(candidate.Query))
+	group := canonicalVidRushImageGroup(candidate.Entity)
 	if group == "" {
-		group = strings.ToLower(strings.TrimSpace(candidate.Entity))
+		group = canonicalVidRushImageGroup(candidate.Query)
 	}
 	if group == "" {
 		group = "asset:" + strings.ToLower(strings.TrimSpace(candidate.AssetID))
 	}
 	return group
+}
+
+// canonicalVidRushImageGroup removes retrieval-only qualifiers that providers
+// append to an identity query. It is deliberately a closed suffix list, not a
+// general token filter: a person's actual surname must never be stripped.
+func canonicalVidRushImageGroup(value string) string {
+	value = strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+	for {
+		trimmed := false
+		for _, suffix := range []string{
+			" photo", " photograph", " portrait", " headshot", " image",
+			" picture", " editorial", " stock photo", " foto", " ritratto",
+		} {
+			if strings.HasSuffix(value, suffix) {
+				value = strings.TrimSpace(strings.TrimSuffix(value, suffix))
+				trimmed = true
+			}
+		}
+		if !trimmed {
+			return value
+		}
+	}
 }
 
 // selectExactVidRushImages is the final selected-image projection. In an
@@ -157,11 +221,17 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 	if target <= 0 {
 		return nil
 	}
-	selectionCandidates := candidates
+	selectionCandidates := preferSelectableVidRushImages(candidates)
 	if plan != nil && plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() && len(segments) > 0 {
 		selectionCandidates = filterEntityImageSelectionCandidates(selectionCandidates, segments[0], plan.MediaPlan.Extraction.EntityImages.EntityTypes)
 	}
 	images := dropPerceptualDuplicates(durableVidRushImages(selectionCandidates))
+	// Selection is score/verdict-aware, not provider discovery order. Stable
+	// sorting keeps equal scores deterministic and preserves discovery order
+	// only as the final tie-breaker.
+	sort.SliceStable(images, func(i, j int) bool {
+		return vidRushImageSelectionScore(images[i]) > vidRushImageSelectionScore(images[j])
+	})
 	imagesOnly := plan != nil &&
 		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) &&
 		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderYouTube) &&
@@ -171,9 +241,17 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 	}
 
 	selected := make([]scriptpkg.SegmentAssetCandidate, 0, min(target, len(images)))
-	perGroupLimit := 1
-	if plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() && plan.MediaPlan.Extraction.EntityImages.MaxPerEntity > 1 {
-		perGroupLimit = plan.MediaPlan.Extraction.EntityImages.MaxPerEntity
+	// Entity-image mode reserves one image per identity by default. Generic
+	// scene-image mode uses the requested scene budget instead: a single
+	// contextual search can legitimately supply several different frames for
+	// that scene, and limiting it to one silently made images_per_scene=10
+	// behave like images_per_scene=1.
+	perGroupLimit := target
+	if plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		perGroupLimit = 1
+		if plan.MediaPlan.Extraction.EntityImages.MaxPerEntity > 1 {
+			perGroupLimit = plan.MediaPlan.Extraction.EntityImages.MaxPerEntity
+		}
 	}
 	groupCounts := make(map[string]int, target)
 	seenAssets := make(map[string]struct{}, target)
@@ -183,8 +261,6 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 		}
 		group := vidRushImageGroup(candidate)
 		if groupCounts[group] >= perGroupLimit {
-			// Candidate order is discovery order. Semantic selection belongs to
-			// MediaSampler and must not be reconstructed in this boundary.
 			continue
 		}
 		assetID := strings.ToLower(strings.TrimSpace(candidate.AssetID))
@@ -263,10 +339,65 @@ func filterEntityImageSelectionCandidates(candidates []scriptpkg.SegmentAssetCan
 			// extracted entity surfaces may participate in this entity lane.
 			continue
 		}
-		if kind == "PERSON" && !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
+		// Entity slots are fail-closed for every kind, not only PERSON: an
+		// unscored place/organization image is still an unverified identity
+		// claim. Discovery keeps it for a later verifier; selection does not
+		// let it consume a slot.
+		if !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
+			continue
+		}
+		if kind != "PERSON" && !entityImageSourceSupportsName(candidate, name) {
+			// A provider's query label only says what was searched. For places
+			// and organizations, require the page/title/URL to independently
+			// mention the requested identity before it can consume an entity
+			// image slot (for example, a Pac-12 tournament photo is not proof
+			// that the image shows the MGM Grand Garden Arena).
 			continue
 		}
 		out = append(out, candidate)
+	}
+	return out
+}
+
+func entityImageSourceSupportsName(candidate scriptpkg.SegmentAssetCandidate, identity string) bool {
+	want := entityImageNameTokens(identity)
+	if len(want) == 0 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(want))
+	for _, value := range []string{candidate.AssetID, candidate.SourcePageURL, candidate.SourceURL} {
+		for _, token := range entityImageNameTokens(value) {
+			seen[token] = struct{}{}
+		}
+	}
+	matches := 0
+	for _, token := range want {
+		if _, ok := seen[token]; ok {
+			matches++
+		}
+	}
+	// Short names/acronyms must match completely. Longer place/organization
+	// names need at least two distinct identity tokens, which tolerates source
+	// titles that omit a city suffix without admitting unrelated results.
+	minimum := min(2, len(want))
+	return matches >= minimum
+}
+
+func entityImageNameTokens(value string) []string {
+	fields := strings.FieldsFunc(normalizeEntityMatch(value), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	out := make([]string, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		if field == "" || field == "di" || field == "de" || field == "del" || field == "la" || field == "the" {
+			continue
+		}
+		if _, ok := seen[field]; ok {
+			continue
+		}
+		seen[field] = struct{}{}
+		out = append(out, field)
 	}
 	return out
 }

@@ -1,6 +1,6 @@
 // Package scan — ssot_fact_lexicon.go: the hardcoded-lexicon fact.
 //
-// Split out of ssot_facts.go to keep that file under the 600-LOC strict cap
+// Split out of ssot_facts.go to keep that file under the 800-LOC strict cap
 // (max_lines_per_file_strict); the fact still owns exactly what the file
 // header there describes: its rule-note, its detection regexes, its canonical
 // owner and its stateful per-file scanner.

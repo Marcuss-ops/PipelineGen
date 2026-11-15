@@ -19,7 +19,7 @@ import (
 // The plan cache is durable when the cache plane is available: a restarted
 // worker reuses the warm provider answers instead of re-querying every entity,
 // and the TTL is owned by configuration rather than a package constant.
-func WireSemanticSearchPlanner(runner *scriptgen.Runner, cfg *config.Config, cacheDB *sql.DB, searcher documentadapters.InternetImageSearcher, log *zap.Logger) {
+func WireSemanticSearchPlanner(runner *scriptgen.Runner, cfg *config.Config, cacheDB *sql.DB, searcher documentadapters.InternetImageSearcher, scorer documentadapters.SemanticCandidateScorer, log *zap.Logger) {
 	if runner == nil || cfg == nil || !cfg.Scripts.SemanticProductionSearch {
 		return
 	}
@@ -39,7 +39,7 @@ func WireSemanticSearchPlanner(runner *scriptgen.Runner, cfg *config.Config, cac
 		batchConfig.Cache = sqlitescripts.NewSQLiteSemanticPlanCacheAdapter(cacheDB, batchConfig.CacheTTL, log)
 		cacheLabel = "sqlite"
 	}
-	planner, err := scriptgen.NewSemanticSearchBatchPlanner(documentadapters.NewSemanticAssetSearch(searcher), batchConfig)
+	planner, err := scriptgen.NewSemanticSearchBatchPlanner(documentadapters.NewSemanticAssetSearch(searcher, scorer), batchConfig)
 	if err != nil {
 		log.Warn("semantic production search batch unavailable", zap.Error(err))
 		return

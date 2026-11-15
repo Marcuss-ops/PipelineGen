@@ -43,6 +43,7 @@ func (f *fakeClipQueue) Submit(_ context.Context, job scriptgen.RenderQueueJob) 
 func (f *fakeClipQueue) Get(_ context.Context, _ string) (scriptgen.RenderQueueJob, error) {
 	return scriptgen.RenderQueueJob{
 		State:       string(f.result.State),
+		OverlaySpec: f.result.RenderPlan,
 		Artifact:    toScriptArtifact(f.result.Artifact),
 		QueuedAt:    f.result.QueuedAt,
 		StartedAt:   f.result.StartedAt,
@@ -237,6 +238,63 @@ func TestClipRenderExecutorSubmitsOverlayPlanV1(t *testing.T) {
 	if outcome.Facts.KeyframeInterval != 48 || outcome.Facts.VideoTimeBaseDen != 12288 ||
 		outcome.Facts.SARNum != 1 || outcome.Facts.ColorSpace != "bt709" {
 		t.Fatalf("complete certified fact set corrupted: %+v", outcome.Facts)
+	}
+}
+
+// TestClipRenderExecutorAdmitsEquivalentPlanConflict pins the rerun recovery:
+// the same content-addressed plan submitted by a NEW run carries a different
+// parent_job_id, so the queue reports an unverified identity conflict. When the
+// existing job holds an equivalent plan the render is already the one this
+// call asks for, and Submit must attach to it instead of failing the run.
+func TestClipRenderExecutorAdmitsEquivalentPlanConflict(t *testing.T) {
+	plan := validClipPlan(t)
+	rawPlan, err := MapClipPlanToOverlayPlan(plan)
+	if err != nil {
+		t.Fatalf("map plan: %v", err)
+	}
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK) // every content-addressed object is present
+	}))
+	defer store.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
+
+	q := &fakeClipQueue{
+		submitErr: scriptgen.ErrRenderRequestConflict,
+		result:    queueclient.Job{State: queueclient.StateCompleted, RenderPlan: rawPlan},
+	}
+	executor, err := NewClipRenderExecutor(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Submit(context.Background(), plan); err != nil {
+		t.Fatalf("equivalent completed plan must be admitted: %v", err)
+	}
+}
+
+// TestClipRenderExecutorKeepsConflictForDifferentPlan is the negative control:
+// a completed job whose plan differs is NOT this render, so the identity
+// conflict must survive. Recovery is never "same id means same bytes".
+func TestClipRenderExecutorKeepsConflictForDifferentPlan(t *testing.T) {
+	plan := validClipPlan(t)
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer store.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
+
+	q := &fakeClipQueue{
+		submitErr: scriptgen.ErrRenderRequestConflict,
+		result: queueclient.Job{
+			State:      queueclient.StateCompleted,
+			RenderPlan: []byte(`{"schema_version":"something.else"}`),
+		},
+	}
+	executor, err := NewClipRenderExecutor(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Submit(context.Background(), plan); !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
+		t.Fatalf("different plan must stay a conflict, got %v", err)
 	}
 }
 

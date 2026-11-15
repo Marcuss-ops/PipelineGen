@@ -26,6 +26,7 @@ type finalJobBaseSegment struct {
 	startUS, endUS   int64
 	sourceInUS       int64
 	sourceDurationUS int64
+	sourceLocked     bool
 	assetID          string
 	sha256           string
 }
@@ -321,16 +322,25 @@ func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAsset
 		if assetDurationUS <= 0 {
 			return nil, fmt.Errorf("final_job scene %d stock asset has no positive saved duration", i)
 		}
-		if strings.EqualFold(finalJobStringValue(scene["kind"]), "stock") && durationUS != assetDurationUS {
-			return nil, fmt.Errorf("final_job stock scene %d duration %dus does not match the whole stock file %dus; the remote Master only packet-copies whole stock files", i, durationUS, assetDurationUS)
-		}
 		if err := assets.addRaw(asset, "video", assetDurationUS, finalJobInt(asset["width"]), finalJobInt(asset["height"]), finalJobInt64(asset["frame_count"])); err != nil {
 			return nil, fmt.Errorf("final_job scene %d: %w", i, err)
 		}
 		sourceInUS := finalJobInt64(asset["start_ms"]) * 1000
+		sourceDurationUS := assetDurationUS
+		sourceLocked := strings.EqualFold(finalJobStringValue(scene["kind"]), "stock")
+		if sourceLocked {
+			// The stockpipeline owns the stock window. The Producer carries the
+			// binding's exact start/duration and never selects, cuts, pads or
+			// re-encodes stock; a window that does not fit the saved file is a
+			// malformed binding, not something to repair here.
+			sourceDurationUS = durationUS
+			if sourceInUS < 0 || sourceDurationUS <= 0 || sourceInUS+sourceDurationUS > assetDurationUS {
+				return nil, fmt.Errorf("final_job stock scene %d window %d+%d exceeds saved file duration %d", i, sourceInUS, sourceDurationUS, assetDurationUS)
+			}
+		}
 		assetID := finalJobStringValue(asset["asset_id"])
 		sha := strings.ToLower(finalJobStringValue(asset["sha256"]))
-		base = append(base, finalJobBaseSegment{startUS: cursorUS, endUS: cursorUS + durationUS, sourceInUS: sourceInUS, sourceDurationUS: assetDurationUS, assetID: assetID, sha256: sha})
+		base = append(base, finalJobBaseSegment{startUS: cursorUS, endUS: cursorUS + durationUS, sourceInUS: sourceInUS, sourceDurationUS: sourceDurationUS, sourceLocked: sourceLocked, assetID: assetID, sha256: sha})
 		cursorUS += durationUS
 	}
 	return base, nil
@@ -407,9 +417,14 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 				if sourceDurationUS > source.sourceDurationUS {
 					sourceDurationUS = source.sourceDurationUS
 				}
-				if maxSourceInUS := source.sourceDurationUS - sourceDurationUS; sourceInUS > maxSourceInUS {
-					sourceInUS = maxSourceInUS
+				if !source.sourceLocked {
+					if maxSourceInUS := source.sourceDurationUS - sourceDurationUS; sourceInUS > maxSourceInUS {
+						sourceInUS = maxSourceInUS
+					}
 				}
+			}
+			if source.sourceLocked && sourceInUS+sourceDurationUS > source.sourceInUS+source.sourceDurationUS {
+				return fmt.Errorf("final_job stock segment window %d+%d exceeds the bound stock window %d+%d", sourceInUS, sourceDurationUS, source.sourceInUS, source.sourceDurationUS)
 			}
 			segments = append(segments, finalJobPlanSegment{
 				SegmentID: fmt.Sprintf("segment-%04d", len(segments)), AssetID: source.assetID, SHA256: source.sha256,

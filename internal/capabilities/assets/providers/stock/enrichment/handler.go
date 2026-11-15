@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"go.uber.org/zap"
 )
 
@@ -169,10 +170,10 @@ func (h *EnrichmentHandler) RegisterHandler(jobsSvc *jobs.Service) error {
 	if jobsSvc == nil {
 		return WrapHandlerNotConfigured("jobsSvc")
 	}
-	if err := jobsSvc.RegisterHandler(jobs.TypeMediaStockRLMEnrich, jobs.HandlerFunc(h.HandleJob)); err != nil {
-		return fmt.Errorf("enrichment.RegisterHandler: bind %q to dispatcher: %w", jobs.TypeMediaStockRLMEnrich, err)
+	if err := jobsSvc.RegisterHandler(jobscheduling.TypeMediaStockRLMEnrich, jobs.HandlerFunc(h.HandleJob)); err != nil {
+		return fmt.Errorf("enrichment.RegisterHandler: bind %q to dispatcher: %w", jobscheduling.TypeMediaStockRLMEnrich, err)
 	}
-	h.Log.Info("registered media.stock_rlm_enrich job handler", zap.String("type", jobs.TypeMediaStockRLMEnrich))
+	h.Log.Info("registered media.stock_rlm_enrich job handler", zap.String("type", jobscheduling.TypeMediaStockRLMEnrich))
 	return nil
 }
 

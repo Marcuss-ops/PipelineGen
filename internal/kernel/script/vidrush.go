@@ -119,9 +119,12 @@ const (
 
 // ExtractedEntity is a typed entity extracted from one segment.
 type ExtractedEntity struct {
-	Value      string  `json:"value"`
-	Type       string  `json:"type"`
-	Confidence float64 `json:"confidence"`
+	Value         string   `json:"value"`
+	Type          string   `json:"type"`
+	Confidence    float64  `json:"confidence"`
+	IdentityID    string   `json:"identity_id,omitempty"`
+	CanonicalID   string   `json:"canonical_id,omitempty"`
+	SearchIntents []string `json:"search_intents,omitempty"`
 }
 
 // NormalizeAnnotationType is the SINGLE canonical owner of the NLP entity
@@ -271,8 +274,13 @@ func BuildSegmentVisualProfile(profile SegmentSemanticProfile) SegmentVisualProf
 		visual.Context = strings.TrimSpace(profile.Subtopics[0])
 	} else if len(profile.Keywords) > 1 {
 		visual.Context = strings.TrimSpace(profile.Keywords[1].Value)
+	} else if len(profile.VisualTerms) > 0 {
+		visual.Context = strings.TrimSpace(profile.VisualTerms[0].Value)
 	} else {
-		visual.Context = "mediterranean cuisine"
+		// Context is retrieval evidence, not a universal default. A fabricated
+		// cuisine context polluted every profile with sparse semantics and sent
+		// unrelated entity searches toward food imagery.
+		visual.Context = subject
 	}
 	seen := make(map[string]struct{})
 	for _, term := range profile.VisualTerms {
@@ -341,14 +349,23 @@ type SegmentAssetCandidate struct {
 	// Provenance is copied onto every discovered, selected and materialized
 	// asset. It is the binding boundary: an asset carrying another segment's
 	// identity must never be accepted by a different segment.
-	SegmentID      string  `json:"segment_id"`
-	Position       int     `json:"position"`
-	TextHash       string  `json:"text_hash"`
-	EntityID       string  `json:"entity_id"`
-	AssetID        string  `json:"asset_id"`
-	Provider       string  `json:"provider"`
-	Query          string  `json:"query"`
-	Entity         string  `json:"entity,omitempty"`
+	SegmentID string `json:"segment_id"`
+	Position  int    `json:"position"`
+	TextHash  string `json:"text_hash"`
+	EntityID  string `json:"entity_id"`
+	AssetID   string `json:"asset_id"`
+	Provider  string `json:"provider"`
+	// RetrievalProvider is the concrete backend that served the hit
+	// (duckduckgo, searxng, wikimedia_commons, ...). Provider stays the
+	// lifecycle bucket (internet_images); this field is the provenance the
+	// durable catalog persists, and it must never be inferred from the URL.
+	RetrievalProvider string `json:"retrieval_provider,omitempty"`
+	Query             string `json:"query"`
+	Entity            string `json:"entity,omitempty"`
+	// EntityContext is the source scene evidence used only for semantic
+	// reranking/verification. It is intentionally process-local and never
+	// persisted in image catalogs or public job results.
+	EntityContext  string  `json:"-"`
 	Score          float64 `json:"score"`
 	RelevanceScore float64 `json:"relevance_score,omitempty"`
 	// EmbeddingSimilarity is the optional real vector similarity in
@@ -377,18 +394,24 @@ type SegmentAssetCandidate struct {
 	SelectionReason       string  `json:"selection_reason,omitempty"`
 	CandidateSetHash      string  `json:"candidate_set_hash,omitempty"`
 	ContentSHA256         string  `json:"content_sha256,omitempty"`
-	MIMEType              string  `json:"mime_type,omitempty"`
-	LocalPath             string  `json:"local_path,omitempty"`
-	AcquisitionStatus     string  `json:"acquisition_status,omitempty"`
-	VerificationStatus    string  `json:"verification_status,omitempty"`
-	PersistenceStatus     string  `json:"persistence_status,omitempty"`
-	IndexStatus           string  `json:"index_status,omitempty"`
-	RightsBasis           string  `json:"rights_basis,omitempty"`
+	// VerifierVersion names the policy that produced SemanticStatus. Empty is
+	// a discovery-only candidate; a visual verdict always stamps it.
+	VerifierVersion    string `json:"verifier_version,omitempty"`
+	MIMEType           string `json:"mime_type,omitempty"`
+	LocalPath          string `json:"local_path,omitempty"`
+	AcquisitionStatus  string `json:"acquisition_status,omitempty"`
+	VerificationStatus string `json:"verification_status,omitempty"`
+	PersistenceStatus  string `json:"persistence_status,omitempty"`
+	IndexStatus        string `json:"index_status,omitempty"`
+	RightsBasis        string `json:"rights_basis,omitempty"`
 	// PerceptualHash is the algorithm-prefixed visual identity of the
 	// acquired bytes (digest.PerceptualHashBytes). It is empty until the
 	// candidate has been acquired and verified. It is a dedup aid only: it
 	// never replaces the content SHA-256 and is never used for identity.
 	PerceptualHash string `json:"perceptual_hash,omitempty"`
+	// PerceptualDedupStatus makes a missing perceptual hash an explicit
+	// UNHASHED state instead of silently treating the candidate as a pass.
+	PerceptualDedupStatus string `json:"perceptual_dedup_status,omitempty"`
 	// LifecycleFailureStage and LifecycleFailureReason are the structured
 	// cause of the acquire/verify/finalize failure that left this candidate
 	// non-persisted, recorded AT THE POINT OF FAILURE (contract 2026-10-31).
@@ -553,24 +576,27 @@ func (s VidRushSegmentResult) CanonicalSemanticProfile() SegmentSemanticProfile 
 	return profile
 }
 
-// ResolverCanonicalID returns the canonical_entity_id the Image Search
-// Intent resolver chose for an entity of this segment, joined by the
-// lowercased canonical name first and then the raw extracted value (the
-// resolver may key a different spelling, e.g. the verbatim Italian span for
-// a canonicalized English identity). It is the SINGLE owner of that lookup:
-// both annotation projections (the batch sceneAnnotations merger and the
-// runner projectEntityAnnotations) join through it. Empty when the resolver
-// was not wired or the entity was not part of its decision — the overlay
-// compile then derives the id deterministically from (type, canonical name).
+// ResolverCanonicalID returns an identity ID explicitly carried by semantic
+// extraction, preferring the legacy alias map when one is present. Rust local
+// IDs are document scoped; this accessor never derives a global ID from text.
 func (s VidRushSegmentResult) ResolverCanonicalID(canonical, value string) string {
-	ids := s.Insights.ImageEntityCanonicalIDs
-	if len(ids) == 0 {
-		return ""
+	for _, entity := range s.Insights.Entities {
+		if entity.CanonicalID == "" {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(entity.Value), strings.TrimSpace(canonical)) ||
+			strings.EqualFold(strings.TrimSpace(entity.Value), strings.TrimSpace(value)) {
+			return entity.CanonicalID
+		}
 	}
+	ids := s.Insights.ImageEntityCanonicalIDs
 	if id := ids[strings.ToLower(strings.TrimSpace(canonical))]; id != "" {
 		return id
 	}
-	return ids[strings.ToLower(strings.TrimSpace(value))]
+	if id := ids[strings.ToLower(strings.TrimSpace(value))]; id != "" {
+		return id
+	}
+	return ""
 }
 
 func weightedKeywordsFromStrings(values []string) []WeightedKeyword {

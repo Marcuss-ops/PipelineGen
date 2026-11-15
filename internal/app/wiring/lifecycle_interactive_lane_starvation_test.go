@@ -4,20 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
-	"go.uber.org/zap"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	_ "github.com/mattn/go-sqlite3"
+	"go.uber.org/zap"
 )
 
 // newJobsPlaneTestDB opens a temp-file jobs DB with the REAL
@@ -146,7 +145,7 @@ func TestA1_InteractiveLaneNeverStarvesBehindBatchQueue(t *testing.T) {
 
 	// Registry-level sanity: the lane types the wiring uses are the ones the
 	// dispatcher knows (the liveness invariant).
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	for _, jt := range interactiveJobTypes() {
 		if !reg.IsRegistered(jt) {
 			t.Fatalf("lane type %q unregistered — lane would be dark in production", jt)

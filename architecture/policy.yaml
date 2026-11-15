@@ -33,9 +33,12 @@ max_lines_per_file: 1000
 # proactively. Files in the corresponding allowlist are exempt (per godlike/07
 # §"Temporary deprecation record" — each allowlist entry must carry
 # owner + deadline + removal_trigger per godlike/08 zero-baseline rule).
-# Setting this to 0 opts the rule family out. The default (600) gives a
-# 400-LOC safety margin between the soft warning and the hard ceiling.
-max_lines_per_file_strict: 600
+# Setting this to 0 opts the rule family out. The default (800) gives a
+# 200-LOC safety margin between the soft warning and the hard ceiling.
+# 2026-11-15 owner decision: 600 -> 800. The 600 cap produced repeated
+# same-directory split waves; 800 keeps a real margin before the 1000 hard
+# cap while allowing cohesive files to stay together.
+max_lines_per_file_strict: 800
 # Path (relative to root) of the per-file allowlist for the strict cap.
 # Format: plain-text, one repo-root-relative forward-slashed path
 # per line; `#`-prefixed comments + blank lines are ignored. Inline
@@ -317,8 +320,8 @@ hard_gates:
   # report-only) to hard gate (Wave-24 evolution, see
   # architecture/policy.history.yaml::max_lines_per_file_strict).
   # Distinct from the legacy max_lines_per_file=1000 hard cap: the
-  # 600-LOC threshold fires BEFORE files cross the 1000 hard line,
-  # giving operators a 400-LOC safety margin to split cohesively.
+  # 800-LOC threshold fires BEFORE files cross the 1000 hard line,
+  # giving operators a 200-LOC safety margin to split cohesively.
   # Allowlist path = docs/migrations/max-lines-strict-allowlist.txt
   # (the canonical escape hatch per godlike/07 §"Temporary
   # deprecation record" + godlike/08 §"Zero-baseline rule").

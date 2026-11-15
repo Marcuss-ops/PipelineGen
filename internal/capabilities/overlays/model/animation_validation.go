@@ -13,8 +13,14 @@ func validateAnimationReferences(item OverlayItem) error {
 	kind := strings.ToLower(strings.TrimSpace(item.Kind))
 	if id := strings.TrimSpace(item.MotionID); id != "" {
 		groups := motionGroupsForItem(kind, item.TemplateID, item.Params)
-		if isImageItemKind(kind) {
+		// Entity cards are text-only unless the resolved item carries image
+		// material. RenderingGen lowers an image-backed location/organization/
+		// concept through its image layer, so its motion must be certified for
+		// the image target as well as the semantic entity kind.
+		if isImageItemKind(kind) || (isEntityItemKind(kind) && (len(item.AssetRefs) > 0 || len(item.ImageLayers) > 0)) {
 			groups = append(groups, "image.recipe")
+			groups = append(groups, capanimreg.ItemMotionGroups("entity_image")...)
+			groups = append(groups, "authored.image_premium_v1")
 		}
 		if !selectableInAnyGroup(id, groups...) {
 			return fmt.Errorf("motion %q is unknown, retired, renderer-unsupported, or incompatible with item kind %q", id, item.Kind)
@@ -25,6 +31,23 @@ func validateAnimationReferences(item OverlayItem) error {
 	}
 	if id := strings.TrimSpace(item.CameraMotionID); id != "" && !capanimreg.AnimationSelectable(id, "entity.sequence_camera") {
 		return fmt.Errorf("camera motion %q is unknown, retired, or renderer-unsupported", id)
+	}
+	if id := strings.TrimSpace(item.GroupMotionID); id != "" {
+		if len(item.ImageLayers) < 2 {
+			return fmt.Errorf("group motion %q requires a composite with at least two image layers", id)
+		}
+		group := fmt.Sprintf("image.group.count_%d", len(item.ImageLayers))
+		if !capanimreg.AnimationSelectable(id, group) {
+			return fmt.Errorf("group motion %q is unknown, retired, renderer-unsupported, or incompatible with %s", id, group)
+		}
+		if strings.TrimSpace(item.MotionID) != "" || strings.TrimSpace(item.CameraMotionID) != "" {
+			return fmt.Errorf("group motion %q is mutually exclusive with item and camera motions", id)
+		}
+		for _, layer := range item.ImageLayers {
+			if strings.TrimSpace(layer.MotionID) != "" {
+				return fmt.Errorf("group motion %q is mutually exclusive with child layer motions (layer %q)", id, layer.ID)
+			}
+		}
 	}
 	for _, layer := range item.ImageLayers {
 		if id := strings.TrimSpace(layer.MotionID); id != "" && !selectableInAnyGroup(id, "image.all", "image.lightleak", "image.recipe") {
@@ -64,6 +87,15 @@ func motionGroupsForItem(kind, template string, params map[string]any) []string 
 func isImageItemKind(kind string) bool {
 	switch kind {
 	case "image", "entity_image", "image_popup", "product", "logo":
+		return true
+	default:
+		return false
+	}
+}
+
+func isEntityItemKind(kind string) bool {
+	switch kind {
+	case "entity_card", "location", "organization", "concept":
 		return true
 	default:
 		return false

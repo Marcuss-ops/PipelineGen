@@ -12,8 +12,8 @@
 //   - ruleSemanticProfiles      — visual_profile must not be null 5/5.
 //   - ruleEntityGrounding       — every entity has source evidence;
 //     Imagine the / ready never become entities.
-//   - ruleImageFanout           — one image query per entity, N images
-//     per scene.
+//   - ruleImageFanout           — reports fanout evaluation; query and image
+//     counts are targets, while provider isolation remains enforced separately.
 //   - ruleQueryOwnership        — a query's owner_segment_id matches the
 //     segment that emitted it.
 //   - ruleAssetOwnership        — a selected asset's provenance segment

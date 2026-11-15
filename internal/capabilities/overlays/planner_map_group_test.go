@@ -3,6 +3,9 @@ package overlays
 import (
 	"fmt"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
 )
 
 // groupedPlaces builds count grounded places clustered near Rome, each spoken
@@ -163,5 +166,82 @@ func TestMapGroupStrategyDeclaresTourOrMultiPin(t *testing.T) {
 	// A span long enough for the authored tour keeps the tour strategy.
 	if mapGroupTourStrategy(3, int64(mapTourMinimumSeconds(3)*1_000_000)) != "tour" {
 		t.Fatal("sufficient duration must select the tour strategy")
+	}
+}
+
+// TestLongMapGroupSegmentsAtTenSecondsWithoutDroppingPlaces reproduces the
+// production Tuscany/Firenze case: one region is mentioned at the start, the
+// city much later, and their grounded spans share one certified flyover. The
+// planner must split the spoken span into bounded map items instead of
+// stretching one render across 24.255 s, while keeping both places and their
+// region/city scopes.
+func TestLongMapGroupSegmentsAtTenSecondsWithoutDroppingPlaces(t *testing.T) {
+	base := testMapPlate(t, "plate-long-base", romeLat, romeLon, mapTestWidth, mapTestHeight)
+	fineWidth, fineHeight := mapTestWidth*2, mapTestHeight*2
+	fine := testMapPlate(t, "plate-long-fine", romeLat, romeLon, fineWidth, fineHeight)
+	fine.Zoom = 11
+	fine.Window = geodesy.CenteredOn(romeLat, romeLon, fine.Zoom, fineWidth, fineHeight)
+	fine.Asset.AssetID = "operator-plate-fine"
+	base.LODs = []MapPlate{fine}
+
+	region, ok := NewMapCandidate("region:toscana", "Toscana", romeLat, romeLon, 0, 24_255_000, 0.9, "region")
+	if !ok {
+		t.Fatal("region fixture is not grounded")
+	}
+	city, ok := NewMapCandidate("city:firenze", "Firenze", romeLat, romeLon, 24_000_000, 1_000_000, 0.9, "city")
+	if !ok {
+		t.Fatal("city fixture is not grounded")
+	}
+	scenes := []SceneInput{{ID: "scene-long-map", Maps: []MapCandidate{region, city}}}
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "long-map-plan", VideoID: "long-map-video",
+		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 24, FPSDen: 1,
+		PlateResolver: flyoverPlateResolver{
+			stubPlateResolver: stubPlateResolver{plates: []MapPlate{base}},
+			flyover:           base, ok: true,
+		},
+		Scenes: scenes,
+	}, AllCandidatesPlannerConfig(scenes))
+	if err != nil {
+		t.Fatalf("build segmented map plan: %v", err)
+	}
+
+	var maps []capmodel.OverlayItem
+	for _, item := range plan.Items {
+		if item.Kind == "map" {
+			maps = append(maps, item)
+		}
+	}
+	if len(maps) != 2 {
+		t.Fatalf("24.255 s span must become two bounded map items, got %d", len(maps))
+	}
+	seen := make(map[string]int, 2)
+	scopes := make(map[string]string, 2)
+	for _, item := range maps {
+		if item.DurationUS > mapMaxPresentationUS {
+			t.Fatalf("map item %q lasts %d us, ceiling is %d", item.ID, item.DurationUS, mapMaxPresentationUS)
+		}
+		if item.Map == nil {
+			t.Fatalf("map item %q carries no map", item.ID)
+		}
+		group, ok := item.Params["map_group"].(map[string]any)
+		if !ok || group["count"] != 2 {
+			t.Fatalf("map item %q group identity = %+v, want count 2", item.ID, item.Params["map_group"])
+		}
+		for _, pin := range item.Map.Pins {
+			seen[pin.ID]++
+			scopes[pin.ID] = pin.Scope
+		}
+	}
+	for _, place := range []MapCandidate{region, city} {
+		if seen[place.EntityID] != 1 {
+			t.Fatalf("place %q shown %d times, want exactly once", place.EntityID, seen[place.EntityID])
+		}
+	}
+	if scopes[region.EntityID] != "region" || scopes[city.EntityID] != "city" {
+		t.Fatalf("scopes lost after segmentation: %+v", scopes)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("segmented map plan does not seal: %v", err)
 	}
 }

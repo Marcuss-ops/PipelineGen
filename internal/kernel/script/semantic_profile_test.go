@@ -75,6 +75,20 @@ func TestSegmentSemanticProfile_JSONRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBuildSegmentVisualProfileUsesGroundedFallbackContext(t *testing.T) {
+	profile := SegmentSemanticProfile{
+		Topic:       "missione spaziale",
+		VisualTerms: []WeightedKeyword{{Value: "satellite", Confidence: 0.9}},
+	}
+	visual := BuildSegmentVisualProfile(profile)
+	if visual.Context != "satellite" {
+		t.Fatalf("fallback context = %q, want grounded visual term", visual.Context)
+	}
+	if strings.Contains(strings.ToLower(visual.Context), "mediterranean") {
+		t.Fatalf("unrelated fallback context leaked into the visual profile: %+v", visual)
+	}
+}
+
 func TestSegmentSemanticProfile_FingerprintIncludesCompleteIdentity(t *testing.T) {
 	profile := cachedProfile()
 	if profile.Fingerprint() == "" {

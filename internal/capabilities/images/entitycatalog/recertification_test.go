@@ -112,7 +112,52 @@ func (f imageCandidateValidatorFunc) Validate(ctx context.Context, url string) e
 	return f(ctx, url)
 }
 
+func TestRecertificationRunOnceRejectsConcurrentRun(t *testing.T) {
+	repo := &recertificationTestRepository{candidates: []RecertificationCandidate{{
+		Candidate: Candidate{ID: 11, SourceURL: "https://images.example/concurrent.png", Status: CandidateStatusStale, SemanticStatus: CandidateSemanticAccepted},
+	}}}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	validator := imageCandidateValidatorFunc(func(context.Context, string) error {
+		close(entered)
+		<-release
+		return nil
+	})
+	service := NewRecertificationService(repo, validator, RecertificationConfig{BatchSize: 1, BatchTimeout: time.Minute})
+	done := make(chan error, 1)
+	go func() { _, err := service.RunOnce(context.Background()); done <- err }()
+	<-entered
+
+	if _, err := service.RunOnce(context.Background()); !errors.Is(err, ErrRecertificationAlreadyRunning) {
+		t.Fatalf("overlapping run error = %v, want %v", err, ErrRecertificationAlreadyRunning)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+}
+
+func TestRecertificationRunOnceHonorsBatchTimeout(t *testing.T) {
+	repo := &recertificationTestRepository{candidates: []RecertificationCandidate{{
+		Candidate: Candidate{ID: 12, SourceURL: "https://images.example/slow.png", Status: CandidateStatusStale, SemanticStatus: CandidateSemanticAccepted},
+	}}}
+	validator := imageCandidateValidatorFunc(func(ctx context.Context, _ string) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	service := NewRecertificationService(repo, validator, RecertificationConfig{BatchSize: 1, BatchTimeout: 20 * time.Millisecond})
+
+	if _, err := service.RunOnce(context.Background()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("batch timeout error = %v, want %v", err, context.DeadlineExceeded)
+	}
+	if len(repo.validations) != 0 {
+		t.Fatalf("timeout recorded %d candidate failures, want 0", len(repo.validations))
+	}
+}
+
 func TestHTTPImageCandidateValidatorChecksDownloadDecodeAndDimensions(t *testing.T) {
+	httpImageCandidateAllowLoopbackForTest = true
+	defer func() { httpImageCandidateAllowLoopbackForTest = false }()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/small.png" {
 			img := image.NewRGBA(image.Rect(0, 0, 100, 100))
@@ -130,5 +175,30 @@ func TestHTTPImageCandidateValidatorChecksDownloadDecodeAndDimensions(t *testing
 	}
 	if err := validator.Validate(context.Background(), server.URL+"/small.png"); err == nil {
 		t.Fatal("small image unexpectedly accepted")
+	}
+}
+
+// TestRecertificationBrokenCandidateRecoversOnSuccessfulProbe pins the
+// service half of the recovery contract: a successful probe must not spend the
+// candidate's entire retry budget just because the previous Drive asset was
+// broken. The URL is healthy again; the finalizer owns re-materialization.
+func TestRecertificationBrokenCandidateRecoversOnSuccessfulProbe(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	repo := &recertificationTestRepository{candidates: []RecertificationCandidate{{
+		Candidate:    Candidate{ID: 9, SourceURL: "https://images.example/recovered.png", Status: CandidateStatusBroken, SemanticStatus: CandidateSemanticAccepted},
+		FailureCount: 2,
+	}}}
+	service := NewRecertificationService(repo, imageCandidateValidatorFunc(func(context.Context, string) error { return nil }), RecertificationConfig{MaxAttempts: 5})
+	service.now = func() time.Time { return now }
+
+	report, err := service.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Succeeded != 1 || report.Failed != 0 {
+		t.Fatalf("report = %+v", report)
+	}
+	if len(repo.validations) != 1 || !repo.validations[0].Success || repo.validations[0].FailureCount != 0 {
+		t.Fatalf("validation = %+v, want success with an empty retry budget", repo.validations)
 	}
 }

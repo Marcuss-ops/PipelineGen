@@ -1,6 +1,6 @@
 // Package jobs — registry_wiring_test.go (Issue 2 / P0, June 2026).
 //
-// Pins the in-process Runner → Worker Registry plumbing contract:
+// Pins the in-process Runner → Worker jobscheduling.Registry plumbing contract:
 //
 //   - TestWorker_HonorsRegistryTimeout  — Worker.WithRegistry(reg)
 //     makes jobTimeoutFor read reg.Timeout instead of falling back
@@ -9,7 +9,7 @@
 //     makes maxRetriesFor read reg.DefaultMaxRetries instead of
 //     falling back to the literal 3.
 //   - TestRunner_AttachesRegistryToWorkers — Runner.buildWorkers
-//     propagates the attached Registry onto every spawned Worker;
+//     propagates the attached jobscheduling.Registry onto every spawned Worker;
 //     the timeouts snapshot (reg.Compose()) is bound to each Worker.
 //   - TestRunner_WithRegistry_NilIsTolerant — Runner.WithRegistry(nil)
 //     leaves registry=nil and propagates nil to the workers, so test
@@ -28,6 +28,7 @@
 package jobs
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 	"time"
 
@@ -36,17 +37,17 @@ import (
 
 const wiringTestType = "wiring-test-type"
 
-// newWiringRegistry builds an isolated Registry with the timeout /
+// newWiringRegistry builds an isolated jobscheduling.Registry with the timeout /
 // retries overrides needed by the tests. Returns a private registry
 // (not jobs.Compose()) so the tests don't mutate the shared global.
-func newWiringRegistry(t *testing.T, timeout time.Duration, maxRetries int) *Registry {
+func newWiringRegistry(t *testing.T, timeout time.Duration, maxRetries int) *jobscheduling.Registry {
 	t.Helper()
-	reg := NewRegistry()
-	if err := reg.Register(RegistryEntry{
-		Completion: CompletionDeclaration{
+	reg := jobscheduling.NewRegistry()
+	if err := reg.Register(jobscheduling.RegistryEntry{
+		Completion: jobscheduling.CompletionDeclaration{
 			JobType:              wiringTestType,
-			ArtifactOwnership:    ArtifactOwnershipNone,
-			FinalizationStrategy: FinalizationStrategyLegacyComplete,
+			ArtifactOwnership:    jobscheduling.ArtifactOwnershipNone,
+			FinalizationStrategy: jobscheduling.FinalizationStrategyLegacyComplete,
 		},
 		Description:       "wiring-test entry",
 		Timeout:           timeout,
@@ -80,7 +81,7 @@ func TestWorker_HonorsRegistryTimeout(t *testing.T) {
 
 	got := w.jobTimeoutFor(wiringTestType)
 	if got != 4*time.Minute {
-		t.Errorf("Issue 2 / P0: Worker.jobTimeoutFor(%q) with attached Registry: got %v, want %v",
+		t.Errorf("Issue 2 / P0: Worker.jobTimeoutFor(%q) with attached jobscheduling.Registry: got %v, want %v",
 			wiringTestType, got, 4*time.Minute)
 	}
 }
@@ -107,20 +108,20 @@ func TestWorker_HonorsRegistryRetries(t *testing.T) {
 		Types: []string{wiringTestType},
 	}).WithRegistry(reg)
 
-	// Registered type → Registry.DefaultMaxRetries.
+	// Registered type → jobscheduling.Registry.DefaultMaxRetries.
 	if got := w.maxRetriesFor(wiringTestType); got != 5 {
-		t.Errorf("Issue 2 / P0: Worker.maxRetriesFor(%q) with attached Registry: got %d, want %d",
+		t.Errorf("Issue 2 / P0: Worker.maxRetriesFor(%q) with attached jobscheduling.Registry: got %d, want %d",
 			wiringTestType, got, 5)
 	}
 
-	// Unregistered type → Registry returns the canonical 3.
+	// Unregistered type → jobscheduling.Registry returns the canonical 3.
 	if got := w.maxRetriesFor("not-a-real-type"); got != 3 {
 		t.Errorf("Worker.maxRetriesFor(unregistered): got %d, want canonical 3", got)
 	}
 }
 
 // TestRunner_AttachesRegistryToWorkers — Issue 2 / P0 wiring contract.
-// Runner.buildWorkers must propagate the attached Registry onto
+// Runner.buildWorkers must propagate the attached jobscheduling.Registry onto
 // every spawned Worker; the timeouts snapshot must be populated
 // from reg.Compose().
 //
@@ -157,7 +158,7 @@ func TestRunner_AttachesRegistryToWorkers(t *testing.T) {
 	}
 	for i, w := range workers {
 		if w.reg != reg {
-			t.Errorf("worker[%d] Worker.reg: not the Registry attached to Runner", i)
+			t.Errorf("worker[%d] Worker.reg: not the jobscheduling.Registry attached to Runner", i)
 		}
 		if w.timeouts == nil {
 			t.Errorf("worker[%d] Worker.timeouts snapshot is nil; expected reg.Compose()", i)
