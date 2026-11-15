@@ -32,6 +32,19 @@ func TestClassifyCandidateStatusPreservesBrokenAndRetired(t *testing.T) {
 	}
 }
 
+func TestClassifyCandidateStatusUnrecognizedStoredStateFailsClosed(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	for _, status := range []string{"", "pending", "archived"} {
+		assessment := AssessCandidateState(now, Candidate{Status: status, LastSeenAt: now})
+		if assessment.State != CandidateStatusUnknown {
+			t.Fatalf("%q classified as %q, want %q", status, assessment.State, CandidateStatusUnknown)
+		}
+		if assessment.Usable || assessment.RefreshRecommended {
+			t.Fatalf("%q assessment = %+v, want unusable without refresh", status, assessment)
+		}
+	}
+}
+
 func TestClassifyCandidateStatusLegacyWithoutTimestampDoesNotInventStaleness(t *testing.T) {
 	assessment := AssessCandidateState(time.Now().UTC(), Candidate{
 		Status: CandidateStatusActive,

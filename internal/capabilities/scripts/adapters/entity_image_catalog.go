@@ -183,7 +183,8 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 		}
 
 		assessment := entitycatalog.AssessCandidateState(nowUTC(), row)
-		if assessment.State != row.Status && !row.LastSeenAt.IsZero() &&
+		if assessment.State != row.Status && assessment.State != entitycatalog.CandidateStatusUnknown &&
+			!row.LastSeenAt.IsZero() &&
 			row.Status != entitycatalog.CandidateStatusBroken && row.Status != entitycatalog.CandidateStatusRetired {
 			if err := repo.SetCandidateStatus(ctx, row.ID, assessment.State); err != nil {
 				return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: persist state %d: %w", row.ID, err)
@@ -191,8 +192,12 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			row.Status = assessment.State
 		}
 		recertifyLayout := personImageLayoutNeedsRecertification(row.QualityReason)
-		if (!entitycatalog.IsUsableCandidateStatus(assessment.State) && !durableImage) ||
-			(!entitycatalog.IsUsableCandidateQuality(row) && !recertifyLayout && !durableImage) {
+		// A verified materialization may keep a broken remote URL renderable.
+		// It never resurrects a retired or unrecognized row: those are policy
+		// decisions that an existing copy must not override.
+		durableBypass := durableImage && assessment.State == entitycatalog.CandidateStatusBroken
+		if (!entitycatalog.IsUsableCandidateStatus(assessment.State) && !durableBypass) ||
+			(!entitycatalog.IsUsableCandidateQuality(row) && !recertifyLayout && !durableBypass) {
 			decision.Gate, decision.Selection = "lifecycle_quality", "rejected"
 			decisions = append(decisions, decision)
 			continue

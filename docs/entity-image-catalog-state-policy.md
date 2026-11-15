@@ -61,8 +61,11 @@ entitycatalog.CandidateFreshAfter = 7 * 24 * time.Hour
    does not invent staleness for legacy rows or incomplete fixtures.
 3. `fresh`/`active`/`stale` with a timestamp are classified from age only.
 4. Age never converts a candidate directly to `broken`.
-5. `AssessCandidateState` reports `fresh` and `stale` as usable; `broken` and
-   `retired` are not usable.
+5. `AssessCandidateState` reports `fresh` and `stale` as usable; `broken`,
+   `retired` and an unrecognized or empty stored status (`unknown`) are not
+   usable.
+6. An unrecognized stored status classifies as `unknown`; the lookup path
+   never persists it. The database stores only the five canonical states.
 
 During catalog lookup, a timestamped candidate whose effective state changed
 is persisted. Therefore the normal lookup path makes the `fresh -> stale`
@@ -120,7 +123,9 @@ materialization is `materialized` and has:
 
 That reuse path does not download the remote URL and does not upload/finalize a
 new Drive asset. The remote candidate may still be `stale`; the verified Drive
-asset is the durable source for reuse.
+asset is the durable source for reuse. A verified materialization may keep a
+`broken` remote URL renderable, but it never makes a `retired` or `unknown`
+candidate selectable.
 
 ## Periodic recertification
 

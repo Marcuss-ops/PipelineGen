@@ -31,6 +31,10 @@ const (
 	CandidateStatusStale   = "stale"
 	CandidateStatusBroken  = "broken"
 	CandidateStatusRetired = "retired"
+	// CandidateStatusUnknown is the classification of a stored status the
+	// policy does not recognize. It is never a persisted state and never
+	// usable for discovery.
+	CandidateStatusUnknown = "unknown"
 
 	CandidateSemanticUnknown  = "unknown"
 	CandidateSemanticAccepted = "accepted"
@@ -313,7 +317,8 @@ func ValidateCandidate(candidate Candidate) error {
 
 func IsUsableCandidateStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "", CandidateStatusFresh, CandidateStatusActive, CandidateStatusStale:
+	// An empty status is an uncertified legacy row, not a usable candidate.
+	case CandidateStatusFresh, CandidateStatusActive, CandidateStatusStale:
 		return true
 	default:
 		return false
