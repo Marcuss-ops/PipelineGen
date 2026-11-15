@@ -60,6 +60,12 @@ type PlannerConfig struct {
 	// explicit payload max_image_overlays reaches the render plan instead of
 	// being truncated by the default budget.
 	RunLevelImageOverlayLimit int
+	// DeferAdmission returns the complete candidate set without map trimming,
+	// overlap degradation or editorial budgets. The caller applies the
+	// BrainRust compile_editorial_plan selection and then calls
+	// FinalizeDeferredPlan. It exists only for the single-call planner path;
+	// the legacy BuildPlan path keeps admission here.
+	DeferAdmission bool
 }
 
 // AllCandidatesPlannerConfig is the production generation policy: every

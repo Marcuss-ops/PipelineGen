@@ -20,7 +20,7 @@ import (
 // given guessed timing. Images need an explicit window and content identity
 // because RenderingGen later materializes them from the asset manifest.
 func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, error) {
-	return buildPlan(context.Background(), input, config, nil)
+	return buildPlan(context.Background(), input, config, nil, nil)
 }
 
 // BuildPlanWithMapWindowTrimmer uses the configured BrainRust pass before
@@ -30,10 +30,10 @@ func BuildPlanWithMapWindowTrimmer(ctx context.Context, input PlanInput, config 
 	if trimmer == nil {
 		return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: BrainRust map-window trimmer is required")
 	}
-	return buildPlan(ctx, input, config, trimmer)
+	return buildPlan(ctx, input, config, trimmer, nil)
 }
 
-func buildPlan(ctx context.Context, input PlanInput, config PlannerConfig, trimmer MapWindowTrimmer) (capmodel.OverlayPlan, error) {
+func buildPlan(ctx context.Context, input PlanInput, config PlannerConfig, trimmer MapWindowTrimmer, deferred *DeferredPlan) (capmodel.OverlayPlan, error) {
 	config = config.withDefaults()
 	// Documentary Highlighting showcase IDs are accepted at the generation
 	// boundary, then lowered to phrase-relative renderer motions before pool
@@ -190,6 +190,17 @@ func buildPlan(ctx context.Context, input PlanInput, config PlannerConfig, trimm
 			break
 		}
 	}
+	if config.DeferAdmission {
+		if deferred != nil {
+			deferred.Plan = plan
+			deferred.Input = input
+			deferred.motionSeed = motionSeed
+			deferred.imageSeed = imageSeed
+			deferred.entityStyleSelector = entityStyleSelector
+			deferred.imageMotionOffset = imageMotionOffset
+		}
+		return plan, nil
+	}
 	if hasMaps {
 		if trimmer == nil {
 			return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: BrainRust map-window trimmer is required when a plan contains maps")
@@ -215,54 +226,7 @@ func buildPlan(ctx context.Context, input PlanInput, config PlannerConfig, trimm
 	} else {
 		plan.Items, _ = ApplyPhraseOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)
 	}
-	plan.Items = PruneOrphanChartBars(plan.Items)
-	// Recap observability is counted here: after overlap degradation and
-	// run-level budgets (the gates that can drop cards), while every card
-	// remains a separately counted item.
-	for i := range plan.Items {
-		if v, ok := plan.Items[i].Params["recap"]; ok && v == true {
-			plan.RecapCards++
-		}
-		if v, ok := plan.Items[i].Params["chart_card"]; ok && v == true {
-			plan.ChartCards++
-		}
-	}
-	assignPlannerItemMotions(&plan, input, motionSeed, imageSeed, entityStyleSelector, entityImageMotionForPlan)
-	// Renderer catalog defaults may use a 4-second entrance, longer than the
-	// certified spoken window of a short phrase. Clamp every phrase family to
-	// one third of its own window so the selected treatment settles in time and
-	// remains readable through the rest of its MP4.
-	if input.FPSNum > 0 && input.FPSDen > 0 {
-		for i := range plan.Items {
-			item := &plan.Items[i]
-			if item.Kind != "text_phrase" {
-				continue
-			}
-			durationUS := item.DurationUS
-			if durationUS <= 0 && item.EndMs > item.StartMs {
-				durationUS = (item.EndMs - item.StartMs) * 1_000
-			}
-			if durationUS <= 0 {
-				continue
-			}
-			if item.MotionParams == nil {
-				item.MotionParams = make(map[string]any)
-			}
-			item.MotionParams["enter_frames"] = int(PhraseEntranceFrames(durationUS, input.FPSNum, input.FPSDen))
-			item.MotionParams["exit_frames"] = int(PhraseExitFrames(durationUS, input.FPSNum, input.FPSDen))
-		}
-	}
-	input.MotionSeed = motionSeed
-	plan.Items = PruneOrphanChartBars(plan.Items)
-	// Move images aside for overlapping date cards after admission. Animation
-	// consistency was already applied above; re-running it here would rotate
-	// duplicate motions and exceed the per-family style cap.
-	MoveImagesAsideForOverlappingDateCards(plan.Items, input.Width)
-	plan.Items = PruneOrphanChartBars(plan.Items)
-	if err := plan.Validate(); err != nil {
-		return capmodel.OverlayPlan{}, err
-	}
-	return plan, nil
+	return finalizeAdmittedPlan(&plan, input, motionSeed, imageSeed, entityStyleSelector, entityImageMotionForPlan)
 }
 
 // appendPlannerMapItems merges grounded places into one journey unless the
