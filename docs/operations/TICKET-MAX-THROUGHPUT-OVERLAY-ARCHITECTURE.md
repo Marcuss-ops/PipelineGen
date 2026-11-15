@@ -840,7 +840,7 @@ linearmente fino a 24, quindi il 16 era il vincolo, non il provider.
 | File | Contratto |
 |---|---|
 | `internal/platform/audio/processor.go` | `synthesizeOnce` chiama `sendSynthesizeStream` (solo rete) e rilascia `requestSlots` **prima** di `postprocessSynthesizedAudio`; il lavoro locale (silence removal, MD5, durata, `PostprocessMS`, RTF) passa sotto `postprocessSlots` (`DefaultTTSPostprocessConcurrency = 12`). `gateLoudness` è eseguita sotto lo stesso bound. Il nome del file "cleaned_" deriva dal file realmente scritto dal worker (estensione preservata anche con `Filename` senza estensione). |
-| `internal/platform/audio/mp3_duration.go` | Durata esatta MPEG Layer III camminando gli header (ID3v2/v1 e frame Xing/Info esclusi; sample rate stabile obbligatorio); qualunque forma inattesa → errore → fallback al probe media executor, che resta autoritativo. |
+| `internal/platform/audio/mp3_duration.go` | **Rimosso 2026-11-15 (ticket 13c)**: il parser locale MPEG Layer III è stato eliminato; la durata degli asset TTS arriva solo dal probe del media executor condiviso, unica autorità. |
 | `internal/platform/audio/worker_protocol.go` | `sendSynthesizeRequest` resta l'entry point di compatibilità (stream + postprocess) usato dai test; la produzione usa le due metà separate. |
 | `internal/app/wiring/voiceover/build_bundles_voiceover_rate_limits.go` | `maxTTSProviderSlots = 24` (rimosso il clamp 16) + `ttsLocalWorkAllowance = 12`: il gate esterno copre 24 stream + 12 worker locali, mentre il bound HTTP resta 24 dentro il `Processor`. |
 | `config.yaml` | `voiceover.max_concurrent_tts: 24` con la misura e il motivo del valore storico 4. |
@@ -851,14 +851,14 @@ linearmente fino a 24, quindi il 16 era il vincolo, non il provider.
 locale: dimostra il rilascio dello slot),
 `TestGenerate_RemoveSilenceKeepsMediaExtension` (path `cleaned_*.mp3` anche
 con `Filename` senza estensione),
-`TestMP3Duration_*` (MPEG1, forma Edge con ID3/Xing/ID3v1, rifiuto di
-non-MP3/troncati) e
+i test `TestMP3Duration_*` sono stati rimossi con il parser locale (ticket 13c) e
 `TestRateLimitedTTSProvider_HonorsNetworkAndLocalSlots` (24+12 chiamate
 contemporanee al provider, nessun clamp silenzioso).
 
-**Validazione del fast path su artefatti reali:** 40 file MP3 Edge in
-`data/media/voiceovers`, `mp3Duration` vs `ffprobe -show_entries format=duration`:
-**40/40 esatti, max |delta| = 0 µs**.
+**Validazione storica del fast path (ritirato 2026-11-15, ticket 13c):** 40 file
+MP3 Edge in `data/media/voiceovers`, `mp3Duration` vs
+`ffprobe -show_entries format=duration`: **40/40 esatti, max |delta| = 0 µs**.
+Il parser è stato eliminato: la durata arriva solo dal probe condiviso.
 
 #### 9.8.3 Catena dei gate verificata (codice + timestamp live)
 

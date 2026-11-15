@@ -214,7 +214,7 @@ const maxTTSProviderSlots = 24
 
 // ttsLocalWorkAllowance keeps local post-processing OUT of the provider
 // admission decision. The outer gate in this file spans the whole
-// Generate call (stream + MD5/MP3 duration + loudness). The network bound is
+// Generate call (stream + MD5/duration probe + loudness). The network bound is
 // owned by audioasset.Processor.requestSlots; without this allowance a 24-slot
 // gate also reserved slots for local ffmpeg work, so the streaming pool was
 // effectively 24 minus the local workers and the measured TTS stage stayed at
