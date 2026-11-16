@@ -1,85 +1,10 @@
 package audio
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-// TestLocateSceneSpeechTiming_BundlesWordsAndPhrases pins the scene-level
-// projection: it bundles the scene's verbatim word boundaries with the derived
-// phrase spans, carrying the voiceover asset id and the certified local
-// duration.
-func TestLocateSceneSpeechTiming_BundlesWordsAndPhrases(t *testing.T) {
-	timing := phraseLocatorArtifact()
-	got, err := LocateSceneSpeechTiming(2, "scene-2", "vo-2", 8_200_000, timing, []string{
-		"incontro di Teano",
-		"Vittorio Emanuele II",
-	})
-	require.NoError(t, err)
-
-	require.Equal(t, "scene-2", got.SceneID)
-	require.Equal(t, "vo-2", got.VoiceoverAssetID)
-	require.Equal(t, timing.DurationUS, got.LocalDurationUS)
-	require.Len(t, got.Words, len(timing.Words))
-	require.Equal(t, timing.Words, got.Words)
-	require.Len(t, got.Phrases, 2)
-	require.NoError(t, got.Validate())
-}
-
-// TestLocateSceneSpeechTiming_GlobalUsesCanonicalTimelineStart pins the master
-// coordinate: every phrase global span is the scene's canonical timeline
-// offset plus the local span — never recomputed or interpolated.
-func TestLocateSceneSpeechTiming_GlobalUsesCanonicalTimelineStart(t *testing.T) {
-	const timelineStartUS = int64(8_200_000)
-	timing := phraseLocatorArtifact()
-	got, err := LocateSceneSpeechTiming(1, "scene-1", "vo-1", timelineStartUS, timing, []string{"incontro di Teano"})
-	require.NoError(t, err)
-
-	p := got.Phrases[0]
-	require.Equal(t, timelineStartUS, p.TimelineStartUS)
-	require.Equal(t, timelineStartUS+p.LocalStartUS, p.GlobalStartUS)
-	require.Equal(t, timelineStartUS+p.LocalEndUS, p.GlobalEndUS)
-	require.Equal(t, int64(8_200_000+200_000), p.GlobalStartUS)
-	require.Equal(t, int64(8_200_000+500_000), p.GlobalEndUS)
-}
-
-// TestLocateSceneSpeechTiming_MissingPhraseFailsClosed pins the whole-scene
-// fail-closed contract: one phrase that does not occur verbatim aborts the
-// projection, never a partial set of plausible-but-wrong timestamps.
-func TestLocateSceneSpeechTiming_MissingPhraseFailsClosed(t *testing.T) {
-	timing := phraseLocatorArtifact()
-	_, err := LocateSceneSpeechTiming(0, "scene-0", "vo-0", 0, timing, []string{"Mussolini"})
-	require.ErrorIs(t, err, ErrPhraseNotFound)
-}
-
-func TestLocateSceneSpeechTiming_InvalidTimingFailsClosed(t *testing.T) {
-	timing := phraseLocatorArtifact()
-	timing.BoundaryMode = BoundaryMode("sentence")
-	_, err := LocateSceneSpeechTiming(0, "scene-0", "vo-0", 0, timing, []string{"Teano"})
-	require.Error(t, err)
-	require.False(t, errors.Is(err, ErrPhraseNotFound))
-}
-
-func TestLocateSceneSpeechTiming_EmptySceneIDFailsClosed(t *testing.T) {
-	timing := phraseLocatorArtifact()
-	_, err := LocateSceneSpeechTiming(0, "  ", "vo-0", 0, timing, []string{"Teano"})
-	require.ErrorIs(t, err, ErrInvalidSceneSpeechTiming)
-}
-
-// TestLocateSceneSpeechTiming_DoesNotAliasArtifactWords pins purity: the
-// projection copies the word slice, so mutating the returned Words never
-// mutates the caller's canonical artifact.
-func TestLocateSceneSpeechTiming_DoesNotAliasArtifactWords(t *testing.T) {
-	timing := phraseLocatorArtifact()
-	before := timing.DeepCopy()
-	got, err := LocateSceneSpeechTiming(0, "scene-0", "vo-0", 0, timing, []string{"Teano"})
-	require.NoError(t, err)
-
-	got.Words[0].Text = "MUTATED"
-	require.Equal(t, before, timing)
-}
 
 // TestSceneSpeechTiming_Validate pins the scene-level invariants: word
 // boundaries must be contiguous/monotonic/contained, and each phrase must

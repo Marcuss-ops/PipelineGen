@@ -18,6 +18,8 @@
 package scriptgeneration
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -35,7 +37,7 @@ import (
 // Nil when no scene carries both annotations and word timing. Unspoken
 // candidates are omitted individually and reported; matching candidates and
 // other scenes remain in the projection.
-func compileResultEntityTimeline(result *GenerateResult, language Language, reporters ...func(timingProjectionSkip)) error {
+func compileResultEntityTimeline(ctx context.Context, aligner PhraseAligner, result *GenerateResult, language Language, reporters ...func(timingProjectionSkip)) error {
 	if result == nil || result.CanonicalTimeline == nil {
 		return nil
 	}
@@ -84,19 +86,43 @@ func compileResultEntityTimeline(result *GenerateResult, language Language, repo
 			continue
 		}
 		// Entity annotations are candidates, not a reason to abort generation.
-		// Keep only names actually present in the captured voiceover timing;
-		// omitted candidates simply cannot receive a defensible timestamp.
+		// The Rust worker aligns every spoken surface in one batch; a name the
+		// voiceover never said is omitted with a diagnostic and never gets an
+		// estimated timestamp.
+		if aligner == nil {
+			return fmt.Errorf("entity timeline: phrase aligner is required")
+		}
+		names := make([]string, 0, len(sources))
+		for _, source := range sources {
+			name := strings.TrimSpace(source.SpokenName)
+			if name == "" {
+				name = source.Name
+			}
+			names = append(names, name)
+		}
+		alignments, err := aligner.AlignPhrases(ctx, capabilityaudio.PhraseAlignmentRequest{
+			Timing: *ref.Timing, Phrases: names, AllowMissing: true,
+		})
+		if err != nil {
+			return fmt.Errorf("entity timeline: scene %q align: %w", scene.ID, err)
+		}
+		byText := make(map[string]capabilityaudio.LocatedPhrase, len(alignments))
+		for _, alignment := range alignments {
+			byText[normalizeEntityPhrase(alignment.Text)] = alignment
+		}
 		spoken := sources[:0]
 		for _, source := range sources {
 			name := strings.TrimSpace(source.SpokenName)
 			if name == "" {
 				name = source.Name
 			}
-			if _, err := capabilityaudio.LocatePhrase(*ref.Timing, name); err == nil {
-				spoken = append(spoken, source)
-			} else {
-				reportTimingProjectionSkip(reporters, timingProjectionSkip{SceneID: scene.ID, Surface: "entity", Cause: err})
+			alignment, ok := byText[normalizeEntityPhrase(name)]
+			if !ok {
+				reportTimingProjectionSkip(reporters, timingProjectionSkip{SceneID: scene.ID, Surface: "entity", Cause: capabilityaudio.ErrPhraseNotFound})
+				continue
 			}
+			source.Alignment = &alignment
+			spoken = append(spoken, source)
 		}
 		sources = spoken
 		if len(sources) == 0 {
@@ -129,6 +155,10 @@ func compileResultEntityTimeline(result *GenerateResult, language Language, repo
 	}
 	result.EntityTimeline = &timeline
 	return nil
+}
+
+func normalizeEntityPhrase(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
 // annotationsForLanguage returns only semantic annotations grounded in the

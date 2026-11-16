@@ -27,6 +27,7 @@ type GenerateOneUseCase struct {
 	overlayRenderEnqueuer   scriptgen.OverlayRenderEnqueuer
 	overlayBackgroundSource scriptgen.OverlayBackgroundSource
 	overlayPlanCompiler     scriptgen.OverlayPlanCompiler
+	phraseAligner           scriptgen.PhraseAligner
 	stockPrefetcher         scriptports.StockPrefetcher
 }
 
@@ -59,6 +60,14 @@ func (uc *GenerateOneUseCase) SetOverlayBackgroundSource(source scriptgen.Overla
 func (uc *GenerateOneUseCase) SetOverlayPlanCompiler(compiler scriptgen.OverlayPlanCompiler) {
 	if uc != nil {
 		uc.overlayPlanCompiler = compiler
+	}
+}
+
+// SetPhraseAligner shares the durable runner's Rust alignment worker with the
+// batch entity/moment projection.
+func (uc *GenerateOneUseCase) SetPhraseAligner(aligner scriptgen.PhraseAligner) {
+	if uc != nil {
+		uc.phraseAligner = aligner
 	}
 }
 

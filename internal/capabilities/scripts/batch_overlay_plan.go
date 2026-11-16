@@ -30,6 +30,7 @@ func CompileOverlayPlanFromGenerationResult(
 	planID string,
 	projectID string,
 	compiler OverlayPlanCompiler,
+	aligner PhraseAligner,
 ) (*capmodel.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
@@ -47,6 +48,7 @@ func CompileOverlayPlanFromGenerationResult(
 		Title:          result.Title,
 		OutputName:     result.Title,
 		AudioMode:      capabilityaudio.AudioMode(strings.ToUpper(strings.TrimSpace(result.AudioMode))),
+		phraseAligner:  aligner,
 	}
 	if capResult.AudioMode == "" {
 		capResult.AudioMode = capabilityaudio.AudioModeCombinedTimeline
@@ -122,7 +124,7 @@ func CompileOverlayPlanFromGenerationResult(
 		return nil, fmt.Errorf("batch overlay plan: compile canonical timeline: %w", err)
 	}
 	capResult.CanonicalTimeline = &timeline
-	if err := compileResultEntityTimeline(capResult, language); err != nil {
+	if err := compileResultEntityTimeline(ctx, aligner, capResult, language); err != nil {
 		return nil, fmt.Errorf("batch overlay plan: compile entity timeline: %w", err)
 	}
 	canvas := OverlayCanvasSpec{

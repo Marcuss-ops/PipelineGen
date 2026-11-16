@@ -79,9 +79,11 @@ func (a *SemanticEngineAdapter) SelectPhrases(ctx context.Context, request scrip
 }
 
 type alignPhrasesWireRequest struct {
-	Operation string                             `json:"operation"`
-	Words     []capabilityaudio.SpeechWordTiming `json:"words"`
-	Phrases   []string                           `json:"phrases"`
+	Operation      string                             `json:"operation"`
+	Words          []capabilityaudio.SpeechWordTiming `json:"words"`
+	Phrases        []string                           `json:"phrases"`
+	AllowMissing   bool                               `json:"allow_missing,omitempty"`
+	AllOccurrences bool                               `json:"all_occurrences,omitempty"`
 }
 
 type alignPhrasesWireResponse struct {
@@ -104,9 +106,11 @@ func (a *SemanticEngineAdapter) AlignPhrases(ctx context.Context, request script
 		return nil, fmt.Errorf("semantic-engine: align_phrases phrases are required")
 	}
 	wire := alignPhrasesWireRequest{
-		Operation: "align_phrases",
-		Words:     request.Timing.Words,
-		Phrases:   request.Phrases,
+		Operation:      "align_phrases",
+		Words:          request.Timing.Words,
+		Phrases:        request.Phrases,
+		AllowMissing:   request.AllowMissing,
+		AllOccurrences: request.AllOccurrences,
 	}
 	payload, err := json.Marshal(wire)
 	if err != nil {
@@ -123,13 +127,28 @@ func (a *SemanticEngineAdapter) AlignPhrases(ctx context.Context, request script
 	if !response.OK {
 		return nil, fmt.Errorf("semantic-engine: align_phrases worker: %s", strings.TrimSpace(response.Error))
 	}
-	if len(response.Alignments) != len(request.Phrases) {
-		return nil, fmt.Errorf("semantic-engine: align_phrases returned %d alignments for %d phrases", len(response.Alignments), len(request.Phrases))
-	}
-	for i, alignment := range response.Alignments {
-		if strings.TrimSpace(alignment.Text) != strings.TrimSpace(request.Phrases[i]) {
-			return nil, fmt.Errorf("semantic-engine: align_phrases returned %q for phrase %q", alignment.Text, request.Phrases[i])
+	if !request.AllowMissing && !request.AllOccurrences {
+		if len(response.Alignments) != len(request.Phrases) {
+			return nil, fmt.Errorf("semantic-engine: align_phrases returned %d alignments for %d phrases", len(response.Alignments), len(request.Phrases))
 		}
+		for i, alignment := range response.Alignments {
+			if strings.TrimSpace(alignment.Text) != strings.TrimSpace(request.Phrases[i]) {
+				return nil, fmt.Errorf("semantic-engine: align_phrases returned %q for phrase %q", alignment.Text, request.Phrases[i])
+			}
+		}
+	}
+	if request.AllowMissing || request.AllOccurrences {
+		requested := make(map[string]struct{}, len(request.Phrases))
+		for _, phrase := range request.Phrases {
+			requested[normalizeAlignmentText(phrase)] = struct{}{}
+		}
+		for _, alignment := range response.Alignments {
+			if _, ok := requested[normalizeAlignmentText(alignment.Text)]; !ok {
+				return nil, fmt.Errorf("semantic-engine: align_phrases returned unrequested phrase %q", alignment.Text)
+			}
+		}
+	}
+	for _, alignment := range response.Alignments {
 		if alignment.WordStart < 0 || alignment.WordEnd < alignment.WordStart || alignment.WordEnd >= len(request.Timing.Words) {
 			return nil, fmt.Errorf("semantic-engine: align_phrases returned invalid word span %d..%d for %q", alignment.WordStart, alignment.WordEnd, alignment.Text)
 		}
@@ -140,6 +159,10 @@ func (a *SemanticEngineAdapter) AlignPhrases(ctx context.Context, request script
 		}
 	}
 	return response.Alignments, nil
+}
+
+func normalizeAlignmentText(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
 var (

@@ -57,7 +57,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		cause := fmt.Errorf("phrase timing compilation failed: %w", err)
 		return cause
 	}
-	if err := compileResultEntityTimeline(result, req.SourceLanguage, reportTimingSkip); err != nil {
+	if err := compileResultEntityTimeline(ctx, r.phraseAligner, result, req.SourceLanguage, reportTimingSkip); err != nil {
 		cause := fmt.Errorf("entity timeline compilation failed: %w", err)
 		return cause
 	}
@@ -219,7 +219,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		r.log.Info("runner: overlay plan compiled", fields...)
 	}
 	r.logPhraseMotionSelections(runID, result.OverlayPlan)
-	r.logPhraseAnchoringDiagnostics(runID, result, req.SourceLanguage)
+	r.logPhraseAnchoringDiagnostics(ctx, runID, result, req.SourceLanguage)
 	setOverlayDriveJobID(result, jobID)
 	if err := validatePlannedEditingSpans(result); err != nil {
 		return fmt.Errorf("editing timeline preflight failed: %w", err)

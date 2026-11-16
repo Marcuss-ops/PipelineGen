@@ -104,7 +104,7 @@ func TestCompileOverlayPlanFromGenerationResultUsesV2Compiler(t *testing.T) {
 	compiler := &batchRecordingCompiler{}
 	plan, err := CompileOverlayPlanFromGenerationResult(
 		context.Background(), result, Language("en"), map[string]*capabilityaudio.SpeechTimingArtifact{"en:0": timing},
-		nil, style, 0, "batch-plan", "project", compiler,
+		nil, style, 0, "batch-plan", "project", compiler, testPhraseAligner{},
 	)
 	if err != nil {
 		t.Fatalf("compile batch overlay plan: %v", err)

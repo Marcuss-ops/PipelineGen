@@ -260,3 +260,24 @@ func (r *Runner) mergeSemanticCharts(
 	}
 	return highlights
 }
+
+// editorialSentences splits editorial copy on terminal punctuation. It is a
+// pure text helper; overlay selection itself belongs to the Rust planner.
+func editorialSentences(text string) []string {
+	var out []string
+	start := 0
+	for index, r := range text {
+		if r != '.' && r != '!' && r != '?' && r != '\n' {
+			continue
+		}
+		end := index + len(string(r))
+		if sentence := strings.TrimSpace(text[start:end]); sentence != "" {
+			out = append(out, sentence)
+		}
+		start = end
+	}
+	if sentence := strings.TrimSpace(text[start:]); sentence != "" {
+		out = append(out, sentence)
+	}
+	return out
+}

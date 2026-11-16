@@ -27,6 +27,10 @@ type GenerateResult struct {
 	// derived wall/work values.
 	renderFirstStartedAt time.Time
 	renderLastFinishedAt time.Time
+	// phraseAligner is the run-scoped Rust alignment seam. It is runtime-only
+	// (never serialized) so localized entity timelines can reuse the same
+	// worker that produced PhraseTimings.
+	phraseAligner PhraseAligner
 	// Output is the canonical plain-text result projection. It is derived once
 	// from the ordered scenes and is never independently generated.
 	Output GenerateOutput `json:"output"`

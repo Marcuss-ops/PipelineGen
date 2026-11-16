@@ -1,7 +1,6 @@
 package audio
 
 import (
-	"errors"
 	"strings"
 )
 
@@ -31,7 +30,7 @@ type MomentQuery struct {
 
 // Moment is the deterministic timestamped projection of a MomentQuery.
 // StartUS/EndUS come exclusively from the canonical word timing via
-// LocatePhrase (first matched word start → last matched word end), so a
+// Rust aligner (first matched word start → last matched word end), so a
 // moment exists only when its value occurs verbatim in the speech — never
 // approximated and never invented by a model.
 type Moment struct {
@@ -52,17 +51,28 @@ type Moment struct {
 	Occurrence int `json:"occurrence,omitempty"`
 }
 
-// LocateMoments projects each query onto the canonical word timing via
-// LocatePhrase. It is deterministic and fail-closed:
+// ProjectMoments projects the alignments returned by the Rust worker onto the
+// caller's moment queries. It is deterministic and fail-closed:
 //
 //   - an invalid timing artifact returns an error (never timestamps);
-//   - an empty query value or a value that does not occur is skipped
+//   - an empty query value or a value the worker did not align is skipped
 //     (never a fabricated timestamp);
 //   - duplicate (kind, value) queries are collapsed to one set of moments;
 //   - output order is query order, then occurrence order within a query.
-func LocateMoments(timing SpeechTimingArtifact, queries []MomentQuery) ([]Moment, error) {
+//
+// Alignment is owned by the Rust worker; this function only joins its spans to
+// the query list and never matches words itself.
+func ProjectMoments(timing SpeechTimingArtifact, queries []MomentQuery, alignments []LocatedPhrase) ([]Moment, error) {
 	if err := timing.Validate(); err != nil {
 		return nil, err
+	}
+	byText := make(map[string][]LocatedPhrase, len(alignments))
+	for _, alignment := range alignments {
+		key := normalizeMomentText(alignment.Text)
+		if key == "" {
+			continue
+		}
+		byText[key] = append(byText[key], alignment)
 	}
 	var moments []Moment
 	seen := make(map[string]struct{}, len(queries))
@@ -71,23 +81,13 @@ func LocateMoments(timing SpeechTimingArtifact, queries []MomentQuery) ([]Moment
 		if value == "" {
 			continue
 		}
-		key := string(q.Kind) + "\x00" + normalizePhraseToken(value)
+		key := string(q.Kind) + "\x00" + normalizeMomentText(value)
 		if _, ok := seen[key]; ok {
 			continue
 		}
 		seen[key] = struct{}{}
 
-		located, err := LocatePhrase(timing, value)
-		if err != nil {
-			if errors.Is(err, ErrPhraseNotFound) {
-				// The annotation's surface form does not occur verbatim in
-				// the synthesized speech. Skip it — a missing moment is
-				// honest; an interpolated timestamp is not.
-				continue
-			}
-			return nil, err
-		}
-		for _, lp := range located {
+		for _, lp := range byText[normalizeMomentText(value)] {
 			moments = append(moments, Moment{
 				Kind:       q.Kind,
 				Value:      lp.Text,
@@ -100,4 +100,8 @@ func LocateMoments(timing SpeechTimingArtifact, queries []MomentQuery) ([]Moment
 		}
 	}
 	return moments, nil
+}
+
+func normalizeMomentText(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }

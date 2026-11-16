@@ -26,6 +26,7 @@ package wiring
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -51,7 +52,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 import (
-	"fmt"
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
 )
@@ -333,6 +333,16 @@ func buildVoiceoverPipeline(
 	// at the use case boundary (only invoked when RemoveSilence == true).
 	audioAdapter := vowiring.NewUseCaseAudioAdapter(log, rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log))
 
+	// Moment grounding is a Rust decision, like phrase timing. The adapter is
+	// the same semantic-engine worker the script bundle uses; a missing binary
+	// fails closed only when a command actually carries moments.
+	phraseAligner, phraseErr := rustexec.NewSemanticEngineAdapter(
+		rustexec.NewSemanticEngineExecutor(cfg.External.RustSemanticEnginePath, cfg.External.FfmpegPath, log),
+	)
+	if phraseErr != nil {
+		return nil, nil, nil, nil, fmt.Errorf("voiceover phrase aligner: %w", phraseErr)
+	}
+
 	// The use case satisfies voiceover.VoiceoverItemExecutor
 	// structurally — compile-time assertion in process_voiceover_item.go
 	// pins the conformance.
@@ -344,6 +354,7 @@ func buildVoiceoverPipeline(
 			VoiceoverRepository: voRepoAdapter,
 			VoiceoverCache:      voCacheAdapter,
 			AsyncPublish:        publishPool,
+			PhraseAligner:       phraseAligner,
 		},
 		Recovery: voiceover.ProcessVoiceoverRecoveryDeps{
 			DefaultFolderResolver: defaultFolderResolver,

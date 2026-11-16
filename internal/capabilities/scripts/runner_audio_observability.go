@@ -101,11 +101,11 @@ func (r *Runner) logPhraseMotionSelections(runID string, plan *capmodel.OverlayP
 // timing, its word count and the skip reason. A phrase that does not anchor is
 // dropped from the render, so this is the only place that shows how many long
 // phrases were taken versus silently discarded.
-func (r *Runner) logPhraseAnchoringDiagnostics(runID string, result *GenerateResult, language Language) {
+func (r *Runner) logPhraseAnchoringDiagnostics(ctx context.Context, runID string, result *GenerateResult, language Language) {
 	if r == nil || r.log == nil || result == nil {
 		return
 	}
-	diagnostics := DiagnosePhraseAnchoring(result, language)
+	diagnostics := DiagnosePhraseAnchoring(ctx, r.phraseAligner, result, language)
 	if len(diagnostics) == 0 {
 		return
 	}

@@ -16,8 +16,8 @@ import (
 //     CanonicalTimeline.Segments[SceneIndex].TimelineStartUS) plus the
 //     local span.
 //
-// Timestamps come exclusively from LocatePhrase — the first matched word's
-// start to the last matched word's end — never interpolated and never
+// Timestamps come exclusively from the Rust aligner — the first matched
+// word's start to the last matched word's end — never interpolated and never
 // invented by a model.
 type PhraseTiming struct {
 	SceneIndex  int `json:"scene_index"`
@@ -81,7 +81,7 @@ func (p PhraseTiming) Validate() error {
 //
 // It is a read-only projection of the canonical SpeechTimingArtifact files:
 // every timestamp comes from the first matched word's start to the last
-// matched word's end via LocatePhrase — never interpolated or invented.
+// matched word's end via the Rust aligner — never interpolated or invented.
 type SceneSpeechTiming struct {
 	SceneID          string             `json:"scene_id"`
 	VoiceoverAssetID string             `json:"voiceover_asset_id"`
@@ -128,79 +128,4 @@ func (s SceneSpeechTiming) Validate() error {
 		}
 	}
 	return nil
-}
-
-// LocateSceneSpeechTiming projects one scene's canonical word timing onto the
-// final timeline as a SceneSpeechTiming. It reuses LocatePhraseTimings (hence
-// LocatePhrase) for the phrase spans and copies the word boundaries verbatim;
-// no timestamp is ever interpolated or invented. It is fail-closed: an invalid
-// timing, a negative timeline offset, an empty scene id, or a phrase that does
-// not occur verbatim aborts the whole projection.
-func LocateSceneSpeechTiming(sceneIndex int, sceneID, voiceoverAssetID string, timelineStartUS int64, timing SpeechTimingArtifact, phrases []string) (SceneSpeechTiming, error) {
-	if strings.TrimSpace(sceneID) == "" {
-		return SceneSpeechTiming{}, fmt.Errorf("%w: empty scene id", ErrInvalidSceneSpeechTiming)
-	}
-	located, err := LocatePhraseTimings(sceneIndex, timelineStartUS, timing, phrases)
-	if err != nil {
-		return SceneSpeechTiming{}, err
-	}
-	words := make([]SpeechWordTiming, len(timing.Words))
-	copy(words, timing.Words)
-	out := SceneSpeechTiming{
-		SceneID:          sceneID,
-		VoiceoverAssetID: voiceoverAssetID,
-		LocalDurationUS:  timing.DurationUS,
-		Words:            words,
-		Phrases:          located,
-	}
-	if err := out.Validate(); err != nil {
-		return SceneSpeechTiming{}, err
-	}
-	return out, nil
-}
-
-// LocatePhraseTimings projects each phrase onto the scene's canonical word
-// timing and maps the local span onto the final timeline via timelineStartUS.
-// It is deterministic and fail-closed:
-//
-//   - an invalid timing artifact returns an error (never timestamps);
-//   - a missing phrase returns an error wrapping ErrPhraseNotFound — a phrase
-//     that does not occur verbatim in the speech is never fabricated;
-//   - a negative scene index or timeline offset is rejected.
-//
-// Output order matches input phrase order; PhraseIndex is the position in the
-// input list and WordStart/WordEnd reference the artifact word indices. Each
-// phrase uses its first document-order occurrence.
-func LocatePhraseTimings(sceneIndex int, timelineStartUS int64, timing SpeechTimingArtifact, phrases []string) ([]PhraseTiming, error) {
-	if err := timing.Validate(); err != nil {
-		return nil, err
-	}
-	if sceneIndex < 0 {
-		return nil, fmt.Errorf("%w: negative scene index %d", ErrInvalidPhraseTiming, sceneIndex)
-	}
-	if timelineStartUS < 0 {
-		return nil, fmt.Errorf("%w: negative timeline start %d", ErrInvalidPhraseTiming, timelineStartUS)
-	}
-
-	out := make([]PhraseTiming, 0, len(phrases))
-	for i, phrase := range phrases {
-		located, err := LocatePhrase(timing, phrase)
-		if err != nil {
-			return nil, fmt.Errorf("scene %d phrase %d: %w", sceneIndex, i, err)
-		}
-		first := located[0]
-		out = append(out, PhraseTiming{
-			SceneIndex:      sceneIndex,
-			PhraseIndex:     i,
-			Text:            first.Text,
-			WordStart:       first.WordStart,
-			WordEnd:         first.WordEnd,
-			LocalStartUS:    first.StartUS,
-			LocalEndUS:      first.EndUS,
-			TimelineStartUS: timelineStartUS,
-			GlobalStartUS:   timelineStartUS + first.StartUS,
-			GlobalEndUS:     timelineStartUS + first.EndUS,
-		})
-	}
-	return out, nil
 }

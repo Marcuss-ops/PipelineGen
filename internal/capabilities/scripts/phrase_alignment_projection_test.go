@@ -3,23 +3,73 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
-// testPhraseAligner keeps the existing fixtures comparable by delegating to the
-// legacy matcher in test code only; production uses the Rust adapter.
+// testPhraseAligner is a deterministic test double for the Rust worker. It
+// keeps the existing fixtures readable; production has no Go matcher.
 type testPhraseAligner struct{}
 
 func (testPhraseAligner) AlignPhrases(_ context.Context, request PhraseAlignmentRequest) ([]audio.LocatedPhrase, error) {
 	out := make([]audio.LocatedPhrase, 0, len(request.Phrases))
 	for _, phrase := range request.Phrases {
-		located, err := audio.LocatePhrase(request.Timing, phrase)
+		located, err := testLocatePhrase(request.Timing, phrase)
 		if err != nil {
+			if request.AllowMissing {
+				continue
+			}
 			return nil, err
 		}
+		if request.AllOccurrences {
+			out = append(out, located...)
+			continue
+		}
 		out = append(out, located[0])
+	}
+	return out, nil
+}
+
+func testLocatePhrase(timing audio.SpeechTimingArtifact, phrase string) ([]audio.LocatedPhrase, error) {
+	normalize := func(value string) string {
+		return strings.TrimFunc(strings.ToLower(strings.TrimSpace(value)), func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+		})
+	}
+	query := make([]string, 0, len(strings.Fields(phrase)))
+	for _, token := range strings.Fields(phrase) {
+		if normalized := normalize(token); normalized != "" {
+			query = append(query, normalized)
+		}
+	}
+	if len(query) == 0 {
+		return nil, audio.ErrPhraseNotFound
+	}
+	var out []audio.LocatedPhrase
+	for start := 0; start+len(query) <= len(timing.Words); start++ {
+		match := true
+		for i, token := range query {
+			if normalize(timing.Words[start+i].Text) != token {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+		first, last := timing.Words[start], timing.Words[start+len(query)-1]
+		out = append(out, audio.LocatedPhrase{
+			Text: strings.TrimSpace(phrase), Occurrence: len(out) + 1,
+			WordStart: start, WordEnd: start + len(query) - 1,
+			StartUS: first.StartUS, EndUS: last.EndUS,
+		})
+		start += len(query) - 1
+	}
+	if len(out) == 0 {
+		return nil, audio.ErrPhraseNotFound
 	}
 	return out, nil
 }

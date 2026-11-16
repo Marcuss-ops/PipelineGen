@@ -27,6 +27,9 @@ type EntitySource struct {
 	Confidence float64
 	TextStart  int
 	TextEnd    int
+	// Alignment is the Rust worker's exact word-timing match for SpokenName.
+	// The builder projects this value; it never matches words itself.
+	Alignment *capabilityaudio.LocatedPhrase
 }
 
 // SceneInput is the per-scene projection input: the scene text the voiceover
@@ -67,9 +70,9 @@ type BuildInput struct {
 //
 // Each occurrence anchors the FIRST spoken occurrence in the word timing,
 // spanning from the first matched word's start to the last matched word's
-// end — exactly the contract audio.LocatePhrase provides. Scenes without
-// entities are omitted from the projection; scenes with timing + entities
-// must fully project or the whole build aborts.
+// end — the exact span the Rust aligner returned. Scenes without entities
+// are omitted from the projection; scenes with timing + entities must fully
+// project or the whole build aborts.
 func BuildEntityTimeline(in BuildInput) (EntityTimeline, error) {
 	if in.DurationUS <= 0 {
 		return EntityTimeline{}, fmt.Errorf("%w: non-positive duration %d", ErrInvalidEntityTimeline, in.DurationUS)
@@ -139,16 +142,13 @@ func projectSceneOccurrences(scene SceneInput) ([]EntityOccurrence, error) {
 		}
 
 		// WORD — the entity must occur verbatim in the ACTUAL voiceover word
-		// timing. No text-length estimate is ever accepted here.
-		spokenName := strings.TrimSpace(source.SpokenName)
-		if spokenName == "" {
-			spokenName = name
+		// timing. The Rust aligner already performed the match; a nil
+		// alignment means the voiceover never said it, and no text-length
+		// estimate is ever accepted here.
+		if source.Alignment == nil {
+			return nil, fmt.Errorf("%w: scene %q entity %q has no certified alignment", ErrEntityNotSpoken, scene.SceneID, name)
 		}
-		located, err := capabilityaudio.LocatePhrase(scene.Timing, spokenName)
-		if err != nil {
-			return nil, fmt.Errorf("%w: scene %q entity %q: phrase %q: %v", ErrEntityNotSpoken, scene.SceneID, name, spokenName, err)
-		}
-		first := located[0]
+		first := *source.Alignment
 		out = append(out, EntityOccurrence{
 			EntityID:         StableEntityID(entityType, name),
 			Name:             name,

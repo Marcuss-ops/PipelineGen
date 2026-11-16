@@ -5,7 +5,7 @@
 // The rule that makes this package the SSOT: an entity's timestamp is NEVER
 // estimated from the length of its text. Every audio boundary comes from the
 // canonical word-level SpeechTimingArtifact captured in the same synthesis
-// stream as the published voiceover (audio.LocatePhrase), and every global
+// stream as the published voiceover (Rust align_phrases), and every global
 // boundary is the scene's canonical timeline offset plus that local span —
 // exactly the local→global contract audio.PhraseTiming already enforces for
 // script phrases.

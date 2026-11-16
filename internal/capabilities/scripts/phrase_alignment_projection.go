@@ -2,7 +2,6 @@ package scriptgeneration
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
@@ -14,26 +13,18 @@ import (
 
 // PhraseTimingSource is the per-scene input for the phrase→timestamp
 // projection: the scene's canonical word timing plus the ordered script
-// phrases to anchor. Phrases are located verbatim in the timing via
-// LocatePhrase; nothing is estimated or interpolated.
+// phrases to anchor. Phrases are located verbatim in the timing via the Rust aligner; nothing is estimated or interpolated.
 type PhraseTimingSource struct {
 	Timing           capabilityaudio.SpeechTimingArtifact
 	Phrases          []string
 	VoiceoverAssetID string
 }
 
-// PhraseAlignmentRequest asks the Rust worker to align phrases against one
-// certified word-timing artifact. Go validates the artifact and projects the
-// returned spans; it never matches words itself.
-type PhraseAlignmentRequest struct {
-	Timing  capabilityaudio.SpeechTimingArtifact
-	Phrases []string
-}
-
-// PhraseAligner is the single production seam for phrase/word alignment.
-type PhraseAligner interface {
-	AlignPhrases(ctx context.Context, request PhraseAlignmentRequest) ([]capabilityaudio.LocatedPhrase, error)
-}
+// PhraseAlignmentRequest and PhraseAligner are the canonical audio types.
+// Kept as aliases so the script projection and the Rust adapter share one
+// contract without a second definition.
+type PhraseAlignmentRequest = capabilityaudio.PhraseAlignmentRequest
+type PhraseAligner = capabilityaudio.PhraseAligner
 
 type timingProjectionSkip struct {
 	SceneID string
@@ -187,6 +178,10 @@ func compileResultPhraseTimings(ctx context.Context, aligner PhraseAligner, resu
 	if result == nil {
 		return nil
 	}
+	if aligner == nil {
+		return fmt.Errorf("phrase timing: phrase aligner is required")
+	}
+	result.phraseAligner = aligner
 	sources := make(map[string]PhraseTimingSource)
 	for _, scene := range result.Scenes {
 		ref, ok := scene.Voiceover[language]
@@ -197,10 +192,17 @@ func compileResultPhraseTimings(ctx context.Context, aligner PhraseAligner, resu
 		if text == "" {
 			continue
 		}
-		// Voice generation can legitimately normalize or shorten a scene. Keep
-		// the timing projection for other scenes and report this unanchored one.
-		if _, err := capabilityaudio.LocatePhrase(*ref.Timing, text); err != nil {
-			reportTimingProjectionSkip(reporters, timingProjectionSkip{SceneID: scene.ID, Surface: "narration", Cause: err})
+		// Voice generation can legitimately normalize or shorten a scene. Ask
+		// the Rust worker once with allow_missing and keep the projection for
+		// other scenes; an unanchored narration is reported, never estimated.
+		alignments, err := aligner.AlignPhrases(ctx, PhraseAlignmentRequest{
+			Timing: *ref.Timing, Phrases: []string{text}, AllowMissing: true,
+		})
+		if err != nil {
+			return fmt.Errorf("phrase timing: scene %q align: %w", scene.ID, err)
+		}
+		if len(alignments) == 0 {
+			reportTimingProjectionSkip(reporters, timingProjectionSkip{SceneID: scene.ID, Surface: "narration", Cause: capabilityaudio.ErrPhraseNotFound})
 			continue
 		}
 		sources[scene.ID] = PhraseTimingSource{Timing: *ref.Timing, Phrases: []string{text}, VoiceoverAssetID: ref.ID}
@@ -228,70 +230,6 @@ func compileResultPhraseTimings(ctx context.Context, aligner PhraseAligner, resu
 	return nil
 }
 
-// locatePhraseTimingWithEndpointFallback first requires a complete exact phrase
-// match. If certified timing omitted or regrouped interior words, it may still
-// use the exact first/last word boundaries, but only when both are present and
-// ordered in the same timing artifact. Invalid artifacts and absent endpoints
-// remain failures; no time is interpolated.
-//
-// Moved verbatim from overlay_plan.go (2026-09-28, 635 → 577) to satisfy the
-// strict 600-LOC forward-prevention gate (godlike/08) without changing
-// behaviour: the helper is a phrase-timing projection, not an overlay-plan
-// concern, so its cohesive owner is this file. No new package is introduced.
-func locatePhraseTimingWithEndpointFallback(sceneIndex int, timelineStartUS int64, timing capabilityaudio.SpeechTimingArtifact, phrase string) (*capabilityaudio.PhraseTiming, error) {
-	located, err := capabilityaudio.LocatePhraseTimings(sceneIndex, timelineStartUS, timing, []string{phrase})
-	if err == nil {
-		return &located[0], nil
-	}
-	if !errors.Is(err, capabilityaudio.ErrPhraseNotFound) {
-		return nil, err
-	}
-	words := strings.Fields(phrase)
-	if len(words) < 2 {
-		return nil, err
-	}
-	firstMatches, firstErr := capabilityaudio.LocatePhrase(timing, words[0])
-	if firstErr != nil {
-		return nil, firstErr
-	}
-	lastMatches, lastErr := capabilityaudio.LocatePhrase(timing, words[len(words)-1])
-	if lastErr != nil {
-		return nil, lastErr
-	}
-
-	// Repeated endpoint words can produce several possible spans. Choose the
-	// ordered pair whose number of certified timing words most closely matches
-	// the source phrase length; stable iteration makes ties source-order wins.
-	var first, last capabilityaudio.LocatedPhrase
-	bestDelta := int(^uint(0) >> 1)
-	for _, start := range firstMatches {
-		for _, end := range lastMatches {
-			if end.WordEnd <= start.WordStart {
-				continue
-			}
-			spanWords := end.WordEnd - start.WordStart + 1
-			delta := spanWords - len(words)
-			if delta < 0 {
-				delta = -delta
-			}
-			if delta < bestDelta {
-				first, last, bestDelta = start, end, delta
-			}
-		}
-	}
-	if bestDelta == int(^uint(0)>>1) {
-		return nil, err
-	}
-	return &capabilityaudio.PhraseTiming{
-		SceneIndex: sceneIndex, PhraseIndex: 0, Text: strings.TrimSpace(phrase),
-		WordStart: first.WordStart, WordEnd: last.WordEnd,
-		LocalStartUS: first.StartUS, LocalEndUS: last.EndUS,
-		TimelineStartUS: timelineStartUS,
-		GlobalStartUS:   timelineStartUS + first.StartUS,
-		GlobalEndUS:     timelineStartUS + last.EndUS,
-	}, nil
-}
-
 type PhraseAnchoringDiagnostic struct {
 	SceneID  string
 	Text     string
@@ -304,17 +242,9 @@ type PhraseAnchoringDiagnostic struct {
 // overlay planner performs on every important-phrase candidate. It never
 // mutates the result and never fails the run; a candidate that does not occur
 // verbatim in the certified timing is reported as a skip with its reason.
-func DiagnosePhraseAnchoring(result *GenerateResult, language Language) []PhraseAnchoringDiagnostic {
-	if result == nil {
+func DiagnosePhraseAnchoring(ctx context.Context, aligner PhraseAligner, result *GenerateResult, language Language) []PhraseAnchoringDiagnostic {
+	if result == nil || aligner == nil {
 		return nil
-	}
-	resolved, err := overlayResolvedScenesFor(*result, language)
-	if err != nil {
-		return nil
-	}
-	timelineStartUS := make(map[string]int64, len(resolved))
-	for _, scene := range resolved {
-		timelineStartUS[scene.ID] = scene.TimelineStartUS
 	}
 	var out []PhraseAnchoringDiagnostic
 	for _, scene := range result.Scenes {
@@ -322,31 +252,56 @@ func DiagnosePhraseAnchoring(result *GenerateResult, language Language) []Phrase
 		if !ok || ref.Timing == nil {
 			continue
 		}
-		startUS, ok := timelineStartUS[scene.ID]
-		if !ok {
-			continue
-		}
 		ann := annotationsForLanguage(scene, language, result.SourceLanguage)
 		if ann == nil {
 			continue
 		}
+		phrases := make([]string, 0, len(ann.ImportantPhrases))
+		for _, span := range ann.ImportantPhrases {
+			if text := strings.TrimSpace(span.Text); text != "" {
+				phrases = append(phrases, text)
+			}
+		}
+		aligned := map[string]struct{}{}
+		var alignErr error
+		if len(phrases) > 0 {
+			alignments, err := aligner.AlignPhrases(ctx, PhraseAlignmentRequest{
+				Timing: *ref.Timing, Phrases: phrases, AllowMissing: true,
+			})
+			if err != nil {
+				alignErr = err
+			} else {
+				for _, alignment := range alignments {
+					aligned[normalizePhraseText(alignment.Text)] = struct{}{}
+				}
+			}
+		}
 		for _, span := range ann.ImportantPhrases {
 			text := strings.TrimSpace(span.Text)
 			diag := PhraseAnchoringDiagnostic{SceneID: scene.ID, Text: text, Words: len(strings.Fields(text))}
-			if text == "" {
+			switch {
+			case text == "":
 				diag.Reason = "empty phrase"
-				out = append(out, diag)
-				continue
-			}
-			if _, err := locatePhraseTimingWithEndpointFallback(scene.Index, startUS, *ref.Timing, text); err != nil {
-				diag.Reason = err.Error()
-			} else {
+			case alignErr != nil:
+				diag.Reason = alignErr.Error()
+			case hasPhraseAlignment(aligned, text):
 				diag.Anchored = true
+			default:
+				diag.Reason = capabilityaudio.ErrPhraseNotFound.Error()
 			}
 			out = append(out, diag)
 		}
 	}
 	return out
+}
+
+func hasPhraseAlignment(aligned map[string]struct{}, text string) bool {
+	_, ok := aligned[normalizePhraseText(text)]
+	return ok
+}
+
+func normalizePhraseText(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
 // plannerOwnedEntityIDs collects the StableEntityID of every annotation entity

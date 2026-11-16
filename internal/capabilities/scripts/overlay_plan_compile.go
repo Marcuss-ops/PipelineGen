@@ -21,7 +21,7 @@ import (
 // configured compiler is the only plan authority: there is no Go fallback and
 // no per-phase port invocation.
 func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
-	input, err := prepareOverlayPlanCompile(result, language, canvas, planID, videoID, projectID, plates, perSceneImages...)
+	input, err := prepareOverlayPlanCompile(ctx, result, language, canvas, planID, videoID, projectID, plates, perSceneImages...)
 	if err != nil || input == nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ type overlayPlanCompileInput struct {
 
 // prepareOverlayPlanCompile builds the certified scene projection. It does not
 // call any map/entity/cascade port; those remain legacy-only.
-func prepareOverlayPlanCompile(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*overlayPlanCompileInput, error) {
+func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*overlayPlanCompileInput, error) {
 
 	if result == nil {
 		return nil, nil
@@ -111,7 +111,7 @@ func prepareOverlayPlanCompile(result *GenerateResult, language Language, canvas
 			SourceLanguage: result.SourceLanguage, AudioMode: result.AudioMode,
 			ResolvedScenes: result.ResolvedScenes,
 		}
-		if err := compileResultEntityTimeline(localized, language); err != nil {
+		if err := compileResultEntityTimeline(ctx, result.phraseAligner, localized, language); err != nil {
 			return nil, fmt.Errorf("overlay plan: resolve %s entity timeline: %w", language, err)
 		}
 		entityTimeline = localized.EntityTimeline

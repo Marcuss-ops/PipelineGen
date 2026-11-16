@@ -498,6 +498,32 @@ func (r *Runner) SetPhraseAligner(aligner PhraseAligner) {
 	}
 }
 
+// SetLocalizedIdentityMatcher wires the Rust localized-identity boundary.
+// Nil means a translated run fails closed instead of falling back to a Go
+// matcher or inflection.
+func (r *Runner) SetLocalizedIdentityMatcher(matcher LocalizedIdentityMatcher) {
+	if r != nil {
+		r.localizedIdentity = matcher
+	}
+}
+
+// LocalizedIdentityMatcher returns the run-scoped Rust identity seam.
+func (r *Runner) LocalizedIdentityMatcher() LocalizedIdentityMatcher {
+	if r == nil {
+		return nil
+	}
+	return r.localizedIdentity
+}
+
+// PhraseAligner returns the run-scoped Rust alignment seam so the batch path
+// can share the exact worker the durable runner uses.
+func (r *Runner) PhraseAligner() PhraseAligner {
+	if r == nil {
+		return nil
+	}
+	return r.phraseAligner
+}
+
 // SetVidRushPipeline wires the composition-time incremental VidRush
 // dependencies. A nil pipeline disables incremental VidRush (batch workflows
 // keep enriching the whole document later). The Runner builds a fresh,
