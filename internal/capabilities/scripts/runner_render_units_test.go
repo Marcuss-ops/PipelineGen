@@ -6,11 +6,8 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// runner_render_units_test.go pins the used-as-stock render contract
-// (payload script_params.segments[].stock_clip_ids): a scene whose clips are
-// ALL stock-marked is audio-only — no localized clip render is ever produced
-// for it, because its video comes from its stock binding. A scene that still
-// owns a visual clip keeps the historical single-unit fan-out on that clip.
+// runner_render_units_test.go pins the stock and clip visual contracts: stock
+// media remains source footage, while selected clips use the local render lane.
 
 func stockClip(id string) *ClipReference {
 	return &ClipReference{ID: id, AsStock: true, DurationUS: 5_000_000}
@@ -100,7 +97,7 @@ func TestSceneRenderSpec_BurnsCaptionsOnClipOnlyMainClips(t *testing.T) {
 // TestSceneRenderSpec_StockVisualNeverInheritsCaptions keeps the other half:
 // a stock-owned visual (or a stock_only body scene) never burns narration
 // captions onto the stock plate, because those captions belong to the clips.
-func TestSceneRenderSpec_StockVisualNeverInheritsCaptions(t *testing.T) {
+func TestSceneRenderSpec_StockVisualIsUntouched(t *testing.T) {
 	req := GenerateRequest{
 		MediaMode: scriptpkg.MediaMode("stock_only"),
 		Render: scriptpkg.VideoRenderSpec{
@@ -108,13 +105,76 @@ func TestSceneRenderSpec_StockVisualNeverInheritsCaptions(t *testing.T) {
 		},
 	}
 	for _, scene := range []Scene{
-		{ID: "scene-stock", Clip: visualClip("cliprender_abc"), Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}},
+		{ID: "scene-stock-folder", Clip: visualClip("cliprender_abc"), Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}},
 		{ID: "scene-body", Clip: visualClip("cliprender_abc")},
 	} {
 		spec := sceneRenderSpec(req, scene)
 		if spec.Subtitles != nil && spec.Subtitles.Enabled {
 			t.Fatalf("scene %q must not burn captions onto a stock visual", scene.ID)
 		}
+	}
+	narrated := Scene{ID: "scene-stock-vo", Stock: &scriptpkg.StockBinding{AssetID: "stock-asset"}, Voiceover: map[Language]AudioReference{"en": {ID: "vo-1"}}}
+	if spec := sceneRenderSpec(req, narrated); spec.Subtitles != nil && spec.Subtitles.Enabled {
+		t.Fatal("narrated stock visual must bypass subtitle rendering")
+	}
+}
+
+// TestFixedMediaKeepsRequestedVisualTreatment pins the r15c regression: an
+// intro/outro clip without narration still has to be rendered when the payload
+// asks for a card treatment (frame, grid, watermark). Skipping it shipped the
+// raw source to the final assembly, so the foreground grid never reached the
+// delivered video even though the clip contract carried it.
+func TestFixedMediaKeepsRequestedVisualTreatment(t *testing.T) {
+	treatment := scriptpkg.VideoRenderSpec{
+		Enabled: true,
+		Subtitles: &scriptpkg.VideoSubtitlesSpec{
+			Enabled: true, Mode: "burn",
+		},
+		Grid: &scriptpkg.VideoClipGridSpec{
+			Scope: "foreground", Style: "lines", SpacingPX: 96, LineWidthPX: 1, Color: "#7FA8C8", Opacity: 0.08,
+		},
+		Watermark:              &scriptpkg.VideoWatermarkSpec{Enabled: true, Text: "OBAMA • ARCHIVIO"},
+		ForegroundScalePercent: 75,
+	}
+	req := GenerateRequest{SourceLanguage: "it", Render: treatment}
+	intro := Scene{
+		ID: "intro-01", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Role: scriptpkg.SceneRoleOpening, Text: map[Language]string{"it": ""},
+	}
+	if !fixedMediaNeedsLocalizedRender(req, intro) {
+		t.Fatal("a captionless intro with a requested card treatment must use the local render lane")
+	}
+	spec := sceneRenderSpec(req, intro)
+	if spec.Grid == nil || spec.Grid.Scope != "foreground" {
+		t.Fatalf("fixed-media render spec lost the foreground grid: %+v", spec.Grid)
+	}
+	if spec.Watermark == nil || !spec.Watermark.Enabled {
+		t.Fatalf("fixed-media render spec lost the watermark: %+v", spec.Watermark)
+	}
+	if spec.ForegroundScalePercent != 75 {
+		t.Fatalf("foreground scale = %d, want 75", spec.ForegroundScalePercent)
+	}
+	if spec.Subtitles != nil && spec.Subtitles.Enabled {
+		t.Fatal("an empty fixed-media caption must not enable subtitle burn")
+	}
+
+	// The caption-only default is unchanged: no caption and no visual treatment
+	// stays on the native clip, never on the localized render lane.
+	plain := GenerateRequest{SourceLanguage: "it", Render: scriptpkg.VideoRenderSpec{
+		Enabled: true, Subtitles: &scriptpkg.VideoSubtitlesSpec{Enabled: true, Mode: "burn"},
+	}}
+	if fixedMediaNeedsLocalizedRender(plain, intro) {
+		t.Fatal("a captionless intro without treatment must stay native")
+	}
+
+	// A captioned intro keeps its subtitle variant and the treatment.
+	captioned := intro
+	captioned.Text = map[Language]string{"it": "Barack Obama, 1961"}
+	if !fixedMediaNeedsLocalizedRender(req, captioned) {
+		t.Fatal("a captioned intro must use the localized subtitle render lane")
+	}
+	if spec := sceneRenderSpec(req, captioned); spec.Subtitles == nil || !spec.Subtitles.Enabled {
+		t.Fatal("a captioned intro must keep the requested subtitle burn")
 	}
 }
 
@@ -123,9 +183,20 @@ func TestRenderUnitCount_ExcludesAllStockScenes(t *testing.T) {
 		{ID: "s-visual", Clip: visualClip("a")},
 		{ID: "s-stock", Clips: []*ClipReference{stockClip("b")}},
 		{ID: "s-mixed", Clips: []*ClipReference{stockClip("c"), visualClip("d")}},
+		{ID: "s-bound-stock", Stock: &scriptpkg.StockBinding{AssetID: "stock-asset", DriveLink: "https://drive.test/stock"}},
 	}
 	if got := RenderUnitCount(scenes); got != 2 {
-		t.Fatalf("RenderUnitCount = %d, want 2 (visual + mixed-visual)", got)
+		t.Fatalf("RenderUnitCount = %d, want 2 (visual + mixed-visual; stock binding excluded)", got)
+	}
+}
+
+func TestRenderUnitsForScene_ConcreteStockBindingBypassesChronon(t *testing.T) {
+	scene := Scene{ID: "stock-vo", Stock: &scriptpkg.StockBinding{
+		AssetID: "yt_stock_asset", Name: "shared stock", DriveLink: "https://drive.test/stock", DurationMs: 60_000,
+	}}
+	units := RenderUnitsForScene(scene)
+	if len(units) != 0 {
+		t.Fatalf("stock visual units = %+v, want none; stock must bypass Chronon", units)
 	}
 }
 

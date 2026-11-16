@@ -105,6 +105,11 @@ func sceneVisualClipsAreStockOnly(scene Scene) bool {
 // validated sequence is allowed); every other scene produces a single unit on
 // its primary VISUAL clip, preserving the historical fan-out shape.
 func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
+	// A selected stock binding is used as-is by the final assembly. Never send
+	// stock media through Chronon, even for subtitle-only or fixed-media paths.
+	if scene.Stock != nil {
+		return nil
+	}
 	if scene.ExecutionMode.IsFixedMedia() {
 		clips := scene.Clips
 		if len(clips) == 0 && scene.Clip != nil {
@@ -115,19 +120,12 @@ func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 		}
 		units := make([]SceneRenderUnit, 0, len(clips))
 		for i, clip := range clips {
-			if clip == nil {
+			if clip == nil || clip.usedAsStock() {
 				continue
 			}
 			units = append(units, SceneRenderUnit{Scene: scene, ClipIndex: i, Clip: clip})
 		}
 		return units
-	}
-	// Explicit stock bindings are the final visual source for this scene. The
-	// final-job payload sends those Drive files directly to the remote Master,
-	// so a local render of the scene's source clip would be unused work and
-	// could burn subtitles into footage that is not in the final timeline.
-	if scene.Stock != nil {
-		return nil
 	}
 	// Clips marked as used-as-stock are audio-only. A scene whose clips are
 	// ALL stock-marked is never processed with a localized clip render: its
@@ -145,15 +143,30 @@ func RenderUnitsForScene(scene Scene) []SceneRenderUnit {
 }
 
 // sceneRenderSpec applies the subtitle policy at the per-scene render seam.
-// Only source footage (YouTube clips and fixed media) inherits the request's
-// subtitle setting; stock and image visuals never burn narration or source
-// track subtitles. Empty fixed-media captions also disable subtitles to
-// prevent transcript-track fallback.
+// Stock visuals are never passed to Chronon. Empty fixed-media captions also
+// disable subtitles to prevent transcript-track fallback.
 func sceneRenderSpec(req GenerateRequest, scene Scene) kernelscript.VideoRenderSpec {
 	spec := req.Render
-	// A selected stock binding owns the visual even when the scene also keeps
-	// its source YouTube clip for audio/timing. That clip must never make the
-	// stock render inherit local subtitles or source-track transcription.
+	// A fixed intro/outro keeps the request's visual treatment (frame, grid,
+	// watermark, background, effects): the localized render IS the clip the
+	// final assembly shows, so stripping the treatment here would ship the raw
+	// source instead of the card the operator asked for. Subtitles are still
+	// gated by the caption below (an empty fixed caption disables them).
+	// Stock stays byte-for-byte source media in the final assembly: no subtitle
+	// burn, frame, shadow, glow, grid, watermark or background treatment.
+	if scene.Stock != nil {
+		if spec.Subtitles != nil {
+			subtitles := *spec.Subtitles
+			subtitles.Enabled = false
+			spec.Subtitles = &subtitles
+		}
+		spec.Background = nil
+		spec.Watermark = nil
+		spec.SourceFrame = nil
+		spec.ForegroundScalePercent = 0
+		spec.Effects = nil
+		spec.Grid = nil
+	}
 	// Fixed-media sections (notably the opening clips) remain source footage
 	// even when the body is stock-only. They carry their own display caption,
 	// which must be burned into the localized intro render. The stock-only mode
@@ -161,9 +174,7 @@ func sceneRenderSpec(req GenerateRequest, scene Scene) kernelscript.VideoRenderS
 	// fixed intro's title.
 	// Source footage is a clip that owns its own caption: the yt_ library
 	// clips AND the pipeline-rendered cliprender_* cards (the "main clips" of
-	// a clip_only run). Stock b-roll (artlist_*) never inherits narration
-	// subtitles, a stock-owned visual never does, and stock_only keeps
-	// suppressing them on the generated body.
+	// a clip_only run). Stock is excluded regardless of attached source clips.
 	sourceFootage := scene.Stock == nil && (scene.ExecutionMode.IsFixedMedia() || (req.MediaMode != kernelscript.MediaModeStockOnly && sceneClipOwnsCaption(scene)))
 	if !sourceFootage || (scene.ExecutionMode.IsFixedMedia() && localizedRenderCaptionText(req, scene) == "") {
 		if spec.Subtitles != nil {
@@ -211,6 +222,9 @@ func RenderUnitCount(scenes []Scene) int {
 // behaviour: the scene-level helper and its unit-level sibling
 // (localizedRenderUnitClipFields, below) are one cohesive render-unit family.
 func localizedRenderClipFields(scene Scene) (clipID, assetID, sha256 string, durationMS int64) {
+	if scene.Stock != nil {
+		return "", "", "", 0
+	}
 	clip := primaryVisualClip(scene)
 	if clip == nil {
 		return "", "", "", 0
@@ -306,6 +320,25 @@ func fixedRenderLanguages(req GenerateRequest, scene Scene) []Language {
 	return renderLanguages(req, scene)
 }
 
+// localizedRenderErrorCapacity bounds the error fan-in for every render that
+// can be dispatched from the voiceover phase. Include reused TTS projections
+// and fixed media: those requests are launched after synthesis and can all
+// fail before the phase begins draining the channel.
+func localizedRenderErrorCapacity(req GenerateRequest, scenes []Scene) int {
+	capacity := 0
+	for _, scene := range scenes {
+		units := len(RenderUnitsForScene(scene))
+		if units == 0 {
+			continue
+		}
+		capacity += units * len(renderLanguages(req, scene))
+	}
+	if capacity < 1 {
+		return 1
+	}
+	return capacity
+}
+
 // fixedCaptionText resolves the caption for one fixed render unit in the
 // render language, falling back to the source display text. It NEVER falls
 // back to BODY source text (fixed-media firewall).
@@ -316,18 +349,44 @@ func fixedCaptionText(scene Scene, source, lang Language) string {
 	return strings.TrimSpace(scene.Text[source])
 }
 
-// fixedMediaNeedsLocalizedRender reports whether a protected fixed-media
-// section must go through the localized render lane. That lane ALWAYS burns a
-// subtitle track (the localization plan requires a timed subtitle and the
-// renderer re-encodes the clip), so a render is only meaningful when the
-// request enables subtitles. NativeClip body cutaways are the exception: their
-// database clip is shown as-is and must never be re-encoded by the subtitle
-// lane. Legacy fixed media without a Role keeps the historical behaviour.
+// fixedMediaNeedsLocalizedRender reports whether a fixed-media clip must go
+// through the local Chronon render lane. That lane requires a timed subtitle
+// track, so a render is meaningful only when the request enables subtitles.
 func fixedMediaNeedsLocalizedRender(req GenerateRequest, scene Scene) bool {
-	if scene.NativeClip {
+	// A protected intro/mid/outro clip needs the local lane when it carries a
+	// timed caption (a language-specific subtitle variant) OR when the request
+	// asks for a visual treatment the raw source cannot provide (frame, grid,
+	// watermark, background, effects). Without the second arm an intro without
+	// narration would skip RenderingGen and the final assembly would show the
+	// unstyled source, which is exactly how the r13 foreground-grid variant
+	// lost every clip card (2026-11-16).
+	if !scene.ExecutionMode.IsFixedMedia() {
 		return false
 	}
-	return scene.ExecutionMode.IsFixedMedia() && req.Render.Subtitles != nil && req.Render.Subtitles.Enabled
+	if req.Render.Subtitles != nil && req.Render.Subtitles.Enabled && localizedRenderCaptionText(req, scene) != "" {
+		return true
+	}
+	return fixedMediaVisualTreatmentRequested(req.Render)
+}
+
+// fixedMediaVisualTreatmentRequested reports whether the request asks for a
+// treatment that only a local Chronon render can produce. It mirrors the fields
+// sceneRenderSpec transports, so the launch gate and the render spec cannot
+// disagree about what "styled" means.
+func fixedMediaVisualTreatmentRequested(spec kernelscript.VideoRenderSpec) bool {
+	if !spec.Enabled {
+		return false
+	}
+	if spec.Grid != nil || spec.Watermark != nil || spec.SourceFrame != nil {
+		return true
+	}
+	if spec.Background != nil && strings.TrimSpace(spec.Background.Mode) != "" && !strings.EqualFold(strings.TrimSpace(spec.Background.Mode), "none") {
+		return true
+	}
+	if spec.ForegroundScalePercent > 0 || len(spec.Effects) > 0 {
+		return true
+	}
+	return false
 }
 
 // expectedRenderUnits counts the localized render matrix. Fixed-media

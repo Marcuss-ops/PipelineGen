@@ -243,6 +243,13 @@ func pendingOverlayPlans(result *GenerateResult, req GenerateRequest) []language
 		if req.FinalJob && item.plan != nil {
 			item.plan.RequireObjectStoreBeforeReturn = true
 		}
+		// A script may deliberately disable every semantic overlay while still
+		// using the final-job lane for clip assets and audio. Such a plan has no
+		// local RenderingGen work: dispatching it creates a doomed empty render
+		// job and prevents the remote final compositor from receiving the clips.
+		if item.plan == nil || len(overlayRenderableCandidates(*item.plan)) == 0 {
+			continue
+		}
 		// Reuse requires PROOF that the persisted render belongs to this plan
 		// version (intervention B). A different digest means different pixels:
 		// the plan is re-rendered instead of adopting the older artifact. A

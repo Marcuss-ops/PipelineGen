@@ -122,6 +122,50 @@ func TestFinalJobNormalizedPlanMatchesRenderedManifest(t *testing.T) {
 	}
 }
 
+// TestDisabledOverlaysSkipLocalOverlayRender pins the r13 (2026-11-16)
+// regression: a final job that deliberately disables every semantic overlay
+// compiles an EMPTY plan. Dispatching that plan produced
+// `overlay plan "..." has no renderable items` and failed the run at
+// COMPILING_AUDIO even though the clips and audio were fine. An empty plan has
+// no local RenderingGen work, so the render phase must submit nothing and the
+// run must continue to the final compositor.
+func TestDisabledOverlaysSkipLocalOverlayRender(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		items []capmodel.OverlayItem
+	}{
+		{name: "no items"},
+		{name: "background primitive only", items: []capmodel.OverlayItem{{
+			ID: "bg", SceneID: "scene-1", Kind: "background", TemplateID: "BACKGROUND",
+		}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := &capmodel.OverlayPlan{
+				SchemaVersion: capmodel.SchemaVersionPlan,
+				PlanID:        "plan-no-overlays",
+				Language:      "it",
+				Width:         1920, Height: 1080, FPSNum: 24, FPSDen: 1, DurationMS: 5000,
+				Items: tc.items,
+			}
+			result := &GenerateResult{OverlayPlan: plan, SourceLanguage: "it"}
+			enqueuer := &recordingOverlayRenderEnqueuer{}
+			runner := &Runner{overlayRenderEnqueuer: enqueuer, log: zap.NewNop()}
+
+			outcomes, err := runner.renderOverlayPlans(context.Background(),
+				GenerateRequest{FinalJob: true, Render: scriptpkg.VideoRenderSpec{Enabled: true}}, 0, result)
+			if err != nil {
+				t.Fatalf("renderOverlayPlans: %v: an overlay-free plan must not fail the run", err)
+			}
+			if len(outcomes) != 0 {
+				t.Fatalf("outcomes = %d, want 0 for a plan with no renderable items", len(outcomes))
+			}
+			if enqueuer.captured() != nil {
+				t.Fatal("the runner dispatched an empty overlay plan to renderinggen")
+			}
+		})
+	}
+}
+
 // TestFinalJobResumeRejectsOldPlanRender is the second mandatory regression: a
 // retry must not adopt a render produced by a different plan version.
 //
