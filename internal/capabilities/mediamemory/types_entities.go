@@ -120,16 +120,13 @@ type MediaCandidate struct {
 	DiscoveryStatus       DiscoveryStatus
 	MaterializationStatus MaterializationStatus
 	AssetID               string // "" until materialize produces a media_assets row
-	// ChannelID and VideoID are the Fase 2.3 anti-repetition
-	// identity fields. godlike/06 SSOT (Fase 3 linker
-	// forward-pointer): the linker worker enriches a candidate
-	// row with these after discovery+analysis so the resolver's
-	// PopulateRepetitionPenalty can cross-reference the
-	// append-only UsageEvent history.
-	// Empty values are valid for pre-Fase-2.3 rows; the ranker
-	// treats empty as "no penalty input available" but the
-	// same-asset penalty (UsageCount + SuccessScore) still
-	// drives the contract.
+	// ChannelID and VideoID are the anti-repetition identity fields.
+	// The linker worker enriches a candidate row with them after
+	// discovery+analysis; the canonical ranker (mediasampler::rank)
+	// reads them for the consecutive-source penalty, falling back to
+	// AssetID when VideoID is empty.
+	// Empty values are valid for pre-linker rows: the ranker treats
+	// empty as "no penalty input available".
 	ChannelID string
 	VideoID   string
 	CreatedAt time.Time
@@ -150,5 +147,4 @@ type MediaCandidate struct {
 // penalties. With the feedback service gone (never constructed) and the
 // UsageRepository port gone (zero callers), nothing could produce or read a
 // UsageEvent, so the type and the three penalty components it fed left in the
-// same change — see the retirement note on PopulateRepetitionPenalty in
-// ranker_repetition.go.
+// same change.

@@ -112,7 +112,7 @@ func (b *mediaPoolRankerBridge) RankPool(ctx context.Context, request mediamemor
 
 // toWireCandidate mirrors the fields the ranker reads. The binding envelope is
 // only sent when it carries an asset, because the ranker branches on the
-// binding exactly where buildRankingInput did: an asset-less binding means
+// binding the same way the Go projection did: an asset-less binding means
 // "candidate-only path".
 func toWireCandidate(candidate mediamemory.PoolRankCandidate) rustexec.MediaRankerCandidate {
 	fc := candidate.Filtered
