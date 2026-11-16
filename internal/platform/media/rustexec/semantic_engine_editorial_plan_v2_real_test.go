@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // countingRustRunner wraps the real process runner only to count calls. The
@@ -48,11 +50,17 @@ func TestCompileOverlayPlanV2UsesOneRealWorkerCall(t *testing.T) {
 	if runner.calls != 1 {
 		t.Fatalf("full-plan compile used %d worker calls, want 1", runner.calls)
 	}
-	if plan.PlanID != "min-fixture" || plan.SchemaVersion != "editorial_plan.v2" {
+	// The v2 schema belongs to the Rust request/response envelope; the
+	// adopted Go value is the renderer plan contract consumed downstream.
+	if plan.PlanID != "min-fixture" || plan.SchemaVersion != capmodel.SchemaVersionPlan {
 		t.Fatalf("plan identity: %+v", plan)
 	}
-	if len(plan.Items) != 3 {
-		t.Fatalf("plan items = %d, want 3", len(plan.Items))
+	if len(plan.Items) != 2 {
+		t.Fatalf("plan items = %d, want the frozen golden's 2", len(plan.Items))
+	}
+	if plan.Items[0].Kind != "text_phrase" || plan.Items[1].Kind != "entity_image" {
+		t.Fatalf("sealed item kinds = [%s, %s], want [text_phrase, entity_image]",
+			plan.Items[0].Kind, plan.Items[1].Kind)
 	}
 	var sent map[string]any
 	if err := json.Unmarshal(runner.input, &sent); err != nil {

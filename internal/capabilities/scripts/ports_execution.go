@@ -91,7 +91,7 @@ type LocalizedRenderInput struct {
 
 	// Render carries the caller's explicit watermark/subtitle request. The
 	// adapter resolves the referenced watermark asset and passes the sealed
-	// choices to the single Rust clip-render pass.
+	// choices to the local Chronon clip-render pass.
 	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
 
 	// Overlays carries the certified lineage of EVERY rendered entity overlay
@@ -205,6 +205,12 @@ type LocalizedRenderResult struct {
 	StartedAt  time.Time `json:"started_at,omitempty"`
 	FinishedAt time.Time `json:"finished_at,omitempty"`
 	WallMS     int64     `json:"wall_ms,omitempty"`
+
+	// CheckpointFingerprint is computed from the enqueue inputs that determine
+	// these bytes. It is in-process only (never serialized), so the envelope
+	// body stays byte-identical to the per-artifact checkpoint payload while
+	// the writer still records a meaningful resume identity.
+	CheckpointFingerprint string `json:"-"`
 }
 
 type LocalizedRenderFailure struct {
@@ -216,7 +222,7 @@ type LocalizedRenderFailure struct {
 }
 
 // LocalizedRenderEnqueuer enqueues one localized render as soon as a scene's
-// translation + TTS for a language are ready, so Rust can start on scene 1 ES
+// translation + TTS for a language are ready, so Chronon can start on scene 1 ES
 // while scene 2 is still being translated/voiced. A nil enqueuer is a
 // legitimate no-op (render not registered); a non-nil enqueuer is fail-closed
 // (an enqueue error fails the run, never a silent skip).

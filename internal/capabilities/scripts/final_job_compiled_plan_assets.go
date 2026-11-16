@@ -9,12 +9,17 @@ import (
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
-// alignFinalJobSegmentSourceWindows performs metadata-only frame quantization.
-// The Master owns source download and preparation; Producer plans must still
-// express ranges exactly on the output frame grid and within declared extent.
-func alignFinalJobSegmentSourceWindows(plan *finalJobCompiledPlan) error {
+// alignFinalJobSegmentSourceWindows performs metadata-only frame quantization
+// for prepared/non-stock assets. Raw stock ranges are already selected by the
+// stockpipeline and remain immutable; the remote renderer may loop such a
+// range for a longer timeline segment.
+func alignFinalJobSegmentSourceWindows(plan *finalJobCompiledPlan, loopableStockIDs ...map[string]struct{}) error {
 	if plan == nil || len(plan.VideoTracks) == 0 {
 		return nil
+	}
+	stockIDs := map[string]struct{}{}
+	if len(loopableStockIDs) > 0 && loopableStockIDs[0] != nil {
+		stockIDs = loopableStockIDs[0]
 	}
 	assets := make(map[string]finalJobPlanAsset, len(plan.Assets))
 	for _, asset := range plan.Assets {
@@ -31,9 +36,18 @@ func alignFinalJobSegmentSourceWindows(plan *finalJobCompiledPlan) error {
 			if segment.FrameCount <= 0 {
 				continue
 			}
+			if segment.StockPoolSlot {
+				continue
+			}
 			asset, ok := assets[segment.AssetID]
 			if !ok {
 				return fmt.Errorf("segment %q has no plan asset %q", segment.SegmentID, segment.AssetID)
+			}
+			if _, loopable := stockIDs[segment.AssetID]; loopable {
+				// Keep the stockpipeline's exact source start and duration. These
+				// source frames may be fewer than the timeline FrameCount by design;
+				// looping the bound range to fill the scene belongs to Master/worker.
+				continue
 			}
 			totalFrames := asset.FrameCount
 			if totalFrames <= 0 && asset.DurationUS > 0 {
@@ -181,6 +195,10 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 		return nil, fmt.Errorf("final_job V2 video has no trailing segment at frame %d", endFrame)
 	}
 	segment := &segments[lastIndex]
+	if segment.StockPoolSlot {
+		segment.FrameCount += neededFrames - endFrame
+		return segments, nil
+	}
 	assetIndex := -1
 	for i := range assets {
 		if assets[i].AssetID == segment.AssetID {
@@ -293,9 +311,8 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 		}
 		isStock := strings.EqualFold(finalJobStringValue(ref["role"]), "stock")
 		// Stock Drive references carry duration_ms; prepared fragments carry
-		// duration_us. Read both, because the saved duration is the authority:
-		// never grow a 4.979s source to the 5.000s extent a padded plan asked
-		// for (r53).
+		// duration_us. Read both; the physical source extent remains authoritative
+		// even when the scene timeline loops a shorter stock binding.
 		duration := finalJobInt64(ref["duration_us"])
 		if duration <= 0 {
 			duration = finalJobInt64(ref["duration_ms"]) * 1000
@@ -337,6 +354,9 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 	if len(plan.VideoTracks) > 0 {
 		for i := range plan.VideoTracks[0].Segments {
 			segment := &plan.VideoTracks[0].Segments[i]
+			if segment.StockPoolSlot {
+				continue
+			}
 			sha := strings.ToLower(strings.TrimSpace(segment.SHA256))
 			ref := refs[sha]
 			if ref == nil {
@@ -367,6 +387,14 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 				asset.TimelineRevision = plan.TimelineRevision
 				asset.TimelineSHA256 = strings.ToLower(plan.TimelineSHA256)
 				asset.TimelineStartFrame = segment.TimelineStartFrame
+				if asset.FrameCount <= 0 && asset.DurationUS > 0 {
+					fpsNum, fpsDen := int64(plan.Output.FPSNum), int64(plan.Output.FPSDen)
+					frames := finalJobFrameAtUS(asset.DurationUS, fpsNum, fpsDen)
+					if frames > 0 && finalJobFrameStartUS(frames, fpsNum, fpsDen) > asset.DurationUS {
+						frames--
+					}
+					asset.FrameCount = frames
+				}
 				// Do NOT copy DurationUS/FrameCount from the placement. One raw
 				// source can back several windows, so the LAST segment would shrink
 				// the source to its own window and every earlier window would look

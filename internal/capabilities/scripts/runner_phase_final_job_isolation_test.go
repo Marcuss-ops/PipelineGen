@@ -62,7 +62,10 @@ func TestFinalJobDoesNotStartDuringOverlayRender(t *testing.T) {
 	req.FinalJob = true
 	req.Render.Enabled = true
 	result := &GenerateResult{
-		OverlayPlan:       &capmodel.OverlayPlan{SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1"},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1",
+			Items: []capmodel.OverlayItem{{ID: "item-1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE"}},
+		},
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000},
 	}
 

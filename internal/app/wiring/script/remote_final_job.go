@@ -93,9 +93,10 @@ func finalJobAttachBudget() (time.Duration, error) {
 }
 
 type RemoteFinalJobAdapter struct {
-	media  *pgmedia.MediaSearcher
-	stock  drive.Reader
-	client *remotejob.Client
+	media    *pgmedia.MediaSearcher
+	stock    drive.Reader
+	client   *remotejob.Client
+	segments scriptgen.FinalJobVideoSegmentPreparer
 	// attachBudget bounds a single attempt's wait on the Master render; see
 	// defaultFinalJobAttachBudget and finalJobAttachBudget.
 	attachBudget time.Duration
@@ -127,6 +128,15 @@ type RemoteFinalJobAdapter struct {
 	// builder produced.
 	inflightMu sync.Mutex
 	inflight   map[string]*finalJobResolveCall
+}
+
+// SetVideoSegmentPreparer installs the local fragment certifier for
+// Producer-owned clips and overlays. The payload builder explicitly skips
+// stock-pool slots, so this component never lists or opens stock Drive files.
+func (a *RemoteFinalJobAdapter) SetVideoSegmentPreparer(preparer scriptgen.FinalJobVideoSegmentPreparer) {
+	if a != nil {
+		a.segments = preparer
+	}
 }
 
 // finalJobResolveCall is one in-progress resolution. `done` is closed exactly
@@ -234,6 +244,9 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	if a == nil || a.client == nil {
 		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job adapter is not configured")
 	}
+	if a.segments == nil {
+		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job non-stock segment certifier is not configured; refusing to send uncertified copy segments")
+	}
 	handoffStarted := time.Now()
 	var resolveMS, prepareMS int64
 	var payloadBuiltAt time.Time
@@ -252,16 +265,21 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	}
 	a.beginHandoffCache(runID)
 	a.resolverNS.Store(0)
-	// Producer sends source assets and immutable windows directly. The Master
-	// owns source materialization; the Producer must not cut or re-encode video
-	// segments before FINALIZE.
-	envelope, err := scriptgen.BuildFinalJobEnvelopeV1(ctx, runID, req, result, a)
+	// Producer prepares only its own clip/overlay timeline fragments. Explicit
+	// stock-pool slots bypass this path entirely and remain Master-owned.
+	envelope, err := scriptgen.BuildFinalJobEnvelopeV1(ctx, runID, req, result, a, a.segments)
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
 	}
 	payloadBuiltAt = time.Now()
 	if err := attachFinalJobDriveSourcesV1(&envelope.Finalize); err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
+	}
+	for index, asset := range envelope.Finalize.RuntimeAssets {
+		if strings.EqualFold(asset.Role, "stock") {
+			continue
+		}
+		log.Printf("final_job producer asset index=%d id=%s sha256=%s kind=%s role=%s", index, asset.AssetID, asset.SHA256, asset.Kind, asset.Role)
 	}
 	resolveMS = a.resolverNS.Load() / int64(time.Millisecond)
 	a.resolvedMu.Lock()

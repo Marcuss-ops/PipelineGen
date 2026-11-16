@@ -64,6 +64,26 @@ func TestApplyFixedSectionsStampsExplicitRoles(t *testing.T) {
 	}
 }
 
+func TestApplySegmentNoVoiceoverUsesRuntimeClipDurationWhenOmitted(t *testing.T) {
+	const runtimeDurationMS = int64(29_000)
+	req := GenerateRequest{
+		SourceLanguage: "en",
+		Render:         scriptpkg.VideoRenderSpec{Enabled: true},
+		ScriptParams: scriptpkg.ScriptSpec{Segments: []scriptpkg.ScriptSegment{{
+			ID: "cutaway", NoVoiceover: true, ClipIDs: []string{"obama-clip"},
+		}}},
+	}
+	clip := &ClipReference{ID: "obama-clip", DurationUS: runtimeDurationMS * 1000}
+	scenes := []Scene{{ID: "cutaway", Index: 0, Clip: clip, Clips: []*ClipReference{clip}}}
+	applySegmentNoVoiceoverScenes(req, scenes)
+	if scenes[0].DurationMS != runtimeDurationMS || scenes[0].FixedPlayback == nil || scenes[0].FixedPlayback.SourceOutMS != runtimeDurationMS {
+		t.Fatalf("runtime clip duration was not applied: duration=%d playback=%+v", scenes[0].DurationMS, scenes[0].FixedPlayback)
+	}
+	if scenes[0].NativeClip {
+		t.Fatal("render-enabled cutaway must use the Chronon rendering lane")
+	}
+}
+
 func TestApplyFixedSectionsDefaultsOmittedPlaybackWindow(t *testing.T) {
 	req := GenerateRequest{
 		SourceLanguage: "en",
@@ -354,6 +374,7 @@ func TestFixedMediaRenderUnitsSizesTheFailureChannel(t *testing.T) {
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "es"}}
 	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	fixed := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Text:  map[Language]string{"en": "INTRO"},
 		Clips: []*ClipReference{{ID: "intro-1"}, {ID: "intro-2"}}}
 	generated := Scene{ID: "scene-0", ExecutionMode: scriptpkg.SceneExecutionGenerated,
 		Clip: &ClipReference{ID: "clip-0"}}
@@ -365,13 +386,9 @@ func TestFixedMediaRenderUnitsSizesTheFailureChannel(t *testing.T) {
 	}
 }
 
-// TestLaunchFixedMediaRenders_SealedDispatchesNothing pins the fixed
-// intro/outro lane under the dispatch seal: launchFixedMediaRenders still
-// builds the unit matrix (counting stays covered by
-// TestExpectedRenderUnitsCountsFixedMultilingualFanout) but hands nothing to
-// the render enqueuer and reports no failures — dispatch belongs to the
-// external final worker (Master 51 / BrainRust).
-func TestLaunchFixedMediaRenders_SealedDispatchesNothing(t *testing.T) {
+// TestLaunchFixedMediaRenders_DispatchesEveryClipPerLanguage pins the local
+// Chronon render matrix for fixed intro/outro clips.
+func TestLaunchFixedMediaRenders_DispatchesEveryClipPerLanguage(t *testing.T) {
 	rec := &recordingLocalizedRenderEnqueuer{}
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(),
 		&entityTimelineVoiceoverGenerator{})
@@ -415,8 +432,8 @@ func TestLaunchFixedMediaRenders_SealedDispatchesNothing(t *testing.T) {
 	if len(failures) != 0 {
 		t.Fatalf("fixed fan-out reported failures: %+v", failures)
 	}
-	if len(inputs) != 0 {
-		t.Fatalf("dispatched %d fixed renders under the seal, want 0 — rendering belongs to the external final worker", len(inputs))
+	if len(inputs) != 6 {
+		t.Fatalf("dispatched %d fixed renders, want 6 (3 clips x 2 languages)", len(inputs))
 	}
 }
 
@@ -427,6 +444,7 @@ func TestExpectedRenderUnitsCountsFixedMultilingualFanout(t *testing.T) {
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "es"}}
 	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
 	fixed := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Text:  map[Language]string{"en": "INTRO"},
 		Clips: []*ClipReference{{ID: "intro-1"}, {ID: "intro-2"}}}
 	generated := Scene{ID: "scene-0", ExecutionMode: scriptpkg.SceneExecutionGenerated,
 		Clip: &ClipReference{ID: "clip-0"}}

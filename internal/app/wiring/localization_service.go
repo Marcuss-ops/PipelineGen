@@ -151,6 +151,8 @@ type LocalizeInput struct {
 	// SourceFrame is the clip card treatment (bounding frame, shadow, stroke,
 	// radius) requested by the payload; it is sealed into every language plan.
 	SourceFrame *cliprender.PlanSourceFrame
+	Effects     []cliprender.ClipEffectSpec
+	Grid        *cliprender.ClipGridSpec
 	// Overlays carries the certified, LANGUAGE-INDEPENDENT entity overlay
 	// lineages every language plan of this source reuses, one per semantic
 	// overlay item. Empty means the source carries no overlay (or it is not
@@ -200,6 +202,8 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		BackgroundKind:         in.BackgroundKind,
 		ForegroundScalePercent: in.ForegroundScalePercent,
 		SourceFrame:            in.SourceFrame,
+		Effects:                in.Effects,
+		Grid:                   in.Grid,
 		SubtitlesStyle:         in.SubtitlesStyle,
 		Overlays:               in.Overlays,
 	}

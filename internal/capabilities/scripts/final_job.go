@@ -142,6 +142,40 @@ type RemoteFinalJobWorkerTiming struct {
 	EncodeFPS  float64 `json:"encode_fps,omitempty"`
 }
 
+// RemoteFinalJobSegmentPrepTiming records Producer-side preparation for the
+// non-stock clip and overlay windows included in one final-job handoff.
+type RemoteFinalJobSegmentPrepTiming struct {
+	Segments     int                               `json:"segments,omitempty"`
+	Reused       int                               `json:"reused,omitempty"`
+	Cached       int                               `json:"cached,omitempty"`
+	Derived      int                               `json:"derived,omitempty"`
+	Copied       int                               `json:"copied,omitempty"`
+	DownloadMS   int64                             `json:"download_ms,omitempty"`
+	EncodeMS     int64                             `json:"encode_ms,omitempty"`
+	VerifyMS     int64                             `json:"verify_ms,omitempty"`
+	PublishMS    int64                             `json:"publish_ms,omitempty"`
+	Bytes        int64                             `json:"bytes,omitempty"`
+	PaddedFrames int64                             `json:"padded_frames,omitempty"`
+	Windows      []RemoteFinalJobSegmentPrepWindow `json:"windows,omitempty"`
+}
+
+// RemoteFinalJobSegmentPrepWindow identifies the work for one non-stock
+// timeline placement. Paths are local diagnostics and never source stock.
+type RemoteFinalJobSegmentPrepWindow struct {
+	SegmentID    string `json:"segment_id,omitempty"`
+	SourceSHA256 string `json:"source_sha256,omitempty"`
+	Normalized   bool   `json:"normalized,omitempty"`
+	Path         string `json:"path,omitempty"`
+	Frames       int64  `json:"frames,omitempty"`
+	DownloadMS   int64  `json:"download_ms,omitempty"`
+	CopyMS       int64  `json:"copy_ms,omitempty"`
+	EncodeMS     int64  `json:"encode_ms,omitempty"`
+	VerifyMS     int64  `json:"verify_ms,omitempty"`
+	PublishMS    int64  `json:"publish_ms,omitempty"`
+	Bytes        int64  `json:"bytes,omitempty"`
+	PaddedFrames int64  `json:"padded_frames,omitempty"`
+}
+
 // Merge combines the phases observed by two sides of the handoff. The handoff
 // is measured before PREPARE/FINALIZE; queue/execution/wait/poll arrive from a
 // later attach. Neither may erase the other, and a phase a side did not report

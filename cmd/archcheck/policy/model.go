@@ -124,6 +124,13 @@ type Policy struct {
 	// architecture/current.yaml (no in-tree override).
 	// Empty list opts out (Phase 0 default behaviour).
 	HardGates []string
+	// AdvisoryRules are rule ids whose violations remain visible in the
+	// report but never determine the process exit status, even under
+	// --strict. They are the non-blocking quality signals (file/package
+	// size caps) that should inform operators without fragmenting cohesive
+	// code into arbitrarily small files. Every correctness gate (cycles,
+	// ownership, contracts, data correctness) must NOT appear here.
+	AdvisoryRules []string
 }
 
 // Constraint is a forward-looking single-rule threshold description.

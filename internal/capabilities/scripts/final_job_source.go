@@ -28,7 +28,8 @@ func enforceFinalJobPreflight(scenes []map[string]any, certifiedAudioMS int64) e
 		if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0 {
 			return fmt.Errorf("final_job preflight: scene %d has an invalid duration %v", i, seconds)
 		}
-		if finalJobSceneMediaLocator(scene) == "" {
+		poolSlot, _ := scene["stock_pool_slot"].(bool)
+		if !poolSlot && finalJobSceneMediaLocator(scene) == "" {
 			id, _ := scene["scene_id"].(string)
 			return fmt.Errorf("final_job preflight: scene %q carries no resolvable media locator (predicted remote prefetch rejection)", id)
 		}
@@ -183,9 +184,9 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		remote.Timing = receipt.Timing.Merge(remote.Timing)
 		return r.settleFinalJob(ctx, runID, result, remote, receipt.Yields, err)
 	}
-	// Subtitles requested by the caller must be burned into the fixed-media
-	// fragments BEFORE the remote plan is prepared. The Master receives the
-	// certified fragment and never falls back to the unmodified library clip.
+	// Burn translated captions into each protected intro/mid/outro clip before
+	// handing the assembled timeline to the remote Master. The fixed-media
+	// render lane works per clip and language; stock never enters that lane.
 	if err := r.ensureFinalJobFixedMediaSubtitles(ctx, runID, req, result); err != nil {
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 		return false

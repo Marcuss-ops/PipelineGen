@@ -1,0 +1,342 @@
+{
+  "schema_version": "renderinggen.overlay-plan.v1",
+  "plan_id": "run-overlay-001",
+  "video_id": "run-overlay-001",
+  "project_id": "overlay-cert",
+  "script_name": "overlay-cert",
+  "language": "en",
+  "width": 1280,
+  "height": 720,
+  "fps_num": 30,
+  "fps_den": 1,
+  "duration_ms": 13400,
+  "media_contract": "overlay-v1",
+  "items": [
+    {
+      "id": "image-slide-left-reveal__tim-cook__entity_image__01",
+      "scene_id": "scene-0",
+      "entity_id": "ent_52fd80dd0140190c",
+      "kind": "entity_image",
+      "start_ms": 0,
+      "end_ms": 1000,
+      "duration_us": 1000000,
+      "template_id": "image_popup",
+      "preset_id": "image_focus_in",
+      "image_preset_id": "image_scale_in",
+      "motion_id": "image_slide_left_reveal",
+      "entity_style_id": "premium_below_random_v1",
+      "motion_params": {
+        "enter_frames": 8
+      },
+      "entity_caption": "Tim Cook",
+      "caption_motion_id": "trump_entity_text_04",
+      "caption_font_family": "playfair_display_italic",
+      "caption_layout": "below",
+      "caption_color": "#000000",
+      "asset_refs": [
+        {
+          "asset_id": "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
+          "url": "https://cdn.example.com/tim-cook.jpg",
+          "sha256": "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
+          "media_type": "image/jpeg"
+        }
+      ],
+      "params": {
+        "box_height": 590,
+        "box_width": 1024,
+        "caption_layout": "below",
+        "height": 590,
+        "position_x": 0,
+        "position_y": -36,
+        "width": 1024
+      },
+      "duration_ms": 1000,
+      "entity_ref": {
+        "entity_id": "ent_52fd80dd0140190c",
+        "type": "PERSON",
+        "name": "Tim Cook",
+        "canonical_entity_id": "person:tim-cook"
+      }
+    },
+    {
+      "id": "phrase-apple-clean-16-scale-line-build__apple-changed-everything__phrase__01",
+      "scene_id": "scene-0",
+      "kind": "text_phrase",
+      "start_ms": 400,
+      "end_ms": 700,
+      "start_us": 400000,
+      "duration_us": 300000,
+      "template_id": "IMPORTANT_PHRASE",
+      "preset_id": "phrase_default",
+      "motion_id": "phrase_apple_clean_16_scale_line_build",
+      "motion_params": {
+        "enter_frames": 3,
+        "exit_frames": 2
+      },
+      "text": "Apple changed everything",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 92,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 92,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 600,
+        "position": "center",
+        "priority": 0.8,
+        "style": "headline",
+        "width": 1700
+      },
+      "duration_ms": 300
+    },
+    {
+      "id": "phrase-apple-clean-19-tracking-tighten__cupertino__location__01",
+      "scene_id": "scene-0",
+      "entity_id": "ent_1d51c205cf62afdf",
+      "kind": "location",
+      "start_ms": 800,
+      "end_ms": 1800,
+      "start_us": 800000,
+      "duration_us": 1000000,
+      "template_id": "gpe_default",
+      "preset_id": "phrase_default",
+      "image_preset_id": "image_focus_in",
+      "motion_id": "phrase_apple_clean_19_tracking_tighten",
+      "text": "Cupertino",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 96,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 96,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 320,
+        "position": "center",
+        "width": 1200
+      },
+      "duration_ms": 1000
+    },
+    {
+      "id": "metric-count-flip__ten-million__date_number__01",
+      "scene_id": "scene-0",
+      "kind": "number",
+      "start_ms": 1100,
+      "end_ms": 1300,
+      "start_us": 1100000,
+      "duration_us": 200000,
+      "template_id": "METRIC_STAT_CARD",
+      "preset_id": "phrase_default",
+      "motion_id": "metric_count_flip",
+      "text": "ten million",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 140,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 140,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 260,
+        "position": "center",
+        "priority": 0.9,
+        "style": "stat",
+        "width": 900
+      },
+      "duration_ms": 200
+    },
+    {
+      "id": "date-typewriter-timeline-feed__2025__date_number__01",
+      "scene_id": "scene-0",
+      "kind": "number",
+      "start_ms": 1700,
+      "end_ms": 1800,
+      "start_us": 1700000,
+      "duration_us": 100000,
+      "template_id": "TIMELINE_DATE_CARD",
+      "preset_id": "phrase_default",
+      "motion_id": "date_typewriter_timeline_feed",
+      "text": "2025",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 140,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 140,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 260,
+        "position": "center",
+        "priority": 0.92,
+        "style": "stat",
+        "width": 900
+      },
+      "duration_ms": 100
+    },
+    {
+      "id": "date-underline-focus__march-5-2026__date_number__01",
+      "scene_id": "scene-0",
+      "kind": "number",
+      "start_ms": 1900,
+      "end_ms": 6900,
+      "start_us": 1900000,
+      "duration_us": 5000000,
+      "template_id": "TIMELINE_DATE_CARD",
+      "preset_id": "phrase_default",
+      "motion_id": "date_underline_focus",
+      "text": "March 5, 2026",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 140,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 140,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 260,
+        "position": "center",
+        "priority": 0.92,
+        "style": "stat",
+        "width": 900
+      },
+      "duration_ms": 5000
+    },
+    {
+      "id": "metric-multi-stat-focus__25__date_number__01",
+      "scene_id": "scene-0",
+      "kind": "number",
+      "start_ms": 2300,
+      "end_ms": 2400,
+      "start_us": 2300000,
+      "duration_us": 100000,
+      "template_id": "METRIC_STAT_CARD",
+      "preset_id": "phrase_default",
+      "motion_id": "metric_multi_stat_focus",
+      "text": "25%",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 140,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 140,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 260,
+        "position": "center",
+        "priority": 0.91,
+        "style": "stat",
+        "width": 900
+      },
+      "duration_ms": 100
+    },
+    {
+      "id": "metric-typewriter-key-strike__2-million__date_number__01",
+      "scene_id": "scene-0",
+      "kind": "number",
+      "start_ms": 2500,
+      "end_ms": 2700,
+      "start_us": 2500000,
+      "duration_us": 200000,
+      "template_id": "METRIC_STAT_CARD",
+      "preset_id": "phrase_default",
+      "motion_id": "metric_typewriter_key_strike",
+      "text": "$2 million",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 140,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 140,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 260,
+        "position": "center",
+        "priority": 0.9,
+        "style": "stat",
+        "width": 900
+      },
+      "duration_ms": 200
+    },
+    {
+      "id": "short-phrase-product-per-word-rise__growth-matters-more__short_phrase__01",
+      "scene_id": "scene-1",
+      "kind": "text_phrase",
+      "start_ms": 7900,
+      "end_ms": 8200,
+      "start_us": 7900000,
+      "duration_us": 300000,
+      "template_id": "IMPORTANT_PHRASE",
+      "preset_id": "phrase_default",
+      "motion_id": "short_phrase_product_per_word_rise",
+      "motion_params": {
+        "enter_frames": 3,
+        "exit_frames": 2
+      },
+      "text": "Growth matters more",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 92,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 92,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 600,
+        "position": "center",
+        "priority": 0.8,
+        "style": "headline",
+        "width": 1700
+      },
+      "duration_ms": 300
+    }
+  ]
+}

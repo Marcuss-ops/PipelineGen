@@ -1,13 +1,11 @@
 // Package scriptgeneration — overlay_plan_phrase_limit_test.go certifies that
 // the caller-selected run-level grounded-phrase ceiling
-// (request max_phrase_overlays) reaches the overlay budget: it rides the
-// OverlayCanvasSpec into the planner and into the persisted phrase budget.
+// (request max_phrase_overlays) reaches the persisted phrase budget.
 package scriptgeneration
 
 import (
 	"context"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -63,66 +61,6 @@ func phraseCeilingFixture(t *testing.T) *GenerateResult {
 		}},
 		ResolvedScenes: []ResolvedScene{{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 2_400_000}},
 	}
-}
-
-func countPlanPhrases(plan *capmodel.OverlayPlan) int {
-	if plan == nil {
-		return 0
-	}
-	count := 0
-	for _, item := range plan.Items {
-		if item.Kind == "text_phrase" {
-			count++
-		}
-	}
-	return count
-}
-
-// TestCompileOverlayPlanHonoursCallerPhraseCeiling certifies the end-to-end
-// plumbing: eight grounded phrases are available, the caller ceiling admits
-// exactly that many, and an absent ceiling keeps the certified default.
-func TestCompileOverlayPlanHonoursCallerPhraseCeiling(t *testing.T) {
-	result := phraseCeilingFixture(t)
-
-	canvas := GoldenOverlayCanvas
-	canvas.MaxPhraseOverlays = 3
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", canvas, "plan-ceiling-3", "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.NotNil(t, plan, "the scene must derive an OverlayPlan")
-	require.Equal(t, 3, countPlanPhrases(plan), "caller ceiling 3 must cap the grounded phrases")
-
-	// Absent ceiling (zero) keeps the certified default.
-	plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-ceiling-default", "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.NotNil(t, plan)
-	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysPerRun, countPlanPhrases(plan), "absent ceiling must keep the certified default")
-
-	// A single configured phrase group raises the combined planner ceiling
-	// above the default; the later group cap still controls its own lane.
-	for _, group := range []string{"short_phrases", "long_phrases"} {
-		raisedByGroup := GoldenOverlayCanvas
-		raisedByGroup.OverlayGroupLimits = map[string]int{group: 8}
-		plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", raisedByGroup, "plan-ceiling-"+group, "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
-		require.NoError(t, err)
-		require.NotNil(t, plan)
-		require.Equal(t, 8, countPlanPhrases(plan), "%s alone should raise the default planner ceiling", group)
-	}
-
-	// The explicit run-level hard maximum continues to admit all candidates.
-	raised := GoldenOverlayCanvas
-	raised.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit
-	plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", raised, "plan-ceiling-hard-max", "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.NotNil(t, plan)
-	require.Equal(t, 8, countPlanPhrases(plan), "the approved hard maximum must admit every grounded candidate")
-
-	// Oversized caller requests are clamped by the same canonical budget
-	// resolver used by the production planner.
-	raised.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit + 10
-	plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", raised, "plan-ceiling-clamped", "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.NotNil(t, plan)
-	require.Equal(t, 8, countPlanPhrases(plan), "available grounded candidates remain intact after clamping")
 }
 
 // TestCompileResultOverlayPlanBudgetEchoesCallerCeiling certifies the reported

@@ -309,7 +309,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	// earlier card is sequenced to end before the next spoken date, so the
 	// word boundaries themselves stay at 100ms.
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{tailUS: 5_000_000})
-	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
+	runner.SetOverlayPlanCompiler(frozenRunnerPlanResolver{plan: loadFrozenRunnerPlan(t, "editorial_budget.plan.json")})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
@@ -506,7 +506,7 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 		},
 	})
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
-	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	// The canonical registry is wired the same way the composition root does.
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
@@ -592,7 +592,7 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	})
 	prepEnq := &fakeOverlayPrepareEnqueuer{}
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
-	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
@@ -658,7 +658,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 		},
 	})
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
-	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
@@ -676,25 +676,6 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusFailed, final.Status, "prepare enqueue failure must fail the run")
 }
-
-// TestCompileOverlayPlan_NilOrSurfacelessIsNoOp certifies the no-op contract:
-// a nil result, or a result without any certified timing surface, derives no
-// plan (nil, not an error) — the same legitimate no-op the phrase and entity
-// projections implement.
-func TestCompileOverlayPlan_NilOrSurfacelessIsNoOp(t *testing.T) {
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), nil, "en", GoldenOverlayCanvas, "plan-1", "video-1", "", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.Nil(t, plan)
-
-	// A result whose scenes carry NO voiceover timing contributes nothing.
-	result := &GenerateResult{Scenes: []Scene{
-		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Tim Cook speaks."}, Annotations: overlayScene0Annotations()},
-	}}
-	plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.Nil(t, plan)
-}
-
 func TestCompileResultOverlayPlanPersistsPhraseBudgetEvenWhenNoPhraseIsGrounded(t *testing.T) {
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "A scene without certified timing."}},
@@ -707,42 +688,6 @@ func TestCompileResultOverlayPlanPersistsPhraseBudgetEvenWhenNoPhraseIsGrounded(
 		Shortfall: capabilityoverlay.MaxPhraseOverlaysPerRun,
 	}, *result.PhraseOverlayBudget)
 }
-
-// TestCompileOverlayPlan_UnspokenPhraseSkipped certifies that an unspoken
-// phrase is never timestamped and a word annotation does not bypass the
-// production phrase/image-only editorial overlay contract.
-func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
-	words := []capabilityaudio.SpeechWordTiming{
-		{Index: 0, Text: "Tim", StartUS: 0, EndUS: 100_000},
-		{Index: 1, Text: "Cook", StartUS: 100_000, EndUS: 200_000},
-		{Index: 2, Text: "speaks", StartUS: 200_000, EndUS: 300_000},
-	}
-	timing := capabilityaudio.SpeechTimingArtifact{
-		Version: capabilityaudio.SpeechTimingVersion, Provider: "edge_tts",
-		BoundaryMode: capabilityaudio.BoundaryWord, Language: "en",
-		TextSHA256: "text-hash", AudioSHA256: "audio-hash",
-		DurationUS: 300_000, Words: words,
-	}
-	result := &GenerateResult{
-		Scenes: []Scene{{
-			ID: "scene-0", Index: 0,
-			Text: map[Language]string{"en": "Tim Cook speaks."},
-			Voiceover: map[Language]AudioReference{
-				"en": {ID: "vo-scene-0-en", Duration: 0.3, Timing: &timing},
-			},
-			Annotations: &scriptpkg.SceneAnnotations{
-				Version: 1, Language: "en", Status: "completed",
-				ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "never spoken anywhere", Score: 0.8}},
-				ImportantWords:   []scriptpkg.AnnotationSpan{{Text: "Cook", Score: 1.0}},
-			},
-		}},
-		ResolvedScenes: []ResolvedScene{{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 300_000}},
-	}
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.Nil(t, plan, "unspoken phrase and non-contract word overlay produce no plan")
-}
-
 func TestLocatePhraseTimingFallsBackToCertifiedEndpoints(t *testing.T) {
 	timing := speechTimingForWords([]string{"O", "arrependimento", "vida"})
 	// The full six-word phrase misses the word stream because TTS omitted the
@@ -837,222 +782,4 @@ func TestLocatePhraseTimingEndpointFallbackRemainsFailClosed(t *testing.T) {
 	invalid.BoundaryMode = capabilityaudio.BoundaryMode("sentence")
 	_, err = locatePhraseTimingWithEndpointFallback(0, 0, invalid, "O maior arrependimento da minha vida")
 	require.Error(t, err, "invalid timing artifacts must not be converted into endpoint fallback spans")
-}
-
-func TestCompileOverlayPlanUsesTranslatedPhraseAndVoiceoverTiming(t *testing.T) {
-	englishTiming := speechTimingForWords([]string{"Discipline", "creates", "power."})
-	spanishTiming := speechTimingForWords([]string{"La", "velocidad", "abre", "la", "distancia", "con", "control."})
-	spanishTiming.Language = "es"
-	result := &GenerateResult{
-		SourceLanguage: "en",
-		AudioMode:      capabilityaudio.AudioModeCombinedTimeline,
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version: capabilityaudio.TimelineVersion, DurationUS: englishTiming.DurationUS,
-		},
-		FinalAudio: &FinalAudioReference{DurationMS: 300},
-		Scenes: []Scene{{
-			ID: "scene-0", Index: 0,
-			Text: map[Language]string{
-				"en": "Discipline creates power.",
-				"es": "La velocidad abre la distancia con control.",
-			},
-			Voiceover: map[Language]AudioReference{
-				"en": {ID: "vo-en", Duration: 0.3, Timing: &englishTiming},
-				"es": {ID: "vo-es", Duration: 0.7, Timing: &spanishTiming},
-			},
-			Annotations: &scriptpkg.SceneAnnotations{
-				Version: 1, Language: "en", Status: "completed",
-				ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "Discipline creates power", Score: 0.9}},
-			},
-			LocalizedAnnotations: map[Language]*scriptpkg.SceneAnnotations{
-				"es": {
-					Version: 1, Language: "es", Status: "completed",
-					ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "velocidad abre la distancia", Score: 0.9}},
-				},
-			},
-		}},
-	}
-
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "es", GoldenOverlayCanvas, "run-es", "video-es", "project", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.NotNil(t, plan)
-	require.Equal(t, "es", plan.Language)
-	require.Equal(t, int64(700), plan.DurationMS,
-		"localized duration must come from the translated voiceover, not the shorter source master")
-	require.Len(t, plan.Items, 1)
-	require.Equal(t, "velocidad abre la distancia", plan.Items[0].Text,
-		"the phrase overlay must use localized NLP rather than the English source annotation")
-	require.Equal(t, int64(100), plan.Items[0].StartMs)
-	require.Equal(t, int64(500), plan.Items[0].EndMs)
-}
-
-func TestCompileOverlayPlanDoesNotReuseSourceAnnotationsForMissingTranslation(t *testing.T) {
-	timing := speechTimingForWords([]string{"Discipline", "creates", "power."})
-	result := &GenerateResult{
-		SourceLanguage: "en",
-		AudioMode:      capabilityaudio.AudioModeCombinedTimeline,
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version: capabilityaudio.TimelineVersion, DurationUS: timing.DurationUS,
-		},
-		Scenes: []Scene{{
-			ID: "scene-0", Index: 0,
-			Text: map[Language]string{"en": "Discipline creates power.", "es": "La disciplina crea poder."},
-			Voiceover: map[Language]AudioReference{
-				"es": {ID: "vo-es", Duration: 0.3, Timing: &timing},
-			},
-			Annotations: &scriptpkg.SceneAnnotations{
-				Version: 1, Language: "en", Status: "completed",
-				ImportantPhrases: []scriptpkg.AnnotationSpan{{Text: "Discipline creates power", Score: 0.9}},
-			},
-		}},
-	}
-
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "es", GoldenOverlayCanvas, "run-es", "video-es", "project", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.Nil(t, plan, "an absent translated annotation must not leak a source-language overlay")
-}
-
-func TestCompileOverlayPlanDoesNotReuseUnlabelledSourceEntitiesForTranslation(t *testing.T) {
-	timing := speechTimingForWords([]string{"Kanioni", "betonowe", "otworzyły", "historię."})
-	result := &GenerateResult{
-		SourceLanguage: "en",
-		AudioMode:      capabilityaudio.AudioModeCombinedTimeline,
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version: capabilityaudio.TimelineVersion, DurationUS: timing.DurationUS,
-		},
-		Scenes: []Scene{{
-			ID: "brooklyn-origins", Index: 0,
-			Text: map[Language]string{"en": "Brooklyn shaped the fighter's beginnings.", "pl": "Betonowe kaniony otworzyły historię."},
-			Voiceover: map[Language]AudioReference{
-				"pl": {ID: "vo-pl", Duration: 0.4, Timing: &timing},
-			},
-			// Empty Language is a legacy source annotation. It must not be
-			// projected onto the Polish timing stream.
-			Annotations: &scriptpkg.SceneAnnotations{
-				Version: 1, Status: "completed",
-				PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Brooklyn", CanonicalName: "Brooklyn", Type: "LOCATION", Confidence: 1}},
-			},
-		}},
-	}
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "pl", GoldenOverlayCanvas, "run-pl", "video-pl", "project", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.Nil(t, plan, "unlabelled source entities must not be matched against translated timing")
-}
-
-// TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset certifies the
-// canonical-id connection end-to-end: the chosen entity (the scene-relevant
-// one with a certified occurrence) BECOMES the image-only entity overlay that carries its
-// image asset — resolved through the canonical_entity_id → EntityMediaResolver
-// path and attached as AssetRefs + EntityRef.CanonicalEntityID. An off-scene
-// entity with a bound image ("Tesla" when the scene is about Tim Cook) is
-// skipped — no card, no image — and no generic duplicate image is emitted.
-func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) {
-	words := []capabilityaudio.SpeechWordTiming{
-		{Index: 0, Text: "Tim", StartUS: 0, EndUS: 100_000},
-		{Index: 1, Text: "Cook", StartUS: 100_000, EndUS: 200_000},
-		{Index: 2, Text: "speaks", StartUS: 200_000, EndUS: 300_000},
-	}
-	timing := capabilityaudio.SpeechTimingArtifact{
-		Version: capabilityaudio.SpeechTimingVersion, Provider: "edge_tts",
-		BoundaryMode: capabilityaudio.BoundaryWord, Language: "en",
-		TextSHA256: "text-hash", AudioSHA256: "audio-hash",
-		DurationUS: 300_000, Words: words,
-	}
-	result := &GenerateResult{
-		Scenes: []Scene{{
-			ID: "scene-0", Index: 0,
-			Text: map[Language]string{"en": "Tim Cook speaks."},
-			Voiceover: map[Language]AudioReference{
-				"en": {ID: "vo-scene-0-en", Duration: 0.3, Timing: &timing},
-			},
-			Annotations: &scriptpkg.SceneAnnotations{
-				Version: 1, Language: "en", Status: "completed",
-				PrimaryEntities: []scriptpkg.AnnotatedEntity{
-					{
-						ID: "e-tim", CanonicalName: "Tim Cook", Type: "PERSON", Confidence: 0.98,
-						CanonicalEntityID: "person:tim-cook",
-						Image: &scriptpkg.EntityImageBinding{
-							Status: "resolved", AssetID: "tim-cook-photo",
-							PreviewURL: "https://cdn.example.com/tim-cook.jpg",
-							SHA256:     "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
-						},
-					},
-					{
-						ID: "e-tesla", CanonicalName: "Tesla", Type: "ORG", Confidence: 0.9,
-						CanonicalEntityID: "org:tesla",
-						Image: &scriptpkg.EntityImageBinding{
-							Status: "resolved", AssetID: "tesla-logo",
-							PreviewURL: "https://cdn.example.com/tesla.png",
-							SHA256:     "bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbcc",
-						},
-					},
-				},
-			},
-		}},
-		ResolvedScenes: []ResolvedScene{{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 300_000}},
-		EntityTimeline: &capabilityentities.EntityTimeline{
-			Version: capabilityentities.EntityTimelineVersion, Language: "en", DurationUS: 300_000,
-			Scenes: []capabilityentities.SceneEntityTimeline{{
-				SceneID: "scene-0", SceneIndex: 0, TimelineStartUS: 0,
-				Entities: []capabilityentities.EntityOccurrence{{
-					EntityID: capabilityentities.StableEntityID("PERSON", "Tim Cook"),
-					Name:     "Tim Cook", Type: "PERSON", SceneID: "scene-0", SceneIndex: 0,
-					TextStart: 0, TextEnd: 8, WordStart: 0, WordEnd: 1,
-					LocalStartUS: 0, LocalEndUS: 200_000,
-					TimelineStartUS: 0, AudioStartUS: 0, AudioEndUS: 200_000,
-					Confidence: 0.98,
-				}},
-			}},
-		},
-	}
-
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "", nil, passthroughMapOverlapResolver{})
-	require.NoError(t, err)
-	require.NotNil(t, plan, "the spoken entity must still produce a plan")
-	byID := map[string]capmodel.OverlayItem{}
-	for _, item := range plan.Items {
-		byID[item.ID] = item
-		require.NotEqual(t, "person_default", item.TemplateID, "an entity with an image must not fall back to a text card")
-	}
-	var card capmodel.OverlayItem
-	cardFound := false
-	for _, item := range plan.Items {
-		if item.EntityRef != nil && item.EntityRef.CanonicalEntityID == "person:tim-cook" {
-			card, cardFound = item, true
-		}
-	}
-	require.True(t, cardFound, "the chosen entity (Tim Cook) must become the entity card")
-	requireReviewName(t, card.ID, "tim-cook", "entity_image")
-	require.Equal(t, "entity_image", card.Kind)
-	require.Equal(t, "image_popup", card.TemplateID)
-	require.Contains(t, capabilityoverlay.CertifiedImageMotions(), card.MotionID,
-		"entity portraits use a motion from the certified image catalog")
-	// Entity images use a wide hero box on the 1280x720 canvas and stay slightly
-	// above center so the anchored name remains part of the card.
-	require.Equal(t, 1280*80/100, card.Params["box_width"])
-	require.Equal(t, 720*82/100, card.Params["box_height"])
-	require.Equal(t, -36.0, card.Params["position_y"])
-	require.Empty(t, card.Text, "the entity image must not carry a rendered name")
-	require.NotEmpty(t, card.PresetID, "the entity image must use an official image preset")
-	require.Equal(t, "image_scale_in", card.ImagePresetID)
-	require.Len(t, card.AssetRefs, 1, "the chosen entity image must carry its resolved asset")
-	require.Equal(t, "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb", card.AssetRefs[0].AssetID)
-	require.Equal(t, "https://cdn.example.com/tim-cook.jpg", card.AssetRefs[0].URL)
-	require.Equal(t, "person:tim-cook", card.EntityRef.CanonicalEntityID, "the card must join on the resolver's canonical id")
-	for id := range byID {
-		require.NotContains(t, id, "tesla", "off-scene entity (Tesla) must never be selected, never rendered")
-	}
-}
-
-// TestCompileOverlayPlan_RequiresPlanAndVideoID certifies the identity
-// contract: a plan without plan_id/video_id fails closed — the queue job id
-// IS the plan id, so it can never be empty.
-func TestCompileOverlayPlan_RequiresPlanAndVideoID(t *testing.T) {
-	result := &GenerateResult{Scenes: []Scene{
-		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Tim Cook speaks."}, Annotations: overlayScene0Annotations()},
-	}}
-	_, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "", "video-1", "", nil, passthroughMapOverlapResolver{})
-	require.Error(t, err)
-	_, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-1", "", "", nil, passthroughMapOverlapResolver{})
-	require.Error(t, err)
 }

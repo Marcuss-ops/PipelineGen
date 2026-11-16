@@ -155,10 +155,13 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		requested, _ := r.auditVoiceoverDispatch(runID, req, result, work)
 		var dbCacheHits int
 		var renderWg sync.WaitGroup
-		// The channel must hold one error per dispatchable render: the
-		// voiceover work items AND the fixed intro/outro units below, which are
-		// dispatched from this phase because nothing else can trigger them.
-		renderErrors := make(chan error, len(work)+fixedMediaRenderUnits(req, result.Scenes))
+		// Every callback can report an error before the join starts draining the
+		// channel. Size it for the complete scene × render-unit × language
+		// matrix, including reused voiceovers (which are dispatched later by
+		// projectVoiceoverMetrics) and fixed intro/outro media. Counting only
+		// fresh TTS items deadlocks cache-hit jobs as soon as several Chronon
+		// requests fail concurrently.
+		renderErrors := make(chan error, localizedRenderErrorCapacity(req, result.Scenes))
 		if len(work) > 0 {
 
 			results, err := r.synthesizeVoiceoverWork(ctx, runID, req, routing, exec, mode, result, work, &renderWg, renderErrors)
@@ -337,7 +340,11 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 			// §7.3 trace: this clip-less scene's audio intents are final here.
 			audioSealedAt = time.Now().UTC()
 		}
-		if (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && audioRef.Duration > 0 {
+		// A multi-language fan-out writes several references into this shared
+		// scene. Only the source-language voiceover owns the canonical scene
+		// window; letting whichever translated TTS finishes last set DurationUS
+		// makes final-job stock windows nondeterministic across languages.
+		if item.lang == req.SourceLanguage && (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && audioRef.Duration > 0 {
 			item.scene.DurationMS = int64(audioRef.Duration*1000 + 0.5)
 			item.scene.DurationUS = int64(audioRef.Duration*1_000_000 + 0.5)
 		}
@@ -362,10 +369,9 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
 		renderSpec := sceneRenderSpec(req, *item.scene)
 		sceneIndex := item.scene.Index
-		// A scene renders only when it owns a VISUAL clip: a stock binding or a
-		// scene whose clips are ALL stock-marked (audio-only) is never
-		// processed by a localized clip render.
-		needsRender := item.scene.Stock == nil && !sceneVisualClipsAreStockOnly(*item.scene) &&
+		// Only scenes with a visual source clip enter Chronon. Selected stock
+		// bindings and stock-marked clips remain source media for final assembly.
+		needsRender := len(RenderUnitsForScene(*item.scene)) > 0 &&
 			(item.lang == req.SourceLanguage || (req.Render.Subtitles != nil && req.Render.Subtitles.Enabled))
 		if checkpointDue.due(time.Now()) {
 			var snapshotErr error
@@ -425,10 +431,10 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 					Render:         renderSpec,
 					ResumeFrom:     r.stagedLocalizedRender(result, item.sceneID, item.lang, clipID),
 					OnRenderReady: func(rendered LocalizedRenderResult) error {
-						return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+						return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
 					},
 					OnRendered: func(rendered LocalizedRenderResult) error {
-						return r.recordLocalizedRender(ctx, exec, result, rendered)
+						return r.recordLocalizedRender(ctx, runID, exec, result, rendered)
 					},
 					OnFailed: func(failure LocalizedRenderFailure) error {
 						r.localizedRenderMu.Lock()
@@ -469,6 +475,76 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 			Operation: kernobs.OperationName("tts_publish_drain"), Items: int64(result.AudioMetrics.VoiceoverGenerated),
 		}, 0)
 	}
+	// A reused voiceover is already complete TTS work, but its visual still
+	// needs a localized render for this job. The normal render handoff happens
+	// immediately after fresh TTS; without this branch, cache hits (or a
+	// restored scene projection) silently bypass Chronon and completeRun later
+	// fails with INCOMPLETE_RENDER_SET.
+	dispatched := make(map[string]struct{}, len(work))
+	for _, item := range work {
+		dispatched[item.sceneID+"\x00"+string(item.lang)] = struct{}{}
+	}
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		if scene.ExecutionMode.IsFixedMedia() || len(RenderUnitsForScene(*scene)) == 0 ||
+			(req.MediaMode == kernelscript.MediaModeStockOnly && scene.Stock != nil) {
+			continue
+		}
+		for _, lang := range renderLanguages(req, *scene) {
+			if lang != req.SourceLanguage && (req.Render.Subtitles == nil || !req.Render.Subtitles.Enabled) {
+				continue
+			}
+			if _, fresh := dispatched[scene.ID+"\x00"+string(lang)]; fresh {
+				continue
+			}
+			audioRef, ok := scene.Voiceover[lang]
+			if !ok || strings.TrimSpace(audioRef.ID) == "" {
+				continue
+			}
+			for _, unit := range RenderUnitsForScene(*scene) {
+				clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
+				if clipID == "" {
+					continue
+				}
+				text := strings.TrimSpace(scene.Text[lang])
+				if text == "" {
+					text = strings.TrimSpace(scene.Text[req.SourceLanguage])
+				}
+				sourceText := strings.TrimSpace(scene.Text[req.SourceLanguage])
+				if sourceText == "" {
+					sourceText = text
+				}
+				sceneIndex := scene.Index
+				renderSpec := sceneRenderSpec(req, *scene)
+				renderWg.Add(1)
+				go func(sceneID string, lang Language, text, sourceText string, audioRef AudioReference, sceneIndex int, clipID, clipAssetID, clipSHA256 string, clipDurationMS int64, renderSpec kernelscript.VideoRenderSpec) {
+					defer renderWg.Done()
+					if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+						RunID: runID, ParentJobID: exec.JobID, JobID: exec.JobID,
+						SceneID: sceneID, SceneIndex: sceneIndex, Language: lang, Text: text,
+						Voiceover: audioRef, SourceLanguage: req.SourceLanguage, SourceText: sourceText,
+						ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
+						ClipDurationMS: clipDurationMS, Render: renderSpec,
+						ResumeFrom: r.stagedLocalizedRender(result, sceneID, lang, clipID),
+						OnRenderReady: func(rendered LocalizedRenderResult) error {
+							return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
+						},
+						OnRendered: func(rendered LocalizedRenderResult) error {
+							return r.recordLocalizedRender(ctx, runID, exec, result, rendered)
+						},
+						OnFailed: func(failure LocalizedRenderFailure) error {
+							r.localizedRenderMu.Lock()
+							result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+							r.localizedRenderMu.Unlock()
+							return nil
+						},
+					}); err != nil {
+						renderErrors <- fmt.Errorf("localized render reused voiceover scene %s language %s failed: %w", sceneID, lang, err)
+					}
+				}(scene.ID, lang, text, sourceText, audioRef, sceneIndex, clipID, clipAssetID, clipSHA256, clipDurationMS, renderSpec)
+			}
+		}
+	}
 
 	// Fixed intro/outro sections have no TTS work item, so dispatch their
 	// render matrix from this phase after caption translation is complete.
@@ -478,7 +554,7 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 		}
 		r.launchFixedMediaRenders(ctx, runID, req, routing, exec, result.Scenes[i], renderWg, renderErrors, fixedMediaRenderSink{
 			OnRendered: func(rendered LocalizedRenderResult) error {
-				return r.recordLocalizedRender(ctx, exec, result, rendered)
+				return r.recordLocalizedRender(ctx, runID, exec, result, rendered)
 			},
 			OnFailed: func(failure LocalizedRenderFailure) error {
 				r.localizedRenderMu.Lock()

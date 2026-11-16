@@ -294,6 +294,8 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		BackgroundKind:         opts.BackgroundKind,
 		ForegroundScalePercent: opts.ForegroundScalePercent,
 		SourceFrame:            opts.SourceFrame,
+		Effects:                opts.Effects,
+		Grid:                   opts.Grid,
 		Subtitles:              sub,
 		SubtitlesStyle:         opts.SubtitlesStyle,
 		Contract:               contract,

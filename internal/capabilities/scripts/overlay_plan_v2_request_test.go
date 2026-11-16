@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
@@ -58,7 +60,13 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 	request, err := buildOverlayPlanV2Request(result, "it", canvas, "plan-1", "video-1", "project-1", "seed-1",
 		[]Scene{scene}, []capabilityoverlay.SceneInput{{ID: "scene-1", Phrases: []capabilityoverlay.TimedAnnotation{
 			{Text: "Nike corre.", StartUS: 100_000, DurationUS: 700_000, Score: 0.9, PresentationRole: "scene_bullet"},
-		}}}, map[string][2]int64{"scene-1": {0, 2_000_000}})
+		}, Images: []capabilityoverlay.ImageCandidate{{
+			AssetID: "asset-1", URL: "https://cdn.example/one.jpg", SHA256: strings.Repeat("b", 64), MediaType: "image/jpeg",
+			StartUS: 0, DurationUS: 1_000_000, Score: 0.5,
+		}}, Maps: []capabilityoverlay.MapCandidate{{
+			EntityID: "place:rome", Label: "Roma", Latitude: 41.9, Longitude: 12.5,
+			StartUS: 0, DurationUS: 1_000_000, Score: 0.7,
+		}}}}, nil, nil, map[string][2]int64{"scene-1": {0, 2_000_000}})
 	if err != nil {
 		t.Fatalf("build v2 request: %v", err)
 	}
@@ -85,6 +93,27 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 		wireScene.Annotations.Phrases[0].StartUS != 100_000 ||
 		wireScene.Annotations.Phrases[0].PresentationRole != "scene_bullet" {
 		t.Fatalf("scene annotations: %+v", wireScene.Annotations)
+	}
+	if len(wireScene.Annotations.Images) != 1 || wireScene.Annotations.Images[0].AssetID != "asset-1" {
+		t.Fatalf("scene images: %+v", wireScene.Annotations.Images)
+	}
+	if len(wireScene.Annotations.Maps) != 1 || wireScene.Annotations.Maps[0].Label != "Roma" {
+		t.Fatalf("scene maps: %+v", wireScene.Annotations.Maps)
+	}
+	if request.Seal == nil || request.Seal.AudioDurationUS != 2_000_000 || request.Seal.OutputProfileID != canvas.OutputProfileID {
+		t.Fatalf("seal: %+v", request.Seal)
+	}
+	if request.Budgets == nil || request.Budgets.PhraseOverlays != 4 || request.Budgets.MaxPerScene != 5 {
+		t.Fatalf("budgets: %+v", request.Budgets)
+	}
+	if request.SceneWindows["scene-1"] != [2]int64{0, 2_000_000} {
+		t.Fatalf("scene windows: %+v", request.SceneWindows)
+	}
+	if request.EntityTimeline == nil || request.EntityTimeline.Version != 1 || request.EntityTimeline.DurationUS != 2_000_000 {
+		t.Fatalf("entity timeline: %+v", request.EntityTimeline)
+	}
+	if request.Media == nil {
+		t.Fatal("media section is required by the v2 contract")
 	}
 	if request.Canvas.OverlayCategories[string(scriptpkg.OverlayCategoryBullets)] != "disabled" {
 		t.Fatalf("canvas categories: %+v", request.Canvas.OverlayCategories)
@@ -113,9 +142,60 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 	}
 }
 
+func TestBuildOverlayPlanV2RequestCarriesRawSurfacesNotTextSelection(t *testing.T) {
+	result := phraseCeilingFixture(t)
+	input, err := prepareOverlayPlanCompile(result, "en", GoldenOverlayCanvas,
+		"plan-raw", "video-raw", "project-raw", nil)
+	require.NoError(t, err)
+	require.NotNil(t, input)
+
+	request, err := buildOverlayPlanV2Request(input.result, input.language, input.canvas,
+		input.planID, input.videoID, input.projectID, input.motionSeed,
+		input.timedScenes, input.scenes, input.rawScenes, input.imagePlan, input.timelineBounds)
+	require.NoError(t, err)
+	require.Len(t, request.Scenes, 1)
+	wire := request.Scenes[0]
+	require.NotNil(t, wire.Raw, "production must carry the raw surface")
+	require.NotEmpty(t, wire.Raw.ImportantPhrases, "the phrase candidates must travel raw")
+	require.NotNil(t, request.NumericLexicon, "the Rust cleaner must receive its vocabulary")
+	require.NotNil(t, request.ImagePlan, "Rust must receive the image eligibility/ceiling")
+	require.True(t, request.ImagePlan.Enabled)
+	require.NotNil(t, request.Media, "verified image candidates must travel as media facts")
+	if wire.Annotations != nil {
+		require.Empty(t, wire.Annotations.Phrases, "Go must not pre-select phrases")
+		require.Empty(t, wire.Annotations.Numbers, "Go must not pre-select numbers")
+		require.Empty(t, wire.Annotations.Maps, "Go must not pre-select maps")
+	}
+}
+
+func TestOverlayPlanClipsProjectsCanonicalSpans(t *testing.T) {
+	result := &GenerateResult{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 10_000_000,
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID:              "scene-1",
+			TimelineStartUS: 1_000_000,
+			DurationUS:      5_000_000,
+			VideoSegments: []capabilityaudio.VideoSegment{
+				{AssetID: "asset-a", TimelineOffsetUS: 0, TimelineDurationUS: 2_000_000},
+				{AssetID: "asset-b", TimelineOffsetUS: 2_000_000, TimelineDurationUS: 1_000_000, Freeze: true},
+			},
+		}},
+	}}
+	clips := overlayPlanClips(result)
+	require.Len(t, clips, 2)
+	require.Equal(t, overlayplan.Clip{
+		SceneID: "scene-1", AssetID: "asset-a", Index: 0,
+		StartUS: 1_000_000, DurationUS: 2_000_000,
+	}, clips[0])
+	require.True(t, clips[1].Freeze, "the freeze tail must stay explicit")
+	require.Equal(t, int64(3_000_000), clips[1].StartUS)
+	require.Nil(t, overlayPlanClips(nil))
+}
+
 func TestBuildOverlayPlanV2RequestFailsClosedOnMissingIdentity(t *testing.T) {
 	_, err := buildOverlayPlanV2Request(&GenerateResult{}, "it", OverlayCanvasSpec{}, "", "video-1", "", "",
-		nil, nil, nil)
+		nil, nil, nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "plan_id and video_id are required") {
 		t.Fatalf("error=%v", err)
 	}
@@ -125,7 +205,7 @@ func TestBuildOverlayPlanV2RequestFailsClosedOnMissingBounds(t *testing.T) {
 	result := &GenerateResult{}
 	scene := Scene{ID: "scene-1", Text: map[Language]string{"it": "Nike corre."}}
 	_, err := buildOverlayPlanV2Request(result, "it", OverlayCanvasSpec{}, "plan-1", "video-1", "", "",
-		[]Scene{scene}, nil, map[string][2]int64{})
+		[]Scene{scene}, nil, nil, nil, map[string][2]int64{})
 	if err == nil || !strings.Contains(err.Error(), "no canonical timeline bounds") {
 		t.Fatalf("error=%v", err)
 	}

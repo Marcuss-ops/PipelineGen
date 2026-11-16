@@ -143,3 +143,12 @@ func TestAssignEntityImageMotionsUsesSeparatePoolForImagesWithText(t *testing.T)
 		t.Fatalf("image with text rotation reused %q", items[0].MotionID)
 	}
 }
+
+func containsMotionID(pool []string, id string) bool {
+	for _, candidate := range pool {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
+}

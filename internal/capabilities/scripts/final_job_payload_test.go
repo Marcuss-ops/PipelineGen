@@ -604,7 +604,12 @@ func (finalJobPayloadResolver) ListFinalJobStockFolder(context.Context, string) 
 func (finalJobPayloadResolver) ResolveFinalJobStockAsset(_ context.Context, id string) (map[string]any, error) {
 	durationMS := int64(2000)
 	sha := strings.Repeat("b", 64)
-	if id != "drive-asset" {
+	if id == "obama-stock-db-clip" {
+		// The locally-rendered stock fixture keeps the source binding's
+		// registry metadata, but its visual is replaced by the Chronon render.
+		durationMS = 5_000
+		sha = digest.SHA256String(id)
+	} else if id != "drive-asset" {
 		suffix := id[strings.LastIndex(id, "-")+1:]
 		value, err := strconv.ParseInt(suffix, 10, 64)
 		if err != nil || value <= 0 {
@@ -917,6 +922,51 @@ func TestBuildFinalJobPayloadsClipOnlyScenesSendTheCertifiedRenderedClip(t *test
 	}
 }
 
+func TestBuildFinalJobPayloadsKeepsStockSourceUntouched(t *testing.T) {
+	const sceneID = "scene-stock-vo"
+	const sourceAsset = "obama-stock-db-clip"
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			DurationUS: 5_000_000,
+			Segments: []capabilityaudio.TimelineSegment{{
+				ID: sceneID, DurationUS: 5_000_000,
+				AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioVoiceover, TimelineDurationUS: 5_000_000}},
+			}},
+		},
+		FinalAudio: certifiedFinalAudio(5_000),
+		Scenes: []Scene{{
+			ID: sceneID, Text: map[Language]string{"en": "Obama explains the decision and its historical context."},
+			Voiceover: map[Language]AudioReference{"en": {ID: "voiceover-1"}},
+			Stock:     concreteStockBinding(sourceAsset, 0, 5_000),
+		}},
+		LocalizedRenders: []LocalizedRenderResult{{
+			SceneID: sceneID, Language: "en", ClipID: sourceAsset, Status: "UPLOADED",
+			AssetID: "chronon-rendered-stock", DriveFileID: "chronon-drive-id",
+			SHA256: strings.Repeat("e", 64), DurationMS: 12_000,
+		}},
+	}
+	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-stock", GenerateRequest{
+		Title: "Obama", SourceLanguage: "en", Render: scriptpkg.VideoRenderSpec{Enabled: true},
+	}, result, finalJobPayloadResolver{})
+	if err != nil {
+		t.Fatalf("BuildFinalJobPayloads: %v", err)
+	}
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 || plan.VideoTracks[0].Segments[0].AssetID != sourceAsset {
+		t.Fatalf("compiled stock visual = %+v, want unchanged selected asset %q", plan.VideoTracks, sourceAsset)
+	}
+	for _, asset := range plan.Assets {
+		if asset.AssetID == "chronon-rendered-stock" {
+			t.Fatalf("localized stock render replaced original source: %+v", asset)
+		}
+	}
+	for _, raw := range finalize["runtime_assets"].([]any) {
+		if asset := raw.(map[string]any); asset["asset_id"] == "chronon-rendered-stock" {
+			t.Fatalf("localized stock render replaced original source in runtime assets: %#v", asset)
+		}
+	}
+}
+
 // TestBuildFinalJobPayloadsClipOnlySceneWithoutRenderFailsClosed pins that a
 // clip-only scene with no certified render fails the build instead of quietly
 // handing the runtime the unmodified source clip.
@@ -938,10 +988,22 @@ func TestBuildFinalJobPayloadsClipOnlySceneWithoutRenderFailsClosed(t *testing.T
 	}
 }
 
+// fixedMediaSourcePayloadResolver returns the physical source duration for the
+// intro clips. The shared fixture resolver returns 2s for every asset; using it
+// here would make the plan shorter than the canonical audio.
+type fixedMediaSourcePayloadResolver struct{ finalJobPayloadResolver }
+
+func (fixedMediaSourcePayloadResolver) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
+	if strings.HasPrefix(id, "intro-source-clip-") {
+		return map[string]any{"asset_id": id, "drive_file_id": id, "url": "velox-drive://" + id,
+			"sha256": strings.Repeat("b", 64), "size_bytes": int64(20), "duration_ms": int64(5000)}, nil
+	}
+	return finalJobPayloadResolver{}.ResolveFinalJobAsset(ctx, id)
+}
+
 // TestBuildFinalJobPayloadsFixedMediaPrefersTheCertifiedRenderedClip pins that a
 // fixed (intro/outro) clip also prefers its certified render, while a fixed
-// section declared without a render keeps the library asset (pre-existing
-// behaviour for protected intros).
+// section declared without a render keeps the library asset.
 func TestBuildFinalJobPayloadsFixedMediaPrefersTheCertifiedRenderedClip(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
@@ -962,12 +1024,12 @@ func TestBuildFinalJobPayloadsFixedMediaPrefersTheCertifiedRenderedClip(t *testi
 			{ID: "scene-body", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}},
 		},
 		LocalizedRenders: []LocalizedRenderResult{
-			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-1", Status: "UPLOADED", AssetID: "derived-intro-render-1", DriveFileID: "intro-render-drive-1", SHA256: strings.Repeat("e", 64), DurationMS: 15_000},
-			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-2", Status: "UPLOADED", AssetID: "derived-intro-render-2", DriveFileID: "intro-render-drive-2", SHA256: strings.Repeat("f", 64), DurationMS: 19_000},
-			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-3", Status: "UPLOADED", AssetID: "derived-intro-render-3", DriveFileID: "intro-render-drive-3", SHA256: strings.Repeat("c", 64), DurationMS: 13_000},
+			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-1", Status: "UPLOADED", AssetID: "derived-intro-render-1", DriveFileID: "intro-render-drive-1", SHA256: strings.Repeat("e", 64), DurationMS: 5_000},
+			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-2", Status: "UPLOADED", AssetID: "derived-intro-render-2", DriveFileID: "intro-render-drive-2", SHA256: strings.Repeat("f", 64), DurationMS: 5_000},
+			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-3", Status: "UPLOADED", AssetID: "derived-intro-render-3", DriveFileID: "intro-render-drive-3", SHA256: strings.Repeat("c", 64), DurationMS: 5_000},
 		},
 	}
-	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "Dolly", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
+	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "Dolly", SourceLanguage: "en"}, result, fixedMediaSourcePayloadResolver{})
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}

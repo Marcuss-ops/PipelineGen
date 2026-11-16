@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -90,6 +91,34 @@ func scriptGenerationTranslationPort(root *ComposeRoot) translation.TranslationP
 	return nil
 }
 
+// artifactCheckpointFlag parses one localized_render rollout flag. Unknown
+// values are a startup error: a rollout flag that silently does nothing is
+// worse than a refused boot, and the flag must not accidentally enable a
+// second kind before its loader exists.
+func artifactCheckpointFlag(env string) (bool, error) {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv(env)))
+	switch raw {
+	case "", "0", "false", "off", "no", "disabled":
+		return false, nil
+	case "1", "true", "on", "yes", string(scriptgen.ArtifactCheckpointLocalizedRender):
+		return true, nil
+	default:
+		return false, fmt.Errorf("%s=%q is not a supported rollout value (use 1/true or localized_render)", env, raw)
+	}
+}
+
+func artifactCheckpointDualWriteFlag() (bool, error) {
+	return artifactCheckpointFlag(scriptgen.ArtifactCheckpointDualWriteEnv)
+}
+
+func artifactCheckpointResumeFlag() (bool, error) {
+	return artifactCheckpointFlag(scriptgen.ArtifactCheckpointResumeEnv)
+}
+
+func artifactCheckpointCutoverFlag() (bool, error) {
+	return artifactCheckpointFlag(scriptgen.ArtifactCheckpointCutoverEnv)
+}
+
 func validateScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo scriptgen.RunRepository) error {
 	if cfg == nil || root == nil || runRepo == nil {
 		return fmt.Errorf("script generation runtime requires config, composition root, and run repository")
@@ -141,6 +170,56 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
+	dualWrite, err := artifactCheckpointDualWriteFlag()
+	if err != nil {
+		return nil, err
+	}
+	resumeCheckpoints, err := artifactCheckpointResumeFlag()
+	if err != nil {
+		return nil, err
+	}
+	cutover, err := artifactCheckpointCutoverFlag()
+	if err != nil {
+		return nil, err
+	}
+	if cutover && (!dualWrite || !resumeCheckpoints) {
+		return nil, fmt.Errorf("artifact checkpoint cutover requires both %s and %s", scriptgen.ArtifactCheckpointDualWriteEnv, scriptgen.ArtifactCheckpointResumeEnv)
+	}
+	if dualWrite || resumeCheckpoints || cutover {
+		if root.ObservabilityDB == nil || root.ObservabilityDB.DB == nil {
+			return nil, fmt.Errorf("artifact checkpoints require observability DB")
+		}
+		artifactRepo, repoErr := sqlitescripts.NewSQLiteArtifactCheckpointRepository(root.ObservabilityDB.DB)
+		if repoErr != nil {
+			return nil, fmt.Errorf("artifact checkpoints: %w", repoErr)
+		}
+		runner.SetArtifactCheckpointRepository(artifactRepo)
+		if dualWrite {
+			runner.SetArtifactCheckpointDualWrite(true)
+		}
+		var verifier capcheckpoint.ArtifactVerifier
+		if resumeCheckpoints {
+			runner.SetArtifactCheckpointResume(true)
+			verifier = mediaCheckpointArtifactVerifier(committer, log)
+			if verifier == nil {
+				log.Warn("artifact checkpoint resume: published-artifact verifier NOT wired; only local RENDERED checkpoints are reusable")
+			} else {
+				runner.SetArtifactCheckpointVerifier(verifier)
+			}
+		}
+		if cutover {
+			if verifier == nil {
+				return nil, fmt.Errorf("artifact checkpoint cutover requires the media-SSOT artifact verifier")
+			}
+			runner.SetArtifactCheckpointCutover(true)
+		}
+		log.Info("artifact checkpoints enabled",
+			zap.String("kind", string(scriptgen.ArtifactCheckpointLocalizedRender)),
+			zap.Bool("dual_write", dualWrite),
+			zap.Bool("resume", resumeCheckpoints),
+			zap.Bool("cutover", cutover),
+			zap.String("migration", "296_run_artifact_checkpoints"))
+	}
 	phraseEmbedder := scriptwiring.WirePhraseImpactEmbedder(cfg)
 	// Unified semantic path: ONE analyze call per script returns entities,
 	// bullets, charts, dates and numbers from the same extraction. The worker
@@ -153,7 +232,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	semanticAnalyzer.SetPassageEmbedder(phraseEmbedder)
 	runner.SetSceneSemanticAnalyzer(semanticAnalyzer)
-	runner.SetMapOverlapResolver(semanticAnalyzer)
+	runner.SetOverlayPlanCompiler(semanticAnalyzer)
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer
 	// still gates all lookups and map planning on request-level geocoding opt-in.
@@ -189,7 +268,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			log.Info("final-audio plan cache configured", zap.String("cache_dir", audioCacheDir))
 		}
 	}
-	if err := wireScriptGenerationFinalJob(runner, root, log); err != nil {
+	if err := wireScriptGenerationFinalJob(runner, cfg, root, log); err != nil {
 		return nil, err
 	}
 	// Durable per-unit checkpoint resume (the audio unit today). The resolver

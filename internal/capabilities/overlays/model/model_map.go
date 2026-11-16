@@ -2,6 +2,7 @@ package model
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 	"image"
@@ -44,6 +45,48 @@ type MapOverlay struct {
 	// DynamicRendererOnly is PipelineGen planning state. It is stripped before
 	// a plan can reach RenderingGen; the dynamic renderer owns tile rasterization.
 	DynamicRendererOnly bool `json:"dynamic_renderer_only,omitempty"`
+
+	// Semantic-plan candidate fields are present only in the Rust
+	// editorial_plan.v2 result. The Producer lowers them through its certified
+	// local map-plate resolver before rendering; they never enter the v1 wire.
+	semanticEntityID  string
+	semanticLabel     string
+	semanticScope     string
+	semanticLatitude  float64
+	semanticLongitude float64
+}
+
+// UnmarshalJSON accepts the Rust planner's compact map candidate as well as a
+// fully materialized renderer map. The semantic fields are retained only in
+// memory so the Producer can attach a licensed, certified local raster.
+func (m *MapOverlay) UnmarshalJSON(data []byte) error {
+	type mapOverlayAlias MapOverlay
+	var wire struct {
+		*mapOverlayAlias
+		EntityID  string  `json:"entity_id"`
+		Label     string  `json:"label"`
+		Scope     string  `json:"scope"`
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+	}
+	wire.mapOverlayAlias = (*mapOverlayAlias)(m)
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	m.semanticEntityID = wire.EntityID
+	m.semanticLabel = wire.Label
+	m.semanticScope = wire.Scope
+	m.semanticLatitude = wire.Latitude
+	m.semanticLongitude = wire.Longitude
+	return nil
+}
+
+// SemanticCandidate returns the transient place carried by editorial_plan.v2.
+func (m *MapOverlay) SemanticCandidate() (entityID, label, scope string, latitude, longitude float64, ok bool) {
+	if m == nil || strings.TrimSpace(m.semanticEntityID) == "" || strings.TrimSpace(m.semanticLabel) == "" {
+		return "", "", "", 0, 0, false
+	}
+	return m.semanticEntityID, m.semanticLabel, m.semanticScope, m.semanticLatitude, m.semanticLongitude, true
 }
 
 // MapOverlayLOD references one independently certified, locally supplied

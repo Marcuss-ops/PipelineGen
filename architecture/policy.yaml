@@ -39,6 +39,16 @@ max_lines_per_file: 1000
 # same-directory split waves; 800 keeps a real margin before the 1000 hard
 # cap while allowing cohesive files to stay together.
 max_lines_per_file_strict: 800
+# Non-blocking quality signals (2026-11-16 owner decision). These caps stay
+# reportable but never decide the process exit status, even under --strict:
+# a cohesive 1,500-line file is not a correctness defect, and using the cap as
+# a blocking gate produced repeated artificial split waves. Correctness gates
+# (cycles, ownership, contracts, data rules) are NOT listed here and remain
+# fail-closed.
+advisory_rules:
+  - max_files_per_package
+  - max_lines_per_file
+  - max_lines_per_file_strict
 # Path (relative to root) of the per-file allowlist for the strict cap.
 # Format: plain-text, one repo-root-relative forward-slashed path
 # per line; `#`-prefixed comments + blank lines are ignored. Inline
@@ -315,19 +325,9 @@ hard_gates:
   # P0 ownership integrity: every declared job must map to a canonical
   # runtime registry entry and a production handler binding.
   - percheck_job_ownership
-  # Wave-24 forward-prevention: max_lines_per_file_strict promoted
-  # from soft-warning (godlike/08 §"Mandatory checks" — Phase 0
-  # report-only) to hard gate (Wave-24 evolution, see
-  # architecture/policy.history.yaml::max_lines_per_file_strict).
-  # Distinct from the legacy max_lines_per_file=1000 hard cap: the
-  # 800-LOC threshold fires BEFORE files cross the 1000 hard line,
-  # giving operators a 200-LOC safety margin to split cohesively.
-  # Allowlist path = docs/migrations/max-lines-strict-allowlist.txt
-  # (the canonical escape hatch per godlike/07 §"Temporary
-  # deprecation record" + godlike/08 §"Zero-baseline rule").
-  # Setting pol.MaxLinesPerFileStrict=0 opts the rule family out;
-  # default 600 enforces a fail-closed forward-prevention gate.
-  - max_lines_per_file_strict
+  # 2026-11-16 owner decision: max_lines_per_file_strict is ADVISORY. It is
+  # listed under advisory_rules above, not here: the 800-LOC signal stays in
+  # the report, but it no longer blocks CI or forces artificial splits.
   # Kernel layout integrity: every on-disk internal/kernel subzone must be
   # declared here, and every declared subzone must exist on disk.
   - kernel_subzone_undeclared

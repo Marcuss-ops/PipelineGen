@@ -24,6 +24,12 @@ editing_assets:
       - drive-background-music
       - drive-background-wwe
       - drive-background-discovery
+      - drive-background-boxe-v2
+      - drive-background-crime-v2
+      - drive-background-discovery-v2
+      - drive-background-pop
+      - drive-background-rap-americano
+      - drive-background-vecchie-celebrity
 
   bgm:
     pool:

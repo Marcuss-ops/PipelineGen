@@ -74,6 +74,8 @@ type RenderOptions struct {
 	BackgroundKind         string
 	ForegroundScalePercent int
 	SourceFrame            *cliprender.PlanSourceFrame
+	Effects                []cliprender.ClipEffectSpec
+	Grid                   *cliprender.ClipGridSpec
 	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 	// Overlays carries the reused entity overlay lineages this variant
 	// composites in the SAME render pass, one per certified overlay.render
@@ -175,6 +177,8 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		BackgroundKind:         plan.BackgroundKind,
 		ForegroundScalePercent: plan.ForegroundScalePercent,
 		SourceFrame:            plan.SourceFrame,
+		Effects:                plan.Effects,
+		Grid:                   plan.Grid,
 		SubtitlesStyle:         plan.SubtitlesStyle,
 		Overlays:               plan.Overlays,
 	}
@@ -185,6 +189,7 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		(plan.WatermarkSpec != nil && strings.TrimSpace(plan.WatermarkSpec.Text) != "") ||
 		plan.Background != nil || plan.BackgroundMode != "" || plan.ForegroundScalePercent > 0 ||
 		plan.SourceFrame != nil ||
+		len(plan.Effects) > 0 || plan.Grid != nil ||
 		len(plan.Overlays) > 0
 	if extended, ok := r.executor.(ExtendedRenderPlanExecutor); ok && hasVisual {
 		// Full fidelity: background + subtitle style ride the same sealed

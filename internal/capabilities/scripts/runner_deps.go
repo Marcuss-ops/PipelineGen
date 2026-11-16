@@ -59,25 +59,26 @@ func NewGenerationGateWithCapacity(capacity int) *GenerationGate {
 // reads of its own.
 // enqueueLocalizedRender emits one localized render for a ready (scene,
 // language) unit.
-//
-// PERMANENT ARCHITECTURAL POLICY: Monolithic master video rendering and scene
-// clip video rendering are STRICTLY PROHIBITED within PipelineGen. Master video
-// assembly belongs exclusively to the dedicated final worker (Master 51 / BrainRust).
-// PipelineGen is dedicated purely to planning, NLP, TTS alignment, and overlay generation.
 func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRenderInput) error {
-	// Fail-safe: Always skip full scene video rendering on PipelineGen.
-	return nil
+	if r == nil || r.localizedRenderEnqueuer == nil {
+		return nil
+	}
+	prepared, err := r.prepareLocalizedRenderInput(ctx, input)
+	if err != nil {
+		return err
+	}
+	input = prepared
+	if input.ResumeFrom != nil {
+		if recovery, ok := r.localizedRenderEnqueuer.(LocalizedRenderRecoveryEnqueuer); ok {
+			return recovery.UploadRendered(ctx, input, *input.ResumeFrom)
+		}
+	}
+	return r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input)
 }
 
-// sceneRenderDispatchSealed is the single kill switch for in-process scene
-// render dispatch (the permanent policy above, docs/stato/refactored.md
-// "Divieto Strutturale Rendering Master Video"). The expected-render counter
-// in runner_phase_script.go consults it: counting renders as expected work
-// while dispatch is sealed would fail every SourceClips+render run with
-// INCOMPLETE_RENDER_SET (expected=N successful=0) at completion. The seal and
-// the expectation are one contract — change both sides together, never one
-// alone.
-const sceneRenderDispatchSealed = true
+// Scene clips are rendered locally through the Chronon-backed localization
+// service; the remote final worker only assembles and publishes the timeline.
+const sceneRenderDispatchSealed = false
 
 func (r *Runner) stagedLocalizedRender(result *GenerateResult, sceneID string, lang Language, clipID string) *LocalizedRenderResult {
 	if result == nil {
@@ -95,7 +96,7 @@ func (r *Runner) stagedLocalizedRender(result *GenerateResult, sceneID string, l
 	return nil
 }
 
-func (r *Runner) recordLocalizedRenderReady(ctx context.Context, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
+func (r *Runner) recordLocalizedRenderReady(ctx context.Context, runID string, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
 	if result == nil || strings.TrimSpace(rendered.LocalPath) == "" || strings.TrimSpace(rendered.SHA256) == "" {
 		return fmt.Errorf("localized render ready: local path and sha256 are required")
 	}
@@ -121,7 +122,10 @@ func (r *Runner) recordLocalizedRenderReady(ctx context.Context, exec ExecutionC
 	snapshot := *result
 	r.localizedRenderMu.Unlock()
 
-	if err := r.repo.SavePartialResult(ctx, exec.JobID, &snapshot); err != nil {
+	if err := r.saveLocalizedRenderArtifactCheckpoint(ctx, runID, exec.Attempt, rendered); err != nil {
+		return err
+	}
+	if err := r.saveLocalizedRenderUnitEnvelope(ctx, runID, &snapshot); err != nil {
 		if found {
 			return fmt.Errorf("localized render ready: checkpoint update: %w", err)
 		}
@@ -137,7 +141,7 @@ func (r *Runner) recordLocalizedRenderReady(ctx context.Context, exec ExecutionC
 // — the produced video is never orphaned from the run that produced it.
 // Fail-closed: the recorder and the result append must both succeed, and
 // concurrent fan-out workers are fenced by localizedRenderMu.
-func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
+func (r *Runner) recordLocalizedRender(ctx context.Context, runID string, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
 	// The localization artifact is certified by its Drive identity, while
 	// older clip-render paths also provide a registry AssetID. Do not discard
 	// a successfully uploaded MP4 merely because the localization adapter did
@@ -153,7 +157,22 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 	if result != nil {
 		r.localizedRenderMu.Lock()
 		removeStagedLocalizedRenderLocked(result, rendered)
-		result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+		// A durable run may resume after a partial render/upload failure. The
+		// resumed attempt can certify the same scene/clip/language again; keep
+		// the latest proof for that identity instead of inflating the final
+		// render count with artifacts from an earlier attempt.
+		replaced := false
+		for i := range result.LocalizedRenders {
+			existing := result.LocalizedRenders[i]
+			if existing.SceneID == rendered.SceneID && existing.ClipID == rendered.ClipID && existing.Language == rendered.Language {
+				result.LocalizedRenders[i] = rendered
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+		}
 		accumulateLocalizedRenderMetrics(result, rendered)
 		recordRenderStageProgress(result, rendered)
 		snap := *result
@@ -176,11 +195,14 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 	}); err != nil {
 		return err
 	}
+	if err := r.saveLocalizedRenderArtifactCheckpoint(ctx, runID, exec.Attempt, rendered); err != nil {
+		return err
+	}
 	// Persist immediately after each certified unit, not only when the whole
 	// fan-out joins. This makes a successful render/upload visible to resume
 	// after a process crash in a later sibling. Uses snapshot so no lock held.
 	if snapshot != nil {
-		if err := r.repo.SavePartialResult(ctx, exec.JobID, snapshot); err != nil {
+		if err := r.saveLocalizedRenderUnitEnvelope(ctx, runID, snapshot); err != nil {
 			return fmt.Errorf("localized render: checkpoint save: %w", err)
 		}
 	}

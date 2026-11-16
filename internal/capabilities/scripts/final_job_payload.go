@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
@@ -25,12 +24,34 @@ type FinalJobRuntimeAssetV1 = finaljob.RuntimeAssetV1
 type FinalJobRuntimePayloadV1 = finaljob.RuntimePayloadV1
 type FinalJobRuntimeAudioV1 = finaljob.RuntimeAudioV1
 
+// FinalJobVideoSegmentRequest identifies a complete non-stock source window
+// that must be certified for the remote copy assembler. Stock-pool slots never
+// enter this interface; the Master owns those sources.
+type FinalJobVideoSegmentRequest struct {
+	SegmentID          string
+	SourceAssetID      string
+	SourceSHA256       string
+	SourceInUS         int64
+	SourceDurationUS   int64
+	TimelineStartFrame int64
+	FrameCount         int64
+	TimelineRevision   int64
+	TimelineSHA256     string
+	PlacementTag       string
+	ReuseFromSHA256    string
+	ReuseFromURI       string
+}
+
+type FinalJobVideoSegmentPreparer interface {
+	PrepareFinalJobVideoSegment(context.Context, map[string]any, FinalJobVideoSegmentRequest) (map[string]any, error)
+}
+
 const FinalJobEnvelopeSchemaV1 = finaljob.EnvelopeSchemaV1
 
 // BuildFinalJobEnvelopeV1 builds and validates the typed handoff before the
 // wiring adapter serializes it for the deployed Master contract.
-func BuildFinalJobEnvelopeV1(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (FinalJobEnvelopeV1, error) {
-	prepareMap, finalizeMap, err := buildFinalJobPayloads(ctx, runID, req, result, resolver)
+func BuildFinalJobEnvelopeV1(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (FinalJobEnvelopeV1, error) {
+	prepareMap, finalizeMap, err := buildFinalJobPayloads(ctx, runID, req, result, resolver, preparers...)
 	if err != nil {
 		return FinalJobEnvelopeV1{}, err
 	}
@@ -113,8 +134,33 @@ func hasFinalJobStockBinding(binding *scriptpkg.StockBinding) bool {
 	return binding != nil && (strings.TrimSpace(binding.FolderID) != "" || hasFinalJobConcreteStockAsset(binding))
 }
 
-func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
-	return buildFinalJobPayloads(ctx, runID, req, result, resolver)
+// finalJobStockPoolFolder selects the shared Drive folder carried by stock_only
+// requests. Individual scene bindings remain useful to the Producer while it
+// builds the script, but the remote render plan receives the folder once and
+// leaves clip selection to the Master.
+func finalJobStockPoolFolder(req GenerateRequest) (string, error) {
+	if req.MediaMode != scriptpkg.MediaModeStockOnly {
+		return "", nil
+	}
+	folderID := ""
+	for _, binding := range req.StockBindings {
+		candidate := strings.TrimSpace(binding.FolderID)
+		if candidate == "" && strings.TrimSpace(binding.FolderLink) != "" {
+			candidate = urlutil.FolderIDFromDriveLink(binding.FolderLink)
+		}
+		if candidate == "" {
+			continue
+		}
+		if folderID != "" && folderID != candidate {
+			return "", fmt.Errorf("final_job stock_only request references multiple stock folders (%q and %q)", folderID, candidate)
+		}
+		folderID = candidate
+	}
+	return folderID, nil
+}
+
+func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
+	return buildFinalJobPayloads(ctx, runID, req, result, resolver, preparers...)
 }
 
 // NormalizeFinalJobHTTPSRuntimeAssets validates the remote source locator for
@@ -171,7 +217,7 @@ func exposeFinalJobSourceURLs(assets []any) {
 	}
 }
 
-func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
+func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
 	if result == nil || result.CanonicalTimeline == nil || result.CanonicalTimeline.DurationUS <= 0 {
 		return nil, nil, fmt.Errorf("final_job requires a canonical timeline with positive duration")
 	}
@@ -187,6 +233,10 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	}
 	if len(result.Scenes) == 0 {
 		return nil, nil, fmt.Errorf("final_job has no generated scenes")
+	}
+	stockPoolFolderID, err := finalJobStockPoolFolder(req)
+	if err != nil {
+		return nil, nil, err
 	}
 	imageRequested := finalJobImageRequested(req)
 	overlaystatus.Update(runID, func(status *overlaystatus.Status) {
@@ -223,6 +273,7 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		scenesByID[scene.ID] = scene
 	}
 	remoteScenes := make([]map[string]any, 0, len(result.CanonicalTimeline.Segments))
+	stockBoundWindowsMS := make(map[string]int64)
 	clipOrdinal := 0
 	var plannedDurationMS int64
 	var scriptText strings.Builder
@@ -244,72 +295,27 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		}
 		if fixedMedia {
 			type fixedClip struct {
-				assetID    string
-				durationUS int64
-				offsetUS   int64
+				assetID string
 			}
 			fixedClips := make([]fixedClip, 0)
-			// The protected timeline intents define the exact cut duration and
-			// order. The Drive asset's full duration may be longer (for example,
-			// 15/19/13s source files used for three 5s intro cuts).
+			// Keep the original clips in their declared order. Each clip's own
+			// certified duration defines its complete timeline span.
 			for _, intent := range segment.EffectiveAudioIntents() {
 				assetID := strings.TrimSpace(intent.ClipAssetID)
 				if assetID == "" {
 					continue
 				}
-				durationUS := intent.TimelineDurationUS
-				fixedClips = append(fixedClips, fixedClip{assetID: assetID, durationUS: durationUS, offsetUS: intent.TimelineOffsetUS})
-			}
-			// SourceDurationUS describes the complete source file, not the cut
-			// placed on the timeline. When a cut has no explicit timeline duration,
-			// derive it from the next cut's offset or the fixed segment boundary.
-			if len(fixedClips) > 1 {
-				allAtSameOffset := true
-				for _, clip := range fixedClips {
-					if clip.offsetUS != 0 {
-						allAtSameOffset = false
-						break
-					}
-				}
-				if allAtSameOffset {
-					for i := range fixedClips {
-						if fixedClips[i].durationUS <= 0 {
-							fixedClips[i].durationUS = segment.DurationUS / int64(len(fixedClips))
-						}
-					}
-				} else {
-					for i := range fixedClips {
-						if fixedClips[i].durationUS > 0 {
-							continue
-						}
-						startUS := fixedClips[i].offsetUS
-						endUS := segment.DurationUS
-						if i+1 < len(fixedClips) && fixedClips[i+1].offsetUS > startUS {
-							endUS = fixedClips[i+1].offsetUS
-						}
-						if endUS > startUS {
-							fixedClips[i].durationUS = endUS - startUS
-						}
-					}
-				}
+				fixedClips = append(fixedClips, fixedClip{assetID: assetID})
 			}
 			if len(fixedClips) == 0 {
 				for _, clip := range localScene.Clips {
 					if clip != nil && strings.TrimSpace(clip.ID) != "" {
-						var durationUS int64
-						if clip.SourceOutMS > clip.SourceInMS {
-							durationUS = (clip.SourceOutMS - clip.SourceInMS) * 1000
-						}
-						fixedClips = append(fixedClips, fixedClip{assetID: strings.TrimSpace(clip.ID), durationUS: durationUS})
+						fixedClips = append(fixedClips, fixedClip{assetID: strings.TrimSpace(clip.ID)})
 					}
 				}
 			}
 			if len(fixedClips) == 0 && localScene.Clip != nil && strings.TrimSpace(localScene.Clip.ID) != "" {
-				var durationUS int64
-				if localScene.Clip.SourceOutMS > localScene.Clip.SourceInMS {
-					durationUS = (localScene.Clip.SourceOutMS - localScene.Clip.SourceInMS) * 1000
-				}
-				fixedClips = append(fixedClips, fixedClip{assetID: strings.TrimSpace(localScene.Clip.ID), durationUS: durationUS})
+				fixedClips = append(fixedClips, fixedClip{assetID: strings.TrimSpace(localScene.Clip.ID)})
 			}
 			if len(fixedClips) == 0 {
 				return nil, nil, fmt.Errorf("fixed scene %q has no clip assets", segment.ID)
@@ -320,17 +326,8 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 					return nil, nil, fmt.Errorf("resolve intro clip %s: %w", fixed.assetID, err)
 				}
 				durationMS, _ := asset["duration_ms"].(int64)
-				if fixed.durationUS > 0 {
-					durationMS = (fixed.durationUS + 999) / 1000
-				}
 				if durationMS <= 0 {
-					remainingMS := (segment.DurationUS + 999) / 1000
-					if remainingMS > 0 {
-						durationMS = remainingMS / int64(len(fixedClips))
-					}
-				}
-				if durationMS <= 0 {
-					durationMS = 5000
+					return nil, nil, fmt.Errorf("fixed intro/outro clip %q has no certified physical duration", fixed.assetID)
 				}
 				remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "clip", asset, durationMS, "Protected intro clip"))
 				appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "clip", asset)
@@ -402,20 +399,37 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			continue
 		}
 		sceneText := firstFinalJobValue(localScene.Text[req.SourceLanguage], req.Title, localScene.ID)
+		sceneMS := (segment.DurationUS + 999) / 1000
+		if stockPoolFolderID != "" && req.MediaMode == scriptpkg.MediaModeStockOnly {
+			scene := compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", nil, sceneMS, sceneText)
+			scene["stock_pool_slot"] = true
+			remoteScenes = append(remoteScenes, scene)
+			plannedDurationMS += sceneMS
+			clipOrdinal++
+			if text := localScene.Text[req.SourceLanguage]; text != "" {
+				scriptText.WriteString(text)
+				scriptText.WriteByte('\n')
+			}
+			continue
+		}
+		// The selected stock file is handed to the remote compositor unchanged.
+		// Clip card styling and subtitle renders never replace a stock binding.
 		stockAsset, stockWindowMS, err := finalJobStockBindingAsset(ctx, resolver, localScene.Stock)
 		if err != nil {
 			return nil, nil, fmt.Errorf("final_job scene %q: %w", segment.ID, err)
 		}
-		sceneMS := (segment.DurationUS + 999) / 1000
 		if localScene.Stock != nil && localScene.Stock.DurationMs <= 0 && localScene.Stock.EndMs <= localScene.Stock.StartMs && sceneMS > 0 {
 			stockWindowMS = sceneMS
 		}
-		if stockWindowMS != sceneMS {
-			return nil, nil, fmt.Errorf("final_job scene %q stock binding window %dms does not match canonical scene duration %dms; the stockpipeline must bind the scene window", segment.ID, stockWindowMS, sceneMS)
-		}
+		// The binding window is Producer-local metadata: it is keyed by the
+		// generated scene id and never added to the asset the Master receives.
+		// The remote renderer loops that source window over the canonical
+		// voiceover duration.
+		sceneID := fmt.Sprintf("scene-%04d", clipOrdinal)
+		stockBoundWindowsMS[sceneID] = stockWindowMS
 		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "stock", stockAsset)
-		remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", stockAsset, stockWindowMS, sceneText))
-		plannedDurationMS += stockWindowMS
+		remoteScenes = append(remoteScenes, compositeVideoScene(sceneID, clipOrdinal, "stock", stockAsset, sceneMS, sceneText))
+		plannedDurationMS += sceneMS
 		clipOrdinal++
 		if text := localScene.Text[req.SourceLanguage]; text != "" {
 			scriptText.WriteString(text)
@@ -475,7 +489,7 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	if audioRef == nil {
 		return nil, nil, fmt.Errorf("final_job V2 worker submission requires certified final audio")
 	}
-	compiledPlan, _, err := finalJobCompiledPlanPayload(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS)
+	compiledPlan, _, err := finalJobCompiledPlanPayloadWithStockPool(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS, stockPoolFolderID, stockBoundWindowsMS)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -493,6 +507,12 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		return nil, nil, err
 	}
 	runtimeAssets = retainedRuntimeAssets
+	if len(preparers) > 0 && preparers[0] != nil {
+		compiledPlan, runtimeAssets, err = prepareFinalJobVideoSegments(ctx, compiledPlan, runtimeAssets, preparers[0])
+		if err != nil {
+			return nil, nil, fmt.Errorf("prepare non-stock final_job segments: %w", err)
+		}
+	}
 	compiledPlanSHA := digest.SHA256String(compiledPlan)
 	attempt := 1
 	if result.RemoteFinalJob != nil && result.RemoteFinalJob.Attempt > 0 {
@@ -534,15 +554,9 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	pre["compiled_render_plan_json"] = compiledPlan
 	pre["compiled_render_plan_sha256"] = compiledPlanSHA
 	finalize["runtime_assets"] = runtimeAssets
-	// Diagnostic snapshot of the exact plan and runtime refs sent to the
-	// Master. It is local-only and lets the copy-only boundary be checked
-	// against the same bytes the worker receives.
-	if err := os.MkdirAll("/tmp/final-job-debug", 0o700); err == nil {
-		_ = os.WriteFile("/tmp/final-job-debug/compiled-plan.json", []byte(compiledPlan), 0o600)
-		if runtimeJSON, marshalErr := json.Marshal(runtimeAssets); marshalErr == nil {
-			_ = os.WriteFile("/tmp/final-job-debug/runtime-assets.json", runtimeJSON, 0o600)
-		}
-	}
+	// The submitted envelope IS the durable diagnostic surface. Writing a
+	// second copy under /tmp made a temporary path look authoritative and
+	// lost the evidence whenever the host cleaned it up.
 	return pre, finalize, nil
 }
 

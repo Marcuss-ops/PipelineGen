@@ -29,9 +29,11 @@ package localization
 // already canonical (BCP-47 tag, hex hashes) at the plan boundary.
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -51,12 +53,32 @@ func Fingerprint(plan LocalizedClipPlan) string {
 		strings.TrimSpace(plan.RendererVersion),
 		watermarkFingerprint(plan),
 		backgroundFingerprint(plan),
+		fmt.Sprintf("foreground-scale:%d", plan.ForegroundScalePercent),
 		sourceFrameFingerprint(plan),
+		clipEffectsFingerprint(plan),
 		subtitleStyleFingerprint(plan),
 		overlayFingerprint(plan),
 		strings.TrimSpace(plan.Version),
 	}
 	return digest.Fingerprint(parts...)
+}
+
+// clipEffectsFingerprint binds native Chronon effects and grid styling to the
+// cached artifact identity. JSON encoding of these typed structs is stable and
+// preserves the exact declared values.
+func clipEffectsFingerprint(plan LocalizedClipPlan) string {
+	if len(plan.Effects) == 0 && plan.Grid == nil {
+		return ""
+	}
+	doc := struct {
+		Effects []cliprender.ClipEffectSpec `json:"effects,omitempty"`
+		Grid    *cliprender.ClipGridSpec    `json:"grid,omitempty"`
+	}{Effects: plan.Effects, Grid: plan.Grid}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return "invalid-clip-effects"
+	}
+	return string(raw)
 }
 
 // overlayFingerprint folds every reused entity overlay's content identity (its

@@ -11,8 +11,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -152,11 +150,6 @@ func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateR
 	} else {
 		observability.ScriptCheckpointWriteTotal.Inc()
 	}
-	if result != nil && result.SemanticRenderBundle != nil {
-		if err := persistSemanticBundleSidecar(runID, result.SemanticRenderBundle); err != nil {
-			r.log.Warn("semantic bundle sidecar save failed", zap.String("run_id", runID), zap.Error(err))
-		}
-	}
 	observability.ScriptCheckpointSeconds.Observe(time.Since(started).Seconds())
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "checkpoint"}, started, time.Now(), nil)
 	return saveErr
@@ -295,45 +288,6 @@ func observeCheckpointWait(started time.Time) {
 	observability.ScriptCheckpointWaitSeconds.Observe(time.Since(started).Seconds())
 }
 
-// persistSemanticBundleSidecar keeps the audit bundle beside the job's other
-// generated artifacts. The write is atomic so a reader never observes a
-// partially serialized semantic contract during retries/restarts.
-func persistSemanticBundleSidecar(runID string, bundle any) error {
-	if runID == "" || bundle == nil {
-		return nil
-	}
-	outDir := filepath.Join(os.TempDir(), "pipelinegen", "jobs", runID, "output")
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		return fmt.Errorf("mkdir semantic bundle output: %w", err)
-	}
-	raw, err := json.MarshalIndent(bundle, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal semantic bundle: %w", err)
-	}
-	raw = append(raw, '\n')
-	tmp, err := os.CreateTemp(outDir, ".semantic_bundle-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create semantic bundle temp: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if err := tmp.Chmod(0o644); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(raw); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("write semantic bundle: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close semantic bundle: %w", err)
-	}
-	if err := os.Rename(tmpName, filepath.Join(outDir, "semantic_bundle.json")); err != nil {
-		return fmt.Errorf("commit semantic bundle: %w", err)
-	}
-	return nil
-}
-
 // failRunWithRetry marks the run as FAILED and persists all failure
 // metadata (error_code, failed_stage, attempt_count, next_retry_at)
 // via the repository's FailRun method.
@@ -415,6 +369,11 @@ func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage
 // completeRun marks the run as COMPLETED and saves the final result.
 func (r *Runner) completeRun(ctx context.Context, runID string, result *GenerateResult) {
 	if result != nil && result.ExpectedRenderCount > 0 {
+		// A resumed durable attempt may load a checkpoint containing render
+		// receipts written before an earlier attempt failed. Collapse those
+		// receipts to the artifact identity used by the final job (scene, clip,
+		// language) before enforcing the expected render matrix.
+		result.LocalizedRenders = dedupeLocalizedRenders(result.LocalizedRenders)
 		actual, failed := len(result.LocalizedRenders), len(result.LocalizedRenderFailures)
 		if result.RenderMetrics != nil {
 			result.RenderMetrics.Expected = result.ExpectedRenderCount
@@ -496,6 +455,26 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 		)
 	}
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "complete_finalize"}, completeStarted, time.Now(), nil)
+}
+
+func dedupeLocalizedRenders(renders []LocalizedRenderResult) []LocalizedRenderResult {
+	if len(renders) < 2 {
+		return renders
+	}
+	unique := make([]LocalizedRenderResult, 0, len(renders))
+	indices := make(map[string]int, len(renders))
+	for _, rendered := range renders {
+		key := string(rendered.Language) + "\x00" + rendered.SceneID + "\x00" + rendered.ClipID
+		if index, ok := indices[key]; ok {
+			// Prefer the newest receipt while keeping the first-seen ordering,
+			// which is also the order used to assemble the final timeline.
+			unique[index] = rendered
+			continue
+		}
+		indices[key] = len(unique)
+		unique = append(unique, rendered)
+	}
+	return unique
 }
 
 // stageSkipped reports whether a stage is already behind the resume point.

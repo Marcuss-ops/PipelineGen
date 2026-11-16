@@ -112,7 +112,14 @@ type CompiledPlanV2 struct {
 	Output           PlanOutput       `json:"output"`
 	FinalAudio       PlanAudio        `json:"final_audio"`
 	VideoTracks      []PlanVideoTrack `json:"video_tracks"`
+	StockPool        *PlanStockPool   `json:"stock_pool,omitempty"`
 	Assets           []PlanAsset      `json:"assets"`
+}
+
+type PlanStockPool struct {
+	SourceKind    string `json:"source_kind"`
+	DriveFolderID string `json:"drive_folder_id"`
+	Selection     string `json:"selection"`
 }
 
 type PlanOutput struct {
@@ -153,6 +160,7 @@ type PlanVideoTrack struct {
 
 type PlanSegment struct {
 	SegmentID          string `json:"segment_id"`
+	StockPoolSlot      bool   `json:"stock_pool_slot,omitempty"`
 	AssetID            string `json:"asset_id"`
 	SHA256             string `json:"sha256"`
 	TimelineStartFrame int64  `json:"timeline_start_frame"`

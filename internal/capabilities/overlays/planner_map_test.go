@@ -111,7 +111,7 @@ func TestBuildPlanEmitsMapItemFromCertifiedPlate(t *testing.T) {
 	}
 	config := AllCandidatesPlannerConfig([]SceneInput{scene})
 
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan", VideoID: "map-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: stubPlateResolver{plates: []MapPlate{plate}},
@@ -211,7 +211,7 @@ func TestBuildPlanMapFailsClosed(t *testing.T) {
 	for name, testCase := range cases {
 		t.Run(name, func(t *testing.T) {
 			scene := SceneInput{ID: "scene-1", Maps: testCase.maps}
-			plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+			plan, err := buildPlanForTest(PlanInput{
 				PlanID: "map-plan", VideoID: "map-video",
 				Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 				PlateResolver: testCase.resolver,
@@ -241,7 +241,7 @@ func TestBuildPlanGroupsOnePlateIntoOneMapWithDeterministicPins(t *testing.T) {
 		groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 1_000_000, 1_000_000),
 		groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 1_000_000, 1_000_000),
 	}}
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan", VideoID: "map-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: stubPlateResolver{plates: []MapPlate{plate}},
@@ -282,7 +282,7 @@ func TestBuildPlanMapMotionsAreCertifiedAndDeterministic(t *testing.T) {
 		// Exercise a caller-selected ceiling below the default three-map budget.
 		config := AllCandidatesPlannerConfig(scenes)
 		config.RunLevelMapOverlayLimit = 2
-		plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+		plan, err := buildPlanForTest(PlanInput{
 			PlanID: "map-plan", VideoID: "map-video",
 			Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 			PlateResolver: stubPlateResolver{plates: plates},
@@ -371,7 +371,7 @@ func TestMapItemsDoNotDisplaceImagesOrPhrases(t *testing.T) {
 		Phrases: []TimedAnnotation{{Text: "A grounded headline", StartMs: 0, EndMs: 2000, Score: 0.7}},
 	}
 	config := AllCandidatesPlannerConfig([]SceneInput{scene})
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan", VideoID: "map-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: stubPlateResolver{plates: []MapPlate{plate}},
@@ -406,7 +406,7 @@ func TestMapItemsDoNotDisplaceImagesOrPhrases(t *testing.T) {
 	// pre-feature behaviour: images and phrases survive, no map is invented.
 	withoutMaps := scene
 	withoutMaps.Maps = nil
-	plainPlan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plainPlan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan", VideoID: "map-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: stubPlateResolver{plates: []MapPlate{plate}},
@@ -448,7 +448,7 @@ func TestBuildPlanEmitsNativeFlyToFromCertifiedOfflineLODs(t *testing.T) {
 		stubPlateResolver: stubPlateResolver{plates: []MapPlate{coarse}},
 		flyover:           coarse, ok: true,
 	}
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "flyover-plan", VideoID: "flyover-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: resolver, Scenes: []SceneInput{scene},
@@ -491,7 +491,7 @@ func TestBuildPlanFallsBackToStaticMapWhenFlyoverCoverageIsUnavailable(t *testin
 		stubPlateResolver: stubPlateResolver{plates: []MapPlate{plate}},
 		ok:                false,
 	}
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "static-fallback-plan", VideoID: "static-fallback-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: resolver, Scenes: []SceneInput{scene},
@@ -566,7 +566,7 @@ func TestBuildPlanMergesCrossSceneRouteIntoOneMapItem(t *testing.T) {
 		{ID: "scene-2", Maps: []MapCandidate{groundedCandidate(t, "city:london", "London", 51.5074, -0.1278, 3_000_000, 1_000_000)}},
 		{ID: "scene-3", Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 6_000_000, 1_000_000)}},
 	}
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan", VideoID: "map-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: flyoverPlateResolver{stubPlateResolver: stubPlateResolver{plates: []MapPlate{base}}, flyover: base, ok: true},
@@ -628,7 +628,7 @@ func TestBuildPlanExplicitMultiMapRequestScopesMapsToScenes(t *testing.T) {
 	}
 	config := AllCandidatesPlannerConfig(scenes)
 	config.RunLevelMapOverlayLimit = 5
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan-multi", VideoID: "map-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver:   flyoverPlateResolver{stubPlateResolver: stubPlateResolver{plates: []MapPlate{base}}, flyover: base, ok: true},
@@ -665,7 +665,7 @@ func TestBuildPlanMultiMapRequestUsesBudgetForDistinctPlaces(t *testing.T) {
 	}
 	config := AllCandidatesPlannerConfig(scenes)
 	config.RunLevelMapOverlayLimit = 3
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan-distinct", VideoID: "map-video-distinct",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver:   stubPlateResolver{plates: []MapPlate{plate}},
@@ -704,7 +704,7 @@ func TestBuildPlanPreservesThreeDistinctSceneMapsAtRequestedLimit(t *testing.T) 
 	}
 	config := AllCandidatesPlannerConfig(scenes)
 	config.RunLevelMapOverlayLimit = 3
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan-portugal-three-stops", VideoID: "map-video-portugal-three-stops",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 24, FPSDen: 1,
 		PlateResolver:   stubPlateResolver{plates: plates},

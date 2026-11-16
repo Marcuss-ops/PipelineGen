@@ -67,6 +67,8 @@ type SourceInput struct {
 	// drop shadow, perimeter stroke, corner radius). It travels verbatim into
 	// the sealed plan; empty means "bare clip" (the historical default).
 	SourceFrame *cliprender.PlanSourceFrame
+	Effects     []cliprender.ClipEffectSpec
+	Grid        *cliprender.ClipGridSpec
 
 	// SubtitlesStyle is the caller's subtitle visual override block.
 	SubtitlesStyle *scriptpkg.VideoVisualStyleSpec
@@ -210,6 +212,8 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			BackgroundKind:         source.BackgroundKind,
 			ForegroundScalePercent: source.ForegroundScalePercent,
 			SourceFrame:            source.SourceFrame,
+			Effects:                source.Effects,
+			Grid:                   source.Grid,
 			SubtitlesStyle:         subtitlesStyle,
 			// Language-independent reuse: the SAME overlay identities land on
 			// every plan, so one certified overlay render per item serves all N

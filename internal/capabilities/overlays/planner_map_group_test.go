@@ -193,7 +193,7 @@ func TestLongMapGroupSegmentsAtTenSecondsWithoutDroppingPlaces(t *testing.T) {
 		t.Fatal("city fixture is not grounded")
 	}
 	scenes := []SceneInput{{ID: "scene-long-map", Maps: []MapCandidate{region, city}}}
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "long-map-plan", VideoID: "long-map-video",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 24, FPSDen: 1,
 		PlateResolver: flyoverPlateResolver{

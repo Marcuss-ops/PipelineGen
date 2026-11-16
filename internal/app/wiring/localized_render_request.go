@@ -32,6 +32,13 @@ type localizedRenderRequest struct {
 }
 
 func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (localizedRenderRequest, error) {
+	// Effects and grid are closed parameter sets. Validate them before any
+	// subtitle/watermark/background resolution or render enqueue: an
+	// incompatible schema must fail at the planning boundary, not after the
+	// expensive fan-out has already started.
+	if err := validateLocalizedRenderEffects(in); err != nil {
+		return localizedRenderRequest{}, err
+	}
 	identity, err := a.resolveRenderIdentity(ctx, in)
 	if err != nil {
 		return localizedRenderRequest{}, err
@@ -264,6 +271,8 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		Overlays:               built.overlays,
 		ForegroundScalePercent: in.Render.ForegroundScalePercent,
 		SourceFrame:            renderSourceFrame(in.Render.SourceFrame),
+		Effects:                renderClipEffects(in.Render.Effects),
+		Grid:                   renderClipGrid(in.Render.Grid),
 		SubtitlesStyle:         subtitleStyle(in),
 		OnRendered: func(artifact localization.LocalizedClipArtifact) error {
 			if in.OnRenderReady == nil {
@@ -278,6 +287,42 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 				LocalPath:     artifact.LocalPath, Status: string(artifact.Status), Metrics: metricsMapFromJSON(artifact.MetricsJSON), StartedAt: time.Now().UTC(),
 			})
 		},
+	}
+}
+
+// validateLocalizedRenderEffects is the single early gate for the native clip
+// treatment schema. cliprender owns the bounds; this projection only adapts
+// the kernel wire shape, so there is no second catalog to drift.
+func validateLocalizedRenderEffects(in scriptgeneration.LocalizedRenderInput) error {
+	if err := cliprender.ValidateClipEffects(renderClipEffects(in.Render.Effects), renderClipGrid(in.Render.Grid)); err != nil {
+		return fmt.Errorf("localized render: invalid effects/grid: %w", err)
+	}
+	return nil
+}
+
+func renderClipEffects(in []scriptpkg.VideoClipEffectSpec) []cliprender.ClipEffectSpec {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]cliprender.ClipEffectSpec, len(in))
+	for i, effect := range in {
+		out[i] = cliprender.ClipEffectSpec{
+			Type: effect.Type, Amount: effect.Amount, Radius: effect.Radius, Softness: effect.Softness,
+			BlockSize: effect.BlockSize, Size: effect.Size, Angle: effect.Angle, Intensity: effect.Intensity,
+			Amplitude: effect.Amplitude, Wavelength: effect.Wavelength, Seed: effect.Seed, Animated: effect.Animated,
+			Curvature: effect.Curvature, Scale: effect.Scale, Threshold: effect.Threshold, Speed: effect.Speed,
+		}
+	}
+	return out
+}
+
+func renderClipGrid(in *scriptpkg.VideoClipGridSpec) *cliprender.ClipGridSpec {
+	if in == nil {
+		return nil
+	}
+	return &cliprender.ClipGridSpec{
+		Scope: in.Scope, Style: in.Style, SpacingPX: in.SpacingPX, LineWidthPX: in.LineWidthPX,
+		DotRadiusPX: in.DotRadiusPX, Color: in.Color, Opacity: in.Opacity,
 	}
 }
 
@@ -461,10 +506,6 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderIdentity(ctx context.Conte
 	// the check there means a missing target can be created on demand instead
 	// of aborting the render before the canonical backfill pipeline runs.
 	return localizedRenderIdentity{assetID: assetID, clipID: clipID, clipIDChild: clipID, sourceLang: sourceLang, targetLang: targetLang}, nil
-}
-
-func localizedRenderSubtitlesEnabled(in scriptgeneration.LocalizedRenderInput) bool {
-	return in.Render.Subtitles != nil && in.Render.Subtitles.Enabled
 }
 
 var _ texttracks.TimedCueWriter = (*localizedRenderEnqueuerAdapter)(nil)

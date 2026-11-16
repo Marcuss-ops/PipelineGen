@@ -5,7 +5,6 @@
 package overlays
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -34,7 +33,7 @@ type DeferredPlan struct {
 func BuildPlanCandidates(input PlanInput, config PlannerConfig) (DeferredPlan, error) {
 	config.DeferAdmission = true
 	var deferred DeferredPlan
-	plan, err := buildPlan(context.Background(), input, config, nil, &deferred)
+	plan, err := buildPlan(input, config, &deferred)
 	if err != nil {
 		return DeferredPlan{}, fmt.Errorf("overlay planner candidates: %w", err)
 	}

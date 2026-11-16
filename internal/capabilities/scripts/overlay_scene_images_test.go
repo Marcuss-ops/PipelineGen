@@ -1,57 +1,12 @@
 package scriptgeneration
 
 import (
-	"context"
-
 	"strings"
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-func TestCompileOverlayPlanAddsPerSceneImageWithoutChangingEntityCardScope(t *testing.T) {
-	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	result := phraseCeilingFixture(t)
-	result.Segments = []scriptpkg.VidRushSegmentResult{{
-		SceneID: "scene-0",
-		Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{
-			AssetID: "logical-scene-image", Provider: scriptpkg.VidRushProviderInternetImages,
-			SourceURL: "https://images.example/context.jpg", LocalPath: "/tmp/context.jpg", ContentSHA256: sha,
-			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
-			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
-			IndexStatus: scriptpkg.VidRushStatusIndexed,
-		}}},
-	}}
-	// Leave room after the five-second entity-card opening for the scene still.
-	result.ResolvedScenes[0].DurationUS = 7_000_000
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-scene-image", "video", "project", nil, passthroughMapOverlapResolver{}, true, true)
-	if err != nil {
-		t.Fatalf("compile plan: %v", err)
-	}
-	images := 0
-	for _, item := range plan.Items {
-		if item.Kind != "image" {
-			continue
-		}
-		images++
-		if item.SceneID != "scene-0" || len(item.AssetRefs) != 1 || item.AssetRefs[0].SHA256 != sha {
-			t.Fatalf("scene image item = %+v", item)
-		}
-	}
-	if images != 1 {
-		t.Fatalf("generic per-scene images = %d, want 1", images)
-	}
-	withoutSceneStills, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-entity-images-only", "video", "project", nil, passthroughMapOverlapResolver{}, true, false)
-	if err != nil {
-		t.Fatalf("compile entity-only plan: %v", err)
-	}
-	for _, item := range withoutSceneStills.Items {
-		if item.Kind == "image" && strings.HasPrefix(item.ID, "scene-0-image-") {
-			t.Fatalf("generic scene image emitted while images_per_scene=0: %+v", item)
-		}
-	}
-}
 
 func TestSceneImageCandidatePrefersDurableDriveOverProviderURL(t *testing.T) {
 	const sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

@@ -87,20 +87,20 @@ func (r *Runner) SetMapPlateResolver(resolver capabilityoverlay.PlateResolver) {
 	}
 }
 
-// SetMapOverlapResolver wires BrainRust's frame-accurate map collision pass.
-func (r *Runner) SetMapOverlapResolver(resolver capabilityoverlay.MapOverlapResolver) {
+// SetOverlayPlanCompiler wires the single-call BrainRust editorial planner.
+func (r *Runner) SetOverlayPlanCompiler(compiler OverlayPlanCompiler) {
 	if r != nil {
-		r.mapOverlapResolver = resolver
+		r.overlayPlanCompiler = compiler
 	}
 }
 
-// OverlayMapOverlapResolver returns the configured Rust timing resolver for
-// composition paths that share the durable runner's semantic worker.
-func (r *Runner) OverlayMapOverlapResolver() capabilityoverlay.MapOverlapResolver {
+// OverlayPlanCompiler returns the configured Rust planner for composition
+// paths that share the durable runner's semantic worker.
+func (r *Runner) OverlayPlanCompiler() OverlayPlanCompiler {
 	if r == nil {
 		return nil
 	}
-	return r.mapOverlapResolver
+	return r.overlayPlanCompiler
 }
 
 // SetVoiceoverPublishDrainer wires the async voiceover publish pool

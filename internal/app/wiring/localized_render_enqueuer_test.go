@@ -1165,6 +1165,36 @@ func TestLocalizedRenderEnqueuer_RecoveryUploadsIntoTheLanguageFolder(t *testing
 	}
 }
 
+// TestLocalizedRenderEnqueuer_UploadRenderedPublishedArtifactSkipsDrive pins
+// the UPLOADED checkpoint path: a row written after publication is projected
+// back without a second Drive upload (and without requiring a local file).
+func TestLocalizedRenderEnqueuer_UploadRenderedPublishedArtifactSkipsDrive(t *testing.T) {
+	l := &recordingLocalizer{}
+	a := newTestEnqueuerAdapter(l, &recordingTrackRepo{}, &recordingCueWriter{})
+
+	var projected scriptgeneration.LocalizedRenderResult
+	in := testEnqueuerInput()
+	in.OnRendered = func(rendered scriptgeneration.LocalizedRenderResult) error {
+		projected = rendered
+		return nil
+	}
+	published := scriptgeneration.LocalizedRenderResult{
+		SceneID: "scene-1", Language: "es", ClipID: "clip-1",
+		AssetID: "cliprender_0123456789abcdef01234567", SHA256: strings.Repeat("a", 64),
+		DriveFileID: "drive-1", DriveLink: "https://drive.example/drive-1",
+		Status: string(localization.LocalizedClipUploaded),
+	}
+	if err := a.UploadRendered(context.Background(), in, published); err != nil {
+		t.Fatalf("UploadRendered(published): %v", err)
+	}
+	if len(l.uploadedFolderSnapshot()) != 0 {
+		t.Fatal("an already published checkpoint must not be uploaded again")
+	}
+	if projected.DriveFileID != published.DriveFileID || projected.AssetID != published.AssetID {
+		t.Fatalf("projected published artifact = %+v", projected)
+	}
+}
+
 func folderIDs(inputs []LocalizeInput) []string {
 	out := make([]string, 0, len(inputs))
 	for _, in := range inputs {

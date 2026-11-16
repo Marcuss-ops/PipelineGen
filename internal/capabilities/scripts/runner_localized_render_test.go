@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ func TestSceneRenderSpecSubtitlePolicy(t *testing.T) {
 	}{
 		{name: "stock without clip", scene: Scene{ID: "stock-image"}, want: false},
 		{name: "stock binding takes precedence over source audio clip", scene: Scene{ID: "stock-scene", Clip: &ClipReference{ID: "yt_source_audio_0_10_v1"}, Stock: &scriptpkg.StockBinding{FolderID: "1Sr15dwjKquNn9yaPBav8TwNS_lfEzd-"}}, want: false},
+		{name: "narrated concrete stock visual is untouched", scene: Scene{ID: "stock-voiceover", Stock: &scriptpkg.StockBinding{AssetID: "yt_stock_0_60_v1"}, Voiceover: map[Language]AudioReference{"pt": {ID: "vo-stock"}}}, want: false},
 		{name: "source clip", scene: Scene{Clip: &ClipReference{ID: "yt_abc_0_10_v1"}}, want: true},
 		{name: "stock-only never inherits clip subtitles", mode: scriptpkg.MediaModeStockOnly, scene: Scene{Clip: &ClipReference{ID: "yt_abc_0_10_v1"}}, want: false},
 		{name: "artlist clip", scene: Scene{Clip: &ClipReference{ID: "artlist_asset_42"}}, want: false},
@@ -71,7 +73,12 @@ func (e *recordingLocalizedRenderEnqueuer) EnqueueLocalizedRender(_ context.Cont
 	}
 	e.inputs = append(e.inputs, in)
 	if e.producedVideo != nil && in.OnRendered != nil {
-		return in.OnRendered(*e.producedVideo)
+		produced := *e.producedVideo
+		produced.SceneID = in.SceneID
+		produced.SceneIndex = in.SceneIndex
+		produced.Language = in.Language
+		produced.ClipID = in.ClipID
+		return in.OnRendered(produced)
 	}
 	return nil
 }
@@ -82,20 +89,9 @@ func (e *recordingLocalizedRenderEnqueuer) snapshot() []LocalizedRenderInput {
 	return append([]LocalizedRenderInput(nil), e.inputs...)
 }
 
-// Dispatch-seal contract (docs/stato/refactored.md "Divieto Strutturale
-// Rendering Master Video", 2026-10-26): PipelineGen never dispatches
-// localized scene renders — not on fan-out, not on resume, not on fixed
-// media, not while streaming. The external final worker (Master 51 /
-// BrainRust) owns rendering. Every test below pins BOTH halves of that
-// contract: zero dispatch AND a run that still reaches COMPLETED (an
-// expectation left live under the seal would fail the run with
-// INCOMPLETE_RENDER_SET at completion).
-
-// TestRunner_LocalizedRenderResumeIsSealed pins the resume path: a staged
-// RENDERED result offered back to the runner must neither be re-uploaded nor
-// re-enqueued — upload and render belong to the external final worker, and
-// the seal swallows the call without an error.
-func TestRunner_LocalizedRenderResumeIsSealed(t *testing.T) {
+// TestRunner_LocalizedRenderResumePublishesStagedChrononOutput pins recovery:
+// a staged local render is uploaded without running Chronon a second time.
+func TestRunner_LocalizedRenderResumePublishesStagedChrononOutput(t *testing.T) {
 	enq := &recoveryLocalizedRenderEnqueuer{}
 	runner, _, _, _, _, _ := newTestRunner()
 	runner.SetLocalizedRenderEnqueuer(enq)
@@ -108,15 +104,14 @@ func TestRunner_LocalizedRenderResumeIsSealed(t *testing.T) {
 		ClipID: staged.ClipID, ClipAssetID: staged.ClipID,
 		ResumeFrom: &staged,
 	})
-	require.NoError(t, err, "the seal is a silent skip, never an error")
-	require.Empty(t, enq.recovered, "resume must not take the upload-only path")
+	require.NoError(t, err)
+	require.Len(t, enq.recovered, 1, "staged output should use the upload-only recovery path")
 	require.Empty(t, enq.snapshot(), "resume must not enqueue a fresh render")
 }
 
-// TestRunner_LocalizedRenderFanout_NeverDispatches pins the batch path under
-// the seal: even after every (scene, language) TTS completes, nothing is
-// handed to the render enqueuer and the run still finishes COMPLETED.
-func TestRunner_LocalizedRenderFanout_NeverDispatches(t *testing.T) {
+// TestRunner_LocalizedRenderFanout_CliplessScenesDoNotDispatch ensures text-only
+// scenes do not create fake local video render work.
+func TestRunner_LocalizedRenderFanout_CliplessScenesDoNotDispatch(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{}
 	runner.SetLocalizedRenderEnqueuer(enq)
@@ -138,20 +133,13 @@ func TestRunner_LocalizedRenderFanout_NeverDispatches(t *testing.T) {
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
 
-	require.Empty(t, enq.snapshot(),
-		"3 scenes × 2 languages must dispatch nothing: rendering belongs to the external final worker")
+	require.Empty(t, enq.snapshot(), "text-only scenes have no visual clip for Chronon")
 }
 
-// TestRunner_SourceClipsAudioNone_CompletesSealed pins the regression the
-// dispatch seal creates if the expectation counter is left live: a SourceClips
-// run with Render.Enabled and audio=NONE expects 6 renders, so with dispatch
-// sealed the expectation must be sealed too — otherwise completion fails with
-// INCOMPLETE_RENDER_SET (expected=6 successful=0) instead of finishing the
-// script run.
-func TestRunner_SourceClipsAudioNone_CompletesSealed(t *testing.T) {
+func TestRunner_SourceClipsAudioNoneDispatchesLocalChrononRenders(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{producedVideo: &LocalizedRenderResult{
-		AssetID: "rendered-asset", SHA256: "0123456789abcdef0123456789abcdef", DriveFileID: "drive-1", DriveLink: "https://drive.test/rendered", DurationMS: 1000, Status: "UPLOADED",
+		AssetID: "rendered-asset", SHA256: strings.Repeat("a", 64), DriveFileID: "drive-1", DriveLink: "https://drive.test/rendered", DurationMS: 1000, Status: "UPLOADED",
 	}}
 	runner.SetLocalizedRenderEnqueuer(enq)
 	req := defaultTestRequest()
@@ -181,16 +169,12 @@ func TestRunner_SourceClipsAudioNone_CompletesSealed(t *testing.T) {
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
 
-	require.Empty(t, enq.snapshot(),
-		"audio NONE with sealed dispatch must not hand any (scene, language) unit to the render lane")
+	require.Len(t, enq.snapshot(), 6, "three source clips plus three fixed intro/outro clips should render locally")
 }
 
-// TestRunner_LocalizedRenderFanout_StreamingCompletesSealed keeps the gated
-// streaming path covered under the seal: while generation is blocked before
-// scene 1 nothing is dispatched (grace window included, so a late async
-// dispatch would be caught), and after release the run completes with a
-// permanently empty render lane.
-func TestRunner_LocalizedRenderFanout_StreamingCompletesSealed(t *testing.T) {
+// TestRunner_LocalizedRenderFanout_StreamingCliplessDoesNotDispatch keeps the
+// streaming path covered when generated scenes have no visual clip.
+func TestRunner_LocalizedRenderFanout_StreamingCliplessDoesNotDispatch(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	enq := &recordingLocalizedRenderEnqueuer{}
@@ -219,7 +203,7 @@ func TestRunner_LocalizedRenderFanout_StreamingCompletesSealed(t *testing.T) {
 
 	// Give scene 0's downstream fan-out its window to (not) dispatch.
 	time.Sleep(100 * time.Millisecond)
-	require.Empty(t, enq.snapshot(), "no render may dispatch while generation is blocked before scene 1")
+	require.Empty(t, enq.snapshot(), "clipless scene has no render to dispatch")
 
 	close(streamer.release)
 	select {
@@ -228,7 +212,7 @@ func TestRunner_LocalizedRenderFanout_StreamingCompletesSealed(t *testing.T) {
 		t.Fatal("streaming run did not complete")
 	}
 	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
-	require.Empty(t, enq.snapshot(), "the render lane must stay empty through completion")
+	require.Empty(t, enq.snapshot(), "clipless streamed scenes must not create render work")
 }
 
 // TestLocalizedRenderClipFields pins the source-clip resolution helper: the
@@ -255,13 +239,12 @@ func TestLocalizedRenderClipFields(t *testing.T) {
 	require.Zero(t, dur)
 }
 
-// TestRunner_LocalizedRenderFanout_SourceClipScenesCompleteSealed keeps the
-// source-clip scenario covered under the seal: scenes bound to source clips
-// run to completion without handing a single clip reference to the render
-// lane. Clip resolution itself stays pinned by TestLocalizedRenderClipFields.
-func TestRunner_LocalizedRenderFanout_SourceClipScenesCompleteSealed(t *testing.T) {
+func TestRunner_LocalizedRenderFanout_SourceClipScenesDispatches(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
-	enq := &recordingLocalizedRenderEnqueuer{}
+	enq := &recordingLocalizedRenderEnqueuer{producedVideo: &LocalizedRenderResult{
+		AssetID: "rendered-asset", SHA256: strings.Repeat("a", 64), DriveFileID: "drive-1",
+		DriveLink: "https://drive.test/rendered", DurationMS: 12_000, Status: "UPLOADED",
+	}}
 	runner.SetLocalizedRenderEnqueuer(enq)
 	runner.SetTTSConcurrency(1)
 	runner.SetTranslationConcurrency(1)
@@ -269,10 +252,15 @@ func TestRunner_LocalizedRenderFanout_SourceClipScenesCompleteSealed(t *testing.
 		runner.textGen.(*stubTextGenerator).scenes[i].Clip = &ClipReference{
 			ID: "clip-source", SHA256: "cccc", DurationUS: 12_000_000,
 		}
+		runner.textGen.(*stubTextGenerator).scenes[i].Text["en"] = "This narrated scene explains the important background and context behind the selected story in detail."
 	}
 
 	req := defaultTestRequest()
 	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
+	req.Render.Enabled = true
+	req.Source.Type = SourceClips
+	req.Source.ClipIDs = []string{"clip-source", "clip-source", "clip-source"}
+	req.Languages = []Language{"en"}
 	runID := "run-localized-render-clip"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
@@ -282,15 +270,12 @@ func TestRunner_LocalizedRenderFanout_SourceClipScenesCompleteSealed(t *testing.
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
 
-	require.Empty(t, enq.snapshot(), "source-clip scenes must not dispatch renders under the seal")
+	require.Len(t, enq.snapshot(), 3, "source-clip scenes should be rendered locally")
 }
 
-// TestRunner_LocalizedRenderFanout_RecordsNoLocalVideo pins the result
-// surface under the seal: even with a producing sink wired, the run result
-// carries no LocalizedRenders and no render failures — produced videos are
-// facts of the external final worker (Master 51 / BrainRust), never of the
-// planning run.
-func TestRunner_LocalizedRenderFanout_RecordsNoLocalVideo(t *testing.T) {
+// TestRunner_LocalizedRenderFanout_RecordsLocalVideo verifies the runner
+// persists each produced Chronon clip for the remote final worker.
+func TestRunner_LocalizedRenderFanout_RecordsLocalVideo(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{
 		producedVideo: &LocalizedRenderResult{
@@ -298,7 +283,7 @@ func TestRunner_LocalizedRenderFanout_RecordsNoLocalVideo(t *testing.T) {
 			Language:    "en",
 			ClipID:      "clip-source",
 			AssetID:     "final-video-asset-1",
-			SHA256:      "0123456789abcdef",
+			SHA256:      strings.Repeat("a", 64),
 			DriveFileID: "drive-final-1",
 			DriveLink:   "https://drive.google.com/file/d/drive-final-1/view",
 			DurationMS:  12_000,
@@ -311,6 +296,14 @@ func TestRunner_LocalizedRenderFanout_RecordsNoLocalVideo(t *testing.T) {
 
 	req := defaultTestRequest()
 	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true}
+	req.Render.Enabled = true
+	req.Source.Type = SourceClips
+	req.Source.ClipIDs = []string{"clip-source", "clip-source", "clip-source"}
+	req.Languages = []Language{"en"}
+	for i := range runner.textGen.(*stubTextGenerator).scenes {
+		runner.textGen.(*stubTextGenerator).scenes[i].Clip = &ClipReference{ID: "clip-source", SHA256: strings.Repeat("b", 64), DurationUS: 12_000_000}
+		runner.textGen.(*stubTextGenerator).scenes[i].Text["en"] = "This narrated scene explains the important background and context behind the selected story in detail."
+	}
 	runID := "run-localized-render-recorded-video"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
@@ -321,6 +314,6 @@ func TestRunner_LocalizedRenderFanout_RecordsNoLocalVideo(t *testing.T) {
 	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
 
 	require.NotNil(t, final.Result, "run result must be populated")
-	require.Empty(t, final.Result.LocalizedRenders, "the sealed lane must record no local renders")
-	require.Empty(t, final.Result.LocalizedRenderFailures, "the sealed lane must record no render failures")
+	require.GreaterOrEqual(t, len(final.Result.LocalizedRenders), 3, "local Chronon renders should be recorded")
+	require.Empty(t, final.Result.LocalizedRenderFailures, "the local render lane must record no render failures")
 }

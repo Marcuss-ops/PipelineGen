@@ -475,7 +475,7 @@ by hand-editing the generated embedded artifact.
 
 ## Curated background library
 
-`assets/backgrounds/` contains six normalized background videos supplied from
+`assets/backgrounds/` contains normalized background videos supplied from
 the Drive references used for visual overlay certification. They are
 content-addressed in [`assets/backgrounds/manifest.json`](assets/backgrounds/manifest.json)
 and are ready for the semantic `VIDEO_BACKGROUND` template. The checked-in

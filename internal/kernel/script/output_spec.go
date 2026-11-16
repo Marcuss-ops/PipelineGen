@@ -166,6 +166,11 @@ type VideoRenderSpec struct {
 	// and corner radius. It is the payload owner of "the clip is a card with
 	// a visible box"; the clip.render boundary transports it verbatim.
 	SourceFrame *VideoSourceFrameSpec `json:"source_frame,omitempty"`
+	// Effects and Grid are native Chronon treatments for every localized clip
+	// rendered by script.generate. Their shapes mirror clip.render's output
+	// contract while keeping kernel/script independent of that capability.
+	Effects []VideoClipEffectSpec `json:"effects,omitempty"`
+	Grid    *VideoClipGridSpec    `json:"grid,omitempty"`
 	// SubtitlePresets are reusable request-local styles selected by
 	// subtitles.preset or subtitles.style_id.
 	SubtitlePresets        map[string]VideoVisualStyleSpec `json:"subtitle_presets,omitempty"`
@@ -305,6 +310,40 @@ type VideoFrameStrokeSpec struct {
 	Color   string  `json:"color"`
 }
 
+// VideoClipEffectSpec selects a bounded native Chronon effect for the clip
+// composite. Validation is delegated to the cliprender contract at planning.
+type VideoClipEffectSpec struct {
+	Type       string  `json:"type"`
+	Amount     float64 `json:"amount,omitempty"`
+	Radius     float64 `json:"radius,omitempty"`
+	Softness   float64 `json:"softness,omitempty"`
+	BlockSize  int     `json:"block_size,omitempty"`
+	Size       int     `json:"size,omitempty"`
+	Angle      float64 `json:"angle,omitempty"`
+	Intensity  float64 `json:"intensity,omitempty"`
+	Amplitude  float64 `json:"amplitude,omitempty"`
+	Wavelength float64 `json:"wavelength,omitempty"`
+	Seed       uint32  `json:"seed,omitempty"`
+	Animated   bool    `json:"animated,omitempty"`
+	Curvature  float64 `json:"curvature,omitempty"`
+	Scale      float64 `json:"scale,omitempty"`
+	Threshold  float64 `json:"threshold,omitempty"`
+	Speed      float64 `json:"speed,omitempty"`
+}
+
+// VideoClipGridSpec draws a procedural grid over the full localized clip.
+type VideoClipGridSpec struct {
+	// Scope selects the area covered by the grid. Empty/full_canvas preserves
+	// the original full-composite behavior; foreground bounds it to the scaled clip.
+	Scope       string  `json:"scope,omitempty"`
+	Style       string  `json:"style,omitempty"`
+	SpacingPX   float64 `json:"spacing_px"`
+	LineWidthPX float64 `json:"line_width_px,omitempty"`
+	DotRadiusPX float64 `json:"dot_radius_px,omitempty"`
+	Color       string  `json:"color"`
+	Opacity     float64 `json:"opacity"`
+}
+
 type VideoWatermarkSpec struct {
 	Enabled  bool                  `json:"enabled,omitempty"`
 	Text     string                `json:"text,omitempty"`
@@ -401,6 +440,9 @@ func (r *VideoRenderSpec) Normalize() {
 	}
 	if r.SourceFrame != nil {
 		// A declared card is a visual layer: the clip must be rendered.
+		r.Enabled = true
+	}
+	if len(r.Effects) != 0 || r.Grid != nil {
 		r.Enabled = true
 	}
 	if r.Watermark != nil && r.Watermark.Enabled {

@@ -103,8 +103,30 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool, produ
 	}
 	fmt.Println(string(out))
 
-	if (strict && len(r.Violations) > 0) || hasHardGate {
+	if (strict && blockingViolationCount(r, pol) > 0) || hasHardGate {
 		return ExitViolations, nil
 	}
 	return ExitOK, nil
+}
+
+// blockingViolationCount excludes advisory rule ids from the strict exit
+// decision. The violations still appear in the report (and in the summary),
+// so a size-cap warning stays visible; it just cannot force a split that
+// harms cohesion. Correctness rules are never advisory.
+func blockingViolationCount(r *report.Report, pol *policy.Policy) int {
+	if r == nil {
+		return 0
+	}
+	advisory := make(map[string]struct{}, len(pol.AdvisoryRules))
+	for _, id := range pol.AdvisoryRules {
+		advisory[id] = struct{}{}
+	}
+	count := 0
+	for _, v := range r.Violations {
+		if _, skip := advisory[v.Rule]; skip {
+			continue
+		}
+		count++
+	}
+	return count
 }

@@ -156,6 +156,7 @@ type ClipEffectSpec struct {
 
 // ClipGridSpec draws a full-canvas technical grid over the final composite.
 type ClipGridSpec struct {
+	Scope       string  `json:"scope,omitempty"`
 	Style       string  `json:"style,omitempty"`
 	SpacingPX   float64 `json:"spacing_px"`
 	LineWidthPX float64 `json:"line_width_px,omitempty"`

@@ -176,66 +176,6 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 	return nil
 }
 
-// sceneImageCandidateSet is the per-scene input to the run-level image
-// allocator. The allocator takes one candidate per scene in round-robin order
-// before spending a second slot, so the global max_image_overlays budget
-// cannot be consumed by the first scene. The old single-pass loop did exactly
-// that: a four-image Floyd Mayweather run put all four stills in `record` and
-// left `business` and `exhibitions` with none.
-type sceneImageCandidateSet struct {
-	SceneID    string
-	Candidates []capabilityoverlay.ImageCandidate
-}
-
-// allocateSceneImageCandidates distributes the run-level image ceiling across
-// scenes fairly. It preserves candidate order within each scene, skips hashes
-// already used by entity cards or an earlier scene, and never returns more
-// than ceiling images. A scene with no ready candidate contributes nothing;
-// later scenes still get their turn.
-func allocateSceneImageCandidates(sets []sceneImageCandidateSet, ceiling int, excluded map[string]struct{}) map[string][]capabilityoverlay.ImageCandidate {
-	out := make(map[string][]capabilityoverlay.ImageCandidate, len(sets))
-	if ceiling <= 0 || len(sets) == 0 {
-		return out
-	}
-	used := make(map[string]struct{}, len(excluded))
-	for hash := range excluded {
-		hash = strings.ToLower(strings.TrimSpace(hash))
-		if hash != "" {
-			used[hash] = struct{}{}
-		}
-	}
-	cursors := make([]int, len(sets))
-	count := 0
-	for count < ceiling {
-		progressed := false
-		for i := range sets {
-			for cursors[i] < len(sets[i].Candidates) {
-				candidate := sets[i].Candidates[cursors[i]]
-				cursors[i]++
-				hash := strings.ToLower(strings.TrimSpace(candidate.SHA256))
-				if hash == "" {
-					continue
-				}
-				if _, duplicate := used[hash]; duplicate {
-					continue
-				}
-				used[hash] = struct{}{}
-				out[sets[i].SceneID] = append(out[sets[i].SceneID], candidate)
-				count++
-				progressed = true
-				break
-			}
-			if count >= ceiling {
-				break
-			}
-		}
-		if !progressed {
-			break
-		}
-	}
-	return out
-}
-
 func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest string) bool {
 	if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
 		strings.TrimSpace(candidate.AssetID) == "" || candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||

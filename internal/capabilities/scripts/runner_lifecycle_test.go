@@ -80,6 +80,34 @@ func TestResumeFrom(t *testing.T) {
 	})
 }
 
+// TestFinalJobRetryReusesCompletedArtifacts pins the demolition of whole-job
+// regeneration: a run whose final job failed resumes at the publish stage, so
+// scene text, translation, voiceover and overlay compilation are all behind the
+// resume point and must not run again. The retry only re-submits the final job
+// with the artifacts already checkpointed.
+func TestFinalJobRetryReusesCompletedArtifacts(t *testing.T) {
+	run := &GenerationRun{Status: RunStatusFailed, FailedStage: StagePublishingDocuments}
+	resumeIdx := StageIndex(ResumeFrom(run))
+	if resumeIdx != StageIndex(StagePublishingDocuments) {
+		t.Fatalf("resume index = %d, want publish stage %d", resumeIdx, StageIndex(StagePublishingDocuments))
+	}
+	for _, stage := range []Stage{
+		StageNormalizing,
+		StagePreflight,
+		StageGeneratingSceneText,
+		StageTranslatingScenes,
+		StageGeneratingVoiceovers,
+		StageCompilingAudio,
+	} {
+		if !stageSkipped(resumeIdx, stage) {
+			t.Fatalf("stage %s would run again on a final-job retry", stage)
+		}
+	}
+	if stageSkipped(resumeIdx, StagePublishingDocuments) {
+		t.Fatal("the publish stage itself must run on a final-job retry")
+	}
+}
+
 func TestStageIndex(t *testing.T) {
 	assert.Equal(t, 0, StageIndex(StageNormalizing), "NORMALIZING should be index 0")
 	assert.Equal(t, 1, StageIndex(StagePreflight))

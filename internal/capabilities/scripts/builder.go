@@ -282,6 +282,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		MapsOnly:                      item.MapsOnly,
 		MaxMapOverlays:                item.MaxMapOverlays,
 		MaxImageOverlays:              item.MaxImageOverlays,
+		EditorialDensity:              strings.TrimSpace(item.EditorialDensity),
 		AnimationCounts:               cloneAnimationCounts(item.AnimationCounts),
 		OverlayGroupLimits:            cloneOverlayGroupLimits(item.OverlayGroupLimits),
 		EntityStyleID:                 strings.TrimSpace(item.EntityStyleID),

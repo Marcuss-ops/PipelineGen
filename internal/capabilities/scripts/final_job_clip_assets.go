@@ -116,18 +116,38 @@ func clipSceneRuntimeAsset(ctx context.Context, resolver FinalJobAssetResolver, 
 	return renderedClipAssetRef(ctx, resolver, rendered[0], sceneID)
 }
 
-// resolveFinalJobFixedMediaAsset prefers the certified render of one fixed
-// (intro/outro) clip over the unmodified library clip, and keeps the library
-// asset as the fallback: a fixed section may legitimately be declared without a
-// render lane, which is the pre-existing behaviour for protected intros.
+// resolveFinalJobFixedMediaAsset uses a localized subtitle render only for the
+// exact fixed-media clip and language. The output is still one complete clip;
+// source duration is retained in the final timeline and stock never reaches
+// this path.
 func resolveFinalJobFixedMediaAsset(ctx context.Context, resolver FinalJobAssetResolver, result *GenerateResult, sceneID, clipID, renderLanguage string) (map[string]any, error) {
-	if renderLanguage != "" {
-		if rendered, ok := certifiedLocalizedRenderForClip(result, sceneID, clipID, renderLanguage); ok {
-			asset, _, err := renderedClipAssetRef(ctx, resolver, rendered, sceneID)
-			return asset, err
-		}
+	source, err := resolveFinalJobAsset(ctx, resolver, clipID)
+	if err != nil {
+		return nil, err
 	}
-	return resolveFinalJobAsset(ctx, resolver, clipID)
+	sourceDurationMS := finalJobInt64(source["duration_ms"])
+	if renderLanguage == "" {
+		return source, nil
+	}
+	rendered, ok := certifiedLocalizedRenderForClip(result, sceneID, clipID, renderLanguage)
+	if !ok {
+		return source, nil
+	}
+	if sourceDurationMS <= 0 {
+		return nil, fmt.Errorf("final_job fixed clip %q has no certified source duration", clipID)
+	}
+	asset, renderedDurationMS, err := renderedClipAssetRef(ctx, resolver, rendered, sceneID)
+	if err != nil {
+		return nil, err
+	}
+	// Container probes can round to a frame boundary. Reject a render that
+	// actually shortened or extended the protected clip by more than 50 ms.
+	delta := renderedDurationMS - sourceDurationMS
+	if delta < -50 || delta > 50 {
+		return nil, fmt.Errorf("final_job localized fixed clip %q changed duration from %dms to %dms; refusing a trimmed or extended subtitle render", clipID, sourceDurationMS, renderedDurationMS)
+	}
+	asset["duration_ms"] = sourceDurationMS
+	return asset, nil
 }
 
 // renderedClipAssetRef projects a certified localized render into the runtime

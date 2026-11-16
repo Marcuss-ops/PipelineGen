@@ -59,7 +59,7 @@ func runOverlayPlanBranchRun(t *testing.T, runID string) (*Runner, GenerateReque
 	repo := newInMemRunRepository()
 	voiceoverGen := &blockingTimingVoiceoverGenerator{release: make(chan struct{})}
 	runner := NewRunner(repo, newStubTextGenerator(overlayPlanBranchScenes()), newStubTranslator(), voiceoverGen)
-	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
@@ -88,7 +88,7 @@ func runOverlayPlanBranchRun(t *testing.T, runID string) (*Runner, GenerateReque
 // full-run fixture uses, without executing a pipeline.
 func projectionTestRunner() *Runner {
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(overlayPlanBranchScenes()), newStubTranslator(), &blockingTimingVoiceoverGenerator{release: make(chan struct{})})
-	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	return runner
@@ -156,5 +156,8 @@ func TestOverlayPlanBranch_JoinIsIdempotent(t *testing.T) {
 	// replay must reassert the same ID so the comparison stays on plan facts.
 	replayJobID := res.OverlayPlan.DriveJobID
 	require.NoError(t, projectionTestRunner().computeOverlayPlanProjection(context.Background(), "run-overlay-plan-branch-idempotent-join", req, replayJobID, stripped))
+	// The durable plan was frozen before render; replay the same freeze stage
+	// so RenderKey/Fingerprint are derived from the replayed document too.
+	require.NoError(t, FreezeFinalJobOverlayPlans(stripped, req.FinalJob))
 	require.Equal(t, res.OverlayPlan, stripped.OverlayPlan, "the serial projection must reproduce the branch-applied plan")
 }

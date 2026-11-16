@@ -13,6 +13,7 @@ import (
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -228,7 +229,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 		root.ScriptGenerationRunner = durableRunner
 		oneUC.SetOverlayBackgroundSource(durableRunner.OverlayBackgroundSource())
-		oneUC.SetMapOverlapResolver(durableRunner.OverlayMapOverlapResolver())
+		oneUC.SetOverlayPlanCompiler(durableRunner.OverlayPlanCompiler())
 		if overlayEnqueuer := durableRunner.OverlayRenderEnqueuer(); overlayEnqueuer != nil {
 			oneUC.SetOverlayRenderEnqueuer(overlayEnqueuer)
 			log.Info("wireScriptFlow: batch script.generate_item overlay rendering wired through RenderingGen")
@@ -289,7 +290,7 @@ func newRemoteFinalJobAdapter(root *ComposeRoot) (*scriptwiring.RemoteFinalJobAd
 	)
 }
 
-func wireScriptGenerationFinalJob(runner *scriptgen.Runner, root *ComposeRoot, log *zap.Logger) error {
+func wireScriptGenerationFinalJob(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, log *zap.Logger) error {
 	if scriptwiring.FakeFinalJobRequested() {
 		runner.SetFinalJobSubmitter(scriptwiring.NewFakeFinalJobSubmitter())
 		log.Warn("remote final-job handoff SIMULATED (" + scriptwiring.FakeFinalJobEnv + "=1): no render will be dispatched; timings cover the LOCAL pipeline only")
@@ -300,8 +301,19 @@ func wireScriptGenerationFinalJob(runner *scriptgen.Runner, root *ComposeRoot, l
 		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(err))
 		return nil
 	}
+	if cfg == nil || root == nil || strings.TrimSpace(cfg.External.FfmpegPath) == "" {
+		return fmt.Errorf("remote final-job requires the local non-stock fragment certifier and configured ffmpeg")
+	}
+	fragmentLanes, err := finalJobFragmentLanes()
+	if err != nil {
+		return err
+	}
+	fragmentCacheDir := finalJobFragmentCacheDir(cfg.Storage.DataDir)
+	remoteFinalJob.SetVideoSegmentPreparer(newFinalJobSegmentPreparer(cfg.External.FfmpegPath, mediaexec.EncoderPolicy{
+		Codec: root.MediaExec.Policy.Codec, Preset: root.MediaExec.Policy.Preset, CRF: root.MediaExec.Policy.CRF,
+	}, fragmentCacheDir, fragmentLanes))
 	runner.SetFinalJobSubmitter(remoteFinalJob)
-	log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.BaseURL()))
+	log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.BaseURL()), zap.Int("non_stock_fragment_lanes", fragmentLanes), zap.Bool("fragment_cache", fragmentCacheDir != ""))
 	return nil
 }
 

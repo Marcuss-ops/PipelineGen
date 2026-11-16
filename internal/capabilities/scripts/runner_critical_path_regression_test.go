@@ -107,7 +107,7 @@ func TestOverlayPrepare_DoesNotBlockTTSOrNLP(t *testing.T) {
 	prepEnq := &blockingPrepareEnqueuer{release: make(chan struct{})}
 
 	runner := NewRunner(repo, textGen, newStubTranslator(), voGen)
-	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
 	enricher := wireCountingVidRush(runner)

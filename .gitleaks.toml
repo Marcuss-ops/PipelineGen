@@ -23,6 +23,10 @@ description = "Single-finding, literal-anchored allowlist (see per-entry classif
 # this single path accounts for all 616 findings of the whole tree).
 paths = [
   '''ops/benchmarks/a0_bbox_census_20261028\.json''',
+  # Generated golden overlay plans: every `render_key` is a deterministic
+  # SHA-256 over the plan identity, not a credential. Path-scoped so the
+  # generic-api-key rule stays active for every source file.
+  '''internal/capabilities/scripts/testdata/overlay_plan/map_plan/.*\.plan\.json''',
 ]
 regexes = [
   "1Qatr7H-NoKiolIFh6SIrhM19nlYWdOPj",  # cmd/admin/internal/cleanup/cleanup_delete_folders.go:76 — Google Drive folder IDs (resource identifiers in the cleanup allowlist), not credentials

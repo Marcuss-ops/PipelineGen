@@ -258,7 +258,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 }
 
 func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, result *GenerateResult, scenes []Scene, hb *stageHeartbeat) bool {
-	if req.Source.Type == SourceClips && req.Render.Enabled && req.Audio == capabilityaudio.AudioModeNone {
+	if req.Source.Type == SourceClips && req.Render.Enabled {
 		hb.setOp("localized_render_fanout")
 		renderBatchStarted := time.Now()
 		concurrency := req.Render.RenderConcurrency
@@ -272,6 +272,12 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 		for _, scene := range scenes {
 			scene := scene
 			if scene.ExecutionMode.IsFixedMedia() {
+				// Audio-bearing jobs dispatch fixed media after voiceover work
+				// in the voiceover phase. Here we own fixed-media rendering only
+				// for the audio-free script path.
+				if req.Audio != capabilityaudio.AudioModeNone {
+					continue
+				}
 				// Intro V2: fixed media fans out one render per bound
 				// clip PER language, each burning its translated
 				// caption. Caption text is a per-(scene, language) fact;
@@ -302,7 +308,7 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 								ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
 								ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
 								OnRenderReady: func(rendered LocalizedRenderResult) error {
-									return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+									return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
 								},
 								OnRendered: func(rendered LocalizedRenderResult) error {
 									r.localizedRenderMu.Lock()
@@ -340,6 +346,12 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 				}
 				continue
 			}
+			// Explicit clip segments with no narration still need a localized
+			// Chronon render in mixed/voiceover jobs. Narrated scenes are handed
+			// off by the TTS phase, so dispatching them here would duplicate work.
+			if req.Audio != capabilityaudio.AudioModeNone && scene.ExecutionMode.AllowsTTS() {
+				continue
+			}
 			// Caption text is a per-scene fact shared by all of the scene's
 			// render units. Fixed-media scenes resolve it without the BODY
 			// source_text fallback (display text only), so an empty
@@ -368,7 +380,7 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 							ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
 							ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
 							OnRenderReady: func(rendered LocalizedRenderResult) error {
-								return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+								return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
 							},
 							OnRendered: func(rendered LocalizedRenderResult) error {
 								r.localizedRenderMu.Lock()
@@ -381,6 +393,9 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 									r.localizedRenderMu.Lock()
 									result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
 									r.localizedRenderMu.Unlock()
+								}
+								if err := r.saveLocalizedRenderArtifactCheckpoint(ctx, runID, exec.Attempt, rendered); err != nil {
+									return err
 								}
 								return nil
 							},
@@ -427,9 +442,8 @@ func applyDefaultSceneRenderSubfolder(req *GenerateRequest) {
 	}
 }
 
-// setSceneRenderExpectations records the canonical render-unit promise only
-// while dispatch is live. Sealing ExpectedRenderCount keeps completion from
-// demanding work this runner never dispatches.
+// setSceneRenderExpectations records the canonical render-unit promise when
+// the local Chronon render lane is active.
 func setSceneRenderExpectations(req GenerateRequest, scenes []Scene, result *GenerateResult) {
 	if req.Source.Type != SourceClips || !req.Render.Enabled {
 		return

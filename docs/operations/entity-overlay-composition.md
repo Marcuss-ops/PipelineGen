@@ -58,7 +58,8 @@ than a silent split.
 
 ## Image chains (five images stay five images)
 
-`CoalesceChainedOverlays` fuses nearby overlays into one chain item when the
+`coalesce_chained_overlays` in the Rust planner (ported from the former Go
+`CoalesceChainedOverlays`) fuses nearby overlays into one chain item when the
 configured gap and scene boundary allow it. For images this produces:
 
 ```json
@@ -81,7 +82,7 @@ configured gap and scene boundary allow it. For images this produces:
 This excerpt is illustrative; the authoritative bytes are the shared fixture in
 `testdata/contracts/chain-segments-v1.json`. A segment has no separate
 `segment_id` on the wire: the chain item ID plus the segment index is its
-identity. Its `StartUS`/`DurationUS` are absolute plan microseconds. The producer owns them;
+identity. Its `StartUS`/`DurationUS` are absolute plan microseconds. The Rust planner owns them;
 RenderingGen only offsets each segment against the chain window and lowers it
 through the same per-kind compiler a standalone item uses. A five-image chain
 therefore keeps five distinct asset identities and five distinct motions. It
@@ -130,8 +131,8 @@ and per-layer asset references.
 
 | Surface | Test |
 |---|---|
-| Five nearby images keep five identities and five motions | `internal/capabilities/overlays/model/chain_coalesce_test.go` (`TestCoalesceFiveImagesPreserveFiveIdentitiesAndMotions`) |
-| Five images are not split by an implicit ceiling | `TestCoalesceFiveImagesIsNotSplitByImplicitCeiling` |
+| Five nearby images keep five identities and five motions | `BrainRust/overlay-compiler/src/editorial_plan_v2/planner.rs` (`general_chain_keeps_image_runs_separate_from_text`) |
+| Five images are not split by an implicit ceiling | `general_chain_keeps_overflowing_runs_standalone` (only `chain_max_segments` caps a run) |
 | Producer/consumer fixture identity and five-segment decoding | `internal/capabilities/overlays/model/chain_segments_conformance_test.go` (`TestChainSegmentsSharedConformanceFixture`) |
 | Certified entity image motion selection | `internal/capabilities/scripts/entity_image_motion_rotation_test.go` (`TestAssignEntityImageMotionsUsesCertifiedCatalog`) |
 | Explicit composite group choreography | `internal/capabilities/overlays/selection_group_motion_test.go` (`TestSelectImageGroupMotionIsCertifiedDeterministicAndNoRepeat`) |

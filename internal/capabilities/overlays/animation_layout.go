@@ -62,25 +62,6 @@ func PrepareCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInpu
 	return items
 }
 
-// FinalizeCompiledAnimationLayout runs the post-policy stages of the compile
-// boundary. EntityTimeline cards are resolved after the core BuildPlan call,
-// so the image/date collision placement is repeated here on the final
-// combined render set.
-func FinalizeCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInput) []capmodel.OverlayItem {
-	MoveImagesAsideForOverlappingDateCards(items, input.Width)
-	sceneEnds := make(map[string]int64, len(input.Scenes))
-	for _, scene := range input.Scenes {
-		if scene.EndUS > 0 {
-			sceneEnds[scene.ID] = scene.EndUS
-		}
-	}
-	items = capmodel.CoalesceChainedOverlaysWithSceneEnds(items, input.AnimationCounts, sceneEnds)
-	if input.AnimationCounts["chain_disabled"] <= 0 {
-		items = capmodel.CoalesceCaptionedEntityImageCards(items, sceneEnds)
-	}
-	return items
-}
-
 // FinalizePlannerAnimationLayout is the BuildPlan order. Images are moved
 // aside before fusion so an image that later joins a chain carries its
 // collision-free placement into the segment. BrainRust cascades after all

@@ -116,6 +116,18 @@ type Runner struct {
 	// processor version — and completed units are recorded durably.
 	checkpoints *capcheckpoint.Resolver
 
+	// artifactCheckpoints is the optional per-artifact body store. During the
+	// first rollout only localized_render is dual-written, behind
+	// artifactCheckpointDualWrite, and resumed behind artifactCheckpointResume.
+	// The whole-result envelope stays the first recovery authority until the
+	// cutover flag removes the per-unit envelope write; stage boundaries keep
+	// persisting the envelope in every mode.
+	artifactCheckpoints         ArtifactCheckpointRepository
+	artifactCheckpointDualWrite bool
+	artifactCheckpointResume    bool
+	artifactCheckpointCutover   bool
+	artifactCheckpointVerifier  capcheckpoint.ArtifactVerifier
+
 	// finalAudioCache reuses a certified master keyed by the audio PLAN, so a
 	// retry or a revision that leaves the plan untouched does not re-mix and
 	// re-encode it. The durable checkpoint above is job-scoped and can never
@@ -137,8 +149,8 @@ type Runner struct {
 	// mapPlates is the run's ONLY map source: the certified basemap plate
 	// resolver wired from the operator manifest. Nil means no map overlay is
 	// ever emitted (the planner's fail-closed default).
-	mapPlates          capabilityoverlay.PlateResolver
-	mapOverlapResolver capabilityoverlay.MapOverlapResolver
+	mapPlates           capabilityoverlay.PlateResolver
+	overlayPlanCompiler OverlayPlanCompiler
 	// recorderMu serializes calls into the execution recorder. Production
 	// recorders are expected to be durable, but the port is not required to
 	// implement internal concurrency; serialization also keeps the lineage
@@ -287,7 +299,18 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 		certSpec = p.CertSpecResolver.ResolveMediaCertSpec(plan)
 	}
 	backpressure := p.Backpressure
-	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(enricher, plan, backpressure)
+	coordinatorPlan := plan
+	if plan != nil && !req.ScriptParams.SourceTextVerbatim && (plan.Intro != nil || plan.Outro != nil) {
+		// The non-verbatim streamer commits generated body scenes first. Fixed
+		// intro/outro scenes are materialized in a later phase, after its
+		// VidRush barrier, so including them in this coordinator's expected
+		// index set creates a false missing-scene failure.
+		streamPlan := *plan
+		streamPlan.Intro = nil
+		streamPlan.Outro = nil
+		coordinatorPlan = &streamPlan
+	}
+	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(enricher, coordinatorPlan, backpressure)
 	coordinator.SetSegmentProviderResolver(providerResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)
 	coordinator.SetMetrics(p.Metrics)

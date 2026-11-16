@@ -210,20 +210,15 @@ func validateSegmentStockClipIDs(segment ScriptSegment, index int, ref string) [
 	return d
 }
 
-// validateSegmentNoVoiceover enforces the editorial clip-cutaway contract:
-// a no-voiceover segment must name its clip and carry the explicit duration
-// that the final job uses for the native clip window. Without both, the
-// scene cannot become a deterministic fixed-media cutaway and would either
-// acquire TTS or have no timeline duration.
+// validateSegmentNoVoiceover enforces the editorial clip-cutaway contract.
+// Duration is optional: the runner uses the selected asset's canonical media
+// duration when the payload does not request an editorial trim.
 func validateSegmentNoVoiceover(segment ScriptSegment, index int, ref string) []string {
 	if !segment.NoVoiceover {
 		return nil
 	}
 	prefix := ref + ": segments[" + strconv.Itoa(index) + "]."
 	var d []string
-	if segment.DurationMS <= 0 {
-		d = append(d, prefix+"duration_ms must be > 0 when no_voiceover=true")
-	}
 	if len(segment.ClipIDs) == 0 {
 		d = append(d, prefix+"clip_ids must contain the clip shown for a no_voiceover cutaway")
 	}

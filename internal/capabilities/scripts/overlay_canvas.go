@@ -116,6 +116,11 @@ type OverlayCanvasSpec struct {
 	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
 	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
 	MaxImageOverlays int
+	// EditorialDensity is the SINGLE editorial budget control: minimal,
+	// balanced (default) or dynamic. It derives the caps only where the caller
+	// left them unset, so the historical explicit caps remain precise user
+	// overrides. Unknown values fail closed at plan compilation.
+	EditorialDensity string
 	// RequireEntityImages makes the entity-image expectation originate in the
 	// request policy, even when no entity_image overlay was successfully built.
 	RequireEntityImages      bool
@@ -160,6 +165,66 @@ func (c OverlayCanvasSpec) withDefaults() OverlayCanvasSpec {
 		// replacement silently dropped Background and Style whenever the
 		// production canvas dimensions were left at zero.
 		c.Width, c.Height, c.FPSNum, c.FPSDen = kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight, kernelmedia.CanonicalFPSNum, kernelmedia.CanonicalFPSDen
+	}
+	return c.applyEditorialDensity()
+}
+
+const (
+	editorialDensityMinimal  = "minimal"
+	editorialDensityBalanced = "balanced"
+	editorialDensityDynamic  = "dynamic"
+)
+
+// validateOverlayEditorialDensity fails closed on an unknown preset. It is
+// called by both the v2 request builder and the legacy fixture projection so a
+// typo never silently falls back to the balanced defaults.
+func validateOverlayEditorialDensity(c OverlayCanvasSpec) error {
+	switch normalizeEditorialDensity(c.EditorialDensity) {
+	case "", editorialDensityMinimal, editorialDensityBalanced, editorialDensityDynamic:
+		return nil
+	default:
+		return fmt.Errorf("overlay plan: editorial_density %q must be minimal, balanced or dynamic", c.EditorialDensity)
+	}
+}
+
+func normalizeEditorialDensity(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+// applyEditorialDensity lowers the operator-facing preset into the four
+// editorial ceilings. Explicit per-run caps win: the preset only fills zeros.
+// The phrase cap is always clamped to the certified hard limit.
+func (c OverlayCanvasSpec) applyEditorialDensity() OverlayCanvasSpec {
+	switch normalizeEditorialDensity(c.EditorialDensity) {
+	case editorialDensityMinimal:
+		if c.MaxPhraseOverlays <= 0 {
+			c.MaxPhraseOverlays = 3
+		}
+		if c.MaxImageOverlays <= 0 {
+			c.MaxImageOverlays = 4
+		}
+		if c.MaxMapOverlays <= 0 {
+			c.MaxMapOverlays = 1
+		}
+		if c.MaxOverlaysPerScene <= 0 {
+			c.MaxOverlaysPerScene = 1
+		}
+	case editorialDensityDynamic:
+		if c.MaxPhraseOverlays <= 0 {
+			c.MaxPhraseOverlays = 10
+		}
+		if c.MaxImageOverlays <= 0 {
+			c.MaxImageOverlays = 12
+		}
+		if c.MaxMapOverlays <= 0 {
+			c.MaxMapOverlays = 2
+		}
+		if c.MaxOverlaysPerScene <= 0 {
+			c.MaxOverlaysPerScene = 3
+		}
+	}
+	if c.MaxPhraseOverlays > capabilityoverlay.MaxPhraseOverlaysHardLimit {
+		c.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit
 	}
 	return c
 }

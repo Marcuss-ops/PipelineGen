@@ -47,6 +47,7 @@ type overlaySource struct {
 // radius + shadow + stroke), so a declared frame is transported verbatim and
 // never re-interpreted here.
 type clipGridBlock struct {
+	Scope       string   `json:"scope,omitempty"`
 	Style       string   `json:"style,omitempty"`
 	SpacingPX   float64  `json:"spacing_px"`
 	LineWidthPX *float64 `json:"line_width_px,omitempty"`

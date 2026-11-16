@@ -72,7 +72,10 @@ func TestOverlayRenderPhaseOwnsItsStageAndNotTheAudioStage(t *testing.T) {
 	req := defaultTestRequest()
 	req.Render.Enabled = true
 	result := &GenerateResult{
-		OverlayPlan: &capmodel.OverlayPlan{SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1"},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1",
+			Items: []capmodel.OverlayItem{{ID: "item-1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE"}},
+		},
 	}
 
 	// Exercised exactly as the pipeline does: audioCompile() runs this phase
@@ -220,7 +223,7 @@ func newAudioOverlapFixture(t *testing.T) (*executionRun, *audioJoinRepository, 
 	t.Helper()
 	repo := &audioJoinRepository{inMemRunRepository: newInMemRunRepository()}
 	runner := NewRunner(repo, newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
-	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	audio := &barrierAudioRenderer{started: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}
 	overlay := &barrierOverlayRenderer{started: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}

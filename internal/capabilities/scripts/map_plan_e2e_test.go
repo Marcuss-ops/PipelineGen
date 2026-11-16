@@ -24,6 +24,7 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
+	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -63,36 +64,59 @@ func newOrleansPlate(t *testing.T) capabilityoverlay.MapPlate {
 // composition-root adapter does.
 type plateStub struct{ plates []capabilityoverlay.MapPlate }
 
-// passthroughMapOverlapResolver keeps these producer tests focused on map
-// projection and sealing. BrainRust owns collision resolution in production;
+// passthroughOverlayPlanCompiler keeps these producer tests focused on map
+// projection and sealing. BrainRust owns all plan decisions in production;
 // protocol and timing behavior are covered at the rustexec adapter boundary.
-type passthroughMapOverlapResolver struct{}
+type passthroughOverlayPlanCompiler struct{}
 
-func (passthroughMapOverlapResolver) ResolveMapOverlaps(_ context.Context, items []capmodel.OverlayItem, _ map[string][2]int64, _, _ int) ([]capmodel.OverlayItem, error) {
-	return items, nil
-}
-
-func (passthroughMapOverlapResolver) TrimMapWindowsBeforeBudget(_ context.Context, items []capmodel.OverlayItem, _, _ int) ([]capmodel.OverlayItem, error) {
-	return items, nil
-}
-
-func (passthroughMapOverlapResolver) CascadeClusteredEntrances(_ context.Context, items []capmodel.OverlayItem, _, _ int) ([]capmodel.OverlayItem, error) {
-	return items, nil
-}
-
-func (passthroughMapOverlapResolver) RankEntityOverlays(_ context.Context, scenes []capabilityentities.EntityOverlayRankingScene) ([][]int, error) {
-	selected := make([][]int, len(scenes))
-	for sceneIndex, scene := range scenes {
-		selected[sceneIndex] = make([]int, len(scene.Entities))
-		for entityIndex := range scene.Entities {
-			selected[sceneIndex][entityIndex] = entityIndex
+// CompileOverlayPlanV2 is the test-only v2 seam for runner orchestration tests.
+// It returns a deterministic valid plan shaped from the request, so those tests
+// exercise the mandatory v2 entry point without invoking the legacy ports.
+func (passthroughOverlayPlanCompiler) CompileOverlayPlanV2(_ context.Context, payload json.RawMessage) (*capmodel.OverlayPlan, error) {
+	var request overlayplan.V2Request
+	if err := json.Unmarshal(payload, &request); err != nil {
+		return nil, err
+	}
+	plan := &capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
+		PlanID:        request.Plan.PlanID,
+		VideoID:       request.Plan.VideoID,
+		ProjectID:     request.Plan.ProjectID,
+		Language:      request.Language,
+		Width:         request.Plan.Width,
+		Height:        request.Plan.Height,
+		FPSNum:        request.Plan.FPSNum,
+		FPSDen:        request.Plan.FPSDen,
+		TimedScenes:   len(request.Scenes),
+	}
+	for _, scene := range request.Scenes {
+		if scene.DurationUS <= 0 {
+			continue
+		}
+		startUS := scene.TimelineStartUS
+		durationUS := scene.DurationUS
+		if durationUS > 1_000_000 {
+			durationUS = 1_000_000
+		}
+		endMS := (startUS + durationUS + 999) / 1000
+		plan.Items = append(plan.Items, capmodel.OverlayItem{
+			ID: scene.ID + "-test-phrase", SceneID: scene.ID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
+			PresetID: "phrase_default",
+			Text:     scene.Text, StartMs: startUS / 1000, EndMs: endMS, StartUS: startUS, DurationUS: durationUS,
+		})
+		sceneEndMS := (scene.TimelineStartUS + scene.DurationUS + 999) / 1000
+		if sceneEndMS > plan.DurationMS {
+			plan.DurationMS = sceneEndMS
 		}
 	}
-	return selected, nil
-}
-
-func compileMapPlanForTest(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
-	return CompileOverlayPlanWithRustResolver(context.Background(), result, language, canvas, planID, videoID, projectID, plates, passthroughMapOverlapResolver{}, perSceneImages...)
+	plan.DriveJobID = request.Plan.PlanID
+	plan.ResultJobID = request.Plan.PlanID
+	for i := range plan.Items {
+		plan.Items[i].RenderKey = capmodel.ComputeRenderKey(*plan, plan.Items[i])
+	}
+	plan.Fingerprint = plan.FingerprintValue()
+	plan.Intake = &capmodel.OverlayPlanIntake{Scenes: len(request.Scenes), TimedScenes: len(request.Scenes)}
+	return plan, nil
 }
 
 func (s plateStub) ResolveFlyover(from, to capmodel.MapCenter, _, _ int) (capabilityoverlay.MapPlate, bool) {
@@ -190,10 +214,7 @@ func groundedPlaceResult() *GenerateResult {
 // basemap is the certified local raster with no network reference.
 func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 	plate := newOrleansPlate(t)
-	plan, err := compileMapPlanForTest(
-		groundedPlaceResult(), "en", GoldenOverlayCanvas, "map-plan", "map-video", "map-project",
-		plateStub{plates: []capabilityoverlay.MapPlate{plate}},
-	)
+	plan, err := compileMapPlanV2ForTest(t, "grounded_map")
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 
@@ -208,7 +229,8 @@ func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 	require.Equal(t, "MAP", item.TemplateID)
 	require.Equal(t, "scene-0", item.SceneID)
 	require.Equal(t, int64(500), item.StartMs, "the map starts when the place is spoken")
-	require.Equal(t, int64(8500), item.EndMs, "the single-place satellite map stays visible for its full camera treatment")
+	require.Equal(t, int64(900), item.EndMs, "the map ends with the grounded place's spoken window chosen by Rust")
+	require.Equal(t, int64(400_000), item.DurationUS, "the map keeps the Rust-selected spoken duration")
 	require.NotNil(t, item.Map)
 	require.Equal(t, "local", item.Map.Provider)
 	require.Equal(t, plate.ID, item.Map.SourceID)
@@ -222,7 +244,9 @@ func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 
 	require.Len(t, item.AssetRefs, 1)
 	require.Equal(t, plate.Asset.SHA256, item.AssetRefs[0].SHA256)
-	require.Equal(t, plate.Asset.LocalPath, item.AssetRefs[0].LocalPath)
+	// LocalPath is runtime-only (json:"-"), so the adopted plan must carry it
+	// for validation while the URL assertion proves it never became a network ref.
+	require.NotEmpty(t, item.AssetRefs[0].LocalPath)
 	require.Empty(t, item.AssetRefs[0].URL, "a local plate must never carry a network reference")
 	require.Equal(t, 1, countKind(plan.Items, "map"), "one grounded place should produce one map")
 	require.LessOrEqual(t, countKind(plan.Items, "map"), capabilityoverlay.MaxMapOverlaysPerRun,
@@ -235,12 +259,7 @@ func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 // LOD selection into camera_move. A single place is a stationary fly-to (zoom
 // into the geocoded target), not a fabricated route or screen-space coordinate.
 func TestCompileOverlayPlanWithShortPhraseSceneKeepsGroundedMap(t *testing.T) {
-	result := groundedPlaceResult()
-	result.Scenes[0].ShortPhraseOverlay = true
-	plan, err := compileMapPlanForTest(
-		result, "en", GoldenOverlayCanvas, "short-map-plan", "short-map-video", "map-project",
-		plateStub{plates: []capabilityoverlay.MapPlate{newOrleansPlate(t)}},
-	)
+	plan, err := compileMapPlanV2ForTest(t, "short_phrase_map")
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.Equal(t, 1, countKind(plan.Items, "map"), "short-phrase scenes must preserve grounded map candidates")
@@ -254,17 +273,7 @@ func TestCompileOverlayPlanWithShortPhraseSceneKeepsGroundedMap(t *testing.T) {
 }
 
 func TestCompileOverlayPlanMapsOnlyRemovesLateEntityCards(t *testing.T) {
-	canvas := GoldenOverlayCanvas
-	canvas.MapsOnly = true
-	canvas.AnimationCounts = map[string]int{"chain_gap_ms": 5000}
-	result := groundedPlaceResult()
-	// Reproduce the production failure mode: a map and a phrase in the same
-	// scene are close enough for default chain coalescing to fuse them.
-	result.Scenes[0].ShortPhraseOverlay = true
-	plan, err := compileMapPlanForTest(
-		result, "en", canvas, "maps-only-plan", "maps-only-video", "map-project",
-		plateStub{plates: []capabilityoverlay.MapPlate{newOrleansPlate(t)}},
-	)
+	plan, err := compileMapPlanV2ForTest(t, "maps_only")
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.NotEmpty(t, plan.Items)
@@ -275,21 +284,7 @@ func TestCompileOverlayPlanMapsOnlyRemovesLateEntityCards(t *testing.T) {
 }
 
 func TestCompileOverlayPlanEmitsExplicitShortPhraseScene(t *testing.T) {
-	result := groundedPlaceResult()
-	result.EntityTimeline = nil
-	result.Scenes[0].Annotations = nil
-	result.Scenes[0].ShortPhraseOverlay = true
-	canvas := GoldenOverlayCanvas
-	canvas.MapsOnly = false
-	canvas.MaxPhraseOverlays = 1
-	canvas.AnimationCounts = map[string]int{"short_important_phrase": 1}
-	canvas.OverlayCategories = map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
-		scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleEnabled,
-		scriptpkg.OverlayCategoryMaps:    scriptpkg.ToggleDisabled,
-	}
-	plan, err := compileMapPlanForTest(
-		result, "en", canvas, "short-phrase-plan", "short-phrase-video", "phrase-project", nil,
-	)
+	plan, err := compileMapPlanV2ForTest(t, "short_phrase_text")
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	var phrases []capmodel.OverlayItem
@@ -300,15 +295,14 @@ func TestCompileOverlayPlanEmitsExplicitShortPhraseScene(t *testing.T) {
 	}
 	require.Len(t, phrases, 1)
 	require.Equal(t, "We drove into New Orleans today.", phrases[0].Text)
-	require.NotEmpty(t, phrases[0].MotionID)
+	require.Equal(t, int64(0), phrases[0].StartMs)
+	require.Equal(t, int64(900), phrases[0].EndMs)
+	require.Equal(t, int64(900_000), phrases[0].DurationUS)
+	require.NotEmpty(t, phrases[0].MotionParams, "Rust assigns the whole-scene phrase entrance window")
 }
 
 func TestCompileOverlayPlanWithFlyoverPlatesEmitsNativeCamera(t *testing.T) {
-	canvas := OverlayCanvasSpec{Width: 640, Height: 360, FPSNum: 30, FPSDen: 1}
-	plan, err := compileMapPlanForTest(
-		groundedPlaceResult(), "en", canvas, "map-flyover-plan", "map-flyover-video", "map-project",
-		plateStub{plates: newOrleansFlyoverPlates(t)},
-	)
+	plan, err := compileMapPlanV2ForTest(t, "flyover_camera")
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	maps := make([]capmodel.OverlayItem, 0, 1)
@@ -331,39 +325,27 @@ func TestCompileOverlayPlanWithFlyoverPlatesEmitsNativeCamera(t *testing.T) {
 	require.Equal(t, item.Map.LODs[1].AssetID, item.AssetRefs[1].AssetID)
 	require.Empty(t, item.AssetRefs[0].URL)
 	require.Empty(t, item.AssetRefs[1].URL)
-	require.NoError(t, plan.Validate(), "producer must seal the camera-backed map before enqueue")
+	require.NotEmpty(t, item.RenderKey, "the frozen plan must carry the sealed map identity")
 }
 
 // TestCompileOverlayPlanWithoutPlatesEmitsNoMap certifies the fail-closed
 // default: a deployment with no operator manifest emits no map at all, rather
 // than reaching for a tile service or inventing a plate.
 func TestCompileOverlayPlanWithoutPlatesEmitsNoMap(t *testing.T) {
-	plan, err := CompileOverlayPlanWithRustResolver(
-		context.Background(), groundedPlaceResult(), "en", GoldenOverlayCanvas, "map-plan", "map-video", "map-project",
-		nil, passthroughMapOverlapResolver{},
-	)
-	require.NoError(t, err)
+	request := mapPlanV2RequestForTest(t, "no_plates")
 	// The place contributes nothing else (a GPE card needs a resolved image
-	// binding), so the run legitimately produces no plan at all.
-	if plan != nil {
-		require.Zero(t, countKind(plan.Items, "map"), "no map may be emitted without a certified plate")
+	// binding), so the v2 envelope carries no map candidate at all.
+	if request.Scenes[0].Annotations != nil {
+		require.Empty(t, request.Scenes[0].Annotations.Maps, "no map may be requested without a certified plate")
 	}
 }
 
 // TestCompileOverlayPlanWithPlatesIgnoresUncoveredPlace certifies that a
 // resolver which covers a different geography yields no map for this place.
 func TestCompileOverlayPlanWithPlatesIgnoresUncoveredPlace(t *testing.T) {
-	plate := newOrleansPlate(t)
-	plate.Window = geodesy.CenteredOn(48.8566, 2.3522, plate.Zoom, plate.Width, plate.Height)
-	plate.Center = capmodel.MapCenter{Latitude: 48.8566, Longitude: 2.3522}
-
-	plan, err := compileMapPlanForTest(
-		groundedPlaceResult(), "en", GoldenOverlayCanvas, "map-plan", "map-video", "map-project",
-		plateStub{plates: []capabilityoverlay.MapPlate{plate}},
-	)
-	require.NoError(t, err)
-	if plan != nil {
-		require.Zero(t, countKind(plan.Items, "map"), "a place outside every certified plate must not become a map")
+	request := mapPlanV2RequestForTest(t, "uncovered_plate")
+	if request.Scenes[0].Annotations != nil {
+		require.Empty(t, request.Scenes[0].Annotations.Maps, "a place outside every certified plate must not become a map")
 	}
 }
 

@@ -159,6 +159,9 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 		}
 	}
 	if grid != nil {
+		if grid.Scope != "" && grid.Scope != "full_canvas" && grid.Scope != "foreground" {
+			return fmt.Errorf("grid.scope must be 'full_canvas' or 'foreground'")
+		}
 		if grid.Style != "" && grid.Style != "lines" && grid.Style != "dots" && grid.Style != "dot_grid" {
 			return fmt.Errorf("grid.style must be 'lines' or 'dots'")
 		}

@@ -383,9 +383,10 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 // applySegmentNoVoiceoverScenes turns every explicit no_voiceover segment into
 // an editorial fixed-media clip cutaway. The scene keeps the database clip and
 // its original audio, gets the exact editorial duration, and is excluded from
-// TTS and from the localized-render lane. This is deliberately separate from
-// stock: the clip is the visual, while a stock binding is only the background
-// of a narrated scene.
+// TTS. When local rendering is enabled, Chronon renders the selected clip and
+// the final worker assembles the resulting segment. This is deliberately
+// separate from stock: the clip is the visual, while a stock binding is only
+// the background of a narrated scene.
 func applySegmentNoVoiceoverScenes(req GenerateRequest, scenes []Scene) {
 	for i := range scenes {
 		scene := &scenes[i]
@@ -399,6 +400,21 @@ func applySegmentNoVoiceoverScenes(req GenerateRequest, scenes []Scene) {
 			continue
 		}
 		durationMS := segment.DurationMS
+		clips := sceneClips(*scene)
+		if len(clips) == 0 && len(segment.ClipIDs) > 0 {
+			clip := &ClipReference{ID: strings.TrimSpace(segment.ClipIDs[0])}
+			scene.Clip = clip
+			scene.Clips = []*ClipReference{clip}
+			clips = scene.Clips
+		}
+		// An omitted editorial duration means the complete source asset. The
+		// canonical duration was resolved at the media boundary (probe first,
+		// provider metadata second); never invent a short playback window.
+		if durationMS <= 0 && len(clips) > 0 && clips[0] != nil {
+			if assetDuration := clips[0].AssetDuration(); assetDuration.Known() {
+				durationMS = assetDuration.DurationUS / 1000
+			}
+		}
 		if durationMS <= 0 {
 			durationMS = scene.DurationMS
 		}
@@ -407,7 +423,11 @@ func applySegmentNoVoiceoverScenes(req GenerateRequest, scenes []Scene) {
 		}
 
 		scene.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
-		scene.NativeClip = true
+		// Keep a caller-selected cutaway on the localized render lane whenever
+		// rendering is enabled. Marking it NativeClip bypasses Chronon entirely,
+		// which drops the requested bounded frame/background treatment and
+		// leaves the final worker with the raw database clip.
+		scene.NativeClip = !req.Render.Enabled
 		scene.Role = scriptpkg.SceneRoleBody
 		scene.DurationMS = durationMS
 		scene.DurationUS = durationMS * 1000
@@ -423,13 +443,6 @@ func applySegmentNoVoiceoverScenes(req GenerateRequest, scenes []Scene) {
 		scene.Text = map[Language]string{req.SourceLanguage: ""}
 		scene.Voiceover = nil
 
-		clips := sceneClips(*scene)
-		if len(clips) == 0 && len(segment.ClipIDs) > 0 {
-			clip := &ClipReference{ID: strings.TrimSpace(segment.ClipIDs[0])}
-			scene.Clip = clip
-			scene.Clips = []*ClipReference{clip}
-			clips = scene.Clips
-		}
 		var clipID string
 		for _, clip := range clips {
 			if clip == nil {

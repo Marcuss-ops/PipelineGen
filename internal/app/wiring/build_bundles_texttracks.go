@@ -150,6 +150,18 @@ type AcquirePorts struct {
 	SubtitleFolders texttracks.SubtitleFolderResolver
 }
 
+// unavailableTranslationPort keeps composition bootable when the local Argos
+// sidecar cannot be constructed. Every call fails closed instead of silently
+// switching to a non-reproducible provider.
+type unavailableTranslationPort struct{ err error }
+
+func (p unavailableTranslationPort) Translate(context.Context, translation.TranslationCommand) (translation.TranslationResult, error) {
+	if p.err != nil {
+		return translation.TranslationResult{}, p.err
+	}
+	return translation.TranslationResult{}, fmt.Errorf("local translator unavailable")
+}
+
 // BuildTextTrackBundle constructs the canonical bundle.
 //
 // godlike/07 fail-closed: a nil dep or invalid config
@@ -176,9 +188,6 @@ func BuildTextTrackBundle(
 	if repos == nil || repos.TextTrackRepo == nil {
 		return nil, fmt.Errorf("compose texttracks: RepoBundle.TextTrackRepo is required")
 	}
-	if ai == nil || ai.OllamaTranslator == nil {
-		return nil, fmt.Errorf("compose texttracks: AIBundle.OllamaTranslator is required")
-	}
 	if outbox == nil || outbox.EventsRepo == nil {
 		return nil, fmt.Errorf("compose texttracks: OutboxBundle.EventsRepo is required")
 	}
@@ -192,43 +201,36 @@ func BuildTextTrackBundle(
 		return nil, fmt.Errorf("compose texttracks: language registry: %w", err)
 	}
 
-	// PR-ARGOS-TRANSLATION (Aug 2026): the active provider strategy is
-	// selected by media.multilingual.translation_provider (argos|ollama).
-	// Argos Translate is the deterministic, CPU-only primary; Ollama is
-	// the quality fallback. Construction is fail-SOFT: when the Argos
-	// bridge is unavailable the materializer falls back to Ollama-only
-	// and the request fingerprint stays on the Ollama model taxonomy
-	// (no provider-name leak into persisted provenance).
+	// Clip subtitle tracks must be translated locally and reproducibly.
+	// Keep Ollama out of this materializer even if it is wired for other
+	// application features; failed/missing Argos models fail the backfill and
+	// can be retried after installing the local language pair.
 	ollamaModel := resolveTranslationModel(mlCfg.TranslationPolicy)
-	translationModel := ollamaModel
-	modelVersion := cfg.External.OllamaModel
-
-	var clipTranslator translation.TranslationPort = ai.OllamaTranslator
-	var argosServer *translation.ArgosServerTranslator
-
-	if resolveTranslationProvider(mlCfg.TranslationProvider) == "argos" {
-		server, argosErr := translation.NewArgosServerTranslator(
-			translation.ArgosServerConfig{
-				ScriptsDir: cfg.Paths.PythonScriptsDir,
-				PythonBin:  cfg.Paths.ArgosPythonBin,
-				// Single owner of the .argosmodel location: the SAME value the
-				// installer uses (ARGOS_PACKAGE_DIR), so "models installed" and
-				// "models visible to the sidecar" cannot drift.
-				PackageDir: cfg.Paths.ArgosPackageDir,
-			},
-			log,
-		)
-		if argosErr != nil {
-			log.Warn("ArgosTranslator unavailable; using Ollama-only translation",
-				zap.Error(argosErr))
-		} else {
-			argosServer = server
-			clipTranslator = translation.NewFallbackTranslator(server, ai.OllamaTranslator, log)
-			translationModel = translation.ArgosTranslationModel
-			modelVersion = translation.ArgosTranslationModelVersion
-			log.Info("ArgosTranslator wired as primary translation provider (Ollama fallback)")
-		}
+	server, argosErr := translation.NewArgosServerTranslator(
+		translation.ArgosServerConfig{
+			ScriptsDir: cfg.Paths.PythonScriptsDir,
+			PythonBin:  cfg.Paths.ArgosPythonBin,
+			PackageDir: cfg.Paths.ArgosPackageDir,
+		}, log,
+	)
+	if argosErr != nil {
+		// Composition may start from an arbitrary working directory (tests,
+		// service managers, containers). Keep the service bootable, but leave
+		// translation unavailable instead of silently switching to Ollama.
+		log.Warn("local Argos translator unavailable; clip subtitle backfills will fail closed", zap.Error(argosErr))
 	}
+	var argosServer = server
+	var clipTranslator translation.TranslationPort
+	if server != nil {
+		clipTranslator = translation.NewFallbackTranslator(server, nil, log)
+	}
+	materializerTranslator := clipTranslator
+	if materializerTranslator == nil {
+		materializerTranslator = unavailableTranslationPort{err: fmt.Errorf("local Argos translator unavailable; clip subtitle translation is disabled")}
+	}
+	translationModel := translation.ArgosTranslationModel
+	modelVersion := translation.ArgosTranslationModelVersion
+	log.Info("local Argos translator wired for clip subtitle tracks (no remote fallback)")
 
 	resolverCfg := texttracks.ResolverConfig{
 		Registry:          registry,
@@ -242,7 +244,7 @@ func BuildTextTrackBundle(
 
 	materializer, err := texttracks.NewMaterializer(
 		repos.TextTrackRepo,
-		clipTranslator,
+		materializerTranslator,
 		outbox.EventsRepo,
 		resolverCfg,
 		log,
@@ -365,7 +367,7 @@ func BuildTextTrackBundle(
 				// every other consumer uses (Argos primary + Ollama fallback),
 				// and a per-language failure degrades to CuesWithText instead
 				// of leaving the language without an artifact.
-				CueTranslator: texttracks.NewCueTranslator(clipTranslator, mlCfg.SourceLanguage, ollamaModel, resolveCueTranslationConcurrency(cfg), log),
+				CueTranslator: texttracks.NewCueTranslator(materializerTranslator, mlCfg.SourceLanguage, ollamaModel, resolveCueTranslationConcurrency(cfg), log),
 			},
 			Log: log,
 		})

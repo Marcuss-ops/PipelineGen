@@ -1,0 +1,76 @@
+{
+  "schema_version": "renderinggen.overlay-plan.v1",
+  "plan_id": "short-map-plan",
+  "video_id": "short-map-video",
+  "project_id": "map-project",
+  "language": "en",
+  "width": 1280,
+  "height": 720,
+  "fps_num": 30,
+  "fps_den": 1,
+  "duration_ms": 900,
+  "media_contract": "overlay-v1",
+  "items": [
+    {
+      "id": "static__new-orleans__map__01",
+      "scene_id": "scene-0",
+      "kind": "map",
+      "start_ms": 500,
+      "end_ms": 900,
+      "start_us": 500000,
+      "duration_us": 400000,
+      "template_id": "MAP",
+      "asset_refs": [
+        {
+          "asset_id": "plate-new-orleans",
+          "sha256": "7826bc918a5a8d3c170704cfe34d6012a68c81495638a209f2b2a277eb99d859",
+          "media_type": "image/png"
+        }
+      ],
+      "map": {
+        "provider": "local",
+        "source_id": "plate-new-orleans",
+        "source_license": "operator-supplied",
+        "center": {
+          "latitude": 29.9511,
+          "longitude": -90.0715
+        },
+        "zoom": 10,
+        "width": 1280,
+        "height": 720,
+        "attribution": "© OpenStreetMap contributors",
+        "motion_id": "image_fade_reveal",
+        "pins": [
+          {
+            "id": "ent_5d06710f3ec2ac53",
+            "label": "New Orleans",
+            "latitude": 29.9511,
+            "longitude": -90.0715,
+            "color": "#FF3B30",
+            "radius_px": 10
+          }
+        ],
+        "area_glow_radius_km": 3.5
+      },
+      "params": {
+        "map_animation": "territory_glow_reveal",
+        "map_group": {
+          "count": 1,
+          "index": 1,
+          "size": 1
+        },
+        "map_group_strategy": "tour",
+        "map_pin_timing": {
+          "ent_5d06710f3ec2ac53": {
+            "duration_us": 400000,
+            "start_us": 0
+          }
+        },
+        "priority": 0.93
+      },
+      "render_key": "37c094fab4b07105e4d420767bbc085cf7d86d1ac2920e583ecb25360493907a",
+      "duration_ms": 400
+    }
+  ],
+  "fingerprint": "a1dc08cdbe81b9c97c2755b20a5616fb16c2c88b981b0b922ad801538c436642"
+}

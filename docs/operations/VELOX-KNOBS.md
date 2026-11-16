@@ -17,9 +17,12 @@ a registry entry.
 | `VELOX_FAKE_FINAL_JOB` | env |  | `internal/app/wiring/script/fake_final_job.go` | unset | Simulate the remote final-job handoff so a run measures only the local pipeline. |
 | `VELOX_FINAL_AUDIO_CACHE_DIR` | env |  | `internal/app/wiring/script_generation_runtime.go` | unset (default cache root) | Relocates the per-run final-audio cache. |
 | `VELOX_FINAL_JOB_ATTACH_SECONDS` | env | 3000 | `internal/app/wiring/remote_final_job.go` | 3000 | Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait). |
+| `VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS` | env | 1 | `internal/app/wiring/final_job_segment_prepare.go` | 1 (enabled) | Packet-copies certified aligned windows instead of re-encoding them; set 0 only for A/B measurement. |
 | `VELOX_FINAL_JOB_CREDENTIALS_FILE` | env |  | `internal/app/wiring/remote_final_job.go` | /etc/pipelinegen/final_job_credentials.json | Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset. |
+| `VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR` | env |  | `internal/app/wiring/final_job_fragment_io.go` | unset (dataDir/final-job-fragments) | Relocates or disables the final-job fragment cache; off/disabled/none disables it. |
 | `VELOX_FINAL_JOB_M2M_SECRET` | env |  | `internal/app/wiring/remote_final_job.go` | 64-hex secret from the host env file | Per-client bearer secret for job.submit against the Master. |
 | `VELOX_FINAL_JOB_MASTER_URL` | env |  | `internal/app/wiring/remote_final_job.go` | https://<master-host> | Master URL for the remote final-job handoff; unset falls back to the configured base URL. |
+| `VELOX_FINAL_JOB_PREPARE_LANES` | env | 4 | `internal/app/wiring/final_job_segment_prepare.go` | 4 (1..16) | Number of final-job fragments prepared in parallel; 0 or malformed fails the job. |
 | `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/wiring/remote_final_job.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
 | `VELOX_FINAL_JOB_RESOLVE_CONCURRENCY` | env | 1 | `internal/app/wiring/remote_final_job_resolve.go` | 4 (1..16) | Drive sources resolved in parallel while preparing a handoff. |
 | `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/wiring/remote_final_job.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |

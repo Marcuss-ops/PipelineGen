@@ -30,6 +30,7 @@ type finalJobBaseSegment struct {
 	sourceLocked     bool
 	assetID          string
 	sha256           string
+	stockPool        bool
 }
 
 func validateFinalJobPlanBindingRules(plan finalJobCompiledPlan) error {
@@ -47,6 +48,13 @@ type finalJobOverlayWindow struct {
 }
 
 func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, overlayManifest map[string]any, audio FinalAudioReference, audioRef map[string]any, timelineDurationUS int64) (string, string, error) {
+	return finalJobCompiledPlanPayloadWithStockPool(scenes, overlayRows, overlayManifest, audio, audioRef, timelineDurationUS, "", nil)
+}
+
+// finalJobCompiledPlanPayloadWithStockPool builds the sealed V2 plan. The
+// stock binding windows are keyed by scene id and stay Producer-local: the
+// remote Master only receives the compiled plan and runtime asset refs.
+func finalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRows []any, overlayManifest map[string]any, audio FinalAudioReference, audioRef map[string]any, timelineDurationUS int64, stockPoolFolderID string, stockBoundWindowsMS map[string]int64) (string, string, error) {
 	if len(scenes) == 0 {
 		return "", "", fmt.Errorf("final_job V2 render plan requires at least one visual scene")
 	}
@@ -72,7 +80,7 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	delivery := finalJobPlanDelivery()
 	fpsNum, fpsDen := int64(delivery.FPS.Num), int64(delivery.FPS.Den)
 	assets := &finalJobPlanAssets{}
-	base, err := finalJobPlanBaseSegments(scenes, assets)
+	base, err := finalJobPlanBaseSegments(scenes, assets, stockBoundWindowsMS)
 	if err != nil {
 		return "", "", err
 	}
@@ -279,14 +287,17 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: segments}},
 		Assets:      assets.sorted(),
 	}
-	if err := alignFinalJobSegmentSourceWindows(&plan); err != nil {
+	if stockPoolFolderID = strings.TrimSpace(stockPoolFolderID); stockPoolFolderID != "" {
+		plan.StockPool = &finaljob.PlanStockPool{SourceKind: "drive", DriveFolderID: stockPoolFolderID, Selection: "shuffle"}
+	}
+	if err := alignFinalJobSegmentSourceWindows(&plan, stockAssetIDs); err != nil {
 		return "", "", fmt.Errorf("align final_job source windows to the output frame grid: %w", err)
 	}
 	plan.VideoTracks[0].Segments, err = finalJobCompleteVideoFrameCoverage(plan.VideoTracks[0].Segments, plan.Assets, plan.DurationUS, fpsNum, fpsDen)
 	if err != nil {
 		return "", "", err
 	}
-	if err := alignFinalJobSegmentSourceWindows(&plan); err != nil {
+	if err := alignFinalJobSegmentSourceWindows(&plan, stockAssetIDs); err != nil {
 		return "", "", fmt.Errorf("align final_job source windows after frame coverage: %w", err)
 	}
 	if err := validateFinalJobPlanBindingRules(plan); err != nil {
@@ -301,24 +312,27 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 
 // finalJobPlanBaseSegments describes one source segment per scene and types
 // every stock asset INTO the shared registry the caller already owns.
-func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAssets) ([]finalJobBaseSegment, error) {
+func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAssets, stockBoundWindowsMS map[string]int64) ([]finalJobBaseSegment, error) {
 	base := make([]finalJobBaseSegment, 0, len(scenes))
 	var cursorUS int64
 	for i, scene := range scenes {
-		asset, ok := scene["stock"].(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("final_job scene %d has no video asset", i)
-		}
 		durationSeconds, ok := scene["duration_seconds"].(float64)
 		if !ok || math.IsNaN(durationSeconds) || math.IsInf(durationSeconds, 0) || durationSeconds <= 0 {
 			return nil, fmt.Errorf("final_job scene %d has an invalid duration", i)
 		}
 		durationUS := int64(math.Round(durationSeconds * 1_000_000))
-		// Stock is a whole-file packet-copy input. The saved duration is the
-		// authority: never pad a 4.979s file to the 5.000s frame boundary. The
-		// Master rejects source_in_us + source_duration_us beyond the bytes
-		// (r53) and refuses any sub-window (r56); a stock scene must therefore
-		// already be exactly one whole file.
+		if poolSlot, _ := scene["stock_pool_slot"].(bool); poolSlot {
+			base = append(base, finalJobBaseSegment{startUS: cursorUS, endUS: cursorUS + durationUS, stockPool: true})
+			cursorUS += durationUS
+			continue
+		}
+		asset, ok := scene["stock"].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("final_job scene %d has no video asset", i)
+		}
+		// Keep the actual saved-file duration in the asset registry. The source
+		// segment below may reference a shorter binding window; the worker loops
+		// that window to cover the full scene timeline.
 		assetDurationUS := finalJobInt64(asset["duration_ms"]) * 1000
 		if assetDurationUS <= 0 {
 			return nil, fmt.Errorf("final_job scene %d stock asset has no positive saved duration", i)
@@ -330,13 +344,16 @@ func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAsset
 		sourceDurationUS := assetDurationUS
 		sourceLocked := strings.EqualFold(finalJobStringValue(scene["kind"]), "stock")
 		if sourceLocked {
-			// The stockpipeline owns the stock window. The Producer carries the
-			// binding's exact start/duration and never selects, cuts, pads or
-			// re-encodes stock; a window that does not fit the saved file is a
-			// malformed binding, not something to repair here.
-			sourceDurationUS = durationUS
+			// The stockpipeline owns and selects this exact source window. Keep it
+			// unchanged here; the scene timeline is allowed to be longer because
+			// the remote renderer loops the bound stock window.
+			if boundMS := stockBoundWindowsMS[finalJobStringValue(scene["scene_id"])]; boundMS > 0 {
+				sourceDurationUS = boundMS * 1000
+			} else {
+				sourceDurationUS = assetDurationUS - sourceInUS
+			}
 			if sourceInUS < 0 || sourceDurationUS <= 0 || sourceInUS+sourceDurationUS > assetDurationUS {
-				return nil, fmt.Errorf("final_job stock scene %d window %d+%d exceeds saved file duration %d", i, sourceInUS, sourceDurationUS, assetDurationUS)
+				return nil, fmt.Errorf("final_job stock scene %d bound window %d+%d exceeds saved file duration %d", i, sourceInUS, sourceDurationUS, assetDurationUS)
 			}
 		}
 		assetID := finalJobStringValue(asset["asset_id"])
@@ -406,19 +423,40 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 			if endFrame <= startFrame {
 				continue
 			}
+			if source.stockPool {
+				segments = append(segments, finalJobPlanSegment{
+					SegmentID: fmt.Sprintf("segment-%04d", len(segments)), StockPoolSlot: true,
+					TimelineStartFrame: startFrame, FrameCount: endFrame - startFrame,
+				})
+				continue
+			}
 			sourceInUS := source.sourceInUS + (inUS - source.startUS)
 			sourceDurationUS := outUS - inUS
 			// Timeline boundaries are frame-quantized; source duration is not.
-			// When the certified audio stretches the last scene a few
-			// milliseconds past the stock asset, trim the window to the bytes
-			// that exist (the worker holds the final frame) instead of declaring
-			// a range the Master rejects. Otherwise shift the same-length window
-			// backward inside the immutable asset.
+			// Stock keeps its binding window while the remote renderer loops that
+			// window for the full frame-counted scene duration.
 			if source.sourceDurationUS > 0 {
+				if source.sourceLocked {
+					// Overlay splits must not advance beyond or rewrite the stock
+					// binding. Each segment presents the same immutable source range
+					// and lets the worker loop it to the segment's frame count.
+					sourceInUS = source.sourceInUS
+					sourceDurationUS = source.sourceDurationUS
+				}
 				if sourceDurationUS > source.sourceDurationUS {
 					sourceDurationUS = source.sourceDurationUS
 				}
-				if !source.sourceLocked {
+				if source.sourceLocked {
+					// A frame-quantized timeline boundary can end a few
+					// milliseconds beyond the caller's exact stock window.
+					// Keep the locked source start and clamp the read length to
+					// the bytes inside the binding; the renderer holds its final
+					// frame for the sub-frame remainder.
+					availableUS := source.sourceInUS + source.sourceDurationUS - sourceInUS
+					if sourceDurationUS > availableUS {
+						sourceDurationUS = availableUS
+					}
+				} else {
 					if maxSourceInUS := source.sourceDurationUS - sourceDurationUS; sourceInUS > maxSourceInUS {
 						sourceInUS = maxSourceInUS
 					}
@@ -471,7 +509,7 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 	}
 	segments = finalJobMergeContiguousSegments(segments)
 	for i, segment := range segments {
-		if segment.FrameCount <= 0 || segment.SourceDurationUS <= 0 {
+		if segment.FrameCount <= 0 || (!segment.StockPoolSlot && segment.SourceDurationUS <= 0) {
 			return nil, fmt.Errorf("final_job V2 segment %d has an empty frame or source window (frames=%d source_duration_us=%d asset=%q)", i, segment.FrameCount, segment.SourceDurationUS, segment.AssetID)
 		}
 	}
@@ -492,7 +530,7 @@ func finalJobMergeContiguousSegments(segments []finalJobPlanSegment) []finalJobP
 	for _, current := range segments {
 		if len(merged) > 0 {
 			prior := &merged[len(merged)-1]
-			if prior.AssetID == current.AssetID && prior.SHA256 == current.SHA256 &&
+			if prior.StockPoolSlot == current.StockPoolSlot && prior.AssetID == current.AssetID && prior.SHA256 == current.SHA256 &&
 				prior.TimelineStartFrame+prior.FrameCount == current.TimelineStartFrame &&
 				prior.SourceInUS+prior.SourceDurationUS == current.SourceInUS {
 				prior.FrameCount += current.FrameCount

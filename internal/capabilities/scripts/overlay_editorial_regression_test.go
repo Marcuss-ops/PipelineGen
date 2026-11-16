@@ -1,18 +1,18 @@
 package scriptgeneration
 
-// Runtime regression certification (R17/R18): certified, grounded editorial
-// data may add only its admitted title/bullet primitives; corrupt data must
-// remain a no-op and never affect the rendering plan.
+// Runtime regression certification (R17/R18): Rust owns the editorial and
+// chapter projection. The Go producer must carry the certified manifest and
+// leave the scene candidates untouched; corrupt manifest data must remain a
+// no-op for the candidates sent to Rust.
 
 import (
-	"context"
-
 	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -21,12 +21,38 @@ func editorialRegressionResult(t *testing.T) *GenerateResult {
 	return phraseCeilingFixture(t)
 }
 
-func marshalPlan(t *testing.T, result *GenerateResult) string {
+func editorialRegressionRequest(t *testing.T, result *GenerateResult) overlayplan.V2Request {
 	t.Helper()
-	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-fixed", "video-fixed", "project-fixed", nil, passthroughMapOverlapResolver{})
+	input, err := prepareOverlayPlanCompile(result, "en", GoldenOverlayCanvas,
+		"plan-fixed", "video-fixed", "project-fixed", nil)
 	require.NoError(t, err)
-	require.NotNil(t, plan)
-	raw, err := json.Marshal(plan)
+	require.NotNil(t, input)
+	request, err := buildOverlayPlanV2Request(input.result, input.language, input.canvas,
+		input.planID, input.videoID, input.projectID, input.motionSeed,
+		input.timedScenes, input.scenes, input.rawScenes, input.imagePlan, input.timelineBounds)
+	require.NoError(t, err)
+	return request
+}
+
+func marshalScenes(t *testing.T, result *GenerateResult) string {
+	t.Helper()
+	request := editorialRegressionRequest(t, result)
+	for index := range request.Scenes {
+		// Chart certification is a run-level authorization flag, not a scene
+		// candidate. R18 compares candidate surfaces only.
+		if request.Scenes[index].Raw != nil {
+			request.Scenes[index].Raw.ChartsCertified = false
+		}
+	}
+	raw, err := json.Marshal(request.Scenes)
+	require.NoError(t, err)
+	return string(raw)
+}
+
+func marshalRequest(t *testing.T, result *GenerateResult) string {
+	t.Helper()
+	request := editorialRegressionRequest(t, result)
+	raw, err := json.Marshal(request)
 	require.NoError(t, err)
 	return string(raw)
 }
@@ -51,10 +77,11 @@ func corruptEditorial() *scriptpkg.EditorialManifest {
 	}
 }
 
-// TestOverlayPlanProjectsCertifiedEditorial_R17 certifies that a valid
-// manifest contributes its grounded title to the compiled plan.
-func TestOverlayPlanProjectsCertifiedEditorial_R17(t *testing.T) {
-	plain := marshalPlan(t, editorialRegressionResult(t))
+// TestOverlayPlanLeavesEditorialProjectionToRust_R17 certifies that a valid
+// manifest travels to Rust as data and is not pre-selected into the scene
+// candidates by Go.
+func TestOverlayPlanLeavesEditorialProjectionToRust_R17(t *testing.T) {
+	plain := marshalRequest(t, editorialRegressionResult(t))
 
 	withEditorial := editorialRegressionResult(t)
 	withEditorial.SourceLanguage = "en"
@@ -65,21 +92,23 @@ func TestOverlayPlanProjectsCertifiedEditorial_R17(t *testing.T) {
 		Scenes:    []scriptpkg.EditorialScene{{SceneID: "scene-0", Title: &title, TitleStatus: "resolved", TitleSource: "topic_validated", Bullets: []scriptpkg.EditorialSceneBullet{}, Highlights: []scriptpkg.EditorialHighlight{}}},
 		Certified: true, Fingerprint: strings.Repeat("a", 64),
 	}
-	compiled := marshalPlan(t, withEditorial)
-	require.NotEqual(t, plain, compiled, "R17: a certified grounded title is projected")
-	require.Contains(t, compiled, `"editorial_role":"scene_title"`)
-	require.Contains(t, compiled, `"text":"alpha one bravo"`)
+	compiled := marshalRequest(t, withEditorial)
+
+	require.NotEqual(t, plain, compiled, "R17: the certified manifest must travel in the request")
+	require.Contains(t, compiled, `"title":"alpha one bravo"`)
+	require.NotContains(t, compiled, `"presentation_role":"scene_title"`,
+		"R17: Go must not pre-select editorial titles; Rust owns the projection")
 }
 
 // TestOverlayPlanIgnoresCorruptEditorial_R18 certifies that invalid manifest
-// contents fail closed and leave the semantic render plan unchanged.
+// contents do not change the scene candidates sent to Rust.
 func TestOverlayPlanIgnoresCorruptEditorial_R18(t *testing.T) {
-	plain := marshalPlan(t, editorialRegressionResult(t))
+	plain := marshalScenes(t, editorialRegressionResult(t))
 
 	withCorrupt := editorialRegressionResult(t)
 	withCorrupt.Editorial = corruptEditorial()
-	require.Equal(t, plain, marshalPlan(t, withCorrupt),
-		"R18: corrupt editorial must not change the overlay plan")
+	require.Equal(t, plain, marshalScenes(t, withCorrupt),
+		"R18: corrupt editorial must not change the overlay candidates")
 	require.NotNil(t, withCorrupt.Editorial.Scenes[0].Title,
 		"R18: the manifest still carries candidates as data")
 }

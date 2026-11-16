@@ -5,7 +5,7 @@ package wiring
 // LocalizationService (the RenderingGen/Chronon render boundary). The runner emits a
 // LocalizedRenderInput the moment one scene's translation + TTS for a language
 // are final; this adapter turns it into a single-language LocalizeInput so
-// Rust starts on that clip without waiting for the other scenes/languages.
+// Chronon starts on that clip without waiting for the other scenes/languages.
 //
 // The LocalizationService resolves the source clip + transcript/subtitle text
 // tracks from the canonical stores by (asset_id, language). This adapter
@@ -22,7 +22,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -37,7 +36,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -113,6 +111,11 @@ type localizedRenderEnqueuerAdapter struct {
 
 	folderMu    sync.Mutex
 	folderCache map[string]string
+	// translationGate bounds missing subtitle-track backfills. A shared stock
+	// clip can be rendered by many narrated scenes at once; allowing each
+	// request to translate the same source concurrently overloads the local
+	// Ollama model and trips its circuit breaker.
+	translationGate chan struct{}
 }
 
 func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
@@ -155,6 +158,7 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.Tex
 		subtitleArtifacts: subtitleArtifacts,
 		committer:         committer,
 		folderCache:       make(map[string]string),
+		translationGate:   make(chan struct{}, 1),
 	}
 }
 
@@ -293,70 +297,6 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	return nil
 }
 
-// UploadRendered publishes a durable local RENDERED checkpoint directly.
-// It deliberately does not call build/render code beyond resolving the
-// destination folder, so a retry after a crash cannot rerun Chronon.
-func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in scriptgeneration.LocalizedRenderInput, staged scriptgeneration.LocalizedRenderResult) error {
-	if a == nil || a.svc == nil {
-		return fmt.Errorf("localized render recovery: service is not wired")
-	}
-	if strings.TrimSpace(staged.LocalPath) == "" || strings.TrimSpace(staged.SHA256) == "" {
-		return fmt.Errorf("localized render recovery: staged artifact is incomplete")
-	}
-	info, err := os.Stat(staged.LocalPath)
-	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-		return fmt.Errorf("localized render recovery: staged local artifact is unavailable: %s", staged.LocalPath)
-	}
-	computed, _, err := digest.SHA256File(staged.LocalPath)
-	if err != nil || !strings.EqualFold(computed, staged.SHA256) {
-		return fmt.Errorf("localized render recovery: staged sha256 mismatch for %s", staged.LocalPath)
-	}
-	clipID := strings.TrimSpace(staged.ClipID)
-	if clipID == "" {
-		clipID = strings.TrimSpace(in.ClipID)
-	}
-	// The recovery path must resolve the SAME destination the render used,
-	// per-language level included, or a crash-retry would re-upload the
-	// staged artifact into a different folder than its certified sibling.
-	destination, _, err := a.resolveRenderFolders(ctx, in, clipID, string(staged.Language))
-	if err != nil {
-		return fmt.Errorf("localized render recovery: resolve destination: %w", err)
-	}
-	artifact := localization.LocalizedClipArtifact{
-		Version: localization.LocalizedClipArtifactVersion, JobID: in.RunID,
-		SceneID: staged.SceneID, ClipID: clipID, Language: string(staged.Language),
-		// Carry the original render identity across the crash recovery: the
-		// recovered artifact was produced by that same render job, so the run
-		// result keeps naming it after the upload-only retry.
-		PlanRevision: staged.RenderJobID,
-		AssetID:      staged.AssetID, LocalPath: staged.LocalPath, SHA256: staged.SHA256,
-		SizeBytes: staged.SizeBytes, StorageKey: staged.StorageKey, ArtifactURL: staged.ArtifactURL,
-		DurationMS: staged.DurationMS, Status: localization.LocalizedClipRendered,
-	}
-	uploader, ok := a.svc.(localizedArtifactUploader)
-	if !ok {
-		return fmt.Errorf("localized render recovery: upload-only service is not wired")
-	}
-	published, err := uploader.UploadRendered(ctx, artifact, destination)
-	if err != nil {
-		return fmt.Errorf("localized render recovery: upload: %w", err)
-	}
-	if in.OnRendered != nil {
-		return in.OnRendered(scriptgeneration.LocalizedRenderResult{
-			SceneID: published.SceneID, SceneIndex: in.SceneIndex, Language: scriptgeneration.Language(published.Language),
-			RenderJobID: published.PlanRevision,
-			Reused:      published.Reused, RenderSource: published.RenderSource,
-			ClipID: published.ClipID, AssetID: published.AssetID, SHA256: published.SHA256,
-			DriveFileID: published.DriveFileID, DriveLink: published.DriveLink, DriveFolderID: published.DriveFolderID,
-			DurationMS: published.DurationMS, SizeBytes: published.SizeBytes,
-			StorageKey: published.StorageKey, ArtifactURL: published.ArtifactURL,
-			LocalPath: published.LocalPath, Status: string(published.Status), Backend: published.Backend, Metrics: metricsMapFromJSON(published.MetricsJSON), StartedAt: staged.StartedAt,
-			FinishedAt: time.Now().UTC(),
-		})
-	}
-	return nil
-}
-
 func metricsMapFromJSON(raw string) map[string]float64 {
 	if strings.TrimSpace(raw) == "" {
 		return nil
@@ -393,12 +333,10 @@ func (a *localizedRenderEnqueuerAdapter) resolveExistingSubtitleLanguage(ctx con
 }
 
 func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Context, assetID, sourceLang, targetLang string, in scriptgeneration.LocalizedRenderInput) (bool, error) {
-	// Numeric/location overlays are rendered as separate, timed Chronon layers.
-	// A clip localization with subtitles disabled does not need a transcript
-	// track, and requiring one would block otherwise valid language variants.
-	if !localizedRenderSubtitlesEnabled(in) {
-		return false, nil
-	}
+	// Localization plans always require a timed source transcript, even when
+	// the final burn-in is disabled. Ensure the source track and requested
+	// language track exist here; the render spec still controls whether the
+	// renderer draws subtitles into the output.
 	if a.tracks == nil {
 		return false, fmt.Errorf("localized render: text track repository not wired")
 	}
@@ -489,6 +427,24 @@ func (a *localizedRenderEnqueuerAdapter) ensureTargetSubtitleTrack(ctx context.C
 	}
 	if a.backfill == nil {
 		return fmt.Errorf("localized render: no timed subtitles for requested language %q on %q; refusing source-language fallback (on-demand subtitle materialization is not wired)", targetLang, assetID)
+	}
+	if a.translationGate != nil {
+		select {
+		case a.translationGate <- struct{}{}:
+			defer func() { <-a.translationGate }()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		// Another render may have materialized this exact track while this
+		// request waited. Recheck under the gate so repeated shared-stock scenes
+		// cause one translation, not a burst of identical model calls.
+		track, cues, err = a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
+		if err != nil {
+			return fmt.Errorf("localized render: recheck translated subtitles for %q/%q: %w", assetID, targetLang, err)
+		}
+		if track != nil && len(cues) > 0 {
+			return nil
+		}
 	}
 	if err := a.backfill.EnsureTranslatedSubtitleTrack(ctx, assetID, sourceLang, targetLang); err != nil {
 		return fmt.Errorf("localized render: materialize requested subtitles %q on %q: %w", targetLang, assetID, err)

@@ -19,6 +19,23 @@ func BuildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	if plan == nil || !plan.HasVisualMediaPlan() {
 		return spec
 	}
+	// One shared folder repeated across every authored scene is a remote stock
+	// pool, not a set of direct per-scene stock bindings. The Producer must not
+	// certify or select that pool locally; the Master owns its contents and
+	// chooses the clips during assembly. Keep STOCK ISOLATION for genuine
+	// scene-specific bindings below.
+	sharedRemoteStockPool := false
+	if plan.MediaMode == scriptpkg.MediaModeStockOnly && len(plan.Segments) > 0 {
+		folderID := strings.TrimSpace(plan.Segments[0].StockFolderID)
+		folderLink := strings.TrimSpace(plan.Segments[0].StockFolderLink)
+		sharedRemoteStockPool = folderID != "" || folderLink != ""
+		for _, segment := range plan.Segments[1:] {
+			if strings.TrimSpace(segment.StockFolderID) != folderID || strings.TrimSpace(segment.StockFolderLink) != folderLink {
+				sharedRemoteStockPool = false
+				break
+			}
+		}
+	}
 	// Certify provider relevance only when the resolved media plan actually
 	// enables that provider. Mixed mode means the item combines
 	// caller-selected clips and stock bindings; it does not imply a provider
@@ -52,7 +69,7 @@ func BuildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 			id = fmt.Sprintf("scene-%d", i)
 		}
 		subject := strings.TrimSpace(segment.Topic)
-		stockBound := strings.TrimSpace(segment.StockFolderID) != "" || strings.TrimSpace(segment.StockFolderLink) != ""
+		stockBound := !sharedRemoteStockPool && (strings.TrimSpace(segment.StockFolderID) != "" || strings.TrimSpace(segment.StockFolderLink) != "")
 		spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{
 			ID: id, Subject: subject, WinnerSubjectMatch: subject,
 			// A per-segment stock folder is the visual source of record for

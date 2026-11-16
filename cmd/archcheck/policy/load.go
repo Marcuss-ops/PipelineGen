@@ -42,6 +42,7 @@ var policyBindings = map[string]fieldBinding{
 	"known_grandfathered":             stringListBinding("KnownGrandfathered", "report grandfathered_known", func(p *Policy, v []string) { p.KnownGrandfathered = v }),
 	"stale_prose_paths":               stringListBinding("StaleProseStems", "scan.ScanStaleProsePaths", func(p *Policy, v []string) { p.StaleProseStems = v }),
 	"hard_gates":                      stringListBinding("HardGates", "runner hard-gate escalation", func(p *Policy, v []string) { p.HardGates = v }),
+	"advisory_rules":                  stringListBinding("AdvisoryRules", "runner advisory exit policy", func(p *Policy, v []string) { p.AdvisoryRules = v }),
 }
 
 // These top-level sections are documentation or are consumed by legacy shell

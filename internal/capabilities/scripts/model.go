@@ -110,7 +110,10 @@ type GenerateRequest struct {
 	MaxMapOverlays      int  `json:"max_map_overlays,omitempty"`
 	// MaxImageOverlays is the caller-selected run-level ceiling for all image
 	// overlays, including scene-context and entity-bound imagery.
-	MaxImageOverlays int            `json:"max_image_overlays,omitempty"`
+	MaxImageOverlays int `json:"max_image_overlays,omitempty"`
+	// EditorialDensity is the single editorial budget preset (minimal,
+	// balanced, dynamic). It derives unset per-kind caps; explicit caps win.
+	EditorialDensity string         `json:"editorial_density,omitempty"`
 	AnimationCounts  map[string]int `json:"animation_counts,omitempty"`
 	// OverlayGroupLimits caps overlays per group (maps, short_phrases,
 	// long_phrases, entities_with_text, images). Present 0 disables a group.

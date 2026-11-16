@@ -1,0 +1,52 @@
+{
+  "schema_version": "renderinggen.overlay-plan.v1",
+  "plan_id": "map-plan",
+  "video_id": "map-video",
+  "project_id": "map-project",
+  "language": "en",
+  "width": 1280,
+  "height": 720,
+  "fps_num": 30,
+  "fps_den": 1,
+  "duration_ms": 900,
+  "media_contract": "overlay-v1",
+  "items": [
+    {
+      "id": "static__new-orleans__location__01",
+      "scene_id": "scene-0",
+      "entity_id": "ent_5d06710f3ec2ac53",
+      "kind": "location",
+      "start_ms": 500,
+      "end_ms": 900,
+      "start_us": 500000,
+      "duration_us": 400000,
+      "template_id": "gpe_default",
+      "preset_id": "phrase_default",
+      "text": "New Orleans",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 96,
+        "glow": {
+          "color": "#FFFFFF"
+        }
+      },
+      "params": {
+        "canonical_entity_id": "ent_5d06710f3ec2ac53",
+        "entity_type": "GPE",
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 96,
+        "glow_color": "#FFFFFF",
+        "glow_size": 10,
+        "height": 600,
+        "position": "center",
+        "priority": 0.93,
+        "width": 1700
+      },
+      "render_key": "07265d96255c36e2c1a3f4702850f5d40d2d5aaeceb9e4bbf5f4d4157c7e9391",
+      "duration_ms": 400
+    }
+  ],
+  "fingerprint": "ab6354877d232d7fbb04ba377c4ec5db601614508f2abd47629e5e7cf0d4db4c"
+}

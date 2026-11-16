@@ -3,7 +3,6 @@ package overlays
 import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -101,10 +100,14 @@ func TestResolveAnimationSelectionsRejectsContainerMotions(t *testing.T) {
 	if err := ResolveAnimationSelections(badChain); err == nil {
 		t.Fatal("chain container with MotionID must fail")
 	}
-	goodChain := capmodel.CoalesceChainedOverlays([]capmodel.OverlayItem{
-		{ID: "a", SceneID: "s1", Kind: "image", TemplateID: "IMAGE_OVERLAY", MotionID: "image_a", StartMs: 0, EndMs: 1_000, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-a"}}},
-		{ID: "b", SceneID: "s1", Kind: "image", TemplateID: "IMAGE_OVERLAY", MotionID: "image_b", StartMs: 1_000, EndMs: 2_000, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-b"}}},
-	}, map[string]int{"chain_enabled": 1})
+	goodChain := []capmodel.OverlayItem{{
+		ID: "chain", SceneID: "s1", Kind: capmodel.KindPhraseChain, TemplateID: capmodel.TemplatePhraseChain,
+		StartUS: 0, DurationUS: 4_000_000,
+		Params: map[string]any{"chain_segments": []capmodel.ChainSegment{
+			{Kind: "image", TemplateID: "IMAGE_OVERLAY", MotionID: "image_a", StartUS: 0, DurationUS: 1_000_000},
+			{Kind: "image", TemplateID: "IMAGE_OVERLAY", MotionID: "image_b", StartUS: 1_400_000, DurationUS: 1_000_000},
+		}},
+	}}
 	if err := ResolveAnimationSelections(goodChain); err != nil {
 		t.Fatalf("chain container without MotionID: %v", err)
 	}
@@ -138,30 +141,5 @@ func TestResolveAnimationSelectionsAcceptsGroupOwnedComposite(t *testing.T) {
 	}}
 	if err := ResolveAnimationSelections(bad); err == nil {
 		t.Fatal("group-owned composite with a competing child motion must fail")
-	}
-}
-
-func TestFinalizeCompiledAnimationLayoutKeepsOverflowingImageRunStandalone(t *testing.T) {
-	items := make([]capmodel.OverlayItem, 0, 4)
-	for i := 0; i < 4; i++ {
-		start := int64(i) * 5_000_000
-		items = append(items, capmodel.OverlayItem{
-			ID: fmt.Sprintf("image-%d", i), SceneID: "s1", Kind: "image", TemplateID: "IMAGE_OVERLAY",
-			MotionID: fmt.Sprintf("image_motion_%d", i),
-			StartUS:  start, DurationUS: 5_000_000,
-			StartMs: start / 1000, EndMs: (start + 5_000_000) / 1000,
-			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: "hash"}},
-		})
-	}
-	input := layoutChainInput()
-	input.Scenes = []SceneInput{{ID: "s1", EndUS: 20_000_000}}
-	got := FinalizeCompiledAnimationLayout(items, input)
-	if len(got) != len(items) {
-		t.Fatalf("overflowing run = %+v, want %d standalone images", got, len(items))
-	}
-	for i, item := range got {
-		if capmodel.IsChainItemKind(item.Kind) {
-			t.Fatalf("item %d = %q, want standalone image", i, item.Kind)
-		}
 	}
 }

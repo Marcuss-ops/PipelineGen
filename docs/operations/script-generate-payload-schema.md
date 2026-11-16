@@ -105,6 +105,60 @@ is `4..512`, `opacity` is `0..1`, and `enabled:false` disables the grid while
 keeping the blurred backdrop. `backdrop` is ignored for composites and groups,
 which keep independent per-layer frames.
 
+For source video clips rendered by Chronon, `output.render` accepts the clip
+card controls plus native effects and a procedural grid:
+
+```json
+"output": {"render": {
+  "enabled": true,
+  "background": {"mode": "blur_source"},
+  "foreground_scale_percent": 75,
+  "watermark": {"enabled": true, "text": "VeloxEditing",
+    "position": "top_right", "opacity": 0.72, "margin_px": 36,
+    "style": {"font": "inter_bold", "font_size_px": 36,
+      "color": "#FFFFFF", "stroke": {"color": "#101820", "width": 2},
+      "shadow": {"color": "#000000", "opacity": 0.65, "blur_px": 8, "offset_y": 3}}},
+  "source_frame": {
+    "border": {"width_px": 8, "color": "#EDEDED", "radius_px": 28},
+    "shadow": {"color": "#101820", "opacity": 0.8, "blur_px": 24, "offset_y_px": 10},
+    "stroke": {"width_px": 2, "color": "#FFFFFF"},
+    "clip_radius_px": 20
+  },
+  "effects": [{"type": "glow", "radius": 18, "intensity": 0.2}],
+  "grid": {"scope": "foreground", "style": "lines", "spacing_px": 96, "line_width_px": 1,
+    "color": "#7FA8C8", "opacity": 0.08},
+  "subtitles": {"enabled": true, "mode": "burn", "style": {
+    "font": "inter", "font_size_px": 56, "color": "#FFD400",
+    "stroke": {"color": "#000000", "width": 4},
+    "shadow": {"color": "#000000", "opacity": 0.8, "blur_px": 10, "offset_y": 4}
+  }}
+}}
+```
+
+`foreground_scale_percent` bounds the foreground clip inside the canvas;
+`source_frame` controls its border, shadow, stroke and rounded corners.
+`watermark` can be text, an image `asset_id`, or both. `position` accepts
+`top_left`, `top_right`, `center`, `bottom_left`, or `bottom_right`; `margin_px`
+sets its inset, `opacity` accepts 0..1, and `style` sets font, size, color,
+stroke, shadow and transition. Style width/height/scale can set a precise
+watermark box. The watermark travels in the same sealed Chronon render plan.
+`background.mode` is `none`, `blur_source`, or `asset` (with `asset_id` for an
+asset). `effects` uses the closed Chronon effect allowlist from
+`POST /api/clips/render`; `grid.scope` may be `full_canvas` (the default) or
+`foreground`, which confines it to the scaled source clip. Subtitle `font`, `color`, `stroke` and `shadow` use
+the `VideoVisualStyleSpec` contract. Invalid effects or grid geometry fail
+closed before rendering. These values participate in the render fingerprint,
+so changed styling cannot reuse stale clip bytes.
+Clip-only card, background, effect, grid and watermark settings are omitted
+from stock-backed narration renders; stock assets are never updated or
+replaced by these clip treatments.
+
+For `script_params.segments[]` entries with `no_voiceover:true`,
+`duration_ms` is optional. When omitted, the runner uses the selected clip's
+canonical media duration; provide `duration_ms` only when an editorial trim is
+intended. The fixed-media intro/outro playback policy still uses an explicit
+source window.
+
 - `version` is always `2`. `items` must contain **at least one** entry.
 - A single-item envelope maps to the unified `/generate` flow; multiple
   items map to batch generation.

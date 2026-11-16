@@ -110,13 +110,22 @@ func (r *Runner) ensureFinalJobFixedMediaSubtitles(ctx context.Context, runID st
 			input.OnRendered = func(rendered LocalizedRenderResult) error {
 				return r.recordFinalJobFixedMediaRender(ctx, runID, result, rendered)
 			}
+			// The in-memory envelope wins; the checkpoint is the fallback. Both
+			// paths receive the v2 input fingerprint before publishing.
 			if staged := r.stagedLocalizedRender(result, scene.ID, Language(language), clipID); staged != nil {
+				input.ResumeFrom = staged
+			}
+			prepared, err := r.prepareLocalizedRenderInput(ctx, input)
+			if err != nil {
+				return fmt.Errorf("final_job subtitles: prepare resume for scene %q clip %q: %w", scene.ID, clipID, err)
+			}
+			input = prepared
+			if input.ResumeFrom != nil {
 				recovery, ok := r.localizedRenderEnqueuer.(LocalizedRenderRecoveryEnqueuer)
 				if !ok {
 					return fmt.Errorf("final_job subtitles: staged render for scene %q clip %q is not publishable (recovery enqueuer is not wired)", scene.ID, clipID)
 				}
-				input.ResumeFrom = staged
-				if err := recovery.UploadRendered(ctx, input, *staged); err != nil {
+				if err := recovery.UploadRendered(ctx, input, *input.ResumeFrom); err != nil {
 					return fmt.Errorf("final_job subtitles: publish staged render for scene %q clip %q: %w", scene.ID, clipID, err)
 				}
 			} else {
@@ -155,10 +164,11 @@ func (r *Runner) recordFinalJobFixedMediaRender(ctx context.Context, runID strin
 	recordRenderStageProgress(result, rendered)
 	snapshot := *result
 	r.localizedRenderMu.Unlock()
-	if r.repo != nil {
-		if err := r.repo.SavePartialResult(ctx, runID, &snapshot); err != nil {
-			return fmt.Errorf("final_job subtitles: checkpoint render for scene %q clip %q: %w", rendered.SceneID, rendered.ClipID, err)
-		}
+	if err := r.saveLocalizedRenderArtifactCheckpoint(ctx, runID, 0, rendered); err != nil {
+		return fmt.Errorf("final_job subtitles: checkpoint render for scene %q clip %q: %w", rendered.SceneID, rendered.ClipID, err)
+	}
+	if err := r.saveLocalizedRenderUnitEnvelope(ctx, runID, &snapshot); err != nil {
+		return fmt.Errorf("final_job subtitles: checkpoint render for scene %q clip %q: %w", rendered.SceneID, rendered.ClipID, err)
 	}
 	if r.log != nil {
 		r.log.Info("final_job subtitle fragment rendered",

@@ -308,10 +308,10 @@ func (r *Runner) runNormalizePhase(ctx context.Context, runID string, exec Execu
 // leaves failure persistence at the same execution-step boundary.
 func (r *Runner) validateClipSceneOutput(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, scenes []Scene) bool {
 	for i, scene := range scenes {
-		// Native no_voiceover cutaways are fixed media by design: their only
-		// text surface is the clip's own footage. They must never be checked
-		// against the narration word floor.
-		if scene.NativeClip {
+		// no_voiceover cutaways are fixed media by design: their only text
+		// surface is the clip's own footage. They must never be checked against
+		// the narration word floor, whether or not Chronon will style the clip.
+		if scene.NativeClip || scene.ExecutionMode.IsFixedMedia() {
 			continue
 		}
 		text := strings.TrimSpace(scene.Text[req.SourceLanguage])

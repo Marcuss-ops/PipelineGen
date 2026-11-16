@@ -32,11 +32,10 @@ import (
 )
 
 // CompileOverlayPlanWithRustResolver compiles and seals a plan using the
-// configured BrainRust map-overlap resolver. The resolver is mandatory: map
-// window trimming, collision resolution, entrance cascading and entity
-// ranking are owned by the semantic engine — there is no Go-only fallback.
-func CompileOverlayPlanWithRustResolver(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, resolver capabilityoverlay.MapOverlapResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(ctx, result, language, canvas, planID, videoID, projectID, nil, plates, resolver, perSceneImages...)
+// configured BrainRust compiler. There is no Go planner and no per-phase
+// fallback: the v2 compiler is the only plan authority.
+func CompileOverlayPlanWithRustResolver(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
+	return compileOverlayPlanWithMotionOffset(ctx, result, language, canvas, planID, videoID, projectID, plates, compiler, perSceneImages...)
 }
 
 // ── Visual bullet values (merged from editorial_bullet_values.go) ──

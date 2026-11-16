@@ -133,6 +133,8 @@ type LocalizedClipPlan struct {
 	// output.render.source_frame. It is sealed here so the per-clip render
 	// carries the requested box instead of the bare clip.
 	SourceFrame *cliprender.PlanSourceFrame `json:"source_frame,omitempty"`
+	Effects     []cliprender.ClipEffectSpec `json:"effects,omitempty"`
+	Grid        *cliprender.ClipGridSpec    `json:"grid,omitempty"`
 
 	// ── Reused entity overlays ───────────────────────────────────
 	// Overlays carries one certified lineage per rendered overlay segment the
@@ -267,6 +269,9 @@ func (p LocalizedClipPlan) Validate() error {
 	// discoverable after the render. Fail closed here instead.
 	if err := cliprender.ValidatePlanSourceFrame(p.SourceFrame, p.ForegroundScalePercent); err != nil {
 		return fmt.Errorf("%w: source_frame: %w", ErrInvalidLocalizedClipPlan, err)
+	}
+	if err := cliprender.ValidateClipEffects(p.Effects, p.Grid); err != nil {
+		return fmt.Errorf("%w: clip effects/grid: %w", ErrInvalidLocalizedClipPlan, err)
 	}
 	// Overlay lineages are all-or-nothing, EACH of them: a variant that
 	// composites reused overlays must carry the complete chain (render job id +

@@ -394,6 +394,7 @@ func mapClipGrid(grid *cliprender.ClipGridSpec) *clipGridBlock {
 		return nil
 	}
 	b := &clipGridBlock{
+		Scope:     grid.Scope,
 		Style:     grid.Style,
 		SpacingPX: grid.SpacingPX,
 		Color:     grid.Color,

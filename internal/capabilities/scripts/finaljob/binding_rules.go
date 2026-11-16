@@ -22,6 +22,9 @@ import (
 // check runs: the plan is only correct when every distinct byte-set has exactly
 // one asset, whatever number of placements point at it.
 func ValidatePlanBindingRules(plan CompiledPlanV2) error {
+	if plan.StockPool != nil && (plan.StockPool.SourceKind != "drive" || strings.TrimSpace(plan.StockPool.DriveFolderID) == "" || plan.StockPool.Selection != "shuffle") {
+		return fmt.Errorf("final_job plan has an invalid stock_pool contract")
+	}
 	byID := make(map[string]PlanAsset, len(plan.Assets))
 	byKey := make(map[string]string, len(plan.Assets))
 	bySHA := make(map[string]string, len(plan.Assets))
@@ -60,6 +63,15 @@ func ValidatePlanBindingRules(plan CompiledPlanV2) error {
 				return fmt.Errorf("final_job plan segments repeat id %q", id)
 			}
 			seenSegment[id] = struct{}{}
+			if segment.StockPoolSlot {
+				if plan.StockPool == nil {
+					return fmt.Errorf("final_job plan segment %q uses stock_pool_slot without stock_pool", id)
+				}
+				if segment.AssetID != "" || segment.SHA256 != "" || segment.SourceInUS != 0 || segment.SourceDurationUS != 0 || segment.FrameCount <= 0 {
+					return fmt.Errorf("final_job plan stock_pool_slot %q must leave its source to the Master", id)
+				}
+				continue
+			}
 			asset, ok := byID[segment.AssetID]
 			if !ok {
 				return fmt.Errorf("final_job plan segment %q references unknown asset %q", id, segment.AssetID)

@@ -231,6 +231,12 @@ type GenerationItemV2 struct {
 	// MaxImageOverlays sets the run-level ceiling for image overlays. A
 	// positive value is honored; zero keeps the certified default.
 	MaxImageOverlays int `json:"max_image_overlays,omitempty"`
+	// EditorialDensity selects one coherent editorial budget preset:
+	// "minimal", "balanced" (default when omitted) or "dynamic". It fills
+	// only the per-kind caps the caller left at zero; explicit
+	// max_*_overlays / max_overlays_per_scene values remain authoritative.
+	// Unknown values fail closed at plan compilation.
+	EditorialDensity string `json:"editorial_density,omitempty"`
 	// OverlayGroupLimits sets a per-group maximum of rendered overlays. Keys:
 	// maps, short_phrases, long_phrases, entities_with_text, images. A key
 	// present with 0 disables that group; a positive value caps it (and may

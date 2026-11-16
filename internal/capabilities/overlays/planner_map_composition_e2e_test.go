@@ -13,7 +13,7 @@ func buildSingleMapPlan(t *testing.T, seed string) capmodel.OverlayPlan {
 		ID:   "scene-1",
 		Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 1_000_000, 2_000_000)},
 	}
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan", VideoID: "map-video", MotionSeed: seed,
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: stubPlateResolver{plates: []MapPlate{plate}},
@@ -109,7 +109,7 @@ func TestMapCompositionEndToEndMultiPinKeepsEveryPlace(t *testing.T) {
 			romeLat+0.01*float64(i), romeLon+0.01*float64(i), int64(i)*300_000, 250_000))
 	}
 	scene := SceneInput{ID: "scene-1", Maps: places}
-	plan, err := buildPlanWithMapWindowTrimmerStub(PlanInput{
+	plan, err := buildPlanForTest(PlanInput{
 		PlanID: "map-plan", VideoID: "map-video", MotionSeed: "job-multi",
 		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 30, FPSDen: 1,
 		PlateResolver: stubPlateResolver{plates: []MapPlate{plate}},

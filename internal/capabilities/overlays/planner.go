@@ -1,12 +1,11 @@
 package overlays
 
 import (
-	"context"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -14,26 +13,16 @@ import (
 // timeline. StartMs/EndMs must come from certified speech timing; the planner
 // never estimates them from text length or scene duration. StartUS/DurationUS
 
-// BuildPlan selects bounded overlays from scene annotations. Plans containing
-// maps require BuildPlanWithMapWindowTrimmer so BrainRust compiles map timing.
-// Candidates with invalid or missing certified timing are ignored, never
-// given guessed timing. Images need an explicit window and content identity
-// because RenderingGen later materializes them from the asset manifest.
+// BuildPlan selects bounded overlays from scene annotations. Candidates with
+// invalid or missing certified timing are ignored, never given guessed timing.
+// Images need an explicit window and content identity because RenderingGen
+// later materializes them from the asset manifest. Map timing and collision
+// resolution are owned by the Rust v2 compiler, not by this candidate builder.
 func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, error) {
-	return buildPlan(context.Background(), input, config, nil, nil)
+	return buildPlan(input, config, nil)
 }
 
-// BuildPlanWithMapWindowTrimmer uses the configured BrainRust pass before
-// overlap degradation and editorial budgets. BuildPlan remains available for
-// pure planner callers that have no Rust worker composition.
-func BuildPlanWithMapWindowTrimmer(ctx context.Context, input PlanInput, config PlannerConfig, trimmer MapWindowTrimmer) (capmodel.OverlayPlan, error) {
-	if trimmer == nil {
-		return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: BrainRust map-window trimmer is required")
-	}
-	return buildPlan(ctx, input, config, trimmer, nil)
-}
-
-func buildPlan(ctx context.Context, input PlanInput, config PlannerConfig, trimmer MapWindowTrimmer, deferred *DeferredPlan) (capmodel.OverlayPlan, error) {
+func buildPlan(input PlanInput, config PlannerConfig, deferred *DeferredPlan) (capmodel.OverlayPlan, error) {
 	config = config.withDefaults()
 	// Documentary Highlighting showcase IDs are accepted at the generation
 	// boundary, then lowered to phrase-relative renderer motions before pool
@@ -180,16 +169,6 @@ func buildPlan(ctx context.Context, input PlanInput, config PlannerConfig, trimm
 		}
 	}
 	appendPlannerMapItems(&plan, input, config)
-	// Bound scene-synced maps before the editorial overlap budget. Without this
-	// pass their default camera duration can span later scenes and cause the
-	// budget to discard an otherwise valid requested map.
-	hasMaps := false
-	for _, item := range plan.Items {
-		if item.Map != nil {
-			hasMaps = true
-			break
-		}
-	}
 	if config.DeferAdmission {
 		if deferred != nil {
 			deferred.Plan = plan
@@ -200,15 +179,6 @@ func buildPlan(ctx context.Context, input PlanInput, config PlannerConfig, trimm
 			deferred.imageMotionOffset = imageMotionOffset
 		}
 		return plan, nil
-	}
-	if hasMaps {
-		if trimmer == nil {
-			return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: BrainRust map-window trimmer is required when a plan contains maps")
-		}
-		plan.Items, err = trimmer.TrimMapWindowsBeforeBudget(ctx, plan.Items, input.FPSNum, input.FPSDen)
-		if err != nil {
-			return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: trim map windows: %w", err)
-		}
 	}
 	// Degrade overlaps deterministically: no more than MaxOverlap content
 	// items may pile up at any moment (lowest editorial priority drops first;

@@ -353,10 +353,9 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 			renderSourceText = c.req.Source.SourceText
 			renderText = renderSourceText
 		}
-		// A localized clip render needs a VISUAL clip: stock-bound scenes and
-		// scenes whose clips are all stock-marked (audio-only) are never
-		// processed by clip render.
-		if out.Stock == nil && !sceneVisualClipsAreStockOnly(out) {
+		// Render source clips locally. Selected stock bindings bypass Chronon
+		// and remain available as original media to the final assembler.
+		if len(RenderUnitsForScene(out)) > 0 {
 			clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(out)
 			renderSpec := sceneRenderSpec(c.req, out)
 			sceneID, sceneIndex := out.ID, out.Index
@@ -383,7 +382,7 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 						c.mu.Lock()
 						c.rendered = append(c.rendered, rendered)
 						c.mu.Unlock()
-						return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
+						return c.runner.recordLocalizedRender(c.ctx, c.runID, c.exec, nil, rendered)
 					},
 					OnFailed: func(failure LocalizedRenderFailure) error {
 						c.mu.Lock()
@@ -461,7 +460,7 @@ func (c *sceneReadyCoordinator) launchFixedMediaRenders(scene Scene) {
 			c.mu.Lock()
 			c.rendered = append(c.rendered, rendered)
 			c.mu.Unlock()
-			return c.runner.recordLocalizedRender(c.ctx, c.exec, nil, rendered)
+			return c.runner.recordLocalizedRender(c.ctx, c.runID, c.exec, nil, rendered)
 		},
 		OnFailed: func(failure LocalizedRenderFailure) error {
 			c.mu.Lock()

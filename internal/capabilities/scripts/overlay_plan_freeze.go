@@ -31,7 +31,7 @@ import (
 
 // compileResultOverlayPlan attaches the sealed source/localized plans and
 // freezes their semantic intent lineage without mutating the prepare input.
-func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, overlapResolver capabilityoverlay.MapOverlapResolver, perSceneImages ...bool) error {
+func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) error {
 	if result == nil {
 		return nil
 	}
@@ -48,7 +48,7 @@ func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, langu
 		bundle.OverlayPlanHash = ""
 	}
 	result.SemanticRenderBundle = bundle
-	plan, err := compileOverlayPlanForLanguage(ctx, result, language, planID, projectID, driveFolderID, canvas, plates, overlapResolver, perSceneImages...)
+	plan, err := compileOverlayPlanForLanguage(ctx, result, language, planID, projectID, driveFolderID, canvas, plates, compiler, perSceneImages...)
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, langu
 	}
 	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudgetWithLimit(phraseItems, canvas.MaxPhraseOverlays)
 	result.PhraseOverlayBudget = &phraseBudget
-	if err := buildLocalizedOverlayPlans(ctx, result, language, planID, projectID, driveFolderID, canvas, plates, overlapResolver, perSceneImages...); err != nil {
+	if err := buildLocalizedOverlayPlans(ctx, result, language, planID, projectID, driveFolderID, canvas, plates, compiler, perSceneImages...); err != nil {
 		return err
 	}
 	if plan == nil {
@@ -347,8 +347,8 @@ func entityTimelineLanguage(timeline *capabilityentities.EntityTimeline) string 
 // boundary shared by the source-language compatibility plan and translated
 // plans. Drive routing stays in the application-only plan field and never
 // crosses the RenderingGen queue contract.
-func compileOverlayPlanForLanguage(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, overlapResolver capabilityoverlay.MapOverlapResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
-	plan, err := CompileOverlayPlanWithRustResolver(ctx, result, language, canvas, planID, planID, projectID, plates, overlapResolver, perSceneImages...)
+func compileOverlayPlanForLanguage(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
+	plan, err := CompileOverlayPlanWithRustResolver(ctx, result, language, canvas, planID, planID, projectID, plates, compiler, perSceneImages...)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +362,7 @@ func compileOverlayPlanForLanguage(ctx context.Context, result *GenerateResult, 
 // have translated voiceover timing. It never substitutes the source plan for
 // a missing translation: a language without its own annotations/timing has no
 // localized overlay artifact to publish.
-func buildLocalizedOverlayPlans(ctx context.Context, result *GenerateResult, sourceLanguage Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, overlapResolver capabilityoverlay.MapOverlapResolver, perSceneImages ...bool) error {
+func buildLocalizedOverlayPlans(ctx context.Context, result *GenerateResult, sourceLanguage Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) error {
 	if result == nil {
 		return nil
 	}
@@ -385,7 +385,7 @@ func buildLocalizedOverlayPlans(ctx context.Context, result *GenerateResult, sou
 			continue
 		}
 		localizedPlanID := planID + "-" + strings.ToLower(string(language))
-		plan, err := compileOverlayPlanForLanguage(ctx, result, language, localizedPlanID, projectID, driveFolderID, canvas, plates, overlapResolver, perSceneImages...)
+		plan, err := compileOverlayPlanForLanguage(ctx, result, language, localizedPlanID, projectID, driveFolderID, canvas, plates, compiler, perSceneImages...)
 		if err != nil {
 			return fmt.Errorf("compile %s overlay plan: %w", language, err)
 		}

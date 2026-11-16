@@ -18,8 +18,7 @@ type TimedAnnotation struct {
 	PresentationRole string
 	// EditorialCandidate identifies one of several mutually exclusive
 	// editorial surfaces produced from the same scene (title, bullet or
-	// opening). The single-call Rust compiler selects one; the legacy planner
-	// ignores this hint.
+	// opening). The single-call Rust compiler selects one.
 	EditorialCandidate string
 }
 
@@ -50,8 +49,8 @@ type SceneInput struct {
 	// canonical primitives as the base set (Text / Image).
 	Numbers []TimedAnnotation
 	// ChartNumbers is the subset explicitly authorized by the per-scene Rust
-	// chart extractor. Nil preserves legacy planner behavior; an empty non-nil
-	// slice explicitly disables charts for a scene.
+	// chart extractor. Nil leaves the candidate projection unchanged; an empty
+	// non-nil slice explicitly disables charts for a scene.
 	ChartNumbers []TimedAnnotation
 	BrandTexts   []TimedAnnotation
 	Quotes       []TimedAnnotation

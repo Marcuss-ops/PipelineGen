@@ -7,63 +7,66 @@
 package scriptgeneration
 
 import (
-	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	"go.uber.org/zap"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// sealOverlayPlan derives the master render extent, resets provisional
-// render keys after post-processing and assembles + validates the final
-// OverlayPlan. Split from compileOverlayPlanWithMotionOffset (same behavior).
-func sealOverlayPlan(ctx context.Context, result *GenerateResult, language Language, plannerPlan capmodel.OverlayPlan, resolved []ResolvedScene, items []capmodel.OverlayItem, canvas OverlayCanvasSpec, planID, videoID, projectID string, overlapResolver capabilityoverlay.MapOverlapResolver) (*capmodel.OverlayPlan, error) {
-	// Maps are composited in replace mode, so any shared frame makes the final
-	// plan invalid. Resolve those collisions while scene timing is still in
-	// scope: shift ordinary cards after the map within their scene, and drop
-	// only cards that cannot fit. Anchored editorial timing remains untouched.
-	sceneWindows := make(map[string][2]int64, len(resolved))
-	for _, scene := range resolved {
-		if scene.ID == "" || scene.DurationUS <= 0 {
-			continue
-		}
-		sceneWindows[scene.ID] = [2]int64{scene.TimelineStartUS, scene.TimelineStartUS + scene.DurationUS}
+// sealCompiledOverlayPlan adopts a plan produced by the v2 compiler. Rust owns
+// selection, timing and map resolution; this boundary owns only the derived
+// render identity and the master extent, so the document that reaches the
+// bundle hash, audit, renderer and checkpoint is the same sealed document.
+func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
+	if plan == nil {
+		return nil, nil
 	}
-	hasMaps := false
-	for _, item := range items {
-		if item.Map != nil {
-			hasMaps = true
-			break
-		}
+	plan.SchemaVersion = capmodel.SchemaVersionPlan
+	plan.Language = string(language)
+	return finalizeSealedOverlayPlan(*plan, result, language, resolved, canvas)
+}
+
+// finalizeSealedOverlayPlan derives the master extent, resets provisional render
+// keys and stamps the one output identity before Validate computes the final
+// fingerprint. It is the only place a plan becomes wire-eligible.
+func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
+	plan.DurationMS = overlayPlanDurationMS(result, language, resolved, plan.Items)
+	// Item transforms above (chain coalescing, font/style projection and image
+	// composition) can change renderer-owned inputs after an upstream planner
+	// has sealed its own intermediate plan. This is the final plan sealing
+	// boundary, so discard those provisional keys and let Validate recompute
+	// them from the actual serialized render inputs.
+	for i := range plan.Items {
+		plan.Items[i].RenderKey = ""
 	}
-	if overlapResolver == nil && hasMaps {
-		return nil, fmt.Errorf("overlay plan: BrainRust map-overlap resolver is required when the plan contains maps")
+	plan.RecapCards = countRecapItems(plan.Items)
+	plan.ChartCards = countChartItems(plan.Items)
+	plan.Fingerprint = ""
+	// The output identity is stamped in ONE place: the certification profile the
+	// renderer will be held to, and the media contract derived from it. The
+	// contract travels with the plan (never re-derived downstream) and the
+	// compiled chronon output derives container/codec/pixel format from it, so
+	// the sealed plan carries one statement about the artifact instead of two
+	// that can disagree. The stamp runs BEFORE Validate because the plan
+	// fingerprint is computed from its contents.
+	plan.StampOutputProfile(canvas.OutputProfileID)
+	if err := plan.Validate(); err != nil {
+		return nil, fmt.Errorf("overlay plan: seal: %w", err)
 	}
-	if overlapResolver != nil && hasMaps {
-		shiftedItems, err := overlapResolver.ResolveMapOverlaps(ctx, items, sceneWindows, canvas.FPSNum, canvas.FPSDen)
-		if err != nil {
-			return nil, fmt.Errorf("overlay plan: resolve map overlaps: %w", err)
-		}
-		items = shiftedItems
-	}
-	// Entity cards may be reintroduced or shifted by late compile stages after
-	// the main animation-layout pass. Run their dedicated sequence fusion at
-	// the final sealing boundary so nearby image-backed captions cannot escape
-	// the chain pass. This is idempotent when the earlier pass already fused
-	// them, and still honors an explicit chain_disabled request.
-	if canvas.AnimationCounts["chain_disabled"] <= 0 {
-		sceneEnds := make(map[string]int64, len(sceneWindows))
-		for sceneID, window := range sceneWindows {
-			sceneEnds[sceneID] = window[1]
-		}
-		items = capmodel.CoalesceCaptionedEntityImageCards(items, sceneEnds)
+	return &plan, nil
+}
+
+// overlayPlanDurationMS derives the master render extent from the authoritative
+// audio plan, with the scene and item tails as lower bounds.
+func overlayPlanDurationMS(result *GenerateResult, language Language, resolved []ResolvedScene, items []capmodel.OverlayItem) int64 {
+	if result == nil {
+		return 0
 	}
 	// Preserve the scene extent as a defensive lower bound when a malformed or
 	// legacy result has no final-audio reference.
@@ -96,62 +99,12 @@ func sealOverlayPlan(ctx context.Context, result *GenerateResult, language Langu
 			durationUS = endUS
 		}
 	}
-	durationMS := int64(0)
-	if durationUS > 0 {
-		// DurationMS is a transport projection; round up so a sub-ms tail is
-		// never lost when it crosses the PipelineGen → Chronon boundary.
-		durationMS = (durationUS + 999) / 1000
+	if durationUS <= 0 {
+		return 0
 	}
-	// Item transforms above (chain coalescing, font/style projection and
-	// image composition) can change renderer-owned inputs after an upstream
-	// planner has sealed its own intermediate plan. This is the final plan
-	// sealing boundary, so discard those provisional keys and let Validate
-	// recompute them from the actual serialized render inputs.
-	for i := range items {
-		items[i].RenderKey = ""
-	}
-
-	plan := capmodel.OverlayPlan{
-		SchemaVersion: capmodel.SchemaVersionPlan,
-		PlanID:        planID,
-		VideoID:       videoID,
-		ProjectID:     strings.TrimSpace(projectID),
-		// Forward the explicit render seed so the worker resamples its own
-		// "random" entity styles per render; empty keeps historical
-		// plan-identity sampling and byte-identical wire plans.
-		EntityVariationSeed:    entityVariationSeedForCanvas(canvas),
-		ScriptName:             textutil.FirstNonEmpty(result.OutputName, result.Title, projectID),
-		Language:               string(language),
-		Width:                  canvas.Width,
-		Height:                 canvas.Height,
-		FPSNum:                 canvas.FPSNum,
-		FPSDen:                 canvas.FPSDen,
-		DurationMS:             durationMS,
-		ForegroundScalePercent: canvas.ForegroundScalePercent,
-		Background:             canvas.Background,
-		Items:                  items,
-		// Carry the planner's recap observability into the sealed plan:
-		// plannerPlan itself is superseded here by post-processing (entity
-		// overlays, budgets, chain fusion). RecapCards is recounted on the
-		// final items so fused-away markers cannot inflate it.
-		RecapPlacements: plannerPlan.RecapPlacements,
-		RecapCards:      countRecapItems(items),
-		ChartPlacements: plannerPlan.ChartPlacements,
-		ChartCards:      countChartItems(items),
-		TimedScenes:     plannerPlan.TimedScenes,
-	}
-	// The output identity is stamped in ONE place: the certification profile the
-	// renderer will be held to, and the media contract derived from it. The
-	// contract travels with the plan (never re-derived downstream) and the
-	// compiled chronon output derives container/codec/pixel format from it, so
-	// the sealed plan carries one statement about the artifact instead of two
-	// that can disagree. The stamp runs BEFORE Validate because the plan
-	// fingerprint is computed from its contents.
-	plan.StampOutputProfile(canvas.OutputProfileID)
-	if err := plan.Validate(); err != nil {
-		return nil, fmt.Errorf("overlay plan: seal: %w", err)
-	}
-	return &plan, nil
+	// DurationMS is a transport projection; round up so a sub-ms tail is
+	// never lost when it crosses the PipelineGen → Chronon boundary.
+	return (durationUS + 999) / 1000
 }
 
 // entityVariationSeedForCanvas forwards an explicit per-render motion seed to

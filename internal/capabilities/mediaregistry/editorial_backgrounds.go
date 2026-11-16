@@ -60,6 +60,12 @@ var editorialBackgroundAssets = []EditorialBackgroundAsset{
 	{ID: "drive-background-music", DriveFileID: "1uTRyOi12d3J55f_XxGOCArnx2on2otDZ", Filename: "background-music.mp4", SHA256: "bbdc74d29cd0bcf0e439c20ddcfba97902e2cb81b382ccd0687853dd26808990", MediaType: "video/mp4", Role: "channel-music"},
 	{ID: "drive-background-wwe", DriveFileID: "1ykYsbTjBEyynwy12jy_d_-XQqawwgKCw", Filename: "background-wwe.mp4", SHA256: "193626b148a92da7764a21f61898dbd609009ae62ee8a5112bd21a2987070c5a", MediaType: "video/mp4", Role: "channel-wwe"},
 	{ID: "drive-background-discovery", DriveFileID: "1q6MKUZAHL1CjME2kGotK6sKacH94ViIh", Filename: "background-discovery.mp4", SHA256: "4e6e3b9c9e3d72852841e3d07009347ce905d3f6445ca3ef6eaf6927a51bb93c", MediaType: "video/mp4", Role: "channel-discovery"},
+	{ID: "drive-background-boxe-v2", DriveFileID: "16IOlpLp4BlERuaE_jYBplblfTyGWuA_d", Filename: "background-boxe-v2.mp4", SHA256: "9fa4486b019542ca1638186194e66b9cdb89efb6417ee567dd421abd42ec867d", MediaType: "video/mp4", Role: "channel-boxe"},
+	{ID: "drive-background-crime-v2", DriveFileID: "1SbgS8j0zsEGQvV5f6rv-0O0InealS15G", Filename: "background-crime-v2.mp4", SHA256: "009b1e4019c652d138135d7986e40606b956fc7c833db3d5ed03b8579cc3c022", MediaType: "video/mp4", Role: "channel-crime"},
+	{ID: "drive-background-discovery-v2", DriveFileID: "1jyotC-cavH280bnL1dZSzbhVIGIe203W", Filename: "background-discovery-v2.mp4", SHA256: "7b44c7d6ffdacca686df72f96dd36ce5db48902c2182bdf7d47d9a0cbf21bc42", MediaType: "video/mp4", Role: "channel-discovery"},
+	{ID: "drive-background-pop", DriveFileID: "1R5hfzGGcujLwaZUv1iwpftlUnNqlP2Ig", Filename: "background-pop.mp4", SHA256: "2baa0907522c9bb7248fc6616fd6d2cb8cfbb4a8bbc5e4cdea8bf4cfe928672f", MediaType: "video/mp4", Role: "channel-pop"},
+	{ID: "drive-background-rap-americano", DriveFileID: "1w0Q55n7l1RfsjWqZv8S8WSJSZjvKne7n", Filename: "background-rap-americano.mp4", SHA256: "021b9dbc68cd3dad78f2c6e3ee4160a24a8b784645888a7a198aa0a73815591a", MediaType: "video/mp4", Role: "channel-rap-americano"},
+	{ID: "drive-background-vecchie-celebrity", DriveFileID: "1a5LMQDo361AFuJBWUBTjMbf_NR9RvJZE", Filename: "background-vecchie-celebrity.mp4", SHA256: "79b93e03ef5abf106eb9831f872b4a6fed93f1228b4bdb9fd0116ece94affcbf", MediaType: "video/mp4", Role: "channel-vecchie-celebrity"},
 }
 
 // EditorialBackgroundAssets returns a defensive copy so a caller cannot mutate
@@ -105,14 +111,20 @@ func ResolveEditorialBackgroundReference(reference string) (EditorialBackgroundA
 	ref = strings.TrimSpace(strings.TrimPrefix(ref, "background "))
 	ref = strings.TrimSpace(strings.TrimPrefix(ref, "background-"))
 	if id, ok := map[string]string{
-		"boxe":        "drive-background-boxe",
-		"boxing":      "drive-background-boxe",
-		"music":       "drive-background-music",
-		"rap":         "drive-background-music",
-		"wwe":         "drive-background-wwe",
-		"wrestling":   "drive-background-wwe",
-		"discovery":   "drive-background-discovery",
-		"documentary": "drive-background-discovery",
+		"boxe":              "drive-background-boxe",
+		"boxing":            "drive-background-boxe",
+		"music":             "drive-background-music",
+		"rap":               "drive-background-music",
+		"wwe":               "drive-background-wwe",
+		"wrestling":         "drive-background-wwe",
+		"discovery":         "drive-background-discovery",
+		"documentary":       "drive-background-discovery",
+		"pop":               "drive-background-pop",
+		"rap-americano":     "drive-background-rap-americano",
+		"vecchie-celebrity": "drive-background-vecchie-celebrity",
+		"crime-v2":          "drive-background-crime-v2",
+		"boxe-v2":           "drive-background-boxe-v2",
+		"discovery-v2":      "drive-background-discovery-v2",
 	}[ref]; ok {
 		return LookupEditorialBackground(id)
 	}

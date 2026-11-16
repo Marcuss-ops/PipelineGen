@@ -64,7 +64,7 @@ rewrite onto a different asset.
    which derives every field from the registry:
 
    ```bash
-   # all six plates, local fixtures under RenderingGen/assets/backgrounds
+   # all plates, local fixtures under RenderingGen/assets/backgrounds
    PIPELINEGEN_MEDIA_POSTGRES_DSN=... \
      go run ./cmd/admin register-editorial-assets \
        --plates-dir RenderingGen/assets/backgrounds

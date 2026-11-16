@@ -144,10 +144,22 @@ var registry = []Knob{
 		Description:    "Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait).",
 	},
 	{
+		Name: "VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS", Kind: KindEnv, Default: "1",
+		Owner:          "internal/app/wiring/final_job_segment_prepare.go",
+		SafeProduction: "1 (enabled)",
+		Description:    "Packet-copies certified aligned windows instead of re-encoding them; set 0 only for A/B measurement.",
+	},
+	{
 		Name: "VELOX_FINAL_JOB_CREDENTIALS_FILE", Kind: KindEnv, Default: "",
 		Owner:          "internal/app/wiring/remote_final_job.go",
 		SafeProduction: "/etc/pipelinegen/final_job_credentials.json",
 		Description:    "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset.",
+	},
+	{
+		Name: "VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR", Kind: KindEnv, Default: "",
+		Owner:          "internal/app/wiring/final_job_fragment_io.go",
+		SafeProduction: "unset (dataDir/final-job-fragments)",
+		Description:    "Relocates or disables the final-job fragment cache; off/disabled/none disables it.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_M2M_SECRET", Kind: KindEnv, Default: "",
@@ -160,6 +172,12 @@ var registry = []Knob{
 		Owner:          "internal/app/wiring/remote_final_job.go",
 		SafeProduction: "https://<master-host>",
 		Description:    "Master URL for the remote final-job handoff; unset falls back to the configured base URL.",
+	},
+	{
+		Name: "VELOX_FINAL_JOB_PREPARE_LANES", Kind: KindEnv, Default: "4",
+		Owner:          "internal/app/wiring/final_job_segment_prepare.go",
+		SafeProduction: "4 (1..16)",
+		Description:    "Number of final-job fragments prepared in parallel; 0 or malformed fails the job.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_QUEUE_SECONDS", Kind: KindEnv, Default: "180",
