@@ -378,9 +378,13 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		return nil, fmt.Errorf("publish prepared fragment to HTTPS Objectstore: %w", err)
 	}
 	published := time.Since(publishStarted)
-	// A certified fragment is worth keeping: the publish above already proved
-	// the bytes, so the next run only has to hash them again.
-	p.storeFragment(cacheKey, outPath, sha, size, request.FrameCount, durationUS)
+	// Only a fragment whose decoder configuration is canonical may enter the
+	// cache. The publish above proves the bytes were transferred intact, not
+	// that the encoder emitted the canonical SPS/PPS; storing an uncertified
+	// fragment would poison every later run and the corpus gate.
+	if probe, probeErr := probeFinalJobFragment(ctx, outPath); probeErr == nil && probe.certify(probe.frames()) == nil {
+		p.storeFragment(cacheKey, outPath, sha, size, request.FrameCount, durationUS)
+	}
 	if p.cacheDir != "" {
 		p.rememberFragmentPath(sha, filepath.Join(p.cacheDir, cacheKey[:2], cacheKey+".mp4"))
 	}
