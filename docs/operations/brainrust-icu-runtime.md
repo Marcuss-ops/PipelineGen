@@ -28,17 +28,18 @@ still report ICU 70; that is expected for local Rust source builds using
 Jammy's development headers. BrainRust release artifacts remain built and
 published against ICU 72 as declared in its `ICU_MAJOR` file.
 
-## Current release pin: v0.3.4
+## Current release pin: v0.3.5
 
 `v0.1.0` is retired for PipelineGen: its `semantic-engine` predates the
 `semantic_manifest.v2` fields (`contextual_image_queries`,
 `composed_image_queries`, `important_segments`) and `rust-fetch` now rejects
-it. `v0.2.0` was the first mediaexec.v2 pin. The current pin is `v0.3.4`, built
-from BrainRust HEAD (`8567d426d6f1a3cfb7ed1d0151c7e8cf212b7ccc`) in Debian
+it. `v0.2.0` was the first mediaexec.v2 pin. The current pin is `v0.3.5`, built
+from BrainRust HEAD (`4283a63995b407f4762185f3ffcfb05814e6961b`) in Debian
 Bookworm with ICU 72. It adds the standalone-CI fixture guard, the
-CAP_SYS_ADMIN no-network gate and the mediaexec.v2 validation; the render
-parity test skips only when ffmpeg is absent. The runtime wire contract is
-unchanged from `v0.3.0`.
+CAP_SYS_ADMIN no-network gate, the mediaexec.v2 validation and the
+`safe.directory` needed by the release build; the render parity test skips
+only when ffmpeg is absent. The runtime wire contract is unchanged from
+`v0.3.0`.
 
 The locally built staging bundle is `BrainRust/dist-icu72/`; install it with:
 
@@ -46,7 +47,7 @@ The locally built staging bundle is `BrainRust/dist-icu72/`; install it with:
 make rust-fetch RUST_ARTIFACTS_DIR="$PWD/../BrainRust/dist-icu72"
 ```
 
-The same bundle is published as the GitHub `v0.3.4` release before a clean
+The same bundle is published as the GitHub `v0.3.5` release before a clean
 `make build` or Docker build can fetch it remotely. Verify the installed stamp
 and linkage with:
 
