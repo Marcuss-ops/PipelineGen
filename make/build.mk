@@ -41,10 +41,10 @@ GO_LINKER_FLAGS := $(shell if command -v $(GO_LINKER) >/dev/null 2>&1; then prin
 # release artifacts. PipelineGen consumes only checksum-verified binaries.
 # Read the canonical release ABI pin, not pkg-config's possibly different
 # development-header major. rust-fetch separately checks the runtime sonames.
-BRAINRUST_VERSION ?= v0.3.2
+BRAINRUST_VERSION ?= v0.3.4
 RUST_FETCH_BASE_URL ?= https://github.com/Marcuss-ops/BrainRust/releases/download
 # Optional checksum-verified local copy of the same release assets (offline/CI
-# cache). v0.3.2 is current; v0.3.0 was the first bundle carrying the
+# cache). v0.3.4 is current; v0.3.0 was the first bundle carrying the
 # mediaexec.v2 cut-checksum contract.
 RUST_ARTIFACTS_DIR ?=
 RUST_BIN_DIR ?= $(CURDIR)/bin
