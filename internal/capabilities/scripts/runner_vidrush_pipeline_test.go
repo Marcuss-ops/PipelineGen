@@ -22,8 +22,9 @@ func TestRunner_VidRushPipeline_EnrichesScenesIncrementally(t *testing.T) {
 	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
 	metrics := &recordingVidRushMetrics{}
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		NERPort: segmentEnricherNER{enricher: enricher},
-		Metrics: metrics,
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        segmentEnricherNER{enricher: enricher},
+		Metrics:        metrics,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),
@@ -76,7 +77,8 @@ func TestRunner_VidRushPipeline_PlanResolverErrorFailsRun(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		NERPort: segmentEnricherNER{enricher: &fakeSegmentEnricher{errs: map[string]error{}}},
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        segmentEnricherNER{enricher: &fakeSegmentEnricher{errs: map[string]error{}}},
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return nil, assert.AnError
 		}),

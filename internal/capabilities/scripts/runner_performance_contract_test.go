@@ -100,7 +100,8 @@ func blockingVidRushRunner() (*Runner, *inMemRunRepository, *stubVoiceoverGenera
 	timeline := &timelineRecorder{}
 	enricher := newE2EBlockingEnricher(timeline)
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		NERPort: enricher,
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        enricher,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),
@@ -205,6 +206,7 @@ func TestOverlayPrepare_StartsBeforeTTSCompletes(t *testing.T) {
 	blockingVO := &blockingTimingVoiceoverGenerator{release: make(chan struct{})}
 
 	runner := NewRunner(repo, textGen, newStubTranslator(), blockingVO)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)

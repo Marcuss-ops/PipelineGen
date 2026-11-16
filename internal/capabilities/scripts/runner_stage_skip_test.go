@@ -64,6 +64,7 @@ func TestRunner_VoiceoverGeneratorNil_StageSkipped(t *testing.T) {
 
 	// No voiceover generator — should be nil-safe.
 	runner := NewRunner(repo, textGen, translator, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 

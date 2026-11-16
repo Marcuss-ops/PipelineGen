@@ -96,6 +96,7 @@ func TestLocalizedRenderDualWriteMatchesEnvelopeAtBothStages(t *testing.T) {
 
 	artifactRepo := newMemoryArtifactCheckpointRepository()
 	runner := NewRunner(runRepo, nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetArtifactCheckpointRepository(artifactRepo)
 	runner.SetArtifactCheckpointDualWrite(true)
 
@@ -183,6 +184,7 @@ func TestLocalizedRenderDualWriteUsesDurableRunIDNotJobID(t *testing.T) {
 
 	artifactRepo := newMemoryArtifactCheckpointRepository()
 	runner := NewRunner(runRepo, nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetArtifactCheckpointRepository(artifactRepo)
 	runner.SetArtifactCheckpointDualWrite(true)
 
@@ -219,6 +221,7 @@ func TestLocalizedRenderDualWriteIsOffByDefault(t *testing.T) {
 
 	artifactRepo := newMemoryArtifactCheckpointRepository()
 	runner := NewRunner(runRepo, nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	// The repository is attached but the rollout flag is left at its zero
 	// value: no per-artifact row may be written.
 	runner.SetArtifactCheckpointRepository(artifactRepo)

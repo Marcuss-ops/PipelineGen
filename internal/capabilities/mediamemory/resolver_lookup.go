@@ -11,9 +11,10 @@
 //
 // File split ownership (godlike/06 SSOT):
 //   - resolver.go                 : Resolver port + VisualResolver struct + ResolverDeps + ctors + pins + EmbeddingVersion
+//   - pool_ranker.go              : PoolRanker port + pool DTOs (the canonical ranker lives in mediasampler)
 //   - resolver_lookup.go          : canonicalConceptForLookup + fingerprintForNormalized + defaultResolverLimit  ← this file
 //   - resolver_orchestration.go   : Resolve + resolveScene + candidatesForSlot + levelExactMatch + mediaTypesForSlot + priorSceneVideoID
-//   - resolver_scoring.go         : rankedCandidate + buildFilterFlags + aspectMismatchFor + buildRankingInput + durationFitScore + clamp01 + sort + layerFromFilteredCandidate + upgradeSource
+//   - resolver_scoring.go         : rankSlotPool (PoolRanker projection) + layerFromRanked + upgradeSource
 //   - resolver_projection.go      : bindingsToFilteredCandidates + candidatesToFilteredCandidates
 //   - resolver_brain.go           : errInvalidPhrase + Search method (brain.MediaMemoryResolutionPort impl)
 package mediamemory

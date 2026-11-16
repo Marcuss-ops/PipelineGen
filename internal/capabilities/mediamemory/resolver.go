@@ -38,9 +38,10 @@
 //
 // File split (godlike/06 single canonical home per layer):
 //   - resolver.go                 : Resolver port + VisualResolver struct + ResolverDeps + ctors + pins + EmbeddingVersion  ← this file
+//   - pool_ranker.go              : PoolRanker port + pool DTOs (the canonical ranker lives in mediasampler)
 //   - resolver_lookup.go          : canonicalConceptForLookup + fingerprintForNormalized
 //   - resolver_orchestration.go   : Resolve + resolveScene + candidatesForSlot + levelExactMatch + mediaTypesForSlot + priorSceneVideoID + defaultResolverLimit
-//   - resolver_scoring.go         : rankedCandidate + buildFilterFlags + aspectMismatchFor + buildRankingInput + durationFitScore + clamp01 + sort + layerFromFilteredCandidate + upgradeSource
+//   - resolver_scoring.go         : rankSlotPool (PoolRanker projection) + layerFromRanked + upgradeSource
 //   - resolver_projection.go      : bindingsToFilteredCandidates + candidatesToFilteredCandidates
 //   - resolver_brain.go           : errInvalidPhrase + Search method (brain.MediaMemoryResolutionPort impl)
 package mediamemory
@@ -80,7 +81,7 @@ type VisualResolver struct {
 	bindings   BindingRepository
 	external   SearchFanOut
 	semantic   SemanticLookup
-	ranker     Ranker
+	poolRanker PoolRanker
 	normalizer Normalizer // godlike/06 SSOT: SINGLE canonical normalization surface
 	log        Logger
 	clock      Clock
@@ -94,10 +95,13 @@ type ResolverDeps struct {
 	Bindings BindingRepository
 	External SearchFanOut
 	Semantic SemanticLookup
-	Ranker   Ranker
-	Log      Logger
-	Clock    Clock
-	Metrics  MetricsSink
+	// PoolRanker is the canonical ranker boundary (mediasampler::rank).
+	// It has no Go implementation in the production binary: a nil value
+	// makes every slot fail closed with a typed warning.
+	PoolRanker PoolRanker
+	Log        Logger
+	Clock      Clock
+	Metrics    MetricsSink
 }
 
 // NewVisualResolver constructs the resolver with the canonical
@@ -130,7 +134,7 @@ func NewVisualResolver(deps ResolverDeps) *VisualResolver {
 		bindings:   deps.Bindings,
 		external:   deps.External,
 		semantic:   deps.Semantic,
-		ranker:     deps.Ranker,
+		poolRanker: deps.PoolRanker,
 		normalizer: NewDefaultNormalizer(""), // godlike/06 SSOT: canonical SHA256 surface
 		log:        deps.Log,
 		clock:      deps.Clock,

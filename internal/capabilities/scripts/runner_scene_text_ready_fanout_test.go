@@ -36,7 +36,8 @@ func TestSceneTextReady_TTSDoesNotWaitForAnalysis(t *testing.T) {
 	timeline := &timelineRecorder{}
 	enricher := newE2EBlockingEnricher(timeline)
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		NERPort: enricher,
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        enricher,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),
@@ -90,6 +91,7 @@ func TestImportantPhraseHintsReachTTSBeforeSceneReadyConsumers(t *testing.T) {
 	translator := newStubTranslator()
 	voiceover := newStubVoiceoverGenerator()
 	runner := NewRunner(repo, streamer, translator, voiceover)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	req := defaultTestRequest()
@@ -208,11 +210,13 @@ func TestSceneTextReady_TranslatedNLPOverlapsTTS(t *testing.T) {
 	repo := newInMemRunRepository()
 	voGen := newBlockingVoiceoverGenerator()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), voGen)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	ner := newSignalingTranslatedNER()
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		NERPort: ner,
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        ner,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),

@@ -56,6 +56,7 @@ func TestOverlayPrepare_EnqueuedWhileTTSBlocked(t *testing.T) {
 	blockingVO := &blockingTimingVoiceoverGenerator{release: make(chan struct{})}
 
 	runner := NewRunner(repo, textGen, newStubTranslator(), blockingVO)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)

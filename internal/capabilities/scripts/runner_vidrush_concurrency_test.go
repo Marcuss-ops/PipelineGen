@@ -25,8 +25,9 @@ func vidrushPipelineFixture(runner *Runner) (*fakeSegmentEnricher, *recordingVid
 	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
 	metrics := &recordingVidRushMetrics{}
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		NERPort: segmentEnricherNER{enricher: enricher},
-		Metrics: metrics,
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        segmentEnricherNER{enricher: enricher},
+		Metrics:        metrics,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),

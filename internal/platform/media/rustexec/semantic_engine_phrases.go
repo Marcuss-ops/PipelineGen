@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
@@ -77,4 +78,71 @@ func (a *SemanticEngineAdapter) SelectPhrases(ctx context.Context, request scrip
 	return response.Phrases, nil
 }
 
-var _ scriptgen.PhraseSelector = (*SemanticEngineAdapter)(nil)
+type alignPhrasesWireRequest struct {
+	Operation string                             `json:"operation"`
+	Words     []capabilityaudio.SpeechWordTiming `json:"words"`
+	Phrases   []string                           `json:"phrases"`
+}
+
+type alignPhrasesWireResponse struct {
+	OK         bool                            `json:"ok"`
+	Error      string                          `json:"error,omitempty"`
+	Alignments []capabilityaudio.LocatedPhrase `json:"alignments"`
+}
+
+// AlignPhrases is the production boundary of the Rust deterministic word /
+// phrase matcher. The artifact is validated here, and every returned span must
+// reference the requested word boundaries; otherwise the call fails closed.
+func (a *SemanticEngineAdapter) AlignPhrases(ctx context.Context, request scriptgen.PhraseAlignmentRequest) ([]capabilityaudio.LocatedPhrase, error) {
+	if a == nil || a.executor == nil {
+		return nil, fmt.Errorf("semantic-engine: executor is not configured")
+	}
+	if err := request.Timing.Validate(); err != nil {
+		return nil, fmt.Errorf("semantic-engine: align_phrases timing: %w", err)
+	}
+	if len(request.Phrases) == 0 {
+		return nil, fmt.Errorf("semantic-engine: align_phrases phrases are required")
+	}
+	wire := alignPhrasesWireRequest{
+		Operation: "align_phrases",
+		Words:     request.Timing.Words,
+		Phrases:   request.Phrases,
+	}
+	payload, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("semantic-engine: encode align_phrases: %w", err)
+	}
+	stdout, _, err := a.executor.Run(ctx, payload)
+	if err != nil {
+		return nil, fmt.Errorf("semantic-engine: align_phrases execute: %w", err)
+	}
+	var response alignPhrasesWireResponse
+	if err := json.Unmarshal(stdout, &response); err != nil {
+		return nil, fmt.Errorf("semantic-engine: decode align_phrases: %w", err)
+	}
+	if !response.OK {
+		return nil, fmt.Errorf("semantic-engine: align_phrases worker: %s", strings.TrimSpace(response.Error))
+	}
+	if len(response.Alignments) != len(request.Phrases) {
+		return nil, fmt.Errorf("semantic-engine: align_phrases returned %d alignments for %d phrases", len(response.Alignments), len(request.Phrases))
+	}
+	for i, alignment := range response.Alignments {
+		if strings.TrimSpace(alignment.Text) != strings.TrimSpace(request.Phrases[i]) {
+			return nil, fmt.Errorf("semantic-engine: align_phrases returned %q for phrase %q", alignment.Text, request.Phrases[i])
+		}
+		if alignment.WordStart < 0 || alignment.WordEnd < alignment.WordStart || alignment.WordEnd >= len(request.Timing.Words) {
+			return nil, fmt.Errorf("semantic-engine: align_phrases returned invalid word span %d..%d for %q", alignment.WordStart, alignment.WordEnd, alignment.Text)
+		}
+		first := request.Timing.Words[alignment.WordStart]
+		last := request.Timing.Words[alignment.WordEnd]
+		if alignment.StartUS != first.StartUS || alignment.EndUS != last.EndUS {
+			return nil, fmt.Errorf("semantic-engine: align_phrases timestamps do not match the requested words for %q", alignment.Text)
+		}
+	}
+	return response.Alignments, nil
+}
+
+var (
+	_ scriptgen.PhraseSelector = (*SemanticEngineAdapter)(nil)
+	_ scriptgen.PhraseAligner  = (*SemanticEngineAdapter)(nil)
+)

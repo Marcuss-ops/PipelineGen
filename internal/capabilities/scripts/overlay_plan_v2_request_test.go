@@ -182,7 +182,7 @@ func TestOverlayPlanClipsProjectsCanonicalSpans(t *testing.T) {
 			},
 		}},
 	}}
-	clips := overlayPlanClips(result)
+	clips := overlayPlanClips(result, map[string]struct{}{"scene-1": {}})
 	require.Len(t, clips, 2)
 	require.Equal(t, overlayplan.Clip{
 		SceneID: "scene-1", AssetID: "asset-a", Index: 0,
@@ -190,7 +190,52 @@ func TestOverlayPlanClipsProjectsCanonicalSpans(t *testing.T) {
 	}, clips[0])
 	require.True(t, clips[1].Freeze, "the freeze tail must stay explicit")
 	require.Equal(t, int64(3_000_000), clips[1].StartUS)
-	require.Nil(t, overlayPlanClips(nil))
+	require.Nil(t, overlayPlanClips(nil, nil))
+	require.Nil(t, overlayPlanClips(result, nil), "no plan scene means no clip")
+}
+
+// A fixed-media intro lives in the canonical timeline but not in the editorial
+// plan. Projecting its span as a clip made the request contradict itself and the
+// Rust compiler rejected every final job that carried an intro.
+func TestBuildOverlayPlanV2RequestKeepsClipsInsideThePlanScenes(t *testing.T) {
+	narration := Scene{
+		ID: "scene-01", DurationMS: 2_000, ExecutionMode: "body",
+		Text: map[Language]string{"it": "Nike corre."},
+		Voiceover: map[Language]AudioReference{"it": {Timing: &capabilityaudio.SpeechTimingArtifact{
+			DurationUS: 2_000_000,
+			Words:      []capabilityaudio.SpeechWordTiming{{Index: 0, Text: "Nike", StartUS: 0, EndUS: 400_000}},
+		}}},
+	}
+	result := &GenerateResult{
+		SourceLanguage: "it",
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 8_000_000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{
+					ID: "scene-intro", FixedMedia: true, TimelineStartUS: 0, DurationUS: 6_000_000,
+					VideoSegments: []capabilityaudio.VideoSegment{
+						{AssetID: "intro-clip", SourceDurationUS: 6_000_000, TimelineDurationUS: 6_000_000},
+					},
+				},
+				{
+					ID: "scene-01", TimelineStartUS: 6_000_000, DurationUS: 2_000_000,
+					Video: capabilityaudio.VideoSegment{AssetID: "asset-narration", SourceDurationUS: 2_000_000, TimelineDurationUS: 2_000_000},
+				},
+			},
+		},
+	}
+	request, err := buildOverlayPlanV2Request(result, "it", OverlayCanvasSpec{
+		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, MaxOverlaysPerScene: 5,
+	}, "plan-1", "video-1", "project-1", "seed-1",
+		[]Scene{narration}, nil, nil, nil, map[string][2]int64{"scene-01": {6_000_000, 8_000_000}})
+	require.NoError(t, err)
+	require.Len(t, request.Scenes, 1)
+	require.Equal(t, "scene-01", request.Scenes[0].ID)
+	require.Len(t, request.Clips, 1, "the intro span is not part of this plan")
+	require.Equal(t, "scene-01", request.Clips[0].SceneID)
+	require.Equal(t, int64(6_000_000), request.Clips[0].StartUS)
+	require.NotContains(t, request.SceneWindows, "scene-intro", "an intro window is not an editorial scene window")
 }
 
 func TestBuildOverlayPlanV2RequestFailsClosedOnMissingIdentity(t *testing.T) {

@@ -50,6 +50,7 @@ func TestRunner_VoiceoverRequiresProjectBeforeTTS(t *testing.T) {
 	voiceoverGen := &recordingProjectGenerator{}
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 
@@ -83,6 +84,7 @@ func TestRunner_ProjectPropagatesToEverySceneVoiceover(t *testing.T) {
 	voiceoverGen := &recordingProjectGenerator{}
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})

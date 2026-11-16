@@ -29,6 +29,7 @@ func TestGeocodePlaceAnnotationsOnlyLooksUpPlacesAndDeduplicates(t *testing.T) {
 		Latitude: 29.9511, Longitude: -90.0715, DisplayName: "New Orleans, Louisiana, United States",
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotations := map[int]*scriptpkg.SceneAnnotations{
@@ -96,6 +97,7 @@ func TestGeocodePlaceAnnotationsUsesGroundedSceneContext(t *testing.T) {
 		return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotations := map[int]*scriptpkg.SceneAnnotations{
@@ -143,6 +145,7 @@ func TestGeocodePlaceAnnotationsAdoptsCountryCodeFromResolvedCity(t *testing.T) 
 		}
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
@@ -183,6 +186,7 @@ func TestGeocodePlaceAnnotationsRetriesCityAfterCountryContextAppears(t *testing
 		}
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
@@ -212,6 +216,7 @@ func TestGeocodePlaceAnnotationsSkipsItalianGenericPaese(t *testing.T) {
 		return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
@@ -241,6 +246,7 @@ func TestMapOnlyGeocodingUsesGroundedCountryForCity(t *testing.T) {
 		return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
@@ -295,6 +301,7 @@ func TestGeocodePlaceAnnotationsSeparatesContextsAcrossScenes(t *testing.T) {
 		}
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotations := map[int]*scriptpkg.SceneAnnotations{
@@ -329,6 +336,7 @@ func TestGeocodePlaceAnnotationsSeparatesContextsAcrossScenes(t *testing.T) {
 func TestRunVidRushJoinAndPrepareSkipsGeocoderWhenPolicyDisabled(t *testing.T) {
 	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{Latitude: 0, Longitude: 0}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotation := &scriptpkg.SceneAnnotations{
@@ -355,6 +363,7 @@ func TestRunVidRushJoinAndPrepareSkipsGeocoderWhenPolicyDisabled(t *testing.T) {
 func TestRunVidRushJoinAndPrepareGeocodesOnlyOnExplicitEnable(t *testing.T) {
 	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{Latitude: 48.8566, Longitude: 2.3522}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotation := &scriptpkg.SceneAnnotations{
@@ -392,6 +401,7 @@ func TestRequestedMapCountGeocodesGroundedPlaceNames(t *testing.T) {
 		Latitude: 45.184, Longitude: 8.997, DisplayName: "Pavia, Lombardy, Italy", Scope: "city",
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	request := GenerateRequest{SourceLanguage: "it", AnimationCounts: map[string]int{"maps": 5}}
@@ -486,6 +496,7 @@ func TestMapGeocodingSkipsItalianDiscourseWordsMisclassifiedAsPlaces(t *testing.
 		Latitude: 45.184, Longitude: 9.158, DisplayName: "Pavia, Italy", Scope: "city",
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotation := &scriptpkg.SceneAnnotations{
@@ -531,6 +542,7 @@ func TestGeocodePlaceAnnotationsFailsClosedForMissingAdapterAndInvalidResult(t *
 
 	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{Latitude: 91, Longitude: 0}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "en"); err == nil {

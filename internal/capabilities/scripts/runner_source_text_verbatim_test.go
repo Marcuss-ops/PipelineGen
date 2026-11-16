@@ -18,6 +18,7 @@ func TestRunner_SourceTextVerbatim_PreservesSceneIdentityAndSkipsGenerator(t *te
 	textGen := newStubTextGenerator(nil)
 	textGen.err = errors.New("text generator must not be called for verbatim source text")
 	runner := NewRunner(repo, textGen, newStubTranslator(), nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 

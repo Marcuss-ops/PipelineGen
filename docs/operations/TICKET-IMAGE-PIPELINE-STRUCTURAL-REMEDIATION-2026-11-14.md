@@ -1,6 +1,6 @@
 # TICKET — Image pipeline structural remediation (2026-11-14)
 
-- **Status:** COMPLETE — 96 of 96 tickets closed across the 2026-11-14 batches; 0 remain OPEN.
+- **Status:** CLOSED (2026-11-16) — COMPLETE: 96 of 96 tickets closed across the 2026-11-14 batches; 0 remain OPEN.
 - **Severity:** P0/P1/P2 ledger; P0 blocks trustworthy entity-image completion.
 - **Owner:** image pipeline (retrieval → verification → selection → materialization → catalog)
 - **Source:** live jobs `john_cena_20261114`, `john_gotti_20261114`, `floyd_mayweather_story_20261114` run6/run8, and a code audit of the two live flows plus the durable catalog.
@@ -14,6 +14,17 @@
 4. No production path selects an image without a durable verdict or an explicit `unknown`-retry state.
 5. A durable run that does not complete reports stage, run id, attempt, status, and error code.
 6. The catalog has one provider identity, one content identity, and one verdict owner.
+
+## Verification 2026-11-16
+
+- Ledger audit: 96 rows, 96 unique `IMG-*` ids, 0 `OPEN`/`PARTIAL`/`BLOCKED`
+  rows.
+- `go test ./internal/capabilities/scripts -count=1` -> PASS (15.723 s).
+- `go test ./internal/capabilities/images/entitycatalog/... ./internal/platform/sqlite/assets/entitycatalog/... -count=1`
+  -> both packages PASS.
+- The two pre-existing status contradictions are resolved: the ticket now
+  declares `CLOSED` and the generated index classifies it as closed instead of
+  `aperto`.
 
 ## Ledger
 

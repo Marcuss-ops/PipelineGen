@@ -4,8 +4,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 )
 
 // Validates every sentence in ops/jobs/longsents.txt survives the
@@ -23,7 +21,7 @@ func TestCatalogHintsAllSurvive(t *testing.T) {
 	fail := 0
 	for i, s := range lines {
 		s = strings.TrimSpace(s)
-		if phrasepkg.ContainsProperNamePair(s) {
+		if containsProperNamePair(s) {
 			t.Errorf("line %d blocked by proper-name gate: %q", i, s)
 			fail++
 			continue

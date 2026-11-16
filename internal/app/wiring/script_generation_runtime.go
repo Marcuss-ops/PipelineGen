@@ -214,7 +214,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			runner.SetArtifactCheckpointCutover(true)
 		}
 		log.Info("artifact checkpoints enabled",
-			zap.String("kind", string(scriptgen.ArtifactCheckpointLocalizedRender)),
+			zap.Strings("kinds", []string{
+				string(scriptgen.ArtifactCheckpointLocalizedRender),
+				string(scriptgen.ArtifactCheckpointTranslation),
+			}),
 			zap.Bool("dual_write", dualWrite),
 			zap.Bool("resume", resumeCheckpoints),
 			zap.Bool("cutover", cutover),
@@ -232,6 +235,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	semanticAnalyzer.SetPassageEmbedder(phraseEmbedder)
 	runner.SetSceneSemanticAnalyzer(semanticAnalyzer)
+	runner.SetPhraseAligner(semanticAnalyzer)
 	runner.SetOverlayPlanCompiler(semanticAnalyzer)
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer
@@ -527,9 +531,10 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 			plan, err := root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
 			return plan, err
 		}),
-		Backpressure: scriptgen.DefaultVidRushBackpressure(),
-		NERPort:      semanticAnalyzer,
-		SamplerPort:  mediaSampler,
+		Backpressure:   scriptgen.DefaultVidRushBackpressure(),
+		NERPort:        semanticAnalyzer,
+		PhraseSelector: semanticAnalyzer,
+		SamplerPort:    mediaSampler,
 		CertifierPort: scriptgen.MediaCertifierFunc(func(_ context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
 			return mediacert.Certify(spec, result), nil
 		}),

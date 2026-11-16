@@ -25,6 +25,7 @@ func (r *countingRunRepository) SavePartialResult(ctx context.Context, runID str
 func cutoverRunner(t *testing.T, runRepo *countingRunRepository, artifactRepo ArtifactCheckpointRepository) *Runner {
 	t.Helper()
 	runner := NewRunner(runRepo, nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetArtifactCheckpointRepository(artifactRepo)
 	runner.SetArtifactCheckpointDualWrite(true)
 	runner.SetArtifactCheckpointResume(true)

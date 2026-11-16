@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -14,7 +15,10 @@ func TestComputeSegmentEntityAnnotationsPrioritizesRequestedExactPhrases(t *test
 		Insights: scriptpkg.SegmentInsights{ImportantPhrases: []string{"A investigação continua aberta."}},
 	}}
 	requested := []string{"A investigação continua aberta.", "A defesa nega responsabilidade pela morte."}
-	annotations := computeSegmentEntityAnnotations(snapshot, "pt", segments, 1, true, requested)
+	annotations, err := computeSegmentEntityAnnotations(context.Background(), stubPhraseSelector{}, snapshot, "pt", segments, 1, true, requested)
+	if err != nil {
+		t.Fatal(err)
+	}
 	got := annotations[0].ImportantPhrases
 	if len(got) != 2 {
 		t.Fatalf("important phrases = %+v, want both caller-requested phrases despite per-scene NLP limit 1", got)

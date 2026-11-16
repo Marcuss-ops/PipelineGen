@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -19,6 +20,19 @@ type PhraseTimingSource struct {
 	Timing           capabilityaudio.SpeechTimingArtifact
 	Phrases          []string
 	VoiceoverAssetID string
+}
+
+// PhraseAlignmentRequest asks the Rust worker to align phrases against one
+// certified word-timing artifact. Go validates the artifact and projects the
+// returned spans; it never matches words itself.
+type PhraseAlignmentRequest struct {
+	Timing  capabilityaudio.SpeechTimingArtifact
+	Phrases []string
+}
+
+// PhraseAligner is the single production seam for phrase/word alignment.
+type PhraseAligner interface {
+	AlignPhrases(ctx context.Context, request PhraseAlignmentRequest) ([]capabilityaudio.LocatedPhrase, error)
 }
 
 type timingProjectionSkip struct {
@@ -45,7 +59,10 @@ func reportTimingProjectionSkip(reporters []func(timingProjectionSkip), skip tim
 // a partial, plausible-but-wrong result. Output order is scene order
 // (ResolvedScene.Index), then phrase order within each scene. Scenes without
 // a source (no voiceover/timing) are skipped.
-func CompilePhraseTimings(scenes []ResolvedScene, sources map[string]PhraseTimingSource) ([]capabilityaudio.PhraseTiming, error) {
+func CompilePhraseTimings(ctx context.Context, aligner PhraseAligner, scenes []ResolvedScene, sources map[string]PhraseTimingSource) ([]capabilityaudio.PhraseTiming, error) {
+	if aligner == nil {
+		return nil, fmt.Errorf("phrase timing: phrase aligner is required")
+	}
 	byID := make(map[string]ResolvedScene, len(scenes))
 	for _, scene := range scenes {
 		byID[scene.ID] = scene
@@ -57,7 +74,11 @@ func CompilePhraseTimings(scenes []ResolvedScene, sources map[string]PhraseTimin
 		if !ok {
 			continue
 		}
-		timings, err := capabilityaudio.LocatePhraseTimings(scene.Index, scene.TimelineStartUS, src.Timing, src.Phrases)
+		located, err := aligner.AlignPhrases(ctx, PhraseAlignmentRequest{Timing: src.Timing, Phrases: src.Phrases})
+		if err != nil {
+			return nil, fmt.Errorf("phrase timing: scene %q: %w", scene.ID, err)
+		}
+		timings, err := projectPhraseTimings(scene.Index, scene.TimelineStartUS, src.Phrases, located)
 		if err != nil {
 			return nil, fmt.Errorf("phrase timing: scene %q: %w", scene.ID, err)
 		}
@@ -72,6 +93,31 @@ func CompilePhraseTimings(scenes []ResolvedScene, sources map[string]PhraseTimin
 	return out, nil
 }
 
+// projectPhraseTimings maps the Rust worker's first-occurrence spans onto the
+// canonical PhraseTiming projection. Order is the request phrase order; the
+// worker must return exactly one alignment per phrase.
+func projectPhraseTimings(sceneIndex int, timelineStartUS int64, phrases []string, located []capabilityaudio.LocatedPhrase) ([]capabilityaudio.PhraseTiming, error) {
+	if len(located) != len(phrases) {
+		return nil, fmt.Errorf("phrase timing: got %d alignments for %d phrases", len(located), len(phrases))
+	}
+	out := make([]capabilityaudio.PhraseTiming, 0, len(phrases))
+	for i, phrase := range phrases {
+		match := located[i]
+		if match.WordEnd < match.WordStart || match.EndUS < match.StartUS {
+			return nil, fmt.Errorf("phrase timing: invalid alignment for phrase %d", i)
+		}
+		out = append(out, capabilityaudio.PhraseTiming{
+			SceneIndex: sceneIndex, PhraseIndex: i, Text: strings.TrimSpace(phrase),
+			WordStart: match.WordStart, WordEnd: match.WordEnd,
+			LocalStartUS: match.StartUS, LocalEndUS: match.EndUS,
+			TimelineStartUS: timelineStartUS,
+			GlobalStartUS:   timelineStartUS + match.StartUS,
+			GlobalEndUS:     timelineStartUS + match.EndUS,
+		})
+	}
+	return out, nil
+}
+
 // CompileSceneSpeechTimings builds the ordered scene-level speech timing
 // projection for every scene that has a timing source. Each scene bundles its
 // canonical word boundaries with its derived phrase spans (local voiceover
@@ -81,7 +127,10 @@ func CompilePhraseTimings(scenes []ResolvedScene, sources map[string]PhraseTimin
 // verbatim, or a source referencing an unknown scene aborts the whole
 // projection. Output order is scene order; scenes without a source are
 // skipped.
-func CompileSceneSpeechTimings(scenes []ResolvedScene, sources map[string]PhraseTimingSource) ([]capabilityaudio.SceneSpeechTiming, error) {
+func CompileSceneSpeechTimings(ctx context.Context, aligner PhraseAligner, scenes []ResolvedScene, sources map[string]PhraseTimingSource) ([]capabilityaudio.SceneSpeechTiming, error) {
+	if aligner == nil {
+		return nil, fmt.Errorf("scene speech timing: phrase aligner is required")
+	}
 	byID := make(map[string]ResolvedScene, len(scenes))
 	for _, scene := range scenes {
 		byID[scene.ID] = scene
@@ -93,8 +142,21 @@ func CompileSceneSpeechTimings(scenes []ResolvedScene, sources map[string]Phrase
 		if !ok {
 			continue
 		}
-		timing, err := capabilityaudio.LocateSceneSpeechTiming(scene.Index, scene.ID, src.VoiceoverAssetID, scene.TimelineStartUS, src.Timing, src.Phrases)
+		located, err := aligner.AlignPhrases(ctx, PhraseAlignmentRequest{Timing: src.Timing, Phrases: src.Phrases})
 		if err != nil {
+			return nil, fmt.Errorf("scene speech timing: scene %q: %w", scene.ID, err)
+		}
+		phrases, err := projectPhraseTimings(scene.Index, scene.TimelineStartUS, src.Phrases, located)
+		if err != nil {
+			return nil, fmt.Errorf("scene speech timing: scene %q: %w", scene.ID, err)
+		}
+		timing := capabilityaudio.SceneSpeechTiming{
+			SceneID: scene.ID, VoiceoverAssetID: src.VoiceoverAssetID,
+			LocalDurationUS: src.Timing.DurationUS,
+			Words:           append([]capabilityaudio.SpeechWordTiming(nil), src.Timing.Words...),
+			Phrases:         phrases,
+		}
+		if err := timing.Validate(); err != nil {
 			return nil, fmt.Errorf("scene speech timing: scene %q: %w", scene.ID, err)
 		}
 		out = append(out, timing)
@@ -121,7 +183,7 @@ func CompileSceneSpeechTimings(scenes []ResolvedScene, sources map[string]Phrase
 // carries timing the projection stays nil — timing capture is opt-in at the
 // voiceover port, so a timing-less run is a legitimate no-op rather than a
 // failure.
-func compileResultPhraseTimings(result *GenerateResult, language Language, reporters ...func(timingProjectionSkip)) error {
+func compileResultPhraseTimings(ctx context.Context, aligner PhraseAligner, result *GenerateResult, language Language, reporters ...func(timingProjectionSkip)) error {
 	if result == nil {
 		return nil
 	}
@@ -153,11 +215,11 @@ func compileResultPhraseTimings(result *GenerateResult, language Language, repor
 	if err != nil {
 		return err
 	}
-	timings, err := CompilePhraseTimings(resolved, sources)
+	timings, err := CompilePhraseTimings(ctx, aligner, resolved, sources)
 	if err != nil {
 		return err
 	}
-	speechTimings, err := CompileSceneSpeechTimings(resolved, sources)
+	speechTimings, err := CompileSceneSpeechTimings(ctx, aligner, resolved, sources)
 	if err != nil {
 		return err
 	}

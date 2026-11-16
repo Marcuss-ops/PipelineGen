@@ -32,6 +32,7 @@ func testRoutingContext() kernelscript.ArtifactRoutingContext {
 func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator())
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{
@@ -67,6 +68,7 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T) {
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator())
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{DriveFileID: "abc", DriveLink: "https://drive.google.com/file/d/abc"}}
@@ -97,6 +99,7 @@ func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T)
 func TestRunnerPublishFinalAudioFailsClosedWithoutDriveFileID(t *testing.T) {
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator())
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetFinalAudioPublisher(&stubFinalAudioPublisher{result: FinalAudioPublishResult{
@@ -120,6 +123,7 @@ func TestRunnerPublishFinalAudioFailsClosedWithoutDriveFileID(t *testing.T) {
 func TestRunnerPublishFinalAudioDoesNotTreatDriveLocatorWithoutCanonicalAssetAsPublished(t *testing.T) {
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator())
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{

@@ -87,6 +87,7 @@ func TestMapOnlyGeocodingKeepsAnnotatedRegionBehindItalianArticle(t *testing.T) 
 		DisplayName: "Toscana, Italia", Country: "Italia", CountryCode: "it",
 	}}
 	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetGeocoder(geocoder)
 	annotation := &scriptpkg.SceneAnnotations{

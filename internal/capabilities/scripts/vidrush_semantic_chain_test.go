@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -28,6 +29,35 @@ func (s stubVisualNER) Extract(_ context.Context, _ string, _ string, _ int) ([]
 		return nil, s.err
 	}
 	return s.entities, nil
+}
+
+// stubPhraseSelector is a deterministic test double for the Rust phrase
+// selector. It returns only the explicit source-grounded surfaces the test
+// configured, so the enricher wiring is exercised without the worker.
+type stubPhraseSelector struct {
+	phrases []string
+	err     error
+}
+
+func (s stubPhraseSelector) SelectPhrases(_ context.Context, request PhraseSelectionRequest) ([]SelectedPhrase, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	out := make([]SelectedPhrase, 0, len(s.phrases))
+	for _, phrase := range s.phrases {
+		startByte := strings.Index(request.Text, phrase)
+		if startByte < 0 {
+			continue
+		}
+		out = append(out, SelectedPhrase{
+			Text:      phrase,
+			StartByte: startByte,
+			EndByte:   startByte + len(phrase),
+			StartRune: utf8.RuneCountInString(request.Text[:startByte]),
+			EndRune:   utf8.RuneCountInString(request.Text[:startByte+len(phrase)]),
+		})
+	}
+	return out, nil
 }
 
 // recordingVisualNER is a VisualNERPort stub that records the exact source
@@ -68,7 +98,7 @@ func TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief(t *testing
 		return []VisualEntity{span("tomatoes", 0.9), span("feta", 0.85), span("olives", 0.8)}
 	}
 	ner := &recordingVisualNER{entities: narrationEntities()}
-	enricher, err := NewSceneIRSegmentEnricher(ner)
+	enricher, err := NewSceneIRSegmentEnricher(ner, stubPhraseSelector{})
 	require.NoError(t, err)
 
 	result, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scriptpkg.SpecScene{
@@ -107,7 +137,7 @@ func TestSceneIRSegmentEnricherFallsBackToSourceWithoutNarration(t *testing.T) {
 		Text: "Mike Tyson", Type: scriptpkg.EntityTypePerson, Score: 1,
 		Start: start, End: start + len("Mike Tyson"), Evidence: "Mike Tyson",
 	}}}
-	enricher, err := NewSceneIRSegmentEnricher(ner)
+	enricher, err := NewSceneIRSegmentEnricher(ner, stubPhraseSelector{})
 	require.NoError(t, err)
 
 	result, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scriptpkg.SpecScene{
@@ -130,7 +160,7 @@ func TestSceneIRSegmentEnricherFallsBackToSourceWithoutNarration(t *testing.T) {
 // segment whose identity was already refused.
 func TestSceneIRSegmentEnricherRequiresLanguageBeforeVisualNER(t *testing.T) {
 	ner := &recordingVisualNER{}
-	enricher, err := NewSceneIRSegmentEnricher(ner)
+	enricher, err := NewSceneIRSegmentEnricher(ner, stubPhraseSelector{})
 	require.NoError(t, err)
 	_, err = enricher.Enrich(context.Background(), nil, scriptpkg.SpecScene{
 		ID: "language-required", Text: "A valid narration surface.",
@@ -141,7 +171,7 @@ func TestSceneIRSegmentEnricherRequiresLanguageBeforeVisualNER(t *testing.T) {
 
 func TestSceneIRSegmentEnricherFailsClosedBeforeVisualNER(t *testing.T) {
 	ner := &recordingVisualNER{entities: greekSaladEntities()}
-	enricher, err := NewSceneIRSegmentEnricher(ner)
+	enricher, err := NewSceneIRSegmentEnricher(ner, stubPhraseSelector{})
 	require.NoError(t, err)
 
 	_, err = enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scriptpkg.SpecScene{
@@ -269,7 +299,7 @@ func greekSaladEntities() []VisualEntity {
 // (one per entity).
 func TestSceneIRSegmentEnricherCompilesIdentityAndExtractsEntities(t *testing.T) {
 	ner := stubVisualNER{entities: greekSaladEntities()}
-	enricher, err := NewSceneIRSegmentEnricher(ner)
+	enricher, err := NewSceneIRSegmentEnricher(ner, stubPhraseSelector{})
 	require.NoError(t, err)
 
 	scene := scriptpkg.SpecScene{
@@ -301,7 +331,7 @@ func TestSceneIRSegmentEnricherCompilesIdentityAndExtractsEntities(t *testing.T)
 // TestSceneIRSegmentEnricherPrefersCanonicalSegmentID prevents the legacy
 // scene-N identifier from replacing the source segment identity.
 func TestSceneIRSegmentEnricherPrefersCanonicalSegmentID(t *testing.T) {
-	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: greekSaladEntities()})
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: greekSaladEntities()}, stubPhraseSelector{})
 	require.NoError(t, err)
 
 	result, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "en"}, scriptpkg.SpecScene{
@@ -318,7 +348,7 @@ func TestSceneIRSegmentEnricherPrefersCanonicalSegmentID(t *testing.T) {
 func TestSceneIRSegmentEnricherFencesNarrationWhileKeepingSourceEvidence(t *testing.T) {
 	const narration = "Mike Tyson's generated narration expands on the documented Brooklyn history."
 	const brief = "Mike Tyson was born in Brooklyn in 1966."
-	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{})
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{}, stubPhraseSelector{})
 	require.NoError(t, err)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", Segments: []scriptpkg.ScriptSegment{{
@@ -367,7 +397,7 @@ func TestSceneIRSegmentEnricherKeepsBriefIdentityWhileExtractingFromNarration(t 
 	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: []VisualEntity{{
 		Text: "Mike Tyson", Type: scriptpkg.EntityTypePerson, Score: 1,
 		Start: start, End: start + len("Mike Tyson"), Evidence: "Mike Tyson",
-	}}})
+	}}}, stubPhraseSelector{})
 	require.NoError(t, err)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
@@ -393,7 +423,7 @@ func TestSceneIRSegmentEnricherFiltersSelectedEntityCategory(t *testing.T) {
 	ner := &recordingVisualNER{entities: []VisualEntity{
 		span("OpenAI", "BRAND"), span("25%", "PERCENT"), span("42 orders", "NUMBER"), span("$2 million", "MONEY"), span("2025", "DATE"),
 	}}
-	enricher, err := NewSceneIRSegmentEnricher(ner)
+	enricher, err := NewSceneIRSegmentEnricher(ner, stubPhraseSelector{})
 	require.NoError(t, err)
 	plan := &scriptpkg.ResolvedGenerationPlan{Language: "en", MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
 		Include: []string{mediadomain.ExtractionIncludeMoney}, MaxEntitiesPerSegment: 1,
@@ -449,7 +479,7 @@ func TestSceneIRSegmentEnricherUsesAllPersonsForImageSearch(t *testing.T) {
 	entities[2].Start = strings.Index(source, entities[2].Text)
 	entities[2].End = entities[2].Start + len(entities[2].Text)
 
-	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: entities})
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: entities}, stubPhraseSelector{phrases: []string{"during a historic meeting"}})
 	require.NoError(t, err)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
@@ -507,7 +537,10 @@ func TestSceneIRSegmentEnricherSeparatesImportantPhrasesFromEntities(t *testing.
 	entities[1].Start = strings.Index(source, entities[1].Text)
 	entities[1].End = entities[1].Start + len(entities[1].Text)
 
-	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: entities})
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{entities: entities}, stubPhraseSelector{phrases: []string{
+		"transformed basketball with relentless defense",
+		"guided the team through a historic championship run",
+	}})
 	require.NoError(t, err)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Language: "en",
@@ -530,7 +563,7 @@ func TestSceneIRSegmentEnricherSeparatesImportantPhrasesFromEntities(t *testing.
 
 func TestSceneIRSegmentEnricherGroundsExplicitImportantPhraseHint(t *testing.T) {
 	source := "Mike Tyson unisce velocità e pressione. Potenza e disciplina."
-	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{})
+	enricher, err := NewSceneIRSegmentEnricher(stubVisualNER{}, stubPhraseSelector{})
 	require.NoError(t, err)
 	plan := &scriptpkg.ResolvedGenerationPlan{Language: "it", MediaPlan: mediadomain.MediaPlanSpec{
 		Extraction: mediadomain.MediaExtractionPolicy{

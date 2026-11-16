@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -57,7 +56,7 @@ func localizedNLPSnapshot(result *GenerateResult) *GenerateResult {
 // post-join barrier (see localizedNLPForScene).
 
 func (c *sceneReadyCoordinator) translatedNLPRequested() bool {
-	if c.runner == nil {
+	if c.runner == nil || c.runner.vidRushPipeline == nil {
 		return false
 	}
 	extraction := c.req.MediaPlan.Extraction
@@ -95,7 +94,15 @@ func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language,
 		}}
 		phraseLimit := c.req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 		includePhrases := c.req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
-		source = computeSegmentEntityAnnotations(snapshot, c.req.SourceLanguage, []scriptpkg.VidRushSegmentResult{segment}, phraseLimit, includePhrases, c.req.MediaPlan.Extraction.ImportantPhrases)[0]
+		var selector PhraseSelector
+		if c.runner.vidRushPipeline != nil {
+			selector = c.runner.vidRushPipeline.PhraseSelector
+		}
+		computed, computeErr := computeSegmentEntityAnnotations(c.ctx, selector, snapshot, c.req.SourceLanguage, []scriptpkg.VidRushSegmentResult{segment}, phraseLimit, includePhrases, c.req.MediaPlan.Extraction.ImportantPhrases)
+		if computeErr != nil {
+			return nil, computeErr
+		}
+		source = computed[0]
 	}
 
 	mini := &GenerateResult{Scenes: []Scene{{
@@ -182,7 +189,7 @@ func (r *Runner) runTranslatedNLPWithSourceAnnotations(ctx context.Context, req 
 // being written. Computing into a detached value and applying it on the owning
 // goroutine keeps the overlap without a shared write.
 func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRequest, result *GenerateResult, sourceAnnotations map[int]*scriptpkg.SceneAnnotations) (map[int]map[Language]*scriptpkg.SceneAnnotations, error) {
-	if r == nil || result == nil {
+	if r == nil || result == nil || r.vidRushPipeline == nil {
 		return nil, nil
 	}
 	// In the parallel SceneTextReady path result is a detached NLP snapshot;
@@ -199,6 +206,13 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 	includeWords := extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
 	if !includeEntities && !includePhrases && !includeWords {
 		return nil, nil
+	}
+	var phraseSelector PhraseSelector
+	if includePhrases || includeWords {
+		if r.vidRushPipeline == nil || r.vidRushPipeline.PhraseSelector == nil {
+			return nil, fmt.Errorf("translated NLP: phrase selector is required when important phrases or words are requested")
+		}
+		phraseSelector = r.vidRushPipeline.PhraseSelector
 	}
 
 	langs := make([]Language, 0, len(req.Languages)+1)
@@ -357,14 +371,32 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		} else {
 			outcomes[index].entities = nil
 		}
-		phraseCandidates := phrasepkg.ImportantPhrasesWithCorpus(item.text, entityRuneSpans(item.text, outcomes[index].entities), phraseLimit, string(item.lang), documentCorpus[item.lang])
+		var phraseCandidates []string
+		var selectedPhrases []SelectedPhrase
+		if includePhrases || includeWords {
+			var selectErr error
+			selectedPhrases, selectErr = phraseSelector.SelectPhrases(ctx, PhraseSelectionRequest{
+				Text:             item.text,
+				BlockedRuneSpans: entityRuneSpans(item.text, outcomes[index].entities),
+				Limit:            phraseLimit,
+				Corpus:           documentCorpus[item.lang],
+				Profile:          phraseSelectionProfileForLanguage(string(item.lang)),
+			})
+			if selectErr != nil {
+				return nil, fmt.Errorf("translated phrase selection for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, selectErr)
+			}
+			phraseCandidates = make([]string, 0, len(selectedPhrases))
+			for _, phrase := range selectedPhrases {
+				phraseCandidates = append(phraseCandidates, phrase.Text)
+			}
+		}
 		var groundedPhrases []string
 		if includePhrases {
 			groundedPhrases = groundImportantPhrases(item.text, outcomes[index].entities, phraseCandidates, phraseLimit)
 		}
 		var importantWords []string
 		if includeWords {
-			importantWords = phrasepkg.ImportantWords(phraseCandidates, wordLimit, string(item.lang))
+			importantWords = importantWordsFromPhrases(phraseCandidates, wordLimit, phraseSelectionProfileForLanguage(string(item.lang)))
 		}
 		var specialNames []string
 		if includeEntities && extraction.Includes(mediadomain.ExtractionIncludeEntities) && !hasAdditionalEntityCategory(extraction) {

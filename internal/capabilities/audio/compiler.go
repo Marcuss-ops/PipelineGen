@@ -104,7 +104,7 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 	// every producer (including translated runs) reaches the same master mix.
 	protected := protectedAudioWindows(t)
 	filteredBGM := filterAudioLayersOutsideProtectedWindows(bgm, protected)
-	filteredSFX := filterAudioLayersOutsideProtectedWindows(sfx, protected)
+	filteredSFX := filterSFXOutsideProtectedWindows(sfx, protected)
 	for i, layer := range filteredBGM {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackBGM, "bgm")
 		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: audio.BackgroundMusicGainDB})
@@ -176,6 +176,52 @@ func filterAudioLayersOutsideProtectedWindows(layers []AudioLayer, protected []a
 		}
 	}
 	return out
+}
+
+// sfxBoundaryToleranceUS is the window around a protected boundary in which
+// a transition SFX is considered intentional: whooshes at clip starts and
+// whops at clip ends are authored at the cut, not inside the protected audio.
+const sfxBoundaryToleranceUS int64 = 750_000
+
+// filterSFXOutsideProtectedWindows keeps short transition cues anchored to a
+// protected fixed-media boundary (clip start/end) and filters the rest with
+// the same subtraction policy as background music. This is what makes
+// per-clip start/end SFX audible while still refusing SFX deep inside the
+// original clip audio.
+func filterSFXOutsideProtectedWindows(layers []AudioLayer, protected []audioWindow) []AudioLayer {
+	if len(protected) == 0 {
+		return layers
+	}
+	out := make([]AudioLayer, 0, len(layers))
+	for _, layer := range layers {
+		if sfxBordersProtectedWindow(layer, protected) {
+			out = append(out, layer)
+			continue
+		}
+		out = append(out, filterAudioLayersOutsideProtectedWindows([]AudioLayer{layer}, protected)...)
+	}
+	return out
+}
+
+func sfxBordersProtectedWindow(layer AudioLayer, protected []audioWindow) bool {
+	start := layer.TimelineStartUS
+	end := start + layer.DurationUS
+	for _, window := range protected {
+		if absUS(start-window.start) <= sfxBoundaryToleranceUS ||
+			absUS(start-window.end) <= sfxBoundaryToleranceUS ||
+			absUS(end-window.start) <= sfxBoundaryToleranceUS ||
+			absUS(end-window.end) <= sfxBoundaryToleranceUS {
+			return true
+		}
+	}
+	return false
+}
+
+func absUS(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func subtractAudioWindow(source []audioWindow, blocked audioWindow) []audioWindow {

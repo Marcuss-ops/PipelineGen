@@ -19,9 +19,10 @@
 //
 // File split ownership (godlike/06 SSOT):
 //   - resolver.go                 : Resolver port + VisualResolver struct + ResolverDeps + ctors + pins + EmbeddingVersion
+//   - pool_ranker.go              : PoolRanker port + pool DTOs (the canonical ranker lives in mediasampler)
 //   - resolver_lookup.go          : canonicalConceptForLookup + fingerprintForNormalized
 //   - resolver_orchestration.go   : Resolve + resolveScene + candidatesForSlot + levelExactMatch + mediaTypesForSlot + priorSceneVideoID + defaultResolverLimit  ← this file
-//   - resolver_scoring.go         : rankedCandidate + buildFilterFlags + aspectMismatchFor + buildRankingInput + durationFitScore + clamp01 + sort + layerFromFilteredCandidate + upgradeSource
+//   - resolver_scoring.go         : rankSlotPool (PoolRanker projection) + layerFromRanked + upgradeSource
 //   - resolver_projection.go      : bindingsToFilteredCandidates + candidatesToFilteredCandidates
 //   - resolver_brain.go           : errInvalidPhrase + Search method (brain.MediaMemoryResolutionPort impl)
 package mediamemory
@@ -184,97 +185,59 @@ func (r *VisualResolver) resolveScene(
 			continue
 		}
 
-		// Filter phase: godlike/07 mandatory gates.
-		filters := buildFilterFlags(ctx, cands, r.bindings, scene, slot)
-		filtered, err := r.ranker.Filter(ctx, filters)
-		if err != nil {
+		// Ranking: exactly one call per slot pool to the canonical ranker.
+		// The seven gates, the weights, the verdict bands, the repetition
+		// penalty, the ordering and the diversity-aware pick all execute in
+		// `mediasampler::rank` (TICKET-16); this package owns none of them
+		// and re-sorts nothing the ranker returned.
+		outcome, rankErr := r.rankSlotPool(ctx, scene, slot, cands, prevVideoID)
+		if rankErr != nil {
 			warnings = append(warnings, fmt.Sprintf(
-				"scene_id=%q slot_kind=%q: filter error: %s",
-				scene.ID, slot, err.Error(),
+				"scene_id=%q slot_kind=%q: ranker error: %s",
+				scene.ID, slot, rankErr.Error(),
 			))
 			continue
 		}
-		if len(filtered) == 0 {
+		if len(outcome.Ranked) == 0 {
 			warnings = append(warnings, fmt.Sprintf(
-				"scene_id=%q slot_kind=%q: all candidates failed the 7 gates",
+				"scene_id=%q slot_kind=%q: no candidate survived the ranker (%d dropped)",
+				scene.ID, slot, len(outcome.Drops),
+			))
+			continue
+		}
+
+		byID := make(map[string]FilteredCandidate, len(cands))
+		for index, fc := range cands {
+			byID[poolRankKey(index, fc.Candidate.ID)] = fc
+		}
+		for _, scored := range outcome.Ranked {
+			fc := byID[scored.CandidateID]
+			plan.Candidates = append(plan.Candidates, CandidateOption{
+				AssetID:      fc.Candidate.AssetID,
+				CandidateID:  fc.Candidate.ID,
+				SourceURL:    fc.Candidate.SourceURL,
+				Provider:     fc.Candidate.Provider,
+				Score:        scored.FinalScore,
+				DurationMs:   fc.Candidate.DurationMs,
+				MediaType:    fc.Candidate.MediaType,
+				RightsStatus: string(fc.Candidate.RightsStatus),
+			})
+		}
+
+		// The winner comes from the ranker: priorSceneVideoID feeds the
+		// consecutive-source penalty and the diversity swap, so scene N+1
+		// is grounded in the canonical winner from scene N.
+		//
+		// godlike/07 NO-FAKE-AVAILABILITY: survivors without a winner is a
+		// ranker contract violation — surfaced as a warning, never guessed.
+		if outcome.Winner == nil {
+			warnings = append(warnings, fmt.Sprintf(
+				"scene_id=%q slot_kind=%q: ranker returned survivors but no winner",
 				scene.ID, slot,
 			))
 			continue
 		}
-
-		// Score + sort + pick top per slot.
-		//
-		// godlike/06 SSOT (Fase 2.3 anti-repetition): the
-		// RankingInput pool is fed through
-		// PopulateRepetitionPenalty BEFORE Score so the
-		// ranker's canonical formula subtracts the penalty
-		// directly (no re-Score pass, no post-Score nudge).
-		// 2026-09-20: the history-derived components left with
-		// the UsageRepository seam; the surviving component is
-		// the prevVideoID consecutive-source penalty, so the
-		// ranker still scores every candidate normally.
-		inputs := make([]RankingInput, 0, len(filtered))
-		for _, fc := range filtered {
-			inputs = append(inputs, buildRankingInput(scene, fc))
-		}
-		// godlike/06 SSOT (Top-10 rose, deterministic-but-diverse):
-		// the rose is implicitly the surviving input pool after
-		// Filter; limit is bound upstream at ListApprovedByConcept
-		// (limit=10). Diversity propagates through the penalty
-		// formula: candidates sharing prevVideoID receive
-		// SameVideoInConsecutiveScenePenalty (0.3) so they
-		// drop in FinalScore comparison while the rose top
-		// remains the highest-scoring survivor. No rotation is
-		// needed: the deterministic sort keeps determinism.
-		inputs = PopulateRepetitionPenalty(inputs, prevVideoID)
-
-		scored := make([]rankedCandidate, 0, len(inputs))
-		for _, in := range inputs {
-			fc := FilteredCandidate{Candidate: in.Candidate, Binding: in.Binding}
-			score, scoreErr := r.ranker.Score(ctx, in)
-			if scoreErr != nil {
-				continue
-			}
-			if score.Verdict == VerdictDrop {
-				continue
-			}
-			scored = append(scored, rankedCandidate{fc: fc, out: score})
-		}
-		if len(scored) == 0 {
-			continue
-		}
-
-		// Sort DESC by FinalScore (deterministic, no RNG).
-		sortByFinalScoreDesc(scored)
-		for _, candidate := range scored {
-			plan.Candidates = append(plan.Candidates, CandidateOption{
-				AssetID:      candidate.fc.Candidate.AssetID,
-				CandidateID:  candidate.fc.Candidate.ID,
-				SourceURL:    candidate.fc.Candidate.SourceURL,
-				Provider:     candidate.fc.Candidate.Provider,
-				Score:        candidate.out.FinalScore,
-				DurationMs:   candidate.fc.Candidate.DurationMs,
-				MediaType:    candidate.fc.Candidate.MediaType,
-				RightsStatus: string(candidate.fc.Candidate.RightsStatus),
-			})
-		}
-
-		// Take the top one for this slot via PickTopFromRose
-		// (single layer per slot).
-		//
-		// godlike/06 SSOT (Fase 2.2 rosa pick): the resolver
-		// delegates the per-slot top-1 selection to the canonical
-		// PickTopFromRose helper so the deterministic-but-
-		// diversified knob (DiversityFinalScoreDelta) lives in
-		// one place. The helper accepts the sorted rose + the
-		// prior scene's VideoID and returns either the highest-
-		// scoring survivor OR a non-consecutive alternative
-		// within delta. priorSceneVideoID() reads
-		// plan.Layers[0].AssetID so the consecutive-scene penalty
-		// for scene N+1 is grounded in the canonical winner
-		// from scene N. Provider flows through layerFromFilteredCandidate.
-		top := PickTopFromRose(scored, prevVideoID)
-		layer := layerFromFilteredCandidate(top.fc, slot, top.out.FinalScore)
+		layer := layerFromRanked(byID[outcome.Winner.CandidateID], slot, outcome.Winner.FinalScore)
 		plan.Layers = append(plan.Layers, layer)
 		plan.Source = upgradeSource(plan.Source, source)
 	}

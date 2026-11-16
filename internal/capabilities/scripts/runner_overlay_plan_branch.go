@@ -53,7 +53,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		r.log.Warn("voiceover timing projection skipped an unanchored surface",
 			zap.String("scene_id", skip.SceneID), zap.String("surface", skip.Surface), zap.Error(skip.Cause))
 	}
-	if err := compileResultPhraseTimings(result, req.SourceLanguage, reportTimingSkip); err != nil {
+	if err := compileResultPhraseTimings(ctx, r.phraseAligner, result, req.SourceLanguage, reportTimingSkip); err != nil {
 		cause := fmt.Errorf("phrase timing compilation failed: %w", err)
 		return cause
 	}

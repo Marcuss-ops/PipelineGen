@@ -104,6 +104,43 @@ func TestCompileWithLayersAndPolicy_DropsImplicitLayersAndAutomationOnFixedMedia
 	}
 }
 
+func TestCompileWithLayersAndPolicy_KeepsSFXAtProtectedBoundaries(t *testing.T) {
+	bgm := []AudioLayer{{AssetID: "bgm", TimelineStartUS: 0, DurationUS: 10_000_000}}
+	sfx := []AudioLayer{
+		{AssetID: "whoosh-start", TimelineStartUS: 0, DurationUS: 500_000},
+		{AssetID: "whop-end", TimelineStartUS: 2_500_000, DurationUS: 500_000},
+		{AssetID: "sfx-deep", TimelineStartUS: 1_000_000, DurationUS: 500_000},
+	}
+	plan, err := CompileWithLayersAndPolicy(protectedFixedTimeline(), DefaultAudioProfile(), bgm, sfx, nil, kernelaudio.MixVoiceoverWithDuckedClip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sfxTrack := findTrack(plan.Tracks, TrackSFX)
+	if sfxTrack == nil {
+		t.Fatal("transition SFX at protected boundaries must survive")
+	}
+	if len(sfxTrack.Events) != 2 {
+		t.Fatalf("SFX events = %+v, want the start whoosh and the end whop only", sfxTrack.Events)
+	}
+	kept := make(map[string]bool, len(sfxTrack.Events))
+	for _, event := range sfxTrack.Events {
+		kept[event.AssetID] = true
+		if event.GainDB != kernelaudio.SoundEffectGainDB {
+			t.Fatalf("SFX gain = %v, want canonical %v", event.GainDB, kernelaudio.SoundEffectGainDB)
+		}
+	}
+	if !kept["whoosh-start"] || !kept["whop-end"] {
+		t.Fatalf("boundary SFX missing: %+v", sfxTrack.Events)
+	}
+	if kept["sfx-deep"] {
+		t.Fatalf("SFX deep inside protected audio must stay filtered: %+v", sfxTrack.Events)
+	}
+	bgmTrack := findTrack(plan.Tracks, TrackBGM)
+	if bgmTrack == nil || len(bgmTrack.Events) != 1 || bgmTrack.Events[0].TimelineStartUS != 3_000_000 {
+		t.Fatalf("BGM must still be trimmed outside the fixed-media span: %+v", bgmTrack)
+	}
+}
+
 func TestCompileWithMixPolicy_VoiceoverOnlyDropsClipAudio(t *testing.T) {
 	plan, err := CompileWithMixPolicy(combinedTimeline(), DefaultAudioProfile(), kernelaudio.MixVoiceoverOnly)
 	if err != nil {

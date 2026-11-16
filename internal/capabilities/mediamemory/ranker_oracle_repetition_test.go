@@ -1,30 +1,19 @@
-// Package mediamemory — ranker_repetition.go is the canonical
-// home for the Fase 2.2/2.3 anti-repetition surface:
-// AntiRepetitionHistoryLimit (canonical project-history ceiling),
-// the four channel-recency/penalty/diversity/ceiling constants,
-// the RepetitionPenaltyWeights struct + DefaultRepetitionPenaltyWeights
-// (canonical Phase 2.3 formula weights), PopulateRepetitionPenalty
-// (the per-candidate penalty stamp), PickTopFromRose (the
-// deterministic-but-diversified top-1 picker), and the two
-// extraction helpers (extractCandidateVideoID / extractCandidateChannelID).
+// ── FROZEN TEST ORACLE — NOT PART OF THE PRODUCTION BINARY ───────────
+// This file is the Go implementation of the canonical media ranker as it
+// stood at the TICKET-16 cutover: weights, seven gates, verdict bands,
+// repetition penalty, sort and the diversity pick.
 //
-// godlike/06 SSOT (single canonical home per concern): every
-// anti-repetition decision lives here so the canonical formula
-// + channel-recency math + diversity knob are one grep-able
-// home. Tests in ranker_test.go + ranker_recency_test.go pin
-// the constants + the formula; drift here is a ranker-side
-// regression per godlike/06.
+// It is compiled ONLY into test binaries and exists for one purpose: to
+// generate and check the parity fixtures in contract/media-ranker/v1 against
+// `mediasampler::rank`, the one authority production calls through
+// mediamemory.PoolRanker. Because it lives in a _test.go file, non-test code
+// cannot link it even by accident — the build failure is the guard.
 //
-// File split ownership (godlike/06 SSOT):
-//   - ranker.go               : Ranker port + defaultRanker + NewDefaultRanker + Score + Filter
-//   - ranker_types.go         : RankingInput + RankingOutput + RankingVerdict + FilteredCandidate
-//   - ranker_weights.go       : DefaultRankWeights + Weights() + VerdictThresholds + DefaultVerdictThresholds + classifyScore + verdictReason
-//   - ranker_gates.go         : PreRankGate + 7 gates + RunMandatoryGates + HasAvailableMedia/HasValidDuration/HasSupportedFormat/mediaCandidateIsWellFormed + ComputeDurationFit + PopulateRightsPenalty
-//   - ranker_repetition.go    : 4 channel-recency/ceiling consts + DiversityFinalScoreDelta + RepetitionPenaltyWeights + DefaultRepetitionPenaltyWeights + PopulateRepetitionPenalty + PickTopFromRose + extractCandidateVideoID/ChannelID  ← this file
-//     (AntiRepetitionHistoryLimit and PopulateRepetitionPenalty's history
-//     parameter were DELETED on 2026-09-20 with the Fase 2.3 UsageRepository
-//     seam; the constants stay because DefaultRepetitionPenaltyWeights still
-//     pins them as the documented canonical values.)
+// Do not "fix" this file to match a Rust change. When the ranker's behaviour
+// changes, the Rust side changes first, the fixtures are regenerated from the
+// Rust answer, and this oracle is updated to match the new canonical facts.
+// Contents: Repetition penalty components and the diversity-aware pick.
+
 package mediamemory
 
 import (

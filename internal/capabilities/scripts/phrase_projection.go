@@ -1,20 +1,25 @@
-// Package scriptgeneration — phrase_supplement.go owns the grounded
-// important-phrase supplement used by the overlay.prepare snapshot. Split out
-// of runner_overlay_prepare.go to keep that file under the strict 600-LOC
-// gate; same package, same behaviour.
+// Package scriptgeneration — phrase_projection.go owns the grounded
+// important-phrase projection used by the overlay.prepare snapshot. The Rust
+// selector owns candidate selection; this file only completes, merges and
+// balances the returned source-grounded spans. Split out of
+// runner_overlay_prepare.go to keep that file under the strict 600-LOC gate.
 package scriptgeneration
 
 import (
+	"context"
+	"fmt"
 	"sort"
 	"strings"
 
-	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, language string, limit int, corpus []string) {
+func supplementSourceImportantPhrases(ctx context.Context, selector PhraseSelector, ann *scriptpkg.SceneAnnotations, text, language string, limit int, corpus []string) error {
 	if ann == nil || limit <= 0 {
-		return
+		return nil
+	}
+	if selector == nil {
+		return fmt.Errorf("phrase supplement: phrase selector is required")
 	}
 	blocked := make([][2]int, 0, len(ann.PrimaryEntities)+len(ann.SecondaryEntities))
 	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
@@ -44,7 +49,7 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 		if !ok {
 			continue
 		}
-		span, ok = phrasepkg.CompleteGroundedPhrase(text, span)
+		span, ok = completeGroundedPhrase(text, span)
 		if !ok {
 			continue
 		}
@@ -60,12 +65,19 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 	// ranks complete/long phrases first. Filtering that small result afterward
 	// leaves almost no short candidates. Query the 2–5-word lane directly so
 	// short phrases have their own independently ranked candidate pool.
-	for rank, phrase := range phrasepkg.ImportantPhrasesWithCorpusWordRange(text, blocked, selectorLimit, language, corpus, 2, 5) {
-		span, ok := findEntitySpan(text, phrase)
+	shortPhrases, err := selector.SelectPhrases(ctx, PhraseSelectionRequest{
+		Text: text, BlockedRuneSpans: blocked, Limit: selectorLimit,
+		MinWords: 2, MaxWords: 5, Corpus: corpus, Profile: phraseSelectionProfileForLanguage(language),
+	})
+	if err != nil {
+		return fmt.Errorf("phrase supplement short lane: %w", err)
+	}
+	for rank, selected := range shortPhrases {
+		span, ok := findEntitySpan(text, selected.Text)
 		if !ok {
 			continue
 		}
-		span, ok = phrasepkg.CompleteGroundedPhrase(text, span)
+		span, ok = completeGroundedPhrase(text, span)
 		if !ok {
 			continue
 		}
@@ -78,16 +90,23 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 			byText[key] = item
 		}
 	}
-	for rank, phrase := range phrasepkg.ImportantPhrasesWithCorpus(text, blocked, selectorLimit, language, corpus) {
-		span, ok := findEntitySpan(text, phrase)
+	longPhrases, err := selector.SelectPhrases(ctx, PhraseSelectionRequest{
+		Text: text, BlockedRuneSpans: blocked, Limit: selectorLimit,
+		Corpus: corpus, Profile: phraseSelectionProfileForLanguage(language),
+	})
+	if err != nil {
+		return fmt.Errorf("phrase supplement long lane: %w", err)
+	}
+	for rank, selected := range longPhrases {
+		span, ok := findEntitySpan(text, selected.Text)
 		if !ok {
 			continue
 		}
-		span, ok = phrasepkg.CompleteGroundedPhrase(text, span)
+		span, ok = completeGroundedPhrase(text, span)
 		if !ok {
 			continue
 		}
-		phrase = span.Text
+		phrase := span.Text
 		words := len(strings.Fields(phrase))
 		if words < 2 || words > 16 {
 			continue
@@ -194,6 +213,7 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 		appendNonOverlapping(long, limit-len(selected))
 	}
 	ann.ImportantPhrases = selected
+	return nil
 }
 
 func phraseKey(value string) string {

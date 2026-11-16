@@ -489,6 +489,15 @@ func (r *Runner) SetVidRushTimingRecorder(recorder VidRushTimingRecorder) {
 	}
 }
 
+// SetPhraseAligner wires the Rust phrase/word alignment boundary. Nil means a
+// run that carries certified timing fails closed instead of falling back to a
+// Go matcher.
+func (r *Runner) SetPhraseAligner(aligner PhraseAligner) {
+	if r != nil {
+		r.phraseAligner = aligner
+	}
+}
+
 // SetVidRushPipeline wires the composition-time incremental VidRush
 // dependencies. A nil pipeline disables incremental VidRush (batch workflows
 // keep enriching the whole document later). The Runner builds a fresh,

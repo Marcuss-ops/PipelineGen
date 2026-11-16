@@ -48,6 +48,7 @@ type Runner struct {
 	jobStageSink          job.JobStageStatusStore
 	jobStages             sync.Map
 	vidRushPipeline       *VidRushPipeline
+	phraseAligner         PhraseAligner
 	finalJobSubmitter     FinalJobSubmitter
 	sceneSemanticAnalyzer SceneSemanticAnalyzer
 
@@ -246,7 +247,7 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	// compiles a SceneIR (immutable identity), extracts source-grounded
 	// entities via VisualNER, resolves candidates LOCAL FIRST via
 	// stockintelligence, ranks via MediaSampler, and certifies via MediaCert.
-	enricher, err := NewSceneIRSegmentEnricher(p.NERPort)
+	enricher, err := NewSceneIRSegmentEnricher(p.NERPort, p.PhraseSelector)
 	if err != nil {
 		return nil, fmt.Errorf("vidrush pipeline: %w", err)
 	}

@@ -1,39 +1,46 @@
-// Package mediamemory — ranker.go is the canonical home for the
-// ranker PORT and its default IMPLEMENTATION. The ranker is the
-// single canonical seam that turns (binding, candidate, context)
-// triples into deterministic orderings; every route that scores
-// candidates (resolver, batch, dashboard preview) routes through
-// this port.
+// ── FROZEN TEST ORACLE — NOT PART OF THE PRODUCTION BINARY ───────────
+// This file is the Go implementation of the canonical media ranker as it
+// stood at the TICKET-16 cutover: weights, seven gates, verdict bands,
+// repetition penalty, sort and the diversity pick.
 //
-// godlike/06 SSOT (canonical formula + 7-gate vocabulary +
-// anti-repetition + diversity picker): the canonical Phase 1.x
-// weights, the seven mandatory pre-rank gates, the
-// PopulateRepetitionPenalty formula, and the PickTopFromRose
-// diversity picker are the load-bearing facts that ANY
-// alternative ranking strategy must preserve. They live in
-// ranker_weights.go, ranker_gates.go, and ranker_repetition.go
-// respectively so each seam is grep-able.
+// It is compiled ONLY into test binaries and exists for one purpose: to
+// generate and check the parity fixtures in contract/media-ranker/v1 against
+// `mediasampler::rank`, the one authority production calls through
+// mediamemory.PoolRanker. Because it lives in a _test.go file, non-test code
+// cannot link it even by accident — the build failure is the guard.
 //
-// godlike/06 SSOT (extension point): new ranking modes plug in
-// via RankingStrategy registered in registry.go. The default
-// weights below are the canonical Phase 1.x values; future
-// tuning knobs (time-aware, channel-aware, ...) attach via
-// RankerConfig and RankingStrategy.Rank(...).
-//
-// godlike/07 NO-FAKE-AVAILABILITY: Filter() is the canonical
-// seam for the seven mandatory gates. A silent no-op pass
-// would be a PR-REGRESSION — explicit drop-with-nil envelopes
-// the no-op path.
-//
-// File split (godlike/06 single canonical home per layer):
-//   - ranker.go               : Ranker port + defaultRanker + NewDefaultRanker + Score + Filter  ← this file
-//   - ranker_types.go         : RankingInput + RankingOutput + RankingVerdict + FilteredCandidate
-//   - ranker_weights.go       : DefaultRankWeights + Weights() + VerdictThresholds + DefaultVerdictThresholds + classifyScore + verdictReason
-//   - ranker_gates.go         : PreRankGate + 7 gates + RunMandatoryGates + HasAvailableMedia/HasValidDuration/HasSupportedFormat/mediaCandidateIsWellFormed + ComputeDurationFit + PopulateRightsPenalty
-//   - ranker_repetition.go    : AntiRepetitionHistoryLimit + 4 channel-recency/ceiling consts + DiversityFinalScoreDelta + RepetitionPenaltyWeights + DefaultRepetitionPenaltyWeights + PopulateRepetitionPenalty + PickTopFromRose + extractCandidateVideoID/ChannelID
+// Do not "fix" this file to match a Rust change. When the ranker's behaviour
+// changes, the Rust side changes first, the fixtures are regenerated from the
+// Rust answer, and this oracle is updated to match the new canonical facts.
+// Contents: Ranker port, default implementation, Score and Filter.
+
 package mediamemory
 
 import "context"
+
+// RankingInput is the per-candidate scoring surface the Go ranker consumed.
+// Production sends the raw candidate to the Rust ranker instead; this shape
+// survives for the oracle.
+type RankingInput struct {
+	Binding                MediaBinding
+	Candidate              MediaCandidate
+	SemanticScore          float64
+	ExactMatchScore        float64
+	VisualScore            float64
+	ManualApprovalScore    float64
+	QualityScore           float64
+	HistoricalSuccessScore float64
+	DurationFitScore       float64
+	RepetitionPenalty      float64
+	RightsPenalty          float64
+}
+
+// RankingOutput is the scored candidate envelope the oracle produces.
+type RankingOutput struct {
+	FinalScore float64
+	Verdict    RankingVerdict
+	Reason     string
+}
 
 // Ranker is the canonical port that turns candidate+context into a
 // deterministic ordering. Concrete impl is defaultRanker below.

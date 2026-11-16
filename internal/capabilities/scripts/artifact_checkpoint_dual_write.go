@@ -1,12 +1,13 @@
-// artifact_checkpoint_dual_write.go — first rollout step for item 9.
+// artifact_checkpoint_dual_write.go — rollout step for item 9.
 //
-// Only localized_render is dual-written. The artifact is already certified at
-// this seam (recordLocalizedRenderReady has the rendered bytes; the later
-// recordLocalizedRender has the published identity), so the checkpoint body
-// is the same LocalizedRenderResult the whole-result envelope stores. Dual-write
-// keeps the envelope as the recovery authority. Cutover then removes the
-// per-unit envelope write: the checkpoint becomes the authority for the unit,
-// while stage boundaries still persist the whole result.
+// localized_render and translation are dual-written. For localized_render the
+// artifact is already certified at this seam (recordLocalizedRenderReady has
+// the rendered bytes; the later recordLocalizedRender has the published
+// identity), so the checkpoint body is the same LocalizedRenderResult the
+// whole-result envelope stores. Dual-write keeps the envelope as the recovery
+// authority. Cutover then removes the per-unit envelope write: the checkpoint
+// becomes the authority for the unit, while stage boundaries still persist the
+// whole result.
 package scriptgeneration
 
 import (
@@ -103,9 +104,9 @@ func (r *Runner) saveLocalizedRenderUnitEnvelope(ctx context.Context, runID stri
 	return r.repo.SavePartialResult(ctx, runID, snapshot)
 }
 
-// saveLocalizedRenderArtifactCheckpoint writes the one kind enabled for the
-// first rollout. It is a no-op unless both the store and the flag are wired.
-// The write happens before the envelope save at each call site: a checkpoint
+// saveLocalizedRenderArtifactCheckpoint writes the localized_render kind. It
+// is a no-op unless both the store and the flag are wired. The write happens
+// before the envelope save at each call site: a checkpoint
 // failure fails the unit instead of leaving the per-artifact row silently
 // missing behind a successful envelope.
 func (r *Runner) saveLocalizedRenderArtifactCheckpoint(ctx context.Context, runID string, attempt int, rendered LocalizedRenderResult) error {

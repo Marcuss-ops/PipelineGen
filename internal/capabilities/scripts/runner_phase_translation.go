@@ -52,9 +52,20 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 				if lang == req.SourceLanguage || result.Scenes[i].Text[lang] != "" {
 					continue
 				}
-				if sourceText := result.Scenes[i].Text[req.SourceLanguage]; sourceText != "" {
-					work = append(work, translationWork{sceneIndex: i, lang: lang, text: sourceText})
+				sourceText := result.Scenes[i].Text[req.SourceLanguage]
+				if sourceText == "" {
+					continue
 				}
+				// The envelope is the first authority; when it lost this unit,
+				// the per-artifact row restores it without a translator call.
+				if restored, ok := r.loadTranslationCheckpoint(ctx, runID, result.Scenes[i].ID, req.SourceLanguage, lang, sourceText); ok {
+					if result.Scenes[i].Text == nil {
+						result.Scenes[i].Text = make(map[Language]string)
+					}
+					result.Scenes[i].Text[lang] = restored
+					continue
+				}
+				work = append(work, translationWork{sceneIndex: i, lang: lang, text: sourceText})
 			}
 		}
 		// Deterministic dispatch priority: (scene_index, language_priority).
@@ -114,13 +125,19 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 				}
 			}
 			applyMu.Unlock()
+			// The per-artifact row is written before the envelope. During
+			// cutover it is the only durable copy of this unit; a write failure
+			// fails the worker instead of leaving a silent gap.
+			if err := r.saveTranslationArtifactCheckpoint(ctx, runID, exec.Attempt, result.Scenes[item.sceneIndex].ID, req.SourceLanguage, item.lang, item.text, value); err != nil {
+				return struct{}{}, fmt.Errorf("checkpoint translation scene %s to %s: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
+			}
 			// The expensive repository write is deliberately outside applyMu:
 			// other translation workers may apply their completed values while
 			// SQLite persists this immutable snapshot.
 			if snapshot != nil {
 				func() {
 					defer checkpointDue.complete()
-					r.checkpoint(ctx, runID, snapshot)
+					r.saveTranslationUnitEnvelope(ctx, runID, snapshot)
 				}()
 			}
 			return struct{}{}, nil

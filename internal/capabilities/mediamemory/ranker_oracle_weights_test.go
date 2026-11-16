@@ -1,41 +1,19 @@
-// Package mediamemory — ranker_weights.go is the canonical home
-// for the ranker's WEIGHT SURFACE: DefaultRankWeights + Weights()
-// (the canonical Phase 1.x scoring formula weights), the
-// VerdictThresholds + DefaultVerdictThresholds (closed-form
-// verdict bands), and the math-only verdict classifier
-// classifyScore + verdictReason (used by defaultRanker.Score).
+// ── FROZEN TEST ORACLE — NOT PART OF THE PRODUCTION BINARY ───────────
+// This file is the Go implementation of the canonical media ranker as it
+// stood at the TICKET-16 cutover: weights, seven gates, verdict bands,
+// repetition penalty, sort and the diversity pick.
 //
-// godlike/06 SSOT (single canonical home per concern): tuning
-// lands via this file. ANY drift in the canonical weights is a
-// godlike/06 SSOT review (typing of new knobs is allowed but
-// the canonical defaults are immutable until the next version
-// bump — bumping mirrors PhraseFingerprint so the cache
-// invalidates cleanly).
+// It is compiled ONLY into test binaries and exists for one purpose: to
+// generate and check the parity fixtures in contract/media-ranker/v1 against
+// `mediasampler::rank`, the one authority production calls through
+// mediamemory.PoolRanker. Because it lives in a _test.go file, non-test code
+// cannot link it even by accident — the build failure is the guard.
 //
-// godlike/06 SSOT (canonical formula, Phase 1.x of section 11):
-//
-//	final_score = semantic_score     * 0.30
-//	            + exact_match_score  * 0.20
-//	            + visual_score       * 0.15
-//	            + manual_approval_score * 0.15
-//	            + quality_score      * 0.10
-//	            + historical_success_score * 0.05
-//	            + duration_fit_score * 0.05
-//	            - repetition_penalty
-//	            - rights_penalty
-//
-// godlike/06 SSOT (verdict thresholds, canonical Phase 1.x):
-//
-//	final_score >  +0.05   VerdictAccept   (ranker promotes into top-K)
-//	0 ≤ final ≤ +0.05      VerdictDownrank (kept but de-prioritized at diversity stage)
-//	final_score <   0      VerdictDrop     (resolver short-circuits, no Layer)
-//
-// File split ownership (godlike/06 SSOT):
-//   - ranker.go               : Ranker port + defaultRanker + NewDefaultRanker + Score + Filter
-//   - ranker_types.go         : RankingInput + RankingOutput + RankingVerdict + FilteredCandidate
-//   - ranker_weights.go       : DefaultRankWeights + Weights() + VerdictThresholds + DefaultVerdictThresholds + classifyScore + verdictReason  ← this file
-//   - ranker_gates.go         : PreRankGate + 7 gates + RunMandatoryGates + HasAvailableMedia/HasValidDuration/HasSupportedFormat/mediaCandidateIsWellFormed + ComputeDurationFit + PopulateRightsPenalty
-//   - ranker_repetition.go    : AntiRepetitionHistoryLimit + 4 channel-recency/ceiling consts + DiversityFinalScoreDelta + RepetitionPenaltyWeights + DefaultRepetitionPenaltyWeights + PopulateRepetitionPenalty + PickTopFromRose + extractCandidateVideoID/ChannelID
+// Do not "fix" this file to match a Rust change. When the ranker's behaviour
+// changes, the Rust side changes first, the fixtures are regenerated from the
+// Rust answer, and this oracle is updated to match the new canonical facts.
+// Contents: Canonical weights, verdict thresholds, band classification.
+
 package mediamemory
 
 // ── Default weights (canonical) ─────────────────────────────────

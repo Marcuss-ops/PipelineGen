@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -17,7 +18,10 @@ func TestComputeSegmentEntityAnnotationsPhrasesSurviveDisabledEntities(t *testin
 		ExtractEntities: scriptpkg.ToggleDisabled,
 	}}
 	requested := []string{text}
-	annotations := computeSegmentEntityAnnotations(snapshot, "it", nil, 1, true, requested)
+	annotations, err := computeSegmentEntityAnnotations(context.Background(), stubPhraseSelector{}, snapshot, "it", nil, 1, true, requested)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ann := annotations[0]
 	if ann == nil {
 		t.Fatal("disabled entity extraction dropped the phrase annotation surface")

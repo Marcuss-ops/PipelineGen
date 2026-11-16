@@ -1,14 +1,15 @@
 # Per-artifact checkpoint — schema and repository API (roadmap item 9)
 
 **Status:** PHASE 5 — schema, typed port, SQLite adapter, `localized_render`
-dual-write, per-artifact loader and cutover exist behind separate flags. The
-cutover for `localized_render` is done and live-verified; other artifact kinds
-remain future expansion, not a pending step of this rollout.
+and `translation` dual-write, per-artifact loaders and cutover exist behind
+separate flags. The `localized_render` cutover is live-verified; `translation`
+is covered by hermetic round-trip, loader and cutover tests. Other artifact
+kinds remain future expansion, not a pending step of this rollout.
 **Created:** 2026-11-16.
 **Owner:** `refactored` (`internal/capabilities/scripts`,
 `internal/platform/sqlite/scripts`, `migrations/sqlite`).
 **Roadmap item:** item 9, “checkpoint per singolo artefatto” (`localized_render`
-first kind).
+and `translation` migrated; other kinds future).
 
 ## 1. Problem and boundary
 
@@ -298,32 +299,36 @@ Phases:
    the port compiles; validation/key/resume tests pass.
 2. **Adapter — done.** Four methods implemented; round-trip, upsert, ordering,
    corruption and cascade tests use the real migrations.
-3. **Dual-write — done for `localized_render`.** At both certified stages
-   (`RENDERED` and `UPLOADED`) the runner writes the checkpoint before the
-   envelope; the test proves the checkpoint body is byte-identical to the
-   envelope artifact and that the published write upserts the staged row. The
-   flag is `SCRIPT_ARTIFACT_CHECKPOINT_DUAL_WRITE` (`1`/`true`/
-   `localized_render`; empty/off keeps envelope-only). An unknown value is a
-   startup error. Flag-off behaviour is covered by
-   `TestLocalizedRenderDualWriteIsOffByDefault`.
-4. **Load-on-resume — done for `localized_render`.** The loader
-   (`artifact_checkpoint_resume.go`) is gated by
+3. **Dual-write — done for `localized_render` and `translation`.** For
+   `localized_render`, at both certified stages (`RENDERED` and `UPLOADED`) the
+   runner writes the checkpoint before the envelope; the test proves the
+   checkpoint body is byte-identical to the envelope artifact and that the
+   published write upserts the staged row. For `translation`, the checkpoint
+   body is the translated text plus its scene/language identity, with a text
+   digest and a source/target-language input fingerprint. The flag is
+   `SCRIPT_ARTIFACT_CHECKPOINT_DUAL_WRITE` (`1`/`true`/`localized_render`;
+   empty/off keeps envelope-only). An unknown value is a startup error.
+4. **Load-on-resume — done for `localized_render` and `translation`.** The
+   localized loader (`artifact_checkpoint_resume.go`) is gated by
    `SCRIPT_ARTIFACT_CHECKPOINT_RESUME`. It reads the exact
    `(run_id, localized_render, scene/clip/language)` row only when the
    in-memory envelope has no staged render; an envelope value wins. `RENDERED`
    requires the local bytes to still hash to the recorded SHA; `UPLOADED`
-   requires `mediaCheckpointArtifactVerifier`. A verifier miss or changed
-   fingerprint/processor invalidates the row; a verifier infrastructure error
-   returns EXECUTE without deleting it. `UploadRendered` recognizes a
-   checkpoint already `UPLOADED` and projects it without a second upload.
-   `ListArtifactCheckpoints` remains the future batch/resume-scan API; this
-   first loader uses `Get` per unit.
-5. **Cutover — done for `localized_render`.** `SCRIPT_ARTIFACT_CHECKPOINT_CUTOVER`
-   skips the per-unit whole-result envelope write; the per-artifact row is the
-   authority for the unit. `SavePartialResult` remains at stage boundaries and
-   for unknown/legacy kinds, and the final completion path still writes the
-   envelope. Other kinds are not migrated; the cutover is intentionally
-   per-kind, not a blanket switch.
+   requires `mediaCheckpointArtifactVerifier`. The translation loader
+   (`artifact_checkpoint_translation.go`) restores a missing scene/language
+   translation before the work list is built; its artifact is self-verifying,
+   so the repository payload digest plus the text digest are the authority. A
+   changed source text or processor invalidates the row. `ListArtifactCheckpoints`
+   remains the future batch/resume-scan API; both loaders use `Get` per unit.
+5. **Cutover — done for `localized_render` and `translation`.**
+   `SCRIPT_ARTIFACT_CHECKPOINT_CUTOVER` skips the per-unit whole-result
+   envelope write; the per-artifact row is the authority for the unit.
+   `SavePartialResult` remains at stage boundaries and for unknown/legacy
+   kinds, and the final completion path still writes the envelope. For
+   translation specifically, only the debounced per-unit write is skipped; the
+   post-fan-out stage checkpoint still flushes the whole result. Other kinds
+   are not migrated; the cutover is intentionally per-kind, not a blanket
+   switch.
 
 Acceptance tests:
 
@@ -360,6 +365,12 @@ Acceptance tests:
   fixed media do not write the envelope per unit, while a stage-boundary
   checkpoint still persists the full result
   (`TestLocalizedRenderCutoverUsesCheckpointInsteadOfPerUnitEnvelope`);
+- translation checkpoint round-trip restores the exact text, a changed source
+  text invalidates the row, and the cutover skips only the debounced per-unit
+  envelope write while the stage checkpoint still persists the result
+  (`artifact_checkpoint_translation_test.go`);
+- a translation phase with a missing envelope value restores the row without a
+  provider call (`TestTranslationPhaseRestoresCheckpointWithoutProviderCall`);
 - cutting over with resume, verifier or dual-write missing keeps writing the
   envelope instead of deleting the only recovery copy
   (`TestLocalizedRenderCutoverRequiresTrustedCheckpoint`).
@@ -423,8 +434,10 @@ Observed:
 Both live criteria are therefore met: loader reuse and per-unit envelope
 cutover. The hermetic tests cover the staged/published reuse, fingerprint and
 processor changes, local byte tampering, verifier miss/error, flag off, crash
-plus a new Runner, and the cutover/prerequisite matrix. Cutover is not claimed
-for artifact kinds other than `localized_render`.
+plus a new Runner, and the cutover/prerequisite matrix. `translation` is
+covered hermetically (round-trip, loader without provider call, cutover); its
+live test is not claimed here. Cutover is not claimed for artifact kinds other
+than `localized_render` and `translation`.
 
 ### Live FK defect fixed
 

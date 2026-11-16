@@ -43,6 +43,9 @@ type MediaRankerCandidate struct {
 	MaterializationStatus string              `json:"materialization_status,omitempty"`
 	ChannelID             string              `json:"channel_id,omitempty"`
 	Binding               *MediaRankerBinding `json:"binding,omitempty"`
+	// Bonus is the caller's ordering preference. The ranker adds it after the
+	// verdict is classified: it can reorder survivors, never rescue a drop.
+	Bonus float64 `json:"bonus,omitempty"`
 }
 
 // MediaRankerRequest is one slot pool: scene context plus candidates.
@@ -116,6 +119,9 @@ func NewMediaRankerAdapter(executor *Executor) (*MediaRankerAdapter, error) {
 	return &MediaRankerAdapter{executor: executor}, nil
 }
 
+// mediaRankerSlotKinds is the accepted slot vocabulary. "any" is the neutral
+// value for a pool ranked before a slot is assigned (the Brain path): it
+// disables the aspect gate instead of pretending the pool belongs to one slot.
 var mediaRankerSlotKinds = map[string]struct{}{
 	"primary_video":    {},
 	"secondary_image":  {},
@@ -124,6 +130,7 @@ var mediaRankerSlotKinds = map[string]struct{}{
 	"portrait":         {},
 	"document":         {},
 	"background":       {},
+	"any":              {},
 }
 
 // RankCandidates asks the Rust ranker for one slot pool and validates the

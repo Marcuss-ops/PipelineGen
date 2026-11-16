@@ -17,7 +17,7 @@
 // vidrush_semantic_chain.go on 2026-09-16 for the same reason. They are pure
 // functions over VisualEntity and source text — no receiver, no I/O — so they
 // belong with the value contract they operate on. Important phrase candidates
-// are selected in the leaf package scripts/phrases, then grounded here; entity
+// are selected by the Rust phrase operation, then grounded here; entity
 // fan-out helpers validate and project identities without NLP calls.
 //
 // Named entities use the shared NERBackend contract below; editorial phrase
@@ -133,7 +133,7 @@ func groundImportantPhrases(source string, entities []VisualEntity, phrases []st
 		if len(strings.Fields(phrase)) < 2 {
 			continue
 		}
-		// The proper-name filter (phrases.ContainsProperNamePair) is applied
+		// The proper-name filter (containsProperNamePair) is applied
 		// exactly once per candidate source: phrases.Select owns the
 		// selector-derived candidates, and the operator-supplied
 		// MediaExtractionPolicy hints are filtered at their ingress in
@@ -173,7 +173,7 @@ func groundImportantPhrases(source string, entities []VisualEntity, phrases []st
 // entityRuneSpans resolves the RUNE spans of the grounded entity surfaces in
 // source. The phrase selector consumes these as its blocked ranges, so no
 // phrase can cover a name the entity overlays own. Grounding stays here, with
-// findEntitySpan and the VisualEntity contract, which keeps scripts/phrases a
+// findEntitySpan and the VisualEntity contract, which keeps the selector a
 // leaf package with a neutral input instead of a second entity model.
 func entityRuneSpans(source string, entities []VisualEntity) [][2]int {
 	spans := make([][2]int, 0, len(entities))

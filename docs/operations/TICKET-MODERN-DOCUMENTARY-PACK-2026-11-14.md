@@ -1,5 +1,9 @@
 # Modern Documentary pack (2026-11-14)
 
+- **Status:** DONE (2026-11-14) — five plans emitted and validated; pack test
+  123/123 checks, 0 failures. Known limits below are declared and do not
+  reopen the pass. Strict native GPU for the macro look is out of scope.
+
 Five native `chronon.render-plan.v3` looks distilled from the supplied modern
 documentary references (Vox / LEMMiNO / MagnatesMedia grammar). Design and
 timing live in `include/chronontemplate/web/ModernDocumentaryPack.hpp` and

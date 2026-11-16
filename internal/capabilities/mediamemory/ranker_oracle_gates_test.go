@@ -1,50 +1,19 @@
-// Package mediamemory — ranker_gates.go is the canonical home
-// for the pre-rank gate surface: the seven mandatory gates
-// (PreRankGate type + 7 closed-set constants), the unified gate
-// runner (RunMandatoryGates), the well-formed guard
-// (mediaCandidateIsWellFormed), the per-gate helpers
-// (HasAvailableMedia / HasValidDuration / HasSupportedFormat),
-// the canonical duration-fit score (ComputeDurationFit), and the
-// godlike/07 fail-closed rights-penalty mapping
-// (PopulateRightsPenalty).
+// ── FROZEN TEST ORACLE — NOT PART OF THE PRODUCTION BINARY ───────────
+// This file is the Go implementation of the canonical media ranker as it
+// stood at the TICKET-16 cutover: weights, seven gates, verdict bands,
+// repetition penalty, sort and the diversity pick.
 //
-// godlike/06 SSOT (single canonical home per concern): every
-// pre-rank decision lives here so the gate vocabulary + the
-// gate evaluation order stay grep-able in one place. Tests pin
-// the closed-set gate-name vocabulary at the resolver seam;
-// drift here surfaces as a dashboard audit key mismatch.
+// It is compiled ONLY into test binaries and exists for one purpose: to
+// generate and check the parity fixtures in contract/media-ranker/v1 against
+// `mediasampler::rank`, the one authority production calls through
+// mediamemory.PoolRanker. Because it lives in a _test.go file, non-test code
+// cannot link it even by accident — the build failure is the guard.
 //
-// godlike/06 SSOT (gate order, canonical): RunMandatoryGates
-// evaluates gates in the canonical order below so log scans +
-// dashboard diagnostics see a stable drop reason. Format
-// precedes aspect because aspect ratio is a structural property
-// of visual media only (audio has no aspect ratio).
-//
-// Mandatory pre-rank filters (godlike/07) — CANONICAL seven gates
-// (Fase 1.5 SSOT, architecture-doc section 11):
-//
-//  1. valid_license        — RightsStatus == RightsVerified
-//  2. available_media      — MaterializationStatus ∈ {Warm, Hot}
-//  3. valid_duration       — DurationMs >= 0
-//  4. supported_format     — MediaType ∈ {video, image, audio, music}
-//     (empty MediaType is the legacy ambiguous
-//     sentinel and skips the normal validation for
-//     forward-compat)
-//  5. compatible_aspect    — AspectRatioW/AspectRatioH ∈ canonical set
-//  6. no_corruption        — IntegrityChecked == true
-//  7. no_duplicates        — DuplicateOfAssetID == ""
-//
-// godlike/07 NO-FAKE-AVAILABILITY: Filter() is the canonical
-// seam for the seven mandatory gates. A pass-through silently
-// (without dropping) would be PR-REGRESSION — explicit drop-
-// with-nil envelopes a no-op pass.
-//
-// File split ownership (godlike/06 SSOT):
-//   - ranker.go               : Ranker port + defaultRanker + NewDefaultRanker + Score + Filter
-//   - ranker_types.go         : RankingInput + RankingOutput + RankingVerdict + FilteredCandidate
-//   - ranker_weights.go       : DefaultRankWeights + Weights() + VerdictThresholds + DefaultVerdictThresholds + classifyScore + verdictReason
-//   - ranker_gates.go         : PreRankGate + 7 gates + RunMandatoryGates + HasAvailableMedia/HasValidDuration/HasSupportedFormat/mediaCandidateIsWellFormed + ComputeDurationFit + PopulateRightsPenalty  ← this file
-//   - ranker_repetition.go    : AntiRepetitionHistoryLimit + 4 channel-recency/ceiling consts + DiversityFinalScoreDelta + RepetitionPenaltyWeights + DefaultRepetitionPenaltyWeights + PopulateRepetitionPenalty + PickTopFromRose + extractCandidateVideoID/ChannelID
+// Do not "fix" this file to match a Rust change. When the ranker's behaviour
+// changes, the Rust side changes first, the fixtures are regenerated from the
+// Rust answer, and this oracle is updated to match the new canonical facts.
+// Contents: Seven mandatory pre-rank gates, duration fit, rights penalty.
+
 package mediamemory
 
 // ── Mandatory gates (Fase "Ranking & rights") ────────────────────

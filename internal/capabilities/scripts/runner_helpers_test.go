@@ -372,6 +372,7 @@ func newTestRunner() (*Runner, *inMemRunRepository, *stubTextGenerator, *stubTra
 	renderEnq := newStubRenderEnqueuer()
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})

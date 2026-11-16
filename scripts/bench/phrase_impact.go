@@ -7,10 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	lexical "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases/semantic"
 )
 
@@ -72,20 +69,7 @@ func run(input io.Reader, output io.Writer) error {
 				res.Peaks = peaks
 			}
 		case "baseline":
-			if req.LexiconRoot != "" {
-				root, err := filepath.Abs(req.LexiconRoot)
-				if err != nil {
-					return fmt.Errorf("resolve lexicon root: %w", err)
-				}
-				registry, err := linguistics.NewLexiconRegistry(root)
-				if err != nil {
-					return fmt.Errorf("load phrase lexicon: %w", err)
-				}
-				if err := linguistics.SetDefaultLexicon(registry); err != nil {
-					return fmt.Errorf("install phrase lexicon: %w", err)
-				}
-			}
-			res.Phrases = lexical.ImportantPhrases(req.Text, nil, req.Limit, req.Language)
+			res.Error = "baseline phrase selection moved to semantic-engine select_phrases"
 		default:
 			res.Error = fmt.Sprintf("unknown action %q", req.Action)
 		}

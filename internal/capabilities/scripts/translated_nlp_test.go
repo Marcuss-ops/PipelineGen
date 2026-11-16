@@ -7,10 +7,121 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// sentencePhraseSelector is a deterministic test double for the Rust
+// selector. It returns short source-grounded windows so the translated-NLP
+// wiring can be tested without starting the worker.
+type sentencePhraseSelector struct{}
+
+func (sentencePhraseSelector) SelectPhrases(_ context.Context, request PhraseSelectionRequest) ([]SelectedPhrase, error) {
+	limit := request.Limit
+	if limit <= 0 {
+		limit = 3
+	}
+	text := request.Text
+	out := make([]SelectedPhrase, 0, limit)
+	seen := make(map[string]struct{}, limit)
+	stopWords := make(map[string]struct{})
+	functionWords := make(map[string]struct{})
+	if request.Profile != nil {
+		for _, word := range request.Profile.StopWords {
+			stopWords[strings.ToLower(word)] = struct{}{}
+		}
+		for _, word := range request.Profile.FunctionWords {
+			functionWords[strings.ToLower(word)] = struct{}{}
+		}
+	}
+	for _, sentence := range sentenceByteRanges(text) {
+		words := importantPhraseWord.FindAllStringIndex(text[sentence[0]:sentence[1]], -1)
+		if len(words) < 2 {
+			continue
+		}
+		for startWord := 0; startWord+1 < len(words) && len(out) < limit; {
+			accepted := 0
+			for length := min(6, len(words)-startWord); length >= 2; length-- {
+				startByte := sentence[0] + words[startWord][0]
+				endByte := sentence[0] + words[startWord+length-1][1]
+				startRune := utf8.RuneCountInString(text[:startByte])
+				endRune := utf8.RuneCountInString(text[:endByte])
+				blocked := false
+				for _, span := range request.BlockedRuneSpans {
+					if startRune < span[1] && span[0] < endRune {
+						blocked = true
+						break
+					}
+				}
+				if blocked {
+					continue
+				}
+				windowWords := strings.Fields(text[startByte:endByte])
+				firstWord := strings.ToLower(strings.Trim(windowWords[0], ".,;:!?\"'’()[]{}"))
+				lastWord := strings.ToLower(strings.Trim(windowWords[len(windowWords)-1], ".,;:!?\"'’()[]{}"))
+				if _, stop := stopWords[lastWord]; stop {
+					continue
+				}
+				if _, function := functionWords[lastWord]; function {
+					continue
+				}
+				if startWord > 0 {
+					if _, stop := stopWords[firstWord]; stop {
+						continue
+					}
+					if _, function := functionWords[firstWord]; function {
+						continue
+					}
+				}
+				phrase := text[startByte:endByte]
+				key := strings.ToLower(phrase)
+				if _, exists := seen[key]; exists {
+					continue
+				}
+				seen[key] = struct{}{}
+				out = append(out, SelectedPhrase{
+					Text:      phrase,
+					StartByte: startByte,
+					EndByte:   endByte,
+					StartRune: startRune,
+					EndRune:   endRune,
+				})
+				accepted = length
+				break
+			}
+			if accepted == 0 {
+				startWord++
+				continue
+			}
+			startWord += accepted
+		}
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func sentenceByteRanges(text string) [][2]int {
+	var out [][2]int
+	start := 0
+	for index, r := range text {
+		if r != '.' && r != '?' && r != '!' && r != ';' && r != ':' && r != '\n' {
+			continue
+		}
+		end := index + utf8.RuneLen(r)
+		if start < end {
+			out = append(out, [2]int{start, end})
+		}
+		start = end
+	}
+	if start < len(text) {
+		out = append(out, [2]int{start, len(text)})
+	}
+	return out
+}
 
 type translatedNLPTestNER struct {
 	languages *[]string
@@ -118,7 +229,7 @@ func assertGroundedScenePhrases(t *testing.T, result *GenerateResult, sceneIndex
 func TestRunTranslatedNLPUsesDeterministicPhrasesAndKeepsNER(t *testing.T) {
 	var extractedLanguages []string
 	languagesMu := &sync.Mutex{}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{languages: &extractedLanguages, mu: languagesMu}}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: translatedNLPTestNER{languages: &extractedLanguages, mu: languagesMu}}}
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "de"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
 	result := translatedNLPMultiSceneResult([]Language{"it", "de"}, 6)
 
@@ -148,7 +259,7 @@ func TestRunTranslatedNLPUsesDeterministicPhrasesAndKeepsNER(t *testing.T) {
 func TestRunTranslatedNLPProjectsGroundedWordsAndSpecialNamesPerLanguage(t *testing.T) {
 	var extractedLanguages []string
 	languagesMu := &sync.Mutex{}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPNameNER{languages: &extractedLanguages, mu: languagesMu}}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: translatedNLPNameNER{languages: &extractedLanguages, mu: languagesMu}}}
 	req := GenerateRequest{
 		SourceLanguage: "en",
 		Languages:      []Language{"it", "de"},
@@ -248,7 +359,7 @@ func TestRunTranslatedNLPGroundsSourceNamesInTheTranslatedSurface(t *testing.T) 
 		{Text: "Viele Gegner", Type: scriptpkg.EntityTypePerson, Score: 0.99},
 		{Text: "Las Vegas", Type: scriptpkg.EntityTypeLocation, Score: 0.95},
 	}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: ner}}
 	req := GenerateRequest{
 		SourceLanguage: "en",
 		Languages:      []Language{"de"},
@@ -328,7 +439,7 @@ func TestGroundLocalizedSourceEntitiesProjectsTurkishCaseSuffix(t *testing.T) {
 }
 
 func TestRunTranslatedNLPAlignsRussianNERToSourceIdentity(t *testing.T) {
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPLocalizedSurfaceNER{surfaces: []VisualEntity{
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: translatedNLPLocalizedSurfaceNER{surfaces: []VisualEntity{
 		{Text: "Нил Армстронг", Type: scriptpkg.EntityTypePerson, Score: 0.98},
 		{Text: "Базз Олдрин", Type: scriptpkg.EntityTypePerson, Score: 0.98},
 	}}}}
@@ -363,7 +474,7 @@ func TestRunTranslatedNLPAlignsRussianNERToSourceIdentity(t *testing.T) {
 }
 
 func TestRunTranslatedNLPKeepsGermanMentionSurfaceForTiming(t *testing.T) {
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}}}
 	req := GenerateRequest{
 		SourceLanguage: "en", Languages: []Language{"de"}, Model: "test-model",
 		MediaPlan: translatedNLPMediaPlan(),
@@ -412,7 +523,7 @@ func TestRunTranslatedNLPKeepsGermanMentionSurfaceForTiming(t *testing.T) {
 // person's image downstream — the reconstruction the canonical entity identity
 // exists to remove.
 func TestRunTranslatedNLPLocalizedAnnotationsInheritSourceIdentity(t *testing.T) {
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPLocalizedSurfaceNER{surfaces: []VisualEntity{
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: translatedNLPLocalizedSurfaceNER{surfaces: []VisualEntity{
 		{Text: "Mike’a Tysona", Type: scriptpkg.EntityTypePerson, Score: 0.98},
 	}}}}
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"pl"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
@@ -476,7 +587,7 @@ func TestStampLocalizedSourceIdentityPreservesGeocodedPlace(t *testing.T) {
 // contract honest after the demolition: with NO phrase port wired at all, every
 // scene still gets grounded, short, verbatim phrases per language.
 func TestRunTranslatedNLPSelectsPhrasesWithoutAnyModelSurface(t *testing.T) {
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: translatedNLPTestNER{}}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: translatedNLPTestNER{}}}
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it", "de"}, Model: "test-model", MediaPlan: translatedNLPMediaPlan()}
 	result := translatedNLPMultiSceneResult([]Language{"it", "de"}, 3)
 
@@ -491,7 +602,8 @@ func TestRunTranslatedNLPSelectsPhrasesWithoutAnyModelSurface(t *testing.T) {
 
 func TestRunTranslatedNLPStoresGroundedPerLanguageAnnotations(t *testing.T) {
 	runner := &Runner{vidRushPipeline: &VidRushPipeline{
-		NERPort: translatedNLPTestNER{},
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        translatedNLPTestNER{},
 	}}
 	req := GenerateRequest{
 		SourceLanguage: "en",
@@ -594,7 +706,7 @@ func personEntity(text string) scriptpkg.AnnotatedEntity {
 // three grounded identities.
 func TestTranslatedNLPSkipsRedundantNERWhenSourceCoversTheLimit(t *testing.T) {
 	ner := &countingTranslatedNER{}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: ner}}
 	result := translatedNERCoverageResult([]scriptpkg.AnnotatedEntity{
 		personEntity("Mike Tyson"), personEntity("Muhammad Ali"), personEntity("Joe Frazier"),
 	})
@@ -623,7 +735,7 @@ func TestTranslatedNLPFiltersCategorySelectorsWithoutDroppingValuesFromBroadMode
 	ner := &recordingVisualNER{entities: []VisualEntity{
 		span("OpenAI", "BRAND"), span("25%", "PERCENT"), span("$2 million", "MONEY"), span("2025", "DATE"),
 	}}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: ner}}
 	result := &GenerateResult{Scenes: []Scene{{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "source", "it": text}}}}
 	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it"}, MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
 		Include: []string{mediadomain.ExtractionIncludeMoney}, MaxEntitiesPerSegment: 1,
@@ -653,7 +765,7 @@ func TestTranslatedNLPRunOptOutStillProcessesExplicitlyEnabledSegment(t *testing
 		Text: "Marie Curie", Type: scriptpkg.EntityTypePerson, Score: 0.95,
 		Start: 0, End: len("Marie Curie"), Evidence: "Marie Curie",
 	}}}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: ner}}
 	req := translatedNERCoverageRequest()
 	req.ExtractEntities = scriptpkg.ToggleDisabled
 	req.ScriptParams.Segments = []scriptpkg.ScriptSegment{{
@@ -677,7 +789,7 @@ func TestTranslatedNLPRunOptOutStillProcessesExplicitlyEnabledSegment(t *testing
 
 func TestTranslatedNLPDisabledSelectorSkipsNERAndAnnotations(t *testing.T) {
 	ner := &countingTranslatedNER{}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: ner}}
 	req := translatedNERCoverageRequest()
 	req.ExtractEntities = scriptpkg.ToggleDisabled
 	result := translatedNERCoverageResult([]scriptpkg.AnnotatedEntity{personEntity("Mike Tyson")})
@@ -696,7 +808,7 @@ func TestTranslatedNLPDisabledSelectorSkipsNERAndAnnotations(t *testing.T) {
 // control: two grounded persons leave a slot the model may legitimately fill.
 func TestTranslatedNLPCallsNERWhenSourceDoesNotCoverTheLimit(t *testing.T) {
 	ner := &countingTranslatedNER{}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: ner}}
 	result := translatedNERCoverageResult([]scriptpkg.AnnotatedEntity{
 		personEntity("Mike Tyson"), personEntity("Muhammad Ali"),
 	})
@@ -715,7 +827,7 @@ func TestTranslatedNLPCallsNERWhenSourceDoesNotCoverTheLimit(t *testing.T) {
 // when the match count already equals the limit.
 func TestTranslatedNLPCallsNERWhenAMatchIsNotAPerson(t *testing.T) {
 	ner := &countingTranslatedNER{}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: ner}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: ner}}
 	result := &GenerateResult{Scenes: []Scene{{
 		ID: "scene-0", Index: 0,
 		Text: map[Language]string{

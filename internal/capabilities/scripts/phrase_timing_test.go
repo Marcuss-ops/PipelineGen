@@ -1,11 +1,28 @@
 package scriptgeneration
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
+
+// testPhraseAligner keeps the existing fixtures comparable by delegating to the
+// legacy matcher in test code only; production uses the Rust adapter.
+type testPhraseAligner struct{}
+
+func (testPhraseAligner) AlignPhrases(_ context.Context, request PhraseAlignmentRequest) ([]audio.LocatedPhrase, error) {
+	out := make([]audio.LocatedPhrase, 0, len(request.Phrases))
+	for _, phrase := range request.Phrases {
+		located, err := audio.LocatePhrase(request.Timing, phrase)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, located[0])
+	}
+	return out, nil
+}
 
 // speechTimingForWords builds a valid canonical timing artifact with one
 // 100ms word per input token, so every span assertion is exact.
@@ -41,7 +58,7 @@ func TestCompilePhraseTimings_PersistsLocalAndGlobalSpans(t *testing.T) {
 		"scene-1": {Timing: timing, Phrases: []string{"Jackie Chan", "grew up"}},
 	}
 
-	got, err := CompilePhraseTimings(scenes, sources)
+	got, err := CompilePhraseTimings(context.Background(), testPhraseAligner{}, scenes, sources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +110,7 @@ func TestCompileResultPhraseTimingsSkipsOnlyUnanchoredScene(t *testing.T) {
 		},
 	}
 	var skips []timingProjectionSkip
-	err := compileResultPhraseTimings(result, "en", func(skip timingProjectionSkip) { skips = append(skips, skip) })
+	err := compileResultPhraseTimings(context.Background(), testPhraseAligner{}, result, "en", func(skip timingProjectionSkip) { skips = append(skips, skip) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +165,7 @@ func TestCompilePhraseTimings_MissingPhraseFailsClosed(t *testing.T) {
 	sources := map[string]PhraseTimingSource{
 		"scene-0": {Timing: timing, Phrases: []string{"Mussolini"}},
 	}
-	if _, err := CompilePhraseTimings(scenes, sources); err == nil {
+	if _, err := CompilePhraseTimings(context.Background(), testPhraseAligner{}, scenes, sources); err == nil {
 		t.Fatal("expected missing phrase to fail closed")
 	}
 }
@@ -158,7 +175,7 @@ func TestCompilePhraseTimings_UnknownSceneSourceFailsClosed(t *testing.T) {
 	sources := map[string]PhraseTimingSource{
 		"scene-1": {Timing: speechTimingForWords([]string{"Jackie"}), Phrases: []string{"Jackie"}},
 	}
-	if _, err := CompilePhraseTimings(scenes, sources); err == nil {
+	if _, err := CompilePhraseTimings(context.Background(), testPhraseAligner{}, scenes, sources); err == nil {
 		t.Fatal("expected unknown scene source to fail closed")
 	}
 }
@@ -177,7 +194,7 @@ func TestCompileSceneSpeechTimings_BundlesPerSceneWordsAndPhrases(t *testing.T) 
 		"scene-1": {Timing: timing, Phrases: []string{"Jackie Chan", "grew up"}, VoiceoverAssetID: "vo-1"},
 	}
 
-	got, err := CompileSceneSpeechTimings(scenes, sources)
+	got, err := CompileSceneSpeechTimings(context.Background(), testPhraseAligner{}, scenes, sources)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +275,7 @@ func TestCompileSceneSpeechTimings_UnknownSceneSourceFailsClosed(t *testing.T) {
 	sources := map[string]PhraseTimingSource{
 		"scene-1": {Timing: speechTimingForWords([]string{"Jackie"}), Phrases: []string{"Jackie"}},
 	}
-	if _, err := CompileSceneSpeechTimings(scenes, sources); err == nil {
+	if _, err := CompileSceneSpeechTimings(context.Background(), testPhraseAligner{}, scenes, sources); err == nil {
 		t.Fatal("expected unknown scene source to fail closed")
 	}
 }

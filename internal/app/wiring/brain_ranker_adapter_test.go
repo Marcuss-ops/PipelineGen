@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain"
@@ -11,40 +12,102 @@ import (
 
 func mmRankCandidate(id string, score float64, mediaType string) brain.Candidate {
 	return brain.Candidate{
-		ID:        id,
-		AssetID:   "asset-" + id,
-		Score:     score,
-		MediaType: mediaType,
-		Title:     id,
+		ID:         id,
+		AssetID:    "asset-" + id,
+		Score:      score,
+		MediaType:  mediaType,
+		Title:      id,
+		DurationMs: 4000,
 	}
 }
 
-func TestMediaMemoryRankerAdapter_OrdersByScore(t *testing.T) {
-	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
+// stubPoolRanker records the request and answers through respond, so the
+// adapter's contract — one pool, the caller's bonus, the ranker's order — is
+// tested without a worker process.
+type stubPoolRanker struct {
+	response func(mediamemory.PoolRankRequest) (mediamemory.PoolRankOutcome, error)
+	request  mediamemory.PoolRankRequest
+	calls    int
+}
+
+func (s *stubPoolRanker) RankPool(_ context.Context, request mediamemory.PoolRankRequest) (mediamemory.PoolRankOutcome, error) {
+	s.request = request
+	s.calls++
+	if s.response == nil {
+		return mediamemory.PoolRankOutcome{}, nil
+	}
+	return s.response(request)
+}
+
+func TestMediaMemoryRankerAdapter_SendsOnePoolWithNeutralSlot(t *testing.T) {
+	stub := &stubPoolRanker{}
+	r := NewMediaMemoryRankerAdapter(stub)
 	candidates := []brain.Candidate{
 		mmRankCandidate("c-low", 0.3, "video"),
 		mmRankCandidate("c-high", 0.9, "video"),
-		mmRankCandidate("c-mid", 0.6, "video"),
 	}
 
-	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
+	scene := brain.SceneRequest{ID: "s1", DurationMS: 7000, Slots: []media.SlotKind{media.SlotPrimaryVideo}}
 	policy := brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}
 
-	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy)
-	if err != nil {
+	if _, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if len(ranked) != 3 {
-		t.Fatalf("expected 3 candidates, got %d", len(ranked))
+	if stub.calls != 1 {
+		t.Fatalf("adapter called the ranker %d times, want exactly 1", stub.calls)
 	}
-	if ranked[0].ID != "c-high" || ranked[1].ID != "c-mid" || ranked[2].ID != "c-low" {
-		t.Errorf("unexpected order: %v", mmRankCandidateIDs(ranked))
+	if stub.request.SlotKind != brainPoolSlotKind {
+		t.Errorf("slot_kind = %q, want neutral %q", stub.request.SlotKind, brainPoolSlotKind)
+	}
+	if stub.request.SceneDurationMS != 7000 {
+		t.Errorf("scene duration = %d, want 7000", stub.request.SceneDurationMS)
+	}
+	if len(stub.request.Candidates) != len(candidates) {
+		t.Fatalf("pool carries %d candidates, want %d", len(stub.request.Candidates), len(candidates))
+	}
+	seen := map[string]bool{}
+	for _, candidate := range stub.request.Candidates {
+		if candidate.Bonus != 0.10 {
+			t.Errorf("video candidate %q bonus = %v, want 0.10", candidate.Key, candidate.Bonus)
+		}
+		if candidate.Key == "" || seen[candidate.Key] {
+			t.Errorf("pool key %q is missing or repeated", candidate.Key)
+		}
+		seen[candidate.Key] = true
 	}
 }
 
-func TestMediaMemoryRankerAdapter_RespectsLimit(t *testing.T) {
-	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
+func TestMediaMemoryRankerAdapter_OffSlotCandidateCarriesNoBonus(t *testing.T) {
+	stub := &stubPoolRanker{}
+	r := NewMediaMemoryRankerAdapter(stub)
+
+	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
+	if _, err := r.Rank(context.Background(), scene, brain.VisualIntent{},
+		[]brain.Candidate{mmRankCandidate("img", 0.85, "image")},
+		brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stub.request.Candidates[0].Bonus != 0 {
+		t.Errorf("image candidate under primary_video bonus = %v, want 0",
+			stub.request.Candidates[0].Bonus)
+	}
+}
+
+func TestMediaMemoryRankerAdapter_ReturnsCandidatesInRankerOrderAndRespectsLimit(t *testing.T) {
+	stub := &stubPoolRanker{response: func(request mediamemory.PoolRankRequest) (mediamemory.PoolRankOutcome, error) {
+		// Answer in reverse pool order: the adapter must follow this order
+		// and must not re-sort it.
+		ranked := make([]mediamemory.PoolRankScore, 0, len(request.Candidates))
+		for index := len(request.Candidates) - 1; index >= 0; index-- {
+			candidate := request.Candidates[index]
+			ranked = append(ranked, mediamemory.PoolRankScore{
+				CandidateID: candidate.Key,
+				AssetID:     candidate.Filtered.Candidate.AssetID,
+			})
+		}
+		return mediamemory.PoolRankOutcome{Ranked: ranked}, nil
+	}}
+	r := NewMediaMemoryRankerAdapter(stub)
 	candidates := []brain.Candidate{
 		mmRankCandidate("a", 0.9, "video"),
 		mmRankCandidate("b", 0.8, "video"),
@@ -52,62 +115,48 @@ func TestMediaMemoryRankerAdapter_RespectsLimit(t *testing.T) {
 	}
 
 	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
-	policy := brain.ResolutionPolicy{MaxCandidatesPerSlot: 2}
-
-	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy)
+	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates,
+		brain.ResolutionPolicy{MaxCandidatesPerSlot: 2})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(ranked) != 2 {
-		t.Errorf("expected 2 candidates, got %d", len(ranked))
+		t.Fatalf("expected 2 candidates, got %d", len(ranked))
+	}
+	if ranked[0].ID != "c" || ranked[1].ID != "b" {
+		t.Fatalf("adapter did not follow the ranker order: %v", []string{ranked[0].ID, ranked[1].ID})
+	}
+	if len(stub.request.Candidates) != 3 {
+		t.Fatalf("pool carries %d candidates, want 3", len(stub.request.Candidates))
 	}
 }
 
-func TestMediaMemoryRankerAdapter_MediaTypeBonus(t *testing.T) {
-	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
-	candidates := []brain.Candidate{
-		mmRankCandidate("img", 0.85, "image"),
-		mmRankCandidate("vid", 0.80, "video"),
-	}
+func TestMediaMemoryRankerAdapter_FailsClosedOnRankerError(t *testing.T) {
+	stub := &stubPoolRanker{response: func(mediamemory.PoolRankRequest) (mediamemory.PoolRankOutcome, error) {
+		return mediamemory.PoolRankOutcome{}, errors.New("worker unavailable")
+	}}
+	r := NewMediaMemoryRankerAdapter(stub)
 
 	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
-	policy := brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}
-
-	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Video candidate should win despite lower base score thanks to
-	// the slot-fitness bonus.
-	if ranked[0].ID != "vid" {
-		t.Errorf("expected video candidate to win, got %v", mmRankCandidateIDs(ranked))
+	if _, err := r.Rank(context.Background(), scene, brain.VisualIntent{},
+		[]brain.Candidate{mmRankCandidate("a", 0.9, "video")},
+		brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}); err == nil {
+		t.Fatal("a ranker failure must surface as an error, not an empty pool")
 	}
 }
 
-func mmRankCandidateIDs(in []brain.Candidate) []string {
-	out := make([]string, len(in))
-	for i := range in {
-		out[i] = in[i].ID
-	}
-	return out
-}
-
-func TestMediaMemoryRankerAdapter_TieBreakByID(t *testing.T) {
-	r := NewMediaMemoryRankerAdapter(mediamemory.NewDefaultRanker(nil, nil))
-	candidates := []brain.Candidate{
-		mmRankCandidate("b", 0.5, "video"),
-		mmRankCandidate("a", 0.5, "video"),
-	}
+func TestMediaMemoryRankerAdapter_FailsClosedOnUnknownCandidate(t *testing.T) {
+	stub := &stubPoolRanker{response: func(mediamemory.PoolRankRequest) (mediamemory.PoolRankOutcome, error) {
+		return mediamemory.PoolRankOutcome{
+			Ranked: []mediamemory.PoolRankScore{{CandidateID: "not-in-the-pool", AssetID: "ghost"}},
+		}, nil
+	}}
+	r := NewMediaMemoryRankerAdapter(stub)
 
 	scene := brain.SceneRequest{ID: "s1", Slots: []media.SlotKind{media.SlotPrimaryVideo}}
-	policy := brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}
-
-	ranked, err := r.Rank(context.Background(), scene, brain.VisualIntent{}, candidates, policy)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if ranked[0].ID != "a" {
-		t.Errorf("expected ID tie-break to order ascending, got %v", mmRankCandidateIDs(ranked))
+	if _, err := r.Rank(context.Background(), scene, brain.VisualIntent{},
+		[]brain.Candidate{mmRankCandidate("a", 0.9, "video")},
+		brain.ResolutionPolicy{MaxCandidatesPerSlot: 10}); err == nil {
+		t.Fatal("an answer naming a candidate outside the pool must fail closed")
 	}
 }

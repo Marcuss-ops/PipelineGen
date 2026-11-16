@@ -108,6 +108,7 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 		},
 	})
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(entityChainRunnerResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 

@@ -78,6 +78,10 @@ type VidRushPipeline struct {
 	// pipeline builds a SceneIRSegmentEnricher that compiles a SceneIR
 	// (Fase 1) and extracts source-grounded entities via this port.
 	NERPort VisualNERPort
+	// PhraseSelector is the Rust deterministic phrase selector. When the plan
+	// requests important phrases or words it is required; Go projects the
+	// returned spans and never re-selects.
+	PhraseSelector PhraseSelector
 	// StockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver
 	// (Fase 5). When set (with SamplerPort), the pipeline builds a
 	// SemanticProviderResolver that consults local Qdrant/SQLite first.

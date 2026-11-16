@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"strings"
 
-	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/sceneir"
@@ -45,15 +44,22 @@ import (
 // extractor input moved to the text the video actually speaks, which is
 // also the only text the entity timeline can anchor overlay cards to.
 type SceneIRSegmentEnricher struct {
-	nerPort VisualNERPort
+	nerPort        VisualNERPort
+	phraseSelector PhraseSelector
 }
 
 // NewSceneIRSegmentEnricher wires the new enricher. nerPort must be non-nil.
-func NewSceneIRSegmentEnricher(nerPort VisualNERPort) (*SceneIRSegmentEnricher, error) {
+// The optional selector is required whenever the plan requests important
+// phrases or words; selection then stays in the Rust worker.
+func NewSceneIRSegmentEnricher(nerPort VisualNERPort, selectors ...PhraseSelector) (*SceneIRSegmentEnricher, error) {
 	if nerPort == nil {
 		return nil, fmt.Errorf("scriptgeneration: VisualNERPort is required for SceneIRSegmentEnricher")
 	}
-	return &SceneIRSegmentEnricher{nerPort: nerPort}, nil
+	enricher := &SceneIRSegmentEnricher{nerPort: nerPort}
+	if len(selectors) > 0 {
+		enricher.phraseSelector = selectors[0]
+	}
+	return enricher, nil
 }
 
 // Enrich compiles a SceneIR from the committed scene and extracts entities.
@@ -230,17 +236,33 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	}
 	var phraseCandidates []string
 	if includeImportantPhrases || includeImportantWords {
-		phraseCandidates = phrasepkg.ImportantPhrases(sourceForExtraction, entityRuneSpans(sourceForExtraction, entities), phraseLimit, generationPlanLanguage(plan))
+		if e.phraseSelector == nil {
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("scriptgeneration: phrase selector is required when important phrases or words are requested")
+		}
+		language := generationPlanLanguage(plan)
+		selected, selectErr := e.phraseSelector.SelectPhrases(ctx, PhraseSelectionRequest{
+			Text:             sourceForExtraction,
+			BlockedRuneSpans: entityRuneSpans(sourceForExtraction, entities),
+			Limit:            phraseLimit,
+			Profile:          phraseSelectionProfileForLanguage(language),
+		})
+		if selectErr != nil {
+			return scriptpkg.VidRushSegmentResult{}, fmt.Errorf("select important phrases: %w", selectErr)
+		}
+		phraseCandidates = make([]string, 0, len(selected))
+		for _, phrase := range selected {
+			phraseCandidates = append(phraseCandidates, phrase.Text)
+		}
 	}
 	var importantPhrases []string
 	if includeImportantPhrases {
-		// phrases.Select is the single owner of the proper-name filter for the
-		// selector-derived candidates; operator-supplied MediaExtractionPolicy
-		// hints are external input, so the same rule is applied once here at
-		// their ingress instead of re-validating the selector output later.
+		// The Rust selector already applies the proper-name guard to its
+		// candidates. Operator-supplied MediaExtractionPolicy hints are
+		// external input, so the same rule is applied once at their ingress
+		// instead of re-validating the selector output later.
 		candidates := make([]string, 0, len(extraction.ImportantPhrases)+len(phraseCandidates))
 		for _, hint := range extraction.ImportantPhrases {
-			if !phrasepkg.ContainsProperNamePair(hint) {
+			if !containsProperNamePair(hint) {
 				candidates = append(candidates, hint)
 			}
 		}
@@ -249,7 +271,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	}
 	var importantWords []string
 	if includeImportantWords {
-		importantWords = phrasepkg.ImportantWords(phraseCandidates, wordLimit, generationPlanLanguage(plan))
+		importantWords = importantWordsFromPhrases(phraseCandidates, wordLimit, phraseSelectionProfileForLanguage(generationPlanLanguage(plan)))
 	}
 	var specialNames []string
 	if includeSpecialNames {

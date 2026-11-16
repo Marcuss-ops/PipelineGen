@@ -82,7 +82,8 @@ func (e *countingEnricher) callCount() int {
 func wireCountingVidRush(runner *Runner) *countingEnricher {
 	enricher := &countingEnricher{}
 	runner.SetVidRushPipeline(&VidRushPipeline{
-		NERPort: segmentEnricherNER{enricher: enricher},
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        segmentEnricherNER{enricher: enricher},
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en", Title: "test"}, nil
 		}),
@@ -107,6 +108,7 @@ func TestOverlayPrepare_DoesNotBlockTTSOrNLP(t *testing.T) {
 	prepEnq := &blockingPrepareEnqueuer{release: make(chan struct{})}
 
 	runner := NewRunner(repo, textGen, newStubTranslator(), voGen)
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)

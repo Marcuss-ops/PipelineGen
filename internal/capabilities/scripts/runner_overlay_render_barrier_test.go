@@ -81,6 +81,7 @@ func newOverlayBarrierFixture(t *testing.T) (*executionRun, *audioJoinRepository
 	t.Helper()
 	repo := &audioJoinRepository{inMemRunRepository: newInMemRunRepository()}
 	runner := NewRunner(repo, newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	audio := &barrierAudioRenderer{started: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}
@@ -233,6 +234,7 @@ func TestOverlayLanguageBarrier_ClaimsEveryLanguageAndMergesOntoSnapshot(t *test
 	t.Setenv("OVERLAY_RENDER_LANG_BARRIER", "enabled")
 	enqueuer := &languageCapturingRenderEnqueuer{}
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetOverlayRenderEnqueuer(enqueuer)
@@ -271,6 +273,7 @@ func TestOverlayLanguageBarrier_SkipsSubmissionOnBranchFailure(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_LANG_BARRIER", "enabled")
 	enqueuer := &languageCapturingRenderEnqueuer{}
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetOverlayRenderEnqueuer(enqueuer)
@@ -301,6 +304,7 @@ func TestOverlayLanguageBarrier_SkipsSubmissionOnBranchFailure(t *testing.T) {
 func TestOverlayRenderBarrierInertOnSkipConditions(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_LANG_BARRIER", "enabled")
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetOverlayRenderEnqueuer(newBarrierOverlayTestRenderer())
@@ -322,6 +326,7 @@ func TestOverlayRenderBarrierInertOnSkipConditions(t *testing.T) {
 
 	t.Setenv("OVERLAY_RENDER_LANG_BARRIER", "disabled")
 	gateOffRunner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	gateOffRunner.SetPhraseAligner(testPhraseAligner{})
 	gateOffRunner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	gateOffRunner.SetLogger(zap.NewNop())
 	gateOffRunner.SetOverlayRenderEnqueuer(newBarrierOverlayTestRenderer())

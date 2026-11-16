@@ -138,7 +138,11 @@ func buildScriptUseCases(
 	if nerErr != nil {
 		return nil, nil, nil, fmt.Errorf("wireScriptFlow: build NER backend: %w", nerErr)
 	}
-	if enricher, enrichErr := scriptgen.NewSceneIRSegmentEnricher(visualNER); enrichErr != nil {
+	phraseSelector, phraseErr := rustexec.NewSemanticEngineAdapter(rustexec.NewSemanticEngineExecutor(cfg.External.RustSemanticEnginePath, cfg.External.FfmpegPath, log))
+	if phraseErr != nil {
+		return nil, nil, nil, fmt.Errorf("wireScriptFlow: build phrase selector: %w", phraseErr)
+	}
+	if enricher, enrichErr := scriptgen.NewSceneIRSegmentEnricher(visualNER, phraseSelector); enrichErr != nil {
 		return nil, nil, nil, fmt.Errorf("wireScriptFlow: build SceneIR enricher: %w", enrichErr)
 	} else {
 		oneUC.SetSegmentEnricher(enricher)

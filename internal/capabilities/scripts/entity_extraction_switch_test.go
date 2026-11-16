@@ -124,7 +124,8 @@ func (e *entitySwitchEnricher) callCount() int {
 
 func entitySwitchPipeline(enricher VisualNERPort) *VidRushPipeline {
 	return &VidRushPipeline{
-		NERPort: enricher,
+		PhraseSelector: sentencePhraseSelector{},
+		NERPort:        enricher,
 		PlanResolver: VidRushPlanResolverFunc(func(_ context.Context, _ GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
 			return &scriptpkg.ResolvedGenerationPlan{Language: "en"}, nil
 		}),

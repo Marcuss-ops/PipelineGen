@@ -56,7 +56,6 @@ func buildOverlayPlanV2Request(
 		Seal:           overlayPlanSeal(result, canvas, timelineBounds),
 		Canvas:         canvasWire,
 		Scenes:         make([]overlayplan.Scene, 0, len(timedScenes)),
-		Clips:          overlayPlanClips(result),
 		EntityTimeline: overlayPlanEntityTimeline(result, language, projectID, timelineBounds),
 		Media:          overlayPlanMedia(result, language, sceneInputs),
 		ImagePlan:      imagePlan,
@@ -117,6 +116,13 @@ func buildOverlayPlanV2Request(
 		// reject the request as containing an unknown scene ID.
 		request.SceneWindows[sceneID] = bounds
 	}
+	// Clips and scenes must describe the same set: the Rust compiler validates
+	// every clip's scene_id against scenes[] and rejects the whole request on a
+	// scene that the plan legitimately left out (a fixed-media intro has its own
+	// localized render and is not an editorial scene). Projecting the canonical
+	// timeline unfiltered sent that intro clip anyway and failed the run with
+	// `invalid clips: unknown scene id "scene-intro"`.
+	request.Clips = overlayPlanClips(result, seen)
 	return request, nil
 }
 
@@ -295,20 +301,27 @@ func cloneIntMap(in map[string]int) map[string]int {
 	return out
 }
 
-// overlayPlanClips projects the canonical real video spans. Freeze tails stay
-// explicit so Rust can skip them; no clip is invented or retimed here.
-func overlayPlanClips(result *GenerateResult) []overlayplan.Clip {
-	if result == nil || result.CanonicalTimeline == nil {
+// overlayPlanClips projects the canonical real video spans of the scenes this
+// request actually carries. Freeze tails stay explicit so Rust can skip them; no
+// clip is invented or retimed here. A timeline segment whose scene the request
+// did not include (fixed-media intro/outro) is not part of the editorial plan
+// and must not be projected, or the request contradicts itself.
+func overlayPlanClips(result *GenerateResult, planScenes map[string]struct{}) []overlayplan.Clip {
+	if result == nil || result.CanonicalTimeline == nil || len(planScenes) == 0 {
 		return nil
 	}
 	var out []overlayplan.Clip
 	for _, scene := range result.CanonicalTimeline.Segments {
+		sceneID := strings.TrimSpace(scene.ID)
+		if _, inPlan := planScenes[sceneID]; !inPlan {
+			continue
+		}
 		for index, clip := range scene.EffectiveVideoSegments() {
-			if scene.ID == "" || clip.AssetID == "" {
+			if sceneID == "" || clip.AssetID == "" {
 				continue
 			}
 			out = append(out, overlayplan.Clip{
-				SceneID:    scene.ID,
+				SceneID:    sceneID,
 				AssetID:    clip.AssetID,
 				Index:      index,
 				StartUS:    scene.TimelineStartUS + clip.TimelineOffsetUS,

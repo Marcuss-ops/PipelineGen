@@ -11,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -59,7 +58,7 @@ func runTranslatedPropertyCase(t *testing.T, caseIndex int, texts map[Language]s
 		scene.Annotations.PrimaryEntities = append(scene.Annotations.PrimaryEntities, scriptpkg.AnnotatedEntity{Text: entity, CanonicalName: entity, Type: propertyEntityType(entity)})
 	}
 	result := &GenerateResult{SourceLanguage: "en", Scenes: []Scene{scene}}
-	runner := &Runner{vidRushPipeline: &VidRushPipeline{NERPort: propertyNER{}}}
+	runner := &Runner{vidRushPipeline: &VidRushPipeline{PhraseSelector: sentencePhraseSelector{}, NERPort: propertyNER{}}}
 	request := GenerateRequest{SourceLanguage: "en", Languages: translatedPropertyLanguages, MediaPlan: mediadomainPropertyPlan()}
 	if err := runner.runTranslatedNLP(context.Background(), request, result); err != nil {
 		t.Fatalf("case %d translated NLP: %v", caseIndex, err)
@@ -70,7 +69,15 @@ func runTranslatedPropertyCase(t *testing.T, caseIndex int, texts map[Language]s
 func propertyPhrasesForLanguage(t *testing.T, result *GenerateResult, caseIndex int, language Language, text string) []string {
 	t.Helper()
 	if language == "en" {
-		return phrasepkg.ImportantPhrases(text, propertyEntitySpans(text, propertyEntitiesForCase(caseIndex, text)), 5, string(language))
+		selected, _ := (sentencePhraseSelector{}).SelectPhrases(context.Background(), PhraseSelectionRequest{
+			Text: text, BlockedRuneSpans: propertyEntitySpans(text, propertyEntitiesForCase(caseIndex, text)),
+			Limit: 5, Profile: phraseSelectionProfileForLanguage(string(language)),
+		})
+		phrases := make([]string, 0, len(selected))
+		for _, phrase := range selected {
+			phrases = append(phrases, phrase.Text)
+		}
+		return phrases
 	}
 	annotations := result.Scenes[0].LocalizedAnnotations[language]
 	if annotations == nil {

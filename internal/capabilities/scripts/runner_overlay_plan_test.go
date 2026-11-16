@@ -309,6 +309,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	// earlier card is sequenced to end before the next spoken date, so the
 	// word boundaries themselves stay at 100ms.
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{tailUS: 5_000_000})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(frozenRunnerPlanResolver{plan: loadFrozenRunnerPlan(t, "editorial_budget.plan.json")})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
@@ -506,6 +507,7 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 		},
 	})
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	// The canonical registry is wired the same way the composition root does.
@@ -592,6 +594,7 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	})
 	prepEnq := &fakeOverlayPrepareEnqueuer{}
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
@@ -658,6 +661,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 		},
 	})
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)

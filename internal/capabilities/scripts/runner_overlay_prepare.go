@@ -119,7 +119,14 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 	}
 	phraseLimit := req.MediaPlan.Extraction.MaxImportantPhrasesPerSegment
 	includePhrases := req.MediaPlan.Extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
-	annotations := computeSegmentEntityAnnotations(snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases, req.MediaPlan.Extraction.ImportantPhrases)
+	var phraseSelector PhraseSelector
+	if r.vidRushPipeline != nil {
+		phraseSelector = r.vidRushPipeline.PhraseSelector
+	}
+	annotations, err := computeSegmentEntityAnnotations(ctx, phraseSelector, snapshot, req.SourceLanguage, segments, phraseLimit, includePhrases, req.MediaPlan.Extraction.ImportantPhrases)
+	if err != nil {
+		return vidRushPrepareResult{}, err
+	}
 	if r.shouldGeocodeScriptLocations(req) {
 		geocoded := make(map[int]*scriptpkg.SceneAnnotations, len(annotations))
 		for index, annotation := range annotations {
@@ -298,7 +305,7 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 // a matching segment produces grounded annotations (the same precedence the
 // sequential flow used), so a run without a VidRush pipeline still plans
 // intents from the scenes' own annotations.
-func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool, requestedPhraseSets ...[]string) map[int]*scriptpkg.SceneAnnotations {
+func computeSegmentEntityAnnotations(ctx context.Context, selector PhraseSelector, snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool, requestedPhraseSets ...[]string) (map[int]*scriptpkg.SceneAnnotations, error) {
 	annotations := make(map[int]*scriptpkg.SceneAnnotations)
 	for _, s := range snapshot {
 		if s.ExtractEntities == scriptpkg.ToggleDisabled {
@@ -360,7 +367,9 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 				ann = &scriptpkg.SceneAnnotations{Version: 1, Language: string(language), Status: "completed"}
 				annotations[scene.Index] = ann
 			}
-			supplementSourceImportantPhrases(ann, text, string(language), phraseLimit, corpus)
+			if err := supplementSourceImportantPhrases(ctx, selector, ann, text, string(language), phraseLimit, corpus); err != nil {
+				return nil, err
+			}
 		}
 	}
 	// Operator-supplied phrase hints are external input grounded by verbatim
@@ -425,7 +434,7 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 		}
 	}
 	dropSurnameOnlyAnnotationDuplicates(annotations)
-	return annotations
+	return annotations, nil
 }
 
 // enqueueOverlayPrepare builds the overlay.prepare job for the run's

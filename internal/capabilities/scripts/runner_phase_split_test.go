@@ -223,6 +223,7 @@ func newAudioOverlapFixture(t *testing.T) (*executionRun, *audioJoinRepository, 
 	t.Helper()
 	repo := &audioJoinRepository{inMemRunRepository: newInMemRunRepository()}
 	runner := NewRunner(repo, newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
 	audio := &barrierAudioRenderer{started: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}

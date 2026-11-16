@@ -224,5 +224,5 @@ func TestRunner_NoBarrierIsSafeNoOp(t *testing.T) {
 	runner.Execute(context.Background(), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.NotNil(t, final)
-	assert.Equal(t, RunStatusCompleted, final.Status, "a nil barrier must be a safe no-op")
+	assert.Equal(t, RunStatusCompleted, final.Status, "a nil barrier must be a safe no-op: %s", final.ErrorMessage)
 }

@@ -147,9 +147,10 @@ type MediaMemoryQdrantStack struct {
 // a MediaMemoryResolver that delegates every resolve call to the Brain.
 //
 // This makes the Brain the single orchestrator: the cascade only
-// supplies candidates, the ranker scores them, and the planner
-// assigns slots. The old VisualResolver.Resolve path is no longer
-// used for production requests.
+// supplies candidates, the canonical ranker (mediasampler::rank)
+// orders them, and the planner assigns slots. The old
+// VisualResolver.Resolve path is no longer used for production
+// requests.
 //
 // godlike/06 SSOT: this is the single composition site for the
 // production MediaMemory resolver. Callers that need a Resolver must
@@ -162,7 +163,14 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 	logAdapter := mediamemoryZapLogger{log}
 	concepts := sqliteMediaMemory.NewConceptsRepository(db)
 	bindings := sqliteMediaMemory.NewBindingsRepository(db)
-	mmRanker := mediamemory.NewDefaultRanker(nil, logAdapter)
+	// The canonical ranker is the mediasampler worker (Rust). There is no
+	// in-process fallback: if the worker is not available the resolver must
+	// not be handed out, because every slot would fail closed at request
+	// time with no way to recover.
+	poolRanker, err := newMediaPoolRankerBridge(mediaSamplerBinaryPath(), log)
+	if err != nil {
+		return nil, err
+	}
 	adapter, err := mediamemory.NewSearchFanOutAdapter(searchFanOut)
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: search fanout adapter: %w", err)
@@ -173,18 +181,18 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 	cascade := mediamemory.NewVisualResolver(
 		mediamemory.ResolverDeps{
 			Concepts: concepts, Bindings: bindings, External: adapter,
-			Semantic: NoopSemanticLookup{}, Ranker: mmRanker,
+			Semantic: NoopSemanticLookup{}, PoolRanker: poolRanker,
 			Log: logAdapter, Clock: mediamemory.RealClock(), Metrics: mediamemory.NoopMetrics(),
 		},
 	)
 
-	// Brain is the single orchestrator; the same MediaMemory ranker
-	// instance is reused so scoring policy is not duplicated.
+	// Brain is the single orchestrator; the same ranker boundary is reused
+	// so the ordering rule is not duplicated.
 	b := brainCore.NewCanonicalBrain(
 		brainNormalizer.NewDefaultNormalizer(),
 		brainIntent.NewDefaultResolver(),
 		cascade,
-		NewMediaMemoryRankerAdapter(mmRanker),
+		NewMediaMemoryRankerAdapter(poolRanker),
 		brainPlanner.NewDefaultPlanner(),
 	)
 
