@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -55,7 +56,9 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 	}
 
 	request, err := buildOverlayPlanV2Request(result, "it", canvas, "plan-1", "video-1", "project-1", "seed-1",
-		[]Scene{scene}, map[string][2]int64{"scene-1": {0, 2_000_000}})
+		[]Scene{scene}, []capabilityoverlay.SceneInput{{ID: "scene-1", Phrases: []capabilityoverlay.TimedAnnotation{
+			{Text: "Nike corre.", StartUS: 100_000, DurationUS: 700_000, Score: 0.9, PresentationRole: "scene_bullet"},
+		}}}, map[string][2]int64{"scene-1": {0, 2_000_000}})
 	if err != nil {
 		t.Fatalf("build v2 request: %v", err)
 	}
@@ -77,6 +80,11 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 	}
 	if wireScene.OverlayCategories[string(scriptpkg.OverlayCategoryTitles)] != "enabled" {
 		t.Fatalf("scene categories: %+v", wireScene.OverlayCategories)
+	}
+	if wireScene.Annotations == nil || len(wireScene.Annotations.Phrases) != 1 ||
+		wireScene.Annotations.Phrases[0].StartUS != 100_000 ||
+		wireScene.Annotations.Phrases[0].PresentationRole != "scene_bullet" {
+		t.Fatalf("scene annotations: %+v", wireScene.Annotations)
 	}
 	if request.Canvas.OverlayCategories[string(scriptpkg.OverlayCategoryBullets)] != "disabled" {
 		t.Fatalf("canvas categories: %+v", request.Canvas.OverlayCategories)
@@ -107,7 +115,7 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 
 func TestBuildOverlayPlanV2RequestFailsClosedOnMissingIdentity(t *testing.T) {
 	_, err := buildOverlayPlanV2Request(&GenerateResult{}, "it", OverlayCanvasSpec{}, "", "video-1", "", "",
-		nil, nil)
+		nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "plan_id and video_id are required") {
 		t.Fatalf("error=%v", err)
 	}
@@ -117,7 +125,7 @@ func TestBuildOverlayPlanV2RequestFailsClosedOnMissingBounds(t *testing.T) {
 	result := &GenerateResult{}
 	scene := Scene{ID: "scene-1", Text: map[Language]string{"it": "Nike corre."}}
 	_, err := buildOverlayPlanV2Request(result, "it", OverlayCanvasSpec{}, "plan-1", "video-1", "", "",
-		[]Scene{scene}, map[string][2]int64{})
+		[]Scene{scene}, nil, map[string][2]int64{})
 	if err == nil || !strings.Contains(err.Error(), "no canonical timeline bounds") {
 		t.Fatalf("error=%v", err)
 	}

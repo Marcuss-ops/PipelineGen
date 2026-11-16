@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -25,6 +26,7 @@ func buildOverlayPlanV2Request(
 	canvas OverlayCanvasSpec,
 	planID, videoID, projectID, motionSeed string,
 	timedScenes []Scene,
+	sceneInputs []capabilityoverlay.SceneInput,
 	timelineBounds map[string][2]int64,
 ) (overlayplan.V2Request, error) {
 	if result == nil {
@@ -45,6 +47,10 @@ func buildOverlayPlanV2Request(
 		Chapters:       chapterManifestToWire(result.ChapterManifest),
 	}
 	seen := make(map[string]struct{}, len(timedScenes))
+	inputsByScene := make(map[string]capabilityoverlay.SceneInput, len(sceneInputs))
+	for _, input := range sceneInputs {
+		inputsByScene[strings.TrimSpace(input.ID)] = input
+	}
 	for _, scene := range timedScenes {
 		sceneID := strings.TrimSpace(scene.ID)
 		if sceneID == "" {
@@ -68,12 +74,36 @@ func buildOverlayPlanV2Request(
 			TimelineStartUS:    bounds[0],
 			DurationUS:         bounds[1] - bounds[0],
 		}
+		if input, hasAnnotations := inputsByScene[sceneID]; hasAnnotations {
+			wire.Annotations = sceneAnnotationsToWire(input)
+		}
 		if ref, hasVoiceover := scene.Voiceover[language]; hasVoiceover && ref.Timing != nil {
 			wire.Voiceover = &overlayplan.Voiceover{Timing: speechTimingToWire(ref.Timing)}
 		}
 		request.Scenes = append(request.Scenes, wire)
 	}
 	return request, nil
+}
+
+func sceneAnnotationsToWire(in capabilityoverlay.SceneInput) *overlayplan.SceneAnnotations {
+	if len(in.Phrases) == 0 {
+		return nil
+	}
+	out := &overlayplan.SceneAnnotations{Phrases: make([]overlayplan.TimedAnnotation, 0, len(in.Phrases))}
+	for _, phrase := range in.Phrases {
+		out.Phrases = append(out.Phrases, overlayplan.TimedAnnotation{
+			Text:               phrase.Text,
+			Type:               phrase.Type,
+			StartMS:            phrase.StartMs,
+			EndMS:              phrase.EndMs,
+			StartUS:            phrase.StartUS,
+			DurationUS:         phrase.DurationUS,
+			Score:              phrase.Score,
+			PresentationRole:   phrase.PresentationRole,
+			EditorialCandidate: phrase.EditorialCandidate,
+		})
+	}
+	return out
 }
 
 func overlayPlanIdentity(planID, videoID, projectID, motionSeed string, canvas OverlayCanvasSpec) overlayplan.PlanIdentity {

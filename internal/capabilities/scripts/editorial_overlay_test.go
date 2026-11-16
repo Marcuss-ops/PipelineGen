@@ -203,32 +203,6 @@ func TestCompileBulletOnlyPlayfairCameraPushAcceptance(t *testing.T) {
 	}
 }
 
-func TestExpandEditorialPhraseToMinimumWords(t *testing.T) {
-	tests := []struct {
-		name      string
-		language  string
-		sceneText string
-		phrase    string
-		want      string
-	}{
-		{"grows two words past dangling conjunction and auxiliary", "it", "sono svolti eventi che hanno segnato", "svolti eventi", "svolti eventi che hanno segnato"},
-		{"never ends on a preposition", "it", "si è subito focalizzata sulla casa stessa", "subito focalizzata", "subito focalizzata sulla casa"},
-		{"never ends on a conjunction", "it", "con sentenze emesse e successive revisioni", "sentenze emesse", "sentenze emesse e successive"},
-		{"fails closed when only function words follow", "it", "svolti eventi e", "svolti eventi", "svolti eventi"},
-		{"grows past a hanging comma", "it", "inquirenti raccolgono impronte, testimonianze e reperti", "inquirenti raccolgono", "inquirenti raccolgono impronte, testimonianze"},
-		{"keeps three words", "it", "sono svolti eventi che hanno segnato", "svolti eventi che", "svolti eventi che"},
-		{"keeps longer phrases", "en", "Alpha bravo charlie delta", "bravo charlie delta", "bravo charlie delta"},
-		{"fails closed when ungrounded", "it", "sono svolti eventi", "missing phrase", "missing phrase"},
-		{"fails closed at the end of a short scene", "it", "unico frammento", "unico frammento", "unico frammento"},
-		{"matches case insensitively", "it", "Svolti Eventi Che Hanno Segnato", "svolti eventi", "Svolti Eventi Che Hanno Segnato"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, expandEditorialPhraseToMinimumWords(tc.language, tc.sceneText, tc.phrase))
-		})
-	}
-}
-
 func TestProjectEditorialOverlaysFailsClosed(t *testing.T) {
 	tests := []struct {
 		name   string

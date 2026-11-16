@@ -70,9 +70,30 @@ type Scene struct {
 	ExecutionMode      string            `json:"execution_mode"`
 	ShortPhraseOverlay bool              `json:"short_phrase_overlay"`
 	OverlayCategories  map[string]string `json:"overlay_categories"`
+	Annotations        *SceneAnnotations `json:"annotations,omitempty"`
 	Voiceover          *Voiceover        `json:"voiceover,omitempty"`
 	TimelineStartUS    int64             `json:"timeline_start_us"`
 	DurationUS         int64             `json:"duration_us"`
+}
+
+// SceneAnnotations is the planner's certified annotation projection. Only the
+// grounded phrase list participates in the chapter/editorial phase.
+type SceneAnnotations struct {
+	Phrases []TimedAnnotation `json:"phrases,omitempty"`
+}
+
+// TimedAnnotation is one grounded text surface with exact timing. The fields
+// mirror the Rust `TimedAnnotationV2` wire shape one for one.
+type TimedAnnotation struct {
+	Text               string  `json:"text"`
+	Type               string  `json:"type,omitempty"`
+	StartMS            int64   `json:"start_ms,omitempty"`
+	EndMS              int64   `json:"end_ms,omitempty"`
+	StartUS            int64   `json:"start_us,omitempty"`
+	DurationUS         int64   `json:"duration_us,omitempty"`
+	Score              float64 `json:"score,omitempty"`
+	PresentationRole   string  `json:"presentation_role,omitempty"`
+	EditorialCandidate string  `json:"editorial_candidate,omitempty"`
 }
 
 // Voiceover is the scene's certified voiceover projection; only timing is

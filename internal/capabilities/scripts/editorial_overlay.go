@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -215,88 +214,6 @@ func editorialOpeningPhrase(input capabilityoverlay.SceneInput, sceneText string
 		words = words[:len(words)-1]
 	}
 	return capabilityoverlay.TimedAnnotation{}, false
-}
-
-// editorialBoundaryFunctionWords guards phrase edges the same way the Rust
-// extractor does: a shown callout must never start or end on an article,
-// editorialBoundaryStopWords returns the SSOT boundary set for the callout
-// edge guard: the language's stop words plus function words from the
-// LexiconRegistry (config/lexicons/**). Growing "subito focalizzata" into
-// "subito focalizzata sulla" (or "sentenze emesse" into "sentenze emesse
-// e") renders a dangling fragment with no sense, so expansion keeps adding
-// verbatim words until the phrase ends on a content word. A nil registry
-// (binary without lexicon bootstrap) yields an empty set, in which case only
-// the hanging-punctuation guard applies.
-func editorialBoundaryStopWords(language string) map[string]struct{} {
-	lex := linguistics.DefaultLexiconOrNil()
-	if lex == nil {
-		return nil
-	}
-	return lex.PhraseStopWords(language)
-}
-
-func isEditorialBoundaryFunctionWord(word string, stopWords map[string]struct{}) bool {
-	cleaned := strings.ToLower(strings.Trim(strings.TrimSpace(word), ".,;:!?\"'()[]"))
-	if cleaned == "" {
-		return true
-	}
-	_, blocked := stopWords[cleaned]
-	return blocked
-}
-
-// hasHangingPhrasePunct reports a trailing comma, semicolon or colon: the
-// callout is cut mid-enumeration ("impronte,") and reads broken on screen.
-// A terminal stop (./!/¨/…) instead closes the sentence and is a good ending.
-func hasHangingPhrasePunct(word string) bool {
-	trimmed := strings.TrimSpace(word)
-	if trimmed == "" {
-		return true
-	}
-	last := trimmed[len(trimmed)-1]
-	return last == ',' || last == ';' || last == ':'
-}
-
-// expandEditorialPhraseToMinimumWords grows an extractive phrase shorter than
-// the blocking rule's three-word minimum into a complete snippet of at least
-// three words. The extra words are taken verbatim from the scene narration
-// right after the phrase, so locateEditorialPhrase still demands exact spoken
-// text and certified word timing before anything renders. Growth continues
-// past dangling function words (up to the five-word short-phrase ceiling)
-// and fails closed — returning the phrase unchanged so downstream drops it —
-// when no clean content-word ending exists.
-func expandEditorialPhraseToMinimumWords(language, sceneText, phrase string) string {
-	trimmed := strings.TrimSpace(phrase)
-	words := strings.Fields(trimmed)
-	if len(words) == 0 || len(words) >= 3 {
-		return trimmed
-	}
-	stopWords := editorialBoundaryStopWords(language)
-	source := strings.Fields(strings.TrimSpace(sceneText))
-	for i := 0; i+len(words) <= len(source); i++ {
-		match := true
-		for j := range words {
-			if !strings.EqualFold(source[i+j], words[j]) {
-				match = false
-				break
-			}
-		}
-		if !match {
-			continue
-		} // Never end the callout on a function word or a hanging comma:
-		// keep growing while the candidate ends dangling, within the
-		// short-phrase ceiling of five words the bullet lane renders
-		// through.
-		for length := 3; length <= 5 && i+length <= len(source); length++ {
-			grown := source[i : i+length]
-			last := grown[len(grown)-1]
-			if isEditorialBoundaryFunctionWord(last, stopWords) || hasHangingPhrasePunct(last) {
-				continue
-			}
-			return strings.Join(grown, " ")
-		}
-		return trimmed
-	}
-	return trimmed
 }
 
 // editorialBulletLongPhrase returns the complete source sentence span. The
