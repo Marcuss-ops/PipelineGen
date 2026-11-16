@@ -67,6 +67,12 @@ knobs:
     safe_production: "/etc/pipelinegen/final_job_credentials.json"
     owner: "internal/app/wiring/remote_final_job.go"
     description: "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset."
+  VELOX_FINAL_JOB_DUMP_DIR:
+    kind: env
+    default: ""
+    safe_production: "unset"
+    owner: "internal/app/wiring/script/remote_final_job.go"
+    description: "Optional directory that keeps the exact final-job prepare/finalize envelopes for diagnosis (off by default; may contain payload text)."
   VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR:
     kind: env
     default: ""
@@ -127,6 +133,12 @@ knobs:
     safe_production: "100ms"
     owner: "internal/platform/config/jobs.go"
     description: "Window over which job progress writes are coalesced (0 = passthrough)."
+  VELOX_RUST_MEDIASAMPLER_PATH:
+    kind: env
+    default: "bin/mediasampler"
+    safe_production: "bin/mediasampler"
+    owner: "internal/app/wiring/media_pool_ranker.go"
+    description: "Rust mediasampler worker used by the canonical media ranker (rank_candidates)."
   VELOX_SCHEDULER_INTERVAL:
     kind: config
     default: "30s"

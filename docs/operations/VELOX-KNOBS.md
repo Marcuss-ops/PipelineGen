@@ -19,6 +19,7 @@ a registry entry.
 | `VELOX_FINAL_JOB_ATTACH_SECONDS` | env | 3000 | `internal/app/wiring/remote_final_job.go` | 3000 | Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait). |
 | `VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS` | env | 1 | `internal/app/wiring/final_job_segment_prepare.go` | 1 (enabled) | Packet-copies certified aligned windows instead of re-encoding them; set 0 only for A/B measurement. |
 | `VELOX_FINAL_JOB_CREDENTIALS_FILE` | env |  | `internal/app/wiring/remote_final_job.go` | /etc/pipelinegen/final_job_credentials.json | Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset. |
+| `VELOX_FINAL_JOB_DUMP_DIR` | env |  | `internal/app/wiring/script/remote_final_job.go` | unset | Optional directory that keeps the exact final-job prepare/finalize envelopes for diagnosis (off by default; may contain payload text). |
 | `VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR` | env |  | `internal/app/wiring/final_job_fragment_io.go` | unset (dataDir/final-job-fragments) | Relocates or disables the final-job fragment cache; off/disabled/none disables it. |
 | `VELOX_FINAL_JOB_M2M_SECRET` | env |  | `internal/app/wiring/remote_final_job.go` | 64-hex secret from the host env file | Per-client bearer secret for job.submit against the Master. |
 | `VELOX_FINAL_JOB_MASTER_URL` | env |  | `internal/app/wiring/remote_final_job.go` | https://<master-host> | Master URL for the remote final-job handoff; unset falls back to the configured base URL. |
@@ -29,6 +30,7 @@ a registry entry.
 | `VELOX_MEDIA_MANIFEST_PATH` | env |  | `internal/capabilities/scripts/adapters/media_manifest_shim.go` | unset | Opt-in media_manifest fast-path used by the composition root. |
 | `VELOX_POLL_MAX_BACKOFF` | config | 60s | `internal/platform/config/jobs.go` | 60s | Ceiling of the job-runner poll backoff. |
 | `VELOX_PROGRESS_COALESCE_WINDOW` | config | 100ms | `internal/platform/config/jobs.go` | 100ms | Window over which job progress writes are coalesced (0 = passthrough). |
+| `VELOX_RUST_MEDIASAMPLER_PATH` | env | bin/mediasampler | `internal/app/wiring/media_pool_ranker.go` | bin/mediasampler | Rust mediasampler worker used by the canonical media ranker (rank_candidates). |
 | `VELOX_SCHEDULER_INTERVAL` | config | 30s | `internal/platform/config/jobs.go` | 30s | Scheduler tick interval for background jobs. |
 | `VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY` | config | 6 | `internal/platform/config/scripts.go` | 6 (machine render ceiling) | Machine-wide ceiling for localized render jobs. |
 | `VELOX_YOUTUBE_ASYNC_ENRICHMENT` | env |  | `internal/capabilities/youtube/usecase/process_segment_step6to9.go` | unset (inline enrichment) until the outbox worker is certified | Commit YouTube clips before asynchronous metadata enrichment; boot refuses when the media outbox worker is unavailable. |

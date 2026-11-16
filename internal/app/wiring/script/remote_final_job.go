@@ -2,6 +2,7 @@ package script
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -300,6 +301,17 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	pre, finalize, err := envelope.MasterPayloads()
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("serialize typed final-job envelope: %w", err)
+	}
+	// VELOX_FINAL_JOB_DUMP_DIR keeps the exact bytes this Producer hands the
+	// Master. A copy-only rejection names a cache path on a machine the Producer
+	// cannot read, so the only way to answer "which segment was that" is to keep
+	// the plan that produced it. Off unless asked.
+	if dir := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_DUMP_DIR")); dir != "" {
+		for name, body := range map[string]map[string]any{"prepare": pre, "finalize": finalize} {
+			if raw, marshalErr := json.MarshalIndent(body, "", "  "); marshalErr == nil {
+				_ = os.WriteFile(filepath.Join(dir, runID+"-"+name+".json"), raw, 0o600)
+			}
+		}
 	}
 	// final_job=true on the local script request triggers this Master handoff.
 	// PREPARE carries the scene plan; FINALIZE attaches runtime assets and

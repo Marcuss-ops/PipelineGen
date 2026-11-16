@@ -156,6 +156,12 @@ var registry = []Knob{
 		Description:    "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset.",
 	},
 	{
+		Name: "VELOX_FINAL_JOB_DUMP_DIR", Kind: KindEnv, Default: "",
+		Owner:          "internal/app/wiring/script/remote_final_job.go",
+		SafeProduction: "unset",
+		Description:    "Optional directory that keeps the exact final-job prepare/finalize envelopes for diagnosis (off by default; may contain payload text).",
+	},
+	{
 		Name: "VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR", Kind: KindEnv, Default: "",
 		Owner:          "internal/app/wiring/final_job_fragment_io.go",
 		SafeProduction: "unset (dataDir/final-job-fragments)",
@@ -221,6 +227,12 @@ var registry = []Knob{
 		Owner:          "internal/platform/config/jobs.go",
 		SafeProduction: "100ms",
 		Description:    "Window over which job progress writes are coalesced (0 = passthrough).",
+	},
+	{
+		Name: "VELOX_RUST_MEDIASAMPLER_PATH", Kind: KindEnv, Default: "bin/mediasampler",
+		Owner:          "internal/app/wiring/media_pool_ranker.go",
+		SafeProduction: "bin/mediasampler",
+		Description:    "Rust mediasampler worker used by the canonical media ranker (rank_candidates).",
 	},
 	{
 		Name: "VELOX_RUST_SEMANTIC_ENGINE_PATH", Kind: KindTestOnly, Default: "",
