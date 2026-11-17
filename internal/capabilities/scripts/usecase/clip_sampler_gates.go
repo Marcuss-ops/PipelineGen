@@ -73,7 +73,7 @@ const (
 	MinVisualSummaryLength = 20
 
 	// MinQualityScore: cosine-similarity floor for the quality gate.
-	// The live Qdrant source-search path accepts scores from 0.01 upward;
+	// The live pgvector source-search path accepts scores from 0.01 upward;
 	// keeping the sampler at 0.40 silently discards every valid clip
 	// returned by that path. The semantic resolver remains responsible
 	// for the stronger retrieval floor.

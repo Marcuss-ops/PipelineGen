@@ -4,7 +4,7 @@ import "testing"
 
 // TestDefaultMediaConfig_RoundTrip anchors the canonical
 // DRIFT-DEFAULTS-MEDIA SSOT. A regression here breaks every
-// search/curate limit-bound check (QDRANT-004 spec) and the score
+// search/curate limit-bound check (VECTOR-004 spec) and the score
 // floor.
 func TestDefaultMediaConfig_RoundTrip(t *testing.T) {
 	cfg := DefaultMediaConfig()

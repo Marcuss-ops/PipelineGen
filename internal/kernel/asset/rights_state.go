@@ -289,7 +289,7 @@ func (s ReviewStatus) String() string { return string(s) }
 // godlike/06 SSOT: this is the canonical "review-restricted"
 // predicate; slots_search.go's planner filter composes
 // (RightsStatus not in {blocked, review_required}) AND
-// (ReviewStatus not in {pending, rejected}) into the Qdrant
+// (ReviewStatus not in {pending, rejected}) into the pgvector
 // MustNot clause.
 func (s ReviewStatus) IsReviewGateRequired() bool {
 	if !s.Valid() {

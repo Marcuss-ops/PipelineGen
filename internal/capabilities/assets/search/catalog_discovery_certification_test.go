@@ -8,10 +8,10 @@ package search
 //	1. CATALOG reproducibility — the same query, dataset revision and
 //	   embedding contract always return the identical ordered top-10
 //	   (ten consecutive runs are byte-identical).
-//	2. CATALOG separation    — a catalog query makes Qdrant calls > 0 and
+//	2. CATALOG separation    — a catalog query makes pgvector calls > 0 and
 //	   live-provider calls == 0.
 //	3. DISCOVERY separation  — a discovery query makes live-provider
-//	   calls > 0 and Qdrant calls == 0.
+//	   calls > 0 and pgvector calls == 0.
 //	4. BLENDED dedup         — a provider result whose source_type|source_ref
 //	   resolves (via CanonicalIdentityResolver) to a canonical asset already
 //	   present in the catalog appears exactly ONCE in the merged result.
@@ -30,7 +30,7 @@ import (
 // certificationCounters counts how many times each universe's backends were
 // actually invoked by the aggregator.
 type certificationCounters struct {
-	qdrant   atomic.Int64 // catalog (semantic) backend invocations
+	pgvector atomic.Int64 // catalog (semantic) backend invocations
 	provider atomic.Int64 // discovery (live provider) backend invocations
 }
 
@@ -50,7 +50,7 @@ func (b *countingBackend) Universe() SearchUniverse   { return b.universe }
 func (b *countingBackend) Search(_ context.Context, _ Query) ([]Candidate, error) {
 	switch b.universe {
 	case SearchCatalog:
-		b.counters.qdrant.Add(1)
+		b.counters.pgvector.Add(1)
 	case SearchDiscovery:
 		b.counters.provider.Add(1)
 	}
@@ -117,7 +117,7 @@ func TestCatalogDiscoverySeparationCertification(t *testing.T) {
 	q := Query{Text: "Jackie Chan interview", Limit: 10}
 
 	// ── 1. CATALOG reproducibility + separation ───────────────────────
-	qdrantBefore := counters.qdrant.Load()
+	pgvectorBefore := counters.pgvector.Load()
 	providerBefore := counters.provider.Load()
 
 	var first []string
@@ -142,15 +142,15 @@ func TestCatalogDiscoverySeparationCertification(t *testing.T) {
 		t.Fatalf("CATALOG top-10 length = %d, want exactly 10 (got %v)", len(first), first)
 	}
 
-	if got := counters.qdrant.Load() - qdrantBefore; got == 0 {
-		t.Fatal("CATALOG separation FAILED: catalog must make Qdrant calls > 0")
+	if got := counters.pgvector.Load() - pgvectorBefore; got == 0 {
+		t.Fatal("CATALOG separation FAILED: catalog must make pgvector calls > 0")
 	}
 	if got := counters.provider.Load() - providerBefore; got != 0 {
 		t.Fatalf("CATALOG separation FAILED: catalog made %d live-provider calls, want 0", got)
 	}
 
 	// ── 2. DISCOVERY separation ────────────────────────────────────────
-	qdrantBefore = counters.qdrant.Load()
+	pgvectorBefore = counters.pgvector.Load()
 	providerBefore = counters.provider.Load()
 
 	res, err := agg.Search(ctx, Query{Text: q.Text, Limit: q.Limit, Universe: SearchDiscovery})
@@ -163,8 +163,8 @@ func TestCatalogDiscoverySeparationCertification(t *testing.T) {
 	if got := counters.provider.Load() - providerBefore; got == 0 {
 		t.Fatal("DISCOVERY separation FAILED: discovery must make provider calls > 0")
 	}
-	if got := counters.qdrant.Load() - qdrantBefore; got != 0 {
-		t.Fatalf("DISCOVERY separation FAILED: discovery made %d Qdrant calls, want 0", got)
+	if got := counters.pgvector.Load() - pgvectorBefore; got != 0 {
+		t.Fatalf("DISCOVERY separation FAILED: discovery made %d pgvector calls, want 0", got)
 	}
 
 	// ── 3. BLENDED dedup via CanonicalIdentityResolver ──────────────────
@@ -216,8 +216,8 @@ func TestCatalogDiscoverySeparationCertification(t *testing.T) {
 	}
 
 	// Both universes must have been exercised in blended mode.
-	if counters.qdrant.Load() == 0 || counters.provider.Load() == 0 {
-		t.Fatalf("BLENDED must fan out to both universes (qdrant=%d provider=%d)",
-			counters.qdrant.Load(), counters.provider.Load())
+	if counters.pgvector.Load() == 0 || counters.provider.Load() == 0 {
+		t.Fatalf("BLENDED must fan out to both universes (pgvector=%d provider=%d)",
+			counters.pgvector.Load(), counters.provider.Load())
 	}
 }

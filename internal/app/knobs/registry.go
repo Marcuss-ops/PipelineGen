@@ -127,15 +127,9 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FEATURE_CLIP_INDEXER_ENABLED", Kind: KindMarker, Default: "",
-		Owner:          "internal/app/wiring/build_bundles_qdrant_gates.go",
+		Owner:          "internal/app/wiring/build_process_bundle.go",
 		SafeProduction: "config clip_indexer.enabled (the env name is printed, not read)",
-		Description:    "Escape-hatch name quoted by the Qdrant/ClipIndexer boot gate; the effective toggle is config clip_indexer.enabled.",
-	},
-	{
-		Name: "VELOX_FEATURE_QDRANT_ENABLED", Kind: KindMarker, Default: "",
-		Owner:          "internal/app/wiring/build_bundles_qdrant_gates.go",
-		SafeProduction: "config qdrant.enabled (the env name is printed, not read)",
-		Description:    "Escape-hatch name quoted by the Qdrant/ClipIndexer boot gate; the effective toggle is config qdrant.enabled.",
+		Description:    "Historical escape-hatch name for the embedding sidecar; the effective toggle is config clip_indexer.enabled (read in buildIndexDeps).",
 	},
 	{
 		Name: "VELOX_FINAL_AUDIO_CACHE_DIR", Kind: KindEnv, Default: "",
@@ -202,12 +196,6 @@ var registry = []Knob{
 		Owner:          "internal/app/wiring/remote_final_job.go",
 		SafeProduction: "180",
 		Description:    "How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget).",
-	},
-	{
-		Name: "VELOX_FINAL_JOB_RESOLVE_CONCURRENCY", Kind: KindEnv, Default: "1",
-		Owner:          "internal/app/wiring/remote_final_job_resolve.go",
-		SafeProduction: "4 (1..16)",
-		Description:    "Drive sources resolved in parallel while preparing a handoff.",
 	},
 
 	{

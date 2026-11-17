@@ -11,7 +11,7 @@ PipelineGen is a headless Go backend for discovering, processing, indexing, and 
 | Long-running execution | SQLite-backed jobs and workers |
 | Durable post-commit work | Transactional outbox owned by each canonical store |
 | Media semantic and lexical retrieval | pgvector inside the media PostgreSQL SSOT |
-| Non-media vector use | Qdrant only where an explicit non-media owner requires it |
+| External vector store | None — the external vector store was removed entirely on 2026-11-17 |
 | Remote files | Google Drive |
 | Dependency construction and lifecycle | `internal/app` |
 | Shared semantic contracts | `internal/kernel` |
@@ -30,9 +30,9 @@ contracts, providers, routes, and packages belong to the four target roots
 only.
 
 PostgreSQL + pgvector is authoritative for the media domain. SQLite remains
-authoritative only for non-media domains that have not migrated. Qdrant is not
-a media authority and may not be used as a media fallback search, hydration,
-indexing, or write path. Drive and local storage remain external locations and
+authoritative only for non-media domains that have not migrated. The external vector store was
+removed from the tree on 2026-11-17 and may not be reintroduced as a media
+fallback search, hydration, indexing, or write path. Drive and local storage remain external locations and
 must not become hidden sources of business truth.
 
 ### Media data-layer unification (September 2026)
@@ -57,11 +57,11 @@ search request
 |---|---|
 | **Media SSOT** | PostgreSQL `media_assets`, `asset_locations`, features, text tracks, outbox, and `media_embeddings` |
 | **Write gate** | `PostgresMediaCommitter` is the canonical production media writer |
-| **Index projection** | `PostgresIndexWorker` writes embeddings into PostgreSQL `media_embeddings`; Qdrant is not a media projection |
+| **Index projection** | `PostgresIndexWorker` writes embeddings into PostgreSQL `media_embeddings`; there is no external vector projection |
 | **Search** | `MediaSearcher` owns both `VectorStorePort` and `MediaReadRepository`, so retrieval and hydration cannot split across databases |
 | **Workspace/lifecycle scope** | Hard predicates are enforced in PostgreSQL retrieval; hydration repeats applicable guards and never broadens the selected ID set |
 | **Configuration** | `media_postgresql.enabled=true` requires a valid DSN and fails closed on invalid/unreachable PostgreSQL |
-| **Qdrant** | Forbidden for media reads/writes; permitted only for explicitly owned non-media capabilities |
+| **External vector store** | None. The external vector store was removed entirely (2026-11-17); media and keyframe vectors live only in PostgreSQL + pgvector |
 | **SQLite** | No media runtime fallback; legacy SQLite data is migration/backfill input only |
 | **Emergency tools** | Historical migration/recovery tools are administrative only and never part of normal runtime routing |
 
@@ -173,7 +173,7 @@ query normalization
 Search profiles and source-specific behavior belong in shared registries or
 resolvers, not duplicated handlers. The semantic backend composition gate
 requires one adapter to implement both vector retrieval and media hydration;
-a Qdrant-only adapter therefore cannot become a media search backend.
+a vector-only adapter therefore cannot become a media search backend.
 
 ## Drive and files
 

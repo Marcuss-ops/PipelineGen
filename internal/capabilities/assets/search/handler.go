@@ -216,10 +216,10 @@ func (h *Handler) Search(c *gin.Context) {
 
 	// PR-SEARCH-HANDLER-MOUNT (July 2026): the /api/media/search
 	// endpoint is admin-authenticated. Set IsAdmin=true so the
-	// semantic backend's CompileQdrantFilter skips the workspace
+	// semantic backend's CompileVectorFilter skips the workspace
 	// must-clause (IsSystem=true path). Without this, every admin
 	// search with mode=hybrid fails with
-	// "SearchScope.WorkspaceID is required" from the Qdrant
+	// "SearchScope.WorkspaceID is required" from the pgvector
 	// filter compiler, producing 503 + ErrSemanticBackendUnavailable.
 	actor := Actor{IsAdmin: true, IsSystem: true}
 	if isAdmin, ok := c.Get("is_admin"); ok {

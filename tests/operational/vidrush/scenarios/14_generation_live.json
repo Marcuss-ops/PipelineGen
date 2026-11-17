@@ -1,6 +1,6 @@
 {
   "scenario_id": "14_generation_live",
-  "description": "VidRush image-retrieval canary — Artlist disabilitato e immagini generate disabilitate; trova immagini web e verifica il percorso verso Drive, SQLite, outbox, Qdrant e binding.",
+  "description": "VidRush image-retrieval canary — Artlist disabilitato e immagini generate disabilitate; trova immagini web e verifica il percorso verso Drive, SQLite, outbox, pgvector e binding.",
   "version": 1,
   "timeout_seconds": 900,
   "expect": {

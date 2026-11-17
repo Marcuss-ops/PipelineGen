@@ -24,7 +24,7 @@ var ErrSourceResolutionFailed = errors.New("generation: source resolution failed
 // ErrVoiceoverResolveFailed means the voiceover_group → folder
 // resolution failed at the pre-BuildPlan step (Phase 4 of
 // GenerateOneUseCase.Execute). Distinct from ErrSourceResolutionFailed
-// — that one spans clip-search (catalog / Qdrant / drive) failures
+// — that one spans clip-search (catalog / pgvector / drive) failures
 // while this one covers Drive folder-routing failures of the voiceover
 // destination. PR-ERROR-SURFACING commit-5 (2026-07-04): introduced as
 // the canonical phase sentinel for the voiceover_resolve escape path

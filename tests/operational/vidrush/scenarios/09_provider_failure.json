@@ -69,18 +69,6 @@
       }
     },
     {
-      "case_id": "qdrant_temporarily_down",
-      "dependency": "qdrant",
-      "class": "BestEffort",
-      "failure": "connection refused / 503",
-      "expect": {
-        "job_status": "SUCCEEDED",
-        "warning_logged": true,
-        "limited_retry": "retry limitato (max 3 tentativi con backoff)",
-        "fallback_behavior": "usa solo risultati già in cache o direct provider"
-      }
-    },
-    {
       "case_id": "drive_5xx",
       "dependency": "google_drive",
       "class": "obligatory",

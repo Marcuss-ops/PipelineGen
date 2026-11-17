@@ -64,7 +64,7 @@ func (p *AssetLocationReconciliationProcessor) Name() adapters.ProcessorName {
 // Policy is BestEffort for verification-only composition. A configured
 // canonical mutator makes the complete reconciliation Required because the
 // downstream SpecScene must not be published when its durable asset
-// mutation and Qdrant outbox event could not be committed.
+// mutation and pgvector outbox event could not be committed.
 func (p *AssetLocationReconciliationProcessor) Policy(
 	_ *scriptpkg.ResolvedGenerationPlan,
 ) adapters.ProcessorPolicy {

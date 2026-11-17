@@ -21,7 +21,7 @@ import (
 // deliveryModeFast is the default that matches behavior before the
 // delivery_mode field existed: return ASAP after local write +
 // media_assets row + asset.index.requested outbox commit. Drive
-// upload + embedding + Qdrant upsert run async via the outbox
+// upload + embedding + pgvector upsert run async via the outbox
 // dispatcher after SQLite commit (godlike/07 fail-closed — NEVER
 // inline from this handler thread).
 const (
@@ -39,7 +39,7 @@ const (
 // "fast" (default) returns as soon as the local file is on disk +
 // the media_assets row + the asset.index.requested outbox row are
 // committed in the same SQLite transaction. Drive upload, metadata
-// enrichment, SigLIP embedding, and Qdrant upsert are deferred to
+// enrichment, SigLIP embedding, and pgvector upsert are deferred to
 // the outbox dispatcher running AFTER the SQLite commit — they are
 // NEVER invoked inline on this handler thread (godlike/07 fail-
 // closed: an unavailable backend must not be represented as a
@@ -76,7 +76,7 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		return
 	}
 
-	// Drive/embedding/Qdrant MUST NEVER run inline on this handler
+	// Drive/embedding/pgvector MUST NEVER run inline on this handler
 	// thread (godlike/07 fail-closed + AGENTS.md "durable side
 	// effects after database commits must use the transactional
 	// outbox"). The SyncCommand.SkipDrive flag below is the

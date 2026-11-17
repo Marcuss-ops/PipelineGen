@@ -31,7 +31,7 @@ const (
 // godlike/06 SSOT: Name is the slug derived from Title via perClipLeafName
 // (or slugifyTitle fallback). Filename is only the basename of outputPath.
 // Metadata carries title, description, round, start_sec, end_sec, slug,
-// local_path, sha256, and file_hash so downstream consumers (Qdrant indexer,
+// local_path, sha256, and file_hash so downstream consumers (pgvector indexer,
 // asset search, media_assets projection) see the full rich surface.
 func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash string) *asset.Asset {
 	_, _ = sourceIdx, clipIdx
@@ -141,7 +141,7 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 	}
 	if plan.SourceID != "" {
 		// The typed SourceURL field is set in the struct literal above;
-		// the metadata key is a provenance mirror for Qdrant search-text
+		// the metadata key is a provenance mirror for pgvector search-text
 		// and legacy consumers. Both are written so the two surfaces stay
 		// in sync (godlike/06 source_url convergence).
 		a.SetMetadataSourceURL(plan.SourceID)

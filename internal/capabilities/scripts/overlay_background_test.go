@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -153,5 +154,87 @@ func TestResolveOverlayBackgroundFailsClosedWithoutIdentity(t *testing.T) {
 	_, err := (&Runner{}).resolveOverlayBackground(context.Background(), &scriptpkg.OverlayBackgroundSpec{Kind: "video"})
 	if err == nil {
 		t.Fatal("expected missing visual background identity to fail closed")
+	}
+}
+
+// TestImageEffectsAndGridPayloadJSONProjectsToPlan proves the new
+// overlay_style.image.effects/grid blocks survive strict payload decoding,
+// validation and the projection onto an image item without touching its
+// children.
+func TestImageEffectsAndGridPayloadJSONProjectsToPlan(t *testing.T) {
+	raw := []byte(`{
+		"version": 2,
+		"preset": "custom",
+		"items": [{
+			"source": {"type": "text", "topic": "image treatments", "source_text": "Una sola fotografia."},
+			"script_params": {"target_words": 100},
+			"overlay_style": {"image": {
+				"effects": [
+					{"type": "glitch", "amount": 0.35, "seed": 11},
+					{"type": "vignette", "amount": 0.2, "radius": 0.8, "softness": 0.5}
+				],
+				"grid": {"scope": "foreground", "style": "lines", "color": "#33CCDD",
+					"spacing_px": 72, "line_width_px": 1.25, "opacity": 0.18}
+			}}
+		}]
+	}`)
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var envelope scriptpkg.GenerationEnvelopeV2
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatalf("decode script.generate payload: %v", err)
+	}
+	if err := envelope.Validate(); err != nil {
+		t.Fatalf("validate script.generate payload: %v", err)
+	}
+	if len(envelope.Items) != 1 || envelope.Items[0].OverlayStyle == nil || envelope.Items[0].OverlayStyle.Image == nil {
+		t.Fatalf("payload did not decode overlay_style.image: %+v", envelope.Items)
+	}
+	if err := envelope.Items[0].OverlayStyle.Validate(); err != nil {
+		t.Fatalf("validate overlay_style: %v", err)
+	}
+	if err := capabilityoverlay.ValidateImageTreatments(envelope.Items[0].OverlayStyle.Image); err != nil {
+		t.Fatalf("validate image treatments: %v", err)
+	}
+
+	items := []capmodel.OverlayItem{{
+		ID: "solo", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}},
+		Params: map[string]any{},
+	}}
+	applyOverlayStyleToItems(items, OverlayCanvasSpec{Style: envelope.Items[0].OverlayStyle})
+
+	effects, ok := items[0].Params["effects"].([]map[string]any)
+	if !ok || len(effects) != 2 {
+		t.Fatalf("effects not projected: %#v", items[0].Params)
+	}
+	if effects[0]["type"] != "glitch" || effects[0]["amount"] != 0.35 || effects[0]["seed"] != uint32(11) {
+		t.Fatalf("glitch projection = %#v", effects[0])
+	}
+	if effects[1]["type"] != "vignette" || effects[1]["softness"] != 0.5 {
+		t.Fatalf("vignette projection = %#v", effects[1])
+	}
+	grid, ok := items[0].Params["grid"].(map[string]any)
+	if !ok {
+		t.Fatalf("grid not projected: %#v", items[0].Params)
+	}
+	if grid["scope"] != "foreground" || grid["spacing_px"] != 72.0 || grid["line_width_px"] != 1.25 || grid["opacity"] != 0.18 {
+		t.Fatalf("grid projection = %#v", grid)
+	}
+}
+
+// TestImageGridExplicitDisableReachesPlan keeps the explicit off switch
+// distinct from an absent block.
+func TestImageGridExplicitDisableReachesPlan(t *testing.T) {
+	disabled := false
+	items := []capmodel.OverlayItem{{
+		ID: "solo", Kind: "image", Params: map[string]any{},
+		AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}},
+	}}
+	applyOverlayStyleToItems(items, OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{
+		Image: &scriptpkg.OverlayImageStyleSpec{Grid: &scriptpkg.OverlayImageGridSpec{Enabled: &disabled}},
+	}})
+	grid, ok := items[0].Params["grid"].(map[string]any)
+	if !ok || grid["enabled"] != false {
+		t.Fatalf("explicit grid disable not projected: %#v", items[0].Params)
 	}
 }

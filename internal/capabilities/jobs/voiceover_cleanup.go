@@ -36,7 +36,7 @@
 //     for idempotency. Retryable on transient filesystem failures
 //     (locked file, EIO, fsync timeout).
 //
-// The handler does NOT touch SQLite or Qdrant — post-commit cleanup
+// The handler does NOT touch SQLite or pgvector — post-commit cleanup
 // for orphan side-effects ONLY. The canonical voiceovers/media_assets
 // row already reflects the post-swap state at this point.
 package jobs
@@ -307,7 +307,7 @@ func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outboxevents.E
 				}
 				// Idempotency on replay: Drive file already gone is
 				// a no-op success (mirrors the IndexDeleteHandler
-				// Qdrant-delete idempotency pattern at
+				// vector-delete idempotency pattern at
 				// index_delete.go where DeletePoints returns
 				// deleted_count: 0, not 404). Drive API returns 404
 				// via *googleapi.Error{Code: 404}; the pool's

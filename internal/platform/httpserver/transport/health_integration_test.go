@@ -66,10 +66,9 @@ func newTestHealthHandler(t *testing.T) (*HealthHandler, *gin.Engine, *healthapp
 
 	// Build the health Service with infra checkers pointing at the temp DB.
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
-		Drive:  infrahealth.NewDriveChecker(), // no probe wired → applicable=false
-		Qdrant: nil,                           // QDRANT-005 Blocker 3: Qdrant disabled — Service handles nil as applicable=false
-		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
+		DB:    infrahealth.NewSQLiteChecker(sqliteDB),
+		Drive: infrahealth.NewDriveChecker(), // no probe wired → applicable=false
+		Jobs:  infrahealth.NewJobsChecker(sqliteDB),
 	})
 
 	gin.SetMode(gin.TestMode)
@@ -123,8 +122,8 @@ func TestHealth_DeepAll(t *testing.T) {
 	checks, ok := resp["checks"].(map[string]any)
 	require.True(t, ok, "deep health should include checks map")
 
-	// All four checks should be present.
-	for _, name := range []string{"db", "drive", "qdrant", "jobs"} {
+	// All three checks should be present.
+	for _, name := range []string{"db", "drive", "jobs"} {
 		assert.Contains(t, checks, name, "deep health missing check: %s", name)
 	}
 
@@ -135,14 +134,10 @@ func TestHealth_DeepAll(t *testing.T) {
 	jobsCheck := checks["jobs"].(map[string]any)
 	assert.True(t, jobsCheck["ok"].(bool), "jobs check should be ok with real database")
 
-	// Drive and Qdrant are optional — applicable=false, ok=true.
+	// Drive is optional — applicable=false, ok=true.
 	driveCheck := checks["drive"].(map[string]any)
 	assert.True(t, driveCheck["ok"].(bool), "drive check should be ok when not configured")
 	assert.False(t, driveCheck["applicable"].(bool), "drive should report applicable=false")
-
-	qdrantCheck := checks["qdrant"].(map[string]any)
-	assert.True(t, qdrantCheck["ok"].(bool), "qdrant check should be ok when disabled")
-	assert.False(t, qdrantCheck["applicable"].(bool), "qdrant should report applicable=false")
 }
 
 // ── Granular checks (repeated query params) ───────────────────────────
@@ -161,7 +156,7 @@ func TestHealth_CheckDBOnly(t *testing.T) {
 
 	assert.Contains(t, checks, "db")
 	assert.NotContains(t, checks, "drive")
-	assert.NotContains(t, checks, "qdrant")
+	assert.NotContains(t, checks, "pgvector")
 	assert.NotContains(t, checks, "jobs")
 
 	dbCheck := checks["db"].(map[string]any)
@@ -171,7 +166,7 @@ func TestHealth_CheckDBOnly(t *testing.T) {
 func TestHealth_CheckCommaSeparated(t *testing.T) {
 	_, router, _ := newTestHealthHandler(t)
 
-	w := doHealthRequest(t, router, "/health", "check=db,qdrant")
+	w := doHealthRequest(t, router, "/health", "check=db,drive")
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]any
@@ -181,8 +176,7 @@ func TestHealth_CheckCommaSeparated(t *testing.T) {
 	require.True(t, ok)
 
 	assert.Contains(t, checks, "db")
-	assert.Contains(t, checks, "qdrant")
-	assert.NotContains(t, checks, "drive")
+	assert.Contains(t, checks, "drive")
 	assert.NotContains(t, checks, "jobs")
 }
 
@@ -201,7 +195,7 @@ func TestHealth_CheckRepeatedParams(t *testing.T) {
 	assert.Contains(t, checks, "db")
 	assert.Contains(t, checks, "jobs")
 	assert.NotContains(t, checks, "drive")
-	assert.NotContains(t, checks, "qdrant")
+	assert.NotContains(t, checks, "pgvector")
 }
 
 func TestHealth_CheckDedup(t *testing.T) {
@@ -311,10 +305,9 @@ func TestHealth_DBUnreachable(t *testing.T) {
 	_ = sqliteDB.Close() // close to make it unreachable
 
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
-		Drive:  infrahealth.NewDriveChecker(),
-		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false),
-		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
+		DB:    infrahealth.NewSQLiteChecker(sqliteDB),
+		Drive: infrahealth.NewDriveChecker(),
+		Jobs:  infrahealth.NewJobsChecker(sqliteDB),
 	})
 
 	ready := healthapp.NewReadyChecker(svc)
@@ -401,13 +394,13 @@ func TestNormalizeCheckNames_Deduplicates(t *testing.T) {
 }
 
 func TestNormalizeCheckNames_CommaSplit(t *testing.T) {
-	result := healthapp.NormalizeCheckNames([]string{"db,drive,qdrant"})
-	require.Equal(t, []string{"db", "drive", "qdrant"}, result)
+	result := healthapp.NormalizeCheckNames([]string{"db,drive,pgvector"})
+	require.Equal(t, []string{"db", "drive", "pgvector"}, result)
 }
 
 func TestNormalizeCheckNames_Mixed(t *testing.T) {
-	result := healthapp.NormalizeCheckNames([]string{"db,drive", "qdrant", "  jobs  "})
-	require.Equal(t, []string{"db", "drive", "qdrant", "jobs"}, result)
+	result := healthapp.NormalizeCheckNames([]string{"db,drive", "pgvector", "  jobs  "})
+	require.Equal(t, []string{"db", "drive", "pgvector", "jobs"}, result)
 }
 
 func TestNormalizeCheckNames_RemovesEmpty(t *testing.T) {
@@ -463,10 +456,9 @@ func TestRouter_WiringWithoutReadyChecker_Returns503(t *testing.T) {
 	require.NoError(t, err)
 
 	svc := healthapp.NewService(healthapp.ServiceDeps{
-		DB:     infrahealth.NewSQLiteChecker(sqliteDB),
-		Drive:  infrahealth.NewDriveChecker(),
-		Qdrant: infrahealth.NewQdrantChecker("http://127.0.0.1:6333", "media_assets", false),
-		Jobs:   infrahealth.NewJobsChecker(sqliteDB),
+		DB:    infrahealth.NewSQLiteChecker(sqliteDB),
+		Drive: infrahealth.NewDriveChecker(),
+		Jobs:  infrahealth.NewJobsChecker(sqliteDB),
 	})
 
 	// Simulate the pre-fix bug: healthSvc wired, but readyChecker is nil.

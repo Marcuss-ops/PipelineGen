@@ -5,8 +5,8 @@
 // godlike/06 SSOT: this file owns the canonical helper that the Drive
 // composition sites call into. There is exactly ONE place that decides
 // whether Drive credentials + token files are available for runtime
-// service (mirrors PR-QDRANT-CONFIG-MISMATCH-GATE's validateQdrantIndexerCompatibility
-// at build_bundles_qdrant_gates.go).
+// service (mirrors PR-VECTOR-CONFIG-MISMATCH-GATE's validateIndexerCompatibility
+// at the retired indexer gates file).
 //
 // godlike/07 no-fake-availability: the underlying
 // drive.NewDriveServiceFromFiles (auth.go:115) SILENTLY swallows

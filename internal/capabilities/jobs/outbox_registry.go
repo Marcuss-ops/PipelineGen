@@ -75,8 +75,8 @@ import (
 //
 //	// VectorPointDeleter: outbox.VectorPointDeleter for the
 //
-// IndexDeleteHandler (real DELETE-points onto Qdrant via the
-// canonical *qdrant.IndexWriter from QdrantRuntime.Writer).
+// IndexDeleteHandler (real DELETE-points onto pgvector via the
+// canonical *pgvector.IndexWriter from VectorRuntime.Writer).
 // nil → IndexDeleteHandler is skipped; events then dead-letter
 // with "no handler for event type X" in the pool's pool log.
 //
@@ -154,13 +154,13 @@ type Deps struct {
 // redeclare here.
 
 // MEDIA-CUTOVER (September 2026): the retired `RegisterCoreHandlers` media/
-// Qdrant surface is DELETED. The media projection plane is the PostgreSQL
+// pgvector surface is DELETED. The media projection plane is the PostgreSQL
 // pgvector `PostgresIndexWorker` (asset.index.requested → embed →
-// media_embeddings → INDEXED); the SQLite outbox registers NO media/Qdrant
+// media_embeddings → INDEXED); the SQLite outbox registers NO media/pgvector
 // projection handler in ANY mode, and the composition root's
 // `assertSingleMediaIndexOwner` fails the boot if one is registered. A stray media event
 // in the SQLite outbox dead-letters loudly instead of projecting into
-// Qdrant. See docs/migrations/BASELINE_PLAN.md.
+// pgvector. See docs/migrations/BASELINE_PLAN.md.
 
 // RegisterOptionalHandlers wires handlers that tolerate missing
 // dependencies (best-effort). Missing deps are logged at Info and
@@ -171,7 +171,7 @@ type Deps struct {
 //   - WorkflowStepCompletedHandler / WorkflowStepFailedHandler (no
 //     deps; always wired).
 //   - AssetPublishedHandler (logger only; informational receipt; never
-//     writes Qdrant or media_assets.index_state).
+//     writes pgvector or media_assets.index_state).
 //   - MetadataExportHandler (pre-built by composition root via the
 //     metadataexport package's typed-port adapter; passed in via
 //     metadataExportHandler; nil → skipped).
@@ -219,7 +219,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	optional = append(optional, NewProviderSyncHandler(log, depsOrNil(deps).Jobs.Jobs))
 
 	// binding.index.requested (Phase 1.2+): when mediamemory is wired,
-	// reindex the parent concept in Qdrant after every binding
+	// reindex the parent concept in pgvector after every binding
 	// mutation.
 	if deps != nil &&
 		deps.Jobs.BindingIndexer != nil &&
@@ -248,7 +248,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	// ALL four narrow ports are wired, otherwise skipped at Info
 	// (matching the optional-handler best-effort contract — a
 	// partial Drive wiring in dev environments that don't have a
-	// Qdrant cluster should not abort boot).
+	// pgvector cluster should not abort boot).
 	if deps != nil &&
 		deps.DriveDelete.DrivePatchLifecycle != nil &&
 		deps.DriveDelete.DrivePatchLifecycleW != nil &&

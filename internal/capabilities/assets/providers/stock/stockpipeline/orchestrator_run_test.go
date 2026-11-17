@@ -11,7 +11,7 @@
 // the SOLE authority on when to populate these fields. A
 // placeholder string (e.g. Category:"unknown" or Event:"n/a")
 // would be a fake-availability anti-pattern — it would emit
-// meaningless data into the Qdrant BM25 channel and pollute
+// meaningless data into the pgvector BM25 channel and pollute
 // downstream search results.
 //
 // Test scope: the test name references "RunOrchestratorResilient"

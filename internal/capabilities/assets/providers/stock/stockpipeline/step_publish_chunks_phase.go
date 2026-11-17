@@ -161,7 +161,7 @@ func publishChunkPhase(
 			// chunks[0].description would be absent even though
 			// in.Clips[i].Description carried the canonical content
 			// (godlike/07 NO-FAKE-AVAILABILITY: a silent description
-			// drop in metadata.json hides Qdrant search-text input
+			// drop in metadata.json hides pgvector search-text input
 			// from downstream consumers).
 			if hasPlan && plans[i].Description != "" {
 				cs.Description = plans[i].Description
@@ -169,7 +169,7 @@ func publishChunkPhase(
 				cs.Description = in.Clips[i].Description
 			}
 			// Sync back plan.Description so perClipLeafName and any
-			// other downstream consumer (e.g. Qdrant semantic-payload
+			// other downstream consumer (e.g. pgvector semantic-payload
 			// enrichment) reads the SAME source-of-truth description
 			// the chunk is indexed by — same godlike/06 SSOT
 			// lockstep discipline as the Title sync-back above.
@@ -239,7 +239,7 @@ func publishChunkPhase(
 		cs.RemoteFileID = published.Location.FileID
 		cs.RemoteWebViewLink = published.Location.WebViewLink
 		// PR-004 (July 2026): capture the canonical Drive webview
-		// link as DrivePath. The Qdrant semantic-payload enrichment
+		// link as DrivePath. The pgvector semantic-payload enrichment
 		// wave expects the wire-shape key drive_path on chunk rows;
 		// the legacy metadata.json still uses drive_web_view_link
 		// (preserved on RemoteWebViewLink above). Same source-of-truth

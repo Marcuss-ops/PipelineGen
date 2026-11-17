@@ -269,7 +269,7 @@ func (p *ScenePlanner) Plan(
 	// continues below to the text/synthesizer path.
 	// Clip-primary sources share one structural contract: accepted clips
 	// become one canonical scene each. This also applies to source.search
-	// after Qdrant selection; the renderer must not receive one opaque prose
+	// after pgvector selection; the renderer must not receive one opaque prose
 	// scene when the resolver has accepted multiple clip bindings.
 	if len(plan.Segments) == 0 && requiresClipNativePlan(plan) && len(plan.ClipEvidence.AcceptedClipIDs) > 0 &&
 		len(draft.Scenes) != len(plan.ClipEvidence.AcceptedClipIDs) {

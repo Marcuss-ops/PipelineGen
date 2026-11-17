@@ -10,6 +10,20 @@ import (
 	capgeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 )
 
+func TestNominatimUsesGroundedStateToRejectNamesake(t *testing.T) {
+	hits := []searchHit{
+		{PlaceID: "1", Name: "Canterbury", Latitude: "43.337165", Longitude: "-71.565628", DisplayName: "Canterbury, New Hampshire, United States", Address: map[string]string{"state": "New Hampshire", "country": "United States", "country_code": "us"}},
+		{PlaceID: "2", Name: "Canterbury", Latitude: "39.768333", Longitude: "-86.158350", DisplayName: "Canterbury, Indianapolis, Indiana, United States", Address: map[string]string{"city": "Indianapolis", "state": "Indiana", "country": "United States", "country_code": "us"}},
+	}
+	got, _, _, ok := selectCandidate("Canterbury", capgeocoding.Context{CountryCode: "us", Region: "Indiana"}, hits)
+	if !ok || got.PlaceID.String() != "2" {
+		t.Fatalf("grounded Indiana context selected place %q (ok=%t), want the Indiana candidate 2", got.PlaceID, ok)
+	}
+	if _, _, _, ok := selectCandidate("Canterbury", capgeocoding.Context{CountryCode: "us", Region: "Indiana"}, hits[:1]); ok {
+		t.Fatal("accepted Canterbury, New Hampshire in an Indiana scene")
+	}
+}
+
 // TestNominatimCarriesCountryCodeAndUsesItAsContext pins the fix for the
 // observed "La Toscana" mis-resolution: without context the Venezuelan town
 // ranked first; a grounded Italian country code must select the Italian hit

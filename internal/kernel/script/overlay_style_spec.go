@@ -90,6 +90,24 @@ type OverlayCursorStyleSpec struct {
 	Blink  *bool    `json:"blink,omitempty"`
 }
 
+// MaxImageShadowBlurPX is the native separable drop-shadow ceiling Chronon
+// certifies for an image card (drop shadow radius <= 64). Ingress validation
+// and the projection share this one bound, so a declared blur is either
+// honored exactly or rejected with an actionable error — never silently
+// reduced to a value the payload did not ask for.
+const MaxImageShadowBlurPX = 64.0
+
+// ValidateImageStyle is the shared ingress gate for one image style block.
+// The run-level overlay_style.image and a per-pin overlay_images[].style are
+// the same published contract, so both are checked by the one owner of the
+// bounds rather than a second copy that could drift.
+func ValidateImageStyle(image *OverlayImageStyleSpec) error {
+	if image == nil {
+		return nil
+	}
+	return (&OverlayStyleSpec{Image: image}).Validate()
+}
+
 // OverlayImageStyleSpec controls image-card geometry and its visible frame.
 // Geometry uses output pixels; position is relative to the canvas center.
 // Bounded, when true, clips the card inside its authored box (fit controls
@@ -109,11 +127,49 @@ type OverlayImageStyleSpec struct {
 	Glow    *OverlayImageGlowSpec `json:"glow,omitempty"`
 	Bounded *bool                 `json:"bounded,omitempty"`
 	Fit     string                `json:"fit,omitempty"`
+	// Effects decorates every image surface with the same bounded native
+	// effect stack clip.render accepts, in declaration order. It is the
+	// runtime "give the photo this treatment" control: the renderer lowers
+	// each entry onto the photographic layer, never onto captions or plates.
+	// `[{"type":"none"}]` explicitly clears any preset treatment.
+	Effects []ImageEffectSpec `json:"effects,omitempty"`
+	// Grid draws a procedural screen-space grid for the image's lifetime. It
+	// is the image counterpart of output.render.grid and needs no backdrop:
+	// standalone images, composites and entity cards all honor it. Unset
+	// values keep the renderer's verified defaults.
+	Grid *OverlayImageGridSpec `json:"grid,omitempty"`
 	// Backdrop reuses a standalone image as a softly blurred full-canvas
 	// background and can add one light canvas grid over it. Composite images
 	// and groups keep their independent member frames, so the field is applied
 	// only to a single-asset image item.
 	Backdrop *OverlayImageBackdropSpec `json:"backdrop,omitempty"`
+}
+
+// ImageEffectSpec is the image-surface spelling of the shared native effect
+// contract. The struct is identical to the clip one on purpose: one closed
+// catalog owns the type vocabulary, the accepted fields and their bounds, so
+// an image stack and a clip stack can never drift apart.
+type ImageEffectSpec = VideoClipEffectSpec
+
+// MaxImageEffects is the renderer's per-image effect-stack ceiling. It pins
+// the same bound clip.render publishes so one payload cannot ask for a stack
+// the worker would refuse.
+const MaxImageEffects = 12
+
+// OverlayImageGridSpec is the image counterpart of output.render.grid. Every
+// field is optional: an omitted key keeps the renderer default (lines,
+// #7FA8C8, 96 px spacing, 0.16 opacity), so a payload only names what it
+// wants to change. Scope foreground bounds the grid to the scaled foreground
+// area instead of the whole canvas.
+type OverlayImageGridSpec struct {
+	Enabled     *bool    `json:"enabled,omitempty"`
+	Scope       string   `json:"scope,omitempty"`
+	Style       string   `json:"style,omitempty"`
+	Color       string   `json:"color,omitempty"`
+	SpacingPX   *float64 `json:"spacing_px,omitempty"`
+	LineWidthPX *float64 `json:"line_width_px,omitempty"`
+	DotRadiusPX *float64 `json:"dot_radius_px,omitempty"`
+	Opacity     *float64 `json:"opacity,omitempty"`
 }
 
 // OverlayImageBackdropSpec mirrors params.image_backdrop on the RenderingGen
@@ -127,8 +183,11 @@ type OverlayImageBackdropSpec struct {
 
 // OverlayImageBackdropGridSpec is the light full-canvas grid drawn over the
 // backdrop and the card. Line and dot geometries are mutually exclusive.
+// Scope mirrors the standalone image grid: full_canvas (default) covers the
+// whole frame, foreground bounds the grid to the scaled card area.
 type OverlayImageBackdropGridSpec struct {
 	Enabled     *bool    `json:"enabled,omitempty"`
+	Scope       string   `json:"scope,omitempty"`
 	Style       string   `json:"style,omitempty"`
 	Color       string   `json:"color,omitempty"`
 	SpacingPX   *float64 `json:"spacing_px,omitempty"`
@@ -250,8 +309,8 @@ func (s *OverlayStyleSpec) Validate() error {
 			if image.Shadow.Opacity != nil && (math.IsNaN(*image.Shadow.Opacity) || math.IsInf(*image.Shadow.Opacity, 0) || *image.Shadow.Opacity < 0 || *image.Shadow.Opacity > 1) {
 				return fmt.Errorf("overlay_style.image.shadow.opacity must be between 0 and 1")
 			}
-			if image.Shadow.Blur != nil && (math.IsNaN(*image.Shadow.Blur) || math.IsInf(*image.Shadow.Blur, 0) || *image.Shadow.Blur < 0 || *image.Shadow.Blur > 256) {
-				return fmt.Errorf("overlay_style.image.shadow.blur must be between 0 and 256 pixels")
+			if image.Shadow.Blur != nil && (math.IsNaN(*image.Shadow.Blur) || math.IsInf(*image.Shadow.Blur, 0) || *image.Shadow.Blur < 0 || *image.Shadow.Blur > MaxImageShadowBlurPX) {
+				return fmt.Errorf("overlay_style.image.shadow.blur must be between 0 and %g pixels", MaxImageShadowBlurPX)
 			}
 			if len(image.Shadow.Offset) > 2 {
 				return fmt.Errorf("overlay_style.image.shadow.offset accepts at most [x,y]")
@@ -276,9 +335,91 @@ func (s *OverlayStyleSpec) Validate() error {
 				return fmt.Errorf("overlay_style.image.glow.color must be #RRGGBB")
 			}
 		}
+		if err := validateImageEffects(image.Effects); err != nil {
+			return err
+		}
+		if err := validateImageGrid(image.Grid); err != nil {
+			return err
+		}
 		if err := validateImageBackdrop(image.Backdrop); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateImageEffects pins the structural half of the shared effect contract
+// at ingress: count ceiling, required type, finite numbers and the "none"
+// sentinel. Per-type parameter bounds are owned by the single cliprender
+// catalog and re-checked by the renderer, so they are never copied here.
+func validateImageEffects(effects []ImageEffectSpec) error {
+	if len(effects) > MaxImageEffects {
+		return fmt.Errorf("overlay_style.image.effects cannot exceed %d entries", MaxImageEffects)
+	}
+	for index, effect := range effects {
+		prefix := fmt.Sprintf("overlay_style.image.effects[%d]", index)
+		if strings.TrimSpace(effect.Type) == "" {
+			return fmt.Errorf("%s.type is required", prefix)
+		}
+		for name, value := range map[string]float64{
+			"amount": effect.Amount, "radius": effect.Radius, "softness": effect.Softness,
+			"angle": effect.Angle, "intensity": effect.Intensity, "amplitude": effect.Amplitude,
+			"wavelength": effect.Wavelength, "curvature": effect.Curvature, "scale": effect.Scale,
+			"threshold": effect.Threshold, "speed": effect.Speed,
+		} {
+			if math.IsNaN(value) || math.IsInf(value, 0) {
+				return fmt.Errorf("%s.%s must be a finite number", prefix, name)
+			}
+		}
+		if effect.Type != "none" {
+			continue
+		}
+		if len(effects) != 1 {
+			return fmt.Errorf("%s.type none cannot be combined with other effects", prefix)
+		}
+		if effect.Amount != 0 || effect.Radius != 0 || effect.Softness != 0 || effect.BlockSize != 0 || effect.Size != 0 ||
+			effect.Angle != 0 || effect.Intensity != 0 || effect.Amplitude != 0 || effect.Wavelength != 0 || effect.Seed != 0 ||
+			effect.Animated || effect.Curvature != 0 || effect.Scale != 0 || effect.Threshold != 0 || effect.Speed != 0 {
+			return fmt.Errorf("%s.type none accepts no parameters", prefix)
+		}
+	}
+	return nil
+}
+
+// validateImageGrid mirrors the renderer's published grid bounds. Missing keys
+// keep the verified defaults, so only supplied values are checked; the
+// line/dot geometries stay mutually exclusive exactly as image_backdrop.grid.
+func validateImageGrid(grid *OverlayImageGridSpec) error {
+	if grid == nil {
+		return nil
+	}
+	if grid.Scope != "" && grid.Scope != "full_canvas" && grid.Scope != "foreground" {
+		return fmt.Errorf("overlay_style.image.grid.scope must be full_canvas or foreground")
+	}
+	if grid.Style != "" && grid.Style != "lines" && grid.Style != "line" && grid.Style != "grid" && grid.Style != "dots" && grid.Style != "dot_grid" {
+		return fmt.Errorf("overlay_style.image.grid.style must be lines or dots")
+	}
+	if grid.Color != "" && !isStyleHexColor(grid.Color) {
+		return fmt.Errorf("overlay_style.image.grid.color must be #RRGGBB")
+	}
+	if grid.SpacingPX != nil && (math.IsNaN(*grid.SpacingPX) || math.IsInf(*grid.SpacingPX, 0) || *grid.SpacingPX < 4 || *grid.SpacingPX > 512) {
+		return fmt.Errorf("overlay_style.image.grid.spacing_px must be between 4 and 512 pixels")
+	}
+	if grid.LineWidthPX != nil && (math.IsNaN(*grid.LineWidthPX) || math.IsInf(*grid.LineWidthPX, 0) || *grid.LineWidthPX < 0.25 || *grid.LineWidthPX > 32) {
+		return fmt.Errorf("overlay_style.image.grid.line_width_px must be between 0.25 and 32 pixels")
+	}
+	if grid.DotRadiusPX != nil && (math.IsNaN(*grid.DotRadiusPX) || math.IsInf(*grid.DotRadiusPX, 0) || *grid.DotRadiusPX < 0.5 || *grid.DotRadiusPX > 64) {
+		return fmt.Errorf("overlay_style.image.grid.dot_radius_px must be between 0.5 and 64 pixels")
+	}
+	if grid.Opacity != nil && (math.IsNaN(*grid.Opacity) || math.IsInf(*grid.Opacity, 0) || *grid.Opacity < 0 || *grid.Opacity > 1) {
+		return fmt.Errorf("overlay_style.image.grid.opacity must be between 0 and 1")
+	}
+	isDots := grid.Style == "dots" || grid.Style == "dot_grid"
+	if isDots && grid.LineWidthPX != nil {
+		return fmt.Errorf("overlay_style.image.grid.line_width_px is valid only for line grids")
+	}
+	if !isDots && grid.DotRadiusPX != nil {
+		return fmt.Errorf("overlay_style.image.grid.dot_radius_px is valid only for dot grids")
 	}
 	return nil
 }
@@ -298,6 +439,9 @@ func validateImageBackdrop(backdrop *OverlayImageBackdropSpec) error {
 	grid := backdrop.Grid
 	if grid == nil {
 		return nil
+	}
+	if grid.Scope != "" && grid.Scope != "full_canvas" && grid.Scope != "foreground" {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.scope must be full_canvas or foreground")
 	}
 	if grid.Style != "" && grid.Style != "lines" && grid.Style != "line" && grid.Style != "grid" && grid.Style != "dots" && grid.Style != "dot_grid" {
 		return fmt.Errorf("overlay_style.image.backdrop.grid.style must be lines or dots")

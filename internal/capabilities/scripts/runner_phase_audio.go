@@ -45,6 +45,7 @@ type audioCompileState struct {
 // editing-timeline projection: both are separate measured boundaries owned by
 // runOverlayRenderPhase and runAudioFinalizePhase.
 func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult, out *audioCompileState) bool {
+	audioLanguage := primaryVoiceoverLanguage(req)
 	// ── Compile Audio (before document publication) ───────────────
 	payloadStep, startErr := r.startExecutionStep(ctx, exec, "AUDIO_COMPILE", "audio")
 	if startErr != nil {
@@ -163,10 +164,10 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 					return false
 				}
 				audioInput := audioCompileInput(result, req)
-				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, audioInput, req.SourceLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects, req.RandomSFXOnClipStart)
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, audioInput, audioLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects, req.RandomSFXOnClipStart)
 			} else {
 				audioInput := audioCompileInput(result, req)
-				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnly(audioInput, req.SourceLanguage, capabilityaudio.DefaultAudioProfile())
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnly(audioInput, audioLanguage, capabilityaudio.DefaultAudioProfile())
 			}
 			if err != nil {
 				cause := fmt.Errorf("compile canonical audio plan failed: %w", err)
@@ -183,7 +184,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			// probe window.
 			compileTimings = mergeAudioCompileTimings(compileTimings, clipPrepareMS)
 			r.recordAudioCompileOperations(ctx, compileTimings)
-			if result.ResolvedScenes, err = ResolveScenes(result.Scenes, req.SourceLanguage, mode, false); err != nil {
+			if result.ResolvedScenes, err = ResolveScenes(result.Scenes, audioLanguage, mode, false); err != nil {
 				cause := fmt.Errorf("resolve scenes for persistence failed: %w", err)
 				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
@@ -229,6 +230,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 }
 
 func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, audioStep ExecutionStep, result *GenerateResult, canonicalTimeline capabilityaudio.CanonicalTimeline, compiledAudioPlan capabilityaudio.CompiledAudioPlan, audioAssets capabilityaudio.ResolvedAudioAssets, compileTimings AudioCompileTimings) bool {
+	audioLanguage := primaryVoiceoverLanguage(req)
 	var finalAudio FinalAudioReference
 	var metrics AudioPipelineMetrics
 	resumeAudio := result.FinalAudio != nil && ValidateFinalAudioReference(*result.FinalAudio, compiledAudioPlan) == nil
@@ -321,7 +323,7 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 			if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
 				OperationID: artifactOperationID(exec.Attempt, OperationRender, "final_audio"),
 				Kind:        OperationRender,
-				Language:    req.SourceLanguage,
+				Language:    audioLanguage,
 				AssetID:     finalAudio.AssetID,
 				Status:      "COMPLETED",
 			}); err != nil {
@@ -347,7 +349,7 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 	// Cert-time invariant: the recorded VO source_duration_us must match
 	// the certified probe durations (modulo the scene-window clamp).
 	// Runs for both freshly rendered and checkpointed final audio.
-	if err := ValidateVoiceoverSourceDurations(*result, req.SourceLanguage, canonicalTimeline, compiledAudioPlan); err != nil {
+	if err := ValidateVoiceoverSourceDurations(*result, audioLanguage, canonicalTimeline, compiledAudioPlan); err != nil {
 		cause := fmt.Errorf("voiceover source-duration certification failed: %w", err)
 		r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
@@ -368,7 +370,7 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 	if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
 		OperationID: artifactOperationID(exec.Attempt, OperationValidation, "master"),
 		Kind:        OperationValidation,
-		Language:    req.SourceLanguage,
+		Language:    audioLanguage,
 		AssetID:     finalAudio.AssetID,
 		Status:      "COMPLETED",
 	}); err != nil {
@@ -480,9 +482,24 @@ func (r *Runner) compileTimelineOnlyAudio(ctx context.Context, runID string, req
 
 func audioCompileInput(result *GenerateResult, req GenerateRequest) GenerateResult {
 	if req.FinalJob {
-		return finalJobAudioInput(*result, req.SourceLanguage)
+		return finalJobAudioInput(*result, primaryVoiceoverLanguage(req))
 	}
 	return *result
+}
+
+// primaryVoiceoverLanguage chooses the selected voice track for the master.
+// An explicit target-only voiceover request produces a localized final audio
+// master; legacy requests keep the source-language master.
+func primaryVoiceoverLanguage(req GenerateRequest) Language {
+	for _, language := range req.VoiceoverLanguages {
+		if language == req.SourceLanguage {
+			return language
+		}
+	}
+	if len(req.VoiceoverLanguages) > 0 {
+		return req.VoiceoverLanguages[0]
+	}
+	return req.SourceLanguage
 }
 
 // validateAudioCompileSceneIdentity keeps the report-only scene↔clip gate out
@@ -538,9 +555,9 @@ func (r *Runner) ensureResolvedScenesForAudioCompile(ctx context.Context, runID 
 	}
 	scenes := result.Scenes
 	if req.FinalJob {
-		scenes = finalJobAudioInput(*result, req.SourceLanguage).Scenes
+		scenes = finalJobAudioInput(*result, primaryVoiceoverLanguage(req)).Scenes
 	}
-	resolved, err := ResolveScenes(scenes, req.SourceLanguage, mode, false)
+	resolved, err := ResolveScenes(scenes, primaryVoiceoverLanguage(req), mode, false)
 	if err != nil {
 		cause := fmt.Errorf("resolve scenes for persistence failed: %w", err)
 		r.failExecutionStepBestEffort(ctx, exec, step, cause)

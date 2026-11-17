@@ -2,7 +2,7 @@
 //
 // Every metric is auto-registered via promauto against the default
 // Prometheus registry. Split across domain files (metrics_jobs.go,
-// metrics_qdrant.go, metrics_scripts.go, metrics_media.go,
+// metrics_pgvector.go, metrics_scripts.go, metrics_media.go,
 // metrics_workers.go) with metrics_registry.go as the canonical
 // package-level documentation hub.
 //

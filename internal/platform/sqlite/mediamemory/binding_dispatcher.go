@@ -4,7 +4,7 @@
 // Every binding mutation (Create/Update/Approve/Reject/Delete) is
 // persisted in media_bindings and a binding.index.requested outbox
 // event is emitted in the same SQLite transaction. A background worker
-// consumes the event and updates the Qdrant projection asynchronously.
+// consumes the event and updates the pgvector projection asynchronously.
 package mediamemory
 
 import (

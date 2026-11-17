@@ -70,7 +70,7 @@ type VisualNERPort = NERBackend
 
 // LocalStockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver.
 // The stockintelligence.Service is the production implementation; it consults
-// the local Qdrant search + SQLite hydrate first and falls back to the provider
+// the local pgvector search + SQLite hydrate first and falls back to the provider
 // only when local_candidates < threshold or best_score < minimum_quality.
 type LocalStockResolverPort interface {
 	Resolve(ctx context.Context, req stockintelligence.ResolveRequest) (stockintelligence.ResolveResult, error)

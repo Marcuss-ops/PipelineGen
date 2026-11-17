@@ -75,10 +75,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose ai: %w", err)
 	}
 
-	qdrantDeps, err := buildQdrantDeps(ctx, cfg, dbs, repos, log)
-	if err != nil {
-		return nil, fmt.Errorf("compose qdrant deps: %w", err)
-	}
+	indexDeps := buildIndexDeps(cfg)
 
 	driveAdmin := driveBundle.Admin
 	var voiceoverDriver jobsoutbox.VoiceoverCleanupDriver
@@ -91,12 +88,12 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose staging: %w", err)
 	}
 
-	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher, driveBundle.Lifecycle, mediaPG)
+	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, indexDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher, driveBundle.Lifecycle, mediaPG)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
 
-	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.Publisher, outbox, qdrantDeps, mediaPG, mediaConfig)
+	process, err := BuildProcessBundle(ctx, cfg, dbs, log, repos, driveBundle.Publisher, outbox, indexDeps, mediaPG, mediaConfig)
 	if err != nil {
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
@@ -104,7 +101,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	// COMPLETE MEDIA CUTOVER: the reindex requester holder still has call
 	// sites such as reindex jobs and provider workflows. In PostgreSQL media
 	// mode those imperative calls enqueue the canonical PG outbox event; no
-	// Qdrant write and no SQLite media read happens on this path.
+	// pgvector write and no SQLite media read happens on this path.
 	if mediaPG != nil && process.ClipIndexerService != nil {
 		process.ClipIndexerService.SetRequester(pgmedia.NewReindexRequester(mediaPG))
 	}

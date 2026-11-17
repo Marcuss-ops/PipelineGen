@@ -85,7 +85,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
 // canonical outbox_events schema applied. The :memory: database
 // is per-connection; SetMaxOpenConns(1) ensures all pool
 // connections see the same database instance (mirrors the
-// canonical pattern in qdrant_flow_e2e_test.go::qdrantFlowDB).
+// canonical pattern in pgvector_flow_e2e_test.go::pgvectorFlowDB).
 func outboxEmitterDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")

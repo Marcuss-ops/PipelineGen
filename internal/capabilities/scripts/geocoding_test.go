@@ -171,6 +171,67 @@ func TestGeocodePlaceAnnotationsAdoptsCountryCodeFromResolvedCity(t *testing.T) 
 	}
 }
 
+func TestGeocodePlaceAnnotationsAdoptsAdministrativeRegionFromCity(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		switch req.Query {
+		case "Indianapolis":
+			return capabilitygeocoding.Result{Latitude: 39.7683, Longitude: -86.1584, Scope: "city", Country: "United States", CountryCode: "us", AdminRegion: "Indiana"}, nil
+		case "Canterbury":
+			if req.Context.Region != "Indiana" {
+				return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+			}
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		default:
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		}
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
+		Version: 1, Language: "en", Status: "completed",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{CanonicalName: "Indianapolis", Type: "GPE"},
+			{CanonicalName: "Canterbury", Type: "GPE"},
+		},
+	}}
+	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "en"); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) < 2 {
+		t.Fatalf("Canterbury lookup did not inherit grounded state context: %+v", geocoder.requests)
+	}
+	for _, req := range geocoder.requests[1:] {
+		if req.Query != "Canterbury" || req.Context.Region != "Indiana" {
+			t.Fatalf("Canterbury lookup did not inherit grounded state context: %+v", geocoder.requests)
+		}
+	}
+}
+
+func TestMapGeocodingRejectsPersonSurnameGroundedInAnotherScene(t *testing.T) {
+	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{Latitude: 38.8951, Longitude: -77.0364, Scope: "city", Country: "United States", CountryCode: "us"}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{
+		0: {PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: "Desiree Washington", Type: "PERSON"}}},
+		1: {PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: "Washington", Type: "GPE"}}},
+	}
+	err := runner.geocodePlaceAnnotations(context.Background(), annotations, "en", geocodeOptions{
+		MapsOnly:   true,
+		SceneTexts: map[int]string{1: "Washington files a complaint in Indianapolis."},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range geocoder.requests {
+		if req.Query == "Washington" {
+			t.Fatalf("a person's surname was geocoded as a map candidate: requests=%+v", geocoder.requests)
+		}
+	}
+	if annotations[1].PrimaryEntities[0].Geo != nil {
+		t.Fatalf("a person's surname became a map candidate across scenes: requests=%+v entity=%+v", geocoder.requests, annotations[1].PrimaryEntities[0])
+	}
+}
+
 func TestGeocodePlaceAnnotationsRetriesCityAfterCountryContextAppears(t *testing.T) {
 	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
 		switch req.Query {

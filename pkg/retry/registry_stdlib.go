@@ -15,7 +15,7 @@
 // typed-transient boundary is the canonical typed-overlay path.
 //
 // Why stdlib classifiers are CENTRALIZED here (vs DISTRIBUTED in the
-// adapter packages like internal/.../qdrant, internal/.../sqlite):
+// adapter packages like internal/.../pgvector, internal/.../sqlite):
 // the stdlib errors live in pkg/retry's import graph (stdlib is
 // importable from anywhere), so the classifier can be colocated
 // with the package that consumes them. Go's visibility rule

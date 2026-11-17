@@ -532,7 +532,7 @@ func TestCompleteAsset_DriveFileStillAlive_BlocksCompletion(t *testing.T) {
 }
 
 // TestCompleteAsset_HappyPath_RunsAtomicCleanup: the canonical full
-// chain reaches INDEX_DELETED (a non-terminal post-Qdrant state),
+// chain reaches INDEX_DELETED (a non-terminal post-pgvector state),
 // DriveGoneChecker returns isGone=true, and the SQLite TX runs
 // exactly once. The asset is purged from media_assets + the
 // outbox_events are cleared; the row's lifecycle_state stamp is

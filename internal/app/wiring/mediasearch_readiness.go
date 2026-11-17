@@ -16,7 +16,6 @@ import (
 	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
 	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -28,7 +27,7 @@ type semanticBackendInspector interface {
 }
 
 // semanticReadinessChecker probes only canonical media-search dependencies.
-// POSTGRES-MEDIA-CUTOVER removed Qdrant reachability, legacy media
+// POSTGRES-MEDIA-CUTOVER removed pgvector reachability, legacy media
 // hydration and Ollama presence from this contract. Embedder/backend
 // readiness is derived
 // from the semantic backend that actually passed the composition gate; that
@@ -115,31 +114,6 @@ func sanitizeReadinessMessage(msg string) string {
 func WireMediasearchReadiness(root *ComposeRoot, aggregator mediasearchapi.AggregatorSearcher) mediasearchapi.SemanticReadyChecker {
 	return newSemanticReadinessChecker(root, aggregator)
 }
-
-// MediaMemoryQdrantWiring is the bag of dependencies.
-type MediaMemoryQdrantWiring struct {
-	Transport    *transport.Client
-	Embedder     search.EmbeddingChannelRegistry
-	ConceptsRepo mediamemory.ConceptRepository
-	BindingsRepo mediamemory.BindingRepository
-	Log          *zap.Logger
-}
-
-// MediaMemoryQdrantStack is the wired surface passed into
-// mediamemory.NewVisualResolver.
-type MediaMemoryQdrantStack struct {
-	Indexer mediamemory.EmbeddingIndexer
-	Lookup  mediamemory.SemanticLookup
-}
-
-// EnsureConceptCollection creates the pipelinegen_media_concepts
-// collection if absent. godlike/07 NO-FAKE-AVAILABILITY: a nil
-// transport returns wrapped ErrSemanticNotConfigured so a
-// downstream resolver can branch via errors.Is.
-
-// NewMediaMemoryQdrantStack wires the Phase 2.1 adapters in
-// one place so boot-time and test wiring share the exact
-// dependency graph.
 
 // WireMediaMemoryResolver builds the canonical mediamemory.Resolver.
 // It wires the MediaMemory cascade as a brain.MediaMemoryResolutionPort,

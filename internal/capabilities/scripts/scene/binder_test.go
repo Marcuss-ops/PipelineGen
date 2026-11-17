@@ -129,9 +129,9 @@ func TestSceneAssetBinder_BindStock_EmptyRequests(t *testing.T) {
 	assert.Empty(t, res.Bindings)
 }
 
-// TestSceneAssetBinder_BindStock_QdrantHit covers the happy path
+// TestSceneAssetBinder_BindStock_pgvectorHit covers the happy path
 // where a stock candidate is bound.
-func TestSceneAssetBinder_BindStock_QdrantHit(t *testing.T) {
+func TestSceneAssetBinder_BindStock_pgvectorHit(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
 	reqs := []scene.StockBindingRequest{
@@ -140,9 +140,9 @@ func TestSceneAssetBinder_BindStock_QdrantHit(t *testing.T) {
 			Candidates: []scene.StockCandidate{
 				{
 					AssetID:   "asset-q-1",
-					Name:      "Qdrant 1",
+					Name:      "pgvector 1",
 					Source:    "stock",
-					DriveLink: "https://drive.google.com/qdrant-asset",
+					DriveLink: "https://drive.google.com/pgvector-asset",
 					Score:     0.91,
 				},
 			},
@@ -154,12 +154,12 @@ func TestSceneAssetBinder_BindStock_QdrantHit(t *testing.T) {
 	require.Len(t, res.Bindings, 1)
 	stock := res.Bindings["scene-0"]
 	assert.Equal(t, "asset-q-1", stock.AssetID)
-	assert.Equal(t, "https://drive.google.com/qdrant-asset", stock.DriveLink)
+	assert.Equal(t, "https://drive.google.com/pgvector-asset", stock.DriveLink)
 	assert.InDelta(t, 0.91, stock.Score, 0.001)
 	assert.False(t, stock.Fallback)
 }
 
-// TestSceneAssetBinder_BindStock_FallbackToClip covers the Qdrant
+// TestSceneAssetBinder_BindStock_FallbackToClip covers the pgvector
 // empty + clip drive present branch.
 func TestSceneAssetBinder_BindStock_FallbackToClip(t *testing.T) {
 	t.Parallel()

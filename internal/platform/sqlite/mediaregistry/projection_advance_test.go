@@ -54,7 +54,7 @@ func newAdvanceDB(t *testing.T) (*sql.DB, *Ledger) {
 // insertIndexableAsset seeds a row that satisfies the canonical
 // SearchIndexEligibilitySQL boundary (video/clip taxonomy + namespace +
 // source_type + populated embedding), so its registry event advances the
-// qdrant projection sequence.
+// pgvector projection sequence.
 func insertIndexableAsset(t *testing.T, db *sql.DB, id string) {
 	t.Helper()
 	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, asset_kind, namespace, source_type, embedding_json) VALUES (?, 'video', 'clip', 'stock', 'youtube', '[1.0]')`, id); err != nil {
@@ -79,7 +79,7 @@ func TestAdvanceActiveProjectionSequence(t *testing.T) {
 	db, ledger := newAdvanceDB(t)
 	ctx := context.Background()
 
-	// Two indexable assets: their registry events are qdrant-eligible.
+	// Two indexable assets: their registry events are pgvector-eligible.
 	for _, id := range []string{"asset-1", "asset-2"} {
 		insertIndexableAsset(t, db, id)
 	}
@@ -173,8 +173,8 @@ func TestAdvanceActiveProjectionSequenceExcludesNonIndexable(t *testing.T) {
 	db, ledger := newAdvanceDB(t)
 	ctx := context.Background()
 
-	// A folder asset and a deleted asset must not count toward the qdrant
-	// sequence (same eligibility boundary as LatestQdrantEventSequence).
+	// A folder asset and a deleted asset must not count toward the pgvector
+	// sequence (same eligibility boundary as LatestVectorEventSequence).
 	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, embedding_json) VALUES ('folder-1', 'folder', '[1.0]')`); err != nil {
 		t.Fatal(err)
 	}
@@ -204,17 +204,17 @@ func TestAdvanceActiveProjectionSequenceExcludesNonIndexable(t *testing.T) {
 // canonical eligibility boundary (SearchIndexEligibilitySQL): events for
 // REGISTERED-but-not-SEARCHABLE assets (audio) and rows with incomplete
 // taxonomy (legacy media_type=video without asset_kind/namespace/source_type)
-// must NOT advance the qdrant projection sequence.
+// must NOT advance the pgvector projection sequence.
 func TestAdvanceActiveProjectionSequenceExcludesIneligibleTaxonomy(t *testing.T) {
 	db, ledger := newAdvanceDB(t)
 	ctx := context.Background()
 
-	// Audio assets are REGISTERED but not SEARCHABLE (no Qdrant point).
+	// Audio assets are REGISTERED but not SEARCHABLE (no external vector store point).
 	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, asset_kind, namespace, source_type, embedding_json) VALUES ('audio-1', 'audio', 'sfx', 'audio', 'artlist', '[1.0]')`); err != nil {
 		t.Fatal(err)
 	}
 	// A legacy video row with empty asset_kind/namespace/source_type is not
-	// Qdrant-eligible even though embedding_json is populated.
+	// vector-eligible even though embedding_json is populated.
 	if _, err := db.Exec(`INSERT INTO media_assets (id, media_type, embedding_json) VALUES ('legacy-1', 'video', '[1.0]')`); err != nil {
 		t.Fatal(err)
 	}

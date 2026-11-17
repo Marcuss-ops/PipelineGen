@@ -9,11 +9,11 @@ import (
 )
 
 // RerankerConfig holds settings for the CrossEncoder reranking service.
-// The reranker is a post-Qdrant precision layer that improves semantic
+// The reranker is a post-pgvector precision layer that improves semantic
 //
-// Enabled defaults to true (canonical recipe: Qdrant top_k window → BGE
+// Enabled defaults to true (canonical recipe: pgvector top_k window → BGE
 // re-score → top 5 results). Operators disable it explicitly with
-// VELOX_RERANKER_ENABLED=false; while disabled the Qdrant ranking is
+// VELOX_RERANKER_ENABLED=false; while disabled the pgvector ranking is
 // returned untouched and no sidecar is required.
 type RerankerConfig struct {
 	Enabled   bool    `yaml:"enabled" env:"VELOX_RERANKER_ENABLED" default:"true"`

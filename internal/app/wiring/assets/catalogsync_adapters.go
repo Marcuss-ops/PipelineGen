@@ -99,7 +99,7 @@ var errNoMediaPlaneIndexState = errors.New("catalogsync index state: the media p
 // be answered by *assets.ClipsRepository.GetIndexState, i.e. by reading
 // media_assets.index_state off the operational SQLite mirror. The media plane's
 // only engine decision point (mediasub.RequireMediaPostgres) documents that
-// there is NO SQLite/Qdrant fallback and that the operational mirror holds no
+// there is NO SQLite/pgvector fallback and that the operational mirror holds no
 // committed media rows, so that read could only ever report the migration
 // DEFAULT sentinel for a row PostgreSQL owns: an answer it cannot know, from a
 // plane that is not deployed. The mirror read is deleted and this adapter

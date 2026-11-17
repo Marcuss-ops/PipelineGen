@@ -33,7 +33,7 @@ func TestClassifyByHeuristic(t *testing.T) {
 		{"something_audit", "audit"},
 		{"job_events", "history"},
 		{"some_history", "history"},
-		{"qdrantprojection_checkpoints", "history"},
+		{"pgvectorprojection_checkpoints", "history"},
 		{"request_log", "audit"},
 		{"unknown_table", "unclassified"},
 	}

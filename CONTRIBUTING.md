@@ -84,8 +84,8 @@ The `--fixup` commit lands as a NORMAL commit on main. It is structurally
 benign until the user opts in to bundle (see next section). The default
 post-state — two sibling commits on `origin/main` — is AGENTS.md-compliant
 and matches the precedent from the post-push fixes of 2026-07
-(`fix(qdrant): correct parent boundaries post-Step-3 trim orphan bodies`,
-`fix(qdrant): repair Step-4 post-rebase resolution parent ...`, etc.).
+(`fix(vector-index): correct parent boundaries post-Step-3 trim orphan bodies`,
+`fix(vector-index): repair Step-4 post-rebase resolution parent ...`, etc.).
 
 ### Opt-in: bundle via autosquash + `--force-with-lease`
 
@@ -173,7 +173,7 @@ test-split boundaries): `grep -c <old-symbol> architecture/deprecations/records/
 MUST return ≥1 hit so the rename is grep-discoverable. The canonical
 retro-fix pattern appends a `← MIGRATED (PR-STEP-NN, commit <SHA>) →`
 annotation block in the relevant YAML field. The records are sharded by domain
-into `architecture/deprecations/records/{assets,misc,qdrant}.yaml`; the former
+into `architecture/deprecations/records/{assets,misc}.yaml`; the former
 `voiceover.yaml` bucket was folded into `misc.yaml` and the historical
 voiceover/jobs aggregator example it carried is no longer on disk. Find the
 current canonical annotation block with

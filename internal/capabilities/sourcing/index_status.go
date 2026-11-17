@@ -45,18 +45,18 @@ type SourcingIndexStatus string
 // Canonical SourcingIndexStatus constants.
 const (
 	// SourcingIndexStatusPending — indexing has been enqueued but the
-	// indexer has not yet committed the row (e.g. async Qdrant projection
+	// indexer has not yet committed the row (e.g. async pgvector projection
 	// still in flight).
 	SourcingIndexStatusPending SourcingIndexStatus = "pending"
 
 	// SourcingIndexStatusSkipped — the asset is retained but indexing
 	// was bypassed (e.g. enrichment port not configured, asset-tree
 	// downgraded to warn-only, or asset type is non-indexable). The
-	// chunk is on Drive and queryable via non-Qdrant paths.
+	// chunk is on Drive and queryable via non-pgvector paths.
 	SourcingIndexStatusSkipped SourcingIndexStatus = "skipped"
 
 	// SourcingIndexStatusCompleted — terminal successful indexing state
-	// (Qdrant upsert + AssetTree upsert + outbox event all succeeded).
+	// (pgvector upsert + AssetTree upsert + outbox event all succeeded).
 	// Row is queryable end-to-end.
 	SourcingIndexStatusCompleted SourcingIndexStatus = "completed"
 

@@ -170,7 +170,7 @@ func TestVerifyChunks_RemoteFileIDMissing(t *testing.T) {
 
 // TestVerifyChunks_SHA256Missing asserts the gate surfaces
 // ErrStockChunkHashMissing per P0 2.4 — the consumer of the
-// Qdrant index event rejects empty source_version terminal,
+// pgvector index event rejects empty source_version terminal,
 // so we fail-closed at the orchestrator (don't dispatch an
 // event the consumer rejects).
 func TestVerifyChunks_SHA256Missing(t *testing.T) {
@@ -365,7 +365,7 @@ func TestBuildFinalizationRequest_Idempotent(t *testing.T) {
 // canonical regression guard for the semantic-enrichment bridge:
 // without it, ChunkState's Title/Round/Tags/Category/SourceProvider/
 // DrivePath/etc. are silently lost at the PublishedArtifact boundary
-// and the Qdrant PayloadMapper has no rich data.
+// and the pgvector PayloadMapper has no rich data.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the 22-field list is EXHAUSTIVE —
 // if a future PR adds a new field to the chunkMeta map, this test

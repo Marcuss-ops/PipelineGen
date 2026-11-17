@@ -15,7 +15,7 @@ import (
 
 // ── Fakes ────────────────────────────────────────────────────────────
 //
-// mockQdrantDeleter and mockAssetDeleter satisfy the handler's local
+// mockVectorPointDeleter and mockAssetDeleter satisfy the handler's local
 // port interfaces (Pattern 0 — declared inside index_delete.go, not in
 // domain). Each fake records invocations so tests can assert both
 // SUCCESSFUL calls AND non-calls (idempotent pre-flight).
@@ -24,12 +24,12 @@ import (
 // lifecycle_state flips distinctly from index_state flips (the
 // intermediate INDEX_DELETED hop is a NEW field on the same struct).
 
-type mockQdrantDeleter struct {
+type mockVectorPointDeleter struct {
 	deleteCalls [][]string
 	err         error
 }
 
-func (m *mockQdrantDeleter) DeleteAssetPoints(ctx context.Context, ids []string) error {
+func (m *mockVectorPointDeleter) DeleteAssetPoints(ctx context.Context, ids []string) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -38,18 +38,18 @@ func (m *mockQdrantDeleter) DeleteAssetPoints(ctx context.Context, ids []string)
 	return nil
 }
 
-func (m *mockQdrantDeleter) callCount() int { return len(m.deleteCalls) }
+func (m *mockVectorPointDeleter) callCount() int { return len(m.deleteCalls) }
 
-// statefulQdrantStore models a vector store's point set so the
+// statefulVectorStore models a vector store's point set so the
 // "no orphan points" post-condition can be asserted DIRECTLY — the
 // recording mock only proves DeleteAssetPoints was invoked, not that the
 // point is actually gone. It also records unrelated points so a test can
 // prove deletion is scoped to the target asset only.
-type statefulQdrantStore struct {
+type statefulVectorStore struct {
 	points map[string]struct{}
 }
 
-func (s *statefulQdrantStore) DeleteAssetPoints(ctx context.Context, ids []string) error {
+func (s *statefulVectorStore) DeleteAssetPoints(ctx context.Context, ids []string) error {
 	for _, id := range ids {
 		delete(s.points, id)
 	}
@@ -168,7 +168,7 @@ func deleteEvt(t *testing.T, payload string) outboxevents.Event {
 func TestIndexDeleteHandler_EventType(t *testing.T) {
 	h := NewIndexDeleteHandler(
 		zap.NewNop(),
-		&mockQdrantDeleter{},
+		&mockVectorPointDeleter{},
 		&mockAssetDeleter{},
 	)
 	if got := h.EventType(); got != outboxevents.EventAssetIndexDeleteRequested {
@@ -181,7 +181,7 @@ func TestIndexDeleteHandler_EventType(t *testing.T) {
 func TestIndexDeleteHandler_PayloadParseIsTerminal(t *testing.T) {
 	h := NewIndexDeleteHandler(
 		zap.NewNop(),
-		&mockQdrantDeleter{},
+		&mockVectorPointDeleter{},
 		&mockAssetDeleter{},
 	)
 	err := h.Handle(context.Background(), deleteEvt(t, `{ not json`))
@@ -199,7 +199,7 @@ func TestIndexDeleteHandler_PayloadParseIsTerminal(t *testing.T) {
 func TestIndexDeleteHandler_SchemaVersionMismatchIsTerminal(t *testing.T) {
 	h := NewIndexDeleteHandler(
 		zap.NewNop(),
-		&mockQdrantDeleter{},
+		&mockVectorPointDeleter{},
 		&mockAssetDeleter{},
 	)
 	payload := `{"schema_version":"asset.index.delete_requested.v0","event_id":"e","asset_id":"a","idempotency_key":"i"}`
@@ -220,7 +220,7 @@ func TestIndexDeleteHandler_SchemaVersionMismatchIsTerminal(t *testing.T) {
 func TestIndexDeleteHandler_EmptyAssetIDIsTerminal(t *testing.T) {
 	h := NewIndexDeleteHandler(
 		zap.NewNop(),
-		&mockQdrantDeleter{},
+		&mockVectorPointDeleter{},
 		&mockAssetDeleter{},
 	)
 	payload := `{"schema_version":"asset.index.delete_requested.v1","event_id":"e","asset_id":"","idempotency_key":"i"}`
@@ -236,21 +236,21 @@ func TestIndexDeleteHandler_EmptyAssetIDIsTerminal(t *testing.T) {
 // TestIndexDeleteHandler_MissingAssetIdempotentSuccess: the asset
 // row is already gone (deleted elsewhere; or never existed). The
 // handler MUST return nil so the pool MarksCompleted, and MUST NOT
-// call either deleter — Qdrant call would be cheap but pointless
+// call either deleter — pgvector call would be cheap but pointless
 // (and SoftDelete would no-op the same way). The terminal
 // lifecycle_state=DELETED hop must also NOT fire (no asset row to
 // write to).
 func TestIndexDeleteHandler_MissingAssetIdempotentSuccess(t *testing.T) {
 	assets := &mockAssetDeleter{getResult: nil}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-ghost", "idem-ghost")))
 	if err != nil {
 		t.Fatalf("missing asset should be idempotent success; got: %v", err)
 	}
-	if qdrant.callCount() != 0 {
-		t.Errorf("Qdrant.DeletePoints must NOT be called when asset row is absent (got %d)", qdrant.callCount())
+	if deleter.callCount() != 0 {
+		t.Errorf("vector deleter DeletePoints must NOT be called when asset row is absent (got %d)", deleter.callCount())
 	}
 	if assets.softDeleteCount() != 0 {
 		t.Errorf("SoftDelete must NOT be called when asset row is absent (got %d)", assets.softDeleteCount())
@@ -272,15 +272,15 @@ func TestIndexDeleteHandler_AlreadyDeletedCanonicalSuccess(t *testing.T) {
 			LifecycleState: asset.StateDeleted, // "DELETED"
 		},
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-already-gone", "idem-x")))
 	if err != nil {
 		t.Fatalf("canonical 'DELETED' asset should be idempotent success; got: %v", err)
 	}
-	if qdrant.callCount() != 0 {
-		t.Errorf("already-deleted asset must NOT trigger Qdrant call (got %d)", qdrant.callCount())
+	if deleter.callCount() != 0 {
+		t.Errorf("already-deleted asset must NOT trigger pgvector call (got %d)", deleter.callCount())
 	}
 	if assets.softDeleteCount() != 0 {
 		t.Errorf("already-deleted asset must NOT trigger SoftDelete (got %d)", assets.softDeleteCount())
@@ -300,15 +300,15 @@ func TestIndexDeleteHandler_AlreadyDeletedLegacySuccess(t *testing.T) {
 			LifecycleState: asset.LifecycleState("DELETED"),
 		},
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-legacy-gone", "idem-y")))
 	if err != nil {
 		t.Fatalf("lowercase 'deleted' asset should also be idempotent success; got: %v", err)
 	}
-	if qdrant.callCount() != 0 {
-		t.Errorf("lowercase deleted asset must NOT trigger Qdrant call (got %d)", qdrant.callCount())
+	if deleter.callCount() != 0 {
+		t.Errorf("lowercase deleted asset must NOT trigger pgvector call (got %d)", deleter.callCount())
 	}
 }
 
@@ -316,10 +316,10 @@ func TestIndexDeleteHandler_AlreadyDeletedLegacySuccess(t *testing.T) {
 
 // TestIndexDeleteHandler_AlreadyIndexDeletedIdempotent (NEW — audit
 // P0 #1 commit 2/3): lifecycle_state is INDEX_DELETED (the new
-// post-Qdrant+SoftDelete intermediate confirmation hop). The
+// post-pgvector+SoftDelete intermediate confirmation hop). The
 // handler MUST treat as success — re-running the index-delete
 // against a row already past the intermediate hop is a free
-// no-op rather than a redundant Qdrant call. Pairs with
+// no-op rather than a redundant pgvector call. Pairs with
 // user-spec test #1: "idempotenza (re-running dopo successo non
 // è errore)".
 func TestIndexDeleteHandler_AlreadyIndexDeletedIdempotent(t *testing.T) {
@@ -329,15 +329,15 @@ func TestIndexDeleteHandler_AlreadyIndexDeletedIdempotent(t *testing.T) {
 			LifecycleState: asset.StateIndexDeleted, // "INDEX_DELETED"
 		},
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-index-deleted", "idem-index-deleted")))
 	if err != nil {
 		t.Fatalf("INDEX_DELETED asset should be idempotent success on re-run; got: %v", err)
 	}
-	if qdrant.callCount() != 0 {
-		t.Errorf("INDEX_DELETED asset must NOT trigger Qdrant call on re-run (got %d)", qdrant.callCount())
+	if deleter.callCount() != 0 {
+		t.Errorf("INDEX_DELETED asset must NOT trigger pgvector call on re-run (got %d)", deleter.callCount())
 	}
 	if assets.softDeleteCount() != 0 {
 		t.Errorf("INDEX_DELETED asset must NOT trigger SoftDelete on re-run (got %d)", assets.softDeleteCount())
@@ -366,8 +366,8 @@ func TestIndexDeleteHandler_DriveBlockGuardFires(t *testing.T) {
 			LifecycleState: asset.StateDriveDeletePending,
 		},
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-drive-in-flight", "idem-blocked")))
 	if err == nil {
@@ -390,12 +390,12 @@ func TestIndexDeleteHandler_DriveBlockGuardFires(t *testing.T) {
 		t.Errorf("error message lost the retry guidance (re-enqueue only after DriveDeleteHandler stamps DRIVE_DELETED); got: %q", err.Error())
 	}
 	// The Drive-block guard fires BEFORE any deleter is invoked:
-	// no Qdrant call + no SoftDelete + no state flips. This is the
+	// no external vector store call + no SoftDelete + no state flips. This is the
 	// audit-pinning surface for "Drive file ancora vivo blocks
 	// INDEX_DELETED" — re-running against the same stuck state
 	// must NOT make any side-effects.
-	if qdrant.callCount() != 0 {
-		t.Errorf("Drive-block guard must reject BEFORE Qdrant call (got %d calls)", qdrant.callCount())
+	if deleter.callCount() != 0 {
+		t.Errorf("Drive-block guard must reject BEFORE pgvector call (got %d calls)", deleter.callCount())
 	}
 	if assets.softDeleteCount() != 0 {
 		t.Errorf("Drive-block guard must reject BEFORE SoftDelete (got %d calls)", assets.softDeleteCount())
@@ -407,7 +407,7 @@ func TestIndexDeleteHandler_DriveBlockGuardFires(t *testing.T) {
 
 // TestIndexDeleteHandler_HappyPathTransitionsToDeleted: an asset at
 // DRIVE_DELETED (the new canonical chain entry). Verify BOTH the
-// Qdrant call AND the SoftDelete call happen in this exact order,
+// pgvector call AND the SoftDelete call happen in this exact order,
 // with the right asset_id. The terminal hops must fire in order:
 // lifecycle_state = INDEX_DELETED FIRST, then lifecycle_state =
 // DELETED — pinning the full state-machine close for the
@@ -424,21 +424,21 @@ func TestIndexDeleteHandler_HappyPathTransitionsToDeleted(t *testing.T) {
 			LifecycleState: asset.StateDriveDeleted, // commit 2/3: new chain entry
 		},
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-to-delete", "idem-z")))
 	if err != nil {
 		t.Fatalf("happy path should succeed; got: %v", err)
 	}
-	if qdrant.callCount() != 1 {
-		t.Fatalf("Qdrant.DeletePoints must be called exactly once on success; got %d", qdrant.callCount())
+	if deleter.callCount() != 1 {
+		t.Fatalf("vector deleter DeletePoints must be called exactly once on success; got %d", deleter.callCount())
 	}
 	if n := assets.softDeleteCount(); n != 1 {
 		t.Fatalf("SoftDelete must be called once on success; got %d", n)
 	}
-	if qdrant.deleteCalls[0][0] != "clip-to-delete" {
-		t.Errorf("Qdrant called with wrong id: %q", qdrant.deleteCalls[0][0])
+	if deleter.deleteCalls[0][0] != "clip-to-delete" {
+		t.Errorf("pgvector called with wrong id: %q", deleter.deleteCalls[0][0])
 	}
 	if assets.softDeleteIDs[0] != "clip-to-delete" {
 		t.Errorf("SoftDelete called with wrong id: %q", assets.softDeleteIDs[0])
@@ -470,17 +470,17 @@ func TestIndexDeleteHandler_HappyPathTransitionsToDeleted(t *testing.T) {
 	}
 }
 
-// TestIndexDeleteHandler_NoOrphanQdrantPoints pins the "final verification
+// TestIndexDeleteHandler_NoOrphanVectorPoints pins the "final verification
 // without orphans" post-condition: after a successful index deletion, the
-// target asset's Qdrant point is actually removed — zero orphan points
+// target asset's vector point is actually removed — zero orphan points
 // remain — and unrelated points are untouched.
 //
 // TestIndexDeleteHandler_HappyPathTransitionsToDeleted only proves the
 // deleter was INVOKED with the right id; this stateful store proves the
 // REMOVAL effect (the post-condition the spec's
-// TestRecursiveDriveDelete_NoOrphanQdrantPoints asks for).
-func TestIndexDeleteHandler_NoOrphanQdrantPoints(t *testing.T) {
-	store := &statefulQdrantStore{
+// TestRecursiveDriveDelete_NoOrphanVectorPoints asks for).
+func TestIndexDeleteHandler_NoOrphanVectorPoints(t *testing.T) {
+	store := &statefulVectorStore{
 		points: map[string]struct{}{
 			"clip-orphan-free": {},
 			"clip-unrelated":   {},
@@ -499,10 +499,10 @@ func TestIndexDeleteHandler_NoOrphanQdrantPoints(t *testing.T) {
 	}
 
 	if _, ok := store.points["clip-orphan-free"]; ok {
-		t.Errorf("deleted asset's Qdrant point still present — orphan point remains")
+		t.Errorf("deleted asset's vector point still present — orphan point remains")
 	}
 	if _, ok := store.points["clip-unrelated"]; !ok {
-		t.Errorf("unrelated asset's Qdrant point was wrongly removed")
+		t.Errorf("unrelated asset's vector point was wrongly removed")
 	}
 	if len(store.points) != 1 {
 		t.Errorf("want exactly 1 remaining point (the unrelated asset); got %d", len(store.points))
@@ -521,8 +521,8 @@ func TestIndexDeleteHandler_StampsIndexDeletedBeforeDeleted(t *testing.T) {
 			LifecycleState: asset.StateDriveDeleted,
 		},
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	if err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-hop-order", "idem-hop-order"))); err != nil {
 		t.Fatalf("hop-order happy path should succeed; got: %v", err)
@@ -561,8 +561,8 @@ func TestIndexDeleteHandler_LifecycleStateAdvancesToDeleted(t *testing.T) {
 			LifecycleState: asset.StateLifecycleIndexDeletePending, // legacy forward-compat entry
 		},
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	if err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-terminal-hop", "idem-terminal-hop"))); err != nil {
 		t.Fatalf("terminal-hop happy path should succeed; got: %v", err)
@@ -582,7 +582,7 @@ func TestIndexDeleteHandler_LifecycleStateAdvancesToDeleted(t *testing.T) {
 // SetLifecycleState returns a transient SQLite error (e.g. database
 // is locked), the handler MUST classify the error as retryable
 // (NOT terminal) so the outbox pool retries per its backoff. The
-// retry is safe because the Qdrant delete + SoftDelete + index_state
+// retry is safe because the pgvector delete + SoftDelete + index_state
 // flips are all idempotent at the API/repo layer; the
 // lifecycle_state write will re-attempt and succeed on the next
 // pool attempt.
@@ -596,8 +596,8 @@ func TestIndexDeleteHandler_LifecycleStateSetErrorIsRetryable(t *testing.T) {
 		getResult:            &asset.Asset{ID: "clip-setlsc-fail", LifecycleState: asset.StateDriveDeleted},
 		setLifecycleStateErr: errors.New("sqlite: database is locked"),
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-setlsc-fail", "idem-setlsc-fail")))
 	if err == nil {
@@ -609,46 +609,46 @@ func TestIndexDeleteHandler_LifecycleStateSetErrorIsRetryable(t *testing.T) {
 	if !strings.Contains(err.Error(), "SetLifecycleState") {
 		t.Errorf("retryable error lost the diagnostic marker: %q", err.Error())
 	}
-	// Qdrant + SoftDelete + index_state=DELETED + INDEX_DELETED
+	// pgvector + SoftDelete + index_state=DELETED + INDEX_DELETED
 	// intermediate must have completed (these are the prerequisites
 	// for the failing terminal SetLifecycleState call). A future
 	// regression that reorders and skips the earlier writes when
 	// SetLifecycleState fails must break here.
-	if qdrant.callCount() != 1 {
-		t.Errorf("Qdrant.DeletePoints should have completed before SetLifecycleState(DELETED); got %d calls", qdrant.callCount())
+	if deleter.callCount() != 1 {
+		t.Errorf("vector deleter DeletePoints should have completed before SetLifecycleState(DELETED); got %d calls", deleter.callCount())
 	}
 	if assets.softDeleteCount() != 1 {
 		t.Errorf("SoftDelete should have completed before SetLifecycleState(DELETED); got %d calls", assets.softDeleteCount())
 	}
 }
 
-// TestIndexDeleteHandler_QdrantErrorPropagatesAsRetryable: Qdrant
+// TestIndexDeleteHandler_pgvectorErrorPropagatesAsRetryable: pgvector
 // returns a transient error → handler returns plain (non-terminal)
 // error so the pool's exponential backoff retries. Critically, no
-// SoftDelete happens — Qdrant-side retry is cheap, SQLite-side
+// SoftDelete happens — vector-side retry is cheap, SQLite-side
 // happened-before would be wrong.
-func TestIndexDeleteHandler_QdrantErrorPropagatesAsRetryable(t *testing.T) {
+func TestIndexDeleteHandler_pgvectorErrorPropagatesAsRetryable(t *testing.T) {
 	assets := &mockAssetDeleter{
 		getResult: &asset.Asset{ID: "clip-x", LifecycleState: asset.StateDriveDeleted},
 	}
-	qdrant := &mockQdrantDeleter{err: errors.New("qdrant 503")}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{err: errors.New("pgvector 503")}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-x", "idem-x")))
 	if err == nil {
-		t.Fatal("expected error from Qdrant failure; got nil")
+		t.Fatal("expected error from pgvector failure; got nil")
 	}
 	if outboxevents.IsTerminal(err) {
-		t.Fatalf("Qdrant transient error must be RETRYABLE (so the pool can backoff); got terminal: %v", err)
+		t.Fatalf("pgvector transient error must be RETRYABLE (so the pool can backoff); got terminal: %v", err)
 	}
 	if assets.softDeleteCount() != 0 {
-		t.Errorf("SoftDelete must NOT run when Qdrant delete fails (got %d)", assets.softDeleteCount())
+		t.Errorf("SoftDelete must NOT run when pgvector delete fails (got %d)", assets.softDeleteCount())
 	}
 }
 
 // TestIndexDeleteHandler_SoftDeleteErrorPropagatesAsRetryable: covers
-// the post-Qdrant-success path where the local SQLite write fails.
-// The retry is safe because Qdrant delete is idempotent and the
+// the post-vector-success path where the local SQLite write fails.
+// The retry is safe because pgvector delete is idempotent and the
 // SoftDelete is also idempotent (already-deleted short-circuits next
 // time).
 func TestIndexDeleteHandler_SoftDeleteErrorPropagatesAsRetryable(t *testing.T) {
@@ -656,8 +656,8 @@ func TestIndexDeleteHandler_SoftDeleteErrorPropagatesAsRetryable(t *testing.T) {
 		getResult: &asset.Asset{ID: "clip-y", LifecycleState: asset.StateDriveDeleted},
 		softErr:   errors.New("sqlite: database is locked"),
 	}
-	qdrant := &mockQdrantDeleter{}
-	h := NewIndexDeleteHandler(zap.NewNop(), qdrant, assets)
+	deleter := &mockVectorPointDeleter{}
+	h := NewIndexDeleteHandler(zap.NewNop(), deleter, assets)
 
 	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-y", "idem-y")))
 	if err == nil {
@@ -666,8 +666,8 @@ func TestIndexDeleteHandler_SoftDeleteErrorPropagatesAsRetryable(t *testing.T) {
 	if outboxevents.IsTerminal(err) {
 		t.Fatalf("SoftDelete transient error must be RETRYABLE; got terminal: %v", err)
 	}
-	if qdrant.callCount() != 1 {
-		t.Errorf("Qdrant.DeletePoints should have completed before SoftDelete; got %d calls", qdrant.callCount())
+	if deleter.callCount() != 1 {
+		t.Errorf("vector deleter DeletePoints should have completed before SoftDelete; got %d calls", deleter.callCount())
 	}
 }
 
@@ -681,7 +681,7 @@ func TestIndexDeleteHandler_SoftDeleteErrorPropagatesAsRetryable(t *testing.T) {
 func TestIndexDeleteHandler_PreservesUnwrapChain(t *testing.T) {
 	h := NewIndexDeleteHandler(
 		zap.NewNop(),
-		&mockQdrantDeleter{},
+		&mockVectorPointDeleter{},
 		&mockAssetDeleter{},
 	)
 	err := h.Handle(context.Background(), deleteEvt(t, `{ absolutely not valid json`))

@@ -47,7 +47,7 @@ func (b *providerSearchBackend) Capabilities() []search.Capability {
 }
 
 // Universe reports SearchDiscovery: provider backends perform live
-// Qdrant. They are excluded from catalog-universe queries.
+// pgvector. They are excluded from catalog-universe queries.
 func (b *providerSearchBackend) Universe() search.SearchUniverse {
 	return search.SearchDiscovery
 }

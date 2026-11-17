@@ -33,14 +33,14 @@ import (
 // "Generate returned empty clip_id" — see
 // internal/capabilities/assets/soundeffect/dispatcher_fail_closed_test.go for the
 // contract pinning.
-const errSfxDispatcherUnavailable = "sound effect generate unavailable: AssetMutationDispatcher not wired (QDRANT-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via sfxDispatcherAdapter)"
+const errSfxDispatcherUnavailable = "sound effect generate unavailable: AssetMutationDispatcher not wired (VECTOR-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via sfxDispatcherAdapter)"
 
 // Handler manages sound effect generation via Python synth + ffmpeg.
 type Handler struct {
 	clipsRepo  ClipRepositoryPort
 	metaWriter SemanticMetadataWriterPort
 	resolver   DestinationResolverPort
-	// dispatcher (PR 6, June 2026, codex/qdrant-api-writers-fail-closed):
+	// dispatcher (PR 6, June 2026, codex/pgvector-api-writers-fail-closed):
 	// the canonical narrow port DispatcherPort wrapping the
 	// production *outbox.Dispatcher. Required for the Generate write
 	// path; nil causes Generate to return HTTP 503 (fail-closed) — this
@@ -74,7 +74,7 @@ type HandlerDeps struct {
 // ports (sfxports.*). The composition root is responsible for instantiating
 // the adapters in internal/app and injecting them here.
 //
-// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the dispatcher
+// PR 6 (June 2026, codex/pgvector-api-writers-fail-closed): the dispatcher
 // parameter is added so the Generate write path can route through the
 // canonical *outbox.Dispatcher.EnqueueAndIndex (atomic UPSERT +
 // asset.index.requested outbox event) instead of the legacy direct
@@ -312,9 +312,9 @@ func (h *Handler) Generate(c *gin.Context) {
 	// internal/capabilities/assets/catalogsync/dispatcher_test.go::TestUpsertPreservingExisting_DispatcherPath).
 	clip.SetContentHash(hashStr)
 
-	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the legacy
+	// PR 6 (June 2026, codex/pgvector-api-writers-fail-closed): the legacy
 	// `if h.clipsRepo != nil { Upsert }` path bypasses the outbox —
-	// a freshly-written media_assets row would never reach Qdrant and
+	// a freshly-written media_assets row would never reach pgvector and
 	// would corrupt semantic search. Replace with the canonical
 	// dispatcher.EnqueueAndIndex: it atomically UPSERTs media_assets
 	// and emits asset.index.requested in a single transaction. A nil

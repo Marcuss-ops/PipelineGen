@@ -77,6 +77,10 @@ type Result struct {
 	// place (a city included) and let a cached hit remain auditable.
 	Country     string `json:"country,omitempty"`
 	CountryCode string `json:"country_code,omitempty"`
+	// AdminRegion is the provider's first-level administrative region (for
+	// example a US state). It lets later lookups disambiguate city namesakes
+	// within the same country.
+	AdminRegion string `json:"admin_region,omitempty"`
 	// Provider identifies the adapter (and endpoint) that produced the hit.
 	Provider string `json:"provider,omitempty"`
 	// PlaceID is the provider's own stable identity for the place.

@@ -29,14 +29,17 @@ func discoverMigrations(targetDir string) ([]migrationFile, error) {
 		}
 		fullPath := filepath.Join(targetDir, e.Name())
 		scope := "all" // safe default when the file isn't readable
+		covers := 0
 		if data, err := os.ReadFile(fullPath); err == nil {
 			scope = parseMigrationScope(data)
+			covers = parseBaselineCovers(data)
 		}
 		migrations = append(migrations, migrationFile{
-			version:  version,
-			filename: e.Name(),
-			path:     fullPath,
-			scope:    scope,
+			version:        version,
+			filename:       e.Name(),
+			path:           fullPath,
+			scope:          scope,
+			baselineCovers: covers,
 		})
 	}
 
@@ -156,6 +159,39 @@ func isBaselineMigrationFile(m migrationFile) bool {
 	return m.version == 0 && strings.HasPrefix(m.filename, "000_baseline")
 }
 
+// parseBaselineCovers reads the optional `-- baseline-covers: <N>` directive
+// from a consolidated baseline's comment header. The directive exists because
+// the filename keeps the freeze point the baseline plan promised while the dump
+// may be regenerated later: 000_baseline_268.sql is a post-298 dump, so it
+// declares `-- baseline-covers: 298`. Without it the runner would apply
+// 269..298 to a fresh database whose schema already contains them, and the
+// unconditional RENAME/DROP statements in 297/298 would fail.
+//
+// Returns 0 when the directive is absent, malformed, or non-positive.
+func parseBaselineCovers(content []byte) int {
+	for _, raw := range strings.Split(string(content), "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "--") {
+			break
+		}
+		const prefix = "-- baseline-covers:"
+		lower := strings.ToLower(trimmed)
+		if !strings.HasPrefix(lower, prefix) {
+			continue
+		}
+		rest := strings.TrimSpace(trimmed[len(prefix):])
+		var covers int
+		if _, err := fmt.Sscanf(rest, "%d", &covers); err != nil || covers <= 0 {
+			return 0
+		}
+		return covers
+	}
+	return 0
+}
+
 // baselineThreshold extracts the frozen version N from a baseline
 // filename "000_baseline_<N>.sql" (or "000_baseline_<N>_*.sql").
 // Returns 0 when the filename does not carry a threshold or parsing fails.
@@ -211,12 +247,42 @@ func validateNoDuplicateVersions(migrations []migrationFile, log *zap.Logger) er
 	return nil
 }
 
+// baselineCoverageFromFile returns the highest migration version whose schema
+// effects the baseline dump already contains. The `-- baseline-covers` directive
+// wins over the filename so a regenerated dump can cover a later window without
+// pretending the filename's freeze point changed.
+func baselineCoverageFromFile(m migrationFile) int {
+	coverage := baselineThresholdFromFile(m)
+	if m.baselineCovers > coverage {
+		return m.baselineCovers
+	}
+	return coverage
+}
+
+// baselineThresholdForAppliedRecord returns the coverage of the baseline file
+// that a database actually applied. The ledger stores the filename, which is
+// enough for the historical 000_baseline_267.sql (no longer on disk) and for any
+// current baseline still present. Returns 0 when the record is not a baseline.
+func baselineThresholdForAppliedRecord(record appliedRecord, migrations []migrationFile) int {
+	if !strings.HasPrefix(record.filename, "000_baseline") {
+		return 0
+	}
+	for _, m := range migrations {
+		if isBaselineMigrationFile(m) && m.filename == record.filename {
+			return baselineCoverageFromFile(m)
+		}
+	}
+	// The applied baseline file is no longer in the corpus (267 was replaced
+	// by 268). Its filename still names the frozen window it covered.
+	return baselineThresholdFromFile(migrationFile{version: 0, filename: record.filename})
+}
+
 // baselineThresholdForMigrations returns the frozen window N from the
 // consolidated baseline file (000_baseline_<N>.sql) if present, else 0.
 func baselineThresholdForMigrations(migrations []migrationFile) int {
 	for _, m := range migrations {
 		if isBaselineMigrationFile(m) {
-			if v := baselineThresholdFromFile(m); v > 0 {
+			if v := baselineCoverageFromFile(m); v > 0 {
 				return v
 			}
 		}

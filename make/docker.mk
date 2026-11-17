@@ -76,27 +76,9 @@ docker-digest:
 docker-verify-whisper:
 	@bash scripts/verify-whisper.sh $${IMAGE:-pipelinegen-worker:latest}
 
-test-qdrant-fixtures:
-	@echo "→ Starting ephemeral Qdrant on port $${TEST_QDRANT_PORT:-16333}..."
-	docker compose -f docker-compose.test-qdrant.yml up -d --wait 2>/dev/null || \
-		docker compose -f docker-compose.test-qdrant.yml up -d
-	@sleep 3  # give Qdrant time to accept connections
-	@echo "→ Running synthetic asset integration tests..."
-	TEST_QDRANT_URL=http://localhost:$${TEST_QDRANT_PORT:-16333} $(GO) test -tags=integration -v -count=1 ./tests/fixtures/... || \
-		(echo "→ Tests failed — tearing down Qdrant..."; \
-		 docker compose -f docker-compose.test-qdrant.yml down --volumes 2>/dev/null; \
-		 exit 1)
-	@echo "→ Tests passed — tearing down Qdrant..."
-	docker compose -f docker-compose.test-qdrant.yml down --volumes 2>/dev/null
-	@echo "✅ test-qdrant-fixtures OK"
-
-# test-qdrant-fixtures-down: Tear down the test Qdrant container.
-# Use this to clean up after a failed/aborted test run.
-test-qdrant-fixtures-down:
-
 # test-postgres: Run the PostgreSQL media-domain parity suite against an
 # ephemeral PostgreSQL 18 + pgvector container (pgvector/pgvector:pg18).
-# Mirrors the test-qdrant-fixtures flow: up --wait → go test → down.
+# Mirrors the container flow: up --wait → go test → down.
 # The suite skips (never fakes availability) when the container is absent.
 test-postgres:
 	@echo "→ Starting ephemeral PostgreSQL 18 + pgvector on port 16432..."

@@ -28,6 +28,7 @@ import (
 	audiocap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -53,6 +54,13 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	item := env.Items[0]
+	provider := strings.ToLower(strings.TrimSpace(item.Translation.Provider))
+	if provider != "" && provider != "ollama" && provider != "argos" {
+		return GenerateRequest{}, fmt.Errorf("scriptgeneration: unsupported translation provider %q", item.Translation.Provider)
+	}
+	if item.Translation.Concurrency < 0 || item.Translation.Concurrency > 16 {
+		return GenerateRequest{}, fmt.Errorf("scriptgeneration: translation concurrency must be between 0 and 16")
+	}
 	// Envelope-level force refresh is authoritative across every cache layer,
 	// not only the job/idempotency boundary. A fresh job that leaves the
 	// script, extraction, or asset caches warm can replay stale scene text and
@@ -66,12 +74,11 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 	// Rendered clips are grouped under the generated script name. Keep the
 	// source clip IDs untouched; this field only controls Drive routing.
+	// The default is run-scoped so two submissions with the same title can
+	// never publish into one folder (the R102 collision). An explicit
+	// caller folder remains authoritative.
 	if strings.TrimSpace(item.Output.Render.DriveSubfolderName) == "" {
-		scriptFolderName := strings.TrimSpace(item.Title)
-		if scriptFolderName == "" {
-			scriptFolderName = strings.TrimSpace(item.Source.Topic)
-		}
-		item.Output.Render.DriveSubfolderName = scriptFolderName
+		item.Output.Render.DriveSubfolderName = defaultRenderSubfolderName(item.Title, item.Source.Topic, idempotencyKey)
 	}
 	if err := resolveBackgroundReference(&item.Output.Render); err != nil {
 		return GenerateRequest{}, fmt.Errorf("scriptgeneration: resolve render background: %w", err)
@@ -111,19 +118,44 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		Research:           item.Source.Research,
 	}
 
-	// Map languages from the output spec.
-	var languages []Language
-	for _, lang := range item.Output.Languages {
-		if lang != "" {
-			languages = append(languages, Language(lang))
+	// Map languages from the output spec. Trim at the boundary so a
+	// whitespace-only or duplicated target can never become a silent
+	// translation no-op downstream.
+	languages := make([]Language, 0, len(item.Output.Languages))
+	seenLanguages := make(map[Language]struct{}, len(item.Output.Languages))
+	for _, raw := range item.Output.Languages {
+		lang := Language(strings.TrimSpace(raw))
+		if lang == "" {
+			continue
 		}
+		if _, exists := seenLanguages[lang]; exists {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: output.languages repeats %q", lang)
+		}
+		seenLanguages[lang] = struct{}{}
+		languages = append(languages, lang)
 	}
 
 	// Source language defaults to the item's language if set,
 	// otherwise "en" (the canonical safety default).
-	sourceLang := Language(item.Language)
+	sourceLang := Language(strings.TrimSpace(item.Language))
 	if sourceLang == "" {
 		sourceLang = "en"
+	}
+	// R108 regression gate: a configured translator with no target that
+	// differs from the source is a mislabelled source-only request, not a
+	// successful translation. Fail at submit instead of delivering source
+	// text under the target language tag.
+	if provider != "" {
+		hasTarget := false
+		for _, lang := range languages {
+			if lang != sourceLang {
+				hasTarget = true
+				break
+			}
+		}
+		if !hasTarget {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: translation provider %q is configured but output.languages has no target different from source language %q; add the target language or remove translation.provider", provider, sourceLang)
+		}
 	}
 
 	// Google Docs is retired (see ErrGoogleDocsRetired): the tombstone in
@@ -210,16 +242,6 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 				return GenerateRequest{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages entry %q must be the source language or included in output.languages", lang)
 			}
 		}
-		includesSource := false
-		for _, lang := range voiceoverLanguages {
-			if lang == string(sourceLang) {
-				includesSource = true
-				break
-			}
-		}
-		if !includesSource {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages must include the source language %q", sourceLang)
-		}
 	}
 
 	// map_presentation is the ONE map configuration contract: when present it
@@ -251,6 +273,9 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 
 	req := GenerateRequest{
 		Model:                         item.Model,
+		TranslationProvider:           strings.ToLower(strings.TrimSpace(item.Translation.Provider)),
+		TranslationModel:              strings.TrimSpace(item.Translation.Model),
+		TranslationConcurrency:        item.Translation.Concurrency,
 		Tone:                          item.Tone,
 		Style:                         item.Style,
 		Render:                        item.Output.Render,
@@ -358,7 +383,34 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	if err := ApplyEditingAssetPolicy(&req, mediaregistry.DefaultEditingAssetsPolicy()); err != nil {
 		return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply editing asset policy: %w", err)
 	}
+	// Every request carries the certified entity-image pool. The Rust planner
+	// rejects an admitted entity image when this pool is empty; an omitted
+	// pool means "automatic rotation", not "no motion", so resolve it once
+	// here instead of failing after script, translation and voiceover work.
+	req.EntityImageMotions = resolveEntityImageMotionPool(req.EntityImageMotions)
 	return req, nil
+}
+
+// defaultRenderSubfolderName returns the run-scoped Drive folder used when the
+// caller did not name one. The idempotency-key suffix keeps two submissions of
+// the same title in separate folders, while a retry of the same submission
+// (same key) reuses its folder. Explicit caller folders are never rewritten.
+func defaultRenderSubfolderName(title, topic, idempotencyKey string) string {
+	base := strings.TrimSpace(title)
+	if base == "" {
+		base = strings.TrimSpace(topic)
+	}
+	key := strings.TrimSpace(idempotencyKey)
+	if key == "" {
+		return base
+	}
+	// Digest SSOT: kernel/digest owns the algorithm (godlike/06); the first
+	// four bytes of the SHA-256 stay byte-identical to the retired inline call.
+	suffix := digest.SHA256String(key)[:8]
+	if base == "" {
+		return "run-" + suffix
+	}
+	return base + "-" + suffix
 }
 
 // ── Editorial asset SELECTION policy application ──────────────────────────

@@ -1,11 +1,11 @@
 // Package storage — migrations_099_test.go holds the scenario tests
-// for migration 099 (qdrant asset columns). Migration 099 added 9
-// columns to media_assets so the qdrant-side coordinate checks can
+// for migration 099 (pgvector asset columns). Migration 099 added 9
+// columns to media_assets so the pgvector-side coordinate checks can
 // be re-derived from a fresh, canonical schema rather than only
 // from a legacy DB that already shipped the columns.
 //
 // Covers:
-//   - TestMigrations_099_QdrantAssetColumnsPresent
+//   - TestMigrations_099_pgvectorAssetColumnsPresent
 //     PRAGMA table_info(media_assets) lists the 9 columns added by
 //     migration 099 (youtube_video_id, youtube_url, start_time,
 //     end_time, workspace_id, channel_id, license,
@@ -13,12 +13,12 @@
 //     in canonical.go — drift here means a future in-memory DB
 //     created from canonical.go would diverge from a legacy DB
 //     that has applied 099.
-//   - TestMigrations_099_QdrantAssetColumnsRoundTrip
+//   - TestMigrations_099_pgvectorAssetColumnsRoundTrip
 //     Raw-SQL round-trip on a fresh DB: insert a media_assets row
 //     with all 9 new columns populated, select it back, assert
 //     each column survives. The schema-layer test covers the
 //     user's "FetchAsset works on fixture in-memory" requirement;
-//     the qdrant-package TestSQLiteAssetStore_FetchAssetAfterMigrations
+//     the pgvector-package TestSQLiteAssetStore_FetchAssetAfterMigrations
 //     covers the typed FetchAsset path.
 package sqlite
 
@@ -27,7 +27,7 @@ import (
 	"testing"
 )
 
-func TestMigrations_099_QdrantAssetColumnsPresent(t *testing.T) {
+func TestMigrations_099_pgvectorAssetColumnsPresent(t *testing.T) {
 	db, cleanup := applyFreshSmokeDB(t)
 	defer cleanup()
 
@@ -62,12 +62,12 @@ func TestMigrations_099_QdrantAssetColumnsPresent(t *testing.T) {
 	}
 	for _, col := range required {
 		if _, ok := seen[col]; !ok {
-			t.Errorf("media_assets missing column %q (added by migration 099_qdrant_asset_columns.sql; canonical.go must mirror it)", col)
+			t.Errorf("media_assets missing column %q (added by migration 099_pgvector_asset_columns.sql; canonical.go must mirror it)", col)
 		}
 	}
 }
 
-func TestMigrations_099_QdrantAssetColumnsRoundTrip(t *testing.T) {
+func TestMigrations_099_pgvectorAssetColumnsRoundTrip(t *testing.T) {
 	db, cleanup := applyFreshSmokeDB(t)
 	defer cleanup()
 

@@ -7,7 +7,7 @@
 // canonical live consumer is postgres/media.PostgresIndexWorker, which performs
 // the same guarded terminal transition with its own RETIREMENT fence
 // (outbox_index_fence.go) because nothing on the PostgreSQL media plane writes
-// 'INDEXING' — that hop belonged to the retired SQLite → Qdrant clipindexer.
+// 'INDEXING' — that hop belonged to the retired SQLite → pgvector clipindexer.
 // Either way, no workflow writes this state.
 //
 // Mirrors the SQLite mutation family (internal/platform/sqlite/assets/

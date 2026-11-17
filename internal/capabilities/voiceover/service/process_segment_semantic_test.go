@@ -20,18 +20,20 @@ func TestProcessSegmentUseCase_SemanticTaggingIsPersistedOnce(t *testing.T) {
 		Publisher:           &stubProcessPublisher{fileID: "drive-semantic"},
 		VoiceoverRepository: &stubProcessVoRepo{db: db},
 		Finalizer:           finalizer,
-		SemanticTagger: func(_ context.Context, prompt, style, mediaType, generator string) (*SemanticTaggerResult, error) {
-			calls++
-			require.Equal(t, "A narrated boxing story", prompt)
-			require.Equal(t, "", style)
-			require.Equal(t, "voiceover", mediaType)
-			require.Equal(t, "voiceover", generator)
-			return &SemanticTaggerResult{
-				SearchText: "narrated boxing story",
-				Tags:       []string{"boxing", "narration"},
-				Subjects:   []string{"sport"},
-				Mood:       []string{"dramatic"},
-			}, nil
+		Enrichment: ProcessSegmentEnrichmentDeps{
+			SemanticTagger: func(_ context.Context, prompt, style, mediaType, generator string) (*SemanticTaggerResult, error) {
+				calls++
+				require.Equal(t, "A narrated boxing story", prompt)
+				require.Equal(t, "", style)
+				require.Equal(t, "voiceover", mediaType)
+				require.Equal(t, "voiceover", generator)
+				return &SemanticTaggerResult{
+					SearchText: "narrated boxing story",
+					Tags:       []string{"boxing", "narration"},
+					Subjects:   []string{"sport"},
+					Mood:       []string{"dramatic"},
+				}, nil
+			},
 		},
 		Logger: zap.NewNop(),
 	})
@@ -66,8 +68,10 @@ func TestProcessSegmentUseCase_SemanticTaggingFailureDoesNotFakeFailure(t *testi
 		Publisher:           &stubProcessPublisher{fileID: "drive-semantic-degraded"},
 		VoiceoverRepository: &stubProcessVoRepo{db: db},
 		Finalizer:           finalizer,
-		SemanticTagger: func(context.Context, string, string, string, string) (*SemanticTaggerResult, error) {
-			return nil, errors.New("semantic service unavailable")
+		Enrichment: ProcessSegmentEnrichmentDeps{
+			SemanticTagger: func(context.Context, string, string, string, string) (*SemanticTaggerResult, error) {
+				return nil, errors.New("semantic service unavailable")
+			},
 		},
 		Logger: zap.NewNop(),
 	})

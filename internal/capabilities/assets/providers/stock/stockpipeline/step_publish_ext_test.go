@@ -184,7 +184,7 @@ func TestStockPublishStep_BothFieldsPropagatedPerChunk(t *testing.T) {
 // run that lands through a non-front-2 planner path silently
 // drops the per-timestamp narration (godlike/07
 // NO-FAKE-AVAILABILITY: a silent description drop in
-// metadata.json hides Qdrant search-text input from downstream
+// metadata.json hides pgvector search-text input from downstream
 // consumers).
 //
 // This test mirrors the canonical Title MUST-FIX pattern

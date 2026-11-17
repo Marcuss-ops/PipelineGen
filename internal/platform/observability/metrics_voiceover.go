@@ -2,7 +2,7 @@
 //
 // Voiceover-related Prometheus counters/gauges/histograms live here
 // per the pkg observability "split-by-feature" pattern documented in
-// metrics_registry.go: each domain (jobs, qdrant, scripts, media)
+// metrics_registry.go: each domain (jobs, pgvector, scripts, media)
 // owns its own metrics_*.go file. Voiceover's metrics_voiceover.go
 // declares the orphan-sweeper counters plus the future humanizer
 // (alias for legibility on the application side).

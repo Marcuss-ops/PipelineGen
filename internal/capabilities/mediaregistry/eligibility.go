@@ -3,7 +3,7 @@
 // "Registered in the Media Registry" is NOT the same as "must be projected
 // into the semantic index". This file owns that distinction: every real asset
 // is REGISTERED, but only a subset is SEARCHABLE (and therefore embedded and
-// projected into Qdrant). The decision is taxonomy-derived (media_type +
+// projected into pgvector). The decision is taxonomy-derived (media_type +
 // asset_kind), never name-prefix or filename heuristic.
 //
 // godlike/06 SSOT: IndexEligibility + IndexEligibility() are the single owner
@@ -18,7 +18,7 @@ type IndexEligibility string
 
 const (
 	// IndexEligibilitySearchable means the asset must be embedded and
-	// projected into the semantic index (Qdrant).
+	// projected into the semantic index (pgvector).
 	IndexEligibilitySearchable IndexEligibility = "SEARCHABLE"
 
 	// IndexEligibilityRegistered means the asset is a real registry asset but

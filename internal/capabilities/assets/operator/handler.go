@@ -82,16 +82,15 @@ type AssetService interface {
 // All HTTP methods hang off this struct; sub-router entry points are
 // the per-resource registerXxxRoutes methods below.
 type Handler struct {
-	assetService  AssetService
-	readModel     AssetInventoryReader
-	indexVerifier IndexVerifier
-	jobService    job.Service
-	jobStats      JobStatsReader
-	outboxPort    jobs.MonitorPort
-	mutator       mutations.AssetMutationDispatcher
-	committer     persistence.AssetCommitter
-	allowedRoots  []string
-	log           *zap.Logger
+	assetService AssetService
+	readModel    AssetInventoryReader
+	jobService   job.Service
+	jobStats     JobStatsReader
+	outboxPort   jobs.MonitorPort
+	mutator      mutations.AssetMutationDispatcher
+	committer    persistence.AssetCommitter
+	allowedRoots []string
+	log          *zap.Logger
 }
 
 // JobStatsReader is the narrow port for job statistics.
@@ -104,29 +103,27 @@ type OperatorOptions struct {
 // Dependencies holds the pre-built dependencies for the operator handler.
 type Dependencies struct {
 	*OperatorOptions
-	AssetService  AssetService
-	ReadModel     AssetInventoryReader
-	IndexVerifier IndexVerifier
-	JobService    job.Service
-	JobStats      JobStatsReader
-	OutboxPort    jobs.MonitorPort
-	Mutator       mutations.AssetMutationDispatcher
-	Committer     persistence.AssetCommitter
+	AssetService AssetService
+	ReadModel    AssetInventoryReader
+	JobService   job.Service
+	JobStats     JobStatsReader
+	OutboxPort   jobs.MonitorPort
+	Mutator      mutations.AssetMutationDispatcher
+	Committer    persistence.AssetCommitter
 }
 
 // NewHandler creates a new operator API handler.
 func NewHandler(deps Dependencies, log *zap.Logger) *Handler {
 	return &Handler{
-		assetService:  deps.AssetService,
-		readModel:     deps.ReadModel,
-		indexVerifier: deps.IndexVerifier,
-		jobService:    deps.JobService,
-		jobStats:      deps.JobStats,
-		outboxPort:    deps.OutboxPort,
-		mutator:       deps.Mutator,
-		committer:     deps.Committer,
-		allowedRoots:  operatorAllowedRoots(deps.OperatorOptions),
-		log:           log,
+		assetService: deps.AssetService,
+		readModel:    deps.ReadModel,
+		jobService:   deps.JobService,
+		jobStats:     deps.JobStats,
+		outboxPort:   deps.OutboxPort,
+		mutator:      deps.Mutator,
+		committer:    deps.Committer,
+		allowedRoots: operatorAllowedRoots(deps.OperatorOptions),
+		log:          log,
 	}
 }
 

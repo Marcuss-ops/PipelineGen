@@ -155,7 +155,7 @@ var CanonicalAssetsResolve = JobDefinition{
 	RetryPolicyKey: "max_retries_1",
 	ConcurrencyKey: "single_global",
 	RequiredCapabilities: []Capability{
-		"qdrant.search",
+		"pgvector.search",
 		"asset.reference",
 	},
 	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.assets.resolve.v1", TypeAssetsResolve),

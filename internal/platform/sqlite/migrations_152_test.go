@@ -11,7 +11,7 @@
 //     source_channel_id, source_url, start_ms, end_ms,
 //     original_language, title, binary_sha256, semantic_hash,	//     rights_status, policy_version). Mirrors
 //     the structural pattern of the migration-099
-//     QdrantAssetColumnsPresent test; each required entry MUST
+//     pgvectorAssetColumnsPresent test; each required entry MUST
 //     be backed by a corresponding ALTER TABLE in
 //     migrations/sqlite/152_add_canonical_metadata_columns.sql.
 //

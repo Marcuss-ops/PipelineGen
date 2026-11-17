@@ -62,11 +62,10 @@ Keep the codebase aligned with the canonical architecture by catching dependency
   durable authority only for the enumerated non-media operational domains
   (jobs, delivery_log, scripts, cache, idempotency, artifacts/staging,
   observability).
-- **Qdrant is not a media store.** It may not be used as a media read, write,
-  or projection; the only surviving consumers are explicitly-justified
-  non-media ones (mediamemory, maintenance DR, admin audit tooling). Media
-  vector search is owned by `internal/platform/postgres/media.MediaSearcher`
-  (the canonical `search.VectorStorePort`).
+- **There is no external vector store.** PostgreSQL + pgvector owns media
+  vector search (`internal/platform/postgres/media.MediaSearcher`, the
+  canonical `search.VectorStorePort`); the external vector engine, client, and
+  projections were removed in November 2026.
 - `percheck_media_assets_writer_canonical` bans direct SQL writes to
   `media_assets` and `asset_locations` from every package except the canonical
   owner (PostgreSQL + pgvector media SSOT, September 2026).

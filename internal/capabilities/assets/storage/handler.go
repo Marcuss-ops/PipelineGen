@@ -1,7 +1,7 @@
 // Package storage provides the thin HTTP transport for Drive folder sync
 // operations. All business logic is delegated to catalogsync.Service.
 //
-// QDRANT-001 (June 2026) closure: this package also exposes
+// VECTOR-001 (June 2026) closure: this package also exposes
 // RegisterInternalMediaRoutes (a separate RegisterRoutes surface that
 // mounts under /internal/v1/media/ for the server-to-server variant).
 // The api.Router uses a narrow MediaInternalRouter interface to keep
@@ -38,7 +38,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/sync", h.SyncDriveFolder)
 }
 
-// RegisterInternalMediaRoutes registers the QDRANT-001 server-to-server
+// RegisterInternalMediaRoutes registers the VECTOR-001 server-to-server
 // surface under /internal/v1/media/*. Currently exposes:
 //
 //	POST /internal/v1/media/sync

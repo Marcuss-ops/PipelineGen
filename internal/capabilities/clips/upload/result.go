@@ -49,11 +49,11 @@ var ErrArtifactServiceUnavailable = errors.New("upload: artifact service not con
 // matching the legacy handler's manual-upload best-effort contract.
 var ErrDriveUploaderPortMissing = errors.New("upload: drive uploader port not configured")
 
-// ErrDispatcherUnavailable mirrors the canonical QDRANT-002 fail-closed
+// ErrDispatcherUnavailable mirrors the canonical VECTOR-002 fail-closed
 // sentinel. When AssetMutationDispatcher is not wired at composition
 // time, the use case refuses to silently fall back to a raw repo.Upsert.
 // Maps to HTTP 503 in the handler — same semantics as clip_create.go.
-var ErrDispatcherUnavailable = errors.New("upload: AssetMutationDispatcher not wired (QDRANT-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via clipsDispatcherAdapter)")
+var ErrDispatcherUnavailable = errors.New("upload: AssetMutationDispatcher not wired (VECTOR-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via clipsDispatcherAdapter)")
 
 // NOTE: there is intentionally no ErrJobsServiceUnavailable. The
 // legacy handler logs+continues with Indexed=false when jobsSvc is

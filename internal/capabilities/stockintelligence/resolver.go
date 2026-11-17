@@ -1,5 +1,5 @@
 // Package stockintelligence — resolver.go is the LOCAL FIRST PROVIDER
-// SECOND resolver. It consults the local Qdrant search first, hydrates
+// SECOND resolver. It consults the local pgvector search first, hydrates
 // the candidates from SQLite (the truth), and falls back to the provider
 // live browser ONLY when local_candidates < threshold OR best_score <
 // minimum_quality.
@@ -74,7 +74,7 @@ func (r *Resolver) WithCache(cache ResolveCache) *Resolver {
 
 // Resolve runs the LOCAL FIRST PROVIDER SECOND pipeline for one request.
 //
-//  1. Search the local Qdrant index.
+//  1. Search the local pgvector index.
 //  2. Hydrate the candidate labels from SQLite (the truth).
 //  3. If local_candidates >= threshold AND best_score >= minimum_quality,
 //     pick the winner locally → 0 provider requests.
@@ -180,7 +180,7 @@ func (r *Resolver) resolveEntry(ctx context.Context, req ResolveRequest) (resolv
 func (r *Resolver) resolveUncached(ctx context.Context, req ResolveRequest) (resolveCacheEntry, error) {
 	threshold, minQuality, limit := effectiveResolveLimits(req)
 
-	// 1. LOCAL FIRST: Qdrant local search.
+	// 1. LOCAL FIRST: pgvector local search.
 	localCands, err := r.local.SearchLocal(ctx, req.Query, limit)
 	if err != nil {
 		return resolveCacheEntry{}, fmt.Errorf("stockintelligence: local search: %w", err)
@@ -201,7 +201,7 @@ func (r *Resolver) resolveUncached(ctx context.Context, req ResolveRequest) (res
 			if label, ok := labels[candidate.AssetID]; ok && candidate.Label == "" {
 				candidate.Label = label
 			}
-			// Qdrant is only a search projection. A hit with no SQLite truth
+			// pgvector is only a search projection. A hit with no SQLite truth
 			// is an orphan and must not influence thresholds or become a
 			// selected asset.
 			if candidate.Label == "" {

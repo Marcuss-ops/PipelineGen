@@ -373,6 +373,12 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 				if _, isStock := stockClipIDs[intent.ClipAssetID]; isStock {
 					restored.StockOriginalAudio = true
 					restored.GainDB = 0
+				} else if intent.ProtectedOriginalAudio {
+					// A protected fixed-media span is the editorial sound of that
+					// cut (opening hooks, interstitials). The final-job handoff
+					// must keep it at unity: stamping the restored-mix bed level
+					// (-10 dB) made the hook read as missing beside narration.
+					restored.GainDB = 0
 				} else {
 					restored.GainDB = kernelaudio.FinalJobRestoredClipGainDB
 				}

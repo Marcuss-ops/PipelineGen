@@ -3,14 +3,17 @@
 //
 // Split rationale (resource/handler), see handler.go header.
 //
-// This file owns the ASSETS resource (list + get + preview). 6 routes:
+// This file owns the ASSETS resource (list + get + preview). 5 routes:
 //
 //   - GET  /assets               → handleListAssets
 //   - GET  /assets/:id           → handleGetAsset
 //   - GET  /assets/:id/preview   → handlePreview
 //   - GET  /facets               → handleFacets
-//   - POST /assets/:id/verify-index → handleVerifyIndex
 //   - POST /assets/:id/reindex   → handleReindex
+//
+// POST /assets/:id/verify-index was removed on 2026-11-17 with the pgvector
+// engine: it performed a live pgvector point check and had no verifier to
+// inject once the client was deleted.
 //
 // registers via the private registerAssetsRoutes method, called from
 // handler.go::RegisterRoutes.
@@ -45,7 +48,6 @@ func (h *Handler) registerAssetsRoutes(rg *gin.RouterGroup) {
 	rg.GET("/assets/:id", h.handleGetAsset)
 	rg.GET("/assets/:id/preview", h.handlePreview)
 	rg.GET("/facets", h.handleFacets)
-	rg.POST("/assets/:id/verify-index", h.handleVerifyIndex)
 	rg.POST("/assets/:id/reindex", h.handleReindex)
 }
 
@@ -199,78 +201,6 @@ func (h *Handler) handleFacets(c *gin.Context) {
 	}
 
 	apiutil.OK(c, facets)
-}
-
-// handleVerifyIndex performs a live check against the canonical runtime
-// alias and compares it with the persisted SQLite read-model projection.
-// Retired/recovery collection names stored as diagnostics are ignored.
-func (h *Handler) handleVerifyIndex(c *gin.Context) {
-	if h.readModel == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "asset inventory read model not available")
-		return
-	}
-	if h.indexVerifier == nil {
-		apiutil.Error(c, http.StatusServiceUnavailable, "index verifier not available")
-		return
-	}
-
-	id := c.Param("id")
-	ctx := c.Request.Context()
-
-	inspection, err := h.readModel.Get(ctx, id)
-	if err != nil {
-		h.log.Error("failed to get asset for verify", zap.String("id", id), zap.Error(err))
-		apiutil.InternalError(c, err)
-		return
-	}
-	if inspection == nil {
-		apiutil.NotFound(c, "asset not found")
-		return
-	}
-
-	// The operator endpoint may inspect only the runtime projection.
-	// CollectionVersion is persisted diagnostic metadata, not a routing
-	// authority; using it here could query a retired/recovery collection.
-	qdrantInfo, err := h.indexVerifier.Verify(ctx, id, "")
-	if err != nil {
-		h.log.Error("failed to verify asset index", zap.String("id", id), zap.Error(err))
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	consistent := true
-	if qdrantInfo.Present {
-		if qdrantInfo.PayloadAssetID != "" && qdrantInfo.PayloadAssetID != id {
-			consistent = false
-		}
-		if inspection.ContentHash != "" && inspection.IndexedContentHash != "" &&
-			inspection.ContentHash != inspection.IndexedContentHash {
-			consistent = false
-		}
-	} else {
-		consistent = false
-	}
-
-	apiutil.OK(c, gin.H{
-		"asset_id": id,
-		"sqlite": gin.H{
-			"index_state":          string(inspection.IndexState),
-			"embedding_present":    inspection.HasEmbedding,
-			"content_hash":         inspection.ContentHash,
-			"indexed_content_hash": inspection.IndexedContentHash,
-		},
-		"outbox": gin.H{
-			"pending": inspection.PendingOutboxEvents,
-		},
-		"qdrant": gin.H{
-			"checked":                 qdrantInfo.Checked,
-			"point_present":           qdrantInfo.Present,
-			"collection":              qdrantInfo.Collection,
-			"vector_dimensions":       qdrantInfo.VectorDimensions,
-			"payload_lifecycle_state": qdrantInfo.PayloadLifecycleState,
-		},
-		"consistent": consistent,
-	})
 }
 
 // handleReindex enqueues a re-index outbox event for the asset.

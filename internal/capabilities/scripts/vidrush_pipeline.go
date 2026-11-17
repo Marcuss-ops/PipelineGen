@@ -84,7 +84,7 @@ type VidRushPipeline struct {
 	PhraseSelector PhraseSelector
 	// StockResolverPort is the LOCAL FIRST PROVIDER SECOND resolver
 	// (Fase 5). When set (with SamplerPort), the pipeline builds a
-	// SemanticProviderResolver that consults local Qdrant/SQLite first.
+	// SemanticProviderResolver that consults local pgvector/SQLite first.
 	StockResolverPort LocalStockResolverPort
 	// SamplerPort is the MediaSampler Rust crate adapter (Fase 4). When
 	// set (with StockResolverPort), the SemanticProviderResolver ranks

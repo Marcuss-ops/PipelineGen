@@ -20,7 +20,7 @@
 //	    ↓    job → SUCCEEDED
 //	    ↓  COMMIT
 //	    ↓
-//	Outbox consumer → Qdrant / proiezioni esterne
+//	Outbox consumer → pgvector / proiezioni esterne
 //
 // A job never becomes SUCCEEDED before all required artifacts are
 // finalised. The completion, asset records, locations, and outbox events

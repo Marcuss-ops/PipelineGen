@@ -308,6 +308,7 @@ type GeoCoordinate struct {
 	// scene; empty values mean the provider did not report one.
 	Country     string `json:"country,omitempty"`
 	CountryCode string `json:"country_code,omitempty"`
+	AdminRegion string `json:"admin_region,omitempty"`
 }
 
 type EntityImageBinding struct {

@@ -1,7 +1,7 @@
 // Package app — search_backend_semantic_test.go covers the Fase 6
 // semanticSearchBackend with six unit tests. Mocks replace every
 // external port (embeddings-registry, vector store, media reader,
-// delivery) so tests are hermetic — no Qdrant or SQLite needed.
+// delivery) so tests are hermetic — no external vector store or SQLite needed.
 //
 // PR-EMBEDDING-CHANNEL-REGISTRY + PR-CROSS-MODAL-TEXT-TO-VISUAL
 // (July 2026): the embedder field was renamed to `embeddings` and
@@ -24,7 +24,7 @@ import (
 // Package app — search_backend_semantic_test.go covers the Fase 6
 // semanticSearchBackend with six unit tests. Mocks replace every
 // external port (embeddings-registry, vector store, media reader,
-// delivery) so tests are hermetic — no Qdrant or SQLite needed.
+// delivery) so tests are hermetic — no external vector store or SQLite needed.
 //
 // PR-EMBEDDING-CHANNEL-REGISTRY + PR-CROSS-MODAL-TEXT-TO-VISUAL
 // (July 2026): the embedder field was renamed to `embeddings` and
@@ -280,7 +280,7 @@ func TestSemanticBackendHybrid(t *testing.T) {
 
 // TestSemanticBackendHybridMinScoreFloor pins the PR-MINSCORE-HYBRID
 // contract: the hybrid (RRF) path uses its own floor (above 0.1) so
-// Qdrant's 0.1 rank-9 single-list tail hits never surface, while the
+// pgvector's 0.1 rank-9 single-list tail hits never surface, while the
 // ANN path keeps the cosine-similarity floor. A caller-set q.MinScore
 // overrides both.
 func TestSemanticBackendHybridMinScoreFloor(t *testing.T) {
@@ -348,10 +348,10 @@ func TestSemanticBackendHybridError(t *testing.T) {
 	// We can't change the constant at runtime, but we verify the
 	// guard exists and would fire. The test proves the invariant:
 	// when q.Mode=hybrid, the backend ALWAYS calls HybridSearch,
-	// never Search. If HybridSearch itself fails (e.g., Qdrant
+	// never Search. If HybridSearch itself fails (e.g., pgvector
 	// has no sparse vector), that error propagates.
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
-	storeErr := errors.New("qdrant: sparse vector 'bm25_text' not found in collection")
+	storeErr := errors.New("pgvector: sparse vector 'bm25_text' not found in collection")
 	vs := &mockVectorStore{err: storeErr}
 	mr := &mockMediaReader{}
 	del := &mockDelivery{}
@@ -560,8 +560,8 @@ func TestSemanticBackendRerankerReordersTopCandidates(t *testing.T) {
 
 // ── Test 6c: reranker fetch window + top-5 truncation ───────────────
 //
-// Pins the canonical recipe (Qdrant top_k window → BGE → top 5):
-// when the reranker is enabled, the Qdrant fetch limit must be widened
+// Pins the canonical recipe (pgvector top_k window → BGE → top 5):
+// when the reranker is enabled, the pgvector fetch limit must be widened
 // to the rerank window (max(page limit, TopK), capped at MaxLimit) so
 // BGE genuinely re-scores the top_k candidates, and the backend must
 // return only the top semanticRerankTopResults hits.
@@ -610,13 +610,13 @@ func TestSemanticBackendRerankerWindowAndTopFive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Qdrant fetch window must be widened to the rerank window (30),
+	// pgvector fetch window must be widened to the rerank window (30),
 	// not left at the page limit (5).
 	if vs.lastAnnReq == nil {
 		t.Fatal("expected ANN Search to be called")
 	}
 	if vs.lastAnnReq.Limit != 30 {
-		t.Errorf("Qdrant fetch Limit = %d, want 30 (rerank window, not page limit 5)", vs.lastAnnReq.Limit)
+		t.Errorf("pgvector fetch Limit = %d, want 30 (rerank window, not page limit 5)", vs.lastAnnReq.Limit)
 	}
 	// BGE saw the full candidate window.
 	if rk.called != 1 {
@@ -636,9 +636,9 @@ func TestSemanticBackendRerankerWindowAndTopFive(t *testing.T) {
 
 // ── Test 6: IsAdmin → IsSystem propagation (ANN) ─────────────────────
 //
-// Pinned by PR-STOCK-QDRANT-SEMANTIC-ENRICHMENT: when Actor.IsAdmin=true,
+// Pinned by PR-STOCK-VECTOR-SEMANTIC-ENRICHMENT: when Actor.IsAdmin=true,
 // compileSemanticFilters MUST set SearchScope.IsSystem=true so
-// CompileQdrantFilter skips the workspace must-clause. This test
+// CompileVectorFilter skips the workspace must-clause. This test
 // verifies the full chain: Query.Actor.IsAdmin → compileSemanticFilters →
 // VectorSearchRequest.IsSystem.
 
@@ -723,7 +723,7 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_Hybrid(t *testing.T) {
 // ── Test 8: Non-admin keeps IsSystem=false ────────────────────────────
 //
 // Regression guard: when Actor.IsAdmin=false, IsSystem MUST stay
-// false so the workspace must-clause is enforced in CompileQdrantFilter.
+// false so the workspace must-clause is enforced in CompileVectorFilter.
 
 func TestSemanticBackend_NonAdmin_IsSystemFalse(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}

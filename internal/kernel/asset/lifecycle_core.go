@@ -51,7 +51,7 @@ const (
 // processing/failed) that co-existed with `LifecycleState` and the
 // `status` column in media_assets. The two enums polluted writers
 // (lowercase strings in production code) and readers (the COALESCE
-// fallback in qdrant/asset_store.go). PR 1 retired AssetStatus and
+// fallback in pgvector/asset_store.go). PR 1 retired AssetStatus and
 // the `status` column so `LifecycleState` is the single source of
 // truth at every layer (enum, column, payload, search filter).
 //

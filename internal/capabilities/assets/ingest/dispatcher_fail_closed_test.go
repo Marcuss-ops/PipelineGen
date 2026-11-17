@@ -1,4 +1,4 @@
-// Package ingest — PR 7 (June 2026, codex/qdrant-app-writers-fail-closed)
+// Package ingest — PR 7 (June 2026, codex/pgvector-app-writers-fail-closed)
 // dispatcher fail-closed contract test for clipStoreAdapter.Upsert
 // (the lifecycle-targeted writer migrated from raw repo.Upsert to
 // dispatcher.EnqueueAndIndex in PR 7).

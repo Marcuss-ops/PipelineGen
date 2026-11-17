@@ -103,7 +103,7 @@ func TestDiagnostics_HappyPath(t *testing.T) {
 func TestDiagnostics_ServiceError(t *testing.T) {
 	ih := &mockIndexHealth{
 		checkFn: func(ctx context.Context) (*IndexHealthReport, error) {
-			return nil, errors.New("qdrant unreachable")
+			return nil, errors.New("pgvector unreachable")
 		},
 	}
 	svc := newTestDiagService(ih, nil)
@@ -148,7 +148,7 @@ func TestIndexHealth_NilService(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
-// ── QdrantCleanup ─────────────────────────────────────────────────────
+// ── pgvectorCleanup ─────────────────────────────────────────────────────
 
-// TestQdrantCleanup_AlwaysOK removed — the
-// cleanup route deleted along with the Qdrant capability.
+// TestVectorCleanup_AlwaysOK removed — the
+// cleanup route deleted along with the legacy vector capability.

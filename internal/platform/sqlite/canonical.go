@@ -29,7 +29,7 @@ package sqlite
 //                      (write)                  Values: DISCOVERED, INDEXING,
 //                      AssetMutationDispatcher  INDEXED, INDEX_FAILED,
 //                      (restore)                DELETE_PENDING, DELETED.
-//                                               Tracks whether Qdrant has a
+//                                               Tracks whether pgvector has a
 //                                               current embedding for this asset.
 //
 //   asset_state       migration 189 trigger    DERIVED compatibility column.

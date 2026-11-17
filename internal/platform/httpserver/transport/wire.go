@@ -92,7 +92,6 @@ var knownCapabilities = []struct {
 	{name: "register", prefixes: []string{"/api/media/register-from-youtube", "/api/media/register-batch"}},
 	{name: "storage", prefixes: []string{"/api/storage"}},
 	{name: "mediasearch", prefixes: []string{"/internal/v1/media"}},
-	{name: "qdrant_health", prefixes: []string{"/qdrant/"}},
 	{name: "admin", prefixes: []string{"/api/drive"}},
 	// clips (canonical clips capability) mounts under /api/media/clips/*
 	// via the assets module (see internal/app/wire_assets.go and
@@ -146,10 +145,10 @@ func NewWireRegistry(routes []RouteInfo) *WireRegistry {
 // the stock prefix is /api/stock-pipeline).
 //
 // The prefix's trailing `/` is normalised away before the boundary
-// check so both /qdrant/ + /qdrant/live and /api/stock-pipeline +
+// check so both /pgvector/ + /pgvector/live and /api/stock-pipeline +
 // /api/stock-pipeline/run are matched consistently. Without this
 // normalisation, a prefix with a trailing `/` would build
-// `prefix+"/"` = `/qdrant//` which never matches any real route.
+// `prefix+"/"` = `/pgvector//` which never matches any real route.
 //
 // Extracted to keep NewWireRegistry readable and the boundary
 // contract testable in isolation.

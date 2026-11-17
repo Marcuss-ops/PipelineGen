@@ -100,7 +100,7 @@ func DefaultFakeResult() *scriptports.GenerationResult {
 
 // ItemForTimings builds a minimal text-only GenerationItemV2 that:
 //   - emits SourceSpec.Type=SourceText so source-resolution is a no-op
-//     (no clip-search / Qdrant / drive calls)
+//     (no clip-search / pgvector / drive calls)
 //   - opts-in to ExtractEntities + GenerateMetadata so buildPostprocessorList
 //     emits "entities" + "metadata" in plan.Postprocessors (both Required-class
 //     and registered in the test's registry — the canonical two procs whose

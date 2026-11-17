@@ -1,6 +1,6 @@
 {
   "scenario_id": "11_concurrency",
-  "description": "Vidrush concurrency e massimo throughput — esegue livelli progressivi di carico (1→2→5→10→20 job simultanei) con warm-up e cool-down. Misura: job/min, seg/s, queue wait, CPU, RAM, goroutine, GC, SQLite busy/locked, Qdrant latency, provider latency, download throughput, error rate, retry rate. Si ferma al primo livello con degrado (p95 +20%, errori, lock SQLite, RAM crescente, 429 provider, queue infinita).",
+  "description": "Vidrush concurrency e massimo throughput — esegue livelli progressivi di carico (1→2→5→10→20 job simultanei) con warm-up e cool-down. Misura: job/min, seg/s, queue wait, CPU, RAM, goroutine, GC, SQLite busy/locked, pgvector search latency, provider latency, download throughput, error rate, retry rate. Si ferma al primo livello con degrado (p95 +20%, errori, lock SQLite, RAM crescente, 429 provider, queue infinita).",
   "version": 1,
   "scenario_type": "concurrency",
   "concurrency_levels": [
@@ -62,7 +62,7 @@
       "queue_wait_seconds_p99",
       "job_total_seconds_p50",
       "job_total_seconds_p95",
-      "qdrant_search_latency_ms_p95",
+      "vector_search_latency_ms_p95",
       "provider_artlist_latency_ms_p95",
       "provider_images_latency_ms_p95",
       "download_throughput_mbps"

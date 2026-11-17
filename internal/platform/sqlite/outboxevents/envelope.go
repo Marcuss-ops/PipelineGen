@@ -1,7 +1,7 @@
 // envelope.go — canonical outbox envelope builders.
 //
-// Pulled out of cmd/admin/reconcile_qdrant.go (QDRANT-005B PR1 +
-// QDRANT-005C hygiene commit) so the admin reconcile adapter becomes
+// Pulled out of cmd/admin/reconcile_pgvector.go (VECTOR-005B PR1 +
+// VECTOR-005C hygiene commit) so the admin reconcile adapter becomes
 // a 1-line caller. Application-side writers (outbox.Dispatcher) emit
 // the same schema_version literal; this file is the cmd-side mirror
 // that the admin path uses when bypassing the application dispatcher
@@ -90,7 +90,7 @@ const forceEventKeySuffix = ":force"
 // asset.index.requested.v1 outbox event with force=false (the
 // production default: the worker supersede gate applies, so an
 // event whose source_version differs from the asset's current
-// fingerprint is marked SUPERSEDED without burning a Qdrant upsert).
+// fingerprint is marked SUPERSEDED without burning a pgvector upsert).
 //
 // Card 7.1 (July 2026): the 4-arg shape is preserved for backward
 // compat across the 56+ existing callers. The new
@@ -109,7 +109,7 @@ const forceEventKeySuffix = ":force"
 //   - A sourceVersion change (asset's content_hash mutated between
 //     reconcile runs) produces a different eventKey, so the new row
 //     is enqueued and the worker can re-evaluate.
-//   - A targetSchemaVersion change (Qdrant collection / schema
+//   - A targetSchemaVersion change (pgvector collection / schema
 //     upgrade between reconcile runs) produces a different eventKey,
 //     so the new row is enqueued and the worker can re-evaluate.
 //

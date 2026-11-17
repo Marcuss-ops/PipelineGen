@@ -1,6 +1,6 @@
 // Package mediaregistry defines the canonical registry contracts.
 //
-// SQLite owns the registry state. Qdrant, backups and other systems are
+// SQLite owns the registry state. pgvector, backups and other systems are
 // projections/artifacts and must identify the registry revision they came
 // from. The package contains no database or network code.
 package mediaregistry
@@ -40,8 +40,8 @@ type Run struct {
 	TranscriptsAfter   int
 	DescriptionsBefore int
 	DescriptionsAfter  int
-	QdrantBefore       int
-	QdrantAfter        int
+	VectorPointsBefore int
+	VectorPointsAfter  int
 	Error              string
 }
 
@@ -70,7 +70,7 @@ var (
 	ErrProjectionSequenceAhead     = errors.New("mediaregistry: projection sequence is ahead of registry")
 )
 
-// Projection is the durable metadata for one Qdrant (or future) projection.
+// Projection is the durable metadata for one pgvector (or future) projection.
 type Projection struct {
 	ProjectionID        string
 	ProjectionType      string
@@ -83,7 +83,7 @@ type Projection struct {
 	AssetCount          int
 	TranscriptCount     int
 	CollectionHash      string
-	QdrantVersion       string
+	VectorIndexVersion  string
 	CreatedAt           string
 	ActivatedAt         string
 }
@@ -138,19 +138,19 @@ func fmtProjectionSequenceError(kind error, projectionSequence, registrySequence
 }
 
 type Backup struct {
-	BackupID       string
-	BackupType     string
-	SourceRevision int64
-	Path           string
-	RemoteURI      string
-	SHA256         string
-	SizeBytes      int64
-	Status         string
-	AppGitSHA      string
-	QdrantVersion  string
-	CreatedAt      string
-	VerifiedAt     string
-	RestoredAt     string
+	BackupID           string
+	BackupType         string
+	SourceRevision     int64
+	Path               string
+	RemoteURI          string
+	SHA256             string
+	SizeBytes          int64
+	Status             string
+	AppGitSHA          string
+	VectorIndexVersion string
+	CreatedAt          string
+	VerifiedAt         string
+	RestoredAt         string
 }
 
 type Ledger interface {
@@ -162,11 +162,11 @@ type Ledger interface {
 	LatestEventSequence(context.Context) (int64, error)
 }
 
-// QdrantSequenceReader is an optional refinement of Ledger. It reports the
-// latest registry event that can affect the Qdrant projection, excluding
+// VectorSequenceReader is an optional refinement of Ledger. It reports the
+// latest registry event that can affect the pgvector projection, excluding
 // non-indexable artifact events while preserving fail-closed sequence checks.
-type QdrantSequenceReader interface {
-	LatestQdrantEventSequence(context.Context) (int64, error)
+type VectorSequenceReader interface {
+	LatestVectorEventSequence(context.Context) (int64, error)
 }
 
 type CountsReader interface {
@@ -182,7 +182,7 @@ type ProjectionReader interface {
 }
 
 // ProjectionSequenceAdvancer is an optional refinement of Ledger. It advances
-// the ACTIVE projection's source_registry_seq to the latest Qdrant-eligible
+// the ACTIVE projection's source_registry_seq to the latest vector-eligible
 // registry sequence after an incremental index upsert. Without this, the
 // ACTIVE projection's checkpoint only moves on a full reindex, so the startup
 // sequence gate (ValidateProjectionSequence) sees a stale projection and

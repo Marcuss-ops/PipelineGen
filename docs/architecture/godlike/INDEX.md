@@ -14,7 +14,7 @@ the SSOT.
 
 | # | Doc | Purpose | Hard-gated by |
 |---|-----|---------|---------------|
-| 06 | `docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md` | Durable authority + one-owner-per-fact + DB rules + Qdrant projection + Drive + Configuration | `data_ownership_doc_missing` + `_doc_incomplete` |
+| 06 | `docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md` | Durable authority + one-owner-per-fact + DB rules + Drive + Configuration | `data_ownership_doc_missing` + `_doc_incomplete` |
 | 07 | `docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md` | Zero-legacy baseline + deprecation records + migration sequence (expand, backfill, cutover, contract) + NO-FAKE-AVAILABILITY | `legacy_policy_doc_missing` + `_doc_incomplete` |
 | 08 | `docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md` | Mandatory checks + boundary checks + registry checks + complexity budgets + zero-baseline rule | `ci_gates_doc_missing` + `_doc_incomplete` |
 | 11 | `docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md` | Agent scope + forbidden additions + testing protocol + migration method + final verification | `agent_playbook_doc_missing` + `_doc_incomplete` |

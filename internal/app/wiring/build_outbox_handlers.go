@@ -58,7 +58,7 @@ func buildOutboxDeps(
 	cfg *config.Config,
 	repos *RepoBundle,
 	jobs *JobsBundle,
-	qd *QdrantDeps,
+	qd *IndexDeps,
 	voiceoverDriver jobsoutbox.VoiceoverCleanupDriver,
 	mediaPostgres *sql.DB,
 	log *zap.Logger,
@@ -116,30 +116,18 @@ func buildOutboxDeps(
 			Jobs: jobs.Service,
 		},
 	}
-	// PR 4 (June 2026, refactor/single-qdrant-runtime): wire
-	// qd.QdrantDeleter (outbox.VectorPointDeleter; == qd.Runtime.Writer
-	// when Qdrant is enabled) directly into outbox.Deps.Jobs.VectorPointDeleter.
-	// The previous `any` cast `qd.QdrantDeleter.(jobsoutbox.QdrantDeleter)`
-	// is gone: the compile-time assertion at
-	// internal/platform/qdrant/index_writer.go pins the
-	// conformance (`_ jobsoutbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`),
-	// and qd.QdrantDeleter's field type is already
-	// jobsoutbox.VectorPointDeleter so direct assignment is type-safe.
-	if qd.QdrantDeleter != nil {
-		outboxDeps.Jobs.VectorPointDeleter = qd.QdrantDeleter
-	}
-	// PR 3 fix/qdrant-outbox-fail-closed (#4): wire the canonical
+	// PR 3 fix/pgvector-outbox-fail-closed (#4): wire the canonical
 	// AssetDeleter so IndexDeleteHandler has BOTH its dep slots
 	// populated. *assets.ClipsRepository statically implements the
 	// local outbox.AssetDeleter port (compile-time assertion at the
 	// top of this file pins GetClip + SoftDelete + SetIndexState
 	// conformance). Before this wiring, IndexDeleteHandler
 	// registered in a partially-wired state whenever
-	// Qdrant.Enabled=true but composer's ClipsRepo wiring failed —
+	// pgvector.Enabled=true but composer's ClipsRepo wiring failed —
 	// every asset.index.delete_requested event then dead-lettered
 	// with "no handler for event type X". Fail-closed wiring: only
-	// when cfg.Qdrant.Enabled AND ClipsRepo is present.
-	if cfg.Qdrant.Enabled && repos.ClipsRepo != nil {
+	// when cfg.pgvector.Enabled AND ClipsRepo is present.
+	if repos.ClipsRepo != nil {
 		outboxDeps.Jobs.AssetDeleter = repos.ClipsRepo
 	}
 	// P0.7 Wave 21 Step 10/12 (June 2026): voiceover orphan cleanup
@@ -174,8 +162,8 @@ func buildOutboxDeps(
 //     asset.index.requested => a SECOND owner. Boot aborts: a stray media event
 //     must dead-letter loudly rather than project into a third plane.
 //
-// The retired Qdrant media projection branch is gone, so there is no ordering
-// dependency left and this assertion takes no Repository/Qdrant handles.
+// The retired legacy media projection branch is gone, so there is no ordering
+// dependency left and this assertion takes no Repository/pgvector handles.
 func assertSingleMediaIndexOwner(
 	cfg *config.Config,
 	eventsRegistry *outboxevents.HandlerRegistry,
@@ -404,9 +392,9 @@ func (a pgMediaAssetDeleter) SetLifecycleState(ctx context.Context, id string, s
 }
 
 // pgMediaVectorPointDeleter adapts the pgvector media index surface to the
-// jobs.VectorPointDeleter port. The port name is legacy (Qdrant era); binding
+// jobs.VectorPointDeleter port. The port name is legacy (pgvector era); binding
 // it to the PostgreSQL media plane is precisely what keeps the media index
-// deletion OFF Qdrant in PostgreSQL mode (Qdrant media writes are forbidden).
+// deletion OFF pgvector in PostgreSQL mode (pgvector media writes are forbidden).
 type pgMediaVectorPointDeleter struct {
 	committer *pgmedia.PostgresMediaCommitter
 }

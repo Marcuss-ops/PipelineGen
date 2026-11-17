@@ -9,10 +9,12 @@ import (
 )
 
 // maxImageFrameShadowBlurPX is the strict-Vulkan separable-blur ceiling the
-// native image-card path certifies. ImageFrame and the flat runtime override
-// must use the same ceiling: the flat key is consumed by frameFromImageParams
-// and would otherwise overwrite the capped Frame.
-const maxImageFrameShadowBlurPX = 10.0
+// native image-card path certifies (Chronon's native drop shadow accepts
+// radius <= 64). The same bound gates the payload at ingress, and the
+// projection passes the authored value through: ImageFrame and the flat
+// runtime override (consumed by frameFromImageParams) never clamp it, so the
+// declared look and the rendered look cannot diverge silently.
+const maxImageFrameShadowBlurPX = scriptpkg.MaxImageShadowBlurPX
 
 // BackgroundFromPayload projects a kernel background into the render plan
 // domain while retaining verified asset references and style fields.
@@ -187,7 +189,7 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 				// Keep the flat override inside the same native GPU range as the
 				// capped Frame; frameFromImageParams would otherwise overwrite
 				// the 10 px Frame value with the larger flat one.
-				params["image_shadow_blur"] = min(*image.Shadow.Blur, maxImageFrameShadowBlurPX)
+				params["image_shadow_blur"] = *image.Shadow.Blur
 			}
 			if len(image.Shadow.Offset) >= 1 {
 				params["image_shadow_offset_x"] = image.Shadow.Offset[0]
@@ -251,7 +253,7 @@ func ImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capmodel.OverlayItemFra
 			shadow.Opacity = *style.Shadow.Opacity
 		}
 		if style.Shadow.Blur != nil {
-			shadow.BlurPX = min(*style.Shadow.Blur, maxImageFrameShadowBlurPX)
+			shadow.BlurPX = *style.Shadow.Blur
 		}
 		if len(style.Shadow.Offset) > 0 {
 			shadow.OffsetXP = style.Shadow.Offset[0]
@@ -289,6 +291,9 @@ func ImageBackdropParams(backdrop *scriptpkg.OverlayImageBackdropSpec) map[strin
 		gridParams := map[string]any{}
 		if grid.Enabled != nil {
 			gridParams["enabled"] = *grid.Enabled
+		}
+		if grid.Scope != "" {
+			gridParams["scope"] = grid.Scope
 		}
 		if grid.Style != "" {
 			gridParams["style"] = grid.Style
@@ -329,6 +334,12 @@ func ImageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
 			out[strings.TrimPrefix(key, "image_")] = value
 		}
 	}
+	// Effects and grid are item-level treatments, not layer geometry: chain
+	// segments carry them in their own params so a fused image chain keeps
+	// the same controls as a standalone card.
+	for key, value := range ImageTreatmentParams(style) {
+		out[key] = value
+	}
 	return out
 }
 
@@ -367,6 +378,101 @@ func MergeRuntimeTextStyleParams(params, styleParams map[string]any) map[string]
 	return out
 }
 
+// MergeImageStyle overlays a per-pin image style on the run-level one. Every
+// field the pin leaves unset keeps the run-level value, so overlay_images[].
+// style names only what is different about that photo; a declared effects
+// stack replaces the run-level stack (an empty list is not a declaration).
+func MergeImageStyle(base, override *scriptpkg.OverlayImageStyleSpec) *scriptpkg.OverlayImageStyleSpec {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	merged := *base
+	if override.Width != nil {
+		merged.Width = override.Width
+	}
+	if override.Height != nil {
+		merged.Height = override.Height
+	}
+	if override.PositionX != nil {
+		merged.PositionX = override.PositionX
+	}
+	if override.PositionY != nil {
+		merged.PositionY = override.PositionY
+	}
+	if override.Radius != nil {
+		merged.Radius = override.Radius
+	}
+	if override.Border != nil {
+		merged.Border = override.Border
+	}
+	if override.Stroke != nil {
+		merged.Stroke = override.Stroke
+	}
+	if override.Shadow != nil {
+		merged.Shadow = override.Shadow
+	}
+	if override.Glow != nil {
+		merged.Glow = override.Glow
+	}
+	if override.Bounded != nil {
+		merged.Bounded = override.Bounded
+	}
+	if override.Fit != "" {
+		merged.Fit = override.Fit
+	}
+	if len(override.Effects) > 0 {
+		merged.Effects = override.Effects
+	}
+	if override.Grid != nil {
+		merged.Grid = mergeImageGrid(base.Grid, override.Grid)
+	}
+	if override.Backdrop != nil {
+		merged.Backdrop = override.Backdrop
+	}
+	return &merged
+}
+
+// mergeImageGrid overlays the supplied grid keys on the base grid. The grid
+// block is all-optional by contract, so a pin can, for example, turn the grid
+// off without restating its style, colour or spacing.
+func mergeImageGrid(base, override *scriptpkg.OverlayImageGridSpec) *scriptpkg.OverlayImageGridSpec {
+	if base == nil {
+		return override
+	}
+	if override == nil {
+		return base
+	}
+	merged := *base
+	if override.Enabled != nil {
+		merged.Enabled = override.Enabled
+	}
+	if override.Scope != "" {
+		merged.Scope = override.Scope
+	}
+	if override.Style != "" {
+		merged.Style = override.Style
+	}
+	if override.Color != "" {
+		merged.Color = override.Color
+	}
+	if override.SpacingPX != nil {
+		merged.SpacingPX = override.SpacingPX
+	}
+	if override.LineWidthPX != nil {
+		merged.LineWidthPX = override.LineWidthPX
+	}
+	if override.DotRadiusPX != nil {
+		merged.DotRadiusPX = override.DotRadiusPX
+	}
+	if override.Opacity != nil {
+		merged.Opacity = override.Opacity
+	}
+	return &merged
+}
+
 func ApplyImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
 	if item == nil || style == nil {
 		return
@@ -395,6 +501,7 @@ func ApplyImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageSt
 		}
 		item.Params["image_backdrop"] = backdrop
 	}
+	ApplyImageTreatments(item, style)
 	item.Frame = ImageFrame(style)
 	for i := range item.ImageLayers {
 		if item.ImageLayers[i].Params == nil {

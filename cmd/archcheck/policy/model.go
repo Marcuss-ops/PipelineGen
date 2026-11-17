@@ -184,7 +184,7 @@ type OwnerRef struct {
 	Path string
 	// Owner is the canonical owner identifier — typically a Go
 	// package path, a YAML section, or a free-form team/workstream
-	// label (e.g. "internal/app", "qdrant-hygiene work stream",
+	// label (e.g. "internal/app", "pgvector-hygiene work stream",
 	// "scripting"). Owners must be unique across the registry.
 	Owner string
 	// Source records where the owner declaration came from. Three

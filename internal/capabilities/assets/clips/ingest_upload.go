@@ -41,7 +41,7 @@ type UploadVideoClipResponse struct {
 // Form fields:
 //   - file:       (required) the video file
 //   - name:       clip name (defaults to filename without extension)
-//   - description: description / search text for Qdrant indexing
+//   - description: description / search text for pgvector indexing
 //   - tags:       JSON array of tags, e.g. ["funny","interview"]
 //   - source:     source identifier (default "manual")
 //   - category:   category

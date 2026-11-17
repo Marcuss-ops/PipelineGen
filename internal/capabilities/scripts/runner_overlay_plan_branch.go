@@ -47,30 +47,53 @@ import (
 )
 
 func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string, req GenerateRequest, jobID string, result *GenerateResult) error {
+	planLanguage := req.SourceLanguage
+	// Each final-job language child keeps SourceLanguage as the language of
+	// the supplied script (the translation source), while its only voiceover
+	// and final render use the child target. Overlay timing and entity
+	// projection must follow that rendered track or the planner sees no
+	// matching word timings and silently produces a map-only plan.
+	if req.FinalJob {
+		if language := primaryVoiceoverLanguage(req); language != "" {
+			planLanguage = language
+		}
+	}
+	// Image treatments are validated here as well as at the payload boundary:
+	// this is the single plan choke point, so a bad effect/grid stack fails
+	// with an actionable error before any render work is queued.
+	if req.OverlayStyle != nil {
+		if err := capabilityoverlay.ValidateImageTreatments(req.OverlayStyle.Image); err != nil {
+			return fmt.Errorf("overlay style: %w", err)
+		}
+	}
 	result.OverlayImages = append([]scriptpkg.OverlayImageAsset(nil), req.OverlayImages...)
 	reportTimingSkip := func(skip timingProjectionSkip) {
 		observability.ScriptTimingProjectionSkipTotal.WithLabelValues(skip.SceneID, skip.Surface).Inc()
 		r.log.Warn("voiceover timing projection skipped an unanchored surface",
 			zap.String("scene_id", skip.SceneID), zap.String("surface", skip.Surface), zap.Error(skip.Cause))
 	}
-	if err := compileResultPhraseTimings(ctx, r.phraseAligner, result, req.SourceLanguage, reportTimingSkip); err != nil {
+	if err := compileResultPhraseTimings(ctx, r.phraseAligner, result, planLanguage, reportTimingSkip); err != nil {
 		cause := fmt.Errorf("phrase timing compilation failed: %w", err)
 		return cause
 	}
-	if err := compileResultEntityTimeline(ctx, r.phraseAligner, result, req.SourceLanguage, reportTimingSkip); err != nil {
+	if err := compileResultEntityTimeline(ctx, r.phraseAligner, result, planLanguage, reportTimingSkip); err != nil {
 		cause := fmt.Errorf("entity timeline compilation failed: %w", err)
 		return cause
 	}
+	overlayBackground := req.OverlayBackground
+	if overlayBackground == nil {
+		overlayBackground = singleClipOverlayBackground(req, result)
+	}
 	requestedBackground := ""
-	if req.OverlayBackground != nil {
-		requestedBackground = req.OverlayBackground.AssetID
+	if overlayBackground != nil {
+		requestedBackground = overlayBackground.AssetID
 	}
 	overlaystatus.Update(runID, func(status *overlaystatus.Status) {
 		status.JobID = jobID
 		status.Stage = "background_resolving"
 		status.Requested = overlayStatusRequest(req)
 	})
-	background, bgErr := r.resolveOverlayBackground(ctx, req.OverlayBackground)
+	background, bgErr := r.resolveOverlayBackground(ctx, overlayBackground)
 	if bgErr != nil {
 		cause := fmt.Errorf("resolve overlay background failed: %w", bgErr)
 		overlaystatus.Update(runID, func(status *overlaystatus.Status) {
@@ -122,7 +145,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	}
 	canvas.ImageMotions = req.ImageMotions
 	canvas.ImageWithTextMotions = req.ImageWithTextMotions
-	canvas.EntityImageMotions = req.EntityImageMotions
+	canvas.EntityImageMotions = resolveEntityImageMotionPool(req.EntityImageMotions)
 	canvas.EntityCaptionMotions = req.EntityCaptionMotions
 	canvas.AnimationPolicies = req.AnimationPolicies
 	canvas.RandomLightLeakOnClipStart = req.RandomLightLeakOnClipStart
@@ -181,8 +204,33 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		zap.Any("animation_counts", canvas.AnimationCounts),
 	)
 	overlaystatus.Update(runID, func(status *overlaystatus.Status) { status.Stage = "planning" })
-	if err := compileResultOverlayPlan(ctx, result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, r.overlayPlanCompiler, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
+	if err := compileResultOverlayPlan(ctx, result, planLanguage, runID, req.Project, driveFolderID, canvas, plates, r.overlayPlanCompiler, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
+		return cause
+	}
+	// Per-pin styles are applied before the random draw: a pin that declares
+	// its own effect stack has authored that photo's look, and the draw must
+	// leave it alone.
+	var runImageStyle *scriptpkg.OverlayImageStyleSpec
+	if canvas.Style != nil {
+		runImageStyle = canvas.Style.Image
+	}
+	if err := applyImageAssetStylesForResult(result, req.OverlayImages, runImageStyle); err != nil {
+		return fmt.Errorf("apply image-overlay style: %w", err)
+	}
+	// Random image decorations are a visual policy, and an item carrying an
+	// explicit effects stack (including overlay_style.image.effects) is left
+	// untouched: authored intent always wins over the draw.
+	if req.RandomImageEffects {
+		attachRandomImageEffectsToPlan(result.OverlayPlan)
+		for _, plan := range result.LocalizedOverlayPlans {
+			attachRandomImageEffectsToPlan(plan)
+		}
+	}
+	// Explicit per-image cues are attached first: the random path then only
+	// fills the images the payload left unclaimed.
+	if err := attachImageAssetSFXForResult(ctx, r.audioAssetSource, result, req.OverlayImages); err != nil {
+		cause := fmt.Errorf("attach image-overlay SFX: %w", err)
 		return cause
 	}
 	if req.RandomSFXOnImageOverlay {

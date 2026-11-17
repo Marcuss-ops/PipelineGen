@@ -338,7 +338,7 @@ func TestStockChunkStrategy_TagsEmpty(t *testing.T) {
 
 func TestStockChunkStrategy_MultiSegment(t *testing.T) {
 	// Two chunks from the same event: each must produce distinct text
-	// keyed on round/subject so Qdrant can disambiguate them.
+	// keyed on round/subject so pgvector can disambiguate them.
 	a := appsearchtext.SearchTextInput{
 		AssetID: "stock-4a",
 		Source:  "stock",
@@ -493,7 +493,7 @@ func TestStockChunkStrategy_AdditionalKeysContract(t *testing.T) {
 // segment is emitted ONLY when BOTH start_sec and end_sec are set.
 // A one-sided endpoint must drop the segment entirely (rather than
 // emit a malformed "Segment 10.0s to s" or "Segment s to 20.0s"
-// that would pollute the Qdrant BM25 channel).
+// that would pollute the pgvector BM25 channel).
 func TestStockChunkStrategy_SegmentDropOnPartialEndpoints(t *testing.T) {
 	cases := []struct {
 		name        string

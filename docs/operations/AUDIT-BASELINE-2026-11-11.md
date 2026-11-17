@@ -341,6 +341,20 @@ are not a substitute for those actions.
   operation; the current remediation removed 259 MP4 files from the indexed
   tree with a SHA manifest, without rewriting Git history.
 
+### 9.6 Residuo trasferito — overlay render per-scena (2026-11-17)
+
+Il ticket `TICKET-OVERLAY-RENDER-PER-SCENE-2026-10-29.md` è chiuso come
+archiviato: il documento descrive il design del 29-10 e non è più uno stato
+corrente. Il residuo operativo che non rientra nei gate locali vive qui.
+
+| Residuo | Cosa manca | Owner | Criterio di uscita |
+|---|---|---|---|
+| Wire/consumer multi-artefatto per i final job | Il producer final-job e il consumer `transform_manifest.rs` assumono un solo artefatto per timeline; serve la revisione versionata con lista di artefatti e mapping entry→artefatto, senza perdere z-order, sfondo, retry e chiavi di composizione | pipeline (`refactored` + RenderingGen + BrainRust) | Consumer aggiornato e golden completo su 1/N batch, scene-crossing, overlap e mappe; deploy/restart autorizzati separatamente |
+| Certificazione mix 100 item con mappe | Le tre run closeout 30-10 sono senza mappe (mediana 77,32 item/min); il mix con mappe non è stato eseguito | performance + pipeline | Run same-payload con mappe, 3 run, mediana e gate ≥100/min registrati |
+
+Nessuno dei due è coperto dai gate locali §9.3: restano `NOT RUN` finché non
+esiste una run live sullo stesso payload. `make verify-main` non li sostituisce.
+
 ## 10. Reachability closeout — 2026-11-12 (second pass)
 
 Status: **every locally reachable gate is green; the remaining checklist items

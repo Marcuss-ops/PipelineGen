@@ -13,7 +13,7 @@ import (
 // docs use "media.index.*" in prose; the codebase standard adopted here
 // is "asset.index.*" because that prefix matches the sibling Indexing
 // event (asset.index.requested) and keeps greppability symmetric across
-// the outbox-events column. The QDRANT-002 ticket's "media.index.*"
+// the outbox-events column. The VECTOR-002 ticket's "media.index.*"
 // naming maps to these constants 1:1.
 //
 // IDENTITY NOTE: the literal values are owned by internal/kernel/event
@@ -28,7 +28,7 @@ const (
 	// emitted by mutations.AssetMutationDispatcher.EnqueueAndRestore.
 	// Handler (deferred to task 3 of 5, currently
 	// mutations.AssetMutationDispatcher is foundation-only) consumes
-	// this event and completes the picture with Qdrant re-upsert +
+	// this event and completes the picture with pgvector re-upsert +
 	// lifecycle_state flip back to 'ready'.
 	//
 	// Naming follows the established asset.index.* family so a single
@@ -87,11 +87,11 @@ const (
 	// payload) in Wave 6. Carries the rich payload — destination,
 	// origin, category, subject, provider, drive_file_id, drive_path,
 	// tags — so the consumer (internal/capabilities/jobs.AssetPublishedHandler)
-	// composes a richer Qdrant embed text WITHOUT re-loading these
+	// composes a richer pgvector embed text WITHOUT re-loading these
 	// semantic fields from media_assets.
 	//
 	// Coexist with EventAssetIndexRequested (pre-existing
-	// Qdrant-incoming ingestion): each event is independent and a
+	// vector-incoming ingestion): each event is independent and a
 	// caller can emit one OR both. Per godlike/07 minimum-blast-radius
 	// the new event is purely ADDITIVE — no existing producer or
 	// consumer is rewritten.
@@ -103,7 +103,7 @@ const (
 	// rights_status from review_required → licensed; or sets
 	// expires_at when a license ends). The consumer (handler
 	// lands in follow-up PR — see suggest_followups) re-emits
-	// EventAssetIndexRequested so the Qdrant reindex path picks
+	// EventAssetIndexRequested so the pgvector reindex path picks
 	// up the new rights-state payload without a separate
 	// indexer-writer code path. Naming follows the
 	// established asset.* family so a single substring search
@@ -134,7 +134,7 @@ const (
 	// EventBindingIndexRequested is emitted by the canonical
 	// BindingMutationDispatcher whenever a media_bindings row is
 	// mutated (Create/Update/Approve/Reject/Delete). The consumer
-	// reindexes the parent media_concepts row in Qdrant so the
+	// reindexes the parent media_concepts row in pgvector so the
 	// semantic projection stays consistent with the authoritative
 	// SQLite state.
 	EventBindingIndexRequested = event.BindingIndexRequested

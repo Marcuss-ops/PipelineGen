@@ -6,7 +6,6 @@
 #   - verify-full.yml    → verify-full     job
 #   - verify-race.yml    → verify-race     job
 #   - verify-release.yml → verify-release  job
-#   - preflight-ci.yml   → qdrant-preflight job
 #
 # Removed 2026-09-13: the stock-live job (and the stock-live.yml dispatch
 # entry it mirrored) invoked `make verify-stock-live`, whose driver
@@ -31,16 +30,6 @@ on:
         description: "Audit-trail reason for this manual gate run"
         required: false
         default: "manual gate run"
-        type: string
-      preflight_url:
-        description: "PipelineGen server URL for qdrant-preflight job (default http://127.0.0.1:8081)"
-        required: false
-        default: "http://127.0.0.1:8081"
-        type: string
-      preflight_qdrant_url:
-        description: "Qdrant URL for qdrant-preflight job (default http://127.0.0.1:16333)"
-        required: false
-        default: "http://127.0.0.1:16333"
         type: string
 
 permissions: {}
@@ -120,57 +109,3 @@ jobs:
         # graph in workflow steps.
         run: make verify-release
 
-  qdrant-preflight:
-    name: qdrant-preflight (docker-compose stack smoke)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    concurrency:
-      group: manual-qdrant-preflight-${{ github.ref }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.26.11"
-
-
-      - name: Build admin binary
-        run: |
-          go build -o ./bin/admin ./cmd/admin/
-          ls -la ./bin/admin
-
-      - name: Start docker-compose stack (qdrant + pipelinegen-server)
-        run: |
-          docker compose up -d qdrant pipelinegen-server
-          for i in $(seq 1 60); do
-            HTTP=$(curl -sS -m 2 -o /dev/null -w '%{http_code}' http://localhost:8081/healthz 2>/dev/null || echo 000)
-            QDRANT=$(curl -sS -m 2 -o /dev/null -w '%{http_code}' http://localhost:16333/healthz 2>/dev/null || echo 000)
-            if [ "$HTTP" = "200" ] && [ "$QDRANT" = "200" ]; then
-              echo "stack GREEN after ${i}s"
-              break
-            fi
-            sleep 1
-          done
-          if [ "$HTTP" != "200" ] || [ "$QDRANT" != "200" ]; then
-            echo "stack NOT GREEN: server :8081=$HTTP / qdrant :16333=$QDRANT"
-            docker compose logs --tail=100
-            exit 1
-          fi
-
-      - name: Run qdrant preflight
-        env:
-          VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
-          VELOX_WORKER_TOKEN: ${{ secrets.VELOX_WORKER_TOKEN }}
-        run: |
-          ./bin/admin qdrant-preflight \
-            --url=${{ github.event.inputs.preflight_url }} \
-            --qdrant-url=${{ github.event.inputs.preflight_qdrant_url }}
-
-      - name: Tear down docker-compose stack
-        if: always()
-        run: docker compose down --volumes || true

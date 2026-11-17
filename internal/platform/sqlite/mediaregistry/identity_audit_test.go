@@ -17,8 +17,8 @@ func TestAuditIdentity_CleanIsZero(t *testing.T) {
 	if report.DuplicateSourceIdentity != 0 {
 		t.Fatalf("DuplicateSourceIdentity = %d, want 0", report.DuplicateSourceIdentity)
 	}
-	if report.DuplicateQdrantPoints != 0 {
-		t.Fatalf("DuplicateQdrantPoints must stay 0 in the SQLite half, got %d", report.DuplicateQdrantPoints)
+	if report.DuplicateVectorPoints != 0 {
+		t.Fatalf("DuplicateVectorPoints must stay 0 in the SQLite half, got %d", report.DuplicateVectorPoints)
 	}
 }
 

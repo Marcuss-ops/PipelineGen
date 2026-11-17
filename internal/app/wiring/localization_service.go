@@ -56,6 +56,10 @@ type LocalizationConfig struct {
 	WorkDir                 string
 	GlobalRenderConcurrency int
 	UploadConcurrency       int
+	// DriveReusePublished reuses the Drive identity of already-published,
+	// byte-identical clips instead of uploading them again. See
+	// config.Scripts.LocalizedRenderDriveReuse.
+	DriveReusePublished bool
 }
 
 const LocalizationRendererVersion = "chronon-render/localization-v1"
@@ -128,6 +132,7 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	if err != nil {
 		return nil, fmt.Errorf("localization service: service: %w", err)
 	}
+	svc.WithPublishedDriveReuse(cfg.DriveReusePublished)
 	plans, err := localization.NewLocalizationPlanBuilder(deps.TrackResolver)
 	if err != nil {
 		return nil, fmt.Errorf("localization service: plan builder: %w", err)
@@ -368,6 +373,7 @@ func LocalizationConfigFromConfig(cfg *config.Config) LocalizationConfig {
 		WorkDir:                 workDir,
 		GlobalRenderConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
 		UploadConcurrency:       cfg.Scripts.LocalizedRenderUploadConcurrency,
+		DriveReusePublished:     cfg.Scripts.LocalizedRenderDriveReuse,
 	}
 }
 

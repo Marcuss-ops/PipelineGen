@@ -171,7 +171,7 @@ cd refactored
 curl -sS -X POST "$VELOX_URL/api/assets/operator/assets/<asset_id>/reindex" \
   -H "Authorization: Bearer $VELOX_ADMIN_TOKEN"
 # oppure programmaticamente via il package canonico
-# internal/platform/qdrant/indexing/clipindexer (il vecchio
+# internal/platform/pgvector/indexing/clipindexer (il vecchio
 # batch.go::HandleJob non esiste più: vedi wire_envelope.go per la nota storica).
 ```
 

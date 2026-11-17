@@ -8,7 +8,7 @@
 # records simply have no shard.
 schema_version: 1
 source_directory: architecture/deprecations
-total_records: 7
+total_records: 6
 records:
     - bucket: assets
       file: records/assets.yaml
@@ -16,7 +16,4 @@ records:
     - bucket: misc
       file: records/misc.yaml
       count: 4
-    - bucket: qdrant
-      file: records/qdrant.yaml
-      count: 1
 audit_file: audit.yaml

@@ -37,8 +37,10 @@ func newPublishTimingUseCase(t *testing.T, pub VoiceoverPublisher) *ProcessSegme
 		Publisher:           pub,
 		VoiceoverRepository: &stubProcessVoRepo{db: db},
 		Finalizer:           &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "vo-timing-test"}},
-		PhraseAligner:       stubPublishPhraseAligner{},
-		Logger:              zap.NewNop(),
+		Enrichment: ProcessSegmentEnrichmentDeps{
+			PhraseAligner: stubPublishPhraseAligner{},
+		},
+		Logger: zap.NewNop(),
 	})
 }
 

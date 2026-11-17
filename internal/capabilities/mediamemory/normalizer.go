@@ -10,7 +10,7 @@
 //
 // both yield SHA256(language + normalized_phrase + visual_intent_version).
 // This is the Level 0 hot path that VisualResolver consults before
-// any fan-out to Qdrant or external providers.
+// any fan-out to pgvector or external providers.
 //
 // godlike/06 SSOT (one canonical owner per fact): the canonical
 // normalization algorithm lives in this file. Any code that needs

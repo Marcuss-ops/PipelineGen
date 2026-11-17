@@ -82,7 +82,7 @@ type PublisherPort interface {
 // PR-RICH-METADATA (July 2026): added Summary, Topics, Speakers,
 // MentionedPeople, Hook fields. These flow through the sourcing
 // adapter chain into asset.Asset.Metadata → media_assets.metadata_json
-// for Qdrant semantic search enrichment.
+// for pgvector semantic search enrichment.
 type ExistingClip struct {
 	ID             string
 	Name           string
@@ -101,7 +101,7 @@ type ExistingClip struct {
 	DriveFileID    string
 	ContentSHA256  string
 
-	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
+	// Rich metadata fields (RICH-METADATA-VECTOR-VERIFY, July 2026)
 	Summary         string   `json:"summary,omitempty"`
 	Topics          []string `json:"topics,omitempty"`
 	Speakers        []string `json:"speakers,omitempty"`
@@ -119,7 +119,7 @@ type ExistingClip struct {
 
 // ClipStorePort persists and queries clip metadata.
 //
-// QDRANT-asset-mutation isolation (June 2026): UpsertClip was REMOVED
+// VECTOR-asset-mutation isolation (June 2026): UpsertClip was REMOVED
 // from this port. Sourcing callers MUST go through IndexDispatcherPort
 // (EnqueueAndIndex on outbox.Dispatcher) for any media_assets write.
 // Read-side methods (FindByName, FindExisting, GetClip) stay because
@@ -225,7 +225,7 @@ type EnrichmentPort interface {
 
 // IndexDispatcherPort is the narrow surface of outbox.Dispatcher needed by
 // sourcing. EnqueueAndIndex atomically upserts the asset and enqueues an
-// outbox event in a single tx — the canonical QDRANT-002 pattern.
+// outbox event in a single tx — the canonical VECTOR-002 pattern.
 // contentHash is the ingest-time file hash used for supersede-gate dedup.
 type IndexDispatcherPort interface {
 	EnqueueAndIndex(ctx context.Context, clip *ExistingClip, contentHash string) error
@@ -293,14 +293,14 @@ var (
 // ── Sourcing atomic port (PR-SOURCING-ADAPTER-FAIL-CLOSED, July 2026) ──
 
 // SourcingAtomicPort is the COMBINED canonical Pattern-0 typed surface
-// for the two post-registration flows: async enrichment + Qdrant indexing
+// for the two post-registration flows: async enrichment + pgvector indexing
 // (EnrichAndIndex) + metadata sidecar upload (UpdateCumulativeJSON).
 // Centralizes the fail-closed contract so a single composition-root
 // wiring decision (via wireSourcingAtomic) gates BOTH operations —
 // pre-PR-SOURCING-ADAPTER-FAIL-CLOSED they were 2 independent fail-open
 // paths each returning nil on unwired, masking the silent-success class
 // from upstream callers (clip registration would succeed without ever
-// triggering the Qdrant index request OR the metadata sidecar write).
+// triggering the pgvector index request OR the metadata sidecar write).
 //
 // godlike/06 SSOT one-canonical-owner-per-fact: this port lives ONLY
 // at internal/capabilities/assets/sourcing/ports.go (the canonical
@@ -340,7 +340,7 @@ var (
 	// upstream caller invokes EnrichAndIndex on an adapter
 	// whose enrichment handler was nil at composition time.
 	// Caller MUST branch on errors.Is to decide whether to
-	// fall back to dispatch-only (Qdrant index detached) or
+	// fall back to dispatch-only (pgvector index detached) or
 	// fail-closed at the application layer.
 	ErrSourcingEnrichAndIndexDisabled = errors.New(
 		"sourcing: EnrichAndIndex: handler disabled at composition root (clips handler nil — composition bug)",

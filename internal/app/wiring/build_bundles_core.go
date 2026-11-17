@@ -47,9 +47,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
-	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
-	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	sqliteimageindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imageindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 )
@@ -88,11 +85,11 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	// the video pipeline + the AcquireService backfill CLI. It MUST
 	// be wired at the RepoBundle composition root (BuildRepoBundle)
 	// so every consumer (BuildTextTrackBundle, BuildDomainBundle, the
-	// AcquireService wiring in composition.go, the Qdrant
-	// PayloadMapper in buildQdrantDeps) sees the SAME non-nil
+	// AcquireService wiring in composition.go, the pgvector
+	// PayloadMapper in buildIndexDeps) sees the SAME non-nil
 	// dependency. The pre-PR scattered construction in
 	// build_bundles_domain_media.go::buildDomainMediaServices and
-	// build_process_qdrant.go::buildQdrantDeps is now removed — both
+	// build_process_bundle.go::buildIndexDeps is now removed — both
 	// callers consume repos.TextTrackRepo from this bundle. godlike/07
 	// fail-closed: BuildTextTrackBundle rejects nil TextTrackRepo so
 	// the test fixture MUST exercise this path.
@@ -286,32 +283,20 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 	if cfg == nil {
 		return nil
 	}
-	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth
+	// PR-VECTOR-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth
 	// gate. Note buildHealthService does NOT return an error (it
 	// returns *systemhealth.Service) so we cannot propagate the
 	// upstream helper error directly. Instead the helper is also
 	// called at the 3 other canonical composition sites
-	// (build_process_qdrant::buildQdrantDeps +
+	// (build_process_bundle::buildIndexDeps +
 	// build_bundles_process::BuildOutboxBundle + wire_services::WireServices)
 	// which DO return error; the boot-time fail-closed is enforced
 	// at one of those 3 sites. The call here is a defensive belt-and-
 	// suspenders consistency check — the helper itself does not
 	// mutate state, so an unreachable reject path is safe to skip in
 	// a side-effect-free helper-builder context. Cross-ref:
-	// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility.
+	// internal/app/the retired indexer gates file::validateIndexerCompatibility.
 	var driveChecker systemhealth.DriveChecker
-	var qdrantChecker systemhealth.QdrantChecker
-	// godlike/07 consistency: when the upstream 3 sites declare an
-	// incompatible configuration, buildHealthService's helper check
-	// would also fail. We log+continue here to avoid a second-level
-	// panic during the partial-composition rollback; the canonical
-	// boot-time error surfaces from WireServices (the 4th wire site)
-	// via the upstream registry path.
-	_ = validateQdrantIndexerCompatibility(cfg)
-	if cfg.Qdrant.Enabled {
-		qdrantCfg := &schema.Config{BaseURL: cfg.Qdrant.BaseURL, APIKey: cfg.Qdrant.APIKey, Timeout: cfg.Qdrant.Timeout}
-		qdrantChecker = qdranthealth.NewProbe(qdranttransport.NewClient(qdrantCfg, zap.NewNop()))
-	}
 	// The execution-plane health check must follow the jobs split. Keep the
 	// media DB as the canonical "db" check, but never report jobs health from
 	// that handle when jobs.db.sqlite is enabled.
@@ -329,7 +314,7 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 		return nil
 	}
 	return systemhealth.NewService(systemhealth.ServiceDeps{
-		DB: infrahealth.NewSQLiteChecker(db), Drive: driveChecker, Qdrant: qdrantChecker, Jobs: jobsChecker,
+		DB: infrahealth.NewSQLiteChecker(db), Drive: driveChecker, Jobs: jobsChecker,
 	})
 }
 

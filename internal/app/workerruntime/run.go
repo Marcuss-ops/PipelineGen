@@ -85,8 +85,8 @@ type WorkerComposition struct {
 // converge on a single returned *WorkerComposition:
 //
 //	profile=nil              → legacy (no-profile) path
-//	profile.Name="creator"   → Creator runtime (minimal, no DB/Drive/Qdrant)
-//	profile.Name="renderer"  → RenderingGen runtime (overlay-only, no DB/Drive/Qdrant)
+//	profile.Name="creator"   → Creator runtime (minimal, no DB/Drive/pgvector)
+//	profile.Name="renderer"  → RenderingGen runtime (overlay-only, no DB/Drive/pgvector)
 //	profile.Name=other       → standard profile-gated worker
 //
 // Cleanup invariant: if any step fails, the helper calls cleanup()
@@ -175,11 +175,11 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 	switch profile.Name {
 	case "creator":
 		// Creator Blocco 3.1 (now P0 C8 — July 2026): minimal
-		// composition without DB, Drive, Qdrant, Scheduler, or
+		// composition without DB, Drive, pgvector, Scheduler, or
 		// CatalogSync reach. Registry + workspace are built by
 		// the canonical CreatorRuntime factory
 		// (BuildCreatorRuntime in creator_runtime.go).
-		// The no-DB / no-Qdrant / no-Scheduler / no-CatalogSync
+		// The no-DB / no-pgvector / no-Scheduler / no-CatalogSync
 		// contract is enforced at the canonical surface via
 		// compile-time orphan pin + import-allowlist AST scan.
 		creatorRuntime, creatorCleanup, creatorErr := wiring.BuildCreatorRuntime(cfg, log)
@@ -352,7 +352,7 @@ func Run(ctx context.Context, cfgPath string) error {
 	}
 
 	// Detect profile BEFORE building composition — the Creator uses a
-	// minimal graph (no DB, Drive, Qdrant, Repos).
+	// minimal graph (no DB, Drive, pgvector, Repos).
 	//
 	// Audit-pin (FIX-APP-WORKERRUNTIME-SYNTAX, July 2026): err is already in scope via the earlier cfg/log := LoadConfig/LoadLogger calls; the slim 7-file split pins err to the smallest possible scope (no var err error).
 	var profile *WorkerProfile

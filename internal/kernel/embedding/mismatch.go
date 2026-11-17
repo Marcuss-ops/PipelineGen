@@ -11,7 +11,7 @@ var ErrContractMismatch = errors.New("embedding contract mismatch")
 
 // MismatchError reports which component diverged from the canonical contract.
 // Its code is the operator-facing gate identifier
-// QDRANT_EMBEDDING_CONTRACT_MISMATCH.
+// EMBEDDING_CONTRACT_MISMATCH.
 type MismatchError struct {
 	// Component is the leg of the handshake that diverged (see the
 	// Component* constants in handshake.go).
@@ -26,7 +26,7 @@ type MismatchError struct {
 
 // Error implements error.
 func (e *MismatchError) Error() string {
-	message := fmt.Sprintf("QDRANT_EMBEDDING_CONTRACT_MISMATCH: %s diverged: expected %s, got %s",
+	message := fmt.Sprintf("EMBEDDING_CONTRACT_MISMATCH: %s diverged: expected %s, got %s",
 		e.Component, e.Expected.String(), e.Got.String())
 	if e.ExpectedHash != "" || e.GotHash != "" {
 		message += fmt.Sprintf(" (expected_hash=%s got_hash=%s)", e.ExpectedHash, e.GotHash)
@@ -38,4 +38,4 @@ func (e *MismatchError) Error() string {
 func (e *MismatchError) Unwrap() error { return ErrContractMismatch }
 
 // Code returns the canonical fail-closed gate identifier.
-func (e *MismatchError) Code() string { return "QDRANT_EMBEDDING_CONTRACT_MISMATCH" }
+func (e *MismatchError) Code() string { return "EMBEDDING_CONTRACT_MISMATCH" }

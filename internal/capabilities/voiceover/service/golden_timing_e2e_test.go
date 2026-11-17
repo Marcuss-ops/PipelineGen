@@ -141,8 +141,10 @@ func TestGoldenTimingE2E_ThreeScenes(t *testing.T) {
 		Publisher:           pub,
 		VoiceoverRepository: &stubProcessVoRepo{db: openProcessTestDB(t)},
 		Finalizer:           &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "vo-golden"}},
-		PhraseAligner:       goldenPhraseAligner{},
-		Logger:              zap.NewNop(),
+		Enrichment: ProcessSegmentEnrichmentDeps{
+			PhraseAligner: goldenPhraseAligner{},
+		},
+		Logger: zap.NewNop(),
 	})
 
 	timingPolicy := &audio.TimingRequest{

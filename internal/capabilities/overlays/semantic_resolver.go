@@ -79,6 +79,13 @@ var semanticPresetTable = map[string]SemanticPreset{
 	"lower_third":     PresetModernName,
 	"image_popup":     PresetModernImage,
 	"quote":           PresetModernPhrase,
+
+	// Rust emits these presentation templates for date and metric numbers.
+	// They are text cards, so they use the same canonical text preset as the
+	// NUMBER role; leaving them out makes the worker reject the item because
+	// it has no preset_id.
+	"TIMELINE_DATE_CARD": PresetModernWord,
+	"METRIC_STAT_CARD":   PresetModernWord,
 }
 
 // SemanticOverlayResolver resolves a semantic role (OverlayItem.TemplateID

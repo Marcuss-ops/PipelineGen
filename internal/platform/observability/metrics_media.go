@@ -97,7 +97,7 @@ var (
 		Help: "Total number of media index events terminated as superseded without retry because the asset is retiring or already retired, by event_type",
 	}, []string{"event_type"})
 
-	// MediaIndexSkippedTotal (PR-QDRANT-INDEXCLIP-GUARD, July 2026):
+	// MediaIndexSkippedTotal (PR-VECTOR-INDEXCLIP-GUARD, July 2026):
 	// Total number of asset.index.requested events short-circuited
 	// by the typed ErrIndexClipDisabledButEventRequested sentinel.
 	// The handler stamps media_assets.index_state to
@@ -184,11 +184,11 @@ var (
 	//
 	// projection_coverage_ratio / projection_orphan_count /
 	// projection_missing_count / projection_eligible_sqlite /
-	// projection_qdrant_points / projection_scan_complete /
+	// projection_vector_points / projection_scan_complete /
 	// projection_reconcile_{runs,errors}_total /
 	// projection_reconcile_last_success_timestamp_seconds were emitted only by
-	// the SQLite→Qdrant media projection-reconciler ticker. That ticker was
-	// removed with the media cutover (the Qdrant media collection is no longer
+	// the SQLite→legacy media projection-reconciler ticker. That ticker was
+	// removed with the media cutover (the pgvector media collection is no longer
 	// a projection of SQLite; media parity is transactional inside PostgreSQL +
 	// pgvector), so the series no longer have a writer and were deleted rather
 	// than left permanently frozen.

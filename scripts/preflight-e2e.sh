@@ -9,7 +9,7 @@
 # Matrix categories:
 #   1. Repository    — git state, config, migrations
 #   2. Binaries      — server, worker, Rust muscles, Chronon
-#   3. Storage       — primary DB, observability DB, Qdrant
+#   3. Storage       — primary DB, observability DB
 #   4. Services      — /health, /ready, worker registration, Ollama
 #   5. Pipeline      — asset materialization, Chronon render, Drive write
 #   6. Tools         — ffmpeg, yt-dlp
@@ -29,7 +29,6 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/canonical_db_path.sh"
 
 BASE_URL="${PREFLIGHT_BASE_URL:-http://127.0.0.1:${VELOX_PORT:-8000}}"
-QDRANT_URL="${PREFLIGHT_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${PREFLIGHT_OLLAMA_URL:-${OLLAMA_URL:-http://127.0.0.1:11434}}"
 CHRONON_URL="${PREFLIGHT_CHRONON_URL:-${CHRONON_URL:-}}"
 DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")"
@@ -57,7 +56,7 @@ if [[ -n "$FINGERPRINT_FILE" ]]; then
 fi
 
 # ── Setup validation ───────────────────────────────────────────────────────
-if [[ ! "$BASE_URL" =~ ^https?://[^[:space:]]+$ || ! "$QDRANT_URL" =~ ^https?://[^[:space:]]+$ ]]; then
+if [[ ! "$BASE_URL" =~ ^https?://[^[:space:]]+$ ]]; then
     printf 'preflight setup error: invalid service URL\n' >&2
     exit 2
 fi
@@ -152,23 +151,6 @@ check_observability_db() {
     [[ -f "$obs_db" ]] || return 1
     command -v sqlite3 >/dev/null 2>&1 && sqlite3 -readonly "$obs_db" 'PRAGMA integrity_check;' | grep -qx 'ok'
 }
-check_qdrant() {
-    local code
-    code=$(curl -fsS --max-time "$HTTP_TIMEOUT" -o /dev/null -w '%{http_code}' "${QDRANT_URL%/}/healthz" 2>/dev/null || echo "000")
-    [[ "$code" == "200" ]]
-}
-check_qdrant_collection() {
-    local resp
-    resp=$(curl -fsS --max-time "$HTTP_TIMEOUT" "${QDRANT_URL%/}/collections" 2>/dev/null || echo "")
-    [[ -n "$resp" ]] && echo "$resp" | grep -q '"collections"' && \
-        echo "$resp" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-cols = d.get('result', d).get('collections', [])
-print(len(cols))
-" 2>/dev/null | grep -q '^[1-9]'
-}
-
 # Category 4: Services
 check_server_health() {
     local code
@@ -254,7 +236,6 @@ echo "════════════════════════�
 echo "  PIPELINEGEN E2E PREFLIGHT — DEPENDENCY MATRIX"
 echo "════════════════════════════════════════════════════════════════"
 echo "  Base URL: $BASE_URL"
-echo "  Qdrant:   $QDRANT_URL"
 echo ""
 
 echo "── 1. Repository ──────────────────────────────────────────────"
@@ -273,8 +254,6 @@ echo ""
 echo "── 3. Storage ────────────────────────────────────────────────"
 check 'Primary SQLite integrity'      check_primary_db
 skip  'Observability SQLite'          check_observability_db
-check 'Qdrant reachable'              check_qdrant
-check 'Qdrant collection exists'      check_qdrant_collection
 echo ""
 
 echo "── 4. Services ───────────────────────────────────────────────"

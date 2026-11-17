@@ -1,7 +1,7 @@
 # Verification gates workflow
 
 `make verify-main` is the canonical fail-closed pre-push gate. It is headless
-and CPU-oriented: it does not require Chrome, Drive, Qdrant, or a live scraper.
+and CPU-oriented: it does not require Chrome, Drive, or a live scraper.
 
 This doc owns the **headless gate family (tiers 1–3)**, the development loop,
 and the operator/credential boundaries. The **live / end-to-end layer** (tier-4
@@ -18,7 +18,7 @@ The gates form one explicit escalation chain:
 | `make verify-main` | `foundation + static + changed-components + verify-architecture` | Daily fail-closed pre-push gate | None; headless |
 | `make verify-race` | `foundation + all registered components (race)` | Explicit race-detector gate | None; headless |
 | `make verify-full` | `verify-main + verify-race` | Complete headless gate | None; headless |
-| `make verify-release` | `verify-full + verify-integration` | Pre-deploy gate, including integration tests | No live browser/Drive/Qdrant battery |
+| `make verify-release` | `verify-full + verify-integration` | Pre-deploy gate, including integration tests | No live browser/Drive battery |
 
 `verify-main` is the only one of these gates wired into the normal pre-push
 hook. `verify-race`, `verify-full`, and `verify-release` are explicit heavier
@@ -80,7 +80,7 @@ the invalidation set are documented in
 A few minutes for the inherited `verify-main` chain (headless tier 2), plus
 several minutes more for `verify-integration` (Go tests under `./tests/...` —
 some suites exercise cross-package integration surfaces and may depend on
-Drive / Qdrant / scraper fixtures). These are **approximate budgets**; measure
+Drive / scraper fixtures). These are **approximate budgets**; measure
 on the actual operational host before relying on them for scheduling.
 
 ### What to do if RED (fail-closed)

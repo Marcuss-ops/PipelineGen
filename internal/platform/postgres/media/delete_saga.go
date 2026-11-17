@@ -164,7 +164,7 @@ func (c *PostgresMediaCommitter) SoftDeleteAsset(ctx context.Context, assetID st
 
 // DeleteAssetIndexPoints removes the pgvector index surfaces for the supplied
 // assets. This is the PostgreSQL media plane's equivalent of the retired
-// Qdrant DeletePoints call inside IndexDeleteHandler: media_embeddings is the
+// pgvector DeletePoints call inside IndexDeleteHandler: media_embeddings is the
 // ONLY vector index for the media domain, so deleting those rows IS deleting
 // the asset's index points (the FK cascades from media_assets, but the explicit
 // delete is what makes the parallel-index semantics observable and idempotent).

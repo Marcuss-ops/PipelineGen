@@ -13,7 +13,7 @@
 // canonical ErrorCategory without re-parsing HTTP status.
 //
 // Why this file is CENTRALIZED in pkg/retry (vs DISTRIBUTED like the
-// qdrant + sqlite classifiers): googleapi is an external public
+// pgvector + sqlite classifiers): googleapi is an external public
 // SDK with stable import path; pkg/retry can reliably import it. The
 // internal/ adapter classifiers are distributed ONLY because Go's
 // pkg→internal visibility rule prevents pkg/retry from importing
@@ -140,7 +140,7 @@ func retryClassFromGoogleAPIKind(kind error) ErrorCategory {
 
 // truncateAuditMessage bounds a string to maxLen chars for SafeMessage
 // audit-log emission. Mirrors the helper in
-// internal/platform/qdrant/transport/registry_retry_classifier.go
+// internal/platform/postgres/media/transport/registry_retry_classifier.go
 // (same shape; pkg/retry cannot import internal/ so the helper is
 // duplicated locally — the 12-char truncation sentinel is preserved
 // canonically across both surfaces for consistent operator grep).

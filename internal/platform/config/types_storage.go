@@ -10,7 +10,7 @@ import (
 
 // PostgreSQLMediaConfig configures the PostgreSQL + pgvector database that
 // owns the media domain. It is intentionally explicit: an empty DSN is not
-// interpreted as SQLite compatibility or a Qdrant fallback.
+// interpreted as SQLite compatibility or a pgvector fallback.
 type PostgreSQLMediaConfig struct {
 	Enabled                bool   `yaml:"enabled" env:"PIPELINEGEN_MEDIA_POSTGRES_ENABLED" default:"false"`
 	DSN                    string `yaml:"dsn" env:"PIPELINEGEN_MEDIA_POSTGRES_DSN" default:""`
@@ -20,7 +20,7 @@ type PostgreSQLMediaConfig struct {
 	// EmbeddingModel is the canonical pgvector text-channel model id. It
 	// MUST match the model served by the E5 sidecar (cfg.ClipIndexer
 	// .ServerURL) so query and document spaces cannot drift. Default is
-	// the same intfloat/multilingual-e5-base identity the Qdrant IndexSchema
+	// the same intfloat/multilingual-e5-base identity the pgvector IndexSchema
 	// pins (semanticDenseVectorName "text"). The media_embedding_families
 	// registry gates every vector write against this identity.
 	EmbeddingModel string `yaml:"embedding_model" env:"PIPELINEGEN_MEDIA_POSTGRES_EMBEDDING_MODEL" default:"intfloat/multilingual-e5-base"`

@@ -151,6 +151,16 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 	if !req.Render.Enabled {
 		return nil
 	}
+	// A clip_only final job's picture IS the source clip, and final-job
+	// overlays are opaque replacement windows: a stock plate would hide the
+	// clip for the whole overlay window (r114 showed boxing stock behind the
+	// 1991 date card). Leave the background empty when the run has exactly
+	// one clip; computeOverlayPlanProjection derives the canvas from that
+	// resolved clip. Multi-clip runs have no single truthful global plate and
+	// keep the historical channel plate.
+	if req.FinalJob && clipOnlySingleClipID(req) != "" && overlayBackgroundSelectionIsBlank(req.OverlayBackground) {
+		return nil
+	}
 	// Final-job overlays are encoded as opaque video clips and placed in
 	// replace-mode windows. A caller's solid color canvas would therefore hide
 	// the assembled picture for the entire overlay window. Replace only that
@@ -234,4 +244,34 @@ func overlayBackgroundSelectionIsBlank(spec *scriptpkg.OverlayBackgroundSpec) bo
 		strings.TrimSpace(spec.AssetID) == "" &&
 		strings.TrimSpace(spec.URL) == "" &&
 		strings.TrimSpace(spec.SHA256) == ""
+}
+
+// clipOnlySingleClipID returns the only source clip referenced by a clip_only
+// request, or "" when the request references several clips. It is the request
+// side of the clip_only overlay-canvas decision: only a run whose whole
+// picture is one clip can use that clip as the single global overlay
+// background.
+func clipOnlySingleClipID(req *GenerateRequest) string {
+	if req == nil || req.MediaMode != scriptpkg.MediaModeClipOnly {
+		return ""
+	}
+	ids := make(map[string]struct{})
+	collect := func(values []string) {
+		for _, value := range values {
+			if id := strings.TrimSpace(value); id != "" {
+				ids[id] = struct{}{}
+			}
+		}
+	}
+	collect(req.Source.ClipIDs)
+	for _, segment := range req.ScriptParams.Segments {
+		collect(segment.ClipIDs)
+	}
+	if len(ids) != 1 {
+		return ""
+	}
+	for id := range ids {
+		return id
+	}
+	return ""
 }

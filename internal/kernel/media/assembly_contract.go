@@ -30,8 +30,11 @@ import (
 //	AAC-LC 48000 2ch stereo 128k.
 //
 // Audio profile SSOT: audio.DefaultAudioProfile() in internal/capabilities/audio
-// (aac, LC, 48000 Hz, 2 channels, stereo, 192k). This contract MUST stay
+// (aac, LC, 48000 Hz, 2 channels, stereo, 128k). This contract MUST stay
 // in sync with that profile; the stock copy renderer gates on the same values.
+// V2 carries 128k as well: the final audio mix is the only AAC encode in the
+// delivery path, and 128k removes a third of its work without touching the
+// video (measured on the 20-minute Obama job, 2026-11-17).
 const (
 	// Canonical delivery geometry. Every producer that renders, clamps, or
 	// certifies a delivery frame derives these facts from here instead of
@@ -233,7 +236,8 @@ func DefaultAssemblyMediaContractV2() AssemblyMediaContract {
 	c.ID = AssemblyMediaContractV2ID
 	c.Version = AssemblyMediaContractV2Version
 	c.VideoLevel = "4.1"
-	c.AudioBitrate = "192k"
+	// The delivery audio is 128k: see the audio profile SSOT note above.
+	c.AudioBitrate = "128k"
 	return c
 }
 
@@ -281,7 +285,9 @@ func (c AssemblyMediaContract) ValidateExact() error {
 	}
 	expectedLevel, expectedBitrate := "4.0", "128k"
 	if isV2 {
-		expectedLevel, expectedBitrate = "4.1", "192k"
+		// V2 keeps the 4.1 video level but shares the 128k audio delivery
+		// profile with V1; the bitrate is no longer a version discriminator.
+		expectedLevel = "4.1"
 	}
 	if c.VideoLevel != expectedLevel {
 		return fmt.Errorf("level %q != %s", c.VideoLevel, expectedLevel)

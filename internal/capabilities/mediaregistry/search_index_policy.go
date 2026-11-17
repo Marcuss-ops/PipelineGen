@@ -13,7 +13,7 @@ const SearchIndexTaxonomySQL = `
 `
 
 // SearchIndexEligibilitySQL is the complete predicate for assets that can be
-// reconstructed into Qdrant points.
+// reconstructed into pgvector points.
 const SearchIndexEligibilitySQL = SearchIndexTaxonomySQL + `
     AND COALESCE(embedding_json, '') NOT IN ('', '[]', '{}')
 `

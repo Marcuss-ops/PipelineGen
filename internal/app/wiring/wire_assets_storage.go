@@ -40,7 +40,7 @@ import (
 //	    embedded api.Module which mounts POST /api/media/sync on the
 //	    parent /api/media group); AND
 //	(b) the AssetsWiring.InternalMediaHandler forwarder
-//	    (storageDesc.Handler) — the QDRANT-001 closure kept a narrow
+//	    (storageDesc.Handler) — the VECTOR-001 closure kept a narrow
 //	    api.MediaInternalRouter port at internal/platform/httpserver/routes.go::Setup().
 //	    The Router binds this via Router.SetInternalMediaHandler,
 //	    which calls storageDesc.Handler.RegisterInternalMediaRoutes(...)
@@ -79,9 +79,9 @@ func buildStorageBundle(
 // return 503") based on whether the service was constructed (clipsRepo
 // was non-nil).
 //
-// QDRANT-005 Fase 1 (June 2026): diagIndexHealthAdapter is nil-tolerant
-// for the qdrant dep — when ClipsRepo is nil the handler falls back to
-// 503. PR 3 (June 2026): real SQLite + Qdrant deps.
+// VECTOR-005 Fase 1 (June 2026): diagIndexHealthAdapter is nil-tolerant
+// for the pgvector dep — when ClipsRepo is nil the handler falls back to
+// 503. PR 3 (June 2026): real SQLite + pgvector deps.
 //
 // Blocco C1-Step 10 (June 2026): the diagnostics capability is now
 // built via the canonical diagnostics.Build(deps) (api.Descriptor,
@@ -102,12 +102,12 @@ func buildDiagnosticsBundle(
 ) (*assetsdiag.DiagnosticsDescriptor, *assetsdiag.Service, error) {
 	// (1) Build the application-layer *assetsdiag.Service from typed-port
 	// adapters. Nil-tolerant: when clipsRepo is nil the handler returns
-	// 503 (per QDRANT-005 Fase 1 + Blocco C1-Step 10 + AGENTS.md
+	// 503 (per VECTOR-005 Fase 1 + Blocco C1-Step 10 + AGENTS.md
 	// Pattern 0 — the api/ layer never builds the service directly).
 	var diagSvc *assetsdiag.Service
 	if clipsRepo != nil {
 		diagSvc = assetsdiag.NewService(
-			&diagIndexHealthAdapter{clips: clipsRepo, qdrant: nil, collectionName: ""},
+			&diagIndexHealthAdapter{clips: clipsRepo},
 			&diagAssetStatsAdapter{clips: clipsRepo},
 			&zapDiagLogAdapter{log: log},
 		)

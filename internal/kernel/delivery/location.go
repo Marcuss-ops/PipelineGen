@@ -39,7 +39,7 @@ package delivery
 //
 //   - Provider categorises the upstream source (e.g. "pexels",
 //     "pixabay", "wikipedia"). Surfaced as a Drive subpath segment in
-//     Wave 4 stock migration; carries to Qdrant payload in Wave 10.
+//     Wave 4 stock migration; carries to pgvector payload in Wave 10.
 //
 //   - Project groups related assets under one umbrella (e.g. a book
 //     processing run, a voiceover documentary). Required by Voiceover,

@@ -73,7 +73,7 @@ type MediaDriveFileIDLister interface {
 
 // NewClipStoreAdapter is the canonical AssetRecordStore ctor. PR 7
 // (June 2026) added a 6th positional `dispatcher` arg so the
-// Upsert path enforces the canonical outbox+tx writer (QDRANT-002
+// Upsert path enforces the canonical outbox+tx writer (VECTOR-002
 // atomicity invariant). Composition-root pre-rejection lives in
 // the wiring site (internal/app/module_media.go::WireMediaIngest
 // + internal/app/build_bundles_domain.go::buildIngestService) which
@@ -126,7 +126,7 @@ func NewClipStoreAdapter(
 }
 
 func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecord) error {
-	// PR 7 followups (June 2026, codex/qdrant-app-writers-fail-closed): nil
+	// PR 7 followups (June 2026, codex/pgvector-app-writers-fail-closed): nil
 	// contract guards applied in the order (1) dispatcher fail-closed then
 	// (2) nil-rec contract violation. Dispatcher-first matches the upstream
 	// BulkUploadWorker + ReprocessUseCase convention so a config-broken
@@ -138,7 +138,7 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 	//
 	// Rec == nil returns a contract violation error at runtime.
 	if a.dispatcher == nil {
-		return fmt.Errorf("clip store adapter dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+		return fmt.Errorf("clip store adapter dispatcher not configured (VECTOR-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
 	}
 	if rec == nil {
 		return fmt.Errorf("Upsert: MediaRecord is nil (contract violation)")
@@ -169,9 +169,9 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 		m.LifecycleState = asset.StateDeleted
 	}
 
-	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
+	// PR 7 (June 2026, codex/pgvector-app-writers-fail-closed): route the
 	// media_assets UPSERT through the canonical mutations.AssetMutationDispatcher
-	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
+	// so the VECTOR-002 atomicity invariant (media_assets UPSERT + outbox_events
 	// INSERT in one tx) applies uniformly to ingest-driven write paths. The
 	// strict fail-closed nil dispatcher check fires at the top of this function
 	// (before asset-derivation) so the dispatcher surface is reached first.

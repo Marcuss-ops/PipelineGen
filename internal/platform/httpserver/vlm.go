@@ -14,7 +14,7 @@
 // stock_footage, video -> sports_action) and stamped the response as
 // model pipelinegen-vlm-fallback. Operators were getting green-light
 // responses from "the VLM" while zero neural networks were running,
-// silently producing fake VisualSummary rows and polluting Qdrant.
+// silently producing fake VisualSummary rows and polluting pgvector.
 // Removed here; the route now surfaces ErrVLMUnavailable.
 //
 // Companion infrastructure-side sentinel: ErrVLMDisabled in

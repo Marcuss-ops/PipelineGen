@@ -1,4 +1,4 @@
-// Package asset — index_state_skipped_test.go (PR-QDRANT-INDEXCLIP-GUARD,
+// Package asset — index_state_skipped_test.go (PR-VECTOR-INDEXCLIP-GUARD,
 // July 2026)
 //
 // Test 5 (state-machine-extension) for the new INDEXING_SKIPPED_NO_INDEXER
@@ -21,7 +21,7 @@ import "testing"
 
 // TestIndexState_StateMachineExt_IndexingSkippedNoIndexer pins the
 // new 13th state alongside the existing 12 (Task 2 alphabet +
-// the PR-QDRANT-INDEXCLIP-GUARD extension). Pins:
+// the PR-VECTOR-INDEXCLIP-GUARD extension). Pins:
 //
 //   - Valid()          → true (canonical)
 //   - IsRetryPending() → true (transient retry-pending marker)

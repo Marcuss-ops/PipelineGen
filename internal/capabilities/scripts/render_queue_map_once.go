@@ -11,10 +11,9 @@ import (
 	"strings"
 	"time"
 
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // cameraMoveZoom reads one grounded zoom of the planner's camera move.
@@ -41,7 +40,7 @@ func hasPinAccent(pins []capmodel.MapOverlayPin) bool {
 }
 
 func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
-	profile, err := capoverlay.ResolveMapEncodeProfile(os.Getenv(capoverlay.MapEncodeProfileEnv))
+	profile, err := dynamicMapEncodeProfile(plan, os.Getenv(capoverlay.MapEncodeProfileEnv))
 	if err != nil {
 		return "", err
 	}
@@ -548,4 +547,18 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 	}
 	keepWorkspace = true
 	return outputPath, nil
+}
+
+// ── render_queue_map_profile.go (merged to respect the package file cap) ──
+
+// dynamicMapEncodeProfile keeps final-job map videos on the exact AVC
+// configuration accepted by the packet-copy assembler. NVENC is still the
+// production profile for non-final map previews, but its SPS/PPS differs from
+// the canonical assembly avcC even when the visible H.264 profile and geometry
+// match.
+func dynamicMapEncodeProfile(plan capmodel.OverlayPlan, configured string) (capoverlay.MapEncodeProfile, error) {
+	if strings.EqualFold(strings.TrimSpace(plan.OutputProfileID), kernelmedia.OverlayVideoOnlyProfileID) {
+		return capoverlay.ResolveMapEncodeProfile(capoverlay.MapCPUCodec)
+	}
+	return capoverlay.ResolveMapEncodeProfile(configured)
 }

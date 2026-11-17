@@ -403,7 +403,7 @@ Per job Garlasco (20 scene, ~21 min di audio), da `audio_metrics` nei risultati:
 | Cold start modello | `ollama.warm` 25 chiamate, media 33,8 s (max 79,8 s) | già eliminato dal keep-alive (B1) |
 | Checkpoint | 10.662 righe, 0,07 h totali, max 74,2 s | quasi gratis; il picco è contesa SQLite |
 | Contesa SQLite / resource sampler | il sampler risorse fallisce `context deadline exceeded` ogni ~14 s | rumore di log + sintomo del single-writer SQLite (TODO §2, J1) |
-| Idratazione sorgente | `sqlite.hydrate` 900 chiamate 0,18 h; `qdrant.search` 30 chiamate 2,1 s | trascurabile |
+| Idratazione sorgente | `sqlite.hydrate` 900 chiamate 0,18 h; `pgvector.search` 30 chiamate 2,1 s | trascurabile |
 | Traduzione | **0** nei Garlasco (single-language); con più lingue `translator.translate` ~7,9 h/settimana, media 6,9 s | fan-out 10 già attivo (A2); leva D1 (MT locale) |
 | AAC master | `aac_encode` 55,9–87,5 s per ~21 min di audio (media op 16,3 s) | G1 chunked bloccato dalla QA sample-accurate |
 | Residuo `overlay_render` | fino a ~370 s/job concentrati in 1–2 item (§3.1) | fasi per-item non strumentate di mappe/immagini — **NON** la pubblicazione Drive (verificato con `overlay_upload`, 22/10) |

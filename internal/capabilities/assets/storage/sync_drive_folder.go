@@ -70,7 +70,7 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 		zap.String("media_type", mediaType),
 	)
 
-	// QDRANT-001 closure: build payload via shared helper so admin
+	// VECTOR-001 closure: build payload via shared helper so admin
 	// (/api) and server-to-server (/internal/v1) variants stay in
 	// lockstep on payload schema and job type.
 	payload, _ := buildSyncPayload(&SyncPayloadInput{

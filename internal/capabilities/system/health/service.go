@@ -10,44 +10,39 @@ import (
 
 // ServiceDeps wires the health checkers into the Service.
 //
-// Drive and Qdrant are optional capabilities: passing a nil check
-// (or a typed-nil pointer wrapped in the interface) makes the
-// corresponding health check return {ok:true, applicable:false}
-// without contacting the dependency.
+// Drive is an optional capability: passing a nil check (or a typed-nil
+// pointer wrapped in the interface) makes the corresponding health check
+// return {ok:true, applicable:false} without contacting the dependency.
 //
 // DB and Jobs are mandatory: a missing checker produces
 // {ok:false, error:"<name> checker not wired"}.
 type ServiceDeps struct {
-	DB     DBChecker
-	Drive  DriveChecker
-	Qdrant QdrantChecker
-	Jobs   JobsChecker
+	DB    DBChecker
+	Drive DriveChecker
+	Jobs  JobsChecker
 }
 
 // Service orchestrates component health checks.
 type Service struct {
-	db     DBChecker
-	drive  DriveChecker
-	qdrant QdrantChecker
-	jobs   JobsChecker
+	db    DBChecker
+	drive DriveChecker
+	jobs  JobsChecker
 }
 
 // NewService creates a new health-check orchestrator.
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		db:     deps.DB,
-		drive:  deps.Drive,
-		qdrant: deps.Qdrant,
-		jobs:   deps.Jobs,
+		db:    deps.DB,
+		drive: deps.Drive,
+		jobs:  deps.Jobs,
 	}
 }
 
 // ValidCheckNames is the set of recognized check names.
 var ValidCheckNames = map[string]bool{
-	"db":     true,
-	"drive":  true,
-	"qdrant": true,
-	"jobs":   true,
+	"db":    true,
+	"drive": true,
+	"jobs":  true,
 }
 
 // NormalizeCheckNames trims, lowercases, removes empty strings,
@@ -118,15 +113,6 @@ func (s *Service) Check(ctx context.Context, names []string) HealthResponse {
 				res = CheckResult{
 					"ok": true, "applicable": false, "duration_ms": 0,
 					"note": "drive checker not wired",
-				}
-			}
-		case "qdrant":
-			if s.qdrant != nil && !portutil.IsNilPort(s.qdrant) {
-				res = s.qdrant.CheckQdrant(ctx)
-			} else {
-				res = CheckResult{
-					"ok": true, "applicable": false, "duration_ms": 0,
-					"note": "qdrant checker not wired",
 				}
 			}
 		case "jobs":

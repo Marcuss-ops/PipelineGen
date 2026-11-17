@@ -1,20 +1,6 @@
 # PipelineGen infrastructure only. Application processes run natively via
 # systemd; Docker is retained for external infrastructure lifecycles.
 services:
-  qdrant:
-    # Legacy/admin/DR only. PostgreSQL + pgvector owns the media domain.
-    # Start explicitly with: docker compose --profile legacy-qdrant up -d qdrant
-    profiles:
-      - legacy-qdrant
-    image: qdrant/qdrant:latest
-    container_name: pipelinegen-qdrant
-    restart: unless-stopped
-    mem_limit: 2g
-    ports:
-      - "127.0.0.1:6333:6333"
-      - "127.0.0.1:6334:6334"
-    volumes:
-      - qdrant-storage:/qdrant/storage
   searxng:
     image: searxng/searxng:latest
     container_name: pipelinegen-searxng
@@ -29,5 +15,3 @@ services:
       SEARXNG_SECRET: "${VELOX_SEARXNG_SECRET:-change-me-in-secrets}"
       SEARXNG_METHOD: "GET"
       SEARXNG_LIMITER: "false"
-volumes:
-  qdrant-storage:

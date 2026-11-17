@@ -17,8 +17,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-
-	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
 
 // ClipAuditRow is the projection of a canonical YouTube clip row that the
@@ -134,7 +132,7 @@ type MediaLocalPathRef struct {
 // MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): this replaces the
 // media_assets rows that cmd/admin's broken-references audit used to sweep out
 // of the operational SQLite handle (its `tablesWithColumn("drive_file_id")` and
-// `tablesWithColumn("local_path")` loops, plus its Qdrant eligibility scan).
+// `tablesWithColumn("local_path")` loops, plus its pgvector eligibility scan).
 // media_assets is PostgreSQL-owned; the operational mirror holds no committed
 // media rows, so every media reference looked "resolvable" simply because there
 // were no rows to check.
@@ -215,42 +213,6 @@ func (r *MediaReferenceAuditReader) ListLocalPaths(ctx context.Context) ([]Media
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("postgres media reference audit: iterate local paths: %w", err)
-	}
-	return out, nil
-}
-
-// ListSearchEligibleAssetIDs returns the ids of assets that satisfy the
-// canonical search-index eligibility predicate (mediaregistry SSOT), ordered by
-// id.
-//
-// godlike/06 SSOT: the predicate is capregistry.SearchIndexEligibilitySQL — the
-// same constant the projection planes use — so the audit cannot grade a
-// different boundary than the writer it is auditing.
-func (r *MediaReferenceAuditReader) ListSearchEligibleAssetIDs(ctx context.Context) ([]string, error) {
-	if r == nil || r.db == nil {
-		return nil, fmt.Errorf("postgres media reference audit: media reader unavailable")
-	}
-	query := `
-		SELECT id FROM media_assets
-		WHERE (` + capregistry.SearchIndexEligibilitySQL + `)
-		  AND COALESCE(media_type, '') <> 'folder'
-		ORDER BY id`
-	rows, err := r.db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("postgres media reference audit: query eligible assets: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var out []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("postgres media reference audit: scan eligible asset: %w", err)
-		}
-		out = append(out, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("postgres media reference audit: iterate eligible assets: %w", err)
 	}
 	return out, nil
 }

@@ -1,11 +1,12 @@
 package scriptgeneration
 
 import (
+	"context"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -318,4 +319,21 @@ func overlayItemChildPlanID(parentPlanID string, index int, itemID string) strin
 		prefix.WriteRune(r)
 	}
 	return strings.TrimRight(prefix.String(), ":-_") + "-" + sum[:16]
+}
+
+// OverlayPlanItemEnqueuer renders every semantic overlay as its own short
+// alpha-bearing artifact. It is the only overlay render capability the local
+// runner accepts.
+type OverlayPlanItemEnqueuer interface {
+	EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (RenderReference, error)
+}
+
+// EnqueueChrononPlanItems emits one short alpha-bearing artifact per semantic
+// overlay. No scene-wide or whole-timeline canvas is made.
+func (e *QueueRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	candidates := overlayRenderableCandidates(plan)
+	if len(candidates) == 0 {
+		return RenderReference{}, fmt.Errorf("overlay plan %q has no renderable items", plan.PlanID)
+	}
+	return e.enqueueStandaloneOverlayItems(ctx, plan, candidates)
 }

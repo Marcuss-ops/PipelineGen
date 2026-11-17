@@ -159,7 +159,7 @@ type ArtifactFolderResolver interface {
 // The implementation must NOT:
 //
 //   - Open a new transaction (uses the provided tx)
-//   - Make external network calls (Drive, Qdrant)
+//   - Make external network calls (Drive, pgvector)
 //   - Write directly to media_assets outside this interface
 type AssetFinalizerTx interface {
 	// FinalizeAsset writes the canonical asset, version, and location

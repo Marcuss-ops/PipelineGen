@@ -60,7 +60,7 @@ func TestMigrations_LedgerHasCanonicalIdentityAnd194197(t *testing.T) {
 	}
 
 	// Baseline-aware: fresh DB may have been bootstrapped via the
-	// consolidated 000_baseline_267.sql sentinel (version 0) instead of
+	// consolidated 000_baseline_268.sql sentinel (version 0) instead of
 	// individual 1..267 rows. In that case the historical window 1..267
 	// is satisfied by the baseline and individual ledger rows for 194/197
 	// are intentionally absent (see migrations_discovery.go

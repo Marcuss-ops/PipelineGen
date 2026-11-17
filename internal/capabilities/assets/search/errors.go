@@ -113,7 +113,7 @@ var (
 	// channels are NOT query-time text-encodable in the canonical
 	// surface until PR-CROSS-MODAL-TEXT-TO-VISUAL lands a SigLIP-text
 	// / CLAP-text encoder. The sparse channel returns this sentinel
-	// because Qdrant handles BM25 inference server-side; no Go-side
+	// because pgvector handles BM25 inference server-side; no Go-side
 	// encoder is needed.
 	ErrChannelNotApplicable = errors.New("search: channel does not support text-query encoding (use index-time file input instead)")
 

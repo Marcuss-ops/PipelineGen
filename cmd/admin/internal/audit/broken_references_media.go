@@ -1,7 +1,7 @@
 // cmd/admin/internal/audit/broken_references_media.go — the PostgreSQL half of
 // the broken-references audit.
 //
-// MEDIA-SSOT (2026-09-20): the drive-reference, local-path and Qdrant-point
+// MEDIA-SSOT (2026-09-20): the drive-reference and local-path checks
 // checks in the parent file read media_assets, and media_assets is
 // PostgreSQL-owned. The operational SQLite handle holds no committed media rows,
 // so sweeping it there reported a clean bill of health over an empty table. The
@@ -30,7 +30,6 @@ import (
 type brokenRefMediaSource interface {
 	ListDriveFileRefs(ctx context.Context) ([]pgmedia.MediaDriveRef, error)
 	ListLocalPaths(ctx context.Context) ([]pgmedia.MediaLocalPathRef, error)
-	ListSearchEligibleAssetIDs(ctx context.Context) ([]string, error)
 }
 
 // mediaOwnedAuditTables are the tables the operational SQLite sweep must NOT

@@ -85,12 +85,12 @@ func (l *Ledger) StartRun(ctx context.Context, run capregistry.Run) error {
 		(run_id, run_type, status, started_at, completed_at, git_sha,
 		 parameters_json, assets_seen, assets_created, assets_updated,
 		 transcripts_before, transcripts_after, descriptions_before,
-		 descriptions_after, qdrant_points_before, qdrant_points_after, error)
+		 descriptions_after, vector_points_before, vector_points_after, error)
 		VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.RunID, run.RunType, nonEmpty(run.Status, "RUNNING"), run.StartedAt, run.CompletedAt,
 		run.GitSHA, defaultJSON(run.ParametersJSON), run.AssetsSeen, run.AssetsCreated,
 		run.AssetsUpdated, run.TranscriptsBefore, run.TranscriptsAfter,
-		run.DescriptionsBefore, run.DescriptionsAfter, run.QdrantBefore, run.QdrantAfter,
+		run.DescriptionsBefore, run.DescriptionsAfter, run.VectorPointsBefore, run.VectorPointsAfter,
 		run.Error)
 	if err != nil {
 		return fmt.Errorf("start registry run %q: %w", run.RunID, err)
@@ -109,10 +109,10 @@ func (l *Ledger) FinishRun(ctx context.Context, run capregistry.Run) error {
 		UPDATE registry_runs SET status=?, completed_at=NULLIF(?, ''),
 		 assets_seen=?, assets_created=?, assets_updated=?, transcripts_before=?,
 		 transcripts_after=?, descriptions_before=?, descriptions_after=?,
-		 qdrant_points_before=?, qdrant_points_after=?, error=? WHERE run_id=?`,
+		 vector_points_before=?, vector_points_after=?, error=? WHERE run_id=?`,
 		run.Status, run.CompletedAt, run.AssetsSeen, run.AssetsCreated, run.AssetsUpdated,
 		run.TranscriptsBefore, run.TranscriptsAfter, run.DescriptionsBefore,
-		run.DescriptionsAfter, run.QdrantBefore, run.QdrantAfter, run.Error, run.RunID)
+		run.DescriptionsAfter, run.VectorPointsBefore, run.VectorPointsAfter, run.Error, run.RunID)
 	if err != nil {
 		return fmt.Errorf("finish registry run %q: %w", run.RunID, err)
 	}
@@ -129,7 +129,7 @@ func (l *Ledger) ListProjections(ctx context.Context) ([]capregistry.Projection,
 	rows, err := l.db.QueryContext(ctx, `
 		SELECT projection_id, projection_type, collection_name, alias_name, status,
 		 source_registry_seq, embedding_model, embedding_dimensions, asset_count,
-		 transcript_count, collection_hash, qdrant_version, created_at,
+		 transcript_count, collection_hash, vector_index_version, created_at,
 		 COALESCE(activated_at, '')
 		FROM projection_registry
 		ORDER BY created_at ASC, projection_id ASC`)
@@ -153,7 +153,7 @@ func (l *Ledger) ListProjections(ctx context.Context) ([]capregistry.Projection,
 			&projection.AssetCount,
 			&projection.TranscriptCount,
 			&projection.CollectionHash,
-			&projection.QdrantVersion,
+			&projection.VectorIndexVersion,
 			&projection.CreatedAt,
 			&projection.ActivatedAt,
 		); err != nil {
@@ -194,7 +194,7 @@ func (l *Ledger) RegisterProjection(ctx context.Context, projection capregistry.
 		INSERT INTO projection_registry
 		(projection_id, projection_type, collection_name, alias_name, status,
 		 source_registry_seq, embedding_model, embedding_dimensions, asset_count,
-		 transcript_count, collection_hash, qdrant_version, created_at,
+		 transcript_count, collection_hash, vector_index_version, created_at,
 		 activated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''))
 		ON CONFLICT(projection_id) DO UPDATE SET
@@ -203,11 +203,11 @@ func (l *Ledger) RegisterProjection(ctx context.Context, projection capregistry.
 		 source_registry_seq=excluded.source_registry_seq, embedding_model=excluded.embedding_model,
 		 embedding_dimensions=excluded.embedding_dimensions, asset_count=excluded.asset_count,
 		 transcript_count=excluded.transcript_count, collection_hash=excluded.collection_hash,
-		 qdrant_version=excluded.qdrant_version, activated_at=excluded.activated_at`,
+		 vector_index_version=excluded.vector_index_version, activated_at=excluded.activated_at`,
 		projection.ProjectionID, projection.ProjectionType, projection.CollectionName,
 		projection.AliasName, storageStatus, projection.SourceRegistrySeq,
 		projection.EmbeddingModel, projection.EmbeddingDimensions, projection.AssetCount,
-		projection.TranscriptCount, projection.CollectionHash, projection.QdrantVersion,
+		projection.TranscriptCount, projection.CollectionHash, projection.VectorIndexVersion,
 		projection.CreatedAt, projection.ActivatedAt)
 	if err != nil {
 		return fmt.Errorf("register projection %q: %w", projection.ProjectionID, err)
@@ -225,7 +225,7 @@ func (l *Ledger) RegisterBackup(ctx context.Context, backup capregistry.Backup) 
 	_, err := l.db.ExecContext(ctx, `
 		INSERT INTO backup_registry
 		(backup_id, backup_type, source_revision, path, remote_uri, sha256,
-		 size_bytes, status, app_git_sha, qdrant_version, created_at,
+		 size_bytes, status, app_git_sha, vector_index_version, created_at,
 		 verified_at, restored_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''))
 		ON CONFLICT(backup_id) DO UPDATE SET status=excluded.status,
@@ -233,7 +233,7 @@ func (l *Ledger) RegisterBackup(ctx context.Context, backup capregistry.Backup) 
 		 verified_at=excluded.verified_at, restored_at=excluded.restored_at`,
 		backup.BackupID, backup.BackupType, backup.SourceRevision, backup.Path,
 		backup.RemoteURI, backup.SHA256, backup.SizeBytes, backup.Status, backup.AppGitSHA,
-		backup.QdrantVersion, backup.CreatedAt, backup.VerifiedAt, backup.RestoredAt)
+		backup.VectorIndexVersion, backup.CreatedAt, backup.VerifiedAt, backup.RestoredAt)
 	if err != nil {
 		return fmt.Errorf("register backup %q: %w", backup.BackupID, err)
 	}
@@ -254,19 +254,19 @@ func (l *Ledger) LatestEventSequence(ctx context.Context) (int64, error) {
 	return seq.Int64, nil
 }
 
-// LatestQdrantEventSequence advances over the registry ledger using the same
-// eligibility boundary as the Qdrant asset projection. Artifact-only events
+// LatestVectorEventSequence advances over the registry ledger using the same
+// eligibility boundary as the pgvector asset projection. Artifact-only events
 // (for example final_audio and script_json) do not create points and must not
 // make an otherwise current projection appear stale.
-func (l *Ledger) LatestQdrantEventSequence(ctx context.Context) (int64, error) {
+func (l *Ledger) LatestVectorEventSequence(ctx context.Context) (int64, error) {
 	if l == nil || l.db == nil {
 		return 0, ErrNotWired
 	}
 	var seq sql.NullInt64
 	// SSOT (godlike/06): the EXISTS predicate IS the canonical
 	// capregistry.SearchIndexEligibilitySQL — the same eligibility boundary
-	// the Qdrant asset projection uses (indexing.IndexWriter / asset_store).
-	// An event only advances the sequence when its asset is Qdrant-eligible;
+	// the pgvector asset projection uses (indexing.IndexWriter / asset_store).
+	// An event only advances the sequence when its asset is vector-eligible;
 	// audio/document artifacts and rows with incomplete taxonomy must not
 	// make an otherwise current projection appear stale. The predicate's
 	// unqualified columns resolve to media_assets (aliased a), the only
@@ -281,7 +281,7 @@ func (l *Ledger) LatestQdrantEventSequence(ctx context.Context) (int64, error) {
 			  AND (`+capregistry.SearchIndexEligibilitySQL+`)
 		   )`).Scan(&seq)
 	if err != nil {
-		return 0, fmt.Errorf("latest qdrant registry event sequence: %w", err)
+		return 0, fmt.Errorf("latest pgvector registry event sequence: %w", err)
 	}
 	if !seq.Valid {
 		return 0, nil
@@ -290,7 +290,7 @@ func (l *Ledger) LatestQdrantEventSequence(ctx context.Context) (int64, error) {
 }
 
 // AdvanceActiveProjectionSequence bumps the ACTIVE projection's
-// source_registry_seq to the latest Qdrant-eligible registry sequence. It is
+// source_registry_seq to the latest vector-eligible registry sequence. It is
 // the incremental-indexing counterpart to the reindex-time checkpoint: a full
 // reindex records the build sequence via RegisterProjection, while this
 // advances the checkpoint after each incremental upsert so the startup gate
@@ -301,7 +301,7 @@ func (l *Ledger) AdvanceActiveProjectionSequence(ctx context.Context) error {
 	if l == nil || l.db == nil {
 		return ErrNotWired
 	}
-	seq, err := l.LatestQdrantEventSequence(ctx)
+	seq, err := l.LatestVectorEventSequence(ctx)
 	if err != nil {
 		return fmt.Errorf("advance active projection sequence: %w", err)
 	}

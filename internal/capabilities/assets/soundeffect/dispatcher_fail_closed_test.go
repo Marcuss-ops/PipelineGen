@@ -1,5 +1,5 @@
 // Package soundeffect — dispatcher fail-closed contract tests for PR 6
-// (June 2026, codex/qdrant-api-writers-fail-closed).
+// (June 2026, codex/pgvector-api-writers-fail-closed).
 //
 // Scope
 // -----

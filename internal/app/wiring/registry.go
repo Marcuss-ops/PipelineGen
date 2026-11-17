@@ -155,7 +155,7 @@ type RegistryWiring struct {
 	Assets        *AssetsWiring
 	StockPipeline *stockwiring.StockPipelineWiring
 
-	// QDRANT-002 + QDRANT-004 separation-of-routes (June 2026):
+	// VECTOR-002 + VECTOR-004 separation-of-routes (June 2026):
 	// These handlers are constructed by WireRegistry but NOT registered
 	// in the public /api registry. They are plumbed through AppDeps and
 	// mounted on the /internal/v1 WorkerAuth-protected internalGroup

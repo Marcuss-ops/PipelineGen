@@ -475,7 +475,7 @@ func TestBuildStockRunMetadata_ZeroRoundTagsCategorySlug_OmitsFromJSON(t *testin
 // stock.finalize must NOT do a media_assets.index_state DB SELECT in
 // the hot path. The projection-time literal is hardcoded; the
 // IndexingHandler downstream overwrites it to "INDEXED" in the
-// Qdrant payload after a successful upsert. media_assets.index_state
+// pgvector payload after a successful upsert. media_assets.index_state
 // in the SQLite DB remains the canonical SSOT for retry/decision
 // logic. This test pins the projection-time literal exactly.
 
@@ -501,7 +501,7 @@ func TestBuildStockRunMetadata_IndexingStatusLiteralIsPending(t *testing.T) {
 		t.Errorf("IndexingStatusPending = %q, want %q (drift from canonical)", IndexingStatusPending, "INDEXING_PENDING")
 	}
 	// Wire-shape: also pin the JSON tag is "indexing_status"
-	// (matches the qdrant payload key + the IndexingHandler
+	// (matches the pgvector payload key + the IndexingHandler
 	// downstream expectation).
 	raw, mErr := json.Marshal(&meta)
 	if mErr != nil {

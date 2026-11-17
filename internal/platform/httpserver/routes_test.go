@@ -109,7 +109,7 @@ func (m *mockModuleWithGroup) Enabled() bool {
 // /api/internal/v1/. Internal routes (mediasearch, outbox, etc.) must be
 // mounted on the WorkerAuth-protected /internal/v1/ group, not under /api.
 //
-// QDRANT-002 / QDRANT-004 closure gate: if this test fails, an internal
+// VECTOR-002 / VECTOR-004 closure gate: if this test fails, an internal
 // route has been registered through the module system (under /api) that
 // should only be on the internal WorkerAuth group.
 func TestNoAPIPrefixedInternalRoutes(t *testing.T) {
@@ -226,7 +226,7 @@ func (m *mockModuleWithGroup) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 }
 
-// ── QDRANT-002 + QDRANT-004 anti-regression test ────────────────────────
+// ── VECTOR-002 + VECTOR-004 anti-regression test ────────────────────────
 // TestRoutes_NoApiInternalV1Prefix locks in the routing split between
 // the public /api registry and the WorkerAuth-protected /internal/v1
 // internalGroup.
@@ -272,7 +272,7 @@ func TestRoutes_NoApiInternalV1Prefix(t *testing.T) {
 		ServerGinMode: gin.TestMode,
 	})
 	// Wire the handlers the closure registers onto the WorkerAuth-
-	// protected internalGroup (per QDRANT-002 + QDRANT-004 split).
+	// protected internalGroup (per VECTOR-002 + VECTOR-004 split).
 	router.SetInternalMediaHandler(fakeInternalMediaHandlerStub{}) // already wired in router_test.go
 	router.SetOutboxHandler(&fakeOutboxHandlerStub{})
 	router.SetMediasearchHandler(&fakeMediaSearchHandlerStub{})
@@ -283,7 +283,7 @@ func TestRoutes_NoApiInternalV1Prefix(t *testing.T) {
 	for _, route := range engine.Routes() {
 		if strings.HasPrefix(route.Path, "/api/internal/") {
 			t.Errorf(
-				"QDRANT-002/004 routing regression: route %s %q lives under /api/internal/* — "+
+				"VECTOR-002/004 routing regression: route %s %q lives under /api/internal/* — "+
 					"server-to-server routes MUST be mounted on the /internal/v1 WorkerAuth-protected group, not the /api registry",
 				route.Method, route.Path,
 			)
@@ -618,7 +618,7 @@ func (fakeM2MJobsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 //     dev/test fixtures without a provisioned M2M store keep working.
 //
 // This test mirrors the structural shape of TestRoutes_NoApiInternalV1Prefix
-// (the QDRANT-002/004 anti-regression): it uses a minimal Router.Setup() with
+// (the VECTOR-002/004 anti-regression): it uses a minimal Router.Setup() with
 // a stub handler so the assertion is structural, not behavioral. The
 // per-request auth path (Bearer → 401/403/scope) is covered by the
 // middleware tests in middleware_m2m_test.go.

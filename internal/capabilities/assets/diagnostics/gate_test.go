@@ -47,7 +47,7 @@ var prohibitedPatterns = []gate.Prohibition{
 	// precedent): any `internal/infrastructure/` import fails the static
 	// gate. Grep-verified: zero hits in internal/api/assets/diagnostics/*
 	// at HEAD. The forward-tripwire catches operator attempts to import
-	// drive / qdrant / ffmpeg concrete types into the api/ layer — the
+	// drive / pgvector / ffmpeg concrete types into the api/ layer — the
 	// api/ layer must reach those via the typed-port adapters in
 	// `internal/app/adapters_infra.go` (composition root only).
 	{Name: "no infrastructure imports", Pattern: "internal/infrastructure/"},

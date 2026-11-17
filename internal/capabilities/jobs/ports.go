@@ -8,13 +8,13 @@
 //     outboxMonitorAdapter (internal/app/outbox_monitor_adapter.go)
 //     wraps *outboxevents.Repository. Pre-existing before PR 4.
 //
-//   - VectorPointDeleter — PR 4 (June 2026, refactor/single-qdrant-runtime)
+//   - VectorPointDeleter — PR 4 (June 2026, refactor/single-pgvector-runtime)
 //     addition; narrow single-method port consumed by IndexDeleteHandler
-//     for the Qdrant side of the asset.index.delete_requested.v1 flow.
-//     Production concrete: *qdrant.IndexWriter via the compile-time
-//     assertion at internal/platform/qdrant/index_writer.go.
-//     Replaces the previous pair of duplicated `QdrantDeleter`
-//     interfaces (one in infra/qdrant/types.go, one local to
+//     for the pgvector side of the asset.index.delete_requested.v1 flow.
+//     Production concrete: *pgvector.IndexWriter via the compile-time
+//     assertion at internal/platform/postgres/media/index_writer.go.
+//     Replaces the previous pair of duplicated `VectorPointDeleter`
+//     interfaces (one in infra/pgvector/types.go, one local to
 //     outbox/index_delete.go) — there is now ONE VectorPointDeleter
 //     per the PR 4 acceptance criterion.
 //
@@ -81,19 +81,19 @@ type EventDTO struct {
 
 // VectorPointDeleter is the canonical application-layer port consumed
 // by the outbox IndexDeleteHandler (asset.index.delete_requested.v1
-// events). The production concrete is *qdrant.IndexWriter — see
-// internal/platform/qdrant/index_writer.go for the compile-time
-// assertion `var _ outbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`.
+// events). The production concrete is *pgvector.IndexWriter — see
+// internal/platform/postgres/media/index_writer.go for the compile-time
+// assertion `var _ outbox.VectorPointDeleter = (*pgvector.IndexWriter)(nil)`.
 //
-// PR 4 (June 2026, refactor/single-qdrant-runtime) — section #6 of the
-// verdict Qdrant consolidates the previous pair of duplicated
-// `QdrantDeleter` interfaces into this single port:
+// PR 4 (June 2026, refactor/single-pgvector-runtime) — section #6 of the
+// verdict pgvector consolidates the previous pair of duplicated
+// `VectorPointDeleter` interfaces into this single port:
 //
-//   - Removed: internal/platform/qdrant/types.go::QdrantDeleter
+//   - Removed: internal/platform/postgres/media/types.go::VectorPointDeleter
 //     (was used by infra-side writers and tests, but the application
 //     layer never imports infra — duplication was unidirectional drift).
 //
-//   - Removed: internal/capabilities/jobs/outbox/index_delete.go::QdrantDeleter
+//   - Removed: internal/capabilities/jobs/outbox/index_delete.go::VectorPointDeleter
 //     (was a private replica; merging into VectorPointDeleter keeps
 //     the application-layer surface canonical).
 //
@@ -107,7 +107,7 @@ type EventDTO struct {
 //	outboxDeps.VectorPointDeleter = qd.Runtime.Writer
 //
 // — direct field assignment, no runtime type assertion: the
-// compile-time `var _` above guarantees QdrantRuntime.Writer fits.
+// compile-time `var _` above guarantees VectorRuntime.Writer fits.
 type VectorPointDeleter interface {
 	DeleteAssetPoints(ctx context.Context, assetIDs []string) error
 }

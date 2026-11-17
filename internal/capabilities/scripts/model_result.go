@@ -18,6 +18,10 @@ import (
 )
 
 type GenerateResult struct {
+	// LanguageDeliveries is populated on the parent run when one script.generate
+	// request fans out into independent final videos, one durable child run per
+	// requested target language.
+	LanguageDeliveries []LanguageDeliveryResult `json:"language_deliveries,omitempty"`
 	// Build provenance is captured once at the durable-result boundary so a
 	// job report can prove which executable and Rust release produced it.
 	BinarySHA256 string `json:"binary_sha256,omitempty"`
@@ -39,7 +43,7 @@ type GenerateResult struct {
 	// render options travel together.
 	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
 	// SourceTrace is the durable retrieval trace. It is kept alongside the
-	// capability result so the broker/API cannot lose the accepted Qdrant
+	// capability result so the broker/API cannot lose the accepted pgvector
 	// clip IDs between the durable runner and the legacy job envelope.
 	SourceTrace scriptpkg.SourceTrace `json:"source,omitempty"`
 	// Scenes is the ordered list of generated scenes.
@@ -277,6 +281,18 @@ type GenerateResult struct {
 	// without it the `render` stage would never reach a parent job or the run
 	// result. Persisted with the run and projected by DurableResultToDomain.
 	StageProgress map[string]job.StageProgress `json:"stage_progress,omitempty"`
+}
+
+// LanguageDeliveryResult is the parent-run index for one completed target.
+// The complete script, timeline, and render receipt remain in the child run.
+type LanguageDeliveryResult struct {
+	Language    string `json:"language"`
+	RunID       string `json:"run_id"`
+	Status      string `json:"status"`
+	ScriptText  string `json:"script_text,omitempty"`
+	RemoteJobID string `json:"remote_job_id,omitempty"`
+	ArtifactURL string `json:"artifact_url,omitempty"`
+	ArtifactSHA string `json:"artifact_sha256,omitempty"`
 }
 
 type RenderMetrics struct {

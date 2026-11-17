@@ -72,7 +72,7 @@ var (
 	// SHA256 → VerifiedArtifact"): SHA256 is computed BEFORE
 	// publishing and feeds the idempotency-key, source-version,
 	// asset-version, outbox envelope, dedup, diagnostic, and
-	// the Qdrant index event's source_version. Sending an empty
+	// the pgvector index event's source_version. Sending an empty
 	// SHA256 to the indexer is terminal-rejected by the consumer,
 	// so we fail-closed at the orchestrator rather than dispatching
 	// an event the consumer rejects.
@@ -147,13 +147,13 @@ type ChunkState struct {
 
 	TotalChunks int // per-run total chunk count = len(runner.State().Plan) at chunk-build time; repeated per-entry per user spec (godlike/07 minimum-blast-radius acknowledges logical duplication)
 
-	DrivePath string // PR-004 (July 2026): canonical per-chunk Drive webview link captured from PublishedArtifact.Location.WebViewLink at chunk-build time. Duplicate of RemoteWebViewLink by design — godlike/06 SSOT keeps a single source (Location.WebViewLink); the second field name is for the Qdrant semantic-payload enrichment wave which expects the wire-shape key drive_path (vs the legacy remote_web_view_link). For godlike/07 minimum-blast-radius the duplication is acknowledged in this godoc rather than reflected in metadata.json (per godlike/07 no-fake-availability the wire-shape delta is forward-pointer to the Qdrant pipeline not the stock metadata.json).
+	DrivePath string // PR-004 (July 2026): canonical per-chunk Drive webview link captured from PublishedArtifact.Location.WebViewLink at chunk-build time. Duplicate of RemoteWebViewLink by design — godlike/06 SSOT keeps a single source (Location.WebViewLink); the second field name is for the pgvector semantic-payload enrichment wave which expects the wire-shape key drive_path (vs the legacy remote_web_view_link). For godlike/07 minimum-blast-radius the duplication is acknowledged in this godoc rather than reflected in metadata.json (per godlike/07 no-fake-availability the wire-shape delta is forward-pointer to the pgvector pipeline not the stock metadata.json).
 
 	PolicyVersion string // PR-004 (July 2026): per-run policy version tag. Source: RunInput.PolicyVersion (operator-supplied) with hardcoded fallback to StockTimestampPolicyVersionV1 ("stock_timestamp_v1") when empty. Pre-computed ONCE per run by StockPublishStep.Run and stamped on every chunk for trace-back traceability.
 
-	TimestampDriveFolderLink string // WebViewLink of the parent timestamp Drive folder. Captured from PublishedArtifact.Location.FolderID via the canonical https://drive.google.com/drive/folders/{FOLDER_ID} construction. Propagated to Qdrant payload as "timestamp_drive_folder_link" for "open in Drive" navigation from search results. Per-run scalar (all chunks in the same timestamp block share the same parent folder).
+	TimestampDriveFolderLink string // WebViewLink of the parent timestamp Drive folder. Captured from PublishedArtifact.Location.FolderID via the canonical https://drive.google.com/drive/folders/{FOLDER_ID} construction. Propagated to pgvector payload as "timestamp_drive_folder_link" for "open in Drive" navigation from search results. Per-run scalar (all chunks in the same timestamp block share the same parent folder).
 
-	TimestampFolderID string // Google Drive folder ID of the parent timestamp folder. Captured from PublishedArtifact.Location.FolderID. Propagated to Qdrant payload as "timestamp_folder_id" for programmatic Drive API access.
+	TimestampFolderID string // Google Drive folder ID of the parent timestamp folder. Captured from PublishedArtifact.Location.FolderID. Propagated to pgvector payload as "timestamp_folder_id" for programmatic Drive API access.
 
 	StartSec float64 // clip start timestamp in seconds
 

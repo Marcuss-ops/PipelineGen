@@ -1,16 +1,15 @@
 // Package operational — TestVoiceoverC4OutboxDecoupling is the FASE C4
-// design-invariant gate: even if Qdrant is unavailable, the voiceover
-// pipeline (TTS + Drive upload + finalizer) MUST complete. The outbox
-// event is the load-bearing proof — it MUST be written regardless of
-// Qdrant state.
+// design-invariant gate: even if the media index plane is unavailable,
+// the voiceover pipeline (TTS + Drive upload + finalizer) MUST complete.
+// The outbox event is the load-bearing proof — it MUST be written
+// regardless of index state.
 //
-// Honest-limitation: this smoke does NOT actually toggle Qdrant off
-// (would require server restart). It verifies the design invariant by
+// Honest-limitation: this smoke does NOT stop the index backend (would
+// require a server restart). It verifies the design invariant by
 // asserting the same 6 conditions as FASE B1 (1 parent + 1 child +
 // 1 voiceover + 1 media_asset + 1 outbox event + parent.status=SUCCEEDED).
-// To actually exercise the Qdrant-off path, restart the server with
-// VELOX_FEATURE_QDRANT_ENABLED=false and re-run — the design invariant
-// guarantees the same outcome.
+// To exercise the index-down path, stop PostgreSQL and re-run — the
+// design invariant guarantees the same outcome.
 //
 // Pure-stdlib wrapper (no internal/* imports) so it compiles cleanly even
 // with the 6 pre-existing build issues in

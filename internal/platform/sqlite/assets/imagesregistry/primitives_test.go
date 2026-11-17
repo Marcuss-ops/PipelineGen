@@ -1,11 +1,11 @@
 // Package txmutation (primitives_test.go) — unit tests for HardDeleteTx's
 // canonical deletion sequence. Companion tests for the lifecycle gate
-// (lifecycle_state=DELETED AND qdrant_point_state=absent) live in
+// (lifecycle_state=DELETED AND vector_point_state=absent) live in
 // internal/platform/sqlite/admin/purge_test.go — they
 // intentionally sit at the adapter layer because the gate is enforced
 // there, not in the primitive.
 //
-// QDRANT-purge-child-keys (June 2026, PR 4) closure:
+// VECTOR-purge-child-keys (June 2026, PR 4) closure:
 //
 //	The previous HardDeleteTx loop ran `DELETE FROM <table> WHERE id = ?`
 //	for every child. That was wrong for tables whose FK column to
@@ -48,7 +48,7 @@ import (
 //
 // Schema:
 //
-//	media_assets(id TEXT PK, lifecycle_state TEXT, qdrant_point_state TEXT)
+//	media_assets(id TEXT PK, lifecycle_state TEXT, vector_point_state TEXT)
 //	asset_locations(id INTEGER PK, asset_id TEXT)
 //	asset_processing(id INTEGER PK, asset_id TEXT, step TEXT)
 //	asset_versions(id INTEGER PK, asset_id TEXT, version_number INTEGER)
@@ -75,7 +75,7 @@ func newInMemoryDB(t *testing.T) *sql.DB {
 		`CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
 			lifecycle_state TEXT NOT NULL DEFAULT 'ready',
-			qdrant_point_state TEXT NOT NULL DEFAULT 'absent',
+			vector_point_state TEXT NOT NULL DEFAULT 'absent',
     filename TEXT NOT NULL DEFAULT '',
     category TEXT NOT NULL DEFAULT '',
     duration_ms INTEGER NOT NULL DEFAULT 0,

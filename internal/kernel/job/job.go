@@ -76,8 +76,8 @@ func (s Status) IsTerminal() bool {
 // IsActive returns true if a worker currently owns this job.
 // FINALIZING is considered active: the worker still holds the lease
 // and is performing cleanup (artifact publication, outbox writes).
-// INDEX_PENDING is active when post-emission Qdrant projection is
-// still trying to land: the canonical Qdrant-reconciler task owns
+// INDEX_PENDING is active when post-emission pgvector projection is
+// still trying to land: the canonical vector-reconciler task owns
 // the row until it either succeeds (→ Succeeded) or fails terminal
 // (→ Failed).
 func (s Status) IsActive() bool {

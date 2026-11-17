@@ -69,7 +69,7 @@ const (
 	// SemanticDocumentHashField names the DocumentText fingerprint column.
 	SemanticDocumentHashField = "semantic_document_hash"
 	// IndexRevisionField names the index-revision fingerprint key — the
-	// snapshot Qdrant must represent. Distinct from content_sha256 (byte
+	// snapshot pgvector must represent. Distinct from content_sha256 (byte
 	// identity) and semantic_document_hash (embedder text identity): it
 	// folds byte identity + the indexable semantic surface (text tracks,
 	// taxonomy, metadata) so the supersede gate fires only when the

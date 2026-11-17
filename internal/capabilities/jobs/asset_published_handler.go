@@ -42,7 +42,7 @@ type AssetPublishedHandler struct {
 }
 
 // NewAssetPublishedHandler constructs the informational consumer. Valid
-// asset.published events never invoke Qdrant or mutate index state;
+// asset.published events never invoke pgvector or mutate index state;
 // asset.index.requested.v1 is the sole operational indexing command.
 func NewAssetPublishedHandler(log *zap.Logger) *AssetPublishedHandler {
 	if log == nil {
@@ -100,7 +100,7 @@ func ComposeSearchText(destination, origin, subject, category, provider string, 
 }
 
 // Handle validates asset.published.v1 and records receipt. It deliberately
-// performs no Qdrant write and no media_assets.index_state transition.
+// performs no external vector store write and no media_assets.index_state transition.
 func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
 	_ = ctx
 	start := time.Now()

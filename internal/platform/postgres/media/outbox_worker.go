@@ -3,11 +3,11 @@
 //
 // Demolition contract (media cutover, September 2026): this worker is the
 // ONLY consumer of media index-request events in the PostgreSQL media SSOT
-// mode. It replaces the SQLite outbox → Qdrant projection chain: the
+// mode. It replaces the SQLite outbox → pgvector projection chain: the
 // embedding is written to media_embeddings (pgvector) inside the SAME
 // database that owns media_assets, the asset index_state is flipped to
 // INDEXED in the same transaction as the vector upsert, and the outbox
-// event is completed only after both commits. There is no Qdrant hop.
+// event is completed only after both commits. There is no external vector store hop.
 //
 // Lease fencing mirrors internal/platform/sqlite/outboxevents exactly
 // (same status set, same lease columns, same exponential-backoff
@@ -35,6 +35,10 @@ type IndexEventPayload struct {
 	ContentHash    string `json:"content_hash,omitempty"`
 	MediaType      string `json:"media_type,omitempty"`
 	EmbeddingModel string `json:"embedding_model,omitempty"`
+	// EmbeddingVersion is the model revision the producer committed to. The
+	// fence persists it as embedding_model_version so the embedding backfill
+	// can select the family it actually produced.
+	EmbeddingVersion string `json:"embedding_version,omitempty"`
 }
 
 // AssetEmbedder produces the text-channel embedding for one asset.
@@ -282,7 +286,11 @@ func (w *PostgresIndexWorker) handleIndexEvent(ctx context.Context, claim *Outbo
 	if err != nil {
 		return fmt.Errorf("media index worker: begin tx: %w", err)
 	}
-	outcome, err := applyIndexedFenceTx(ctx, tx, assetID, nowRFC3339())
+	outcome, err := applyIndexedFenceTx(ctx, tx, assetID, nowRFC3339(), indexStamp{
+		ContentHash:      payload.ContentHash,
+		EmbeddingModel:   firstNonEmpty(payload.EmbeddingModel, w.ModelID),
+		EmbeddingVersion: payload.EmbeddingVersion,
+	})
 	if err != nil {
 		_ = tx.Rollback()
 		return w.failOrFail(ctx, claim, fmt.Errorf("media index worker: index fence asset %q: %w", assetID, err))

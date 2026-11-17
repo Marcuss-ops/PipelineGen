@@ -78,11 +78,10 @@ with no arguments to list all registered commands (~95 total). Key categories:
   (`remove-drive-folder-recursive` is still registered but RETIRED — its
   preflight and asset planning read the quarantined SQLite media catalog, so it
   fails closed before touching Drive)
-- **Qdrant**: `qdrant-preflight`, `qdrant-readiness`, `qdrant-maintenance`,
-  `qdrant-bucket-report`, `qdrant-enrichment-recover`, `dr-qdrant`
-  (`reconcile-qdrant` and `reindex-qdrant` are still registered but RETIRED —
-  they fail closed with a typed retirement error because the Qdrant media
-  projection no longer exists)
+- **External vector store**: removed entirely (2026-11-17). No admin vector command exists;
+  `vector-preflight`, `vector-readiness`, `vector-maintenance`,
+  `vector-bucket-report`, `vector-enrichment-recover`, `dr-vector`,
+  `reconcile-vector` and `reindex-vector` were all deleted with the external engine.
 - **Cleanup**: `cleanup-orphans`, `cleanup-all-orphans`,
   `cleanup-stock-orphans`, `zombie-sweep`, `delete-specific-folders`,
   `delete-drive-images`, `delete-clip-by-drive-file`
@@ -98,10 +97,9 @@ with no arguments to list all registered commands (~95 total). Key categories:
   `broken-references`, `clip-drive-audit`, `clip-drive-orphan-cleanup`
 - **Performance**: `performance-backfill`, `performance-report`,
   `benchmark`, `multilingual-benchmark`
-- **Identity / stock / DB**: `identity-audit`, `stock-subfolders-reset`,
-  `sqlite-audit`, `db`, `storage-snapshot`
-  (`stock-reset`, `verify-projection`, `unify-catalogs`, `reconcile-qdrant`
-  and `reindex-qdrant` are still registered but RETIRED — media_assets is
+- **Identity / stock / DB**: `sqlite-audit`, `db`, `storage-snapshot`
+  (`stock-reset`, `verify-projection` and `unify-catalogs`
+  are still registered but RETIRED — media_assets is
   authoritative only in PostgreSQL, so they fail closed with a typed
   retirement error instead of touching the quarantined SQLite media catalog)
 - **Misc**: `gen-api-docs`, `render-short`, `multilingual-render`,

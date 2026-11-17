@@ -34,7 +34,7 @@
 //
 // (4) RetryableError — structural interface for errors that carry their
 //
-//	own retryability classification. Qdrant's *APIError satisfies
+//	own retryability classification. pgvector's *APIError satisfies
 //	this interface automatically (it has IsRetryable() bool).
 //
 // (5) transientSubstrings taxonomy — REMOVED FROM PRODUCTION per FASE 6
@@ -126,7 +126,7 @@ func (e *TransientInfrastructureError) Unwrap() error {
 // own retryability classification. Any error type with an IsRetryable()
 // bool method satisfies this interface — no import of pkg/retry required.
 //
-// Example: Qdrant's *APIError has IsRetryable() bool (returns
+// Example: pgvector's *APIError has IsRetryable() bool (returns
 // APIError.Retryable), so it satisfies RetryableError automatically.
 // Image retrieval's ErrImageTransient can implement IsRetryable() bool
 // { return true } to signal transient semantics without importing pkg/retry.
@@ -219,7 +219,7 @@ func IsTransient(err error) bool {
 // retry classifier — it's a youtube-domain-specific allowlist that
 // the package owns. Forward-pointer: a future 'youtube extractor must
 // emit typed errors' cut will replace the inline helper with a typed
-// classifier registered at init() (mirrors the Qdrant + SQLite
+// classifier registered at init() (mirrors the pgvector + SQLite
 // distributed registries under internal/infrastructure/).
 
 // ── WrapTransient ───────────────────────────────────────────────────────────

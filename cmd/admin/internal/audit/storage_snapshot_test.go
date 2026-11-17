@@ -2,12 +2,12 @@
 // storage-snapshot subcommand (GC FASE 1).
 //
 // godlike/07 minimum-blast-radius: only the pure helpers are tested
-// here (no DB, no Qdrant, no Drive): collectDriveRoots (dedupe/empty/
-// sort), shouldSnapshotCollection (production vs disposable names), and
-// the manifest JSON shape (the machine contract downstream phases and
-// the operator dashboard read). The live walkers (snapshotOneDB,
-// snapshotQdrant, walkDriveInventory) are exercised end-to-end when the
-// operator runs the command against the real stores.
+// here (no DB, no Drive): collectDriveRoots (dedupe/empty/sort) and the
+// manifest JSON shape (the machine contract downstream phases and the
+// operator dashboard read). The live walkers (snapshotOneDB,
+// walkDriveInventory) are exercised end-to-end when the operator runs
+// the command against the real stores. The pgvector section was removed
+// with the legacy vector engine on 2026-11-17.
 package audit
 
 import (
@@ -57,26 +57,6 @@ func TestCollectDriveRoots_AllEmpty(t *testing.T) {
 	}
 }
 
-func TestShouldSnapshotCollection(t *testing.T) {
-	cases := []struct {
-		name string
-		want bool
-	}{
-		{"media_assets", true},
-		{"media_assets_v4_abc", true},
-		{"media_assets_v3_e5_768_siglip_768", true},
-		{"synthetic_assets_test_v3", false},
-		{"media_assets_v4_recovery_20260817_1712", false},
-		{"benchmark_collection", false},
-		{"some_test_collection", false},
-	}
-	for _, c := range cases {
-		if got := shouldSnapshotCollection(c.name); got != c.want {
-			t.Errorf("shouldSnapshotCollection(%q) = %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
 // TestStorageSnapshotManifest_JSONShape locks the machine-readable
 // contract: the manifest must always declare no_deletions_performed=true
 // (the FASE 1 hard invariant) and carry the per-section status fields
@@ -88,7 +68,6 @@ func TestStorageSnapshotManifest_JSONShape(t *testing.T) {
 		GeneratedAt:   "2026-08-22T10:00:00Z",
 		NoDeletions:   true,
 		SQLite:        sqliteSnapshotSection{Status: "ok"},
-		Qdrant:        qdrantSnapshotSection{Status: "skipped"},
 		Drive:         driveSnapshotSection{Status: "ok", Summary: driveSnapshotSummary{Files: 12, Folders: 3}},
 	}
 	raw, err := json.Marshal(m)
@@ -101,7 +80,6 @@ func TestStorageSnapshotManifest_JSONShape(t *testing.T) {
 		`"schema_version":1`,
 		`"mode":"snapshot"`,
 		`"sqlite":{"status":"ok"`,
-		`"qdrant":{"status":"skipped"`,
 		`"files":12`,
 	} {
 		if !strings.Contains(s, want) {

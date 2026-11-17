@@ -4,7 +4,7 @@
 //
 //  1. Phrase esatta approvata manualmente      (Level 0, hot path)
 //  2. Frase normalizzata                       (Level 0, normalized retry)
-//  3. Concetto semanticamente equivalente     (Level 1, Qdrant)
+//  3. Concetto semanticamente equivalente     (Level 1, pgvector)
 //  4. Entità                                   (Level 1, entity fan-out)
 //  5. Azione visiva                            (Level 1, action hint)
 //  6. Keyword                                  (Level 1, BM25 sparse)

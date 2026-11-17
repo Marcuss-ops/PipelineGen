@@ -141,7 +141,7 @@ func (a *ZapSourcingLogger) Debug(msg string, keysAndValues ...any) {
 // SSOT one-canonical-owner-per-fact). The slim boundary lets the
 // descriptor expose ONLY routes + job handlers (no Handler field), and
 // it future-proofs the consumer against implementation swaps
-// (async worker-backed enrichment, Qdrant-direct bulk paths).
+// (async worker-backed enrichment, vector-direct bulk paths).
 type SourcingEnrichmentAdapter struct {
 	enricher appclips.ClipEnricher
 }

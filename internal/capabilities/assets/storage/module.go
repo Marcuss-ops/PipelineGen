@@ -1,6 +1,6 @@
 // Package storage — module.go: the single canonical Build entrypoint for
 // the Storage HTTP capability (Drive folder sync operations + the
-// QDRANT-001 server-to-server /internal/v1/media/* surface).
+// VECTOR-001 server-to-server /internal/v1/media/* surface).
 //
 // Capability Standard module.go contract:
 //
@@ -21,7 +21,7 @@
 // this Build via `internal/app/module_media.go::WireAssets` and threads
 // the returned Descriptor into `assetsapi.Dependencies.Storage` (route
 // module that mounts /media/sync) AND threads `storageDesc.Handler` as
-// the Router.SetInternalMediaHandler binding for the QDRANT-001
+// the Router.SetInternalMediaHandler binding for the VECTOR-001
 // server-to-server surface at /internal/v1/media/sync.
 //
 // `youtube/module.go` (C1-Step 4), `clips/module.go` (C1-Step 5),
@@ -32,7 +32,7 @@
 // surface EXPOSES the raw `*storage.Handler` field — this matches the
 // `clips` precedent exactly (NOT the register / soundeffect / stock /
 // voiceover precedent which drops the Handler field). The reason is
-// the QDRANT-001 closure (June 2026) wired a narrow server-to-server
+// the VECTOR-001 closure (June 2026) wired a narrow server-to-server
 // surface /internal/v1/media/sync that is invoked by
 // `internal/platform/httpserver/routes.go::Setup()` via the `api.MediaInternalRouter`
 // interface:
@@ -147,7 +147,7 @@ type Dependencies struct {
 // non-HTTP consumer). The Handler read here satisfies the
 // `api.MediaInternalRouter` interface (which exposes
 // `RegisterInternalMediaRoutes(*gin.RouterGroup)`) used by
-// `internal/platform/httpserver/routes.go::Setup()` for the QDRANT-001 server-to-
+// `internal/platform/httpserver/routes.go::Setup()` for the VECTOR-001 server-to-
 // server /internal/v1/media/sync surface. Without an exposed Handler
 // the Router would have nothing to call — the Module surface
 // (Name/Enabled/RegisterRoutes) does NOT include the API Router cares
@@ -197,7 +197,7 @@ func (d *StorageDescriptor) Enabled() bool {
 
 // RegisterRoutes forwards to the Module — the Handler is reachable
 // only via the Module's internal RegisterRoutes closure AND via the
-// Descriptor.Handler field (for the QDRANT-001 server-to-server
+// Descriptor.Handler field (for the VECTOR-001 server-to-server
 // consumer — see StorageDescriptor godoc).
 func (d *StorageDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 	d.Module.RegisterRoutes(rg)
@@ -211,7 +211,7 @@ func (d *StorageDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 // admin surface) AND the Handler (for /internal/v1/media/sync server-
 // to-server surface). The HTTP Handler is constructed here and
 // captured by the Module's RegisterRoutes closure — the Handler field
-// is exposed solely for the QDRANT-001 consumer in Router.SetInternalMediaHandler.
+// is exposed solely for the VECTOR-001 consumer in Router.SetInternalMediaHandler.
 //
 // Composition-bug guard: Build is stricter than the handler-level
 // runtime 500 contract for missing deps. The CatalogSync nil-check
@@ -249,7 +249,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	// Construct the route Module. The closure inside
 	// api.NewRouteModule calls handler.RegisterRoutes(r) — the
 	// Handler is captured here AND also exposed via the Descriptor
-	// .Handler field below for the QDRANT-001 /internal/v1/media/sync
+	// .Handler field below for the VECTOR-001 /internal/v1/media/sync
 	// server-to-server consumer.
 	//
 	// Empty prefix "" preserves the pre-Step-12 routing shape:

@@ -15,7 +15,7 @@ import "time"
 // ── Candidate ──────────────────────────────────────────────────────
 //
 // Candidate is the universal search hit. Raw server-internal locators
-// never cross the public search response boundary — QDRANT-004 invariant.
+// never cross the public search response boundary — VECTOR-004 invariant.
 // DriveLink may be populated from SQLite for internal ranking/operator
 // paths, but it is deliberately excluded from JSON responses. Only the
 // signed PreviewURL or external provider references survive to clients.

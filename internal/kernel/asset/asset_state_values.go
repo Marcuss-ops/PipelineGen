@@ -41,11 +41,11 @@ const (
 	// current text track entry.
 	StateAssetTranslated AssetState = "TRANSLATED"
 
-	// StateAssetIndexPending — Qdrant upsert is enqueued but the
+	// StateAssetIndexPending — pgvector upsert is enqueued but the
 	// indexer worker has not picked it up yet.
 	StateAssetIndexPending AssetState = "INDEX_PENDING"
 
-	// StateAssetIndexed — Qdrant upsert confirmed; the asset is
+	// StateAssetIndexed — pgvector upsert confirmed; the asset is
 	// search-ready in its primary language.
 	StateAssetIndexed AssetState = "INDEXED"
 

@@ -196,7 +196,7 @@ whisper-preflight:
 
 # verify-release — pre-deploy gate: the complete headless gate plus the
 # slow ./tests/... integration suite, which may depend on external services
-# (Drive, Qdrant, scraper). Run before deploy, NOT on every routine push.
+# (Drive, scraper). Run before deploy, NOT on every routine push.
 verify-release: verify-full verify-integration
 	@echo "✅ Release verification passed"
 

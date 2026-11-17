@@ -84,7 +84,7 @@ func TextHash(text, language string, kind TextTrackKind) string {
 // (translation) row that depends on (source text hash, source
 // language, target language, provider, model, model version,
 // prompt version). When ANY of these inputs change, SourceVersion
-// changes and dependent downstream caches / Qdrant reindex
+// changes and dependent downstream caches / pgvector reindex
 // outbox-events invalidate.
 //
 //	source_version = sha256(text_hash            + "|" +
@@ -157,7 +157,7 @@ func SourceVersion(
 //   - SourceVersion is the DERIVED-row fingerprint (7 inputs,
 //     including the source language, provider, model_name); it
 //     changes when ANY provenance column changes. Used for
-//     downstream cache invalidation (Qdrant outbox events driven
+//     downstream cache invalidation (pgvector outbox events driven
 //     by source_version drift).
 //   - TranslationKey is the REQUEST fingerprint (5 inputs WITHOUT
 //     source_language / provider / model_name) — those are

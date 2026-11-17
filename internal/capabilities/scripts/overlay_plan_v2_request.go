@@ -43,6 +43,16 @@ func buildOverlayPlanV2Request(
 	if err := validateOverlayEditorialDensity(canvas); err != nil {
 		return overlayplan.V2Request{}, err
 	}
+	// The editorial manifest is extracted from the source scenes before the
+	// translation phase. Its titles and bullets are therefore source-language
+	// surfaces: projecting them into a localized plan would either render the
+	// wrong language or make the Rust compiler reject the whole plan. Disable
+	// just those two categories; phrases, maps, images and every other lane keep
+	// the caller's toggles.
+	localizedSourceEditorial := isLocalizedSourceEditorial(result.Editorial, language)
+	if localizedSourceEditorial {
+		canvas = withoutSourceEditorialCategories(canvas)
+	}
 	canvasWire, err := overlayPlanCanvas(canvas)
 	if err != nil {
 		return overlayplan.V2Request{}, err
@@ -98,6 +108,9 @@ func buildOverlayPlanV2Request(
 			Index:              scene.Index,
 			TimelineStartUS:    bounds[0],
 			DurationUS:         bounds[1] - bounds[0],
+		}
+		if localizedSourceEditorial {
+			wire.OverlayCategories = withoutSourceEditorialWireCategories(wire.OverlayCategories)
 		}
 		if raw, ok := rawByScene[sceneID]; ok {
 			wire.Raw = &raw
@@ -436,6 +449,36 @@ func overlayPlanEntityTimeline(result *GenerateResult, language Language, projec
 		out.Scenes = append(out.Scenes, wireScene)
 	}
 	return out
+}
+
+// isLocalizedSourceEditorial reports whether a plan targets a language other
+// than the language the editorial manifest was extracted from. Equal or empty
+// source languages keep the historical behaviour and are not "localized".
+func isLocalizedSourceEditorial(manifest *scriptpkg.EditorialManifest, language Language) bool {
+	if manifest == nil {
+		return false
+	}
+	source := strings.TrimSpace(manifest.SourceLanguage)
+	target := strings.TrimSpace(string(language))
+	return source != "" && target != "" && !strings.EqualFold(source, target)
+}
+
+func withoutSourceEditorialCategories(canvas OverlayCanvasSpec) OverlayCanvasSpec {
+	if canvas.OverlayCategories == nil {
+		canvas.OverlayCategories = make(map[scriptpkg.OverlayCategory]scriptpkg.Toggle, 2)
+	}
+	canvas.OverlayCategories[scriptpkg.OverlayCategoryTitles] = scriptpkg.ToggleDisabled
+	canvas.OverlayCategories[scriptpkg.OverlayCategoryBullets] = scriptpkg.ToggleDisabled
+	return canvas
+}
+
+func withoutSourceEditorialWireCategories(in map[string]string) map[string]string {
+	if in == nil {
+		in = make(map[string]string, 2)
+	}
+	in[string(scriptpkg.OverlayCategoryTitles)] = string(scriptpkg.ToggleDisabled)
+	in[string(scriptpkg.OverlayCategoryBullets)] = string(scriptpkg.ToggleDisabled)
+	return in
 }
 
 func overlayCategoriesToWire(in map[scriptpkg.OverlayCategory]scriptpkg.Toggle) map[string]string {

@@ -69,6 +69,16 @@ Three options were considered; we pin **option B** as the cutover contract:
 > `migrations_ledger_test.go`, `migrations_203_test.go`,
 > `migrations_092_093_test.go`). Option A is therefore the **operative
 > contract**; the B pin below is historical. The discoverability rule reads:
+>
+> **As-built amendment (2026-11-17, vector rename):** the consolidated baseline
+> is now `000_baseline_268.sql`. The filename keeps the freeze point this plan
+> promised; a `-- baseline-covers: 298` directive in the file records the real
+> window. The dump is taken after migrations 297/298, so a fresh install never
+> creates the retired vector-index tables/columns (a 268-only dump would have
+> them and the unconditional `RENAME`/`DROP` statements would then fail). The
+> runner honours the filename of the sentinel a database actually applied, so
+> databases bootstrapped from `000_baseline_267.sql` still apply 268..298
+> incrementally instead of silently claiming the new coverage.
 > a baseline sentinel row for `N` (`version = 0`,
 > `000_baseline_<N>.sql`) satisfies `001..N` for that `targetDB` even when no
 > per-version rows exist.

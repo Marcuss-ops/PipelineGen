@@ -304,7 +304,7 @@ func TestFinalize_MediaAssetsProjection_VerifiedInputShape(t *testing.T) {
 //
 //	Step 5 (index outbox): EnqueueIndexEvent(ctx, tx, cmd.ID, cmd.ContentSHA256)
 //	  — the assetID is the voiceover's canonical ID; contentHash is
-//	    cmd.ContentSHA256 for the Qdrant supersede gate.
+//	    cmd.ContentSHA256 for the pgvector supersede gate.
 //
 //	Step 6 (cleanup outbox): EnqueueCleanupEvent(ctx, tx,
 //	  cmd.ID, cmd.OldDriveFileID, cmd.DriveFileID, oldLocalPaths)
@@ -347,7 +347,7 @@ func TestFinalize_OutboxEvents_EmittedWithCanonicalPayloads(t *testing.T) {
 	assert.Equal(t, "vo-outbox-001", idx.assetID,
 		"index outbox: assetID must equal cmd.ID (canonical voiceover identifier)")
 	assert.Equal(t, "abc123hash", idx.contentHash,
-		"index outbox: contentHash must equal cmd.ContentSHA256 (Qdrant supersede gate input)")
+		"index outbox: contentHash must equal cmd.ContentSHA256 (pgvector supersede gate input)")
 
 	// ── Step 6 (cleanup outbox) assertions ──
 	require.Len(t, outbox.cleanupCalls, 1, "FASE 2: cleanup outbox MUST be emitted when ShouldSwap=true + OldDriveFileID non-empty")

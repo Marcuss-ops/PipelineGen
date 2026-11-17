@@ -22,7 +22,7 @@ import (
 // capability at the application boundary. Callers MUST depend on this
 // interface (not on *clips.Handler or *EnrichUseCase) so a future
 // implementation swap (e.g. async worker-backed enrichment, a
-// Qdrant-direct bulk path) does not require caller rewrites.
+// vector-direct bulk path) does not require caller rewrites.
 type ClipEnricher interface {
 	// EnrichAndIndex looks up the clip by ID, runs the semantic
 	// enrichment pipeline, and enqueues an outbox event for
@@ -39,10 +39,10 @@ type ClipEnricher interface {
 var ErrEnrichDispatcherRequired = fmt.Errorf("clips: EnrichUseCase requires the outbox dispatcher (card 10 closed the assetRepo local-fallback path; partial deployments must fail-closed at the composition root)")
 
 // EnrichUseCase handles semantic enrichment for clips.
-// Wave 2 (Asset commit + Qdrant, July 2026): direct clipIndexer.IndexClip
+// Wave 2 (Asset commit + pgvector, July 2026): direct clipIndexer.IndexClip
 // calls have been removed. Enriched metadata is persisted and re-indexed
 // through the canonical outbox pipeline (mutations.AssetMutationDispatcher).
-// The IndexingHandler consumer drives embedding generation and Qdrant upsert
+// The IndexingHandler consumer drives embedding generation and pgvector upsert
 // asynchronously.
 //
 // Card 10 (July 2026): signature changed from (ctx, *Asset, source) (no
@@ -59,7 +59,7 @@ type EnrichUseCase struct {
 
 // NewEnrichUseCase constructs the use case.
 //
-// Wave 2 (Asset commit + Qdrant, July 2026): dispatcher is required so
+// Wave 2 (Asset commit + pgvector, July 2026): dispatcher is required so
 // enriched metadata is persisted and re-indexed through the canonical
 // outbox pipeline.
 //
@@ -94,7 +94,7 @@ func NewEnrichUseCase(
 //  2. LLM semantic tagger -> search_text, tags, subjects
 //  3. Persist the enriched asset AND enqueue an outbox event so the
 //     IndexingHandler consumer can re-generate embeddings and upsert
-//     to Qdrant asynchronously.
+//     to pgvector asynchronously.
 //
 // Fail-closed: dispatcher nil is unreachable (NewEnrichUseCase rejects
 // nil dispatcher). When contentHash is missing, we surface a typed
@@ -191,7 +191,7 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clipID string) erro
 }
 
 // UpsertToVectorStore was removed in PG-034 (June 2026) along with the
-// Qdrant capability. The clip indexer's IndexClip path is still the
+// legacy vector capability. The clip indexer's IndexClip path is still the
 // single canonical semantic indexing entry point, but it is invoked
 // indirectly by the outbox consumer (IndexingHandler) rather than
 // directly by application workflows.
@@ -271,7 +271,7 @@ func (uc *EnrichUseCase) EnrichMedia(ctx context.Context, req EnrichMediaRequest
 	// Inspect deps to provide a directed message: where should the
 	// caller go to actually run the enrichment?
 	//
-	// Wave 2 (Asset commit + Qdrant, July 2026): replaced the
+	// Wave 2 (Asset commit + pgvector, July 2026): replaced the
 	// clipIndexer check with the canonical dispatcher check.
 	switch {
 	case uc.dispatcher != nil && !req.SkipEmbedGen:

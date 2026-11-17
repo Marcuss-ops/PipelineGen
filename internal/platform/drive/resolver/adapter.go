@@ -253,7 +253,7 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 	}
 
 	// Round-2 SHOULD-FIX (2026-07-06): soft-ignored metadata probe.
-	// Fields retained for downstream Qdrant indexing but OFF the
+	// Fields retained for downstream pgvector indexing but OFF the
 	// per-destination Drive subpath mapping emit a per-call Warn
 	// log (via a.log.Warn) rather than hard-rejecting as
 	// ErrLocationResolverIncompatibleFields. godlike/06 SSOT:

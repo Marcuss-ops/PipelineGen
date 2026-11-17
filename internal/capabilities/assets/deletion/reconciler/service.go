@@ -1,7 +1,7 @@
 // Package reconciler — service.go (Blocco 3.2 commit 2/2, June 2026)
 //
 // Service is the deletion-reconciler orchestrator. Mirrors the
-// qdrant/reconciler/Service shape with explicit-Required-port
+// pgvector/reconciler/Service shape with explicit-Required-port
 // nil-panic pattern (PR-10 holy principle: production half-built
 // wiring must trip a build-time panic rather than silently no-op
 // the dispatch phase).

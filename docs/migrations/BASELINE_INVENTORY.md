@@ -332,10 +332,13 @@ shape reproduced end to end).
 The gap list (002–007, 038–050, 071–088, 125/126, 150, 181, 253–259, 261) is
 **intentional** — renumbered or removed historical migrations, logged as
 warnings by `migrations_discovery.go::warnOnGaps` and treated informationally.
-`000_baseline_267.sql` is shipped and wired: fresh databases bootstrap from
-the single dump and skip `001..267`; old databases keep their per-version
-rows and skip the baseline (both paths exercised by
-`TestMigrations_Smoke_Baseline`, green). The runner records the baseline as
+`000_baseline_268.sql` is shipped and wired: fresh databases bootstrap from
+the single dump and skip `001..298` (the filename keeps the planned 268 freeze
+point; the `-- baseline-covers: 298` directive records the post-297/298 dump);
+old databases keep their per-version rows and skip the baseline (both paths
+exercised by `TestMigrations_Smoke_Baseline`, green). Databases bootstrapped
+from the previous `000_baseline_267.sql` sentinel still apply 268..298 through
+the incremental path. The runner records the baseline as
 the **version-0 sentinel** (option A of BASELINE_PLAN § 3 — see the as-built
 amendment there); no action needed.
 
@@ -393,7 +396,7 @@ in-scope set is `migrations_verify.go::executionPlaneArchivedTables`.
 
 ## Why this file exists
 
-Once `BASELINE_PLAN.md` is approved and `000_baseline_267.sql` lands, this
+Once `BASELINE_PLAN.md` is approved and `000_baseline_268.sql` lands, this
 inventory becomes the archived museum manifest. The historical files `001`
 through `267` will be kept for one support window before archival removal so
 that very-old databases can still validate against it.

@@ -66,6 +66,23 @@ type DriveUploader interface {
 // construction and safe for concurrent Publish calls.
 type DrivePublisher struct {
 	uploader DriveUploader
+	// reusePublished lets an artifact that already carries a Drive identity
+	// (a reuse-cache hit from an earlier run) be certified as UPLOADED without
+	// a second upload of identical bytes. It is OFF unless the deployment opts
+	// in: the default contract publishes each run's clips into that run's own
+	// folder, and silently pointing at another run's folder would change the
+	// delivery layout.
+	reusePublished bool
+}
+
+// WithPublishedReuse toggles reuse of already-published identical artifacts.
+// A nil receiver keeps returning nil so construction errors stay visible.
+func (p *DrivePublisher) WithPublishedReuse(enabled bool) *DrivePublisher {
+	if p == nil {
+		return p
+	}
+	p.reusePublished = enabled
+	return p
 }
 
 // NewDrivePublisher builds the upload step. Fail-closed: a nil uploader is
@@ -97,6 +114,16 @@ func (p *DrivePublisher) Publish(ctx context.Context, artifact LocalizedClipArti
 	}
 	if strings.TrimSpace(folderID) == "" {
 		return artifact, fmt.Errorf("localization: drive upload: drive folder id is required")
+	}
+
+	// Content-addressed reuse: these exact bytes are already on Drive, so
+	// publishing them again in a different folder only duplicates storage and
+	// bandwidth. The recipe is preserved: the link and the folder are the ones
+	// the file actually lives in, never the destination this run would use.
+	if p.reusePublished && strings.TrimSpace(artifact.DriveFileID) != "" && strings.TrimSpace(artifact.DriveLink) != "" {
+		out := artifact
+		out.Status = LocalizedClipUploaded
+		return out, nil
 	}
 
 	result, err := p.uploader.Upload(ctx, DriveUploadInput{

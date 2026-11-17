@@ -92,7 +92,7 @@ kernel_subzones: asset, job, script, event, observability, embedding, entitytype
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,
-# Qdrant projection sequence, Drive authority, configuration boot pipeline,
+# vector projection sequence, Drive authority, configuration boot pipeline,
 # EXPAND/BACKFILL/CUTOVER/CONTRACT). Enforced by cmd/archcheck via the
 # rule family `data_ownership_doc` (`data_ownership_doc_missing` for an
 # absent file, `data_ownership_doc_incomplete` for a missing required H2
@@ -196,7 +196,6 @@ stale_prose_paths:
 #   sqlite         — connection pool, migration runner, PRAGMA policy
 #   drive          — Google Drive publisher, reader, location verifier
 #   ai             — VLM visual analysis, reranker scoring, content classifier
-#   qdrant         — Qdrant collection schemas, transport, verification
 #   process        — process-level health, readiness probes, worker caps
 #   filesystem     — SQLite-backed folder memory, file staging helpers
 #   checksum       — legacy MD5 checksum bridge (compatibility surface)
@@ -219,7 +218,7 @@ stale_prose_paths:
 #   nvidia         — GPU/NVIDIA capability probing lives in
 #                     platform/overlays/gpu_gate.go and app/workerruntime.
 #                     No standalone nvidia package needed.
-platform_subzones: config, sqlite, drive, ai, qdrant, process, filesystem, checksum, youtube, cas, embeddings, media, overlays, renderinggen, delivery, observability, ollama
+platform_subzones: config, sqlite, drive, ai, process, filesystem, checksum, youtube, cas, embeddings, media, overlays, renderinggen, delivery, observability, ollama
 
 # CANONICAL LAYOUT (binding): target_internal_roots
 #
@@ -352,7 +351,6 @@ hard_gates:
   #   Duration probing        → only the canonical media probe capability
   #   Evidence precedence     → only internal/kernel/asset.ResolveEvidence
   #   TTS timing              → only BuildSpeechTimingArtifact
-  #   Direct Qdrant writes    → only the projection writer / indexing handler
   #   Direct media_assets writes → only the MediaCommitter chain
   - percheck_project_derivation_ssot
   - percheck_duration_probe_ssot
@@ -382,8 +380,6 @@ hard_gates:
   # surface) is not statically decidable and is pinned by
   # TestProviderCatalogPoliciesMatchTheShippedAdapterSurface instead.
   - percheck_provider_policy_single_owner
-  - percheck_upsert_points_sole_owner
-  - percheck_frame_concept_projection_writer
   - percheck_control_plane_sql_writes
   # Sole-writer hard gate: only the three-file canonical AssetCommitter /
   # AssetMutator implementation family may contain direct media_assets SQL.

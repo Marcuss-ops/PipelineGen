@@ -13,9 +13,8 @@
 #   5. worker_ids       — registered worker node IDs
 #   6. worker_version   — VELOX_WORKER_VERSION of registered workers
 #   7. chronon_version  — SHA-256 of chronon3d_cli binary
-#   8. qdrant_collection — active Qdrant collection name + point count + status
-#   9. ollama_models    — available Ollama model tags
-#  10. timestamp        — ISO-8601 UTC capture time
+#   8. ollama_models    — available Ollama model tags
+#   9. timestamp        — ISO-8601 UTC capture time
 #
 # Usage:
 #   scripts/bench/capture-fingerprint.sh                     # stdout JSON
@@ -34,7 +33,6 @@ source "$ROOT_DIR/scripts/lib/canonical_db_path.sh"
 load_dotenv_missing "$ROOT_DIR/.env"
 
 BASE_URL="${FINGERPRINT_BASE_URL:-http://127.0.0.1:${VELOX_PORT:-8000}}"
-QDRANT_URL="${FINGERPRINT_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${FINGERPRINT_OLLAMA_URL:-${OLLAMA_URL:-http://127.0.0.1:11434}}"
 ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-}"
 DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")"
@@ -131,71 +129,7 @@ if [[ -n "$CHRONON_BIN" ]]; then
     CHRONON_VERSION=$("$CHRONON_BIN" --version 2>/dev/null || echo "$CHRONON_SHA")
 fi
 
-# ── 7. Qdrant collection state ────────────────────────────────────────────
-QDRANT_COLLECTIONS="[]"
-QDRANT_ACTIVE_COLLECTION="absent"
-QDRANT_COLLECTION_STATUS="absent"
-QDRANT_POINT_COUNT=0
-
-QDRANT_RAW=$(curl -fsS --max-time 5 "$QDRANT_URL/collections" 2>/dev/null || echo "")
-if [[ -n "$QDRANT_RAW" ]]; then
-    QDRANT_COLLECTIONS=$(echo "$QDRANT_RAW" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    result = data.get('result', data)
-    collections = result.get('collections', [])
-    names = [c.get('name', '') for c in collections if c.get('name')]
-    print(json.dumps(names))
-except Exception:
-    print('[]')
-" 2>/dev/null || echo "[]")
-
-    # Get the active collection details (first collection with points)
-    QDRANT_ACTIVE_COLLECTION=$(echo "$QDRANT_RAW" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    result = data.get('result', data)
-    collections = result.get('collections', [])
-    for c in collections:
-        name = c.get('name', '')
-        if name:
-            print(name)
-            break
-    else:
-        print('absent')
-except Exception:
-    print('absent')
-" 2>/dev/null || echo "absent")
-
-    # Get detailed info for the first collection
-    if [[ "$QDRANT_ACTIVE_COLLECTION" != "absent" ]]; then
-        COLL_INFO=$(curl -fsS --max-time 5 "$QDRANT_URL/collections/$QDRANT_ACTIVE_COLLECTION" 2>/dev/null || echo "")
-        if [[ -n "$COLL_INFO" ]]; then
-            QDRANT_COLLECTION_STATUS=$(echo "$COLL_INFO" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    result = data.get('result', data)
-    print(result.get('status', 'unknown'))
-except Exception:
-    print('unknown')
-" 2>/dev/null || echo "unknown")
-            QDRANT_POINT_COUNT=$(echo "$COLL_INFO" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    result = data.get('result', data)
-    print(result.get('points_count', result.get('vectors_count', 0)))
-except Exception:
-    print(0)
-" 2>/dev/null || echo "0")
-        fi
-    fi
-fi
-
-# ── 8. Ollama models ──────────────────────────────────────────────────────
+# ── 7. Ollama models ──────────────────────────────────────────────────────
 OLLAMA_MODELS="[]"
 OLLAMA_RAW=$(curl -fsS --max-time 5 "$OLLAMA_URL/api/tags" 2>/dev/null || echo "")
 if [[ -n "$OLLAMA_RAW" ]]; then
@@ -247,16 +181,9 @@ report = {
         'sha256': sys.argv[13],
         'version': sys.argv[14],
     },
-    'qdrant': {
-        'url': sys.argv[15],
-        'collections': json.loads(sys.argv[16]),
-        'active_collection': sys.argv[17],
-        'status': sys.argv[18],
-        'point_count': int(sys.argv[19]),
-    },
     'ollama': {
-        'url': sys.argv[20],
-        'models': json.loads(sys.argv[21]),
+        'url': sys.argv[15],
+        'models': json.loads(sys.argv[16]),
     },
 }
 
@@ -277,10 +204,5 @@ print()  # trailing newline
     "$CHRONON_BIN" \
     "$CHRONON_SHA" \
     "$CHRONON_VERSION" \
-    "$QDRANT_URL" \
-    "$QDRANT_COLLECTIONS" \
-    "$QDRANT_ACTIVE_COLLECTION" \
-    "$QDRANT_COLLECTION_STATUS" \
-    "$QDRANT_POINT_COUNT" \
     "$OLLAMA_URL" \
     "$OLLAMA_MODELS"

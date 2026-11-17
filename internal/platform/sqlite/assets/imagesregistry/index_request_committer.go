@@ -217,9 +217,9 @@ func CommitIndexRequestTx(
 // ── pgvector event-plane identity (media demolition, September 2026) ────
 // The SQLite outbox still enqueues asset.index.requested events for the
 // clip-domain committers, but their consumer is the PostgreSQL
-// PostgresIndexWorker (the Qdrant media projection was demolished). The
+// PostgresIndexWorker (the legacy media projection was demolished). The
 // envelope identity therefore mirrors the pgvector media SSOT contract
-// instead of the retired Qdrant clipindexer constants.
+// instead of the retired vector engine clipindexer constants.
 const (
 	pgmediaTargetIndexVersion    = "pgvector-media-v1"
 	pgmediaEmbeddingModel        = embedding.ModelIDMultilingualE5

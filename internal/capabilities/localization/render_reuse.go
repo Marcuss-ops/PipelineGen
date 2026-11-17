@@ -70,6 +70,34 @@ type ReusedRenderArtifact struct {
 	VideoCodec string
 	AudioCodec string
 	Backend    string
+	// DriveFileID / DriveLink / DriveFolderID are the Drive identity these
+	// bytes were already published under. They are optional: a record written
+	// before the first publication has none, and a deployment that keeps one
+	// Drive copy per run never records them. When present they let a later run
+	// reuse the published file instead of uploading identical bytes again
+	// (2026-11-16 Obama runs: 403,5 MB of unchanged clips re-uploaded per run).
+	DriveFileID   string
+	DriveLink     string
+	DriveFolderID string
+}
+
+// RenderDriveIdentity is the Drive identity a certified localized render is
+// published under: the file id, its share link and the folder it lives in.
+// FolderID is the folder that actually holds the file, not the destination the
+// current run would have used.
+type RenderDriveIdentity struct {
+	FileID   string
+	Link     string
+	FolderID string
+}
+
+// RenderDriveIdentityRecorder is the optional half of RenderReuseCache that
+// remembers where certified bytes were published. It is separate from Store
+// because publication happens AFTER the render is certified (the render cache
+// holds bytes, not destinations) and because a cache that cannot persist the
+// identity must still be usable for render reuse.
+type RenderDriveIdentityRecorder interface {
+	RecordDriveIdentity(ctx context.Context, fingerprint string, identity RenderDriveIdentity) error
 }
 
 // RenderReuseCache resolves a plan fingerprint to the artifact a previous render
@@ -130,8 +158,11 @@ func (r *LocalizedClipRenderer) reusedArtifact(ctx context.Context, plan Localiz
 		// A hit is a FACT about this artifact, not an absence of telemetry:
 		// without it a reused clip is indistinguishable from a fresh render
 		// that reported no metrics at all.
-		Reused:       true,
-		RenderSource: RenderSourceDeterministicCache,
+		Reused:        true,
+		RenderSource:  RenderSourceDeterministicCache,
+		DriveFileID:   cached.DriveFileID,
+		DriveLink:     cached.DriveLink,
+		DriveFolderID: cached.DriveFolderID,
 	}
 	if ass != nil {
 		artifact.SubtitlePath = ass.LocalPath

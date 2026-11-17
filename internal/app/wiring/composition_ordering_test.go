@@ -30,7 +30,7 @@
 // "tests about Build*Bundle call-shape" inside this file.
 //
 // This file is a sister to:
-//   - composition_failclosed_test.go (BuildOutboxBundle + buildQdrantDeps
+//   - composition_failclosed_test.go (BuildOutboxBundle + buildIndexDeps
 //     fail-closed gates; dummies live there).
 //   - composition_freeze_test.go (source-level freeze tests; package
 //     doc + shared helpers chdirToProjectRoot / minimalConfig live there).
@@ -287,12 +287,12 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 // PR-12d (June 2026): Domain and Outbox swapped so the canonical
 // outbox dispatcher is available at the moment images.Service is
 // constructed (closing the SetDispatcher late-bind ordering hazard).
-// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): Outbox +
-// Process swapped (Outbox now BEFORE Process) and a new buildQdrantDeps
+// PR 8 (June 2026, codex/pgvector-app-writers-fail-closed): Outbox +
+// Process swapped (Outbox now BEFORE Process) and a new buildIndexDeps
 // pre-phase introduced to feed BuildOutboxBundle's ClipIndexerService +
-// QdrantDeleter deps. Confirmed DAG:
+// VectorPointDeleter deps. Confirmed DAG:
 //
-//	qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd) ->
+//	indexDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd) ->
 //	  domains(reads process+outbox) -> sync/maint/utility.
 //
 // Push 3.1g (July 2026): MOVED from composition_test.go to
@@ -304,7 +304,7 @@ var frozenCompositionSequence = []string{
 	"drivewiring.BuildBundle(",
 	"BuildJobsBundle(",
 	"BuildAIBundle(",
-	"buildQdrantDeps(",
+	"buildIndexDeps(",
 	"BuildOutboxBundle(",
 	"BuildProcessBundle(",
 	"BuildDomainBundle(",

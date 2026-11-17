@@ -1,6 +1,6 @@
 // Package scripts — source_resolver_search.go resolves SourceSearch
 // sources into a ResolvedSource. It performs semantic search via a
-// pluggable SemanticSearchPort (backed by Qdrant in production), then
+// pluggable SemanticSearchPort (backed by pgvector in production), then
 // uses ClipSourceBuilder to build context from the matched clips.
 //
 // FASE-7 move-only refactor (July 2026): the
@@ -29,7 +29,7 @@ import (
 )
 
 // SemanticSearchPort is the narrow interface the Search resolver needs
-// to find clips by text query. Production wiring maps this to Qdrant
+// to find clips by text query. Production wiring maps this to pgvector
 // hybrid search (dense + sparse + transcript). Test wiring uses a
 // fake for deterministic results.
 type SemanticSearchPort interface {
@@ -126,16 +126,17 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	// canonical operator target; passing it to SemanticSearchPort
 	// allows language-restricted retrieval where supported.
 	// Over-fetch before hydration.  The requested limit is the number of
-	// clips to accept, not the number of Qdrant rows to inspect: stale or
+	// clips to accept, not the number of pgvector rows to inspect: stale or
 	// Drive-only rows must not consume the whole search window before the
 	// renderability gate can find staged local media.
 	searchLimit := searchPlan.SearchLimit
-	// qdrant.search is the semantic-index boundary. The canonical Run clock
+	// vector_search is the semantic-index boundary (pgvector since 2026-11-17).
+	// The canonical Run clock
 	// records it as an OperationReport under source.resolve; no ad-hoc timer.
 	var results []SemanticSearchResult
 	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
 		Stage:     scriptgen.StageSourceResolve,
-		Component: kernobs.ComponentQdrant,
+		Component: kernobs.ComponentVectorSearch,
 		Operation: kernobs.OperationSearch,
 	}, func(opCtx context.Context) error {
 		var searchErr error
@@ -156,10 +157,10 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		}
 	}
 
-	// Qdrant's locator-safe payload intentionally does not carry the
+	// pgvector's locator-safe payload intentionally does not carry the
 	// transcript/description fields needed by the sampler gates. Hydrate
 	// the search hits from the canonical SQLite/text-track resolver before
-	// selection; this keeps the chain honest: Qdrant selects candidates,
+	// selection; this keeps the chain honest: pgvector selects candidates,
 	// SQLite supplies ClipEvidence, and only then can a clip be accepted.
 	searchIDs := make([]string, 0, len(results))
 	for _, result := range results {
@@ -172,7 +173,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	searchClipOpts.MetadataFallbackByClipID = make(map[string]string, len(results))
 	hydratedDetails := make(map[string]scriptpkg.ClipDetail, len(searchIDs))
 	for _, id := range searchIDs {
-		// Qdrant carries the semantic summary used by the sampler. Pass it
+		// pgvector carries the semantic summary used by the sampler. Pass it
 		// through the per-clip hydration options so a Drive-only asset does
 		// not need a local transcript row to qualify for a non-render job.
 		hydrateOpts := *searchClipOpts
@@ -186,7 +187,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 				break
 			}
 		}
-		// sqlite.hydrate is the canonical evidence-hydration boundary: Qdrant
+		// sqlite.hydrate is the canonical evidence-hydration boundary: pgvector
 		// selects candidates, SQLite supplies ClipEvidence. One operation per
 		// hydrated clip so the accumulated work never masquerades as wall time.
 		var evidence *scriptpkg.ClipEvidence
@@ -200,7 +201,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			return buildErr
 		}); hydrateErr != nil || evidence == nil || evidence.ClipDetails == nil {
 			// A semantic hit without a ready transcript/evidence row is
-			// not an accepted clip. Keep searching the Qdrant result set;
+			// not an accepted clip. Keep searching the pgvector result set;
 			// do not let one stale asset abort otherwise valid evidence.
 			continue
 		}
@@ -317,7 +318,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			Query:       query,
 			ResultCount: 0,
 			Inner: fmt.Errorf(
-				"no accepted semantic search results for query %q (qdrant_results=%d hydrated=%d candidates=%d failed_gates=%s candidate_diagnostics=%s)",
+				"no accepted semantic search results for query %q (vector_results=%d hydrated=%d candidates=%d failed_gates=%s candidate_diagnostics=%s)",
 				query, len(results), len(hydratedDetails), len(candidates), strings.Join(failedGates, ","), strings.Join(candidateSummaries, "; "),
 			),
 		}

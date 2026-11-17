@@ -3,7 +3,7 @@
 // PR-CLIPINGEST-PIPELINE step 11 (July 2026): category (c).
 //
 // User spec — "invalidazione — transcript cambia → semantic_hash
-// cambia, traduzioni obsolete marcate, nuove track, reindex Qdrant".
+// cambia, traduzioni obsolete marcate, nuove track, reindex pgvector".
 //
 // Cover:
 //   - Source transcript change → prior target rows lose `is_current`.

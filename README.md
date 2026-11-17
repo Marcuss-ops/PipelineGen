@@ -21,7 +21,7 @@ PipelineGen is a headless Go backend for media discovery, extraction, processing
 - yt-dlp
 - PostgreSQL with pgvector for the media domain
 - SQLite for non-media domains that have not migrated
-- Optional: Qdrant for explicitly owned non-media use cases, Ollama, Google Drive credentials
+- Optional: Ollama, Google Drive credentials
 
 ## Run
 
@@ -40,9 +40,9 @@ export PIPELINEGEN_MEDIA_POSTGRES_DSN='postgres://USER:PASSWORD@HOST:PORT/pipeli
 ```
 
 `media_postgresql.enabled: true` is fail-closed: an empty or unreachable DSN
-aborts startup. There is no SQLite or Qdrant fallback for media reads or
-writes. Qdrant is disabled by default in the production template and may be
-enabled only for an explicitly owned non-media capability.
+aborts startup. There is no SQLite fallback for media reads or writes, and
+the external vector store has been removed from the tree entirely (2026-11-17): media vectors and
+keyframe visuals are served only by PostgreSQL + pgvector.
 
 The production template is GPU-oriented: `video.codec: h264_nvenc`,
 `video.preset: p1`, and `video.crf` are the shared video encoder policy.
@@ -65,7 +65,7 @@ go build -o admin ./cmd/admin
 
 For the host deployment, use the native systemd units in
 [`scripts/systemd/`](scripts/systemd/). PipelineGen server and worker are not
-part of `docker-compose.yml`; that file starts only optional external infrastructure such as Qdrant and SearXNG. Artlist is
+part of `docker-compose.yml`; that file starts only optional external infrastructure such as SearXNG. Artlist is
 configured as an external provider endpoint when enabled; the repository no
 longer ships or starts a Node scraper sidecar.
 media PostgreSQL service is defined separately for the media-domain runtime.
@@ -232,7 +232,7 @@ tests/                   automated and operational tests
 
 - PostgreSQL + pgvector is the single source of truth for the media domain.
 - Media retrieval and media hydration must come from the same PostgreSQL adapter; no split database read path is permitted.
-- Qdrant media reads and writes are forbidden; Qdrant may exist only for explicitly owned non-media use cases.
+- the external vector store has been removed entirely (2026-11-17); no pgvector package, client, config, endpoint or container remains. Do not reintroduce it.
 - SQLite remains authoritative only for non-media domains that have not migrated.
 - Long-running work uses the job system.
 - Post-commit side effects use the transactional outbox.

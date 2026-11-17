@@ -45,7 +45,7 @@ type HealthProber interface {
 // AppDeps holds the composition-root output for the server runtime.
 // Surface nests into 4 purpose-grouped sub-bundles (Handlers, Runtime,
 // Health, Images) so the struct stays ≤ 8 fields. Concrete infra types
-// (Drive, Qdrant, JobBroker) live behind *ComposeRoot in
+// (Drive, pgvector, JobBroker) live behind *ComposeRoot in
 // wire_services.go; the API runtime only sees AppDeps.
 //
 // Each sub-bundle holds:
@@ -104,13 +104,11 @@ type AppRuntime struct {
 // the AppHandlers wiring-shape convention so call sites stay
 // consistent (`deps.Health.X`, `deps.Handlers.X`).
 type AppHealth struct {
-	QdrantProbe   HealthProber
-	QdrantHealth  any
 	HealthService any
 	ReadyChecker  *systemhealth.ReadyChecker
 
 	// EmbeddingContractProbe is the boot-time embedding-contract handshake
-	// (internal/app/embedding_contract_probe.go). nil when the Qdrant +
+	// (internal/app/embedding_contract_probe.go). nil when the pgvector +
 	// ClipIndexer indexing chain is not fully configured. build_server.go
 	// registers it on the lifecycle readiness barrier as
 	// "embedding-contract".

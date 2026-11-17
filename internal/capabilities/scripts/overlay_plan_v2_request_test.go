@@ -283,3 +283,66 @@ func TestApplyChainSegmentPresetsResolvesEveryChainSegment(t *testing.T) {
 	}
 	require.Equal(t, string(capabilityoverlay.PresetModernName), plan.Items[0].PresetID)
 }
+
+// Rust emits presentation cards as TIMELINE_DATE_CARD / METRIC_STAT_CARD
+// rather than the semantic DATE / NUMBER roles. The materializer's fallback
+// must resolve those concrete template ids too, or the worker rejects the
+// item with "requires preset_id".
+func TestMaterializeEditorialMapItemsResolvesPresentationCardPresets(t *testing.T) {
+	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{
+		{
+			ID: "date-segment-stagger__1991__date_number__01", SceneID: "scene-1",
+			Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "1991",
+		},
+		{
+			ID: "metric-card__42__number__01", SceneID: "scene-1",
+			Kind: "number", TemplateID: "METRIC_STAT_CARD", Text: "42",
+		},
+	}}
+
+	require.NoError(t, materializeEditorialMapItems(plan, nil, OverlayCanvasSpec{}, "seed"))
+	for _, item := range plan.Items {
+		require.Equal(t, string(capabilityoverlay.PresetModernWord), item.PresetID, item.TemplateID)
+	}
+}
+
+// A localized plan cannot project the source-language editorial manifest: the
+// titles and bullets are extracted before translation. The builder must
+// disable those two lanes (and only those) so the Rust compiler accepts the
+// source manifest and the localized video never burns untranslated cards.
+func TestBuildOverlayPlanV2RequestDisablesSourceEditorialForLocalizedPlan(t *testing.T) {
+	result := &GenerateResult{
+		SourceLanguage: "en",
+		Editorial: &scriptpkg.EditorialManifest{
+			SchemaVersion:  overlayplan.EditorialManifestVersion,
+			SourceLanguage: "en",
+			ProfileVersion: overlayplan.EditorialProfileVersion,
+			Certified:      true,
+			Fingerprint:    strings.Repeat("a", 64),
+		},
+	}
+	scene := Scene{
+		ID: "scene-1", DurationMS: 2_000, ExecutionMode: "body",
+		Text: map[Language]string{"it": "Nike corre. La statua è al museo."},
+		OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+			scriptpkg.OverlayCategoryTitles:  scriptpkg.ToggleEnabled,
+			scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleEnabled,
+		},
+	}
+	canvas := OverlayCanvasSpec{
+		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+			scriptpkg.OverlayCategoryTitles:  scriptpkg.ToggleEnabled,
+			scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleEnabled,
+			scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleEnabled,
+		},
+	}
+	request, err := buildOverlayPlanV2Request(result, "it", canvas, "plan-1", "video-1", "project-1", "seed-1",
+		[]Scene{scene}, nil, nil, nil, map[string][2]int64{"scene-1": {0, 2_000_000}})
+	require.NoError(t, err)
+	require.Equal(t, "disabled", request.Canvas.OverlayCategories[string(scriptpkg.OverlayCategoryTitles)])
+	require.Equal(t, "disabled", request.Canvas.OverlayCategories[string(scriptpkg.OverlayCategoryBullets)])
+	require.Equal(t, "enabled", request.Canvas.OverlayCategories[string(scriptpkg.OverlayCategoryPhrases)])
+	require.Equal(t, "disabled", request.Scenes[0].OverlayCategories[string(scriptpkg.OverlayCategoryTitles)])
+	require.Equal(t, "disabled", request.Scenes[0].OverlayCategories[string(scriptpkg.OverlayCategoryBullets)])
+}

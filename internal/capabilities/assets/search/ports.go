@@ -99,7 +99,7 @@ type ProviderResult struct {
 // ── Vector store ports (used by mediasearch) ──────────────────────────
 
 // VectorStorePort is the canonical vector store interface consumed by
-// mediasearch. Implementations live in platform/qdrant.
+// mediasearch. Implementations live in platform/pgvector.
 type VectorStorePort interface {
 	Search(ctx context.Context, req VectorSearchRequest) ([]VectorSearchResult, error)
 	HybridSearch(ctx context.Context, req HybridSearchRequest) ([]VectorSearchResult, error)
@@ -115,26 +115,26 @@ type VectorSearchRequest struct {
 	Category       string
 	MediaType      string
 	Language       string
-	LifecycleState []string // searchable lifecycle allow-list propagated to the Qdrant filter
+	LifecycleState []string // searchable lifecycle allow-list propagated to the pgvector filter
 	// AssetKind / SemanticRole are the canonical taxonomy equality
 	// dimensions (media_assets.asset_kind / semantic_role), distinct from
 	// Source (physical provenance). The PostgreSQL media plane compiles them
 	// into its WHERE fragment; adapters that predate them may ignore them.
 	AssetKind    string
 	SemanticRole string
-	WorkspaceID  string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	WorkspaceID  string // VECTOR-004: tenant isolation filter (applied to pgvector payload)
 	IsSystem     bool   // ADMIN scope bypass — skips workspace isolation for admin users
 }
 
 // VectorSearchResult is a single match from a vector search.
 //
-// QDRANT-001 (June 2026): LocalPath and DriveLink have been removed.
+// VECTOR-001 (June 2026): LocalPath and DriveLink have been removed.
 // Server-internal locators do not belong in the search contract;
 // clients that need a signed URL for an asset should go through
 // the delivery service (delivery.Signer.BuildAuthorizedURL).
 type VectorSearchResult struct {
 	AssetID       string  `json:"asset_id"`
-	QdrantPointID string  `json:"qdrant_point_id,omitempty"`
+	VectorPointID string  `json:"vector_point_id,omitempty"`
 	Score         float64 `json:"score"`
 	Reason        string  `json:"reason,omitempty"`
 	Source        string  `json:"source"`
@@ -158,11 +158,11 @@ type VectorSearchResult struct {
 
 // HybridSearchRequest combines dense and sparse vectors for hybrid search.
 //
-// PR2 (fix/qdrant-bm25-indexing): server-side BM25 inference is the
+// PR2 (fix/pgvector-bm25-indexing): server-side BM25 inference is the
 // canonical strategy. The orchestrator passes the raw query text via
-// SparseText (plus SparseModel, defaulting to "qdrant/bm25"); Qdrant
+// SparseText (plus SparseModel, defaulting to "pgvector/bm25"); pgvector
 // then tokenizes + weights + projects the sparse vector on the server.
-// Live hybrid retrieval supplies SparseText; Qdrant performs the sparse
+// Live hybrid retrieval supplies SparseText; pgvector performs the sparse
 // projection server-side.
 type HybridSearchRequest struct {
 	QueryText            string
@@ -171,14 +171,14 @@ type HybridSearchRequest struct {
 	TranscriptVector     []float32
 	TranscriptVectorName string
 	SparseVectorName     string
-	// SparseText (PR2 preferred): raw text that Qdrant tokenizes
+	// SparseText (PR2 preferred): raw text that pgvector tokenizes
 	// server-side via the SparseModel. When non-empty, the adapter
 	// projects it before sending the query; this is the canonical
 	// path for live retrieval.
 	SparseText string
 	// SparseModel is the inference model used to project SparseText
 	// into a sparse vector server-side. Empty falls back to
-	// "qdrant/bm25" (Qdrant server-side default).
+	// "pgvector/bm25" (pgvector server-side default).
 	SparseModel    string
 	Limit          int
 	MinScore       float64
@@ -186,12 +186,12 @@ type HybridSearchRequest struct {
 	Category       string
 	MediaType      string
 	Language       string
-	LifecycleState []string // searchable lifecycle allow-list propagated to the Qdrant filter
+	LifecycleState []string // searchable lifecycle allow-list propagated to the pgvector filter
 	// AssetKind / SemanticRole: see VectorSearchRequest.AssetKind.
 	AssetKind    string
 	SemanticRole string
-	WorkspaceID  string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
-	IsSystem     bool   // admin/reconcile flag — skips workspace must-clause in CompileQdrantFilter
+	WorkspaceID  string // VECTOR-004: tenant isolation filter (applied to pgvector payload)
+	IsSystem     bool   // admin/reconcile flag — skips workspace must-clause in CompileVectorFilter
 }
 
 // ── Local search ports ────────────────────────────────────────────────
@@ -224,15 +224,15 @@ type LocalClipResult struct {
 
 // VectorConfig holds named vector dimensions for search.
 //
-// QDRANT-004 PR1 (June 2026): SparseVectorName is the canonical BM25
-// channel in the Qdrant IndexSchema (default "bm25_text" — matches
-// qdrant.DefaultV3Schema().SparseVectors). The orchestrator fails
+// VECTOR-004 PR1 (June 2026): SparseVectorName is the canonical BM25
+// channel in the pgvector IndexSchema (default "bm25_text" — matches
+// pgvector.DefaultV3Schema().SparseVectors). The orchestrator fails
 // closed with ErrHybridRequiresSparse when mode=hybrid is requested
 // with SparseVectorName == "" (or with a query that BM25 cannot
 // tokenize into ≥1 valid token).
 //
 // MinInstantScore stays a single-tunable scalar; per-channel scores
-// are owned by the Qdrant IndexSchema + Searcher’s RRF fusion, not by
+// are owned by the pgvector IndexSchema + Searcher’s RRF fusion, not by
 // orchestrator-side heuristics.
 type VectorConfig struct {
 	TextVectorName       string

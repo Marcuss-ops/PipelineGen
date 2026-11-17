@@ -299,7 +299,7 @@ func TestSearchResolverEmptyQuery(t *testing.T) {
 
 func TestSearchResolverSearchError(t *testing.T) {
 	t.Parallel()
-	search := &fakeSearchPort{err: errors.New("qdrant timeout")}
+	search := &fakeSearchPort{err: errors.New("pgvector timeout")}
 	resolver := scripts.NewSearchSourceResolver(search, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:  scriptpkg.SourceSearch,

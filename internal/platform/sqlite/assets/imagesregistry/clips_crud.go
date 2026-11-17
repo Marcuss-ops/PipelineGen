@@ -38,7 +38,7 @@ import (
 // public because the canonical detail.Repository wrapper calls it;
 // the narrow API surface for callers is Upsert only.
 //
-// QDRANT-asset-mutation isolation (June 2026): Upsert itself
+// VECTOR-asset-mutation isolation (June 2026): Upsert itself
 // bypasses the outbox. Production callers that need vector
 // indexing MUST use outbox.Dispatcher.EnqueueAndIndex (which
 // performs the UPSERT and outbox_events INSERT in a single
@@ -66,16 +66,16 @@ func (r *ClipsRepository) GetClip(ctx context.Context, id string) (*asset.Asset,
 
 // UpsertClip upserts a clip through the low-level Save() path.
 //
-// QDRANT-002: THIS METHOD BYPASSES THE OUTBOX. Callers that need vector
+// VECTOR-002: THIS METHOD BYPASSES THE OUTBOX. Callers that need vector
 // indexing MUST use outbox.Dispatcher.EnqueueAndIndex instead, which
 // performs the UPSERT and outbox_events INSERT in a single atomic tx.
 //
-// QDRANT-asset-mutation isolation (June 2026): //nolint:production.
+// VECTOR-asset-mutation isolation (June 2026): //nolint:production.
 // Production callers (internal/capabilities/**, internal/capabilities/**)
 // MUST NOT call this directly. The legitimate callers are:
 //  1. The dispatcher itself, which wraps this call inside an
 //     outbox transaction via UpsertClipTx + emits an outbox event
-//     in the same tx (the canonical QDRANT-002 path).
+//     in the same tx (the canonical VECTOR-002 path).
 //  2. Tests via the dispatcher stub or a bare `&Service{}` fixture
 //     (test code paths are explicitly allowlisted by the CI lint).
 //

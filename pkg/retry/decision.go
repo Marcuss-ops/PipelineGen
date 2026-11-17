@@ -188,7 +188,7 @@ type RetryDecision struct {
 	// auth header), MUST contain enough context to diagnose failures
 	// (status class, shape token). Examples:
 	//   "Google API rate limit (429)"
-	//   "qdrant getCollection 404 (collection not found)"
+	//   "pgvector getCollection 404 (collection not found)"
 	//   "SQLite lock_busy (database is locked)"
 	//   "Drive permission denied (403)"
 	// Adapters MUST populate this in their classifier; the SafeMessage
@@ -325,7 +325,7 @@ func (r *ClassifierRegistry) fallback(err error) (RetryDecision, bool) {
 // init time from the built-in classifiers that live in pkg/retry
 // (stdlib + Google API). It is immutable after construction.
 //
-// Internal adapter classifiers (SQLite, Qdrant, etc.) cannot be added
+// Internal adapter classifiers (SQLite, pgvector, etc.) cannot be added
 // here because pkg/retry may not import internal/ packages. Those
 // classifiers are exported by their owning packages and must be
 // assembled into a ClassifierRegistry at the application composition

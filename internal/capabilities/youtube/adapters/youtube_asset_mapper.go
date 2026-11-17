@@ -38,9 +38,9 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 	out.SetContentHash(c.ContentSHA256)
 	out.SetFolderID(c.DriveFolderID)
 	out.SetFolderPath(c.DrivePath)
-	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026).
+	// Rich metadata fields (RICH-METADATA-VECTOR-VERIFY, July 2026).
 	// Stored in Metadata for round-trip through UpsertClipTx →
-	// media_assets.metadata_json → Qdrant semantic search.
+	// media_assets.metadata_json → pgvector semantic search.
 	// Nil-safe: SetMetadataString initializes Metadata if nil.
 	if c.Summary != "" {
 		out.SetClipSummary(c.Summary)
@@ -100,7 +100,7 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 		SourceVideoID:  c.MetadataSourceVideoID(),
 		StartSec:       c.StartSec(),
 		EndSec:         c.EndSec(),
-		// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
+		// Rich metadata fields (RICH-METADATA-VECTOR-VERIFY, July 2026)
 		Summary:         c.ClipSummary(),
 		Topics:          c.Topics(),
 		Speakers:        c.Speakers(),

@@ -41,7 +41,7 @@ type ResolvedTextBundle struct {
 	SourceLanguageCode string
 
 	// PlainText is the concatenated transcript (no timestamps). It
-	// is the text used as Qdrant-transcript-embedding + LLM
+	// is the text used as vector-transcript-embedding + LLM
 	// summarization input. Empty when acquisition failed.
 	PlainText string
 
@@ -107,7 +107,7 @@ type TimedCue struct {
 // IsEmpty reports whether the bundle carries no usable content.
 // Empty bundles signal the caller that acquisition failed
 // across all priority levels (payload, DB, YT subtitle, Whisper)
-// and that PENDING/FAILED persistence + Qdrant indexing should NOT
+// and that PENDING/FAILED persistence + pgvector indexing should NOT
 // proceed via the primary track path.
 func (b *ResolvedTextBundle) IsEmpty() bool {
 	if b == nil {

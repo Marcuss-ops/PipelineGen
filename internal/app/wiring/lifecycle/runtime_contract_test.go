@@ -73,7 +73,7 @@ func (r *recorder) stepCallsOnly() []string {
 // record invocations into rec. The plan is built from stepNames in order;
 // steps fire their Start closures synchronously (no goroutines).
 //
-// QDRANT-005 (June 2026) closure (lifecycle-runtime-ownership):
+// VECTOR-005 (June 2026) closure (lifecycle-runtime-ownership):
 // lifecycle.Runtime no longer exposes fixed dbProbe/vectorProbe/driveProbe
 // fields — the readiness barrier is unified into a `probes []*probeEntry`
 // slice and probes are registered through `AddProbe(name, fn)`. The test
@@ -192,7 +192,7 @@ func TestLifecycle_BarrierPasses_RunsStepsInOrder(t *testing.T) {
 	rec := &recorder{}
 	plan := []lifecycle.StartupStep{
 		makeRecordingStep("drive-init", true, rec, nil),
-		makeRecordingStep("qdrant-collection", true, rec, nil),
+		makeRecordingStep("pgvector-collection", true, rec, nil),
 		makeRecordingStep("outbox-pool", true, rec, nil),
 		makeRecordingStep("job-scanner", false, rec, nil),
 		makeRecordingStep("job-runner", true, rec, nil),
@@ -230,7 +230,7 @@ func TestLifecycle_BarrierPasses_RunsStepsInOrder(t *testing.T) {
 		}
 		stepNames = append(stepNames, c)
 	}
-	want := []string{"drive-init", "qdrant-collection", "outbox-pool", "job-scanner", "job-runner"}
+	want := []string{"drive-init", "pgvector-collection", "outbox-pool", "job-scanner", "job-runner"}
 	if len(stepNames) != len(want) {
 		t.Fatalf("expected %d step calls, got %d (%v)", len(want), len(stepNames), stepNames)
 	}
@@ -324,7 +324,7 @@ func TestLifecycle_RequiredFailure_AbortsSequence(t *testing.T) {
 	rec := &recorder{}
 	plan := []lifecycle.StartupStep{
 		makeRecordingStep("drive-init", true, rec, errors.New("drive folder missing")),
-		makeRecordingStep("qdrant-collection", true, rec, nil),
+		makeRecordingStep("pgvector-collection", true, rec, nil),
 		makeRecordingStep("outbox-pool", true, rec, nil),
 		makeRecordingStep("job-runner", true, rec, nil),
 	}

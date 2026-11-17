@@ -1,6 +1,6 @@
 // Package delivery is the asset-delivery URL signer.
 //
-// QDRANT-004 acceptance criterion: "Delivery URL protetto".
+// VECTOR-004 acceptance criterion: "Delivery URL protetto".
 //
 // The package mints short-lived HMAC-signed URLs of the shape:
 //

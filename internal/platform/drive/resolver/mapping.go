@@ -126,7 +126,7 @@ func rootConfigKey(dest delivery.DestinationKey) string {
 // Round-2 SHOULD-FIX (2026-07-06, category softened): "category" was
 // REMOVED from the Voiceover/Book/Script hard-reject list because
 // BuildPublishRequest ignores it silently for project-language
-// destinations AND it carries "metadata for downstream Qdrant indexing"
+// destinations AND it carries "metadata for downstream pgvector indexing"
 // semantics per location.go godoc. The resolver now soft-warns instead
 // of hard-rejecting (see softIgnoredFieldProbe below).
 //
@@ -156,7 +156,7 @@ func incompatibleFieldProbe(dest delivery.DestinationKey) []string {
 
 // softIgnoredFieldProbe returns per-destination fields that the
 // resolver does NOT use in the Drive folder-id but that callers may
-// legitimately set (e.g. Category as Qdrant-indexing metadata for
+// legitimately set (e.g. Category as vector-indexing metadata for
 // Voiceover tracks). The corresponding Resolve pass emits a per-call
 // Warn log via a.log.Warn but does NOT raise the typed sentinel —
 // the resolver proceeds with the canonical segment-shape mapping.

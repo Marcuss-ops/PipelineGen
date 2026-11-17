@@ -15,9 +15,13 @@ type stubTranslationPort struct {
 	text     string
 	provider string
 	err      error
+	command  translation.TranslationCommand
+	calls    int
 }
 
 func (s *stubTranslationPort) Translate(_ context.Context, cmd translation.TranslationCommand) (translation.TranslationResult, error) {
+	s.command = cmd
+	s.calls++
 	if s.err != nil {
 		return translation.TranslationResult{}, s.err
 	}
@@ -27,6 +31,28 @@ func (s *stubTranslationPort) Translate(_ context.Context, cmd translation.Trans
 		SourceLang:     cmd.SourceLang,
 		TargetLang:     cmd.TargetLang,
 	}, nil
+}
+
+func TestScriptGenerationTranslatorPinsOllamaModel(t *testing.T) {
+	primary := &stubTranslationPort{text: "wrong route", provider: "argos"}
+	ollama := &stubTranslationPort{text: "translated", provider: "ollama"}
+	adapter := &scriptGenerationTranslator{port: primary, ollama: ollama}
+	got, err := adapter.Translate(context.Background(), scriptgen.TranslationInput{
+		SourceLanguage: scriptgen.Language("it"), TargetLanguage: scriptgen.Language("en"),
+		SourceText: "testo", Provider: "ollama", Model: "gemma4:e4b",
+	})
+	if err != nil || got != "translated" {
+		t.Fatalf("Translate = %q, %v; want direct Ollama result", got, err)
+	}
+	if primary.calls != 0 {
+		t.Fatal("explicit Ollama request was sent through the configured primary chain")
+	}
+	if ollama.calls != 1 || ollama.command.Text != "testo" {
+		t.Fatalf("Ollama calls/command = %d/%+v", ollama.calls, ollama.command)
+	}
+	if ollama.command.ModelPolicy == nil || ollama.command.ModelPolicy.Provider != "ollama" || ollama.command.ModelPolicy.Model != "gemma4:e4b" {
+		t.Fatalf("Ollama model policy = %+v", ollama.command.ModelPolicy)
+	}
 }
 
 // TestScriptGenerationTranslatorRejectsEmptyText is the guard for the whole

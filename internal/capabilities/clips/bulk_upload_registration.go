@@ -1,7 +1,7 @@
 // Package clips (bulk_upload_registration) — Step "register" of the
 // per-clip pipeline: build canonical *asset.Asset from candidate +
 // PublishResult + fileHash, then route media_assets UPSERT through
-// mutations.AssetMutationDispatcher (QDRANT-002 atomicity: media_assets +
+// mutations.AssetMutationDispatcher (VECTOR-002 atomicity: media_assets +
 // outbox_events INSERT in one tx).
 //
 // Fail-closed: nil dispatcher surfaces mutations.ErrDispatcherUnavailable;

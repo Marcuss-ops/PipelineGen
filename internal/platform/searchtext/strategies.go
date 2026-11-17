@@ -22,7 +22,7 @@ const (
 // Each strategy documents the canonical list of fields it reads from
 // SearchTextInput. The output is a single space-joined string suitable
 // for storage in media_assets.search_text and later embedding for the
-// Qdrant BM25 sparse channel.
+// pgvector BM25 sparse channel.
 //
 // Design rule: strategies never error. An empty return value is valid
 // (the PayloadMapper drops the BM25 channel when SearchText is empty).
@@ -44,7 +44,7 @@ const (
 //
 // godlike/06 SSOT: this function is the SOLE canonical owner of the
 // YouTube search_text format for the media search_text surface (both the
-// Qdrant BM25 path and the PostgreSQL media SSOT rebuild path).
+// pgvector BM25 path and the PostgreSQL media SSOT rebuild path).
 //
 // SUPERSET CONTRACT (September 2026): the output MUST be a superset of
 // the historical YouTube Step-9 commit-time envelope (title + summary +
@@ -203,7 +203,7 @@ func stockChunkStrategy(input appsearchtext.SearchTextInput) string {
 	// godlike/07 NO-FAKE-AVAILABILITY: emit only when BOTH endpoints
 	// are present — a one-sided "Segment 10.0s to s" or "Segment s
 	// to 20.0s" would be a malformed sentence that pollutes the
-	// Qdrant BM25 channel. Drop the segment cleanly when either
+	// pgvector BM25 channel. Drop the segment cleanly when either
 	// endpoint is missing (mirrors seg1/seg4/seg5 graceful-drop).
 	var seg3 string
 	if startSec != "" && endSec != "" {

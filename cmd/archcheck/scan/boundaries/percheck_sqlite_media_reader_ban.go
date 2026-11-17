@@ -195,7 +195,7 @@ func blankSpans(s string, spans [][]int) string {
 // stops auto-exempting anything.
 //
 // CONVERTED (2026-09-20): internal/platform/sqlite/ (the operational SQLite
-// state store), internal/platform/qdrant/indexing/ (the Qdrant media
+// state store), internal/platform/postgres/media/indexing/ (the pgvector media
 // compatibility seam) and cmd/admin/ (operator tooling that deliberately runs
 // against the operational database). All three were dropped from this list in
 // the change that enumerated them.

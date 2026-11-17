@@ -3,7 +3,7 @@
 // discover media_asset IDs without querying SQLite directly.
 //
 // PR-FIX (June 2026): before this endpoint, the user had to manually
-// query SQLite or Qdrant (whose point IDs differ from media_assets.id)
+// query SQLite or pgvector (whose point IDs differ from media_assets.id)
 // to find clips for source.type="clips". Now a single GET returns
 // matching clip IDs with their names, source, and drive links.
 package script

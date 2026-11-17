@@ -44,8 +44,9 @@ fail-loud esplicito, non un silent false success (godlike/07).
 
 ## Esempi canonici
 
-Vedi `cmd/admin/manifests/beluga.json` (`source: clip_drive`, fallback 9s) e
-`cmd/admin/manifests/stargazer-fish.json` (`source: ai_generated`, fail-closed).
+I fixture per-video sono stati rimossi: il repository versiona solo il
+template. Parti da `_TEMPLATE.json` e compila un manifest per ogni clip che
+deve essere indicizzata.
 
 ## Runbook completo
 

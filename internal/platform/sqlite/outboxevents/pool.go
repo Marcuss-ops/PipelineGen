@@ -428,7 +428,7 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 			return
 		}
 
-		// QDRANT-002 item F: supersede → terminal success.
+		// VECTOR-002 item F: supersede → terminal success.
 		if IsSupersede(handlerErr) {
 			p.log.Info("event superseded by newer aggregate version — closing as superseded",
 				zap.Int64("event_id", evt.ID),
@@ -446,7 +446,7 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 			return
 		}
 
-		// QDRANT-002 item G: terminal error → dead_letter.
+		// VECTOR-002 item G: terminal error → dead_letter.
 		// Also catches missing-handler and handler-panic errors
 		// now wrapped with NewTerminalError (FASE 2.2).
 		if IsTerminal(handlerErr) {

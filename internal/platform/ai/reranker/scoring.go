@@ -3,7 +3,7 @@ package reranker
 
 // NormalizeScores normalizes a batch of reranker scores to [0, 1] range.
 // CrossEncoder scores are not always normalized; this ensures they're
-// comparable with Qdrant scores (which are cosine similarities in [0, 1]).
+// comparable with pgvector scores (which are cosine similarities in [0, 1]).
 func NormalizeScores(scores map[string]float64) map[string]float64 {
 	if len(scores) == 0 {
 		return scores
@@ -36,20 +36,20 @@ func NormalizeScores(scores map[string]float64) map[string]float64 {
 	return out
 }
 
-// MixedScore computes the final score by blending Qdrant (bi-encoder) and
+// MixedScore computes the final score by blending pgvector (bi-encoder) and
 // reranker (cross-encoder) scores with a configurable weight.
 //
-// Formula: final = qdrantScore * (1 - weight) + rerankScore * weight
+// Formula: final = pgvectorScore * (1 - weight) + rerankScore * weight
 //
-// Default weight of 0.35 means: 65% Qdrant similarity + 35% reranker precision.
-func MixedScore(qdrantScore, rerankScore, weight float64) float64 {
+// Default weight of 0.35 means: 65% pgvector similarity + 35% reranker precision.
+func MixedScore(pgvectorScore, rerankScore, weight float64) float64 {
 	if weight < 0 {
 		weight = 0
 	}
 	if weight > 1 {
 		weight = 1
 	}
-	return qdrantScore*(1-weight) + rerankScore*weight
+	return pgvectorScore*(1-weight) + rerankScore*weight
 }
 
 func firstKey(m map[string]float64) string {

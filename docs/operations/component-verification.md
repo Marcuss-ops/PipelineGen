@@ -35,7 +35,6 @@ invocation.
 | `make verify-clips` | `clips` | Clip domain, application, and API |
 | `make verify-drive` | `drive` | Drive domain and infrastructure |
 | `make verify-research` | `research` | Research resolver, web fetcher, and research persistence |
-| `make verify-qdrant` | `qdrant` | Qdrant domain, application, and infrastructure |
 | `make verify-indexing` | `indexing` | Indexing application and infrastructure |
 | `make verify-docs` | `docs` | Document generation and document APIs |
 | `make verify-voiceover` | `voiceover` | Voiceover domain, application, and API |
@@ -59,7 +58,6 @@ make verify-components       # all registered components, fast mode
 make verify-race-components  # all registered components, race mode
 make verify-changed-components
 make verify-race-stock       # race for one component
-make verify-race-qdrant
 ```
 
 The former aggregate pipeline targets (`test-pipeline-stock-only`,
@@ -98,7 +96,7 @@ Direct runner examples:
 
 ```bash
 python3 scripts/ci/verify-component.py research
-python3 scripts/ci/verify-component.py qdrant --race
+python3 scripts/ci/verify-component.py research --race
 python3 scripts/ci/verify-component.py --all --dry-run
 python3 scripts/ci/verify-changed-components.py --dry-run
 python3 scripts/ci/verify-changed-components.py --race --report /tmp/changed.json
@@ -133,7 +131,7 @@ Each registry component has a positive `timeout_seconds` budget. The runner:
 5. prints a diagnostic such as:
 
 ```text
-VERIFY_COMPONENT_TIMEOUT component=qdrant duration=600s
+VERIFY_COMPONENT_TIMEOUT component=script duration=600s
 ```
 
 Other command failures return a non-zero exit code. Failed dependencies block

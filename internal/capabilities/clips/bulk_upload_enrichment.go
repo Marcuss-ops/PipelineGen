@@ -1,6 +1,6 @@
 // Package clips (bulk_upload_enrichment) — Step "enrich" of the per-clip
 // pipeline: stage the transcript for the canonical IndexingHandler consumer
-// (outbox owns indexing/Qdrant asynchronously).
+// (outbox owns indexing/pgvector asynchronously).
 package clips
 
 import (

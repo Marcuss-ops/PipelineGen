@@ -16,7 +16,7 @@ package_hotspot_baselines:
     note: "Reconciled registered hotspot baselines with the committed production tree after the capability wiring increments; the global max_files_per_package cap remains 65."
   - date: "2026-08-15"
     change: "cmd/admin 111 → 115; cmd/archcheck/scan 42 → 70; internal/app 139 → 141"
-    note: "Reconciled registered hotspot baselines with the working tree after the audio-only cutover and the Qdrant/mediaregistry/identity-audit wiring increments; the global max_files_per_package cap remains 65."
+    note: "Reconciled registered hotspot baselines with the working tree after the audio-only cutover and the vector-index/mediaregistry/identity-audit wiring increments; the global max_files_per_package cap remains 65."
   - date: "2026-08-26"
     change: "stockpipeline 51 → 63; internal/platform/delivery 9 → 12; removed internal/application/images + internal/application/jobs hotspots (roots deleted, already in completed_migrations)"
     note: |
@@ -96,7 +96,7 @@ max_files_per_package:
         catalog / artifacts / delivery / maintenance / voiceover /
         visual-summary surfaces. The package is the SQLite persistence
         consolidation point; splitting it now would fracture transactional
-        cohesion. The cap will be revisited once the QDRANT-002 / asset-
+        cohesion. The cap will be revisited once the VECTOR-002 / asset-
         committer consolidation wave settles.
     - date: "2026-08-26"
       change: "canonicalized (no value change — P0-POLICY-CANONICAL)"
@@ -135,7 +135,7 @@ debt_budget:
   history:
     - date: "2026-07-13"
       change: "5 → 9"
-      owner: "PipelineGen Agent (qdrant-hygiene + docs-arch waves)"
+      owner: "PipelineGen Agent (vector-hygiene + docs-arch waves)"
       deadline: "2026-11-30"
       note: |
         Raised to accommodate the operator's "novembre" sub-commit wave:
@@ -177,7 +177,7 @@ target_internal_roots:
 # 1000-LOC hard ceiling. Allowlisted via docs/migrations/max-lines-strict-
 # allowlist.txt (the canonical escape hatch per godlike/07 §"Temporary
 # deprecation record"). Initial population = 15 files >600 LOC from the
-# JSON baseline (cmd/admin/qdrant_readiness.go 1466 down to
+# JSON baseline (cmd/admin/vector_readiness.go 1466 down to
 # internal/app/assets_register_sourcing.go 607); whole-block deadline
 # 2026-09-15 (Wave-23 cleanup cadence).
 max_lines_per_file_strict:

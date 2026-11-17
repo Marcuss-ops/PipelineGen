@@ -42,7 +42,7 @@ type PublishClipCommand struct {
 	ProjectID   string   // canonical project umbrella (e.g. "boxing-doc-2026")
 	Category    string   // semantic category (e.g. "Boxe", "Personaggi")
 	Provider    string   // upstream source (e.g. "youtube", "pexels")
-	Tags        []string // semantic keywords for Qdrant payload
+	Tags        []string // semantic keywords for pgvector payload
 	Language    string   // BCP-47 language tag (optional)
 }
 
@@ -85,7 +85,7 @@ type PublishRequest struct {
 	RootFolder  string   // caller-specified root folder override (e.g. from Location resolution)
 	Category    string   // semantic category (e.g. "Boxe")
 	Provider    string   // upstream source (e.g. "youtube")
-	Tags        []string // semantic keywords for Qdrant
+	Tags        []string // semantic keywords for pgvector
 	Language    string   // BCP-47 language tag
 }
 

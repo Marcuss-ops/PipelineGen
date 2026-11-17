@@ -21,8 +21,8 @@ import (
 
 // ── ROUNDS 9-10: download → decode → hash (standalone stages) ───────────
 //
-// Drive upload, media_assets, and Qdrant require production credentials
-// (VELOX_ADMIN_TOKEN / Drive publisher / Qdrant worker) and are exercised
+// Drive upload, media_assets, and pgvector require production credentials
+// (VELOX_ADMIN_TOKEN / Drive publisher / pgvector worker) and are exercised
 // via tests/operational/test2_images.sh against a live server.
 //
 // Run:
@@ -156,7 +156,7 @@ func TestPersonImageMaterializeBenchmarkRounds_9_10(t *testing.T) {
 	t.Logf("  BLOCKED (require production credentials + running server):")
 	t.Logf("    drive_upload_ms        → VELOX_ADMIN_TOKEN + Drive Publisher")
 	t.Logf("    sqlite_media_assets_ms → AssetCommitter + outbox events")
-	t.Logf("    qdrant_ms              → Outbox projection worker (async)")
+	t.Logf("    pgvector_ms              → Outbox projection worker (async)")
 	t.Logf("")
 	t.Logf("  Run: tests/operational/test2_images.sh against live server")
 }

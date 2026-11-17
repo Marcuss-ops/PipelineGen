@@ -35,7 +35,7 @@ import (
 //
 // A Provider MUST NOT:
 //
-//   - write into Qdrant;
+//   - write into pgvector;
 //   - decide asset lifecycle transitions;
 //   - create cross-domain side-effects;
 //   - import any HTTP API handler package;

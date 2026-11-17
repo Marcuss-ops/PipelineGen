@@ -1,4 +1,4 @@
-// Package outbox — delete_envelope_test.go (QDRANT-002 PR7).
+// Package outbox — delete_envelope_test.go (VECTOR-002 PR7).
 //
 // Round-trip tests for Dispatcher.EnqueueAndDelete. The tests use the
 // shared fakeClips from dispatcher_test.go (extended with

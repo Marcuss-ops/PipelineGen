@@ -5,7 +5,7 @@
 // Architecture (the package certifies the same invariant MediaCert does):
 //
 //	SQLite = truth
-//	Qdrant = search projection
+//	pgvector = search projection
 //
 // Pipeline:
 //
@@ -16,7 +16,7 @@
 //	        ↓
 //	Outbox
 //	        ↓
-//	Qdrant
+//	pgvector
 //
 //	────────────────────────
 //	runtime search
@@ -25,7 +25,7 @@
 //	   ↓
 //	embedding/query
 //	   ↓
-//	Qdrant local search
+//	pgvector local search
 //	   ↓
 //	SQLite hydrate
 //	   ↓

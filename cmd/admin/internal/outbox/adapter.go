@@ -1,13 +1,13 @@
 // Package outbox is the shared port-adapter package for cmd/admin's
 // outbox-repair operations. It hosts the RepairAdapter (formerly
-// outboxRepairAdapter, originally in cmd/admin/reconcile_qdrant_adapters.go)
+// outboxRepairAdapter, originally in cmd/admin/reconcile_pgvector_adapters.go)
 // so that BOTH `package main` admin commands (cmd/admin/backfill_*.go)
 // AND the cmd/admin/reconcile subpackage can import the same canonical
 // adapter without a `package main` cross-import dependency cycle.
 //
 // Created in PR-PKG-SIZE-CMD-ADMIN-1 (July 2026) as a follow-on to
 // the reconcile subcommand move: the adapter was previously
-// package-local to cmd/admin (reconcile_qdrant_adapters.go) but is
+// package-local to cmd/admin (reconcile_pgvector_adapters.go) but is
 // also referenced by non-moved admin commands
 // (backfill_asset_embeddings.go + backfill_missing.go). Extracting
 // it here breaks the dependency on `package main` for the moved
@@ -66,7 +66,7 @@ import (
 //     built via outboxevents.BuildReindexEnvelopeV1 — the canonical
 //     envelope builder. PR 11 (June 2026) replaces the prior
 //     uuid-suffixed key with this deterministic shape so two
-//     consecutive `reconcile-qdrant --apply` runs on the same
+//     consecutive `reconcile-pgvector --apply` runs on the same
 //     asset (no content change) collapse to a single outbox_events
 //     row via ON CONFLICT (event_key) DO NOTHING. A hash change
 //     produces a fresh row and the worker downstream re-evaluates

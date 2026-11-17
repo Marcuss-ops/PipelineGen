@@ -1,6 +1,6 @@
 // Package stockintelligence — local_search.go declares the candidate +
 // request/result value types and the narrow ports the resolver consumes.
-// Ports keep the package testable in isolation: concrete Qdrant/SQLite/
+// Ports keep the package testable in isolation: concrete pgvector/SQLite/
 package stockintelligence
 
 import (
@@ -19,7 +19,7 @@ type Candidate struct {
 	// Label is the human-facing label (entity / query / title) used by
 	// the MediaSampler subject-match check.
 	Label string `json:"label"`
-	// GenericSimilarity is the raw local/Qdrant similarity in [0,1]. NOT
+	// GenericSimilarity is the raw local/pgvector similarity in [0,1]. NOT
 	// the final sampler score.
 	GenericSimilarity float32 `json:"generic_similarity"`
 	// OwnerSegmentID is the segment the candidate was discovered for; when
@@ -90,19 +90,19 @@ type ResolveResult struct {
 	CacheHit bool `json:"cache_hit,omitempty"`
 }
 
-// LocalSearchPort is the Qdrant local search surface. The resolver consults
-// it first (LOCAL FIRST). Concrete adapters (Qdrant Searcher-backed) are
+// LocalSearchPort is the pgvector local search surface. The resolver consults
+// it first (LOCAL FIRST). Concrete adapters (pgvector Searcher-backed) are
 // wired at the composition root.
 type LocalSearchPort interface {
 	// SearchLocal returns up to `limit` local candidates for the query,
-	// each with its Qdrant similarity. Returns an empty slice (not an
+	// each with its pgvector similarity. Returns an empty slice (not an
 	// error) when the local index has no matches.
 	SearchLocal(ctx context.Context, query string, limit int) ([]Candidate, error)
 }
 
 // AssetHydratorPort is the SQLite truth surface. It hydrates the
 // canonical asset metadata for the candidate AssetIDs the local search
-// returned. SQLite is the truth; Qdrant is the search projection.
+// returned. SQLite is the truth; pgvector is the search projection.
 type AssetHydratorPort interface {
 	// Hydrate returns the canonical asset labels (entity/title) for the
 	// given asset ids. Missing ids return an empty label and are dropped

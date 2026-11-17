@@ -110,7 +110,7 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 		if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages && (!catalogImage || wasReady) && !belowSourceMinimum(candidate.Provider) {
 			// Keep the remaining remote hits for diagnostics/candidate-set
 			// hashing, but do not download or persist surplus images. This
-			// prevents Qdrant/Drive fan-out from exceeding the scene r.plan.
+			// prevents pgvector/Drive fan-out from exceeding the scene r.plan.
 			materialized = append(materialized, candidate)
 			continue
 		}

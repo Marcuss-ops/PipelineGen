@@ -162,7 +162,7 @@ func TestPersonImageMaterializeLive_9_10(t *testing.T) {
 
 	t.Logf("")
 	t.Logf("═══ ROUNDS 9-10: DONE ═══")
-	t.Logf("  Server pipeline: DDG → download → Drive upload → media_assets → outbox → Qdrant")
+	t.Logf("  Server pipeline: DDG → download → Drive upload → media_assets → outbox → pgvector")
 	t.Logf("  Warm replay: cache_hit=true, cache_source=database → 0 new downloads/uploads")
 	t.Logf("  Asset ID = SHA-256 of persisted file (verified client-side)")
 }

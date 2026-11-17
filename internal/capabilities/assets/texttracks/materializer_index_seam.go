@@ -118,7 +118,7 @@ func (m *Materializer) refreshIndexInput(
 }
 
 // emitAssetIndexRequested enqueues the canonical
-// asset.index.requested event so the Qdrant reindex pipeline
+// asset.index.requested event so the pgvector reindex pipeline
 // picks up the new READY tracks.
 func (m *Materializer) emitAssetIndexRequested(
 	ctx context.Context,

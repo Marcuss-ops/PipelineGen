@@ -36,7 +36,7 @@ func TestBreakdown_TopLevelStagesExcludeNested(t *testing.T) {
 		},
 		Operations: []OperationReport{
 			{Stage: "script.engine", Component: "ollama", Operation: "generate", DurationMs: 78000},
-			{Stage: "source.resolve", Component: "qdrant", Operation: "search", DurationMs: 430},
+			{Stage: "source.resolve", Component: "pgvector", Operation: "search", DurationMs: 430},
 			{Stage: "source.resolve", Component: "sqlite", Operation: "hydrate", DurationMs: 1200},
 		},
 	}

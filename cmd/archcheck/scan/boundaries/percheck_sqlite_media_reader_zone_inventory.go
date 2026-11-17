@@ -30,8 +30,8 @@ package boundaries
 // readers, so this inventory is the only thing standing between those packages
 // and a clean gate:
 //
-//   - internal/platform/qdrant/indexing/ — the Qdrant media compatibility seam
-//     and its local-catalog payload readers, retired wholesale with the Qdrant
+//   - internal/platform/postgres/media/indexing/ — the legacy media compatibility seam
+//     and its local-catalog payload readers, retired wholesale with the pgvector
 //     media projection. PROGRESS 2026-09-20: the six `clipindexer/` legacy
 //     implementation files left the inventory (and the tree) when clipindexer
 //     was reduced to a pure PostgreSQL-outbox delegator, and
@@ -44,7 +44,7 @@ package boundaries
 //     The two readers that remain are NOT deletable yet, and the blocker is
 //     per-file rather than generic debt:
 //
-//   - asset_store_fetch.go is LIVE. `FetchAsset` is called by the Qdrant search
+//   - asset_store_fetch.go is LIVE. `FetchAsset` is called by the pgvector search
 //     hydration (search_adapter.go, semantic_asset_search_adapter.go),
 //     `ListAllAssetIDs` by verification/verifier_counts.go and
 //     indexing/payload_mapper.go, and `ErrAssetNotFound` is matched with
@@ -75,7 +75,7 @@ package boundaries
 //     PROGRESS 2026-09-21 (MEDIA LEGACY READ-PLANE DEMOLITION):
 //     `asset_store_batch.go` left the inventory and the tree. `BatchGetByIDs`
 //     (the SQLite search-result hydrator + its 60 s LRU) and `SetBatchCache`
-//     had zero production and zero test call sites, the Qdrant hydration they
+//     had zero production and zero test call sites, the pgvector hydration they
 //     were written for is gone, and the file had no non-media half — so it is a
 //     DELETE row, complete in one change. The `batchCache` field it required was
 //     removed from `asset_store.go` in the same change, which can therefore stay
@@ -141,8 +141,6 @@ var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
 	"cmd/admin/internal/backfill/backfill_missing.go":                            true,
 	"cmd/admin/internal/cleanup/cleanup_drive_orphans.go":                        true,
 	"cmd/admin/internal/drive/drive_reconcile.go":                                true,
-	"internal/platform/qdrant/indexing/asset_store.go":                           true,
-	"internal/platform/qdrant/indexing/asset_store_fetch.go":                     true,
 	"internal/platform/sqlite/assets/imagesregistry/asset_store.go":              true,
 	"internal/platform/sqlite/assets/imagesregistry/clips_repository_queries.go": true,
 	"internal/platform/sqlite/assets/imagesregistry/maintenance_repository.go":   true,

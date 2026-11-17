@@ -170,7 +170,7 @@ func (s *Service) AcquireOllamaSem(ctx context.Context) (release func()) {
 //	process_segment.go::Step 9 → youtubeports.ClipAtomicWriter.CommitClipAndIndexEvent
 //	  → outbox_events row (event_key = clipID)
 //	    → outboxevents.Pool.ClaimNext → IndexingHandler.Handle
-//	      → IndexClip → Qdrant upsert
+//	      → IndexClip → pgvector upsert
 //
 // This handler chain is async (worker), idempotent on aggregate_id (UNIQUE
 // event_key), retryable via outbox backoff, and terminal failures dead-letter
@@ -178,7 +178,7 @@ func (s *Service) AcquireOllamaSem(ctx context.Context) (release func()) {
 // fire-and-forget path that this method used to take — concurrent.SafeGoFunc
 // + direct indexer.IndexClip — duplicated work the canonical pipeline already
 // covers, with a guaranteed-to-lose race against the worker's MarkFailed path on
-// transient Qdrant errors (the goroutine would log+swallow; the worker would
+// transient pgvector errors (the goroutine would log+swallow; the worker would
 // also retry, leading to two concurrent IndexClip calls + duplicate outbox
 // events if EnrichClip was reached via this path, since metadata.EnrichClip
 // emits its own asset.index.requested outbox event).

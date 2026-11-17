@@ -84,9 +84,9 @@ const pipelinegenIdempotencyKeyAppProperty = "pipelinegen_idempotency_key"
 // stockAsyncProjectionAdapter represents the durable asynchronous
 // projection handoff. The publish writer has already committed each
 // media_assets row together with its asset.index.requested outbox event;
-// the outbox worker owns the only Qdrant call. This boundary therefore
+// the outbox worker owns the only pgvector call. This boundary therefore
 // validates that the manifest has a real video artifact and acknowledges
-// the durable handoff without invoking Qdrant a second time.
+// the durable handoff without invoking pgvector a second time.
 type stockAsyncProjectionAdapter struct{}
 
 var _ stockpipeline.ProjectionPort = (*stockAsyncProjectionAdapter)(nil)

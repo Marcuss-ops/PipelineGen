@@ -28,7 +28,7 @@ var ErrIndexStateOwnedByIndexWorker = errors.New(
 // clips_index_state.go holds the *ClipsRepository methods that
 // transition media_assets into lifecycle / indexing states. SoftDelete
 // flips into 'deleted' (tombstone); SetIndexState writes the
-// canonical index_state column (QDRANT-002 PR6 / migration 094). The
+// canonical index_state column (VECTOR-002 PR6 / migration 094). The
 // dispatcher (outbox.Dispatcher) is the canonical caller of the tx-scoped
 // SetIndexStateTx mirror (in clips_transactions.go) and the production-grade
 // deletion path.
@@ -57,11 +57,11 @@ func (r *ClipsRepository) SoftDelete(ctx context.Context, id string) error {
 }
 
 // SetIndexState writes the canonical media_assets.index_state column
-// (QDRANT-002 PR6 / migration 094). Called by IndexDeleteHandler for
+// (VECTOR-002 PR6 / migration 094). Called by IndexDeleteHandler for
 // the DELETE_PENDING and DELETED transitions; the Delete path is the
 // only consumer in production today, but the method is exposed as
 // public because future worker bootstrap or operator tooling may
-// need to flip state directly (QDRANT-005 alerting followup).
+// need to flip state directly (VECTOR-005 alerting followup).
 //
 // No lifecycle_state filter — the caller is responsible for picking
 // the right state at the right time. SoftDeleteFilter() is applied

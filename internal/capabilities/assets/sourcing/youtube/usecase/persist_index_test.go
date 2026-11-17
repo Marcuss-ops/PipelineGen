@@ -122,9 +122,9 @@ func TestPersistClipAndIndex_NilIndexer_ReturnsError(t *testing.T) {
 	if !strings.Contains(err.Error(), "indexer is nil") {
 		t.Errorf("expected 'indexer is nil' in error, got %v", err)
 	}
-	// The error must mention QDRANT so audit-grep finds it.
-	if !strings.Contains(err.Error(), "QDRANT") {
-		t.Errorf("expected 'QDRANT' audit-pin in error, got %v", err)
+	// The error must mention VECTOR so audit-grep finds it.
+	if !strings.Contains(err.Error(), "VECTOR") {
+		t.Errorf("expected 'VECTOR' audit-pin in error, got %v", err)
 	}
 }
 

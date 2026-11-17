@@ -298,7 +298,7 @@ func buildIngestService(
 		return nil
 	}
 	if mutationsDisp == nil {
-		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (QDRANT-002 PR7 fail-closed)")
+		log.Warn("buildIngestService: mutationsDisp is nil — ingest will surface ErrDispatcherUnavailable on first Upsert (VECTOR-002 PR7 fail-closed)")
 	}
 	// Image media records use the same canonical PostgreSQL reader, writer and
 	// registry-backed AssetRecordStore as clips. The old image-specific wiring

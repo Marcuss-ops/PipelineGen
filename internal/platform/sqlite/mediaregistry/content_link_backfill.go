@@ -1,5 +1,5 @@
 // Package mediaregistry — content_link_backfill.go: SQLite implementation of
-// the CAS content-link backfill (item 12 — backfill before the Qdrant v4
+// the CAS content-link backfill (item 12 — backfill before the pgvector v4
 // rebuild).
 //
 // The media_asset_sources backfill (canonical_identity.go) reconstructs

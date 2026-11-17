@@ -131,7 +131,7 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	cachePath := n.cachePath(req)
 	if result, classified, ok, err := readCached(cachePath); err != nil {
 		return capgeocoding.Result{}, err
-	} else if ok && (result.Scope != "" || classified) {
+	} else if ok && (result.Scope != "" || classified) && !(result.Scope == "city" && strings.TrimSpace(result.AdminRegion) == "") {
 		return result, nil
 	}
 	// Pre-scope cache entries predate geographic-level zooms. Refresh them
@@ -189,6 +189,7 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	result.Scope = classifyScope(req.Query, best.Category, best.Type, best.Addresstype, best.Address)
 	result.Country = strings.TrimSpace(best.Address["country"])
 	result.CountryCode = strings.ToLower(strings.TrimSpace(best.Address["country_code"]))
+	result.AdminRegion = firstNonBlank(best.Address["state"], best.Address["region"], best.Address["province"])
 	result.Provider = n.providerIdentity()
 	result.PlaceID = best.PlaceID.String()
 	result.Score = score
@@ -299,6 +300,15 @@ type searchHit struct {
 	Address     map[string]string `json:"address"`
 }
 
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // Disambiguation scoring. A candidate must clear acceptanceScore to be
 // eligible at all; between candidates the winner must either lead by
 // ambiguityMargin or win on grounded context the runner-up lacks.
@@ -327,6 +337,16 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 	}
 	scoredHits := make([]scored, 0, len(hits))
 	for _, hit := range hits {
+		// Once a city in a state has grounded the scene, a same-country
+		// namesake from another state is not an acceptable fallback. In
+		// particular, "Canterbury" in an Indianapolis scene must not silently
+		// become Canterbury, New Hampshire.
+		if wantRegion := normalizePlaceToken(ctx.Region); wantRegion != "" {
+			candidateRegion := normalizePlaceToken(firstNonBlank(hit.Address["state"], hit.Address["region"], hit.Address["province"]))
+			if candidateRegion != "" && candidateRegion != wantRegion {
+				continue
+			}
+		}
 		s := scored{hit: hit, score: baseScore}
 		if nameMatches(query, hit) {
 			s.score += nameMatchScore
@@ -361,6 +381,9 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 			s.score = 1
 		}
 		scoredHits = append(scoredHits, s)
+	}
+	if len(scoredHits) == 0 {
+		return searchHit{}, 0, "", false
 	}
 	// Stable ranking: ties keep provider order, so the decision is
 	// deterministic for identical responses.

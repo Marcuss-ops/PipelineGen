@@ -12,16 +12,17 @@ import (
 )
 
 // registerHealthRoutes wires the unified health surface: /health with
-// ?deep=true aggregation, /ready, /models (E5 + SigLIP probes) and the
-// /qdrant/{live,ready} endpoints. Returns the *transport.HealthHandler so
-// Setup() can attach the WireRegistry once every route is mounted.
+// ?deep=true aggregation, /ready and /models (E5 + SigLIP probes). The
+// /pgvector/{live,ready} endpoints were removed with the legacy vector engine on
+// 2026-11-17. Returns the *transport.HealthHandler so Setup() can attach
+// the WireRegistry once every route is mounted.
 //
 // PR1 + codex/health-ready-contract (June 2026): the health service and
 // ReadyChecker are wired via SetHealthService / SetReadyChecker before
 // Setup() runs — /ready no longer receives nil in production.
 func (r *Router) registerHealthRoutes(engine *gin.Engine, log *zap.Logger) *transport.HealthHandler {
 	// Unified health check (PR1, June 2026): single /health with ?deep=true
-	// for aggregated DB+Drive+Qdrant+JobBroker checks. The health service
+	// for aggregated DB+Drive+JobBroker checks. The health service
 	// lives in ComposeRoot.Utility.HealthService and is wired via
 	// SetHealthService before Setup() runs.
 	// codex/health-ready-contract (June 2026): ReadyChecker is now wired
@@ -64,21 +65,6 @@ func (r *Router) registerHealthRoutes(engine *gin.Engine, log *zap.Logger) *tran
 		modelsHandler = transport.NewModelsHandler("") // empty URL -> 503 responses
 	}
 	engine.GET("/models", modelsHandler.Models)
-
-	// Qdrant health endpoints — /qdrant/live (liveness) and
-	// /qdrant/ready (deep readiness with alias + collection + schema
-	// + semantic canary). HIGH #7, July 2026.
-	if r.qdrantHealth != nil {
-		if qh, ok := r.qdrantHealth.(interface {
-			Live(*gin.Context)
-			Ready(*gin.Context)
-		}); ok {
-			engine.GET("/qdrant/live", qh.Live)
-			engine.GET("/qdrant/ready", qh.Ready)
-		} else {
-			log.Warn("qdrantHealth handler does not satisfy Live/Ready interface, routes not registered")
-		}
-	}
 
 	return healthHandler
 }

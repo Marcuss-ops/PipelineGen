@@ -51,7 +51,7 @@ type searchResultItem struct {
 	PreviewURL   string `json:"preview_url"`
 }
 
-// ReadinessReport exposes only canonical semantic-media dependencies. Qdrant
+// ReadinessReport exposes only canonical semantic-media dependencies. pgvector
 // reachability and SQLite hydration were removed by POSTGRES-MEDIA-CUTOVER;
 // media_postgres_ready now covers the SSOT that owns pgvector retrieval and
 // media_assets hydration.

@@ -45,6 +45,7 @@ func TestEditorialBackgroundCatalogIsCanonicalAndCollisionFree(t *testing.T) {
 func TestResolveEditorialBackgroundReferenceAcceptsChannelLabels(t *testing.T) {
 	tests := map[string]string{
 		"Boxe":                 "drive-background-boxe",
+		"SPORT":                "drive-background-boxe",
 		"background_music":     "drive-background-music",
 		"background-wrestling": "drive-background-wwe",
 		"DOCUMENTARY":          "drive-background-discovery",

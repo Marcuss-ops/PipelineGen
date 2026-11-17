@@ -294,7 +294,6 @@ func TestBrokenRefsReport_JSONRoundTrip(t *testing.T) {
 		LocalBroken: []brokenLocalRef{
 			{Table: "t3", Column: "local_path", LocalPath: "/tmp/broken", FailureKind: "file_not_found", Error: "no such file"},
 		},
-		QdrantMissing: []string{"asset:1", "asset:2"},
 	}
 
 	data, err := json.Marshal(r)
@@ -312,9 +311,6 @@ func TestBrokenRefsReport_JSONRoundTrip(t *testing.T) {
 	if len(r2.FKOrphans) != 1 {
 		t.Errorf("FK orphans len: got %d want 1", len(r2.FKOrphans))
 	}
-	if len(r2.QdrantMissing) != 2 {
-		t.Errorf("qdrant missing len: got %d want 2", len(r2.QdrantMissing))
-	}
 	if !r2.NoDeletions {
 		t.Error("expected no_deletions_performed=true")
 	}
@@ -323,11 +319,11 @@ func TestBrokenRefsReport_JSONRoundTrip(t *testing.T) {
 // ── CLI flags parse correctly (integration-lite) ───────────────────────
 
 func TestBrokenReferencesCLI_SkipFlags(t *testing.T) {
-	// Verify that --skip-drive, --skip-local, --skip-qdrant flags parse
+	// Verify that --skip-drive and --skip-local flags parse
 	// and the subcommand is registered. Use --report to a temp file so
 	// JSON output doesn't pollute the test log.
 	reportPath := filepath.Join(t.TempDir(), "broken-refs-report.json")
-	err := RunBrokenReferences([]string{"--report", reportPath, "--skip-drive", "--skip-local", "--skip-qdrant", "--no-orphan-detail"})
+	err := RunBrokenReferences([]string{"--report", reportPath, "--skip-drive", "--skip-local", "--no-orphan-detail"})
 	if err != nil && strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("command not recognized: %v", err)
 	}

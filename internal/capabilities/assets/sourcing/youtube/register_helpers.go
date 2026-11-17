@@ -24,7 +24,7 @@
 // godlike/07 NO-FAKE-AVAILABILITY: each helper preserves the canonical
 // typed-error contract (errors.Is probes on package-level sentinels;
 // fmt.Errorf %w chains for context). best-effort vs required gates
-// (P0.2 RequireDrive, QDRANT-isolation indexDisp REQUIRED) preserved
+// (P0.2 RequireDrive, VECTOR-isolation indexDisp REQUIRED) preserved
 // verbatim.
 package youtube
 

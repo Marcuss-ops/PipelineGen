@@ -41,6 +41,9 @@ import (
 //
 // Zero I/O in the builder.
 type GenerateRequest struct {
+	TranslationProvider    string `json:"translation_provider,omitempty"`
+	TranslationModel       string `json:"translation_model,omitempty"`
+	TranslationConcurrency int    `json:"translation_concurrency,omitempty"`
 	// Model is the explicit per-item LLM model selected at the envelope
 	// boundary. Empty means the runtime may apply its configured default.
 	Model string `json:"model,omitempty"`

@@ -20,10 +20,10 @@ import (
 //
 // PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): adds 4 typed fields
 // that travel end-to-end (ClipSpec → ClipPlan → ChunkState →
-// ChunkMetadataEntry → Qdrant semantic payload):
+// ChunkMetadataEntry → pgvector semantic payload):
 //
 //   - Round    int       — boxing-style round number (1-12). Surfaced
-//     in metadata.json + Qdrant payload for
+//     in metadata.json + pgvector payload for
 //     semantic filtering ("round 7").
 //   - Tags     []string  — free-form per-clip tags (people, theme,
 //     technique). Surfaced in metadata.json +

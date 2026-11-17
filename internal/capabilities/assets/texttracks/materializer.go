@@ -13,7 +13,7 @@
 //	   TranslationPort (full-text).
 //	d. Save the new track as READY with provider/model/version
 //	   provenance.
-//	e. Emit asset.index.requested outbox event for Qdrant reindex.
+//	e. Emit asset.index.requested outbox event for pgvector reindex.
 //	f. On translation error: record in FailedLanguages; loop
 //	   continues with the next target language.
 package texttracks

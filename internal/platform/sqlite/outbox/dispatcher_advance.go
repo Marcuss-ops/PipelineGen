@@ -28,7 +28,7 @@
 // AdvanceAndEmit primitive because:
 //
 //	(a) the state-flip is the operator-visible marker the row has
-//	    progressed past a side-effect (Drive API success / Qdrant
+//	    progressed past a side-effect (Drive API success / pgvector
 //	    delete + SQLite soft-delete);
 //
 //	(b) the next-event emission is the durable handoff to the

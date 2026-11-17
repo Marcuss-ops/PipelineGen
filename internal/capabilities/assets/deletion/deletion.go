@@ -117,7 +117,7 @@ type CompletionTxRunner interface {
 // DeletionService handles deletion routing.
 // Blocco 3.1 commit 4/3 (June 2026): the service no longer accepts
 // synchronous Drive side-effects — every deletion route (Drive Trash
-// or permanent Delete, Qdrant DeletePoints, SQLite SoftDelete, all
+// or permanent Delete, pgvector DeletePoints, SQLite SoftDelete, all
 // lifecycle_state hops on the canonical state machine) is delegated
 // to the outbox dispatcher. See the dispatcher's EnqueueDriveDelete
 // docstring (internal/platform/sqlite/outbox/
@@ -233,7 +233,7 @@ type DeletionFinalizeDeps struct {
 
 // NewDeletionService creates a new deletion service.
 //
-// QDRANT-002 PR7: dispatcher is the canonical outbox.Dispatcher.
+// VECTOR-002 PR7: dispatcher is the canonical outbox.Dispatcher.
 // Blocco 3.1 commit 4/3 (June 2026): dispatcher's type is the
 // port interface DispatcherPort so test fixtures can substitute a
 // recording mock without spinning up an in-memory SQLite + txmgr

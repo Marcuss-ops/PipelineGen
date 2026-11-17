@@ -1,6 +1,6 @@
 // Package media — outbox_worker_test.go: DSN-gated live tests for the
 // PostgreSQL outbox consumption lifecycle and the canonical index worker
-// (the pgvector replacement of the SQLite → Qdrant projection chain).
+// (the pgvector replacement of the SQLite → pgvector projection chain).
 //
 // Implements the POSTGRES-MEDIA-CUTOVER worker criteria:
 //
@@ -110,7 +110,7 @@ func claimPendingEvent(t *testing.T, db *sql.DB) *pgmedia.OutboxClaim {
 
 // TestWorker_EndToEnd_EventToEmbeddingToIndexedToCompleted pins the full
 // replacement chain in ONE database: commit → pending event → worker →
-// embedding + INDEXED + completed. No Qdrant, no SQLite hop.
+// embedding + INDEXED + completed. No external vector store, no SQLite hop.
 func TestWorker_EndToEnd_EventToEmbeddingToIndexedToCompleted(t *testing.T) {
 	worker, db, _ := newWorkerFixture(t)
 	ctx := context.Background()
@@ -147,6 +147,20 @@ func TestWorker_EndToEnd_EventToEmbeddingToIndexedToCompleted(t *testing.T) {
 	}
 	if state != "INDEXED" {
 		t.Fatalf("index_state = %q, want INDEXED", state)
+	}
+
+	// The indexed-snapshot stamp is written in the SAME fenced transition:
+	// without it the operator read model reports index_health=STALE forever
+	// (content_hash != indexed_content_hash).
+	var indexedHash, wantHash string
+	if err := db.QueryRow(`
+		SELECT COALESCE(metadata_json::jsonb->>'indexed_content_hash', ''),
+		       COALESCE(NULLIF(binary_sha256, ''), NULLIF(content_sha256, ''), '')
+		FROM media_assets WHERE id = $1`, "yt_worker_e2e_v1").Scan(&indexedHash, &wantHash); err != nil {
+		t.Fatalf("read indexed_content_hash: %v", err)
+	}
+	if wantHash == "" || indexedHash != wantHash {
+		t.Fatalf("indexed_content_hash = %q, want content hash %q", indexedHash, wantHash)
 	}
 
 	// Event completed.

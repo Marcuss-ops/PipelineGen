@@ -1162,6 +1162,37 @@ func TestBuildFinalJobPayloadsFixedMediaPrefersTheCertifiedRenderedClip(t *testi
 	}
 }
 
+// TestFinalJobAudioInputKeepsProtectedFixedMediaAtUnity pins the audio fix for
+// fixed-media hooks: they are editorial sound, not a restored-mix bed, so the
+// final-job projection must not stamp them with the -10 dB restore gain.
+func TestFinalJobAudioInputKeepsProtectedFixedMediaAtUnity(t *testing.T) {
+	result := GenerateResult{
+		Scenes: []Scene{{
+			ID:            "intro-01",
+			ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+			AudioIntents: []capabilityaudio.AudioIntent{{
+				Mode: capabilityaudio.AudioClip, ClipAssetID: "intro-clip",
+				SourceDurationUS: 7_000_000, UseOriginalAudio: true,
+				ProtectedOriginalAudio: true,
+			}},
+		}},
+	}
+	compiled := finalJobAudioInput(result, "it")
+	for _, intent := range compiled.Scenes[0].AudioIntents {
+		if intent.Mode != capabilityaudio.AudioClip {
+			continue
+		}
+		if intent.GainDB != 0 {
+			t.Fatalf("protected fixed-media clip gain = %v, want unity (0 dB)", intent.GainDB)
+		}
+		if !intent.ProtectedOriginalAudio {
+			t.Fatal("fixed-media protection was dropped from the projected intent")
+		}
+		return
+	}
+	t.Fatalf("no projected clip intent: %+v", compiled.Scenes[0].AudioIntents)
+}
+
 // TestBuildFinalJobPayloadsFixedMediaWithoutRenderKeepsTheLibraryClip keeps the
 // documented fallback honest: no render lane for a fixed section means the
 // resolved library clip is still sent.

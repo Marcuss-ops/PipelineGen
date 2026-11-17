@@ -130,7 +130,7 @@ func RunBackfillMissing(args []string) error {
 		return nil
 	}
 
-	fmt.Printf("Found %d assets requiring vector embedding computation and Qdrant push.\n", total)
+	fmt.Printf("Found %d assets requiring vector embedding computation and PostgreSQL pgvector upsert.\n", total)
 	fmt.Println("Starting indexing...")
 
 	successCount := 0

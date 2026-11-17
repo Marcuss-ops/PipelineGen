@@ -74,7 +74,7 @@ func TestYouTubeDriveFailureIsNotMarkedPersistedAndRetryConverges(t *testing.T) 
 	}
 }
 
-func TestYouTubeQdrantDownKeepsAssetPersistedAndIndexPending(t *testing.T) {
+func TestYouTubeVectorDownKeepsAssetPersistedAndIndexPending(t *testing.T) {
 	extractor := &recoveryExtractor{indexFailed: true}
 	result, err := extractor.Extract(context.Background(), &youtubedto.ExtractRequest{Segments: []youtubedto.Segment{{Start: "00:02:31", End: "00:02:41"}}})
 	if err != nil {
@@ -82,7 +82,7 @@ func TestYouTubeQdrantDownKeepsAssetPersistedAndIndexPending(t *testing.T) {
 	}
 	item := result.Items[0]
 	if item.ID != "asset-recovery-window" || item.DriveLink == "" {
-		t.Fatalf("Qdrant-down result lost canonical asset: %+v", item)
+		t.Fatalf("vector-down result lost canonical asset: %+v", item)
 	}
 	if item.Status != "processed_but_index_blocked" {
 		t.Fatalf("status = %q, want processed_but_index_blocked", item.Status)

@@ -86,7 +86,7 @@ func buildClipAsset(
 	md.MentionedPeople = cmd.Segment.MentionedPeople
 	// Description + Tags are request-provided metadata: thread them into
 	// the canonical metadata bag so the indexer's SemanticDocument
-	// composition (description field) and the Qdrant payload tags key
+	// composition (description field) and the pgvector payload tags key
 	// include them (the payload `texts[].description` would otherwise be
 	// persisted only as an asset_text_tracks row and never reach the
 	// embedding text).

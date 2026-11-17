@@ -27,7 +27,6 @@ a registry entry.
 | `VELOX_FINAL_JOB_PREPARE_LANES` | env | 4 | `internal/app/wiring/final_job_segment_prepare.go` | 4 (1..16) | Number of final-job fragments prepared in parallel; 0 or malformed fails the job. |
 | `VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS` | env | 1 | `internal/capabilities/scripts/final_job_payload.go` | 1 until the remote prepare.window cutter stops emitting source_frames+1; 0 restores Master-owned stock | Certify whole-file stock scene windows in the Producer (prepared fragments) instead of handing the raw Drive file to the Master's prepare.window; partial stock windows always stay Master-owned. |
 | `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/wiring/remote_final_job.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
-| `VELOX_FINAL_JOB_RESOLVE_CONCURRENCY` | env | 1 | `internal/app/wiring/remote_final_job_resolve.go` | 4 (1..16) | Drive sources resolved in parallel while preparing a handoff. |
 | `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/wiring/remote_final_job.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |
 | `VELOX_MASTER_ADMIN_TOKEN` | env |  | `internal/app/wiring/script/remote_final_job.go` | unset (or Master admin token) | Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset. |
 | `VELOX_MEDIA_MANIFEST_PATH` | env |  | `internal/capabilities/scripts/adapters/media_manifest_shim.go` | unset | Opt-in media_manifest fast-path used by the composition root. |
@@ -47,8 +46,7 @@ the table so the inventory is complete.
 | --- | --- | --- | --- |
 | `VELOX_ASSEMBLY_READY_V1` | marker | `internal/kernel/media/assembly_contract.go` | Assembly contract identifier (one audio stream, closed GOP), printed by media handoff logs; never read as configuration. |
 | `VELOX_ENQUEUE` | marker | `internal/capabilities/scripts/performance/resolver.go` | Execution step name used by the render-enqueue performance phase; never read as configuration. |
-| `VELOX_FEATURE_CLIP_INDEXER_ENABLED` | marker | `internal/app/wiring/build_bundles_qdrant_gates.go` | Escape-hatch name quoted by the Qdrant/ClipIndexer boot gate; the effective toggle is config clip_indexer.enabled. |
-| `VELOX_FEATURE_QDRANT_ENABLED` | marker | `internal/app/wiring/build_bundles_qdrant_gates.go` | Escape-hatch name quoted by the Qdrant/ClipIndexer boot gate; the effective toggle is config qdrant.enabled. |
+| `VELOX_FEATURE_CLIP_INDEXER_ENABLED` | marker | `internal/app/wiring/build_process_bundle.go` | Historical escape-hatch name for the embedding sidecar; the effective toggle is config clip_indexer.enabled (read in buildIndexDeps). |
 | `VELOX_OVERLAY_VIDEO_ONLY_V1` | marker | `internal/kernel/media/assembly_contract.go` | Legacy overlay video-only assembly contract identifier; never read as configuration. |
 | `VELOX_RUST_SEMANTIC_ENGINE_PATH` | test-only | `internal/app/wiring/semantic_blend_live_test.go` | Rust semantic-engine binary used by the opt-in live blend test. |
 | `VELOX_SEMANTIC_BLEND_FIXTURE` | test-only | `internal/app/wiring/semantic_blend_live_test.go` | Fixture payload for the opt-in live semantic blend test. |

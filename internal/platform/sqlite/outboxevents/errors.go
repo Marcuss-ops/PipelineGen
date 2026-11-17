@@ -17,7 +17,7 @@
 // legacy "(terminal)" message suffix; see the kernel implementation for the
 // full rationale.
 //
-// Ticket reference: QDRANT-002 checklist item G — Retry e classificazione
+// Ticket reference: VECTOR-002 checklist item G — Retry e classificazione
 // errori.
 package outboxevents
 

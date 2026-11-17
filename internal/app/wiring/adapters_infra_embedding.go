@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	searchpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 )
 
 // searchEmbedAdapter was DELETED here on 2026-09-20. It bridged the
-// infrastructure search.TextEmbedder to the application search.QueryEmbedder
+// infrastructure embeddings.TextEmbedder to the application search.QueryEmbedder
 // port, but was never constructed anywhere in the tree, so its Embed method was
 // unreachable. The production semantic-search path no longer routes through the
 // single-text QueryEmbedder seam: it goes through the per-channel
@@ -25,7 +25,7 @@ type embeddingRegistryAdapter struct {
 
 var _ searchpkg.EmbeddingChannelRegistry = (*embeddingRegistryAdapter)(nil)
 
-func newEmbeddingRegistryAdapter(textEmbedder search.TextEmbedder, siglipEncoder searchpkg.ChannelEncoder) searchpkg.EmbeddingChannelRegistry {
+func newEmbeddingRegistryAdapter(textEmbedder embeddings.TextEmbedder, siglipEncoder searchpkg.ChannelEncoder) searchpkg.EmbeddingChannelRegistry {
 	adapters := make(map[string]searchpkg.ChannelEncoder, len(searchpkg.CanonicalChannelNames()))
 
 	if textEmbedder != nil {
@@ -67,12 +67,12 @@ func (r *embeddingRegistryAdapter) EmbedQuery(ctx context.Context, channel strin
 }
 
 type textChannelEncoderAdapter struct {
-	textEmbedder search.TextEmbedder
+	textEmbedder embeddings.TextEmbedder
 }
 
 func (a *textChannelEncoderAdapter) EmbedTextQuery(ctx context.Context, text string) ([]float32, error) {
 	if a == nil || a.textEmbedder == nil {
-		return nil, fmt.Errorf("textChannelEncoderAdapter: underlying search.TextEmbedder not wired: %w",
+		return nil, fmt.Errorf("textChannelEncoderAdapter: underlying embeddings.TextEmbedder not wired: %w",
 			searchpkg.ErrChannelNotConfigured)
 	}
 	return a.textEmbedder.Embed(ctx, text)

@@ -96,7 +96,7 @@ func TestBuildClipAsset_SearchText_NotJustFilename(t *testing.T) {
 
 		// ── Regression guard #1: NOT just the filename ─────────────────
 		// A future agent that swaps SearchText for `out.Item.LocalPath`
-		// (or just the filename) would break semantic search AND Qdrant
+		// (or just the filename) would break semantic search AND pgvector
 		// BM25 embedding. Block that at test-fixture level.
 		assert.NotEqual(t, filepath.Base(out.Item.LocalPath), a.SearchText,
 			"DoD 10: search_text MUST NOT equal filename "+

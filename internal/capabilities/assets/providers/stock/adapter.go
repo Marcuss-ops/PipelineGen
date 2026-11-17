@@ -161,7 +161,7 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 //     video into a staging directory WITHOUT the render/upload/index
 //     pipeline. Pre-fix, Fetch called runner.Run which:
 //     a) ran the full heavy pipeline (render chunks, upload to Drive,
-//     index into Qdrant) — overkill for a staging operation;
+//     index into pgvector) — overkill for a staging operation;
 //     b) deleted the temp dir via defer os.RemoveAll before returning,
 //     so the returned LocalPath pointed to a deleted file and
 //     Bytes was always 0 (stat failed silently).
@@ -174,7 +174,7 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 //   - decide Drive destination (the caller resolves via
 //     core/asset.Resolver and passes req.DestinationID;
 //     adapters do not own destination policy);
-//   - emit Qdrant upserts or asset lifecycle transitions
+//   - emit pgvector upserts or asset lifecycle transitions
 //     (Provider MUST NOT do these per provider.go preamble);
 //   - touch the search path (Search is not a Capability of Stock).
 //

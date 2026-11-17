@@ -13,7 +13,6 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	pgmigration "github.com/Marcuss-ops/PipelineGen/migrations/postgres"
 )
 
 // RunMediaEnrichmentBackfill implements the `backfill-media-enrichment`
@@ -68,14 +67,12 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	}
 	// Self-bootstrapping schema (idempotent) so a fresh media database
 	// carries the family registry + HNSW indexes before any write. The
-	// canonical ORDERED sequence lives in pgmigration.MediaSelfBootstrapDDL
-	// (audit point 9): this runner previously applied only 001–003+009,
-	// leaving a fresh database without the 004 _ts columns the dual-writers
-	// write and without the 006–008 surfaces.
-	for _, ddl := range pgmigration.MediaSelfBootstrapDDL {
-		if _, err := db.ExecContext(ctx, ddl); err != nil {
-			return fmt.Errorf("apply media migrations: %w", err)
-		}
+	// canonical ORDERED sequence AND its checksum-verified ledger live in
+	// RunMediaMigrations (audit points 9 + D2): this runner previously
+	// applied only 001–003+009, leaving a fresh database without the 004 _ts
+	// columns the dual-writers write and without the 006–008 surfaces.
+	if _, err := pgmedia.RunMediaMigrations(ctx, db); err != nil {
+		return fmt.Errorf("apply media migrations: %w", err)
 	}
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)

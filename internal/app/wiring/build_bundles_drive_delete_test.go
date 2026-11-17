@@ -37,7 +37,6 @@ func TestBuildOutboxBundle_WiresDriveDeleteHandler(t *testing.T) {
 
 	dataDir := t.TempDir()
 	cfg := minimalConfig(dataDir)
-	cfg.Qdrant.Enabled = true
 	cfg.ClipIndexer.Enabled = true
 	log := zaptest.NewLogger(t)
 
@@ -52,8 +51,7 @@ func TestBuildOutboxBundle_WiresDriveDeleteHandler(t *testing.T) {
 	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
 	require.NoError(t, err)
 
-	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
-	require.NoError(t, err)
+	qd := buildIndexDeps(cfg)
 
 	jobsBundle, err := BuildJobsBundle(dbs.Main, log, nil, nil, nil, nil)
 	require.NoError(t, err)

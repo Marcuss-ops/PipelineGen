@@ -9,8 +9,8 @@ import (
 )
 
 // MEDIA-CUTOVER (September 2026): the previous tests in this file pinned
-// `RegisterCoreHandlers`'s "Qdrant enabled + missing mandatory dep must abort
-// boot" contract. That function was the SQLite→Qdrant media projection
+// `RegisterCoreHandlers`'s "pgvector enabled + missing mandatory dep must abort
+// boot" contract. That function was the SQLite→legacy media projection
 // registration surface and is now DELETED: the media index plane is the
 // PostgreSQL pgvector `PostgresIndexWorker`
 // (internal/platform/postgres/media/outbox_worker.go), whose fail-closed

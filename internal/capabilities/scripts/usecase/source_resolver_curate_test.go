@@ -4,7 +4,7 @@
 // builder error propagation.
 //
 // The resolver is tested independently with fakes for ClipSearchPort and
-// clipContextBuilder so no real Qdrant or ClipSourceBuilder is touched.
+// clipContextBuilder so no real pgvector or ClipSourceBuilder is touched.
 //
 // PR 4 (June 2026): the Resolve signature now accepts a
 // SourceResolutionContext alongside the SourceSpec. Tests pass a

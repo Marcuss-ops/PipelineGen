@@ -114,7 +114,7 @@ type sqliteStore struct {
 // NewSQLiteStore returns the canonical SQLite-backed Store
 // implementation bound to db. Panics on db==nil so composition-
 // root wiring fails loud (no silent nil passthrough — matches the
-// qdrantprojection.NewCheckpointStore precedent at line 47).
+// pgvectorprojection.NewCheckpointStore precedent at line 47).
 func NewSQLiteStore(db *sql.DB) Store {
 	if db == nil {
 		panic("steps.NewSQLiteStore: db must not be nil (composition root must wire storage.OpenSQLiteDB before constructing the steps.Store)")

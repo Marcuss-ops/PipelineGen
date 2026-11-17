@@ -69,7 +69,6 @@ func TestWireRegistry_AllCapabilitiesMounted(t *testing.T) {
 		{Method: "POST", Path: "/api/clips/process"},
 		{Method: "POST", Path: "/api/clips/render"},
 		{Method: "POST", Path: "/internal/v1/media/search"},
-		{Method: "GET", Path: "/qdrant/live"},
 	})
 	all := reg.All()
 	for _, cap := range knownCapabilities {
@@ -205,7 +204,6 @@ func TestWireRegistry_PrefixBoundaryDoesNotMatch(t *testing.T) {
 		{path: "/api/register-anything", notThis: "register", describe: "register-anything must not misclassify as register"},
 		{path: "/api/voiceoverX", notThis: "voiceover", describe: "voiceoverX must not misclassify as voiceover"},
 		{path: "/api/youtube-archive", notThis: "youtube", describe: "youtube-archive must not misclassify as youtube"},
-		{path: "/qdrant-admin", notThis: "qdrant_health", describe: "qdrant-admin must not misclassify as qdrant_health"},
 	}
 	for _, c := range cases {
 		t.Run(c.describe, func(t *testing.T) {
@@ -223,11 +221,9 @@ func TestWireRegistry_PrefixBoundaryExactMatch(t *testing.T) {
 	reg := NewWireRegistry([]RouteInfo{
 		{Method: "POST", Path: "/api/stock-pipeline"},
 		{Method: "POST", Path: "/api/media/voiceover"},
-		{Method: "GET", Path: "/qdrant/"},
 	})
 	assert.True(t, reg.IsMounted("stock"), "exact-prefix route /api/stock-pipeline must classify as stock")
 	assert.True(t, reg.IsMounted("voiceover"), "exact-prefix route /api/media/voiceover must classify as voiceover")
-	assert.True(t, reg.IsMounted("qdrant_health"), "trailing-slash route /qdrant/ must classify as qdrant_health")
 	assert.False(t, reg.IsMounted("clip-render"), "no clip-render route in this test")
 }
 

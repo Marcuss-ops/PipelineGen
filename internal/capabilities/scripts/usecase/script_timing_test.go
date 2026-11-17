@@ -6,7 +6,7 @@
 //   - STAGE boundaries   → script.prepare / normalize / validate /
 //     source.resolve / script.plan / script.engine / script.postprocess /
 //     audio.pipeline / persistence.sqlite
-//   - OPERATION boundaries → qdrant.search / sqlite.hydrate / ollama.generate /
+//   - OPERATION boundaries → pgvector.search / sqlite.hydrate / ollama.generate /
 //     edge_tts.synthesize / rust.audio_render
 //
 // GenerationTimings is only a compatibility projection of those canonical
@@ -195,9 +195,10 @@ func TestScriptTiming_PrepareHasSubstageBreakdown(t *testing.T) {
 
 // ── Operation boundaries measured exactly once ─────────────────────────
 
-// TestScriptTiming_QdrantOperationMeasuredOnce pins that the semantic search
-// boundary records exactly one qdrant.search operation per Resolve call.
-func TestScriptTiming_QdrantOperationMeasuredOnce(t *testing.T) {
+// TestScriptTiming_VectorSearchOperationMeasuredOnce pins that the semantic
+// search boundary records exactly one vector_search.search operation per
+// Resolve call (the label replaced pgvector.search when The legacy vector engine was removed).
+func TestScriptTiming_VectorSearchOperationMeasuredOnce(t *testing.T) {
 	ctx, run := startScriptTimingRun(t)
 	resolver := newSearchTimingResolver(t, 1)
 
@@ -208,8 +209,8 @@ func TestScriptTiming_QdrantOperationMeasuredOnce(t *testing.T) {
 	}, searchTimingResCtx())
 
 	report := run.Report()
-	assert.Equal(t, 1, scriptTimingOpCount(report, "qdrant", "search"),
-		"qdrant.search must be measured exactly once per source resolution")
+	assert.Equal(t, 1, scriptTimingOpCount(report, "vector_search", "search"),
+		"vector_search.search must be measured exactly once per source resolution")
 }
 
 // TestScriptTiming_SQLiteHydrationMeasuredOnce pins that evidence hydration

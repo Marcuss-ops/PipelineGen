@@ -37,25 +37,11 @@
 // in shutdown.go (channelMonitor.Stop is the only explicit shutdown
 // call in the lifecycle-runtime-ownership wave, June 2026).
 //
-// Three Qdrant-driven background-cleanup steps were removed:
-//   - qdrant-stale-cleaner
-//   - qdrant-ghost-sweeper
-//   - qdrant-health-monitor
-//
-// PR-QDRANT-FINAL-DECISION (2026-07-04, decision: live, forward-cite
-// PR-QDRANT-FINAL-DECISION-WAVE30-COORDINATION): Qdrant is the canonical
-// data-path vector store (Wave 30 / QDRANT-003 + QDRANT-005). The data-path
-// is owned by composition.go::ProcessBundle (8 typed Qdrant fields:
-// CollectionManager, QdrantDeleter, QdrantRuntime, VectorSvc,
-// LocatorCleaner, QdrantClient, QdrantHealthProbe, QdrantSearcher) +
-// build_process_qdrant.go; the qdrant-collection EnsureSchema step is a
-// REAL production startup step in wire_services.go. Embedding persistence
-// is dual-write: SQLite (canonical metadata store) + Qdrant (derived
-// projection per godlike/06 qdrant-projection). The 3 background-cleanup
-// steps listed above were removed earlier (godlike/07 no-fake-availability:
-// they no longer represented the canonical background-cleanup topology);
-// Wave 30 BACKFILL will re-introduce them with the canonical scope pinned
-// to the new ProcessBundle / wire_services.go
+// The legacy vector engine was removed entirely on 2026-11-17, together with its three
+// background-cleanup steps (stale-cleaner, ghost-sweeper, health-monitor).
+// Media and keyframe vectors are owned by PostgreSQL + pgvector; there is no
+// external vector store to probe, reconcile or snapshot, and no external vector store
+// EnsureSchema startup step.
 //
 // The returned *backgroundJobs handle is consumed by shutdown.go for
 // graceful teardown (channel-monitor.Stop, drive-sync-scheduler.Stop).

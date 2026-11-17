@@ -1,7 +1,7 @@
 // cmd/admin/broken_references.go — GC FASE 4: broken foreign reference report.
 //
 // Cross-checks every external reference in the canonical SQLite DB against
-// the actual backend and reports the broken ones. Four reference types:
+// the actual backend and reports the broken ones. Three reference types:
 //
 //  1. FK orphans          — child row whose foreign key reference does NOT
 //     resolve to any owner row (reuses Fase 2 model).
@@ -9,17 +9,15 @@
 //     exists (checked against live Drive listing).
 //  3. local_path          — DB rows referencing a local file that does not
 //     exist on disk (checked via os.Stat).
-//  4. qdrant_point        — asset_ids in SQLite that SHOULD be in Qdrant
-//     (eligible per canonical policy) but are missing.
 //
 // HARD INVARIANT: NO DELETIONS are performed. This is a read-only diagnostic
-// that surfaces every broken reference so Fase 5 (Qdrant reconcile) and
-// Fase 10 (Drive cleanup) can act on them with full knowledge.
+// that surfaces every broken reference so Fase 10 (Drive cleanup) can act
+// on them with full knowledge.
 //
 // Usage:
 //
 //	go run ./cmd/admin broken-references [--json] [--report=path]
-//	    [--skip-drive] [--skip-local] [--skip-qdrant] [--no-orphan-detail]
+//	    [--skip-drive] [--skip-local] [--no-orphan-detail]
 //
 // Flags:
 //
@@ -27,7 +25,6 @@
 //	--report            write JSON report to file
 //	--skip-drive        skip Drive cross-check
 //	--skip-local        skip local_path existence check
-//	--skip-qdrant       skip Qdrant point cross-check
 //	--no-orphan-detail  omit per-ID FK orphan detail (faster)
 //	--drive-inventory   path to drive-inventory.json from Fase 1 snapshot
 //	                    (if set, cross-check against snapshot instead of live Drive)
@@ -48,8 +45,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
@@ -65,7 +60,6 @@ func RunBrokenReferences(args []string) error {
 	reportPath := fs.String("report", "", "Write JSON report to file")
 	skipDrive := fs.Bool("skip-drive", false, "Skip Drive cross-check")
 	skipLocal := fs.Bool("skip-local", false, "Skip local_path existence check")
-	skipQdrant := fs.Bool("skip-qdrant", false, "Skip Qdrant point cross-check")
 	noOrphanDetail := fs.Bool("no-orphan-detail", false, "Omit per-ID FK orphan detail (faster)")
 	driveInvPath := fs.String("drive-inventory", "", "Path to drive-inventory.json (Fase 1 snapshot); if set, cross-check against snapshot instead of live Drive")
 	if err := fs.Parse(args); err != nil {
@@ -87,13 +81,13 @@ func RunBrokenReferences(args []string) error {
 	defer func() { _ = dbSet.Close() }()
 	sdb := dbSet.Primary
 
-	// MEDIA-SSOT: the drive/local/Qdrant checks all read media_assets, so the
+	// MEDIA-SSOT: the drive/local checks both read media_assets, so the
 	// audit resolves them from the PostgreSQL media SSOT. The handle is only
 	// required when at least one of those checks will actually run; an audit
-	// that skips all three reads no media rows at all. A nil handle fails
+	// that skips both reads no media rows at all. A nil handle fails
 	// closed (the check is recorded as a failure, never silently skipped).
 	var media brokenRefMediaSource
-	if !*skipDrive || !*skipLocal || !*skipQdrant {
+	if !*skipDrive || !*skipLocal {
 		mediaDB, mErr := cli.OpenMediaPostgres(ctx, cfg)
 		if mErr != nil {
 			return fmt.Errorf("open media postgres: %w", mErr)
@@ -106,7 +100,7 @@ func RunBrokenReferences(args []string) error {
 	}
 
 	report, err := executeBrokenReferences(ctx, sdb.DB, media, cfg, log,
-		*skipDrive, *skipLocal, *skipQdrant, *noOrphanDetail, *driveInvPath)
+		*skipDrive, *skipLocal, *noOrphanDetail, *driveInvPath)
 	if err != nil {
 		return err
 	}
@@ -143,7 +137,7 @@ func executeBrokenReferences(
 	media brokenRefMediaSource,
 	cfg *config.Config,
 	log *zap.Logger,
-	skipDrive, skipLocal, skipQdrant bool,
+	skipDrive, skipLocal bool,
 	noOrphanDetail bool,
 	driveInvPath string,
 ) (*brokenRefsReport, error) {
@@ -196,21 +190,6 @@ func executeBrokenReferences(
 		}
 	}
 
-	// 4. Qdrant points referenced by eligible media assets (PostgreSQL SSOT).
-	if !skipQdrant && cfg.Qdrant.Enabled {
-		missing, eligible, qErr := detectMissingQdrantPoints(ctx, media, cfg, log)
-		if qErr != nil {
-			r.Errors = append(r.Errors, fmt.Sprintf("qdrant: %v", qErr))
-		} else {
-			if missing == nil {
-				missing = []string{}
-			}
-			r.QdrantMissing = missing
-			r.Summary.EligibleAssets = eligible
-			r.Summary.QdrantMissing = len(missing)
-		}
-	}
-
 	// Ensure non-nil slices for clean JSON.
 	if r.FKOrphans == nil {
 		r.FKOrphans = []fkOrphanTable{}
@@ -220,9 +199,6 @@ func executeBrokenReferences(
 	}
 	if r.LocalBroken == nil {
 		r.LocalBroken = []brokenLocalRef{}
-	}
-	if r.QdrantMissing == nil {
-		r.QdrantMissing = []string{}
 	}
 
 	sort.Slice(r.DriveBroken, func(i, j int) bool {
@@ -237,7 +213,6 @@ func executeBrokenReferences(
 		}
 		return r.LocalBroken[i].LocalPath < r.LocalBroken[j].LocalPath
 	})
-	sort.Strings(r.QdrantMissing)
 	sort.Strings(r.Errors)
 
 	return r, nil
@@ -470,64 +445,6 @@ func detectBrokenLocalPaths(ctx context.Context, db *sql.DB) ([]brokenLocalRef, 
 	}
 
 	return broken, total, nil
-}
-
-// ── Qdrant point cross-check ─────────────────────────────────────────
-
-// detectMissingQdrantPoints compares the canonical eligibility set against the
-// actual Qdrant projection.
-//
-// MEDIA-SSOT: the eligibility set is read from the PostgreSQL media SSOT
-// (pgmedia.MediaReferenceAuditReader), which applies the SAME canonical
-// predicate (capregistry.SearchIndexEligibilitySQL) the projection writers use.
-// Reading it from the operational mirror would compare a populated projection
-// against an empty eligible set and report every point as an orphan.
-func detectMissingQdrantPoints(
-	ctx context.Context,
-	media brokenRefMediaSource,
-	cfg *config.Config,
-	log *zap.Logger,
-) ([]string, int, error) {
-	if media == nil {
-		return nil, 0, fmt.Errorf("media SSOT reader is not wired")
-	}
-	// 1. Query eligible asset IDs from the media SSOT.
-	eligibleIDs, err := media.ListSearchEligibleAssetIDs(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// 2. Scroll Qdrant for actual asset_ids.
-	schema := qdrantschema.DefaultV3Schema()
-	client := transport.NewClient(&qdrantschema.Config{
-		BaseURL: cfg.Qdrant.BaseURL,
-		APIKey:  cfg.Qdrant.APIKey,
-		Timeout: cfg.Qdrant.Timeout,
-	}, log)
-
-	collection, err := client.GetAliasTarget(ctx, schema.RuntimeAlias)
-	if err != nil {
-		return nil, len(eligibleIDs), fmt.Errorf("resolve alias %q: %w", schema.RuntimeAlias, err)
-	}
-	if collection == "" {
-		return nil, len(eligibleIDs), fmt.Errorf("alias %q has no target", schema.RuntimeAlias)
-	}
-
-	qdrantIDs, _, scrollErrs, err := cli.ScrollQdrantAssetIDs(ctx, client, collection, 500)
-	if err != nil {
-		return nil, len(eligibleIDs), fmt.Errorf("scroll Qdrant: %w", err)
-	}
-	_ = scrollErrs
-
-	// 3. Find eligible IDs missing from Qdrant.
-	var missing []string
-	for _, id := range eligibleIDs {
-		if _, ok := qdrantIDs[id]; !ok {
-			missing = append(missing, id)
-		}
-	}
-
-	return missing, len(eligibleIDs), nil
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────

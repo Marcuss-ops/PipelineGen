@@ -61,7 +61,7 @@ type Service struct {
 	// all callers use command-driven use cases.
 	assetDestResolver asset.Resolver
 	semanticTagger    SemanticTaggerFunc
-	// PR-VO-A3 (Outbox-based Qdrant indexing, June 2026): the
+	// PR-VO-A3 (Outbox-based pgvector indexing, June 2026): the
 	// previous ClipIndexFunc callback (fire-and-forget goroutine)
 	// is gone. The TxOutboxEnqueuer port replaces it — swapVoiceoverRow
 	// now enqueues the canonical `asset.index.requested` envelope

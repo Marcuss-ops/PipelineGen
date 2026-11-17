@@ -7,7 +7,7 @@
 //     (Language/MediaTypes/Sources/Limit/Text mirror the canonical
 //     shape verbatim).
 //   - Translates search.Result.Candidate[] → MediaCandidate[]
-//     with NO LocalPath/DriveLink leaks (QDRANT-004 invariant).
+//     with NO LocalPath/DriveLink leaks (VECTOR-004 invariant).
 //   - Propagates Partial + ProviderErrors verbatim.
 //   - Returns ErrCandidateNotFound when inner is nil or returns nil
 //     result (godlike/07 NO-FAKE-AVAILABILITY).
@@ -164,11 +164,11 @@ func TestSearchFanOutAdapterTranslatesCandidatesLosslessWithoutLeaking(t *testin
 	assert.Equal(t, DiscoverySearched, c0.DiscoveryStatus)
 	assert.Equal(t, MaterializationCold, c0.MaterializationStatus)
 
-	// QDRANT-004 invariant: NO LocalPath/DriveLink in the
+	// VECTOR-004 invariant: NO LocalPath/DriveLink in the
 	// mediamemory MediaCandidate. The wire shape has no field for
 	// it (see types.go); a regression here would compile-fail.
 	assert.NotContains(t, strings.ToLower(c0.Provider+"|"+c0.Title+"|"+c0.SourceURL), "drive_link",
-		"QDRANT-004 invariant: no drive_link in mediamemory surface")
+		"VECTOR-004 invariant: no drive_link in mediamemory surface")
 
 	// Partial + BackendErrors propagation.
 	assert.True(t, out.Partial, "Partial MUST propagate verbatim")

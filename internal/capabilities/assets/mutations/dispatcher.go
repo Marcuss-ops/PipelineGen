@@ -39,7 +39,7 @@
 //
 //     INSERT outbox_events (event_type='asset.index.delete_requested',
 //     v1 envelope) + commit. IndexDeleteHandler completes the picture
-//     with Qdrant DeletePoints + SoftDelete + index_state=DELETED.
+//     with pgvector DeletePoints + SoftDelete + index_state=DELETED.
 //
 // Idempotency contract:
 //   - Each method's eventKey shape pattern is documented inline at the
@@ -50,7 +50,7 @@
 //
 // What is NOT a consumer:
 //   - cmd/admin/ — admin tooling uses the lower-level CLI-driven flows
-//     (reindex_qdrant, dr-qdrant).
+//     (reindex_pgvector, dr-pgvector).
 package mutations
 
 import (

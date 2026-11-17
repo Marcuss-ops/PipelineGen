@@ -309,6 +309,6 @@ func TestFromExistingClip_RoundTrip_RichMetadata(t *testing.T) {
 // time, forcing the stub to grow BEFORE the next vet run unblocks —
 // preventing the rot that the FindByExternalRef addition above fixes
 // from recurring. Mirrors the production-side precedents at
-// internal/platform/qdrant/search_adapter.go and
+// internal/platform/postgres/media/search_adapter.go and
 // internal/platform/sqlite/assets/clips_repository.go.
 var _ detail.Repository = (*stubAssetRepo)(nil)

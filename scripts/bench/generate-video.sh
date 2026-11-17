@@ -183,8 +183,6 @@ DB_SHA=$(python3 -c "import json; d=json.load(open('$FINGERPRINT_FILE')); print(
 WORKER_IDS=$(python3 -c "import json; d=json.load(open('$FINGERPRINT_FILE')); print(','.join(d['workers']['ids']))" 2>/dev/null || echo "")
 WORKER_VERSIONS=$(python3 -c "import json; d=json.load(open('$FINGERPRINT_FILE')); print(','.join(d['workers']['versions']))" 2>/dev/null || echo "")
 CHRONON_SHA=$(python3 -c "import json; d=json.load(open('$FINGERPRINT_FILE')); print(d['chronon']['sha256'][:12])" 2>/dev/null || echo "absent")
-QDRANT_COLLECTION=$(python3 -c "import json; d=json.load(open('$FINGERPRINT_FILE')); print(d['qdrant']['active_collection'])" 2>/dev/null || echo "absent")
-QDRANT_POINTS=$(python3 -c "import json; d=json.load(open('$FINGERPRINT_FILE')); print(d['qdrant']['point_count'])" 2>/dev/null || echo "0")
 
 # Legacy fields for the JSON report (backward compat)
 GIT_SHA_FULL="$GIT_SHA"
@@ -200,7 +198,6 @@ printf "  %-30s %s\n" "DB SHA:" "${DB_SHA:0:12}"
 printf "  %-30s %s\n" "Worker IDs:" "${WORKER_IDS:-<none>}"
 printf "  %-30s %s\n" "Worker versions:" "${WORKER_VERSIONS:-<none>}"
 printf "  %-30s %s\n" "Chronon SHA:" "${CHRONON_SHA:-absent}"
-printf "  %-30s %s (%s pts)\n" "Qdrant collection:" "$QDRANT_COLLECTION" "$QDRANT_POINTS"
 printf "  %-30s %s\n" "Base URL:" "$BASE_URL"
 printf "  %-30s %s\n" "Fingerprint:" "$FINGERPRINT_FILE"
 printf "  %-30s %s\n" "Output:" "$OUTPUT_FILE"

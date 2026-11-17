@@ -80,9 +80,9 @@ type Artifact struct {
 // EmbeddingResult is the canonical envelope returned by every concrete
 // Embedder implementation. It carries the raw vector, observed model
 // identity, model version, and dimensions so consumers (PayloadMapper,
-// Qdrant index writer, etc.) can record provenance at write time.
+// pgvector index writer, etc.) can record provenance at write time.
 //
-// QDRANT-001 introduced this type; QDRANT-001b (July 2026) propagates
+// VECTOR-001 introduced this type; VECTOR-001b (July 2026) propagates
 // it through PythonScriptEmbedder and HTTPTextEmbedder.
 type EmbeddingResult struct {
 	// Vector is the raw embedding as []float32.
@@ -110,7 +110,7 @@ type EmbeddingResult struct {
 // adapter (infrastructures/embeddings/http.go) returns []float64 but
 // the application layer normalises to []float32 via the wrapper.
 //
-// QDRANT-001b (July 2026): the return type has been promoted from
+// VECTOR-001b (July 2026): the return type has been promoted from
 // ([]float32, error) to (EmbeddingResult, error) so callers receive
 // the full provenance envelope (Model, ModelVersion, Dimensions)
 // alongside the raw vector. Both PythonScriptEmbedder and
@@ -164,7 +164,7 @@ type AssetExecutionResult struct {
 
 // Filter defines query parameters for listing assets.
 //
-// WorkspaceID + IsAdmin (QDRANT-001 closure): the Filter carries a
+// WorkspaceID + IsAdmin (VECTOR-001 closure): the Filter carries a
 // tenant-isolation predicate. Repositories that back the multi-tenant
 // media_assets table MUST translate this into a SQL clause:
 //
@@ -195,7 +195,7 @@ type Filter struct {
 	// results to rows where workspace_id = ?. Empty means "no
 	// workspace filter" (legacy behaviour, used by internal
 	// admin/maintenance tooling that scans the whole catalog).
-	// QDRANT-001 (June 2026): added alongside the workspace_id
+	// VECTOR-001 (June 2026): added alongside the workspace_id
 	// hydration in mediasearchReadAdapter.
 	WorkspaceID string `json:"workspace_id,omitempty"`
 

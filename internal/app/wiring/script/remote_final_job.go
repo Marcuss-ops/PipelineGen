@@ -126,18 +126,28 @@ type RemoteFinalJobAdapter struct {
 	resolvedMu sync.Mutex
 	resolved   map[string]map[string]any
 	hits       int
-	// resolvedRunID scopes the cache to ONE run. A prefetch for the SAME run
-	// keeps what was already resolved; a different run (or a retry reusing
+	// resolvedRunID scopes the cache to ONE run. An earlier attempt of the SAME
+	// run keeps what was already resolved; a different run (or a retry reusing
 	// this adapter) must never inherit another run's identities.
 	resolvedRunID string
 	// inflight is the single-flight index over identities currently being
-	// resolved. A folder prefetch and the serial walk ask for the same source,
-	// and two folders may offer the same file; the second caller waits for the
-	// first instead of downloading and publishing those bytes again. Entries
-	// hold immutable content, so a waiter always receives the same answer the
+	// resolved. Two timeline windows can ask for the same source, and two
+	// folders may offer the same file; the second caller waits for the first
+	// instead of downloading and publishing those bytes again. Entries hold
+	// immutable content, so a waiter always receives the same answer the
 	// builder produced.
 	inflightMu sync.Mutex
 	inflight   map[string]*finalJobResolveCall
+}
+
+// finalJobSegmentHandoffTracer is the optional handoff-scoped timing surface of
+// the fragment preparer. It lives here, not in the capability port, because the
+// scope is a wiring detail: the capability receives only the resulting block.
+// A preparer that cannot report fragment phases leaves the block nil instead of
+// claiming zero work.
+type finalJobSegmentHandoffTracer interface {
+	BeginHandoff(context.Context) (context.Context, uint64)
+	Timing(scope uint64) scriptgen.RemoteFinalJobSegmentPrepTiming
 }
 
 // SetVideoSegmentPreparer installs the local fragment certifier for
@@ -272,6 +282,8 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	handoffStarted := time.Now()
 	var resolveMS, prepareMS int64
 	var payloadBuiltAt time.Time
+	tracer, _ := a.segments.(finalJobSegmentHandoffTracer)
+	var handoffScope uint64
 	handoffTiming := func() *scriptgen.RemoteFinalJobTiming {
 		timing := &scriptgen.RemoteFinalJobTiming{
 			HandoffMS:        time.Since(handoffStarted).Milliseconds(),
@@ -283,10 +295,21 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 			// the remainder attributable to FINALIZE instead of unknown.
 			timing.PayloadMS = payloadBuiltAt.Sub(handoffStarted).Milliseconds()
 		}
+		if tracer != nil && handoffScope != 0 {
+			if prep := tracer.Timing(handoffScope); prep.Segments > 0 || prep.Bytes > 0 {
+				timing.SegmentPrep = &prep
+			}
+		}
 		return timing
 	}
 	a.beginHandoffCache(runID)
 	a.resolverNS.Store(0)
+	if tracer != nil {
+		// The scope must be on the context BEFORE BuildFinalJobEnvelopeV1 asks
+		// the preparer for fragments; otherwise the work is recorded under scope
+		// 0 and no receipt can attribute it.
+		ctx, handoffScope = tracer.BeginHandoff(ctx)
+	}
 	// Producer prepares only its own clip/overlay timeline fragments. Explicit
 	// stock-pool slots bypass this path entirely and remain Master-owned.
 	envelope, err := scriptgen.BuildFinalJobEnvelopeV1(ctx, runID, req, result, a, a.segments)

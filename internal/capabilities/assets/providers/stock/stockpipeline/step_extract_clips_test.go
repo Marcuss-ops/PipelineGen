@@ -4,7 +4,7 @@
 // TDD contract test for StockExtractClipsStep rich-asset write.
 // Front 4 replaces the prior 4-field asset.Asset literal (ID +
 // Name + Source + MediaType) with a 10-field rich write so
-// downstream consumers (Qdrant indexer, asset search, media_assets
+// downstream consumers (pgvector indexer, asset search, media_assets
 // projection) see Title/Description/Round/Tags/Category/LocalPath/
 // SHA256/StartSec/EndSec/SearchText at the asset-row write seam
 // instead of only in metadata.json emitted later.
@@ -48,7 +48,7 @@ import (
 // TDD contract test for StockExtractClipsStep rich-asset write.
 // Front 4 replaces the prior 4-field asset.Asset literal (ID +
 // Name + Source + MediaType) with a 10-field rich write so
-// downstream consumers (Qdrant indexer, asset search, media_assets
+// downstream consumers (pgvector indexer, asset search, media_assets
 // projection) see Title/Description/Round/Tags/Category/LocalPath/
 // SHA256/StartSec/EndSec/SearchText at the asset-row write seam
 // instead of only in metadata.json emitted later.

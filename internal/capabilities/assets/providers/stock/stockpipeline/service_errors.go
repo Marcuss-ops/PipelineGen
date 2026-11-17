@@ -41,7 +41,7 @@ var (
 	// methods) was dropped entirely (override brutal). Every Drive
 	// write from the stock pipeline now routes through
 	// delivery.Publisher.Publish + delivery.Publisher.ResolveFolder.
-	ErrStockPipelineNilDispatcher    = errors.New("NewProductionStockPipeline: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
+	ErrStockPipelineNilDispatcher    = errors.New("NewProductionStockPipeline: storage.Dispatcher is required (VECTOR-002 PR7 — production canonical ingest)")
 	ErrStockPipelineNilCutter        = errors.New("NewProductionStockPipeline: media.Cutter is required (PR6 port)")
 	ErrStockPipelineNilJobs          = errors.New("NewProductionStockPipeline: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
 	ErrStockPipelineNilPublisher     = errors.New("NewProductionStockPipeline: delivery.Publisher is required")

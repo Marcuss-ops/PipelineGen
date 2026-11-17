@@ -74,7 +74,7 @@ func TestIndexState_ValidRejectsLegacyLowercase(t *testing.T) {
 //
 // Task 2 (July 2026): EMBEDDING_FAILED and INDEXING_FAILED are terminal.
 // EMBEDDED is intentionally NOT terminal — it means "embeddings saved,
-// ready for Qdrant upsert".
+// ready for pgvector upsert".
 func TestIndexState_IsTerminal(t *testing.T) {
 	terminal := []IndexState{
 		StateNotIndexable, StateIndexed, StateDELETED,
@@ -135,7 +135,7 @@ func TestIndexState_IsFailedTerminal(t *testing.T) {
 // flip and the SetIndexState('DELETED') flip; DELETED is the post-
 // commit tombstone. Both should report true so a future
 // idempotency_state check (not yet wired in PR6 but planned for
-// QDRANT-005 followup) treats both as "deletion already engaged".
+// VECTOR-005 followup) treats both as "deletion already engaged".
 func TestIndexState_IsDeletedCanonical(t *testing.T) {
 	deleted := []IndexState{StateIndexDeletePending, StateDELETED}
 	for _, s := range deleted {

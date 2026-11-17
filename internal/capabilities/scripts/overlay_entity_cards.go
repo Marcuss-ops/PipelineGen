@@ -295,8 +295,52 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capa
 			}
 		}
 	}
+	indexUniqueBundleSurnameAliases(catalog, canonicalByStable)
 	media.SetIndex(index)
 	return media, canonicalByStable
+}
+
+// indexUniqueBundleSurnameAliases adds one last identity projection for
+// translated cards that keep only the family name. A source portrait of
+// "Mike Tyson" must still render when the localized plan (or its NER) names
+// the card "Tyson": the canonical id join then has nothing to match, and the
+// verified bytes were silently left unplanned. Only the last token of a
+// verified PERSON display name is indexed, and only when that token is unique
+// across the bundle: an ambiguous surname is never guessed onto a card. Exact
+// display names keep precedence.
+func indexUniqueBundleSurnameAliases(catalog *entityBundleCatalog, canonicalByStable map[string]string) {
+	if catalog == nil || !catalog.enabled() || canonicalByStable == nil {
+		return
+	}
+	aliases := make(map[string]string)
+	ambiguous := make(map[string]struct{})
+	for stable, entity := range catalog.entityByID {
+		if !strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON") {
+			continue
+		}
+		tokens := strings.Fields(firstNonEmpty(entity.CanonicalText, entity.Text))
+		if len(tokens) < 2 {
+			continue
+		}
+		key := entitycatalog.NormalizeVerifiedAssetKey(tokens[len(tokens)-1])
+		lookupID := catalog.canonicalFor(stable)
+		if key == "" || lookupID == "" {
+			continue
+		}
+		if existing, ok := aliases[key]; ok && existing != lookupID {
+			ambiguous[key] = struct{}{}
+			continue
+		}
+		aliases[key] = lookupID
+	}
+	for key := range ambiguous {
+		delete(aliases, key)
+	}
+	for key, lookupID := range aliases {
+		if canonicalByStable["bundle-name:"+key] == "" {
+			canonicalByStable["bundle-name:"+key] = lookupID
+		}
+	}
 }
 
 func usableLocalAssetPath(path string) bool {

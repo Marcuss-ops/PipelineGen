@@ -78,6 +78,9 @@ func (e *GenerationEnvelopeV2) Validate() error {
 		if err := ValidateOverlayCategories(item.OverlayCategories); err != nil {
 			return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": " + err.Error()}}
 		}
+		if details := validateOverlayImageSFX(item.OverlayImages, ref); len(details) > 0 {
+			return &PlanInvalidError{ItemID: item.ID, Details: details}
+		}
 		for index, segment := range item.ScriptParams.Segments {
 			if err := ValidateOverlayCategories(segment.OverlayCategories); err != nil {
 				return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": script_params.segments[" + strconv.Itoa(index) + "]: " + err.Error()}}
@@ -181,6 +184,39 @@ func validEntityExtractionToggle(toggle Toggle) bool {
 	default:
 		return false
 	}
+}
+
+// validateOverlayImageSFX gates the per-image cue block at the payload
+// boundary: a pin that requests a cue must name its scene (the cue is bound
+// to the image the planner produces for that scene) and carry a usable asset
+// identity.
+func validateOverlayImageSFX(pins []OverlayImageAsset, ref string) []string {
+	var details []string
+	for index, pin := range pins {
+		if pin.SoundEffect == nil {
+			continue
+		}
+		prefix := ref + ": overlay_images[" + strconv.Itoa(index) + "]"
+		if strings.TrimSpace(pin.SceneID) == "" {
+			details = append(details, prefix+".sound_effect requires scene_id")
+		}
+		if err := pin.SoundEffect.Validate(); err != nil {
+			details = append(details, prefix+"."+err.Error())
+		}
+	}
+	for index, pin := range pins {
+		if pin.Style == nil {
+			continue
+		}
+		prefix := ref + ": overlay_images[" + strconv.Itoa(index) + "]"
+		if strings.TrimSpace(pin.SceneID) == "" {
+			details = append(details, prefix+".style requires scene_id")
+		}
+		if err := ValidateImageStyle(pin.Style); err != nil {
+			details = append(details, prefix+".style: "+err.Error())
+		}
+	}
+	return details
 }
 
 func validateSegmentEntityExtractionToggles(segments []ScriptSegment, ref string) []string {

@@ -47,11 +47,11 @@ func registerScriptEntries(r *Registry) {
 	// image generation is the costliest downstream operation.
 	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeImagesGenerate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "AI image generation for script scenes (Chrome + Playwright — Spina Dorsale Fase 2 downstream cutover)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 
-	// TypeAssetsResolve: semantic asset resolution via Qdrant hybrid
+	// TypeAssetsResolve: semantic asset resolution via pgvector hybrid
 	// search. DefaultMaxRetries=1 because resolution is lightweight and
-	// deterministic (a single Qdrant query per scene); 1 retry covers
-	// transient Qdrant connection blips without wasting broker resources
+	// deterministic (a single pgvector query per scene); 1 retry covers
+	// transient pgvector connection blips without wasting broker resources
 	// on repeated lookups that would yield the same result set.
-	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeAssetsResolve, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Semantic asset resolution via Qdrant (script scene → clip/stock matching — Spina Dorsale Fase 2 downstream cutover)", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeAssetsResolve, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Semantic asset resolution via pgvector (script scene → clip/stock matching — Spina Dorsale Fase 2 downstream cutover)", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
 
 }

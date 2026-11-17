@@ -1,5 +1,5 @@
 // Package scan — per-check forward-prevention gate that bans
-// Drive/Qdrant/SQLite fields in the MediaTransformer DTOs
+// Drive/pgvector/SQLite fields in the MediaTransformer DTOs
 // (PR-MEDIATRANSFORMER-RENAME, July 2026; PR-MEDIATRANSFORMER-WB, July 2026).
 //
 // scan/percheck_mediatransformer_no_infra_fields.go owns the Go
@@ -22,7 +22,7 @@
 //
 // godlike/06 SSOT: the MediaTransformer is a local-only
 // transformer. It takes a `StagedSource` (already on local disk)
-// and produces a local `RenditionSet`. Drive/Qdrant/SQLite
+// and produces a local `RenditionSet`. Drive/pgvector/SQLite
 // concerns are OUT OF SCOPE for the transformer and belong to
 // the orchestrator + finalizer + commit layers downstream.
 //
@@ -33,8 +33,8 @@
 //     admin / drive.Store / drive.Reader / etc. (`*cmd.DriveClient`
 //     does NOT trip because `drive` is not a word boundary, but
 //     `cmd.Drive` itself or `DriveStore` does trip).
-//   - "qdrant"  : Qdrant vectors / collections / points /
-//     qdrant.Client / qdrant.Schema / etc.
+//   - "pgvector"  : pgvector vectors / collections / points /
+//     pgvector.Client / pgvector.Schema / etc.
 //   - "sqlite"  : SQLite database / sqlite3 / *sql.DB /
 //     mattn/go-sqlite3 / sql.Tx / etc.
 //   - "folderid": FolderID / folder_id (Drive folder anchor;
@@ -119,7 +119,7 @@ var mediaTransformerTargetTypes = []string{"TransformSpec", "RenditionSet"}
 //
 //	admin / drive.Store / drive.Reader / etc.
 //
-// "qdrant"  covers Qdrant vectors / qdrant.Client / etc.
+// "pgvector"  covers pgvector vectors / pgvector.Client / etc.
 // "sqlite"  covers SQLite / *sql.DB / sqlite3 / etc.
 //
 // PR-DIAGNOSI-FINALE rule 9 strengthening (July 2026): the 5
@@ -130,7 +130,7 @@ var mediaTransformerTargetTypes = []string{"TransformSpec", "RenditionSet"}
 // the word-bounded regex list below.
 var mediaTransformerForbiddenSubstrings = []string{
 	"drive",
-	"qdrant",
+	"pgvector",
 	"sqlite",
 	"folderid",
 	"downloadlink",
@@ -153,7 +153,7 @@ var mediaTransformerForbiddenSubstrings = []string{
 // facing attribution without an extra lookup step.
 var mediaTransformerForbiddenNames = []string{
 	"drive",
-	"qdrant",
+	"pgvector",
 	"sqlite",
 	"folderid",
 	"downloadlink",
@@ -190,7 +190,7 @@ var mediaTransformerForbiddenNames = []string{
 // (`internal/kernel/asset/processor.go`).
 var mediaTransformerForbiddenWordReList = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)\bdrive\b`),
-	regexp.MustCompile(`(?i)\bqdrant\b`),
+	regexp.MustCompile(`(?i)\bpgvector\b`),
 	regexp.MustCompile(`(?i)\bsqlite\b`),
 	regexp.MustCompile(`(?i)\bfolderid\b`),
 	regexp.MustCompile(`(?i)\bdownloadlink\b`),
@@ -232,7 +232,7 @@ const mediaTransformerRule = "percheck_mediatransformer_no_infra_fields"
 // enumerated inline (the godoc on
 // `mediaTransformerForbiddenNames` is the operator's source
 // of truth) to keep the violation JSON payload compact.
-const mediaTransformerNote = "forbidden field in MediaTransformer DTO (PR-MEDIATRANSFORMER-RENAME step 1, July 2026; PR-DIAGNOSI-FINALE rule 9, July 2026; PR-MEDIATRANSFORMER-WB, July 2026 word-boundary fix): the MediaTransformer is a local-only transformer and MUST NOT carry Drive/Qdrant/SQLite/provider-specific fields in its DTOs; the matcher is now word-bounded (`?\\bname\\b?` regex per forbidden entry) so legitimate composite names like MD5ChecksumStr do not false-positive trip. Route the infrastructure concern through the orchestrator + finalizer + commit layers downstream. Step 2 of PR-MEDIATRANSFORMER-RENAME deletes the existing forbidden fields and this gate will pass"
+const mediaTransformerNote = "forbidden field in MediaTransformer DTO (PR-MEDIATRANSFORMER-RENAME step 1, July 2026; PR-DIAGNOSI-FINALE rule 9, July 2026; PR-MEDIATRANSFORMER-WB, July 2026 word-boundary fix): the MediaTransformer is a local-only transformer and MUST NOT carry Drive/pgvector/SQLite/provider-specific fields in its DTOs; the matcher is now word-bounded (`?\\bname\\b?` regex per forbidden entry) so legitimate composite names like MD5ChecksumStr do not false-positive trip. Route the infrastructure concern through the orchestrator + finalizer + commit layers downstream. Step 2 of PR-MEDIATRANSFORMER-RENAME deletes the existing forbidden fields and this gate will pass"
 
 // mediaTransformerWarn is the WARN-bucket emitter for
 // residue-accounting. Mirrors assetStateWarn.
@@ -243,7 +243,7 @@ func mediaTransformerWarn(r *report.Report, label, msg string) {
 // ScanMediaTransformerNoInfraFields opens the canonical file
 // (`processor.go`) and inspects the struct bodies of
 // `TransformSpec` and `RenditionSet` for forbidden
-// Drive/Qdrant/SQLite/forward-pointer fields. Each forbidden
+// Drive/pgvector/SQLite/forward-pointer fields. Each forbidden
 // field emits a violation; comment-only references are
 // residue-accounted (WARNed, not violated) per godlike/07.
 //

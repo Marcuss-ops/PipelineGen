@@ -98,7 +98,7 @@ type SearchTextInput struct {
 
 // SearchTextBuilder builds the canonical search text for an asset. The
 // returned string is what gets stored in media_assets.search_text and
-// later embedded for Qdrant's BM25 sparse channel.
+// later embedded for pgvector's BM25 sparse channel.
 //
 // The implementation is a registry that dispatches on Source to a
 // per-source strategy. Unrecognised sources produce a non-empty fallback

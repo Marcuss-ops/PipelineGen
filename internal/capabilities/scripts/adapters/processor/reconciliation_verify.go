@@ -35,7 +35,7 @@ type reconcileResult struct {
 // Transport errors (network timeout, Drive API 5xx) are surfaced as
 // warnings and clear only the downstream link. Confirmed invalid states
 // produce durable mutations; the injected committer persists those
-// changes together with the Qdrant outbox event.
+// changes together with the pgvector outbox event.
 func (p *AssetLocationReconciliationProcessor) verifyAndReconcile(
 	ctx context.Context,
 	assetID string,

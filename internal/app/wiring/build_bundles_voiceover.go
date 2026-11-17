@@ -235,7 +235,7 @@ func buildVoiceoverPipeline(
 		// clipindexer.Enabled is therefore no longer a precondition for
 		// consumer-side indexing; the check is retained only to flag a
 		// half-wired compatibility seam (imperative IndexClip callers that
-		// would fall through to the retired SQLite → Qdrant implementation).
+		// would fall through to the retired SQLite → pgvector implementation).
 		if clipIndexerService == nil || !clipIndexerService.IsEnabled() {
 			log.Warn("voiceover service wired with outbox dispatcher but the clipindexer compatibility seam is disabled — asset.index.requested events are still consumed by the PostgreSQL outbox worker (pgvector), but imperative IndexClip callers have no fallback")
 		}

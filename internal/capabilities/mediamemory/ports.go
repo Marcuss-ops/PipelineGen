@@ -2,7 +2,7 @@
 // mediamemory capability (godlike/06 SSOT: one canonical owner per fact).
 //
 // Every interface declared here is the SOLE seam between the mediamemory
-// capability and any durable store (SQLite for Phase 1.x, Qdrant for the
+// capability and any durable store (SQLite for Phase 1.x, pgvector for the
 // semantic channel in Phase 2). A future agent that swaps in a different
 // store implements THESE ports, NOT a parallel seam.
 //
@@ -119,16 +119,6 @@ type SearchFanOut interface {
 
 type SemanticLookup interface {
 	LookupByConcept(ctx context.Context, conceptType ConceptType, text string, language string, limit int) ([]MediaCandidate, error)
-}
-
-type KeyframeVisualIndexer interface {
-	IndexKeyframe(ctx context.Context, videoID string, tsMs int64, assetID string, language string, vec []float32, model string) error
-}
-
-type EmbeddingIndexer interface {
-	IndexConcept(ctx context.Context, c MediaConcept) error
-	DeindexConcept(ctx context.Context, conceptID string) error
-	ReindexConcept(ctx context.Context, c MediaConcept, targetVersion string) error
 }
 
 type StockPipelineAcquirer interface {

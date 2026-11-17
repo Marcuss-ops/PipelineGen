@@ -6,7 +6,7 @@
 //	se root specifica manca → usa media_root_folder + namespace
 //	se entrambe mancano → errore chiaro"
 //
-// The test surface is hermetic — no Drive API, no DB, no Qdrant.
+// The test surface is hermetic — no Drive API, no DB, no external vector store.
 // Each test constructs an Adapter with a specific DriveConfig
 // and asserts the resolved root folder for the destination.
 package resolver

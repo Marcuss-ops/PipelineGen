@@ -93,7 +93,7 @@ func TestUploader_Ping_NilService_ReturnsExplicitError(t *testing.T) {
 // gdrive SDK is unmockable in this package without a network round
 // trip. The wire_services.go integration test fixture
 // (lifecycle_integration_test.go) covers the end-to-end probe path
-// via the QdrantProbe-shaped sibling assertion; Drive is structured
+// via the pgvectorProbe-shaped sibling assertion; Drive is structured
 // the same way.
 func TestUploader_AdminInterface_TypedNilTrapGuard(t *testing.T) {
 	// TRAP — assigning a typed nil *Uploader to Admin produces a

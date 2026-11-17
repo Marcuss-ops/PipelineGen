@@ -8,7 +8,7 @@
 //	    CanonicalIdentityResolver.BackfillTaxonomy)
 //	  → search_text (detail.ComposerRegistry SSOT, per-source strategy)
 //	  → missing embeddings (outbox EnqueueReindex force=true → the worker
-//	    generates embeddings + upserts Qdrant)
+//	    generates embeddings + upserts pgvector)
 //
 // The command NEVER downloads or uploads: it only performs SQL updates +
 // outbox enqueue. If the file already exists on Drive/local, download=0,
@@ -228,7 +228,7 @@ func RunRepairStockMetadata(args []string) error {
 	}
 
 	// ── Phase 3: embedding backfill (canonical outbox EnqueueReindex
-	// force=true → worker generates only the missing embeddings + Qdrant).
+	// force=true → worker generates only the missing embeddings + pgvector).
 	if !deps.SkipEmbeddings {
 		adapter := outbox.NewRepairAdapter(db, outboxevents.NewRepository(db), outboxevents.ReindexEnvelopeV1Schema, mutator)
 		embDeps := indexing.Deps{

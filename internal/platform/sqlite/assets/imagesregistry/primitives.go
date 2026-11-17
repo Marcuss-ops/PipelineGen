@@ -12,7 +12,7 @@
 //
 // No additional helpers, no public state, no internal caches. The
 // primitives are physics-only; the safety gate (lifecycle_state +
-// qdrant_point_state) lives in the caller (admin.PurgeService), not
+// vector_point_state) lives in the caller (admin.PurgeService), not
 // here, by design (see doc.go §"Caller contracts" §2).
 package imagesregistry
 
@@ -100,7 +100,7 @@ func validateHardDeleteChildTables() {
 //
 // Why an explicit (Table, Column) map and not a quoted table list:
 //
-// Pre-`codex/qdrant-purge-child-keys` (June 2026, PR 4) the loop ran
+// Pre-`codex/pgvector-purge-child-keys` (June 2026, PR 4) the loop ran
 // `DELETE FROM <table> WHERE id = ?` for every child. That was wrong
 // for asset_locations (FK column = asset_id, not the PK id) and
 // asset_processing (FK column = asset_id). Both queries matched ZERO
@@ -163,7 +163,7 @@ var allowedHardDeleteChildColumns = map[string]bool{
 // Caller contract (see doc.go):
 //   - `tx` MUST be non-nil and open (caller owns the lifecycle).
 //   - The safety gate (lifecycle_state='DELETED' AND
-//     qdrant_point_state='absent') MUST be evaluated by the caller
+//     vector_point_state='absent') MUST be evaluated by the caller
 //     before invoking here. admin.PurgeService.HardDeleteClip is the
 //     canonical gate site. The primitive does NOT re-evaluate the
 //     gate because layered responsibility is the stated design
@@ -269,8 +269,8 @@ func HardDeleteTx(ctx context.Context, tx *sql.Tx, id string) error {
 // Caller contract (see doc.go):
 //   - `tx` MUST be non-nil and open.
 //   - The caller decides whether to flip lifecycle_state without
-//     a Qdrant re-index (legacy admin behaviour: today the admin
+//     a pgvector re-index (legacy admin behaviour: today the admin
 //     tooling uses an explicit outbox exception — see the validation
 //     reference at admin.PurgeService.RestoreClip pkg-doc). This
-//     primitive does NOT emit a Qdrant re-index event; the caller
+//     primitive does NOT emit a pgvector re-index event; the caller
 //     can route a fresh outbox event if it wants vector rebuild.

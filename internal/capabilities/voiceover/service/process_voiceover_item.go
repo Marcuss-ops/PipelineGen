@@ -226,7 +226,9 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 			VoiceoverRepository: deps.Pipeline.VoiceoverRepository,
 			Finalizer:           deps.Finalize.Finalizer,
 			TxOutboxEnqueuer:    deps.Recovery.TxOutboxEnqueuer,
-			PhraseAligner:       deps.Pipeline.PhraseAligner,
+			Enrichment: ProcessSegmentEnrichmentDeps{
+				PhraseAligner: deps.Pipeline.PhraseAligner,
+			},
 			Cache: ProcessSegmentCacheDeps{
 				VoiceoverCache: deps.Pipeline.VoiceoverCache,
 				AsyncPublish:   deps.Pipeline.AsyncPublish,

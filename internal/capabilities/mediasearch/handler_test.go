@@ -225,7 +225,7 @@ func TestHandler_StubAggregatorCapturesActor(t *testing.T) {
 // TestHandlerMapsMediaTypeToQueryMediaTypes verifies that when the
 // request filter carries media_type, it is forwarded as
 // Query.MediaTypes []string (for BackendRegistry capability
-// selection) AND as Filters.MediaType (for downstream Qdrant
+// selection) AND as Filters.MediaType (for downstream pgvector
 // must-predicate compilation).
 // PR-AGENTE2-MEDIATYPE (Agente 2, Azione 2).
 func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
@@ -483,7 +483,7 @@ func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
 				MediaType:    "video",
 				PreviewURL:   "https://signed.example.com/asset-1",
 				Score:        0.95,
-				ThumbnailURL: "https://thumbnail.internal/qdrant_collection_x",
+				ThumbnailURL: "https://thumbnail.internal/pgvector_collection_x",
 			},
 		},
 	}

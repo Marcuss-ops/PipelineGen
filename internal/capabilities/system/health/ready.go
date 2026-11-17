@@ -22,7 +22,7 @@ import (
 //
 // Aggregation rule (inherited verbatim from Service.Check):
 //   - DB + Jobs are mandatory; nil checker = misconfiguration surfaced loudly.
-//   - Drive + Qdrant are optional; nil / typed-nil / applicable=false = opted out.
+//   - Drive is optional; nil / typed-nil / applicable=false = opted out.
 //   - applicable=false results do NOT flip allOK; ok=false results do.
 //
 // Step 8 YouTube Clips Deploy Readiness (July 2026): added severe checks
@@ -84,7 +84,7 @@ func (r *ReadyChecker) WithStoragePlanes(check func(context.Context) map[string]
 	return r
 }
 
-// CheckReady runs the deep health set (db + drive + qdrant + jobs) and
+// CheckReady runs the deep health set (db + drive + jobs) and
 // returns the aggregated HealthResponse. Callers map the response.OK
 // to HTTP 200 vs 503 — the status-mapping lives at the transport layer.
 //
@@ -100,10 +100,9 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 			OK:     false,
 			Status: "unhealthy",
 			Checks: map[string]CheckResult{
-				"db":     {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
-				"drive":  {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
-				"qdrant": {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
-				"jobs":   {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"db":    {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"drive": {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
+				"jobs":  {"ok": false, "duration_ms": int64(0), "error": "health service not initialized"},
 			},
 		}
 	}
@@ -134,9 +133,9 @@ var readyCheckBudget = 15 * time.Second
 func (r *ReadyChecker) runReadyChecks(ctx context.Context, resp *HealthResponse) {
 	checks := make([]func(context.Context, *HealthResponse), 0, 17)
 
-	// Mandatory/optional component set (db, drive, qdrant, jobs).
+	// Mandatory/optional component set (db, drive, jobs).
 	checks = append(checks, func(c context.Context, sub *HealthResponse) {
-		got := r.svc.Check(c, []string{"db", "drive", "qdrant", "jobs"})
+		got := r.svc.Check(c, []string{"db", "drive", "jobs"})
 		mergeHealthResponse(sub, &got)
 	})
 

@@ -38,7 +38,7 @@ func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateRes
 	// not wire-eligible until its derived render identity and master extent are
 	// stamped. Doing this here (not later in the render phase) keeps the bundle
 	// hash, audit, checkpoint and renderer bound to the same document.
-	return sealCompiledOverlayPlan(compiled, input.result, input.language, input.resolved, input.canvas)
+	return sealCompiledOverlayPlan(compiled, input.result, input.language, input.resolved, input.canvas, input.perSceneImages...)
 }
 
 // overlayPlanCompileInput is the projection shared by the production entry

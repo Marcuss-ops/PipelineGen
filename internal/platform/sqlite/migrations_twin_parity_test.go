@@ -165,7 +165,7 @@ var twinTables = []string{
 // (migrations/sqlite_jobs/001_jobs_plane.sql) states timestamps without
 // defaults because the shared writers always set them explicitly; the primary
 // copy keeps its historical defaults (147/119, mirrored by
-// 000_baseline_267.sql). Keyed as table → column → [primary, jobs].
+// 000_baseline_268.sql). Keyed as table → column → [primary, jobs].
 var twinPinnedDefaultDivergence = map[string]map[string][2]string{
 	"artifact_stages": {
 		"created_at": {"datetime('now')", ""},

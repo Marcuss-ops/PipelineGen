@@ -21,7 +21,7 @@ const (
 	// not yet published to remote storage. Added FASE 3b (July 2026).
 	StatePreparing LifecycleState = "PREPARING"
 	// StatePublished — artifact published to remote storage (Drive, S3)
-	// but not yet indexed. Transitions to ACTIVE after Qdrant indexing
+	// but not yet indexed. Transitions to ACTIVE after pgvector indexing
 	// completes. Added FASE 3b (July 2026).
 	StatePublished LifecycleState = "PUBLISHED"
 	// StateStaging — asset row created but not yet indexable.
@@ -29,7 +29,7 @@ const (
 	// StateProcessing — vectorisation currently in flight.
 	StateProcessing LifecycleState = "PROCESSING"
 	// StateActive — terminal-and-searchable default for indexable rows.
-	// This is the canonical payload value at Qdrant and the only state
+	// This is the canonical payload value at pgvector and the only state
 	// returned by the /internal/v1/media/search endpoint.
 	StateActive LifecycleState = "ACTIVE"
 	// StateDeletePending — LEGACY broad intent state (pre-Blocco 3.1,
@@ -68,15 +68,15 @@ const (
 	// confirmation hop.
 	StateDriveDeleted LifecycleState = "DRIVE_DELETED"
 	// StateLifecycleIndexDeletePending — Drive delete succeeded; the
-	// Qdrant DeletePoints + media_assets SoftDelete chain is in
+	// pgvector DeletePoints + media_assets SoftDelete chain is in
 	// flight or retrying. IndexDeleteHandler pre-flights on this
 	// state and stamps DELETED on success.
 	StateLifecycleIndexDeletePending LifecycleState = "INDEX_DELETE_PENDING"
-	// StateIndexDeleted (Blocco 3.1 commit 2/3, July 2026) — Qdrant
-	// projection removal CONFIRMED (Qdrant.DeletePoints returned
+	// StateIndexDeleted (Blocco 3.1 commit 2/3, July 2026) — pgvector
+	// projection removal CONFIRMED (pgvector.DeletePoints returned
 	// success; idempotent on already-absent point via
 	// deleted_count:0 at the API layer) AND SQLite SoftDelete
-	// applied. IndexDeleteHandler stamps this AFTER Qdrant +
+	// applied. IndexDeleteHandler stamps this AFTER pgvector +
 	// SoftDelete + index_state=DELETED as the intermediate
 	// intermediate confirmation hop, BEFORE the terminal
 	// lifecycle_state=DELETED flip. Two-TX with compensation: the
@@ -86,7 +86,7 @@ const (
 	// (catches INDEX_DELETED or DELETED) re-runs the write path.
 	StateIndexDeleted LifecycleState = "INDEX_DELETED"
 	// StateDeleted — terminal tombstone. The SoftDeleteFilter and
-	// the Qdrant lifecycle waterfall exclude this state from all
+	// the pgvector lifecycle waterfall exclude this state from all
 	// reads.
 	StateDeleted LifecycleState = "DELETED"
 	// StateError — indexer failed and could not recover; surfaced
@@ -97,11 +97,11 @@ const (
 // CanonicalLifecycleStateValues returns the closed enumeration of
 // canonical lifecycle_state strings. Callers use this as the
 // single-source-of-truth list for migrations, dashboards, and
-// qdrant payload validation. StateDeletePending is the legacy
+// pgvector payload validation. StateDeletePending is the legacy
 // broad-intent value kept for in-flight migration; new writes use
 // the 6 explicit deletion states added in Blocco 3.1 (with commit
 // 2/3 adding StateDriveDeleted + StateIndexDeleted as the post-Drive
-// + post-Qdrant confirmation hops).
+// + post-pgvector confirmation hops).
 func CanonicalLifecycleStateValues() []LifecycleState {
 	return []LifecycleState{
 		StatePreparing,
@@ -141,14 +141,14 @@ func (s LifecycleState) Valid() bool {
 // June 2026; extended in Blocco 3.1 commit 2/3, July 2026).
 //
 // Strict-machine contract (Blocco 3.1 commit 2/3 expanded to 6 explicit
-// deletion hops with the post-Drive + post-Qdrant confirmation hops):
+// deletion hops with the post-Drive + post-pgvector confirmation hops):
 //
 //	ACTIVE              → DELETE_REQUESTED        (user-initiated delete)
 //	DELETE_REQUESTED    → DRIVE_DELETE_PENDING    (DriveDeleteHandler pre-flip)
 //	DRIVE_DELETE_PENDING→ DRIVE_DELETED           (DriveDeleteHandler post-success flip + emit index-delete event)
 //	DRIVE_DELETED       → INDEX_DELETE_PENDING    (IndexDeleteHandler pre-flip; legacy forward-compat accepts
 //	                                               pre-commit 2/3 rows already at INDEX_DELETE_PENDING)
-//	INDEX_DELETE_PENDING→ INDEX_DELETED           (IndexDeleteHandler post-Qdrant+SoftDelete flip, intermediate)
+//	INDEX_DELETE_PENDING→ INDEX_DELETED           (IndexDeleteHandler post-pgvector+SoftDelete flip, intermediate)
 //	INDEX_DELETED       → DELETED                 (IndexDeleteHandler post-success terminal flip)
 //	*                   → ACTIVE                  (restore path is symmetric; see
 //	                                               Restore handler + IsValidRestoreTransition)
@@ -156,7 +156,7 @@ func (s LifecycleState) Valid() bool {
 // The DRIVE_DELETED + INDEX_DELETED confirmation hops are the
 // audit-pinning surface for the closed deletion chain: an asset
 // dashboard distinguishes "Drive side-effect confirmed" (DRIVE_DELETED)
-// from "Qdrant projection removed confirmed" (INDEX_DELETED) and
+// from "pgvector projection removed confirmed" (INDEX_DELETED) and
 // from "fully retired" (DELETED), so a stuck row at any of the
 // intermediate hops is observable per the canonical-state-machine
 // invariant.
@@ -225,7 +225,7 @@ func (s LifecycleState) IsValidTransition(to LifecycleState) bool {
 		return to == StateLifecycleIndexDeletePending
 	case StateLifecycleIndexDeletePending:
 		// Blocco 3.1 commit 2/3 (July 2026): IndexDeleteHandler
-		// post-Qdrant+SoftDelete confirmation flip — the closed-chain
+		// post-pgvector+SoftDelete confirmation flip — the closed-chain
 		// audit-pinning intermediate between "index work in flight"
 		// and "fully retired".
 		return to == StateIndexDeleted

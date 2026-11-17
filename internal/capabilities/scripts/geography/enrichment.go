@@ -47,6 +47,7 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 	}
 	sort.Ints(indices)
 	resolved := make(map[string]capabilitygeocoding.Result)
+	personTokens := personNameTokens(annotations)
 	var ignoredMapCandidates map[string]struct{}
 	if len(options) > 0 && options[0].MapsOnly {
 		var err error
@@ -88,7 +89,7 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 				annotation.PrimaryEntities[entityIndex].Geo = nil
 				continue
 			}
-			if len(options) > 0 && options[0].MapsOnly && (personNameFragment(annotation, annotation.PrimaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].SceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName)) {
+			if len(options) > 0 && options[0].MapsOnly && (personNameFragment(annotation, annotation.PrimaryEntities[entityIndex].CanonicalName) || personNameToken(personTokens, annotation.PrimaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].SceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName)) {
 				// A one-token LOCATION/GPE annotation can be the first or last
 				// name of a separately grounded person (e.g. "Chiara" from
 				// "Chiara Poggi"). Never send that homonym to the geocoder.
@@ -107,7 +108,7 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 				annotation.SecondaryEntities[entityIndex].Geo = nil
 				continue
 			}
-			if len(options) > 0 && options[0].MapsOnly && (personNameFragment(annotation, annotation.SecondaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].SceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName)) {
+			if len(options) > 0 && options[0].MapsOnly && (personNameFragment(annotation, annotation.SecondaryEntities[entityIndex].CanonicalName) || personNameToken(personTokens, annotation.SecondaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].SceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName)) {
 				annotation.SecondaryEntities[entityIndex].Geo = nil
 				continue
 			}
@@ -127,6 +128,7 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 			}
 			return !IgnoredMapCandidate(ignoredMapCandidates, entity.CanonicalName, language) &&
 				!personNameFragment(annotation, entity.CanonicalName) &&
+				!personNameToken(personTokens, entity.CanonicalName) &&
 				!capitalizedNameFragment(options[0].SceneTexts[index], entity.CanonicalName) &&
 				containsGroundedPlaceName(options[0].SceneTexts[index], entity.CanonicalName)
 		}
@@ -151,12 +153,45 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 			}
 		}
 		if len(options) > 0 && options[0].MapsOnly {
-			if err := GeocodeGroundedPlaceNames(ctx, geocoder, resolved, annotation, options[0].SceneTexts[index], language, index, &geoContext); err != nil {
+			if err := geocodeGroundedPlaceNames(ctx, geocoder, resolved, annotation, options[0].SceneTexts[index], language, index, &geoContext, personTokens); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// personNameTokens captures grounded people across the whole script. A
+// location tag for a surname in a later scene ("Washington filed a
+// complaint") must not become Washington, DC when the person was identified
+// as Desiree Washington in an earlier scene.
+func personNameTokens(annotations map[int]*scriptpkg.SceneAnnotations) map[string]struct{} {
+	tokens := make(map[string]struct{})
+	for _, annotation := range annotations {
+		if annotation == nil {
+			continue
+		}
+		for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...), annotation.SecondaryEntities...) {
+			if !strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON") {
+				continue
+			}
+			for _, part := range strings.Fields(strings.ToLower(strings.TrimSpace(entity.CanonicalName))) {
+				if part != "" {
+					tokens[part] = struct{}{}
+				}
+			}
+		}
+	}
+	return tokens
+}
+
+func personNameToken(tokens map[string]struct{}, candidate string) bool {
+	name := strings.ToLower(strings.TrimSpace(candidate))
+	if name == "" || strings.Contains(name, " ") {
+		return false
+	}
+	_, ok := tokens[name]
+	return ok
 }
 
 // sceneGeoContext derives the lookup context from the scene's own grounded
@@ -180,6 +215,9 @@ func sceneGeoContext(annotation *scriptpkg.SceneAnnotations) capabilitygeocoding
 		}
 		if ctx.Country == "" && strings.TrimSpace(entity.Geo.Country) != "" {
 			ctx.Country = strings.TrimSpace(entity.Geo.Country)
+		}
+		if ctx.Region == "" && strings.TrimSpace(entity.Geo.AdminRegion) != "" {
+			ctx.Region = strings.TrimSpace(entity.Geo.AdminRegion)
 		}
 		name := strings.TrimSpace(entity.CanonicalName)
 		if name == "" {
@@ -213,6 +251,9 @@ func AdoptGeoContext(ctx *capabilitygeocoding.Context, entity *scriptpkg.Annotat
 	}
 	if ctx.Country == "" && strings.TrimSpace(entity.Geo.Country) != "" {
 		ctx.Country = strings.TrimSpace(entity.Geo.Country)
+	}
+	if ctx.Region == "" && strings.TrimSpace(entity.Geo.AdminRegion) != "" {
+		ctx.Region = strings.TrimSpace(entity.Geo.AdminRegion)
 	}
 	name := strings.TrimSpace(entity.CanonicalName)
 	if name == "" {
@@ -373,6 +414,10 @@ var capitalizedNameRE = regexp.MustCompile(`(?:[A-ZÀ-ÖØ-Þ][\p{L}\p{M}'’’
 // journey narration). It runs only for an explicit maps-only request and only
 // accepts names that the configured geocoder classifies at a geographic level.
 func GeocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, annotation *scriptpkg.SceneAnnotations, text, language string, sceneIndex int, geoContext *capabilitygeocoding.Context) error {
+	return geocodeGroundedPlaceNames(ctx, geocoder, resolved, annotation, text, language, sceneIndex, geoContext, nil)
+}
+
+func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, annotation *scriptpkg.SceneAnnotations, text, language string, sceneIndex int, geoContext *capabilitygeocoding.Context, personTokens map[string]struct{}) error {
 	if annotation == nil || strings.TrimSpace(text) == "" {
 		return nil
 	}
@@ -419,7 +464,7 @@ func GeocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		if len(name) > 1 && name == strings.ToUpper(name) {
 			continue
 		}
-		if IgnoredMapCandidate(ignored, name, language) || groundedPersonName(annotation, name) {
+		if IgnoredMapCandidate(ignored, name, language) || groundedPersonName(annotation, name) || personNameToken(personTokens, name) {
 			continue
 		}
 		if _, ok := seen[key]; ok {
@@ -459,6 +504,7 @@ func GeocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 			Latitude: result.Latitude, Longitude: result.Longitude,
 			DisplayName: result.DisplayName, Scope: result.Scope,
 			Country: result.Country, CountryCode: result.CountryCode,
+			AdminRegion: result.AdminRegion,
 		}
 		if index, exists := entityIndexes[strings.ToLower(name)]; exists {
 			annotation.PrimaryEntities[index].Geo = geo

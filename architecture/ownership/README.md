@@ -19,10 +19,11 @@ capability root without updating the ownership registry.
 
 ## Platform and contract invariants
 
-- `platform/qdrant/indexing` contains the single `PayloadMapper` /
-  `IndexDocument` airlock. All Qdrant writes use it.
-- Qdrant contains retrieval projection data only; SQLite remains canonical
-  business state and search results hydrate from SQLite before sampling.
+- PostgreSQL + pgvector is the only media index plane: `MediaSearcher` owns
+  vector retrieval and media hydration in the same adapter. The external vector store was removed
+  entirely on 2026-11-17 and must not be reintroduced.
+- SQLite remains canonical business state only for non-media domains; media
+  retrieval always hydrates from PostgreSQL before sampling.
 - `internal/kernel/asset/detail.SourceCatalog` is the canonical source catalog;
   `capabilities/scripts/adapters.SourceRegistry` is the single resolver
   dispatch registry. No parallel source normalizers or dispatch switches.

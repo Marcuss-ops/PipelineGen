@@ -3,6 +3,7 @@ package cliprender
 import (
 	"fmt"
 	"math"
+	"strings"
 )
 
 const MaxClipEffects = 12
@@ -45,6 +46,13 @@ type clipEffectCheck struct {
 type clipEffectSpec struct {
 	allowed map[string]struct{}
 	checks  []clipEffectCheck
+	// required names the parameters without which the type is a silent
+	// no-op: the renderer maps a missing parameter to its zero default, and
+	// a declared effect that draws nothing is a payload bug, not a look.
+	required []string
+	// requiredAny holds parameter groups where any one member supplies the
+	// effect (radius OR intensity), so an unset sibling keeps its default.
+	requiredAny [][]string
 }
 
 func newClipEffectSpec(fields []string, checks ...clipEffectCheck) clipEffectSpec {
@@ -60,69 +68,93 @@ func (s clipEffectSpec) allows(field string) bool {
 	return ok
 }
 
+// requiring pins the parameters a type needs to be visible.
+func requiring(spec clipEffectSpec, fields ...string) clipEffectSpec {
+	spec.required = fields
+	return spec
+}
+
+// requiringAny pins parameter groups where one member is enough.
+func requiringAny(spec clipEffectSpec, groups ...[]string) clipEffectSpec {
+	spec.requiredAny = groups
+	return spec
+}
+
 // clipEffectSpecs is the closed catalog of supported effect types. Checks run
 // in declaration order, so the first violated bound produces the same error the
 // hand-written validator produced.
 var clipEffectSpecs = map[string]clipEffectSpec{
-	"glitch": newClipEffectSpec([]string{"amount", "seed"},
+	"glitch": requiring(newClipEffectSpec([]string{"amount", "seed"},
 		clipEffectCheck{"amount", "in [0,1]", func(e ClipEffectSpec) bool { return inRange(e.Amount, 0, 1) }},
-	),
-	"scanlines": newClipEffectSpec([]string{"amount", "wavelength"},
+	), "amount"),
+	"scanlines": requiring(newClipEffectSpec([]string{"amount", "wavelength"},
 		clipEffectCheck{"amount", "in [0,0.25]", func(e ClipEffectSpec) bool { return inRange(e.Amount, 0, .25) }},
 		clipEffectCheck{"wavelength", "in [0.002,1]", func(e ClipEffectSpec) bool { return inRange(e.Wavelength, .002, 1) }},
-	),
+	), "amount"),
 	"mosaic": newClipEffectSpec([]string{"block_size"},
 		clipEffectCheck{"block_size", "in [1,512]", func(e ClipEffectSpec) bool { return e.BlockSize >= 1 && e.BlockSize <= 512 }},
 	),
-	"chromatic_aberration": newClipEffectSpec([]string{"amount"},
+	"chromatic_aberration": requiring(newClipEffectSpec([]string{"amount"},
 		clipEffectCheck{"amount", "in [-128,128]", func(e ClipEffectSpec) bool { return inRange(e.Amount, -128, 128) }},
-	),
+	), "amount"),
 	"halftone": newClipEffectSpec([]string{"size", "angle", "amount"},
 		clipEffectCheck{"size", "in [1,128]", func(e ClipEffectSpec) bool { return e.Size >= 1 && e.Size <= 128 }},
 		clipEffectCheck{"angle", "finite and in [-3600,3600]", func(e ClipEffectSpec) bool { return inRange(e.Angle, -3600, 3600) }},
 		clipEffectCheck{"amount", "in [0,1]", func(e ClipEffectSpec) bool { return inRange(e.Amount, 0, 1) }},
 	),
-	"vignette": newClipEffectSpec([]string{"amount", "radius", "softness"},
+	"vignette": requiring(newClipEffectSpec([]string{"amount", "radius", "softness"},
 		clipEffectCheck{"amount/radius/softness", "in [0,1]", func(e ClipEffectSpec) bool {
 			return inRange(e.Amount, 0, 1) && inRange(e.Radius, 0, 1) && inRange(e.Softness, 0, 1)
 		}},
-	),
-	"gaussian_blur": newClipEffectSpec([]string{"radius"},
+	), "amount"),
+	"gaussian_blur": requiring(newClipEffectSpec([]string{"radius"},
 		clipEffectCheck{"radius", "in [0,256]", func(e ClipEffectSpec) bool { return inRange(e.Radius, 0, 256) }},
-	),
-	"noise": newClipEffectSpec([]string{"amount", "size", "seed", "animated"},
+	), "radius"),
+	"noise": requiring(newClipEffectSpec([]string{"amount", "size", "seed", "animated"},
 		clipEffectCheck{"amount/size", "within supported noise bounds", func(e ClipEffectSpec) bool {
 			return inRange(e.Amount, 0, 1) && e.Size >= 1 && e.Size <= 256
 		}},
-	),
-	"glow": newClipEffectSpec([]string{"radius", "intensity"},
+	), "amount"),
+	"glow": requiringAny(newClipEffectSpec([]string{"radius", "intensity"},
 		clipEffectCheck{"radius/intensity", "radius in [0,256] and intensity in [0,4]", func(e ClipEffectSpec) bool {
 			return inRange(e.Radius, 0, 256) && inRange(e.Intensity, 0, 4)
 		}},
-	),
-	"bloom": newClipEffectSpec([]string{"radius", "intensity", "threshold"},
+	), []string{"radius", "intensity"}),
+	"bloom": requiringAny(newClipEffectSpec([]string{"radius", "intensity", "threshold"},
 		clipEffectCheck{"radius/intensity", "radius in [0,256] and intensity in [0,4]", func(e ClipEffectSpec) bool {
 			return inRange(e.Radius, 0, 256) && inRange(e.Intensity, 0, 4)
 		}},
 		clipEffectCheck{"threshold", "in [0,1]", func(e ClipEffectSpec) bool {
 			return e.Threshold == 0 || inRange(e.Threshold, 0, 1)
 		}},
-	),
-	"lens_distortion": newClipEffectSpec([]string{"curvature", "scale"},
+	), []string{"radius", "intensity"}),
+	"lens_distortion": requiringAny(newClipEffectSpec([]string{"curvature", "scale"},
 		clipEffectCheck{"curvature", "in [-1,1]", func(e ClipEffectSpec) bool { return inRange(e.Curvature, -1, 1) }},
 		clipEffectCheck{"scale", "in [0.1,4]", func(e ClipEffectSpec) bool {
 			return e.Scale == 0 || inRange(e.Scale, .1, 4)
 		}},
-	),
-	"sharpen": newClipEffectSpec([]string{"amount"},
+	), []string{"curvature", "scale"}),
+	"sharpen": requiring(newClipEffectSpec([]string{"amount"},
 		clipEffectCheck{"amount", "in [0,10]", func(e ClipEffectSpec) bool { return inRange(e.Amount, 0, 10) }},
-	),
-	"banded_grain": newClipEffectSpec([]string{"intensity", "speed", "seed"},
+	), "amount"),
+	"banded_grain": requiring(newClipEffectSpec([]string{"intensity", "speed", "seed"},
 		clipEffectCheck{"intensity", "in [0,4]", func(e ClipEffectSpec) bool { return inRange(e.Intensity, 0, 4) }},
 		clipEffectCheck{"speed", "in [-1000,1000]", func(e ClipEffectSpec) bool {
 			return e.Speed == 0 || inRange(e.Speed, -1000, 1000)
 		}},
-	),
+	), "intensity"),
+}
+
+// fieldSupplied reports whether the payload set the named parameter, using the
+// same presence rules the accepted-field table publishes (an explicit zero is
+// indistinguishable from an omitted key on this flat transport).
+func fieldSupplied(e ClipEffectSpec, name string) bool {
+	for _, field := range clipEffectFields {
+		if field.name == name {
+			return field.supplied(e)
+		}
+	}
+	return false
 }
 
 func inRange(value, min, max float64) bool {
@@ -151,6 +183,26 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 		}
 		if !supported {
 			return fmt.Errorf("effects[%d].type %q is unsupported", i, e.Type)
+		}
+		// A declared effect whose defining parameter is missing renders as a
+		// silent no-op (the wire default is zero), so it is rejected here
+		// rather than shipped as a look that draws nothing.
+		for _, name := range spec.required {
+			if !fieldSupplied(e, name) {
+				return bad(name, "supplied (effect \""+e.Type+"\" needs it to be visible)")
+			}
+		}
+		for _, group := range spec.requiredAny {
+			oneSupplied := false
+			for _, name := range group {
+				if fieldSupplied(e, name) {
+					oneSupplied = true
+					break
+				}
+			}
+			if !oneSupplied {
+				return bad(strings.Join(group, "/"), "supplied (effect \""+e.Type+"\" needs one of them to be visible)")
+			}
 		}
 		for _, check := range spec.checks {
 			if !check.ok(e) {

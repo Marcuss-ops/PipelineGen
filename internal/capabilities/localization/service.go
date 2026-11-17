@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +65,48 @@ type Service struct {
 	uploader   *DrivePublisher
 	renderGate chan struct{}
 	uploadGate chan struct{}
+	// reusePublishedDrive records where a certified clip was published and
+	// reuses that identity on an identical later run instead of re-uploading
+	// unchanged bytes. OFF by default: the per-run folder contract wins unless
+	// the deployment opts in.
+	reusePublishedDrive bool
+}
+
+// WithPublishedDriveReuse opts the fan-out into content-addressed Drive reuse:
+// a clip whose bytes are already published is certified UPLOADED with the
+// existing Drive identity instead of being uploaded again. The flag reaches
+// both halves of the seam — the publisher (skip) and the reuse cache (record) —
+// so they can never disagree about whether reuse is allowed.
+func (s *Service) WithPublishedDriveReuse(enabled bool) *Service {
+	if s == nil {
+		return s
+	}
+	s.reusePublishedDrive = enabled
+	if s.uploader != nil {
+		s.uploader.WithPublishedReuse(enabled)
+	}
+	return s
+}
+
+// recordDriveIdentity persists where certified bytes were published, so a later
+// identical run can skip the upload. Best-effort by design: a Store failure
+// after a successful upload must never fail a run that already delivered.
+func (s *Service) recordDriveIdentity(ctx context.Context, artifact LocalizedClipArtifact) {
+	if s == nil || !s.reusePublishedDrive || s.renderer == nil || s.renderer.reuseCache == nil {
+		return
+	}
+	if strings.TrimSpace(artifact.DriveFileID) == "" || strings.TrimSpace(artifact.DriveLink) == "" {
+		return
+	}
+	recorder, ok := s.renderer.reuseCache.(RenderDriveIdentityRecorder)
+	if !ok {
+		return
+	}
+	_ = recorder.RecordDriveIdentity(ctx, artifact.PlanFingerprint, RenderDriveIdentity{
+		FileID:   artifact.DriveFileID,
+		Link:     artifact.DriveLink,
+		FolderID: artifact.DriveFolderID,
+	})
 }
 
 // UploadRendered publishes an already certified local artifact without
@@ -228,7 +271,12 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 			}
 			published, publishErr := s.UploadRendered(ctx, rendered, in.FolderID)
 			if publishErr == nil {
-				published.DriveFolderID = in.FolderID
+				// A reused artifact lives in the folder that already holds it; only
+				// a fresh publication belongs to this run's destination.
+				if !published.Reused || published.DriveFolderID == "" {
+					published.DriveFolderID = in.FolderID
+				}
+				s.recordDriveIdentity(ctx, published)
 			}
 			recordFailure(published, publishErr)
 		}()

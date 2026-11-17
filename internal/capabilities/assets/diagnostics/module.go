@@ -18,7 +18,7 @@
 // Blocco C1-Step 2). The composition root consumes this Build via
 // `internal/app/module_media.go::WireAssets` and threads the returned
 // Descriptor into `assetsapi.Dependencies.Diagnostics` (route module
-// that mounts /diagnostics + /index-health + /qdrant/cleanup on the
+// that mounts /diagnostics + /index-health on the
 // parent /api/media group).
 //
 // `youtube/module.go` (C1-Step 4), `clips/module.go` (C1-Step 5),
@@ -29,10 +29,9 @@
 // UNIQUE TO DIAGNOSTICS (vs stock/voiceover/soundeffect/register):
 // the Handler is the thinnest in the assets tree today — it depends
 // on a single *Service (1 dep) plus a logger. The 3 routes
-// (/diagnostics + /index-health + /qdrant/cleanup) all delegate to
-// the Service.Check method (with the QDRANT-005 cleanup endpoint
-// returning an honest status — the background cleaner was removed in
-// PG-034 and is pending restoration in QDRANT-005 Fase 3).
+// (/diagnostics + /index-health) both delegate to the Service.Check
+// method. The former /pgvector/cleanup route was removed on 2026-11-17
+// together with the legacy vector engine.
 //
 // UNIQUE TO DIAGNOSTICS (vs clips): the Descriptor surface is the
 // smallest in the tree today (tied with stock / voiceover /
@@ -115,7 +114,7 @@ type Dependencies struct {
 // layer would require moving the typed-port adapter chain too,
 // violating AGENTS.md Pattern 0). There is no non-HTTP consumer of
 // the diagnostics Handler in the codebase — /diagnostics +
-// /index-health + /qdrant/cleanup are the entire public surface,
+// /index-health are the entire public surface,
 // reachable only via HTTP. The Handler stays the internal worker
 // captured by the Module closure; no caller reads a raw *Handler
 // from outside the package.
@@ -131,8 +130,8 @@ type DiagnosticsDescriptor struct {
 // group (`m.deps.Diagnostics.RegisterRoutes(r)` in
 // assets/module.go), so the new Module name "diagnostics" + the
 // empty prefix (routes mount directly on the parent) preserve the
-// public URLs /api/media/diagnostics + /api/media/index-health +
-// /api/media/qdrant/cleanup (zero-change-contract).
+// public URLs /api/media/diagnostics + /api/media/index-health
+// (zero-change-contract).
 func (d *DiagnosticsDescriptor) Name() string {
 	return d.Module.Name()
 }
@@ -188,8 +187,8 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	// root via the Module surface.
 	//
 	// Empty prefix "" preserves the pre-Step-10 routing shape:
-	// the 3 routes (GET /diagnostics + GET /index-health + POST
-	// /qdrant/cleanup) mount directly on the parent /api/media
+	// the 2 routes (GET /diagnostics + GET /index-health) mount
+	// directly on the parent /api/media
 	// group (no r.Group("/diagnostics") wrap, matching the
 	// pre-Step-10 assets/module.go behaviour). The Module name
 	// "diagnostics" is the canonical identifier (used for

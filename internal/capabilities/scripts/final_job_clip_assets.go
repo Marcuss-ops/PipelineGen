@@ -9,7 +9,33 @@ import (
 )
 
 func finalJobRenderLanguage(req GenerateRequest, result *GenerateResult) (string, error) {
-	if result == nil || len(result.LocalizedRenders) == 0 {
+	if result == nil {
+		return "", nil
+	}
+	// A final job with an explicit target language must use that language for
+	// fixed-media subtitles and localized clip assets. The source render remains
+	// available for source-only jobs, but must not override the requested target.
+	for _, target := range req.Languages {
+		preferred := strings.TrimSpace(string(target))
+		if preferred == "" {
+			continue
+		}
+		for _, rendered := range result.LocalizedRenders {
+			if strings.EqualFold(strings.TrimSpace(string(rendered.Language)), preferred) {
+				return strings.TrimSpace(string(rendered.Language)), nil
+			}
+		}
+	}
+	// Fixed-media subtitle renders are created after this choice. A singleton
+	// target is therefore authoritative even when no localized clip render
+	// exists yet; falling back to the source here burns the wrong language into
+	// stock intros/outros.
+	if len(req.Languages) == 1 {
+		if target := strings.TrimSpace(string(req.Languages[0])); target != "" {
+			return target, nil
+		}
+	}
+	if len(result.LocalizedRenders) == 0 {
 		return "", nil
 	}
 	preferred := strings.TrimSpace(string(req.SourceLanguage))

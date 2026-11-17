@@ -14,7 +14,7 @@ import (
 
 // ReindexRequester is the canonical compatibility seam for callers that still
 // expose an imperative IndexClip/IndexAsset method. In PostgreSQL media mode
-// those calls must NOT execute the retired SQLite -> Qdrant indexing pipeline;
+// those calls must NOT execute the retired SQLite -> pgvector indexing pipeline;
 // they enqueue the canonical asset.index.requested event in the PostgreSQL
 // outbox and let PostgresIndexWorker perform embedding + pgvector indexing.
 type ReindexRequester struct {

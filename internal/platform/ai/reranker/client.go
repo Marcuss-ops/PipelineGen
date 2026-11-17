@@ -1,8 +1,8 @@
 // Package reranker provides a standalone CrossEncoder reranking client.
-// It calls the Python reranker_server.py to reorder Qdrant search results
+// It calls the Python reranker_server.py to reorder pgvector search results
 //
 // Design principles:
-//   - Standalone module (not coupled to realtime or Qdrant)
+//   - Standalone module (not coupled to realtime or pgvector)
 //   - Bounded failure: HTTP timeout prevents indefinite pipeline blocking
 //   - Fail-closed: transport and contract errors are returned to the search layer
 //   - Multi-media: candidate Text field handles any media type description
@@ -27,14 +27,14 @@ import (
 type Candidate struct {
 	ID          string   `json:"id"`
 	Text        string   `json:"text"`
-	QdrantScore *float64 `json:"qdrant_score,omitempty"`
+	VectorScore *float64 `json:"vector_score,omitempty"`
 }
 
 // Result represents a reranked search result.
 type Result struct {
 	ID          string   `json:"id"`
 	RerankScore float64  `json:"rerank_score"`
-	QdrantScore *float64 `json:"qdrant_score,omitempty"`
+	VectorScore *float64 `json:"vector_score,omitempty"`
 }
 
 // Request is the payload sent to the Python reranker server.
@@ -49,7 +49,7 @@ type Response struct {
 }
 
 // Config holds the reranker client configuration.
-// Enabled defaults to true: the canonical query recipe is Qdrant top_k
+// Enabled defaults to true: the canonical query recipe is pgvector top_k
 // window → BGE re-score → top 5 results. Disable explicitly via
 // VELOX_RERANKER_ENABLED=false to bypass the sidecar.
 type Config struct {
@@ -133,7 +133,7 @@ func (c *Client) IsEnabled() bool {
 }
 
 // Weight returns the configured blend weight used when mixing
-// Qdrant and reranker scores.
+// pgvector and reranker scores.
 func (c *Client) Weight() float64 {
 	if c == nil {
 		return 0

@@ -19,10 +19,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/vlm"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 )
 
 // Percentages used for the canonical multi-frame video analysis:
@@ -46,14 +44,12 @@ type Service struct {
 	// reporting an empty candidate set.
 	enrichCandidates EnrichmentCandidateReader
 
-	// Optional video analysis ports. When all four are wired, video
-	// assets are analysed with a multi-frame sampler + per-frame VLM +
-	// keyframe embedding + keyframe indexing. When any is nil, video
-	// falls back to the same single-shot path as images.
-	videoSampler  indexing.PercentageFrameSampler
-	visualVLM     indexing.VLMClient
-	imageEmbedder qdrantsearch.ImageEmbedder
-	frameIndexer  mediamemory.KeyframeVisualIndexer
+	// Optional video analysis ports. When both are wired, video assets
+	// are analysed with a multi-frame sampler + per-frame VLM. When
+	// either is nil, video falls back to the same single-shot path as
+	// images.
+	videoSampler indexing.PercentageFrameSampler
+	visualVLM    indexing.VLMClient
 }
 
 // ServiceDeps groups the persistence, inference and video-analysis ports
@@ -74,16 +70,14 @@ type ServiceDeps struct {
 }
 
 type VideoAnalysisDeps struct {
-	Sampler       indexing.PercentageFrameSampler
-	VLM           indexing.VLMClient
-	ImageEmbedder qdrantsearch.ImageEmbedder
-	FrameIndexer  mediamemory.KeyframeVisualIndexer
+	Sampler indexing.PercentageFrameSampler
+	VLM     indexing.VLMClient
 }
 
 // NewService constructs an autotag.Service. The dispatcher is the
 // canonical AssetMutationDispatcher (atomic media_assets UPSERT +
 // asset.index.requested outbox event) used to persist VLM metadata
-// changes and trigger Qdrant re-indexing. enrichState is the
+// changes and trigger pgvector re-indexing. enrichState is the
 // canonical state-machine port for media_assets.enrich_state
 // transitions (PR-ENRICHMENT-STATE-MACHINE).
 //
@@ -102,8 +96,6 @@ func NewService(deps ServiceDeps) *Service {
 		log:              deps.Log,
 		videoSampler:     deps.VideoAnalysis.Sampler,
 		visualVLM:        deps.VideoAnalysis.VLM,
-		imageEmbedder:    deps.VideoAnalysis.ImageEmbedder,
-		frameIndexer:     deps.VideoAnalysis.FrameIndexer,
 	}
 }
 
@@ -111,8 +103,8 @@ func NewService(deps ServiceDeps) *Service {
 // metadata through the canonical AssetMutationDispatcher. The
 // dispatcher performs an atomic SQLite UPSERT + emits an
 // asset.index.requested outbox event; the outbox worker then handles
-// Qdrant re-indexing, replacing the previous goroutine-based direct
-// Qdrant call.
+// pgvector re-indexing, replacing the previous goroutine-based direct
+// pgvector call.
 //
 // For video assets, when the multi-frame analysis ports are wired,
 // TagAsset extracts frames at 0%, 25%, 50%, 75% and 100% of the
@@ -278,58 +270,10 @@ func (s *Service) tagVideoMultiFrame(ctx context.Context, a *asset.Asset) error 
 		a.SetVLMAggregateDescription(text)
 	}
 
-	// Embed frames and index each keyframe separately.
-	if s.imageEmbedder != nil && s.frameIndexer != nil {
-		if err := s.indexKeyframes(ctx, a, frames, responses); err != nil {
-			// Keyframe indexing is best-effort: we still want the VLM
-			// metadata to be persisted, but we surface the failure in
-			// the logs so the operator can investigate.
-			s.log.Warn("autotag: keyframe indexing failed", zap.String("asset_id", a.ID), zap.Error(err))
-		}
-	}
-
 	if err := s.persistVLM(ctx, a); err != nil {
 		return fmt.Errorf("dispatcher.EnqueueAndIndex after video VLM: %w", err)
 	}
 
-	return nil
-}
-
-// indexKeyframes generates SigLIP embeddings for the extracted frames
-// and writes one point per frame into pipelinegen_media_frames.
-func (s *Service) indexKeyframes(ctx context.Context, a *asset.Asset, frames []indexing.FrameSample, responses []*indexing.VLMInferenceResponse) error {
-	paths := make([]string, 0, len(frames))
-	for _, f := range frames {
-		paths = append(paths, f.Path)
-	}
-	vectors, err := s.imageEmbedder.EmbedImages(ctx, paths)
-	if err != nil {
-		return fmt.Errorf("embed frames: %w", err)
-	}
-	if len(vectors) != len(frames) {
-		return fmt.Errorf("embed frames: expected %d vectors, got %d", len(frames), len(vectors))
-	}
-
-	language := strings.ToLower(a.Language())
-	if language == "" {
-		language = "en"
-	}
-
-	for i, f := range frames {
-		vec := vectors[i]
-		if len(vec) == 0 {
-			s.log.Warn("autotag: empty frame embedding", zap.String("asset_id", a.ID), zap.Int("frame_index", i))
-			continue
-		}
-		tsMs := int64(f.Timestamp * 1000)
-		if err := s.frameIndexer.IndexKeyframe(ctx, a.ID, tsMs, a.ID, language, vec, ""); err != nil {
-			s.log.Warn("autotag: index keyframe failed",
-				zap.String("asset_id", a.ID),
-				zap.Int("frame_index", i),
-				zap.Int64("ts_ms", tsMs),
-				zap.Error(err))
-		}
-	}
 	return nil
 }
 
@@ -422,7 +366,7 @@ func (s *Service) tagAssetSingle(ctx context.Context, a *asset.Asset) error {
 	// 4. Persist atomically through the canonical mutation dispatcher.
 	// The dispatcher UPSERTs the row and emits an asset.index.requested
 	// outbox event in a single transaction; the outbox worker will drive
-	// Qdrant re-indexing. This replaces the previous repo.Upsert +
+	// pgvector re-indexing. This replaces the previous repo.Upsert +
 	// goroutine vectorStore.UpsertFromClip pattern.
 	if err := s.persistVLM(ctx, a); err != nil {
 		return fmt.Errorf("dispatcher.EnqueueAndIndex after VLM: %w", err)

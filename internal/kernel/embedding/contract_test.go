@@ -75,8 +75,8 @@ func TestContract_Equal(t *testing.T) {
 
 func TestContract_MatchesPartial(t *testing.T) {
 	// Only dimension + distance populated: matches the canonical text channel.
-	qdrant := Contract{Dimension: 768, Distance: "Cosine"}
-	if !CanonicalText.MatchesPartial(qdrant) {
+	pgvector := Contract{Dimension: 768, Distance: "Cosine"}
+	if !CanonicalText.MatchesPartial(pgvector) {
 		t.Fatal("partial contract matching on dim+distance must pass")
 	}
 	if !CanonicalText.MatchesPartial(Contract{}) {

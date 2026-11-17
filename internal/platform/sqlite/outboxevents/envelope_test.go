@@ -187,7 +187,7 @@ func TestBuildReindexEnvelopeV1_PayloadMirrorsKey(t *testing.T) {
 // tell which engine wrote the row, and the declaration used to be a literal
 // list per emitter — it drifted to ["text","transcript"] while the
 // PostgreSQL media plane writes exactly one channel (embedding_type='text').
-// "transcript" belonged to the RETIRED SQLite → Qdrant media projection, so
+// "transcript" belonged to the RETIRED SQLite → legacy media projection, so
 // declaring it requested vectors no producer creates (phantom availability,
 // godlike/07).
 //

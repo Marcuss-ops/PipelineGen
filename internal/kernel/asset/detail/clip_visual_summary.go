@@ -4,24 +4,24 @@
 // godlike/06 SSOT (one canonical owner per fact): this file is the
 // SOLE canonical owner of the VisualSummary row shape for the
 // asset_visual_summaries table. All other layers (infrastructure
-// SQLite repo, Qdrant payload mapper, outbox/event-key derivation)
+// SQLite repo, pgvector payload mapper, outbox/event-key derivation)
 // read/write this struct - they MUST NOT construct an alternative
 // mirror of these fields.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the VisualSummary row is NOT a
 // cached representation of something the sampler can re-derive. The
-// Qdrant payload carries visual_summary/visible_actions/visible_entities
+// pgvector payload carries visual_summary/visible_actions/visible_entities
 // ONLY when a real VLM pass ran (the row's preprocessing_version +
 // model_version prove it). A pre-VLM-era clip with NO row emits NO
-// payload keys (omitempty contract - see qdrant.payload_builder_test.go).
+// payload keys (omitempty contract - see pgvector.payload_builder_test.go).
 //
 // Reconstructability: the visual_summary/visible_actions/visible_entities
 // payload is rebuildable from SQLite by re-running the VLM pass on the
 // same frames + same model version - i.e. ReindexVerifier is the
 // canonical post-reindex consistency gate. See
-// internal/platform/qdrant/verification/verifier.go for the
+// internal/platform/postgres/media/verification/verifier.go for the
 // verifier extension that cross-checks the SQLite row vs the
-// Qdrant payload.
+// pgvector payload.
 package detail
 
 import (
@@ -67,7 +67,7 @@ import (
 //   - PreprocessingVersion          -> canonical "vlm-sampler/<semver>"
 //     identifier of the frame-sampler +
 //     FFmpeg pipeline that produced this
-//     row. Used by the Qdrant payload's
+//     row. Used by the pgvector payload's
 //     visual_preprocessing_version field.
 //
 //   - ModelName                     -> VLM model identifier (e.g. "llava-1.6-7b").
@@ -90,7 +90,7 @@ import (
 //     Used by the supersede gate - a re-run
 //     that produces the same SourceHash is a
 //     no-op; a different SourceHash forces
-//     a Qdrant re-index even when the
+//     a pgvector re-index even when the
 //     content_hash is unchanged - e.g.
 //     a model_version bump.
 //
@@ -105,8 +105,8 @@ import (
 //
 // Empty-marked fields: VisualSummaryText "" means "no caption";
 // VisibleActions nil means "no actions"; VisibleEntities nil means
-// "no entities". The Qdrant payload omits all three (omitempty)
-// in this case - see qdrant.payload_builder_test.go for the
+// "no entities". The pgvector payload omits all three (omitempty)
+// in this case - see pgvector.payload_builder_test.go for the
 // strict-emit test contract that pins this behaviour.
 type VisualSummary struct {
 	AssetID              string    `json:"asset_id"`
@@ -134,17 +134,17 @@ const (
 	// MaxVisualSummaryChars is the audit-stable cap on the visual
 	// summary caption length. The Python sidecar enforces the same
 	// limit at the conversion layer (truncate + warn). 512 chars
-	// matches the qdrant.payload_mapper search-field convention.
+	// matches the pgvector.payload_mapper search-field convention.
 	MaxVisualSummaryChars = 512
 
 	// MaxVisibleItems is the audit-stable cap on VisibleActions
 	// and VisibleEntities array sizes. 32 items per array matches
-	// the qdrant.payload_mapper expected-bounded-shape contract.
+	// the pgvector.payload_mapper expected-bounded-shape contract.
 	MaxVisibleItems = 32
 )
 
 // Typed validation errors. Each is exposed as a sentinel so
-// callers (the SQLite repository, the Qdrant payload mapper,
+// callers (the SQLite repository, the pgvector payload mapper,
 // the admin reindex command) can programmatic-distinguish via
 // errors.Is - the canonical godlike/07 NO-FAKE-AVAILABILITY
 // surface. Validate() joins all field-level violations into a
@@ -193,7 +193,7 @@ var (
 // VisualSummary with asset_id only, no VLM pass invoked.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the empty row is NOT a
-// "we tried" placeholder. The Qdrant payload omits
+// "we tried" placeholder. The pgvector payload omits
 // visual_summary/visible_actions/visible_entities entirely
-// when the row is empty. See qdrant.payload_builder_test.go for
+// when the row is empty. See pgvector.payload_builder_test.go for
 // the omitempty regression contract.

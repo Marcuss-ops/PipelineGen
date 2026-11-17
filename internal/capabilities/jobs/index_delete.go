@@ -1,16 +1,16 @@
 // Package outbox — index_delete.go carries the consumer handler for
-// `asset.index.delete_requested` events (QDRANT-002 PR2, closes ticket
+// `asset.index.delete_requested` events (VECTOR-002 PR2, closes ticket
 // item H).
 //
 // The handler is the deletion counterpart of IndexingHandler:
 //
-//   - IndexingHandler ingests the asset → media_assets row + Qdrant upsert.
-//   - IndexDeleteHandler removes the asset → Qdrant point delete +
+//   - IndexingHandler ingests the asset → media_assets row + pgvector upsert.
+//   - IndexDeleteHandler removes the asset → pgvector point delete +
 //     media_assets row soft-delete.
 //
 // Idempotency is the primary contract:
 //
-//   - Qdrant's DeletePoints is natively idempotent (returns 200 with
+//   - pgvector's DeletePoints is natively idempotent (returns 200 with
 //     deleted_count: 0 when the point is already absent; never returns
 //     404 on a missing point).
 //   - The pre-flight GetClip + lifecycle_state check short-circuits to
@@ -22,12 +22,12 @@
 //
 //   - Read asset by id; missing OR lifecycle_state in
 //     {asset.StateDeleted, "deleted"} → treat as success (MarkCompleted).
-//   - Otherwise: call Qdrant Deleter; non-nil error → return non-terminal
+//   - Otherwise: call pgvector Deleter; non-nil error → return non-terminal
 //     error → pool's MarkFailed backoff (eventually dead_letter).
-//   - On Qdrant success: SoftDelete in SQLite → return nil.
+//   - On pgvector success: SoftDelete in SQLite → return nil.
 //
 // The canonical index_state machine (DISCOVERED → INDEX_PENDING → … →
-// DELETE_PENDING → DELETED) lives in QDRANT-002 PR4. PR2 uses the
+// DELETE_PENDING → DELETED) lives in VECTOR-002 PR4. PR2 uses the
 // existing SoftDelete path that sets lifecycle_state='deleted' (lowercase);
 // both casings are recognised on read so future migration to the
 // canonical 'DELETED' string is non-breaking.
@@ -68,28 +68,28 @@ var errIndexLifecycleTerminal = errors.New("index_delete: terminal envelope erro
 // instead of silently retrying on what looks like a routine failure.
 const DeleteRequestSchemaVersion = event.AssetIndexDeleteRequestedV1Schema
 
-// VectorPointDeleter is satisfied by *qdrant.IndexWriter (see the
+// VectorPointDeleter is satisfied by *pgvector.IndexWriter (see the
 // compile-time assertion at
-// internal/platform/qdrant/index_writer.go). The interface
+// internal/platform/postgres/media/index_writer.go). The interface
 // itself lives in ports.go per AGENTS.md Pattern 0 — application-layer
-// consumers MUST NOT redeclare it locally. PR 4 (refactor/single-qdrant-runtime)
-// consolidated the previous pair of duplicated `QdrantDeleter`
-// declarations (one in infra/qdrant/types.go and one local here)
+// consumers MUST NOT redeclare it locally. PR 4 (refactor/single-pgvector-runtime)
+// consolidated the previous pair of duplicated `VectorPointDeleter`
+// declarations (one in infra/pgvector/types.go and one local here)
 // into this single port.
 //
-// Production concrete: *qdrant.IndexWriter from
-// internal/platform/qdrant which satisfies the signature exactly.
+// Production concrete: *pgvector.IndexWriter from
+// internal/platform/postgres/media which satisfies the signature exactly.
 
 // AssetDeleter is the minimum surface for reading the current asset
 // state (pre-flight idempotency check) and writing the soft-delete +
-// canonical index_state transition (QDRANT-002 PR6). The production
+// canonical index_state transition (VECTOR-002 PR6). The production
 // concrete is *assets.ClipsRepository from
 // internal/platform/sqlite/assets.
 //
 // SetIndexState writes the canonical index_state column on
 // media_assets (the column added by migration 094). Called by
 // IndexDeleteHandler.Handle between the idempotency pre-flight and
-// the Qdrant delete (write DELETE_PENDING) and again after the SQLite
+// the pgvector delete (write DELETE_PENDING) and again after the SQLite
 // SoftDelete (write DELETED). The method is intentionally narrow —
 // a single column flip — so production wiring reflects an interface
 // extension without an adapter layer. Tests pass a stub that
@@ -102,7 +102,7 @@ type AssetDeleter interface {
 	// media_assets.lifecycle_state column (5-state deletion
 	// machine ACTIVE → DELETE_REQUESTED → DRIVE_DELETE_PENDING →
 	// INDEX_DELETE_PENDING → DELETED). The IndexDeleteHandler
-	// calls this method ONLY on the terminal hop — after Qdrant
+	// calls this method ONLY on the terminal hop — after pgvector
 	// delete + SQLite SoftDelete + index_state=DELETED — to close
 	// the state machine so an operator dashboard reads
 	// 'lifecycle_state=DELETED' (not stuck at 'INDEX_DELETE_PENDING')
@@ -149,7 +149,7 @@ type indexDeleteRequestV1 struct {
 // satisfy the local interfaces.
 type IndexDeleteHandler struct {
 	log           *zap.Logger
-	qdrantDeleter VectorPointDeleter
+	vectorDeleter VectorPointDeleter
 	assetDeleter  AssetDeleter
 }
 
@@ -157,13 +157,13 @@ type IndexDeleteHandler struct {
 // nop logger. Either deleter nil is a programming error — the handler
 // guards each call site with a nil-check so partial wiring degrades to
 // "depend on the other" rather than crashing.
-func NewIndexDeleteHandler(log *zap.Logger, qdrantDeleter VectorPointDeleter, assetDeleter AssetDeleter) *IndexDeleteHandler {
+func NewIndexDeleteHandler(log *zap.Logger, vectorDeleter VectorPointDeleter, assetDeleter AssetDeleter) *IndexDeleteHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &IndexDeleteHandler{
 		log:           log.Named("index_delete"),
-		qdrantDeleter: qdrantDeleter,
+		vectorDeleter: vectorDeleter,
 		assetDeleter:  assetDeleter,
 	}
 }
@@ -184,11 +184,11 @@ func (h *IndexDeleteHandler) IdempotencyKey() string {
 }
 
 // Handle parses the v1 envelope, performs the idempotent delete
-// (Qdrant + SQLite soft-delete), and returns nil on success. Validation
+// (pgvector + SQLite soft-delete), and returns nil on success. Validation
 // failures and unsatisfiable payloads return typed terminal errors
 // (PR1's outboxevents.NewTerminalError) so the pool's IsTerminal
 // classifier dead-letters them immediately rather than burning
-// max_attempts in a repair loop. Transient Qdrant failures return
+// max_attempts in a repair loop. Transient pgvector failures return
 // non-terminal errors so the pool retries per its backoff.
 func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
 	log := h.log
@@ -290,10 +290,10 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		// canonicalisation is non-breaking.
 		//
 		// Blocco 3.1 commit 2/3 (July 2026) extends the idempotent
-		// skip set with StateIndexDeleted (the new post-Qdrant
+		// skip set with StateIndexDeleted (the new post-pgvector
 		// confirmation hop), so re-running the index-delete on a row
 		// already at the intermediate confirmation state is a free
-		// no-op rather than a redundant Qdrant call.
+		// no-op rather than a redundant pgvector call.
 		switch string(existing.LifecycleState) {
 		case string(asset.StateDeleted), "deleted", string(asset.StateIndexDeleted):
 			log.Info("asset.index.delete_requested: asset already past INDEX_DELETED — treat as success (idempotent)",
@@ -314,9 +314,9 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		// Pre-fix pre-flight did NOT distinguish the various Drive
 		// vs Index states — a row at StateDriveDeletePending
 		// (Drive side-effect in flight or retried) fell through to
-		// the work and ran Qdrant on an asset whose Drive file was
+		// the work and ran pgvector on an asset whose Drive file was
 		// still alive (the silent-success class the user spec calls
-		// out as "asset con proiezione" being Qdrant-deleted while
+		// out as "asset con proiezione" being vector-deleted while
 		// the Drive copy is still alive in user's Drive account).
 		// The new explicit cases below close that gap.
 		switch existing.LifecycleState {
@@ -324,7 +324,7 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 			log.Info("asset.index.delete_requested: asset in DRIVE_DELETED — Drive side-effect confirmed; closing the index chain",
 				append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
 			)
-			// fall through — ready to do the Qdrant+SoftDelete work.
+			// fall through — ready to do the pgvector+SoftDelete work.
 		case asset.StateLifecycleIndexDeletePending:
 			log.Info("asset.index.delete_requested: asset in INDEX_DELETE_PENDING (legacy forward-compat post-July 2026 or in-flight) — closing the chain",
 				append(reqLog, zap.String("lifecycle_state", string(existing.LifecycleState)))...,
@@ -341,7 +341,7 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 			// / PROCESSING / ERROR rows — blocks the index hop. The
 			// asset's Drive file is NOT yet confirmed-deleted (the
 			// user spec calls this "file Drive fosse ancora vivo");
-			// proceeding to Qdrant.DeletePoints on an alive-Drive
+			// proceeding to pgvector.DeletePoints on an alive-Drive
 			// asset would silently orphan the Drive copy per
 			// godlike/07 "no fake availability". Return terminal:
 			// re-enqueueing won't help, only DriveDeleteHandler
@@ -358,19 +358,19 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 	}
 
 	// Mark delete-intent on media_assets.index_state BEFORE any
-	// external side-effect (Qdrant delete) — QDRANT-002 PR6 column
+	// external side-effect (pgvector delete) — VECTOR-002 PR6 column
 	// promotion. DELETE_PENDING is observable from dashboards while
 	// the SoftDelete is in flight; useful for an operator
 	// investigating a stuck DELETE flow. Survives a worker crash
 	// mid-flow: the outbox lease-fence retries the event from the
-	// start (Qdrant delete is idempotent at the API layer). The
+	// start (pgvector delete is idempotent at the API layer). The
 	// re-write of DELETE_PENDING on retry is itself idempotent
 	// (column already holds DELETE_PENDING) so no transition noise.
 	if h.assetDeleter != nil {
 		if err := h.assetDeleter.SetIndexState(ctx, req.AssetID, asset.StateIndexDeletePending); err != nil {
 			// SetIndexState failure is retryable — same backoff path
-			// as Qdrant errors. The retry re-runs SetIndexState →
-			// Qdrant → SoftDelete → SetIndexState(DELETED). The only
+			// as pgvector errors. The retry re-runs SetIndexState →
+			// pgvector → SoftDelete → SetIndexState(DELETED). The only
 			// cost is one redundant column flip on a retry; the
 			// pre-flight's lifecycle_state=DELETED early-skip catches
 			// the AFTER-SoftDelete case.
@@ -381,30 +381,30 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		}
 	}
 
-	// Qdrant delete first. DeletePoints is natively idempotent at
+	// pgvector delete first. DeletePoints is natively idempotent at
 	// the API layer: a missing point returns 200 + deleted_count: 0,
 	// not 404. We do NOT need a separate "is the point there?"
 	// pre-flight — a second delete is a free no-op at the API.
-	log.Info("asset.index.delete_requested: deleting Qdrant point", reqLog...)
-	if h.qdrantDeleter != nil {
-		if err := h.qdrantDeleter.DeleteAssetPoints(ctx, []string{req.AssetID}); err != nil {
-			log.Warn("asset.index.delete_requested: Qdrant delete failed (retryable)",
+	log.Info("asset.index.delete_requested: deleting pgvector point", reqLog...)
+	if h.vectorDeleter != nil {
+		if err := h.vectorDeleter.DeleteAssetPoints(ctx, []string{req.AssetID}); err != nil {
+			log.Warn("asset.index.delete_requested: pgvector delete failed (retryable)",
 				append(reqLog, zap.Error(err))...,
 			)
 			return fmt.Errorf("asset.index.delete_requested DeletePoints(%s): %w", req.AssetID, err)
 		}
 	}
 
-	// SQLite soft-delete AFTER Qdrant success. Qdrant is the source
+	// SQLite soft-delete AFTER pgvector success. pgvector is the source
 	// of truth for the vector index — only after it has been
 	// acknowledged do we mark the asset as DELETED in SQLite so
 	// future ingestions do not re-create a phantom point. If the
 	// SoftDelete itself fails (rare; SQLite is local) the retry
 	// path returns retryable so the worker re-runs both steps; the
-	// Qdrant call is cheap to repeat (idempotent).
+	// pgvector call is cheap to repeat (idempotent).
 	if h.assetDeleter != nil {
 		if err := h.assetDeleter.SoftDelete(ctx, req.AssetID); err != nil {
-			log.Warn("asset.index.delete_requested: SQLite SoftDelete failed (retryable — Qdrant already done)",
+			log.Warn("asset.index.delete_requested: SQLite SoftDelete failed (retryable — pgvector already done)",
 				append(reqLog, zap.Error(err))...,
 			)
 			return fmt.Errorf("asset.index.delete_requested SoftDelete(%s): %w", req.AssetID, err)
@@ -428,9 +428,9 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		// Blocco 3.1 commit 2/3 (July 2026): intermediate
 		// confirmation hop lifecycle_state = INDEX_DELETED runs
 		// AFTER SoftDelete + index_state=DELETED + BEFORE the
-		// terminal DELETED flip. This is the post-Qdrant+SoftDelete
+		// terminal DELETED flip. This is the post-pgvector+SoftDelete
 		// confirmation hop — an operator dashboard can now
-		// distinguish "Qdrant projection removed confirmed" (the new
+		// distinguish "pgvector projection removed confirmed" (the new
 		// INDEX_DELETED state) from "fully retired" (terminal
 		// DELETED) AND from "Drive side-effect confirmed but index
 		// work still in flight" (INDEX_DELETE_PENDING). Idempotent
@@ -440,7 +440,7 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		// INDEX_DELETED (idempotent skip) or DELETED (terminal
 		// idempotent skip) and the write path is re-attempted.
 		if err := h.assetDeleter.SetLifecycleState(ctx, req.AssetID, asset.StateIndexDeleted); err != nil {
-			log.Warn("asset.index.delete_requested: SetLifecycleState(INDEX_DELETED) failed (retryable — Qdrant+SoftDelete+index_state already done)",
+			log.Warn("asset.index.delete_requested: SetLifecycleState(INDEX_DELETED) failed (retryable — pgvector+SoftDelete+index_state already done)",
 				append(reqLog, zap.Error(err))...,
 			)
 			return fmt.Errorf("asset.index.delete_requested SetLifecycleState(INDEX_DELETED, %s): %w", req.AssetID, err)
@@ -453,7 +453,7 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		// at DELETED is a no-op write (ClipsRepository.
 		// SetLifecycleState is idempotent per its docstring).
 		if err := h.assetDeleter.SetLifecycleState(ctx, req.AssetID, asset.StateDeleted); err != nil {
-			log.Warn("asset.index.delete_requested: SetLifecycleState(DELETED) failed (retryable — Qdrant+SoftDelete+index_state+INDEX_DELETED already done)",
+			log.Warn("asset.index.delete_requested: SetLifecycleState(DELETED) failed (retryable — pgvector+SoftDelete+index_state+INDEX_DELETED already done)",
 				append(reqLog, zap.Error(err))...,
 			)
 			return fmt.Errorf("asset.index.delete_requested SetLifecycleState(DELETED, %s): %w", req.AssetID, err)

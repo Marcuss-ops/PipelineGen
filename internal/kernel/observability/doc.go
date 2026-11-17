@@ -10,7 +10,7 @@
 //
 //	Run        — one job execution (created by RunObserver.StartRun)
 //	Stage      — one canonical pipeline phase (validate, acquire, ...)
-//	Operation  — one external-boundary call (qdrant.search, drive.upload, ...)
+//	Operation  — one external-boundary call (pgvector.search, drive.upload, ...)
 //	Artifact   — one produced or reused output
 //	Counters   — universal run counters (items, cache, retries, bytes)
 //

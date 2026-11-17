@@ -1,5 +1,5 @@
 // Package drive tests the PR-DRIVE-AVAILABILITY-GATE fail-closed helper
-// (mirror of PR-QDRANT-CONFIG-MISMATCH-GATE / ART-002 P0.1 test surface
+// (mirror of PR-VECTOR-CONFIG-MISMATCH-GATE / ART-002 P0.1 test surface
 // — godlike/06 SSOT).
 //
 // Scope (per architecture/current.yaml#PR-DRIVE-AVAILABILITY-GATE.linked_issues):

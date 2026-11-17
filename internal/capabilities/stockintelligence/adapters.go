@@ -1,5 +1,5 @@
 // Package stockintelligence — adapters.go owns the provider-registry
-// fallback surface. The local (Qdrant/SQLite) adapters are REMOVED
+// fallback surface. The local (pgvector/SQLite) adapters are REMOVED
 // post Postgres-media-cutover: the single retrieval plane is
 // PostgresLocalSearchAdapter + PostgresAssetHydrator (adapters_postgres.go)
 // against the PostgreSQL SSOT (pgvector HNSW 768d).

@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
@@ -225,6 +226,41 @@ func removeStagedLocalizedRenderLocked(result *GenerateResult, rendered Localize
 // accumulateLocalizedRenderMetrics records both child work and the enclosing
 // fan-out wall span. Child durations are summed as WorkMS; the parent wall is
 // first-start to last-finish and therefore remains correct under concurrency.
+// recomputeLocalizedRenderMetrics rebuilds the fan-out summary from the
+// CERTIFIED set. Deduplication (resumed attempts, retried scenes) collapses
+// LocalizedRenders to one receipt per (scene, clip, language) but the running
+// accumulators kept every receipt the attempt produced, so the reported
+// work_ms/wall_ms described renders that are not in the artifact set at all
+// (2026-11-16 Obama runs: 35 cache-hit clips reported work_ms=1.351.641 and
+// wall_ms=175.821 against 0,62 s of real spans). Recomputing at the single
+// completion point makes the numbers describe the delivered clips.
+func recomputeLocalizedRenderMetrics(result *GenerateResult) {
+	if result == nil || result.RenderMetrics == nil {
+		return
+	}
+	var work int64
+	var first, last time.Time
+	for _, rendered := range result.LocalizedRenders {
+		if rendered.WallMS > 0 {
+			work += rendered.WallMS
+		}
+		if !rendered.StartedAt.IsZero() && (first.IsZero() || rendered.StartedAt.Before(first)) {
+			first = rendered.StartedAt
+		}
+		if !rendered.FinishedAt.IsZero() && rendered.FinishedAt.After(last) {
+			last = rendered.FinishedAt
+		}
+	}
+	result.RenderMetrics.WorkMS = work
+	result.renderFirstStartedAt = first
+	result.renderLastFinishedAt = last
+	if !first.IsZero() && !last.IsZero() {
+		result.RenderMetrics.WallMS = last.Sub(first).Milliseconds()
+		return
+	}
+	result.RenderMetrics.WallMS = 0
+}
+
 func accumulateLocalizedRenderMetrics(result *GenerateResult, rendered LocalizedRenderResult) {
 	if result == nil || result.RenderMetrics == nil {
 		return

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -39,6 +40,13 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 	details = append(details, validateOutput(item.Output, ref)...)
 	if err := item.OverlayStyle.Validate(); err != nil {
 		details = append(details, ref+": "+err.Error())
+	}
+	if item.OverlayStyle != nil {
+		// Per-type effect bounds live in cliprender's catalog; this is the
+		// early gate that spares the caller an expensive run.
+		if err := capabilityoverlay.ValidateImageTreatments(item.OverlayStyle.Image); err != nil {
+			details = append(details, ref+": "+err.Error())
+		}
 	}
 	details = append(details, validateScript(item.ScriptParams, ref)...)
 	if item.ScriptParams.SourceTextVerbatim && item.Source.Type != scriptpkg.SourceText {

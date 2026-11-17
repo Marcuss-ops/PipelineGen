@@ -15,7 +15,7 @@ const vidRushCacheTTL = 48 * time.Hour
 
 // SQLiteVidRushCacheAdapter is the durable L2 cache for VidRush provider
 // discovery and materialization. It owns only the cache table; canonical
-// media_assets, outbox and Qdrant state remain owned by their normal writers.
+// media_assets, outbox and pgvector state remain owned by their normal writers.
 type SQLiteVidRushCacheAdapter struct {
 	db  *sql.DB
 	log *zap.Logger

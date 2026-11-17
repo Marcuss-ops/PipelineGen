@@ -113,7 +113,6 @@
 | POST | `/api/media/clips/ingest/ai-stock` | Ingest an AI-generated stock clip from visual analysis + Drive video |
 | POST | `/api/media/clips/upload-video` | Upload video clip |
 | POST | `/api/media/import` | Ingest media (image / voiceover / clip / stock) by request kind |
-| POST | `/api/media/qdrant/cleanup` | Clean up stale Qdrant points |
 | POST | `/api/media/register-batch` | Batch register assets |
 | POST | `/api/media/register-from-youtube` | Register asset from YouTube URL |
 | POST | `/api/media/resolve/:asset_id` | ⚠️ MISSING DESCRIPTION |

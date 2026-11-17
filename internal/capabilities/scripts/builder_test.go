@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -832,8 +833,8 @@ func TestBuildGenerateRequest_ConnectsOutputDriveFolderToRender(t *testing.T) {
 	if got.Render.DriveFolderID != "drive-root" {
 		t.Fatalf("render drive folder = %q, want drive-root", got.Render.DriveFolderID)
 	}
-	if got.Render.DriveSubfolderName != "Mike Tyson overlay" {
-		t.Fatalf("render subfolder = %q, want title-derived folder", got.Render.DriveSubfolderName)
+	if !strings.HasPrefix(got.Render.DriveSubfolderName, "Mike Tyson overlay-") {
+		t.Fatalf("render subfolder = %q, want title-derived run-scoped folder", got.Render.DriveSubfolderName)
 	}
 }
 
@@ -865,5 +866,97 @@ func TestBuildGenerateRequest_OneSourceFansOutLanguages(t *testing.T) {
 	}
 	if got.ExtractEntities != scriptpkg.ToggleEnabled {
 		t.Fatalf("entity extraction was lost at the durable request boundary: %q", got.ExtractEntities)
+	}
+}
+
+// TestBuildGenerateRequest_RejectsTranslationProviderWithoutTarget is the R108
+// regression gate: language=it + output.languages=[it] + an explicit translator
+// delivered source text tagged as Italian and still reached SUCCEEDED. A
+// configured translator with no differing target is now rejected at submit.
+func TestBuildGenerateRequest_RejectsTranslationProviderWithoutTarget(t *testing.T) {
+	const raw = `{"version":2,"items":[{"title":"r108","language":"it","translation":{"provider":"argos"},"source":{"type":"text","topic":"topic"},"output":{"languages":["it"]}}]}`
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatal(err)
+	}
+	_, err := BuildGenerateRequest(&env, "r108-key")
+	if err == nil || !strings.Contains(err.Error(), "no target different from source") {
+		t.Fatalf("source-only payload with a translator must fail closed, got %v", err)
+	}
+}
+
+func TestBuildGenerateRequest_AcceptsTranslationProviderWithTarget(t *testing.T) {
+	const raw = `{"version":2,"items":[{"title":"r109","language":"en","translation":{"provider":"argos"},"source":{"type":"text","topic":"topic"},"output":{"languages":["it"]}}]}`
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "r109-key")
+	if err != nil {
+		t.Fatalf("explicit en->it translation must build: %v", err)
+	}
+	if got.SourceLanguage != "en" || len(got.Languages) != 1 || got.Languages[0] != "it" {
+		t.Fatalf("translation contract = source %q targets %v", got.SourceLanguage, got.Languages)
+	}
+}
+
+// TestBuildGenerateRequest_DefaultsEntityImageMotionPool closes the R103
+// gap at the request boundary: the Rust planner rejects an admitted entity
+// image when canvas.entity_image_motions is empty, but an omitted pool means
+// automatic rotation. The builder now resolves the certified pool once.
+func TestBuildGenerateRequest_DefaultsEntityImageMotionPool(t *testing.T) {
+	const raw = `{"version":2,"items":[{"title":"entity-pool","language":"en","source":{"type":"text","topic":"topic"},"media_plan":{"extraction":{"entity_images":{"enabled":true}}}}]}`
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "entity-pool-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := capabilityoverlay.CertifiedEntityImageMotions()
+	if len(want) == 0 || len(got.EntityImageMotions) != len(want) {
+		t.Fatalf("entity_image_motions = %d, want the certified %d-entry pool", len(got.EntityImageMotions), len(want))
+	}
+}
+
+func TestBuildGenerateRequest_DefaultDriveSubfolderIsRunScoped(t *testing.T) {
+	build := func(key string) string {
+		t.Helper()
+		const raw = `{"version":2,"items":[{"title":"Same title","language":"en","source":{"type":"text","topic":"Same topic"},"output":{"render":{"enabled":true}}}]}`
+		var env scriptpkg.GenerationEnvelopeV2
+		if err := json.Unmarshal([]byte(raw), &env); err != nil {
+			t.Fatal(err)
+		}
+		got, err := BuildGenerateRequest(&env, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Render.DriveSubfolderName
+	}
+	first, retry, second := build("run-a"), build("run-a"), build("run-b")
+	if first != retry {
+		t.Fatalf("same idempotency key must reuse its folder: %q vs %q", first, retry)
+	}
+	if first == second {
+		t.Fatalf("different runs must not share a folder: both = %q", first)
+	}
+	if !strings.HasPrefix(first, "Same title-") {
+		t.Fatalf("default folder = %q, want title-derived run-scoped folder", first)
+	}
+}
+
+func TestBuildGenerateRequest_PreservesExplicitDriveSubfolder(t *testing.T) {
+	const raw = `{"version":2,"items":[{"title":"t","language":"en","source":{"type":"text","topic":"topic"},"output":{"render":{"enabled":true,"drive_subfolder_name":"operator-folder"}}}]}`
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "run-c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Render.DriveSubfolderName != "operator-folder" {
+		t.Fatalf("explicit folder was rewritten to %q", got.Render.DriveSubfolderName)
 	}
 }

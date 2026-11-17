@@ -240,8 +240,8 @@ func BuildMaintenanceSteps(deps MaintenanceDeps) []StartupStep {
 		})
 	}
 
-	// Qdrant-cleaner step removed (godlike/07 no-fake-availability
-	// + PR-QDRANT-FINAL-DECISION 2026-07-04: Qdrant is the canonical
+	// vector-cleaner step removed (godlike/07 no-fake-availability
+	// + PR-VECTOR-FINAL-DECISION 2026-07-04: pgvector is the canonical
 	// data-path vector store; the 3 background-cleanup steps retired
 	// earlier will be re-introduced by Wave 30 BACKFILL with the
 	// canonical scope pinned to composition.go::ProcessBundle).
@@ -386,17 +386,17 @@ func BuildMaintenanceSteps(deps MaintenanceDeps) []StartupStep {
 	// ── projection-reconciler step REMOVED (POSTGRES-MEDIA-CUTOVER) ──
 	//
 	// The periodic parity ticker compared the canonical eligible SQLite
-	// asset set (SearchIndexEligibilitySQL) against the ACTIVE Qdrant media
+	// asset set (SearchIndexEligibilitySQL) against the ACTIVE pgvector media
 	// projection and emitted projection_coverage_ratio /
 	// projection_orphan_count. With the PostgreSQL + pgvector media SSOT the
-	// Qdrant media collection is no longer a projection of SQLite, so the
+	// pgvector media collection is no longer a projection of SQLite, so the
 	// ticker could only report drift against a retired plane (false alarms)
 	// while reading quarantined SQLite media state. Media parity is now
-	// enforced transactionally inside PostgreSQL. The non-media Qdrant
+	// enforced transactionally inside PostgreSQL. The non-media pgvector
 	// projections (mediamemory frame concepts) own their own pipelines.
 
-	// Qdrant-ghost-sweeper step removed (see note above re:
-	// qdrant-cleaner + PR-QDRANT-FINAL-DECISION).
+	// vector-ghost-sweeper step removed (see note above re:
+	// pgvector-cleaner + PR-VECTOR-FINAL-DECISION).
 
 	return steps
 }

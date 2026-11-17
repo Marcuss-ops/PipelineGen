@@ -8,7 +8,7 @@
 // rows without a second DB lookup. Commit 3 CONTRACT
 // (July 2026) lifts those fields off the universal search
 // hit (they were strictly internal locators that the canonical
-// candidate shape rigorously excluded per the QDRANT-004
+// candidate shape rigorously excluded per the VECTOR-004
 // invariant "Nessun path locale o secret esposto") and
 // declares a small dedicated DTO owned by THIS package.
 //
@@ -39,7 +39,7 @@ package duplicates
 // `search.Candidate`. The dedicated DTO is justified because
 // the FindDuplicates endpoint is an operator/admin surface
 // (intentionally behind admin-only scope checks) for which the
-// QDRANT-004 "no internal locator leak" invariant does not
+// VECTOR-004 "no internal locator leak" invariant does not
 // apply — operators SEE server-internal paths so they can
 // deduplicate files at the storage layer. Public-facing
 // /internal/media/* callers NEVER receive this DTO; the only

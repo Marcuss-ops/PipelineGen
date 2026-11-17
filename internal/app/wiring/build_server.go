@@ -64,26 +64,16 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 		return nil, fmt.Errorf("build server: wire services: %w", err)
 	}
 
-	// QDRANT-005 (June 2026): plug the Qdrant probe into the
-	// lifecycle readiness barrier so /ready actually waits for Qdrant
-	// reachability. nil-safe: when Qdrant is disabled at composition
-	// time, the probe is nil and the AddProbe call is no-op (the
-	// serverLifecycle type filters nil probes automatically inside
-	// its parallel barrier).
-	if deps.Health.QdrantProbe != nil && deps.Runtime.Lifecycle != nil {
-		deps.Runtime.Lifecycle.AddProbe("qdrant", deps.Health.QdrantProbe.Probe)
-	}
-
 	// EmbeddingContract SSOT handshake (August 2026): register the contract
 	// check on the readiness barrier so a drift between the canonical text
-	// contract, the E5 sidecar, the Qdrant collection, or the query embedder
-	// fails closed with QDRANT_EMBEDDING_CONTRACT_MISMATCH before the server
+	// contract, the E5 sidecar, the pgvector collection, or the query embedder
+	// fails closed with EMBEDDING_CONTRACT_MISMATCH before the server
 	// starts serving semantic search.
 	if deps.Health.EmbeddingContractProbe != nil && deps.Runtime.Lifecycle != nil {
 		deps.Runtime.Lifecycle.AddProbe("embedding-contract", deps.Health.EmbeddingContractProbe.Probe)
 	}
 
-	// QDRANT-route-constructor (June 2026, PR 3): outboxHandler and
+	// VECTOR-route-constructor (June 2026, PR 3): outboxHandler and
 	// mediasearchHandler MUST be passed INTO NewServerWithHealth
 	// (not set via setter post-Setup) so the WorkerAuth-protected
 	// /internal/v1 routes register before Setup() executes.
@@ -99,10 +89,9 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 			M2MMedia:    deps.Handlers.M2MMediaHandler,
 			M2MSecurity: deps.Handlers.M2MSecurity,
 		},
-		Lifecycle:    deps.Runtime.Lifecycle,
-		Health:       deps.Health.HealthService,
-		Ready:        deps.Health.ReadyChecker,
-		QdrantHealth: deps.Health.QdrantHealth,
+		Lifecycle: deps.Runtime.Lifecycle,
+		Health:    deps.Health.HealthService,
+		Ready:     deps.Health.ReadyChecker,
 		// Drive /models via the cfg.ClipIndexer.ServerURL sidecar URL.
 		// api.NewServerWithHealth gates this on non-empty; when set, the
 		// ModelsHandler probes the sidecar at request time; when empty the

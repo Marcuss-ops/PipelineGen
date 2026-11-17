@@ -8,7 +8,7 @@ import (
 
 // SemanticReadyChecker is the narrow port for semantic media-search readiness.
 // Production wiring checks query embedding, the canonical search backend, and
-// the PostgreSQL media SSOT. Qdrant and SQLite are not media dependencies.
+// the PostgreSQL media SSOT. pgvector and SQLite are not media dependencies.
 type SemanticReadyChecker interface {
 	Ready(ctx context.Context) error
 }

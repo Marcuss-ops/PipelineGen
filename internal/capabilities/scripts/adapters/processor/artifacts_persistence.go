@@ -49,7 +49,7 @@
 // stores the DriveLink in the scene binding; the Google-Doc and
 // script.json consumers all read THAT link, and audio/render use
 // local paths. The finalize re-publication was a second upload of the
-// same bytes with no downstream consumer (Qdrant classifies audio as
+// same bytes with no downstream consumer (pgvector classifies audio as
 // REGISTERED-only). The files stay on disk (job workspace + voiceover
 // text-hash cache) for audio compile and cross-run reuse. Document
 // artefacts (document-pdf, document-markdown) were RETIRED in
@@ -183,7 +183,7 @@ func PersistGeneratedArtifacts(
 	// downstream consumers read THAT publication:
 	//   - script.json  → bindings (TTS links)
 	//   - audio compile / render → local paths + final_audio.m4a
-	//   - Qdrant index → audio is REGISTERED-only (skipped)
+	//   - pgvector index → audio is REGISTERED-only (skipped)
 	//
 	// Re-listing the same local files here made post_writer_finalize
 	// re-upload identical bytes (~2.5s × N sequential Drive I/O ≈ the

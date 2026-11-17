@@ -1,7 +1,7 @@
 // Package app — lifecycle integration tests (lifecycle-runtime-ownership, June 2026).
 //
 // These tests exercise the serverLifecycle.Start/Stop contract end-to-end
-// with realistic mock services that simulate Drive, Qdrant, outbox, scanner,
+// with realistic mock services that simulate Drive, pgvector, outbox, scanner,
 // monitor, and job-runner behavior. Goroutines are launched and verified to
 // exit cleanly; ordering and error propagation are asserted.
 //
@@ -54,7 +54,7 @@ func (m *mockService) start(ctx context.Context) {
 // ── Integration: Full Happy Path ────────────────────────────────────────
 
 // TestLifecycleIntegration_FullHappyPath verifies the complete lifecycle
-// with mock Drive, Qdrant, outbox, scanner, monitor, sweepers, and job-runner.
+// with mock Drive, pgvector, outbox, scanner, monitor, sweepers, and job-runner.
 // All probes pass, all services start in order, and Stop reverses the order
 // while all goroutines exit cleanly.
 func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
@@ -64,13 +64,13 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	baseline := runtime.NumGoroutine()
 
 	// Build mock services.
-	// PR-QDRANT-FINAL-DECISION (2026-07-04): qdrant-cleaner + qdrant-health-monitor
+	// PR-VECTOR-FINAL-DECISION (2026-07-04): pgvector-cleaner + pgvector-health-monitor
 	// are removed (3 background-cleanup steps retired earlier per the
 	// stale-cleaner / ghost-sweeper / health-monitor audit at
-	// go:117-128). qdrant-collection is RETAINED — it is a REAL
+	// go:117-128). pgvector-collection is RETAINED — it is a REAL
 	// production step (wire_services.go:170 calls cm.EnsureSchema).
 	driveSvc := newMockService("drive-init")
-	qdrantSvc := newMockService("qdrant-collection")
+	pgvectorSvc := newMockService("pgvector-collection")
 	outboxSvc := newMockService("outbox-pool")
 	scannerSvc := newMockService("job-scanner")
 	monitorSvc := newMockService("channel-monitor")
@@ -91,13 +91,13 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 			Stop: func(_ context.Context) error { rec.record("drive-init:stop"); return nil },
 		},
 		{
-			Name: "qdrant-collection", Required: true,
+			Name: "pgvector-collection", Required: true,
 			Start: func(startCtx context.Context) error {
-				rec.record("qdrant-collection")
-				qdrantSvc.start(startCtx)
+				rec.record("pgvector-collection")
+				pgvectorSvc.start(startCtx)
 				return nil
 			},
-			Stop: func(_ context.Context) error { rec.record("qdrant-collection:stop"); return nil },
+			Stop: func(_ context.Context) error { rec.record("pgvector-collection:stop"); return nil },
 		},
 		{
 			Name: "outbox-pool", Required: true,
@@ -127,9 +127,9 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 			},
 			Stop: func(_ context.Context) error { rec.record("channel-monitor:stop"); return nil },
 		},
-		// PR-QDRANT-FINAL-DECISION (2026-07-04): qdrant-cleaner + qdrant-health-monitor
+		// PR-VECTOR-FINAL-DECISION (2026-07-04): pgvector-cleaner + pgvector-health-monitor
 		// steps removed (background-cleanup topology retired per
-		// go:117-128). qdrant-collection above is the only Qdrant step
+		// go:117-128). pgvector-collection above is the only pgvector step
 		// remaining in the production startup plan (wire_services.go:170).
 		// Job runner: always last, required.
 		{
@@ -165,11 +165,11 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	}
 
 	// Verify startup order: prerequisite → optional → job runner.
-	// PR-QDRANT-FINAL-DECISION (2026-07-04): qdrant-cleaner + qdrant-health-monitor
+	// PR-VECTOR-FINAL-DECISION (2026-07-04): pgvector-cleaner + pgvector-health-monitor
 	// removed from the expected order.
 	stepOrder := rec.stepCallsOnly()
 	wantOrder := []string{
-		"drive-init", "qdrant-collection", "outbox-pool",
+		"drive-init", "pgvector-collection", "outbox-pool",
 		"job-scanner", "channel-monitor",
 		"job-runner",
 	}
@@ -188,8 +188,8 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	}
 
 	// Wait for all mock goroutines to signal they started.
-	// PR-QDRANT-FINAL-DECISION (2026-07-04): sweeperSvc + healthSvc removed.
-	waitStarted(t, driveSvc, qdrantSvc, outboxSvc, scannerSvc, monitorSvc)
+	// PR-VECTOR-FINAL-DECISION (2026-07-04): sweeperSvc + healthSvc removed.
+	waitStarted(t, driveSvc, pgvectorSvc, outboxSvc, scannerSvc, monitorSvc)
 
 	// Verify goroutines are running.
 	mid := runtime.NumGoroutine()
@@ -217,14 +217,14 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	copy(stopOrder, rec.calls)
 	rec.mu.Unlock()
 
-	// PR-QDRANT-FINAL-DECISION (2026-07-04): qdrant-cleaner:stop +
-	// qdrant-health-monitor:stop removed from the expected stop order.
+	// PR-VECTOR-FINAL-DECISION (2026-07-04): pgvector-cleaner:stop +
+	// pgvector-health-monitor:stop removed from the expected stop order.
 	wantStops := []string{
 		"job-runner:stop",
 		"channel-monitor:stop",
 		"job-scanner:stop",
 		"outbox-pool:stop",
-		"qdrant-collection:stop",
+		"pgvector-collection:stop",
 		"drive-init:stop",
 	}
 	if len(stopOrder) != len(wantStops) {
@@ -237,9 +237,9 @@ func TestLifecycleIntegration_FullHappyPath(t *testing.T) {
 	}
 
 	// Cancel context to signal remaining goroutines, then wait for them.
-	// PR-QDRANT-FINAL-DECISION (2026-07-04): sweeperSvc + healthSvc removed.
+	// PR-VECTOR-FINAL-DECISION (2026-07-04): sweeperSvc + healthSvc removed.
 	cancel()
-	waitStopped(t, driveSvc, qdrantSvc, outboxSvc, scannerSvc, monitorSvc)
+	waitStopped(t, driveSvc, pgvectorSvc, outboxSvc, scannerSvc, monitorSvc)
 
 	// No goroutine leak.
 	time.Sleep(100 * time.Millisecond)
@@ -292,12 +292,12 @@ func TestLifecycleIntegration_DriveProbeFailure(t *testing.T) {
 	}
 }
 
-// ── Integration: Qdrant Required Step Failure ───────────────────────────
+// ── Integration: pgvector Required Step Failure ───────────────────────────
 
-// TestLifecycleIntegration_QdrantCollectionFailure verifies that when a
-// required prerequisite service (Qdrant EnsureCollection) fails, the
+// TestLifecycleIntegration_pgvectorCollectionFailure verifies that when a
+// required prerequisite service (pgvector EnsureCollection) fails, the
 // sequence aborts and no subsequent steps execute.
-func TestLifecycleIntegration_QdrantCollectionFailure(t *testing.T) {
+func TestLifecycleIntegration_pgvectorCollectionFailure(t *testing.T) {
 	rec := &recorder{}
 	plan := []lifecycle.StartupStep{
 		{
@@ -306,12 +306,12 @@ func TestLifecycleIntegration_QdrantCollectionFailure(t *testing.T) {
 			Stop:  func(_ context.Context) error { rec.record("drive-init:stop"); return nil },
 		},
 		{
-			Name: "qdrant-collection", Required: true,
+			Name: "pgvector-collection", Required: true,
 			Start: func(_ context.Context) error {
-				rec.record("qdrant-collection")
-				return fmt.Errorf("qdrant collection v3 not found")
+				rec.record("pgvector-collection")
+				return fmt.Errorf("pgvector collection v3 not found")
 			},
-			Stop: func(_ context.Context) error { rec.record("qdrant-collection:stop"); return nil },
+			Stop: func(_ context.Context) error { rec.record("pgvector-collection:stop"); return nil },
 		},
 		{
 			Name: "outbox-pool", Required: true,
@@ -328,15 +328,15 @@ func TestLifecycleIntegration_QdrantCollectionFailure(t *testing.T) {
 
 	err := sl.Start(context.Background())
 	if err == nil {
-		t.Fatal("expected error from qdrant-collection failure")
+		t.Fatal("expected error from pgvector-collection failure")
 	}
 
-	// drive-init fired, qdrant-collection fired and failed; outbox and job-runner must NOT fire.
+	// drive-init fired, pgvector-collection fired and failed; outbox and job-runner must NOT fire.
 	if !rec.hasCall("drive-init") {
 		t.Fatal("drive-init should have fired")
 	}
-	if !rec.hasCall("qdrant-collection") {
-		t.Fatal("qdrant-collection should have fired (and failed)")
+	if !rec.hasCall("pgvector-collection") {
+		t.Fatal("pgvector-collection should have fired (and failed)")
 	}
 	if rec.hasCall("outbox-pool") {
 		t.Fatal("outbox-pool must NOT fire after required step failure")
@@ -355,7 +355,7 @@ func TestLifecycleIntegration_QdrantCollectionFailure(t *testing.T) {
 	copy(got, rec.calls)
 	rec.mu.Unlock()
 
-	if len(got) != 2 || got[0] != "qdrant-collection:stop" || got[1] != "drive-init:stop" {
+	if len(got) != 2 || got[0] != "pgvector-collection:stop" || got[1] != "drive-init:stop" {
 		t.Fatalf("expected reverse stop of started steps only, got %v", got)
 	}
 }
@@ -429,14 +429,14 @@ func TestLifecycleIntegration_ContextCancelledDuringStartup(t *testing.T) {
 			Stop: func(_ context.Context) error { rec.record("drive-init:stop"); return nil },
 		},
 		{
-			Name: "qdrant-collection", Required: true,
+			Name: "pgvector-collection", Required: true,
 			Start: func(startCtx context.Context) error {
-				rec.record("qdrant-collection")
+				rec.record("pgvector-collection")
 				startedSvc.start(startCtx)
 				cancel() // Cancel mid-startup.
 				return nil
 			},
-			Stop: func(_ context.Context) error { rec.record("qdrant-collection:stop"); return nil },
+			Stop: func(_ context.Context) error { rec.record("pgvector-collection:stop"); return nil },
 		},
 		{
 			Name: "outbox-pool", Required: true,
@@ -459,12 +459,12 @@ func TestLifecycleIntegration_ContextCancelledDuringStartup(t *testing.T) {
 		t.Fatal("expected error from context cancellation mid-startup")
 	}
 
-	// drive-init and qdrant-collection fired; outbox-pool returned error; job-runner must NOT fire.
+	// drive-init and pgvector-collection fired; outbox-pool returned error; job-runner must NOT fire.
 	if !rec.hasCall("drive-init") {
 		t.Fatal("drive-init should have fired")
 	}
-	if !rec.hasCall("qdrant-collection") {
-		t.Fatal("qdrant-collection should have fired")
+	if !rec.hasCall("pgvector-collection") {
+		t.Fatal("pgvector-collection should have fired")
 	}
 	if !rec.hasCall("outbox-pool") {
 		t.Fatal("outbox-pool should have fired (and returned ctx.Err())")

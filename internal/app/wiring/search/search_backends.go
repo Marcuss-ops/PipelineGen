@@ -6,7 +6,7 @@
 // registered only when ONE adapter implements both VectorStorePort and
 // MediaReadRepository. The canonical production implementation is
 // platform/postgres/media.MediaSearcher. This prevents accidental
-// recomposition of pgvector or Qdrant retrieval with legacy media hydration.
+// recomposition of pgvector or pgvector retrieval with legacy media hydration.
 //
 // MEDIA-SSOT P1-6 (September 2026): the local/hash/keyword media backend is
 // PostgreSQL-only as well. The legacy SQLite `localSearchBackend` (which read
@@ -45,7 +45,7 @@ type RerankerClient interface {
 
 // canonicalMediaSearchStore is the cutover gate for semantic catalog reads.
 // Retrieval and hydration MUST be owned by the same adapter. PostgreSQL's
-// MediaSearcher satisfies both ports; the legacy Qdrant vector adapter does
+// MediaSearcher satisfies both ports; the legacy pgvector vector adapter does
 // not, so it cannot become a media semantic backend even if it remains wired
 // for legitimate non-media owners.
 type canonicalMediaSearchStore interface {
@@ -89,7 +89,7 @@ type SearchBackendBuildOpts struct {
 // freezes it, and returns it ready to plug into a search.Aggregator.
 // Providers and the local catalog remain independently available. Semantic
 // media search is stricter: a split vector/hydration authority is rejected by
-// construction instead of silently degrading to Qdrant + legacy media storage.
+// construction instead of silently degrading to pgvector + legacy media storage.
 func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, error) {
 	log := opts.Logger
 	if log == nil {
@@ -137,7 +137,7 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 	}
 
 	// POSTGRES-MEDIA-CUTOVER: semantic search requires one concrete adapter
-	// to own BOTH retrieval and hydration. A Qdrant-only VectorStorePort can
+	// to own BOTH retrieval and hydration. A vector-only VectorStorePort can
 	// remain alive for non-media domains, but it cannot satisfy this gate and
 	// therefore cannot be selected for the media catalog.
 	mediaStore, mediaStoreOK := opts.VectorStore.(canonicalMediaSearchStore)

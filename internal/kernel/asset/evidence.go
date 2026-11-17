@@ -12,7 +12,7 @@
 //  5. description
 //     none → NOT_GROUNDABLE (fail closed)
 //
-// No other layer may re-implement this order (Qdrant, script, search
+// No other layer may re-implement this order (pgvector, script, search
 // each had their own drift-prone copy before this convergence). The
 // resolver is a pure function over an EvidenceInput candidate bag so
 // every producer (script reads *Asset metadata, indexing reads

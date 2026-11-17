@@ -48,6 +48,13 @@ type migrationFile struct {
 	filename string
 	path     string
 	scope    string // default "all"; populated by parseMigrationScope
+	// baselineCovers is the optional `-- baseline-covers: <N>` directive
+	// carried by the consolidated baseline. It records the highest numbered
+	// migration whose schema effects the dump already contains, which can be
+	// later than the version in the filename (e.g. 000_baseline_268.sql was
+	// regenerated after 298, so it covers 1..298). Zero means "use the
+	// filename threshold".
+	baselineCovers int
 }
 
 // RunMigrations scans targetDir for .sql files, compares their versions
@@ -168,6 +175,18 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 	// was just applied in this run so subsequent 1..N files are skipped
 	// on fresh bootstraps without needing to re-query the ledger.
 	baselineThreshold := baselineThresholdForMigrations(migrations)
+	// A database bootstrapped from an older consolidated baseline (e.g. the
+	// shipped 000_baseline_267.sql) must keep applying every migration the
+	// OLD dump did not contain. The sentinel row names the file that was
+	// actually applied, so its window wins over the current file's coverage;
+	// otherwise replacing 267 with a 268 dump that covers 1..298 would mark
+	// 268..298 as covered on a 267 database and silently strand its schema
+	// at 267 while the ledger says 298.
+	if record, ok := applied[0]; ok {
+		if appliedThreshold := baselineThresholdForAppliedRecord(record, migrations); appliedThreshold > 0 {
+			baselineThreshold = appliedThreshold
+		}
+	}
 	baselineAppliedNow := baselineApplied(applied)
 	appliedCount := 0
 	for _, m := range migrations {

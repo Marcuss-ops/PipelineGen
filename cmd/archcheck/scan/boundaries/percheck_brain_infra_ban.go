@@ -2,7 +2,7 @@
 //
 // Forward-prevention gate for the Brain capability (and its
 // mediamemory consumer). Brain code MUST NOT import infrastructure
-// packages (qdrant, SQLite, Drive) or spawn FFmpeg/yt-dlp processes.
+// packages (pgvector, SQLite, Drive) or spawn FFmpeg/yt-dlp processes.
 // The brain is the decision layer; the nervous system (infra) executes.
 //
 // Scope:
@@ -15,10 +15,10 @@
 //   - comment-only references (warn, not violate)
 //
 // Banned surfaces:
-//   - imports of internal/platform/qdrant
+//   - imports of internal/platform/postgres/media
 //   - imports of internal/platform/sqlite
 //   - imports of internal/platform/drive
-//   - literal calls: qdrant.NewClient, db.Exec, repo.Upsert,
+//   - literal calls: pgvector.NewClient, db.Exec, repo.Upsert,
 //     exec.Command("ffmpeg"), exec.Command("yt-dlp")
 //
 // This scanner is text-based; it may flag banned strings that appear
@@ -48,7 +48,7 @@ const (
 
 var (
 	brainInfraBannedImportPrefixes = []string{
-		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant",
+		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/drive",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube",
@@ -140,7 +140,7 @@ func scanBrainInfraBanFile(path, relPath string, r *report.Report) {
 				Rule:        brainInfraBanRule,
 				Severity:    string(report.SeverityError),
 				MatchedRule: "brain_infra_import_attempt",
-				Note:        "forbidden infrastructure import in brain code: " + bannedImport + " (brain must not know Qdrant/SQLite/Drive/FFmpeg/yt-dlp)",
+				Note:        "forbidden infrastructure import in brain code: " + bannedImport + " (brain must not know pgvector/SQLite/Drive/FFmpeg/yt-dlp)",
 			})
 			continue
 		}
@@ -175,7 +175,7 @@ func containsAnyBannedImport(line string) bool {
 // bannedCallPatterns lists literal call forms that brain code must not contain.
 // Keep them specific enough to avoid false positives in legitimate domain logic.
 var bannedCallPatterns = []string{
-	"qdrant.NewClient",
+	"vector.NewClient",
 	"db.Exec(",
 	"repo.Upsert(",
 	"exec.Command(\"ffmpeg\",",

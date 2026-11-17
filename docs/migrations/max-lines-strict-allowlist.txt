@@ -15,7 +15,6 @@
 # previously grandfathered entry is resolved:
 #
 # RESOLVED (2026-07-29 pass):
-#   - cmd/admin/qdrant_readiness.go: 1466 → 468 (split into subcommands)
 #   - internal/application/assets/providers/aggregator.go: deleted
 #   - internal/application/clips/clip_ops.go: deleted
 #   - internal/platform/sqlite/outbox/repository.go: deleted
@@ -26,7 +25,6 @@
 #   - internal/api/script/handler_legacy_adapters.go: deleted
 #   - internal/application/clips/bulk_upload_worker.go: 707 → 300 (split)
 #   - internal/app/composition.go: 666 → 214 (split into wiring/)
-#   - internal/application/qdrant/legacyaudit/legacyaudit.go: 660 → 144
 #   - internal/application/workerdoctor/default_probes.go: 629 → 176
 #   - internal/app/module_sources.go: deleted (split into wiring/)
 #   - internal/app/assets_register_sourcing.go: 607 → 356
@@ -37,7 +35,6 @@
 # RESOLVED (2026-09-18 pass — the temporary entries below were removed):
 #   - cmd/admin/internal/audit/broken_references.go: 701 → 562
 #     (report types + rendering extracted to broken_references_report.go)
-#   - internal/platform/qdrant/collections/projection_manager.go: 639 → 574
 #     (read-only inspection helpers extracted to projection_manager_inspection.go)
 #   - internal/platform/sqlite/assets/imagesregistry/testsupport/
 #     sqlite_asset_committer_testdouble.go: 998 → 555

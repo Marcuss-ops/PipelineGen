@@ -8,7 +8,7 @@
 //
 // Health contract (codex/health-ready-contract, June 2026):
 //   - GET /health → fast liveness, no automatic dependency checks, HTTP 200
-//   - GET /health?deep=true → full set (db, drive, qdrant, jobs)
+//   - GET /health?deep=true → full set (db, drive, jobs)
 //   - GET /health?check=db&check=jobs → repeated query params
 //   - GET /health?check=db,jobs → comma-separated (compatibility)
 //   - Unknown check → HTTP 400 (typed ErrUnknownCheck)
@@ -109,12 +109,12 @@ func (h *HealthHandler) buildInfo() *buildinfo.Identity {
 }
 
 // fastHealthNames is the default deep-check set used when ?deep=true.
-var fastHealthNames = []string{"db", "drive", "qdrant", "jobs"}
+var fastHealthNames = []string{"db", "drive", "jobs"}
 
 // Health serves /health with the canonical contract:
 //   - No params → fast liveness (all names empty → Service returns
 //     {ok: true, status: "healthy"} without touching any dependency).
-//   - ?deep=true → full set (db, drive, qdrant, jobs).
+//   - ?deep=true → full set (db, drive, jobs).
 //   - ?check=X[&check=Y] → repeated query params.
 //   - ?check=X,Y → comma-separated (compatibility).
 //   - Unknown check name → HTTP 400 (typed ErrUnknownCheck).

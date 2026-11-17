@@ -358,7 +358,7 @@ type ClipMetadataWriter interface {
 
 	// UpdateClipMetadataTextsAndRequestIndex extends the metadata write
 	// to also persist text tracks (transcripts, descriptions, etc.) in
-	// the same atomic transaction. This ensures Qdrant never sees a
+	// the same atomic transaction. This ensures pgvector never sees a
 	// clip without its associated text tracks.
 	//
 	// When textTracks is empty, the method behaves identically to

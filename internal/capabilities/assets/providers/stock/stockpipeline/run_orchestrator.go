@@ -31,8 +31,8 @@ import (
 // this variant so FinalStatus surfaces in the result map.
 // Service.runOrchestrator (manifest-only) remains for legacy callers.
 //
-// Resilience contract: artifacts on Drive + Qdrant OK ⇒ SUCCEEDED;
-// artifacts on Drive + Qdrant failed ⇒ INDEX_PENDING;
+// Resilience contract: artifacts on Drive + pgvector OK ⇒ SUCCEEDED;
+// artifacts on Drive + pgvector failed ⇒ INDEX_PENDING;
 // manifest-gate failed ⇒ typed sentinel ⇒ JobFailed.
 func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput, jobID string) (summary *RunSummary, err error) {
 	var ownedRun *kernobs.Run

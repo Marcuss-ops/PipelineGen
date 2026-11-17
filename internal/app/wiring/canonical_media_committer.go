@@ -221,7 +221,7 @@ func (r *ComposeRoot) MediaAssetReader() MediaAssetReader {
 //
 // PostgreSQL is the ONLY media authority. RequireMediaPostgres is the single
 // engine decision point for the media plane and documents the invariant: an
-// enabled plane "means PostgreSQL is mandatory ... There is no SQLite/Qdrant
+// enabled plane "means PostgreSQL is mandatory ... There is no SQLite/pgvector
 // fallback". The SQLite-backed store (sqliteMediaAssetStore) was therefore
 // DELETED on 2026-09-13: behind the SAME interface it read
 // media_assets.admin_version from the operational mirror and wrote media rows
@@ -265,7 +265,7 @@ type AssetDetailsLookup interface {
 // PostgreSQL is the ONLY media read authority here. RequireMediaPostgres is
 // the single engine decision point for the media plane, and it states the
 // invariant explicitly: "Enabled means PostgreSQL is mandatory ... There is no
-// SQLite/Qdrant fallback." Returning the legacy SQLite detail.Service
+// SQLite/pgvector fallback." Returning the legacy SQLite detail.Service
 // contradicted that invariant and re-created the exact
 // Postgres-writer/SQLite-reader split-brain this cutover removed: an asset
 // committed by the canonical committer was invisible to the worker, which then

@@ -34,7 +34,7 @@ import (
 
 // ScanOwnershipDoc checks that the canonical data/config ownership
 // doc (policy field `data_ownership_doc`, path relative to root)
-// exists and contains the seven required section headers. Missing
+// exists and contains the six required section headers. Missing
 // file → warn; missing section → info.
 //
 // Rationale: the godlike/06 promotion (June 2026) makes the
@@ -71,7 +71,6 @@ func ScanOwnershipDoc(root string, pol *policy.Policy, r *report.Report) {
 		"## Durable authority",
 		"## One owner per fact",
 		"## Database rules",
-		"## Qdrant projection",
 		"## Drive and filesystem",
 		"## Configuration",
 		"## Future storage changes",

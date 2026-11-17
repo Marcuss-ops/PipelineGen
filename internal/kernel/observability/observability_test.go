@@ -150,7 +150,7 @@ func TestRun_StartRunGeneratesRunIDWhenEmpty(t *testing.T) {
 func TestRun_FinishWithErrorMarksFailed(t *testing.T) {
 	obs := NewRunObserver(nil)
 	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-j"})
-	rep := run.FinishWithError(errors.New("qdrant offline"))
+	rep := run.FinishWithError(errors.New("pgvector offline"))
 	if rep.Status != StatusFailed {
 		t.Fatalf("status = %q, want %q", rep.Status, StatusFailed)
 	}
@@ -812,7 +812,7 @@ func TestRun_ConcurrentOperations(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_ = run.Operation(context.Background(), OperationInfo{
-				Stage: StageResolve, Component: ComponentQdrant, Operation: OperationSearch,
+				Stage: StageResolve, Component: ComponentVectorSearch, Operation: OperationSearch,
 			}, func(context.Context) error { return nil })
 		}()
 	}
@@ -852,13 +852,13 @@ func TestRegistry_CanonicalNames(t *testing.T) {
 	if len(AllStages()) != 64 {
 		t.Fatalf("stages = %d, want 64", len(AllStages()))
 	}
-	if len(AllComponents()) != 14 {
-		t.Fatalf("components = %d, want 14", len(AllComponents()))
+	if len(AllComponents()) != 15 {
+		t.Fatalf("components = %d, want 15", len(AllComponents()))
 	}
 	if len(AllOperations()) != 41 {
 		t.Fatalf("operations = %d, want 41", len(AllOperations()))
 	}
-	if string(StageAcquire) != "acquire" || string(ComponentQdrant) != "qdrant" || string(OperationUpsert) != "upsert" {
+	if string(StageAcquire) != "acquire" || string(ComponentVectorSearch) != "vector_search" || string(ComponentLegacyVectorIndex) != "legacy_vector_index" || string(OperationUpsert) != "upsert" {
 		t.Fatal("registry literals drifted from the canonical strings")
 	}
 }

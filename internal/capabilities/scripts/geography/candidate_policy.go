@@ -130,6 +130,7 @@ func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Ge
 		Scope:       result.Scope,
 		Country:     strings.TrimSpace(result.Country),
 		CountryCode: strings.ToLower(strings.TrimSpace(result.CountryCode)),
+		AdminRegion: strings.TrimSpace(result.AdminRegion),
 	}
 	if name != strings.Join(strings.Fields(strings.TrimSpace(entity.CanonicalName)), " ") {
 		entity.CanonicalName = name

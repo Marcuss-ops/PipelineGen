@@ -282,10 +282,24 @@ func extractExpectedSchema(t *testing.T, migrationsDir, targetDB string) map[str
 	require.NoError(t, err, "glob migrations dir")
 	sort.Strings(files) // RunMigrations runs in version order (lex on NNN_*)
 
+	// A consolidated baseline replaces the historical window on a fresh DB.
+	// Parsing the covered files anyway would double-count: 203 declares
+	// registry_runs with the old vector column names and 297 renames them,
+	// while the baseline already declares the FINAL names — the accumulated
+	// expectation would list vector_points_before/after twice and fail against
+	// the 17-column live schema. Mirror the runner: baseline + version > N.
+	baselineCoverage := 0
+	if discovered, err := discoverMigrations(migrationsDir); err == nil {
+		baselineCoverage = baselineThresholdForMigrations(discovered)
+	}
+
 	schema := make(map[string]*expectedTable)
 
 	for _, path := range files {
 		filename := filepath.Base(path)
+		if version, err := parseMigrationVersion(filename); err == nil && version > 0 && baselineCoverage > 0 && version <= baselineCoverage {
+			continue
+		}
 		contentBytes, err := os.ReadFile(path)
 		require.NoError(t, err, "read %s", filename)
 		content := string(contentBytes)

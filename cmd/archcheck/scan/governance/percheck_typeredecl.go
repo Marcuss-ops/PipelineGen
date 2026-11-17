@@ -13,7 +13,7 @@
 //   - architecture/current.yaml#PR-ARCHCHECK-GO-MIGRATION-PHASE-1: the
 //     wave-tracker entry that registers this closure.
 //   - architecture/current.yaml#id-20: the original type-redecl
-//     tracker (QDRANT-RECOVERY-001 follow-up).
+//     tracker (VECTOR-RECOVERY-001 follow-up).
 //   - docs/migrations/duplicate-types-allowlist.txt: DELETED 2026-09-12.
 //     It carried zero active entries (all purged 2026-09-11) and its loader
 //     was dead indirection, so the scanner now fails directly on every

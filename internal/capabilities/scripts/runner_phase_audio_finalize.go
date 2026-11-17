@@ -80,7 +80,7 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 		return false
 	}
-	lang := req.SourceLanguage
+	lang := primaryVoiceoverLanguage(req)
 	result.FinalAudio.Filename = audioOutputFilename(req.OutputName, lang)
 	var published FinalAudioPublishResult
 	// The upload is measured under its own stage, not under the audio compile

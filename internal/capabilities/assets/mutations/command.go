@@ -183,7 +183,7 @@ func (a AssetMutationAction) IsImplemented() bool {
 //   - Hash: future-canonical seam for Action = AssetMutationUpsert once
 //     dispatcher-promotion lands (the content fingerprint the worker's
 //     supersede-gate compares against media_assets.metadata_json.
-//     $.content_hash, per QDRANT-002 source_version pattern). Ignored
+//     $.content_hash, per VECTOR-002 source_version pattern). Ignored
 //     today.
 //
 // Callers MUST construct an AssetMutationCommand value via the

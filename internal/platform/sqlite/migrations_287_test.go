@@ -15,8 +15,10 @@ func TestMigrations_287_RenderAttemptRunID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	preDir := copyMigrationSubset(t, targetDir, 286, map[int]bool{0: true})
-	fullDir := copyMigrationSubset(t, targetDir, 287, map[int]bool{0: true})
+	// Exclude the consolidated baseline (it covers 1..298): including it
+	// would skip the pre-287 schema this backfill test seeds.
+	preDir := copyMigrationSubset(t, targetDir, 286, nil)
+	fullDir := copyMigrationSubset(t, targetDir, 287, nil)
 	dbPath := filepath.Join(t.TempDir(), "run-id-287.sqlite")
 	if err := RunMigrationsOnDB(dbPath, nil, preDir, "primary"); err != nil {
 		t.Fatalf("apply migrations up to 286: %v", err)

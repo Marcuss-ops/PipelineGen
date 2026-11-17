@@ -10,11 +10,11 @@ import (
 // deleteRequestV1 is the producer-side mirror of the consumer
 // (internal/capabilities/jobs/index_delete.go::indexDeleteRequestV1).
 //
-// QDRANT-002 PR7: this envelope is emitted by Dispatcher.EnqueueAndDelete
+// VECTOR-002 PR7: this envelope is emitted by Dispatcher.EnqueueAndDelete
 // inside an atomic tx together with the media_assets.index_state
 // transition to DELETE_PENDING. The schema_version literal MUST match
 // DeleteRequestSchemaVersion on the consumer side — mismatch is
-// classified as TERMINAL by the consumer (QDRANT-002 PR4 invariant I).
+// classified as TERMINAL by the consumer (VECTOR-002 PR4 invariant I).
 //
 // Producers MUST send the asset_id and a stable event_id; idempotency_key
 // is the dedup token shared with the outbox_events.event_key column (the
@@ -54,7 +54,7 @@ func buildDeleteRequestV1(id string) deleteRequestV1 {
 }
 
 // deleteEventKey computes the canonical event_key for a delete event.
-// QDRANT-002 PR7 (thinker recommendation): shape is `delete:<asset_id>.
+// VECTOR-002 PR7 (thinker recommendation): shape is `delete:<asset_id>.
 // A repeated POST for the same aggregate id collapses to a single
 // outbox row (ON CONFLICT(event_key) DO NOTHING), so an operator
 // rapid-firing 5 deletes sees exactly one queued event per asset.

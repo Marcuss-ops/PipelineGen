@@ -25,7 +25,6 @@
 #                        string in Drive.
 #   - normalized_group : lowercase routing key. The value that fills:
 #                          media_assets.metadata_json.normalized_group
-#                          Qdrant payload filter
 #                          IndexDocument.NormalizedGroup field
 #                        The resolver never invents this — operators
 #                        must set it explicitly.

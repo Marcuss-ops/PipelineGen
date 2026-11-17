@@ -16,7 +16,7 @@
 //
 //	OutboxKey(eventType, provider, clipID, sourceVersion) string
 //	  → "eventType:provider:clipID:sourceVersion"
-//	  For Qdrant upsert outbox event_key.
+//	  For pgvector upsert outbox event_key.
 //	  Distinct from JobKey because the event_type disambiguates
 //	  the dispatch target (asset.index.requested.v1 vs
 //	  asset.drive.delete_requested.v1).
@@ -207,7 +207,7 @@ func JobKey(provider, clipID, sourceVersion string) (string, error) {
 }
 
 // OutboxKey constructs the canonical outbox event_key for a
-// Qdrant upsert event. The 4-tuple (eventType, provider,
+// pgvector upsert event. The 4-tuple (eventType, provider,
 // clipID, sourceVersion) extends JobKey with an event_type
 // prefix so the dispatch target (e.g. asset.index.requested.v1
 // vs asset.drive.delete_requested.v1) is part of the dedup
@@ -229,7 +229,7 @@ func JobKey(provider, clipID, sourceVersion string) (string, error) {
 // Empty inputs are rejected with typed sentinels. The checks
 // are INLINED so the typed sentinel identity is preserved.
 //
-// OutboxKey is the canonical surface for the "Qdrant upsert
+// OutboxKey is the canonical surface for the "pgvector upsert
 // outbox key" mentioned in the user spec. The existing
 // BuildIndexEventKey in domain/asset/clip_identity.go
 // (which produces "index:assetID:sha256-hex16:...") is a

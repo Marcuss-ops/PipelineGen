@@ -1,6 +1,6 @@
 // Package search — search_backend_semantic.go is the Fase 6 (July 2026)
 // semantic SearchBackend that connects the canonical search.Aggregator
-// to Qdrant for real ANN and Hybrid retrieval. It replaces the
+// to pgvector for real ANN and Hybrid retrieval. It replaces the
 // historical PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL stub
 // (which wrapped *mediasearch.Service in a single-port shape) with
 // the canonical two-port architecture:
@@ -11,7 +11,7 @@
 // Plus PostgreSQL hydration (MediaReadRepository) and signed delivery
 // URLs (AssetDeliveryService). Per AGENTS.md Pattern 0, every
 // external dependency flows through a typed port so tests can swap
-// in stubs without touching Qdrant or SQLite.
+// in stubs without touching pgvector or SQLite.
 //
 // PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): the backend now
 // consumes the multi-channel EmbeddingChannelRegistry port
@@ -43,7 +43,7 @@ import (
 )
 
 // Canonical vector names for the semantic backend. Mirrors the
-// Qdrant IndexSchema (see AGENTS.md §Qdrant Entity Associations):
+// pgvector IndexSchema (see AGENTS.md §pgvector Entity Associations):
 //
 //	text      = 768-dim intfloat/multilingual-e5-base (semantic meaning)
 //	bm25_text = sparse BM25 (lexical exact-match)
@@ -52,12 +52,12 @@ const (
 	semanticSparseVectorName = "bm25_text"
 
 	// semanticMinScore is the ANN (cosine-similarity) floor below which
-	// Qdrant hits are dropped pre-hydration. Kept deliberately low: the
+	// pgvector hits are dropped pre-hydration. Kept deliberately low: the
 	// sampler owns acceptance after hydration, and this backend must not
 	// compensate for incompatible embedding spaces with a score hack.
 	semanticMinScore = 0.01
 
-	// semanticHybridMinScore is the hybrid (RRF) floor. Qdrant's RRF
+	// semanticHybridMinScore is the hybrid (RRF) floor. pgvector's RRF
 	// fusion (rank constant k=1) scores a point that appears in a single
 	// prefetch list as 1/(1+rank): rank 9 → 0.1. Raising the floor above
 	// 0.1 rejects the rank-9+ single-list tail so irrelevant points (the
@@ -66,7 +66,7 @@ const (
 	semanticHybridMinScore = 0.11
 
 	// semanticRerankTopResults is the final precision limit of the
-	// enabled reranker recipe (Qdrant top_k window → BGE re-score →
+	// enabled reranker recipe (pgvector top_k window → BGE re-score →
 	// top 5 results). After blending, the semantic backend returns only
 	// the semanticRerankTopResults most relevant assets; the aggregator
 	// still trims the merged page to the requested size.
@@ -74,19 +74,19 @@ const (
 )
 
 // semanticSearchBackend is the Fase 6 + PR-EMBEDDING-CHANNEL-REGISTRY
-// Qdrant-backed SearchBackend. It fans out a search.Query through the
+// vector-backed SearchBackend. It fans out a search.Query through the
 // canonical two-port architecture:
 //
 //  1. embeddings.EmbedQuery(ctx, ChannelText, q.Text) → dense vector
 //     (delegated to EmbeddingChannelRegistry so new channel encoders
 //     plug in at composition root without backend changes)
-//  2. vectorStore.Search or .HybridSearch      → Qdrant results
+//  2. vectorStore.Search or .HybridSearch      → pgvector results
 //  3. mediaReader.GetMany                      → PostgreSQL hydration (canonical metadata)
 //  4. delivery.BuildAuthorizedURL              → signed delivery URL per hit
 //
 // Workspace isolation, lifecycle ACTIVE, and equality filters
 // (source, category, media_type, language) are applied at the
-// Qdrant layer via the VectorStorePort adapter. Tags (AND
+// pgvector layer via the VectorStorePort adapter. Tags (AND
 // semantics) and DurationMsMin are enforced post-hydration.
 //
 // PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): Embeddings is the
@@ -115,7 +115,7 @@ func (b *semanticSearchBackend) Name() string {
 }
 
 // Capabilities advertises every media type the semantic backend
-// can return. Qdrant indexes all four, so the backend is
+// can return. pgvector indexes all four, so the backend is
 // eligible for any Query.MediaTypes ∩ these four.
 func (b *semanticSearchBackend) Capabilities() []search.Capability {
 	return []search.Capability{
@@ -126,7 +126,7 @@ func (b *semanticSearchBackend) Capabilities() []search.Capability {
 	}
 }
 
-// Universe reports SearchCatalog: the semantic backend searches Qdrant
+// Universe reports SearchCatalog: the semantic backend searches pgvector
 // and hydrates from SQLite (no live provider call).
 func (b *semanticSearchBackend) Universe() search.SearchUniverse {
 	return search.SearchCatalog
@@ -151,11 +151,11 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): we delegate the
 	// text-channel encoding to the registry instead of calling
 	// QueryEmbedder.Embed directly. Today's registry wires text+transcript
-	// both to the qdrant.TextEmbedder; future SigLIP-text/CLAP-text
+	// both to the pgvector.TextEmbedder; future SigLIP-text/CLAP-text
 	// encoders plug in to the visual/audio channels at composition
 	// root without this backend knowing. The ChannelText constant is
 	// the canonical SSOT channel name (godlike/06) and matches the
-	// Qdrant vector name "text" (semanticDenseVectorName) 1:1.
+	// pgvector vector name "text" (semanticDenseVectorName) 1:1.
 	vec, err := b.embeddings.EmbedQuery(ctx, search.ChannelText, q.Text)
 	if err != nil {
 		return nil, fmt.Errorf("semantic backend: embed channel %q: %w", search.ChannelText, err)
@@ -192,8 +192,8 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	}
 
 	// ── 4b. Rerank fetch window ───────────────────────────────
-	// Canonical recipe (Qdrant top_k → BGE → top 5): when the reranker
-	// is enabled, Qdrant must return a wider candidate window than the
+	// Canonical recipe (pgvector top_k → BGE → top 5): when the reranker
+	// is enabled, pgvector must return a wider candidate window than the
 	// final page so BGE can genuinely re-score the top_k window and the
 	// backend can return the top semanticRerankTopResults. The window
 	// is capped at MaxLimit so a pathological top_k cannot explode the
@@ -215,8 +215,8 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		// TranscriptVector is intentionally absent: the
 		// orchestrator does NOT pass a transcript-channel
 		// vector today (passing the same dense vector would
-		// silently inflate Qdrant RRF fusion). A dedicated
-		// transcript embedder is QDRANT-005 territory.
+		// silently inflate pgvector RRF fusion). A dedicated
+		// transcript embedder is VECTOR-005 territory.
 		// See mediasearch/ports.go::ChannelTranscript comment.
 		results, err = b.vectorStore.HybridSearch(ctx, search.HybridSearchRequest{
 			DenseVector:      vec,
@@ -256,7 +256,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		return nil, fmt.Errorf("semantic backend: vector search: %w", err)
 	}
 
-	// ── 6. No Qdrant results → done ────────────────────────────
+	// ── 6. No external vector store results → done ────────────────────────────
 	if len(results) == 0 {
 		return nil, nil
 	}
@@ -269,7 +269,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			continue
 		}
 		// Deduplicate within the same result set: keep the
-		// highest score per asset (Qdrant RRF fusion can
+		// highest score per asset (pgvector RRF fusion can
 		// return the same point via multiple vector channels).
 		if existing, ok := scoreByID[r.AssetID]; ok {
 			if r.Score > existing {
@@ -299,7 +299,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	candidates := make([]search.Candidate, 0, len(assets))
 	assetsByID := make(map[string]search.MediaAsset, len(assets))
 	for _, a := range assets {
-		// Defense in depth against Qdrant/SQLite replication lag or a
+		// Defense in depth against pgvector/SQLite replication lag or a
 		// non-canonical MediaReadRepository implementation. Only the
 		// search capability's canonical searchable states may reach the
 		// API response; unavailable assets remain diagnosable in SQLite
@@ -316,7 +316,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 
 		// Duration floor: enforced post-hydration because
 		// canonical duration lives in SQLite, not in the
-		// Qdrant payload.
+		// pgvector payload.
 		if q.Filters.DurationMsMin > 0 && a.DurationMs < q.Filters.DurationMsMin {
 			continue
 		}
@@ -408,10 +408,10 @@ func semanticSourceProvenance(rowSource string) string {
 //     the workspace must-clause.
 //   - AssetFilter: equality filters (Source, Category, MediaType,
 //     Language) + lifecycle allowlist (ACTIVE only). Empty fields
-//     drop out of the Qdrant filter (no zero-value must-clauses).
+//     drop out of the pgvector filter (no zero-value must-clauses).
 //
-// The Qdrant adapter (platform/qdrant/search_adapter.go)
-// internally calls CompileQdrantFilter with these values.
+// The pgvector adapter (platform/pgvector/search_adapter.go)
+// internally calls CompileVectorFilter with these values.
 // semanticDisplayTitle picks the operator-facing label for a semantic hit: the
 // SSOT title when present, else the canonical asset name.
 func semanticDisplayTitle(title, name string) string {
@@ -443,7 +443,7 @@ func compileSemanticFilters(q search.Query) (search.SearchScope, search.AssetFil
 			SemanticRole: strings.TrimSpace(q.Filters.SemanticRole),
 			// LifecycleState: include both ACTIVE and PUBLISHED
 			// because the stock pipeline indexes assets with
-			// lifecycle_state=PUBLISHED (not ACTIVE). The Qdrant
+			// lifecycle_state=PUBLISHED (not ACTIVE). The pgvector
 			// adapter defaults to ACTIVE-only when empty, so we
 			// must explicitly include both states.
 			// PR-SEMANTIC-LIFECYCLE-FIX (July 2026): added PUBLISHED
@@ -466,7 +466,7 @@ func (b *semanticSearchBackend) warn(msg string, fields ...zap.Field) {
 
 func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Query, candidates []search.Candidate, assetsByID map[string]search.MediaAsset) ([]search.Candidate, error) {
 	// An explicitly disabled or absent optional capability leaves the
-	// canonical Qdrant ranking untouched. Once enabled, however, every
+	// canonical pgvector ranking untouched. Once enabled, however, every
 	// reranker failure is returned to the caller: silently returning a
 	// successful but degraded search would misrepresent availability.
 	if b.reranker == nil || !b.reranker.IsEnabled() || len(candidates) == 0 {
@@ -493,7 +493,7 @@ func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Q
 		requestCandidates = append(requestCandidates, reranker.Candidate{
 			ID:          cand.AssetID,
 			Text:        search.CandidateText(assetProfile, asset.Name, asset.Category, asset.Language, asset.SearchText, asset.Tags, asset.Source, asset.MediaType),
-			QdrantScore: float64Ptr(cand.Score),
+			VectorScore: float64Ptr(cand.Score),
 		})
 	}
 	if len(requestCandidates) == 0 {
@@ -531,7 +531,7 @@ func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Q
 	}
 
 	// ── Canonical precision recipe ───────────────────────────
-	// Qdrant top_k → BGE → top 5: after blending, return only the
+	// pgvector top_k → BGE → top 5: after blending, return only the
 	// semanticRerankTopResults most relevant assets. The final
 	// RankByScore in Search re-sorts; truncating here caps the semantic
 	// leg at the 5 best hits (the aggregator still trims the merged

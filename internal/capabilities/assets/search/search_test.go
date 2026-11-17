@@ -205,7 +205,7 @@ func TestRegistryEligibleFiltersBySources(t *testing.T) {
 		{"artlist_canonical", []string{"artlist"}, []string{"artlist", "semantic"}},
 		// PR-SEARCH-HANDLER-MOUNT (July 2026): semantic backend
 		// is always included (cross-source meta-backend with
-		// internal source filter via Qdrant filter.Source).
+		// internal source filter via pgvector filter.Source).
 		{"clips_alias_resolves_to_local", []string{"clips"}, []string{"local", "semantic"}},
 		{"vector_alias_resolves_to_semantic", []string{"vector"}, []string{"semantic"}},
 		{"multiple_sources", []string{"youtube", "artlist"}, []string{"artlist", "semantic", "youtube"}},

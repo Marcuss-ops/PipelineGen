@@ -1,7 +1,7 @@
 // Package reconciler — ports.go (Blocco 3.2 commit 2/2, June 2026)
 //
 // Application-layer port declarations. Mirrors the
-// qdrant/reconciler/ports.go "ports-only-no-concrete" pattern:
+// pgvector/reconciler/ports.go "ports-only-no-concrete" pattern:
 // this file declares INTERFACES that infrastructure adapters
 // satisfy in production. Pattern 0 from AGENTS.md.
 //
@@ -14,7 +14,7 @@
 // Scanner is REQUIRED per ServiceDeps nil-checks. OutboxEnqueuer
 // is REQUIRED for the same nil-panic principle (production
 // half-wired Service silently no-op'd the entire dispatch phase
-// pre-Blocco 2.0 PR 10 lessons — see qdrant/reconciler/ports.go
+// pre-Blocco 2.0 PR 10 lessons — see pgvector/reconciler/ports.go
 // comment on noopOutboxEnqueuer vs nil-check panic).
 package reconciler
 
@@ -25,7 +25,7 @@ import (
 
 // Clock abstracts time.Now for deterministic tests. Production
 // caller passes time.Now; tests pass a closure over a fixed
-// baseline. Mirrors qdrant/reconciler/ServiceDeps.Now convention.
+// baseline. Mirrors pgvector/reconciler/ServiceDeps.Now convention.
 // Inlined as the canonical Go func() time.Time signature so the
 // production-wire path can assign time.Now directly without a type
 // conversion (avoiding the named-type shadowing confusion in the

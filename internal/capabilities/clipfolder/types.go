@@ -70,10 +70,10 @@ type ClipFolderRef struct {
 	// key (e.g. "boxe", "hiphop"). The canonical surface for:
 	//
 	//   - media_assets.metadata_json.normalized_group
-	//   - Qdrant filter payload
+	//   - pgvector filter payload
 	//   - IndexDocument.NormalizedGroup field
 	//
-	// Forward-pointer: future waves that wire the Qdrant
+	// Forward-pointer: future waves that wire the pgvector
 	// folder-scoped search filter consume this value verbatim — no
 	// normalisation happens downstream.
 	NormalizedGroup string

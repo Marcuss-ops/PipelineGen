@@ -315,8 +315,6 @@ func TestFinalJobAudioSkipsDrivePublishAndFinalizesAfterOverlayJoin(t *testing.T
 		t.Fatalf("final-job audio unexpectedly used the legacy Drive publisher: %+v", published)
 	case <-time.After(100 * time.Millisecond):
 	}
-	require.Equal(t, audioPath, e.result.FinalAudio.Path, "the certified local audio remains available for HTTPS Objectstore publication at handoff")
-	require.Nil(t, e.result.EditingTimeline, "audio_finalize must wait for the overlay join")
 	select {
 	case <-finished:
 		t.Fatal("audio pipeline finished before the overlay sibling joined")
@@ -325,6 +323,13 @@ func TestFinalJobAudioSkipsDrivePublishAndFinalizesAfterOverlayJoin(t *testing.T
 
 	close(overlay.release)
 	require.True(t, <-finished)
+	// The result fields are read only after the phase goroutine returns: while
+	// it is parked on the join it is still writing them (audio_compile assigns
+	// FinalAudio and CanonicalTimeline immediately before waiting), so reading
+	// them under the barrier would race with the producer instead of pinning an
+	// ordering. The join ordering itself is pinned by the finished channel
+	// check above.
+	require.Equal(t, audioPath, e.result.FinalAudio.Path, "the certified local audio remains available for HTTPS Objectstore publication at handoff")
 	require.NotNil(t, e.result.EditingTimeline)
 	require.Empty(t, e.result.FinalAudio.DriveFileID, "final-job audio is published through the HTTPS Objectstore handoff")
 }

@@ -1,5 +1,5 @@
 // Package mediasearch (api) — handler.go is the thin HTTP transport
-// for the QDRANT-004 single private media-search API:
+// for the VECTOR-004 single private media-search API:
 //
 //	POST /internal/v1/media/search
 //	GET  /internal/v1/media/ready          (semantic_search_real readiness)
@@ -25,7 +25,7 @@
 // ErrAllBackendsFailed) stay imported as deprecation aliases
 // pending the BACKFILL wave that ports them into search/. These are
 // application-level "fail-closed for the use case" sentinels; the
-// infrastructure-level siblings live in qdrant.* (already canonical).
+// infrastructure-level siblings live in pgvector.* (already canonical).
 //
 // Do NOT add anything here that requires `database/sql`, an HTTP
 // client, os/exec, or any other infra import — AGENTS.md Pattern 8
@@ -71,7 +71,7 @@
 // ONLY `POST /search` and `GET /ready` — no bulk-index endpoint
 // is exposed on the canonical /internal/v1/media surface. Bulk
 // indexing in this codebase lives on a separate route tree
-// (Qdrant outbox + clipindexer portals; see
+// (pgvector outbox + clipindexer portals; see
 // internal/capabilities/index_writer.go if it exists). The audit command
 // that confirms this is `rg -i 'index_bulk|bulk_index' internal/capabilities/
 // mediasearch/ → 0` (no matches). The user-spec response-shape
@@ -245,7 +245,7 @@ func (h *Handler) Search(c *gin.Context) {
 // Status codes:
 //
 //	200 — every canonical sub-system (embedder, semantic backend in
-//	      registry, Qdrant reachable, SQLite hydration path ready,
+//	      registry, pgvector reachable, SQLite hydration path ready,
 //	      workspace enforced) reports ready. body carries the
 //	      ReadinessReport DTO (per-subsystem booleans + sanitized
 //	      failures summary).
@@ -260,7 +260,7 @@ func (h *Handler) Search(c *gin.Context) {
 // media_search_route_registered check (which only verifies the
 // POST /search route is mounted). semantic_search_real verifies
 // the UNDERLYING SEARCH PLANE is alive end-to-end:
-// embedder + semantic backend + Qdrant + SQLite hydration path +
+// embedder + semantic backend + pgvector + SQLite hydration path +
 // workspace enforcement.
 func (h *Handler) Ready(c *gin.Context) {
 	if h.readyChecker == nil {
@@ -289,7 +289,7 @@ func (h *Handler) Ready(c *gin.Context) {
 //
 // The legacy WorkspaceContext.ProjectID is NOT carried into
 // search.Actor (the canonical type has no ProjectID field). The
-// ProjectID was a legacy QDRANT-004 hint that downstream
+// ProjectID was a legacy VECTOR-004 hint that downstream
 // backend-aware components extract from WorkspaceID via the
 // canonical resolution surface; dropping it from the wire shape
 // keeps search.Actor strictly canonical.
@@ -312,7 +312,7 @@ func (h *Handler) extractActor(c *gin.Context) (search.Actor, bool) {
 		}
 		// Admin principals with no workspace header get a system-wide
 		// search scope (IsAdmin=true → compileSemanticFilters propagates
-		// IsSystem=true → CompileQdrantFilter skips workspace clause).
+		// IsSystem=true → CompileVectorFilter skips workspace clause).
 	}
 	principalID, _ := c.Get("principal_id")
 	return search.Actor{

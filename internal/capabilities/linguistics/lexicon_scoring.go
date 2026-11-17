@@ -41,7 +41,7 @@ func (r *Profiles) ProfileCount() int {
 //
 // Phase 8 split: scoring domain. Version is the canonical change-
 // detector used by caches that depend on lexicon content (e.g.,
-// Qdrant embedding cache invalidation, language-detector warming).
+// pgvector embedding cache invalidation, language-detector warming).
 func (r *Profiles) Version() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

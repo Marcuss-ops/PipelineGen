@@ -89,7 +89,7 @@ func RunDeleteClipByDriveFile(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 
-	// Start the canonical worker pool so Drive and Qdrant deletion handlers
+	// Start the canonical worker pool so Drive and pgvector deletion handlers
 	// consume the event emitted by DeletionService. No direct store mutation
 	// is performed by this command.
 	go root.Outbox.EventsPool.Start(ctx, 1)

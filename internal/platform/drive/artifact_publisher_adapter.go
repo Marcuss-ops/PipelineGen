@@ -148,7 +148,7 @@ func (a *ArtifactPublisherAdapter) Publish(
 	// a hash workaround — P0.4 deprecated).
 	//
 	// DoD #3 (July 2026): Tags + ProjectID + Language are threaded
-	// through PublishRequest for downstream Qdrant indexing. The
+	// through PublishRequest for downstream pgvector indexing. The
 	// adapter does NOT derive Tags from VerifiedArtifact fields
 	// (VerifiedArtifact has no tags surface) — forward-pointer to
 	// the per-capability finalizer that populates Tags before

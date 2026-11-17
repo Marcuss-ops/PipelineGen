@@ -106,7 +106,7 @@ func (s *ArtifactPreparation) Prepare(
 	)
 
 	// Stamp the post-publication Drive identity onto the artifact metadata
-	// so downstream projections (manifest, metadata_json, Qdrant) read a
+	// so downstream projections (manifest, metadata_json, pgvector) read a
 	// single source of truth: drive_file_id ← Location.FileID, drive_link ←
 	// Location.WebViewLink. The published column fields (media_assets
 	// .drive_file_id/.drive_link) remain derived from Location directly; this

@@ -109,8 +109,8 @@ type PublisherPort interface {
 // mutations.AssetMutationDispatcher consumed by the sfx HTTP handler.
 // The implementation atomically UPSERTs the sfx asset row in
 // media_assets AND emits a corresponding asset.index.requested outbox
-// event in a single transaction — the canonical QDRANT-002 pattern
-// that closes the SQLite → Qdrant indexing gap and prevents orphan
+// event in a single transaction — the canonical VECTOR-002 pattern
+// that closes the SQLite → pgvector indexing gap and prevents orphan
 // media_assets rows that never reach the vector store.
 //
 // contentHash is the ingest-time content fingerprint used by the
@@ -119,7 +119,7 @@ type PublisherPort interface {
 // clip.ID when contentHash is empty (mirroring clip_update.go's
 // pattern).
 //
-// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): narrow
+// PR 6 (June 2026, codex/pgvector-api-writers-fail-closed): narrow
 // 1-method port mirroring appclips.ClipIndexDispatcherPort. Future
 // PR 7/8 will promote the sfx consumer to the canonical
 // mutations.AssetMutationDispatcher SSOT (3 methods) atomically

@@ -1,17 +1,17 @@
 """Text-embedding endpoints (multilingual-e5-base) + text normalization.
 
-QDRANT-001 (June 2026) closure: the /index, /index_transcript, and /index_bulk
+VECTOR-001 (June 2026) closure: the /index, /index_transcript, and /index_bulk
 endpoints used to read clip rows from media.db.sqlite and write embedding
-results back to SQLite inside this sidecar. Per QDRANT-001 (single-writer
+results back to SQLite inside this sidecar. Per VECTOR-001 (single-writer
 rule), Go is now the sole writer of SQLite.
 
 These endpoints are now PURE compute operators:
   input  → JSON body {clip_id, name, search_text, [transcript_path]}
   output → JSON body {clip_id, field, embedding, dimensions, ...}
 
-The Go caller (clipindexer.indexViaAPI / indexBulkAPI) reads the
-embedding JSON from the response and persists it via the canonical
-outbox/indexed flow (QDRANT-002 PR4 contract).
+The Go caller reads the embedding JSON from the response and persists
+it through the canonical PostgreSQL media committer; the external vector store was removed
+on 2026-11-17 and vectors now live in pgvector.
 
 Uses APIRouter; __init__.py mounts the router on the FastAPI app via
 app.include_router(text.router).
@@ -59,9 +59,9 @@ async def contract():
     """Expose the canonical text embedding contract for the boot handshake.
 
     The Go boot gate (internal/kernel/embedding.Verify) compares this runtime
-    contract against the canonical EmbeddingContract SSOT, the Qdrant active
-    collection metadata, and the query embedder. Any drift fails closed with
-    QDRANT_EMBEDDING_CONTRACT_MISMATCH, so these fields MUST match
+    contract against the canonical EmbeddingContract SSOT and the query
+    embedder. Any drift fails closed with
+    EMBEDDING_CONTRACT_MISMATCH, so these fields MUST match
     internal/kernel/embedding/contract.go exactly.
     """
     return {
@@ -146,9 +146,9 @@ async def embed_batch(req: BatchTextEmbedRequest):
 
 @router.post("/index")
 async def index_text(req: IndexTextRequest):
-    """QDRANT-001 closure: compute-and-return. Caller (Go) persists.
+    """VECTOR-001 closure: compute-and-return. Caller (Go) persists.
 
-    QDRANT-001 review fix: the request body carries `name` and `search_text`
+    VECTOR-001 review fix: the request body carries `name` and `search_text`
     directly (Go is canonical owner of media_assets). This endpoint never
     touches SQLite.
 
@@ -186,7 +186,7 @@ async def index_text(req: IndexTextRequest):
 
 @router.post("/index_transcript")
 async def index_transcript(req: IndexTextRequest):
-    """QDRANT-001 closure: transcript compute-and-return. Caller persists."""
+    """VECTOR-001 closure: transcript compute-and-return. Caller persists."""
     async with _inference_sem:
         try:
             transcript_text = ""
@@ -222,7 +222,7 @@ async def index_transcript(req: IndexTextRequest):
 
 @router.post("/index_bulk")
 async def index_bulk(req: IndexBulkRequest):
-    """QDRANT-001 closure: bulk compute-and-return. Caller persists.
+    """VECTOR-001 closure: bulk compute-and-return. Caller persists.
 
     Input: list of clip specs {clip_id, name, search_text}.
     Output: {status, total, successful, skipped, failed, results}.

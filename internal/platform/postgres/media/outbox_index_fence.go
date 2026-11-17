@@ -18,7 +18,7 @@
 // The terminal INDEXED state is documented as a CAS
 // (mutations.go::SetMediaAssetIndexed fences on `source_version` +
 // `index_state='INDEXING'`), but nothing on the PostgreSQL media plane ever
-// writes 'INDEXING' — that hop belonged to the retired Qdrant clipindexer.
+// writes 'INDEXING' — that hop belonged to the retired vector engine clipindexer.
 // The worker therefore owns its own fence, and the fence it needs is the
 // RETIREMENT fence, not the supersede fence:
 //
@@ -96,6 +96,21 @@ func retiredIndexStatePredicate(column string, args *[]any, first int) string {
 	return fmt.Sprintf("COALESCE(%s, '') NOT IN (%s)", column, strings.Join(placeholders, ", "))
 }
 
+// indexStamp is the operator-visible proof that the vector was built from the
+// CURRENT asset snapshot. The old SQLite→vector chain wrote it through
+// SetMediaAssetIndexed; the PostgreSQL fence replaced that CAS but initially
+// dropped the metadata stamp, leaving every freshly indexed row at
+// index_health=STALE (content_hash != indexed_content_hash) forever.
+//
+// The content hash is resolved from the row itself (binary_sha256 wins, exactly
+// like operatorItemProjection) unless the caller carries one; binding values
+// are never invented.
+type indexStamp struct {
+	ContentHash      string
+	EmbeddingModel   string
+	EmbeddingVersion string
+}
+
 // applyIndexedFenceTx performs the FENCED terminal INDEXED transition inside
 // the caller-owned transaction and reports what happened.
 //
@@ -103,7 +118,7 @@ func retiredIndexStatePredicate(column string, args *[]any, first int) string {
 // rows-affected of 1 means the fence passed and anything else means the fence
 // rejected the row (absent or retired). A 0-row result is NOT an error — it is
 // the fence doing its job — so the outcome is classified, not thrown.
-func applyIndexedFenceTx(ctx context.Context, tx *sql.Tx, assetID, updatedAt string) (indexFenceOutcome, error) {
+func applyIndexedFenceTx(ctx context.Context, tx *sql.Tx, assetID, updatedAt string, stamp indexStamp) (indexFenceOutcome, error) {
 	if tx == nil {
 		return indexFenceOutcome{}, errors.New("media index fence: transaction is required")
 	}
@@ -114,17 +129,51 @@ func applyIndexedFenceTx(ctx context.Context, tx *sql.Tx, assetID, updatedAt str
 		return indexFenceOutcome{}, errors.New("media index fence: updated-at is required")
 	}
 
-	args := []any{string(asset.StateIndexed), updatedAt, assetID}
+	args := []any{string(asset.StateIndexed), updatedAt, assetID, stamp.ContentHash, stamp.EmbeddingModel, stamp.EmbeddingVersion}
 	predicate := retiredIndexStatePredicate("index_state", &args, len(args)+1)
 	// Dual-write expand (BASELINE_PLAN.md §5.2, parity with the canonical
 	// UpdateMediaAssetIndexState): the same RFC3339 string is written to the
 	// legacy TEXT column AND mirrored into the TIMESTAMPTZ column. Writing
 	// only the TEXT side left the two representations of one fact diverging.
+	//
+	// The metadata stamp is part of the SAME fenced UPDATE: a row can never be
+	// INDEXED without the indexed hash that proves what was embedded. Every
+	// COALESCE keeps an existing value when the caller has no better fact.
 	res, err := tx.ExecContext(ctx, `
 		UPDATE media_assets
 		SET index_state = $1,
 		    index_state_updated_at = $2,
-		    index_state_updated_at_ts = NULLIF($2, '')::timestamptz
+		    index_state_updated_at_ts = NULLIF($2, '')::timestamptz,
+		    metadata_json = jsonb_set(
+		        jsonb_set(
+		            jsonb_set(
+		                jsonb_set(
+		                    COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb,
+		                    '{indexed_at}', to_jsonb($2::text)
+		                ),
+		                '{indexed_content_hash}',
+		                to_jsonb(COALESCE(
+		                    NULLIF($4::text, ''),
+		                    NULLIF(binary_sha256, ''),
+		                    NULLIF(content_sha256, ''),
+		                    COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb->>'content_hash',
+		                    ''
+		                ))
+		            ),
+		            '{embedding_model}',
+		            to_jsonb(COALESCE(
+		                NULLIF($5::text, ''),
+		                COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb->>'embedding_model',
+		                ''
+		            ))
+		        ),
+		        '{embedding_model_version}',
+		        to_jsonb(COALESCE(
+		            NULLIF($6::text, ''),
+		            COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb->>'embedding_model_version',
+		            ''
+		        ))
+		    )::text
 		WHERE id = $3 AND `+predicate,
 		args...)
 	if err != nil {

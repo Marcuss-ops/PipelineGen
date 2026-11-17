@@ -16,7 +16,7 @@
 //	        canonical ingest stamp — see lifecycle_sweepers.go)
 //
 // Companion to IndexState (index_state.go). They are orthogonal:
-//   - IndexState tracks Qdrant-side indexing progress (7 states).
+//   - IndexState tracks vector-side indexing progress (7 states).
 //   - EnrichState tracks VLM-side classification enrichment (4 states).
 //
 // A row can be IndexState=INDEXED AND EnrichState=PENDING simultaneously

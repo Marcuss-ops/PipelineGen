@@ -12,7 +12,7 @@ acceptance result.
 
 Date: 2026-09-01  
 Checkout: `main` at `121ed61af`  
-Qdrant: `1.19.0`  
+pgvector: `1.19.0`  
 Runtime used for the isolated checks: `127.0.0.1:8012`
 
 ## Reproduction
@@ -81,7 +81,7 @@ HTTP:  200
 Visual inspection showed a recognisable London City skyline, including The
 Shard and the City cluster. The new path contains no URL/query-string
 component. This is a PASS for real retrieval, local persistence, and visual
-relevance; Drive delivery and Qdrant projection remain separate gates for
+relevance; Drive delivery and pgvector projection remain separate gates for
 this retrieved-image route.
 
 ### Artlist existing-asset reuse — PASS
@@ -125,8 +125,8 @@ No fabricated local file, Drive ID, or indexed asset was reported.
 
 ### Local Stock — application path reaches real validation, fixture incomplete
 
-Scenario `06_local_stock` initially exposed an invalid Qdrant filter shape;
-that was fixed in `wire_script_sources.go`. After the fix, Qdrant returned
+Scenario `06_local_stock` initially exposed an invalid pgvector filter shape;
+that was fixed in `wire_script_sources.go`. After the fix, pgvector returned
 60 results and SQLite hydrated all 60, then the pipeline correctly rejected
 the set because the available clips had no ready transcript text tracks:
 
@@ -161,7 +161,7 @@ repeating the generation and text-to-video checks.
   `0..4`, matching the identity contract checked by the runner.
 - Retrieved image paths use provider directories instead of source URLs.
 - Query strings are removed from downloaded image filenames.
-- Qdrant remains a projection: missing SQLite truth is discarded.
+- the external vector store remains a projection: missing SQLite truth is discarded.
 - The isolated test server was stopped after each live run.
 
 ## Final acceptance status
@@ -187,7 +187,7 @@ remain `NOT_RUN` in the current certification script.
 Remaining required evidence:
 
 1. one fresh Artlist item downloaded, probed, persisted, uploaded to Drive,
-   and indexed in Qdrant;
+   and indexed in pgvector;
 2. Local Stock reuse with transcript-ready catalog fixtures and zero remote
    calls on the warm request;
 3. AI generation after Google authentication;

@@ -129,6 +129,61 @@ var MediaLegacyFileMd5ConvergeDDL string
 //go:embed 013_media_thumb_url_contract.sql
 var MediaThumbURLContractDDL string
 
+// MediaSchemaMigrationsDDL is the verbatim DDL of
+// migrations/postgres/014_media_schema_migrations.sql — the PostgreSQL media
+// migration ledger (PLANE_INVENTORY.md D2). RunMediaMigrations creates this
+// table first, then records every applied migration with its SHA-256.
+//
+//go:embed 014_media_schema_migrations.sql
+var MediaSchemaMigrationsDDL string
+
+// MediaMigration is one embedded PostgreSQL media migration together with the
+// ledger identity RunMediaMigrations records for it.
+type MediaMigration struct {
+	Version  int
+	Filename string
+	DDL      string
+}
+
+// MediaSchemaMigrationsMigration is the ledger bootstrap itself. It is applied
+// before the ordered domain migrations and recorded like any other entry, so
+// the ledger answers for its own presence too.
+var MediaSchemaMigrationsMigration = MediaMigration{
+	Version:  14,
+	Filename: "014_media_schema_migrations.sql",
+	DDL:      MediaSchemaMigrationsDDL,
+}
+
+// MediaSelfBootstrapMigrations is the canonical ORDERED migration registry for
+// the media PostgreSQL domain. MediaSelfBootstrapDDL is derived from it, so a
+// new migration cannot be embedded in one list and forgotten in the other.
+//
+// Order contract (pinned by embed_ddl_contract_test.go):
+//   - 002 before 009: 002's CREATE TABLE IF NOT EXISTS cannot converge a
+//     database that already carries the retired face columns; only 009's
+//     DROP converges the shape, so 009 must come last.
+//   - 005_media_booleans.sql is a deliberate skeleton and stays UNWIRED
+//     (BASELINE_PLAN.md §7) until the owning table is mutated.
+//   - 010/011 are deliberate absences: deployment-managed one-shots
+//     (010 is NOT idempotent — DROP/RENAME have no IF EXISTS — and cannot
+//     live in a re-runnable self-bootstrap list; 011 follows the same
+//     policy). Production applies them in the deployment migration step.
+//   - 012/013 are idempotent CONVERGENCE migrations and run LAST: each one
+//     probes columns of the tables 001/006 create (legacy_file_md5,
+//     thumb_url), so it must be applied after them.
+var MediaSelfBootstrapMigrations = []MediaMigration{
+	{Version: 1, Filename: "001_media_schema.sql", DDL: MediaSchemaDDL},
+	{Version: 2, Filename: "002_media_vector_surfaces.sql", DDL: MediaVectorSurfacesDDL},
+	{Version: 3, Filename: "003_media_hnsw_indexes.sql", DDL: MediaHNSWIndexesDDL},
+	{Version: 4, Filename: "004_media_timestamps_timestamptz.sql", DDL: MediaTimestampsTimestamptzDDL},
+	{Version: 6, Filename: "006_media_asset_versions.sql", DDL: MediaAssetVersionsDDL},
+	{Version: 7, Filename: "007_media_clip_folders.sql", DDL: MediaClipFoldersDDL},
+	{Version: 8, Filename: "008_media_asset_processing.sql", DDL: MediaAssetProcessingDDL},
+	{Version: 9, Filename: "009_drop_media_asset_faces.sql", DDL: MediaDropAssetFacesDDL},
+	{Version: 12, Filename: "012_media_legacy_file_md5_converge.sql", DDL: MediaLegacyFileMd5ConvergeDDL},
+	{Version: 13, Filename: "013_media_thumb_url_contract.sql", DDL: MediaThumbURLContractDDL},
+}
+
 // MediaSelfBootstrapDDL is the canonical ORDERED self-bootstrap sequence for
 // the media PostgreSQL domain (migration-museum audit point 9: with
 // CREATE TABLE IF NOT EXISTS everywhere, application order is part of the
@@ -155,15 +210,12 @@ var MediaThumbURLContractDDL string
 //   - 012/013 are idempotent CONVERGENCE migrations and run LAST: each one
 //     probes columns of the tables 001/006 create (legacy_file_md5,
 //     thumb_url), so it must be applied after them.
-var MediaSelfBootstrapDDL = []string{
-	MediaSchemaDDL,
-	MediaVectorSurfacesDDL,
-	MediaHNSWIndexesDDL,
-	MediaTimestampsTimestamptzDDL,
-	MediaAssetVersionsDDL,
-	MediaClipFoldersDDL,
-	MediaAssetProcessingDDL,
-	MediaDropAssetFacesDDL,
-	MediaLegacyFileMd5ConvergeDDL,
-	MediaThumbURLContractDDL,
+var MediaSelfBootstrapDDL = mediaSelfBootstrapDDL()
+
+func mediaSelfBootstrapDDL() []string {
+	out := make([]string, 0, len(MediaSelfBootstrapMigrations))
+	for _, m := range MediaSelfBootstrapMigrations {
+		out = append(out, m.DDL)
+	}
+	return out
 }

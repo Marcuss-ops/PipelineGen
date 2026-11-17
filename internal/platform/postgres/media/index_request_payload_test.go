@@ -5,7 +5,7 @@
 // `requested_vectors: ["text","transcript"]` while the PostgreSQL media plane
 // writes exactly ONE vector channel (media_embeddings.embedding_type='text',
 // produced by PostgresIndexWorker.EmbeddingType and queried by MediaSearcher).
-// The "transcript" channel belonged to the RETIRED SQLite → Qdrant media
+// The "transcript" channel belonged to the RETIRED SQLite → pgvector media
 // projection. A consumer honouring the declaration was promised work no
 // producer performed — the phantom-availability shape godlike/07 forbids
 // (observed live on yt_gT0amKtXWdU_0_10_v1, whose outbox payload asked for two

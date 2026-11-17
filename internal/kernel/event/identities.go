@@ -129,8 +129,8 @@ const (
 //     media_embeddings.embedding_type='text' from the asset's live search_text
 //     and postgres/media.MediaSearcher queries that same channel.
 //
-// The former "transcript" channel belonged to the RETIRED SQLite → Qdrant media
-// projection (the Qdrant clipindexer derived a second named vector from the
+// The former "transcript" channel belonged to the RETIRED SQLite → pgvector media
+// projection (the pgvector clipindexer derived a second named vector from the
 // local `*.txt` side-channel). No PostgreSQL media code writes or searches it,
 // so declaring it here would request work the plane cannot perform — the exact
 // kind of phantom-availability declaration godlike/07 forbids.

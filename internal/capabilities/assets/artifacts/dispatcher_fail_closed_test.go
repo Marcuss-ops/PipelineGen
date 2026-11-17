@@ -1,4 +1,4 @@
-// Package artifacts — PR 7 (June 2026, codex/qdrant-app-writers-fail-closed)
+// Package artifacts — PR 7 (June 2026, codex/pgvector-app-writers-fail-closed)
 // dispatcher fail-closed contract test for ClipsRegistry.UpsertMedia
 // (the artifacts-targeted writer migrated from raw assetRepo.Upsert
 // to dispatcher.EnqueueAndIndex in PR 7).

@@ -1,5 +1,5 @@
 // Package indexing — ReindexRequesterHolder is the capability-level
-// replacement for the retired Qdrant clipindexer service.
+// replacement for the retired vector engine clipindexer service.
 package indexing
 
 import (
@@ -14,7 +14,7 @@ type IndexRequester interface {
 
 // ReindexRequesterHolder keeps the composition-time injection seam while
 // delegating every imperative reindex call to the canonical PostgreSQL
-// outbox. It replaces the Qdrant clipindexer service: no Qdrant write and no
+// outbox. It replaces the pgvector clipindexer service: no external vector store write and no
 // media_assets SQL read happens on this path.
 type ReindexRequesterHolder struct {
 	enabled   bool

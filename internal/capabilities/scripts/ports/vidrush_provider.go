@@ -108,7 +108,7 @@ type VidRushAssetProvider interface {
 
 // VidRushArtifactFinalizer is the common persistence boundary. Concrete
 // providers stop at VerifiedArtifact; this port owns the canonical
-// VerifiedArtifact -> Drive -> SQLite/media_assets -> outbox -> Qdrant path.
+// VerifiedArtifact -> Drive -> SQLite/media_assets -> outbox -> pgvector path.
 type VidRushArtifactFinalizer interface {
 	Finalize(context.Context, VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error)
 }

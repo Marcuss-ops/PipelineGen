@@ -55,7 +55,7 @@ func TestFanoutReports_GroupsByStageAndIsDeterministic(t *testing.T) {
 			stageAt("script.engine", 2600, 82000),
 		},
 		Operations: []OperationReport{
-			{Stage: "source.resolve", Component: "qdrant", Operation: "search", DurationMs: 430},
+			{Stage: "source.resolve", Component: "vector_search", Operation: "search", DurationMs: 430},
 			{Stage: "source.resolve", Component: "sqlite", Operation: "hydrate", DurationMs: 1200},
 			{Stage: "source.resolve", Component: "sqlite", Operation: "hydrate", DurationMs: 800},
 			{Stage: "script.engine", Component: "ollama", Operation: "generate", DurationMs: 78000},

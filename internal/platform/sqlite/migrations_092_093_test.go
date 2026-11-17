@@ -71,7 +71,7 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 				require.NoError(t, err)
 				defer func() { _ = db.Close() }() // 1. Ledger: 092 + 093 must be in schema_migrations with non-empty
 				//    checksums. Baseline-aware: a fresh DB bootstrapped from the
-				//    consolidated 000_baseline_267.sql sentinel (version 0) has
+				//    consolidated 000_baseline_268.sql sentinel (version 0) has
 				//    no individual 1..267 rows — the historical window is then
 				//    satisfied by the baseline (migrations_ledger_test.go uses
 				//    the same acceptance form).

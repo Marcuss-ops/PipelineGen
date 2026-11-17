@@ -17,7 +17,7 @@ import (
 )
 
 // EnqueueAndDelete performs the canonical DISPATCH step of an
-// asset.delete flow (QDRANT-002 PR7, Blocco 3.1):
+// asset.delete flow (VECTOR-002 PR7, Blocco 3.1):
 //
 //	tx body:
 //	  1. SET lifecycle_state=DELETE_REQUESTED on media_assets
@@ -29,7 +29,7 @@ import (
 // the next hop (INDEX_DELETE_PENDING) plus emits the second event.
 //
 // IMPORTANT: this function does NOT call repo.SoftDelete and does
-// NOT call any external API (Drive or Qdrant). Every step is
+// NOT call any external API (Drive or pgvector). Every step is
 // durable, retryable on outbox-pool lease-fence, and individually
 // reconcilable by deletion.DeletionReconciler.
 //
@@ -39,7 +39,7 @@ import (
 // intent (permanent delete vs. recoverable trash). The shim
 // routes Trashed=false so legacy callers (the AssetMutationDispatcher
 // port surface in internal/capabilities/assets/mutations/dispatcher.go,
-// admin tooling in cmd/admin/qdrant_maintenance.go, test stubs in
+// admin tooling in cmd/admin/pgvector_maintenance.go, test stubs in
 // internal/capabilities/assets/artifacts/dispatcher_fail_closed_test.go
 // etc.) continue to operate under the new chain.
 func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error {
@@ -80,7 +80,7 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 // preserved only for the AssetMutationDispatcher port compat shim.
 //
 // IMPORTANT: this function does NOT call drive.FileLifecycle.Trash,
-// drive.FileLifecycle.Delete, qdrant.DeletePoints, or
+// drive.FileLifecycle.Delete, pgvector.DeletePoints, or
 // repo.SoftDelete. Every side-effect lives in a later outbox handler.
 func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, permanently bool) error {
 	if d == nil {
@@ -155,7 +155,7 @@ func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, per
 // DeletionReconciler for rows stuck in {DRIVE_DELETE_PENDING,
 // INDEX_DELETE_PENDING}: the reconciler re-emits the event so a fresh
 // lease-fenced worker can pick it up; the IndexDeleteHandler does the
-// actual Qdrant-delete + SoftDelete + DELETED state flip on its own.
+// actual vector-delete + SoftDelete + DELETED state flip on its own.
 //
 // Unlike EnqueueDriveDelete + AdvanceAndEmit (which ATOMICALLY stamp
 // lifecycle_state + emit), this method is emit-only. The signature
@@ -191,7 +191,7 @@ func (d *Dispatcher) EnqueueDriveDelete(ctx context.Context, assetID string, per
 //     explicit circuit-breaker with bounded retry rate.
 //
 // The downside: if the worker processes the event PARTIALLY
-// (e.g. Qdrant delete succeeded, SoftDelete write crashed mid-flight),
+// (e.g. pgvector delete succeeded, SoftDelete write crashed mid-flight),
 // the row remains in INDEX_DELETE_PENDING with fresh updated_at and
 // won't be re-emitted for `threshold` minutes. This is an accepted
 // trade-off — the 30-min rate-limit applies uniformly and partial

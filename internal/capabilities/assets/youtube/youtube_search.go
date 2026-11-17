@@ -197,7 +197,7 @@ func (h *YouTubeClipHandler) SearchCatalog(c *gin.Context) {
 			"thumb_url":    item.ThumbnailURL,
 			"preview_url":  item.PreviewURL,
 			"media_type":   item.MediaType,
-			"qdrant_score": item.Score,
+			"vector_score": item.Score,
 			"rerank_score": item.Score,
 		})
 	}

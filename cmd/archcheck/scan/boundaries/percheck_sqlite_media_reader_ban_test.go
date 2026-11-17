@@ -215,11 +215,6 @@ func TestScanSQLiteMediaReaderBan_ConvertedZoneIsExactFile(t *testing.T) {
 		sibling string
 	}{
 		{
-			zone:    "internal/platform/qdrant/indexing/",
-			listed:  "internal/platform/qdrant/indexing/asset_store.go",
-			sibling: "internal/platform/qdrant/indexing/brand_new.go",
-		},
-		{
 			// repointed 2026-09-20: the previous representative,
 			// cmd/admin/internal/audit/clip_drive_audit.go, was delisted in the
 			// same change that moved its read onto

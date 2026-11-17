@@ -1,24 +1,21 @@
 package script
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 
 	"context"
 	"fmt"
 	"log"
 	"sort"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
-// Runtime-asset resolution for the remote final job: the identity cache and
-// the prefetch lanes that keep handoff from re-resolving one source per
-// fragment. Stock resolution is metadata-only; the Master owns the bytes.
+// Runtime-asset resolution for the remote final job: the identity cache that
+// keeps a handoff from re-resolving one source per fragment. Stock resolution
+// is metadata-only; the Master owns the bytes.
 
 // resolverClock accumulates the runtime-asset resolution time of one handoff.
 // It answers the only question the receipt could not: how much of handoff_ms is
@@ -48,9 +45,9 @@ func (a *RemoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id str
 // (the payload builder stamps roles and durations onto the map it receives).
 //
 // Concurrent callers of the SAME identity share one resolution (single flight):
-// the prefetch warms a folder while the walk asks for the file it needs, and
-// without this the prefetch would be duplicated work instead of saved work.
-// An error is never cached — a failed warm-up must not poison the walk.
+// two windows can ask for the same source, and without this the second call
+// would publish the same bytes again. An error is never cached — a failed
+// resolution must not poison the retry.
 func (a *RemoteFinalJobAdapter) resolveOnce(key string, build func() (map[string]any, error)) (map[string]any, error) {
 	if a == nil {
 		return nil, fmt.Errorf("final-job adapter is not configured")
@@ -106,49 +103,8 @@ func (a *RemoteFinalJobAdapter) resolveOnce(key string, build func() (map[string
 	return copyFinalJobRef(call.ref), nil
 }
 
-const (
-	// defaultFinalJobResolveConcurrency is how many Drive sources one handoff
-	// resolves at a time. It is 1 because concurrency was MEASURED and it loses
-	// on this stack: serial r69/r73 cost ~190 ms per source (61 sources = 10,9 s
-	// of the handoff), while a 64-file warm-up at 6 workers paid 576 ms per
-	// source on average (max 2.068 ms) and turned the same handoff into 49,5 s.
-	// The per-call cost triples under load — the path is throughput bound, not
-	// latency bound — so parallelising it multiplies work instead of hiding it.
-	// The knob stays so a future stack fix can be measured against this table.
-	defaultFinalJobResolveConcurrency = 1
-	// maxFinalJobResolveConcurrency bounds the operator knob: beyond this the
-	// handoff is no longer latency bound and a folder listing becomes a spike.
-	maxFinalJobResolveConcurrency = 16
-	// finalJobPrefetchPerFolder caps how many of one folder's files a prefetch
-	// warms. It is a WINDOW, not a sample: the folder cursor consumes the list
-	// in order, so warming the head of the list is exactly what the walk asks
-	// for next (r73: a 240-file folder, 61 of them consumed, 12 warmed → 10,9 s
-	// still spent on the critical path). 64 covers a long timeline at ~5 s per
-	// source while costing ceil(64/6)·190 ms ≈ 2 s of wall instead of 64·190 ms.
-	// A folder of hundreds is never resolved wholesale.
-	finalJobPrefetchPerFolder = 64
-)
-
-// finalJobResolveConcurrency reads VELOX_FINAL_JOB_RESOLVE_CONCURRENCY. Absent
-// means the measured default, 1 means the pre-2026-11-01 serial handoff, and a
-// malformed value degrades to serial rather than inventing parallelism.
-func finalJobResolveConcurrency() int {
-	raw := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_RESOLVE_CONCURRENCY"))
-	if raw == "" {
-		return defaultFinalJobResolveConcurrency
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value < 1 {
-		return 1
-	}
-	if value > maxFinalJobResolveConcurrency {
-		return maxFinalJobResolveConcurrency
-	}
-	return value
-}
-
 // beginHandoffCache scopes the per-handoff resolution cache to ONE run without
-// throwing away what a prefetch of the SAME run already resolved.
+// throwing away what an earlier attempt of the SAME run already resolved.
 func (a *RemoteFinalJobAdapter) beginHandoffCache(runID string) {
 	if a == nil {
 		return
@@ -162,86 +118,6 @@ func (a *RemoteFinalJobAdapter) beginHandoffCache(runID string) {
 	a.resolvedRunID = runID
 	a.resolved = nil
 	a.hits = 0
-}
-
-// PrefetchFinalJobStockAssets warms the handoff cache for the Drive sources one
-// stock folder is about to offer. It returns when every requested identity has
-// been attempted (or the context ended), and it never reports an error: a
-// source that cannot be warmed is resolved — and reported — by the walk.
-func (a *RemoteFinalJobAdapter) PrefetchFinalJobStockAssets(ctx context.Context, ids []string) {
-	a.prefetchFinalJobSources(ctx, ids, a.ResolveFinalJobStockAsset)
-}
-
-// prefetchFinalJobSources is the scheduling half of the prefetch: dedupe, skip
-// what the cache already holds, then resolve with a bounded pool. The resolver
-// is a parameter so the scheduling is testable without a Drive or an object
-// store.
-func (a *RemoteFinalJobAdapter) prefetchFinalJobSources(ctx context.Context, ids []string, resolve func(context.Context, string) (map[string]any, error)) {
-	if a == nil || resolve == nil {
-		return
-	}
-	workers := finalJobResolveConcurrency()
-	if workers <= 1 {
-		return
-	}
-	unique := make([]string, 0, len(ids))
-	seen := make(map[string]struct{}, len(ids))
-	for _, raw := range ids {
-		id := strings.TrimSpace(raw)
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		a.resolvedMu.Lock()
-		_, cached := a.resolved["drive:"+id]
-		a.resolvedMu.Unlock()
-		if cached {
-			continue
-		}
-		unique = append(unique, id)
-		if len(unique) == finalJobPrefetchPerFolder {
-			break
-		}
-	}
-	if len(unique) == 0 {
-		return
-	}
-	if len(unique) < workers {
-		workers = len(unique)
-	}
-	started := time.Now()
-	log.Printf("final_job prefetch kind=drive requested=%d warm=%d workers=%d", len(ids), len(unique), workers)
-	queue := make(chan string)
-	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for id := range queue {
-				if ctx.Err() != nil {
-					return
-				}
-				if _, err := resolve(ctx, id); err != nil {
-					log.Printf("final_job prefetch kind=drive id=%s err=%v", id, err)
-				}
-			}
-		}()
-	}
-	for _, id := range unique {
-		select {
-		case queue <- id:
-		case <-ctx.Done():
-			close(queue)
-			wg.Wait()
-			return
-		}
-	}
-	close(queue)
-	wg.Wait()
-	log.Printf("final_job prefetch kind=drive warm=%d wall_ms=%d", len(unique), time.Since(started).Milliseconds())
 }
 
 func copyFinalJobRef(ref map[string]any) map[string]any {

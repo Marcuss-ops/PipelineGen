@@ -73,6 +73,17 @@ func EnsureLocalizedRenderReuseTable(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, ddl); err != nil {
 		return fmt.Errorf("localization render reuse: ensure table: %w", err)
 	}
+	// Publication identity was added after the first release of this table:
+	// existing deployments get the columns in place, and a record written before
+	// them simply keeps empty values (a cache that cannot name a Drive file is a
+	// render-only cache, never a broken one).
+	const alter = `
+		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS drive_file_id   TEXT NOT NULL DEFAULT '';
+		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS drive_link      TEXT NOT NULL DEFAULT '';
+		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS drive_folder_id TEXT NOT NULL DEFAULT '';`
+	if _, err := db.ExecContext(ctx, alter); err != nil {
+		return fmt.Errorf("localization render reuse: ensure publication columns: %w", err)
+	}
 	return nil
 }
 
@@ -92,7 +103,8 @@ func (s *LocalizedRenderReuse) Lookup(ctx context.Context, fingerprint string) (
 		return nil, false, errors.New("localization render reuse: fingerprint is required")
 	}
 	const q = `
-		SELECT local_path, sha256, size_bytes, duration_ms, video_codec, audio_codec, backend
+		SELECT local_path, sha256, size_bytes, duration_ms, video_codec, audio_codec, backend,
+		       drive_file_id, drive_link, drive_folder_id
 		FROM localized_render_reuse
 		WHERE fingerprint = $1`
 	var (
@@ -100,7 +112,8 @@ func (s *LocalizedRenderReuse) Lookup(ctx context.Context, fingerprint string) (
 		backend string
 	)
 	err := s.db.QueryRowContext(ctx, q, fingerprint).
-		Scan(&record.LocalPath, &record.SHA256, &record.SizeBytes, &record.DurationMS, &record.VideoCodec, &record.AudioCodec, &backend)
+		Scan(&record.LocalPath, &record.SHA256, &record.SizeBytes, &record.DurationMS, &record.VideoCodec, &record.AudioCodec, &backend,
+			&record.DriveFileID, &record.DriveLink, &record.DriveFolderID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -157,3 +170,33 @@ func (s *LocalizedRenderReuse) Store(ctx context.Context, artifact localization.
 	}
 	return nil
 }
+
+// RecordDriveIdentity stores where certified bytes were published, so an
+// identical later run can certify them UPLOADED without moving 400 MB again.
+//
+// A missing row is deliberately not an error: the fingerprint is owned by the
+// render facts, and an identity recorded for a fingerprint the store does not
+// hold would be an orphan. The next render stores both.
+func (s *LocalizedRenderReuse) RecordDriveIdentity(ctx context.Context, fingerprint string, identity localization.RenderDriveIdentity) error {
+	if s == nil || s.db == nil {
+		return errors.New("localization render reuse: store is not initialized")
+	}
+	fingerprint = strings.ToLower(strings.TrimSpace(fingerprint))
+	if fingerprint == "" || strings.TrimSpace(identity.FileID) == "" || strings.TrimSpace(identity.Link) == "" {
+		return fmt.Errorf("localization render reuse: incomplete Drive identity for fingerprint %q", fingerprint)
+	}
+	const q = `
+		UPDATE localized_render_reuse
+		SET drive_file_id = $2, drive_link = $3, drive_folder_id = $4
+		WHERE fingerprint = $1`
+	if _, err := s.db.ExecContext(ctx, q, fingerprint, identity.FileID, identity.Link, identity.FolderID); err != nil {
+		s.log.Warn("localization render reuse: record drive identity failed",
+			zap.String("subsystem", "localization_render_reuse"),
+			zap.String("fingerprint", fingerprint),
+			zap.Error(err))
+		return fmt.Errorf("localization render reuse: record drive identity %q: %w", fingerprint, err)
+	}
+	return nil
+}
+
+var _ localization.RenderDriveIdentityRecorder = (*LocalizedRenderReuse)(nil)

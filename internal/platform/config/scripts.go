@@ -100,6 +100,17 @@ type ScriptsConfig struct {
 	// host; render_concurrency is clamped with a WARN (not silently capped).
 	LocalizedRenderGlobalConcurrency int `yaml:"localized_render_global_concurrency" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY" default:"6"`
 
+	// LocalizedRenderDriveReuse reuses the Drive file a localized clip was
+	// already published under when the exact same bytes are rendered again
+	// (same plan fingerprint + content hash). OFF by default: the delivery
+	// contract publishes each run's clips into that run's own folder, and reuse
+	// means pointing at the folder of the run that published them first.
+	//
+	// Turning it on removes the unchanged re-upload that dominates a warm run's
+	// clip pipeline (2026-11-16 Obama 20min: 403,5 MB of identical clips per
+	// run, ~35 files across 4 runs = 1,6 GB duplicated on Drive).
+	LocalizedRenderDriveReuse bool `yaml:"localized_render_drive_reuse" env:"VELOX_SCRIPTS_LOCALIZED_RENDER_DRIVE_REUSE" default:"false"`
+
 	// LocalizedRenderUploadConcurrency bounds Drive uploads independently from
 	// GPU rendering. Uploads must not retain a render slot while waiting on I/O.
 	//

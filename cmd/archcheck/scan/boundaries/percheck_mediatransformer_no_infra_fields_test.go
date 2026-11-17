@@ -228,7 +228,7 @@ func TestScanMediaTransformerNoInfraFields_TypeExpressionWordBoundary(t *testing
 type TransformSpec struct {
 	ID             string
 	DriveAnchor    *cmd.Drive
-	QdrantAnchor   *cmd.Qdrant
+	PgvectorAnchor   *cmd.pgvector
 	MD5Anchor      *cmd.MD5
 	FolderIDAnchor *cmd.FolderID
 	ClipPageURLAnchor   *cmd.ClipPageURL
@@ -259,8 +259,8 @@ type RenditionSet struct {
 		t.Fatalf("expected DriveAnchor (type *cmd.Drive with word boundary after Drive) to trip; violations=%v",
 			rep.Violations)
 	}
-	if violationByField(rep, "QdrantAnchor", "TransformSpec") == nil {
-		t.Fatalf("expected QdrantAnchor (type *cmd.Qdrant with word boundary after Qdrant) to trip; violations=%v",
+	if violationByField(rep, "PgvectorAnchor", "TransformSpec") == nil {
+		t.Fatalf("expected PgvectorAnchor (type *cmd.pgvector with word boundary after pgvector) to trip; violations=%v",
 			rep.Violations)
 	}
 	if violationByField(rep, "MD5Anchor", "TransformSpec") == nil {

@@ -21,7 +21,7 @@ import (
 // runDownloadSoundEffects downloads the canonical sound_effect catalog to
 // <data_dir>/<media_dir>/sound_effects, preserving Drive folder-relative names.
 // Each local_path update goes through the canonical dispatcher so the DB write
-// and the Qdrant re-index request remain coupled.
+// and the pgvector re-index request remain coupled.
 func RunDownloadSoundEffects(args []string) error {
 	fs := flag.NewFlagSet("download-sound-effects", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)

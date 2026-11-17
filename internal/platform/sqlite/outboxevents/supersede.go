@@ -15,14 +15,14 @@
 //
 // The supersede path is success-like from the producer's perspective:
 // another event already covers the same aggregate at a newer version,
-// so re-indexing with the stale payload would burn a Qdrant upsert and
+// so re-indexing with the stale payload would burn a pgvector upsert and
 // double-count the index_event metrics for no gain. Pool.processEvent
 // routes supersede errors to a distinct terminal status — NOT
 // dead_letter — so operator dashboards can tell "the producer is
 // broken" apart from "the upstream streamed a fresh update and the old
 // events are no-ops".
 //
-// Ticket reference: QDRANT-002 checklist item F —
+// Ticket reference: VECTOR-002 checklist item F —
 // "Verificare che source_version dell'evento sia ancora corrente.
 //
 //	Se l'evento è obsoleto, marcarlo SUPERSEDED senza indicizzare dati vecchi."

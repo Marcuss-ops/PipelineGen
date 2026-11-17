@@ -4,7 +4,7 @@
 // These names are the STAGE dimension (business phase boundaries) and are
 // ALIASES of the canonical constants in internal/kernel/observability — the
 // registry is the single owner of every phase literal (see registry.go). The
-// external technical calls (qdrant.search, sqlite.hydrate, ollama.generate,
+// external technical calls (pgvector.search, sqlite.hydrate, ollama.generate,
 // drive.upload, ...) are recorded separately as OperationReport
 // observations so a phase wall time is never confused with an accumulated
 // dependency time. Every stage below is measured with MeasureStageReport —

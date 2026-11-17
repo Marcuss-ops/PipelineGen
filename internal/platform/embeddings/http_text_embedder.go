@@ -76,16 +76,16 @@ func NewHTTPTextEmbedderWithTimeout(serverURL string, timeout time.Duration) cor
 // endpoint and returns the parsed embedding. Empty text short-circuits
 // to (EmbeddingResult{}, nil) to match the canonical contract.
 //
-// QDRANT-001b (July 2026): the return type is now EmbeddingResult
+// VECTOR-001b (July 2026): the return type is now EmbeddingResult
 // instead of []float32. The sidecar returns the canonical envelope
 // {"embedding": [...], "dimensions": 768, "model": "<name>",
 // "model_version": "<version>", "error": ""}. Graceful fallback: when
 // the sidecar is not yet updated or omits provenance, the query fails
-// closed instead of sending an unverified vector to Qdrant.
+// closed instead of sending an unverified vector to pgvector.
 //
 // Error wrapping includes the original HTTP status code and body so
 // production observability can correlate embedder failures with
-// Qdrant upsert health.
+// pgvector upsert health.
 func (e *HTTPTextEmbedder) Embed(ctx context.Context, text string) (coreasset.EmbeddingResult, error) {
 	if text == "" {
 		return coreasset.EmbeddingResult{}, nil
@@ -124,7 +124,7 @@ func (e *HTTPTextEmbedder) embedWithType(ctx context.Context, text, kind string)
 		return coreasset.EmbeddingResult{}, fmt.Errorf("embedder returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// QDRANT-001b: accept only the canonical envelope; provenance is
+	// VECTOR-001b: accept only the canonical envelope; provenance is
 	// required so the query vector cannot drift from the indexed space.
 	var envelope struct {
 		Embedding    []float64 `json:"embedding"`
@@ -153,7 +153,7 @@ func (e *HTTPTextEmbedder) embedWithType(ctx context.Context, text, kind string)
 		return coreasset.EmbeddingResult{}, fmt.Errorf("sidecar returned empty embedding vector")
 	}
 
-	// QDRANT-001b: validate declared dimensions match actual vector length.
+	// VECTOR-001b: validate declared dimensions match actual vector length.
 	if envelope.Dimensions > 0 && envelope.Dimensions != len(envelope.Embedding) {
 		return coreasset.EmbeddingResult{}, fmt.Errorf(
 			"dimension mismatch: declared %d, actual embedding length %d",
@@ -162,7 +162,7 @@ func (e *HTTPTextEmbedder) embedWithType(ctx context.Context, text, kind string)
 
 	// The query embedder is part of the canonical text contract. Reject
 	// responses from another model, revision, vector size, or contract hash
-	// before the vector can reach Qdrant.
+	// before the vector can reach pgvector.
 	if err := validateCanonicalTextEnvelope(envelope.Model, envelope.ModelVersion, envelope.ContractHash, len(envelope.Embedding)); err != nil {
 		return coreasset.EmbeddingResult{}, err
 	}

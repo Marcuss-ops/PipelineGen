@@ -62,7 +62,7 @@ indexing`), so a media row without a Drive location cannot exist and every
 published clip carries an `asset.index.requested` event. On the PostgreSQL media
 plane (`PIPELINEGEN_MEDIA_POSTGRES_ENABLED=true`) the `PostgresIndexWorker`
 consumes the event, embeds `media_assets.search_text` and flips `index_state` to
-`INDEXED`; Qdrant is not the media index owner.
+`INDEXED`; PostgreSQL pgvector is the media index owner.
 
 - Clip id is deterministic — `planner:<hash>:<index>`, the hash being derived
   from `(source_url, index, policy_version, start_sec, end_sec)` (canonical
@@ -128,7 +128,7 @@ is reachable through the component runner and never part of the push chain.
 | `make test-stock-drive` / `test-stock-cut` / `test-stock-partial-download` | per-stage package suites under `stockpipeline`, `downloader` |
 | `make benchmark-stock-download` | package benchmarks |
 
-These are headless and CPU-first: they never require Drive, Qdrant, a browser,
+These are headless and CPU-first: they never require Drive, a browser,
 or a running server.
 
 ## §4 — StockRust certification boundary

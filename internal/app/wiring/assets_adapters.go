@@ -35,13 +35,10 @@ var _ appsearch.AssetDeliveryService = (*deliverySignerAdapter)(nil)
 // ── Diagnostics adapters ───────────────────────────────────────────────
 
 // diagIndexHealthAdapter adapts real dependencies to diagnostics.IndexHealthPort.
-// QDRANT-005 Fase 1 (June 2026): rewired with real SQLite + Qdrant deps.
-// Counts SQLite assets/indexed/indexable + Qdrant points, computes drift.
+// VECTOR-005 Fase 1 (June 2026): rewired with real SQLite + pgvector deps.
+// Counts SQLite assets/indexed/indexable + pgvector points, computes drift.
 type diagIndexHealthAdapter struct {
-	clips  *assetsrepo.ClipsRepository
-	qdrant appdiag.QdrantHealthPort
-	// collectionName is the Qdrant collection to query (resolved at wiring time).
-	collectionName string
+	clips *assetsrepo.ClipsRepository
 }
 
 func (a *diagIndexHealthAdapter) IndexHealth(ctx context.Context) (*appdiag.IndexHealthReport, error) {
@@ -68,27 +65,7 @@ func (a *diagIndexHealthAdapter) IndexHealth(ctx context.Context) (*appdiag.Inde
 		report.SQLiteIndexable = int(indexable)
 	}
 
-	// ── Qdrant count (real data) ──
-	if a.qdrant != nil && a.collectionName != "" {
-		qdrantPoints, qerr := a.qdrant.CountPoints(ctx, a.collectionName)
-		if qerr != nil {
-			report.Degraded = true
-			report.OK = false
-			report.DegradedSources = append(report.DegradedSources,
-				fmt.Sprintf("qdrant CountPoints: %v", qerr))
-		} else {
-			report.QdrantPoints = qdrantPoints
-			// Drift: negative = missing in Qdrant, positive = orphan (more in Qdrant than SQLite).
-			report.MissingInQdrant = report.SQLiteIndexed - qdrantPoints
-			if report.MissingInQdrant < 0 {
-				report.OrphanInQdrant = -report.MissingInQdrant
-				report.MissingInQdrant = 0
-			}
-			if report.MissingInQdrant > 0 || report.OrphanInQdrant > 0 {
-				report.Degraded = true
-			}
-		}
-	}
+	// ── pgvector count (real data) ──
 
 	// ── Outbox health ──
 	// CountPendingOutbox and CountDeadLetter are on ClipsRepository.

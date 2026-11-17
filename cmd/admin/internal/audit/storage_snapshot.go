@@ -10,18 +10,15 @@
 //     observability DBs via the canonical storage.Backup helper.
 //  2. Counts/tables  — per-table row counts for both DBs via the
 //     canonical storage.AllUserTables + TableCounts helpers.
-//  3. Qdrant state   — collection list, point counts, runtime-alias
-//     target, existing snapshots, plus NEW server-side snapshots for
-//     production collections (the Qdrant-native backup analog, same
-//     surface as `dr-qdrant take-snapshot`).
-//  4. Drive inventory — recursive walk of every configured Drive root
+//  3. Drive inventory — recursive walk of every configured Drive root
 //     (same walkDriveTree engine as clip-drive-audit) written to a
 //     separate JSON file (the listing can be large).
 //
 // HARD INVARIANT (godlike/07 NO-FAKE-AVAILABILITY + the GC plan rule
 // "nessuna cancellazione nella prima esecuzione"): this command performs
-// ZERO deletions. It only reads (SQLite SELECT, Qdrant GET/POST-snapshot,
-// Drive listing) and writes snapshot artifacts under the output dir.
+// ZERO deletions. It only reads (SQLite SELECT, Drive listing) and
+// writes snapshot artifacts under the output dir. The former vector engine
+// section was removed with the legacy vector engine on 2026-11-17.
 // No --apply flag exists and none may be added.
 //
 // Usage:
@@ -31,13 +28,11 @@
 // Flags:
 //
 //	--out DIR                    snapshot output dir (default <DataDir>/snapshots/<UTC-ts>)
-//	--skip-qdrant                skip the whole Qdrant section
-//	--skip-qdrant-snapshots      record Qdrant state but do NOT create server-side snapshots
 //	--skip-drive                 skip the Drive inventory section
 //
 // Output layout:
 //
-//	<out>/manifest.json            — whole report (sqlite + qdrant + drive summary)
+//	<out>/manifest.json            — whole report (sqlite + drive summary)
 //	<out>/sqlite-primary.sqlite    — VACUUM INTO backup of the primary DB
 //	<out>/sqlite-observability.sqlite — VACUUM INTO backup of the observability DB
 //	<out>/drive-inventory.json     — full recursive Drive file listing
@@ -68,7 +63,6 @@ type storageSnapshotManifest struct {
 	NoDeletions   bool                  `json:"no_deletions_performed"`
 	OutDir        string                `json:"out_dir"`
 	SQLite        sqliteSnapshotSection `json:"sqlite"`
-	Qdrant        qdrantSnapshotSection `json:"qdrant"`
 	Drive         driveSnapshotSection  `json:"drive"`
 }
 
@@ -86,25 +80,6 @@ type sqliteDBSnapshot struct {
 	SHA256      string         `json:"sha256"`
 	DurationMs  int64          `json:"duration_ms"`
 	TableCounts map[string]int `json:"table_counts"`
-}
-
-type qdrantSnapshotSection struct {
-	Status         string             `json:"status"` // "ok" | "skipped" | "error"
-	Error          string             `json:"error,omitempty"`
-	BaseURL        string             `json:"base_url"`
-	RuntimeAlias   string             `json:"runtime_alias"`
-	AliasTarget    string             `json:"alias_target,omitempty"`
-	Collections    []qdrantCollection `json:"collections"`
-	SnapshotsTaken []string           `json:"snapshots_taken,omitempty"`
-	SnapshotsErr   []string           `json:"snapshots_errors,omitempty"`
-}
-
-type qdrantCollection struct {
-	Name        string `json:"name"`
-	Points      int    `json:"points_count"`
-	Status      string `json:"status"`
-	Snapshotted bool   `json:"snapshotted"`
-	Snapshot    string `json:"snapshot_name,omitempty"`
 }
 
 type driveSnapshotSection struct {
@@ -149,27 +124,6 @@ type driveInventoryEntry struct {
 
 // exportTableCounts returns per-table row counts via the canonical
 // storage.AllUserTables + TableCounts helpers.
-
-// ── Qdrant section ─────────────────────────────────────────────────────
-
-// snapshotQdrant records collection state and (unless skipped) creates
-// server-side snapshots for production collections — the Qdrant-native
-// backup, same surface as `dr-qdrant take-snapshot`. Snapshot creation
-// is best-effort per collection: a failed snapshot is recorded in
-// SnapshotsErr, but the state section still succeeds (the state is what
-// the GC plan compares against).
-
-// shouldSnapshotCollection reports whether a collection is a production
-// projection worth snapshotting. Test / recovery / synthetic collections
-// are excluded — their content is disposable by construction.
-func shouldSnapshotCollection(name string) bool {
-	lower := strings.ToLower(name)
-	if strings.Contains(lower, "test") || strings.Contains(lower, "synthetic") ||
-		strings.Contains(lower, "recovery") || strings.Contains(lower, "benchmark") {
-		return false
-	}
-	return true
-}
 
 // ── Drive section ──────────────────────────────────────────────────────
 

@@ -411,7 +411,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		degraded.ArtifactService = artifacts.NewService(artifactBlobStore, artifactRepo, log)
 		return degraded, nil
 	default:
-		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required — QDRANT-002 PR7 removed the legacy fallback; root.Outbox must be built first")
+		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required — VECTOR-002 PR7 removed the legacy fallback; root.Outbox must be built first")
 	}
 
 	bundle := &DomainBundle{}

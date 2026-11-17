@@ -30,8 +30,8 @@ import (
 //     ok=false (JSON envelope with an error message). 200 != 404
 //     means the route is live and reachable.
 //
-// The test mirrors TestNewServerWithHealth_CfgBranch_RegistersQdrantHealthRoutes
-// (file internal/api/server_qdrant_health_test.go), so the load-bearing
+// The test mirrors TestNewServerWithHealth_CfgBranch_RegistersVectorHealthRoutes
+// (file internal/api/server_pgvector_health_test.go), so the load-bearing
 // assertion is the same shape: if NewServerWithHealth regresses to
 // skipping SetModelsHandler in the cfg != nil branch, the route vanishes
 // from engine.Routes() and the test fails with a clear root cause.

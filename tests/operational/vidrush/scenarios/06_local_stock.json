@@ -1,6 +1,6 @@
 {
   "scenario_id": "06_local_stock",
-  "description": "Vidrush local stock — ricerca locale clip Mike Tyson già indicizzate. Verifica binding per segmento, alternanza fight/interview/training, nessun asset_id duplicato, max 2 scene consecutive stesso video, Drive/SQLite/Qdrant verificati. Nessuna clip Artlist usata come fallback silenzioso.",
+  "description": "Vidrush local stock — ricerca locale clip Mike Tyson già indicizzate. Verifica binding per segmento, alternanza fight/interview/training, nessun asset_id duplicato, max 2 scene consecutive stesso video, Drive/SQLite/pgvector verificati. Nessuna clip Artlist usata come fallback silenzioso.",
   "version": 1,
   "expect": {
     "http_status": 202,
@@ -81,7 +81,7 @@
       "no_artlist_fallback": "nessuna clip Artlist usata come fallback silenzioso per mancanza stock",
       "drive_link_valid": "Drive link valido per ogni clip selezionata",
       "sqlite_verified": "ogni asset_id presente nella tabella media_assets di SQLite",
-      "qdrant_verified": "ogni asset_id presente nell'indice Qdrant",
+      "pgvector_verified": "ogni asset_id presente in media_embeddings (pgvector)",
       "semantic_relevance": "pertinenza semantica tra testo del segmento e clip selezionata",
       "no_wrong_boxer": "nessun pugile sbagliato nei risultati principali (solo Mike Tyson)"
     }

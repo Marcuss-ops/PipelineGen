@@ -55,7 +55,7 @@ func CmdContext() context.Context {
 // renamed to ParsePositiveFlag to satisfy Go's exported-symbol rule
 // for cross-package import. Both call sites (backfill in
 // cmd/admin/backfill_media_assets_search_terms.go and reconcile in
-// cmd/admin/reconcile/reconcile_qdrant.go) now route through this
+// cmd/admin/reconcile/reconcile_pgvector.go) now route through this
 // helper.
 func ParsePositiveFlag(arg, flagName string) (int, error) {
 	raw := strings.TrimPrefix(arg, flagName+"=")

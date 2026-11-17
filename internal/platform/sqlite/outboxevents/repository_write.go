@@ -363,7 +363,7 @@ const SupersedeStatus = event.OutboxStatusSuperseded
 // (last_error LIKE '%superseded%') surface this terminal state
 // cleanly.
 //
-// Reference: QDRANT-002 checklist item F — "Se l'evento è obsoleto,
+// Reference: VECTOR-002 checklist item F — "Se l'evento è obsoleto,
 // marcarlo SUPERSEDED senza indicizzare dati vecchi."
 func (r *Repository) MarkSuperseded(ctx context.Context, eventID int64, leaseID string, errMsg string) error {
 	nowStr := timeutil.FormatRFC3339(time.Now())

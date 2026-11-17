@@ -5,7 +5,7 @@
 // per-emitter literal list, and the two emitters disagreed with the plane they
 // describe — the envelope asked for ["text","transcript"] while the PostgreSQL
 // media plane writes exactly one channel (media_embeddings.embedding_type
-// ='text'). "transcript" belonged to the RETIRED SQLite → Qdrant media
+// ='text'). "transcript" belonged to the RETIRED SQLite → pgvector media
 // projection. Declaring it re-introduces phantom availability: a consumer
 // honours a request for work no producer performs.
 //

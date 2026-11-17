@@ -1,7 +1,7 @@
 // Package stockintelligence — adapters_postgres.go is the POST-CUTOVER
 // retrieval plane for the durable stock resolver. After the media SSOT
 // moved to PostgreSQL+pgvector, the resolver must no longer call
-// Qdrant (projection) or SQLite (second media truth). The single read
+// pgvector (projection) or SQLite (second media truth). The single read
 // adapter is pgmedia.MediaSearcher (pgvector HNSW 768d) hydrated from
 // media_assets — no second database, no projection drift.
 //
@@ -92,7 +92,7 @@ func NewHTTPTextEmbedderAdapter(embed func(context.Context, string) ([]float32, 
 // SearchLocal implements LocalSearchPort against the PostgreSQL SSOT.
 // Query embedding is produced by the E5 sidecar, then the pgvector
 // MediaSearcher performs ANN + hard-filter fusion in one SQL query.
-// Caller-visible contract matches QdrantLocalSearchAdapter: limit
+// Caller-visible contract matches PostgresLocalSearchAdapter: limit
 // default 20, caller thresholds (10 / 0.6) stay in the resolver.
 func (a PostgresLocalSearchAdapter) SearchLocal(ctx context.Context, query string, limit int) ([]Candidate, error) {
 	if a.Searcher == nil || a.Embedder == nil {
@@ -141,7 +141,7 @@ var _ LocalSearchPort = PostgresLocalSearchAdapter{}
 
 // PostgresAssetHydrator adapts the canonical media_assets SSOT
 // (PostgresMediaSearcher.GetMany) to the local resolver's label needs.
-// Qdrant supplies IDs/scores; PostgreSQL supplies the label truth.
+// pgvector supplies IDs/scores; PostgreSQL supplies the label truth.
 // Orphan hits (no media_assets row) are dropped exactly as in the
 // SQLite path; the resolver treats them as non-candidates.
 type PostgresAssetHydrator struct {

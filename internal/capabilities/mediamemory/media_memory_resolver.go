@@ -4,7 +4,7 @@
 // brain capability, so no package outside the brain performs its own
 // search fan-out.
 //
-// godlike/06 SSOT: this resolver does NOT call Qdrant, SQLite, Drive,
+// godlike/06 SSOT: this resolver does NOT call pgvector, SQLite, Drive,
 // FFmpeg or yt-dlp directly. All search decisions (exact memory,
 // local catalog, semantic, external providers) are owned by the Brain,
 // which consumes the MediaMemory cascade through the canonical

@@ -4,8 +4,8 @@
 // Split rationale, see wire_services.go header.
 //
 // This file owns the PURE STARTUP-STEP BUILDER stage. The dependency
-// order for boot preconditions (drive-init → qdrant-collection →
-// outbox-pool → chrome-pool-prewarm), plus the qdrant-config-mismatch
+// order for boot preconditions (drive-init → pgvector-collection →
+// outbox-pool → chrome-pool-prewarm), plus the pgvector-config-mismatch
 // gate, plus the CollectionManager-nil gate, all live here. Extracted
 // out of WireServices so the order is visible at a glance and adding
 // a future Required precondition is a single-edit canonical change.
@@ -27,8 +27,8 @@
 // asset service.
 //
 // Cross-file deps (same package `app`, accessed without explicit import):
-//   - validateQdrantIndexerCompatibility (in build_bundles_qdrant_gates.go;
-//     consolidates the qdrant config-mismatch gate here, so the
+//   - validateIndexerCompatibility (in the retired indexer gates file;
+//     consolidates the pgvector config-mismatch gate here, so the
 //     orchestration file does NOT call it)
 //   - NewComposition / assetsJobs.Broker / Process.CollectionManager
 //     (root's typed ports, same package)
@@ -41,7 +41,6 @@ package wiring
 
 import (
 	"context"
-	"fmt"
 
 	"go.uber.org/zap"
 
@@ -50,33 +49,29 @@ import (
 
 // buildStartupPlan is the canonical dependency-ordered StartupStep
 // builder. Returns the dependency-ordered baseline (drive-init →
-// qdrant-collection → outbox-pool → chrome-pool-prewarm) plus the
+// pgvector-collection → outbox-pool → chrome-pool-prewarm) plus the
 // jobs.startupPlan append.
 //
 // Returns a typed error when any precondition fails, so the caller
 // can fail-closed with a uniform partialCleanup:
 //
-//   - validateQdrantIndexerCompatibility gate (qdrant config mismatch
-//     across QDRANT-014 / QDRANT-005 / QDRANT-011 / QDRANT-003).
-//   - cfg.Qdrant.Enabled but CollectionManager == nil (QDRANT-003
+//   - validateIndexerCompatibility gate (pgvector config mismatch
+//     across VECTOR-014 / VECTOR-005 / VECTOR-011 / VECTOR-003).
+//   - cfg.pgvector.Enabled but CollectionManager == nil (VECTOR-003
 //     requires Client + CollectionManager + IndexWriter + Searcher
-//     when qdrant.enabled=true).
+//     when pgvector.enabled=true).
 //
 // Steps NOT enabled are silently skipped (drive-init skipped when
 // root.DriveStart is nil, etc.) so the same helper works for
 // minimal-mode and full-mode server boots.
 func buildStartupPlan(cfg *config.Config, root *ComposeRoot, jobs *backgroundJobs, log *zap.Logger) ([]StartupStep, error) {
-	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth gate.
+	// PR-VECTOR-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth gate.
 	// This is the FOURTH wire site (BUILD_PROCESS is 1st, BUILD_OUTBOX
-	// is 2nd, BUILD_BUNDLES_QDRANT_GATES validateQdrantIndexer
+	// is 2nd, BUILD_BUNDLES_VECTOR_GATES validateIndexer
 	// Compatibility is 3rd, this helper invocations is 4th). godlike/07
 	// no-fake-availability: catch the misconfiguration at composition
 	// time so the registry-level failover aborts BEFORE EnsureSchema is
-	// wired against a half-built Qdrant runtime.
-	if err := validateQdrantIndexerCompatibility(cfg); err != nil {
-		return nil, err
-	}
-
+	// wired against a half-built legacy vector runtime.
 	var plan []StartupStep
 
 	// Drive folder validation. Required.
@@ -86,26 +81,6 @@ func buildStartupPlan(cfg *config.Config, root *ComposeRoot, jobs *backgroundJob
 			Name: "drive-init", Required: true,
 			Start: func(ctx context.Context) error {
 				return ds()
-			},
-			Stop: func(_ context.Context) error { return nil },
-		})
-	}
-
-	// QDRANT-003 (June 2026): qdrant-collection step — creates/validates
-	// the versioned Qdrant collection + sets the runtime alias. Required
-	// when Qdrant is enabled. Fail-closed gate inside this helper covers
-	// the CollectionManager-nil case (the pre-PR4.8 historical error
-	// path that surfaced at EnsureSchema time).
-	if cfg.Qdrant.Enabled {
-		if root.Process == nil || root.Process.CollectionManager == nil {
-			return nil, fmt.Errorf("qdrant is enabled but CollectionManager is nil — QDRANT-003 requires Client + CollectionManager + IndexWriter + Searcher when qdrant.enabled=true")
-		}
-		cm := root.Process.CollectionManager
-		plan = append(plan, StartupStep{
-			Name: "qdrant-collection", Required: true,
-			Start: func(ctx context.Context) error {
-				_, err := cm.EnsureSchema(ctx)
-				return err
 			},
 			Stop: func(_ context.Context) error { return nil },
 		})
@@ -136,7 +111,7 @@ func buildStartupPlan(cfg *config.Config, root *ComposeRoot, jobs *backgroundJob
 	// incorrectly take unrelated VidRush providers offline.
 	// Falls into the canonical order:
 	//
-	//   drive-init → qdrant-collection → outbox-pool
+	//   drive-init → pgvector-collection → outbox-pool
 	//   → background services (scanner, monitor, sweepers)
 	//   → job runner (always last)
 	//

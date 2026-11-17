@@ -15,7 +15,7 @@ migrations/postgres/002_media_vector_surfaces.sql
 migrations/postgres/006_media_asset_versions.sql
 migrations/postgres/007_media_clip_folders.sql
 migrations/postgres/008_media_asset_processing.sql
-migrations/sqlite/000_baseline_267.sql
+migrations/sqlite/000_baseline_268.sql
 migrations/sqlite/001_velox_core.sql
 migrations/sqlite/011_create_characters.sql
 migrations/sqlite/012_create_search_cache.sql

@@ -2,7 +2,7 @@
 // (Stock Cutover Commit 4-expanded, July 2026).
 //
 // Defines the canonical port surface for the orchestrator's
-// resilience flow (post-emission outbox dispatch + Qdrant projection),
+// resilience flow (post-emission outbox dispatch + pgvector projection),
 // and the typed envelope that threads the per-run FinalStatus through to
 // the JobFinalizer. Fixture defaults are owned by the explicit test
 // constructor; production wiring uses NewProductionStockOrchestrator.
@@ -18,7 +18,7 @@
 //     failure, the upstream DB state is ROLLED BACK so partial
 //     writes do not leak.
 //   - ProjectionPort: post-emission best-effort projection to the
-//     Qdrant side index. Failure flips FinalStatus to
+//     pgvector side index. Failure flips FinalStatus to
 //     job.StatusIndexPending (rather than job.StatusFailed); see
 //     canonical test (c) for the contract.
 //
@@ -51,10 +51,10 @@ import (
 // job row directly. The FinalStatus is one of:
 //
 //   - job.StatusSucceeded   — happy path (artifacts emitted AND
-//     Qdrant projection completed without error).
+//     pgvector projection completed without error).
 //   - job.StatusIndexPending — artifacts emitted, but the
-//     post-emission Qdrant projection failed (best-effort,
-//     reconciled by the Qdrant-reconciler task per domain/asset/
+//     post-emission pgvector projection failed (best-effort,
+//     reconciled by the vector-reconciler task per domain/asset/
 //     index_state.go).
 //   - job.StatusFailed     — non-transient failure surfaced by the
 //     orchestrator (typically via ErrManifestIncomplete or
@@ -115,10 +115,10 @@ type TransactionalAssetWriter interface {
 }
 
 // ProjectionPort is the canonical port for the post-emission
-// Qdrant projection step. Failure does NOT abort the run —
+// pgvector projection step. Failure does NOT abort the run —
 // orchestrator flips FinalStatus to job.StatusIndexPending and
 // returns a nil error so the broker runner persists the index-pending
-// state and the Qdrant-reconciler task can retry asynchronously.
+// state and the vector-reconciler task can retry asynchronously.
 type ProjectionPort interface {
 	Project(ctx context.Context, manifest *job.ArtifactManifest) error
 }
@@ -162,12 +162,12 @@ func (noopWriter) WriteAndEnqueue(_ context.Context, _ *asset.Asset, _ string) e
 }
 
 // noopProjection is a fixture-only ProjectionPort. Production wiring
-// must inject the Qdrant-backed adapter; the canonical test (c) injects
-// a Qdrant-offline stub to verify the StatusIndexPending fallback.
+// must inject the vector-backed adapter; the canonical test (c) injects
+// a vector-offline stub to verify the StatusIndexPending fallback.
 type noopProjection struct{}
 
 // Project is a no-op; the canonical test (c) substitutes a
-// Qdrant-offline stub to verify the index-pending fallback contract.
+// vector-offline stub to verify the index-pending fallback contract.
 func (noopProjection) Project(_ context.Context, _ *job.ArtifactManifest) error {
 	return nil
 }
@@ -196,11 +196,11 @@ var ErrManifestIncomplete = errors.New("manifest-completeness gate: required art
 var ErrAtomicDispatchFailed = errors.New("atomic dispatch failed: outbox write aborted mid-transaction (DB rolled back)")
 
 // ErrProjectionResilience is documented but NOT surfaced as an
-// orchestrator-level error — Qdrant projection failures flip
+// orchestrator-level error — pgvector projection failures flip
 // FinalStatus to job.StatusIndexPending and return nil from Run.
 // The sentinel is exported for log scanners that want to keyword-
 // search for the resilience path; the orchestrator never wraps it.
-var ErrProjectionResilience = errors.New("projection-resilience path: Qdrant projection unavailable — status flipped to INDEX_PENDING")
+var ErrProjectionResilience = errors.New("projection-resilience path: pgvector projection unavailable — status flipped to INDEX_PENDING")
 
 // ErrNoProducedChunk surfaces the §12-1 P0 #1 (July 2026) orchestrator-
 // level fail-closed gate: every Orchestrator.Run success path MUST

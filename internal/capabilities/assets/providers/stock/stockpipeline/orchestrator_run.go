@@ -32,7 +32,7 @@ import (
 // runOrchestratorResilient, then collapse Run into RunResilient.
 //
 // For the canonical 3-test failure-mode contract (outbox rollback,
-// manifest-completeness gate, Qdrant-offline → INDEX_PENDING) see
+// manifest-completeness gate, vector-offline → INDEX_PENDING) see
 // RunResilient + run_upload_indexing_test.go.
 func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactManifest, error) {
 	summary, err := o.RunResilient(ctx, input)
@@ -60,7 +60,7 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 //     + per metadata.json. Uploads Drive;
 //     nil ArtifactPreparation ⇒ test-fixture skip.
 //  6. stock.finalize       — ManifestBuilder.Build + Validate +
-//     ProjectionPort.Project (best-effort Qdrant
+//     ProjectionPort.Project (best-effort pgvector
 //     → flips FinalStatus to StatusIndexPending) +
 //     BuildFinalizationRequest +
 //     JobFinalizer.CompleteWithArtifacts

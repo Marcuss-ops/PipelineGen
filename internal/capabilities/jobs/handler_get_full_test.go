@@ -371,7 +371,7 @@ func TestGetFull_ExposesTimingBreakdown(t *testing.T) {
 			{Name: "audio_publish", Status: "completed", DurationMs: 918},
 		},
 		Operations: []kernobs.OperationReport{
-			{Stage: "source.resolve", Component: "qdrant", Operation: "search", DurationMs: 420},
+			{Stage: "source.resolve", Component: "vector_search", Operation: "search", DurationMs: 420},
 			{Stage: "source.resolve", Component: "sqlite", Operation: "hydrate", DurationMs: 690},
 			{Stage: "script.engine", Component: "ollama", Operation: "generate", DurationMs: 78910},
 			{Stage: "audio_publish", Component: "drive", Operation: "upload", DurationMs: 710},
@@ -409,7 +409,7 @@ func TestGetFull_ExposesTimingBreakdown(t *testing.T) {
 	for _, op := range timing.Operations {
 		opWork[op.Component+"."+op.Operation] = op.WorkMs
 	}
-	assert.Equal(t, int64(420), opWork["qdrant.search"], "qdrant.search work must surface")
+	assert.Equal(t, int64(420), opWork["vector_search.search"], "vector_search.search work must surface")
 	assert.Equal(t, int64(690), opWork["sqlite.hydrate"], "sqlite.hydrate work must surface")
 	assert.Equal(t, int64(78910), opWork["ollama.generate"], "ollama.generate work must surface")
 	assert.Equal(t, int64(710), opWork["drive.upload"], "drive.upload work must surface")

@@ -1,7 +1,7 @@
 // Package app — media-processor + VLM-client construction.
 //
 // Extracted from build_bundles_process.go (July 2026 sub-section
-// split) per the documented layout in build_process_qdrant.go:
+// split) per the documented layout in build_process_bundle.go:
 // this file owns ONLY wireMediaProcessor (canonical
 // mutations.AssetMutationDispatcher adapter + InitMediaProcessor
 // FFmpeg-backed wiring) + newVLMClient (cfg.VLM → *vlm.Client).
@@ -41,7 +41,7 @@ func wireMediaProcessor(
 	mediaConfig mediaexec.ExecutionConfig,
 ) (detail.MediaProcessor, error) {
 	if outbox == nil || outbox.Dispatcher == nil {
-		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed)")
+		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (VECTOR-002 PR8 fail-closed)")
 		return nil, nil
 	}
 	committer, err := newCanonicalAssetCommitter(mediaPG, log)

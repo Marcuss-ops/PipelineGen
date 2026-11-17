@@ -32,7 +32,7 @@ type Dependencies struct {
 	// /sync mounts directly on the parent /api/media group,
 	// matching /api/media/sync URL verbatim). The storage
 	// capability has a non-HTTP consumer at the Router level
-	// (the QDRANT-001 server-to-server /internal/v1/media/sync
+	// (the VECTOR-001 server-to-server /internal/v1/media/sync
 	// surface invoked via api.MediaInternalRouter.RegisterInternalMediaRoutes
 	// — see internal/platform/httpserver/routes.go::Setup() and the canonical
 	// Router.SetInternalMediaHandler binding); therefore the
@@ -49,12 +49,12 @@ type Dependencies struct {
 	// RegisterRoutes(rg) forwarder delegates to the embedded
 	// api.Module which captures the Handler in its closure
 	// (the Module name "diagnostics" + empty prefix "" preserve
-	// the pre-Step-10 routing shape — the 3 routes mount
+	// the pre-Step-10 routing shape — the 2 routes mount
 	// directly on the parent /api/media group, matching
-	// /api/media/diagnostics + /api/media/index-health +
-	// /api/media/qdrant/cleanup URLs verbatim). The diagnostics
-	// capability has no non-HTTP consumer in the codebase (the
-	// 3 routes are the entire public surface, reachable only
+	// /api/media/diagnostics + /api/media/index-health URLs
+	// verbatim; /pgvector/cleanup was removed 2026-11-17). The
+	// diagnostics capability has no non-HTTP consumer in the
+	// codebase (the 2 routes are the entire public surface, reachable only
 	// via HTTP), so the Descriptor surface is the smallest
 	// possible — just `Module` field + forwarder methods
 	// (matches the stock / voiceover / soundeffect / register
@@ -182,16 +182,15 @@ func (m *Module) RegisterRoutes(r *gin.RouterGroup) {
 		m.deps.Storage.RegisterRoutes(r)
 	}
 
-	// Diagnostics operations (index-health, qdrant health).
+	// Diagnostics operations (index-health, pgvector health).
 	// Blocco C1-Step 10 (June 2026): the diagnostics Descriptor
 	// owns its own Module; the assets module passes the parent
 	// /api/media group straight through (no more inline
 	// r.Group("") wrap — the descriptor's DiagnosticsDescriptor
 	// forwarder delegates to the embedded api.Module which
-	// mounts the 3 routes directly on the parent group,
+	// mounts the 2 routes directly on the parent group,
 	// preserving the public URLs /api/media/diagnostics +
-	// /api/media/index-health + /api/media/qdrant/cleanup
-	// verbatim).
+	// /api/media/index-health verbatim).
 	if m.deps.Diagnostics != nil {
 		m.deps.Diagnostics.RegisterRoutes(r)
 	}

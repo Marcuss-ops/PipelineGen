@@ -101,7 +101,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 ) (*detail.ResolvedTextBundle, error) {
 	// txtPath is the canonical transcript file path referenced by a
 	// CROSS-PACKAGE consumer — clipindexer.lookupTranscriptPath reads
-	// `local_path -> TrimSuffix(Ext) + ".txt"` for Qdrant transcript
+	// `local_path -> TrimSuffix(Ext) + ".txt"` for pgvector transcript
 	// embedding. Keeping the .txt side-channel alive until
 	// clipindexer migrates to a typed port
 	// (godlike/06 SSOT forward-pointer:

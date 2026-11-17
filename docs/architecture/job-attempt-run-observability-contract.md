@@ -286,7 +286,7 @@ accumulated_operation_ms       ≈ 40,000
 `provider_wait_ms` is the time spent inside an external provider call, such as:
 
 ```text
-Drive, Qdrant, Ollama, TTS, Artlist, YouTube,
+Drive, Ollama, TTS, Artlist, YouTube,
 image providers, transcription providers
 ```
 
@@ -349,7 +349,7 @@ An operation describes a nested technical boundary:
 
 ```text
 youtube.download, ffmpeg.transcode, drive.upload,
-sqlite.transaction, qdrant.upsert
+sqlite.transaction, pgvector.upsert
 ```
 
 Example:
@@ -441,7 +441,6 @@ Technical timing is recorded only in shared wrappers/adapters, each called once 
 ```text
 ObservedDrivePublisher
 ObservedSQLiteExecutor
-ObservedQdrantClient
 ObservedProcessRunner
 ObservedFFmpeg
 ObservedDownloader
@@ -544,7 +543,6 @@ COUNTERS_PERSISTED=PASS
 
 DRIVE_OBSERVED=PASS
 SQLITE_OBSERVED=PASS
-QDRANT_OBSERVED=PASS
 FFMPEG_OBSERVED=PASS
 DOWNLOADERS_OBSERVED=PASS
 OLLAMA_OBSERVED=PASS

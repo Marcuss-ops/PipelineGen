@@ -186,7 +186,7 @@ func TestOutboxKey_Deterministic(t *testing.T) {
 // TestOutboxKey_DifferentEventTypesDifferentKeys pins that
 // the event_type is part of the dedup identity. The same
 // asset with different event_types produces different keys
-// (so a Qdrant upsert event and a Drive delete event for
+// (so a pgvector upsert event and a Drive delete event for
 // the same asset don't collide in the outbox).
 func TestOutboxKey_DifferentEventTypesDifferentKeys(t *testing.T) {
 	a, _ := OutboxKey("asset.index.requested.v1", "artlist", "abc", "v1")

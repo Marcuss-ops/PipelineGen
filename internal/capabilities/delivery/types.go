@@ -206,17 +206,17 @@ type PublishRequest struct {
 	// Provider (SEMANTIC-LOCATION-API-2026-07-06 Wave 1) categorises
 	// the upstream source (e.g. "pexels", "pixabay", "wikipedia").
 	// Optional at PublishRequest level; required by StockPath in Wave 4
-	// stock migration. Carries to Qdrant payload in Wave 10.
+	// stock migration. Carries to pgvector payload in Wave 10.
 	Provider string `json:"provider,omitempty"`
 
 	// Category (SEMANTIC-LOCATION-API-2026-07-06 Wave 1) groups assets
 	// under a logical taxonomy bucket (e.g. "Boxe", "Personaggi").
 	// Optional at PublishRequest level; required by StockPath / Stock
-	// surface in Wave 4 stock migration. Carries to Qdrant payload in
+	// surface in Wave 4 stock migration. Carries to pgvector payload in
 	// Wave 10.
 	Category string `json:"category,omitempty"`
 
-	// Tags are semantic keywords for the Qdrant payload (DoD #3,
+	// Tags are semantic keywords for the pgvector payload (DoD #3,
 	// July 2026). Carried downstream to asset_published events for
 	// hybrid BM25 lexical search. Optional; empty Tags slice means
 	// "no keywords assigned yet" — distinct from nil (unset).

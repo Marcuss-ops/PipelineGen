@@ -10,8 +10,8 @@
 // Round-2 refactor (2026-07-04): replaced the hand-rolled
 // sql.Open("sqlite3", dsn) + DSN-chain with the canonical
 // storage.OpenSQLiteDB helper (same pattern used by 24+ other
-// cmd/admin/ files: qdrant_readiness.go, dr_qdrant.go,
-// reindex_qdrant.go, backfill_media_assets_search_terms.go, etc.).
+// cmd/admin/ files: pgvector_readiness.go, dr_pgvector.go,
+// reindex_pgvector.go, backfill_media_assets_search_terms.go, etc.).
 // The helper applies the canonical pragma chain (WAL +
 // foreign_keys=on + busy_timeout=5000) per AGENTS.md §SQLite pool;
 // the custom DSN chain in this file was a godlike/07

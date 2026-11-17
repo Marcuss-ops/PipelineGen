@@ -2,7 +2,7 @@
 //
 // P2-1 (June 2026): this file is a pure transport shell. The
 // composition-root work (WireServices + NewServerWithHealth +
-// qdrantProbe wiring) lives in
+// pgvectorProbe wiring) lives in
 // `internal/app/build_server.go::BuildServer`; the runtime driver
 // lives next to it as `(*ServerRuntime).Run`. The slim main only
 // owns the three surfaces BuildServer does NOT touch (per its

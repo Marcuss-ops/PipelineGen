@@ -11,7 +11,7 @@ import (
 // run. It is derived from the persisted Stages / Operations / WallTimeMs on
 // the run's own clock — never a second timer. It is the single shape exposed
 // by timing diagnostics (e.g. /api/jobs/:id/full) so operators can answer
-// per-phase questions (wall, Qdrant, SQLite, plan, LLM, NLP, TTS, Rust,
+// per-phase questions (wall, pgvector, SQLite, plan, LLM, NLP, TTS, Rust,
 // persistence) without recomputing anything by hand.
 //
 // The breakdown fields (attributed / unattributed / bottleneck) are computed

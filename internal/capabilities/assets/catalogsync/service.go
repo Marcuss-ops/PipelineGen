@@ -71,7 +71,7 @@ type Summary struct {
 //     instead of silently falling back to a guessed repo.
 var (
 	ErrCatalogSyncNilReader     = errors.New("catalogsync.NewService: reader is required (read-only Drive port — sync_targets.go:23 + sync_recursive.go dereference unconditionally)")
-	ErrCatalogSyncNilDispatcher = errors.New("catalogsync.NewService: dispatcher is required (QDRANT-002 PR7 — production canonical ingest; sync_persist.go::upsertPreservingExisting dereferences unconditionally)")
+	ErrCatalogSyncNilDispatcher = errors.New("catalogsync.NewService: dispatcher is required (VECTOR-002 PR7 — production canonical ingest; sync_persist.go::upsertPreservingExisting dereferences unconditionally)")
 	ErrCatalogSyncNilLog        = errors.New("catalogsync.NewService: log is required (zap.Logger dereferenced by every warn/error path in sync_persist.go + sync_targets.go + sync_prune.go)")
 	ErrCatalogSyncInvalidTarget = errors.New("catalogsync: target requires repository and indexer ports")
 )
@@ -105,7 +105,7 @@ var (
 //	                  unconditionally (read-only Drive port).
 //	  - Dispatcher  : sync_persist.go::upsertPreservingExisting calls
 //	                  s.dispatcher.EnqueueAndIndex unconditionally
-//	                  (QDRANT-002 PR7 — production canonical ingest).
+//	                  (VECTOR-002 PR7 — production canonical ingest).
 //	  - Log         : every warn/error path dereferences s.log.
 //
 //	OPTIONAL (nil-safe guarded at every call site):

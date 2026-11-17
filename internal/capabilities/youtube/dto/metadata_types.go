@@ -64,7 +64,7 @@ type ClipMetadataInput struct {
 
 	// Tags are the caller-supplied clip tags (Segment.Tags).
 	// Request-provided and MUST survive enrichment: when non-empty they
-	// are persisted to media_assets.tags and the Qdrant `tags` payload
+	// are persisted to media_assets.tags and the pgvector `tags` payload
 	// key verbatim.
 	Tags []string
 
@@ -242,7 +242,7 @@ type CanonicalClipMetadata struct {
 	//
 	// SourceProvider identifies the source platform. Always "youtube"
 	// for clips extracted through the YouTube pipeline. Non-empty at
-	// write time so the Qdrant payload + operator dashboards surface
+	// write time so the pgvector payload + operator dashboards surface
 	// the canonical source.
 	SourceProvider string `json:"source_provider,omitempty"`
 
@@ -268,7 +268,7 @@ type CanonicalClipMetadata struct {
 	// Description is the caller-supplied clip description. Persisted in
 	// metadata_json `description` and consumed by the indexer's
 	// SemanticDocument composition (document-text field 2) and the
-	// Qdrant payload `description` key.
+	// pgvector payload `description` key.
 	Description string `json:"description,omitempty"`
 
 	// SourceTitle and SourceChannel preserve the original YouTube metadata
@@ -285,7 +285,7 @@ type CanonicalClipMetadata struct {
 	PolicyVersion string `json:"policy_version,omitempty"`
 
 	// DrivePath is the canonical Drive locator (WebViewLink). Used by
-	// Qdrant consumers to construct the download URL without querying
+	// pgvector consumers to construct the download URL without querying
 	// the API.
 	DrivePath string `json:"drive_path,omitempty"`
 

@@ -223,7 +223,7 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
 	// The transactional outbox request is durable at this boundary, while
-	// the projection worker owns the physical Qdrant write. Rendering only
+	// the projection worker owns the physical pgvector write. Rendering only
 	// needs the verified, persisted file; semantic indexing is for later
 	// reuse and must not hold this request open. The pending state remains
 	// visible to the catalog and the outbox worker will update it asynchronously.

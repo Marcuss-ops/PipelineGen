@@ -1,12 +1,12 @@
 // Package mediaregistry — content_link_backfill.go: contract for the CAS
-// content-link backfill (item 12 — backfill before the Qdrant v4 rebuild).
+// content-link backfill (item 12 — backfill before the pgvector v4 rebuild).
 //
 // The media_asset_sources backfill reconstructs provenance; the content-link
 // backfill reconstructs the byte-identity half: every non-empty
 // media_assets.content_sha256 (and media_asset_sources.content_sha256) must
 // resolve to a content_objects row, and every provenance source whose owning
 // asset already knows its bytes must carry that digest. Both halves must be
-// complete BEFORE the Qdrant reindex so the projection is built over a
+// complete BEFORE the pgvector reindex so the projection is built over a
 // consistent registry.
 //
 // godlike/07 fail-closed: the backfill never invents a digest. Digests are

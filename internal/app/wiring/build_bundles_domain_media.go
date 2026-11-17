@@ -185,7 +185,7 @@ func buildDomainMediaServices(
 	// TextTrackRepository is now sourced from the canonical
 	// RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
 	// pre-PR local construction is removed so every consumer
-	// (BuildTextTrackBundle, BuildRepoBundle, the Qdrant
+	// (BuildTextTrackBundle, BuildRepoBundle, the pgvector
 	// PayloadMapper, the TextTrackResolver here) shares the SAME
 	// instance — a future refactor that read from a stray local
 	// copy would silently corrupt text-track state.
@@ -490,7 +490,7 @@ func buildTextTrackResolver(
 // that rejects a 262-byte empty MP4 stub (no video stream / zero duration)
 // produced when a bot-checked yt-dlp section download exits zero but writes
 // no media data. Before wiring, the Step 5 gate (size > 0) accepted the stub
-// and the job "succeeded" with a dead artifact on Drive + Qdrant. The gate
+// and the job "succeeded" with a dead artifact on Drive + pgvector. The gate
 // reuses the same shared media probe (rustexec) that cut_and_normalize uses,
 // so the validation and the encode agree on the same execution plane.
 // SegmentPolicy is config-driven: the canonical default is 4-60s

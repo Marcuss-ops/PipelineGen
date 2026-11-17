@@ -60,7 +60,7 @@ const (
 //
 // Scope is deliberately narrow: DECLARATION lines only (`<ident> = "<model>"`,
 // optionally preceded by const/var). Struct-literal fields (`Model: "..."`)
-// are data flowing through the Qdrant schema / config surfaces, which the
+// are data flowing through the pgvector schema / config surfaces, which the
 // boot-time embedding-contract handshake already validates.
 // The set covers BOTH embedding families (text/E5 AND visual/SigLIP): the
 // visual model id has the same one-owner contract as the text one, and a
@@ -317,7 +317,7 @@ func scanMetadataKeysRuleFile(state any, path, relPath string, r *report.Report,
 // MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the historical SQLite
 // writer (clipindexer.setIndexedAt, wired through the
 // IndexingHandler → clipindexer.IndexClip → setIndexedAt chain) was DELETED
-// together with the Qdrant media compatibility seam, so the canonical-path
+// together with the legacy media compatibility seam, so the canonical-path
 // list ratcheted from 2 entries to 1. Listing a second engine here would have
 // kept blessing a writer that no longer exists.
 const indexedStateWriterSSOTScopeMarker = "INDEXED_WRITER_SCOPE: media-ssot"

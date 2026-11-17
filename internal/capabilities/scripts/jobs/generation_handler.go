@@ -215,6 +215,16 @@ func (h *GenerateJobHandler) Handle(
 			zap.String("preset", string(env.Preset)),
 			zap.Int("items", len(env.Items)))
 	}
+	// A single final-job request with several output languages is one API/job
+	// submission, but its videos are separate durable runs. Keep the run and
+	// render lifecycle independent per target, and execute them in the caller's
+	// language order so only one final video occupies the render lane at a time.
+	if len(env.Items) == 1 && env.FinalJob && len(env.Items[0].Output.Languages) > 1 {
+		if run == nil {
+			return nil, fmt.Errorf("multilingual final job requires its durable parent run")
+		}
+		return h.executeFinalJobLanguageRuns(ctx, j, run, tools)
+	}
 
 	// Single-item jobs use the durable capability runtime so the same
 	// CanonicalTimeline and RenderPlan flow reaches the canonical Velox

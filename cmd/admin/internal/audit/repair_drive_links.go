@@ -250,7 +250,7 @@ func RunRepairDriveLinks(args []string) error {
 
 		case scriptpkg.LocationStateUpdated:
 			report.Updated++
-			report.QdrantMismatches++ // stored link ≠ canonical → Qdrant may be stale
+			report.IndexMismatches++ // stored link ≠ canonical → index may be stale
 			detail.Action = "updated"
 			if *removeInvalid {
 				*ref.linkPtr = verified.DriveLink
@@ -383,7 +383,7 @@ func RunRepairDriveLinks(args []string) error {
 		committed = true
 		report.SQLiteUpdated = len(changes) > 0
 		// Projection processing remains asynchronous and is not claimed here.
-		report.QdrantEventsEmitted = len(changes)
+		report.IndexEventsEmitted = len(changes)
 	}
 
 	// ── Output ────────────────────────────────────────────────

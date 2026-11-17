@@ -11,9 +11,6 @@ WorkingDirectory=@VELOX_ROOT@/refactored
 EnvironmentFile=-/etc/pipelinegen/pipelinegen.env
 Environment=VELOX_HOST=127.0.0.1
 Environment=VELOX_PORT=8000
-Environment=VELOX_VECTOR_SEARCH_URL=http://127.0.0.1:6333
-Environment=VELOX_QDRANT_BASE_URL=http://127.0.0.1:6333
-Environment=VELOX_QDRANT_URL=http://127.0.0.1:6333
 Environment=VELOX_CLIP_INDEXER_SERVER_URL=http://127.0.0.1:8001
 Environment=VELOX_ARTLIST_SCRAPER_SERVER_URL=http://127.0.0.1:9123
 Environment=VELOX_SEARXNG_URL=http://127.0.0.1:8080

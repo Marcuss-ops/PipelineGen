@@ -36,7 +36,7 @@ in this change: each move needs the target capability's port frozen first.
 
 | File | LOC | Target owner | Prerequisite |
 |---|---:|---|---|
-| `search/adapters_qdrant_transport_health.go` | 243 | `platform/qdrant` | transport-health port; no search-domain policy in the adapter |
+| `search/adapters_pgvector_transport_health.go` | 243 | `platform/pgvector` | transport-health port; no search-domain policy in the adapter |
 | `brain_ranker_adapter.go` | 224 | brain/rank capability | ranker port and error contract |
 | `voiceover/adapters_voiceover_repo.go` | 548 | `capabilities/voiceover` | repository port; remove wiring-only DTOs |
 | `voiceover/adapters_voiceover_scriptgen.go` | 388 | `capabilities/voiceover` | scriptgen port |

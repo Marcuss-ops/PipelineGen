@@ -2,6 +2,7 @@ package stockpipeline
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
@@ -11,7 +12,13 @@ import (
 // canonicalStageRecorder captures appended stage observations so contract
 // tests can assert what the canonical kernel recorder persisted. It
 // implements the LifecycleRecorder seam used by Run.recordStage.
+//
+// The kernel recorder is a concurrency seam: measured operations are appended
+// from the worker goroutines that ran them (stock source downloads fan out),
+// so the double must serialize its slices the same way a durable recorder
+// would. Readers run after the run settles and observe the completed slices.
 type canonicalStageRecorder struct {
+	mu         sync.Mutex
 	stages     []kernobs.StageReport
 	operations []kernobs.OperationReport
 }
@@ -23,10 +30,14 @@ func (r *canonicalStageRecorder) StartReport(_ context.Context, _ *kernobs.RunRe
 	return nil
 }
 func (r *canonicalStageRecorder) AppendStage(_ context.Context, _ string, st kernobs.StageReport) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.stages = append(r.stages, st)
 	return nil
 }
 func (r *canonicalStageRecorder) AppendOperation(_ context.Context, _ string, op kernobs.OperationReport) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.operations = append(r.operations, op)
 	return nil
 }

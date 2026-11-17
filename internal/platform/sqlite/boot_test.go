@@ -106,11 +106,11 @@ func TestBoot_OnEmpty_Primary_AllExpectedTablesExist(t *testing.T) {
 		assertTableExists(t, db, tbl, true)
 	}
 
-	// Migration 288 demolished the residual Qdrant projection registry
+	// Migration 288 demolished the residual pgvector projection registry
 	// (schema residue since the PostgreSQL media-SSOT cutover). A fresh
 	// primary boot must NOT resurrect them: the create migrations still run,
 	// the demolition migration drops them again.
-	for _, tbl := range []string{"qdrantprojection_checkpoints", "qdrantprojection_dlq", "qdrant_collections", "qdrant_cleanup_audit"} {
+	for _, tbl := range []string{"pgvectorprojection_checkpoints", "pgvectorprojection_dlq", "pgvector_collections", "pgvector_cleanup_audit"} {
 		assertTableExists(t, db, tbl, false)
 	}
 }

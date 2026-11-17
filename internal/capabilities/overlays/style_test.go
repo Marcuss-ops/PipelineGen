@@ -143,22 +143,48 @@ func TestImageFrameAndEntityImageNormalization(t *testing.T) {
 	require.Equal(t, 0.2, item.ImageLayers[0].Params["position_y"])
 }
 
-func TestImageFrameShadowStaysWithinNativeGPUBlurLimit(t *testing.T) {
+func TestImageFrameShadowHonorsAuthoredBlurWithinNativeLimit(t *testing.T) {
 	enabled := true
-	largeBlur := 24.0
+	authoredBlur := 24.0
 	frame := ImageFrame(&scriptpkg.OverlayImageStyleSpec{
-		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &largeBlur},
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &authoredBlur},
 	})
 	require.NotNil(t, frame)
 	require.NotNil(t, frame.Shadow)
-	require.Equal(t, 10.0, frame.Shadow.BlurPX)
+	// A blur inside the certified ceiling is honored exactly, not reduced to
+	// an internal smaller constant the payload never asked for.
+	require.Equal(t, authoredBlur, frame.Shadow.BlurPX)
 
 	// The flat image_shadow_blur key reaches frameFromImageParams and would
-	// overwrite the capped Frame, so it must be capped at the same boundary.
+	// overwrite the Frame, so it carries the same authored value.
 	params := StyleParams(&scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{
-		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &largeBlur},
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &authoredBlur},
 	}})
-	require.Equal(t, maxImageFrameShadowBlurPX, params["image_shadow_blur"])
+	require.Equal(t, authoredBlur, params["image_shadow_blur"])
+}
+
+// TestImageShadowBlurCeilingMatchesIngress pins that the projection ceiling is
+// the one kernel validation enforces, so no admissible payload is clamped.
+func TestImageShadowBlurCeilingMatchesIngress(t *testing.T) {
+	enabled := true
+	ceiling := scriptpkg.MaxImageShadowBlurPX
+	if err := scriptpkg.ValidateImageStyle(&scriptpkg.OverlayImageStyleSpec{
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &ceiling},
+	}); err != nil {
+		t.Fatalf("blur at the ceiling must be admitted: %v", err)
+	}
+	above := ceiling + 1
+	if err := scriptpkg.ValidateImageStyle(&scriptpkg.OverlayImageStyleSpec{
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &above},
+	}); err == nil {
+		t.Fatalf("blur above the ceiling (%g) must be rejected, not clamped", above)
+	}
+	frame := ImageFrame(&scriptpkg.OverlayImageStyleSpec{
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: enabled, Blur: &ceiling},
+	})
+	require.NotNil(t, frame)
+	require.NotNil(t, frame.Shadow)
+	require.Equal(t, maxImageFrameShadowBlurPX, frame.Shadow.BlurPX)
 }
 
 func TestStyleParamsProjectsCursorAndBoundedImage(t *testing.T) {
@@ -183,7 +209,7 @@ func TestImageBackdropProjectsOnlyForStandaloneImages(t *testing.T) {
 	zoom, blur, spacing, opacity := 1.2, 24.0, 64.0, 0.12
 	style := &scriptpkg.OverlayImageStyleSpec{Backdrop: &scriptpkg.OverlayImageBackdropSpec{
 		Zoom: &zoom, BlurPX: &blur,
-		Grid: &scriptpkg.OverlayImageBackdropGridSpec{Color: "#7FA8C8", SpacingPX: &spacing, Opacity: &opacity},
+		Grid: &scriptpkg.OverlayImageBackdropGridSpec{Scope: "foreground", Color: "#7FA8C8", SpacingPX: &spacing, Opacity: &opacity},
 	}}
 	standalone := capmodel.OverlayItem{Kind: "image", Params: map[string]any{}}
 	ApplyImageStyle(&standalone, style)
@@ -192,6 +218,7 @@ func TestImageBackdropProjectsOnlyForStandaloneImages(t *testing.T) {
 	require.Equal(t, 1.2, backdrop["zoom"])
 	require.Equal(t, 24.0, backdrop["blur_px"])
 	grid := backdrop["grid"].(map[string]any)
+	require.Equal(t, "foreground", grid["scope"], "backdrop grid scope must reach the renderer")
 	require.Equal(t, "#7FA8C8", grid["color"])
 	require.Equal(t, 64.0, grid["spacing_px"])
 	require.Equal(t, 0.12, grid["opacity"])
@@ -222,6 +249,11 @@ func TestOverlayImageBackdropValidation(t *testing.T) {
 	lineWidth := 1.0
 	valid.Image.Backdrop.Grid = &scriptpkg.OverlayImageBackdropGridSpec{Style: "dots", LineWidthPX: &lineWidth}
 	require.ErrorContains(t, valid.Validate(), "line_width_px")
+
+	// P3b: the backdrop grid owns the same scope vocabulary as the
+	// foreground grid, so a forged scope fails instead of defaulting.
+	valid.Image.Backdrop.Grid = &scriptpkg.OverlayImageBackdropGridSpec{Scope: "foreground_only"}
+	require.ErrorContains(t, valid.Validate(), "grid.scope")
 
 	dotRadius := 2.0
 	valid.Image.Backdrop.Grid = &scriptpkg.OverlayImageBackdropGridSpec{Style: "lines", DotRadiusPX: &dotRadius}

@@ -69,7 +69,7 @@ type MaterializeFanOutPort = texttracks.CommittedClipEnqueuer
 // IndexDispatcherPort v2: the adapter in composition root performs both
 // writes (outbox dispatcher + assettree upsert) and surfaces any failure
 // to the caller. Behaviour-equivalent on success; loser in the test fixture
-// path where the dispatcher is nil (returns the same QDRANT-asset-mutation
+// path where the dispatcher is nil (returns the same VECTOR-asset-mutation
 // isolation error as before).
 type IndexDispatcherPort interface {
 	EnqueueAndIndex(ctx context.Context, clip *sourcing.ExistingClip, contentHash string) error

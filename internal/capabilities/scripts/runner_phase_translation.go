@@ -76,6 +76,9 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		// work while delegating the canonical language rank to scripts/runner.
 		sortTranslationWork(work, req.SourceLanguage, req.Languages)
 		workers := r.translationConcurrency
+		if req.TranslationConcurrency > 0 {
+			workers = req.TranslationConcurrency
+		}
 		if workers <= 0 {
 			workers = DefaultTranslationConcurrency
 		}
@@ -101,6 +104,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 				value, err = r.translator.Translate(measureCtx, TranslationInput{
 					SceneID: result.Scenes[item.sceneIndex].ID, SourceLanguage: req.SourceLanguage,
 					TargetLanguage: item.lang, SourceText: item.text,
+					Provider: req.TranslationProvider, Model: req.TranslationModel,
 				})
 				return err
 			})
@@ -170,6 +174,11 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 			summary.Calls = int64(len(work))
 		}
 		result.TranslationMetrics = &TranslationPipelineMetrics{Calls: int(summary.Calls), Concurrency: workers, WallMS: summary.WallMs}
+		if err := validateTranslationCoverage(result, req); err != nil {
+			r.failExecutionStepBestEffort(ctx, exec, translationStep, err)
+			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
+			return false
+		}
 		// Per-(scene, language) translation correlation: record each target
 		// translation so "Spanish Scene 4" is traceable to this operation.
 		for _, item := range work {

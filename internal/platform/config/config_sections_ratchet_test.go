@@ -85,7 +85,7 @@ func unknownConfigSections(sections []string, known map[string]struct{}) []strin
 
 // TestConfigYAMLSectionsAreKnownToTheLoader closes the silent-ignore hole in
 // the configuration surface: config.GetFromPath performs a NON-strict yaml
-// decode, so a mistyped section name (qdrantt:, securityy:) parses cleanly,
+// decode, so a mistyped section name (pgvectort:, securityy:) parses cleanly,
 // boots cleanly, and simply never applies. Nothing else in the suite catches
 // that, because every other config test asserts on content of keys it already
 // knows exists.
@@ -174,9 +174,9 @@ func TestExampleConfigsDifferOnlyByDocumentedProductionExtras(t *testing.T) {
 func TestUnknownConfigSectionDetectionTrips(t *testing.T) {
 	known := map[string]struct{}{"server": {}, "features": {}}
 
-	got := unknownConfigSections([]string{"features", "qdrantt", "server", "securityy"}, known)
-	if len(got) != 2 || got[0] != "qdrantt" || got[1] != "securityy" {
-		t.Fatalf("unknown sections = %v, want [qdrantt securityy]", got)
+	got := unknownConfigSections([]string{"features", "pgvectort", "server", "securityy"}, known)
+	if len(got) != 2 || got[0] != "pgvectort" || got[1] != "securityy" {
+		t.Fatalf("unknown sections = %v, want [pgvectort securityy]", got)
 	}
 	if clean := unknownConfigSections([]string{"server", "features"}, known); len(clean) != 0 {
 		t.Fatalf("known sections reported as unknown: %v", clean)

@@ -8,20 +8,19 @@ import (
 )
 
 // TestReadyChecker_RequiredSet verifies that CheckReady includes exactly
-// the set [db, drive, qdrant, jobs].
+// the set [db, drive, jobs].
 func TestReadyChecker_RequiredSet(t *testing.T) {
 	mock := &scenarioMock{name: "all", mandatory: true, ok: true}
 	svc := NewService(ServiceDeps{
-		DB:     mock,
-		Drive:  mock,
-		Qdrant: mock,
-		Jobs:   mock,
+		DB:    mock,
+		Drive: mock,
+		Jobs:  mock,
 	})
 	ready := NewReadyChecker(svc)
 	resp := ready.CheckReady(context.Background())
 	require.True(t, resp.OK)
-	require.Len(t, resp.Checks, 19, "ready should check 19: db, drive, qdrant, jobs + tools, clips_path, drive_canary, handlers + temp, tts, drive_root, ollama, outbox + drive_credentials, drive_folder, publisher, destination_clip + script_generate + ytdlp_health")
-	for _, name := range []string{"db", "drive", "qdrant", "jobs", "tools", "clips_path", "drive_canary", "handlers", "temp", "tts", "drive_root", "ollama", "outbox", "drive_credentials", "drive_folder", "publisher", "destination_clip", "script_generate", "ytdlp_health"} {
+	require.Len(t, resp.Checks, 18, "ready should check 18: db, drive, jobs + tools, clips_path, drive_canary, handlers + temp, tts, drive_root, ollama, outbox + drive_credentials, drive_folder, publisher, destination_clip + script_generate + ytdlp_health")
+	for _, name := range []string{"db", "drive", "jobs", "tools", "clips_path", "drive_canary", "handlers", "temp", "tts", "drive_root", "ollama", "outbox", "drive_credentials", "drive_folder", "publisher", "destination_clip", "script_generate", "ytdlp_health"} {
 		require.Contains(t, resp.Checks, name, "ready missing %s", name)
 	}
 }
@@ -47,20 +46,19 @@ func TestReadyChecker_NilServiceReturnsUnhealthy(t *testing.T) {
 }
 
 // TestReadyChecker_OptionalCapabilitiesHealthy verifies that when Drive
-// and Qdrant are nil (not wired), ReadyChecker still reports healthy
-// because optional capabilities don't flip the aggregate.
+// is nil (not wired), ReadyChecker still reports healthy because optional
+// capabilities don't flip the aggregate.
 func TestReadyChecker_OptionalCapabilitiesHealthy(t *testing.T) {
 	core := &scenarioMock{name: "core", mandatory: true, ok: true}
 	svc := NewService(ServiceDeps{
-		DB:     core,
-		Jobs:   core,
-		Drive:  nil, // optional, not wired
-		Qdrant: nil, // optional, not wired
+		DB:    core,
+		Jobs:  core,
+		Drive: nil, // optional, not wired
 	})
 	ready := NewReadyChecker(svc)
 	resp := ready.CheckReady(context.Background())
 	require.True(t, resp.OK, "optional nil capabilities should not make ready unhealthy, got %v", resp)
-	require.Len(t, resp.Checks, 19)
+	require.Len(t, resp.Checks, 18)
 }
 
 func TestReadyChecker_ReportsIndependentStoragePlanes(t *testing.T) {
@@ -88,10 +86,9 @@ func TestReadyChecker_ReportsIndependentStoragePlanes(t *testing.T) {
 func TestReadyChecker_Deterministic(t *testing.T) {
 	mock := &scenarioMock{name: "all", mandatory: true, ok: true}
 	svc := NewService(ServiceDeps{
-		DB:     mock,
-		Drive:  mock,
-		Qdrant: mock,
-		Jobs:   mock,
+		DB:    mock,
+		Drive: mock,
+		Jobs:  mock,
 	})
 	ready := NewReadyChecker(svc)
 	ctx := context.Background()

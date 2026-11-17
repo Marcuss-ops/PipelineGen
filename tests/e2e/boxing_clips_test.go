@@ -21,7 +21,7 @@
 //     SHAPE only — runtime values populated by production drivers).
 //
 // Why contract-only and not end-to-end runtime: the production pipeline
-// (drive.Service credentials + Qdrant live stack + SQLite) cannot be
+// (drive.Service credentials + pgvector live stack + SQLite) cannot be
 // exercised in this envelope (the live stack is documented DOWN). Per
 // AGENTS.md Git-Lesson-2 direct-to-main + godlike/07 no-fake-availability:
 // we DO NOT fabricate drive_file_id or file_hash values in the fixtures
@@ -30,7 +30,7 @@
 // EVER entering a runtime-success or fake-availability class.
 //
 // Per the user request 2026-07-05: replaces 4 obsolete .sh smokes
-// (fase_b_clip_pipeline_smoke + qdrant_e2e_boxing_smoke +
+// (fase_b_clip_pipeline_smoke + pgvector_e2e_boxing_smoke +
 //
 //	stock_register_batch_boxing_smoke + stock_run_boxing_smoke) with
 //	a hermetic Go test + canonical JSON test fixtures.
@@ -162,7 +162,7 @@ func TestE2E_Boxing_Clips_PayloadContract(t *testing.T) {
 			i, seg.Name)
 		require.Equal(t, "boxing", p.Destination["group"],
 			"destination.group must be boxing (canonical batch marker)")
-		require.NotEmpty(t, seg.Tags, "segment[%d] %q must have tags (Qdrant indexing hook)", i, seg.Name)
+		require.NotEmpty(t, seg.Tags, "segment[%d] %q must have tags (pgvector indexing hook)", i, seg.Name)
 		require.NotEmpty(t, seg.MentionedPeople, "segment[%d] %q must have mentioned_people (rich metadata field per PR-RICH-METADATA-DTO-EXTEND)", i, seg.Name)
 	}
 

@@ -436,10 +436,7 @@ func applyDefaultSceneRenderSubfolder(req *GenerateRequest) {
 	if !req.Render.Enabled || strings.TrimSpace(req.Render.DriveSubfolderName) != "" {
 		return
 	}
-	req.Render.DriveSubfolderName = strings.TrimSpace(req.Title)
-	if req.Render.DriveSubfolderName == "" {
-		req.Render.DriveSubfolderName = strings.TrimSpace(req.Source.Topic)
-	}
+	req.Render.DriveSubfolderName = defaultRenderSubfolderName(req.Title, req.Source.Topic, req.IdempotencyKey)
 }
 
 // setSceneRenderExpectations records the canonical render-unit promise when

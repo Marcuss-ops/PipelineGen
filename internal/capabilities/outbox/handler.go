@@ -1,9 +1,9 @@
 // Package outbox provides thin HTTP transport for the outbox events system
-// (QDRANT-002). The handler exposes operator-facing read-only endpoints at
+// (VECTOR-002). The handler exposes operator-facing read-only endpoints at
 // /internal/v1/outbox for monitoring outbox health and listing pending events.
 //
 // This is the canonical internal outbox endpoint — the final gap from
-// QDRANT-002 ("l'endpoint interno canonico non è montato nel server").
+// VECTOR-002 ("l'endpoint interno canonico non è montato nel server").
 //
 // Wave 14 PR5 (June 2026): the handler now depends on
 // outbox.MonitorPort (declared in

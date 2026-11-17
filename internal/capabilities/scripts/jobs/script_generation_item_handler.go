@@ -248,7 +248,7 @@ func toScriptItemResultMap(itemID, requestedLanguage, childJobID, parentJobID st
 		m["stage_progress"] = res.StageProgress
 		// Preserve the canonical retrieval trace at the job boundary. Without
 		// this, /api/jobs/:id/full exposed the generated scenes but dropped the
-		// evidence that source.search actually used Qdrant results and which
+		// evidence that source.search actually used pgvector results and which
 		// accepted clip IDs reached SpecScene.
 		if len(res.Source.SearchResults) > 0 || len(res.Source.AcceptedClipIDs) > 0 ||
 			res.Source.ResearchReport != nil || res.Source.ResearchEvidence != nil {

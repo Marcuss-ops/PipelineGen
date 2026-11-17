@@ -9,7 +9,7 @@
 //   - Stock footage relies heavily on visual signals (no useful transcript)
 //   - Default fallback provides a safe balanced preset
 //
-// This package is pure domain — no infrastructure imports, no Qdrant client,
+// This package is pure domain — no infrastructure imports, no external vector store client,
 // no database access. It is consumed by the application-layer search backend
 // and the composition root.
 package search

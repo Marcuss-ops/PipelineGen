@@ -402,7 +402,7 @@ const (
 // 4s / 60s, matching the user-requested clip-duration window —
 // no effects, no transitions are applied; the YouTube extraction
 // endpoint only cuts, preserves audio, uploads to Drive, writes
-// to media_assets and indexes in Qdrant).
+// to media_assets and indexes in pgvector).
 type SegmentPolicy struct {
 	MinDuration int
 	MaxDuration int

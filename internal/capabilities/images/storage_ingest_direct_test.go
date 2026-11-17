@@ -185,7 +185,7 @@ func testImageService(t *testing.T) *ImageStorageService {
 // tagImageMetadata returns an error, ingestDirect does NOT delete the
 // local file and does NOT return an error. It continues with metaResult=nil.
 //
-// PR-QDRANT-IMAGES-INDEX (July 2026): pre-PR this was a hard failure
+// PR-VECTOR-IMAGES-INDEX (July 2026): pre-PR this was a hard failure
 // (os.Remove + return error). Post-PR it's a warn-and-continue.
 //
 // PR-IMAGES-INGEST-ATOMIC (July 2026): now routed through CommitAsset

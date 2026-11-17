@@ -90,7 +90,7 @@ func TestLifecycleState_IsValidTransitionFullTable(t *testing.T) {
 			StateLifecycleIndexDeletePending: true, // IndexDeleteHandler pre-flip stamp
 		},
 		StateLifecycleIndexDeletePending: {
-			StateIndexDeleted: true, // IndexDeleteHandler post-Qdrant+SoftDelete flip (Blocco 3.1 commit 2/3, July 2026)
+			StateIndexDeleted: true, // IndexDeleteHandler post-pgvector+SoftDelete flip (Blocco 3.1 commit 2/3, July 2026)
 		},
 		StateIndexDeleted: {
 			StateDeleted: true, // IndexDeleteHandler post-success terminal flip

@@ -85,10 +85,9 @@ func TestDriveRootChecker_NilReachFailsClosed(t *testing.T) {
 // aggregation: the trashed root must flip OK=false and status=unhealthy.
 func TestReadyChecker_ReportsTrashedDriveRootAsUnhealthy(t *testing.T) {
 	svc := NewService(ServiceDeps{
-		DB:     &scenarioMock{name: "db", mandatory: true, ok: true},
-		Drive:  &scenarioMock{name: "drive", mandatory: true, ok: true},
-		Qdrant: &scenarioMock{name: "qdrant", mandatory: false, ok: true},
-		Jobs:   &scenarioMock{name: "jobs", mandatory: true, ok: true},
+		DB:    &scenarioMock{name: "db", mandatory: true, ok: true},
+		Drive: &scenarioMock{name: "drive", mandatory: true, ok: true},
+		Jobs:  &scenarioMock{name: "jobs", mandatory: true, ok: true},
 	})
 	rc := NewReadyChecker(svc).
 		WithDriveRootFolder("17iOP").

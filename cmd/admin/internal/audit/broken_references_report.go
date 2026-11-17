@@ -20,7 +20,6 @@ type brokenRefsReport struct {
 	FKOrphans     []fkOrphanTable   `json:"fk_orphans"`
 	DriveBroken   []brokenDriveRef  `json:"drive_broken"`
 	LocalBroken   []brokenLocalRef  `json:"local_broken"`
-	QdrantMissing []string          `json:"qdrant_missing"`
 	Errors        []string          `json:"errors,omitempty"`
 }
 
@@ -31,8 +30,6 @@ type brokenRefsSummary struct {
 	DriveBroken    int `json:"drive_broken"`
 	LocalRefsTotal int `json:"local_refs_total"`
 	LocalBroken    int `json:"local_broken"`
-	EligibleAssets int `json:"eligible_assets"`
-	QdrantMissing  int `json:"qdrant_missing"`
 }
 
 type fkOrphanTable struct {
@@ -111,19 +108,6 @@ func printBrokenRefsReport(r *brokenRefsReport) {
 			}
 			fmt.Printf("    %-35s %s: %s\n", b.Table, b.FailureKind, truncatePath(b.LocalPath, 70))
 			printed++
-		}
-	}
-
-	// Qdrant missing.
-	if r.Summary.QdrantMissing > 0 {
-		fmt.Printf("\n  --- Qdrant Points (%d eligible, %d missing in Qdrant) ---\n",
-			r.Summary.EligibleAssets, r.Summary.QdrantMissing)
-		for i, id := range r.QdrantMissing {
-			if i >= 20 {
-				fmt.Printf("    ... +%d more missing Qdrant points\n", len(r.QdrantMissing)-i)
-				break
-			}
-			fmt.Printf("    missing: %s\n", id)
 		}
 	}
 

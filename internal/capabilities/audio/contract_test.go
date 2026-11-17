@@ -27,7 +27,7 @@ func testTimeline() CanonicalTimeline {
 
 func TestDefaultAudioProfileUsesAssemblyV2(t *testing.T) {
 	profile := DefaultAudioProfile()
-	if profile.Codec != "aac" || profile.Profile != "LC" || profile.SampleRate != 48000 || profile.Channels != 2 || profile.ChannelLayout != "stereo" || profile.Bitrate != "192k" {
+	if profile.Codec != "aac" || profile.Profile != "LC" || profile.SampleRate != 48000 || profile.Channels != 2 || profile.ChannelLayout != "stereo" || profile.Bitrate != "128k" {
 		t.Fatalf("unexpected canonical audio profile: %+v", profile)
 	}
 }

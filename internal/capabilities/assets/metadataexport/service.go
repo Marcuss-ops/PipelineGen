@@ -79,7 +79,7 @@ var ErrWriterUnavailable = errors.New("metadata_export: ExportWriter port not wi
 // "until real writers land" — matches the pre-split behaviour bit-for-bit).
 //
 // Returns the first non-nil error encountered so the outbox pool retries
-// the whole event (QDRANT-002 PR4 pattern). Per-asset failures short-
+// the whole event (VECTOR-002 PR4 pattern). Per-asset failures short-
 // circuit the loop so a partial write left behind can be detected by
 // the next attempt via the asset sidecar mtime.
 func (s *Service) ExportFilesystem(ctx context.Context, eventID int64, req *MetadataExportRequest, ids []string) error {

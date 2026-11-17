@@ -90,7 +90,7 @@ type VerifiedArtifact struct {
 
 	// Description is the human-readable English summary for the clip
 	// or artifact. Stock uses it to carry per-timestamp narration into
-	// Drive metadata and Qdrant payloads.
+	// Drive metadata and pgvector payloads.
 	Description string `json:"description,omitempty"`
 
 	// PathLeafName is the human-readable leaf folder name used for the

@@ -88,7 +88,7 @@ func TestTimingSummary_OperationsAggregateCallsAndWork(t *testing.T) {
 		Operations: []OperationReport{
 			{Stage: "voiceover.generate", Component: "edge_tts", Operation: "synthesize", DurationMs: 4000},
 			{Stage: "voiceover.generate", Component: "edge_tts", Operation: "synthesize", DurationMs: 4400},
-			{Stage: "source.resolve", Component: "qdrant", Operation: "search", DurationMs: 430},
+			{Stage: "source.resolve", Component: "vector_search", Operation: "search", DurationMs: 430},
 			{Stage: "source.resolve", Component: "sqlite", Operation: "hydrate", DurationMs: 1200},
 		},
 	}
@@ -110,9 +110,9 @@ func TestTimingSummary_OperationsAggregateCallsAndWork(t *testing.T) {
 	if tts.WorkMs <= s.WallMs {
 		t.Fatalf("parallel work (%d) is expected to exceed wall (%d)", tts.WorkMs, s.WallMs)
 	}
-	qdrant := byKey["qdrant.search"]
-	if qdrant.Calls != 1 || qdrant.WorkMs != 430 {
-		t.Fatalf("qdrant.search = %+v, want Calls=1 WorkMs=430", qdrant)
+	pgvector := byKey["vector_search.search"]
+	if pgvector.Calls != 1 || pgvector.WorkMs != 430 {
+		t.Fatalf("vector_search.search = %+v, want Calls=1 WorkMs=430", pgvector)
 	}
 	sqlite := byKey["sqlite.hydrate"]
 	if sqlite.Calls != 1 || sqlite.WorkMs != 1200 {

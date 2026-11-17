@@ -53,18 +53,33 @@ const defaultRenderingGenStoreURL = "http://127.0.0.1:9000"
 // scriptGenerationTranslator adapts the application translation port to the
 // capability runtime without leaking provider DTOs into capabilities/scripts.
 type scriptGenerationTranslator struct {
-	port translation.TranslationPort
+	port   translation.TranslationPort
+	ollama translation.TranslationPort
 }
 
 func (a *scriptGenerationTranslator) Translate(ctx context.Context, input scriptgen.TranslationInput) (string, error) {
 	if a == nil || a.port == nil {
 		return "", fmt.Errorf("script generation translator is not configured")
 	}
-	result, err := a.port.Translate(ctx, translation.TranslationCommand{
+	port := a.port
+	if strings.EqualFold(strings.TrimSpace(input.Provider), "ollama") {
+		port = a.ollama
+		if port == nil {
+			return "", fmt.Errorf("script generation Ollama translator is not configured")
+		}
+	}
+	if port == nil {
+		return "", fmt.Errorf("script generation translator provider %q is not configured", input.Provider)
+	}
+	command := translation.TranslationCommand{
 		SourceLang: string(input.SourceLanguage),
 		TargetLang: string(input.TargetLanguage),
 		Text:       input.SourceText,
-	})
+	}
+	if input.Model != "" || input.Provider != "" {
+		command.ModelPolicy = &translation.ModelPolicy{Provider: input.Provider, Model: input.Model}
+	}
+	result, err := port.Translate(ctx, command)
 	if err != nil {
 		return "", err
 	}
@@ -161,7 +176,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	runner := scriptgen.NewRunner(
 		runRepo,
 		root.AI.SceneTextGenerator,
-		&scriptGenerationTranslator{port: scriptGenerationTranslationPort(root)},
+		&scriptGenerationTranslator{port: scriptGenerationTranslationPort(root), ollama: root.AI.OllamaTranslator},
 		root.AI.ScriptVoiceoverGenerator,
 	)
 	// Bind the run logger BEFORE any other wiring: NewRunner defaults to

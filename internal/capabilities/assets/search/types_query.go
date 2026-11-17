@@ -134,9 +134,9 @@ func ParseMode(s string) RetrievalMode { return ParseRetrievalMode(s) }
 // RetrievalMode. It closes the historical "ogni volta risultati
 // diversi" class by making the catalog/discovery separation explicit:
 //
-//   - SearchCatalog   : canonical index only (Qdrant → SQLite hydrate;
+//   - SearchCatalog   : canonical index only (pgvector → SQLite hydrate;
 //     the local SQLite backend). NO live provider call. Reproducible.
-//     images). NO Qdrant call. Produces ExternalCandidate-shaped hits.
+//     images). NO pgvector call. Produces ExternalCandidate-shaped hits.
 //   - SearchBlended   : catalog + discovery, deduped via the canonical
 //     identity resolver (source_type|source_ref).
 //
@@ -268,7 +268,7 @@ const (
 // corresponding Actor fields before invoking the handler. The
 // search package delegates authentication to upstream layers —
 // an Actor with WorkspaceID=="" is rejected by the semantic
-// backend (QDRANT-004 ErrMissingWorkspace contract) rather than
+// backend (VECTOR-004 ErrMissingWorkspace contract) rather than
 // silently degraded to admin. Field names are public so JSON
 // encoding for cross-service calls stays simple.
 type Actor struct {

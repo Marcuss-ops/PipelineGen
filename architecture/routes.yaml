@@ -237,9 +237,6 @@ routes:
       path: /api/media/import
       source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /api/media/qdrant/cleanup
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
       path: /api/media/register-batch
       source: cmd/admin/gen_api_docs.go
     - method: POST

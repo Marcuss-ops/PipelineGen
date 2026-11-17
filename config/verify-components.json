@@ -27,7 +27,7 @@
     "paths": [
       "internal/capabilities/scripts/usecase/",
       "internal/platform/sqlite/scripts/",
-      "config/lexicons/",
+      "internal/capabilities/linguistics/",
       "semantic_acceptance/"
     ],
     "go_packages": [
@@ -94,40 +94,18 @@
     "cacheable": false,
     "cache_scope": "content"
   },
-  "qdrant": {
+  "indexing": {
     "paths": [
-      "internal/platform/qdrant/"
+      "internal/capabilities/indexing/",
+      "scripts/services/"
     ],
     "go_packages": [
-      "./internal/platform/qdrant/..."
+      "./internal/capabilities/indexing/..."
     ],
     "node_tests": [],
     "python_tests": [],
     "dependencies": [
       "database"
-    ],
-    "timeout_seconds": 600,
-    "race_timeout_seconds": 900,
-    "race_enabled": true,
-    "live_tests": [],
-    "cacheable": true,
-    "cache_scope": "content"
-  },
-  "indexing": {
-    "paths": [
-      "internal/capabilities/indexing/",
-      "internal/platform/qdrant/indexing/",
-      "scripts/services/"
-    ],
-    "go_packages": [
-      "./internal/capabilities/indexing/...",
-      "./internal/platform/qdrant/indexing/..."
-    ],
-    "node_tests": [],
-    "python_tests": [],
-    "dependencies": [
-      "database",
-      "qdrant"
     ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 900,
@@ -440,7 +418,7 @@
   },
   "rust": {
     "paths": [
-      "rust"
+      "internal/platform/media/rustexec/"
     ],
     "go_packages": [
       "./internal/platform/media/rustexec/..."

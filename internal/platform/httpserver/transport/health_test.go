@@ -16,7 +16,7 @@ import (
 )
 
 // blockingChecker / healthyMock /
-// failingMock no longer implement CheckQdrant. Three capability checks
+// failingMock no longer implement CheckVector. Three capability checks
 // (db, drive, jobs) replace the previous four.
 
 // blockingChecker blocks until ctx is done, then returns ok=false.
@@ -369,7 +369,6 @@ func TestHealthHandler_ReadyRendersWireMapProductionHotPath(t *testing.T) {
 	engine.POST("/api/media/voiceover/sync", func(c *gin.Context) {})
 	engine.POST("/internal/v1/media/search", func(c *gin.Context) {})
 	engine.GET("/internal/v1/media/ready", func(c *gin.Context) {})
-	engine.GET("/qdrant/live", func(c *gin.Context) {})
 	handler.SetWireRegistry(NewWireRegistryFromEngine(engine))
 
 	router := gin.New()
@@ -390,7 +389,6 @@ func TestHealthHandler_ReadyRendersWireMapProductionHotPath(t *testing.T) {
 	assert.Equal(t, WireMounted, wire["stock"], "stock should be MOUNTED in production hot path")
 	assert.Equal(t, WireMounted, wire["voiceover"], "voiceover should be MOUNTED in production hot path")
 	assert.Equal(t, WireMounted, wire["mediasearch"], "mediasearch should be MOUNTED (both /internal/v1/media/search and /ready are routed)")
-	assert.Equal(t, WireMounted, wire["qdrant_health"], "qdrant_health should be MOUNTED")
 	assert.Equal(t, WireNotMounted, wire["clip-render"], "clip-render should be NOT_MOUNTED (no render routes registered)")
 }
 

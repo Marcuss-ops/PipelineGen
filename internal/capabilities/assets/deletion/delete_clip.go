@@ -34,7 +34,7 @@ var (
 	ErrAssetNotFound = errors.New("delete asset: asset not found in canonical media_assets") // ErrDeletionDispatcherUnavailable is returned when the deletion
 	// dispatcher is not wired. It is surfaced BEFORE any mutation:
 	// without a dispatcher there is no outbox state machine to drive
-	// the Drive/Qdrant/SQLite chain.
+	// the Drive/pgvector/SQLite chain.
 	ErrDeletionDispatcherUnavailable = errors.New("delete asset: dispatcher is nil — production wiring must configure the canonical outbox.Dispatcher")
 )
 
@@ -82,7 +82,7 @@ type DeletionLookupDeps struct {
 // No source/type/provider whitelist participates in the decision. The
 // dispatcher's EnqueueDriveDelete atomically stamps
 // lifecycle_state=DELETE_REQUESTED and emits
-// asset.drive.delete_requested.v1 in a single tx; the Drive/Qdrant/SQLite
+// asset.drive.delete_requested.v1 in a single tx; the Drive/pgvector/SQLite
 // chain then runs asynchronously (see the dispatcher's EnqueueDriveDelete
 // docstring for the full state-machine sequence).
 //

@@ -24,7 +24,7 @@ type ClipsRegistry struct {
 	// committer wrote PostgreSQL: the pre-dispatcher media_assets UPSERT was
 	// silently split, and DeleteMedia retired the row on the wrong engine.
 	// The UPSERT now routes through `dispatcher.EnqueueAndIndex` (PR 7, June
-	// 2026, codex/qdrant-app-writers-fail-closed) and the retirement resolves
+	// 2026, codex/pgvector-app-writers-fail-closed) and the retirement resolves
 	// persistence.CanonicalAssetSoftDeleter from the canonical committer, so
 	// this capability names an engine for neither.
 	//
@@ -33,7 +33,7 @@ type ClipsRegistry struct {
 	// dispatcher SSOT.
 	//
 	// committer is the canonical persistence.AssetCommitter SSOT
-	// (QDRANT-002 PR7). Required for the media_assets UPSERT path so
+	// (VECTOR-002 PR7). Required for the media_assets UPSERT path so
 	// the production write emits the matching outbox_events row in
 	// the same tx (v1 conflation invariant).
 	committer persistence.AssetCommitter
@@ -67,7 +67,7 @@ type AssetDetailsReader interface {
 
 // NewClipsRegistry is the canonical ctor. PR 7 (June 2026) added a 6th
 // positional `committer` arg so the registry's UpsertMedia path
-// enforces the canonical outbox+tx writer (QDRANT-002 atomicity
+// enforces the canonical outbox+tx writer (VECTOR-002 atomicity
 // invariant).
 func NewClipsRegistry(
 	querySvc AssetDetailsReader,
@@ -109,7 +109,7 @@ func (r *ClipsRegistry) logger() *zap.Logger {
 }
 
 func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error {
-	// PR 7 followups (June 2026, codex/qdrant-app-writers-fail-closed): nil
+	// PR 7 followups (June 2026, codex/pgvector-app-writers-fail-closed): nil
 	// contract guards applied in the order (1) dispatcher fail-closed then
 	// (2) nil-rec contract violation. Dispatcher-first matches the upstream
 	// BulkUploadWorker + ReprocessUseCase convention so a config-broken
@@ -121,7 +121,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	//
 	// Rec == nil returns a contract violation error at runtime.
 	if r.committer == nil {
-		return fmt.Errorf("clips registry committer not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+		return fmt.Errorf("clips registry committer not configured (VECTOR-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
 	}
 	if rec == nil {
 		return fmt.Errorf("UpsertMedia: MediaRecord is nil (contract violation)")
@@ -153,9 +153,9 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 			IsPrimary: rec.LocalPath == "", ContentSHA256: rec.ContentSHA256,
 		})
 	}
-	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
+	// PR 7 (June 2026, codex/pgvector-app-writers-fail-closed): route the
 	// media_assets UPSERT through the canonical persistence.AssetCommitter
-	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
+	// so the VECTOR-002 atomicity invariant (media_assets UPSERT + outbox_events
 	// INSERT in one tx) applies uniformly to artifacts-driven write paths.
 	//
 	// MEDIA-IDENTITY (Sept 2026): the committer's ContentHash is the BYTE

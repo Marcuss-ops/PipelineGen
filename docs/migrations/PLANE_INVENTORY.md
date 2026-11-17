@@ -15,7 +15,7 @@ topologia piani, runner, ledger e divergenze strutturali.
 |---|---|---|---|---|---|
 | `primary` / `observability` / `cache` | `migrations/sqlite/` | 241 .sql (versioni 000–289, gap inclusi) | `internal/platform/sqlite` — `RunMigrations` / `migrateAll` con header di scope `-- database:` | `schema_migrations` (version, migration_id, filename, checksum sha256, checksum_sha256, duration_ms, app_git_sha) | SQLite = authority per i domini operativi (AGENTS.md, cutover media 09/2026) |
 | `jobs` | `migrations/sqlite_jobs/` | 6 .sql (001–006), tutti scoped `jobs` | jobs store self-owned (wiring in `internal/platform/config/jobs.go`) | `schema_migrations` dello stesso runner (targetDB=`jobs`) | SQLite jobs plane |
-| `postgres` (media) | `migrations/postgres/` | 13 .sql (001–013) | deployment-managed step + `MediaSelfBootstrapDDL` ordine pinnato (`embed_ddl.go` + `embed_ddl_contract_test.go`); one-shot 010/011 NON idempotenti fuori dal self-bootstrap | **NESSUNO** — vedi divergenza D2 | PostgreSQL = SSOT del dominio media (_binary percheck gate `percheck_media_assets_writer_canonical`) |
+| `postgres` (media) | `migrations/postgres/` | 14 .sql (001–014) | `RunMediaMigrations` (`internal/platform/postgres/media/migrate.go`) — advisory lock, `MediaSelfBootstrapMigrations` in ordine pinnato, checksum SHA-256; 014 crea il ledger. One-shot 010/011 restano deployment-managed e fuori dal self-bootstrap | `schema_migrations` (version, migration_id, filename, checksum_sha256, applied_at, duration_ms, app_git_sha) | PostgreSQL = SSOT del dominio media (_binary percheck gate `percheck_media_assets_writer_canonical`) |
 
 Census scope-header su `migrations/sqlite` (rilevato 2026-10-28, informativo):
 
@@ -45,17 +45,24 @@ Il vocabolario dei token di scope è (`primary|observability|cache|jobs|all`),
 gated dal test sopra. Qualsiasi nuovo token richiede: parser runtime +
 doc inventory (questo file) + audit test nella stessa modifica.
 
-### D2 — Ledger/audit parity sul piano Postgres media (OPEN)
-Le migrazioni del piano `postgres` non hanno un ledger (`schema_migrations`):
-fanno fede l'ordine pinnato del self-bootstrap embed_ddl e la commessa di
-deployment one-shot 010/011. Conseguenza: checksum, durata e provenienza
-(`app_git_sha`) esistono solo per i piani SQLite.
-**Criterio di accettazione**: il piano o dichiara l'assenza di ledger come
-contratto (riga in questa tabella + sezione in `AGENTS.md`) o introduce una
-pagella ledger PG; in entrambi i casi il triage di "quale migration ha
-prodotto questa colonnaPG" deve poter PASSARE da un artefatto tracciato, non
-da archeologia manuale su git log. Retrofit silenzioso vietato: è un cambio di
-deployment contract (expand → backfill → cutover).
+### D2 — Ledger/audit parity sul piano Postgres media (DONE 2026-11-17)
+Il piano `postgres` ha ora il ledger `schema_migrations` (migrazione 014):
+`RunMediaMigrations` prende un advisory lock, crea il ledger, confronta il
+checksum SHA-256 embedded con quello registrato e applica solo le versioni
+assenti. Una divergenza di checksum fallisce chiusa invece di ri-applicare in
+silenzio una migrazione modificata. Ogni riga porta `version`, `migration_id`,
+`filename`, `checksum_sha256`, `applied_at`, `duration_ms`, `app_git_sha`.
+I self-bootstrap call site (`media/testmain_test.go`, `RunMediaBackfill`,
+`cmd/admin/internal/backfill/media_enrichment.go`) passano tutti da
+`RunMediaMigrations`. Le one-shot 010/011 restano deployment-managed e non
+hanno una riga finché il deployment non le registra: il ledger certifica
+esattamente l'insieme che il runner ha applicato, senza inventare applicazioni
+che non può osservare.
+**Criterio di accettazione**: soddisfatto. Il triage di "quale migration ha
+prodotto questa colonna PG" passa da `schema_migrations`; il runner è pinnato
+da `migrations/postgres/embed_ddl_ledger_test.go` e
+`internal/platform/postgres/media/migrate_test.go` (schema isolato, idempotenza
+e checksum tamper).
 
 ### D3 — Numerazioni per-piano (BY DESIGN, da citare sempre)
 Tre serie numeriche indipendenti: versione 000–289 in `migrations/sqlite`,

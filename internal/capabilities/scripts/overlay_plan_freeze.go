@@ -35,6 +35,12 @@ func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, langu
 	if result == nil {
 		return nil
 	}
+	// Translated plans are lowered from localized annotations, while the
+	// verified portrait is written on the source annotation by the media
+	// stage. Copy that identity media BEFORE the bundle is built: the bundle
+	// is the planner's only entity-media source, and a localized card without
+	// it plans text-only even though the bytes were acquired and published.
+	hydrateLocalizedEntityImages(result, language)
 	// Build the verified asset bundle BEFORE lowering the plan. The bundle is
 	// the planner's only entity-media source; building it afterwards left the
 	// planner reading annotations that may already be cleared or localized.

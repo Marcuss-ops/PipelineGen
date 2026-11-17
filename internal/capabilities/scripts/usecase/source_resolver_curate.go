@@ -28,7 +28,7 @@ import (
 
 // AssetSearchPort is the canonical semantic-search leg of
 // CurateSourceResolver. Production wires via SetClipSearchPort
-// (Qdrant-enabled deployments); the nil-safe setter keeps
+// (vector-enabled deployments); the nil-safe setter keeps
 // HintClipIDs-only mode working.
 //
 // The canonical AssetSearchPort carries WorkspaceID + IsSystem;
@@ -206,7 +206,7 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 
 	// Delegate dedup+limit to the canonical sampler. MinCoverage
 	// is 0 for curate (no coverage gate in the original code);
-	// MinScore is enforced upstream by the qdrant adapter, so
+	// MinScore is enforced upstream by the pgvector adapter, so
 	// 0 here matches the original curate behavior (move-only
 	// preserved).
 	selection, err := r.samplerReg.SamplerFor(ClipSamplerCallerCurate).Select(

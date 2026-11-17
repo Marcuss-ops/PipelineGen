@@ -4,7 +4,7 @@
 // The handler is the async half of the canonical binding mutation
 // dispatcher. Every SQLite write to media_bindings emits this event in
 // the same transaction; this handler consumes it and reindexes the
-// parent concept in Qdrant so the semantic projection stays
+// parent concept in pgvector so the semantic projection stays
 // consistent with the authoritative SQLite state.
 package jobs
 
@@ -27,7 +27,7 @@ import (
 const BindingIndexRequestSchemaVersion = event.BindingIndexRequestedV1Schema
 
 // BindingIndexer is the narrow surface the handler needs to update
-// the Qdrant projection for a concept. Production wiring passes the
+// the pgvector projection for a concept. Production wiring passes the
 // canonical mediamemory.EmbeddingIndexer adapter.
 type BindingIndexer interface {
 	IndexConcept(ctx context.Context, c mediamemory.MediaConcept) error
@@ -81,8 +81,8 @@ func (h *BindingIndexingHandler) IdempotencyKey() string {
 }
 
 // Handle parses the v1 envelope, resolves the concept, and reindexes it
-// in Qdrant. A missing concept is terminal (retrying will not help).
-// Transient Qdrant/embedding failures are returned as retryable
+// in pgvector. A missing concept is terminal (retrying will not help).
+// Transient pgvector/embedding failures are returned as retryable
 // errors so the outbox pool retries them.
 func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
 	var p bindingIndexRequestV1

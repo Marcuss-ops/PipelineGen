@@ -52,7 +52,7 @@ func resultToResponse(r *search.Result, query string, mode search.SearchMode, un
 				// signed delivery URL produced by the only
 				// legitimate source (delivery.Publisher.BuildAuthorizedURL).
 				// Sanitising it would break the signed-URL
-				// contract QDRANT-004 requires; the safety
+				// contract VECTOR-004 requires; the safety
 				// layer lives at construction time (the signer
 				// never mints raw Drive paths), not at
 				// projection time. godlike/07 fail-closed

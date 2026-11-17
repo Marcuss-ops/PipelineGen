@@ -59,8 +59,8 @@ func NewAliasRegistry() *AliasRegistry {
 		r.alias[a] = "local"
 	}
 	// Semantic — semanticSearchBackend returns "semantic".
-	// Aliases: "vector" (qdrant-vocabulary), "qdrant".
-	for _, a := range []string{"semantic", "vector", "qdrant"} {
+	// Aliases: "vector" (pgvector-vocabulary), "pgvector".
+	for _, a := range []string{"semantic", "vector", "pgvector"} {
 		r.alias[a] = "semantic"
 	}
 	return r

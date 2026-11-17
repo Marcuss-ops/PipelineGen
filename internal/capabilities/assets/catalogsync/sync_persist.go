@@ -52,7 +52,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo CatalogRepo
 	}
 	// Always re-emit the canonical index intent. The outbox event key is
 	// deterministic and absorbs exact retries, while this deliberately
-	// avoids trusting SQLite INDEXED as proof that the Qdrant projection
+	// avoids trusting SQLite INDEXED as proof that the pgvector projection
 	// exists (the projection may be missing or stale).
 
 	if s.dispatcher == nil {

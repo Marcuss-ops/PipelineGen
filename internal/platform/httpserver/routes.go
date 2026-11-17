@@ -32,17 +32,17 @@ import (
 // DownloadDir, CORSOrigins) so the API layer stays free of
 // internal/platform/config imports.
 //
-// QDRANT-001 (June 2026) closure: internalMediaHandler is the narrow
+// VECTOR-001 (June 2026) closure: internalMediaHandler is the narrow
 // port for /internal/v1/media/* routes (server-to-server surface) —
 // the production binding is *internal/capabilities/assets/storage.Handler
 // (RegisterInternalMediaRoutes method). Keeping it behind an
 // interface prevents this router from importing the storage capability.
 //
-// QDRANT-002 (June 2026) closure: outboxHandler is wired on the SAME
+// VECTOR-002 (June 2026) closure: outboxHandler is wired on the SAME
 // internalGroup at /internal/v1/outbox/* (outbox monitoring endpoints
 // are server-to-server, not user-facing).
 //
-// QDRANT-004 (June 2026) closure: mediasearchHandler is wired on the
+// VECTOR-004 (June 2026) closure: mediasearchHandler is wired on the
 // SAME internalGroup at /internal/v1/media/search (mediasearch is
 // server-to-server). Previously it was registered through the regular
 // Registry with a path rooted at /api, which collided with the
@@ -53,7 +53,7 @@ type Router struct {
 	registry             *Registry
 	workerHandler        interface{ RegisterRoutes(*gin.RouterGroup) }
 	internalMediaHandler MediaInternalRouter
-	// QDRANT-002 + QDRANT-004 closure (June 2026):
+	// VECTOR-002 + VECTOR-004 closure (June 2026):
 	//   - outboxHandler: /internal/v1/outbox/{status,events} (WorkerAuth).
 	//   - mediasearchHandler: /internal/v1/media/search (WorkerAuth).
 	// Both are server-to-server surfaces mounted on the SAME internalGroup
@@ -71,7 +71,6 @@ type Router struct {
 	m2mMediaHandler interface{ RegisterRoutes(*gin.RouterGroup) }
 	healthSvc       any                      // *systemhealth.Service; any keeps the router infra-clean.
 	readyChecker    any                      // *systemhealth.ReadyChecker; any keeps the router infra-clean.
-	qdrantHealth    any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.
 	modelsHandler   *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
 }
 
@@ -82,14 +81,14 @@ type MediaInternalRouter interface {
 }
 
 // InternalOutboxRouter is the narrow port for /internal/v1/outbox/*
-// monitoring routes (QDRANT-002). Production bind:
+// monitoring routes (VECTOR-002). Production bind:
 // *internal/capabilities/outbox
 type InternalOutboxRouter interface {
 	RegisterRoutes(*gin.RouterGroup)
 }
 
 // InternalMediaSearchRouter is the narrow port for
-// /internal/v1/media/search (QDRANT-004). Production bind:
+// /internal/v1/media/search (VECTOR-004). Production bind:
 // *internal/capabilities/mediasearch
 type InternalMediaSearchRouter interface {
 	RegisterRoutes(*gin.RouterGroup)
@@ -153,7 +152,7 @@ func (r *Router) SetWorkerHandler(h interface{ RegisterRoutes(*gin.RouterGroup) 
 	r.workerHandler = h
 }
 
-// SetInternalMediaHandler wires the QDRANT-001 server-to-server media
+// SetInternalMediaHandler wires the VECTOR-001 server-to-server media
 // routes (POST /internal/v1/media/sync) into the router.
 // nil-safe — if no media handler has been wired the routes simply
 // won't register. Wire-up is performed by the composition root.
@@ -161,7 +160,7 @@ func (r *Router) SetInternalMediaHandler(h MediaInternalRouter) {
 	r.internalMediaHandler = h
 }
 
-// SetOutboxHandler wires the QDRANT-002 server-to-server outbox
+// SetOutboxHandler wires the VECTOR-002 server-to-server outbox
 // monitoring endpoints (GET /internal/v1/outbox/status,
 // GET /internal/v1/outbox/events) onto the WorkerAuth-protected
 // internalGroup. nil-safe.
@@ -169,7 +168,7 @@ func (r *Router) SetOutboxHandler(h InternalOutboxRouter) {
 	r.outboxHandler = h
 }
 
-// SetMediasearchHandler wires the QDRANT-004 server-to-server
+// SetMediasearchHandler wires the VECTOR-004 server-to-server
 // media search endpoint (POST /internal/v1/media/search) onto the
 // WorkerAuth-protected internalGroup. nil-safe.
 func (r *Router) SetMediasearchHandler(h InternalMediaSearchRouter) {
@@ -218,13 +217,6 @@ func (r *Router) SetReadyChecker(rc any) {
 	r.readyChecker = rc
 }
 
-// SetQdrantHealthHandler wires the QdrantHealthHandler for
-// /qdrant/live and /qdrant/ready (HIGH #7, July 2026).
-// nil-safe: if not wired the routes simply won't register.
-func (r *Router) SetQdrantHealthHandler(h any) {
-	r.qdrantHealth = h
-}
-
 // SetModelsHandler wires the ModelsHandler for /models (Task 10, July 2026).
 // nil-safe: if not wired the route returns 503.
 func (r *Router) SetModelsHandler(h *transport.ModelsHandler) {
@@ -263,7 +255,7 @@ func buildCORSConfig(corsOrigins []string) cors.Config {
 // health endpoints, and dynamically registered module routes.
 //
 // The per-domain wiring lives in sibling files of this package:
-//   - routes_health.go   — /health, /ready, /models, /qdrant/* health surface.
+//   - routes_health.go   — /health, /ready, /models health surface.
 //   - routes_api.go      — /api module-registry surface (media, jobs, ...).
 //   - routes_internal.go — /internal/v1 WorkerAuth surface (worker/jobs,
 //     media sync, outbox monitoring, media search).
@@ -303,7 +295,7 @@ func (r *Router) Setup() *gin.Engine {
 		log.Info("CORS disabled - no origins configured")
 	}
 
-	// Health surface (/health, /ready, /models, /qdrant/*). Returns the
+	// Health surface (/health, /ready, /models). Returns the
 	// handler so the WireRegistry can be attached once all routes mount.
 	healthHandler := r.registerHealthRoutes(engine, log)
 

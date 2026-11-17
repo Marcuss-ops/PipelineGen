@@ -57,6 +57,16 @@ type ProcessSegmentCacheDeps struct {
 	AsyncPublish   AsyncPublishPool
 }
 
+// ProcessSegmentEnrichmentDeps groups the optional analytic ports used to
+// enrich a finished segment: the semantic tagger and the Rust phrase aligner.
+// They were top-level ProcessSegmentDeps fields until the struct hit the
+// 8-mandatory-port gate; grouping them keeps the dependency bag readable
+// without making either port mandatory (both stay nil-safe per call site).
+type ProcessSegmentEnrichmentDeps struct {
+	SemanticTagger SemanticTaggerFunc
+	PhraseAligner  audio.PhraseAligner
+}
+
 type ProcessSegmentDeps struct {
 	TTSProvider        TTSProvider
 	AudioPostProcessor AudioPostProcessor
@@ -70,13 +80,12 @@ type ProcessSegmentDeps struct {
 	VoiceoverRepository persistence.Repository
 	Finalizer           VoiceoverFinalizer
 	TxOutboxEnqueuer    TxOutboxEnqueuer
-	SemanticTagger      SemanticTaggerFunc
-	// PhraseAligner is the Rust word/phrase alignment boundary used to ground
-	// optional moment annotations. Nil fails closed only when a command asks
-	// for moments; a run without moments never needs it.
-	PhraseAligner audio.PhraseAligner
-	Cache         ProcessSegmentCacheDeps
-	Logger        *zap.Logger
+	// Enrichment carries the optional analytic ports: SemanticTagger and the
+	// Rust PhraseAligner used to ground optional moment annotations. A nil
+	// aligner fails closed only when a command asks for moments.
+	Enrichment ProcessSegmentEnrichmentDeps
+	Cache      ProcessSegmentCacheDeps
+	Logger     *zap.Logger
 }
 
 type ProcessSegmentUseCase struct{ deps ProcessSegmentDeps }

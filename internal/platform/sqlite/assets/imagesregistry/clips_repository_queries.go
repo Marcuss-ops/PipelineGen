@@ -91,7 +91,7 @@ func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*ass
 		}
 		args = append(args, isFolderInt)
 	}
-	// QDRANT-001 (June 2026) — workspace_id SQL isolation. The
+	// VECTOR-001 (June 2026) — workspace_id SQL isolation. The
 	// teardown mirrors the documented Filter contract: empty
 	// WorkspaceID = no filter (legacy / internal admin tooling),
 	// IsAdmin=true = bypass, otherwise enforce `workspace_id = ?`.

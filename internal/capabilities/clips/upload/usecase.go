@@ -311,7 +311,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		}
 	}
 	if indexed {
-		log.Info("triggered async enrichment + Qdrant indexing", zap.String("clip_id", clip.ID))
+		log.Info("triggered async enrichment + pgvector indexing", zap.String("clip_id", clip.ID))
 	}
 
 	return &UploadClipResult{

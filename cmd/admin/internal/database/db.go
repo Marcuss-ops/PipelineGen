@@ -3,7 +3,7 @@
 // Dispatcher for the admin db {status,check,migrations,backup,restore,rotate,retention}
 // subsystem. Each subcommand is implemented in its own file:
 //   - cmd/admin/db_status.go     → db status
-//   - cmd/admin/db_check.go      → db check  (incl. Qdrant health)
+//   - cmd/admin/db_check.go      → db check  (SQLite integrity only)
 //   - cmd/admin/db_migrations.go → db migrations
 //   - cmd/admin/db_backup.go     → db backup
 //   - cmd/admin/db_restore.go    → db restore --verify

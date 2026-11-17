@@ -15,7 +15,7 @@ func (fakeInternalMediaHandler) RegisterInternalMediaRoutes(r *gin.RouterGroup) 
 	media.POST("/sync", func(c *gin.Context) {})
 }
 
-// fakeOutboxHandler mounts the QDRANT-002 production surface:
+// fakeOutboxHandler mounts the VECTOR-002 production surface:
 // GET /status and GET /events on the WorkerAuth-protected
 // /internal/v1/outbox/* group.
 type fakeOutboxHandler struct{}
@@ -25,7 +25,7 @@ func (fakeOutboxHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/events", func(c *gin.Context) {})
 }
 
-// fakeMediaSearchHandler mounts the QDRANT-004 production surface:
+// fakeMediaSearchHandler mounts the VECTOR-004 production surface:
 // POST /search on the WorkerAuth-protected /internal/v1/media/* group.
 type fakeMediaSearchHandler struct{}
 
@@ -55,7 +55,7 @@ func TestNewServerWithHealth_RegistersInternalMediaRoutes(t *testing.T) {
 }
 
 // TestNewServerWithHealth_RegistersOutboxAndMediaSearchRoutes_ProductionShape
-// is the QDRANT-route-constructor (PR 3, June 2026) production-shaped
+// is the VECTOR-route-constructor (PR 3, June 2026) production-shaped
 // gate. It uses the SAME constructor as cmd/server/main.go
 // (NewServerWithHealth with all 9 params) — NOT NewRouter — so this
 // test catches the exact supervision bug:
@@ -125,7 +125,7 @@ func TestNewServerWithHealth_RegistersOutboxAndMediaSearchRoutes_ProductionShape
 		key := w.method + " " + w.path
 		if !have[key] {
 			t.Errorf(
-				"QDRANT-route-constructor (PR 3) regression: route %q must be "+
+				"VECTOR-route-constructor (PR 3) regression: route %q must be "+
 					"registered via the NewServerWithHealth CONSTRUCTOR (not via "+
 					"post-Setup setters). If this fires, server.go's wiring was "+
 					"regressed to the pre-3x pattern where Setup() ran before the "+
@@ -145,7 +145,7 @@ func TestNewServerWithHealth_RegistersOutboxAndMediaSearchRoutes_ProductionShape
 		engine.ServeHTTP(rec, req)
 		if rec.Code == http.StatusNotFound {
 			t.Errorf(
-				"QDRANT-route-constructor (PR 3) regression: route %s %s returned 404 — "+
+				"VECTOR-route-constructor (PR 3) regression: route %s %s returned 404 — "+
 					"the route is either not registered, or the gin engine is rejecting "+
 					"the (method, path) pair. The pre-PR-3 post-Setup setter pattern "+
 					"produced this exact symptom.",

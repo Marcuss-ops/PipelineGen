@@ -1,7 +1,7 @@
 // Package reconciler — reconciler_test.go (Blocco 3.2 commit 2/2, June 2026)
 //
 // Unit tests for the deletion-reconciler Service + Classify pure
-// function. Mirrors qdrant/reconciler/service_test.go style:
+// function. Mirrors pgvector/reconciler/service_test.go style:
 // in-memory mocks for ports, hand-built StuckRow literals, no
 // real DB.
 package reconciler

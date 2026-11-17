@@ -38,7 +38,7 @@ func TestScanBrainInfraBan_BannedImportViolates(t *testing.T) {
 	makeBrainInfraFile(t, root, "internal/capabilities/brain/core/core.go",
 		`package core
 
-import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/transport"
 `)
 
 	r := &report.Report{}
@@ -84,7 +84,7 @@ func TestScanBrainInfraBan_TestFilesExempt(t *testing.T) {
 	makeBrainInfraFile(t, root, "internal/capabilities/brain/normalizer/normalizer_test.go",
 		`package normalizer
 
-import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 `)
 
 	r := &report.Report{}
@@ -120,7 +120,7 @@ func TestScanBrainInfraBan_OtherPackageIgnored(t *testing.T) {
 	makeBrainInfraFile(t, root, "internal/capabilities/assets/service.go",
 		`package assets
 
-import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 `)
 
 	r := &report.Report{}
@@ -138,8 +138,8 @@ func TestScanBrainInfraBan_BannedCallViolates(t *testing.T) {
 	makeBrainInfraFile(t, root, "internal/capabilities/brain/core/core.go",
 		`package core
 
-func callQdrant() {
-	_, _ = qdrant.NewClient(nil)
+func callVector() {
+	_, _ = vector.NewClient(nil)
 }
 `)
 
@@ -162,11 +162,11 @@ func TestScanBrainInfraBan_AdaptersSubdirExempt(t *testing.T) {
 	root := t.TempDir()
 	// The adapters/ subdir is the canonical deliberate infrastructure
 	// bridge zone; a file there must remain exempt even if the real
-	// qdrant adapter now lives in platform/qdrant/qdrantmm.
+	// pgvector adapter now lives in platform/pgvector/pgvectormm.
 	makeBrainInfraFile(t, root, "internal/capabilities/mediamemory/adapters/generic_bridge.go",
 		`package adapters
 
-import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
+import _ "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/transport"
 `)
 
 	r := &report.Report{}

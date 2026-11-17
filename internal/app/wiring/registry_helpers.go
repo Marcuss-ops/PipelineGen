@@ -45,14 +45,14 @@ import (
 // at all — its media reads resolve from the canonical committer's engine — so
 // this function no longer dereferences db.DB for the registry.
 //
-// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): mutationsDisp
+// PR 8 (June 2026, codex/pgvector-app-writers-fail-closed): mutationsDisp
 // is the 8th positional arg so the embedded artifacts.NewClipsRegistry
 // routes its media_assets UPSERT through the canonical outbox+tx
 // writer. The PR-7 deferred-hydration strategy (hydrateMediaProcessor +
 // MediaProcessor=nil) is gone; BuildProcessBundle now consumes
 // outbox.OutboxBundle inline and constructs MediaProcessor directly
-// (see composition.go::buildQdrantDeps + BuildProcessBundle for the
-// strict-DAG shape: qdrantDeps -> outbox -> process).
+// (see composition.go::buildIndexDeps + BuildProcessBundle for the
+// strict-DAG shape: indexDeps -> outbox -> process).
 //
 // Fail-closed at the composition root: BuildProcessBundle returns
 // MediaProcessor=nil if outbox.Dispatcher is nil so worker / reprocess

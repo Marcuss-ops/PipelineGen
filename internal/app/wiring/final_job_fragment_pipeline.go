@@ -25,6 +25,15 @@ func (p *finalJobSegmentPreparer) NewHandoffScope() uint64 {
 	return p.scopeSeq.Add(1)
 }
 
+// BeginHandoff allocates this handoff's scope and returns a context that
+// carries it. Fragment work records under that scope, and Timing(scope) reads
+// only this handoff's contribution, so two concurrent handoffs cannot report
+// each other's bytes or milliseconds in their receipts.
+func (p *finalJobSegmentPreparer) BeginHandoff(ctx context.Context) (context.Context, uint64) {
+	scope := p.NewHandoffScope()
+	return withFinalJobHandoffScope(ctx, scope), scope
+}
+
 // Timing returns the receipt block of ONE handoff: its own counters and its own
 // windows. It is deliberately not a difference of process-wide snapshots, so a
 // concurrent handoff finishing between two reads cannot leak into this receipt.

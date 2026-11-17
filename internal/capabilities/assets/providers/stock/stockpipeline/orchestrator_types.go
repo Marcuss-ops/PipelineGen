@@ -149,7 +149,7 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/cutter/ste
 // (stockManifestBuilder + noopWriter + noopProjection) from
 // NewTestStockOrchestrator; production wiring uses NewProductionStockPipeline. RunResilient is the canonical entry
 // point that exercises the full resilience flow (manifest build →
-// gate → atomic dispatch → Qdrant projection); Run is a thin wrapper
+// gate → atomic dispatch → pgvector projection); Run is a thin wrapper
 // that returns the manifest component of the RunSummary for legacy
 // callers (existing run_orchestrator_test.go tests).
 type Orchestrator struct {
@@ -165,12 +165,12 @@ type Orchestrator struct {
 	// the SQLite-backed outbox adapter supplied through
 	// ProductionStockPipelineDeps.
 	writer TransactionalAssetWriter
-	// projection wraps the post-emission Qdrant sync. Default:
+	// projection wraps the post-emission pgvector sync. Default:
 	// noopProjection (returns nil => SUCCEEDED). Production wiring
-	// injects the Qdrant-backed adapter; a non-nil return from
+	// injects the vector-backed adapter; a non-nil return from
 	// projection.Project flips RunResilient's FinalStatus to
 	// StatusIndexPending (instead of returning an error to the
-	// caller) so the Qdrant-reconciler task can retry asynchronously.
+	// caller) so the vector-reconciler task can retry asynchronously.
 	projection ProjectionPort
 	// stepStore is the canonical §12-3 ports.Store the Orchestrator
 	// uses for per-step checkpointing (MarkStarted / MarkCompleted /	// MarkFailed). Default in NewTestStockOrchestrator +

@@ -1,7 +1,7 @@
 // Package mutations declares the strictly-scoped AssetMutationPrimitives
 // interface consumed by the outbox dispatcher + test fakes.
 //
-// Shape (B) — QDRANT-asset-mutation isolation (June 2026, Wave 22 task 5)
+// Shape (B) — VECTOR-asset-mutation isolation (June 2026, Wave 22 task 5)
 // ---------------------------------------------------------------
 // UpsertClip is the ONLY method that survives on the production-canonical
 // repository concrete (*assets.ClipsRepository), because the dispatcher
@@ -32,9 +32,9 @@
 // Why Restore and HardDelete are removed entirely:
 //   - Production code MUST NOT call Restore/HardDelete on the repository
 //     directly: Restore bypasses the outbox (so a restored row leaves
-//     Qdrant empty, the canonical re-index path is bypassed). HardDelete
+//     pgvector empty, the canonical re-index path is bypassed). HardDelete
 //     permanently removes the row without emitting an
-//     asset.index.delete_requested event, leaving the Qdrant point
+//     asset.index.delete_requested event, leaving the pgvector point
 //     orphaned. The former InternalAdminPurge offline surface
 //     (internal/platform/sqlite/admin) was removed in September 2026
 //     after its last consumer disappeared; offline tooling now calls

@@ -137,7 +137,7 @@ type ClipVoiceoverRecordDTO struct {
 // clip_search_terms inverted index. A media search surface must not reappear
 // on this port: PostgreSQL is the media SSOT (godlike/06).
 //
-// QDRANT-asset-mutation isolation (June 2026): UpsertClip was REMOVED
+// VECTOR-asset-mutation isolation (June 2026): UpsertClip was REMOVED
 // from this port. Production callers (clips.ClipOpsService +
 // internal/capabilities/assets/clips) MUST use ClipIndexDispatcherPort to
 // emit media_assets writes via outbox.Dispatcher.EnqueueAndIndex; the
@@ -273,8 +273,8 @@ type ClipPublisherPort interface {
 // ClipIndexDispatcherPort is the canonical narrow surface of
 // outbox.Dispatcher consumed by the unified clips HTTP handler
 // (UpdateClip route). The implementation atomically upserts the
-// asset AND enqueues an outbox event in a single tx — the QDRANT-002
-// pattern that eliminates the SQLite → Qdrant indexing gap.
+// asset AND enqueues an outbox event in a single tx — the VECTOR-002
+// pattern that eliminates the SQLite → pgvector indexing gap.
 //
 // contentHash is the ingest-time file hash used for the dispatcher's
 // supersede-gate dedup field.

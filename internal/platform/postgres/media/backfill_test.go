@@ -44,19 +44,22 @@ func TestBackfill_SQLiteToPostgres_ParityVerified(t *testing.T) {
 		}
 	}
 	// Two locations for asset-001 (local + drive), one for asset-002.
+	// asset_locations.file_hash was retired by migration 286, which the
+	// consolidated 268 baseline (covers 1..298) already contains. Seed only
+	// the columns the backfill contract still compares.
 	seedLocations := []struct {
-		assetID, kind, uri, hash string
-		primary                  int
+		assetID, kind, uri string
+		primary            int
 	}{
-		{"asset-001", "local", "/data/clips/latte.mp4", "d41d8cd98f00b204e9800998ecf8427e", 1},
-		{"asset-001", "drive", "1AbCdriveFileID", "", 0},
-		{"asset-002", "drive", "1XyZdriveFileID", "", 1},
+		{"asset-001", "local", "/data/clips/latte.mp4", 1},
+		{"asset-001", "drive", "1AbCdriveFileID", 0},
+		{"asset-002", "drive", "1XyZdriveFileID", 1},
 	}
 	for _, l := range seedLocations {
 		if _, err := sqliteDB.ExecContext(context.Background(),
-			`INSERT INTO asset_locations (asset_id, location_kind, uri, file_hash, is_primary, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
-			l.assetID, l.kind, l.uri, l.hash, l.primary); err != nil {
+			`INSERT INTO asset_locations (asset_id, location_kind, uri, is_primary, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+			l.assetID, l.kind, l.uri, l.primary); err != nil {
 			t.Fatalf("seed sqlite asset_locations: %v", err)
 		}
 	}

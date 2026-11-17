@@ -112,7 +112,7 @@ func TestMaintenancePruning(t *testing.T) {
 
 	// Set up deletion service.
 	//
-	// QDRANT-002 PR7 producer-migration compliance (June 2026):
+	// VECTOR-002 PR7 producer-migration compliance (June 2026):
 	// NewDeletionService now takes 10 args — the canonical outbox.
 	// Dispatcher is the 9th positional arg (immediately before the logger).
 	// The cleanup-only test exercises DataPruning + the registry walk

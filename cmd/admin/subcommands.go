@@ -16,7 +16,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/rendering"
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/soundeffects"
-	"github.com/Marcuss-ops/PipelineGen/cmd/admin/reconcile"
 )
 
 var errUnknownCommand = errors.New("unknown command")
@@ -71,7 +70,6 @@ var commandRegistry = map[string]commandHandler{
 	"db-status":                      withTimeout(database.RunDBStatus, 5*time.Minute),
 	"delete-drive-images":            cleanup.RunDeleteDriveImages,
 	"download-sound-effects":         soundeffects.RunDownloadSoundEffects,
-	"dr-qdrant":                      reconcile.RunDrQdrant,
 	"drive-bootstrap":                drive.RunDriveBootstrap,
 	"drive-doctor":                   drive.RunDriveDoctor,
 	"drive-reconcile":                drive.RunDriveReconcile,
@@ -99,8 +97,6 @@ var commandRegistry = map[string]commandHandler{
 	"reachability-graph":             audit.RunReachabilityGraph,
 	"reconcile-orphaned-runs":        maintenance.RunReconcileOrphanedRuns,
 	"register-editorial-assets":      withTimeout(maintenance.RunRegisterEditorialAssets, 2*time.Minute),
-	"reconcile-qdrant":               reconcile.RunReconcileQdrant,
-	"reindex-qdrant":                 reconcile.RunReindexQdrant,
 	"remove-drive-folder-recursive":  drive.RunRemoveDriveFolderRecursive,
 	"repair-drive-links":             audit.RunRepairDriveLinks,
 	"repair-stock-metadata":          audit.RunRepairStockMetadata,
@@ -108,7 +104,6 @@ var commandRegistry = map[string]commandHandler{
 	"reset-video-ai":                 maintenance.RunResetVideoAI,
 	"search-drive":                   drive.RunSearchDrive,
 	"stock-reset":                    maintenance.RunResetStockDrive,
-	"stock-subfolders-reset":         maintenance.RunResetStockSubfolders,
 	"sync-drive-folder":              drive.RunSyncDriveFolder,
 	"sync-outros":                    maintenance.RunSyncOutros,
 	"text-tracks-align-cues":         backfill.RunTextTracksAlignCues,

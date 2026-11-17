@@ -2,7 +2,7 @@
 // contract: RetrievalMode (how) is a separate axis from SearchUniverse
 // (where), and BackendRegistry.Eligible routes by universe so catalog
 // queries never hit live providers and discovery queries never touch
-// Qdrant.
+// pgvector.
 package search
 
 import (
@@ -84,7 +84,7 @@ func TestRetrievalModeSeparateFromSearchUniverse(t *testing.T) {
 
 // TestEligibleFiltersByUniverse pins the routing invariant:
 //   - catalog   → only catalog backends (no live provider call)
-//   - discovery → only discovery backends (no Qdrant call)
+//   - discovery → only discovery backends (no external vector store call)
 //   - blended   → both
 //   - empty     → catalog (canonical default)
 func TestEligibleFiltersByUniverse(t *testing.T) {
@@ -128,7 +128,7 @@ func TestEligibleFiltersByUniverse(t *testing.T) {
 // TestEligibleDiscoveryNeverIncludesSemantic pins that a discovery
 // query with an explicit source filter still excludes the semantic
 // backend (the "always include semantic" special case is overridden
-// by the universe filter — a discovery search must not touch Qdrant).
+// by the universe filter — a discovery search must not touch pgvector).
 func TestEligibleDiscoveryNeverIncludesSemantic(t *testing.T) {
 	reg := NewBackendRegistry()
 	for _, b := range []*fakeBackend{

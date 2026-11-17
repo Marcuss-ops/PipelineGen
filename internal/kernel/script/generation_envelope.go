@@ -85,12 +85,13 @@ type GenerationItemV2 struct {
 	// choices the caller left BLANK. An explicit caller value always wins, an
 	// empty ChannelID selects no profile, and a channel without a profile is
 	// not an error — channels are open-ended, profiles are curated.
-	ChannelID string `json:"channel_id,omitempty"`
-	Language  string `json:"language,omitempty"`
-	Tone      string `json:"tone,omitempty"`
-	Style     string `json:"style,omitempty"`
-	Model     string `json:"model,omitempty"`
-	ModelAuto bool   `json:"-"`
+	ChannelID   string          `json:"channel_id,omitempty"`
+	Language    string          `json:"language,omitempty"`
+	Tone        string          `json:"tone,omitempty"`
+	Style       string          `json:"style,omitempty"`
+	Model       string          `json:"model,omitempty"`
+	ModelAuto   bool            `json:"-"`
+	Translation TranslationSpec `json:"translation,omitempty"`
 
 	// MediaMode explicitly selects the media contract for this item.
 	// Mixed media is never inferred from the presence of references.
@@ -311,6 +312,14 @@ type GenerationItemV2 struct {
 	// Outro is an optional protected fixed-media section appended verbatim.
 	// It follows the same authoritative playback contract as Intro.
 	Outro *FixedSection `json:"outro,omitempty"`
+}
+
+// TranslationSpec optionally pins the scene-translation provider, model, and
+// per-job call concurrency. It does not affect BrainRust entity extraction.
+type TranslationSpec struct {
+	Provider    string `json:"provider,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Concurrency int    `json:"concurrency,omitempty"`
 }
 
 // AnimationPolicy is the retired pre-v2 per-group contract. It is retained

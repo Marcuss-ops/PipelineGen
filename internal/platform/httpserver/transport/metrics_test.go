@@ -57,7 +57,6 @@ func TestSyncWireCapabilityMounted_AllCapabilitiesMounted(t *testing.T) {
 		{Method: "POST", Path: "/api/drive/admin"},
 		{Method: "POST", Path: "/api/media/clips/upload"},
 		{Method: "POST", Path: "/internal/v1/media/search"},
-		{Method: "GET", Path: "/qdrant/live"},
 	})
 	SyncWireCapabilityMounted(reg)
 	for _, cap := range knownCapabilities {
@@ -83,7 +82,6 @@ func TestSyncWireCapabilityMounted_MixedMountState(t *testing.T) {
 	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("youtube")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("register")))
 	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("storage")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(WireCapabilityMounted.WithLabelValues("qdrant_health")))
 }
 
 // TestSyncWireCapabilityMounted_EmptyRegistry pins the

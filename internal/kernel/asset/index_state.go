@@ -6,13 +6,13 @@
 // (STAGING/PROCESSING/ACTIVE/DELETED). IndexState tracks the
 // per-asset indexing progress narrowly. They are orthogonal:
 //   - LifecycleState = "ACTIVE" + IndexState = "INDEXED" → real, searchable asset.
-//   - LifecycleState = "ACTIVE" + IndexState = "INDEXING_FAILED" → Qdrant upsert failed.
+//   - LifecycleState = "ACTIVE" + IndexState = "INDEXING_FAILED" → pgvector upsert failed.
 //   - LifecycleState = "ACTIVE" + IndexState = "EMBEDDING_FAILED" → embedding generation failed.
 //   - LifecycleState = "DELETED" + IndexState = "DELETED" → canonical tombstone.
 //
 // Core principle: embedding saved != asset indexed.
-//   - EMBEDDED = embeddings in SQLite, Qdrant NOT yet updated.
-//   - INDEXED  = Qdrant upsert succeeded AND vectors validated.
+//   - EMBEDDED = embeddings in SQLite, pgvector NOT yet updated.
+//   - INDEXED  = pgvector upsert succeeded AND vectors validated.
 package asset
 
 // IndexState is the canonical per-asset indexing progress. Stored on
@@ -41,25 +41,25 @@ const (
 	StateEmbedding IndexState = "EMBEDDING"
 
 	// StateEmbedded — embeddings have been generated and saved to
-	// SQLite. Qdrant has NOT yet been updated. The next step is INDEXING.
+	// SQLite. pgvector has NOT yet been updated. The next step is INDEXING.
 	StateEmbedded IndexState = "EMBEDDED"
 
-	// StateIndexing — worker is actively performing Qdrant upsert.
+	// StateIndexing — worker is actively performing pgvector upsert.
 	// Embeddings MUST already be in SQLite (row must have passed
 	// through EMBEDDED).
 	StateIndexing IndexState = "INDEXING"
 
-	// StateIndexed — terminal success. Qdrant point is current AND
+	// StateIndexed — terminal success. pgvector point is current AND
 	// media_assets.embedded_at / indexed_content_hash are populated.
 	StateIndexed IndexState = "INDEXED"
 
 	// StateEmbeddingFailed — terminal failure at the embedding-
 	// generation stage. SQLite carries no vectors. The asset CANNOT
-	// be found in Qdrant. Operator must re-index from scratch.
+	// be found in pgvector. Operator must re-index from scratch.
 	StateEmbeddingFailed IndexState = "EMBEDDING_FAILED"
 
-	// StateIndexingFailed — terminal failure at the Qdrant-upsert
-	// stage. SQLite carries VALID embeddings but the Qdrant point
+	// StateIndexingFailed — terminal failure at the vector-upsert
+	// stage. SQLite carries VALID embeddings but the pgvector point
 	// is missing or invalid. Operator can re-index from EMBEDDED.
 	StateIndexingFailed IndexState = "INDEXING_FAILED"
 
@@ -73,11 +73,11 @@ const (
 	StateIndexingSkippedNoIndexer IndexState = "INDEXING_SKIPPED_NO_INDEXER"
 
 	// StateIndexDeletePending — IndexDeleteHandler has acknowledged the
-	// Qdrant DeletePoints call but the SQLite SoftDelete has not yet
+	// pgvector DeletePoints call but the SQLite SoftDelete has not yet
 	// committed (retryable window).
 	StateIndexDeletePending IndexState = "DELETE_PENDING"
 
-	// StateDELETED — canonical tombstone. Qdrant point gone AND
+	// StateDELETED — canonical tombstone. pgvector point gone AND
 	// media_assets.lifecycle_state set to "deleted" or "DELETED".
 	StateDELETED IndexState = "DELETED"
 )

@@ -129,6 +129,11 @@ type RemoteFinalJobTiming struct {
 	// (handoff_ms − payload_ms − prepare_ms), so a phase can no longer hide in
 	// a single opaque number.
 	PrepareMS int64 `json:"prepare_ms,omitempty"`
+	// SegmentPrep is the Producer's own split of payload_ms for this handoff:
+	// download, encode/copy, verify and publish per fragment. It is the only
+	// attribution that can tell a slow transfer from a slow encode; nil means
+	// the installed preparer did not report it, never zero work.
+	SegmentPrep *RemoteFinalJobSegmentPrepTiming `json:"segment_prep,omitempty"`
 }
 
 // RemoteFinalJobWorkerTiming is what the remote worker reports about its own
@@ -218,6 +223,12 @@ func (t *RemoteFinalJobTiming) Merge(other *RemoteFinalJobTiming) *RemoteFinalJo
 	// cannot mix phases from two different renders.
 	if other.Worker != nil {
 		t.Worker = other.Worker
+	}
+	// The segment-preparation block is atomic for the same reason: it belongs
+	// to the handoff that produced it, and an attach that prepared no fragments
+	// must not erase the split the handoff measured.
+	if other.SegmentPrep != nil {
+		t.SegmentPrep = other.SegmentPrep
 	}
 	return t
 }

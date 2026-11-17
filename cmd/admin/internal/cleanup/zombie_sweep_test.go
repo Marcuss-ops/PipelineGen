@@ -14,7 +14,7 @@
 //     (e.g. for monitoring scripts that grep the output).
 //  3. cli.ResolveDBPath(cfg, flag) — canonical SSOT delegation to
 //     cfg.Storage.PrimaryDBFullPath() (the helper shared by
-//     24+ cmd/admin/ callers per the qdrant_readiness.go
+//     24+ cmd/admin/ callers per the pgvector_readiness.go
 //     precedent). Added in the round-2b refactor.
 //
 // godlike/06 SSOT: the typed-error sentinels

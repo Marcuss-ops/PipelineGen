@@ -3,7 +3,7 @@
 //
 // godlike/06 SSOT: two surface-equivalent phrases MUST produce the
 // same fingerprint. The canonical algorithm lives here and nowhere
-// else. No package in the brain imports Qdrant, SQLite, Drive,
+// else. No package in the brain imports pgvector, SQLite, Drive,
 // FFmpeg, or any other nervous-system adapter.
 package normalizer
 

@@ -97,13 +97,20 @@ func assertDriftIsReported(t *testing.T, dbPath, migrationsRelPath, scope, table
 
 	// Recomputed from the tree, so the assertion follows the history instead of
 	// hard-coding a filename that the next migration would invalidate.
+	baselineThreshold := baselineThresholdForMigrations(migrations)
+	baselineIsApplied := baselineApplied(applied)
 	newestDeclaringVersion, declaringFiles := 0, map[int]string{}
 	for _, m := range migrations {
 		if !migrationAppliesToTargetDB(m.scope, scope) {
 			continue
 		}
 		if _, ok := applied[m.version]; !ok {
-			continue
+			// A fresh DB applies only the baseline sentinel. The numbered
+			// migrations it covers are still the declarers an operator can act
+			// on, so include them when attributing the missing table.
+			if !(baselineIsApplied && m.version > 0 && m.version <= baselineThreshold) {
+				continue
+			}
 		}
 		content, err := os.ReadFile(m.path)
 		if err != nil {

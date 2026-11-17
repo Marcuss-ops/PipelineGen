@@ -79,7 +79,7 @@ func reconcileFolder() {
 	}
 }
 `
-	relPath := "cmd/admin/reconcile_qdrant.go"
+	relPath := "cmd/admin/reconcile_pgvector.go"
 	writeFixture(t, root, relPath, adminContent)
 
 	r := newEmptyReport()

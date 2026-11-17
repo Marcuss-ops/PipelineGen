@@ -13,7 +13,7 @@
 //     remote.ArtifactUploader port (DRIVE-005 closed), and the
 //     Sender ingests them through CreatorCompleteJob (C6/C7).
 //
-//  2. NO QDRANT — Qdrant is the Sender-side derived projection
+//  2. NO EXTERNAL VECTOR STORE — pgvector is the Sender-side derived projection
 //     (godlike/06 SemanticIndex). The Creator is push-only; it
 //     does not write embeddings or trigger projector promotion.
 //     Vector ingestion goes through Sender-side handlers.
@@ -24,7 +24,7 @@
 //     Sender.
 //
 //  4. NO CATALOGSYNC — catalog reconciliation is a Sender-side
-//     helper that runs on the main SQLite + Qdrant state. The
+//     helper that runs on the main SQLite + pgvector state. The
 //     Creator's view is "produce artifacts -> push to Sender".
 //
 // Architectural posture (godlike/07 "no fake availability"):
@@ -45,7 +45,7 @@
 //
 //   - internal/platform/sqlite
 //
-//   - internal/platform/qdrant
+//   - internal/platform/postgres/media
 //
 //   - scheduler
 //
@@ -99,7 +99,7 @@ type CreatorRoot = CreatorRuntime
 // worker profile. It carries ONLY the services the Creator needs;
 // nothing forces the Creator to depend on a persistent store or
 // vector projection. See the package doc above for the no-DB /
-// no-Qdrant / no-Scheduler / no-CatalogSync contract.
+// no-pgvector / no-Scheduler / no-CatalogSync contract.
 //
 // Field-by-field rationale:
 //
@@ -156,7 +156,7 @@ type CreatorRuntime struct {
 // (typically via defer in workerruntime/run.go).
 //
 // The factory enforces the canonical Creator-side contract (see
-// package doc): NO DB, NO Qdrant, NO Scheduler, NO CatalogSync. Any
+// package doc): NO DB, NO pgvector, NO Scheduler, NO CatalogSync. Any
 // future pull of one of those capabilities MUST go through a
 // Sender-side handling port (e.g. remote.ArtifactUploader for
 // persistence), NOT direct coupling in this file. The contract is
@@ -168,7 +168,7 @@ type CreatorRuntime struct {
 //
 //  2. Import-allowlist AST scan (creator_runtime_test.go::TestCreatorRuntime_FrozenImportAllowlist)
 //     — forbids any of internal/platform/sqlite,
-//     internal/platform/qdrant, `scheduler`, or
+//     internal/platform/postgres/media, `scheduler`, or
 //     `catalogsync` from any creator_*.go under internal/app/.
 //
 // Fail-closed precondition: cfg and log MUST be non-nil. A nil
@@ -388,7 +388,7 @@ var _ = func() any { var _ *sql.DB = nil; return nil }
 //
 // registerCreatorPostProcessors builds a PostProcessorRegistry with
 // Creator-safe postprocessors that write files instead of talking
-// to SQLite, Google Drive, or Qdrant.
+// to SQLite, Google Drive, or pgvector.
 //
 // PR-noop-adapters-purge (2026-07-25): the entities + metadata
 // processors are now backed by the TYPED-FAIL unavailable*Adapter

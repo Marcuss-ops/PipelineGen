@@ -207,7 +207,6 @@ type Config struct {
 	Media   MediaConfig   `yaml:"media"`
 	Scripts ScriptsConfig `yaml:"scripts"`
 	Outbox  OutboxConfig  `yaml:"outbox"`
-	Qdrant  QdrantConfig  `yaml:"qdrant"`
 }
 
 // AuthSecurityPort compatibility helpers. These keep the application-layer

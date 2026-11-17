@@ -6,7 +6,7 @@
 // provider:clipID:sourceVersion). These tests pin:
 //
 //  1. The 4-segment shape: eventType:provider:clipID:sourceVersion.
-//  2. The PR 5 gate (QDRANT-full-content-hash, June 2026): the
+//  2. The PR 5 gate (VECTOR-full-content-hash, June 2026): the
 //     FULL content hash is preserved in the key — two hashes that
 //     share their shortHashPrefix (first 12 chars) MUST still
 //     produce DISTINCT event_keys, otherwise the outbox_events
@@ -33,7 +33,7 @@ import (
 )
 
 // TestOutboxKey_DistinguishesHashesSamePrefix is the PR 5 gate
-// (QDRANT-full-content-hash, June 2026) carried forward into
+// (VECTOR-full-content-hash, June 2026) carried forward into
 // the Commit 2 wire-in: the canonical contract is that two
 // hashes whose first 12 chars match MUST still produce
 // DIFFERENT event_keys — otherwise the outbox_events UNIQUE
@@ -85,7 +85,7 @@ func TestOutboxKey_DistinguishesHashesSamePrefix(t *testing.T) {
 	// collision-free event_keys are the entire point of PR 5.
 	if keyA == keyB {
 		t.Fatalf(
-			"QDRANT-full-content-hash (PR 5) regression: OutboxKey must "+
+			"VECTOR-full-content-hash (PR 5) regression: OutboxKey must "+
 				"produce DISTINCT event_keys for two hashes that share the same "+
 				"first-12-chars prefix (shortHashPrefix would have collapsed them). "+
 				"Got keyA == keyB == %q — the dispatcher is still using the truncated prefix.",

@@ -41,13 +41,13 @@ import (
 )
 
 // errClipDispatcherUnavailable is the fail-closed sentinel surfaced by
-// every clips API writer in PR 6 (codex/qdrant-api-writers-fail-closed):
+// every clips API writer in PR 6 (codex/pgvector-api-writers-fail-closed):
 // when the canonical AssetMutationDispatcher is not wired at composition
 // time (test fixtures, partial deploys), the four write endpoints
 // (CreateClip, UploadVideoClip — ClipAction::ReuploadClip and
 // sound_effect Generate are documented in their own clusters) return
 // HTTP 503 with this message instead of silently falling back to a raw
-// repo.Upsert write that would corrupt Qdrant semantics.
+// repo.Upsert write that would corrupt pgvector semantics.
 //
 // Operational response: the operator should investigate why the
 // composition root did not inject the dispatcher. The Wave 22 task-2
@@ -55,7 +55,7 @@ import (
 // zero — any new caller that bypasses AssetMutationDispatcher fails CI.
 //
 // Moved from clip_create.go (deleted in Split 2, June 2026).
-var errClipDispatcherUnavailable = errors.New("clips API write unavailable: AssetMutationDispatcher not wired (QDRANT-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via clipsDispatcherAdapter)")
+var errClipDispatcherUnavailable = errors.New("clips API write unavailable: AssetMutationDispatcher not wired (VECTOR-asset-mutation isolation; production composition root must wire *outbox.Dispatcher via clipsDispatcherAdapter)")
 
 // IngestDeps is the constructor bag for IngestHandler. The 7 fields
 // below are exactly the deps the 3 moved methods touch — no more, no

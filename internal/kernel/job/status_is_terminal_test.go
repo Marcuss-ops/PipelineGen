@@ -43,7 +43,7 @@ func TestStatus_IsTerminal_FASE1_NonTerminalBatchStates(t *testing.T) {
 // TestStatus_IsTerminal_KnownTerminalStates is the canonical pin
 // for the canonical terminal-set: claims SUCCEEDED, PARTIALLY_
 // SUCCEEDED, FAILED, CANCELLED are the ONLY terminal states.
-// INDEX_PENDING is explicitly NON-terminal (the canonical Qdrant
+// INDEX_PENDING is explicitly NON-terminal (the canonical pgvector
 // reconciler owns the row until projection lands). QUEUED/LEASED/
 // RUNNING/RETRY_WAIT are obviously non-terminal (pre-leased or
 // in-progress).

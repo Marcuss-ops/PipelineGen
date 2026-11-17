@@ -82,8 +82,8 @@ func (u *ProcessSegmentUseCase) publishStage(
 	// intentionally best-effort to preserve the legacy batch contract:
 	// a tagger outage must not turn valid synthesized audio into a failed
 	// voiceover, but it is always visible in the structured logs.
-	if u.deps.SemanticTagger != nil {
-		semantic, err := u.deps.SemanticTagger(ctx, cmd.Text, "", "voiceover", "voiceover")
+	if u.deps.Enrichment.SemanticTagger != nil {
+		semantic, err := u.deps.Enrichment.SemanticTagger(ctx, cmd.Text, "", "voiceover", "voiceover")
 		if err != nil {
 			u.deps.Logger.Warn("voiceover: semantic tagger failed; continuing without semantic enrichment", zap.Error(err))
 		} else if semantic != nil {
@@ -478,11 +478,11 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	// the returned spans back to the queries. A missing aligner fails closed
 	// only when moments were requested; no Go matcher is a fallback.
 	if len(cmd.Moments) > 0 {
-		if u.deps.PhraseAligner == nil {
+		if u.deps.Enrichment.PhraseAligner == nil {
 			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: phrase aligner is required"))
 		}
 		values := momentQueryValues(cmd.Moments)
-		alignments, err := u.deps.PhraseAligner.AlignPhrases(ctx, audio.PhraseAlignmentRequest{
+		alignments, err := u.deps.Enrichment.PhraseAligner.AlignPhrases(ctx, audio.PhraseAlignmentRequest{
 			Timing: *artifact, Phrases: values, AllowMissing: true, AllOccurrences: true,
 		})
 		if err != nil {

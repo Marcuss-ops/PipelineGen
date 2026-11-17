@@ -82,14 +82,39 @@ composition styles only supply layout, motion, and fallback color.
 `position_x`, `position_y`, `radius`, `fit` (`cover`/`contain`/`fill`),
 `bounded`, `glow` (`radius` 0..256, `intensity` 0..4, `color` #RRGGBB;
 radius 0 disables it), plus `border`, `stroke` and `shadow` (color, opacity,
-blur, offset). The `glow` block is image-only: it lowers to Chronon's native
-media glow effect and never changes caption text. For a **standalone** image
-only, `backdrop` reuses the same asset as
-a softly blurred full-canvas background and may add a light canvas grid:
+blur, offset). `shadow.blur` is `0..64` px — the ceiling Chronon's native
+drop shadow certifies (`radius > 64` is rejected there); anything above it
+fails validation instead of being silently clamped. The `glow` block is image-only: it lowers to Chronon's native
+media glow effect and never changes caption text. `effects` attaches the same
+bounded native effect stack `output.render.effects` accepts (same type
+vocabulary, same parameter bounds, max 12 entries; `[{ "type": "none" }]`
+clears it). Each entry must supply the parameter that makes it visible —
+`amount` for `glitch`, `scanlines`, `chromatic_aberration`, `vignette`,
+`noise`, `sharpen`; `radius` for `gaussian_blur`; `block_size` for `mosaic`;
+`size` for `halftone`; `intensity` for `banded_grain`; one of
+`radius`/`intensity` for `glow` and `bloom`; one of `curvature`/`scale` for
+`lens_distortion`. A type without it would render nothing, so it is rejected
+rather than shipped as decoration. Effects decorate the photographic surface
+only — never captions or plates — and are honored by standalone images,
+composites and entity cards.
+`grid` is the image counterpart of `output.render.grid` and needs **no**
+backdrop: it draws for the image's lifetime and accepts `scope`
+(`full_canvas`/`foreground`). It is one layer per item: on a composite the
+grid is emitted once for the whole card, never once per member. The backdrop
+grid below accepts the same `scope` (default `full_canvas`, `foreground`
+confines it to the card). For a **standalone** image only, `backdrop`
+reuses the same asset as a softly blurred full-canvas background and may add a
+light canvas grid:
 
 ```json
 "overlay_style": {"image": {
   "bounded": true, "fit": "contain",
+  "effects": [
+    {"type": "vignette", "amount": 0.22, "radius": 0.8, "softness": 0.55},
+    {"type": "noise", "amount": 0.05, "size": 1.2, "seed": 11, "animated": true}
+  ],
+  "grid": {"scope": "foreground", "style": "lines", "color": "#7FA8C8",
+    "spacing_px": 96, "line_width_px": 1, "opacity": 0.12},
   "backdrop": {"zoom": 1.15, "blur_px": 18,
     "grid": {"style": "lines", "color": "#7FA8C8", "spacing_px": 120,
       "line_width_px": 1, "opacity": 0.1}},
@@ -104,6 +129,55 @@ Grid geometry is closed: `style` is `lines` or `dots`; use `line_width_px`
 is `4..512`, `opacity` is `0..1`, and `enabled:false` disables the grid while
 keeping the blurred backdrop. `backdrop` is ignored for composites and groups,
 which keep independent per-layer frames.
+
+The standalone `overlay_style.image.grid` block uses the same closed geometry
+but its `enabled:false` is an explicit off switch, and omitted keys keep the
+renderer defaults (lines, `#7FA8C8`, 96 px spacing). Use it when you want the
+grid without the blurred backdrop treatment.
+
+`overlay_images` pins explicit stills to a scene. Each pin may carry one
+chosen cue; it replaces the deterministic random cue for that image and is
+resolved through the same audio asset registry as `audio.sound_effects`:
+
+```json
+"overlay_images": [{
+  "scene_id": "scene-1", "asset_id": "context-portrait-1",
+  "local_path": "/cache/context-portrait-1.png", "sha256": "<64 hex>",
+  "mime_type": "image/png",
+  "sound_effect": {"asset_id": "whoosh", "gain_db": -18, "duration_ms": 250}
+}]
+```
+
+`gain_db` is `-96..24`; `duration_ms` is optional and clamped to the image's
+visible window. Within a scene, cues attach to that scene's image items in
+declaration order and start-time order; a scene that declares more cues than
+image items fails the run rather than dropping a cue.
+
+A pin may also carry `style`, the same image style block as
+`overlay_style.image` (border, stroke, shadow, glow, radius, fit, `effects`,
+`grid`, `backdrop`). It overrides the run-level style for the image that pin
+produces only — every field the pin leaves unset keeps the run-level value,
+and a declared `effects` stack replaces the run-level one instead of adding to
+it:
+
+```json
+"overlay_images": [{
+  "scene_id": "scene-1", "asset_id": "context-portrait-1",
+  "local_path": "/cache/context-portrait-1.png", "sha256": "<64 hex>",
+  "sound_effect": {"asset_id": "whoosh", "gain_db": -18},
+  "style": {
+    "border": {"width": 4, "color": "#22D3EE", "radius": 18},
+    "grid": {"enabled": false},
+    "effects": [{"type": "vignette", "amount": 0.3}]
+  }
+}]
+```
+
+The pin style follows the same positional rule as the cue: within a scene the
+pins attach to that scene's image items in declaration order and start-time
+order, and a scene that declares more styled pins than image items fails the
+run. `style` requires `scene_id` (the style is bound to the image that scene
+produces).
 
 For source video clips rendered by Chronon, `output.render` accepts the clip
 card controls plus native effects and a procedural grid:
@@ -380,8 +454,16 @@ overlay at the beginning of each real video clip (synthetic freeze tails are
 skipped). Light leaks on image overlays can be selected with an `image` motion
 directive and a `lightleak_*` motion ID. Pair clip-start accents with
 `audio.random_sfx_on_clip_start` for a deterministic whoosh, or use explicit
-`audio.sound_effects` to place a chosen SFX; image overlay SFX remain controlled
-by `audio.random_sfx_on_image_overlay`.
+`audio.sound_effects` to place a chosen SFX; image overlay SFX are chosen per
+image with `overlay_images[].sound_effect`, while
+`audio.random_sfx_on_image_overlay` remains the deterministic random fallback
+for images the payload leaves unclaimed. `random_image_effects: true` is the
+visual counterpart: each image overlay gets one deterministic yes/no draw and,
+when it says yes, one light EffectsPack-derived treatment (native effect type,
+light parameters, per-image grain seed) attached as that image's `effects`
+stack. An image that already declares `effects` — through
+`overlay_style.image.effects` or a pin `style.effects` — is left untouched, and
+re-deriving the same plan replays the same decorations.
 
 ```json
 {

@@ -28,7 +28,7 @@ func registerStockEntries(r *Registry) {
 	// TypeMediaGenerate is an orphaned registry entry — no production handler
 	// is statically registered.
 	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaGenerate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
-	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaEnrich, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaEnrich, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Single-asset semantic enrichment + vector-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
 	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
 	// TypeBulkUploadYouTubeClips is an orphaned registry entry — no production
 	// handler is statically registered.

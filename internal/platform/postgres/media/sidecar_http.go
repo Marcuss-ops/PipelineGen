@@ -1,7 +1,7 @@
 // Package media — sidecar_http.go: the narrow HTTP + decode helpers for
 // the sidecar-backed enrichment ports (visual embedder, face detector).
 // Kept in ONE file so the media package stays leaf-only (no imports of
-// qdrant/indexing packages) and the sidecar contract has one owner.
+// pgvector/indexing packages) and the sidecar contract has one owner.
 package media
 
 import (
@@ -43,7 +43,7 @@ func postJSON(ctx context.Context, client *http.Client, url string, payload any)
 }
 
 // visualBatchEnvelope is the canonical sidecar batch response
-// (QDRANT-001 envelope parity: model, model_version, dimensions, count).
+// (VECTOR-001 envelope parity: model, model_version, dimensions, count).
 type visualBatchEnvelope struct {
 	Embeddings   [][]float64 `json:"embeddings"`
 	Dimensions   int         `json:"dimensions"`

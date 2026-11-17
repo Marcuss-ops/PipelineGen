@@ -2,7 +2,7 @@
 // holds SHARED TEST FIXTURES for the migration smoke + per-migration
 // scenario tests in:
 //   - migrations_smoke_test.go           — baseline apply/idempotency/integrity
-//   - migrations_099_test.go             — Qdrant asset columns
+//   - migrations_099_test.go             — pgvector asset columns
 //   - migrations_152_test.go             — canonical metadata columns
 //   - migrations_153_test.go             — asset_artifacts table + indexes
 //   - migrations_154_test.go             — script_localizations UNIQUE shape

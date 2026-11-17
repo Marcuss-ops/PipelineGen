@@ -85,7 +85,7 @@ import (
 //	{asset_id}__manifest.json (per-asset metadata ledger)
 //
 // The `__` separator and the role suffix are SSOT — the canonical
-// surfaces that downstream consumers (Qdrant payload mappers,
+// surfaces that downstream consumers (pgvector payload mappers,
 // operator dashboards, manual ops scripts) parse by string match.
 // A drift here (e.g. master.mp4 without `__` or `__preview.mov`
 // instead of `.mp4`) silently breaks every consumer; this pin
@@ -234,7 +234,7 @@ func TestStep9_PathBuilder_Sanitization(t *testing.T) {
 //	AudioCodec:             "aac"
 //	PixelFormat:            "yuv420p"
 //
-// These are the SSOT values that downstream Qdrant payload mappers
+// These are the SSOT values that downstream pgvector payload mappers
 // + Drive-side media-player preview codepaths branch on. A drift
 // here (e.g. "avc" instead of "h264") silently breaks codec-aware
 // downstream consumers.

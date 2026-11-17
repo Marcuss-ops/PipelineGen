@@ -1,6 +1,6 @@
 // Package jobs — queue_notifier.go (canonical typed-port refactor, June 2026).
 //
-// PR 7 followup (June 2026, codex/qdrant-app-writers-fail-closed followup):
+// PR 7 followup (June 2026, codex/pgvector-app-writers-fail-closed followup):
 // the unexported `queueNotifier` struct was first promoted to a `QueueNotifier`
 // struct (rename pass) and then to a `QueueNotifier` INTERFACE — the canonical
 // pattern per AGENTS.md Pattern 0 (typed-port abstraction). The previous struct

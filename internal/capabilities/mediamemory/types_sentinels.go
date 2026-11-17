@@ -38,10 +38,10 @@ var (
 		"mediamemory: BindingMutationDispatcher unavailable",
 	)
 	ErrSemanticNotConfigured = errors.New(
-		"mediamemory: semantic lookup backend not configured (Qdrant not reachable at boot, or composition wiring missing)",
+		"mediamemory: semantic lookup backend not configured (pgvector not reachable at boot, or composition wiring missing)",
 	)
 	ErrSemanticBackendFailed = errors.New(
-		"mediamemory: semantic lookup backend failed (Qdrant query returned an error envelope, embedding call failed)",
+		"mediamemory: semantic lookup backend failed (pgvector query returned an error envelope, embedding call failed)",
 	)
 	ErrInvalidBatchMode = errors.New(
 		"mediamemory: batch mode outside canonical closed set (use catalog_only or materialize_top_k)",

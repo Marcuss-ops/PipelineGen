@@ -17,12 +17,12 @@ import (
 
 // ReprocessUseCase re-downloads, re-processes, and re-uploads a clip.
 //
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): dispatcher
+// PR 7 (June 2026, codex/pgvector-app-writers-fail-closed): dispatcher
 // field added so the use case's media_assets UPSERT (post-reprocess)
-// routes through the canonical outbox+tx writer (QDRANT-002 atomicity
+// routes through the canonical outbox+tx writer (VECTOR-002 atomicity
 // invariant). Strict fail-closed: nil dispatcher surfaces explicitly
 // via mutations.ErrDispatcherUnavailable wrap, NOT as a half-written
-// asset row that would orphan Qdrant. See
+// asset row that would orphan pgvector. See
 // internal/app/registry_adapters.go::newMutationsDispatcherAdapter.
 type ReprocessUseCase struct {
 	assetRepo     AssetReader
@@ -217,7 +217,7 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	}
 	if result.MD5 != "" {
 		// Drive-returned md5Checksum, distinct from the local SHA carried
-		// by ContentSHA256 (the QDRANT-002 source_version/content_hash). Stored
+		// by ContentSHA256 (the VECTOR-002 source_version/content_hash). Stored
 		// under its own metadata key so it never clobbers the local hash.
 		clip.SetMetadataString("md5", result.MD5)
 	}
@@ -228,18 +228,18 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 	}
 	clip.UpdatedAt = time.Now()
 
-	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
+	// PR 7 (June 2026, codex/pgvector-app-writers-fail-closed): route the
 	// media_assets UPSERT through the canonical mutations.AssetMutationDispatcher
-	// so the QDRANT-002 atomicity invariant (media_assets UPSERT + outbox_events
+	// so the VECTOR-002 atomicity invariant (media_assets UPSERT + outbox_events
 	// INSERT in one tx) applies uniformly to reprocess flows.
 	//
 	// Strict fail-closed: nil dispatcher surfaces an explicit error
 	// (the POST /clips/{id}/reprocess call returns 503-equivalent),
 	// NOT a half-written asset row. contentHash is the post-reprocess
 	// fingerprint from result.ContentSHA256; mirrors the v1 supersede-gate
-	// semantics (QDRANT-002 item F: source_version on index.requested.v1).
+	// semantics (VECTOR-002 item F: source_version on index.requested.v1).
 	if uc.dispatcher == nil {
-		return nil, fmt.Errorf("reprocess dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+		return nil, fmt.Errorf("reprocess dispatcher not configured (VECTOR-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
 	}
 	if err := uc.dispatcher.EnqueueAndIndex(ctx, clip, result.ContentSHA256); err != nil {
 		return nil, fmt.Errorf("dispatcher enqueue: %w", err)

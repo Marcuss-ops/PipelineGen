@@ -82,11 +82,11 @@ func (ih *IngestHandler) UpdateClip(c *gin.Context) {
 		clip.ThumbnailURL = val
 	}
 
-	// QDRANT-002 closed (June 2026): dispatcher is mandatory.
+	// VECTOR-002 closed (June 2026): dispatcher is mandatory.
 	// Raw repo writes without outbox are prohibited — a nil
 	// dispatcher is a wiring error, not a runtime fallback.
 	if ih.dispatcher == nil {
-		ih.log.Error("QDRANT-002: clip update rejected — dispatcher not wired (raw write without outbox is prohibited)",
+		ih.log.Error("VECTOR-002: clip update rejected — dispatcher not wired (raw write without outbox is prohibited)",
 			zap.String("clip_id", clipID))
 		apiutil.Error(c, 503, "clip update unavailable: dispatcher not wired")
 		return

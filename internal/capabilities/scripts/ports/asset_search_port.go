@@ -27,16 +27,16 @@
 //     aliases (type X = AssetSearchPort) for canonical surface
 //     deduplication.
 //
-// Production adapters (Qdrant side, internal/platform/qdrant/search/):
+// Production adapters (pgvector side, internal/platform/postgres/media/search/):
 //   - *ClipSearchAdapter satisfies AssetSearchPort (PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 2)
 //   - *StockSearchAdapter satisfies AssetSearchPort (PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 3)
 //
 // Fail-closed tenant contract (mirrors the legacy ClipSearchPort
-// semantics; PR 5 June 2026, fix/qdrant-tenant-scope):
+// semantics; PR 5 June 2026, fix/pgvector-tenant-scope):
 //   - WorkspaceID="" && IsSystem=false → typed error
 //     ("workspace required or IsSystem=true explicit").
 //   - WorkspaceID="default" → typed error (reserved sentinel).
-//   - Otherwise → CompileQdrantFilter emits the canonical
+//   - Otherwise → CompileVectorFilter emits the canonical
 //     workspace + lifecycle filter and Search runs against the
 //     runtime alias.
 //
@@ -45,9 +45,9 @@
 //     lifecycle_state=ACTIVE filter clause.
 //   - When RequireActiveLifecycle==true the adapter applies the
 //     lifecycle_state=ACTIVE must-clause (stock default; clip path
-//     passes false because CompileQdrantFilter already includes it).
+//     passes false because CompileVectorFilter already includes it).
 //
-// nil-safe in the curate resolver + VisualPlanningProcessor — Qdrant-disabled
+// nil-safe in the curate resolver + VisualPlanningProcessor — vector-disabled
 // deployments keep working with HintClipIDs-only / nil-port as before;
 // the port call is skipped when SetAssetSearchPort / SetStockSearchPort
 // has never been invoked.
@@ -64,7 +64,7 @@ type AssetSearchPort interface {
 	// SearchAssets performs a single semantic asset search over the
 	// configured vector store and returns up to `limit` hits ranked
 	// by similarity (highest first). Optional fields (Source,
-	// Category, MediaType) are applied as Qdrant filter must-clauses
+	// Category, MediaType) are applied as pgvector filter must-clauses
 	// by the adapter. Empty fields = no filter on that axis.
 	//
 	// minScore defaults to 0.5 (clip) or 0.3 (stock) when zero,
@@ -86,7 +86,7 @@ type AssetSearchQuery struct {
 	Query string
 	// Empty = any. The stock path uses Source="stock" (legacy
 	// behaviour); the clip path uses Source="" (no source filter,
-	// lets the runtime filter resolve per Qdrant payload).
+	// lets the runtime filter resolve per pgvector payload).
 	Source string
 	// Category restricts to a category. Empty = any.
 	Category string
@@ -94,7 +94,7 @@ type AssetSearchQuery struct {
 	MediaType string
 	// WorkspaceID is REQUIRED for user-facing traffic. The adapter
 	// applies it as a server-side workspace isolation clause (PR 5,
-	// June 2026, fix/qdrant-tenant-scope). An empty workspace means
+	// June 2026, fix/pgvector-tenant-scope). An empty workspace means
 	// "background/system path" — the adapter then REJECTS the call
 	// unless IsSystem=true is set explicitly. The matching rule
 	// mirrors mediasearch.Service::Search's ErrMissingWorkspace
@@ -117,12 +117,12 @@ type AssetSearchQuery struct {
 	// RequireActiveLifecycle forces the lifecycle_state=ACTIVE
 	// must-clause in the adapter's filter. The stock path always
 	// sets this to true (its legacy filter hard-codes ACTIVE); the
-	// clip path uses the value CompileQdrantFilter emits (already
+	// clip path uses the value CompileVectorFilter emits (already
 	// ACTIVE-locked) and typically passes false.
 	RequireActiveLifecycle bool
 
 	// FolderNormalizedGroup, when non-empty, emits the canonical
-	// Qdrant `normalized_group` must-clause via CompileQdrantFilter.
+	// pgvector `normalized_group` must-clause via CompileVectorFilter.
 	// Empty = no folder filter (search across all groups).
 	//
 	// godlike/06 SSOT: this field is the unwrapped form of the
@@ -143,7 +143,7 @@ type AssetSearchQuery struct {
 	// ExcludeRightsStatuses + ExcludeReviewStatuses
 	// (PR-CLIPINGEST-PIPELINE Step 10, July 2026). When
 	// non-empty, the SlotSearchPort adapter (via the underlying
-	// Qdrant filter compiler) translates these into a single
+	// pgvector filter compiler) translates these into a single
 	// `MustNot(MatchAny(...))` clause on the corresponding
 	// payload fields (`rights_status` + `review_status`).
 	//
@@ -156,7 +156,7 @@ type AssetSearchQuery struct {
 	// ReviewStatus.Valid in internal/kernel/asset/rights_state.go).
 	//
 	// godlike/07 fail-closed at the planning-tier: a
-	// non-empty ExcludeRightsStatuses slice on a Qdrant
+	// non-empty ExcludeRightsStatuses slice on a pgvector
 	// collection that has NOT been reindexed with the
 	// `rights_status` payload index is a silent filter
 	// no-op (MustNot on a missing field matches all rows).
@@ -171,7 +171,7 @@ type AssetSearchQuery struct {
 // AssetSearchHit is the unified result item. It subsumes the legacy
 // ClipSearchHit (4 fields) + StockSearchHit (5 fields including
 // DriveLink). The DriveLink field is optional via omitempty for the
-// clip path per QDRANT-001 (June 2026): server-internal locators do
+// clip path per VECTOR-001 (June 2026): server-internal locators do
 // not belong in the search contract; clip consumers that need a
 // signed URL for an asset should go through the delivery service
 // (delivery.Signer.BuildAuthorizedURL).
@@ -180,13 +180,13 @@ type AssetSearchHit struct {
 	AssetID string `json:"asset_id"`
 	// Name is the asset's human-readable name (log/debug only).
 	Name string `json:"name"`
-	// Score is the cosine similarity from the Qdrant search.
+	// Score is the cosine similarity from the pgvector search.
 	Score  float64 `json:"score"`
 	Source string  `json:"source"`
 	// DriveLink is the Google Drive WebViewLink. Stock path
-	// populates this from the Qdrant payload's "drive_link" (or
+	// populates this from the pgvector payload's "drive_link" (or
 	// legacy "drive_url") field. Clip path leaves it empty —
 	// consumers fetch via delivery.Signer.BuildAuthorizedURL per
-	// QDRANT-001.
+	// VECTOR-001.
 	DriveLink string `json:"drive_link,omitempty"`
 }

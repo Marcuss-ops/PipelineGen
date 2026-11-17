@@ -16,8 +16,8 @@
 //   - HardDeleteClip(ctx, id)      — REMOVED from *assets.ClipsRepository
 //
 // The removal was forced by a real incident: a future caller could
-// bypass the outbox (so the new read would not re-build the Qdrant
-// vector during Restore) or orphan a Qdrant point (HardDelete that
+// bypass the outbox (so the new read would not re-build the pgvector
+// vector during Restore) or orphan a pgvector point (HardDelete that
 // doesn't emit asset.index.delete_requested). Each of the three
 // removed methods had at least one production-bypass hazard that the
 // only legitimate caller (the admin tooling path) handles correctly
@@ -35,7 +35,7 @@
 //     database/sqlite/admin/purge.go`)
 //     opens the tx, gate-checks
 //     lifecycle_state='DELETED' AND
-//     qdrant_point_state='absent', then
+//     vector_point_state='absent', then
 //     delegates here, then commits.
 //
 //   - RestoreTx(ctx, tx, id)   — flips lifecycle_state back to
@@ -82,7 +82,7 @@
 //   - internal/capabilities/**             — MUST NOT import this package
 //     (admin tooling runs offline via cmd/admin/**).
 //   - internal/platform/sqlite/admin/ purge.go — the
-//     only legitimate caller (QDRANT-asset-mutation isolation, June
+//     only legitimate caller (VECTOR-asset-mutation isolation, June
 //     2026).
 //
 // The CI lint ARCH-ALLOWLIST: admin-only comment marker is the

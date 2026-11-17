@@ -11,7 +11,7 @@ package defaults
 //     (internal/application/mediasearch/types.go).
 //   - mediasearch.DefaultScore = 0.50
 //     (same file; floor below which a hit is dropped pre-hydration,
-//     per QDRANT-004).
+//     per VECTOR-004).
 //
 // Every consumer MUST read from DefaultMediaConfig() rather than
 // re-implementing these literals inline. A future "loosen the curate
@@ -34,7 +34,7 @@ type MediaConfig struct {
 	// CurateDefaultLimit is the per-page default for the legacy
 	// mediasearch endpoint. Legacy inlined value: 10. Kept separate
 	// from SearchDefaultLimit because the curate endpoint is a
-	// tenant-scoped private API (QDRANT-004 spec) with tighter
+	// tenant-scoped private API (VECTOR-004 spec) with tighter
 	// limits than the public search aggregator.
 	CurateDefaultLimit int
 

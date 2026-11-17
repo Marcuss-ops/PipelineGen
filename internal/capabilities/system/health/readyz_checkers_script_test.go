@@ -13,10 +13,9 @@ import (
 // DB/Jobs checkers so the composite checker has something to call.
 func fakeScriptGenerateDeps(dbOK, jobsOK bool) *Service {
 	return NewService(ServiceDeps{
-		DB:     &staticChecker{check: "db", ok: dbOK},
-		Drive:  nil,
-		Qdrant: nil,
-		Jobs:   &staticChecker{check: "jobs", ok: jobsOK},
+		DB:    &staticChecker{check: "db", ok: dbOK},
+		Drive: nil,
+		Jobs:  &staticChecker{check: "jobs", ok: jobsOK},
 	})
 }
 

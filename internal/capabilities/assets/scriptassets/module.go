@@ -101,7 +101,7 @@ func (d *ScriptAssetsDescriptor) RegisterProviders(reg api.ProviderRegistrar) er
 // not need to nil-check.
 //
 // The capability intentionally has NO mandatory namespace dep —
-// ScriptAssets is a static catalog with no DB reads, no Qdrant
+// ScriptAssets is a static catalog with no DB reads, no external vector store
 // queries, no LLM calls. This keeps Build's failure surface narrow:
 // only Logger nil → fallback (never an error) and any panic from New*
 // constructors (not expected — they're pure).

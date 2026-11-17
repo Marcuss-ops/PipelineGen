@@ -11,7 +11,7 @@ import (
 // ────────────────────────────────────────────────────────────────────────
 //
 // The package-level `database/sql` import exists ONLY for this territory.
-// Synthesis-territory ports carry ZERO sql/drive/qdrant imports.
+// Synthesis-territory ports carry ZERO sql/drive/pgvector imports.
 
 // TxOutboxEnqueuer is the canonical narrow port for transactional
 // outbox enqueue from inside the voiceover-swap transaction.

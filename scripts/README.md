@@ -59,7 +59,7 @@ python dust"; do not cite them as present): `ci-architectural-checks.sh`,
 `verify-image-digest.sh`, `cosign-sign.sh`, `start_embedding_server.sh`,
 `ci-bypass-audit.sh`, `run_stock.py`, `youtube_boxer_stock_e2e.py`,
 `with-velox-auth_test.sh`, `operations/inspect_media_asset.sh`,
-`operations/certify_media_registry_qdrant.sh`, `overlay-cert/`, `core/`, and
+`overlay-cert/`, `core/`, and
 the former `bridges/*` + `tools/*` families beyond the two listed above.
 Admin credential rotation is manual (see `AGENTS.md`, § Authentication SSOT).
 

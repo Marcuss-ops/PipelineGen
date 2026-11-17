@@ -37,7 +37,7 @@ func resolveCode(input IndexHealthInput) IndexHealthCode {
 		return IndexHealthEmbedding
 
 	case asset.StateEmbedded:
-		// EMBEDDED means the asset has vectors in SQLite but the Qdrant
+		// EMBEDDED means the asset has vectors in SQLite but the pgvector
 		// upsert has not yet been confirmed. If there is a pending outbox
 		// event the worker has been told to upsert; otherwise it is ready
 		// to be picked up.
@@ -128,7 +128,7 @@ func defaultDescriptionForCode(code IndexHealthCode) string {
 	case IndexHealthEmbedding:
 		return "Generazione embedding in corso"
 	case IndexHealthIndexing:
-		return "Upsert su Qdrant in corso"
+		return "Upsert su pgvector in corso"
 	case IndexHealthIndexed:
 		return "Asset indicizzato e coerente"
 	case IndexHealthStale:

@@ -1,6 +1,6 @@
 """Pydantic request schemas for the embedding endpoints.
 
-QDRANT-001 (June 2026) closure: this sidecar no longer reads from or
+VECTOR-001 (June 2026) closure: this sidecar no longer reads from or
 writes to media.db.sqlite. Go is the canonical reader + writer, so the
 indexing endpoints accept only compute inputs and return only embedding
 metadata to the Go caller.
@@ -32,7 +32,7 @@ class PhashRequest(BaseModel):
     image_path: str
 
 
-# ── QDRANT-003: Go is the canonical writer of SQLite + Qdrant. ──────────
+# ── VECTOR-003: Go is the canonical writer of SQLite + PostgreSQL/pgvector. ──
 # Python sidecars are compute-only — embedding endpoints accept data
 # and return vectors without touching any database.
 class IndexTextRequest(BaseModel):

@@ -11,7 +11,7 @@ import (
 // Synthesis territory — text-to-speech + post-processing.
 // ────────────────────────────────────────────────────────────────────────
 //
-// These ports carry ZERO database/sql, drive, or qdrant imports.
+// These ports carry ZERO database/sql, drive, or pgvector imports.
 // Production concretes satisfy them by structural conformance (Go's
 // implicit interface rules).
 

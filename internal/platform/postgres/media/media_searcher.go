@@ -5,19 +5,19 @@
 // (workspace, lifecycle, source, category, media_type, language) are
 // enforced INSIDE the same SQL query, and returned metadata is hydrated
 // from media_assets in the same PostgreSQL SSOT — no second database, no
-// projection drift, no Qdrant on the media path.
+// projection drift, no external vector store on the media path.
 //
-// Scope contract (mirrors qdrant.CompileQdrantFilter invariants):
+// Scope contract (mirrors pgvector.CompileVectorFilter invariants):
 //   - WorkspaceID must-clause is ALWAYS present when IsSystem is false.
 //     An empty WorkspaceID with IsSystem=false fails closed; the reserved
-//     "default" sentinel is rejected exactly like the Qdrant compiler.
+//     "default" sentinel is rejected exactly like the pgvector compiler.
 //   - LifecycleState allow-list is ALWAYS present (defaults to {"ACTIVE"}).
 //   - Optional equality filters drop out when empty — no zero-value
 //     predicates that would degrade the plan.
 //
 // MinScore semantics: pgvector cosine distance d ∈ [0,2] maps to
 // similarity 1 - d (identical to the documented pgvector recipe and
-// monotonic with Qdrant cosine scores). Rows below MinScore are dropped.
+// monotonic with pgvector cosine scores). Rows below MinScore are dropped.
 //
 // Family pinning (POSTGRES-MEDIA-CUTOVER ANN contract): every search is
 // restricted to ONE registered (embedding_type, model_id) family resolved
@@ -63,7 +63,7 @@ func NewMediaSearcher(db *sql.DB) *MediaSearcher {
 
 // SystemSearchRequest builds a cross-workspace admin/reconcile ANN
 // request (IsSystem=true): the only sanctioned escape hatch from the
-// workspace must-clause, mirroring qdrant.CompileQdrantFilter semantics.
+// workspace must-clause, mirroring pgvector.CompileVectorFilter semantics.
 func SystemSearchRequest(queryVector []float32) appsearch.VectorSearchRequest {
 	return appsearch.VectorSearchRequest{
 		QueryVector: queryVector,
@@ -162,7 +162,7 @@ func (s *MediaSearcher) Search(ctx context.Context, req appsearch.VectorSearchRe
 
 // HybridSearch fuses the dense ANN ranking with lexical BM25 relevance
 // over media_assets.search_text (to_tsquery) using weighted RRF — the
-// pgvector-native analogue of Qdrant server-side BM25 fusion. The dense
+// pgvector-native analogue of pgvector server-side BM25 fusion. The dense
 // channel carries the semantic signal; the lexical channel carries exact
 // term matching; the fusion is computed in-database over the same SSOT.
 // The dense leg is pinned to the production family of the channel (same
@@ -216,7 +216,7 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 
 	// Weighted reciprocal-rank fusion, computed inside the same query:
 	// rank positions from the ANN leg and the ts_rank leg are fused per
-	// asset, then ordered by fused score. k=1 mirrors Qdrant's RRF
+	// asset, then ordered by fused score. k=1 mirrors pgvector's RRF
 	// constant so score scales stay comparable across engines. Only the
 	// dense leg is family-scoped (lexical ranking reads media_assets).
 	query := fmt.Sprintf(`
@@ -346,8 +346,8 @@ type assetRow struct {
 }
 
 // assetToVectorSearchResult maps a hydrated SSOT row onto the canonical
-// result DTO. The point-ID surface (QdrantPointID) is intentionally left
-// empty — there is no Qdrant point on this path; the asset ID is the
+// result DTO. The point-ID surface (VectorPointID) is intentionally left
+// empty — there is no external vector store point on this path; the asset ID is the
 // identity (godlike/06: PostgreSQL is the only media authority).
 func assetToVectorSearchResult(a *assetRow) appsearch.VectorSearchResult {
 	if a == nil {
@@ -401,7 +401,7 @@ type mediaSearchFilterDims struct {
 }
 
 // compileMediaSearchWhere builds the WHERE fragment shared by Search and
-// HybridSearch. Invariants mirror qdrant.CompileQdrantFilter:
+// HybridSearch. Invariants mirror pgvector.CompileVectorFilter:
 //   - workspace must-clause ALWAYS present unless IsSystem
 //   - lifecycle allow-list ALWAYS present (default {"ACTIVE"})
 //   - empty optional filters drop out

@@ -5,10 +5,10 @@
 //
 //   - composition_ordering_test.go: nil-obligatory + BuildSequence +
 //     FASE 3 Spina Dorsale ordering + no-goroutines-spawned.
-//   - composition_failclosed_test.go: PR-3 + QDRANT-CHAIN-VERIFY
+//   - composition_failclosed_test.go: PR-3 + VECTOR-CHAIN-VERIFY
 //     fail-closed gates + the 3 dummy types.
 //   - composition_freeze_test.go (this file): source-level freeze tests
-//     (PR 4 single-Qdrant-runtime, PR 6/7 + Task 3 single-declaration
+//     (PR 4 single-vector-runtime, PR 6/7 + Task 3 single-declaration
 //     gates) + the package-level doc + shared helpers chdirToProjectRoot
 //     and minimalConfig.
 //
@@ -18,7 +18,6 @@
 package wiring
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -64,10 +63,10 @@ func minimalConfig(dataDir string) *config.Config {
 			OllamaURL:            "http://localhost:11434",
 			OllamaModel:          "llama3.2",
 			OllamaTimeoutSeconds: 30,
-			// Qdrant contract gate (PR-QDRANT-CONFIG-MISMATCH-GATE)
-			// demands runtime_model == schema dense model when Qdrant is
+			// pgvector contract gate (PR-VECTOR-CONFIG-MISMATCH-GATE)
+			// demands runtime_model == schema dense model when pgvector is
 			// enabled; keep the fixture in the canonical default so
-			// Qdrant-enabled composition tests are not pre-broken.
+			// vector-enabled composition tests are not pre-broken.
 			OllamaEmbedModel: "intfloat/multilingual-e5-base",
 		},
 		Paths:   config.PathsConfig{},
@@ -208,226 +207,11 @@ func compositionBundleSourceFiles(t *testing.T) []string {
 
 // ── 5. PR 4 / PR 6 / PR 7 / Task 3 source-level freeze invariants ────────
 
-// PR 4 (June 2026, refactor/single-qdrant-runtime): the QdrantRuntime
-// facade is the single construction site for qdrant.NewClient / Schema
+// PR 4 (June 2026, refactor/single-pgvector-runtime): the VectorRuntime
+// facade is the single construction site for pgvector.NewClient / Schema
 // / NewRuntime in production composition paths. Update constants in
-// lockstep with the table below if a future PR adds new Qdrant ops
+// lockstep with the table below if a future PR adds new pgvector ops
 // that legitimately cannot share the canonical runtime.
-const (
-	frozenQdrantClientSites          = 0
-	frozenQdrantDefaultV3SchemaSites = 1
-	frozenQdrantNewRuntimeSites      = 1
-)
-
-// TestComposition_FrozenClientConstructionSites: no qdrant.NewClient(...)
-// call in internal/app/*.go (test files excluded). The transport-layer
-// client now lives outside the composition package, so this guard keeps
-// the app layer from reintroducing its own construction site.
-func TestComposition_FrozenClientConstructionSites(t *testing.T) {
-	chdirToProjectRoot(t)
-	files := compositionBundleSourceFiles(t)
-	matches := 0
-	for _, f := range files {
-		src, _ := os.ReadFile(f)
-		matches += strings.Count(string(src), "qdrant.NewClient(")
-	}
-	require.Equalf(t, frozenQdrantClientSites, matches,
-		"PR 4: qdrant.NewClient(%d expected call sites in internal/app/*.go; found %d. QdrantRuntime.NewRuntime is the single construction site. Add the subsystem to QdrantRuntime rather than constructing a second Client — see composition_freeze_test.go::TestComposition_FrozenClientConstructionSites for the acceptance criterion.",
-		frozenQdrantClientSites, matches)
-}
-
-// TestComposition_FrozenIndexSchemaSites: exactly ONE DefaultV3Schema()
-// call site, regardless of the import alias used to reach it. Pre-PR4 state
-// had TWO sites — schema version could drift between them. After PR 4 the
-// runtime holds a single Schema instance.
-func TestComposition_FrozenIndexSchemaSites(t *testing.T) {
-	chdirToProjectRoot(t)
-	files := compositionBundleSourceFiles(t)
-	schemaCall := regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\.DefaultV3Schema\(`)
-	matches := 0
-	for _, f := range files {
-		src, _ := os.ReadFile(f)
-		matches += len(schemaCall.FindAllString(string(src), -1))
-	}
-	require.Equalf(t, frozenQdrantDefaultV3SchemaSites, matches,
-		"PR 4: DefaultV3Schema(%d expected call site in internal/app/*.go; found %d. QdrantRuntime.NewRuntime is the single construction site. Promote schema wiring through runtime.Schema rather than calling DefaultV3Schema twice.",
-		frozenQdrantDefaultV3SchemaSites, matches)
-}
-
-// TestComposition_FrozenNewRuntimeSites: exactly ONE qdrant.NewRuntime
-// construction site. composition.go::buildQdrantDeps is the canonical
-// constructor; BuildProcessBundle reads via qd.Runtime, never re-builds.
-func TestComposition_FrozenNewRuntimeSites(t *testing.T) {
-	chdirToProjectRoot(t)
-	files := compositionBundleSourceFiles(t)
-	matches := 0
-	for _, f := range files {
-		src, _ := os.ReadFile(f)
-		matches += strings.Count(string(src), "qdrant.NewRuntime(")
-	}
-	require.Equalf(t, frozenQdrantNewRuntimeSites, matches,
-		"PR 4: qdrant.NewRuntime(%d expected call site in internal/app/*.go; found %d. composition.go::buildQdrantDeps is the canonical constructor; other bundles must read runtime via QdrantDeps.Runtime rather than re-constructing.",
-		frozenQdrantNewRuntimeSites, matches)
-}
-
-// TestComposition_FrozenQdrantHealthProbeAny: PR 4 section #6 — the loose
-// type-assertion escape hatch `QdrantHealthProbe any` is gone; after PR 4
-// ProcessBundle.QdrantHealthProbe is concretely typed *qdrant.HealthProbe.
-func TestComposition_FrozenQdrantHealthProbeAny(t *testing.T) {
-	chdirToProjectRoot(t)
-	files := compositionBundleSourceFiles(t)
-	matches := 0
-	for _, f := range files {
-		src, _ := os.ReadFile(f)
-		matches += strings.Count(string(src), "QdrantHealthProbe any")
-	}
-	require.Equalf(t, 0, matches,
-		"PR 4: `QdrantHealthProbe any` must NOT appear in internal/app/*.go (acceptance criterion #2 of #6). Replace with *qdrant.HealthProbe concrete; the compile-time assertion in internal/platform/qdrant/health.go pins the Probe contract.")
-}
-
-// TestComposition_FrozenVectorPointDeleterPort: PR 4 acceptance #1 —
-// exactly ONE VectorPointDeleter port in internal/, declared in
-// internal/capabilities/jobs/outbox/ports.go per AGENTS.md Pattern 0.
-// Pre-PR4 had two duplicate QdrantDeleter interfaces (both deleted).
-func TestComposition_FrozenVectorPointDeleterPort(t *testing.T) {
-	chdirToProjectRoot(t)
-	src, err := os.ReadFile("internal/capabilities/jobs/ports.go")
-	require.NoError(t, err, "read canonical VectorPointDeleter port file")
-	matches := strings.Count(string(src), "type VectorPointDeleter interface")
-	require.Equalf(t, 1, matches,
-		"PR 4: exactly 1 `type VectorPointDeleter interface` declaration in internal/capabilities/jobs/ports.go; found %d.",
-		matches)
-}
-
-// PR 7 #7.1 (chore/remove-qdrant-legacy): the legacy
-// internal/platform/qdrant/reconciler.go (and absent test) were
-// deleted. This test pins both the file-existence AND zero-stale-caller
-// invariant. The canonical reconciler lives at
-// internal/capabilities/reconciliation/.
-func TestComposition_FrozenQdrantReconcilerDeleted(t *testing.T) {
-	chdirToProjectRoot(t)
-
-	// (1) The deleted file path must NOT exist.
-	const reconcilerPath = "internal/platform/qdrant/reconciler.go"
-	if _, err := os.Stat(reconcilerPath); err == nil {
-		t.Fatalf("PR 7 #7.1: %s must NOT exist (deleted in chore/remove-qdrant-legacy; canonical path is internal/capabilities/reconciliation/)", reconcilerPath)
-	} else if !os.IsNotExist(err) {
-		t.Fatalf("PR 7 #7.1: unexpected stat error for %s: %v", reconcilerPath, err)
-	}
-
-	// (2) Zero call sites of the OLD constructor in internal/app/*.go.
-	files := compositionBundleSourceFiles(t)
-	newReconcilerCalls := 0
-	for _, f := range files {
-		src, _ := os.ReadFile(f)
-		newReconcilerCalls += strings.Count(string(src), "qdrant.NewReconciler(")
-	}
-	require.Equalf(t, 0, newReconcilerCalls,
-		"PR 7 #7.1: `qdrant.NewReconciler` call sites in internal/app/*.go must equal 0; found %d. The OLD reconciler was deleted; callers must migrate to internal/capabilities/reconciliation/.",
-		newReconcilerCalls)
-}
-
-// PR 6 #1 (refactor/qdrant-index-document): canonical Qdrant wire-shape
-// freeze. The IndexDocument / IndexedMetadata / EmbeddingArtifact /
-// VectorChannel types (and the ForbiddenIndexDocumentFields SSOT slice)
-// declared in internal/platform/qdrant/indexing/index_document.go
-// are the airlock vocabulary. If any of these MOVE or get RENAMED,
-// update this test AND the file's doctrine comment together.
-func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
-	chdirToProjectRoot(t)
-
-	const file = "internal/platform/qdrant/indexing/index_document.go"
-	src, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatalf("PR 6 #1: canonical wire-shape file %s must exist (created in refactor/qdrant-index-document): %v", file, err)
-	}
-	body := string(src)
-
-	// Exactly-one declaration of each canonical type.
-	for _, marker := range []string{
-		"type IndexDocument struct",
-		"type VectorChannel string",
-		"type EmbeddingArtifact struct",
-		"type IndexedMetadata struct",
-		"var ForbiddenIndexDocumentFields = []string{",
-	} {
-		n := strings.Count(body, marker)
-		require.Equalf(t, 1, n,
-			"PR 6 #1: marker %q expected exactly once in %s; found %d. If you ADDED/RENAMED a canonical type, update this freeze-test AND index_document.go's doctrine comment in lockstep.",
-			marker, file, n)
-	}
-
-	// The canonical VectorChannel constants must each be declared once.
-	for _, ch := range []string{"ChannelText", "ChannelTranscript", "ChannelVisual", "ChannelAudio", "ChannelBM25Text"} {
-		pattern := "\t" + ch + " VectorChannel"
-		n := strings.Count(body, pattern)
-		require.Equalf(t, 1, n,
-			"PR 6 #1: canonical channel constant %q expected exactly once in %s; found %d. The channel vocabulary is the writer↔search-adapter contract.",
-			ch, file, n)
-	}
-
-	// BuildPayloadFromDocument (canonical writer-side payload emitter)
-	// must exist exactly once in payload_builder.go.
-	b, err := os.ReadFile("internal/platform/qdrant/indexing/payload_builder.go")
-	require.NoError(t, err, "read canonical qdrant payload mapper")
-	emitterCount := strings.Count(string(b), "func BuildPayloadFromDocument")
-	require.Equalf(t, 1, emitterCount,
-		"PR 6 #1: exactly 1 `func BuildPayloadFromDocument` declaration expected in internal/platform/qdrant/payload_mapper.go; found %d. The canonical writer-side payload emitter lives in payload_mapper.go.",
-		emitterCount)
-
-	// The forbidden-fields SSOT slice must contain EXACTLY the SSOT
-	// markers (2 entries today: Status, LocalPath).
-	for _, forbidden := range []string{"\"Status\"", "\"LocalPath\""} {
-		n := strings.Count(body, forbidden)
-		require.Equalf(t, 1, n,
-			"PR 6 #1: forbidden field %q expected exactly once in ForbiddenIndexDocumentFields SSOT; found %d", forbidden, n)
-	}
-}
-
-// Task 3 (July 2026): exactly ONE production declaration of
-// AssetIDToQdrantPointID. Canonical implementation is the UUID v8
-// SHA-256 derivation in internal/platform/qdrant/schema/pointid.go.
-// All callers MUST route through this single function; ad-hoc point
-// ID generation is forbidden. The check only matches
-// `func AssetIDToQdrantPointID`.
-const frozenAssetIDToQdrantPointIDSites = 1
-
-func TestComposition_AssetIDToQdrantPointID_SingleDeclaration(t *testing.T) {
-	chdirToProjectRoot(t)
-
-	matches := 0
-	var matchFiles []string
-	err := filepath.WalkDir("internal", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || strings.HasSuffix(path, "_test.go") || !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		src, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return nil
-		}
-		if strings.Contains(string(src), "AssetIDToQdrantPointID") && strings.Contains(string(src), "func AssetIDToQdrantPointID") {
-			matches++
-			matchFiles = append(matchFiles, path)
-		}
-		return nil
-	})
-	require.NoError(t, err, "walkDir internal tree")
-	require.Equalf(t, frozenAssetIDToQdrantPointIDSites, matches,
-		"Task 3: exactly %d `func AssetIDToQdrantPointID` production declaration expected; found %d in: %v. The canonical UUID v5 SHA-1 function lives in internal/platform/qdrant/schema/pointid.go. All callers must route through it — never create ad-hoc point ID generation.",
-		frozenAssetIDToQdrantPointIDSites, matches, matchFiles)
-}
-
-// ── 6. registerYouTubeClip graceful-degrade guard ────────────────────────
-
-// TestRegisterYouTubeClip_EnabledButMediaServiceUnavailable_SkipsRoute pins
-// the September 2026 graceful-degrade guard in registerYouTubeClip: when the
-// YouTube feature flag is ON but the media domain could not be built, the
-// media-dependent service is nil. An enabled config flag must NOT turn an
-// otherwise healthy boot into a nil-service composition failure — the helper
-// must skip route registration, return nil and leave the wiring slot empty.
 func TestRegisterYouTubeClip_EnabledButMediaServiceUnavailable_SkipsRoute(t *testing.T) {
 	cases := map[string]*ComposeRoot{
 		"nil root":                   nil,

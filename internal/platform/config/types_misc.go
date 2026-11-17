@@ -7,30 +7,6 @@ type GoogleAccountingConfig struct {
 	VidsProjectID string `yaml:"vids_project_id" env:"VELOX_GOOGLE_ACCOUNTING_VIDS_PROJECT_ID" default:""`
 }
 
-// QdrantConfig holds Qdrant vector-database connection parameters.
-// QDRANT-003 (June 2026): canonical Qdrant configuration.
-type QdrantConfig struct {
-	// BaseURL is the Qdrant REST API base URL (e.g. "http://127.0.0.1:6333").
-	BaseURL string `yaml:"base_url" env:"VELOX_QDRANT_URL" default:"http://127.0.0.1:6333"`
-	// Timeout is the HTTP client timeout in seconds.
-	Timeout int `yaml:"timeout" env:"VELOX_QDRANT_TIMEOUT" default:"10"`
-	// Enabled controls whether Qdrant capability is active.
-	// Default false: operators must explicitly opt in.
-	Enabled bool `yaml:"enabled" env:"VELOX_QDRANT_ENABLED" default:"false"`
-	// APIKey is an optional Qdrant API key for authenticated deployments.
-	// When set, the Client sends X-Api-Key on every request.
-	// QDRANT-005 Phase 1 (June 2026): propagated to both the
-	// composition-root client and the admin reindex/clean-locators commands.
-	APIKey string `yaml:"api_key" env:"VELOX_QDRANT_API_KEY" default:""`
-	// ProjectionRetention is the number of known-good projection collections
-	// to retain after an alias switch (active target + N-1 rollback targets).
-	// It drives the automatic post-switch retention sweep via the canonical
-	// capabilities/projectionretention policy. 0 disables the sweep; the
-	// hard floor in the policy lifts anything below 2 back to 2. Default 2
-	// keeps the active target plus one rollback.
-	ProjectionRetention int `yaml:"projection_retention" env:"QDRANT_PROJECTION_RETENTION" default:"2"`
-}
-
 // OutboxConfig tunes the outbox_events worker pool. Defaults follow the
 // CPU-only tuning from the PR-2 design review plus the July 2026
 // stock-acquisition tuning: 500ms poll, batch 10, 4 workers (raised

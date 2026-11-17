@@ -33,7 +33,7 @@ func TestMigrations_202_203_ControlPlaneSchemaAndChecksums(t *testing.T) {
 		}
 	}
 	// Baseline-aware: a fresh DB bootstrapped from the consolidated
-	// 000_baseline_267.sql sentinel (version 0) has no individual
+	// 000_baseline_268.sql sentinel (version 0) has no individual
 	// 1..267 ledger rows — the historical window is satisfied by the
 	// baseline (same acceptance form as migrations_ledger_test.go).
 	var baselineCount int

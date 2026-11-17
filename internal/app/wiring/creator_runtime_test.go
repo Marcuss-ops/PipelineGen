@@ -1,6 +1,6 @@
 // Package app — creator_runtime_test.go (P0 Commit 8, July 2026).
 //
-// This test file enforces the Creator-side no-DB / no-Qdrant /
+// This test file enforces the Creator-side no-DB / no-pgvector /
 // no-Scheduler / no-CatalogSync contract declared in
 // creator_runtime.go's package doc. Three freeze tests + three
 // constructor smoke tests:
@@ -67,9 +67,9 @@ var frozenForbiddenImportSubstrings = []string{
 	// (godlike/06 "one canonical owner per fact").
 	"internal/platform/sqlite",
 
-	// Qdrant impl — Creator has no vector projection. Qdrant is
+	// pgvector impl — Creator has no vector projection. pgvector is
 	// a Sender-side derived projection (godlike/06 SemanticIndex).
-	"internal/platform/qdrant",
+	"internal/platform/postgres/media",
 
 	// Scheduler — Creator awaits HTTP-poll / gRPC-pull jobs;
 	// it does not own a background scheduler.
@@ -102,7 +102,7 @@ func TestCreatorRuntime_FrozenImportAllowlist(t *testing.T) {
 	require.NotEmpty(t, files, "no creator_*.go matched — chdir to project root failed or no creator files exist")
 
 	// Pin the forbidden-reach list at exactly the C8 contract
-	// (4 substrings: SQLite, Qdrant, Scheduler, CatalogSync). If
+	// (4 substrings: SQLite, pgvector, Scheduler, CatalogSync). If
 	// a future commit shrinks the list without updating the
 	// package doc contract, the test fires loud.
 	require.Len(t, frozenForbiddenImportSubstrings, frozenForbiddenImportSubstringsLen,

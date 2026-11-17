@@ -25,7 +25,7 @@ import (
 )
 
 // collectionVersion is the canonical index-schema version stamped in the
-// reindex envelope. It mirrors clipindexer.collectionVersion ("v3", QDRANT-003);
+// reindex envelope. It mirrors clipindexer.collectionVersion ("v3", VECTOR-003);
 // the parity suite asserts equality with clipindexer.CollectionVersion() so
 // the two engine adapters can never drift apart.
 const collectionVersion = "v3"

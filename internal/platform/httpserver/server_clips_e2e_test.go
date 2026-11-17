@@ -366,7 +366,7 @@ func (mockHealthChecker) CheckDB(context.Context) systemhealth.CheckResult {
 func (mockHealthChecker) CheckDrive(context.Context) systemhealth.CheckResult {
 	return systemhealth.CheckResult{"ok": true, "applicable": false, "duration_ms": int64(1)}
 }
-func (mockHealthChecker) CheckQdrant(context.Context) systemhealth.CheckResult {
+func (mockHealthChecker) CheckVector(context.Context) systemhealth.CheckResult {
 	return systemhealth.CheckResult{"ok": true, "applicable": false, "duration_ms": int64(1)}
 }
 func (mockHealthChecker) CheckJobs(context.Context) systemhealth.CheckResult {
@@ -421,10 +421,9 @@ func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
 	)))
 
 	healthSvc := systemhealth.NewService(systemhealth.ServiceDeps{
-		DB:     mockHealthChecker{},
-		Drive:  mockHealthChecker{},
-		Qdrant: mockHealthChecker{},
-		Jobs:   mockHealthChecker{},
+		DB:    mockHealthChecker{},
+		Drive: mockHealthChecker{},
+		Jobs:  mockHealthChecker{},
 	})
 	readyChecker := systemhealth.NewReadyChecker(healthSvc)
 

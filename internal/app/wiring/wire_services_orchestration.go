@@ -10,24 +10,24 @@
 //     middleware.SetLogSink.
 //  2. WireRegistry + Registry.Freeze
 //  3. Build the StartupStep plan via the buildStartupPlan helper
-//     (in the startup_plan sibling file) — drive-init / qdrant-
+//     (in the startup_plan sibling file) — drive-init / pgvector-
 //     collection / outbox-pool / chrome-pool-prewarm + jobs.append.
 //  4. Re-cast root.Jobs.Broker to *localbroker.Broker for the assetSvc
 //     + workerHandler surface.
 //  5. Construct assetSvc + workerHandler (PR-SOURCESTAGER-CONSOLIDATE,
 //     July 2026).
 //  6. Build the cleanupStack (LIFO) — drives graceful teardown order.
-//  7. Build the readiness probes (dbProbe + driveProbe + qdrantProbe)
+//  7. Build the readiness probes (dbProbe + driveProbe + pgvectorProbe)
 //     and the ServerLifecycleWithProbes.
-//  8. Build the QdrantHealthHandler (HIGH #7, July 2026) for the
-//     /qdrant/live + /qdrant/ready endpoints.
+//  8. Build the IndexHealthHandler (HIGH #7, July 2026) for the
+//     /pgvector/live + /pgvector/ready endpoints.
 //  9. Return AppDeps (the server-side projection of the root).
 //
 // Cross-file deps (same package `app`, accessed without explicit import):
 //   - WireRegistry (registry.go)
 //   - NewServerLifecycleWithProbes (go)
 //   - buildStartupPlan (startup_plan sibling — wire_services_startup_plan.go)
-//   - validateQdrantIndexerCompatibility (build_bundles_qdrant_gates.go,
+//   - validateIndexerCompatibility (the retired indexer gates file,
 //     invoked from buildStartupPlan — orchestrator does NOT call it
 //     directly anymore, the gate moved to the helper)
 //
@@ -44,30 +44,22 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
-	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
-	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/logsink"
 	sqlitem2m "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/m2m"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 
 	"github.com/gin-gonic/gin"
 )
@@ -86,7 +78,7 @@ import (
 //
 // The startup-plan construction moved to buildStartupPlan (in the
 // startup_plan sibling file) so the dependency order is visible at a
-// glance and the gates (validateQdrantIndexerCompatibility +
+// glance and the gates (validateIndexerCompatibility +
 // CollectionManager-nil) are consolidated.
 func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
 	// The knob inventory is the first thing a boot says: every non-default
@@ -128,8 +120,8 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	registryWiring.Registry.Freeze()
 
 	// Startup plan construction consolidates the four Required
-	// pre-flight steps (drive-init / qdrant-collection / outbox-pool /
-	// chrome-pool-prewarm) plus the qdrant-config-mismatch gate.
+	// pre-flight steps (drive-init / pgvector-collection / outbox-pool /
+	// chrome-pool-prewarm) plus the pgvector-config-mismatch gate.
 	// Lives in the startup_plan sibling (see
 	// wire_services_startup_plan.go header).
 	startupPlan, err := buildStartupPlan(cfg, root, jobs, log)
@@ -244,32 +236,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			return admin.Ping(ctx)
 		}
 	}
-	// QDRANT-005 (June 2026) PR 4 (refactor/single-qdrant-runtime):
-	// bind the Qdrant liveness probe into the lifecycle readiness
-	// barrier so /ready actually checks Qdrant reachability instead of
-	// relying solely on DB+Drive. Constructed only when Qdrant is
-	// enabled; nil-safe when disabled.
-	//
-	// PR 4 typed ProcessBundle.QdrantHealthProbe as *qdrant.HealthProbe
-	// (was `any` pre-PR4). The concrete type satisfies the probe
-	// contract via the compile-time assertion in
-	// internal/platform/qdrant/health.go (`_ interface{ Probe(...) error }
-	// = (*HealthProbe)(nil)`); the runtime type-assertion
-	// `if p, ok := ... .(...) ...; ok` is gone.
-	var qdrantProbe interface{ Probe(context.Context) error }
-	if cfg.Qdrant.Enabled && root != nil && root.Process != nil {
-		qdrantProbe = root.Process.QdrantHealthProbe
-	}
-
-	// EmbeddingContract SSOT handshake (August 2026): verify at boot that the
-	// canonical text contract, the E5 sidecar runtime, the Qdrant active
-	// collection, and the query embedder all agree. nil-safe when the Qdrant
-	// + ClipIndexer chain is not fully configured; build_server.go registers
-	// it on the readiness barrier as "embedding-contract".
 	var embeddingContractProbe HealthProber
-	if root != nil && root.Process != nil {
-		embeddingContractProbe = newEmbeddingContractProbe(cfg, root.Process.CollectionManager)
-	}
 
 	// lifecycle-runtime-ownership closure: construct the canonical
 	// wiring/lifecycle.Runtime directly (root serverLifecycle facade retired).
@@ -298,35 +265,8 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		internalMediaHandler = registryWiring.Assets.InternalMediaHandler
 	}
 
-	// HIGH #7 (July 2026): construct QdrantHealthHandler for /qdrant/live
-	// and /qdrant/ready. nil-safe when Qdrant is disabled.
-	//
-	// Sprint 3.4 step1 (godlike/06 SSOT — single composition root):
-	// the adapter qdrantEndpointAdapter wires the 3 infra types into the
-	// systemhealth.QdrantEndpointPort; the handler (api/transport) consumes
-	// ONLY the port — no infra imports reach the api layer.
-	var qdrantHealth any
-	if cfg.Qdrant.Enabled && root != nil && root.Process != nil &&
-		root.Process.CollectionManager != nil && root.Process.QdrantSearcher != nil {
-		var embedder search.TextEmbedder
-		if cfg.ClipIndexer.ServerURL != "" {
-			// Qdrant readiness must use the canonical E5 sidecar embedder —
-			// the same vector space as the indexed document vectors. Ollama
-			// is a chat/legacy embedder and must not silently create a second
-			// vector space.
-			embedder = search.NewTextEmbedderAdapter(embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout()))
-		}
-		qdrantEndpointPort := searchwiring.NewQdrantEndpointAdapter(
-			root.Process.QdrantHealthProbe,
-			root.Process.CollectionManager,
-			root.Process.QdrantSearcher,
-			embedder,
-		)
-		qdrantHealth = transport.NewQdrantHealthHandler(qdrantEndpointPort)
-	}
-
 	// FASE 7 image-search routing singleton: nil-safe extraction from
-	// the composition root. Inline pattern matches the qdrantHealth
+	// the composition root. Inline pattern matches the pgvectorHealth
 	// handling above; nil root or nil root.Domains keeps
 	// AppImage.ImageSearchResolver as a nil-typed-port so BuildServer’s
 	// pass-through carries nil to api.ServerDeps.ImageSearchResolver.
@@ -355,8 +295,6 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 			Lifecycle: lifecycle,
 		},
 		Health: AppHealth{
-			QdrantProbe:            qdrantProbe,
-			QdrantHealth:           qdrantHealth,
 			HealthService:          healthSvc,
 			ReadyChecker:           readyChecker,
 			EmbeddingContractProbe: embeddingContractProbe,
@@ -368,7 +306,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 }
 
 // embeddingContractProbe is the readiness-barrier adapter for the canonical
-// text contract: sidecar, active Qdrant collection, and query embedder must
+// text contract: sidecar, active pgvector collection, and query embedder must
 // all agree with kernel/embedding.CanonicalText.
 type embeddingContractProbe struct{ fn func(context.Context) error }
 
@@ -377,42 +315,6 @@ func (p *embeddingContractProbe) Probe(ctx context.Context) error {
 		return nil
 	}
 	return p.fn(ctx)
-}
-
-func newEmbeddingContractProbe(cfg *config.Config, cm *collections.CollectionManager) HealthProber {
-	if cfg == nil || cm == nil || !cfg.Qdrant.Enabled || !cfg.ClipIndexer.Enabled {
-		return nil
-	}
-	return &embeddingContractProbe{fn: func(ctx context.Context) error {
-		return verifyEmbeddingContract(ctx, cfg.ClipIndexer.ServerURL, cfg.External.OllamaEmbedModel, cm)
-	}}
-}
-
-func verifyEmbeddingContract(ctx context.Context, sidecarURL, queryModelID string, cm *collections.CollectionManager) error {
-	sidecar, err := embeddings.NewContractProbe(sidecarURL).Fetch(ctx)
-	if err != nil {
-		return fmt.Errorf("embedding contract handshake: %w", err)
-	}
-	active, err := cm.GetActiveCollection(ctx)
-	if err != nil {
-		return fmt.Errorf("embedding contract handshake: resolve active collection: %w", err)
-	}
-	info, err := cm.InspectCollection(ctx, active)
-	if err != nil {
-		return fmt.Errorf("embedding contract handshake: inspect collection %q: %w", active, err)
-	}
-	qdrant, ok := collections.CollectionContract(info, "text")
-	if !ok {
-		return fmt.Errorf("embedding contract handshake: active collection %q has no \"text\" vector", active)
-	}
-	if strings.TrimSpace(queryModelID) == "" || queryModelID != models.E5.ID {
-		return &coreembedding.MismatchError{
-			Component: coreembedding.ComponentQuery,
-			Expected:  coreembedding.CanonicalText,
-			Got:       coreembedding.Contract{ModelID: queryModelID},
-		}
-	}
-	return coreembedding.Verify(coreembedding.CanonicalText, sidecar, qdrant, coreembedding.Contract{ModelID: models.E5.ID})
 }
 
 // InitComposition returns the unified *ComposeRoot tree directly.
@@ -451,7 +353,7 @@ func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, er
 // Used by WireMinimal to keep the AppDeps contract uniform: all callers
 // use Lifecycle.Stop for teardown, never a separate Cleanup func.
 //
-// QDRANT-005 (June 2026): minimalLifecycle now also implements AddProbe
+// VECTOR-005 (June 2026): minimalLifecycle now also implements AddProbe
 // (no-op) so it stays compatible with the extended api.LifecycleManager
 // interface. WireMinimal callers don't get the readiness barrier —
 // the AddProbe call simply pushes the probe onto the discard tray.

@@ -374,6 +374,9 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 		// receipts to the artifact identity used by the final job (scene, clip,
 		// language) before enforcing the expected render matrix.
 		result.LocalizedRenders = dedupeLocalizedRenders(result.LocalizedRenders)
+		// The running accumulators still describe the pre-dedupe receipts, so
+		// the summary is rebuilt from the certified set before it is reported.
+		recomputeLocalizedRenderMetrics(result)
 		actual, failed := len(result.LocalizedRenders), len(result.LocalizedRenderFailures)
 		if result.RenderMetrics != nil {
 			result.RenderMetrics.Expected = result.ExpectedRenderCount

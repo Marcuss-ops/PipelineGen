@@ -113,6 +113,8 @@ func ResolveEditorialBackgroundReference(reference string) (EditorialBackgroundA
 	if id, ok := map[string]string{
 		"boxe":              "drive-background-boxe",
 		"boxing":            "drive-background-boxe",
+		"sport":             "drive-background-boxe",
+		"sports":            "drive-background-boxe",
 		"music":             "drive-background-music",
 		"rap":               "drive-background-music",
 		"wwe":               "drive-background-wwe",

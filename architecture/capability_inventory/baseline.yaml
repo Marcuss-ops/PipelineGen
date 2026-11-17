@@ -68,7 +68,6 @@ capability_ownership_map:
       - system          # system HTTP capability
       - controlplane    # control plane verification
       - performance     # benchmark workloads and performance contracts
-      - projectionretention  # Qdrant projection retention policy
 
 gates_baseline:
   - gate_id: C2-A

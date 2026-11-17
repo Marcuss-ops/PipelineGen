@@ -12,7 +12,6 @@ import (
 	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	mediacommitadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacommit/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
 
@@ -24,10 +23,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-
-	mediamemoryindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/mediamemory"
 )
 import (
 	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
@@ -167,20 +163,6 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		visualVLM = capindexing.NewHTTPVLMClient(params.cfg.VLM.URL, 0)
 	}
 
-	var imageEmbedder qdrantsearch.ImageEmbedder
-	if params.cfg.ClipIndexer.ServerURL != "" {
-		imageEmbedder = qdrantsearch.NewImageEmbedderAdapter(
-			qdrantsearch.ImageEmbedderConfig{ServerURL: params.cfg.ClipIndexer.ServerURL},
-			nil,
-			params.log,
-		)
-	}
-
-	var frameIndexer mediamemory.KeyframeVisualIndexer
-	if params.cfg.Qdrant.Enabled {
-		frameIndexer = mediamemoryindexing.NewFrameQdrantIndexerFromConfig(params.cfg.Qdrant, params.log)
-	}
-
 	// MEDIA-SSOT P2-9 Phase 2: the VLM sweep SELECTOR resolves from the same
 	// media handle as its CLAIM. autotag.ServiceDeps.DB stays the operational
 	// handle (it still serves the non-media helpers), but media_assets is owned
@@ -198,7 +180,6 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		EnrichState: enrichState, Log: params.log,
 		VideoAnalysis: autotag.VideoAnalysisDeps{
 			Sampler: videoSampler, VLM: visualVLM,
-			ImageEmbedder: imageEmbedder, FrameIndexer: frameIndexer,
 		},
 	})
 

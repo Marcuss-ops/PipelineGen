@@ -30,10 +30,10 @@
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
 	verify-rust-muscles verify-rust-fetch verify-rust-contract verify-queue-vendor verify-no-secrets verify-repository-integrity verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
 	verify-integration verify-architecture \
-	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-kernel verify-main test-main-stock verify-main-clip verify-release \
-	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-kernel \
+	verify-images verify-script verify-research verify-clips	verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-kernel verify-main test-main-stock verify-main-clip verify-release \
+	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-kernel \
 	whisper-preflight \
-	verify-component-coverage verify-reconciliation-contracts verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
+	verify-component-coverage verify-reconciliation-contracts verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity \
 	regen-routes-yaml archcheck-strict audit-plan \
 	test-youtube-url test-youtube-metadata test-youtube-transcript test-highlight-selection \
 	verify-stock-unit verify-stock-integration \
@@ -54,7 +54,6 @@
 	docker-verify-whisper \
 	deploy deploy-status deploy-wait deploy-dry-run deploy-selftest deploy-golden \
 	verify-pipeline-e2e verify-pipeline-e2e-live \
-	test-qdrant-fixtures test-qdrant-fixtures-down \
 	test-postgres test-postgres-down \
 	doctor auth-check regenerate-token \
 	smoke-voiceover \
@@ -113,7 +112,6 @@ help:
 	@echo "  make verify-clips        Clips component"
 	@echo "  make verify-drive        Drive component"
 	@echo "  make verify-research     Research component"
-	@echo "  make verify-qdrant       Qdrant component"
 	@echo "  make verify-indexing     Indexing component"
 	@echo "  make verify-docs         Documents component"
 	@echo "  make verify-voiceover    Voiceover component"

@@ -66,7 +66,7 @@ func StartResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 	}
 }
 
-// startQdrantHealthMonitor was removed during earlier cleanup. The
+// startVectorHealthMonitor was removed during earlier cleanup. The
 // capability deleted.
 
 // MediaYouTubeIDDuplicateReader is the consumer-owned port for the clip-dedup
@@ -200,7 +200,7 @@ func runDedupSweep(ctx context.Context, reader MediaYouTubeIDDuplicateReader, re
 	return swept, nil
 }
 
-// startQdrantCleaner was removed during earlier cleanup; the
+// startVectorCleaner was removed during earlier cleanup; the
 // deleted. Dead-link drift is now caught by the SQLite metadata layer
 // (media_assets.drive_file_id_clean += json_extract checks) and the
 // existing clip-dedup sweeper already enumerates sqliteIDs.
@@ -302,8 +302,8 @@ func StartVLMAutoTagSweeper(ctx context.Context, autotagSvc *autotag.Service, lo
 	}
 }
 
-// ghostSweepable, startQdrantGhostSweeper, and
-// runGhostSweep were removed — Qdrant capability deleted. Ghost-point
+// ghostSweepable, startVectorGhostSweeper, and
+// runGhostSweep were removed — legacy vector capability deleted. Ghost-point
 // cleanup is now exclusively a SQLite concern (handled by the
 // clip-dedup sweeper plus future drift checks on
 // media_assets.drive_file_id).

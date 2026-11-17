@@ -80,7 +80,7 @@ const (
 // CanonicalUploadStateValues returns the closed enumeration of
 // canonical UploadState strings. Callers use this as the
 // single-source-of-truth list for migrations, dashboards, and
-// qdrant-payload validation (parallels CanonicalLifecycleStateValues
+// pgvector-payload validation (parallels CanonicalLifecycleStateValues
 // in domain/asset).
 func CanonicalUploadStateValues() []UploadState {
 	return []UploadState{

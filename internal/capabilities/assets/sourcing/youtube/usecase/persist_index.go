@@ -43,7 +43,7 @@ type PersistClipCommand struct {
 	DriveLink      string   // Google Drive web view link (empty when not published)
 	DriveFileID    string   // Google Drive file ID (empty when not published)
 
-	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026).
+	// Rich metadata fields (RICH-METADATA-VECTOR-VERIFY, July 2026).
 	Summary         string
 	Topics          []string
 	Speakers        []string
@@ -91,14 +91,14 @@ type ClipRecord struct {
 // PersistClipAndIndex persists a clip to the media_assets table and emits
 // the asset.index.requested outbox event in a single atomic transaction.
 //
-//  1. nil-indexer guard → returns typed error (fail-closed per QDRANT-002
+//  1. nil-indexer guard → returns typed error (fail-closed per VECTOR-002
 //     asset-mutation isolation — no silent-skip in production)
 //  2. Build ClipRecord from the command fields
 //  3. Delegate to indexer.EnqueueAndIndex
 //  4. Wrap errors with usecase prefix for caller diagnostics
 func PersistClipAndIndex(ctx context.Context, indexer ClipIndexer, cmd PersistClipCommand) error {
 	if indexer == nil {
-		return fmt.Errorf("usecase.PersistClipAndIndex: indexer is nil (QDRANT-asset-mutation isolation forbids the legacy UpsertClip fallback; wire IndexDispatcherPort at composition time)")
+		return fmt.Errorf("usecase.PersistClipAndIndex: indexer is nil (VECTOR-asset-mutation isolation forbids the legacy UpsertClip fallback; wire IndexDispatcherPort at composition time)")
 	}
 
 	record := ClipRecord{

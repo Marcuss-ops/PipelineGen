@@ -8,7 +8,7 @@
 //  1. cmd/archcheck/scan/** — the scanner's own package references
 //     the banned paths in prose/disabled-rule context (this file
 //     documents the ban; mirrors the family precedent from
-//     percheck_qdrant_index_import_ban.go).
+//     percheck_vector_index_import_ban.go).
 //
 // Per the user directive (Italian, July 2026): "Elimina
 // internal/application/generation, internal/domain/generation, il
@@ -62,7 +62,7 @@ import (
 )
 
 // generationFacadeSkipDirs mirrors the standard sibling scanning
-// policy from percheck_qdrant_index_import_ban.go +
+// policy from percheck_vector_index_import_ban.go +
 // percheck_mediatransformer_no_infra_fields.go.
 var generationFacadeSkipDirs = map[string]bool{
 	".git":         true,
@@ -129,7 +129,7 @@ const generationFacadeRule = "percheck_no_generic_generation_facade"
 const generationFacadeNote = "forbidden import of the retired generic generation facade (commit 7, PR-GENERATION-FACADE-REMOVE, July 2026). The application-zone surface ('github.com/Marcuss-ops/PipelineGen/internal/capabilities/generation') + the domain-zone surface ('github.com/Marcuss-ops/PipelineGen/internal/domain/generation') were git-rm'd in commit 7 because zero production callers remained. The canonical proprietary APIs (book/lesson/script/batch) — if they exist in a future commit — live at the per-domain packages (internal/application/books/, internal/application/lessons/, internal/application/scripts/) and consume the runtime-driver interfaces directly without an interposed 'generation' facade. Per godlike/06 SSOT, the per-domain packages own their handler wiring; re-introducing the generic facade creates a godlike/07 NO-FAKE-AVAILABILITY regression. The forward-prevention gate is percheck_no_generic_generation_facade"
 
 // generationFacadeWarnBucket is the centralized residue-emitter.
-// Mirrors qdrantImportBanWarnBucket; registry-backed rules use ssotWarn.
+// Mirrors pgvectorImportBanWarnBucket; registry-backed rules use ssotWarn.
 func generationFacadeWarnBucket(r *report.Report, label, msg string) {
 	r.Warnings = append(r.Warnings, generationFacadeRule+" "+label+" "+msg)
 }
@@ -262,7 +262,7 @@ func scanGenerationFacadeFile(path, relPath string, r *report.Report, production
 }
 
 // pkgFromGenerationFacadeRel extracts the package identifier
-// from a repo-relative file path. Mirrors pkgFromQdrantImportBanRel.
+// from a repo-relative file path. Mirrors pkgFromVectorImportBanRel.
 func pkgFromGenerationFacadeRel(rel string) string {
 	dir := filepath.Dir(rel)
 	if dir == "." || dir == "" {
@@ -272,7 +272,7 @@ func pkgFromGenerationFacadeRel(rel string) string {
 }
 
 // truncateGenerationFacade bounds the snippet surface at 120 chars
-// to keep report JSON size stable. Mirrors truncateQdrantImportBan.
+// to keep report JSON size stable. Mirrors truncateVectorImportBan.
 func truncateGenerationFacade(s string) string {
 	const maxLen = 120
 	const marker = " <<<"

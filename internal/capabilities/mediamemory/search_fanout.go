@@ -6,7 +6,7 @@
 // capability owns its own SearchFanOut envelope (SearchFanOutQuery /
 // SearchFanOutResult) precisely because the canonical search.Result
 // carries provider-internal coordinates the mediamemory capability
-// must not import (per QDRANT-004 invariant: no LocalPath /
+// must not import (per VECTOR-004 invariant: no LocalPath /
 // DriveLink leaked into downstream consumers). This adapter is
 // the SOLE bridge between the two surfaces — production wiring
 // mounts it once at composition root, in the same vein as the
@@ -142,7 +142,7 @@ func (a *SearchFanOutAdapter) Search(ctx context.Context, q SearchFanOutQuery) (
 
 	for _, c := range res.Items {
 		out.Candidates = append(out.Candidates, MediaCandidate{
-			// godlike/06 SSOT (QDRANT-004 invariant): no
+			// godlike/06 SSOT (VECTOR-004 invariant): no
 			// LocalPath / DriveLink leaks across this boundary.
 			// The mediamemory MediaCandidate carries AssetID +
 			// source URL for the linker/discovery worker only.

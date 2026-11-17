@@ -11,7 +11,7 @@
 // literal MUST match the consumer's DriveDeleteRequestSchemaVersion
 // constant (declared in internal/capabilities/jobs/drive_delete.go —
 // Blocco 3.1 landed) — mismatch is classified as TERMINAL by the
-// consumer (QDRANT-002 PR4 invariant I, June 2026).
+// consumer (VECTOR-002 PR4 invariant I, June 2026).
 //
 // Permanently is the only Blocco 3.1 addition over delete_envelope.go:
 // true routes Drive.Delete (permanent, Files.Delete SDK call); false

@@ -1,12 +1,12 @@
 // Package embedding is the canonical Single Source Of Truth (SSOT) for the
 // text embedding contract shared by the indexing path (clipindexer), the
-// Qdrant schema, the Python embedding sidecar, and the query embedder.
+// pgvector schema, the Python embedding sidecar, and the query embedder.
 //
 // The contract encodes more than "dimension=768": two models can emit the
 // same vector length while producing incompatible vector spaces. Every
 // component that produces or consumes document/query vectors MUST anchor to
 // these exact values, and the boot-time handshake (Verify) fails closed with
-// QDRANT_EMBEDDING_CONTRACT_MISMATCH when any of them disagree.
+// EMBEDDING_CONTRACT_MISMATCH when any of them disagree.
 //
 // godlike/06 SSOT: this is the single owner of the embedding identity facts.
 // Do NOT add embedding model constants in other packages — reference
@@ -35,7 +35,7 @@ const (
 	DimensionText = models.CanonicalTextModelDimensions
 	// NormalizationL2 marks L2-normalized vectors.
 	NormalizationL2 = "l2"
-	// DistanceCosine is the Qdrant distance metric for the text channels.
+	// DistanceCosine is the pgvector distance metric for the text channels.
 	DistanceCosine = "Cosine"
 	// QueryPrefixE5 is prepended to queries (asymmetric E5 retrieval).
 	QueryPrefixE5 = "query: "
@@ -50,10 +50,10 @@ const (
 
 // Canonical string constants for the SigLIP visual model.
 //
-// These anchor the Qdrant "visual" named vector and the
+// These anchor the pgvector "visual" named vector and the
 // media_assets.metadata_json.embedding_version_visual payload field.
 // Bumping VisualEmbeddingModelVersion is a schema migration that changes
-// the Qdrant collection shape; don't change without planning a v4.
+// the pgvector collection shape; don't change without planning a v4.
 const (
 	// VisualEmbeddingModelID is the canonical SigLIP model id.
 	VisualEmbeddingModelID = models.CanonicalVisualModelID
@@ -77,7 +77,7 @@ type Contract struct {
 	Dimension int
 	// Normalization describes the vector normalization (e.g. "l2").
 	Normalization string
-	// Distance is the Qdrant distance metric ("Cosine", "Euclid", "Dot").
+	// Distance is the pgvector distance metric ("Cosine", "Euclid", "Dot").
 	Distance string
 	// QueryPrefix is prepended to query text.
 	QueryPrefix string
@@ -88,7 +88,7 @@ type Contract struct {
 }
 
 // CanonicalText is the single canonical text embedding contract. It is the
-// value the boot handshake compares against the sidecar runtime, the Qdrant
+// value the boot handshake compares against the sidecar runtime, the pgvector
 // active-collection metadata, and the query embedder.
 var CanonicalText = Contract{
 	ContractVersion:         ContractVersionV1,
@@ -104,7 +104,7 @@ var CanonicalText = Contract{
 
 // Hash returns the deterministic embedding_contract_hash (SHA-256 hex) of the
 // contract. It is the fingerprint used to detect contract drift and to name
-// future Qdrant collection generations.
+// future pgvector collection generations.
 func (c Contract) Hash() string {
 	canonical := fmt.Sprintf("%s|%s|%s|%d|%s|%s|%s|%s|%s",
 		c.ContractVersion,
@@ -126,7 +126,7 @@ func (c Contract) Equal(other Contract) bool {
 }
 
 // MatchesPartial reports whether c agrees with other on the fields that are
-// actually populated in other (non-zero). Qdrant collection metadata only
+// actually populated in other (non-zero). pgvector collection metadata only
 // exposes dimension and distance, and the query-embedder config only exposes
 // a model id — so those legs of the handshake compare only the fields they
 // can observe.

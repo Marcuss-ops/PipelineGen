@@ -1,6 +1,6 @@
 """PipelineGen Embedding Server — FastAPI app + model loaders.
 
-Qdrant handles search/index; this server is only for generating embeddings
+PostgreSQL + pgvector handles search/index; this server is only for generating embeddings
 (E5 multilingual text + CLIP visual + CLAP audio + perceptual hash).
 
 Package layout (split out from a 604-line single file):

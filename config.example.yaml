@@ -364,14 +364,6 @@ google_accounting:
   download_dir: "./data/google_vids"
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
-# QDRANT-005A canonical configuration (AGENTS.md "Qdrant Entity Associations").
-# MINIMAL config (this file): both OFF so the server boots without
-# external vector-store readiness. Production deployments use
-# config.production.example.yaml which has both enabled: true.
-qdrant:
-  enabled: false
-  base_url: "http://127.0.0.1:6333"
-  api_key: ""  # override via VELOX_QDRANT_API_KEY env var (AGENTS.md secrets policy)
 clip_indexer:
   enabled: false
 

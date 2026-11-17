@@ -59,7 +59,7 @@ import (
 //
 // A SQLite-backed sibling (assetServiceLookupAdapter, wrapping detail.Service)
 // was deleted on 2026-09-13: RequireMediaPostgres states that an enabled media
-// plane "means PostgreSQL is mandatory ... There is no SQLite/Qdrant
+// plane "means PostgreSQL is mandatory ... There is no SQLite/pgvector
 // fallback", so a second deep verifier reading the SQLite mirror re-introduced
 // the split-brain this cutover removed — a PostgreSQL-committed asset looked
 // like an orphan to it. With a closed media plane the processor falls through
@@ -80,7 +80,7 @@ func (a *pgMediaAssetLookupAdapter) GetAsset(
 // registerScriptPostProcessors initialises and registers every
 // canonical postprocessor on the supplied registry. Each registration
 // is gated on its required infrastructure dependency (VoiceoverService
-// for voiceover, QdrantSearcher + OllamaClient for clip_search).
+// for voiceover, VectorSearcher + OllamaClient for clip_search).
 //
 // SCRIPTCONTRACT-2026-07-08 PR-1 canonical order (godlike/06 SSOT):
 //

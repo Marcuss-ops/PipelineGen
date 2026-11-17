@@ -93,7 +93,7 @@ var (
 
 	OutboxOldestPendingSeconds = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "outbox_oldest_pending_seconds",
-		Help: "Age in seconds of the oldest pending outbox entry (Qdrant indexing lag)",
+		Help: "Age in seconds of the oldest pending outbox entry (pgvector indexing lag)",
 	})
 
 	OutboxProcessingDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{

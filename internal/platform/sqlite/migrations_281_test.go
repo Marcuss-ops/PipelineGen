@@ -29,8 +29,11 @@ func TestMigrations_281_LegacyFileMD5ContractScenario(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyDir := copyMigrationSubset(t, targetDir, 280, map[int]bool{0: true})
-	fullDir := copyMigrationSubset(t, targetDir, 282, map[int]bool{0: true})
+	// A subset must NOT include the consolidated baseline: it now covers
+	// 1..298, so including it would skip 1..280 and hand the test the final
+	// schema (where legacy_file_md5 is already gone).
+	legacyDir := copyMigrationSubset(t, targetDir, 280, nil)
+	fullDir := copyMigrationSubset(t, targetDir, 282, nil)
 	dbPath := filepath.Join(t.TempDir(), "contract-281.sqlite")
 
 	if err := RunMigrationsOnDB(dbPath, nil, legacyDir, "primary"); err != nil {

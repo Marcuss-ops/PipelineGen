@@ -13,7 +13,7 @@
 //
 // Per-migration scenario tests:
 //
-//	migrations_099_test.go     ← Qdrant asset columns (migration 099)
+//	migrations_099_test.go     ← pgvector asset columns (migration 099)
 //	migrations_152_test.go     ← Canonical metadata columns (migration 152)
 //	migrations_153_test.go     ← asset_artifacts table + FK + indexes (migration 153)
 //	migrations_154_test.go     ← script_localizations UNIQUE shape (migration 154)
@@ -45,7 +45,7 @@ package sqlite
 
 // Intentionally empty. All prior bodies now live across:
 //   - migrations_smoke_test.go    (baseline apply + integrity + FK + essentials + WAL)
-//   - migrations_099_test.go      (Qdrant asset columns)
+//   - migrations_099_test.go      (pgvector asset columns)
 //   - migrations_152_test.go      (canonical metadata columns)
 //   - migrations_153_test.go      (asset_artifacts table + FK + indexes)
 //   - migrations_154_test.go      (script_localizations UNIQUE shape)

@@ -251,7 +251,7 @@ type SelectedSegment struct {
 	AssetID         string  `json:"asset_id,omitempty"`
 	ContentSHA256   string  `json:"content_sha256,omitempty"`
 	DriveLink       string  `json:"drive_link,omitempty"`
-	QdrantPointID   string  `json:"qdrant_point_id,omitempty"`
+	VectorPointID   string  `json:"vector_point_id,omitempty"`
 	Status          string  `json:"status"`
 }
 

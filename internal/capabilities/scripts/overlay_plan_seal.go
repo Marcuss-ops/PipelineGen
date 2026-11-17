@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 )
 
@@ -23,19 +24,69 @@ import (
 // selection, timing and map resolution; this boundary owns only the derived
 // render identity and the master extent, so the document that reaches the
 // bundle hash, audit, renderer and checkpoint is the same sealed document.
-func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
+func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec, perScene ...bool) (*capmodel.OverlayPlan, error) {
 	if plan == nil {
 		return nil, nil
 	}
 	plan.SchemaVersion = capmodel.SchemaVersionPlan
 	plan.Language = string(language)
-	return finalizeSealedOverlayPlan(*plan, result, language, resolved, canvas)
+	return finalizeSealedOverlayPlan(*plan, result, language, resolved, canvas, perScene...)
+}
+
+// promoteVerifiedEntityCards upgrades compiled entity cards to the image-only
+// entity capability when the run already holds a verified, content-addressed
+// portrait for the identity. The v2 compiler plans identity cards from the
+// entity timeline but does not own the media index, so before this pass every
+// card stayed text-only even though the portrait had been acquired and
+// published: the final-job preflight then refused an image-requested render
+// with zero image items. The join is identity-based (canonical id first, then
+// stable id), which is what lets a portrait verified for the source language
+// render unchanged in a translated plan. Explicit images=disabled wins; an
+// unverified or missing asset leaves the card text-only, as before.
+func promoteVerifiedEntityCards(plan *capmodel.OverlayPlan, result *GenerateResult, canvas OverlayCanvasSpec, perScene ...bool) {
+	if plan == nil || result == nil || len(plan.Items) == 0 {
+		return
+	}
+	if toggle, ok := canvas.OverlayCategories[scriptpkg.OverlayCategoryImages]; ok && toggle == scriptpkg.ToggleDisabled {
+		return
+	}
+	pending := false
+	for _, item := range plan.Items {
+		if entityCardKind(capmodel.OverlayKind(item.Kind)) && len(item.AssetRefs) == 0 && len(item.ImageLayers) == 0 {
+			pending = true
+			break
+		}
+	}
+	if !pending {
+		return
+	}
+	media, canonicalByStable := entityCardMediaIndex(result, perScene...)
+	promoted := 0
+	for i := range plan.Items {
+		item := plan.Items[i]
+		if !entityCardKind(capmodel.OverlayKind(item.Kind)) || len(item.AssetRefs) > 0 || len(item.ImageLayers) > 0 {
+			continue
+		}
+		upgraded := attachEntityCardAsset(item, media, canonicalByStable, plan.PlanID)
+		if upgraded.Kind != string(capmodel.KindEntityImage) {
+			continue
+		}
+		plan.Items[i] = upgraded
+		promoted++
+	}
+	if promoted > 0 {
+		plan.Items = capEntityImageOverlays(plan.Items, capabilityoverlay.MaxEntityImageOverlaysPerRun, perScene...)
+	}
 }
 
 // finalizeSealedOverlayPlan derives the master extent, resets provisional render
 // keys and stamps the one output identity before Validate computes the final
 // fingerprint. It is the only place a plan becomes wire-eligible.
-func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
+func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec, perScene ...bool) (*capmodel.OverlayPlan, error) {
+	// Identity media promotion runs before any derived field: the promoted item
+	// changes kind, template and asset refs, so the extent and fingerprint must
+	// be computed from the document the renderer will actually receive.
+	promoteVerifiedEntityCards(&plan, result, canvas, perScene...)
 	plan.DurationMS = overlayPlanDurationMS(result, language, resolved, plan.Items)
 	// Item transforms above (chain coalescing, font/style projection and image
 	// composition) can change renderer-owned inputs after an upstream planner
@@ -202,6 +253,9 @@ func entityCardLookupIDs(item capmodel.OverlayItem, canonicalByStable map[string
 	if name == "" {
 		name = strings.TrimSpace(item.Text)
 	}
+	// This key also carries the single-token family-name aliases the media
+	// index publishes for unique verified person identities: a translated
+	// card that keeps only "Tyson" for "Mike Tyson" still resolves here.
 	if key := entitycatalog.NormalizeVerifiedAssetKey(name); key != "" {
 		appendID(canonicalByStable["bundle-name:"+key])
 	}

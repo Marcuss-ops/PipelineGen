@@ -45,6 +45,17 @@ func entityImageCaption(item capmodel.OverlayItem) string {
 	return strings.TrimSpace(item.Text)
 }
 
+// resolveEntityImageMotionPool returns the caller pool when present, otherwise
+// the complete certified generated-entity catalog. The Rust planner rejects an
+// admitted entity image with an empty pool, and an omitted pool means automatic
+// rotation, so the builder and the runtime branch share this resolution.
+func resolveEntityImageMotionPool(requested []string) []string {
+	if len(requested) > 0 {
+		return requested
+	}
+	return capabilityoverlay.CertifiedEntityImageMotions()
+}
+
 // assignEntityImageMotions samples a fresh pool offset once per newly compiled
 // plan, then rotates through the complete certified 32-motion image catalog.
 // In a composite each portrait consumes its own ordinal, so every image gets

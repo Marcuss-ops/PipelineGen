@@ -80,7 +80,7 @@ type BulkUploadYouTubeClipsPayload struct {
 
 // DriveFolderSyncPayload is sent with JobTypeDriveFolderSync.
 //
-// QDRANT-001 (June 2026) closure: the /internal/v1 variant (server-to-server)
+// VECTOR-001 (June 2026) closure: the /internal/v1 variant (server-to-server)
 // also copies the Idempotency-Key header into the payload so the worker
 // has a stable per-request key for retry dedup. The Caller field is for
 // observability ("api_admin" vs "internal_v1"); the dispatch helper

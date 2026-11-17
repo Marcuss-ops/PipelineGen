@@ -14,7 +14,9 @@ func TestMigrations_292_RenderAttemptAnalyticsCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	preDir := copyMigrationSubset(t, targetDir, 291, map[int]bool{0: true})
+	// Exclude the consolidated baseline (it covers 1..298): the drift shape
+	// is a cache schema that stopped at 291.
+	preDir := copyMigrationSubset(t, targetDir, 291, nil)
 	dbPath := filepath.Join(t.TempDir(), "cache-292.sqlite")
 	if err := RunMigrationsOnDB(dbPath, nil, preDir, "cache"); err != nil {
 		t.Fatalf("apply cache migrations up to 291: %v", err)
@@ -27,7 +29,7 @@ func TestMigrations_292_RenderAttemptAnalyticsCache(t *testing.T) {
 		t.Fatalf("drop render_attempt_analytics: %v", err)
 	}
 
-	fullDir := copyMigrationSubset(t, targetDir, 292, map[int]bool{0: true})
+	fullDir := copyMigrationSubset(t, targetDir, 292, nil)
 	if err := RunMigrationsOnDB(dbPath, nil, fullDir, "cache"); err != nil {
 		t.Fatalf("apply migration 292: %v", err)
 	}

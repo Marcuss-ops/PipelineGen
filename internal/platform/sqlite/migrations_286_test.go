@@ -54,8 +54,10 @@ func TestMigrations_286_MirrorFieldsContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	preDir := copyMigrationSubset(t, targetDir, 285, map[int]bool{0: true})
-	fullDir := copyMigrationSubset(t, targetDir, 286, map[int]bool{0: true})
+	// Exclude the consolidated baseline (it covers 1..298): including it
+	// would skip the legacy schema this contract test seeds.
+	preDir := copyMigrationSubset(t, targetDir, 285, nil)
+	fullDir := copyMigrationSubset(t, targetDir, 286, nil)
 	dbPath := filepath.Join(t.TempDir(), "contract-286.sqlite")
 	if err := RunMigrationsOnDB(dbPath, nil, preDir, "primary"); err != nil {
 		t.Fatalf("apply migrations up to 285: %v", err)

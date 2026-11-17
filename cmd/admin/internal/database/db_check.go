@@ -17,9 +17,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
@@ -29,7 +27,6 @@ import (
 func RunDBCheck(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("db check", flag.ExitOnError)
 	dataDir := fs.String("data-dir", "./data", "root data directory")
-	qdrantURL := fs.String("qdrant-url", "", "optional Qdrant base URL for connectivity probe (e.g. http://127.0.0.1:6333)")
 	topN := fs.Int("top-n-tables", 10, "show row counts for the top-N tables")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
@@ -67,20 +64,6 @@ func RunDBCheck(ctx context.Context, args []string) error {
 		failures++
 	} else {
 		fmt.Println("[observability] OK")
-	}
-
-	if *qdrantURL != "" {
-		if ok, dur, err := probeQdrant(*qdrantURL, 3*time.Second); err != nil {
-			fmt.Printf("[qdrant] FAIL (%v, %s elapsed)\n", err, dur)
-			failures++
-		} else if !ok {
-			fmt.Printf("[qdrant] FAIL: non-OK response (%s elapsed)\n", dur)
-			failures++
-		} else {
-			fmt.Printf("[qdrant] OK (%s elapsed)\n", dur)
-		}
-	} else {
-		fmt.Println("[qdrant] SKIP (no -qdrant-url provided)")
 	}
 
 	fmt.Printf("=== summary: %d failure(s) ===\n", failures)
@@ -190,31 +173,4 @@ func checkOneDB(ctx context.Context, label string, sdb *storage.SQLiteDB, topN i
 		fmt.Printf("  [%s] index_count=%d\n", label, n)
 	}
 	return nil
-}
-
-// probeQdrant performs a single HTTP GET against the Qdrant /healthz
-// endpoint. Returns (ok, elapsed, err) so the caller can print a
-// structured summary regardless of outcome. Timeout is enforced via
-// the http.Client.Timeout so a hung Qdrant doesn't wedge the check.
-func probeQdrant(baseURL string, timeout time.Duration) (bool, time.Duration, error) {
-	if baseURL == "" {
-		return false, 0, fmt.Errorf("empty base url")
-	}
-	healthURL := strings.TrimRight(baseURL, "/") + "/healthz"
-	req, err := http.NewRequest(http.MethodGet, healthURL, nil)
-	if err != nil {
-		return false, 0, fmt.Errorf("build request: %w", err)
-	}
-	client := &http.Client{Timeout: timeout}
-	start := time.Now()
-	resp, err := client.Do(req)
-	elapsed := time.Since(start)
-	if err != nil {
-		return false, elapsed, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return false, elapsed, fmt.Errorf("status %d", resp.StatusCode)
-	}
-	return true, elapsed, nil
 }

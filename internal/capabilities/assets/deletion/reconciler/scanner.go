@@ -2,7 +2,7 @@
 //
 // Pure classification function: StuckRow → ClassifyResult.
 //
-// Mirrors qdrant/reconciler/scanner.go's "no IO, no time.Now side
+// Mirrors pgvector/reconciler/scanner.go's "no IO, no time.Now side
 // effects" test-friendly invariant. Classify consumes rows only;
 // the service layer (service.go) is responsible for the IO and
 // time.Now side effects.

@@ -3,9 +3,9 @@
 // (POST /api/media/sync) and server-to-server
 // (POST /internal/v1/media/sync) handlers.
 //
-// QDRANT-001 (June 2026) closure: extracting this payload builder
+// VECTOR-001 (June 2026) closure: extracting this payload builder
 // keeps both handlers in lockstep on the canonical job-type and
-// payload schema — divergence between them was a QDRANT-001 risk
+// payload schema — divergence between them was a VECTOR-001 risk
 // noted in the doc (the same handler called from two different auth
 // surfaces must not drift).
 package storage

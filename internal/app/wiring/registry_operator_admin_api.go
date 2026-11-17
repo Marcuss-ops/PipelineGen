@@ -7,7 +7,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	operatorverify "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/verification"
 	"go.uber.org/zap"
 )
 
@@ -77,15 +76,9 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 		log.Info("created M2M media module (GET /assets, /assets/:id, /facets, POST download on /api/v1/media)")
 	}
 
-	var verifier operator.IndexVerifier
-	if root.Process != nil && root.Process.QdrantClient != nil {
-		verifier = operatorverify.NewOperatorIndexVerifier(root.Process.QdrantClient)
-	}
-
 	desc, err := operator.Build(operator.Dependencies{
 		AssetService:    assetReader,
 		ReadModel:       readModel,
-		IndexVerifier:   verifier,
 		JobService:      root.Jobs.Facade,
 		OutboxPort:      nil, // optional — outbox monitoring degrades gracefully
 		Mutator:         root.Outbox.Dispatcher,

@@ -11,11 +11,9 @@
 # MEDIA CUTOVER (September 2026):
 #   - PostgreSQL + pgvector is the media-domain SSOT.
 #   - media_postgresql.enabled=true is fail-closed: an empty/unreachable DSN
-#     aborts startup. There is no SQLite or Qdrant media fallback.
+#     aborts startup. There is no SQLite media fallback.
 #   - clip_indexer remains enabled because its E5 sidecar supplies the canonical
 #     text embeddings written/read by PostgreSQL.
-#   - qdrant is OFF here. It may be enabled only for an explicitly owned
-#     non-media use case; it is never a media catalog/search projection.
 #
 # GPU deployment contract:
 #   - This template targets a host with a working NVIDIA driver and NVENC
@@ -280,15 +278,8 @@ google_accounting:
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
 
-# Qdrant is not part of the media plane after POSTGRES-MEDIA-CUTOVER.
-# Enable only when a separately owned non-media capability explicitly needs it.
-qdrant:
-  enabled: false
-  base_url: "http://127.0.0.1:6333"
-  api_key: ""
-
-# E5 sidecar used by PostgreSQL media enrichment/search. This remains ON even
-# though Qdrant is OFF because pgvector stores the resulting embeddings.
+# E5 sidecar used by PostgreSQL media enrichment/search. It remains ON
+# because pgvector stores the resulting embeddings.
 clip_indexer:
   enabled: true
 

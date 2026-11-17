@@ -157,7 +157,7 @@ type DestinationRequest struct {
 	// routing tag alongside Group (specific folder) and SubfolderName
 	// (leaf subfolder). Surfaced in the per-asset metadata.json
 	// manifest under the key `style_group` so downstream consumers
-	// (Qdrant re-rankers, style-cohort analytics, audit replay) can
+	// (pgvector re-rankers, style-cohort analytics, audit replay) can
 	// recover the original selection verbatim. omitempty so legacy
 	// callers (no field set) don't carry a bogus empty key.
 	//

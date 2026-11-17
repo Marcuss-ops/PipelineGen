@@ -1,6 +1,6 @@
 // Package wiring contains composition-root adapters for the ScriptFlow media
 // read surfaces. PostgreSQL + pgvector is the only media catalog authority;
-// no Qdrant or SQLite media mirror participates in these adapters.
+// no external vector store or SQLite media mirror participates in these adapters.
 package script
 
 import (
@@ -31,7 +31,7 @@ import (
 // postgresSemanticSearchPort bridges the script SourceSearch contract to the
 // canonical pgvector MediaSearcher. The searcher already hydrates metadata
 // from media_assets in the same PostgreSQL SSOT, so there is no second
-// Qdrant→SQLite validation/hydration leg.
+// pgvector→SQLite validation/hydration leg.
 type postgresSemanticSearchPort struct {
 	searcher appsearch.VectorStorePort
 	embedder asset.Embedder
@@ -103,7 +103,7 @@ func (p *postgresSemanticSearchPort) SearchByText(ctx context.Context, query str
 
 // postgresAssetSearchPort implements the canonical scripts AssetSearchPort on
 // the same pgvector MediaSearcher used by SourceSearch. It intentionally
-// rejects Qdrant-only filter shapes instead of silently ignoring them.
+// rejects vector-only filter shapes instead of silently ignoring them.
 type postgresAssetSearchPort struct {
 	searcher appsearch.VectorStorePort
 	embedder asset.Embedder
@@ -118,7 +118,7 @@ func (p *postgresAssetSearchPort) SearchAssets(ctx context.Context, q scriptport
 		return []scriptports.AssetSearchHit{}, nil
 	}
 	if strings.TrimSpace(q.FolderNormalizedGroup) != "" || len(q.ExcludeRightsStatuses) > 0 || len(q.ExcludeReviewStatuses) > 0 {
-		return nil, fmt.Errorf("postgres asset search: legacy Qdrant-only folder/rights filters are not supported on the canonical media port")
+		return nil, fmt.Errorf("postgres asset search: legacy vector-only folder/rights filters are not supported on the canonical media port")
 	}
 
 	source := strings.TrimSpace(q.Source)

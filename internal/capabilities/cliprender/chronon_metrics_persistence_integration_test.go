@@ -1,4 +1,4 @@
-package cliprender
+package cliprender_test
 
 // chronon_metrics_persistence_integration_test.go proves the canonical
 // persistence path end-to-end with real components (godlike/07 no-fake-
@@ -23,6 +23,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
 	"go.uber.org/zap"
@@ -67,7 +68,7 @@ func TestChrononMetricsAdapterPersistsToSQLiteDuringARun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := NewChrononMetricsAdapter(store, zap.NewNop())
+	adapter := cliprender.NewChrononMetricsAdapter(store, zap.NewNop())
 
 	// A real run bound to ctx, exactly like the job worker's execution path
 	// (StartRunForClaim + WithRun). The store resolves run_id/job_id from
@@ -78,12 +79,12 @@ func TestChrononMetricsAdapterPersistsToSQLiteDuringARun(t *testing.T) {
 	})
 	ctx := kernobs.WithRun(context.Background(), run)
 
-	sc, err := ParseChrononSidecar([]byte(chrononSidecarFixture))
+	sc, err := cliprender.ParseChrononSidecar([]byte(cliprender.ChrononSidecarFixture))
 	if err != nil {
 		t.Fatal(err)
 	}
 	daemonReused := true
-	adapter.Publish(ctx, sc, ChrononMetricsPublishOptions{
+	adapter.Publish(ctx, sc, cliprender.ChrononMetricsPublishOptions{
 		DaemonReused:     &daemonReused,
 		SourceSHA256:     "sha-source-1",
 		SourceDurationMS: 45000,
@@ -94,13 +95,13 @@ func TestChrononMetricsAdapterPersistsToSQLiteDuringARun(t *testing.T) {
 	})
 
 	wantOps := map[string]int64{
-		ChrononOperationStartup:      5078,
-		ChrononOperationInputOpen:    0,
-		ChrononOperationPrepare:      2620,
-		ChrononOperationRenderLoop:   24971,
-		ChrononOperationEncoderDrain: 554,
-		ChrononOperationFFprobe:      375,
-		ChrononOperationSHA256:       0,
+		cliprender.ChrononOperationStartup:      5078,
+		cliprender.ChrononOperationInputOpen:    0,
+		cliprender.ChrononOperationPrepare:      2620,
+		cliprender.ChrononOperationRenderLoop:   24971,
+		cliprender.ChrononOperationEncoderDrain: 554,
+		cliprender.ChrononOperationFFprobe:      375,
+		cliprender.ChrononOperationSHA256:       0,
 	}
 	rows, err := db.Query(`SELECT run_id, job_id, operation, elapsed_ms, source_sha256,
 		source_duration_ms, output_size_bytes, width, height, fps, metadata_json
@@ -176,14 +177,14 @@ func TestChrononMetricsAdapterRejectsPublishOutsideARun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter := NewChrononMetricsAdapter(store, zap.NewNop())
+	adapter := cliprender.NewChrononMetricsAdapter(store, zap.NewNop())
 
-	sc, err := ParseChrononSidecar([]byte(chrononSidecarFixture))
+	sc, err := cliprender.ParseChrononSidecar([]byte(cliprender.ChrononSidecarFixture))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// No run bound to ctx — the render path in benchmarks/standalone use.
-	adapter.Publish(context.Background(), sc, ChrononMetricsPublishOptions{})
+	adapter.Publish(context.Background(), sc, cliprender.ChrononMetricsPublishOptions{})
 
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM performance_operations`).Scan(&count); err != nil {

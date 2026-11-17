@@ -2,7 +2,7 @@
 //
 // Provides a unified admin bulk-operation surface under
 // /api/assets/operator/bulk. All mutations route through the canonical
-// AssetMutationDispatcher so SQLite, outbox and Qdrant stay consistent.
+// AssetMutationDispatcher so SQLite, outbox and pgvector stay consistent.
 package operator
 
 import (

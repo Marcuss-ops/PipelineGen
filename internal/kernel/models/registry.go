@@ -11,7 +11,7 @@
 //	CORE     — text (E5), visual (SigLIP), reranker (BGE), BM25 (built-in)
 //	OPTIONAL — audio (CLAP), ASR (Whisper)
 //
-// Every component that names a model (Qdrant schema, embedding sidecar,
+// Every component that names a model (pgvector schema, embedding sidecar,
 // query embedder, reranker server, transcription bridge, health
 // handshake, diagnostics, downloader) MUST anchor to the entries here.
 // Do NOT add model identity constants in other packages.
@@ -30,14 +30,14 @@ const (
 	// RoleTextEmbedding marks dense text-representation models (E5).
 	RoleTextEmbedding Role = "text_embedding"
 	// RoleVisualEmbedding marks image/text vision models for the
-	// "visual" Qdrant channel (SigLIP).
+	// "visual" pgvector channel (SigLIP).
 	RoleVisualEmbedding Role = "visual_embedding"
 	// RoleReranker marks cross-encoder relevance models (BGE reranker).
 	RoleReranker Role = "reranker"
 	// RoleAudioEmbedding marks audio-representation models (CLAP).
 	RoleAudioEmbedding Role = "audio_embedding"
 	// RoleTranscription marks ASR models producing text transcripts
-	// (Whisper) — upstream of indexing, never directly into Qdrant.
+	// (Whisper) — upstream of indexing, never directly into pgvector.
 	RoleTranscription Role = "transcription"
 	// RoleSegmentUnderstanding marks small language models used to
 	// understand script segments and produce retrieval-safe semantics.
@@ -162,7 +162,7 @@ var (
 	}
 
 	// Whisper is the canonical ASR model (OPTIONAL, upstream of indexing:
-	// video → audio → Whisper → transcript → E5 → Qdrant). It is MIT-
+	// video → audio → Whisper → transcript → E5 → pgvector). It is MIT-
 	// licensed, lightweight Whisper small build, and covers 99
 	// languages. The transcription bridge
 	// (scripts/bridges/whisper_transcriber.py) defaults to this model and

@@ -15,7 +15,7 @@
 //     silently drops fields its native API doesn't support;
 //     local backend forwards all fields to AdvancedSearchRequest;
 //     semantic backend honours Source/MediaType/Category/Language
-//     at the Qdrant layer per internal/app/search_backend_semantic.go
+//     at the pgvector layer per internal/app/search_backend_semantic.go
 //     ::compileSemanticFilters).
 //
 // Why a shared harness rather than per-backend test files: the
@@ -28,11 +28,11 @@
 // harness pins the uniform semantics so future drift is a test
 // regression rather than a runtime surprise.
 //
-// Stub-only: the harness does NOT spin SQLite or Qdrant. The
+// Stub-only: the harness does NOT spin SQLite or pgvector. The
 // filterSpy Backend records the q.Filters it received and emits a
 // zero-length result slice. The contract being exercised is
 // "Filters forwarding", not "filter execution"; execution tests
-// belong to the per-backend's native test packages (qdrant,
+// belong to the per-backend's native test packages (pgvector,
 // sqlite/assets, provider adapters).
 package search
 

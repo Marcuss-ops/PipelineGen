@@ -12,7 +12,7 @@
 // handler.go::RegisterRoutes.
 //
 // kept standalone (not folded into handler_summary.go) so future
-// index-health diagnostics (Qdrant / outbox / embedding coverage) can
+// index-health diagnostics (pgvector / outbox / embedding coverage) can
 // grow into a sibling helper without bloating the summary resource.
 package operator
 

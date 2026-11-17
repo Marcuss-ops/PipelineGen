@@ -116,7 +116,7 @@ func (r *BackendRegistry) All() []SearchBackend {
 //     filter win; backends with no intersection are dropped.
 //   - Universe: applied last. SearchCatalog keeps only catalog
 //     backends (no live provider call); SearchDiscovery keeps only
-//     discovery backends (no Qdrant call); SearchBlended keeps both.
+//     discovery backends (no external vector store call); SearchBlended keeps both.
 //     Empty Universe defaults to SearchCatalog via
 //     Query.EffectiveUniverse().
 //
@@ -129,7 +129,7 @@ func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
 	// 1. Sources filter (fail-fast on unknown aliases).
 	//
 	// PR-SEARCH-HANDLER-MOUNT (July 2026): the semantic backend
-	// is a cross-source meta-backend — it searches Qdrant for
+	// is a cross-source meta-backend — it searches pgvector for
 	// ALL sources and applies source filtering internally via
 	// compileSemanticFilters → filter.Source. It MUST always be
 	// included regardless of q.Sources, otherwise requests like
@@ -137,7 +137,7 @@ func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
 	// backends and fail with ErrSemanticBackendUnavailable.
 	// (PR-SEARCH-UNIVERSE: the universe filter below still drops
 	// the semantic backend for discovery-universe queries — a
-	// discovery search must not touch Qdrant.)
+	// discovery search must not touch pgvector.)
 	canonicalSources := ResolveCanonicals(q.Sources)
 	if len(q.Sources) > 0 && len(canonicalSources) == 0 {
 		// All sources supplied were unknown aliases. NO

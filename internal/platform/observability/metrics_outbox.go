@@ -41,7 +41,7 @@ import (
 
 // defaultOutboxDurationBuckets is the canonical Prometheus latency
 // bucket set for one-shot outbox dispatch (no stream/processing).
-// Sub-millisecond (typical Qdrant upsert under nominal load) up to
+// Sub-millisecond (typical pgvector upsert under nominal load) up to
 // 10s (Webhook receiver that hit a downstream queueing stall).
 var defaultOutboxDurationBuckets = []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}
 
@@ -66,10 +66,10 @@ var (
 	// MarkDeadLetter / MarkSuperseded). Labels: event_type, outcome
 	// (ok | err | dlq).
 	//
-	// Buckets cover sub-millisecond (Qdrant upsert under nominal
+	// Buckets cover sub-millisecond (pgvector upsert under nominal
 	// load) up to 10s (Webhook receiver downstream-queueing stall).
 	// Buckets are wider on the high end than drive_roots_validator's
-	// because dispatch can include a full Qdrant.Upsert round-trip
+	// because dispatch can include a full pgvector.Upsert round-trip
 	// + SQLite transaction + IndexState flip.
 	OutboxDispatchDurationSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "outbox_dispatch_duration_seconds",
@@ -97,13 +97,13 @@ var (
 	// at first attempt. Labels: event_type.
 	//
 	// Operator reads:
-	//   - rising DLQ on asset.index.* → Qdrant or media_assets SQL
+	//   - rising DLQ on asset.index.* → pgvector or media_assets SQL
 	//     failing systematically; investigate.
 	//   - spikes correlate with upstream schema-version mismatches
 	//     (each TerminalError short-circuits to DLQ).
 	OutboxDLQTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "outbox_dlq_total",
-		Help: "Cumulative count of events promoted to dead_letter status, partitioned by event_type. Spikes correlate with persistent systematic failures (Qdrant outage, schema drift) or per-event TerminalError classifications.",
+		Help: "Cumulative count of events promoted to dead_letter status, partitioned by event_type. Spikes correlate with persistent systematic failures (pgvector outage, schema drift) or per-event TerminalError classifications.",
 	}, []string{"event_type"})
 
 	// OutboxRetriesTotal counts non-terminal handler errors that
@@ -121,7 +121,7 @@ var (
 	//
 	// Operator reads:
 	//   - rate correlated with Upstream-rate → rate-limited upstream
-	//     (Qdrant quota, Drive quota, etc.).
+	//     (pgvector quota, Drive quota, etc.).
 	//   - rate correlated with DLQ rate → handler logic emitting
 	//     terminal-vs-transient inconsistently.
 	//   - flat at long-running deployments → healthy retry budget.

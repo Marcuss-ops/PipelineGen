@@ -11,11 +11,12 @@ import "testing"
 // DEMO-SQLITE-MEDIA-COMMITTER / P2-9 Phase 2): the marker does NOT mean the
 // quarantined media tables are gone from the schema. On the incremental
 // 001..268 path they are intentionally left in place for audit/recovery, and
-// the fresh-install baseline is still 000_baseline_267.sql (which creates them).
-// Regenerating to a media-free baseline requires rehoming the SQLite
-// media-reader fixtures first (boot_test.go, migrations_helpers_test.go::
-// essentialTables, migrations_152/157/158/197), so this test pins the marker
-// (the applied guard) and not the table removal (the pending work).
+// the fresh-install baseline 000_baseline_268.sql also keeps them (only the
+// retired vector-index tables/columns are absent from the post-298 dump).
+// A media-free baseline would require rehoming the SQLite media-reader
+// fixtures first (boot_test.go, migrations_helpers_test.go::essentialTables,
+// migrations_152/157/158/197), so this test pins the marker (the applied
+// guard) and not the media-table removal (separate work).
 func TestMigrations_268_MediaAuthorityRetirementMarkerIsApplied(t *testing.T) {
 	db, cleanup := applyFreshSmokeDB(t)
 	defer cleanup()

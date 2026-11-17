@@ -49,12 +49,12 @@ var policyBindings = map[string]fieldBinding{
 // gates. They are accepted explicitly, rather than falling through an unknown
 // key path.
 var acceptedDocumentSections = map[string]struct{}{
-	"app_infra_bridge_ratchet": {}, // Wave-22 ratchet baseline (doc-only; full enforcement deferred per Phase-2 promotion; canonical owner = architecture/policy.yaml::app_infra_bridge_ratchet, godlike/06 SSOT)
-	"prometheus_boundary":      {},
-	"cross_project_refs":       {},
-	"lint_gates":               {},
-	"wave_qdrant_005d_hygiene": {},
-	"debt_budget":              {},
+	"app_infra_bridge_ratchet":   {}, // Wave-22 ratchet baseline (doc-only; full enforcement deferred per Phase-2 promotion; canonical owner = architecture/policy.yaml::app_infra_bridge_ratchet, godlike/06 SSOT)
+	"prometheus_boundary":        {},
+	"cross_project_refs":         {},
+	"lint_gates":                 {},
+	"wave_pgvector_005d_hygiene": {},
+	"debt_budget":                {},
 }
 
 // Load parses only top-level policy keys. Unknown top-level keys fail closed;

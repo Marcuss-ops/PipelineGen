@@ -6,7 +6,7 @@ package outboxevents
 // this file does NOT redefine them.
 //
 // PROVENANCE (2026-09-13): these tests were written as
-// tests/e2e/qdrant_dod_supersede_gate_test.go, which was named after the Qdrant
+// tests/e2e/pgvector_dod_supersede_gate_test.go, which was named after the pgvector
 // media chain but in fact exercised ONLY this package. That placement was
 // load-bearing in the worst way: `verify-main` does not run ./tests/... (only
 // `verify-integration` does), so a live typed-error contract was pinned by a

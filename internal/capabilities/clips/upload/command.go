@@ -19,7 +19,7 @@ import (
 //   - Filename    — header.Filename (used as Drive filename + extension source)
 //   - MimeType    — header.Header.Get("Content-Type") with fallback "video/mp4"
 //   - Name        — display name (defaults to filename w/o extension when empty)
-//   - Description — search text for Qdrant indexing (SearchText)
+//   - Description — search text for pgvector indexing (SearchText)
 //   - Source      — source identifier (defaults to "manual" when empty)
 //   - Category    — used in BuildDriveDescription + Asset.Category
 //   - Group       — Drive subfolder group name; idempotently GetOrCreateFolder'd

@@ -6,9 +6,8 @@ import (
 )
 
 func TestVerify_AllLegsMatch(t *testing.T) {
-	qdrant := Contract{Dimension: CanonicalText.Dimension, Distance: CanonicalText.Distance}
 	query := Contract{ModelID: CanonicalText.ModelID}
-	if err := Verify(CanonicalText, CanonicalText, qdrant, query); err != nil {
+	if err := Verify(CanonicalText, CanonicalText, query); err != nil {
 		t.Fatalf("all-matching legs must pass, got: %v", err)
 	}
 }
@@ -16,26 +15,20 @@ func TestVerify_AllLegsMatch(t *testing.T) {
 func TestVerify_SidecarMismatch(t *testing.T) {
 	sidecar := CanonicalText
 	sidecar.ModelID = "nomic-embed-text"
-	err := Verify(CanonicalText, sidecar, Contract{}, Contract{})
+	err := Verify(CanonicalText, sidecar, Contract{})
 	assertMismatch(t, err, ComponentSidecar)
-}
-
-func TestVerify_QdrantDimensionMismatch(t *testing.T) {
-	qdrant := Contract{Dimension: 512, Distance: CanonicalText.Distance}
-	err := Verify(CanonicalText, CanonicalText, qdrant, Contract{})
-	assertMismatch(t, err, ComponentQdrant)
 }
 
 func TestVerify_QueryModelMismatch(t *testing.T) {
 	query := Contract{ModelID: "nomic-embed-text"}
-	err := Verify(CanonicalText, CanonicalText, Contract{}, query)
+	err := Verify(CanonicalText, CanonicalText, query)
 	assertMismatch(t, err, ComponentQuery)
 }
 
 func TestVerify_MismatchErrorSemantics(t *testing.T) {
 	sidecar := CanonicalText
 	sidecar.Dimension = 384
-	err := Verify(CanonicalText, sidecar, Contract{}, Contract{})
+	err := Verify(CanonicalText, sidecar, Contract{})
 
 	if !errors.Is(err, ErrContractMismatch) {
 		t.Fatalf("errors.Is(err, ErrContractMismatch) = false, want true")
@@ -44,8 +37,8 @@ func TestVerify_MismatchErrorSemantics(t *testing.T) {
 	if !errors.As(err, &me) {
 		t.Fatalf("errors.As(*MismatchError) = false, want true; got %T", err)
 	}
-	if me.Code() != "QDRANT_EMBEDDING_CONTRACT_MISMATCH" {
-		t.Fatalf("Code() = %q, want QDRANT_EMBEDDING_CONTRACT_MISMATCH", me.Code())
+	if me.Code() != "EMBEDDING_CONTRACT_MISMATCH" {
+		t.Fatalf("Code() = %q, want EMBEDDING_CONTRACT_MISMATCH", me.Code())
 	}
 	if me.Component != ComponentSidecar {
 		t.Fatalf("Component = %q, want %q", me.Component, ComponentSidecar)
@@ -64,7 +57,7 @@ func assertMismatch(t *testing.T, err error, wantComponent string) {
 	if me.Component != wantComponent {
 		t.Fatalf("Component = %q, want %q (err: %v)", me.Component, wantComponent, err)
 	}
-	if me.Code() != "QDRANT_EMBEDDING_CONTRACT_MISMATCH" {
-		t.Fatalf("Code() = %q, want QDRANT_EMBEDDING_CONTRACT_MISMATCH", me.Code())
+	if me.Code() != "EMBEDDING_CONTRACT_MISMATCH" {
+		t.Fatalf("Code() = %q, want EMBEDDING_CONTRACT_MISMATCH", me.Code())
 	}
 }

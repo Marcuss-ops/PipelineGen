@@ -23,10 +23,10 @@ import (
 // The composition root (internal/app) implements this to manage background
 // services (job runner, dispatchers, channel monitors, etc.).
 //
-// QDRANT-005 (June 2026) closure: the interface now exposes AddProbe so
+// VECTOR-005 (June 2026) closure: the interface now exposes AddProbe so
 // the readiness barrier can be EXTENDED at runtime by callers that
 // wire dependencies after the lifecycle is constructed (e.g. the
-// Qdrant probe in cmd/server/main.go: now done via AddProbe instead of
+// pgvector probe in cmd/server/main.go: now done via AddProbe instead of
 // silently failing through a type-assertion any downsizing).
 // Implementations MUST accept AddProbe calls BEFORE Start runs.
 type LifecycleManager interface {
@@ -57,7 +57,7 @@ type Server struct {
 // health endpoints return 503.
 
 // InternalHandlers bundles the optional typed-port internal-route handlers.
-// MUST be wired before router.Setup() runs — the QDRANT-route-constructor
+// MUST be wired before router.Setup() runs — the VECTOR-route-constructor
 // bug (June 2026) proved that post-Setup setters silently drop routes.
 // All 4 handlers are nil-friendly; zero-valued fields are skipped.
 type InternalHandlers struct {
@@ -86,9 +86,6 @@ type ServerDeps struct {
 	Lifecycle LifecycleManager
 	Health    any
 	Ready     any
-	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
-	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
-	QdrantHealth any
 	// ModelsSidecarURL is the Python embedding server URL for the /models endpoint
 	// (Task 10, July 2026). When empty, /models returns "sidecar not configured".
 	// Default: ClipIndexer.ServerURL (typically http://127.0.0.1:8001).
@@ -158,7 +155,7 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 		if internalMediaHandler != nil {
 			router.SetInternalMediaHandler(internalMediaHandler)
 		}
-		// QDRANT-route-constructor (June 2026, PR 3): the outbox + mediasearch
+		// VECTOR-route-constructor (June 2026, PR 3): the outbox + mediasearch
 		// wiring MUST happen here, before Setup() runs. ServerDeps is the
 		// sole server-level wiring path; Router receives these handlers
 		// before its route table is finalized.
@@ -189,13 +186,8 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 		if readyChecker != nil {
 			router.SetReadyChecker(readyChecker)
 		}
-		// Mirror the QdrantHealth wiring from the cfg=nil fallback
-		// branch below so production cfg-shaped servers register
-		// /qdrant/live and /qdrant/ready when Qdrant is enabled.
-		if deps.QdrantHealth != nil {
-			router.SetQdrantHealthHandler(deps.QdrantHealth)
-		}
 		// Task 10: /models endpoint — wire ModelsHandler from sidecar URL.
+		// The legacy vector engine was removed on 2026-11-17; no /pgvector/* route exists.
 		if deps.ModelsSidecarURL != "" {
 			router.SetModelsHandler(transport.NewModelsHandler(deps.ModelsSidecarURL))
 		}
@@ -226,7 +218,7 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	if internalMediaHandler != nil {
 		router.SetInternalMediaHandler(internalMediaHandler)
 	}
-	// QDRANT-route-constructor (June 2026, PR 3): same pre-Setup wiring as
+	// VECTOR-route-constructor (June 2026, PR 3): same pre-Setup wiring as
 	// the cfg != nil branch above. ServerDeps is the sole server-level
 	// wiring path. Both branches register the routes
 	// identically — verified by internal/api/routes_test.go::
@@ -254,9 +246,6 @@ func NewServerWithHealth(deps ServerDeps) *Server {
 	}
 	if readyChecker != nil {
 		router.SetReadyChecker(readyChecker)
-	}
-	if deps.QdrantHealth != nil {
-		router.SetQdrantHealthHandler(deps.QdrantHealth)
 	}
 	// Task 10: /models endpoint — wire ModelsHandler from sidecar URL.
 	if deps.ModelsSidecarURL != "" {
@@ -392,11 +381,11 @@ func (s *Server) StartWithContext(ctx context.Context) error {
 // SetWorkerHandler wires internal worker routes into the server's router.
 // Delegates to Router.SetWorkerHandler.
 
-// SetInternalMediaHandler wires the QDRANT-001 server-to-server media
+// SetInternalMediaHandler wires the VECTOR-001 server-to-server media
 // routes (POST /internal/v1/media/sync) into the server's
 // router. Delegates to Router.SetInternalMediaHandler.
 //
-// QDRANT-001 closure: the production binding is supplied by the asset
+// VECTOR-001 closure: the production binding is supplied by the asset
 // module's storage.Handler — see internal/app/bootstrap.go or whoever
 // holds the assets module after WireRegistry runs.
 

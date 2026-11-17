@@ -281,7 +281,6 @@ var routeDescriptions = map[string]string{
 	"GET /api/media/index-health":           "Media index health check",
 	"POST /api/media/sync":                  "Sync a Drive folder into media index",
 	"POST /api/media/clips/enrich":          "Enrich a media asset with AI metadata",
-	"POST /api/media/qdrant/cleanup":        "Clean up stale Qdrant points",
 	"POST /api/media/clips/upload-video":    "Upload video clip",
 	"POST /api/media/register-from-youtube": "Register asset from YouTube URL",
 	"POST /api/media/register-batch":        "Batch register assets",

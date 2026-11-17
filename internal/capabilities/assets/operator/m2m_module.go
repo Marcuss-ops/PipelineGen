@@ -29,7 +29,7 @@ import (
 // It is deliberately distinct from the admin operator console
 // (module.go / handler_assets.go), which registers the SAME three read
 // routes under the admin-gated /api/assets/operator prefix PLUS the
-// mutating routes (verify-index, reindex, bulk, operations). Those
+// mutating routes (reindex, bulk, operations). Those
 // administrative and mutation surfaces stay admin-only; the M2M submitter
 // must NOT reach them (the remote computer should be able to read the
 // catalog, not enqueue mutations or drive the console).

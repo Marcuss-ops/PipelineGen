@@ -288,54 +288,6 @@ measurements:
     migration_adapter: "ObservedNLPProvider/ObservedImageProvider/ObservedTranscriptionProvider records one operation per endpoint and projects this family"
     removal_condition: "NLP, image, audio, and transcription calls all pass through observed provider wrappers and direct Observe calls are absent"
 
-  - current_symbol: "QdrantSearchLatency"
-    current_owner: "internal/platform/observability/metrics_qdrant.go"
-    current_writer: "qdrant/search/searcher.go Search and HybridSearch"
-    current_storage: "Prometheus histogram"
-    current_metric: "qdrant_search_latency_seconds{vector_name}"
-    canonical_type: operation
-    canonical_stage: "acquire"
-    canonical_component: "qdrant"
-    canonical_operation: "search"
-    migration_adapter: "ObservedQdrantClient records alias resolution plus query as the canonical operation or two explicitly named nested operations"
-    removal_condition: "Qdrant search is observed once, vector_name is replaced by bounded operation metadata, and direct timers are removed"
-
-  - current_symbol: "QdrantSearchDuration/QdrantRequestDuration"
-    current_owner: "internal/platform/observability/metrics_qdrant.go"
-    current_writer: "Qdrant transport/search/indexing paths"
-    current_storage: "Prometheus histograms"
-    current_metric: "qdrant_search_duration_seconds and qdrant_request_duration_seconds"
-    canonical_type: operation
-    canonical_stage: "acquire/index"
-    canonical_component: "qdrant"
-    canonical_operation: "search/request/upsert"
-    migration_adapter: "ObservedQdrantClient emits OperationReport and projects request-level families without adding request identity labels"
-    removal_condition: "All Qdrant REST calls use the observed client and no duplicate search/request timers remain"
-
-  - current_symbol: "QdrantAliasSwitchDuration"
-    current_owner: "internal/platform/observability/metrics_qdrant.go"
-    current_writer: "maintenance.PromDRMetricsAdapter.RecordAliasSwitch in dr_adapter.go"
-    current_storage: "Prometheus histogram"
-    current_metric: "qdrant_alias_switch_duration_seconds{action}"
-    canonical_type: operation
-    canonical_stage: "index"
-    canonical_component: "qdrant"
-    canonical_operation: "alias_switch"
-    migration_adapter: "ObservedQdrantClient/CollectionManager operation projection"
-    removal_condition: "Alias switch is emitted by the canonical Qdrant observer and adapter-level duration is no longer independently timed"
-
-  - current_symbol: "QdrantReconcilerDuration"
-    current_owner: "internal/platform/observability/metrics_qdrant.go"
-    current_writer: "qdrant/search/metrics_adapter.go RecordRunComplete"
-    current_storage: "Prometheus histogram"
-    current_metric: "qdrant_reconciler_duration_seconds{mode}"
-    canonical_type: infrastructure_metric
-    canonical_stage: ""
-    canonical_component: "qdrant_reconciler"
-    canonical_operation: "reconcile"
-    migration_adapter: "Keep as maintenance infrastructure metric unless reconciliation is enqueued as a first-class job"
-    removal_condition: "Reconciler remains outside job reports or is explicitly modeled as a run; no ambiguous dual classification remains"
-
   - current_symbol: "ConnectionWaitSeconds"
     current_owner: "internal/platform/observability/metrics_db.go"
     current_writer: "instrumented SQLite pool acquire path in internal/platform/sqlite/pool.go:284-294"
@@ -573,8 +525,8 @@ measurements:
     canonical_stage: "index"
     canonical_component: "indexer"
     canonical_operation: "index_asset"
-    migration_adapter: "ObservedQdrantClient and embedding provider operations become nested under canonical index stage; retain handler duration as stage projection"
-    removal_condition: "Index handler and nested Qdrant/embedding timings have explicit non-overlapping ownership and direct timer is projection-only"
+    migration_adapter: "Embedding provider operations become nested under canonical index stage; retain handler duration as stage projection"
+    removal_condition: "Index handler and nested embedding timings have explicit non-overlapping ownership and direct timer is projection-only"
 
   - current_symbol: "MediaIndexAttemptsTotal/RetryTotal/SupersededTotal"
     current_owner: "internal/platform/observability/metrics_media.go"
@@ -699,7 +651,7 @@ measurements:
   - current_symbol: "content DurationMs fields"
     current_owner: "domain/media, asset catalog, search DTOs, scraper/provider results"
     current_writer: "asset repositories, provider mappers, ffprobe/materialization paths"
-    current_storage: "media_assets/catalog/stock_batches/Qdrant payload and HTTP JSON duration_ms columns"
+    current_storage: "media_assets/catalog/stock_batches payload and HTTP JSON duration_ms columns"
     current_metric: "media/content duration metadata; not execution latency"
     canonical_type: artifact
     canonical_stage: ""
@@ -851,18 +803,6 @@ measurements:
     canonical_operation: ""
     migration_adapter: "Do not add a second timer; use canonical Stage close as the sole writer or remove this unused family"
     removal_condition: "Static writer audit finds one canonical Stage projection and topic cardinality is approved, or the unused collector is removed"
-
-  - current_symbol: "QdrantSearchDuration/QdrantRequestDuration"
-    current_owner: "internal/platform/observability/metrics_qdrant.go"
-    current_writer: "metric definitions; no direct Observe call found for these exact families in the current internal search (QdrantSearchLatency is written instead)"
-    current_storage: "Prometheus histograms registered at package init"
-    current_metric: "qdrant_search_duration_seconds{vector_name,status}; qdrant_request_duration_seconds{operation,status}"
-    canonical_type: operation
-    canonical_stage: "acquire/index"
-    canonical_component: "qdrant"
-    canonical_operation: "search/request"
-    migration_adapter: "ObservedQdrantClient is the only permitted future writer; remove or project the unused families without adding another transport timer"
-    removal_condition: "A full static writer audit finds an actual single writer and parity passes, or zero-writer collectors are removed"
 
   - current_symbol: "OutboxProcessingDuration"
     current_owner: "internal/platform/observability/metrics_jobs.go"
@@ -1098,7 +1038,7 @@ coverage_notes:
     - "worker resource/network bytes are infrastructure gauges, not job byte counters"
     - "outbox handler retry is distinct from a new job Attempt"
   known_target_gaps: >-
-    ObservedDrivePublisher, ObservedSQLiteExecutor, ObservedQdrantClient,
+    ObservedDrivePublisher, ObservedSQLiteExecutor,
     ObservedProcessRunner, ObservedFFmpeg, ObservedDownloader,
     ObservedArtlistProvider, ObservedOllamaClient, ObservedTTSProvider,
     ObservedNLPProvider, ObservedTranscriptionProvider, ObservedImageProvider,

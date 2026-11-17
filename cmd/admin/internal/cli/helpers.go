@@ -19,7 +19,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -133,40 +132,6 @@ func SplitCSV(raw string) []string {
 
 func SplitBackfillCSV(raw string) []string {
 	return SplitCSV(raw)
-}
-
-func ScrollQdrantAssetIDs(ctx context.Context, client *transport.Client, collection string, batchSize int) (map[string]struct{}, int, []string, error) {
-	assetIDs := make(map[string]struct{})
-	var missing int
-	var errs []string
-	offset := ""
-	const maxPages = 400
-	for i := 0; i < maxPages; i++ {
-		res, err := client.ScrollPoints(ctx, collection, offset, batchSize, nil)
-		if err != nil {
-			return assetIDs, missing, errs, fmt.Errorf("scroll page %d: %w", i, err)
-		}
-		if res == nil || len(res.Points) == 0 {
-			break
-		}
-		for _, p := range res.Points {
-			id, ok := p.Payload["asset_id"].(string)
-			if !ok || id == "" {
-				missing++
-				errs = append(errs, fmt.Sprintf("point %q missing payload asset_id", p.ID))
-				continue
-			}
-			assetIDs[id] = struct{}{}
-		}
-		if res.NextOffset == "" {
-			break
-		}
-		offset = res.NextOffset
-		if i == maxPages-1 {
-			return assetIDs, missing, errs, fmt.Errorf("scroll iteration cap %d reached with NextOffset still trailing", maxPages)
-		}
-	}
-	return assetIDs, missing, errs, nil
 }
 
 func WaitForAssetDeletion(ctx context.Context, db *sql.DB, assetID string) error {

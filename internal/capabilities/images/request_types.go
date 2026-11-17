@@ -45,7 +45,7 @@ type ImageGenerationRequest struct {
 	//                         written and the media_assets row +
 	//                         asset.index.requested outbox row are
 	//                         committed in a single SQLite transaction.
-	//                         Drive upload + SigLIP embedding + Qdrant
+	//                         Drive upload + SigLIP embedding + pgvector
 	//                         upsert happen asynchronously via the
 	//                         outbox dispatcher after SQLite commit.
 	//   - "complete": same as fast, but the handler BLOCKS on the

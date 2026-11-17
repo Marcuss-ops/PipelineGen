@@ -96,7 +96,7 @@ type ServiceDeps struct {
 }
 
 // NewService creates a YouTubeRegistrar service. deps.IndexDisp is REQUIRED
-// (QDRANT-asset-mutation isolation June 2026 forbids the legacy UpsertClip
+// (VECTOR-asset-mutation isolation June 2026 forbids the legacy UpsertClip
 // fallback). All other ports are best-effort: nil causes the corresponding
 // sub-operation to be skipped gracefully.
 func NewService(deps ServiceDeps) *Service {
@@ -180,7 +180,7 @@ func (s *Service) scheduleMaterializeFanOut(ctx context.Context, clipID string, 
 
 // Register downloads a YouTube clip, uploads to Drive, saves to DB, and
 // triggers enrichment/indexing. All sub-operations are best-effort except
-// the indexDisp save which is REQUIRED (QDRANT-asset-mutation isolation).
+// the indexDisp save which is REQUIRED (VECTOR-asset-mutation isolation).
 //
 // PR-CLIP-DECOM-5 (July 2026): refactored from 450+ lines to a thin
 // orchestrator that delegates to 3 use cases in the subpackage usecase/:

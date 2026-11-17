@@ -185,7 +185,7 @@ type ClipPlan struct {
 	Description string
 
 	// Round carries the boxing-style round number when set. Surfaced
-	// into ChunkState + ChunkMetadataEntry + Qdrant semantic payload
+	// into ChunkState + ChunkMetadataEntry + pgvector semantic payload
 	// (PR-STOCK-TIMESTAMP-CLIPS Front 2, July 2026). Zero is the
 	// canonical "not set" value (godlike/07 NO-FAKE-AVAILABILITY —
 	// never use -1 or a magic literal). Deterministic planner runs
@@ -199,7 +199,7 @@ type ClipPlan struct {
 	Tags []string
 
 	// Category is the content category for this clip (boxing / running
-	// etc.). Surfaces in metadata.json + Qdrant payload for semantic
+	// etc.). Surfaces in metadata.json + pgvector payload for semantic
 	// filtering. Empty = not specified.
 	Category string
 

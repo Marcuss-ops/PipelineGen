@@ -94,7 +94,7 @@ typed envelope carrying candidates, scores, and source hints.
 | **Godlike contract** | godlike/06 SSOT: `assets/search/ports.go` is the only canonical search port; alternative search wrappers MUST route through it. godlike/07: empty result set is a typed failure, not a silent pass. |
 | **Inputs** | `ClipPlan` slots |
 | **Outputs** | `SearchResult` with `[]Candidate` + scores |
-| **Failure modes** | search backend returns 5xx → typed sentinel + retry budget; empty results → typed sentinel (no fake fallback); qdrant unavailable → typed sentinel (no in-memory shadow) |
+| **Failure modes** | search backend returns 5xx → typed sentinel + retry budget; empty results → typed sentinel (no fake fallback); search backend unavailable → typed sentinel (no in-memory shadow) |
 
 ---
 

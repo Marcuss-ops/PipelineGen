@@ -17,7 +17,7 @@ type CatalogRepository interface {
 }
 
 // AssetIndexer is a read-side capability used by the synchronizer's job
-// wiring. It is not proof that the Qdrant projection is current; the
+// wiring. It is not proof that the pgvector projection is current; the
 // dispatcher always emits the canonical idempotent index intent.
 type AssetIndexer interface {
 	GetIndexState(ctx context.Context, id string) (asset.IndexState, error)

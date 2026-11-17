@@ -241,6 +241,15 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 	if result == nil {
 		return
 	}
+	// The prepared annotations are detached copies (the prepare branch must not
+	// write the live result while TTS serializes it), so their refinements land
+	// here — including on runs with no segment at all, where the seed-only pass
+	// (phrase displacement, surname dedupe) is the entire projection.
+	for idx, ann := range prepared.annotations {
+		if idx >= 0 && idx < len(result.Scenes) {
+			result.Scenes[idx].Annotations = ann
+		}
+	}
 	if len(prepared.segments) > 0 || len(prepared.disabledScenes) > 0 {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(prepared.segments))
 		for _, segment := range prepared.segments {
@@ -263,11 +272,6 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 			result.Artifacts = nil
 		} else {
 			result.Artifacts = &GenerateArtifacts{Entities: result.Entities}
-		}
-		for idx, ann := range prepared.annotations {
-			if idx >= 0 && idx < len(result.Scenes) {
-				result.Scenes[idx].Annotations = ann
-			}
 		}
 		applySegmentEntityResults(result, segments)
 	}
@@ -297,6 +301,26 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 	result.OverlayIntents = prepared.intents
 }
 
+// cloneSceneAnnotations returns a detached copy of one scene's annotations so
+// the prepare branch can refine them without writing the objects the durable
+// result — and the checkpoint snapshot encoded on the TTS branch — still read.
+// Slice headers and elements are copied; the geometry payloads they point at
+// are immutable once computed, so sharing those pointers is safe.
+func cloneSceneAnnotations(src *scriptpkg.SceneAnnotations) *scriptpkg.SceneAnnotations {
+	if src == nil {
+		return nil
+	}
+	clone := *src
+	clone.ImportantPhrases = append([]scriptpkg.AnnotationSpan(nil), src.ImportantPhrases...)
+	clone.SpecialNames = append([]scriptpkg.AnnotationSpan(nil), src.SpecialNames...)
+	clone.PrimaryEntities = append([]scriptpkg.AnnotatedEntity(nil), src.PrimaryEntities...)
+	clone.SecondaryEntities = append([]scriptpkg.AnnotatedEntity(nil), src.SecondaryEntities...)
+	clone.ImportantWords = append([]scriptpkg.AnnotationSpan(nil), src.ImportantWords...)
+	clone.NumericValues = append([]scriptpkg.AnnotationSpan(nil), src.NumericValues...)
+	clone.Warnings = append([]string(nil), src.Warnings...)
+	return &clone
+}
+
 // computeSegmentEntityAnnotations builds the per-scene grounded annotations
 // from the read-only snapshot + the fenced segments, keyed by scene index. It
 // mirrors applySegmentEntityAnnotations matching (SceneID, then Position) but
@@ -305,6 +329,10 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 // a matching segment produces grounded annotations (the same precedence the
 // sequential flow used), so a run without a VidRush pipeline still plans
 // intents from the scenes' own annotations.
+//
+// Seeded annotations are detached copies: refining them in place here (phrase
+// displacement, surname dedupe) must not touch the live scene annotations the
+// TTS branch serializes into its checkpoint snapshot.
 func computeSegmentEntityAnnotations(ctx context.Context, selector PhraseSelector, snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool, requestedPhraseSets ...[]string) (map[int]*scriptpkg.SceneAnnotations, error) {
 	annotations := make(map[int]*scriptpkg.SceneAnnotations)
 	for _, s := range snapshot {
@@ -312,7 +340,7 @@ func computeSegmentEntityAnnotations(ctx context.Context, selector PhraseSelecto
 			continue
 		}
 		if s.Annotations != nil {
-			annotations[s.Index] = s.Annotations
+			annotations[s.Index] = cloneSceneAnnotations(s.Annotations)
 		}
 	}
 	indexByID := make(map[string]int, len(snapshot))

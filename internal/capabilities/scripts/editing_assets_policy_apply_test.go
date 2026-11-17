@@ -207,6 +207,50 @@ func TestApplyEditingAssetPolicySelectsChannelBackgroundForOverlay(t *testing.T)
 	}
 }
 
+// TestApplyEditingAssetPolicyClipOnlyFinalJobLeavesCanvasForClip pins the
+// r114 regression: a clip_only final job has exactly one picture, the clip.
+// Selecting a stock editorial plate here made the opaque overlay window show
+// boxing stock instead of the clip itself.
+func TestApplyEditingAssetPolicyClipOnlyFinalJobLeavesCanvasForClip(t *testing.T) {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+	req := combinedTimelineRequest("clip-only-final")
+	req.MediaMode = scriptpkg.MediaModeClipOnly
+	req.FinalJob = true
+	req.Render.Enabled = true
+	req.Render.Background = &scriptpkg.VideoBackgroundSpec{Mode: "none"}
+	req.Source.ClipIDs = []string{"yt_clip_1"}
+	req.ScriptParams.Segments = []scriptpkg.ScriptSegment{{ID: "clip-0", ClipIDs: []string{"yt_clip_1"}}}
+	if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+		t.Fatalf("ApplyEditingAssetPolicy: %v", err)
+	}
+	if req.OverlayBackground != nil {
+		t.Fatalf("clip_only final overlay background = %+v, want the resolved clip canvas", req.OverlayBackground)
+	}
+}
+
+// TestApplyEditingAssetPolicyClipOnlyMultiClipKeepsPlate keeps the historical
+// fallback for runs whose scenes reference several clips: there is no single
+// truthful global background plate, so the channel plate remains.
+func TestApplyEditingAssetPolicyClipOnlyMultiClipKeepsPlate(t *testing.T) {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+	req := combinedTimelineRequest("clip-only-multi")
+	req.MediaMode = scriptpkg.MediaModeClipOnly
+	req.FinalJob = true
+	req.Render.Enabled = true
+	req.Render.Background = &scriptpkg.VideoBackgroundSpec{Mode: "none"}
+	req.Source.ClipIDs = []string{"yt_clip_1", "yt_clip_2"}
+	if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+		t.Fatalf("ApplyEditingAssetPolicy: %v", err)
+	}
+	bg := req.OverlayBackground
+	if bg == nil {
+		t.Fatal("multi-clip overlay background was not selected")
+	}
+	if _, ok := mediaregistry.LookupEditorialBackground(bg.AssetID); !ok {
+		t.Fatalf("multi-clip overlay background %q is not a canonical plate", bg.AssetID)
+	}
+}
+
 // TestApplyEditingAssetPolicyOverlayBackgroundIsGatedOnRender is the guardrail
 // that keeps the fill from being a back door: the overlay pipeline compiles a
 // plan as soon as OverlayBackground is non-nil, so a job that never asked for a

@@ -7,7 +7,7 @@
 // cleanup). No two services implement the same shape elsewhere.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a failed VLM pass surfaces a
-// typed error; a missing row leaves Qdrant keys ABSENT (NOT empty
+// typed error; a missing row leaves pgvector keys ABSENT (NOT empty
 // string / NOT empty slice); empty inputs at every stage are
 // rejected before any HTTP / ffmpeg / DB call.
 //
@@ -58,7 +58,7 @@
 //
 //   - The CLI (cmd/admin/reindex_visual_summary.go) reads the row
 //     after upsert and surfaces the six payload keys to AssetData so
-//     the next reindex --apply pass pushes them into Qdrant.
+//     the next reindex --apply pass pushes them into pgvector.
 package indexing
 
 import (
@@ -88,7 +88,7 @@ const (
 
 	// DefaultVLMPreprocessingVersion is the canonical
 	// "vlm-sampler/<semver>" identifier of the FFmpeg + frame-sampler
-	// pipeline. Bumping it forces Qdrant re-indexing (the
+	// pipeline. Bumping it forces pgvector re-indexing (the
 	// godlike/06 SSOT "version the projection with preprocessing
 	// versions" rule).
 	DefaultVLMPreprocessingVersion = "vlm-sampler/v1.0.0"
@@ -195,7 +195,7 @@ type VisualSummaryRepositoryWriter interface {
 // godlike/07 NO-FAKE-AVAILABILITY: every failure surfaces a typed
 // error; the supersede gate silently skips the upsert when the
 // prospective SourceHash matches the existing row's SourceHash
-// (no DB write, no Qdrant side effect, the previous row remains
+// (no DB write, no external vector store side effect, the previous row remains
 // canonical).
 type VisualSummaryService struct {
 	sampler FrameSampler

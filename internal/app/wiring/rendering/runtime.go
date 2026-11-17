@@ -1,6 +1,6 @@
 // Package app — minimal RenderingGen composition. This file deliberately
 // owns only overlay rendering dependencies; it must not grow creator, DB,
-// Qdrant, scheduler, or application-Drive dependencies.
+// pgvector, scheduler, or application-Drive dependencies.
 package rendering
 
 import (

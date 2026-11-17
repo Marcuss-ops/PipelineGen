@@ -22,14 +22,14 @@ import (
 // CreateClip creates a new clip and triggers semantic enrichment + vector indexing
 // so the clip becomes immediately searchable via semantic search endpoints.
 //
-// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the synchronous
+// PR 6 (June 2026, codex/pgvector-api-writers-fail-closed): the synchronous
 // SQLite UPSERT step now routes through dispatcher.EnqueueAndIndex —
 // atomic UPSERT media_assets + INSERT outbox_events in a single
 // transaction. A nil dispatcher is treated as a wiring error (HTTP 503),
 // not as a fallback trigger to ih.assetRepo.Upsert. The downstream async
 // enrichment path (media.enrich job enqueue) is preserved — it covers
 // semantic enrichment (LLM tags) and is a separate concern from the
-// Qdrant indexing path that the outbox event already triggers.
+// pgvector indexing path that the outbox event already triggers.
 func (ih *IngestHandler) CreateClip(c *gin.Context) {
 	source := c.Param("source")
 

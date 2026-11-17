@@ -22,7 +22,7 @@ import (
 
 // TestChromaticChannelNames pins the closed set of canonical channel
 // names the registry MUST recognize. Per godlike/06 one-canonical-
-// owner-per-fact: changing these names is a wire-level break (Qdrant
+// owner-per-fact: changing these names is a wire-level break (pgvector
 // vector names match these constants 1:1). Editing the test alone
 // without coordinating across the codebase MUST fail.
 func TestChromaticChannelNames(t *testing.T) {

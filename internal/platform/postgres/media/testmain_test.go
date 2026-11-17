@@ -18,7 +18,6 @@ package media_test
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/url"
 	"os"
 	"strings"
@@ -26,7 +25,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	pgmigration "github.com/Marcuss-ops/PipelineGen/migrations/postgres"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 // requirePostgresDSN returns the DSN from TEST_POSTGRES_DSN and reports
@@ -151,17 +150,10 @@ func databaseNameFromDSN(dsn string) string {
 }
 
 func applyMediaMigrations(db *sql.DB) error {
-	// The canonical ORDERED self-bootstrap sequence (001→009, 009 last
-	// because 002's CREATE TABLE IF NOT EXISTS cannot converge an existing
-	// database) lives in one place — pgmigration.MediaSelfBootstrapDDL — so
-	// no runner can apply a silent prefix of it (audit point 9).
-	stmts := pgmigration.MediaSelfBootstrapDDL
-	for i, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			return fmt.Errorf("migration %d: %w", i+1, err)
-		}
-	}
-	return nil
+	// RunMediaMigrations owns both the canonical ORDERED sequence and the
+	// checksum-verified schema_migrations ledger (audit points 9 + D2).
+	_, err := pgmedia.RunMediaMigrations(context.Background(), db)
+	return err
 }
 
 func firstToken(s string) string {

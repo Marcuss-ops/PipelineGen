@@ -11,17 +11,17 @@
 //	ChunkState + ChunkMetadataEntry + StockRunMetadata (40+ fields) at
 //	internal/capabilities/assets/providers/stock/stockpipeline/. Both
 //	pipelines independently write metadata that eventually lands in
-//	Qdrant's AssetData (60+ fields) at
-//	internal/platform/qdrant/indexing/index_writer_types.go.
+//	pgvector's AssetData (60+ fields) at
+//	internal/platform/postgres/media/indexing/index_writer_types.go.
 //
 // This type unifies the two source-of-truth representations so:
-//   - Qdrant PayloadMapper reads from ClipSemanticMetadata (via infra adapter)
+//   - pgvector PayloadMapper reads from ClipSemanticMetadata (via infra adapter)
 //   - SearchTextComposer's AsSearchTextInput() derives from ClipSemanticMetadata
 //
 // Adapters:
 //   - FromCanonicalClipMetadata (application layer, follow-up PR)
 //   - FromStockRunMetadata + FromChunkState (application layer, follow-up PR)
-//   - AsAssetData (infra layer, follow-up PR in internal/platform/qdrant/)
+//   - AsAssetData (infra layer, follow-up PR in internal/platform/postgres/media/)
 //
 // godlike/07 minimum-blast-radius: additive-only. Existing per-pipeline
 // metadata types continue working; callers that adopt ClipSemanticMetadata
@@ -36,7 +36,7 @@ import (
 // ClipSemanticMetadata is the canonical domain-level representation of a
 // media clip's semantic metadata. It unifies YouTube's CanonicalClipMetadata
 // and Stock's ChunkState + StockRunMetadata into a single shape that
-// Qdrant's AssetData and the SearchTextComposer can consume.
+// pgvector's AssetData and the SearchTextComposer can consume.
 //
 // Field naming convention:
 //   - Identity fields use the pipeline-canonical names (AssetID, JobID)
@@ -48,7 +48,7 @@ import (
 //     Stock's SHA256
 //
 // godlike/06 SSOT: this struct is the SOLE canonical owner of the unified
-// metadata field set. The 19 first-class Qdrant fields (PR-006) and the
+// metadata field set. The 19 first-class pgvector fields (PR-006) and the
 // timestamp/drive enrichment fields (PR-TIMESTAMP-FOLDER-LINK) all map
 // 1:1 from this type to AssetData.
 type ClipSemanticMetadata struct {
@@ -171,7 +171,7 @@ type ClipSemanticMetadata struct {
 
 	// DriveLink is the canonical Drive web-view link.
 	// YouTube: DrivePath (WebViewLink); Stock: RemoteWebViewLink.
-	// Canonical name for the Drive locator consumed by Qdrant payload.
+	// Canonical name for the Drive locator consumed by pgvector payload.
 	DriveLink string `json:"drive_link,omitempty"`
 
 	// DriveFileID is the Google Drive file ID.
@@ -234,7 +234,7 @@ type ClipSemanticMetadata struct {
 	// YouTube: 1; Stock: ChunkState.TotalChunks.
 	TotalChunks int `json:"total_chunks,omitempty"`
 
-	// IndexingStatus is the lifecycle state hint for the Qdrant payload.
+	// IndexingStatus is the lifecycle state hint for the pgvector payload.
 	// YouTube: "INDEXING_PENDING" (projection-time literal);
 	// Stock: StockRunMetadata.IndexingStatus.
 	IndexingStatus string `json:"indexing_status,omitempty"`

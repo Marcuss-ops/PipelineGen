@@ -21,7 +21,6 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/gin-gonic/gin"
 
 	"go.uber.org/zap"
@@ -50,7 +49,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// POSTGRES-MEDIA-CUTOVER: resolve BOTH semantic retrieval and hydration
 	// from the same canonical PostgreSQL MediaSearcher. There is deliberately
 	// no seed from the legacy vector service and no legacy hydration adapter,
-	// so Qdrant/SQLite cannot re-enter the media read path as fallbacks.
+	// so pgvector/SQLite cannot re-enter the media read path as fallbacks.
 	// SelectMediaSearchStore(cfg, root.MediaPostgres) is the canonical
 	// fail-closed resolver for the media search store; the deleted
 	// certify-media-cutover driver's Gate A/C used to probe it, and the live
@@ -69,7 +68,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		// as indexed document vectors. Ollama is a chat/legacy embedder and
 		// must not silently create a second vector space.
 		textEmb := embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout())
-		embeddingReg = newEmbeddingRegistryAdapter(qdrantsearch.NewTextEmbedderAdapter(textEmb), nil)
+		embeddingReg = newEmbeddingRegistryAdapter(embeddings.NewTextEmbedderAdapter(textEmb), nil)
 	}
 
 	var deliveryPort search.AssetDeliveryService
@@ -399,7 +398,7 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, r
 		regWiring.OutboxHandler = outboxapi.NewHandler(wiringlifecycle.NewOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
 	}
 	// Media-search transport follows the canonical media plane, not the legacy
-	// Qdrant process bundle. When PostgreSQL is deployed, readiness reports any
+	// pgvector process bundle. When PostgreSQL is deployed, readiness reports any
 	// missing semantic dependency through the handler instead of hiding the route.
 	if root != nil && root.MediaPostgres != nil && crossStep.SearchAggregator != nil {
 		searchAgg := mediasearchapi.AggregatorSearcher(crossStep.SearchAggregator)

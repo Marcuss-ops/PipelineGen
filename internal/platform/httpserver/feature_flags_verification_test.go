@@ -4,7 +4,6 @@
 // the feature flags:
 //
 //   - ScriptClipsEnabled:  route-level gate (module not registered when disabled)
-//   - QdrantEnabled:   composition-time compatibility gate (not per-request)
 //
 // Each test function exercises ONE behavioral invariant. The test names
 // follow the pattern TestFeatureFlag_{Flag}_{Scenario}_ExpectedStatus.
@@ -20,9 +19,6 @@ package httpserver
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -116,55 +112,6 @@ func TestFeatureFlag_ScriptClips_Middleware_Blocked_NilFlags(t *testing.T) {
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code,
 		"feature-flag middleware must return 503 when the flags port is nil")
-}
-
-// ─── QdrantEnabled: composition-time gate ──────────────────────────
-//
-// The QdrantEnabled flag is NOT a per-request feature flag. It is a
-// composition-time compatibility gate that validates (Qdrant.Enabled,
-// ClipIndexer.Enabled) pair consistency at boot. The canonical 4 TDD
-// tests for this gate live in
-// internal/app/build_bundles_qdrant_gates_test.go.
-
-// TestFeatureFlag_Qdrant_GateExists_RegressionGuard is a structural
-// regression guard that verifies the canonical Qdrant compatibility gate
-// FILE exists on disk. If the file were deleted (e.g. during a god-object
-// split), this test fails and the operator is warned.
-func TestFeatureFlag_Qdrant_GateExists_RegressionGuard(t *testing.T) {
-	// Locate the canonical gate file relative to the repo root.
-	// runtime.Caller gives us this test file's path; walk up to go.mod.
-	_, thisFile, _, ok := runtime.Caller(0)
-	require.True(t, ok, "runtime.Caller must succeed")
-	// Walk up from internal/platform/httpserver/ to repo root.
-	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(thisFile))))
-	gateFile := filepath.Join(repoRoot, "internal", "app", "wiring", "build_process_qdrant.go")
-
-	_, err := os.Stat(gateFile)
-	require.NoError(t, err, "canonical Qdrant gate file must exist at internal/app/wiring/build_process_qdrant.go")
-
-	// Also verify the test file exists.
-	testFile := filepath.Join(repoRoot, "internal", "app", "wiring", "build_bundles_qdrant_gates_test.go")
-	_, err = os.Stat(testFile)
-	require.NoError(t, err, "canonical Qdrant gate test file must exist at internal/app/wiring/build_bundles_qdrant_gates_test.go")
-
-	// Verify the gate file contains the canonical helper function name.
-	content, err := os.ReadFile(gateFile)
-	require.NoError(t, err, "must be able to read the gate file")
-	assert.Contains(t, string(content), "validateQdrantIndexerCompatibility",
-		"gate file must contain the canonical validateQdrantIndexerCompatibility helper")
-
-	// Verify the test file contains the 4 canonical test functions.
-	testContent, err := os.ReadFile(testFile)
-	require.NoError(t, err, "must be able to read the gate test file")
-	testStr := string(testContent)
-	assert.Contains(t, testStr, "TestValidateQdrantIndexerCompatibility_NilCfg_ReturnsError",
-		"test file must contain nil-cfg test (canonical TDD case 1)")
-	assert.Contains(t, testStr, "TestValidateQdrantIndexerCompatibility_BothDisabled_ReturnsNil",
-		"test file must contain both-disabled test (canonical TDD case 2)")
-	assert.Contains(t, testStr, "TestValidateQdrantIndexerCompatibility_BothEnabled_ReturnsNil",
-		"test file must contain both-enabled test (canonical TDD case 3)")
-	assert.Contains(t, testStr, "TestValidateQdrantIndexerCompatibility_QdrantEnabledNoClipIndexer_FailsClosed",
-		"test file must contain the RED POINT test (canonical TDD case 4)")
 }
 
 // ─── FeatureFlagChecker: generic factory ───────────────────────────

@@ -3,7 +3,7 @@
 // PR-CLIPINGEST-PIPELINE step 11 (July 2026): category (a).
 //
 // User spec — "idempotenza — stessa clip due volte → 1 media_assets,
-// 1 render_master, 0 eventi Qdrant duplicati".
+// 1 render_master, 0 eventi pgvector duplicati".
 //
 // Cover:
 //   - Dispatching the same (assetID, contentHash) twice → the 2nd

@@ -106,7 +106,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 	width, height := decodeImageDimensions(content)
 
-	// PR-QDRANT-IMAGES-INDEX (July 2026): tagImageMetadata failure is
+	// PR-VECTOR-IMAGES-INDEX (July 2026): tagImageMetadata failure is
 	// now non-fatal. On error we log a warning and continue with
 	// metaResult=nil — the image is still downloaded to disk, uploaded
 	// to Drive, and persisted in SQLite. The caller still gets a valid

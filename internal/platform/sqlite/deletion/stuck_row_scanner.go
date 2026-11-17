@@ -17,7 +17,7 @@
 // surfaced first — matches operator-dashboard skim expectations
 // (the row that's been stuck the longest is what the operator
 // wants to see first). Per-tick limit: 100 rows (the canonical
-// Blocco 3.2 batch size mirrors the qdrant/reconciler precedent
+// Blocco 3.2 batch size mirrors the pgvector/reconciler precedent
 // + outbox-pool worker count to balance per-tick DB load against
 // catch-up throughput).
 package deletion
@@ -75,7 +75,7 @@ func NewScanner(db *sql.DB, batchSize int) *Scanner {
 //   - sql.ErrNoRows: never returned (we scan 0..N rows).
 //   - non-nil on any SQL error (driver-level or DB schema drift).
 //     ReconcileOnce surfaces this as a fail-close error per the
-//     Phase-1 fail-close doctrine (qdrant/reconciler/scanner.go).
+//     Phase-1 fail-close doctrine (pgvector/reconciler/scanner.go).
 func (s *Scanner) ListStuckRows(now time.Time, threshold time.Duration) ([]reconciler.StuckRow, error) {
 	cutoff := now.Add(-threshold)
 	cutoffStr := timeutil.FormatRFC3339(cutoff)

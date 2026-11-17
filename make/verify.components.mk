@@ -53,9 +53,6 @@ verify-clips:
 test-stock-component:
 	@$(VERIFY_COMPONENT_RUNNER) stock $(VERIFY_COMPONENT_FLAGS)
 
-verify-qdrant:
-	@$(VERIFY_COMPONENT_RUNNER) qdrant $(VERIFY_COMPONENT_FLAGS)
-
 verify-indexing:
 	@$(VERIFY_COMPONENT_RUNNER) indexing $(VERIFY_COMPONENT_FLAGS)
 
@@ -111,9 +108,6 @@ verify-race-clips:
 
 verify-race-stock:
 	@$(VERIFY_COMPONENT_RUNNER) stock --race $(VERIFY_COMPONENT_FLAGS)
-
-verify-race-qdrant:
-	@$(VERIFY_COMPONENT_RUNNER) qdrant --race $(VERIFY_COMPONENT_FLAGS)
 
 verify-race-indexing:
 	@$(VERIFY_COMPONENT_RUNNER) indexing --race $(VERIFY_COMPONENT_FLAGS)

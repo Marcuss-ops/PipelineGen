@@ -7,24 +7,24 @@ import (
 // repairAuditReport is the canonical JSON audit output produced by
 // the repair-drive-links command when --audit is set.
 type repairAuditReport struct {
-	JobID               string `json:"job_id"`
-	ExecutedAt          string `json:"executed_at"`
-	RemoveInvalid       bool   `json:"remove_invalid"`
-	AssetsReferenced    int    `json:"assets_referenced"`
-	Verified            int    `json:"verified"`
-	Updated             int    `json:"updated"`
-	Missing             int    `json:"missing"`
-	Trashed             int    `json:"trashed"`
-	Inaccessible        int    `json:"inaccessible"`
-	Malformed           int    `json:"malformed"`
-	Orphans             int    `json:"orphans"`
-	BrokenLocations     int    `json:"broken_locations"`
-	Duplicates          int    `json:"duplicates"`
-	TransportErrors     int    `json:"transport_errors"`
-	QdrantMismatches    int    `json:"qdrant_mismatches"`
-	QdrantEventsEmitted int    `json:"qdrant_events_emitted"`
-	SpecSceneRepaired   bool   `json:"specscene_repaired"`
-	SQLiteUpdated       bool   `json:"sqlite_updated"`
+	JobID              string `json:"job_id"`
+	ExecutedAt         string `json:"executed_at"`
+	RemoveInvalid      bool   `json:"remove_invalid"`
+	AssetsReferenced   int    `json:"assets_referenced"`
+	Verified           int    `json:"verified"`
+	Updated            int    `json:"updated"`
+	Missing            int    `json:"missing"`
+	Trashed            int    `json:"trashed"`
+	Inaccessible       int    `json:"inaccessible"`
+	Malformed          int    `json:"malformed"`
+	Orphans            int    `json:"orphans"`
+	BrokenLocations    int    `json:"broken_locations"`
+	Duplicates         int    `json:"duplicates"`
+	TransportErrors    int    `json:"transport_errors"`
+	IndexMismatches    int    `json:"index_mismatches"`
+	IndexEventsEmitted int    `json:"index_events_emitted"`
+	SpecSceneRepaired  bool   `json:"specscene_repaired"`
+	SQLiteUpdated      bool   `json:"sqlite_updated"`
 	// NoOp is derived from the report and records the formal replay
 	// contract: the run observed the job but performed no mutation.
 	NoOp     bool                `json:"no_op"`
@@ -52,10 +52,10 @@ type repairAssetDetail struct {
 // successfully persisted is still a failure of the contract, so the
 // predicate remains fail-closed for remove-invalid runs.
 func repairReportIsNoOp(r repairAuditReport) bool {
-	if r.TransportErrors > 0 || r.QdrantMismatches > 0 || len(r.Warnings) > 0 {
+	if r.TransportErrors > 0 || r.IndexMismatches > 0 || len(r.Warnings) > 0 {
 		return false
 	}
-	if r.SpecSceneRepaired || r.SQLiteUpdated || r.QdrantEventsEmitted > 0 {
+	if r.SpecSceneRepaired || r.SQLiteUpdated || r.IndexEventsEmitted > 0 {
 		return false
 	}
 	if r.RemoveInvalid && (r.Updated > 0 || r.Missing > 0 || r.Trashed > 0 ||
@@ -86,8 +86,8 @@ func printRepairSummary(r *repairAuditReport) {
 	fmt.Printf("  Broken locations:       %d\n", r.BrokenLocations)
 	fmt.Printf("  Duplicates:             %d\n", r.Duplicates)
 	fmt.Printf("  Transport errors:       %d\n", r.TransportErrors)
-	fmt.Printf("  Qdrant mismatches:      %d\n", r.QdrantMismatches)
-	fmt.Printf("  Qdrant events emitted:   %d\n", r.QdrantEventsEmitted)
+	fmt.Printf("  Index mismatches:       %d\n", r.IndexMismatches)
+	fmt.Printf("  Index events emitted:    %d\n", r.IndexEventsEmitted)
 	fmt.Printf("  SpecScene repaired:     %v\n", r.SpecSceneRepaired)
 	fmt.Printf("  SQLite updated:         %v\n", r.SQLiteUpdated)
 	if len(r.Warnings) > 0 {

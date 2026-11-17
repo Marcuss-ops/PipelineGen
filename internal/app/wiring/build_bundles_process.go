@@ -13,16 +13,16 @@
 //   - internal/app/build_drive_startup.go  (startDriveBackgroundFolders —
 //     Drive folder bootstrap, AC validation, retry warmup)
 //
-// PR2 (June 2026) extracted BuildProcessBundle + the Qdrant
+// PR2 (June 2026) extracted BuildProcessBundle + the pgvector
 // compile-time port assertions to
-//   - internal/app/build_process_qdrant.go (BuildProcessBundle +
+//   - internal/app/build_process_bundle.go (BuildProcessBundle +
 //     clipindexer/jobsoutbox port-conformance assertions — the
-//     Qdrant-derivable media-processing bundle + the typed-port
+//     vector-derivable media-processing bundle + the typed-port
 //     conformance gates).
 //
 // July 2026 sub-section extraction: the inline blocks of
 // BuildOutboxBundle were extracted to sibling files of this package
-// per the documented layout in build_process_qdrant.go:
+// per the documented layout in build_process_bundle.go:
 //   - internal/app/build_outbox_handlers.go (buildOutboxDeps +
 //     assertSingleMediaIndexOwner + registerOutboxWorkers +
 //     noopIndexClipper — the outbox deps + handler-registration
@@ -49,11 +49,11 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
-
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -63,15 +63,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 // FASE 2.B PR1 (June 2026): BuildDriveBundle + startDriveBackgroundFolders
 // moved to build_bundles_drive.go + build_drive_startup.go respectively.
-// FASE 2.B PR2 (June 2026): BuildProcessBundle + the Qdrant compile-time
-// port assertions moved to build_process_qdrant.go. Both are referenced
+// FASE 2.B PR2 (June 2026): BuildProcessBundle + the pgvector compile-time
+// port assertions moved to build_process_bundle.go. Both are referenced
 // by composition.go::NewComposition via `package app`-level visibility
 // (cross-file within the same package). This file no longer needs the
-// `assetsearch` / `clipindexer` / `driver` / `qdrant` / `sqassets` /
+// `assetsearch` / `clipindexer` / `driver` / `pgvector` / `sqassets` /
 // `vlm` imports — every bundle left here is outbox-path-only.
 
 // BuildOutboxBundle constructs the canonical ingestion outbox + outbox_events.Pool.
@@ -81,18 +82,18 @@ import (
 //
 //	The bundle itself is fully populated on return.
 //
-// PR 8 (June 2026, codex/qdrant-app-writers-fail-closed): the previous
-// `process *ProcessBundle` arg was replaced with `qd *QdrantDeps`, the
-// tiny pre-phase bundle that composition.go::buildQdrantDeps populates
+// PR 8 (June 2026, codex/pgvector-app-writers-fail-closed): the previous
+// `process *ProcessBundle` arg was replaced with `qd *IndexDeps`, the
+// tiny pre-phase bundle that composition.go::buildIndexDeps populates
 // BEFORE BuildOutboxBundle runs. The ring between ProcessBundle and
 // OutboxBundle is broken: BuildOutboxBundle now reads ONLY
-// `qd.QdrantDeleter` + `qd.ClipIndexerService` (NOT the full ProcessBundle),
+// `qd.VectorPointDeleter` + `qd.ClipIndexerService` (NOT the full ProcessBundle),
 // so BuildOutboxBundle can run BEFORE BuildProcessBundle. Composition graph:
 //
-//	qdrantDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd)
+//	indexDeps(no deps) -> outbox(reads qd) -> process(reads outbox+qd)
 //
 // Fail-closed: a nil qd fails composition immediately (composition forgot
-// to call buildQdrantDeps first?).
+// to call buildIndexDeps first?).
 //
 // P0.7 Wave 21 Step 10/12 (June 2026) — voiceover cleanup handler
 // wiring: the voiceoverCleanup arg passes drive.Admin directly (it
@@ -114,9 +115,9 @@ import (
 // production it is a dead-letter regression, so the wiring logs a
 // loud Warn when it is missing. Production wiring always supplies
 // the canonical drive.FileLifecycle adapter.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo detail.ArtifactStageRepository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter, mediaPostgres *sql.DB) (*OutboxBundle, IOpaqueStartFunc, error) {
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, qd *IndexDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo detail.ArtifactStageRepository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter, mediaPostgres *sql.DB) (*OutboxBundle, IOpaqueStartFunc, error) {
 	if qd == nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: indexDeps is nil (VECTOR-002 PR8 fail-closed; composition forgot to call buildIndexDeps first?)")
 	}
 	if stagingSvc == nil {
 		// FASE 3 Push 3.1c: the Publisher worker is the canonical
@@ -145,20 +146,13 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: drivePublisher is required (FASE 3 Push 3.1e; composition must inject DriveBundle.Publisher)")
 	}
 
-	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth
-	// gate at all 4 Qdrant composition sites. THIRD wire site (the
-	// outbox is the PRIMARY consumer of the Qdrant stack — it registers
-	// IndexingHandler + IndexDeleteHandler when cfg.Qdrant.Enabled=true).
-	// godlike/07 no-fake-availability: any operator misconfiguration
-	// is caught BEFORE the outbox handler registry wires up malformed
-	// mandatory deps. Cross-ref:
-	// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility.
-	if err := validateQdrantIndexerCompatibility(cfg); err != nil {
-		return nil, nil, err
-	}
+	// The former vector engine config-mismatch gate and the media pgvector handler
+	// registrations (IndexingHandler + IndexDeleteHandler) were deleted with
+	// the legacy vector engine on 2026-11-17. The outbox now registers no media index
+	// handler; the PostgreSQL pgvector index worker is the canonical consumer.
 	outboxEventsRepo := outboxevents.NewRepository(dbs.DualPool.Writer)
 
-	// PR 3 fix/qdrant-outbox-fail-closed BL-1 fix: dispatcher
+	// PR 3 fix/pgvector-outbox-fail-closed BL-1 fix: dispatcher
 	// construction happens AFTER the fail-closed media-index-owner
 	// assertion (assertSingleMediaIndexOwner above), so when
 	// repos.ClipsRepo was nil the call returns the typed error the
@@ -181,9 +175,8 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 
 	// POSTGRES-MEDIA-CUTOVER: in media-SSOT mode, build the canonical
 	// pgvector index worker and its runtime drain loop. The embedder is
-	// routed through cfg.ClipIndexer.ServerURL (the E5 sidecar contract —
-	// the SAME sidecar the Qdrant plane used, so document vectors stay in
-	// one space) and the model identity comes from
+	// routed through cfg.ClipIndexer.ServerURL (the E5 sidecar contract, so
+	// document vectors stay in one space) and the model identity comes from
 	// cfg.MediaPostgreSQL.EmbeddingModel. Fail-closed: an empty sidecar
 	// URL in PG mode aborts composition (no embedder → no vectors → no
 	// fake availability).
@@ -273,7 +266,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	// `extra ...any` surface is gone, so an incoherent cross-engine dispatcher
 	// is no longer expressible at the call site.
 	dispatcher := outbox.NewDispatcher(outboxEventsRepo, outboxTxMgr, log, canonicalCommitter)
-	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
+	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (VECTOR-002 PR7)")
 	// POSTGRES-MEDIA-CUTOVER: in portable mode SaveDiscoveredAsset also routes
 	// through the committer's own transaction, so the canonical writer must
 	// satisfy the self-owned-transaction discovery port too.
@@ -379,9 +372,8 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 			return err
 		}
 		// POSTGRES-MEDIA-CUTOVER: launch the pgvector index worker's drain
-		// loop (panic-recovered goroutine, exits on ctx.Done). In this mode
-		// the loop replaces the Qdrant indexing handler as the canonical
-		// asset.index.requested consumer.
+		// loop (panic-recovered goroutine, exits on ctx.Done). It is the
+		// canonical asset.index.requested consumer in media-SSOT mode.
 		if pgIndexWorker != nil {
 			concurrent.SafeGo("pg-media-index-worker", func() {
 				pgIndexWorker.Run(ctx, pgmedia.DefaultPollInterval, pgmedia.DefaultLeaseTTL, zapLoggerAsMediaLogger(log))
@@ -484,4 +476,73 @@ func startOutboxEventsPool(
 	})
 	log.Info("outbox events pool started", zap.Duration("poll_interval", cfg.PollInterval))
 	return nil
+}
+
+// ── build_process_bundle.go (merged to respect the package file cap) ──
+// Package app — ProcessBundle orchestration.
+//
+// BuildProcessBundle assembles the media-processing adapters. It owns the
+// composition-time nil check on the pre-phase IndexDeps bundle and the
+// ProcessBundle field-assembly; the helpers live in build_media_processor.go
+// (wireMediaProcessor + newVLMClient). The former legacy vector runtime subsystem
+// was deleted with the legacy vector engine on 2026-11-17; ClipIndexerService now
+// carries only the PostgreSQL reindex requester.
+
+// BuildProcessBundle builds the media-processing adapters and assembles
+// the canonical *ProcessBundle. publisher is passed in directly —
+// the Publisher is the canonical Drive upload canal, and
+// processor.NewProcessor panics on nil publisher so a wiring gap is
+// loud at boot.
+//
+// F2.8 (June 2026): the trailing arg swaps from `*drive.Uploader` to
+// `delivery.Publisher`. The Publisher routes every Drive write from
+// the processor through the DestinationRegistry + RequireSubpath +
+// ConflictPolicy belt; the legacy direct-uploader bypass is closed.
+// See DriveBundle.Publisher doc for the canonical one-owner-per-fact
+// story (godlike/06).
+//
+// The body is intentionally thin: it calls the cross-file helpers
+// (wireMediaProcessor, newVLMClient) and maps their outputs to the
+// ProcessBundle field set. A nil indexDeps fails composition immediately,
+// so a composition that forgot buildIndexDeps surfaces as a typed error.
+// Fail-closed at the composition root: a nil outbox.Dispatcher leaves
+// MediaProcessor=nil so worker / reprocess / ingest paths surface the
+// missing dep rather than silently defaulting to a legacy path. A nil
+// publisher surfaces in processor.NewProcessor as a typed panic at
+// composition time (loud in the operator log) rather than a silent
+// nil-deref on first upload.
+func BuildProcessBundle(
+	ctx context.Context,
+	cfg *config.Config,
+	dbs *Databases,
+	log *zap.Logger,
+	repos *RepoBundle,
+	publisher delivery.Publisher,
+	outbox *OutboxBundle,
+	deps *IndexDeps,
+	mediaPG *sql.DB,
+	mediaConfig mediaexec.ExecutionConfig,
+) (*ProcessBundle, error) {
+	_ = ctx
+
+	if deps == nil {
+		return nil, fmt.Errorf("BuildProcessBundle: indexDeps is nil (composition forgot to call buildIndexDeps first?)")
+	}
+
+	mediaProcessor, err := wireMediaProcessor(outbox, repos, dbs, cfg, publisher, log, mediaPG, mediaConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	vlmClient := newVLMClient(cfg)
+
+	return &ProcessBundle{
+		MediaProcessor:     mediaProcessor,
+		ClipIndexerService: deps.ClipIndexerService,
+		VLMClient:          vlmClient,
+	}, nil
+}
+
+func buildIndexDeps(cfg *config.Config) *IndexDeps {
+	return &IndexDeps{ClipIndexerService: capindexing.NewReindexRequesterHolder(cfg.ClipIndexer.Enabled)}
 }

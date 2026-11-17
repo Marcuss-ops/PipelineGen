@@ -56,7 +56,7 @@ type JobsConfig struct {
 	// often the job_events retention sweeper runs (when RetentionDays > 0).
 	// Default 12h: balances bounded DELETE-load (lock contention) against
 	// operator visibility (operator dashboards refresh 4×/day at this rate,
-	// matching the qdrant-stale-cleaner cadence in pre-Wave 22 docs).
+	// matching the pgvector-stale-cleaner cadence in pre-Wave 22 docs).
 	// Accepts a duration string ("30m", "12h", "1h"); empty falls back to 12h.
 	RetentionInterval string `yaml:"retention_interval" env:"VELOX_RETENTION_INTERVAL" default:"12h"`
 	// PR-Polling / ADR-0002 §D6.5 (June 2026): exponential-backoff
@@ -64,7 +64,7 @@ type JobsConfig struct {
 	// (all forwarded into Worker.BackoffConfig at composition time):
 	//   - PollMaxBackoff is the cap on the per-poll sleep duration
 	//     (exponential: pollEvery → 2× → 4× → … → PollMaxBackoff). The
-	//     default 60s matches the qdrant-stale-cleaner historical
+	//     default 60s matches the pgvector-stale-cleaner historical
 	//     cadence and bounds the worst-case Enqueue→Claim latency
 	//     under sustained idle.
 	//   - PollJitterFraction is the AWS-style full-jitter factor
@@ -182,7 +182,7 @@ type JobsConfig struct {
 	DeletionReconcilerInterval       string `yaml:"deletion_reconciler_interval" env:"VELOX_DELETION_RECONCILER_INTERVAL" default:"15m"`
 	DeletionReconcilerStuckThreshold string `yaml:"deletion_reconciler_stuck_threshold" env:"VELOX_DELETION_RECONCILER_STUCK_THRESHOLD" default:"30m"`
 	// NOTE (POSTGRES-MEDIA-CUTOVER): projection_reconciler_interval was the tick
-	// of the SQLite→Qdrant media projection-reconciler, removed with the media
+	// of the SQLite→legacy media projection-reconciler, removed with the media
 	// cutover. The key is intentionally NOT declared any more: a leftover value
 	// in an operator config.yaml is ignored (media parity is transactional in
 	// PostgreSQL + pgvector), and re-declaring it would advertise a ticker that

@@ -548,7 +548,7 @@ func entityImageMatches(want, entityType string, seg scriptpkg.VidRushSegmentRes
 			continue
 		}
 		// Search results are projected once before acquisition and again after
-		// Drive/SQLite/Qdrant materialization. Prefer the durable candidate on
+		// Drive/SQLite/pgvector materialization. Prefer the durable candidate on
 		// the second pass; otherwise an early discovered hit can leave the
 		// document with an asset_id but no drive_link.
 		if !readyVidRushCandidate(candidate) && !verifiedImageCandidateWithoutDrive(candidate) {

@@ -19,7 +19,7 @@ func TestIsTerminal_NilReturnsFalse(t *testing.T) {
 // that wraps with NewTerminalError is classified as terminal
 // regardless of the wrapped cause.
 func TestIsTerminal_TypedError(t *testing.T) {
-	cause := errors.New("qdrant schema mismatch")
+	cause := errors.New("pgvector schema mismatch")
 	wrapped := NewTerminalError(cause)
 	if !IsTerminal(wrapped) {
 		t.Fatal("NewTerminalError-wrapped error must be classified as terminal")
@@ -84,7 +84,7 @@ func TestIsTerminal_StringBreadcrumb(t *testing.T) {
 func TestIsTerminal_PlainErrorReturnsFalse(t *testing.T) {
 	cases := []error{
 		errors.New("network: timeout"),
-		errors.New("qdrant: 503 service unavailable"),
+		errors.New("pgvector: 503 service unavailable"),
 		fmt.Errorf("wrapped: %w", errors.New("transient")),
 		errors.New("terminally broken format"),
 		errors.New("terminal illness detected"),
@@ -113,9 +113,9 @@ func TestNewTerminalError_NilReturnsNil(t *testing.T) {
 // We expose the underlying error's message verbatim (no injected
 // breadcrumb) because the typed *TerminalError IS the signal.
 func TestTerminalError_ErrorFormat(t *testing.T) {
-	cause := errors.New("qdrant: dimension mismatch")
+	cause := errors.New("pgvector: dimension mismatch")
 	got := NewTerminalError(cause).Error()
-	if got != "qdrant: dimension mismatch" {
+	if got != "pgvector: dimension mismatch" {
 		t.Fatalf("Error() = %q; want unchanged underlying message %q", got, cause.Error())
 	}
 }

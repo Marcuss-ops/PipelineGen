@@ -421,7 +421,7 @@ func buildStockManifest(workflowID, jobID string) *job.ArtifactManifest {
 //
 // PROSSIMO STEP: buildStockManifest emette 5 entry Required:false;
 // il chunk-rendering ladder (già wired) flippa Required:true quando
-// LocalPath è hydrated. La projection Qdrant è best-effort con
+// LocalPath è hydrated. La projection pgvector è best-effort con
 // fallback INDEX_PENDING.
 //
 // DEPRECATO: Service.Run (legacy path) coesiste per back-compat

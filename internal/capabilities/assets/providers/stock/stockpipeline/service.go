@@ -93,7 +93,7 @@ type Service struct {
 	// batchRepo is the durable stock batch/group/artifact repository.
 	batchRepo StockBatchRepository
 	// dispatcher is the canonical media_index_outbox dispatcher,
-	// required at ctor time per QDRANT-002 PR7. NewProductionStockPipeline rejects
+	// required at ctor time per VECTOR-002 PR7. NewProductionStockPipeline rejects
 	// nil dispatcher with ErrStockPipelineNilDispatcher.
 	// Audit P0 #6: narrowed from `*outbox.Dispatcher` to the local
 	// `stockChunkDispatcher` interface so test fakes can wire the
@@ -180,7 +180,7 @@ func (s *Service) SourceDurationProbe() SourceDurationProbe {
 //
 // Production wire-up lives in WireStockPipeline
 // (internal/app/module_sources.go::WireStockPipeline). The composition
-// root pre-rejects any nil dispatcher at the wire call-site (QDRANT-002
+// root pre-rejects any nil dispatcher at the wire call-site (VECTOR-002
 // second line of defence so accidental misuse still fails loud.
 func newService(deps Deps) (*Service, error) {
 	if deps.Runtime.Cfg == nil {

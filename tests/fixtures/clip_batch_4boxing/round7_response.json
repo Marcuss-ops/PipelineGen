@@ -45,7 +45,7 @@
     "event_type": "asset.index.requested",
     "aggregate_id": "yt_9u4T_o3FxOU_993_1048_v1",
     "event_idempotency": "ON CONFLICT(event_key) DO NOTHING — replay-safe",
-    "downstream_chain": "outbox_events -> IndexingHandler -> clipindexer -> Qdrant"
+    "downstream_chain": "outbox_events -> IndexingHandler -> clipindexer -> pgvector"
   },
   "expected_media_assets_projection": {
     "table": "media_assets",

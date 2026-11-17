@@ -2,7 +2,7 @@
 //
 // RenderingGen is the GPU-only overlay worker profile. BuildRenderingRuntime
 // owns a SEPARATE worker registry (no script generation, TTS, NLP, or
-// Qdrant) and registers exactly two job types using chronon-render as the
+// pgvector) and registers exactly two job types using chronon-render as the
 // pixel renderer:
 //
 //	overlay.prepare
@@ -13,13 +13,13 @@
 //
 //  1. TestRenderingRuntime_FrozenImportAllowlist — AST scan of every
 //     production file in this subpackage for forbidden imports
-//     (script generation, TTS/voiceover, NLP, Qdrant, SQLite, Drive,
+//     (script generation, TTS/voiceover, NLP, pgvector, SQLite, Drive,
 //     scheduler). RenderingGen is push-only: it renders pixels and emits
-//     an ArtifactManifest; it never owns script/voiceover/NLP/Qdrant reach.
+//     an ArtifactManifest; it never owns script/voiceover/NLP/pgvector reach.
 //
 //  2. TestBuildRenderingRuntime_RegistersOnlyOverlayHandlers — the registry
 //     holds EXACTLY overlay.prepare + overlay.render, marks overlay.render
-//     as artifact-producing, and rejects creator/TTS/NLP/Qdrant job types.
+//     as artifact-producing, and rejects creator/TTS/NLP/pgvector job types.
 //
 //  3. Fail-closed constructor smoke tests (nil config / nil logger).
 package rendering
@@ -50,7 +50,7 @@ const frozenRenderingForbiddenImportSubstringsLen = 7
 // contract: no production file in this package may import any of
 // the following substrings. The RenderingGen worker owns ONLY overlay
 // rendering — PipelineGen owns the OverlayPlan, Chronon3d owns the pixels.
-// Script generation, TTS, NLP and Qdrant belong to other worker profiles
+// Script generation, TTS, NLP and pgvector belong to other worker profiles
 // (creator / sender), never to the renderer profile.
 //
 // Adding a new forbidden reach MUST update this slice AND the
@@ -68,8 +68,8 @@ var frozenRenderingForbiddenImportSubstrings = []string{
 	// NLP entity extraction — Creator-side capability.
 	"internal/infrastructure/nlp",
 
-	// Qdrant — Sender-side derived projection, not RenderingGen.
-	"internal/platform/qdrant",
+	// pgvector — Sender-side derived projection, not RenderingGen.
+	"internal/platform/postgres/media",
 
 	// SQLite — RenderingGen has no DB; the Sender owns persistence.
 	"internal/platform/sqlite",
@@ -102,7 +102,7 @@ func TestRenderingRuntime_FrozenImportAllowlist(t *testing.T) {
 		for _, imp := range imports {
 			for _, forbid := range frozenRenderingForbiddenImportSubstrings {
 				if strings.Contains(imp, forbid) {
-					t.Errorf("RenderingGen: forbidden import %q in %s (matched substring %q). The renderer profile is overlay-only — route script/TTS/NLP/Qdrant/DB/Drive/scheduler reach through other worker profiles (see runtime.go package doc).",
+					t.Errorf("RenderingGen: forbidden import %q in %s (matched substring %q). The renderer profile is overlay-only — route script/TTS/NLP/pgvector/DB/Drive/scheduler reach through other worker profiles (see runtime.go package doc).",
 						imp, file, forbid)
 				}
 			}
@@ -159,7 +159,7 @@ var renderingForbiddenJobTypes = []string{
 // TestBuildRenderingRuntime_RegistersOnlyOverlayHandlers is the canonical
 // registry contract test. BuildRenderingRuntime must build a frozen registry
 // containing EXACTLY overlay.prepare + overlay.render, mark overlay.render
-// as artifact-producing, and never register creator/TTS/NLP/Qdrant job types.
+// as artifact-producing, and never register creator/TTS/NLP/pgvector job types.
 func TestBuildRenderingRuntime_RegistersOnlyOverlayHandlers(t *testing.T) {
 	cfg := &config.Config{}
 	log := zaptest.NewLogger(t)
@@ -185,7 +185,7 @@ func TestBuildRenderingRuntime_RegistersOnlyOverlayHandlers(t *testing.T) {
 	require.False(t, rt.Registry.ProducesArtifacts(capmodel.JobTypePrepare),
 		"overlay.prepare must NOT be marked as artifact-producing")
 
-	// Negative contract: no creator/TTS/NLP/Qdrant job types.
+	// Negative contract: no creator/TTS/NLP/pgvector job types.
 	for _, jt := range renderingForbiddenJobTypes {
 		require.False(t, rt.Registry.Has(jt), "RenderingGen registry must NOT register %q", jt)
 	}

@@ -38,7 +38,7 @@ const (
 
 	// TypeRebuildSearchText is the canonical job type for the
 	// YouTube search-text rebuild pipeline (rebuild the
-	// canonical Qdrant search-text column from raw captions).
+	// canonical pgvector search-text column from raw captions).
 	TypeRebuildSearchText = "youtube.rebuild_search_text"
 )
 

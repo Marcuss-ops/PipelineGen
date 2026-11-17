@@ -206,7 +206,7 @@ func TestPublishClipToDrive_SemanticCategory_FlowsToRequest(t *testing.T) {
 		t.Errorf("expected Category 'Boxe', got %q", req.Category)
 	}
 
-	// Provider must flow through for Qdrant payload enrichment.
+	// Provider must flow through for pgvector payload enrichment.
 	if req.Provider != "youtube" {
 		t.Errorf("expected Provider 'youtube', got %q", req.Provider)
 	}

@@ -58,7 +58,6 @@ PORT="${VELOX_PORT:-8000}"
 BASE_URL="http://127.0.0.1:${PORT}"
 DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")"
 OBS_DB_PATH="${VELOX_OBSERVABILITY_DB_PATH:-$ROOT_DIR/data/observability/api_requests.db.sqlite}"
-QDRANT_URL="${VELOX_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -140,7 +139,6 @@ cmd_doctor() {
     local services=(
         "Server /health|$BASE_URL/health|200"
         "Server /ready|$BASE_URL/ready|200"
-        "Qdrant|$QDRANT_URL/healthz|200"
         "Ollama|$OLLAMA_URL/api/tags|200"
     )
     for entry in "${services[@]}"; do
@@ -230,7 +228,6 @@ cmd_env() {
     printf "  %-30s %s\n" "BASE_URL:" "$BASE_URL"
     printf "  %-30s %s\n" "DB_PATH:" "$DB_PATH"
     printf "  %-30s %s\n" "OBS_DB_PATH:" "$OBS_DB_PATH"
-    printf "  %-30s %s\n" "QDRANT_URL:" "$QDRANT_URL"
     printf "  %-30s %s\n" "OLLAMA_URL:" "$OLLAMA_URL"
     if [[ -n "${VELOX_ADMIN_TOKEN:-}" ]]; then
         printf "  %-30s SET (%d chars)\n" "VELOX_ADMIN_TOKEN:" "${#VELOX_ADMIN_TOKEN}"

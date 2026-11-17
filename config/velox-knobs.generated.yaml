@@ -115,12 +115,6 @@ knobs:
     safe_production: "180"
     owner: "internal/app/wiring/remote_final_job.go"
     description: "How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget)."
-  VELOX_FINAL_JOB_RESOLVE_CONCURRENCY:
-    kind: env
-    default: "1"
-    safe_production: "4 (1..16)"
-    owner: "internal/app/wiring/remote_final_job_resolve.go"
-    description: "Drive sources resolved in parallel while preparing a handoff."
   VELOX_FINAL_JOB_WORKER_ID:
     kind: env
     default: ""

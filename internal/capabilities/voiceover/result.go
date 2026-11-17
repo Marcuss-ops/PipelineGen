@@ -3,7 +3,7 @@
 //
 // Fase 4 Spina Dorsale (July 2026): three territories separated —
 //
-//  1. VoiceoverSynthesis    — TTS only (no database/sql, no drive, no qdrant)
+//  1. VoiceoverSynthesis    — TTS only (no database/sql, no drive, no pgvector)
 //  2. VoiceoverPublication  — Drive upload via delivery.Publisher
 //  3. VoiceoverFinalization  — SQLite persistence + lifecycle projection + outbox
 package voiceover
@@ -22,7 +22,7 @@ import "time"
 // Territory: VoiceoverSynthesis (TTS only).
 //   - NO database/sql import
 //   - NO drive import
-//   - NO qdrant import
+//   - NO pgvector import
 //
 // Callers obtain this from TTSProvider.Synthesize (application layer).
 type VoiceoverSynthesisResult struct {

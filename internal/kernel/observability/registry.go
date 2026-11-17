@@ -206,11 +206,17 @@ const (
 	ComponentFFmpeg           ComponentName = "ffmpeg"
 	ComponentDrive            ComponentName = "drive"
 	ComponentSQLite           ComponentName = "sqlite"
-	ComponentQdrant           ComponentName = "qdrant"
-	ComponentNLP              ComponentName = "nlp"
-	ComponentTTS              ComponentName = "tts"
-	ComponentInternetImages   ComponentName = "internet_images"
-	ComponentRenderQueue      ComponentName = "render_queue"
+	// ComponentVectorSearch is the semantic-vector boundary. It replaced the
+	// former vector-labelled measurement when the legacy vector engine was
+	// removed on 2026-11-17 and pgvector became the sole vector store.
+	ComponentVectorSearch ComponentName = "vector_search"
+	// ComponentLegacyVectorIndex is retained as a catalog identity for
+	// historical runs recorded under the removed engine; no live writer emits it.
+	ComponentLegacyVectorIndex ComponentName = "legacy_vector_index"
+	ComponentNLP               ComponentName = "nlp"
+	ComponentTTS               ComponentName = "tts"
+	ComponentInternetImages    ComponentName = "internet_images"
+	ComponentRenderQueue       ComponentName = "render_queue"
 	// ComponentRenderingGen is the RenderingGen render service (the
 	// Chronon overlay pipeline) whose worker-reported phase timings
 	// PipelineGen projects into canonical operations.
@@ -363,7 +369,7 @@ func AllComponents() []ComponentName {
 	return []ComponentName{
 		ComponentOllama, ComponentProviderResolver, ComponentYouTube,
 		ComponentFFmpeg, ComponentDrive, ComponentSQLite,
-		ComponentQdrant, ComponentNLP, ComponentTTS,
+		ComponentVectorSearch, ComponentLegacyVectorIndex, ComponentNLP, ComponentTTS,
 		ComponentInternetImages,
 		ComponentRenderQueue, ComponentRenderingGen,
 		ComponentChronon, ComponentCUDA,

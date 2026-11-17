@@ -43,7 +43,7 @@ func (c SegmentAssetCandidate) ReadyForBinding() bool {
 	if c.LifecycleComplete() {
 		return strings.EqualFold(strings.TrimSpace(c.RightsStatus), "verified")
 	}
-	// Scene binding is durable after Drive persistence; Qdrant indexing is a
+	// Scene binding is durable after Drive persistence; pgvector indexing is a
 	// rebuildable projection and may complete asynchronously. Keep failed
 	// indexing fail-closed, but do not delay the canonical scene binding for
 	// candidates that are persisted and still awaiting projection.

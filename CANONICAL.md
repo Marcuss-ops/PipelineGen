@@ -27,7 +27,6 @@ Only current, executable information belongs in the working tree. Historical pla
 | Capability ownership | `architecture/ownership.generated.yaml` |
 | Active exceptions only | `architecture/current.yaml` and `architecture/issues.yaml` |
 | Compatibility removals | `architecture/deprecations/` |
-| Qdrant schema | Go adapter under `internal/platform/qdrant/schema` (owned by `internal/platform/qdrant`). NOT a media source of truth: the media Qdrant projection is retired, the machine-readable `architecture/qdrant/v3-schema.json` was deleted with it, and only the non-media consumers (mediamemory frames/concepts, maintenance DR, admin audit) read this schema |
 | Operational procedures | current files under `docs/operations` |
 | Active performance work (what is still measured as FAIL) | `docs/operations/TICKET-FINAL-JOB-BITSTREAM-REUSE-2026-11-01.md` — current state and open items. `TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md` keeps its historical sections; where the two disagree on present state, the live ticket wins |
 | Clip pre-planner pipeline (input → planner → search → sampler → view redaction → generator → binding) | `docs/operations/clip-pre-planner.md` |

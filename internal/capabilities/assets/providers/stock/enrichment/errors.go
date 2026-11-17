@@ -123,7 +123,7 @@ var ErrEnrichmentPersistFailed = errors.New("enrichment: failed to persist enric
 // transient infrastructure failures. The retry path must NOT
 // silently no-op on emit failure — a worker that catches this
 // sentinel and returns nil would mask the outbox gap and the asset
-// would never be re-upserted to Qdrant via the AssetPublishedHandler
+// would never be re-upserted to pgvector via the AssetPublishedHandler
 // path.
 var ErrEnrichmentEmitFailed = errors.New("enrichment: failed to emit asset.published v1 outbox event (retryable)")
 

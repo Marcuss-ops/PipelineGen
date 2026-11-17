@@ -12,8 +12,8 @@
 //
 // godlike/07 transport error taxonomy: the VLM client uses its own
 // sentinel strings (status + body preview in the wrap); the
-// qdrant-side transport.ErrAliasSwitchNotReady / etc. taxonomy is
-// reserved for the canonical qdrant transport surface.
+// pgvector-side transport.ErrAliasSwitchNotReady / etc. taxonomy is
+// reserved for the canonical pgvector transport surface.
 package indexing
 
 import (
@@ -95,7 +95,7 @@ func NewHTTPVLMClient(endpoint string, timeout time.Duration) *HTTPVLMClient {
 // typed error; JSON decode failure surfaces typed error. The
 // underlying transport.ErrAliasSwitchNotReady / etc. error taxonomy
 // is NOT used here (transport errors reserved for the canonical
-// qdrant transport surface); the VLM client uses sentinel strings.
+// pgvector transport surface); the VLM client uses sentinel strings.
 func (c *HTTPVLMClient) Infer(ctx context.Context, imagePath string) (*VLMInferenceResponse, error) {
 	if strings.TrimSpace(imagePath) == "" {
 		return nil, ErrVLMJobConfigLocalPathRequired

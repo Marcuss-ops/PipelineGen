@@ -94,6 +94,8 @@ type TranslationInput struct {
 	SourceLanguage Language
 	TargetLanguage Language
 	SourceText     string
+	Provider       string
+	Model          string
 }
 
 // Translator translates scene text from one language to another.

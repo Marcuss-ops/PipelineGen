@@ -230,14 +230,14 @@ func TestModuleDependencyConstraints(t *testing.T) {
 		"internal/api/assets/clips/nonops/handler.go":       true,
 		"internal/api/assets/clips/ops.go":                  true,
 		"internal/api/assets/clips/search.go":               true,
-		// TODO(archcheck-bridge): api/transport/qdrant_health.go exposes
-		// Qdrant collection/search/disaster-recovery types directly.
+		// TODO(archcheck-bridge): api/transport/pgvector_health.go exposes
+		// pgvector collection/search/disaster-recovery types directly.
 		// Migration target: narrow typed port in internal/api/transport
-		// (e.g. internal/api/transport/qdrant_health_port.go) so this
-		// handler consumes an interface and the concrete Qdrant types
+		// (e.g. internal/api/transport/pgvector_health_port.go) so this
+		// handler consumes an interface and the concrete pgvector types
 		// stay in internal/infrastructure. Retiring this entry is the
 		// exit criterion.
-		"internal/api/transport/qdrant_health.go": true,
+		"internal/api/transport/pgvector_health.go": true,
 		// TODO(archcheck-bridge): domain/remote imports
 		// internal/infrastructure/files for idempotency key derivation
 		// (ArtifactIdempotencyKey / CompleteJobIdempotencyKey).

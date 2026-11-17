@@ -14,7 +14,7 @@ func FuzzNormalizeHealthChecks(f *testing.F) {
 		"db,jobs",
 		"db,,jobs",
 		" db ",
-		"qdrant&check=jobs",
+		"pgvector&check=jobs",
 		// unicode
 		"db\x00jobs",
 		"データベース",

@@ -84,6 +84,5 @@ func NewMediaRepoBundle(pgDB *sql.DB, textTrackRepo detail.TextTrackRepository) 
 }
 
 type SearchBundle = searchwiring.SearchBundle
-type ProcessQdrantBundle = processwiring.ProcessQdrantBundle
 type ProcessBundle = processwiring.ProcessBundle
-type QdrantDeps = processwiring.QdrantDeps
+type IndexDeps = processwiring.IndexDeps

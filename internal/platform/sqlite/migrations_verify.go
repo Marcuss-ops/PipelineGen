@@ -452,6 +452,14 @@ func missingDeclaredTables(migrations []migrationFile, applied map[int]appliedRe
 		if live[name] || own.expectedAbsent(name) {
 			continue
 		}
+		// A baseline-only declaration is not actionable for an operator. Name
+		// the newest numbered migration that declared the same table instead,
+		// even when the baseline covers (and therefore skipped) it.
+		if d.Version == 0 {
+			if filename, version := newestTableDeclarer(migrations, targetDB, name); version > 0 {
+				d.Filename, d.Version = filename, version
+			}
+		}
 		gaps = append(gaps, d)
 	}
 	sort.Slice(gaps, func(i, j int) bool {
@@ -502,6 +510,13 @@ func missingDeclaredIndexes(migrations []migrationFile, applied map[int]appliedR
 		if owners[index] == d.Table {
 			continue
 		}
+		// Same attribution rule as tables: name the numbered migration, not
+		// the consolidated baseline that merely repeats its declaration.
+		if d.Version == 0 {
+			if filename, version := newestIndexDeclarer(migrations, targetDB, index); version > 0 {
+				d.Filename, d.Version = filename, version
+			}
+		}
 		gaps = append(gaps, d)
 	}
 	sort.Slice(gaps, func(i, j int) bool {
@@ -513,6 +528,47 @@ func missingDeclaredIndexes(migrations []migrationFile, applied map[int]appliedR
 	return gaps
 }
 
+// newestTableDeclarer returns the newest in-scope NUMBERED migration whose SQL
+// declares the table. Used only to attribute a drift report that would
+// otherwise point at the consolidated baseline (version 0).
+func newestTableDeclarer(migrations []migrationFile, targetDB, table string) (string, int) {
+	filename, version := "", 0
+	for _, m := range migrations {
+		if m.version <= 0 || !migrationAppliesToTargetDB(m.scope, targetDB) {
+			continue
+		}
+		content, err := os.ReadFile(m.path)
+		if err != nil {
+			continue
+		}
+		for _, name := range declaredTablesIn(string(content)) {
+			if name == table && m.version > version {
+				filename, version = m.filename, m.version
+			}
+		}
+	}
+	return filename, version
+}
+
+// newestIndexDeclarer is the index half of newestTableDeclarer.
+func newestIndexDeclarer(migrations []migrationFile, targetDB, index string) (string, int) {
+	filename, version := "", 0
+	for _, m := range migrations {
+		if m.version <= 0 || !migrationAppliesToTargetDB(m.scope, targetDB) {
+			continue
+		}
+		content, err := os.ReadFile(m.path)
+		if err != nil {
+			continue
+		}
+		for _, pair := range declaredIndexesIn(string(content)) {
+			if pair[0] == index && m.version > version {
+				filename, version = m.filename, m.version
+			}
+		}
+	}
+	return filename, version
+}
 func liveTableNames(db queryable) (map[string]bool, error) {
 	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type = 'table'`)
 	if err != nil {

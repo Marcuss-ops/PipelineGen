@@ -20,7 +20,6 @@ STATE_DIR="${E2E_STATE_DIR:-$ROOT_DIR/.tmp/e2e-harness}"
 LOG_DIR="$STATE_DIR/logs"
 COMPOSE_FILE="${E2E_COMPOSE_FILE:-$ROOT_DIR/docker-compose.yml}"
 BASE_URL="${E2E_BASE_URL:-http://127.0.0.1:${VELOX_PORT:-8000}}"
-QDRANT_URL="${E2E_QDRANT_URL:-http://127.0.0.1:${QDRANT_HTTP_PORT:-6333}}"
 OLLAMA_URL="${E2E_OLLAMA_URL:-${OLLAMA_URL:-http://127.0.0.1:11434}}"
 SEARXNG_URL="${E2E_SEARXNG_URL:-http://127.0.0.1:8080}"
 
@@ -111,13 +110,6 @@ wait_for_http() {
     return 1
 }
 
-# check_qdrant_health probes Qdrant /healthz.
-check_qdrant_health() {
-    local code
-    code=$(curl -fsS --max-time 3 -o /dev/null -w '%{http_code}' "${QDRANT_URL%/}/healthz" 2>/dev/null || echo "000")
-    [[ "$code" == "200" ]]
-}
-
 # check_server_health probes PipelineGen /health.
 check_server_health() {
     local code
@@ -150,7 +142,6 @@ check_ollama_health() {
 
 run_preflight() {
     PREFLIGHT_BASE_URL="$BASE_URL" \
-    PREFLIGHT_QDRANT_URL="$QDRANT_URL" \
     PREFLIGHT_DB_PATH="$(canonical_primary_db_path "$ROOT_DIR")" \
     PREFLIGHT_WORKER_URL="${PREFLIGHT_WORKER_URL:-}" \
     PREFLIGHT_OLLAMA_URL="$OLLAMA_URL" \
@@ -168,7 +159,7 @@ up() {
         fail 'checkout must be on branch main'
 
     log 'starting Compose dependencies'
-    compose up -d qdrant searxng
+    compose up -d searxng
 
     if [[ "${E2E_START_LOCAL_PROCESSES:-0}" == "1" ]]; then
         [[ -x "$ROOT_DIR/bin/pipelinegen" ]] || fail 'bin/pipelinegen missing; build it before E2E startup'
@@ -192,7 +183,7 @@ up() {
 # ── dev-up (deterministic staged startup with readiness gates) ─────────────
 #
 # Startup order:
-#   Stage 1: Infrastructure  (Qdrant, SearXNG)
+#   Stage 1: Infrastructure  (SearXNG)
 #   Stage 2: Server          (PipelineGen HTTP + migrations)
 #   Stage 3: Worker          (job executor, registers against server)
 #   Stage 4: Preflight       (full dependency matrix)
@@ -217,12 +208,8 @@ dev_up() {
 
     # ── Stage 1: Infrastructure ──────────────────────────────────────────
     log '── Stage 1/4: Infrastructure ──'
-    log 'starting Qdrant, SearXNG...'
-    compose up -d qdrant searxng
-
-    log 'waiting for Qdrant...'
-    wait_for_http "Qdrant" "${QDRANT_URL%/}/healthz" 200 "$READINESS_TIMEOUT" ||
-        fail 'Qdrant failed to become ready'
+    log 'starting SearXNG...'
+    compose up -d searxng
 
     log 'waiting for SearXNG...'
     wait_for_http "SearXNG" "${SEARXNG_URL%/}/" 200 "$READINESS_TIMEOUT" 2>/dev/null ||
@@ -307,7 +294,6 @@ dev_up() {
     echo "════════════════════════════════════════════════════════════════"
     echo ""
     echo "  Services:"
-    printf "    %-20s %s\n" "Qdrant:"         "${QDRANT_URL}"
     printf "    %-20s %s\n" "Server:"         "${BASE_URL}"
     printf "    %-20s %s\n" "SearXNG:"        "${SEARXNG_URL}"
     printf "    %-20s %s\n" "Ollama:"         "${OLLAMA_URL}"

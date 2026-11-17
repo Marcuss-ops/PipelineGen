@@ -1,9 +1,9 @@
 // Package storage — internal_sync_drive_folder.go provides the
 // server-to-server variant of POST /sync.
 //
-// QDRANT-001 (June 2026) closure: this handler is the canonical Go-side
-// endpoint invoked by the rewritten `scripts/tools/sync_drive_qdrant.py`
-// (a pure-HTTP client, no SQLite / Qdrant / OAuth / SentenceTransformer).
+// VECTOR-001 (June 2026) closure: this handler is the canonical Go-side
+// endpoint invoked by the rewritten `scripts/tools/sync_drive_pgvector.py`
+// (a pure-HTTP client, no SQLite / pgvector / OAuth / SentenceTransformer).
 //
 //	Public admin:    POST /api/media/sync
 //	Server-to-server: POST /internal/v1/media/sync
@@ -11,7 +11,7 @@
 // Both routes share the same job-dispatch logic (drive.folder.sync with
 // idempotency-friendly payload). The /internal/v1/ variant additionally
 // requires an `Idempotency-Key` header so retries from the Python client
-// collapse to a single canonical ingestion (QDRANT-001 H section).
+// collapse to a single canonical ingestion (VECTOR-001 H section).
 package storage
 
 import (
@@ -36,7 +36,7 @@ type InternalSyncDriveFolderRequest struct {
 }
 
 // idempotencyHeader is the canonical request header used to dedupe
-// drive folder syncs across retries. Per QDRANT-001 spec section H:
+// drive folder syncs across retries. Per VECTOR-001 spec section H:
 // "Inviare Idempotency-Key deterministica" — Python client emits
 // `drive:<folder-id>:folder-sync` so retries collapse to one record.
 const idempotencyHeader = "Idempotency-Key"
@@ -57,7 +57,7 @@ const idempotencyHeader = "Idempotency-Key"
 func (h *Handler) InternalSyncDriveFolder(c *gin.Context) {
 	idem := strings.TrimSpace(c.GetHeader(idempotencyHeader))
 	if idem == "" {
-		apiutil.BadRequest(c, "Idempotency-Key header is required for /internal/v1/media/sync (QDRANT-001)")
+		apiutil.BadRequest(c, "Idempotency-Key header is required for /internal/v1/media/sync (VECTOR-001)")
 		return
 	}
 
@@ -95,10 +95,10 @@ func (h *Handler) InternalSyncDriveFolder(c *gin.Context) {
 		zap.String("idempotency_key", idem),
 	)
 
-	// QDRANT-001 closure: build payload via shared helper so admin
+	// VECTOR-001 closure: build payload via shared helper so admin
 	// (/api) and server-to-server (/internal/v1) variants stay in
 	// lockstep on payload schema and job type. The job service already
-	// enforces event-level dedup (QDRANT-002 PR4 contract) when the
+	// enforces event-level dedup (VECTOR-002 PR4 contract) when the
 	// same (type, correlation_id) tuple is replayed.
 	payload, correlationID := buildSyncPayload(&SyncPayloadInput{
 		FolderID:  folderID,

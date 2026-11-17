@@ -31,8 +31,8 @@
 // Phase 2 — Projection (best-effort). On error flip FinalStatus
 // to StatusIndexPending (test (c) contract). DO NOT propagate —
 // the spine write still runs in Phase 4 so DB SUCCEEDED is the
-// durable state. Per-chunk Qdrant indexing is async via the
-// reconciler-driven Qdrant index task.
+// durable state. Per-chunk pgvector indexing is async via the
+// reconciler-driven pgvector index task.
 //
 // Phase 3 — BuildFinalizationRequest. Canonical helper from
 // finalizer_gates.go. Composes Lease + Result + Artifacts
@@ -66,7 +66,7 @@ type StockFinalizeStep struct{}
 func (StockFinalizeStep) Name() string { return StepKeyStockFinalize }
 
 func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) (err error) {
-	// Canonical stage: stock.finalize owns manifest build + Projection (Qdrant)
+	// Canonical stage: stock.finalize owns manifest build + Projection (pgvector)
 	// + the single-TX spine write. Without it that wall time fell outside every
 	// top-level stage and surfaced as unattributed in the timing breakdown.
 	finalizeMetric := startStockPhase(ctx, runner, StepKeyStockFinalize)

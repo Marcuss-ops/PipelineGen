@@ -148,7 +148,7 @@ func (e *clipTranscriptEnsurer) EnsureReadyTextTrack(ctx context.Context, assetI
 }
 
 // buildScriptSourceResolvers constructs the canonical source-resolution
-// cluster. PostgreSQL + pgvector owns semantic media reads; Qdrant and SQLite
+// cluster. PostgreSQL + pgvector owns semantic media reads; pgvector and SQLite
 // media mirrors are intentionally not consulted by SourceSearch or Curate.
 func buildScriptSourceResolvers(
 	cfg *config.Config,

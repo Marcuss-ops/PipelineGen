@@ -4,7 +4,7 @@ This document defines canonical ownership for data, configuration, and state in 
 
 ## Durable authority
 
-PostgreSQL + pgvector is the durable authority for the media domain (`media_assets`, `asset_locations`, `media_asset_features`, `media_embeddings`). SQLite is the durable authority for the non-media domains (jobs, scripts, voiceovers, outbox, cache, idempotency, artifacts/staging, observability); its media tables are quarantined legacy data (migration 268) and are not a runtime authority. Any derived media projection must be rebuildable from PostgreSQL; Qdrant is not a media fallback.
+PostgreSQL + pgvector is the durable authority for the media domain (`media_assets`, `asset_locations`, `media_asset_features`, `media_embeddings`). SQLite is the durable authority for the non-media domains (jobs, scripts, voiceovers, outbox, cache, idempotency, artifacts/staging, observability); its media tables are quarantined legacy data (migration 268) and are not a runtime authority. Any derived media projection must be rebuildable from PostgreSQL; there is no external vector-store fallback.
 
 ## Data store inventory
 
@@ -18,7 +18,7 @@ Concrete owner-per-fact map. Canonical MEDIA business state is PostgreSQL (`medi
 | Media PostgreSQL | canonical composition-root PostgreSQL DSN | **SSOT** — `media_assets`, `asset_locations`, `media_asset_features`, `media_embeddings` | — |
 | acquisition.SourceStager | `internal/capabilities/acquisition/port.go` | **SSOT** — canonical source staging port (Prepare/Release lifecycle). All consumers (YouTube, Artlist, Stock, Images, Jobs/assets) use this port. The legacy `assets.SourceStager` has been removed (CONTRACT completed 2026-08-22). | — |
 | Observability SQLite | `cfg.Storage.ObservabilityDBFullPath()` → `observability/api_requests.db.sqlite` | **SSOT for the observability axis** (run/attempt/stage/operation timing + API audit) | distinct concern; derived from job execution, not from business tables |
-| Qdrant | runtime alias per `ProjectionContract` | **NOT a media store.** Legacy projection surface retained ONLY for explicitly justified non-media consumers (mediamemory frame concepts, maintenance DR, admin audit). Media retrieval is **not** served here. | n/a for media — non-media consumers only |
+| ~~external vector store~~ | — | **REMOVED 2026-11-17.** No server, client, projection writer, or runtime alias remains. | — |
 | Google Drive | remote | **Side-effect surface** — delivery location for bytes | SQLite metadata is authoritative; Drive is reconciled against it |
 | Local filesystem | `MediaDir`/`CacheDir`/`StagingDir`/`WorkspaceDir` | **Side-effect surface** — staging/cache blobs | redownloadable / regenerable |
 | Legacy catalog DBs | `data/stock/stock.db.sqlite`, `data/artlist/artlist.db.sqlite`, `data/artlist_videos.db`, `data/clips.db.sqlite` | **ELIMINATED** — merged into primary via `unify-catalogs` (run the tool, reconcile rows/hashes/locations, backup, then rm) | primary `media_assets` (source='stock'/'artlist') |
@@ -56,19 +56,11 @@ The primary DB owns the following facts (one canonical owner each; tables cited,
 
 The media database owns four surfaces: `media_assets`, `asset_locations`, `media_asset_features`, and `media_embeddings`. The embeddings table uses pgvector and keeps model/type identity in the primary key so incompatible vector families cannot share an index. Hard scalar filters are indexed before vector indexes; HNSW is used for vector search where the selected embedding family has a fixed dimension.
 
-During migration, PostgreSQL is first deployed and backfilled, then reads and writes are cut over behind the existing typed ports. No direct dual-write is permitted, and missing PostgreSQL configuration must fail closed rather than fall back to SQLite or Qdrant.
+During migration, PostgreSQL is first deployed and backfilled, then reads and writes are cut over behind the existing typed ports. No direct dual-write is permitted, and missing PostgreSQL configuration must fail closed rather than fall back to SQLite.
 
-### Qdrant projections (NON-media only — the media projection is retired)
+### Vector projections
 
-The projection schemas are still closed over by `internal/platform/qdrant/schema/projection_contract.go` and must never share a point ID, alias, or retention scope (`ValidateProjectionSeparation`). Only the NON-media projections have runtime consumers; media retrieval is owned by pgvector inside the PostgreSQL SSOT.
-
-| Projection | Schema | Point ID | Canonical source | Rebuild path |
-|---|---|---|---|---|
-| ~~`media_assets`~~ **RETIRED for media** | `DefaultV3Schema()` (schema contract only) | — | — | n/a: no runtime Qdrant media reader or writer remains; the media read path is PostgreSQL pgvector |
-| `media_frames` | `FrameIndexSchema()` | `frame-` + UUID | keyframes `(video_id, ts_ms)` | `ProjectionManager.RebuildProjection` |
-| `media_concepts` | `ConceptIndexSchema()` | `concept-` + ID | `media_concepts` / `media_bindings` | `ProjectionManager.RebuildProjection` |
-
-Rebuild discipline: writes flow only through the generic `ProjectionWriter` capability; a rebuild never mutates SQLite, and a failed/retired generation is retired by alias switch (`ReconcileProjection`).
+There is no external vector projection. The external vector store was removed entirely on 2026-11-17, so no projection schema, point ID, alias, or retention scope exists. Media and keyframe vectors are owned by PostgreSQL + pgvector inside the media SSOT; all retrieval and hydration go through `MediaSearcher`.
 
 ### Caches (derived projections)
 
@@ -86,8 +78,8 @@ Derived caches are projections keyed by their canonical SQLite record and are sa
 | Fact | SSOT | Projection / derived copy | Reconstruction |
 |---|---|---|---|
 | "this asset exists, its metadata, its state" | PostgreSQL `media_assets` | pgvector row in `media_embeddings` (same SSOT) | reindex from `media_assets` |
-| "this keyframe exists at (video_id, ts_ms)" | keyframe source (primary/asset) | Qdrant `media_frames` point | reindex keyframes |
-| "this phrase binds to this entity" | `media_concepts`/`media_bindings` (primary) | Qdrant `media_concepts` point | reindex bindings |
+| "this keyframe exists at (video_id, ts_ms)" | keyframe source (primary/asset) | PostgreSQL media plane (no external point) | reindex keyframes |
+| "this phrase binds to this entity" | `media_concepts`/`media_bindings` (primary) | none (no external point) | reindex bindings |
 | "this job is RUNNING/SUCCEEDED/FAILED" | `jobs` (primary) | `run_observability`/`job_attempts` (observability) | replay from job lifecycle |
 | "this file is on Drive at X" | PostgreSQL `asset_locations` (`location_kind='drive'`) | Drive folder structure | Drive reconcile (`/api/drive/reconcile`) |
 | "this source is staged for processing" | `acquisition.SourceStager.Prepare` (canonical port) | Local staged file + CleanupToken | Re-Prepare same SourceRef within TTL |
@@ -105,7 +97,7 @@ images, recovery) MUST route through `AssetCommitter.CommitAndIndex` /
 `CommitTx`. The canonical media search store is pgvector inside the same
 PostgreSQL SSOT (`internal/platform/postgres/media.MediaSearcher` implements
 the canonical `search.VectorStorePort`); the composition root resolves the
-pgvector plane fail-closed and no Qdrant media collection is consulted.
+pgvector plane fail-closed.
 
 MEDIA DEMOLITION (September 2026): the SQLite media writer family
 (`SQLiteAssetCommitter` / `SQLiteMediaCommitter` and the `asset_committer*`
@@ -140,48 +132,13 @@ plus `TEST_POSTGRES_DSN=… go test ./internal/platform/postgres/media/ -count=1
 - Prefer expand, backfill, cutover, contract for compatibility changes.
 - Preserve deterministic asset IDs and idempotent job/outbox keys.
 
-## Qdrant projection
+## External vector projection (retired 2026-11-17)
 
-Qdrant is not part of the PostgreSQL media SSOT path. Media Qdrant reads and writes must remain disabled during and after cutover; PostgreSQL + pgvector is the canonical media search store. Any remaining Qdrant usage must be explicitly outside the media domain.
-
-### Media projection demolition status (September 2026)
-
-REMOVED (cutover demolition):
-
-- `SelectMediaAssetCommitter` (composition root + media subpackage): the
-  caller-supplied adapter-pair decision was never invoked by production
-  wiring and conflicted with the canonical single decision point. The
-  media engine selection lives exclusively in
-  `canonical_media_committer.go` (`newCanonicalAssetCommitterCfg` /
-  `canonicalCommitterForRoot`), fail-closed on
-  `cfg.MediaPostgreSQL.Enabled` + the open `root.MediaPostgres` handle.
-
-REPLACED (structural, gated by the Go gate suite):
-
-- The SQLite → outbox → Qdrant media projection chain is replaced by
-  `pgmedia.PostgresIndexWorker`: claims `asset.index.requested` from the
-  PG outbox, embeds the asset search_text, upserts the pgvector, flips
-  `index_state=INDEXED` in the same transaction, and completes the event
-  with lease fencing + retry/dead-letter semantics. In PG mode the
-  composition root registers NO Qdrant media indexing handler. The
-  remaining `client.UpsertPoints` call sites are pinned to the non-media
-  projection writers under `internal/platform/qdrant/indexing/` by
-  `percheck_upsert_points_sole_owner`, and the retired media path
-  (`asset.index.requested` → `jobs.IndexingHandler` → `clipindexer.IndexClip`)
-  has zero production callers: the `media.reindex` job binding and
-  `media.TypeReindex` were removed. The legacy
-  `SQLITE_MEDIA_WRITERS/READERS=0`, `QDRANT_MEDIA_WRITERS/READERS=0` and
-  `QDRANT_MEDIA_COMPATIBILITY=0` counters are NOT enforced anywhere: they
-  lived only in the deleted shell driver, so no gate asserts them.
-
-RETAINED (legitimate non-media Qdrant usage — demolition debt owner:
-non-media Qdrant retirement, NOT the media cutover):
-
-- `internal/platform/qdrant/indexing/mediamemory` (frame-concept
-  projections), `internal/capabilities/maintenance` DR adapter, and
-  `cmd/admin/internal/audit` + `cmd/admin/reconcile` tooling for the
-  NON-MEDIA collections (mediamemory frames). The media-plane admin paths
-  (`reindex-qdrant`, projection audit) are retired, not retained.
+The external vector engine was removed from the repository (P3–P6 of the
+removal record): no server, client, projection writer, admin path, or runtime
+alias remains. PostgreSQL + pgvector is the only media search store. Any
+future non-media vector projection needs a new, explicitly owned design; the
+former external vector surface is not a fallback.
 
 ## Drive and filesystem
 

@@ -28,7 +28,7 @@ Idempotent migration from unstable nohup/tmux-managed processes to
 > unit files remain the current, tracked interface.
 
 PipelineGen server and worker are host-native services. Docker Compose is used
-only for supporting infrastructure (Qdrant and SearXNG), so application
+only for supporting infrastructure (SearXNG), so application
 changes no longer require `docker compose build`.
 
 ## TL;DR

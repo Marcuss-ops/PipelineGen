@@ -9,7 +9,7 @@ import (
 // SearchProfile holds source-aware ranking preferences for a media asset class.
 // The values are intentionally lightweight: the backend uses them to decide
 // how much text to feed the reranker, how many candidates to rerank, and how
-// aggressively to blend the reranker output back into the Qdrant score.
+// aggressively to blend the reranker output back into the pgvector score.
 type SearchProfile struct {
 	Source           string
 	DenseWeight      float64
