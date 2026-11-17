@@ -6,57 +6,57 @@ import (
 )
 
 // Phase 8 split: package-level global defaults isolated from the
-// LexiconRegistry struct (which lives in lexicon_registry.go). The
-// composition root calls SetDefaultLexicon once at bootstrap;
-// downstream callers reach for DefaultLexicon when they need a
+// Profiles struct (which lives in lexicon_registry.go). The
+// composition root calls SetDefaultProfiles once at bootstrap;
+// downstream callers reach for DefaultProfiles when they need a
 // ready-to-use registry without an explicit constructor argument.
 
-// defaultLexiconMu protects reads + writes of defaultLexicon against
-// concurrent SetDefaultLexicon / DefaultLexicon calls.
-var defaultLexiconMu sync.RWMutex
+// defaultProfilesMu protects reads + writes of defaultProfiles against
+// concurrent SetDefaultProfiles / DefaultProfiles calls.
+var defaultProfilesMu sync.RWMutex
 
-// defaultLexicon is installed by the composition root. It is never
+// defaultProfiles is installed by the composition root. It is never
 // lazily manufactured because that would hide a broken deployment.
-var defaultLexicon *LexiconRegistry
+var defaultProfiles *Profiles
 
-// SetDefaultLexicon installs the package-level default lexicon registry.
+// SetDefaultProfiles installs the package-level default lexicon profiles.
 // The composition root calls this once at bootstrap; tests may replace
 // it to exercise file-backed fixtures. Nil is rejected explicitly.
-func SetDefaultLexicon(r *LexiconRegistry) error {
+func SetDefaultProfiles(r *Profiles) error {
 	if r == nil {
-		return fmt.Errorf("lexicon registry: nil default is not allowed")
+		return fmt.Errorf("lexicon profiles: nil default is not allowed")
 	}
-	defaultLexiconMu.Lock()
-	defer defaultLexiconMu.Unlock()
-	defaultLexicon = r
+	defaultProfilesMu.Lock()
+	defer defaultProfilesMu.Unlock()
+	defaultProfiles = r
 	return nil
 }
 
-// DefaultLexicon returns the global default lexicon registry. The
+// DefaultProfiles returns the global default lexicon profiles. The
 // process must install it during composition-root bootstrap first.
-func DefaultLexicon() *LexiconRegistry {
-	defaultLexiconMu.RLock()
-	if defaultLexicon != nil {
-		lex := defaultLexicon
-		defaultLexiconMu.RUnlock()
+func DefaultProfiles() *Profiles {
+	defaultProfilesMu.RLock()
+	if defaultProfiles != nil {
+		lex := defaultProfiles
+		defaultProfilesMu.RUnlock()
 		return lex
 	}
-	defaultLexiconMu.RUnlock()
+	defaultProfilesMu.RUnlock()
 
-	defaultLexiconMu.Lock()
-	defer defaultLexiconMu.Unlock()
-	if defaultLexicon == nil {
-		panic("lexicon registry: default registry has not been installed")
+	defaultProfilesMu.Lock()
+	defer defaultProfilesMu.Unlock()
+	if defaultProfiles == nil {
+		panic("lexicon profiles: default profiles has not been installed")
 	}
-	return defaultLexicon
+	return defaultProfiles
 }
 
-// DefaultLexiconOrNil exposes the installed registry to low-level helpers
+// DefaultProfilesOrNil exposes the installed registry to low-level helpers
 // that can operate without linguistic filtering during isolated tests. It
 // never constructs fallback data; production composition still uses
-// DefaultLexicon and therefore fails fast when bootstrap is incomplete.
-func DefaultLexiconOrNil() *LexiconRegistry {
-	defaultLexiconMu.RLock()
-	defer defaultLexiconMu.RUnlock()
-	return defaultLexicon
+// DefaultProfiles and therefore fails fast when bootstrap is incomplete.
+func DefaultProfilesOrNil() *Profiles {
+	defaultProfilesMu.RLock()
+	defer defaultProfilesMu.RUnlock()
+	return defaultProfiles
 }

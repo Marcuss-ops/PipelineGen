@@ -15,18 +15,18 @@
 //     letters of the expected script is not that language — full stop.
 //  2. Function-word check (heuristic). For the Latin-script targets the script
 //     cannot distinguish languages, so the text is scored against the
-//     per-language function-word sets of the canonical LexiconRegistry. It only
+//     per-language function-word sets of the canonical Profiles. It only
 //     fails when the text carries NO function word of the target AND clearly
 //     matches another supported language. A technical/vocabulary fragment with
 //     no function words at all stays accepted (no false positive on
 //     "rendering pipeline 4K").
 //
 // godlike/06 SSOT: this file declares NO linguistic data. The word sets come
-// from linguistics.DefaultLexicon() (config/lexicons/<lang>/*.txt), the single
+// from linguistics.DefaultProfiles() (the Rust-generated profile), the single
 // owner of per-language data in this repository. When the composition root has
 // not installed the registry (isolated tests), the function-word check abstains
-// rather than manufacturing data; DefaultLexicon() would panic, so the
-// non-failing DefaultLexiconOrNil() is used deliberately.
+// rather than manufacturing data; DefaultProfiles() would panic, so the
+// non-failing DefaultProfilesOrNil() is used deliberately.
 package translation
 
 import (
@@ -69,7 +69,7 @@ const minForeignStopwordHits = 3
 // lexicallyComparableLanguages is the fixed iteration order of the
 // function-word comparison, so the verdict is deterministic even when two
 // languages tie. It lists LANGUAGE CODES only — every word set is resolved from
-// the LexiconRegistry, never hardcoded here.
+// the Profiles, never hardcoded here.
 var lexicallyComparableLanguages = []string{"en", "it", "es", "de", "fr", "pt", "nl", "pl", "ru", "tr", "id"}
 
 // VerifyTargetLanguage reports whether text is plausibly written in lang. The
@@ -217,9 +217,9 @@ func totalLetters(counts map[scriptClass]int) int {
 
 // stopwordMismatch fails the text when it carries no target function word but
 // clearly matches another supported Latin-script language. It abstains when the
-// LexiconRegistry is not installed or the target has no configured word set.
+// Profiles is not installed or the target has no configured word set.
 func stopwordMismatch(text, base string) (bool, string) {
-	registry := linguistics.DefaultLexiconOrNil()
+	registry := linguistics.DefaultProfilesOrNil()
 	if registry == nil {
 		return false, ""
 	}
@@ -260,7 +260,7 @@ func stopwordMismatch(text, base string) (bool, string) {
 // function words. The union matters: the configured data is split across the
 // two files (e.g. pl/ru/tr/id carry function_words.txt only), and both are
 // high-frequency grammatical tokens for this purpose.
-func functionWordSet(registry *linguistics.LexiconRegistry, lang string) (map[string]struct{}, bool) {
+func functionWordSet(registry *linguistics.Profiles, lang string) (map[string]struct{}, bool) {
 	profile, err := registry.ResolveRequired(lang)
 	if err != nil {
 		return nil, false

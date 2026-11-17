@@ -301,7 +301,6 @@ outbox:
   max_attempts: 5
 
 linguistics:
-  lexicon_root: "config/lexicons"
   required_languages:
     - en
     - it

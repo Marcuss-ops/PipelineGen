@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -41,6 +42,64 @@ var ErrAssetSourceUnavailable = errors.New("renderinggen asset prefetch: no cont
 // staged N times is read once (the underlying kernel/digest verifier is
 // memoized).
 var prefetchAssets = assetmaterializer.New(assetmaterializer.Options{})
+
+// objectPresenceCache remembers content addresses the object store has already
+// confirmed. A clip render repeatedly stages the SAME background, source,
+// watermark and font; without this cache every clip pays another HEAD (and a
+// concurrent fan-out pays several at once) before learning what the previous
+// clip already proved. Objects are content-addressed and immutable, so a
+// positive answer is safe to reuse for the duration of a run. Only positive
+// answers are cached: an absent object can be uploaded later, so caching a
+// miss would turn a recoverable first upload into a permanent failure.
+const objectPresenceTTL = 30 * time.Minute
+
+type objectPresenceCache struct {
+	mu      sync.Mutex
+	entries map[string]time.Time
+}
+
+var objectPresence = objectPresenceCache{entries: make(map[string]time.Time)}
+
+func objectPresenceKey(store, key string) string {
+	return strings.ToLower(strings.TrimRight(strings.TrimSpace(store), "/")) + "|" + strings.ToLower(strings.TrimSpace(key))
+}
+
+func objectKnownPresent(store, key string) bool {
+	key = objectPresenceKey(store, key)
+	if strings.HasSuffix(key, "|") {
+		return false
+	}
+	objectPresence.mu.Lock()
+	defer objectPresence.mu.Unlock()
+	expiresAt, ok := objectPresence.entries[key]
+	if !ok {
+		return false
+	}
+	if !time.Now().Before(expiresAt) {
+		delete(objectPresence.entries, key)
+		return false
+	}
+	return true
+}
+
+func markObjectPresent(store, key string) {
+	key = objectPresenceKey(store, key)
+	if strings.HasSuffix(key, "|") {
+		return
+	}
+	objectPresence.mu.Lock()
+	objectPresence.entries[key] = time.Now().Add(objectPresenceTTL)
+	objectPresence.mu.Unlock()
+}
+
+// resetObjectPresenceCacheForTest clears the process-lifetime cache. Tests use
+// unique content addresses, but an explicit reset keeps a cache assertion from
+// depending on test ordering.
+func resetObjectPresenceCacheForTest() {
+	objectPresence.mu.Lock()
+	objectPresence.entries = make(map[string]time.Time)
+	objectPresence.mu.Unlock()
+}
 
 // objectStoreHTTPClient bounds every object-store HTTP call (asset
 // prefetch uploads and certified-artifact downloads). Without a timeout
@@ -229,6 +288,9 @@ func setObjectStoreAuth(req *http.Request) {
 // using HEAD so no bytes cross the wire. 404/405 means absent;
 // transport errors or other statuses fail closed.
 func objectStored(ctx context.Context, store, key string) (bool, error) {
+	if objectKnownPresent(store, key) {
+		return true, nil
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, store+"/objects/"+key, nil)
 	if err != nil {
 		return false, err
@@ -242,6 +304,7 @@ func objectStored(ctx context.Context, store, key string) (bool, error) {
 	_ = resp.Body.Close()
 	switch resp.StatusCode {
 	case http.StatusOK:
+		markObjectPresent(store, key)
 		return true, nil
 	case http.StatusNotFound, http.StatusMethodNotAllowed:
 		return false, nil
@@ -325,6 +388,7 @@ func stageLocalPrefetch(ctx context.Context, store, key, path string, size int64
 		abortPrefetchStaged(ctx, store, session)
 		return false, &objectStorePutError{StatusCode: finalizeResp.StatusCode, Detail: strings.TrimSpace(string(detail))}
 	}
+	markObjectPresent(store, key)
 	return true, nil
 }
 
@@ -420,5 +484,8 @@ func streamPutReader(ctx context.Context, store, key string, r io.Reader, size i
 		}
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
+	// The store accepted the bytes under this content address, so every
+	// remaining clip in the run can skip the HEAD probe for it.
+	markObjectPresent(store, key)
 	return nil
 }

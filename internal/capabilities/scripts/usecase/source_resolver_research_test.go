@@ -508,13 +508,13 @@ func (f *researchSearchHitsFake) Search(_ context.Context, q string, _ int) ([]s
 }
 
 // TestResearchStopwordsComeFromSSOT pins the Azione 2 contract: the research
-// resolver must consume the canonical config/lexicons SSOT and never a
+// resolver must consume the canonical Rust-generated lexicon snapshot and never a
 // private hardcoded list. The original diff showed a manual "e" patch
 // drifting from the SSOT (the codebase list lacked it while the canonical
 // file had it). If the SSOT loses a language-gate word or a hardcoded copy
 // re-appears, this test fails closed.
 func TestResearchStopwordsComeFromSSOT(t *testing.T) {
-	registry := linguistics.DefaultLexicon()
+	registry := linguistics.DefaultProfiles()
 	it, err := registry.ResolveRequired("it")
 	if err != nil {
 		t.Fatalf("italian profile from SSOT: %v", err)

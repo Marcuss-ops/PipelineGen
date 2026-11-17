@@ -472,14 +472,26 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	// result keeps only the summary fields above.
 	res.Artifact = artifact
 
-	// Moments: deterministic annotation → word-timing projection. The
-	// artifact is already validated, so LocateMoments only skips
-	// not-found annotation values (never fabricates timestamps) or, in
-	// an impossible regression, surfaces an invalid-artifact error that
-	// must fail closed rather than emit a partial bundle.
-	if moments, err := audio.LocateMoments(*artifact, cmd.Moments); err != nil {
-		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: %w", err))
-	} else {
+	// Moments: the Rust worker owns the word/phrase match. Go sends every
+	// unique annotation surface once, with allow_missing so a value the
+	// speech never said is skipped instead of failing the segment, and joins
+	// the returned spans back to the queries. A missing aligner fails closed
+	// only when moments were requested; no Go matcher is a fallback.
+	if len(cmd.Moments) > 0 {
+		if u.deps.PhraseAligner == nil {
+			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: phrase aligner is required"))
+		}
+		values := momentQueryValues(cmd.Moments)
+		alignments, err := u.deps.PhraseAligner.AlignPhrases(ctx, audio.PhraseAlignmentRequest{
+			Timing: *artifact, Phrases: values, AllowMissing: true, AllOccurrences: true,
+		})
+		if err != nil {
+			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: %w", err))
+		}
+		moments, err := audio.ProjectMoments(*artifact, cmd.Moments, alignments)
+		if err != nil {
+			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: %w", err))
+		}
 		res.Moments = moments
 	}
 
@@ -487,6 +499,27 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 
 	emitTiming("completed")
 	return res, nil
+}
+
+// momentQueryValues returns the unique, non-empty annotation surfaces to send
+// to the Rust aligner in one batch. Query order is preserved; duplicates are
+// removed by normalized text.
+func momentQueryValues(queries []audio.MomentQuery) []string {
+	seen := make(map[string]struct{}, len(queries))
+	values := make([]string, 0, len(queries))
+	for _, query := range queries {
+		value := strings.TrimSpace(query.Value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(value), " "))
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		values = append(values, value)
+	}
+	return values
 }
 
 // timingBuildFailure converts a timing artifact build failure according

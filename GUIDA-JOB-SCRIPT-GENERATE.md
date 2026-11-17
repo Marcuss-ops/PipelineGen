@@ -36,7 +36,7 @@ stock, impostazioni audio/render) in:
 | `data/observability/api_requests.db.sqlite` | telemetria run: `run_observability`, `run_stage_observations`, `run_operation_observations` |
 | RenderingGen (worker remoto, es. `51.91.11.36`) | render finale video (`remote_final_job`) e lane GPU overlay (`chronon3d.service` via IPC) |
 | Google Drive | delivery: VO, audio master, artefatti, cartelle per job |
-| Ollama (`gemma4:e4b`) | generazione testo scene |
+| Ollama (`gemma4:e2b`, default; `gemma4:e4b` opt-in) | generazione testo scene |
 
 ### Vita di un job (submit → completamento)
 
@@ -67,7 +67,7 @@ automaticamente (correzione registrata in
 ```text
 version, preset, correlation_id, force_refresh
 items[1]:
-  id, project, title, language, tone, style, model (gemma4:e4b)
+  id, project, title, language, tone, style, model (gemma4:e2b default)
   source { type: text, topic, source_text }
   max_phrase_overlays / max_image_overlays / max_map_overlays
   overlay_style (font playfair_display_italic, colori, ombre)

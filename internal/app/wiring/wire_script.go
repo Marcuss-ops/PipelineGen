@@ -45,7 +45,7 @@ func scriptVisualCandidateScorer(root *ComposeRoot) adapters.SemanticCandidateSc
 }
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
-func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, searchFanOut assetsearch.SearchFanOut, stockPrefetcher scriptports.StockPrefetcher) error {
+func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry, searchFanOut assetsearch.SearchFanOut) error {
 	_ = ctx
 	if cfg == nil {
 		return fmt.Errorf("wireScriptFlow: config is required")
@@ -149,7 +149,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// Use cases and job registration.
 	oneUC, manyUC, genJobHandler, useCaseErr := buildScriptUseCases(
-		cfg, root, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, stockPrefetcher, log,
+		cfg, root, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, log,
 	)
 	if useCaseErr != nil {
 		return fmt.Errorf("wireScriptFlow: build use cases: %w", useCaseErr)
@@ -218,10 +218,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		durableRunner, runtimeErr := BuildScriptGenerationRuntime(cfg, root, runRepo, finalAudioCommitter, log, vidRushProviders, vidRushFinalizer, vidRushCache)
 		if runtimeErr != nil {
 			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
-		}
-		if stockPrefetcher != nil {
-			durableRunner.SetStockPrefetcher(stockPrefetcher)
-			log.Info("wireScriptFlow: durable script.generate stock prefetch wired")
 		}
 		genJobHandler.SetDurableRunner(durableRunner)
 		if root.Jobs != nil && root.Jobs.Repo != nil {
@@ -329,8 +325,8 @@ func scriptGenerationEnabled(cfg *config.Config) bool {
 	return cfg != nil && cfg.Scripts.Capability.Enabled
 }
 
-func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, searchFanOut assetsearch.SearchFanOut, stockPrefetcher scriptports.StockPrefetcher) error {
-	if err := wireScriptFlow(ctx, cfg, log, root, registry, searchFanOut, stockPrefetcher); err != nil {
+func registerScripts(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, searchFanOut assetsearch.SearchFanOut) error {
+	if err := wireScriptFlow(ctx, cfg, log, root, registry, searchFanOut); err != nil {
 		return err
 	}
 	return registerScriptHistory(registry, log, cfg, root)

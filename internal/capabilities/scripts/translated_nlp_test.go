@@ -576,10 +576,29 @@ func TestStampLocalizedSourceIdentityPreservesGeocodedPlace(t *testing.T) {
 	localized := &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
 		Text: "Aldeota", CanonicalName: "Aldeota", Type: "GPE", Confidence: .9, Mentions: []scriptpkg.AnnotationSpan{span},
 	}}}
-	stampLocalizedSourceIdentity(localized, []localizedSourceMatch{{Source: source, Kind: scriptpkg.EntityTypeLocation, Span: span, Surface: "Aldeota"}})
+	if err := stampLocalizedSourceIdentity(localized, []localizedSourceMatch{{Source: source, Kind: scriptpkg.EntityTypeLocation, Span: span, Surface: "Aldeota"}}); err != nil {
+		t.Fatalf("stamp localized identity: %v", err)
+	}
 	got := localized.PrimaryEntities[0].Geo
 	if got == nil || got.Latitude != geo.Latitude || got.Longitude != geo.Longitude || got.DisplayName != geo.DisplayName {
 		t.Fatalf("localized geocoded place = %+v, want source coordinates %+v", got, geo)
+	}
+}
+
+// TestStampLocalizedSourceIdentityFailsClosedWithoutCanonicalID pins the
+// identity contract: a grounded source with no derivable canonical id must not
+// let the localized surface mint a new one.
+func TestStampLocalizedSourceIdentityFailsClosedWithoutCanonicalID(t *testing.T) {
+	span := scriptpkg.AnnotationSpan{Text: "Tyson", StartRune: 0, EndRune: 5}
+	source := scriptpkg.AnnotatedEntity{Type: "PERSON"}
+	localized := &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+		Text: "Tyson", Type: "PERSON", Mentions: []scriptpkg.AnnotationSpan{span},
+	}}}
+	err := stampLocalizedSourceIdentity(localized, []localizedSourceMatch{{
+		Source: source, Kind: scriptpkg.EntityTypePerson, Span: span, Surface: "Tyson",
+	}})
+	if err == nil {
+		t.Fatal("stamp localized identity accepted a source without canonical id")
 	}
 }
 

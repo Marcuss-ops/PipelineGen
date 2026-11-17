@@ -44,7 +44,7 @@ func cloneStringSet(src map[string]struct{}) map[string]struct{} {
 }
 
 // cloneWordSets deep-copies the named word sets so a resolved profile cannot
-// share mutable maps with the registry.
+// share mutable maps with the snapshot.
 func cloneWordSets(src map[string]map[string]struct{}) map[string]map[string]struct{} {
 	if len(src) == 0 {
 		return map[string]map[string]struct{}{}

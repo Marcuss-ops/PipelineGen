@@ -180,7 +180,7 @@ func TestScanStopwordMapsInApp_DebtMarkerFutureDeadline_WarnsNotFails(t *testing
 	makeStopwordFixture(t, root, "internal/capabilities/scripts/usecase/hardcoded.go",
 		`package usecase
 
-// LEXICON_MIRROR_DEBT: owner=@scripts, deadline=2999-01-01 — migrate to the LexiconRegistry.
+// LEXICON_MIRROR_DEBT: owner=@scripts, deadline=2999-01-01 — migrate to the Profiles.
 var hardcoded = map[string]struct{}{
 	"the": {}, "and": {},
 }

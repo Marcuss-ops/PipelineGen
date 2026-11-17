@@ -246,8 +246,8 @@ const warmPolicyVersion = "v1"
 
 // SourceWarmReport is the outcome of one pre-claim warming pass.
 //
-// Requested counts the candidate URLs after dedupe (Drive URLs and blanks are
-// excluded — see WarmSourceCache). AlreadyCached counts sources that were
+// Requested counts the candidate URLs after dedupe (blank entries dropped).
+// AlreadyCached counts sources that were
 // already present AND valid in the cross-run cache (no work needed).
 // Warmed + AlreadyCached + Failed always equals Requested.
 type SourceWarmReport struct {
@@ -255,10 +255,10 @@ type SourceWarmReport struct {
 	Warmed        int
 	AlreadyCached int
 	Failed        int
-	// SkippedDrive counts Drive URLs dropped from the candidate set. Warming
-	// them would download the full Drive file only to see its cache entry
-	// invalidated by the stager's own temp-dir release, so they are excluded
-	// by design (see WarmSourceCache).
+	// SkippedDrive is always 0: Warming no longer drops Drive URLs itself, it
+	// warms whatever the caller passes. The field stays on the report so the
+	// existing log/metric surfaces keep their shape; Drive stock exclusion is
+	// the caller's policy (see the script prefetcher).
 	SkippedDrive int
 	// Errors maps a failed source URL to the reason it could not be warmed.
 	Errors map[string]string
@@ -270,8 +270,10 @@ type SourceWarmReport struct {
 // designed to be invoked before a worker claims the job.
 //
 // Behaviour:
-//   - URLs are trimmed, deduplicated (blank entries dropped) and Drive URLs
-//     are excluded (see SourceWarmReport.SkippedDrive).
+//   - URLs are trimmed and deduplicated (blank entries dropped). Drive URLs are
+//     warmed like any other URL: excluding them belongs to the caller that owns
+//     the policy (the script prefetcher skips Drive stock bindings, which are
+//     processed by the stock pipeline and its renderer, not by a script job).
 //   - Sources already valid in the cross-run cache are skipped without any
 //     download.
 //   - The remaining sources are staged through the canonical path in a bounded

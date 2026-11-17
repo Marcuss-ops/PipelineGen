@@ -264,7 +264,7 @@ func buildScriptSourceResolvers(
 		if err := researchResolver.SetResearchRanker(research.NewResearchRanker(gen.GetClient(), cfg.External.OllamaModel, log)); err != nil {
 			panic(fmt.Sprintf("script research ranker: %v", err))
 		}
-		if err := researchResolver.SetLexicon(linguistics.DefaultLexicon()); err != nil {
+		if err := researchResolver.SetLexicon(linguistics.DefaultProfiles()); err != nil {
 			panic(fmt.Sprintf("script research resolver: %v", err))
 		}
 		if root.CacheDB != nil && root.CacheDB.DB != nil {

@@ -42,7 +42,6 @@ type registryCrossStepState struct {
 	SearchBackends     *search.BackendRegistry
 	SearchAggregator   *search.Aggregator
 	IdempotencyHandler gin.HandlerFunc
-	StockPrefetcher    scriptports.StockPrefetcher
 }
 
 // sourcingHashAdapter was DELETED here on 2026-09-20, together with its

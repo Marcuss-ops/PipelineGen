@@ -291,7 +291,11 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 	// produce candidates the limit window discards.
 	sourceMatches := make([][]localizedSourceMatch, len(work))
 	for index, item := range work {
-		sourceMatches[index] = matchLocalizedSourceEntities(item.text, string(item.lang), sourceAnnotationsFor(item.sceneIndex))
+		matches, matchErr := r.matchLocalizedSources(ctx, item.text, string(item.lang), sourceAnnotationsFor(item.sceneIndex))
+		if matchErr != nil {
+			return nil, fmt.Errorf("localized identity matching for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, matchErr)
+		}
+		sourceMatches[index] = matches
 	}
 
 	outcomes, err := concurrent.Map(ctx, work, workers, func(opCtx context.Context, idx int, item translatedNLPWork) (translatedNLPOutcome, error) {
@@ -341,10 +345,14 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 			localized[item.sceneIndex][item.lang] = outcomes[index].cached
 			continue
 		}
-		sourceMatches[index] = completeOrderedPersonMatches(
-			item.text, string(item.lang), sourceAnnotationsFor(item.sceneIndex),
+		completed, completeErr := r.completeLocalizedPersonMatches(
+			ctx, item.text, string(item.lang), sourceAnnotationsFor(item.sceneIndex),
 			outcomes[index].entities, sourceMatches[index],
 		)
+		if completeErr != nil {
+			return nil, fmt.Errorf("localized identity completion for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, completeErr)
+		}
+		sourceMatches[index] = completed
 		// Already-extracted source names act as identity hints only. A hint is
 		// copied into the localized annotations only when its name can be found
 		// in this translated scene, so it cannot invent a mention or a phrase.
@@ -437,7 +445,9 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 		if annotation == nil {
 			continue
 		}
-		stampLocalizedSourceIdentity(annotation, sourceMatches[index])
+		if err := stampLocalizedSourceIdentity(annotation, sourceMatches[index]); err != nil {
+			return nil, fmt.Errorf("stamp localized identity for scene %s/%s: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
+		}
 		annotation.Language = string(item.lang)
 		if localized[item.sceneIndex] == nil {
 			localized[item.sceneIndex] = make(map[Language]*scriptpkg.SceneAnnotations)

@@ -64,7 +64,13 @@ type RemoteFinalJobResult struct {
 	Attempt     int    `json:"attempt,omitempty"`
 	WorkerID    string `json:"worker_id,omitempty"`
 	ArtifactURL string `json:"artifact_url,omitempty"`
-	SHA256      string `json:"sha256,omitempty"`
+	// ArtifactPath is the local copy the adapter downloads from ArtifactURL
+	// after a SUCCEEDED receipt. It is deliberately persisted with the durable
+	// receipt (the worker and the artifact persister are separate boundaries)
+	// and stripped from the public script.json projection.
+	ArtifactPath      string `json:"artifact_path,omitempty"`
+	ArtifactSizeBytes int64  `json:"artifact_size_bytes,omitempty"`
+	SHA256            string `json:"sha256,omitempty"`
 	// ReportOwner is the single durable owner of this receipt. It is stamped on
 	// every receipt (submit, attach, stale) so a reader never has to guess
 	// whether timing came from the Master, a log line or a sidecar.

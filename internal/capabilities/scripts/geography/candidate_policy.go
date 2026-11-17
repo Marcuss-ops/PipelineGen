@@ -11,7 +11,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func MapPlaceCandidateIgnoredWords(registry *linguistics.LexiconRegistry, language string) (map[string]struct{}, error) {
+func MapPlaceCandidateIgnoredWords(registry *linguistics.Profiles, language string) (map[string]struct{}, error) {
 	if registry == nil {
 		return nil, fmt.Errorf("lexicon registry is not installed")
 	}

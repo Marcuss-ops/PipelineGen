@@ -2,10 +2,13 @@ package script
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,6 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
@@ -98,6 +102,11 @@ type RemoteFinalJobAdapter struct {
 	stock    drive.Reader
 	client   *remotejob.Client
 	segments scriptgen.FinalJobVideoSegmentPreparer
+	// artifactToken is the Master admin bearer used only for the final
+	// artifact GET. It is deliberately separate from the M2M token in
+	// client.Token: the M2M credential submits jobs, while artifact download
+	// is an operator-scoped read (`velox download-final` uses the same one).
+	artifactToken string
 	// attachBudget bounds a single attempt's wait on the Master render; see
 	// defaultFinalJobAttachBudget and finalJobAttachBudget.
 	attachBudget time.Duration
@@ -156,6 +165,10 @@ type RemoteFinalJobConfig struct {
 	Client       *remotejob.Client
 	AttachBudget time.Duration
 	QueueBudget  time.Duration
+	// ArtifactToken is the bearer for the final artifact GET. Empty disables
+	// automatic download; the finalizer then fails closed instead of silently
+	// completing a final job without its video.
+	ArtifactToken string
 }
 
 func NewRemoteFinalJobAdapter(cfg RemoteFinalJobConfig) (*RemoteFinalJobAdapter, error) {
@@ -169,7 +182,7 @@ func NewRemoteFinalJobAdapter(cfg RemoteFinalJobConfig) (*RemoteFinalJobAdapter,
 		return nil, fmt.Errorf("remote final-job queue budget cannot be negative")
 	}
 	cfg.Client.QueueTimeout = cfg.QueueBudget
-	return &RemoteFinalJobAdapter{media: cfg.Media, stock: cfg.Stock, client: cfg.Client, attachBudget: cfg.AttachBudget, queueBudget: cfg.QueueBudget}, nil
+	return &RemoteFinalJobAdapter{media: cfg.Media, stock: cfg.Stock, client: cfg.Client, attachBudget: cfg.AttachBudget, queueBudget: cfg.QueueBudget, artifactToken: strings.TrimSpace(cfg.ArtifactToken)}, nil
 }
 
 func (a *RemoteFinalJobAdapter) BaseURL() string {
@@ -215,9 +228,13 @@ func NewRemoteFinalJobAdapterFromEnvironment(media *pgmedia.MediaSearcher, stock
 	if err != nil {
 		return nil, err
 	}
+	artifactToken := strings.TrimSpace(knobs.String("VELOX_ARTIFACT_TOKEN"))
+	if artifactToken == "" {
+		artifactToken = strings.TrimSpace(knobs.String("VELOX_MASTER_ADMIN_TOKEN"))
+	}
 	return NewRemoteFinalJobAdapter(RemoteFinalJobConfig{
 		Media: media, Stock: stock, Client: remotejob.New(base, token),
-		AttachBudget: budget, QueueBudget: queueBudget,
+		AttachBudget: budget, QueueBudget: queueBudget, ArtifactToken: artifactToken,
 	})
 }
 
@@ -231,6 +248,10 @@ func (a *RemoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 	// The attach result only knows Master-clock phases; the locally measured
 	// handoff belongs to the receipt the submission produced.
 	receipt.Timing = mergeFinalJobTiming(started.Timing, receipt.Timing)
+	receipt, downloadErr := a.withDownloadedArtifact(ctx, receipt)
+	if downloadErr != nil {
+		return receipt, errors.Join(finalJobWaitError(waitErr), downloadErr)
+	}
 	return receipt, finalJobWaitError(waitErr)
 }
 
@@ -302,17 +323,7 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("serialize typed final-job envelope: %w", err)
 	}
-	// VELOX_FINAL_JOB_DUMP_DIR keeps the exact bytes this Producer hands the
-	// Master. A copy-only rejection names a cache path on a machine the Producer
-	// cannot read, so the only way to answer "which segment was that" is to keep
-	// the plan that produced it. Off unless asked.
-	if dir := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_DUMP_DIR")); dir != "" {
-		for name, body := range map[string]map[string]any{"prepare": pre, "finalize": finalize} {
-			if raw, marshalErr := json.MarshalIndent(body, "", "  "); marshalErr == nil {
-				_ = os.WriteFile(filepath.Join(dir, runID+"-"+name+".json"), raw, 0o600)
-			}
-		}
-	}
+	keepFinalJobEnvelopes(runID, pre, finalize)
 	// final_job=true on the local script request triggers this Master handoff.
 	// PREPARE carries the scene plan; FINALIZE attaches runtime assets and
 	// overlays so the Master refreshes prefetch before the worker starts. The id
@@ -478,7 +489,11 @@ func (a *RemoteFinalJobAdapter) AttachFinalJob(ctx context.Context, jobID string
 		budget = 0
 	}
 	remote, err := a.client.Attach(ctx, id, budget)
-	return finalJobResult(id, remote), finalJobWaitError(err)
+	receipt, downloadErr := a.withDownloadedArtifact(ctx, finalJobResult(id, remote))
+	if downloadErr != nil {
+		return receipt, errors.Join(finalJobWaitError(err), downloadErr)
+	}
+	return receipt, finalJobWaitError(err)
 }
 
 // finalJobResult projects the client's Result onto the capability's durable
@@ -490,6 +505,96 @@ func finalJobResult(jobID string, remote remotejob.Result) scriptgen.RemoteFinal
 		id = strings.TrimSpace(jobID)
 	}
 	return scriptgen.RemoteFinalJobResult{JobID: id, Status: remote.Status, WorkerID: remote.WorkerID, ArtifactURL: remote.ArtifactURL, SHA256: remote.SHA256, ReportOwner: scriptgen.FinalJobReportOwner, Timing: finalJobTiming(remote.Timing)}
+}
+
+// withDownloadedArtifact materializes the Master's final MP4 locally so the
+// artifact persister can hand it to the normal finalize Drive delivery. The
+// download is part of the final-job receipt, not an operator command: on a
+// SUCCEEDED HTTP artifact the Producer either has the bytes or returns the
+// download error. A Drive URL is already published, so there is nothing to
+// fetch; a missing artifact token leaves the receipt untouched and the
+// persister fails closed with a configuration error.
+func (a *RemoteFinalJobAdapter) withDownloadedArtifact(ctx context.Context, receipt scriptgen.RemoteFinalJobResult) (scriptgen.RemoteFinalJobResult, error) {
+	if a == nil || !strings.EqualFold(strings.TrimSpace(receipt.Status), "SUCCEEDED") {
+		return receipt, nil
+	}
+	rawURL := strings.TrimSpace(receipt.ArtifactURL)
+	lower := strings.ToLower(rawURL)
+	if rawURL == "" || (!strings.HasPrefix(lower, "https://") && !strings.HasPrefix(lower, "http://")) {
+		return receipt, nil
+	}
+	if strings.TrimSpace(a.artifactToken) == "" {
+		return receipt, nil
+	}
+	path, size, sha, err := a.downloadFinalArtifact(ctx, rawURL, receipt.SHA256, receipt.JobID)
+	if err != nil {
+		return receipt, fmt.Errorf("download remote final artifact %s: %w", receipt.JobID, err)
+	}
+	receipt.ArtifactPath = path
+	receipt.ArtifactSizeBytes = size
+	receipt.SHA256 = sha
+	return receipt, nil
+}
+
+// downloadFinalArtifact GETs the Master artifact with the admin bearer and
+// verifies the Master-reported SHA-256 before making the bytes visible under
+// their final name. A deterministic temp path makes an attach retry reuse the
+// already-downloaded bytes instead of transferring hundreds of megabytes again.
+func (a *RemoteFinalJobAdapter) downloadFinalArtifact(ctx context.Context, rawURL, wantSHA, jobID string) (string, int64, string, error) {
+	seed := digest.SHA256Sum([]byte(jobID + "|" + wantSHA + "|" + rawURL))
+	path := filepath.Join(os.TempDir(), "pipelinegen-final-"+hex.EncodeToString(seed[:8])+".mp4")
+	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+		if got, _, hashErr := digest.SHA256File(path); hashErr == nil && (wantSHA == "" || strings.EqualFold(got, wantSHA)) {
+			return path, info.Size(), got, nil
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", 0, "", fmt.Errorf("build artifact request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(a.artifactToken))
+	req.Header.Set("Accept", "video/mp4, application/octet-stream")
+	client := http.DefaultClient
+	if a.client != nil && a.client.HTTP != nil {
+		client = a.client.HTTP
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", 0, "", fmt.Errorf("GET %s: %w", rawURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", 0, "", fmt.Errorf("GET %s: %s: %s", rawURL, resp.Status, strings.TrimSpace(string(snippet)))
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".part-*")
+	if err != nil {
+		return "", 0, "", fmt.Errorf("create artifact temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	cleanup := func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}
+	h := digest.NewSHA256()
+	size, copyErr := io.Copy(io.MultiWriter(tmp, h), resp.Body)
+	closeErr := tmp.Close()
+	if copyErr != nil || closeErr != nil {
+		cleanup()
+		return "", 0, "", fmt.Errorf("write artifact: %w", errors.Join(copyErr, closeErr))
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if wantSHA != "" && !strings.EqualFold(got, wantSHA) {
+		cleanup()
+		return "", 0, "", fmt.Errorf("artifact sha256 mismatch: got %s want %s", got, wantSHA)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		cleanup()
+		return "", 0, "", fmt.Errorf("commit artifact: %w", err)
+	}
+	return path, size, got, nil
 }
 
 // finalJobTiming projects the transport's Master-clock timing onto the durable
@@ -583,4 +688,31 @@ func finalJobWaitError(err error) error {
 		return fmt.Errorf("%w: %w", scriptgen.ErrFinalJobPending, err)
 	}
 	return err
+}
+
+// keepFinalJobEnvelopes writes the exact prepare/finalize envelopes to
+// VELOX_FINAL_JOB_DUMP_DIR when it is set. A copy-only rejection from the
+// worker names a cache path on a machine this Producer cannot read, so the only
+// way to answer "which segment was that" is the plan that produced it. Off by
+// default: the envelopes carry script text and asset locators.
+func keepFinalJobEnvelopes(runID string, prepare, finalize map[string]any) {
+	dir := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_DUMP_DIR"))
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("final_job envelope dump dir %s: %v", dir, err)
+		return
+	}
+	for name, body := range map[string]map[string]any{"prepare": prepare, "finalize": finalize} {
+		raw, err := json.MarshalIndent(body, "", "  ")
+		if err != nil {
+			log.Printf("final_job envelope dump %s: %v", name, err)
+			continue
+		}
+		path := filepath.Join(dir, runID+"-"+name+".json")
+		if err := os.WriteFile(path, raw, 0o600); err != nil {
+			log.Printf("final_job envelope dump %s: %v", path, err)
+		}
+	}
 }

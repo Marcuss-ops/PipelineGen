@@ -1,20 +1,14 @@
 package linguistics
 
-import (
-	"path/filepath"
-	"runtime"
-	"testing"
-)
+import "testing"
 
-// testRegistry loads the repository lexicon the same way the composition root
-// does; the tests below assert the migrated named sets, not a fixture copy.
-func testRegistry(t *testing.T) *LexiconRegistry {
+// testRegistry loads the Rust-generated snapshot the same way the composition
+// root does; the tests below assert the migrated named sets, not a fixture copy.
+func testRegistry(t *testing.T) *Profiles {
 	t.Helper()
-	_, filename, _, _ := runtime.Caller(0)
-	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../config/lexicons"))
-	registry, err := NewLexiconRegistry(root)
+	registry, err := NewProfiles()
 	if err != nil {
-		t.Fatalf("NewLexiconRegistry(%q): %v", root, err)
+		t.Fatalf("NewProfiles: %v", err)
 	}
 	return registry
 }

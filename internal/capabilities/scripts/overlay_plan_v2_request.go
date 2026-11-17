@@ -644,10 +644,80 @@ func attachMapAssetLocalPaths(item *capmodel.OverlayItem, plates capabilityoverl
 // the existing certified map-plate resolver. Rust owns which place to show
 // and when; this Producer boundary attaches the licensed local/dynamic map
 // source needed by the renderer.
+// applyChainSegmentPresets mirrors the semantic_role → preset_id decision onto
+// every chain segment. Rust coalesces standalone overlays into one chain and
+// carries each segment's kind/template, but the preset decision belongs to
+// this resolver (ADR-029). Without it RenderingGen lowers the text segments
+// with no preset, emits a partial style (fill/stroke only, no font/font_size)
+// and the Chronon daemon rejects the whole render plan.
+func applyChainSegmentPresets(plan *capmodel.OverlayPlan) {
+	if plan == nil {
+		return
+	}
+	for i := range plan.Items {
+		item := &plan.Items[i]
+		segments := chainSegmentMaps(item.Params)
+		firstPreset := ""
+		for _, segment := range segments {
+			preset := strings.TrimSpace(chainSegmentString(segment, "preset_id"))
+			if preset == "" {
+				templateID := strings.TrimSpace(chainSegmentString(segment, "template_id"))
+				if templateID == "" {
+					continue
+				}
+				resolved, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(templateID)
+				if !ok {
+					continue
+				}
+				preset = resolved
+				segment["preset_id"] = resolved
+			}
+			if firstPreset == "" {
+				firstPreset = preset
+			}
+		}
+		// The chain item mirrors its first segment for consumers that do not
+		// read chain_segments (motion/preview paths).
+		if strings.TrimSpace(item.PresetID) == "" && firstPreset != "" {
+			item.PresetID = firstPreset
+		}
+	}
+}
+
+// chainSegmentMaps returns the mutable segment maps of a chain item. The plan
+// arrives from JSON, so the list can be []any or []map[string]any.
+func chainSegmentMaps(params map[string]any) []map[string]any {
+	if len(params) == 0 {
+		return nil
+	}
+	switch raw := params["chain_segments"].(type) {
+	case []map[string]any:
+		return raw
+	case []any:
+		out := make([]map[string]any, 0, len(raw))
+		for _, entry := range raw {
+			if segment, ok := entry.(map[string]any); ok {
+				out = append(out, segment)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func chainSegmentString(segment map[string]any, key string) string {
+	if value, ok := segment[key].(string); ok {
+		return value
+	}
+	return ""
+}
+
 func materializeEditorialMapItems(plan *capmodel.OverlayPlan, plates capabilityoverlay.PlateResolver, canvas OverlayCanvasSpec, seed string) error {
 	if plan == nil {
 		return nil
 	}
+	applyChainSegmentPresets(plan)
 	ordinal := 0
 	for i := range plan.Items {
 		item := &plan.Items[i]

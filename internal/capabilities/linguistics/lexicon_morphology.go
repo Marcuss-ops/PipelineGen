@@ -6,6 +6,6 @@ package linguistics
 // stripping). Per-language suffixes live in the LexiconProfile.
 // VerbSuffixes field; missing language configuration is an error rather than
 // a synthesized cross-language safety net.
-func (r *LexiconRegistry) VerbSuffixes(language string) []string {
+func (r *Profiles) VerbSuffixes(language string) []string {
 	return r.Resolve(language).VerbSuffixes
 }

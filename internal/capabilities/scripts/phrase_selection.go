@@ -77,7 +77,7 @@ func NewPhraseSelectionProfile(profile *linguistics.LexiconProfile) *PhraseSelec
 // configured stop/function words, visual verbs and phrase policy onto the
 // wire.
 func phraseSelectionProfileForLanguage(language string) *PhraseSelectionProfile {
-	registry := linguistics.DefaultLexiconOrNil()
+	registry := linguistics.DefaultProfilesOrNil()
 	if registry == nil {
 		return nil
 	}

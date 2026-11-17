@@ -36,6 +36,6 @@ func DefaultPhraseExtractionPolicy() PhraseExtractionPolicy {
 
 // PhrasePolicy returns the phrase extraction policy for the given
 // language. Phase 8 split: aliasing-domain accessor.
-func (r *LexiconRegistry) PhrasePolicy(language string) PhraseExtractionPolicy {
+func (r *Profiles) PhrasePolicy(language string) PhraseExtractionPolicy {
 	return r.Resolve(language).PhrasePolicy
 }

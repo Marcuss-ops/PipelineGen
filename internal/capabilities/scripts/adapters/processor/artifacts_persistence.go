@@ -69,6 +69,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	filesystem "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
@@ -130,6 +131,11 @@ func PersistGeneratedArtifacts(
 		finalAudio := *publicResult.FinalAudio
 		finalAudio.Path = ""
 		publicResult.FinalAudio = &finalAudio
+	}
+	if publicResult.RemoteFinalVideo != nil {
+		remote := *publicResult.RemoteFinalVideo
+		remote.Path = ""
+		publicResult.RemoteFinalVideo = &remote
 	}
 	scriptData, err := json.MarshalIndent(&publicResult, "", "  ")
 	if err != nil {
@@ -257,6 +263,56 @@ func PersistGeneratedArtifacts(
 		})
 	}
 
+	// ── 3. remote final video (the composite render) ───────────────────
+	// The final-job adapter downloads the Master artifact into the durable
+	// receipt. Publishing it here closes the old manual gap: before this, a
+	// SUCCEEDED remote render still required `velox download-final` plus
+	// `drive-upload`, and a forgotten upload looked like a successful job.
+	// Delivery is deferred so a 200+ MB upload cannot block completion; the
+	// existing finalize outbox retries it independently.
+	if result.RemoteFinalVideo != nil {
+		remote := result.RemoteFinalVideo
+		artifactPath := strings.TrimSpace(remote.Path)
+		if artifactPath == "" {
+			if isHTTPArtifactURL(remote.ArtifactURL) {
+				return nil, fmt.Errorf("artifacts_persistence: remote final video %s was not downloaded; configure VELOX_ARTIFACT_TOKEN or VELOX_MASTER_ADMIN_TOKEN", remote.JobID)
+			}
+		} else {
+			info, err := os.Stat(artifactPath)
+			if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+				return nil, fmt.Errorf("artifacts_persistence: remote final video is unavailable at %s", artifactPath)
+			}
+			if remote.SizeBytes > 0 && remote.SizeBytes != info.Size() {
+				return nil, fmt.Errorf("artifacts_persistence: remote final video size mismatch")
+			}
+			videoSHA, err := job.ComputeSHA256(fs, artifactPath)
+			if err != nil {
+				return nil, fmt.Errorf("artifacts_persistence: sha256 remote final video: %w", err)
+			}
+			if want := strings.TrimSpace(remote.SHA256); want != "" && !strings.EqualFold(want, videoSHA) {
+				return nil, fmt.Errorf("artifacts_persistence: remote final video hash mismatch")
+			}
+			metadata := map[string]any{
+				"remote_job_id":                          remote.JobID,
+				"artifact_url":                           remote.ArtifactURL,
+				finalization.DrivePublicationMetadataKey: finalization.DrivePublicationDeferred,
+			}
+			// Pin the exact job folder resolved by the render plan. Without it a
+			// video artifact falls back to the generic youtube_clip tree, which is
+			// how the r1 composite ended up outside the delivery folder.
+			if folderID := strings.TrimSpace(remote.DriveFolderID); folderID != "" {
+				metadata["resolved_folder_id"] = folderID
+				metadata["drive_folder_id"] = folderID
+			}
+			artifacts = append(artifacts, job.Artifact{
+				ID: jobID + ":final_video", Kind: job.ArtifactKindFinalVideo,
+				Path: artifactPath, Filename: finalVideoFilename(result.Title),
+				MIMEType: "video/mp4", SizeBytes: info.Size(), SHA256: videoSHA,
+				Required: true, DriveLanguage: language, ArtifactMetadata: metadata,
+			})
+		}
+	}
+
 	return artifacts, nil
 }
 
@@ -334,4 +390,35 @@ func stripVoiceoverLocalPaths(in domainScript.SpecSceneOutput) domainScript.Spec
 //	/tmp/pipelinegen/jobs/<jobID>/output/
 func workspaceOutputDir(jobID string) string {
 	return filepath.Join(os.TempDir(), "pipelinegen", "jobs", jobID, "output")
+}
+
+// isHTTPArtifactURL reports whether the Master receipt points at bytes the
+// Producer must download. Drive URLs are already published; empty or opaque
+// URLs carry no downloadable artifact.
+func isHTTPArtifactURL(raw string) bool {
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	return strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://")
+}
+
+// finalVideoFilename gives the composite a human-readable Drive name while
+// keeping it filesystem-safe. It falls back to output_name, then title.
+func finalVideoFilename(names ...string) string {
+	name := ""
+	for _, candidate := range names {
+		if strings.TrimSpace(candidate) != "" {
+			name = strings.TrimSpace(candidate)
+			break
+		}
+	}
+	if name == "" {
+		name = "final_video"
+	}
+	name = strings.NewReplacer(
+		"/", "-", "\\", "-", ":", "-", "*", "-", "?", "-",
+		"\"", "-", "<", "-", ">", "-", "|", "-",
+	).Replace(name)
+	if !strings.HasSuffix(strings.ToLower(name), ".mp4") {
+		name += ".mp4"
+	}
+	return name
 }

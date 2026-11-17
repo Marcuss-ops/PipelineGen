@@ -24,9 +24,8 @@
 #   - clip.render Drive delivery is UNCONDITIONALLY asynchronous: the rendered
 #     asset + Drive intent commit durably and the upload drains through the
 #     PostgreSQL media outbox worker. There is no sync-Drive toggle.
-#   - linguistics.lexicon_root resolves relative to THIS file's directory
-#     when the anchored path exists (config.GetFromPath), so this profile
-#     boots from any cwd.
+#   - linguistic profiles are embedded from BrainRust/lexicon at build time;
+#     there is no runtime lexicon directory to anchor.
 
 server:
   host: "127.0.0.1"

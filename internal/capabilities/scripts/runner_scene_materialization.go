@@ -60,7 +60,8 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 			}
 			out = append(out, Scene{
 				ID: id, Index: i,
-				Text: map[Language]string{req.SourceLanguage: segmentText},
+				DurationMS: segment.DurationMS,
+				Text:       map[Language]string{req.SourceLanguage: segmentText},
 			})
 		}
 		return out
@@ -476,6 +477,21 @@ func applySegmentNoVoiceoverScenes(req GenerateRequest, scenes []Scene) {
 	}
 }
 
+// applyExplicitSegmentDuration carries a caller's editorial duration onto the
+// scene. This is what lets a full-length body clip keep its span while a short
+// voiceover is mixed inside it; without it the TTS seal becomes the timeline
+// duration. Fixed-media scenes own their playback window and are left alone.
+func applyExplicitSegmentDuration(req GenerateRequest, scene *Scene) {
+	if scene.ExecutionMode.IsFixedMedia() {
+		return
+	}
+	segment, ok := segmentForScene(req.ScriptParams.Segments, scene.ID, scene.Index)
+	if !ok || segment.DurationMS <= 0 {
+		return
+	}
+	scene.DurationMS = segment.DurationMS
+}
+
 func segmentForScene(segments []scriptpkg.ScriptSegment, sceneID string, sceneIndex int) (scriptpkg.ScriptSegment, bool) {
 	for _, segment := range segments {
 		if strings.TrimSpace(segment.ID) != "" && strings.TrimSpace(segment.ID) == strings.TrimSpace(sceneID) {
@@ -649,6 +665,7 @@ func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID 
 		noVoiceoverScene := []Scene{scene}
 		applySegmentNoVoiceoverScenes(req, noVoiceoverScene)
 		scene = noVoiceoverScene[0]
+		applyExplicitSegmentDuration(req, &scene)
 		// The SceneTextReady boundary: pin when this scene's text became
 		// final so the streaming overlap is durable and provable (scene N's
 		// translation/TTS must start before scene N+1's text is ready).

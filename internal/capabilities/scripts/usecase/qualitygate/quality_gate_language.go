@@ -53,7 +53,7 @@ func detectLanguage(text string) string {
 		return ""
 	}
 
-	registry := linguistics.DefaultLexiconOrNil()
+	registry := linguistics.DefaultProfilesOrNil()
 	if registry == nil {
 		return ""
 	}

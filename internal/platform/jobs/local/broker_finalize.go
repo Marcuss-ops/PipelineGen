@@ -332,6 +332,15 @@ func verifiedFromStagedRef(ctx context.Context, ref *remote.StagedArtifactRefere
 			verified.RootFolderResolved = true
 		}
 	}
+	// Producers that already know the exact delivery folder (the final video
+	// uses the job's DriveFolderID) pin it through artifact metadata. This is
+	// the same verified-folder contract the stock pipeline and the overlay
+	// resolver use; it is deliberately read AFTER the overlay resolver so an
+	// explicit producer pin wins over the inferred parent.
+	if folderID, ok := ref.ArtifactMetadata["resolved_folder_id"].(string); ok && strings.TrimSpace(folderID) != "" {
+		verified.ResolvedFolderID = strings.TrimSpace(folderID)
+		verified.RootFolderResolved = true
+	}
 	// Script/document destinations require a logical project path;
 	// worker manifests do not need to duplicate it for every file.
 	// Use the job identity as the stable fallback, while preserving

@@ -44,6 +44,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 )
 
@@ -121,6 +122,8 @@ type ProcessVoiceoverPipelineDeps struct {
 	// so the TTS slot is freed after synthesis. Nil means synchronous
 	// execution (backward compat).
 	AsyncPublish AsyncPublishPool
+	// PhraseAligner grounds optional moment annotations on the Rust worker.
+	PhraseAligner audio.PhraseAligner
 }
 
 // ProcessVoiceoverRecoveryDeps groups the 2 nil-tolerant recovery
@@ -223,6 +226,7 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 			VoiceoverRepository: deps.Pipeline.VoiceoverRepository,
 			Finalizer:           deps.Finalize.Finalizer,
 			TxOutboxEnqueuer:    deps.Recovery.TxOutboxEnqueuer,
+			PhraseAligner:       deps.Pipeline.PhraseAligner,
 			Cache: ProcessSegmentCacheDeps{
 				VoiceoverCache: deps.Pipeline.VoiceoverCache,
 				AsyncPublish:   deps.Pipeline.AsyncPublish,

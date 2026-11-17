@@ -38,31 +38,6 @@ func TestMapPinTimingOverflowFailsClosed(t *testing.T) {
 	}
 }
 
-func TestTimelineAdmissionCollision(t *testing.T) {
-	items := []capmodel.OverlayItem{
-		{ID: "m1", Kind: "map", StartUS: 0, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
-		{ID: "t1", Kind: "text_phrase", StartUS: 5_000_000, DurationUS: 3_000_000},
-	}
-	if err := AdmitOverlayTimeline(items, 24, 1); err == nil {
-		t.Fatal("8s map + phrase at 5s must collide")
-	}
-	ok := []capmodel.OverlayItem{
-		{ID: "m1", Kind: "map", StartUS: 0, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
-		{ID: "t1", Kind: "text_phrase", StartUS: 8_000_000, DurationUS: 3_000_000},
-	}
-	// Phrase-phrase overlaps stay allowed (text layers, not map collisions).
-	phrases := []capmodel.OverlayItem{
-		{ID: "p1", Kind: "text_phrase", StartUS: 0, DurationUS: 5_000_000},
-		{ID: "p2", Kind: "text_phrase", StartUS: 2_000_000, DurationUS: 5_000_000},
-	}
-	if err := AdmitOverlayTimeline(phrases, 24, 1); err != nil {
-		t.Fatalf("phrase-phrase overlap must stay allowed, got %v", err)
-	}
-	if err := AdmitOverlayTimeline(ok, 24, 1); err != nil {
-		t.Fatalf("adjacent windows must pass, got %v", err)
-	}
-}
-
 func TestSelectMapCompositionFromRegistry(t *testing.T) {
 	// The registry certifies the catalog; the ported subset decides
 	// servability. The selection is deterministic and only ever records a

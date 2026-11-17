@@ -8,8 +8,13 @@ import (
 )
 
 type ExternalConfig struct {
-	OllamaURL            string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
-	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e4b"`
+	OllamaURL string `yaml:"ollama_url" env:"OLLAMA_ADDR" default:"http://localhost:11434"`
+	// Gemma 2B is the default text model: it is the latency-first choice for
+	// scene narration, and the 4B variant is opt-in per item when quality is
+	// worth the extra load. Keeping the default aligned with config.yaml also
+	// prevents startup warmup and the first generation call from loading two
+	// different residents (OLLAMA_MAX_LOADED_MODELS=1).
+	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e2b"`
 	OllamaEmbedModel     string `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL"`
 	OllamaMetadataModel  string `yaml:"ollama_metadata_model" env:"OLLAMA_METADATA_MODEL" default:""`
 	OllamaTimeoutSeconds int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"600"`

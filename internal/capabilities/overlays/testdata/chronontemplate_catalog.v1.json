@@ -40069,6 +40069,391 @@
       ]
     },
     {
+      "id": "typewriter_glyph_square_short",
+      "title": "Typewriter Glyph Square (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "glyph",
+      "enter": 42,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 10,
+            "enter": 42
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_glyph_wrap_long",
+      "title": "Typewriter Glyph Wrap (long)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase"
+      ],
+      "unit": "glyph",
+      "enter": 113,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 10,
+            "enter": 113
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_soft_edge_long",
+      "title": "Typewriter Soft Edge (long)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase"
+      ],
+      "unit": "glyph",
+      "enter": 112,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "smooth",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 10,
+            "enter": 112
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_impact_push_short",
+      "title": "Typewriter Impact Push (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "glyph",
+      "enter": 53,
+      "exit": 14,
+      "tracks": [
+        {
+          "property": "scale",
+          "keyframes": [
+            {
+              "frame": 0,
+              "value": 1.06
+            },
+            {
+              "frame": 26,
+              "value": 1.0
+            }
+          ],
+          "easing": "linear"
+        },
+        {
+          "property": "opacity",
+          "keyframes": [
+            {
+              "frame": 0,
+              "value": 0.0
+            },
+            {
+              "frame": 18,
+              "value": 1.0
+            }
+          ],
+          "easing": "linear"
+        }
+      ],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "out_cubic",
+            "delay": 7,
+            "enter": 53
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_terminal_block_long",
+      "title": "Typewriter Terminal Block (long)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase"
+      ],
+      "unit": "glyph",
+      "enter": 85,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 11,
+            "enter": 85
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_editorial_line_long",
+      "title": "Typewriter Editorial Line (long)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase"
+      ],
+      "unit": "glyph",
+      "enter": 74,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 10,
+            "enter": 74
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_word_burst_short",
+      "title": "Typewriter Word Burst (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "word",
+      "enter": 31,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "word",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "out_cubic",
+            "delay": 9,
+            "enter": 31
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_slow_type_short",
+      "title": "Typewriter Slow Type (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "glyph",
+      "enter": 44,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 3,
+            "enter": 44
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
       "id": "metric_counter_rise",
       "category": "metric_v1",
       "supported_template": "metric_stat_card",
@@ -47335,6 +47720,14 @@
       "phrase_apple_clean_28_opacity_cinematic",
       "phrase_apple_clean_30_opacity_clean_apple",
       "precision_word_stagger",
+      "typewriter_glyph_square_short",
+      "typewriter_glyph_wrap_long",
+      "typewriter_soft_edge_long",
+      "typewriter_impact_push_short",
+      "typewriter_terminal_block_long",
+      "typewriter_editorial_line_long",
+      "typewriter_word_burst_short",
+      "typewriter_slow_type_short",
       "apple_focus_rise",
       "apple_soft_scale",
       "apple_word_cascade",

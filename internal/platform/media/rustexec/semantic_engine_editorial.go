@@ -25,7 +25,7 @@ const (
 
 // phraseStopWords resolves the phrase stop-word set the Rust editorial core
 // must apply for a request's language, from the repository lexicon's
-// per-language profile (config/lexicons/<lang>/, unioned with the
+// per-language profile (Rust-generated, unioned with the
 // cross-linguistic fallback for the languages the repository does not
 // enumerate).
 //
@@ -37,7 +37,7 @@ const (
 // English-only extraction, and the result is sorted so the request payload is
 // deterministic.
 func phraseStopWords(language string) []string {
-	registry := linguistics.DefaultLexiconOrNil()
+	registry := linguistics.DefaultProfilesOrNil()
 	if registry == nil {
 		return nil
 	}

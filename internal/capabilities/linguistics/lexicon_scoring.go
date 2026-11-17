@@ -11,7 +11,7 @@ import (
 // Languages returns the explicitly configured language profiles in stable
 // order. The registry owns language selection; callers do not maintain a
 // second language list in code.
-func (r *LexiconRegistry) Languages() []string {
+func (r *Profiles) Languages() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	langs := make([]string, 0, len(r.profiles))
@@ -23,12 +23,12 @@ func (r *LexiconRegistry) Languages() []string {
 }
 
 // ProfileCount returns the number of explicit (non-fallback) language
-// profiles currently loaded in the registry.
+// profiles currently loaded in the snapshot.
 //
 // Phase 8 split: scoring domain. ProfileCount is the canonical
 // cardinality accessor used by operator dashboards and health checks
 // (e.g., /api/lexicon/status). Reads mu.RLock-protected profiles map.
-func (r *LexiconRegistry) ProfileCount() int {
+func (r *Profiles) ProfileCount() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.profiles)
@@ -36,26 +36,26 @@ func (r *LexiconRegistry) ProfileCount() int {
 
 // Version returns a hash-based version string that changes when any
 // loaded profile changes. The fingerprint is computed at construction
-// (NewLexiconRegistry sets r.version) and memoised; if r.version was
+// (NewProfiles sets r.version) and memoised; if r.version was
 // somehow empty, a live fingerprint is recomputed.
 //
 // Phase 8 split: scoring domain. Version is the canonical change-
 // detector used by caches that depend on lexicon content (e.g.,
 // Qdrant embedding cache invalidation, language-detector warming).
-func (r *LexiconRegistry) Version() string {
+func (r *Profiles) Version() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.version != "" {
 		return r.version
 	}
-	return fingerprintLexiconRegistry(r.profiles, r.fallback)
+	return fingerprintLexiconProfiles(r.profiles, r.fallback)
 }
 
-// fingerprintLexiconRegistry computes a deterministic SHA-256-based
+// fingerprintLexiconProfiles computes a deterministic SHA-256-based
 // hash over every loaded profile (sorted by key for stability) plus
 // the fallback profile. The output is "lexicon-<16hex>" so it's
 // recognisable in cache keys and log lines.
-func fingerprintLexiconRegistry(profiles map[string]*LexiconProfile, fallback *LexiconProfile) string {
+func fingerprintLexiconProfiles(profiles map[string]*LexiconProfile, fallback *LexiconProfile) string {
 	h := digest.NewSHA256()
 
 	keys := make([]string, 0, len(profiles))

@@ -2,26 +2,23 @@ package scriptgeneration
 
 import (
 	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 )
 
-// The scripts package exercises language-aware gates directly (editorial
-// bullet expansion consults the stop/function-word boundary sets). Its test
-// process therefore installs the same repository lexicon used by the
-// composition root; no test-only word lists are allowed.
+// The test process installs the same Rust-generated lexicon snapshot the
+// composition root uses; no test-only word lists are allowed.
 func TestMain(m *testing.M) {
-	_, filename, _, _ := runtime.Caller(0)
-	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "../../../config/lexicons"))
-	registry, err := linguistics.NewLexiconRegistry(root)
+	profiles, err := linguistics.NewProfiles()
 	if err != nil {
 		panic(err)
 	}
-	if err := linguistics.SetDefaultLexicon(registry); err != nil {
+	if err := linguistics.SetDefaultProfiles(profiles); err != nil {
 		panic(err)
 	}
+	// The former Go matcher is retained only as a test oracle; production uses
+	// the Rust localized-identity operation wired in script_generation_runtime.go.
+	defaultLocalizedIdentityMatcher = oracleLocalizedIdentityMatcher{}
 	os.Exit(m.Run())
 }

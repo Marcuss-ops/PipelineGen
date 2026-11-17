@@ -71,8 +71,12 @@ type ProcessSegmentDeps struct {
 	Finalizer           VoiceoverFinalizer
 	TxOutboxEnqueuer    TxOutboxEnqueuer
 	SemanticTagger      SemanticTaggerFunc
-	Cache               ProcessSegmentCacheDeps
-	Logger              *zap.Logger
+	// PhraseAligner is the Rust word/phrase alignment boundary used to ground
+	// optional moment annotations. Nil fails closed only when a command asks
+	// for moments; a run without moments never needs it.
+	PhraseAligner audio.PhraseAligner
+	Cache         ProcessSegmentCacheDeps
+	Logger        *zap.Logger
 }
 
 type ProcessSegmentUseCase struct{ deps ProcessSegmentDeps }

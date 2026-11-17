@@ -271,7 +271,8 @@ func rankedUniqueBulletIndices(items []capmodel.OverlayItem, limit int) []int {
 		return candidates[i] < candidates[j]
 	})
 	// One bullet per scene: the visual contract of an opening card, and the
-	// same rule projectChapterBullets already enforces at projection time.
+	// same rule the Rust chapter-bullet projection already enforces
+	// (overlay-compiler/src/chapter_bullet.rs).
 	selected := make([]int, 0, limit)
 	seenScenes := make(map[string]struct{}, limit)
 	for _, candidate := range candidates {

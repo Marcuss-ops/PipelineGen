@@ -389,14 +389,11 @@ outbox:
   reclaim_interval_seconds: 60
   max_attempts: 5
 
-# Centralized linguistic lexicons (PR-LEXICON-SSOT, July 2026).
-# Each subdirectory under lexicon_root is a language tag (e.g. en, it).
-# Required files per language: stopwords.txt, function_words.txt,
-# entity_blocklist.txt, verb_morphology.txt, phrase_policy.txt,
-# negative_particles.txt, visual_verbs.txt. Missing optional files are
-# treated as empty; missing required_languages profiles make boot fail.
+# Linguistic profiles are owned by BrainRust/lexicon and embedded at build
+# time (stop words, function words, morphology, named sets and phrase policy).
+# required_languages lists the profiles that must exist; boot fails closed if
+# one is missing.
 linguistics:
-  lexicon_root: "config/lexicons"
   required_languages:
     - en
     - it

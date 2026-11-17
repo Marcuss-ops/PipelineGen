@@ -91,18 +91,18 @@ func numericOverlayValueStartsWithNumber(value string) bool {
 
 // numericOverlayWordSet is the cross-language spoken-number vocabulary used by
 // the entity-card admission path. It lives in
-// config/lexicons/fallback/numeric_overlay_words.txt (the fallback profile is
+// the fallback profile's numeric_overlay_words set (the fallback profile is
 // the cross-linguistic set, because a numeric surface may arrive in any output
 // language), so the check stays language-agnostic without a second copy here.
 func numericOverlayWordSet() map[string]struct{} {
-	return linguistics.DefaultLexicon().WordSet("fallback", "numeric_overlay_words")
+	return linguistics.DefaultProfiles().WordSet("fallback", "numeric_overlay_words")
 }
 
 // numericOverlayContextSet is the date-context vocabulary (day/year words,
 // connectors, month names and units) from
-// config/lexicons/fallback/numeric_overlay_context.txt.
+// The same applies to numeric_overlay_context.
 func numericOverlayContextSet() map[string]struct{} {
-	return linguistics.DefaultLexicon().WordSet("fallback", "numeric_overlay_context")
+	return linguistics.DefaultProfiles().WordSet("fallback", "numeric_overlay_context")
 }
 
 // cleanNumericOverlayValue reduces a dirty NLP numeric surface to the

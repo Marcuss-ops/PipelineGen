@@ -6,6 +6,7 @@ package scriptgeneration
 // no-op for the candidates sent to Rust.
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -23,7 +24,7 @@ func editorialRegressionResult(t *testing.T) *GenerateResult {
 
 func editorialRegressionRequest(t *testing.T, result *GenerateResult) overlayplan.V2Request {
 	t.Helper()
-	input, err := prepareOverlayPlanCompile(result, "en", GoldenOverlayCanvas,
+	input, err := prepareOverlayPlanCompile(context.Background(), result, "en", GoldenOverlayCanvas,
 		"plan-fixed", "video-fixed", "project-fixed", nil)
 	require.NoError(t, err)
 	require.NotNil(t, input)

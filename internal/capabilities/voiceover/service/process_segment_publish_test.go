@@ -37,8 +37,26 @@ func newPublishTimingUseCase(t *testing.T, pub VoiceoverPublisher) *ProcessSegme
 		Publisher:           pub,
 		VoiceoverRepository: &stubProcessVoRepo{db: db},
 		Finalizer:           &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "vo-timing-test"}},
+		PhraseAligner:       stubPublishPhraseAligner{},
 		Logger:              zap.NewNop(),
 	})
+}
+
+// stubPublishPhraseAligner mirrors the one alignment the moments fixture
+// needs: "celebre" is present in the word timing, "Mussolini" is absent and
+// must be skipped (allow_missing), never fabricated.
+type stubPublishPhraseAligner struct{}
+
+func (stubPublishPhraseAligner) AlignPhrases(_ context.Context, request audio.PhraseAlignmentRequest) ([]audio.LocatedPhrase, error) {
+	var out []audio.LocatedPhrase
+	for _, phrase := range request.Phrases {
+		if phrase == "celebre" {
+			out = append(out, audio.LocatedPhrase{
+				Text: phrase, Occurrence: 1, WordStart: 1, WordEnd: 1, StartUS: 125_000, EndUS: 487_000,
+			})
+		}
+	}
+	return out, nil
 }
 
 // timingTestFixture builds a hermetic publish context: a real audio file

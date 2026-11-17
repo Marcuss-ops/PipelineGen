@@ -7,6 +7,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestExternalConfigDefaultsTextToGemma2B(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	assert.Equal(t, "gemma4:e2b", cfg.External.OllamaModel,
+		"text generation must default to the latency-first 2B model; 4B stays opt-in per item")
+}
+
 func TestExternalConfigRustVisualNERPathBindings(t *testing.T) {
 	cfg := &Config{}
 	applyDefaults(cfg)

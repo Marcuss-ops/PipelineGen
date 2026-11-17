@@ -43,7 +43,7 @@ func (r *WebResearchResolver) validateResearchSource(topic, query, language stri
 	return validateResearchSourceWithLexicon(topic, query, language, freshnessDays, page, r.lexicon)
 }
 
-func validateResearchSourceWithLexicon(topic, query, language string, freshnessDays int, page scriptports.WebPage, registry *linguistics.LexiconRegistry) (bool, string) {
+func validateResearchSourceWithLexicon(topic, query, language string, freshnessDays int, page scriptports.WebPage, registry *linguistics.Profiles) (bool, string) {
 	if strings.TrimSpace(page.Text) == "" {
 		return false, "empty page text"
 	}

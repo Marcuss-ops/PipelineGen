@@ -491,7 +491,7 @@ func momentQueriesFromAnnotations(ann *scriptpkg.SceneAnnotations) []audio.Momen
 			}
 		}
 		// Fallback when grounding produced no mention spans: use the entity
-		// surface text verbatim. LocatePhrase skips it if it does not occur.
+		// surface text verbatim. The Rust aligner skips it if it does not occur.
 		if len(entity.Mentions) == 0 {
 			if v := strings.TrimSpace(entity.Text); v != "" {
 				queries = append(queries, audio.MomentQuery{Kind: audio.MomentEntity, Value: v})

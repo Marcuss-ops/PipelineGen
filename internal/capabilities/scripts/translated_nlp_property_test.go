@@ -187,7 +187,7 @@ func propertyEntitySpans(text string, entities []string) [][2]int {
 }
 
 func propertyLexicon(language Language) *linguistics.LexiconProfile {
-	registry := linguistics.DefaultLexiconOrNil()
+	registry := linguistics.DefaultProfilesOrNil()
 	if registry == nil {
 		return nil
 	}

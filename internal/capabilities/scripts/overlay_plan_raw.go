@@ -163,7 +163,7 @@ func heavySentencesToWire(in []scriptpkg.ImportantSentence) []overlayplan.HeavyS
 }
 
 func numericLexiconToWire() *overlayplan.NumericLexicon {
-	lexicon := linguistics.DefaultLexiconOrNil()
+	lexicon := linguistics.DefaultProfilesOrNil()
 	if lexicon == nil {
 		return nil
 	}

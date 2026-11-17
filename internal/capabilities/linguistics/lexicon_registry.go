@@ -1,171 +1,153 @@
-// Package linguistics is the canonical home of language-linguistic
-// data used across the pipeline. It owns the LexiconRegistry, which
-// is the single source of truth for per-language profiles loaded from
-// config/lexicons at bootstrap.
+// Package linguistics is the canonical home of language-linguistic data used
+// across the pipeline. The data is owned by BrainRust/lexicon: the generator
+// `lexicon/tools/build_language_packs.py` emits `profiles.generated.json` from
+// the Rust language sources, and this package exposes a read-only snapshot.
 //
-// godlike/06 SSOT: every stop-word map, function-word map, verb-suffix
-// list and entity-blocklist in the codebase must originate from this
-// package. No hardcoded maps elsewhere, no second representation.
-//
-// Phase 8 split (implemented lexical domains: morphology / stop-words /
-// aliasing / scoring). This file holds ONLY the canonical LexiconRegistry
-// struct, the file-loading constructor NewLexiconRegistry, the panic-on-error
-// variant MustNewLexiconRegistry, and the Resolve + HasProfile orchestration
-// methods.
-//
-// Subordinate types + methods live in domain-specific files:
-//   - LexiconProfile struct → lexicon_profile.go
-//   - PhraseExtractionPolicy + PhrasePolicy accessor → lexicon_aliasing.go
-//   - VerbSuffixes accessor → lexicon_morphology.go
-//   - StopWords / FunctionWords / EntityBlocklist / NegativeParticles
-//     / VisualVerbs accessors → lexicon_stopwords.go
-//   - ProfileCount + Version + fingerprint helpers → lexicon_scoring.go
-//   - File loaders (loadWordSet, loadStringList, loadPhrasePolicy) →
-//     lexicon_loaders.go
-//   - cloneProfile + cloneStringSet → lexicon_clone.go
-//   - defaultLexiconMu + SetDefaultLexicon + DefaultLexicon →
-//     lexicon_default.go
+// godlike/06 SSOT: no stop-word map, function-word map, verb-suffix list or
+// entity blocklist may be hardcoded here. The Rust profile is the authority;
+// the embedded JSON is a generated projection with a parity gate.
 package linguistics
 
 import (
+	_ "embed"
+	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 )
 
-// LexiconRegistry holds pre-loaded LexiconProfiles per language and
-// provides safe read-only access. It is constructed once at bootstrap
-// from files under config/lexicons/ and never mutated afterwards.
-type LexiconRegistry struct {
-	mu       sync.RWMutex
-	profiles map[string]*LexiconProfile
-	fallback *LexiconProfile
-	version  string
+//go:embed profiles.generated.json
+var generatedProfilesJSON []byte
+
+const (
+	generatedProfilesSchema = "go_lexicon_profiles.v1"
+	languageProfileSchema   = "language_profile.v1"
+)
+
+// generatedProfilesPayload is the checked-in Go projection emitted by the
+// Rust lexicon generator.
+type generatedProfilesPayload struct {
+	Schema            string                     `json:"schema"`
+	Source            string                     `json:"source"`
+	RustSchemaVersion string                     `json:"rust_schema_version"`
+	Profiles          []generatedLanguageProfile `json:"profiles"`
 }
 
-// NewLexiconRegistry constructs a LexiconRegistry by scanning the
-// given root directory for per-language subdirectories. Each
-// subdirectory may contain:
-//
-//	stopwords.txt        — one word per line
-//	function_words.txt   — one word per line
-//	verb_morphology.txt  — verb suffixes, one per line
-//	entity_blocklist.txt — words never treated as entities, one per line
-//	phrase_policy.txt    — YAML or simple key=value lines (min_words, max_words, etc.)
-//	<extra_word_set>.txt — one word per line (see extraWordSetFiles)
-//
-// The extra word sets are the remaining linguistic vocabulary that
-// used to live as literals in capability code (subordinate markers, pronouns,
-// articles, possessives, clitic pronouns, pro-drop auxiliaries, contrast
-// openers and the cross-language numeric overlay
-// vocabulary). They are loaded by name so a consumer asks for the set it
-// needs instead of keeping a second copy of the words.
-//
-// A "fallback" subdirectory is required and is used only when callers
-// explicitly request the fallback profile. Missing configuration is an
-// error; the registry never manufactures linguistic data.
-// extraWordSetFiles are the named word-set files loaded beside the typed base
-// files. The name is both the file stem and the key consumers ask for through
-// WordSet; a language without the file simply has no such set.
-var extraWordSetFiles = []string{
-	"subordinate_markers",
-	"pronouns",
-	"articles",
-	"possessives",
-	"pronoun_clitics",
-	"pro_drop_aux",
-	"contrast_openers",
-	"numeric_overlay_words",
-	"numeric_overlay_context",
+type generatedLanguageProfile struct {
+	Schema            string                 `json:"schema"`
+	Language          string                 `json:"language"`
+	Source            string                 `json:"source"`
+	StopWords         []string               `json:"stopwords"`
+	FunctionWords     []string               `json:"function_words"`
+	EntityBlocklist   []string               `json:"entity_blocklist"`
+	NegativeParticles []string               `json:"negative_particles"`
+	VisualVerbs       []string               `json:"visual_verbs"`
+	VerbSuffixes      []string               `json:"verb_suffixes"`
+	WordSets          map[string][]string    `json:"word_sets"`
+	PhrasePolicy      PhraseExtractionPolicy `json:"phrase_policy"`
 }
 
-func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
-	if rootDir == "" {
-		return nil, fmt.Errorf("lexicon registry: root directory is required")
+// Profiles holds the immutable per-language profiles generated from the Rust
+// lexicon sources. It is constructed once at bootstrap and never mutated.
+type Profiles struct {
+	mu            sync.RWMutex
+	profiles      map[string]*LexiconProfile
+	fallback      *LexiconProfile
+	version       string
+	source        string
+	schemaVersion string
+}
+
+// NewProfiles parses the embedded Rust-generated snapshot. It fails closed on
+// a schema mismatch, a missing fallback profile or an empty language entry;
+// it never manufactures linguistic data.
+func NewProfiles() (*Profiles, error) {
+	var payload generatedProfilesPayload
+	if err := json.Unmarshal(generatedProfilesJSON, &payload); err != nil {
+		return nil, fmt.Errorf("lexicon profiles: decode generated snapshot: %w", err)
 	}
-
-	profiles := make(map[string]*LexiconProfile)
-
-	entries, err := os.ReadDir(rootDir)
-	if err != nil {
-		return nil, fmt.Errorf("lexicon registry: read root %q: %w", rootDir, err)
+	if payload.Schema != generatedProfilesSchema {
+		return nil, fmt.Errorf("lexicon profiles: unsupported snapshot schema %q", payload.Schema)
 	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	if !strings.HasPrefix(payload.RustSchemaVersion, "language_profiles.v1-") {
+		return nil, fmt.Errorf("lexicon profiles: generated snapshot carries no valid Rust schema version")
+	}
+	if len(payload.Profiles) == 0 {
+		return nil, fmt.Errorf("lexicon profiles: generated snapshot has no profiles")
+	}
+	profiles := make(map[string]*LexiconProfile, len(payload.Profiles))
+	var fallback *LexiconProfile
+	for _, raw := range payload.Profiles {
+		if raw.Schema != languageProfileSchema {
+			return nil, fmt.Errorf("lexicon profiles: language %q has unsupported schema %q", raw.Language, raw.Schema)
+		}
+		language := normalizeLang(raw.Language)
+		if language == "" {
+			return nil, fmt.Errorf("lexicon profiles: generated snapshot carries an empty language")
+		}
+		profile := &LexiconProfile{
+			StopWords:         stringSet(raw.StopWords),
+			FunctionWords:     stringSet(raw.FunctionWords),
+			EntityBlocklist:   stringSet(raw.EntityBlocklist),
+			NegativeParticles: stringSet(raw.NegativeParticles),
+			VisualVerbs:       stringSet(raw.VisualVerbs),
+			VerbSuffixes:      append([]string(nil), raw.VerbSuffixes...),
+			PhrasePolicy:      raw.PhrasePolicy,
+			WordSets:          make(map[string]map[string]struct{}, len(raw.WordSets)),
+		}
+		for name, words := range raw.WordSets {
+			profile.WordSets[name] = stringSet(words)
+		}
+		if language == "fallback" {
+			fallback = profile
 			continue
 		}
-		lang := entry.Name()
-		dir := filepath.Join(rootDir, lang)
-		profile := &LexiconProfile{
-			StopWords:         make(map[string]struct{}),
-			FunctionWords:     make(map[string]struct{}),
-			EntityBlocklist:   make(map[string]struct{}),
-			NegativeParticles: make(map[string]struct{}),
-			VisualVerbs:       make(map[string]struct{}),
-			VerbSuffixes:      nil,
-			PhrasePolicy:      DefaultPhraseExtractionPolicy(),
-			WordSets:          make(map[string]map[string]struct{}),
+		if _, duplicate := profiles[language]; duplicate {
+			return nil, fmt.Errorf("lexicon profiles: duplicate language %q", language)
 		}
-
-		if err := loadWordSet(filepath.Join(dir, "stopwords.txt"), profile.StopWords); err != nil {
-			return nil, err
-		}
-		if err := loadWordSet(filepath.Join(dir, "function_words.txt"), profile.FunctionWords); err != nil {
-			return nil, err
-		}
-		if err := loadWordSet(filepath.Join(dir, "entity_blocklist.txt"), profile.EntityBlocklist); err != nil {
-			return nil, err
-		}
-		if err := loadWordSet(filepath.Join(dir, "negative_particles.txt"), profile.NegativeParticles); err != nil {
-			return nil, err
-		}
-		if err := loadWordSet(filepath.Join(dir, "visual_verbs.txt"), profile.VisualVerbs); err != nil {
-			return nil, err
-		}
-		if suffixes, err := loadStringList(filepath.Join(dir, "verb_morphology.txt")); err != nil {
-			return nil, err
-		} else {
-			profile.VerbSuffixes = suffixes
-		}
-		if p, ok, err := loadPhrasePolicy(filepath.Join(dir, "phrase_policy.txt")); err != nil {
-			return nil, err
-		} else if ok {
-			profile.PhrasePolicy = p
-		}
-		for _, name := range extraWordSetFiles {
-			words := make(map[string]struct{})
-			if err := loadWordSet(filepath.Join(dir, name+".txt"), words); err != nil {
-				return nil, err
-			}
-			if len(words) > 0 {
-				profile.WordSets[name] = words
-			}
-		}
-		profiles[lang] = profile
+		profiles[language] = profile
 	}
-
-	fallback := profiles["fallback"]
 	if fallback == nil {
-		return nil, fmt.Errorf("lexicon registry: required fallback profile is missing in %q", rootDir)
+		return nil, fmt.Errorf("lexicon profiles: required fallback profile is missing")
 	}
-	return &LexiconRegistry{
-		profiles: profiles,
-		fallback: fallback,
-		version:  fingerprintLexiconRegistry(profiles, fallback),
+	return &Profiles{
+		profiles:      profiles,
+		fallback:      fallback,
+		version:       fingerprintLexiconProfiles(profiles, fallback),
+		source:        payload.Source,
+		schemaVersion: payload.RustSchemaVersion,
 	}, nil
 }
 
-// MustNewLexiconRegistry is like NewLexiconRegistry but panics on
-// error. Useful for tests and bootstrap wiring.
+// MustNewProfiles is NewProfiles but panics on error, for bootstrap wiring.
+func MustNewProfiles() *Profiles {
+	profiles, err := NewProfiles()
+	if err != nil {
+		panic(err)
+	}
+	return profiles
+}
 
-// Resolve returns the profile for the given language tag. Language
-// tags are normalised to a two-letter code with the region stripped
-// (e.g. "en-US" -> "en"). Missing profiles fail fast; callers that
-// need an error value can use ResolveRequired.
-func (r *LexiconRegistry) Resolve(language string) *LexiconProfile {
+// Source returns the Rust data directory that generated the snapshot.
+func (r *Profiles) Source() string {
+	if r == nil {
+		return ""
+	}
+	return r.source
+}
+
+// SchemaVersion returns the Rust profile-set version embedded at generation
+// time. The composition root validates it before installing the snapshot.
+func (r *Profiles) SchemaVersion() string {
+	if r == nil {
+		return ""
+	}
+	return r.schemaVersion
+}
+
+// Resolve returns the profile for the given language tag. Missing profiles
+// fail fast; callers that need an error value can use ResolveRequired.
+func (r *Profiles) Resolve(language string) *LexiconProfile {
 	profile, err := r.ResolveRequired(language)
 	if err != nil {
 		panic(err)
@@ -173,30 +155,38 @@ func (r *LexiconRegistry) Resolve(language string) *LexiconProfile {
 	return profile
 }
 
-// ResolveRequired returns the configured profile for a language or a
-// typed configuration error. There is deliberately no implicit fallback:
-// language selection is configuration, not a best-effort heuristic.
-func (r *LexiconRegistry) ResolveRequired(language string) (*LexiconProfile, error) {
+// ResolveRequired returns the configured profile for a language or a typed
+// error. There is deliberately no implicit fallback: language selection is
+// configuration, not a best-effort heuristic.
+func (r *Profiles) ResolveRequired(language string) (*LexiconProfile, error) {
+	if r == nil {
+		return nil, fmt.Errorf("lexicon profiles: snapshot is not installed")
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	lang := normalizeLang(language)
 	if lang == "" {
-		return nil, fmt.Errorf("lexicon registry: language is required")
+		return nil, fmt.Errorf("lexicon profiles: language is required")
 	}
-	if p, ok := r.profiles[lang]; ok {
-		return cloneProfile(p), nil
+	if lang == "fallback" {
+		return cloneProfile(r.fallback), nil
 	}
-	return nil, fmt.Errorf("lexicon registry: language %q is not configured", language)
+	if profile, ok := r.profiles[lang]; ok {
+		return cloneProfile(profile), nil
+	}
+	return nil, fmt.Errorf("lexicon profiles: language %q is not configured", language)
 }
 
-// HasProfile reports whether the registry has an explicit (non-fallback)
+// HasProfile reports whether the snapshot has an explicit (non-fallback)
 // profile for the given language tag.
-func (r *LexiconRegistry) HasProfile(language string) bool {
+func (r *Profiles) HasProfile(language string) bool {
+	if r == nil {
+		return false
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	lang := normalizeLang(language)
-	_, ok := r.profiles[lang]
+	_, ok := r.profiles[normalizeLang(language)]
 	return ok
 }
 
@@ -206,4 +196,15 @@ func normalizeLang(language string) string {
 		lang = lang[:idx]
 	}
 	return lang
+}
+
+func stringSet(values []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			set[value] = struct{}{}
+		}
+	}
+	return set
 }

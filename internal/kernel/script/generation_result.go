@@ -134,6 +134,12 @@ type GenerationResult struct {
 	AudioMode     string              `json:"audio_mode,omitempty"`
 	AudioStrategy string              `json:"audio_strategy,omitempty"`
 	FinalAudio    *FinalAudioArtifact `json:"final_audio,omitempty"`
+	// RemoteFinalVideo is the downloaded composite render of a remote final
+	// job. The durable mapper projects it from the capability receipt so the
+	// artifact persister can publish the video through the same finalize
+	// delivery as script.json and final_audio. Path is local-only and stripped
+	// from the public script.json projection.
+	RemoteFinalVideo *RemoteFinalVideoArtifact `json:"remote_final_video,omitempty"`
 
 	// Quality carries the editorial quality gate outcome. It is
 	// always populated so callers can inspect the per-item quality
@@ -162,6 +168,18 @@ type GenerationTimings struct {
 	SQLiteMs              int64            `json:"sqlite_ms,omitempty"`
 	BindingMs             int64            `json:"binding_ms,omitempty"`
 	TotalMs               int64            `json:"total_ms,omitempty"`
+}
+
+// RemoteFinalVideoArtifact is the local, hash-verified copy of the Master's
+// composite render. It carries the delivery folder resolved by the render plan
+// because the generic video destination cannot infer the job folder.
+type RemoteFinalVideoArtifact struct {
+	JobID         string `json:"job_id,omitempty"`
+	Path          string `json:"path,omitempty"`
+	SHA256        string `json:"sha256,omitempty"`
+	SizeBytes     int64  `json:"size_bytes,omitempty"`
+	ArtifactURL   string `json:"artifact_url,omitempty"`
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
 }
 
 type FinalAudioArtifact struct {

@@ -580,7 +580,7 @@ func TestBuildPlanGolden01ImportantPhrase(t *testing.T) {
 //
 // Entity/type selection (PERSON/COMPANY/MONEY/DATE/NUMBER/LOCATION) and
 // stop-word rejection are owned upstream of this planner — by the extraction
-// layer (scripts.normalizeEntityAnnotationType + the LexiconRegistry
+// layer (scripts.normalizeEntityAnnotationType + the Profiles
 // stop-word SSOT). The planner consumes pre-ranked keywords.
 func TestBuildPlanGolden02ImportantWords(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{

@@ -338,7 +338,7 @@ func normalizeActivityStatus(status string) string {
 
 // progressLexiconStopWords is the linguistic stop-word set installed by the
 // composition root. internal/kernel must not import internal/capabilities
-// (percheck_kernel_boundary), so the LexiconRegistry data reaches this filter
+// (percheck_kernel_boundary), so the Profiles data reaches this filter
 // by injection at bootstrap — see wiring/script.InitLinguistics — rather than
 // being mirrored as a hardcoded map here (godlike/06 SSOT).
 var progressLexiconStopWords atomic.Pointer[map[string]struct{}]
@@ -352,7 +352,7 @@ func SetProgressStopWords(words map[string]struct{}) {
 // progressStatusNoise is the JOB vocabulary stripped from a progress message:
 // the lifecycle words a status message already carries in its own kind/status
 // fields. This is job-domain vocabulary owned by this package, not linguistic
-// data — the stop-word lexicon itself lives in config/lexicons/** behind the
+// data — the stop-word lexicon itself lives in the Rust-generated Profiles behind the
 // registry and is injected through SetProgressStopWords.
 var progressStatusNoise = map[string]struct{}{
 	"completed": {}, "completion": {}, "failed": {},

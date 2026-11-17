@@ -72,6 +72,12 @@ type Knob struct {
 // the boot log inherit this order, and a stable diff is part of reviewability.
 var registry = []Knob{
 	{
+		Name: "VELOX_ARTIFACT_TOKEN", Kind: KindEnv, Default: "",
+		Owner:          "internal/app/wiring/script/remote_final_job.go",
+		SafeProduction: "unset (or artifact-store token)",
+		Description:    "Bearer token used by remote_final_job when downloading artifacts from the artifact store.",
+	},
+	{
 		Name: "VELOX_ASSEMBLY_READY_V1", Kind: KindMarker, Default: "",
 		Owner:          "internal/kernel/media/assembly_contract.go",
 		SafeProduction: "contract id — not an env var",
@@ -186,6 +192,12 @@ var registry = []Knob{
 		Description:    "Number of final-job fragments prepared in parallel; 0 or malformed fails the job.",
 	},
 	{
+		Name: "VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS", Kind: KindEnv, Default: "1",
+		Owner:          "internal/capabilities/scripts/final_job_payload.go",
+		SafeProduction: "1 until the remote prepare.window cutter stops emitting source_frames+1; 0 restores Master-owned stock",
+		Description:    "Certify whole-file stock scene windows in the Producer (prepared fragments) instead of handing the raw Drive file to the Master's prepare.window; partial stock windows always stay Master-owned.",
+	},
+	{
 		Name: "VELOX_FINAL_JOB_QUEUE_SECONDS", Kind: KindEnv, Default: "180",
 		Owner:          "internal/app/wiring/remote_final_job.go",
 		SafeProduction: "180",
@@ -203,6 +215,12 @@ var registry = []Knob{
 		Owner:          "internal/app/wiring/remote_final_job.go",
 		SafeProduction: "unset (Master places the job)",
 		Description:    "Pins the handoff to one worker; the retired worker-51 id is rejected loudly.",
+	},
+	{
+		Name: "VELOX_MASTER_ADMIN_TOKEN", Kind: KindEnv, Default: "",
+		Owner:          "internal/app/wiring/script/remote_final_job.go",
+		SafeProduction: "unset (or Master admin token)",
+		Description:    "Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset.",
 	},
 	{
 		Name: "VELOX_MEDIA_MANIFEST_PATH", Kind: KindEnv, Default: "",

@@ -19,19 +19,19 @@ type IntentResolverRegistry struct {
 
 // NewDefaultResolver returns the canonical intent resolver: a registry
 // wired with English, Italian and a multilingual fallback. It uses the
-// global default lexicon registry (linguistics.DefaultLexicon()) to
+// global default lexicon registry (linguistics.DefaultProfiles()) to
 // populate per-language stopwords, verb morphology and entity filters.
 //
 // When a custom lexicon is needed (e.g. in tests or when the global
 // default has not been set yet), use NewResolverWithLexicon instead.
 func NewDefaultResolver() VisualIntentResolver {
-	return NewResolverWithLexicon(linguistics.DefaultLexicon())
+	return NewResolverWithLexicon(linguistics.DefaultProfiles())
 }
 
 // NewResolverWithLexicon returns an intent resolver registry populated
 // with profiles from the given lexicon. This is the canonical constructor
 // used by the composition root.
-func NewResolverWithLexicon(lex *linguistics.LexiconRegistry) VisualIntentResolver {
+func NewResolverWithLexicon(lex *linguistics.Profiles) VisualIntentResolver {
 	return &IntentResolverRegistry{
 		resolvers: map[string]VisualIntentResolver{
 			"en": newEnglishResolver(lex),
@@ -194,7 +194,7 @@ func looksLikeVerb(word string, visualVerbs map[string]struct{}, suffixes []stri
 	return false
 }
 
-func newEnglishResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
+func newEnglishResolver(lex *linguistics.Profiles) VisualIntentResolver {
 	return &baseResolver{
 		name: "en",
 		config: langConfig{
@@ -206,7 +206,7 @@ func newEnglishResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
 	}
 }
 
-func newItalianResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
+func newItalianResolver(lex *linguistics.Profiles) VisualIntentResolver {
 	return &baseResolver{
 		name: "it",
 		config: langConfig{
@@ -218,7 +218,7 @@ func newItalianResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
 	}
 }
 
-func newFallbackResolver(lex *linguistics.LexiconRegistry) VisualIntentResolver {
+func newFallbackResolver(lex *linguistics.Profiles) VisualIntentResolver {
 	return &baseResolver{
 		name: "fallback",
 		config: langConfig{

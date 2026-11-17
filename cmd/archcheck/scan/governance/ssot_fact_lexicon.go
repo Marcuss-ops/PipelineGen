@@ -19,9 +19,9 @@ import (
 
 // ── Hardcoded lexicon mirrors (stop-word maps) ───────────────────────────
 //
-// Stop-word (and, more generally, lexicon) sets MUST be loaded from the
-// LexiconRegistry (internal/capabilities/linguistics/) at bootstrap, whose
-// data comes from config/lexicons/**/*.txt. Any production file that defines
+// Stop-word (and, more generally, lexicon) sets MUST come from the
+// Rust-generated snapshot in internal/capabilities/linguistics/, whose data is
+// owned by BrainRust/lexicon. Any production file that defines
 // a literal stop-word map is a godlike/06 SSOT violation — stop words are
 // linguistic data, not code. The gate is SCOPED to internal/ and exempts the
 // canonical lexicon home (internal/capabilities/linguistics/).
@@ -30,7 +30,7 @@ import (
 // here: the file must carry a `LEXICON_MIRROR_DEBT: owner=…, deadline=…`
 // marker, which keeps the debt visible as a residue warning and turns back
 // into a violation on the deadline. See stopwordMapDebtMarker.
-const stopwordMapNote = "forbidden hardcoded stop-word map in production code. Stop-word sets MUST be loaded from the LexiconRegistry (internal/capabilities/linguistics/) at bootstrap via linguistics.DefaultLexicon().StopWords(); the linguistic data lives in config/lexicons/<lang>/stopwords.txt. Hardcoded linguistic maps are a godlike/06 SSOT violation. See internal/capabilities/linguistics/lexicon_registry.go for the canonical approach."
+const stopwordMapNote = "forbidden hardcoded stop-word map in production code. Stop-word sets MUST come from the Rust-generated snapshot in internal/capabilities/linguistics/ via linguistics.DefaultProfiles().StopWords(); the data is owned by BrainRust/lexicon and embedded at build time. Hardcoded linguistic maps are a godlike/06 SSOT violation."
 
 // stopwordMapOpenRe matches a line that OPENS a hardcoded stop-word map
 // literal: `map[string]struct{}{`, `map[string]bool{`, or the nested
@@ -177,8 +177,8 @@ func scanStopwordMapRuleFile(_ any, path, relPath string, r *report.Report, rule
 			stopwordMapNote+" | the "+stopwordMapDebtMarker+" marker in this file has no valid `deadline=YYYY-MM-DD`, so it exempts nothing: add the owner and an expiry, or migrate the map.")
 	case debtDeadline.Before(today):
 		ssotEmit(r, rule, relPath, 1, rule.MatchedRule,
-			stopwordMapNote+" | the "+stopwordMapDebtMarker+" deferral in this file expired on "+debtDeadline.Format("2006-01-02")+": migrate the "+strconv.Itoa(residue)+" hardcoded linguistic map(s) to the LexiconRegistry, or re-baseline with a new owner + deadline.")
+			stopwordMapNote+" | the "+stopwordMapDebtMarker+" deferral in this file expired on "+debtDeadline.Format("2006-01-02")+": migrate the "+strconv.Itoa(residue)+" hardcoded linguistic map(s) to the Profiles, or re-baseline with a new owner + deadline.")
 	default:
-		ssotWarn(r, rule, "lexicon-mirror-debt:", strconv.Itoa(residue)+" hardcoded linguistic map(s) in "+relPath+" deferred by "+stopwordMapDebtMarker+" until "+debtDeadline.Format("2006-01-02")+" (migrate to the LexiconRegistry / config/lexicons/** before that date)")
+		ssotWarn(r, rule, "lexicon-mirror-debt:", strconv.Itoa(residue)+" hardcoded linguistic map(s) in "+relPath+" deferred by "+stopwordMapDebtMarker+" until "+debtDeadline.Format("2006-01-02")+" (migrate to the Rust-generated Profiles before that date)")
 	}
 }

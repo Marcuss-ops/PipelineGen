@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -144,7 +146,7 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 
 func TestBuildOverlayPlanV2RequestCarriesRawSurfacesNotTextSelection(t *testing.T) {
 	result := phraseCeilingFixture(t)
-	input, err := prepareOverlayPlanCompile(result, "en", GoldenOverlayCanvas,
+	input, err := prepareOverlayPlanCompile(context.Background(), result, "en", GoldenOverlayCanvas,
 		"plan-raw", "video-raw", "project-raw", nil)
 	require.NoError(t, err)
 	require.NotNil(t, input)
@@ -254,4 +256,30 @@ func TestBuildOverlayPlanV2RequestFailsClosedOnMissingBounds(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no canonical timeline bounds") {
 		t.Fatalf("error=%v", err)
 	}
+}
+
+// A Rust mixed chain carries each segment's kind/template but no preset_id.
+// PipelineGen owns the semantic_role → preset decision (ADR-029); if the chain
+// segments leave the plan without one, RenderingGen lowers text layers with a
+// partial style and the Chronon daemon rejects the render plan.
+func TestApplyChainSegmentPresetsResolvesEveryChainSegment(t *testing.T) {
+	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{{
+		ID:         "static__washington__mixed-chain__01",
+		Kind:       "mixed_chain",
+		TemplateID: "MIXED_CHAIN",
+		Params: map[string]any{
+			"chain_segments": []any{
+				map[string]any{"kind": "location", "template_id": "gpe_default"},
+				map[string]any{"kind": "location", "template_id": "gpe_default"},
+			},
+		},
+	}}}
+	applyChainSegmentPresets(plan)
+
+	segments := chainSegmentMaps(plan.Items[0].Params)
+	require.Len(t, segments, 2)
+	for index, segment := range segments {
+		require.Equal(t, string(capabilityoverlay.PresetModernName), segment["preset_id"], "segment %d", index)
+	}
+	require.Equal(t, string(capabilityoverlay.PresetModernName), plan.Items[0].PresetID)
 }

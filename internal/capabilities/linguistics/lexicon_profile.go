@@ -7,7 +7,7 @@ package linguistics
 // capability file (morphology / stopwords / aliasing / scoring) reads
 // a subset of its fields. Keeping the struct definition here avoids
 // polluting the slim lexicon_registry.go (which only carries the
-// orchestrating struct LexiconRegistry).
+// orchestrating struct Profiles).
 type LexiconProfile struct {
 	StopWords         map[string]struct{}
 	FunctionWords     map[string]struct{}
@@ -17,8 +17,8 @@ type LexiconProfile struct {
 	VerbSuffixes      []string
 	PhrasePolicy      PhraseExtractionPolicy
 
-	// WordSets holds the additional named per-language word sets loaded
-	// from config/lexicons/<lang>/<name>.txt (subordinate markers, pronouns,
+	// WordSets holds the additional named per-language word sets from the
+	// Rust-generated profile (subordinate markers, pronouns,
 	// articles, possessives, clitic pronouns, pro-drop auxiliaries, contrast
 	// openers, numeric overlay vocabulary). A set that has no data file is
 	// absent from the map rather than present and empty; callers treat the

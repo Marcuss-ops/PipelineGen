@@ -7,6 +7,12 @@
 # environment directly. An unset variable uses `default`.
 
 knobs:
+  VELOX_ARTIFACT_TOKEN:
+    kind: env
+    default: ""
+    safe_production: "unset (or artifact-store token)"
+    owner: "internal/app/wiring/script/remote_final_job.go"
+    description: "Bearer token used by remote_final_job when downloading artifacts from the artifact store."
   VELOX_CONCURRENT_OLLAMA_CALLS:
     kind: config
     default: "4"
@@ -97,6 +103,12 @@ knobs:
     safe_production: "4 (1..16)"
     owner: "internal/app/wiring/final_job_segment_prepare.go"
     description: "Number of final-job fragments prepared in parallel; 0 or malformed fails the job."
+  VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS:
+    kind: env
+    default: "1"
+    safe_production: "1 until the remote prepare.window cutter stops emitting source_frames+1; 0 restores Master-owned stock"
+    owner: "internal/capabilities/scripts/final_job_payload.go"
+    description: "Certify whole-file stock scene windows in the Producer (prepared fragments) instead of handing the raw Drive file to the Master's prepare.window; partial stock windows always stay Master-owned."
   VELOX_FINAL_JOB_QUEUE_SECONDS:
     kind: env
     default: "180"
@@ -115,6 +127,12 @@ knobs:
     safe_production: "unset (Master places the job)"
     owner: "internal/app/wiring/remote_final_job.go"
     description: "Pins the handoff to one worker; the retired worker-51 id is rejected loudly."
+  VELOX_MASTER_ADMIN_TOKEN:
+    kind: env
+    default: ""
+    safe_production: "unset (or Master admin token)"
+    owner: "internal/app/wiring/script/remote_final_job.go"
+    description: "Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset."
   VELOX_MEDIA_MANIFEST_PATH:
     kind: env
     default: ""

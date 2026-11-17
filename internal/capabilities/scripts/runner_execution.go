@@ -17,7 +17,6 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -56,12 +55,6 @@ type executionRun struct {
 	// snapshot is the read-only scene-text projection taken before the
 	// concurrent TTS and VidRush-prepare branches start.
 	snapshot []sceneTextSnapshot
-
-	// stockPrefetchDone carries the best-effort stock warm channel started at
-	// run start. It is joined ONLY at the first consumer that can use warmed
-	// stock assets (sceneTextReady), never before translate: translation needs
-	// only scene text and must not wait for stock I/O.
-	stockPrefetchDone chan scriptports.StockPrefetchReport
 }
 
 // measure runs one named business phase on the canonical Run clock, keeping
@@ -318,9 +311,6 @@ func (e *executionRun) translate() bool {
 // parallel path runs it on the semantic branch while TTS is still in flight
 // (see parallelFanOut).
 func (e *executionRun) sceneTextReady() bool {
-	// P0-A: first stock consumer joins the best-effort warm here (bounded),
-	// so translate/generate never wait for stock I/O.
-	e.joinStockPrefetchForConsumer()
 	e.snapshot = snapshotSceneText(e.result.Scenes, e.req.SourceLanguage, e.req)
 
 	ok := e.parallelFanOut()

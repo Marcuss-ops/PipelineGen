@@ -236,6 +236,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	semanticAnalyzer.SetPassageEmbedder(phraseEmbedder)
 	runner.SetSceneSemanticAnalyzer(semanticAnalyzer)
 	runner.SetPhraseAligner(semanticAnalyzer)
+	runner.SetLocalizedIdentityMatcher(semanticAnalyzer)
 	runner.SetOverlayPlanCompiler(semanticAnalyzer)
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer

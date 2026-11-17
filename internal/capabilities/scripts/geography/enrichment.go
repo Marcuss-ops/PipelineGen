@@ -50,7 +50,7 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 	var ignoredMapCandidates map[string]struct{}
 	if len(options) > 0 && options[0].MapsOnly {
 		var err error
-		ignoredMapCandidates, err = MapPlaceCandidateIgnoredWords(linguistics.DefaultLexiconOrNil(), language)
+		ignoredMapCandidates, err = MapPlaceCandidateIgnoredWords(linguistics.DefaultProfilesOrNil(), language)
 		if err != nil {
 			return fmt.Errorf("load map candidate exclusion lexicon: %w", err)
 		}
@@ -376,7 +376,7 @@ func GeocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 	if annotation == nil || strings.TrimSpace(text) == "" {
 		return nil
 	}
-	ignored, err := MapPlaceCandidateIgnoredWords(linguistics.DefaultLexiconOrNil(), language)
+	ignored, err := MapPlaceCandidateIgnoredWords(linguistics.DefaultProfilesOrNil(), language)
 	if err != nil {
 		return fmt.Errorf("load map candidate exclusion lexicon: %w", err)
 	}

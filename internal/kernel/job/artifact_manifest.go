@@ -42,13 +42,19 @@ const ManifestKey = "__artifact_manifest"
 // Sender to decide routing (e.g. voiceover → TTS review queue,
 // script_json → Document builder).
 const (
-	ArtifactKindScriptJSON       = "script_json"
-	ArtifactKindScriptText       = "script_text"
-	ArtifactKindScenes           = "scenes"
-	ArtifactKindMetadata         = "metadata"
-	ArtifactKindEntities         = "entities"
-	ArtifactKindVoiceover        = "voiceover"
-	ArtifactKindFinalAudio       = "final_audio"
+	ArtifactKindScriptJSON = "script_json"
+	ArtifactKindScriptText = "script_text"
+	ArtifactKindScenes     = "scenes"
+	ArtifactKindMetadata   = "metadata"
+	ArtifactKindEntities   = "entities"
+	ArtifactKindVoiceover  = "voiceover"
+	ArtifactKindFinalAudio = "final_audio"
+	// ArtifactKindFinalVideo is the remote composite render returned by the
+	// final job. Unlike final_audio it has no earlier publication owner: the
+	// finalizer downloads the Master artifact and publishes it through the
+	// normal finalize Drive delivery, so the caller never has to run
+	// `velox download-final` + `drive-upload` by hand.
+	ArtifactKindFinalVideo       = "final_video"
 	ArtifactKindImage            = "image"
 	ArtifactKindClipBindings     = "clip_bindings"
 	ArtifactKindArtifactManifest = "artifact_manifest"

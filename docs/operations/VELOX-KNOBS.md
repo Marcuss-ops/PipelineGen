@@ -9,6 +9,7 @@ a registry entry.
 
 | Knob | Kind | Default | Owner | Safe in production | Description |
 | --- | --- | --- | --- | --- | --- |
+| `VELOX_ARTIFACT_TOKEN` | env |  | `internal/app/wiring/script/remote_final_job.go` | unset (or artifact-store token) | Bearer token used by remote_final_job when downloading artifacts from the artifact store. |
 | `VELOX_CONCURRENT_OLLAMA_CALLS` | config | 4 | `internal/platform/config/types.go` | 4 | Parallel Ollama calls allowed per host. |
 | `VELOX_CONCURRENT_VIDEO_EXTRACTS` | config | 5 | `internal/platform/config/types.go` | 5 | Parallel stock-video extraction jobs. |
 | `VELOX_CREDENTIALS_FILE` | config | credentials.json | `internal/platform/config/types_misc.go` | /etc/pipelinegen/credentials.json | OAuth client credentials file used by the Drive publisher. |
@@ -24,9 +25,11 @@ a registry entry.
 | `VELOX_FINAL_JOB_M2M_SECRET` | env |  | `internal/app/wiring/remote_final_job.go` | 64-hex secret from the host env file | Per-client bearer secret for job.submit against the Master. |
 | `VELOX_FINAL_JOB_MASTER_URL` | env |  | `internal/app/wiring/remote_final_job.go` | https://<master-host> | Master URL for the remote final-job handoff; unset falls back to the configured base URL. |
 | `VELOX_FINAL_JOB_PREPARE_LANES` | env | 4 | `internal/app/wiring/final_job_segment_prepare.go` | 4 (1..16) | Number of final-job fragments prepared in parallel; 0 or malformed fails the job. |
+| `VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS` | env | 1 | `internal/capabilities/scripts/final_job_payload.go` | 1 until the remote prepare.window cutter stops emitting source_frames+1; 0 restores Master-owned stock | Certify whole-file stock scene windows in the Producer (prepared fragments) instead of handing the raw Drive file to the Master's prepare.window; partial stock windows always stay Master-owned. |
 | `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/wiring/remote_final_job.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
 | `VELOX_FINAL_JOB_RESOLVE_CONCURRENCY` | env | 1 | `internal/app/wiring/remote_final_job_resolve.go` | 4 (1..16) | Drive sources resolved in parallel while preparing a handoff. |
 | `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/wiring/remote_final_job.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |
+| `VELOX_MASTER_ADMIN_TOKEN` | env |  | `internal/app/wiring/script/remote_final_job.go` | unset (or Master admin token) | Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset. |
 | `VELOX_MEDIA_MANIFEST_PATH` | env |  | `internal/capabilities/scripts/adapters/media_manifest_shim.go` | unset | Opt-in media_manifest fast-path used by the composition root. |
 | `VELOX_POLL_MAX_BACKOFF` | config | 60s | `internal/platform/config/jobs.go` | 60s | Ceiling of the job-runner poll backoff. |
 | `VELOX_PROGRESS_COALESCE_WINDOW` | config | 100ms | `internal/platform/config/jobs.go` | 100ms | Window over which job progress writes are coalesced (0 = passthrough). |

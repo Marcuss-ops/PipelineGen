@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	kmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // MediaRankerBinding is the operator-curated envelope the ranker reads.
@@ -123,14 +125,14 @@ func NewMediaRankerAdapter(executor *Executor) (*MediaRankerAdapter, error) {
 // value for a pool ranked before a slot is assigned (the Brain path): it
 // disables the aspect gate instead of pretending the pool belongs to one slot.
 var mediaRankerSlotKinds = map[string]struct{}{
-	"primary_video":    {},
-	"secondary_image":  {},
-	"evidence_overlay": {},
-	"map":              {},
-	"portrait":         {},
-	"document":         {},
-	"background":       {},
-	"any":              {},
+	string(kmedia.SlotPrimaryVideo):    {},
+	string(kmedia.SlotSecondaryImage):  {},
+	string(kmedia.SlotEvidenceOverlay): {},
+	string(kmedia.SlotMap):             {},
+	string(kmedia.SlotPortrait):        {},
+	string(kmedia.SlotDocument):        {},
+	string(kmedia.SlotBackground):      {},
+	"any":                              {},
 }
 
 // RankCandidates asks the Rust ranker for one slot pool and validates the

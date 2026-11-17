@@ -172,7 +172,7 @@ func (e *Engine) generateSegments(
 	// Resolve it ONCE per run instead of once per generation attempt: the
 	// legacy call inside clipNarrationHasEvidence re-took the global lexicon
 	// RWMutex and re-read the shared map on every candidate.
-	stopWords := linguistics.DefaultLexicon().StopWords("en")
+	stopWords := linguistics.DefaultProfiles().StopWords("en")
 	texts := make([]string, len(plan.Segments))
 	var first *ports.GenerationResult
 	type segmentOutput struct {

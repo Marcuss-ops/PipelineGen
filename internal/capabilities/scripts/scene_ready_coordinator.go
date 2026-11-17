@@ -201,6 +201,11 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		c.launchFixedMediaRenders(translated)
 		return translated, nil
 	}
+	// An explicit editorial duration is authoritative. The TTS pass normally
+	// seals a scene to its voiceover length; for a full-length clip with a short
+	// lead-in narration, that would trim the clip to the voiceover window. Keep
+	// the caller's duration and let the voiceover sit inside it.
+	explicitDurationMS := out.DurationMS
 	if !out.ExecutionMode.AllowsTranslation() || !out.ExecutionMode.AllowsTTS() || !out.ExecutionMode.AllowsGeneratedAudio() {
 		return out, nil
 	}
@@ -421,9 +426,11 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	// The scene duration is the source language's narration length: langs[0]
 	// is the source language whenever it is set, so outcomes[0] is its
 	// voiceover — identical to the previous joined fan-out's tts[0].
-	if len(outcomes) > 0 && outcomes[0].audioRef.Duration > 0 && (mode == capabilityaudio.AudioModeCombinedTimeline || out.Clip == nil) {
-		out.DurationMS = int64(outcomes[0].audioRef.Duration*1000 + 0.5)
-		out.DurationUS = int64(outcomes[0].audioRef.Duration*1_000_000 + 0.5)
+	if len(outcomes) > 0 {
+		out.DurationMS = sealedSceneDurationMS(explicitDurationMS, mode, out.Clip != nil, outcomes[0].audioRef.Duration)
+		if out.DurationMS > 0 && explicitDurationMS <= 0 {
+			out.DurationUS = out.DurationMS * 1000
+		}
 	}
 	if voiceoverCalls > 0 {
 		// All requested voiceover languages for this scene are final. The
@@ -576,4 +583,18 @@ func (c *sceneReadyCoordinator) renderFailures() []LocalizedRenderFailure {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]LocalizedRenderFailure(nil), c.failures...)
+}
+
+// sealedSceneDurationMS seals one scene after TTS. An explicit editorial
+// duration is authoritative: a full-length clip with a short lead-in
+// voiceover keeps the clip span, and the voiceover is mixed inside it. Only a
+// scene without an explicit duration adopts the voiceover span.
+func sealedSceneDurationMS(explicitMS int64, mode capabilityaudio.AudioMode, clipPresent bool, voiceoverSeconds float64) int64 {
+	if explicitMS > 0 {
+		return explicitMS
+	}
+	if voiceoverSeconds > 0 && (mode == capabilityaudio.AudioModeCombinedTimeline || !clipPresent) {
+		return int64(voiceoverSeconds*1000 + 0.5)
+	}
+	return explicitMS
 }

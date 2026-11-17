@@ -102,7 +102,7 @@ var ssotRules = []ssotRule{
 		SkipDirs:         policy.SkipDirs(),
 		SkipPathPrefixes: []string{ssotScannerSourcePrefix},
 		// The canonical linguistic-data owner is exempt by construction:
-		// stop-word sets are DATA of the LexiconRegistry, not code.
+		// stop-word sets are DATA of the Profiles, not code.
 		Owners:   []string{"internal/capabilities/linguistics/"},
 		ScanFile: scanStopwordMapRuleFile,
 	},

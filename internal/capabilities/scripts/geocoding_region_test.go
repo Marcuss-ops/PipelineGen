@@ -13,11 +13,11 @@ import (
 
 func ensureRegionGeocodingLexicon(t *testing.T) {
 	t.Helper()
-	lexicon, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
+	lexicon, err := linguistics.NewProfiles()
 	if err != nil {
 		t.Fatalf("load lexicon: %v", err)
 	}
-	if err := linguistics.SetDefaultLexicon(lexicon); err != nil {
+	if err := linguistics.SetDefaultProfiles(lexicon); err != nil {
 		t.Fatalf("set lexicon: %v", err)
 	}
 }

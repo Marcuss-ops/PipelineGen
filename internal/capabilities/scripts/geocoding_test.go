@@ -390,11 +390,11 @@ func TestRunVidRushJoinAndPrepareGeocodesOnlyOnExplicitEnable(t *testing.T) {
 }
 
 func TestRequestedMapCountGeocodesGroundedPlaceNames(t *testing.T) {
-	lexicon, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
+	lexicon, err := linguistics.NewProfiles()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := linguistics.SetDefaultLexicon(lexicon); err != nil {
+	if err := linguistics.SetDefaultProfiles(lexicon); err != nil {
 		t.Fatal(err)
 	}
 	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{
@@ -428,11 +428,11 @@ func TestRequestedMapCountGeocodesGroundedPlaceNames(t *testing.T) {
 }
 
 func TestGroundedMapFallbackIgnoresSentenceAdverbsAndUppercaseOrganizations(t *testing.T) {
-	lexicon, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
+	lexicon, err := linguistics.NewProfiles()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := linguistics.SetDefaultLexicon(lexicon); err != nil {
+	if err := linguistics.SetDefaultProfiles(lexicon); err != nil {
 		t.Fatal(err)
 	}
 	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{
@@ -470,7 +470,7 @@ func TestIgnoredMapCandidateRejectsArticlePrefixedInstitutions(t *testing.T) {
 }
 
 func TestMapPlaceCandidateIgnoredWordsUsesConfiguredLexicon(t *testing.T) {
-	registry, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
+	registry, err := linguistics.NewProfiles()
 	if err != nil {
 		t.Fatalf("load canonical lexicon: %v", err)
 	}

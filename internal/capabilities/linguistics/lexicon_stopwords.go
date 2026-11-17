@@ -7,12 +7,12 @@ package linguistics
 // accessor delegates to the explicitly configured language profile.
 
 // StopWords returns the stop-word set for the given language.
-func (r *LexiconRegistry) StopWords(language string) map[string]struct{} {
+func (r *Profiles) StopWords(language string) map[string]struct{} {
 	return r.Resolve(language).StopWords
 }
 
 // FunctionWords returns the function-word set for the given language.
-func (r *LexiconRegistry) FunctionWords(language string) map[string]struct{} {
+func (r *Profiles) FunctionWords(language string) map[string]struct{} {
 	return r.Resolve(language).FunctionWords
 }
 
@@ -23,14 +23,14 @@ func (r *LexiconRegistry) FunctionWords(language string) map[string]struct{} {
 // Unlike ResolveRequired, a language the repository does not enumerate resolves
 // to the cross-linguistic `fallback` profile instead of failing. Keyphrase
 // extraction runs for whatever language a job carries, and the fallback profile
-// exists for exactly that case (config/lexicons/fallback/stopwords.txt is
-// documented as the cross-linguistic set for unknown languages), so an
+// exists for exactly that case (the cross-linguistic set for unknown
+// languages), so an
 // uncovered language degrades to a smaller cross-linguistic set rather than to
 // an unrelated language's words — or, worse, to no filtering at all.
 //
 // The union is deliberate: profiles such as ru/pl/tr/id carry function words
 // but no stop words, and a keyphrase boundary is broken by either class.
-func (r *LexiconRegistry) PhraseStopWords(language string) map[string]struct{} {
+func (r *Profiles) PhraseStopWords(language string) map[string]struct{} {
 	profile, err := r.ResolveRequired(language)
 	if err != nil {
 		profile, err = r.ResolveRequired("fallback")
@@ -49,17 +49,17 @@ func (r *LexiconRegistry) PhraseStopWords(language string) map[string]struct{} {
 }
 
 // EntityBlocklist returns the entity blocklist for the given language.
-func (r *LexiconRegistry) EntityBlocklist(language string) map[string]struct{} {
+func (r *Profiles) EntityBlocklist(language string) map[string]struct{} {
 	return r.Resolve(language).EntityBlocklist
 }
 
 // NegativeParticles returns the negative-particle set for the given
 // language.
-func (r *LexiconRegistry) NegativeParticles(language string) map[string]struct{} {
+func (r *Profiles) NegativeParticles(language string) map[string]struct{} {
 	return r.Resolve(language).NegativeParticles
 }
 
 // VisualVerbs returns the visual-verb set for the given language.
-func (r *LexiconRegistry) VisualVerbs(language string) map[string]struct{} {
+func (r *Profiles) VisualVerbs(language string) map[string]struct{} {
 	return r.Resolve(language).VisualVerbs
 }

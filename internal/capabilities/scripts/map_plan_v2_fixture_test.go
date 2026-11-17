@@ -128,7 +128,7 @@ func mapPlanV2FixtureByName(t *testing.T, name string) mapPlanV2Fixture {
 
 func buildMapPlanV2RequestForFixture(t *testing.T, fixture mapPlanV2Fixture) overlayplan.V2Request {
 	t.Helper()
-	input, err := prepareOverlayPlanCompile(fixture.result, fixture.language, fixture.canvas,
+	input, err := prepareOverlayPlanCompile(context.Background(), fixture.result, fixture.language, fixture.canvas,
 		fixture.planID, fixture.videoID, fixture.projectID, fixture.plates)
 	require.NoError(t, err)
 	require.NotNil(t, input)

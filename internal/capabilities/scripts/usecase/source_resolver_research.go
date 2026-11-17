@@ -63,7 +63,7 @@ type WebResearchResolver struct {
 	searcher      scriptports.WebSearcher
 	fetcher       scriptports.WebPageFetcher
 	cache         scriptports.TopicSourceCache
-	lexicon       *linguistics.LexiconRegistry
+	lexicon       *linguistics.Profiles
 	ranker        scriptports.ResearchRanker
 	subject       string
 	coordinator   researchSearchCoordinatorPort
@@ -87,12 +87,12 @@ type CoordinatorSearchResult struct {
 }
 
 func NewWebResearchResolver(searcher scriptports.WebSearcher, fetcher scriptports.WebPageFetcher) *WebResearchResolver {
-	return &WebResearchResolver{searcher: searcher, fetcher: fetcher, lexicon: linguistics.DefaultLexiconOrNil()}
+	return &WebResearchResolver{searcher: searcher, fetcher: fetcher, lexicon: linguistics.DefaultProfilesOrNil()}
 }
 
 // SetLexicon injects the configured linguistic registry. Research quality
 // checks must use the same file-backed SSOT as the rest of the application.
-func (r *WebResearchResolver) SetLexicon(registry *linguistics.LexiconRegistry) error {
+func (r *WebResearchResolver) SetLexicon(registry *linguistics.Profiles) error {
 	if registry == nil {
 		return fmt.Errorf("research resolver: nil lexicon registry")
 	}

@@ -67,20 +67,15 @@ type TranslationConfig struct {
 	Required bool `yaml:"required" default:"false"`
 }
 
-// LinguisticsConfig holds the configuration for the centralized
-// LexiconRegistry (PR-LEXICON-SSOT, July 2026).
+// LinguisticsConfig selects the languages that must be present in the
+// Rust-generated lexicon snapshot. The data itself is owned by
+// BrainRust/lexicon and embedded at build time; there is no runtime lexicon
+// directory to configure.
 //
-// LexiconRoot is the directory that contains per-language subdirectories
-// (e.g. config/lexicons/en, config/lexicons/it). Each subdirectory may
-// contain stopwords.txt, function_words.txt, entity_blocklist.txt,
-// verb_morphology.txt, phrase_policy.txt, negative_particles.txt and
-// visual_verbs.txt. An empty root is invalid and fails startup.
-//
-// RequiredLanguages lists the language codes that MUST have a profile
-// under LexiconRoot. If any required language is missing, the boot fails
-// explicitly with a clear error — no silent degradation.
+// RequiredLanguages lists the language codes that MUST have a profile. If any
+// required language is missing, the boot fails explicitly with a clear error —
+// no silent degradation.
 type LinguisticsConfig struct {
-	LexiconRoot       string   `yaml:"lexicon_root" env:"VELOX_LEXICON_ROOT"`
 	RequiredLanguages []string `yaml:"required_languages"`
 }
 

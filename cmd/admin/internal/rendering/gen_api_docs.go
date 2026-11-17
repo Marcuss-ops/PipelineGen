@@ -81,7 +81,6 @@ func RunGenAPIDocs(args []string) error {
 			SourceLanguage: "en",
 		},
 		Linguistics: config.LinguisticsConfig{
-			LexiconRoot:       "config/lexicons",
 			RequiredLanguages: []string{"en", "it"},
 		},
 		External: config.ExternalConfig{

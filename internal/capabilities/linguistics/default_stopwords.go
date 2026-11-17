@@ -5,7 +5,7 @@ import "strings"
 // IsStopWord checks the configured fallback lexicon. Registry lookup belongs
 // to this capability; leaf utilities receive already-selected data instead.
 func IsStopWord(term string) bool {
-	registry := DefaultLexiconOrNil()
+	registry := DefaultProfilesOrNil()
 	if registry == nil {
 		return false
 	}
@@ -17,7 +17,7 @@ func IsStopWord(term string) bool {
 
 // DefaultStopWords returns a defensive copy of the fallback stop-word set.
 func DefaultStopWords() map[string]struct{} {
-	registry := DefaultLexiconOrNil()
+	registry := DefaultProfilesOrNil()
 	if registry == nil {
 		return nil
 	}

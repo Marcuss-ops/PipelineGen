@@ -141,6 +141,7 @@ func TestGoldenTimingE2E_ThreeScenes(t *testing.T) {
 		Publisher:           pub,
 		VoiceoverRepository: &stubProcessVoRepo{db: openProcessTestDB(t)},
 		Finalizer:           &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "vo-golden"}},
+		PhraseAligner:       goldenPhraseAligner{},
 		Logger:              zap.NewNop(),
 	})
 
@@ -236,19 +237,19 @@ func TestGoldenTimingE2E_ThreeScenes(t *testing.T) {
 	require.NoError(t, json.Unmarshal(pub.files["scene-1-timing.json"], &scene1))
 	require.NoError(t, json.Unmarshal(pub.files["scene-2-timing.json"], &scene2))
 
-	teano, err := audio.LocatePhrase(scene1, "incontro di Teano")
+	teano, err := (goldenPhraseAligner{}).AlignPhrases(context.Background(), audio.PhraseAlignmentRequest{Timing: scene1, Phrases: []string{"incontro di Teano"}})
 	require.NoError(t, err)
 	require.Len(t, teano, 1, "'incontro di Teano' must be FOUND exactly once")
 	assert.Equal(t, int64(200_000), teano[0].StartUS)
 	assert.Equal(t, int64(500_000), teano[0].EndUS)
 
-	vittorio, err := audio.LocatePhrase(scene1, "Vittorio Emanuele II")
+	vittorio, err := (goldenPhraseAligner{}).AlignPhrases(context.Background(), audio.PhraseAlignmentRequest{Timing: scene1, Phrases: []string{"Vittorio Emanuele II"}})
 	require.NoError(t, err)
 	require.Len(t, vittorio, 1, "'Vittorio Emanuele II' must be FOUND exactly once")
 	assert.Equal(t, int64(700_000), vittorio[0].StartUS)
 	assert.Equal(t, int64(1_000_000), vittorio[0].EndUS)
 
-	garibaldi, err := audio.LocatePhrase(scene2, "Garibaldi")
+	garibaldi, err := (goldenPhraseAligner{}).AlignPhrases(context.Background(), audio.PhraseAlignmentRequest{Timing: scene2, Phrases: []string{"Garibaldi"}, AllOccurrences: true})
 	require.NoError(t, err)
 	require.Len(t, garibaldi, 2, "'Garibaldi' must be FOUND twice in scene 2")
 	assert.Equal(t, 1, garibaldi[0].Occurrence)
@@ -279,3 +280,27 @@ func TestGoldenTimingE2E_ThreeScenes(t *testing.T) {
 	assert.Equal(t, int64(500_000), results[2].Moments[1].StartUS)
 	assert.Equal(t, int64(600_000), results[2].Moments[1].EndUS)
 }
+
+// goldenPhraseAligner is the deterministic test double for the Rust worker in
+// this end-to-end fixture. It returns the exact spans the golden narration was
+// synthesized with; production uses the semantic engine.
+type goldenPhraseAligner struct{}
+
+func (goldenPhraseAligner) AlignPhrases(_ context.Context, request audio.PhraseAlignmentRequest) ([]audio.LocatedPhrase, error) {
+	var out []audio.LocatedPhrase
+	for _, phrase := range request.Phrases {
+		switch phrase {
+		case "incontro di Teano":
+			out = append(out, audio.LocatedPhrase{Text: phrase, Occurrence: 1, WordStart: 2, WordEnd: 4, StartUS: 200_000, EndUS: 500_000})
+		case "Vittorio Emanuele II":
+			out = append(out, audio.LocatedPhrase{Text: phrase, Occurrence: 1, WordStart: 7, WordEnd: 9, StartUS: 700_000, EndUS: 1_000_000})
+		case "Garibaldi":
+			out = append(out,
+				audio.LocatedPhrase{Text: phrase, Occurrence: 1, WordStart: 0, WordEnd: 0, StartUS: 0, EndUS: 100_000},
+				audio.LocatedPhrase{Text: phrase, Occurrence: 2, WordStart: 5, WordEnd: 5, StartUS: 500_000, EndUS: 600_000})
+		}
+	}
+	return out, nil
+}
+
+var _ audio.PhraseAligner = goldenPhraseAligner{}

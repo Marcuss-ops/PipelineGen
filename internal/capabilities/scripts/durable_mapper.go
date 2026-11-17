@@ -91,6 +91,16 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 		}
 		out.Output.SpecScene.Scenes = append(out.Output.SpecScene.Scenes, ds)
 	}
+	if in.RemoteFinalJob != nil && strings.EqualFold(strings.TrimSpace(in.RemoteFinalJob.Status), "SUCCEEDED") {
+		out.RemoteFinalVideo = &domain.RemoteFinalVideoArtifact{
+			JobID:         in.RemoteFinalJob.JobID,
+			Path:          in.RemoteFinalJob.ArtifactPath,
+			SHA256:        in.RemoteFinalJob.SHA256,
+			SizeBytes:     in.RemoteFinalJob.ArtifactSizeBytes,
+			ArtifactURL:   in.RemoteFinalJob.ArtifactURL,
+			DriveFolderID: in.Render.DriveFolderID,
+		}
+	}
 	if in.FinalAudio != nil {
 		fa := in.FinalAudio
 		out.FinalAudio = &domain.FinalAudioArtifact{AssetID: fa.AssetID, Path: fa.Path, DriveFileID: fa.DriveFileID, DriveLink: fa.DriveLink, Container: fa.Container,

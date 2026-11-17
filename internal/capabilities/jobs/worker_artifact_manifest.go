@@ -222,6 +222,11 @@ func destinationForArtifactKind(kind, source string) string {
 		return "script"
 	case job.ArtifactKindVoiceover:
 		return "voiceover"
+	case job.ArtifactKindFinalVideo:
+		// The final video is a video artifact. The producer pins the exact
+		// job folder through artifact metadata (`resolved_folder_id`), so this
+		// destination key is only the semantic fallback when a caller omits it.
+		return "youtube_clip"
 	case job.ArtifactKindFinalAudio:
 		// The certified combined master is an audio artifact and must use
 		// the same canonical voiceover/audio Drive destination as the

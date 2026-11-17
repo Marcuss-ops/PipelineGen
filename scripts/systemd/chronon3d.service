@@ -2,7 +2,10 @@
 Description=Chronon3d warm Direct-YUV render daemon
 After=local-fs.target
 Before=pipelinegen.service
-PartOf=pipelinegen.service
+# Deliberately NOT PartOf=pipelinegen.service: restarting PipelineGen must not
+# tear down the warm Chronon daemon. The daemon's renderer, font cache, image
+# cache and surface pools are process-persistent, and they are what makes clip
+# N faster than clip 1. It still starts before PipelineGen at boot.
 
 [Service]
 Type=simple

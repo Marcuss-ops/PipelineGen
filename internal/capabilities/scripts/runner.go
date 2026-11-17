@@ -15,7 +15,6 @@ import (
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
-	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -49,6 +48,7 @@ type Runner struct {
 	jobStages             sync.Map
 	vidRushPipeline       *VidRushPipeline
 	phraseAligner         PhraseAligner
+	localizedIdentity     LocalizedIdentityMatcher
 	finalJobSubmitter     FinalJobSubmitter
 	sceneSemanticAnalyzer SceneSemanticAnalyzer
 
@@ -181,8 +181,7 @@ type Runner struct {
 	// assets, fixed-media original audio/source windows, BGM/SFX assets,
 	// Drive folders, and watermark assets. Fixed-media requests fail closed
 	// when the preflight is not wired; non-fixed legacy tests may omit it.
-	mediaPreflight  MediaPreflight
-	stockPrefetcher scriptports.StockPrefetcher
+	mediaPreflight MediaPreflight
 	// semanticSearchPlanner executes the semantic production plan's exact
 	// source queries against the real retrieval provider and records the
 	// measured outcomes. Nil keeps planning offline: the plan and its
