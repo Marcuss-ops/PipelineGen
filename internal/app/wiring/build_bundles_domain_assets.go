@@ -177,8 +177,8 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	}
 
 	var frameIndexer mediamemory.KeyframeVisualIndexer
-	if params.process.QdrantClient != nil {
-		frameIndexer = mediamemoryindexing.NewFrameQdrantIndexer(params.process.QdrantClient, params.log)
+	if params.cfg.Qdrant.Enabled {
+		frameIndexer = mediamemoryindexing.NewFrameQdrantIndexerFromConfig(params.cfg.Qdrant, params.log)
 	}
 
 	// MEDIA-SSOT P2-9 Phase 2: the VLM sweep SELECTOR resolves from the same

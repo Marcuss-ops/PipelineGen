@@ -11,7 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
-	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 )
@@ -19,7 +19,7 @@ import (
 // ── ClipIndexerAdapter ────────────────────────────────────────────────
 
 type ClipIndexerAdapter struct {
-	inner *clipindexer.Service
+	inner *capindexing.ReindexRequesterHolder
 }
 
 func (a *ClipIndexerAdapter) IsEnabled() bool { return a.inner.IsEnabled() }

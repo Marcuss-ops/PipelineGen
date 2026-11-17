@@ -4,6 +4,7 @@ import (
 	"go.uber.org/zap"
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -12,7 +13,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 )
@@ -66,13 +66,13 @@ func BuildQdrantSubsystems(qd *QdrantDeps, cfg *config.Config, log *zap.Logger) 
 type ProcessBundle struct {
 	ProcessQdrantBundle
 	MediaProcessor     detail.MediaProcessor
-	ClipIndexerService *clipindexer.Service
+	ClipIndexerService *capindexing.ReindexRequesterHolder
 	VLMClient          *vlm.Client
 }
 
 // QdrantDeps is the small pre-phase dependency bundle used by outbox wiring.
 type QdrantDeps struct {
 	Runtime            *qdrant.QdrantRuntime
-	ClipIndexerService *clipindexer.Service
+	ClipIndexerService *capindexing.ReindexRequesterHolder
 	QdrantDeleter      jobsoutbox.VectorPointDeleter
 }

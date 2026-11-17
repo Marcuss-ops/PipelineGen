@@ -20,6 +20,7 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -27,7 +28,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
@@ -62,7 +62,7 @@ type ClipsCapabilityDeps struct {
 	AssetTreeService   *assettree.Service
 	MediaProcessor     detail.MediaProcessor
 	Publisher          delivery.Publisher
-	ClipIndexerService *clipindexer.Service
+	ClipIndexerService *capindexing.ReindexRequesterHolder
 }
 
 type buildClipsParams struct {

@@ -35,6 +35,7 @@ import (
 	"go.uber.org/zap"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -45,7 +46,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
@@ -161,7 +161,7 @@ func buildVoiceoverPipeline(
 	driveUploader *drive.Uploader,
 	publisher delivery.Publisher,
 	assetIndexService *assetindex.Service,
-	clipIndexerService *clipindexer.Service, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
+	clipIndexerService *capindexing.ReindexRequesterHolder, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
 	destResolver asset.Resolver,
 	metaWriter semantic.MetadataWriterPort,
 	outboxDispatcher *outbox.Dispatcher,

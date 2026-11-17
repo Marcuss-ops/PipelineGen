@@ -101,22 +101,12 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose process: %w", err)
 	}
 
-	// COMPLETE MEDIA CUTOVER: the legacy-named ClipIndexerService still has
-	// call sites such as reindex jobs and provider workflows. In PostgreSQL
-	// media mode those imperative calls MUST enqueue the canonical PG outbox
-	// event rather than execute the retired SQLite -> Qdrant implementation.
-	// Qdrant can remain independently wired inside ProcessBundle for an
-	// explicitly owned non-media capability; it is not rebound as the media
-	// vector authority here.
+	// COMPLETE MEDIA CUTOVER: the reindex requester holder still has call
+	// sites such as reindex jobs and provider workflows. In PostgreSQL media
+	// mode those imperative calls enqueue the canonical PG outbox event; no
+	// Qdrant write and no SQLite media read happens on this path.
 	if mediaPG != nil && process.ClipIndexerService != nil {
-		process.ClipIndexerService.SetCanonicalIndexRequester(pgmedia.NewReindexRequester(mediaPG))
-		// MEDIA-SSOT P2-9 Phase 2: the eligibility gate reads media_assets, so it
-		// must read the media SSOT. ClipIndexerService's own db is the
-		// operational SQLite store, which holds no committed media rows — leaving
-		// the gate on that handle made the taxonomy decision engine-blind. Both
-		// seams are set from the same mediaPG handle so the requester and the
-		// eligibility reader cannot drift onto different engines.
-		process.ClipIndexerService.SetMediaEligibilityReader(pgmedia.NewMediaEligibilityReader(mediaPG))
+		process.ClipIndexerService.SetRequester(pgmedia.NewReindexRequester(mediaPG))
 	}
 
 	// The shared Drive-upload gate is built ONCE here, before the two publisher

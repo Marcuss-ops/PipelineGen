@@ -2,13 +2,13 @@ package stock
 
 import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
@@ -22,7 +22,7 @@ type StockBundle struct {
 	AssetIndexService  *assetindex.Service
 	ClipsRepo          *assets.ClipsRepository
 	YoutubeClipService *ytService.Service
-	ClipIndexerService *clipindexer.Service
+	ClipIndexerService *capindexing.ReindexRequesterHolder
 	Dispatcher         *outbox.Dispatcher
 	Publisher          delivery.Publisher
 }

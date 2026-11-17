@@ -51,11 +51,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
@@ -119,7 +119,7 @@ type ServiceDeps struct {
 // search.Aggregator paths (per-scope), not as dedicated Service-level
 // bundle fields.
 type SearchDeps struct {
-	ClipIndexerService    *clipindexer.Service
+	ClipIndexerService    *capindexing.ReindexRequesterHolder
 	SearchFanOut          search.SearchFanOut
 	SearchBackendRegistry *search.BackendRegistry
 

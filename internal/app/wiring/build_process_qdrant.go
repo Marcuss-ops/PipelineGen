@@ -35,12 +35,11 @@ import (
 	"go.uber.org/zap"
 
 	processwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/process"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
@@ -117,17 +116,6 @@ func BuildProcessBundle(
 
 	vlmClient := newVLMClient(cfg)
 
-	// The indexing service is a producer of media_assets mutations (embedding
-	// and index-state sidecars). Bind it to the canonical committer before the
-	// process bundle becomes visible; it must never fall back to db.Exec.
-	if qd.ClipIndexerService != nil && outbox != nil && outbox.CanonicalWriter != nil {
-		mutationCommitter, ok := outbox.CanonicalWriter.(persistence.AssetMutationCommitter)
-		if !ok || mutationCommitter == nil {
-			return nil, fmt.Errorf("BuildProcessBundle: canonical writer does not implement AssetMutationCommitter")
-		}
-		qd.ClipIndexerService.SetAssetMutationCommitter(mutationCommitter)
-	}
-
 	processQdrant := processwiring.BuildQdrantSubsystems(qd, cfg, log)
 
 	return &ProcessBundle{
@@ -158,14 +146,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *Databases, re
 		return nil, err
 	}
 
-	clipIndexerService := clipindexer.NewService(&clipindexer.Config{
-		Enabled:               cfg.ClipIndexer.Enabled,
-		ServerURL:             cfg.ClipIndexer.ServerURL,
-		ScriptPath:            cfg.ClipIndexer.ScriptPath,
-		PythonBin:             cfg.ClipIndexer.PythonBin,
-		MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing,
-		DBPath:                dbs.Main.Path(),
-	}, dbs.Main, dbs.Main.Path(), log)
+	clipIndexerService := capindexing.NewReindexRequesterHolder(cfg.ClipIndexer.Enabled)
 
 	var runtime *qdrant.QdrantRuntime
 	if cfg.Qdrant.Enabled {

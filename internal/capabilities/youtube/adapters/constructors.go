@@ -7,10 +7,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcing"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 )
 
@@ -64,7 +64,7 @@ func NewZapSourcingLogger(log *zap.Logger) *ZapSourcingLogger {
 	return &ZapSourcingLogger{log: log}
 }
 
-// NewClipIndexerAdapter wires the clip indexer service.
-func NewClipIndexerAdapter(inner *clipindexer.Service) *ClipIndexerAdapter {
+// NewClipIndexerAdapter wires the canonical reindex requester holder.
+func NewClipIndexerAdapter(inner *capindexing.ReindexRequesterHolder) *ClipIndexerAdapter {
 	return &ClipIndexerAdapter{inner: inner}
 }

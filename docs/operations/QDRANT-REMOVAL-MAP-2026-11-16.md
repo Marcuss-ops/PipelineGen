@@ -79,8 +79,8 @@ Additional surfaces to retire with the code:
 | Step | Work | Exit gate |
 |---|---|---|
 | **P0 — freeze (done 2026-11-16)** | Guard test pinning `capabilities/mediamemory` to the port; map committed with this document | `go test ./internal/capabilities/mediamemory` + `go build ./...` |
-| **P1 — own the client** | Build the minimal `transport.Client` for the frame indexer at the `build_bundles_domain_assets.go` site; stop passing `params.process.QdrantClient` | frame indexer tests + `go build ./...` |
-| **P2 — cut clip indexing** | Remove the clip-index consumers (YouTube adapters, stock/voiceover wiring, `wire_assets_clips.go`); then delete `indexing/clipindexer` | `go build ./...`, YouTube + stock tests, archcheck |
+| **P1 — own the client (DONE 2026-11-17)** | Frame indexer builds its own client via `NewFrameQdrantIndexerFromConfig` in the adapter package; composition no longer passes `params.process.QdrantClient` | frame indexer + wiring tests, `go build ./...` |
+| **P2 — cut clip indexing (DONE 2026-11-17)** | `indexing/clipindexer` deleted; its imperative surface is now `capabilities/indexing.ReindexRequesterHolder` delegating to `pgmedia.ReindexRequester` | `go build ./...`, YouTube + wiring tests, archcheck (no hard hits) |
 | **P3 — cut image search** | Decide the product fate of the CLIP image embedder in `autotag`; remove `search` imports and `mediasearch_readiness` Qdrant checks | `go build ./...`, autotag tests, `/health` readiness contract |
 | **P4 — cut operator DR** | Remove Qdrant reconcile commands (`cmd/admin/reconcile/dr_qdrant*`) and `maintenance` locator-cleaner Qdrant paths | `go build ./...`, admin tests |
 | **P5 — delete the shell** | Delete `collections`, `verification`, `health`, `search`, root `qdrant`; shrink `transport`/`schema`/`dr` to the frame-indexer subset | `go build ./...`, full unit suite, archcheck |

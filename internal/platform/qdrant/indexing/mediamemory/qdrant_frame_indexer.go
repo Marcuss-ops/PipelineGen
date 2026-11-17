@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	qdrantindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
@@ -50,6 +51,20 @@ type FrameQdrantIndexer struct {
 // MUST be non-nil (composition root fail-closed).
 func NewFrameQdrantIndexer(client *transport.Client, log *zap.Logger) *FrameQdrantIndexer {
 	return &FrameQdrantIndexer{client: client, writer: qdrantindexing.NewTransportProjectionWriter(client), log: log}
+}
+
+// NewFrameQdrantIndexerFromConfig constructs the canonical adapter with a
+// client owned by the frame indexer itself. The mediamemory capability no
+// longer shares the process-wide client with clip indexing and search, so
+// that client can be retired with the rest of the Qdrant surface.
+func NewFrameQdrantIndexerFromConfig(cfg config.QdrantConfig, log *zap.Logger) *FrameQdrantIndexer {
+	client := transport.NewClient(&schema.Config{
+		BaseURL: cfg.BaseURL,
+		APIKey:  cfg.APIKey,
+		Timeout: cfg.Timeout,
+		Enabled: cfg.Enabled,
+	}, log)
+	return NewFrameQdrantIndexer(client, log)
 }
 
 // Compile-time assertion: FrameQdrantIndexer satisfies
