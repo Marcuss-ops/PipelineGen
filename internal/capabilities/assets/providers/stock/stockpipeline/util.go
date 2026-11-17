@@ -116,15 +116,3 @@ func measureSourceCut(ctx context.Context, clips int64, fn func(context.Context)
 		Items:     clips,
 	}, fn)
 }
-
-// measureChunkRender brackets ONE composed chunk (StockRenderer.Render for a
-// single cut path) as a canonical render operation under the stock.compose
-// stage. One chunk is exactly one render pass (1:1 cardinality).
-func measureChunkRender(ctx context.Context, fn func(context.Context) error) error {
-	return kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-		Stage:     kernobs.StageStockCompose,
-		Component: kernobs.ComponentFFmpeg,
-		Operation: kernobs.OperationRender,
-		Items:     1,
-	}, fn)
-}

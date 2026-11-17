@@ -38,25 +38,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
-
-// defaultImageWidth is the canonical smart-image width (Commit 6
-// SSOT — replaces inline literal `1024` previously repeated inside
-// runImageSceneFanout's GenerateSmartImage call). Python measures;
-// Go decides. 1024 chosen for parity with the SlideWorker pipeline's
-// slide-image surface (also 1024×1024).
-const defaultImageWidth = 1024
-
-// defaultImageHeight mirrors defaultImageWidth — 1024×1024 is the
-// canonical smart-image sizing for scene fan-out.
-const defaultImageHeight = 1024
-
-// defaultSkipDrive is the canonical "do NOT upload to Drive during
-// fanout" flag. The async Drive upload cycle is handled by the
-// finalizer pipeline (not the synchronous image processor) so the
-// per-scene inline call into GenerateSmartImage MUST skip Drive.
-const defaultSkipDrive = false
 
 // ── Typed port (PR 9 / PR 3) ─────────────────────────────────────────────
 
@@ -73,34 +55,6 @@ type ImageResult struct {
 // (concrete *images.Service); stub implementations live in adapters/.
 type ImageGenService interface {
 	SearchAndDownload(ctx context.Context, sceneName, sceneText, altText, language string) (*ImageResult, error)
-}
-
-// imagePrewarmer is the optional warmup seam used by production image
-// services that can pre-initialize their browser/session pool before
-// the parallel scene fan-out starts.
-type imagePrewarmer interface {
-	TriggerPrewarm(ctx context.Context, jobID string, count int)
-}
-
-// smartImageGenService is the optional AI-image-generation seam.
-// When ImageGenService implements it, the fanout prefers the
-// Drive-backed AI path over the fallback SearchAndDownload.
-type smartImageGenService interface {
-	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error)
-}
-
-// imageSceneOutcome is the INTERNAL goroutine-buffer outcome used by
-// runImageSceneFanout. Single field `warning` collects error-detail
-// strings; Process() iterates and maps to adapters.PostProcessResult.StageWarnings.
-//
-// Kept LOWERCASE for minimum surface to external callers. External
-// consumers should read SceneImageOutcome (exported) for the
-// status-typed API. godlike/07 fail-closed: the lowercase type
-// stays scoped to the fanout goroutine + Process(); do not leak it
-// outside the package.
-type imageSceneOutcome struct {
-	image   adapters.SceneImage
-	warning string
 }
 
 // ── NEW typed outcome (Commit 6) ─────────────────────────────────────────

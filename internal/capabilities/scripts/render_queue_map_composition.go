@@ -39,13 +39,6 @@ func resolveMapCompositionFor(requested, seed, slot string, input mapComposition
 	return capoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
 }
 
-// mapMapAnimationsCertified lists only the map animations exposed by the
-// single native renderer. Gallery-only registry entries remain unselectable.
-// TestMapCompositionsMatchPython guards cross-repository drift.
-func mapMapAnimationsCertified() []string {
-	return capoverlay.PortedMapCompositions()
-}
-
 // mapLabelAnimationsCertified lists every label id the Python renderer
 // accepts, including explicit-only choices.
 func mapLabelAnimationsCertified() []string {

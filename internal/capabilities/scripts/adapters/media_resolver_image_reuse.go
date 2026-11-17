@@ -99,21 +99,6 @@ func imageQueryList(values []string) []string {
 	return out
 }
 
-// fanoutCoversImageQueries prevents a contextual-image cache hit from
-// suppressing entity-specific searches. It returns true only when every
-// requested image identity already has a ready, identity-matching candidate.
-func fanoutCoversImageQueries(queries []string, segment *scriptpkg.VidRushSegmentResult) bool {
-	if len(queries) == 0 || segment == nil {
-		return false
-	}
-	for _, query := range queries {
-		if len(entityImageMatches(normalizeEntityMatch(query), "", *segment)) == 0 {
-			return false
-		}
-	}
-	return true
-}
-
 // fanoutAlreadyOwnsInternetImageDiscovery reports whether the incremental
 // VidRush fan-out already produced the internet-image candidate set for this
 // segment. HIT_EXACT and REFRESHED are authoritative: a second provider search

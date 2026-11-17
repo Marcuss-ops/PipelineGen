@@ -78,14 +78,6 @@ func withoutAnimationCandidates(candidates []string, excluded ...string) []strin
 	return out
 }
 
-func firstAnimationCandidate(group string) string {
-	ids := AnimationCandidates(group)
-	if len(ids) == 0 {
-		return ""
-	}
-	return ids[0]
-}
-
 func registryShortPhraseGroups() map[int][]string {
 	groups := make(map[int][]string, 5)
 	for wordCount := 1; wordCount <= 5; wordCount++ {

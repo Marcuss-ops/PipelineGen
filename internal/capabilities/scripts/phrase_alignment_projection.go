@@ -3,7 +3,6 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -302,28 +301,6 @@ func hasPhraseAlignment(aligned map[string]struct{}, text string) bool {
 
 func normalizePhraseText(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
-}
-
-// plannerOwnedEntityIDs collects the StableEntityID of every annotation entity
-// the planner renders (NUMBER / QUOTE / PRODUCT / LOGO — the kinds
-// EntityTypeToKind owns), so the resolver never emits a second overlay for
-// the same entity. Everything else is either an entity card (resolver) or an
-// IMAGE_OVERLAY when it carries an image.
-func plannerOwnedEntityIDs(result *GenerateResult, language Language) map[string]bool {
-	owned := map[string]bool{}
-	for i := range result.Scenes {
-		ann := annotationsForLanguage(result.Scenes[i], language, result.SourceLanguage)
-		if ann == nil {
-			continue
-		}
-		for _, entity := range append(ann.PrimaryEntities, ann.SecondaryEntities...) {
-			switch capmodel.EntityTypeToKind(entity.Type) {
-			case capmodel.KindNumber, capmodel.KindQuote, capmodel.KindProduct, capmodel.KindLogo, capmodel.KindBrandText:
-				owned[capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)] = true
-			}
-		}
-	}
-	return owned
 }
 
 // occurrenceFor matches an annotation entity to its certified timeline

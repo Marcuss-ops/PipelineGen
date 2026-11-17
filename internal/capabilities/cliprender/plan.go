@@ -126,7 +126,7 @@ type PlanOverlaySegment struct {
 //
 // A clip carries ONE SEGMENT PER certified overlay.render artifact it
 // composites. Production renders one short video per semantic overlay item
-// (separateItemRenders), so a scene carrying a phrase, an entity card and a
+// so a scene carrying a phrase, an entity card and a
 // keyword carries three segments, each with its own window on the clip
 // timeline. Modelling the overlay as a single segment silently dropped every
 // item after the first — the list is the contract that makes "all of them, or

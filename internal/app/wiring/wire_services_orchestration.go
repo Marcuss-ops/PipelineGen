@@ -305,18 +305,6 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}, nil
 }
 
-// embeddingContractProbe is the readiness-barrier adapter for the canonical
-// text contract: sidecar, active pgvector collection, and query embedder must
-// all agree with kernel/embedding.CanonicalText.
-type embeddingContractProbe struct{ fn func(context.Context) error }
-
-func (p *embeddingContractProbe) Probe(ctx context.Context) error {
-	if p == nil || p.fn == nil {
-		return nil
-	}
-	return p.fn(ctx)
-}
-
 // InitComposition returns the unified *ComposeRoot tree directly.
 // PR4d-final (June 2026): the legacy *CoreDeps projection was deleted —
 // the public entry point now returns *ComposeRoot + *backgroundJobs so

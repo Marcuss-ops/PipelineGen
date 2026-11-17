@@ -519,8 +519,6 @@ func feedbackMediaIdentities(plan *scriptgen.SemanticProductionPlan) int {
 	return count
 }
 
-func intPointer(value int) *int { return &value }
-
 func TestSemanticEngineRealBinaryProjectsCrossSceneGroupsAgainstMemberSources(t *testing.T) {
 	binary := resolveSemanticEngineBinary()
 	if binary == "" {

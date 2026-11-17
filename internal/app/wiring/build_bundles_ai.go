@@ -314,17 +314,6 @@ func resolveTranslationPromptVersion(_ *config.Config) string {
 	return "v1"
 }
 
-// resolveTranslationProvider maps media.multilingual.translation_provider
-// to the canonical provider strategy token. "ollama" → Ollama-only;
-// anything else ("argos", "auto", empty) → Argos primary + Ollama fallback
-// (the default).
-func resolveTranslationProvider(provider string) string {
-	if strings.EqualFold(strings.TrimSpace(provider), "ollama") {
-		return "ollama"
-	}
-	return "argos"
-}
-
 // resolveTranslationModel maps MultilingualConfig.TranslationPolicy
 // to the concrete Ollama model name passed to TranslationPort.
 //

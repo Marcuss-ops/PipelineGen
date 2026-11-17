@@ -19,25 +19,6 @@ func (g *fakeDynamicMapGPUGate) Acquire(context.Context) (func(), error) {
 	return func() {}, nil
 }
 
-type observingDynamicMapGPUGate struct {
-	acquired  int
-	released  int
-	active    bool
-	onAcquire func()
-}
-
-func (g *observingDynamicMapGPUGate) Acquire(context.Context) (func(), error) {
-	g.acquired++
-	g.active = true
-	if g.onAcquire != nil {
-		g.onAcquire()
-	}
-	return func() {
-		g.active = false
-		g.released++
-	}, nil
-}
-
 func TestDynamicMapVideoCacheRoundTripAndRejectsCorruption(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(dynamicMapVideoCacheDirEnv, root)

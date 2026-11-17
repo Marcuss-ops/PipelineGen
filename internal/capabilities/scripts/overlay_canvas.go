@@ -237,10 +237,6 @@ func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 	return capabilityoverlay.StyleParams(style)
 }
 
-func overlayImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capmodel.OverlayItemFrame {
-	return capabilityoverlay.ImageFrame(effectiveImageStyle(style))
-}
-
 func effectiveImageStyle(style *scriptpkg.OverlayImageStyleSpec) *scriptpkg.OverlayImageStyleSpec {
 	effective := &scriptpkg.OverlayImageStyleSpec{
 		// Plain photo overlays render full-bleed: a default border covers
@@ -269,14 +265,6 @@ func isImageOverlayItem(item capmodel.OverlayItem) bool {
 	return capabilityoverlay.IsAssetImageOverlayItem(item)
 }
 
-func isImageOverlayKind(kind string) bool {
-	return capabilityoverlay.IsImageOverlayKind(kind)
-}
-
-func imageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
-	return capabilityoverlay.ImageStyleParams(effectiveImageStyle(style))
-}
-
 func applyOverlayImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
 	capabilityoverlay.ApplyImageStyle(item, effectiveImageStyle(style))
 }
@@ -291,10 +279,6 @@ func isRuntimeTextStyleParam(key string) bool {
 
 func isTextOverlayKind(kind string) bool {
 	return capabilityoverlay.IsTextOverlayKind(kind)
-}
-
-func isEntityOverlayKind(kind string) bool {
-	return capabilityoverlay.IsEntityOverlayKind(kind)
 }
 
 func mergeStyleParam(existing any, add map[string]any) map[string]any {

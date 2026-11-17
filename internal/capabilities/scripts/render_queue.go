@@ -34,13 +34,6 @@ type QueueRenderEnqueuer struct {
 	// overlay render path enables it; idempotent callers keep the default
 	// plan-id identity and the ErrJobExists recovery path.
 	freshRender bool
-	// separateItemRenders enables one short artifact per semantic overlay item
-	// after nearby items have been fused into chain items. Ordinary overlay plans
-	// must not become a single full-duration video with sparse layers.
-	separateItemRenders bool
-	// overlayWindowBatching enables costed fusion of compatible same-scene
-	// windows inside the per-item path. Dynamic maps remain individual work.
-	overlayWindowBatching bool
 	// itemRenderPool bounds how many per-item overlay renders may be in
 	// flight at once. It exists because the per-item path used to submit a
 	// child plan and block on its terminal state before submitting the next

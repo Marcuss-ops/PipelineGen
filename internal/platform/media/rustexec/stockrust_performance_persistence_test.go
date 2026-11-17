@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"os"
 	"testing"
 	"time"
 
@@ -42,31 +41,6 @@ func buildStockrustRun(runID string, wall time.Duration, meta stockrustRunMetada
 		StartedAt:       startedAt.UTC().Format(time.RFC3339Nano),
 		CompletedAt:     completedAt.UTC().Format(time.RFC3339Nano),
 	}
-}
-
-// persistStockrustRun records the run into performance_runs when the operator
-// points STOCKRUST_PERF_DB_PATH at a migrated SQLite database. Unset env keeps
-// the benchmark hermetic (record-only in the test log).
-func persistStockrustRun(t *testing.T, run capperformance.Run) {
-	t.Helper()
-	dbPath := os.Getenv("STOCKRUST_PERF_DB_PATH")
-	if dbPath == "" {
-		t.Logf("performance run %s NOT persisted (set STOCKRUST_PERF_DB_PATH to record into performance_runs)", run.RunID)
-		return
-	}
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		t.Fatalf("open STOCKRUST_PERF_DB_PATH %q: %v", dbPath, err)
-	}
-	defer func() { _ = db.Close() }()
-	reg, err := perfstore.New(db)
-	if err != nil {
-		t.Fatalf("performance registry for %q: %v", dbPath, err)
-	}
-	if err := reg.RecordRun(context.Background(), run); err != nil {
-		t.Fatalf("persist stockrust performance run %q: %v", run.RunID, err)
-	}
-	t.Logf("persisted performance run %s (wall_ms=%d) to %s", run.RunID, run.WallMS, dbPath)
 }
 
 func mustJSON(v any) string {

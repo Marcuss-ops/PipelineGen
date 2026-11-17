@@ -24,11 +24,6 @@ func isUppercaseAcronym(value string) bool {
 	return letters >= 2 && letters <= 6
 }
 
-func startsWithEntityAcronym(value string) bool {
-	fields := strings.Fields(strings.TrimSpace(value))
-	return len(fields) > 1 && isUppercaseAcronym(fields[0])
-}
-
 func normalizeEntityImageName(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.TrimSuffix(strings.TrimSuffix(value, "'s"), "’s")

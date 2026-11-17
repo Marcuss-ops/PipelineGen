@@ -20,92 +20,12 @@
 package scriptgeneration
 
 import (
-	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-func applyMapPresentationToItems(items []capmodel.OverlayItem, mapType, cameraAnimation, labelAnimation, mapAnimation, mapLevel string) error {
-	mapType = strings.ToLower(strings.TrimSpace(mapType))
-	if mapType == "" {
-		// Legacy map_type requests keep the offline editorial default; the
-		// unified map_presentation contract defaults to modern_map_1.
-		mapType = "chronon_editorial"
-	}
-	if !capabilityoverlay.AnimationSupportsMapType(mapType) {
-		return fmt.Errorf("map_type %q is unsupported; choose classic/chronon_editorial, modern_map_1/esri_topo, satellite/esri_sat, or random", mapType)
-	}
-	if basemap, ok := capabilityoverlay.AnimationMapTypeBasemap(mapType); ok && !capabilityoverlay.NativeMapBasemaps()[basemap] {
-		return fmt.Errorf("map_type %q selects basemap %q: it is not available in the native map renderer; choose classic/chronon_editorial, modern_map_1/esri_topo, satellite/esri_sat, or random", mapType, basemap)
-	}
-	mapLevel = strings.ToLower(strings.TrimSpace(mapLevel))
-	switch mapLevel {
-	case "", "auto":
-		mapLevel = ""
-	case "comune":
-		mapLevel = "municipality"
-	case "continent", "country", "region", "municipality":
-	default:
-		return fmt.Errorf("map_level %q is unsupported; choose continent, country, region or municipality", mapLevel)
-	}
-	if err := validateRuntimeMapAnimation("map_camera_animation", cameraAnimation, mapCameraAnimationsCertified()); err != nil {
-		return err
-	}
-	if err := validateRuntimeMapAnimation("map_label_animation", labelAnimation, mapLabelAnimationsCertified()); err != nil {
-		return err
-	}
-	if err := validateRuntimeMapAnimation("map_animation", mapAnimation, mapMapAnimationsCertified()); err != nil {
-		return err
-	}
-	for i := range items {
-		if items[i].Map == nil {
-			continue
-		}
-		if items[i].Params == nil {
-			items[i].Params = map[string]any{}
-		}
-		items[i].Params["map_type"] = mapType
-		// Placeholders ("random"/"auto") are request-level draw knobs resolved
-		// by the seeded sampler at the render boundary: only CONCRETE ids are
-		// written to the plan params, so the plan never claims a presentation
-		// it did not choose and downstream validators only ever see ids.
-		if cameraAnimation != "" && !capabilityoverlay.MapAnimationPlaceholder(cameraAnimation) {
-			items[i].Params["map_camera_animation"] = cameraAnimation
-		}
-		if labelAnimation != "" && !capabilityoverlay.MapAnimationPlaceholder(labelAnimation) {
-			items[i].Params["map_label_animation"] = labelAnimation
-		}
-		if mapAnimation != "" && !capabilityoverlay.MapAnimationPlaceholder(mapAnimation) {
-			items[i].Params["map_animation"] = mapAnimation
-		}
-		if mapLevel != "" {
-			items[i].Params["map_level"] = mapLevel
-		}
-	}
-	return nil
-}
-
-// validateRuntimeMapAnimation fails closed on unknown runtime animation ids.
-// Empty and "random" mean "seeded random choice" and always pass; any other
-// value must be in the certified list the Python renderer accepts.
-func validateRuntimeMapAnimation(field, value string, certified []string) error {
-	trimmed := strings.TrimSpace(value)
-	if field == "map_label_animation" && trimmed == "none" {
-		return nil
-	}
-	if trimmed == "" || strings.EqualFold(trimmed, "random") {
-		return nil
-	}
-	for _, candidate := range certified {
-		if trimmed == candidate {
-			return nil
-		}
-	}
-	return fmt.Errorf("%s %q is unsupported; choose random or one of: %s", field, value, strings.Join(certified, ", "))
-}
 
 // countRecapItems counts final recap survivors, including cards preserved
 // inside a fused chain item.
@@ -146,28 +66,6 @@ func countChartItems(items []capmodel.OverlayItem) int {
 		}
 	}
 	return n
-}
-
-// recapItemsByScene counts the recap cards that survive chain coalescing.
-func recapItemsByScene(items []capmodel.OverlayItem) map[string]int {
-	counts := make(map[string]int)
-	for i := range items {
-		if v, ok := items[i].Params["recap_count"].(int); ok {
-			counts[items[i].SceneID] += v
-			continue
-		}
-		if items[i].Params["recap"] == true {
-			counts[items[i].SceneID]++
-		}
-		if segments, ok := capmodel.DecodeChainSegments(items[i].Params); ok {
-			for _, segment := range segments {
-				if segment.Params["recap"] == true {
-					counts[items[i].SceneID]++
-				}
-			}
-		}
-	}
-	return counts
 }
 
 // applyOverlayStyleToItems projects the run-level OverlayStyleSpec onto every
@@ -301,89 +199,4 @@ func applyOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvas
 			normalizeEntityImageLayer(&items[i])
 		}
 	}
-}
-
-// applyCompositeRuntimeStyle projects text and image settings into chain children.
-func applyCompositeRuntimeStyle(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
-	styleParams := overlayStyleParams(canvas.Style)
-	captionColor := capabilityoverlay.StyleFontColor(canvas.Style)
-	if captionColor != "" || len(styleParams) > 0 {
-		for i := range items {
-			if capmodel.IsChainItemKind(items[i].Kind) {
-				segments, ok := capmodel.DecodeChainSegments(items[i].Params)
-				if !ok {
-					continue // Validate below rejects malformed chain payloads.
-				}
-				for segmentIndex := range segments {
-					segment := &segments[segmentIndex]
-					segmentStyle := make(map[string]any, len(styleParams))
-					for key, value := range styleParams {
-						segmentStyle[key] = value
-					}
-					if segment.Style == nil {
-						segment.Style = map[string]any{}
-					}
-					for key, value := range segmentStyle {
-						if key == "style" {
-							segment.Style[key] = capabilityoverlay.MergeStyleParam(segment.Style[key], value.(map[string]any))
-						} else {
-							segment.Style[key] = value
-						}
-					}
-					if isEntityOverlayKind(segment.Kind) {
-						if captionColor != "" {
-							segment.CaptionColor = captionColor
-						}
-						capabilityoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
-					}
-					if isImageOverlayKind(segment.Kind) {
-						capabilityoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
-					}
-				}
-				items[i].Params["chain_segments"] = segments
-				items[i].RenderKey = ""
-				continue
-			}
-			if isEntityOverlayKind(items[i].Kind) {
-				items[i].Params = capabilityoverlay.MergeRuntimeTextStyleParams(items[i].Params, styleParams)
-				if captionColor != "" {
-					items[i].CaptionColor = captionColor
-				}
-			}
-			if isImageOverlayItem(items[i]) {
-				capabilityoverlay.MergeCaptionStyleIntoLayers(items[i].ImageLayers, styleParams)
-			}
-			items[i].RenderKey = ""
-		}
-	}
-	if canvas.Style != nil && canvas.Style.Image != nil {
-		for i := range items {
-			if capmodel.IsChainItemKind(items[i].Kind) {
-				segments, ok := capmodel.DecodeChainSegments(items[i].Params)
-				if !ok {
-					continue // Validate below rejects malformed chain payloads.
-				}
-				for segmentIndex := range segments {
-					segment := &segments[segmentIndex]
-					if !isImageOverlayKind(segment.Kind) {
-						continue
-					}
-					segment.Frame = overlayImageFrame(canvas.Style.Image)
-					for childIndex := range segment.ImageLayers {
-						child := &segment.ImageLayers[childIndex]
-						child.Params = mergeStyleParam(child.Params, imageStyleParams(canvas.Style.Image))
-						child.Frame = overlayImageFrame(canvas.Style.Image)
-					}
-					segment.Params = mergeStyleParam(segment.Params, imageStyleParams(canvas.Style.Image))
-				}
-				items[i].Params["chain_segments"] = segments
-				items[i].RenderKey = ""
-				continue
-			}
-			if isImageOverlayItem(items[i]) {
-				applyOverlayImageStyle(&items[i], canvas.Style.Image)
-			}
-		}
-	}
-
 }

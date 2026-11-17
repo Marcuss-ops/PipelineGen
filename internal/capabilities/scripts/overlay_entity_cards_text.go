@@ -146,16 +146,6 @@ func dedupeOverlappingGroundedDates(numbers []capabilityoverlay.TimedAnnotation)
 	return out
 }
 
-func phrasesAtLeastThreeWords(phrases []capabilityoverlay.TimedAnnotation) []capabilityoverlay.TimedAnnotation {
-	filtered := make([]capabilityoverlay.TimedAnnotation, 0, len(phrases))
-	for _, phrase := range phrases {
-		if len(strings.Fields(strings.TrimSpace(phrase.Text))) >= 3 {
-			filtered = append(filtered, phrase)
-		}
-	}
-	return filtered
-}
-
 func entityImageURL(binding *scriptpkg.EntityImageBinding) string {
 	if binding == nil {
 		return ""

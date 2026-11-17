@@ -120,10 +120,6 @@ func VidRushCacheMetrics() VidRushCacheStats {
 // builders. It is the only legal way to read Keywords/VisualTerms back as a
 // plain list; values keep the profile's deterministic order.
 
-func versionedSegmentCacheKey(stage string, version scriptports.CacheVersion, parts ...string) string {
-	return segmentCacheKey(append([]string{scriptports.VersionedCacheNamespace(stage, version)}, parts...)...)
-}
-
 func segmentCacheKey(parts ...string) string {
 	h := sha256.New()
 	for _, p := range parts {

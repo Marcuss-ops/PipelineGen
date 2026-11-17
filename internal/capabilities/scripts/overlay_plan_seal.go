@@ -158,14 +158,6 @@ func overlayPlanDurationMS(result *GenerateResult, language Language, resolved [
 	return (durationUS + 999) / 1000
 }
 
-// entityVariationSeedForCanvas forwards an explicit per-render motion seed to
-// the worker's entity-style sampler. Empty preserves the historical
-// plan-identity sampling so existing sealed plans stay byte-identical. It
-// lives beside the seal because the seed is frozen into the sealed plan.
-func entityVariationSeedForCanvas(canvas OverlayCanvasSpec) string {
-	return strings.TrimSpace(canvas.MotionSeed)
-}
-
 // attachEntityCardAsset resolves the card's canonical_entity_id through the
 // EntityMediaResolver and promotes the item to the image-only entity
 // capability when a verified asset exists. The name remains available in the

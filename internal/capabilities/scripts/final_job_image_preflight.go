@@ -42,10 +42,6 @@ import (
 // finalJobImageVerifiedRef reports whether one asset reference is a
 // verified, renderable identity: a 64-hex content address plus a locator
 // (Drive/public URL or a usable local path) the worker can actually fetch.
-func finalJobImageVerifiedRef(ref capmodel.OverlayAssetRef) bool {
-	return finalJobImageVerifiedRefContext(context.Background(), ref)
-}
-
 func finalJobImageVerifiedRefContext(ctx context.Context, ref capmodel.OverlayAssetRef) bool {
 	sha := strings.TrimSpace(ref.SHA256)
 	if len(sha) != 64 {
@@ -235,10 +231,6 @@ func isFinalJobPrivateIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
 }
 
-func anyFinalJobImageVerifiedRef(refs []capmodel.OverlayAssetRef) bool {
-	return anyFinalJobImageVerifiedRefContext(context.Background(), refs)
-}
-
 func anyFinalJobImageVerifiedRefContext(ctx context.Context, refs []capmodel.OverlayAssetRef) bool {
 	for _, ref := range refs {
 		if finalJobImageVerifiedRefContext(ctx, ref) {
@@ -256,10 +248,6 @@ func anyFinalJobImageVerifiedRefContext(ctx context.Context, refs []capmodel.Ove
 //     for every layer: one unsupported layer would render a partial card.
 //     The composite's structural multiplicity (>=2 layers, >=2 refs) is
 //     already the model validator's contract; this checks content identity.
-func finalJobImageVerifiedItem(item capmodel.OverlayItem) bool {
-	return finalJobImageVerifiedItemContext(context.Background(), item)
-}
-
 func finalJobImageVerifiedItemContext(ctx context.Context, item capmodel.OverlayItem) bool {
 	if len(item.ImageLayers) > 0 {
 		if len(item.AssetRefs) < len(item.ImageLayers) {

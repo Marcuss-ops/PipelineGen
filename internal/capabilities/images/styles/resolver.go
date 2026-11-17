@@ -20,5 +20,3 @@ type StyleResolver interface {
 }
 
 const DefaultStyleID = "default"
-
-type failingResolver struct{ err error }

@@ -21,16 +21,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// entityCardTemplate reports whether a resolver template is an entity card
-// (as opposed to a planner-owned overlay template).
-func entityCardTemplate(templateID string) bool {
-	switch templateID {
-	case "person_default", "org_default", "gpe_default", "concept_default":
-		return true
-	}
-	return false
-}
-
 // entityCardKind reports whether an overlay kind is an entity-card kind
 // (PERSON / ORGANIZATION / LOCATION / CONCEPT) — the kinds that resolve from
 // the EntityTimeline; a bound image is promoted to the image-only capability

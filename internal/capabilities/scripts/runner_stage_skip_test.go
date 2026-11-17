@@ -13,7 +13,6 @@ package scriptgeneration
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -23,35 +22,6 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
-
-// recordingDocumentFolderResolver is the hermetic document folder authority of
-// these tests: it records every (root, job, language) it is asked about and
-// returns the canonical <root>/<job>/<language> id, so a test can assert BOTH
-// the facts the phase resolved the folder from and the folder it published
-// into.
-type recordingDocumentFolderResolver struct {
-	mu    sync.Mutex
-	calls []documentFolderCall
-	err   error
-}
-
-type documentFolderCall struct{ root, job, language string }
-
-func (r *recordingDocumentFolderResolver) ResolveDocumentFolder(_ context.Context, root, job, language string) (string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls = append(r.calls, documentFolderCall{root: root, job: job, language: language})
-	if r.err != nil {
-		return "", r.err
-	}
-	return root + "/" + job + "/" + language, nil
-}
-
-func (r *recordingDocumentFolderResolver) snapshot() []documentFolderCall {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append([]documentFolderCall(nil), r.calls...)
-}
 
 // TestRunner_VoiceoverGeneratorNil_StageSkipped: when voiceoverGen
 // is nil, the runner MUST NOT panic and MUST skip the

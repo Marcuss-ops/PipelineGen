@@ -357,10 +357,7 @@ func mapBasemapStyles() []string {
 	return capoverlay.AnimationCandidates("map.basemap")
 }
 
-var (
-	mapCameraAnimations = capoverlay.AnimationRandomCandidates("map.camera")
-	mapLabelAnimations  = capoverlay.AnimationRandomCandidates("map.label")
-)
+var mapCameraAnimations = capoverlay.AnimationRandomCandidates("map.camera")
 
 // mapCameraAnimationsCertified lists every camera id the Python renderer
 // accepts, including explicit-only choices. resolveMapAnimation validates

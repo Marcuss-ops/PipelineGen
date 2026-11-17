@@ -18,7 +18,6 @@ const frozenRunnerPlanDir = "testdata/overlay_plan/runner"
 // certifies editorial projection. The Runner calls the mandatory v2 entry
 // point; only the plan payload is a checked-in test fixture.
 type frozenRunnerPlanResolver struct {
-	passthroughOverlayPlanCompiler
 	plan *capmodel.OverlayPlan
 }
 
@@ -59,7 +58,6 @@ func loadFrozenRunnerPlan(t *testing.T, name string) *capmodel.OverlayPlan {
 // entity-only fixture. It is derived from the v2 request's certified
 // EntityTimeline, so the Runner exercises the single-call v2 entry point.
 type entityChainRunnerResolver struct {
-	passthroughOverlayPlanCompiler
 }
 
 func (entityChainRunnerResolver) CompileOverlayPlanV2(_ context.Context, payload json.RawMessage) (*capmodel.OverlayPlan, error) {

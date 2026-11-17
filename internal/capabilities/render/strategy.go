@@ -133,17 +133,6 @@ type SmartResolver struct {
 // the processor version is the policy's renderer version. A plan without a
 // policy has no cache identity.
 
-// videoCompatibility is one asset's per-dimension verdict against the
-// target profile and plan frame rate. reason is "" exactly when the asset
-// is stream-copy eligible; the flags record which dimensions would need
-// re-encoding (they explain a FULL_RENDER decision).
-type videoCompatibility struct {
-	reason              string
-	requiresScale       bool
-	requiresFPSChange   bool
-	requiresPixelChange bool
-}
-
 // fpsCompatible compares the probed fps against the plan's rational frame
 // rate: exact rational match when the probe reports num/den, float tolerance
 // otherwise (mirror of the clip contract's 0.5 fps tolerance).

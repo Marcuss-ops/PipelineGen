@@ -1,7 +1,6 @@
 package scriptgeneration
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,19 +10,6 @@ import (
 	"strings"
 	"testing"
 )
-
-type captureSFXQueueClient struct {
-	job RenderQueueJob
-}
-
-func (c *captureSFXQueueClient) Submit(_ context.Context, job RenderQueueJob) error {
-	c.job = job
-	return nil
-}
-
-func (c *captureSFXQueueClient) Get(_ context.Context, id string) (RenderQueueJob, error) {
-	return RenderQueueJob{ID: id, State: "completed", Artifact: &RenderArtifact{ID: "result", URL: "https://store/result.mp4", SHA256: "ab", SizeBytes: 1}}, nil
-}
 
 func TestLoadRandomOverlaySFXAssetsFromManifestVerifiesContent(t *testing.T) {
 	dir := t.TempDir()

@@ -25,8 +25,6 @@ package adapters_test
 import (
 	"context"
 	"errors"
-	"strconv"
-	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -36,98 +34,12 @@ import (
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
 )
 
 // ── Image processor fakes ─────────────────────────────────────────
-
-type fakeImageGen struct {
-	results []*processor.ImageResult
-	errs    []error
-	calls   atomic.Int32
-}
-
-func (f *fakeImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*processor.ImageResult, error) {
-	i := int(f.calls.Add(1) - 1)
-	// Keep the fake deterministic under parallel fan-out by mapping
-	// scene-<n> back to the corresponding fixture slot when possible.
-	// Falls back to call order for any other sceneName format.
-	if idx, ok := sceneIndexFromName(sceneName); ok && idx >= 0 && idx < len(f.results) {
-		i = idx
-	}
-	if i >= len(f.results) {
-		return nil, errors.New("unexpected call index")
-	}
-	if i < len(f.errs) && f.errs[i] != nil {
-		return nil, f.errs[i]
-	}
-	return f.results[i], nil
-}
-
-func sceneIndexFromName(sceneName string) (int, bool) {
-	const prefix = "scene-"
-	if !strings.HasPrefix(sceneName, prefix) {
-		return 0, false
-	}
-	i, err := strconv.Atoi(strings.TrimPrefix(sceneName, prefix))
-	if err != nil {
-		return 0, false
-	}
-	return i, true
-}
-
-type blockingImageGen struct {
-	release       chan struct{}
-	prewarmCalled atomic.Int32
-	prewarmMisses atomic.Int32
-	calls         atomic.Int32
-	inFlight      atomic.Int32
-	maxInFlight   atomic.Int32
-}
-
-func (f *blockingImageGen) TriggerPrewarm(_ context.Context, _ string, _ int) {
-	f.prewarmCalled.Store(1)
-}
-
-func (f *blockingImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*processor.ImageResult, error) {
-	if f.prewarmCalled.Load() == 0 {
-		f.prewarmMisses.Add(1)
-	}
-	cur := f.inFlight.Add(1)
-	for {
-		max := f.maxInFlight.Load()
-		if cur <= max || f.maxInFlight.CompareAndSwap(max, cur) {
-			break
-		}
-	}
-	f.calls.Add(1)
-	<-f.release
-	f.inFlight.Add(-1)
-	return &processor.ImageResult{SourceURL: "http://img/" + sceneName}, nil
-}
-
-type generatedPriorityImageGen struct {
-	searchCalls atomic.Int32
-	genCalls    atomic.Int32
-	lastPrompts []string
-}
-
-func (f *generatedPriorityImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*processor.ImageResult, error) {
-	f.searchCalls.Add(1)
-	return &processor.ImageResult{SourceURL: "http://search/" + sceneName}, nil
-}
-
-func (f *generatedPriorityImageGen) GenerateSmartImage(_ context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*detail.ImageAsset, error) {
-	f.genCalls.Add(1)
-	f.lastPrompts = append([]string(nil), prompts...)
-	return &detail.ImageAsset{
-		SourceURL:   "google-slides/" + subject + ".png",
-		DriveFileID: "drive-" + subject,
-	}, nil
-}
 
 // ── Voiceover processor fakes ─────────────────────────────────────
 
