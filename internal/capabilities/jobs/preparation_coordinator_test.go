@@ -11,6 +11,11 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
+// testActiveWorkFunc adapts a closure to the ActiveWorkGate port in tests.
+type testActiveWorkFunc func() bool
+
+func (f testActiveWorkFunc) ActiveWorkAvailable() bool { return f != nil && f() }
+
 type coordinatorNotifier struct {
 	mu         sync.Mutex
 	ch         chan struct{}
@@ -77,7 +82,7 @@ func TestPreparationCoordinator_DoesNotCaptureClaimSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := ActiveWorkFunc(func() bool { return true })
+	gate := testActiveWorkFunc(func() bool { return true })
 	scheduler := NewSpeculationScheduler(DefaultSpeculationConfig(), gate)
 	snapshotter := &fakeClaimSnapshotter{}
 	coordinator, err := NewPreparationCoordinator(reader, notifier, registry, scheduler, 3, func(context.Context, SpeculationCandidate) error { return nil })
@@ -113,7 +118,7 @@ func TestPreparationCoordinator_UsesNotifierInsteadOfPolling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gate := ActiveWorkFunc(func() bool { return true })
+	gate := testActiveWorkFunc(func() bool { return true })
 	scheduler := NewSpeculationScheduler(DefaultSpeculationConfig(), gate)
 	var executed atomic.Int32
 	coordinator, err := NewPreparationCoordinator(reader, notifier, registry, scheduler, 3, func(context.Context, SpeculationCandidate) error { executed.Add(1); return nil })

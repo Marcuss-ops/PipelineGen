@@ -10,19 +10,20 @@
 //
 // godlike/07 fail-closed: a marker-only codec's body methods
 // round-trip identity (json.Marshal / json.Unmarshal to map[string]any).
-// Production startup wiring (C4+) replaces these markers with real
-// TypedCodecAdapter[T,R] instances carrying per-family payload+result
-// struct types; the canonical schema-version + job-type identity is
-// preserved across the substitution because CodecDescriptorMarker is
-// a drop-in replacement for any value satisfying PayloadCodec or
-// ResultCodec.
+// Production startup wiring (C4+) can replace these markers with typed
+// adapters carrying per-family payload+result struct types; the canonical
+// schema-version + job-type identity is preserved across the substitution
+// because CodecDescriptorMarker is a drop-in replacement for any value
+// satisfying PayloadCodec or ResultCodec. The old Go typed-adapter scaffold
+// in capabilities/jobs was retired on 2026-11-18; the registry wiring is now
+// pinned by capabilities/jobs/registry_codec_wiring_test.go.
 //
 // PR-KERNEL-JOB-POPULATE step 1 (commit 9.1, July 2026): the codec
 // interfaces preserve the LEGACY (req any) (json.RawMessage, error)
-// signature for minimum-churn compat with the 30+ callers in
-// canonical_definitions.go + registry_codec_completeness_test.go.
+// signature for minimum-churn compat with the callers in
+// canonical_definitions.go.
 // A future PR may migrate to (ctx, jobID, version string, []byte) (any, error)
-// once TypedCodecAdapter[T,R] is universally wired.
+// once a typed adapter is universally wired.
 package job
 
 import "encoding/json"
@@ -34,11 +35,9 @@ import "encoding/json"
 // (SchemaVersion + JobType marker) AND adds the typed
 // EncodePayload / DecodePayload bodies.
 //
-// A valid implementation is the application-layer
-// TypedCodecAdapter[T,R] decorator (defined in
-// internal/capabilities/jobs/queue/codec.go) which adapts the existing
-// Codec[T,R] infrastructure to satisfy both
-// kernel/job.PayloadCodec and kernel/job.ResultCodec via two
+// The canonical implementation today is CodecDescriptorMarker (marker
+// identity round-trip). A typed adapter can be reintroduced when C4 lands,
+// satisfying both kernel/job.PayloadCodec and kernel/job.ResultCodec via two
 // type-instantiated adapters (one per T/R pair).
 type PayloadCodec interface {
 	CodecDescriptor
@@ -47,9 +46,9 @@ type PayloadCodec interface {
 	// typed payload (an `any` value, narrowable at the consumer
 	// site via reflection) and produces the wire-format
 	// representation. The returned RawMessage MUST round-trip
-	// via DecodePayload — the codec round-trip test in
-	// internal/capabilities/jobs/queue/registry_codec_completeness_test.go
-	// pins this contract per JobDefinition.
+	// via DecodePayload — internal/capabilities/jobs/
+	// registry_codec_wiring_test.go pins this contract per
+	// registered JobDefinition.
 	EncodePayload(req any) (json.RawMessage, error)
 
 	// DecodePayload is the canonical decode body. The
@@ -132,9 +131,9 @@ type CodecDescriptorMarker struct {
 //
 // godlike/07 fail-closed: a marker-only codec's body methods
 // round-trip identity (json.Marshal / json.Unmarshal to map[string]any).
-// Production startup wiring (C4+) replaces these markers with real
-// TypedCodecAdapter[T,R] instances; the canonical schema-version +
-// job-type identity is preserved across the substitution.
+// Production startup wiring (C4+) can replace these markers with typed
+// adapters; the canonical schema-version + job-type identity is preserved
+// across the substitution.
 func NewCodecDescriptorMarker(schemaVersion, jobType string) CodecDescriptorMarker {
 	return CodecDescriptorMarker{
 		schemaVersion: schemaVersion,
@@ -151,15 +150,15 @@ func (m CodecDescriptorMarker) JobType() string { return m.jobType }
 
 // EncodePayload is the body-bearing PayloadCodec method.
 // Marker-level: identity round-trip via json.Marshal. Production
-// wiring (C4+) replaces this with TypedCodecAdapter[T,R].
+// wiring (C4+) can replace this with a typed adapter.
 func (m CodecDescriptorMarker) EncodePayload(req any) (json.RawMessage, error) {
 	return json.Marshal(req)
 }
 
 // DecodePayload is the body-bearing PayloadCodec method.
 // Marker-level: returns the json in map[string]any form (canonical
-// decoder-friendly shape). Production wiring (C4+) replaces this
-// with TypedCodecAdapter[T,R] returning the typed T value.
+// decoder-friendly shape). Production wiring (C4+) can replace this
+// with a typed adapter returning the typed T value.
 func (m CodecDescriptorMarker) DecodePayload(raw json.RawMessage) (any, error) {
 	var v map[string]any
 	if err := json.Unmarshal(raw, &v); err != nil {

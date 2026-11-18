@@ -1,8 +1,10 @@
 package overlays
 
-import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+import (
+	"strings"
 
-import "strings"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+)
 
 // EditorialSectionID is an editor-facing grouping, not a renderer kind. A
 // section is derived from an OverlayItem and is never serialized onto the
@@ -36,12 +38,6 @@ var editorialSectionCatalog = [...]EditorialSection{
 	{ID: EditorialSectionNumbersAndDates, Title: "Numeri & date", Order: 60},
 	{ID: EditorialSectionMap, Title: "Mappe", Order: 70},
 	{ID: EditorialSectionOther, Title: "Altri elementi", Order: 80},
-}
-
-// EditorialSections returns the canonical editor ordering. The returned slice
-// is a copy; callers cannot mutate the shared catalog.
-func EditorialSections() []EditorialSection {
-	return append([]EditorialSection(nil), editorialSectionCatalog[:]...)
 }
 
 // EditorialPlanSection is one section of an organized plan. Items retain their
@@ -111,27 +107,6 @@ func EditorialSectionForItem(item capmodel.OverlayItem) EditorialSectionID {
 		return EditorialSectionSingleImage
 	}
 	return EditorialSectionOther
-}
-
-// OrganizeEditorialPlan presents every plan item in exactly one editor
-// section. Empty sections are retained so the editor has a stable navigation
-// structure as content appears and disappears between plans.
-func OrganizeEditorialPlan(plan capmodel.OverlayPlan) []EditorialPlanSection {
-	sections := EditorialSections()
-	byID := make(map[EditorialSectionID]int, len(sections))
-	organized := make([]EditorialPlanSection, len(sections))
-	for i, section := range sections {
-		organized[i].EditorialSection = section
-		byID[section.ID] = i
-	}
-	for _, item := range plan.Items {
-		sectionIndex, ok := byID[EditorialSectionForItem(item)]
-		if !ok {
-			sectionIndex = byID[EditorialSectionOther]
-		}
-		organized[sectionIndex].Items = append(organized[sectionIndex].Items, item)
-	}
-	return organized
 }
 
 // contentPriorityForItem keeps overlap degradation aligned with the editor

@@ -5,21 +5,21 @@ import (
 	"fmt"
 	"strings"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
 // SubmitBatch maps and submits a complete chunk family through RenderingGen's
 // atomic endpoint. Prefetch runs before the transaction so a materialization
 // failure cannot leave a family whose children can never render.
-func (c *Client) SubmitBatch(ctx context.Context, jobs []scriptgen.RenderQueueJob) error {
+func (c *Client) SubmitBatch(ctx context.Context, jobs []renderqueue.RenderQueueJob) error {
 	if c == nil || c.q == nil {
 		return fmt.Errorf("renderinggen submit batch: client is not configured")
 	}
 	if len(jobs) == 0 {
 		return fmt.Errorf("renderinggen submit batch: jobs are required")
 	}
-	identities, err := scriptgen.RenderRequestFamilyIdentities(jobs)
+	identities, err := renderqueue.RenderRequestFamilyIdentities(jobs)
 	if err != nil {
 		return fmt.Errorf("renderinggen submit batch: request identity: %w", err)
 	}
@@ -52,8 +52,8 @@ func (c *Client) SubmitBatch(ctx context.Context, jobs []scriptgen.RenderQueueJo
 // family. Chunk children commonly share the same manifest; prefetching each
 // child separately repeats object-store HEADs (and can repeat remote reads on
 // stores without a reliable HEAD path) before the batch is submitted.
-func uniqueBatchAssets(jobs []scriptgen.RenderQueueJob) []scriptgen.RenderQueueAsset {
-	assets := make([]scriptgen.RenderQueueAsset, 0)
+func uniqueBatchAssets(jobs []renderqueue.RenderQueueJob) []renderqueue.RenderQueueAsset {
+	assets := make([]renderqueue.RenderQueueAsset, 0)
 	indexes := make(map[string]int)
 	for _, job := range jobs {
 		for _, asset := range job.Assets {
@@ -81,7 +81,7 @@ func uniqueBatchAssets(jobs []scriptgen.RenderQueueJob) []scriptgen.RenderQueueA
 	return assets
 }
 
-func toQueueFrameRange(in *scriptgen.RenderFrameRange) *queueclient.FrameRange {
+func toQueueFrameRange(in *renderqueue.RenderFrameRange) *queueclient.FrameRange {
 	if in == nil {
 		return nil
 	}

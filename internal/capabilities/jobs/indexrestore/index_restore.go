@@ -19,7 +19,6 @@ package indexrestore
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -102,18 +101,15 @@ func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outboxevents.Event
 	}
 
 	var req indexRestoreRequestV1
-	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
-		log.Warn("asset.index.restore_requested payload parse failed (terminal)",
-			zap.Int64("event_id", evt.ID), zap.String("aggregate_id", evt.AggregateID), zap.Error(err))
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: payload parse: %v", errIndexRestoreTerminal, err))
+	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+		EventName:         "asset.index.restore_requested",
+		WantSchemaVersion: IndexRestoreRequestSchemaVersion,
+		Log:               log,
+		OnViolation:       indexRestoreViolation,
+	}, evt, &req); err != nil {
+		return err
 	}
-	if req.SchemaVersion != IndexRestoreRequestSchemaVersion {
-		log.Warn("asset.index.restore_requested schema_version mismatch (terminal)",
-			zap.Int64("event_id", evt.ID), zap.String("got_version", req.SchemaVersion),
-			zap.String("want_version", IndexRestoreRequestSchemaVersion))
-		return outboxevents.NewTerminalError(fmt.Errorf(
-			"%w: schema_version %q != %q", errIndexRestoreTerminal, req.SchemaVersion, IndexRestoreRequestSchemaVersion))
-	}
+
 	// The asset identity prefers the envelope field and falls back to the
 	// aggregate id, exactly like the sibling index/delete handlers.
 	assetID := req.AssetID
@@ -123,11 +119,6 @@ func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outboxevents.Event
 	if assetID == "" {
 		log.Warn("asset.index.restore_requested: empty asset_id (terminal)", zap.Int64("event_id", evt.ID))
 		return outboxevents.NewTerminalError(fmt.Errorf("%w: asset_id is required", errIndexRestoreTerminal))
-	}
-	if req.IdempotencyKey == "" {
-		log.Warn("asset.index.restore_requested: missing idempotency_key (terminal)",
-			zap.Int64("event_id", evt.ID), zap.String("asset_id", assetID))
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: idempotency_key is required", errIndexRestoreTerminal))
 	}
 
 	if h.restorer == nil {
@@ -148,3 +139,20 @@ func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outboxevents.Event
 }
 
 var _ outboxevents.Handler = (*IndexRestoreHandler)(nil)
+
+// indexRestoreViolation preserves this handler's terminal sentinel while the
+// envelope CHECKS live in outboxevents.DecodeV1.
+func indexRestoreViolation(v outboxevents.Violation) error {
+	switch v.Kind {
+	case outboxevents.ViolationParse:
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: payload parse: %v", errIndexRestoreTerminal, v.Err))
+	case outboxevents.ViolationSchemaVersion:
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: schema_version %q != %q", errIndexRestoreTerminal, v.Got, v.Want))
+	case outboxevents.ViolationEventID:
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: event_id is required", errIndexRestoreTerminal))
+	case outboxevents.ViolationIdempotencyKey:
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: idempotency_key is required", errIndexRestoreTerminal))
+	default:
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: %s envelope violation", errIndexRestoreTerminal, v.Kind))
+	}
+}

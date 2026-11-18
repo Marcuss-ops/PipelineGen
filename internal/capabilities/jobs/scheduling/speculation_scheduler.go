@@ -49,14 +49,8 @@ type ResourceBudget = job.ResourceBudget
 
 // ActiveWorkGate is consulted before every admission. Active execution always
 // wins; when false, speculative work must not start or continue. Alias of the
-// canonical kernel observer port; ActiveWorkFunc remains the convenient
-// closure adapter.
+// canonical kernel observer port.
 type ActiveWorkGate = job.ActiveWorkObserver
-
-// ActiveWorkFunc adapts a closure to the ActiveWorkGate port.
-type ActiveWorkFunc func() bool
-
-func (f ActiveWorkFunc) ActiveWorkAvailable() bool { return f != nil && f() }
 
 // SpeculationConfig defines admission limits per lookahead depth and resource.
 //
@@ -242,21 +236,6 @@ func (s *ResourceScheduler) Run(ctx context.Context, candidates []SpeculationCan
 
 // RunWithPreemption executes admitted work while exposing a cancellation hook
 // that active job work can call to stop the speculative batch immediately.
-
-// Running returns the live speculative concurrency per resource class
-// (observability projection of the pool).
-func (s *ResourceScheduler) Running() map[SpeculationResource]int {
-	if s == nil {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make(map[SpeculationResource]int, len(s.running))
-	for resource, count := range s.running {
-		out[resource] = count
-	}
-	return out
-}
 
 // resourceClassOf maps a unit to its speculative resource class. The kernel
 // canonical ResourceClass values are the SSOT; the speculative enum mirrors

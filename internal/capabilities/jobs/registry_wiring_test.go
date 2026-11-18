@@ -5,9 +5,6 @@
 //   - TestWorker_HonorsRegistryTimeout  — Worker.WithRegistry(reg)
 //     makes jobTimeoutFor read reg.Timeout instead of falling back
 //     to the literal 10-min default.
-//   - TestWorker_HonorsRegistryRetries  — Worker.WithRegistry(reg)
-//     makes maxRetriesFor read reg.DefaultMaxRetries instead of
-//     falling back to the literal 3.
 //   - TestRunner_AttachesRegistryToWorkers — Runner.buildWorkers
 //     propagates the attached jobscheduling.Registry onto every spawned Worker;
 //     the timeouts snapshot (reg.Compose()) is bound to each Worker.
@@ -19,12 +16,6 @@
 // reach private fields (`Worker.reg`, `Worker.timeouts`) without
 // exposing new public surface. Production surface stays the same;
 // the test is internal-only.
-//
-// Issue 4 (P1, Enqueue path) will swap runJob's
-// `j.RetryCount < j.MaxRetries` check to consult
-// `w.maxRetriesFor(j.Type)` — the helper exists today and the
-// TestWorker_HonorsRegistryRetries pin ensures drift cannot regress
-// the lookup surface.
 package jobs
 
 import (
@@ -83,40 +74,6 @@ func TestWorker_HonorsRegistryTimeout(t *testing.T) {
 	if got != 4*time.Minute {
 		t.Errorf("Issue 2 / P0: Worker.jobTimeoutFor(%q) with attached jobscheduling.Registry: got %v, want %v",
 			wiringTestType, got, 4*time.Minute)
-	}
-}
-
-// TestWorker_HonorsRegistryRetries — Issue 2 / P0 retry helper
-// contract. The runJob integration is Issue 4 (P1) territory; this
-// test pins the helper so Issue 4 can swap-in one line.
-func TestWorker_HonorsRegistryRetries(t *testing.T) {
-	t.Parallel()
-	reg := newWiringRegistry(t, 4*time.Minute, 5)
-
-	w := NewWorker(WorkerDeps{
-		ID:         "honors-retries-worker",
-		Repo:       nil,
-		Dispatcher: NewDispatcher(),
-		Notifier:   nil,
-		Log:        zap.NewNop(),
-		LeaseTTL:   5 * time.Minute,
-		PollEvery:  2 * time.Second,
-		Backoff: BackoffConfig{
-			MaxBackoff:                60 * time.Second,
-			ConsecutiveEmptyThreshold: 0,
-		},
-		Types: []string{wiringTestType},
-	}).WithRegistry(reg)
-
-	// Registered type → jobscheduling.Registry.DefaultMaxRetries.
-	if got := w.maxRetriesFor(wiringTestType); got != 5 {
-		t.Errorf("Issue 2 / P0: Worker.maxRetriesFor(%q) with attached jobscheduling.Registry: got %d, want %d",
-			wiringTestType, got, 5)
-	}
-
-	// Unregistered type → jobscheduling.Registry returns the canonical 3.
-	if got := w.maxRetriesFor("not-a-real-type"); got != 3 {
-		t.Errorf("Worker.maxRetriesFor(unregistered): got %d, want canonical 3", got)
 	}
 }
 

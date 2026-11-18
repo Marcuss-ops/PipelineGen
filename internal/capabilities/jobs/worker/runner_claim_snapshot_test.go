@@ -115,7 +115,7 @@ func TestRunner_CapturesClaimSnapshotOnRealClaim(t *testing.T) {
 
 	runner := NewRunner(broker, reg, workspace, nil, zap.NewNop(), "worker-1", "session-1", []string{"snap.test"})
 	runner.SetRenewInterval(minRenewInterval)
-	runner.WithClaimSnapshotter(snapshotter)
+	runner.claimSnapshot = snapshotter
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

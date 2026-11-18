@@ -235,12 +235,6 @@ var registry = []Knob{
 		Description:    "Rust mediasampler worker used by the canonical media ranker (rank_candidates).",
 	},
 	{
-		Name: "VELOX_RUST_QUALITY_GATE", Kind: KindConfig, Default: "false",
-		Owner:          "internal/app/wiring/wire_script_usecases.go",
-		SafeProduction: "false until the release pin is bumped",
-		Description:    "Opt into the Rust script-qa quality_gate instead of the canonical Go editorial gate.",
-	},
-	{
 		Name: "VELOX_RUST_SEMANTIC_ENGINE_PATH", Kind: KindTestOnly, Default: "",
 		Owner:          "internal/app/wiring/semantic_blend_live_test.go",
 		SafeProduction: "unset",

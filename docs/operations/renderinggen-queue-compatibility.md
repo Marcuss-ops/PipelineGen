@@ -6,6 +6,12 @@ The CI gate checks the vendored module version against this matrix and verifies
 the pinned snapshot. In a workspace containing both repositories, the same
 gate also compares every queue module file byte-for-byte.
 
+The local `replace github.com/Marcuss-ops/RenderingGen/queue => ./third_party/queue`
+in `go.mod` is not a fork: it is the only way to build the historical module
+path, because the published module name does not match the historical import
+path. Do not replace it with a network module reference; update the vendored
+snapshot and the lock instead.
+
 | PipelineGen producer | Queue module | RenderingGen worker/server | Status |
 | --- | --- | --- | --- |
 | render request v2; job envelope v1 | `0.1.2` | queue module `0.1.2` | Supported and pinned |

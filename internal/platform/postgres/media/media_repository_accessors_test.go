@@ -364,7 +364,7 @@ func TestScanMediaAssetRecord_ColumnAlignment(t *testing.T) {
 		"https://src", "youtube", "vid-1", "vid-1",
 		int64(1000), int64(2000), "folder-1", "parent-1", "/a/b", "2026-09-13T10:00:00Z",
 		`{"clip_summary":"s"}`, `["k1","k2"]`, "approved",
-		"stock_video", "stock",
+		"stock_video", "stock", "it", "en",
 	}}
 	rec, err := scanMediaAssetRecord(row)
 	if err != nil {
@@ -374,6 +374,9 @@ func TestScanMediaAssetRecord_ColumnAlignment(t *testing.T) {
 		rec.SourceProvider != "youtube" || rec.SourceVideoID != "vid-1" ||
 		rec.StartMS != 1000 || rec.EndMS != 2000 {
 		t.Fatalf("unexpected record: %+v", rec)
+	}
+	if rec.Language != "it" || rec.OriginalLanguage != "en" {
+		t.Fatalf("language = %q / %q, want it / en", rec.Language, rec.OriginalLanguage)
 	}
 	if len(rec.Tags) != 1 || rec.Tags[0] != "t1" {
 		t.Fatalf("tags = %v", rec.Tags)

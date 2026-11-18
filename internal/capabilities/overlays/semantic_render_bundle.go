@@ -3,9 +3,10 @@ package overlays
 import (
 	"encoding/hex"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"regexp"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )

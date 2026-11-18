@@ -10,9 +10,11 @@
 // reason this adapter exists.
 //
 // ResolveSource / ResolveContent read durable registry facts ONLY — never the
-// AssetID prefix heuristic. This mirrors
-// internal/platform/sqlite/mediaregistry/canonical_identity.go
-// statement-for-statement, translated to PostgreSQL placeholders.
+// AssetID prefix heuristic. The classification rule is NOT duplicated here: it
+// is capregistry.ResolveSourceObservations / ResolveContentObservations, shared
+// with the SQLite registry adapter, so the two stores cannot disagree about
+// what "one asset" or "multi-provenance" means. This file owns the PostgreSQL
+// SELECT and the scan errors.
 package media
 
 import (
@@ -20,7 +22,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 )
@@ -43,14 +44,18 @@ func NewPostgresCanonicalIdentityResolver(db *sql.DB) (*PostgresCanonicalIdentit
 var _ capregistry.CanonicalIdentityResolver = (*PostgresCanonicalIdentityResolver)(nil)
 
 // ResolveSource resolves (sourceType, sourceRef) to the canonical asset.
+//
+// This adapter owns ONLY the PostgreSQL SELECT and its scan errors: the
+// classification (not found, ambiguity, which row wins) lives in
+// capregistry.ResolveSourceObservations, the single implementation shared with
+// the SQLite registry adapter.
 func (r *PostgresCanonicalIdentityResolver) ResolveSource(ctx context.Context, sourceType, sourceRef string) (capregistry.CanonicalIdentity, error) {
 	if r == nil || r.db == nil {
 		return capregistry.CanonicalIdentity{}, errors.New("canonical identity resolver (postgres): not wired")
 	}
-	sourceType = strings.TrimSpace(sourceType)
-	sourceRef = strings.TrimSpace(sourceRef)
-	if sourceType == "" || sourceRef == "" {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: source_type and source_ref are required", capregistry.ErrAssetSourceInvalid)
+	sourceType, sourceRef, err := capregistry.NormalizeSourceQuery(sourceType, sourceRef)
+	if err != nil {
+		return capregistry.CanonicalIdentity{}, err
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
@@ -62,48 +67,30 @@ func (r *PostgresCanonicalIdentityResolver) ResolveSource(ctx context.Context, s
 	}
 	defer func() { _ = rows.Close() }()
 
-	var (
-		identity capregistry.CanonicalIdentity
-		seen     bool
-	)
-	assetIDs := make(map[string]struct{})
+	observations := make([]capregistry.SourceObservation, 0, 4)
 	for rows.Next() {
-		var assetID, contentSHA string
-		if err := rows.Scan(&assetID, &contentSHA); err != nil {
+		var observation capregistry.SourceObservation
+		if err := rows.Scan(&observation.AssetID, &observation.ContentSHA256); err != nil {
 			return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver (postgres): scan source: %w", err)
 		}
-		assetIDs[assetID] = struct{}{}
-		identity = capregistry.CanonicalIdentity{
-			AssetID:       assetID,
-			SourceType:    sourceType,
-			SourceRef:     sourceRef,
-			ContentSHA256: contentSHA,
-		}
-		seen = true
+		observations = append(observations, observation)
 	}
 	if err := rows.Err(); err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver (postgres): iterate sources: %w", err)
 	}
-	if !seen {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: source (%s, %s)", capregistry.ErrCanonicalIdentityNotFound, sourceType, sourceRef)
-	}
-	if len(assetIDs) > 1 {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: source (%s, %s) resolves to %d assets", capregistry.ErrCanonicalIdentityAmbiguous, sourceType, sourceRef, len(assetIDs))
-	}
-	return identity, nil
+	return capregistry.ResolveSourceObservations(sourceType, sourceRef, observations)
 }
 
-// ResolveContent resolves contentSHA256 to its canonical identity. When
-// exactly one asset references the bytes, AssetID is populated; when the
-// bytes are multi-provenance (several assets, one content object), AssetID is
-// left empty and the caller treats the identity as a content object.
+// ResolveContent resolves contentSHA256 to its canonical identity. The
+// multi-provenance rule (several assets → AssetID empty) is the shared one in
+// capregistry.ResolveContentObservations.
 func (r *PostgresCanonicalIdentityResolver) ResolveContent(ctx context.Context, contentSHA256 string) (capregistry.CanonicalIdentity, error) {
 	if r == nil || r.db == nil {
 		return capregistry.CanonicalIdentity{}, errors.New("canonical identity resolver (postgres): not wired")
 	}
-	contentSHA256 = strings.TrimSpace(contentSHA256)
-	if contentSHA256 == "" {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: content_sha256 is required", capregistry.ErrContentObjectInvalid)
+	contentSHA256, err := capregistry.NormalizeContentQuery(contentSHA256)
+	if err != nil {
+		return capregistry.CanonicalIdentity{}, err
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
@@ -125,12 +112,5 @@ func (r *PostgresCanonicalIdentityResolver) ResolveContent(ctx context.Context, 
 	if err := rows.Err(); err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver (postgres): iterate content: %w", err)
 	}
-	if len(assetIDs) == 0 {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: content %s", capregistry.ErrCanonicalIdentityNotFound, contentSHA256)
-	}
-	identity := capregistry.CanonicalIdentity{ContentSHA256: contentSHA256}
-	if len(assetIDs) == 1 {
-		identity.AssetID = assetIDs[0]
-	}
-	return identity, nil
+	return capregistry.ResolveContentObservations(contentSHA256, assetIDs)
 }

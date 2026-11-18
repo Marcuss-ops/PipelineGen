@@ -35,7 +35,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -133,11 +132,11 @@ type AssetDeleter interface {
 // reaches back into SQLite (asset_id lookup) to fetch current state
 // — no need to ship embedding bytes in the wire envelope.
 type indexDeleteRequestV1 struct {
-	SchemaVersion  string `json:"schema_version"`
-	EventID        string `json:"event_id"`
-	AssetID        string `json:"asset_id"`
-	RequestedAt    string `json:"requested_at,omitempty"`
-	IdempotencyKey string `json:"idempotency_key"`
+	// Envelope carries schema_version/event_id/idempotency_key/requested_at;
+	// the v1 envelope contract is decoded and validated once, in
+	// outboxevents.DecodeV1, not once per handler.
+	outboxevents.Envelope
+	AssetID string `json:"asset_id"`
 }
 
 // IndexDeleteHandler is the real handler for asset.index.delete_requested.v1.
@@ -196,44 +195,18 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		log = zap.NewNop()
 	}
 
-	// Parse v1 envelope. Malformed JSON is TERMINAL — the producer
-	// must fix the payload instead of retrying into a repair loop.
 	var req indexDeleteRequestV1
-	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
-		log.Warn("asset.index.delete_requested payload parse failed (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-			zap.Int("attempt", evt.AttemptCount),
-			zap.Error(err),
-		)
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.delete_requested payload parse: %w", err),
-		)
+	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+		EventName:         outboxevents.EventAssetIndexDeleteRequested,
+		WantSchemaVersion: DeleteRequestSchemaVersion,
+		Log:               log,
+	}, evt, &req); err != nil {
+		return err
 	}
 
-	// Strict envelope validation. Each missing/mismatched field is
-	// TERMINAL — retrying won't bring the field into existence.
-	if req.SchemaVersion != DeleteRequestSchemaVersion {
-		log.Warn("asset.index.delete_requested schema_version mismatch (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-			zap.String("got_version", req.SchemaVersion),
-			zap.String("want_version", DeleteRequestSchemaVersion),
-		)
-		return outboxevents.NewTerminalError(fmt.Errorf(
-			"asset.index.delete_requested: schema_version mismatch (terminal — got %q, want %q)",
-			req.SchemaVersion, DeleteRequestSchemaVersion,
-		))
-	}
-	if req.EventID == "" {
-		log.Warn("asset.index.delete_requested: missing event_id (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-		)
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.delete_requested: event_id is required (terminal)"),
-		)
-	}
+	// Resource-level validation: only this handler knows which field
+	// identifies its aggregate. TERMINAL for the same reason the envelope
+	// checks are — retrying cannot bring the id into existence.
 	if req.AssetID == "" {
 		log.Warn("asset.index.delete_requested: empty asset_id (terminal)",
 			zap.Int64("event_id", evt.ID),
@@ -241,15 +214,6 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 		)
 		return outboxevents.NewTerminalError(
 			fmt.Errorf("asset.index.delete_requested: empty asset_id (terminal — retry cannot conjure an id)"),
-		)
-	}
-	if req.IdempotencyKey == "" {
-		log.Warn("asset.index.delete_requested: missing idempotency_key (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-		)
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.delete_requested: idempotency_key is required (terminal)"),
 		)
 	}
 

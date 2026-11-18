@@ -12,8 +12,8 @@ import (
 	"time"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -31,8 +31,8 @@ const EventOverlayDrivePublicationRequested = "overlay.drive.publication.request
 // artifact is a locator-first certification; the consumer downloads and
 // verifies those exact bytes before invoking the direct Drive publisher.
 type OverlayDrivePublicationRequest struct {
-	Spec     scriptgen.OverlayPublicationSpec `json:"spec"`
-	Artifact scriptgen.RenderArtifact         `json:"artifact"`
+	Spec     renderqueue.OverlayPublicationSpec `json:"spec"`
+	Artifact renderqueue.RenderArtifact         `json:"artifact"`
 }
 
 // DriveOverlayArtifactPublisher closes the queue→Drive boundary. RenderingGen
@@ -70,7 +70,7 @@ func (p *DriveOverlayArtifactPublisher) SetScriptLanguageRouting(on bool) {
 	}
 }
 
-func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec scriptgen.OverlayPublicationSpec, artifact *scriptgen.RenderArtifact) error {
+func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec renderqueue.OverlayPublicationSpec, artifact *renderqueue.RenderArtifact) error {
 	if p == nil || p.publisher == nil {
 		return fmt.Errorf("overlay Drive publisher is not configured")
 	}
@@ -285,4 +285,4 @@ func firstNonEmpty(values ...string) string {
 	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
 }
 
-var _ scriptgen.OverlayArtifactPublisher = (*DriveOverlayArtifactPublisher)(nil)
+var _ renderqueue.OverlayArtifactPublisher = (*DriveOverlayArtifactPublisher)(nil)

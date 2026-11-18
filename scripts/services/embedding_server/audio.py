@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from . import (
     CLAP_MODEL_NAME,
     CLAP_MODEL_VERSION,
-    _inference_sem,
+    _audio_inference_sem,
     clap_model,
 )
 from .models import AudioFileEmbedRequest, EmbedRequest
@@ -27,7 +27,7 @@ async def embed_audio(req: EmbedRequest):
     """
     if clap_model is None:
         raise HTTPException(status_code=501, detail="CLAP model not loaded")
-    async with _inference_sem:
+    async with _audio_inference_sem:
         try:
             embedding = clap_model.encode(req.text).tolist()
             return {
@@ -49,7 +49,7 @@ async def embed_audio_from_file(req: AudioFileEmbedRequest):
     """
     if clap_model is None:
         raise HTTPException(status_code=501, detail="CLAP model not loaded")
-    async with _inference_sem:
+    async with _audio_inference_sem:
         try:
             embedding = clap_model.encode(req.audio_path).tolist()
             return {

@@ -32,19 +32,23 @@ type MediaRankerBinding struct {
 
 // MediaRankerCandidate is one candidate as the Rust ranker sees it.
 type MediaRankerCandidate struct {
-	CandidateID           string              `json:"candidate_id,omitempty"`
-	AssetID               string              `json:"asset_id,omitempty"`
-	VideoID               string              `json:"video_id,omitempty"`
-	Provider              string              `json:"provider,omitempty"`
-	SourceURL             string              `json:"source_url,omitempty"`
-	MediaType             string              `json:"media_type,omitempty"`
-	DurationMS            int64               `json:"duration_ms,omitempty"`
-	CandidateScore        float64             `json:"candidate_score,omitempty"`
-	RightsStatus          string              `json:"rights_status,omitempty"`
-	DiscoveryStatus       string              `json:"discovery_status,omitempty"`
-	MaterializationStatus string              `json:"materialization_status,omitempty"`
-	ChannelID             string              `json:"channel_id,omitempty"`
-	Binding               *MediaRankerBinding `json:"binding,omitempty"`
+	CandidateID           string  `json:"candidate_id,omitempty"`
+	AssetID               string  `json:"asset_id,omitempty"`
+	VideoID               string  `json:"video_id,omitempty"`
+	Provider              string  `json:"provider,omitempty"`
+	SourceURL             string  `json:"source_url,omitempty"`
+	MediaType             string  `json:"media_type,omitempty"`
+	DurationMS            int64   `json:"duration_ms,omitempty"`
+	CandidateScore        float64 `json:"candidate_score,omitempty"`
+	RightsStatus          string  `json:"rights_status,omitempty"`
+	DiscoveryStatus       string  `json:"discovery_status,omitempty"`
+	MaterializationStatus string  `json:"materialization_status,omitempty"`
+	// Language is the candidate's BCP-47 language. Contract-only on the rank
+	// path: the Rust weighted formula is unchanged, so existing goldens stay
+	// bit-identical. The scored language signal lives in score_local.
+	Language  string              `json:"language,omitempty"`
+	ChannelID string              `json:"channel_id,omitempty"`
+	Binding   *MediaRankerBinding `json:"binding,omitempty"`
 	// Bonus is the caller's ordering preference. The ranker adds it after the
 	// verdict is classified: it can reorder survivors, never rescue a drop.
 	Bonus float64 `json:"bonus,omitempty"`
@@ -52,10 +56,13 @@ type MediaRankerCandidate struct {
 
 // MediaRankerRequest is one slot pool: scene context plus candidates.
 type MediaRankerRequest struct {
-	SceneDurationMS int64                  `json:"scene_duration_ms"`
-	PrevVideoID     string                 `json:"prev_video_id,omitempty"`
-	SlotKind        string                 `json:"slot_kind"`
-	Candidates      []MediaRankerCandidate `json:"candidates"`
+	SceneDurationMS int64  `json:"scene_duration_ms"`
+	PrevVideoID     string `json:"prev_video_id,omitempty"`
+	SlotKind        string `json:"slot_kind"`
+	// SceneLanguage is the scene's BCP-47 language (contract-only, see
+	// MediaRankerCandidate.Language).
+	SceneLanguage string                 `json:"scene_language,omitempty"`
+	Candidates    []MediaRankerCandidate `json:"candidates"`
 }
 
 type mediaRankerWireRequest struct {

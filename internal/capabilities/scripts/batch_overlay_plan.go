@@ -379,8 +379,19 @@ func applyImageAssetStyles(plans []*capmodel.OverlayPlan, pins []scriptpkg.Overl
 		for _, scene := range sceneOrder {
 			overrides := sceneStyles[scene]
 			candidates := imageItemsByScene[scene]
+			if len(candidates) == 0 {
+				// The still is optional media: it may be missing because the
+				// provider returned no verified asset, or because the planner
+				// folded it into an image_chain with an entity portrait. A pin
+				// styles a standalone image, so there is nothing to style here;
+				// failing the whole language for an optional still turned a
+				// cosmetic pin into a dead job (r134). The overlay audit keeps
+				// the missing item visible.
+				continue
+			}
 			if len(overrides) > len(candidates) {
-				return fmt.Errorf("overlay_images.style: scene %q declares %d styles but the overlay plan has %d image items", scene, len(overrides), len(candidates))
+				// Positional pins beyond the planned stills have no target.
+				overrides = overrides[:len(candidates)]
 			}
 			for index, override := range overrides {
 				item := candidates[index]

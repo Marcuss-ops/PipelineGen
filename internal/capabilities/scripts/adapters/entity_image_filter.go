@@ -235,7 +235,18 @@ func personImageSourceNameMismatch(canonicalName, sourceURL string) string {
 		return ""
 	}
 	second := tokens[1]
-	if second != name[len(name)-1] && (len([]rune(second)) < 3 || personImageFilenameQualifier(second)) {
+	joinedSurname := strings.NewReplacer("'", "", "’", "", "-", "").Replace(strings.Join(name[1:], ""))
+	matchesFullName := len(tokens) >= len(name)
+	if matchesFullName {
+		for i := range name {
+			if tokens[i] != name[i] {
+				matchesFullName = false
+				break
+			}
+		}
+	}
+	matchesJoinedSurname := second == joinedSurname
+	if !matchesFullName && !matchesJoinedSurname && second != name[len(name)-1] && (len([]rune(second)) < 3 || personImageFilenameQualifier(second)) {
 		return ""
 	}
 	// A filename may contain one canonical surname plus generic qualifiers
@@ -246,7 +257,7 @@ func personImageSourceNameMismatch(canonicalName, sourceURL string) string {
 	for consumed < len(name) && consumed < len(tokens) && tokens[consumed] == name[consumed] {
 		consumed++
 	}
-	if consumed < len(name) && second == name[len(name)-1] {
+	if consumed < len(name) && (second == name[len(name)-1] || matchesJoinedSurname) {
 		consumed = 2
 	}
 	extraNames := 0
@@ -259,7 +270,7 @@ func personImageSourceNameMismatch(canonicalName, sourceURL string) string {
 	if extraNames >= 2 {
 		return fmt.Sprintf("image source filename names multiple people, not only requested person %s", canonicalName)
 	}
-	if second != name[len(name)-1] {
+	if !matchesFullName && !matchesJoinedSurname && second != name[len(name)-1] {
 		return fmt.Sprintf("image source filename names %s %s, not requested person %s", name[0], second, canonicalName)
 	}
 	return ""
@@ -285,7 +296,12 @@ func PersonImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL st
 
 func personImageFilenameQualifier(token string) bool {
 	switch token {
-	case "foto", "photo", "portrait", "headshot", "image", "img", "profile", "person", "persona", "ritratto", "di", "della", "de", "del", "la", "il", "e", "the", "for", "case", "news", "ufficiale", "ufficiali":
+	case "foto", "photo", "portrait", "headshot", "image", "img", "profile", "person", "persona", "ritratto",
+		"di", "della", "de", "del", "la", "il", "e", "the", "for", "case", "news", "ufficiale", "ufficiali",
+		"commencement", "speech", "address", "interview", "press", "conference", "event", "stage",
+		"face", "tattoo", "boxer", "boxing", "actor", "actress", "director", "investor", "president",
+		"movie", "film", "martial", "arts", "legendary", "wallpaper", "cover", "hero", "banner",
+		"mugshot", "arrest", "trial", "processo", "cropped", "scaled", "original", "full", "large":
 		return true
 	default:
 		return false

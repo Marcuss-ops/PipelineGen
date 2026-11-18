@@ -16,13 +16,13 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
-// Client adapts the queue's public client to scriptgen.RenderQueueClient.
+// Client adapts the queue's public client to renderqueue.RenderQueueClient.
 type Client struct {
 	q        *queueclient.Client
 	prefetch *AssetPrefetcher
@@ -32,14 +32,14 @@ type Client struct {
 // state. It is injected by the composition root and shares the canonical
 // overlay AssetPreparer used by overlay.prepare.
 type AssetPrefetcher struct {
-	prepare func(context.Context, []scriptgen.RenderQueueAsset) error
+	prepare func(context.Context, []renderqueue.RenderQueueAsset) error
 }
 
-func NewAssetPrefetcher(prepare func(context.Context, []scriptgen.RenderQueueAsset) error) *AssetPrefetcher {
+func NewAssetPrefetcher(prepare func(context.Context, []renderqueue.RenderQueueAsset) error) *AssetPrefetcher {
 	return &AssetPrefetcher{prepare: prepare}
 }
 
-func (p *AssetPrefetcher) Prefetch(ctx context.Context, assets []scriptgen.RenderQueueAsset) error {
+func (p *AssetPrefetcher) Prefetch(ctx context.Context, assets []renderqueue.RenderQueueAsset) error {
 	if p == nil || p.prepare == nil {
 		return nil
 	}
@@ -58,12 +58,12 @@ func New(baseURL string) *Client {
 }
 
 // Submit enqueues a job. A 409 (job already exists) is surfaced as
-// scriptgen.ErrJobExists only after Queue atomically verified an exact replay.
-func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error {
+// renderqueue.ErrJobExists only after Queue atomically verified an exact replay.
+func (c *Client) Submit(ctx context.Context, job renderqueue.RenderQueueJob) error {
 	if c == nil || c.q == nil {
 		return fmt.Errorf("renderinggen submit: client is not configured")
 	}
-	identity, err := scriptgen.RenderRequestIdentityFor(job)
+	identity, err := renderqueue.RenderRequestIdentityFor(job)
 	if err != nil {
 		return fmt.Errorf("renderinggen request identity: %w", err)
 	}
@@ -93,15 +93,15 @@ func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error
 }
 
 // Get returns the current state of a job, including its artifact once done.
-func (c *Client) Get(ctx context.Context, id string) (scriptgen.RenderQueueJob, error) {
+func (c *Client) Get(ctx context.Context, id string) (renderqueue.RenderQueueJob, error) {
 	job, err := c.q.Get(ctx, id)
 	if err != nil {
-		return scriptgen.RenderQueueJob{}, fmt.Errorf("renderinggen get: %w", err)
+		return renderqueue.RenderQueueJob{}, fmt.Errorf("renderinggen get: %w", err)
 	}
 	return toScriptJob(job), nil
 }
 
-func (c *Client) Children(ctx context.Context, parentID string) ([]scriptgen.RenderQueueJob, error) {
+func (c *Client) Children(ctx context.Context, parentID string) ([]renderqueue.RenderQueueJob, error) {
 	if c == nil || c.q == nil {
 		return nil, fmt.Errorf("renderinggen children: client is not configured")
 	}
@@ -109,33 +109,33 @@ func (c *Client) Children(ctx context.Context, parentID string) ([]scriptgen.Ren
 	if err != nil {
 		return nil, fmt.Errorf("renderinggen children: %w", err)
 	}
-	out := make([]scriptgen.RenderQueueJob, len(jobs))
+	out := make([]renderqueue.RenderQueueJob, len(jobs))
 	for i := range jobs {
 		out[i] = toScriptJob(jobs[i])
 	}
 	return out, nil
 }
 
-// WaitTerminal implements scriptgen.RenderQueueWaiter over the queue's
+// WaitTerminal implements renderqueue.RenderQueueWaiter over the queue's
 // job-status long poll (GET /jobs/{id}/wait). The enqueuer observes a
 // terminal render at the state transition instead of at the next polling
 // tick; the queue client degrades to polling on its own when the wait route
 // is absent (older server).
-func (c *Client) WaitTerminal(ctx context.Context, id string) (scriptgen.RenderQueueJob, error) {
+func (c *Client) WaitTerminal(ctx context.Context, id string) (renderqueue.RenderQueueJob, error) {
 	if c == nil || c.q == nil {
-		return scriptgen.RenderQueueJob{}, fmt.Errorf("renderinggen wait: client is not configured")
+		return renderqueue.RenderQueueJob{}, fmt.Errorf("renderinggen wait: client is not configured")
 	}
 	job, err := c.q.WaitTerminal(ctx, id)
 	if err != nil {
-		return scriptgen.RenderQueueJob{}, fmt.Errorf("renderinggen wait: %w", err)
+		return renderqueue.RenderQueueJob{}, fmt.Errorf("renderinggen wait: %w", err)
 	}
 	return toScriptJob(job), nil
 }
 
 // toScriptJob maps a queue wire job onto the capability's typed job. It is the
 // single projection shared by Get and WaitTerminal.
-func toScriptJob(job queueclient.Job) scriptgen.RenderQueueJob {
-	return scriptgen.RenderQueueJob{
+func toScriptJob(job queueclient.Job) renderqueue.RenderQueueJob {
+	return renderqueue.RenderQueueJob{
 		ID:                    job.ID,
 		JobType:               job.JobType,
 		ParentJobID:           job.ParentJobID,
@@ -155,11 +155,11 @@ func toScriptJob(job queueclient.Job) scriptgen.RenderQueueJob {
 	}
 }
 
-func fromQueueFrameRange(in *queueclient.FrameRange) *scriptgen.RenderFrameRange {
+func fromQueueFrameRange(in *queueclient.FrameRange) *renderqueue.RenderFrameRange {
 	if in == nil {
 		return nil
 	}
-	return &scriptgen.RenderFrameRange{Start: in.Start, End: in.End}
+	return &renderqueue.RenderFrameRange{Start: in.Start, End: in.End}
 }
 
 // Retry resets a failed job back to pending state.
@@ -170,7 +170,7 @@ func (c *Client) Retry(ctx context.Context, id string) error {
 	return c.q.Retry(ctx, id)
 }
 
-func toQueueAssets(in []scriptgen.RenderQueueAsset) []queueclient.AssetRef {
+func toQueueAssets(in []renderqueue.RenderQueueAsset) []queueclient.AssetRef {
 	if in == nil {
 		return nil
 	}
@@ -185,21 +185,21 @@ func toQueueAssets(in []scriptgen.RenderQueueAsset) []queueclient.AssetRef {
 	return out
 }
 
-func fromQueueAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
+func fromQueueAssets(in []queueclient.AssetRef) []renderqueue.RenderQueueAsset {
 	if in == nil {
 		return nil
 	}
-	out := make([]scriptgen.RenderQueueAsset, len(in))
+	out := make([]renderqueue.RenderQueueAsset, len(in))
 	for i, a := range in {
-		out[i] = scriptgen.NewRenderQueueAsset(
+		out[i] = renderqueue.NewRenderQueueAsset(
 			kernelasset.Ref{AssetID: a.LogicalPath, SHA256: a.Hash}, a.LogicalPath, a.SourceURL)
 	}
 	return out
 }
 
 // The queue seam for clip rendering is the CANONICAL capability port
-// (scriptgen.RenderQueueClient, with scriptgen.RenderQueueWaiter and
-// scriptgen.RenderQueueRetrier as its optional capabilities). This file used to
+// (renderqueue.RenderQueueClient, with renderqueue.RenderQueueWaiter and
+// renderqueue.RenderQueueRetrier as its optional capabilities). This file used to
 // declare a second, narrower port (ClipRenderQueue: Submit + Get + Retry) for
 // the same remote service — one fact with two owners, so "what the queue can
 // do" had two answers that could drift, and the retry-recovery rule had a third
@@ -211,14 +211,14 @@ func fromQueueAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 // semantic plan and executes it with Chronon. This client never invokes a
 // local renderer and fails closed on missing or non-Chronon artifacts.
 type ClipRenderExecutor struct {
-	queue          scriptgen.RenderQueueClient
+	queue          renderqueue.RenderQueueClient
 	interval       time.Duration
 	chunkDuration  time.Duration
 	chunkAlignment int64
 	chunkMax       int
 }
 
-func NewClipRenderExecutor(queue scriptgen.RenderQueueClient) (*ClipRenderExecutor, error) {
+func NewClipRenderExecutor(queue renderqueue.RenderQueueClient) (*ClipRenderExecutor, error) {
 	if queue == nil {
 		return nil, fmt.Errorf("renderinggen clip executor: queue client is required")
 	}
@@ -321,14 +321,14 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 	// failed render can be traced back to the master run and its logs
 	// WITHOUT sharing a process: the plan revision alone only joins the
 	// render artifact, not the run that asked for it.
-	submitErr := e.queue.Submit(ctx, scriptgen.RenderQueueJob{
+	submitErr := e.queue.Submit(ctx, renderqueue.RenderQueueJob{
 		ID:          plan.RunID,
 		JobType:     "render_segment",
 		ParentJobID: corid.FromContext(ctx),
 		OverlaySpec: rawPlan,
 		Assets:      scriptAssets(assets),
 	})
-	if submitErr != nil && errors.Is(submitErr, scriptgen.ErrRenderRequestConflict) {
+	if submitErr != nil && errors.Is(submitErr, renderqueue.ErrRenderRequestConflict) {
 		// The queue's immutable request includes parent_job_id (the producing
 		// run's correlation id), so the SAME content-addressed plan submitted
 		// by a new run collides even though it asks for identical bytes.
@@ -338,23 +338,23 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 		// plan means this render, not a different one wearing its id.
 		existing, getErr := e.queue.Get(ctx, plan.RunID)
 		if getErr == nil && jsonEquivalent(existing.OverlaySpec, rawPlan) {
-			if existing.State == scriptgen.RenderQueueStateFailed {
-				if rearmErr := scriptgen.RearmFailedRenderJob(ctx, e.queue, plan.RunID); rearmErr != nil {
+			if existing.State == renderqueue.RenderQueueStateFailed {
+				if rearmErr := renderqueue.RearmFailedRenderJob(ctx, e.queue, plan.RunID); rearmErr != nil {
 					return fmt.Errorf("renderinggen clip executor: submit: %w", rearmErr)
 				}
 			}
 			submitErr = nil
 		}
 	}
-	if submitErr != nil && !errors.Is(submitErr, scriptgen.ErrJobExists) {
+	if submitErr != nil && !errors.Is(submitErr, renderqueue.ErrJobExists) {
 		return fmt.Errorf("renderinggen clip executor: submit: %w", submitErr)
 	}
-	if submitErr != nil && errors.Is(submitErr, scriptgen.ErrJobExists) {
+	if submitErr != nil && errors.Is(submitErr, renderqueue.ErrJobExists) {
 		// A failed re-run of the same clip must not leave the job stuck in
 		// FAILED while the caller believes a render is underway. The rule is
-		// owned by the capability (scriptgen.RearmFailedRenderJob), so the
+		// owned by the capability (renderqueue.RearmFailedRenderJob), so the
 		// overlay enqueuer and this executor cannot answer it differently.
-		if rearmErr := scriptgen.RearmFailedRenderJob(ctx, e.queue, plan.RunID); rearmErr != nil {
+		if rearmErr := renderqueue.RearmFailedRenderJob(ctx, e.queue, plan.RunID); rearmErr != nil {
 			return fmt.Errorf("renderinggen clip executor: %w", rearmErr)
 		}
 	}
@@ -428,7 +428,7 @@ func (e *ClipRenderExecutor) SubmitChunked(ctx context.Context, plan cliprender.
 	if e == nil || e.queue == nil {
 		return cliprender.ChunkSet{}, fmt.Errorf("%w: RenderingGen queue is not configured", cliprender.ErrBackendUnavailable)
 	}
-	batch, ok := e.queue.(scriptgen.RenderQueueBatchSubmitter)
+	batch, ok := e.queue.(renderqueue.RenderQueueBatchSubmitter)
 	if !ok {
 		return cliprender.ChunkSet{}, fmt.Errorf("renderinggen clip executor: queue does not support atomic chunk families")
 	}
@@ -443,7 +443,7 @@ func (e *ClipRenderExecutor) SubmitChunked(ctx context.Context, plan cliprender.
 	if _, err = producer.Submit(ctx, plan, requestedChunks, alignmentFrames); err == nil {
 		return set, nil
 	}
-	if !errors.Is(err, scriptgen.ErrJobExists) {
+	if !errors.Is(err, renderqueue.ErrJobExists) {
 		return cliprender.ChunkSet{}, err
 	}
 	if rearmErr := rearmChunkFamily(ctx, e.queue, set.AnchorJobID(), set.Chunks); rearmErr != nil {
@@ -452,12 +452,12 @@ func (e *ClipRenderExecutor) SubmitChunked(ctx context.Context, plan cliprender.
 	return set, nil
 }
 
-func rearmChunkFamily(ctx context.Context, queue scriptgen.RenderQueueClient, anchorID string, chunks []cliprender.Chunk) error {
-	childrenReader, ok := queue.(scriptgen.RenderQueueChildrenReader)
+func rearmChunkFamily(ctx context.Context, queue renderqueue.RenderQueueClient, anchorID string, chunks []cliprender.Chunk) error {
+	childrenReader, ok := queue.(renderqueue.RenderQueueChildrenReader)
 	if !ok {
 		return fmt.Errorf("renderinggen chunk family already exists but queue cannot inspect children")
 	}
-	retrier, ok := queue.(scriptgen.RenderQueueRetrier)
+	retrier, ok := queue.(renderqueue.RenderQueueRetrier)
 	if !ok {
 		return fmt.Errorf("renderinggen chunk family already exists but queue cannot retry failed members")
 	}
@@ -537,15 +537,15 @@ func (e *ClipRenderExecutor) settle(ctx context.Context, plan cliprender.ClipRen
 	if strings.TrimSpace(renderJobID) == "" {
 		return nil, fmt.Errorf("renderinggen clip executor: remote render job id is required")
 	}
-	// The wait is the canonical capability wait (scriptgen.
+	// The wait is the canonical capability wait (renderqueue.
 	// WaitRenderQueueTerminalBounded, which delegates to WaitRenderQueueTerminal
 	// for budget <= 0), not a local copy: the settle continuation and the
 	// overlay enqueue path must agree on what "terminal" means. A budget expiry
 	// is translated into the capability-owned pending sentinel — the transport's
 	// signal must never leak into the capability's error vocabulary.
-	completed, _, err := scriptgen.WaitRenderQueueTerminalBounded(ctx, e.queue, renderJobID, e.interval, waitBudget)
+	completed, _, err := renderqueue.WaitRenderQueueTerminalBounded(ctx, e.queue, renderJobID, e.interval, waitBudget)
 	if err != nil {
-		if errors.Is(err, scriptgen.ErrRenderQueuePending) {
+		if errors.Is(err, renderqueue.ErrRenderQueuePending) {
 			return nil, fmt.Errorf("%w: job %s: %v", cliprender.ErrRenderPending, renderJobID, err)
 		}
 		return nil, fmt.Errorf("renderinggen clip executor: wait: %w", err)

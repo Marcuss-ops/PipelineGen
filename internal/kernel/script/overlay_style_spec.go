@@ -42,6 +42,15 @@ func IsSupportedFontFamily(family string) bool {
 	return false
 }
 
+// BulletFontSizeMinPX/MaxPX are the pixel sizes the bullet lane may use.
+// They are the same bounds the per-bullet editorial pins enforce; the
+// capabilities/overlays validator aliases these constants so the payload gate
+// and the compiler cannot drift.
+const (
+	BulletFontSizeMinPX = 24.0
+	BulletFontSizeMaxPX = 240.0
+)
+
 // OverlayStyleSpec is the canonical script.generate visual override block.
 // Every field is optional so existing payloads keep their exact behaviour.
 type OverlayStyleSpec struct {
@@ -52,6 +61,11 @@ type OverlayStyleSpec struct {
 	// FontFamily is one of RenderingGen's bundled text families. Empty keeps
 	// the preset font. Runtime IDs are intentionally closed and path-free.
 	FontFamily string `json:"font_family,omitempty"`
+	// Bullet is the optional secondary typography of the bullet lane only.
+	// Bullet-point copy uses this block, every other text lane keeps the
+	// run-level typography; a field the block leaves unset falls back to the
+	// run-level value, then to the planner's presentation default.
+	Bullet *OverlayBulletStyleSpec `json:"bullet,omitempty"`
 	// GlowSize and StrokeSize are pixel widths. Explicit zero disables the
 	// corresponding effect; nil preserves the preset's value.
 	GlowSize *float64 `json:"glow_size,omitempty"`
@@ -71,6 +85,25 @@ type OverlayStyleSpec struct {
 	// full-canvas overlay_background, which would obscure source footage in a
 	// final-job replacement window.
 	CardBackground *OverlayCardBackgroundSpec `json:"card_background,omitempty"`
+}
+
+// OverlayBulletStyleSpec is the bullet-point typography override. It is the
+// run-level counterpart of EditorialBulletStyle: one block styles every
+// bullet in the run, while a per-scene editorial_bullet_styles pin still wins
+// on the bullet it names.
+type OverlayBulletStyleSpec struct {
+	// FontFamily is one of SupportedFontFamilies, or empty for the
+	// run-level/preset family.
+	FontFamily string `json:"font_family,omitempty"`
+	// FontSizePX is the bullet pixel size in [BulletFontSizeMinPX,
+	// BulletFontSizeMaxPX]. Nil keeps the run-level size and then the size
+	// the presentation pass derives from the bullet length.
+	FontSizePX *float64 `json:"font_size_px,omitempty"`
+	// GlowSize and StrokeSize are pixel widths; explicit zero disables the
+	// effect. Nil falls back to the run-level value.
+	GlowSize   *float64 `json:"glow_size,omitempty"`
+	GlowColor  string   `json:"glow_color,omitempty"`
+	StrokeSize *float64 `json:"stroke_size,omitempty"`
 }
 
 type OverlayCardBackgroundSpec struct {
@@ -226,6 +259,24 @@ func (s *OverlayStyleSpec) Validate() error {
 	}
 	if !IsSupportedFontFamily(s.FontFamily) {
 		return fmt.Errorf("overlay_style.font_family %q is unsupported (%s)", s.FontFamily, strings.Join(SupportedFontFamilies, ", "))
+	}
+	if bullet := s.Bullet; bullet != nil {
+		if !IsSupportedFontFamily(bullet.FontFamily) {
+			return fmt.Errorf("overlay_style.bullet.font_family %q is unsupported (%s)", bullet.FontFamily, strings.Join(SupportedFontFamilies, ", "))
+		}
+		if bullet.FontSizePX != nil && (math.IsNaN(*bullet.FontSizePX) || math.IsInf(*bullet.FontSizePX, 0) ||
+			*bullet.FontSizePX < BulletFontSizeMinPX || *bullet.FontSizePX > BulletFontSizeMaxPX) {
+			return fmt.Errorf("overlay_style.bullet.font_size_px must be between %g and %g pixels", BulletFontSizeMinPX, BulletFontSizeMaxPX)
+		}
+		if bullet.GlowSize != nil && (math.IsNaN(*bullet.GlowSize) || math.IsInf(*bullet.GlowSize, 0) || *bullet.GlowSize < 0 || *bullet.GlowSize > 256) {
+			return fmt.Errorf("overlay_style.bullet.glow_size must be between 0 and 256 pixels")
+		}
+		if bullet.GlowColor != "" && !isStyleHexColor(bullet.GlowColor) {
+			return fmt.Errorf("overlay_style.bullet.glow_color must be #RRGGBB")
+		}
+		if bullet.StrokeSize != nil && (math.IsNaN(*bullet.StrokeSize) || math.IsInf(*bullet.StrokeSize, 0) || *bullet.StrokeSize < 0 || *bullet.StrokeSize > 64) {
+			return fmt.Errorf("overlay_style.bullet.stroke_size must be between 0 and 64 pixels")
+		}
 	}
 	if bg := s.CardBackground; bg != nil {
 		if !isStyleHexColor(bg.Color) {

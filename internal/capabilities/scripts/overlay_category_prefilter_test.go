@@ -99,7 +99,12 @@ func TestDropCategoryDisabledCandidatesKeepsEnabledScenes(t *testing.T) {
 // date-e-reperti disables numbers, so their identical date surfaces must not
 // enter the planner where the run-wide number text-dedupe would evict the
 // enabled scene's card before the end filter removes the disabled copies.
-func TestDisabledSceneNumbersDoNotEvictEnabledDates(t *testing.T) {
+//
+// Since the Go planner demolition this test stops at the pre-filter: the
+// run-wide admission/dedupe that consumes its output is Rust-owned, and the
+// surviving dates are asserted by the Rust contract goldens
+// (overlay-compiler/tests/overlay_plan_contract.rs).
+func TestDisabledSceneNumbersDoNotReachThePlanner(t *testing.T) {
 	date := func(text string, startMS int64) capabilityoverlay.TimedAnnotation {
 		return capabilityoverlay.TimedAnnotation{
 			Text: text, Type: "DATE",
@@ -135,23 +140,19 @@ func TestDisabledSceneNumbersDoNotEvictEnabledDates(t *testing.T) {
 	if len(scenes) != 1 || scenes[0].ID != "date-e-reperti" {
 		t.Fatalf("scenes reaching the planner = %v, want only date-e-reperti", scenes)
 	}
-	config := capabilityoverlay.AllCandidatesPlannerConfig(scenes)
-	plan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
-		PlanID: "date-regression", VideoID: "video-date-regression",
-		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1, Scenes: scenes,
-	}, config)
-	if err != nil {
-		t.Fatal(err)
+	// The enabled scene keeps every grounded date; the disabled scene's
+	// duplicate must never get the chance to evict them upstream.
+	var got []string
+	for _, number := range scenes[0].Numbers {
+		got = append(got, number.Text)
 	}
-	dates := map[string]bool{}
-	for _, item := range plan.Items {
-		if item.Kind == "number" && item.TemplateID == "TIMELINE_DATE_CARD" {
-			dates[item.Text] = true
-		}
+	want := []string{"13 agosto 2007", "2015", "28 settembre 2026", "8 ottobre 2026"}
+	if len(got) != len(want) {
+		t.Fatalf("dates reaching the planner = %v, want %v", got, want)
 	}
-	for _, want := range []string{"13 agosto 2007", "2015", "28 settembre 2026", "8 ottobre 2026"} {
-		if !dates[want] {
-			t.Fatalf("planned dates = %v, want %q to survive", dates, want)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("dates reaching the planner = %v, want %v", got, want)
 		}
 	}
 }

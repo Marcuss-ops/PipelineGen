@@ -61,6 +61,12 @@ type OverlayCanvasSpec struct {
 	LongPhraseMotion   string
 	PhraseMotionFamily string
 	DateMotionFamily   string
+	// EditorialBulletStyles pins the font and entrance motion of individual
+	// projected editorial bullets, keyed by scene. Empty keeps the
+	// presentation defaults. The canvas carries it because the pin is a
+	// run-level render choice this function already receives; the overlay
+	// compiler applies it after the presentation pass.
+	EditorialBulletStyles []scriptpkg.EditorialBulletStyle
 	// MotionSeed is the per-render entropy for automatic motion rotation,
 	// carried from the request. Empty preserves historical plan-identity
 	// sampling; a fresh value per render rotates every lane.
@@ -78,8 +84,6 @@ type OverlayCanvasSpec struct {
 	// the canvas is the run-level render context this function already
 	// receives; assignment validates the ids fail-closed.
 	EntityCaptionMotions []string
-	// AnimationPolicies is a retired contract (< v2): non-empty fails closed.
-	AnimationPolicies []scriptpkg.AnimationPolicy
 	// AnimationDirectives è il contratto canonico v2 (P2-1): tipizzato per
 	// scena/entità/elemento, con mode auto/prefer/exact.
 	AnimationDirectives []scriptpkg.AnimationDirective
@@ -233,10 +237,6 @@ func overlayBackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capmode
 	return capabilityoverlay.BackgroundFromPayload(src)
 }
 
-func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
-	return capabilityoverlay.StyleParams(style)
-}
-
 func effectiveImageStyle(style *scriptpkg.OverlayImageStyleSpec) *scriptpkg.OverlayImageStyleSpec {
 	effective := &scriptpkg.OverlayImageStyleSpec{
 		// Plain photo overlays render full-bleed: a default border covers
@@ -267,22 +267,6 @@ func isImageOverlayItem(item capmodel.OverlayItem) bool {
 
 func applyOverlayImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
 	capabilityoverlay.ApplyImageStyle(item, effectiveImageStyle(style))
-}
-
-func normalizeEntityImageLayer(item *capmodel.OverlayItem) {
-	capabilityoverlay.NormalizeEntityImageLayer(item)
-}
-
-func isRuntimeTextStyleParam(key string) bool {
-	return capabilityoverlay.IsRuntimeTextStyleParam(key)
-}
-
-func isTextOverlayKind(kind string) bool {
-	return capabilityoverlay.IsTextOverlayKind(kind)
-}
-
-func mergeStyleParam(existing any, add map[string]any) map[string]any {
-	return capabilityoverlay.MergeStyleParam(existing, add)
 }
 
 // ── Overlay category filter (merged from overlay_category_filter.go) ──

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"go.uber.org/zap/zaptest"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/storage"
 )
 
 func TestOpenSetDerivesCanonicalPrimaryPath(t *testing.T) {
@@ -27,10 +29,10 @@ func TestOpenSetDerivesCanonicalPrimaryPath(t *testing.T) {
 func TestSQLiteHealthPathIsCanonicalOnly(t *testing.T) {
 	dataDir := t.TempDir()
 	canonical := filepath.Join(dataDir, "media", "media.db.sqlite")
-	if got := GetAllDBs(); len(got) != 1 || got[0] != filepath.Join("media", DBMedia) {
-		t.Fatalf("GetAllDBs() = %v, want [%q]", got, filepath.Join("media", DBMedia))
+	if got := GetAllDBs(); len(got) != 1 || got[0] != filepath.Join("media", storage.MediaDBFilename) {
+		t.Fatalf("GetAllDBs() = %v, want [%q]", got, filepath.Join("media", storage.MediaDBFilename))
 	}
-	if got := GetDBPath(dataDir, filepath.Join("media", DBMedia)); got != canonical {
+	if got := GetDBPath(dataDir, filepath.Join("media", storage.MediaDBFilename)); got != canonical {
 		t.Fatalf("GetDBPath canonical = %q, want %q", got, canonical)
 	}
 	for _, legacy := range []string{"media.db.sqlite", "cmd/admin/data/media/media.db.sqlite", "stock/stock.db.sqlite"} {

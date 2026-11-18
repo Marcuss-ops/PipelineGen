@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // objectStoreStub records the bytes a prefetch publishes for one address.
@@ -80,7 +80,7 @@ func TestPrefetch_RejectsLocalHintWhoseBytesDoNotMatchTheAddress(t *testing.T) {
 	srv := store.server()
 	defer srv.Close()
 
-	if err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	if err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: hash, LocalPath: localPath, SourceURL: origin.URL,
 	}}); err != nil {
 		t.Fatalf("prefetch: %v", err)
@@ -113,7 +113,7 @@ func TestPrefetch_RejectsMissingLocalHintAndFallsBackToURL(t *testing.T) {
 	defer srv.Close()
 
 	missing := filepath.Join(t.TempDir(), "never-written.jpg")
-	if err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	if err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: hash, LocalPath: missing, SourceURL: origin.URL,
 	}}); err != nil {
 		t.Fatalf("a missing local staging hint must not fail the prefetch: %v", err)
@@ -134,7 +134,7 @@ func TestPrefetch_FailsClosedWhenNoVerifiedSourceExists(t *testing.T) {
 	srv := store.server()
 	defer srv.Close()
 
-	err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: hash, LocalPath: localPath, URL: "assets/fonts/non-http-logical-path.ttf",
 	}})
 	if err == nil {
@@ -213,7 +213,7 @@ func TestPrefetch_StoreRejectionIsTypedContentAddressMismatch(t *testing.T) {
 	srv := rejectingObjectStore(t, hash)
 	defer srv.Close()
 
-	err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: hash, LocalPath: localPath,
 	}})
 	if err == nil {
@@ -245,7 +245,7 @@ func TestPrefetch_DownloadedMismatchIsTypedToo(t *testing.T) {
 	srv := rejectingObjectStore(t, hash)
 	defer srv.Close()
 
-	err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: hash, SourceURL: origin.URL,
 	}})
 	if err == nil {

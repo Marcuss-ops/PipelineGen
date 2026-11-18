@@ -2,8 +2,9 @@ package model
 
 import (
 	"fmt"
-	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 	"strings"
+
+	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 )
 
 // validateAnimationReferences is the fail-fast boundary for every motion id

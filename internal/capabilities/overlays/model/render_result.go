@@ -1,7 +1,5 @@
 package model
 
-import "fmt"
-
 type RenderRequest struct {
 	Plan        OverlayPlan `json:"plan"`
 	OverlayID   string      `json:"overlay_id"`
@@ -45,22 +43,4 @@ type RenderResult struct {
 	// handler returns before building a RenderResult when probe or contract
 	// validation fails.
 	Status string `json:"status"`
-}
-
-func ValidateResultForPlan(plan OverlayPlan, result RenderResult) error {
-	if err := plan.Validate(); err != nil {
-		return err
-	}
-	if result.SchemaVersion != SchemaVersionResult {
-		return fmt.Errorf("overlay result: unsupported schema version %q", result.SchemaVersion)
-	}
-	if result.PlanID != plan.PlanID || result.PlanFingerprint != plan.Fingerprint {
-		return fmt.Errorf("overlay result: stale plan fingerprint")
-	}
-	for _, item := range plan.Items {
-		if item.ID == result.OverlayID && item.RenderKey == result.RenderKey {
-			return nil
-		}
-	}
-	return fmt.Errorf("overlay result: render key does not belong to current plan")
 }

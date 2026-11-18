@@ -9,7 +9,6 @@ type (
 	SpeculationResource  = scheduling.SpeculationResource
 	ResourceBudget       = scheduling.ResourceBudget
 	ActiveWorkGate       = scheduling.ActiveWorkGate
-	ActiveWorkFunc       = scheduling.ActiveWorkFunc
 	SpeculationConfig    = scheduling.SpeculationConfig
 	SpeculationCandidate = scheduling.SpeculationCandidate
 	ResourceScheduler    = scheduling.ResourceScheduler

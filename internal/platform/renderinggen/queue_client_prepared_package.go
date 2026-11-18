@@ -1,11 +1,11 @@
 package renderinggen
 
 import (
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
-func toQueuePreparedRenderPackage(ref *scriptgen.RenderQueuePreparedPackageRef) *queueclient.PreparedRenderPackageRef {
+func toQueuePreparedRenderPackage(ref *renderqueue.RenderQueuePreparedPackageRef) *queueclient.PreparedRenderPackageRef {
 	if ref == nil {
 		return nil
 	}
@@ -16,11 +16,11 @@ func toQueuePreparedRenderPackage(ref *scriptgen.RenderQueuePreparedPackageRef) 
 	}
 }
 
-func fromQueuePreparedRenderPackage(ref *queueclient.PreparedRenderPackageRef) *scriptgen.RenderQueuePreparedPackageRef {
+func fromQueuePreparedRenderPackage(ref *queueclient.PreparedRenderPackageRef) *renderqueue.RenderQueuePreparedPackageRef {
 	if ref == nil {
 		return nil
 	}
-	return &scriptgen.RenderQueuePreparedPackageRef{
+	return &renderqueue.RenderQueuePreparedPackageRef{
 		PackageID: ref.PackageID, PlanSHA256: ref.PlanSHA256,
 		AssetManifestSHA: ref.AssetManifestSHA, TotalFrames: ref.TotalFrames, CompilerVersion: ref.CompilerVersion,
 		ProfileID: ref.ProfileID,

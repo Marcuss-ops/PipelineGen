@@ -129,7 +129,11 @@ const (
 // threshold it needs: a t.TempDir fixture always holds far fewer offenses than
 // the real tree, so the growth path is otherwise unreachable in a test. Wiring
 // it to a policy field later is a mechanical change.
-var mediaIdentityBaselineOffenses = 265
+// 2026-11-18 ratchet: the measured count was 254 against a committed 265, i.e.
+// the baseline kept 11 offenses of slack that no longer existed. A baseline
+// above reality authorises exactly the drift it was meant to prevent, so the
+// value is now the measured count. It shrinks, never grows.
+var mediaIdentityBaselineOffenses = 254
 
 // mediaIdentityContentAddressFields are the field names that make a struct an
 // IDENTITY record: the canonical content-address vocabulary. Without one of

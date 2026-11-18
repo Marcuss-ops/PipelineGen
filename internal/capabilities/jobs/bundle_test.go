@@ -10,7 +10,7 @@ import (
 )
 
 func TestBundleBuildDelegatesCanonicalModuleValidation(t *testing.T) {
-	bundle := NewBundle(nil, nil, nil, zap.NewNop())
+	bundle := NewBundleWithHistory(nil, nil, nil, nil, zap.NewNop())
 	if bundle.Name() != "jobs" {
 		t.Fatalf("Name() = %q, want jobs", bundle.Name())
 	}
@@ -33,7 +33,7 @@ func TestBundleBuildPreservesCanonicalModuleDescriptor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("canonical module Build: %v", err)
 	}
-	gotDesc, err := NewBundle(service, stats, deps.EnabledFunc, deps.Logger).Build(api.BuildContext{})
+	gotDesc, err := NewBundleWithHistory(service, stats, deps.History, deps.EnabledFunc, deps.Logger).Build(api.BuildContext{})
 	if err != nil {
 		t.Fatalf("bundle Build: %v", err)
 	}

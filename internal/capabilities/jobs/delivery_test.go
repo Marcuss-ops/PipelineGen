@@ -106,7 +106,7 @@ func TestDeliveryHandler_MaterializerErrorPropagatesRetryable(t *testing.T) {
 }
 
 func TestDeliveryHandler_ExplicitOperationWithoutPortFailsClosed(t *testing.T) {
-	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{})
 
 	err := h.Handle(context.Background(), deliveryEvent(string(assetdelivery.OperationMaterializeLocal)))
 	if !errors.Is(err, ErrOperationUnavailable) {
@@ -118,7 +118,7 @@ func TestDeliveryHandler_ExplicitOperationWithoutPortFailsClosed(t *testing.T) {
 }
 
 func TestDeliveryHandler_RemoteURLWithoutOperationDoesNotUseLegacyAck(t *testing.T) {
-	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{})
 	evt := deliveryEvent("")
 	if err := h.Handle(context.Background(), evt); !errors.Is(err, ErrRemoteURLRequired) {
 		t.Fatalf("Handle() error = %v, want ErrRemoteURLRequired", err)
@@ -126,7 +126,7 @@ func TestDeliveryHandler_RemoteURLWithoutOperationDoesNotUseLegacyAck(t *testing
 }
 
 func TestDeliveryHandler_LegacyDriveEnvelopeKeepsCompatibilityAck(t *testing.T) {
-	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{})
 	evt := deliveryEvent("")
 	// The legacy envelope omits operation entirely rather than encoding an
 	// empty operation value.
@@ -138,7 +138,7 @@ func TestDeliveryHandler_LegacyDriveEnvelopeKeepsCompatibilityAck(t *testing.T) 
 }
 
 func TestDeliveryHandler_OperationOnWebhookFailsClosed(t *testing.T) {
-	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{})
 	evt := deliveryEvent(string(assetdelivery.OperationMaterializeLocal))
 	evt.PayloadJSON = `{"schema_version":"delivery.requested.v1","event_id":"evt-1","occurred_at":"2026-08-06T12:00:00Z","job_id":"job-1","artifact":{"artifact_id":"asset-1","remote_url":"https://example.test/asset.mp4","sha256":"abc"},"destination":{"provider":"webhook","destination_id":"https://example.test/hook"},"idempotency_key":"delivery-webhook","operation":"materialize_local"}`
 	if err := h.Handle(context.Background(), evt); !errors.Is(err, ErrOperationProviderMismatch) {
@@ -147,7 +147,7 @@ func TestDeliveryHandler_OperationOnWebhookFailsClosed(t *testing.T) {
 }
 
 func TestDeliveryHandler_UnknownOperationFailsClosed(t *testing.T) {
-	h := NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)
+	h := NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{})
 
 	err := h.Handle(context.Background(), deliveryEvent("fetch_and_publish"))
 	if !errors.Is(err, ErrUnsupportedOperation) {

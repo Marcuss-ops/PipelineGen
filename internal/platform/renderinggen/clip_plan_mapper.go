@@ -411,67 +411,15 @@ func mapClipGrid(grid *cliprender.ClipGridSpec) *clipGridBlock {
 	return b
 }
 
-func mapClipEffects(effects []cliprender.ClipEffectSpec) []map[string]any {
+// mapClipEffects transports the typed clip-render effects verbatim. The wire
+// shape is OWNED by cliprender.ClipEffectSpec; re-declaring it as an open map
+// here would let a producer field drift past the JSON tags and would turn a
+// typo into an ignored parameter instead of a compile error.
+func mapClipEffects(effects []cliprender.ClipEffectSpec) []cliprender.ClipEffectSpec {
 	if len(effects) == 0 {
 		return nil
 	}
-	out := make([]map[string]any, 0, len(effects))
-	for _, effect := range effects {
-		item := map[string]any{"type": effect.Type}
-		switch effect.Type {
-		case "glitch":
-			item["amount"] = effect.Amount
-			item["seed"] = effect.Seed
-		case "scanlines":
-			item["amount"] = effect.Amount
-			item["wavelength"] = effect.Wavelength
-		case "mosaic":
-			item["block_size"] = effect.BlockSize
-		case "chromatic_aberration":
-			item["amount"] = effect.Amount
-		case "halftone":
-			item["size"] = effect.Size
-			item["angle"] = effect.Angle
-			item["amount"] = effect.Amount
-		case "vignette":
-			item["amount"] = effect.Amount
-			item["radius"] = effect.Radius
-			item["softness"] = effect.Softness
-		case "gaussian_blur":
-			item["radius"] = effect.Radius
-		case "noise":
-			item["amount"] = effect.Amount
-			item["size"] = effect.Size
-			item["seed"] = effect.Seed
-			item["animated"] = effect.Animated
-		case "glow":
-			item["radius"] = effect.Radius
-			item["intensity"] = effect.Intensity
-		case "bloom":
-			item["radius"] = effect.Radius
-			item["intensity"] = effect.Intensity
-			if effect.Threshold != 0 {
-				item["threshold"] = effect.Threshold
-			}
-		case "lens_distortion":
-			item["curvature"] = effect.Curvature
-			if effect.Scale != 0 {
-				item["scale"] = effect.Scale
-			}
-		case "sharpen":
-			item["amount"] = effect.Amount
-		case "banded_grain":
-			item["intensity"] = effect.Intensity
-			if effect.Speed != 0 {
-				item["speed"] = effect.Speed
-			}
-			if effect.Seed != 0 {
-				item["seed"] = effect.Seed
-			}
-		}
-		out = append(out, item)
-	}
-	return out
+	return append([]cliprender.ClipEffectSpec(nil), effects...)
 }
 
 func watermarkFontAsset() (assetRef, error) {

@@ -303,15 +303,24 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 		}
 	}
 
-	// Build entity timeline lookup for microsecond-precision timing.
-	occByEntityID := map[string]struct {
+	// Build entity timeline lookup for microsecond-precision timing. The key
+	// MUST be scene-scoped: the extractor reuses one occurrence id for the same
+	// entity across scenes ("Mike Tyson" appears as ent_… in scene-01 and in
+	// scene-05), so an id-only map makes the LAST occurrence overwrite every
+	// earlier one and moves an early card to the end of the video. That defect
+	// put the scene-01 cards at 5:30/6:15 instead of 1.5s/46.6s in r133.
+	occBySceneEntity := map[string]struct {
 		startUS int64
 		endUS   int64
 	}{}
 	if result.EntityTimeline != nil {
 		for _, scene := range result.EntityTimeline.Scenes {
 			for _, occ := range scene.Entities {
-				occByEntityID[occ.EntityID] = struct {
+				sceneID := strings.TrimSpace(scene.SceneID)
+				if sceneID == "" {
+					sceneID = strings.TrimSpace(occ.SceneID)
+				}
+				occBySceneEntity[entitySpanKey(sceneID, occ.EntityID)] = struct {
 					startUS int64
 					endUS   int64
 				}{occ.AudioStartUS, occ.AudioEndUS}
@@ -334,9 +343,10 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 		startUS := item.StartUSValue()
 		endUS := item.EndUSValue()
 
-		// Entity card overlays: prefer EntityTimeline microsecond timing.
+		// Entity card overlays: prefer EntityTimeline microsecond timing from
+		// the occurrence that belongs to THIS item's scene.
 		if item.EntityID != "" {
-			if occ, ok := occByEntityID[item.EntityID]; ok {
+			if occ, ok := occBySceneEntity[entitySpanKey(item.SceneID, item.EntityID)]; ok {
 				startUS = occ.startUS
 				endUS = occ.endUS
 			}
@@ -376,6 +386,13 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 		})
 	}
 	return overlays
+}
+
+// entitySpanKey is the scene-scoped correlation key between a plan item and
+// its entity occurrence. Occurrence ids are only unique inside a scene, so the
+// scene id is part of the key.
+func entitySpanKey(sceneID, entityID string) string {
+	return strings.ToLower(strings.TrimSpace(sceneID)) + "\x00" + strings.TrimSpace(entityID)
 }
 
 // overlayIntentKey builds the lookup key that joins a plan item to its

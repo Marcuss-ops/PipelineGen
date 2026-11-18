@@ -12,11 +12,9 @@ import (
 	"fmt"
 	"strings"
 
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // buildOverlayPlanV2Request maps the planner's scenes and the two extractive
@@ -136,6 +134,12 @@ func buildOverlayPlanV2Request(
 	// timeline unfiltered sent that intro clip anyway and failed the run with
 	// `invalid clips: unknown scene id "scene-intro"`.
 	request.Clips = overlayPlanClips(result, seen)
+	// A bullet pin names its bullet by scene, so an unknown scene would style
+	// nothing. Reject it instead of shipping a silent no-op. (The style fields
+	// themselves were already validated when the canvas was encoded.)
+	if err := validateEditorialBulletStyleScenes(request.Canvas.EditorialBulletStyles, seen); err != nil {
+		return overlayplan.V2Request{}, fmt.Errorf("overlay plan v2: %w", err)
+	}
 	return request, nil
 }
 
@@ -192,6 +196,7 @@ func imageCandidatesToWire(in []capabilityoverlay.ImageCandidate) []overlayplan.
 		out = append(out, overlayplan.ImageCandidate{
 			AssetID: candidate.AssetID, URL: candidate.URL, SHA256: candidate.SHA256, MediaType: candidate.MediaType,
 			StartMS: candidate.StartMs, EndMS: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS, Score: candidate.Score,
+			Pinned: candidate.Pinned,
 		})
 	}
 	return out
@@ -239,330 +244,6 @@ func multiEntityGroupsToWire(in []capabilityoverlay.MultiEntityGroup) []overlayp
 	return out
 }
 
-func overlayPlanIdentity(planID, videoID, projectID, motionSeed string, canvas OverlayCanvasSpec) overlayplan.PlanIdentity {
-	return overlayplan.PlanIdentity{
-		PlanID:        planID,
-		VideoID:       videoID,
-		ProjectID:     projectID,
-		MotionSeed:    motionSeed,
-		CoherenceSeed: canvas.CoherenceSeed,
-		Width:         canvas.Width,
-		Height:        canvas.Height,
-		FPSNum:        canvas.FPSNum,
-		FPSDen:        canvas.FPSDen,
-	}
-}
-
-func overlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
-	directives := make([]json.RawMessage, 0, len(canvas.AnimationDirectives))
-	for _, directive := range canvas.AnimationDirectives {
-		encoded, err := json.Marshal(directive)
-		if err != nil {
-			return overlayplan.Canvas{}, fmt.Errorf("overlay plan v2: encode animation directive: %w", err)
-		}
-		directives = append(directives, encoded)
-	}
-	presentation := overlayplan.MapPresentation{
-		MapType: canvas.MapType, CameraAnimation: canvas.MapCameraAnimation,
-		LabelAnimation: canvas.MapLabelAnimation, Animation: canvas.MapAnimation, Level: canvas.MapLevel,
-	}
-	if canvas.MapPresentation != nil {
-		presentation.GroupNearbyPlaces = canvas.MapPresentation.GroupNearbyPlaces
-		presentation.MaxPinsPerGroup = canvas.MapPresentation.MaxPinsPerGroup
-		presentation.AllowRoute = canvas.MapPresentation.AllowRoute
-	}
-	return overlayplan.Canvas{
-		OverlayCategories:        overlayCategoriesToWire(canvas.OverlayCategories),
-		GroupLimits:              cloneIntMap(canvas.OverlayGroupLimits),
-		MaxOverlaysPerScene:      canvas.MaxOverlaysPerScene,
-		MaxPhraseOverlays:        canvas.MaxPhraseOverlays,
-		MaxImageOverlays:         canvas.MaxImageOverlays,
-		MaxMapOverlays:           canvas.MaxMapOverlays,
-		MapPresentation:          presentation,
-		AnimationCounts:          cloneIntMap(canvas.AnimationCounts),
-		PhraseMotions:            append([]string(nil), canvas.PhraseMotions...),
-		ShortPhraseMotion:        canvas.ShortPhraseMotion,
-		LongPhraseMotion:         canvas.LongPhraseMotion,
-		ImageMotions:             append([]string(nil), canvas.ImageMotions...),
-		ImageWithTextMotions:     append([]string(nil), canvas.ImageWithTextMotions...),
-		EntityImageMotions:       append([]string(nil), canvas.EntityImageMotions...),
-		EntityCaptionMotions:     append([]string(nil), canvas.EntityCaptionMotions...),
-		EntityStyleID:            canvas.EntityStyleID,
-		AnimationDirectives:      directives,
-		AnimationContractVersion: canvas.AnimationContractVersion,
-		AnimationCatalogDigest:   canvas.AnimationCatalogDigest,
-		DisableEditorialOverlays: canvas.DisableEditorialOverlays,
-		DisableRecapOverlays:     canvas.DisableRecapOverlays,
-		DateMotionFamily:         canvas.DateMotionFamily,
-		EnableCharts:             canvas.EnableCharts,
-		DisableChartOverlays:     canvas.DisableChartOverlays,
-		DisableNumberOverlays:    canvas.DisableNumberOverlays,
-		MapsOnly:                 canvas.MapsOnly,
-		LightLeakOnClipStart:     canvas.RandomLightLeakOnClipStart,
-		LightLeakOnOverlayStart:  canvas.RandomLightLeakOnOverlayStart,
-	}, nil
-}
-
-func cloneIntMap(in map[string]int) map[string]int {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]int, len(in))
-	for key, value := range in {
-		out[key] = value
-	}
-	return out
-}
-
-// overlayPlanClips projects the canonical real video spans of the scenes this
-// request actually carries. Freeze tails stay explicit so Rust can skip them; no
-// clip is invented or retimed here. A timeline segment whose scene the request
-// did not include (fixed-media intro/outro) is not part of the editorial plan
-// and must not be projected, or the request contradicts itself.
-func overlayPlanClips(result *GenerateResult, planScenes map[string]struct{}) []overlayplan.Clip {
-	if result == nil || result.CanonicalTimeline == nil || len(planScenes) == 0 {
-		return nil
-	}
-	var out []overlayplan.Clip
-	for _, scene := range result.CanonicalTimeline.Segments {
-		sceneID := strings.TrimSpace(scene.ID)
-		if _, inPlan := planScenes[sceneID]; !inPlan {
-			continue
-		}
-		for index, clip := range scene.EffectiveVideoSegments() {
-			if sceneID == "" || clip.AssetID == "" {
-				continue
-			}
-			out = append(out, overlayplan.Clip{
-				SceneID:    sceneID,
-				AssetID:    clip.AssetID,
-				Index:      index,
-				StartUS:    scene.TimelineStartUS + clip.TimelineOffsetUS,
-				DurationUS: clip.TimelineDurationUS,
-				Freeze:     clip.Freeze,
-			})
-		}
-	}
-	return out
-}
-
-func overlayPlanSeal(result *GenerateResult, canvas OverlayCanvasSpec, bounds map[string][2]int64) *overlayplan.Seal {
-	durationUS := timelineDurationUS(bounds)
-	if result.CanonicalTimeline != nil && result.CanonicalTimeline.DurationUS > durationUS {
-		durationUS = result.CanonicalTimeline.DurationUS
-	}
-	return &overlayplan.Seal{
-		AudioDurationUS: durationUS,
-		OutputProfileID: canvas.OutputProfileID,
-		Background:      canvas.Background,
-	}
-}
-
-func timelineDurationUS(bounds map[string][2]int64) int64 {
-	var duration int64
-	for _, window := range bounds {
-		if window[1] > duration {
-			duration = window[1]
-		}
-	}
-	return duration
-}
-
-func overlayPlanBudgets(canvas OverlayCanvasSpec) *overlayplan.Budgets {
-	return &overlayplan.Budgets{
-		PhraseOverlays: canvas.MaxPhraseOverlays, ImageOverlays: canvas.MaxImageOverlays,
-		MapOverlays: canvas.MaxMapOverlays, MaxPerScene: canvas.MaxOverlaysPerScene,
-		ShortPhrase: canvas.OverlayGroupLimits["short_phrase"], LongPhrase: canvas.OverlayGroupLimits["long_phrase"],
-		Bullet: canvas.OverlayGroupLimits["bullets"],
-	}
-}
-
-func overlayPlanMedia(result *GenerateResult, language Language, sceneInputs []capabilityoverlay.SceneInput) *overlayplan.Media {
-	media := &overlayplan.Media{}
-	if result != nil {
-		seen := map[string]struct{}{}
-		for i := range result.Scenes {
-			annotations := annotationsForLanguage(result.Scenes[i], language, result.SourceLanguage)
-			if annotations == nil {
-				continue
-			}
-			entities := append(append([]scriptpkg.AnnotatedEntity(nil), annotations.PrimaryEntities...), annotations.SecondaryEntities...)
-			for _, entity := range entities {
-				if entity.Image == nil || strings.TrimSpace(entity.Image.AssetID) == "" {
-					continue
-				}
-				stable := annotationStableEntityID(entity)
-				canonical := annotationCanonicalEntityID(entity)
-				key := stable + "\x00" + canonical
-				if _, exists := seen[key]; exists {
-					continue
-				}
-				seen[key] = struct{}{}
-				media.VerifiedEntityAssets = append(media.VerifiedEntityAssets, overlayplan.VerifiedEntityAsset{
-					EntityID: stable, CanonicalEntityID: canonical,
-					Assets: []overlayplan.AssetRef{{
-						AssetID: entity.Image.AssetID, URL: entityImageURL(entity.Image),
-						SHA256: entity.Image.SHA256, MediaType: entity.Image.MediaType,
-					}},
-				})
-			}
-		}
-	}
-	for _, input := range sceneInputs {
-		if len(input.Images) == 0 {
-			continue
-		}
-		media.SceneImageCandidates = append(media.SceneImageCandidates, overlayplan.SceneImageCandidateSet{
-			SceneID: input.ID, Candidates: imageCandidatesToWire(input.Images),
-		})
-	}
-	return media
-}
-
-func overlayPlanEntityTimeline(result *GenerateResult, language Language, projectID string, bounds map[string][2]int64) *overlayplan.EntityTimeline {
-	durationUS := timelineDurationUS(bounds)
-	out := &overlayplan.EntityTimeline{Version: 1, ProjectID: projectID, Language: string(language), DurationUS: durationUS}
-	if result.EntityTimeline == nil {
-		return out
-	}
-	out.ProjectID = result.EntityTimeline.ProjectID
-	out.Language = result.EntityTimeline.Language
-	if result.EntityTimeline.DurationUS > 0 {
-		out.DurationUS = result.EntityTimeline.DurationUS
-	}
-	for _, scene := range result.EntityTimeline.Scenes {
-		wireScene := overlayplan.SceneEntityTimeline{
-			SceneID: scene.SceneID, SceneIndex: scene.SceneIndex,
-			TimelineStartUS: scene.TimelineStartUS, VoiceoverAssetID: scene.VoiceoverAssetID,
-		}
-		for _, entity := range scene.Entities {
-			wireScene.Entities = append(wireScene.Entities, overlayplan.EntityOccurrence{
-				EntityID: entity.EntityID, Name: entity.Name, Type: entity.Type,
-				SceneID: entity.SceneID, SceneIndex: entity.SceneIndex,
-				TextStart: entity.TextStart, TextEnd: entity.TextEnd,
-				WordStart: entity.WordStart, WordEnd: entity.WordEnd,
-				LocalStartUS: entity.LocalStartUS, LocalEndUS: entity.LocalEndUS,
-				TimelineStartUS: entity.TimelineStartUS, AudioStartUS: entity.AudioStartUS, AudioEndUS: entity.AudioEndUS,
-				Confidence: entity.Confidence, CanonicalEntityID: entity.EntityID,
-			})
-		}
-		out.Scenes = append(out.Scenes, wireScene)
-	}
-	return out
-}
-
-// isLocalizedSourceEditorial reports whether a plan targets a language other
-// than the language the editorial manifest was extracted from. Equal or empty
-// source languages keep the historical behaviour and are not "localized".
-func isLocalizedSourceEditorial(manifest *scriptpkg.EditorialManifest, language Language) bool {
-	if manifest == nil {
-		return false
-	}
-	source := strings.TrimSpace(manifest.SourceLanguage)
-	target := strings.TrimSpace(string(language))
-	return source != "" && target != "" && !strings.EqualFold(source, target)
-}
-
-func withoutSourceEditorialCategories(canvas OverlayCanvasSpec) OverlayCanvasSpec {
-	if canvas.OverlayCategories == nil {
-		canvas.OverlayCategories = make(map[scriptpkg.OverlayCategory]scriptpkg.Toggle, 2)
-	}
-	canvas.OverlayCategories[scriptpkg.OverlayCategoryTitles] = scriptpkg.ToggleDisabled
-	canvas.OverlayCategories[scriptpkg.OverlayCategoryBullets] = scriptpkg.ToggleDisabled
-	return canvas
-}
-
-func withoutSourceEditorialWireCategories(in map[string]string) map[string]string {
-	if in == nil {
-		in = make(map[string]string, 2)
-	}
-	in[string(scriptpkg.OverlayCategoryTitles)] = string(scriptpkg.ToggleDisabled)
-	in[string(scriptpkg.OverlayCategoryBullets)] = string(scriptpkg.ToggleDisabled)
-	return in
-}
-
-func overlayCategoriesToWire(in map[scriptpkg.OverlayCategory]scriptpkg.Toggle) map[string]string {
-	out := make(map[string]string, len(in))
-	for category, toggle := range in {
-		out[string(category)] = string(toggle)
-	}
-	return out
-}
-
-func speechTimingToWire(timing *capabilityaudio.SpeechTimingArtifact) *overlayplan.Timing {
-	if timing == nil {
-		return nil
-	}
-	out := &overlayplan.Timing{
-		DurationUS: timing.DurationUS,
-		Words:      make([]overlayplan.WordTiming, 0, len(timing.Words)),
-	}
-	for _, word := range timing.Words {
-		out.Words = append(out.Words, overlayplan.WordTiming{
-			Index:   word.Index,
-			Text:    word.Text,
-			StartUS: word.StartUS,
-			EndUS:   word.EndUS,
-		})
-	}
-	return out
-}
-
-func editorialManifestToWire(in *scriptpkg.EditorialManifest) *overlayplan.EditorialManifest {
-	if in == nil {
-		return nil
-	}
-	out := &overlayplan.EditorialManifest{
-		SchemaVersion:  in.SchemaVersion,
-		SourceLanguage: in.SourceLanguage,
-		ProfileVersion: in.ProfileVersion,
-		Certified:      in.Certified,
-		Fingerprint:    in.Fingerprint,
-		Scenes:         make([]overlayplan.EditorialScene, 0, len(in.Scenes)),
-	}
-	for _, scene := range in.Scenes {
-		wire := overlayplan.EditorialScene{
-			SceneID:         scene.SceneID,
-			Title:           scene.Title,
-			TitleStatus:     scene.TitleStatus,
-			TitleSource:     scene.TitleSource,
-			GloballyIndexed: scene.GloballyIndexed,
-			Bullets:         make([]overlayplan.EditorialBullet, 0, len(scene.Bullets)),
-		}
-		for _, bullet := range scene.Bullets {
-			wire.Bullets = append(wire.Bullets, overlayplan.EditorialBullet{
-				SentenceStart: bullet.SentenceStart,
-				SentenceEnd:   bullet.SentenceEnd,
-				Text:          bullet.Text,
-			})
-		}
-		out.Scenes = append(out.Scenes, wire)
-	}
-	return out
-}
-
-func chapterManifestToWire(in *scriptpkg.ChapterManifest) *overlayplan.ChapterManifest {
-	if in == nil {
-		return nil
-	}
-	out := &overlayplan.ChapterManifest{
-		SchemaVersion: in.SchemaVersion,
-		Chapters:      make([]overlayplan.Chapter, 0, len(in.Chapters)),
-	}
-	for _, chapter := range in.Chapters {
-		wire := overlayplan.Chapter{Bullets: make([]overlayplan.ChapterBullet, 0, len(chapter.Bullets))}
-		for _, bullet := range chapter.Bullets {
-			wire.Bullets = append(wire.Bullets, overlayplan.ChapterBullet{
-				Text:          bullet.Text,
-				StartSentence: bullet.StartSentence,
-				EndSentence:   bullet.EndSentence,
-			})
-		}
-		out.Chapters = append(out.Chapters, wire)
-	}
-	return out
-}
-
 // OverlayPlanCompiler is the single-call worker contract implemented by
 // rustexec.SemanticEngineAdapter. It replaces the retired per-phase Go ports.
 type OverlayPlanCompiler interface {
@@ -573,6 +254,7 @@ type OverlayPlanCompiler interface {
 // same envelope the Rust planner validates and seals; no Go selection runs
 // before or after it. Render keys are derived state and are stamped by the Go
 // seal boundary after adoption.
+
 func compileOverlayPlanV2(
 	ctx context.Context,
 	compiler OverlayPlanCompiler,
@@ -699,53 +381,35 @@ func applyChainSegmentPresets(plan *capmodel.OverlayPlan) {
 	}
 	for i := range plan.Items {
 		item := &plan.Items[i]
-		segments := chainSegmentMaps(item.Params)
 		firstPreset := ""
-		for _, segment := range segments {
-			preset := strings.TrimSpace(chainSegmentString(segment, "preset_id"))
-			if preset == "" {
-				templateID := strings.TrimSpace(chainSegmentString(segment, "template_id"))
-				if templateID == "" {
-					continue
+		capmodel.UpdateChainSegmentMaps(item.Params, func(segments []map[string]any) bool {
+			changed := false
+			for _, segment := range segments {
+				preset := strings.TrimSpace(chainSegmentString(segment, "preset_id"))
+				if preset == "" {
+					templateID := strings.TrimSpace(chainSegmentString(segment, "template_id"))
+					if templateID == "" {
+						continue
+					}
+					resolved, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(templateID)
+					if !ok {
+						continue
+					}
+					preset = resolved
+					segment["preset_id"] = resolved
+					changed = true
 				}
-				resolved, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(templateID)
-				if !ok {
-					continue
+				if firstPreset == "" {
+					firstPreset = preset
 				}
-				preset = resolved
-				segment["preset_id"] = resolved
 			}
-			if firstPreset == "" {
-				firstPreset = preset
-			}
-		}
+			return changed
+		})
 		// The chain item mirrors its first segment for consumers that do not
 		// read chain_segments (motion/preview paths).
 		if strings.TrimSpace(item.PresetID) == "" && firstPreset != "" {
 			item.PresetID = firstPreset
 		}
-	}
-}
-
-// chainSegmentMaps returns the mutable segment maps of a chain item. The plan
-// arrives from JSON, so the list can be []any or []map[string]any.
-func chainSegmentMaps(params map[string]any) []map[string]any {
-	if len(params) == 0 {
-		return nil
-	}
-	switch raw := params["chain_segments"].(type) {
-	case []map[string]any:
-		return raw
-	case []any:
-		out := make([]map[string]any, 0, len(raw))
-		for _, entry := range raw {
-			if segment, ok := entry.(map[string]any); ok {
-				out = append(out, segment)
-			}
-		}
-		return out
-	default:
-		return nil
 	}
 }
 

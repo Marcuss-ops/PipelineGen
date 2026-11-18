@@ -13,7 +13,7 @@ import (
 
 func TestOverlayStyleParamsExposeTextRuntimeControls(t *testing.T) {
 	fontSize, glow, stroke := 64.0, 18.0, 3.0
-	got := overlayStyleParams(&scriptpkg.OverlayStyleSpec{
+	got := capabilityoverlay.StyleParams(&scriptpkg.OverlayStyleSpec{
 		FontFamily: "inter", Size: &scriptpkg.OverlaySizeSpec{FontSize: &fontSize},
 		GlowSize: &glow, StrokeSize: &stroke,
 	})
@@ -38,7 +38,7 @@ func TestOverlayStyleProjectsImageBackdropOnlyForStandaloneImages(t *testing.T) 
 		Backdrop: &scriptpkg.OverlayImageBackdropSpec{Zoom: &zoom, BlurPX: &blur,
 			Grid: &scriptpkg.OverlayImageBackdropGridSpec{Color: "#7FA8C8"}},
 	}}}
-	applyOverlayStyleToItems(items, canvas)
+	applyPayloadOverlayStyleToItems(items, canvas)
 	backdrop, ok := items[0].Params["image_backdrop"].(map[string]any)
 	if !ok {
 		t.Fatalf("standalone image params = %#v, want image_backdrop", items[0].Params)
@@ -82,7 +82,7 @@ func TestImageBackdropGridPayloadJSONProjectsToPlan(t *testing.T) {
 	}
 
 	items := []capmodel.OverlayItem{{ID: "solo", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}}}
-	applyOverlayStyleToItems(items, OverlayCanvasSpec{Style: envelope.Items[0].OverlayStyle})
+	applyPayloadOverlayStyleToItems(items, OverlayCanvasSpec{Style: envelope.Items[0].OverlayStyle})
 	backdrop, ok := items[0].Params["image_backdrop"].(map[string]any)
 	if !ok {
 		t.Fatalf("payload did not project image_backdrop: %#v", items[0].Params)
@@ -101,12 +101,12 @@ func TestImageBackdropGridPayloadJSONProjectsToPlan(t *testing.T) {
 
 func TestRuntimeTextStyleTargetsPlannerRenderKinds(t *testing.T) {
 	for _, kind := range []string{"text_phrase", "text_word", "number", "quote"} {
-		if !isTextOverlayKind(kind) {
+		if !capabilityoverlay.IsTextOverlayKind(kind) {
 			t.Errorf("%q should receive runtime text style", kind)
 		}
 	}
 	for _, kind := range []string{"image", "entity_image", "video_overlay"} {
-		if isTextOverlayKind(kind) {
+		if capabilityoverlay.IsTextOverlayKind(kind) {
 			t.Errorf("%q must not receive runtime text style", kind)
 		}
 	}
@@ -201,7 +201,7 @@ func TestImageEffectsAndGridPayloadJSONProjectsToPlan(t *testing.T) {
 		ID: "solo", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}},
 		Params: map[string]any{},
 	}}
-	applyOverlayStyleToItems(items, OverlayCanvasSpec{Style: envelope.Items[0].OverlayStyle})
+	applyPayloadOverlayStyleToItems(items, OverlayCanvasSpec{Style: envelope.Items[0].OverlayStyle})
 
 	effects, ok := items[0].Params["effects"].([]map[string]any)
 	if !ok || len(effects) != 2 {
@@ -230,7 +230,7 @@ func TestImageGridExplicitDisableReachesPlan(t *testing.T) {
 		ID: "solo", Kind: "image", Params: map[string]any{},
 		AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}},
 	}}
-	applyOverlayStyleToItems(items, OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{
+	applyPayloadOverlayStyleToItems(items, OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{
 		Image: &scriptpkg.OverlayImageStyleSpec{Grid: &scriptpkg.OverlayImageGridSpec{Enabled: &disabled}},
 	}})
 	grid, ok := items[0].Params["grid"].(map[string]any)

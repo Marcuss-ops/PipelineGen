@@ -265,6 +265,22 @@ func startupWarmModels(configured string) []string {
 	return out
 }
 
+// startupVisionWarmModel returns the model that the dedicated vision client
+// must load at boot. It is empty when the vision lane reuses the script client
+// (nothing extra to warm) or when no vision client is wired.
+func startupVisionWarmModel(cfg *config.Config, root *ComposeRoot) string {
+	if cfg == nil || root == nil || root.AI == nil ||
+		root.AI.OllamaClient == nil || root.AI.VisionVerdictClient == nil ||
+		root.AI.VisionVerdictClient == root.AI.OllamaClient {
+		return ""
+	}
+	model := strings.TrimSpace(cfg.External.OllamaVisionModel)
+	if model == "" {
+		model = strings.TrimSpace(cfg.External.OllamaModel)
+	}
+	return model
+}
+
 // buildOllamaWarmStep attempts to make model residency available before
 // worker mode accepts generation work. Warming is an optimization, not a
 // service-availability contract: if Ollama is slow or unavailable, startup
@@ -302,9 +318,19 @@ func buildOllamaWarmStep(cfg *config.Config, root *ComposeRoot, log *zap.Logger)
 						return
 					}
 				}
+				if visionModel := startupVisionWarmModel(cfg, root); visionModel != "" {
+					if err := root.AI.VisionVerdictClient.WarmModel(ctx, visionModel); err != nil {
+						if log != nil {
+							log.Warn("background vision model warm failed; service remains available",
+								zap.String("model", visionModel), zap.Error(err))
+						}
+						return
+					}
+				}
 				if log != nil {
 					log.Info("StartupStep: Ollama model resident",
 						zap.Strings("models", models),
+						zap.String("vision_model", startupVisionWarmModel(cfg, root)),
 						zap.Duration("warm_timeout", warmTimeout),
 						zap.Int64("warm_ms", time.Since(started).Milliseconds()),
 					)

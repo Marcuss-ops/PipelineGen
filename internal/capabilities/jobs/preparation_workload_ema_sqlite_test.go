@@ -15,7 +15,7 @@ func (persistedWorkloadReader) ListPreparationWorkObservations(context.Context, 
 
 func TestPreparationWorkloadPersistedAttemptFeedsScaledEMA(t *testing.T) {
 	estimator := NewPreparationWorkEstimator(1)
-	if err := estimator.Bootstrap(context.Background(), persistedWorkloadReader{}, 10); err != nil {
+	if err := estimator.BootstrapSources(context.Background(), 10, persistedWorkloadReader{}); err != nil {
 		t.Fatal(err)
 	}
 	estimate, ok := estimator.ExpectUnit(job.PreparationUnit{

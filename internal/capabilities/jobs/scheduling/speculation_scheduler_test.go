@@ -7,11 +7,16 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
+// testActiveWorkFunc adapts a closure to the ActiveWorkGate port in tests.
+type testActiveWorkFunc func() bool
+
+func (f testActiveWorkFunc) ActiveWorkAvailable() bool { return f != nil && f() }
+
 func TestSpeculationScheduler_AdmitsNPlus1ToNPlus3WithLimits(t *testing.T) {
 	cfg := DefaultSpeculationConfig()
 	cfg.MaxUnits = 3
 	cfg.MaxByCost = map[SpeculationCost]int{CostWarm: 1, CostPrepare: 1, CostSpeculate: 1}
-	gate := ActiveWorkFunc(func() bool { return true })
+	gate := testActiveWorkFunc(func() bool { return true })
 	scheduler := NewSpeculationScheduler(cfg, gate)
 	candidates := []SpeculationCandidate{
 		{Job: &job.Job{ID: "n4"}, Depth: 4, Unit: PreparationUnit{ID: "too-far", CostClass: string(CostWarm), ResourceClass: string(ResourceNetwork)}},
@@ -32,7 +37,7 @@ func TestSpeculationScheduler_AdmitsNPlus1ToNPlus3WithLimits(t *testing.T) {
 
 func TestSpeculationScheduler_ActiveWorkPreemptsSpeculation(t *testing.T) {
 	active := false
-	scheduler := NewSpeculationScheduler(DefaultSpeculationConfig(), ActiveWorkFunc(func() bool { return active }))
+	scheduler := NewSpeculationScheduler(DefaultSpeculationConfig(), testActiveWorkFunc(func() bool { return active }))
 	candidate := SpeculationCandidate{Job: &job.Job{ID: "n1"}, Depth: DepthNPlus1, Unit: PreparationUnit{ID: "warm", CostClass: string(CostWarm), ResourceClass: string(ResourceNetwork)}}
 	if got := scheduler.Admit([]SpeculationCandidate{candidate}); len(got) != 0 {
 		t.Fatalf("admitted work while active execution unavailable: %#v", got)
@@ -52,7 +57,7 @@ func TestSpeculationScheduler_ResourceAndCostLimits(t *testing.T) {
 	cfg.MaxUnits = 10
 	cfg.MaxByCost = map[SpeculationCost]int{CostWarm: 1}
 	cfg.MaxByResource = map[SpeculationResource]int{ResourceNetwork: 1}
-	scheduler := NewSpeculationScheduler(cfg, ActiveWorkFunc(func() bool { return true }))
+	scheduler := NewSpeculationScheduler(cfg, testActiveWorkFunc(func() bool { return true }))
 	candidates := []SpeculationCandidate{
 		{Job: &job.Job{ID: "a"}, Depth: DepthNPlus1, Unit: PreparationUnit{ID: "a", CostClass: string(CostWarm), ResourceClass: string(ResourceNetwork)}},
 		{Job: &job.Job{ID: "b"}, Depth: DepthNPlus1, Unit: PreparationUnit{ID: "b", CostClass: string(CostWarm), ResourceClass: string(ResourceNetwork)}},

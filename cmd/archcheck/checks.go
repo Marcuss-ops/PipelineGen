@@ -58,6 +58,8 @@ var defaultRules = []rule{
 	{"kernel_subzone_hints", simple(structure.ScanKernelSubzoneHints)},
 	{"kernel_subzone_integrity", simple(structure.ScanKernelSubzoneIntegrity)},
 	{"percheck_kernel_boundary", simple(boundaries.ScanKernelBoundary)},
+	{"percheck_platform_port_boundary", simple(boundaries.ScanPlatformPortBoundary)},
+	{"percheck_outbox_envelope_decode_ssot", simple(boundaries.ScanOutboxEnvelopeDecodeSSOT)},
 	{"unknown_internal_roots", simple(structure.ScanUnknownInternalRoots)},
 	{"percheck_legacy_root_new_code", simple(migrations.ScanLegacyRootNewCode)},
 	{"ownership_doc", simple(structure.ScanOwnershipDoc)},

@@ -37,6 +37,13 @@ func TestOverlayPlanProductionHasSingleAuthority(t *testing.T) {
 		"ApplyEditorialOverlayBudget",
 		"ApplyPhraseOverlayBudget",
 		"LimitOverlayItemsPerScene",
+		// One payload-style projection and one chain wire accessor: the
+		// retired duplicates must not return as a second authority.
+		"func applyOverlayStyleToItems(",
+		"func chainSegmentMaps(",
+		"func chainSegments(",
+		"func overlayPlanChainSegments(",
+		"func chainSegmentStyleMaps(",
 	}
 
 	entries, err := os.ReadDir(scriptsDir)
@@ -80,6 +87,14 @@ func TestOverlayPlanProductionHasSingleAuthority(t *testing.T) {
 			for _, symbol := range []string{"CoalesceChainedOverlays(", "CoalesceCaptionedEntityImageCards(", "fuseChain("} {
 				if strings.Contains(string(content), symbol) {
 					t.Errorf("retired Go chain producer %q reappeared in %s", symbol, entry.Name())
+				}
+			}
+			// TICKET-OVERLAY-PLANNER-GO-DEMOLITION: the Go planner entry
+			// points were deleted on 2026-11-18. A new planning function in
+			// this package would once again create a second authority.
+			for _, symbol := range []string{"func BuildPlan(", "func BuildPlanCandidates(", "func FinalizeDeferredPlan(", "func buildPlan("} {
+				if strings.Contains(string(content), symbol) {
+					t.Errorf("retired Go planner entry point %q reappeared in %s", symbol, entry.Name())
 				}
 			}
 		}

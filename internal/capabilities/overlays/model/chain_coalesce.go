@@ -111,6 +111,61 @@ func DecodeChainSegments(params map[string]any) ([]ChainSegment, bool) {
 	return segments, true
 }
 
+// ChainSegmentMaps is the single mutable wire view of Params["chain_segments"].
+// []ChainSegment, []any and []map[string]any all normalize to the same maps, so
+// every consumer reads the durable shape instead of re-implementing the
+// type switch. The maps are the same references the Params slice holds; a
+// caller that replaces the slice itself must write it back (or use
+// UpdateChainSegmentMaps).
+func ChainSegmentMaps(params map[string]any) ([]map[string]any, bool) {
+	if len(params) == 0 {
+		return nil, false
+	}
+	raw, ok := params["chain_segments"]
+	if !ok || raw == nil {
+		return nil, false
+	}
+	switch typed := raw.(type) {
+	case []map[string]any:
+		return typed, true
+	case []any:
+		segments := make([]map[string]any, 0, len(typed))
+		for _, entry := range typed {
+			if segment, ok := entry.(map[string]any); ok {
+				segments = append(segments, segment)
+			}
+		}
+		return segments, true
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, false
+	}
+	var segments []map[string]any
+	if err := json.Unmarshal(data, &segments); err != nil {
+		return nil, false
+	}
+	return segments, true
+}
+
+// UpdateChainSegmentMaps decodes the segment maps, lets update mutate them and
+// writes the result back only when update reports a change. It returns whether
+// Params were rewritten.
+func UpdateChainSegmentMaps(params map[string]any, update func([]map[string]any) bool) bool {
+	if params == nil || update == nil {
+		return false
+	}
+	segments, ok := ChainSegmentMaps(params)
+	if !ok {
+		return false
+	}
+	if !update(segments) {
+		return false
+	}
+	params["chain_segments"] = segments
+	return true
+}
+
 // RebaseChainSegments returns a copy of the chain segments shifted so the
 // chain starts at zero (child-plan-local times). The input Params are never
 // mutated: the child split owns the returned slice.

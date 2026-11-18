@@ -198,7 +198,8 @@ type DeliveryHandler struct {
 	materializer    assetdelivery.Materializer
 }
 
-// NewDeliveryHandler builds a DeliveryHandler.
+// NewDeliveryHandlerWithOperations constructs the delivery handler. A zero
+// DeliveryOperation is the validation-only / no-asset-ops form.
 //
 //   - log         nil → nop.
 //   - client      the canonical httpclient.Client for outbound HTTP. The
@@ -218,14 +219,6 @@ type DeliveryHandler struct {
 //     handler logs a structured warn on every signed-or-not
 //     POST so the dev escape hatch is impossible to mistake
 //     for production behaviour.
-func NewDeliveryHandler(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool) *DeliveryHandler {
-	return newDeliveryHandler(log, client, db, hmacSecrets, insecureDev, DeliveryOperation{})
-}
-
-// NewDeliveryHandlerWithOperations constructs the delivery handler with the
-// explicit asset-operation ports. It is separate from NewDeliveryHandler so
-// the legacy constructor remains source-compatible without ambiguous variadic
-// dependency precedence.
 func NewDeliveryHandlerWithOperations(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
 	return newDeliveryHandler(log, client, db, hmacSecrets, insecureDev, operations)
 }

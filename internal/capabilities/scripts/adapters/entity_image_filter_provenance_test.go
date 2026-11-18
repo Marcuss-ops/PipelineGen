@@ -19,6 +19,12 @@ func TestPersonImageSourceNameMismatchAllowsCanonicalQualifiedFilename(t *testin
 			t.Fatalf("canonical filename %q rejected: %s", source, got)
 		}
 	}
+	if got := personImageSourceNameMismatch("José María Aznar", "https://www.21news.be/wp-content/uploads/2026/02/Jose-Maria-Aznar-scaled.jpg"); got != "" {
+		t.Fatalf("compound surname filename rejected: %s", got)
+	}
+	if got := personImageSourceNameMismatch("Conan O'Brien", "https://www.peopleandmedia.com/wp-content/uploads/2026/05/conan-obrien-portrait.jpg"); got != "" {
+		t.Fatalf("apostrophe surname filename rejected: %s", got)
+	}
 }
 
 func TestPersonImageFilenameQualifiersAreEvidenceBased(t *testing.T) {

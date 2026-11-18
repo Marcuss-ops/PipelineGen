@@ -39,7 +39,8 @@ func overlayPlanEntityImageIndex(plan *capmodel.OverlayPlan) map[string]overlayP
 				overlayAddPlannedEntityImage(index, item.SceneID, layer.EntityID, binding)
 			}
 		}
-		for _, segment := range overlayPlanChainSegments(item) {
+		segments, _ := capmodel.ChainSegmentMaps(item.Params)
+		for _, segment := range segments {
 			if !strings.EqualFold(overlayPlanString(segment, "kind"), "entity_image") {
 				continue
 			}
@@ -139,22 +140,6 @@ func overlayPlanBindingFromChainSegment(segment map[string]any) (overlayPlannedE
 		SHA256:      sha,
 		DriveFileID: driveID,
 	}, true
-}
-
-func overlayPlanChainSegments(item capmodel.OverlayItem) []map[string]any {
-	raw, ok := item.Params["chain_segments"]
-	if !ok || raw == nil {
-		return nil
-	}
-	encoded, err := json.Marshal(raw)
-	if err != nil {
-		return nil
-	}
-	var segments []map[string]any
-	if err := json.Unmarshal(encoded, &segments); err != nil {
-		return nil
-	}
-	return segments
 }
 
 func overlayPlanString(values map[string]any, key string) string {

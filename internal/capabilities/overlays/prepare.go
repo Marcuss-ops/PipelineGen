@@ -2,8 +2,9 @@ package overlays
 
 import (
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // SchemaVersionPrepare is the schema version of the overlay.prepare job

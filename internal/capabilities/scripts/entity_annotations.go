@@ -181,7 +181,7 @@ func entityImageBindingFor(name, kind string, seg scriptpkg.VidRushSegmentResult
 		// rejection; an explicit non-accepted verdict still fails closed.
 		semanticOK := semanticStatus == "accepted" ||
 			(semanticStatus == "" && !strings.EqualFold(strings.TrimSpace(kind), "PERSON"))
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
+		if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) ||
 			(strings.TrimSpace(candidate.DriveLink) == "" && !verifiedWithoutDrive) ||
 			strings.TrimSpace(candidate.ContentSHA256) == "" ||
 			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||

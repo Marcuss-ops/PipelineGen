@@ -50,7 +50,9 @@ const MediaAssetColumns = `
 	COALESCE(scene_type, '') AS scene_type,
 	COALESCE(quality_score, 0.0) AS quality_score,
 	COALESCE(reuse_count, 0) AS reuse_count,
-	COALESCE(last_used_at, '') AS last_used_at`
+	COALESCE(last_used_at, '') AS last_used_at,
+	COALESCE(language, '') AS language,
+	COALESCE(original_language, '') AS original_language`
 
 type ClipsRepository struct {
 	*AssetStoreSQLite

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
@@ -15,18 +15,18 @@ import (
 // it cannot observe the capability-level parent id.
 type capturingClipQueue struct {
 	mu   sync.Mutex
-	last scriptgen.RenderQueueJob
+	last renderqueue.RenderQueueJob
 }
 
-func (q *capturingClipQueue) Submit(_ context.Context, job scriptgen.RenderQueueJob) error {
+func (q *capturingClipQueue) Submit(_ context.Context, job renderqueue.RenderQueueJob) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.last = job
 	return nil
 }
 
-func (q *capturingClipQueue) Get(_ context.Context, _ string) (scriptgen.RenderQueueJob, error) {
-	return scriptgen.RenderQueueJob{}, errors.New("not implemented")
+func (q *capturingClipQueue) Get(_ context.Context, _ string) (renderqueue.RenderQueueJob, error) {
+	return renderqueue.RenderQueueJob{}, errors.New("not implemented")
 }
 
 func (q *capturingClipQueue) parentJobID() string {

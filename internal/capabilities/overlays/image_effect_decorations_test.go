@@ -1,8 +1,9 @@
 package overlays
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // TestImageEffectDecorationVocabularyIsTheEffectsPack pins the decoration

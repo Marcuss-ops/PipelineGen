@@ -92,6 +92,12 @@ func (s *ImageStorageService) searchSearXNGImagesMany(ctx context.Context, query
 		if img == "" || !strings.HasPrefix(img, "http") {
 			continue
 		}
+		// A curated engine set still leaves stock libraries, wallpaper farms
+		// and repost farms in the upstream index. They are never identity
+		// evidence, so drop them before they consume the per-query budget.
+		if searxImageSourceDenied(r.URL) || searxImageSourceDenied(img) {
+			continue
+		}
 		if _, ok := seen[img]; ok {
 			continue
 		}
@@ -106,6 +112,44 @@ func (s *ImageStorageService) searchSearXNGImagesMany(ctx context.Context, query
 		}
 	}
 	return results
+}
+
+// searxImageDeniedSourceDomains lists hosts that answer a query with stock
+// photography, artwork, wallpaper or reposted material instead of the
+// requested subject. The 2026-11-18 PERSON audit found them in the majority of
+// the first six positions even after the image engines were curated; a domain
+// rule at the provider boundary keeps the per-query budget for real sources.
+var searxImageDeniedSourceDomains = []string{
+	"pinterest.com", "pinimg.com",
+	"artic.edu",
+	"openverse.org",
+	"deviantart.com",
+	"pexels.com", "unsplash.com", "flickr.com", "pixabay.com",
+	"alamy.com", "gettyimages.com", "shutterstock.com", "istockphoto.com",
+	"dreamstime.com", "depositphotos.com", "123rf.com", "stock.adobe.com",
+	"vecteezy.com", "freepik.com", "pngtree.com", "cleanpng.com",
+	"wallpapers.com", "wallpaperaccess.com", "wallpaperflare.com",
+	"stablediffusionweb.com",
+}
+
+// searxImageSourceDenied reports whether rawURL belongs to a denied source.
+// The host must match exactly or as a subdomain: "notpinterest.com" is not
+// denied by "pinterest.com".
+func searxImageSourceDenied(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return false
+	}
+	for _, domain := range searxImageDeniedSourceDomains {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			return true
+		}
+	}
+	return false
 }
 
 // searxImageTimeRange requests a recency window only for queries that clearly

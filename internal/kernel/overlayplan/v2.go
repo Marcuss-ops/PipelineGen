@@ -102,6 +102,20 @@ type Canvas struct {
 	MapsOnly                 bool              `json:"maps_only"`
 	LightLeakOnClipStart     bool              `json:"light_leak_on_clip_start,omitempty"`
 	LightLeakOnOverlayStart  bool              `json:"light_leak_on_overlay_start,omitempty"`
+	// EditorialBulletStyles pins the font and entrance motion of individual
+	// editorial bullets. A scene keeps at most one bullet, so scene_id is the
+	// bullet identity; the compiler rejects an unknown or duplicated scene.
+	EditorialBulletStyles []EditorialBulletStyle `json:"editorial_bullet_styles,omitempty"`
+}
+
+// EditorialBulletStyle is the wire shape of one per-bullet presentation pin.
+// Empty font_family/motion_id keep the presentation defaults, and zero
+// font_size_px keeps the size derived from the bullet length.
+type EditorialBulletStyle struct {
+	SceneID    string  `json:"scene_id"`
+	FontFamily string  `json:"font_family,omitempty"`
+	FontSizePX float64 `json:"font_size_px,omitempty"`
+	MotionID   string  `json:"motion_id,omitempty"`
 }
 
 // MapPresentation is the resolved unified map policy. Only the fields that
@@ -324,7 +338,21 @@ type V2Response struct {
 type Seal struct {
 	AudioDurationUS int64  `json:"audio_duration_us"`
 	OutputProfileID string `json:"output_profile_id,omitempty"`
-	Background      any    `json:"background,omitempty"`
+	// Background is the sealed canvas background. It is typed here instead of
+	// `any` so a producer field cannot drift past the wire contract unnoticed;
+	// the shape mirrors the overlay model field for field.
+	Background *Background `json:"background,omitempty"`
+}
+
+// Background is the sealed canvas background declaration.
+type Background struct {
+	Kind      string         `json:"kind"`
+	Color     []float64      `json:"color,omitempty"`
+	AssetRefs []AssetRef     `json:"asset_refs,omitempty"`
+	Fit       string         `json:"fit,omitempty"`
+	Opacity   *float64       `json:"opacity,omitempty"`
+	Loop      bool           `json:"loop,omitempty"`
+	Style     map[string]any `json:"style,omitempty"`
 }
 
 // ImageCandidate is one certified, fetchable still candidate.
@@ -338,6 +366,9 @@ type ImageCandidate struct {
 	StartUS    int64   `json:"start_us,omitempty"`
 	DurationUS int64   `json:"duration_us,omitempty"`
 	Score      float64 `json:"score,omitempty"`
+	// Pinned stills keep their own geometry/style: Rust leaves them out of
+	// automatic image chains.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // MapCandidate is one geocoder-validated place candidate.

@@ -12,10 +12,10 @@ package scriptgeneration
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"log"
 	"net/url"
@@ -25,42 +25,14 @@ import (
 	"time"
 )
 
-// RenderingGen queue job states are wire facts owned by the queue.
+// RenderingGen queue job states are wire facts owned by the queue; the
+// terminal-state classifier that interprets them lives in the kernel contract
+// (renderqueue.terminalRenderResult) together with the types it consumes.
 const (
-	RenderQueueStateCompleted = "completed"
-	RenderQueueStateFailed    = "failed"
-	RenderQueueStateCancelled = "cancelled"
+	RenderQueueStateCompleted = renderqueue.RenderQueueStateCompleted
+	RenderQueueStateFailed    = renderqueue.RenderQueueStateFailed
+	RenderQueueStateCancelled = renderqueue.RenderQueueStateCancelled
 )
-
-// terminalRenderState reports whether state is a terminal render state.
-func terminalRenderState(state string) bool {
-	switch state {
-	case RenderQueueStateCompleted, RenderQueueStateFailed, RenderQueueStateCancelled:
-		return true
-	default:
-		return false
-	}
-}
-
-// terminalRenderResult is the single classifier for terminal queue states.
-func terminalRenderResult(job RenderQueueJob, id string, metrics RenderCompletionMetrics) (RenderQueueJob, RenderCompletionMetrics, error) {
-	switch job.State {
-	case RenderQueueStateCompleted:
-		return job, metrics, nil
-	case RenderQueueStateFailed, RenderQueueStateCancelled:
-		reason := job.FailReason
-		if reason == "" {
-			if job.State == RenderQueueStateCancelled {
-				reason = "unknown reason"
-			} else {
-				reason = "unknown failure"
-			}
-		}
-		return job, metrics, fmt.Errorf("render job %s %s: %s", id, job.State, reason)
-	default:
-		return job, metrics, fmt.Errorf("render job %s reached unrecognised terminal state %q", id, job.State)
-	}
-}
 
 // Drive publication is outside the Chronon/GPU critical path. This worker
 // bound is independent of GPU admission, which remains owned by RenderingGen.
@@ -295,55 +267,7 @@ func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) 
 // interval <= 0 selects defaultQueuePollInterval, and only the fallback loop
 // uses it.
 func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id string, interval time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
-	if client == nil {
-		return RenderQueueJob{}, RenderCompletionMetrics{}, fmt.Errorf("render queue wait: client is not configured")
-	}
-	if interval <= 0 {
-		interval = defaultQueuePollInterval
-	}
-	waitStarted := time.Now()
-	metrics := RenderCompletionMetrics{PollInterval: interval}
-
-	// Event-driven completion: the wait parks server-side on the terminal
-	// state transition, so the observed completion latency is the transition
-	// itself rather than up to one poll interval. No client-side polling sleep
-	// is recorded because none is spent.
-	if waiter, ok := client.(RenderQueueWaiter); ok {
-		job, err := waiter.WaitTerminal(ctx, id)
-		metrics.CompletionWait = time.Since(waitStarted)
-		if err != nil {
-			return RenderQueueJob{}, metrics, err
-		}
-		return terminalRenderResult(job, id, metrics)
-	}
-
-	// Polling fallback for queue clients without the wait capability.
-	for {
-		job, err := client.Get(ctx, id)
-		metrics.PollCount++
-		if err != nil {
-			return RenderQueueJob{}, metrics, err
-		}
-		switch {
-		case terminalRenderState(job.State):
-			metrics.CompletionWait = time.Since(waitStarted)
-			return terminalRenderResult(job, id, metrics)
-		}
-
-		sleepStarted := time.Now()
-		timer := time.NewTimer(interval)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
-			metrics.PollingSleep += time.Since(sleepStarted)
-			metrics.CompletionWait = time.Since(waitStarted)
-			return RenderQueueJob{}, metrics, ctx.Err()
-		case <-timer.C:
-			metrics.PollingSleep += time.Since(sleepStarted)
-		}
-	}
+	return renderqueue.WaitRenderQueueTerminal(ctx, client, id, interval)
 }
 
 // ErrRenderQueuePending marks a bounded wait that ended because its BUDGET ran
@@ -355,7 +279,8 @@ func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id s
 //
 // The render handle is returned with it (RenderQueueJob), so the caller never
 // has to reconstruct the remote address.
-var ErrRenderQueuePending = errors.New("render queue job is not terminal yet")
+// ErrRenderQueuePending is the kernel-owned deferral sentinel.
+var ErrRenderQueuePending = renderqueue.ErrRenderQueuePending
 
 // WaitRenderQueueTerminalBounded is the deferrable form of
 // WaitRenderQueueTerminal: it waits at most budget for the terminal state and
@@ -366,36 +291,7 @@ var ErrRenderQueuePending = errors.New("render queue job is not terminal yet")
 // passing 0. The bounded form exists so ONE settle path can be re-dispatched
 // instead of pinned: the caller defers, and the retry asks again.
 func WaitRenderQueueTerminalBounded(ctx context.Context, client RenderQueueClient, id string, interval, budget time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
-	if client == nil {
-		return RenderQueueJob{}, RenderCompletionMetrics{}, fmt.Errorf("render queue wait: client is not configured")
-	}
-	if budget <= 0 {
-		return WaitRenderQueueTerminal(ctx, client, id, interval)
-	}
-	waitCtx, cancel := context.WithTimeout(ctx, budget)
-	defer cancel()
-	job, metrics, err := WaitRenderQueueTerminal(waitCtx, client, id, interval)
-	if err == nil {
-		return job, metrics, nil
-	}
-	// A budget expiry is the deferral signal. It is detected from the WAIT's own
-	// context rather than from the error text: the waiter may surface it as a
-	// context error, a transport error or a wrapped client error depending on
-	// which path (event-driven or polling fallback) was taken, and the fact that
-	// matters is "my window closed, the render did not". The CALLER's context is
-	// checked too, so a caller-side cancellation is never mistaken for a wait.
-	if ctx.Err() == nil && (waitCtx.Err() != nil || errors.Is(err, context.DeadlineExceeded)) {
-		metrics.CompletionWait = budget
-		// The polling fallback cannot report the job it was watching (a context
-		// end has no job to return), so the address is normalized from the
-		// caller's own id: the pending result must ALWAYS carry the remote
-		// address, because that address is what the next attempt resumes from.
-		if strings.TrimSpace(job.ID) == "" {
-			job.ID = id
-		}
-		return job, metrics, fmt.Errorf("render queue job %s still %s after %s: %w", id, job.State, budget, ErrRenderQueuePending)
-	}
-	return job, metrics, err
+	return renderqueue.WaitRenderQueueTerminalBounded(ctx, client, id, interval, budget)
 }
 
 // RearmFailedRenderJob re-arms the render job that a submission COLLIDED with
@@ -420,21 +316,7 @@ func WaitRenderQueueTerminalBounded(ctx context.Context, client RenderQueueClien
 //     with an error naming the missing capability (the caller has no other way
 //     to make progress, and pretending otherwise only hides the fault).
 func RearmFailedRenderJob(ctx context.Context, client RenderQueueClient, id string) error {
-	if client == nil {
-		return fmt.Errorf("render queue re-arm: client is not configured")
-	}
-	existing, getErr := client.Get(ctx, id)
-	if getErr != nil || existing.State != RenderQueueStateFailed {
-		return nil
-	}
-	retrier, ok := client.(RenderQueueRetrier)
-	if !ok {
-		return fmt.Errorf("render queue job %s exists in failed state but the queue client cannot retry it (RenderQueueRetrier is not implemented)", id)
-	}
-	if retryErr := retrier.Retry(ctx, id); retryErr != nil {
-		return fmt.Errorf("render queue retry failed for %s: %w", id, retryErr)
-	}
-	return nil
+	return renderqueue.RearmFailedRenderJob(ctx, client, id)
 }
 
 var semanticAssetIDSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)

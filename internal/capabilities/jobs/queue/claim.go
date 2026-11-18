@@ -35,14 +35,8 @@ func NormalizeWait(wait, defaultWait time.Duration) time.Duration {
 	return 20 * time.Second
 }
 
-// ClaimUntil polls a Claimer until a job is available, the wait budget expires,
-// or the context is cancelled. Lease persistence and errors remain owned by the
-// Claimer; this function only coordinates timing and cancellation.
-func ClaimUntil(ctx context.Context, claimer Claimer, workerID string, leaseTTL, wait time.Duration, types []string) (*job.Job, error) {
-	return ClaimUntilMatching(ctx, claimer, workerID, leaseTTL, wait, types, nil)
-}
-
-// ClaimUntilMatching is ClaimUntil with an optional payload scope. A non-empty
+// ClaimUntilMatching polls a Claimer until a job is available, the wait budget
+// expires, or the context is cancelled. A non-empty
 // match narrows the claim to jobs whose payload carries every listed key=value
 // pair (see kernel/job.PayloadMatch), which is how one job type — e.g.
 // clip.render, whose submit/settle phases travel inside the payload — is given

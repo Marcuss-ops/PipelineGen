@@ -918,6 +918,10 @@ func TestBuildGenerateRequest_DefaultsEntityImageMotionPool(t *testing.T) {
 	if len(want) == 0 || len(got.EntityImageMotions) != len(want) {
 		t.Fatalf("entity_image_motions = %d, want the certified %d-entry pool", len(got.EntityImageMotions), len(want))
 	}
+	wantCaptions := capabilityoverlay.CertifiedEntityCaptionMotions()
+	if len(wantCaptions) == 0 || len(got.EntityCaptionMotions) != len(wantCaptions) {
+		t.Fatalf("entity_caption_motions = %d, want the certified %d-entry pool", len(got.EntityCaptionMotions), len(wantCaptions))
+	}
 }
 
 func TestBuildGenerateRequest_DefaultDriveSubfolderIsRunScoped(t *testing.T) {

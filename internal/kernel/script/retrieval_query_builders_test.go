@@ -39,21 +39,11 @@ func TestBuildYouTubeQueries_UsesEntitiesAndTemporalContext(t *testing.T) {
 	}
 }
 
-func TestBuildImageQueries_IsEntityFirstAndIncludesDate(t *testing.T) {
-	queries := BuildImageQueries(queryProfile(), 5)
-	if len(queries) == 0 || !strings.Contains(strings.ToLower(queries[0]), "john froelich") {
-		t.Fatalf("image queries = %v, want entity-first query", queries)
-	}
-	if !strings.Contains(strings.Join(queries, " | "), "1892") {
-		t.Fatalf("image queries = %v, want temporal context", queries)
-	}
-}
-
 func TestQueryBuilders_AreDeterministicAndDeduplicated(t *testing.T) {
 	profile := queryProfile()
 	profile.VisualTerms = append(profile.VisualTerms, WeightedKeyword{Value: " early   gasoline tractor ", Confidence: .5})
 	for _, build := range []func(SegmentSemanticProfile, int) []string{
-		BuildYouTubeQueries, BuildImageQueries,
+		BuildYouTubeQueries,
 	} {
 		first := build(profile, 5)
 		second := build(profile, 5)
@@ -73,7 +63,7 @@ func TestQueryBuilders_AreDeterministicAndDeduplicated(t *testing.T) {
 
 func TestQueryBuilders_RespectLimit(t *testing.T) {
 	for _, build := range []func(SegmentSemanticProfile, int) []string{
-		BuildYouTubeQueries, BuildImageQueries,
+		BuildYouTubeQueries,
 	} {
 		if got := build(queryProfile(), 1); len(got) > 1 {
 			t.Fatalf("builder returned %d queries with limit 1: %v", len(got), got)

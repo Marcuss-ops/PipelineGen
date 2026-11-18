@@ -1,6 +1,11 @@
 package wiring
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
+)
 
 func TestStartupWarmModelsDefaultsToConfiguredSingleModel(t *testing.T) {
 	t.Setenv(EnvWarmModels, "")
@@ -38,5 +43,29 @@ func TestStartupWarmModelsNilWhenNothingConfigured(t *testing.T) {
 	t.Setenv(EnvWarmModels, "")
 	if got := startupWarmModels(""); got != nil {
 		t.Fatalf("startupWarmModels = %v, want nil", got)
+	}
+}
+
+func TestStartupVisionWarmModelOnlyForDedicatedClient(t *testing.T) {
+	textClient := ollamaclient.NewClient("http://127.0.0.1:11434", "text-model", 5)
+	cfg := &config.Config{External: config.ExternalConfig{
+		OllamaModel:       "text-model",
+		OllamaVisionModel: "vision-model",
+	}}
+
+	shared := &ComposeRoot{AI: &AIBundle{OllamaClient: textClient, VisionVerdictClient: textClient}}
+	if got := startupVisionWarmModel(cfg, shared); got != "" {
+		t.Fatalf("shared client must not warm a second model, got %q", got)
+	}
+
+	dedicated := ollamaclient.NewClient("http://127.0.0.1:11435", "vision-model", 5)
+	root := &ComposeRoot{AI: &AIBundle{OllamaClient: textClient, VisionVerdictClient: dedicated}}
+	if got := startupVisionWarmModel(cfg, root); got != "vision-model" {
+		t.Fatalf("vision warm model = %q, want vision-model", got)
+	}
+
+	cfg.External.OllamaVisionModel = ""
+	if got := startupVisionWarmModel(cfg, root); got != "text-model" {
+		t.Fatalf("vision model fallback = %q, want text-model", got)
 	}
 }

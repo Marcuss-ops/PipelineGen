@@ -1,55 +1,10 @@
 package overlays
 
 import (
-	"crypto/rand"
 	"encoding/binary"
-	"math/big"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
-
-// CertifiedAutomaticEntityCaptionMotions returns the runtime-safe automatic
-// caption pool. The full certified catalog stays available for explicit plans
-// and catalog browsing; callers receive a copy.
-func CertifiedAutomaticEntityCaptionMotions() []string {
-	return append([]string(nil), automaticEntityCaptionMotionCandidates()...)
-}
-
-func automaticEntityCaptionMotionCandidates() []string {
-	pool := make([]string, 0, len(generatedEntityCaptionMotionCandidates))
-	for _, id := range generatedEntityCaptionMotionCandidates {
-		if !AnimationAutomaticallySelectable(id) {
-			continue
-		}
-		// Side-caption recipes are catalog-valid for explicit showcase plans,
-		// but the generated documentary lane must keep every caption below the
-		// portrait. Remove only the side-family motion; the rest of the random
-		// caption pool is untouched.
-		if normalizeGeneratedCaptionMotion(id) == "" {
-			continue
-		}
-		if AnimationLaneCompatible(id, "entity.caption.automatic") {
-			pool = append(pool, id)
-		}
-	}
-	return pool
-}
-
-// normalizeGeneratedCaptionMotion rejects recipes whose horizontal split moves
-// the caption into a side column. Keeping this filter in the automatic pool
-// (rather than pinning one caption motion) preserves random variety.
-func normalizeGeneratedCaptionMotion(id string) string {
-	normalized := strings.ToLower(strings.TrimSpace(id))
-	if strings.Contains(normalized, "split_side") || strings.HasSuffix(normalized, "_side") {
-		return ""
-	}
-	return id
-}
-
-func selectWordPreset(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "important_word", wordPresetCandidates)
-}
 
 func selectImagePreset(jobID, sceneID, itemID string) string {
 	return selectPreset(jobID, sceneID, itemID, "entity_image", imagePresetCandidates)
@@ -62,113 +17,11 @@ func SelectEntityImagePreset(jobID, sceneID, itemID string) string {
 	return selectImagePreset(jobID, sceneID, itemID)
 }
 
-// SelectEntityImageAnimation chooses a stable-but-varied Chronon entry
-// animation for an entity image. Retries of the same job remain bit-identical.
-func SelectEntityImageAnimation(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "entity_image_animation", automaticSingleImageMotionCandidates)
-}
-
-// SelectImageAnimation is the generic image/product/logo planner selector.
-func SelectImageAnimation(jobID, sceneID, itemID string) string {
-	return SelectEntityImageAnimation(jobID, sceneID, itemID)
-}
-
-// CertifiedImageMotions returns the complete certified image motion pool.
-// Callers receive a copy.
-func CertifiedImageMotions() []string {
-	return CertifiedSingleImageMotions()
-}
-
 // CertifiedSingleImageMotions returns the complete certified single-image
 // catalog, including the recipe families whose recipe lowers on one image.
 // Multi-image stacks stay in the group lane and are not part of this pool.
 func CertifiedSingleImageMotions() []string {
 	return uniqueMotionPool(append(append([]string(nil), renderSafeImageMotions...), imageRecipeMotionCandidates...))
-}
-
-// CertifiedImageRecipeMotions returns the certified recipe motions admitted by
-// automatic single-image planning. Callers receive a copy.
-func CertifiedImageRecipeMotions() []string {
-	return append([]string(nil), imageRecipeMotionCandidates...)
-}
-
-// CertifiedLightLeakMotions returns the RenderingGen-supported light_leak_v1
-// image-recipe motions. This list is the producer's allowlist for payload
-// policies targeting visual light leaks; ordinary image-target policies do
-// not implicitly admit recipe motions that expand one image into extra layers.
-func CertifiedLightLeakMotions() []string {
-	return append([]string(nil), certifiedLightLeakMotionCandidates...)
-}
-
-var certifiedLightLeakMotionCandidates = AnimationCandidates("image.lightleak")
-
-// SelectLightLeakMotion deterministically picks one certified image light leak
-// for a plan/target key; retrying the same inputs yields the same treatment.
-func SelectLightLeakMotion(planID, targetID string) string {
-	pool := certifiedLightLeakMotionCandidates
-	if len(pool) == 0 {
-		return ""
-	}
-	return selectPreset(planID, targetID, targetID, "light_leak", pool)
-}
-
-// CertifiedEntityCaptionMotions returns all registered entity-caption motions.
-// Callers receive a copy so the producer's vocabulary cannot be mutated.
-func CertifiedEntityCaptionMotions() []string {
-	return append([]string(nil), generatedEntityCaptionMotionCandidates...)
-}
-
-// EntityCaptionMotionAtOffset rotates captions deterministically without
-// repeating a motion until the curated pool has been exhausted.
-func EntityCaptionMotionAtOffset(offset, ordinal int) string {
-	return rotateMotionAtOffset(offset, ordinal, generatedEntityCaptionMotionCandidates)
-}
-
-// RuntimeEntityCaptionMotionAtOffset selects a caption entrance from the
-// camera-safe automatic pool. The full certified pool remains available for
-// explicit plans and catalog browsing.
-func RuntimeEntityCaptionMotionAtOffset(offset, ordinal int) string {
-	return rotateMotionAtOffset(offset, ordinal, automaticEntityCaptionMotionCandidates())
-}
-
-// SelectEntityCaptionMotionAt provides a stable per-job selector for semantic
-// render bundles that do not carry the full plan's sampled motion offset.
-func SelectEntityCaptionMotionAt(jobID, sceneID string, ordinal int) string {
-	pool := automaticEntityCaptionMotionCandidates()
-	if len(pool) == 0 {
-		return ""
-	}
-	seeded := selectPreset(jobID, sceneID, "run", "entity_caption_motion", pool)
-	start := 0
-	for index, candidate := range pool {
-		if candidate == seeded {
-			start = index
-			break
-		}
-	}
-	return pool[(start+ordinal)%len(pool)]
-}
-
-// SelectImageMotionAt rotates through the certified CENTERED image pool
-// from a deterministic per-job starting point. It is reserved for
-// map-compatible callers; generated overlays rotate the wider image catalog.
-func SelectImageMotionAt(jobID, sceneID string, ordinal int) string {
-	return selectImageMotion(jobID, sceneID, ordinal, centeredImageMotionCandidates)
-}
-
-// RandomImageMotionOffset chooses a cryptographically random starting offset.
-// It remains available for explicitly non-idempotent previews; durable render
-// plans use ImageMotionOffsetForSeed so retries can reproduce the same choice.
-func RandomImageMotionOffset() (int, error) {
-	span := max(len(generatedEntityImageMotionCandidates), len(generatedEntityCaptionMotionCandidates), len(centeredImageMotionCandidates))
-	if span == 0 {
-		return 0, nil
-	}
-	start, err := rand.Int(rand.Reader, big.NewInt(int64(span)))
-	if err != nil {
-		return 0, err
-	}
-	return int(start.Int64()), nil
 }
 
 // ImageMotionOffsetForSeed returns a stable pool rotation for one immutable
@@ -183,77 +36,6 @@ func ImageMotionOffsetForSeed(seed string) int {
 	return int(binary.BigEndian.Uint64(sum[:8]) % uint64(span))
 }
 
-// ImageMotionAtOffset returns the image motion at a position in the randomly
-// rotated CENTERED pool, reserved for basemap-compatible callers.
-func ImageMotionAtOffset(offset, ordinal int) string {
-	return rotateMotionAtOffset(offset, ordinal, centeredImageMotionCandidates)
-}
-
-// EntityImageMotionAtOffset returns the image motion at a position in the
-// randomly rotated certified catalog for generated overlays. The
-// offset is the plan-level entropy value sampled by RandomImageMotionOffset;
-// the pool reduces it modulo its own size.
-func EntityImageMotionAtOffset(offset, ordinal int) string {
-	return rotateMotionAtOffset(offset, ordinal, generatedEntityImageMotionCandidates)
-}
-
-// ImageWithTextMotionAtOffset rotates the separate image entrance pool used
-// when an image carries an entity label. A positive limit caps the rotating
-// window (a channel's AnimationCounts entry); limit <= 0 keeps the FULL
-// certified catalog so generated overlays rotate every entrance — including
-// the 2.5D 3D camera family — instead of the legacy five-style cap.
-func ImageWithTextMotionAtOffset(offset, ordinal, limit int) string {
-	return rotateMotionAtOffset(offset, ordinal, ImageWithTextMotionPool(limit))
-}
-
-// ImageWithTextMotionPool returns the certified image-with-text entrance
-// pool. A positive count caps the rotating window; zero (or negative) keeps
-// the complete catalog.
-func ImageWithTextMotionPool(count int) []string {
-	if count <= 0 {
-		return append([]string(nil), generatedEntityImageMotionCandidates...)
-	}
-	return limitedMotionPool(generatedEntityImageMotionCandidates, count)
-}
-
-// EntityCaptionMotionPool returns the certified entity-caption motion pool.
-// A positive count caps the rotating window; zero (or negative) keeps the
-// complete catalog (authored text treatments + typewriter + trump families).
-func EntityCaptionMotionPool(count int) []string {
-	if count <= 0 {
-		return append([]string(nil), generatedEntityCaptionMotionCandidates...)
-	}
-	return limitedMotionPool(generatedEntityCaptionMotionCandidates, count)
-}
-
-// SelectEntityImageMotionAt rotates generated-image motions from a
-// deterministic per-job starting point. It is for stable semantic bundle
-// projections that cannot carry the compilation-time random offset.
-func SelectEntityImageMotionAt(jobID, sceneID string, ordinal int) string {
-	if len(generatedEntityImageMotionCandidates) == 0 {
-		return ""
-	}
-	seeded := selectPreset(jobID, sceneID, "run", "entity_image_motion", generatedEntityImageMotionCandidates)
-	start := 0
-	for i, candidate := range generatedEntityImageMotionCandidates {
-		if candidate == seeded {
-			start = i
-			break
-		}
-	}
-	return generatedEntityImageMotionCandidates[(start+ordinal)%len(generatedEntityImageMotionCandidates)]
-}
-
-// rotateMotionAtOffset is the shared modular rotation of one pool from a
-// per-plan random starting offset.
-func rotateMotionAtOffset(offset, ordinal int, pool []string) string {
-	if len(pool) == 0 {
-		return ""
-	}
-	index := ((offset % len(pool)) + ordinal) % len(pool)
-	return pool[index]
-}
-
 // CertifiedEntityImageMotions returns the complete certified image-motion
 // pool used by GENERATED entity-image overlays. Callers
 // receive a copy.
@@ -261,66 +43,9 @@ func CertifiedEntityImageMotions() []string {
 	return append([]string(nil), generatedEntityImageMotionCandidates...)
 }
 
-// CertifiedImageWithTextMotions returns the dedicated certified image
-// entrances used by image overlays with an entity caption.
-func CertifiedImageWithTextMotions() []string {
-	return append([]string(nil), generatedEntityImageMotionCandidates...)
-}
-
-// EntityImageParams returns a prominent, centered hero box used by entity
-// images. Keep enough room below for the centered name caption.
-
-func EntityImageParams(width, height int) map[string]any {
-	if width <= 0 || height <= 0 {
-		return map[string]any{"box_width": 800, "box_height": 650, "width": 800, "height": 650, "position_y": -60}
-	}
-	boxWidth, boxHeight := width*80/100, height*82/100
-	if boxWidth < 1 {
-		boxWidth = 1
-	}
-	if boxHeight < 1 {
-		boxHeight = 1
-	}
-	return map[string]any{"box_width": boxWidth, "box_height": boxHeight, "width": boxWidth, "height": boxHeight, "position_y": -float64(height) * 0.05}
-}
-
-// ImageOverlayParams gives a standalone photo one consistent bounded box.
-// Explicit cover fit fills it without contain's dark matte on mismatched
-// source aspect ratios.
-func ImageOverlayParams(width, height int) map[string]any {
-	if width <= 0 || height <= 0 {
-		return map[string]any{"box_width": 800, "box_height": 450, "width": 800, "height": 450, "position_y": 0, "fit": "cover"}
-	}
-	boxWidth, boxHeight := width*68/100, height*70/100
-	if boxWidth < 1 {
-		boxWidth = 1
-	}
-	if boxHeight < 1 {
-		boxHeight = 1
-	}
-	return map[string]any{"box_width": boxWidth, "box_height": boxHeight, "width": boxWidth, "height": boxHeight, "position_y": 0, "fit": "cover"}
-}
-
-func selectImageMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	candidates := renderSafeImageMotions
-	if len(pool) > 0 {
-		candidates = pool
-	}
-	candidates = coherentMotionPool(uniqueMotionPool(candidates), jobID)
-	if len(candidates) == 0 {
-		return ""
-	}
-	// Per-group true variation: deterministic shuffle from the run seed so
-	// the image lane never mirrors the phrase lane order, while retries of
-	// the same job stay bit-identical.
-	shuffled := shuffleMotionPool(candidates, jobID+"\x00image_motion")
-	seeded := selectPreset(jobID, sceneID, sceneID, "image_motion:"+strings.Join(shuffled, ","), shuffled)
-	start := 0
-	for i, candidate := range shuffled {
-		if candidate == seeded {
-			start = i
-			break
-		}
-	}
-	return shuffled[(start+ordinal)%len(shuffled)]
+// CertifiedEntityCaptionMotions returns the complete certified caption-motion
+// pool used by GENERATED entity-image overlays when a caption is attached.
+// Callers receive a copy.
+func CertifiedEntityCaptionMotions() []string {
+	return append([]string(nil), generatedEntityCaptionMotionCandidates...)
 }

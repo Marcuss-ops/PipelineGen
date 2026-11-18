@@ -10,13 +10,13 @@ import (
 
 func TestPreparationWorkEstimator_KindAverage(t *testing.T) {
 	e := NewPreparationWorkEstimator(0.5)
-	if _, ok := e.Expect("tts.synthesize"); ok {
+	if _, ok := e.ExpectUnit(job.PreparationUnit{Kind: "tts.synthesize"}); ok {
 		t.Fatal("expect before any observation must be !ok")
 	}
 	e.Observe(job.WorkObservation{Kind: "tts.synthesize", WallMS: 1000})
 	e.Observe(job.WorkObservation{Kind: "tts.synthesize", WallMS: 3000})
 
-	est, ok := e.Expect("tts.synthesize")
+	est, ok := e.ExpectUnit(job.PreparationUnit{Kind: "tts.synthesize"})
 	if !ok {
 		t.Fatal("expected an estimate after two observations")
 	}
@@ -69,7 +69,7 @@ func TestPreparationWorkEstimator_Transform(t *testing.T) {
 	e.Observe(job.WorkObservation{Kind: "clip.process", WallMS: 5000, Dimension: job.WorkloadFrames, Amount: 100})
 	e.Observe(job.WorkObservation{Kind: "clip.process", WallMS: 9000, Dimension: job.WorkloadFrames, Amount: 100})
 
-	est, ok := e.Expect("clip.process")
+	est, ok := e.ExpectUnit(job.PreparationUnit{Kind: "clip.process"})
 	if !ok {
 		t.Fatal("expected estimate")
 	}
@@ -96,14 +96,14 @@ func (f *fakeObsReader) ListPreparationWorkObservations(_ context.Context, _ int
 
 func TestPreparationWorkEstimator_Bootstrap(t *testing.T) {
 	e := NewPreparationWorkEstimator(0.5)
-	err := e.Bootstrap(context.Background(), &fakeObsReader{obs: []job.WorkObservation{
+	err := e.BootstrapSources(context.Background(), 10, &fakeObsReader{obs: []job.WorkObservation{
 		{Kind: "asset.download", WallMS: 4000},
 		{Kind: "asset.download", WallMS: 6000},
-	}}, 10)
+	}})
 	if err != nil {
 		t.Fatalf("Bootstrap: %v", err)
 	}
-	est, ok := e.Expect("asset.download")
+	est, ok := e.ExpectUnit(job.PreparationUnit{Kind: "asset.download"})
 	if !ok {
 		t.Fatal("bootstrap should have produced an estimate")
 	}
@@ -124,7 +124,7 @@ func TestPreparationWorkEstimator_BootstrapSources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BootstrapSources: %v", err)
 	}
-	est, ok := e.Expect("chronon.render")
+	est, ok := e.ExpectUnit(job.PreparationUnit{Kind: "chronon.render"})
 	if !ok {
 		t.Fatal("multi-source bootstrap should have produced an estimate")
 	}
@@ -144,7 +144,7 @@ func TestPreparationWorkEstimator_BootstrapSourcesFailOpen(t *testing.T) {
 	if err == nil {
 		t.Fatal("source error must be returned")
 	}
-	est, ok := e.Expect("probe")
+	est, ok := e.ExpectUnit(job.PreparationUnit{Kind: "probe"})
 	if !ok || est.ExpectedWorkMS != 2500 {
 		t.Fatalf("good source not folded: est=%+v ok=%v", est, ok)
 	}

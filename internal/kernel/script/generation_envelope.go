@@ -125,6 +125,11 @@ type GenerationItemV2 struct {
 	// phrase/word/image overlays. It is transport-only; Chronon's preset
 	// registry remains the source of defaults.
 	OverlayStyle *OverlayStyleSpec `json:"overlay_style,omitempty"`
+	// EditorialBulletStyles pins the font and entrance motion of individual
+	// projected editorial bullets, keyed by scene (a scene keeps at most one
+	// bullet). Entries are validated fail-closed at the compile boundary;
+	// omitting the block keeps the presentation defaults for every bullet.
+	EditorialBulletStyles []EditorialBulletStyle `json:"editorial_bullet_styles,omitempty"`
 	// MapType chooses the single basemap treatment used by runtime maps:
 	// satellite (default, the classic Python map), roadmap, terrain, or
 	// random (classic 3-style palette only). Empty means satellite.
@@ -162,10 +167,6 @@ type GenerationItemV2 struct {
 	// automatic entity-caption assignment. Empty keeps the certified
 	// camera-safe automatic pool. Entries must name automatic-pool motions.
 	EntityCaptionMotions []string `json:"entity_caption_motions,omitempty"`
-	// AnimationPolicies is the retired pre-v2 contract. It is retained only
-	// so a payload that still sends it fails closed at the compile boundary;
-	// no producer path applies or normalizes it. Use AnimationDirectives.
-	AnimationPolicies []AnimationPolicy `json:"animation_policies,omitempty"`
 	// AnimationDirectives è il contratto canonico tipizzato (P2-1, v2).
 	// Precedenza: exact elemento > exact scena > prefer richiesta > profilo
 	// canale > auto. Richiede AnimationContractVersion >= 2; exact
@@ -173,7 +174,7 @@ type GenerationItemV2 struct {
 	// normalizzati.
 	AnimationDirectives []AnimationDirective `json:"animation_directives,omitempty"`
 	// AnimationContractVersion pinna il contratto (P2-6): 0/1 = legacy
-	// ritirato (fallisce se arrivano direttive o animation_policies),
+	// ritirato (fallisce se arrivano direttive legacy),
 	// 2 = canonico risolto prima del seal con provenance.
 	AnimationContractVersion int `json:"animation_contract_version,omitempty"`
 	// AnimationCatalogDigest pinna la vista capacità runtime versionata (P0-3).
@@ -322,18 +323,6 @@ type TranslationSpec struct {
 	Concurrency int    `json:"concurrency,omitempty"`
 }
 
-// AnimationPolicy is the retired pre-v2 per-group contract. It is retained
-// only so historical payloads decode and fail closed; new callers must use
-// AnimationDirective. Target, GroupID, SubgroupID, MotionID and MotionParams
-// keep their historical wire meaning.
-type AnimationPolicy struct {
-	Target       string         `json:"target"`
-	GroupID      string         `json:"group_id"`
-	SubgroupID   string         `json:"subgroup_id,omitempty"`
-	MotionID     string         `json:"motion_id,omitempty"`
-	MotionParams map[string]any `json:"motion_params,omitempty"`
-}
-
 // AnimationDirectiveMode è il contratto canonico auto/prefer/exact (§4).
 // auto: scelta compatibile riproducibile; prefer: prova richiesta con fallback
 // autorizzato; exact: usa esattamente la scelta o errore (mai sostituzione
@@ -363,8 +352,8 @@ const (
 
 // AnimationDirective è la rappresentazione canonica: dichiara scena,
 // contenuto, entità opzionale, preferenza e parametri — mai il futuro item.ID.
-// I campi legacy (phrase_motions, animation_policies, map_*_animation) non
-// vengono più normalizzati in direttive.
+// I campi legacy (phrase_motions, map_*_animation) non vengono più
+// normalizzati in direttive.
 type AnimationDirective struct {
 	Scope    string                   `json:"scope"`
 	SceneRef string                   `json:"scene_ref"`
@@ -376,9 +365,8 @@ type AnimationDirective struct {
 }
 
 // AnimationContractVersion versiona il contratto risolto (P2-6).
-// 0/1 = legacy ritirato: le direttive richiedono >= 2 e animation_policies
-// fallisce sempre; 2 = canonico (direttive validate prima del seal +
-// provenance, no resample).
+// 0/1 = legacy ritirato: le direttive richiedono >= 2; 2 = canonico
+// (direttive validate prima del seal + provenance, no resample).
 const AnimationContractVersion = 2
 
 // MapPresentationSpec is the unified map configuration contract: minimal

@@ -87,6 +87,12 @@ func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *GenerateResult
 	// changes kind, template and asset refs, so the extent and fingerprint must
 	// be computed from the document the renderer will actually receive.
 	promoteVerifiedEntityCards(&plan, result, canvas, perScene...)
+	// Explicit payload typography is projected after the planner's presentation
+	// defaults: the run-level style styles every text lane, while the dedicated
+	// overlay_style.bullet block styles bullet-point copy only and falls back to
+	// the run-level choice field by field. Fields the payload left unset keep the
+	// planner default.
+	applyPayloadOverlayStyleToItems(plan.Items, canvas)
 	plan.DurationMS = overlayPlanDurationMS(result, language, resolved, plan.Items)
 	// Item transforms above (chain coalescing, font/style projection and image
 	// composition) can change renderer-owned inputs after an upstream planner

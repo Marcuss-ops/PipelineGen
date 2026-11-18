@@ -20,7 +20,22 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// testQualityGate is the injected passing editorial gate. Production wires the
+// Rust `quality_gate` adapter; these orchestration tests only need a verdict,
+// and since the 2026-11-18 cutover a missing evaluator fails closed.
+type testQualityGate struct{}
+
+func (testQualityGate) EvaluateQualityGate(
+	_ context.Context,
+	_ *scriptpkg.GenerationResult,
+	_ scriptpkg.GenerationItemV2,
+	_ scriptpkg.ResolvedGenerationPlan,
+) (*scriptpkg.GenerationQuality, error) {
+	return &scriptpkg.GenerationQuality{Passed: true}, nil
+}
 
 // testDocsNormalizationConfig is the canonical NormalizationConfig for usecase
 // tests: production-shaped (docs folder resolvable) without external systems.
@@ -69,5 +84,6 @@ func buildTestUseCase(
 ) *gencore.GenerateOneUseCase {
 	uc := gencore.NewGenerateOneUseCase(testDocsNormalizationConfig(), registry, engine, ppReg, zap.NewNop())
 	uc.SetAudioProcessor(noopAudioProcessor{})
+	uc.SetQualityGate(testQualityGate{})
 	return uc
 }

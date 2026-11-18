@@ -88,28 +88,6 @@ func (e *PreparationWorkEstimator) Observe(obs job.WorkObservation) {
 	}
 }
 
-// Expect returns the learned expected work for the given kind WITHOUT a
-// workload amount (the per-kind average EMA). ok=false when there is not yet
-// enough signal. Include count > minimalSamples to avoid guessing on a single
-// noisy sample? We accept >=1; callers may gate on count.
-func (e *PreparationWorkEstimator) Expect(kind job.UnitKind) (job.WorkEstimate, bool) {
-	if e == nil {
-		return job.WorkEstimate{Kind: kind}, false
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	model, ok := e.byKind[kind]
-	if !ok || model.avgCount == 0 {
-		return job.WorkEstimate{Kind: kind}, false
-	}
-	return job.WorkEstimate{
-		Kind:           kind,
-		ExpectedWorkMS: int64(model.avgMS + 0.5),
-		Source:         job.WorkloadNone,
-		Observations:   model.avgCount,
-	}, true
-}
-
 // ExpectUnit estimates expected work for a concrete unit: it prefers a
 // size-scaled estimate (unit.Driver() amount × learned rate), else the per-kind
 // average. ok=false when the estimator has no signal for the kind at all.
@@ -159,16 +137,6 @@ func (e *PreparationWorkEstimator) ExpectUnit(u job.PreparationUnit) (job.WorkEs
 // store.
 type WorkObservationsReader interface {
 	ListPreparationWorkObservations(context.Context, int) ([]job.WorkObservation, error)
-}
-
-// Bootstrap loads recent completed attempts from one reader and folds them
-// into the estimator. It is best-effort: a reader error leaves the estimator
-// at its current state (fail-open) so speculative planning is never blocked.
-func (e *PreparationWorkEstimator) Bootstrap(ctx context.Context, reader WorkObservationsReader, limit int) error {
-	if reader == nil {
-		return nil
-	}
-	return e.BootstrapSources(ctx, limit, reader)
 }
 
 // BootstrapSources folds every provided reader into the estimator, in order.

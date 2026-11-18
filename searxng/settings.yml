@@ -1,7 +1,27 @@
-# Keep the upstream defaults while enabling the JSON API used by PipelineGen.
-# Without this override SearXNG answers HTML requests but returns 403 for the
-# application's `format=json` image-search requests.
+# SearXNG instance for PipelineGen image retrieval.
+#
+# Two things matter here:
+#
+# 1. The JSON API must be enabled. Without it SearXNG answers HTML requests but
+#    returns 403 for the application's `format=json` image searches.
+# 2. The image engines must be curated. The upstream defaults for the `images`
+#    category are dominated by artwork, stock and mood-board engines that never
+#    return the requested person: on the 13-entity PERSON audit the first six
+#    positions per query were 60% noise (47/78) before this policy. PipelineGen
+#    still queries Wikimedia/Wikipedia for licensed assets through its own
+#    provider, so removing those engines from SearXNG costs no licensed recall.
+#
+# Curation is expressed as per-engine overrides merged over the upstream
+# defaults (`use_default_settings: true` keeps every other engine untouched).
+# The surviving image engines are duckduckgo, google cse and brave: on SearXNG
+# >= 2026.11.18 all three answer with relevant results, while bing images serves
+# unrelated SERPs from this host (disabled below).
 use_default_settings: true
+
+general:
+  # Required since SearXNG 2026.11 for the wikipedia, wikidata and
+  # openstreetmap engines; without it they fail to register at boot.
+  contact_url: "https://github.com/Marcuss-ops/PipelineGen"
 
 search:
   formats:
@@ -10,3 +30,40 @@ search:
 
 server:
   limiter: false
+
+engines:
+  # 2026-11-18: on this host bing.com/images answers with unrelated SERPs
+  # ("Mike Tyson 1991" -> cats, Mike Wazowski, laser engravers) both through
+  # SearXNG and on a direct request, so it is a degraded upstream, not a
+  # ranking problem. It only pollutes the per-query budget: the same query is
+  # answered correctly by duckduckgo/brave/google cse images.
+  - name: bing images
+    disabled: true
+  # Artwork / museum collections: relevant for OBJECT, never for PERSON.
+  - name: artic
+    disabled: true
+  # Mood boards and reposts: the dominant false-positive source.
+  - name: pinterest
+    disabled: true
+  # Open-license stock aggregator: generic photography, not identity.
+  - name: openverse
+    disabled: true
+  - name: deviantart
+    disabled: true
+  # Generic stock libraries: they surface "a woman", not "Chiara Poggi".
+  - name: pexels
+    disabled: true
+  - name: unsplash
+    disabled: true
+  - name: flickr
+    disabled: true
+  # Icon sets: never a photograph.
+  - name: devicons
+    disabled: true
+  - name: lucide
+    disabled: true
+  # Commons file *pages* are HTML, not image bytes: the download guard rejects
+  # them. Licensed Commons assets arrive through PipelineGen's own Wikimedia
+  # provider, which returns direct upload URLs.
+  - name: wikicommons.images
+    disabled: true

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 type captureOverlayPublisher struct {
@@ -90,8 +90,8 @@ func TestDriveOverlayArtifactPublisherPublishesVerifiedArtifactToConfiguredRoot(
 	capture := &captureOverlayPublisher{}
 	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
 	publisher.SetRootFolderID("1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E")
-	artifact := &scriptgen.RenderArtifact{ID: "render-1", URL: store.URL + "/objects/" + hash, SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
-	err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+	artifact := &renderqueue.RenderArtifact{ID: "render-1", URL: store.URL + "/objects/" + hash, SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
+	err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{
 		ScriptName: "Donald Trump", Language: "it", ProjectID: "Donald Trump", PlanID: "plan-1",
 		CompletionWait: 1500 * time.Millisecond, PollingSleep: 250 * time.Millisecond,
 		PollingInterval: 100 * time.Millisecond, PollCount: 15,
@@ -134,8 +134,8 @@ func TestDriveOverlayMapArtifactNamesAndMetadataExposeGroundedPlaces(t *testing.
 	capture := &captureOverlayPublisher{}
 	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
 	publisher.SetRootFolderID("overlay-root")
-	artifact := &scriptgen.RenderArtifact{URL: store.URL + "/map.mp4", SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
-	err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+	artifact := &renderqueue.RenderArtifact{URL: store.URL + "/map.mp4", SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
+	err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{
 		ScriptName: "Isabelle Caracristi", Language: "pt", PlanID: "map-plan",
 		OverlayItemID: "scene-0-map-places", OverlayItemKind: "map",
 		OverlayEntityIDs:    []string{"location:aldeota", "location:fortaleza"},
@@ -166,8 +166,8 @@ func TestDriveEntityOverlayFilenameUsesEntityMotionAndHash(t *testing.T) {
 			capture := &captureOverlayPublisher{}
 			publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
 			publisher.SetRootFolderID("overlay-root")
-			artifact := &scriptgen.RenderArtifact{URL: store.URL + "/entity.mp4", SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
-			err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+			artifact := &renderqueue.RenderArtifact{URL: store.URL + "/entity.mp4", SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
+			err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{
 				ScriptName: "Garlasco overlay acceptance 20 immagini", Language: "it", PlanID: "entity-plan",
 				OverlayItemID: "entity-card-1", OverlayItemKind: itemKind, OverlayEntityName: "Chiara Poggi",
 				OverlayMotionID: "image_fade_in",
@@ -199,14 +199,14 @@ func TestDriveOverlayArtifactPublisherSurvivesCallerCancellation(t *testing.T) {
 	capture := &captureOverlayPublisher{}
 	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
 	publisher.SetRootFolderID("overlay-root")
-	artifact := &scriptgen.RenderArtifact{
+	artifact := &renderqueue.RenderArtifact{
 		ID: "render-cancelled-parent", URL: store.URL + "/objects/" + hash,
 		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if err := publisher.PublishOverlay(ctx, scriptgen.OverlayPublicationSpec{
+	if err := publisher.PublishOverlay(ctx, renderqueue.OverlayPublicationSpec{
 		ScriptName: "cancelled-parent", Language: "ru", PlanID: "plan-cancelled-parent",
 	}, artifact); err != nil {
 		t.Fatalf("publication must survive caller cancellation: %v", err)
@@ -218,8 +218,8 @@ func TestDriveOverlayArtifactPublisherSurvivesCallerCancellation(t *testing.T) {
 
 func TestDriveOverlayArtifactPublisherRequiresConfiguredRoot(t *testing.T) {
 	publisher := &DriveOverlayArtifactPublisher{publisher: &captureOverlayPublisher{}}
-	artifact := &scriptgen.RenderArtifact{URL: "https://store.invalid/overlay.mp4", SHA256: strings.Repeat("a", 64), SizeBytes: 1}
-	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{ScriptName: "test", Language: "en"}, artifact); err == nil || !strings.Contains(err.Error(), "configured root folder") {
+	artifact := &renderqueue.RenderArtifact{URL: "https://store.invalid/overlay.mp4", SHA256: strings.Repeat("a", 64), SizeBytes: 1}
+	if err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{ScriptName: "test", Language: "en"}, artifact); err == nil || !strings.Contains(err.Error(), "configured root folder") {
 		t.Fatalf("missing root error = %v, want configured-root failure", err)
 	}
 }
@@ -240,8 +240,8 @@ func TestDriveOverlayArtifactPublisherPinsConfiguredRootFolder(t *testing.T) {
 	capture := &captureOverlayPublisher{}
 	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
 	publisher.SetRootFolderID("1eRYRBDBWxGdqC4u7fHwp5hX_kRoTkZ8E")
-	artifact := &scriptgen.RenderArtifact{ID: "render-root", URL: store.URL + "/objects/" + hash, SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
-	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+	artifact := &renderqueue.RenderArtifact{ID: "render-root", URL: store.URL + "/objects/" + hash, SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4"}
+	if err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{
 		ScriptName: "Ada Lovelace", Language: "it", PlanID: "plan-root",
 	}, artifact); err != nil {
 		t.Fatal(err)
@@ -273,11 +273,11 @@ func TestDriveOverlayArtifactPublisherUsesJobSelectedRootBeforeConfiguredRoot(t 
 	capture := &captureOverlayPublisher{}
 	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
 	publisher.SetRootFolderID("configured-root")
-	artifact := &scriptgen.RenderArtifact{
+	artifact := &renderqueue.RenderArtifact{
 		ID: "render-job-root", URL: store.URL + "/objects/" + hash,
 		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
 	}
-	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+	if err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{
 		ScriptName: "Michael Jordan", Language: "en", PlanID: "plan-job-root",
 		DriveFolderID: "job-selected-root",
 	}, artifact); err != nil {
@@ -311,11 +311,11 @@ func TestDriveOverlayArtifactPublisherRequiresPlanIDWhenLanguageRoutingIsEnabled
 	publisher := &DriveOverlayArtifactPublisher{publisher: &captureOverlayPublisher{}, client: store.Client()}
 	publisher.SetRootFolderID("overlay-root")
 	publisher.SetScriptLanguageRouting(true)
-	artifact := &scriptgen.RenderArtifact{
+	artifact := &renderqueue.RenderArtifact{
 		ID: "render-missing-plan", URL: store.URL + "/objects/" + hash,
 		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
 	}
-	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+	if err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{
 		ScriptName: "Elon Musk", Language: "en", JobID: "job-123",
 	}, artifact); err == nil || !strings.Contains(err.Error(), "plan id") {
 		t.Fatalf("missing PlanID error = %v, want fail-closed plan id error", err)
@@ -339,11 +339,11 @@ func TestDriveOverlayArtifactPublisherUsesPlanIDWhenJobIDIsAbsent(t *testing.T) 
 	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
 	publisher.SetRootFolderID("overlay-root")
 	publisher.SetScriptLanguageRouting(true)
-	artifact := &scriptgen.RenderArtifact{
+	artifact := &renderqueue.RenderArtifact{
 		ID: "render-plan-scoped", URL: store.URL + "/objects/" + hash,
 		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
 	}
-	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+	if err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{
 		ScriptName: "Elon Musk", Language: "pt-BR", PlanID: "job-123",
 	}, artifact); err != nil {
 		t.Fatal(err)
@@ -370,11 +370,11 @@ func TestDriveOverlayArtifactPublisherRoutesGeneratedOverlayByJobAndLanguage(t *
 	publisher := &DriveOverlayArtifactPublisher{publisher: capture, client: store.Client()}
 	publisher.SetRootFolderID("overlay-root")
 	publisher.SetScriptLanguageRouting(true)
-	artifact := &scriptgen.RenderArtifact{
+	artifact := &renderqueue.RenderArtifact{
 		ID: "render-job-scoped", URL: store.URL + "/objects/" + hash,
 		SHA256: hash, SizeBytes: int64(len(payload)), MimeType: "video/mp4",
 	}
-	if err := publisher.PublishOverlay(context.Background(), scriptgen.OverlayPublicationSpec{
+	if err := publisher.PublishOverlay(context.Background(), renderqueue.OverlayPublicationSpec{
 		ScriptName: "Elon Musk", Language: "pt-BR", JobID: "job-123", PlanID: "job-123:item:003:phrase",
 	}, artifact); err != nil {
 		t.Fatal(err)

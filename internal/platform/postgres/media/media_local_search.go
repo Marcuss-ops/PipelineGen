@@ -31,8 +31,14 @@ type LocalMediaSearchRequest struct {
 	// Source, which is physical PROVENANCE: a stock clip acquired from
 	// YouTube is source="youtube" with asset_kind="stock_video" /
 	// semantic_role="stock". Empty means "no constraint".
-	AssetKind           string
-	SemanticRole        string
+	AssetKind    string
+	SemanticRole string
+	// Language is the BCP-47 equality filter on media_assets.language
+	// (migration 099). Empty means "no constraint"; the column has existed
+	// since 099 but the local path did not read it until
+	// TICKET-MEDIA-ASSETS-LANGUAGE-COLUMN. It is NOT a fallback to
+	// original_language: an empty language row is simply not a match.
+	Language            string
 	Limit               int
 	ExcludeUnclassified bool
 }
@@ -44,6 +50,20 @@ func (s *MediaSearcher) SearchLocal(ctx context.Context, req LocalMediaSearchReq
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("postgres media: local search not wired")
 	}
+	query, args := buildLocalMediaSearchQuery(req)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres media: local search: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanMediaAssetRows(rows)
+}
+
+// buildLocalMediaSearchQuery compiles the single lexical-search WHERE clause.
+// It is a pure function so the language predicate is testable without a
+// PostgreSQL server, and so the ?-free positional contract stays in one place.
+func buildLocalMediaSearchQuery(req LocalMediaSearchRequest) (string, []any) {
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 20
@@ -66,9 +86,10 @@ func (s *MediaSearcher) SearchLocal(ctx context.Context, req LocalMediaSearchReq
 		  AND ($4 = '' OR category = $4)
 		  AND ($5 = '' OR media_type = $5)
 		  AND ($6 = '' OR asset_kind = $6)
-		  AND ($7 = '' OR semantic_role = $7)`
+		  AND ($7 = '' OR semantic_role = $7)
+		  AND ($8 = '' OR language = $8)`
 	args := []any{text, pattern, source, strings.TrimSpace(req.Category), strings.TrimSpace(req.MediaType),
-		strings.TrimSpace(req.AssetKind), strings.TrimSpace(req.SemanticRole)}
+		strings.TrimSpace(req.AssetKind), strings.TrimSpace(req.SemanticRole), strings.TrimSpace(req.Language)}
 	// One AND clause per term: the caller asked for every keyword to match.
 	for _, term := range req.AllTerms {
 		trimmed := strings.ToLower(strings.TrimSpace(term))
@@ -87,13 +108,7 @@ func (s *MediaSearcher) SearchLocal(ctx context.Context, req LocalMediaSearchReq
 		ORDER BY ` + tsExpr("updated_at") + ` DESC, id ASC
 		LIMIT $` + strconv.Itoa(len(args)+1)
 	args = append(args, limit)
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("postgres media: local search: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	return scanMediaAssetRows(rows)
+	return query, args
 }
 
 // FindAllByHash returns every asset matching the supplied fingerprint (raw hex

@@ -48,6 +48,12 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 			details = append(details, ref+": "+err.Error())
 		}
 	}
+	// Per-bullet presentation pins are validated against the same registry the
+	// planner uses, so an unrenderable font or motion is a payload error here
+	// rather than a dropped pin after generation.
+	if err := capabilityoverlay.ValidateEditorialBulletStyles(item.EditorialBulletStyles); err != nil {
+		details = append(details, ref+": "+err.Error())
+	}
 	details = append(details, validateScript(item.ScriptParams, ref)...)
 	if item.ScriptParams.SourceTextVerbatim && item.Source.Type != scriptpkg.SourceText {
 		details = append(details, ref+": script_params.source_text_verbatim requires source.type=text")

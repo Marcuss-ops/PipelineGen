@@ -78,14 +78,39 @@ caption is run-level `overlay_style`, then explicit item/child runtime style,
 then legacy `caption_font_family`, then the language-aware default; entity
 composition styles only supply layout, motion, and fallback color.
 
+`overlay_style.bullet` is the optional **second font** for bullet-point copy
+only. It accepts `font_family` from the same closed family list, `font_size_px`
+(`24..240`), `glow_size` (`0..256`), `glow_color` (`#RRGGBB`) and `stroke_size`
+(`0..64`). Bullet-point items (`scene_bullet` and `chapter_bullet`, including a
+bullet fused into an animation chain) use this block; every other text lane
+keeps the run-level typography. An omitted field falls back to the run-level
+value, and an omitted block — or an omitted run-level value — keeps the planner
+default, so a payload that does not ask for two fonts renders exactly as before.
+A per-scene `editorial_bullet_styles` entry stays the most specific choice and
+wins on the bullet it names.
+
+```json
+"overlay_style": {
+  "font_family": "inter",
+  "size": {"font_size": 72},
+  "bullet": {
+    "font_family": "oswald", "font_size_px": 96,
+    "glow_size": 8, "glow_color": "#FFD400", "stroke_size": 2
+  }
+}
+```
+
 `overlay_style.image` tunes generated image cards: `width`, `height`,
 `position_x`, `position_y`, `radius`, `fit` (`cover`/`contain`/`fill`),
 `bounded`, `glow` (`radius` 0..256, `intensity` 0..4, `color` #RRGGBB;
 radius 0 disables it), plus `border`, `stroke` and `shadow` (color, opacity,
 blur, offset). `shadow.blur` is `0..64` px — the ceiling Chronon's native
 drop shadow certifies (`radius > 64` is rejected there); anything above it
-fails validation instead of being silently clamped. The `glow` block is image-only: it lowers to Chronon's native
-media glow effect and never changes caption text. `effects` attaches the same
+fails validation instead of being silently clamped. The block is projected to
+every standalone image item at plan seal, even when `overlay_images` declares
+no pins; a pin `style` overrides it field by field. The `glow` block is
+image-only: it lowers to Chronon's native media glow effect and never changes
+caption text. `effects` attaches the same
 bounded native effect stack `output.render.effects` accepts (same type
 vocabulary, same parameter bounds, max 12 entries; `[{ "type": "none" }]`
 clears it). Each entry must supply the parameter that makes it visible —

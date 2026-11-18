@@ -56,9 +56,6 @@ func TestJobPreparationRegistry_RejectsDuplicateAndUnknownTypes(t *testing.T) {
 func TestJobPreparationRegistry_FreezeRejectsNewRegistrations(t *testing.T) {
 	registry := NewJobPreparationRegistry()
 	registry.Freeze()
-	if !registry.IsFrozen() {
-		t.Fatal("registry should be frozen")
-	}
 	planner := preparationPlannerFunc(func(context.Context, *job.Job) (PreparationPlan, error) {
 		return PreparationPlan{}, nil
 	})
@@ -86,26 +83,10 @@ func TestComposeJobPreparationRegistry_RegistersKnownTypes(t *testing.T) {
 			t.Errorf("known job type %q has no preparation planner", jobType)
 		}
 	}
-	if !registry.IsFrozen() {
-		t.Fatal("composed preparation registry should be frozen")
-	}
-}
-
-func TestJobPreparationRegistry_AllTypesAreSorted(t *testing.T) {
-	registry := NewJobPreparationRegistry()
-	planner := preparationPlannerFunc(func(context.Context, *job.Job) (PreparationPlan, error) {
+	// Freeze is a one-way latch: a composed registry must reject new planners.
+	if err := registry.Register("late.registration", preparationPlannerFunc(func(context.Context, *job.Job) (PreparationPlan, error) {
 		return PreparationPlan{}, nil
-	})
-	for _, jobType := range []string{"youtube.extract", "clip.render", "script.generate"} {
-		if err := registry.Register(jobType, planner); err != nil {
-			t.Fatalf("Register %s: %v", jobType, err)
-		}
-	}
-	got := registry.AllTypes()
-	want := []string{"clip.render", "script.generate", "youtube.extract"}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("AllTypes = %#v, want %#v", got, want)
-		}
+	})); err == nil {
+		t.Fatal("composed preparation registry accepted a registration after Freeze")
 	}
 }

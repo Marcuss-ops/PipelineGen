@@ -20,7 +20,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/qualitygate"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
@@ -59,9 +58,11 @@ func (f *GenerationFinalizer) SetVidRushCache(cache scriptports.VidRushCachePort
 	}
 }
 
-// SetQualityGate overrides the default Go editorial gate. The production
-// composition leaves this unset unless VELOX_RUST_QUALITY_GATE opts into the
-// Rust cutover.
+// SetQualityGate installs the canonical editorial gate. Since the 2026-11-18
+// cutover the only implementation is the Rust `quality_gate` operation in
+// BrainRust's script-qa crate; the Go rule set no longer exists. The
+// composition root wires it unconditionally, and a missing evaluator is a
+// configuration error rather than a reason to skip the gate.
 func (f *GenerationFinalizer) SetQualityGate(gate scriptpkg.QualityGateEvaluator) {
 	if f != nil {
 		f.qualityGate = gate
@@ -74,10 +75,10 @@ func (f *GenerationFinalizer) evaluateQuality(
 	item scriptpkg.GenerationItemV2,
 	plan scriptpkg.ResolvedGenerationPlan,
 ) (*scriptpkg.GenerationQuality, error) {
-	if f != nil && f.qualityGate != nil {
-		return f.qualityGate.EvaluateQualityGate(ctx, result, item, plan)
+	if f == nil || f.qualityGate == nil {
+		return nil, fmt.Errorf("generation finalizer: quality gate evaluator is not configured")
 	}
-	return qualitygate.Evaluate(result, item, plan)
+	return f.qualityGate.EvaluateQualityGate(ctx, result, item, plan)
 }
 
 // FinalizeInputs carries everything the finalize phase needs from

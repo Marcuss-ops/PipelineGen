@@ -1,8 +1,10 @@
 package overlays
 
-import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+import (
+	"strings"
 
-import "strings"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+)
 
 // mapPinsFor projects the grounded places that fall inside the plate's window
 // into deterministic pins plus the item's audio window. ok is false when no

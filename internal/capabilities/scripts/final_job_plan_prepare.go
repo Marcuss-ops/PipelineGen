@@ -315,34 +315,6 @@ func boolValue(value any) bool {
 	return b
 }
 
-func validateFinalJobHTTPSRuntimeAssets(assets []any) error {
-	for i, raw := range assets {
-		asset, ok := raw.(map[string]any)
-		if !ok {
-			return fmt.Errorf("final_job runtime asset %d has an invalid shape", i)
-		}
-		source := strings.TrimSpace(finalJobStringValue(asset["source_uri"]))
-		if source == "" {
-			source = strings.TrimSpace(finalJobStringValue(asset["url"]))
-		}
-		if !strings.HasPrefix(strings.ToLower(source), "https://") {
-			return fmt.Errorf("final_job runtime asset %q has no HTTPS source_uri", finalJobStringValue(asset["asset_id"]))
-		}
-		assetID := strings.TrimSpace(finalJobStringValue(asset["asset_id"]))
-		if assetID == "" {
-			return fmt.Errorf("final_job runtime asset %d has no immutable asset_id", i)
-		}
-		delete(asset, "drive_file_id")
-		// The Master uses `source_uri` to construct the signed HTTPS future-asset
-		// plan, while the worker's runtime asset resolver requires `url` to stay
-		// an internal asset reference. Sending the raw signed URL in `url` fails
-		// closed in that resolver before the worker can consume the HTTPS plan.
-		asset["source_uri"] = source
-		asset["url"] = "velox-asset://" + assetID
-	}
-	return nil
-}
-
 // finalJobSegmentWork is one independent fragment preparation: the validated
 // source reference, its exact request, and its position in the compiled plan.
 type finalJobSegmentWork struct {

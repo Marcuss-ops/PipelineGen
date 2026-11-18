@@ -226,3 +226,30 @@ func TestValidateMediaRefCases(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateItemEditorialBulletStylesFailsClosed pins the early payload gate
+// for per-bullet pins: an unrenderable motion or font is reported with the
+// field named at validation time, not silently dropped by the planner.
+func TestValidateItemEditorialBulletStylesFailsClosed(t *testing.T) {
+	item := docsItem()
+	item.EditorialBulletStyles = []scriptpkg.EditorialBulletStyle{
+		{SceneID: "scene-1", FontFamily: "oswald", FontSizePX: 96, MotionID: "air_rise_type_on"},
+	}
+	if err := ValidateItem(item); err != nil {
+		t.Fatalf("a certified pin must validate: %v", err)
+	}
+	item.EditorialBulletStyles = []scriptpkg.EditorialBulletStyle{
+		{SceneID: "scene-1", MotionID: "no_such_motion"},
+	}
+	err := ValidateItem(item)
+	if err == nil {
+		t.Fatal("an uncertified bullet motion must fail validation")
+	}
+	var planErr *scriptpkg.PlanInvalidError
+	if !errors.As(err, &planErr) {
+		t.Fatalf("expected *PlanInvalidError, got %T", err)
+	}
+	if !strings.Contains(strings.Join(planErr.Details, " "), "motion_id \"no_such_motion\"") {
+		t.Fatalf("expected the field-named detail, got %v", planErr.Details)
+	}
+}

@@ -13,9 +13,9 @@
 // renderer; they are no longer live and can never be sampled.
 package overlays
 
-import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-
-import "strings"
+import (
+	"strings"
+)
 
 // IdentityEntityStyleSelector is the certified entity_style_id value stamped
 // on GENERATED entity-image overlay items. RenderingGen resolves it as a tag
@@ -112,28 +112,4 @@ func validateEntityStyleSelector(styleID string) bool {
 // build cannot honour (RenderingGen would reject it at compile).
 func IsValidEntityStyleSelector(styleID string) bool {
 	return validateEntityStyleSelector(styleID)
-}
-
-// stampEntityStyle sets the certified generated selector on an entity item
-// that carries BOTH the required content (a portrait asset and a name
-// caption): RenderingGen refuses entity_style_id on an item without an image
-// and entity_caption, so the stamp keeps the same fail-closed precondition.
-func stampEntityStyle(item *capmodel.OverlayItem) {
-	if item == nil {
-		return
-	}
-	if len(item.AssetRefs) == 0 || strings.TrimSpace(item.EntityCaption) == "" {
-		return
-	}
-	item.EntityStyleID = IdentityEntityStyleSelector
-}
-
-// StampEntityStyle is the exported planner seam: it stamps the certified
-// generated selector on every entity-image item that satisfies RenderingGen's
-// style precondition (portrait + entity caption), leaving text-only and map
-// items untouched.
-func StampEntityStyle(items []capmodel.OverlayItem) {
-	for index := range items {
-		stampEntityStyle(&items[index])
-	}
 }

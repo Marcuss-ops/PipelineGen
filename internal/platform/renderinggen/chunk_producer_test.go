@@ -9,30 +9,30 @@ import (
 	"testing"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // fakeBatchSubmitter records the atomic family submission.
 type fakeBatchSubmitter struct {
-	family   []scriptgen.RenderQueueJob
+	family   []renderqueue.RenderQueueJob
 	err      error
-	jobs     map[string]scriptgen.RenderQueueJob
-	artifact *scriptgen.RenderArtifact
+	jobs     map[string]renderqueue.RenderQueueJob
+	artifact *renderqueue.RenderArtifact
 }
 
-func (f *fakeBatchSubmitter) SubmitBatch(_ context.Context, family []scriptgen.RenderQueueJob) error {
-	f.family = append([]scriptgen.RenderQueueJob(nil), family...)
+func (f *fakeBatchSubmitter) SubmitBatch(_ context.Context, family []renderqueue.RenderQueueJob) error {
+	f.family = append([]renderqueue.RenderQueueJob(nil), family...)
 	return f.err
 }
 
-func (f *fakeBatchSubmitter) Submit(_ context.Context, job scriptgen.RenderQueueJob) error {
+func (f *fakeBatchSubmitter) Submit(_ context.Context, job renderqueue.RenderQueueJob) error {
 	if f.jobs == nil {
-		f.jobs = make(map[string]scriptgen.RenderQueueJob)
+		f.jobs = make(map[string]renderqueue.RenderQueueJob)
 	}
 	job.State = "completed"
 	job.Artifact = f.artifact
 	if job.Artifact == nil {
-		job.Artifact = &scriptgen.RenderArtifact{
+		job.Artifact = &renderqueue.RenderArtifact{
 			Kind: "prepared_render_package", StorageKey: strings.Repeat("a", 64),
 			SHA256: strings.Repeat("a", 64), ChrononVersion: "0.1.0", ProfileID: "profile-1",
 		}
@@ -63,7 +63,7 @@ func TestChunkProducerRejectsInvalidPreparedPackageArtifactBeforeFamilySubmit(t 
 			srv := httptest.NewServer(http.HandlerFunc(rec.handler))
 			defer srv.Close()
 			t.Setenv("RENDERINGGEN_STORE_URL", srv.URL)
-			submitter := &fakeBatchSubmitter{artifact: &scriptgen.RenderArtifact{
+			submitter := &fakeBatchSubmitter{artifact: &renderqueue.RenderArtifact{
 				Kind: "prepared_render_package", StorageKey: tc.storage,
 				SHA256: tc.sha, ChrononVersion: "0.1.0", ProfileID: tc.profile,
 			}}
@@ -81,11 +81,11 @@ func TestChunkProducerRejectsInvalidPreparedPackageArtifactBeforeFamilySubmit(t 
 	}
 }
 
-func (f *fakeBatchSubmitter) Get(_ context.Context, id string) (scriptgen.RenderQueueJob, error) {
+func (f *fakeBatchSubmitter) Get(_ context.Context, id string) (renderqueue.RenderQueueJob, error) {
 	return f.jobs[id], nil
 }
 
-func (f *fakeBatchSubmitter) WaitTerminal(ctx context.Context, id string) (scriptgen.RenderQueueJob, error) {
+func (f *fakeBatchSubmitter) WaitTerminal(ctx context.Context, id string) (renderqueue.RenderQueueJob, error) {
 	return f.Get(ctx, id)
 }
 

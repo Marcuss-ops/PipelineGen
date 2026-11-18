@@ -188,6 +188,3 @@ func mergeFingerprintStyle(existing any, additions map[string]any) map[string]an
 	}
 	return out
 }
-
-// RenderKey is kept as the concise public spelling used by planners.
-func RenderKey(p OverlayPlan, item OverlayItem) string { return ComputeRenderKey(p, item) }

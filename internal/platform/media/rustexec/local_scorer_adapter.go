@@ -45,6 +45,7 @@ func (a *LocalScorerAdapter) ScoreLocal(ctx context.Context, query search.LocalS
 		Query: search.LocalScoreQuery{
 			Text: query.Text, Tags: append([]string{}, query.Tags...),
 			Source: query.Source, MinDurationMS: query.MinDurationMS,
+			Language: query.Language,
 		},
 		Candidates: make([]search.LocalScoreCandidate, len(candidates)),
 	}

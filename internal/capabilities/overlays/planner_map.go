@@ -1,14 +1,13 @@
 package overlays
 
 import (
-	"encoding/binary"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"log"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
 )
 
@@ -281,20 +280,6 @@ func mergeMapCandidateOccurrence(merged *MapCandidate, occurrence MapCandidate) 
 	if occurrence.Score > merged.Score {
 		merged.Score = occurrence.Score
 	}
-}
-
-// deterministicMapMotionStart gives each plan a stable starting point while
-// mapMotionForCenter rotates distinct maps through the certified pool.
-func deterministicMapMotionStart(planID string, limit int) int {
-	poolSize := len(mapMotionIDs())
-	if limit > 0 && limit < poolSize {
-		poolSize = limit
-	}
-	if poolSize <= 1 {
-		return 0
-	}
-	sum := digest.SHA256Sum([]byte("map-motion\x00" + planID))
-	return int(binary.BigEndian.Uint64(sum[:8]) % uint64(poolSize))
 }
 
 // mapMotionForCenter selects from only map-safe centered treatments. The

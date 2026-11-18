@@ -20,6 +20,17 @@ const (
 	VidRushProviderYouTube         = "youtube"
 )
 
+// IsInternetImageSourceProvider reports whether provider is the generic
+// internet_images lifecycle bucket or one of its concrete retrieval backends.
+func IsInternetImageSourceProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case VidRushProviderInternetImages, "duckduckgo", "wikimedia_commons", "wikipedia", "searxng":
+		return true
+	default:
+		return false
+	}
+}
+
 // VidRushArtifactStatus is the lifecycle state of a candidate as it moves
 // from discovery to a scene binding. Empty is retained for compatibility with
 // legacy read-only candidate payloads; new providers must populate the state.

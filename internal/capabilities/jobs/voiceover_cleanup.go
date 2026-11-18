@@ -43,7 +43,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -119,14 +118,14 @@ type VoiceoverCleanupDriver interface {
 // handler is single-row; old/new Drive file ids are at most 64 chars
 // each, and old_local_paths holds short filesystem paths.
 type voiceoverCleanupRequestV1 struct {
-	SchemaVersion  string   `json:"schema_version"`
-	EventID        string   `json:"event_id"`
+	// Envelope carries schema_version/event_id/idempotency_key/requested_at;
+	// the v1 envelope contract is decoded and validated once, in
+	// outboxevents.DecodeV1, not once per handler.
+	outboxevents.Envelope
 	VoiceoverID    string   `json:"voiceover_id"`
 	OldDriveFileID string   `json:"old_drive_file_id"`
 	NewDriveFileID string   `json:"new_drive_file_id"`
 	OldLocalPaths  []string `json:"old_local_paths"`
-	IdempotencyKey string   `json:"idempotency_key"`
-	RequestedAt    string   `json:"requested_at,omitempty"`
 }
 
 // VoiceoverCleanupHandler is the canonical handler for
@@ -201,41 +200,17 @@ func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outboxevents.E
 	log := h.log
 
 	var req voiceoverCleanupRequestV1
-	if jerr := json.Unmarshal([]byte(evt.PayloadJSON), &req); jerr != nil {
-		log.Warn("voiceover.cleanup.requested payload parse failed (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-			zap.Int("attempt", evt.AttemptCount),
-			zap.Error(jerr),
-		)
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("voiceover.cleanup.requested payload parse: %w", jerr),
-		)
+	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+		EventName:         outboxevents.EventVoiceoverCleanupRequested,
+		WantSchemaVersion: VoiceoverCleanupSchemaVersion,
+		Log:               log,
+	}, evt, &req); err != nil {
+		return err
 	}
 
-	// Strict v1 envelope validation. Each missing/mismatched field is
-	// TERMINAL — retrying won't bring the field into existence.
-	if req.SchemaVersion != VoiceoverCleanupSchemaVersion {
-		log.Warn("voiceover.cleanup.requested schema_version mismatch (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-			zap.String("got_version", req.SchemaVersion),
-			zap.String("want_version", VoiceoverCleanupSchemaVersion),
-		)
-		return outboxevents.NewTerminalError(fmt.Errorf(
-			"voiceover.cleanup.requested: schema_version mismatch (terminal — got %q, want %q)",
-			req.SchemaVersion, VoiceoverCleanupSchemaVersion,
-		))
-	}
-	if req.EventID == "" {
-		log.Warn("voiceover.cleanup.requested: missing event_id (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-		)
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("voiceover.cleanup.requested: event_id is required (terminal)"),
-		)
-	}
+	// Resource-level validation: only this handler knows which field
+	// identifies its aggregate. TERMINAL for the same reason the envelope
+	// checks are — retrying cannot bring the id into existence.
 	if req.VoiceoverID == "" {
 		log.Warn("voiceover.cleanup.requested: missing voiceover_id (terminal)",
 			zap.Int64("event_id", evt.ID),
@@ -243,15 +218,6 @@ func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outboxevents.E
 		)
 		return outboxevents.NewTerminalError(
 			fmt.Errorf("voiceover.cleanup.requested: voiceover_id is required (terminal — retry cannot conjure an id)"),
-		)
-	}
-	if req.IdempotencyKey == "" {
-		log.Warn("voiceover.cleanup.requested: missing idempotency_key (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-		)
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("voiceover.cleanup.requested: idempotency_key is required (terminal)"),
 		)
 	}
 

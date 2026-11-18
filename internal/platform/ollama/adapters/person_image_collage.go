@@ -1,21 +1,33 @@
 package adapters
 
 import (
-	"bytes"
 	"image"
 	"image/color"
 	_ "image/jpeg"
 	_ "image/png"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // hasPanelGridCollage rejects source images with multiple near-full-length,
 // straight panel boundaries. This pixel check complements the vision model:
 // the runtime's current model has accepted a news montage as a single portrait.
 func hasPanelGridCollage(data []byte) bool {
-	img, _, err := image.Decode(bytes.NewReader(data))
+	img, _, err := digest.DecodeImageBounded(data, digest.DefaultImagePixelBudget)
 	if err != nil {
+		// A malformed or oversized image cannot be classified as a collage.
+		// Returning false keeps the decision retryable; the caller's bounded
+		// decode independently rejects the same bytes with its pixel-budget
+		// error.
 		return false
 	}
+	return hasPanelGridCollageImage(img)
+}
+
+// hasPanelGridCollageImage is the decode-free half shared with the scorer,
+// which decodes the verified bytes once and reuses the image for both the
+// collage check and the VLM normalization.
+func hasPanelGridCollageImage(img image.Image) bool {
 	vertical := alignedPanelSeams(img, true)
 	if len(vertical) >= 2 && !singlePhotoWithBlurredExtension(img, vertical, true) {
 		return true

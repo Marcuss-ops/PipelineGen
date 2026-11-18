@@ -105,8 +105,11 @@ func (b *pgLocalSearchBackend) searchByText(ctx context.Context, q search.Query)
 		// narrows in-database. Source alone cannot express "stock clips": a
 		// YouTube-acquired stock clip is source="youtube" with
 		// asset_kind="stock_video".
-		AssetKind:           strings.TrimSpace(q.Filters.AssetKind),
-		SemanticRole:        strings.TrimSpace(q.Filters.SemanticRole),
+		AssetKind:    strings.TrimSpace(q.Filters.AssetKind),
+		SemanticRole: strings.TrimSpace(q.Filters.SemanticRole),
+		// Language is compiled into the SQL predicate: the local backend
+		// must enforce the filter it advertises, not just forward it.
+		Language:            strings.TrimSpace(q.Filters.Language),
 		MediaType:           mediaType,
 		Limit:               limit,
 		ExcludeUnclassified: true,
@@ -119,10 +122,12 @@ func (b *pgLocalSearchBackend) searchByText(ctx context.Context, q search.Query)
 		rec := &hits[i]
 		scoreCandidates = append(scoreCandidates, search.LocalScoreCandidate{
 			ID: rec.ID, Title: rec.Name, Tags: rec.Tags, Source: rec.Source, DurationMS: rec.DurationMS,
+			Language: rec.Language,
 		})
 	}
 	scores, err := b.scorer.ScoreLocal(ctx, search.LocalScoreQuery{
 		Text: q.Text, Tags: q.Filters.Tags, Source: q.Filters.Source, MinDurationMS: q.Filters.DurationMsMin,
+		Language: strings.TrimSpace(q.Filters.Language),
 	}, scoreCandidates)
 	if err != nil {
 		return nil, fmt.Errorf("postgres local search: Rust score batch: %w", err)

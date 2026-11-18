@@ -68,12 +68,6 @@ type WorkerError struct {
 	OutputTail string `json:"output_tail,omitempty"`
 }
 
-func (c *Client) CreateEvents(ctx context.Context, req BatchRequest) (json.RawMessage, error) {
-	if len(req.Events) < 1 || len(req.Events) > 20 {
-		return nil, fmt.Errorf("events batch must contain between 1 and 20 events")
-	}
-	return c.doJSON(ctx, http.MethodPost, "/api/v1/agent/calendar/events/batch", req)
-}
 func (c *Client) UpdateProgress(ctx context.Context, eventKey string, update Progress) (json.RawMessage, error) {
 	if strings.TrimSpace(eventKey) == "" {
 		return nil, fmt.Errorf("event key is required")
@@ -114,20 +108,6 @@ type EventUpdate struct {
 	ScheduledAt *string `json:"scheduled_at,omitempty"`
 }
 
-func (c *Client) UpdateEvent(ctx context.Context, eventKey string, update EventUpdate) (json.RawMessage, error) {
-	if strings.TrimSpace(eventKey) == "" {
-		return nil, fmt.Errorf("event key is required")
-	}
-	return c.doJSON(ctx, http.MethodPatch, "/api/v1/agent/calendar/events/"+url.PathEscape(eventKey), update)
-}
-
-func (c *Client) DeleteEvent(ctx context.Context, eventKey string) error {
-	if strings.TrimSpace(eventKey) == "" {
-		return fmt.Errorf("event key is required")
-	}
-	_, err := c.do(ctx, http.MethodDelete, "/api/v1/agent/calendar/events/"+url.PathEscape(eventKey), nil)
-	return err
-}
 func (c *Client) doJSON(ctx context.Context, method, path string, body any) (json.RawMessage, error) {
 	data, err := json.Marshal(body)
 	if err != nil {

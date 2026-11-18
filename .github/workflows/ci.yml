@@ -242,6 +242,39 @@ jobs:
     - name: Verify the shared contract
       run: make verify-rust-contract
 
+  # ── lexicon parity (Go embedded projection ↔ Rust packs) ─────────────
+  # Cross-repo gate: refactored embeds the Go projection and BrainRust owns
+  # the packs. The job checks out BrainRust at the release SHA recorded in
+  # bin/BRAINRUST_RELEASE.json, so the gate compares the exact pair the
+  # binaries were built from (no floating branch, no submodule init).
+  lexicon-parity:
+    name: lexicon parity (Go projection vs Rust packs)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out refactored
+      uses: actions/checkout@v7
+      with:
+        path: refactored
+        submodules: false
+
+    - name: Resolve pinned BrainRust commit
+      id: brainrust
+      run: |
+        sha=$(python3 -c 'import json;print(json.load(open("refactored/bin/BRAINRUST_RELEASE.json"))["git_sha"])')
+        test -n "$sha"
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+    - name: Check out BrainRust at the pinned commit
+      uses: actions/checkout@v7
+      with:
+        repository: Marcuss-ops/BrainRust
+        ref: ${{ steps.brainrust.outputs.sha }}
+        path: BrainRust
+        submodules: false
+
+    - name: Verify stopword parity
+      run: python3 BrainRust/lexicon/tools/check_go_stopword_parity.py --repo-root .
+
   # ── Rust workspace: owned by BrainRust CI ───────────────────────────
   #
   # Rust workspace test/clippy jobs moved to BrainRust: its CI runs the suite

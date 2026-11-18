@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 const proberArtifactSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -34,7 +34,7 @@ func TestOverlayArtifactProberClassifiesStoreResponses(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			present, err := NewOverlayArtifactProber().Present(context.Background(), scriptgen.RenderArtifact{
+			present, err := NewOverlayArtifactProber().Present(context.Background(), renderqueue.RenderArtifact{
 				URL: srv.URL + "/objects/" + proberArtifactSHA, SHA256: proberArtifactSHA,
 			})
 			if method != http.MethodHead {
@@ -57,7 +57,7 @@ func TestOverlayArtifactProberClassifiesStoreResponses(t *testing.T) {
 }
 
 func TestOverlayArtifactProberRejectsNonHTTPLocator(t *testing.T) {
-	if _, err := NewOverlayArtifactProber().Present(context.Background(), scriptgen.RenderArtifact{
+	if _, err := NewOverlayArtifactProber().Present(context.Background(), renderqueue.RenderArtifact{
 		URL: "/local/path.mp4", SHA256: proberArtifactSHA,
 	}); err == nil || !strings.Contains(err.Error(), "http") {
 		t.Fatalf("non-http locator error = %v", err)

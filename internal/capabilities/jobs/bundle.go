@@ -23,17 +23,6 @@ func NewBundleWithHistory(service *Service, stats JobStatsReader, history Histor
 	return Bundle{service: service, stats: stats, history: history, enabledFunc: enabledFunc, logger: logger}
 }
 
-// NewBundle captures the narrow jobs capability dependencies without exposing
-// the larger application composition root to capability consumers.
-func NewBundle(service *Service, stats JobStatsReader, enabledFunc func() bool, logger *zap.Logger) Bundle {
-	return Bundle{
-		service:     service,
-		stats:       stats,
-		enabledFunc: enabledFunc,
-		logger:      logger,
-	}
-}
-
 // Name implements api.CapabilityModule.
 func (b Bundle) Name() string { return "jobs" } // Build delegates to the existing canonical jobs module builder.
 func (b Bundle) Build(ctx api.BuildContext) (api.RuntimeModule, error) {

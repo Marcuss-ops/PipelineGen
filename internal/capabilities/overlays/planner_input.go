@@ -33,6 +33,10 @@ type ImageCandidate struct {
 	StartUS    int64
 	DurationUS int64
 	Score      float64
+	// Pinned marks a still bound by overlay_images[]. It owns its centered
+	// geometry and per-pin style, so the planner must keep it standalone
+	// instead of folding it into an automatic image_chain.
+	Pinned bool
 }
 
 // MaxImageOverlayDurationMS is the hard editorial ceiling for every image,
@@ -103,9 +107,6 @@ func (c MapGroupConfig) Pins() int {
 	}
 	return c.MaxPinsPerGroup
 }
-
-// DefaultMapGroupConfig returns the certified default grouping policy.
-func DefaultMapGroupConfig() MapGroupConfig { return MapGroupConfig{} }
 
 type PlanInput struct {
 	PlanID    string

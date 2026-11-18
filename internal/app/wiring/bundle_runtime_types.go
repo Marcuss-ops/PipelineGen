@@ -29,6 +29,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
@@ -122,8 +123,16 @@ type FinalizerBundle struct {
 
 // AIBundle owns script generation and AI composition surfaces.
 type AIBundle struct {
-	OllamaClient             *client.Client
-	OllamaEmbedClient        *client.Client
+	OllamaClient      *client.Client
+	OllamaEmbedClient *client.Client
+	// VisionVerdictClient is the dedicated entity-image verdict client. It is
+	// nil only in partial test wiring; the composition root falls back to
+	// ScriptGen's client when the vision lane is not configured.
+	VisionVerdictClient *client.Client
+	// VisionVerdictScorer is the ONE entity-image scorer instance shared by
+	// the postprocess and generation wiring. Constructing it here prevents two
+	// independent scorers from paying for the same pixels/VLM calls.
+	VisionVerdictScorer      scriptadapters.SemanticCandidateScorer
 	Reranker                 *reranker.Client
 	ScriptGen                *ollama.Generator
 	OllamaTranslator         *translation.OllamaTranslator

@@ -98,7 +98,7 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 		out = append(out, capabilityoverlay.ImageCandidate{
 			AssetID: digest, LocalPath: path, SHA256: digest, MediaType: strings.TrimSpace(pin.MIMEType),
 			StartMs: nextStartUS / 1000, EndMs: (nextStartUS + durationUS + 999) / 1000,
-			StartUS: nextStartUS, DurationUS: durationUS, Score: 1,
+			StartUS: nextStartUS, DurationUS: durationUS, Score: 1, Pinned: true,
 		})
 		localHashes[digest] = struct{}{}
 		if durationUS < int64(capabilityoverlay.MaxImageOverlayDurationMS*1000) || len(out) >= limit {
@@ -177,7 +177,7 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 }
 
 func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest string) bool {
-	if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
+	if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) ||
 		strings.TrimSpace(candidate.AssetID) == "" || candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 		candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
 		candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||

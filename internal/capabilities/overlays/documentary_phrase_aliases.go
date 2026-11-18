@@ -1,7 +1,5 @@
 package overlays
 
-import "strings"
-
 // documentaryPhraseMotionAliases preserves each showcase identity all the way
 // into RenderingGen, where the phrase-relative runtime compiler applies its
 // own target spans and sweep geometry to the supplied long copy.
@@ -21,26 +19,4 @@ var documentaryPhraseMotionAliases = map[string]string{
 	"doc_13_analog_scanner_highlight":    "doc_13_analog_scanner_highlight",
 	"doc_14_dual_highlight_sequence":     "doc_14_dual_highlight_sequence",
 	"doc_15_documentary_source_focus":    "doc_15_documentary_source_focus",
-}
-
-// ResolveDocumentaryPhraseMotion maps a showcase preset ID to its adaptive
-// runtime motion. Unknown IDs pass through so the normal certified-catalog
-// validation remains the single authority for all other motion IDs.
-func ResolveDocumentaryPhraseMotion(id string) string {
-	id = strings.TrimSpace(id)
-	if motion, ok := documentaryPhraseMotionAliases[id]; ok {
-		return motion
-	}
-	return id
-}
-
-func resolveDocumentaryPhraseMotions(ids []string) []string {
-	if len(ids) == 0 {
-		return nil
-	}
-	resolved := make([]string, len(ids))
-	for i, id := range ids {
-		resolved[i] = ResolveDocumentaryPhraseMotion(id)
-	}
-	return resolved
 }

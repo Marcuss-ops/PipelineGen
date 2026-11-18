@@ -14,7 +14,7 @@ import (
 func TestGenerationFinalizer_SavesGeneratedScriptToCache(t *testing.T) {
 	gate := newFakeScriptMemoryGate()
 	svc := processor.NewService(gate, zap.NewNop())
-	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
+	finalizer := newGatedFinalizer()
 	finalizer.SetMemoryService(svc)
 
 	item := scriptpkg.GenerationItemV2{ID: "finalize-cache"}
@@ -81,7 +81,7 @@ func TestGenerationFinalizer_SavesGeneratedScriptToCache(t *testing.T) {
 func TestGenerationFinalizer_DoesNotSaveCacheHit(t *testing.T) {
 	gate := newFakeScriptMemoryGate()
 	svc := processor.NewService(gate, zap.NewNop())
-	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
+	finalizer := newGatedFinalizer()
 	finalizer.SetMemoryService(svc)
 
 	// Pre-seed the cache.
@@ -143,7 +143,7 @@ func TestGenerationFinalizer_DoesNotSaveCacheHit(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_Success(t *testing.T) {
-	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
+	finalizer := newGatedFinalizer()
 	item := scriptpkg.GenerationItemV2{ID: "finalize-success"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:         "finalize-success",
@@ -184,7 +184,7 @@ func TestGenerationFinalizer_Finalize_Success(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_ClipNativeContractFails(t *testing.T) {
-	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
+	finalizer := newGatedFinalizer()
 	item := scriptpkg.GenerationItemV2{ID: "finalize-clip"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:         "finalize-clip",
@@ -219,7 +219,17 @@ func TestGenerationFinalizer_Finalize_ClipNativeContractFails(t *testing.T) {
 }
 
 func TestGenerationFinalizer_Finalize_QualityGateFails(t *testing.T) {
+	// The gate is Rust-owned; this unit test injects the verdict to pin the
+	// finalizer contract (typed error + FAILED status), while the real
+	// rejection path is covered by the script-qa goldens and the worker e2e.
 	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
+	finalizer.SetQualityGate(&fakeQualityGate{
+		quality: &scriptpkg.GenerationQuality{Passed: false},
+		err: &scriptpkg.QualityGateError{
+			ItemID:  "finalize-quality",
+			Reasons: []string{"editorial gate rejected the generation"},
+		},
+	})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-quality"}
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:          "finalize-quality",
@@ -258,6 +268,13 @@ func TestGenerationFinalizer_Finalize_QualityGateFails(t *testing.T) {
 
 func TestGenerationFinalizer_Finalize_SkipQualityGate(t *testing.T) {
 	finalizer := NewGenerationFinalizer(zap.NewNop(), processor.NormalizationConfig{})
+	finalizer.SetQualityGate(&fakeQualityGate{
+		quality: &scriptpkg.GenerationQuality{Passed: false},
+		err: &scriptpkg.QualityGateError{
+			ItemID:  "finalize-skip",
+			Reasons: []string{"editorial gate rejected the generation"},
+		},
+	})
 	item := scriptpkg.GenerationItemV2{ID: "finalize-skip"}
 	item.ScriptParams.SkipQualityGate = true
 	plan := scriptpkg.ResolvedGenerationPlan{

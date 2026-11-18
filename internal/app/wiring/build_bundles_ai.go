@@ -88,6 +88,27 @@ func observeOllamaAdmission(c *client.Client) {
 	c.SetAdmissionObserver(ollamaAdmissionObserver{})
 }
 
+// newVisionVerdictClient selects the client used for entity-image verdicts.
+// With no dedicated vision endpoint it returns the script-generation client,
+// preserving the legacy behavior. With one configured it builds a separate
+// client: the Ollama admission limiter is keyed by endpoint, so a distinct URL
+// also gets a distinct in-flight budget instead of competing with script
+// generation for the same slots.
+func newVisionVerdictClient(cfg *config.Config, scriptClient *client.Client) *client.Client {
+	if cfg == nil || scriptClient == nil {
+		return scriptClient
+	}
+	visionURL := strings.TrimSpace(cfg.External.OllamaVisionURL)
+	if visionURL == "" {
+		return scriptClient
+	}
+	visionModel := strings.TrimSpace(cfg.External.OllamaVisionModel)
+	if visionModel == "" {
+		visionModel = strings.TrimSpace(cfg.External.OllamaModel)
+	}
+	return client.NewClient(visionURL, visionModel, cfg.External.OllamaTimeoutSeconds)
+}
+
 func whisperBridgeVersion(scriptPath string) string {
 	body, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -117,6 +138,27 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// deferred) so a saturated model server is observable instead of being
 	// diagnosed by feel. One call covers every pool on this endpoint.
 	observeOllamaAdmission(ollamaClient)
+
+	// Entity-image verdicts get their own client when OLLAMA_VISION_ADDR is
+	// configured. This is the separation boundary: the script-generation
+	// client and the vision client must not share the same in-flight budget.
+	visionVerdictClient := newVisionVerdictClient(cfg, ollamaClient)
+	if visionVerdictClient == ollamaClient {
+		log.Warn("vision verdicts share the script generation Ollama client; set OLLAMA_VISION_ADDR to isolate pixel verification")
+	} else {
+		observeOllamaAdmission(visionVerdictClient)
+		if strings.EqualFold(strings.TrimRight(cfg.External.OllamaVisionURL, "/"), strings.TrimRight(cfg.External.OllamaURL, "/")) {
+			log.Warn("OLLAMA_VISION_ADDR equals OLLAMA_ADDR; the admission budget is still shared — use a distinct Ollama instance to separate capacity",
+				zap.String("ollama_url", cfg.External.OllamaVisionURL))
+		} else {
+			log.Info("vision verdict client configured",
+				zap.String("ollama_url", cfg.External.OllamaVisionURL),
+				zap.String("vision_model", visionVerdictClient.Model()))
+		}
+	}
+	// One scorer instance is shared by every wiring site. The scorer owns the
+	// per-identity attempt budget; the client owns transport retries.
+	visionVerdictScorer := ollamaadapters.NewOllamaPersonImageScorer(visionVerdictClient)
 
 	// Dedicated embedding client: uses a separate model (the canonical
 	// the canonical E5 registry entry by default, configurable via
@@ -294,16 +336,18 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	log.Info("SceneTextGenerator adapter configured (P1 verdetto)")
 
 	return &AIBundle{
-		OllamaClient:       ollamaClient,
-		OllamaEmbedClient:  ollamaEmbedClient,
-		Reranker:           rerankerClient,
-		ScriptGen:          scriptGen,
-		OllamaTranslator:   ollamaTranslator,
-		MemoryRepo:         memGate,
-		MemorySvc:          memSvc,
-		ScriptEngine:       engine,
-		WhisperTranscriber: whisperAdapter,
-		SceneTextGenerator: sceneTextGen,
+		OllamaClient:        ollamaClient,
+		OllamaEmbedClient:   ollamaEmbedClient,
+		VisionVerdictClient: visionVerdictClient,
+		VisionVerdictScorer: visionVerdictScorer,
+		Reranker:            rerankerClient,
+		ScriptGen:           scriptGen,
+		OllamaTranslator:    ollamaTranslator,
+		MemoryRepo:          memGate,
+		MemorySvc:           memSvc,
+		ScriptEngine:        engine,
+		WhisperTranscriber:  whisperAdapter,
+		SceneTextGenerator:  sceneTextGen,
 	}, nil
 }
 

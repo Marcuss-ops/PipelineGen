@@ -184,6 +184,9 @@ func p0iBuildLengthToleranceOrchestrator(t *testing.T, targetWords int) (*gencor
 	resolver.AddClip(clip2)
 
 	uc := buildUsecaseWithClipResolver(gen, resolver)
+	// P0.I asserts the gate's measured word count and tolerance, so it runs on
+	// the real Rust gate instead of the shared passing stub.
+	wireRealQualityGate(t, uc)
 
 	item := makeClipsItem("p0i-length", []string{p0iLengthClipAlpha, p0iLengthClipBeta}, p0iLengthVocabulary)
 	item.ScriptParams.TargetWords = targetWords

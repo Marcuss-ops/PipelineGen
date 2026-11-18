@@ -61,14 +61,67 @@ func TestApplyImageAssetStylesBindsPerScene(t *testing.T) {
 	}
 }
 
-// TestApplyImageAssetStylesRejectsUnhostablePin fails closed when a scene has
-// no image item for the pin instead of silently dropping the style.
-func TestApplyImageAssetStylesRejectsUnhostablePin(t *testing.T) {
+// TestApplyImageAssetStylesSkipsPinForSceneWithoutImage pins the optional-still
+// contract (r134): a scene may have no standalone image item because the
+// provider returned no verified still or the planner folded it into an image
+// chain. A pin for that scene is skipped, never a whole-language failure; the
+// missing still stays visible in the overlay audit.
+func TestApplyImageAssetStylesSkipsPinForSceneWithoutImage(t *testing.T) {
 	plan := styleTestPlan()
 	pins := []scriptpkg.OverlayImageAsset{{SceneID: "scene-3", Style: &scriptpkg.OverlayImageStyleSpec{Radius: styleTestFloat(8)}}}
-	err := applyImageAssetStyles([]*capmodel.OverlayPlan{plan}, pins, nil)
-	if err == nil {
-		t.Fatal("expected an error for a pin whose scene has no image item")
+	if err := applyImageAssetStyles([]*capmodel.OverlayPlan{plan}, pins, nil); err != nil {
+		t.Fatalf("a pin for a scene without a standalone still must be skipped: %v", err)
+	}
+	for _, item := range plan.Items {
+		if len(item.Params) != 0 || item.Frame != nil {
+			t.Fatalf("item %q was decorated by a pin that has no target: %+v %+v", item.ID, item.Params, item.Frame)
+		}
+	}
+}
+
+// TestPayloadImageStyleAppliesWithoutPins pins the seal-time projection: a
+// run-level overlay_style.image reaches image items even when the payload
+// declares no overlay_images pins (applyImageAssetStyles returns early on an
+// empty scene list, so it cannot be the only owner of the run-level look).
+func TestPayloadImageStyleAppliesWithoutPins(t *testing.T) {
+	plan := styleTestPlan()
+	radius := 18.0
+	items := append(plan.Items, capmodel.OverlayItem{ID: "phrase", Kind: "text_phrase", Params: map[string]any{}})
+	applyPayloadOverlayStyleToItems(items, OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{
+		Image: &scriptpkg.OverlayImageStyleSpec{Radius: &radius},
+	}})
+	for index := 0; index < 3; index++ {
+		if got := items[index].Params["radius"]; got != 18.0 {
+			t.Fatalf("image %d radius = %#v, want 18", index, got)
+		}
+		if items[index].Frame == nil {
+			t.Fatalf("image %d has no frame after the run-level style projection", index)
+		}
+	}
+	if _, decorated := items[3].Params["radius"]; decorated {
+		t.Fatalf("text item received the image style: %+v", items[3].Params)
+	}
+}
+
+// TestApplyImageAssetStylesTruncatesPinsBeyondPlannedStills keeps the
+// positional match well-defined when a scene declares more pins than the plan
+// has images: the first pins bind in start-time order and the extras have no
+// target, so the run continues instead of failing on a cosmetic pin.
+func TestApplyImageAssetStylesTruncatesPinsBeyondPlannedStills(t *testing.T) {
+	plan := styleTestPlan()
+	pins := []scriptpkg.OverlayImageAsset{
+		{SceneID: "scene-2", Style: &scriptpkg.OverlayImageStyleSpec{Grid: &scriptpkg.OverlayImageGridSpec{Enabled: styleTestBool(false)}}},
+		{SceneID: "scene-2", Style: &scriptpkg.OverlayImageStyleSpec{Grid: &scriptpkg.OverlayImageGridSpec{Enabled: styleTestBool(true)}}},
+	}
+	if err := applyImageAssetStyles([]*capmodel.OverlayPlan{plan}, pins, nil); err != nil {
+		t.Fatalf("pins beyond the planned stills must be truncated, not fail the run: %v", err)
+	}
+	grid, ok := plan.Items[2].Params["grid"].(map[string]any)
+	if !ok {
+		t.Fatalf("the first pin of scene-2 was not applied: %+v", plan.Items[2].Params)
+	}
+	if enabled, ok := grid["enabled"].(bool); !ok || enabled {
+		t.Fatalf("the first pin of scene-2 must win, got grid=%+v", grid)
 	}
 }
 

@@ -10,7 +10,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -86,14 +85,20 @@ func (h *BindingIndexingHandler) IdempotencyKey() string {
 // errors so the outbox pool retries them.
 func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
 	var p bindingIndexRequestV1
-	if err := json.Unmarshal([]byte(evt.PayloadJSON), &p); err != nil {
-		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: unmarshal payload: %w", err))
+	// SkipIdempotencyKey: the PRODUCER of binding.index.requested
+	// (platform/sqlite/mediamemory.BindingDispatcher) does not emit an
+	// idempotency_key — its dedupe key is the outbox event_key. Requiring a
+	// field the producer never writes would dead-letter every real event.
+	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+		EventName:          "binding.index.requested",
+		WantSchemaVersion:  BindingIndexRequestSchemaVersion,
+		SkipIdempotencyKey: true,
+		Log:                h.log,
+		OnViolation:        bindingIndexViolation,
+	}, evt, &p); err != nil {
+		return err
 	}
-	if p.SchemaVersion != BindingIndexRequestSchemaVersion {
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("binding.index.requested: unsupported schema version %q (want %q)", p.SchemaVersion, BindingIndexRequestSchemaVersion),
-		)
-	}
+	// Resource-level validation (the aggregate is a binding, not an asset).
 	if p.BindingID == "" {
 		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: missing binding_id"))
 	}
@@ -130,4 +135,19 @@ func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Ev
 
 	log.Info("binding.index.requested: concept reindexed")
 	return nil
+}
+
+// bindingIndexViolation preserves this handler's diagnostics while the envelope
+// CHECKS live in outboxevents.DecodeV1.
+func bindingIndexViolation(v outboxevents.Violation) error {
+	switch v.Kind {
+	case outboxevents.ViolationParse:
+		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: unmarshal payload: %w", v.Err))
+	case outboxevents.ViolationSchemaVersion:
+		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: unsupported schema version %q (want %q)", v.Got, v.Want))
+	case outboxevents.ViolationEventID:
+		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: missing event_id"))
+	default:
+		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: %s envelope violation", v.Kind))
+	}
 }

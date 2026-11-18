@@ -94,7 +94,10 @@ func TestJobsChecker_ContextCancellation(t *testing.T) {
 	db := openJobsTestDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
-	time.Sleep(2 * time.Millisecond)
+	// Wait for the deadline to be OBSERVED, not for wall-clock time to pass:
+	// a sleep races the context timer under load and lets a cancelled check
+	// report ok=true before ctx.Err() is set.
+	<-ctx.Done()
 	c := NewJobsChecker(wrapDB(db))
 	res := c.CheckJobs(ctx)
 	require.False(t, res["ok"].(bool), "ctx cancelled must be ok=false, got %v", res)

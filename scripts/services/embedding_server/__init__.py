@@ -52,10 +52,34 @@ except ImportError as e:
     raise
 
 # ── Concurrency control ──────────────────────────────────────────────────────
-# Limit simultaneous model inference to avoid CPU/GPU memory exhaustion
-# when catalogsync + artlist jobs hit the server concurrently.
-INFERENCE_CONCURRENCY = 2
-_inference_sem = asyncio.Semaphore(INFERENCE_CONCURRENCY)
+# Per-family limits: a SigLIP batch must not starve E5 text embeddings (or
+# CLAP audio) on the shared sidecar. Each lane owns its semaphore; the text
+# names stay as backward-compatible aliases for older callers.
+def _positive_env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(1, value)
+
+
+TEXT_INFERENCE_CONCURRENCY = _positive_env_int(
+    "PIPELINEGEN_TEXT_INFERENCE_CONCURRENCY", 2
+)
+VISUAL_INFERENCE_CONCURRENCY = _positive_env_int(
+    "PIPELINEGEN_VISUAL_INFERENCE_CONCURRENCY", 1
+)
+AUDIO_INFERENCE_CONCURRENCY = _positive_env_int(
+    "PIPELINEGEN_AUDIO_INFERENCE_CONCURRENCY", 1
+)
+_text_inference_sem = asyncio.Semaphore(TEXT_INFERENCE_CONCURRENCY)
+_visual_inference_sem = asyncio.Semaphore(VISUAL_INFERENCE_CONCURRENCY)
+_audio_inference_sem = asyncio.Semaphore(AUDIO_INFERENCE_CONCURRENCY)
+INFERENCE_CONCURRENCY = TEXT_INFERENCE_CONCURRENCY
+_inference_sem = _text_inference_sem
 _request_count = 0
 _busy_count = 0
 _busy_lock = asyncio.Lock()
@@ -174,19 +198,6 @@ if clap_model is None:
 app = FastAPI(title="PipelineGen Embedding Server")
 
 
-class EmbeddingQueueMiddleware:
-    """Stub kept for backwards compat with the embedding queue depth tracking.
-    The actual tracking logic is wired via @app.middleware below."""
-
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            return await self.app(scope, receive, send)
-        return await self.app(scope, receive, send)
-
-
 @app.middleware("http")
 async def track_concurrency(request, call_next):
     global _request_count, _busy_count
@@ -213,7 +224,9 @@ async def health():
     return embedding_health_payload(
         queue_depth=_busy_count,
         total_requests=_request_count,
-        inference_slots=INFERENCE_CONCURRENCY,
+        inference_slots=TEXT_INFERENCE_CONCURRENCY,
+        visual_inference_slots=VISUAL_INFERENCE_CONCURRENCY,
+        audio_inference_slots=AUDIO_INFERENCE_CONCURRENCY,
         text_device=TEXT_MODEL_DEVICE,
         visual_device=VISUAL_MODEL_DEVICE,
         audio_device=AUDIO_MODEL_DEVICE,

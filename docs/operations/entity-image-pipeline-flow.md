@@ -27,10 +27,12 @@ re-hashes it in `verified_asset_registry.go`, and the overlay presentation
 layer only binds the verified entries to cards. A malformed or unsupported
 registry is an error, not a silent empty catalog.
 
-`BrainRust/imagecatalog` is **experimental and not wired** into PipelineGen.
-It consumes an exported snapshot and returns a standalone plan; no Go
-composition root calls it. The live path above is the only flow that may
-claim to produce a bound image. See `BrainRust/imagecatalog/README.md`.
+`BrainRust/imagecatalog` was **retired on 2026-11-18** (TICKET-28): it was an
+offline experiment with no Go consumer and a second catalog-policy
+implementation. The live path above is the only flow that may claim to produce
+a bound image; the shared policy fixture now lives in
+`internal/capabilities/images/entitycatalog/testdata/catalog_policy_contract_rust.json`
+and the Go contract test is the single policy gate.
 
 ## State contract
 
@@ -79,3 +81,26 @@ for the candidate rows.
 5. A plan may degrade to a text card, but it must report the reason
    (`no_verified_asset`, `verified_asset_not_bound`, `unverified_asset_bound`,
    …).
+
+## Reliability fixes (2026-11-18)
+
+The live Go path was tightened without changing the provenance policy:
+
+- `AIBundle.VisionVerdictScorer` is the one scorer instance shared by the
+  postprocess and generation wiring; the two sites no longer construct
+  independent scorers.
+- The scorer calls `ChatOnce` (one model attempt) and owns the per-identity
+  attempt budget. `Chat` keeps the documented transient retry policy; the
+  vision lane does not inherit it.
+- The verified bytes are decoded once and reused for both the collage heuristic
+  and the VLM normalization.
+- The startup warm step warms the dedicated `VisionVerdictClient`, so a
+  separate vision endpoint does not pay a cold model load on the first image.
+- The embedding sidecar uses per-family semaphores (text/visual/audio), so a
+  SigLIP batch cannot starve text embeddings.
+
+The provenance gate stays fail-closed: accepted rows without a current
+visual-identity verifier are not served as verified images. Unknown `0x0`
+dimensions are deferred to the materialization probe, not treated as a
+permanent rejection. `BrainRust/imagecatalog` remains retired (TICKET-28); the
+Rust Phase A plan is not revived because the crate has no live consumer.

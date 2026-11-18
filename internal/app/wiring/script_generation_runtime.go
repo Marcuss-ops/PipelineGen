@@ -185,28 +185,69 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
-	dualWrite, err := artifactCheckpointDualWriteFlag()
+	if err := wireArtifactCheckpointRollout(runner, root, committer, log); err != nil {
+		return nil, err
+	}
+	semanticAnalyzer, err := wireScriptGenerationSemanticAnalyzer(runner, cfg, log)
 	if err != nil {
 		return nil, err
+	}
+	if cfg != nil && cfg.Scripts.LocalizedRenderConcurrency > 0 {
+		runner.SetTTSConcurrency(cfg.Scripts.LocalizedRenderConcurrency)
+	}
+	if err := wireScriptGenerationAudioAssets(runner, cfg, root, committer, audioRenderer, log); err != nil {
+		return nil, err
+	}
+	if err := wireScriptGenerationFinalJob(runner, cfg, root, log); err != nil {
+		return nil, err
+	}
+	wireScriptGenerationCheckpointResolver(runner, root, committer, log)
+	if err := wireScriptGenerationMediaPreflight(runner, cfg, root, vidRushProviders, log); err != nil {
+		return nil, err
+	}
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
+	if err := wireScriptGenerationOverlayQueue(runner, cfg, root, log); err != nil {
+		return nil, err
+	}
+	if err := wireScriptGenerationPersistence(runner, root, log); err != nil {
+		return nil, err
+	}
+	if err := wireScriptGenerationVidRush(runner, cfg, root, log, vidRushProviders, vidRushFinalizer, vidRushCache, mediaSampler, semanticAnalyzer); err != nil {
+		return nil, err
+	}
+	wireScriptGenerationConcurrency(runner, cfg, root, log)
+
+	return runner, nil
+}
+
+// wireArtifactCheckpointRollout applies the localized-render artifact
+// checkpoint rollout flags. Extracted from the runtime builder so the cutover
+// invariant (cutover requires dual-write AND resume) is one readable unit: a
+// flag that is set without its prerequisite is a refused boot, never a silent
+// half-migration.
+func wireArtifactCheckpointRollout(runner *scriptgen.Runner, root *ComposeRoot, committer assetspersistence.AssetCommitter, log *zap.Logger) error {
+	dualWrite, err := artifactCheckpointDualWriteFlag()
+	if err != nil {
+		return err
 	}
 	resumeCheckpoints, err := artifactCheckpointResumeFlag()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	cutover, err := artifactCheckpointCutoverFlag()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if cutover && (!dualWrite || !resumeCheckpoints) {
-		return nil, fmt.Errorf("artifact checkpoint cutover requires both %s and %s", scriptgen.ArtifactCheckpointDualWriteEnv, scriptgen.ArtifactCheckpointResumeEnv)
+		return fmt.Errorf("artifact checkpoint cutover requires both %s and %s", scriptgen.ArtifactCheckpointDualWriteEnv, scriptgen.ArtifactCheckpointResumeEnv)
 	}
 	if dualWrite || resumeCheckpoints || cutover {
 		if root.ObservabilityDB == nil || root.ObservabilityDB.DB == nil {
-			return nil, fmt.Errorf("artifact checkpoints require observability DB")
+			return fmt.Errorf("artifact checkpoints require observability DB")
 		}
 		artifactRepo, repoErr := sqlitescripts.NewSQLiteArtifactCheckpointRepository(root.ObservabilityDB.DB)
 		if repoErr != nil {
-			return nil, fmt.Errorf("artifact checkpoints: %w", repoErr)
+			return fmt.Errorf("artifact checkpoints: %w", repoErr)
 		}
 		runner.SetArtifactCheckpointRepository(artifactRepo)
 		if dualWrite {
@@ -224,7 +265,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		}
 		if cutover {
 			if verifier == nil {
-				return nil, fmt.Errorf("artifact checkpoint cutover requires the media-SSOT artifact verifier")
+				return fmt.Errorf("artifact checkpoint cutover requires the media-SSOT artifact verifier")
 			}
 			runner.SetArtifactCheckpointCutover(true)
 		}
@@ -238,6 +279,13 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			zap.Bool("cutover", cutover),
 			zap.String("migration", "296_run_artifact_checkpoints"))
 	}
+	return nil
+}
+
+// wireScriptGenerationSemanticAnalyzer wires the ONE semantic engine every
+// script path uses (batch analysis, phrase alignment, localized identity
+// matching, overlay plan compilation) and the location sources that ride it.
+func wireScriptGenerationSemanticAnalyzer(runner *scriptgen.Runner, cfg *config.Config, log *zap.Logger) (*rustexec.SemanticEngineAdapter, error) {
 	phraseEmbedder := scriptwiring.WirePhraseImpactEmbedder(cfg)
 	// Unified semantic path: ONE analyze call per script returns entities,
 	// bullets, charts, dates and numbers from the same extraction. The worker
@@ -259,9 +307,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	if err := scriptwiring.WireScriptLocationSources(runner, cfg, log); err != nil {
 		return nil, err
 	}
-	if cfg != nil && cfg.Scripts.LocalizedRenderConcurrency > 0 {
-		runner.SetTTSConcurrency(cfg.Scripts.LocalizedRenderConcurrency)
-	}
+	return semanticAnalyzer, nil
+}
+
+// wireScriptGenerationAudioAssets binds the combined audio renderer, the final
+// audio publisher and the cross-run master cache.
+func wireScriptGenerationAudioAssets(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, committer assetspersistence.AssetCommitter, audioRenderer *rustexec.CombinedAudioRenderer, log *zap.Logger) error {
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	var finalAudioDB *sql.DB
 	var finalAudioDrivePublisher delivery.Publisher
@@ -288,9 +339,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			log.Info("final-audio plan cache configured", zap.String("cache_dir", audioCacheDir))
 		}
 	}
-	if err := wireScriptGenerationFinalJob(runner, cfg, root, log); err != nil {
-		return nil, err
-	}
+	return nil
+}
+
+// wireScriptGenerationCheckpointResolver wires durable per-unit checkpoint
+// resume against the artifact verifier derived from the canonical committer.
+func wireScriptGenerationCheckpointResolver(runner *scriptgen.Runner, root *ComposeRoot, committer assetspersistence.AssetCommitter, log *zap.Logger) {
 	// Durable per-unit checkpoint resume (the audio unit today). The resolver
 	// gates reuse on (input fingerprint + recorded artifact still present +
 	// processor version), so a crash-restart SKIPs a certified audio render
@@ -309,6 +363,12 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	} else {
 		log.Warn("durable checkpoint resolver NOT wired (primary SQLite unavailable)")
 	}
+}
+
+// wireScriptGenerationMediaPreflight wires the media preflight (provider
+// availability is part of the contract even when the asset resolver is absent)
+// and, when the registry exists, the canonical audio/background asset source.
+func wireScriptGenerationMediaPreflight(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, log *zap.Logger) error {
 	// MEDIA-SSOT: the BGM/SFX/overlay resolver and the media preflight read the
 	// PostgreSQL media SSOT, and the engine selection is owned by the canonical
 	// selector. Repeating the branch here made a SECOND engine decision point —
@@ -338,7 +398,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		scratchDir := filepath.Join(cfg.Storage.TempPath(), "audioassets")
 		canonical, matErr := drive.NewCanonicalAssetMaterializer(driveReader, scratchDir, log)
 		if matErr != nil {
-			return nil, fmt.Errorf("audio asset resolver: wire canonical materializer: %w", matErr)
+			return fmt.Errorf("audio asset resolver: wire canonical materializer: %w", matErr)
 		}
 		audioAdapter := wiringaudio.NewAudioAssetSourceAdapter(assetLookup, canonical)
 		runner.SetAudioAssetSource(audioAdapter)
@@ -350,10 +410,13 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	} else {
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")
 	}
-	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
-	if err := wireScriptGenerationOverlayQueue(runner, cfg, root, log); err != nil {
-		return nil, err
-	}
+	return nil
+}
+
+// wireScriptGenerationPersistence binds the run repository and the execution
+// recorder. The Job Registry is REQUIRED: without it a run has no lineage, so
+// its absence fails the boot instead of producing unattributable runs.
+func wireScriptGenerationPersistence(runner *scriptgen.Runner, root *ComposeRoot, log *zap.Logger) error {
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
 		runner.SetScriptPersistence(scriptwiring.NewGenerationPersistence(
 			sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo), log,
@@ -365,12 +428,14 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		runner.SetExecutionRecorder(scriptjobs.NewJobRegistryExecutionRecorder(root.Jobs.JobLedger))
 		log.Info("script generation execution recorder wired to Job Registry")
 	} else {
-		return nil, fmt.Errorf("build script generation runtime: Job Registry is required for execution lineage")
+		return fmt.Errorf("build script generation runtime: Job Registry is required for execution lineage")
 	}
+	return nil
+}
 
-	if err := wireScriptGenerationVidRush(runner, cfg, root, log, vidRushProviders, vidRushFinalizer, vidRushCache, mediaSampler, semanticAnalyzer); err != nil {
-		return nil, err
-	}
+// wireScriptGenerationConcurrency resolves and applies the per-stage
+// concurrency budgets, including the TTS ceiling warning.
+func wireScriptGenerationConcurrency(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, log *zap.Logger) {
 	nlpConcurrency := cfg.Scripts.NLPConcurrency
 	if nlpConcurrency <= 0 {
 		nlpConcurrency = scriptgen.DefaultNLPConcurrency
@@ -419,8 +484,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		zap.Int("tts_concurrency", ttsConcurrency),
 		zap.Int("voiceover_max_concurrent_tts", cfg.Voiceover.MaxConcurrentTTS),
 		zap.Int("translation_concurrency", translationConcurrency))
-
-	return runner, nil
 }
 
 // mediaCheckpointArtifactVerifier resolves the durable checkpoint resume

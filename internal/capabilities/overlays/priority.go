@@ -13,9 +13,9 @@
 // same items on every host.
 package overlays
 
-import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-
-import "sort"
+import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+)
 
 // Canonical content priorities (the GOLDEN 08 editorial table).
 const (
@@ -40,19 +40,6 @@ const (
 // at any single moment before degradation drops the lowest-priority items.
 const DefaultOverlapBudget = 3
 
-// ContentPriority returns the canonical editorial priority of a semantic
-// template. Structural layers return PriorityStructural (never dropped); every
-// content template returns a fixed priority so the drop order is deterministic
-// across hosts. Unknown templates return PriorityStructural — the conservative
-// default: the degradation never removes content it does not understand.
-func ContentPriority(templateID string) int {
-	return contentPriorityForTemplate(templateID)
-}
-
-func contentPriorityForTemplate(templateID string) int {
-	return contentPriorityForItem(capmodel.OverlayItem{TemplateID: templateID})
-}
-
 func contentPriorityForTemplateLegacy(item capmodel.OverlayItem) int {
 	switch item.TemplateID {
 	case "BACKGROUND", "VIDEO_BACKGROUND":
@@ -72,70 +59,6 @@ func contentPriorityForTemplateLegacy(item capmodel.OverlayItem) int {
 	default:
 		return PriorityStructural
 	}
-}
-
-// DegradeOverlaps drops the lowest-priority content items so that at most
-// budget content items overlap at any single moment. Structural items
-// (priority 0) are always kept and never counted toward the budget.
-//
-// Determinism: candidates are processed by priority descending, then plan
-// order ascending (stable ties), so the same item list always degrades to the
-// same survivors. The returned items preserve their original relative order
-// (the z-index order is unaffected by a drop).
-func DegradeOverlaps(items []capmodel.OverlayItem, budget int) []capmodel.OverlayItem {
-	if budget <= 0 {
-		budget = DefaultOverlapBudget
-	}
-	if len(items) == 0 {
-		return nil
-	}
-
-	type candidate struct {
-		idx      int
-		priority int
-		item     capmodel.OverlayItem
-	}
-
-	kept := make([]bool, len(items))
-	content := make([]candidate, 0, len(items))
-	for i, item := range items {
-		p := contentPriorityForItem(item)
-		if p == PriorityStructural {
-			kept[i] = true
-			continue
-		}
-		content = append(content, candidate{idx: i, priority: p, item: item})
-	}
-
-	// Priority desc, then plan order asc — deterministic for equal priorities.
-	sort.SliceStable(content, func(i, j int) bool {
-		if content[i].priority != content[j].priority {
-			return content[i].priority > content[j].priority
-		}
-		return content[i].idx < content[j].idx
-	})
-
-	// keptContent holds the accepted content items in acceptance order (which
-	// is priority order). A candidate is dropped only when its window already
-	// carries budget concurrent accepted items; accepted items are the ones a
-	// lower-priority candidate later measures against, so the final max
-	// concurrency never exceeds budget.
-	var keptContent []capmodel.OverlayItem
-	for _, c := range content {
-		if maxConcurrentWithin(keptContent, c.item.StartMs, c.item.EndMs) >= budget {
-			continue
-		}
-		keptContent = append(keptContent, c.item)
-		kept[c.idx] = true
-	}
-
-	out := make([]capmodel.OverlayItem, 0, len(items))
-	for i, item := range items {
-		if kept[i] {
-			out = append(out, item)
-		}
-	}
-	return out
 }
 
 // ContentCounts is the per-attempt content census of a plan: how many
@@ -179,37 +102,4 @@ func CountContent(plan capmodel.OverlayPlan) ContentCounts {
 		}
 	}
 	return c
-}
-
-// maxConcurrentWithin returns the max number of items simultaneously active
-// inside the half-open window [start, end). It counts only items that overlap
-// the window (a sweep over sorted start/end points).
-func maxConcurrentWithin(items []capmodel.OverlayItem, start, end int64) int {
-	var starts, ends []int64
-	for _, it := range items {
-		if it.StartMs < end && start < it.EndMs {
-			starts = append(starts, it.StartMs)
-			ends = append(ends, it.EndMs)
-		}
-	}
-	if len(starts) == 0 {
-		return 0
-	}
-	sort.Slice(starts, func(i, j int) bool { return starts[i] < starts[j] })
-	sort.Slice(ends, func(i, j int) bool { return ends[i] < ends[j] })
-	max, cur := 0, 0
-	i, j := 0, 0
-	for i < len(starts) {
-		if j < len(ends) && ends[j] <= starts[i] {
-			cur--
-			j++
-		} else {
-			cur++
-			if cur > max {
-				max = cur
-			}
-			i++
-		}
-	}
-	return max
 }

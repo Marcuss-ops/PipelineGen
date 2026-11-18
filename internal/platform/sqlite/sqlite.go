@@ -59,10 +59,8 @@ func OpenSQLiteDB(path string, log *zap.Logger) (*SQLiteDB, error) {
 	return &SQLiteDB{DB: db, path: path, log: log}, nil
 }
 
-// DBMedia is the canonical database filename for the unified media database.
-// Deprecated: prefer storage.MediaDBFilename from the SSOT topology package;
-// this alias is retained for in-package callers that have not yet migrated.
-const DBMedia = storage.MediaDBFilename
+// The former DBMedia alias was removed in the 2026-11-18 deprecated-API sweep:
+// storage.MediaDBFilename is the single canonical database-filename owner.
 
 // SQLiteDB wraps a *sql.DB handle with the database file path and logger.
 // It is the single connection point for the unified media database.

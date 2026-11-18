@@ -141,8 +141,9 @@ func (uc *GenerateOneUseCase) SetVidRushCache(cache scriptports.VidRushCachePort
 	uc.finalizer.SetVidRushCache(cache)
 }
 
-// SetQualityGate opts this use case into an alternate editorial gate. Nil
-// keeps the canonical Go gate.
+// SetQualityGate installs the canonical Rust editorial gate. The composition
+// root always calls it; Nil leaves the pipeline unconfigured and every
+// generation fails closed instead of skipping the gate.
 func (uc *GenerateOneUseCase) SetQualityGate(gate scriptpkg.QualityGateEvaluator) {
 	if uc == nil {
 		return

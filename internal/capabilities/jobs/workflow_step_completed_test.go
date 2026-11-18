@@ -125,7 +125,7 @@ func TestStubHandlers_EventType(t *testing.T) {
 		h    outboxevents.Handler
 		want string
 	}{
-		{"delivery", NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false), outboxevents.EventDeliveryRequested},
+		{"delivery", NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{}), outboxevents.EventDeliveryRequested},
 		{"metadata_export", NewMetadataExportHandler(MetadataExportHandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()}), outboxevents.EventAssetMetadataExportRequested},
 		{"provider_sync", NewProviderSyncHandler(zap.NewNop(), nil), outboxevents.EventProviderSyncRequested},
 	}
@@ -151,7 +151,7 @@ func TestStubHandlers_ReturnError(t *testing.T) {
 		name string
 		h    outboxevents.Handler
 	}{
-		{"delivery", NewDeliveryHandler(zap.NewNop(), nil, nil, nil, false)},
+		{"delivery", NewDeliveryHandlerWithOperations(zap.NewNop(), nil, nil, nil, false, DeliveryOperation{})},
 		{"metadata_export", NewMetadataExportHandler(MetadataExportHandlerDeps{Log: zap.NewNop(), OutputDir: t.TempDir()})},
 		{"provider_sync", NewProviderSyncHandler(zap.NewNop(), nil)},
 	}

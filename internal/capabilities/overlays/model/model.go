@@ -89,12 +89,9 @@ type OverlayPlan struct {
 	// Background is an optional full-canvas layer rendered below every
 	// semantic overlay. When omitted, the source video remains visible below
 	// the overlays (the legacy behaviour).
-	Background *OverlayBackground `json:"background,omitempty"`
-	// AnimationPolicies is the retired pre-v2 wire field. New plans leave it
-	// empty; it is retained for decoding historical plans.
-	AnimationPolicies []AnimationPolicy `json:"animation_policies,omitempty"`
-	Items             []OverlayItem     `json:"items"`
-	Fingerprint       string            `json:"fingerprint,omitempty"`
+	Background  *OverlayBackground `json:"background,omitempty"`
+	Items       []OverlayItem      `json:"items"`
+	Fingerprint string             `json:"fingerprint,omitempty"`
 	// RecapPlacements counts the recap slots BuildPlan attempted; RecapCards
 	// counts recap items surviving in Items after overlap degradation.
 	// Application-only observability (like DriveJobID below): excluded from
@@ -116,17 +113,6 @@ type OverlayPlan struct {
 	// application-only observability (json:"-"), so it never enters the
 	// renderinggen.overlay-plan.v1 wire contract or the semantic fingerprint.
 	Intake *OverlayPlanIntake `json:"-"`
-}
-
-// AnimationPolicy is the retired pre-v2 per-group contract. It is retained
-// only for decoding historical overlay plans; new plans leave
-// OverlayPlan.AnimationPolicies empty.
-type AnimationPolicy struct {
-	Target       string         `json:"target"`
-	GroupID      string         `json:"group_id"`
-	SubgroupID   string         `json:"subgroup_id,omitempty"`
-	MotionID     string         `json:"motion_id,omitempty"`
-	MotionParams map[string]any `json:"motion_params,omitempty"`
 }
 
 type OverlaySource struct {

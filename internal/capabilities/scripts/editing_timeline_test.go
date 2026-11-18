@@ -113,6 +113,80 @@ func TestEditingTimeline_OverlayTimesMatchCanonicalTimeline(t *testing.T) {
 	}
 }
 
+// The extractor reuses one occurrence id for the same entity in several
+// scenes. The editing timeline must resolve each card against the occurrence
+// of ITS scene; an id-only lookup let the last occurrence win and moved the
+// scene-01 cards to the end of the r133 videos.
+func TestEditingTimeline_EntityTimingIsSceneScoped(t *testing.T) {
+	const sharedID = "ent_shared_person"
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 30000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+				{ID: "scene-02", Index: 1, TimelineStartUS: 15000000, DurationUS: 15000000},
+			},
+		},
+		FinalAudio: &FinalAudioReference{
+			AssetID:          "final-audio-001",
+			FinalAudioSHA256: "abc123",
+			DurationUS:       30000000,
+			DurationMS:       30000,
+		},
+		EntityTimeline: &testEntityTimeline{
+			Version:    1,
+			DurationUS: 30000000,
+			Scenes: []testSceneEntityTimeline{
+				{
+					SceneID: "scene-01", SceneIndex: 0, TimelineStartUS: 0,
+					Entities: []testEntityOccurrence{{
+						EntityID: sharedID, Name: "Mike Tyson", Type: "PERSON", SceneID: "scene-01",
+						AudioStartUS: 1572917, AudioEndUS: 2485417,
+					}},
+				},
+				{
+					SceneID: "scene-02", SceneIndex: 1, TimelineStartUS: 15000000,
+					Entities: []testEntityOccurrence{{
+						EntityID: sharedID, Name: "Mike Tyson", Type: "PERSON", SceneID: "scene-02",
+						AudioStartUS: 20000000, AudioEndUS: 22000000,
+					}},
+				},
+			},
+		},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan,
+			PlanID:        "test-plan-scene-scoped",
+			VideoID:       "test-video",
+			Width:         1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+			Items: []capmodel.OverlayItem{
+				{ID: "card-scene-01", SceneID: "scene-01", EntityID: sharedID, Kind: "entity_card", TemplateID: "person_default", Text: "Mike Tyson", StartMs: 1572, EndMs: 2486},
+				{ID: "card-scene-02", SceneID: "scene-02", EntityID: sharedID, Kind: "entity_card", TemplateID: "person_default", Text: "Mike Tyson", StartMs: 20000, EndMs: 22000},
+			},
+		},
+	}
+	et, err := BuildEditingTimeline(result)
+	if err != nil {
+		t.Fatalf("BuildEditingTimeline failed: %v", err)
+	}
+	if len(et.Overlays) != 2 {
+		t.Fatalf("expected 2 overlays, got %d", len(et.Overlays))
+	}
+	want := map[string][2]int64{
+		"card-scene-01": {1572917, 2485417},
+		"card-scene-02": {20000000, 22000000},
+	}
+	for _, overlay := range et.Overlays {
+		expected, ok := want[overlay.ArtifactID]
+		if !ok {
+			continue
+		}
+		if overlay.StartUS != expected[0] || overlay.EndUS != expected[1] {
+			t.Errorf("%s span = [%d,%d), want [%d,%d)", overlay.ArtifactID, overlay.StartUS, overlay.EndUS, expected[0], expected[1])
+		}
+	}
+}
+
 func TestEditingTimeline_SceneSpansAreContiguous(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{

@@ -27,9 +27,15 @@ type semanticEngineScene struct {
 }
 
 type semanticEngineResponse struct {
-	OK       bool                    `json:"ok"`
-	Error    string                  `json:"error,omitempty"`
-	Manifest *semanticEngineManifest `json:"manifest,omitempty"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+	// ErrorCode is the worker's machine-stable failure discriminant
+	// (decode, unsupported_operation, execution). It is additive: older
+	// workers omit it and Error keeps the human-readable cause those callers
+	// already report. Pinned by
+	// TestSemanticEngineRealBinaryErrorCodeSurvivesTheWire.
+	ErrorCode string                  `json:"error_code,omitempty"`
+	Manifest  *semanticEngineManifest `json:"manifest,omitempty"`
 }
 
 // The wire structs mirror semantic-core::manifest.v3. Source offsets are

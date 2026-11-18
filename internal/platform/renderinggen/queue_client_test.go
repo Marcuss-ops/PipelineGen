@@ -15,8 +15,8 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -54,7 +54,7 @@ func TestClientSubmitCreated(t *testing.T) {
 	defer srv.Close()
 
 	client := New(srv.URL)
-	if err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1", JobType: "overlay.render"}); err != nil {
+	if err := client.Submit(context.Background(), renderqueue.RenderQueueJob{ID: "job-1", JobType: "overlay.render"}); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	var body map[string]any
@@ -79,8 +79,8 @@ func TestClientSubmitExactReplayUsesQueueAtomicResult(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := New(srv.URL).Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
-	if !errors.Is(err, scriptgen.ErrJobExists) {
+	err := New(srv.URL).Submit(context.Background(), renderqueue.RenderQueueJob{ID: "job-1"})
+	if !errors.Is(err, renderqueue.ErrJobExists) {
 		t.Fatalf("atomic exact replay = %v, want ErrJobExists", err)
 	}
 	if getCalls != 0 {
@@ -100,8 +100,8 @@ func TestClientSubmitChangedIdentityFailsWithoutProducerRead(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := New(srv.URL).Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
-	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) || errors.Is(err, scriptgen.ErrJobExists) {
+	err := New(srv.URL).Submit(context.Background(), renderqueue.RenderQueueJob{ID: "job-1"})
+	if !errors.Is(err, renderqueue.ErrRenderRequestConflict) || errors.Is(err, renderqueue.ErrJobExists) {
 		t.Fatalf("changed identity error = %v, want only ErrRenderRequestConflict", err)
 	}
 	if getCalls != 0 {
@@ -120,8 +120,8 @@ func TestClientSubmitDuplicateIDFailsClosedWithoutProducerRead(t *testing.T) {
 		http.Error(w, "GET must not classify submit conflict", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	err := New(srv.URL).Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
-	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
+	err := New(srv.URL).Submit(context.Background(), renderqueue.RenderQueueJob{ID: "job-1"})
+	if !errors.Is(err, renderqueue.ErrRenderRequestConflict) {
 		t.Fatalf("duplicate ID error = %v, want ErrRenderRequestConflict", err)
 	}
 	if getCalls != 0 {
@@ -130,9 +130,9 @@ func TestClientSubmitDuplicateIDFailsClosedWithoutProducerRead(t *testing.T) {
 }
 
 func TestClientSubmitBatchExactReplayUsesQueueAtomicResult(t *testing.T) {
-	family := []scriptgen.RenderQueueJob{
+	family := []renderqueue.RenderQueueJob{
 		{ID: "anchor", JobType: "render.segment"},
-		{ID: "chunk-0", JobType: "render.segment", ParentJobID: "anchor", ChunkIndex: 0, FrameRange: &scriptgen.RenderFrameRange{Start: 0, End: 48}},
+		{ID: "chunk-0", JobType: "render.segment", ParentJobID: "anchor", ChunkIndex: 0, FrameRange: &renderqueue.RenderFrameRange{Start: 0, End: 48}},
 	}
 	var getCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +145,7 @@ func TestClientSubmitBatchExactReplayUsesQueueAtomicResult(t *testing.T) {
 	}))
 	defer srv.Close()
 	err := New(srv.URL).SubmitBatch(context.Background(), family)
-	if !errors.Is(err, scriptgen.ErrJobExists) {
+	if !errors.Is(err, renderqueue.ErrJobExists) {
 		t.Fatalf("atomic exact family replay = %v, want ErrJobExists", err)
 	}
 	if getCalls != 0 {
@@ -154,9 +154,9 @@ func TestClientSubmitBatchExactReplayUsesQueueAtomicResult(t *testing.T) {
 }
 
 func TestClientSubmitBatchChangedFamilyFailsWithoutProducerRead(t *testing.T) {
-	family := []scriptgen.RenderQueueJob{
+	family := []renderqueue.RenderQueueJob{
 		{ID: "anchor", JobType: "render.segment"},
-		{ID: "chunk-0", JobType: "render.segment", ParentJobID: "anchor", ChunkIndex: 0, FrameRange: &scriptgen.RenderFrameRange{Start: 0, End: 48}},
+		{ID: "chunk-0", JobType: "render.segment", ParentJobID: "anchor", ChunkIndex: 0, FrameRange: &renderqueue.RenderFrameRange{Start: 0, End: 48}},
 	}
 	var getCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +169,7 @@ func TestClientSubmitBatchChangedFamilyFailsWithoutProducerRead(t *testing.T) {
 	}))
 	defer srv.Close()
 	err := New(srv.URL).SubmitBatch(context.Background(), family)
-	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
+	if !errors.Is(err, renderqueue.ErrRenderRequestConflict) {
 		t.Fatalf("changed family error = %v, want ErrRenderRequestConflict", err)
 	}
 	if getCalls != 0 {
@@ -179,11 +179,11 @@ func TestClientSubmitBatchChangedFamilyFailsWithoutProducerRead(t *testing.T) {
 
 func TestClientSubmitBatchPrefetchesSharedAssetsOnce(t *testing.T) {
 	assetHash := strings.Repeat("a", 64)
-	assetWithoutSource := scriptgen.NewRenderQueueAsset(kernelasset.Ref{SHA256: assetHash, AssetID: "shared.mp4"}, "shared.mp4", "")
-	assetWithSource := scriptgen.NewRenderQueueAsset(kernelasset.Ref{SHA256: assetHash, AssetID: "shared.mp4"}, "shared.mp4", "https://assets.example/shared.mp4")
+	assetWithoutSource := renderqueue.NewRenderQueueAsset(kernelasset.Ref{SHA256: assetHash, AssetID: "shared.mp4"}, "shared.mp4", "")
+	assetWithSource := renderqueue.NewRenderQueueAsset(kernelasset.Ref{SHA256: assetHash, AssetID: "shared.mp4"}, "shared.mp4", "https://assets.example/shared.mp4")
 	var calls int
-	var prefetched []scriptgen.RenderQueueAsset
-	prefetch := NewAssetPrefetcher(func(_ context.Context, assets []scriptgen.RenderQueueAsset) error {
+	var prefetched []renderqueue.RenderQueueAsset
+	prefetch := NewAssetPrefetcher(func(_ context.Context, assets []renderqueue.RenderQueueAsset) error {
 		calls++
 		prefetched = append(prefetched, assets...)
 		return nil
@@ -199,10 +199,10 @@ func TestClientSubmitBatchPrefetchesSharedAssetsOnce(t *testing.T) {
 	defer srv.Close()
 	client := New(srv.URL)
 	client.SetAssetPrefetcher(prefetch)
-	family := []scriptgen.RenderQueueJob{
-		{ID: "anchor", JobType: "render.segment", Assets: []scriptgen.RenderQueueAsset{assetWithoutSource}},
-		{ID: "chunk-1", JobType: "render.segment", ParentJobID: "anchor", Assets: []scriptgen.RenderQueueAsset{assetWithoutSource}},
-		{ID: "chunk-2", JobType: "render.segment", ParentJobID: "anchor", Assets: []scriptgen.RenderQueueAsset{assetWithSource}},
+	family := []renderqueue.RenderQueueJob{
+		{ID: "anchor", JobType: "render.segment", Assets: []renderqueue.RenderQueueAsset{assetWithoutSource}},
+		{ID: "chunk-1", JobType: "render.segment", ParentJobID: "anchor", Assets: []renderqueue.RenderQueueAsset{assetWithoutSource}},
+		{ID: "chunk-2", JobType: "render.segment", ParentJobID: "anchor", Assets: []renderqueue.RenderQueueAsset{assetWithSource}},
 	}
 	if err := client.SubmitBatch(context.Background(), family); err != nil {
 		t.Fatalf("SubmitBatch: %v", err)
@@ -481,7 +481,7 @@ func TestClientWaitTerminalMapsTerminalJob(t *testing.T) {
 }
 
 func TestQueueAssetMappingPreservesSourceURL(t *testing.T) {
-	input := []scriptgen.RenderQueueAsset{{
+	input := []renderqueue.RenderQueueAsset{{
 		SHA256:    "abc",
 		URL:       "assets/semantic/person_matt.jpg",
 		SourceURL: "https://cdn.example/matt.jpg",

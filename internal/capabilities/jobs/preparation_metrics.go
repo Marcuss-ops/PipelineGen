@@ -48,12 +48,6 @@ type PreparationMetrics struct {
 	hits      atomic.Int64
 }
 
-func NewPreparationMetrics(store interface {
-	AddEvent(context.Context, string, string, string, map[string]any) error
-}) *PreparationMetrics {
-	return &PreparationMetrics{store: store}
-}
-
 func (m *PreparationMetrics) RecordWorkEstimate(estimate job.WorkEstimate) {
 	if estimate.Kind == "" || estimate.ExpectedWorkMS <= 0 {
 		return
@@ -92,50 +86,4 @@ func (m *PreparationMetrics) RecordAdoption(ctx context.Context, event Preparati
 	data["actual_work_ms"] = event.ActualWorkMS
 	data["speculative_work_wasted"] = event.SpeculativeWorkWasted
 	return m.store.AddEvent(ctx, event.JobID, "preparation_adopted", event.Outcome, data)
-}
-
-// RecordClaimRatio publishes the claim-time KPI without affecting job state.
-// total = required_units, ready = ready_units; running/missing + saved work are
-// derived as zero when the richer snapshot is unavailable.
-func (m *PreparationMetrics) RecordClaimRatio(total, ready int) {
-	snapshot := &job.PreparationClaimSnapshot{
-		TotalUnits:    total,
-		RequiredUnits: total,
-		ReadyUnits:    ready,
-	}
-	if total > 0 {
-		snapshot.PreparedAtClaimRatio = float64(ready) / float64(total)
-	}
-	m.RecordClaimSnapshot(snapshot)
-}
-
-// RecordClaimSnapshot publishes the complete prepared_at_claim_ratio KPI from a
-// durable claim snapshot: the ratio gauge + per-band counter, the units-at-claim
-// histogram, and the estimated critical-path critical-path-saved accumulator.
-// It only surfaces observability; it never mutates job or preparation state.
-func (m *PreparationMetrics) RecordClaimSnapshot(snapshot *job.PreparationClaimSnapshot) {
-	if snapshot == nil {
-		return
-	}
-	total := snapshot.RequiredUnits
-	if total < 0 {
-		total = 0
-	}
-	ready := snapshot.ReadyUnits
-	if ready < 0 {
-		ready = 0
-	}
-	if ready > total && total > 0 {
-		ready = total
-	}
-	ratio := float64(0)
-	if total > 0 {
-		ratio = float64(ready) / float64(total)
-	}
-	PreparationUnitsAtClaim.Observe(float64(ready))
-	PreparationAtClaimRatio.Set(ratio)
-	PreparationClaimBands.WithLabelValues(job.PreparationClaimBandName(ratio)).Inc()
-	if snapshot.EstimatedSavedMS > 0 {
-		PreparationCriticalPathSavedMS.Add(float64(snapshot.EstimatedSavedMS))
-	}
 }

@@ -7,8 +7,9 @@
 package overlays
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // MapPinTimingPayload projects the item's per-pin spoken timing (set by the

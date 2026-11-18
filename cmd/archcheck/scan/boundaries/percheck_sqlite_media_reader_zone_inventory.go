@@ -154,6 +154,5 @@ var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
 	"internal/platform/sqlite/deletion/stuck_row_scanner.go":                     true,
 	"internal/platform/sqlite/mediaregistry/canonical_identity.go":               true,
 	"internal/platform/sqlite/mediaregistry/content_link_backfill.go":            true,
-	"internal/platform/sqlite/mediaregistry/ledger.go":                           true,
 	"internal/platform/sqlite/metadataexport/asset_resolver.go":                  true,
 }

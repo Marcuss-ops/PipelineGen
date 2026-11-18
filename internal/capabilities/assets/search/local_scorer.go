@@ -9,6 +9,10 @@ type LocalScoreQuery struct {
 	Tags          []string `json:"tags"`
 	Source        string   `json:"source"`
 	MinDurationMS int      `json:"min_duration_ms"`
+	// Language is the requested BCP-47 language (empty = no preference).
+	// The Rust scorer treats it as a ±0.10 soft signal and never penalises
+	// rows whose language is unknown.
+	Language string `json:"language,omitempty"`
 }
 
 // LocalScoreCandidate is one catalog row sent to the batch ranker.
@@ -18,6 +22,7 @@ type LocalScoreCandidate struct {
 	Tags       []string `json:"tags"`
 	Source     string   `json:"source"`
 	DurationMS int64    `json:"duration_ms"`
+	Language   string   `json:"language,omitempty"`
 }
 
 // LocalScoreResult binds the computed relevance score to its catalog row.

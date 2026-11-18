@@ -20,7 +20,6 @@ package model
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -385,15 +384,6 @@ func NewTemplateResolver(registry *ChrononOverlayRegistry) *TemplateResolver {
 	return &TemplateResolver{registry: registry}
 }
 
-// Resolve maps an entity type to its canonical template_id.
-func (t *TemplateResolver) Resolve(entityType string) (string, error) {
-	e, err := t.ResolveEntry(entityType)
-	if err != nil {
-		return "", err
-	}
-	return e.Template, nil
-}
-
 // ResolveEntry maps an entity type to its full canonical overlay entry
 // (template + renderer + policies) through EntityTypeToKind + the registry.
 func (t *TemplateResolver) ResolveEntry(entityType string) (OverlayEntry, error) {
@@ -411,35 +401,6 @@ func (t *TemplateResolver) ResolveEntry(entityType string) (OverlayEntry, error)
 // entity type always binds to the same template — never duplicated switches.
 type EntityOverlayPlanner struct {
 	resolver *TemplateResolver
-}
-
-// NewEntityOverlayPlanner builds a planner over the given resolver; nil
-// falls back to the default registry.
-func NewEntityOverlayPlanner(resolver *TemplateResolver) *EntityOverlayPlanner {
-	if resolver == nil {
-		resolver = NewTemplateResolver(nil)
-	}
-	return &EntityOverlayPlanner{resolver: resolver}
-}
-
-// Plan creates the PENDING entity OverlayIntents for the given scenes. It
-// is deterministic: same input → same intents in the same order. An entity
-// whose kind cannot be resolved is skipped (never invented). Timing is
-// absent (PENDING) because no timing is available at this point; the caller
-// promotes timing after the CanonicalTimeline is frozen.
-func (p *EntityOverlayPlanner) Plan(scenes []SceneEntityInput) []OverlayIntent {
-	if len(scenes) == 0 || p == nil || p.resolver == nil {
-		return nil
-	}
-	var intents []OverlayIntent
-	for _, scene := range scenes {
-		for _, entity := range scene.Entities {
-			if intent, ok := bindEntityIntent(scene, entity, p.resolver); ok {
-				intents = append(intents, intent)
-			}
-		}
-	}
-	return intents
 }
 
 // bindEntityIntent resolves one entity occurrence to its canonical template
@@ -491,18 +452,6 @@ func IntentID(sceneID, name string) string {
 		}
 	}
 	return strings.TrimRight(b.String(), "-")
-}
-
-// SortIntents sorts intents deterministically: by scene_index, then by
-// intent_id. This ensures the same entity set always produces the same
-// ordered slice.
-func SortIntents(intents []OverlayIntent) {
-	sort.Slice(intents, func(i, j int) bool {
-		if intents[i].SceneIndex != intents[j].SceneIndex {
-			return intents[i].SceneIndex < intents[j].SceneIndex
-		}
-		return intents[i].IntentID < intents[j].IntentID
-	})
 }
 
 // encodeJSON is a deterministic JSON encoder (stable field order via

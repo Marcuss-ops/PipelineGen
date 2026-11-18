@@ -261,38 +261,6 @@ func TestCapEntityImageOverlaysPerSceneOnlyDropsRepeatedPhotoHashWithinScene(t *
 	}
 }
 
-func TestNamedEntityCardCeilingDoesNotLimitImageCompositeChildren(t *testing.T) {
-	items := make([]capmodel.OverlayItem, 0, 5+maxNamedEntityCardsPerScene+1)
-	for index := 0; index < 5; index++ {
-		id := fmt.Sprintf("image-%d", index)
-		items = append(items, capmodel.OverlayItem{
-			ID: id, SceneID: "scene", EntityID: id, Kind: string(capmodel.KindEntityImage),
-			StartMs: int64(index * 100), EndMs: int64(index*100 + 5000),
-			EntityRef: &capmodel.OverlayEntityRef{EntityID: id, Type: "PERSON", Name: id},
-			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "sha-" + id}},
-		})
-	}
-	for index := 0; index < maxNamedEntityCardsPerScene+1; index++ {
-		items = append(items, capmodel.OverlayItem{
-			ID: fmt.Sprintf("card-%d", index), SceneID: "scene", EntityID: fmt.Sprintf("card-ent-%d", index),
-			Kind: string(capmodel.KindEntityCard), Text: fmt.Sprintf("Named entity %d", index),
-		})
-	}
-	items = capNamedEntityCardsPerScene(items, maxNamedEntityCardsPerScene)
-	cards := 0
-	images := 0
-	for _, item := range items {
-		if item.Kind == string(capmodel.KindEntityCard) {
-			cards++
-		} else if item.Kind == string(capmodel.KindEntityImage) {
-			images++
-		}
-	}
-	if cards != maxNamedEntityCardsPerScene || images != 5 {
-		t.Fatalf("per-scene cap retained %d named cards and %d image entities; want %d and 5", cards, images, maxNamedEntityCardsPerScene)
-	}
-}
-
 func TestCapEntityImageOverlaysDeduplicatesSameCanonicalEntity(t *testing.T) {
 	items := []capmodel.OverlayItem{
 		{ID: "scene-1", EntityID: "occurrence-1", Kind: string(capmodel.KindEntityImage),

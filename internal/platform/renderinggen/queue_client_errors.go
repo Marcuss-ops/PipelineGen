@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -16,10 +16,10 @@ func classifyQueueSubmitError(err error) error {
 		return nil
 	}
 	if errors.Is(err, queueclient.ErrJobExists) {
-		return fmt.Errorf("%w: %v", scriptgen.ErrJobExists, err)
+		return fmt.Errorf("%w: %v", renderqueue.ErrJobExists, err)
 	}
 	if errors.Is(err, queueclient.ErrIdempotencyConflict) || errors.Is(err, queueclient.ErrDuplicateJobID) {
-		return fmt.Errorf("%w: %v", scriptgen.ErrRenderRequestConflict, err)
+		return fmt.Errorf("%w: %v", renderqueue.ErrRenderRequestConflict, err)
 	}
 	return nil
 }

@@ -12,12 +12,12 @@ import (
 	"time"
 
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/identity"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -464,53 +464,23 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 	}, nil
 }
 
-// RenderRequestIdentity is the queue-neutral result projected from the
-// scripts capability's RenderQueueJob contract.
-type RenderRequestIdentity = identity.RenderRequestIdentity
+// RenderRequestIdentity is the kernel-owned immutable identity of a render
+// request. It is deliberately separate from RenderQueueJob.ID: the operational
+// id may be reused across retries, while this identity changes whenever the
+// bytes the worker would produce can change.
+type RenderRequestIdentity = renderqueue.RenderRequestIdentity
 
-// RenderRequestIdentityFor adapts the queue job to the standalone canonical
-// identity package. The scripts capability remains the owner of its queue
-// model; identity owns only canonical digest construction.
+// RenderRequestIdentityFor adapts the queue job to the canonical identity. The
+// identity construction lives in the kernel contract package next to the wire
+// job it projects, so the submit path and the adapter cannot drift apart on
+// which fields affect the produced bytes.
 func RenderRequestIdentityFor(job RenderQueueJob) (RenderRequestIdentity, error) {
-	return identity.For(renderRequestIdentityInput(job))
+	return renderqueue.RenderRequestIdentityFor(job)
 }
 
 // RenderRequestFamilyIdentities returns an identity for each job bound to the
 // complete, ordered family. The order supplied by the atomic queue request is
 // part of the family identity.
 func RenderRequestFamilyIdentities(jobs []RenderQueueJob) ([]RenderRequestIdentity, error) {
-	inputs := make([]identity.Request, len(jobs))
-	for i := range jobs {
-		inputs[i] = renderRequestIdentityInput(jobs[i])
-	}
-	return identity.FamilyIdentities(inputs)
-}
-
-func renderRequestIdentityInput(job RenderQueueJob) identity.Request {
-	assets := make([]identity.Asset, len(job.Assets))
-	for i, asset := range job.Assets {
-		ref := asset.Ref()
-		assets[i] = identity.Asset{SHA256: ref.SHA256, LogicalPath: ref.AssetID}
-	}
-	var frameRange *identity.FrameRange
-	if job.FrameRange != nil {
-		frameRange = &identity.FrameRange{Start: job.FrameRange.Start, End: job.FrameRange.End}
-	}
-	return identity.Request{
-		ID: job.ID, RunID: job.ParentJobID, JobType: job.JobType,
-		ChunkIndex: job.ChunkIndex, FrameRange: frameRange,
-		Plan: job.OverlaySpec, Assets: assets,
-		PreparedPackage: func() *identity.PreparedPackage {
-			if job.PreparedRenderPackage == nil {
-				return nil
-			}
-			ref := job.PreparedRenderPackage
-			return &identity.PreparedPackage{
-				PackageID: ref.PackageID, PlanSHA256: ref.PlanSHA256,
-				AssetManifestSHA: ref.AssetManifestSHA,
-				TotalFrames:      ref.TotalFrames,
-				CompilerVersion:  ref.CompilerVersion, ProfileID: ref.ProfileID,
-			}
-		}(),
-	}
+	return renderqueue.RenderRequestFamilyIdentities(jobs)
 }

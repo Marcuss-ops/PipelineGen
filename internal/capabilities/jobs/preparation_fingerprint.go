@@ -53,11 +53,3 @@ func BuildPreparationFingerprint(input PreparationFingerprintInput) (string, err
 func PreparationUnitFingerprint(kind, jobType string, payload []byte, inputs map[string]string, dependsOn []string, processorVersion string) (string, error) {
 	return BuildPreparationFingerprint(PreparationFingerprintInput{Kind: kind, JobType: jobType, Payload: payload, Inputs: inputs, DependsOn: dependsOn, ProcessorVersion: processorVersion})
 }
-
-func NewPreparationUnit(id, kind, jobType string, payload []byte, inputs map[string]string, dependsOn []string, processorVersion string) (PreparationUnit, error) {
-	fingerprint, err := PreparationUnitFingerprint(kind, jobType, payload, inputs, dependsOn, processorVersion)
-	if err != nil {
-		return PreparationUnit{}, err
-	}
-	return PreparationUnit{ID: id, Kind: kind, Fingerprint: fingerprint, DependsOn: append([]string(nil), dependsOn...), Reusable: true}, nil
-}

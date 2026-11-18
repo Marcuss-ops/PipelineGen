@@ -12,7 +12,3 @@ const (
 	PlannedWindowCacheVersion   CacheVersion = "youtube-window-v1"
 	MaterializedAssetVersion    CacheVersion = "materialized-asset-v1"
 )
-
-func VersionedCacheNamespace(stage string, version CacheVersion) string {
-	return stage + "@" + string(version)
-}

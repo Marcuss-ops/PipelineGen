@@ -50,13 +50,14 @@ func TestBuildPreparationFingerprint_ChangesWhenIdentityChanges(t *testing.T) {
 	}
 }
 
-func TestNewPreparationUnitAndPlanValidate(t *testing.T) {
-	unit, err := NewPreparationUnit("scene-1-tts", "tts", "script.generate", []byte(`{"text":"hello"}`), nil, nil, "tts-v1")
+func TestPreparationUnitFingerprintAndPlanValidate(t *testing.T) {
+	fingerprint, err := PreparationUnitFingerprint("tts", "script.generate", []byte(`{"text":"hello"}`), nil, nil, "tts-v1")
 	if err != nil {
-		t.Fatalf("NewPreparationUnit: %v", err)
+		t.Fatalf("PreparationUnitFingerprint: %v", err)
 	}
+	unit := PreparationUnit{ID: "scene-1-tts", Kind: "tts", Fingerprint: fingerprint, Reusable: true}
 	if unit.Fingerprint == "" {
-		t.Fatal("NewPreparationUnit returned empty fingerprint")
+		t.Fatal("preparation unit has empty fingerprint")
 	}
 	plan := PreparationPlan{JobID: "job-1", Units: []PreparationUnit{unit}}
 	if err := plan.Validate(); err != nil {

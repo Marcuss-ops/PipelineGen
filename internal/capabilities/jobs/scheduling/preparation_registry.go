@@ -3,7 +3,6 @@ package scheduling
 import (
 	"context"
 	"fmt"
-	"sort"
 	"sync"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -129,29 +128,6 @@ func (r *JobPreparationRegistry) Freeze() {
 	r.mu.Lock()
 	r.frozen = true
 	r.mu.Unlock()
-}
-
-func (r *JobPreparationRegistry) IsFrozen() bool {
-	if r == nil {
-		return false
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.frozen
-}
-
-func (r *JobPreparationRegistry) AllTypes() []string {
-	if r == nil {
-		return nil
-	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make([]string, 0, len(r.planners))
-	for jobType := range r.planners {
-		out = append(out, jobType)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // RegisterPreparationPlanner is the explicit composition-root registration seam.

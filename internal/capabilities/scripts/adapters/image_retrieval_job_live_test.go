@@ -175,12 +175,26 @@ func liveJobPlan() *scriptpkg.ResolvedGenerationPlan {
 }
 
 func liveJobInput(segmentID, name string) ProcessInput {
+	// The stage derives its entity queries from segment insights, not from the
+	// scene annotations alone. An input without Insights made
+	// planInternetImageDiscovery return BYPASS, so this gate used to pass
+	// without ever calling a provider.
+	identity, _ := entitycatalog.CanonicalizePersonName(name)
+	canonicalID := identity.CanonicalEntityID
 	return ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
 			ID: segmentID, SegmentID: segmentID,
-			Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: name, Text: name, Type: "PERSON"}}},
+			Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: name, Text: name, Type: "PERSON", CanonicalEntityID: canonicalID}}},
 		}}},
-		VidRushSegments: []scriptpkg.VidRushSegmentResult{{SegmentID: segmentID, SceneID: segmentID, TextHash: segmentID}},
+		VidRushSegments: []scriptpkg.VidRushSegmentResult{{SegmentID: segmentID, SceneID: segmentID, TextHash: segmentID,
+			Insights: scriptpkg.SegmentInsights{
+				Entities: []scriptpkg.ExtractedEntity{{
+					Value: name, Type: "PERSON", CanonicalID: canonicalID, SearchIntents: []string{name},
+				}},
+				ImageEntityCanonicalIDs: map[string]string{name: canonicalID},
+				ImageQueries:            []string{name},
+			},
+		}},
 	}
 }
 

@@ -51,36 +51,3 @@ func TestEntityStyleIdChangesTheRenderKey(t *testing.T) {
 		t.Fatal("entity_style_id must participate in the render key")
 	}
 }
-
-func TestAssignEntityImageMotionsStampsTheStyleSelector(t *testing.T) {
-	items := []capmodel.OverlayItem{
-		{ID: "portrait", Kind: string(capmodel.KindEntityImage), EntityCaption: "Ada", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "ada"}}},
-		{ID: "silent", Kind: string(capmodel.KindEntityImage), AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "b"}}},
-	}
-	if err := assignEntityImageMotions(items, 0, 1920, 1080, ""); err != nil {
-		t.Fatalf("assign entity image motions: %v", err)
-	}
-	if items[0].EntityStyleID != "" {
-		t.Fatalf("default portrait style = %q, want no implicit composition selector", items[0].EntityStyleID)
-	}
-	if items[1].EntityStyleID != "" {
-		t.Fatal("caption-less entity image must not carry entity_style_id (renderer precondition)")
-	}
-}
-
-// TestAssignEntityImageMotionsKeepsAPinnedSelector pins the channel-profile
-// contract end to end at the final stamp site: a run-level pin (badge, camera,
-// …) survives the motion-assignment pass instead of being reset to "random".
-func TestAssignEntityImageMotionsKeepsAPinnedSelector(t *testing.T) {
-	for _, pinned := range []string{"badge", "camera", "typewriter"} {
-		items := []capmodel.OverlayItem{
-			{ID: "portrait", Kind: string(capmodel.KindEntityImage), EntityCaption: "Ada", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "ada"}}},
-		}
-		if err := assignEntityImageMotions(items, 0, 1920, 1080, pinned); err != nil {
-			t.Fatalf("assign entity image motions (%s): %v", pinned, err)
-		}
-		if items[0].EntityStyleID != pinned {
-			t.Fatalf("pinned selector %q was clobbered to %q by the final stamp", pinned, items[0].EntityStyleID)
-		}
-	}
-}

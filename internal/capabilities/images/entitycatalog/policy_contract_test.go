@@ -25,12 +25,12 @@ type catalogPolicyContractFixture struct {
 	} `json:"cases"`
 }
 
-// TestGoCatalogPolicyMatchesSharedContractFixture reads the fixture the Rust
-// imagecatalog test consumes and pins the same accept/reject decision for each
-// case. The fixture lives in BrainRust/imagecatalog/fixtures so the two
-// implementations cannot silently drift.
+// TestGoCatalogPolicyMatchesSharedContractFixture pins the accept/reject
+// decision for each fixture case. The fixture was MOVED here from
+// BrainRust/imagecatalog (retired 2026-11-18, TICKET-28) so the Go policy gate
+// keeps the only cross-implementation contract check without a second planner.
 func TestGoCatalogPolicyMatchesSharedContractFixture(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "..", "..", "BrainRust", "imagecatalog", "fixtures", "catalog_policy_contract_20261114.json")
+	path := filepath.Join("testdata", "catalog_policy_contract_rust.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read shared catalog policy fixture: %v", err)

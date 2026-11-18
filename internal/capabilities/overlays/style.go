@@ -3,9 +3,10 @@ package overlays
 
 import (
 	"fmt"
+	"strings"
+
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"strings"
 )
 
 // maxImageFrameShadowBlurPX is the strict-Vulkan separable-blur ceiling the
@@ -318,47 +319,10 @@ func ImageBackdropParams(backdrop *scriptpkg.OverlayImageBackdropSpec) map[strin
 	return params
 }
 
-// ImageStyleParams returns the image-specific runtime overrides from the
-// same style projection used for standalone image items.
-func ImageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
-	all := StyleParams(&scriptpkg.OverlayStyleSpec{Image: style})
-	out := make(map[string]any)
-	for key, value := range all {
-		if strings.HasPrefix(key, "image_glow_") {
-			// Glow keeps its image_ prefix so it cannot collide with the
-			// caption's text glow_color on a captioned entity image.
-			out[key] = value
-			continue
-		}
-		if strings.HasPrefix(key, "image_") {
-			out[strings.TrimPrefix(key, "image_")] = value
-		}
-	}
-	// Effects and grid are item-level treatments, not layer geometry: chain
-	// segments carry them in their own params so a fused image chain keeps
-	// the same controls as a standalone card.
-	for key, value := range ImageTreatmentParams(style) {
-		out[key] = value
-	}
-	return out
-}
-
-// ApplyImageStyle applies runtime image params and frame metadata to the item
-// and its image layers, then normalizes entity portrait geometry.
-func MergeCaptionStyleIntoLayers(layers []capmodel.OverlayImageLayer, styleParams map[string]any) {
-	if len(styleParams) == 0 {
-		return
-	}
-	for index := range layers {
-		if strings.TrimSpace(layers[index].Caption) == "" {
-			continue
-		}
-		layers[index].Params = MergeRuntimeTextStyleParams(layers[index].Params, styleParams)
-	}
-}
-
 // MergeRuntimeTextStyleParams applies the canonical run-level typography to
 // one text-bearing item while preserving its geometry and image controls.
+// Payload projection still needs it for chain segments, which are assembled
+// after the planner has normalized presentation fonts.
 func MergeRuntimeTextStyleParams(params, styleParams map[string]any) map[string]any {
 	out := make(map[string]any, len(params)+len(styleParams))
 	for key, value := range params {
@@ -570,53 +534,12 @@ func IsRuntimeTextStyleParam(key string) bool {
 	}
 }
 
-// IsRuntimeCursorParam reports the cursor caret overrides.
-func IsRuntimeCursorParam(key string) bool {
-	switch key {
-	case "cursor_color", "cursor_width_px", "cursor_height_px", "cursor_blink":
-		return true
-	default:
-		return false
-	}
-}
-
-// IsRuntimeImageParam reports the image-card runtime overrides.
-func IsRuntimeImageParam(key string) bool {
-	switch key {
-	case "image_width", "image_height", "image_position_x", "image_position_y", "image_radius",
-		"image_bounded", "image_fit",
-		"image_glow_radius", "image_glow_intensity", "image_glow_color",
-		"image_border_width", "image_border_color", "image_border_radius",
-		"image_stroke_width", "image_stroke_color",
-		"image_shadow_enabled", "image_shadow_color", "image_shadow_opacity", "image_shadow_blur",
-		"image_shadow_offset_x", "image_shadow_offset_y":
-		return true
-	default:
-		return false
-	}
-}
-
 // IsTextOverlayKind reports whether an item is a renderer text primitive.
 func IsTextOverlayKind(kind string) bool {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	return strings.HasPrefix(kind, "text_") || kind == "phrase" || kind == "important_phrase" ||
 		kind == "short_phrase" || kind == "keyword" || kind == "important_word" ||
 		kind == "number" || kind == "date_number" || kind == "quote" || kind == "brand_text" || kind == "brand-text"
-}
-
-// StyleFontColor projects an explicit RGBA style color to the caption's
-// supported hex fill. An omitted color remains omitted so entity preset color
-// can remain the fallback.
-func StyleFontColor(style *scriptpkg.OverlayStyleSpec) string {
-	if style == nil || len(style.Color) < 3 {
-		return ""
-	}
-	return rgbaHex(style.Color)
-}
-
-// IsEntityOverlayKind reports entity card and entity image primitives.
-func IsEntityOverlayKind(kind string) bool {
-	return kind == string(capmodel.KindEntityCard) || kind == string(capmodel.KindEntityImage)
 }
 
 // MergeStyleParam merges keys into an existing style map without aliasing it.

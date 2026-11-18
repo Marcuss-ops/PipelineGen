@@ -3,7 +3,6 @@ package script
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -111,8 +110,11 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 		if lookupErr != nil {
 			a.log.Warn("VidRush existing image lookup failed; falling back to DuckDuckGo", zap.String("query", req.Query), zap.Error(lookupErr))
 		} else if len(cached) > 0 {
-			rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-			rng.Shuffle(len(cached), func(i, j int) { cached[i], cached[j] = cached[j], cached[i] })
+			// A time-seeded shuffle made the same plan bind different images on
+			// every run. The seed is now the retrieval subject, and the rows are
+			// sorted by content identity first, so a warm catalog replay is
+			// reproducible without giving up variety across different subjects.
+			cached = orderExistingImageResults(cached, imageSearchShuffleSeed(req))
 			out := make([]scriptpkg.SegmentAssetCandidate, 0, len(cached))
 			for _, row := range cached {
 				if strings.TrimSpace(row.DriveLink) == "" || strings.TrimSpace(row.ContentSHA256) == "" {
@@ -133,9 +135,10 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 	}
 	// Query-class routing: an institution, place or object has a licensed
 	// encyclopedic asset, so Commons is asked first and a hit avoids the broad
-	// web provider entirely. A person is the opposite case: Commons returns
-	// nothing for proper names, so it is not asked at all. The empty class keeps
-	// the historical DDG-first cascade for every caller that does not route.
+	// web provider entirely. A person also benefits from Wikipedia/Commons
+	// pageimages when an encyclopedic article exists, while keeping DuckDuckGo
+	// as fallback/supplement for non-encyclopedic subjects and era-specific
+	// photos. The empty class keeps the historical DDG-first cascade.
 	filter := imagesrouting.ImageFilter{
 		SubjectID: strings.TrimSpace(req.Query),
 		Limit:     req.Limit,
@@ -196,19 +199,23 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 	// same download/verify/finalize lifecycle. Long scene-text queries remain
 	// DDG-only and do not create needless external fan-out.
 	if !editorialRoute && strings.TrimSpace(req.Entity) != "" && len(strings.Fields(strings.TrimSpace(req.Query))) <= 4 {
-		if !personRoute {
-			if explicit, ok := a.resolver.(interface {
-				ResolveProvider(string) (imagesrouting.ImageSearcher, error)
-			}); ok {
-				if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
-					commons, searchErr := commonsSearcher.Search(queryCtx, filter)
-					if searchErr != nil {
-						a.log.Warn("VidRush Wikimedia Commons fallback failed", zap.String("query", req.Query), zap.Error(searchErr))
-					} else if len(commons) > 0 && strings.EqualFold(strings.TrimSpace(commons[0].Provider), "wikimedia_commons") {
-						results = append(commons, results...)
-						if req.Limit > 0 && len(results) > req.Limit {
-							results = results[:req.Limit]
-						}
+		if explicit, ok := a.resolver.(interface {
+			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+		}); ok {
+			providerName := "wikimedia_commons"
+			commonsFilter := filter
+			if personRoute {
+				providerName = "wikipedia"
+				commonsFilter.SubjectID = strings.TrimSpace(req.Entity)
+			}
+			if wikiSearcher, wikiErr := explicit.ResolveProvider(providerName); wikiErr == nil {
+				wikiResults, searchErr := wikiSearcher.Search(queryCtx, commonsFilter)
+				if searchErr != nil {
+					a.log.Warn("VidRush encyclopedic fallback failed", zap.String("provider", providerName), zap.String("query", commonsFilter.SubjectID), zap.Error(searchErr))
+				} else if len(wikiResults) > 0 && strings.EqualFold(strings.TrimSpace(string(wikiResults[0].Provider)), providerName) {
+					results = append(wikiResults, results...)
+					if req.Limit > 0 && len(results) > req.Limit {
+						results = results[:req.Limit]
 					}
 				}
 			}
@@ -254,7 +261,7 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 	longContextQuery := strings.EqualFold(strings.TrimSpace(req.Query), strings.TrimSpace(req.Entity)) || len(strings.Fields(strings.TrimSpace(req.Query))) > 4
 	// A routed editorial hit already carries a licensed asset from Commons;
 	// adding a broad-web provider would spend the budget the route just saved.
-	if len(results) == 0 || (!editorialRoute && longContextQuery) {
+	if len(results) == 0 || (!editorialRoute && !personRoute && longContextQuery) {
 		if explicit, ok := a.resolver.(interface {
 			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
 		}); ok {
@@ -309,7 +316,13 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 // Unknown dimensions remain eligible because the downloader verifies bytes.
 func imageCandidateMeetsMinimumMetadata(width, height int) bool {
 	policy := adapters.DefaultVidRushImagePolicy()
-	return (width <= 0 || width >= policy.MinWidth) && (height <= 0 || height >= policy.MinHeight)
+	// Unknown dimensions stay eligible: the downloader verifies the real
+	// header. Known dimensions use the same orientation-aware policy as the
+	// byte verifier, so a 600x900 portrait is not dropped for being narrow.
+	if width <= 0 || height <= 0 {
+		return true
+	}
+	return policy.AcceptsDimensions(width, height) && policy.WithinPixelBudget(width, height)
 }
 
 // interleaveImageSearchResults keeps candidates from both independent

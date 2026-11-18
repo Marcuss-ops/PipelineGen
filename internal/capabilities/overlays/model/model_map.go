@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 	"image"
 	_ "image/png"
 	"io"
@@ -12,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"unicode/utf8"
+
+	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"

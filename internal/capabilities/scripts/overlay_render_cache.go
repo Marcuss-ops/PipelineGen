@@ -30,6 +30,7 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/rendercacheinfo"
@@ -104,10 +105,9 @@ type OverlayRenderCache interface {
 // OverlayArtifactProber verifies that a cached locator still resolves in the
 // object store. The cache is an index, not a second copy: the bytes live in a
 // store with its own retention policy, so a hit is only a hit when the object
-// is still there.
-type OverlayArtifactProber interface {
-	Present(ctx context.Context, artifact RenderArtifact) (bool, error)
-}
+// is still there. Kernel-owned port (aliased), so the adapter implements it
+// without importing this capability package.
+type OverlayArtifactProber = renderqueue.OverlayArtifactProber
 
 // OverlayRenderCacheEnabled reports the kill-switch state. Only an explicit
 // 0/false/no/off disables it; an unset or empty value keeps the cache on.
@@ -208,9 +208,8 @@ func overlayRenderCacheKeyForPlan(plan capmodel.OverlayPlan, epoch string) (Over
 }
 
 // overlayPlanRenderContextDigest hashes the plan-level facts that change the
-// pixels but are NOT part of an item's RenderKey: background/source, the
-// retired animation-policy wire (historical plans), canvas floor, foreground
-// scale, entity variation seed, media
+// pixels but are NOT part of an item's RenderKey: background/source, canvas
+// floor, foreground scale, entity variation seed, media
 // contract, and the two item fields RenderKey does not carry (Kind and
 // CameraMotionID). It deliberately excludes plan identity, Drive routing and
 // producer-only fields, so two runs that render the same clip agree.
@@ -252,7 +251,6 @@ func overlayPlanRenderContextDigest(plan capmodel.OverlayPlan) string {
 		BitstreamLane string `json:"bitstream_lane,omitempty"`
 		// Policies keeps the retired pre-v2 wire in the cache identity so a
 		// historical plan cannot alias one that never carried it.
-		Policies       string                    `json:"animation_policies"`
 		SourceSHA256   string                    `json:"source_sha256"`
 		Background     *overlayCacheBG           `json:"background"`
 		ItemKind       string                    `json:"item_kind"`
@@ -282,8 +280,13 @@ func overlayPlanRenderContextDigest(plan capmodel.OverlayPlan) string {
 		// 10 invalidates corrected overlay text alignment; 11 converts
 		// documentary marker positions from canvas pixels to centre-relative
 		// screen coordinates; 12 keeps screen-space phrase motion off glyph
-		// transforms that move the text box out of frame.
-		CacheVersion:    12,
+		// transforms that move the text box out of frame. 13 invalidates the
+		// planner's entrance/geometry change: entrances now span about a third
+		// of the visible window (8→20 frames), single images carry centered
+		// params instead of the right-anchored preset, maps hold 2 s and entity
+		// cards are capped at 5 s. Rows written with the old pixels must not be
+		// reused.
+		CacheVersion:    13,
 		SchemaVersion:   strings.TrimSpace(plan.SchemaVersion),
 		Renderer:        renderer,
 		Width:           plan.Width,
@@ -296,7 +299,6 @@ func overlayPlanRenderContextDigest(plan capmodel.OverlayPlan) string {
 		MediaContract:   strings.TrimSpace(plan.MediaContract),
 		OutputProfileID: strings.TrimSpace(plan.OutputProfileID),
 		BitstreamLane:   kernelmedia.CanonicalVideoExtradataSHA256,
-		Policies:        canonicalJSONString(plan.AnimationPolicies),
 		Background:      overlayCacheBackground(plan.Background),
 	}
 	if plan.Source != nil {

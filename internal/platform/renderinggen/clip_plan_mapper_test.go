@@ -284,6 +284,36 @@ func TestMapClipPlanToOverlayPlan_GlobalEffectsAndGrid(t *testing.T) {
 	}
 }
 
+// TestMapClipPlanToOverlayPlan_BlackAndWhiteCarriesAmount proves the archival
+// treatment keeps its strength on the wire: RenderingGen lowers the type to
+// Chronon's color.saturation, so the amount must survive the mapper instead of
+// being dropped as an unknown field.
+func TestMapClipPlanToOverlayPlan_BlackAndWhiteCarriesAmount(t *testing.T) {
+	plan := mapperPlan(t, nil)
+	plan.Subtitles = nil
+	plan.Output.Effects = []cliprender.ClipEffectSpec{{Type: "black_and_white", Amount: 0.8}}
+	if err := plan.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := MapClipPlanToOverlayPlan(plan)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	var doc struct {
+		ClipEffects []map[string]any `json:"clip_effects"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.ClipEffects) != 1 {
+		t.Fatalf("clip effects lost: %s", raw)
+	}
+	effect := doc.ClipEffects[0]
+	if effect["type"] != "black_and_white" || effect["amount"] != 0.8 {
+		t.Fatalf("black_and_white must carry its amount: %#v", effect)
+	}
+}
+
 // TestMapClipPlanToOverlayPlan_BackgroundKindMismatchFailsClosed proves the
 // mapper never stages bytes under a family they do not belong to: an image
 // kind with a video suffix (or the reverse) is a mapping error, not a silently

@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"strings"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // OverlayArtifactProber checks a certified artifact URL with HEAD. It shares
@@ -42,7 +42,7 @@ func NewOverlayArtifactProber() *OverlayArtifactProber {
 //
 // Returning an error makes the caller render normally without evicting a
 // possibly valid entry.
-func (p *OverlayArtifactProber) Present(ctx context.Context, artifact scriptgen.RenderArtifact) (bool, error) {
+func (p *OverlayArtifactProber) Present(ctx context.Context, artifact renderqueue.RenderArtifact) (bool, error) {
 	rawURL := strings.TrimSpace(artifact.URL)
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		return false, fmt.Errorf("overlay artifact prober: %q is not an http(s) URL", rawURL)
@@ -74,4 +74,4 @@ func (p *OverlayArtifactProber) Present(ctx context.Context, artifact scriptgen.
 	}
 }
 
-var _ scriptgen.OverlayArtifactProber = (*OverlayArtifactProber)(nil)
+var _ renderqueue.OverlayArtifactProber = (*OverlayArtifactProber)(nil)

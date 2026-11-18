@@ -88,6 +88,29 @@ func TestValidateMaterializationRejectsInvalidContentSHA(t *testing.T) {
 	}
 }
 
+func TestIsUsableCandidateQualityDefersUnknownDimensionsButKeepsProvenanceFailClosed(t *testing.T) {
+	candidate := Candidate{
+		CanonicalEntityID: "person:michael-jordan",
+		Provider:          "wikimedia_commons",
+		Rank:              1,
+		SourceURL:         "https://images.example/michael-jordan/portrait.jpg",
+		Status:            CandidateStatusFresh,
+		SemanticStatus:    CandidateSemanticAccepted,
+		SemanticScore:     0.9,
+		TechnicalScore:    0.9,
+		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
+		VerifierVersion:   CandidateVerifierVersion,
+	}
+	if !IsUsableCandidateQuality(candidate) {
+		t.Fatal("unknown dimensions (0x0) must be deferred to the materialization probe, not rejected")
+	}
+
+	candidate.QualityReason = "query matched the entity name"
+	if IsUsableCandidateQuality(candidate) {
+		t.Fatal("accepted rows without visual-identity provenance must stay fail-closed")
+	}
+}
+
 func TestIsUsableCandidateQualityRequiresCurrentVerifierVersion(t *testing.T) {
 	base := Candidate{
 		CanonicalEntityID: "person:michael-jordan",

@@ -18,8 +18,8 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -28,20 +28,20 @@ type fakeClipQueue struct {
 	result    queueclient.Job
 
 	// Optional failure injection: when submitErr is set, Submit returns it
-	// (e.g. scriptgen.ErrJobExists for a replayed job); when retryErr is set,
+	// (e.g. renderqueue.ErrJobExists for a replayed job); when retryErr is set,
 	// Retry returns it instead of clearing the failed state.
 	submitErr error
 	retryErr  error
 	retries   int
 }
 
-func (f *fakeClipQueue) Submit(_ context.Context, job scriptgen.RenderQueueJob) error {
+func (f *fakeClipQueue) Submit(_ context.Context, job renderqueue.RenderQueueJob) error {
 	f.submitted = queueclient.Job{ID: job.ID, JobType: job.JobType, RenderPlan: job.OverlaySpec}
 	return f.submitErr
 }
 
-func (f *fakeClipQueue) Get(_ context.Context, _ string) (scriptgen.RenderQueueJob, error) {
-	return scriptgen.RenderQueueJob{
+func (f *fakeClipQueue) Get(_ context.Context, _ string) (renderqueue.RenderQueueJob, error) {
+	return renderqueue.RenderQueueJob{
 		State:       string(f.result.State),
 		OverlaySpec: f.result.RenderPlan,
 		Artifact:    toScriptArtifact(f.result.Artifact),
@@ -259,7 +259,7 @@ func TestClipRenderExecutorAdmitsEquivalentPlanConflict(t *testing.T) {
 	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
 
 	q := &fakeClipQueue{
-		submitErr: scriptgen.ErrRenderRequestConflict,
+		submitErr: renderqueue.ErrRenderRequestConflict,
 		result:    queueclient.Job{State: queueclient.StateCompleted, RenderPlan: rawPlan},
 	}
 	executor, err := NewClipRenderExecutor(q)
@@ -283,7 +283,7 @@ func TestClipRenderExecutorKeepsConflictForDifferentPlan(t *testing.T) {
 	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
 
 	q := &fakeClipQueue{
-		submitErr: scriptgen.ErrRenderRequestConflict,
+		submitErr: renderqueue.ErrRenderRequestConflict,
 		result: queueclient.Job{
 			State:      queueclient.StateCompleted,
 			RenderPlan: []byte(`{"schema_version":"something.else"}`),
@@ -293,7 +293,7 @@ func TestClipRenderExecutorKeepsConflictForDifferentPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := executor.Submit(context.Background(), plan); !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
+	if err := executor.Submit(context.Background(), plan); !errors.Is(err, renderqueue.ErrRenderRequestConflict) {
 		t.Fatalf("different plan must stay a conflict, got %v", err)
 	}
 }
@@ -594,7 +594,7 @@ func TestClipRenderExecutorPropagatesRetryError(t *testing.T) {
 	t.Setenv("RENDERINGGEN_STORE_URL", srv.URL)
 
 	q := &fakeClipQueue{
-		submitErr: scriptgen.ErrJobExists,
+		submitErr: renderqueue.ErrJobExists,
 		result:    queueclient.Job{State: queueclient.StateFailed},
 		retryErr:  errors.New("queue retry unavailable"),
 	}

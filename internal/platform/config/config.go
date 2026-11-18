@@ -211,6 +211,21 @@ func (c *Config) Validate() error {
 	if c.External.OllamaURL == "" {
 		return fmt.Errorf("ollama url is required")
 	}
+	// The vision lane is opt-in. A model without its own endpoint cannot be
+	// separated: it would either be ignored or force a model reload on the
+	// shared script-generation endpoint, so reject the ambiguous half-config.
+	if strings.TrimSpace(c.External.OllamaVisionModel) != "" && strings.TrimSpace(c.External.OllamaVisionURL) == "" {
+		return fmt.Errorf("ollama_vision_model requires ollama_vision_url (a different model on the shared endpoint forces a resident reload)")
+	}
+	if visionURL := strings.TrimSpace(c.External.OllamaVisionURL); visionURL != "" {
+		parsed, err := url.Parse(visionURL)
+		if err != nil || parsed.Host == "" {
+			return fmt.Errorf("invalid ollama_vision_url %q: must be an absolute http(s) URL", visionURL)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return fmt.Errorf("ollama_vision_url must use http or https (got scheme=%q)", parsed.Scheme)
+		}
+	}
 	if c.External.VeloxMasterURL != "" {
 		if _, err := url.Parse(c.External.VeloxMasterURL); err != nil {
 			return fmt.Errorf("invalid velox_master_url %q: %w", c.External.VeloxMasterURL, err)

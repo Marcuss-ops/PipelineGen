@@ -75,6 +75,7 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 		qualityScore                                               SqlNullFloat64
 		reuseCount                                                 SqlNullInt64
 		lastUsedAtNull                                             SqlNullString
+		languageNull, originalLanguageNull                         SqlNullString
 	)
 
 	// Scan target order MUST match MediaAssetColumns in clips_repository.go.
@@ -89,7 +90,7 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 		&folderIDNull, &parentFolderIDNull, &folderPathNull,
 		&category, &groupNameNull, &filename, &errCol, &thumbURL, &phash,
 		&searchText, &sceneType, &qualityScore, &reuseCount,
-		&lastUsedAtNull,
+		&lastUsedAtNull, &languageNull, &originalLanguageNull,
 	)
 	if err != nil {
 		return nil, err
@@ -155,6 +156,8 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 		a.SetReuseCount(int(reuseCount.Int64))
 	}
 	a.SetLastUsedAt(lastUsedAtNull.String)
+	a.SetLanguage(languageNull.String)
+	a.SetOriginalLanguage(originalLanguageNull.String)
 	if deletedAtStr.Valid && strings.TrimSpace(deletedAtStr.String) != "" {
 		if t := timeutil.ParseRFC3339(deletedAtStr.String); !t.IsZero() {
 			a.DeletedAt = &t

@@ -76,6 +76,12 @@ external:
   ollama_model: "gemma4:e4b"
   ollama_timeout_seconds: 120
   ollama_warm_timeout_seconds: 600
+  # Dedicated lane for entity-image verdicts (VLM). Empty keeps the legacy
+  # path on the script-generation endpoint. Set both to isolate pixel
+  # verification on its own Ollama instance and admission budget; the model
+  # may be omitted to reuse ollama_model.
+  # ollama_vision_url: "http://127.0.0.1:11435"
+  # ollama_vision_model: "gemma4:e2b"
   # Ollama concurrency budget: the client keeps at most OLLAMA_NUM_PARALLEL
   # generation requests in flight (3 on the certified worker), shared by every
   # pool on this endpoint (script, NLP, translation, cues, embeddings).

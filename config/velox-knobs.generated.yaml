@@ -145,12 +145,6 @@ knobs:
     safe_production: "bin/mediasampler"
     owner: "internal/app/wiring/media_pool_ranker.go"
     description: "Rust mediasampler worker used by the canonical media ranker (rank_candidates)."
-  VELOX_RUST_QUALITY_GATE:
-    kind: config
-    default: "false"
-    safe_production: "false until the release pin is bumped"
-    owner: "internal/app/wiring/wire_script_usecases.go"
-    description: "Opt into the Rust script-qa quality_gate instead of the canonical Go editorial gate."
   VELOX_SCHEDULER_INTERVAL:
     kind: config
     default: "30s"

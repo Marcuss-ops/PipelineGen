@@ -20,35 +20,3 @@ package overlays
 var longCopyCrashedMotionIDs = map[string]struct{}{
 	"phrase_apple_clean_12_slide_diagonal_pop": {},
 }
-
-// isLongCopyCrashingMotion reports whether the id is proven to crash the
-// render daemon on long copy. The planner singleton fast-path uses it to
-// decide verbatim-vs-fallback without allocating a filtered pool copy.
-func isLongCopyCrashingMotion(id string) bool {
-	_, crashed := longCopyCrashedMotionIDs[id]
-	return crashed
-}
-
-// excludeLongCopyCrashingMotions drops daemon-crashing ids from an automatic
-// rotation pool, preserving order. Pools without any guarded id are returned
-// untouched. Explicit caller pools pass through here only on the long-copy
-// verbatim paths, where keeping the id would fail the whole run at render.
-func excludeLongCopyCrashingMotions(pool []string) []string {
-	present := false
-	for _, id := range pool {
-		if _, blocked := longCopyCrashedMotionIDs[id]; blocked {
-			present = true
-			break
-		}
-	}
-	if !present {
-		return pool
-	}
-	out := make([]string, 0, len(pool))
-	for _, id := range pool {
-		if _, blocked := longCopyCrashedMotionIDs[id]; !blocked {
-			out = append(out, id)
-		}
-	}
-	return out
-}

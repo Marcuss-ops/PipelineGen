@@ -21,8 +21,9 @@ package overlays
 
 import (
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // MapCompositionInput is the selection context: what the planner decided

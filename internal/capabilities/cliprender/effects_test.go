@@ -26,6 +26,7 @@ func TestValidateClipEffectsRejectsInvisibleEffect(t *testing.T) {
 		{"glow without radius and intensity", ClipEffectSpec{Type: "glow"}, "radius/intensity"},
 		{"bloom without radius and intensity", ClipEffectSpec{Type: "bloom", Threshold: 0.6}, "radius/intensity"},
 		{"lens_distortion without curvature and scale", ClipEffectSpec{Type: "lens_distortion"}, "curvature/scale"},
+		{"black_and_white without amount", ClipEffectSpec{Type: "black_and_white"}, "amount"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,7 +70,31 @@ func TestValidateClipEffectsAcceptsVisibleEffect(t *testing.T) {
 	if err := ValidateClipEffects([]ClipEffectSpec{
 		{Type: "sharpen", Amount: 0.8},
 		{Type: "banded_grain", Intensity: 0.5},
+		{Type: "black_and_white", Amount: 1},
 	}, nil); err != nil {
 		t.Fatalf("visible effects should validate, got %v", err)
+	}
+}
+
+// TestValidateClipEffectsBlackAndWhiteBounds pins the archival treatment
+// contract: 1.0 is full desaturation, 0.5 keeps half the colour, and anything
+// outside the unit range is a payload bug rather than a look. An explicit 0 is
+// indistinguishable from an omitted key on the flat transport, so it is
+// rejected by the no-op guard above: declaring the treatment and asking for no
+// treatment is the payload bug that guard exists for.
+func TestValidateClipEffectsBlackAndWhiteBounds(t *testing.T) {
+	for _, amount := range []float64{0.5, 1} {
+		if err := ValidateClipEffects([]ClipEffectSpec{{Type: "black_and_white", Amount: amount}}, nil); err != nil {
+			t.Fatalf("amount %v should validate, got %v", amount, err)
+		}
+	}
+	if err := ValidateClipEffects([]ClipEffectSpec{{Type: "black_and_white", Amount: 0}}, nil); err == nil || !strings.Contains(err.Error(), "needs it to be visible") {
+		t.Fatalf("amount 0 must be rejected as a declared no-op, got %v", err)
+	}
+	for _, amount := range []float64{-0.1, 1.5} {
+		err := ValidateClipEffects([]ClipEffectSpec{{Type: "black_and_white", Amount: amount}}, nil)
+		if err == nil || !strings.Contains(err.Error(), "amount must be in [0,1]") {
+			t.Fatalf("amount %v: got %v", amount, err)
+		}
 	}
 }

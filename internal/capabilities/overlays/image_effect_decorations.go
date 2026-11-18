@@ -1,8 +1,9 @@
 package overlays
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // Image effect decorations are the producer-side projection of ChrononTemplate's

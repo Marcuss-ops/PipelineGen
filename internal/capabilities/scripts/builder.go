@@ -291,6 +291,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		ShortPhraseMotion:             strings.TrimSpace(item.ShortPhraseMotion),
 		LongPhraseMotion:              strings.TrimSpace(item.LongPhraseMotion),
 		PhraseMotionFamily:            item.PhraseMotionFamily,
+		EditorialBulletStyles:         append([]scriptpkg.EditorialBulletStyle(nil), item.EditorialBulletStyles...),
 		DateMotionFamily:              item.DateMotionFamily,
 		MotionSeed:                    strings.TrimSpace(item.MotionSeed),
 		CoherenceSeed:                 strings.TrimSpace(item.CoherenceSeed),
@@ -298,7 +299,6 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		ImageWithTextMotions:          append([]string(nil), item.ImageWithTextMotions...),
 		EntityImageMotions:            append([]string(nil), item.EntityImageMotions...),
 		EntityCaptionMotions:          append([]string(nil), item.EntityCaptionMotions...),
-		AnimationPolicies:             append([]scriptpkg.AnimationPolicy(nil), item.AnimationPolicies...),
 		RandomLightLeakOnClipStart:    item.RandomLightLeakOnClipStart,
 		RandomLightLeakOnOverlayStart: item.RandomLightLeakOnOverlayStart,
 		RandomImageEffects:            item.RandomImageEffects,
@@ -383,11 +383,13 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	if err := ApplyEditingAssetPolicy(&req, mediaregistry.DefaultEditingAssetsPolicy()); err != nil {
 		return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply editing asset policy: %w", err)
 	}
-	// Every request carries the certified entity-image pool. The Rust planner
-	// rejects an admitted entity image when this pool is empty; an omitted
-	// pool means "automatic rotation", not "no motion", so resolve it once
-	// here instead of failing after script, translation and voiceover work.
+	// Every request carries the certified entity-image and caption pools. The
+	// Rust planner rejects an admitted entity image or caption when these pools
+	// are empty; an omitted pool means "automatic rotation", not "no motion",
+	// so resolve them once here instead of failing after script, translation
+	// and voiceover work.
 	req.EntityImageMotions = resolveEntityImageMotionPool(req.EntityImageMotions)
+	req.EntityCaptionMotions = resolveEntityCaptionMotionPool(req.EntityCaptionMotions)
 	return req, nil
 }
 

@@ -27,6 +27,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Weekly drift check: the vendored queue is pinned, but upstream can move.
+  # The gate validates the lock even when the sibling checkout is absent.
+  schedule:
+    - cron: "0 6 * * 1"
 
 permissions: {}
 

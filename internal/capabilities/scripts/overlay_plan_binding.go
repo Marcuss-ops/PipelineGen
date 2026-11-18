@@ -89,7 +89,6 @@ type overlayPlanDigestPayload struct {
 	MediaContract          string                  `json:"media_contract,omitempty"`
 	Source                 *overlayPlanDigestLayer `json:"source,omitempty"`
 	Background             *overlayPlanDigestLayer `json:"background,omitempty"`
-	AnimationPolicies      string                  `json:"animation_policies,omitempty"`
 	Items                  []overlayPlanDigestItem `json:"items"`
 }
 
@@ -142,7 +141,6 @@ func overlayPlanDigestDocument(plan *capmodel.OverlayPlan) *overlayPlanDigestPay
 		MediaContract:          strings.TrimSpace(plan.MediaContract),
 		Source:                 overlayDigestSource(plan.Source),
 		Background:             overlayDigestBackground(plan.Background),
-		AnimationPolicies:      canonicalJSON(plan.AnimationPolicies),
 		Items:                  make([]overlayPlanDigestItem, 0, len(plan.Items)),
 	}
 	for _, item := range plan.Items {

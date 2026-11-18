@@ -12,7 +12,7 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -20,19 +20,19 @@ import (
 // status, which is how the async split is asserted: Submit must make ZERO
 // status calls (it never waits), Settle must observe the terminal state.
 type asyncProbeQueue struct {
-	submitted scriptgen.RenderQueueJob
+	submitted renderqueue.RenderQueueJob
 	result    queueclient.Job
 	getCalls  int
 }
 
-func (f *asyncProbeQueue) Submit(_ context.Context, job scriptgen.RenderQueueJob) error {
+func (f *asyncProbeQueue) Submit(_ context.Context, job renderqueue.RenderQueueJob) error {
 	f.submitted = job
 	return nil
 }
 
-func (f *asyncProbeQueue) Get(context.Context, string) (scriptgen.RenderQueueJob, error) {
+func (f *asyncProbeQueue) Get(context.Context, string) (renderqueue.RenderQueueJob, error) {
 	f.getCalls++
-	return scriptgen.RenderQueueJob{State: string(f.result.State), Artifact: toScriptArtifact(f.result.Artifact)}, nil
+	return renderqueue.RenderQueueJob{State: string(f.result.State), Artifact: toScriptArtifact(f.result.Artifact)}, nil
 }
 
 func (f *asyncProbeQueue) Retry(context.Context, string) error { return nil }

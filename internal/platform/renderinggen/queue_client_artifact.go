@@ -10,15 +10,15 @@ import (
 	"encoding/json"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
-func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
+func toScriptArtifact(in *queueclient.Artifact) *renderqueue.RenderArtifact {
 	if in == nil {
 		return nil
 	}
-	out := &scriptgen.RenderArtifact{
+	out := &renderqueue.RenderArtifact{
 		ID:                 in.ID,
 		Kind:               in.Kind,
 		StorageKey:         in.StorageKey,
@@ -66,7 +66,7 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 	}
 	if in.OutputFacts != nil {
 		for _, segment := range in.OutputFacts.BatchSegments {
-			artifact := &scriptgen.RenderArtifact{
+			artifact := &renderqueue.RenderArtifact{
 				Kind: "segment", StorageKey: segment.SHA256, SHA256: segment.SHA256,
 				URL: segment.ArtifactURL, MimeType: "video/mp4", SizeBytes: segment.SizeBytes,
 				Width: segment.Width, Height: segment.Height, FrameCount: segment.FrameCount,
@@ -83,8 +83,8 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 				artifact.CodecProfile, artifact.PixelFormat = facts.VideoProfile, facts.PixelFormat
 				artifact.AudioStreams = facts.AudioStreams
 			}
-			out.BatchSegments = append(out.BatchSegments, scriptgen.OverlayItemRenderReference{
-				ItemID: segment.ItemID, Status: scriptgen.RenderQueueStateCompleted, Artifact: artifact,
+			out.BatchSegments = append(out.BatchSegments, renderqueue.OverlayItemRenderReference{
+				ItemID: segment.ItemID, Status: renderqueue.RenderQueueStateCompleted, Artifact: artifact,
 			})
 		}
 	}

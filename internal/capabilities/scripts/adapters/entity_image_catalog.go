@@ -364,7 +364,7 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 	rank := 0
 	persisted := 0
 	for _, result := range accepted {
-		if !strings.EqualFold(strings.TrimSpace(result.Provider), scriptpkg.VidRushProviderInternetImages) || strings.TrimSpace(result.SourceURL) == "" {
+		if !scriptpkg.IsInternetImageSourceProvider(result.Provider) || strings.TrimSpace(result.SourceURL) == "" {
 			continue
 		}
 		rank++
@@ -436,7 +436,7 @@ func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 		return nil
 	}
 	for rank, result := range results {
-		if !strings.EqualFold(strings.TrimSpace(result.Provider), scriptpkg.VidRushProviderInternetImages) ||
+		if !scriptpkg.IsInternetImageSourceProvider(result.Provider) ||
 			strings.TrimSpace(result.Entity) == "" || strings.TrimSpace(result.SourceURL) == "" ||
 			(result.SemanticStatus != entitycatalog.CandidateSemanticAccepted && result.SemanticStatus != entitycatalog.CandidateSemanticRejected) {
 			continue
@@ -498,7 +498,7 @@ func hydratePersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 	byEntity := make(map[string][]pendingIndex)
 	for i := range candidates {
 		candidate := &candidates[i]
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
+		if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) ||
 			strings.TrimSpace(candidate.Entity) == "" || strings.TrimSpace(candidate.SourceURL) == "" {
 			continue
 		}
@@ -550,7 +550,7 @@ func hydratePersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 func nowUTC() time.Time { return time.Now().UTC() }
 
 func entityImageCatalogCandidateID(ctx context.Context, repo entitycatalog.Repository, candidate scriptpkg.SegmentAssetCandidate) (int64, error) {
-	if repo == nil || !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+	if repo == nil || !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) {
 		return 0, nil
 	}
 	if rawID := strings.TrimPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-"); rawID != strings.TrimSpace(candidate.AssetID) {

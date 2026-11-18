@@ -278,6 +278,8 @@ func (m *Asset) QualityTier() string          { return m.GetMetadataString("qual
 func (m *Asset) SetQualityTier(v string)      { m.SetMetadataString("quality_tier", v) }
 func (m *Asset) Language() string             { return m.GetMetadataString("language") }
 func (m *Asset) SetLanguage(v string)         { m.SetMetadataString("language", v) }
+func (m *Asset) OriginalLanguage() string     { return m.GetMetadataString("original_language") }
+func (m *Asset) SetOriginalLanguage(v string) { m.SetMetadataString("original_language", v) }
 func (m *Asset) Topics() []string             { return MetadataStringSlice(m.Metadata, "topics") }
 func (m *Asset) SetTopics(v []string)         { setMetadataSlice(m, "topics", v) }
 func (m *Asset) Speakers() []string           { return MetadataStringSlice(m.Metadata, "speakers") }

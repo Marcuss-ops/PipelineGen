@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 

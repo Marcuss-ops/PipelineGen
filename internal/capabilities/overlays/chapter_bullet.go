@@ -12,12 +12,3 @@ const ChapterBulletRole = "chapter_bullet"
 // cards. RenderingGen fits text shrink-only, so long chapter sentences
 // shrink to fit while short ones render bigger — never overflow.
 const ChapterTextFontIncreasePX = 24
-
-// ChapterBulletMotionCandidates is the automatic entrance pool for chapter
-// cards. It deliberately excludes the text_3d_* family: on the light overlay
-// canvas those motions compile to a full-frame white video, which erased the
-// chapter copy. The pool keeps the certified long-copy entrances, so chapters
-// still rotate distinct editorial motions without a blank-on-white family.
-func ChapterBulletMotionCandidates() []string {
-	return text3DFreeLongPhraseMotions(append([]string(nil), longPhraseMotionCandidates...))
-}

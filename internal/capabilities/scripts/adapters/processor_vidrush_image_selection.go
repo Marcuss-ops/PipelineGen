@@ -159,6 +159,19 @@ func vidRushImageSelectionScore(candidate scriptpkg.SegmentAssetCandidate) float
 	return candidate.TechnicalQualityScore
 }
 
+// vidRushImageTieBreakKey makes equal-score selection reproducible. Provider
+// discovery order and a warm catalog lookup are not stable across runs, so a
+// stable sort alone still lets two equally scored images swap slots. The
+// content address is the strongest identity available before materialization.
+func vidRushImageTieBreakKey(candidate scriptpkg.SegmentAssetCandidate) string {
+	for _, value := range []string{candidate.ContentSHA256, candidate.AssetID, candidate.SourceURL, candidate.PreviewURL} {
+		if key := strings.ToLower(strings.TrimSpace(value)); key != "" {
+			return key
+		}
+	}
+	return ""
+}
+
 func durableVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -230,7 +243,11 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 	// sorting keeps equal scores deterministic and preserves discovery order
 	// only as the final tie-breaker.
 	sort.SliceStable(images, func(i, j int) bool {
-		return vidRushImageSelectionScore(images[i]) > vidRushImageSelectionScore(images[j])
+		left, right := vidRushImageSelectionScore(images[i]), vidRushImageSelectionScore(images[j])
+		if left != right {
+			return left > right
+		}
+		return vidRushImageTieBreakKey(images[i]) < vidRushImageTieBreakKey(images[j])
 	})
 	imagesOnly := plan != nil &&
 		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) &&

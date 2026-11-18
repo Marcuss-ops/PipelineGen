@@ -57,6 +57,9 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 			scriptpkg.OverlayCategoryBullets: "disabled",
 		},
 		MaxOverlaysPerScene: 5, MaxPhraseOverlays: 4, MaxImageOverlays: 3, MaxMapOverlays: 2,
+		EditorialBulletStyles: []scriptpkg.EditorialBulletStyle{{
+			SceneID: "scene-1", FontFamily: "oswald", FontSizePX: 96, MotionID: "air_rise_type_on",
+		}},
 	}
 
 	request, err := buildOverlayPlanV2Request(result, "it", canvas, "plan-1", "video-1", "project-1", "seed-1",
@@ -107,6 +110,15 @@ func TestBuildOverlayPlanV2RequestMapsTheVersionedEnvelope(t *testing.T) {
 	}
 	if request.Budgets == nil || request.Budgets.PhraseOverlays != 4 || request.Budgets.MaxPerScene != 5 {
 		t.Fatalf("budgets: %+v", request.Budgets)
+	}
+	// The per-bullet pin must survive the envelope verbatim: same scene, same
+	// font, same size, same certified motion.
+	if len(request.Canvas.EditorialBulletStyles) != 1 {
+		t.Fatalf("bullet styles: %+v", request.Canvas.EditorialBulletStyles)
+	}
+	style := request.Canvas.EditorialBulletStyles[0]
+	if style.SceneID != "scene-1" || style.FontFamily != "oswald" || style.FontSizePX != 96 || style.MotionID != "air_rise_type_on" {
+		t.Fatalf("bullet style lost on the wire: %+v", style)
 	}
 	if request.SceneWindows["scene-1"] != [2]int64{0, 2_000_000} {
 		t.Fatalf("scene windows: %+v", request.SceneWindows)
@@ -276,7 +288,8 @@ func TestApplyChainSegmentPresetsResolvesEveryChainSegment(t *testing.T) {
 	}}}
 	applyChainSegmentPresets(plan)
 
-	segments := chainSegmentMaps(plan.Items[0].Params)
+	segments, ok := capmodel.ChainSegmentMaps(plan.Items[0].Params)
+	require.True(t, ok)
 	require.Len(t, segments, 2)
 	for index, segment := range segments {
 		require.Equal(t, string(capabilityoverlay.PresetModernName), segment["preset_id"], "segment %d", index)
@@ -345,4 +358,62 @@ func TestBuildOverlayPlanV2RequestDisablesSourceEditorialForLocalizedPlan(t *tes
 	require.Equal(t, "enabled", request.Canvas.OverlayCategories[string(scriptpkg.OverlayCategoryPhrases)])
 	require.Equal(t, "disabled", request.Scenes[0].OverlayCategories[string(scriptpkg.OverlayCategoryTitles)])
 	require.Equal(t, "disabled", request.Scenes[0].OverlayCategories[string(scriptpkg.OverlayCategoryBullets)])
+}
+
+// bulletStyleFixture builds the smallest plan that projects one bullet, so the
+// per-bullet tests exercise the real envelope instead of a hand-built wire.
+func bulletStyleFixture(t *testing.T, styles []scriptpkg.EditorialBulletStyle) (overlayplan.V2Request, error) {
+	t.Helper()
+	result := &GenerateResult{
+		SourceLanguage: "it",
+		Editorial: &scriptpkg.EditorialManifest{
+			SchemaVersion:  overlayplan.EditorialManifestVersion,
+			SourceLanguage: "it",
+			ProfileVersion: overlayplan.EditorialProfileVersion,
+			Certified:      true,
+			Fingerprint:    strings.Repeat("a", 64),
+			Scenes: []scriptpkg.EditorialScene{{
+				SceneID: "scene-1",
+				Bullets: []scriptpkg.EditorialSceneBullet{{SentenceStart: 0, SentenceEnd: 1, Text: "Nike corre."}},
+			}},
+		},
+	}
+	scene := Scene{
+		ID: "scene-1", DurationMS: 2_000, ExecutionMode: "body",
+		Text: map[Language]string{"it": "Nike corre. La statua è al museo."},
+		OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+			scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleEnabled,
+		},
+	}
+	canvas := OverlayCanvasSpec{
+		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+			scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleEnabled,
+		},
+		EditorialBulletStyles: styles,
+	}
+	return buildOverlayPlanV2Request(result, "it", canvas, "plan-1", "video-1", "project-1", "seed-1",
+		[]Scene{scene}, nil, nil, nil, map[string][2]int64{"scene-1": {0, 2_000_000}})
+}
+
+// TestBuildOverlayPlanV2RequestRejectsBulletStyleForUnknownScene pins the
+// identity rule: a pin addresses its bullet by scene, so an unknown scene would
+// style nothing and must fail closed instead of shipping a silent no-op.
+func TestBuildOverlayPlanV2RequestRejectsBulletStyleForUnknownScene(t *testing.T) {
+	_, err := bulletStyleFixture(t, []scriptpkg.EditorialBulletStyle{{
+		SceneID: "scene-404", FontFamily: "oswald",
+	}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "scene_id \"scene-404\" is not a scene in this plan")
+}
+
+// TestBuildOverlayPlanV2RequestRejectsUncertifiedBulletMotion pins catalogue
+// membership at the request boundary: a motion the registry does not certify
+// for bullets never reaches the compiler to be dropped.
+func TestBuildOverlayPlanV2RequestRejectsUncertifiedBulletMotion(t *testing.T) {
+	_, err := bulletStyleFixture(t, []scriptpkg.EditorialBulletStyle{{
+		SceneID: "scene-1", MotionID: "definitely_not_a_motion",
+	}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "motion_id \"definitely_not_a_motion\"")
 }

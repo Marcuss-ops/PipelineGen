@@ -443,20 +443,19 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.NotEmpty(t, person.PresetID)
 	require.Len(t, person.AssetRefs, 1)
 	require.Equal(t, "person:tim-cook", person.EntityRef.CanonicalEntityID)
-	require.Contains(t, capabilityoverlay.ImagePresetCandidates(), person.PresetID)
+	require.NotEmpty(t, person.PresetID, "the Rust planner must choose a preset for the entity image")
 	value := overlayItemByText(t, res.OverlayPlan.Items, "number", "ten million")
 	requireReviewName(t, value.ID, "ten-million", "date_number")
 	require.Equal(t, "METRIC_STAT_CARD", value.TemplateID)
-	require.Contains(t, capabilityoverlay.MetricPresentationMotionCandidates(), value.MotionID)
+	require.NotEmpty(t, value.MotionID, "the Rust planner must choose a motion for the value card")
 	for _, tc := range []struct {
 		text, template string
-		motionPool     []string
 		start, end     int64
 	}{
-		{"2025", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1700, 1800},
-		{"March 5, 2026", "TIMELINE_DATE_CARD", capabilityoverlay.DatePresentationMotionCandidates(), 1900, 6900},
-		{"25%", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2300, 2400},
-		{"$2 million", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2500, 2700},
+		{"2025", "TIMELINE_DATE_CARD", 1700, 1800},
+		{"March 5, 2026", "TIMELINE_DATE_CARD", 1900, 6900},
+		{"25%", "METRIC_STAT_CARD", 2300, 2400},
+		{"$2 million", "METRIC_STAT_CARD", 2500, 2700},
 	} {
 		var item capmodel.OverlayItem
 		for _, candidate := range res.OverlayPlan.Items {
@@ -467,7 +466,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		}
 		require.Equal(t, tc.text, item.Text, "typed value must reach the runtime overlay plan")
 		require.Equal(t, tc.template, item.TemplateID)
-		require.Contains(t, tc.motionPool, item.MotionID)
+		require.NotEmpty(t, item.MotionID, "the Rust planner must choose a motion for %q", tc.text)
 		require.Equal(t, tc.start, item.StartMs, "typed value must start at its certified spoken word boundary")
 		require.Equal(t, tc.end, item.EndMs, "typed value must retain its full planned display window")
 		if tc.template == "TIMELINE_DATE_CARD" {

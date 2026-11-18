@@ -3,7 +3,9 @@
 //
 // ResolveSource / ResolveContent read durable registry facts
 // (media_asset_sources, media_assets.content_sha256) — never the AssetID
-// prefix. Backfill reconstructs media_asset_sources rows from the canonical
+// prefix. The classification rule is shared with the PostgreSQL media adapter
+// (capregistry.ResolveSourceObservations / ResolveContentObservations), so the
+// two stores cannot disagree about identity. Backfill reconstructs media_asset_sources rows from the canonical
 // media_assets columns (source_video_id for youtube, drive_file_id for
 // drive) and reports the fail-closed UNKNOWN set instead of guessing.
 package mediaregistry
@@ -41,14 +43,18 @@ var (
 )
 
 // ResolveSource resolves (sourceType, sourceRef) to the canonical asset.
+//
+// This adapter owns ONLY the SQLite SELECT and its scan errors: the
+// classification (not found, ambiguity, which row wins) lives in
+// capregistry.ResolveSourceObservations, the single implementation shared with
+// the PostgreSQL media adapter.
 func (r *CanonicalIdentityResolver) ResolveSource(ctx context.Context, sourceType, sourceRef string) (capregistry.CanonicalIdentity, error) {
 	if r == nil || r.db == nil {
 		return capregistry.CanonicalIdentity{}, ErrNotWired
 	}
-	sourceType = strings.TrimSpace(sourceType)
-	sourceRef = strings.TrimSpace(sourceRef)
-	if sourceType == "" || sourceRef == "" {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: source_type and source_ref are required", capregistry.ErrAssetSourceInvalid)
+	sourceType, sourceRef, err := capregistry.NormalizeSourceQuery(sourceType, sourceRef)
+	if err != nil {
+		return capregistry.CanonicalIdentity{}, err
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
@@ -60,47 +66,30 @@ func (r *CanonicalIdentityResolver) ResolveSource(ctx context.Context, sourceTyp
 	}
 	defer func() { _ = rows.Close() }()
 
-	var (
-		identity capregistry.CanonicalIdentity
-		seen     = false
-	)
-	assetIDs := make(map[string]struct{})
+	observations := make([]capregistry.SourceObservation, 0, 4)
 	for rows.Next() {
-		var assetID, contentSHA string
-		if err := rows.Scan(&assetID, &contentSHA); err != nil {
+		var observation capregistry.SourceObservation
+		if err := rows.Scan(&observation.AssetID, &observation.ContentSHA256); err != nil {
 			return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver: scan source: %w", err)
 		}
-		assetIDs[assetID] = struct{}{}
-		identity = capregistry.CanonicalIdentity{
-			AssetID:       assetID,
-			SourceType:    sourceType,
-			SourceRef:     sourceRef,
-			ContentSHA256: contentSHA,
-		}
-		seen = true
+		observations = append(observations, observation)
 	}
 	if err := rows.Err(); err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver: iterate sources: %w", err)
 	}
-	if !seen {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: source (%s, %s)", capregistry.ErrCanonicalIdentityNotFound, sourceType, sourceRef)
-	}
-	if len(assetIDs) > 1 {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: source (%s, %s) resolves to %d assets", capregistry.ErrCanonicalIdentityAmbiguous, sourceType, sourceRef, len(assetIDs))
-	}
-	return identity, nil
+	return capregistry.ResolveSourceObservations(sourceType, sourceRef, observations)
 }
 
-// ResolveContent resolves contentSHA256 to its canonical identity. When
-// exactly one asset references the bytes, AssetID is populated; when the
-// bytes are multi-provenance, AssetID is left empty.
+// ResolveContent resolves contentSHA256 to its canonical identity. The
+// multi-provenance rule (several assets → AssetID empty) is the shared one in
+// capregistry.ResolveContentObservations.
 func (r *CanonicalIdentityResolver) ResolveContent(ctx context.Context, contentSHA256 string) (capregistry.CanonicalIdentity, error) {
 	if r == nil || r.db == nil {
 		return capregistry.CanonicalIdentity{}, ErrNotWired
 	}
-	contentSHA256 = strings.TrimSpace(contentSHA256)
-	if contentSHA256 == "" {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: content_sha256 is required", capregistry.ErrContentObjectInvalid)
+	contentSHA256, err := capregistry.NormalizeContentQuery(contentSHA256)
+	if err != nil {
+		return capregistry.CanonicalIdentity{}, err
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
@@ -122,14 +111,7 @@ func (r *CanonicalIdentityResolver) ResolveContent(ctx context.Context, contentS
 	if err := rows.Err(); err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver: iterate content: %w", err)
 	}
-	if len(assetIDs) == 0 {
-		return capregistry.CanonicalIdentity{}, fmt.Errorf("%w: content %s", capregistry.ErrCanonicalIdentityNotFound, contentSHA256)
-	}
-	identity := capregistry.CanonicalIdentity{ContentSHA256: contentSHA256}
-	if len(assetIDs) == 1 {
-		identity.AssetID = assetIDs[0]
-	}
-	return identity, nil
+	return capregistry.ResolveContentObservations(contentSHA256, assetIDs)
 }
 
 // Backfill reconstructs media_asset_sources rows from the canonical

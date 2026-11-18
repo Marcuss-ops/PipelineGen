@@ -239,7 +239,7 @@ func entityImageFailureReason(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 	unverified := false
 	unmaterialized := false
 	for _, candidate := range candidates {
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+		if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) {
 			continue
 		}
 		identity := normalizeEntityMatch(candidate.Entity)
@@ -535,7 +535,7 @@ func entityImageMatches(want, entityType string, seg scriptpkg.VidRushSegmentRes
 		// Entity images are internet-images-only by contract: a candidate from
 		// any other provider (even a fully materialized video whose query
 		// matches the person) must never bind as a person/org/place image.
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+		if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) {
 			continue
 		}
 		rawCandidateEntity := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(candidate.Entity), "describe "))
@@ -671,7 +671,7 @@ func entityVariantOffset(seed string, poolSize int) int {
 // the SHA-256 before using the bytes. Without this, a transient upload error
 // silently destroys an otherwise valid entity image.
 func verifiedImageCandidateWithoutDrive(candidate scriptpkg.SegmentAssetCandidate) bool {
-	if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+	if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) {
 		return false
 	}
 	return readyVidRushCandidateWithMode(candidate, true)

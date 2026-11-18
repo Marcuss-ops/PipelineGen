@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"image"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -70,15 +69,34 @@ func newVidRushImageTransport() *http.Transport {
 // VidRushImagePolicy is deliberately conservative and CPU-friendly. The
 // policy is shared by web-image and generated-image verification.
 type VidRushImagePolicy struct {
-	MaxBytes     int64
-	MinWidth     int
-	MinHeight    int
+	MaxBytes int64
+	// MinWidth/MinHeight remain the canonical area floor (both were the
+	// historical two-sided minimum). MinLongSide/MinShortSide add the
+	// orientation-aware rule that admits vertical portraits instead of
+	// rejecting a 600x900 image for being narrower than 640.
+	MinWidth       int
+	MinHeight      int
+	MinLongSide    int
+	MinShortSide   int
+	MaxAspectRatio float64
+	// MaxPixels rejects a declared decompression bomb before a full decode.
+	MaxPixels    int
 	Timeout      time.Duration
 	MaxRedirects int
 }
 
 func DefaultVidRushImagePolicy() VidRushImagePolicy {
-	return VidRushImagePolicy{MaxBytes: 20 << 20, MinWidth: 640, MinHeight: 360, Timeout: 15 * time.Second, MaxRedirects: 3}
+	return VidRushImagePolicy{
+		MaxBytes:       20 << 20,
+		MinWidth:       640,
+		MinHeight:      360,
+		MinLongSide:    640,
+		MinShortSide:   360,
+		MaxAspectRatio: 3.0,
+		MaxPixels:      digest.DefaultImagePixelBudget,
+		Timeout:        15 * time.Second,
+		MaxRedirects:   3,
+	}
 }
 
 func normalizeVidRushImagePolicy(policy VidRushImagePolicy) VidRushImagePolicy {
@@ -92,6 +110,18 @@ func normalizeVidRushImagePolicy(policy VidRushImagePolicy) VidRushImagePolicy {
 	if policy.MinHeight <= 0 {
 		policy.MinHeight = defaults.MinHeight
 	}
+	if policy.MinLongSide <= 0 {
+		policy.MinLongSide = defaults.MinLongSide
+	}
+	if policy.MinShortSide <= 0 {
+		policy.MinShortSide = defaults.MinShortSide
+	}
+	if policy.MaxAspectRatio <= 0 {
+		policy.MaxAspectRatio = defaults.MaxAspectRatio
+	}
+	if policy.MaxPixels <= 0 {
+		policy.MaxPixels = defaults.MaxPixels
+	}
 	if policy.Timeout <= 0 {
 		policy.Timeout = defaults.Timeout
 	}
@@ -99,6 +129,43 @@ func normalizeVidRushImagePolicy(policy VidRushImagePolicy) VidRushImagePolicy {
 		policy.MaxRedirects = defaults.MaxRedirects
 	}
 	return policy
+}
+
+// WithinPixelBudget reports whether the declared dimensions fit the decode
+// budget. It is a header check only; it never allocates the pixel buffer.
+func (p VidRushImagePolicy) WithinPixelBudget(width, height int) bool {
+	if width <= 0 || height <= 0 {
+		return false
+	}
+	policy := normalizeVidRushImagePolicy(p)
+	return int64(width)*int64(height) <= int64(policy.MaxPixels)
+}
+
+// AcceptsDimensions applies the orientation-aware minimum: long side, short
+// side, area and aspect ratio. A portrait 600x900 passes; a 1200x300 banner
+// and a tiny 320x240 thumbnail fail. It does not apply the upper pixel bound;
+// callers check WithinPixelBudget separately so a bomb maps to "too large"
+// rather than "invalid".
+func (p VidRushImagePolicy) AcceptsDimensions(width, height int) bool {
+	if width <= 0 || height <= 0 {
+		return false
+	}
+	policy := normalizeVidRushImagePolicy(p)
+	longSide, shortSide := width, height
+	if shortSide > longSide {
+		longSide, shortSide = shortSide, longSide
+	}
+	if longSide < policy.MinLongSide || shortSide < policy.MinShortSide {
+		return false
+	}
+	if policy.MinWidth > 0 && policy.MinHeight > 0 &&
+		int64(width)*int64(height) < int64(policy.MinWidth)*int64(policy.MinHeight) {
+		return false
+	}
+	if policy.MaxAspectRatio > 0 && float64(longSide)/float64(shortSide) > policy.MaxAspectRatio {
+		return false
+	}
+	return true
 }
 
 // ValidateVidRushRemoteImageURL rejects non-web schemes, credentials,
@@ -284,8 +351,14 @@ func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []b
 	if !allowedVidRushImageMIME(mime) {
 		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
 	}
-	config, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || config.Width < policy.MinWidth || config.Height < policy.MinHeight {
+	config, _, err := digest.DecodeImageConfigBounded(data, policy.MaxPixels)
+	if err != nil {
+		if errors.Is(err, digest.ErrImagePixelBudget) {
+			return scriptports.VerifiedArtifact{}, ErrVidRushImageTooLarge
+		}
+		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
+	}
+	if !policy.AcceptsDimensions(config.Width, config.Height) {
 		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
 	}
 	sum := digest.SHA256Bytes(data)
@@ -355,8 +428,21 @@ func CanonicalizeVidRushImageFile(path string, policy VidRushImagePolicy) error 
 	if len(data) == 0 || int64(len(data)) > policy.MaxBytes {
 		return ErrVidRushImageTooLarge
 	}
-	img, _, err := image.Decode(bytes.NewReader(data))
+	config, _, err := digest.DecodeImageConfigBounded(data, policy.MaxPixels)
 	if err != nil {
+		if errors.Is(err, digest.ErrImagePixelBudget) {
+			return ErrVidRushImageTooLarge
+		}
+		return ErrVidRushImageInvalid
+	}
+	if !policy.AcceptsDimensions(config.Width, config.Height) {
+		return ErrVidRushImageInvalid
+	}
+	img, _, err := digest.DecodeImageBounded(data, policy.MaxPixels)
+	if err != nil {
+		if errors.Is(err, digest.ErrImagePixelBudget) {
+			return ErrVidRushImageTooLarge
+		}
 		return ErrVidRushImageInvalid
 	}
 	opaque := true

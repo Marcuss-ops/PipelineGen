@@ -140,13 +140,29 @@ func (m *ChatMetrics) ColdStart() bool {
 // retry/fallback/circuit-breaker path but also returns the Ollama-reported
 // timing/token facts of the successful call. Chat stays a thin wrapper.
 func (c *Client) ChatDetailed(ctx context.Context, messages []types.Message, options map[string]any, format json.RawMessage) (ChatResult, error) {
+	return c.chatWithRetryAndFallbackDetailed(ctx, c.resolveChatModel(options), messages, options, format, types.MaxRetries)
+}
+
+// ChatOnce executes exactly one model attempt (plus the model's fallback
+// chain, one attempt per model) and does not hide retries inside the client.
+// Callers that own a per-identity budget — the entity-image scorer — use this
+// so the transport budget cannot multiply their attempts.
+func (c *Client) ChatOnce(ctx context.Context, messages []types.Message, options map[string]any, format json.RawMessage) (string, error) {
+	result, err := c.chatWithRetryAndFallbackDetailed(ctx, c.resolveChatModel(options), messages, options, format, 1)
+	if err != nil {
+		return "", err
+	}
+	return result.Content, nil
+}
+
+func (c *Client) resolveChatModel(options map[string]any) string {
 	model := c.model
 	if options != nil {
 		if optModel, ok := options["model"].(string); ok && optModel != "" {
 			model = optModel
 		}
 	}
-	return c.chatWithRetryAndFallbackDetailed(ctx, model, messages, options, format, types.MaxRetries)
+	return model
 }
 
 // chatWithRetryAndFallbackDetailed implements retry logic with model fallback
@@ -186,6 +202,10 @@ func (c *Client) chatWithRetryAndFallbackDetailed(ctx context.Context, model str
 			MaxAttempts:    maxRetries,
 			InitialBackoff: 2 * time.Second,
 			BackoffFactor:  1.0,
+			// RetryOptions without a predicate fail closed to neverRetry.
+			// Chat promises retries, so opt into the canonical transient
+			// classifier explicitly; ChatOnce stays at MaxAttempts=1.
+			IsRetryable: retry.IsTransient,
 		})
 
 		if err == nil {

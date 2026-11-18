@@ -3,7 +3,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -115,24 +114,22 @@ func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Eve
 	}()
 
 	var payload AssetPublishedRequestV1
-	if err := json.Unmarshal([]byte(evt.PayloadJSON), &payload); err != nil {
-		h.log.Warn("asset.published payload parse failed (terminal)", zap.Error(err))
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: %v", ErrAssetPublishedPayloadParse, err))
+	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+		EventName:         "asset.published",
+		WantSchemaVersion: AssetPublishedSchemaVersion,
+		Log:               h.log,
+		OnViolation:       assetPublishedViolation,
+	}, evt, &payload); err != nil {
+		return err
 	}
-	if payload.SchemaVersion != AssetPublishedSchemaVersion {
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: got %q, want %q", ErrAssetPublishedSchemaVersionMismatch, payload.SchemaVersion, AssetPublishedSchemaVersion))
-	}
-	if payload.EventID == "" {
-		return outboxevents.NewTerminalError(ErrAssetPublishedEventIDMissing)
-	}
+	// Resource-level validation: only this handler knows which fields identify
+	// its aggregate. The envelope checks (parse, version, event_id,
+	// idempotency_key) live in outboxevents.DecodeV1.
 	if payload.AssetID == "" {
 		return outboxevents.NewTerminalError(ErrAssetPublishedAssetIDMissing)
 	}
 	if payload.Destination == "" {
 		return outboxevents.NewTerminalError(ErrAssetPublishedDestinationMissing)
-	}
-	if payload.IdempotencyKey == "" {
-		return outboxevents.NewTerminalError(ErrAssetPublishedIdempotencyKeyMissing)
 	}
 
 	searchText := ComposeSearchText(payload.Destination, payload.Origin, payload.Subject, payload.Category, payload.Provider, payload.Tags, payload.DrivePath, payload.ContentType)
@@ -144,4 +141,23 @@ func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Eve
 		zap.String("search_text", searchText),
 	)
 	return nil
+}
+
+// assetPublishedViolation keeps this handler's exported sentinel identities
+// (operators and tests branch on them) while the CHECKS themselves live in
+// outboxevents.DecodeV1. The mapping is mechanical by design: one switch per
+// handler, one place that decides what an envelope violation is.
+func assetPublishedViolation(v outboxevents.Violation) error {
+	switch v.Kind {
+	case outboxevents.ViolationParse:
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: %v", ErrAssetPublishedPayloadParse, v.Err))
+	case outboxevents.ViolationSchemaVersion:
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: got %q, want %q", ErrAssetPublishedSchemaVersionMismatch, v.Got, v.Want))
+	case outboxevents.ViolationEventID:
+		return outboxevents.NewTerminalError(ErrAssetPublishedEventIDMissing)
+	case outboxevents.ViolationIdempotencyKey:
+		return outboxevents.NewTerminalError(ErrAssetPublishedIdempotencyKeyMissing)
+	default:
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: %s", ErrAssetPublishedPayloadParse, v.Kind))
+	}
 }

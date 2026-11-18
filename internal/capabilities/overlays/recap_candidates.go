@@ -10,11 +10,6 @@ package overlays
 // A spoken recap would need a new narrative segment + TTS and is out of
 // scope. Deterministic: same chapters + bullets + scores → same candidates.
 
-import (
-	"sort"
-	"strings"
-)
-
 // RecapSource is one already-covered unit (chapter title or bullet).
 type RecapSource struct {
 	ID          string // chapter or bullet id (must be non-empty: provenance)
@@ -29,106 +24,6 @@ type RecapCandidate struct {
 	SourceIDs   []string `json:"source_ids"`
 	SentenceIDs []int    `json:"sentence_ids"`
 	Score       float64  `json:"score"`
-}
-
-// normalizeRecapTitle folds a title for equivalence (case/punctuation
-// blind): two bullets with the same normalized title are equivalent.
-func normalizeRecapTitle(title string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(title) {
-		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r >= 0x80 {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
-// BuildRecapCandidates selects up to maxCards sources by score desc
-// (tie: id order), keeping only sources with real provenance (id + covered
-// sentences + text). Equivalent bullets are deduplicated (highest score
-// wins); sources without coverage are dropped, never invented: a recap
-// shows only what was already treated, no new claims. Titles stay verbatim
-// — negations and attributions are preserved exactly as narrated.
-//
-// Callers building a recap at a narration boundary should use
-// BuildRecapCandidatesThrough so a later chapter cannot leak into the card.
-// BuildRecapCandidatesThrough additionally gates every cited sentence by
-// its narration index. A candidate is admitted only when all of its source
-// sentence IDs are at or before narratedThrough; mixed earlier/later sources
-// are rejected whole rather than silently truncated or rewritten.
-func BuildRecapCandidatesThrough(sources []RecapSource, maxCards, narratedThrough int) []RecapCandidate {
-	if narratedThrough < 0 {
-		return []RecapCandidate{}
-	}
-	if maxCards <= 0 {
-		maxCards = 3
-	}
-	eligible := make([]RecapSource, 0, len(sources))
-	seenTitles := map[string]struct{}{}
-	ordered := append([]RecapSource(nil), sources...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		if ordered[i].Score != ordered[j].Score {
-			return ordered[i].Score > ordered[j].Score
-		}
-		return ordered[i].ID < ordered[j].ID
-	})
-	for _, s := range ordered {
-		if strings.TrimSpace(s.ID) == "" || strings.TrimSpace(s.Title) == "" || len(s.SentenceIDs) == 0 {
-			continue
-		}
-		covered := true
-		for _, sentenceID := range s.SentenceIDs {
-			if sentenceID < 0 || sentenceID > narratedThrough {
-				covered = false
-				break
-			}
-		}
-		if !covered {
-			continue
-		}
-		key := normalizeRecapTitle(s.Title)
-		if _, dup := seenTitles[key]; dup {
-			continue
-		}
-		seenTitles[key] = struct{}{}
-		eligible = append(eligible, s)
-	}
-	if len(eligible) > maxCards {
-		eligible = eligible[:maxCards]
-	}
-	out := make([]RecapCandidate, 0, len(eligible))
-	for _, s := range eligible {
-		sids := append([]string(nil), s.ID)
-		sents := append([]int(nil), s.SentenceIDs...)
-		sort.Ints(sents)
-		out = append(out, RecapCandidate{
-			Title: s.Title, SourceIDs: sids, SentenceIDs: sents, Score: s.Score,
-		})
-	}
-	if out == nil {
-		return []RecapCandidate{}
-	}
-	return out
-}
-
-// RecapPlacementPoints identifies chapter indices after which a visual recap
-// is useful: after several chapters, or before a major thematic turn —
-// never on a fixed cadence. Fewer than 3 chapters (a short single-topic
-// video) yields no placement: the builder may decide on no recap at all.
-// Deterministic: same chapter count + shift flag → same points.
-func RecapPlacementPoints(numChapters int, thematicShiftBeforeLast bool) []int {
-	if numChapters < 3 {
-		return nil
-	}
-	points := []int{numChapters / 2}
-	if thematicShiftBeforeLast {
-		last := numChapters - 1
-		if last != points[0] {
-			points = append(points, last)
-		}
-	}
-	sort.Ints(points)
-	return points
 }
 
 // RecapInvalidatedBy reports whether a recap candidate depends on any

@@ -59,6 +59,11 @@ type MediaAssetRecord struct {
 	// or a read-modify-write would silently drop them.
 	SearchTerms  string
 	ReviewStatus string
+	// Language is the asset language (media_assets.language, migration 099);
+	// OriginalLanguage is its source-language sibling (migration 152). Both
+	// are read by the local search filter and the Rust local scorer.
+	Language         string
+	OriginalLanguage string
 
 	// metadata is the lazily-decoded metadata_json object. It backs the typed
 	// accessors so callers never re-implement key knowledge.
@@ -205,7 +210,8 @@ const mediaAssetReadColumns = `
 	-- clip acquired from YouTube is source='youtube' AND
 	-- asset_kind='stock_video', so a caller can no longer be forced to infer the
 	-- family from the id prefix.
-	asset_kind, semantic_role
+	asset_kind, semantic_role,
+	COALESCE(language, ''), COALESCE(original_language, '')
 `
 
 // tsExpr returns the effective typed timestamp expression for a TEXT column
@@ -257,6 +263,7 @@ func scanMediaAssetRecord(row mediaAssetScanner) (*MediaAssetRecord, error) {
 		&rec.StartMS, &rec.EndMS, &rec.FolderID, &rec.ParentFolderID, &rec.FolderPath, &rec.CreatedAt,
 		&rec.MetadataJSON, &rec.SearchTerms, &rec.ReviewStatus,
 		&rec.AssetKind, &rec.SemanticRole,
+		&rec.Language, &rec.OriginalLanguage,
 	); err != nil {
 		return nil, err
 	}

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 func TestHTTPAssetPrefetcherStagesVerifiedLocalAsset(t *testing.T) {
@@ -47,7 +47,7 @@ func TestHTTPAssetPrefetcherStagesVerifiedLocalAsset(t *testing.T) {
 	defer srv.Close()
 
 	prefetcher := NewHTTPAssetPrefetcher(srv.URL)
-	err := prefetcher.Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	err := prefetcher.Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: hash, LocalPath: localPath,
 	}})
 	if err != nil {
@@ -117,7 +117,7 @@ func TestHTTPAssetPrefetcherStagesLocalAssetThroughPendingSession(t *testing.T) 
 	srv := httptest.NewServer(store.handler())
 	defer srv.Close()
 
-	if err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	if err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: hash, LocalPath: localPath,
 	}}); err != nil {
 		t.Fatalf("prefetch through staging: %v", err)
@@ -165,7 +165,7 @@ func TestHTTPAssetPrefetcherStagesCanonicalPresetFont(t *testing.T) {
 	defer srv.Close()
 
 	prefetcher := NewHTTPAssetPrefetcher(srv.URL)
-	err = prefetcher.Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	err = prefetcher.Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: font.Hash, URL: caprender.CanonicalPresetFontPath,
 	}})
 	if err != nil {
@@ -208,7 +208,7 @@ func TestHTTPAssetPrefetcherStagesCanonicalCyrillicFont(t *testing.T) {
 	defer srv.Close()
 
 	prefetcher := NewHTTPAssetPrefetcher(srv.URL)
-	err = prefetcher.Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+	err = prefetcher.Prefetch(context.Background(), []renderqueue.RenderQueueAsset{{
 		SHA256: font.Hash, URL: caprender.CanonicalTextFontPath,
 	}})
 	if err != nil {

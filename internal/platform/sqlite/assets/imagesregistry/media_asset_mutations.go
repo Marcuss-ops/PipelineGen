@@ -67,34 +67,6 @@ func execAssetUpdate(ctx context.Context, exec mediaAssetSQLExecutor, assetID, o
 // writer gate exempts as canonical owner ("non-media mutation primitives":
 // lifecycle/enrich/index-state machines, admin console, maintenance).
 
-// UpdateMediaAssetTaxonomyTx applies taxonomy dimensions in a caller-owned
-// transaction. It is the bridge used by the media registry adapter.
-
-func UpdateMediaAssetTaxonomyTx(ctx context.Context, tx *sql.Tx, taxonomy mediaregistry.AssetTaxonomy) error {
-	return UpdateMediaAssetTaxonomy(ctx, tx, taxonomy)
-}
-
-// UpdateMediaAssetTaxonomyDB applies taxonomy through the canonical writer to
-// a standalone database connection.
-
-func UpdateMediaAssetTaxonomyDB(ctx context.Context, db *sql.DB, taxonomy mediaregistry.AssetTaxonomy) error {
-	return UpdateMediaAssetTaxonomy(ctx, db, taxonomy)
-}
-
-// LinkMediaAssetContentTx links a content digest in a caller-owned
-// transaction. It is the bridge used by the media registry adapter.
-
-func LinkMediaAssetContentTx(ctx context.Context, tx *sql.Tx, assetID, contentSHA256 string) error {
-	return execAssetUpdate(ctx, tx, assetID, "content link", `UPDATE media_assets SET content_sha256 = ? WHERE id = ?`, contentSHA256, assetID)
-}
-
-// LinkMediaAssetContentDB links a content digest through the canonical writer
-// to a standalone database connection.
-
-func LinkMediaAssetContentDB(ctx context.Context, db *sql.DB, assetID, contentSHA256 string) error {
-	return execAssetUpdate(ctx, db, assetID, "content link", `UPDATE media_assets SET content_sha256 = ? WHERE id = ?`, contentSHA256, assetID)
-}
-
 // UpdateMediaAssetTaxonomyBackfill applies a complete taxonomy repair while
 // keeping the conditional media_type normalization in the canonical writer.
 
@@ -226,13 +198,6 @@ func UpdateMediaAssetLifecycle(ctx context.Context, exec mediaAssetSQLExecutor, 
 		updatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	return execAssetUpdate(ctx, exec, assetID, "lifecycle update", `UPDATE media_assets SET lifecycle_state = ?, deleted_at = ?, updated_at = ? WHERE id = ?`, state, deletedAt, updatedAt, assetID)
-}
-
-func UpdateMediaAssetTaxonomy(ctx context.Context, exec mediaAssetSQLExecutor, taxonomy mediaregistry.AssetTaxonomy) error {
-	if err := taxonomy.Validate(); err != nil {
-		return fmt.Errorf("asset committer: taxonomy update: %w", err)
-	}
-	return execAssetUpdate(ctx, exec, taxonomy.AssetID, "taxonomy update", `UPDATE media_assets SET namespace = ?, asset_kind = ?, source_type = ?, semantic_role = ?, updated_at = ? WHERE id = ?`, taxonomy.Namespace, taxonomy.AssetKind, taxonomy.SourceType, taxonomy.SemanticRole, time.Now().UTC().Format(time.RFC3339), taxonomy.AssetID)
 }
 
 func UpdateMediaAssetUpdatedAt(ctx context.Context, exec mediaAssetSQLExecutor, assetID, updatedAt string) error {

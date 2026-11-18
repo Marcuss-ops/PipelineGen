@@ -19,6 +19,17 @@ verify-rust-muscles:
 verify-rust-fetch:
 	@bash scripts/ci/test-rust-fetch.sh
 
+# verify-lexicon-parity — cross-repo stopword gate: the Go embedded projection
+# (`internal/capabilities/linguistics/profiles.generated.json`) must match the
+# Rust language packs word for word. Needs both checkouts; the local agent
+# loop and the pre-deploy gate call this target, while CI runs the same script
+# in the `lexicon-parity` job after checking out BrainRust at the release SHA
+# recorded in bin/BRAINRUST_RELEASE.json.
+verify-lexicon-parity:
+	@test -d ../BrainRust/lexicon/packs || { echo "❌ BrainRust submodule missing: run 'git submodule update --init BrainRust'" >&2; exit 1; }
+	@python3 ../BrainRust/lexicon/tools/check_go_stopword_parity.py --repo-root ..
+	@echo "✅ Lexicon parity verified"
+
 # verify-rust-contract — check consumer goldens against the exact BrainRust
 # revision pinned in the gitlink, without initializing or building the submodule.
 RUST_CONTRACT_REPO ?= https://github.com/Marcuss-ops/BrainRust.git
@@ -107,7 +118,7 @@ verify-changed:
 # canonical target for agent iterations; per AGENTS.md, agents must not run
 # verify-main during development (verify-main runs exactly once, immediately
 # before push).
-verify-agent: verify-dev verify-changed
+verify-agent: verify-dev verify-changed verify-lexicon-parity
 	@echo "✅ agent development verification passed"
 
 # verify-push — daily foundation/static/unit gate plus registry-driven
@@ -197,7 +208,7 @@ whisper-preflight:
 # verify-release — pre-deploy gate: the complete headless gate plus the
 # slow ./tests/... integration suite, which may depend on external services
 # (Drive, scraper). Run before deploy, NOT on every routine push.
-verify-release: verify-full verify-integration
+verify-release: verify-full verify-integration verify-lexicon-parity
 	@echo "✅ Release verification passed"
 
 # verify-split — RETIRED 2026-09-13. Its driver

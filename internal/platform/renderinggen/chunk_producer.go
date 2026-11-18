@@ -23,9 +23,9 @@ import (
 	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -33,10 +33,10 @@ import (
 // assembly-only: it owns the children and is never claimable by a render
 // worker; the worker-side finalizer claims it after all chunks certify.
 type ChunkProducer struct {
-	submitter scriptgen.RenderQueueBatchSubmitter
+	submitter renderqueue.RenderQueueBatchSubmitter
 }
 
-func NewChunkProducer(submitter scriptgen.RenderQueueBatchSubmitter) (*ChunkProducer, error) {
+func NewChunkProducer(submitter renderqueue.RenderQueueBatchSubmitter) (*ChunkProducer, error) {
 	if submitter == nil {
 		return nil, fmt.Errorf("chunk producer: atomic batch submitter is required")
 	}
@@ -77,14 +77,14 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 	if err := prefetchClipAssets(ctx, plan, refs); err != nil {
 		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: prefetch assets: %w", err)
 	}
-	assets := make([]scriptgen.RenderQueueAsset, len(refs))
+	assets := make([]renderqueue.RenderQueueAsset, len(refs))
 	for i, ref := range refs {
-		assets[i] = scriptgen.NewRenderQueueAsset(
+		assets[i] = renderqueue.NewRenderQueueAsset(
 			kernelasset.Ref{SHA256: ref.Hash, AssetID: ref.LogicalPath},
 			ref.LogicalPath, "")
 	}
 	anchorID := set.AnchorJobID()
-	queue, ok := p.submitter.(scriptgen.RenderQueueClient)
+	queue, ok := p.submitter.(renderqueue.RenderQueueClient)
 	if !ok {
 		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: shared prepared packages require a queue submit/get client")
 	}
@@ -92,16 +92,16 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 	if err != nil {
 		return cliprender.ChunkSet{}, err
 	}
-	family := make([]scriptgen.RenderQueueJob, 0, len(set.Chunks)+1)
-	family = append(family, scriptgen.RenderQueueJob{
+	family := make([]renderqueue.RenderQueueJob, 0, len(set.Chunks)+1)
+	family = append(family, renderqueue.RenderQueueJob{
 		ID: anchorID, JobType: queueclient.JobTypeRenderSegment,
 		OverlaySpec: rawPlan, Assets: assets,
 	})
 	for _, chunk := range set.Chunks {
-		family = append(family, scriptgen.RenderQueueJob{
+		family = append(family, renderqueue.RenderQueueJob{
 			ID: chunk.JobID, JobType: queueclient.JobTypeRenderSegment,
 			ParentJobID: anchorID, ChunkIndex: chunk.Index,
-			FrameRange:  &scriptgen.RenderFrameRange{Start: chunk.StartFrame, End: chunk.EndFrame},
+			FrameRange:  &renderqueue.RenderFrameRange{Start: chunk.StartFrame, End: chunk.EndFrame},
 			OverlaySpec: childPlan, Assets: assets, PreparedRenderPackage: preparedRef,
 		})
 	}
@@ -111,16 +111,16 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 	return set, nil
 }
 
-func (p *ChunkProducer) prepareFamilyPackage(ctx context.Context, queue scriptgen.RenderQueueClient, anchorID string, plan json.RawMessage, assets []scriptgen.RenderQueueAsset, totalFrames int64) (*scriptgen.RenderQueuePreparedPackageRef, error) {
+func (p *ChunkProducer) prepareFamilyPackage(ctx context.Context, queue renderqueue.RenderQueueClient, anchorID string, plan json.RawMessage, assets []renderqueue.RenderQueueAsset, totalFrames int64) (*renderqueue.RenderQueuePreparedPackageRef, error) {
 	prepareID := anchorID + ".prepare"
-	prepareJob := scriptgen.RenderQueueJob{
+	prepareJob := renderqueue.RenderQueueJob{
 		ID: prepareID, JobType: queueclient.JobTypeRenderPrepare,
 		OverlaySpec: plan, Assets: assets,
 	}
 	if err := queue.Submit(ctx, prepareJob); err != nil {
 		return nil, fmt.Errorf("chunk producer: submit family preparation: %w", err)
 	}
-	completed, _, err := scriptgen.WaitRenderQueueTerminal(ctx, queue, prepareID, 500*time.Millisecond)
+	completed, _, err := renderqueue.WaitRenderQueueTerminal(ctx, queue, prepareID, 500*time.Millisecond)
 	if err != nil {
 		return nil, fmt.Errorf("chunk producer: wait for family preparation: %w", err)
 	}
@@ -138,11 +138,11 @@ func (p *ChunkProducer) prepareFamilyPackage(ctx context.Context, queue scriptge
 	if !digest.IsCanonicalSHA256(packageID) || strings.TrimSpace(artifact.ChrononVersion) == "" || strings.TrimSpace(artifact.ProfileID) == "" {
 		return nil, fmt.Errorf("chunk producer: preparation job %s returned incomplete package identity", prepareID)
 	}
-	identity, err := scriptgen.RenderRequestIdentityFor(prepareJob)
+	identity, err := renderqueue.RenderRequestIdentityFor(prepareJob)
 	if err != nil {
 		return nil, fmt.Errorf("chunk producer: canonicalize family package request: %w", err)
 	}
-	return &scriptgen.RenderQueuePreparedPackageRef{
+	return &renderqueue.RenderQueuePreparedPackageRef{
 		PackageID: packageID, PlanSHA256: identity.PlanSHA256,
 		AssetManifestSHA: renderAssetManifestSHA(assets), TotalFrames: totalFrames,
 		CompilerVersion: artifact.ChrononVersion, ProfileID: artifact.ProfileID,
@@ -154,7 +154,7 @@ type renderAssetManifestEntry struct {
 	LogicalPath string `json:"logical_path"`
 }
 
-func renderAssetManifestSHA(assets []scriptgen.RenderQueueAsset) string {
+func renderAssetManifestSHA(assets []renderqueue.RenderQueueAsset) string {
 	entries := make([]renderAssetManifestEntry, 0, len(assets))
 	for _, asset := range assets {
 		entries = append(entries, renderAssetManifestEntry{

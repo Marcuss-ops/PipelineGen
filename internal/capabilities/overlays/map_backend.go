@@ -17,8 +17,9 @@ package overlays
 
 import (
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // MapBackend selects which renderer executes a map composition.
@@ -195,16 +196,6 @@ func unmetMapRequirementsHint(r MapRenderRequirements) string {
 		parts = append(parts, "per-pin spoken camera activation is demolition debt (parity gate pending)")
 	}
 	return strings.Join(parts, "; ")
-}
-
-// ResolveMapBackend conservatively selects the backend for a composition
-// declared by (camera, label-composition) features. It is the compatibility
-// projection of ResolveMapBackendFor over the classic two-flag input.
-func ResolveMapBackend(hasCamera, hasLabelComposition bool) MapBackend {
-	if hasCamera || hasLabelComposition {
-		return MapBackendDynamic
-	}
-	return MapBackendNative
 }
 
 // MapRenderRequirementsFor derives the REAL render requirements of one map

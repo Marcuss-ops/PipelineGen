@@ -92,6 +92,18 @@ func (c *JobsChecker) CheckJobs(ctx context.Context) healthport.CheckResult {
 			"error":       "database unavailable",
 		}
 	}
+	// Cancellation is a contract, not a driver detail: a health check whose
+	// caller gave up must never report ok=true just because the in-memory
+	// driver served the query before noticing the deadline. The SQL calls
+	// below re-check the context too, but this guard makes the result
+	// deterministic for callers that cancel before the query starts.
+	if err := ctx.Err(); err != nil {
+		return healthport.CheckResult{
+			"ok":          false,
+			"duration_ms": time.Since(start).Milliseconds(),
+			"error":       "check cancelled: " + err.Error(),
+		}
+	}
 	if err := c.db.PingContext(ctx); err != nil {
 		return healthport.CheckResult{
 			"ok":          false,
@@ -120,6 +132,16 @@ func (c *JobsChecker) CheckJobs(ctx context.Context) healthport.CheckResult {
 				"running_jobs": count,
 				"error":        fmt.Sprintf("runner liveness probe failed: %v", err),
 			}
+		}
+	}
+	// A context cancelled DURING the query must not be reported as healthy
+	// either; the driver may have completed the read before observing it.
+	if err := ctx.Err(); err != nil {
+		return healthport.CheckResult{
+			"ok":           false,
+			"duration_ms":  time.Since(start).Milliseconds(),
+			"running_jobs": count,
+			"error":        "check cancelled: " + err.Error(),
 		}
 	}
 

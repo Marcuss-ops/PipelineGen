@@ -11,11 +11,13 @@ import (
 	"image/jpeg"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	xdraw "golang.org/x/image/draw"
@@ -30,13 +32,19 @@ var ErrMalformedVisualVerdict = errors.New("malformed visual verification verdic
 
 const (
 	defaultVisualAttemptsPerIdentity = 3
-	maxVisionLongSide                = 1280
-	maxVisionPixels                  = 40_000_000
+	maxVisionLongSide                = 768
 )
 
 type personImageScorerClient interface {
 	Chat(context.Context, []types.Message, map[string]any, json.RawMessage) (string, error)
 	Model() string
+}
+
+// personImageScorerChatOnce is the optional single-attempt surface. The
+// production Ollama client implements it; test fakes that only implement Chat
+// keep the legacy path.
+type personImageScorerChatOnce interface {
+	ChatOnce(context.Context, []types.Message, map[string]any, json.RawMessage) (string, error)
 }
 
 // OllamaPersonImageScorer verifies actual PERSON image pixels before they can
@@ -90,6 +98,7 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 		maxVisualAttempts = defaultVisualAttemptsPerIdentity
 	}
 	attemptsByIdentity := make(map[string]int)
+	refByIdentity := make(map[string][]byte)
 	for i := range out {
 		candidate := &out[i]
 		if scriptadapters.ReusablePersonImageVerdict(*candidate) {
@@ -101,7 +110,7 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 			}
 			continue
 		}
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) || strings.TrimSpace(candidate.Entity) == "" {
+		if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) || strings.TrimSpace(candidate.Entity) == "" {
 			continue
 		}
 		identityName := strings.TrimSpace(candidate.Entity)
@@ -114,8 +123,14 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 			}
 			identityName = identity.CanonicalName
 			identityKey = identity.CanonicalEntityID
-			if reason := scriptadapters.PersonImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, ""); reason != "" {
-				rejectPersonImage(candidate, reason)
+			if !isEncyclopedicPersonSource(*candidate) {
+				if reason := scriptadapters.PersonImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, ""); reason != "" {
+					rejectPersonImage(candidate, reason)
+					continue
+				}
+			}
+			if isNoisyPersonImageSource(candidate.SourceURL, candidate.SourcePageURL) {
+				rejectPersonImage(candidate, "noisy stock or pinterest source rejected for person identity")
 				continue
 			}
 		}
@@ -148,19 +163,28 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 		candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 		candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 		candidate.Width, candidate.Height = verified.Width, verified.Height
-		if hasPanelGridCollage(data) {
-			rejectPersonImage(candidate, "pixel geometry detected multiple aligned photo panels")
-			continue
-		}
-		visionBytes, err := normalizePersonImageForVision(data)
+		decoded, _, err := digest.DecodeImageBounded(data, digest.DefaultImagePixelBudget)
 		if err != nil {
 			rejectPersonImage(candidate, "image could not be normalized for visual verification: "+err.Error())
 			continue
 		}
-		callCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		if hasPanelGridCollageImage(decoded) {
+			rejectPersonImage(candidate, "pixel geometry detected multiple aligned photo panels")
+			continue
+		}
+		visionBytes, err := normalizePersonImageForVisionImage(decoded)
+		if err != nil {
+			rejectPersonImage(candidate, "image could not be normalized for visual verification: "+err.Error())
+			continue
+		}
+		callCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		var verdict personImageVerdict
 		if entityClass == "person" {
-			verdict, err = s.classify(callCtx, model, identityName, candidate.Query, visionBytes)
+			if refBytes := refByIdentity[identityKey]; len(refBytes) > 0 {
+				verdict, err = s.classifyWithReference(callCtx, model, identityName, candidate.Query, refBytes, visionBytes)
+			} else {
+				verdict, err = s.classify(callCtx, model, identityName, candidate.Query, visionBytes)
+			}
 		} else {
 			verdict, err = s.classifyEntity(callCtx, model, identityName, entityClass, candidate.Query, candidate.EntityContext, candidate.SourcePageURL, visionBytes)
 		}
@@ -186,6 +210,9 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 			candidate.SemanticScore = verdict.Confidence
 			candidate.VerifierVersion = entitycatalog.CandidateVerifierVersion
 			if entityClass == "person" {
+				if _, hasRef := refByIdentity[identityKey]; !hasRef {
+					refByIdentity[identityKey] = visionBytes
+				}
 				candidate.QualityReason = fmt.Sprintf("Ollama visual identity verification confirmed the requested person (single_subject_layout=%t)", verdict.SinglePerson)
 			} else {
 				candidate.QualityReason = fmt.Sprintf("Ollama visual identity verification confirmed the requested %s from image pixels", entityClass)
@@ -216,21 +243,20 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 // decompression bomb must be rejected without materializing the full image.
 // The accepted image is then resized to a bounded long side, because sending
 // a 4K/8K frame to the VLM wastes bandwidth and context for no identity gain.
+// normalizePersonImageForVision decodes once through the bounded decoder and
+// delegates to the image-level normalizer. Tests and callers that only have
+// bytes use this entry point; the scorer decodes once and calls
+// normalizePersonImageForVisionImage directly so collage detection does not
+// pay for a second full decode.
 func normalizePersonImageForVision(data []byte) ([]byte, error) {
-	config, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("decode image config: %w", err)
-	}
-	if config.Width <= 0 || config.Height <= 0 {
-		return nil, fmt.Errorf("decode image config: invalid dimensions %dx%d", config.Width, config.Height)
-	}
-	if int64(config.Width)*int64(config.Height) > maxVisionPixels {
-		return nil, fmt.Errorf("image exceeds the vision pixel budget: %dx%d", config.Width, config.Height)
-	}
-	decoded, _, err := image.Decode(bytes.NewReader(data))
+	decoded, _, err := digest.DecodeImageBounded(data, digest.DefaultImagePixelBudget)
 	if err != nil {
 		return nil, fmt.Errorf("decode image: %w", err)
 	}
+	return normalizePersonImageForVisionImage(decoded)
+}
+
+func normalizePersonImageForVisionImage(decoded image.Image) ([]byte, error) {
 	decoded = resizeVisionImage(decoded, maxVisionLongSide)
 	var normalized bytes.Buffer
 	if err := jpeg.Encode(&normalized, decoded, &jpeg.Options{Quality: 88}); err != nil {
@@ -270,6 +296,13 @@ type personImageVerdict struct {
 	Confidence    float64 `json:"confidence"`
 }
 
+func (s *OllamaPersonImageScorer) chat(ctx context.Context, messages []types.Message, options map[string]any, format json.RawMessage) (string, error) {
+	if once, ok := s.client.(personImageScorerChatOnce); ok {
+		return once.ChatOnce(ctx, messages, options, format)
+	}
+	return s.client.Chat(ctx, messages, options, format)
+}
+
 func (s *OllamaPersonImageScorer) classify(ctx context.Context, model, identity, query string, imageBytes []byte) (personImageVerdict, error) {
 	var verdict personImageVerdict
 	prompt := fmt.Sprintf(`Inspect the attached image pixels for both identity and layout. The requested person is %q. The retrieval query %q is optional context only: never use it, the URL, the page title, or search metadata as proof of identity or layout. Set "identity_match" true only when the visible person is recognizable as the requested person from the pixels themselves; if you cannot confidently distinguish the person from another individual, set it false. Set "single_person_headshot" true when one clearly visible human is the dominant primary subject, including full-body or contextual editorial/news photographs; incidental background people do not disqualify it. Set "split_panel_or_collage" true when multiple photos or panels are combined. Confidence must reflect the weaker of the identity and layout judgments. If uncertain, use false and low confidence.
@@ -279,7 +312,7 @@ Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"spl
 		{Role: "user", Content: prompt, Images: []string{base64.StdEncoding.EncodeToString(imageBytes)}},
 	}
 	opts := map[string]any{"model": model, "temperature": 0, "num_predict": 128, "num_ctx": 4096}
-	response, err := s.client.Chat(ctx, messages, opts, json.RawMessage(`"json"`))
+	response, err := s.chat(ctx, messages, opts, json.RawMessage(`"json"`))
 	if err != nil {
 		return verdict, err
 	}
@@ -303,7 +336,7 @@ Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"spl
 		{Role: "user", Content: prompt, Images: []string{base64.StdEncoding.EncodeToString(imageBytes)}},
 	}
 	opts := map[string]any{"model": model, "temperature": 0, "num_predict": 128, "num_ctx": 4096}
-	response, err := s.client.Chat(ctx, messages, opts, json.RawMessage(`"json"`))
+	response, err := s.chat(ctx, messages, opts, json.RawMessage(`"json"`))
 	if err != nil {
 		return verdict, err
 	}
@@ -316,9 +349,66 @@ Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"spl
 	return verdict, nil
 }
 
+func (s *OllamaPersonImageScorer) classifyWithReference(ctx context.Context, model, identity, query string, refBytes, candBytes []byte) (personImageVerdict, error) {
+	var verdict personImageVerdict
+	prompt := fmt.Sprintf(`Compare the two attached images. Image 1 is a verified reference portrait of %q. Image 2 is a candidate image retrieved for query %q.
+Set "identity_match" true only when the primary person visible in Image 2 is clearly the same individual shown in Image 1; if you cannot confidently match the face/person in Image 2 to Image 1, set it false. Set "single_person_headshot" true when one clearly visible human is the dominant primary subject in Image 2, including full-body or contextual editorial/news photographs. Set "split_panel_or_collage" true when Image 2 combines multiple photos or panels. Confidence must reflect the weaker of the identity and layout judgments. If uncertain, use false and low confidence.
+Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.0}`, identity, query)
+	messages := []types.Message{
+		{Role: "system", Content: "You are a conservative public-person visual identity comparator. Compare Image 2 against the reference Image 1; never infer identity from metadata. Return only the requested JSON object."},
+		{Role: "user", Content: prompt, Images: []string{base64.StdEncoding.EncodeToString(refBytes), base64.StdEncoding.EncodeToString(candBytes)}},
+	}
+	opts := map[string]any{"model": model, "temperature": 0, "num_predict": 128, "num_ctx": 4096}
+	response, err := s.chat(ctx, messages, opts, json.RawMessage(`"json"`))
+	if err != nil {
+		return verdict, err
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(response)), &verdict); err != nil {
+		return verdict, fmt.Errorf("%w: %v", ErrMalformedVisualVerdict, err)
+	}
+	if verdict.Confidence < 0 || verdict.Confidence > 1 {
+		return verdict, fmt.Errorf("visual verification confidence out of range")
+	}
+	return verdict, nil
+}
+
+func isEncyclopedicPersonSource(candidate scriptpkg.SegmentAssetCandidate) bool {
+	for _, p := range []string{candidate.Provider, candidate.RetrievalProvider} {
+		switch strings.ToLower(strings.TrimSpace(p)) {
+		case "wikipedia", "wikimedia_commons":
+			return true
+		}
+	}
+	return strings.Contains(strings.ToLower(candidate.SourceURL), "upload.wikimedia.org/")
+}
+
+func isNoisyPersonImageSource(sourceURL, sourcePageURL string) bool {
+	for _, raw := range []string{sourceURL, sourcePageURL} {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+		for _, blocked := range []string{
+			"pinterest.", "pinimg.com", "shutterstock.com", "gettyimages.",
+			"alamy.com", "istockphoto.com", "dreamstime.com", "123rf.com",
+			"depositphotos.com", "freepik.com",
+		} {
+			if strings.Contains(host, blocked) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func rejectUnverifiedPersonImages(candidates []scriptpkg.SegmentAssetCandidate, reason string) []scriptpkg.SegmentAssetCandidate {
 	for i := range candidates {
-		if strings.EqualFold(strings.TrimSpace(candidates[i].Provider), scriptpkg.VidRushProviderInternetImages) && strings.TrimSpace(candidates[i].Entity) != "" {
+		if scriptpkg.IsInternetImageSourceProvider(candidates[i].Provider) && strings.TrimSpace(candidates[i].Entity) != "" {
 			rejectPersonImage(&candidates[i], reason)
 		}
 	}

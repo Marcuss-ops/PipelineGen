@@ -226,6 +226,33 @@ func TestOllamaBrandVerifierUsesSceneEvidenceWithoutTurningItIntoQuery(t *testin
 	}
 }
 
+func TestOllamaPersonImageScorerVerifiesConcreteProvidersAndRejectsNoisyHosts(t *testing.T) {
+	client := &personImageScorerFakeClient{responses: []string{
+		`{"identity_match":true,"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.93}`,
+	}}
+	scorer := NewOllamaPersonImageScorer(client)
+	scorer.download = func(context.Context, scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		return testPersonScorerJPEG(t), "image/jpeg", nil
+	}
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		{Provider: "duckduckgo", Entity: "Chiara Poggi", SourceURL: "https://i.pinimg.com/736x/chiara-poggi.jpg"},
+		{Provider: "wikipedia", Entity: "Chiara Poggi", SourceURL: "https://upload.wikimedia.org/wikipedia/commons/chiara-poggi.jpg"},
+	}
+	got, err := scorer.ScoreImageCandidates(context.Background(), "Chiara Poggi", candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].SemanticStatus != "rejected" {
+		t.Fatalf("pinterest candidate status = %q, want rejected", got[0].SemanticStatus)
+	}
+	if got[1].SemanticStatus != "accepted" {
+		t.Fatalf("wikipedia candidate status = %q, want accepted", got[1].SemanticStatus)
+	}
+	if len(client.messages) != 1 {
+		t.Fatalf("VLM calls = %d, want 1 (pinterest must be rejected before VLM)", len(client.messages))
+	}
+}
+
 var errUnexpectedImageScorerFormat = &imageScorerFormatError{}
 
 type imageScorerFormatError struct{}

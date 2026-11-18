@@ -109,22 +109,15 @@ func (r *Runner) WithObserver(observer *kernobs.RunObserver) *Runner {
 // WithJobRegistry attaches the durable Job Registry projection to this runner.
 func (r *Runner) WithJobRegistry(reg capjobregistry.Registry) *Runner { r.jobLedger = reg; return r }
 
-// WithClaimSnapshotter attaches the claim-time KPI snapshotter to the Runner
-// (prepared_at_claim_ratio photography). When set, Run captures a durable
-// preparation_claim_snapshots row the moment broker.Claim returns, using the
-// real attempt identity (jobID:revision). Errors are non-fatal: snapshotting
-// is a control-plane side effect and must never delay or fail the claim path.
-func (r *Runner) WithClaimSnapshotter(snapshotter jobs.ClaimSnapshotter) *Runner {
-	r.claimSnapshot = snapshotter
-	return r
-}
-
 // SetRenewInterval overrides the renewal cadence. Returns the
 // receiver for chaining. Zero / negative / sub-minRenewInterval
 // values are clamped to DefaultRenewInterval or minRenewInterval
 // respectively so a misconfigured test cannot re-enter the renewal
 // loop faster than the broker can answer (which would surface as
 // broker-side TCP pressure).
+//
+// Kept as the public cadence seam for black-box e2e tests
+// (internal/app/workerruntime drives a fast renewal loop through it).
 func (r *Runner) SetRenewInterval(d time.Duration) *Runner {
 	switch {
 	case d <= 0:

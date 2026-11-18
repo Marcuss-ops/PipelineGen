@@ -1,70 +1,216 @@
 package scriptgeneration
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
+	"encoding/json"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"testing"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// TestCanonicalFontAssetsParity pins the single source of truth: the queue
-// producer stages exactly the families the payload contract accepts, with a
-// path and hash for each. Adding a family is one entry on each side.
+// rustFontID is the only family spelling the Rust overlay compiler accepts on
+// an editorial bullet pin: lowercase letters, digits and underscores, at most
+// 64 bytes (overlay-compiler/src/editorial_plan_v2/request.rs).
+var rustFontID = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+
+// rustFontConstant matches the runtime family constants the Rust planner emits
+// when it has to choose a default (for example PLAYFAIR_RUNTIME_FAMILY and
+// ENTITY_CAPTION_FONT).
+var rustFontConstant = regexp.MustCompile(`(?m)^\s*const\s+([A-Z0-9_]*(?:FONT|FAMILY)[A-Z0-9_]*)\s*:\s*&str\s*=\s*"([^"]+)"`)
+
+// TestCanonicalFontAssetsParity pins the Go half of the font contract: the
+// payload-selectable families and the queue asset registry are the same set,
+// with one staged path and one content hash per family. The Rust/rendering
+// half is checked by TestRustFontVocabularyParity below and by RenderingGen's
+// runtime font tests.
 func TestCanonicalFontAssetsParity(t *testing.T) {
-	var registry []string
-	for family := range caprender.CanonicalFontAssetsByFamily {
-		registry = append(registry, family)
+	registry := make(map[string]caprender.CanonicalFontAsset, len(caprender.CanonicalFontAssetsByFamily))
+	for family, asset := range caprender.CanonicalFontAssetsByFamily {
+		registry[family] = asset
 	}
-	sort.Strings(registry)
 	supported := append([]string(nil), scriptpkg.SupportedFontFamilies...)
 	sort.Strings(supported)
-	if len(registry) != len(supported) {
-		t.Fatalf("font registry = %v, payload contract = %v", registry, supported)
+	if len(supported) != len(registry) {
+		t.Fatalf("font payload contract has %d families, asset registry has %d", len(supported), len(registry))
 	}
-	for i := range registry {
-		if registry[i] != supported[i] {
-			t.Fatalf("font registry = %v, payload contract = %v", registry, supported)
+	for index, family := range supported {
+		if index > 0 && family == supported[index-1] {
+			t.Fatalf("font payload contract lists %q twice", family)
 		}
-	}
-	for family, asset := range caprender.CanonicalFontAssetsByFamily {
+		if !rustFontID.MatchString(family) {
+			t.Errorf("family %q is not a valid Rust runtime font id", family)
+		}
+		asset, ok := registry[family]
+		if !ok {
+			t.Errorf("family %q is selectable in the payload but has no staged asset", family)
+			continue
+		}
 		if asset.Path == "" {
 			t.Errorf("family %q has no staged path", family)
 		}
-		if len(asset.SHA256) != 64 {
+		if len(asset.SHA256) != 64 || strings.ToLower(asset.SHA256) != asset.SHA256 {
 			t.Errorf("family %q has invalid staged hash %q", family, asset.SHA256)
+		}
+	}
+	for family := range registry {
+		if !scriptpkg.IsSupportedFontFamily(family) {
+			t.Errorf("asset registry exposes %q, which the payload contract rejects", family)
 		}
 	}
 }
 
-func TestRunTypographyOverridesChildAnimationDefaults(t *testing.T) {
-	layers := []capmodel.OverlayImageLayer{{
-		Caption: "Ada Lovelace", CaptionFontFamily: "bricolage_grotesque",
-		Params: map[string]any{
-			"font_family": "inter_bold", "glow_size": 3.0,
-			"style": map[string]any{"fill": "#FF0000", "shadow": map[string]any{"blur": 2.0}},
-		},
-	}}
-	canonical := map[string]any{
-		"font_family": "poppins", "glow_size": 0.0, "stroke_size": 2.0,
-		"style": map[string]any{"fill": "#FFFFFF", "shadow": map[string]any{"blur": 8.0}},
+// TestRustFontVocabularyParity reads the fonts the Rust overlay compiler
+// actually emits: every checked-in contract plan, every request pin, and the
+// runtime-default constants in the planner source. Rust deliberately does not
+// restate the family catalogue (request.rs: identity is owned by the producer
+// and by the RenderingGen registry, this layer validates shape only), so the
+// fixtures and constants are the Rust-side vocabulary this producer must be
+// able to stage. Adding a family on the Rust side therefore fails here until
+// SupportedFontFamilies and CanonicalFontAssetsByFamily learn it.
+func TestRustFontVocabularyParity(t *testing.T) {
+	root := overlayPlanFixtureRoot
+	if _, err := os.Stat(root); err != nil {
+		t.Skipf("cross-repo BrainRust overlay fixtures unavailable: %v", err)
 	}
-	capoverlay.MergeCaptionStyleIntoLayers(layers, canonical)
-	if got := layers[0].Params["font_family"]; got != "poppins" {
-		t.Fatalf("caption font = %v, want canonical run font poppins", got)
+	emitted, sources := rustEmittedFontFamilies(t, root)
+	if len(emitted) == 0 {
+		t.Fatal("Rust overlay fixtures declare no font family: parity would be vacuous")
 	}
-	if got := layers[0].Params["glow_size"]; got != 0.0 {
-		t.Fatalf("caption glow = %v, want explicit disabled glow", got)
+	constants := rustFontConstants(t, root)
+	if len(constants) == 0 {
+		t.Fatal("Rust planner exposes no runtime font constant: parity would be vacuous")
 	}
-	if got := layers[0].Params["stroke_size"]; got != 2.0 {
-		t.Fatalf("caption stroke = %v, want canonical run stroke", got)
+	for family, source := range constants {
+		if _, ok := emitted[family]; !ok {
+			emitted[family] = source
+			sources[family] = source
+		}
 	}
-	style, _ := layers[0].Params["style"].(map[string]any)
-	if style["fill"] != "#FFFFFF" || style["shadow"].(map[string]any)["blur"] != 8.0 {
-		t.Fatalf("caption nested style = %v, want canonical run style", style)
+	if _, ok := emitted["playfair_display_italic"]; !ok {
+		t.Errorf("Rust fixtures/constants never mention the canonical runtime family playfair_display_italic")
 	}
+	families := make([]string, 0, len(emitted))
+	for family := range emitted {
+		families = append(families, family)
+	}
+	sort.Strings(families)
+	for _, family := range families {
+		if !rustFontID.MatchString(family) {
+			t.Errorf("%s: Rust emits %q, which is not a valid runtime font id", sources[family], family)
+		}
+		if !scriptpkg.IsSupportedFontFamily(family) {
+			t.Errorf("%s: Rust emits %q, which the Go payload contract does not accept", sources[family], family)
+		}
+		asset, ok := caprender.CanonicalFontAssetsByFamily[family]
+		if !ok {
+			t.Errorf("%s: Rust emits %q, which has no canonical staged asset", sources[family], family)
+			continue
+		}
+		if asset.Path == "" || len(asset.SHA256) != 64 {
+			t.Errorf("%s: family %q has an incomplete canonical asset: %+v", sources[family], family, asset)
+		}
+	}
+}
+
+// rustEmittedFontFamilies walks every JSON fixture under the Rust overlay
+// contract root and collects font_family / caption_font_family values, with
+// the file that declared each one.
+func rustEmittedFontFamilies(t *testing.T, root string) (map[string]string, map[string]string) {
+	t.Helper()
+	families := map[string]string{}
+	sources := map[string]string{}
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".json") {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var document any
+		if err := json.Unmarshal(raw, &document); err != nil {
+			return err
+		}
+		walkFontFamilies(document, func(family string) {
+			if _, seen := families[family]; !seen {
+				families[family] = path
+				sources[family] = path
+			}
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk Rust overlay fixtures: %v", err)
+	}
+	return families, sources
+}
+
+func walkFontFamilies(node any, visit func(string)) {
+	switch value := node.(type) {
+	case map[string]any:
+		for key, child := range value {
+			if key == "font_family" || key == "caption_font_family" {
+				if family, ok := child.(string); ok {
+					if family = strings.TrimSpace(family); family != "" {
+						visit(family)
+					}
+				}
+			}
+			walkFontFamilies(child, visit)
+		}
+	case []any:
+		for _, child := range value {
+			walkFontFamilies(child, visit)
+		}
+	}
+}
+
+// rustFontConstants reads the runtime-default family constants from the Rust
+// planner source next to the fixtures. It fails closed when the source tree is
+// present but the constants disappeared: a rename must be a deliberate update
+// of this gate, not a silent loss of coverage.
+func rustFontConstants(t *testing.T, fixtureRoot string) map[string]string {
+	t.Helper()
+	plannerDir := filepath.Join(fixtureRoot, "..", "..", "..", "src", "editorial_plan_v2", "planner")
+	entries, err := os.ReadDir(plannerDir)
+	if err != nil {
+		t.Fatalf("read Rust planner source %s: %v", plannerDir, err)
+	}
+	found := map[string]string{}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".rs") {
+			continue
+		}
+		path := filepath.Join(plannerDir, entry.Name())
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, match := range rustFontConstant.FindAllStringSubmatch(string(raw), -1) {
+			family := strings.TrimSpace(match[2])
+			if family == "" {
+				continue
+			}
+			// Two constants may legitimately name the same family (the entity
+			// caption default and the presentation default are both Playfair);
+			// the gate only needs the family set, not the constant names.
+			if _, exists := found[family]; !exists {
+				found[family] = entry.Name()
+			}
+		}
+	}
+	return found
 }
 
 func TestExplicitRunShadowSettingsResolveOneCanonicalRuntimeStyle(t *testing.T) {
@@ -88,6 +234,11 @@ func TestExplicitRunShadowSettingsResolveOneCanonicalRuntimeStyle(t *testing.T) 
 	}
 }
 
+// TestRunStyleWinsOverAnimationSpecificTextParams covers the live Go boundary
+// that projects a run style onto overlay items. The entity-caption merge that
+// used to follow is Rust-owned now (presentation.rs normalizes canonical fonts
+// before the plan leaves the compiler), so it is asserted against Rust
+// fixtures instead of a second Go merge.
 func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 	zero, stroke := 0.0, 3.0
 	items := []capmodel.OverlayItem{{
@@ -103,7 +254,7 @@ func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 		GlowSize: &zero, StrokeSize: &stroke,
 		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: false},
 	}}
-	applyOverlayStyleToItems(items, canvas)
+	applyPayloadOverlayStyleToItems(items, canvas)
 	params := items[0].Params
 	for key, want := range map[string]any{
 		"font_family": "poppins", "stroke_size": float64(3),
@@ -125,18 +276,6 @@ func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 	shadow, _ := style["shadow"].(map[string]any)
 	if shadow["blur"] != 0.0 || shadow["opacity"] != 0.0 {
 		t.Errorf("run nested shadow = %v, want disabled zero shadow", shadow)
-	}
-
-	entityParams := capoverlay.MergeRuntimeTextStyleParams(map[string]any{
-		"font_family": "inter_bold", "position_x": 10.0, "glow_size": 8.0,
-	}, overlayStyleParams(canvas.Style))
-	// The merge applies canonical runtime keys only; an explicit run zero wins
-	// over the animation's glow, exactly like the flat text path.
-	if entityParams["font_family"] != "poppins" || entityParams["glow_size"] != 0.0 || entityParams["stroke_size"] != 3.0 {
-		t.Errorf("entity caption style = %v, want canonical run style", entityParams)
-	}
-	if entityParams["position_x"] != 10.0 {
-		t.Errorf("entity image geometry changed by text style merge: %v", entityParams["position_x"])
 	}
 }
 

@@ -281,6 +281,9 @@ func buildP2BUsecase(t *testing.T, gen *testsupport.FakeOllamaGen) (*gencore.Gen
 	ppReg.Freeze()
 
 	uc := buildTestUseCase(e, nil, ppReg)
+	// These tests assert that the editorial gate catches off-topic prose, so
+	// they must run against the real Rust gate, not the shared passing stub.
+	wireRealQualityGate(t, uc)
 	return uc, ppReg
 }
 

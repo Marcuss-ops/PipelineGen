@@ -1,7 +1,7 @@
 // Package assets — clips_crud_test.go pins the canonical
 // MediaAssetColumns ↔ ScanMediaAsset contract so a future migration
 // (or hand-edit) that adds / removes / renames a column cannot
-// silently drift the 40-column SELECT projection in
+// silently drift the 42-column SELECT projection in
 // clips_repository.go.
 //
 // We test the EXTERNAL contract surface (the MediaAssetColumns
@@ -48,7 +48,11 @@ import (
 //	folder_id, parent_folder_id, folder_path,
 //	category, group_name, filename, error,
 //	thumb_url, phash, search_text, scene_type,
-//	quality_score, reuse_count, last_used_at
+//	quality_score, reuse_count, last_used_at, language, original_language
+//
+// language + original_language were added by TICKET-MEDIA-ASSETS-LANGUAGE-COLUMN:
+// the columns existed since migration 099/152 but the canonical projection
+// omitted them, so the local search and the ranker could not read them.
 var canonicalMediaAssetColumns = []string{
 	"id", "source", "name", "tags", "tags_norm",
 	"embedding_json", "duration_ms", "url",
@@ -61,10 +65,11 @@ var canonicalMediaAssetColumns = []string{
 	"category", "group_name", "filename", "error",
 	"thumb_url", "phash", "search_text", "scene_type",
 	"quality_score", "reuse_count", "last_used_at",
+	"language", "original_language",
 }
 
 // newAlignTestDB opens a fresh in-memory SQLite + applies a minimal
-// 40-column media_assets schema that mirrors MediaAssetColumns' AS
+// 42-column media_assets schema that mirrors MediaAssetColumns' AS
 // aliases. Types are intentionally minimal (TEXT / INTEGER / REAL)
 // — what matters is column NAMES + EXISTENCE, since the test contract
 // is "the SELECT projection must materialise these 40 names in this
@@ -95,6 +100,7 @@ func newAlignTestDB(t *testing.T) *sql.DB {
 			thumb_url TEXT, phash TEXT,
 			search_text TEXT, scene_type TEXT,
 			quality_score REAL, reuse_count INTEGER, last_used_at TEXT,
+			language TEXT, original_language TEXT,
     index_state TEXT NOT NULL DEFAULT '',
     source_version TEXT NOT NULL DEFAULT '',
     thumbnail_url TEXT NOT NULL DEFAULT '',
@@ -114,14 +120,14 @@ func newAlignTestDB(t *testing.T) *sql.DB {
     source_type TEXT NOT NULL DEFAULT '',
     semantic_role TEXT NOT NULL DEFAULT '')
 	`)
-	require.NoError(t, err, "create media_assets (40-col align schema)")
+	require.NoError(t, err, "create media_assets (42-col align schema)")
 	return db
 }
 
 // TestAssetStoreSQLiteGet_AlignsWithScan pins three contracts in
 // lockstep:
 //
-//  1. The 40-column count. A future migration that adds / removes a
+//  1. The 42-column count. A future migration that adds / removes a
 //     column without updating MediaAssetColumns will be caught here.
 //  2. The canonical-name positional order. The AS alias at index N
 //     in MediaAssetColumns MUST equal the asset field ScanMediaAsset
@@ -139,17 +145,17 @@ func newAlignTestDB(t *testing.T) *sql.DB {
 // instead of leaking the regression into production logs.
 func TestAssetStoreSQLiteGet_AlignsWithScan(t *testing.T) {
 
-	// ── subtest 1: 40-column count + canonical positional order ──
+	// ── subtest 1: 42-column count + canonical positional order ──
 	// rows.Columns() honours AS aliases — this is THE contract
 	// we're pinning.
-	t.Run("projection_has_40_columns_in_canonical_order", func(t *testing.T) {
+	t.Run("projection_has_42_columns_in_canonical_order", func(t *testing.T) {
 		db := newAlignTestDB(t)
 		ctx := context.Background()
 
 		rows, err := db.QueryContext(ctx,
 			"SELECT "+MediaAssetColumns+" FROM media_assets LIMIT 0")
 		require.NoError(t, err,
-			"SELECT with MediaAssetColumns MUST parse + execute against the 40-col schema")
+			"SELECT with MediaAssetColumns MUST parse + execute against the 42-col schema")
 		defer func() { _ = rows.Close() }()
 
 		cols, err := rows.Columns()
@@ -207,13 +213,13 @@ func TestAssetStoreSQLiteGet_AlignsWithScan(t *testing.T) {
 			INSERT INTO media_assets (
 				id, source, name, media_type, status,
 				drive_folder_id, drive_link, group_name,
-				lifecycle_state, deleted_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				lifecycle_state, deleted_at, language, original_language
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			controlID,
 			"youtube", "align-name", "video", "active",
 			"align-folder", "align-drive-link", "align-group",
-			"ACTIVE", "",
+			"ACTIVE", "", "it", "en",
 		)
 		require.NoError(t, err, "insert control row")
 
@@ -240,6 +246,11 @@ func TestAssetStoreSQLiteGet_AlignsWithScan(t *testing.T) {
 		assert.Equal(t, "align-group", a.Group,
 			"group_name round-trips — failed if MediaAssetColumns dropped group_name "+
 				"(was missing from the 38-col projection)")
+		assert.Equal(t, "it", a.Language(),
+			"language round-trips — failed if MediaAssetColumns dropped language "+
+				"(the column existed but the projection omitted it)")
+		assert.Equal(t, "en", a.OriginalLanguage(),
+			"original_language round-trips — failed if MediaAssetColumns dropped it")
 	})
 
 	// ── subtest 4: soft-delete filter still respects the projection ──

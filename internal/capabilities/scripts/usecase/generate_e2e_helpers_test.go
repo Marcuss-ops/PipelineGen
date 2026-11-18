@@ -9,11 +9,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/qualitygate"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -183,6 +183,21 @@ func stopWordTest(token string) bool {
 // buildOverlappingText returns a short sentence whose words are drawn
 // from sourceText so the quality gate's source_text coverage stays high.
 // If sourceText is empty, a safe default is returned.
+// tokenizeTest mirrors the Rust script-qa tokenisation rule the quality gate
+// uses: split on every rune that is not a letter or a number, then lowercase.
+func tokenizeTest(text string) []string {
+	var tokens []string
+	for _, word := range strings.FieldsFunc(text, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}) {
+		word = strings.ToLower(strings.TrimSpace(word))
+		if word != "" {
+			tokens = append(tokens, word)
+		}
+	}
+	return tokens
+}
+
 func buildOverlappingText(numScenes int, sourceText string) string {
 	defaultText := "The quick brown fox jumps over the lazy dog."
 	if sourceText == "" {
@@ -190,7 +205,7 @@ func buildOverlappingText(numScenes int, sourceText string) string {
 	}
 	// Tokenise source text and keep only non-stop-word tokens so the
 	// coverage check sees real overlap.
-	tokens := qualitygate.Tokenize(sourceText)
+	tokens := tokenizeTest(sourceText)
 	var words []string
 	for _, t := range tokens {
 		if !stopWordTest(t) {

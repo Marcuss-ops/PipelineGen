@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 	"golang.org/x/sync/errgroup"
 )
@@ -195,10 +195,10 @@ func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, r
 
 func boolPtr(b bool) *bool { return &b }
 
-func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
-	out := make([]scriptgen.RenderQueueAsset, len(in))
+func scriptAssets(in []queueclient.AssetRef) []renderqueue.RenderQueueAsset {
+	out := make([]renderqueue.RenderQueueAsset, len(in))
 	for i, a := range in {
-		out[i] = scriptgen.NewRenderQueueAsset(
+		out[i] = renderqueue.NewRenderQueueAsset(
 			kernelasset.Ref{AssetID: a.LogicalPath, SHA256: a.Hash}, a.LogicalPath, a.SourceURL)
 	}
 	return out
@@ -207,12 +207,12 @@ func scriptAssets(in []queueclient.AssetRef) []scriptgen.RenderQueueAsset {
 // waitClipQueue used to live here: a second implementation of "wait for the
 // remote render to reach a terminal state", with its own jitter, its own
 // interval clamps and no wait metrics. It is DELETED — the canonical wait is
-// scriptgen.WaitRenderQueueTerminal, called from ClipRenderExecutor.Settle.
+// renderqueue.WaitRenderQueueTerminal, called from ClipRenderExecutor.Settle.
 
 var (
-	_ scriptgen.RenderQueueClient         = (*Client)(nil)
-	_ scriptgen.RenderQueueBatchSubmitter = (*Client)(nil)
-	_ scriptgen.RenderQueueWaiter         = (*Client)(nil)
-	_ scriptgen.RenderQueueRetrier        = (*Client)(nil)
-	_ cliprender.RenderExecutor           = (*ClipRenderExecutor)(nil)
+	_ renderqueue.RenderQueueClient         = (*Client)(nil)
+	_ renderqueue.RenderQueueBatchSubmitter = (*Client)(nil)
+	_ renderqueue.RenderQueueWaiter         = (*Client)(nil)
+	_ renderqueue.RenderQueueRetrier        = (*Client)(nil)
+	_ cliprender.RenderExecutor             = (*ClipRenderExecutor)(nil)
 )

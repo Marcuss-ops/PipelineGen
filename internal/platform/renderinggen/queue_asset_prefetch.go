@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	assetmaterializer "github.com/Marcuss-ops/PipelineGen/internal/platform/assets/materializer"
 	"golang.org/x/sync/errgroup"
 )
@@ -130,7 +130,7 @@ func objectStoreTransport() *http.Transport {
 // cache-miss asset before enqueueing the render job.
 func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 	storeURL = strings.TrimRight(strings.TrimSpace(storeURL), "/")
-	return NewAssetPrefetcher(func(ctx context.Context, assets []scriptgen.RenderQueueAsset) error {
+	return NewAssetPrefetcher(func(ctx context.Context, assets []renderqueue.RenderQueueAsset) error {
 		var group errgroup.Group
 		group.SetLimit(4)
 		seen := make(map[string]struct{}, len(assets))

@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from . import (
     VISUAL_MODEL_NAME,
     VISUAL_MODEL_VERSION,
-    _inference_sem,
+    _visual_inference_sem,
     siglip_model,
 )
 from .models import (
@@ -34,7 +34,7 @@ async def embed_visual(req: VisualEmbedRequest):
     For image-file embeddings, use /embed_visual_from_image.
     """
     _require_siglip()
-    async with _inference_sem:
+    async with _visual_inference_sem:
         try:
             embedding = siglip_model.encode(req.text).tolist()
             return {
@@ -54,7 +54,7 @@ async def embed_visual_from_image(req: ImageEmbedRequest):
     Uses SigLIP's image encoder. Returns 501 if PIL is unavailable.
     """
     _require_siglip()
-    async with _inference_sem:
+    async with _visual_inference_sem:
         try:
             from PIL import Image
             img = Image.open(req.image_path).convert("RGB")
@@ -73,10 +73,10 @@ async def embed_visual_from_image(req: ImageEmbedRequest):
 # Single HTTP round-trip for N image embeddings. The Go caller uses this
 # whenever it would otherwise issue N sequential /embed_visual_from_image
 # requests (e.g. video-frame backfills, slide-deck ingestion). All N
-# forward passes happen under ONE _inference_sem acquisition so concurrent
-# batch callers serialize rather than fan out across the INFERENCE_CONCURRENCY
+# forward passes happen under ONE _visual_inference_sem acquisition so
+# concurrent batch callers serialize rather than fan out across the visual
 # semaphore slots (protects against CPU + RAM exhaustion when callers
-# bulk-load N=512 in parallel).
+# bulk-load N=512 in parallel). Text and audio keep their own lanes.
 @router.post("/embed_visual_from_images")
 async def embed_visual_from_images(req: BatchImageEmbedRequest):
     """Generate SigLIP visual embeddings (768d each) for a list of image files.
@@ -103,7 +103,7 @@ async def embed_visual_from_images(req: BatchImageEmbedRequest):
       - any non-200 ⇒ typed error.
     """
     _require_siglip()
-    async with _inference_sem:
+    async with _visual_inference_sem:
         try:
             from PIL import Image
 
@@ -151,7 +151,7 @@ async def embed_visual_from_images(req: BatchImageEmbedRequest):
 async def visual_analyze(req: VisualAnalyzeRequest):
     """Generate SigLIP visual embedding + perceptual hash for a local image file."""
     _require_siglip()
-    async with _inference_sem:
+    async with _visual_inference_sem:
         try:
             from PIL import Image
             import imagehash
@@ -176,7 +176,7 @@ async def visual_analyze(req: VisualAnalyzeRequest):
 @router.post("/phash")
 async def compute_phash(req: PhashRequest):
     """Compute perceptual hash of an image file (used during media asset indexing)."""
-    async with _inference_sem:
+    async with _visual_inference_sem:
         try:
             from PIL import Image
             import imagehash

@@ -199,3 +199,95 @@ func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, lang
 		resolved: resolved, timelineBounds: timelineBounds, perSceneImages: perSceneImages,
 	}, nil
 }
+
+// --- Editorial wire projection -------------------------------------------------
+//
+// The editorial manifest and the per-bullet style pins share one rule: what the
+// runtime cannot honour must fail here, named, instead of being dropped by the
+// Rust compiler or silently ignored by the renderer.
+
+// editorialBulletStylesToWire validates the style pins and encodes them for the
+// wire. A font the runtime does not bundle or a motion the registry does not
+// certify fails with the offending field named, rather than being dropped.
+func editorialBulletStylesToWire(in []scriptpkg.EditorialBulletStyle) ([]overlayplan.EditorialBulletStyle, error) {
+	if err := capabilityoverlay.ValidateEditorialBulletStyles(in); err != nil {
+		return nil, err
+	}
+	out := make([]overlayplan.EditorialBulletStyle, 0, len(in))
+	for _, style := range in {
+		out = append(out, overlayplan.EditorialBulletStyle{
+			SceneID:    strings.TrimSpace(style.SceneID),
+			FontFamily: strings.TrimSpace(style.FontFamily),
+			FontSizePX: style.FontSizePX,
+			MotionID:   strings.TrimSpace(style.MotionID),
+		})
+	}
+	return out, nil
+}
+
+// validateEditorialBulletStyleScenes rejects a pin that names a scene the plan
+// does not carry: it would style nothing, so shipping it would be a silent
+// no-op.
+func validateEditorialBulletStyleScenes(styles []overlayplan.EditorialBulletStyle, scenes map[string]struct{}) error {
+	for _, style := range styles {
+		if _, ok := scenes[style.SceneID]; !ok {
+			return fmt.Errorf("editorial_bullet_styles scene_id %q is not a scene in this plan", style.SceneID)
+		}
+	}
+	return nil
+}
+
+func editorialManifestToWire(in *scriptpkg.EditorialManifest) *overlayplan.EditorialManifest {
+	if in == nil {
+		return nil
+	}
+	out := &overlayplan.EditorialManifest{
+		SchemaVersion:  in.SchemaVersion,
+		SourceLanguage: in.SourceLanguage,
+		ProfileVersion: in.ProfileVersion,
+		Certified:      in.Certified,
+		Fingerprint:    in.Fingerprint,
+		Scenes:         make([]overlayplan.EditorialScene, 0, len(in.Scenes)),
+	}
+	for _, scene := range in.Scenes {
+		wire := overlayplan.EditorialScene{
+			SceneID:         scene.SceneID,
+			Title:           scene.Title,
+			TitleStatus:     scene.TitleStatus,
+			TitleSource:     scene.TitleSource,
+			GloballyIndexed: scene.GloballyIndexed,
+			Bullets:         make([]overlayplan.EditorialBullet, 0, len(scene.Bullets)),
+		}
+		for _, bullet := range scene.Bullets {
+			wire.Bullets = append(wire.Bullets, overlayplan.EditorialBullet{
+				SentenceStart: bullet.SentenceStart,
+				SentenceEnd:   bullet.SentenceEnd,
+				Text:          bullet.Text,
+			})
+		}
+		out.Scenes = append(out.Scenes, wire)
+	}
+	return out
+}
+
+func chapterManifestToWire(in *scriptpkg.ChapterManifest) *overlayplan.ChapterManifest {
+	if in == nil {
+		return nil
+	}
+	out := &overlayplan.ChapterManifest{
+		SchemaVersion: in.SchemaVersion,
+		Chapters:      make([]overlayplan.Chapter, 0, len(in.Chapters)),
+	}
+	for _, chapter := range in.Chapters {
+		wire := overlayplan.Chapter{Bullets: make([]overlayplan.ChapterBullet, 0, len(chapter.Bullets))}
+		for _, bullet := range chapter.Bullets {
+			wire.Bullets = append(wire.Bullets, overlayplan.ChapterBullet{
+				Text:          bullet.Text,
+				StartSentence: bullet.StartSentence,
+				EndSentence:   bullet.EndSentence,
+			})
+		}
+		out.Chapters = append(out.Chapters, wire)
+	}
+	return out
+}

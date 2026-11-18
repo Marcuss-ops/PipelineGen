@@ -163,6 +163,7 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 		ppReg,
 		zap.NewNop(),
 	)
+	uc.SetQualityGate(passingTestGate())
 
 	item := testsupport.ItemForTimings()
 
@@ -262,6 +263,7 @@ func TestGenerateOneUseCase_LogsAndReturnsTypedError_OnEngineNil(t *testing.T) {
 		nil, // ppReg nil
 		log,
 	)
+	uc.SetQualityGate(passingTestGate())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:    "script-t03-usecase-test",
@@ -316,6 +318,7 @@ func TestGenerateOneUseCase_LogsAndReturnsTypedError_OnValidateFailure(t *testin
 		nil, // ppReg nil
 		log,
 	)
+	uc.SetQualityGate(passingTestGate())
 
 	// Item with empty Source: Type="" — ValidateItem will return
 	// an error (the canonical "no source specified" path).
@@ -466,6 +469,7 @@ func TestGenerateOneUseCase_EmitsCanonicalEvents(t *testing.T) {
 		processor.NormalizationConfig{},
 		nil, e, ppReg, zap.NewNop(),
 	)
+	uc.SetQualityGate(passingTestGate())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:    "event-test-item",
@@ -659,6 +663,7 @@ func umbrellaCoverageVoiceoverResolve(t *testing.T) {
 		processor.NormalizationConfig{},
 		nil, e, ppReg, log,
 	)
+	uc.SetQualityGate(passingTestGate())
 	// Wire a voGroupResolver that errors. Set VoiceoverGroup
 	// on the item so ResolveVoiceoverFolderForItem does NOT
 	// short-circuit on empty group (it short-circuits when
@@ -724,6 +729,7 @@ func umbrellaCoverageEngine(t *testing.T) {
 		processor.NormalizationConfig{},
 		nil, e, ppReg, log,
 	)
+	uc.SetQualityGate(passingTestGate())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:    "umbrella-engine-item",
@@ -794,6 +800,7 @@ func umbrellaCoveragePostprocess(t *testing.T) {
 		processor.NormalizationConfig{},
 		nil, e, ppReg, log,
 	)
+	uc.SetQualityGate(passingTestGate())
 
 	item := scriptpkg.GenerationItemV2{
 		ID:    "umbrella-pp-item",
@@ -870,6 +877,7 @@ func umbrellaCoverageEngineNil(t *testing.T) {
 		nil, // ppReg nil
 		log,
 	)
+	uc.SetQualityGate(passingTestGate())
 
 	item := scriptpkg.GenerationItemV2{ID: "umbrella-engnil-item"}
 	_, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)

@@ -1,9 +1,10 @@
 package overlays
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // TestMapPinTimingPayloadProjectsSpokenTiming is the wire contract: one entry

@@ -20,12 +20,6 @@ package overlays
 //     videos may have no recap at all — R02).
 // Deterministic: same placements → same items.
 
-import (
-	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	"strings"
-)
-
 // RecapCardDurationUS is the fixed on-screen duration of one recap card.
 // RecapMinCardSlotUS is the smallest remaining window still worth a card:
 // a smaller leftover stays empty rather than squeezing a card in.
@@ -45,67 +39,4 @@ type RecapPlacement struct {
 	Sources         []RecapSource
 	NarratedThrough int
 	MaxCards        int
-}
-
-// BuildRecapPlanItems lowers recap placements to overlay items on the
-// certified quote primitive. Items are returned in placement order with
-// sequential, non-overlapping windows; placements that cannot contribute
-// are skipped silently.
-func BuildRecapPlanItems(planID string, placements []RecapPlacement) []capmodel.OverlayItem {
-	var out []capmodel.OverlayItem
-	usedIDs := map[string]struct{}{}
-	for _, p := range placements {
-		sceneID := strings.TrimSpace(p.SceneID)
-		if sceneID == "" || p.WindowEndUS <= p.WindowStartUS {
-			continue
-		}
-		maxCards := p.MaxCards
-		if maxCards <= 0 {
-			maxCards = 3
-		}
-		cands := BuildRecapCandidatesThrough(p.Sources, maxCards, p.NarratedThrough)
-		if len(cands) == 0 {
-			continue
-		}
-		cursor := p.WindowStartUS
-		for _, c := range cands {
-			remaining := p.WindowEndUS - cursor
-			if remaining < RecapMinCardSlotUS {
-				break
-			}
-			dur := RecapCardDurationUS
-			if dur > remaining {
-				dur = remaining
-			}
-			startMS := cursor / 1000
-			endMS := (cursor + dur + 999) / 1000
-			if endMS <= startMS {
-				break
-			}
-			id := itemID(sceneID, "recap", c.Title)
-			if _, dup := usedIDs[id]; dup {
-				for n := 2; ; n++ {
-					alt := fmt.Sprintf("%s-%d", id, n)
-					if _, taken := usedIDs[alt]; !taken {
-						id = alt
-						break
-					}
-				}
-			}
-			usedIDs[id] = struct{}{}
-			out = append(out, capmodel.OverlayItem{
-				ID: id, SceneID: sceneID,
-				PresetID: selectPhrasePreset(planID, sceneID, id),
-				MotionID: SelectTextMotion(planID, sceneID, id),
-				Kind:     "quote", TemplateID: "QUOTE", Text: c.Title,
-				StartMs: startMS, EndMs: endMS, StartUS: cursor, DurationUS: dur,
-				Params: map[string]any{"position": "center", "style": "quote", "priority": c.Score, "recap": true},
-			})
-			cursor += dur
-		}
-	}
-	if out == nil {
-		return []capmodel.OverlayItem{}
-	}
-	return out
 }

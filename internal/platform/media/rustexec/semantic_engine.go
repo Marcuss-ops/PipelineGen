@@ -47,6 +47,19 @@ const (
 	semanticManifestV3 = "semantic_manifest.v3"
 )
 
+// workerFailure renders a worker failure for operators. The machine-stable
+// error_code (decode, unsupported_operation, execution) becomes a bracketed
+// tag so a log filter can select one class of failure without parsing prose.
+// A worker that predates the additive envelope carries no code: its message is
+// kept byte-for-byte, which is why the tag is conditional.
+func workerFailure(response semanticEngineResponse) error {
+	message := strings.TrimSpace(response.Error)
+	if code := strings.TrimSpace(response.ErrorCode); code != "" {
+		return fmt.Errorf("semantic-engine: worker [%s]: %s", code, message)
+	}
+	return fmt.Errorf("semantic-engine: worker: %s", message)
+}
+
 // SemanticBundles analyses every scene of a script in ONE worker call and
 // returns the grounded projections keyed by scene id. The whole batch fails
 // closed on a contract violation; a scene the extractor refused is returned
@@ -98,7 +111,7 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		return nil, nil, fmt.Errorf("semantic-engine: decode: %w", err)
 	}
 	if !response.OK {
-		return nil, nil, fmt.Errorf("semantic-engine: worker: %s", strings.TrimSpace(response.Error))
+		return nil, nil, workerFailure(response)
 	}
 	manifest := response.Manifest
 	if manifest == nil {

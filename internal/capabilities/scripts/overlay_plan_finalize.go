@@ -10,8 +10,9 @@
 //
 // Ownership split inside this file:
 //
-//	applyOverlayStyleToItems  → the run-level OverlayStyleSpec projection
-//	                            (text sizing, image frame/layer params).
+//	applyPayloadOverlayStyleToItems → the one run-level OverlayStyleSpec
+//	                                  projection (explicit typography, bullet
+//	                                  block/pins, image frame/layer params).
 //	recap/chart counters      → what survived the overlap + budget gates.
 //	SI observability report   → the per-scene "why did this video come out
 //	                            this way" snapshot (logic only, no HTTP, no
@@ -26,6 +27,232 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// payloadTextStyleParams projects the run-level typography the payload
+// explicitly selected. Cursor controls are dropped here: the Chronon text
+// lowering rejects them, so projecting an accepted-but-unrenderable control
+// would fail a run the schema lets through. An empty map means the payload
+// chose no text typography and the planner's presentation defaults stand.
+func payloadTextStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
+	if style == nil {
+		return nil
+	}
+	params := capabilityoverlay.StyleParams(style)
+	for key := range params {
+		if key == "style" {
+			continue
+		}
+		if !capabilityoverlay.IsRuntimeTextStyleParam(key) || strings.HasPrefix(key, "cursor_") {
+			delete(params, key)
+		}
+	}
+	return params
+}
+
+// payloadBulletStyleParams layers the dedicated bullet block over the
+// run-level typography. A field the block leaves unset keeps the run-level
+// value, which is what makes the second font optional: absent means "use the
+// font the payload already chose".
+func payloadBulletStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
+	base := payloadTextStyleParams(style)
+	params := make(map[string]any, len(base)+4)
+	for key, value := range base {
+		params[key] = value
+	}
+	if style == nil || style.Bullet == nil {
+		return params
+	}
+	bullet := style.Bullet
+	if bullet.FontFamily != "" {
+		params["font_family"] = bullet.FontFamily
+	}
+	if bullet.FontSizePX != nil {
+		params["font_size_px"] = *bullet.FontSizePX
+		params["style"] = capabilityoverlay.MergeStyleParam(params["style"], map[string]any{"font_size": *bullet.FontSizePX})
+	}
+	if bullet.GlowSize != nil {
+		params["glow_size"] = *bullet.GlowSize
+		if *bullet.GlowSize <= 0 {
+			deleteNestedStyleKey(params, "glow")
+		}
+	}
+	if bullet.GlowColor != "" {
+		params["glow_color"] = bullet.GlowColor
+		if size, _ := params["glow_size"].(float64); size > 0 {
+			params["style"] = capabilityoverlay.MergeStyleParam(params["style"], map[string]any{
+				"glow": map[string]any{"color": bullet.GlowColor},
+			})
+		}
+	}
+	if bullet.StrokeSize != nil {
+		params["stroke_size"] = *bullet.StrokeSize
+	}
+	return params
+}
+
+// editorialBulletPins indexes the per-scene pins by their trimmed scene id.
+func editorialBulletPins(styles []scriptpkg.EditorialBulletStyle) map[string]scriptpkg.EditorialBulletStyle {
+	if len(styles) == 0 {
+		return nil
+	}
+	pins := make(map[string]scriptpkg.EditorialBulletStyle, len(styles))
+	for _, style := range styles {
+		if scene := strings.TrimSpace(style.SceneID); scene != "" {
+			pins[scene] = style
+		}
+	}
+	return pins
+}
+
+// bulletParamsForScene is the effective bullet typography of one bullet: the
+// run-level/bullet selection with that bullet's own pin applied last. The pin
+// names one bullet, so it is more specific than the run-level block and wins.
+func bulletParamsForScene(sceneID string, pins map[string]scriptpkg.EditorialBulletStyle, base map[string]any) map[string]any {
+	params := make(map[string]any, len(base)+2)
+	for key, value := range base {
+		params[key] = value
+	}
+	pin, ok := pins[strings.TrimSpace(sceneID)]
+	if !ok {
+		return params
+	}
+	if pin.FontFamily != "" {
+		params["font_family"] = pin.FontFamily
+		params["style"] = capabilityoverlay.MergeStyleParam(params["style"], map[string]any{"font_family": pin.FontFamily})
+	}
+	if pin.FontSizePX > 0 {
+		params["font_size_px"] = pin.FontSizePX
+		params["style"] = capabilityoverlay.MergeStyleParam(params["style"], map[string]any{"font_size": pin.FontSizePX})
+	}
+	return params
+}
+
+// editorialBulletParams reports whether an item/segment is bullet-point copy.
+// Chapter bullets ride the same lane and share the look.
+func editorialBulletParams(params map[string]any) bool {
+	if params == nil {
+		return false
+	}
+	role, _ := params["editorial_role"].(string)
+	return role == "scene_bullet" || role == capabilityoverlay.ChapterBulletRole
+}
+
+// textStyleBlock is the item.Style mirror of the effective typography.
+// RenderingGen merges Style over Params, so a family only written flat would
+// be shadowed by the presentation pass's Style entry.
+func textStyleBlock(styleParams map[string]any) map[string]any {
+	block := map[string]any{}
+	if family, ok := styleParams["font_family"].(string); ok && family != "" {
+		block["font_family"] = family
+	}
+	if size, ok := styleParams["font_size_px"].(float64); ok {
+		block["font_size"] = size
+	}
+	if nested, ok := styleParams["style"].(map[string]any); ok {
+		for key, value := range nested {
+			block[key] = value
+		}
+	}
+	return block
+}
+
+func deleteNestedStyleKey(params map[string]any, key string) {
+	nested, ok := params["style"].(map[string]any)
+	if !ok {
+		return
+	}
+	delete(nested, key)
+}
+
+func applyTextStyleToItem(item *capmodel.OverlayItem, styleParams map[string]any) {
+	if item == nil || len(styleParams) == 0 {
+		return
+	}
+	item.Params = capabilityoverlay.MergeRuntimeTextStyleParams(item.Params, styleParams)
+	block := textStyleBlock(styleParams)
+	if size, ok := styleParams["glow_size"].(float64); ok && size <= 0 {
+		delete(block, "glow")
+	}
+	if len(block) > 0 {
+		item.Style = capabilityoverlay.MergeStyleParam(item.Style, block)
+	}
+	item.RenderKey = ""
+}
+
+func applyTextStyleToChainSegment(segment map[string]any, styleParams map[string]any) {
+	if len(styleParams) == 0 {
+		return
+	}
+	params, _ := segment["params"].(map[string]any)
+	segment["params"] = capabilityoverlay.MergeRuntimeTextStyleParams(params, styleParams)
+	block := textStyleBlock(styleParams)
+	if size, ok := styleParams["glow_size"].(float64); ok && size <= 0 {
+		delete(block, "glow")
+	}
+	if len(block) == 0 {
+		return
+	}
+	style, _ := segment["style"].(map[string]any)
+	segment["style"] = capabilityoverlay.MergeStyleParam(style, block)
+}
+
+// applyPayloadOverlayStyleToItems is the one payload-style projection onto the
+// sealed plan, after the planner's presentation defaults. Non-bullet text uses
+// the run-level typography; bullet-point copy (including a bullet fused into a
+// chain) uses the dedicated bullet block and falls back to the run-level style
+// field by field; image items take the run-level image frame/treatment. Only
+// fields the payload actually chose are written, so an omitted field keeps the
+// planner's default instead of being reset. Cursor controls are dropped by
+// payloadTextStyleParams because the Chronon lowering rejects them.
+func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
+	runStyle := payloadTextStyleParams(canvas.Style)
+	bulletStyle := payloadBulletStyleParams(canvas.Style)
+	pins := editorialBulletPins(canvas.EditorialBulletStyles)
+	var imageStyle *scriptpkg.OverlayImageStyleSpec
+	if canvas.Style != nil {
+		imageStyle = canvas.Style.Image
+	}
+	if len(runStyle) == 0 && len(bulletStyle) == 0 && len(pins) == 0 && imageStyle == nil {
+		return
+	}
+	for i := range items {
+		item := &items[i]
+		if item.Map != nil {
+			continue
+		}
+		if imageStyle != nil && isImageOverlayItem(*item) {
+			applyOverlayImageStyle(item, imageStyle)
+		}
+		if segments, ok := capmodel.ChainSegmentMaps(item.Params); ok {
+			changed := false
+			for _, segment := range segments {
+				segmentParams, _ := segment["params"].(map[string]any)
+				if editorialBulletParams(segmentParams) {
+					applyTextStyleToChainSegment(segment, bulletParamsForScene(item.SceneID, pins, bulletStyle))
+					changed = true
+					continue
+				}
+				kind, _ := segment["kind"].(string)
+				if capabilityoverlay.IsTextOverlayKind(kind) {
+					applyTextStyleToChainSegment(segment, runStyle)
+					changed = true
+				}
+			}
+			if changed {
+				item.Params["chain_segments"] = segments
+				item.RenderKey = ""
+			}
+			continue
+		}
+		if editorialBulletParams(item.Params) {
+			applyTextStyleToItem(item, bulletParamsForScene(item.SceneID, pins, bulletStyle))
+			continue
+		}
+		if capabilityoverlay.IsTextOverlayKind(item.Kind) {
+			applyTextStyleToItem(item, runStyle)
+		}
+	}
+}
 
 // countRecapItems counts final recap survivors, including cards preserved
 // inside a fused chain item.
@@ -66,137 +293,4 @@ func countChartItems(items []capmodel.OverlayItem) int {
 		}
 	}
 	return n
-}
-
-// applyOverlayStyleToItems projects the run-level OverlayStyleSpec onto every
-// item: font size for phrases and presentation cards, the image frame, and the
-// per-image-layer params for composite entity images. Extracted verbatim from
-// the sealing path so the file-size split changes no behaviour.
-// imageStyleParamName preserves image_glow_* so the image halo cannot collide
-// with the caption's text glow_color or be stripped into an unread key.
-func imageStyleParamName(key string) string {
-	if strings.HasPrefix(key, "image_glow_") {
-		return key
-	}
-	return strings.TrimPrefix(key, "image_")
-}
-
-func applyOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
-	styleParams := overlayStyleParams(canvas.Style)
-	runGlowDisabled := canvas.Style != nil && canvas.Style.GlowSize != nil && *canvas.Style.GlowSize <= 0
-	runStrokeDisabled := canvas.Style != nil && canvas.Style.StrokeSize != nil && *canvas.Style.StrokeSize <= 0
-	for i := range items {
-		merged := map[string]any{}
-		for k, v := range items[i].Params {
-			merged[k] = v
-		}
-		for k, v := range styleParams {
-			hasEntityCaption := strings.TrimSpace(items[i].EntityCaption) != ""
-			if isRuntimeTextStyleParam(k) && (isImageOverlayItem(items[i]) || strings.TrimSpace(items[i].Kind) == "entity_image" || (!isTextOverlayKind(items[i].Kind) && !hasEntityCaption && items[i].Map == nil)) {
-				continue
-			}
-			if strings.HasPrefix(k, "image_") {
-				if !isImageOverlayItem(items[i]) {
-					continue
-				}
-				merged[imageStyleParamName(k)] = v
-				continue
-			}
-			if k == "style" {
-				if (isImageOverlayItem(items[i]) || strings.TrimSpace(items[i].Kind) == "entity_image") && items[i].Map == nil {
-					continue
-				}
-				merged[k] = mergeStyleParam(merged[k], v.(map[string]any))
-				// Motion presets also carry a top-level Style map. Keep explicit
-				// run typography/color/effect choices in sync there; chain
-				// coalescing copies this map into each ChainSegment, and the
-				// renderer gives it precedence over Params.style.
-				if (!isImageOverlayItem(items[i]) && strings.TrimSpace(items[i].Kind) != "entity_image" && isTextOverlayKind(items[i].Kind)) || items[i].Map != nil {
-					items[i].Style = mergeStyleParam(items[i].Style, v.(map[string]any))
-				}
-			} else if isRuntimeTextStyleParam(k) {
-				// A run-level payload choice is canonical across text motions.
-				// Preset or animation-derived values are defaults and must not
-				// make the same payload render with different typography.
-				merged[k] = v
-			} else if _, exists := merged[k]; !exists {
-				merged[k] = v
-			}
-		}
-		// A run-level zero is an explicit disable. StyleParams carries the zero
-		// through to the renderer, which clears the preset/role effect; also drop
-		// any animation-authored nested effect so it cannot win afterwards.
-		if runGlowDisabled && (isTextOverlayKind(items[i].Kind) || strings.TrimSpace(items[i].EntityCaption) != "") && items[i].Map == nil && !isImageOverlayItem(items[i]) {
-			merged["glow_size"] = 0.0
-			delete(merged, "glow_color")
-			if nested, ok := merged["style"].(map[string]any); ok {
-				delete(nested, "glow")
-			}
-			if items[i].Style != nil {
-				delete(items[i].Style, "glow")
-			}
-		}
-		if runStrokeDisabled && (isTextOverlayKind(items[i].Kind) || strings.TrimSpace(items[i].EntityCaption) != "") && items[i].Map == nil && !isImageOverlayItem(items[i]) {
-			merged["stroke_size"] = 0.0
-			if items[i].Style != nil {
-				delete(items[i].Style, "stroke")
-			}
-		}
-		items[i].Params = merged
-		if items[i].Kind == "text_phrase" || items[i].Kind == string(capmodel.KindImportantPhrase) {
-			phraseFontSize := float64(capabilityoverlay.PresentationPhraseFontMinimumPX)
-			if configured, ok := styleParams["font_size_px"].(float64); ok && configured > phraseFontSize {
-				phraseFontSize = configured
-			}
-			// A chapter opening is a title-level card: give it its own font bump
-			// over the run phrase size, exactly like presentation cards.
-			if items[i].Params["editorial_role"] == capabilityoverlay.ChapterBulletRole {
-				phraseFontSize += float64(capabilityoverlay.ChapterTextFontIncreasePX)
-			}
-			items[i].Params["font_size_px"] = phraseFontSize
-			if phraseStyle, ok := items[i].Params["style"].(map[string]any); ok {
-				phraseStyle["font_size"] = phraseFontSize
-			}
-		}
-		if items[i].TemplateID == "TIMELINE_DATE_CARD" || items[i].TemplateID == "METRIC_STAT_CARD" {
-			// Match the selected shared text style and apply the presentation
-			// size increase without adding a separate preset or font family.
-			baseFontSize := float64(capabilityoverlay.SharedTextFontSizePX)
-			if configured, ok := styleParams["font_size_px"].(float64); ok && configured > baseFontSize {
-				baseFontSize = configured
-			}
-			presentationFontSize := baseFontSize + float64(capabilityoverlay.PresentationTextFontIncreasePX)
-			items[i].Params["font_size_px"] = presentationFontSize
-			if presentationStyle, ok := items[i].Params["style"].(map[string]any); ok {
-				presentationStyle["font_size"] = presentationFontSize
-			}
-			// Kind "number" is semantically lowered by RenderingGen through
-			// its generic text lane, so it misses the date/stat box growth
-			// branch. Send the matching height with the font override or the
-			// preset's shrink-only fit silently scales 240px callouts back down.
-			items[i].Params["height"] = presentationFontSize*1.7 + 32
-		}
-		items[i].RenderKey = ""
-		if isImageOverlayItem(items[i]) {
-			var imageStyle *scriptpkg.OverlayImageStyleSpec
-			if canvas.Style != nil {
-				imageStyle = canvas.Style.Image
-			}
-			applyOverlayImageStyle(&items[i], imageStyle)
-			for childIndex := range items[i].ImageLayers {
-				child := &items[i].ImageLayers[childIndex]
-				childParams := map[string]any{}
-				for key, value := range child.Params {
-					childParams[key] = value
-				}
-				for key, value := range styleParams {
-					if strings.HasPrefix(key, "image_") {
-						childParams[imageStyleParamName(key)] = value
-					}
-				}
-				child.Params = childParams
-			}
-			normalizeEntityImageLayer(&items[i])
-		}
-	}
 }

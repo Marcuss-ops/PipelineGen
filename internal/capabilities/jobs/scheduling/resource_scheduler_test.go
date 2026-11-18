@@ -8,6 +8,21 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
+// snapshotRunning is the test-side observability projection of the pool
+// (mirrors the production accessor removed with the dead-code sweep).
+func snapshotRunning(s *ResourceScheduler) map[SpeculationResource]int {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[SpeculationResource]int, len(s.running))
+	for resource, count := range s.running {
+		out[resource] = count
+	}
+	return out
+}
+
 func candidate(id string, resource string, cost string, depth SpeculationDepth) SpeculationCandidate {
 	return SpeculationCandidate{
 		Job:   &job.Job{ID: "job-" + id},
@@ -32,7 +47,7 @@ func TestResourceScheduler_PerClassPoolsAreSeparate(t *testing.T) {
 		ResourceNetwork: {Capacity: 4, ActiveReserved: 1, SpeculativeMax: 3},
 	}
 	cfg.MaxByCost = map[SpeculationCost]int{CostWarm: 10, CostPrepare: 10, CostSpeculate: 10}
-	scheduler := NewResourceScheduler(cfg, ActiveWorkFunc(func() bool { return true }))
+	scheduler := NewResourceScheduler(cfg, testActiveWorkFunc(func() bool { return true }))
 
 	candidates := []SpeculationCandidate{
 		candidate("llm-1", string(job.ResourceLLM), string(CostPrepare), DepthNPlus1),
@@ -66,7 +81,7 @@ func TestResourceScheduler_PerClassPoolsAreSeparate(t *testing.T) {
 // resumes.
 func TestResourceScheduler_ActiveWorkAbsolutePriority(t *testing.T) {
 	active := false
-	scheduler := NewResourceScheduler(DefaultSpeculationConfig(), ActiveWorkFunc(func() bool { return active }))
+	scheduler := NewResourceScheduler(DefaultSpeculationConfig(), testActiveWorkFunc(func() bool { return active }))
 	cands := []SpeculationCandidate{
 		candidate("warm", string(job.ResourceNetwork), string(CostWarm), DepthNPlus1),
 		candidate("spec", string(job.ResourceLLM), string(CostSpeculate), DepthNPlus1),
@@ -95,7 +110,7 @@ func TestResourceScheduler_ActiveWorkAbsolutePriority(t *testing.T) {
 	// to FALSE while the first unit is in-flight.
 	var mu sync.Mutex
 	activeMid := true
-	scheduler2 := NewResourceScheduler(DefaultSpeculationConfig(), ActiveWorkFunc(func() bool {
+	scheduler2 := NewResourceScheduler(DefaultSpeculationConfig(), testActiveWorkFunc(func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return activeMid
@@ -148,7 +163,7 @@ func TestResourceScheduler_BudgetReservesActiveShare(t *testing.T) {
 		ResourceTTS: {Capacity: 2, ActiveReserved: 1, SpeculativeMax: 0}, // SpeculativeMax=0 → derive Capacity-ActiveReserved=1
 	}
 	cfg.MaxByCost = map[SpeculationCost]int{CostWarm: 10}
-	scheduler := NewResourceScheduler(cfg, ActiveWorkFunc(func() bool { return true }))
+	scheduler := NewResourceScheduler(cfg, testActiveWorkFunc(func() bool { return true }))
 
 	admitted := scheduler.Admit([]SpeculationCandidate{
 		candidate("tts-1", string(job.ResourceTTS), string(CostWarm), DepthNPlus1),
@@ -169,7 +184,7 @@ func TestResourceScheduler_RunningTracksLivePool(t *testing.T) {
 	cfg.ResourceLimits = map[SpeculationResource]ResourceBudget{
 		ResourceNetwork: {Capacity: 4, ActiveReserved: 1, SpeculativeMax: 2},
 	}
-	scheduler := NewResourceScheduler(cfg, ActiveWorkFunc(func() bool { return true }))
+	scheduler := NewResourceScheduler(cfg, testActiveWorkFunc(func() bool { return true }))
 
 	started := make(chan struct{})
 	var startedOnce sync.Once
@@ -189,13 +204,13 @@ func TestResourceScheduler_RunningTracksLivePool(t *testing.T) {
 
 	<-started
 	// While the first unit executes, the live pool must show it.
-	running := scheduler.Running()
+	running := snapshotRunning(scheduler)
 	if running[ResourceNetwork] != 1 {
 		t.Fatalf("live network pool = %d, want 1 while in-flight", running[ResourceNetwork])
 	}
 	close(release)
 	<-done
-	running = scheduler.Running()
+	running = snapshotRunning(scheduler)
 	if running[ResourceNetwork] != 0 {
 		t.Fatalf("live network pool after completion = %d, want 0", running[ResourceNetwork])
 	}

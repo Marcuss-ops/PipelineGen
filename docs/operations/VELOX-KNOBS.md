@@ -32,7 +32,6 @@ a registry entry.
 | `VELOX_POLL_MAX_BACKOFF` | config | 60s | `internal/platform/config/jobs.go` | 60s | Ceiling of the job-runner poll backoff. |
 | `VELOX_PROGRESS_COALESCE_WINDOW` | config | 100ms | `internal/platform/config/jobs.go` | 100ms | Window over which job progress writes are coalesced (0 = passthrough). |
 | `VELOX_RUST_MEDIASAMPLER_PATH` | env | bin/mediasampler | `internal/app/wiring/media_pool_ranker.go` | bin/mediasampler | Rust mediasampler worker used by the canonical media ranker (rank_candidates). |
-| `VELOX_RUST_QUALITY_GATE` | config | false | `internal/app/wiring/wire_script_usecases.go` | false until the release pin is bumped | Opt into the Rust script-qa quality_gate instead of the canonical Go editorial gate. |
 | `VELOX_SCHEDULER_INTERVAL` | config | 30s | `internal/platform/config/jobs.go` | 30s | Scheduler tick interval for background jobs. |
 | `VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY` | config | 6 | `internal/platform/config/scripts.go` | 6 (machine render ceiling) | Machine-wide ceiling for localized render jobs. |
 | `VELOX_YOUTUBE_ASYNC_ENRICHMENT` | env |  | `internal/capabilities/youtube/usecase/process_segment_step6to9.go` | unset (inline enrichment) until the outbox worker is certified | Commit YouTube clips before asynchronous metadata enrichment; boot refuses when the media outbox worker is unavailable. |

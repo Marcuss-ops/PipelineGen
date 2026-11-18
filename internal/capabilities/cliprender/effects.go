@@ -137,6 +137,12 @@ var clipEffectSpecs = map[string]clipEffectSpec{
 	"sharpen": requiring(newClipEffectSpec([]string{"amount"},
 		clipEffectCheck{"amount", "in [0,10]", func(e ClipEffectSpec) bool { return inRange(e.Amount, 0, 10) }},
 	), "amount"),
+	// black_and_white is the archival/opening treatment. amount 1.0 is full
+	// desaturation, 0.0 leaves the clip untouched; RenderingGen lowers it to
+	// Chronon's native color.saturation catalog effect.
+	"black_and_white": requiring(newClipEffectSpec([]string{"amount"},
+		clipEffectCheck{"amount", "in [0,1]", func(e ClipEffectSpec) bool { return inRange(e.Amount, 0, 1) }},
+	), "amount"),
 	"banded_grain": requiring(newClipEffectSpec([]string{"intensity", "speed", "seed"},
 		clipEffectCheck{"intensity", "in [0,4]", func(e ClipEffectSpec) bool { return inRange(e.Intensity, 0, 4) }},
 		clipEffectCheck{"speed", "in [-1000,1000]", func(e ClipEffectSpec) bool {

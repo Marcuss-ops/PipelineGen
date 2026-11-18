@@ -69,6 +69,9 @@ type GenerateRequest struct {
 	ShortPhraseMotion  string `json:"short_phrase_motion,omitempty"`
 	LongPhraseMotion   string `json:"long_phrase_motion,omitempty"`
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
+	// EditorialBulletStyles pins font and entrance motion per editorial
+	// bullet (one bullet per scene). Empty keeps the presentation defaults.
+	EditorialBulletStyles []scriptpkg.EditorialBulletStyle `json:"editorial_bullet_styles,omitempty"`
 	// DateMotionFamily narrows date-card motion selection to a certified
 	// ChrononTemplate date family (auto, date_v1, didone, typewriter).
 	DateMotionFamily string `json:"date_motion_family,omitempty"`
@@ -82,12 +85,9 @@ type GenerateRequest struct {
 	ImageMotions  []string `json:"image_motions,omitempty"`
 	// ImageWithTextMotions narrows the certified pool for captioned images.
 	// Empty keeps the full seeded catalog.
-	ImageWithTextMotions []string `json:"image_with_text_motions,omitempty"`
-	EntityImageMotions   []string `json:"entity_image_motions,omitempty"`
-	EntityCaptionMotions []string `json:"entity_caption_motions,omitempty"`
-	// AnimationPolicies is the retired pre-v2 contract, carried only so the
-	// compile boundary can reject a non-empty legacy payload.
-	AnimationPolicies             []scriptpkg.AnimationPolicy                    `json:"animation_policies,omitempty"`
+	ImageWithTextMotions          []string                                       `json:"image_with_text_motions,omitempty"`
+	EntityImageMotions            []string                                       `json:"entity_image_motions,omitempty"`
+	EntityCaptionMotions          []string                                       `json:"entity_caption_motions,omitempty"`
 	RandomLightLeakOnClipStart    bool                                           `json:"random_light_leak_on_clip_start,omitempty"`
 	RandomLightLeakOnOverlayStart bool                                           `json:"random_light_leak_on_overlay_start,omitempty"`
 	RandomImageEffects            bool                                           `json:"random_image_effects,omitempty"`

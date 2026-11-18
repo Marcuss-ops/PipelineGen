@@ -3,6 +3,8 @@ package images
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +18,8 @@ import (
 	"go.uber.org/zap"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/entitycatalog"
 )
 
@@ -338,3 +342,168 @@ func inspectCatalogTables(t *testing.T, ctx context.Context, client *http.Client
 
 var _ = sort.Ints
 var _ = sql.ErrNoRows
+
+// ── Visual dump for human semantic review ────────────────────────────────
+//
+// Technical classification says whether bytes decode; it cannot say whether
+// the image shows the right person. This opt-in live test downloads the
+// top-N DuckDuckGo results through the same guarded acquisition path used by
+// the pipeline (SSRF guard, MIME sniffing, size/pixel budget), writes the
+// accepted bytes to disk with rank and dimensions, and leaves the semantic
+// judgement to a human reviewer.
+//
+// Run:
+//
+//	PERSON_IMAGE_VISUAL_DUMP=1 PERSON_IMAGE_VISUAL_DUMP_OUT=/tmp/person-images \
+//	  go test ./internal/capabilities/images -run TestPersonImageVisualDump -v -count=1 -timeout 15m
+
+type visualDumpEntity struct {
+	Slug  string
+	Query string
+}
+
+type visualDumpEntry struct {
+	Entity string `json:"entity"`
+	Rank   int    `json:"rank"`
+	URL    string `json:"url"`
+	File   string `json:"file,omitempty"`
+	MIME   string `json:"mime,omitempty"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+	Bytes  int    `json:"bytes,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+func TestPersonImageVisualDump(t *testing.T) {
+	if os.Getenv("PERSON_IMAGE_VISUAL_DUMP") != "1" {
+		t.Skip("set PERSON_IMAGE_VISUAL_DUMP=1 and PERSON_IMAGE_VISUAL_DUMP_OUT to dump live candidates")
+	}
+	outDir := strings.TrimSpace(os.Getenv("PERSON_IMAGE_VISUAL_DUMP_OUT"))
+	if outDir == "" {
+		t.Fatal("PERSON_IMAGE_VISUAL_DUMP_OUT is required")
+	}
+
+	entities := []visualDumpEntity{
+		{Slug: "mike-tyson", Query: "Mike Tyson 1991"},
+		{Slug: "chiara-poggi", Query: "Chiara Poggi"},
+		{Slug: "alberto-stasi", Query: "Alberto Stasi"},
+		{Slug: "michael-burry", Query: "Michael Burry investor"},
+		{Slug: "george-washington", Query: "George Washington portrait"},
+		{Slug: "jose-maria-aznar", Query: "José María Aznar"},
+		{Slug: "conan-obrien", Query: "Conan O'Brien"},
+		{Slug: "michael-b-jordan", Query: "Michael B. Jordan"},
+		{Slug: "bruce-lee", Query: "李小龙 Bruce Lee"},
+		{Slug: "hayao-miyazaki", Query: "宮崎駿 Hayao Miyazaki"},
+		{Slug: "elon-musk", Query: "Elon Musk"},
+		{Slug: "steve-jobs", Query: "Steve Jobs Stanford 2005"},
+		{Slug: "gianluca-ferretti", Query: "Gianluca Ferretti ingegnere"},
+	}
+
+	perEntity := 6
+	if raw := strings.TrimSpace(os.Getenv("PERSON_IMAGE_VISUAL_DUMP_LIMIT")); raw != "" {
+		var parsed int
+		if _, err := fmt.Sscanf(raw, "%d", &parsed); err != nil || parsed <= 0 {
+			t.Fatalf("invalid PERSON_IMAGE_VISUAL_DUMP_LIMIT %q", raw)
+		}
+		perEntity = parsed
+	}
+
+	client := &http.Client{Timeout: 25 * time.Second}
+	service := &ImageStorageService{client: client, log: zap.NewNop()}
+	source := strings.ToLower(strings.TrimSpace(os.Getenv("PERSON_IMAGE_VISUAL_DUMP_SOURCE")))
+	if source == "" {
+		source = "ddg"
+	}
+	if source != "ddg" && source != "searxng" {
+		t.Fatalf("unknown PERSON_IMAGE_VISUAL_DUMP_SOURCE %q (want ddg or searxng)", source)
+	}
+	if source == "searxng" {
+		searxngURL := strings.TrimSpace(os.Getenv("SEARXNG_URL"))
+		if searxngURL == "" {
+			searxngURL = "http://127.0.0.1:8080"
+		}
+		service.cfg = &config.Config{External: config.ExternalConfig{SearxngURL: searxngURL}}
+		t.Logf("source=searxng url=%s", searxngURL)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+	defer cancel()
+	policy := adapters.DefaultVidRushImagePolicy()
+
+	var manifest []visualDumpEntry
+	for _, entity := range entities {
+		dir := filepath.Join(outDir, entity.Slug)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+		var urls []string
+		switch source {
+		case "searxng":
+			for _, hit := range service.searchSearXNGImagesMany(ctx, entity.Query, perEntity) {
+				if strings.HasPrefix(hit.PreviewURL, "http") {
+					urls = append(urls, hit.PreviewURL)
+				}
+			}
+		default:
+			urls = service.searchDDGWideMany(ctx, entity.Query, perEntity)
+		}
+		t.Logf("%-20s source=%s query=%q urls=%d", entity.Slug, source, entity.Query, len(urls))
+		if len(urls) == 0 {
+			manifest = append(manifest, visualDumpEntry{Entity: entity.Slug, Error: "no provider URLs (source=" + source + ")"})
+			continue
+		}
+		for i, rawURL := range urls {
+			rank := i + 1
+			candidate := scriptpkg.SegmentAssetCandidate{
+				Provider:  scriptpkg.VidRushProviderInternetImages,
+				Query:     entity.Query,
+				SourceURL: rawURL,
+			}
+			data, mime, err := adapters.DownloadVidRushImageForCandidate(ctx, client, candidate, policy)
+			if err != nil {
+				manifest = append(manifest, visualDumpEntry{Entity: entity.Slug, Rank: rank, URL: rawURL, Error: err.Error()})
+				t.Logf("  rank=%d DOWNLOAD ERROR %v", rank, err)
+				continue
+			}
+			verified, err := adapters.VerifyVidRushImageBytes(candidate, data, mime, policy)
+			if err != nil {
+				manifest = append(manifest, visualDumpEntry{Entity: entity.Slug, Rank: rank, URL: rawURL, MIME: mime, Error: err.Error()})
+				t.Logf("  rank=%d VERIFY ERROR %v", rank, err)
+				continue
+			}
+			ext := visualDumpExtension(mime)
+			name := fmt.Sprintf("%02d_%dx%d%s", rank, verified.Width, verified.Height, ext)
+			path := filepath.Join(dir, name)
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				t.Fatalf("write %s: %v", path, err)
+			}
+			manifest = append(manifest, visualDumpEntry{
+				Entity: entity.Slug, Rank: rank, URL: rawURL, File: name,
+				MIME: mime, Width: verified.Width, Height: verified.Height, Bytes: len(data),
+			})
+			t.Logf("  rank=%d %dx%d %s %d bytes", rank, verified.Width, verified.Height, mime, len(data))
+		}
+	}
+
+	manifestPath := filepath.Join(outDir, "manifest.json")
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, append(encoded, '\n'), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	t.Logf("manifest: %s", manifestPath)
+}
+
+func visualDumpExtension(mime string) string {
+	switch mime {
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ".jpg"
+	}
+}

@@ -88,7 +88,14 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # Allowed kernel subzones (target: internal/kernel/<x>).
 # Types belong in kernel only when ≥2 real capabilities need the same
 # semantic contract (per proposal §"internal/kernel").
-kernel_subzones: asset, job, script, event, observability, embedding, entitytype, semanticdoc, digest, media, indexing, assembly, delivery, primitives, transcript, idempotency, models, audio, sceneir, geodesy, overlayplan
+#
+# The scanner enforces this list bidirectionally, so a name stays here only
+# while the package exists. `semanticdoc` (zero importers; real DocumentText
+# composer is dto.BuildEmbeddingText) and `indexing` (the retired clipindexer
+# sentinel) were deleted by docs/operations/TICKET-ORPHAN-PACKAGES-2026-11-18.md;
+# re-declaring them without a package would demand an empty module, and
+# keeping them declared makes the layout gate fail on the deleted tree.
+kernel_subzones: asset, job, script, event, observability, embedding, entitytype, digest, media, assembly, delivery, primitives, transcript, idempotency, models, audio, sceneir, geodesy, overlayplan
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,
@@ -427,3 +434,25 @@ hard_gates:
   # allowlist entry, no passed remediation deadline. A gate must not
   # protect knowledge that no longer exists.
   - percheck_governance_artifacts
+  # Platform port boundary (added 2026-11-18). A platform adapter may import a
+  # capability PORT (hexagonal, one direction); it must not import a
+  # capability's BUSINESS package, which is what turns the subtree into a
+  # cycle and makes the adapter untestable without the domain. The first entry
+  # is capabilities/scripts (395 files of script-generation domain): the
+  # RenderingGen adapter used to import it for the render-queue wire contract,
+  # which now lives in internal/kernel/script/renderqueue. The existing
+  # adapters are recorded in an exact-file inventory that ratchets DOWN only —
+  # the stale half fails the build when a migrated file keeps its entry.
+  - percheck_platform_port_boundary
+  - percheck_platform_port_inventory_stale
+  # Outbox envelope decode SSOT (added 2026-11-18). The v1 envelope checks
+  # (valid JSON, exact schema_version, non-empty event_id, non-empty
+  # idempotency_key) were written inline in six handlers and the decision they
+  # encode — "an envelope violation is TERMINAL, never retryable" — must have
+  # one owner. The gate flags a FUNCTION that unmarshals evt.PayloadJSON and
+  # compares schema_version + idempotency_key inline instead of calling
+  # outboxevents.DecodeV1; a handler delegating to its capability's canonical
+  # validator, or consuming a payload with no envelope, is not a violation.
+  # The exemption register ratchets down only (stale entries fail the build).
+  - percheck_outbox_envelope_decode_ssot
+  - percheck_outbox_envelope_exemption_stale

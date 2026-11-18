@@ -19,7 +19,7 @@ func TestApplyOverlayStyleToItemsCarriesImageGlow(t *testing.T) {
 			Params: map[string]any{},
 		}},
 	}}
-	applyOverlayStyleToItems(items, OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{
+	applyPayloadOverlayStyleToItems(items, OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{
 		Image: &scriptpkg.OverlayImageStyleSpec{Glow: &scriptpkg.OverlayImageGlowSpec{
 			Radius: &radius, Intensity: &intensity, Color: "#FF3355",
 		}},

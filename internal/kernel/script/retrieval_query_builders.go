@@ -2,10 +2,7 @@ package script
 
 import "strings"
 
-const (
-	defaultYouTubeQueryLimit = 5
-	defaultImageQueryLimit   = 5
-)
+const defaultYouTubeQueryLimit = 5
 
 // BuildYouTubeQueries creates entity/context-oriented queries. Named entities
 // and temporal terms lead; keywords and topic provide deterministic fallback
@@ -25,40 +22,6 @@ func BuildYouTubeQueries(profile SegmentSemanticProfile, limit int) []string {
 	return uniqueQueries(queries, limit)
 }
 
-// Deprecated: image provider queries are owned by BrainRust's semantic
-// manifest. This remains for source compatibility; PipelineGen must not call
-// it because it composes query text from entity and profile strings.
-func QueriesForImages(profile SegmentSemanticProfile, limit int) []string {
-	limit = normalizedQueryLimit(limit, defaultImageQueryLimit)
-	queries := make([]string, 0, limit)
-	if profile.Retrieval != nil {
-		queries = append(queries, profile.Retrieval.Images...)
-	}
-	queries = append(queries, BuildImageQueries(profile, limit)...)
-	return uniqueRetrievalQueries(queries, limit)
-}
-
-func uniqueRetrievalQueries(candidates []string, limit int) []string {
-	seen := make(map[string]struct{}, len(candidates))
-	out := make([]string, 0, limit)
-	for _, candidate := range candidates {
-		query := strings.Join(strings.Fields(strings.TrimSpace(candidate)), " ")
-		if query == "" {
-			continue
-		}
-		key := strings.ToLower(query)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, query)
-		if len(out) == limit {
-			break
-		}
-	}
-	return out
-}
-
 // BuildYouTubeQueriesWithExplicit preserves a caller-supplied exact query
 // while keeping the rest of the query ladder owned by this package.
 func BuildYouTubeQueriesWithExplicit(profile SegmentSemanticProfile, explicit string, limit int) []string {
@@ -68,30 +31,6 @@ func BuildYouTubeQueriesWithExplicit(profile SegmentSemanticProfile, explicit st
 	}
 	queries = append(queries, BuildYouTubeQueries(profile, limit)...)
 	return uniqueQueries(queries, normalizedQueryLimit(limit, defaultYouTubeQueryLimit))
-}
-
-// Deprecated: image provider queries are emitted by BrainRust and consumed
-// verbatim by PipelineGen. This remains for source compatibility only.
-func BuildImageQueries(profile SegmentSemanticProfile, limit int) []string {
-	limit = normalizedQueryLimit(limit, defaultImageQueryLimit)
-	var queries []string
-	visual := termValues(profile, TermKindVisual, TermKindContext)
-	temporal := temporalTerms(profile)
-	for _, entity := range profile.Entities {
-		if isRetrievalEntity(entity) {
-			queries = append(queries, joinQuery(append([]string{entity.Value}, append(visual, temporal...)...)...))
-		}
-	}
-	if len(profile.VisualTerms) > 0 {
-		queries = append(queries, profile.VisualTerms[0].ValueIfPresent())
-	}
-	// A source-grounded topic is the deterministic fallback when extraction
-	// yields no typed entity or visual term. Keep it bounded and provider-safe.
-	if len(queries) == 0 && strings.TrimSpace(profile.Topic) != "" {
-		queries = append(queries, profile.Topic)
-	}
-	queries = append(queries, visual...)
-	return uniqueQueries(queries, limit)
 }
 
 func (k WeightedKeyword) ValueIfPresent() string { return strings.TrimSpace(k.Value) }

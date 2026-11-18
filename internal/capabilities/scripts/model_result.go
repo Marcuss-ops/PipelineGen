@@ -15,6 +15,7 @@ import (
 	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 type GenerateResult struct {
@@ -548,14 +549,9 @@ type RenderReference struct {
 }
 
 // OverlayItemRenderReference binds one semantic overlay item to the queue job
-// and certified artifact that rendered it.
-type OverlayItemRenderReference struct {
-	ItemID   string          `json:"item_id"`
-	JobID    string          `json:"job_id"`
-	Status   string          `json:"status"`
-	BatchID  string          `json:"batch_id,omitempty"`
-	Artifact *RenderArtifact `json:"artifact,omitempty"`
-}
+// and certified artifact that rendered it. It is the kernel wire type, aliased
+// so this capability keeps its historical spelling.
+type OverlayItemRenderReference = renderqueue.OverlayItemRenderReference
 
 // OverlayBatchRenderReference binds one certified artifact to the semantic
 // items and frame window it composites. Times use the plan's canonical

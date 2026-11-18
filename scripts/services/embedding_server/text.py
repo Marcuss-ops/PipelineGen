@@ -29,7 +29,7 @@ from . import (
     TEXT_MODEL_VERSION,
     TEXT_QUERY_PREFIX,
     TEXT_SEMANTIC_DOCUMENT_VERSION,
-    _inference_sem,
+    _text_inference_sem,
     model,
     nlp,
 )
@@ -86,7 +86,7 @@ async def embed(req: EmbedRequest):
     - type='passage': adds 'passage:' prefix for document indexing
     See: https://huggingface.co/intfloat/multilingual-e5-base
     """
-    async with _inference_sem:
+    async with _text_inference_sem:
         try:
             prefix = "query: " if req.type == "query" else "passage: "
             normalized = normalize_text(req.text)
@@ -113,7 +113,7 @@ async def embed_batch(req: BatchTextEmbedRequest):
     of prefixed strings, so the transformer executes batched inference under
     one shared inference slot. A failure rejects the whole batch.
     """
-    async with _inference_sem:
+    async with _text_inference_sem:
         try:
             prefix = "query: " if req.type == "query" else "passage: "
             normalized = [normalize_text(text) for text in req.texts]
@@ -156,7 +156,7 @@ async def index_text(req: IndexTextRequest):
         {"status": "success", "clip_id": "...", "field": "embedding_json",
          "embedding": [...768 floats...], "dimensions": 768, "text_length": int}
     """
-    async with _inference_sem:
+    async with _text_inference_sem:
         try:
             text = (req.search_text or req.name or "").strip()
             if not text:
@@ -187,7 +187,7 @@ async def index_text(req: IndexTextRequest):
 @router.post("/index_transcript")
 async def index_transcript(req: IndexTextRequest):
     """VECTOR-001 closure: transcript compute-and-return. Caller persists."""
-    async with _inference_sem:
+    async with _text_inference_sem:
         try:
             transcript_text = ""
             if req.transcript_path:
@@ -239,7 +239,7 @@ async def index_bulk(req: IndexBulkRequest):
 
     Replaces the previous flow that opened SQLite inside this sidecar.
     """
-    async with _inference_sem:
+    async with _text_inference_sem:
         try:
             results: list[dict] = []
             successful = 0

@@ -215,60 +215,6 @@ func TestFilterEmptyContract(t *testing.T) {
 	}
 }
 
-// TestFilterLanguageHonestyContract — godlike/07 no-fake-availability
-// guard for Language forwarding. PR-AGGREGATE-FILTER-UNIFORM threads
-// q.Filters.Language through AdvancedSearchRequest + providers.SearchFilters
-// so the wire shape is uniform across all backends. But the LOCAL
-// backend cannot enforce Language at the SQL layer today (no
-// media_assets.language column in the canonical
-// clips_repository.go::MediaAssetColumns 40-column projection) and the
-// PROVIDER backends silently drop Language if their native API
-// doesn't expose it (documented SearchFilters contract). Rather than
-// letting the filter look functional — a godlike/07 no-fake-availability
-// violation — this test pins the documented behaviour:
-//
-//   - Local backend: Language reaches AdvancedSearchRequest but is
-//     NOT a SQL filter until migration ships (forward-pointer).
-//   - Provider backend: Language reaches providers.SearchFilters so
-//     adapter-side support can be enabled later; today the field
-//     exists in the wire but no provider implements Language support.
-//   - Both backends MUST round-trip the value; silent drop in the
-//     fan-out path is a regression.
-//
-// Future: when media_assets.language migration lands AND at least
-// ONE provider adapter adds Language support, this test renames to
-// TestFilterLanguageEnforcedContract and the comment is replaced.
-func TestFilterLanguageHonestyContract(t *testing.T) {
-	q := Query{
-		Text:    "anything",
-		Limit:   5,
-		Filters: Filters{Language: "en"},
-	}
-	registry := NewBackendRegistry()
-	a := &filterSpyBackend{name: "provider", caps: []Capability{CapVideo}}
-	b := &filterSpyBackend{name: "local", caps: []Capability{CapVideo, CapAudio}}
-	for _, sp := range []*filterSpyBackend{a, b} {
-		if err := registry.Register(sp); err != nil {
-			t.Fatalf("register: %v", err)
-		}
-	}
-	registry.Freeze()
-
-	agg := NewAggregator(registry, nil)
-	if _, err := agg.Search(context.Background(), q); err != nil {
-		t.Fatalf("Search: %v", err)
-	}
-	for _, sp := range []*filterSpyBackend{a, b} {
-		sp.mu.Lock()
-		got := sp.lastFilters.Language
-		sp.mu.Unlock()
-		if got != "en" {
-			t.Errorf("backend %q: Language must round-trip uniformly; want %q, got %q",
-				sp.name, "en", got)
-		}
-	}
-}
-
 // TestFilterMediaTypeSingleString pins PR-AGGREGATE-FILTER-UNIFORM's
 // most material change: q.Filters.MediaType is a SINGLE canonical
 // string (not the legacy q.MediaTypes slice capability-shape). The

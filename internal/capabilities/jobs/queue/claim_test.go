@@ -43,22 +43,22 @@ func TestNormalizeWait(t *testing.T) {
 	}
 }
 
-func TestClaimUntilReturnsClaimedJob(t *testing.T) {
+func TestClaimUntilMatchingReturnsClaimedJob(t *testing.T) {
 	want := &job.Job{ID: "job-1"}
 	claimer := &fakeClaimer{result: want}
-	got, err := ClaimUntil(context.Background(), claimer, "worker-1", time.Second, 2*time.Second, []string{"script.generate"})
+	got, err := ClaimUntilMatching(context.Background(), claimer, "worker-1", time.Second, 2*time.Second, []string{"script.generate"}, nil)
 	if err != nil {
-		t.Fatalf("ClaimUntil: %v", err)
+		t.Fatalf("ClaimUntilMatching: %v", err)
 	}
 	if got != want {
 		t.Fatalf("claimed job = %#v, want %#v", got, want)
 	}
 }
 
-func TestClaimUntilHonorsCancellation(t *testing.T) {
+func TestClaimUntilMatchingHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	got, err := ClaimUntil(ctx, &fakeClaimer{}, "worker-1", time.Second, time.Second, []string{"script.generate"})
+	got, err := ClaimUntilMatching(ctx, &fakeClaimer{}, "worker-1", time.Second, time.Second, []string{"script.generate"}, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
@@ -67,11 +67,11 @@ func TestClaimUntilHonorsCancellation(t *testing.T) {
 	}
 }
 
-func TestClaimUntilTimesOut(t *testing.T) {
+func TestClaimUntilMatchingTimesOut(t *testing.T) {
 	started := time.Now()
-	got, err := ClaimUntil(context.Background(), &fakeNeverClaimer{}, "worker-1", time.Second, 15*time.Millisecond, []string{"script.generate"})
+	got, err := ClaimUntilMatching(context.Background(), &fakeNeverClaimer{}, "worker-1", time.Second, 15*time.Millisecond, []string{"script.generate"}, nil)
 	if err != nil {
-		t.Fatalf("ClaimUntil timeout: %v", err)
+		t.Fatalf("ClaimUntilMatching timeout: %v", err)
 	}
 	if got != nil {
 		t.Fatalf("claimed job = %#v, want nil", got)
@@ -141,15 +141,15 @@ func TestClaimUntilMatchingRoutesMatchToStore(t *testing.T) {
 	}
 }
 
-// TestClaimUntilUnscopedDoesNotCallMatching pins that the historical unscoped
-// path still uses ClaimNext, so a store without the optional capability keeps
-// working unchanged.
-func TestClaimUntilUnscopedDoesNotCallMatching(t *testing.T) {
+// TestClaimUntilMatchingUnscopedDoesNotCallMatching pins that the unscoped
+// path (nil match) still uses ClaimNext, so a store without the optional
+// capability keeps working unchanged.
+func TestClaimUntilMatchingUnscopedDoesNotCallMatching(t *testing.T) {
 	want := &job.Job{ID: "job-any"}
 	claimer := &fakeClaimer{result: want}
-	got, err := ClaimUntil(context.Background(), claimer, "worker-1", time.Second, time.Second, []string{"clip.render"})
+	got, err := ClaimUntilMatching(context.Background(), claimer, "worker-1", time.Second, time.Second, []string{"clip.render"}, nil)
 	if err != nil {
-		t.Fatalf("ClaimUntil: %v", err)
+		t.Fatalf("ClaimUntilMatching: %v", err)
 	}
 	if got != want {
 		t.Fatalf("claimed job = %#v, want %#v", got, want)

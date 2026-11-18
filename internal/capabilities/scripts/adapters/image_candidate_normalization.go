@@ -9,12 +9,7 @@ import (
 // isInternetImageSourceProvider is the explicit allowlist of concrete search
 // backends that may enter the generic internet_images media lifecycle.
 func isInternetImageSourceProvider(provider string) bool {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "internet_images", "duckduckgo", "wikimedia_commons", "searxng":
-		return true
-	default:
-		return false
-	}
+	return scriptpkg.IsInternetImageSourceProvider(provider)
 }
 
 // normalizeInternetImageCandidates performs discovery normalization only.

@@ -1,8 +1,10 @@
 package overlays
 
-import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+import (
+	"sort"
 
-import "sort"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+)
 
 // mapFadeHalfBandZoom is the planner's half-width (in zoom stops) of every LOD
 // cross-fade — the exact mirror of the worker's mapLODFadeHalfBandZoom. The

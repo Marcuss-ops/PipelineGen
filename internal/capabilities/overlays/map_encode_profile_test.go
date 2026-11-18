@@ -1,9 +1,10 @@
 package overlays
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // TestResolveMapEncodeProfileDefaultsToNVENC pins the production encoder.

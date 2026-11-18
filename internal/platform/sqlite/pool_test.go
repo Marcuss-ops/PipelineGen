@@ -2,55 +2,22 @@
 //
 // Minimal regression tests for the canonical DualPool surface
 // (internal/platform/sqlite/pool.go) + walPragmas
-// enrichment + classifyTxError busy-counter surface.
+// enrichment.
 
 package sqlite
 
 import (
 	"context"
-	"errors"
 	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/mattn/go-sqlite3"
-	"github.com/prometheus/client_golang/prometheus"
-	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 )
-
-// collectHistogramSampleCount reads Histogram.SampleCount from a
-// prometheus.Observer handle. Used by the histogram-observation
-// assertions below.
-//
-// Rationale (Cut 6.2 coder-review feedback, July 2026): testutil.CollectAndCount
-// returns the count of distinct labelsets, NOT observation count.
-// For a Histogram observation, the canonical "exactly N
-// observations" assertion must read SampleCount from the metric
-// protobuf — not query the vec's labelset count.
-//
-// godlike/06 SSOT: this is the canonical accessor for histogram
-// sample-count assertions in the sqlite package. Other tests in
-// the package MUST use this helper (NOT inline dto.Metric +
-// prometheus.Histogram casts), to keep the assertion surface DRY.
-func collectHistogramSampleCount(observer prometheus.Observer) uint64 {
-	h, ok := observer.(prometheus.Histogram)
-	if !ok {
-		return 0
-	}
-	pbMetric := &dto.Metric{}
-	if err := h.Write(pbMetric); err != nil {
-		return 0
-	}
-	return pbMetric.GetHistogram().GetSampleCount()
-}
 
 // ── DualPool construction ────────────────────────────────────────────────
 
@@ -173,92 +140,4 @@ func TestWalPragmas_PreservesAllThreePragmas(t *testing.T) {
 		"busy_timeout pragma MUST appear exactly once")
 	assert.Equal(t, 1, strings.Count(unescapedOut, "_pragma=synchronous(NORMAL)"),
 		"synchronous pragma MUST appear exactly once")
-}
-
-// ── classifyTxError busy-counter surface ────────────────────────────────
-
-// TestClassifyTxError_IncrementsBusyTotal_Once: a typed *sqlite3.Error
-// with Code==ErrBusy or ErrLocked increments sqlite_busy_total{op}
-// EXACTLY ONCE per call. Non-busy errors do NOT increment.
-func TestClassifyTxError_IncrementsBusyTotal_Once(t *testing.T) {
-	busyErr := &sqlite3.Error{Code: sqlite3.ErrBusy}
-	lockedErr := &sqlite3.Error{Code: sqlite3.ErrLocked}
-	otherErr := &sqlite3.Error{Code: sqlite3.ErrFull}
-	plainErr := errors.New("untyped error")
-
-	preWriter := testutil.ToFloat64(observability.SqliteBusyTotal.WithLabelValues("writer"))
-	preReader := testutil.ToFloat64(observability.SqliteBusyTotal.WithLabelValues("reader"))
-
-	classifyTxError("writer", busyErr)
-	classifyTxError("writer", lockedErr)
-	classifyTxError("writer", otherErr) // NOT a busy error
-	classifyTxError("writer", plainErr) // NOT a typed err
-	classifyTxError("reader", busyErr)
-
-	postWriter := testutil.ToFloat64(observability.SqliteBusyTotal.WithLabelValues("writer"))
-	postReader := testutil.ToFloat64(observability.SqliteBusyTotal.WithLabelValues("reader"))
-
-	// writer: 2 increments (ErrBusy + ErrLocked).
-	assert.Equal(t, preWriter+2, postWriter,
-		"classifyTxError MUST increment sqlite_busy_total{op=writer} on ErrBusy AND ErrLocked (not on ErrFull or untyped errors)")
-	// reader: 1 increment (ErrBusy only).
-	assert.Equal(t, preReader+1, postReader,
-		"classifyTxError MUST increment sqlite_busy_total{op=reader} on ErrBusy")
-}
-
-// ── instrumentedTx Commit/Rollback observation ──────────────────────────
-
-// TestInstrumentedTx_CommitObservesOkOutcome: a successful Commit
-// observes tx_duration_seconds{op=writer, outcome=ok} exactly once.
-// Uses collectHistogramSampleCount (NOT testutil.CollectAndCount —
-// that wraps the labelset count, not observation count).
-func TestInstrumentedTx_CommitObservesOkOutcome(t *testing.T) {
-	tmpFile := filepath.Join(t.TempDir(), "cut62_commit.db")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	pool, err := NewDualPool(ctx, tmpFile, 2)
-	require.NoError(t, err)
-	defer func() { _ = pool.Close() }()
-
-	preOK := collectHistogramSampleCount(observability.TxDurationSeconds.WithLabelValues("writer", "ok"))
-
-	tx, err := pool.BeginWriterTx(ctx)
-	require.NoError(t, err)
-
-	// A no-op commit (no SQL between BeginTx and Commit) is the
-	// canonical "ultra-short tx" happy path.
-	require.NoError(t, tx.Commit())
-
-	postOK := collectHistogramSampleCount(observability.TxDurationSeconds.WithLabelValues("writer", "ok"))
-
-	assert.Equal(t, preOK+1, postOK,
-		"successful Commit MUST observe tx_duration_seconds{op=writer, outcome=ok} exactly once")
-}
-
-// TestInstrumentedTx_RollbackObservesErrOutcome: a Rollback observes
-// tx_duration_seconds{op=writer, outcome=err} exactly once.
-func TestInstrumentedTx_RollbackObservesErrOutcome(t *testing.T) {
-	tmpFile := filepath.Join(t.TempDir(), "cut62_rollback.db")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	pool, err := NewDualPool(ctx, tmpFile, 2)
-	require.NoError(t, err)
-	defer func() { _ = pool.Close() }()
-
-	preErr := collectHistogramSampleCount(observability.TxDurationSeconds.WithLabelValues("writer", "err"))
-
-	tx, err := pool.BeginWriterTx(ctx)
-	require.NoError(t, err)
-
-	// Explicit rollback. Subsequent commit returns sql.ErrTxDone
-	// (a benign sentinel — the type assertion in Rollback ignores
-	// it from the busy-counter surface).
-	require.NoError(t, tx.Rollback())
-
-	postErr := collectHistogramSampleCount(observability.TxDurationSeconds.WithLabelValues("writer", "err"))
-
-	assert.Equal(t, preErr+1, postErr,
-		"rollback MUST observe tx_duration_seconds{op=writer, outcome=err} exactly once")
 }

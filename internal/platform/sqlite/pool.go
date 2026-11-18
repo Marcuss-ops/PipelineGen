@@ -53,10 +53,6 @@ import (
 	"runtime"
 	"strconv"
 	"time"
-
-	"github.com/mattn/go-sqlite3"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // DualPool is the canonical WAL-mode reader/writer split for the
@@ -174,13 +170,6 @@ func NewDualPool(ctx context.Context, fileUri string, numReaders int) (*DualPool
 	return &DualPool{Writer: writer, Reader: reader, sourcePath: walUri, ownsHandles: true}, nil
 }
 
-// AttachDualPool exposes the canonical DatabaseSet primary handle through the
-// legacy reader/writer-shaped adapter used by composition bundles. It never
-// opens another SQLite connection or database file: both views intentionally
-// reference DatabaseSet.Primary.DB. New runtime code should prefer
-// DatabaseSet.Primary directly; this adapter exists only while bundle
-// constructors migrate from the retired second-pool topology.
-
 func applyCanonicalPragmas(ctx context.Context, db *sql.DB) error {
 	var journalMode string
 	if err := db.QueryRowContext(ctx, "PRAGMA journal_mode = WAL").Scan(&journalMode); err != nil {
@@ -216,174 +205,6 @@ func (p *DualPool) Close() error {
 		}
 	}
 	return firstErr
-}
-
-// SourcePath returns the WAL-enriched URI passed to driver SQL
-// Opens. Diagnostic-only surface; production code goes through
-// Writer/Reader for database operations.
-func (p *DualPool) SourcePath() string { return p.sourcePath }
-
-// BeginWriterTx is the canonical instrumented write-tx entry point.
-// Every production write path (lease-fence UPDATEs, REPLACE INTO,
-// outbox INSERTs) routes through this method (NOT Writer.BeginTx
-// directly) so the connection_wait_seconds + tx_duration_seconds
-// histograms observe the canonical path.
-//
-// The op="writer" label is preserved through both histograms so
-// operators can read the writer-contention surface independently of
-// the reader surface — the canonical observability demand for the
-// reader/writer split.
-//
-// Return-type rationale (*instrumentedTx): every method of *sql.Tx
-// (QueryContext, ExecContext, PrepareContext, Stmt, StmtContext,
-// etc.) is promoted to *instrumentedTx via Go embedding of
-// *sql.Tx — callers continue to use the canonical *sql.Tx call
-// surface unchanged; only Commit/Rollback are overridden to
-// observe the tx_duration_seconds histogram.
-//
-// godlike/07 fail-closed: classification of the BEGIN error (if any)
-// populates sqlite_busy_total{op=writer} on a classified
-// SQLITE_BUSY/SQLITE_LOCKED. Non-busy errors (e.g. context cancelled,
-// schema mismatch) are surfaced verbatim via the returned error.
-// The caller is expected to retry transient classified errors per
-// the canonical retry.IsTransient contract; the metric is burn-rate
-// evidence, not a retry trigger.
-func (p *DualPool) BeginWriterTx(ctx context.Context) (*instrumentedTx, error) {
-	return p.beginTx(ctx, "writer", p.Writer)
-}
-
-// BeginReaderTx is the canonical instrumented read-tx entry point.
-// Read-only aggregates (`jobs_list_awaiting_aggregation` etc.) and
-// reader-side observation endpoints route through this method.
-//
-// Read txs remain available in WAL-mode even while a writer is
-// holding the single-writer slot — the canonical SQLite WAL
-// concurrency model — so connection_wait_seconds{op=reader} is
-// expected to be orders of magnitude lower than op=writer for
-// typical workloads.
-//
-// Return-type rationale: same as BeginWriterTx (*instrumentedTx for
-// Commit/Rollback metric observation, with *sql.Tx's other methods
-// promoted through embedding for transparent caller use).
-func (p *DualPool) BeginReaderTx(ctx context.Context) (*instrumentedTx, error) {
-	return p.beginTx(ctx, "reader", p.Reader)
-}
-
-// beginTx is the shared begin path. The op label is stored on the
-// observability histograms and on a context-derived key so the
-// commit path can observe a paired tx_duration without recomputing
-// the label. The conn acquisition latency is recorded as
-// connection_wait_seconds; the commit-path tx_duration_seconds is
-// recorded by the returned `instrumentedTx` (defined inline as the
-// sentinel pattern of returning a deferred-observation wrapper).
-//
-// Implementation: we observe the acquisition time here, store the
-// observed op label + start time on the returned transaction's
-// emitted metrics via a sidecar struct (the canonical way to avoid
-// sub-classing *sql.Tx). The commit path runs through
-// `module_tx_done(op)` which is invoked from `instrumentedTxCommit`
-// once per tx exit.
-//
-// godlike/07 fail-closed: SQLite SQLITE_BUSY observed at classifyTxError
-// increments sqlite_busy_total{op}. Other errors are surfaced
-// verbatim; the canonical retry.IsTransient contract downstream
-// handles retry classification per the registered Classifier
-// chain (decisions are made by the canonic retry.Decision walker,
-// not by this instrumentation layer).
-func (p *DualPool) beginTx(ctx context.Context, op string, pool *sql.DB) (*instrumentedTx, error) {
-	if pool == nil {
-		return nil, fmt.Errorf("sqlite.DualPool.beginTx: %s pool is nil (fail-closed)", op)
-	}
-	acquireStart := time.Now()
-	tx, err := pool.BeginTx(ctx, nil)
-	acquireSecs := time.Since(acquireStart).Seconds()
-	if err != nil {
-		classifyTxError(op, err)
-		// Even on a begin failure, surface the wait latency so an
-		// operator can correlate pool-acquire latency with the
-		// failure rate (a degraded pool produces BOTH a high wait
-		// AND a high error rate).
-		observability.ConnectionWaitSeconds.WithLabelValues(op).Observe(acquireSecs)
-		return nil, err
-	}
-	observability.ConnectionWaitSeconds.WithLabelValues(op).Observe(acquireSecs)
-	return &instrumentedTx{
-		Tx:    tx,
-		op:    op,
-		start: time.Now(),
-	}, nil
-}
-
-// instrumentedTx wraps *sql.Tx so commit/rollback paths observe
-// the canonical tx_duration_seconds histogram. Op + start are
-// captured on the begin path; this struct is the deferred-commit
-// hand-off.
-//
-// godlike/07 fail-closed: classifyTxError is invoked on commit/rollback
-// errors; the outcome label on tx_duration_seconds is set to "err"
-// on rollback as well (NOT "ok") so dashboards reflecting
-// "ultra-short write tx honoured" count only committed writes.
-type instrumentedTx struct {
-	*sql.Tx
-	op    string
-	start time.Time
-}
-
-// Commit finishes the canonical write/read tx. Observes the
-// tx_duration_seconds histogram BEFORE returning so an early-return
-// error path still burns the metric (the canonical "observation
-// survives all exit paths" guarantee from the metrics_outbox.go
-// dispatch-time observation).
-func (t *instrumentedTx) Commit() error {
-	outcome := "ok"
-	err := t.Tx.Commit()
-	if err != nil {
-		outcome = "err"
-		classifyTxError(t.op, err)
-	}
-	observability.TxDurationSeconds.WithLabelValues(t.op, outcome).Observe(time.Since(t.start).Seconds())
-	return err
-}
-
-// Rollback finishes the canonical write/read tx with a rollback.
-// The outcome label is hard-coded "err" because a rolled-back tx
-// is by definition an unsuccessful exit; dashboards counting
-// "ok" tx count only committed txs.
-func (t *instrumentedTx) Rollback() error {
-	outcome := "err"
-	err := t.Tx.Rollback()
-	if err != nil && !errors.Is(err, sql.ErrTxDone) {
-		// sql.ErrTxDone is a benign "tx already finalised" sentinel
-		// that surfaces from inner driver paths; it does not
-		// increment sqlite_busy_total (operationally a noop; the tx
-		// is already done).
-		classifyTxError(t.op, err)
-	}
-	observability.TxDurationSeconds.WithLabelValues(t.op, outcome).Observe(time.Since(t.start).Seconds())
-	return err
-}
-
-// classifyTxError is the canonical sqlite_busy_total increment site.
-// It inspects the err via errors.As for the typed *sqlite3.Error
-// carrier and increments the metric on a SQLITE_BUSY/SQLITE_LOCKED
-// code. non-busy errors are surfaced verbatim (no metric
-// increment — the canonical "is this transient?" classification
-// belongs to retry.Decision, not this instrumentation layer).
-//
-// godlike/06 SSOT: this layer NEVER calls retry.IsTransient or
-// retry.WrapTransient — instrumentation must not import the retry
-// package's classification surface (the layering is app → retry →
-// infra, never infra → retry for classification side-effects).
-func classifyTxError(op string, err error) {
-	if err == nil {
-		return
-	}
-	var sqErr *sqlite3.Error
-	if errors.As(err, &sqErr) && sqErr != nil {
-		if sqErr.Code == sqlite3.ErrBusy || sqErr.Code == sqlite3.ErrLocked {
-			observability.SqliteBusyTotal.WithLabelValues(op).Inc()
-		}
-	}
 }
 
 // walPragmas enriches the SQLite URI with the canonical Pragma set.

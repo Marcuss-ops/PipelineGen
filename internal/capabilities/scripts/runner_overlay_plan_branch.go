@@ -128,6 +128,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	canvas.ShortPhraseMotion = req.ShortPhraseMotion
 	canvas.LongPhraseMotion = req.LongPhraseMotion
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily
+	canvas.EditorialBulletStyles = req.EditorialBulletStyles
 	canvas.DateMotionFamily = req.DateMotionFamily
 	canvas.MotionSeed = strings.TrimSpace(req.MotionSeed)
 	canvas.CoherenceSeed = strings.TrimSpace(req.CoherenceSeed)
@@ -146,8 +147,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	canvas.ImageMotions = req.ImageMotions
 	canvas.ImageWithTextMotions = req.ImageWithTextMotions
 	canvas.EntityImageMotions = resolveEntityImageMotionPool(req.EntityImageMotions)
-	canvas.EntityCaptionMotions = req.EntityCaptionMotions
-	canvas.AnimationPolicies = req.AnimationPolicies
+	canvas.EntityCaptionMotions = resolveEntityCaptionMotionPool(req.EntityCaptionMotions)
 	canvas.RandomLightLeakOnClipStart = req.RandomLightLeakOnClipStart
 	canvas.RandomLightLeakOnOverlayStart = req.RandomLightLeakOnOverlayStart
 	canvas.RandomImageEffects = req.RandomImageEffects
