@@ -290,6 +290,15 @@ func compileOverlayPlanV2(
 	// without downloading them again. The path is not part of plan identity or
 	// serialized to the remote worker.
 	localBySHA := make(map[string]capmodel.OverlayAssetRef)
+	if canvas.Background != nil {
+		for _, bgRef := range canvas.Background.AssetRefs {
+			sha := strings.ToLower(strings.TrimSpace(bgRef.SHA256))
+			if sha == "" || strings.TrimSpace(bgRef.LocalPath) == "" {
+				continue
+			}
+			localBySHA[sha] = bgRef
+		}
+	}
 	for _, scene := range scenes {
 		for _, candidate := range scene.Images {
 			sha := strings.ToLower(strings.TrimSpace(candidate.SHA256))
@@ -299,6 +308,17 @@ func compileOverlayPlanV2(
 			localBySHA[sha] = capmodel.OverlayAssetRef{
 				AssetID: candidate.AssetID, URL: candidate.URL, LocalPath: candidate.LocalPath,
 				SHA256: sha, MediaType: candidate.MediaType,
+			}
+		}
+	}
+	if plan.Background != nil {
+		for j := range plan.Background.AssetRefs {
+			ref := &plan.Background.AssetRefs[j]
+			if cached, ok := localBySHA[strings.ToLower(strings.TrimSpace(ref.SHA256))]; ok {
+				ref.LocalPath = cached.LocalPath
+				if strings.TrimSpace(ref.URL) == "" {
+					ref.URL = cached.URL
+				}
 			}
 		}
 	}
