@@ -89,6 +89,23 @@ func NewPreparer(
 	return &Preparer{assets: assets, material: material, transcript: transcript, contract: contract, log: log}, nil
 }
 
+// MaterializeAsset resolves a certified asset to local bytes without rendering
+// anything. It is the sequence phase's source port: an assembly reads artifacts
+// already produced, so it must never re-run a render.
+func (p *Preparer) MaterializeAsset(ctx context.Context, assetID string) (*MaterializedAsset, error) {
+	if p == nil || p.assets == nil || p.material == nil {
+		return nil, errors.New("clip.render: asset resolver is not wired")
+	}
+	ref, err := p.assets.ResolveAsset(ctx, assetID)
+	if err != nil {
+		return nil, err
+	}
+	if ref == nil {
+		return nil, fmt.Errorf("clip.render: asset %s resolved to nothing", assetID)
+	}
+	return p.material.Materialize(ctx, *ref)
+}
+
 // Prepare runs the parallel preparation phase and returns the typed handoff
 // to the render step. req is normalized + validated here (idempotent — the
 // worker may already have normalized it). runID scopes the attempt.

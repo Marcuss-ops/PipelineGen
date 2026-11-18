@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media/clipsequence"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -25,6 +26,83 @@ const MaxClipRenderBatchBytes int64 = 5 << 20 // 5 MiB
 // RenderRequest; Destination drive folder may be overridden per-item.
 type BatchRenderRequest struct {
 	Items []RenderRequest `json:"items"`
+	// Sequence asks the batch to assemble the items, in order, into one
+	// deliverable. It is optional: without it the batch produces N independent
+	// clips, exactly as before. With it the handler submits ONE extra
+	// sequence job that waits for the items and joins them, so the caller does
+	// not run the assembler itself.
+	Sequence *BatchSequence `json:"sequence,omitempty"`
+}
+
+// BatchSequence declares the joins of a batch: transitions keyed by the item
+// position that CARRIES them (the incoming clip), plus the output settings.
+// Positions without a transition stay a hard cut, exactly like the sequence
+// contract's rule.
+type BatchSequence struct {
+	Transitions []BatchSequenceTransition `json:"transitions,omitempty"`
+	Output      SequenceOutput            `json:"output,omitempty"`
+}
+
+// BatchSequenceTransition is one join of a batch, addressed by position.
+type BatchSequenceTransition struct {
+	// Position is the 0-based index into items that carries this transition.
+	// It must be >= 1: the first clip has no previous clip to join.
+	Position   int                        `json:"position"`
+	Preset     clipsequence.Preset        `json:"preset"`
+	DurationMS int64                      `json:"duration_ms,omitempty"`
+	Leak       *clipsequence.LeakOverride `json:"leak,omitempty"`
+}
+
+// validate checks the joins on their own. The handler calls it BEFORE it
+// enqueues anything, so a bad sequence fails the whole batch with zero jobs
+// created instead of leaving N renders running for a request that was rejected.
+func (s *BatchSequence) validate(items int) error {
+	_, err := s.transitionsByPosition(items)
+	return err
+}
+
+// transitionsByPosition is the single owner of "is this join addressable and
+// renderable": a position must exist (>=1, since the first clip has no previous
+// clip), appear once, and pass the sequence contract.
+func (s *BatchSequence) transitionsByPosition(items int) (map[int]clipsequence.Transition, error) {
+	byPosition := make(map[int]clipsequence.Transition, len(s.Transitions))
+	for _, transition := range s.Transitions {
+		if transition.Position < 1 || transition.Position >= items {
+			return nil, fmt.Errorf("sequence.transitions: position %d is outside 1..%d", transition.Position, items-1)
+		}
+		if _, duplicate := byPosition[transition.Position]; duplicate {
+			return nil, fmt.Errorf("sequence.transitions: position %d is declared twice", transition.Position)
+		}
+		candidate := clipsequence.Transition{Preset: transition.Preset, DurationMS: transition.DurationMS, Leak: transition.Leak}
+		if err := clipsequence.ValidateTransition(&candidate); err != nil {
+			return nil, fmt.Errorf("sequence.transitions: position %d: %w", transition.Position, err)
+		}
+		byPosition[transition.Position] = candidate
+	}
+	return byPosition, nil
+}
+
+// request projects the batch declaration onto the canonical sequence payload.
+func (s *BatchSequence) request(jobIDs, assetIDs []string, cacheHit []bool, items int) (*SequenceRequest, error) {
+	byPosition, err := s.transitionsByPosition(items)
+	if err != nil {
+		return nil, err
+	}
+	request := &SequenceRequest{RenderPhase: RenderPhaseSequence, Output: s.Output, Clips: make([]SequenceClip, items)}
+	for i := 0; i < items; i++ {
+		clip := SequenceClip{}
+		if cacheHit[i] {
+			clip.AssetID = assetIDs[i]
+		} else {
+			clip.JobID = jobIDs[i]
+		}
+		if transition, ok := byPosition[i]; ok {
+			transition := transition
+			clip.TransitionIn = &transition
+		}
+		request.Clips[i] = clip
+	}
+	return request, nil
 }
 
 // batchItemResponse is the per-item entry in the 202 batch response.
@@ -43,6 +121,10 @@ type batchRenderResponse struct {
 	BatchID  string              `json:"batch_id"`
 	Accepted int                 `json:"accepted"`
 	Jobs     []batchItemResponse `json:"jobs"`
+	// SequenceJobID is the assembly job this batch enqueued, when the request
+	// carried a sequence. It is a clip.render job in the sequence phase: it
+	// waits for the jobs above and returns the merged artifact paths.
+	SequenceJobID string `json:"sequence_job_id,omitempty"`
 }
 
 // RenderBatch handles POST /api/clips/render/batch.
@@ -103,6 +185,20 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 			ErrorCode: ErrCodeJobsUnavailable,
 		})
 		return
+	}
+
+	// The declared joins are validated FIRST: a batch whose sequence cannot be
+	// rendered must not enqueue its items and then reject the request, leaving
+	// N renders running that the caller never sees assembled.
+	if req.Sequence != nil {
+		if err := req.Sequence.validate(len(req.Items)); err != nil {
+			c.JSON(http.StatusBadRequest, renderResponse{
+				Status:    StatusError,
+				Error:     err.Error(),
+				ErrorCode: ErrCodeInvalidPayload,
+			})
+			return
+		}
 	}
 
 	// Normalize + validate each item, fail the whole batch on first bad item
@@ -208,6 +304,43 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 		)
 	}
 
+	// Sequence assembly, in the SAME request. The job is enqueued after the
+	// items so it always finds their rows; it waits on any render still in
+	// flight (job.DeferredAfter, which spends no retry budget) and then joins
+	// what they published. Cache hits have no job to wait on, so they travel as
+	// asset ids instead.
+	sequenceJobID := ""
+	if req.Sequence != nil {
+		sequenceRequest, seqErr := req.Sequence.request(perPosJobID, perPosAssetID, perPosCacheHit, len(req.Items))
+		if seqErr != nil {
+			c.JSON(http.StatusBadRequest, renderResponse{
+				Status:    StatusError,
+				Error:     seqErr.Error(),
+				ErrorCode: ErrCodeInvalidPayload,
+			})
+			return
+		}
+		enqueued, seqErr := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{
+			Type:          TypeClipRender,
+			CorrelationID: batchID + ":sequence",
+			Payload:       sequenceRequest,
+			Scheduling:    &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
+		})
+		if seqErr != nil {
+			h.log.Error("clip.render batch sequence enqueue failed",
+				zap.String("batch_id", batchID),
+				zap.Error(seqErr))
+			apiutil.InternalError(c, fmt.Errorf("sequence enqueue: %w", seqErr))
+			return
+		}
+		sequenceJobID = enqueued.ID
+		h.log.Info("clip.render batch sequence enqueued",
+			zap.String("batch_id", batchID),
+			zap.String("job_id", sequenceJobID),
+			zap.Int("clips", len(sequenceRequest.Clips)),
+			zap.Int("transitions", len(req.Sequence.Transitions)))
+	}
+
 	jobs := make([]batchItemResponse, len(req.Items))
 	for i, fp := range perItemFP {
 		canonical := firstPos[fp]
@@ -235,8 +368,9 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 	)
 
 	c.JSON(http.StatusAccepted, batchRenderResponse{
-		BatchID:  batchID,
-		Accepted: accepted,
-		Jobs:     jobs,
+		BatchID:       batchID,
+		Accepted:      accepted,
+		Jobs:          jobs,
+		SequenceJobID: sequenceJobID,
 	})
 }

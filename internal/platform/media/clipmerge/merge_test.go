@@ -3,6 +3,7 @@ package clipmerge
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -165,8 +166,8 @@ func TestMergeChainsMoreThanTwoClips(t *testing.T) {
 }
 
 // TestMergeRefusesPresetTheLocalRendererCannotReproduce pins the honesty rule:
-// a light leak is Chronon's look, so the local assembler refuses the group and
-// names the renderer kind instead of substituting a lookalike.
+// a shake is Chronon's look, so the local assembler refuses the group and names
+// the renderer kind instead of substituting a lookalike.
 func TestMergeRefusesPresetTheLocalRendererCannotReproduce(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
@@ -174,7 +175,7 @@ func TestMergeRefusesPresetTheLocalRendererCannotReproduce(t *testing.T) {
 	b := synthClip(t, dir, "b", "blue", 1.0)
 	sequence := clipsequence.Sequence{Clips: []clipsequence.Clip{
 		{AssetID: "a", Path: a, DurationMS: 1_000},
-		{AssetID: "b", Path: b, DurationMS: 1_000, TransitionIn: &clipsequence.Transition{Preset: clipsequence.PresetLightLeakSoft}},
+		{AssetID: "b", Path: b, DurationMS: 1_000, TransitionIn: &clipsequence.Transition{Preset: clipsequence.PresetShakeStrong}},
 	}}
 	plan, err := sequence.Plan()
 	if err != nil {
@@ -184,8 +185,115 @@ func TestMergeRefusesPresetTheLocalRendererCannotReproduce(t *testing.T) {
 	if !errors.Is(err, ErrPresetNotExecutable) {
 		t.Fatalf("error = %v, want ErrPresetNotExecutable", err)
 	}
-	if !strings.Contains(err.Error(), `"LightLeak"`) {
+	if !strings.Contains(err.Error(), `"Shake"`) {
 		t.Fatalf("error must name the owning renderer kind: %v", err)
+	}
+}
+
+// frameLuma returns the average luma of the frame at the requested timestamp.
+// signalstats prints the YAVG metadata line to stdout (file=-).
+func frameLuma(t *testing.T, path string, seconds float64) float64 {
+	t.Helper()
+	output, err := exec.Command("ffmpeg", "-v", "error", "-ss", strconv.FormatFloat(seconds, 'f', 3, 64),
+		"-i", path, "-frames:v", "1", "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-").Output()
+	if err != nil {
+		t.Fatalf("luma probe %s: %v", path, err)
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		if !strings.Contains(line, "signalstats.YAVG=") {
+			continue
+		}
+		var average float64
+		if _, err := fmt.Sscanf(strings.TrimSpace(line), "lavfi.signalstats.YAVG=%f", &average); err != nil {
+			t.Fatalf("parse luma %q: %v", line, err)
+		}
+		return average
+	}
+	t.Fatalf("no YAVG in signalstats output for %s", path)
+	return 0
+}
+
+// TestMergeRendersLightLeakJoin proves the light leak is not just accepted: the
+// frame at the middle of the join is much brighter than the same join rendered
+// as a plain dissolve, which is what the sweeping band adds.
+func TestMergeRendersLightLeakJoin(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	a := synthClip(t, dir, "a", "navy", 1.0)
+	b := synthClip(t, dir, "b", "navy", 1.0)
+	sequence := clipsequence.Sequence{Clips: []clipsequence.Clip{
+		{AssetID: "a", Path: a, DurationMS: 1_000},
+		{AssetID: "b", Path: b, DurationMS: 1_000, TransitionIn: &clipsequence.Transition{Preset: clipsequence.PresetLightLeakHard, DurationMS: 200}},
+	}}
+	plan, err := sequence.Plan()
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	artifacts, err := Merge(context.Background(), sequence, plan, Options{OutputDir: filepath.Join(dir, "leak"), Encoder: testEncoder()})
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if len(artifacts) != 1 || !artifacts[0].Merged {
+		t.Fatalf("artifacts = %+v", artifacts)
+	}
+	if got := probeSeconds(t, artifacts[0].Path); got < 1.6 || got > 2.0 {
+		t.Fatalf("light-leak merged duration = %.2fs, want ~1.8s", got)
+	}
+	if streams := probeStreams(t, artifacts[0].Path); len(streams) != 2 {
+		t.Fatalf("merged streams = %v, want video+audio", streams)
+	}
+
+	plain := clipsequence.Sequence{Clips: []clipsequence.Clip{
+		{AssetID: "a", Path: a, DurationMS: 1_000},
+		{AssetID: "b", Path: b, DurationMS: 1_000, TransitionIn: &clipsequence.Transition{Preset: clipsequence.PresetCrossfadeFast, DurationMS: 200}},
+	}}
+	plainPlan, err := plain.Plan()
+	if err != nil {
+		t.Fatalf("plain plan: %v", err)
+	}
+	plainArtifacts, err := Merge(context.Background(), plain, plainPlan, Options{OutputDir: filepath.Join(dir, "plain"), Encoder: testEncoder()})
+	if err != nil {
+		t.Fatalf("plain merge: %v", err)
+	}
+	// Join runs 0.8s-1.0s; sample its middle on both artifacts.
+	leakLuma := frameLuma(t, artifacts[0].Path, 0.9)
+	plainLuma := frameLuma(t, plainArtifacts[0].Path, 0.9)
+	if leakLuma <= plainLuma+30 {
+		t.Fatalf("light leak luma = %.1f vs plain dissolve %.1f: the band did not reach the frame", leakLuma, plainLuma)
+	}
+}
+
+// TestMergeChainsLightLeakWithOtherTransitions covers the mixed chain: a leak
+// join followed by an xfade join. The leak consumes the accumulated stream and
+// returns a single label, so a wrong label or offset would truncate clip c.
+func TestMergeChainsLightLeakWithOtherTransitions(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	a := synthClip(t, dir, "a", "red", 1.0)
+	b := synthClip(t, dir, "b", "blue", 1.0)
+	c := synthClip(t, dir, "c", "green", 1.0)
+	sequence := clipsequence.Sequence{Clips: []clipsequence.Clip{
+		{AssetID: "a", Path: a, DurationMS: 1_000},
+		{AssetID: "b", Path: b, DurationMS: 1_000, TransitionIn: &clipsequence.Transition{Preset: clipsequence.PresetLightLeakSoft, DurationMS: 200}},
+		{AssetID: "c", Path: c, DurationMS: 1_000, TransitionIn: &clipsequence.Transition{Preset: clipsequence.PresetZoomPunch, DurationMS: 200}},
+	}}
+	plan, err := sequence.Plan()
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(plan.Groups) != 1 || len(plan.Groups[0].Transitions) != 2 {
+		t.Fatalf("plan = %+v, want one group with two transitions", plan)
+	}
+	artifacts, err := Merge(context.Background(), sequence, plan, Options{OutputDir: filepath.Join(dir, "out"), Encoder: testEncoder()})
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if len(artifacts) != 1 || !artifacts[0].Merged {
+		t.Fatalf("artifacts = %+v", artifacts)
+	}
+	// 3.0s - 0.2s - 0.2s = 2.6s
+	if got := probeSeconds(t, artifacts[0].Path); got < 2.4 || got > 2.8 {
+		t.Fatalf("mixed-chain duration = %.2fs, want ~2.6s", got)
 	}
 }
 

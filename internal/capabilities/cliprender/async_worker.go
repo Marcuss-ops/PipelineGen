@@ -33,6 +33,11 @@ func decodeContinuationPayload(raw json.RawMessage) (RenderPhase, *Continuation,
 	if !phase.IsValid() {
 		return "", nil, fmt.Errorf("%w: unknown render_phase=%q", ErrInvalidJobPayload, phase)
 	}
+	if phase == RenderPhaseSequence {
+		// The sequence phase is dispatched before this decoder (sequence.go);
+		// reaching it here means a caller bypassed that dispatch.
+		return "", nil, fmt.Errorf("%w: render_phase=%q is not a render continuation", ErrInvalidJobPayload, phase)
+	}
 	if phase == RenderPhaseSettle {
 		if envelope.Continuation == nil {
 			return "", nil, fmt.Errorf("%w: settle phase requires %s", ErrInvalidJobPayload, payloadKeyContinuation)

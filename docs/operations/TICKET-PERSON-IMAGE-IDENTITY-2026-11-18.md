@@ -1,6 +1,6 @@
 # TICKET — Person-image identity gap: retrieval precision and reference verification (2026-11-18)
 
-- **Stato:** OPEN
+- **Stato:** CLOSED (2026-11-18) — P0/P1/P3 chiusi; P2 declinato per decisione di prodotto. Il dettaglio delle prove è in `TICKET-SEARXNG-IMAGE-PROVIDER-RECOVERY-2026-11-18.md`.
 - **Priorità:** P1
 - **Owner:** image pipeline (retrieval → visual verification → selection → binding)
 - **Origine:** audit live dei provider del 2026-11-18 su 13 entità PERSON, con ispezione umana dei candidati scaricati.
@@ -252,6 +252,11 @@ Obiettivo: usare il prior più forte disponibile senza aggiungere servizi.
 
 ### P2 — Verifica basata su riferimento
 
+> **Decisione 2026-11-18: non richiesto.** Il face embedding non serve al
+> prodotto: il gate VLM fail-closed resta l'autorità e i criteri P2 non
+> verranno implementati. I criteri restano qui come riferimento, non come
+> lavoro aperto. Vedi `TICKET-SEARXNG-IMAGE-PROVIDER-RECOVERY-2026-11-18.md`.
+
 Obiettivo: sostituire “il VLM riconosce?” con “il volto nel candidato è lo stesso del riferimento?”.
 
 - Memorizzare un volto di riferimento per l’identità (Commons/Wikipedia, catalogo verificato, revisione manuale).
@@ -359,8 +364,9 @@ già presente in `waitForCommonsRequest`; una raffica di richieste produce 429.
    quale endpoint?
 2. Per le persone senza pagina Wikipedia, esiste una fonte di riferimento
    approvata (biografia ufficiale, agenzia, archivio interno)?
-3. È accettabile introdurre un modello di face embedding locale? Quale, con
-   quale licenza e quale budget di memoria/CPU?
+3. ~~È accettabile introdurre un modello di face embedding locale? Quale, con
+   quale licenza e quale budget di memoria/CPU?~~ **Risposta 2026-11-18: no,
+   non richiesto.**
 4. Per i personaggi storici, l’epoca è un requisito hard o un criterio di
    ranking?
 5. Qual è la politica editoriale quando non c’è un’immagine verificata:
@@ -416,9 +422,16 @@ della fonte, non a replicare esattamente la query di produzione.
 
 ## Appendice C — Stato del lavoro
 
-- Nessuna modifica runtime in questa sessione.
-- Nessun provider nuovo integrato.
-- Pexels/Pixabay: integrazione revertita; nessun residuo.
-- Unico artefatto di codice: `TestPersonImageVisualDump` (opt-in, non CI).
-- La probe Commons/Wikipedia è stata eseguita a mano; non è un test CI.
-- Il ticket è OPEN; la prima fase eseguibile è P0 (diagnosi), poi P1 (Commons).
+- P0: chiuso. Report per entità (dump) e tassonomia dei motivi con test;
+  revisione visiva delle 42 immagini (20/42 corrette sulla run degradata).
+- P1: chiuso. La rotta PERSON interroga Wikipedia pageimage prima di DDG, con
+  test isolati per pagina assente, errore e provider mancante.
+- P2: **declinato** il 2026-11-18 — il face embedding non è richiesto; il gate
+  VLM fail-closed resta l'autorità.
+- P3: chiuso. `searxng/settings.yml` versionato, deny-list host nel provider con
+  test, `bing images` disabilitato dopo la diagnosi dell'upstream degradato,
+  upgrade a SearXNG 2026.11.18 e misura live delle 13 query (78 candidati, 0
+  host negati).
+- Nessun provider nuovo nel fan-out; nessuna modifica al contratto degli asset.
+- Gate E2E: rosso per saturazione dell'host, non per queste modifiche; prove in
+  `TICKET-SEARXNG-IMAGE-PROVIDER-RECOVERY-2026-11-18.md` §6.

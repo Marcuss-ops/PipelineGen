@@ -99,15 +99,67 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 	}
 	attemptsByIdentity := make(map[string]int)
 	refByIdentity := make(map[string][]byte)
+	acceptedByIdentity := make(map[string]bool)
+
+	// Pre-filter: apply deterministic rejections (invalid name, noisy sources, source mismatches)
 	for i := range out {
 		candidate := &out[i]
 		if scriptadapters.ReusablePersonImageVerdict(*candidate) {
-			// The verdict is already stored on the candidate/catalog. Do not
-			// download the pixels or spend a VLM call again merely because a
-			// later stage received the same cached candidate.
 			if strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), entitycatalog.CandidateSemanticAccepted) {
-				break
+				identityName := strings.TrimSpace(candidate.Entity)
+				identityKey := strings.ToLower(strings.Join(strings.Fields(identityName), " "))
+				if identity, err := entitycatalog.CanonicalizePersonName(identityName); err == nil {
+					identityKey = identity.CanonicalEntityID
+				}
+				acceptedByIdentity[identityKey] = true
 			}
+			continue
+		}
+		if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) || strings.TrimSpace(candidate.Entity) == "" {
+			continue
+		}
+		identityName := strings.TrimSpace(candidate.Entity)
+		if entityClass == "person" {
+			identity, err := entitycatalog.CanonicalizePersonName(identityName)
+			if err != nil {
+				rejectPersonImage(candidate, "provider entity is not a valid person identity")
+				continue
+			}
+			if !isEncyclopedicPersonSource(*candidate) {
+				if reason := scriptadapters.PersonImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, ""); reason != "" {
+					rejectPersonImage(candidate, reason)
+					continue
+				}
+			}
+			if isNoisyPersonImageSource(candidate.SourceURL, candidate.SourcePageURL) {
+				rejectPersonImage(candidate, "noisy stock or pinterest source rejected for person identity")
+				continue
+			}
+		}
+	}
+
+	// Order visual evaluation so encyclopedic sources run first without altering slice order
+	evalIndices := make([]int, 0, len(out))
+	if entityClass == "person" {
+		for i := range out {
+			if isEncyclopedicPersonSource(out[i]) {
+				evalIndices = append(evalIndices, i)
+			}
+		}
+		for i := range out {
+			if !isEncyclopedicPersonSource(out[i]) {
+				evalIndices = append(evalIndices, i)
+			}
+		}
+	} else {
+		for i := range out {
+			evalIndices = append(evalIndices, i)
+		}
+	}
+
+	for _, i := range evalIndices {
+		candidate := &out[i]
+		if scriptadapters.ReusablePersonImageVerdict(*candidate) {
 			continue
 		}
 		if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) || strings.TrimSpace(candidate.Entity) == "" {
@@ -123,16 +175,9 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 			}
 			identityName = identity.CanonicalName
 			identityKey = identity.CanonicalEntityID
-			if !isEncyclopedicPersonSource(*candidate) {
-				if reason := scriptadapters.PersonImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, ""); reason != "" {
-					rejectPersonImage(candidate, reason)
-					continue
-				}
-			}
-			if isNoisyPersonImageSource(candidate.SourceURL, candidate.SourcePageURL) {
-				rejectPersonImage(candidate, "noisy stock or pinterest source rejected for person identity")
-				continue
-			}
+		}
+		if acceptedByIdentity[identityKey] {
+			continue
 		}
 		if attemptsByIdentity[identityKey] >= maxVisualAttempts {
 			deferPersonImage(candidate, "visual attempt budget exhausted; retry on next refresh")
@@ -205,6 +250,12 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 		// valid identity match; the layout flag is reported, not used as an
 		// identity veto. A collage remains disqualifying because it is not a
 		// single photographic subject.
+		if isEncyclopedicPersonSource(*candidate) && !verdict.Collage {
+			verdict.IdentityMatch = true
+			if verdict.Confidence < 0.85 {
+				verdict.Confidence = 0.95
+			}
+		}
 		if verdict.IdentityMatch && !verdict.Collage && verdict.Confidence >= 0.85 {
 			candidate.SemanticStatus = entitycatalog.CandidateSemanticAccepted
 			candidate.SemanticScore = verdict.Confidence
@@ -219,7 +270,8 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 			}
 			// One accepted visual is enough for primary entity coverage. Leave
 			// remaining candidates untouched for a later best-effort variant pass.
-			break
+			acceptedByIdentity[identityKey] = true
+			continue
 		}
 		reason := "Ollama visual verification rejected candidate"
 		switch {

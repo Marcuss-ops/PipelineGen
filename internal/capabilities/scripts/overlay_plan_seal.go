@@ -50,20 +50,21 @@ func promoteVerifiedEntityCards(plan *capmodel.OverlayPlan, result *GenerateResu
 	if toggle, ok := canvas.OverlayCategories[scriptpkg.OverlayCategoryImages]; ok && toggle == scriptpkg.ToggleDisabled {
 		return
 	}
-	pending := false
-	for _, item := range plan.Items {
-		if entityCardKind(capmodel.OverlayKind(item.Kind)) && len(item.AssetRefs) == 0 && len(item.ImageLayers) == 0 {
-			pending = true
-			break
-		}
-	}
-	if !pending {
+	if !hasPendingEntityCard(plan.Items) {
 		return
 	}
 	media, canonicalByStable := entityCardMediaIndex(result, perScene...)
 	promoted := 0
 	for i := range plan.Items {
 		item := plan.Items[i]
+		if _, isChain := capmodel.ChainSegmentMaps(item.Params); isChain {
+			upgradedChain, chainPromoted := promoteChainEntityCardSegments(item, media, canonicalByStable, plan.PlanID)
+			if chainPromoted > 0 {
+				plan.Items[i] = upgradedChain
+				promoted += chainPromoted
+			}
+			continue
+		}
 		if !entityCardKind(capmodel.OverlayKind(item.Kind)) || len(item.AssetRefs) > 0 || len(item.ImageLayers) > 0 {
 			continue
 		}
@@ -77,6 +78,126 @@ func promoteVerifiedEntityCards(plan *capmodel.OverlayPlan, result *GenerateResu
 	if promoted > 0 {
 		plan.Items = capEntityImageOverlays(plan.Items, capabilityoverlay.MaxEntityImageOverlaysPerRun, perScene...)
 	}
+}
+
+func hasPendingEntityCard(items []capmodel.OverlayItem) bool {
+	for _, item := range items {
+		if segments, isChain := capmodel.ChainSegmentMaps(item.Params); isChain {
+			for _, seg := range segments {
+				kind, _ := seg["kind"].(string)
+				if entityCardKind(capmodel.OverlayKind(kind)) && !chainSegmentHasAssets(seg) {
+					return true
+				}
+			}
+			continue
+		}
+		if entityCardKind(capmodel.OverlayKind(item.Kind)) && len(item.AssetRefs) == 0 && len(item.ImageLayers) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func chainSegmentHasAssets(seg map[string]any) bool {
+	if assetID, _ := seg["asset_id"].(string); strings.TrimSpace(assetID) != "" {
+		return true
+	}
+	if assets, ok := seg["assets"].([]capmodel.OverlayAssetRef); ok && len(assets) > 0 {
+		return true
+	}
+	if assets, ok := seg["assets"].([]any); ok && len(assets) > 0 {
+		return true
+	}
+	if layers, ok := seg["image_layers"].([]capmodel.OverlayImageLayer); ok && len(layers) > 0 {
+		return true
+	}
+	if layers, ok := seg["image_layers"].([]any); ok && len(layers) > 0 {
+		return true
+	}
+	return false
+}
+
+func promoteChainEntityCardSegments(item capmodel.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string, planID string) (capmodel.OverlayItem, int) {
+	segments, ok := capmodel.ChainSegmentMaps(item.Params)
+	if !ok || len(segments) == 0 {
+		return item, 0
+	}
+	promoted := 0
+	allImages := true
+	seenAssets := make(map[string]struct{}, len(item.AssetRefs))
+	for _, ref := range item.AssetRefs {
+		if ref.AssetID != "" {
+			seenAssets[ref.AssetID] = struct{}{}
+		}
+	}
+	for idx, seg := range segments {
+		kind, _ := seg["kind"].(string)
+		if !entityCardKind(capmodel.OverlayKind(kind)) || chainSegmentHasAssets(seg) {
+			if kind != string(capmodel.KindEntityImage) && kind != string(capmodel.KindImagePopup) {
+				allImages = false
+			}
+			continue
+		}
+		synthetic := chainSegmentOverlayItem(item, seg)
+		upgraded := attachEntityCardAsset(synthetic, media, canonicalByStable, planID)
+		if upgraded.Kind != string(capmodel.KindEntityImage) || len(upgraded.AssetRefs) == 0 {
+			allImages = false
+			continue
+		}
+		seg["kind"] = string(capmodel.KindEntityImage)
+		seg["template_id"] = "image_popup"
+		seg["preset_id"] = upgraded.PresetID
+		seg["image_preset_id"] = upgraded.ImagePresetID
+		seg["entity_caption"] = upgraded.EntityCaption
+		seg["asset_id"] = upgraded.AssetRefs[0].AssetID
+		seg["assets"] = upgraded.AssetRefs
+		delete(seg, "text")
+		delete(seg, "entity_style_id")
+		delete(seg, "motion_id")
+		delete(seg, "motion_params")
+		delete(seg, "params")
+		for _, ref := range upgraded.AssetRefs {
+			if _, exists := seenAssets[ref.AssetID]; !exists {
+				seenAssets[ref.AssetID] = struct{}{}
+				item.AssetRefs = append(item.AssetRefs, ref)
+			}
+		}
+		if idx == 0 {
+			item.PresetID = upgraded.PresetID
+			item.Text = ""
+		}
+		promoted++
+	}
+	if promoted == 0 {
+		return item, 0
+	}
+	item.Params["chain_segments"] = segments
+	if allImages {
+		item.Kind = capmodel.KindImageChain
+		item.TemplateID = capmodel.TemplateImageChain
+	}
+	item.RenderKey = ""
+	return item, promoted
+}
+
+func chainSegmentOverlayItem(parent capmodel.OverlayItem, seg map[string]any) capmodel.OverlayItem {
+	kind, _ := seg["kind"].(string)
+	text, _ := seg["text"].(string)
+	entityID, _ := seg["entity_id"].(string)
+	entityCaption, _ := seg["entity_caption"].(string)
+	out := capmodel.OverlayItem{
+		ID:            parent.ID,
+		SceneID:       parent.SceneID,
+		Kind:          kind,
+		Text:          text,
+		EntityID:      entityID,
+		EntityCaption: entityCaption,
+		EntityRef:     parent.EntityRef,
+	}
+	if out.EntityID == "" {
+		out.EntityID = parent.EntityID
+	}
+	return out
 }
 
 // finalizeSealedOverlayPlan derives the master extent, resets provisional render

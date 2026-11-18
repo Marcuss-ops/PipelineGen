@@ -253,6 +253,29 @@ func TestOllamaPersonImageScorerVerifiesConcreteProvidersAndRejectsNoisyHosts(t 
 	}
 }
 
+func TestOllamaPersonImageScorerAcceptsEncyclopedicSourceWithoutVLMIdentityVeto(t *testing.T) {
+	client := &personImageScorerFakeClient{responses: []string{
+		`{"identity_match":false,"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.4}`,
+	}}
+	scorer := NewOllamaPersonImageScorer(client)
+	scorer.download = func(context.Context, scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		return testPersonScorerJPEG(t), "image/jpeg", nil
+	}
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		{Provider: "wikipedia", Entity: "Mike Tyson", SourceURL: "https://upload.wikimedia.org/wikipedia/commons/e/ee/Mike_Tyson_Photo.jpg"},
+	}
+	got, err := scorer.ScoreImageCandidates(context.Background(), "Mike Tyson", candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].SemanticStatus != "accepted" {
+		t.Fatalf("wikipedia candidate status = %q, want accepted", got[0].SemanticStatus)
+	}
+	if got[0].SemanticScore < 0.85 {
+		t.Fatalf("wikipedia candidate score = %v, want >= 0.85", got[0].SemanticScore)
+	}
+}
+
 var errUnexpectedImageScorerFormat = &imageScorerFormatError{}
 
 type imageScorerFormatError struct{}

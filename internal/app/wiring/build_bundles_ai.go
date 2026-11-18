@@ -34,6 +34,7 @@ import (
 	"go.uber.org/zap"
 
 	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
+	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
@@ -158,7 +159,10 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	}
 	// One scorer instance is shared by every wiring site. The scorer owns the
 	// per-identity attempt budget; the client owns transport retries.
-	visionVerdictScorer := ollamaadapters.NewOllamaPersonImageScorer(visionVerdictClient)
+	visionVerdictScorer := scriptadapters.NewOptionalEntityImageScorer(
+		cfg.External.EntityImageVLMMode,
+		ollamaadapters.NewOllamaPersonImageScorer(visionVerdictClient),
+	)
 
 	// Dedicated embedding client: uses a separate model (the canonical
 	// the canonical E5 registry entry by default, configurable via

@@ -24,7 +24,12 @@ type ExternalConfig struct {
 	// back to OllamaModel. It requires OllamaVisionURL: requesting a different
 	// model on the shared endpoint would force a resident-model reload
 	// (OLLAMA_MAX_LOADED_MODELS=1) and defeat the separation.
-	OllamaVisionModel    string `yaml:"ollama_vision_model" env:"OLLAMA_VISION_MODEL" default:""`
+	OllamaVisionModel string `yaml:"ollama_vision_model" env:"OLLAMA_VISION_MODEL" default:""`
+	// EntityImageVLMMode controls visual identity verification for entity images:
+	// "optional" (default: skip VLM for trusted Wikipedia/Wikimedia sources and
+	// fall back to deterministic acceptance if VLM is unavailable), "off"
+	// (deterministic filtering only, never call VLM), or "required" (strict VLM).
+	EntityImageVLMMode   string `yaml:"entity_image_vlm_mode" env:"VELOX_ENTITY_IMAGE_VLM_MODE" default:"optional"`
 	OllamaEmbedModel     string `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL"`
 	OllamaMetadataModel  string `yaml:"ollama_metadata_model" env:"OLLAMA_METADATA_MODEL" default:""`
 	OllamaTimeoutSeconds int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"600"`

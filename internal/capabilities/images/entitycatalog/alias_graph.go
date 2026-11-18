@@ -169,7 +169,7 @@ func CanonicalizePersonIdentityWithAliases(name, suppliedID string, graph *Perso
 		return PersonIdentity{}, errors.New("entity image catalog: PERSON name cannot produce a canonical entity id")
 	}
 	supplied := NormalizePersonEntityID(suppliedID)
-	if strings.TrimSpace(suppliedID) != "" && supplied == "" {
+	if strings.TrimSpace(suppliedID) != "" && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(suppliedID)), "local:") && supplied == "" {
 		return PersonIdentity{}, errors.New("entity image catalog: supplied PERSON entity id is invalid")
 	}
 	if supplied != "" && graph != nil {

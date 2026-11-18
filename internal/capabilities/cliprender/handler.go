@@ -61,6 +61,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	}
 	r.POST("/render", idem, h.Render)
 	r.POST("/render/batch", idem, h.RenderBatch)
+	r.POST("/render/sequence", idem, h.RenderSequence)
 }
 
 // Render handles POST /api/clips/render.

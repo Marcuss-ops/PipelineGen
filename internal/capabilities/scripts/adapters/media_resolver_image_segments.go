@@ -198,6 +198,11 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			if identityErr != nil {
 				return queryResult{}, identityErr
 			}
+			if personIdentityQuery && catalogIdentity.CanonicalEntityID != "" && (canonicalID == "" || strings.HasPrefix(canonicalID, "local:")) {
+				canonicalID = catalogIdentity.CanonicalEntityID
+				cacheIdentity.CanonicalEntityID = canonicalID
+				entityCacheKey = entityImageDiscoveryCacheKey(cacheIdentity, queryClass)
+			}
 			catalogEligible := p.catalog != nil && entityImagesEnabled && personIdentityQuery && canonicalID != "" && !strings.HasPrefix(canonicalID, "local:")
 			catalogRefreshRequired := false
 			catalogFallback := []scriptpkg.SegmentAssetCandidate(nil)

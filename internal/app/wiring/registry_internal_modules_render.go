@@ -207,6 +207,16 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	log.Info("registerClipRender: PostgreSQL media outbox Drive delivery handler is available",
 		zap.String("event_type", cliprender.EventClipRenderDriveDeliveryRequested))
 	worker.WithRenderPublisher(publisher)
+	// Sequence assembly (batch joins): a sequence-phase clip.render job renders
+	// nothing, it waits for its sibling renders and runs the SAME kernel plan +
+	// local assembler the velox-clipseq CLI runs. Reading the siblings' assets
+	// through the preparer keeps one owner for "get me this asset's bytes".
+	worker.WithSequence(cliprender.SequenceAssembly{
+		Jobs:    root.Jobs.Facade,
+		Assets:  preparer,
+		Encoder: mediaConfig.Policy,
+		Root:    filepath.Join(cfg.Storage.TempPath(), "cliprender", "sequences"),
+	})
 	// Script/batch leaf-folder resolution (create-or-reuse under the caller's
 	// root): routed through the SAME delivery.Publisher, so folder creation
 	// has one canonical owner and the ClipRenderPublisher stays dumb (it

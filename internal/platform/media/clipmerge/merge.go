@@ -5,8 +5,9 @@
 // transitions that linked it and a group with one clip is copied verbatim. The
 // adapter never decides WHICH clips belong together — that decision is already
 // in the plan — and it never approximates a transition the local renderer
-// cannot reproduce: a preset whose renderer is Chronon (light leaks, shakes) is
-// refused with ErrPresetNotExecutable instead of being replaced by a lookalike.
+// cannot reproduce: a preset whose look only Chronon renders (shakes) is refused
+// with ErrPresetNotExecutable instead of being replaced by a lookalike. Light
+// leaks are rendered locally as the sweep program the preset declares.
 package clipmerge
 
 import (
@@ -17,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -119,6 +121,7 @@ func mergeGroup(ctx context.Context, sequence clipsequence.Sequence, group clips
 		}
 		return Artifact{GroupID: group.ID, Path: outPath, Merged: false, DurationMS: group.DurationMS, ClipIndexes: group.ClipIndexes}, nil
 	}
+	needsSize := false
 	for _, transition := range group.Transitions {
 		spec, ok := clipsequence.LookupPreset(transition.Preset)
 		if !ok {
@@ -128,8 +131,22 @@ func mergeGroup(ctx context.Context, sequence clipsequence.Sequence, group clips
 			return Artifact{}, fmt.Errorf("%w: preset %q is rendered by Chronon kind %q",
 				ErrPresetNotExecutable, transition.Preset, spec.ChrononKind)
 		}
+		if transition.Leak != nil {
+			needsSize = true
+		}
 	}
-	args := mergeArgs(clips, group, opts, outPath)
+	var size videoSize
+	if needsSize {
+		var err error
+		size, err = probeVideoSize(ctx, opts, clips[0].Path)
+		if err != nil {
+			return Artifact{}, fmt.Errorf("clipmerge: %s: %w", group.ID, err)
+		}
+	}
+	args, err := mergeArgs(clips, group, opts, size, outPath)
+	if err != nil {
+		return Artifact{}, fmt.Errorf("clipmerge: %s: %w", group.ID, err)
+	}
 	runCtx, cancel := context.WithTimeout(ctx, opts.timeout())
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, opts.ffmpeg(), args...)
@@ -162,19 +179,131 @@ func groupClips(sequence clipsequence.Sequence, group clipsequence.Group) ([]cli
 	return clips, nil
 }
 
+// videoSize is the delivered frame size, needed to build a full-frame light
+// leak plate without a scale2ref hop (which truncates the filtergraph at the
+// plate's EOF).
+type videoSize struct{ width, height int }
+
+// probeVideoSize reads the first video stream of an artifact. Only groups that
+// contain a light leak call it: an xfade-only merge never needs the size.
+func probeVideoSize(ctx context.Context, opts Options, path string) (videoSize, error) {
+	ffprobe := opts.FFprobe
+	if ffprobe == "" {
+		ffprobe = "ffprobe"
+	}
+	out, err := exec.CommandContext(ctx, ffprobe,
+		"-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path).Output()
+	if err != nil {
+		return videoSize{}, fmt.Errorf("probe frame size: %w", err)
+	}
+	var size videoSize
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%dx%d", &size.width, &size.height); err != nil {
+		return videoSize{}, fmt.Errorf("probe frame size: unexpected output %q", strings.TrimSpace(string(out)))
+	}
+	if size.width <= 0 || size.height <= 0 {
+		return videoSize{}, fmt.Errorf("probe frame size: invalid size %dx%d", size.width, size.height)
+	}
+	return size, nil
+}
+
+// leakPlateFPS is the rate the leak plate is generated at. The overlay samples
+// it by timestamp, so the output keeps the clips' own rate; a higher plate rate
+// only makes the sweep smoother on sources that run faster than 24 fps.
+const leakPlateFPS = 60
+
+// hexComponent parses one #RRGGBB component into its 0-255 value.
+func hexComponent(hex string, offset int) (int, error) {
+	var value int
+	if _, err := fmt.Sscanf(hex[offset:offset+2], "%02x", &value); err != nil {
+		return 0, fmt.Errorf("clipmerge: invalid light-leak colour %q", hex)
+	}
+	return value, nil
+}
+
+// leakAlphaExpression is the geq alpha of the sweep band: a diagonal Gaussian
+// centred at a point that travels across the frame for the plate's duration,
+// faded in and out with a half sine so the leak never starts or stops on a step.
+// X, Y, W, H and T are geq's frame variables (T is plate-relative seconds).
+func leakAlphaExpression(leak clipsequence.LeakSpec, seconds float64) string {
+	duration := strconv.FormatFloat(seconds, 'f', 3, 64)
+	peak := strconv.FormatFloat(leak.PeakAlpha, 'f', 3, 64)
+	band := strconv.FormatFloat(leak.BandWidth, 'f', 3, 64)
+	coord := "((X/W+Y/H)/2)"
+	if leak.Direction == "left" {
+		coord = "((1-X/W+Y/H)/2)"
+	}
+	return fmt.Sprintf("255*%s*exp(-pow((%s-(T/%s*1.4-0.2))/%s,2))*sin(PI*T/%s)",
+		peak, coord, duration, band, duration)
+}
+
+// leakFilters builds the light-leak program for one join: a fast dissolve under
+// a warm band that sweeps across the frame exactly for the overlap. The plate is
+// shifted onto the join's timestamp so it covers only the transition.
+func leakFilters(baseLabel, incomingLabel, outLabel string, index int, preset clipsequence.Preset, leakSpec *clipsequence.LeakSpec, seconds, offset float64, size videoSize) ([]string, error) {
+	if leakSpec == nil {
+		return nil, fmt.Errorf("clipmerge: preset %q has no light-leak program", preset)
+	}
+	leak := *leakSpec
+	if len(leak.Color) != 7 || leak.Color[0] != '#' {
+		return nil, fmt.Errorf("clipmerge: light-leak colour %q must be #RRGGBB", leak.Color)
+	}
+	if leak.PeakAlpha <= 0 || leak.PeakAlpha > 1 {
+		return nil, fmt.Errorf("clipmerge: light-leak peak alpha %v must be in (0,1]", leak.PeakAlpha)
+	}
+	if leak.BandWidth <= 0 || leak.BandWidth > 1 {
+		return nil, fmt.Errorf("clipmerge: light-leak band width %v must be in (0,1]", leak.BandWidth)
+	}
+	if leak.Direction != "right" && leak.Direction != "left" {
+		return nil, fmt.Errorf("clipmerge: light-leak direction %q must be right or left", leak.Direction)
+	}
+	r, err := hexComponent(leak.Color, 1)
+	if err != nil {
+		return nil, err
+	}
+	g, err := hexComponent(leak.Color, 3)
+	if err != nil {
+		return nil, err
+	}
+	b, err := hexComponent(leak.Color, 5)
+	if err != nil {
+		return nil, err
+	}
+	return []string{
+		// The dissolve keeps the cut from stepping where the band is thin;
+		// the leak is what the viewer reads as the transition.
+		fmt.Sprintf("%s%sxfade=transition=fade:duration=%.3f:offset=%.3f[leakbase%d]", baseLabel, incomingLabel, seconds, offset, index),
+		fmt.Sprintf("color=c=0x%02X%02X%02X:s=%dx%d:r=%d:d=%.3f,format=rgba,"+
+			"geq=r='%d':g='%d':b='%d':a='%s',setpts=PTS+%.3f/TB[leak%d]",
+			r, g, b, size.width, size.height, leakPlateFPS, seconds,
+			r, g, b, leakAlphaExpression(leak, seconds), offset, index),
+		fmt.Sprintf("[leakbase%d][leak%d]overlay=0:0:format=auto:eof_action=pass:shortest=0%s",
+			index, index, outLabel),
+	}, nil
+}
+
 // mergeArgs builds the ffmpeg invocation for one group.
 //
-// Video joins through xfade, audio through acrossfade with the SAME duration, so
-// A/V stay in sync across the overlap. The k-th offset is the running output
-// length before that join minus the join itself, which is exactly where xfade
-// expects the transition to start.
-func mergeArgs(clips []clipsequence.Clip, group clipsequence.Group, opts Options, outPath string) []string {
+// Video joins through xfade (or the leak program, which is a dissolve plus a
+// sweep), audio through acrossfade with the SAME duration, so A/V stay in sync
+// across the overlap. The k-th offset is the running output length before that
+// join minus the join itself, which is exactly where xfade expects the
+// transition to start.
+func mergeArgs(clips []clipsequence.Clip, group clipsequence.Group, opts Options, size videoSize, outPath string) ([]string, error) {
 	args := []string{"-y", "-hide_banner", "-loglevel", "error"}
 	for _, clip := range clips {
 		args = append(args, "-i", clip.Path)
 	}
 	var filters []string
-	videoIn := "[0:v]"
+	// Every join filter refuses inputs whose timebases differ, and delivered
+	// artifacts do not share one (a stream-copied clip can be 1/90000 while a
+	// re-encoded one is 1/12288). Normalising to AVTB before joining is what
+	// makes a merge work across differently produced clips. Only settb is
+	// applied: setpts would leave xfade unable to detect a frame rate.
+	for i := range clips {
+		filters = append(filters, fmt.Sprintf("[%d:v]settb=AVTB[clipv%d]", i, i))
+	}
+	videoIn := "[clipv0]"
 	outMS := clips[0].DurationMS
 	for i := 1; i < len(clips); i++ {
 		transition := group.Transitions[i-1]
@@ -182,8 +311,16 @@ func mergeArgs(clips []clipsequence.Clip, group clipsequence.Group, opts Options
 		offset := float64(outMS-transition.DurationMS) / 1000
 		spec, _ := clipsequence.LookupPreset(transition.Preset)
 		label := fmt.Sprintf("[v%d]", i)
-		filters = append(filters, fmt.Sprintf("%s[%d:v]xfade=transition=%s:duration=%.3f:offset=%.3f%s",
-			videoIn, i, spec.Xfade, seconds, offset, label))
+		if transition.Leak != nil {
+			leak, err := leakFilters(videoIn, fmt.Sprintf("[clipv%d]", i), label, i, transition.Preset, transition.Leak, seconds, offset, size)
+			if err != nil {
+				return nil, err
+			}
+			filters = append(filters, leak...)
+		} else {
+			filters = append(filters, fmt.Sprintf("%s[clipv%d]xfade=transition=%s:duration=%.3f:offset=%.3f%s",
+				videoIn, i, spec.Xfade, seconds, offset, label))
+		}
 		videoIn = label
 		outMS += clips[i].DurationMS - transition.DurationMS
 	}
@@ -214,7 +351,7 @@ func mergeArgs(clips []clipsequence.Clip, group clipsequence.Group, opts Options
 		"-movflags", "+faststart",
 		outPath,
 	)
-	return args
+	return args, nil
 }
 
 func copyFile(src, dst string) error {

@@ -72,6 +72,9 @@ type Worker struct {
 	// only the transport. See settleWaitBudget.
 	settleWait   time.Duration
 	settleWindow time.Duration
+	// sequence is the assembly phase (sequence.go). Nil means the phase is not
+	// wired and a sequence job fails closed instead of rendering silently.
+	sequence *sequenceAssembly
 }
 
 // NewWorker constructs the canonical worker. Fail-closed: preparer and log
@@ -146,6 +149,11 @@ func (w *Worker) settleWaitBudget(j *job.Job) time.Duration {
 }
 
 func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecutionTools) (job.Result, error) {
+	// The sequence phase renders nothing, so it is dispatched BEFORE the render
+	// phases are reported: a sequence job must never appear as a clip render.
+	if isSequencePayload(j.Payload) {
+		return w.handleSequence(ctx, j, tools)
+	}
 	progress := safeProgress(tools)
 	emit := safeEvent(tools)
 

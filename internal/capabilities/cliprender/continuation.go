@@ -90,11 +90,16 @@ const (
 	// RenderPhaseSettle is the continuation: load the resume document, wait for
 	// the remote render, materialize the certified artifact, probe and publish.
 	RenderPhaseSettle RenderPhase = "settle"
+	// RenderPhaseSequence assembles already-rendered clips into one deliverable.
+	// It renders nothing: see sequence.go. It is the phase the batch endpoint
+	// enqueues alongside its render items so one request produces both the
+	// clips and their joined sequence.
+	RenderPhaseSequence RenderPhase = "sequence"
 )
 
 // IsValid reports whether p is one of the canonical phases.
 func (p RenderPhase) IsValid() bool {
-	return p == RenderPhaseSubmit || p == RenderPhaseSettle
+	return p == RenderPhaseSubmit || p == RenderPhaseSettle || p == RenderPhaseSequence
 }
 
 // ParseRenderPhase reads the phase from a job payload. A missing key is the
@@ -119,8 +124,8 @@ func ParseRenderPhase(payload map[string]any) (RenderPhase, error) {
 	}
 	phase := RenderPhase(s)
 	if !phase.IsValid() {
-		return "", fmt.Errorf("%w: unknown %s=%q (want %q or %q)",
-			ErrInvalidJobPayload, PayloadKeyRenderPhase, s, RenderPhaseSubmit, RenderPhaseSettle)
+		return "", fmt.Errorf("%w: unknown %s=%q (want %q, %q or %q)",
+			ErrInvalidJobPayload, PayloadKeyRenderPhase, s, RenderPhaseSubmit, RenderPhaseSettle, RenderPhaseSequence)
 	}
 	return phase, nil
 }

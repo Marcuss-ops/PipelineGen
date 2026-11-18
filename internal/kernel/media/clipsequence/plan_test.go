@@ -159,10 +159,10 @@ func TestPlanRejectsUnknownPreset(t *testing.T) {
 }
 
 // TestLocallyExecutableNeverClaimsAnApproximation pins the assembler boundary:
-// only presets with a faithful xfade program are locally executable; light
-// leaks and shakes are Chronon's, and the plan must not pretend otherwise.
+// light leaks and the xfade looks have a local program; shakes are Chronon's,
+// and the plan must not pretend otherwise.
 func TestLocallyExecutableNeverClaimsAnApproximation(t *testing.T) {
-	for _, preset := range []Preset{PresetLightLeakSoft, PresetLightLeakHard, PresetShakeLight, PresetShakeStrong} {
+	for _, preset := range []Preset{PresetShakeLight, PresetShakeStrong} {
 		spec, ok := LookupPreset(preset)
 		if !ok {
 			t.Fatalf("missing %q", preset)
@@ -171,10 +171,140 @@ func TestLocallyExecutableNeverClaimsAnApproximation(t *testing.T) {
 			t.Fatalf("%q must not claim a local program", preset)
 		}
 	}
-	for _, preset := range []Preset{PresetFlashWhite, PresetWhipLeft, PresetWhipRight, PresetZoomPunch, PresetCrossfadeFast, PresetSqueezeIn} {
+	for _, preset := range []Preset{
+		PresetFlashWhite, PresetWhipLeft, PresetWhipRight, PresetZoomPunch,
+		PresetCrossfadeFast, PresetSqueezeIn, PresetLightLeakSoft, PresetLightLeakHard,
+	} {
 		spec, _ := LookupPreset(preset)
 		if !spec.LocallyExecutable() {
 			t.Fatalf("%q should have a local program", preset)
+		}
+	}
+}
+
+// TestLightLeaksCarryASweepProgram pins the light leaks' local definition: each
+// has a colour, a peak inside (0,1], a normalised band width and a direction,
+// and no xfade program to silently take over.
+func TestLightLeaksCarryASweepProgram(t *testing.T) {
+	for _, preset := range []Preset{PresetLightLeakSoft, PresetLightLeakHard} {
+		spec, ok := LookupPreset(preset)
+		if !ok {
+			t.Fatalf("missing %q", preset)
+		}
+		if spec.Leak == nil {
+			t.Fatalf("%q has no sweep program", preset)
+		}
+		if spec.Xfade != "" {
+			t.Fatalf("%q must not also claim an xfade program (%q)", preset, spec.Xfade)
+		}
+		leak := *spec.Leak
+		if len(leak.Color) != 7 || leak.Color[0] != '#' {
+			t.Fatalf("%q colour = %q, want #RRGGBB", preset, leak.Color)
+		}
+		if leak.PeakAlpha <= 0 || leak.PeakAlpha > 1 {
+			t.Fatalf("%q peak alpha = %v", preset, leak.PeakAlpha)
+		}
+		if leak.BandWidth <= 0 || leak.BandWidth > 1 {
+			t.Fatalf("%q band width = %v", preset, leak.BandWidth)
+		}
+		if leak.Direction != "right" && leak.Direction != "left" {
+			t.Fatalf("%q direction = %q", preset, leak.Direction)
+		}
+	}
+}
+
+// TestFastCeilingIsThreeHundredMilliseconds pins the fast editorial lane:
+// transitions between clips never exceed 0.3 s, and the presets' defaults sit
+// inside that ceiling.
+func TestFastCeilingIsThreeHundredMilliseconds(t *testing.T) {
+	if MaxFastTransitionMS != 300 {
+		t.Fatalf("MaxFastTransitionMS = %d, want 300", MaxFastTransitionMS)
+	}
+	for _, spec := range Presets() {
+		if spec.DefaultDurationMS > MaxFastTransitionMS {
+			t.Fatalf("preset %q default %d ms exceeds the 300 ms ceiling", spec.Preset, spec.DefaultDurationMS)
+		}
+	}
+	sequence := Sequence{Clips: []Clip{
+		clip("a", 5_000, nil),
+		clip("b", 5_000, &Transition{Preset: PresetLightLeakHard, DurationMS: MaxFastTransitionMS}),
+	}}
+	if _, err := sequence.Plan(); err != nil {
+		t.Fatalf("a 300 ms light leak must be accepted: %v", err)
+	}
+	sequence.Clips[1].TransitionIn.DurationMS = MaxFastTransitionMS + 1
+	if _, err := sequence.Plan(); err == nil || !strings.Contains(err.Error(), "fast transitions only") {
+		t.Fatalf("a 301 ms transition must be rejected, got %v", err)
+	}
+}
+
+// TestLeakOverridesApplyPerTransition pins the per-join parameterisation: the
+// plan carries the resolved program, so two joins of the SAME preset can look
+// different, and an omitted knob keeps the preset's value.
+func TestLeakOverridesApplyPerTransition(t *testing.T) {
+	peak := 0.95
+	band := 0.08
+	sequence := Sequence{Clips: []Clip{
+		clip("a", 6_000, nil),
+		clip("b", 6_000, &Transition{Preset: PresetLightLeakHard, DurationMS: 240,
+			Leak: &LeakOverride{Color: "#ff00aa", PeakAlpha: &peak, BandWidth: &band, Direction: "left"}}),
+		clip("c", 6_000, &Transition{Preset: PresetLightLeakHard, DurationMS: 240}),
+	}}
+	plan, err := sequence.Plan()
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(plan.Groups) != 1 || len(plan.Groups[0].Transitions) != 2 {
+		t.Fatalf("groups = %+v, want one merged group with two joins", plan.Groups)
+	}
+	tuned := plan.Groups[0].Transitions[0].Leak
+	if tuned == nil {
+		t.Fatal("tuned join has no leak program")
+	}
+	if tuned.Color != "#FF00AA" || tuned.Direction != "left" {
+		t.Fatalf("tuned leak = %+v, want the override (uppercased colour, left sweep)", *tuned)
+	}
+	if tuned.PeakAlpha != peak || tuned.BandWidth != band {
+		t.Fatalf("tuned leak = %+v, want peak %v band %v", *tuned, peak, band)
+	}
+	untouched := plan.Groups[0].Transitions[1].Leak
+	defaults, _ := LookupPreset(PresetLightLeakHard)
+	if untouched == nil || defaults.Leak == nil {
+		t.Fatal("untouched join has no leak program")
+	}
+	if *untouched != *defaults.Leak {
+		t.Fatalf("untouched leak = %+v, want the preset defaults %+v", *untouched, *defaults.Leak)
+	}
+}
+
+// TestLeakOverridesAreRejectedWhereTheyCannotApply keeps the contract honest:
+// an override on a preset with no band, or with a value the assembler cannot
+// render, is a rejected sequence rather than a silently unchanged look.
+func TestLeakOverridesAreRejectedWhereTheyCannotApply(t *testing.T) {
+	zero := 0.0
+	cases := []struct {
+		name string
+		leak *LeakOverride
+		want string
+	}{
+		{"override on an xfade preset", &LeakOverride{Color: "#FFFFFF"}, "has no light-leak program"},
+		{"bad colour", &LeakOverride{Color: "white"}, "must be #RRGGBB"},
+		{"zero peak", &LeakOverride{PeakAlpha: &zero}, "peak_alpha"},
+		{"zero band", &LeakOverride{BandWidth: &zero}, "band_width"},
+		{"bad direction", &LeakOverride{Direction: "up"}, "direction"},
+	}
+	for _, tc := range cases {
+		preset := PresetLightLeakSoft
+		if tc.name == "override on an xfade preset" {
+			preset = PresetCrossfadeFast
+		}
+		sequence := Sequence{Clips: []Clip{
+			clip("a", 5_000, nil),
+			clip("b", 5_000, &Transition{Preset: preset, DurationMS: 200, Leak: tc.leak}),
+		}}
+		_, err := sequence.Plan()
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: error = %v, want one containing %q", tc.name, err, tc.want)
 		}
 	}
 }

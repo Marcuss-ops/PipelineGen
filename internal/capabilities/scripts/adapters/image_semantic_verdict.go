@@ -23,7 +23,8 @@ func ReusablePersonImageVerdict(candidate scriptpkg.SegmentAssetCandidate) bool 
 		// metadata-only reason as `accepted`; force those rows through visual
 		// verification instead of treating them as a reusable identity image.
 		if strings.Contains(reason, "pinned by media_manifest.v1: offline sha256 verify") ||
-			strings.Contains(reason, "manual visual identity review confirmed") {
+			strings.Contains(reason, "manual visual identity review confirmed") ||
+			strings.Contains(reason, "deterministic identity verification confirmed") {
 			return true
 		}
 		return strings.Contains(reason, "ollama visual identity verification confirmed")

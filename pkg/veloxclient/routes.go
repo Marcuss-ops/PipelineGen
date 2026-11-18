@@ -22,6 +22,9 @@ const (
 	RouteClipsRender = "/api/clips/render"
 	// RouteClipsRenderBatch renders up to 50 clips (async clip.render jobs).
 	RouteClipsRenderBatch = "/api/clips/render/batch"
+	// RouteClipsRenderSequence assembles already-rendered clips into one
+	// deliverable (async clip.render sequence job).
+	RouteClipsRenderSequence = "/api/clips/render/sequence"
 	// RouteScriptGenerate generates a script (async).
 	RouteScriptGenerate = "/api/script/generate"
 	// RouteJobsEnqueue enqueues a job directly on the admin surface.

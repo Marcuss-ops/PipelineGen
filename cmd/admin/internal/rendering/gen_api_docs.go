@@ -237,14 +237,15 @@ var routeDescriptions = map[string]string{
 	"PATCH /api/jobs/:id/stages/:stage": "Report a pipeline stage status/progress for a job",
 
 	// ── Clips ─────────────────────────────────────────────────
-	"POST /api/clips/process":      "Download and process clips",
-	"POST /api/clips/render":       "Render a canonical clip into a VeloxEditing-compatible derived clip (background/watermark/subtitles, async clip.render job)",
-	"POST /api/clips/render/batch": "Render up to 50 canonical clips with fingerprint deduplication and async clip.render jobs",
-	"GET /api/clips/info":          "Get YouTube video metadata",
-	"GET /api/clips/search":        "Search and rank YouTube videos by topic",
-	"GET /api/clips/exists":        "Pre-extraction dedup probe: answers {exists, clip_id} for a YouTube URL so callers skip /api/clips/process for known candidates",
-	"GET /api/clips/transcript":    "Transcript-as-a-service: readable text + per-cue timings for a YouTube URL without downloading the video (yt-dlp --skip-download + canonical VTT parser)",
-	"GET /api/clips/diagnostics":   "Clips diagnostics",
+	"POST /api/clips/process":         "Download and process clips",
+	"POST /api/clips/render":          "Render a canonical clip into a VeloxEditing-compatible derived clip (background/watermark/subtitles, async clip.render job)",
+	"POST /api/clips/render/batch":    "Render up to 50 canonical clips with fingerprint deduplication and async clip.render jobs",
+	"POST /api/clips/render/sequence": "Assemble already-rendered clips into one deliverable with fast transitions (light leaks, flashes, whips): waits for named clip.render jobs, then runs the canonical merge (async clip.render sequence job)",
+	"GET /api/clips/info":             "Get YouTube video metadata",
+	"GET /api/clips/search":           "Search and rank YouTube videos by topic",
+	"GET /api/clips/exists":           "Pre-extraction dedup probe: answers {exists, clip_id} for a YouTube URL so callers skip /api/clips/process for known candidates",
+	"GET /api/clips/transcript":       "Transcript-as-a-service: readable text + per-cue timings for a YouTube URL without downloading the video (yt-dlp --skip-download + canonical VTT parser)",
+	"GET /api/clips/diagnostics":      "Clips diagnostics",
 
 	// ── Media / Clips ─────────────────────────────────────────
 	"POST /api/media/clips/ingest/ai-stock": "Ingest an AI-generated stock clip from visual analysis + Drive video",
@@ -476,8 +477,9 @@ var routeDescriptionsGated = map[string]bool{
 	"GET /api/clips/diagnostics": true,
 	// clip.render (ClipRenderEnabled, same media PostgreSQL gate as
 	// SSOT handle, otherwise gating not drift.
-	"POST /api/clips/render":       true,
-	"POST /api/clips/render/batch": true,
+	"POST /api/clips/render":          true,
+	"POST /api/clips/render/batch":    true,
+	"POST /api/clips/render/sequence": true,
 	// stock-pipeline + stock-batches (StockPipelineEnabled, same
 	// when the docs snapshot has a media SSOT handle, otherwise gating
 	// not drift.

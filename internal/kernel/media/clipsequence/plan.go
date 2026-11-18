@@ -10,6 +10,10 @@ type Transition struct {
 	// DurationMS is the overlap in milliseconds. Zero uses the preset default;
 	// the resolved value is what the plan and the renderer see.
 	DurationMS int64 `json:"duration_ms,omitempty"`
+	// Leak parameterises the light-leak program for this ONE join. Nil keeps
+	// the preset's own values; a non-nil override on a preset that is not a
+	// light leak is rejected instead of silently ignored.
+	Leak *LeakOverride `json:"leak,omitempty"`
 }
 
 // Clip is one rendered deliverable clip in editorial order.
@@ -36,6 +40,10 @@ type Sequence struct {
 type GroupTransition struct {
 	Preset     Preset `json:"preset"`
 	DurationMS int64  `json:"duration_ms"`
+	// Leak is the light-leak program the assembler runs for this join: the
+	// preset's values with the clip's overrides applied. Nil means the join is
+	// an xfade program, not a sweep.
+	Leak *LeakSpec `json:"leak,omitempty"`
 	// FromClip/ToClip are indexes into Sequence.Clips.
 	FromClip int `json:"from_clip"`
 	ToClip   int `json:"to_clip"`
@@ -63,19 +71,47 @@ type Plan struct {
 	DurationMS int64 `json:"duration_ms"`
 }
 
-// resolveTransition validates one transition and resolves its duration.
-func resolveTransition(from, to Clip, transition *Transition) (int64, error) {
-	spec, ok := LookupPreset(transition.Preset)
-	if !ok {
-		return 0, fmt.Errorf("transition preset %q is not certified", transition.Preset)
+// ValidateTransition checks a transition on its own: the preset must exist, its
+// duration must sit inside the fast window, and any light-leak override must be
+// resolvable. The neighbour-relative fraction (40% of either clip) is NOT
+// checked here because it needs the clip lengths; Plan applies it. Callers that
+// validate a request before the durations are known use this one.
+func ValidateTransition(t *Transition) error {
+	if t == nil {
+		return nil
 	}
-	duration := transition.DurationMS
+	spec, ok := LookupPreset(t.Preset)
+	if !ok {
+		return fmt.Errorf("transition preset %q is not certified", t.Preset)
+	}
+	duration := t.DurationMS
 	if duration == 0 {
 		duration = spec.DefaultDurationMS
 	}
 	if duration < MinTransitionMS || duration > MaxFastTransitionMS {
-		return 0, fmt.Errorf("transition preset %q duration_ms must be in [%d,%d] (fast transitions only)",
-			transition.Preset, MinTransitionMS, MaxFastTransitionMS)
+		return fmt.Errorf("transition preset %q duration_ms must be in [%d,%d] (fast transitions only)",
+			t.Preset, MinTransitionMS, MaxFastTransitionMS)
+	}
+	if _, err := spec.ResolveLeak(t.Leak); err != nil {
+		return err
+	}
+	return nil
+}
+
+// resolveTransition validates one transition and resolves its duration and
+// light-leak program.
+func resolveTransition(from, to Clip, transition *Transition) (int64, *LeakSpec, error) {
+	if err := ValidateTransition(transition); err != nil {
+		return 0, nil, err
+	}
+	spec, _ := LookupPreset(transition.Preset)
+	duration := transition.DurationMS
+	if duration == 0 {
+		duration = spec.DefaultDurationMS
+	}
+	leak, err := spec.ResolveLeak(transition.Leak)
+	if err != nil {
+		return 0, nil, err
 	}
 	for _, clip := range []Clip{from, to} {
 		limit := clip.DurationMS * MaxTransitionFractionPercent / 100
@@ -83,11 +119,11 @@ func resolveTransition(from, to Clip, transition *Transition) (int64, error) {
 			limit = MinTransitionMS
 		}
 		if duration > limit {
-			return 0, fmt.Errorf("transition %q (%d ms) exceeds %d%% of clip %q (%d ms)",
+			return 0, nil, fmt.Errorf("transition %q (%d ms) exceeds %d%% of clip %q (%d ms)",
 				transition.Preset, duration, MaxTransitionFractionPercent, clip.AssetID, clip.DurationMS)
 		}
 	}
-	return duration, nil
+	return duration, leak, nil
 }
 
 // Plan validates the sequence and returns the merge decision.
@@ -121,7 +157,7 @@ func (s Sequence) Plan() (Plan, error) {
 			})
 			continue
 		}
-		duration, err := resolveTransition(s.Clips[i-1], clip, clip.TransitionIn)
+		duration, leak, err := resolveTransition(s.Clips[i-1], clip, clip.TransitionIn)
 		if err != nil {
 			return Plan{}, fmt.Errorf("clips[%d]: %w", i, err)
 		}
@@ -131,6 +167,7 @@ func (s Sequence) Plan() (Plan, error) {
 		group.Transitions = append(group.Transitions, GroupTransition{
 			Preset:     clip.TransitionIn.Preset,
 			DurationMS: duration,
+			Leak:       leak,
 			FromClip:   i - 1,
 			ToClip:     i,
 		})
