@@ -46,7 +46,8 @@ post-seal pass is the catalog-backed half, and it is the only place a segment's
 | Motion / group motion | BrainRust | planner | No | same test |
 | Chain segment preset | PipelineGen (ADR-029) | `applyChainSegmentPresets` | Yes, `PresetID` only | `TestApplyChainSegmentPresetsResolvesEveryChainSegment`, `TestChainSegmentPresetResolutionTouchesOnlyPresetID` |
 | Entity-card → entity image (item and chain segment) | PipelineGen media plane (ADR-029 exception 2) | `promoteVerifiedEntityCards` / `promoteChainEntityCardSegments` | Yes: segment `Kind`, `TemplateID`, `PresetID`, `ImagePresetID`, `EntityCaption`, `AssetID`, `Assets`; drops segment `Text`, `MotionID`, `MotionParams`, `EntityStyleID`, `Params`; item `Kind`→`image_chain`, `TemplateID`→`IMAGE_CHAIN`, legacy `Text` cleared | `TestChainSegmentPromotionTouchesOnlyTheDeclaredSurface` |
-| Entity-image run ceiling | PipelineGen | `capEntityImageOverlays` | Yes: drops `entity_image` items past `MaxEntityImageOverlaysPerRun` | `overlay_plan_entity_image_promotion_test.go` |
+| Entity-image run ceiling | PipelineGen | `capEntityImageOverlays` | Yes: drops `entity_image` items past `MaxEntityImageOverlaysPerRun`, never any other kind | `TestEntityImageCeilingDropsOnlyEntityImages` |
+| Promotion replay | PipelineGen | `promoteVerifiedEntityCards` | No: a second pass over a promoted plan is a no-op and the fingerprint does not move | `TestPromotionIsIdempotent`, `TestPromotionFingerprintIsDeterministic` |
 | Map plate / local asset | PipelineGen + RenderingGen | `materializeEditorialMapItems` | Yes, `Map`/`AssetRefs` resolution only | `TestMaterializeEditorialMapItemsResolvesPresentationCardPresets` |
 | Fingerprint / render key | PipelineGen seal | `overlay_plan_seal.go` | Yes, derived state | seal tests |
 | Intake/audit/lineage | PipelineGen | `overlay_plan_freeze.go` | Yes, read-only telemetry | freeze tests |
@@ -102,6 +103,18 @@ The cross-checkout mirror comparison
 (`TestChainSegmentFieldsMatchRenderingGenMirror`) is bidirectional but
 best-effort: it skips when the sibling repository is absent, which is why it is
 not the contract gate.
+
+Segment identity is resolved in one declared place. The producer always writes
+`kind` and `template_id`; RenderingGen's `segmentIdentity`
+(`internal/overlay/chain_compile.go`) is the compatibility shim for hand-authored
+plans and only infers what the content names unambiguously — a segment carrying
+both a map and image bytes, or carrying no content at all, fails the compile
+instead of being guessed.
+
+The post-seal passes are deterministic by test, not by convention: promotion is
+idempotent, a replayed promotion keeps the fingerprint, and the same request
+compiled twice yields the same fingerprint (`TestPromotionIsIdempotent`,
+`TestPromotionFingerprintIsDeterministic`).
 
 The fixture (`testdata/contracts/chain-segments-v1.json`, byte-identical in both
 repositories) is **authored, not generated**: it proves the consumer lowers five

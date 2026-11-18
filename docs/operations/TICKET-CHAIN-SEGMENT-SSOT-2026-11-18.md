@@ -1,8 +1,11 @@
 # TICKET — chain_segments single source of truth (2026-11-18)
 
-- **Status:** PARTIAL — the wire contract is pinned on all three sides and the
-  post-seal mutation surface is gated; the identity decision itself still runs
-  twice (Rust planner + PipelineGen media plane).
+- **Status:** PARTIAL — the wire contract is pinned on all three sides, the
+  post-seal mutation surface and run ceiling are declared and gated, and the
+  post-seal passes are proven deterministic and idempotent. What remains is the
+  behaviour change: the identity decision still runs twice (Rust planner +
+  PipelineGen media plane), which needs a `*.v2` window and a visual acceptance
+  run, not a silent refactor.
 - **Severity:** P1 — a post-seal pass rewrites chain segment identity, which the
   ownership doc forbade, and nothing failed when it did.
 - **Owner:** overlay/editorial pipeline + media plane
@@ -74,6 +77,18 @@ a fixture and two SHA constants.
   drop, each with its pinning test.
 - **Mirror comparison is bidirectional** and fails instead of passing when the
   `chainSegment` anchor disappears.
+- **Consumer identity is one declared shim.** RenderingGen's `segmentIdentity`
+  (`internal/overlay/chain_compile.go`) replaced the inline inference: the
+  mapping is pinned case by case (`TestSegmentIdentityDeclaredMapping`), a
+  segment carrying a map *and* image bytes or carrying no content fails the
+  compile (`TestSegmentIdentityFailsClosed`,
+  `TestCompileChainRejectsContentlessSegment`), and a legacy segment without
+  `kind` still lowers (`TestCompileChainInfersMissingKind`).
+- **Determinism and the ceiling are gated.** `TestPromotionIsIdempotent`,
+  `TestPromotionFingerprintIsDeterministic` and
+  `TestEntityImageCeilingDropsOnlyEntityImages` pin the ticket's remaining
+  reachable acceptance criterion: the same request yields the same fingerprint,
+  a replayed promotion is a no-op, and the ceiling drops entity images only.
 
 ## Open
 
@@ -88,10 +103,12 @@ a fixture and two SHA constants.
    `promoteChainEntityCardSegments`' identity rewrite and keep asset attachment.
 3. **Move the ceiling pre-Rust** (`MaxEntityImageOverlaysPerRun` as a request
    ceiling) so no plan loses items after the seal.
-4. **Remove the consumer's inference.** `segRIItem`
-   (`RenderingGen/internal/overlay/chain_compile.go:86`) still derives
-   `kind`/`template_id` from content when a segment omits them. Once the producer
-   always emits both, this fallback must fail closed instead of guessing.
+4. **Remove the consumer's inference entirely.** `segmentIdentity`
+   (`RenderingGen/internal/overlay/chain_compile.go`) no longer guesses an
+   ambiguous or empty segment, but it still infers `kind`/`template_id` for the
+   unambiguous legacy shapes. Once the producer always emits both — including
+   `template_id` for card and number segments — the shim becomes an error and
+   the mapping test is deleted.
 5. **Generate the fixture or drop the SHA pin.** The fixture is authored, so it
    proves lowering, never producer parity. Either a Rust test emits these bytes or
    the two SHA constants are replaced by a generated artifact.
@@ -106,5 +123,9 @@ a fixture and two SHA constants.
   `motion_id`, `text`; `TestChainSegmentPromotionTouchesOnlyTheDeclaredSurface`
   is reduced to "no key changes at all".
 - No item or segment disappears between the Rust return and the renderer.
-- A plan compiled twice from the same request yields the same fingerprint.
-- `make verify-main` green with the three key-set gates in it.
+- ~~A plan compiled twice from the same request yields the same fingerprint.~~
+  **MET** — `TestPromotionFingerprintIsDeterministic`, which also covers a
+  replayed promotion (`TestPromotionIsIdempotent`).
+- `make verify-main` green with the three key-set gates in it. **BLOCKED** by a
+  local, untracked cache entry (`data/final-job-fragments/66/*.mp4` carrying a
+  pre-canonical avcC); no code in this ticket is involved.
