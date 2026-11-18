@@ -141,6 +141,15 @@ func (uc *GenerateOneUseCase) SetVidRushCache(cache scriptports.VidRushCachePort
 	uc.finalizer.SetVidRushCache(cache)
 }
 
+// SetQualityGate opts this use case into an alternate editorial gate. Nil
+// keeps the canonical Go gate.
+func (uc *GenerateOneUseCase) SetQualityGate(gate scriptpkg.QualityGateEvaluator) {
+	if uc == nil {
+		return
+	}
+	uc.finalizer.SetQualityGate(gate)
+}
+
 // SetSegmentEnricher wires the canonical semantic extraction boundary into
 // the batch postprocessor path used by script.generate_item jobs.
 func (uc *GenerateOneUseCase) SetSegmentEnricher(enricher scriptgen.SegmentEnricher) {

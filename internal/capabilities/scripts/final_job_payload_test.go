@@ -540,39 +540,11 @@ func TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder(t *testing.T) {
 	}
 }
 
-// TestBuildFinalJobPayloadsPreparesConcreteStockWindowsWhenKnobEnabled pins the
-// escape hatch for a remote stock-window cutter that certifies one frame more
-// than the source: with the knob on, the very same concrete stock binding is
-// handed over as a clip fragment so the local preparer certifies the window,
-// while the default (knob off) keeps the Drive source Master-owned.
-func TestBuildFinalJobPayloadsPreparesConcreteStockWindowsWhenKnobEnabled(t *testing.T) {
-	t.Setenv("VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS", "1")
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
-		FinalAudio:        certifiedFinalAudio(2000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset", 0, 2000)}},
-	}
-	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
-	if err != nil {
-		t.Fatalf("BuildFinalJobPayloads: %v", err)
-	}
-	roles := map[string]int{}
-	for _, raw := range finalize["runtime_assets"].([]any) {
-		asset := raw.(map[string]any)
-		if finalJobStringValue(asset["asset_id"]) == "drive-asset" {
-			roles[finalJobStringValue(asset["role"])]++
-		}
-	}
-	if roles["clip"] != 1 || roles["stock"] != 0 {
-		t.Fatalf("concrete stock runtime roles = %#v, want the window routed to the local clip preparer", roles)
-	}
-}
-
-// TestBuildFinalJobPayloadsTreatsTrimmedWholeFileWindowAsWhole pins the
+// TestBuildFinalJobPayloadsKeepsTruncatedWholeFileWindowMasterOwned pins the
 // stockpipeline's 500 ms tail trim: the materialized binding is shorter than
-// the file it selects, and that must not push a whole-file stock window back
-// onto the remote cutter.
-func TestBuildFinalJobPayloadsTreatsTruncatedWholeFileWindowAsWhole(t *testing.T) {
+// the file it selects and still travels as a Master-owned Drive source. The
+// Producer never downloads, cuts or re-encodes stock windows locally.
+func TestBuildFinalJobPayloadsKeepsTruncatedWholeFileWindowMasterOwned(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
 		FinalAudio:        certifiedFinalAudio(1000),
@@ -589,16 +561,16 @@ func TestBuildFinalJobPayloadsTreatsTruncatedWholeFileWindowAsWhole(t *testing.T
 			roles[finalJobStringValue(asset["role"])]++
 		}
 	}
-	if roles["clip"] != 1 || roles["stock"] != 0 {
-		t.Fatalf("truncated whole-file stock roles = %#v, want the local clip preparer", roles)
+	if roles["stock"] != 1 || roles["clip"] != 0 {
+		t.Fatalf("truncated whole-file stock roles = %#v, want the Master-owned Drive source", roles)
 	}
 }
 
-// TestBuildFinalJobPayloadsRepeatsCertifiedStockWindowForLongerNarration pins
-// the loop replacement: a stock scene longer than its clip used to make the
-// remote loop the Drive source; with the Producer certifying the window, the
-// same window is placed as repeated certified chunks instead.
-func TestBuildFinalJobPayloadsRepeatsCertifiedStockWindowForLongerNarration(t *testing.T) {
+// TestBuildFinalJobPayloadsSendsLongerStockSceneToMaster pins the ownership
+// boundary: a stock scene longer than its clip stays ONE Master-owned plan
+// segment; the Master loops the Drive source. The Producer never certifies or
+// re-encodes the window locally.
+func TestBuildFinalJobPayloadsSendsLongerStockSceneToMaster(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 3_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 3_000_000}}},
 		FinalAudio:        certifiedFinalAudio(3000),
@@ -610,11 +582,11 @@ func TestBuildFinalJobPayloadsRepeatsCertifiedStockWindowForLongerNarration(t *t
 	}
 	plan := decodeFinalJobPlanForTest(t, pre)
 	segments := plan.VideoTracks[0].Segments
-	if len(segments) != 2 {
-		t.Fatalf("stock chunks = %d (%+v), want the 2s window repeated for 3s of narration", len(segments), segments)
+	if len(segments) != 1 {
+		t.Fatalf("stock segments = %d (%+v), want one Master-owned segment for the 3s scene", len(segments), segments)
 	}
-	if segments[0].FrameCount != 48 || segments[1].FrameCount != 24 {
-		t.Fatalf("stock chunk frames = %d,%d, want 48+24", segments[0].FrameCount, segments[1].FrameCount)
+	if segments[0].FrameCount != 72 {
+		t.Fatalf("stock segment frames = %d, want 72", segments[0].FrameCount)
 	}
 	roles := map[string]int{}
 	for _, raw := range finalize["runtime_assets"].([]any) {
@@ -623,8 +595,8 @@ func TestBuildFinalJobPayloadsRepeatsCertifiedStockWindowForLongerNarration(t *t
 			roles[finalJobStringValue(asset["role"])]++
 		}
 	}
-	if roles["clip"] != 1 || roles["stock"] != 0 {
-		t.Fatalf("long stock runtime roles = %#v, want the local clip preparer", roles)
+	if roles["stock"] != 1 || roles["clip"] != 0 {
+		t.Fatalf("long stock runtime roles = %#v, want the Master-owned Drive source", roles)
 	}
 }
 

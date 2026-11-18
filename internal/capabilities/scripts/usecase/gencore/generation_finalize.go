@@ -34,6 +34,7 @@ type GenerationFinalizer struct {
 	cfg          processor.NormalizationConfig
 	memSvc       *processor.Service
 	vidRushCache scriptports.VidRushCachePort
+	qualityGate  scriptpkg.QualityGateEvaluator
 }
 
 // NewGenerationFinalizer constructs a GenerationFinalizer.
@@ -56,6 +57,27 @@ func (f *GenerationFinalizer) SetVidRushCache(cache scriptports.VidRushCachePort
 	if f != nil {
 		f.vidRushCache = cache
 	}
+}
+
+// SetQualityGate overrides the default Go editorial gate. The production
+// composition leaves this unset unless VELOX_RUST_QUALITY_GATE opts into the
+// Rust cutover.
+func (f *GenerationFinalizer) SetQualityGate(gate scriptpkg.QualityGateEvaluator) {
+	if f != nil {
+		f.qualityGate = gate
+	}
+}
+
+func (f *GenerationFinalizer) evaluateQuality(
+	ctx context.Context,
+	result *scriptpkg.GenerationResult,
+	item scriptpkg.GenerationItemV2,
+	plan scriptpkg.ResolvedGenerationPlan,
+) (*scriptpkg.GenerationQuality, error) {
+	if f != nil && f.qualityGate != nil {
+		return f.qualityGate.EvaluateQualityGate(ctx, result, item, plan)
+	}
+	return qualitygate.Evaluate(result, item, plan)
 }
 
 // FinalizeInputs carries everything the finalize phase needs from
@@ -103,7 +125,7 @@ func (f *GenerationFinalizer) Finalize(
 	// Keep the canonical result in sync with the engine envelope before
 	// persistence; the script cache must retain the observed word count.
 	result.Output.WordCount = engineResult.Output.WordCount
-	quality, qErr := qualitygate.Evaluate(&qualityInput, item, plan)
+	quality, qErr := f.evaluateQuality(ctx, &qualityInput, item, plan)
 	if quality != nil {
 		result.Quality = quality
 	}
@@ -129,6 +151,9 @@ func (f *GenerationFinalizer) Finalize(
 	if qErr != nil {
 		if item.ScriptParams.SkipQualityGate {
 			qualitySkipped = true
+			if result.Quality == nil {
+				result.Quality = &scriptpkg.GenerationQuality{}
+			}
 			result.Quality.SourceTextCoverageStatus = "SKIPPED"
 			tracker.TrackEvent("quality.skipped", "Editorial quality gate failure ignored by request", map[string]any{
 				"item_id": item.ID,

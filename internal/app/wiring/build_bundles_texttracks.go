@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
@@ -211,6 +212,10 @@ func BuildTextTrackBundle(
 			ScriptsDir: cfg.Paths.PythonScriptsDir,
 			PythonBin:  cfg.Paths.ArgosPythonBin,
 			PackageDir: cfg.Paths.ArgosPackageDir,
+			// Pivot pairs (it->en->pt/id/tr) run two CPU NMT passes on a long
+			// scene; the 60s adapter default timed out and failed whole
+			// languages. Keep the request bounded, but above the pivot cost.
+			RequestTimeout: 180 * time.Second,
 		}, log,
 	)
 	if argosErr != nil {

@@ -330,7 +330,7 @@ func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, runID s
 	// The master compute resolves the same projection right after the
 	// clip-audio prepare; a checkpointed run may already carry one.
 	if len(input.ResolvedScenes) == 0 {
-		resolved, err := ResolveScenes(input.Scenes, req.SourceLanguage, mode, false)
+		resolved, err := ResolveScenes(input.Scenes, primaryVoiceoverLanguage(req), mode, false)
 		if err != nil {
 			return fmt.Errorf("resolve scenes for the plan branch failed: %w", err)
 		}
@@ -350,7 +350,7 @@ func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, runID s
 		if _, err := prepareClipAudioAssets(ctx, input, clipAudioSource, policy); err != nil {
 			return fmt.Errorf("plan branch fixed-media timing rebuild: %w", err)
 		}
-		resolved, err := ResolveScenes(input.Scenes, req.SourceLanguage, mode, false)
+		resolved, err := ResolveScenes(input.Scenes, primaryVoiceoverLanguage(req), mode, false)
 		if err != nil {
 			return fmt.Errorf("resolve scenes for the plan branch failed: %w", err)
 		}

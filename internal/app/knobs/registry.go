@@ -186,12 +186,6 @@ var registry = []Knob{
 		Description:    "Number of final-job fragments prepared in parallel; 0 or malformed fails the job.",
 	},
 	{
-		Name: "VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS", Kind: KindEnv, Default: "1",
-		Owner:          "internal/capabilities/scripts/final_job_payload.go",
-		SafeProduction: "1 until the remote prepare.window cutter stops emitting source_frames+1; 0 restores Master-owned stock",
-		Description:    "Certify whole-file stock scene windows in the Producer (prepared fragments) instead of handing the raw Drive file to the Master's prepare.window; partial stock windows always stay Master-owned.",
-	},
-	{
 		Name: "VELOX_FINAL_JOB_QUEUE_SECONDS", Kind: KindEnv, Default: "180",
 		Owner:          "internal/app/wiring/remote_final_job.go",
 		SafeProduction: "180",
@@ -239,6 +233,12 @@ var registry = []Knob{
 		Owner:          "internal/app/wiring/media_pool_ranker.go",
 		SafeProduction: "bin/mediasampler",
 		Description:    "Rust mediasampler worker used by the canonical media ranker (rank_candidates).",
+	},
+	{
+		Name: "VELOX_RUST_QUALITY_GATE", Kind: KindConfig, Default: "false",
+		Owner:          "internal/app/wiring/wire_script_usecases.go",
+		SafeProduction: "false until the release pin is bumped",
+		Description:    "Opt into the Rust script-qa quality_gate instead of the canonical Go editorial gate.",
 	},
 	{
 		Name: "VELOX_RUST_SEMANTIC_ENGINE_PATH", Kind: KindTestOnly, Default: "",

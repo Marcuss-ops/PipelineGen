@@ -35,6 +35,10 @@ type ExternalConfig struct {
 	// (semantic_manifest.v3): one analyze call per script replaces the
 	// per-category VisualNER bullet/chart calls.
 	RustSemanticEnginePath string `yaml:"rust_semantic_engine_path" env:"VELOX_RUST_SEMANTIC_ENGINE_PATH" default:"bin/semantic-engine"`
+	// RustQualityGateEnabled opts into the Rust script-qa quality gate. The
+	// canonical Go gate remains the production default until the release pin
+	// is bumped after the cutover is verified.
+	RustQualityGateEnabled bool   `yaml:"rust_quality_gate_enabled" env:"VELOX_RUST_QUALITY_GATE" default:"false"`
 	RustMediaSamplerPath   string `yaml:"rust_mediasampler_path" env:"VELOX_RUST_MEDIASAMPLER_PATH" default:"bin/mediasampler"`
 	// VisualNER extraction is owned by BrainRust. The Rust binary path above
 	// is the only supported backend; a second NLP sidecar duplicated this role.

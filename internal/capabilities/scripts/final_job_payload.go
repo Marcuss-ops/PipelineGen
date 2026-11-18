@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
@@ -125,44 +124,6 @@ func finalJobStockBindingAsset(ctx context.Context, resolver FinalJobAssetResolv
 	}
 	asset["start_ms"] = binding.StartMs
 	return asset, windowMS, nil
-}
-
-// finalJobStockWindowCoversWholeFile reports whether the binding selects the
-// whole source file. A whole-file window is expressed in milliseconds, so its
-// duration can describe one frame more than the container holds; the remote
-// prepare.window cutter then emits that extra frame and fails the canonical
-// VELOX_ASSEMBLY_READY_V1 certificate. Partial windows keep their exact source
-// range and stay Master-owned.
-func finalJobStockBindingWindowMS(binding *scriptpkg.StockBinding) int64 {
-	if binding == nil {
-		return 0
-	}
-	if binding.DurationMs > 0 {
-		return binding.DurationMs
-	}
-	if binding.EndMs > binding.StartMs {
-		return binding.EndMs - binding.StartMs
-	}
-	return 0
-}
-
-func finalJobStockWindowCoversWholeFile(binding *scriptpkg.StockBinding, asset map[string]any) bool {
-	if binding == nil || asset == nil {
-		return false
-	}
-	sourceMS := finalJobInt64(asset["duration_ms"])
-	if sourceMS <= 0 {
-		return false
-	}
-	windowMS := finalJobStockBindingWindowMS(binding)
-	// The stockpipeline trims a fixed 500 ms from the tail of the binding (a
-	// 77,804 ms file becomes a 77,304 ms window), and saved durations are
-	// truncated to the millisecond on top of that. Both are selection margins,
-	// not a different source: the window still starts at zero and still covers
-	// the file the Master would cut. One second is well below any deliberate
-	// partial window and above the trim plus rounding.
-	const wholeFileToleranceMS = 1000
-	return binding.StartMs == 0 && windowMS+wholeFileToleranceMS >= sourceMS
 }
 
 func hasFinalJobConcreteStockAsset(binding *scriptpkg.StockBinding) bool {
@@ -378,6 +339,23 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		if !sceneExists {
 			return nil, nil, fmt.Errorf("final_job scene %q has no generated scene", segment.ID)
 		}
+		// A single caller-provided stock folder is a stock pool for the whole
+		// run. Do not require a per-scene binding: the Master selects whole
+		// clips from this folder, and the Producer must not prepare stock.
+		if stockPoolFolderID != "" && req.MediaMode == scriptpkg.MediaModeStockOnly {
+			sceneText := firstFinalJobValue(localScene.Text[req.SourceLanguage], req.Title, localScene.ID)
+			sceneMS := (segment.DurationUS + 999) / 1000
+			scene := compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", nil, sceneMS, sceneText)
+			scene["stock_pool_slot"] = true
+			remoteScenes = append(remoteScenes, scene)
+			plannedDurationMS += sceneMS
+			clipOrdinal++
+			if text := localScene.Text[req.SourceLanguage]; text != "" {
+				scriptText.WriteString(text)
+				scriptText.WriteByte('\n')
+			}
+			continue
+		}
 		if req.MediaMode == scriptpkg.MediaModeStockOnly && !hasFinalJobStockBinding(localScene.Stock) {
 			return nil, nil, fmt.Errorf("final_job stock_only scene %q has no stock binding (folder or concrete); refusing to route it through the clip path", segment.ID)
 		}
@@ -466,41 +444,10 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		// voiceover duration.
 		sceneID := fmt.Sprintf("scene-%04d", clipOrdinal)
 		stockBoundWindowsMS[sceneID] = stockWindowMS
-		// A concrete stock window is Master-owned by default: its Drive bytes
-		// are downloaded, cut and looped remotely. The remote window cutter can
-		// emit one frame more than the source file and fail
-		// VELOX_ASSEMBLY_READY_V1, so the knob lets this Producer certify the
-		// scene window itself. The ref then travels as a prepared clip fragment
-		// and the remote only packet-copies it.
-		stockRole := "stock"
-		prepareStock := knobs.Bool("VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS") &&
-			finalJobStockWindowCoversWholeFile(localScene.Stock, stockAsset)
-		if prepareStock {
-			// The window covers the file, so certifying it here cannot change
-			// which pictures play: it only moves the cut from the remote cutter
-			// (which overshoots by one frame) to the Producer.
-			stockRole = "clip"
-			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, stockRole, stockAsset)
-			// A narration longer than the clip is covered by repeating the same
-			// certified window, which is exactly what the remote loop did. Each
-			// placement owns its own fragment, so the copy-only assembler never
-			// sees two segments bound to one object.
-			for remainingMS := sceneMS; remainingMS > 0; {
-				chunkMS := min(stockWindowMS, remainingMS)
-				chunkID := fmt.Sprintf("scene-%04d", clipOrdinal)
-				stockBoundWindowsMS[chunkID] = stockWindowMS
-				remoteScenes = append(remoteScenes, compositeVideoScene(chunkID, clipOrdinal, "stock", stockAsset, chunkMS, sceneText))
-				plannedDurationMS += chunkMS
-				clipOrdinal++
-				remainingMS -= chunkMS
-			}
-			if text := localScene.Text[req.SourceLanguage]; text != "" {
-				scriptText.WriteString(text)
-				scriptText.WriteByte('\n')
-			}
-			continue
-		}
-		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, stockRole, stockAsset)
+		// A concrete stock window is Master-owned: the Drive bytes are
+		// downloaded, cut and looped by the Master. The Producer never
+		// certifies, cuts or re-encodes stock windows locally.
+		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "stock", stockAsset)
 		remoteScenes = append(remoteScenes, compositeVideoScene(sceneID, clipOrdinal, "stock", stockAsset, sceneMS, sceneText))
 		plannedDurationMS += sceneMS
 		clipOrdinal++

@@ -25,7 +25,6 @@ a registry entry.
 | `VELOX_FINAL_JOB_M2M_SECRET` | env |  | `internal/app/wiring/remote_final_job.go` | 64-hex secret from the host env file | Per-client bearer secret for job.submit against the Master. |
 | `VELOX_FINAL_JOB_MASTER_URL` | env |  | `internal/app/wiring/remote_final_job.go` | https://<master-host> | Master URL for the remote final-job handoff; unset falls back to the configured base URL. |
 | `VELOX_FINAL_JOB_PREPARE_LANES` | env | 4 | `internal/app/wiring/final_job_segment_prepare.go` | 4 (1..16) | Number of final-job fragments prepared in parallel; 0 or malformed fails the job. |
-| `VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS` | env | 1 | `internal/capabilities/scripts/final_job_payload.go` | 1 until the remote prepare.window cutter stops emitting source_frames+1; 0 restores Master-owned stock | Certify whole-file stock scene windows in the Producer (prepared fragments) instead of handing the raw Drive file to the Master's prepare.window; partial stock windows always stay Master-owned. |
 | `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/wiring/remote_final_job.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
 | `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/wiring/remote_final_job.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |
 | `VELOX_MASTER_ADMIN_TOKEN` | env |  | `internal/app/wiring/script/remote_final_job.go` | unset (or Master admin token) | Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset. |
@@ -33,6 +32,7 @@ a registry entry.
 | `VELOX_POLL_MAX_BACKOFF` | config | 60s | `internal/platform/config/jobs.go` | 60s | Ceiling of the job-runner poll backoff. |
 | `VELOX_PROGRESS_COALESCE_WINDOW` | config | 100ms | `internal/platform/config/jobs.go` | 100ms | Window over which job progress writes are coalesced (0 = passthrough). |
 | `VELOX_RUST_MEDIASAMPLER_PATH` | env | bin/mediasampler | `internal/app/wiring/media_pool_ranker.go` | bin/mediasampler | Rust mediasampler worker used by the canonical media ranker (rank_candidates). |
+| `VELOX_RUST_QUALITY_GATE` | config | false | `internal/app/wiring/wire_script_usecases.go` | false until the release pin is bumped | Opt into the Rust script-qa quality_gate instead of the canonical Go editorial gate. |
 | `VELOX_SCHEDULER_INTERVAL` | config | 30s | `internal/platform/config/jobs.go` | 30s | Scheduler tick interval for background jobs. |
 | `VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY` | config | 6 | `internal/platform/config/scripts.go` | 6 (machine render ceiling) | Machine-wide ceiling for localized render jobs. |
 | `VELOX_YOUTUBE_ASYNC_ENRICHMENT` | env |  | `internal/capabilities/youtube/usecase/process_segment_step6to9.go` | unset (inline enrichment) until the outbox worker is certified | Commit YouTube clips before asynchronous metadata enrichment; boot refuses when the media outbox worker is unavailable. |

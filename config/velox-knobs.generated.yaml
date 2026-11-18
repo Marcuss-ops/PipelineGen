@@ -103,12 +103,6 @@ knobs:
     safe_production: "4 (1..16)"
     owner: "internal/app/wiring/final_job_segment_prepare.go"
     description: "Number of final-job fragments prepared in parallel; 0 or malformed fails the job."
-  VELOX_FINAL_JOB_PREPARE_STOCK_WINDOWS:
-    kind: env
-    default: "1"
-    safe_production: "1 until the remote prepare.window cutter stops emitting source_frames+1; 0 restores Master-owned stock"
-    owner: "internal/capabilities/scripts/final_job_payload.go"
-    description: "Certify whole-file stock scene windows in the Producer (prepared fragments) instead of handing the raw Drive file to the Master's prepare.window; partial stock windows always stay Master-owned."
   VELOX_FINAL_JOB_QUEUE_SECONDS:
     kind: env
     default: "180"
@@ -151,6 +145,12 @@ knobs:
     safe_production: "bin/mediasampler"
     owner: "internal/app/wiring/media_pool_ranker.go"
     description: "Rust mediasampler worker used by the canonical media ranker (rank_candidates)."
+  VELOX_RUST_QUALITY_GATE:
+    kind: config
+    default: "false"
+    safe_production: "false until the release pin is bumped"
+    owner: "internal/app/wiring/wire_script_usecases.go"
+    description: "Opt into the Rust script-qa quality_gate instead of the canonical Go editorial gate."
   VELOX_SCHEDULER_INTERVAL:
     kind: config
     default: "30s"

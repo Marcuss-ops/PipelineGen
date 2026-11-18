@@ -137,6 +137,11 @@ func buildScriptUseCases(
 	if phraseErr != nil {
 		return nil, nil, nil, fmt.Errorf("wireScriptFlow: build phrase selector: %w", phraseErr)
 	}
+	if cfg.External.RustQualityGateEnabled {
+		oneUC.SetQualityGate(phraseSelector)
+		log.Info("wireScriptFlow: Rust quality_gate wired (opt-in)",
+			zap.String("binary", cfg.External.RustSemanticEnginePath))
+	}
 	if enricher, enrichErr := scriptgen.NewSceneIRSegmentEnricher(visualNER, phraseSelector); enrichErr != nil {
 		return nil, nil, nil, fmt.Errorf("wireScriptFlow: build SceneIR enricher: %w", enrichErr)
 	} else {
