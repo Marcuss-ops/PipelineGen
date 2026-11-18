@@ -77,6 +77,54 @@ func TestCompileOverlayPlanV2SendsOneCompleteRequestAndAdoptsThePlan(t *testing.
 	}
 }
 
+func TestCompileOverlayPlanV2ReattachesBackgroundLocalPath(t *testing.T) {
+	const bgSHA = "c5ccaa3a024059a081923ffc25786642b8ed597e6d25ba3ac7cca92e896fbcba"
+	const bgPath = "/path/to/background.mp4"
+	scene := Scene{
+		ID: "s1", DurationMS: 3_000,
+		Text: map[Language]string{"it": "Test"},
+		Voiceover: map[Language]AudioReference{"it": {Timing: &capabilityaudio.SpeechTimingArtifact{
+			DurationUS: 3_000_000,
+			Words:      []capabilityaudio.SpeechWordTiming{{Index: 0, Text: "Test", StartUS: 100_000, EndUS: 400_000}},
+		}}},
+	}
+	result := &GenerateResult{SourceLanguage: "it", Scenes: []Scene{scene}}
+	canvas := OverlayCanvasSpec{
+		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Background: &capmodel.OverlayBackground{
+			Kind: "video",
+			AssetRefs: []capmodel.OverlayAssetRef{{
+				AssetID: "bg-1", SHA256: bgSHA, LocalPath: bgPath, MediaType: "video/mp4",
+			}},
+		},
+	}
+	scenes := []capabilityoverlay.SceneInput{{ID: "s1"}}
+	bounds := map[string][2]int64{"s1": {0, 3_000_000}}
+	plan := &capmodel.OverlayPlan{
+		PlanID: "plan-1", VideoID: "video-1",
+		Background: &capmodel.OverlayBackground{
+			Kind: "video",
+			AssetRefs: []capmodel.OverlayAssetRef{{
+				AssetID: "bg-1", SHA256: bgSHA, LocalPath: "",
+			}},
+		},
+		Items: []capmodel.OverlayItem{{ID: "item-1", Kind: "text_phrase"}},
+	}
+	compiler := &recordingOverlayPlanV2Compiler{plan: plan}
+
+	adopted, err := compileOverlayPlanV2(context.Background(), compiler, result, "it", canvas,
+		"plan-1", "video-1", "project-1", "seed-1", []Scene{scene}, scenes, nil, nil, bounds, nil)
+	if err != nil {
+		t.Fatalf("compile v2: %v", err)
+	}
+	if adopted.Background == nil || len(adopted.Background.AssetRefs) == 0 {
+		t.Fatal("background was not preserved")
+	}
+	if got := adopted.Background.AssetRefs[0].LocalPath; got != bgPath {
+		t.Fatalf("background LocalPath = %q, want %q", got, bgPath)
+	}
+}
+
 func TestCompileOverlayPlanWithRustResolverNoOpAndIdentity(t *testing.T) {
 	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), nil, "en", GoldenOverlayCanvas,
 		"plan-1", "video-1", "", nil, passthroughOverlayPlanCompiler{})
