@@ -84,6 +84,11 @@ a fixture and two SHA constants.
   compile (`TestSegmentIdentityFailsClosed`,
   `TestCompileChainRejectsContentlessSegment`), and a legacy segment without
   `kind` still lowers (`TestCompileChainInfersMissingKind`).
+- **The Rust boundary is pinned, and the donor path is verified.** A portrait
+  attached by the planner can no longer promote the card or pick its preset
+  (`identity_ownership_tests`), and an asset without URL + 64-char SHA is no
+  longer copied onto a card. The 30 golden plan fixtures — the byte-level
+  contract for the whole planner — are unchanged.
 - **Determinism and the ceiling are gated.** `TestPromotionIsIdempotent`,
   `TestPromotionFingerprintIsDeterministic` and
   `TestEntityImageCeilingDropsOnlyEntityImages` pin the ticket's remaining
@@ -92,13 +97,28 @@ a fixture and two SHA constants.
 
 ## Open
 
-1. **Decide where promotion lives (the real fix).** Pass the certified-image set
-   into the compile request — the Rust planner already attaches resolved donors
-   (`media.rs:360 attach_resolved_entity_images`) and fuses captioned cards
-   (`coalesce.rs fuse_captioned_entity_image_chains`); it only lacks the catalog
-   half. Once it can promote, PipelineGen attaches bytes only and the exception
-   disappears. This changes plan fingerprints, so it needs a `*.v2` schema window
-   where both paths run.
+1. **Where promotion lives — blocked on the preset sampler, not on the catalog.**
+   The planner already receives the certified portraits
+   (`media.verified_entity_assets`, built by `overlayPlanMedia`) and already
+   attaches donors to cards (`media.rs::attach_resolved_entity_images`), so the
+   missing piece is *not* the catalog. It is the **preset**: a promoted image
+   gets `PresetID = SelectEntityImagePreset(planID, sceneID, itemID)`, which is
+   `DefaultDeterministicPresetSampler.Sample` seeded on
+   job+scene+item with family `entity_image` over `imagePresetCandidates`
+   (`preset.image`, the **Chronon-owned** `VisualPresetRegistry` vocabulary).
+   Moving the decision into the planner therefore means either
+   - (a) shipping that vocabulary in the request and porting the seeded sampler
+     into Rust — a second implementation of the selection math in another
+     language, which `deterministic_preset_sampler.go` explicitly rules out
+     ("the sampler never hardcodes a preset id … so the Go side can never drift
+     from Chronon's catalog"); or
+   - (b) accepting a different entrance rotation for every entity image.
+
+   Both are product decisions, so the split is now pinned instead of migrated:
+   `media.rs::identity_ownership_tests` fails if the planner ever writes `kind`
+   or `preset_id` while attaching a portrait, and the same test asserts the
+   donor path only accepts an asset with a renderable URL and a 64-char content
+   hash (the rule `append_verified_intent_images` already enforced).
 2. **Delete the second decision, not just gate it.** After (1), remove
    `promoteChainEntityCardSegments`' identity rewrite and keep asset attachment.
 3. **Move the ceiling pre-Rust** (`MaxEntityImageOverlaysPerRun` as a request
