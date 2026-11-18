@@ -73,6 +73,8 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +86,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	"go.uber.org/zap"
 )
 
 // p0hClipPacquiaoR1 is the canonical Pacquiao round-1 clip ID used
@@ -191,6 +195,28 @@ func p0hBuildControlledEnvelope(prose string) string {
 // countUnsupportedClaims returns 0 trivially (godlike/07
 // honest-lock: this is documented in the test header, NOT a
 // silent no-op).
+// wireRealQualityGate replaces the shared passing stub with the real Rust
+// `quality_gate` adapter. This test asserts concrete verdict values (language,
+// coverage, claims), so a stub would make it tautological; it skips when the
+// release binary is not installed.
+func wireRealQualityGate(t *testing.T, uc *gencore.GenerateOneUseCase) {
+	t.Helper()
+	binary := strings.TrimSpace(os.Getenv("VELOX_RUST_SEMANTIC_ENGINE_PATH"))
+	if binary == "" {
+		binary = filepath.Join("..", "..", "..", "..", "bin", "semantic-engine")
+	}
+	if info, err := os.Stat(binary); err != nil || !info.Mode().IsRegular() {
+		t.Skipf("semantic-engine release binary not installed at %q; run make rust-fetch", binary)
+	}
+	executor := rustexec.NewSemanticEngineExecutor(binary, "ffmpeg", zap.NewNop())
+	t.Cleanup(executor.Close)
+	adapter, err := rustexec.NewSemanticEngineAdapter(executor)
+	if err != nil {
+		t.Fatalf("quality gate adapter: %v", err)
+	}
+	uc.SetQualityGate(adapter)
+}
+
 func p0hBuildPacquiaoBronerOrchestrator(t *testing.T) (*gencore.GenerateOneUseCase, scriptpkg.GenerationItemV2) {
 	t.Helper()
 
@@ -217,6 +243,7 @@ func p0hBuildPacquiaoBronerOrchestrator(t *testing.T) (*gencore.GenerateOneUseCa
 	resolver.AddClip(clip2)
 
 	uc := buildUsecaseWithClipResolver(gen, resolver)
+	wireRealQualityGate(t, uc)
 
 	// item.Source.SourceText is set to a short Italian phrase that
 	// ALSO shares non-stop tokens with the prose. The resolver

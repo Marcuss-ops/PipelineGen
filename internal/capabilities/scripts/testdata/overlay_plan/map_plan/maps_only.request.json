@@ -33,8 +33,7 @@
     "maps_only": true
   },
   "seal": {
-    "audio_duration_us": 900000,
-    "background": null
+    "audio_duration_us": 900000
   },
   "scenes": [
     {

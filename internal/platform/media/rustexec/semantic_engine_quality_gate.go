@@ -81,32 +81,7 @@ func (a *SemanticEngineAdapter) EvaluateQualityGate(
 		return nil, fmt.Errorf("semantic-engine: executor is not configured")
 	}
 
-	wire := qualityGateWireRequest{
-		Operation: "quality_gate",
-		Item:      qualityGateWireItem{ID: item.ID},
-		Plan: qualityGateWirePlan{
-			Language:         plan.Language,
-			SourceText:       plan.SourceText,
-			TargetWords:      plan.TargetWords,
-			TranslateTo:      plan.TranslateTo,
-			GroundingPolicy:  plan.GroundingPolicy,
-			SourceKind:       plan.SourceKind,
-			NumClips:         plan.NumClips,
-			Segments:         plan.Segments,
-			ClipEvidence:     plan.ClipEvidence,
-			ResearchEvidence: plan.ResearchEvidence,
-		},
-		Result: qualityGateWireResult{
-			Output: qualityGateWireOutput{
-				Text:      result.Output.Text,
-				WordCount: result.Output.WordCount,
-				SpecScene: qualityGateWireSpecScene{Scenes: nonNilScenes(result.Output.SpecScene.Scenes)},
-			},
-			Artifacts: qualityGateWireArtifacts{
-				Entities: result.Artifacts.Entities,
-			},
-		},
-	}
+	wire := buildQualityGateRequest(result, item, plan)
 	payload, err := json.Marshal(wire)
 	if err != nil {
 		return nil, fmt.Errorf("semantic-engine: encode quality_gate: %w", err)
@@ -135,6 +110,43 @@ func (a *SemanticEngineAdapter) EvaluateQualityGate(
 		ItemID:  item.ID,
 		Reasons: response.Reasons,
 		Quality: *response.Quality,
+	}
+}
+
+// buildQualityGateRequest projects the canonical Go generation contract onto
+// the script-qa wire shape. It is the single request builder: the adapter and
+// the Go↔Rust parity gate both use it, so the parity corpus exercises exactly
+// the payload production sends.
+func buildQualityGateRequest(
+	result *scriptpkg.GenerationResult,
+	item scriptpkg.GenerationItemV2,
+	plan scriptpkg.ResolvedGenerationPlan,
+) qualityGateWireRequest {
+	return qualityGateWireRequest{
+		Operation: "quality_gate",
+		Item:      qualityGateWireItem{ID: item.ID},
+		Plan: qualityGateWirePlan{
+			Language:         plan.Language,
+			SourceText:       plan.SourceText,
+			TargetWords:      plan.TargetWords,
+			TranslateTo:      plan.TranslateTo,
+			GroundingPolicy:  plan.GroundingPolicy,
+			SourceKind:       plan.SourceKind,
+			NumClips:         plan.NumClips,
+			Segments:         plan.Segments,
+			ClipEvidence:     plan.ClipEvidence,
+			ResearchEvidence: plan.ResearchEvidence,
+		},
+		Result: qualityGateWireResult{
+			Output: qualityGateWireOutput{
+				Text:      result.Output.Text,
+				WordCount: result.Output.WordCount,
+				SpecScene: qualityGateWireSpecScene{Scenes: nonNilScenes(result.Output.SpecScene.Scenes)},
+			},
+			Artifacts: qualityGateWireArtifacts{
+				Entities: result.Artifacts.Entities,
+			},
+		},
 	}
 }
 

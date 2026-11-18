@@ -35,9 +35,9 @@
       "caption_color": "#000000",
       "asset_refs": [
         {
-          "asset_id": "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
+          "asset_id": "tim-cook-editorial-budget",
           "url": "https://cdn.example.com/tim-cook.jpg",
-          "sha256": "aa11bb22cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabb",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "media_type": "image/jpeg"
         }
       ],

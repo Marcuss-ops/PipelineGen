@@ -26,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
@@ -33,11 +34,32 @@ import (
 	"go.uber.org/zap"
 )
 
-func scriptVisualCandidateScorer(root *ComposeRoot) adapters.SemanticCandidateScorer {
-	if root == nil || root.AI == nil || root.AI.ScriptGen == nil {
+// visionVerdictClient returns the dedicated vision client when the AI bundle
+// has one, falling back to the script-generation client only for partial
+// wiring and legacy configurations. The composition root decides the fallback
+// once at boot and logs it; this selector must not silently build a second
+// client with a different budget.
+func visionVerdictClient(root *ComposeRoot) *ollamaclient.Client {
+	if root == nil || root.AI == nil {
 		return nil
 	}
-	client := root.AI.ScriptGen.GetClient()
+	if root.AI.VisionVerdictClient != nil {
+		return root.AI.VisionVerdictClient
+	}
+	if root.AI.ScriptGen == nil {
+		return nil
+	}
+	return root.AI.ScriptGen.GetClient()
+}
+
+func scriptVisualCandidateScorer(root *ComposeRoot) adapters.SemanticCandidateScorer {
+	if root == nil || root.AI == nil {
+		return nil
+	}
+	if root.AI.VisionVerdictScorer != nil {
+		return root.AI.VisionVerdictScorer
+	}
+	client := visionVerdictClient(root)
 	if client == nil {
 		return nil
 	}

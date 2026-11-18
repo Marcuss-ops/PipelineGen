@@ -14,7 +14,17 @@ type ExternalConfig struct {
 	// worth the extra load. Keeping the default aligned with config.yaml also
 	// prevents startup warmup and the first generation call from loading two
 	// different residents (OLLAMA_MAX_LOADED_MODELS=1).
-	OllamaModel          string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e2b"`
+	OllamaModel string `yaml:"ollama_model" env:"OLLAMA_MODEL" default:"gemma4:e2b"`
+	// OllamaVisionURL is the dedicated inference endpoint for entity-image
+	// verdicts. Empty keeps the legacy path (the script-generation client);
+	// setting it moves pixel verification onto its own endpoint and admission
+	// budget instead of competing with script generation for the same slots.
+	OllamaVisionURL string `yaml:"ollama_vision_url" env:"OLLAMA_VISION_ADDR" default:""`
+	// OllamaVisionModel is the model served by OllamaVisionURL. Empty falls
+	// back to OllamaModel. It requires OllamaVisionURL: requesting a different
+	// model on the shared endpoint would force a resident-model reload
+	// (OLLAMA_MAX_LOADED_MODELS=1) and defeat the separation.
+	OllamaVisionModel    string `yaml:"ollama_vision_model" env:"OLLAMA_VISION_MODEL" default:""`
 	OllamaEmbedModel     string `yaml:"ollama_embed_model" env:"OLLAMA_EMBED_MODEL"`
 	OllamaMetadataModel  string `yaml:"ollama_metadata_model" env:"OLLAMA_METADATA_MODEL" default:""`
 	OllamaTimeoutSeconds int    `yaml:"ollama_timeout_seconds" env:"OLLAMA_TIMEOUT" default:"600"`
@@ -35,10 +45,6 @@ type ExternalConfig struct {
 	// (semantic_manifest.v3): one analyze call per script replaces the
 	// per-category VisualNER bullet/chart calls.
 	RustSemanticEnginePath string `yaml:"rust_semantic_engine_path" env:"VELOX_RUST_SEMANTIC_ENGINE_PATH" default:"bin/semantic-engine"`
-	// RustQualityGateEnabled opts into the Rust script-qa quality gate. The
-	// canonical Go gate remains the production default until the release pin
-	// is bumped after the cutover is verified.
-	RustQualityGateEnabled bool   `yaml:"rust_quality_gate_enabled" env:"VELOX_RUST_QUALITY_GATE" default:"false"`
 	RustMediaSamplerPath   string `yaml:"rust_mediasampler_path" env:"VELOX_RUST_MEDIASAMPLER_PATH" default:"bin/mediasampler"`
 	// VisualNER extraction is owned by BrainRust. The Rust binary path above
 	// is the only supported backend; a second NLP sidecar duplicated this role.
