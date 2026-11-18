@@ -143,7 +143,17 @@ and per-layer asset references.
 The cross-repository fixture is
 `testdata/contracts/chain-segments-v1.json` in PipelineGen and
 `contracts/chain-segments-v1.json` in RenderingGen, byte-identical with SHA-256
-`c8b8195de94e39b3ff36ffba938f4941a3e929ce0bdb1fdd0c8b37e445088faa`.
+`7647670ee04550892cc9c8939bba6b71d354698ccdb2bdbdd8a4ba8d25dde9d0`.
+
+The fixture is **authored, not generated**: it proves the consumer lowers five
+segments, it does not prove the producer emitted those bytes. The key set is
+what the three sides assert independently — `CANONICAL_KEYS` in the Rust
+producer (`coalesce.rs`), `canonicalChainSegmentKeys` in PipelineGen and
+`canonicalChainSegmentKeys` in RenderingGen — so a key added on one side fails
+in that side's own test instead of passing because a sibling checkout was
+absent. The 18/11 revision dropped the five `"text": ""` keys the producer can
+never emit (`insert_non_empty` skips blank values) and added the always-emitted
+`chain_gap_us`, so a decode/encode round trip is now the identity.
 
 ## Historical note
 

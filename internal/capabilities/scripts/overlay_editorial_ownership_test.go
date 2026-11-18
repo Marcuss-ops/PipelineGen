@@ -28,6 +28,25 @@ type editorialSnapshot struct {
 	MapProvider   string
 	MapPins       int
 	MapMotionID   string
+	// Segments carries the same editorial fields for every chain segment.
+	// Segments are excluded from the item snapshot above, so without this a
+	// post-seal pass could rewrite a chain's identity segment by segment and
+	// stay invisible. PresetID is deliberately absent: preset resolution is a
+	// declared post-seal materialization step (ADR-029), and it is pinned
+	// separately by TestChainSegmentPresetResolutionTouchesOnlyPresetID.
+	Segments []segmentEditorialSnapshot
+}
+
+// segmentEditorialSnapshot is the Rust-owned part of one chain segment.
+type segmentEditorialSnapshot struct {
+	Kind       string
+	TemplateID string
+	Text       string
+	EntityID   string
+	MotionID   string
+	GroupID    string
+	StartUS    int64
+	DurationUS int64
 }
 
 func snapshotEditorial(plan *capmodel.OverlayPlan) []editorialSnapshot {
@@ -46,8 +65,40 @@ func snapshotEditorial(plan *capmodel.OverlayPlan) []editorialSnapshot {
 			out[i].MapPins = len(item.Map.Pins)
 			out[i].MapMotionID = item.Map.MotionID
 		}
+		if segments, ok := capmodel.ChainSegmentMaps(item.Params); ok {
+			out[i].Segments = make([]segmentEditorialSnapshot, 0, len(segments))
+			for _, segment := range segments {
+				out[i].Segments = append(out[i].Segments, segmentEditorialSnapshot{
+					Kind:       segmentString(segment, "kind"),
+					TemplateID: segmentString(segment, "template_id"),
+					Text:       segmentString(segment, "text"),
+					EntityID:   segmentString(segment, "entity_id"),
+					MotionID:   segmentString(segment, "motion_id"),
+					GroupID:    segmentString(segment, "group_id"),
+					StartUS:    segmentInt(segment, "start_us"),
+					DurationUS: segmentInt(segment, "duration_us"),
+				})
+			}
+		}
 	}
 	return out
+}
+
+func segmentString(segment map[string]any, key string) string {
+	value, _ := segment[key].(string)
+	return value
+}
+
+func segmentInt(segment map[string]any, key string) int64 {
+	switch value := segment[key].(type) {
+	case int64:
+		return value
+	case int:
+		return int64(value)
+	case float64:
+		return int64(value)
+	}
+	return 0
 }
 
 // TestPostRustPlanPreservesEditorialDecisions is the ownership invariant for

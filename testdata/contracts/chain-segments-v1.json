@@ -55,6 +55,7 @@
         "params": {
           "chain_camera": "fly_under_fade",
           "chain_count": 5,
+          "chain_gap_us": 400000,
           "chain_motions": [
             "image_focus_reveal",
             "image_roll_depth_in",
@@ -64,7 +65,6 @@
           ],
           "chain_segments": [
             {
-              "text": "",
               "motion_id": "image_focus_reveal",
               "preset_id": "image_scale_in",
               "template_id": "IMAGE_OVERLAY",
@@ -82,7 +82,6 @@
               ]
             },
             {
-              "text": "",
               "motion_id": "image_roll_depth_in",
               "preset_id": "image_scale_in",
               "template_id": "IMAGE_OVERLAY",
@@ -100,7 +99,6 @@
               ]
             },
             {
-              "text": "",
               "motion_id": "image_photo_drop",
               "preset_id": "image_scale_in",
               "template_id": "IMAGE_OVERLAY",
@@ -118,7 +116,6 @@
               ]
             },
             {
-              "text": "",
               "motion_id": "image_spotlight_focus",
               "preset_id": "image_scale_in",
               "template_id": "IMAGE_OVERLAY",
@@ -136,7 +133,6 @@
               ]
             },
             {
-              "text": "",
               "motion_id": "image_parallax_frame",
               "preset_id": "image_scale_in",
               "template_id": "IMAGE_OVERLAY",

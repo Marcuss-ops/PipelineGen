@@ -15,13 +15,25 @@ then:
 2. calls `OverlayPlanCompiler.CompileOverlayPlanV2` once;
 3. reattaches producer-only `LocalPath` values;
 4. materializes chain presets and map plates;
-5. seals and audits the plan.
+5. promotes an entity card to an entity image when the media plane holds a
+   verified portrait for it (item and chain segment);
+6. seals and audits the plan.
 
-Steps 3 and 4 are the only post-seal mutations. They are **materialization**,
-not re-selection. The invariant is: after the compiler returns, Go may change
-`PresetID`, `Params` metadata and map/asset references, but may not change item
-order, `Kind`, `TemplateID`, `Text`, `StartUS`/`DurationUS`, `MotionID` or
-`GroupMotionID`.
+Steps 3-5 are the only post-seal mutations. They are **materialization** and one
+declared identity exception, not re-selection. The invariant is: after the
+compiler returns, Go may change `PresetID`, `Params` metadata, map/asset
+references and — through entity-image promotion only — a segment's
+`Kind`/`TemplateID`/`Text`/`MotionID`, but may not change item order,
+`StartUS`/`DurationUS`, `GroupMotionID`, any `EntityID`, or the number of items
+and segments.
+
+**Why promotion is an exception.** Whether an entity has a certified portrait is
+own only to the PipelineGen media plane (`entity_image_catalog` in PostgreSQL).
+BrainRust ranks the card and writes the chain without that knowledge, and the
+Go pass attaches the verified asset after the seal. `attach_resolved_entity_images`
+in the Rust planner covers the donors that already travel in the request; the
+post-seal pass is the catalog-backed half, and it is the only place a segment's
+`kind` may change.
 
 ## Decision matrix
 
@@ -32,7 +44,9 @@ order, `Kind`, `TemplateID`, `Text`, `StartUS`/`DurationUS`, `MotionID` or
 | Item ordering | BrainRust | sealed `FinalPlanV2` | No | `TestPostRustPlanPreservesEditorialDecisions` |
 | Timing / frame windows | BrainRust | planner | No | same test |
 | Motion / group motion | BrainRust | planner | No | same test |
-| Chain segment preset | PipelineGen (ADR-029) | `applyChainSegmentPresets` | Yes, `PresetID` only | `TestApplyChainSegmentPresetsResolvesEveryChainSegment` |
+| Chain segment preset | PipelineGen (ADR-029) | `applyChainSegmentPresets` | Yes, `PresetID` only | `TestApplyChainSegmentPresetsResolvesEveryChainSegment`, `TestChainSegmentPresetResolutionTouchesOnlyPresetID` |
+| Entity-card → entity image (item and chain segment) | PipelineGen media plane (ADR-029 exception 2) | `promoteVerifiedEntityCards` / `promoteChainEntityCardSegments` | Yes: segment `Kind`, `TemplateID`, `PresetID`, `ImagePresetID`, `EntityCaption`, `AssetID`, `Assets`; drops segment `Text`, `MotionID`, `MotionParams`, `EntityStyleID`, `Params`; item `Kind`→`image_chain`, `TemplateID`→`IMAGE_CHAIN`, legacy `Text` cleared | `TestChainSegmentPromotionTouchesOnlyTheDeclaredSurface` |
+| Entity-image run ceiling | PipelineGen | `capEntityImageOverlays` | Yes: drops `entity_image` items past `MaxEntityImageOverlaysPerRun` | `overlay_plan_entity_image_promotion_test.go` |
 | Map plate / local asset | PipelineGen + RenderingGen | `materializeEditorialMapItems` | Yes, `Map`/`AssetRefs` resolution only | `TestMaterializeEditorialMapItemsResolvesPresentationCardPresets` |
 | Fingerprint / render key | PipelineGen seal | `overlay_plan_seal.go` | Yes, derived state | seal tests |
 | Intake/audit/lineage | PipelineGen | `overlay_plan_freeze.go` | Yes, read-only telemetry | freeze tests |
@@ -67,12 +81,42 @@ functions and are kept as public contract until their owner retires them.
 - `compileOverlayPlanV2` already documents "no Go selection before or after";
   the test now makes that statement executable.
 
+## Chain segment wire contract
+
+`params.chain_segments` is a 27-key wire shape shared by three code bases: the
+Rust producer (`ChainSegment` in
+`editorial_plan_v2/planner/coalesce.rs`), `capmodel.ChainSegment` in this
+repository and `chainSegment` in RenderingGen's
+`internal/overlay/chain_compile.go`.
+
+Each side pins the same key set in its own test, so a key added on one side
+fails in that side's repository without depending on a sibling checkout:
+
+| Side | Test |
+| --- | --- |
+| Rust producer | `segment_contract_tests::chain_segment_wire_keys_are_the_documented_contract` |
+| PipelineGen | `overlays/model/chain_segments_contract_test.go` |
+| RenderingGen | `internal/overlay/chain_segments_contract_test.go` |
+
+The cross-checkout mirror comparison
+(`TestChainSegmentFieldsMatchRenderingGenMirror`) is bidirectional but
+best-effort: it skips when the sibling repository is absent, which is why it is
+not the contract gate.
+
+The fixture (`testdata/contracts/chain-segments-v1.json`, byte-identical in both
+repositories) is **authored, not generated**: it proves the consumer lowers five
+independent image segments. The 18/11 revision removed the five `"text": ""`
+keys the producer can never emit and added the always-emitted `chain_gap_us`, so
+a decode/encode round trip is now the identity.
+
 ## Verification
 
 ```sh
 cd refactored
 go test -count=1 ./internal/capabilities/scripts -run 'PostRust|ChainSegment|Materialize'
 go test -count=1 ./internal/capabilities/overlays
+cd ../BrainRust/overlay-compiler && cargo test --offline
+cd ../../RenderingGen/renderinggen && go test ./internal/overlay -run 'Chain|Conformance'
 ```
 
 If a future change needs to reorder or re-filter items after Rust, it must

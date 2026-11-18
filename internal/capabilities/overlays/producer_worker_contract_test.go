@@ -166,6 +166,13 @@ func TestProducerSchemaVersionMatchesSharedWorkerSchema(t *testing.T) {
 	require.Contains(t, schema.ID, "overlay-plan.v1.schema.json")
 }
 
+// TestChainSegmentFieldsMatchRenderingGenMirror compares the producer struct
+// with the consumer mirror in BOTH directions: a field the producer writes and
+// the worker does not model is silently dropped, and a field the worker models
+// that the producer stopped writing is dead wire. The comparison is
+// best-effort on the sibling checkout (a CI job without submodules cannot read
+// the file), which is why each repository also pins the canonical key set in
+// its own test — that half is fail-closed with or without the sibling.
 func TestChainSegmentFieldsMatchRenderingGenMirror(t *testing.T) {
 	workerPath := filepath.Join("..", "..", "..", "..", "RenderingGen", "renderinggen", "internal", "overlay", "chain_compile.go")
 	raw, err := os.ReadFile(workerPath)
@@ -175,18 +182,26 @@ func TestChainSegmentFieldsMatchRenderingGenMirror(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
+	if !strings.Contains(string(raw), "type chainSegment struct") {
+		t.Fatalf("%s no longer declares chainSegment; the mirror check needs a new anchor", workerPath)
+	}
 	tag := regexp.MustCompile(`json:"([^,"]+)`)
 	workerFields := map[string]bool{}
 	for _, match := range tag.FindAllSubmatch(raw, -1) {
 		workerFields[string(match[1])] = true
 	}
+	producerFields := map[string]bool{}
 	typ := reflect.TypeOf(capmodel.ChainSegment{})
 	for i := 0; i < typ.NumField(); i++ {
 		name := strings.Split(typ.Field(i).Tag.Get("json"), ",")[0]
 		if name == "" || name == "-" {
 			continue
 		}
+		producerFields[name] = true
 		require.Truef(t, workerFields[name], "PipelineGen ChainSegment field %q is absent from RenderingGen's chainSegment mirror", name)
+	}
+	for name := range workerFields {
+		require.Truef(t, producerFields[name], "RenderingGen chainSegment field %q is never written by PipelineGen", name)
 	}
 }
 
