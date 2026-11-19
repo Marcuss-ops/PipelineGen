@@ -491,8 +491,8 @@ Le due funzioni appartengono alla feature person-image/VLM ancora in corso: non
 si cancellano finché la catena non viene cablata o ritirata, perché la
 rimozione toglierebbe l'unico punto di verifica del contratto collage/perceptual.
 
-**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 9):** 0 zero-reference,
-0 in `internal/capabilities/overlays`, totale **≤ 479**. La baseline precedente
+**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 10):** 0 zero-reference,
+0 in `internal/capabilities/overlays`, totale **≤ 467**. La baseline precedente
 (≤ 476, "458 effettive") non era un valore misurato: il conteggio corretto al
 commit di chiusura era 481. Il prossimo calo si aggiorna a mano a ogni ondata;
 un aumento è una regressione da attribuire per package, come qui.
@@ -532,3 +532,39 @@ classificazioni Rust), il secondo è ancora referenziato dalla suite.
 - I cluster `voiceover/service` (23), `kernel/asset/detail` (21), `remote`
 (10), `app/wiring` (10) richiedono la decisione di prodotto dell'ondata 6:
 ritirare la capability o ricablarla. Non si cancellano per conteggio.
+
+## Ondata 10 — 2026-11-19 (12 funzioni, 25 test, 2 file interi)
+
+Due capability ritirate, non due helper isolati.
+
+**Clip identity legacy — 5 funzioni.** `NewYouTubeClipIdentity`,
+`ParseYouTubeClipAssetID`, `NewStockClipIdentity`, `NewClipIdentity` e
+`BuildIndexEventKey` sono nati per il clip indexer, cancellato con il vector
+store esterno il 2026-11-17. Nessun chiamante di produzione: il formato vivo è
+`YouTubeClipAssetID` (5 test conservati) e il contenitore `ClipIdentity` resta
+per i chiamanti vivi. Con le funzioni sono stati rimossi **25 test** che
+coprivano solo quelle; il file di test scende da 493 a 133 righe.
+
+| Simbolo | Stato |
+| --- | --- |
+| `NewYouTubeClipIdentity` | rimosso |
+| `ParseYouTubeClipAssetID` | rimosso |
+| `NewStockClipIdentity` | rimosso |
+| `NewClipIdentity` | rimosso |
+| `BuildIndexEventKey` | rimosso |
+| `YouTubeClipAssetID` | **resta** (formato vivo, 5 test) |
+| `ClipIdentity` (tipo) | **resta** (usato da test e ingest live) |
+
+**RenderPlan validator — 7 funzioni.** `NewRenderPlanValidator`,
+`RenderPlanValidator.Validate`, `ValidateRenderPlan`,
+`ValidatedRenderPlan.Plan`/`MarshalJSON`, `validateFinalAudioContract` e
+`clonePlan` non hanno chiamanti fuori dal proprio test: il percorso di render
+non valida mai un piano con loro. Un gate dormiente accanto ai controlli vivi
+fa credere che il piano sia validato quando non lo è: ritirato con il file
+`validator.go` e `validator_test.go` (253 righe). Per ripristinarlo va cablato
+nel percorso di render con il suo test di accettazione, non ricreato inattivo.
+
+**Conteggio misurato** su worktree pulito a `8d55a74a4` con i due diff:
+**467** totali, **0** in `capabilities/overlays`, **0** zero-reference
+(`go build ./...` rc 0; `go test ./internal/kernel/asset/detail
+./internal/capabilities/render` verdi). Calo esatto: 479 − 12 = 467.
