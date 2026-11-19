@@ -453,8 +453,11 @@ registry di produzione: costruisce `NewMutableJobRegistry`, registra
 codec, `JobType()`/`SchemaVersion()`, e il round-trip payload/result. I commenti
 di `kernel/job/codec.go` non citano più il simbolo rimosso.
 
-**Baseline effettiva:** 476 − 18 = **458**. Il guard resta: 0 zero-reference,
-0 in `overlays`, totale ≤ 476 (solo calo).
+**Baseline effettiva:** il conteggio dichiarato era 476 − 18 = **458**; la
+ricognizione del 2026-11-19 (§ sotto) ha misurato **483** sul commit HEAD e
+**481** sul commit di chiusura, quindi la baseline effettiva è 483 − 18 =
+**465**. Guard corrente: 0 zero-reference, 0 in `overlays`, totale **≤ 483**
+(solo calo).
 
 **Nota fixture (stessa sessione):** la drift gate
 `TestOverlayPlanFixturesMatchRealRustCompiler` era rossa per la modifica in-flight
@@ -463,3 +466,33 @@ con il binario pinnato v0.3.7 (`UPDATE_OVERLAY_PLAN_FIXTURES=1`): le request
 perdono `"background": null` e `short_phrase_text.plan.json` passa
 `enter_frames` 8 → 9, che è l'output del pin v0.3.7 (include `d3b77d6`, cue
 timing) e non una regressione — il golden precedente era del 2026-11-16.
+
+## Ricognizione 2026-11-19 — baseline misurato e guard riallineato
+
+Il numero 476 non era riproducibile nemmeno sul commit che ha chiuso il ticket:
+la misura del 2026-11-18 era stata presa a metà di una sessione concorrente. Le
+tre misure seguenti sono state eseguite con lo stesso `deadcode -test=false
+./...` su worktree puliti (nessuna modifica in-flight), quindi sono confrontabili:
+
+| Commit | Unreachable | `capabilities/overlays` | Zero-reference |
+| --- | ---: | ---: | ---: |
+| `5bedaada6` (chiusura del ticket, "476") | **481** | 0 | 0 |
+| `b1c7e06cf` (stato dichiarato in `docs/stato`) | **481** | 0 | 0 |
+| `8d55a74a4` (HEAD 2026-11-19) | **483** | 0 | 0 |
+
+Il delta `481 → 483` è attribuito per intero a `internal/kernel/digest`:
+
+| Simbolo | File | Perché è unreachable |
+| --- | --- | --- |
+| `HasPanelGridCollageBytes` | `panel_collage.go` | unico chiamante di produzione `internal/platform/ollama/adapters/person_image_collage.go`, a sua volta non cablato (catena `hasPanelGridCollage` già dichiarata fuori perimetro) |
+| `PerceptualHashBytes` | `perceptual.go` | chiamato solo dal test omonimo |
+
+Le due funzioni appartengono alla feature person-image/VLM ancora in corso: non
+si cancellano finché la catena non viene cablata o ritirata, perché la
+rimozione toglierebbe l'unico punto di verifica del contratto collage/perceptual.
+
+**Guard aggiornato (misurato 2026-11-19):** 0 zero-reference, 0 in
+`internal/capabilities/overlays`, totale **≤ 483**. La baseline precedente
+(≤ 476, "458 effettive") non era un valore misurato: il conteggio corretto al
+commit di chiusura era 481. Il prossimo calo si aggiorna a mano a ogni ondata;
+un aumento è una regressione da attribuire per package, come qui.

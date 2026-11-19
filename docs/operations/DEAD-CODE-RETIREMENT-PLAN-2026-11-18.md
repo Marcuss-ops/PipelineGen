@@ -10,7 +10,15 @@ feature spenta) e **DualPool ritirato** (7 funzioni, con allowlist di
 **Stato finale 2026-11-18:** il ticket dead-code è **CHIUSO** (476 totali, 18 in
 allowlist classificata: 15 fixture/test-support + 3 superficie dormiente) e la
 demolizione overlays è **DONE** (0 unreachable, goldens Rust 34/34, drift gate
-Go verde). Il codec jobs è stato ritirato e il guard tipizzato sostituito dal
+Go verde).
+**Ricognizione 2026-11-19:** il 476 non era riproducibile sul commit di
+chiusura. Misure su worktree puliti: **481** a `5bedaada6`/`b1c7e06cf`,
+**483** a `8d55a74a4`, sempre con 0 zero-reference e 0 in `overlays`; il delta
++2 è in `internal/kernel/digest` (`HasPanelGridCollageBytes`,
+`PerceptualHashBytes`) e appartiene alla catena person-image/VLM non cablata.
+Guard corrente: **≤ 483**. La matrice Rust `overlay_plan_contract` è **30/30**
+(misurata il 2026-11-19; il "34" storico è precedente al consolidamento dei
+test), drift gate Go verde sul commit pulito. Il codec jobs è stato ritirato e il guard tipizzato sostituito dal
 check C3 sul registry (`registry_codec_wiring_test.go`).
 **Baseline misurata:** 745 funzioni unreachable in 303 file (`deadcode -test=false ./...`), 0 zero-reference.
 **Baseline di questa esecuzione:** 738 totali, 175 in `capabilities/overlays`

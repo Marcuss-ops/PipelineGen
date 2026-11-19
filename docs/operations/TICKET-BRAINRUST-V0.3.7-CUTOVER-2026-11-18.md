@@ -176,3 +176,36 @@ pipelinegen-muscles  d433d04c…  OK
 `TestSemanticEngineRealBinaryEvaluatesQualityGate` PASS again. Any local
 wrapper is not a substitute for the signed release artifact: it hides the
 real worker contract behind a stub.
+
+## Ricontrollo provenienza — 2026-11-19
+
+Il pin è **di nuovo incoerente** sul working tree condiviso. Misure di questa
+sessione (`sha256sum`, mtime, manifest):
+
+| Binario | Hash installato | Manifest `bin/` | Mtime |
+| --- | --- | --- | --- |
+| `semantic-engine` | `8db3932e…` | `0e1d10ab…` | 2026-11-19 08:14 |
+| `visualner` | `a0c79fcd…` | `cc0089b4…` | 2026-11-19 08:06 |
+| `mediasampler` | `550800f0…` | `550800f0…` | 2026-11-18 13:28 |
+| `pipelinegen-muscles` | `d433d04c…` | `d433d04c…` | 2026-11-18 13:28 |
+
+Due dei quattro binari sono state ricostruite da HEAD da una sessione
+concorrente, non sono artefatti di release. Lo stesso `dist-v0.3.7/` è stato
+riscritto alle 08:06: `BRAINRUST_RELEASE.json` dichiara `git_sha 8dda410`
+(HEAD) mantenendo `version v0.3.7`, e `visualner` è la build HEAD
+(`a0c79fcd…`). Il `visualner` originale del tag (`cc0089b4…`) non esiste più
+in nessuna copia su disco (`dist-icu72` ha un hash diverso, del 2026-11-14).
+
+Conseguenza diretta: `bash scripts/release/publish-v0.3.7.sh` (dry run) ora
+esce **1** su
+`manifest git_sha '8dda410…' != 2ca360344f51dc3d941c853baf8d3dc3ac1811af`.
+Il push del tag è invece raggiungibile —
+`git push --dry-run origin refs/tags/v0.3.7` risponde `* [new tag]` — quindi il
+blocco non è più l'autenticazione, ma la **provenienza degli artefatti**.
+
+I test sul worker reale restano verdi (`TestCompileOverlayPlanV2UsesOneRealWorkerCall`,
+`TestSemanticEngineRealBinaryEvaluatesQualityGate`), ma girano sulla build
+HEAD: non certificano il pin `v0.3.7`. Prima di pubblicare va ricostruito il
+bundle dal tag `2ca3603` (rigenerando manifest e `sha256sums.txt`) oppure va
+tagliata una `v0.3.8` da HEAD e ripinato `BRAINRUST_VERSION`; nessuna delle due
+azioni va fatta mentre il tree è in modifica concorrente.

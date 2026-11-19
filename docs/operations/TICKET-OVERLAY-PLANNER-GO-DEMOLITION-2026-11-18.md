@@ -1,6 +1,6 @@
 # TICKET — Go overlay planner demolition (2026-11-18)
 
-- **Status:** DONE (2026-11-18) — **0** unreachable in `capabilities/overlays`; package doc and `docs/stato` describe it as a projection/catalog layer; Rust golden matrix **34/34** (`every_fixture_compiles_to_its_frozen_golden`, `compilation_is_deterministic`) and the Go drift gate green after regenerating the fixtures with the pinned v0.3.7 binary
+- **Status:** DONE (2026-11-18) — **0** unreachable in `capabilities/overlays`; package doc and `docs/stato` describe it as a projection/catalog layer; Rust golden matrix **30/30** misurata il 2026-11-19 (`every_fixture_compiles_to_its_frozen_golden`, `compilation_is_deterministic`; il "34" storico includeva quattro test poi consolidati) and the Go drift gate green after regenerating the fixtures with the pinned v0.3.7 binary
 - **Severity:** P1 — 14,546 production lines and 14,184 test lines maintain a second planner
 - **Owner:** overlay/editorial pipeline
 - **Source:** audit 2026-11-18 (`deadcode -test=false ./...` on `refactored@75b5b1def`)
