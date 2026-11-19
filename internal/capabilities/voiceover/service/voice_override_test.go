@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"go.uber.org/zap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 // Test-only oracles for the retired legacy batch voice resolver. The current
