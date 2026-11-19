@@ -32,7 +32,6 @@ func TestEditingAssetsPolicySelectionIsDeterministicAndInPool(t *testing.T) {
 	policy := DefaultEditingAssetsPolicy()
 	bgPool := poolSet(policy.Backgrounds.Pool)
 	bgmPool := poolSet(policy.BGM.Pool)
-	sfxPool := poolSet(policy.SFX.TransitionPool)
 
 	for i := 0; i < 16; i++ {
 		seed := fmt.Sprintf("matt-damon-scene-%d", i)
@@ -56,16 +55,6 @@ func TestEditingAssetsPolicySelectionIsDeterministicAndInPool(t *testing.T) {
 		}
 		if bgm.Family != "music" {
 			t.Fatalf("selected BGM %q family = %q", bgm.Alias, bgm.Family)
-		}
-		sfx, err := policy.SelectTransitionSFX(seed)
-		if err != nil {
-			t.Fatalf("SelectTransitionSFX(%q): %v", seed, err)
-		}
-		if !sfxPool[sfx.Alias] {
-			t.Fatalf("sfx %q is outside the pool", sfx.Alias)
-		}
-		if sfx.Family != "transition" {
-			t.Fatalf("selected SFX %q family = %q", sfx.Alias, sfx.Family)
 		}
 	}
 }
@@ -93,12 +82,6 @@ func TestEditingAssetsPolicyFailsClosed(t *testing.T) {
 	positiveGain.SFX.GainDB = 3
 	if err := positiveGain.Validate(); err == nil {
 		t.Fatal("positive gain must be rejected")
-	}
-}
-
-func TestParseEditingAssetsPolicyRejectsUnknownFields(t *testing.T) {
-	if _, err := ParseEditingAssetsPolicy([]byte("editing_assets:\n  bogus: 1\n")); err == nil {
-		t.Fatal("an unknown policy field must fail closed")
 	}
 }
 

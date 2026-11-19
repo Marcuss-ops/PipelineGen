@@ -4,10 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
+
+// legacyAssetSourceID is the retired asset-dependent source identity, kept here
+// as the negative oracle: the canonical id must never equal it.
+func legacyAssetSourceID(assetID, sourceType, sourceURI, sourceVersion string) string {
+	return digest.SHA256Bytes([]byte(strings.Join([]string{assetID, sourceType, sourceURI, sourceVersion}, "|")))
+}
 
 const canonicalIdentitySchema = `
 CREATE TABLE IF NOT EXISTS media_assets (
@@ -55,7 +63,7 @@ func newCanonicalIdentityResolver(t *testing.T) (*CanonicalIdentityResolver, *sq
 
 func seedSource(t *testing.T, db *sql.DB, assetID, sourceType, sourceRef, contentSHA string) {
 	t.Helper()
-	sourceID := capregistry.DeriveAssetSourceID(assetID, sourceType, sourceRef, "")
+	sourceID := legacyAssetSourceID(assetID, sourceType, sourceRef, "")
 	if _, err := db.Exec(`INSERT INTO media_asset_sources (source_id, asset_id, content_sha256, source_type, source_uri, source_version, discovered_at, is_primary)
 		VALUES (?, ?, ?, ?, ?, '', '2026-08-14T00:00:00Z', 1)`,
 		sourceID, assetID, contentSHA, sourceType, sourceRef); err != nil {
@@ -101,7 +109,7 @@ func TestCanonicalSourceID_DoesNotDependOnAssetID(t *testing.T) {
 	if a == "" || a != b {
 		t.Fatalf("canonical source id must be stable for the source tuple: %q vs %q", a, b)
 	}
-	if a == capregistry.DeriveAssetSourceID("asset-a", "youtube", "dQw4w9", "") {
+	if a == legacyAssetSourceID("asset-a", "youtube", "dQw4w9", "") {
 		t.Fatal("canonical source id must not silently retain the legacy asset-dependent format")
 	}
 }

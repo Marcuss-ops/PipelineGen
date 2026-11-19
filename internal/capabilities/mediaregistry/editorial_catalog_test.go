@@ -1,11 +1,33 @@
 package mediaregistry
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+// assertEditorialAudioCatalogCanonical is the oracle for the catalog invariant:
+// one public alias and one Drive identity may belong to one editorial role.
+func assertEditorialAudioCatalogCanonical(t *testing.T) {
+	t.Helper()
+	aliases := make(map[string]struct{}, len(editorialAudioAssets))
+	identities := make(map[string]string, len(editorialAudioAssets))
+	for _, asset := range editorialAudioAssets {
+		if strings.TrimSpace(asset.Alias) == "" || strings.TrimSpace(asset.DriveFileID) == "" {
+			t.Fatalf("editorial audio catalog: alias and Drive identity are required")
+		}
+		if _, exists := aliases[asset.Alias]; exists {
+			t.Fatalf("editorial audio catalog: duplicate alias %q", asset.Alias)
+		}
+		aliases[asset.Alias] = struct{}{}
+		if previous, exists := identities[asset.DriveFileID]; exists && previous != asset.Alias {
+			t.Fatalf("editorial audio catalog: Drive identity %q is shared by %q and %q", asset.DriveFileID, previous, asset.Alias)
+		}
+		identities[asset.DriveFileID] = asset.Alias
+	}
+}
 
 func TestEditorialAudioCatalogIsCanonicalAndCollisionFree(t *testing.T) {
-	if err := ValidateEditorialAudioCatalog(); err != nil {
-		t.Fatal(err)
-	}
+	assertEditorialAudioCatalogCanonical(t)
 	assets := EditorialAudioAssets()
 	if len(assets) != 15 {
 		t.Fatalf("editorial audio assets = %d, want 15 canonical BGM/SFX assets", len(assets))
@@ -27,7 +49,12 @@ func TestEditorialAudioCatalogIsCanonicalAndCollisionFree(t *testing.T) {
 }
 
 func TestEditorialTransitionAliasesCoverBothTransitionSubtypes(t *testing.T) {
-	aliases := EditorialTransitionAliases()
+	aliases := make([]string, 0, len(editorialAudioAssets))
+	for _, asset := range EditorialAudioAssets() {
+		if asset.Family == "transition" {
+			aliases = append(aliases, asset.Alias)
+		}
+	}
 	if len(aliases) == 0 {
 		t.Fatal("no transition aliases are declared")
 	}
@@ -44,7 +71,7 @@ func TestEditorialTransitionAliasesCoverBothTransitionSubtypes(t *testing.T) {
 	}
 	for _, want := range []string{"whop", "whoosh"} {
 		if !subtypes[want] {
-			t.Errorf("transition subtype %q is missing from EditorialTransitionAliases()", want)
+			t.Errorf("transition subtype %q is missing from the editorial catalog", want)
 		}
 	}
 }

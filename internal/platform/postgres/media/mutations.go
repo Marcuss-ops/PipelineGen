@@ -262,6 +262,9 @@ func (c *PostgresAssetCommitter) LinkContent(ctx context.Context, assetID, conte
 }
 
 func LinkMediaAssetContent(ctx context.Context, exec mediaAssetSQLExecutor, assetID, contentSHA256 string) error {
+	if err := mediaregistry.ValidateContentSHA256(contentSHA256); err != nil {
+		return fmt.Errorf("asset committer: content link: %w", err)
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	return execAssetUpdate(ctx, exec, assetID, "content link", `UPDATE media_assets SET content_sha256 = $1, updated_at = $2, updated_at_ts = NULLIF($2, '')::timestamptz WHERE id = $3`, contentSHA256, now, assetID)
 }

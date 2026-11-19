@@ -1,10 +1,5 @@
 package mediaregistry
 
-import (
-	"fmt"
-	"strings"
-)
-
 // EditorialAudioAsset is the canonical identity and editorial metadata for a
 // supplied BGM/SFX asset. Drive and job manifests are projections of this
 // registry; they must not maintain a second alias-to-file mapping.
@@ -57,19 +52,6 @@ func EditorialAudioAssets() []EditorialAudioAsset {
 	return out
 }
 
-// EditorialTransitionAliases returns the canonical short transition-effect
-// aliases (subtype whop and whoosh) in declaration order. It is the single
-// definition of "which editorial SFX a manifest may select as a transition".
-func EditorialTransitionAliases() []string {
-	out := make([]string, 0, len(editorialAudioAssets))
-	for _, asset := range editorialAudioAssets {
-		if asset.Family == "transition" {
-			out = append(out, asset.Alias)
-		}
-	}
-	return out
-}
-
 // EditorialAudioAliases returns the stable public alias → Drive identity map.
 func EditorialAudioAliases() map[string]string {
 	out := make(map[string]string, len(editorialAudioAssets))
@@ -77,26 +59,4 @@ func EditorialAudioAliases() map[string]string {
 		out[asset.Alias] = asset.DriveFileID
 	}
 	return out
-}
-
-// ValidateEditorialAudioCatalog protects the cross-domain identity invariant:
-// one public alias and one Drive identity may belong to one editorial role.
-// In particular, a BGM must never also be addressable as an SFX alias.
-func ValidateEditorialAudioCatalog() error {
-	aliases := make(map[string]struct{}, len(editorialAudioAssets))
-	identities := make(map[string]string, len(editorialAudioAssets))
-	for _, asset := range editorialAudioAssets {
-		if strings.TrimSpace(asset.Alias) == "" || strings.TrimSpace(asset.DriveFileID) == "" {
-			return fmt.Errorf("editorial audio catalog: alias and Drive identity are required")
-		}
-		if _, exists := aliases[asset.Alias]; exists {
-			return fmt.Errorf("editorial audio catalog: duplicate alias %q", asset.Alias)
-		}
-		aliases[asset.Alias] = struct{}{}
-		if previous, exists := identities[asset.DriveFileID]; exists && previous != asset.Alias {
-			return fmt.Errorf("editorial audio catalog: Drive identity %q is shared by %q and %q", asset.DriveFileID, previous, asset.Alias)
-		}
-		identities[asset.DriveFileID] = asset.Alias
-	}
-	return nil
 }

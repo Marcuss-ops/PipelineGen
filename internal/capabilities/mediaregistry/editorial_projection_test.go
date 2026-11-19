@@ -1,12 +1,30 @@
 package mediaregistry
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+// parseEditingAssetsPolicyForTest decodes the YAML projection with unknown
+// fields rejected. The production parser was retired with the policy loader;
+// the drift gate keeps the same strict decode so a typo cannot hide here.
+func parseEditingAssetsPolicyForTest(data []byte) (EditingAssetsPolicy, error) {
+	var doc struct {
+		EditingAssets EditingAssetsPolicy `yaml:"editing_assets"`
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&doc); err != nil {
+		return EditingAssetsPolicy{}, err
+	}
+	return doc.EditingAssets, nil
+}
 
 // ── Projection drift gates ────────────────────────────────────────────────
 //
@@ -121,7 +139,7 @@ func TestEditingAssetsPolicyProjectionMatchesTheCanonicalPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v", projectionPolicyRel, err)
 	}
-	got, err := ParseEditingAssetsPolicy(data)
+	got, err := parseEditingAssetsPolicyForTest(data)
 	if err != nil {
 		t.Fatalf("parse %s: %v", projectionPolicyRel, err)
 	}

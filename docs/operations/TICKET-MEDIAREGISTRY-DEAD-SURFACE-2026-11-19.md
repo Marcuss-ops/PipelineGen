@@ -1,6 +1,6 @@
 # TICKET — Retire or wire the dead media-registry surface (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 12 unreachable functions in `internal/capabilities/mediaregistry`; none has a production caller
+- **Status:** CLOSED (2026-11-19) — 12 functions removed, the content-digest guard wired at the write boundary, one oracle moved into `_test.go`
 - **Severity:** P2 — the validation and hashing guards ship in the binary but no request can reach them
 - **Owner:** media registry / catalog owner
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -59,6 +59,35 @@ Key symbols: `ValidateContentSHA256` + `ErrInvalidContentSHA256` (guard, decide)
 - [ ] `go build ./...`, `go vet ./internal/capabilities/mediaregistry` and
       `go test ./internal/capabilities/mediaregistry -count=1` are green.
 - [ ] The global deadcode guard records the new count.
+
+## Closeout (2026-11-19)
+
+- **Projection state machine (4 functions + `projection_test.go`):** removed.
+  The SQLite ledger that owned these transitions was retired on 2026-11-18, so
+  the guards had no consumer left. `Projection`, `ProjectionStatus` and the
+  status constants were part of the same retired state machine and went with it.
+- **Editing policy:** `ParseEditingAssetsPolicy` (the YAML loader) removed;
+  `SelectTransitionSFX` removed with its block in
+  `editing_assets_policy_test.go`. The policy still validates the transition
+  pool in `Validate`, which a live caller uses.
+- **Editorial catalog:** `EditorialTransitionAliases` removed (the drift test now
+  filters `EditorialAudioAssets()` itself); `ValidateEditorialAudioCatalog`
+  moved into `editorial_catalog_test.go` as `assertEditorialAudioCatalogCanonical`,
+  so the invariant stays asserted without shipping a production helper.
+- **Legacy identity:** `DeriveAssetSourceID` removed; its format survives only as
+  `legacyAssetSourceID` in the SQLite identity test, where it is the negative
+  oracle for the canonical id.
+- **Hashes decision (dated):** `NormalizeContentSHA256` and
+  `ValidateContentSHA256` are kept and **wired** at the single write boundary
+  `LinkMediaAssetContent` (`internal/platform/postgres/media/mutations.go`): a
+  non-canonical digest now fails closed with `ErrInvalidContentSHA256` before
+  the UPDATE is built. Covered by `content_link_guard_test.go`. `Fingerprint`
+  was a thin delegate removed because the algorithm is owned and tested in
+  `internal/kernel/digest`.
+- **Follow-up owned elsewhere:** `internal/capabilities/scripts/builder.go` still
+  has a comment mentioning `policy.SelectTransitionSFX`; that file carries
+  another session's uncommitted changes, so the comment is fixed by the scripts
+  ticket rather than here.
 
 ## Verification
 

@@ -60,14 +60,6 @@ type CanonicalIdentityResolver interface {
 	ResolveContent(ctx context.Context, contentSHA256 string) (CanonicalIdentity, error)
 }
 
-// DeriveAssetSourceID derives the historical asset-dependent source identity
-// sha256(asset_id | source_type | source_uri | source_version). It remains
-// available only for compatibility with legacy rows and migration tests.
-func DeriveAssetSourceID(assetID, sourceType, sourceURI, sourceVersion string) string {
-	sum := digest.SHA256Bytes([]byte(strings.Join([]string{assetID, sourceType, sourceURI, sourceVersion}, "|")))
-	return sum
-}
-
 // DeriveCanonicalSourceID derives the source identity from the source tuple
 // itself. AssetID is deliberately absent: one provider source must resolve to
 // one canonical asset even when legacy callers disagree about the asset ID.

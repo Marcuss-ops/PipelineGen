@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	"gopkg.in/yaml.v3"
 )
 
 // ── Editing-asset SELECTION policy ────────────────────────────────────────
@@ -66,11 +65,6 @@ type EditingSFXPolicy struct {
 	GainDB         float64  `yaml:"gain_db"`
 }
 
-// EditingAssetsDocument is the on-disk projection shape (editing_assets:).
-type EditingAssetsDocument struct {
-	EditingAssets EditingAssetsPolicy `yaml:"editing_assets"`
-}
-
 // DefaultEditingAssetsPolicy derives the canonical policy from the catalog:
 // every pool is the complete editorial pool of its domain, so a new catalog
 // asset becomes selectable by default without a second edit here.
@@ -96,18 +90,6 @@ func DefaultEditingAssetsPolicy() EditingAssetsPolicy {
 		},
 		SFX: EditingSFXPolicy{TransitionPool: transitionPool, GainDB: -12},
 	}
-}
-
-// ParseEditingAssetsPolicy decodes the YAML projection. Unknown fields fail
-// closed so a typo in the policy is not silently ignored.
-func ParseEditingAssetsPolicy(data []byte) (EditingAssetsPolicy, error) {
-	var doc EditingAssetsDocument
-	dec := yaml.NewDecoder(strings.NewReader(string(data)))
-	dec.KnownFields(true)
-	if err := dec.Decode(&doc); err != nil {
-		return EditingAssetsPolicy{}, fmt.Errorf("editing assets policy: decode: %w", err)
-	}
-	return doc.EditingAssets, nil
 }
 
 // Validate fails closed on an empty pool, an unknown alias or a domain
@@ -196,16 +178,6 @@ func (p EditingAssetsPolicy) SelectBGM(seed string) (EditorialAudioAsset, error)
 		return EditorialAudioAsset{}, err
 	}
 	alias := p.BGM.Pool[deterministicIndex(seed, "bgm", len(p.BGM.Pool))]
-	asset, _ := lookupEditorialAudioAsset(alias)
-	return asset, nil
-}
-
-// SelectTransitionSFX deterministically picks a transition effect from the pool.
-func (p EditingAssetsPolicy) SelectTransitionSFX(seed string) (EditorialAudioAsset, error) {
-	if err := validateAudioPool("sfx.transition", p.SFX.TransitionPool, "transition"); err != nil {
-		return EditorialAudioAsset{}, err
-	}
-	alias := p.SFX.TransitionPool[deterministicIndex(seed, "sfx.transition", len(p.SFX.TransitionPool))]
 	asset, _ := lookupEditorialAudioAsset(alias)
 	return asset, nil
 }

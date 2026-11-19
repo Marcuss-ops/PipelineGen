@@ -44,7 +44,7 @@
 //     same bytes must yield the same digest in both surfaces.
 //   - MD5 (content_sha256) is never used for identity or deduplication.
 //   - semantic_hash / semantic_document_hash / embedding_contract_hash are
-//     computed with Fingerprint (one canonical algorithm, one owner). The
+//     computed with digest.Fingerprint (one canonical algorithm, one owner). The
 //     ALGORITHM lives in internal/kernel/digest (SSOT); this package owns
 //     only the SEMANTICS and the domain-canonical input shape.
 package mediaregistry
@@ -93,18 +93,6 @@ const ContentSHA256Unknown = "UNKNOWN"
 // fabricated value). Identity is fail-closed: a digest we cannot prove is a
 // SHA-256 is rejected, not trusted.
 var ErrInvalidContentSHA256 = errors.New("mediaregistry: invalid content sha256")
-
-// Fingerprint returns the canonical deterministic SHA-256 hex fingerprint of
-// the given parts. It is the ONE algorithm used to derive semantic_hash,
-// semantic_document_hash and embedding_contract_hash — callers MUST NOT roll
-// their own sha256.Sum256 over an ad-hoc string. The algorithm itself is
-// owned by internal/kernel/digest (SSOT); this function supplies only the
-// domain-canonical input shape (parts joined with a NUL byte so "a|b" + "c"
-// and "a" + "b|c" cannot collide). Callers must not pass parts that
-// themselves contain NUL.
-func Fingerprint(parts ...string) string {
-	return digest.Fingerprint(parts...)
-}
 
 // IsSHA256Hex reports whether s is a 64-character hex string (the canonical
 // SHA-256 digest shape). Used to distinguish a real byte digest from an MD5
