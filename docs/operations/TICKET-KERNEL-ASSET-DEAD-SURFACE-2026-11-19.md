@@ -64,3 +64,15 @@ Key symbols: `Service.Get/List/Count/Save/Delete` (unimplemented storage), `Opti
 deadcode -test=false ./... | grep '^internal/kernel/asset'
 go test ./internal/kernel/asset/... -count=1
 ```
+
+## Stato al 2026-11-19 (sessione dead-code)
+
+Scope e conteggi sopra restano la fotografia misurata a `17752ccfb`. Questa
+scheda **non è stata eseguita**: `internal/kernel/asset` è stato modificato
+durante la giornata da lavoro non ancora committato (141 file sporchi sul
+working tree alle 10:10), e una misura su quel tree non sarebbe attribuibile.
+
+Prossimo passo, a tree quiescente: worktree pulito a HEAD, poi
+`deadcode -test=false ./... | grep '^internal/kernel/asset'` per il conteggio
+nuovo, ondata, e chiusura con comando + esito + data. Guardia globale corrente:
+[`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).

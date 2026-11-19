@@ -94,3 +94,16 @@ Key symbols: `stockpipeline` publish naming helpers, `NewFinalizer`, `PartialDow
 deadcode -test=false ./... | grep -E 'capabilities/(assets/providers/stock|cliprender|images|animreg|entities|mediamemory|youtube|translation)'
 go test ./internal/capabilities/... -count=1
 ```
+
+## Stato al 2026-11-19 (sessione dead-code)
+
+Scope e conteggi sopra restano la fotografia misurata a `17752ccfb`. Questa
+scheda **non è stata eseguita**: le famiglie `capabilities` non ancora chiuse
+(`cliprender` 31 file, `overlays` 11, `scripts` 24, `remote` 6 sporchi alle
+10:10) sono in modifica da un'altra sessione sullo stesso working tree.
+
+Prossimo passo, a tree quiescente: worktree pulito a HEAD, conteggio con
+`deadcode -test=false ./... | grep '^internal/capabilities'` al netto delle
+famiglie già chiuse, ondata, e chiusura con comando + esito + data. Guardia
+globale corrente:
+[`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).

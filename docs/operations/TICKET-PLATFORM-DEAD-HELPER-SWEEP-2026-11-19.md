@@ -103,3 +103,15 @@ Key symbols: `httpserver.Registry.Register/Find/GetEnabled`, `rustworker.Resourc
 deadcode -test=false ./... | grep '^internal/platform/'
 go test ./internal/platform/... -count=1
 ```
+
+## Stato al 2026-11-19 (sessione dead-code)
+
+Scope e conteggi sopra restano la fotografia misurata a `17752ccfb`. Questa
+scheda **non è stata eseguita**: `internal/platform` è toccato da modifiche non
+committate di un'altra sessione (tra cui `postgres/media` e `remote`), e una
+misura su quel tree non sarebbe attribuibile.
+
+Prossimo passo, a tree quiescente: worktree pulito a HEAD, conteggio con
+`deadcode -test=false ./... | grep '^internal/platform'`, ondata, e chiusura con
+comando + esito + data. Guardia globale corrente:
+[`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).

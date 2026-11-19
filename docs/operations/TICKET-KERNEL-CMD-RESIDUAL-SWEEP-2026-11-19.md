@@ -83,3 +83,15 @@ Key symbols: `observability.AllComponents/AllStages`, `models.Model.Validate`, `
 deadcode -test=false ./... | grep -E '^(internal/kernel|cmd)/'
 go test ./internal/kernel/... -count=1
 ```
+
+## Stato al 2026-11-19 (sessione dead-code)
+
+Scope e conteggi sopra restano la fotografia misurata a `17752ccfb`. Questa
+scheda **non è stata eseguita**: il working tree conteneva 141 file non
+committati alle 10:10, quindi qualunque nuovo conteggio su `internal/kernel` e
+`cmd/` sarebbe inquinato da lavoro in corso di un'altra sessione.
+
+Prossimo passo, a tree quiescente: worktree pulito a HEAD, conteggio con
+`deadcode -test=false ./... | grep -E '^(internal/kernel|cmd/)'`, ondata, e
+chiusura con comando + esito + data. Guardia globale corrente:
+[`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).

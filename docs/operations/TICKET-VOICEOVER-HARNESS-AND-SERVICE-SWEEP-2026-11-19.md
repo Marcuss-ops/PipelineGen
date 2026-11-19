@@ -82,3 +82,16 @@ Key symbols: `NewService`, `BuildVoiceoverContentFingerprintV3`, `VoiceoverHarne
 deadcode -test=false ./... | grep -E 'voiceover|tests/operational'
 go test ./internal/capabilities/voiceover/... ./tests/operational -count=1
 ```
+
+## Stato al 2026-11-19 (sessione dead-code)
+
+Scope e conteggi sopra restano la fotografia misurata a `17752ccfb`. Questa
+scheda **non è stata eseguita**: `internal/capabilities/voiceover` ha 3 file
+non committati di un'altra sessione, quindi il conteggio va rifatto a tree
+quiescente prima di scegliere tra ritiro del servizio e cablaggio dell'harness.
+
+Prossimo passo: worktree pulito a HEAD, conteggio con
+`deadcode -test=false ./... | grep '^internal/capabilities/voiceover'`, decisione
+datata sull'esito `BuildBundles`/`BuildBundlesWithPlan`, ondata, chiusura con
+comando + esito + data. Guardia globale corrente:
+[`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).

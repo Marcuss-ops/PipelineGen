@@ -116,3 +116,16 @@ it mirrors, everything else is deleted with the feature.
 deadcode -test=false ./... | grep '^internal/capabilities/scripts/'
 go test ./internal/capabilities/scripts/... -count=1
 ```
+
+## Stato al 2026-11-19 (sessione dead-code)
+
+Scope e conteggi sopra restano la fotografia misurata a `17752ccfb`. Questa
+scheda è **in corso in un'altra sessione**, che sta modificando
+`internal/capabilities/scripts` e `overlays` sullo stesso working tree
+(`overlay_plan_seal.go` toccato alle 10:10). Questa sessione non esegue l'ondata
+per non duplicare né mescolare il lavoro: le tre catene (overlay 33, VidRush 40,
+runner 34) restano di proprietà di chi le sta chiudendo.
+
+Al termine: aggiornare qui l'esito con comando + data e rigenerare l'indice.
+Guardia globale corrente:
+[`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).
