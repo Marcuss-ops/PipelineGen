@@ -320,8 +320,8 @@ func wireScriptGenerationFinalJob(runner *scriptgen.Runner, cfg *config.Config, 
 		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(err))
 		return nil
 	}
-	if cfg == nil || root == nil || strings.TrimSpace(cfg.External.FfmpegPath) == "" {
-		return fmt.Errorf("remote final-job requires the local non-stock fragment certifier and configured ffmpeg")
+	if cfg == nil || root == nil || strings.TrimSpace(cfg.External.FfmpegPath) == "" || strings.TrimSpace(cfg.External.RustMusclesPath) == "" {
+		return fmt.Errorf("remote final-job requires the Rust media preflight, local non-stock fragment certifier, and configured ffmpeg")
 	}
 	fragmentLanes, err := finalJobFragmentLanes()
 	if err != nil {
@@ -331,6 +331,7 @@ func wireScriptGenerationFinalJob(runner *scriptgen.Runner, cfg *config.Config, 
 	remoteFinalJob.SetVideoSegmentPreparer(newFinalJobSegmentPreparer(cfg.External.FfmpegPath, mediaexec.EncoderPolicy{
 		Codec: root.MediaExec.Policy.Codec, Preset: root.MediaExec.Policy.Preset, CRF: root.MediaExec.Policy.CRF,
 	}, fragmentCacheDir, fragmentLanes))
+	remoteFinalJob.SetMediaPreflighter(rustexec.NewClient(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log))
 	runner.SetFinalJobSubmitter(remoteFinalJob)
 	log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.BaseURL()), zap.Int("non_stock_fragment_lanes", fragmentLanes), zap.Bool("fragment_cache", fragmentCacheDir != ""))
 	return nil

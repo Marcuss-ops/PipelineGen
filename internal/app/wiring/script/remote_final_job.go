@@ -22,6 +22,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
 )
@@ -98,10 +99,11 @@ func finalJobAttachBudget() (time.Duration, error) {
 }
 
 type RemoteFinalJobAdapter struct {
-	media    *pgmedia.MediaSearcher
-	stock    drive.Reader
-	client   *remotejob.Client
-	segments scriptgen.FinalJobVideoSegmentPreparer
+	media     *pgmedia.MediaSearcher
+	stock     drive.Reader
+	client    *remotejob.Client
+	segments  scriptgen.FinalJobVideoSegmentPreparer
+	preflight finalJobMediaPreflighter
 	// artifactToken is the Master admin bearer used only for the final
 	// artifact GET. It is deliberately separate from the M2M token in
 	// client.Token: the M2M credential submits jobs, while artifact download
@@ -138,6 +140,19 @@ type RemoteFinalJobAdapter struct {
 	// builder produced.
 	inflightMu sync.Mutex
 	inflight   map[string]*finalJobResolveCall
+}
+
+type finalJobMediaPreflighter interface {
+	Preflight(context.Context, rustexec.PreflightRequest) (rustexec.PreflightDecision, error)
+}
+
+// SetMediaPreflighter installs the Rust mediaexec.v2 validator used before a
+// final-job PREPARE. The compiled plan is already sealed here, so the request
+// checks the exact track windows that will be sent to the Master.
+func (a *RemoteFinalJobAdapter) SetMediaPreflighter(preflighter finalJobMediaPreflighter) {
+	if a != nil {
+		a.preflight = preflighter
+	}
 }
 
 // finalJobSegmentHandoffTracer is the optional handoff-scoped timing surface of
@@ -315,6 +330,11 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	envelope, err := scriptgen.BuildFinalJobEnvelopeV1(ctx, runID, req, result, a, a.segments)
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
+	}
+	if a.preflight != nil {
+		if err := a.preflightFinalJob(ctx, envelope.Plan); err != nil {
+			return scriptgen.RemoteFinalJobResult{}, err
+		}
 	}
 	payloadBuiltAt = time.Now()
 	if err := attachFinalJobDriveSourcesV1(&envelope.Finalize); err != nil {
