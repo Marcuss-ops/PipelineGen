@@ -28,7 +28,7 @@
 //      the gap under SUT BUGS.
 //
 //   3. Retry SOLO dove appropriato:
-//      retry.Retryable(err) (and retry.Classify) must match the
+//      retryIsRetryable(err) (and retry.Classify) must match the
 //      canonical retry taxonomy:
 //        - Network errors (1, 3)         → retryable=true
 //        - HTTP 4xx terminal errors (2)  → retryable=false
@@ -151,7 +151,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
+	"github.com/Marcuss-ops/PipelineGen/tests/tools/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
@@ -194,7 +194,7 @@ func makeLLMErrorTestPlan() *scriptpkg.ResolvedGenerationPlan {
 //   - err non-nil, result nil
 //   - err message contains "connection refused" (inner network failure)
 //   - err message contains "engine: ollama generation failed" (engine wrap)
-//   - retry.Retryable(err) == true (transient — retry the next worker)
+//   - retryIsRetryable(err) == true (transient — retry the next worker)
 
 // ── 2. ModelNotFound ─────────────────────────────────────────────────
 //
@@ -206,7 +206,7 @@ func makeLLMErrorTestPlan() *scriptpkg.ResolvedGenerationPlan {
 // ATTESO:
 //   - err non-nil, result nil
 //   - err message contains "404" (the only typed signal we have today)
-//   - retry.Retryable(err) == false (terminal — 4xx won't fix itself)
+//   - retryIsRetryable(err) == false (terminal — 4xx won't fix itself)
 //
 // SUT BUG 1: no typed ErrModelNotFound sentinel; callers must
 // substring-match "404" to detect this case. See file header.
@@ -225,7 +225,7 @@ func TestLLMErrors_P1C_ModelNotFound(t *testing.T) {
 		"error must surface the HTTP status so operators can detect missing-model")
 	assert.Contains(t, err.Error(), "engine: ollama generation failed",
 		"error must be wrapped with engine context")
-	assert.False(t, retry.Retryable(err),
+	assert.False(t, retryIsRetryable(err),
 		"4xx MUST NOT be retried — the model will not magically appear (retry SOLO dove appropriato)")
 	cat, _ := retry.Classify(err)
 	assert.Equal(t, "unknown", string(cat),
@@ -242,7 +242,7 @@ func TestLLMErrors_P1C_ModelNotFound(t *testing.T) {
 // ATTESO:
 //   - err non-nil, result nil
 //   - err message contains "timeout" (the typed signal)
-//   - retry.Retryable(err) == true (transient — retry the next worker)
+//   - retryIsRetryable(err) == true (transient — retry the next worker)
 //
 // SUT BUG 5: "context deadline exceeded" is NOT in the transient
 // taxonomy. Production code using context.WithTimeout will
@@ -261,7 +261,7 @@ func TestLLMErrors_P1C_ModelNotFound(t *testing.T) {
 //   - err non-nil, result nil
 //   - errors.Is(err, scriptpkg.ErrModelOutputMalformed) == true
 //     (the CANONICAL typed sentinel for decode failures)
-//   - retry.Retryable(err) == false (terminal — empty won't
+//   - retryIsRetryable(err) == false (terminal — empty won't
 //     fix itself; workers MUST NOT retry)
 func TestLLMErrors_P1C_EmptyResponse(t *testing.T) {
 	t.Parallel()
@@ -284,7 +284,7 @@ func TestLLMErrors_P1C_EmptyResponse(t *testing.T) {
 		"empty response MUST wrap the canonical ErrModelOutputMalformed sentinel (errore tipizzato): %v", err)
 	assert.Contains(t, err.Error(), "empty output",
 		"error must surface the empty-output reason for operators")
-	assert.False(t, retry.Retryable(err),
+	assert.False(t, retryIsRetryable(err),
 		"ErrModelOutputMalformed is terminal — workers MUST NOT retry (retry SOLO dove appropriato)")
 	cat, _ := retry.Classify(err)
 	assert.Equal(t, "validation", string(cat),
@@ -532,4 +532,10 @@ func TestLLMErrors_P1C_TruncatedResponse(t *testing.T) {
 	assert.False(t, strings.HasSuffix(trimmed, ".") || strings.HasSuffix(trimmed, "?") || strings.HasSuffix(trimmed, "!"),
 		"the text is truncated (no terminal punctuation): %q — engine SHOULD reject this per the user spec, see SUT BUG 4",
 		trimmed)
+}
+
+// retryIsRetryable is the local form of the retired retry.Retryable helper.
+func retryIsRetryable(err error) bool {
+	_, retryable := retry.Classify(err)
+	return retryable
 }

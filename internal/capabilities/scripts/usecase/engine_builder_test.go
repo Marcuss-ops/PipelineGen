@@ -17,7 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
+	"github.com/Marcuss-ops/PipelineGen/tests/tools/testsupport"
 )
 
 func buildTestEngine(gen *testsupport.FakeOllamaGen) *gencore.Engine {

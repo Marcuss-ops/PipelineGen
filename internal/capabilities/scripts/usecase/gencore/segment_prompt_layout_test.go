@@ -2,6 +2,7 @@ package gencore
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -175,4 +176,11 @@ func truncateForTest(s string) string {
 		return s[:60]
 	}
 	return s
+}
+
+// resetSegmentLayoutForTest re-arms the once-guard so a test that changes the
+// environment observes the new value. Production callers never need this.
+func resetSegmentLayoutForTest() {
+	segmentLayoutOnce = sync.Once{}
+	segmentLayout = ""
 }

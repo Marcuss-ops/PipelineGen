@@ -12,6 +12,7 @@ import (
 	"time"
 
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -301,4 +302,21 @@ func TestDownload_Youtube_PacingDefaultIs2And5(t *testing.T) {
 	// Here we pin that a yaml/env with explicit 0 bypasses pacing flags.
 	_ = os.MkdirAll
 	_ = filepath.Join
+}
+
+// resetYouTubeGateForTest replaces the global gate and cooldown. Test-only;
+// callers that need hermetic isolation should invoke this under exclusive
+// control (no concurrent Download callers in the same process).
+func resetYouTubeGateForTest(width int) concurrent.Semaphore {
+	if width <= 0 {
+		width = ytGateWidthDefault
+	}
+	ytGate = concurrent.NewSemaphore(width)
+	// Keep the Once in the "done" state so ensureYouTubeGate remains a
+	// no-op after a test-supplied gate is installed; tests that call
+	// resetYouTubeGateForTest explicitly manage the global gate for their
+	// process.
+	ytGateOnce.Do(func() {})
+	ytCooldownUntil.Store(0)
+	return ytGate
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
@@ -116,4 +117,11 @@ func TestExplicitCallerKeepAliveStillWinsOverEnv(t *testing.T) {
 	if len(*seen) != 1 || (*seen)[0] != "45m" {
 		t.Fatalf("explicit keep_alive = %v, want [45m]", *seen)
 	}
+}
+
+// resetEnvKeepAliveForTest re-arms the once-guard so a test that changes the
+// environment observes the new value. Production callers never need this.
+func resetEnvKeepAliveForTest() {
+	envKeepAliveOnce = sync.Once{}
+	envKeepAlive = ""
 }

@@ -92,15 +92,6 @@ func markObjectPresent(store, key string) {
 	objectPresence.mu.Unlock()
 }
 
-// resetObjectPresenceCacheForTest clears the process-lifetime cache. Tests use
-// unique content addresses, but an explicit reset keeps a cache assertion from
-// depending on test ordering.
-func resetObjectPresenceCacheForTest() {
-	objectPresence.mu.Lock()
-	objectPresence.entries = make(map[string]time.Time)
-	objectPresence.mu.Unlock()
-}
-
 // objectStoreHTTPClient bounds every object-store HTTP call (asset
 // prefetch uploads and certified-artifact downloads). Without a timeout
 // a hanging store would pin the caller — and the lease it holds —

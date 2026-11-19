@@ -166,21 +166,6 @@ func TranslateLedgerSentinel(err error) error {
 // mutates it.
 var defaultNowFn = time.Now
 
-// SetDefaultNowForTests replaces the lazy-default clock for
-// DateAfterFromCursor. Pass nil to restore the production default
-// (time.Now). Intended for test fixtures that need a deterministic
-// calendar day without real-time waits.
-//
-// Pair the swap with t.Cleanup(func() { SetDefaultNowForTests(nil) })
-// to avoid cross-test pollution. NOT safe to call from production code.
-func SetDefaultNowForTests(fn func() time.Time) {
-	if fn == nil {
-		defaultNowFn = time.Now
-		return
-	}
-	defaultNowFn = fn
-}
-
 // DateAfterFromCursor bridges channel.LastCursor (an RFC3339
 // timestamp stored in category_channels.last_cursor) and channel.LookbackDays
 // (the channel's lookback fallback) into a YYYYMMDD string the

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // TestObjectStoredCachesPositivePresence pins the reuse contract for the
@@ -135,4 +136,13 @@ func TestStreamPutMarksObjectPresent(t *testing.T) {
 	if got := puts.Load(); got != 1 {
 		t.Fatalf("PUT calls = %d, want 1", got)
 	}
+}
+
+// resetObjectPresenceCacheForTest clears the process-lifetime cache. Tests use
+// unique content addresses, but an explicit reset keeps a cache assertion from
+// depending on test ordering.
+func resetObjectPresenceCacheForTest() {
+	objectPresence.mu.Lock()
+	objectPresence.entries = make(map[string]time.Time)
+	objectPresence.mu.Unlock()
 }

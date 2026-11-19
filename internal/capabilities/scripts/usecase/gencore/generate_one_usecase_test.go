@@ -27,7 +27,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
+	"github.com/Marcuss-ops/PipelineGen/tests/tools/testsupport"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/assert"

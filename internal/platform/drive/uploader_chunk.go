@@ -70,10 +70,3 @@ func resumableChunkBytes() int {
 	})
 	return uploadChunkSize
 }
-
-// resetUploadChunkForTest re-arms the once-guard so a test that changes the
-// environment observes the new value. Production callers never need this.
-func resetUploadChunkForTest() {
-	uploadChunkOnce = sync.Once{}
-	uploadChunkSize = 0
-}

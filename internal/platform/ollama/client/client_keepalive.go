@@ -93,10 +93,3 @@ func fractionalSeconds(value string) bool {
 	}
 	return allDigits(value[:dot]) && allDigits(value[dot+1:])
 }
-
-// resetEnvKeepAliveForTest re-arms the once-guard so a test that changes the
-// environment observes the new value. Production callers never need this.
-func resetEnvKeepAliveForTest() {
-	envKeepAliveOnce = sync.Once{}
-	envKeepAlive = ""
-}

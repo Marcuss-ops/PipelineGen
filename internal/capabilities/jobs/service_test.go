@@ -14,8 +14,8 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/sqltest"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 

@@ -27,7 +27,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/testsupport"
+	"github.com/Marcuss-ops/PipelineGen/tests/tools/testsupport"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

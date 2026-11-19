@@ -38,13 +38,6 @@ func clipEvidenceFieldChars() int {
 	return clipEvidenceChars
 }
 
-// resetClipEvidenceFieldCharsForTest re-arms the once-guard so a test that
-// changes the environment observes the new value. Production never calls it.
-func resetClipEvidenceFieldCharsForTest() {
-	clipEvidenceCharsOnce = sync.Once{}
-	clipEvidenceChars = 0
-}
-
 // clipEvidenceField passes an evidence field through, truncating at a word
 // boundary with an explicit marker when the operator knob is set. Short
 // fields (the common case) are byte-identical with or without the knob.

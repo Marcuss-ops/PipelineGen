@@ -1,4 +1,11 @@
-package sqlite
+// Package sqltest is the test-only SQLite fixture surface.
+//
+// It lives in its own package so the production sqlite package does not import
+// "testing" and does not link the fixture constructors into the server binary.
+// Tests in other packages may import this package; same-package tests keep a
+// small in-package copy (testdb_test.go) because importing sqltest would create
+// an import cycle through the migration runner.
+package sqltest
 
 import (
 	"database/sql"
@@ -9,6 +16,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // TestDBOpts controls behavior of NewTestDB.
@@ -30,9 +39,17 @@ type TestDBOpts struct {
 //
 // Usage:
 //
-//	db := drive.NewTestDB(t, nil)
+//	db := sqltest.NewTestDB(t, nil)
 //	defer db.Close()
 func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
+	t.Helper()
+	db, _ := newTestDB(t, opts)
+	return db
+}
+
+// newTestDB also returns the on-disk path ("" for an in-memory database) so
+// NewMigratedTestDB can run the migration chain on the same file.
+func newTestDB(t *testing.T, opts *TestDBOpts) (*sql.DB, string) {
 	t.Helper()
 
 	if opts == nil {
@@ -40,6 +57,7 @@ func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 	}
 
 	var db *sql.DB
+	var dbPath string
 	if opts.InMemory {
 		dsn := "file::memory:?cache=shared&_journal_mode=MEMORY&_busy_timeout=5000&_txlock=immediate"
 		var err error
@@ -61,7 +79,7 @@ func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 			_ = os.RemoveAll(tmpDir)
 		})
 
-		dbPath := filepath.Join(tmpDir, "test.db")
+		dbPath = filepath.Join(tmpDir, "test.db")
 		dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=5000&_txlock=immediate"
 
 		db, err = sql.Open("sqlite3", dsn)
@@ -93,19 +111,13 @@ func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 		}
 	}
 
-	return db
+	return db, dbPath
 }
 
 // NewTestDBWithSchema creates a test database and runs the given schema SQL.
 //
 // DEPRECATED (PR-MIGRATIONS-SSOT, August 2026): prefer NewMigratedTestDB(t)
-// which runs the full migration chain. Use NewMigratedTestDBWithExtra(t, extra)
-// when you need migration tables plus test-specific extras.
-//
-// Usage:
-//
-//	db := drive.NewTestDBWithSchema(t, testSchema)
-//	defer db.Close()
+// which runs the full migration chain.
 func NewTestDBWithSchema(t *testing.T, schema string) *sql.DB {
 	t.Helper()
 
@@ -122,38 +134,27 @@ func NewTestDBWithSchema(t *testing.T, schema string) *sql.DB {
 // NewMigratedTestDB creates a temp SQLite DB, runs the full migration chain
 // from migrations/sqlite/, and returns the open *sql.DB. This is the
 // canonical fixture helper for tests that need the production schema.
-//
-// PR-MIGRATIONS-SSOT (August 2026): constants removed; use NewMigratedTestDB.
-// Tests must not duplicate schema constants — the migration chain is the sole
-// physical schema authority.
-//
-// Usage:
-//
-//	db := drive.NewMigratedTestDB(t)
-//	defer db.Close()
 func NewMigratedTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
-	dbPath := testMigrationsDir()
-	if _, err := os.Stat(dbPath); err != nil {
-		t.Fatalf("NewMigratedTestDB: migrations dir not found at %s: %v (run from project root)", dbPath, err)
+	dir := testMigrationsDir()
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("NewMigratedTestDB: migrations dir not found at %s: %v (run from project root)", dir, err)
 	}
 
-	db := NewTestDB(t, nil)
-	if err := migrateAll(db, zap.NewNop(), dbPath, "primary"); err != nil {
+	db, dbPath := newTestDB(t, nil)
+	if dbPath == "" {
+		t.Fatal("NewMigratedTestDB requires an on-disk database")
+	}
+	if err := sqlite.RunMigrationsOnDB(dbPath, zap.NewNop(), dir, "primary"); err != nil {
 		_ = db.Close()
 		t.Fatalf("NewMigratedTestDB: apply migrations: %v", err)
 	}
 	return db
 }
 
-// NewMigratedTestDBWithExtra creates a fully-migrated DB and then applies
-// additional schema SQL on top. Use this when tests need core migration
-// tables plus test-specific extras.
-
-// testMigrationsDir is the test-time resolution of the migrations directory.
-// Mirrors the production resolveMigrationsDir() in set.go but is its own
-// function so test-only files remain independent of the production opener.
+// testMigrationsDir resolves the migrations directory by walking up from this
+// package directory until migrations/sqlite exists.
 func testMigrationsDir() string {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -175,29 +176,9 @@ func testMigrationsDir() string {
 }
 
 // MustExec is a test helper that runs a SQL statement and fails the test on error.
-// Useful for quickly inserting test data.
-//
-// Example:
-//
-//	drive.MustExec(t, db, "INSERT INTO clips (id, name) VALUES (?, ?)", "cl_1", "Test clip")
 func MustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(query, args...); err != nil {
 		t.Fatalf("MustExec failed: %v\nQuery: %s\nArgs: %v", err, query, args)
 	}
 }
-
-// MustQueryRow is a test helper that runs a query expecting exactly one row,
-// returning the *sql.Row for scanning.
-
-// CountRows returns the number of rows matching a query. Fails the test on error.
-
-// AssertNoRows fails the test if the query returns any rows.
-
-// TestSchema is a convenience wrapper that builds a CREATE TABLE statement
-// and returns it for use with NewTestDBWithSchema.
-//
-// Usage:
-//
-//	schema := drive.TestSchema("clips", "id TEXT PRIMARY KEY, name TEXT, tags TEXT")
-//	db := drive.NewTestDBWithSchema(t, schema)

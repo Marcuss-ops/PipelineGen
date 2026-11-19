@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	sqltest "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/sqltest"
 )
 
 // TestBackfill_SQLiteToPostgres_ParityVerified proves the FASE-3 contract
@@ -26,7 +26,7 @@ func TestBackfill_SQLiteToPostgres_ParityVerified(t *testing.T) {
 	// (Same reset contract as every other test in this package.)
 	_ = newMediaTestDB(t)
 
-	sqliteDB := sqlite.NewMigratedTestDB(t)
+	sqliteDB := sqltest.NewMigratedTestDB(t)
 	seed := []struct {
 		id, source, name, lifecycle, indexState, metadata string
 		duration                                          int64

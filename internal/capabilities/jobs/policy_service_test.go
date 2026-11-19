@@ -13,8 +13,8 @@ import (
 
 	"go.uber.org/zap"
 
-	database "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
+	database "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/sqltest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 )
 

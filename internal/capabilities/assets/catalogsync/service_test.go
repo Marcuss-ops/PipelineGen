@@ -8,8 +8,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/sqltest"
 )
 
 func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {

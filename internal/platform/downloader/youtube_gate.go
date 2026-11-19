@@ -42,23 +42,6 @@ func ensureYouTubeGate(width int) concurrent.Semaphore {
 	return ytGate
 }
 
-// resetYouTubeGateForTest replaces the global gate and cooldown. Test-only;
-// callers that need hermetic isolation should invoke this under exclusive
-// control (no concurrent Download callers in the same process).
-func resetYouTubeGateForTest(width int) concurrent.Semaphore {
-	if width <= 0 {
-		width = ytGateWidthDefault
-	}
-	ytGate = concurrent.NewSemaphore(width)
-	// Keep the Once in the "done" state so ensureYouTubeGate remains a
-	// no-op after a test-supplied gate is installed; tests that call
-	// resetYouTubeGateForTest explicitly manage the global gate for their
-	// process.
-	ytGateOnce.Do(func() {})
-	ytCooldownUntil.Store(0)
-	return ytGate
-}
-
 // youTubeCooldownNow is an injectable clock seam matching the transportSleep
 // pattern in transport_retry.go. Nil = time.Now.
 var youTubeCooldownNow func() time.Time

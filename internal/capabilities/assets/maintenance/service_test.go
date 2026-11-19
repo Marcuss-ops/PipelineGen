@@ -8,10 +8,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
-	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/sqltest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

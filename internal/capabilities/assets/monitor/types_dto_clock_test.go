@@ -185,3 +185,18 @@ func TestSetDefaultNowForTests(t *testing.T) {
 	// Don't assert time.Now output — just confirm no panic / no UAF.
 	_ = DateAfterFromCursor("", 7, nil)
 }
+
+// SetDefaultNowForTests replaces the lazy-default clock for
+// DateAfterFromCursor. Pass nil to restore the production default
+// (time.Now). Intended for test fixtures that need a deterministic
+// calendar day without real-time waits.
+//
+// Pair the swap with t.Cleanup(func() { SetDefaultNowForTests(nil) })
+// to avoid cross-test pollution. NOT safe to call from production code.
+func SetDefaultNowForTests(fn func() time.Time) {
+	if fn == nil {
+		defaultNowFn = time.Now
+		return
+	}
+	defaultNowFn = fn
+}

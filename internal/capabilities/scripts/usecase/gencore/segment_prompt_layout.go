@@ -54,10 +54,3 @@ func SegmentPromptLayout() string {
 	})
 	return segmentLayout
 }
-
-// resetSegmentLayoutForTest re-arms the once-guard so a test that changes the
-// environment observes the new value. Production callers never need this.
-func resetSegmentLayoutForTest() {
-	segmentLayoutOnce = sync.Once{}
-	segmentLayout = ""
-}

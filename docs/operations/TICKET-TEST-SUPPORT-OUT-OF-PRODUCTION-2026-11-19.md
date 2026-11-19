@@ -1,6 +1,6 @@
 # TICKET — Test support declared in production files (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 26 test-only functions compiled into production files, plus the whole `mutationprobe` package
+- **Status:** CLOSED (2026-11-19) — test-only code moved out of every production package; 20 functions remain in four explicitly test-only packages and are allowlisted
 - **Severity:** P2 — production files declare helpers only test binaries can use
 - **Owner:** platform test infrastructure
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -61,6 +61,32 @@ Key symbols: `mutationprobe.Run`, `sqlite.NewMigratedTestDB`, `resetYouTubeGateF
 - [ ] `go build ./...` and `go test ./internal/platform/... ./internal/capabilities/scripts/... -count=1`
       are green.
 - [ ] The global deadcode guard records the new count.
+
+## Closeout (2026-11-19)
+
+- **`mutationprobe` (7):** moved from `internal/platform/mutationprobe` to
+  `tests/tools/mutationprobe`; the single consumer
+  (`cliprender/chunk_mutation_probe_test.go`) imports the new path. It stays
+  because the probe test is the evidence that the chunk invariants have teeth.
+- **`testsupport` (7):** moved to `tests/tools/testsupport`; the twelve usecase
+  test files import the new path. The package doc already said it is test-only;
+  now its location says the same.
+- **SQLite fixtures (5 + 1):** `internal/platform/sqlite/testdb.go` is deleted.
+  Cross-package helpers live in `internal/platform/sqlite/sqltest`, which uses
+  the exported `RunMigrationsOnDB` and therefore does not pull `testing` into
+  the production `sqlite` package. The same-package test
+  (`state_matrix_live_test.go`) keeps a minimal fixture in
+  `internal/platform/sqlite/testdb_test.go`, because importing `sqltest` from
+  package `sqlite` would create an import cycle through the migration runner.
+- **`ForTest` hooks (7):** moved into the matching `_test.go` files
+  (`monitor`, `downloader`, `drive`, `ollama/client`, `renderinggen`, `gencore`
+  twice). None is exported across packages, so every hook is now invisible to
+  the production build.
+- **Allowlist (20, by design):** the functions in `tests/tools/mutationprobe`
+  (7), `tests/tools/testsupport` (7) and `internal/platform/sqlite/sqltest`
+  (6) are unreachable from production only because nothing in production may
+  import a test-only package. They are recorded here as the test-support
+  allowlist, same rule the closed sweep ticket used for its 15 fixtures.
 
 ## Verification
 

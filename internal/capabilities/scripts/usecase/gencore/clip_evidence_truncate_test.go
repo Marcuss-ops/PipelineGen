@@ -2,6 +2,7 @@ package gencore
 
 import (
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -49,4 +50,11 @@ func TestClipEvidenceField_InvalidKnobIsIgnored(t *testing.T) {
 	if got := clipEvidenceFieldChars(); got != 0 {
 		t.Fatalf("knob = %d, want 0 (unlimited)", got)
 	}
+}
+
+// resetClipEvidenceFieldCharsForTest re-arms the once-guard so a test that
+// changes the environment observes the new value. Production never calls it.
+func resetClipEvidenceFieldCharsForTest() {
+	clipEvidenceCharsOnce = sync.Once{}
+	clipEvidenceChars = 0
 }

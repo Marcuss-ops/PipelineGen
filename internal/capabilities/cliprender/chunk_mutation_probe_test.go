@@ -3,7 +3,7 @@ package cliprender
 import (
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/mutationprobe"
+	"github.com/Marcuss-ops/PipelineGen/tests/tools/mutationprobe"
 )
 
 // TestChunkInvariantsHaveTeeth is the mutation-probe gate for the chunk
