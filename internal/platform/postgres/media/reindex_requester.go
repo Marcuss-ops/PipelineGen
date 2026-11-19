@@ -69,8 +69,8 @@ func (r *ReindexRequester) RequestIndex(ctx context.Context, assetID string) err
 	}
 
 	// Preserve the canonical registered-vs-searchable policy before emitting
-	// work. This mirrors mediaregistry.ResolveIndexEligibility but uses native
-	// PostgreSQL placeholders inside the already-open transaction.
+	// work. The decision comes from the shared mediaregistry.AssetTaxonomy rule,
+	// read here inside the already-open PostgreSQL transaction.
 	eligibility := capregistry.AssetTaxonomy{
 		AssetID:   assetID,
 		AssetKind: capregistry.AssetKind(assetKind),

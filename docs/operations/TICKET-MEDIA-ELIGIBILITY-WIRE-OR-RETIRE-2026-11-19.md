@@ -1,6 +1,6 @@
 # TICKET — Media eligibility: wire the SSOT port or retire the second implementation (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 4 unreachable functions: `ResolveIndexEligibility` plus the PostgreSQL reader that is its only implementation
+- **Status:** CLOSED (2026-11-19) — chose retire: the live reindex path already applies the shared rule; the duplicate port and its PostgreSQL reader are deleted
 - **Severity:** P2 — two implementations of one searchability rule, one of them without a caller
 - **Owner:** media search / index owner (MEDIA-SSOT P2-9)
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -51,6 +51,24 @@ Key symbols: `ResolveIndexEligibility`, `NewMediaEligibilityReader`, `MediaEligi
 - [ ] No comment claims a port that nothing calls.
 - [ ] `go build ./...`, `go vet` on the touched packages and their tests are green.
 - [ ] The global deadcode guard records the new count.
+
+## Closeout (2026-11-19)
+
+**Decision: option B — retire the port.** The searchability rule is live in
+`mediaregistry.AssetTaxonomy.IndexEligibility` and is already applied inside the
+PostgreSQL transaction by `internal/platform/postgres/media/reindex_requester.go`.
+The deleted resolver was a second copy of the same decision, and the archcheck
+boundary note already described it as retired, so the file was the leftover.
+
+- Deleted `internal/capabilities/mediaregistry/index_eligibility_resolver.go`
+  (`AssetEligibilityReader`, `ErrTaxonomySchemaUnavailable`,
+  `ResolveIndexEligibility`) and
+  `internal/platform/postgres/media/eligibility_reader.go` with its test.
+- Updated the two comments that pointed at the port: the reindex requester now
+  names the shared taxonomy rule, and the archcheck note records the deletion
+  and why the port could not prove parity with the live path.
+- `IndexEligibility` and `AssetTaxonomy.IndexEligibility()` stay: the reindex
+  requester calls them, so the rule has one owner and one consumer.
 
 ## Verification
 

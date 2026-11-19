@@ -299,16 +299,14 @@ var sqliteMediaReaderGrandfatheredZones = []string{}
 //     the engine was invisible, which is why it was removed rather than
 //     re-typed.
 //
-//   - internal/capabilities/mediaregistry/index_eligibility_resolver.go was
-//     retired the same day with the narrow AssetEligibilityReader port. Its
-//     `SELECT ... FROM media_assets WHERE id = ?` ran on whatever handle the
-//     caller held, and the single production caller
-//     (clipindexer.Service.Eligibility) held the operational SQLite handle while
-//     PostgreSQL owned media_assets — so the taxonomy gate graded a database
-//     that holds no committed rows. The read now resolves from the media SSOT
-//     via wiring composition (SetMediaEligibilityReader ← same mediaPG handle as
-//     the canonical reindex requester), and a nil reader fails closed instead
-//     of degrading onto a second engine.
+//   - internal/capabilities/mediaregistry/index_eligibility_resolver.go and its
+//     PostgreSQL reader were deleted on 2026-11-19. The narrow
+//     AssetEligibilityReader port had no caller: its
+//     `SELECT ... FROM media_assets WHERE id = ?` would have run on whatever
+//     handle the caller held, while the live reindex path already applies the
+//     same decision through mediaregistry.AssetTaxonomy.IndexEligibility inside
+//     the PostgreSQL transaction. Keeping the port meant a second copy of the
+//     rule with no way to prove the two agreed.
 //
 //   - internal/app/wiring/lifecycle_sweepers.go — THE LAST ENTRY — left on
 //     2026-09-16, and it is the entry that explains why this register had a
