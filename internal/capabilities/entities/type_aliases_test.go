@@ -32,14 +32,15 @@ func TestStableEntityIDFoldsTypeAliases(t *testing.T) {
 // must target a declared canonical type, every canonical type must map to
 // itself, and no two canonical types may share a spelling.
 func TestCanonicalEntityTypesAreClosed(t *testing.T) {
-	for _, canonical := range CanonicalEntityTypes() {
+	canonicalTypes := entitytype.Families()
+	for _, canonical := range canonicalTypes {
 		require.Equal(t, canonical, NormalizeType(canonical), "canonical type %q must be stable", canonical)
 	}
 	for alias, canonical := range entitytype.AliasSpellings() {
 		require.True(t, entitytype.IsCanonical(canonical), "alias %q targets undeclared canonical type %q", alias, canonical)
 		require.Equal(t, canonical, NormalizeType(alias))
 	}
-	require.NotEmpty(t, CanonicalEntityTypes())
+	require.NotEmpty(t, canonicalTypes)
 }
 
 // TestEntityTypeAliasesEnumeratesLegacySpellings pins the compat enumeration:

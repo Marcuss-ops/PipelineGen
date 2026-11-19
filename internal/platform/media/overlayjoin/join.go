@@ -20,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 )
 
 // Clip is one certified overlay render placed on the timeline.
@@ -45,6 +47,8 @@ type Spec struct {
 	Width      int
 	Height     int
 	FPS        int
+	// Encoder is resolved by the application composition root.
+	Encoder mediaexec.EncoderPolicy
 	// DurationUS bounds the output. Zero uses the audio duration.
 	DurationUS int64
 	Clips      []Clip
@@ -76,6 +80,9 @@ func (s Spec) Validate() error {
 	}
 	if s.Width <= 0 || s.Height <= 0 {
 		return fmt.Errorf("overlayjoin: canvas %dx%d is invalid", s.Width, s.Height)
+	}
+	if strings.TrimSpace(s.Encoder.Codec) == "" {
+		return fmt.Errorf("overlayjoin: resolved encoder codec is required")
 	}
 	if info, err := os.Stat(s.AudioPath); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 		return fmt.Errorf("overlayjoin: audio %s is unavailable", s.AudioPath)
@@ -154,7 +161,7 @@ func Args(spec Spec) ([]string, error) {
 		args = append(args, "-t", strconv.FormatFloat(durationMS/1000, 'f', 3, 64))
 	}
 	args = append(args,
-		"-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+		"-c:v", spec.Encoder.Codec, "-preset", spec.Encoder.Preset, "-crf", strconv.Itoa(spec.Encoder.CRF),
 		"-pix_fmt", "yuv420p", "-r", strconv.Itoa(spec.fps()),
 		"-c:a", "aac", "-b:a", "192k",
 		"-movflags", "+faststart",

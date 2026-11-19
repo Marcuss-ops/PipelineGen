@@ -13,6 +13,7 @@ import (
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -41,6 +42,7 @@ type Runner struct {
 	// that the local final-video join places on the plan timeline. Nil keeps
 	// the historical audio-only deliverable (no join, no failure).
 	overlayClipFetcher  OverlayClipFetcher
+	overlayJoinEncoder  mediaexec.EncoderPolicy
 	scriptPersistence   ScriptPersistence
 	recorder            ExecutionRecorder
 	sceneCommitObserver SceneCommitObserver

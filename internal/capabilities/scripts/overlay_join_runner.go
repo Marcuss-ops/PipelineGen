@@ -13,6 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/overlayjoin"
 )
@@ -55,6 +56,15 @@ func (r *Runner) SetOverlayClipFetcher(fetcher OverlayClipFetcher) {
 		return
 	}
 	r.overlayClipFetcher = fetcher
+}
+
+// SetOverlayJoinEncoder wires the encoder policy resolved by the application
+// composition root. The local final-video join must not choose an encoder.
+func (r *Runner) SetOverlayJoinEncoder(policy mediaexec.EncoderPolicy) {
+	if r == nil {
+		return
+	}
+	r.overlayJoinEncoder = policy
 }
 
 // assembleFinalVideo joins the certified per-item overlay renders into the
@@ -150,6 +160,7 @@ func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req Gener
 		Width:          width,
 		Height:         height,
 		FPS:            fps,
+		Encoder:        r.overlayJoinEncoder,
 		DurationUS:     durationUS,
 		Clips:          clips,
 	}, "")

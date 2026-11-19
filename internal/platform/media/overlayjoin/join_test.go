@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 )
 
 func touch(t *testing.T, dir, name string) string {
@@ -28,6 +30,7 @@ func validSpec(t *testing.T) Spec {
 		Width:          1920,
 		Height:         1080,
 		FPS:            24,
+		Encoder:        mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 20},
 		DurationUS:     77_520_000,
 		Clips: []Clip{
 			{Path: touch(t, dir, "item-0.mp4"), StartUS: 0, DurationUS: 13_291_667},
@@ -85,6 +88,14 @@ func TestArgsRequiresCertifiedAudio(t *testing.T) {
 	}
 }
 
+func TestArgsRequiresResolvedEncoder(t *testing.T) {
+	spec := validSpec(t)
+	spec.Encoder = mediaexec.EncoderPolicy{}
+	if _, err := Args(spec); err == nil {
+		t.Fatal("expected a missing-encoder-policy error")
+	}
+}
+
 func TestArgsRejectsMissingClip(t *testing.T) {
 	spec := validSpec(t)
 	spec.Clips[1].Path = filepath.Join(t.TempDir(), "absent.mp4")
@@ -108,7 +119,8 @@ func TestRunAssemblesARealVideo(t *testing.T) {
 	result, err := Run(context.Background(), Spec{
 		BackgroundPath: bg, AudioPath: audio, OutputPath: out,
 		Width: 320, Height: 180, FPS: 24, DurationUS: 3_000_000,
-		Clips: []Clip{{Path: clip, StartUS: 500_000, DurationUS: 1_000_000}},
+		Encoder: mediaexec.EncoderPolicy{Codec: "libx264", Preset: "ultrafast", CRF: 23},
+		Clips:   []Clip{{Path: clip, StartUS: 500_000, DurationUS: 1_000_000}},
 	}, "")
 	if err != nil {
 		t.Fatalf("Run: %v", err)

@@ -184,6 +184,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
+	runner.SetOverlayJoinEncoder(root.MediaExec.Policy)
 	// The local render lane produces one certified clip per overlay item; the
 	// join needs those exact bytes back from the object store to place them on
 	// the plan timeline. Wiring the fetcher is what turns a render-enabled job
