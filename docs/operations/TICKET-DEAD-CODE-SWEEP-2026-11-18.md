@@ -491,8 +491,8 @@ Le due funzioni appartengono alla feature person-image/VLM ancora in corso: non
 si cancellano finché la catena non viene cablata o ritirata, perché la
 rimozione toglierebbe l'unico punto di verifica del contratto collage/perceptual.
 
-**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 10):** 0 zero-reference,
-0 in `internal/capabilities/overlays`, totale **≤ 467**. La baseline precedente
+**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 11):** 0 zero-reference,
+0 in `internal/capabilities/overlays`, totale **≤ 462**. La baseline precedente
 (≤ 476, "458 effettive") non era un valore misurato: il conteggio corretto al
 commit di chiusura era 481. Il prossimo calo si aggiorna a mano a ogni ondata;
 un aumento è una regressione da attribuire per package, come qui.
@@ -568,3 +568,16 @@ nel percorso di render con il suo test di accettazione, non ricreato inattivo.
 **467** totali, **0** in `capabilities/overlays`, **0** zero-reference
 (`go build ./...` rc 0; `go test ./internal/kernel/asset/detail
 ./internal/capabilities/render` verdi). Calo esatto: 479 − 12 = 467.
+
+## Ondata 11 — 2026-11-19 (5 funzioni, un tipo orfano, 2 file)
+
+`ClipSemanticMetadata` era un contenitore senza uso di produzione: l'unico
+riferimento rimasto era un commento in `scripts/model_values.go` (corretto).
+I cinque metodi (`AsSearchTextInput`, `Clone`, `IsEmpty`, `ComputeDurationSec`,
+`MergedTags`) erano tutti unreachable e l'intero file di test (23 casi) li
+copriva soltanto. Ritirati `clip_semantic_metadata.go` (391 righe) e
+`clip_semantic_metadata_test.go` (~350 righe).
+
+**Conteggio misurato** su worktree pulito a `8d55a74a4` con il diff:
+**462** totali, **0** overlays, **0** zero-reference (`go build ./...` rc 0;
+`go test ./internal/kernel/asset/detail` verde). Calo esatto: 467 − 5 = 462.
