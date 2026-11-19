@@ -131,17 +131,6 @@ func copyFinalJobRef(ref map[string]any) map[string]any {
 	return out
 }
 
-// resolveHits reports the resolutions answered from the handoff cache, so a
-// receipt can tell deduplicated work from work that never happened.
-func (a *RemoteFinalJobAdapter) resolveHits() int {
-	if a == nil {
-		return 0
-	}
-	a.resolvedMu.Lock()
-	defer a.resolvedMu.Unlock()
-	return a.hits
-}
-
 // ResolveFinalJobStockAsset returns a metadata-only Drive reference. That exact
 // reference becomes the FINALIZE stock entry, and the remote Master downloads
 // and processes it. The Producer never fetches the stock bytes or turns them

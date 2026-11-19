@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 func validProfile() Profile {
@@ -26,11 +24,8 @@ func validProfile() Profile {
 			Shadow:       &OverlayShadowProfile{Enabled: boolPtr(true), Color: "#000000", Opacity: floatPtr(0.72), Blur: floatPtr(12), Offset: []float64{0, 4}},
 			TransitionIn: &OverlayTransitionProfile{Preset: "fade_in", DurationFrames: 8},
 		},
-		SoundEffects: []SoundEffectProfile{{AssetID: "whoosh1", AtMS: 0, GainDB: &gain}},
-		MixPolicy:    "VOICEOVER_DUCKED_CLIP",
-		PhraseMotions: []string{
-			"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_02_blur_focus_snap",
-		},
+		SoundEffects:  []SoundEffectProfile{{AssetID: "whoosh1", AtMS: 0, GainDB: &gain}},
+		MixPolicy:     "VOICEOVER_DUCKED_CLIP",
 		ImageMotions:  []string{"image_25d_card_swing", "image_depth_dolly"},
 		EntityStyleID: "badge",
 	}
@@ -65,10 +60,6 @@ func TestValidateFailsClosed(t *testing.T) {
 		{"boosting sfx gain", func(p *Profile) { p.SoundEffects = []SoundEffectProfile{{AssetID: "x", GainDB: &boost}} }, "gain_db"},
 		{"absolute and scene sfx placement", func(p *Profile) { p.SoundEffects = []SoundEffectProfile{{AssetID: "x", AtMS: 10, SceneID: "scene-1"}} }, "both"},
 		{"unknown mix policy", func(p *Profile) { p.MixPolicy = "duck_everything" }, "mix_policy"},
-		{"uncertified motion", func(p *Profile) { p.PhraseMotions = []string{"not_a_motion"} }, "certified"},
-		{"duplicate motion", func(p *Profile) {
-			p.PhraseMotions = []string{"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_01_blur_soft_reveal"}
-		}, "repeats"},
 		{"uncertified image motion", func(p *Profile) { p.ImageMotions = []string{"not_an_image_motion"} }, "certified image motion"},
 		{"duplicate image motion", func(p *Profile) { p.ImageMotions = []string{"image_25d_card_swing", "image_25d_card_swing"} }, "repeats"},
 		// image_card_push is now part of the certified 32-motion render-safe
@@ -175,30 +166,6 @@ func TestShippedChannelProfilesDocumentParses(t *testing.T) {
 	}
 	if len(Snapshot()) == 0 {
 		t.Fatal("shipped document installs zero profiles")
-	}
-}
-
-// TestShippedChannelProfilesUseTheFullDefaultPhraseRotation ensures shipped
-// profiles do not accidentally narrow the available catalog to a handful of
-// repeated animations. Custom motion pools remain an explicit operator choice.
-func TestShippedChannelProfilesUseTheFullDefaultPhraseRotation(t *testing.T) {
-	Reset()
-	defer Reset()
-	found, err := LoadOptional(filepath.Join("..", "..", "..", "config", "channel_profiles.yaml"))
-	if err != nil {
-		t.Fatalf("shipped config/channel_profiles.yaml does not parse: %v", err)
-	}
-	if !found {
-		t.Skip("config/channel_profiles.yaml not present in this checkout")
-	}
-	profiles := Snapshot()
-	if len(profiles) == 0 {
-		t.Fatal("shipped document installs zero profiles")
-	}
-	for _, profile := range profiles {
-		if len(profile.PhraseMotions) != 0 {
-			t.Errorf("channel %q narrows the phrase catalog to %d motions; leave the override empty to rotate through all %d certified motions", profile.ChannelID, len(profile.PhraseMotions), len(overlays.CertifiedPhraseMotions()))
-		}
 	}
 }
 

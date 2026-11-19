@@ -22,10 +22,13 @@
 //         },
 //     })
 //
-// Or binary-shaped via Retryable(err) (helper):
+// Or binary-shaped via the second return value of Classify:
 //
 //     err := retry.Do(ctx, fn, retry.Options{
-//         IsRetryable: retry.Retryable,
+//         IsRetryable: func(err error) bool {
+//             _, retryable := retry.Classify(err)
+//             return retryable
+//         },
 //     })
 //
 // HONEST LIMITATION (godlike/07):
@@ -170,12 +173,4 @@ func Classify(err error) (ErrorCategory, bool) {
 		return ErrMissingHandler, false
 	}
 	return ErrUnknown, false
-}
-
-// Retryable is the binary form of Classify. Equivalent to
-// `_, retryable := Classify(err); return retryable`. Nil err returns
-// false (canonical consistent with IsTransient).
-func Retryable(err error) bool {
-	_, retryable := Classify(err)
-	return retryable
 }

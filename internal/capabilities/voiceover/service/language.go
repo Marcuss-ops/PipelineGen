@@ -65,18 +65,6 @@ func ParseLanguage(s string) (Language, error) {
 	return Language(trimmed), nil
 }
 
-// MustParseLanguage is the panic-on-invalid convenience constructor
-// for sites where the input is already validated upstream (test
-// fixtures, compile-time-known constants). Production call sites
-// MUST use ParseLanguage + handle the error.
-func MustParseLanguage(s string) Language {
-	lang, err := ParseLanguage(s)
-	if err != nil {
-		panic(fmt.Sprintf("MustParseLanguage: %v", err))
-	}
-	return lang
-}
-
 // String returns the underlying string form. Useful for fmt
 // interpolation + the many "lang=%s" log lines scattered through
 // the voiceover pipeline.

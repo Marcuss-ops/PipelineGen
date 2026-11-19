@@ -40,7 +40,7 @@ func TestMediaexecV2SharedGoldens(t *testing.T) {
 	// sealed render_plan (validated in stock_renderer_plan_test.go and the
 	// real Rust e2e suite), and the legacy transitions/effect_paths
 	// envelope it used to encode was deleted with the migration.
-	for _, name := range []string{"probe", "cut_batch", "normalize"} {
+	for _, name := range []string{"probe", "cut_batch", "normalize", "preflight"} {
 		t.Run(name, func(t *testing.T) {
 			fixture := loadMediaexecGolden(t, name)
 			if fixture.Request.Version != ProtocolVersion {
@@ -76,6 +76,18 @@ func TestMediaexecV2SharedGoldens(t *testing.T) {
 			case "normalize":
 				if fixture.Request.SourcePath != "/fixtures/input.mp4" || fixture.Request.OutputPath != "/fixtures/normalized.mp4" || fixture.Request.Codec != "h264_nvenc" || fixture.Request.Preset != "p1" || fixture.Request.CRF != 23 || fixture.Request.Width != 1920 || fixture.Request.Height != 1080 || fixture.Request.FPSNum != 24 || fixture.Request.FPSDen != 1 || fixture.Request.KeyframeInterval != 48 || fixture.Request.AudioCodec != "aac" || fixture.Request.AudioBitrate != "128k" || fixture.Request.SampleRate != 48000 || fixture.Request.Channels != 2 || !fixture.Request.KeepAudio {
 					t.Fatalf("normalize fixture drift: %+v", fixture.Request)
+				}
+			case "preflight":
+				payload := fixture.Request.Preflight
+				report := fixture.Response.Preflight
+				if payload == nil || report == nil {
+					t.Fatal("preflight fixture must carry request payload and response report")
+				}
+				if payload.VideoDurationMS == nil || *payload.VideoDurationMS != 12500 || len(payload.Subtitles) != 2 || len(payload.Overlays) != 2 {
+					t.Fatalf("preflight request drift: %+v", payload)
+				}
+				if !report.OK || len(report.Issues) != 1 || report.Issues[0].Code != "cue_reading_too_fast" || report.Issues[0].Severity != PreflightSeverityWarning {
+					t.Fatalf("preflight report drift: %+v", report)
 				}
 			}
 		})

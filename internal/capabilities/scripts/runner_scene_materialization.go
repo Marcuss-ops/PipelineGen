@@ -166,10 +166,11 @@ func applyOwnedImportantPhraseHints(req GenerateRequest, scene Scene) Scene {
 // materializeVerbatimSourceTextScenes builds the source-language scene list
 // directly from caller-provided segment text. This path is used when a caller
 // is translating or processing an already-authored script and must preserve
-// every scene's narration without a model rewrite.
+// every scene's narration without a model rewrite. Clip sources are supported
+// when their explicit segments also bind the visual clips used by each scene.
 func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
-	if req.Source.Type != SourceText {
-		return nil, fmt.Errorf("source_text_verbatim requires a text source")
+	if req.Source.Type != SourceText && req.Source.Type != SourceClips {
+		return nil, fmt.Errorf("source_text_verbatim requires a text or clips source")
 	}
 	if len(req.ScriptParams.Segments) == 0 {
 		return nil, fmt.Errorf("source_text_verbatim requires explicit script segments")

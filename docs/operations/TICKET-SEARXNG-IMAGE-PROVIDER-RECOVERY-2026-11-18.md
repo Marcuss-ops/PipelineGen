@@ -172,3 +172,17 @@ SEARXNG_LIVE_POLICY=1 SEARXNG_URL=http://127.0.0.1:8080 \
   l'identità può essere giusta e il supporto sbagliato.
 - **Nomi non pubblici** (es. Ferretti): nessun engine può verificare un volto
   senza riferimento; l'esito corretto è "nessuna immagine".
+
+## Prossimi passi (2026-11-19)
+
+1. **Chiudere l'unico criterio condizionato:** eseguire il gate live §6 con
+   `SEARXNG_LIVE_POLICY=1 SEARXNG_URL=http://127.0.0.1:8080` e
+   `TestSearXNGPersonPolicyLive`; registrare qui esito, data e versione
+   dell'engine. Senza questo comando il ticket resta `RESOLVED` solo in locale.
+2. **Se l'ambiente non è disponibile:** scrivere esplicitamente che il gate
+   non è eseguibile qui e perché; non convertirlo in PASS.
+3. **Dopo il gate:** dichiarare la riga di stato come `CLOSED` (la parola
+   `RESOLVED` non è riconosciuta dall'indice e la scheda resta conteggiata
+   aperta) e rigenerare l'indice.
+4. **Rischio da tenere d'occhio nelle run entità:** tre engine soli e budget di
+   5 s; una run con molte entità è la prova pratica che la copertura tiene.

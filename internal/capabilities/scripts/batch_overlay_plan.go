@@ -374,7 +374,14 @@ func applyImageAssetStyles(plans []*capmodel.OverlayPlan, pins []scriptpkg.Overl
 		if plan == nil {
 			continue
 		}
-		imageItemsByScene := imageOverlayItemsBySceneWhere(plan, func(*capmodel.OverlayItem) bool { return true })
+		// A pin styles a still. Entity cards are image surfaces too, but they are
+		// not stills: letting them into the positional list made a portrait card
+		// consume the slot of the next still, which then kept the planner's
+		// default geometry (r6: the third photo stayed 1340x760/contain while the
+		// entity card got its height pin).
+		imageItemsByScene := imageOverlayItemsBySceneWhere(plan, func(item *capmodel.OverlayItem) bool {
+			return strings.EqualFold(strings.TrimSpace(item.Kind), "image")
+		})
 		changed := false
 		for _, scene := range sceneOrder {
 			overrides := sceneStyles[scene]

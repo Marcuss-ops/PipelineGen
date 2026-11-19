@@ -13,11 +13,11 @@ import (
 //
 // PR-CODE-HEALTH-C3 audit-pin (2026-07-09): this is one of only 2
 // package-level mutexes in production code. It CANNOT be replaced
-// with sync.Once because AddAllowedHost supports runtime additions
-// and SetAllowedHosts supports full replacement (called at startup
-// from wire_services.go:66 and in tests). The RWMutex pattern is
-// the correct semantics for a shared map with concurrent reads and
-// occasional writes.
+// with sync.Once because SetAllowedHosts replaces the whole allowlist
+// at startup (wire_services_composition.go) and tests re-point it per
+// case, while request handlers read it concurrently. The RWMutex
+// pattern is the correct semantics for a shared map with concurrent
+// reads and occasional writes.
 var (
 	allowedHostsMu sync.RWMutex
 	allowedHosts   = make(map[string]bool)
@@ -119,29 +119,6 @@ func SanitizeTimestamp(ts string) error {
 		}
 	}
 	return nil
-}
-
-// ValidateVideoID checks that a video ID contains only safe characters.
-func ValidateVideoID(id string) error {
-	if id == "" {
-		return fmt.Errorf("video id is empty")
-	}
-	if len(id) > 64 {
-		return fmt.Errorf("video id too long (%d chars, max 64)", len(id))
-	}
-	for _, c := range id {
-		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '-' {
-			return fmt.Errorf("video id contains invalid character %q", c)
-		}
-	}
-	return nil
-}
-
-// AddAllowedHost adds a domain to the allowlist (thread-safe).
-func AddAllowedHost(host string) {
-	allowedHostsMu.Lock()
-	defer allowedHostsMu.Unlock()
-	allowedHosts[host] = true
 }
 
 // SetAllowedHosts replaces the entire allowlist with the provided hosts (thread-safe).

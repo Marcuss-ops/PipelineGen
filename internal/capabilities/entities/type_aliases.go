@@ -52,11 +52,6 @@ func foldEntityType(entityType string) string {
 	return entitytype.Fold(entityType)
 }
 
-// CanonicalEntityTypes returns a copy of the closed canonical vocabulary.
-func CanonicalEntityTypes() []string {
-	return entitytype.Families()
-}
-
 // EntityTypeAliases returns every spelling that folds onto the canonical type,
 // canonical spelling first then the legacy spellings in lexical order. An
 // unknown type yields just its normalized self (it has no aliases), and a

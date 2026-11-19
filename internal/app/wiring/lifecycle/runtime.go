@@ -110,19 +110,5 @@ func (l *Runtime) AddProbe(name string, probe func(ctx context.Context) error) {
 	l.probes = append(l.probes, &probeEntry{name: name, fn: probe})
 }
 
-// SafeCall runs a synchronous lifecycle closure and turns panics into errors.
-func SafeCall(name string, fn func()) (err error) {
-	if fn == nil {
-		return nil
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("lifecycle closure %q panicked: %v", name, r)
-		}
-	}()
-	fn()
-	return nil
-}
-
 // ErrCapabilityDisabled reports a deliberately suppressed optional startup capability.
 var ErrCapabilityDisabled = errors.New("lifecycle: capability disabled (operator-facing policy decision; the surrounding step is intentionally not running)")

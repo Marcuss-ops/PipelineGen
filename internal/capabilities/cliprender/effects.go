@@ -90,18 +90,18 @@ var clipEffectSpecs = map[string]clipEffectSpec{
 	"scanlines": requiring(newClipEffectSpec([]string{"amount", "wavelength"},
 		clipEffectCheck{"amount", "in [0,0.25]", func(e ClipEffectSpec) bool { return inRange(e.Amount, 0, .25) }},
 		clipEffectCheck{"wavelength", "in [0.002,1]", func(e ClipEffectSpec) bool { return inRange(e.Wavelength, .002, 1) }},
-	), "amount"),
-	"mosaic": newClipEffectSpec([]string{"block_size"},
+	), "amount", "wavelength"),
+	"mosaic": requiring(newClipEffectSpec([]string{"block_size"},
 		clipEffectCheck{"block_size", "in [1,512]", func(e ClipEffectSpec) bool { return e.BlockSize >= 1 && e.BlockSize <= 512 }},
-	),
+	), "block_size"),
 	"chromatic_aberration": requiring(newClipEffectSpec([]string{"amount"},
 		clipEffectCheck{"amount", "in [-128,128]", func(e ClipEffectSpec) bool { return inRange(e.Amount, -128, 128) }},
 	), "amount"),
-	"halftone": newClipEffectSpec([]string{"size", "angle", "amount"},
+	"halftone": requiring(newClipEffectSpec([]string{"size", "angle", "amount"},
 		clipEffectCheck{"size", "in [1,128]", func(e ClipEffectSpec) bool { return e.Size >= 1 && e.Size <= 128 }},
 		clipEffectCheck{"angle", "finite and in [-3600,3600]", func(e ClipEffectSpec) bool { return inRange(e.Angle, -3600, 3600) }},
 		clipEffectCheck{"amount", "in [0,1]", func(e ClipEffectSpec) bool { return inRange(e.Amount, 0, 1) }},
-	),
+	), "size", "amount"),
 	"vignette": requiring(newClipEffectSpec([]string{"amount", "radius", "softness"},
 		clipEffectCheck{"amount/radius/softness", "in [0,1]", func(e ClipEffectSpec) bool {
 			return inRange(e.Amount, 0, 1) && inRange(e.Radius, 0, 1) && inRange(e.Softness, 0, 1)
@@ -114,7 +114,7 @@ var clipEffectSpecs = map[string]clipEffectSpec{
 		clipEffectCheck{"amount/size", "within supported noise bounds", func(e ClipEffectSpec) bool {
 			return inRange(e.Amount, 0, 1) && e.Size >= 1 && e.Size <= 256
 		}},
-	), "amount"),
+	), "amount", "size"),
 	"glow": requiringAny(newClipEffectSpec([]string{"radius", "intensity"},
 		clipEffectCheck{"radius/intensity", "radius in [0,256] and intensity in [0,4]", func(e ClipEffectSpec) bool {
 			return inRange(e.Radius, 0, 256) && inRange(e.Intensity, 0, 4)
@@ -221,7 +221,7 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 			return fmt.Errorf("grid.scope must be 'full_canvas' or 'foreground'")
 		}
 		if grid.Style != "" && grid.Style != "lines" && grid.Style != "dots" && grid.Style != "dot_grid" {
-			return fmt.Errorf("grid.style must be 'lines' or 'dots'")
+			return fmt.Errorf("grid.style must be 'lines', 'dots' or 'dot_grid'")
 		}
 		if !inRange(grid.SpacingPX, 4, 512) {
 			return fmt.Errorf("grid.spacing_px must be in [4,512]")
@@ -230,13 +230,22 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 			if grid.DotRadiusPX != 0 && !inRange(grid.DotRadiusPX, 0.5, 64) {
 				return fmt.Errorf("grid.dot_radius_px must be in [0.5,64]")
 			}
+			// A dot wider than half a cell merges with its neighbours, so the
+			// declared grid stops being a grid. The lowerer enforces the same
+			// relation against its effective step; reject it at the edge.
+			if grid.DotRadiusPX > 0 && grid.DotRadiusPX > grid.SpacingPX/2 {
+				return fmt.Errorf("grid.dot_radius_px must not exceed half of grid.spacing_px")
+			}
 		} else {
 			if !inRange(grid.LineWidthPX, .25, 32) {
 				return fmt.Errorf("grid.line_width_px must be in [0.25,32]")
 			}
 		}
-		if !inRange(grid.Opacity, 0, 1) {
-			return fmt.Errorf("grid.opacity must be in [0,1]")
+		// opacity 0 is both an allowed value and the zero value of an omitted
+		// field, so a declared grid without opacity drew nothing while the
+		// request looked valid. A grid that draws no pixels is a payload bug.
+		if !(grid.Opacity > 0 && grid.Opacity <= 1) {
+			return fmt.Errorf("grid.opacity must be in (0,1]")
 		}
 		if len(grid.Color) != 7 || grid.Color[0] != '#' {
 			return fmt.Errorf("grid.color must be #RRGGBB")

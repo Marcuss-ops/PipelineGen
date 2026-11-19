@@ -1,8 +1,6 @@
 package cliprender
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,7 +10,6 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media/clipsequence"
-	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
 // MaxClipRenderBatchItems caps POST /api/clips/render/batch fan-out.
@@ -57,6 +54,13 @@ type BatchSequenceTransition struct {
 // enqueues anything, so a bad sequence fails the whole batch with zero jobs
 // created instead of leaving N renders running for a request that was rejected.
 func (s *BatchSequence) validate(items int) error {
+	// The batch embeds the same sequence contract as POST /render/sequence, so
+	// it must apply the same filesystem gate: `sequence.output.dir` would
+	// otherwise be the one remaining path from an HTTP body to an arbitrary
+	// directory write (ticket CR-19-04).
+	if strings.TrimSpace(s.Output.Dir) != "" {
+		return fmt.Errorf("sequence.output.dir is not accepted over HTTP; the server owns the output location")
+	}
 	_, err := s.transitionsByPosition(items)
 	return err
 }
@@ -121,6 +125,9 @@ type batchRenderResponse struct {
 	BatchID  string              `json:"batch_id"`
 	Accepted int                 `json:"accepted"`
 	Jobs     []batchItemResponse `json:"jobs"`
+	// Error is set on a 500 that still carries the batch envelope: a partial
+	// fan-out must never hide the jobs it already created.
+	Error string `json:"error,omitempty"`
 	// SequenceJobID is the assembly job this batch enqueued, when the request
 	// carried a sequence. It is a clip.render job in the sequence phase: it
 	// waits for the jobs above and returns the merged artifact paths.
@@ -136,30 +143,8 @@ type batchRenderResponse struct {
 // reuse its job_id. A deterministic cache hit (fingerprint → certified locator)
 // is served synchronously in milliseconds without enqueuing.
 func (h *Handler) RenderBatch(c *gin.Context) {
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxClipRenderBatchBytes)
-
-	var req BatchRenderRequest
-	decoder := json.NewDecoder(c.Request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			c.JSON(http.StatusRequestEntityTooLarge, renderResponse{
-				Status:    StatusError,
-				Error:     fmt.Sprintf("batch body exceeds the %d byte limit", MaxClipRenderBatchBytes),
-				ErrorCode: ErrCodePayloadTooLarge,
-			})
-			return
-		}
-		code := ErrCodeInvalidPayload
-		if strings.HasPrefix(err.Error(), "json: unknown field ") {
-			code = ErrCodeUnknownField
-		}
-		c.JSON(http.StatusBadRequest, renderResponse{
-			Status:    StatusError,
-			Error:     "invalid JSON payload: " + err.Error(),
-			ErrorCode: code,
-		})
+	req, ok := decodeStrictBody[BatchRenderRequest](c, MaxClipRenderBatchBytes, "batch")
+	if !ok {
 		return
 	}
 	if len(req.Items) == 0 {
@@ -234,6 +219,7 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 	perPosJobID := make([]string, len(req.Items))
 	perPosCacheHit := make([]bool, len(req.Items))
 	perPosAssetID := make([]string, len(req.Items))
+	perPosErr := make([]string, len(req.Items))
 
 	// Try cache first for each unique fingerprint (handler-level fast path).
 	// A hit is served without touching the GPU; a miss falls through to enqueue.
@@ -245,16 +231,18 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 		firstPos[fp] = i
 		uniqueFPs = append(uniqueFPs, fp)
 		if h.renderCache != nil {
-			if rec, err := h.renderCache.Get(c.Request.Context(), fp); err == nil && rec != nil {
+			rec, cacheErr := h.renderCache.Get(c.Request.Context(), fp)
+			logCacheLookupFailure(h.log, "handler_batch", fp, cacheErr)
+			if cacheErr == nil && rec != nil {
 				perPosCacheHit[i] = true
 				perPosAssetID[i] = rec.AssetID
-				// Synthesize a stable job_id from the cached asset so the
-				// caller can poll the existing media row instead of a new job.
-				perPosJobID[i] = "cache:" + fp[:16]
+				// A cache hit is NOT a job: the item's identity is the asset it
+				// reuses. The historical "cache:<fp>" job_id answered 404 when a
+				// caller polled it, so the field stays empty.
 				h.log.Info("clip.render batch cache hit",
 					zap.String("batch_id", batchID),
 					zap.Int("position", i),
-					zap.String("fingerprint", fp[:16]),
+					zap.String("fingerprint", digestPrefix(fp)),
 					zap.String("asset_id", rec.AssetID),
 				)
 			}
@@ -270,6 +258,7 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 	// job_…_e7043302. Derive the suffix from the content fingerprint so
 	// retries remain idempotent (same ordered clips → same per-item
 	// correlation) while distinct clips never collide.
+	enqueueFailed := 0
 	for _, fp := range uniqueFPs {
 		pos := firstPos[fp]
 		if perPosCacheHit[pos] {
@@ -279,7 +268,7 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 		// Fingerprint is the canonical dedup key; also scoping the
 		// correlation to the batch keeps the global correlation space
 		// collision-free without relying on randomness.
-		perItemCorrelation := batchID + ":" + fp[:16]
+		perItemCorrelation := batchID + ":" + digestPrefix(fp)
 		enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{
 			Type:          TypeClipRender,
 			CorrelationID: perItemCorrelation,
@@ -290,18 +279,70 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 			h.log.Error("clip.render batch enqueue failed",
 				zap.String("batch_id", batchID),
 				zap.Int("position", pos),
-				zap.String("fingerprint", fp[:16]),
+				zap.String("fingerprint", digestPrefix(fp)),
 				zap.Error(err))
-			apiutil.InternalError(c, fmt.Errorf("item %d enqueue: %w", pos, err))
-			return
+			// Keep fanning out: returning here would abandon the jobs already
+			// created without telling the caller their ids. The response below
+			// reports every position with its own outcome.
+			enqueueFailed++
+			perPosErr[pos] = fmt.Sprintf("item %d enqueue: %v", pos, err)
+			continue
 		}
 		perPosJobID[pos] = enqueued.ID
 		h.log.Info("clip.render batch enqueued",
 			zap.String("batch_id", batchID),
 			zap.Int("position", pos),
 			zap.String("job_id", enqueued.ID),
-			zap.String("fingerprint", fp[:16]),
+			zap.String("fingerprint", digestPrefix(fp)),
 		)
+	}
+
+	// The per-item outcome is built BEFORE any further enqueue, so a failed
+	// fan-out can still report the ids it created.
+	jobs := make([]batchItemResponse, len(req.Items))
+	accepted := 0
+	for _, fp := range uniqueFPs {
+		if perPosErr[firstPos[fp]] == "" {
+			accepted++
+		}
+	}
+	for i, fp := range perItemFP {
+		canonical := firstPos[fp]
+		item := batchItemResponse{
+			Position:    i,
+			Fingerprint: fp,
+			JobID:       perPosJobID[canonical],
+			CacheHit:    perPosCacheHit[canonical],
+			AssetID:     perPosAssetID[canonical],
+		}
+		switch {
+		case perPosErr[canonical] != "":
+			item.Status = StatusError
+			item.Error = perPosErr[canonical]
+		case perPosCacheHit[canonical]:
+			item.Status = "CACHED"
+		default:
+			item.Status = StatusQueued
+		}
+		jobs[i] = item
+	}
+	if enqueueFailed > 0 {
+		h.log.Error("clip.render batch partially enqueued",
+			zap.String("batch_id", batchID),
+			zap.Int("unique", len(uniqueFPs)),
+			zap.Int("failed", enqueueFailed),
+			zap.Int("accepted", accepted))
+		// The items that did enqueue are real renders the caller must be able
+		// to find (and cancel). The assembly is deliberately NOT enqueued: it
+		// would wait forever on the positions that never started.
+		c.JSON(http.StatusInternalServerError, batchRenderResponse{
+			BatchID:  batchID,
+			Accepted: accepted,
+			Jobs:     jobs,
+			Error: fmt.Sprintf("%d of %d unique items failed to enqueue; the jobs listed above WERE created and must be cancelled if the batch is abandoned",
+				enqueueFailed, len(uniqueFPs)),
+		})
+		return
 	}
 
 	// Sequence assembly, in the SAME request. The job is enqueued after the
@@ -330,7 +371,14 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 			h.log.Error("clip.render batch sequence enqueue failed",
 				zap.String("batch_id", batchID),
 				zap.Error(seqErr))
-			apiutil.InternalError(c, fmt.Errorf("sequence enqueue: %w", seqErr))
+			// The item renders were created; return them with the assembly error
+			// instead of a bare 500 that loses their ids.
+			c.JSON(http.StatusInternalServerError, batchRenderResponse{
+				BatchID:  batchID,
+				Accepted: accepted,
+				Jobs:     jobs,
+				Error:    fmt.Sprintf("sequence enqueue failed: %v; the %d listed item jobs WERE created", seqErr, accepted),
+			})
 			return
 		}
 		sequenceJobID = enqueued.ID
@@ -341,25 +389,6 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 			zap.Int("transitions", len(req.Sequence.Transitions)))
 	}
 
-	jobs := make([]batchItemResponse, len(req.Items))
-	for i, fp := range perItemFP {
-		canonical := firstPos[fp]
-		status := StatusQueued
-		if perPosCacheHit[canonical] {
-			status = "CACHED"
-		}
-		jobs[i] = batchItemResponse{
-			Position:    i,
-			Fingerprint: fp,
-			JobID:       perPosJobID[canonical],
-			Status:      status,
-			CacheHit:    perPosCacheHit[canonical],
-			AssetID:     perPosAssetID[canonical],
-		}
-	}
-
-	// Count accepted as unique enqueues + unique cache hits (deduped).
-	accepted := len(uniqueFPs)
 	h.log.Info("clip.render batch accepted",
 		zap.String("batch_id", batchID),
 		zap.Int("items", len(req.Items)),

@@ -67,7 +67,7 @@ func TestDetachWithTimeout_RemovesParentDeadlineCancellation(t *testing.T) {
 // TestDetachWithTimeout_AppliesTimeout: detached ctx MUST expire
 // after the supplied timeout; cancel func MUST allow early release.
 func TestDetachWithTimeout_ZeroTimeoutExpiresImmediately(t *testing.T) {
-	before := InFlight()
+	before := testInFlightCount()
 	ctx, cancel := DetachWithTimeout(context.Background(), "test-zero-timeout", 0)
 	defer cancel()
 	select {
@@ -144,20 +144,21 @@ func TestDetachWithTimeout_NilCtxDefensiveFallback(t *testing.T) {
 	}
 }
 
-// TestInFlight_ReflectsRegistry: exported counter MUST reflect the
+// TestInFlight_ReflectsRegistry: the in-memory registry MUST reflect the
 // number of active detached tasks and return to its baseline after
-// cancellation.
+// cancellation (the exported counter was retired in 2026-11-19; the
+// registry itself is still the bookkeeping source).
 func TestInFlight_ReflectsRegistry(t *testing.T) {
-	before := InFlight()
+	before := testInFlightCount()
 	parent := corid.WithCorrelationID(context.Background(), "test-count-trace")
 	detached, cancel := DetachWithTimeout(parent, "test-count", 1*time.Second)
 	defer cancel()
 	_ = detached
-	if got := InFlight(); got != before+1 {
+	if got := testInFlightCount(); got != before+1 {
 		t.Fatalf("InFlight counter: before=%d, after register=%d, want before+1=%d", before, got, before+1)
 	}
 	cancel()
-	if got := InFlight(); got != before {
+	if got := testInFlightCount(); got != before {
 		t.Fatalf("InFlight counter after cancel: got=%d, want baseline=%d", got, before)
 	}
 }
@@ -166,21 +167,21 @@ func waitForInFlight(t *testing.T, want int) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if got := InFlight(); got == want {
+		if got := testInFlightCount(); got == want {
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatalf("InFlight did not reach %d (got %d)", want, InFlight())
+	t.Fatalf("InFlight did not reach %d (got %d)", want, testInFlightCount())
 }
 
 // TestDetachWithTimeout_TimeoutCleansRegistry verifies that timeout cleanup
 // does not depend on callers remembering to invoke CancelFunc.
 func TestDetachWithTimeout_TimeoutCleansRegistry(t *testing.T) {
-	before := InFlight()
+	before := testInFlightCount()
 	ctx, cancel := DetachWithTimeout(context.Background(), "test-auto-timeout", 10*time.Millisecond)
 	_ = cancel // intentionally not called: the watcher owns timeout cleanup.
-	if got := InFlight(); got != before+1 {
+	if got := testInFlightCount(); got != before+1 {
 		t.Fatalf("InFlight after registration: got=%d, want=%d", got, before+1)
 	}
 	<-ctx.Done()
@@ -190,19 +191,19 @@ func TestDetachWithTimeout_TimeoutCleansRegistry(t *testing.T) {
 // TestDetachWithTimeout_DuplicateKeysTrackEachTask verifies that concurrent
 // tasks with the same task/correlation key are tracked independently.
 func TestDetachWithTimeout_DuplicateKeysTrackEachTask(t *testing.T) {
-	before := InFlight()
+	before := testInFlightCount()
 	parent := corid.WithCorrelationID(context.Background(), "duplicate-trace")
 	first, firstCancel := DetachWithTimeout(parent, "test-duplicate", time.Second)
 	second, secondCancel := DetachWithTimeout(parent, "test-duplicate", time.Second)
 	key := "test-duplicate:duplicate-trace"
-	if got := InFlight(); got != before+2 {
+	if got := testInFlightCount(); got != before+2 {
 		t.Fatalf("InFlight for duplicate keys: got=%d, want=%d", got, before+2)
 	}
 	firstCancel()
 	if _, ok := inFlight.Load(key); !ok {
 		t.Fatalf("registry removed while duplicate task remained")
 	}
-	if got := InFlight(); got != before+1 {
+	if got := testInFlightCount(); got != before+1 {
 		t.Fatalf("InFlight after first duplicate cancel: got=%d, want=%d", got, before+1)
 	}
 	secondCancel()
@@ -213,14 +214,14 @@ func TestDetachWithTimeout_DuplicateKeysTrackEachTask(t *testing.T) {
 
 // TestDetachWithTimeout_CancelAndTimeoutRace stresses both cleanup paths.
 func TestDetachWithTimeout_CancelAndTimeoutRace(t *testing.T) {
-	before := InFlight()
+	before := testInFlightCount()
 	const tasks = 64
 	cancels := make([]context.CancelFunc, 0, tasks)
 	for i := 0; i < tasks; i++ {
 		_, cancel := DetachWithTimeout(context.Background(), "test-race", 5*time.Millisecond)
 		cancels = append(cancels, cancel)
 	}
-	if got := InFlight(); got != before+tasks {
+	if got := testInFlightCount(); got != before+tasks {
 		t.Fatalf("InFlight after stress registration: got=%d, want=%d", got, before+tasks)
 	}
 
@@ -236,4 +237,19 @@ func TestDetachWithTimeout_CancelAndTimeoutRace(t *testing.T) {
 	}
 	wg.Wait()
 	waitForInFlight(t, before)
+}
+
+// testInFlightCount sums the per-key counts held by the in-memory
+// registry. Replaces the retired exported counter: the assertions that
+// followed it (register → +1, cancel → baseline) still pin the
+// bookkeeping contract.
+func testInFlightCount() int {
+	total := 0
+	inFlight.Range(func(_, value any) bool {
+		if entry, ok := value.(*inFlightEntry); ok {
+			total += entry.count
+		}
+		return true
+	})
+	return total
 }

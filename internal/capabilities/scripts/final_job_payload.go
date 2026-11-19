@@ -298,8 +298,10 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 				assetID string
 			}
 			fixedClips := make([]fixedClip, 0)
-			// Keep the original clips in their declared order. Each clip's own
-			// certified duration defines its complete timeline span.
+			// Keep the original clips in their declared order, but fit them
+			// inside the fixed-media segment's canonical timeline duration. The
+			// physical Drive asset can be longer than the authored window (for
+			// example, a 10-second intro cut from a 27-second source clip).
 			for _, intent := range segment.EffectiveAudioIntents() {
 				assetID := strings.TrimSpace(intent.ClipAssetID)
 				if assetID == "" {
@@ -320,7 +322,14 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			if len(fixedClips) == 0 {
 				return nil, nil, fmt.Errorf("fixed scene %q has no clip assets", segment.ID)
 			}
+			remainingMS := (segment.DurationUS + 999) / 1000
+			if remainingMS <= 0 {
+				return nil, nil, fmt.Errorf("fixed scene %q has no positive canonical duration", segment.ID)
+			}
 			for _, fixed := range fixedClips {
+				if remainingMS <= 0 {
+					break
+				}
 				asset, err := resolveFinalJobFixedMediaAsset(ctx, resolver, result, segment.ID, fixed.assetID, renderLanguage)
 				if err != nil {
 					return nil, nil, fmt.Errorf("resolve intro clip %s: %w", fixed.assetID, err)
@@ -329,10 +338,15 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 				if durationMS <= 0 {
 					return nil, nil, fmt.Errorf("fixed intro/outro clip %q has no certified physical duration", fixed.assetID)
 				}
-				remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "clip", asset, durationMS, "Protected intro clip"))
+				sceneMS := min(durationMS, remainingMS)
+				remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "clip", asset, sceneMS, "Protected intro clip"))
 				appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "clip", asset)
-				plannedDurationMS += durationMS
+				plannedDurationMS += sceneMS
+				remainingMS -= sceneMS
 				clipOrdinal++
+			}
+			if remainingMS > 0 {
+				return nil, nil, fmt.Errorf("fixed scene %q clips are %dms shorter than its canonical duration", segment.ID, remainingMS)
 			}
 			continue
 		}

@@ -31,6 +31,11 @@ func TestRequestValidateMediaexecV2Operations(t *testing.T) {
 			req:  request{Version: ProtocolVersion, Operation: OperationNormalize, OutputPath: "/out.mp4"},
 			want: "normalize: source_path is required",
 		},
+		{
+			name: "preflight requires its payload",
+			req:  request{Version: ProtocolVersion, Operation: OperationPreflight},
+			want: "preflight: preflight is required",
+		},
 	}
 
 	for _, tt := range tests {

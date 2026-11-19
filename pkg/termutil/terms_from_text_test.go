@@ -27,29 +27,3 @@ func TestTermsFromText(t *testing.T) {
 		})
 	}
 }
-
-func TestTermsFromFields(t *testing.T) {
-	got := TermsFromFields("hello world", "", "world again")
-	if len(got) == 0 {
-		t.Fatal("TermsFromFields() returned empty slice")
-	}
-	foundHello := false
-	for _, w := range got {
-		if w == "hello" || w == "world" || w == "again" {
-			foundHello = true
-		}
-	}
-	if !foundHello {
-		t.Errorf("TermsFromFields() = %v, expected at least one of hello/world/again", got)
-	}
-}
-
-func TestCleanTerms(t *testing.T) {
-	input := []string{"  Hello  ", "hello", "WORLD", "cat"}
-	opts := TermOptions{MinLen: 3, Lowercase: true, RemoveStops: false, Unique: true}
-	got := CleanTerms(input, opts)
-	want := []string{"hello", "world", "cat"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("CleanTerms(%v, ...) = %v, want %v", input, got, want)
-	}
-}

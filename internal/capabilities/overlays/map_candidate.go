@@ -3,6 +3,7 @@ package overlays
 import (
 	"strings"
 
+	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
 )
 
@@ -52,7 +53,7 @@ func NewMapCandidate(entityID, label string, latitude, longitude float64, startU
 	}
 	level := ""
 	if len(scope) > 0 {
-		level = strings.ToLower(strings.TrimSpace(scope[0]))
+		level = capabilitygeocoding.CanonicalScope(scope[0])
 	}
 	return MapCandidate{
 		EntityID: entityID,

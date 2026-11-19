@@ -74,7 +74,7 @@ var CanonicalFontAssetsByFamily = map[string]CanonicalFontAsset{
 // paths through ResolveFontAsset, so they share its absolute-path and
 // SHA-256 contract instead of being loaded ad hoc.
 var ModernFontPaths = map[string]string{
-	"font-inter":                            "assets/fonts/Inter.ttf",
+	"font-inter":                            CanonicalInterFontPath,
 	"font-manrope":                          "assets/fonts/Manrope.ttf",
 	"font-dm-sans":                          "assets/fonts/DM-Sans.ttf",
 	"font-instrument-sans":                  "assets/fonts/Instrument-Sans.ttf",
@@ -83,11 +83,11 @@ var ModernFontPaths = map[string]string{
 	"font-space-grotesk":                    "assets/fonts/Space-Grotesk.ttf",
 	"font-outfit":                           "assets/fonts/Outfit.ttf",
 	"font-urbanist":                         "assets/fonts/Urbanist.ttf",
-	"font-bricolage-grotesque":              "assets/fonts/Bricolage-Grotesque.ttf",
-	"font-playfair-display-italic":          "assets/fonts/PlayfairDisplay-Italic.ttf",
-	"font-google-sans":                      "assets/fonts/Google-Sans.ttf",
-	"font-changa-one":                       "assets/fonts/Changa-One.ttf",
-	"font-dm-serif-display":                 "assets/fonts/DM-Serif-Display.ttf",
+	"font-bricolage-grotesque":              CanonicalBricolageGrotesqueFontPath,
+	"font-playfair-display-italic":          CanonicalPlayfairDisplayItalicFontPath,
+	"font-google-sans":                      CanonicalGoogleSansFontPath,
+	"font-changa-one":                       CanonicalChangaOneFontPath,
+	"font-dm-serif-display":                 CanonicalDMSerifDisplayFontPath,
 	"font-dm-serif-display-italic":          "assets/fonts/DM-Serif-Display-Italic.ttf",
 	"font-sf-pro-display":                   "assets/fonts/SF-Pro-Display-Regular.otf",
 	"font-sf-pro-display-ultralight":        "assets/fonts/SF-Pro-Display-Ultralight.otf",

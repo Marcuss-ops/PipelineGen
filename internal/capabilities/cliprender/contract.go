@@ -45,6 +45,47 @@ var ErrContractMismatch = errors.New("clip.render: rendered output violates the 
 // clip.render API while retaining ErrContractMismatch for post-render probes.
 var ErrOutputContractMismatch = errors.New("OUTPUT_CONTRACT_MISMATCH")
 
+// videoTimebaseEquivalent is one timebase denominator a certified 24 fps
+// artifact may legitimately carry although the contract stores 1/90000. The
+// reason is documentation, not behaviour: it explains why the tolerance exists
+// so a future reader can tell a deliberate equivalence from a debug leftover.
+type videoTimebaseEquivalent struct {
+	num    int
+	den    int
+	reason string
+}
+
+// videoTimebaseEquivalents is the CLOSED allowlist the video-timebase check
+// consults after the exact rational comparison fails. Every entry is a scale a
+// 24 fps muxer is known to emit; anything else is a real mismatch and fails.
+var videoTimebaseEquivalents = []videoTimebaseEquivalent{
+	// The canonical contract timebase itself: MPEG's 90 kHz master clock.
+	{1, 90000, "MPEG 90 kHz master clock, the contract's own timebase"},
+	// 24 fps × 512 ticks/frame. Matroska/FFmpeg's microsecond-free default
+	// for a frame-aligned scale.
+	{1, 12288, "24 fps × 512 ticks/frame (Matroska/FFmpeg frame-aligned default)"},
+	// 24 fps × 1000 ticks/frame: millisecond-scale timestamps, still exactly
+	// frame-aligned at 24 fps.
+	{1, 24000, "24 fps × 1000 ticks/frame (millisecond-scale muxer clock)"},
+	// 24 fps × 640 ticks/frame: a scale that keeps both frame and audio
+	// boundaries on integers for 48 kHz sources.
+	{1, 15360, "24 fps × 640 ticks/frame (audio-friendly frame-aligned scale)"},
+	// 1280 × 10 Hz, emitted by the legacy RenderingGen mux lane for certified
+	// 24 fps artifacts.
+	{1, 12800, "1280 × 10 Hz clock emitted by the legacy RenderingGen mux lane"},
+}
+
+// equivalentVideoTimebase reports whether the probed timebase is one of the
+// documented equivalents of the contract timebase.
+func equivalentVideoTimebase(num, den int) bool {
+	for _, tb := range videoTimebaseEquivalents {
+		if tb.num == num && tb.den == den {
+			return true
+		}
+	}
+	return false
+}
+
 func itoa(v int64) string { return strconv.FormatInt(v, 10) }
 
 func ui(v uint64) string { return strconv.FormatUint(v, 10) }
@@ -156,7 +197,7 @@ var contractChecks = []contractCheck{
 			if c.VideoTimeBase.Num > 0 && c.VideoTimeBase.Den > 0 &&
 				p.VideoTimeBaseNum != 0 && p.VideoTimeBaseDen != 0 &&
 				p.VideoTimeBaseNum*c.VideoTimeBase.Den != c.VideoTimeBase.Num*p.VideoTimeBaseDen {
-				if p.VideoTimeBaseNum == 1 && (p.VideoTimeBaseDen == 12288 || p.VideoTimeBaseDen == 90000 || p.VideoTimeBaseDen == 24000 || p.VideoTimeBaseDen == 15360 || p.VideoTimeBaseDen == 12800) {
+				if equivalentVideoTimebase(p.VideoTimeBaseNum, p.VideoTimeBaseDen) {
 					return false, ""
 				}
 				return true, "video timebase " + ui(uint64(p.VideoTimeBaseNum)) + "/" + ui(uint64(p.VideoTimeBaseDen)) +

@@ -13,11 +13,18 @@ import (
 // the payload font/color/glow silently stop at the portrait.
 func TestPayloadTextStyleReachesCaptionedEntityImagesAndChainSegments(t *testing.T) {
 	glow := 18.0
+	opacity := 0.82
+	radius := 10.0
 	style := &scriptpkg.OverlayStyleSpec{
 		FontFamily: "oswald",
 		Color:      []float64{1.0, 0.78, 0.25, 1.0},
 		GlowSize:   &glow,
 		GlowColor:  "#4DE1FF",
+		// The context rectangle behind an entity name is the same payload
+		// card_background every text lane uses; its colour is caller-owned.
+		CardBackground: &scriptpkg.OverlayCardBackgroundSpec{
+			Color: "#12233A", Opacity: &opacity, Radius: &radius, Padding: []float64{16, 10},
+		},
 	}
 	items := []capmodel.OverlayItem{
 		{
@@ -59,6 +66,7 @@ func TestPayloadTextStyleReachesCaptionedEntityImagesAndChainSegments(t *testing
 	if got := entityParams["fill"]; got != "#FFC740" {
 		t.Errorf("entity caption fill = %#v, want #FFC740", got)
 	}
+	assertCaptionBackground(t, entityParams, "entity caption")
 
 	segments, ok := capmodel.ChainSegmentMaps(items[1].Params)
 	if !ok || len(segments) != 1 {
@@ -73,5 +81,34 @@ func TestPayloadTextStyleReachesCaptionedEntityImagesAndChainSegments(t *testing
 	}
 	if got := segmentParams["fill"]; got != "#FFC740" {
 		t.Errorf("chain caption fill = %#v, want #FFC740", got)
+	}
+	assertCaptionBackground(t, segmentParams, "chain caption")
+}
+
+// assertCaptionBackground pins the context rectangle and its colour on the
+// params the renderer reads: the nested style.background travels with the
+// caption, so the plate is opt-in and caller-coloured.
+func assertCaptionBackground(t *testing.T, params map[string]any, label string) {
+	t.Helper()
+	style, ok := params["style"].(map[string]any)
+	if !ok {
+		t.Fatalf("%s style block = %#v, want one", label, params["style"])
+	}
+	plate, ok := style["background"].(map[string]any)
+	if !ok {
+		t.Fatalf("%s background = %#v, want a plate", label, style["background"])
+	}
+	if got := plate["color"]; got != "#12233A" {
+		t.Errorf("%s plate color = %#v, want #12233A", label, got)
+	}
+	if got := plate["opacity"]; got != 0.82 {
+		t.Errorf("%s plate opacity = %#v, want 0.82", label, got)
+	}
+	if got := plate["radius"]; got != 10.0 {
+		t.Errorf("%s plate radius = %#v, want 10", label, got)
+	}
+	padding, ok := plate["padding"].([]float64)
+	if !ok || len(padding) != 2 || padding[0] != 16 || padding[1] != 10 {
+		t.Errorf("%s plate padding = %#v, want [16 10]", label, plate["padding"])
 	}
 }

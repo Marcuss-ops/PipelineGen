@@ -1,6 +1,6 @@
 # TICKET — App wiring: test-only composition helpers (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 16 unreachable functions in `internal/app/wiring`
+- **Status:** CLOSED (2026-11-19) — 0 unreachable functions under `internal/app/wiring`; guard 445 → 377
 - **Severity:** P2 — a second composition root (`WireMinimal`) and adapters that nothing calls
 - **Owner:** composition root owner
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -64,3 +64,35 @@ Key symbols: `WireMinimal`, `minimalLifecycle`, `resolveGPUGateSlots`, `attachFi
 deadcode -test=false ./... | grep '^internal/app/wiring/'
 go test ./internal/app/wiring/... -count=1
 ```
+
+## Esito (2026-11-19)
+
+**Decisione `WireMinimal` (2026-11-19): rimosso.** Era un secondo composition
+root raggiunto solo da `health_wiring_test.go`, costruiva un `AppDeps` con
+`Handlers.Registry: nil` e un `minimalLifecycle` che scartava le probe: una
+"startup" che non monta rotte e non espone readiness. Il rischio descritto dal
+ticket (qualcuno lo scambia per una via di boot supportata) era reale e la via
+canonica `WireServices`/`InitComposition` esiste già. Rimossi `WireMinimal`,
+`minimalLifecycle` (`Start`/`Stop`/`AddProbe`) e il test che li costruiva.
+
+**Fixture spostate nei test** (in produzione non avevano chiamanti):
+`newMiddlewareRateLimitAdapter`, `newMiddlewareFeatureFlagsAdapter` (ora in
+`health_wiring_test.go`), `isAIImageIngestSource` (in `media_ingest_test.go`).
+Nessun file di produzione dichiara più un helper che solo un test usa.
+
+**Ritirati con i loro test:**
+`wireSourcingAtomic` (gate fail-closed mai chiamato da `newAssetRegisterService`:
+il port `SourcingAtomicPort` non ha consumatori, quindi il gate non poteva
+scattare), `NewSceneTextGenerator` (wrapper; il sito vivo usa
+`scriptwiring.NewSceneTextGenerator`), `NewAssetDestResolver` (alias di una riga),
+`SafeCall`, `resolveGPUGateSlots`/`gpuGateSlots` (duplicato di
+`overlays.ResolveGPUGateSlots`, che è il lettore reale di `RENDERINGGEN_GPU_SLOTS`),
+`attachFinalJobDriveSources`/`finalJobAdapterString` (il live path dei final job
+risolve gli stock via `stockDriveReference`), `resolveHits` (accessor di metrica
+senza consumatore; l'asserzione del test legge il contatore sotto lock), e
+`NewRateLimitedPublisher`/`NewRateLimitedPublisherWithGate`/`rateLimitedPublisher.Publish`
+(nessuna pubblicazione voiceover vive fuori dalla pipeline port-driven;
+`NewDriveUploadGate`, che è il gate condiviso reale, resta).
+
+**Verifica:** `deadcode -test=false ./... | grep '^internal/app/wiring/'` → vuoto;
+`go vet` e `go test ./internal/app/wiring/... -count=1` verdi.

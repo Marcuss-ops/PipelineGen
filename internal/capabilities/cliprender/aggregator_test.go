@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,11 +16,13 @@ import (
 // both the parent (by the id under finalisation) and the settle child (by the
 // id recorded in the parent result).
 type aggregatorJobsStub struct {
-	parent    job.Job
-	child     *job.Job
-	finalized bool
-	status    job.Status
-	result    map[string]any
+	parent        job.Job
+	child         *job.Job
+	finalized     bool
+	finalizeCalls int
+	status        job.Status
+	result        map[string]any
+	errMsg        string
 }
 
 func (s *aggregatorJobsStub) Get(_ context.Context, id string) (*job.Job, error) {
@@ -34,11 +37,15 @@ func (s *aggregatorJobsStub) Get(_ context.Context, id string) (*job.Job, error)
 }
 
 func (s *aggregatorJobsStub) ListAwaitingAggregation(context.Context, string, int) ([]job.Job, error) {
+	if s.finalized {
+		return nil, nil
+	}
 	return []job.Job{s.parent}, nil
 }
 
-func (s *aggregatorJobsStub) FinalizeAggregateParent(_ context.Context, _ string, status job.Status, result map[string]any, _ string, _ int) error {
-	s.finalized, s.status, s.result = true, status, result
+func (s *aggregatorJobsStub) FinalizeAggregateParent(_ context.Context, _ string, status job.Status, result map[string]any, errMsg string, _ int) error {
+	s.finalized, s.status, s.result, s.errMsg = true, status, result, errMsg
+	s.finalizeCalls++
 	return nil
 }
 
@@ -85,6 +92,39 @@ func TestParentAggregatorDefaultIntervalIsRecoveryCadence(t *testing.T) {
 	}
 	if !stub.finalized || stub.status != job.StatusSucceeded {
 		t.Fatalf("finalized=%v status=%q, want the parent terminal immediately", stub.finalized, stub.status)
+	}
+}
+
+// TestParentAggregatorFinalizesOrphanParentOnce pins CR-19-11: a parent whose
+// submit died before EnqueueContinuation has no settle child and therefore no
+// future terminal state. It must be finalised FAILED with an explicit reason on
+// the first sweep, and the sweeper must not warn about it on every later tick.
+func TestParentAggregatorFinalizesOrphanParentOnce(t *testing.T) {
+	raw, err := json.Marshal(map[string]any{"parent_state": ParentStateWaitingChildren})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stub := &aggregatorJobsStub{
+		parent: job.Job{ID: "parent-orphan", Type: TypeClipRender, Result: raw, Revision: 3},
+	}
+	agg := NewParentAggregator(stub, zap.NewNop(), 0)
+
+	agg.Tick(context.Background())
+	if !stub.finalized || stub.status != job.StatusFailed {
+		t.Fatalf("orphan parent finalized=%v status=%q, want FAILED", stub.finalized, stub.status)
+	}
+	if !strings.Contains(stub.errMsg, "child_job_id") {
+		t.Fatalf("failure reason must name the missing settle child, got %q", stub.errMsg)
+	}
+	if stub.result["parent_state"] != "failed" {
+		t.Fatalf("result parent_state = %v, want failed", stub.result["parent_state"])
+	}
+
+	// A second sweep must see no awaiting parent, so the terminal parent is not
+	// re-finalised (and no warning loop can form).
+	agg.Tick(context.Background())
+	if stub.finalizeCalls != 1 {
+		t.Fatalf("finalize calls = %d, want exactly 1", stub.finalizeCalls)
 	}
 }
 

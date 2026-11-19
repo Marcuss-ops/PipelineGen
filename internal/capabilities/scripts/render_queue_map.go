@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
@@ -364,4 +365,77 @@ var mapCameraAnimations = capoverlay.AnimationRandomCandidates("map.camera")
 // against this list; the random sampler draws from mapCameraAnimations.
 func mapCameraAnimationsCertified() []string {
 	return capoverlay.AnimationCandidates("map.camera")
+}
+
+// decisionReport records every decision behind one map render: the resolved
+// presentation, the grounded places with their spoken schedule, the declared
+// degradations and the backend that will draw it. It fails closed when the
+// item's backend cannot be resolved, before any render work is paid for.
+func (p mapRenderPresentation) decisionReport(plan capmodel.OverlayPlan, seed string) (*capoverlay.MapDecisionReport, error) {
+	item := plan.Items[0]
+	report := capoverlay.NewMapDecisionReport(plan.PlanID, item.ID, seed)
+	report.Requested = p.Requested
+	report.Composition = p.Composition
+	report.CompositionFamily = string(mapCompositionFamily(p.Composition))
+	report.Fallback = p.Fallback
+	report.CameraAnimation = p.Camera
+	report.LabelAnimation = p.Label
+	report.Basemap = p.Basemap
+	report.MapGroup = p.Group
+	report.Strategy = p.Strategy
+	if backend, backendReason, backendErr := capoverlay.ResolveMapItemBackend(item); backendErr == nil {
+		report.Backend = string(backend)
+		report.BackendReason = backendReason
+	} else {
+		return nil, backendErr
+	}
+	for _, pin := range item.Map.Pins {
+		place := capoverlay.MapDecisionPlace{
+			EntityID: pin.ID, Label: pin.Label, Scope: pin.Scope,
+			Latitude: pin.Latitude, Longitude: pin.Longitude,
+			Geocoded: true, State: "eligible",
+		}
+		for _, entry := range p.PinTiming {
+			if entryID, _ := entry["id"].(string); entryID == pin.ID {
+				place.StartUS = int64(capoverlay.MustFloat(entry["start_s"]) * 1_000_000)
+				place.DurationUS = int64(capoverlay.MustFloat(entry["duration_s"]) * 1_000_000)
+			}
+		}
+		if place.DurationUS == 0 {
+			report.AddExclusion("no_spoken_timing", "pin "+pin.ID+" has no grounded occurrence timing; the camera cannot follow it")
+		} else {
+			place.State = "scheduled"
+		}
+		report.Places = append(report.Places, place)
+	}
+	if p.Fallback != "" {
+		report.AddExclusion("declared_fallback", p.Fallback)
+	}
+	// Declared degradations of the base flyover presentation: each one is
+	// recorded here and its wire field is sent in the certified-closed value —
+	// never a field the renderer would silently ignore or approximate.
+	if len(p.PinTiming) > 0 {
+		report.AddExclusion("per_pin_timing_not_ported", "per-pin spoken timing declined: the native base flyover presents every place continuously (camera-activation family awaits its parity gate)")
+	}
+	if item.Map.AreaGlowRadiusKM > 0 && p.Composition != "area_glow_pulse" {
+		report.AddExclusion("area_glow_not_ported", fmt.Sprintf("area glow ring of %.1f km declined: the selected composition %q does not draw the ring (area_glow_pulse is the ported glow composition)", item.Map.AreaGlowRadiusKM, p.Composition))
+	}
+	if hasPinAccent(item.Map.Pins) {
+		report.AddExclusion("pin_presentation_simplified", "pin accent color and extra cards are not ported: the native base flyover draws the certified camera-aligned labels")
+	}
+	return report, nil
+}
+
+// ── render_queue_map_profile.go (merged to respect the package file cap) ──
+
+// dynamicMapEncodeProfile keeps final-job map videos on the exact AVC
+// configuration accepted by the packet-copy assembler. NVENC is still the
+// production profile for non-final map previews, but its SPS/PPS differs from
+// the canonical assembly avcC even when the visible H.264 profile and geometry
+// match.
+func dynamicMapEncodeProfile(plan capmodel.OverlayPlan, configured string) (capoverlay.MapEncodeProfile, error) {
+	if strings.EqualFold(strings.TrimSpace(plan.OutputProfileID), kernelmedia.OverlayVideoOnlyProfileID) {
+		return capoverlay.ResolveMapEncodeProfile(capoverlay.MapCPUCodec)
+	}
+	return capoverlay.ResolveMapEncodeProfile(configured)
 }

@@ -149,3 +149,29 @@ a fixture and two SHA constants.
 - `make verify-main` green with the three key-set gates in it. **BLOCKED** by a
   local, untracked cache entry (`data/final-job-fragments/66/*.mp4` carrying a
   pre-canonical avcC); no code in this ticket is involved.
+
+## Prossimi passi (2026-11-19)
+
+Il contratto è pinnato; quello che manca è la decisione di prodotto sul
+sampler dei preset (§Open 1) e, a valle, la rimozione della seconda decisione.
+L'ordine eseguibile è questo:
+
+1. **Scegliere tra (a) e (b) del §Open 1** e scriverlo qui con data. Senza
+   questa scelta i punti 2–6 non si possono toccare: sono tutti conseguenze.
+2. **Se (a):** spedire il vocabolario `preset.image` nella richiesta e portare
+   il sampler seedato in Rust; gate: `identity_ownership_tests` continua a
+   passare e i 30 golden restano byte-identici.
+3. **Se (b):** accettare la rotazione diversa e dichiararla; gate: nessuna
+   modifica ai golden, ma la scelta va scritta in `OVERLAY-EDITORIAL-OWNERSHIP.md`.
+4. **Rimuovere la riscrittura** in `promoteChainEntityCardSegments` (punto 2 del
+   §Open) e ridurre `TestChainSegmentPromotionTouchesOnlyTheDeclaredSurface` a
+   «nessuna chiave cambia».
+5. **Spostare il ceiling pre-Rust** (punto 3): `MaxEntityImageOverlaysPerRun`
+   nella richiesta, così nessun item sparisce dopo il seal.
+6. **Ritirare `segmentIdentity`** (punto 4) quando il producer emette sempre
+   `kind` e `template_id`, e rigenerare la fixture invece di tenerla scritta a
+   mano (punto 5).
+
+I residui **funzionali** delle catene (handoff a 0, backdrop, fit cover,
+verifica del movimento camera) non stanno qui: sono in
+[`TICKET-OVERLAY-CHAIN-ENTITY-IMAGES-2026-11-19.md`](TICKET-OVERLAY-CHAIN-ENTITY-IMAGES-2026-11-19.md).

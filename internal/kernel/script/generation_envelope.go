@@ -148,16 +148,11 @@ type GenerationItemV2 struct {
 	// resolve the rest). When present it replaces the four legacy map_* fields
 	// above — mixing both spellings fails closed instead of guessing a winner.
 	MapPresentation *MapPresentationSpec `json:"map_presentation,omitempty"`
-	// Motion pools are optional caller choices. Empty pools use the runtime's
-	// seeded random rotation across the complete certified catalogs.
-	PhraseMotions []string `json:"phrase_motions,omitempty"`
-	// ShortPhraseMotion and LongPhraseMotion pin one certified phrase motion
-	// for every phrase in that word-count lane. A pin bypasses the seeded
-	// rotation and the phrase_motions pool for the whole run; invalid or
+	// ShortPhraseMotion pins one certified short-phrase motion for every
+	// 1-5-word phrase. A pin bypasses the seeded per-word rotation; invalid or
 	// lane-incompatible ids fail closed at plan compilation. Empty keeps the
-	// existing pool/rotation behaviour for that lane.
+	// registry's per-word buckets.
 	ShortPhraseMotion string   `json:"short_phrase_motion,omitempty"`
-	LongPhraseMotion  string   `json:"long_phrase_motion,omitempty"`
 	ImageMotions      []string `json:"image_motions,omitempty"`
 	// ImageWithTextMotions narrows the certified pool used when an image
 	// carries a caption. Empty keeps the runtime's seeded full catalog.
@@ -194,9 +189,9 @@ type GenerationItemV2 struct {
 	// Retries of the same job replay the same decorations; different images
 	// and jobs vary.
 	RandomImageEffects bool `json:"random_image_effects,omitempty"`
-	// PhraseMotionFamily optionally restricts phrase_motions to a certified
-	// family. With no explicit pool or family, the runtime rotates through its
-	// seeded random sequence over the full certified animation catalog.
+	// PhraseMotionFamily optionally restricts phrase motion selection to a
+	// certified family. With no explicit family the runtime rotates through the
+	// registry's per-word buckets.
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
 	// DateMotionFamily optionally restricts date-card motion selection to one
 	// certified ChrononTemplate date family. Empty or "auto" keeps the full
@@ -212,9 +207,6 @@ type GenerationItemV2 struct {
 	// to rotate the certified catalogs instead of replaying the same
 	// prefix; retries of the same render must reuse the same seed.
 	MotionSeed string `json:"motion_seed,omitempty"`
-	// CoherenceSeed picks the run's dominant horizontal direction (left or
-	// right) so every lane leans the same way. Empty derives it from MotionSeed.
-	CoherenceSeed string `json:"coherence_seed,omitempty"`
 	// MaxPhraseOverlays sets the requested run-level ceiling for grounded
 	// phrase overlays. A positive value may lower or raise the default, but
 	// runtime caps it at overlay.MaxPhraseOverlaysHardLimit; zero or omitted
@@ -254,7 +246,8 @@ type GenerationItemV2 struct {
 	// motions); positive values cap the rotating window to the available
 	// catalog. Chain tuning rides here too: chain_gap_ms / chain_enabled opt
 	// into fusing nearby overlays into single multi-animation chain items,
-	// chain_max_segments bounds them, chain_disabled forces legacy items.
+	// chain_max_segments bounds them, chain_handoff_ms sets the segment gap
+	// (zero abuts), chain_disabled forces legacy items.
 	AnimationCounts map[string]int `json:"animation_counts,omitempty"`
 	// EntityStyleID pins the RenderingGen entity-card composition family for
 	// every generated entity card in this item: "random" (default, full 25
@@ -352,8 +345,6 @@ const (
 
 // AnimationDirective è la rappresentazione canonica: dichiara scena,
 // contenuto, entità opzionale, preferenza e parametri — mai il futuro item.ID.
-// I campi legacy (phrase_motions, map_*_animation) non vengono più
-// normalizzati in direttive.
 type AnimationDirective struct {
 	Scope    string                   `json:"scope"`
 	SceneRef string                   `json:"scene_ref"`

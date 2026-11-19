@@ -117,34 +117,6 @@ func buildVoiceoverID(textHash string, language Language, folderID string) strin
 	return "vo_" + digest.SHA256Bytes([]byte(data))[:16]
 }
 
-// SanitizeFilename validates a filename against path traversal, adds
-// .mp3 if missing, and returns a safe output path rooted at outputDir.
-func SanitizeFilename(outputDir, filename string) (string, error) {
-	if filepath.Ext(filename) == "" {
-		filename += ".mp3"
-	}
-
-	// Prevent path traversal: reject if filename contains path separators
-	if strings.ContainsAny(filename, "/\\") {
-		return "", fmt.Errorf("invalid filename: path traversal detected")
-	}
-
-	// Sanitize the filename portion
-	cleanName := textutil.SanitizeFilename(filename)
-	cleanName = filepath.Base(cleanName)
-
-	finalPath := filepath.Join(outputDir, cleanName)
-
-	// If outputDir is set, verify the final path is inside outputDir
-	if outputDir != "" {
-		if !strings.HasPrefix(finalPath, outputDir+string(filepath.Separator)) && finalPath != outputDir {
-			return "", fmt.Errorf("invalid filename: path traversal detected")
-		}
-	}
-
-	return finalPath, nil
-}
-
 // SanitizeBasename validates and sanitizes a voiceover basename.
 // Does NOT add an extension — callers should append .mp3 themselves.
 // Rejects path separators (path traversal).

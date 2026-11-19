@@ -225,7 +225,7 @@ func MapRenderRequirementsFor(item capmodel.OverlayItem) MapRenderRequirements {
 	if label, _ := item.Params["map_label_animation"].(string); strings.TrimSpace(label) != "" && strings.TrimSpace(label) != "none" {
 		req.LabelAnimation = true
 	}
-	if _, ok := item.Params["map_pin_timing"]; ok {
+	if HasMapPinTiming(item.Params) {
 		req.PerPinTiming = true
 	}
 	if _, ok := item.Params["map_pin_extras"]; ok {

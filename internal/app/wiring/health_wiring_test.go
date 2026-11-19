@@ -4,80 +4,20 @@
 package wiring
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	middlewarepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"go.uber.org/zap"
 )
-
-// TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal documents
-// that WireMinimal returns nil ReadyChecker (no composition root).
-// The full production wiring (WireServices) always produces a non-nil
-// ReadyChecker via root.Utility.ReadyChecker → AppDeps.ReadyChecker.
-func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
-	// Change working directory to the project root so the
-	// hardcoded relative path "scripts/bridges/whisper_transcriber.py"
-	// inside NewWhisperTranscriberAdapter resolves successfully.
-	// The adapter fails-closed (godlike/07 no-fake-availability) on
-	// os.Stat failure, so the test's working directory MUST be the
-	// repo root (NOT internal/app/ where `go test` runs by default).
-	// t.Cleanup restores the original cwd so subsequent tests
-	// in this package are not poisoned.
-	origDir, _ := os.Getwd()
-	if err := os.Chdir("../.."); err != nil {
-		t.Fatalf("chdir to project root: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
-
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			Host: "127.0.0.1", Port: 0, GinMode: "test",
-			ReadTimeout: 30000, WriteTimeout: 30000,
-		},
-		Storage: config.StorageConfig{
-			DataDir: t.TempDir(),
-		},
-		Security: config.SecurityConfig{},
-		// texttracks.NewMaterializer fail-closed posture (godlike/07
-		// no-fake-availability): rejects empty SourceLanguage AND
-		// empty Languages. The fixture sets both to their
-		// canonical defaults (matches the config yaml defaults at
-		// internal/platform/config) so WireMinimal can
-		// complete composition without triggering the fail-closed
-		// gates. The test never exercises the translation path, so
-		// these values are purely non-empty sentinels. A future
-		// refactor (see code-reviewer-minimax-m3 feedback on this
-		// commit) may add a `minimal bool` flag to NewComposition
-		// so WireMinimal skips optional bundles entirely; today the
-		// fixture walks the canonical-default surface.
-		Media: config.MediaConfig{
-			Multilingual: config.MultilingualConfig{
-				SourceLanguage: "en",
-				Languages: config.LanguageSpecSlice{
-					{Code: "en", Enabled: true, TranslateClips: true, GenerateTTS: true},
-				},
-			},
-		},
-	}
-	log := zap.NewNop()
-
-	deps, err := WireMinimal(cfg, log, "")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = deps.Runtime.Lifecycle.Stop(context.Background()) })
-
-	// WireMinimal returns nil ReadyChecker (no composition root).
-	assert.Nil(t, deps.Health.ReadyChecker, "WireMinimal should have nil ReadyChecker")
-}
 
 // TestRoutes_DoNotPassNilReadyChecker verifies that when both healthSvc
 // and readyChecker are wired into the Router, the /ready endpoint
@@ -181,4 +121,27 @@ func TestRoutes_WithoutReadyChecker_ReturnsNotInitialized(t *testing.T) {
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	assert.Contains(t, w.Body.String(), "not ready")
+}
+
+// newMiddlewareRateLimitAdapter and newMiddlewareFeatureFlagsAdapter used to
+// live in adapters_middleware.go with no production caller; they are test
+// fixtures for the Router contract, so they live with the test that needs
+// them (TICKET-APP-WIRING-TEST-ONLY-HELPERS-2026-11-19).
+func newMiddlewareRateLimitAdapter(cfg *config.Config) middlewarepkg.RateLimitPort {
+	if cfg == nil {
+		return nil
+	}
+	return &middleware.RateLimitAdapter{
+		Enabled:  cfg.Security.RateLimitEnabled,
+		Requests: cfg.Security.RateLimitRequests,
+	}
+}
+
+func newMiddlewareFeatureFlagsAdapter(cfg *config.Config) middlewarepkg.FeatureFlagsPort {
+	if cfg == nil {
+		return nil
+	}
+	return &middleware.FeatureFlagsAdapter{
+		ScriptClips: cfg.Features.ScriptClipsEnabled,
+	}
 }

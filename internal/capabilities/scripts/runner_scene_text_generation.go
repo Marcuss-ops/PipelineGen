@@ -148,6 +148,13 @@ func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles m
 }
 
 func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript string, scenes []Scene, req GenerateRequest) (*phraseImpactEnrichment, error) {
+	// A verbatim source is already authored and must not be rewritten. Skip
+	// the optional semantic/editorial batch here: long narration transcripts
+	// can exceed the local embedder's request window, while callers using
+	// source_text_verbatim need only preserve the supplied script.
+	if req.ScriptParams.SourceTextVerbatim {
+		return &phraseImpactEnrichment{}, nil
+	}
 	chapterScenes, chapterTopics := make([]string, 0, len(scenes)), make([]string, 0, len(scenes))
 	for _, scene := range scenes {
 		if !scene.ExecutionMode.CountsTowardBodyWordBudget() {

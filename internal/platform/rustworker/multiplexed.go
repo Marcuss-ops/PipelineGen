@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -20,6 +21,9 @@ type MultiplexedPersistentRunner struct {
 	mu          sync.Mutex
 	state       *multiplexedProcess
 	maxInFlight int
+	// env carries explicit KEY=VALUE overrides for the worker process. Nil
+	// keeps the historical inherited environment.
+	env []string
 }
 
 type multiplexedProcess struct {
@@ -57,10 +61,21 @@ type multiplexedResult struct {
 }
 
 func NewMultiplexedPersistentRunner(maxInFlight int) *MultiplexedPersistentRunner {
+	return NewMultiplexedPersistentRunnerWithEnv(maxInFlight, nil)
+}
+
+// NewMultiplexedPersistentRunnerWithEnv starts the worker with explicit
+// KEY=VALUE overrides on top of the inherited environment. It is how a caller
+// opts a worker into a feature (for example SEMANTIC_CACHE_DIR) without
+// mutating the whole process environment.
+func NewMultiplexedPersistentRunnerWithEnv(maxInFlight int, env []string) *MultiplexedPersistentRunner {
 	if maxInFlight < 1 {
 		maxInFlight = 1
 	}
-	return &MultiplexedPersistentRunner{maxInFlight: maxInFlight}
+	return &MultiplexedPersistentRunner{
+		maxInFlight: maxInFlight,
+		env:         append([]string(nil), env...),
+	}
 }
 
 func (r *MultiplexedPersistentRunner) Run(ctx context.Context, binary string, input []byte, outputLimit int64) ([]byte, []byte, error) {
@@ -131,6 +146,9 @@ func (r *MultiplexedPersistentRunner) ensure(binary string, outputLimit int64) (
 	}
 	cmd := exec.Command(binary)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if len(r.env) > 0 {
+		cmd.Env = append(os.Environ(), r.env...)
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("open multiplexed Rust stdin: %w", err)

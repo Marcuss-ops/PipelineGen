@@ -6,8 +6,8 @@
 // bullet. The payload therefore selects the font and the entrance motion of
 // individual bullets without needing an item id: the scene is the identity.
 //
-// The field is presentation, not script text: like phrase_motions and
-// motion_seed it is deliberately absent from the generation fingerprint, which
+// The field is presentation, not script text: like motion_seed it is
+// deliberately absent from the generation fingerprint, which
 // pins the model output and the editorial decisions, not the look of an
 // already-decided bullet.
 package script

@@ -456,10 +456,21 @@ func ApplyImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageSt
 			}
 		}
 	}
-	// image_backdrop reuses one asset as a full-canvas blurred background.
-	// It is valid only for a standalone image: composites and groups own
-	// independent member frames, and RenderingGen rejects the key there.
-	if backdrop := ImageBackdropParams(style.Backdrop); backdrop != nil && len(item.ImageLayers) == 0 {
+	// A plain photo card may author only its height. The planner stamps a
+	// default width (1340) on every still, which would pin the card to a shape
+	// the photo does not have and force a cover crop; dropping it lets
+	// RenderingGen derive the width from the materialized asset's aspect.
+	// Entity cards keep their authored square geometry.
+	if item.Kind == "image" && style.Height != nil && style.Width == nil && item.Params != nil {
+		delete(item.Params, "width")
+		delete(item.Params, "box_width")
+	}
+	// image_backdrop reuses the photo as a full-canvas blurred background.
+	// Standalone images and image_chain items carry it at item level; a
+	// co-present entity portrait composite projects it per member, because one
+	// shared background would blur a sibling's photo behind every card.
+	if backdrop := ImageBackdropParams(style.Backdrop); backdrop != nil &&
+		(len(item.ImageLayers) == 0 || item.Kind == string(capmodel.KindEntityImage)) {
 		if item.Params == nil {
 			item.Params = map[string]any{}
 		}

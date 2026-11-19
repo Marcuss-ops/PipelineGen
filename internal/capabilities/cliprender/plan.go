@@ -376,8 +376,7 @@ type CompileInput struct {
 	AudioMode      string
 	// Overlay is the resolved entity overlay segment + window for SINGLE-PASS
 	// compositing inside the Chronon render. Nil means the plan carries no
-	// overlay (either none was requested, or the request uses the legacy
-	// post-render compositor).
+	// overlay: either none was requested or no segment was resolved.
 	Overlay                *PlanOverlayInput
 	OutputPath             string
 	ForegroundScalePercent int

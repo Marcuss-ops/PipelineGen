@@ -745,33 +745,6 @@ func TestSleepDuration_JitterOnMaxBackoffCap(t *testing.T) {
 	}
 }
 
-// TestDefaultOptions_Jitter25Enabled locks the canonical default: the
-// `DefaultOptions()` helper ships `JitterFraction: 0.25`. Any change
-// to this constant requires revisiting the production retry behaviour
-// (e.g. CI latency assertions that depend on the default envelope).
-func TestDefaultOptions_Jitter25Enabled(t *testing.T) {
-	t.Parallel()
-
-	opts := DefaultOptions()
-	const want = 0.25
-	if opts.JitterFraction != want {
-		t.Errorf("DefaultOptions().JitterFraction = %v, want %v (changing this is a behavioural change for ALL callers that use DefaultOptions)", opts.JitterFraction, want)
-	}
-	// Sanity-check the rest of the defaults while we're here.
-	if opts.MaxAttempts != 3 {
-		t.Errorf("DefaultOptions().MaxAttempts = %d, want 3", opts.MaxAttempts)
-	}
-	if opts.InitialBackoff != 1*time.Second {
-		t.Errorf("DefaultOptions().InitialBackoff = %v, want 1s", opts.InitialBackoff)
-	}
-	if opts.MaxBackoff != 30*time.Second {
-		t.Errorf("DefaultOptions().MaxBackoff = %v, want 30s", opts.MaxBackoff)
-	}
-	if opts.BackoffFactor != 2.0 {
-		t.Errorf("DefaultOptions().BackoffFactor = %v, want 2.0", opts.BackoffFactor)
-	}
-}
-
 // TestDisableJitter_ExplicitZeroDisablesJitter verifies that setting
 // DisableJitter=true leaves JitterFraction=0 untouched through norm()
 // and that BackoffFor returns the exact base delay.

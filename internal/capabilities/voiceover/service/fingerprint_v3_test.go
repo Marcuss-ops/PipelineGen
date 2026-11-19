@@ -1,10 +1,32 @@
 package voiceover
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/stretchr/testify/require"
 )
+
+// Legacy version oracles below intentionally live in test code. Production
+// synthesis now uses V4; these preserve the one-time cache-key migration
+// contract without exporting stale V2/V3 entry points from the service.
+func BuildVoiceoverContentFingerprint(textHash TextHash, language Language, voice, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
+	return digest.SHA256String("voiceover-content-v2:" + string(textHash) + ":" + string(language) + ":" + voice + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ":format=mp3-48k-stereo")
+}
+
+func BuildVoiceoverContentFingerprintV3(textHash TextHash, language Language, voice, providerID, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		providerID = "unspecified"
+	}
+	return digest.SHA256String("voiceover-content-v3:" + string(textHash) + ":" + string(language) + ":" + voice + ":provider=" + providerID + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ":format=mp3-48k-stereo")
+}
+
+func DefaultVoiceoverPostPolicy() VoiceoverPostPolicy {
+	return VoiceoverPostPolicy{Rate: "+1%", Silence: audio.DefaultSilenceRemovalPolicy()}
+}
 
 // TestBuildVoiceoverContentFingerprintV3_SeparatesProviders pins the core
 // invariant of the local-TTS pilot: identical text/language/voice MUST NOT

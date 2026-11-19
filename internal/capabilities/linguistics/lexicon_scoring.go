@@ -87,6 +87,8 @@ func writeLexiconFingerprint(h hash.Hash, key string, p *LexiconProfile) {
 	writeSortedSetFingerprint(h, "stop", p.StopWords)
 	writeSortedSetFingerprint(h, "func", p.FunctionWords)
 	writeSortedSetFingerprint(h, "block", p.EntityBlocklist)
+	writeSortedSetFingerprint(h, "placeblock", p.PlaceCandidateBlocklist)
+	writeSortedSetFingerprint(h, "placetoken", p.PlaceCandidateTokenBlocklist)
 	writeSortedSetFingerprint(h, "neg", p.NegativeParticles)
 	writeSortedSetFingerprint(h, "visual", p.VisualVerbs)
 	_, _ = h.Write([]byte("verb:"))

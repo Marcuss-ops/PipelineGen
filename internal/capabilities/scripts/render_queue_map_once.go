@@ -39,6 +39,293 @@ func hasPinAccent(pins []capmodel.MapOverlayPin) bool {
 	return false
 }
 
+// mapRenderWorkspace is the per-render private directory plus the file names
+// the renderer and the telemetry contract use inside it.
+type mapRenderWorkspace struct {
+	dir      string
+	input    string
+	output   string
+	encoded  string
+	summary  string
+	identity string
+}
+
+func newMapRenderWorkspace() (mapRenderWorkspace, error) {
+	dir, err := os.MkdirTemp("", "pipelinegen-dynamic-map-")
+	if err != nil {
+		return mapRenderWorkspace{}, fmt.Errorf("create map render workspace: %w", err)
+	}
+	return mapRenderWorkspace{
+		dir:      dir,
+		input:    filepath.Join(dir, "map.json"),
+		output:   filepath.Join(dir, "map.mp4"),
+		encoded:  filepath.Join(dir, "map-encoded.mp4"),
+		summary:  filepath.Join(dir, "map.telemetry.json"),
+		identity: filepath.Join(dir, "map.video.identity.json"),
+	}, nil
+}
+
+// nativeMapRendererPath resolves the single native map lane (the Python
+// renderer is retired — TICKET-MAPS-NATIVE-PORT fase 7).
+func nativeMapRendererPath() (string, error) {
+	path := strings.TrimSpace(os.Getenv("VELOX_MAP_NATIVE_RENDERER_PATH"))
+	if path == "" {
+		return "", fmt.Errorf("VELOX_MAP_NATIVE_RENDERER_PATH is not configured")
+	}
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("find Chronon native map renderer %s: %w", path, err)
+	}
+	return path, nil
+}
+
+// mapRenderResolution keeps the renderer at delivery resolution. Tile
+// preparation and per-frame compositing scale roughly with canvas area, and
+// the final program is 1920x1080: retaining a 3x map raster would multiply
+// tile and RAM use before it is downsampled again.
+func mapRenderResolution(plan capmodel.OverlayPlan) (int, int) {
+	renderWidth, renderHeight := plan.Width, plan.Height
+	if renderWidth > kernelmedia.CanonicalWidth || renderHeight > kernelmedia.CanonicalHeight {
+		renderWidth, renderHeight = kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight
+	}
+	return renderWidth, renderHeight
+}
+
+// mapRenderTelemetry is the renderer's own chronon.dynamic-map-telemetry.v1
+// summary, projected onto the phases the map cost is accounted for.
+type mapRenderTelemetry struct {
+	Schema     string `json:"schema"`
+	Basemap    string `json:"basemap"`
+	Frames     int    `json:"frames"`
+	Dimensions struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+	} `json:"dimensions"`
+	FPS struct {
+		Num int `json:"num"`
+		Den int `json:"den"`
+	} `json:"fps"`
+	RendererWallS        float64 `json:"renderer_wall_s"`
+	FramePipelineS       float64 `json:"frame_pipeline_s"`
+	RenderEncodeWallS    float64 `json:"render_encode_wall_s"`
+	PostFrameTailS       float64 `json:"post_frame_tail_s"`
+	EngineFallbackFrames int     `json:"engine_fallback_frames"`
+	OutputBytes          int64   `json:"output_bytes"`
+	VideoEncoder         string  `json:"video_encoder"`
+	GPUEncoder           bool    `json:"gpu_encoder"`
+	GPUMapSampler        string  `json:"gpu_map_sampler"`
+	EncoderPreset        string  `json:"encoder_preset"`
+	EncoderQuality       int     `json:"encoder_quality"`
+	GateMS               float64 `json:"gate_ms"`
+	Tile                 struct {
+		DiskCacheHits           int     `json:"tile_disk_cache_hits"`
+		DiskCacheMisses         int     `json:"tile_disk_cache_misses"`
+		NetworkFetches          int     `json:"tile_network_fetches"`
+		Fallbacks               int     `json:"tile_fallbacks"`
+		BytesDownloaded         int64   `json:"tile_bytes_downloaded"`
+		FetchMS                 float64 `json:"tile_fetch_ms"`
+		PrefetchMS              float64 `json:"prefetch_ms"`
+		PrefetchTilesRequested  int     `json:"prefetch_tiles_requested"`
+		PrefetchTilesMemoryHits int     `json:"prefetch_tiles_memory_hits"`
+		LateFetches             int     `json:"late_tile_fetches"`
+		RenderedLocally         int     `json:"tile_rendered_locally"`
+	} `json:"tile"`
+	Plates struct {
+		PrepareMS       float64 `json:"prepare_ms"`
+		ComposeMS       float64 `json:"plate_compose_ms"`
+		PlateCount      int     `json:"plate_count"`
+		PlateBytes      int64   `json:"plate_bytes"`
+		RequiredTiles   int     `json:"required_tile_count"`
+		PrefetchFetched int     `json:"prefetch_tiles_fetched"`
+		MemoryHits      int     `json:"prefetch_tiles_memory_hits"`
+	} `json:"plates"`
+}
+
+// mapRenderContract is the declared render this summary must confirm: its
+// media geometry, its sampler, and the encoder profile it was admitted for.
+type mapRenderContract struct {
+	plan         capmodel.OverlayPlan
+	renderWidth  int
+	renderHeight int
+	sampler      string
+	profile      capoverlay.MapEncodeProfile
+}
+
+// decodeMapRenderTelemetry decodes the renderer summary and enforces the
+// contract the render declared before it ran. A summary that does not confirm
+// the declared media, sampler and encoder fails closed — the renderer never
+// substitutes its backend silently.
+func decodeMapRenderTelemetry(telemetryBytes []byte, contract mapRenderContract) (mapRenderTelemetry, error) {
+	var summary mapRenderTelemetry
+	if err := json.Unmarshal(telemetryBytes, &summary); err != nil {
+		return mapRenderTelemetry{}, fmt.Errorf("decode Chronon map telemetry summary: %w", err)
+	}
+	if summary.Schema != "chronon.dynamic-map-telemetry.v1" || summary.Frames < 2 || summary.OutputBytes <= 0 {
+		return mapRenderTelemetry{}, fmt.Errorf("dynamic map telemetry summary violates schema/output invariants: schema=%q frames=%d bytes=%d",
+			summary.Schema, summary.Frames, summary.OutputBytes)
+	}
+	if summary.Dimensions.Width <= 0 || summary.Dimensions.Height <= 0 || summary.FPS.Num <= 0 || summary.FPS.Den <= 0 ||
+		summary.Tile.DiskCacheHits+summary.Tile.DiskCacheMisses == 0 ||
+		summary.Plates.RequiredTiles == 0 || summary.Plates.PlateCount == 0 ||
+		summary.Plates.PrepareMS < 0 || summary.Plates.ComposeMS < 0 || summary.GateMS < 0 ||
+		summary.FramePipelineS <= 0 || summary.RenderEncodeWallS <= 0 || summary.OutputBytes <= 0 {
+		return mapRenderTelemetry{}, fmt.Errorf("dynamic map telemetry summary is missing required telemetry field")
+	}
+	if summary.Dimensions.Width != contract.renderWidth || summary.Dimensions.Height != contract.renderHeight ||
+		summary.FPS.Num != contract.plan.FPSNum || summary.FPS.Den != contract.plan.FPSDen {
+		return mapRenderTelemetry{}, fmt.Errorf("dynamic map telemetry media contract mismatch: dimensions=%dx%d fps=%d/%d, want %dx%d fps=%d/%d",
+			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
+			contract.renderWidth, contract.renderHeight, contract.plan.FPSNum, contract.plan.FPSDen)
+	}
+	if err := capoverlay.ValidateMapEncoderTelemetry(summary.VideoEncoder, summary.GPUEncoder, summary.EncoderPreset, summary.EncoderQuality, contract.profile); err != nil {
+		return mapRenderTelemetry{}, err
+	}
+	if summary.GPUMapSampler != contract.sampler {
+		return mapRenderTelemetry{}, fmt.Errorf("dynamic map renderer used sampler=%q, but the declared render requires sampler=%q", summary.GPUMapSampler, contract.sampler)
+	}
+	return summary, nil
+}
+
+// validateMapRenderWork enforces the tile/plate accounting after the artifact
+// exists: every cache miss is either downloaded, a fallback or drawn locally,
+// locally-rendered tiles are admitted only for the editorial basemap (so a
+// raster provider can never hide missing downloads), and prefetch covers
+// exactly the required tiles. Any unapproved fallback work fails closed.
+func validateMapRenderWork(summary mapRenderTelemetry) error {
+	if summary.Tile.RenderedLocally < 0 || summary.Tile.NetworkFetches < 0 ||
+		summary.Tile.Fallbacks < 0 ||
+		(summary.Tile.RenderedLocally > 0 && summary.Basemap != "chronon_editorial") ||
+		summary.Tile.DiskCacheMisses != summary.Tile.NetworkFetches+summary.Tile.Fallbacks+summary.Tile.RenderedLocally {
+		return fmt.Errorf("dynamic map telemetry cache/fetch counters do not balance: hits=%d misses=%d downloads=%d fallbacks=%d rendered_locally=%d basemap=%q",
+			summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses, summary.Tile.NetworkFetches, summary.Tile.Fallbacks,
+			summary.Tile.RenderedLocally, summary.Basemap)
+	}
+	if summary.Plates.RequiredTiles != summary.Plates.PrefetchFetched+summary.Plates.MemoryHits ||
+		summary.Tile.PrefetchTilesRequested != summary.Plates.RequiredTiles ||
+		summary.Tile.PrefetchTilesMemoryHits != summary.Plates.MemoryHits {
+		return fmt.Errorf("dynamic map telemetry prefetch coverage mismatch: required=%d fetched=%d plate_hits=%d requested=%d tile_hits=%d",
+			summary.Plates.RequiredTiles, summary.Plates.PrefetchFetched, summary.Plates.MemoryHits,
+			summary.Tile.PrefetchTilesRequested, summary.Tile.PrefetchTilesMemoryHits)
+	}
+	if summary.EngineFallbackFrames != 0 || summary.Tile.Fallbacks != 0 || summary.Tile.LateFetches != 0 {
+		return fmt.Errorf("dynamic map has unapproved fallback work: engine_frames=%d tile_fallbacks=%d late_fetches=%d",
+			summary.EngineFallbackFrames, summary.Tile.Fallbacks, summary.Tile.LateFetches)
+	}
+	return nil
+}
+
+// executeMapRenderer runs the native map lane over the prepared wire input.
+func executeMapRenderer(ctx context.Context, renderer string, workspace mapRenderWorkspace) error {
+	cmd := exec.CommandContext(ctx, renderer, "--input", workspace.input,
+		"--output", workspace.output, "--summary-output", workspace.summary)
+	var output boundedMapRenderOutput
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("dynamic map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
+	}
+	if _, err := os.Stat(workspace.output); err != nil {
+		return fmt.Errorf("dynamic map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
+	}
+	return nil
+}
+
+// scaleMapRenderVideo upscales a delivery-resolution render to the overlay
+// contract with the declared encoder profile.
+func scaleMapRenderVideo(ctx context.Context, workspace mapRenderWorkspace, plan capmodel.OverlayPlan, profile capoverlay.MapEncodeProfile) error {
+	scale := fmt.Sprintf("scale=%d:%d:flags=lanczos,setsar=1", plan.Width, plan.Height)
+	args := []string{"/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+		"-i", workspace.output, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen)}
+	args = append(args, capoverlay.MapEncodeVideoArgs(profile)...)
+	args = append(args, "-pix_fmt", kernelmedia.DefaultAssemblyMediaContractV2().PixelFormat, "-movflags", "+faststart", workspace.encoded)
+	upscale := exec.CommandContext(ctx, args[0], args[1:]...)
+	if output, err := upscale.CombinedOutput(); err != nil {
+		return fmt.Errorf("scale dynamic map to overlay contract: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if err := os.Rename(workspace.encoded, workspace.output); err != nil {
+		return fmt.Errorf("install scaled dynamic map: %w", err)
+	}
+	return nil
+}
+
+// recordMapRenderPhases closes the decision report with the renderer's own
+// measured phases, so the map cost is explained by its parts.
+func recordMapRenderPhases(report *capoverlay.MapDecisionReport, summary mapRenderTelemetry, elapsed time.Duration) {
+	report.RecordPhase("render_wall_s", elapsed.Seconds())
+	report.RecordPhase("frame_pipeline_s", summary.FramePipelineS)
+	report.RecordPhase("render_encode_wall_s", summary.RenderEncodeWallS)
+	report.RecordPhase("post_frame_tail_s", summary.PostFrameTailS)
+	report.RecordPhase("gate_ms", summary.GateMS)
+	report.RecordPhase("tile_prefetch_ms", summary.Tile.PrefetchMS)
+	report.RecordPhase("plate_prepare_ms", summary.Plates.PrepareMS)
+	report.RecordPhase("plate_compose_ms", summary.Plates.ComposeMS)
+}
+
+// logMapRenderSummary emits the one-line operator record of the render.
+func logMapRenderSummary(cacheHit bool, summary mapRenderTelemetry, elapsed time.Duration) {
+	log.Printf("Chronon dynamic map ready: cache_hit=%t frames=%d tiles(cache_hit=%d cache_miss=%d downloaded=%d fallback=%d late=%d fetch_ms=%.1f prefetch_ms=%.1f) plates(count=%d bytes=%d compose_ms=%.1f prepare_ms=%.1f required_tiles=%d prefetched=%d) frames_s=%.2f encode_wall_s=%.2f encode_tail_s=%.2f output_bytes=%d process_wall_s=%.2f",
+		cacheHit,
+		summary.Frames, summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses,
+		summary.Tile.NetworkFetches, summary.Tile.Fallbacks, summary.Tile.LateFetches,
+		summary.Tile.FetchMS, summary.Tile.PrefetchMS, summary.Plates.PlateCount,
+		summary.Plates.PlateBytes, summary.Plates.ComposeMS, summary.Plates.PrepareMS,
+		summary.Plates.RequiredTiles, summary.Plates.PrefetchFetched,
+		summary.FramePipelineS, summary.RenderEncodeWallS, summary.PostFrameTailS,
+		summary.OutputBytes, elapsed.Seconds())
+}
+
+// finalizeMapVideo stores the artifact in the durable cache and returns its
+// identity. The cache is optional: a write failure must not discard a valid
+// map artifact or turn a successful render into a failed job.
+func finalizeMapVideo(cacheKey string, workspace mapRenderWorkspace, telemetryBytes []byte, cacheDirs []string) (string, int64, error) {
+	sha256, size, cacheErr := storeDynamicMapVideoCacheVerified(cacheKey, workspace.output, telemetryBytes, cacheDirs...)
+	if cacheErr != nil {
+		log.Printf("Chronon dynamic map cache store failed: key=%s err=%v", cacheKey, cacheErr)
+	}
+	// The cache helper hashes while streaming bytes into its atomic cache
+	// copy. When caching is disabled, or a cache write failed before source
+	// bytes were consumed, hash the final output once for the import
+	// attestation.
+	if sha256 == "" || size <= 0 {
+		hashed, hashedSize, err := hashDynamicMapVideo(workspace.output)
+		if err != nil {
+			return "", 0, fmt.Errorf("identify rendered dynamic map video: %w", err)
+		}
+		sha256, size = hashed, hashedSize
+	}
+	if sha256 == "" || size <= 0 {
+		return "", 0, fmt.Errorf("dynamic map video identity is incomplete")
+	}
+	return sha256, size, nil
+}
+
+// writeMapRenderIdentity records the artifact identity beside it, so the
+// import attests the exact bytes this render produced.
+func writeMapRenderIdentity(workspace mapRenderWorkspace, sha256 string, size int64) error {
+	identityBytes, err := json.Marshal(dynamicMapVideoIdentityManifest{SHA256: sha256, SizeBytes: size})
+	if err != nil {
+		return fmt.Errorf("encode dynamic map video identity: %w", err)
+	}
+	if err := os.WriteFile(workspace.identity, identityBytes, 0o600); err != nil {
+		return fmt.Errorf("write dynamic map video identity: %w", err)
+	}
+	return nil
+}
+
+// publishMapDecisionReport writes the report beside the rendered MP4 (the same
+// tmp workspace that becomes the content-addressed artifact dir) AND to the
+// operator dir when configured — never log-only, so a wrong map is traceable
+// to its job. A requested report artifact that cannot be written fails closed.
+func publishMapDecisionReport(workspace mapRenderWorkspace, report *capoverlay.MapDecisionReport) error {
+	if _, err := capoverlay.WriteMapDecisionReport(workspace.dir, report); err != nil {
+		return fmt.Errorf("write map decision report: %w", err)
+	}
+	if reportDir := strings.TrimSpace(os.Getenv("PIPELINEGEN_MAP_REPORT_DIR")); reportDir != "" {
+		if _, err := capoverlay.WriteMapDecisionReport(reportDir, report); err != nil {
+			return fmt.Errorf("write map decision report: %w", err)
+		}
+	}
+	return nil
+}
+
 func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
 	profile, err := dynamicMapEncodeProfile(plan, os.Getenv(capoverlay.MapEncodeProfileEnv))
 	if err != nil {
@@ -53,22 +340,14 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 	if len(plan.Items) != 1 || plan.Items[0].Map == nil {
 		return "", fmt.Errorf("expected exactly one map item")
 	}
-	encodeProfile := profile
-	sampler := dynamicMapSamplerForProfile(encodeProfile)
-	mapAnimationForAdmission, _ := plan.Items[0].Params["map_animation"].(string)
-	needsGPUAdmission := mapRenderRequiresGPU(encodeProfile, sampler, mapAnimationForAdmission)
-	// Single map lane: the native renderer of ChrononPlugin (the Python
-	// renderer is retired — TICKET-MAPS-NATIVE-PORT fase 7).
-	nativeRenderer := strings.TrimSpace(os.Getenv("VELOX_MAP_NATIVE_RENDERER_PATH"))
-	if nativeRenderer == "" {
-		return "", fmt.Errorf("VELOX_MAP_NATIVE_RENDERER_PATH is not configured")
-	}
-	if _, err := os.Stat(nativeRenderer); err != nil {
-		return "", fmt.Errorf("find Chronon native map renderer %s: %w", nativeRenderer, err)
-	}
-	tmpDir, err := os.MkdirTemp("", "pipelinegen-dynamic-map-")
+	sampler := dynamicMapSamplerForProfile(profile)
+	nativeRenderer, err := nativeMapRendererPath()
 	if err != nil {
-		return "", fmt.Errorf("create map render workspace: %w", err)
+		return "", err
+	}
+	workspace, err := newMapRenderWorkspace()
+	if err != nil {
+		return "", err
 	}
 	// Workspace ownership: every error below releases the workspace, and the
 	// single success transfers it to the caller (the fold removes it after the
@@ -76,245 +355,46 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 	keepWorkspace := false
 	defer func() {
 		if !keepWorkspace {
-			_ = os.RemoveAll(tmpDir)
+			_ = os.RemoveAll(workspace.dir)
 		}
 	}()
-	inputPath := filepath.Join(tmpDir, "map.json")
-	outputPath := filepath.Join(tmpDir, "map.mp4")
-	encodedOutputPath := filepath.Join(tmpDir, "map-encoded.mp4")
-	summaryPath := filepath.Join(tmpDir, "map.telemetry.json")
-	// Tile preparation and per-frame compositing scale roughly with canvas area.
-	// Render the satellite plates at delivery resolution, then upscale the
-	// finished map to the overlay contract. The final program is 1920x1080, so
-	// retaining a 3x map raster only multiplies tile and RAM use before it is
-	// downsampled again.
-	renderWidth, renderHeight := plan.Width, plan.Height
-	if renderWidth > kernelmedia.CanonicalWidth || renderHeight > kernelmedia.CanonicalHeight {
-		renderWidth, renderHeight = kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight
-	}
-	// The native renderer's wire pins are the grounded place identity only
-	// (id, label, latitude, longitude) — its payload contract refuses fields
-	// it cannot draw. Per-pin presentation extras (subtitle, category, accent
-	// color, value, unit, photo, location) belong to composed presentations
-	// that are not ported: map_pin_extras on an item fails closed at the
-	// backend resolution above (it demands the composed scene capability),
-	// and the plain pin projection below never smuggles unported fields onto
-	// the wire.
-	pins := make([]map[string]any, 0, len(plan.Items[0].Map.Pins))
-	for _, pin := range plan.Items[0].Map.Pins {
-		pins = append(pins, map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude})
-	}
-	// The camera move and basemap are the map's LOOK. They
-	// are resolved by the pipeline's single deterministic sampler, seeded by the
-	// plan identity: replaying a run reproduces the exact same map presentation,
-	// while a new run (a new fingerprint) re-rolls it. A random draw here would
-	// make a re-render of an already approved job silently different from the
-	// artifact that was approved.
-	// Per-pin spoken timing and the planner's group decision ride the item
-	// params (map_pin_timing / map_group / map_group_strategy) and enter the
-	// renderer payload so the camera activates each place exactly when the
-	// voiceover names it. The renderer never re-derives editorial timing.
-	pinTiming := capoverlay.MapPinTimingPayload(plan.Items[0].Params, pins)
-	// The single-anchor native camera framing: the anchor is the mean of the
-	// drawn places, and the zoom interval is either the planner's grounded
-	// camera move or a deterministic fit keeping every place in frame. The
-	// certified product dive (5.2→17.8) stays the renderer's own default for
-	// a single place with no grounded move — its zoom keys are omitted.
-	cameraMove := plan.Items[0].Map.CameraMove
-	anchorLat, anchorLon, cameraStartZoom, cameraEndZoom, sendZooms := capoverlay.MapNativeCameraFraming(
-		pins, renderWidth, renderHeight, cameraMove != nil,
-		cameraMoveZoom(cameraMove, true), cameraMoveZoom(cameraMove, false))
-	mapGroup := capoverlay.MapGroupPayload(plan.Items[0].Params)
-	mapGroupStrategy := capoverlay.MapGroupStrategyParam(plan.Items[0].Params)
+	renderWidth, renderHeight := mapRenderResolution(plan)
 	seed := mapRunSeed(plan)
-	// Select the map treatment once per map ITEM, not once per parent run.
-	// A video holding several maps can vary compositions and basemaps instead
-	// of repeating the same treatment on every map clip.
-	// The seed is still the run identity, so replaying a run reproduces the
-	// exact same per-item presentation; only the slot varies per item.
-	mapStyleSlot := strings.TrimSpace(plan.Items[0].ID)
-	if mapStyleSlot == "" {
-		mapStyleSlot = mapRunStyleSlot
-	}
-	cameraChoice, _ := plan.Items[0].Params["map_camera_animation"].(string)
-	labelChoice, _ := plan.Items[0].Params["map_label_animation"].(string)
-	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, mapStyleSlot, "map_camera", mapCameraAnimationsCertified(), mapCameraAnimations)
+	resolved, err := resolveMapRenderPresentation(plan, seed, mapRenderStyleSlot(plan), renderWidth, renderHeight)
 	if err != nil {
 		return "", err
 	}
-	labelAnimation, err := resolveMapAnimation(labelChoice, seed, mapStyleSlot, "map_label", mapLabelAnimationsCertified(), capoverlay.AnimationRandomCandidates("map.label"))
-	if err != nil {
-		return "", err
-	}
-	compositionChoice, _ := plan.Items[0].Params["map_animation"].(string)
-	// Wire DATA resolution BEFORE composition admission (TICKET map parity):
-	// the ported territory family (territory_glow_reveal) carries the ADM3
-	// shapeName of the map's FIRST pin — the same exact spelling the native
-	// renderer matches against the SAME catalog file. Empty means the catalog
-	// could not resolve the pin: the resolver's data-compatibility gate then
-	// keeps territory compositions out of the random draw and gives explicit
-	// requests a precise failure, never a guessed name that the renderer would
-	// refuse deep inside its render loop.
-	territoryFeature := ""
-	territoryScope := ""
-	if len(plan.Items[0].Map.Pins) > 0 {
-		pin := plan.Items[0].Map.Pins[0]
-		territoryScope = pin.Scope
-		if capoverlay.MapTerritoryFeatureScopeCompatible(pin.Scope) {
-			if resolved, ok := capoverlay.ResolveMapTerritoryFeature(capoverlay.MapTerritoryCatalogDir(), pin.Latitude, pin.Longitude); ok {
-				territoryFeature = resolved
-			}
-		}
-	}
-	mapAnimation, mapFallbackReason, err := resolveMapCompositionFor(compositionChoice, seed, mapStyleSlot, mapCompositionInput{
-		PinCount:         len(plan.Items[0].Map.Pins),
-		Pins:             pins,
-		DurationUS:       capoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000,
-		Strategy:         mapGroupStrategy,
-		Camera:           cameraAnimation,
-		Label:            labelAnimation,
-		TerritoryFeature: territoryFeature,
-		TerritoryScope:   territoryScope,
-		AreaGlowRadiusKM: plan.Items[0].Map.AreaGlowRadiusKM,
-	})
-	if err != nil {
-		return "", err
-	}
-	if strings.HasPrefix(mapAnimation, "ed_") {
-		// This scene owns its name rail and marker inside the GPU compositor.
-		labelAnimation = "none"
-	}
-	mapType, _ := plan.Items[0].Params["map_type"].(string)
-	mapLevel, _ := plan.Items[0].Params["map_level"].(string)
-	basemapStyle, err := resolveMapBasemap(mapType, seed, mapStyleSlot)
-	if err != nil {
-		return "", err
-	}
-	if cameraAnimation == "" || labelAnimation == "" || basemapStyle == "" {
-		return "", fmt.Errorf("dynamic map presentation catalog is empty")
-	}
-	needsGPUAdmission = needsGPUAdmission || mapRenderRequiresGPU(encodeProfile, sampler, mapAnimation)
+	// Composition admission covers both the requested family (an explicit
+	// `ed_` request already needs the GPU compositor) and the family that was
+	// actually admitted after the data gate.
+	requestedComposition, _ := plan.Items[0].Params["map_animation"].(string)
+	needsGPUAdmission := mapRenderRequiresGPU(profile, sampler, requestedComposition) ||
+		mapRenderRequiresGPU(profile, sampler, resolved.Composition)
 	// Map Decision Report: the ONE per-map record of every decision behind this
 	// render — places, exclusions, composition, seed, backend, fallback and
 	// phase timings — so an unexpected map is explainable without chasing logs
 	// across three repositories.
-	report := capoverlay.NewMapDecisionReport(plan.PlanID, plan.Items[0].ID, seed)
-	report.Requested = compositionChoice
-	report.Composition = mapAnimation
-	report.CompositionFamily = string(mapCompositionFamily(mapAnimation))
-	report.Fallback = mapFallbackReason
-	report.CameraAnimation = cameraAnimation
-	report.LabelAnimation = labelAnimation
-	report.Basemap = basemapStyle
-	report.MapGroup = mapGroup
-	report.Strategy = mapGroupStrategy
-	if backend, backendReason, backendErr := capoverlay.ResolveMapItemBackend(plan.Items[0]); backendErr == nil {
-		report.Backend = string(backend)
-		report.BackendReason = backendReason
-	} else {
-		return "", backendErr
-	}
-	for _, pin := range plan.Items[0].Map.Pins {
-		place := capoverlay.MapDecisionPlace{
-			EntityID: pin.ID, Label: pin.Label, Scope: pin.Scope,
-			Latitude: pin.Latitude, Longitude: pin.Longitude,
-			Geocoded: true, State: "eligible",
-		}
-		for _, entry := range pinTiming {
-			if entryID, _ := entry["id"].(string); entryID == pin.ID {
-				place.StartUS = int64(capoverlay.MustFloat(entry["start_s"]) * 1_000_000)
-				place.DurationUS = int64(capoverlay.MustFloat(entry["duration_s"]) * 1_000_000)
-			}
-		}
-		if place.DurationUS == 0 {
-			report.AddExclusion("no_spoken_timing", "pin "+pin.ID+" has no grounded occurrence timing; the camera cannot follow it")
-		} else {
-			place.State = "scheduled"
-		}
-		report.Places = append(report.Places, place)
-	}
-	if mapFallbackReason != "" {
-		report.AddExclusion("declared_fallback", mapFallbackReason)
-	}
-	// Declared degradations of the base flyover presentation: each one is
-	// recorded in the map decision report and its wire field is sent in the
-	// certified-closed value — never a field the renderer would silently
-	// ignore or approximate.
-	if len(pinTiming) > 0 {
-		report.AddExclusion("per_pin_timing_not_ported", "per-pin spoken timing declined: the native base flyover presents every place continuously (camera-activation family awaits its parity gate)")
-	}
-	if plan.Items[0].Map.AreaGlowRadiusKM > 0 && mapAnimation != "area_glow_pulse" {
-		report.AddExclusion("area_glow_not_ported", fmt.Sprintf("area glow ring of %.1f km declined: the selected composition %q does not draw the ring (area_glow_pulse is the ported glow composition)", plan.Items[0].Map.AreaGlowRadiusKM, mapAnimation))
-	}
-	if hasPinAccent(plan.Items[0].Map.Pins) {
-		report.AddExclusion("pin_presentation_simplified", "pin accent color and extra cards are not ported: the native base flyover draws the certified camera-aligned labels")
+	report, err := resolved.decisionReport(plan, seed)
+	if err != nil {
+		return "", err
 	}
 	log.Printf("Chronon dynamic map styles selected: seed=%s camera=%s label=%s composition=%s basemap=%s anchor=(%.4f,%.4f) zooms=[%.2f->%.2f]",
-		seed, cameraAnimation, labelAnimation, mapAnimation, basemapStyle, anchorLat, anchorLon, cameraStartZoom, cameraEndZoom)
-	payload := map[string]any{
-		"width": renderWidth, "height": renderHeight,
-		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
-		"duration_us": capoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000, "pins": pins,
-		"camera_anchor": []float64{anchorLat, anchorLon},
-		// Pin timing is grounded DATA: the report carries it (Places), but the
-		// base flyover presents every place continuously and the renderer
-		// refuses non-empty spoken schedules — declared above.
-		"pin_timing":           []map[string]any{},
-		"map_group":            mapGroup,
-		"map_group_strategy":   mapGroupStrategy,
-		"composition_family":   string(mapCompositionFamily(mapAnimation)),
-		"composition_fallback": mapFallbackReason,
-		"area_glow_radius_km":  0,
-		"camera_animation":     cameraAnimation,
-		"label_animation":      labelAnimation,
-		"map_animation":        mapAnimation,
-		"basemap":              basemapStyle,
-		"typography":           dynamicMapTypography(plan.Items[0].Params),
-		"encoder_profile": map[string]any{
-			"codec": encodeProfile.Codec, "gpu": encodeProfile.ExpectGPU,
-			"preset": encodeProfile.Preset, "quality": encodeProfile.Quality,
-		},
-		"sampler": sampler,
-	}
-	if sendZooms {
-		payload["camera_start_zoom"] = cameraStartZoom
-		payload["camera_end_zoom"] = cameraEndZoom
-	}
-	// The requested cartographic level owns the scale envelope: continent,
-	// country, region and municipality are four visibly different views of the
-	// same real basemap, not a label swap. It is sent as data too, so the wire
-	// and the decision report keep the caller's intent.
-	if mapLevel = strings.ToLower(strings.TrimSpace(mapLevel)); mapLevel != "" && mapLevel != "auto" {
-		if start, end, ok := mapLevelCameraZooms(mapLevel); ok {
-			payload["map_level"] = mapLevel
-			payload["camera_start_zoom"] = start
-			payload["camera_end_zoom"] = end
-		}
-	}
-	// Native-payload DATA fields (parity landed): the wire carries exactly
-	// what the composition was admitted for — the renderer validates them at
-	// its boundary and refuses silently-absent requirements.
-	if capoverlay.MapTerritoryOverlayRequired(mapAnimation) {
-		payload["territory_feature"] = territoryFeature
-	}
-	if mapAnimation == "area_glow_pulse" {
-		// The admission gate guarantees a positive radius for this composition.
-		payload["area_glow_radius_km"] = plan.Items[0].Map.AreaGlowRadiusKM
-	}
+		seed, resolved.Camera, resolved.Label, resolved.Composition, resolved.Basemap, resolved.AnchorLat, resolved.AnchorLon, resolved.StartZoom, resolved.EndZoom)
+	payload := resolved.payload(plan, renderWidth, renderHeight, sampler, profile)
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("encode map render input: %w", err)
 	}
-	if err := os.WriteFile(inputPath, encoded, 0600); err != nil {
+	if err := os.WriteFile(workspace.input, encoded, 0600); err != nil {
 		return "", fmt.Errorf("write map render input: %w", err)
 	}
 	rendererFingerprint, err := dynamicMapRendererFingerprint(nativeRenderer)
 	if err != nil {
 		return "", fmt.Errorf("identify dynamic map renderer dependencies: %w", err)
 	}
-	cacheKey := dynamicMapVideoCacheKey(encoded, rendererFingerprint, encodeProfile, sampler, plan.Width, plan.Height)
+	cacheKey := dynamicMapVideoCacheKey(encoded, rendererFingerprint, profile, sampler, plan.Width, plan.Height)
 	renderStarted := time.Now()
-	telemetryBytes, videoSHA256, videoSize, cacheHit := loadDynamicMapVideoCacheVerified(cacheKey, outputPath, cacheDirs...)
+	telemetryBytes, videoSHA256, videoSize, cacheHit := loadDynamicMapVideoCacheVerified(cacheKey, workspace.output, cacheDirs...)
 	if !cacheHit && needsGPUAdmission {
 		if gate == nil {
 			return "", fmt.Errorf("dynamic map GPU work requires the shared RenderingGen GPU gate")
@@ -326,178 +406,52 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 		defer release()
 	}
 	if !cacheHit {
-		cmd := exec.CommandContext(ctx, nativeRenderer, "--input", inputPath,
-			"--output", outputPath, "--summary-output", summaryPath)
-		var output boundedMapRenderOutput
-		cmd.Stdout, cmd.Stderr = &output, &output
-		if err := cmd.Run(); err != nil {
-			return "", fmt.Errorf("dynamic map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
+		if err := executeMapRenderer(ctx, nativeRenderer, workspace); err != nil {
+			return "", err
 		}
-		if _, err := os.Stat(outputPath); err != nil {
-			return "", fmt.Errorf("dynamic map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
-		}
-		telemetryBytes, err = os.ReadFile(summaryPath)
+		telemetryBytes, err = os.ReadFile(workspace.summary)
 		if err != nil {
 			return "", fmt.Errorf("read Chronon map telemetry summary: %w", err)
 		}
 	} else {
 		log.Printf("Chronon dynamic map cache hit: key=%s", cacheKey)
 		report.RecordPhase("artifact_cache_hit", 1)
-		if err := os.WriteFile(summaryPath, telemetryBytes, 0600); err != nil {
+		if err := os.WriteFile(workspace.summary, telemetryBytes, 0600); err != nil {
 			return "", fmt.Errorf("materialize cached Chronon map telemetry: %w", err)
 		}
 	}
-	var summary struct {
-		Schema     string `json:"schema"`
-		Basemap    string `json:"basemap"`
-		Frames     int    `json:"frames"`
-		Dimensions struct {
-			Width  int `json:"width"`
-			Height int `json:"height"`
-		} `json:"dimensions"`
-		FPS struct {
-			Num int `json:"num"`
-			Den int `json:"den"`
-		} `json:"fps"`
-		RendererWallS        float64 `json:"renderer_wall_s"`
-		FramePipelineS       float64 `json:"frame_pipeline_s"`
-		RenderEncodeWallS    float64 `json:"render_encode_wall_s"`
-		PostFrameTailS       float64 `json:"post_frame_tail_s"`
-		EngineFallbackFrames int     `json:"engine_fallback_frames"`
-		OutputBytes          int64   `json:"output_bytes"`
-		VideoEncoder         string  `json:"video_encoder"`
-		GPUEncoder           bool    `json:"gpu_encoder"`
-		GPUMapSampler        string  `json:"gpu_map_sampler"`
-		EncoderPreset        string  `json:"encoder_preset"`
-		EncoderQuality       int     `json:"encoder_quality"`
-		GateMS               float64 `json:"gate_ms"`
-		Tile                 struct {
-			DiskCacheHits           int     `json:"tile_disk_cache_hits"`
-			DiskCacheMisses         int     `json:"tile_disk_cache_misses"`
-			NetworkFetches          int     `json:"tile_network_fetches"`
-			Fallbacks               int     `json:"tile_fallbacks"`
-			BytesDownloaded         int64   `json:"tile_bytes_downloaded"`
-			FetchMS                 float64 `json:"tile_fetch_ms"`
-			PrefetchMS              float64 `json:"prefetch_ms"`
-			PrefetchTilesRequested  int     `json:"prefetch_tiles_requested"`
-			PrefetchTilesMemoryHits int     `json:"prefetch_tiles_memory_hits"`
-			LateFetches             int     `json:"late_tile_fetches"`
-			RenderedLocally         int     `json:"tile_rendered_locally"`
-		} `json:"tile"`
-		Plates struct {
-			PrepareMS       float64 `json:"prepare_ms"`
-			ComposeMS       float64 `json:"plate_compose_ms"`
-			PlateCount      int     `json:"plate_count"`
-			PlateBytes      int64   `json:"plate_bytes"`
-			RequiredTiles   int     `json:"required_tile_count"`
-			PrefetchFetched int     `json:"prefetch_tiles_fetched"`
-			MemoryHits      int     `json:"prefetch_tiles_memory_hits"`
-		} `json:"plates"`
-	}
-	if err := json.Unmarshal(telemetryBytes, &summary); err != nil {
-		return "", fmt.Errorf("decode Chronon map telemetry summary: %w", err)
-	}
-	if summary.Schema != "chronon.dynamic-map-telemetry.v1" || summary.Frames < 2 || summary.OutputBytes <= 0 {
-		return "", fmt.Errorf("dynamic map telemetry summary violates schema/output invariants: schema=%q frames=%d bytes=%d",
-			summary.Schema, summary.Frames, summary.OutputBytes)
-	}
-	if summary.Dimensions.Width <= 0 || summary.Dimensions.Height <= 0 || summary.FPS.Num <= 0 || summary.FPS.Den <= 0 ||
-		summary.Tile.DiskCacheHits+summary.Tile.DiskCacheMisses == 0 ||
-		summary.Plates.RequiredTiles == 0 || summary.Plates.PlateCount == 0 ||
-		summary.Plates.PrepareMS < 0 || summary.Plates.ComposeMS < 0 || summary.GateMS < 0 ||
-		summary.FramePipelineS <= 0 || summary.RenderEncodeWallS <= 0 || summary.OutputBytes <= 0 {
-		return "", fmt.Errorf("dynamic map telemetry summary is missing required telemetry field")
-	}
-	if summary.Dimensions.Width != renderWidth || summary.Dimensions.Height != renderHeight ||
-		summary.FPS.Num != plan.FPSNum || summary.FPS.Den != plan.FPSDen {
-		return "", fmt.Errorf("dynamic map telemetry media contract mismatch: dimensions=%dx%d fps=%d/%d, want %dx%d fps=%d/%d",
-			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
-			renderWidth, renderHeight, plan.FPSNum, plan.FPSDen)
-	}
-	if err := capoverlay.ValidateMapEncoderTelemetry(summary.VideoEncoder, summary.GPUEncoder, summary.EncoderPreset, summary.EncoderQuality, encodeProfile); err != nil {
+	summary, err := decodeMapRenderTelemetry(telemetryBytes, mapRenderContract{
+		plan: plan, renderWidth: renderWidth, renderHeight: renderHeight, sampler: sampler, profile: profile,
+	})
+	if err != nil {
 		return "", err
 	}
-	if summary.GPUMapSampler != sampler {
-		return "", fmt.Errorf("dynamic map renderer used sampler=%q, but the declared render requires sampler=%q", summary.GPUMapSampler, sampler)
-	}
 	if !cacheHit && (renderWidth != plan.Width || renderHeight != plan.Height) {
-		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos,setsar=1", plan.Width, plan.Height)
-		upscaleArgs := []string{"/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen)}
-		upscaleArgs = append(upscaleArgs, capoverlay.MapEncodeVideoArgs(encodeProfile)...)
-		upscaleArgs = append(upscaleArgs, "-pix_fmt", kernelmedia.DefaultAssemblyMediaContractV2().PixelFormat, "-movflags", "+faststart", encodedOutputPath)
-		upscale := exec.CommandContext(ctx, upscaleArgs[0], upscaleArgs[1:]...)
-		if output, err := upscale.CombinedOutput(); err != nil {
-			return "", fmt.Errorf("scale dynamic map to overlay contract: %w: %s", err, strings.TrimSpace(string(output)))
-		}
-		if err := os.Rename(encodedOutputPath, outputPath); err != nil {
-			return "", fmt.Errorf("install scaled dynamic map: %w", err)
+		if err := scaleMapRenderVideo(ctx, workspace, plan, profile); err != nil {
+			return "", err
 		}
 	}
-	// Every cache miss is accounted for: an Esri raster miss is either
-	// downloaded or a fallback; an offline vector-plate miss is drawn
-	// locally. Locally-rendered tiles are admitted only for the editorial
-	// basemap, so a raster provider can never hide missing downloads.
-	if summary.Tile.RenderedLocally < 0 || summary.Tile.NetworkFetches < 0 ||
-		summary.Tile.Fallbacks < 0 ||
-		(summary.Tile.RenderedLocally > 0 && summary.Basemap != "chronon_editorial") ||
-		summary.Tile.DiskCacheMisses != summary.Tile.NetworkFetches+summary.Tile.Fallbacks+summary.Tile.RenderedLocally {
-		return "", fmt.Errorf("dynamic map telemetry cache/fetch counters do not balance: hits=%d misses=%d downloads=%d fallbacks=%d rendered_locally=%d basemap=%q",
-			summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses, summary.Tile.NetworkFetches, summary.Tile.Fallbacks,
-			summary.Tile.RenderedLocally, summary.Basemap)
+	if err := validateMapRenderWork(summary); err != nil {
+		return "", err
 	}
-	if summary.Plates.RequiredTiles != summary.Plates.PrefetchFetched+summary.Plates.MemoryHits ||
-		summary.Tile.PrefetchTilesRequested != summary.Plates.RequiredTiles ||
-		summary.Tile.PrefetchTilesMemoryHits != summary.Plates.MemoryHits {
-		return "", fmt.Errorf("dynamic map telemetry prefetch coverage mismatch: required=%d fetched=%d plate_hits=%d requested=%d tile_hits=%d",
-			summary.Plates.RequiredTiles, summary.Plates.PrefetchFetched, summary.Plates.MemoryHits,
-			summary.Tile.PrefetchTilesRequested, summary.Tile.PrefetchTilesMemoryHits)
-	}
-	if summary.EngineFallbackFrames != 0 || summary.Tile.Fallbacks != 0 || summary.Tile.LateFetches != 0 {
-		return "", fmt.Errorf("dynamic map has unapproved fallback work: engine_frames=%d tile_fallbacks=%d late_fetches=%d",
-			summary.EngineFallbackFrames, summary.Tile.Fallbacks, summary.Tile.LateFetches)
-	}
-	log.Printf("Chronon dynamic map ready: cache_hit=%t frames=%d tiles(cache_hit=%d cache_miss=%d downloaded=%d fallback=%d late=%d fetch_ms=%.1f prefetch_ms=%.1f) plates(count=%d bytes=%d compose_ms=%.1f prepare_ms=%.1f required_tiles=%d prefetched=%d) frames_s=%.2f encode_wall_s=%.2f encode_tail_s=%.2f output_bytes=%d process_wall_s=%.2f",
-		cacheHit,
-		summary.Frames, summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses,
-		summary.Tile.NetworkFetches, summary.Tile.Fallbacks, summary.Tile.LateFetches,
-		summary.Tile.FetchMS, summary.Tile.PrefetchMS, summary.Plates.PlateCount,
-		summary.Plates.PlateBytes, summary.Plates.ComposeMS, summary.Plates.PrepareMS,
-		summary.Plates.RequiredTiles, summary.Plates.PrefetchFetched,
-		summary.FramePipelineS, summary.RenderEncodeWallS, summary.PostFrameTailS,
-		summary.OutputBytes, time.Since(renderStarted).Seconds())
-	// Phase timings close the decision report; emission is one structured log
-	// line always, plus a durable file when the operator configured a report
-	// directory (a requested report artifact that cannot be written fails
-	// closed, never silently missing).
-	report.RecordPhase("render_wall_s", time.Since(renderStarted).Seconds())
-	report.RecordPhase("frame_pipeline_s", summary.FramePipelineS)
-	report.RecordPhase("render_encode_wall_s", summary.RenderEncodeWallS)
-	report.RecordPhase("post_frame_tail_s", summary.PostFrameTailS)
-	report.RecordPhase("gate_ms", summary.GateMS)
-	report.RecordPhase("tile_prefetch_ms", summary.Tile.PrefetchMS)
-	report.RecordPhase("plate_prepare_ms", summary.Plates.PrepareMS)
-	report.RecordPhase("plate_compose_ms", summary.Plates.ComposeMS)
+	logMapRenderSummary(cacheHit, summary, time.Since(renderStarted))
+	// Phase timings close the decision report.
+	recordMapRenderPhases(report, summary, time.Since(renderStarted))
 	// Same owner-measured phases, projected into the canonical operation
 	// telemetry so the map cost is joinable to the run instead of living only
-	// in the decision report and the worker log.
+	// in the decision report and the worker log. A cache hit bypasses
+	// rendering and therefore has no renderer phases to project.
 	if !cacheHit {
 		projectMapRendererPhases(ctx, summary.Tile.PrefetchMS, summary.Plates.PrepareMS, summary.RenderEncodeWallS)
 	}
 	if _, err := report.JSON(); err != nil {
 		return "", fmt.Errorf("encode map decision report: %w", err)
 	}
-	// The cache hit bypasses rendering and therefore has no GPU admission to
-	// consume; every miss completes under the shared gate when required.
-	// Mark scheduled pins and persist the durable report next to the artifact.
-	// The report is written beside the rendered MP4 (same tmp workspace that
-	// becomes the content-addressed artifact dir) AND to the operator dir when
-	// configured — never log-only, so a wrong map is traceable to its job.
+	// Renderer confirmed frames: every eligible/scheduled pin was drawn. Pins
+	// without spoken timing still render as markers (no camera follow) — they
+	// are rendered, with the no_spoken_timing exclusion explaining the
+	// degraded camera, not a missing pin.
 	for i := range report.Places {
-		// Renderer confirmed frames: every eligible/scheduled pin was drawn.
-		// Pins without spoken timing still render as markers (no camera
-		// follow) — they are rendered, with the no_spoken_timing exclusion
-		// explaining the degraded camera, not a missing pin.
 		report.Places[i].State = "rendered"
 		report.Places[i].Presented = true
 	}
@@ -508,57 +462,21 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 		return "", fmt.Errorf("encode map decision report: %w", err)
 	}
 	log.Printf("map decision report: %s", encodedReport)
-	if _, err := capoverlay.WriteMapDecisionReport(tmpDir, report); err != nil {
-		return "", fmt.Errorf("write map decision report: %w", err)
-	}
-	if reportDir := strings.TrimSpace(os.Getenv("PIPELINEGEN_MAP_REPORT_DIR")); reportDir != "" {
-		if _, err := capoverlay.WriteMapDecisionReport(reportDir, report); err != nil {
-			return "", fmt.Errorf("write map decision report: %w", err)
-		}
+	if err := publishMapDecisionReport(workspace, report); err != nil {
+		return "", err
 	}
 	if !cacheHit {
-		var cacheErr error
-		videoSHA256, videoSize, cacheErr = storeDynamicMapVideoCacheVerified(cacheKey, outputPath, telemetryBytes, cacheDirs...)
-		if cacheErr != nil {
-			// The cache is optional; a write failure must not discard a valid
-			// map artifact or turn a successful render into a failed job.
-			log.Printf("Chronon dynamic map cache store failed: key=%s err=%v", cacheKey, cacheErr)
-		}
-		// The cache helper hashes while streaming bytes into its atomic cache
-		// copy. When caching is disabled, or a cache write failed before source
-		// bytes were consumed, hash the final output once for the import attestation.
-		if videoSHA256 == "" || videoSize <= 0 {
-			var identityErr error
-			videoSHA256, videoSize, identityErr = hashDynamicMapVideo(outputPath)
-			if identityErr != nil {
-				return "", fmt.Errorf("identify rendered dynamic map video: %w", identityErr)
-			}
+		videoSHA256, videoSize, err = finalizeMapVideo(cacheKey, workspace, telemetryBytes, cacheDirs)
+		if err != nil {
+			return "", err
 		}
 	}
 	if videoSHA256 == "" || videoSize <= 0 {
 		return "", fmt.Errorf("dynamic map video identity is incomplete")
 	}
-	identityBytes, err := json.Marshal(dynamicMapVideoIdentityManifest{SHA256: videoSHA256, SizeBytes: videoSize})
-	if err != nil {
-		return "", fmt.Errorf("encode dynamic map video identity: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "map.video.identity.json"), identityBytes, 0o600); err != nil {
-		return "", fmt.Errorf("write dynamic map video identity: %w", err)
+	if err := writeMapRenderIdentity(workspace, videoSHA256, videoSize); err != nil {
+		return "", err
 	}
 	keepWorkspace = true
-	return outputPath, nil
-}
-
-// ── render_queue_map_profile.go (merged to respect the package file cap) ──
-
-// dynamicMapEncodeProfile keeps final-job map videos on the exact AVC
-// configuration accepted by the packet-copy assembler. NVENC is still the
-// production profile for non-final map previews, but its SPS/PPS differs from
-// the canonical assembly avcC even when the visible H.264 profile and geometry
-// match.
-func dynamicMapEncodeProfile(plan capmodel.OverlayPlan, configured string) (capoverlay.MapEncodeProfile, error) {
-	if strings.EqualFold(strings.TrimSpace(plan.OutputProfileID), kernelmedia.OverlayVideoOnlyProfileID) {
-		return capoverlay.ResolveMapEncodeProfile(capoverlay.MapCPUCodec)
-	}
-	return capoverlay.ResolveMapEncodeProfile(configured)
+	return workspace.output, nil
 }

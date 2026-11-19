@@ -7,6 +7,8 @@ import (
 	"image/png"
 	"math"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 func TestHasPanelGridCollageRejectsContactSheet(t *testing.T) {
@@ -28,7 +30,7 @@ func TestHasPanelGridCollageRejectsContactSheet(t *testing.T) {
 		}
 	}
 
-	if !hasPanelGridCollage(encodePNG(t, img)) {
+	if !digest.HasPanelGridCollageBytes(encodePNG(t, img)) {
 		t.Fatal("panel grid was not rejected")
 	}
 }
@@ -47,7 +49,7 @@ func TestHasPanelGridCollageKeepsSinglePhoto(t *testing.T) {
 		}
 	}
 
-	if hasPanelGridCollage(encodePNG(t, img)) {
+	if digest.HasPanelGridCollageBytes(encodePNG(t, img)) {
 		t.Fatal("single photo was classified as a panel grid")
 	}
 }
@@ -77,7 +79,7 @@ func TestHasPanelGridCollageAllowsSinglePhotoWithBlurredSidebars(t *testing.T) {
 		}
 	}
 
-	if hasPanelGridCollage(encodePNG(t, img)) {
+	if digest.HasPanelGridCollageBytes(encodePNG(t, img)) {
 		t.Fatal("single central photo with blurred sidebars was classified as a collage")
 	}
 }

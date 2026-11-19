@@ -12,7 +12,7 @@
   "media_contract": "overlay-v1",
   "items": [
     {
-      "id": "static__we-drove-into-new-orleans-today__phrase__01",
+      "id": "doc-15-documentary-source-focus__we-drove-into-new-orleans-today__phrase__01",
       "scene_id": "scene-0",
       "kind": "text_phrase",
       "start_ms": 0,
@@ -20,6 +20,7 @@
       "duration_us": 900000,
       "template_id": "IMPORTANT_PHRASE",
       "preset_id": "phrase_default",
+      "motion_id": "doc_15_documentary_source_focus",
       "motion_params": {
         "enter_frames": 8
       },
@@ -43,9 +44,9 @@
         "priority": 1,
         "width": 1700
       },
-      "render_key": "232ed82955db046eba506ba65e769ad0743523f5b7fd5de612aef5a3a8fd5f35",
+      "render_key": "573fc5f6a2d43fb4d5c5a20975536254c9addb9d0d1334c2d4aeac2a0570feb4",
       "duration_ms": 900
     }
   ],
-  "fingerprint": "0944a7afdd1993a249b0b2261064249b3f800aee4cca3885b040a99c40026923"
+  "fingerprint": "f2153c6aad60c92b13b98fe2870d39602433ffecb2baa2a9a069f07ac24c11d0"
 }

@@ -73,20 +73,6 @@ func TimingPolicyFingerprint(timing *audio.TimingRequest, removeSilence bool) st
 	return fmt.Sprintf("mode=%s;boundary=%s;schema=%d;silence=%t", policy.Mode, policy.BoundaryMode, schema, removeSilence)
 }
 
-// BuildVoiceoverContentFingerprint identifies reusable audio across jobs.
-// The destination is included because the persisted artifact and its Drive
-// ownership are part of the delivery contract. JobID is intentionally not
-// included; retry isolation belongs to BuildVoiceoverIdempotencyKey.
-//
-// Version v2 (2026-08-26): the voiceover output format was canonicalized to
-// 48 kHz stereo MP3 (remove_silence now normalizes in the same pass that
-// strips silence). The format token is part of the fingerprint so a v1
-// (24 kHz mono) cache row is never reused as a valid hit for a v2 synthesis:
-// old entries go cold and are re-synthesized once, then cached under v2.
-func BuildVoiceoverContentFingerprint(textHash TextHash, language Language, voice, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
-	return digest.SHA256String("voiceover-content-v2:" + string(textHash) + ":" + string(language) + ":" + voice + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ":format=mp3-48k-stereo")
-}
-
 // idempotencyPolicyFingerprint folds the provider identity into the timing
 // policy ONLY when the provider declares one. Providers without an identity
 // keep the pre-v3 key verbatim, so enabling the local pilot invalidates
@@ -126,12 +112,6 @@ type VoiceoverPostPolicy struct {
 	Silence audio.SilenceRemovalPolicy
 }
 
-// DefaultVoiceoverPostPolicy mirrors the historical Italian voiceover policy
-// without hiding it inside the provider identity.
-func DefaultVoiceoverPostPolicy() VoiceoverPostPolicy {
-	return VoiceoverPostPolicy{Rate: "+1%", Silence: audio.DefaultSilenceRemovalPolicy()}
-}
-
 func voiceoverPostPolicy(rate string, silence audio.SilenceRemovalPolicy) VoiceoverPostPolicy {
 	return VoiceoverPostPolicy{Rate: strings.TrimSpace(rate), Silence: silence.Normalized()}
 }
@@ -144,23 +124,6 @@ func (p VoiceoverPostPolicy) Fingerprint() string {
 		rate = "provider-default"
 	}
 	return "rate=" + rate + ";" + p.Silence.Normalized().Fingerprint()
-}
-
-// BuildVoiceoverContentFingerprintV3 is the provider-aware content
-// fingerprint. Version v3 (2026-11-09) adds the provider/model identity to
-// the tuple: switching Edge -> Pocket/Phonon (or Pocket -> Phonon) MUST
-// invalidate cached audio instead of reusing the previous engine's file,
-// even when text, language, voice and destination are identical.
-//
-// An empty identity is hashed as "unspecified" (never silently equal to
-// "edge-tts"), so a caller that forgets to expose an identity can only
-// miss the cache, never reuse the wrong engine's audio.
-func BuildVoiceoverContentFingerprintV3(textHash TextHash, language Language, voice, providerID, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
-	providerID = strings.TrimSpace(providerID)
-	if providerID == "" {
-		providerID = "unspecified"
-	}
-	return digest.SHA256String("voiceover-content-v3:" + string(textHash) + ":" + string(language) + ":" + voice + ":provider=" + providerID + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ":format=mp3-48k-stereo")
 }
 
 // BuildVoiceoverContentFingerprintV4 adds the actual rate and the versioned

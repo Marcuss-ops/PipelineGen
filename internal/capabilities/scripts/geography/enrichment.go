@@ -21,11 +21,83 @@ import (
 type Options struct {
 	SceneTexts map[int]string
 	MapsOnly   bool
+	// MapLevel is the cartographic level the run asked for. It is forwarded to
+	// the provider so a country-level map never resolves a city, and it is
+	// applied to places that arrive already geocoded by an earlier surface.
+	// Empty keeps the level-agnostic lookup.
+	MapLevel string
 }
 
 func IsPlaceEntityType(entityType string) bool { return entitytype.Is(entityType, entitytype.Place) }
 
 func isPlaceEntityType(entityType string) bool { return IsPlaceEntityType(entityType) }
+
+// enrichState is the run-scoped geography state: the positive answers already
+// paid for and the lookups the requested cartographic level refused. A refusal
+// is terminal for the run, so the retry frames never re-ask a provider for a
+// place the map cannot use.
+type enrichState struct {
+	resolved map[string]capabilitygeocoding.Result
+	refused_ map[string]struct{}
+	// refusedNames holds the places already known to sit outside the requested
+	// level (a place that arrived pre-geocoded at another scale). The level is
+	// constant for the run and so is the scope of a name: neither the retry
+	// frames nor the grounded-name pass may look it up again.
+	refusedNames map[string]struct{}
+}
+
+// refusedName is the run-scoped identity of a name refused by the map level.
+func refusedName(name string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " "))
+}
+
+func (s *enrichState) refuseName(name string) {
+	key := refusedName(name)
+	if s == nil || key == "" {
+		return
+	}
+	if s.refusedNames == nil {
+		s.refusedNames = make(map[string]struct{}, 1)
+	}
+	s.refusedNames[key] = struct{}{}
+}
+
+func (s *enrichState) nameRefused(name string) bool {
+	if s == nil || len(s.refusedNames) == 0 {
+		return false
+	}
+	_, ok := s.refusedNames[refusedName(name)]
+	return ok
+}
+
+func (s *enrichState) refused(key string) bool {
+	if s == nil || len(s.refused_) == 0 {
+		return false
+	}
+	_, ok := s.refused_[key]
+	return ok
+}
+
+func (s *enrichState) refuse(key string) {
+	if s == nil {
+		return
+	}
+	if s.refused_ == nil {
+		s.refused_ = make(map[string]struct{}, 1)
+	}
+	s.refused_[key] = struct{}{}
+}
+
+// outOfMapLevel reports whether an already-grounded place belongs to a
+// different cartographic level than the requested map. Such a place is dropped
+// before the lookup: a country pin on a city frame is not a candidate the
+// geocoder could improve.
+func outOfMapLevel(geo *scriptpkg.GeoCoordinate, level string) bool {
+	if geo == nil || level == "" {
+		return false
+	}
+	return !capabilitygeocoding.ScopeFitsLevel(geo.Scope, level)
+}
 func StripPersonNameMapCandidates(annotation *scriptpkg.SceneAnnotations, sceneText string) {
 	stripPersonNameMapCandidates(annotation, sceneText)
 }
@@ -46,12 +118,20 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 		indices = append(indices, index)
 	}
 	sort.Ints(indices)
-	resolved := make(map[string]capabilitygeocoding.Result)
+	state := &enrichState{resolved: make(map[string]capabilitygeocoding.Result)}
 	personTokens := personNameTokens(annotations)
-	var ignoredMapCandidates map[string]struct{}
+	level := ""
+	if len(options) > 0 {
+		constraint, err := capabilitygeocoding.ConstraintLevel(options[0].MapLevel)
+		if err != nil {
+			return fmt.Errorf("map level: %w", err)
+		}
+		level = constraint
+	}
+	var mapExclusions *MapCandidateExclusions
 	if len(options) > 0 && options[0].MapsOnly {
 		var err error
-		ignoredMapCandidates, err = MapPlaceCandidateIgnoredWords(linguistics.DefaultProfilesOrNil(), language)
+		mapExclusions, err = MapCandidateExclusionsFor(linguistics.DefaultProfilesOrNil(), language)
 		if err != nil {
 			return fmt.Errorf("load map candidate exclusion lexicon: %w", err)
 		}
@@ -68,13 +148,27 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 			// map stop, regardless of whether Geo was already attached.
 			for entityIndex := range annotation.PrimaryEntities {
 				if isPlaceEntityType(annotation.PrimaryEntities[entityIndex].Type) &&
-					isGenericPlaceLabel(annotation.PrimaryEntities[entityIndex].CanonicalName) {
+					isGenericPlaceLabel(annotation.PrimaryEntities[entityIndex].CanonicalName, language) {
+					annotation.PrimaryEntities[entityIndex].Geo = nil
+					continue
+				}
+				if outOfMapLevel(annotation.PrimaryEntities[entityIndex].Geo, level) {
+					// The scope is already certified: this is not a lookup
+					// to retry, so record the refusal for the retry gate.
+					state.refuseName(annotation.PrimaryEntities[entityIndex].CanonicalName)
+					state.refuseName(normalizeGeocodePlaceQuery(annotation.PrimaryEntities[entityIndex].CanonicalName, language))
 					annotation.PrimaryEntities[entityIndex].Geo = nil
 				}
 			}
 			for entityIndex := range annotation.SecondaryEntities {
 				if isPlaceEntityType(annotation.SecondaryEntities[entityIndex].Type) &&
-					isGenericPlaceLabel(annotation.SecondaryEntities[entityIndex].CanonicalName) {
+					isGenericPlaceLabel(annotation.SecondaryEntities[entityIndex].CanonicalName, language) {
+					annotation.SecondaryEntities[entityIndex].Geo = nil
+					continue
+				}
+				if outOfMapLevel(annotation.SecondaryEntities[entityIndex].Geo, level) {
+					state.refuseName(annotation.SecondaryEntities[entityIndex].CanonicalName)
+					state.refuseName(normalizeGeocodePlaceQuery(annotation.SecondaryEntities[entityIndex].CanonicalName, language))
 					annotation.SecondaryEntities[entityIndex].Geo = nil
 				}
 			}
@@ -85,7 +179,7 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 		// coarse places resolve, so a later city lookup sees them.
 		geoContext := sceneGeoContext(annotation)
 		for entityIndex := range annotation.PrimaryEntities {
-			if len(options) > 0 && options[0].MapsOnly && IgnoredMapCandidate(ignoredMapCandidates, annotation.PrimaryEntities[entityIndex].CanonicalName, language) {
+			if len(options) > 0 && options[0].MapsOnly && IgnoredMapCandidate(mapExclusions, annotation.PrimaryEntities[entityIndex].CanonicalName, language) {
 				annotation.PrimaryEntities[entityIndex].Geo = nil
 				continue
 			}
@@ -99,12 +193,12 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 			if len(options) > 0 && options[0].MapsOnly && !containsGroundedPlaceName(options[0].SceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName) {
 				continue
 			}
-			if err := geocodeAnnotatedEntity(ctx, geocoder, resolved, &annotation.PrimaryEntities[entityIndex], index, language, &geoContext); err != nil {
+			if err := geocodeAnnotatedEntity(ctx, geocoder, state, &annotation.PrimaryEntities[entityIndex], index, language, level, &geoContext); err != nil {
 				return err
 			}
 		}
 		for entityIndex := range annotation.SecondaryEntities {
-			if len(options) > 0 && options[0].MapsOnly && IgnoredMapCandidate(ignoredMapCandidates, annotation.SecondaryEntities[entityIndex].CanonicalName, language) {
+			if len(options) > 0 && options[0].MapsOnly && IgnoredMapCandidate(mapExclusions, annotation.SecondaryEntities[entityIndex].CanonicalName, language) {
 				annotation.SecondaryEntities[entityIndex].Geo = nil
 				continue
 			}
@@ -115,7 +209,7 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 			if len(options) > 0 && options[0].MapsOnly && !containsGroundedPlaceName(options[0].SceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName) {
 				continue
 			}
-			if err := geocodeAnnotatedEntity(ctx, geocoder, resolved, &annotation.SecondaryEntities[entityIndex], index, language, &geoContext); err != nil {
+			if err := geocodeAnnotatedEntity(ctx, geocoder, state, &annotation.SecondaryEntities[entityIndex], index, language, level, &geoContext); err != nil {
 				return err
 			}
 		}
@@ -123,15 +217,27 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 			if !isPlaceEntityType(entity.Type) || entity.Geo != nil {
 				return false
 			}
+			if state.nameRefused(entity.CanonicalName) {
+				return false
+			}
 			if len(options) == 0 || !options[0].MapsOnly {
 				return true
 			}
-			return !IgnoredMapCandidate(ignoredMapCandidates, entity.CanonicalName, language) &&
+			return !IgnoredMapCandidate(mapExclusions, entity.CanonicalName, language) &&
 				!personNameFragment(annotation, entity.CanonicalName) &&
 				!personNameToken(personTokens, entity.CanonicalName) &&
 				!capitalizedNameFragment(options[0].SceneTexts[index], entity.CanonicalName) &&
 				containsGroundedPlaceName(options[0].SceneTexts[index], entity.CanonicalName)
 		}
+		// A scene that grounds more than one country has no single correct
+		// frame: "Roma, Torino e Parigi ... Italia ... Francia" resolves Italy
+		// first, so the retry of Paris under countrycodes=it fails while Rome
+		// is fine under it and lost under an unconstrained lookup. The "latest
+		// country" is just the last mention, not a disambiguator: retry every
+		// unresolved place against each country the scene already grounded,
+		// then once without a constraint. A single-country scene keeps its one
+		// frame, which is the disambiguating case (Springfield under the USA).
+		retryFrames := sceneLookupFrames(annotation, geoContext)
 		// A city can appear before its country in a scene ("Lisbona, in
 		// Portogallo"). Its first lookup has no grounded context and may
 		// correctly return ErrNoResult. Retry unresolved place annotations
@@ -140,7 +246,7 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 			if !shouldRetry(annotation.PrimaryEntities[entityIndex]) {
 				continue
 			}
-			if err := geocodeAnnotatedEntity(ctx, geocoder, resolved, &annotation.PrimaryEntities[entityIndex], index, language, &geoContext); err != nil {
+			if err := geocodeWithSceneFrames(ctx, geocoder, state, &annotation.PrimaryEntities[entityIndex], index, language, level, retryFrames, &geoContext); err != nil {
 				return err
 			}
 		}
@@ -148,17 +254,93 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 			if !shouldRetry(annotation.SecondaryEntities[entityIndex]) {
 				continue
 			}
-			if err := geocodeAnnotatedEntity(ctx, geocoder, resolved, &annotation.SecondaryEntities[entityIndex], index, language, &geoContext); err != nil {
+			if err := geocodeWithSceneFrames(ctx, geocoder, state, &annotation.SecondaryEntities[entityIndex], index, language, level, retryFrames, &geoContext); err != nil {
 				return err
 			}
 		}
 		if len(options) > 0 && options[0].MapsOnly {
-			if err := geocodeGroundedPlaceNames(ctx, geocoder, resolved, annotation, options[0].SceneTexts[index], language, index, &geoContext, personTokens); err != nil {
+			if err := geocodeGroundedPlaceNames(ctx, geocoder, state, annotation, options[0].SceneTexts[index], language, level, index, &geoContext, personTokens); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// sceneLookupFrames lists the grounded lookup frames a retry may use, in order.
+// An empty result means "keep the historical single lookup": a scene with one
+// grounded country (or none) has nothing to choose between.
+func sceneLookupFrames(annotation *scriptpkg.SceneAnnotations, current capabilitygeocoding.Context) []capabilitygeocoding.Context {
+	codes := sceneCountryCodes(annotation)
+	if len(codes) <= 1 {
+		return nil
+	}
+	frames := make([]capabilitygeocoding.Context, 0, len(codes)+1)
+	for _, code := range codes {
+		frame := capabilitygeocoding.Context{}
+		if len(code) == 2 {
+			frame.CountryCode = code
+		} else {
+			frame.Country = code
+		}
+		if frame == current {
+			continue
+		}
+		frames = append(frames, frame)
+	}
+	// Last resort: no frame at all, which is the only lookup that can resolve a
+	// place whose country the scene never grounded.
+	frames = append(frames, capabilitygeocoding.Context{})
+	return frames
+}
+
+// geocodeWithSceneFrames retries one unresolved place through the scene's
+// grounded frames and stops at the first resolution.
+func geocodeWithSceneFrames(ctx context.Context, geocoder capabilitygeocoding.Geocoder, state *enrichState, entity *scriptpkg.AnnotatedEntity, sceneIndex int, language, level string, frames []capabilitygeocoding.Context, geoContext *capabilitygeocoding.Context) error {
+	if len(frames) == 0 {
+		return geocodeAnnotatedEntity(ctx, geocoder, state, entity, sceneIndex, language, level, geoContext)
+	}
+	for _, frame := range frames {
+		attempt := frame
+		if err := geocodeAnnotatedEntity(ctx, geocoder, state, entity, sceneIndex, language, level, &attempt); err != nil {
+			return err
+		}
+		if entity.Geo != nil {
+			AdoptGeoContext(geoContext, entity)
+			return nil
+		}
+	}
+	return nil
+}
+
+// sceneCountryCodes returns the distinct countries the scene has already
+// grounded. Codes are preferred because they are language independent; a hit
+// without an ISO code still counts through its country name so a provider that
+// omits the code does not hide a multi-country scene.
+func sceneCountryCodes(annotation *scriptpkg.SceneAnnotations) []string {
+	if annotation == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	codes := make([]string, 0, 2)
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...), annotation.SecondaryEntities...) {
+		if entity.Geo == nil {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(entity.Geo.CountryCode))
+		if key == "" {
+			key = strings.ToLower(strings.Join(strings.Fields(entity.Geo.Country), " "))
+		}
+		if key == "" {
+			continue
+		}
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		codes = append(codes, key)
+	}
+	return codes
 }
 
 // personNameTokens captures grounded people across the whole script. A
@@ -424,24 +606,25 @@ var capitalizedNameRE = regexp.MustCompile(`(?:[A-ZÀ-ÖØ-Þ][\p{L}\p{M}'’’
 // journey narration). It runs only for an explicit maps-only request and only
 // accepts names that the configured geocoder classifies at a geographic level.
 func GeocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, annotation *scriptpkg.SceneAnnotations, text, language string, sceneIndex int, geoContext *capabilitygeocoding.Context) error {
-	return geocodeGroundedPlaceNames(ctx, geocoder, resolved, annotation, text, language, sceneIndex, geoContext, nil)
+	return geocodeGroundedPlaceNames(ctx, geocoder, &enrichState{resolved: resolved}, annotation, text, language, "", sceneIndex, geoContext, nil)
 }
 
-func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, annotation *scriptpkg.SceneAnnotations, text, language string, sceneIndex int, geoContext *capabilitygeocoding.Context, personTokens map[string]struct{}) error {
+func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding.Geocoder, state *enrichState, annotation *scriptpkg.SceneAnnotations, text, language, level string, sceneIndex int, geoContext *capabilitygeocoding.Context, personTokens map[string]struct{}) error {
 	if annotation == nil || strings.TrimSpace(text) == "" {
 		return nil
 	}
-	ignored, err := MapPlaceCandidateIgnoredWords(linguistics.DefaultProfilesOrNil(), language)
+	exclusions, err := MapCandidateExclusionsFor(linguistics.DefaultProfilesOrNil(), language)
 	if err != nil {
 		return fmt.Errorf("load map candidate exclusion lexicon: %w", err)
 	}
+	ignored := exclusions.Words
 	seen := make(map[string]struct{})
 	entityIndexes := make(map[string]int)
 	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...), annotation.SecondaryEntities...) {
 		canonical := strings.ToLower(strings.TrimSpace(entity.CanonicalName))
 		// Keep unresolved named places eligible for a context-aware retry below:
 		// their first annotation lookup may have run before the country entity.
-		if entity.Geo != nil || !isPlaceEntityType(entity.Type) || isGenericPlaceLabel(entity.CanonicalName) {
+		if entity.Geo != nil || !isPlaceEntityType(entity.Type) || isGenericPlaceLabel(entity.CanonicalName, language) {
 			seen[canonical] = struct{}{}
 			seen[strings.ToLower(normalizeGeocodePlaceQuery(entity.CanonicalName, language))] = struct{}{}
 		}
@@ -457,7 +640,10 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		match := text[span[0]:span[1]]
 		name := normalizeGeocodePlaceQuery(match, language)
 		key := strings.ToLower(name)
-		if name == "" || isGenericPlaceLabel(name) {
+		if name == "" || isGenericPlaceLabel(name, language) {
+			continue
+		}
+		if state.nameRefused(name) {
 			continue
 		}
 		if _, ok := ignored[key]; ok {
@@ -474,7 +660,7 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		if len(name) > 1 && name == strings.ToUpper(name) {
 			continue
 		}
-		if IgnoredMapCandidate(ignored, name, language) || groundedPersonName(annotation, name) || personNameToken(personTokens, name) {
+		if IgnoredMapCandidate(exclusions, name, language) || groundedPersonName(annotation, name) || personNameToken(personTokens, name) {
 			continue
 		}
 		if _, ok := seen[key]; ok {
@@ -487,12 +673,15 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		}
 	}
 	for _, name := range queries {
-		lookupContext := placeLookupContext(name, geoContext)
+		lookupContext := placeLookupContext(name, language, geoContext)
 		cacheKey := GeocodeCacheKey(language, name, lookupContext)
-		result, ok := resolved[cacheKey]
+		if state.refused(cacheKey) {
+			continue
+		}
+		result, ok := state.resolved[cacheKey]
 		if !ok {
 			var err error
-			result, err = geocoder.Geocode(ctx, capabilitygeocoding.Request{Query: name, Language: language, Context: lookupContext})
+			result, err = geocoder.Geocode(ctx, capabilitygeocoding.Request{Query: name, Language: language, Context: lookupContext, Level: level})
 			if errors.Is(err, capabilitygeocoding.ErrNoResult) {
 				continue
 			}
@@ -502,9 +691,16 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 			if err := result.Validate(); err != nil {
 				return fmt.Errorf("geocode named map candidate %q returned invalid coordinates: %w", name, err)
 			}
-			resolved[cacheKey] = result
+			state.resolved[cacheKey] = result
 		}
 		if result.Scope != "continent" && result.Scope != "country" && result.Scope != "region" && result.Scope != "city" {
+			continue
+		}
+		// The requested level decides what this map may pin. A provider that
+		// ignores the hint (or a cached answer from before the level existed)
+		// must not slip a city onto a country-level plate here either.
+		if !capabilitygeocoding.ScopeFitsLevel(result.Scope, level) {
+			state.refuse(cacheKey)
 			continue
 		}
 		geo := &scriptpkg.GeoCoordinate{

@@ -16,10 +16,18 @@ chiusura. Misure su worktree puliti: **481** a `5bedaada6`/`b1c7e06cf`,
 **483** a `8d55a74a4`, sempre con 0 zero-reference e 0 in `overlays`; il delta
 +2 è in `internal/kernel/digest` (`HasPanelGridCollageBytes`,
 `PerceptualHashBytes`) e appartiene alla catena person-image/VLM non cablata.
-Guard corrente: **≤ 430** misurato su worktree pulito a `6021d65bd` (2026-11-19):
-le ondate mediaregistry/test-support/eligibility hanno portato 445 → 430, di cui
-**20 in allowlist test-only** (`tests/tools/*`, `sqlite/sqltest`) e quindi **410
-nel perimetro di produzione**. Storia delle ultime ondate: 445 dopo l'ondata 13 del 2026-11-19 (il file
+Guard corrente: **≤ 292** misurato sul working tree del 2026-11-19 dopo le
+sette ondate di sweep (`pkg/`, `internal/app/wiring`, `capabilities/remote`,
+`mediaregistry`, media-eligibility, contract-corpus, test-support) e le modifiche
+successive già presenti nel tree: 445 → 295 → 292, di cui **20 in allowlist
+test-only** (`tests/tools/*`, `sqlite/sqltest`) e quindi **272 nel perimetro di
+produzione**. Il calo 295 → 292 è il ricontrollo a tree stabile del 2026-11-19
+(hash dei contenuti invariato per 180 s): ritirati
+`AnimationRegistry.MapTypeDefault`, `DefaultPhraseExtractionPolicy` e
+`isSHA256`; capabilities (59), scripts (108) e voiceover (8) chiuse per
+disposition, platform (61) e kernel/cmd (36+4) restano come registrato. Le schede di famiglia sotto restano la
+fotografia storica delle 445 misurate a inizio giornata; il conteggio puntuale è
+questo. Storia delle ultime ondate: 445 dopo l'ondata 13 del 2026-11-19 (il file
 `kernel/script/retrieval_query_builders.go` con 10 funzioni e 3 test, mai
 cablato; l'ondata 12 aveva tolto il normalizer audio legacy con 5 DTO e 5 test,
 la 11 il tipo `ClipSemanticMetadata`, la 10 i builder `ClipIdentity` e il

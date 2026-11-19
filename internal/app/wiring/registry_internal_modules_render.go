@@ -163,8 +163,8 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// config (encoder policy + profile owned by the composition root, never
 	// by Rust). Fail-closed when the media config is missing, mirroring
 	// WireStockPipeline. The Chronon clip executor is attached to the worker via the
-	// RenderExecutor port; the worker selects Submit/Settle when the async
-	// continuation ports are wired, retaining Render as a compatibility path.
+	// RenderExecutor port. Submit/Settle is the only render path: the blocking
+	// Render form was deleted, so no compatibility lane exists.
 	mediaConfig := root.MediaExec
 	if mediaConfig == (mediaexec.ExecutionConfig{}) {
 		return fmt.Errorf("registerClipRender: resolved media execution config is required when ClipRenderEnabled=true (root.MediaExec)")

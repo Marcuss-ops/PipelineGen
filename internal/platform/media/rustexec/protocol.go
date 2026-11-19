@@ -25,6 +25,7 @@ const (
 	OperationMergeInputs        Operation = "merge_inputs"
 	OperationRemoveSilence      Operation = "remove_silence"
 	OperationRenderAudioPlan    Operation = "render_audio_plan"
+	OperationPreflight          Operation = "preflight"
 )
 
 func (o Operation) String() string { return string(o) }
@@ -35,7 +36,8 @@ func (o Operation) valid() bool {
 		OperationCutCopy, OperationCutAndNormalize,
 		OperationExtractFrame, OperationGenerateProxy, OperationGenerateStoryboard,
 		OperationRemuxHLS, OperationTrim,
-		OperationMergeInputs, OperationRemoveSilence, OperationRenderAudioPlan:
+		OperationMergeInputs, OperationRemoveSilence, OperationRenderAudioPlan,
+		OperationPreflight:
 		return true
 	default:
 		return false
@@ -78,6 +80,9 @@ type request struct {
 	MaxDurationSec  float64         `json:"max_duration_sec,omitempty"`
 	AudioPlan       json.RawMessage `json:"audio_plan,omitempty"`
 	AudioAssets     []audioAsset    `json:"audio_assets,omitempty"`
+	// Preflight is the typed, read-only pre-render payload. The report comes
+	// back in response.Preflight and Go derives the blocking decision.
+	Preflight *PreflightRequest `json:"preflight,omitempty"`
 }
 
 // Validate checks the transport envelope and the operation-specific required
@@ -126,6 +131,11 @@ func (r request) Validate() error {
 			return fmt.Errorf("%s: audio_plan is required", r.Operation)
 		}
 		return nil
+	case OperationPreflight:
+		if r.Preflight == nil {
+			return fmt.Errorf("%s: preflight is required", r.Operation)
+		}
+		return nil
 	case OperationProbe:
 		return requireSource()
 	case OperationCutBatch:
@@ -165,7 +175,10 @@ type response struct {
 	// counts. Nil (absent) means the executor did not report metrics; the
 	// Go boundary then falls back to its own measurements.
 	Metrics *OperationMetrics `json:"metrics,omitempty"`
-	Error   string            `json:"error"`
+	// Preflight is present only on a `preflight` response. The envelope OK
+	// reports that the check ran; Preflight.OK reports that the plan passed.
+	Preflight *PreflightReport `json:"preflight,omitempty"`
+	Error     string           `json:"error"`
 }
 
 // OperationMetrics is the standard per-operation metrics block returned by

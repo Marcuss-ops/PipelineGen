@@ -60,7 +60,29 @@ than a silent split.
 
 `coalesce_chained_overlays` in the Rust planner (ported from the former Go
 `CoalesceChainedOverlays`) fuses nearby overlays into one chain item when the
-configured gap and scene boundary allow it. For images this produces:
+configured gap and scene boundary allow it. Only **captioned entity cards**
+fuse into an `image_chain`: a plain contextual photo stays a standalone item,
+because the renderer lowers a chain's generic image segments as a simultaneous
+deck instead of a sequence.
+
+One automatic chain carries at most **ten segments**. `chain_max_segments`
+lowers that bound (values below two are floored to two); it can never raise it,
+and `chain_disabled` remains the only opt-out.
+
+The handoff between two fused segments is
+`animation_counts.chain_handoff_ms` (default `400`, clamped to
+`0..2000` ms). `0` makes the segments abut, so the renderer's own entrance and
+exit own the transition instead of a plan-level hole. It is written through as
+`chain_gap_us` on the container.
+
+A run whose last segment would start after the scene end is **trimmed**, not
+discarded: the segments that start inside the scene are fused, the remainder
+stays standalone, and the final scene-bounds clamp shortens the last fused
+segment. Before 2026-11-19 the whole group was dropped, so a chain that
+overflowed by a few milliseconds (observed: 24 ms in `scene-03` of the
+multi-entity probe) produced no chain at all.
+
+For captioned entity images this produces:
 
 ```json
 {
@@ -108,9 +130,15 @@ durationUS = clamp(audioEndUS - audioStartUS + 500ms,
 - **Hold (+0.5 s)**: the card stays up half a second past the last spoken word.
 - **Ceiling (5 s)**: a long narration never makes the image run indefinitely.
 
-The dynamic window applies to entity cards and entity images. Generic per-scene
-contextual images are a separate lane: they are anchored at their certified
-scene start and use the image ceiling rather than the entity spoken window.
+The dynamic window applies to entity cards and entity images. The Rust planner
+anchors it on the occurrence's scene-local start/end (`local_start_us`,
+`local_end_us`) plus the scene start: `audio_start_us` is absolute in the
+envelope but relative in some stages, and reading it alone made the first
+entity of a scene run from the scene anchor (21 s stills). The planner also
+raises the readable floor to 2.5 s, so a chained segment and a standalone card
+hold for the same minimum. Generic per-scene contextual images are a separate
+lane: they are anchored at their certified scene start and use the image
+ceiling rather than the entity spoken window.
 
 ## Renderer contract
 
@@ -131,8 +159,10 @@ and per-layer asset references.
 
 | Surface | Test |
 |---|---|
-| Five nearby images keep five identities and five motions | `BrainRust/overlay-compiler/src/editorial_plan_v2/planner.rs` (`general_chain_keeps_image_runs_separate_from_text`) |
-| Five images are not split by an implicit ceiling | `general_chain_keeps_overflowing_runs_standalone` (only `chain_max_segments` caps a run) |
+| Five nearby captioned images keep five identities and five motions | `BrainRust/overlay-compiler/src/editorial_plan_v2/planner.rs` (`general_chain_keeps_image_runs_separate_from_text`) |
+| Plain photos never fuse into an image chain | `general_chain_keeps_plain_image_runs_standalone` |
+| A run that overflows the scene end is trimmed, not dropped | `general_chain_trims_a_captioned_run_at_the_scene_end` |
+| The hard ceiling is ten segments | `general_chain_caps_a_run_at_ten_segments` |
 | Producer/consumer fixture identity and five-segment decoding | `internal/capabilities/overlays/model/chain_segments_conformance_test.go` (`TestChainSegmentsSharedConformanceFixture`) |
 | Certified entity image motion selection | `internal/capabilities/scripts/entity_image_motion_rotation_test.go` (`TestAssignEntityImageMotionsUsesCertifiedCatalog`) |
 | Explicit composite group choreography | `internal/capabilities/overlays/selection_group_motion_test.go` (`TestSelectImageGroupMotionIsCertifiedDeterministicAndNoRepeat`) |

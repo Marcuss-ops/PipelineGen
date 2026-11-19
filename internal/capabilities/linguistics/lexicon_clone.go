@@ -16,14 +16,16 @@ func cloneProfile(p *LexiconProfile) *LexiconProfile {
 		return nil
 	}
 	out := &LexiconProfile{
-		StopWords:         cloneStringSet(p.StopWords),
-		FunctionWords:     cloneStringSet(p.FunctionWords),
-		EntityBlocklist:   cloneStringSet(p.EntityBlocklist),
-		NegativeParticles: cloneStringSet(p.NegativeParticles),
-		VisualVerbs:       cloneStringSet(p.VisualVerbs),
-		VerbSuffixes:      append([]string(nil), p.VerbSuffixes...),
-		PhrasePolicy:      p.PhrasePolicy,
-		WordSets:          cloneWordSets(p.WordSets),
+		StopWords:                    cloneStringSet(p.StopWords),
+		FunctionWords:                cloneStringSet(p.FunctionWords),
+		EntityBlocklist:              cloneStringSet(p.EntityBlocklist),
+		PlaceCandidateBlocklist:      cloneStringSet(p.PlaceCandidateBlocklist),
+		PlaceCandidateTokenBlocklist: cloneStringSet(p.PlaceCandidateTokenBlocklist),
+		NegativeParticles:            cloneStringSet(p.NegativeParticles),
+		VisualVerbs:                  cloneStringSet(p.VisualVerbs),
+		VerbSuffixes:                 append([]string(nil), p.VerbSuffixes...),
+		PhrasePolicy:                 p.PhrasePolicy,
+		WordSets:                     cloneWordSets(p.WordSets),
 	}
 	return out
 }

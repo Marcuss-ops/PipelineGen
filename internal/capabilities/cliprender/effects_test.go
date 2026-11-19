@@ -17,10 +17,15 @@ func TestValidateClipEffectsRejectsInvisibleEffect(t *testing.T) {
 	}{
 		{"glitch without amount", ClipEffectSpec{Type: "glitch"}, "amount"},
 		{"scanlines without amount", ClipEffectSpec{Type: "scanlines", Wavelength: 0.05}, "amount"},
+		{"scanlines without wavelength", ClipEffectSpec{Type: "scanlines", Amount: 0.1}, "wavelength"},
 		{"chromatic_aberration without amount", ClipEffectSpec{Type: "chromatic_aberration"}, "amount"},
+		{"halftone without size", ClipEffectSpec{Type: "halftone", Amount: 0.7}, "size"},
+		{"halftone without amount", ClipEffectSpec{Type: "halftone", Size: 8}, "amount"},
+		{"mosaic without block_size", ClipEffectSpec{Type: "mosaic"}, "block_size"},
 		{"vignette without amount", ClipEffectSpec{Type: "vignette", Radius: 0.5}, "amount"},
 		{"gaussian_blur without radius", ClipEffectSpec{Type: "gaussian_blur"}, "radius"},
 		{"noise without amount", ClipEffectSpec{Type: "noise", Size: 1}, "amount"},
+		{"noise without size", ClipEffectSpec{Type: "noise", Amount: 0.1}, "size"},
 		{"sharpen without amount", ClipEffectSpec{Type: "sharpen"}, "amount"},
 		{"banded_grain without intensity", ClipEffectSpec{Type: "banded_grain"}, "intensity"},
 		{"glow without radius and intensity", ClipEffectSpec{Type: "glow"}, "radius/intensity"},
@@ -96,5 +101,41 @@ func TestValidateClipEffectsBlackAndWhiteBounds(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "amount must be in [0,1]") {
 			t.Fatalf("amount %v: got %v", amount, err)
 		}
+	}
+}
+
+// TestValidateClipGridRejectsInvisibleOrOverlappingLook pins the grid half of
+// the same no-op guard: opacity 0 is the zero value of an omitted field, and a
+// dot wider than half a cell turns the grid into a single smudge. Both were
+// accepted before, so a grid could ship that drew nothing or drew mush.
+func TestValidateClipGridRejectsInvisibleOrOverlappingLook(t *testing.T) {
+	valid := &ClipGridSpec{
+		Style:       "lines",
+		SpacingPX:   72,
+		LineWidthPX: 1,
+		Color:       "#D8D3C8",
+		Opacity:     0.14,
+	}
+	if err := ValidateClipEffects(nil, valid); err != nil {
+		t.Fatalf("visible grid should validate, got %v", err)
+	}
+	invisible := *valid
+	invisible.Opacity = 0
+	if err := ValidateClipEffects(nil, &invisible); err == nil || !strings.Contains(err.Error(), "grid.opacity must be in (0,1]") {
+		t.Fatalf("opacity 0 must be rejected as an invisible grid, got %v", err)
+	}
+	overRange := *valid
+	overRange.Opacity = 1.4
+	if err := ValidateClipEffects(nil, &overRange); err == nil || !strings.Contains(err.Error(), "grid.opacity must be in (0,1]") {
+		t.Fatalf("opacity 1.4 must be rejected, got %v", err)
+	}
+	dots := &ClipGridSpec{Style: "dots", SpacingPX: 40, DotRadiusPX: 3, Color: "#FFFFFF", Opacity: 0.3}
+	if err := ValidateClipEffects(nil, dots); err != nil {
+		t.Fatalf("dots inside half a cell should validate, got %v", err)
+	}
+	overlapping := *dots
+	overlapping.DotRadiusPX = 64
+	if err := ValidateClipEffects(nil, &overlapping); err == nil || !strings.Contains(err.Error(), "must not exceed half of grid.spacing_px") {
+		t.Fatalf("dot radius above half the spacing must be rejected, got %v", err)
 	}
 }

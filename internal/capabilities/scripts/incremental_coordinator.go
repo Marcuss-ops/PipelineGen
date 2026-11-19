@@ -126,15 +126,25 @@ var _ SceneCommitObserver = (*VidRushIncrementalCoordinator)(nil)
 var _ VidRushBarrier = (*VidRushIncrementalCoordinator)(nil)
 var _ VidRushTimingRecorder = (*VidRushIncrementalCoordinator)(nil)
 
-// SetSegmentProviderResolver wires the per-segment provider fanout that runs
-// after entity extraction. A nil resolver is safe and leaves the enrichment
-// at the entities+queries stage (no candidate media is resolved).
+// SetSegmentResearcher wires the per-segment research stage that runs after
+// extraction and before provider search. A nil researcher is safe: the stage
+// is a no-op, which is the only configuration the production wiring uses
+// today. No SegmentResearcher implementation ships in this repository, so the
+// setter has no production caller by design; it exists because the stage
+// (researchSegment) is real and merges the report's sources into the
+// segment's insights. Do not remove it as dead code without also deciding to
+// drop the research stage: deleting the setter would make that stage
+// permanently unreachable. The seam is pinned by
+// TestIncrementalCoordinator_ResearchStageRunsOnlyWhenResearcherIsWired.
 func (c *VidRushIncrementalCoordinator) SetSegmentResearcher(researcher SegmentResearcher) {
 	if c != nil {
 		c.research = researcher
 	}
 }
 
+// SetSegmentProviderResolver wires the per-segment provider fanout that runs
+// after entity extraction. A nil resolver is safe and leaves the enrichment
+// at the entities+queries stage (no candidate media is resolved).
 func (c *VidRushIncrementalCoordinator) SetSegmentProviderResolver(resolver SegmentProviderResolver) {
 	if c != nil {
 		c.resolver = resolver

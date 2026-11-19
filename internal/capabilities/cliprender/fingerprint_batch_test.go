@@ -46,18 +46,36 @@ func TestFingerprint_DeterministicAndNormalized(t *testing.T) {
 	}
 }
 
-// TestFingerprint_ExcludesDestination ensures destination folder is not
-// part of the canonical digest: same render published to two folders is
-// still one render (the Drive outbox handles fan-out).
-func TestFingerprint_ExcludesDestination(t *testing.T) {
+// TestFingerprint_IncludesDestinationFolder pins ticket CR-19-03: the Drive
+// destination is part of the identity, because a cache hit returns the
+// previously PUBLISHED asset. Excluding the folder let a request be served the
+// artifact that was delivered somewhere else, silently.
+func TestFingerprint_IncludesDestinationFolder(t *testing.T) {
 	a := &RenderRequest{SourceAssetID: "yt_0ElQTzSx3ec_72_91_v1", Destination: &DestinationSpec{DriveFolderID: "folder-A"}}
 	b := &RenderRequest{SourceAssetID: "yt_0ElQTzSx3ec_72_91_v1", Destination: &DestinationSpec{DriveFolderID: "folder-B"}}
 	a.Normalize()
 	b.Normalize()
-	fpA, _ := a.Fingerprint()
-	fpB, _ := b.Fingerprint()
-	if fpA != fpB {
-		t.Fatalf("destination must be excluded from fingerprint: %q vs %q", fpA, fpB)
+	fpA, err := a.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint A: %v", err)
+	}
+	fpB, err := b.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint B: %v", err)
+	}
+	if fpA == fpB {
+		t.Fatalf("destination folder must distinguish delivery lineages: %q", fpA)
+	}
+	// The same folder must still be the same identity: the digest separates
+	// deliveries without making every submission unique.
+	c := &RenderRequest{SourceAssetID: "yt_0ElQTzSx3ec_72_91_v1", Destination: &DestinationSpec{DriveFolderID: "folder-A"}}
+	c.Normalize()
+	fpC, err := c.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint C: %v", err)
+	}
+	if fpC != fpA {
+		t.Fatalf("same destination must be the same identity: %q vs %q", fpC, fpA)
 	}
 }
 
@@ -352,6 +370,12 @@ func TestRenderBatch_CacheHitReturnsCached(t *testing.T) {
 	if resp.Jobs[0].Status != "CACHED" || !resp.Jobs[0].CacheHit {
 		t.Fatalf("expected CACHED hit: %+v", resp.Jobs[0])
 	}
+	if resp.Jobs[0].JobID != "" {
+		t.Fatalf("a cache hit is not a job, got job_id %q", resp.Jobs[0].JobID)
+	}
+	if resp.Jobs[0].AssetID != "asset_cached_1" {
+		t.Fatalf("a cache hit must identify the reused asset, got %+v", resp.Jobs[0])
+	}
 	if svc.enqueued != nil {
 		t.Fatal("CACHED must not enqueue")
 	}
@@ -409,3 +433,25 @@ func (s *distinctIDStub) ListEvents(_ context.Context, _ string) ([]job.Event, e
 func (s *distinctIDStub) Retry(_ context.Context, _ string) (*job.Job, error) { return nil, nil }
 
 // Ensure stubs satisfy job.Service at compile time is checked in handler_test.go.
+
+// TestFingerprint_PinsTheLoweringVersion makes the renderer lowering part of the
+// render identity. A change in the overlay lowering that alters the produced
+// pixels must bump RendererLoweringVersion and update this golden in the same
+// change; otherwise a cache hit serves bytes rendered by the previous code for
+// an identical payload, which is exactly the intermittency the version exists to
+// remove.
+func TestFingerprint_PinsTheLoweringVersion(t *testing.T) {
+	if RendererLoweringVersion == "" {
+		t.Fatal("RendererLoweringVersion must never be empty: the fingerprint would stop tracking the lowering")
+	}
+	req := &RenderRequest{SourceAssetID: "asset-lowering-pin"}
+	req.Normalize()
+	fp, err := req.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint: %v", err)
+	}
+	const golden = "8e75a4d577bb018856a3007d7fce6e8a165f6b2a5ef9774b8dd9826f1b07c659"
+	if fp != golden {
+		t.Fatalf("render identity = %q, want %q; update the golden together with RendererLoweringVersion", fp, golden)
+	}
+}

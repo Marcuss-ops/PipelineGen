@@ -12,8 +12,8 @@ import (
 	"time"
 
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

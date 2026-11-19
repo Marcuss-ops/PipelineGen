@@ -27,9 +27,6 @@
 #   overlay_style   phrase/word overlay color, size, shadow, entry animation
 #   sound_effects   SFX intents (absolute at_ms, or scene_id+anchor+offset)
 #   mix_policy      VOICEOVER_ONLY | VOICEOVER_DUCKED_CLIP
-#   phrase_motions  optional override for the run-wide IMPORTANT_PHRASE
-#                   rotation. Leave it empty to use all 107 certified motions;
-#                   a short custom pool intentionally narrows visual variety.
 #
 # GATES (mirroring ApplyEditingAssetPolicy): the visual blocks only fill a
 # request that already enabled the render (output.render.enabled); SFX and
@@ -37,9 +34,6 @@
 #
 # Vocabularies (validated at boot, fail-closed):
 #   subtitles.preset  → canonical subtitle presets (kernel/output_spec.go)
-#   phrase_motions    → render-safe motions (overlays.CertifiedPhraseMotions):
-#                       empty = all 107 certified phrase motions; a non-empty
-#                       list is an explicit rotation override.
 #   image_motions     → certified layer-only image motions; empty = the
 #                       curated ten-motion single-image default. A non-empty
 #                       list explicitly replaces that default.

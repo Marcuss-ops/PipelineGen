@@ -156,7 +156,11 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 		// already found by semantic extraction and skipped grounded country and
 		// region names appearing in the spoken scene text.
 		wantMaps := requestWantsMaps(req)
-		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{SceneTexts: sceneTexts, MapsOnly: wantMaps}); err != nil {
+		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{
+			SceneTexts: sceneTexts,
+			MapsOnly:   wantMaps,
+			MapLevel:   requestedMapLevel(req),
+		}); err != nil {
 			return vidRushPrepareResult{}, err
 		}
 		annotations = geocoded
@@ -507,6 +511,19 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 // overlays. The maps-only flag, the run-level map budget and the legacy
 // animation lanes each express the same intent; the geocoding enrichment and
 // the person-name rejection must agree on it, so it has exactly one owner.
+// requestedMapLevel is the cartographic level the run asked for. The resolved
+// map_presentation is authoritative; the legacy map_level field is the
+// fallback for envelopes that predate it. Empty means "no level" and keeps the
+// historical level-agnostic lookup.
+func requestedMapLevel(req GenerateRequest) string {
+	if req.MapPresentation != nil {
+		if level := strings.TrimSpace(req.MapPresentation.Level); level != "" {
+			return level
+		}
+	}
+	return strings.TrimSpace(req.MapLevel)
+}
+
 func requestWantsMaps(req GenerateRequest) bool {
 	if req.MapsOnly || req.MaxMapOverlays > 0 {
 		return true

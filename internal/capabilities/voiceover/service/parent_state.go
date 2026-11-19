@@ -104,36 +104,6 @@ type SnapshotAccessor interface {
 	Snapshot(parentID string) []LanguageOutcome
 }
 
-// FanoutResultSnapshotAccessor is the canonical implementation of
-// SnapshotAccessor used in micro-commit #4. It builds a pending-only
-// LanguageOutcome slice from the child IDs that the fan-out enqueued
-// for a parent. Micro-commit #5 swaps it for a broker-reading
-// accessor without changing AggregateByParent's signature or the
-// audit-pinned test surface.
-type FanoutResultSnapshotAccessor struct {
-	// ChildrenByParent maps parentID → child job IDs (all StatusQueued
-	// at post-enqueue; aggregator re-classifies on terminal).
-	ChildrenByParent map[string][]string
-}
-
-// Snapshot returns the pending-only slice for the given parent,
-// empty if the parent has no recorded children. The StatusQueued
-// value drives AggregateChildOutcomes into the "terminal < total"
-// branch (ParentPartialSuccess — correctly reflects "no children
-// complete yet"). Micro-commit #5's real accessor will substitute
-// each child's broker-fetched terminal status.
-func (a *FanoutResultSnapshotAccessor) Snapshot(parentID string) []LanguageOutcome {
-	childIDs := a.ChildrenByParent[parentID]
-	out := make([]LanguageOutcome, 0, len(childIDs))
-	for _, id := range childIDs {
-		out = append(out, LanguageOutcome{
-			ChildJobID: id,
-			Status:     job.StatusQueued,
-		})
-	}
-	return out
-}
-
 // AggregateByParent satisfies the user-spec contract: takes a
 // parentID (+ injected SnapshotAccessor) and returns the typed
 // ParentState. This is the wrapper callers use in production code;

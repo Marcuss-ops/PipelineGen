@@ -36,23 +36,24 @@ import (
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 // fakeErr is a typed error used by the test classifiers. errors.As walks
-// the chain and the registered classifier inspects it via asAdapter[T].
-// It satisfies error and exports nothing (matches production-adapter
-// shape: typed-error surfaces, no pkg/retry import required to define).
+// the chain and the registered classifier inspects it through the typed
+// pointer. It satisfies error and exports nothing (matches
+// production-adapter shape: typed-error surfaces, no pkg/retry import
+// required to define).
 type fakeErr struct {
 	tag string
 }
 
 func (e *fakeErr) Error() string { return "fake: " + e.tag }
 
-// typedClassifier inspects err via asAdapter[*fakeErr] and emits a
+// typedClassifier inspects err via errors.As into *fakeErr and emits a
 // populated RetryDecision with SafeMessage + Class. Returns
 // (zero-value, false) for non-matching err — the canonical
 // "I don't claim this err" signal.
 func typedClassifier() Classifier {
 	return func(err error) (RetryDecision, bool) {
-		fe, ok := asAdapter[*fakeErr](err)
-		if !ok {
+		var fe *fakeErr
+		if !errors.As(err, &fe) {
 			return RetryDecision{}, false
 		}
 		return RetryDecision{
@@ -147,8 +148,8 @@ func TestDecision_FirstMatchWins(t *testing.T) {
 	reg := newTestRegistry(
 		func(err error) (RetryDecision, bool) {
 			firstCalled = true
-			fe, ok := asAdapter[*fakeErr](err)
-			if !ok {
+			var fe *fakeErr
+			if !errors.As(err, &fe) {
 				return RetryDecision{}, false
 			}
 			return RetryDecision{
@@ -255,38 +256,6 @@ func TestNorm_IsRetryableNil_DefaultsToNeverRetry(t *testing.T) {
 	}
 }
 
-func TestNorm_DefaultOptionsHaveJitter(t *testing.T) {
-	// Pin Fase 6(a) default contract: DefaultOptions defaults are
-	// unchanged (MaxAttempts=3, InitialBackoff=1s, JitterFraction=0.25).
-	// Backoff+jitter is ALWAYS applied (per spec b: `Backoff+jitter
-	// sempre applicati da norm(Options{})`).
-	o := DefaultOptions()
-	if o.JitterFraction != 0.25 {
-		t.Fatalf("DefaultOptions.JitterFraction: want 0.25; got %v", o.JitterFraction)
-	}
-	if o.MaxAttempts != 3 {
-		t.Fatalf("DefaultOptions.MaxAttempts: want 3; got %d", o.MaxAttempts)
-	}
-	o = norm(o)
-	if o.JitterFraction != 0.25 {
-		t.Fatalf("norm(DefaultOptions).JitterFraction: want 0.25; got %v", o.JitterFraction)
-	}
-}
-
-func TestDefaultOptions_RetryPredicateIsExplicit(t *testing.T) {
-	o := DefaultOptions()
-	if o.IsRetryable == nil {
-		t.Fatal("DefaultOptions must not rely on norm's nil fail-closed fallback")
-	}
-	if o.IsRetryable(errors.New("raw error with no typed carrier")) {
-		t.Fatal("DefaultOptions must stay fail-closed for untyped errors")
-	}
-	typed := &TransientInfrastructureError{Err: errors.New("typed transient")}
-	if !o.IsRetryable(typed) {
-		t.Fatal("DefaultOptions must retry a typed transient error")
-	}
-}
-
 func TestDo_DoNotRetry_MaxAttemptsOne(t *testing.T) {
 	// Pin spec (b) end-to-end: with IsRetryable=nil, MaxAttempts=1,
 	// the retry loop exits on first error (no burning of retry budget).
@@ -344,54 +313,6 @@ func TestDefaultClassifierRegistry_IsSealed(t *testing.T) {
 	}()
 	defaultClassifierRegistry.Register(func(error) (RetryDecision, bool) { return RetryDecision{}, false })
 }
-
-// ── (d) asAdapter helper ────────────────────────────────────────────────────
-
-func TestAsAdapter_TypedError_Matches(t *testing.T) {
-	want := &fakeErr{tag: "as"}
-	got, ok := asAdapter[*fakeErr](want)
-	if !ok {
-		t.Fatalf("asAdapter: want ok=true; got false")
-	}
-	if got != want {
-		t.Fatalf("asAdapter: want identity match (%p); got %p", want, got)
-	}
-}
-
-func TestAsAdapter_WrappedTypedError_Matches(t *testing.T) {
-	inner := &fakeErr{tag: "wrapped"}
-	wrapped := errors.New("wrap: " + inner.Error())
-	// errors.As walks the Unwrap chain. Because inner DOESN'T have
-	// Unwrap here (raw errors.New has no Unwrap), asAdapter should
-	// NOT match. This is the production case: callers wrap with
-	// fmt.Errorf %w and the inner has Unwrap; this test covers the
-	// negative case for raw errors.New wrapping.
-	got, ok := asAdapter[*fakeErr](wrapped)
-	if ok {
-		t.Fatalf("asAdapter on non-unwrap chain: want ok=false; got ok=true (%+v)", got)
-	}
-}
-
-func TestAsAdapter_FmtErrorfWrapped_Matches(t *testing.T) {
-	inner := &fakeErr{tag: "fmt-wrap"}
-	wrapped := wrapAsUnwrap(inner)
-	got, ok := asAdapter[*fakeErr](wrapped)
-	if !ok {
-		t.Fatalf("asAdapter on fmt.Errorf %%w chain: want ok=true; got ok=false")
-	}
-	if got.tag != "fmt-wrap" {
-		t.Fatalf("asAdapter: tag mismatch; want fmt-wrap; got %q", got.tag)
-	}
-}
-
-// wrapAsUnwrap mimics fmt.Errorf("%w", x): the wrapper carries an
-// Unwrap method. errors.As walks it and finds inner.
-type unwrapper struct{ inner error }
-
-func (u unwrapper) Error() string { return "wrap: " + u.inner.Error() }
-func (u unwrapper) Unwrap() error { return u.inner }
-
-func wrapAsUnwrap(err error) error { return unwrapper{inner: err} }
 
 // ── (e) Injected registry in retry executor ─────────────────────────────────
 

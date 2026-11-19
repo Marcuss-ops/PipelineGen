@@ -71,8 +71,8 @@
 // ═══════════ Backward compatibility ═════════════════════════════════════════════════════════
 //
 // The pre-Fase-6 surface is preserved:
-//   - Classify(err) (ErrorCategory, bool) — unchanged in errors.go
-//   - Retryable(err) bool — unchanged in errors.go (delegates to Classify)
+//   - Classify(err) (ErrorCategory, bool) — unchanged in errors.go; the
+//     second return value is the canonical retry/no-retry signal
 //   - IsTransient(err) bool — unchanged in transient.go (substring
 //     fallback path is retained under a "LEGACY" header; new code MUST
 //     NOT depend on it per godlike/06 SSOT drift-prevention)
@@ -347,35 +347,4 @@ var defaultClassifierRegistry = func() *ClassifierRegistry {
 // registry.Decision(err) with an injected registry in new code.
 func Decision(err error) (RetryDecision, bool) {
 	return defaultClassifierRegistry.Decision(err)
-}
-
-// ── Decision Convenience: error wrapping for unwrapped typed errors ────
-
-// Adapters that wrap their concrete SDK error in fmt.Errorf %w lose
-// the typed shape at the retry-loop level unless errors.As walks the
-// chain. The convenience helpers below keep the Decision walker
-// adapters DRY: each classifier uses them to walk a single error
-// chain for the typed-error probe.
-
-// asAdapter walks the err chain looking for a *T (or any concrete
-// adapter-typed error shape). Returns the typed value + a boolean.
-// Pure helper, no state.
-//
-// godlike/06 SSOT rationale: this is a thin errors.As binding so
-// adapter classifier bodies are 1-line probes (the typed-error
-// type assertion is the only line that varies per adapter). The
-// generic helper keeps each adapter's classifier handler minimal.
-func asAdapter[T error](err error) (T, bool) {
-	var zero T
-	if err == nil {
-		return zero, false
-	}
-	// errors.As walks the unwrap chain; `&zero` is *T (with T
-	// satisfying error via the generic constraint). The form below
-	// is the canonical Go idiom; the earlier `(any(zero)).(T)` cast
-	// was a no-op because T was already inferred statically.
-	if errors.As(err, &zero) {
-		return zero, true
-	}
-	return zero, false
 }

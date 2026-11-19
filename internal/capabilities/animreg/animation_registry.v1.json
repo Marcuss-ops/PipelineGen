@@ -8668,6 +8668,206 @@
       ]
     },
     {
+      "id": "typewriter_glyph_square_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_impact_push_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_slow_type_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_word_burst_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_staccato_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_soft_glide_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_rapid_fire_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_word_step_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_word_lift_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_glyph_drift_short",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase"
+      ]
+    },
+    {
       "id": "typewriter_blur_focus",
       "families": [
         "phrase.all"
@@ -9086,6 +9286,36 @@
       "status": "retired",
       "renderer_supported": false,
       "targets": []
+    },
+    {
+      "id": "typewriter_glyph_wrap_long",
+      "families": [
+        "phrase.long"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "long_phrase"
+      ]
+    },
+    {
+      "id": "typewriter_soft_edge_long",
+      "families": [
+        "phrase.long"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "long_phrase"
+      ]
     },
     {
       "id": "underline_swipe_bold",

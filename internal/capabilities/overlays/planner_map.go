@@ -1,10 +1,7 @@
 package overlays
 
 import (
-	"encoding/json"
 	"log"
-	"sort"
-	"strconv"
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -107,6 +104,10 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 	// win the single-map plate (or a pin) over the town/province. A street-only
 	// scene keeps its street map because there is no better candidate.
 	candidates = preferAdministrativeMapCandidates(candidates)
+	// The camera level also decides what may be labelled: a municipality plate
+	// reads as a city frame, so a country or a body of water pinned inside it is
+	// noise the viewer has to filter out. An empty level keeps every candidate.
+	candidates = FilterMapCandidatesByLevel(candidates, grouping.Level)
 	// A generated map is limited to one plate for this run. Use repeated,
 	// grounded mentions as a relevance signal so a secondary place named once
 	// (for example, the city where a document is held) cannot displace the
@@ -358,189 +359,23 @@ func mapMotionForCenterWithLimit(ordinal int, _ capmodel.MapCenter, limit int) s
 // plate or a place, a plate whose raster is not the canvas size, a place
 // outside the plate's window, or an empty audio span produces no item — never
 // a map pinned at a guessed location.
-func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) []capmodel.OverlayItem {
+func mapItemsForScene(sceneID string, plans []MapPlan, resolver PlateResolver, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) []capmodel.OverlayItem {
 	if len(plans) == 0 || canvasWidth <= 0 || canvasHeight <= 0 {
 		return nil
 	}
 	plans = coalesceMapPlansForNarrativeGrouping(plans, grouping)
-	type group struct {
-		plate  MapPlate
-		places []MapCandidate
-	}
-	groups := make(map[string]*group, len(plans))
-	for _, plan := range plans {
-		key := strings.TrimSpace(plan.Plate.ID)
-		if key == "" {
-			continue
-		}
-		if !plateFitsCanvas(plan.Plate, canvasWidth, canvasHeight) {
-			continue
-		}
-		entry, ok := groups[key]
-		if !ok {
-			entry = &group{plate: plan.Plate}
-			groups[key] = entry
-		}
-		entry.places = append(entry.places, plan.Place)
-	}
-	if len(groups) == 0 {
+	groups, order := mapPlateGroups(plans, canvasWidth, canvasHeight)
+	if len(order) == 0 {
 		return nil
 	}
-	// Deterministic group order: plate id ascending.
-	order := make([]string, 0, len(groups))
-	for key := range groups {
-		order = append(order, key)
-	}
-	sort.Strings(order)
-
-	type unit struct {
-		key    string
-		plate  MapPlate
-		places []MapCandidate
-	}
-	units := make([]unit, 0, len(order))
-	for _, key := range order {
-		entry := groups[key]
-		// A candidate can represent a place mentioned repeatedly across a
-		// long scene. For a map shot, retain its first grounded mention and
-		// bound the pin's active window; later repeats must not stretch the
-		// basemap to minutes of narration. This applies to flyovers too: a
-		// route may cover several scenes, but each rendered map item still
-		// has the same ten-second budget as a static plate.
-		pinCap := grouping.Pins()
-		shotPlaces := mapPlacesForShortPresentation(entry.places)
-		var chunks [][]MapCandidate
-		if len(entry.plate.LODs) >= 2 {
-			// A flyover is a camera journey, not a reason to bypass the
-			// presentation budget: chunk its stops by spoken order and then
-			// split any chunk that still spans more than ten seconds.
-			chunks = chunkMapPlaces(shotPlaces, pinCap)
-		} else {
-			// Narrative proximity groups STATIC map groups: places spoken in
-			// quick succession become one MapGroup, split above the pin cap or
-			// the presentation ceiling. The unified map_presentation contract
-			// can narrow the pin cap or turn narrative grouping off entirely.
-			chunks = groupMapPlacesByNarrativeProximity(shotPlaces, pinCap)
-			if grouping.NoNarrativeGrouping {
-				chunks = chunkMapPlaces(shotPlaces, pinCap)
-			}
-		}
-		chunks = splitMapChunksByPresentationDuration(chunks, mapMaxPresentationUS)
-		chunks = mergeShortFinalMapChunk(chunks, pinCap, mapMaxPresentationUS)
-		for index, chunk := range chunks {
-			unitKey := key
-			if index > 0 {
-				unitKey = key + "-" + strconv.Itoa(index+1)
-			}
-			units = append(units, unit{key: unitKey, plate: entry.plate, places: chunk})
-		}
-	}
+	units := mapShotUnits(groups, order, grouping)
 	items := make([]capmodel.OverlayItem, 0, len(units))
-	for unitIndex, u := range units {
-		entry := &group{plate: u.plate, places: u.places}
-		pins, pinTiming, startUS, durationUS, score, ok := mapPinsFor(entry.plate, entry.places)
+	for unitIndex, unit := range units {
+		item, ok := mapItemForShotUnit(sceneID, unit, unitIndex, len(units), ordinal, resolver, canvasWidth, canvasHeight, seed)
 		if !ok {
 			continue
 		}
-		mapAssets := make([]capmodel.OverlayAssetRef, 0, len(entry.plate.LODs)+1)
-		if entry.plate.Asset.AssetID != "" {
-			mapAssets = append(mapAssets, entry.plate.Asset)
-		}
-		lods := []capmodel.MapOverlayLOD{{
-			AssetID:       entry.plate.Asset.AssetID,
-			SourceID:      entry.plate.ID,
-			SourceLicense: entry.plate.License,
-			Attribution:   entry.plate.Attribution,
-			Center:        entry.plate.Center,
-			Zoom:          entry.plate.Zoom,
-			Width:         entry.plate.Width,
-			Height:        entry.plate.Height,
-		}}
-		for _, lod := range entry.plate.LODs {
-			if lod.Asset.AssetID != "" {
-				mapAssets = append(mapAssets, lod.Asset)
-			}
-			lods = append(lods, capmodel.MapOverlayLOD{
-				AssetID:       lod.Asset.AssetID,
-				SourceID:      lod.ID,
-				SourceLicense: lod.License,
-				Attribution:   lod.Attribution,
-				Center:        lod.Center,
-				Zoom:          lod.Zoom,
-				Width:         lod.Width,
-				Height:        lod.Height,
-			})
-		}
-		// A camera map already owns its animation through CameraMove. Running
-		// an image reveal/scale track on the same georeferenced plane compounds
-		// both transforms and produces a distorted, double-exposed map during
-		// the fly-to. Static plates still receive the centered image motion.
-		motionID := ""
-		if len(lods) < 2 {
-			motionID = mapMotionForCenter(ordinal, entry.plate.Center)
-		}
-		mapOverlay := &capmodel.MapOverlay{
-			Provider: "local", SourceID: entry.plate.ID, SourceLicense: entry.plate.License,
-			Center: entry.plate.Center, Zoom: entry.plate.Zoom,
-			Width: entry.plate.Width, Height: entry.plate.Height,
-			// The selected motion is restricted to centered scale/opacity
-			// treatments, so the basemap and projected pins remain registered.
-			Attribution: entry.plate.Attribution, Pins: pins, MotionID: motionID,
-			AreaGlowRadiusKM:    mapAreaGlowRadiusKM(pins),
-			DynamicRendererOnly: entry.plate.RasterDeferred,
-		}
-		if len(lods) >= 2 {
-			mapOverlay.LODs = lods
-			from, to := routeEndpoints(entry.places, entry.plate.Center)
-			mapOverlay.CameraMove = &capmodel.MapCameraMove{
-				From: from, To: to,
-				StartZoom: float64(entry.plate.Zoom), EndZoom: float64(lods[len(lods)-1].Zoom),
-			}
-		}
-		// Every dynamic map gets the same minimum presentation duration,
-		// including a stationary single-place fly-to with only one plate.
-		// Otherwise its camera treatment would be cut off by a short mention.
-		if durationUS < mapCameraDurationUS {
-			durationUS = mapCameraDurationUS
-		}
-		// Reserve a readable one-second slot for every location after the
-		// camera has settled. A crowded place sequence grows the map overlay
-		// instead of piling every marker into the same few frames.
-		minimumPinSequenceUS := mapCameraLeadUS + int64(len(pins))*mapPinReadDurationUS
-		if durationUS < minimumPinSequenceUS {
-			durationUS = minimumPinSequenceUS
-		}
-		// MapGroup identity + per-pin timing travel as free-form item params
-		// (the same carrier as map_pin_extras), so no new field enters the
-		// versioned overlay-plan.v1 map block without a schema migration.
-		// The strategy is the planner's pre-render duration decision: a tour
-		// only when the spoken span can carry it, otherwise a declared
-		// multi-pin composition — never a silently dropped place.
-		strategy := mapGroupTourStrategy(len(pins), durationUS)
-		items = append(items, capmodel.OverlayItem{
-			ID: itemID(sceneID, "map", u.key), SceneID: sceneID,
-			Kind: "map", TemplateID: "MAP",
-			StartMs: startUS / 1000, EndMs: (startUS + durationUS + 999) / 1000,
-			StartUS: startUS, DurationUS: durationUS,
-			AssetRefs: mapAssets,
-			Map:       mapOverlay,
-			Params: map[string]any{
-				"priority": score,
-				"map_group": map[string]any{
-					"index": unitIndex + 1, "count": len(units), "size": len(pins),
-				},
-				"map_pin_timing":     pinTiming,
-				"map_group_strategy": strategy,
-			},
-		})
-		// Static plates get a seeded composition from the family that fits their
-		// pin count. Camera flyovers keep their own CameraMove treatment.
-		if len(lods) < 2 {
-			id := items[len(items)-1].ID
-			if composition := SelectMapComposition(seed, sceneID, id, len(pins)); composition != "" {
-				items[len(items)-1].Params["map_animation"] = composition
-			}
-		}
+		items = append(items, item)
 		ordinal++
 	}
 	return items
@@ -552,215 +387,24 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 // owned by the caller; this function only supplies map assets and provenance.
 func MaterializeMapCandidate(sceneID string, candidate MapCandidate, resolver PlateResolver, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) (capmodel.OverlayItem, bool) {
 	plans := mapPlansForScene(resolver, []MapCandidate{candidate}, canvasWidth, canvasHeight, grouping)
-	items := mapItemsForScene(sceneID, plans, canvasWidth, canvasHeight, ordinal, motionLimit, seed, grouping)
+	items := mapItemsForScene(sceneID, plans, resolver, canvasWidth, canvasHeight, ordinal, motionLimit, seed, grouping)
 	if len(items) == 0 {
 		return capmodel.OverlayItem{}, false
 	}
 	return items[0], true
 }
 
-// MaterializeMapGroup lowers ALL grounded places of one scene together, so the
-// certified grouping policy still applies when the editorial selection comes
-// from the Rust planner. Materializing each Rust map item on its own resolves a
-// private plate per place, which makes narrative grouping unreachable: three
-// places named in quick succession became three separate maps (one per plate)
-// instead of one map group with three pins. The returned items are in spoken
-// order and already chunked by the pin cap and the presentation ceiling.
-func MaterializeMapGroup(sceneID string, candidates []MapCandidate, resolver PlateResolver, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) []capmodel.OverlayItem {
-	if len(candidates) == 0 {
+// MaterializeMapPins lowers ONE Rust-decided map group onto the certified
+// plate catalog. Membership, spoken order, the pin cap, the presentation
+// ceiling and the readable floor are decided by the Rust planner and travel in
+// params.map_group_pins / params.map_pin_timing; this function only attaches
+// the certified plate and its raster. It fails closed when no certified plate
+// covers the group: a group no single plate covers is split by plate, so a
+// place is never dropped and no pin is ever placed on a guessed raster.
+func MaterializeMapPins(sceneID string, pins []MapCandidate, resolver PlateResolver, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) []capmodel.OverlayItem {
+	if len(pins) == 0 {
 		return nil
 	}
-	plans := mapPlansForScene(resolver, candidates, canvasWidth, canvasHeight, grouping)
-	items := mapItemsForScene(sceneID, plans, canvasWidth, canvasHeight, ordinal, motionLimit, seed, grouping)
-	return MergeShortMapTail(items, grouping.Pins(), MapMinimumReadableUS, seed)
-}
-
-// MapMinimumReadableUS is the shortest map presentation that is still a
-// readable camera beat rather than a flash. A map that ends up shorter than
-// this only because the next scene starts immediately after it is merged into
-// the preceding map of the same scene, where its pin stays visible.
-const MapMinimumReadableUS int64 = 2_500_000
-
-// mergeShortMapTail folds a too-short final map of a scene into the preceding
-// map when the previous certified plate covers the tail's pins and the pin cap
-// allows it. It never drops a place: the pin, its label and its spoken timing
-// move onto the earlier map. Maps with LOD routes are left untouched because
-// merging would change the authored camera journey.
-func MergeShortMapTail(items []capmodel.OverlayItem, maxPins int, minDurationUS int64, seed string) []capmodel.OverlayItem {
-	if len(items) < 2 || minDurationUS <= 0 {
-		return items
-	}
-	if maxPins <= 0 {
-		maxPins = maxMapPinsPerGroup
-	}
-	byScene := make(map[string][]int)
-	sceneOrder := make([]string, 0, len(items))
-	for i := range items {
-		if !strings.EqualFold(strings.TrimSpace(items[i].Kind), "map") {
-			continue
-		}
-		sceneID := strings.TrimSpace(items[i].SceneID)
-		if _, seen := byScene[sceneID]; !seen {
-			sceneOrder = append(sceneOrder, sceneID)
-		}
-		byScene[sceneID] = append(byScene[sceneID], i)
-	}
-	dropped := make(map[int]struct{})
-	for _, sceneID := range sceneOrder {
-		indices := byScene[sceneID]
-		sort.SliceStable(indices, func(a, b int) bool {
-			left, right := items[indices[a]], items[indices[b]]
-			if left.StartUS != right.StartUS {
-				return left.StartUS < right.StartUS
-			}
-			return left.ID < right.ID
-		})
-		for len(indices) >= 2 {
-			tailIndex := indices[len(indices)-1]
-			previousIndex := indices[len(indices)-2]
-			previous, tail := &items[previousIndex], &items[tailIndex]
-			if tail.DurationUS <= 0 || tail.DurationUS >= minDurationUS {
-				break
-			}
-			if !mergeableMapTail(*previous, *tail, maxPins) {
-				break
-			}
-			mergeMapTail(previous, tail, seed)
-			dropped[tailIndex] = struct{}{}
-			indices = indices[:len(indices)-1]
-		}
-		renumberMapGroups(items, indices)
-	}
-	if len(dropped) == 0 {
-		return items
-	}
-	kept := items[:0]
-	for i := range items {
-		if _, remove := dropped[i]; remove {
-			continue
-		}
-		kept = append(kept, items[i])
-	}
-	return kept
-}
-
-// mergeableMapTail is the fail-closed precondition of a tail merge: both maps
-// must be static, the earlier plate must cover every tail pin, and the merged
-// map must stay within the certified pin cap.
-func mergeableMapTail(previous, tail capmodel.OverlayItem, maxPins int) bool {
-	if previous.Map == nil || tail.Map == nil {
-		return false
-	}
-	if len(previous.Map.LODs) > 0 || len(tail.Map.LODs) > 0 {
-		return false
-	}
-	if len(previous.Map.Pins) == 0 || len(tail.Map.Pins) == 0 {
-		return false
-	}
-	if len(previous.Map.Pins)+len(tail.Map.Pins) > maxPins {
-		return false
-	}
-	if previous.Map.Zoom <= 0 || previous.Map.Width <= 0 || previous.Map.Height <= 0 {
-		return false
-	}
-	window := geodesy.CenteredOn(
-		previous.Map.Center.Latitude, previous.Map.Center.Longitude,
-		previous.Map.Zoom, previous.Map.Width, previous.Map.Height,
-	)
-	for _, pin := range tail.Map.Pins {
-		if !window.Contains(pin.Latitude, pin.Longitude) {
-			return false
-		}
-	}
-	return true
-}
-
-func mergeMapTail(previous, tail *capmodel.OverlayItem, seed string) {
-	offsetUS := tail.StartUS - previous.StartUS
-	previous.Map.Pins = append(previous.Map.Pins, tail.Map.Pins...)
-	if previous.Params == nil {
-		previous.Params = make(map[string]any)
-	}
-	timing := make(map[string]map[string]any)
-	for id, value := range mapPinTimingTable(previous.Params) {
-		timing[id] = cloneMapPinTiming(value, 0)
-	}
-	for id, value := range mapPinTimingTable(tail.Params) {
-		timing[id] = cloneMapPinTiming(value, offsetUS)
-	}
-	previous.Params["map_pin_timing"] = timing
-	endUS := previous.StartUS + previous.DurationUS
-	if tailEndUS := tail.StartUS + tail.DurationUS; tailEndUS > endUS {
-		endUS = tailEndUS
-	}
-	previous.DurationUS = endUS - previous.StartUS
-	previous.EndMs = (endUS + 999) / 1000
-	pinCount := len(previous.Map.Pins)
-	if group, ok := previous.Params["map_group"].(map[string]any); ok {
-		group["size"] = pinCount
-	}
-	previous.Params["map_group_strategy"] = mapGroupTourStrategy(pinCount, previous.DurationUS)
-	if composition := SelectMapComposition(seed, previous.SceneID, previous.ID, pinCount); composition != "" {
-		previous.Params["map_animation"] = composition
-	} else {
-		delete(previous.Params, "map_animation")
-	}
-}
-
-func mapPinTimingTable(params map[string]any) map[string]map[string]any {
-	if params == nil {
-		return nil
-	}
-	switch timing := params["map_pin_timing"].(type) {
-	case map[string]map[string]any:
-		return timing
-	case map[string]any:
-		out := make(map[string]map[string]any, len(timing))
-		for id, value := range timing {
-			if entry, ok := value.(map[string]any); ok {
-				out[id] = entry
-			}
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
-func cloneMapPinTiming(value map[string]any, offsetUS int64) map[string]any {
-	clone := make(map[string]any, len(value))
-	for key, field := range value {
-		clone[key] = field
-	}
-	clone["start_us"] = mapPinTimingInt64(clone["start_us"]) + offsetUS
-	return clone
-}
-
-func mapPinTimingInt64(value any) int64 {
-	switch typed := value.(type) {
-	case int64:
-		return typed
-	case int:
-		return int64(typed)
-	case float64:
-		return int64(typed)
-	case json.Number:
-		parsed, _ := typed.Int64()
-		return parsed
-	default:
-		return 0
-	}
-}
-
-func renumberMapGroups(items []capmodel.OverlayItem, indices []int) {
-	count := len(indices)
-	for position, index := range indices {
-		if items[index].Params == nil {
-			continue
-		}
-		if group, ok := items[index].Params["map_group"].(map[string]any); ok {
-			group["index"] = position + 1
-			group["count"] = count
-		}
-	}
+	plans := mapPlansForScene(resolver, pins, canvasWidth, canvasHeight, grouping)
+	return mapItemsForScene(sceneID, plans, resolver, canvasWidth, canvasHeight, ordinal, motionLimit, seed, grouping)
 }

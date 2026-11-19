@@ -61,6 +61,47 @@ func TestApplyImageAssetStylesBindsPerScene(t *testing.T) {
 	}
 }
 
+// TestApplyImageAssetStylesIgnoresEntityCards pins the positional contract: an
+// entity card is an image surface but not a still, so it must not consume a
+// pin slot. Otherwise the still after the portrait keeps the planner's default
+// 1340x760 box (r6) and the pin lands on the wrong surface.
+func TestApplyImageAssetStylesIgnoresEntityCards(t *testing.T) {
+	plan := styleTestPlan()
+	portrait := capmodel.OverlayItem{ID: "s1-portrait", SceneID: "scene-1", Kind: string(capmodel.KindEntityImage),
+		TemplateID: "image_popup",
+		StartMs:    1500, EndMs: 2500, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "p"}}}
+	plan.Items = append(plan.Items, portrait)
+	height := 700
+	fit := "cover"
+	pins := []scriptpkg.OverlayImageAsset{
+		{SceneID: "scene-1", Style: &scriptpkg.OverlayImageStyleSpec{Height: &height, Fit: fit}},
+		{SceneID: "scene-1", Style: &scriptpkg.OverlayImageStyleSpec{Height: &height, Fit: fit}},
+	}
+	if err := applyImageAssetStyles([]*capmodel.OverlayPlan{plan}, pins, nil); err != nil {
+		t.Fatalf("apply pin styles: %v", err)
+	}
+	for _, item := range plan.Items {
+		if item.Kind == string(capmodel.KindEntityImage) {
+			if len(item.Params) != 0 {
+				t.Fatalf("entity card was styled by a still pin: %+v", item.Params)
+			}
+			continue
+		}
+		// Both pins target scene-1: the portrait must not consume one of
+		// them, so the two stills of that scene are the ones that receive
+		// the height. A still in another scene is untouched.
+		if item.SceneID == "scene-1" {
+			if item.Params["height"] != 700 {
+				t.Fatalf("still %q did not receive its pin: %+v", item.ID, item.Params)
+			}
+			continue
+		}
+		if len(item.Params) != 0 {
+			t.Fatalf("still %q was decorated by a pin for another scene: %+v", item.ID, item.Params)
+		}
+	}
+}
+
 // TestApplyImageAssetStylesSkipsPinForSceneWithoutImage pins the optional-still
 // contract (r134): a scene may have no standalone image item because the
 // provider returned no verified still or the planner folded it into an image

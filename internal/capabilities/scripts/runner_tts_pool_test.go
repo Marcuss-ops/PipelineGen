@@ -16,6 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Legacy two-language-input wrapper retained only as a test oracle. Production
+// dispatch always supplies the explicit VoiceoverLanguages field.
+func buildVoiceoverWork(scenes []Scene, sourceLanguage Language, targetLanguages []Language) []voiceoverWork {
+	return buildVoiceoverWorkForLanguages(scenes, sourceLanguage, targetLanguages, nil)
+}
+
 // barrierVoiceoverGenerator blocks each Generate call until `all` concurrent
 // calls have started, then releases them all. It can only complete if the TTS
 // pool fans out to at least `all` concurrent workers: a serial (concurrency 1)

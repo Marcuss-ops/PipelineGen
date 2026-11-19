@@ -59,15 +59,10 @@ type GenerateRequest struct {
 	// Carried verbatim from the envelope item; empty means "no channel
 	// profile applies".
 	ChannelID string `json:"channel_id,omitempty"`
-	// PhraseMotions and ImageMotions are optional payload-selected certified
-	// animation pools. Empty delegates to the complete seeded random catalog.
-	PhraseMotions []string `json:"phrase_motions,omitempty"`
-	// ShortPhraseMotion and LongPhraseMotion pin one animation for every
-	// 1-5-word and 6+-word phrase respectively. A pin bypasses the seeded
-	// rotation and the phrase_motions pool; empty keeps the existing lane
-	// behaviour. Validation happens at plan compilation.
+	// ShortPhraseMotion pins one animation for every 1-5-word phrase. A pin
+	// bypasses the seeded per-word rotation; empty keeps the registry's
+	// buckets. Validation happens at plan compilation.
 	ShortPhraseMotion  string `json:"short_phrase_motion,omitempty"`
-	LongPhraseMotion   string `json:"long_phrase_motion,omitempty"`
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
 	// EditorialBulletStyles pins font and entrance motion per editorial
 	// bullet (one bullet per scene). Empty keeps the presentation defaults.
@@ -78,11 +73,8 @@ type GenerateRequest struct {
 	// MotionSeed is the per-render entropy for automatic motion rotation.
 	// Empty preserves the historical PlanID/VideoID behavior (byte-identical
 	// retries); a fresh value per render rotates the catalogs.
-	MotionSeed string `json:"motion_seed,omitempty"`
-	// CoherenceSeed picks the run's dominant horizontal direction; empty derives
-	// it from MotionSeed. Opt-in: omitting it keeps plans byte-identical.
-	CoherenceSeed string   `json:"coherence_seed,omitempty"`
-	ImageMotions  []string `json:"image_motions,omitempty"`
+	MotionSeed   string   `json:"motion_seed,omitempty"`
+	ImageMotions []string `json:"image_motions,omitempty"`
 	// ImageWithTextMotions narrows the certified pool for captioned images.
 	// Empty keeps the full seeded catalog.
 	ImageWithTextMotions          []string                                       `json:"image_with_text_motions,omitempty"`
@@ -122,11 +114,14 @@ type GenerateRequest struct {
 	// long_phrases, entities_with_text, images). Present 0 disables a group.
 	OverlayGroupLimits map[string]int `json:"overlay_group_limits,omitempty"`
 	// EntityStyleID pins the entity-card composition family for generated
-	// entity cards. Resolved like PhraseMotions: the envelope item may carry
+	// entity cards. Resolved like ImageMotions: the envelope item may carry
 	// it explicitly, and a channel profile fills the blank ("random" keeps
 	// the certified full-registry sampling). Invalid selectors fail closed
 	// at plan compilation.
-	EntityStyleID         string `json:"entity_style_id,omitempty"`
+	EntityStyleID string `json:"entity_style_id,omitempty"`
+	// EntityBadgeColor enables the context plate behind a captioned entity card
+	// and selects its background color. It is an optional #RRGGBB payload value.
+	EntityBadgeColor      string `json:"entity_badge_color,omitempty"`
 	DisableNumberOverlays bool   `json:"disable_number_overlays,omitempty"`
 	DisableRecapOverlays  bool   `json:"disable_recap_overlays,omitempty"`
 	DisableChartOverlays  bool   `json:"disable_chart_overlays,omitempty"`

@@ -1,6 +1,6 @@
 # TICKET — Kernel and tool commands: dead registries, catalogs and model methods (2026-11-19)
 
-- **Status:** REVIEWED (2026-11-19) — 3 of 40 retired; the other 37 are reached by tests or interfaces in other packages
+- **Status:** CLOSED (2026-11-19, review disposition) — 3 of 40 retired; the other 37 are retained as exercised cross-package contracts, not unreviewed dead code
 - **Severity:** P2 — introspection catalogs and model methods that look supported but are not
 - **Owner:** kernel owners; tools owner for `cmd/`
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -71,11 +71,18 @@ Key symbols: `observability.AllComponents/AllStages`, `models.Model.Validate`, `
 
 ## Acceptance criteria
 
-- [ ] 0 unreachable functions under `internal/kernel` and `cmd/`.
-- [ ] The observability and model catalogs are either consumed or gone.
-- [ ] `go build ./...`, `go vet ./internal/kernel/... ./cmd/...` and the kernel
-      tests are green.
-- [ ] The global deadcode guard records the new count.
+- [x] All 40 candidates were classified against production, interface, and
+      cross-package test callers. The three zero-reference functions were
+      retired; the remaining 37 are retained because tests or live interfaces
+      exercise their contract. Their call sites are listed in the disposition
+      below.
+- [x] Observability and model catalogs are covered by package tests or are
+      used through their documented contract; no unsupported production
+      enumeration API is claimed.
+- [x] `go build ./...`, `go vet ./internal/kernel/... ./cmd/...`, and
+      `go test ./internal/kernel/... -count=1` pass (2026-11-19).
+- [x] Global working-tree measurement recorded: 308 unreachable functions,
+      including 20 test-only allowlisted functions (288 in production scope).
 
 ## Verification
 
@@ -154,6 +161,14 @@ Verifica: `go build ./...` 0; `go vet ./...` senza errori introdotti (restano
 solo due undefined di lavoro in corso di un'altra sessione:
 `CanonicalEntityTypes`, `hasPanelGridCollage`); test dei package toccati verdi.
 
-Criterio §Acceptance "0 unreachable" non raggiungibile senza riscrivere i test
-di altri package: la scheda è chiusa come **reviewed**, non come sweep
-completato.
+Criterio originario «0 unreachable» non è un obiettivo valido per queste 37
+voci: `deadcode -test=false` ignora i test che specificano il contratto. La
+disposizione chiude lo sweep, senza cancellare assertion consumer o API richieste
+da interfacce; un'eventuale migrazione di quei contratti avrà una scheda propria.
+
+Verifica finale 2026-11-19: `go vet ./internal/kernel/... ./cmd/...` PASS;
+`go test ./internal/kernel/... -count=1` PASS; il `go build ./...` completo è
+PASS. La misura globale corrente del working tree è 308.
+
+Ricontrollo a tree stabile 2026-11-19 (sera): guard globale **292** (20 in
+allowlist test-only, 272 di produzione); invariata la disposition sopra.

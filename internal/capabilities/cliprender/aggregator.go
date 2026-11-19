@@ -130,9 +130,28 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, parent *job.Job) er
 	if err := json.Unmarshal(parent.Result, &result); err != nil {
 		return fmt.Errorf("decode parent result: %w", err)
 	}
+	if result == nil {
+		result = map[string]any{}
+	}
 	childID, _ := result["child_job_id"].(string)
 	if childID == "" {
-		return fmt.Errorf("parent result has no settle child_job_id")
+		// The submit phase died between Submit and EnqueueContinuation (or the
+		// submit itself failed) and never recorded a settle child. No future
+		// tick can produce one: retrying forever left the parent
+		// waiting_children for life and logged a warning every interval. The
+		// only truthful outcome is a terminal FAILED parent.
+		errMsg := "clip.render aggregate: parent result has no settle child_job_id (submit did not enqueue a continuation)"
+		result["parent_state"] = "failed"
+		result["error"] = errMsg
+		if err := a.jobs.FinalizeAggregateParent(ctx, parent.ID, job.StatusFailed, result, errMsg, parent.Revision); err != nil {
+			if errors.Is(err, domainremote.ErrAlreadyTerminalAggregate) {
+				return nil
+			}
+			return err
+		}
+		a.log.Debug("clip render parent finalized without a settle child",
+			zap.String("parent_job_id", parent.ID))
+		return nil
 	}
 	child, err := a.jobs.Get(ctx, childID)
 	if err != nil {

@@ -7,12 +7,12 @@
 //   (1) Options — the 8-field configuration struct.
 //   (2) RetryOptions — backward-compatible type alias for Options
 //       (kept for callers that name the type explicitly).
-//   (3) DefaultOptions — the canonical starting point with JitterFraction
-//       = 0.25 (±25% randomization kills thundering-herd retry storms).
-//   (4) norm — defensive coalesce of zero-valued Options fields into
-//       canonical defaults (so callers passing retry.Options{} get
-//       the documented production sane-default surface).
-//   (5) BackoffFor — exponential backoff with MaxBackoff cap and
+//   (3) norm — defensive coalesce of zero-valued Options fields into
+//       canonical defaults (so callers passing retry.Options{} get the
+//       documented production sane-default surface; JitterFraction
+//       defaults to 0.25, ±25% randomization that kills thundering-herd
+//       retry storms).
+//   (4) BackoffFor — exponential backoff with MaxBackoff cap and
 //       bounded jitter math. Pure function: takes the attempt count
 //       and the Options, returns the duration the next retry should
 //       sleep before being called. math/rand global Float64 is safe
@@ -110,26 +110,6 @@ type Options struct {
 
 // RetryOptions is an alias for Options, kept for backward compatibility.
 type RetryOptions = Options
-
-// DefaultOptions returns a reasonable starting point for most use-cases.
-//
-// The default `JitterFraction: 0.25` enables ±25% randomization on top of
-// the computed exponential backoff, reducing thundering-herd retry waves
-// when many goroutines converge on the same transient error (e.g. the
-// SQLite-locked retry storms when a hot row is enqueued from N workers
-// in lockstep). Callers that need deterministic timing (e.g. CI latency
-// assertions) must set `DisableJitter: true` (not merely `JitterFraction: 0`,
-// which norm() upgrades to the canonical 0.25 default).
-func DefaultOptions() Options {
-	return Options{
-		MaxAttempts:    3,
-		InitialBackoff: 1 * time.Second,
-		MaxBackoff:     30 * time.Second,
-		BackoffFactor:  2.0,
-		IsRetryable:    IsTransient,
-		JitterFraction: 0.25,
-	}
-}
 
 // ── bounded-default coalesce ───────────────────────────────────────────────
 

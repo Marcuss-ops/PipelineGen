@@ -458,7 +458,3 @@ func validateManifestEntries(entries []AssetManifestEntry) error {
 	}
 	return nil
 }
-
-// isSHA256 preserves the render package's internal validation seam while
-// delegating the digest contract to its canonical owner.
-func isSHA256(value string) bool { return digest.IsSHA256(value) }

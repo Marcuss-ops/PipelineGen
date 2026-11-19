@@ -23,8 +23,6 @@ package remote
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 )
 
 // ── UploadState (closed enum, 6 values) ────────────────────────────────
@@ -77,27 +75,11 @@ const (
 	StateUploadFailed UploadState = "FAILED"
 )
 
-// CanonicalUploadStateValues returns the closed enumeration of
-// canonical UploadState strings. Callers use this as the
-// single-source-of-truth list for migrations, dashboards, and
-// pgvector-payload validation (parallels CanonicalLifecycleStateValues
-// in domain/asset).
-func CanonicalUploadStateValues() []UploadState {
-	return []UploadState{
-		StateUploadPreparing,
-		StateUploadUploading,
-		StateUploadUploaded,
-		StateUploadVerified,
-		StateUploadFinalized,
-		StateUploadFailed,
-	}
-}
-
 // Valid returns true if s is a known canonical UploadState. The
 // zero-value (s == "") is intentionally invalid — callers must
-// initialise UploadSession.State to StateUploadPreparing via
-// NewUploadSession so a half-wired session cannot slip through
-// validation as valid-but-empty.
+// initialise UploadSession.State to StateUploadPreparing at the
+// producer (the remote-side) so a half-wired session cannot slip
+// through validation as valid-but-empty.
 func (s UploadState) Valid() bool {
 	switch s {
 	case StateUploadPreparing, StateUploadUploading, StateUploadUploaded,
@@ -192,37 +174,6 @@ type UploadSession struct {
 	// State is the current position in the upload state machine.
 	// Validated against UploadState.Valid() at every seam.
 	State UploadState `json:"state"`
-}
-
-// NewUploadSession constructs an initialised UploadSession at the
-// entry state (StateUploadPreparing). Refuses to construct with
-// empty fields per godlike/07 no-fake-availability — a half-wired
-// session must NOT come online because the caller forgot to hydrate.
-func NewUploadSession(id, leaseID, artifactID string) (*UploadSession, error) {
-	// Aggregate all missing fields into one diagnostic for the
-	// operator — when 3 fields are missing simultaneously, listing
-	// them all in a single error message is more actionable than 3
-	// sequential errors (and matches the test invariant
-	// TestUploadSession_NewUploadSession_DiagnosticClarity).
-	var missing []string
-	if id == "" {
-		missing = append(missing, "id")
-	}
-	if leaseID == "" {
-		missing = append(missing, "leaseID")
-	}
-	if artifactID == "" {
-		missing = append(missing, "artifactID")
-	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("new upload session: required fields missing (godlike/07 no-fake-availability): %s", strings.Join(missing, ", "))
-	}
-	return &UploadSession{
-		ID:         id,
-		LeaseID:    leaseID,
-		ArtifactID: artifactID,
-		State:      StateUploadPreparing,
-	}, nil
 }
 
 // ── ArtifactUploader port (Pattern 0) ─────────────────────────────────
@@ -433,51 +384,3 @@ var ErrArtifactRemoteSchemaVersionUnsupported = errors.New("artifact uploader: r
 // failures specifically (e.g., to log
 // `zap.String("ctx_status", "missing")` separately from `wiring`).
 var ErrArtifactCtxRequired = errors.New("artifact uploader: PrepareContext.Ctx required (godlike/07 no-fake-availability — silent-degrade to context.Background() is the P1 #10 bug)")
-
-// ErrIllegalUploadStateTransition is the typed sentinel for
-// IsValidTransition rejections. Callers errors.Is against the
-// sentinel AND errors.As against *IllegalTransitionError to
-// extract the {From, To} pair (godlike/07 dual-traversal pattern).
-var ErrIllegalUploadStateTransition = errors.New("illegal upload state transition")
-
-// IllegalTransitionError is the typed-error-data envelope that
-// exposes From + To state at the seam so callers can route on the
-// specific (from → to) pair. Constructed by
-// NewIllegalTransitionError at the rejection site (the Adapter's
-// transition-gate checks). Implements errors.Is compatibility
-// with the canonical sentinel so callers can probe EITHER the
-// sentinel (for catch-all logic) OR the typed-data struct (for
-// pair-specific routing).
-type IllegalTransitionError struct {
-	From UploadState
-	To   UploadState
-}
-
-// Error implements the error interface (godlike/07 typed-error
-// contract). Includes both From and To for human-readable logs.
-func (e *IllegalTransitionError) Error() string {
-	return fmt.Sprintf("illegal upload state transition: %s -> %s", e.From, e.To)
-}
-
-// Is enables errors.Is(err, ErrIllegalUploadStateTransition) on
-// chains wrapping *IllegalTransitionError. Per godlike/07, both
-// the sentinel AND the typed-data error are reachable in a single
-// probe path — callers can write:
-//
-//	if errors.Is(err, remote.ErrIllegalUploadStateTransition) {
-//	    var ite *remote.IllegalTransitionError
-//	    if errors.As(err, &ite) {
-//	        log.Warn("transition rejected", zap.String("from", string(ite.From)), ...)
-//	    }
-//	}
-func (e *IllegalTransitionError) Is(target error) bool {
-	return target == ErrIllegalUploadStateTransition
-}
-
-// NewIllegalTransitionError is the canonical constructor for
-// *IllegalTransitionError at rejection sites. Mirrors the
-// fmt.Errorf+%w wrap pattern but exposes From + To so the
-// canonical pattern above probes both surfaces.
-func NewIllegalTransitionError(from, to UploadState) error {
-	return &IllegalTransitionError{From: from, To: to}
-}

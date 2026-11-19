@@ -28,13 +28,19 @@ func TestOverlayStyleParamsExposeTextRuntimeControls(t *testing.T) {
 	}
 }
 
-func TestOverlayStyleProjectsImageBackdropOnlyForStandaloneImages(t *testing.T) {
+func TestOverlayStyleProjectsImageBackdropWithMemberOwnedPhotos(t *testing.T) {
 	zoom, blur := 1.2, 24.0
 	items := []capmodel.OverlayItem{
 		{ID: "solo", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}},
 		{ID: "duo", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}}, ImageLayers: []capmodel.OverlayImageLayer{{ID: "left"}, {ID: "right"}}},
+		{ID: "portraits", Kind: string(capmodel.KindEntityImage), AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}}, ImageLayers: []capmodel.OverlayImageLayer{{ID: "left"}, {ID: "right"}}},
+		{ID: "chain", Kind: string(capmodel.KindImageChain), Params: map[string]any{
+			"chain_segments": []map[string]any{{"kind": "image", "params": map[string]any{}}},
+		}},
 	}
+	radius := 18.0
 	canvas := OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{
+		Radius: &radius,
 		Backdrop: &scriptpkg.OverlayImageBackdropSpec{Zoom: &zoom, BlurPX: &blur,
 			Grid: &scriptpkg.OverlayImageBackdropGridSpec{Color: "#7FA8C8"}},
 	}}}
@@ -47,7 +53,29 @@ func TestOverlayStyleProjectsImageBackdropOnlyForStandaloneImages(t *testing.T) 
 		t.Fatalf("backdrop = %#v, want zoom 1.2 / blur 24", backdrop)
 	}
 	if _, ok := items[1].Params["image_backdrop"]; ok {
-		t.Fatalf("composite image must not receive image_backdrop: %#v", items[1].Params)
+		t.Fatalf("a generic multi-member composite must not receive image_backdrop: %#v", items[1].Params)
+	}
+	// Entity portraits are the exception: RenderingGen blurs each member's own
+	// photo behind its card, so the item-level block is the transport for a
+	// per-member backdrop.
+	if _, ok := items[2].Params["image_backdrop"]; !ok {
+		t.Fatalf("entity portrait composite must receive image_backdrop: %#v", items[2].Params)
+	}
+	// A chain owns N independent photos; the run-level treatment is projected
+	// onto each image segment, not onto the chain container.
+	if _, ok := items[3].Params["image_backdrop"]; ok {
+		t.Fatalf("chain container must not carry item-level image_backdrop: %#v", items[3].Params)
+	}
+	segments, ok := capmodel.ChainSegmentMaps(items[3].Params)
+	if !ok || len(segments) != 1 {
+		t.Fatalf("chain segments missing: %#v", items[3].Params)
+	}
+	segmentParams, _ := segments[0]["params"].(map[string]any)
+	if _, ok := segmentParams["image_backdrop"]; !ok {
+		t.Fatalf("chain image segment must receive image_backdrop: %#v", segments[0])
+	}
+	if segmentParams["radius"] != 18.0 {
+		t.Fatalf("chain image segment must receive the run radius: %#v", segmentParams)
 	}
 }
 

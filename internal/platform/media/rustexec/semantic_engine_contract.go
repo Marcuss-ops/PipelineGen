@@ -34,8 +34,12 @@ type semanticEngineResponse struct {
 	// workers omit it and Error keeps the human-readable cause those callers
 	// already report. Pinned by
 	// TestSemanticEngineRealBinaryErrorCodeSurvivesTheWire.
-	ErrorCode string                  `json:"error_code,omitempty"`
-	Manifest  *semanticEngineManifest `json:"manifest,omitempty"`
+	ErrorCode string `json:"error_code,omitempty"`
+	// Cached reports that the worker served this analysis from its persistent
+	// manifest cache (SEMANTIC_CACHE_DIR). It is additive: workers without the
+	// cache omit it and decode as false.
+	Cached   bool                    `json:"cached,omitempty"`
+	Manifest *semanticEngineManifest `json:"manifest,omitempty"`
 }
 
 // The wire structs mirror semantic-core::manifest.v3. Source offsets are

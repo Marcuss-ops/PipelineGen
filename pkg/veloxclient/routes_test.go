@@ -24,11 +24,9 @@ func TestRoutesMatchGeneratedManifest(t *testing.T) {
 		RouteMediaSearch,
 		RouteJobsFull(":id"),
 		RouteClipsDownload(":source", ":id"),
-		RouteMediaClipsFor(":source"),
 		RouteMediaRegisterBatch,
 		RouteMediaRegisterFromYouTube,
 		RouteMediaUploadVideo,
-		RouteMediaResolve(":asset_id"),
 	}
 	for _, r := range routes {
 		if !strings.Contains(manifest, "path: "+r) {

@@ -55,36 +55,3 @@ func TestCoalesceMapPlansDoesNotOverrideExplicitNoGrouping(t *testing.T) {
 		t.Fatalf("explicit no-grouping must keep the resolved plate, got %q", got[1].Plate.ID)
 	}
 }
-
-func TestMergeShortFinalMapChunkMergesReadableTail(t *testing.T) {
-	siena := testMapCandidate(t, "siena", "Siena", 43.3185, 11.3316, 9_132_000, 3_295_100)
-	campo := testMapCandidate(t, "campo", "Campo", 43.7109, 10.4787, 12_427_100, 942_115)
-	chunks := [][]MapCandidate{{siena}, {campo}}
-	got := mergeShortFinalMapChunk(chunks, 3, mapMaxPresentationUS)
-	if len(got) != 1 || len(got[0]) != 2 {
-		t.Fatalf("chunks = %#v, want one readable two-pin chunk", got)
-	}
-}
-
-func TestMergeShortFinalMapChunkRespectsPinCap(t *testing.T) {
-	siena := testMapCandidate(t, "siena", "Siena", 43.3185, 11.3316, 9_132_000, 3_295_100)
-	campo := testMapCandidate(t, "campo", "Campo", 43.7109, 10.4787, 12_427_100, 942_115)
-	got := mergeShortFinalMapChunk([][]MapCandidate{{siena}, {campo}}, 1, mapMaxPresentationUS)
-	if len(got) != 2 {
-		t.Fatalf("chunks = %#v, want the tail kept when the pin cap is 1", got)
-	}
-}
-
-func TestMergeShortFinalMapChunkRebalancesAtPinCap(t *testing.T) {
-	toscana := testMapCandidate(t, "toscana", "Toscana", 43.4587, 11.1389, 219_000, 675_000)
-	firenze := testMapCandidate(t, "firenze", "Firenze", 43.7698, 11.2556, 4_970_000, 657_540)
-	siena := testMapCandidate(t, "siena", "Siena", 43.3185, 11.3316, 9_132_000, 551_000)
-	campo := testMapCandidate(t, "campo", "Campo", 43.7109, 10.4787, 12_427_100, 892_115)
-	got := mergeShortFinalMapChunk([][]MapCandidate{{toscana, firenze, siena}, {campo}}, 3, mapMaxPresentationUS)
-	if len(got) != 2 || len(got[0]) != 2 || len(got[1]) != 2 {
-		t.Fatalf("chunks = %#v, want two readable two-pin chunks", got)
-	}
-	if span := got[1][1].StartUS + got[1][1].DurationUS - got[1][0].StartUS; span < MapMinimumReadableUS {
-		t.Fatalf("tail span = %d, want at least %d", span, MapMinimumReadableUS)
-	}
-}

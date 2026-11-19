@@ -41,9 +41,7 @@ import (
 	"go.uber.org/zap"
 )
 
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
-)
+import ()
 
 // defaultRenderingGenStoreURL is the fallback object-store endpoint used when
 // RENDERINGGEN_STORE_URL is unset (the local single-host deployment default).
@@ -676,9 +674,3 @@ type SceneTextGenerator = scriptwiring.SceneTextGenerator
 
 type ClipAssetResolver = scriptwiring.ClipAssetResolver
 type ClipProber = scriptwiring.ClipProber
-
-// NewSceneTextGenerator preserves the wiring package constructor while the
-// implementation and its planning helpers live with the script subsystem.
-func NewSceneTextGenerator(engine *gencore.Engine, log *zap.Logger) *SceneTextGenerator {
-	return scriptwiring.NewSceneTextGenerator(engine, log)
-}

@@ -47,9 +47,6 @@ func (p Profile) Validate() error {
 	if err := p.validateMixPolicy(); err != nil {
 		return fmt.Errorf("channelprofile %q: %w", p.ChannelID, err)
 	}
-	if err := p.validatePhraseMotions(); err != nil {
-		return fmt.Errorf("channelprofile %q: %w", p.ChannelID, err)
-	}
 	if err := p.validateImageMotions(); err != nil {
 		return fmt.Errorf("channelprofile %q: %w", p.ChannelID, err)
 	}
@@ -220,31 +217,6 @@ func (p Profile) validateMixPolicy() error {
 	// policy" at compile time.
 	if capabilityaudio.AudioMixPolicy(p.MixPolicy).Normalize() == "" {
 		return fmt.Errorf("mix_policy %q is not a canonical audio mix policy (VOICEOVER_ONLY, VOICEOVER_DUCKED_CLIP)", p.MixPolicy)
-	}
-	return nil
-}
-
-func (p Profile) validatePhraseMotions() error {
-	if len(p.PhraseMotions) == 0 {
-		return nil
-	}
-	certified := make(map[string]bool)
-	for _, id := range overlays.CertifiedPhraseMotions() {
-		certified[id] = true
-	}
-	seen := make(map[string]bool, len(p.PhraseMotions))
-	for _, id := range p.PhraseMotions {
-		trimmed := strings.TrimSpace(id)
-		if trimmed == "" {
-			return fmt.Errorf("phrase_motions carries an empty id")
-		}
-		if !certified[trimmed] {
-			return fmt.Errorf("phrase_motions id %q is not a certified phrase motion", trimmed)
-		}
-		if seen[trimmed] {
-			return fmt.Errorf("phrase_motions repeats %q (a rotation pool must be distinct)", trimmed)
-		}
-		seen[trimmed] = true
 	}
 	return nil
 }

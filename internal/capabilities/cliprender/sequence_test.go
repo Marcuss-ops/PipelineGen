@@ -127,11 +127,14 @@ func TestSequenceHandlerEnqueuesTheSequencePhase(t *testing.T) {
 	svc := &stubJobsSvc{returnJob: &job.Job{ID: "job-seq"}}
 	router := newTestRouter(svc)
 
+	// HTTP bodies name artifacts by identity (job_id/asset_id): a local `path`
+	// and an `output.dir` are job-level inputs and are rejected at this edge
+	// (ticket CR-19-04).
 	body := `{"clips":[
-		{"path":"/tmp/a.mp4","duration_ms":4000},
+		{"job_id":"job-a"},
 		{"asset_id":"asset-b","transition_in":{"preset":"light_leak_hard","duration_ms":220,
 		 "leak":{"color":"#FF8844","peak_alpha":0.9,"band_width":0.12,"direction":"left"}}}
-	],"output":{"dir":"/tmp/seq","codec":"libx264","preset":"veryfast","crf":19}}`
+	],"output":{"codec":"libx264","preset":"veryfast","crf":19}}`
 
 	req := httptest.NewRequest(http.MethodPost, "/render/sequence", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
@@ -358,7 +361,7 @@ func TestRenderBatchEnqueuesTheAssemblyInOneRequest(t *testing.T) {
 		"sequence":{
 			"transitions":[{"position":1,"preset":"light_leak_hard","duration_ms":260,
 				"leak":{"color":"#FFAA55","peak_alpha":0.7,"band_width":0.2}}],
-			"output":{"dir":"/tmp/batch-seq","codec":"libx264"}
+			"output":{"codec":"libx264"}
 		}
 	}`
 	req := httptest.NewRequest(http.MethodPost, "/render/batch", bytes.NewReader([]byte(body)))
@@ -382,8 +385,8 @@ func TestRenderBatchEnqueuesTheAssemblyInOneRequest(t *testing.T) {
 	if payload.Clips[1].TransitionIn == nil || payload.Clips[1].TransitionIn.Leak == nil {
 		t.Fatalf("assembly lost the transition: %+v", payload.Clips[1])
 	}
-	if payload.Output.Dir != "/tmp/batch-seq" || payload.Output.Codec != "libx264" {
-		t.Fatalf("assembly output = %+v, want the batch settings", payload.Output)
+	if payload.Output.Dir != "" || payload.Output.Codec != "libx264" {
+		t.Fatalf("assembly output = %+v, want the batch settings and a server-owned output dir", payload.Output)
 	}
 	var response batchRenderResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {

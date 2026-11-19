@@ -124,14 +124,11 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		canvas.OutputProfileID = kernelmedia.OverlayVideoOnlyProfileID
 	}
 	canvas.Style = req.OverlayStyle
-	canvas.PhraseMotions = req.PhraseMotions
 	canvas.ShortPhraseMotion = req.ShortPhraseMotion
-	canvas.LongPhraseMotion = req.LongPhraseMotion
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily
 	canvas.EditorialBulletStyles = req.EditorialBulletStyles
 	canvas.DateMotionFamily = req.DateMotionFamily
 	canvas.MotionSeed = strings.TrimSpace(req.MotionSeed)
-	canvas.CoherenceSeed = strings.TrimSpace(req.CoherenceSeed)
 	// Goal E2: the phrases the semantic profile grounded as most relevant take
 	// the prominent entrance, the rest keep the calm rotation. The canvas may
 	// already carry an explicit override (zero = unset).
@@ -175,6 +172,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		canvas.AnimationCounts["chain_disabled"] = 1
 	}
 	canvas.EntityStyleID = req.EntityStyleID
+	canvas.EntityBadgeColor = req.EntityBadgeColor
 	canvas.DisableNumberOverlays = req.DisableNumberOverlays
 	canvas.DisableRecapOverlays = req.DisableRecapOverlays
 	canvas.DisableChartOverlays = req.DisableChartOverlays
@@ -197,9 +195,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	r.log.Info("runner: overlay canvas motion inputs",
 		zap.String("run_id", runID),
 		zap.String("phrase_motion_family", canvas.PhraseMotionFamily),
-		zap.Int("phrase_motions", len(canvas.PhraseMotions)),
 		zap.String("short_phrase_motion", canvas.ShortPhraseMotion),
-		zap.String("long_phrase_motion", canvas.LongPhraseMotion),
 		zap.Float64("heavy_phrase_priority", canvas.HeavyPhrasePriority),
 		zap.Any("animation_counts", canvas.AnimationCounts),
 	)

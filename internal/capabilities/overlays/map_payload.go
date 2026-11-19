@@ -17,38 +17,21 @@ import (
 // order, with clip-relative seconds. The renderer activates each place at its
 // spoken start; it never invents timing.
 func MapPinTimingPayload(params map[string]any, pins []map[string]any) []map[string]any {
-	if params == nil {
+	timing, ok := MapPinTimingsFromParams(params)
+	if !ok || len(timing) == 0 {
 		return nil
 	}
-	timingByID := map[string]map[string]any{}
-	switch raw := params["map_pin_timing"].(type) {
-	case map[string]map[string]any:
-		for id, entry := range raw {
-			timingByID[id] = entry
-		}
-	case map[string]any:
-		for id, entry := range raw {
-			if typed, ok := entry.(map[string]any); ok {
-				timingByID[id] = typed
-			}
-		}
-	}
-	out := make([]map[string]any, 0, len(timingByID))
+	out := make([]map[string]any, 0, len(timing))
 	for _, pin := range pins {
 		id, _ := pin["id"].(string)
-		entry, ok := timingByID[id]
+		entry, ok := timing[id]
 		if !ok {
-			continue
-		}
-		startUS, hasStart := mapTimingInt64(entry, "start_us")
-		durationUS, hasDuration := mapTimingInt64(entry, "duration_us")
-		if !hasStart || !hasDuration {
 			continue
 		}
 		out = append(out, map[string]any{
 			"id":         id,
-			"start_s":    float64(startUS) / 1_000_000,
-			"duration_s": float64(durationUS) / 1_000_000,
+			"start_s":    float64(entry.StartUS) / 1_000_000,
+			"duration_s": float64(entry.DurationUS) / 1_000_000,
 		})
 	}
 	return out
@@ -60,18 +43,6 @@ func MustFloat(value any) float64 {
 		return f
 	}
 	return 0
-}
-
-func mapTimingInt64(entry map[string]any, key string) (int64, bool) {
-	switch value := entry[key].(type) {
-	case int64:
-		return value, true
-	case float64:
-		return int64(value), true
-	case int:
-		return int64(value), true
-	}
-	return 0, false
 }
 
 // mapNativePinKey mirrors the native renderer's place identity: one stop per

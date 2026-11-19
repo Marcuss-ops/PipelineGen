@@ -30,8 +30,6 @@
 
 package voiceover
 
-import "strings"
-
 // StyleGroup is the typed envelope for the per-batch style cohort
 // routing tag. Defined type (NOT alias) so the type system
 // catches the audit-flagged primitive-obsession at every
@@ -43,17 +41,6 @@ type StyleGroup string
 // string-literal "") for typed comparison so the audit-pin
 // discipline catches a future drift on the empty-marker.
 const EmptyStyleGroup StyleGroup = ""
-
-// ParseStyleGroup is the canonical permissive constructor for the
-// StyleGroup typed envelope. Trims surrounding whitespace; empty
-// after trim is the canonical "no style" signal (NOT an error).
-//
-// Use this at every TRUST BOUNDARY (HTTP handler, job payload
-// unmarshal). Internal voiceover-internal sites that already hold
-// a typed StyleGroup value do NOT need to re-parse.
-func ParseStyleGroup(s string) StyleGroup {
-	return StyleGroup(strings.TrimSpace(s))
-}
 
 // String returns the underlying string form. Useful for fmt
 // interpolation + the meta["style_group"] assignment site.

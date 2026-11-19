@@ -53,8 +53,11 @@ func TestResolveOnceSingleFlightSharesOneBuild(t *testing.T) {
 	if err != nil || again["asset_id"] != "drive-asset" {
 		t.Fatalf("cached ref = %v err=%v, want the untouched reference", again, err)
 	}
-	if adapter.resolveHits() != callers {
-		t.Fatalf("hits = %d, want %d (five waiters plus the cache read)", adapter.resolveHits(), callers)
+	adapter.resolvedMu.Lock()
+	hits := adapter.hits
+	adapter.resolvedMu.Unlock()
+	if hits != callers {
+		t.Fatalf("hits = %d, want %d (five waiters plus the cache read)", hits, callers)
 	}
 }
 

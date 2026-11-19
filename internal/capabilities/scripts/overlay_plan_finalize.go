@@ -267,6 +267,15 @@ func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas Overla
 		if segments, ok := capmodel.ChainSegmentMaps(item.Params); ok {
 			changed := false
 			for _, segment := range segments {
+				// Chains carry no item-level asset refs (each photo lives in its
+				// own segment), so the image frame and backdrop must be projected
+				// onto the segment params. Without this a chain never received
+				// image_backdrop, radius or shadow.
+				if imageStyle != nil && segmentIsImage(segment) {
+					applyImageStyleToChainSegment(segment, imageStyle)
+					changed = true
+					continue
+				}
 				segmentParams, _ := segment["params"].(map[string]any)
 				if editorialBulletParams(segmentParams) {
 					applyTextStyleToChainSegment(segment, bulletBaseParamsForScene(item.SceneID, pins, bulletStyle))
@@ -293,6 +302,27 @@ func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas Overla
 			applyTextStyleToItem(item, runStyle)
 		}
 	}
+}
+
+// segmentIsImage reports whether a chain segment is an image segment, i.e.
+// one that owns an asset and can carry the image treatment.
+func segmentIsImage(segment map[string]any) bool {
+	kind, _ := segment["kind"].(string)
+	return capabilityoverlay.IsImageOverlayKind(kind)
+}
+
+// applyImageStyleToChainSegment projects the run-level image treatment onto
+// one image segment: backdrop, radius, shadow, fit and any authored card
+// geometry. The segment is lowered as an image item of its own, so the params
+// it carries are exactly the ones the renderer reads.
+func applyImageStyleToChainSegment(segment map[string]any, style *scriptpkg.OverlayImageStyleSpec) {
+	params, _ := segment["params"].(map[string]any)
+	if params == nil {
+		params = map[string]any{}
+	}
+	probe := capmodel.OverlayItem{Kind: "image", Params: params}
+	capabilityoverlay.ApplyImageStyle(&probe, style)
+	segment["params"] = probe.Params
 }
 
 // countRecapItems counts final recap survivors, including cards preserved

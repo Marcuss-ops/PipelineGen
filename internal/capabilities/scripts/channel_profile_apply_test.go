@@ -28,10 +28,9 @@ func TestApplyChannelProfileFillsBlankSurfaces(t *testing.T) {
 		OverlayStyle: &channelprofile.OverlayStyleProfile{
 			TransitionIn: &channelprofile.OverlayTransitionProfile{Preset: "fade_in", DurationFrames: 8},
 		},
-		SoundEffects:  []channelprofile.SoundEffectProfile{{AssetID: "whoosh1", GainDB: &gain}},
-		MixPolicy:     "VOICEOVER_DUCKED_CLIP",
-		PhraseMotions: []string{"phrase_apple_clean_01_blur_soft_reveal"},
-		ImageMotions:  []string{"image_25d_card_swing", "image_depth_dolly"},
+		SoundEffects: []channelprofile.SoundEffectProfile{{AssetID: "whoosh1", GainDB: &gain}},
+		MixPolicy:    "VOICEOVER_DUCKED_CLIP",
+		ImageMotions: []string{"image_25d_card_swing", "image_depth_dolly"},
 	}
 	req := renderRequest()
 	if err := ApplyChannelProfile(&req, profile); err != nil {
@@ -66,9 +65,6 @@ func TestApplyChannelProfileFillsBlankSurfaces(t *testing.T) {
 	}
 	if req.MixPolicy != capabilityaudio.MixVoiceoverWithDuckedClip {
 		t.Fatalf("mix policy = %q, want %q", req.MixPolicy, capabilityaudio.MixVoiceoverWithDuckedClip)
-	}
-	if len(req.PhraseMotions) != 1 || req.PhraseMotions[0] != "phrase_apple_clean_01_blur_soft_reveal" {
-		t.Fatalf("phrase motions not filled: %+v", req.PhraseMotions)
 	}
 	if len(req.ImageMotions) != 2 || req.ImageMotions[0] != "image_25d_card_swing" || req.ImageMotions[1] != "image_depth_dolly" {
 		t.Fatalf("image motions not filled: %+v", req.ImageMotions)
@@ -106,13 +102,12 @@ func TestApplyChannelProfileEntityStyleSelector(t *testing.T) {
 
 func TestApplyChannelProfileNeverOverridesCallerIntent(t *testing.T) {
 	profile := channelprofile.Profile{
-		ChannelID:     "crime",
-		Subtitles:     &channelprofile.SubtitlesProfile{Preset: "impact"},
-		Watermark:     &channelprofile.WatermarkProfile{Text: "CHANNEL BRAND"},
-		OverlayStyle:  &channelprofile.OverlayStyleProfile{Color: []float64{1, 0, 0, 1}},
-		SoundEffects:  []channelprofile.SoundEffectProfile{{AssetID: "channel-whoosh"}},
-		MixPolicy:     "VOICEOVER_ONLY",
-		PhraseMotions: []string{"phrase_apple_clean_05_blur_apple_fade"},
+		ChannelID:    "crime",
+		Subtitles:    &channelprofile.SubtitlesProfile{Preset: "impact"},
+		Watermark:    &channelprofile.WatermarkProfile{Text: "CHANNEL BRAND"},
+		OverlayStyle: &channelprofile.OverlayStyleProfile{Color: []float64{1, 0, 0, 1}},
+		SoundEffects: []channelprofile.SoundEffectProfile{{AssetID: "channel-whoosh"}},
+		MixPolicy:    "VOICEOVER_ONLY",
 	}
 	req := renderRequest()
 	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{
@@ -123,7 +118,6 @@ func TestApplyChannelProfileNeverOverridesCallerIntent(t *testing.T) {
 	req.OverlayStyle = &scriptpkg.OverlayStyleSpec{Color: []float64{0, 1, 0, 1}}
 	req.SoundEffects = []scriptpkg.SoundEffectIntent{{AssetID: "caller-whoosh", AtMS: 500}}
 	req.MixPolicy = capabilityaudio.MixVoiceoverOnly
-	req.PhraseMotions = []string{"phrase_apple_clean_13_scale_soft_pop"}
 
 	if err := ApplyChannelProfile(&req, profile); err != nil {
 		t.Fatalf("ApplyChannelProfile: %v", err)
@@ -142,9 +136,6 @@ func TestApplyChannelProfileNeverOverridesCallerIntent(t *testing.T) {
 	}
 	if req.MixPolicy != capabilityaudio.MixVoiceoverOnly {
 		t.Fatalf("caller mix policy overridden: %q", req.MixPolicy)
-	}
-	if len(req.PhraseMotions) != 1 || req.PhraseMotions[0] != "phrase_apple_clean_13_scale_soft_pop" {
-		t.Fatalf("caller motion pool overridden: %+v", req.PhraseMotions)
 	}
 }
 
@@ -210,11 +201,10 @@ func boolRef(v bool) *bool { return &v }
 // or that carries its own values — is untouched.
 func TestBuildGenerateRequestAppliesTheChannelProfile(t *testing.T) {
 	channelprofile.Install([]channelprofile.Profile{{
-		ChannelID:     "crime",
-		Subtitles:     &channelprofile.SubtitlesProfile{Preset: "impact"},
-		Watermark:     &channelprofile.WatermarkProfile{Text: "CRIME FILES", Position: "top_right", MarginPX: 48},
-		PhraseMotions: []string{"phrase_apple_clean_01_blur_soft_reveal"},
-		ImageMotions:  []string{"image_25d_card_swing", "image_depth_dolly"},
+		ChannelID:    "crime",
+		Subtitles:    &channelprofile.SubtitlesProfile{Preset: "impact"},
+		Watermark:    &channelprofile.WatermarkProfile{Text: "CRIME FILES", Position: "top_right", MarginPX: 48},
+		ImageMotions: []string{"image_25d_card_swing", "image_depth_dolly"},
 	}})
 	defer channelprofile.Reset()
 
@@ -250,9 +240,6 @@ func TestBuildGenerateRequestAppliesTheChannelProfile(t *testing.T) {
 		if got.Render.Watermark == nil || got.Render.Watermark.Text != "CRIME FILES" {
 			t.Fatalf("channel watermark not applied: %+v", got.Render.Watermark)
 		}
-		if len(got.PhraseMotions) != 1 || got.PhraseMotions[0] != "phrase_apple_clean_01_blur_soft_reveal" {
-			t.Fatalf("channel motion pool not applied: %+v", got.PhraseMotions)
-		}
 		if len(got.ImageMotions) != 2 || got.ImageMotions[0] != "image_25d_card_swing" || got.ImageMotions[1] != "image_depth_dolly" {
 			t.Fatalf("channel image motion pool not applied: %+v", got.ImageMotions)
 		}
@@ -263,7 +250,7 @@ func TestBuildGenerateRequestAppliesTheChannelProfile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.ChannelID != "" || got.Render.Subtitles != nil || got.Render.Watermark != nil || len(got.PhraseMotions) != 0 || len(got.ImageMotions) != 0 {
+		if got.ChannelID != "" || got.Render.Subtitles != nil || got.Render.Watermark != nil || len(got.ImageMotions) != 0 {
 			t.Fatalf("a profile leaked onto a request that declared no channel: %+v", got)
 		}
 	})

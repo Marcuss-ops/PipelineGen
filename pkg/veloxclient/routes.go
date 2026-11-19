@@ -104,14 +104,3 @@ func RouteM2MJob(jobID string) string {
 func RouteClipsDownload(source, clipID string) string {
 	return fmt.Sprintf("/api/media/clips/%s/clips/%s/download", source, clipID)
 }
-
-// RouteMediaClipsFor builds GET /api/media/clips/{source}/clips.
-func RouteMediaClipsFor(source string) string {
-	return fmt.Sprintf(RouteMediaClipsList, source)
-}
-
-// RouteMediaResolve is GET /api/media/resolve/{asset_id} — resolve an asset
-// id to its canonical record without searching.
-func RouteMediaResolve(assetID string) string {
-	return "/api/media/resolve/" + url.PathEscape(assetID)
-}

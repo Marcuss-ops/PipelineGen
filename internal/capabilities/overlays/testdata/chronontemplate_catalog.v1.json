@@ -39890,6 +39890,321 @@
       "render_safe": true
     },
     {
+      "id": "typewriter_staccato_short",
+      "title": "Typewriter Staccato (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "glyph",
+      "enter": 34,
+      "exit": 14,
+      "tracks": [
+        {
+          "property": "scale",
+          "keyframes": [
+            {
+              "frame": 0,
+              "value": 1.02
+            },
+            {
+              "frame": 18,
+              "value": 1.0
+            }
+          ],
+          "easing": "linear"
+        }
+      ],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 8,
+            "enter": 34
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_soft_glide_short",
+      "title": "Typewriter Soft Glide (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "glyph",
+      "enter": 44,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "smooth",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 9,
+            "enter": 44
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_rapid_fire_short",
+      "title": "Typewriter Rapid Fire (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "glyph",
+      "enter": 26,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "out_cubic",
+            "delay": 7,
+            "enter": 26
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_word_step_short",
+      "title": "Typewriter Word Step (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "word",
+      "enter": 30,
+      "exit": 14,
+      "tracks": [],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "word",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 8,
+            "enter": 30
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_word_lift_short",
+      "title": "Typewriter Word Lift (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "word",
+      "enter": 34,
+      "exit": 14,
+      "tracks": [
+        {
+          "property": "position_y",
+          "keyframes": [
+            {
+              "frame": 0,
+              "value": 12.0
+            },
+            {
+              "frame": 20,
+              "value": 0.0
+            }
+          ],
+          "easing": "linear"
+        }
+      ],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "word",
+            "shape": "smooth",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "out_cubic",
+            "delay": 8,
+            "enter": 34
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
+      "id": "typewriter_glyph_drift_short",
+      "title": "Typewriter Glyph Drift (short)",
+      "category": "typewriter_phrase_v1",
+      "targets": [
+        "text",
+        "phrase",
+        "short_phrase"
+      ],
+      "unit": "glyph",
+      "enter": 48,
+      "exit": 14,
+      "tracks": [
+        {
+          "property": "position_x",
+          "keyframes": [
+            {
+              "frame": 0,
+              "value": -14.0
+            },
+            {
+              "frame": 20,
+              "value": 0.0
+            }
+          ],
+          "easing": "linear"
+        }
+      ],
+      "text_animators": [
+        {
+          "id": "typing",
+          "selector": {
+            "kind": "glyph",
+            "shape": "square",
+            "order": "forward",
+            "stagger": 1,
+            "pace": "linear",
+            "delay": 10,
+            "enter": 48
+          },
+          "properties": [
+            {
+              "property": "opacity",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 0.0
+                },
+                {
+                  "frame": 1,
+                  "value": 0.0
+                }
+              ],
+              "easing": "linear"
+            }
+          ]
+        }
+      ],
+      "render_safe": true
+    },
+    {
       "id": "metric_counter_rise",
       "category": "metric_v1",
       "supported_template": "metric_stat_card",
@@ -47164,6 +47479,12 @@
       "typewriter_editorial_line_long",
       "typewriter_word_burst_short",
       "typewriter_slow_type_short",
+      "typewriter_staccato_short",
+      "typewriter_soft_glide_short",
+      "typewriter_rapid_fire_short",
+      "typewriter_word_step_short",
+      "typewriter_word_lift_short",
+      "typewriter_glyph_drift_short",
       "apple_focus_rise",
       "apple_soft_scale",
       "apple_word_cascade",

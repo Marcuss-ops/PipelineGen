@@ -53,7 +53,6 @@ lives **inside an item**; there are no top-level shortcut keys.
         {"scope":"element","scene_ref":"scene-1","target":"image","mode":"prefer","motion_id":"image_focus_reveal"}
       ],
       "random_light_leak_on_clip_start": true,
-      "phrase_motions": ["phrase_apple_clean_01_blur_soft_reveal"],
       "image_motions": ["image_fade_reveal", "image_focus_reveal"],
       "entity_image_motions": ["image_fade_reveal", "image_scale_reveal"],
       "output":       { "...": "opt-in post-generation artifacts" },
@@ -97,6 +96,21 @@ wins on the bullet it names.
     "font_family": "oswald", "font_size_px": 96,
     "glow_size": 8, "glow_color": "#FFD400", "stroke_size": 2
   }
+}
+```
+
+`overlay_style.card_background` puts an optional coloured rectangle behind any
+run-level text, including the context label under an entity name. `color` is
+required and accepts `#RRGGBB`; `opacity` is `0..1`, `radius` is `0..512` px,
+and `padding` accepts at most `[x,y]` with values `0..512` px. The plate is
+opt-in: omitting the block leaves every text lane plate-free, exactly as
+before. The colour reaches entity captions and captioned image layers as well
+as phrases, words, dates and metrics.
+
+```json
+"overlay_style": {
+  "card_background": {"color": "#12233A", "opacity": 0.82,
+    "radius": 10, "padding": [16, 10]}
 }
 ```
 
@@ -265,7 +279,7 @@ source window.
   `audio`, `media_plan`, `overlay_background`, `overlay_style`,
   `map_type`, `map_camera_animation`, `map_label_animation`,
   `map_animation`,
-  `phrase_motions`, `short_phrase_motion`, `long_phrase_motion`,
+  `short_phrase_motion`,
   `image_motions`, `image_with_text_motions`, `entity_image_motions`,
   `phrase_motion_family`, `date_motion_family`, `animation_contract_version`,
   `animation_directives`, `animation_catalog_digest`,
@@ -292,22 +306,20 @@ entities and metrics still honor their counts as window sizes. Retries with
 the same job identity keep the same selection. Image motions are sampled
 independently per image item.
 
-`short_phrase_motion` and `long_phrase_motion` pin one catalog animation for
-the whole run instead of rotating:
+`short_phrase_motion` pins one catalog animation for every 1-5-word phrase in
+the run instead of rotating:
 
 ```json
-"short_phrase_motion": "phrase_apple_clean_01_blur_soft_reveal",
-"long_phrase_motion": "phrase_apple_clean_26_opacity_depth_push"
+"short_phrase_motion": "phrase_apple_clean_01_blur_soft_reveal"
 ```
 
-Every 1-5-word phrase uses `short_phrase_motion`; every 6+-word phrase uses
-`long_phrase_motion`. A pin bypasses `phrase_motions`, `phrase_motion_family`
+A pin bypasses the registry's per-word buckets, `phrase_motion_family`
 compatibility is still enforced, and neither the seeded rotation nor the
 final duplicate-rotation pass may replace the pinned id. An unknown id, a
 long-only id used as a short pin, or a word-count-specific short recipe is
 rejected for a lane-wide pin unless every short phrase in the run has that
 recipe's exact word count. Otherwise use a general short-phrase entrance.
-Leave either field empty to keep the existing rotation for that lane.
+Leave the field empty to keep the per-word rotation.
 `modern_apple` remains available when a payload explicitly wants only that
 style family.
 
@@ -321,9 +333,7 @@ that lane; an unknown or lane-incompatible id fails closed at plan compilation.
 
 | Lane | Payload field | Shape | Omitted means |
 |---|---|---|---|
-| Short phrases (1–5 words) | `short_phrase_motion` | one id | seeded rotation; `phrase_motions`/family still apply |
-| Long phrases (6+ words) | `long_phrase_motion` | one id | seeded rotation; `phrase_motions`/family still apply |
-| Phrase pool | `phrase_motions` | array of ids | full certified catalog (or the selected `phrase_motion_family`) |
+| Short phrases (1–5 words) | `short_phrase_motion` | one id | seeded per-word rotation; `phrase_motion_family` still applies |
 | Dates (timeline date cards) | `date_motion_family` | `auto`, `date_v1`, `didone`, `typewriter` | full certified date pool (39 presets), seeded per card |
 | Single images without caption | `image_motions` | array of ids | certified automatic image pool, seeded per image |
 | Images with caption | `image_with_text_motions` | array of ids | certified image-with-text pool, seeded per image |
@@ -334,8 +344,8 @@ that lane; an unknown or lane-incompatible id fails closed at plan compilation.
 
 A one-element `image_motions`, `entity_image_motions`, or
 `entity_caption_motions` array pins that lane to the single id; a longer array
-rotates through it. `short_phrase_motion` and `long_phrase_motion` are scalar
-pins and take precedence over `phrase_motions` for their lane.
+rotates through it. `short_phrase_motion` is a scalar pin and takes precedence
+over the seeded short-phrase rotation.
 `map_presentation` cannot be mixed with the legacy `map_type`,
 `map_camera_animation`, `map_label_animation` or `map_animation` fields: the
 mixture fails closed instead of guessing a winner.
@@ -352,7 +362,6 @@ the compile-path assignment.
 ```json
 {
   "short_phrase_motion": "phrase_apple_clean_01_blur_soft_reveal",
-  "long_phrase_motion": "phrase_apple_clean_26_opacity_depth_push",
   "date_motion_family": "typewriter",
   "image_motions": ["image_fade_reveal"],
   "image_with_text_motions": ["image_fade_reveal"],
@@ -447,20 +456,25 @@ unported family (never approximated); omission and `random` resolve to the
 base flyover: one anchor, the `slow_approach` dive, every grounded place
 presented.
 
-`phrase_motions`, `image_motions`, and `entity_image_motions` accept arrays of
-certified animation IDs and rotate through the requested pool. `phrase_motions`
-also accepts the 15 `doc_01`…`doc_15` Documentary Highlighting showcase IDs;
-PipelineGen resolves those aliases to phrase-relative Brush, Apple, or 3D
-motions before validating and compiling the pool, so they adapt to the supplied
-copy instead of replaying sample-specific geometry. Omit an array to use the
-existing seeded per-overlay rotation.
+`image_motions` and `entity_image_motions` accept arrays of certified animation
+IDs and rotate through the requested pool. Phrase motion is selected by the
+planner from the registry's per-word buckets (or a `short_phrase_motion` pin, or
+an explicit `motion_id`); the removed `phrase_motions` array is no longer part
+of the payload contract. Omit an array to use the existing seeded per-overlay
+rotation.
 
 Nearby overlay items in the same scene are fused into one chain overlay when
 they overlap or have no more than five seconds of empty timeline between them.
 Chains retain each segment's own text/image/map content and selected motion;
 `animation_counts.chain_gap_ms` can lower the maximum gap and
-`animation_counts.chain_disabled: 1` opts out. RenderingGen lowers the chain as
-one overlay render instead of one MP4 per member.
+`animation_counts.chain_disabled: 1` opts out. The handoff between fused
+segments is `animation_counts.chain_handoff_ms` (default `400`, clamped to
+`0..2000`); `0` makes the segments abut. An automatic chain carries at
+most **ten segments**: `animation_counts.chain_max_segments` lowers that bound
+(values below two are floored to two) and can never raise it. RenderingGen
+lowers the chain as one overlay render instead of one MP4 per member. A run
+that would spill past the scene end is trimmed to the segments that start
+inside the scene instead of being dropped whole.
 
 Use `animation_directives` with `animation_contract_version: 2` for the
 canonical typed selection contract. Each entry requires `scope`, `scene_ref`
@@ -512,20 +526,22 @@ is unaffected.
 `max_overlays_per_scene` caps selected overlay items in each scene before
 composition. For example, `2` retains at most two items per scene. Nearby
 survivors can be fused by the animation-chain runtime; set
-`animation_counts.chain_max_segments` to `2` to limit each chain to two
-animations. The chain hands off with `fly_under_fade`, which dips the framing
-down before revealing the next segment. Omission or zero keeps the existing
-scene policy.
+`animation_counts.chain_max_segments` (2..10) to bound each chain. The chain
+hands off with `fly_under_fade`, which dips the framing down before revealing
+the next segment; `chain_handoff_ms` sets the gap (default `400`, `0` for
+adjacent segments). Omission or zero keeps the existing scene policy.
 
 Entity image cards are admitted one identity at a time: each admitted entity
 yields at most one standalone `entity_image` item with one verified asset.
-Nearby overlays, including images, may be fused into an `image_chain` with one
+Nearby **captioned** entity cards may be fused into an `image_chain` with one
 segment per image; a chain is not a composite and keeps each image's own motion
-and asset identity. Multi-layer composites are produced only from explicitly
-authored `MultiEntityGroups`, never inferred from nearby mentions. Every entity
-card's duration follows the spoken mention dynamically (mention + 0.5 s hold,
-clamped to 1–5 s). See `docs/operations/entity-overlay-composition.md` for the
-full contract.
+and asset identity. Plain contextual photos stay standalone (the renderer would
+lower chain image segments as a simultaneous deck), and a chain carries at most
+ten segments. Multi-layer composites are produced only from explicitly authored
+`MultiEntityGroups`, never inferred from nearby mentions. Every entity card's
+duration follows the spoken mention dynamically (mention + 0.5 s hold, clamped
+to 1–5 s). See `docs/operations/entity-overlay-composition.md` for the full
+contract.
 
 ```json
 {

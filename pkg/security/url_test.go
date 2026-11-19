@@ -159,14 +159,6 @@ func TestIsAllowedHost(t *testing.T) {
 	}
 }
 
-func TestAddAllowedHost(t *testing.T) {
-	SetAllowedHosts(nil)
-	AddAllowedHost("test.com")
-	if !isAllowedHost("test.com") {
-		t.Error("expected test.com to be allowed after AddAllowedHost")
-	}
-}
-
 func TestSetAllowedHosts(t *testing.T) {
 	SetAllowedHosts([]string{"host1.com", "host2.com"})
 	if !isAllowedHost("host1.com") {
@@ -203,33 +195,6 @@ func TestSanitizeTimestamp(t *testing.T) {
 			}
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error for timestamp %q: %v", tt.ts, err)
-			}
-		})
-	}
-}
-
-func TestValidateVideoID(t *testing.T) {
-	tests := []struct {
-		id      string
-		wantErr bool
-	}{
-		{"", true},
-		{"abc123", false},
-		{"ABC_DEF-xyz", false},
-		{"a", false},
-		{"abc def", true},
-		{"abc/def", true},
-		{"abc;def", true},
-		{string(make([]byte, 65)), true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.id, func(t *testing.T) {
-			err := ValidateVideoID(tt.id)
-			if tt.wantErr && err == nil {
-				t.Errorf("expected error for id %q", tt.id)
-			}
-			if !tt.wantErr && err != nil {
-				t.Errorf("unexpected error for id %q: %v", tt.id, err)
 			}
 		})
 	}

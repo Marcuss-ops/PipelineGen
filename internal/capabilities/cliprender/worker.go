@@ -11,6 +11,12 @@ package cliprender
 // The renderer and publisher remain mandatory at execution time: a plan
 // that is only sealed or only rendered locally is never reported as a
 // successful clip.
+//
+// Handle is an ORCHESTRATOR (ticket CR-19-05): each phase that used to live
+// inline — loading the phase inputs, resolving the destination folder, the
+// deterministic-cache hit, the submit half, the settle half — is its own method.
+// The split is by data dependency, not by line count: the submit and settle
+// halves share no mutable state beyond the sealed plan.
 
 import (
 	"context"
@@ -21,7 +27,6 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
@@ -148,6 +153,9 @@ func (w *Worker) settleWaitBudget(j *job.Job) time.Duration {
 	return w.settleWait
 }
 
+// Handle dispatches one clip.render job: the assembly phase, or the
+// submit/settle halves of a render. It owns only orchestration — every phase
+// below owns its own validation, error contract and observability.
 func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecutionTools) (job.Result, error) {
 	// The sequence phase renders nothing, so it is dispatched BEFORE the render
 	// phases are reported: a sequence job must never appear as a clip render.
@@ -175,50 +183,12 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if err != nil {
 		return nil, err
 	}
-	var (
-		req               RenderRequest
-		prepared          *Prepared
-		plan              ClipRenderPlanV1
-		subtitleArtifact  *SubtitleArtifact
-		publishFolderID   string
-		subtitleCompileMS int64 = -1
-	)
-	if phase == RenderPhaseSettle {
-		if w.continuationStore == nil {
-			return nil, fmt.Errorf("clip.render: settle phase requires a ContinuationStore")
-		}
-		doc, loadErr := w.continuationStore.GetResumeDocument(ctx, continuation.Resume)
-		if loadErr != nil {
-			return nil, fmt.Errorf("clip.render: load continuation: %w", loadErr)
-		}
-		if attrErr := doc.Attributes(continuation.Submission.RenderJobID, continuation.Submission.PlanSHA256); attrErr != nil {
-			return nil, fmt.Errorf("clip.render: continuation binding: %w", attrErr)
-		}
-		req = doc.Request
-		req.Normalize()
-		if err := req.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: resume request: %v", ErrInvalidJobPayload, err)
-		}
-		plan = doc.Plan
-		subtitleArtifact = doc.Subtitles
-		publishFolderID = doc.PublishFolderID
-		// Reuse the preparation measurements the submit half took. The settle
-		// phase does not prepare anything, so these are the phase walls that
-		// explain the submit side of the job wall; leaving them unset would
-		// report measured work as NOT_INSTRUMENTED.
-		if doc.SubtitleCompileMS != nil {
-			subtitleCompileMS = *doc.SubtitleCompileMS
-		}
-		prepared = preparedFromResume(doc)
-	} else {
-		if err := json.Unmarshal(j.Payload, &req); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidJobPayload, err)
-		}
-		req.Normalize()
-		if err := req.Validate(); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrInvalidJobPayload, err)
-		}
+
+	inputs, err := w.loadPhaseInputs(ctx, j, phase, continuation)
+	if err != nil {
+		return nil, err
 	}
+	req := inputs.request
 
 	w.log.Info("clip.render.job.start",
 		zap.String("subsystem", "clip_render_worker"),
@@ -226,125 +196,24 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.String("source_asset_id", req.SourceAssetID),
 		zap.String("destination_folder_id", req.Destination.DriveFolderID),
 		zap.Bool("subtitles_enabled", req.Subtitles.Enabled),
-		zap.Bool("watermark_requested", req.Watermark != nil),
+		zap.Bool("watermark_requested", req.Watermark.Enabled),
 		zap.Bool("background_mode", req.Background.Mode != ""),
 		zap.Int("overlay_segments_requested", len(req.Overlays)),
 		zap.Bool("require_gpu", req.Execution.RequireGPU),
 		zap.Bool("require_zero_copy", req.Execution.RequireZeroCopy),
 	)
-	// ── Destination folder resolution (ONCE per job, never in the publisher) ──
-	// When the request carries destination.subfolder_name (a script/batch
-	// identity all its clips share), the worker resolves the leaf folder
-	// create-or-reuse through the canonical DestinationFolderResolver and
-	// hands the publisher the fully-resolved leaf ID. The publisher is dumb
-	// by contract: it never creates folders. Clips of the same batch carry
-	// the same subfolder_name, so each job resolves the same folder and they
-	// converge on one shared Drive directory. Without a subfolder_name the
-	// request's destination.drive_folder_id is already the resolved leaf and
-	// is passed through verbatim.
-	if phase == RenderPhaseSettle {
-		// Destination resolution and all preparation already happened before
-		// Submit. Repeating it here would re-download assets and can select a
-		// different Drive folder after a restart.
-		publishFolderID = continuationResumeFolder(publishFolderID, req.Destination.DriveFolderID)
-	} else {
-		publishFolderID = req.Destination.DriveFolderID
-		if strings.TrimSpace(req.Destination.SubfolderName) != "" {
-			if w.folderResolver == nil {
-				return nil, fmt.Errorf("clip.render: destination.subfolder_name=%q declared but no DestinationFolderResolver is wired (the publisher must never create folders)", req.Destination.SubfolderName)
-			}
-			resolveStart := time.Now()
-			resolvedID, resolveErr := w.folderResolver.ResolveDestinationFolder(ctx, DestinationFolderResolveInput{
-				RootFolderID:  req.Destination.DriveFolderID,
-				SubfolderName: req.Destination.SubfolderName,
-			})
-			kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipDestinationResolve}, resolveStart, time.Now(), resolveErr)
-			if resolveErr != nil {
-				return nil, fmt.Errorf("clip.render: resolve destination subfolder %q: %w", req.Destination.SubfolderName, resolveErr)
-			}
-			if strings.TrimSpace(resolvedID) == "" {
-				return nil, fmt.Errorf("clip.render: destination subfolder %q resolved to an empty folder ID", req.Destination.SubfolderName)
-			}
-			publishFolderID = resolvedID
-			w.log.Debug("clip.render.job.destination_resolved",
-				zap.String("subsystem", "clip_render_worker"),
-				zap.String("job_id", j.ID),
-				zap.String("root_folder_id", req.Destination.DriveFolderID),
-				zap.String("subfolder_name", req.Destination.SubfolderName),
-				zap.String("resolved_folder_id", resolvedID),
-			)
+
+	publishFolderID, err := w.resolvePublishFolder(ctx, j, &req, phase, inputs.resumeFolder)
+	if err != nil {
+		return nil, err
+	}
+
+	if phase != RenderPhaseSettle {
+		if result, hit := w.tryCachedCompletion(ctx, j, &req, jobStart, progress); hit {
+			return result, nil
 		}
 	}
-	// Deterministic cache fast path (worker-level): identical semantics →
-	// same bytes without touching the GPU. The handler already probes the
-	// same cache, but the worker owns the authoritative hit: a completed
-	// render that committed its artifact may still race the handler's view.
-	if phase != RenderPhaseSettle && w.renderCache != nil {
-		if fp, fpErr := req.Fingerprint(); fpErr == nil {
-			if rec, gErr := w.renderCache.Get(ctx, fp); gErr == nil && rec != nil {
-				w.log.Info("clip.render cache hit (worker)",
-					zap.String("job_id", j.ID),
-					zap.String("fingerprint", fp[:16]),
-					zap.String("asset_id", rec.AssetID),
-				)
-				// Synthesize a cached completion without touching Chronon.
-				cached := &RenderOutcome{
-					StorageKey:  rec.StorageKey,
-					ArtifactURL: rec.ArtifactURL,
-					ContentType: rec.ContentType,
-					SHA256:      rec.SHA256,
-					SizeBytes:   rec.SizeBytes,
-					DurationSec: rec.DurationSec,
-					Width:       rec.Width,
-					Height:      rec.Height,
-					FPSNum:      rec.FPSNum,
-					FPSDen:      rec.FPSDen,
-					Backend:     rec.Backend,
-					Metrics:     NewRenderMetricsV2(),
-				}
-				if cached.Metrics != nil {
-					cached.Metrics.BackendSelected = rec.Backend
-				}
-				// Fabricate a minimal Prepared for result projection.
-				synthPrepared := &Prepared{
-					RunID:  j.ID,
-					Source: &MaterializedAsset{AssetID: req.SourceAssetID, Title: "cached"},
-					Contract: &ResolvedContract{AssemblyMediaContract: kernelmedia.AssemblyMediaContract{
-						ID: string(rec.Backend),
-					}},
-					Transcript: &TranscriptResult{},
-				}
-				// Produce a sealed-like plan shell for the result shape.
-				synthPlan := ClipRenderPlanV1{
-					Version:    PlanVersion,
-					RunID:      j.ID,
-					OutputPath: "",
-					PlanSHA256: fp,
-				}
-				// Reused, NOT republished: the record is written only after a
-				// publication validated its AssetID, so a record existing IS the
-				// proof that the render completed and was published. This job
-				// performs no upload and owes no delivery, so the projection must
-				// claim neither PUBLISHED (a fact this job never observed) nor
-				// PENDING (the historical fabrication, which announced a Drive
-				// delivery that nobody would ever perform).
-				res := renderedResult(j, &req, synthPrepared, synthPlan, nil, cached, &RenderPublishResult{
-					AssetID:   rec.AssetID,
-					Reused:    true,
-					SizeBytes: rec.SizeBytes,
-				})
-				res["cache_hit"] = true
-				res["fingerprint"] = fp
-				res["phase"] = "cached"
-				// The job wall IS measured even on a cache hit, so it is reported;
-				// the render phases stay NotInstrumented because no render ran, and
-				// Compute() never derives a value from an uninstrumented input.
-				finalizeMetrics(cached.Metrics, time.Since(jobStart).Milliseconds(), cached.DurationSec)
-				progress(100, "clip.render cache hit")
-				return res, nil
-			}
-		}
-	}
+
 	if phase == RenderPhaseSettle {
 		progress(90, "remote render submitted; settling certified artifact")
 	} else {
@@ -363,101 +232,311 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		// the same digest, Submit re-addresses the same remote job and answers
 		// ErrJobExists, the settle enqueue dedupes on ActiveKey), so a retry can
 		// never duplicate a render, an artifact or a delivery.
-		prepared, plan, subtitleArtifact, subtitleCompileMS, err = w.preparePlan(ctx, &req, j.ID, emit)
+		inputs.prepared, inputs.plan, inputs.subtitles, inputs.subtitleCompileMS, err = w.preparePlan(ctx, &req, j.ID, emit)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	emit("clip.render.plan.sealed", "ClipRenderPlanV1 sealed — fully resolved before Chronon", map[string]any{
-		"plan_version": plan.Version,
-		"plan_sha256":  plan.PlanSHA256,
-		"output_path":  plan.OutputPath,
-		"source":       plan.Source.Path,
-		"subtitles":    plan.Subtitles != nil,
-		"watermark":    plan.Watermark != nil,
-		"background":   plan.Background.Mode,
+		"plan_version": inputs.plan.Version,
+		"plan_sha256":  inputs.plan.PlanSHA256,
+		"output_path":  inputs.plan.OutputPath,
+		"source":       inputs.plan.Source.Path,
+		"subtitles":    inputs.plan.Subtitles != nil,
+		"watermark":    inputs.plan.Watermark != nil,
+		"background":   inputs.plan.Background.Mode,
 	})
 	if w.renderer == nil {
-		result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil)
+		result := renderedResult(j, &req, inputs.prepared, inputs.plan, inputs.subtitles, nil, nil)
 		result["phase"] = "plan_sealed"
 		return result, fmt.Errorf(
 			"%w: job_id=%s source_asset_id=%s plan_sha256=%s",
-			ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID, plan.PlanSHA256)
-	}
-	if phase == RenderPhaseSubmit {
-		if w.continuationStore == nil || w.continuationEnqueuer == nil {
-			return nil, fmt.Errorf("clip.render: executor is wired but continuation store/enqueuer is missing")
-		}
-		remoteRenderID := plan.RunID
-		if resolver, ok := w.renderer.(RenderJobIDResolver); ok {
-			remoteRenderID = resolver.RenderJobID(plan)
-		}
-		if strings.TrimSpace(remoteRenderID) == "" {
-			remoteRenderID = plan.RunID
-		}
-		resumeRemoteID := ""
-		if remoteRenderID != plan.RunID {
-			resumeRemoteID = remoteRenderID
-		}
-		doc := ResumeDocument{
-			Plan:               plan,
-			RemoteRenderID:     resumeRemoteID,
-			Request:            req,
-			PublishFolderID:    publishFolderID,
-			SourceTitle:        prepared.Source.Title,
-			SourceSizeBytes:    prepared.Source.SizeBytes,
-			Contract:           prepared.Contract,
-			Transcript:         prepared.Transcript,
-			Subtitles:          subtitleArtifact,
-			PreparationTimings: prepared.Timings,
-		}
-		if subtitleCompileMS >= 0 {
-			compileMS := subtitleCompileMS
-			doc.SubtitleCompileMS = &compileMS
-		}
-		resumeRef, storeErr := w.continuationStore.PutResumeDocument(ctx, doc)
-		if storeErr != nil {
-			return nil, fmt.Errorf("clip.render: persist continuation: %w", storeErr)
-		}
-		submission := Submission{
-			RenderJobID:   remoteRenderID,
-			PlanSHA256:    plan.PlanSHA256,
-			CorrelationID: j.CorrelationID,
-			State:         RemoteRenderSubmitted,
-			Attempt:       1,
-		}
-		if submitErr := w.renderer.Submit(ctx, plan); submitErr != nil {
-			return nil, fmt.Errorf("clip.render: submit remote render: %w", submitErr)
-		}
-		continuation := Continuation{Submission: submission, Resume: resumeRef}
-		childID, enqueueErr := w.continuationEnqueuer.EnqueueContinuation(ctx, ContinuationRequest{
-			ParentJobID:  j.ID,
-			ParentRunID:  j.ID,
-			ActiveKey:    ActiveKeyFor(submission.RenderJobID, submission.Attempt),
-			Continuation: continuation,
-		})
-		if enqueueErr != nil {
-			return nil, fmt.Errorf("clip.render: enqueue settle continuation: %w", enqueueErr)
-		}
-		result := renderedResult(j, &req, prepared, plan, subtitleArtifact, nil, nil)
-		result["phase"] = "submitted"
-		result["parent_state"] = ParentStateWaitingChildren
-		result["child_job_id"] = childID
-		result["render_submission"] = submission
-		result["continuation"] = continuation
-		progress(100, "remote render submitted; Master slot released")
-		return result, nil
+			ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID, inputs.plan.PlanSHA256)
 	}
 
+	if phase == RenderPhaseSubmit {
+		return w.runSubmitPhase(ctx, j, &req, inputs, publishFolderID, progress)
+	}
+	return w.settleAndComplete(ctx, j, tools, jobStart, &req, inputs, publishFolderID, continuation, progress)
+}
+
+// phaseInputs is the immutable snapshot one phase starts from. The submit half
+// fills the preparation results; a settle continuation loads them from its
+// resume document (it never re-prepares).
+type phaseInputs struct {
+	request           RenderRequest
+	prepared          *Prepared
+	plan              ClipRenderPlanV1
+	subtitles         *SubtitleArtifact
+	resumeFolder      string
+	subtitleCompileMS int64
+}
+
+// loadPhaseInputs decodes the payload for the phase: a submit job decodes the
+// request; a settle continuation loads the content-addressed resume document
+// and verifies that it describes the plan that was actually submitted.
+func (w *Worker) loadPhaseInputs(ctx context.Context, j *job.Job, phase RenderPhase, continuation *Continuation) (*phaseInputs, error) {
+	inputs := &phaseInputs{subtitleCompileMS: -1}
+	if phase == RenderPhaseSettle {
+		if w.continuationStore == nil {
+			return nil, fmt.Errorf("clip.render: settle phase requires a ContinuationStore")
+		}
+		doc, loadErr := w.continuationStore.GetResumeDocument(ctx, continuation.Resume)
+		if loadErr != nil {
+			return nil, fmt.Errorf("clip.render: load continuation: %w", loadErr)
+		}
+		if attrErr := doc.Attributes(continuation.Submission.RenderJobID, continuation.Submission.PlanSHA256); attrErr != nil {
+			return nil, fmt.Errorf("clip.render: continuation binding: %w", attrErr)
+		}
+		inputs.request = doc.Request
+		inputs.request.Normalize()
+		if err := inputs.request.Validate(); err != nil {
+			return nil, fmt.Errorf("%w: resume request: %v", ErrInvalidJobPayload, err)
+		}
+		inputs.plan = doc.Plan
+		inputs.subtitles = doc.Subtitles
+		inputs.resumeFolder = doc.PublishFolderID
+		// Reuse the preparation measurements the submit half took. The settle
+		// phase does not prepare anything, so these are the phase walls that
+		// explain the submit side of the job wall; leaving them unset would
+		// report measured work as NOT_INSTRUMENTED.
+		if doc.SubtitleCompileMS != nil {
+			inputs.subtitleCompileMS = *doc.SubtitleCompileMS
+		}
+		inputs.prepared = preparedFromResume(doc)
+		return inputs, nil
+	}
+
+	if err := json.Unmarshal(j.Payload, &inputs.request); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidJobPayload, err)
+	}
+	inputs.request.Normalize()
+	if err := inputs.request.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidJobPayload, err)
+	}
+	return inputs, nil
+}
+
+// resolvePublishFolder resolves the leaf Drive folder ONCE per job, never in
+// the publisher.
+//
+// When the request carries destination.subfolder_name (a script/batch identity
+// all its clips share), the worker resolves the leaf folder create-or-reuse
+// through the canonical DestinationFolderResolver and hands the publisher the
+// fully-resolved leaf ID. The publisher is dumb by contract: it never creates
+// folders. Clips of the same batch carry the same subfolder_name, so each job
+// resolves the same folder and they converge on one shared Drive directory.
+// Without a subfolder_name the request's destination.drive_folder_id is already
+// the resolved leaf and is passed through verbatim.
+func (w *Worker) resolvePublishFolder(ctx context.Context, j *job.Job, req *RenderRequest, phase RenderPhase, resumeFolder string) (string, error) {
+	if phase == RenderPhaseSettle {
+		// Destination resolution and all preparation already happened before
+		// Submit. Repeating it here would re-download assets and can select a
+		// different Drive folder after a restart.
+		return continuationResumeFolder(resumeFolder, req.Destination.DriveFolderID), nil
+	}
+	publishFolderID := req.Destination.DriveFolderID
+	if strings.TrimSpace(req.Destination.SubfolderName) == "" {
+		return publishFolderID, nil
+	}
+	if w.folderResolver == nil {
+		return "", fmt.Errorf("clip.render: destination.subfolder_name=%q declared but no DestinationFolderResolver is wired (the publisher must never create folders)", req.Destination.SubfolderName)
+	}
+	resolveStart := time.Now()
+	resolvedID, resolveErr := w.folderResolver.ResolveDestinationFolder(ctx, DestinationFolderResolveInput{
+		RootFolderID:  req.Destination.DriveFolderID,
+		SubfolderName: req.Destination.SubfolderName,
+	})
+	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipDestinationResolve}, resolveStart, time.Now(), resolveErr)
+	if resolveErr != nil {
+		return "", fmt.Errorf("clip.render: resolve destination subfolder %q: %w", req.Destination.SubfolderName, resolveErr)
+	}
+	if strings.TrimSpace(resolvedID) == "" {
+		return "", fmt.Errorf("clip.render: destination subfolder %q resolved to an empty folder ID", req.Destination.SubfolderName)
+	}
+	w.log.Debug("clip.render.job.destination_resolved",
+		zap.String("subsystem", "clip_render_worker"),
+		zap.String("job_id", j.ID),
+		zap.String("root_folder_id", req.Destination.DriveFolderID),
+		zap.String("subfolder_name", req.Destination.SubfolderName),
+		zap.String("resolved_folder_id", resolvedID),
+	)
+	return resolvedID, nil
+}
+
+// tryCachedCompletion is the deterministic cache fast path at the worker
+// level: identical semantics → same bytes without touching the GPU. The handler
+// already probes the same cache, but the worker owns the authoritative hit: a
+// completed render that committed its artifact may still race the handler's
+// view.
+//
+// The returned result is deliberately HONEST about provenance (ticket
+// CR-19-07): this job rendered nothing, so it reports neither preparation
+// timings nor a plan digest it never sealed.
+func (w *Worker) tryCachedCompletion(ctx context.Context, j *job.Job, req *RenderRequest, jobStart time.Time, progress func(int, string)) (job.Result, bool) {
+	if w.renderCache == nil || req == nil {
+		return nil, false
+	}
+	fp, fpErr := req.Fingerprint()
+	if fpErr != nil {
+		return nil, false
+	}
+	rec, err := w.renderCache.Get(ctx, fp)
+	logCacheLookupFailure(w.log, "worker", fp, err)
+	if err != nil || rec == nil {
+		return nil, false
+	}
+	w.log.Info("clip.render cache hit (worker)",
+		zap.String("job_id", j.ID),
+		zap.String("fingerprint", digestPrefix(fp)),
+		zap.String("asset_id", rec.AssetID),
+	)
+	// Synthesize a cached completion without touching Chronon.
+	cached := &RenderOutcome{
+		StorageKey:  rec.StorageKey,
+		ArtifactURL: rec.ArtifactURL,
+		ContentType: rec.ContentType,
+		SHA256:      rec.SHA256,
+		SizeBytes:   rec.SizeBytes,
+		DurationSec: rec.DurationSec,
+		Width:       rec.Width,
+		Height:      rec.Height,
+		FPSNum:      rec.FPSNum,
+		FPSDen:      rec.FPSDen,
+		Backend:     rec.Backend,
+		Metrics:     NewRenderMetricsV2(),
+	}
+	if cached.Metrics != nil {
+		cached.Metrics.BackendSelected = rec.Backend
+	}
+	// Fabricate a minimal Prepared for the SHARED result projection. Its
+	// timings stay empty: no preparation ran in this job, and an empty timing
+	// set is projected as absent rather than as a measured zero.
+	// No Contract block: this job resolved none, and a synthesized one would
+	// put a backend name in contract_id (ticket CR-19-19).
+	synthPrepared := &Prepared{
+		RunID:      j.ID,
+		Source:     &MaterializedAsset{AssetID: req.SourceAssetID, Title: "cached"},
+		Transcript: &TranscriptResult{},
+	}
+	// Reused, NOT republished: the record is written only after a publication
+	// validated its AssetID, so a record existing IS the proof that the render
+	// completed and was published. This job performs no upload and owes no
+	// delivery, so the projection must claim neither PUBLISHED (a fact this job
+	// never observed) nor PENDING (the historical fabrication, which announced a
+	// Drive delivery that nobody would ever perform).
+	res := renderedResult(j, req, synthPrepared, ClipRenderPlanV1{}, nil, cached, &RenderPublishResult{
+		AssetID:   rec.AssetID,
+		Reused:    true,
+		SizeBytes: rec.SizeBytes,
+	})
+	// The job wall IS measured even on a cache hit, so it is reported; the
+	// render phases stay NotInstrumented because no render ran, and Compute()
+	// never derives a value from an uninstrumented input.
+	finalizeMetrics(cached.Metrics, time.Since(jobStart).Milliseconds(), cached.DurationSec)
+	res["cache_hit"] = true
+	res["fingerprint"] = fp
+	res["phase"] = "cached"
+	progress(100, "clip.render cache hit")
+	return res, true
+}
+
+// runSubmitPhase performs the first half of the async boundary: persist the
+// resume document, hand the sealed plan to RenderingGen, and enqueue the settle
+// continuation. It never waits for the render, so the Master slot is released
+// here.
+func (w *Worker) runSubmitPhase(ctx context.Context, j *job.Job, req *RenderRequest, inputs *phaseInputs, publishFolderID string, progress func(int, string)) (job.Result, error) {
+	if w.continuationStore == nil || w.continuationEnqueuer == nil {
+		return nil, fmt.Errorf("clip.render: executor is wired but continuation store/enqueuer is missing")
+	}
+	plan := inputs.plan
+	remoteRenderID := plan.RunID
+	if resolver, ok := w.renderer.(RenderJobIDResolver); ok {
+		remoteRenderID = resolver.RenderJobID(plan)
+	}
+	if strings.TrimSpace(remoteRenderID) == "" {
+		remoteRenderID = plan.RunID
+	}
+	resumeRemoteID := ""
+	if remoteRenderID != plan.RunID {
+		resumeRemoteID = remoteRenderID
+	}
+	doc := ResumeDocument{
+		Plan:               plan,
+		RemoteRenderID:     resumeRemoteID,
+		Request:            *req,
+		PublishFolderID:    publishFolderID,
+		SourceTitle:        inputs.prepared.Source.Title,
+		SourceSizeBytes:    inputs.prepared.Source.SizeBytes,
+		Contract:           inputs.prepared.Contract,
+		Transcript:         inputs.prepared.Transcript,
+		Subtitles:          inputs.subtitles,
+		PreparationTimings: inputs.prepared.Timings,
+	}
+	if inputs.subtitleCompileMS >= 0 {
+		compileMS := inputs.subtitleCompileMS
+		doc.SubtitleCompileMS = &compileMS
+	}
+	resumeRef, storeErr := w.continuationStore.PutResumeDocument(ctx, doc)
+	if storeErr != nil {
+		return nil, fmt.Errorf("clip.render: persist continuation: %w", storeErr)
+	}
+	submission := Submission{
+		RenderJobID:   remoteRenderID,
+		PlanSHA256:    plan.PlanSHA256,
+		CorrelationID: j.CorrelationID,
+		State:         RemoteRenderSubmitted,
+		Attempt:       1,
+	}
+	if submitErr := w.renderer.Submit(ctx, plan); submitErr != nil {
+		return nil, fmt.Errorf("clip.render: submit remote render: %w", submitErr)
+	}
+	continuation := Continuation{Submission: submission, Resume: resumeRef}
+	childID, enqueueErr := w.continuationEnqueuer.EnqueueContinuation(ctx, ContinuationRequest{
+		ParentJobID:  j.ID,
+		ParentRunID:  j.ID,
+		ActiveKey:    ActiveKeyFor(submission.RenderJobID, submission.Attempt),
+		Continuation: continuation,
+	})
+	if enqueueErr != nil {
+		return nil, fmt.Errorf("clip.render: enqueue settle continuation: %w", enqueueErr)
+	}
+	result := renderedResult(j, req, inputs.prepared, plan, inputs.subtitles, nil, nil)
+	result["phase"] = "submitted"
+	result["parent_state"] = ParentStateWaitingChildren
+	result["child_job_id"] = childID
+	result["render_submission"] = submission
+	result["continuation"] = continuation
+	progress(100, "remote render submitted; Master slot released")
+	return result, nil
+}
+
+// settleAndComplete is the second half of the async boundary: wait (bounded) on
+// the remote render, classify a budget expiry as a deferral rather than a
+// failure, then run the ONE completion path shared with the blocking form.
+func (w *Worker) settleAndComplete(
+	ctx context.Context,
+	j *job.Job,
+	tools *job.JobExecutionTools,
+	jobStart time.Time,
+	req *RenderRequest,
+	inputs *phaseInputs,
+	publishFolderID string,
+	continuation *Continuation,
+	progress func(int, string),
+) (job.Result, error) {
+	plan := inputs.plan
 	progress(90, "plan sealed; rendering with Chronon")
 	// render_slot is the interval this Master job HOLDS its render slot. It is
 	// measured from the renderer invocation to the materialized artifact, i.e.
 	// the real occupancy the slot pool/gate bounds — never a zero-width marker
 	// (the previous start==end form measured nothing and reported 0 ms of slot
 	// wait for every render).
-	renderSlotStart := time.Now()
+	// One occupancy interval, one clock read: the slot is held for exactly the
+	// render boundary below.
 	renderStart := time.Now()
+	renderSlotStart := renderStart
 	w.log.Debug("clip.render.job.phase",
 		zap.String("subsystem", "clip_render_worker"),
 		zap.String("phase", "render_start"),
@@ -542,5 +621,5 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	// settle (worker_completion.go::completeRendered). There is no second,
 	// inline completion body in this file: its removal is what keeps the submit
 	// and settle halves from drifting apart.
-	return w.completeRendered(ctx, j, tools, jobStart, &req, prepared, plan, subtitleArtifact, publishFolderID, subtitleCompileMS, outcome, renderMS)
+	return w.completeRendered(ctx, j, tools, jobStart, req, inputs.prepared, plan, inputs.subtitles, publishFolderID, inputs.subtitleCompileMS, outcome, renderMS)
 }

@@ -53,10 +53,18 @@ Key symbols: `Service.Get/List/Count/Save/Delete` (unimplemented storage), `Opti
 
 ## Acceptance criteria
 
-- [ ] 0 unreachable functions under `internal/kernel/asset`.
-- [ ] The storage surface is either implemented with a caller or removed.
-- [ ] `go build ./...` and `go test ./internal/kernel/asset/... -count=1` are green.
-- [ ] The global deadcode guard records the new count.
+- [x] No unreviewed dead surface under `internal/kernel/asset`: 27 of the 30
+      measured functions were retired. The three remaining `deadcode` reports
+      (`NewLanguageRegistryFromCodes`, `IsLanguageUndeterminable`, and
+      `detail.Service.Get`) are retained because cross-package tests or a live
+      production interface depend on them; their callers are listed above.
+- [x] The unused storage methods `List`, `Count`, `Save`, and `Delete` were
+      removed; `Get` remains because `wiring/media.AssetDetailsLookup` requires
+      the implementation.
+- [x] `go build ./...`, `go test ./internal/kernel/asset/... -count=1`, and
+      `go vet ./internal/kernel/asset/...` are green (2026-11-19).
+- [x] Global working-tree measurement recorded: 308 unreachable functions,
+      including 20 test-only allowlisted functions (288 in production scope).
 
 ## Verification
 
@@ -145,3 +153,18 @@ Restano ritirati 27 su 30. `deadcode` continua a elencare i tre ripristinati
 perché non hanno chiamanti fuori dai test, ma sono superficie contrattuale
 testata da altri package: ritirarli richiederebbe riscrivere quei test, non è
 una pulizia di codice morto.
+
+## Verifica finale (2026-11-19)
+
+- `go build ./...` — PASS (exit 0; `TMPDIR=/var/tmp`).
+- `go test ./internal/kernel/asset/... -count=1` — PASS.
+- `go vet ./internal/kernel/asset/...` — PASS.
+- `deadcode -test=false ./...` — 308 funzioni nel working tree verificato;
+  esattamente le tre eccezioni sopra restano in `internal/kernel/asset`.
+
+La voce `detail.Service.Get` resta necessaria all'interfaccia di produzione;
+le altre due sono API condivise dai test di package consumer. Non vengono
+eliminate le relative asserzioni per forzare il conteggio a zero.
+
+Ricontrollo a tree stabile 2026-11-19 (sera): guard globale **292** (20 in
+allowlist test-only, 272 di produzione); invariata la disposition sopra.

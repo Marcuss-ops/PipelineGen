@@ -49,16 +49,17 @@ type OverlayCanvasSpec struct {
 	// alpha-bearing ProRes the contract defaults to. Empty keeps the alpha
 	// default.
 	OutputProfileID string
-	// PhraseMotions is the run's phrase-motion rotation pool, carried from
-	// the request's channel profile (empty = the certified default pool). It
-	// lives here because the canvas is the run-level render context this
-	// function already receives; the planner validates the ids fail-closed.
-	PhraseMotions []string
-	// ShortPhraseMotion and LongPhraseMotion pin one certified motion for
-	// every phrase in the matching word-count lane. Empty keeps the
-	// deterministic pool/rotation behaviour for that lane.
-	ShortPhraseMotion  string
-	LongPhraseMotion   string
+	// ShortPhraseMotion pins one certified motion for every 1-5-word phrase.
+	// Empty keeps the registry's per-word buckets.
+	ShortPhraseMotion string
+	// ShortPhraseMotionsByWord is the certified short-phrase pool keyed by word
+	// count ("1".."5"). Empty (the default) lets the request builder fill it
+	// from the animation registry, so the plan always carries the authority's
+	// buckets rather than a second hand-maintained list.
+	ShortPhraseMotionsByWord map[string][]string
+	// LongPhraseMotions is the certified long-phrase (6+ words) pool. Empty
+	// (the default) lets the request builder fill it from the registry.
+	LongPhraseMotions  []string
 	PhraseMotionFamily string
 	DateMotionFamily   string
 	// EditorialBulletStyles pins the font and entrance motion of individual
@@ -70,11 +71,8 @@ type OverlayCanvasSpec struct {
 	// MotionSeed is the per-render entropy for automatic motion rotation,
 	// carried from the request. Empty preserves historical plan-identity
 	// sampling; a fresh value per render rotates every lane.
-	MotionSeed string
-	// CoherenceSeed carries the explicit dominant-direction seed from the
-	// request; empty derives the direction from MotionSeed.
-	CoherenceSeed string
-	ImageMotions  []string
+	MotionSeed   string
+	ImageMotions []string
 	// ImageWithTextMotions is the run-level pool for captioned images; empty
 	// keeps the certified full seeded catalog.
 	ImageWithTextMotions []string
@@ -139,6 +137,7 @@ type OverlayCanvasSpec struct {
 	// entity cards (channel profile or explicit job choice). Empty keeps the
 	// certified "random" selector; the planner validates fail-closed.
 	EntityStyleID         string
+	EntityBadgeColor      string
 	DisableNumberOverlays bool
 	// DisableRecapOverlays is the kill-switch for automatic recap cards
 	// (recap_plan.go). False by default: recaps ride the certified quote

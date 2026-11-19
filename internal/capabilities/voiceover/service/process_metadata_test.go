@@ -11,11 +11,9 @@
 //     voiceover caller through the resolver (sanity pin).
 //  5. BatchRequest round-trips StyleGroup + Metadata verbatim
 //     through JSON marshal + unmarshal (worker payload path).
-//  6. resolveDestination forwards StyleGroup into asset.ResolveRequest
-//     AND mirrors it back into ResolvedDestination (function-body
-//     drift pin).
-//  7. resolveDestination empty-StyleGroup case still forwards +
-//     mirrors zero-value.
+//  6. ResolveVoiceoverDestination forwards StyleGroup into
+//     asset.ResolveRequest AND mirrors it back into ResolvedDestination.
+//  7. Its empty-StyleGroup case still forwards + mirrors zero-value.
 package voiceover
 
 import (
@@ -288,17 +286,13 @@ func TestResolveDestination_ForwardsAndMirrorsStyleGroup(t *testing.T) {
 			DriveLink:  "https://drive.google.com/folders/stub",
 		},
 	}
-	svc := &Service{
-		log:               zap.NewNop(),
-		assetDestResolver: stub,
-	}
 	dest := &DestinationRequest{
 		Group:      "boxe",
 		StyleGroup: "anime",
 	}
-	rd, err := svc.resolveDestination(context.Background(), dest)
+	rd, err := ResolveVoiceoverDestination(context.Background(), dest, stub, "")
 	if err != nil {
-		t.Fatalf("resolveDestination: %v", err)
+		t.Fatalf("ResolveVoiceoverDestination: %v", err)
 	}
 
 	// MIRROR: resolved.StyleGroup == dest.StyleGroup verbatim.
@@ -338,14 +332,10 @@ func TestResolveDestination_StyleGroupEmpty_NoForwardOrMirror(t *testing.T) {
 	stub := &recordingResolver{
 		result: &asset.ResolveResult{FolderID: "stub"},
 	}
-	svc := &Service{
-		log:               zap.NewNop(),
-		assetDestResolver: stub,
-	}
 	dest := &DestinationRequest{Group: "boxe"} // StyleGroup empty
-	rd, err := svc.resolveDestination(context.Background(), dest)
+	rd, err := ResolveVoiceoverDestination(context.Background(), dest, stub, "")
 	if err != nil {
-		t.Fatalf("resolveDestination: %v", err)
+		t.Fatalf("ResolveVoiceoverDestination: %v", err)
 	}
 	if rd.StyleGroup != "" {
 		t.Errorf("ResolvedDestination.StyleGroup = %q; want \"\" (empty case omitempty)", rd.StyleGroup)

@@ -260,23 +260,6 @@ var StripNarrationMarkerRe = regexp.MustCompile(`(?i)\[(?:narration|narratore|na
 // StripClipMarkerRe matches clip markers like [CLIP:...] or [VIDEO:...].
 var StripClipMarkerRe = regexp.MustCompile(`(?i)\[(?:clip|video|film|media):[^\]]+\]`)
 
-// TokenizeWithStopWords removes the supplied stop words from tokenization.
-// The caller owns lexicon selection; this leaf package performs no global
-// registry lookup.
-func TokenizeWithStopWords(text string, stopWords map[string]struct{}) []string {
-	tokens := Tokenize(text)
-	result := make([]string, 0, len(tokens))
-	for _, tok := range tokens {
-		if len(tok) >= 3 {
-			if _, stop := stopWords[tok]; stop {
-				continue
-			}
-			result = append(result, tok)
-		}
-	}
-	return result
-}
-
 // UniqueStringsVar returns a deduplicated slice preserving first-occurrence order.
 func UniqueStringsVar(items ...string) []string {
 	seen := make(map[string]struct{}, len(items))

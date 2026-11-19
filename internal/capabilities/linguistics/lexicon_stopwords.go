@@ -53,6 +53,19 @@ func (r *Profiles) EntityBlocklist(language string) map[string]struct{} {
 	return r.Resolve(language).EntityBlocklist
 }
 
+// PlaceCandidateBlocklist returns the whole-query map exclusion set for the
+// given language. It is separate from EntityBlocklist: the NER blocklist
+// breaks a candidate phrase, this one rejects a query after NER.
+func (r *Profiles) PlaceCandidateBlocklist(language string) map[string]struct{} {
+	return r.Resolve(language).PlaceCandidateBlocklist
+}
+
+// PlaceCandidateTokenBlocklist returns the tokens that disqualify any map
+// candidate containing them (institutions and homonymous person names).
+func (r *Profiles) PlaceCandidateTokenBlocklist(language string) map[string]struct{} {
+	return r.Resolve(language).PlaceCandidateTokenBlocklist
+}
+
 // NegativeParticles returns the negative-particle set for the given
 // language.
 func (r *Profiles) NegativeParticles(language string) map[string]struct{} {

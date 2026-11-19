@@ -7,12 +7,14 @@ import (
 	"image"
 	"image/png"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 func TestHasPanelGridCollageRejectsDeclaredPixelBombWithoutDecoding(t *testing.T) {
 	// Without the bounded decode this fixture allocates 30000*30000*4 bytes
 	// inside image.Decode before the vision normalizer's 40 MP guard runs.
-	if hasPanelGridCollage(pngWithDeclaredDimensionsForCollage(t, 30000, 30000)) {
+	if digest.HasPanelGridCollageBytes(pngWithDeclaredDimensionsForCollage(t, 30000, 30000)) {
 		t.Fatal("declared pixel bomb must not be classified as a collage")
 	}
 }

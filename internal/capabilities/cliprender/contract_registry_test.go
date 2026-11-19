@@ -136,6 +136,37 @@ func TestVideoProfileCompatibilityRequiresOneExactProfile(t *testing.T) {
 	}
 }
 
+// TestVideoTimebaseAllowlist pins CR-19-12: the tolerance is a named, closed
+// table with one documented reason per denominator, and the contract check
+// consults it. Allowing a denominator must be an explicit decision, never a
+// bare literal inside the predicate.
+func TestVideoTimebaseAllowlist(t *testing.T) {
+	contract := kernelmedia.DefaultAssemblyMediaContract()
+	resolved := &ResolvedContract{AssemblyMediaContract: contract}
+
+	for _, tb := range videoTimebaseEquivalents {
+		if strings.TrimSpace(tb.reason) == "" {
+			t.Errorf("timebase %d/%d has no documented reason", tb.num, tb.den)
+		}
+		probe := satisfyingProbe(contract)
+		probe.VideoTimeBaseNum, probe.VideoTimeBaseDen = tb.num, tb.den
+		if err := ValidateContract(resolved, probe); err != nil {
+			t.Errorf("documented timebase %d/%d (%s) must be accepted, got %v", tb.num, tb.den, tb.reason, err)
+		}
+	}
+
+	// A denominator outside the table is still a real mismatch.
+	probe := satisfyingProbe(contract)
+	probe.VideoTimeBaseNum, probe.VideoTimeBaseDen = 1, 7
+	err := ValidateContract(resolved, probe)
+	if !errors.Is(err, ErrContractMismatch) {
+		t.Fatalf("unlisted timebase 1/7 must fail the contract gate, got %v", err)
+	}
+	if want := "video timebase 1/7 != 1/90000"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("typed detail must name the timebase, want %q in %q", want, err.Error())
+	}
+}
+
 func TestValidateContractTablesRejectsInvalidRegistryEntry(t *testing.T) {
 	builders := map[string]func(*RenderRequest) (*ResolvedContract, error){
 		"": nil,

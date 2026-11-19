@@ -16,6 +16,116 @@ import (
 // provider to locate. Callers may safely leave that entity unlocated.
 var ErrNoResult = errors.New("geocoding: no result")
 
+// Cartographic levels. They name the scale a caller needs, so the lookup can
+// refuse an answer the map could never use: a country-level map does not want
+// a city coordinate. Empty means "no level": the historical level-agnostic
+// lookup.
+const (
+	LevelContinent    = "continent"
+	LevelCountry      = "country"
+	LevelRegion       = "region"
+	LevelMunicipality = "municipality"
+)
+
+// NormalizeLevel folds the payload and provider spellings onto the canonical
+// levels. Empty, "auto" and "none" mean no constraint; an unknown level is an
+// error rather than a silent fallback to an unfiltered lookup.
+func NormalizeLevel(level string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "", "auto", "none":
+		return "", nil
+	case LevelContinent:
+		return LevelContinent, nil
+	case LevelCountry, "nation", "sovereign_state":
+		return LevelCountry, nil
+	case LevelRegion, "state", "province", "admin1":
+		return LevelRegion, nil
+	case LevelMunicipality, "city", "town", "comune", "settlement":
+		return LevelMunicipality, nil
+	default:
+		return "", fmt.Errorf("geocoding: unsupported level %q", level)
+	}
+}
+
+// CanonicalScope folds the provider vocabulary onto the four scopes a result
+// can carry. Geocoders use city for municipalities and may use town/village/
+// locality for the same level; keeping those spellings distinct made a valid
+// city disappear from a municipality map.
+func CanonicalScope(scope string) string {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "city", "town", "village", "hamlet", "locality", "municipality", "comune", "settlement":
+		return "city"
+	case "country", "nation", "sovereign_state":
+		return "country"
+	case "region", "state", "province", "admin1", "administrative":
+		return "region"
+	case "continent":
+		return "continent"
+	default:
+		return strings.ToLower(strings.TrimSpace(scope))
+	}
+}
+
+// scopesForLevel states which result scopes a cartographic level may pin. A
+// region frame is drawn around its cities: the region grounds the camera, the
+// cities name what is inside it. A level with no entry (empty, unknown) keeps
+// every result.
+func scopesForLevel(level string) map[string]bool {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case LevelContinent:
+		return map[string]bool{"continent": true}
+	case LevelCountry:
+		return map[string]bool{"country": true}
+	case LevelRegion:
+		return map[string]bool{"region": true, "city": true}
+	case LevelMunicipality:
+		return map[string]bool{"city": true}
+	default:
+		return nil
+	}
+}
+
+// LevelConstrains reports whether a level restricts which scopes are usable.
+// An empty or unknown level does not.
+func LevelConstrains(level string) bool {
+	return scopesForLevel(level) != nil
+}
+
+// ConstraintLevel returns the level a provider lookup may enforce, or "" when
+// the level must not constrain the search.
+//
+// Only a coarse frame excludes finer places: a country-level map cannot render
+// a city, so the provider is asked for countries. A fine frame needs the
+// coarser places as disambiguation context — a municipality map resolves
+// "Parigi" inside the country the scene grounded — so erasing countries at the
+// provider would delete the very frames the cities need. On those levels the
+// planner's candidate filter stays the authority, as before.
+func ConstraintLevel(level string) (string, error) {
+	normalized, err := NormalizeLevel(level)
+	if err != nil {
+		return "", err
+	}
+	switch normalized {
+	case LevelContinent, LevelCountry:
+		return normalized, nil
+	default:
+		return "", nil
+	}
+}
+
+// ScopeFitsLevel reports whether a result scope may be pinned on a map of the
+// requested level. An empty level accepts everything. This is the single
+// authority for the scope↔level rule: the provider applies it to every answer
+// and the overlay planner applies it to every candidate, so a country can
+// never land on a city plate in one path and not the other.
+func ScopeFitsLevel(scope, level string) bool {
+	allowed := scopesForLevel(level)
+	if allowed == nil {
+		return true
+	}
+	return allowed[CanonicalScope(scope)]
+}
+
 // Request is one grounded place-name lookup. Query must be a location entity
 // from script annotations, never arbitrary narration or personal data.
 type Request struct {
@@ -27,6 +137,11 @@ type Request struct {
 	// name under two different contexts is two different lookups, not one
 	// cached answer.
 	Context Context
+	// Level is the cartographic level the requesting map needs. A provider must
+	// narrow the search to that level and answer ErrNoResult when the name is
+	// only known at another scale, so a country-level map never pays for a city
+	// lookup it could not render. Empty keeps the level-agnostic lookup.
+	Level string
 }
 
 // Context is the grounded geographic frame of one lookup. Empty fields mean
@@ -124,5 +239,10 @@ func NormalizeRequest(req Request) (Request, error) {
 	if req.Language == "" {
 		req.Language = "en"
 	}
+	level, err := NormalizeLevel(req.Level)
+	if err != nil {
+		return Request{}, err
+	}
+	req.Level = level
 	return req, nil
 }

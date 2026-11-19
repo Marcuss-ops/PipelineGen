@@ -6,10 +6,8 @@
 package wiring
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	mw "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 )
 
 // ── DoctorConfig snapshot factory ────────────────────────────────────────────
@@ -39,37 +37,5 @@ func doctorConfigFrom(cfg *config.Config) systemapi.DoctorConfig {
 		// holding plain strings and stays a thin transport.
 		YtdlpPath:  cfg.External.ResolvedYtdlpPath(),
 		FfmpegPath: cfg.External.FfmpegPath,
-	}
-}
-
-// ── Middleware rate-limit adapter (delegating to canonical) ──────────────────
-//
-// CLEANUP (September 2026): the *middlewareRateLimitAdapter inline struct was
-// removed. The canonical concrete is internal/platform/httpserver/middleware.
-// RateLimitAdapter (snapshot-immutable, nil-receiver-safe). The local helpers
-// below snapshot cfg.Security.* into that canonical literal so the wiring layer
-// keeps no duplicate struct — one canonical owner per fact (godlike/06 SSOT).
-
-func newMiddlewareRateLimitAdapter(cfg *config.Config) middleware.RateLimitPort {
-	if cfg == nil {
-		return nil
-	}
-	return &mw.RateLimitAdapter{
-		Enabled:  cfg.Security.RateLimitEnabled,
-		Requests: cfg.Security.RateLimitRequests,
-	}
-}
-
-// ── Middleware feature-flags adapter (delegating to canonical) ───────────────
-//
-// CLEANUP (September 2026): same delegation pattern for the feature-flags
-// surface. The canonical is middleware.FeatureFlagsAdapter.
-
-func newMiddlewareFeatureFlagsAdapter(cfg *config.Config) middleware.FeatureFlagsPort {
-	if cfg == nil {
-		return nil
-	}
-	return &mw.FeatureFlagsAdapter{
-		ScriptClips: cfg.Features.ScriptClipsEnabled,
 	}
 }

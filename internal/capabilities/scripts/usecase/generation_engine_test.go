@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
-	"github.com/Marcuss-ops/PipelineGen/tests/tools/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/tests/tools/testsupport"
 )
 
 // TestGenerationEngineRunner_Generate_Success verifies that the

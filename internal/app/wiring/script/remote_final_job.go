@@ -426,47 +426,6 @@ func attachFinalJobDriveSourcesV1(finalize *scriptgen.FinalJobFinalizeV1) error 
 	return nil
 }
 
-// attachFinalJobDriveSources adds the Master's Drive fetch URI to stock
-// references. Producer-owned video stays on its existing HTTPS source URI;
-// FINALIZE never publishes or materializes a local video fragment.
-func (a *RemoteFinalJobAdapter) attachFinalJobDriveSources(finalize map[string]any) error {
-	assets, ok := finalize["runtime_assets"].([]any)
-	if !ok {
-		return fmt.Errorf("remote final-job runtime_assets has an invalid shape")
-	}
-	// Existing stock: leave it on Drive, exactly as the stockpipeline wrote it.
-	for _, raw := range assets {
-		ref, ok := raw.(map[string]any)
-		if !ok || !strings.EqualFold(strings.TrimSpace(finalJobAdapterString(ref["kind"])), "video") {
-			continue
-		}
-		if !strings.EqualFold(strings.TrimSpace(finalJobAdapterString(ref["role"])), "stock") {
-			continue
-		}
-		driveID := strings.TrimSpace(finalJobAdapterString(ref["drive_file_id"]))
-		if driveID == "" {
-			return fmt.Errorf("remote final-job stock source %q has no Drive identity", finalJobAdapterString(ref["asset_id"]))
-		}
-		ref["source_uri"] = driveStockDownloadURL(driveID)
-		ref["url"] = "velox-drive://" + driveID
-	}
-	if err := scriptgen.NormalizeFinalJobHTTPSRuntimeAssets(assets); err != nil {
-		return fmt.Errorf("normalize remote final-job video sources: %w", err)
-	}
-	return nil
-}
-
-func finalJobAdapterString(value any) string {
-	if value == nil {
-		return ""
-	}
-	valueString := strings.TrimSpace(fmt.Sprint(value))
-	if valueString == "<nil>" {
-		return ""
-	}
-	return valueString
-}
-
 // staleReceiptStatus projects a stale transport outcome onto the capability's
 // terminal receipt vocabulary. A Master-reported terminal status is kept as-is
 // (it archives the real outcome); any other stale cause — a lease conflict — is

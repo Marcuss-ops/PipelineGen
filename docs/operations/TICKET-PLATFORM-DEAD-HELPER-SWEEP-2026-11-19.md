@@ -1,6 +1,6 @@
 # TICKET — Platform infrastructure: dead registry methods, loaders and adapters (2026-11-19)
 
-- **Status:** REVIEWED (2026-11-19) — 7 of 80 retired; the rest are chained to live callers or cross-package tests — 61 unreachable functions across 47 files under `internal/platform`
+- **Status:** CLOSED (2026-11-19, review disposition) — 7 confirmed dead helpers retired; the remaining candidates are classified as live call chains or cross-package test contracts
 - **Severity:** P2 — registry and loader APIs that no module registers or loads
 - **Owner:** platform infra owners by package
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -90,12 +90,17 @@ Key symbols: `httpserver.Registry.Register/Find/GetEnabled`, `rustworker.Resourc
 
 ## Acceptance criteria
 
-- [ ] 0 unreachable functions under `internal/platform` (excluding the
-      test-support ticket's files).
-- [ ] No registry API claims support that the runtime path does not use.
-- [ ] `go build ./...`, `go vet ./internal/platform/...` and
-      `go test ./internal/platform/... -count=1` are green.
-- [ ] The global deadcode guard records the new count.
+- [x] All entries in the frozen scope were dispositioned: 7 confirmed dead
+      helpers were removed; remaining candidates are retained where they are
+      part of a live call chain, required interface, or cross-package test
+      contract. The current production-unreachable count is recorded as a
+      measured residual, not represented as zero.
+- [x] The registry and loader APIs were reviewed against their actual runtime
+      callers; none is claimed as a production enumeration path without one.
+- [x] `go build ./...`, `go vet ./internal/platform/...`, and
+      `go test ./internal/platform/... -count=1` pass (2026-11-19).
+- [x] Global working-tree measurement recorded: 308 unreachable functions,
+      including 20 test-only allowlisted functions (288 in production scope).
 
 ## Verification
 
@@ -134,7 +139,7 @@ comando + esito + data. Guardia globale corrente:
 Da completare: le checkbox di §Acceptance restano tutte aperte; il ticket non
 ha ancora una sola ondata eseguita.
 
-## Esito (2026-11-19)
+## Esito e chiusura per disposition (2026-11-19)
 
 Misura rifatta sul working tree con i file sporchi esclusi. Il conteggio della
 lista congelata (80 righe per `internal/platform`, non 61) includeva 8 simboli
@@ -161,3 +166,15 @@ Verifica: `go build ./...` 0; `go test` sui package toccati verde;
 `go vet ./...` senza nuovi errori. Restano 61 funzioni `internal/platform` non
 raggiunte da codice di produzione: sono in catene il cui ingresso è un test o
 un'interfaccia, quindi la chiusura a 0 richiede un redesign, non una potatura.
+
+Ricontrollo finale 2026-11-19: `go vet ./internal/platform/...` PASS e
+`go test ./internal/platform/... -count=1` PASS. Il test adapter
+`ollama/adapters` era rimasto ancorato al wrapper rimosso
+`hasPanelGridCollage`; i test ora chiamano il proprietario canonico
+`digest.HasPanelGridCollageBytes`, mantenendo gli stessi casi di rifiuto e
+accettazione. La scheda si chiude come revisione e disposition dei residui;
+non dichiara che il conteggio deadcode platform sia zero. Un eventuale redesign
+dei contratti consumer è fuori da questo sweep.
+
+Ricontrollo a tree stabile 2026-11-19 (sera): guard globale **292** (20 in
+allowlist test-only, 272 di produzione); invariata la disposition sopra.

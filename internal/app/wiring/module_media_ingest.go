@@ -167,10 +167,3 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 	)
 	return &MediaIngestWiring{Handler: handler, Module: mod, Service: svc}, nil
 }
-
-func isAIImageIngestSource(req *ingest.Request) bool {
-	if req == nil {
-		return false
-	}
-	return detail.IsAIImageSource(req.Source)
-}

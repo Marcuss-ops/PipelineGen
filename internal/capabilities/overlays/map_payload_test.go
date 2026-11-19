@@ -253,3 +253,38 @@ func TestMapNativeCameraFramingDegenerateInputs(t *testing.T) {
 		t.Fatalf("multi-place framing must keep the fit (got %.2f, fit %.2f) with a grounded move present: %.2f->%.2f send=%t", end, fitEnd, start, end, send)
 	}
 }
+
+// TestMapPinTimingsRoundTripMergeAndValidate covers the typed schedule: the
+// params round trip is lossless, a merged tail keeps its own offsets shifted
+// onto the earlier map, an existing pin keeps its spoken moment, and a
+// malformed block fails closed instead of reading as "no timing".
+func TestMapPinTimingsRoundTripMergeAndValidate(t *testing.T) {
+	base := MapPinTimings{"ent_siena": {StartUS: 0, DurationUS: 1_000_000}}
+	tail := MapPinTimings{"ent_campo": {StartUS: 0, DurationUS: 500_000}, "ent_siena": {StartUS: 0, DurationUS: 9_000_000}}
+
+	merged := base.Merge(tail, 2_000_000)
+	if got := merged["ent_campo"].StartUS; got != 2_000_000 {
+		t.Fatalf("merged tail start = %d, want 2000000", got)
+	}
+	if got := merged["ent_siena"].DurationUS; got != 1_000_000 {
+		t.Fatalf("colliding pin must keep the earlier schedule, got %d", got)
+	}
+	if !merged.Validate(2_500_000) {
+		t.Fatalf("merged schedule must fit the merged map: %+v", merged)
+	}
+
+	decoded, ok := MapPinTimingsFromParams(map[string]any{"map_pin_timing": merged.Params()})
+	if !ok || len(decoded) != 2 {
+		t.Fatalf("params round trip lost the schedule: ok=%v decoded=%+v", ok, decoded)
+	}
+	if decoded["ent_campo"] != merged["ent_campo"] {
+		t.Fatalf("round trip changed the schedule: %+v != %+v", decoded["ent_campo"], merged["ent_campo"])
+	}
+
+	if _, ok := MapPinTimingsFromParams(map[string]any{"map_pin_timing": map[string]any{"a": map[string]any{"start_us": "bad"}}}); ok {
+		t.Fatal("a malformed schedule must not decode as valid")
+	}
+	if (MapPinTimings{"a": {StartUS: 2_000_000, DurationUS: 500_001}}).Validate(2_500_000) {
+		t.Fatal("a pin ending past its own map must fail closed")
+	}
+}

@@ -272,7 +272,6 @@ type OutputProbe struct {
 	AudioBitrate      string
 	VideoStreams      int
 	AudioStreams      int
-	StreamOrder       string
 	StartPTS          int64
 }
 

@@ -11,7 +11,6 @@ func TestIngressPhraseMotionPinsSurvive(t *testing.T) {
 	raw := []byte(`{"correlation_id":"ingress-phrase-pin","items":[{` +
 		`"id":"probe","project":"probe","title":"Probe","language":"it",` +
 		`"short_phrase_motion":"phrase_apple_clean_01_blur_soft_reveal",` +
-		`"long_phrase_motion":"phrase_apple_clean_26_opacity_depth_push",` +
 		`"source":{"type":"text","topic":"Probe","source_text":"Probe text for ingress."}` +
 		`}]}`)
 	var env scriptpkg.GenerationEnvelopeV2
@@ -19,16 +18,14 @@ func TestIngressPhraseMotionPinsSurvive(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(env.Items) != 1 ||
-		env.Items[0].ShortPhraseMotion != "phrase_apple_clean_01_blur_soft_reveal" ||
-		env.Items[0].LongPhraseMotion != "phrase_apple_clean_26_opacity_depth_push" {
-		t.Fatalf("envelope lost phrase motion pins: %+v", env.Items)
+		env.Items[0].ShortPhraseMotion != "phrase_apple_clean_01_blur_soft_reveal" {
+		t.Fatalf("envelope lost the phrase motion pin: %+v", env.Items)
 	}
 	req, err := BuildGenerateRequest(&env, "ingress-phrase-pin")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if req.ShortPhraseMotion != "phrase_apple_clean_01_blur_soft_reveal" ||
-		req.LongPhraseMotion != "phrase_apple_clean_26_opacity_depth_push" {
-		t.Fatalf("request lost phrase motion pins: short=%q long=%q", req.ShortPhraseMotion, req.LongPhraseMotion)
+	if req.ShortPhraseMotion != "phrase_apple_clean_01_blur_soft_reveal" {
+		t.Fatalf("request lost the phrase motion pin: short=%q", req.ShortPhraseMotion)
 	}
 }

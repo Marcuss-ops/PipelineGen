@@ -99,6 +99,30 @@ func (r *SequenceRequest) Normalize() {
 	}
 }
 
+// ValidateEdgeSubmission is the HTTP gate for a sequence body. It rejects the
+// two inputs that name the SERVER's filesystem: a per-clip `path` and
+// `output.dir`.
+//
+// They are meaningful for a job produced locally (and remain accepted there),
+// but over HTTP they are an arbitrary-file read plus an arbitrary-directory
+// write under the service account — the sequence worker reads `path` verbatim
+// and writes the merge into `output.dir`. Remote callers must name an
+// `asset_id` or a `job_id`; the server owns where artifacts land.
+func (r *SequenceRequest) ValidateEdgeSubmission() error {
+	if r == nil {
+		return fmt.Errorf("%w: sequence request is nil", ErrInvalidRequest)
+	}
+	for i, clip := range r.Clips {
+		if strings.TrimSpace(clip.Path) != "" {
+			return fmt.Errorf("%w: clips[%d].path is not accepted over HTTP; name an asset_id or a job_id", ErrInvalidRequest, i)
+		}
+	}
+	if strings.TrimSpace(r.Output.Dir) != "" {
+		return fmt.Errorf("%w: output.dir is not accepted over HTTP; the server owns the output location", ErrInvalidRequest)
+	}
+	return nil
+}
+
 // Validate fails fast on everything that can be decided without the bytes:
 // clip count, one source per position, the first clip owning no transition, and
 // each transition's preset / leak / duration window.
@@ -258,7 +282,10 @@ func (w *Worker) handleSequence(ctx context.Context, j *job.Job, tools *job.JobE
 		return nil, fmt.Errorf("%w: %v", ErrInvalidRequest, err)
 	}
 
-	outputDir := assembly.OutputDir(req.Output.Dir, j.ID)
+	outputDir, err := assembly.OutputDir(req.Output.Dir, j.ID)
+	if err != nil {
+		return nil, err
+	}
 	progress(35, "clip.sequence: assembling")
 	artifacts, err := clipmerge.Merge(ctx, sequence, plan, clipmerge.Options{
 		OutputDir: outputDir,
@@ -394,15 +421,37 @@ func sequenceChildArtifact(child *job.Job) (string, int64, error) {
 
 // OutputDir resolves the destination: the caller's directory when it names one,
 // otherwise a per-job folder under the wired sequence root.
-func (a SequenceAssembly) OutputDir(requested, jobID string) string {
-	if requested != "" {
-		return requested
-	}
+//
+// A caller-named directory is CONFINED to the sequence root (ticket CR-19-04):
+// the requested value arrives in a job payload, and an unconfined join would let
+// that payload choose any writable directory on the host. A relative value is
+// interpreted under the root, an absolute value must already be inside it, and
+// anything that escapes (`..`) is a typed error rather than a silent overwrite.
+func (a SequenceAssembly) OutputDir(requested, jobID string) (string, error) {
 	root := a.Root
 	if root == "" {
 		root = "sequence"
 	}
-	return filepath.Join(root, "job-"+jobID)
+	if requested == "" {
+		return filepath.Join(root, "job-"+jobID), nil
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("%w: resolve sequence root %q: %v", ErrInvalidRequest, root, err)
+	}
+	candidate := requested
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(absRoot, candidate)
+	}
+	candidate = filepath.Clean(candidate)
+	rel, err := filepath.Rel(absRoot, candidate)
+	if err != nil {
+		return "", fmt.Errorf("%w: resolve sequence output.dir %q: %v", ErrInvalidRequest, requested, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("%w: sequence output.dir %q escapes the assembly root %q", ErrInvalidRequest, requested, absRoot)
+	}
+	return candidate, nil
 }
 
 // encoder resolves the encode policy: caller overrides on top of the wired

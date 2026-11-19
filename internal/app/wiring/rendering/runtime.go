@@ -38,19 +38,6 @@ import (
 // pins RENDERINGGEN_GPU_SLOTS=3 to keep the contract byte-identical.
 const DefaultGPUGateSlots = infraoverlays.DefaultGPUGateSlots
 
-// resolveGPUGateSlots parses RENDERINGGEN_GPU_SLOTS. `explicit` reports whether
-// an operator actually configured a value, so the caller can distinguish "the
-// default applied" from "the operator chose one slot"; an unparsable or
-// out-of-range value falls back to the shared default and is reported as not explicit.
-func resolveGPUGateSlots(raw string) (slots int, explicit bool) {
-	return infraoverlays.ResolveGPUGateSlots(raw)
-}
-
-// gpuGateSlots reads the overlay GPU slot count from the environment.
-func gpuGateSlots() (slots int, explicit bool) {
-	return resolveGPUGateSlots(os.Getenv("RENDERINGGEN_GPU_SLOTS"))
-}
-
 func newOverlayGPUGate() (*infraoverlays.GPUGate, string, int, error) {
 	return infraoverlays.NewConfiguredGPUGate()
 }

@@ -3,6 +3,7 @@ package script
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,9 +16,9 @@ import (
 )
 
 // ResolveFinalJobObjectStoreAsset publishes Creator-local media bytes into the
-// shared Objectstore and returns a signed worker source. In direct mode it
-// deliberately does not fall back to a Drive link: missing local bytes stop
-// submission before Velox can dispatch an incomplete job.
+// shared Objectstore and returns a signed worker source. If the registered
+// local copy is missing, it restores the content-verified bytes from the
+// asset's canonical Drive identity first.
 func (a *RemoteFinalJobAdapter) ResolveFinalJobObjectStoreAsset(ctx context.Context, id string) (map[string]any, error) {
 	for _, editorial := range mediaregistry.EditorialAudioAssets() {
 		if editorial.Alias != strings.TrimSpace(id) || editorial.Family != "music" {
@@ -54,7 +55,20 @@ func (a *RemoteFinalJobAdapter) ResolveFinalJobObjectStoreAsset(ctx context.Cont
 		return nil, fmt.Errorf("asset %q has no canonical SHA-256", id)
 	}
 	path := strings.TrimSpace(mediaAsset.LocalPath())
-	if path == "" && a.stock != nil && strings.TrimSpace(mediaAsset.DriveFileID()) != "" {
+	// A registered local_path can outlive its file (for example after media
+	// cleanup). Treat a missing path like an empty one: if this asset still has
+	// a Drive identity, restore its verified bytes before handing it to the
+	// Objectstore publisher.
+	if path != "" {
+		if info, statErr := os.Stat(path); statErr != nil || !info.Mode().IsRegular() {
+			path = ""
+		}
+	}
+	driveID := strings.TrimSpace(mediaAsset.DriveFileID())
+	if driveID == "" {
+		driveID = driveFileIDFromLink(mediaAsset.DriveLink())
+	}
+	if path == "" && a.stock != nil && driveID != "" {
 		ext := filepath.Ext(mediaAsset.Filename)
 		if ext == "" {
 			ext = ".mp4"
@@ -65,9 +79,10 @@ func (a *RemoteFinalJobAdapter) ResolveFinalJobObjectStoreAsset(ctx context.Cont
 		}
 		res, matErr := mat.Materialize(ctx, drivepkg.MaterializeRequest{
 			AssetID:        mediaAsset.ID,
-			DriveFileID:    strings.TrimSpace(mediaAsset.DriveFileID()),
+			DriveFileID:    driveID,
 			ExpectedSHA256: sha,
 			Extension:      ext,
+			RegisteredPath: strings.TrimSpace(mediaAsset.LocalPath()),
 		})
 		if matErr != nil {
 			return nil, fmt.Errorf("asset %q materialize from Drive: %w", id, matErr)
@@ -93,4 +108,24 @@ func (a *RemoteFinalJobAdapter) ResolveFinalJobObjectStoreAsset(ctx context.Cont
 		ref["duration_ms"] = durationMS
 	}
 	return ref, nil
+}
+
+// driveFileIDFromLink extracts the identity from canonical Google Drive file
+// links. We only use it as a fallback when the media row's dedicated
+// drive_file_id field is empty; arbitrary URLs are never fetched as media.
+func driveFileIDFromLink(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || !strings.EqualFold(u.Hostname(), "drive.google.com") {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "d" && parts[i+1] != "" {
+			return parts[i+1]
+		}
+	}
+	if strings.Trim(u.Path, "/") == "open" || strings.Trim(u.Path, "/") == "uc" {
+		return strings.TrimSpace(u.Query().Get("id"))
+	}
+	return ""
 }

@@ -77,7 +77,9 @@ func TestMaterializeVerbatimSourceTextScenesRejectsInvalidInput(t *testing.T) {
 		{"duplicate_id", func(r *GenerateRequest) {
 			r.ScriptParams.Segments = append(r.ScriptParams.Segments, r.ScriptParams.Segments[0])
 		}},
-		{"non_text_source", func(r *GenerateRequest) { r.Source.Type = SourceClips }},
+		// Clip sources are supported when segments bind their clips; a
+		// catalog/search source still has no authored scene text.
+		{"non_text_source", func(r *GenerateRequest) { r.Source.Type = SourceCatalog }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -20,6 +20,40 @@ import (
 // transport with 413 rather than occupy a Master worker.
 const MaxClipRenderRequestBytes int64 = 1 << 20 // 1 MiB
 
+// decodeStrictBody owns the ONE strict-JSON decode used by every clip.render
+// endpoint: the bounded body, the DisallowUnknownFields gate and the transport
+// error mapping (413 PAYLOAD_TOO_LARGE, UNKNOWN_FIELD, INVALID_PAYLOAD). It
+// writes the failure response itself and reports false so the caller only
+// handles the success path.
+func decodeStrictBody[T any](c *gin.Context, limit int64, bodyLabel string) (T, bool) {
+	var req T
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			c.JSON(http.StatusRequestEntityTooLarge, renderResponse{
+				Status:    StatusError,
+				Error:     fmt.Sprintf("%s body exceeds the %d byte limit", bodyLabel, limit),
+				ErrorCode: ErrCodePayloadTooLarge,
+			})
+			return req, false
+		}
+		code := ErrCodeInvalidPayload
+		if strings.HasPrefix(err.Error(), "json: unknown field ") {
+			code = ErrCodeUnknownField
+		}
+		c.JSON(http.StatusBadRequest, renderResponse{
+			Status:    StatusError,
+			Error:     "invalid JSON payload: " + err.Error(),
+			ErrorCode: code,
+		})
+		return req, false
+	}
+	return req, true
+}
+
 // Handler is the thin HTTP transport for POST /api/clips/render. It
 // owns request binding, validation, and Master enqueue; all business
 // logic lives in the cliprender capability (and, in the follow-up
@@ -79,35 +113,10 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 //   - Enqueue failure → 500 (the Master is the canonical owner of the
 //     queue-idempotency contract; no inline execution fallback).
 func (h *Handler) Render(c *gin.Context) {
-	// Bound the request body BEFORE decoding. The clip.render payload is a
-	// small JSON document (ids, styles, a short timeline); an unbounded body
-	// lets a single caller pin a Master worker with a huge/streamed JSON
-	// document that the strict decoder would otherwise read to completion.
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxClipRenderRequestBytes)
-
-	var req RenderRequest
-
-	decoder := json.NewDecoder(c.Request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			c.JSON(http.StatusRequestEntityTooLarge, renderResponse{
-				Status:    StatusError,
-				Error:     fmt.Sprintf("request body exceeds the %d byte limit", MaxClipRenderRequestBytes),
-				ErrorCode: ErrCodePayloadTooLarge,
-			})
-			return
-		}
-		code := ErrCodeInvalidPayload
-		if strings.HasPrefix(err.Error(), "json: unknown field ") {
-			code = ErrCodeUnknownField
-		}
-		c.JSON(http.StatusBadRequest, renderResponse{
-			Status:    StatusError,
-			Error:     "invalid JSON payload: " + err.Error(),
-			ErrorCode: code,
-		})
+	// The body is bounded BEFORE decoding, so an unbounded/streamed JSON
+	// document fails at the transport instead of pinning a Master worker.
+	req, ok := decodeStrictBody[RenderRequest](c, MaxClipRenderRequestBytes, "request")
+	if !ok {
 		return
 	}
 
@@ -134,9 +143,11 @@ func (h *Handler) Render(c *gin.Context) {
 	// without touching the GPU. Served synchronously in milliseconds.
 	if h.renderCache != nil {
 		if fp, fpErr := req.Fingerprint(); fpErr == nil {
-			if rec, err := h.renderCache.Get(c.Request.Context(), fp); err == nil && rec != nil {
+			rec, cacheErr := h.renderCache.Get(c.Request.Context(), fp)
+			logCacheLookupFailure(h.log, "handler", fp, cacheErr)
+			if cacheErr == nil && rec != nil {
 				h.log.Info("clip.render cache hit (handler)",
-					zap.String("fingerprint", fp[:16]),
+					zap.String("fingerprint", digestPrefix(fp)),
 					zap.String("asset_id", rec.AssetID),
 				)
 				c.JSON(http.StatusOK, gin.H{

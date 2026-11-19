@@ -34,17 +34,23 @@ type generatedProfilesPayload struct {
 }
 
 type generatedLanguageProfile struct {
-	Schema            string                 `json:"schema"`
-	Language          string                 `json:"language"`
-	Source            string                 `json:"source"`
-	StopWords         []string               `json:"stopwords"`
-	FunctionWords     []string               `json:"function_words"`
-	EntityBlocklist   []string               `json:"entity_blocklist"`
-	NegativeParticles []string               `json:"negative_particles"`
-	VisualVerbs       []string               `json:"visual_verbs"`
-	VerbSuffixes      []string               `json:"verb_suffixes"`
-	WordSets          map[string][]string    `json:"word_sets"`
-	PhrasePolicy      PhraseExtractionPolicy `json:"phrase_policy"`
+	Schema          string   `json:"schema"`
+	Language        string   `json:"language"`
+	Source          string   `json:"source"`
+	StopWords       []string `json:"stopwords"`
+	FunctionWords   []string `json:"function_words"`
+	EntityBlocklist []string `json:"entity_blocklist"`
+	// Map/geocode gate: whole queries never geocoded, and tokens that
+	// disqualify a whole candidate. Absent in a language whose sources
+	// carry no such file, which means no exclusion rather than a borrowed
+	// list from another language.
+	PlaceCandidateBlocklist      []string               `json:"place_candidate_blocklist"`
+	PlaceCandidateTokenBlocklist []string               `json:"place_candidate_token_blocklist"`
+	NegativeParticles            []string               `json:"negative_particles"`
+	VisualVerbs                  []string               `json:"visual_verbs"`
+	VerbSuffixes                 []string               `json:"verb_suffixes"`
+	WordSets                     map[string][]string    `json:"word_sets"`
+	PhrasePolicy                 PhraseExtractionPolicy `json:"phrase_policy"`
 }
 
 // Profiles holds the immutable per-language profiles generated from the Rust
@@ -86,14 +92,16 @@ func NewProfiles() (*Profiles, error) {
 			return nil, fmt.Errorf("lexicon profiles: generated snapshot carries an empty language")
 		}
 		profile := &LexiconProfile{
-			StopWords:         stringSet(raw.StopWords),
-			FunctionWords:     stringSet(raw.FunctionWords),
-			EntityBlocklist:   stringSet(raw.EntityBlocklist),
-			NegativeParticles: stringSet(raw.NegativeParticles),
-			VisualVerbs:       stringSet(raw.VisualVerbs),
-			VerbSuffixes:      append([]string(nil), raw.VerbSuffixes...),
-			PhrasePolicy:      raw.PhrasePolicy,
-			WordSets:          make(map[string]map[string]struct{}, len(raw.WordSets)),
+			StopWords:                    stringSet(raw.StopWords),
+			FunctionWords:                stringSet(raw.FunctionWords),
+			EntityBlocklist:              stringSet(raw.EntityBlocklist),
+			PlaceCandidateBlocklist:      stringSet(raw.PlaceCandidateBlocklist),
+			PlaceCandidateTokenBlocklist: stringSet(raw.PlaceCandidateTokenBlocklist),
+			NegativeParticles:            stringSet(raw.NegativeParticles),
+			VisualVerbs:                  stringSet(raw.VisualVerbs),
+			VerbSuffixes:                 append([]string(nil), raw.VerbSuffixes...),
+			PhrasePolicy:                 raw.PhrasePolicy,
+			WordSets:                     make(map[string]map[string]struct{}, len(raw.WordSets)),
 		}
 		for name, words := range raw.WordSets {
 			profile.WordSets[name] = stringSet(words)

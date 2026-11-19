@@ -22,10 +22,9 @@
 //
 // Split layout (alphabetical):
 //
-//	extract_likely_names.go   — ExtractLikelyNames + LooksLikePersonName (this file).
+//	extract_likely_names.go   — ExtractLikelyNames (this file).
 //	subject_matches_topic.go — SubjectMatchesTopic + ConciseSubject + PreferredEntitySubject.
-//	terms_from_text.go       — TermsFromText + TermsFromFields + CleanTerms + TermOptions
-//	                           struct + defaultOpts() + filterTerms() private helper.
+//	terms_from_text.go       — TermsFromText + TermOptions struct + filterTerms().
 //	topic_tokens.go          — TopicTokens.
 package termutil
 
@@ -34,25 +33,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/sliceutil"
 )
-
-// LooksLikePersonName checks if the text looks like a person's name.
-func LooksLikePersonName(text string) bool {
-	parts := strings.Fields(strings.TrimSpace(text))
-	if len(parts) == 0 || len(parts) > 5 {
-		return false
-	}
-	score := 0
-	for _, part := range parts {
-		if len(part) == 0 {
-			continue
-		}
-		first := []rune(part)[0]
-		if first >= 'A' && first <= 'Z' {
-			score++
-		}
-	}
-	return score >= 1 && len(parts) <= 4
-}
 
 // ExtractLikelyNames extracts words that look like names (capitalized, >2 chars).
 func ExtractLikelyNames(text string) []string {

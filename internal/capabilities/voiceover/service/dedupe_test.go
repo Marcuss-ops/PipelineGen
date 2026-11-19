@@ -18,6 +18,9 @@ package voiceover
 
 import "testing"
 
+// String was only a test convenience; production logging uses string(value).
+func (d DedupeDecision) String() string { return string(d) }
+
 // TestDecideDedupe is the canonical projection contract test
 // (Step 7/12). Each row pins ONE count→decision boundary so a
 // regression cannot silently shift the boundary without breaking

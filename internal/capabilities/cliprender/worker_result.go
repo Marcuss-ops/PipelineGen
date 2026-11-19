@@ -31,9 +31,6 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 	if prepared == nil {
 		prepared = &Prepared{Contract: &ResolvedContract{}, Transcript: &TranscriptResult{}}
 	}
-	if prepared.Contract == nil {
-		prepared.Contract = &ResolvedContract{}
-	}
 	if prepared.Transcript == nil {
 		prepared.Transcript = &TranscriptResult{}
 	}
@@ -50,16 +47,7 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 		"source_asset_id": req.SourceAssetID,
 		"phase":           "rendered",
 		"transcript_mode": req.Transcript.Mode,
-		"contract_id":     prepared.Contract.ID,
-		"contract":        ContractWireBlock(prepared.Contract),
-		"plan": map[string]any{
-			"version":     plan.Version,
-			"plan_sha256": plan.PlanSHA256,
-			"output_path": plan.OutputPath,
-			"audio_mode":  plan.Audio.Mode,
-			"background":  backgroundMode,
-		},
-		"source": materializationResult(prepared.Source),
+		"source":          materializationResult(prepared.Source),
 		"transcript": map[string]any{
 			"language":            prepared.Transcript.Language,
 			"reused":              prepared.Transcript.Reused,
@@ -72,12 +60,41 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"watermark":  materializationResult(prepared.Watermark),
 			"background": materializationResult(prepared.Background),
 		},
-		"timings": map[string]any{
+	}
+	// The resolved contract is reported only when a contract was actually
+	// resolved. A deterministic cache hit renders nothing, so it has no
+	// contract of its own: the historical synthesis put the BACKEND NAME in
+	// contract_id and emitted an all-zero contract block, i.e. a wire shape
+	// that claims a media contract the renderer was never held to. The cached
+	// asset id is the only provenance this job can honestly report.
+	if prepared.Contract != nil && prepared.Contract.ID != "" {
+		result["contract_id"] = prepared.Contract.ID
+		result["contract"] = ContractWireBlock(prepared.Contract)
+	}
+	// A sealed plan block is reported only when a plan was actually sealed. A
+	// deterministic cache hit reuses another render's artifact: it has no plan
+	// of its own, and the historical synthesis exposed a REQUEST fingerprint in
+	// the plan_sha256 slot, i.e. a digest that identifies no plan at all.
+	if plan.Version != "" || plan.PlanSHA256 != "" {
+		result["plan"] = map[string]any{
+			"version":     plan.Version,
+			"plan_sha256": plan.PlanSHA256,
+			"output_path": plan.OutputPath,
+			"audio_mode":  plan.Audio.Mode,
+			"background":  backgroundMode,
+		}
+	}
+	// Preparation timings are reported only when a preparation phase actually
+	// ran. A cache hit prepares nothing, and an all-zero block would report a
+	// measured zero for work nobody did (the package-wide rule is
+	// NOT_INSTRUMENTED, never a fabricated zero).
+	if len(prepared.Timings.Phases) > 0 || prepared.Timings.TotalWallMS != 0 || prepared.Timings.TotalWorkMS != 0 {
+		result["timings"] = map[string]any{
 			"total_wall_ms": prepared.Timings.TotalWallMS,
 			"total_work_ms": prepared.Timings.TotalWorkMS,
 			"parallel":      prepared.Timings.Parallel,
 			"phases":        prepared.Timings.Phases,
-		},
+		}
 	}
 	if prepared.Watermark != nil {
 		result["watermark"] = materializationResult(prepared.Watermark)

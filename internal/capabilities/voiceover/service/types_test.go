@@ -216,49 +216,6 @@ func TestBatchRequest_StrategyReplace_Roundtrip(t *testing.T) {
 	}
 }
 
-// TestNormalizeBatchRequest_DefaultsVerifyWhenEmpty pins the
-// regression baseline: when a caller forgets to set Strategy (or
-// the handler still does), normalizeBatchRequest fills it in as
-// "verify". The /generate async branch must NEVER hit this default
-// — fix/voiceover-sync-async-strategy sets "replace" explicitly so
-// that a future regression (a silent removal of the explicit field)
-// fails the roundtrip test above but passes this baseline, surfacing
-// the drift loudly.
-func TestNormalizeBatchRequest_DefaultsVerifyWhenEmpty(t *testing.T) {
-	req := &BatchRequest{
-		Text: "implicit-strategy", Languages: []Language{"en"},
-	}
-	// deref-read; SHALLOW-CLONE isolation pin (see pkg/immutability docblock).
-	// Primitive fields stay byte-equivalent; composite fields use REPLACEMENT
-	// inside the closure to avoid shared backing.
-	normalized := normalizeBatchRequest(*req)
-	if normalized.Strategy != "verify" {
-		t.Fatalf("explicit-zero Strategy must normalize to \"verify\"; got %q", normalized.Strategy)
-	}
-}
-
-// TestNormalizeBatchRequest_FillsEmptyFilenameTemplate pins the
-// fallback contract for /generate callers that don't pass a
-// filename: handler sets FilenameTemplate only when req.Filename
-// is non-empty, so normalize must fill it in as "{slug}_{lang}.mp3".
-// Without this fallback, two batched /generate async calls without
-// a filename would produce jobs with an empty FilenameTemplate and
-// the worker would have no dedup key.
-func TestNormalizeBatchRequest_FillsEmptyFilenameTemplate(t *testing.T) {
-	req := &BatchRequest{
-		Text:      "no-filename",
-		Languages: []Language{"it"},
-		Strategy:  "replace",
-	}
-	// deref-read; SHALLOW-CLONE isolation pin (see pkg/immutability docblock).
-	// Primitive fields stay byte-equivalent; composite fields use REPLACEMENT
-	// inside the closure to avoid shared backing.
-	normalized := normalizeBatchRequest(*req)
-	if normalized.FilenameTemplate == "" {
-		t.Fatalf("normalize must fill FilenameTemplate when caller leaves it empty; got \"\"")
-	}
-}
-
 // PR-VO-A4 (path-traversal fix, June 2026): pinning the canonical
 // validation contract for DestinationRequest. The shape is:
 //

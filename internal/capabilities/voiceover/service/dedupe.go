@@ -32,11 +32,6 @@ const (
 	DedupeConflict DedupeDecision = "conflict"
 )
 
-// String implements fmt.Stringer so the decision logs cleanly via
-// zap.String without manual conversion (operators grep `decision=`
-// in pipeline audit logs).
-func (d DedupeDecision) String() string { return string(d) }
-
 // DecideDedupe projects CountByDriveFileIDTx's `count` signal into
 // the typed DedupeDecision. Pure function (no I/O) so the boundary
 // semantics are pinned by table-driven tests in dedupe_test.go.

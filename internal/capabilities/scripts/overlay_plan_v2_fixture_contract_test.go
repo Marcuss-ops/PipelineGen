@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -54,6 +55,12 @@ func TestOverlayPlanV2FixturesDecodeThroughTheGoContract(t *testing.T) {
 			if len(request.SceneWindows) == 0 {
 				t.Fatal("request carries no canonical scene windows")
 			}
+			planEndUS := int64(0)
+			for _, bounds := range request.SceneWindows {
+				if bounds[1] > planEndUS {
+					planEndUS = bounds[1]
+				}
+			}
 
 			planBytes, err := os.ReadFile(filepath.Join(overlayPlanFixtureRoot, "plans", name+".plan.json"))
 			if err != nil {
@@ -92,9 +99,15 @@ func TestOverlayPlanV2FixturesDecodeThroughTheGoContract(t *testing.T) {
 					t.Fatalf("item[%d] %q references scene %q without a request window", index, item.ID, item.SceneID)
 				}
 				start, end := item.StartUSValue(), item.EndUSValue()
-				if end <= start || start < bounds[0] || end > bounds[1] {
-					t.Fatalf("item[%d] %q window [%d,%d) escapes scene %q window %v",
-						index, item.ID, start, end, item.SceneID, bounds)
+				// A map carries the presentation window the Rust resolver bounded
+				// to the plan; every other kind stays inside its own scene.
+				allowedEnd := bounds[1]
+				if strings.EqualFold(strings.TrimSpace(item.Kind), "map") && planEndUS > 0 {
+					allowedEnd = planEndUS
+				}
+				if end <= start || start < bounds[0] || end > allowedEnd {
+					t.Fatalf("item[%d] %q window [%d,%d) escapes its allowed extent [%d,%d)",
+						index, item.ID, start, end, bounds[0], allowedEnd)
 				}
 			}
 		})

@@ -164,6 +164,13 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	if code := strings.ToLower(strings.TrimSpace(req.Context.CountryCode)); code != "" {
 		values.Set("countrycodes", code)
 	}
+	// The requested map level narrows the provider itself: a country-level map
+	// asks for featureType=country, so a city name never comes back and no
+	// downstream stage has to discard a coordinate the map could not use.
+	// Nominatim owns the parameter name (camelCase) and the value vocabulary.
+	if featureType := nominatimFeatureType(req.Level); featureType != "" {
+		values.Set("featureType", featureType)
+	}
 	query.RawQuery = values.Encode()
 	// A transient provider failure (timeout, 429, 5xx) is retried with bounded
 	// backoff INSIDE this lookup: the alternative is losing an entire render job
@@ -199,6 +206,13 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	}
 	result.DisplayName = best.DisplayName
 	result.Scope = classifyScope(req.Query, best.Category, best.Type, best.Addresstype, best.Address)
+	// Fail closed when the endpoint ignored featureType (self-hosted builds and
+	// compatible proxies differ): an answer at another scale is not a usable
+	// pin, and it must not be cached as one either.
+	if req.Level != "" && !capgeocoding.ScopeFitsLevel(result.Scope, req.Level) {
+		return capgeocoding.Result{}, fmt.Errorf("nominatim: grounded place %q resolves at scope %q, outside the requested %s level: %w",
+			req.Query, result.Scope, req.Level, capgeocoding.ErrNoResult)
+	}
 	result.Country = strings.TrimSpace(best.Address["country"])
 	result.CountryCode = strings.ToLower(strings.TrimSpace(best.Address["country_code"]))
 	result.AdminRegion = firstNonBlank(best.Address["state"], best.Address["region"], best.Address["province"])
@@ -551,8 +565,30 @@ func (n *Nominatim) waitForPermit(ctx context.Context) error {
 	return nil
 }
 
+// nominatimFeatureType maps a canonical cartographic level to Nominatim's
+// featureType vocabulary. A continent has no featureType of its own, so an
+// empty return means "send no hint"; the scope gate above still applies.
+func nominatimFeatureType(level string) string {
+	switch level {
+	case capgeocoding.LevelCountry:
+		return "country"
+	case capgeocoding.LevelRegion:
+		return "state"
+	case capgeocoding.LevelMunicipality:
+		return "city"
+	default:
+		return ""
+	}
+}
+
 func (n *Nominatim) cachePath(req capgeocoding.Request) string {
 	key := strings.ToLower(req.Language) + "\x00" + strings.ToLower(strings.Join(strings.Fields(req.Query), " "))
+	// A level-scoped answer is a different lookup: the same name can be a city
+	// and a state, and a cached country hit must never satisfy a municipality
+	// map. The empty level keeps the historical key.
+	if req.Level != "" {
+		key += "\x00level=" + req.Level
+	}
 	// The cache must distinguish the geographic context used: the same name
 	// resolved inside two different countries must never share one answer.
 	// The empty context keeps the historical key so existing caches stay valid.

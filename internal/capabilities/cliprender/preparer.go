@@ -49,6 +49,10 @@ var (
 	// ErrTranscriptGenerationUnavailable is returned when generation is
 	// required (reuse missed) but no generation source is available.
 	ErrTranscriptGenerationUnavailable = errors.New("clip.render: transcript generation required but no generation source available")
+	// ErrMaterializerReturnedNoArtifact is the typed contract violation for an
+	// AssetMaterializer that returns (nil, nil). The port promises a verified
+	// artifact on success; a nil result is a defect, never a valid empty asset.
+	ErrMaterializerReturnedNoArtifact = errors.New("clip.render: asset materializer returned no artifact")
 )
 
 // Preparer is the canonical parallel-preparation orchestrator. It is
@@ -103,7 +107,14 @@ func (p *Preparer) MaterializeAsset(ctx context.Context, assetID string) (*Mater
 	if ref == nil {
 		return nil, fmt.Errorf("clip.render: asset %s resolved to nothing", assetID)
 	}
-	return p.material.Materialize(ctx, *ref)
+	mat, err := p.material.Materialize(ctx, *ref)
+	if err != nil {
+		return nil, err
+	}
+	if mat == nil {
+		return nil, fmt.Errorf("%w: asset %s", ErrMaterializerReturnedNoArtifact, assetID)
+	}
+	return mat, nil
 }
 
 // Prepare runs the parallel preparation phase and returns the typed handoff
@@ -390,6 +401,13 @@ func (p *Preparer) instrumentedMaterialize(ctx context.Context, runID, kind stri
 		zap.String("asset_id", ref.AssetID),
 	)
 	mat, err := p.material.Materialize(ctx, *ref)
+	// A (nil, nil) return is a port-contract violation. Convert it to a typed
+	// error BEFORE the publish callback and before any dereference: the source
+	// gate would otherwise close with a nil error and the transcript generator
+	// (or the success log below) would dereference nil and panic the worker.
+	if err == nil && mat == nil {
+		err = fmt.Errorf("%w: materialize %s %q", ErrMaterializerReturnedNoArtifact, kind, ref.AssetID)
+	}
 	if publish != nil {
 		publish(mat, err)
 	}

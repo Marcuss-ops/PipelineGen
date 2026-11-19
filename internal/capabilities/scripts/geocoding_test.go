@@ -515,18 +515,55 @@ func TestGroundedMapFallbackIgnoresSentenceAdverbsAndUppercaseOrganizations(t *t
 // The exact-word set already lists "cassazione"/"corte"; the multi-word
 // candidate must still resolve to that set instead of reaching Nominatim.
 func TestIgnoredMapCandidateRejectsArticlePrefixedInstitutions(t *testing.T) {
-	ignored := map[string]struct{}{
-		"cassazione": {}, "corte": {}, "procura": {}, "tribunale": {},
+	registry, err := linguistics.NewProfiles()
+	if err != nil {
+		t.Fatalf("load canonical lexicon: %v", err)
+	}
+	exclusions, err := geography.MapCandidateExclusionsFor(registry, "it")
+	if err != nil {
+		t.Fatalf("resolve Italian map candidate exclusions: %v", err)
 	}
 	for _, candidate := range []string{
 		"La Cassazione", "La Corte", "Suprema Corte", "La Procura", "Il Tribunale",
 	} {
-		if !geography.IgnoredMapCandidate(ignored, candidate, "it") {
+		if !geography.IgnoredMapCandidate(exclusions, candidate, "it") {
 			t.Errorf("institution %q must not be a map candidate", candidate)
 		}
 	}
-	if geography.IgnoredMapCandidate(ignored, "Garlasco", "it") {
-		t.Fatal("a real place must remain a map candidate")
+	for _, candidate := range []string{"Garlasco", "Pavia", "La Spezia", "L'Aquila"} {
+		if geography.IgnoredMapCandidate(exclusions, candidate, "it") {
+			t.Errorf("a real place %q must remain a map candidate", candidate)
+		}
+	}
+}
+
+// The map gate is data, not code: the words must come out of the Rust
+// language sources through the generated profile, so a curator can change an
+// exclusion without touching Go.
+func TestMapCandidateExclusionsComeFromTheRustLanguageSources(t *testing.T) {
+	registry, err := linguistics.NewProfiles()
+	if err != nil {
+		t.Fatalf("load canonical lexicon: %v", err)
+	}
+	exclusions, err := geography.MapCandidateExclusionsFor(registry, "it")
+	if err != nil {
+		t.Fatalf("resolve Italian map candidate exclusions: %v", err)
+	}
+	for _, word := range []string{"infine", "dunque", "inoltre", "questo", "cio"} {
+		if _, ok := exclusions.Words[word]; !ok {
+			t.Errorf("Italian map blocklist is missing %q", word)
+		}
+	}
+	for _, token := range []string{"corte", "cassazione", "procura", "tribunale", "stasi", "sempio", "poggi", "alberto", "andrea", "chiara"} {
+		if _, ok := exclusions.Tokens[token]; !ok {
+			t.Errorf("Italian map token blocklist is missing %q", token)
+		}
+	}
+	if _, ok := exclusions.Words["pavia"]; ok {
+		t.Fatal("a real place must not be part of the blocklist")
+	}
+	if _, ok := exclusions.Tokens["pavia"]; ok {
+		t.Fatal("a real place must not be part of the token blocklist")
 	}
 }
 

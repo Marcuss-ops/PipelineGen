@@ -91,6 +91,16 @@ type MapGroupConfig struct {
 	// NoRoutes forbids journey/camera-route presentations; every map becomes
 	// a static group even when a certified flyover plate exists.
 	NoRoutes bool
+	// Level is the cartographic level the caller asked for (continent, country,
+	// region, municipality). It only decides which grounded scopes may be
+	// pinned: a municipality plate never labels a country. Empty keeps every
+	// candidate, which is the historical behaviour.
+	Level string
+	// Animation is the caller's explicit map composition. Empty, "random" and
+	// "auto" keep the seeded family draw; a concrete certified id is applied
+	// to every emitted map item and validated against that item's pins before
+	// the plan leaves the producer.
+	Animation string
 }
 
 // DefaultMaxPinsPerGroup mirrors the dynamic renderer's authored five-stop
@@ -115,13 +125,10 @@ type PlanInput struct {
 	// MotionSeed changes phrase-motion selection between newly compiled plans.
 	// Empty preserves the historical deterministic PlanID/VideoID behavior.
 	MotionSeed string
-	// CoherenceSeed selects the run's dominant horizontal direction. Empty
-	// derives the direction from MotionSeed (or PlanID when that is empty).
-	CoherenceSeed string
-	Width         int
-	Height        int
-	FPSNum        int
-	FPSDen        int
+	Width      int
+	Height     int
+	FPSNum     int
+	FPSDen     int
 	// RendererVersion is intentionally optional. PipelineGen emits semantic
 	// overlay instructions; RenderingGen owns the concrete renderer selection.
 	// Callers should leave this empty unless the queue contract explicitly
@@ -133,23 +140,11 @@ type PlanInput struct {
 	// MapGroups is the map-grouping policy resolved from the unified
 	// map_presentation contract. The zero value keeps the certified defaults.
 	MapGroups MapGroupConfig
-	// PhraseMotions optionally REPLACES the certified phrase-motion rotation
-	// pool for this run (the animated IMPORTANT_PHRASE overlays). It carries a
-	// channel profile's motion choice — PipelineGen resolves it at request
-	// build; the planner only rotates within it, deterministically, exactly as
-	// it does with the certified default pool. Empty keeps the default pool,
-	// and an id outside CertifiedPhraseMotions() is a compile failure: the
-	// rotation must never hand the renderer a motion it cannot run.
-	PhraseMotions []string
 	// ShortPhraseMotion pins one certified motion for every 1-5-word phrase.
-	// A pin bypasses the seeded short-lane rotation and PhraseMotions for the
-	// run; empty keeps the existing lane behaviour. The id must be a general
-	// short-phrase entrance, not a word-count-specific recipe.
+	// A pin bypasses the seeded per-word rotation; empty keeps the registry's
+	// word-count buckets. The id must be a general short-phrase entrance, not
+	// a word-count-specific recipe.
 	ShortPhraseMotion string
-	// LongPhraseMotion pins one certified motion for every 6+-word phrase.
-	// A pin bypasses the seeded long-lane rotation and PhraseMotions for the
-	// run; empty keeps the existing lane behaviour.
-	LongPhraseMotion string
 	// PhraseMotionFamily optionally limits automatic phrase-motion selection
 	// to a certified family and applies the one sampled motion to every phrase.
 	PhraseMotionFamily string
@@ -178,7 +173,7 @@ type PlanInput struct {
 	// short_important_phrase entries are UI preview hints only: the runtime
 	// always walks the full compatible phrase pool, because capping it made
 	// long runs repeat the same handful of motions. Chain tuning rides here
-	// too: chain_gap_ms, chain_max_segments, chain_disabled.
+	// too: chain_gap_ms, chain_max_segments, chain_handoff_ms, chain_disabled.
 	// Lane keys are canonicalized by animationLaneKeys (preset_motion_selection.go):
 	// images, images_with_text, entities, important_phrase, short_important_phrase,
 	// maps, timeline_date, metric_stat — each with documented aliases resolved

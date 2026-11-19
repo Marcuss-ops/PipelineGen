@@ -66,13 +66,6 @@ type ParsedLocale struct {
 	BCP47 string
 }
 
-// String returns the BCP-47 form for logging and error messages. It
-// deliberately does NOT return the Compact form because log/UI streams
-// are human-targeted; the Compact form is reserved for id composition.
-func (p ParsedLocale) String() string {
-	return p.BCP47
-}
-
 // Parse normalizes an arbitrary locale string into its canonical
 // encodings. Returns a non-nil error (with the offending input quoted)
 // if the input does not match the regex.
@@ -100,11 +93,4 @@ func Parse(locale string) (ParsedLocale, error) {
 		Compact: lang + region,
 		BCP47:   lang + "-" + region,
 	}, nil
-}
-
-// IsValid reports whether the input would Parse without error. Useful
-// for handler-side preflight checks where a hard 400 response is
-// preferred over a runtime error.
-func IsValid(locale string) bool {
-	return localeRe.MatchString(strings.TrimSpace(locale))
 }

@@ -230,7 +230,7 @@ func (w *Worker) completeRendered(
 			}
 			if err := w.renderCache.Put(ctx, rec); err != nil {
 				w.log.Warn("clip.render cache put failed",
-					zap.String("fingerprint", fp[:16]),
+					zap.String("fingerprint", digestPrefix(fp)),
 					zap.Error(err))
 			}
 		}

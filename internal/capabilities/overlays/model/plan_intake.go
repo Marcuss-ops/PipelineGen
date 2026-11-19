@@ -31,20 +31,6 @@ type OverlayIntakeBudget struct {
 	MaxPerScene    int `json:"max_overlays_per_scene"`
 }
 
-// Admission stages that can drop a candidate item. They are stable strings so
-// run reports and the golden-case audit can compare across builds.
-const (
-	OverlayDropSceneWithoutTiming = "scene_without_timing"
-	OverlayDropUnmaterialized     = "unmaterialized_asset"
-	OverlayDropEntityImageBudget  = "entity_image_budget"
-	OverlayDropMapsOnly           = "maps_only"
-	OverlayDropCategoryDisabled   = "category_disabled"
-	OverlayDropGroupLimit         = "group_limit"
-	OverlayDropEditorialBudget    = "editorial_budget"
-	OverlayDropPerSceneCap        = "per_scene_cap"
-	OverlayDropCompositionMerged  = "composition_merged"
-)
-
 // countOverlayItemsByKind groups items by their rendering kind. An empty kind
 // is counted as "unknown" so no candidate silently disappears from the counts.
 func countOverlayItemsByKind(items []OverlayItem) map[string]int {

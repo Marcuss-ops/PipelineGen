@@ -220,8 +220,8 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		// reuse audio cleaned under the previous policy.
 		SilencePolicy: capabilityaudio.DefaultSilenceRemovalPolicy(),
 		TTSRate: func() string {
-			if strings.EqualFold(string(input.Language), "it") {
-				return "+1%"
+			if strings.EqualFold(string(input.Language), "it") || strings.EqualFold(string(input.Language), "en") {
+				return "+10%"
 			}
 			return ""
 		}(),

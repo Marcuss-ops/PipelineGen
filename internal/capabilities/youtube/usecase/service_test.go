@@ -184,9 +184,8 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()
 
-	// Add test hosts to security allowlist
-	security.AddAllowedHost("www.youtube.com")
-	security.AddAllowedHost("youtu.be")
+	// Point the security allowlist at the test hosts
+	security.SetAllowedHosts([]string{"www.youtube.com", "youtu.be"})
 
 	cfg := testConfig(tmp)
 	log := zap.NewNop()
@@ -239,9 +238,8 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()
 
-	// Add test hosts to security allowlist
-	security.AddAllowedHost("www.youtube.com")
-	security.AddAllowedHost("youtu.be")
+	// Point the security allowlist at the test hosts
+	security.SetAllowedHosts([]string{"www.youtube.com", "youtu.be"})
 
 	cfg := testConfig(tmp)
 	log := zap.NewNop()
@@ -439,8 +437,7 @@ func testConfig(tmp string) youtubetypes.RuntimeConfig {
 // returned.
 func TestExtract_ReturnsContextCancelledIfContextCancelled(t *testing.T) {
 	tmp := t.TempDir()
-	security.AddAllowedHost("www.youtube.com")
-	security.AddAllowedHost("youtu.be")
+	security.SetAllowedHosts([]string{"www.youtube.com", "youtu.be"})
 
 	// PR-GRUPOC-1 (July 2026): sub-builder ctor. AssetRepo lands in
 	// ServiceAssetDeps; SearchRunner in ServiceAdapterDeps. The
@@ -494,8 +491,7 @@ func TestExtract_ReturnsContextCancelledIfContextCancelled(t *testing.T) {
 // non-monotonic clocks.
 func TestExtract_ReturnsContextDeadlineExceededIfContextExpired(t *testing.T) {
 	tmp := t.TempDir()
-	security.AddAllowedHost("www.youtube.com")
-	security.AddAllowedHost("youtu.be")
+	security.SetAllowedHosts([]string{"www.youtube.com", "youtu.be"})
 
 	// PR-GRUPOC-1 (July 2026): see sibling TestExtract_ReturnsContext
 	// Cancelled for the sub-builder migration rationale. Same shape.

@@ -156,34 +156,6 @@ func TestClassify_TypedTransientPathTakesPriority(t *testing.T) {
 	}
 }
 
-func TestRetryable_MatchesBinaryFromClassify(t *testing.T) {
-	// FASE 6 Cut 6.1.D migration: production IsTransient became pure
-	// typed-probe; Classify gates its IsTransient-gated category
-	// routing on it. Raw SDK strings no longer reach Classify's
-	// retryable category routing unless wrapped in a typed envelope.
-	// The retryable=true samples are wrapped in TE; the retryable=false
-	// samples stay raw (the domain shaper still substring-matches
-	// validation/missing-handler/raw string shapes per godlike/07
-	// no-fake-availability, so the conservative no-fake path is
-	// preserved at the test boundary).
-	samples := []struct {
-		err    error
-		expect bool
-	}{
-		{&TransientInfrastructureError{Err: errors.New("connection refused")}, true},
-		{&TransientInfrastructureError{Err: errors.New("timeout")}, true},
-		{&TransientInfrastructureError{Err: errors.New("database is locked")}, true},
-		{errTerminalValidation, false},
-		{errors.New("random nonsense shape"), false},
-		{nil, false},
-	}
-	for _, s := range samples {
-		if got := Retryable(s.err); got != s.expect {
-			t.Errorf("Retryable(%v) = %v; want %v", s.err, got, s.expect)
-		}
-	}
-}
-
 // ── 4 retry-loop scenario tests ─────────────────────────────────────────────
 
 // (a) ctx-cancel < 1s: the retry loop's backoff sleep is interruptible

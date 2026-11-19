@@ -24,7 +24,6 @@ package background
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
@@ -47,15 +46,6 @@ var (
 
 type inFlightEntry struct {
 	count int
-}
-
-var inFlightCount atomic.Int64
-
-// InFlight returns the number of currently-registered detached tasks
-// across all (taskName, traceID) pairs. Exported for metrics and
-// dashboarding. Read-only.
-func InFlight() int {
-	return int(inFlightCount.Load())
 }
 
 // DetachWithTimeout returns a context that survives the cancellation
@@ -103,7 +93,6 @@ func DetachWithTimeout(ctx context.Context, taskName string, timeout time.Durati
 	} else {
 		inFlight.Store(key, &inFlightEntry{count: 1})
 	}
-	inFlightCount.Add(1)
 	inFlightMu.Unlock()
 
 	detached := context.WithoutCancel(ctx)
@@ -120,7 +109,6 @@ func DetachWithTimeout(ctx context.Context, taskName string, timeout time.Durati
 				}
 			}
 			inFlightMu.Unlock()
-			inFlightCount.Add(-1)
 		})
 	}
 	stopCleanup := context.AfterFunc(detached, cleanup)

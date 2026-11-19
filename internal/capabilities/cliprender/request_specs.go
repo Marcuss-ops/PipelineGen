@@ -8,6 +8,12 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// BackgroundSpec selects the rendered background. mode "" (omitted) is
+// normalised to BackgroundModeNone.
+//
+// Kind is the media family of the background ASSET (see background.go). It is
+// optional: empty means "derive it from the resolved asset's canonical
+// MediaType"; an explicit value wins. Kind is rejected for mode=none/
 // blur_source: those modes carry no asset, so a declared kind is a
 // contradiction.
 type BackgroundSpec struct {
@@ -51,11 +57,22 @@ type WatermarkSpec struct {
 // explicit 0, which is exactly the ambiguity that made a requested opacity 0
 // render as 1.0. The alias type avoids recursing into this method.
 func (w *WatermarkSpec) UnmarshalJSON(data []byte) error {
-	type watermarkAlias WatermarkSpec
 	var present map[string]json.RawMessage
 	if err := json.Unmarshal(data, &present); err != nil {
 		return err
 	}
+	// encoding/json hands the whole subtree to this method, so
+	// DisallowUnknownFields on the outer decoder no longer reaches inside it.
+	// Re-establish that gate explicitly: a typo such as "enabld" must be a
+	// UNKNOWN_FIELD error, not a silently ignored key that applies defaults.
+	for key := range present {
+		switch key {
+		case "enabled", "text", "asset_id", "position", "opacity", "margin_px", "style":
+		default:
+			return fmt.Errorf("json: unknown field %q", key)
+		}
+	}
+	type watermarkAlias WatermarkSpec
 	var decoded watermarkAlias
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err

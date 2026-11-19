@@ -6,13 +6,47 @@ package voiceover
 
 import (
 	"encoding/json"
+	"fmt"
 	"os/exec"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"go.uber.org/zap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Test-only oracles for the retired legacy batch voice resolver. The current
+// child use case receives its resolved voice directly from the parent.
+func voiceOverrideFor(req *BatchRequest, language Language) string {
+	if req == nil || len(req.VoiceOverrides) == 0 {
+		return ""
+	}
+	return req.VoiceOverrides[string(language)]
+}
+
+func resolveVoiceForLanguage(req *BatchRequest, language Language, registry asset.LanguageRegistry, _ *zap.Logger) (string, error) {
+	if voice := voiceOverrideFor(req, language); voice != "" {
+		return voice, nil
+	}
+	if registry == nil {
+		return "", fmt.Errorf("voice registry is not configured for language %q", language)
+	}
+	spec, ok := registry.Resolve(string(language))
+	if !ok {
+		return "", fmt.Errorf("voice registry has no entry for language %q", language)
+	}
+	if !spec.Enabled {
+		return "", fmt.Errorf("voice registry disabled language %q", language)
+	}
+	if !spec.GenerateTTS {
+		return "", fmt.Errorf("voice registry disables TTS for language %q", language)
+	}
+	if spec.EdgeTTSVoice == "" {
+		return "", fmt.Errorf("voice registry has no TTS voice for language %q", language)
+	}
+	return spec.EdgeTTSVoice, nil
+}
 
 // ── Unit-level: voiceOverrideFor pin (audit-pinned helper surface) ──
 

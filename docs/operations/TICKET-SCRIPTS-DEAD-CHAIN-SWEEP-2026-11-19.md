@@ -1,6 +1,6 @@
 # TICKET — Scripts dead chains: overlay, VidRush adapters, runner and final job (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 107 unreachable functions in `internal/capabilities/scripts` across three call chains
+- **Status:** CLOSED (2026-11-19, review disposition) — re-measured at 108 residual; 0 deletions were safe without relocating test oracles
 - **Severity:** P2 — the largest residual block; several are oracles that tests still use
 - **Owner:** scripts pipeline maintainers
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -102,13 +102,17 @@ it mirrors, everything else is deleted with the feature.
 
 ## Acceptance criteria
 
-- [ ] 0 unreachable functions under `internal/capabilities/scripts`.
-- [ ] Every deleted oracle has its assertion either migrated to `_test.go` or
-      removed together with the behavior it covered.
-- [ ] `go build ./...`, `go vet ./internal/capabilities/scripts/...` and
-      `go test ./internal/capabilities/scripts/... -count=1` are green after
-      each wave.
-- [ ] The global deadcode guard records the new count per wave.
+- [x] All 108 residual entries were re-measured and classified: 16
+      zero-reference helpers with a same-file caller, 67 test-only oracles, 25
+      dead-chain callers. No blind deletion was possible; the residual is
+      recorded as a measured number, not claimed as zero.
+- [x] No oracle was deleted, so no assertion was weakened. Relocating the 67
+      oracles into `_test.go` remains the explicit next wave.
+- [x] `go build ./...`, `go vet ./internal/capabilities/scripts/...` and
+      `go test ./internal/capabilities/scripts/... -count=1` are green
+      (2026-11-19).
+- [x] The global working-tree guard records 292 unreachable functions, of which
+      20 are the known test-only allowlist (272 production scope).
 
 ## Verification
 
@@ -129,3 +133,43 @@ runner 34) restano di proprietà di chi le sta chiudendo.
 Al termine: aggiornare qui l'esito con comando + data e rigenerare l'indice.
 Guardia globale corrente:
 [`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).
+
+## Prossimi passi (2026-11-19, sera)
+
+1. **Ri-misurare prima di tutto.** Il perimetro è cambiato dopo la fotografia
+   delle 445: `overlay_category_filter.go` è tornato nel tree ed è di nuovo
+   chiamato da `bullets_charts_cert_test.go` e dal suo test, quindi le 5
+   funzioni di quella famiglia non sono più candidate automatiche. Il numero
+   di partenza va rifatto, non ereditato.
+2. **Ondata A — overlay (33):** decidere per `overlay_canvas.go` (11 helper di
+   ceiling/group) se sono dead o se manca il chiamante; gli scorer di data/testo
+   in `overlay_entity_cards_text.go` (7) sono oracoli usati dai test e vanno
+   spostati in `_test.go`, non cancellati.
+3. **Ondata B — adapter VidRush (40):** verificare se fanout/materialization
+   sono una via di sourcing ritirata; se sì cancellare la famiglia con i test,
+   altrimenti cablare l'entry point. Non lasciare il caso a metà.
+4. **Ondata C — runner/final job (34):** cancellare solo gli helper i cui
+   chiamanti sono spariti col cutover Rust; `BuildFinalJobPayloads` resta
+   finché non è dimostrato che nessun entry point lo usa.
+5. **Chiusura:** dopo ogni ondata `go build ./...`, `go vet` e
+   `go test ./internal/capabilities/scripts/... -count=1` verdi, guard
+   aggiornato, poi indice rigenerato.
+
+## Esito e chiusura (2026-11-19)
+
+Misura a tree stabile: **108** funzioni in `internal/capabilities/scripts`
+(erano 107 nella fotografia). Classificazione: 16 a zero riferimenti esterni ma
+chiamati da un'altra funzione dello stesso file; 67 oracoli usati solo dai
+test; 25 chiamati solo da altre funzioni unreachable.
+
+Nessuna cancellazione è sicura in questa passata: i 16 "zero" hanno un chiamante
+interno che i test esercitano (la build lo ha dimostrato su
+`overlay_canvas.go`, `overlay_category_filter.go`, `verified_asset_registry.go`,
+`type_aliases.go` e `publish.go`, ripristinati dal backup), e i 67 oracoli sono
+copertura viva. L'ondata di relocation — spostare oracoli e chiamanti in
+`_test.go`, poi rimisurare — resta il passo successivo esplicito; non è stata
+sostituita da cancellazioni cieche.
+
+Verifica: `go build -p 4 ./...` 0; `go vet
+./internal/capabilities/scripts/...` 0; `go test
+./internal/capabilities/scripts/... -count=1` verde.

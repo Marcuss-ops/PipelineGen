@@ -113,6 +113,13 @@ func NewExecutorWithOutputLimit(binaryPath, ffmpegPath string, slots int, output
 // bounded number of in-flight requests. It is intended for CPU-only workers
 // whose protocol guarantees one response line per request in input order.
 func NewMultiplexedExecutorWithOutputLimit(binaryPath, ffmpegPath string, maxInFlight int, outputLimit int64, log *zap.Logger) *Executor {
+	return NewMultiplexedExecutorWithEnvironment(binaryPath, ffmpegPath, maxInFlight, outputLimit, nil, log)
+}
+
+// NewMultiplexedExecutorWithEnvironment is the same worker with explicit
+// KEY=VALUE environment overrides (used to opt semantic-engine into its disk
+// cache). Nil env keeps the inherited environment.
+func NewMultiplexedExecutorWithEnvironment(binaryPath, ffmpegPath string, maxInFlight int, outputLimit int64, env []string, log *zap.Logger) *Executor {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -124,7 +131,7 @@ func NewMultiplexedExecutorWithOutputLimit(binaryPath, ffmpegPath string, maxInF
 	}
 	return &Executor{
 		binaryPath: binaryPath, ffmpegPath: ffmpegPath, log: log,
-		runner:      rustworker.NewMultiplexedPersistentRunner(maxInFlight),
+		runner:      rustworker.NewMultiplexedPersistentRunnerWithEnv(maxInFlight, env),
 		outputLimit: outputLimit, timeout: defaultRustTimeout,
 	}
 }

@@ -3,12 +3,7 @@ package voiceover
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"strings"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/pkg/immutability"
 )
 
 // ── PR-VO-AUDIT-P01 helpers ─────────────────────────────────────────
@@ -38,99 +33,6 @@ func (i *BatchItem) fail(code FailureCode, err error) BatchItem {
 	}
 	i.Errors = append(i.Errors, code)
 	return *i
-}
-
-// normalizeBatchRequest performs the canonical pre-flight normalisation
-// for voiceover batch handlers, returning a fresh BatchRequest value.
-// The previous implementation mutated `req_in.X = ...` in place, which
-// made the typed copy-on-write primitive pkg/immutability.CloneWith[T]
-// inspect-call impossible without a pointer-to-pointer round-trip.
-//
-// This rewrite swaps the signature from `*BatchRequest -> *BatchRequest`
-// to `BatchRequest -> BatchRequest` (value semantics) — matching the
-// the migration honest: the function now returns the NORMALIZED value,
-// and callers receive the clone directly.
-//
-// SHALLOW-CLONE SEMANTICS (see pkg/immutability/copy.go godlike/06
-// SSOT docblock): mutation must be REPLACEMENT (`r.Languages =
-// []Language{...}` / `r.VoiceOverrides = map[string]string{...}`)
-// rather than index/deref, otherwise the changes bleed through to
-// the shared slice/map backing storage. The caller's original
-// BatchRequest value is byte-equivalent to its pre-call value for
-// all primitive fields; composite fields are freshly bound.
-func normalizeBatchRequest(req_in BatchRequest) BatchRequest {
-	return normalizeBatchRequestWithDefaults(req_in, config.DefaultVoiceoverDefaults())
-}
-
-func normalizeBatchRequestWithDefaults(req_in BatchRequest, defaults config.VoiceoverDefaultsConfig) BatchRequest {
-	// INPUT-IMMUTABILITY-COPY-ON-WRITE-MIGRATION: see architecture/
-	// deprecations.yaml for the godlike/07 audit-pin + the godlike
-	// forward-pointer entry.
-	cloned := immutability.CloneWith(req_in, func(r *BatchRequest) {
-		if r.FilenameTemplate == "" {
-			r.FilenameTemplate = defaults.DefaultFilenameTemplate
-		}
-		// PR-VO-A2: route through the canonical asset.PipelineStrategy
-		// normaliser so process.go's `req_in.Strategy == "replace"`
-		// branch matches the single source of truth for the three
-		// production strategies (verify / skip / replace). Unknown
-		// inputs collapse to "verify" — the read-through-cache
-		// default — which is the historically documented "no force"
-		// behaviour of NormalizeStrategy.
-		if strings.TrimSpace(r.Strategy) == "" {
-			r.Strategy = defaults.DefaultStrategy
-		} else {
-			r.Strategy = string(asset.NormalizeStrategy(r.Strategy, false))
-		}
-		if len(r.Languages) == 0 && strings.TrimSpace(defaults.DefaultLanguage) != "" {
-			r.Languages = []Language{Language(defaults.DefaultLanguage)}
-		}
-		if len(r.VoiceOverrides) == 0 {
-			if hydrated := voiceOverridesFromMetadata(r.Metadata); len(hydrated) > 0 {
-				// REPLACEMENT (not index mutation): slice/map backing
-				// storage is shared between cloned and original under
-				// pkg/immutability.CloneWith SHALLOW-CLONE semantics.
-				// See pkg/immutability/copy.go godlike/06 SSOT docblock.
-				r.VoiceOverrides = map[string]string{}
-				for k, v := range hydrated {
-					r.VoiceOverrides[k] = v
-				}
-			}
-		}
-	})
-	return cloned
-}
-
-func voiceOverridesFromMetadata(metadata map[string]any) map[string]string {
-	if len(metadata) == 0 {
-		return nil
-	}
-	raw, ok := metadata["voice_overrides"]
-	if !ok || raw == nil {
-		return nil
-	}
-	out := map[string]string{}
-	switch typed := raw.(type) {
-	case map[string]string:
-		for lang, voice := range typed {
-			if lang == "" || voice == "" {
-				continue
-			}
-			out[lang] = voice
-		}
-	case map[string]any:
-		for lang, value := range typed {
-			voice, ok := value.(string)
-			if !ok || lang == "" || voice == "" {
-				continue
-			}
-			out[lang] = voice
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
 }
 
 func randomSuffix(n int) string {

@@ -44,8 +44,7 @@ var _ assetdomain.Resolver = (*fakeAssetDestResolver)(nil)
 // asset.Resolver, upload into the CHILD folder, and keep folder_path
 // matching the subfolder (the real Drive parent of the clips).
 func TestExtract_CreateSubfolder_ResolvesChildFolderNotRoot(t *testing.T) {
-	security.AddAllowedHost("www.youtube.com")
-	security.AddAllowedHost("youtu.be")
+	security.SetAllowedHosts([]string{"www.youtube.com", "youtu.be"})
 
 	resolver := &fakeAssetDestResolver{
 		result: &assetdomain.ResolveResult{
@@ -178,7 +177,7 @@ func TestValidateDriveDestination_FailsClosedOnUnresolvedRoot(t *testing.T) {
 // same rule at the real entry point: Extract must return an error (and no
 // response) instead of running a job that would upload nothing and report ok.
 func TestExtract_FailsClosedWhenRequestedDriveDestinationDoesNotResolve(t *testing.T) {
-	security.AddAllowedHost("www.youtube.com")
+	security.SetAllowedHosts([]string{"www.youtube.com", "youtu.be"})
 
 	tmp := t.TempDir()
 	pipeline := &fakeVideoPipeline{err: errYtDlpFailed}

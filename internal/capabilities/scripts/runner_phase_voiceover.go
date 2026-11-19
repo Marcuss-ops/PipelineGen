@@ -32,15 +32,6 @@ type voiceoverResult struct {
 	metric   TTSSSceneMetric
 }
 
-// buildVoiceoverWork flattens the scene×language grid into the ordered work
-// items that need a fresh voiceover (empty text and already-generated scenes
-// are skipped). Languages are ordered by dispatch priority — (scene_index,
-// language_priority): source language first, then targets in caller order — so
-// the fan-out order and the output-asset lineage ordinals are deterministic.
-func buildVoiceoverWork(scenes []Scene, sourceLanguage Language, targetLanguages []Language) []voiceoverWork {
-	return buildVoiceoverWorkForLanguages(scenes, sourceLanguage, targetLanguages, nil)
-}
-
 func buildVoiceoverWorkForLanguages(scenes []Scene, sourceLanguage Language, targetLanguages, voiceoverLanguages []Language) []voiceoverWork {
 	work := make([]voiceoverWork, 0)
 	for i := range scenes {

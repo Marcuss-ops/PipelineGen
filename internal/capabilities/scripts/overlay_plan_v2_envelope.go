@@ -6,6 +6,7 @@
 package scriptgeneration
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -19,19 +20,27 @@ import (
 
 func overlayPlanIdentity(planID, videoID, projectID, motionSeed string, canvas OverlayCanvasSpec) overlayplan.PlanIdentity {
 	return overlayplan.PlanIdentity{
-		PlanID:        planID,
-		VideoID:       videoID,
-		ProjectID:     projectID,
-		MotionSeed:    motionSeed,
-		CoherenceSeed: canvas.CoherenceSeed,
-		Width:         canvas.Width,
-		Height:        canvas.Height,
-		FPSNum:        canvas.FPSNum,
-		FPSDen:        canvas.FPSDen,
+		PlanID:     planID,
+		VideoID:    videoID,
+		ProjectID:  projectID,
+		MotionSeed: motionSeed,
+		Width:      canvas.Width,
+		Height:     canvas.Height,
+		FPSNum:     canvas.FPSNum,
+		FPSDen:     canvas.FPSDen,
 	}
 }
 
 func overlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
+	entityBadgeColor := strings.TrimSpace(canvas.EntityBadgeColor)
+	if entityBadgeColor != "" {
+		if len(entityBadgeColor) != 7 || entityBadgeColor[0] != '#' {
+			return overlayplan.Canvas{}, fmt.Errorf("entity_badge_color must be #RRGGBB")
+		}
+		if _, err := hex.DecodeString(entityBadgeColor[1:]); err != nil {
+			return overlayplan.Canvas{}, fmt.Errorf("entity_badge_color must be #RRGGBB")
+		}
+	}
 	directives := make([]json.RawMessage, 0, len(canvas.AnimationDirectives))
 	for _, directive := range canvas.AnimationDirectives {
 		encoded, err := json.Marshal(directive)
@@ -56,6 +65,18 @@ func overlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 	if err != nil {
 		return overlayplan.Canvas{}, fmt.Errorf("overlay plan v2: %w", err)
 	}
+	// The short-phrase buckets are the registry's, not a second list: the run
+	// inherits them unless it carries its own resolved pools. Without them the
+	// planner cannot rotate the lane and every phrase falls back to the preset's
+	// single motion.
+	shortPhraseMotions := cloneStringSliceMap(canvas.ShortPhraseMotionsByWord)
+	if len(shortPhraseMotions) == 0 {
+		shortPhraseMotions = capabilityoverlay.ShortPhraseMotionsByWord()
+	}
+	longPhraseMotions := append([]string(nil), canvas.LongPhraseMotions...)
+	if len(longPhraseMotions) == 0 {
+		longPhraseMotions = capabilityoverlay.LongPhraseMotions()
+	}
 	return overlayplan.Canvas{
 		OverlayCategories:        overlayCategoriesToWire(canvas.OverlayCategories),
 		GroupLimits:              cloneIntMap(canvas.OverlayGroupLimits),
@@ -65,14 +86,15 @@ func overlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 		MaxMapOverlays:           canvas.MaxMapOverlays,
 		MapPresentation:          presentation,
 		AnimationCounts:          cloneIntMap(canvas.AnimationCounts),
-		PhraseMotions:            append([]string(nil), canvas.PhraseMotions...),
 		ShortPhraseMotion:        canvas.ShortPhraseMotion,
-		LongPhraseMotion:         canvas.LongPhraseMotion,
+		ShortPhraseMotionsByWord: shortPhraseMotions,
+		LongPhraseMotions:        longPhraseMotions,
 		ImageMotions:             append([]string(nil), canvas.ImageMotions...),
 		ImageWithTextMotions:     append([]string(nil), canvas.ImageWithTextMotions...),
 		EntityImageMotions:       append([]string(nil), canvas.EntityImageMotions...),
 		EntityCaptionMotions:     append([]string(nil), canvas.EntityCaptionMotions...),
 		EntityStyleID:            canvas.EntityStyleID,
+		EntityBadgeColor:         entityBadgeColor,
 		AnimationDirectives:      directives,
 		AnimationContractVersion: canvas.AnimationContractVersion,
 		AnimationCatalogDigest:   canvas.AnimationCatalogDigest,
@@ -96,6 +118,17 @@ func cloneIntMap(in map[string]int) map[string]int {
 	out := make(map[string]int, len(in))
 	for key, value := range in {
 		out[key] = value
+	}
+	return out
+}
+
+func cloneStringSliceMap(in map[string][]string) map[string][]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(in))
+	for key, value := range in {
+		out[key] = append([]string(nil), value...)
 	}
 	return out
 }

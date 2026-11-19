@@ -87,7 +87,7 @@ import (
 // ATTESO:
 //   - err non-nil
 //   - err message contains "404"
-//   - retry.Retryable(err) == false (4xx is terminal — the
+//   - retryIsRetryable(err) == false (4xx is terminal — the
 //     model will not magically appear)
 func TestClient_P1C_Generate404_ModelNotFound(t *testing.T) {
 	t.Parallel()
@@ -111,7 +111,7 @@ func TestClient_P1C_Generate404_ModelNotFound(t *testing.T) {
 		"error must surface the HTTP status so operators can detect missing-model")
 	assert.Contains(t, err.Error(), "status",
 		"error must include the canonical 'status' word for substring-matchers")
-	assert.False(t, retry.Retryable(err),
+	assert.False(t, retryIsRetryable(err),
 		"4xx MUST NOT be retried — the model will not appear (retry SOLO dove appropriato)")
 	cat, _ := retry.Classify(err)
 	assert.Equal(t, "unknown", string(cat),
@@ -129,7 +129,7 @@ func TestClient_P1C_Generate404_ModelNotFound(t *testing.T) {
 // ATTESO:
 //   - err non-nil
 //   - err message contains "500"
-//   - retry.Retryable(err) == false (500 is NOT in the transient
+//   - retryIsRetryable(err) == false (500 is NOT in the transient
 //     taxonomy — see SUT BUG 7 below)
 //
 // SUT BUG 7: "500" is NOT in transientSubstrings
@@ -159,7 +159,7 @@ func TestClient_P1C_Generate500_ServerError(t *testing.T) {
 	assert.Empty(t, resp, "response MUST be empty when the request failed")
 	assert.Contains(t, err.Error(), "500",
 		"error must surface the HTTP status so operators can detect server failure")
-	assert.False(t, retry.Retryable(err),
+	assert.False(t, retryIsRetryable(err),
 		"500 is NOT in transientSubstrings (canonical taxonomy: 429/502/503/504, NOT 500) — see SUT BUG 7. Workers using retry.Retryable will NOT retry 500 today.")
 	cat, _ := retry.Classify(err)
 	assert.Equal(t, "unknown", string(cat),
@@ -176,7 +176,7 @@ func TestClient_P1C_Generate500_ServerError(t *testing.T) {
 // ATTESO:
 //   - err non-nil
 //   - err message contains "503"
-//   - retry.Retryable(err) == true (503 is the canonical
+//   - retryIsRetryable(err) == true (503 is the canonical
 //     transient — Ollama load-balancer / GPU warmup retries)
 func TestClient_P1C_Generate503_ServiceUnavailable(t *testing.T) {
 	t.Parallel()
@@ -193,7 +193,7 @@ func TestClient_P1C_Generate503_ServiceUnavailable(t *testing.T) {
 	assert.Empty(t, resp, "response MUST be empty when the request failed")
 	assert.Contains(t, err.Error(), "503",
 		"error must surface the HTTP status so operators can detect service-unavailable")
-	require.True(t, retry.Retryable(err),
+	require.True(t, retryIsRetryable(err),
 		"503 IS the canonical transient per pkg/retry/transient.go — workers MUST retry (retry SOLO dove appropriato)")
 	cat, _ := retry.Classify(err)
 	assert.Equal(t, "network", string(cat),
@@ -211,7 +211,7 @@ func TestClient_P1C_Generate503_ServiceUnavailable(t *testing.T) {
 //   - err non-nil
 //   - err message contains "connection refused" (the canonical
 //     network-error signal)
-//   - retry.Retryable(err) == true (network errors are
+//   - retryIsRetryable(err) == true (network errors are
 //     transient — the server may come back up)
 func TestClient_P1C_GenerateConnectionRefused(t *testing.T) {
 	t.Parallel()
@@ -234,7 +234,7 @@ func TestClient_P1C_GenerateConnectionRefused(t *testing.T) {
 		"error must surface the connection-refused signal verbatim")
 	assert.Contains(t, err.Error(), "ollama request failed",
 		"error must be wrapped with the client context (ollama request failed: %w)")
-	require.True(t, retry.Retryable(err),
+	require.True(t, retryIsRetryable(err),
 		"connection refused IS the canonical network transient per pkg/retry/transient.go — workers MUST retry (retry SOLO dove appropriato)")
 	cat, _ := retry.Classify(err)
 	assert.Equal(t, "network", string(cat),
@@ -255,7 +255,7 @@ func TestClient_P1C_GenerateConnectionRefused(t *testing.T) {
 // ATTESO:
 //   - err non-nil
 //   - err message contains "timeout" (the canonical timeout signal)
-//   - retry.Retryable(err) == true (timeouts are transient)
+//   - retryIsRetryable(err) == true (timeouts are transient)
 //
 // SUT BUG 5 note: this test exercises the http.Client.Timeout
 // path (which contains "timeout"). The context.WithTimeout
@@ -291,7 +291,7 @@ func TestClient_P1C_GenerateTimeout(t *testing.T) {
 	// CI noise (2.5s).
 	assert.Less(t, elapsed, 2500*time.Millisecond,
 		"client MUST short-circuit at http.Client.Timeout (~1s), not wait for the server sleep (3s); elapsed=%s", elapsed)
-	require.True(t, retry.Retryable(err),
+	require.True(t, retryIsRetryable(err),
 		"timeout IS transient per pkg/retry/transient.go — workers MUST retry (retry SOLO dove appropriato): %v", err)
 	cat, _ := retry.Classify(err)
 	assert.Equal(t, "timeout", string(cat),
@@ -374,3 +374,9 @@ func TestClient_P1C_ConstructorShapeLock(t *testing.T) {
 // scriptOllamaGenerator = (*ollama.Generator)(nil)` — that
 // surface is the canonical use-case entry point. This file
 // tests the *Client directly.)
+
+// retryIsRetryable is the local form of the retired retry.Retryable helper.
+func retryIsRetryable(err error) bool {
+	_, retryable := retry.Classify(err)
+	return retryable
+}

@@ -9,13 +9,19 @@ package linguistics
 // polluting the slim lexicon_registry.go (which only carries the
 // orchestrating struct Profiles).
 type LexiconProfile struct {
-	StopWords         map[string]struct{}
-	FunctionWords     map[string]struct{}
-	EntityBlocklist   map[string]struct{}
-	NegativeParticles map[string]struct{}
-	VisualVerbs       map[string]struct{}
-	VerbSuffixes      []string
-	PhrasePolicy      PhraseExtractionPolicy
+	StopWords       map[string]struct{}
+	FunctionWords   map[string]struct{}
+	EntityBlocklist map[string]struct{}
+	// PlaceCandidateBlocklist and PlaceCandidateTokenBlocklist are the
+	// map/geocode gate, not the NER gate: the first matches a whole
+	// normalized query, the second any single token inside it. Both come
+	// from the Rust language sources like every other set here.
+	PlaceCandidateBlocklist      map[string]struct{}
+	PlaceCandidateTokenBlocklist map[string]struct{}
+	NegativeParticles            map[string]struct{}
+	VisualVerbs                  map[string]struct{}
+	VerbSuffixes                 []string
+	PhrasePolicy                 PhraseExtractionPolicy
 
 	// WordSets holds the additional named per-language word sets from the
 	// Rust-generated profile (subordinate markers, pronouns,

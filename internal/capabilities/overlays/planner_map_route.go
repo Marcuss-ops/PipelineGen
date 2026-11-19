@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
 )
 
 // mapFadeHalfBandZoom is the planner's half-width (in zoom stops) of every LOD
@@ -63,4 +64,54 @@ func plateFitsCanvas(plate MapPlate, canvasWidth, canvasHeight int) bool {
 	}
 	return plate.Width >= canvasWidth && plate.Height >= canvasHeight &&
 		plate.Width <= capmodel.MaxMapRasterWidth && plate.Height <= capmodel.MaxMapRasterHeight
+}
+
+// certifyUnitRoute re-certifies the plate a chunked map will actually render.
+//
+// Narrative grouping may hand several places the plate of the first one, and a
+// chunk's camera journey then starts and ends somewhere the resolved ladder was
+// never certified for: the worker validates every LOD over the exact zoom
+// interval where it is visible and voids the plan when the emitted route leaves
+// the raster. The item's own endpoints are the only route the renderer will
+// travel, so the flyover is re-resolved for them and the chunk keeps its pins
+// only when the new ladder covers every one of them. When no certified journey
+// exists the plate is returned unchanged and the ordinary coverage check decides.
+func certifyUnitRoute(plate MapPlate, places []MapCandidate, resolver PlateResolver, canvasWidth, canvasHeight int) MapPlate {
+	if len(plate.LODs) < 2 || resolver == nil || canvasWidth <= 0 || canvasHeight <= 0 || len(places) == 0 {
+		return plate
+	}
+	flyovers, ok := resolver.(FlyoverPlateResolver)
+	if !ok {
+		return plate
+	}
+	from, to := routeEndpoints(places, plate.Center)
+	certified, ok := flyovers.ResolveFlyover(from, to, canvasWidth, canvasHeight)
+	if !ok || len(certified.LODs) == 0 || !plateTextMatches(plate, certified) || !plateCoversPlaces(certified, places) {
+		return plate
+	}
+	return certified
+}
+
+// plateTextMatches keeps the provenance the plan already carries: a re-resolved
+// ladder is only substitutable when it describes the same imagery licensing.
+func plateTextMatches(current, candidate MapPlate) bool {
+	return current.License == candidate.License && current.Attribution == candidate.Attribution
+}
+
+// plateCoversPlaces reports whether every pin of the chunk falls inside the
+// certified base raster and each of its LODs.
+func plateCoversPlaces(plate MapPlate, places []MapCandidate) bool {
+	windows := make([]geodesy.Window, 0, len(plate.LODs)+1)
+	windows = append(windows, plate.Window)
+	for _, lod := range plate.LODs {
+		windows = append(windows, geodesy.CenteredOn(lod.Center.Latitude, lod.Center.Longitude, lod.Zoom, lod.Width, lod.Height))
+	}
+	for _, place := range places {
+		for _, window := range windows {
+			if !window.Contains(place.Latitude, place.Longitude) {
+				return false
+			}
+		}
+	}
+	return true
 }

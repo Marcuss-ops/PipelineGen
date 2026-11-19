@@ -28,7 +28,6 @@ import (
 
 import (
 	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
-	infradrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 import (
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/voiceover"
@@ -364,10 +363,6 @@ var (
 	ErrAssetDestSubfolderFailed  = assetswiring.ErrDestSubfolderFailed
 	ErrAssetDestEmptyFolderID    = assetswiring.ErrDestEmptyFolderID
 )
-
-func NewAssetDestResolver(admin infradrive.Admin) *AssetDestResolver {
-	return assetswiring.NewDestResolver(admin)
-}
 
 // buildVoiceoverBundle constructs the canonical *assetvoice.VoiceoverDescriptor.
 //

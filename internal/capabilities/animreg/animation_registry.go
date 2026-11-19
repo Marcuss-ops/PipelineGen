@@ -567,14 +567,6 @@ func (r *AnimationRegistry) Entries() []AnimationEntry {
 	return r.entries
 }
 
-// MapTypeDefault returns the basemap id used when no map type is requested.
-func (r *AnimationRegistry) MapTypeDefault() string {
-	if r == nil {
-		return ""
-	}
-	return r.mapTypeDefault
-}
-
 func containsMotion(pool []string, id string) bool {
 	for _, candidate := range pool {
 		if candidate == id {

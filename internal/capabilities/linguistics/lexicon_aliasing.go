@@ -22,18 +22,6 @@ type PhraseExtractionPolicy struct {
 	RejectVerbsWhenAll bool `yaml:"reject_verbs_when_all" json:"reject_verbs_when_all"`
 }
 
-// DefaultPhraseExtractionPolicy returns a sensible default policy
-// used by the fallback profile when no explicit phrase_policy file
-// is present.
-func DefaultPhraseExtractionPolicy() PhraseExtractionPolicy {
-	return PhraseExtractionPolicy{
-		MinWords:           2,
-		MaxWords:           16,
-		MaxResults:         5,
-		RejectVerbsWhenAll: true,
-	}
-}
-
 // PhrasePolicy returns the phrase extraction policy for the given
 // language. Phase 8 split: aliasing-domain accessor.
 func (r *Profiles) PhrasePolicy(language string) PhraseExtractionPolicy {

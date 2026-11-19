@@ -8,6 +8,53 @@ import (
 	"testing"
 )
 
+// TestForegroundScalePercentRangeMatchesMessage pins CR-19-14: the accepted
+// range is [0,100] and 0 means "use the contract default (100)", exactly as the
+// validation error must say.
+func TestForegroundScalePercentRangeMatchesMessage(t *testing.T) {
+	for _, scale := range []int{0, 1, 100} {
+		req := baseRenderRequest()
+		req.Output.ForegroundScalePercent = scale
+		if err := req.Validate(); err != nil {
+			t.Fatalf("foreground_scale_percent=%d must be accepted, got %v", scale, err)
+		}
+	}
+
+	req := baseRenderRequest()
+	req.Output.ForegroundScalePercent = 101
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("foreground_scale_percent=101 must be rejected")
+	}
+	if !strings.Contains(err.Error(), "[0,100]") {
+		t.Fatalf("message must state the accepted range [0,100], got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "contract default") {
+		t.Fatalf("message must explain that 0 selects the contract default, got %q", err.Error())
+	}
+}
+
+// TestNormalize_DoesNotFabricateAWatermarkRequest keeps the worker's
+// watermark_requested telemetry honest: Normalize always materializes the
+// block, so only the caller-set Enabled bit can answer "was a watermark
+// requested?".
+func TestNormalize_DoesNotFabricateAWatermarkRequest(t *testing.T) {
+	req := &RenderRequest{}
+	req.Normalize()
+	if req.Watermark == nil {
+		t.Fatal("Normalize must materialize the watermark block")
+	}
+	if req.Watermark.Enabled {
+		t.Fatal("Normalize must not turn an omitted watermark into a requested one")
+	}
+
+	requested := &RenderRequest{Watermark: &WatermarkSpec{Enabled: true, AssetID: "wm"}}
+	requested.Normalize()
+	if !requested.Watermark.Enabled {
+		t.Fatal("an explicitly enabled watermark must stay enabled")
+	}
+}
+
 // TestNormalize_AppliesCanonicalDefaults verifies the idempotent
 // default pass: an empty request gets every canonical default.
 func TestNormalize_AppliesCanonicalDefaults(t *testing.T) {

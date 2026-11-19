@@ -1,42 +1,9 @@
-// Package voiceover — metadata.go (PR-VO-B2 metadata + StyleGroup
-// restoration, June 2026; PR-VO-AUDIT-P02-P03 wrapper refactor, June 2026).
-//
-// Owns two production bodies:
-//
-//  1. mergeUserMetadata — meta-build bridge that injects
-//     ResolvedDestination.StyleGroup (omitempty) and overlays
-//     user-supplied metadata onto the meta map (dropping on
-//     collision with a WARN log so callers learn about the drop).
-//
-//  2. resolveDestination — *Service thin WRAPPER over the canonical
-//     ResolveVoiceoverDestination function (declared in
-//     `destination_resolver.go`, June 2026 P0.2+P0.3 closure). The
-//     wrapper exists only to read
-//     `s.cfg.Drive.VoiceoverFolder()` nil-safe and forward it as
-//     `defaultFolderID`. All routing semantics (KindExplicit /
-//     KindGroup / KindAuto precedence, StyleGroup forwarding + MIRROR
-//     on the KindGroup branch, nil-dest fallback) live in the
-//     canonical function. See that file for the production behaviour
-//     and the audit-mandated precedence rules.
-//
-// File-placement rationale (AGENTS.md Pattern 5): metadata.go owns
-// metadata-layer concerns (mergeUserMetadata + the cfg→resolver
-// bridge), stages.go owns the orchestrator entrypoint shells
-// (GenerateBatch + 3 stage methods), and destination_resolver.go
-// owns the destination routing decision surface. The split is
-// per-capability-stable, not per-line-count.
-//
-// Identifier convention: the magic string "PR-VO-B2" surfaces in the
-// WARN log message inside mergeUserMetadata so an operator can
-// grep production logs to find dropped-user-meta events.
-// PR-VO-AUDIT-P02-P03 markers surface in destination_resolver.go
-// (canonical precedence + sentinel errors) so an operator can grep
-// production logs to find central-fallback or Kind-routing events.
+// Package voiceover — metadata.go owns the metadata bridge used while
+// building voiceover artifacts. Destination selection is centralized in
+// destination_resolver.go; the unused legacy Service wrapper was retired.
 package voiceover
 
 import (
-	"context"
-
 	"go.uber.org/zap"
 )
 
@@ -102,54 +69,4 @@ func mergeUserMetadata(
 		}
 		meta[k] = v
 	}
-}
-
-// resolveDestination is the *Service method that the pre-PR8
-// process.go called to convert a wire-shape DestinationRequest
-// into an internal ResolvedDestination ready for the per-language
-// orchestrator (processLanguage).
-//
-// Behaviour pinned by tests:
-//
-//  1. FORWARD: caller-supplied dest.Group + dest.StyleGroup land
-//     in the asset.ResolveRequest the resolver sees
-//     (Source = "voiceover" hardcoded).
-//  2. MIRROR:  dest.StyleGroup is mirrored onto the returned
-//     ResolvedDestination verbatim (resolver is a folder-
-//     mapping layer; it does NOT echo StyleGroup back).
-//  3. Empty:   empty StyleGroup propagates as zero through both
-//     directions (forward + mirror).
-//  4. Folder:  resolver's FolderID / FolderPath / DriveLink
-//     pass through into the returned ResolvedDestination.
-//
-// PR-VO-AUDIT-P02-P03 (June 2026): Service.resolveDestination is now a
-// thin wrapper over the canonical ResolveVoiceoverDestination function
-// (declared in `destination_resolver.go`). The cfg.Drive.VoiceoverFolder()
-// fallback is read nil-safe here and forwarded as defaultFolderID; the
-// resolver itself never reads cfg, so a future composition root that
-// supplies the default folder via a different channel (e.g. a typed
-// RuntimeConfig surface, per Wave 5 #3) just needs to swap the
-// service-side read without touching the canonical function.
-//
-// Behaviour pinned by tests (process_metadata_test.go +
-// destination_resolver_test.go):
-//
-//  1. The legacy `ForwardsAndMirrorsStyleGroup` +
-//     `StyleGroupEmpty_NoForwardOrMirror` pins continue to fire —
-//     empty Kind → auto-detect → resolver call (Group is set in
-//     those tests) → MIRROR verbatim. Back-compat preserved.
-//  2. Nil cfg is tolerated (the wrapper reads s.cfg.Drive
-//     nil-safe so test doubles and minimal Service{log:…} fixtures
-//     keep compiling without spurious panics).
-//  3. Nil dest is delegated to the resolver's nil-dest branch
-//     which consults defaultFolderID (empty in tests = ErrMissingFolder).
-func (s *Service) resolveDestination(
-	ctx context.Context,
-	dest *DestinationRequest,
-) (*ResolvedDestination, error) {
-	defaultFolderID := ""
-	if s != nil && s.cfg != nil {
-		defaultFolderID = s.cfg.Drive.VoiceoverFolder()
-	}
-	return ResolveVoiceoverDestination(ctx, dest, s.assetDestResolver, defaultFolderID)
 }

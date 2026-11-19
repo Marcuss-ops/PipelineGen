@@ -59,37 +59,45 @@ type V2Request struct {
 // PlanIdentity is the immutable plan identity. Motion entropy is derived from
 // it, never from wall-clock state.
 type PlanIdentity struct {
-	PlanID        string `json:"plan_id"`
-	VideoID       string `json:"video_id"`
-	ProjectID     string `json:"project_id"`
-	MotionSeed    string `json:"motion_seed"`
-	CoherenceSeed string `json:"coherence_seed"`
-	Width         int    `json:"width"`
-	Height        int    `json:"height"`
-	FPSNum        int    `json:"fps_num"`
-	FPSDen        int    `json:"fps_den"`
+	PlanID     string `json:"plan_id"`
+	VideoID    string `json:"video_id"`
+	ProjectID  string `json:"project_id"`
+	MotionSeed string `json:"motion_seed"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	FPSNum     int    `json:"fps_num"`
+	FPSDen     int    `json:"fps_den"`
 }
 
 // Canvas carries the run-level selection controls. Rendering metadata stays
 // opaque and is deliberately absent from this contract.
 type Canvas struct {
-	OverlayCategories        map[string]string `json:"overlay_categories"`
-	GroupLimits              map[string]int    `json:"group_limits,omitempty"`
-	MaxOverlaysPerScene      int               `json:"max_overlays_per_scene"`
-	MaxPhraseOverlays        int               `json:"max_phrase_overlays"`
-	MaxImageOverlays         int               `json:"max_image_overlays"`
-	MaxMapOverlays           int               `json:"max_map_overlays"`
-	MapPresentation          MapPresentation   `json:"map_presentation"`
-	AnimationCounts          map[string]int    `json:"animation_counts,omitempty"`
-	PhraseMotions            []string          `json:"phrase_motions,omitempty"`
-	ShortPhraseMotion        string            `json:"short_phrase_motion,omitempty"`
-	LongPhraseMotion         string            `json:"long_phrase_motion,omitempty"`
+	OverlayCategories   map[string]string `json:"overlay_categories"`
+	GroupLimits         map[string]int    `json:"group_limits,omitempty"`
+	MaxOverlaysPerScene int               `json:"max_overlays_per_scene"`
+	MaxPhraseOverlays   int               `json:"max_phrase_overlays"`
+	MaxImageOverlays    int               `json:"max_image_overlays"`
+	MaxMapOverlays      int               `json:"max_map_overlays"`
+	MapPresentation     MapPresentation   `json:"map_presentation"`
+	AnimationCounts     map[string]int    `json:"animation_counts,omitempty"`
+	ShortPhraseMotion   string            `json:"short_phrase_motion,omitempty"`
+	// ShortPhraseMotionsByWord is the certified short-phrase entrance pool
+	// keyed by the phrase's word count ("1".."5"). With no pin the planner
+	// rotates the bucket for the item's own length, so two phrases of
+	// different lengths cannot collapse onto one motion. An absent bucket
+	// leaves that length on the presentation default.
+	ShortPhraseMotionsByWord map[string][]string `json:"short_phrase_motions_by_word,omitempty"`
+	// LongPhraseMotions is the certified long-phrase (6+ words) entrance pool.
+	// It has no per-length buckets: the planner rotates this pool with the same
+	// deterministic sampler as the short lane, and the pin still wins.
+	LongPhraseMotions        []string          `json:"long_phrase_motions,omitempty"`
 	ImageMotions             []string          `json:"image_motions,omitempty"`
 	ImageWithTextMotions     []string          `json:"image_with_text_motions,omitempty"`
 	EntityImageMotions       []string          `json:"entity_image_motions,omitempty"`
 	EntityCaptionMotions     []string          `json:"entity_caption_motions,omitempty"`
 	ImageMotionOffset        int               `json:"image_motion_offset,omitempty"`
 	EntityStyleID            string            `json:"entity_style_id,omitempty"`
+	EntityBadgeColor         string            `json:"entity_badge_color,omitempty"`
 	AnimationDirectives      []json.RawMessage `json:"animation_directives,omitempty"`
 	AnimationContractVersion int               `json:"animation_contract_version,omitempty"`
 	AnimationCatalogDigest   string            `json:"animation_catalog_digest,omitempty"`

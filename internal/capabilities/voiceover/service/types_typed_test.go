@@ -52,9 +52,23 @@ package voiceover
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
+
+// MustParseLanguage is test-only convenience for fixtures with known values.
+func MustParseLanguage(s string) Language {
+	lang, err := ParseLanguage(s)
+	if err != nil {
+		panic(fmt.Sprintf("MustParseLanguage: %v", err))
+	}
+	return lang
+}
+
+// ParseStyleGroup mirrors the removed convenience constructor in test code;
+// production wire paths already own their parsing and validation.
+func ParseStyleGroup(s string) StyleGroup { return StyleGroup(strings.TrimSpace(s)) }
 
 // ────────────────────────────────────────────────────────────────────────
 // Language — typed envelope contract

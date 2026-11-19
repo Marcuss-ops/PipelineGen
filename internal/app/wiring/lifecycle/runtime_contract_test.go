@@ -536,39 +536,3 @@ func TestLifecycle_NoGoroutinesLeaked(t *testing.T) {
 			baseline, after, baseline+2)
 	}
 }
-
-// TestSafeCall verifies the panic-to-error helper directly. nil-fn is
-// a no-op, normal return is nil, panic returns a named error.
-func TestSafeCall(t *testing.T) {
-	t.Parallel()
-
-	t.Run("nil-fn", func(t *testing.T) {
-		t.Parallel()
-		if err := lifecycle.SafeCall("nil", nil); err != nil {
-			t.Fatalf("lifecycle.SafeCall(nil) must return nil, got %v", err)
-		}
-	})
-
-	t.Run("normal-return", func(t *testing.T) {
-		t.Parallel()
-		called := 0
-		err := lifecycle.SafeCall("ok", func() { called++ })
-		if err != nil {
-			t.Fatalf("lifecycle.SafeCall ok-path must return nil, got %v", err)
-		}
-		if called != 1 {
-			t.Fatalf("lifecycle.SafeCall ok-path must invoke fn once, got %d", called)
-		}
-	})
-
-	t.Run("panic-return", func(t *testing.T) {
-		t.Parallel()
-		err := lifecycle.SafeCall("explode", func() { panic("boom") })
-		if err == nil {
-			t.Fatalf("lifecycle.SafeCall panic must return non-nil error")
-		}
-		if err.Error() != `lifecycle closure "explode" panicked: boom` {
-			t.Fatalf("lifecycle.SafeCall panic error format mismatch: %v", err)
-		}
-	})
-}

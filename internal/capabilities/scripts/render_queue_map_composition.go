@@ -303,3 +303,213 @@ func marshalDynamicMapImport(plan capmodel.OverlayPlan, sha string, size int64, 
 func hashDynamicMapVideo(path string) (string, int64, error) {
 	return digest.SHA256File(path)
 }
+
+// ── map render presentation (the item's LOOK, resolved before any render) ──
+
+// mapRenderPresentation is the map item's presentation, resolved once before
+// any render work: the wire pins with their spoken schedule, the camera
+// framing, the composition/label/basemap choices and the planner's group
+// identity. Resolving it in one place keeps the payload, the decision report
+// and the renderer admission reading the SAME decision instead of recomputing
+// (and possibly disagreeing about) it.
+type mapRenderPresentation struct {
+	Pins        []map[string]any
+	PinTiming   []map[string]any
+	AnchorLat   float64
+	AnchorLon   float64
+	StartZoom   float64
+	EndZoom     float64
+	SendZooms   bool
+	Group       map[string]any
+	Strategy    string
+	Requested   string
+	Camera      string
+	Label       string
+	Composition string
+	Fallback    string
+	Basemap     string
+	Territory   string
+	Scope       string
+	MapLevel    string
+}
+
+// mapRenderWirePins projects the grounded pins onto the native renderer's wire
+// contract: place identity only (id, label, latitude, longitude). The renderer
+// refuses fields it cannot draw, and per-pin presentation extras belong to
+// composed presentations that are not ported — the plain projection below
+// never smuggles unported fields onto the wire.
+func mapRenderWirePins(item capmodel.OverlayItem) []map[string]any {
+	pins := make([]map[string]any, 0, len(item.Map.Pins))
+	for _, pin := range item.Map.Pins {
+		pins = append(pins, map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude})
+	}
+	return pins
+}
+
+// mapRenderStyleSlot selects the map treatment per map ITEM, not per parent
+// run: a video holding several maps varies compositions and basemaps instead
+// of repeating the same treatment on every map clip, while the run seed keeps
+// a replay byte-identical.
+func mapRenderStyleSlot(plan capmodel.OverlayPlan) string {
+	if slot := strings.TrimSpace(plan.Items[0].ID); slot != "" {
+		return slot
+	}
+	return mapRunStyleSlot
+}
+
+// resolveMapRenderPresentation resolves the camera, label, composition and
+// basemap of one map item. Every choice is deterministic in (seed, item) or
+// grounded data; nothing is re-derived at render time.
+func resolveMapRenderPresentation(plan capmodel.OverlayPlan, seed, slot string, renderWidth, renderHeight int) (mapRenderPresentation, error) {
+	item := plan.Items[0]
+	pins := mapRenderWirePins(item)
+	// Per-pin spoken timing and the planner's group decision ride the item
+	// params (map_pin_timing / map_group / map_group_strategy) and enter the
+	// renderer payload so the camera activates each place exactly when the
+	// voiceover names it. The renderer never re-derives editorial timing.
+	pinTiming := capoverlay.MapPinTimingPayload(item.Params, pins)
+	// The single-anchor native camera framing: the anchor is the mean of the
+	// drawn places, and the zoom interval is either the planner's grounded
+	// camera move or a deterministic fit keeping every place in frame. The
+	// certified product dive (5.2→17.8) stays the renderer's own default for
+	// a single place with no grounded move — its zoom keys are omitted.
+	cameraMove := item.Map.CameraMove
+	anchorLat, anchorLon, startZoom, endZoom, sendZooms := capoverlay.MapNativeCameraFraming(
+		pins, renderWidth, renderHeight, cameraMove != nil,
+		cameraMoveZoom(cameraMove, true), cameraMoveZoom(cameraMove, false))
+	group := capoverlay.MapGroupPayload(item.Params)
+	strategy := capoverlay.MapGroupStrategyParam(item.Params)
+	cameraChoice, _ := item.Params["map_camera_animation"].(string)
+	labelChoice, _ := item.Params["map_label_animation"].(string)
+	cameraAnimation, err := resolveMapAnimation(cameraChoice, seed, slot, "map_camera", mapCameraAnimationsCertified(), mapCameraAnimations)
+	if err != nil {
+		return mapRenderPresentation{}, err
+	}
+	labelAnimation, err := resolveMapAnimation(labelChoice, seed, slot, "map_label", mapLabelAnimationsCertified(), capoverlay.AnimationRandomCandidates("map.label"))
+	if err != nil {
+		return mapRenderPresentation{}, err
+	}
+	compositionChoice, _ := item.Params["map_animation"].(string)
+	// Wire DATA resolution BEFORE composition admission (TICKET map parity):
+	// the ported territory family carries the ADM3 shapeName of the map's
+	// FIRST pin — the same exact spelling the native renderer matches against
+	// the SAME catalog file. Empty means the catalog could not resolve the
+	// pin: the resolver's data-compatibility gate then keeps territory
+	// compositions out of the random draw and gives explicit requests a
+	// precise failure, never a guessed name the renderer would refuse deep
+	// inside its render loop.
+	territoryFeature, territoryScope := mapTerritoryForFirstPin(item)
+	mapAnimation, mapFallbackReason, err := resolveMapCompositionFor(compositionChoice, seed, slot, mapCompositionInput{
+		PinCount:         len(item.Map.Pins),
+		Pins:             pins,
+		DurationUS:       capoverlay.MapItemDurationMS(item, plan.DurationMS) * 1000,
+		Strategy:         strategy,
+		Camera:           cameraAnimation,
+		Label:            labelAnimation,
+		TerritoryFeature: territoryFeature,
+		TerritoryScope:   territoryScope,
+		AreaGlowRadiusKM: item.Map.AreaGlowRadiusKM,
+	})
+	if err != nil {
+		return mapRenderPresentation{}, err
+	}
+	if strings.HasPrefix(mapAnimation, "ed_") {
+		// This scene owns its name rail and marker inside the GPU compositor.
+		labelAnimation = "none"
+	}
+	mapType, _ := item.Params["map_type"].(string)
+	basemapStyle, err := resolveMapBasemap(mapType, seed, slot)
+	if err != nil {
+		return mapRenderPresentation{}, err
+	}
+	if cameraAnimation == "" || labelAnimation == "" || basemapStyle == "" {
+		return mapRenderPresentation{}, fmt.Errorf("dynamic map presentation catalog is empty")
+	}
+	mapLevel, _ := item.Params["map_level"].(string)
+	mapLevel = strings.ToLower(strings.TrimSpace(mapLevel))
+	if mapLevel == "auto" {
+		mapLevel = ""
+	}
+	return mapRenderPresentation{
+		Pins: pins, PinTiming: pinTiming,
+		AnchorLat: anchorLat, AnchorLon: anchorLon,
+		StartZoom: startZoom, EndZoom: endZoom, SendZooms: sendZooms,
+		Group: group, Strategy: strategy, Requested: compositionChoice,
+		Camera: cameraAnimation, Label: labelAnimation,
+		Composition: mapAnimation, Fallback: mapFallbackReason,
+		Basemap: basemapStyle, Territory: territoryFeature, Scope: territoryScope,
+		MapLevel: mapLevel,
+	}, nil
+}
+
+// mapTerritoryForFirstPin resolves the territory shapeName the composition was
+// admitted for. Empty means the catalog cannot cover the pin.
+func mapTerritoryForFirstPin(item capmodel.OverlayItem) (feature, scope string) {
+	if len(item.Map.Pins) == 0 {
+		return "", ""
+	}
+	pin := item.Map.Pins[0]
+	scope = pin.Scope
+	if capoverlay.MapTerritoryFeatureScopeCompatible(pin.Scope) {
+		if resolved, ok := capoverlay.ResolveMapTerritoryFeature(capoverlay.MapTerritoryCatalogDir(), pin.Latitude, pin.Longitude); ok {
+			feature = resolved
+		}
+	}
+	return feature, scope
+}
+
+// payload encodes the resolved presentation as the native renderer's wire
+// input. Pin timing is grounded DATA: the report carries it (Places), but the
+// base flyover presents every place continuously and the renderer refuses
+// non-empty spoken schedules — declared by the caller.
+func (p mapRenderPresentation) payload(plan capmodel.OverlayPlan, renderWidth, renderHeight int, sampler string, profile capoverlay.MapEncodeProfile) map[string]any {
+	item := plan.Items[0]
+	payload := map[string]any{
+		"width": renderWidth, "height": renderHeight,
+		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
+		"duration_us": capoverlay.MapItemDurationMS(item, plan.DurationMS) * 1000, "pins": p.Pins,
+		"camera_anchor":        []float64{p.AnchorLat, p.AnchorLon},
+		"pin_timing":           []map[string]any{},
+		"map_group":            p.Group,
+		"map_group_strategy":   p.Strategy,
+		"composition_family":   string(mapCompositionFamily(p.Composition)),
+		"composition_fallback": p.Fallback,
+		"area_glow_radius_km":  0,
+		"camera_animation":     p.Camera,
+		"label_animation":      p.Label,
+		"map_animation":        p.Composition,
+		"basemap":              p.Basemap,
+		"typography":           dynamicMapTypography(item.Params),
+		"encoder_profile": map[string]any{
+			"codec": profile.Codec, "gpu": profile.ExpectGPU,
+			"preset": profile.Preset, "quality": profile.Quality,
+		},
+		"sampler": sampler,
+	}
+	if p.SendZooms {
+		payload["camera_start_zoom"] = p.StartZoom
+		payload["camera_end_zoom"] = p.EndZoom
+	}
+	// The requested cartographic level owns the scale envelope: continent,
+	// country, region and municipality are four visibly different views of the
+	// same real basemap, not a label swap. It is sent as data too, so the wire
+	// and the decision report keep the caller's intent.
+	if p.MapLevel != "" {
+		if start, end, ok := mapLevelCameraZooms(p.MapLevel); ok {
+			payload["map_level"] = p.MapLevel
+			payload["camera_start_zoom"] = start
+			payload["camera_end_zoom"] = end
+		}
+	}
+	// Native-payload DATA fields (parity landed): the wire carries exactly
+	// what the composition was admitted for — the renderer validates them at
+	// its boundary and refuses silently-absent requirements.
+	if capoverlay.MapTerritoryOverlayRequired(p.Composition) {
+		payload["territory_feature"] = p.Territory
+	}
+	if p.Composition == "area_glow_pulse" {
+		// The admission gate guarantees a positive radius for this composition.
+		payload["area_glow_radius_km"] = item.Map.AreaGlowRadiusKM
+	}
+	return payload
+}

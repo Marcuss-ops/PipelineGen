@@ -1,6 +1,6 @@
 # TICKET — Remote: upload session state machine and idempotency key builders without a caller (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 10 unreachable functions in `internal/capabilities/remote`
+- **Status:** CLOSED (2026-11-19) — 0 unreachable functions under `internal/capabilities/remote`; guard 445 → 363
 - **Severity:** P2 — protocol-looking helpers that no Go path and no contract file uses
 - **Owner:** remote execution / protocol owner
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -57,3 +57,40 @@ rg -n 'CompleteJobIdempotencyKey|ArtifactIdempotencyKey|upload_session' --glob '
 deadcode -test=false ./... | grep '^internal/capabilities/remote/'
 go test ./internal/capabilities/remote -count=1
 ```
+
+## Esito (2026-11-19)
+
+**Ricerca di protocollo (registrata).** `rg -ni 'idempotenc|upload_session|X-Idempotency-Key'`
+su `RenderingGen/`, `Chronon3d/`, `BrainRust/` (esclusi `target/`) e su
+`contracts/` (solo `overlay-v2`) → nessuna occorrenza del formato chiave né
+dell'header. Nel client Go vivo (`internal/platform/remote/jobbrokerclient`)
+`PrepareArtifactUpload` consuma `remote.UploadSession` ma nessuna chiamata
+imposta `X-Idempotency-Key`; i commenti nei due file citavano "8+ production
+callers" che non esistono più. Il formato non è quindi consumato da nessun lato
+del protocollo in questo repository.
+
+**Ritirati (10):** `NewUploadSession`, `CanonicalUploadStateValues`
+(`NewIllegalTransitionError`, `IllegalTransitionError.Error`,
+`IllegalTransitionError.Is`), `CompleteJobIdempotencyKey`,
+`CompleteJobIdempotencyKeyDiagnostic`, `IsValidCompleteJobIdempotencyKey`,
+`ArtifactIdempotencyKey`, `IsValidIdempotencyKey`, con i file
+`idempotency.go` e `complete_job_idempotency.go` interi, la factory
+`idempotency_factory_test.go` e i test dei simboli rimossi. Ritirati anche
+`ErrArtifactIdempotencyKeyConflict`/`ErrCompleteJobIdempotencyKeyConflict`
+(sentinelle senza produttore) e `ErrIllegalUploadStateTransition` con il suo
+envelope tipizzato: nessun rejection site lo costruiva, quindi
+`errors.As(*IllegalTransitionError)` non poteva mai scattare.
+
+**Cosa resta (vivo, invariato):** `UploadSession`, `UploadState`,
+`UploadState.Valid`, `UploadState.IsValidTransition`, la porta
+`ArtifactUploader`, `UploadSessionStore` e le sentinelle di upload
+(`ErrArtifactUploaderNotConfigured`, `...SessionExpired`, `...SessionNotFound`,
+`...RemoteSchemaVersionUnsupported`, `ErrArtifactCtxRequired`). L'idempotenza di
+consegna resta di proprietà del worker/ricevitore, come registrato sopra.
+
+Test: `TestUploadState_*` restano; i due punti che usavano
+`CanonicalUploadStateValues()` ora elencano gli stati canonici esplicitamente
+(stessa asserzione, nessun skip).
+
+**Verifica:** `deadcode -test=false ./... | grep 'capabilities/remote/'` → vuoto;
+`go build ./...`, `go test ./internal/capabilities/remote ./internal/platform/remote/...` verdi.

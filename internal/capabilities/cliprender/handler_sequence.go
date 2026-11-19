@@ -7,11 +7,7 @@ package cliprender
 // the CLI.
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -27,36 +23,25 @@ import (
 // names (if they are still rendering) and assembles them — so it is enqueued on
 // the same job type and lane as a render.
 func (h *Handler) RenderSequence(c *gin.Context) {
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxClipRenderRequestBytes)
-
-	var req SequenceRequest
-	decoder := json.NewDecoder(c.Request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			c.JSON(http.StatusRequestEntityTooLarge, renderResponse{
-				Status:    StatusError,
-				Error:     fmt.Sprintf("request body exceeds the %d byte limit", MaxClipRenderRequestBytes),
-				ErrorCode: ErrCodePayloadTooLarge,
-			})
-			return
-		}
-		code := ErrCodeInvalidPayload
-		if strings.HasPrefix(err.Error(), "json: unknown field ") {
-			code = ErrCodeUnknownField
-		}
-		c.JSON(http.StatusBadRequest, renderResponse{
-			Status:    StatusError,
-			Error:     "invalid JSON payload: " + err.Error(),
-			ErrorCode: code,
-		})
+	req, ok := decodeStrictBody[SequenceRequest](c, MaxClipRenderRequestBytes, "request")
+	if !ok {
 		return
 	}
 
 	req.Normalize()
 	req.RenderPhase = RenderPhaseSequence
 	if err := req.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, renderResponse{
+			Status:    StatusError,
+			Error:     err.Error(),
+			ErrorCode: ErrCodeInvalidPayload,
+		})
+		return
+	}
+	// Local filesystem inputs are a job-level capability, not an HTTP one:
+	// accepting them here would let any authenticated caller read every media
+	// file the process can read and write into any directory it can write.
+	if err := req.ValidateEdgeSubmission(); err != nil {
 		c.JSON(http.StatusBadRequest, renderResponse{
 			Status:    StatusError,
 			Error:     err.Error(),

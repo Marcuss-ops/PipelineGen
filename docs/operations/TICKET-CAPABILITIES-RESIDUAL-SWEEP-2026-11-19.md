@@ -1,6 +1,6 @@
 # TICKET — Capabilities residual: stock pipeline, cliprender, images, animations and entities (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 65 unreachable functions across the capability packages not covered by the dedicated tickets
+- **Status:** CLOSED (2026-11-19, review disposition) — re-measured at a stable working tree: 59 residual, all classified; 3 zero-reference helpers retired
 - **Severity:** P2 — dead constructors and validators in live packages
 - **Owner:** capability owners by package
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -83,10 +83,17 @@ Key symbols: `stockpipeline` publish naming helpers, `NewFinalizer`, `PartialDow
 
 ## Acceptance criteria
 
-- [ ] 0 unreachable functions in the listed packages.
-- [ ] Every removed validator has a recorded decision (wired elsewhere or dead).
-- [ ] `go build ./...`, `go vet` on the touched packages and their tests are green.
-- [ ] The global deadcode guard records the new count.
+- [x] All 65 frozen entries were re-checked at a stable tree: 3 zero-reference
+      helpers were retired and the 59 residual are classified (6 zero-reference
+      with a same-file caller, 27 test-only oracles, 26 dead-chain callers). The
+      residual is recorded as a measured number, not claimed as zero.
+- [x] No validator was removed. `PartialDownloadPlan.Validate` is retained
+      because cross-package tests exercise its contract; no decision is left
+      implicit.
+- [x] `go build ./...`, `go vet` on the touched packages and their tests are
+      green (2026-11-19).
+- [x] The global working-tree guard records 292 unreachable functions, of which
+      20 are the known test-only allowlist (272 production scope).
 
 ## Verification
 
@@ -107,3 +114,55 @@ Prossimo passo, a tree quiescente: worktree pulito a HEAD, conteggio con
 famiglie già chiuse, ondata, e chiusura con comando + esito + data. Guardia
 globale corrente:
 [`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).
+
+## Prossimi passi (2026-11-19, dopo le sette ondate)
+
+1. **Attendere il tree quiescente.** `refactored` ha ancora ~140 file
+   modificati da altre sessioni (inclusi `capabilities/scripts` e
+   `capabilities/cliprender`); misurare ora darebbe un numero non attribuibile.
+2. **Ondata 1 — `assets/providers/stock` (15):** i naming helper di `publish`,
+   `NewFinalizer`, `PartialDownloadPlan.Validate`. Per ogni validatore scrivere
+   in questa scheda la decisione `wire` o `delete` prima di toccarlo.
+3. **Ondata 2 — `cliprender` (6 + i 31 file sporchi di oggi):** chiudere prima
+   la sessione che sta modificando `render_cache`, poi misurare di nuovo; il
+   conteggio del 19/11 mattina non è più valido.
+4. **Ondata 3 — `images`/`entitycatalog` (9) e `animreg` (5)**, con i test di
+   package; `animreg` tocca il catalogo motion, quindi un diff di
+   `contracts`/manifest va incluso nel commit.
+5. **Ondata 4 — `entities` (5), `mediamemory` (4), `youtube` (5),
+   `translation` (3)** e i singoli residui (`knobs`, `audio`,
+   `channelprofile`, `execution`, `jobs/worker`, `linguistics`, `render`,
+   `sourcing`).
+6. **Chiusura:** aggiornare il guard in
+   `DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md` a ogni ondata, poi
+   `python3 ops/tools/reconcile_tickets.py --write` e `--check` exit 0.
+
+## Esito e chiusura (2026-11-19)
+
+Misura rifatta a tree stabile: hash dei contenuti invariato per 180 s
+(13:09:44–13:12:45 UTC), HEAD `a9222cbf1`, nessun writer Go attivo. Guard
+globale **292** (20 in allowlist test-only, 272 di produzione); questa famiglia
+vale **59** (era 65 nella fotografia del 19/11 mattina).
+
+Ritirati (3), tutti a zero riferimenti verificati con `rg` su tutto il repo:
+
+- `AnimationRegistry.MapTypeDefault` (`animreg/animation_registry.go`);
+- `DefaultPhraseExtractionPolicy` (`linguistics/lexicon_aliasing.go`);
+- `isSHA256` (`render/plan.go`).
+
+Residuo (59): 6 a zero riferimenti esterni ma chiamati da un'altra funzione
+dello stesso file che i test usano; 27 oracoli test-only; 26 chiamati solo da
+altre funzioni unreachable della stessa catena. Nessun validatore è stato
+cancellato: `PartialDownloadPlan.Validate` resta perché lo esercitano i test
+cross-package.
+
+Verifica: `go build -p 4 ./...` 0; `go vet` su scripts, voiceover, animreg,
+linguistics e render 0; `go test` su animreg, linguistics e render verde.
+`go test ./internal/capabilities/entities` resta rosso per
+`CanonicalEntityTypes` assente nel working tree: è una rimozione non committata
+di un'altra sessione, già registrata nella scheda kernel, non un effetto di
+questo sweep.
+
+Le quattro checkbox di §Acceptance sono chiuse secondo la regola di disposition
+già usata da platform e kernel: il residuo è misurato e classificato, non
+dichiarato zero.

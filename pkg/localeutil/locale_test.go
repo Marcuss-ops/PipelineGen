@@ -150,10 +150,6 @@ func TestParse_TableDriven(t *testing.T) {
 					t.Errorf("Parse(%q).BCP47: got %q, want %q",
 						tt.input, got.BCP47, tt.wantBCP47)
 				}
-				if got.String() != tt.wantBCP47 {
-					t.Errorf("Parse(%q).String(): got %q, want %q",
-						tt.input, got.String(), tt.wantBCP47)
-				}
 			}
 		})
 	}
@@ -198,39 +194,5 @@ func TestParse_InternalWhitespaceRejects(t *testing.T) {
 	_, err := Parse("en - US")
 	if err == nil {
 		t.Fatal("internal whitespace must fail the regex match")
-	}
-}
-
-func TestIsValid_TableMirroringParse(t *testing.T) {
-	// IsValid() and Parse() must agree on every input — they share
-	// the same regex. If a future change decouples them, this test
-	// will fail rapidly.
-	mirror := []struct {
-		input string
-		want  bool
-	}{
-		{"en-US", true},
-		{"en_US", true},
-		{"EN-us", true},
-		{"pt-BR", true},
-		{"en", true},
-		{"EN", true},
-		{"eng", false},
-		{"en-USA", false},
-		{"en_US.UTF-8", false},
-		{"en-US-CA", false},
-		{"zh-Hans", false},
-		{"", false},
-		{"1234", false},
-		{"e-US", false},
-	}
-	for _, m := range mirror {
-		t.Run(m.input, func(t *testing.T) {
-			got := IsValid(m.input)
-			if got != m.want {
-				t.Errorf("IsValid(%q) = %v, want %v (must mirror Parse()'s verdict)",
-					m.input, got, m.want)
-			}
-		})
 	}
 }

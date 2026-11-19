@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -30,7 +31,27 @@ const semanticEngineMaxInFlight = 8
 // NewSemanticEngineExecutor reserves bounded response headroom for whole-
 // script manifests while keeping ordinary media protocol caps conservative.
 func NewSemanticEngineExecutor(binaryPath, ffmpegPath string, log *zap.Logger) *Executor {
-	return NewMultiplexedExecutorWithOutputLimit(binaryPath, ffmpegPath, semanticEngineMaxInFlight, semanticEngineOutputLimit, log)
+	return NewMultiplexedExecutorWithEnvironment(
+		binaryPath, ffmpegPath,
+		semanticEngineMaxInFlight, semanticEngineOutputLimit,
+		semanticCacheEnvironment(), log,
+	)
+}
+
+// semanticCacheEnvironment forwards the BrainRust persistent-cache opt-in to
+// the worker explicitly. Both variables are unset by default, so a deployment
+// that never configures them keeps the historical memory-only behaviour.
+// SEMANTIC_CACHE_MAX_BYTES is optional; the Rust default (1 GiB) applies when
+// it is absent.
+func semanticCacheEnvironment() []string {
+	env := make([]string, 0, 2)
+	if dir := strings.TrimSpace(os.Getenv("SEMANTIC_CACHE_DIR")); dir != "" {
+		env = append(env, "SEMANTIC_CACHE_DIR="+dir)
+	}
+	if raw := strings.TrimSpace(os.Getenv("SEMANTIC_CACHE_MAX_BYTES")); raw != "" {
+		env = append(env, "SEMANTIC_CACHE_MAX_BYTES="+raw)
+	}
+	return env
 }
 
 // NewSemanticEngineAdapter binds the adapter to a dedicated executor for
@@ -112,6 +133,10 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 	}
 	if !response.OK {
 		return nil, nil, workerFailure(response)
+	}
+	if response.Cached && a.executor.log != nil {
+		a.executor.log.Debug("semantic-engine: manifest served from the persistent cache",
+			zap.String("language", language), zap.Int("scenes", len(request.Scenes)))
 	}
 	manifest := response.Manifest
 	if manifest == nil {

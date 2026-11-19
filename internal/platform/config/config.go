@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"gopkg.in/yaml.v3"
 )
 
@@ -195,6 +196,12 @@ func devEscapeHmac(c *Config) bool {
 func (c *Config) Validate() error {
 	if c == nil {
 		return nil
+	}
+	// SSOT sanity first: a broken pkg/defaults value must fail the boot
+	// instead of silently disabling a feature at runtime (DRIFT-DEFAULTS-
+	// VALIDATE). This call is the production consumer of defaults.Validate.
+	if err := defaults.Validate(); err != nil {
+		return err
 	}
 	if err := c.MediaPostgreSQL.Validate(); err != nil {
 		return err

@@ -151,9 +151,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/tests/tools/testsupport"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
+	"github.com/Marcuss-ops/PipelineGen/tests/tools/testsupport"
 )
 
 // makeLLMErrorTestPlan returns a canonical ResolvedGenerationPlan

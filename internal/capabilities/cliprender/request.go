@@ -1,10 +1,12 @@
-// Package cliprender owns the canonical clip.render capability: the
-// typed request contract, its fail-fast validation, and the job-type
-// identity for the async Master job. The HTTP transport lives in
-// internal/capabilities/assets/cliprender; the render worker (ClipRenderPlanV1
-// compilation, transcript/subtitle resolution, RenderingGen/Chronon render,
-// validation, Drive upload, derived-asset commit) lands in follow-up
-// steps and stays inside this package.
+// Package cliprender owns the canonical clip.render capability: the typed
+// request contract, its fail-fast validation, the HTTP transport and the
+// worker that turns a validated request into a published derived asset.
+//
+// The transport lives in this package too (handler.go, handler_batch.go and
+// handler_sequence.go for POST /clips/render, /render/batch and
+// /render/sequence); everything below the transport — ClipRenderPlanV1
+// compilation, transcript/subtitle resolution, the RenderingGen/Chronon
+// render and the derived-asset commit — runs in worker.go and its siblings.
 //
 // Architecture contract (AGENTS.md): this is a NEW capability — it does
 // not extend /api/clips/process (ingest/extraction) nor /api/clips/stock
@@ -109,12 +111,6 @@ var ErrInvalidRequest = errors.New("invalid clip.render request")
 
 // ── Request spec (nested option blocks) ───────────────────────────────
 
-// BackgroundSpec selects the rendered background. mode "" (omitted) is
-// normalised to BackgroundModeNone.
-//
-// Kind is the media family of the background ASSET (see background.go). It is
-// optional: empty means "derive it from the resolved asset's canonical
-// MediaType"; an explicit value wins. Kind is rejected for mode=none/
 // RenderRequest is the canonical clip.render wire payload. It is both
 // the HTTP body of POST /api/clips/render and the job payload persisted
 // by the Master queue — one shape, no drift between transport and
@@ -349,7 +345,7 @@ func (r *RenderRequest) Validate() error {
 		return fmt.Errorf("%w: output.fps must be within [%d,%d] (got %d/%d = %.3f)", ErrInvalidRequest, MinFPS, MaxFPS, r.Output.FPSNum, r.Output.FPSDen, fps)
 	}
 	if r.Output.ForegroundScalePercent < 0 || r.Output.ForegroundScalePercent > 100 {
-		return fmt.Errorf("%w: output.foreground_scale_percent must be within [1,100] when set (got %d)", ErrInvalidRequest, r.Output.ForegroundScalePercent)
+		return fmt.Errorf("%w: output.foreground_scale_percent must be within [0,100], where 0 selects the contract default (100) (got %d)", ErrInvalidRequest, r.Output.ForegroundScalePercent)
 	}
 	// One validator for the card block, shared with the sealed plan, so the
 	// request and the plan cannot accept different source_frame shapes.

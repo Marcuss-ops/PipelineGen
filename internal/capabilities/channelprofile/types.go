@@ -55,10 +55,6 @@ type Profile struct {
 	// MixPolicy fills audio.mix_policy when the caller declared none.
 	// Validated against the canonical AudioMixPolicy vocabulary at load.
 	MixPolicy string `yaml:"mix_policy,omitempty"`
-	// PhraseMotions replaces the certified phrase-motion rotation pool for the
-	// run (the animated IMPORTANT_PHRASE overlays). Empty means "keep the
-	// certified default pool"; every id must be a certified motion.
-	PhraseMotions []string `yaml:"phrase_motions,omitempty"`
 	// ImageMotions replaces the default ten-motion single-image rotation pool
 	// for this channel. Every id must still belong to the certified catalog.
 	ImageMotions []string `yaml:"image_motions,omitempty"`
