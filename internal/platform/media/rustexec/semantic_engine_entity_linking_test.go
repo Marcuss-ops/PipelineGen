@@ -1,10 +1,15 @@
 package rustexec
 
-import "testing"
+import (
+	"testing"
+
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+)
 
 func TestProjectSemanticLinkedEntitiesCarriesV3RoleIntentsAndConstraints(t *testing.T) {
 	canonicalID := "wd:Q42262"
 	gloss := "sportswear company"
+	margin := 3
 	projected, err := projectSemanticLinkedEntities(
 		map[string]string{"s1": "Nike ha presentato la collezione."},
 		[]semanticEngineLinkedEntity{{
@@ -17,6 +22,14 @@ func TestProjectSemanticLinkedEntitiesCarriesV3RoleIntentsAndConstraints(t *test
 				{Kind: "identity", Query: "Nike sportswear", Lang: "en"},
 				{Kind: "contextual", Query: "Nike statue Athens", Lang: "en"},
 			},
+			LinkCandidates: []scriptgen.SemanticLinkCandidate{{
+				KBID: canonicalID, Name: "Nike sportswear", Score: 4,
+				Features: []scriptgen.SemanticLinkFeature{{
+					Name: "alias_exactness", Value: 1, Terms: []string{"Nike"},
+					Spans: []scriptgen.SemanticLinkEvidenceSpan{{SceneID: "s1", StartByte: 0, EndByte: 4}},
+				}},
+			}},
+			LinkMargin: &margin, LinkRule: "entity_linker.v1",
 		}},
 	)
 	if err != nil {
@@ -29,7 +42,9 @@ func TestProjectSemanticLinkedEntitiesCarriesV3RoleIntentsAndConstraints(t *test
 	if identity.CanonicalID != canonicalID || identity.LinkStatus != "linked" || identity.Role != "named_entity" ||
 		identity.DisambiguationGloss != gloss || len(identity.NegativeConstraints) != 2 ||
 		len(identity.SearchIntents) != 2 || identity.SearchIntents[0].Kind != "identity" ||
-		identity.SearchIntents[1].Query != "Nike statue Athens" {
+		identity.SearchIntents[1].Query != "Nike statue Athens" || identity.LinkRule != "entity_linker.v1" ||
+		identity.LinkMargin == nil || *identity.LinkMargin != margin || len(identity.LinkCandidates) != 1 ||
+		identity.LinkCandidates[0].Features[0].Spans[0].EndByte != 4 {
 		t.Fatalf("identity = %+v", identity)
 	}
 }

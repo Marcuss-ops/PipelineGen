@@ -3,6 +3,7 @@ package rustexec
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
@@ -73,6 +74,56 @@ func projectSemanticLinkedEntities(texts map[string]string, entities []semanticE
 		if len(entity.SearchIntents) > 3 {
 			return nil, fmt.Errorf("linked entity %q has %d search intents, maximum is 3", id, len(entity.SearchIntents))
 		}
+		if len(entity.LinkCandidates) > 3 {
+			return nil, fmt.Errorf("linked entity %q has %d link candidates, maximum is 3", id, len(entity.LinkCandidates))
+		}
+		candidateIDs := make(map[string]struct{}, len(entity.LinkCandidates))
+		winnerHasEvidence := false
+		for _, candidate := range entity.LinkCandidates {
+			candidateID := strings.TrimSpace(candidate.KBID)
+			if candidateID == "" || strings.TrimSpace(candidate.Name) == "" {
+				return nil, fmt.Errorf("linked entity %q has a candidate without an id or name", id)
+			}
+			if _, duplicate := candidateIDs[candidateID]; duplicate {
+				return nil, fmt.Errorf("linked entity %q repeats candidate %q", id, candidateID)
+			}
+			candidateIDs[candidateID] = struct{}{}
+			if len(candidate.Features) > 5 {
+				return nil, fmt.Errorf("linked entity %q candidate %q has more than five features", id, candidateID)
+			}
+			for _, feature := range candidate.Features {
+				if strings.TrimSpace(feature.Name) == "" {
+					return nil, fmt.Errorf("linked entity %q candidate %q has an unnamed feature", id, candidateID)
+				}
+				for _, span := range feature.Spans {
+					source, ok := texts[span.SceneID]
+					if !ok || span.StartByte < 0 || span.EndByte <= span.StartByte || span.EndByte > len(source) ||
+						!utf8.ValidString(source[:span.StartByte]) || !utf8.ValidString(source[:span.EndByte]) {
+						return nil, fmt.Errorf("linked entity %q feature span is outside grounded scene text", id)
+					}
+					evidence := source[span.StartByte:span.EndByte]
+					matched := false
+					for _, term := range feature.Terms {
+						if strings.EqualFold(evidence, term) {
+							matched = true
+							break
+						}
+					}
+					if !matched {
+						return nil, fmt.Errorf("linked entity %q feature span is not verbatim evidence", id)
+					}
+					if candidateID == canonicalID {
+						winnerHasEvidence = true
+					}
+				}
+			}
+		}
+		if entity.LinkRule != "" {
+			_, winnerCandidatePresent := candidateIDs[canonicalID]
+			if status == "linked" && (!winnerHasEvidence || !winnerCandidatePresent) {
+				return nil, fmt.Errorf("linked entity %q has no evidenced winning link candidate", id)
+			}
+		}
 		intents := make([]scriptgen.SemanticSearchIntent, 0, len(entity.SearchIntents))
 		for index, intent := range entity.SearchIntents {
 			kind := strings.TrimSpace(intent.Kind)
@@ -89,11 +140,25 @@ func projectSemanticLinkedEntities(texts map[string]string, entities []semanticE
 			}
 			intents = append(intents, scriptgen.SemanticSearchIntent{Kind: kind, Query: query, Lang: language})
 		}
+		linkCandidates := make([]scriptgen.SemanticLinkCandidate, 0, len(entity.LinkCandidates))
+		for _, candidate := range entity.LinkCandidates {
+			features := make([]scriptgen.SemanticLinkFeature, 0, len(candidate.Features))
+			for _, feature := range candidate.Features {
+				features = append(features, scriptgen.SemanticLinkFeature{
+					Name: feature.Name, Value: feature.Value, Terms: append([]string(nil), feature.Terms...),
+					Spans: append([]scriptgen.SemanticLinkEvidenceSpan(nil), feature.Spans...),
+				})
+			}
+			linkCandidates = append(linkCandidates, scriptgen.SemanticLinkCandidate{
+				KBID: candidate.KBID, Name: candidate.Name, Score: candidate.Score, Features: features,
+			})
+		}
 		projected = append(projected, scriptgen.SemanticIdentity{
 			ID: id, CanonicalSurface: entity.CanonicalSurface, Kind: entity.EntityType, Mentions: mentions,
 			SurfaceKey: entity.SurfaceKey, CanonicalID: canonicalID, LinkStatus: status,
 			CanonicalName: entity.CanonicalName, Role: role, DisambiguationGloss: gloss,
 			NegativeConstraints: append([]string(nil), entity.NegativeConstraints...), SearchIntents: intents,
+			LinkCandidates: linkCandidates, LinkMargin: entity.LinkMargin, LinkRule: entity.LinkRule,
 			EditorialDecision: true, EditorialSurface: entity.EditorialSurface, EditorialType: entity.EditorialType,
 			PromptEcho: entity.PromptEcho, VisualAdmission: entity.VisualAdmission,
 		})

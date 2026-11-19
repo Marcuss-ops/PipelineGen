@@ -196,6 +196,26 @@ type SemanticIdentityMention struct {
 	Start, End       int
 }
 
+type SemanticLinkEvidenceSpan struct {
+	SceneID   string `json:"scene_id"`
+	StartByte int    `json:"start_byte"`
+	EndByte   int    `json:"end_byte"`
+}
+
+type SemanticLinkFeature struct {
+	Name  string                     `json:"name"`
+	Value int                        `json:"value"`
+	Terms []string                   `json:"terms,omitempty"`
+	Spans []SemanticLinkEvidenceSpan `json:"spans,omitempty"`
+}
+
+type SemanticLinkCandidate struct {
+	KBID     string                `json:"kb_id"`
+	Name     string                `json:"name"`
+	Score    int                   `json:"score"`
+	Features []SemanticLinkFeature `json:"features"`
+}
+
 type SemanticIdentity struct {
 	ID, CanonicalSurface, Kind string
 	Mentions                   []SemanticIdentityMention
@@ -209,6 +229,9 @@ type SemanticIdentity struct {
 	DisambiguationGloss string
 	NegativeConstraints []string
 	SearchIntents       []SemanticSearchIntent
+	LinkCandidates      []SemanticLinkCandidate `json:"link_candidates,omitempty"`
+	LinkMargin          *int                    `json:"link_margin,omitempty"`
+	LinkRule            string                  `json:"link_rule,omitempty"`
 	// EditorialDecision is true when BrainRust supplied the v3 editorial
 	// projection. Consumers must not re-run NER repair or prompt-echo rules.
 	EditorialDecision bool

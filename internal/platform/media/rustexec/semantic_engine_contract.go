@@ -268,28 +268,32 @@ type semanticEngineAnalyzerVersions struct {
 	PhraseImpact string `json:"phrase_impact"`
 	Lexicon      string `json:"lexicon"`
 	EntityIndex  string `json:"entity_index,omitempty"`
+	Linker       string `json:"linker,omitempty"`
 	Numbers      string `json:"numbers,omitempty"`
 	Dates        string `json:"dates,omitempty"`
 	Quantities   string `json:"quantities,omitempty"`
 }
 
 type semanticEngineLinkedEntity struct {
-	LocalID             string                       `json:"local_id"`
-	EditorialSurface    string                       `json:"editorial_surface"`
-	EditorialType       string                       `json:"editorial_type"`
-	PromptEcho          bool                         `json:"prompt_echo"`
-	VisualAdmission     bool                         `json:"visual_admission"`
-	SurfaceKey          string                       `json:"surface_key"`
-	CanonicalSurface    string                       `json:"canonical_surface"`
-	CanonicalID         *string                      `json:"canonical_id"`
-	LinkStatus          string                       `json:"link_status"`
-	CanonicalName       string                       `json:"canonical_name"`
-	EntityType          string                       `json:"entity_type"`
-	Role                string                       `json:"role"`
-	DisambiguationGloss *string                      `json:"disambiguation_gloss"`
-	NegativeConstraints []string                     `json:"negative_constraints"`
-	Mentions            []semanticEngineMention      `json:"mentions"`
-	SearchIntents       []semanticEngineSearchIntent `json:"search_intents"`
+	LocalID             string                            `json:"local_id"`
+	EditorialSurface    string                            `json:"editorial_surface"`
+	EditorialType       string                            `json:"editorial_type"`
+	PromptEcho          bool                              `json:"prompt_echo"`
+	VisualAdmission     bool                              `json:"visual_admission"`
+	SurfaceKey          string                            `json:"surface_key"`
+	CanonicalSurface    string                            `json:"canonical_surface"`
+	CanonicalID         *string                           `json:"canonical_id"`
+	LinkStatus          string                            `json:"link_status"`
+	CanonicalName       string                            `json:"canonical_name"`
+	EntityType          string                            `json:"entity_type"`
+	Role                string                            `json:"role"`
+	DisambiguationGloss *string                           `json:"disambiguation_gloss"`
+	NegativeConstraints []string                          `json:"negative_constraints"`
+	Mentions            []semanticEngineMention           `json:"mentions"`
+	SearchIntents       []semanticEngineSearchIntent      `json:"search_intents"`
+	LinkCandidates      []scriptgen.SemanticLinkCandidate `json:"link_candidates"`
+	LinkMargin          *int                              `json:"link_margin"`
+	LinkRule            string                            `json:"link_rule"`
 }
 
 type semanticEngineSearchIntent struct {
