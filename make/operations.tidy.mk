@@ -138,8 +138,9 @@ velox:
 # The bug being fixed: `gofmt -l .` exits 0 EVEN IF unformatted files
 # are present — it just prints them on stdout. Stacking that behind a
 # `&& other-stuff` chain therefore continues to run "other-stuff" even
-# when the formatting check "failed". The corrected check is
-# `test -z "$$(gofmt -l .)"` which exits 1 when the listing is
+# when the formatting check "failed". Check tracked Go files so cgo build
+# output under .tmp/gotmp created concurrently by verify-main cannot be
+# mistaken for repository source. The check exits 1 when the listing is
 # non-empty AND prints the offending files for the operator to fix.
 # Re-run `make fmt` (alias for `go fmt ./...`) after the fix.
 #
@@ -178,7 +179,8 @@ verify-format:
 	    echo "   Do NOT use in normal pre-push runs: a green verify-main with this"; \
 	    echo "   flag is NOT a proxy for a green CI signal (CI does not pass it)."; \
 	else \
-	    test -z "$$(gofmt -l .)" || { echo "❌ Files not formatted:"; gofmt -l .; exit 1; }; \
+	    files="$$(git ls-files -z -- '*.go' | xargs -0 -r gofmt -l)"; \
+	    test -z "$$files" || { echo "❌ Files not formatted:"; printf '%s\n' "$$files"; exit 1; }; \
 	fi
 
 # test-imports — Cleanup Plan followup (Jul 2026): the canonical
