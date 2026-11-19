@@ -52,22 +52,3 @@ func (s SceneIR) Validate() error {
 	}
 	return nil
 }
-
-// MissingProfileCount reports how many of the given SceneIRs have an empty
-// SemanticProfile (the LIVE-test metric: semantic_profiles = X/5). It is
-// the helper MediaCert calls to print:
-//
-//	SEMANTIC PROFILES  5/5
-//
-// A compiled SceneIR should always report 0 missing; the helper exists so
-// a regression that re-introduces null profiles is caught explicitly.
-func MissingProfileCount(irs []SceneIR) (missing, total int) {
-	total = len(irs)
-	for _, ir := range irs {
-		visual := script.BuildSegmentVisualProfile(ir.Profile)
-		if strings.TrimSpace(visual.Subject) == "" || len(visual.Terms) == 0 {
-			missing++
-		}
-	}
-	return missing, total
-}

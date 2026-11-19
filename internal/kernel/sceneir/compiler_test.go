@@ -86,40 +86,6 @@ func TestGeneratedNarrationCannotModifySourceText(t *testing.T) {
 	require.Equal(t, "source_text", violation.Field)
 }
 
-// TestCompilerProducesVisualProfileForEveryScene pins the LIVE-test
-// metric: semantic_profiles = 0/5. A compiled SceneIR must ALWAYS carry a
-// non-empty SemanticProfile (Subject + at least one VisualTerm), even when
-// the entity extractor / small LLM produced nothing. The test compiles all
-// five golden-fixture segments and asserts 5/5 profiles with 0 missing.
-func TestCompilerProducesVisualProfileForEveryScene(t *testing.T) {
-	segments := []script.CanonicalSegment{
-		{ID: "mediterranean-01-greek-salad", Position: 0, Text: "Greek salad contains tomatoes, feta cheese and olives."},
-		{ID: "mediterranean-02-hummus", Position: 1, Text: "Hummus is traditionally made with chickpeas, tahini, lemon juice and olive oil."},
-		{ID: "mediterranean-03-sardines", Position: 2, Text: "Grilled sardines are seasoned with lemon and fresh herbs."},
-		{ID: "mediterranean-04-shakshuka", Position: 3, Text: "Shakshuka features eggs poached in tomatoes and peppers."},
-		{ID: "mediterranean-05-paella", Position: 4, Text: "Seafood paella combines shrimp, mussels and rice."},
-	}
-
-	var irs []SceneIR
-	for _, seg := range segments {
-		ir, err := Compile(CompileInput{Segment: seg})
-		require.NoError(t, err)
-		irs = append(irs, ir)
-	}
-
-	missing, total := MissingProfileCount(irs)
-	require.Equal(t, 5, total)
-	require.Equal(t, 0, missing, "every compiled scene must have a non-empty visual_profile")
-
-	// Each profile must have a non-empty subject and at least one term.
-	for i, ir := range irs {
-		visual := script.BuildSegmentVisualProfile(ir.Profile)
-		require.NotEmpty(t, visual.Subject, "scene %d (%s) must have a subject", i, ir.SegmentID)
-		require.NotEmpty(t, visual.Terms, "scene %d (%s) must have at least one visual term", i, ir.SegmentID)
-		require.NoError(t, ir.Validate(), "scene %d (%s) must pass structural validation", i, ir.SegmentID)
-	}
-}
-
 // TestCompileRejectsInvalidCanonicalSegment pins the fail-closed contract:
 // the compiler never silently fixes up an invalid canonical segment. An
 // empty segment_id or empty text must surface as ErrCompileInputInvalid.

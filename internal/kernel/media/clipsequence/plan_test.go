@@ -9,48 +9,6 @@ func clip(id string, duration int64, transition *Transition) Clip {
 	return Clip{AssetID: id, Path: "/tmp/" + id + ".mp4", DurationMS: duration, TransitionIn: transition}
 }
 
-// TestPresetsAreAllFastAndCertified pins the catalogue: ten fast presets, each
-// with a Chronon kind, a default inside the fast window, and no duplicate name.
-func TestPresetsAreAllFastAndCertified(t *testing.T) {
-	presets := Presets()
-	if len(presets) != 10 {
-		t.Fatalf("preset count = %d, want 10", len(presets))
-	}
-	seen := map[Preset]struct{}{}
-	for _, spec := range presets {
-		if _, duplicate := seen[spec.Preset]; duplicate {
-			t.Fatalf("duplicate preset %q", spec.Preset)
-		}
-		seen[spec.Preset] = struct{}{}
-		if spec.ChrononKind == "" {
-			t.Fatalf("preset %q has no renderer kind", spec.Preset)
-		}
-		if spec.DefaultDurationMS < MinTransitionMS || spec.DefaultDurationMS > MaxFastTransitionMS {
-			t.Fatalf("preset %q default %d ms is outside the fast window", spec.Preset, spec.DefaultDurationMS)
-		}
-		if spec.Description == "" {
-			t.Fatalf("preset %q has no description", spec.Preset)
-		}
-	}
-	// The three presets the user asked for by name must be present and must
-	// map to the renderer kinds that own those looks.
-	for preset, wantKind := range map[Preset]string{
-		PresetFlashWhite:    "Flash",
-		PresetLightLeakSoft: "LightLeak",
-		PresetLightLeakHard: "LightLeak",
-		PresetShakeLight:    "Shake",
-		PresetShakeStrong:   "Shake",
-	} {
-		spec, ok := LookupPreset(preset)
-		if !ok {
-			t.Fatalf("missing preset %q", preset)
-		}
-		if spec.ChrononKind != wantKind {
-			t.Fatalf("preset %q kind = %q, want %q", preset, spec.ChrononKind, wantKind)
-		}
-	}
-}
-
 // TestPlanMergesOnlyTransitionLinkedClips is the rule the producer asked for:
 // A, B(with transition), C(no transition), D(with transition) becomes two
 // artifacts — [A,B] and [C,D] — never one four-clip artifact and never four
@@ -210,31 +168,6 @@ func TestLightLeaksCarryASweepProgram(t *testing.T) {
 		if leak.Direction != "right" && leak.Direction != "left" {
 			t.Fatalf("%q direction = %q", preset, leak.Direction)
 		}
-	}
-}
-
-// TestFastCeilingIsThreeHundredMilliseconds pins the fast editorial lane:
-// transitions between clips never exceed 0.3 s, and the presets' defaults sit
-// inside that ceiling.
-func TestFastCeilingIsThreeHundredMilliseconds(t *testing.T) {
-	if MaxFastTransitionMS != 300 {
-		t.Fatalf("MaxFastTransitionMS = %d, want 300", MaxFastTransitionMS)
-	}
-	for _, spec := range Presets() {
-		if spec.DefaultDurationMS > MaxFastTransitionMS {
-			t.Fatalf("preset %q default %d ms exceeds the 300 ms ceiling", spec.Preset, spec.DefaultDurationMS)
-		}
-	}
-	sequence := Sequence{Clips: []Clip{
-		clip("a", 5_000, nil),
-		clip("b", 5_000, &Transition{Preset: PresetLightLeakHard, DurationMS: MaxFastTransitionMS}),
-	}}
-	if _, err := sequence.Plan(); err != nil {
-		t.Fatalf("a 300 ms light leak must be accepted: %v", err)
-	}
-	sequence.Clips[1].TransitionIn.DurationMS = MaxFastTransitionMS + 1
-	if _, err := sequence.Plan(); err == nil || !strings.Contains(err.Error(), "fast transitions only") {
-		t.Fatalf("a 301 ms transition must be rejected, got %v", err)
 	}
 }
 

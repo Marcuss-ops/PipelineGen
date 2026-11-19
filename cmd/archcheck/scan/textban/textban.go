@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
@@ -154,11 +153,4 @@ func truncate(s string) string {
 		return s[:maxLen] + marker
 	}
 	return s
-}
-
-// CountCommentResidue is exported for gate-specific warning builders that
-// need the same stable phrasing.
-func CountCommentResidue(relPath string, count int) string {
-	return strconv.Itoa(count) + " comment-only reference(s) in " + relPath +
-		" (descriptive prose; non-fatal per godlike/07 no-fake-availability)"
 }

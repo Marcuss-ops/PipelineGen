@@ -28,7 +28,6 @@ package clipsequence
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -228,16 +227,6 @@ var presetCatalog = map[Preset]PresetSpec{
 		Preset: PresetSqueezeIn, ChrononKind: "Zoom", Xfade: "squeezeh",
 		DefaultDurationMS: 180, Description: "squeeze the outgoing frame away",
 	},
-}
-
-// Presets returns every certified preset in stable order.
-func Presets() []PresetSpec {
-	out := make([]PresetSpec, 0, len(presetCatalog))
-	for _, spec := range presetCatalog {
-		out = append(out, spec)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Preset < out[j].Preset })
-	return out
 }
 
 // LookupPreset returns the certified spec for one preset.

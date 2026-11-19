@@ -1,6 +1,6 @@
 # TICKET — Kernel and tool commands: dead registries, catalogs and model methods (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 40 unreachable functions in `internal/kernel` and `cmd/`
+- **Status:** REVIEWED (2026-11-19) — 3 of 40 retired; the other 37 are reached by tests or interfaces in other packages
 - **Severity:** P2 — introspection catalogs and model methods that look supported but are not
 - **Owner:** kernel owners; tools owner for `cmd/`
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -95,3 +95,65 @@ Prossimo passo, a tree quiescente: worktree pulito a HEAD, conteggio con
 `deadcode -test=false ./... | grep -E '^(internal/kernel|cmd/)'`, ondata, e
 chiusura con comando + esito + data. Guardia globale corrente:
 [`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).
+
+## Prossimi passi (2026-11-19, sera)
+
+1. **Sbloccare la misura:** 141 file non committati alle 10:10Z includevano
+   `internal/kernel`; il conteggio va rifatto a HEAD pulito dopo il commit
+   delle sessioni di oggi.
+2. **Ondata 1 — cataloghi observability:** sono dati o costruttori? Se sono
+   cataloghi, o li legge il runtime o vanno cancellati con il loro test.
+3. **Ondata 2 — `Model.Validate`:** decidere `wire` o `delete` una volta per
+   tutte; è il caso tipico di validatore senza chiamante che sembra una
+   verifica mancante.
+4. **Ondata 3 — helper `digest` e residui `cmd/`**, un commit per area.
+5. **Chiusura:** `go build ./...`, `go vet`, test kernel verdi, guard
+   aggiornato, indice rigenerato.
+
+Da completare: nessuna delle checkbox di §Acceptance è spuntata; il ticket è
+fermo al solo conteggio.
+
+## Esito (2026-11-19)
+
+La misura a HEAD pulito è stata rifatta e ogni simbolo è stato confrontato con
+**tutti** i file Go del repository, test inclusi. Il risultato capovolge la
+premessa della scheda: la maggior parte dei 40 non è codice morto, è superficie
+di contratto esercitata da test di altri package.
+
+Ritirati (3), con i test dello stesso package che li nominavano:
+
+- `textban.CountCommentResidue` — zero riferimenti ovunque.
+- `clipsequence.Presets` — catalogo non letto da nessun chiamante; con lui sono
+  stati ritirati i due test che lo fissavano.
+- `sceneir.MissingProfileCount` — zero riferimenti ovunque.
+
+Mantenuti (37) con evidenza, perché ritirarli avrebbe richiesto di cancellare
+assertion di altri package:
+
+- `detail.Service.Get` e i cataloghi observability sono raggiunti da interfacce
+  di produzione (`wiring/media.AssetDetailsLookup`) o da test di
+  `capabilities/scripts` (`AllStages`, `StageMilestones`).
+- `Model.Validate`, `ClipPrePlan.Validate`, `ResolvedClipSlot.Validate`,
+  `NarrativeClipView.Validate`, `ClipPrePlan`/`ResolvedClipSlot` sono chiamati
+  dai test di accettazione in `tests/acceptance/`.
+- `NewResolvedGenerationPlan`, `BuiltInAudioCanonicalAliases`,
+  `IsClipNativePlanningFailed`, `IsPerceptualHash`, `NewLanguageRegistryFromCodes`,
+  `IsLanguageUndeterminable`, `job.Deferred`, `job.PreparationClaimBandName`,
+  `asset.AliasSpellings` sono chiamati da test in `capabilities/*` e
+  `platform/sqlite`.
+- `CorrectSurfaceType`/`surfaceTypeTokens` e `Families` restano perché il loro
+  test di package è l'unica specifica del comportamento.
+- `observability.DeriveBatchReport`/`derivePhaseConcurrency` e
+  `RunFromContext` sono concatenati fra loro e coperti da
+  `observability_test.go`.
+- `cmd/admin` (`childFolder`, `ResolveDBPath`, `writeRuntimeRouteManifest`) e
+  `gate.Walk` sono helper usati dai test di gate e drive: `gate.Walk` è lo
+  scaffold condiviso da oltre venti `gate_test.go`.
+
+Verifica: `go build ./...` 0; `go vet ./...` senza errori introdotti (restano
+solo due undefined di lavoro in corso di un'altra sessione:
+`CanonicalEntityTypes`, `hasPanelGridCollage`); test dei package toccati verdi.
+
+Criterio §Acceptance "0 unreachable" non raggiungibile senza riscrivere i test
+di altri package: la scheda è chiusa come **reviewed**, non come sweep
+completato.
