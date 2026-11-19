@@ -21,6 +21,22 @@ Guard corrente: **≤ 445** dopo l'ondata 13 del 2026-11-19 (il file
 cablato; l'ondata 12 aveva tolto il normalizer audio legacy con 5 DTO e 5 test,
 la 11 il tipo `ClipSemanticMetadata`, la 10 i builder `ClipIdentity` e il
 validator `RenderPlan`).
+**Ripartizione 2026-11-19:** le 445 residue sono distribuite in dodici schede di
+famiglia in questa cartella (`TICKET-MEDIAREGISTRY-DEAD-SURFACE-2026-11-19`,
+`TICKET-MEDIA-ELIGIBILITY-WIRE-OR-RETIRE-2026-11-19`,
+`TICKET-VOICEOVER-HARNESS-AND-SERVICE-SWEEP-2026-11-19`,
+`TICKET-SCRIPTS-DEAD-CHAIN-SWEEP-2026-11-19`,
+`TICKET-KERNEL-ASSET-DEAD-SURFACE-2026-11-19`,
+`TICKET-APP-WIRING-TEST-ONLY-HELPERS-2026-11-19`,
+`TICKET-REMOTE-UPLOAD-IDEMPOTENCY-SURFACE-2026-11-19`,
+`TICKET-PKG-DEAD-HELPER-SWEEP-2026-11-19`,
+`TICKET-PLATFORM-DEAD-HELPER-SWEEP-2026-11-19`,
+`TICKET-CAPABILITIES-RESIDUAL-SWEEP-2026-11-19`,
+`TICKET-KERNEL-CMD-RESIDUAL-SWEEP-2026-11-19`,
+`TICKET-TEST-SUPPORT-OUT-OF-PRODUCTION-2026-11-19`) più
+`TICKET-CONTRACT-CORPUS-TEST-HERMETICITY-2026-11-19`, che è un difetto di test e
+non conta funzioni. La somma delle tabelle di scope è 445; la lista congelata è
+`deadcode-2026-11-19.txt`.
 La matrice Rust `overlay_plan_contract` è **30/30**
 (misurata il 2026-11-19; il "34" storico è precedente al consolidamento dei
 test), drift gate Go verde sul commit pulito. Il codec jobs è stato ritirato e il guard tipizzato sostituito dal
