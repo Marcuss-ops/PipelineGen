@@ -123,35 +123,6 @@ func TestNormalize_EmptyCollapsesToUndetermined(t *testing.T) {
 	}
 }
 
-// TestIsSupported_PinsWhitelist verifies the canonical whitelist
-// membership. Any change to SupportedLanguages is a deliberate
-// architectural decision.
-func TestIsSupported_PinsWhitelist(t *testing.T) {
-	supported := []string{"it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"}
-	for _, code := range supported {
-		if !IsSupported(code) {
-			t.Errorf("IsSupported(%q) = false, want true (canonical whitelist)", code)
-		}
-	}
-	unsupported := []string{
-		"",
-		"und",
-		"en-US",
-		"ja",      // not in whitelist
-		"zh",      // not in whitelist
-		"ko",      // not in whitelist
-		"en-XX",   // unsupported region
-		"pt-XX",   // unsupported region
-		"es-XX",   // unsupported region
-		"english", // full name
-	}
-	for _, code := range unsupported {
-		if IsSupported(code) {
-			t.Errorf("IsSupported(%q) = true, want false (not in whitelist)", code)
-		}
-	}
-}
-
 // TestSupportedLanguages_HasMinimumCoverage pins the user-spec (Fase 1.b):
 // the canonical whitelist MUST include it, en, pl, ru, de, es, pt-BR,
 // fr, tr, id at minimum. Adding languages is allowed; REMOVING from

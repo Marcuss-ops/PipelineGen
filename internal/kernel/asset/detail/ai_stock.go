@@ -2,7 +2,6 @@ package detail
 
 import (
 	"fmt"
-	"path"
 	"sort"
 	"strings"
 )
@@ -42,14 +41,6 @@ type AIStockMetadata struct {
 	HasDialogue     bool         `json:"has_dialogue"`
 	HasNativeAudio  bool         `json:"has_native_audio"`
 	AudioProfile    AudioProfile `json:"audio_profile"`
-}
-
-func AIStockFolderPath(category string) string {
-	category = strings.TrimSpace(category)
-	if category == "" {
-		category = "Generico"
-	}
-	return path.Join("Stock", "AI", category)
 }
 
 func (m AIStockMetadata) Validate() error {

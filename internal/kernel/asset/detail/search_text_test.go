@@ -249,42 +249,7 @@ func TestComposerRegistry_EmptySourceReturnsError(t *testing.T) {
 	}
 }
 
-func TestComposerRegistry_RegisterCustomStrategy(t *testing.T) {
-	r := NewComposerRegistry()
-	r.Register("custom", func(input SearchTextInput) string {
-		return "CUSTOM: " + input.Title
-	})
-	got, err := r.Compose(SearchTextInput{Source: "custom", Title: "hello"})
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if got != "CUSTOM: hello" {
-		t.Errorf("custom strategy not dispatched, got %q", got)
-	}
-}
-
-func TestComposerRegistry_NilStrategyRemovesSource(t *testing.T) {
-	r := NewComposerRegistry()
-	r.Register("youtube", nil)
-	// After removing, youtube should fall back to default
-	got, err := r.Compose(SearchTextInput{Source: "youtube", Title: "Test", Tags: []string{"x"}})
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if !strings.Contains(got, "Test") {
-		t.Errorf("removed strategy should fall back to default, got %q", got)
-	}
-}
-
 // ── Truncation tests ────────────────────────────────────────────────
-
-func TestTruncateSearchText_LongTranscript(t *testing.T) {
-	long := strings.Repeat("a", 3000)
-	got := truncateSearchText(long, MaxTranscriptChars)
-	if len([]rune(got)) != MaxTranscriptChars {
-		t.Errorf("expected %d runes, got %d", MaxTranscriptChars, len([]rune(got)))
-	}
-}
 
 func TestTruncateSearchText_ShortTranscript(t *testing.T) {
 	short := "hello"

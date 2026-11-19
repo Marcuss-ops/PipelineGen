@@ -111,35 +111,6 @@ func (c *SourceCatalog) Definition(source string) (SourceDefinition, bool) {
 	return def, ok
 }
 
-// Definitions returns canonical definitions in deterministic order.
-func (c *SourceCatalog) Definitions() []SourceDefinition {
-	if c == nil {
-		return nil
-	}
-	names := make([]string, 0, len(c.definitions))
-	for name := range c.definitions {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	out := make([]SourceDefinition, 0, len(names))
-	for _, name := range names {
-		def := c.definitions[name]
-		def.Aliases = append([]string(nil), def.Aliases...)
-		out = append(out, def)
-	}
-	return out
-}
-
-// Names returns canonical source names in deterministic order.
-func (c *SourceCatalog) Names() []string {
-	defs := c.Definitions()
-	names := make([]string, len(defs))
-	for i, def := range defs {
-		names[i] = def.Canonical
-	}
-	return names
-}
-
 func normalizeSourceName(source string) string {
 	return strings.ToLower(strings.TrimSpace(source))
 }

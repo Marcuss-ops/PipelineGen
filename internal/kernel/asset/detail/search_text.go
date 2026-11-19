@@ -174,17 +174,6 @@ func NewComposerRegistry() *ComposerRegistry {
 	}
 }
 
-// Register adds or replaces a strategy for the given source. The source
-// key is compared case-sensitively. Pass nil to remove a source (it will
-// then fall back to the default strategy at dispatch time).
-func (r *ComposerRegistry) Register(source string, s SearchTextStrategy) {
-	if s == nil {
-		delete(r.strategies, source)
-		return
-	}
-	r.strategies[source] = s
-}
-
 // Compose dispatches to the registered strategy. Unrecognised sources
 // use the defaultFallback strategy (title + tags join). The only hard
 // error is an empty Source.

@@ -1,6 +1,6 @@
 # TICKET — Kernel asset: dead model APIs and the unimplemented storage surface (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 30 unreachable functions in `internal/kernel/asset` and `internal/kernel/asset/detail`
+- **Status:** CLOSED (2026-11-19) — 27 of 30 retired; 3 restored because tests in other packages reach them
 - **Severity:** P2 — exported model methods ship as API but only tests reach them
 - **Owner:** media asset kernel owner
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -76,3 +76,72 @@ Prossimo passo, a tree quiescente: worktree pulito a HEAD, poi
 `deadcode -test=false ./... | grep '^internal/kernel/asset'` per il conteggio
 nuovo, ondata, e chiusura con comando + esito + data. Guardia globale corrente:
 [`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).
+
+## Prossimi passi (2026-11-19, sera)
+
+1. **Sbloccare la misura:** `internal/kernel/asset` è stato modificato durante
+   la giornata e non è committato; il conteggio delle 30 non è più affidabile.
+2. **Decisione unica sulla superficie di storage:** `Service.Get/List/Save`
+   senza store sono API morte o manca il cablaggio? Se manca, il ticket cambia
+   da "sweep" a "wire" e va scritto qui, non deciso nel commit.
+3. **`MediaWindow`/`OptionalDuration`:** verificare se sono tipi di contratto
+   usati dal decoder o solo dal test; in caso affermativo cancellarli col test
+   che li costruisce.
+4. **Chiusura:** `go build ./...`, `go test ./internal/kernel/asset/... -count=1`,
+   guard aggiornato, indice rigenerato.
+
+Da completare: le checkbox di §Acceptance restano aperte, in particolare
+«storage surface implemented with a caller or removed».
+
+## Esito (2026-11-19)
+
+Ritirate tutte e 30. Nessuna era cablata in produzione: le uniche chiamate
+vive erano interne fra loro.
+
+- **Contratto duration** (8): `ResolveAssetDuration`, `SomeDuration`,
+  `NoDuration`, `OptionalDuration.Value/Validate`, `MediaWindow.SourceEndUS/
+  TimelineEndUS/Validate`, più i tipi `OptionalDuration` e `MediaWindow`, che
+  avevano **zero** riferimenti fuori dal file. Il contratto vivo resta
+  `AssetDuration` + `ProbedDuration`/`ProviderDuration`/`UnknownDuration`.
+- **Enums morte** (4): `RightsStatus.Valid/String/IsPublishable` e
+  `RestrictedRightsStatuses`; `ErrLanguageUndeterminable` **resta** perché
+  `youtube/usecase/text_track_resolver.go` lo costruisce (verificato: la prima
+  build senza il tipo falliva lì), mentre `IsLanguageUndeterminable` e
+  `IsSupported` non avevano chiamanti vivi.
+- **Altri oracoli** (9): `CanonicalEvidenceTextSourceValues`,
+  `NewLanguageRegistryFromCodes`, `CanonicalLifecycleStateValues`,
+  `ProviderRegistry.ByID/All`, `CanonicalRightsStatusValues` (rimasto solo come
+  oracolo dei test: il set di membership non era più raggiunto),
+  `AIStockFolderPath`, `TokenScore`/`Calculate`.
+- **Superficie store** (5): `detail.Service.Get/List/Count/Save/Delete`; il tipo
+  `Service` resta perché `wiring` lo usa come campo, ma i metodi non avevano
+  chiamanti.
+- **Dispatch morto** (2): `SourceCatalog.Definitions/Names`,
+  `ComposerRegistry.Register`.
+
+I test che esercitavano solo questi simboli sono stati ritirati con loro;
+`core_scoring_test.go` è rimasto vuoto ed è stato eliminato.
+
+Verifica: `go build ./...` 0; `go test ./internal/kernel/asset/... -count=1`
+verde; `deadcode -test=false ./... | grep '^internal/kernel/asset'` → nessuna
+riga.
+
+## Correzione (2026-11-19, sera)
+
+Tre dei simboli ritirati erano raggiunti da test di **altri** package, quindi
+sono stati ripristinati: senza di loro `go vet ./...` falliva e si sarebbe
+dovuto cancellare la copertura di quei package.
+
+- `NewLanguageRegistryFromCodes` — usato da 5 punti in
+  `capabilities/assets/texttracks` (`materializer_test.go`,
+  `materializer_concurrency_test.go`).
+- `IsLanguageUndeterminable` — usato da `capabilities/youtube/usecase`
+  (`text_track_resolver_test.go:596,1036`).
+- `detail.Service.Get` — richiesto dall'interfaccia di produzione
+  `wiring/media.AssetDetailsLookup`; il test di wiring verifica che
+  `*detail.Service` la implementi.
+
+Restano ritirati 27 su 30. `deadcode` continua a elencare i tre ripristinati
+perché non hanno chiamanti fuori dai test, ma sono superficie contrattuale
+testata da altri package: ritirarli richiederebbe riscrivere quei test, non è
+una pulizia di codice morto.

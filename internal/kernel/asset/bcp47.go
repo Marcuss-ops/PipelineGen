@@ -79,22 +79,6 @@ var SupportedLanguages = []string{
 	"id",
 }
 
-// IsSupported reports whether the input language is in the project
-// whitelist. Used by the Fase 3 materializer to skip non-supported
-// languages (the resolver still surfaces them — only the materializer
-// gates translation jobs on IsSupported).
-func IsSupported(code string) bool {
-	if code == "" {
-		return false
-	}
-	for _, s := range SupportedLanguages {
-		if s == code {
-			return true
-		}
-	}
-	return false
-}
-
 // Normalize parses an arbitrary locale string into its canonical
 // BCP-47 form. The output is ALWAYS one of:
 //

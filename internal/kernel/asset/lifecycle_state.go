@@ -94,32 +94,6 @@ const (
 	StateError LifecycleState = "ERROR"
 )
 
-// CanonicalLifecycleStateValues returns the closed enumeration of
-// canonical lifecycle_state strings. Callers use this as the
-// single-source-of-truth list for migrations, dashboards, and
-// pgvector payload validation. StateDeletePending is the legacy
-// broad-intent value kept for in-flight migration; new writes use
-// the 6 explicit deletion states added in Blocco 3.1 (with commit
-// 2/3 adding StateDriveDeleted + StateIndexDeleted as the post-Drive
-// + post-pgvector confirmation hops).
-func CanonicalLifecycleStateValues() []LifecycleState {
-	return []LifecycleState{
-		StatePreparing,
-		StatePublished,
-		StateStaging,
-		StateProcessing,
-		StateActive,
-		StateDeletePending,
-		StateDeleteRequested,
-		StateDriveDeletePending,
-		StateDriveDeleted,
-		StateLifecycleIndexDeletePending,
-		StateIndexDeleted,
-		StateDeleted,
-		StateError,
-	}
-}
-
 // Valid returns true if s is a known canonical lifecycle state
 // (Blocco 3.1: includes the 6 explicit deletion states; commit 2/3
 // added StateDriveDeleted + StateIndexDeleted).

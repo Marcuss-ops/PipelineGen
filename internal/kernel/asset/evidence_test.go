@@ -114,22 +114,3 @@ func TestResolveEvidence_DeterministicSourceHash(t *testing.T) {
 		t.Fatal("changing evidence text must change SourceHash")
 	}
 }
-
-func TestCanonicalEvidenceTextSourceValues(t *testing.T) {
-	vals := CanonicalEvidenceTextSourceValues()
-	want := []EvidenceTextSource{
-		EvidenceTranscript,
-		EvidenceSemanticSummary,
-		EvidenceVisualSummary,
-		EvidenceSummary,
-		EvidenceDescription,
-	}
-	if len(vals) != len(want) {
-		t.Fatalf("len = %d, want %d", len(vals), len(want))
-	}
-	for i := range want {
-		if vals[i] != want[i] {
-			t.Fatalf("vals[%d] = %q, want %q", i, vals[i], want[i])
-		}
-	}
-}

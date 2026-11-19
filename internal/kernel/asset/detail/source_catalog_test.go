@@ -2,7 +2,6 @@ package detail
 
 import (
 	"errors"
-	"reflect"
 	"testing"
 )
 
@@ -28,13 +27,6 @@ func TestDefaultSourceCatalogCanonicalizesAliases(t *testing.T) {
 	}
 }
 
-func TestDefaultSourceCatalogNamesAreDeterministic(t *testing.T) {
-	want := []string{"artlist", "clips", "images", "sound_effect", "stock", "voiceover"}
-	if got := DefaultSourceCatalog().Names(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("Names() = %v, want %v", got, want)
-	}
-}
-
 func TestSourceCatalogBuilderRejectsDuplicateAndAliasConflict(t *testing.T) {
 	builder := NewSourceCatalogBuilder()
 	if err := builder.Add(SourceDefinition{Canonical: "clips", Aliases: []string{"youtube"}}); err != nil {
@@ -45,18 +37,5 @@ func TestSourceCatalogBuilderRejectsDuplicateAndAliasConflict(t *testing.T) {
 	}
 	if err := builder.Add(SourceDefinition{Canonical: "video", Aliases: []string{"youtube"}}); !errors.Is(err, ErrSourceCatalogAliasConflict) {
 		t.Fatalf("alias conflict error = %v, want ErrSourceCatalogAliasConflict", err)
-	}
-}
-
-func TestSourceCatalogBuilderBuildCopiesDefinitions(t *testing.T) {
-	builder := NewSourceCatalogBuilder()
-	if err := builder.Add(SourceDefinition{Canonical: "clips", Aliases: []string{"youtube"}, MediaType: "video"}); err != nil {
-		t.Fatal(err)
-	}
-	catalog := builder.Build()
-	defs := catalog.Definitions()
-	defs[0].Aliases[0] = "mutated"
-	if got := catalog.Canonical("youtube"); got != "clips" {
-		t.Fatalf("catalog was mutated through Definitions result: %q", got)
 	}
 }

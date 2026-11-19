@@ -35,7 +35,6 @@ package detail
 
 import (
 	"context"
-	"errors"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
@@ -134,37 +133,6 @@ func NewService(store Store, log *zap.Logger) *Service {
 // Get delegates to the wrapped Store.
 func (s *Service) Get(ctx context.Context, id string) (*asset.Details, error) {
 	return s.store.Get(ctx, id)
-}
-
-// List delegates to the wrapped Store.
-func (s *Service) List(ctx context.Context, filter asset.Filter) ([]*asset.Summary, error) {
-	return s.store.List(ctx, filter)
-}
-
-// Count returns the number of assets matching the filter through the
-// repository adapter bridge.
-//
-// It exists so a SINGLE narrow read contract (Get / List / Count) is
-// satisfiable by both engine implementations — the SQLite detail store and
-// the PostgreSQL media SSOT store — without forcing consumers to reach the
-// concrete Repository() accessor (which is a type-switch bridge and therefore
-// unavailable to non-SQLite stores).
-func (s *Service) Count(ctx context.Context, filter asset.Filter) (int64, error) {
-	repo := s.Repository()
-	if repo == nil {
-		return 0, errors.New("asset detail service: repository adapter unavailable")
-	}
-	return repo.Count(ctx, filter)
-}
-
-// Save delegates to the wrapped Store.
-func (s *Service) Save(ctx context.Context, details *asset.Details) error {
-	return s.store.Save(ctx, details)
-}
-
-// Delete delegates to the wrapped Store.
-func (s *Service) Delete(ctx context.Context, id string) error {
-	return s.store.Delete(ctx, id)
 }
 
 // ── Soft-delete filter (canonical SSOT, PR 1) ───────────────────────

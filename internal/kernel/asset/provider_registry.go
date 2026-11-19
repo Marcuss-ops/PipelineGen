@@ -128,19 +128,6 @@ func (r *ProviderRegistry) Register(d ProviderDescriptor) error {
 	return nil
 }
 
-// ByID returns the descriptor with the given ID. The second result is
-// true iff the descriptor exists.
-func (r *ProviderRegistry) ByID(id ImageProvider) (ProviderDescriptor, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	d, ok := r.byID[id]
-	if !ok {
-		return ProviderDescriptor{}, false
-	}
-	return d.clone(), true
-}
-
 // Match returns the first descriptor whose MatchSource function or
 // aliases identify the supplied source string. Matching is exact or
 // hostname-aware; broad substring matching is not used.
@@ -167,18 +154,6 @@ func (r *ProviderRegistry) Match(source string) (ProviderDescriptor, bool) {
 		}
 	}
 	return ProviderDescriptor{}, false
-}
-
-// All returns a defensive copy of the registered descriptors.
-func (r *ProviderRegistry) All() []ProviderDescriptor {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	out := make([]ProviderDescriptor, len(r.descriptors))
-	for i, d := range r.descriptors {
-		out[i] = d.clone()
-	}
-	return out
 }
 
 // Seal marks the registry as immutable. After Seal returns, any call

@@ -52,18 +52,6 @@ const (
 	EvidenceDescription EvidenceTextSource = "description"
 )
 
-// CanonicalEvidenceTextSourceValues returns the closed enumeration of
-// EvidenceTextSource values in precedence order (transcript first).
-func CanonicalEvidenceTextSourceValues() []EvidenceTextSource {
-	return []EvidenceTextSource{
-		EvidenceTranscript,
-		EvidenceSemanticSummary,
-		EvidenceVisualSummary,
-		EvidenceSummary,
-		EvidenceDescription,
-	}
-}
-
 // ErrEvidenceNotGroundable is the fail-closed sentinel for assets with
 // no resolvable evidence text across any canonical tier.
 var ErrEvidenceNotGroundable = errors.New("asset: evidence not groundable")
