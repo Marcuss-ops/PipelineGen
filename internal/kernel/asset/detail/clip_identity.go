@@ -16,25 +16,19 @@
 //
 //   - ClipIdentity is the immutable output container: AssetID +
 //     ContentHash + IndexEventKey.
-//   - NewYouTubeClipIdentity builds the YouTube-specific asset_id
-//     format and derives the index event key from it.
-//   - NewStockClipIdentity builds the Stock-specific asset_id format
-//     and derives the index event key from it.
-//   - BuildIndexEventKey is the canonical outbox event_key constructor.
-//     The infra-layer `indexEventKey` in dispatcher_index.go currently
-//     calls `clipindexer.EmbeddingModel()` etc. — those infra-layer
-//     dependencies are passed in as parameters here so the domain
-//     layer stays leaf-only (no internal/ imports).
+//   - YouTubeClipAssetID is the single owner of the YouTube asset_id
+//     format `yt_{videoID}_{start}_{end}_{policy}`.
 //
-// godlike/07 minimum-blast-radius: additive-only. Existing per-pipeline
-// ID construction continues working; callers that adopt the builder
-// deprecate their local derivation over time.
+// The per-source identity builders and the outbox index-event key
+// constructor were retired with the clip indexer on 2026-11-17; callers
+// build ClipIdentity from their own source row and the media plane owns
+// the index event. The container stays because live ingestion and the
+// PostgreSQL media tests still carry the triple.
 package detail
 
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -153,223 +147,12 @@ type YouTubeClipIdentityParams struct {
 	Collection  string
 }
 
-// NewYouTubeClipIdentity constructs the canonical ClipIdentity for a
-// YouTube clip. The asset_id format is the well-known
-// `yt_{videoID}_{startSec}_{endSec}_{policyVer}` that has been in
-// production since the YouTube pipeline launched.
-//
-// Parameters:
-//   - params.VideoID: the YouTube video ID (11-char alphanumeric + - and _)
-//   - params.StartSec / params.EndSec: the clip window boundaries (int, matching
-//     the process_segment.go convention of int-cast seconds)
-//   - params.PolicyVer: the policy version string (e.g. "v1")
-//   - params.ContentHash: the SHA-256 fingerprint of the asset's searchable
-//     content (title+summary+topics+...). Must be non-empty.
-//   - params.Model / params.Version / params.Collection: the indexing metadata
-//     from the clipindexer configuration. Callers pass these through from
-//     their composition root (the domain layer cannot import clipindexer).
-//
-// Returns:
-//   - ClipIdentity: the canonical triple
-//   - error: ErrClipIdentityEmptyAssetID if videoID is empty,
-//     ErrClipIdentityEmptyContentHash if contentHash is empty,
-//     ErrClipIdentityInvalidTimestamps if endSec < startSec
-//
-// godlike/06 SSOT: this is the SOLE canonical owner of the
-// yt_{videoID}_{start}_{end}_{policy} asset_id format. The
-// process_segment.go inline `fmt.Sprintf` is the legacy surface;
-// callers that adopt this builder deprecate the inline derivation.
-func NewYouTubeClipIdentity(params YouTubeClipIdentityParams) (ClipIdentity, error) {
-	videoID := strings.TrimSpace(params.VideoID)
-	if videoID == "" {
-		return ClipIdentity{}, ErrClipIdentityEmptyAssetID
-	}
-	contentHash := strings.TrimSpace(params.ContentHash)
-	if contentHash == "" {
-		return ClipIdentity{}, ErrClipIdentityEmptyContentHash
-	}
-	// The asset-id FORMAT is owned by YouTubeClipAssetID; this constructor only
-	// adds the content hash + index-event key on top of it.
-	assetID, err := YouTubeClipAssetID(videoID, params.StartSec, params.EndSec, params.PolicyVer)
-	if err != nil {
-		return ClipIdentity{}, err
-	}
-	eventKey := BuildIndexEventKey(assetID, contentHash, params.Model, params.Version, params.Collection)
-	return ClipIdentity{
-		AssetID:       assetID,
-		ContentHash:   contentHash,
-		IndexEventKey: eventKey,
-	}, nil
-}
-
 // ErrYouTubeClipAssetIDShape signals an asset id that does not match the
 // canonical `yt_{videoID}_{startSec}_{endSec}_{policyVer}` contract.
 var ErrYouTubeClipAssetIDShape = errors.New("clip identity: asset_id does not match yt_{videoID}_{startSec}_{endSec}_{policyVer}")
 
-// ParseYouTubeClipAssetID is the INVERSE of YouTubeClipAssetID (the sole
-// owner of the format). It recovers (videoID, startSec, endSec, policyVer)
-// from a canonical YouTube clip asset id so callers can rebuild the source
-// video URL and the exact clip window WITHOUT guessing (godlike/06 SSOT:
-// the format has one owner, both directions).
-//
-// Parsing is right-anchored because the videoID itself may contain
-// underscores (YouTube ids are alphanumeric plus '-' and '_'), while the
-// policy version may be multi-token (e.g. "whisper_v1"): scanning from the
-// right consumes the non-numeric policy tail, then the two numeric
-// boundaries, and everything left of them is the videoID.
-//
-// Fail-closed: any shape mismatch returns ErrYouTubeClipAssetIDShape.
-func ParseYouTubeClipAssetID(assetID string) (videoID string, startSec, endSec int, policyVer string, err error) {
-	trimmed := strings.TrimSpace(assetID)
-	if !strings.HasPrefix(trimmed, "yt_") || trimmed == "yt_" {
-		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
-	}
-	parts := strings.Split(strings.TrimPrefix(trimmed, "yt_"), "_")
-	if len(parts) < 4 {
-		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
-	}
-	// Right-anchored scan: policy tail (non-numeric) + the two boundaries.
-	policyTokens := []string{}
-	i := len(parts) - 1
-	for ; i >= 0; i-- {
-		if _, nerr := strconv.Atoi(parts[i]); nerr == nil {
-			break
-		}
-		policyTokens = append([]string{parts[i]}, policyTokens...)
-	}
-	if i < 1 || len(policyTokens) == 0 {
-		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
-	}
-	endSec, convErr := strconv.Atoi(parts[i])
-	if convErr != nil {
-		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
-	}
-	startSec, convErr = strconv.Atoi(parts[i-1])
-	if convErr != nil {
-		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
-	}
-	videoID = strings.Join(parts[:i-1], "_")
-	if videoID == "" || endSec < startSec {
-		return "", 0, 0, "", fmt.Errorf("%w: %q", ErrYouTubeClipAssetIDShape, assetID)
-	}
-	return videoID, startSec, endSec, strings.Join(policyTokens, "_"), nil
-}
-
 // ── Stock builder ───────────────────────────────────────────────────
-
-// NewStockClipIdentity constructs the canonical ClipIdentity for a
-// Stock pipeline chunk. The asset_id format is the well-known
-// `planner:{sha256-prefix}:{index}` that has been in production
-// since the Stock Cutover (July 2026).
-//
-// Parameters:
-//   - hashPrefix: the first 16 hex chars of SHA-256(URL|index|policy).
-//     This is the deterministic OutputLogicalID prefix from the
-//     planner's buildClipPlan function. Must be non-empty.
-//   - index: the zero-based chunk index within the plan
-//   - contentHash: the SHA-256 fingerprint of the video file bytes.
-//     Must be non-empty.
-//   - model / version / collection: the indexing metadata from the
-//     clipindexer configuration.
-//
-// Returns:
-//   - ClipIdentity: the canonical triple
-//   - error: ErrClipIdentityEmptyAssetID if hashPrefix is empty,
-//     ErrClipIdentityEmptyContentHash if contentHash is empty
-//
-// godlike/06 SSOT: this is the SOLE canonical owner of the
-// planner:{hash}:{index} asset_id format. The planner.go inline
-// `fmt.Sprintf` is the legacy surface; callers that adopt this
-// builder deprecate the inline derivation.
-func NewStockClipIdentity(
-	hashPrefix string,
-	index int,
-	contentHash string,
-	model, version, collection string,
-) (ClipIdentity, error) {
-	hashPrefix = strings.TrimSpace(hashPrefix)
-	if hashPrefix == "" {
-		return ClipIdentity{}, ErrClipIdentityEmptyAssetID
-	}
-	contentHash = strings.TrimSpace(contentHash)
-	if contentHash == "" {
-		return ClipIdentity{}, ErrClipIdentityEmptyContentHash
-	}
-	assetID := fmt.Sprintf("planner:%s:%d", hashPrefix, index)
-	eventKey := BuildIndexEventKey(assetID, contentHash, model, version, collection)
-	return ClipIdentity{
-		AssetID:       assetID,
-		ContentHash:   contentHash,
-		IndexEventKey: eventKey,
-	}, nil
-}
 
 // ── Generic builder ─────────────────────────────────────────────────
 
-// NewClipIdentity constructs a ClipIdentity for any source type when
-// the caller already has a pre-computed asset_id. This is the escape
-// hatch for sources that don't use the YouTube or Stock ID formats
-//
-// Parameters:
-//   - assetID: the pre-computed media_assets.id. Must be non-empty.
-//   - contentHash: the SHA-256 fingerprint. Must be non-empty.
-//   - model / version / collection: the indexing metadata.
-//
-// WARNING: callers that already have a pre-computed asset_id in the
-// YouTube (yt_) or Stock (planner:) format MUST prefer
-// NewYouTubeClipIdentity / NewStockClipIdentity over this generic
-// builder — the format-specific builders enforce source-specific
-// invariants (e.g. endSec >= startSec for YouTube) that this
-// function does not check.
-//
-// godlike/06 SSOT: callers that use this function own their own
-// asset_id format. The domain layer only enforces the non-empty
-// invariants and derives the index event key.
-func NewClipIdentity(
-	assetID string,
-	contentHash string,
-	model, version, collection string,
-) (ClipIdentity, error) {
-	assetID = strings.TrimSpace(assetID)
-	if assetID == "" {
-		return ClipIdentity{}, ErrClipIdentityEmptyAssetID
-	}
-	contentHash = strings.TrimSpace(contentHash)
-	if contentHash == "" {
-		return ClipIdentity{}, ErrClipIdentityEmptyContentHash
-	}
-	eventKey := BuildIndexEventKey(assetID, contentHash, model, version, collection)
-	return ClipIdentity{
-		AssetID:       assetID,
-		ContentHash:   contentHash,
-		IndexEventKey: eventKey,
-	}, nil
-}
-
 // ── Index event key construction ────────────────────────────────────
-
-// BuildIndexEventKey is the canonical outbox event_key constructor for
-// asset.index.requested.v1 envelopes. It produces a deterministic
-// colon-separated string that the IndexingHandler's supersede gate
-// uses to deduplicate re-index requests.
-//
-// Format: index:{assetID}:{contentHash}:{model}:{version}:{collection}
-//
-// This is the domain-level SSOT for the key format. The infra-layer's
-// `indexEventKey` in dispatcher_index.go currently calls
-// `clipindexer.EmbeddingModel()` etc. directly; callers of this
-// function pass those values through from their composition root.
-//
-// godlike/06 SSOT: the infra-layer `indexEventKey` should eventually
-// delegate to this function (or to a thin wrapper that injects the
-// clipindexer constants). This is the forward-pointer that preserves
-// the domain-level ownership of the format.
-func BuildIndexEventKey(assetID, contentHash, model, version, collection string) string {
-	return fmt.Sprintf("index:%s:%s:%s:%s:%s",
-		assetID,
-		contentHash,
-		model,
-		version,
-		collection,
-	)
-}
