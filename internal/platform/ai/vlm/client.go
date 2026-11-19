@@ -8,7 +8,6 @@
 package vlm
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -121,115 +120,6 @@ type DedupPair struct {
 type DedupResult struct {
 	Pairs       []DedupPair `json:"pairs"`
 	UniqueCount int         `json:"unique_count"`
-}
-
-// VisualTagImage calls /vlm/visual-tag for a single image.
-func (c *Client) VisualTagImage(ctx context.Context, imageURL string) (*VisualTag, error) {
-	if !c.IsEnabled() {
-		return nil, ErrVLMDisabled
-	}
-
-	url := fmt.Sprintf("%s/vlm/visual-tag?image_url=%s", c.cfg.Endpoint, imageURL)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create vlm request: %w", err)
-	}
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("vlm request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("vlm returned %d", resp.StatusCode)
-	}
-
-	var result VisualTagResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode vlm response: %w", err)
-	}
-
-	return &result.Tags, nil
-}
-
-// ValidateScript calls /vlm/validate-script to check script visual coherence.
-func (c *Client) ValidateScript(ctx context.Context, scriptText string, imageURLs []string) (*ScriptValidation, error) {
-	if !c.IsEnabled() {
-		return nil, ErrVLMDisabled
-	}
-
-	payload := map[string]any{
-		"script_text": scriptText,
-		"model":       c.cfg.Model,
-	}
-	if len(imageURLs) > 0 {
-		payload["image_urls"] = imageURLs
-	}
-
-	body, _ := json.Marshal(payload)
-	url := fmt.Sprintf("%s/vlm/validate-script", c.cfg.Endpoint)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create vlm validate request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("vlm validate request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("vlm validate returned %d", resp.StatusCode)
-	}
-
-	var result ScriptValidationResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode vlm validate response: %w", err)
-	}
-
-	return &result.Validation, nil
-}
-
-// DedupCheck calls /vlm/dedup-check to find visually similar images.
-func (c *Client) DedupCheck(ctx context.Context, imageURLs []string, threshold float64) (*DedupResult, error) {
-	if !c.IsEnabled() {
-		return nil, ErrVLMDisabled
-	}
-
-	payload := map[string]any{
-		"image_urls": imageURLs,
-		"threshold":  threshold,
-	}
-
-	body, _ := json.Marshal(payload)
-	url := fmt.Sprintf("%s/vlm/dedup-check", c.cfg.Endpoint)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create vlm dedup request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("vlm dedup request: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("vlm dedup returned %d", resp.StatusCode)
-	}
-
-	var raw struct {
-		Result DedupResult `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, fmt.Errorf("decode vlm dedup response: %w", err)
-	}
-
-	return &raw.Result, nil
 }
 
 // AutoTagLocal calls /vlm/autotag/analyze-file for a local file (image or video).

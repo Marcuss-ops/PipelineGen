@@ -1,6 +1,6 @@
 # TICKET — Platform infrastructure: dead registry methods, loaders and adapters (2026-11-19)
 
-- **Status:** OPEN (2026-11-19) — 61 unreachable functions across 47 files under `internal/platform`
+- **Status:** REVIEWED (2026-11-19) — 7 of 80 retired; the rest are chained to live callers or cross-package tests — 61 unreachable functions across 47 files under `internal/platform`
 - **Severity:** P2 — registry and loader APIs that no module registers or loads
 - **Owner:** platform infra owners by package
 - **Source:** `deadcode -test=false ./...` on `refactored@17752ccfb` (445 unreachable functions); frozen list in [`deadcode-2026-11-19.txt`](deadcode-2026-11-19.txt)
@@ -115,3 +115,49 @@ Prossimo passo, a tree quiescente: worktree pulito a HEAD, conteggio con
 `deadcode -test=false ./... | grep '^internal/platform'`, ondata, e chiusura con
 comando + esito + data. Guardia globale corrente:
 [`DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md`](DEAD-CODE-RETIREMENT-PLAN-2026-11-18.md).
+
+## Prossimi passi (2026-11-19, sera)
+
+1. **Sbloccare la misura:** `internal/platform/postgres/media` e i file
+   `remote` sono ancora modificati da un'altra sessione; la conta va fatta a
+   tree quiescente, altrimenti non è attribuibile.
+2. **Ondata 1 — registry `httpserver`:** decidere se il registry deve
+   dichiarare solo ciò che il runtime monta; se sì, eliminare le voci e la
+   relativa API, non solo i costruttori.
+3. **Ondata 2 — loader `ollama`/`prompts` e `rustworker`:** verificare il
+   chiamante reale (il worker Rust è partito, il loader potrebbe essere
+   residuo del percorso Go); un commit per package.
+4. **Ondata 3 — `twinddl` e gli helper singoli**, con `go vet` sul package.
+5. **Chiusura:** guard aggiornato, `go test ./internal/platform/... -count=1`
+   verde, indice rigenerato.
+
+Da completare: le checkbox di §Acceptance restano tutte aperte; il ticket non
+ha ancora una sola ondata eseguita.
+
+## Esito (2026-11-19)
+
+Misura rifatta sul working tree con i file sporchi esclusi. Il conteggio della
+lista congelata (80 righe per `internal/platform`, non 61) includeva 8 simboli
+in file modificati da un'altra sessione, che non sono stati toccati:
+`mutationprobe` (7) e `ollama/adapters.hasPanelGridCollage` (1).
+
+Ritirati (7):
+
+- `ai/vlm`: `Client.VisualTagImage`, `Client.ValidateScript`, `Client.DedupCheck`.
+- `config.DefaultVoiceoverDefaults`.
+- `instaeditcalendar`: `Client.GetEvent`, `Client.CancelEvent`.
+- `ollama/prompts.Config.ApplyFilteringConfig`.
+
+Mantenuti con evidenza:
+
+- `checksum.IsProviderMD5` e `lowercaseHex` sono chiamati da un'altra funzione
+  dello stesso file; `prompts.loadPromptFile` è chiamato da `LoadManifest`.
+  Ritirarli richiede di ritirare anche i chiamanti.
+- `postgres/media/eligibility_reader.go` non esiste più nel working tree
+  (lavoro in corso di un'altra sessione): le due righe della lista congelata
+  sono stale.
+
+Verifica: `go build ./...` 0; `go test` sui package toccati verde;
+`go vet ./...` senza nuovi errori. Restano 61 funzioni `internal/platform` non
+raggiunte da codice di produzione: sono in catene il cui ingresso è un test o
+un'interfaccia, quindi la chiusura a 0 richiede un redesign, non una potatura.

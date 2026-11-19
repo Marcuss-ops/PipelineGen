@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -139,18 +138,4 @@ func render(tmplStr string, data map[string]any) (string, error) {
 		return "", fmt.Errorf("failed to execute template: %w", err)
 	}
 	return buf.String(), nil
-}
-
-// ApplyFilteringConfig applies YAML filtering lists to the types package.
-func (c *Config) ApplyFilteringConfig() {
-	if c == nil {
-		return
-	}
-	if len(c.Filtering.StopPhrases) > 0 || len(c.Filtering.SpeakerLabels) > 0 || len(c.Filtering.MetaContentTypes) > 0 {
-		types.SetFilteringConfig(types.FilteringConfig{
-			StopPhrases:      c.Filtering.StopPhrases,
-			SpeakerLabels:    c.Filtering.SpeakerLabels,
-			MetaContentTypes: c.Filtering.MetaContentTypes,
-		})
-	}
 }

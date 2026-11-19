@@ -24,23 +24,3 @@ func applyCanonicalModelDefaults(c *Config) {
 func DefaultScriptDefaults() ScriptDefaultsConfig {
 	return ScriptDefaultsConfig{WordsPerMinute: 150, SafetyLanguage: "en"}
 }
-
-// DefaultVoiceoverDefaults returns the canonical voiceover defaults
-// represented by the config loader tags. Production values are normally
-// populated by YAML/env resolution.
-func DefaultVoiceoverDefaults() VoiceoverDefaultsConfig {
-	return VoiceoverDefaultsConfig{
-		DefaultFilenameTemplate: "{slug}_{lang}.mp3",
-		DefaultStrategy:         "verify",
-		DefaultLanguage:         "en",
-		DefaultParallelism:      3,
-		MaxParallelism:          8,
-		// ChunkConcurrency is the per-scene sentence-chunk fan-out width
-		// (chunkedTTSProvider). 12 is the 2026-10-29 measurement-backed
-		// value: the live Edge bridge sustained 24 parallel syntheses with
-		// linear aggregate throughput (0 errors) and stable per-call
-		// latency; sentence-sized requests are far lighter than the whole
-		// scene requests the previous value (3) was sized for.
-		ChunkConcurrency: 12,
-	}
-}

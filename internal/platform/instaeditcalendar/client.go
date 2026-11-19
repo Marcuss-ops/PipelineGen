@@ -75,14 +75,6 @@ func (c *Client) UpdateProgress(ctx context.Context, eventKey string, update Pro
 	return c.doJSON(ctx, http.MethodPatch, "/api/v1/agent/calendar/events/"+url.PathEscape(eventKey)+"/progress", update)
 }
 
-// GetEvent reads the latest cancellation and scheduling fields before upload.
-func (c *Client) GetEvent(ctx context.Context, eventKey string) (json.RawMessage, error) {
-	if strings.TrimSpace(eventKey) == "" {
-		return nil, fmt.Errorf("event key is required")
-	}
-	return c.do(ctx, http.MethodGet, "/api/v1/agent/calendar/events/"+url.PathEscape(eventKey), nil)
-}
-
 // GetEventByJobID returns the card linked to this worker job, including the latest schedule.
 func (c *Client) GetEventByJobID(ctx context.Context, jobID string) (json.RawMessage, error) {
 	if strings.TrimSpace(jobID) == "" {
@@ -93,14 +85,6 @@ func (c *Client) GetEventByJobID(ctx context.Context, jobID string) (json.RawMes
 		return nil, ErrEventNotFound
 	}
 	return raw, err
-}
-
-// CancelEvent requests cancellation of the Calendar event and its linked Job Master job.
-func (c *Client) CancelEvent(ctx context.Context, eventKey string) (json.RawMessage, error) {
-	if strings.TrimSpace(eventKey) == "" {
-		return nil, fmt.Errorf("event key is required")
-	}
-	return c.doJSON(ctx, http.MethodPost, "/api/v1/agent/calendar/events/"+url.PathEscape(eventKey)+"/cancel", map[string]any{})
 }
 
 type EventUpdate struct {
