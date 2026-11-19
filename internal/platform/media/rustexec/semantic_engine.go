@@ -186,7 +186,7 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		bundle.Analyzers = scriptgen.SemanticAnalyzerVersions{
 			VisualNER: manifest.Analyzers.VisualNER, SemanticCore: manifest.Analyzers.SemanticCore,
 			PhraseImpact: manifest.Analyzers.PhraseImpact, Lexicon: manifest.Analyzers.Lexicon,
-			EntityIndex: manifest.Analyzers.EntityIndex,
+			EntityIndex: manifest.Analyzers.EntityIndex, Dates: manifest.Analyzers.Dates,
 		}
 		bundle.Status = scene.Status
 		bundle.RejectedItems = scene.RejectedItems

@@ -134,6 +134,7 @@ type SemanticAnalyzerVersions struct {
 	PhraseImpact string
 	Lexicon      string
 	EntityIndex  string
+	Dates        string
 }
 
 // SemanticSearchIntent is a typed, short retrieval query produced by the
