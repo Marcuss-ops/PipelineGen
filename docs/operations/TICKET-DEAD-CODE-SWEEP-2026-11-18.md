@@ -491,8 +491,8 @@ Le due funzioni appartengono alla feature person-image/VLM ancora in corso: non
 si cancellano finché la catena non viene cablata o ritirata, perché la
 rimozione toglierebbe l'unico punto di verifica del contratto collage/perceptual.
 
-**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 11):** 0 zero-reference,
-0 in `internal/capabilities/overlays`, totale **≤ 462**. La baseline precedente
+**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 12):** 0 zero-reference,
+0 in `internal/capabilities/overlays`, totale **≤ 455**. La baseline precedente
 (≤ 476, "458 effettive") non era un valore misurato: il conteggio corretto al
 commit di chiusura era 481. Il prossimo calo si aggiorna a mano a ogni ondata;
 un aumento è una regressione da attribuire per package, come qui.
@@ -581,3 +581,20 @@ copriva soltanto. Ritirati `clip_semantic_metadata.go` (391 righe) e
 **Conteggio misurato** su worktree pulito a `8d55a74a4` con il diff:
 **462** totali, **0** overlays, **0** zero-reference (`go build ./...` rc 0;
 `go test ./internal/kernel/asset/detail` verde). Calo esatto: 467 − 5 = 462.
+
+## Ondata 12 — 2026-11-19 (7 funzioni, 5 DTO, 5 test)
+
+Il layer di normalizzazione del timeline millisecondi era già stato sostituito
+dal contratto canonico v2: `contract.go` usa solo `hasLegacyTimelineFields`
+per rifiutare i payload vecchi con un errore tipizzato. Ritirati
+`NormalizeTimelineJSON`, `NormalizeLegacyTimeline`, `normalizeVideo`,
+`normalizeAudio`, `normalizeValue`, `MarshalTimelineV2` e
+`IsCanonicalTimelineV2`, con i DTO `LegacyTimelineDTO`, `LegacyTimelineSegment`,
+`LegacyVideoSegment`, `LegacyAudioIntent`, `NormalizationReport` e i cinque
+`TestNormalizeTimelineJSON*`/`TestCanonicalTimelineV2Detection*`.
+Restano vivi `MicrosecondsFromMilliseconds`, `microsFromMillis` e
+`hasLegacyTimelineFields`, gli unici chiamati dal contratto.
+
+**Conteggio misurato** su worktree pulito a `8d55a74a4` con il diff:
+**455** totali, **0** overlays, **0** zero-reference (`go build ./...` rc 0;
+`go test ./internal/capabilities/audio` verde). Calo esatto: 462 − 7 = 455.

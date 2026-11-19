@@ -16,10 +16,10 @@ chiusura. Misure su worktree puliti: **481** a `5bedaada6`/`b1c7e06cf`,
 **483** a `8d55a74a4`, sempre con 0 zero-reference e 0 in `overlays`; il delta
 +2 è in `internal/kernel/digest` (`HasPanelGridCollageBytes`,
 `PerceptualHashBytes`) e appartiene alla catena person-image/VLM non cablata.
-Guard corrente: **≤ 462** dopo l'ondata 11 del 2026-11-19 (5 metodi del tipo
-orfano `ClipSemanticMetadata` con i suoi 23 test; l'ondata 10 aveva già tolto
-12 funzioni: i 5 builder legacy `ClipIdentity` e il validator `RenderPlan` con
-i suoi 7 helper).
+Guard corrente: **≤ 455** dopo l'ondata 12 del 2026-11-19 (7 funzioni del
+normalizer audio legacy, 5 DTO e 5 test; l'ondata 11 aveva tolto il tipo orfano
+`ClipSemanticMetadata` con 23 test, la 10 i 5 builder `ClipIdentity` e il
+validator `RenderPlan` con 7 helper).
 La matrice Rust `overlay_plan_contract` è **30/30**
 (misurata il 2026-11-19; il "34" storico è precedente al consolidamento dei
 test), drift gate Go verde sul commit pulito. Il codec jobs è stato ritirato e il guard tipizzato sostituito dal
