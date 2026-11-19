@@ -2,10 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/overlayjoin"
 )
 
@@ -282,14 +280,9 @@ func sanitizeJoinItemID(id string) string {
 }
 
 func fileSHA256(path string) (string, error) {
-	file, err := os.Open(path)
+	hash, _, err := digest.SHA256File(path)
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = file.Close() }()
-	hasher := sha256.New()
-	if _, err := io.Copy(hasher, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hasher.Sum(nil)), nil
+	return hash, nil
 }

@@ -6,8 +6,43 @@ import (
 
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
+
+// SetNLPConcurrency sets the NLP/entity-extraction fan-out width used by the
+// SceneReadyCoordinator and the translated-NLP pass. Values <= 0 fall back to
+// the certified default (DefaultNLPConcurrency).
+func (r *Runner) SetNLPConcurrency(concurrency int) {
+	if r == nil {
+		return
+	}
+	if concurrency <= 0 {
+		concurrency = DefaultNLPConcurrency
+	}
+	r.nlpConcurrency = concurrency
+}
+
+// observePhraseImpactTimings reports the extractive-summary worker stages.
+func observePhraseImpactTimings(timings PhraseImpactTimings) {
+	stages := [...]struct {
+		name string
+		ms   float64
+	}{
+		{"split", timings.SplitMS},
+		{"embedding", timings.EmbeddingMS},
+		{"similarity", timings.SimilarityMS},
+		{"ranking", timings.RankingMS},
+		{"summary", timings.SummaryMS},
+		{"bullet", timings.BulletMS},
+		{"total", timings.TotalMS},
+	}
+	for _, stage := range stages {
+		if stage.ms > 0 {
+			observability.ScriptPhraseImpactStageSeconds.WithLabelValues(stage.name).Observe(stage.ms / 1000)
+		}
+	}
+}
 
 // SetLogger sets the runner's logger. Nil-safe (no-op on nil).
 func (r *Runner) SetLogger(log *zap.Logger) {

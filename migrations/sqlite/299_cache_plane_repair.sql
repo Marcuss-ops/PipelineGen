@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS research_cache (
     language TEXT NOT NULL,
     max_steps INTEGER NOT NULL,
     source_text TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    last_used TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    last_used TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     source_text_hash TEXT NOT NULL DEFAULT '',
     research_report_json TEXT NOT NULL DEFAULT '',
     sources_count INTEGER NOT NULL DEFAULT 0,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS research_cache (
     research_version TEXT,
     hit_count INTEGER NOT NULL DEFAULT 0,
     expires_at TEXT,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_cache_research_expiry ON research_cache(expires_at);
 CREATE INDEX IF NOT EXISTS idx_cache_research_last_used ON research_cache(last_used);
@@ -47,14 +47,14 @@ CREATE INDEX IF NOT EXISTS idx_cache_research_last_used ON research_cache(last_u
 CREATE TABLE IF NOT EXISTS artlist_search_cache (
     term TEXT PRIMARY KEY,
     clips_json TEXT NOT NULL,
-    cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+    cached_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE TABLE IF NOT EXISTS transcript_cache (
     video_id TEXT PRIMARY KEY,
     transcript_text TEXT NOT NULL,
     language TEXT NOT NULL DEFAULT 'en',
-    cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+    cached_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE TABLE IF NOT EXISTS translation_cache (
@@ -62,8 +62,8 @@ CREATE TABLE IF NOT EXISTS translation_cache (
     source_text_hash TEXT NOT NULL,
     target_language TEXT NOT NULL,
     translated_text TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    last_used TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    last_used TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_cache_translation_last_used ON translation_cache(last_used);
 
@@ -81,8 +81,8 @@ CREATE TABLE IF NOT EXISTS stock_source_cache (
     force_keyframes INTEGER NOT NULL DEFAULT 0,
     state TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'invalidated', 'expired')),
     last_verified_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_cache_stock_state ON stock_source_cache(state);
 
@@ -90,8 +90,8 @@ CREATE TABLE IF NOT EXISTS vidrush_provider_cache (
     namespace TEXT NOT NULL,
     cache_key TEXT NOT NULL,
     payload_json TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     PRIMARY KEY (namespace, cache_key)
 );
 CREATE INDEX IF NOT EXISTS idx_cache_vidrush_updated ON vidrush_provider_cache(updated_at);

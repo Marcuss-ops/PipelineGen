@@ -165,3 +165,31 @@ func TestCompileASSContent_ValidatesThroughValidateASSFile(t *testing.T) {
 		t.Fatalf("expected validation error when last cue exceeds clip duration, got nil")
 	}
 }
+
+func TestResolveFontPreset_OswaldIsHonored(t *testing.T) {
+	preset := ResolveFontPreset("vidrush-default-oswald")
+	if preset.FontName != "Oswald" {
+		t.Fatalf("oswald preset = %+v; want FontName Oswald", preset)
+	}
+	content, err := CompileASSContent(testCues(), "vidrush-default-oswald")
+	if err != nil {
+		t.Fatalf("CompileASSContent: %v", err)
+	}
+	if !strings.Contains(content, "Style: vidrush-default-oswald,Oswald,58,") {
+		t.Fatalf("expected Oswald style row, got:\n%s", content)
+	}
+}
+
+func TestCompileASSContent_DecodesHTMLEntities(t *testing.T) {
+	cues := []detail.TimedCue{{StartMs: 0, EndMs: 1000, Text: "&gt; &gt; hello &amp; goodbye"}}
+	content, err := CompileASSContent(cues, "vidrush-default-oswald")
+	if err != nil {
+		t.Fatalf("CompileASSContent: %v", err)
+	}
+	if strings.Contains(content, "&gt;") || strings.Contains(content, "&amp;") {
+		t.Fatalf("expected decoded ASS text, got:\n%s", content)
+	}
+	if !strings.Contains(content, "> > hello & goodbye") {
+		t.Fatalf("expected decoded speaker markers, got:\n%s", content)
+	}
+}

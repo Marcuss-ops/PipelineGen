@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"html"
 	"os"
 	"path/filepath"
 	"strings"
@@ -258,6 +259,7 @@ type FontPreset struct {
 
 var defaultFontPresets = map[string]FontPreset{
 	"montserrat": {FontName: "Montserrat", FontSize: 58, Bold: 1, Outline: 4.0, Shadow: 3, MarginV: 36},
+	"oswald":     {FontName: "Oswald", FontSize: 58, Bold: 1, Outline: 4.0, Shadow: 3, MarginV: 36},
 	"poppins":    {FontName: "Poppins", FontSize: 58, Bold: 1, Outline: 4.0, Shadow: 6, MarginV: 36},
 	"impact":     {FontName: "Impact", FontSize: 62, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
 	"anton":      {FontName: "Anton", FontSize: 60, Bold: 0, Outline: 4.0, Shadow: 3, MarginV: 36},
@@ -306,6 +308,9 @@ func ResolveFontPreset(styleID string) FontPreset {
 	}
 	if strings.Contains(norm, "roboto") {
 		return defaultFontPresets["roboto"]
+	}
+	if strings.Contains(norm, "oswald") {
+		return defaultFontPresets["oswald"]
 	}
 	// Poppins carries a stronger shadow (Shadow: 6) than the montserrat
 	// default (Shadow: 3): subtitle style IDs that ask for Poppins get the
@@ -367,6 +372,9 @@ func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 		// Clean dialogue text from line breaks/returns to keep ASS format valid
 		text := strings.ReplaceAll(c.Text, "\n", " ")
 		text = strings.ReplaceAll(text, "\r", "")
+		// Transcript sidecars store HTML entities (for example `&gt;` for a
+		// speaker marker). ASS is plain text, so decode them before writing.
+		text = html.UnescapeString(text)
 		// Keep every rendered subtitle line within the short-form readability
 		// contract. ASS uses \\N for an explicit line break; the fixed style
 		// alignment/margin below keeps all lines anchored consistently.
