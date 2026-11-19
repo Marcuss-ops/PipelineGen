@@ -491,8 +491,44 @@ Le due funzioni appartengono alla feature person-image/VLM ancora in corso: non
 si cancellano finché la catena non viene cablata o ritirata, perché la
 rimozione toglierebbe l'unico punto di verifica del contratto collage/perceptual.
 
-**Guard aggiornato (misurato 2026-11-19):** 0 zero-reference, 0 in
-`internal/capabilities/overlays`, totale **≤ 483**. La baseline precedente
+**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 9):** 0 zero-reference,
+0 in `internal/capabilities/overlays`, totale **≤ 479**. La baseline precedente
 (≤ 476, "458 effettive") non era un valore misurato: il conteggio corretto al
 commit di chiusura era 481. Il prossimo calo si aggiorna a mano a ogni ondata;
 un aumento è una regressione da attribuire per package, come qui.
+
+## Ondata 9 — 2026-11-19 (4 funzioni, 1 file intero, 2 test ritirati)
+
+Decisione presa leggendo il codice, non il conteggio: queste funzioni non sono
+raggiungibili da nessun `main` e non hanno un test che le usi come oracolo
+condiviso con codice vivo. Il taglio non cambia comportamento.
+
+| Simbolo | File | Motivo |
+| --- | --- | --- |
+| `wholeScenePhraseText` | `scripts/overlay_plan_compile_limits.go` | fallback frase whole-scene non più chiamato; il planner Rust proietta le frasi |
+| `resolveImageOverlayCeiling` | `scripts/overlay_plan_compile_limits.go` | riconciliazione `max_image_overlays`/group limits non più chiamata |
+| `ScheduleGate.WaitUntilDue` | `platform/instaeditcalendar/schedule.go` | l'intero file era morto; `ScheduleGate`, `ErrEventCancelled` e il polling non avevano altri riferimenti |
+| `Client.WaitUntilDue` | `platform/instaeditcalendar/schedule.go` | idem: il client calendar non è su un percorso di produzione |
+
+Ritirati con loro `overlay_plan_whole_scene_phrase_test.go`,
+`overlay_image_budget_test.go` (testavano solo i due helper rimossi) e il file
+`instaeditcalendar/schedule.go`.
+
+**Conteggio misurato** su un worktree pulito a `8d55a74a4` con questo diff:
+**479** totali, **0** in `capabilities/overlays`, **0** zero-reference
+(`go build ./...` rc 0; `go test ./internal/platform/instaeditcalendar` verde).
+Il calo rispetto a 483 è esattamente −4: nessuna cascata nascosta.
+
+**Non eseguiti, con motivo:**
+
+- `internal/capabilities/scripts/adapters/scene_annotations_numeric.go` è un
+duplicato morto di `scripts/entity_annotations_numeric.go`, ma il suo chiamante
+`VidRushSceneMerger` è referenziato da un'asserzione di compilazione in
+`app/wiring/wire_script_postprocess.go`; VidRush è area in modifica
+concorrente, quindi il ritiro va fatto con il suo owner.
+- `filterOverlayItemsByCategory` / `filterScenePhrasesByCategory` restano:
+il primo è usato da `bullets_charts_cert_test.go` (oracolo vivo delle
+classificazioni Rust), il secondo è ancora referenziato dalla suite.
+- I cluster `voiceover/service` (23), `kernel/asset/detail` (21), `remote`
+(10), `app/wiring` (10) richiedono la decisione di prodotto dell'ondata 6:
+ritirare la capability o ricablarla. Non si cancellano per conteggio.
