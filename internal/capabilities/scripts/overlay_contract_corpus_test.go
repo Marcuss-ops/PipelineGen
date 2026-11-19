@@ -12,11 +12,33 @@ import (
 // TestOverlayContractCorpusProducerWire drives the producer half of the shared
 // corpus: every PipelineGen fixture must survive the production wire mapper,
 // because that mapper (not the fixture) is what RenderingGen receives.
-func TestOverlayContractCorpusProducerWire(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
+// contractCorpusRoot finds the workspace root that owns contracts/. Walking up
+// instead of counting ".." keeps the test hermetic in a nested worktree, where
+// the package sits deeper than in the main checkout.
+func contractCorpusRoot(t *testing.T) string {
+	t.Helper()
+	if root := os.Getenv("VELOX_CONTRACT_CORPUS_ROOT"); root != "" {
+		return root
+	}
+	start, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
+	dir := start
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "contracts", "overlay-v2", "manifest.json")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf("contract corpus not found: searched from %s upward for contracts/overlay-v2/manifest.json; set VELOX_CONTRACT_CORPUS_ROOT", start)
+		}
+		dir = parent
+	}
+}
+
+func TestOverlayContractCorpusProducerWire(t *testing.T) {
+	root := contractCorpusRoot(t)
 	raw, err := os.ReadFile(filepath.Join(root, "contracts", "overlay-v2", "manifest.json"))
 	if err != nil {
 		t.Fatalf("read contract corpus manifest: %v", err)
