@@ -105,7 +105,7 @@ type ClipReference struct {
 	SourceInMS   int64    `json:"source_in_ms,omitempty"`
 	SourceOutMS  int64    `json:"source_out_ms,omitempty"`
 	// Subject identity of the clip, threaded from the canonical asset
-	// metadata (ClipSemanticMetadata). The scene↔clip identity gate uses
+	// metadata. The scene↔clip identity gate uses
 	// the union of Speakers + MentionedPeople + Subject to certify that a
 	// clip actually features the subject its scene narrates (the
 	// "Tom Holland / Adam Sandler" class of error).
