@@ -491,8 +491,8 @@ Le due funzioni appartengono alla feature person-image/VLM ancora in corso: non
 si cancellano finché la catena non viene cablata o ritirata, perché la
 rimozione toglierebbe l'unico punto di verifica del contratto collage/perceptual.
 
-**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 12):** 0 zero-reference,
-0 in `internal/capabilities/overlays`, totale **≤ 455**. La baseline precedente
+**Guard aggiornato (misurato 2026-11-19, dopo l'ondata 13):** 0 zero-reference,
+0 in `internal/capabilities/overlays`, totale **≤ 445**. La baseline precedente
 (≤ 476, "458 effettive") non era un valore misurato: il conteggio corretto al
 commit di chiusura era 481. Il prossimo calo si aggiorna a mano a ogni ondata;
 un aumento è una regressione da attribuire per package, come qui.
@@ -598,3 +598,18 @@ Restano vivi `MicrosecondsFromMilliseconds`, `microsFromMillis` e
 **Conteggio misurato** su worktree pulito a `8d55a74a4` con il diff:
 **455** totali, **0** overlays, **0** zero-reference (`go build ./...` rc 0;
 `go test ./internal/capabilities/audio` verde). Calo esatto: 462 − 7 = 455.
+
+## Ondata 13 — 2026-11-19 (10 funzioni, 3 test, 2 file)
+
+`kernel/script/retrieval_query_builders.go` non aveva alcun chiamante di
+produzione: le sole tre reference erano i test nello stesso file, quindi la
+famiglia di costruzione query non è mai stata cablata nel kernel (né esiste un
+corrispettivo Rust). Ritirati il file e il suo test:
+`BuildYouTubeQueries`, `BuildYouTubeQueriesWithExplicit`, `isRetrievalEntity`,
+`temporalTerms`, `termValues`, `termQuery`, `weightedValues`, `joinQuery`,
+`uniqueQueries`, `normalizedQueryLimit`. I tipi `SegmentSemanticProfile`,
+`SemanticTerm` e i `TermKind*` restano: l'estrazione semantica li usa ancora.
+
+**Conteggio misurato** su worktree pulito a `8d55a74a4` con il diff:
+**445** totali, **0** overlays, **0** zero-reference (`go build ./...` rc 0;
+`go test ./internal/kernel/script` verde). Calo esatto: 455 − 10 = 445.
