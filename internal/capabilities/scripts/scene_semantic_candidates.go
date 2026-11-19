@@ -134,6 +134,7 @@ type SemanticAnalyzerVersions struct {
 	PhraseImpact string
 	Lexicon      string
 	EntityIndex  string
+	Numbers      string
 	Dates        string
 }
 

@@ -268,6 +268,7 @@ type semanticEngineAnalyzerVersions struct {
 	PhraseImpact string `json:"phrase_impact"`
 	Lexicon      string `json:"lexicon"`
 	EntityIndex  string `json:"entity_index,omitempty"`
+	Numbers      string `json:"numbers,omitempty"`
 	Dates        string `json:"dates,omitempty"`
 }
 
