@@ -37,11 +37,15 @@ type Runner struct {
 	// carries BGM/SFX intents fails closed in the audio-compile phase.
 	audioAssetSource        AudioAssetSource
 	overlayBackgroundSource OverlayBackgroundSource
-	scriptPersistence       ScriptPersistence
-	recorder                ExecutionRecorder
-	sceneCommitObserver     SceneCommitObserver
-	vidRushBarrier          VidRushBarrier
-	vidRushTiming           VidRushTimingRecorder
+	// overlayClipFetcher materializes the certified per-item overlay renders
+	// that the local final-video join places on the plan timeline. Nil keeps
+	// the historical audio-only deliverable (no join, no failure).
+	overlayClipFetcher  OverlayClipFetcher
+	scriptPersistence   ScriptPersistence
+	recorder            ExecutionRecorder
+	sceneCommitObserver SceneCommitObserver
+	vidRushBarrier      VidRushBarrier
+	vidRushTiming       VidRushTimingRecorder
 	// jobStageSink mirrors durable run stages into job_stage_status rows of
 	// the single-item job; jobStages maps runID -> open job stage state.
 	jobStageSink          job.JobStageStatusStore

@@ -170,7 +170,8 @@ func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, lang
 			if !ok {
 				continue
 			}
-			candidates := sceneImageCandidates(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID], maxGenericSceneImagesPerScene)
+			limit := genericSceneImageLimit(result, scene.ID, canvas.MaxOverlaysPerScene)
+			candidates := sceneImageCandidates(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID], limit)
 			if len(candidates) > 0 {
 				imagesByScene[scene.ID] = candidates
 			}

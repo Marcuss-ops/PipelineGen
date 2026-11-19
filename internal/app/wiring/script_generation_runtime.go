@@ -32,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	sqlitecheckpoint "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/checkpoint"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
@@ -185,6 +186,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
+	// The local render lane produces one certified clip per overlay item; the
+	// join needs those exact bytes back from the object store to place them on
+	// the plan timeline. Wiring the fetcher is what turns a render-enabled job
+	// into a job that owns its own MP4 instead of shipping audio only.
+	storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
+	if storeURL == "" {
+		storeURL = defaultRenderingGenStoreURL
+	}
+	runner.SetOverlayClipFetcher(renderinggen.NewOverlayClipFetcher(storeURL))
 	if err := wireArtifactCheckpointRollout(runner, root, committer, log); err != nil {
 		return nil, err
 	}

@@ -48,15 +48,24 @@ func currentRustRelease() string {
 // generation, candidate discovery and selection for a plan.
 //
 // The VidRush entity-image lane owns those decisions when all of these hold:
-// the internet-images provider is enabled, the entity-image scope is
-// per-scene, and image search is not disabled. In that mode the semantic
-// production plan must exit: running both flows against the same identities
-// lets two different query/candidate/verdict/selection pipelines disagree.
+// the internet-images provider is enabled, the entity-image surface is
+// enabled, the entity-image scope is per-scene, and image search is not
+// disabled. In that mode the semantic production plan must exit: running both
+// flows against the same identities lets two different
+// query/candidate/verdict/selection pipelines disagree.
+//
+// EntityImages.Enabled is required explicitly: PerScene() is derived from the
+// scope alone, so a plan that switched the entity surface off but left the
+// scope at "per_scene" would otherwise suppress the semantic batch and leave
+// the run with no discovery owner at all.
 //
 // The semantic plan remains the fallback for overlay-only plans (entity scope
 // without per-scene images), where the VidRush lane does not run.
 func vidRushEntityImageOwnsDiscovery(plan mediadomain.MediaPlanSpec) bool {
 	if !plan.ProviderPolicy.InternetImages.AsBool() {
+		return false
+	}
+	if !plan.Extraction.EntityImages.Enabled {
 		return false
 	}
 	if !plan.Extraction.EntityImages.PerScene() {

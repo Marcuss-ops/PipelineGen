@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	"encoding/json"
 	"log"
 	"sort"
 	"strconv"
@@ -149,6 +150,11 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 	if len(valid) == 0 {
 		return nil
 	}
+	// NER can surface the same country twice, once with its Italian article
+	// ("La Francia" / "L'Italia") and once without. Keep the longer grounded
+	// occurrence and drop the article variant before it becomes a second map
+	// with a near-zero window.
+	valid = dedupeMapCandidatesByArticle(valid)
 	if flyovers, ok := resolver.(FlyoverPlateResolver); ok && !grouping.NoRoutes && len(valid) > 0 && canvasWidth > 0 && canvasHeight > 0 {
 		from, to := routeEndpoints(valid, capmodel.MapCenter{Latitude: valid[0].Latitude, Longitude: valid[0].Longitude})
 		if plate, ok := flyovers.ResolveFlyover(from, to, canvasWidth, canvasHeight); ok && strings.TrimSpace(plate.ID) != "" && len(plate.LODs) > 0 {
@@ -214,6 +220,50 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 		plans = append(plans, MapPlan{Plate: plate, Place: place})
 	}
 	return plans
+}
+
+func dedupeMapCandidatesByArticle(candidates []MapCandidate) []MapCandidate {
+	out := make([]MapCandidate, 0, len(candidates))
+	seen := make(map[string]int, len(candidates))
+	for _, candidate := range candidates {
+		key := mapCandidateArticleKey(candidate.Label)
+		if key == "" {
+			key = strings.ToLower(strings.TrimSpace(candidate.Label))
+		}
+		if index, duplicate := seen[key]; duplicate {
+			if candidate.DurationUS > out[index].DurationUS ||
+				(candidate.DurationUS == out[index].DurationUS && candidate.Score > out[index].Score) {
+				out[index] = candidate
+			}
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, candidate)
+	}
+	return out
+}
+
+// mapCandidateArticleKey normalizes only a leading Italian article so a
+// "La Francia" label collides with "Francia". It is deliberately narrower
+// than general text normalization: it does not touch the rest of the name,
+// so official article-bearing names that appear alone (La Spezia, L'Aquila)
+// remain distinct candidates.
+func mapCandidateArticleKey(label string) string {
+	key := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(label)), " "))
+	for _, prefix := range []string{"l'", "l’"} {
+		if strings.HasPrefix(key, prefix) {
+			key = strings.TrimSpace(key[len(prefix):])
+			break
+		}
+	}
+	fields := strings.Fields(key)
+	if len(fields) > 1 {
+		switch fields[0] {
+		case "la", "lo", "il", "le", "gli", "i", "un", "una", "uno":
+			key = strings.Join(fields[1:], " ")
+		}
+	}
+	return key
 }
 
 func preferAdministrativeMapCandidates(candidates []MapCandidate) []MapCandidate {
@@ -312,6 +362,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 	if len(plans) == 0 || canvasWidth <= 0 || canvasHeight <= 0 {
 		return nil
 	}
+	plans = coalesceMapPlansForNarrativeGrouping(plans, grouping)
 	type group struct {
 		plate  MapPlate
 		places []MapCandidate
@@ -375,6 +426,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			}
 		}
 		chunks = splitMapChunksByPresentationDuration(chunks, mapMaxPresentationUS)
+		chunks = mergeShortFinalMapChunk(chunks, pinCap, mapMaxPresentationUS)
 		for index, chunk := range chunks {
 			unitKey := key
 			if index > 0 {
@@ -505,4 +557,210 @@ func MaterializeMapCandidate(sceneID string, candidate MapCandidate, resolver Pl
 		return capmodel.OverlayItem{}, false
 	}
 	return items[0], true
+}
+
+// MaterializeMapGroup lowers ALL grounded places of one scene together, so the
+// certified grouping policy still applies when the editorial selection comes
+// from the Rust planner. Materializing each Rust map item on its own resolves a
+// private plate per place, which makes narrative grouping unreachable: three
+// places named in quick succession became three separate maps (one per plate)
+// instead of one map group with three pins. The returned items are in spoken
+// order and already chunked by the pin cap and the presentation ceiling.
+func MaterializeMapGroup(sceneID string, candidates []MapCandidate, resolver PlateResolver, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) []capmodel.OverlayItem {
+	if len(candidates) == 0 {
+		return nil
+	}
+	plans := mapPlansForScene(resolver, candidates, canvasWidth, canvasHeight, grouping)
+	items := mapItemsForScene(sceneID, plans, canvasWidth, canvasHeight, ordinal, motionLimit, seed, grouping)
+	return MergeShortMapTail(items, grouping.Pins(), MapMinimumReadableUS, seed)
+}
+
+// MapMinimumReadableUS is the shortest map presentation that is still a
+// readable camera beat rather than a flash. A map that ends up shorter than
+// this only because the next scene starts immediately after it is merged into
+// the preceding map of the same scene, where its pin stays visible.
+const MapMinimumReadableUS int64 = 2_500_000
+
+// mergeShortMapTail folds a too-short final map of a scene into the preceding
+// map when the previous certified plate covers the tail's pins and the pin cap
+// allows it. It never drops a place: the pin, its label and its spoken timing
+// move onto the earlier map. Maps with LOD routes are left untouched because
+// merging would change the authored camera journey.
+func MergeShortMapTail(items []capmodel.OverlayItem, maxPins int, minDurationUS int64, seed string) []capmodel.OverlayItem {
+	if len(items) < 2 || minDurationUS <= 0 {
+		return items
+	}
+	if maxPins <= 0 {
+		maxPins = maxMapPinsPerGroup
+	}
+	byScene := make(map[string][]int)
+	sceneOrder := make([]string, 0, len(items))
+	for i := range items {
+		if !strings.EqualFold(strings.TrimSpace(items[i].Kind), "map") {
+			continue
+		}
+		sceneID := strings.TrimSpace(items[i].SceneID)
+		if _, seen := byScene[sceneID]; !seen {
+			sceneOrder = append(sceneOrder, sceneID)
+		}
+		byScene[sceneID] = append(byScene[sceneID], i)
+	}
+	dropped := make(map[int]struct{})
+	for _, sceneID := range sceneOrder {
+		indices := byScene[sceneID]
+		sort.SliceStable(indices, func(a, b int) bool {
+			left, right := items[indices[a]], items[indices[b]]
+			if left.StartUS != right.StartUS {
+				return left.StartUS < right.StartUS
+			}
+			return left.ID < right.ID
+		})
+		for len(indices) >= 2 {
+			tailIndex := indices[len(indices)-1]
+			previousIndex := indices[len(indices)-2]
+			previous, tail := &items[previousIndex], &items[tailIndex]
+			if tail.DurationUS <= 0 || tail.DurationUS >= minDurationUS {
+				break
+			}
+			if !mergeableMapTail(*previous, *tail, maxPins) {
+				break
+			}
+			mergeMapTail(previous, tail, seed)
+			dropped[tailIndex] = struct{}{}
+			indices = indices[:len(indices)-1]
+		}
+		renumberMapGroups(items, indices)
+	}
+	if len(dropped) == 0 {
+		return items
+	}
+	kept := items[:0]
+	for i := range items {
+		if _, remove := dropped[i]; remove {
+			continue
+		}
+		kept = append(kept, items[i])
+	}
+	return kept
+}
+
+// mergeableMapTail is the fail-closed precondition of a tail merge: both maps
+// must be static, the earlier plate must cover every tail pin, and the merged
+// map must stay within the certified pin cap.
+func mergeableMapTail(previous, tail capmodel.OverlayItem, maxPins int) bool {
+	if previous.Map == nil || tail.Map == nil {
+		return false
+	}
+	if len(previous.Map.LODs) > 0 || len(tail.Map.LODs) > 0 {
+		return false
+	}
+	if len(previous.Map.Pins) == 0 || len(tail.Map.Pins) == 0 {
+		return false
+	}
+	if len(previous.Map.Pins)+len(tail.Map.Pins) > maxPins {
+		return false
+	}
+	if previous.Map.Zoom <= 0 || previous.Map.Width <= 0 || previous.Map.Height <= 0 {
+		return false
+	}
+	window := geodesy.CenteredOn(
+		previous.Map.Center.Latitude, previous.Map.Center.Longitude,
+		previous.Map.Zoom, previous.Map.Width, previous.Map.Height,
+	)
+	for _, pin := range tail.Map.Pins {
+		if !window.Contains(pin.Latitude, pin.Longitude) {
+			return false
+		}
+	}
+	return true
+}
+
+func mergeMapTail(previous, tail *capmodel.OverlayItem, seed string) {
+	offsetUS := tail.StartUS - previous.StartUS
+	previous.Map.Pins = append(previous.Map.Pins, tail.Map.Pins...)
+	if previous.Params == nil {
+		previous.Params = make(map[string]any)
+	}
+	timing := make(map[string]map[string]any)
+	for id, value := range mapPinTimingTable(previous.Params) {
+		timing[id] = cloneMapPinTiming(value, 0)
+	}
+	for id, value := range mapPinTimingTable(tail.Params) {
+		timing[id] = cloneMapPinTiming(value, offsetUS)
+	}
+	previous.Params["map_pin_timing"] = timing
+	endUS := previous.StartUS + previous.DurationUS
+	if tailEndUS := tail.StartUS + tail.DurationUS; tailEndUS > endUS {
+		endUS = tailEndUS
+	}
+	previous.DurationUS = endUS - previous.StartUS
+	previous.EndMs = (endUS + 999) / 1000
+	pinCount := len(previous.Map.Pins)
+	if group, ok := previous.Params["map_group"].(map[string]any); ok {
+		group["size"] = pinCount
+	}
+	previous.Params["map_group_strategy"] = mapGroupTourStrategy(pinCount, previous.DurationUS)
+	if composition := SelectMapComposition(seed, previous.SceneID, previous.ID, pinCount); composition != "" {
+		previous.Params["map_animation"] = composition
+	} else {
+		delete(previous.Params, "map_animation")
+	}
+}
+
+func mapPinTimingTable(params map[string]any) map[string]map[string]any {
+	if params == nil {
+		return nil
+	}
+	switch timing := params["map_pin_timing"].(type) {
+	case map[string]map[string]any:
+		return timing
+	case map[string]any:
+		out := make(map[string]map[string]any, len(timing))
+		for id, value := range timing {
+			if entry, ok := value.(map[string]any); ok {
+				out[id] = entry
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func cloneMapPinTiming(value map[string]any, offsetUS int64) map[string]any {
+	clone := make(map[string]any, len(value))
+	for key, field := range value {
+		clone[key] = field
+	}
+	clone["start_us"] = mapPinTimingInt64(clone["start_us"]) + offsetUS
+	return clone
+}
+
+func mapPinTimingInt64(value any) int64 {
+	switch typed := value.(type) {
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	case float64:
+		return int64(typed)
+	case json.Number:
+		parsed, _ := typed.Int64()
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func renumberMapGroups(items []capmodel.OverlayItem, indices []int) {
+	count := len(indices)
+	for position, index := range indices {
+		if items[index].Params == nil {
+			continue
+		}
+		if group, ok := items[index].Params["map_group"].(map[string]any); ok {
+			group["index"] = position + 1
+			group["count"] = count
+		}
+	}
 }

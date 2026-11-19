@@ -245,11 +245,18 @@ type GenerateResult struct {
 	WordCount      int    `json:"word_count"`
 	VoiceoverGroup string `json:"voiceover_group,omitempty"`
 
-	AudioMode          capabilityaudio.AudioMode           `json:"audio_mode,omitempty"`
-	AudioStrategy      capabilityaudio.AudioRenderStrategy `json:"audio_strategy,omitempty"`
-	FinalAudio         *FinalAudioReference                `json:"final_audio,omitempty"`
-	AudioMetrics       *AudioPipelineMetrics               `json:"audio_metrics,omitempty"`
-	TranslationMetrics *TranslationPipelineMetrics         `json:"translation_metrics,omitempty"`
+	AudioMode     capabilityaudio.AudioMode           `json:"audio_mode,omitempty"`
+	AudioStrategy capabilityaudio.AudioRenderStrategy `json:"audio_strategy,omitempty"`
+	FinalAudio    *FinalAudioReference                `json:"final_audio,omitempty"`
+	// LocalFinalVideo is the job's own MP4, joined from the certified
+	// per-item overlay renders on the plan timeline and muxed with the
+	// certified final audio. It is the local-lane counterpart of
+	// RemoteFinalVideo (a Master render receipt): this run produced the
+	// pixels and this run joined them, so a render-enabled job is never
+	// delivered as audio only.
+	LocalFinalVideo    *LocalFinalVideoArtifact    `json:"local_final_video,omitempty"`
+	AudioMetrics       *AudioPipelineMetrics       `json:"audio_metrics,omitempty"`
+	TranslationMetrics *TranslationPipelineMetrics `json:"translation_metrics,omitempty"`
 
 	// LocalizedRenders are the certified produced videos of the localized
 	// render fan-out: one entry per successfully rendered + uploaded video

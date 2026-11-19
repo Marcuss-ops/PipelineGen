@@ -104,10 +104,13 @@ func editorialBulletPins(styles []scriptpkg.EditorialBulletStyle) map[string]scr
 	return pins
 }
 
-// bulletParamsForScene is the effective bullet typography of one bullet: the
-// run-level/bullet selection with that bullet's own pin applied last. The pin
-// names one bullet, so it is more specific than the run-level block and wins.
-func bulletParamsForScene(sceneID string, pins map[string]scriptpkg.EditorialBulletStyle, base map[string]any) map[string]any {
+// bulletBaseParamsForScene is the run-level/bullet typography for one bullet,
+// minus the fields owned by that bullet's per-scene pin. The pin itself is
+// applied by the Rust compiler (the single owner of bullet presentation), so
+// re-applying it here would duplicate the decision; overwriting it with the
+// run-level block would silently undo it. Fields the pin leaves unset still
+// fall back to the run-level block, field by field.
+func bulletBaseParamsForScene(sceneID string, pins map[string]scriptpkg.EditorialBulletStyle, base map[string]any) map[string]any {
 	params := make(map[string]any, len(base)+2)
 	for key, value := range base {
 		params[key] = value
@@ -117,12 +120,12 @@ func bulletParamsForScene(sceneID string, pins map[string]scriptpkg.EditorialBul
 		return params
 	}
 	if pin.FontFamily != "" {
-		params["font_family"] = pin.FontFamily
-		params["style"] = capabilityoverlay.MergeStyleParam(params["style"], map[string]any{"font_family": pin.FontFamily})
+		delete(params, "font_family")
+		deleteNestedStyleKey(params, "font_family")
 	}
 	if pin.FontSizePX > 0 {
-		params["font_size_px"] = pin.FontSizePX
-		params["style"] = capabilityoverlay.MergeStyleParam(params["style"], map[string]any{"font_size": pin.FontSizePX})
+		delete(params, "font_size_px")
+		deleteNestedStyleKey(params, "font_size")
 	}
 	return params
 }
@@ -196,12 +199,50 @@ func applyTextStyleToChainSegment(segment map[string]any, styleParams map[string
 	segment["style"] = capabilityoverlay.MergeStyleParam(style, block)
 }
 
+// overlayItemHasCaption reports a captioned entity/image card. Such a card is
+// image-backed, but its visible typography is the caption: it must receive the
+// same run-level font/color/glow as a phrase, or the payload's typography stops
+// at the portrait and the name silently falls back to the preset.
+func overlayItemHasCaption(item capmodel.OverlayItem) bool {
+	return strings.TrimSpace(item.EntityCaption) != "" &&
+		len(item.AssetRefs) > 0 &&
+		capabilityoverlay.IsImageOverlayKind(item.Kind)
+}
+
+// chainSegmentHasCaption is the chain-segment mirror of overlayItemHasCaption.
+// Segments carry their own kind/caption/assets, so the decision is local to the
+// segment rather than inherited from the container.
+func chainSegmentHasCaption(segment map[string]any) bool {
+	caption, _ := segment["entity_caption"].(string)
+	if strings.TrimSpace(caption) == "" {
+		return false
+	}
+	kind, _ := segment["kind"].(string)
+	if !capabilityoverlay.IsImageOverlayKind(kind) {
+		return false
+	}
+	if asset, _ := segment["asset_id"].(string); strings.TrimSpace(asset) != "" {
+		return true
+	}
+	switch assets := segment["assets"].(type) {
+	case []any:
+		return len(assets) > 0
+	case []capmodel.OverlayAssetRef:
+		return len(assets) > 0
+	case []map[string]any:
+		return len(assets) > 0
+	default:
+		return false
+	}
+}
+
 // applyPayloadOverlayStyleToItems is the one payload-style projection onto the
 // sealed plan, after the planner's presentation defaults. Non-bullet text uses
-// the run-level typography; bullet-point copy (including a bullet fused into a
-// chain) uses the dedicated bullet block and falls back to the run-level style
-// field by field; image items take the run-level image frame/treatment. Only
-// fields the payload actually chose are written, so an omitted field keeps the
+// the run-level typography; captioned entity/image cards use it for their
+// caption layer too; bullet-point copy (including a bullet fused into a chain)
+// uses the dedicated bullet block and falls back to the run-level style field
+// by field; image items take the run-level image frame/treatment. Only fields
+// the payload actually chose are written, so an omitted field keeps the
 // planner's default instead of being reset. Cursor controls are dropped by
 // payloadTextStyleParams because the Chronon lowering rejects them.
 func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
@@ -228,12 +269,12 @@ func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas Overla
 			for _, segment := range segments {
 				segmentParams, _ := segment["params"].(map[string]any)
 				if editorialBulletParams(segmentParams) {
-					applyTextStyleToChainSegment(segment, bulletParamsForScene(item.SceneID, pins, bulletStyle))
+					applyTextStyleToChainSegment(segment, bulletBaseParamsForScene(item.SceneID, pins, bulletStyle))
 					changed = true
 					continue
 				}
 				kind, _ := segment["kind"].(string)
-				if capabilityoverlay.IsTextOverlayKind(kind) {
+				if capabilityoverlay.IsTextOverlayKind(kind) || chainSegmentHasCaption(segment) {
 					applyTextStyleToChainSegment(segment, runStyle)
 					changed = true
 				}
@@ -245,10 +286,10 @@ func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas Overla
 			continue
 		}
 		if editorialBulletParams(item.Params) {
-			applyTextStyleToItem(item, bulletParamsForScene(item.SceneID, pins, bulletStyle))
+			applyTextStyleToItem(item, bulletBaseParamsForScene(item.SceneID, pins, bulletStyle))
 			continue
 		}
-		if capabilityoverlay.IsTextOverlayKind(item.Kind) {
+		if capabilityoverlay.IsTextOverlayKind(item.Kind) || overlayItemHasCaption(*item) {
 			applyTextStyleToItem(item, runStyle)
 		}
 	}

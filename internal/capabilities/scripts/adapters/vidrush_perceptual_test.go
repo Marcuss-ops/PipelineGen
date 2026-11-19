@@ -13,14 +13,16 @@ import (
 
 // bandedGrayPNG paints alternating vertical bands; rowBandedGrayPNG paints
 // alternating horizontal bands. The two are orthogonal at the dHash grid,
-// so they must not collide.
+// so they must not collide. The 40-level delta stays below the panel-collage
+// edge threshold: the fixture exercises the perceptual hash, not the
+// contact-sheet gate, which must keep accepting ordinary photographs.
 func bandedGrayPNG(t *testing.T, width, height int) []byte {
 	t.Helper()
 	img := image.NewGray(image.Rect(0, 0, width, height))
 	for x := 0; x < width; x++ {
-		value := uint8(40)
+		value := uint8(110)
 		if (x*9/width)%2 == 0 {
-			value = 200
+			value = 150
 		}
 		for y := 0; y < height; y++ {
 			img.SetGray(x, y, color.Gray{Y: value})
@@ -33,9 +35,9 @@ func rowBandedGrayPNG(t *testing.T, width, height int) []byte {
 	t.Helper()
 	img := image.NewGray(image.Rect(0, 0, width, height))
 	for y := 0; y < height; y++ {
-		value := uint8(40)
+		value := uint8(110)
 		if (y*8/height)%2 == 0 {
-			value = 200
+			value = 150
 		}
 		for x := 0; x < width; x++ {
 			img.SetGray(x, y, color.Gray{Y: value})

@@ -56,13 +56,18 @@ func TestPayloadBulletFontStylesBulletsOnly(t *testing.T) {
 	}
 }
 
-// TestBulletFontFallbackAndPinPrecedence pins the fallback chain: no bullet
-// block means the run-level font, and a per-scene pin still wins on its bullet.
+// TestBulletFontFallbackAndPinPrecedence pins the fallback chain after the
+// per-scene pin moved to the Rust compiler: Go applies only the run-level
+// bullet block, and it must not overwrite a font/size the pin already set.
 func TestBulletFontFallbackAndPinPrecedence(t *testing.T) {
 	pinSize := 64.0
 	items := []capmodel.OverlayItem{
 		{ID: "fallback", SceneID: "s1", Kind: "text_phrase", Params: map[string]any{"editorial_role": "scene_bullet"}},
-		{ID: "pinned", SceneID: "s2", Kind: "text_phrase", Params: map[string]any{"editorial_role": "chapter_bullet"}},
+		{
+			ID: "pinned", SceneID: "s2", Kind: "text_phrase",
+			Params: map[string]any{"editorial_role": "chapter_bullet", "font_family": "abril_fatface", "font_size_px": pinSize},
+			Style:  map[string]any{"font_family": "abril_fatface", "font_size": pinSize},
+		},
 	}
 	canvas := OverlayCanvasSpec{
 		Style: &scriptpkg.OverlayStyleSpec{FontFamily: "inter"},
@@ -77,14 +82,17 @@ func TestBulletFontFallbackAndPinPrecedence(t *testing.T) {
 		t.Errorf("bullet without a block = %v, want the run-level inter", got)
 	}
 	if got := items[1].Params["font_family"]; got != "abril_fatface" {
-		t.Errorf("pinned bullet font = %v, want the pin abril_fatface", got)
+		t.Errorf("pinned bullet font was overwritten: %v, want abril_fatface", got)
 	}
 	if got := items[1].Params["font_size_px"]; got != pinSize {
-		t.Errorf("pinned bullet size = %v, want %v", got, pinSize)
+		t.Errorf("pinned bullet size was overwritten: %v, want %v", got, pinSize)
+	}
+	if got := items[1].Style["font_family"]; got != "abril_fatface" {
+		t.Errorf("pinned bullet style font was overwritten: %v, want abril_fatface", got)
 	}
 
-	// A pin is more specific than the run-level bullet block, so it survives
-	// even when both name a family.
+	// A pin is more specific than the run-level bullet block, so the block
+	// still styles unpinned bullets but must not reset the pinned ones.
 	bulletSize := 96.0
 	canvas.Style.Bullet = &scriptpkg.OverlayBulletStyleSpec{FontFamily: "oswald", FontSizePX: &bulletSize}
 	applyPayloadOverlayStyleToItems(items, canvas)
@@ -92,7 +100,13 @@ func TestBulletFontFallbackAndPinPrecedence(t *testing.T) {
 		t.Errorf("bullet with a block = %v, want oswald", got)
 	}
 	if got := items[1].Params["font_family"]; got != "abril_fatface" {
-		t.Errorf("pin lost to the run-level bullet block: %v", got)
+		t.Errorf("run-level bullet block overwrote the pin: %v", got)
+	}
+	if got := items[1].Params["font_size_px"]; got != pinSize {
+		t.Errorf("run-level bullet size overwrote the pin: %v", got)
+	}
+	if got := items[1].Style["font_size"]; got != pinSize {
+		t.Errorf("run-level bullet style size overwrote the pin: %v", got)
 	}
 }
 

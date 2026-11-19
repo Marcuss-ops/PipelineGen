@@ -101,6 +101,19 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 			DriveFolderID: in.Render.DriveFolderID,
 		}
 	}
+	if in.LocalFinalVideo != nil {
+		out.LocalFinalVideo = &domain.LocalFinalVideoArtifact{
+			Path:        in.LocalFinalVideo.Path,
+			SHA256:      in.LocalFinalVideo.SHA256,
+			SizeBytes:   in.LocalFinalVideo.SizeBytes,
+			DurationUS:  in.LocalFinalVideo.DurationUS,
+			Width:       in.LocalFinalVideo.Width,
+			Height:      in.LocalFinalVideo.Height,
+			FPS:         in.LocalFinalVideo.FPS,
+			JoinedItems: in.LocalFinalVideo.JoinedItems,
+			PlanItems:   in.LocalFinalVideo.PlanItems,
+		}
+	}
 	if in.FinalAudio != nil {
 		fa := in.FinalAudio
 		out.FinalAudio = &domain.FinalAudioArtifact{AssetID: fa.AssetID, Path: fa.Path, DriveFileID: fa.DriveFileID, DriveLink: fa.DriveLink, Container: fa.Container,

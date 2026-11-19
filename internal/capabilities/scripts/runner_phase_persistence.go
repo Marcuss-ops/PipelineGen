@@ -20,6 +20,17 @@ func (r *Runner) persistScript(ctx context.Context, runID string, req GenerateRe
 		return false
 	}
 
+	// Join the certified overlay renders into the job's own MP4 before the
+	// deliverable is declared. This phase runs after audio finalization, so it
+	// is the first point where the certified master audio and the rendered
+	// clips exist together. A failure here fails the run: a render-enabled job
+	// that shipped audio only while reporting success is the gap this closes.
+	if joinErr := r.assembleFinalVideo(ctx, runID, req, result); joinErr != nil {
+		r.failExecutionStepBestEffort(ctx, exec, step, joinErr)
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, joinErr)
+		return false
+	}
+
 	// Idempotent restart: a script already persisted in a prior attempt (even
 	// one that crashed before the run reached COMPLETED) must never be written
 	// again — the canonical row is reused, so a resume writes 0 duplicate DB

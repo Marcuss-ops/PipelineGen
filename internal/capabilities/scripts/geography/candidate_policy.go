@@ -100,10 +100,7 @@ func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Ge
 	if isGenericPlaceLabel(name) {
 		return nil
 	}
-	lookupContext := capabilitygeocoding.Context{}
-	if geoContext != nil {
-		lookupContext = *geoContext
-	}
+	lookupContext := placeLookupContext(name, geoContext)
 	cacheKey := GeocodeCacheKey(language, name, lookupContext)
 	result, ok := resolved[cacheKey]
 	if !ok {
@@ -172,9 +169,58 @@ var italianRegions = map[string]struct{}{
 	"valle d'aosta": {}, "emilia-romagna": {},
 }
 
+// italianCountryNames lists country names that take an Italian article in
+// running prose ("L'Italia", "La Francia"). Without stripping it, Nominatim
+// cannot resolve the fused article form and the scene loses its country map.
+// The allowlist keeps official names such as L'Aquila and La Spezia intact.
+var italianCountryNames = map[string]struct{}{
+	"italia": {}, "francia": {}, "germania": {}, "svizzera": {},
+	"spagna": {}, "portogallo": {}, "grecia": {}, "austria": {},
+	"belgio": {}, "olanda": {}, "paesi bassi": {}, "regno unito": {},
+	"irlanda": {}, "danimarca": {}, "svezia": {}, "norvegia": {},
+	"finlandia": {}, "polonia": {}, "ungheria": {}, "repubblica ceca": {},
+	"slovacchia": {}, "slovenia": {}, "croazia": {}, "serbia": {},
+	"romania": {}, "bulgaria": {}, "turchia": {}, "marocco": {},
+	"egitto": {}, "tunisia": {}, "algeria": {}, "libia": {},
+	"stati uniti": {}, "canada": {}, "messico": {}, "brasile": {},
+	"argentina": {}, "giappone": {}, "cina": {}, "india": {},
+}
+
+func isKnownItalianArticlePlace(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if _, ok := italianRegions[name]; ok {
+		return true
+	}
+	_, ok := italianCountryNames[name]
+	return ok
+}
+
+// isKnownCountryName reports whether a normalized query is itself a country.
+// A country is a global place: carrying a previously resolved country as
+// provider context either filters it out ("Francia" under country=Italia) or
+// resolves a namesake in the wrong country ("Svizzera" under Germany).
+func isKnownCountryName(name string) bool {
+	name = strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " "))
+	_, ok := italianCountryNames[name]
+	return ok
+}
+
+// placeLookupContext is the grounded context actually sent to the provider.
+// City and region names still inherit the scene's country; a country query is
+// resolved without that frame because it is the frame itself.
+func placeLookupContext(name string, geoContext *capabilitygeocoding.Context) capabilitygeocoding.Context {
+	if isKnownCountryName(name) {
+		return capabilitygeocoding.Context{}
+	}
+	if geoContext == nil {
+		return capabilitygeocoding.Context{}
+	}
+	return *geoContext
+}
+
 // stripItalianRegionArticle removes a leading Italian article only when the
-// remaining phrase is an administrative region. It never rewrites a city or a
-// generic proper name.
+// remaining phrase is a known administrative region or country. It never
+// rewrites a city or a generic proper name.
 func stripItalianRegionArticle(words []string) []string {
 	if len(words) == 0 {
 		return words
@@ -184,7 +230,7 @@ func stripItalianRegionArticle(words []string) []string {
 		switch first {
 		case "la", "lo", "il", "le":
 			rest := strings.Join(words[1:], " ")
-			if _, ok := italianRegions[strings.ToLower(rest)]; ok {
+			if isKnownItalianArticlePlace(rest) {
 				return words[1:]
 			}
 		}
@@ -197,7 +243,7 @@ func stripItalianRegionArticle(words []string) []string {
 		if len(words) > 1 {
 			rest += " " + strings.Join(words[1:], " ")
 		}
-		if _, ok := italianRegions[strings.ToLower(rest)]; ok {
+		if isKnownItalianArticlePlace(rest) {
 			out := make([]string, 0, len(words))
 			out = append(out, rest)
 			return append(out, words[1:]...)

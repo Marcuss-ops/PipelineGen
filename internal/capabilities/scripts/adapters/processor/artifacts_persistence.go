@@ -263,6 +263,54 @@ func PersistGeneratedArtifacts(
 		})
 	}
 
+	// ── 2b. local final video (the job's own join) ──────────────────────
+	// The local lane renders one certified clip per overlay item and joins
+	// them in the persistence phase. When that join exists it IS the job's
+	// deliverable, so it is registered exactly like a remote master: required,
+	// hashed, and published to Drive by the finalize outbox (deferred so a
+	// large upload cannot block completion). A remote master wins when both
+	// exist — the Master owns delivery for final jobs.
+	if result.RemoteFinalVideo == nil && result.LocalFinalVideo != nil {
+		local := result.LocalFinalVideo
+		videoPath := strings.TrimSpace(local.Path)
+		if videoPath == "" {
+			return nil, fmt.Errorf("artifacts_persistence: local final video has no path")
+		}
+		info, err := os.Stat(videoPath)
+		if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+			return nil, fmt.Errorf("artifacts_persistence: local final video is unavailable at %s", videoPath)
+		}
+		if local.SizeBytes > 0 && local.SizeBytes != info.Size() {
+			return nil, fmt.Errorf("artifacts_persistence: local final video size mismatch")
+		}
+		videoSHA, err := job.ComputeSHA256(fs, videoPath)
+		if err != nil {
+			return nil, fmt.Errorf("artifacts_persistence: sha256 local final video: %w", err)
+		}
+		if strings.TrimSpace(local.SHA256) != "" && !strings.EqualFold(strings.TrimSpace(local.SHA256), videoSHA) {
+			return nil, fmt.Errorf("artifacts_persistence: local final video hash mismatch")
+		}
+		metadata := map[string]any{
+			"source":                                 "overlay_join",
+			"joined_items":                           local.JoinedItems,
+			"plan_items":                             local.PlanItems,
+			"width":                                  local.Width,
+			"height":                                 local.Height,
+			"fps":                                    local.FPS,
+			"duration_us":                            local.DurationUS,
+			finalization.DrivePublicationMetadataKey: finalization.DrivePublicationDeferred,
+		}
+		for key, value := range languageRoutingMetadata(language) {
+			metadata[key] = value
+		}
+		artifacts = append(artifacts, job.Artifact{
+			ID: jobID + ":final_video", Kind: job.ArtifactKindFinalVideo,
+			Path: videoPath, Filename: finalVideoFilename(result.Title),
+			MIMEType: "video/mp4", SizeBytes: info.Size(), SHA256: videoSHA,
+			Required: true, DriveLanguage: language, ArtifactMetadata: metadata,
+		})
+	}
+
 	// ── 3. remote final video (the composite render) ───────────────────
 	// The final-job adapter downloads the Master artifact into the durable
 	// receipt. Publishing it here closes the old manual gap: before this, a

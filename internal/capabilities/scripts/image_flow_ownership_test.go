@@ -11,6 +11,7 @@ func ownershipPlan(internet mediadomain.MediaToggle, mode, scope string) mediado
 	plan.ProviderPolicy.InternetImages = internet
 	plan.Extraction.ImageSearchMode = mode
 	plan.Extraction.EntityImages.Scope = scope
+	plan.Extraction.EntityImages.Enabled = true
 	return plan
 }
 
@@ -48,6 +49,15 @@ func TestVidRushEntityImageOwnsDiscovery(t *testing.T) {
 		{
 			name: "overlay-only entity scope is not the VidRush lane",
 			plan: ownershipPlan(mediadomain.MediaToggleEnabled, mediadomain.ImageSearchModeAutomatic, "entity"),
+			want: false,
+		},
+		{
+			name: "disabled entity surface leaves the semantic planner as owner",
+			plan: func() mediadomain.MediaPlanSpec {
+				p := ownershipPlan(mediadomain.MediaToggleEnabled, mediadomain.ImageSearchModeAutomatic, "per_scene")
+				p.Extraction.EntityImages.Enabled = false
+				return p
+			}(),
 			want: false,
 		},
 	} {

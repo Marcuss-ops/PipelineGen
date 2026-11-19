@@ -140,6 +140,11 @@ type GenerationResult struct {
 	// delivery as script.json and final_audio. Path is local-only and stripped
 	// from the public script.json projection.
 	RemoteFinalVideo *RemoteFinalVideoArtifact `json:"remote_final_video,omitempty"`
+	// LocalFinalVideo is the MP4 this run joined from its own certified
+	// per-item overlay renders (local render lane). It carries no remote
+	// identity: Path is local-only and stripped from the public script.json
+	// projection, exactly like RemoteFinalVideo.Path.
+	LocalFinalVideo *LocalFinalVideoArtifact `json:"local_final_video,omitempty"`
 
 	// Quality carries the editorial quality gate outcome. It is
 	// always populated so callers can inspect the per-item quality
@@ -180,6 +185,20 @@ type RemoteFinalVideoArtifact struct {
 	SizeBytes     int64  `json:"size_bytes,omitempty"`
 	ArtifactURL   string `json:"artifact_url,omitempty"`
 	DriveFolderID string `json:"drive_folder_id,omitempty"`
+}
+
+// LocalFinalVideoArtifact is the job-owned final render assembled from the
+// certified per-item overlay clips on the plan timeline.
+type LocalFinalVideoArtifact struct {
+	Path        string `json:"-"`
+	SHA256      string `json:"sha256,omitempty"`
+	SizeBytes   int64  `json:"size_bytes,omitempty"`
+	DurationUS  int64  `json:"duration_us,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	FPS         int    `json:"fps,omitempty"`
+	JoinedItems int    `json:"joined_items,omitempty"`
+	PlanItems   int    `json:"plan_items,omitempty"`
 }
 
 type FinalAudioArtifact struct {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	cryptodigest "github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -174,6 +175,66 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 		return out
 	}
 	return nil
+}
+
+// entityImageCardReservation counts the scene's unique image-bearing entity
+// cards. Rust admits base candidates (generic stills and maps) before it merges
+// entity cards, so a scene full of generic stills silently loses every entity
+// image to the per-scene ceiling. Reserving their slots here keeps the generic
+// lane from consuming the budget the certified portraits need.
+func entityImageCardReservation(result *GenerateResult, sceneID string) int {
+	if result == nil || strings.TrimSpace(sceneID) == "" {
+		return 0
+	}
+	seen := make(map[string]struct{})
+	for _, scene := range result.Scenes {
+		if !strings.EqualFold(strings.TrimSpace(scene.ID), strings.TrimSpace(sceneID)) || scene.Annotations == nil {
+			continue
+		}
+		entities := append(append([]scriptpkg.AnnotatedEntity(nil), scene.Annotations.PrimaryEntities...), scene.Annotations.SecondaryEntities...)
+		for _, entity := range entities {
+			if entity.Image == nil {
+				continue
+			}
+			switch capmodel.EntityTypeToKind(entity.Type) {
+			case capmodel.KindEntityCard, capmodel.KindOrganization, capmodel.KindLocation, capmodel.KindConcept:
+			default:
+				continue
+			}
+			name := strings.TrimSpace(entity.CanonicalName)
+			if name == "" {
+				name = strings.TrimSpace(entity.Text)
+			}
+			if name == "" {
+				continue
+			}
+			seen[strings.ToLower(name)] = struct{}{}
+		}
+	}
+	return len(seen)
+}
+
+// genericSceneImageLimit returns how many generic stills one scene may offer
+// without evicting its certified entity images from the shared per-scene
+// overlay budget. With no image-bearing entities the certified generic limit
+// is unchanged.
+func genericSceneImageLimit(result *GenerateResult, sceneID string, maxOverlaysPerScene int) int {
+	limit := maxGenericSceneImagesPerScene
+	if maxOverlaysPerScene <= 0 {
+		return limit
+	}
+	reserved := entityImageCardReservation(result, sceneID)
+	if reserved <= 0 {
+		return limit
+	}
+	available := maxOverlaysPerScene - reserved
+	if available < 0 {
+		available = 0
+	}
+	if available < limit {
+		limit = available
+	}
+	return limit
 }
 
 func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest string) bool {

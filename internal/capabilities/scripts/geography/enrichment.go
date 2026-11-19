@@ -243,17 +243,27 @@ func AdoptGeoContext(ctx *capabilitygeocoding.Context, entity *scriptpkg.Annotat
 	if ctx == nil || entity == nil || entity.Geo == nil {
 		return
 	}
-	// Any resolved place carries a grounded country. Adopt it before the
-	// scope switch so a city resolved first disambiguates the region that
-	// follows ("Milano" -> "La Toscana").
-	if ctx.CountryCode == "" && strings.TrimSpace(entity.Geo.CountryCode) != "" {
-		ctx.CountryCode = strings.ToLower(strings.TrimSpace(entity.Geo.CountryCode))
+	// Any resolved place carries a grounded country. Adopt the LATEST one:
+	// a scene can name several countries ("Italia, poi la Francia"), and
+	// keeping the first would constrain every later lookup to the wrong
+	// country. A country change also invalidates the previous region.
+	country := strings.TrimSpace(entity.Geo.Country)
+	countryCode := strings.ToLower(strings.TrimSpace(entity.Geo.CountryCode))
+	countryChanged := country != "" && ctx.Country != "" && !strings.EqualFold(strings.TrimSpace(ctx.Country), country)
+	if ctx.CountryCode != "" && countryCode != "" && ctx.CountryCode != countryCode {
+		countryChanged = true
 	}
-	if ctx.Country == "" && strings.TrimSpace(entity.Geo.Country) != "" {
-		ctx.Country = strings.TrimSpace(entity.Geo.Country)
+	if countryChanged {
+		ctx.Region = ""
 	}
-	if ctx.Region == "" && strings.TrimSpace(entity.Geo.AdminRegion) != "" {
-		ctx.Region = strings.TrimSpace(entity.Geo.AdminRegion)
+	if country != "" {
+		ctx.Country = country
+	}
+	if countryCode != "" {
+		ctx.CountryCode = countryCode
+	}
+	if region := strings.TrimSpace(entity.Geo.AdminRegion); region != "" {
+		ctx.Region = region
 	}
 	name := strings.TrimSpace(entity.CanonicalName)
 	if name == "" {
@@ -261,13 +271,13 @@ func AdoptGeoContext(ctx *capabilitygeocoding.Context, entity *scriptpkg.Annotat
 	}
 	switch strings.ToLower(strings.TrimSpace(entity.Geo.Scope)) {
 	case "country":
-		if strings.TrimSpace(ctx.Country) == "" {
+		// A country result is the frame for the finer names that follow.
+		if country == "" {
 			ctx.Country = name
 		}
+		ctx.Region = ""
 	case "region":
-		if strings.TrimSpace(ctx.Region) == "" {
-			ctx.Region = name
-		}
+		ctx.Region = name
 	}
 }
 
@@ -476,11 +486,8 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 			break
 		}
 	}
-	lookupContext := capabilitygeocoding.Context{}
-	if geoContext != nil {
-		lookupContext = *geoContext
-	}
 	for _, name := range queries {
+		lookupContext := placeLookupContext(name, geoContext)
 		cacheKey := GeocodeCacheKey(language, name, lookupContext)
 		result, ok := resolved[cacheKey]
 		if !ok {

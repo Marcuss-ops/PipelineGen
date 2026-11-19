@@ -155,7 +155,7 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 		// place discovery. Without this, the geocoder enriched only entities
 		// already found by semantic extraction and skipped grounded country and
 		// region names appearing in the spoken scene text.
-		wantMaps := req.MapsOnly || req.MaxMapOverlays > 0 || req.AnimationCounts["maps"] > 0 || req.AnimationCounts["one_map"] > 0 || req.AnimationCounts["two_maps"] > 0
+		wantMaps := requestWantsMaps(req)
 		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{SceneTexts: sceneTexts, MapsOnly: wantMaps}); err != nil {
 			return vidRushPrepareResult{}, err
 		}
@@ -164,7 +164,7 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 	// Map candidates are compiled again later from the durable scene
 	// annotations. Apply the name/homonym rejection to that final surface as
 	// well, so a downstream projection cannot restore a person token as a city.
-	if req.MaxMapOverlays > 0 || req.MapsOnly || req.AnimationCounts["maps"] > 0 || req.AnimationCounts["one_map"] > 0 || req.AnimationCounts["two_maps"] > 0 {
+	if requestWantsMaps(req) {
 		for index, annotation := range annotations {
 			if annotation == nil || index < 0 || index >= len(snapshot) {
 				continue
@@ -501,6 +501,22 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 		return err
 	}
 	return nil
+}
+
+// requestWantsMaps reports whether the payload asked for runtime map
+// overlays. The maps-only flag, the run-level map budget and the legacy
+// animation lanes each express the same intent; the geocoding enrichment and
+// the person-name rejection must agree on it, so it has exactly one owner.
+func requestWantsMaps(req GenerateRequest) bool {
+	if req.MapsOnly || req.MaxMapOverlays > 0 {
+		return true
+	}
+	for _, lane := range []string{"maps", "one_map", "two_maps"} {
+		if req.AnimationCounts[lane] > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func overlayPrepareNeedsAssetPrefetch(intents []capmodel.OverlayIntent) bool {

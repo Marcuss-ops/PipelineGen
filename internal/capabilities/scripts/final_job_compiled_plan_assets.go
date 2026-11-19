@@ -169,23 +169,73 @@ func finalJobFrameStartUS(frame, fpsNum, fpsDen int64) int64 {
 	return (numerator + fpsNum/2) / fpsNum
 }
 
+// finalJobFramesCoveringUS returns how many output frames are needed to cover
+// durationUS. The ceil subtracts one microsecond first: a frame start rounded
+// UP to the microsecond grid (1441 frames = 60,041,667us) must not demand a
+// 1442nd frame, while a genuinely partial frame (19,709,000us) still needs the
+// 474th. This is the complement of FrameResolver.FrameAlignedDurationUS, which
+// rounds the master up to a frame boundary.
+func finalJobFramesCoveringUS(durationUS, fpsNum, fpsDen int64) int64 {
+	if durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return 0
+	}
+	adjusted := durationUS - 1
+	denominator := int64(1_000_000) * fpsDen
+	return (adjusted*fpsNum + denominator - 1) / denominator
+}
+
 // finalJobCompleteVideoFrameCoverage closes the output timeline through the
 // final audio frame. Audio duration remains the plan SSOT. When the trailing
-// source still has frames, extend its window; when it is already exhausted,
-// hold its last displayed frame for the one missing output frame instead of
-// inventing a sub-window segment (the whole-file stock contract refuses one).
-// More than one frame is a real coverage gap and stays fail-closed.
+// source still has frames, extend its window. When it is exhausted, leave the
+// video one frame short: the master is rounded up to the video grid and the
+// muxer holds the last displayed frame. Never ask the preparer for a frame the
+// source does not contain; more than one missing frame stays fail-closed.
 func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets []finalJobPlanAsset, durationUS, fpsNum, fpsDen int64) ([]finalJobPlanSegment, error) {
 	if len(segments) == 0 || durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
 		return nil, fmt.Errorf("final_job V2 cannot complete video coverage without segments and a valid output clock")
 	}
-	denominator := int64(1_000_000) * fpsDen
-	neededFrames := (durationUS*fpsNum + denominator - 1) / denominator
+	// The duration is the frame-aligned audio master, already rounded onto
+	// the video grid. Re-applying a plain ceil double-rounds the microsecond
+	// representation (1441 frames = 60,041,667us; *24 = 1441.000008) and
+	// demands a frame the timeline does not have. The 1us guard keeps the
+	// genuinely partial frame (19,709,000us -> 474) covered.
+	neededFrames := finalJobFramesCoveringUS(durationUS, fpsNum, fpsDen)
+	assetsByID := make(map[string]finalJobPlanAsset, len(assets))
+	for _, asset := range assets {
+		assetsByID[asset.AssetID] = asset
+	}
 	lastIndex, endFrame := -1, int64(0)
 	for i := range segments {
 		end := segments[i].TimelineStartFrame + segments[i].FrameCount
 		if end > endFrame {
 			lastIndex, endFrame = i, end
+		}
+	}
+	// The master is rounded up to the video grid, so a whole-file source can
+	// be exactly one frame short. Cap the trailing placement whose frame count
+	// is certified/exact: earlier placements are deliberately looped by the
+	// worker, while a container-rounded file (4.979s for 120 frames) must keep
+	// the sub-frame hold it already carries. A real stock binding is a trailing
+	// placement too: its raw range is immutable, but its FrameCount must not
+	// ask the preparer for a frame past the bound file (the r25-r30 1441-frame
+	// WINDOW_CERTIFICATION_FAILED failure).
+	if lastIndex >= 0 {
+		segment := &segments[lastIndex]
+		if asset, ok := assetsByID[segment.AssetID]; ok {
+			totalFrames := asset.FrameCount
+			certified := totalFrames > 0
+			if totalFrames <= 0 && asset.DurationUS > 0 {
+				totalFrames = finalJobFrameAtUS(asset.DurationUS, fpsNum, fpsDen)
+				if totalFrames > 0 && finalJobFrameStartUS(totalFrames, fpsNum, fpsDen) > asset.DurationUS {
+					totalFrames--
+				}
+				certified = totalFrames > 0 && finalJobFrameStartUS(totalFrames, fpsNum, fpsDen) == asset.DurationUS
+			}
+			sourceStartFrame := finalJobFrameAtUS(segment.SourceInUS, fpsNum, fpsDen)
+			if sourceFrames := totalFrames - sourceStartFrame; certified && sourceFrames > 0 && segment.FrameCount == sourceFrames+1 {
+				segment.FrameCount = sourceFrames
+				endFrame = segment.TimelineStartFrame + segment.FrameCount
+			}
 		}
 	}
 	if endFrame >= neededFrames {
@@ -196,8 +246,21 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 	}
 	segment := &segments[lastIndex]
 	if segment.StockPoolSlot {
-		segment.FrameCount += neededFrames - endFrame
-		return segments, nil
+		// The stock binding fixes the source range; the preparer cannot be
+		// asked for a frame beyond it. A single frame past the bound file is
+		// the muxer's final hold, exactly like the trailing prepared asset
+		// below. More than one frame is a real timeline/audio mismatch and
+		// stays fail-closed instead of silently looping/truncating.
+		sourceStart := finalJobFrameAtUS(segment.SourceInUS, fpsNum, fpsDen)
+		sourceEnd := finalJobFrameAtUS(segment.SourceInUS+segment.SourceDurationUS, fpsNum, fpsDen)
+		if sourceFrames := sourceEnd - sourceStart; sourceFrames > 0 && segment.FrameCount == sourceFrames+1 {
+			segment.FrameCount = sourceFrames
+			endFrame = segment.TimelineStartFrame + segment.FrameCount
+		}
+		if neededFrames-endFrame <= 1 {
+			return segments, nil
+		}
+		return nil, fmt.Errorf("final_job V2 trailing stock segment %q needs %d more frames than its bound source", segment.SegmentID, neededFrames-endFrame)
 	}
 	assetIndex := -1
 	for i := range assets {
@@ -224,7 +287,12 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 		// A short source window is deliberate (stockpipeline binding or a
 		// certified fragment). Never pull frames from outside the declared
 		// window to close the timeline; hold the last displayed frame instead.
-		available = 0
+		// The one exception is a scene window that reaches the timeline end:
+		// it is the trailing placement, not a shorter binding, and the asset
+		// still has the frames needed to cover the frame-aligned audio tail.
+		if segment.SourceInUS+segment.SourceDurationUS < durationUS {
+			available = 0
+		}
 	}
 	if available > 0 {
 		extend := min(available, missing)
@@ -242,12 +310,52 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 	if missing > 1 {
 		return nil, fmt.Errorf("final_job V2 trailing segment %q needs %d more frames but source %q has no spare frames", segment.SegmentID, missing, segment.AssetID)
 	}
-	// The source bytes are fully consumed. The worker holds the last displayed
-	// frame for this one output frame; leave the whole-file source window
-	// untouched and do not append a sub-window segment the copy-only assembler
-	// cannot materialize.
-	segment.FrameCount++
+	// One frame remains and the source is fully consumed. Leave the segment
+	// exactly at the frames the source certifies: the muxer holds the last
+	// displayed frame for the audio master's final <1/24s. Incrementing
+	// FrameCount here asks the preparer for a frame that does not exist and
+	// fails remote certification.
 	return segments, nil
+}
+
+// finalJobValidateVideoCoverage proves the sealed video track is either
+// exactly as long as the frame-aligned audio timeline or exactly one frame
+// short. That one frame is the hold the muxer owns: the audio master is
+// rounded up to the video grid and the last source frame stays on screen for
+// the final <1/24s. A larger gap would silently truncate the master, and an
+// overrun would ask for frames the audio does not have; both stay fail-closed.
+func finalJobValidateVideoCoverage(plan finalJobCompiledPlan) error {
+	if plan.DurationUS <= 0 {
+		return fmt.Errorf("final_job V2 video coverage requires a positive duration")
+	}
+	fpsNum, fpsDen := int64(plan.Output.FPSNum), int64(plan.Output.FPSDen)
+	if fpsNum <= 0 || fpsDen <= 0 {
+		output := finalJobPlanOutputBlock()
+		fpsNum, fpsDen = int64(output.FPSNum), int64(output.FPSDen)
+	}
+	neededFrames := finalJobFramesCoveringUS(plan.DurationUS, fpsNum, fpsDen)
+	if neededFrames <= 0 {
+		return fmt.Errorf("final_job V2 video coverage rounds to zero frames")
+	}
+	for trackIndex, track := range plan.VideoTracks {
+		expectedStart := int64(0)
+		for segmentIndex, segment := range track.Segments {
+			if segment.TimelineStartFrame != expectedStart {
+				return fmt.Errorf("video_tracks[%d].segments[%d]: timeline_start_frame %d does not continue frame %d", trackIndex, segmentIndex, segment.TimelineStartFrame, expectedStart)
+			}
+			if segment.FrameCount <= 0 {
+				return fmt.Errorf("video_tracks[%d].segments[%d]: frame_count must be positive", trackIndex, segmentIndex)
+			}
+			expectedStart += segment.FrameCount
+		}
+		switch {
+		case expectedStart > neededFrames:
+			return fmt.Errorf("video_tracks[%d]: %d frames overrun the %d-frame audio timeline", trackIndex, expectedStart, neededFrames)
+		case neededFrames-expectedStart > 1:
+			return fmt.Errorf("video_tracks[%d]: %d frames leave a %d-frame gap before the %d-frame audio timeline (at most the final hold frame is allowed)", trackIndex, expectedStart, neededFrames-expectedStart, neededFrames)
+		}
+	}
+	return nil
 }
 
 // alignFinalJobCompiledPlanAssetIDs binds the compiled plan to the exact

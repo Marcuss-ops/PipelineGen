@@ -28,14 +28,14 @@ func projectSemanticConsolidation(
 	}
 
 	knownEntities := make(map[string]struct{})
-	knownGroups := make(map[string]struct{})
+	groupScenes, err := indexSemanticGroupScenes(bundles)
+	if err != nil {
+		return nil, err
+	}
 	rawProposals := 0
 	for _, bundle := range bundles {
 		for _, identity := range bundle.Identities {
 			knownEntities[identity.ID] = struct{}{}
-		}
-		for _, group := range bundle.Groups {
-			knownGroups[group.ID] = struct{}{}
 		}
 		rawProposals += len(bundle.Proposals)
 	}
@@ -84,8 +84,12 @@ func projectSemanticConsolidation(
 			}
 		}
 		for _, groupID := range wireCandidate.GroupIDs {
-			if _, ok := knownGroups[groupID]; !ok {
+			declaringScenes, ok := groupScenes[groupID]
+			if !ok {
 				return nil, fmt.Errorf("semantic consolidation: candidate %q references unknown group %q", wireCandidate.ID, groupID)
+			}
+			if !candidateOwnsGroupScene(wireCandidate, declaringScenes) {
+				return nil, fmt.Errorf("semantic consolidation: candidate %q references group %q of another scene", wireCandidate.ID, groupID)
 			}
 		}
 		for _, factID := range wireCandidate.CoveredFactIDs {
@@ -278,8 +282,12 @@ func projectSemanticConsolidation(
 		if link.Kind != "precedes" {
 			return nil, fmt.Errorf("semantic consolidation: unsupported event link kind %q", link.Kind)
 		}
-		if _, ok := knownGroups[link.GroupID]; !ok {
+		declaringScenes, ok := groupScenes[link.GroupID]
+		if !ok {
 			return nil, fmt.Errorf("semantic consolidation: event link references unknown group %q", link.GroupID)
+		}
+		if _, ok := declaringScenes[link.SceneID]; !ok {
+			return nil, fmt.Errorf("semantic consolidation: event link %q references group %q of another scene", link.ID, link.GroupID)
 		}
 		source, ok := texts[link.SceneID]
 		if !ok || !groundedSpan(source, link.StartByte, link.EndByte, link.Evidence) {
@@ -351,6 +359,50 @@ func projectSemanticConsolidation(
 			ReferenceNumbers:          wire.Metrics.ReferenceNumbers,
 		},
 	}, nil
+}
+
+// candidateOwnsGroupScene reports whether the candidate is anchored in the
+// scene that declares the group. A composition may span scenes, so every
+// declared scene counts, not only the primary one.
+func candidateOwnsGroupScene(candidate semanticEngineProductionCandidate, declaringScenes map[string]struct{}) bool {
+	if _, ok := declaringScenes[candidate.SceneID]; ok {
+		return true
+	}
+	for _, sceneID := range candidate.SceneIDs {
+		if _, ok := declaringScenes[sceneID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// indexSemanticGroupScenes maps every declared semantic group to the single
+// scene that declares it. A group id shared by two scenes is ambiguous: an
+// event link names a group and only the scene of its target member, so the
+// link could silently point at another scene's composition. Fail closed
+// instead of guessing which scene the group belongs to.
+func indexSemanticGroupScenes(bundles map[string]*scriptgen.SemanticCandidateBundle) (map[string]map[string]struct{}, error) {
+	index := make(map[string]map[string]struct{}, len(bundles))
+	for sceneID, bundle := range bundles {
+		if bundle == nil {
+			continue
+		}
+		for _, group := range bundle.Groups {
+			if strings.TrimSpace(group.ID) == "" {
+				return nil, fmt.Errorf("semantic consolidation: scene %q declares a group without id", sceneID)
+			}
+			scenes, ok := index[group.ID]
+			if !ok {
+				index[group.ID] = map[string]struct{}{sceneID: {}}
+				continue
+			}
+			scenes[sceneID] = struct{}{}
+			if len(scenes) > 1 {
+				return nil, fmt.Errorf("semantic consolidation: group id %q is declared by more than one scene", group.ID)
+			}
+		}
+	}
+	return index, nil
 }
 
 func derefString(value *string) string {

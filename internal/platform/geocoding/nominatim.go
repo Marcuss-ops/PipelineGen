@@ -132,7 +132,13 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	if result, classified, ok, err := readCached(cachePath); err != nil {
 		return capgeocoding.Result{}, err
 	} else if ok && (result.Scope != "" || classified) && !(result.Scope == "city" && strings.TrimSpace(result.AdminRegion) == "") {
-		return result, nil
+		// A cached answer that contradicts the grounded country is a stale
+		// homonym ("Pavia" cached as the Stockholm locality in an Italian
+		// scene). Treat it as a miss and re-resolve instead of pinning the
+		// map on the wrong country forever.
+		if !contextCountryContradicts(req.Context, result.CountryCode) {
+			return result, nil
+		}
 	}
 	// Pre-scope cache entries predate geographic-level zooms. Refresh them
 	// once so city/country/region classification reaches the map planner.
@@ -152,6 +158,12 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	values.Set("limit", fmt.Sprintf("%d", nominatimCandidateLimit))
 	values.Set("accept-language", req.Language)
 	values.Set("addressdetails", "1")
+	// Grounded country context narrows the provider itself, so a namesake in
+	// another country never enters the candidate set. The scoring filter below
+	// remains the fail-closed backstop for adapters/endpoints that ignore it.
+	if code := strings.ToLower(strings.TrimSpace(req.Context.CountryCode)); code != "" {
+		values.Set("countrycodes", code)
+	}
 	query.RawQuery = values.Encode()
 	// A transient provider failure (timeout, 429, 5xx) is retried with bounded
 	// backoff INSIDE this lookup: the alternative is losing an entire render job
@@ -347,6 +359,12 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 				continue
 			}
 		}
+		// The country code is grounded context, not a ranking hint: a single
+		// foreign namesake (Pavia, Sweden in an Italian scene) must be
+		// refused, never accepted just because it is the only provider hit.
+		if contextCountryContradicts(ctx, hit.Address["country_code"]) {
+			continue
+		}
 		s := scored{hit: hit, score: baseScore}
 		if nameMatches(query, hit) {
 			s.score += nameMatchScore
@@ -387,7 +405,16 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 	}
 	// Stable ranking: ties keep provider order, so the decision is
 	// deterministic for identical responses.
-	sort.SliceStable(scoredHits, func(i, j int) bool { return scoredHits[i].score > scoredHits[j].score })
+	sort.SliceStable(scoredHits, func(i, j int) bool {
+		if scoredHits[i].score != scoredHits[j].score {
+			return scoredHits[i].score > scoredHits[j].score
+		}
+		// Equal scores: the city boundary of a name is strictly more specific
+		// than the county/province of the same name. Without this tie-break the
+		// clamp at 1.0 leaves provider order to decide (Pavia county precedes
+		// Pavia city), and the ambiguity rule then refuses a place we can pin.
+		return scoredHits[i].cityLevel && !scoredHits[j].cityLevel
+	})
 	top := scoredHits[0]
 	if top.score < acceptanceScore {
 		return searchHit{}, 0, "", false
@@ -407,6 +434,18 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 	rationale := fmt.Sprintf("candidates=%d score=%.2f margin=%.2f match=%s context_decided=%t",
 		len(scoredHits), top.score, margin, orNone(top.matched), top.ctxDecided)
 	return top.hit, top.score, rationale, true
+}
+
+// contextCountryContradicts reports whether a resolved country code disagrees
+// with the grounded country context. Empty values never contradict: absence is
+// "no hint", not evidence against the candidate.
+func contextCountryContradicts(ctx capgeocoding.Context, countryCode string) bool {
+	want := normalizePlaceToken(ctx.CountryCode)
+	got := normalizePlaceToken(countryCode)
+	if want == "" || got == "" {
+		return false
+	}
+	return want != got
 }
 
 func orNone(value string) string {

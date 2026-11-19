@@ -29,8 +29,13 @@ const vidRushImageUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.3
 var (
 	ErrVidRushImageTooLarge = errors.New("vidrush image exceeds download limit")
 	ErrVidRushImageInvalid  = errors.New("vidrush image is not a valid supported image")
-	ErrVidRushSSRFBlocked   = errors.New("vidrush remote image URL blocked by SSRF policy")
-	vidRushImageTransport   = newVidRushImageTransport()
+	// ErrVidRushImageCollage marks a contact sheet, montage or triptych. It
+	// wraps ErrVidRushImageInvalid so every soft-reject path keeps working,
+	// while the reason stays precise: one "photo" that shows several pictures
+	// reads to the viewer as stacked images, so the candidate must not bind.
+	ErrVidRushImageCollage = fmt.Errorf("%w: panel grid collage", ErrVidRushImageInvalid)
+	ErrVidRushSSRFBlocked  = errors.New("vidrush remote image URL blocked by SSRF policy")
+	vidRushImageTransport  = newVidRushImageTransport()
 )
 
 func newVidRushImageTransport() *http.Transport {
@@ -361,6 +366,16 @@ func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []b
 	if !policy.AcceptsDimensions(config.Width, config.Height) {
 		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
 	}
+	img, _, err := digest.DecodeImageBounded(data, policy.MaxPixels)
+	if err != nil {
+		if errors.Is(err, digest.ErrImagePixelBudget) {
+			return scriptports.VerifiedArtifact{}, ErrVidRushImageTooLarge
+		}
+		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
+	}
+	if digest.HasPanelGridCollageImage(img) {
+		return scriptports.VerifiedArtifact{}, ErrVidRushImageCollage
+	}
 	sum := digest.SHA256Bytes(data)
 	candidate.ContentSHA256 = sum
 	candidate.MIMEType = mime
@@ -369,7 +384,7 @@ func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []b
 	// The perceptual hash is best-effort: it powers near-duplicate detection
 	// across providers, but a decoder that cannot produce one must not fail
 	// technical verification.
-	if perceptualHash, hashErr := digest.PerceptualHashBytes(data); hashErr == nil {
+	if perceptualHash, hashErr := digest.PerceptualHash(img); hashErr == nil {
 		candidate.PerceptualHash = perceptualHash
 	}
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired

@@ -593,6 +593,119 @@ func TestMapGeocodingSkipsItalianDiscourseWordsMisclassifiedAsPlaces(t *testing.
 	}
 }
 
+// TestCountryLookupsIgnorePreviousCountryContext is the regression for the
+// map-c payload: Italia grounded first, then Francia was queried with
+// country=Italia and returned no result; Svizzera inherited Germania and
+// resolved to a German park. A country is the frame, not a namesake, so every
+// country lookup must reach the provider without a previous country filter.
+func TestCountryLookupsIgnorePreviousCountryContext(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		if !req.Context.IsZero() {
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		}
+		switch req.Query {
+		case "Italia":
+			return capabilitygeocoding.Result{Latitude: 42.6384, Longitude: 12.6743, Scope: "country", Country: "Italia", CountryCode: "it"}, nil
+		case "Francia":
+			return capabilitygeocoding.Result{Latitude: 46.2276, Longitude: 2.2137, Scope: "country", Country: "France", CountryCode: "fr"}, nil
+		case "Germania":
+			return capabilitygeocoding.Result{Latitude: 51.1638, Longitude: 10.4478, Scope: "country", Country: "Deutschland", CountryCode: "de"}, nil
+		case "Svizzera":
+			return capabilitygeocoding.Result{Latitude: 46.8182, Longitude: 8.2275, Scope: "country", Country: "Schweiz", CountryCode: "ch"}, nil
+		default:
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		}
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
+		Version: 1, Language: "it", Status: "completed",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{CanonicalName: "Italia", Type: "GPE"},
+			{CanonicalName: "Francia", Type: "GPE"},
+			{CanonicalName: "Germania", Type: "GPE"},
+			{CanonicalName: "Svizzera", Type: "GPE"},
+		},
+	}}
+	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "it"); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 4 {
+		t.Fatalf("geocoder calls = %d, want one per country: %+v", len(geocoder.requests), geocoder.requests)
+	}
+	for _, request := range geocoder.requests {
+		if !request.Context.IsZero() {
+			t.Fatalf("country %q inherited a country context: %+v", request.Query, request.Context)
+		}
+	}
+	for index, want := range []struct {
+		name string
+		code string
+	}{
+		{"Italia", "it"},
+		{"Francia", "fr"},
+		{"Germania", "de"},
+		{"Svizzera", "ch"},
+	} {
+		geo := annotations[0].PrimaryEntities[index].Geo
+		if geo == nil || geo.CountryCode != want.code {
+			t.Fatalf("%s was not grounded as %s: %+v", want.name, want.code, geo)
+		}
+	}
+}
+
+// TestCountryContextRefreshesForFollowingCity proves the new country also
+// becomes context for the finer names after it: Italia -> Francia -> Parigi
+// must resolve Parigi under France, not Italia.
+func TestCountryContextRefreshesForFollowingCity(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		switch req.Query {
+		case "Italia":
+			return capabilitygeocoding.Result{Latitude: 42.6384, Longitude: 12.6743, Scope: "country", Country: "Italia", CountryCode: "it"}, nil
+		case "Francia":
+			if !req.Context.IsZero() {
+				return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+			}
+			return capabilitygeocoding.Result{Latitude: 46.2276, Longitude: 2.2137, Scope: "country", Country: "France", CountryCode: "fr"}, nil
+		case "Parigi":
+			if req.Context.Country != "France" || req.Context.CountryCode != "fr" {
+				return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+			}
+			return capabilitygeocoding.Result{Latitude: 48.8566, Longitude: 2.3522, Scope: "city", Country: "France", CountryCode: "fr"}, nil
+		default:
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		}
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetPhraseAligner(testPhraseAligner{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
+		Version: 1, Language: "it", Status: "completed",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{CanonicalName: "Italia", Type: "GPE"},
+			{CanonicalName: "Francia", Type: "GPE"},
+			{CanonicalName: "Parigi", Type: "GPE"},
+		},
+	}}
+	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "it"); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 3 {
+		t.Fatalf("geocoder calls = %d, want Italia, Francia, Parigi: %+v", len(geocoder.requests), geocoder.requests)
+	}
+	parisLookup := geocoder.requests[2]
+	if parisLookup.Query != "Parigi" || parisLookup.Context.Country != "France" || parisLookup.Context.CountryCode != "fr" {
+		t.Fatalf("Parigi lookup = %+v, want France/fr", parisLookup)
+	}
+	geo := annotations[0].PrimaryEntities[2].Geo
+	if geo == nil || geo.Latitude != 48.8566 || geo.CountryCode != "fr" {
+		t.Fatalf("Parigi was not grounded under France: %+v", geo)
+	}
+}
+
 func TestGeocodePlaceAnnotationsFailsClosedForMissingAdapterAndInvalidResult(t *testing.T) {
 	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
 		PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: "Paris", Type: "GPE"}},

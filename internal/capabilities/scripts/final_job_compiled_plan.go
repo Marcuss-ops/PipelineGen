@@ -300,6 +300,9 @@ func finalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRo
 	if err := alignFinalJobSegmentSourceWindows(&plan, stockAssetIDs); err != nil {
 		return "", "", fmt.Errorf("align final_job source windows after frame coverage: %w", err)
 	}
+	if err := finalJobValidateVideoCoverage(plan); err != nil {
+		return "", "", fmt.Errorf("final_job V2 compiled-plan video coverage: %w", err)
+	}
 	if err := validateFinalJobPlanBindingRules(plan); err != nil {
 		return "", "", fmt.Errorf("final_job V2 compiled-plan asset bindings: %w", err)
 	}
