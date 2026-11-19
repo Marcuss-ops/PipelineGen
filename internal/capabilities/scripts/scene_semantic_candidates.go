@@ -76,6 +76,8 @@ type SemanticCandidateBundle struct {
 	Charts                 []ChartValueCandidate
 	Temporal               []TemporalFactCandidate
 	Numeric                []NumericFactCandidate
+	Quantities             []SemanticQuantity
+	QuantityComparisons    []SemanticQuantityComparison
 	Proposals              []SemanticVisualProposal
 	Groups                 []SemanticGroup
 	MicroSummaries         []SemanticMicroSummary
@@ -136,6 +138,26 @@ type SemanticAnalyzerVersions struct {
 	EntityIndex  string
 	Numbers      string
 	Dates        string
+	Quantities   string
+}
+
+// SemanticQuantity is an exact-source typed measure projected by BrainRust.
+type SemanticQuantity struct {
+	ID, Dimension, Unit, UnitSurface, Qualifier, RangeID, Evidence, Status string
+	Value, RawValue, Scale                                                 *float64
+	Period                                                                 *SemanticQuantityPeriod
+	SubjectEntityID, Predicate                                             string
+	SentenceIndex, Start, End                                              int
+}
+
+type SemanticQuantityPeriod struct {
+	Year, FactIndex int
+}
+
+type SemanticQuantityComparison struct {
+	Kind, Left, Right, Dimension, Evidence string
+	Ratio, Difference                      *float64
+	EvidenceStart, EvidenceEnd             int
 }
 
 // SemanticSearchIntent is a typed, short retrieval query produced by the

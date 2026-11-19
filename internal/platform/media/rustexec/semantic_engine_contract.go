@@ -270,6 +270,7 @@ type semanticEngineAnalyzerVersions struct {
 	EntityIndex  string `json:"entity_index,omitempty"`
 	Numbers      string `json:"numbers,omitempty"`
 	Dates        string `json:"dates,omitempty"`
+	Quantities   string `json:"quantities,omitempty"`
 }
 
 type semanticEngineLinkedEntity struct {
@@ -307,6 +308,8 @@ type semanticEngineSceneManifest struct {
 	Identities             []semanticEngineIdentity             `json:"identities"`
 	Relations              semanticEngineRelationView           `json:"relations"`
 	NumericFacts           []semanticEngineNumeric              `json:"numeric_facts"`
+	Quantities             []semanticEngineQuantity             `json:"quantities,omitempty"`
+	QuantityComparisons    []semanticEngineQuantityComparison   `json:"quantity_comparisons,omitempty"`
 	TemporalFacts          []semanticEngineTemporal             `json:"temporal_facts"`
 	Bullets                []semanticEngineCandidate            `json:"bullets"`
 	ShortPhrases           []semanticEngineCandidate            `json:"short_phrases"`
@@ -496,6 +499,42 @@ type semanticEngineNumeric struct {
 	StartByte int      `json:"start_byte"`
 	EndByte   int      `json:"end_byte"`
 	Evidence  string   `json:"evidence"`
+}
+
+type semanticEngineQuantity struct {
+	ID              string                        `json:"id"`
+	Value           *float64                      `json:"value"`
+	RawValue        *float64                      `json:"raw_value"`
+	Scale           *float64                      `json:"scale"`
+	Dimension       string                        `json:"dimension"`
+	Unit            string                        `json:"unit"`
+	UnitSurface     string                        `json:"unit_surface"`
+	Qualifier       string                        `json:"qualifier"`
+	RangeID         *string                       `json:"range_id"`
+	Period          *semanticEngineQuantityPeriod `json:"period"`
+	SubjectEntityID *string                       `json:"subject_entity_id"`
+	Predicate       *string                       `json:"predicate"`
+	StartByte       int                           `json:"start_byte"`
+	EndByte         int                           `json:"end_byte"`
+	Evidence        string                        `json:"evidence"`
+	SentenceIndex   int                           `json:"sentence_index"`
+	Status          string                        `json:"status"`
+}
+
+type semanticEngineQuantityPeriod struct {
+	Year      int `json:"year"`
+	FactIndex int `json:"fact_index"`
+}
+
+type semanticEngineQuantityComparison struct {
+	Kind              string   `json:"kind"`
+	Left              string   `json:"left"`
+	Right             string   `json:"right"`
+	Dimension         string   `json:"dimension"`
+	Ratio             *float64 `json:"ratio"`
+	Difference        *float64 `json:"difference"`
+	EvidenceStartByte int      `json:"evidence_start_byte"`
+	EvidenceEndByte   int      `json:"evidence_end_byte"`
 }
 
 type semanticEngineTemporal struct {

@@ -187,7 +187,7 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 			VisualNER: manifest.Analyzers.VisualNER, SemanticCore: manifest.Analyzers.SemanticCore,
 			PhraseImpact: manifest.Analyzers.PhraseImpact, Lexicon: manifest.Analyzers.Lexicon,
 			EntityIndex: manifest.Analyzers.EntityIndex, Numbers: manifest.Analyzers.Numbers,
-			Dates: manifest.Analyzers.Dates,
+			Dates: manifest.Analyzers.Dates, Quantities: manifest.Analyzers.Quantities,
 		}
 		bundle.Status = scene.Status
 		bundle.RejectedItems = scene.RejectedItems
@@ -259,6 +259,11 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		}
 		if bundle.Numeric, err = projectSemanticNumeric(source, scene.NumericFacts); err != nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
+		}
+		if scene.Quantities != nil || scene.QuantityComparisons != nil {
+			if bundle.Quantities, bundle.QuantityComparisons, err = projectSemanticQuantities(source, scene.Quantities, scene.QuantityComparisons); err != nil {
+				return nil, nil, fmt.Errorf("semantic-engine: scene %q quantities: %w", scene.SceneID, err)
+			}
 		}
 		bundles[scene.SceneID] = bundle
 	}
