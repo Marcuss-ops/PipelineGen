@@ -140,6 +140,47 @@ func TestChunkPolicyChunksAudioPlans(t *testing.T) {
 	}
 }
 
+// TestChunkPolicyFallsBackToSingleJobForUnsupportedElements pins the
+// fail-closed half of the policy: any element that needs the FullGraph path
+// keeps the plan on a single job instead of producing chunks the assembler
+// cannot concatenate.
+func TestChunkPolicyFallsBackToSingleJobForUnsupportedElements(t *testing.T) {
+	base := validClipPlan(t)
+	base.DurationMS = int64((2 * time.Minute) / time.Millisecond)
+	if err := base.Seal(); err != nil {
+		t.Fatalf("seal long clip plan: %v", err)
+	}
+	executor, err := NewClipRenderExecutor(&fakeClipQueue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.SetChunking(time.Minute, 48, 2)
+
+	cases := []struct {
+		name   string
+		mutate func(*cliprender.ClipRenderPlanV1)
+	}{
+		{"watermark", func(p *cliprender.ClipRenderPlanV1) { p.Watermark = &cliprender.PlanWatermark{} }},
+		{"background", func(p *cliprender.ClipRenderPlanV1) {
+			p.Background = &cliprender.PlanBackground{Mode: cliprender.BackgroundModeBlurSource}
+		}},
+		{"overlay", func(p *cliprender.ClipRenderPlanV1) { p.Overlay = &cliprender.PlanOverlay{} }},
+		{"burned subtitles", func(p *cliprender.ClipRenderPlanV1) {
+			p.Subtitles = &cliprender.PlanSubtitles{Mode: cliprender.SubtitlesModeBurn}
+		}},
+		{"foreground scale", func(p *cliprender.ClipRenderPlanV1) { p.Output.ForegroundScalePercent = 92 }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := base
+			tc.mutate(&plan)
+			if requested, alignment, ok := executor.chunkPolicy(plan); ok {
+				t.Fatalf("unsupported element must keep one job, got (%d chunks, alignment %d)", requested, alignment)
+			}
+		})
+	}
+}
+
 // TestClipRenderExecutorSubmitsOverlayPlanV1 verifies the critical contract:
 // the submitted JSON carries schema_version="renderinggen.overlay-plan.v1",
 // NOT a raw ClipRenderPlanV1 (which would be silently pass-through'd by the
