@@ -32,6 +32,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -216,6 +217,15 @@ func mapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1, includeAudio boo
 		// items is always emitted as an explicit empty array, never null,
 		// so the RenderingGen schema validator sees a valid JSON array.
 		Items: []json.RawMessage{},
+	}
+	// A chunk child is a video-only assembly input, not an assembly-ready
+	// clip: declare the profile that certifies that shape. Keeping the
+	// anchor's VELOX_ASSEMBLY_READY_V1 here made every chunk fail canonical
+	// output with "audio streams=0, want 1" even though the child is
+	// deliberately silent. V3 pins the same canvas/codec plus the canonical
+	// timebase and avcC the packet-copy assembler needs, and requires no audio.
+	if !includeAudio {
+		op.OutputProfileID = kernelmedia.OverlayVideoOnlyProfileID
 	}
 
 	// Foreground scale: 0 and 100 both mean "full canvas" in ClipRenderPlanV1;

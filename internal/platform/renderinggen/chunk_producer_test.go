@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
@@ -165,8 +166,9 @@ func TestChunkProducerChildrenAreVideoOnlyAndAnchorOwnsAudio(t *testing.T) {
 			t.Fatalf("chunk %d package reference differs from the family package", i)
 		}
 		var childPlan struct {
-			Audio  json.RawMessage `json:"audio"`
-			Source struct {
+			Audio           json.RawMessage `json:"audio"`
+			OutputProfileID string          `json:"output_profile_id"`
+			Source          struct {
 				SHA256 string `json:"sha256"`
 			} `json:"source"`
 		}
@@ -175,6 +177,10 @@ func TestChunkProducerChildrenAreVideoOnlyAndAnchorOwnsAudio(t *testing.T) {
 		}
 		if len(childPlan.Audio) != 0 {
 			t.Fatalf("chunk %d must be video-only (no audio block), got: %s", i, childPlan.Audio)
+		}
+		if childPlan.OutputProfileID != kernelmedia.OverlayVideoOnlyProfileID {
+			t.Fatalf("chunk %d profile = %q, want %q (a silent chunk cannot claim an audio-bearing assembly profile)",
+				i, childPlan.OutputProfileID, kernelmedia.OverlayVideoOnlyProfileID)
 		}
 		if childPlan.Source.SHA256 != plan.Source.SHA256 {
 			t.Fatalf("chunk %d lost the source asset: %q", i, childPlan.Source.SHA256)
