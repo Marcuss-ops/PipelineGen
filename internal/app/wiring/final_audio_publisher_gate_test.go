@@ -39,8 +39,9 @@ func TestDriveUploadGate_IsSharedAcrossPublisherSites(t *testing.T) {
 	require.NotContains(t, voiceoverBundle, "NewRateLimitedPublisherWithGate(",
 		"local-only per-item voiceover pipeline must not construct a publisher")
 
-	// The final-audio publisher (audio_publish) must reuse the same gate.
-	finalAudio := read("script_generation_runtime.go")
+	// The final-audio publisher (audio_publish) must reuse the same gate. The
+	// audio wiring lives in its own unit since the BONIFICA-04 split.
+	finalAudio := read("script_generation_wiring.go")
 	require.Contains(t, finalAudio, "finalAudioDriveGate = root.DriveUploadGate",
 		"final-audio publisher must take the shared gate from ComposeRoot")
 	require.Contains(t, finalAudio, "vowiring.NewFinalAudioPublisher(",

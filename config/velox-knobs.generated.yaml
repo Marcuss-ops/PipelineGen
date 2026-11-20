@@ -53,13 +53,13 @@ knobs:
     kind: env
     default: ""
     safe_production: "unset (default cache root)"
-    owner: "internal/app/wiring/script_generation_runtime.go"
+    owner: "internal/app/wiring/script_generation_bindings.go"
     description: "Relocates the per-run final-audio cache."
   VELOX_FINAL_JOB_ATTACH_SECONDS:
     kind: env
     default: "3000"
     safe_production: "3000"
-    owner: "internal/app/wiring/remote_final_job.go"
+    owner: "internal/app/wiring/script/remote_final_job_config.go"
     description: "Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait)."
   VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS:
     kind: env
@@ -71,7 +71,7 @@ knobs:
     kind: env
     default: ""
     safe_production: "/etc/pipelinegen/final_job_credentials.json"
-    owner: "internal/app/wiring/remote_final_job.go"
+    owner: "internal/app/wiring/script/remote_final_job_config.go"
     description: "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset."
   VELOX_FINAL_JOB_DUMP_DIR:
     kind: env
@@ -89,13 +89,13 @@ knobs:
     kind: env
     default: ""
     safe_production: "64-hex secret from the host env file"
-    owner: "internal/app/wiring/remote_final_job.go"
+    owner: "internal/app/wiring/script/remote_final_job_config.go"
     description: "Per-client bearer secret for job.submit against the Master."
   VELOX_FINAL_JOB_MASTER_URL:
     kind: env
     default: ""
     safe_production: "https://<master-host>"
-    owner: "internal/app/wiring/remote_final_job.go"
+    owner: "internal/app/wiring/script/remote_final_job_config.go"
     description: "Master URL for the remote final-job handoff; unset falls back to the configured base URL."
   VELOX_FINAL_JOB_PREPARE_LANES:
     kind: env
@@ -107,13 +107,13 @@ knobs:
     kind: env
     default: "180"
     safe_production: "180"
-    owner: "internal/app/wiring/remote_final_job.go"
+    owner: "internal/app/wiring/script/remote_final_job_config.go"
     description: "How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget)."
   VELOX_FINAL_JOB_WORKER_ID:
     kind: env
     default: ""
     safe_production: "unset (Master places the job)"
-    owner: "internal/app/wiring/remote_final_job.go"
+    owner: "internal/app/wiring/script/remote_final_job_config.go"
     description: "Pins the handoff to one worker; the retired worker-51 id is rejected loudly."
   VELOX_MASTER_ADMIN_TOKEN:
     kind: env

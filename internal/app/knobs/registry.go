@@ -133,13 +133,13 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FINAL_AUDIO_CACHE_DIR", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script_generation_runtime.go",
+		Owner:          "internal/app/wiring/script_generation_bindings.go",
 		SafeProduction: "unset (default cache root)",
 		Description:    "Relocates the per-run final-audio cache.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_ATTACH_SECONDS", Kind: KindEnv, Default: "3000",
-		Owner:          "internal/app/wiring/remote_final_job.go",
+		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
 		SafeProduction: "3000",
 		Description:    "Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait).",
 	},
@@ -151,7 +151,7 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FINAL_JOB_CREDENTIALS_FILE", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/remote_final_job.go",
+		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
 		SafeProduction: "/etc/pipelinegen/final_job_credentials.json",
 		Description:    "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset.",
 	},
@@ -169,13 +169,13 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FINAL_JOB_M2M_SECRET", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/remote_final_job.go",
+		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
 		SafeProduction: "64-hex secret from the host env file",
 		Description:    "Per-client bearer secret for job.submit against the Master.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_MASTER_URL", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/remote_final_job.go",
+		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
 		SafeProduction: "https://<master-host>",
 		Description:    "Master URL for the remote final-job handoff; unset falls back to the configured base URL.",
 	},
@@ -187,14 +187,14 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FINAL_JOB_QUEUE_SECONDS", Kind: KindEnv, Default: "180",
-		Owner:          "internal/app/wiring/remote_final_job.go",
+		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
 		SafeProduction: "180",
 		Description:    "How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget).",
 	},
 
 	{
 		Name: "VELOX_FINAL_JOB_WORKER_ID", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/remote_final_job.go",
+		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
 		SafeProduction: "unset (Master places the job)",
 		Description:    "Pins the handoff to one worker; the retired worker-51 id is rejected loudly.",
 	},
