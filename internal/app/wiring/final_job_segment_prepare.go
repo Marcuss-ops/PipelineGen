@@ -206,6 +206,15 @@ func newFinalJobSegmentPreparer(ffmpeg string, policy mediaexec.EncoderPolicy, c
 	if lanes < 1 {
 		lanes = 1
 	}
+	// The fragment certificate is the canonical libx264 avcC, so this lane
+	// must never inherit the user-facing renderer policy: production may select
+	// h264_nvenc, which cannot emit those parameter sets. Pinning here keeps a
+	// configuration change from turning every handoff into a late failure.
+	policy = mediaexec.EncoderPolicy{
+		Codec:  kernelmedia.CanonicalVideoCodec,
+		Preset: kernelmedia.CanonicalVideoPreset,
+		CRF:    kernelmedia.CanonicalVideoCRF,
+	}
 	return &finalJobSegmentPreparer{
 		ffmpeg:   strings.TrimSpace(ffmpeg),
 		policy:   policy,

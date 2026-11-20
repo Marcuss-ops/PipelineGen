@@ -7,6 +7,8 @@ func TestNormalizeGeocodePlaceQueryStripsOnlyKnownItalianRegionArticles(t *testi
 		in, language, want string
 	}{
 		{"La Toscana", "it", "Toscana"},
+		{"O Brasil", "pt", "Brasil"},
+		{"O Porto", "pt", "O Porto"},
 		{"La Lombardia", "it", "Lombardia"},
 		{"Il Lazio", "it", "Lazio"},
 		{"Le Marche", "it", "Marche"},

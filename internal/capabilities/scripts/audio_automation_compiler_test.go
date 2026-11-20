@@ -29,7 +29,7 @@ func TestCompileBGMFades_PlanExample(t *testing.T) {
 		TargetTrackID: "bgm",
 		StartUS:       0,
 		EndUS:         60_000_000,
-		GainDB:        audio.BackgroundMusicGainDB,
+		GainDB:        -24,
 		AttackUS:      1_200_000,
 		ReleaseUS:     1_800_000,
 	}}
@@ -105,7 +105,7 @@ func TestCompileBGMFades_MultiLayerOrdered(t *testing.T) {
 	if out[0].StartUS != 0 || out[0].ReleaseUS != 1_000_000 || out[0].AttackUS != 0 {
 		t.Fatalf("intro automation = %+v", out[0])
 	}
-	if out[1].StartUS != 20_000_000 || out[1].EndUS != 30_000_000 || out[1].AttackUS != 1_500_000 || out[1].ReleaseUS != 2_000_000 || out[1].GainDB != audio.BackgroundMusicGainDB {
+	if out[1].StartUS != 20_000_000 || out[1].EndUS != 30_000_000 || out[1].AttackUS != 1_500_000 || out[1].ReleaseUS != 2_000_000 || out[1].GainDB != -25 {
 		t.Fatalf("dark automation = %+v", out[1])
 	}
 }

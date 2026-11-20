@@ -77,6 +77,7 @@ var platformCapabilityScriptsInventory = map[string]string{
 	"internal/platform/media/rustexec/semantic_engine_phrases.go":         "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
 	"internal/platform/media/rustexec/semantic_engine_projection.go":      "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
 	"internal/platform/media/rustexec/semantic_engine_search_feedback.go": "owner=media-rust; removal_trigger=semantic ports move to kernel/script", "internal/platform/media/rustexec/semantic_engine_story.go": "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
+	"internal/platform/media/rustexec/semantic_engine_quantities.go":     "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
 	"internal/platform/media/rustexec/video_processor.go":                "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
 	"internal/platform/ollama/adapters/metadata_generator.go":            "owner=ollama-adapters; removal_trigger=script metadata generator port moves to kernel",
 	"internal/platform/ollama/adapters/person_image_scorer.go":           "owner=ollama-adapters; removal_trigger=person image scorer port moves to kernel",

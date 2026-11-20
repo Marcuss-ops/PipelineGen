@@ -14,14 +14,15 @@ func finalJobMediaPreflightRequest(plan scriptgen.FinalJobCompiledPlanV2) (ruste
 	if plan.DurationUS <= 0 || plan.Output.FPSNum <= 0 || plan.Output.FPSDen <= 0 {
 		return rustexec.PreflightRequest{}, fmt.Errorf("final_job preflight: compiled plan has an invalid duration or frame rate")
 	}
-	durationMS := plan.DurationUS / 1000
-	if plan.DurationUS%1000 != 0 {
-		durationMS++
-	}
-	if durationMS <= 0 {
-		return rustexec.PreflightRequest{}, fmt.Errorf("final_job preflight: compiled plan duration rounds to zero milliseconds")
-	}
-	request := rustexec.PreflightRequest{VideoDurationMS: &durationMS}
+	// The plan duration is the audio master, which can be an exact number of
+	// milliseconds while the frame-aligned video track ends a few hundred
+	// microseconds later (9592 frames at 24 fps = 399,666,666us against a
+	// 399,666,000us master). The preflight checks overlays against the video
+	// end, so declare the furthest sealed track end, not the audio duration:
+	// a plain ms floor otherwise rejects the last video frame as
+	// overlay_beyond_video by sub-millisecond rounding.
+	videoEndUS := plan.DurationUS
+	request := rustexec.PreflightRequest{}
 	for trackIndex, track := range plan.VideoTracks {
 		if uint64(trackIndex) > math.MaxUint32 {
 			return rustexec.PreflightRequest{}, fmt.Errorf("final_job preflight: video track index %d exceeds mediaexec.v2 range", trackIndex)
@@ -38,6 +39,9 @@ func finalJobMediaPreflightRequest(plan scriptgen.FinalJobCompiledPlanV2) (ruste
 			if err != nil {
 				return rustexec.PreflightRequest{}, fmt.Errorf("final_job preflight: segment %q end: %w", segment.SegmentID, err)
 			}
+			if outUS > videoEndUS {
+				videoEndUS = outUS
+			}
 			request.Overlays = append(request.Overlays, rustexec.PreflightOverlay{
 				ItemID: segment.SegmentID,
 				Track:  uint32(trackIndex),
@@ -46,6 +50,14 @@ func finalJobMediaPreflightRequest(plan scriptgen.FinalJobCompiledPlanV2) (ruste
 			})
 		}
 	}
+	durationMS := videoEndUS / 1000
+	if videoEndUS%1000 != 0 {
+		durationMS++
+	}
+	if durationMS <= 0 {
+		return rustexec.PreflightRequest{}, fmt.Errorf("final_job preflight: compiled plan video end rounds to zero milliseconds")
+	}
+	request.VideoDurationMS = &durationMS
 	return request, nil
 }
 

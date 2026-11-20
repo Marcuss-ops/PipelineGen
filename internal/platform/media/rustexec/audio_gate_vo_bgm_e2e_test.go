@@ -68,9 +68,8 @@ func TestListenGateVOPlusBGM25s(t *testing.T) {
 		FadeInMS:           800,
 		FadeOutMS:          1000,
 		DuckUnderVoiceover: true,
-		// The canonical duck floor (BackgroundMusicGainDB − 6 = −30 dB) is
-		// the resolved level: an explicit duck gain AT the floor is honoured,
-		// anything quieter is clamped up to it by CompileBGMDucking.
+		// The duck floor is derived from this layer's bed (gain − 6 dB = −24),
+		// so an explicit duck gain quieter than the floor is raised to it.
 		DuckGainDB:    -30,
 		DuckAttackMS:  120,
 		DuckReleaseMS: 350,
@@ -97,10 +96,12 @@ func TestListenGateVOPlusBGM25s(t *testing.T) {
 		t.Fatalf("sfx events = %+v, want none in gate A", sfx)
 	}
 	bgm := trackEvents(plan, audio.TrackBGM)
+	// An explicit layer gain (-18) is the bed level that reaches the plan; the
+	// policy default only fills in for layers that carry no gain.
 	wantBGM := []audio.AudioEvent{
-		{EventID: "bgm-0", Type: audio.EventBGM, AssetID: "bgm-a", TimelineStartUS: 0, DurationUS: 10_000_000, SourceInUS: 0, SourceDurationUS: 10_000_000, GainDB: audio.BackgroundMusicGainDB},
-		{EventID: "bgm-1", Type: audio.EventBGM, AssetID: "bgm-a", TimelineStartUS: 10_000_000, DurationUS: 10_000_000, SourceInUS: 0, SourceDurationUS: 10_000_000, GainDB: audio.BackgroundMusicGainDB},
-		{EventID: "bgm-2", Type: audio.EventBGM, AssetID: "bgm-a", TimelineStartUS: 20_000_000, DurationUS: 5_000_000, SourceInUS: 0, SourceDurationUS: 5_000_000, GainDB: audio.BackgroundMusicGainDB},
+		{EventID: "bgm-0", Type: audio.EventBGM, AssetID: "bgm-a", TimelineStartUS: 0, DurationUS: 10_000_000, SourceInUS: 0, SourceDurationUS: 10_000_000, GainDB: -18},
+		{EventID: "bgm-1", Type: audio.EventBGM, AssetID: "bgm-a", TimelineStartUS: 10_000_000, DurationUS: 10_000_000, SourceInUS: 0, SourceDurationUS: 10_000_000, GainDB: -18},
+		{EventID: "bgm-2", Type: audio.EventBGM, AssetID: "bgm-a", TimelineStartUS: 20_000_000, DurationUS: 5_000_000, SourceInUS: 0, SourceDurationUS: 5_000_000, GainDB: -18},
 	}
 	if len(bgm) != len(wantBGM) {
 		t.Fatalf("bgm events = %+v, want %d loop events (last truncated on 25s)", bgm, len(wantBGM))
@@ -118,8 +119,8 @@ func TestListenGateVOPlusBGM25s(t *testing.T) {
 		t.Fatalf("fade automation = %+v", fade)
 	}
 	duck := plan.Automation[1]
-	if duck.TargetTrackID != "bgm" || duck.TriggerTrackID != "voiceover" || duck.StartUS != 0 || duck.EndUS != 15_000_000 || duck.GainDB != scripts.CanonicalBGMDuckFloorDB {
-		t.Fatalf("duck automation = %+v, want [0,15s) at the canonical duck floor (%.1fdB)", duck, scripts.CanonicalBGMDuckFloorDB)
+	if duck.TargetTrackID != "bgm" || duck.TriggerTrackID != "voiceover" || duck.StartUS != 0 || duck.EndUS != 15_000_000 || duck.GainDB != -24 {
+		t.Fatalf("duck automation = %+v, want [0,15s) at this layer's floor (-24dB)", duck)
 	}
 	if plan.DurationUS != 25_000_000 || plan.MixPolicy != audio.MixVoiceoverWithDuckedClip || plan.PlanSHA256 == "" {
 		t.Fatalf("plan contract broken: duration=%d policy=%q sealed=%v", plan.DurationUS, plan.MixPolicy, plan.PlanSHA256 != "")

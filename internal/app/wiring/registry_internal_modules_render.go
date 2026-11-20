@@ -212,10 +212,14 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// local assembler the velox-clipseq CLI runs. Reading the siblings' assets
 	// through the preparer keeps one owner for "get me this asset's bytes".
 	worker.WithSequence(cliprender.SequenceAssembly{
-		Jobs:    root.Jobs.Facade,
-		Assets:  preparer,
-		Encoder: mediaConfig.Policy,
-		Root:    filepath.Join(cfg.Storage.TempPath(), "cliprender", "sequences"),
+		Jobs:   root.Jobs.Facade,
+		Assets: preparer,
+		// The assembled sequence is a delivery/assembly artifact, not a
+		// diagnostic join: pin the certified lane instead of inheriting a
+		// user-facing NVENC choice.
+		Encoder:        mediaConfig.Policy,
+		CanonicalVideo: true,
+		Root:           filepath.Join(cfg.Storage.TempPath(), "cliprender", "sequences"),
 	})
 	// Script/batch leaf-folder resolution (create-or-reuse under the caller's
 	// root): routed through the SAME delivery.Publisher, so folder creation

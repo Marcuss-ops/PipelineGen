@@ -39,7 +39,7 @@ editing_assets:
       - bgm4
       - bgm5
       - bgm6
-    gain_db: -28
+    gain_db: -30
     loop: true
     duck_under_voiceover: true
     duck_gain_db: -32

@@ -1817,3 +1817,94 @@ test coprono entrambe le lane e la motivazione per ogni encode.
 `internal/media` PASS (6,3 s); `go vet` PASS; `git diff --check` PASS.
 **Non eseguito:** un nuovo job live Garlasco 20 minuti; nessun PASS live è
 dichiarato.
+
+## 12. Overhead per item Chronon3d ↔ RenderingGen — 2026-11-20
+
+**Stato:** i sei freni sono stati misurati sul percorso `RENDER_JOB` caldo; i
+fix 1–4 sono nel codice con gate unitari verdi in questa sessione. **Nessuna
+misura live di throughput è dichiarata**: il pool non è stato riavviato e il
+job golden da 100 item non è stato rieseguito.
+
+### 12.1 Il dato di partenza
+
+Su `card2d` il render + encode GPU dura **12,44 ms**, il job **351,95 ms**:
+~96% è overhead fisso per singolo item. Sei cause, con il costo attribuito
+dalla sessione di profilazione:
+
+| # | Freno | Costo | Dove |
+|---|---|---|---|
+| 1 | `json_validator` ricostruito a ogni `decode_render_plan` | 51,01 ms/item (parse JSON 0,06 ms) | `Chronon3d/src/render_plan/render_plan_validator.cpp` |
+| 2 | `pool_warmup` rieseguito a ogni job anche su demone caldo | 44,40 ms/item | `video_export_native.cpp` (warmup_pipe_renderer/slots) |
+| 3 | warm-up CUDA compositor + open NVENC per job | 48,67 ms/item (17,32 + 31,35) | `native_av_encoder_open_negotiate.cpp` |
+| 4 | `LanesPerDaemon=1`: la reply resta bloccata dal `deferred_receipt_step` | blocca il pipelining (ffprobe + sha256 + teardown) | `daemon_pool.go`, `daemon_service_ipc_render_job.cpp` |
+| 5 | `RENDER_BATCH` esiste in Chronon3d ma RenderingGen non lo usa | 100 dial/roundtrip invece di 2–3 batch | `internal/chronon/ipc.go` |
+| 6 | 3 demoni (~1,47 GiB VRAM su 16,38 GiB) e binario live non a HEAD | 11,4 GiB VRAM inutilizzati | unità systemd / ops |
+
+### 12.2 Cosa è entrato nel codice
+
+1. **Validator cachato per schema** (`render_plan_validator.cpp`): due
+   `json_validator` process-wide (v2 e v3-extensions), inizializzati una volta
+   in modo thread-safe, `validate()` serializzata da un mutex (const, ma
+   l'istanza è condivisa). Misura locale 2026-11-20 sul minimo schema v2:
+   **7,675 ms** costruzione+validate → **0,018 ms** con cache, **7,66 ms/item**
+   risparmiati. Il pin di regressione è
+   `render_plan: repeated decoding reuses one validator per schema`: il
+   contatore `render_plan_validator_construction_count()` non cresce dopo 32
+   decode, e non supera 2 nel processo.
+2. **Warm-up del pool saltato sul demone caldo**
+   (`PipeExportSession::reused_persistent_render_state`): quando il job adotta
+   il `FullGraphSession` persistente (renderer, slot e superfici già
+   inizializzati) `warmup_pipe_renderer`/`warmup_pipe_pool`/`warmup_pipe_slots`
+   non vengono rieseguiti; resta solo `execution_slots.reset_job_state()`.
+   `pool_warmup_ms` resta **assente** quando il warm-up non gira (lessico dei
+   tempi: mai uno 0 fabbricato).
+3. **Warm-up CUDA compositor one-shot per contesto**
+   (`VideoDeviceRuntime::cuda_compositor_warm()`/`mark_...`): il modulo NVRTC del
+   compositor si carica una volta per `CUcontext`, non a ogni apertura NVENC. Il
+   marker vive sul proprietario del contesto (una sostituzione riparte fredda) e
+   viene impostato **dopo** il successo: un warm-up fallito è ritentato dal job
+   successivo.
+4. **Due lane per demone come default** (`DefaultLanesPerDaemon = 2`): il demone
+   rilascia già il lock di esecuzione prima del `deferred_receipt_step`; con due
+   lane il job N+1 è dentro `RENDER_JOB` mentre il job N verifica la ricevuta.
+   Non sono due sessioni GPU: `m_render_job_mutex` serializza ancora
+   l'esecuzione, e l'ammissione VRAM resta del demone. Nel topology del worker
+   (`SpreadAcrossSockets`) l'overlap richiede `gpu_lanes = 2 × numero di
+   socket` (3 demoni → 6 lane), perché il cap esterno del worker limita i
+   RENDER_JOB in volo; il valore spedito in `config.yaml` resta 3 finché non
+   esiste una run comparabile, come prescrive
+   `scripts/systemd/pipelinegen.service.d/gpu-slots.conf`.
+5. **`RENDER_BATCH` lato client** (`IPCClient.RenderBatch`, comando 9, 1–64
+   job): un frame/una connessione per N job, con esito per indice e errore che
+   nomina gli indici falliti. Il mirror dei comandi è ora completo (8, 9, 10) e
+   il contratto cross-repo è verde con
+   `CHRONON_IPC_HEADER=<Chronon3d>/apps/chronon3d_cli/daemon/chronon_ipc.hpp`.
+   **Limite dichiarato:** il worker accoda un job per volta (`queue.Claim`
+   restituisce un solo job), quindi il batch non è ancora esercitato
+   end-to-end; il trasporto è pronto e testato, il cablaggio richiede un lease
+   multiplo nella coda.
+6. **Capacità e binario** — azione operativa, non eseguita qui: a HEAD
+   (`78a7473b7`, gli stessi sorgenti di questa sessione) e con ~500 MiB per
+   demone, **6–8 demoni** occupano **3–4 GiB** sui ~11 GiB liberi misurati
+   (16.376 MiB totali, ~5.085 MiB già usati da altri processi). `p4` e `p2`
+   davano lo stesso throughput (307,77 vs 306,35/min): NVENC non è saturo,
+   quindi il collo è per-processo, non per-encoder. Oltre i 6–8 processi il
+   vincolo torna a essere la VRAM, non la GPU.
+
+### 12.3 Gate eseguiti in questa sessione
+
+```sh
+cd Chronon3d
+ninja -C build/chronon/linux-video-test -j4 tests/chronon3d_c_abi_tests
+./build/chronon/linux-video-test/tests/chronon3d_c_abi_tests --test-case="render_plan:*"
+# 13 test / 140 assertion PASS
+ninja -C build/chronon/linux-video-release -j2 apps/chronon3d_cli/chronon3d_cli
+
+cd ../RenderingGen/renderinggen
+go test ./internal/chronon -count=1
+CHRONON_IPC_HEADER=.../chronon_ipc.hpp go test ./internal/chronon -run TestIPCCommandEnumMatchesChrononHeader -count=1
+```
+
+**Non eseguito / non dichiarato:** run live da 100 overlay, riavvio dei demoni,
+misura end-to-end del rate dopo i fix. Il gate ≥100 item/min resta quello che
+era: si chiude con una run golden comparabile, non con questi test.

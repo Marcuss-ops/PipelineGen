@@ -44,6 +44,12 @@ type Options struct {
 	// Profile supplies the audio identity of the artifact. Zero uses the
 	// canonical assembly contract's audio profile.
 	Profile media.VideoProfile
+	// CanonicalVideo pins the emitted video stream to the certified H.264
+	// recipe. A sequence intended for the packet-copy assembler must set it:
+	// the caller's encoder policy alone is not enough, because the same
+	// nominal family can emit a different avcC. A single-clip group is copied
+	// verbatim and never re-encoded, so the flag only affects merged groups.
+	CanonicalVideo bool
 	// Timeout bounds one group's ffmpeg run. Zero uses 20 minutes.
 	Timeout time.Duration
 	// Logf receives one line per group. Optional.
@@ -88,6 +94,11 @@ func Merge(ctx context.Context, sequence clipsequence.Sequence, plan clipsequenc
 	}
 	if err := opts.validateEncoder(); err != nil {
 		return nil, err
+	}
+	if opts.CanonicalVideo && !media.IsCanonicalVideoEncoder(opts.Encoder.Codec, opts.Encoder.Preset, opts.Encoder.CRF) {
+		return nil, fmt.Errorf("clipmerge: canonical video requires %s/%s/%d, got %q/%q/%d",
+			media.CanonicalVideoCodec, media.CanonicalVideoPreset, media.CanonicalVideoCRF,
+			opts.Encoder.Codec, opts.Encoder.Preset, opts.Encoder.CRF)
 	}
 	if err := os.MkdirAll(opts.OutputDir, 0o755); err != nil {
 		return nil, fmt.Errorf("clipmerge: create output dir: %w", err)
@@ -335,18 +346,24 @@ func mergeArgs(clips []clipsequence.Clip, group clipsequence.Group, opts Options
 	}
 	profile := opts.Profile.WithDefaults()
 	args = append(args, "-filter_complex", strings.Join(filters, ";"))
-	args = append(args,
-		"-map", videoIn, "-map", audioIn,
-		"-c:v", opts.Encoder.Codec,
-	)
-	if opts.Encoder.Preset != "" {
-		args = append(args, "-preset", opts.Encoder.Preset)
+	args = append(args, "-map", videoIn, "-map", audioIn)
+	if opts.CanonicalVideo {
+		// ONE recipe shared with the fragment certifier and the final join:
+		// profile/level, refs, B-frames, GOP and the bt709/tv VUI all land in
+		// the avcC, which is the identity the copy-only assembler compares.
+		args = append(args, media.CanonicalVideoEncoderArgs()...)
+		args = append(args, "-r", strconv.Itoa(media.CanonicalFPSNum))
+	} else {
+		args = append(args, "-c:v", opts.Encoder.Codec)
+		if opts.Encoder.Preset != "" {
+			args = append(args, "-preset", opts.Encoder.Preset)
+		}
+		if opts.Encoder.CRF > 0 {
+			args = append(args, "-crf", fmt.Sprintf("%d", opts.Encoder.CRF))
+		}
+		args = append(args, "-pix_fmt", "yuv420p")
 	}
-	if opts.Encoder.CRF > 0 {
-		args = append(args, "-crf", fmt.Sprintf("%d", opts.Encoder.CRF))
-	}
 	args = append(args,
-		"-pix_fmt", "yuv420p",
 		"-c:a", profile.AudioCodec, "-b:a", profile.AudioBitrate,
 		"-movflags", "+faststart",
 		outPath,

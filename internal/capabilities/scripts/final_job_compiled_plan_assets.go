@@ -186,10 +186,12 @@ func finalJobFramesCoveringUS(durationUS, fpsNum, fpsDen int64) int64 {
 
 // finalJobCompleteVideoFrameCoverage closes the output timeline through the
 // final audio frame. Audio duration remains the plan SSOT. When the trailing
-// source still has frames, extend its window. When it is exhausted, leave the
-// video one frame short: the master is rounded up to the video grid and the
-// muxer holds the last displayed frame. Never ask the preparer for a frame the
-// source does not contain; more than one missing frame stays fail-closed.
+// source still has frames, extend its window. When it is exhausted, absorb the
+// last frame in an earlier stock-pool placement: those placements have no
+// source binding and the Master loops the selected clip, while the remote
+// plan validator requires an exact frame count. Never ask the preparer for a
+// frame its bound source does not contain; more than one missing frame stays
+// fail-closed.
 func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets []finalJobPlanAsset, durationUS, fpsNum, fpsDen int64) ([]finalJobPlanSegment, error) {
 	if len(segments) == 0 || durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
 		return nil, fmt.Errorf("final_job V2 cannot complete video coverage without segments and a valid output clock")
@@ -310,12 +312,29 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 	if missing > 1 {
 		return nil, fmt.Errorf("final_job V2 trailing segment %q needs %d more frames but source %q has no spare frames", segment.SegmentID, missing, segment.AssetID)
 	}
-	// One frame remains and the source is fully consumed. Leave the segment
-	// exactly at the frames the source certifies: the muxer holds the last
-	// displayed frame for the audio master's final <1/24s. Incrementing
-	// FrameCount here asks the preparer for a frame that does not exist and
-	// fails remote certification.
-	return segments, nil
+	// The trailing source is fully consumed. The local muxer can hold its last
+	// frame, but the remote Master validates the timeline frame count against
+	// the plan duration and rejects the one-frame hold. Absorb the frame in the
+	// nearest earlier stock-pool placement: that segment has no bound source and
+	// is looped by the Master, and shifting the trailing placements by one
+	// frame keeps the track contiguous. Overlay windows keep their absolute
+	// times, so the shift is at most one frame of A/V offset.
+	for i := lastIndex - 1; i >= 0; i-- {
+		if !segments[i].StockPoolSlot {
+			continue
+		}
+		segments[i].FrameCount++
+		for j := i + 1; j < len(segments); j++ {
+			segments[j].TimelineStartFrame++
+		}
+		return segments, nil
+	}
+	// No earlier loopable placement exists. Leave the source at the frames it
+	// certifies: the local muxer holds the last displayed frame for the audio
+	// master's final <1/24s. The remote Master rejects this shape, so a plan
+	// with no stock-pool placement must never reach here; fail closed instead
+	// of silently producing a timeline the remote will refuse.
+	return nil, fmt.Errorf("final_job V2 trailing segment %q needs one frame but no earlier stock-pool placement can absorb it", segment.SegmentID)
 }
 
 // finalJobValidateVideoCoverage proves the sealed video track is either

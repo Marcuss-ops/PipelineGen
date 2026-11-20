@@ -200,6 +200,28 @@ func scheduleFinalJobOverlayFrames(result *GenerateResult, item capmodel.Overlay
 		}
 		candidate = conflictEnd
 	}
+	// A planned start near the scene tail can be blocked by a LATER overlay
+	// even when an earlier gap is free. Search backward before failing: the
+	// card stays inside its scene and as close as possible to the planned
+	// mention instead of rejecting the whole final job (r8: a 5 s date card in
+	// scene-05 had no slot after its start although the scene had free time
+	// before it).
+	candidate = startFrame - duration
+	if candidate+duration > sceneEndFrame {
+		candidate = sceneEndFrame - duration
+	}
+	for candidate >= sceneStartFrame {
+		conflictStart := candidate + duration
+		for _, prior := range occupied {
+			if prior.sceneID == item.SceneID && candidate < prior.end && prior.start < candidate+duration && prior.start < conflictStart {
+				conflictStart = prior.start
+			}
+		}
+		if conflictStart == candidate+duration {
+			return candidate, candidate + duration, nil
+		}
+		candidate = conflictStart - duration
+	}
 	return 0, 0, fmt.Errorf("final_job overlay %q cannot fit a non-overlapping %d-frame window in scene %q", item.ID, duration, item.SceneID)
 }
 

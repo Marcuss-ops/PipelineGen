@@ -20,7 +20,7 @@ media:
         enabled: true
         translate_clips: true
         generate_tts: true
-        edge_tts_voice: en-US-ChristopherNeural # Alternative options preferred by user: en-CA-LiamNeural, en-US-EricNeural
+        edge_tts_voice: en-CA-LiamNeural # More upbeat, conversational English voice for the Obama compilation
       - code: pl
         enabled: true
         translate_clips: true

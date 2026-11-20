@@ -42,6 +42,30 @@ func TestFinalJobMediaPreflightRequestUsesTheSealedPlanClock(t *testing.T) {
 	}
 }
 
+// TestFinalJobMediaPreflightRequestCoversSubMillisecondVideoEnd pins the r15
+// failure: a 399,666,000us audio master is an exact millisecond, but 9592
+// frames at 24 fps end at 399,666,666us. Declaring only 399,666ms made the Rust
+// preflight reject the last video frame as overlay_beyond_video by 666us.
+func TestFinalJobMediaPreflightRequestCoversSubMillisecondVideoEnd(t *testing.T) {
+	var plan scriptgen.FinalJobCompiledPlanV2
+	if err := json.Unmarshal([]byte(`{"duration_us":399666000,"output":{"fps_num":24,"fps_den":1},"video_tracks":[{"track_id":"video","segments":[{"segment_id":"closing","timeline_start_frame":0,"frame_count":9592}]}]}`), &plan); err != nil {
+		t.Fatalf("decode plan: %v", err)
+	}
+	request, err := finalJobMediaPreflightRequest(plan)
+	if err != nil {
+		t.Fatalf("finalJobMediaPreflightRequest: %v", err)
+	}
+	if request.VideoDurationMS == nil || *request.VideoDurationMS != 399_667 {
+		t.Fatalf("duration_ms = %v, want 399667 to cover the frame-grid video end", request.VideoDurationMS)
+	}
+	if len(request.Overlays) != 1 || request.Overlays[0].OutUS != 399_666_666 {
+		t.Fatalf("overlays = %+v, want the sealed video end at 399666666us", request.Overlays)
+	}
+	if request.Overlays[0].OutUS > *request.VideoDurationMS*1000 {
+		t.Fatalf("video end %dus still exceeds the declared %dms", request.Overlays[0].OutUS, *request.VideoDurationMS)
+	}
+}
+
 func TestFinalJobMediaPreflightBlocksBeforePrepareOnRustErrorIssues(t *testing.T) {
 	preflighter := &recordingFinalJobPreflighter{decision: rustexec.PreflightDecision{
 		Blocked:       true,

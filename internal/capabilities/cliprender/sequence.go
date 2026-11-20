@@ -183,11 +183,17 @@ type SequenceJobLookup interface {
 // SequenceAssembly is the wiring a worker needs to assemble sequences: where
 // siblings are read from, where their bytes come from, and how to encode.
 type SequenceAssembly struct {
-	Jobs        SequenceJobLookup
-	Assets      SequenceAssetResolver
-	Encoder     media.EncoderPolicy
-	Root        string
-	PollDelayMS int64
+	Jobs   SequenceJobLookup
+	Assets SequenceAssetResolver
+	// Encoder is the caller's resolved policy. CanonicalVideo overrides it with
+	// the certified recipe when the assembled sequence is an assembly input.
+	Encoder media.EncoderPolicy
+	// CanonicalVideo pins the merged video stream to the certified H.264
+	// recipe. The composition root sets it for the sequence lane; tests and the
+	// velox-clipseq diagnostic keep the caller's policy unless they opt in.
+	CanonicalVideo bool
+	Root           string
+	PollDelayMS    int64
 }
 
 // WithSequence attaches the sequence phase. It is optional: a composition root
@@ -288,8 +294,9 @@ func (w *Worker) handleSequence(ctx context.Context, j *job.Job, tools *job.JobE
 	}
 	progress(35, "clip.sequence: assembling")
 	artifacts, err := clipmerge.Merge(ctx, sequence, plan, clipmerge.Options{
-		OutputDir: outputDir,
-		Encoder:   assembly.encoder(req.Output),
+		OutputDir:      outputDir,
+		Encoder:        assembly.encoder(req.Output),
+		CanonicalVideo: assembly.CanonicalVideo,
 		Logf: func(format string, args ...any) {
 			w.log.Debug("clip.sequence: " + fmt.Sprintf(format, args...))
 		},

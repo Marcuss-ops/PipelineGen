@@ -200,13 +200,16 @@ func TestCompileAudioWithIntents_FundamentalPlan(t *testing.T) {
 	}
 	plan := result.Plan
 
-	// BGM: 4 deterministic loop events covering [0,75s) exactly.
+	// BGM: 4 deterministic loop events covering [0,75s) exactly. The fixture
+	// carries an explicit layer gain (-24), which is an editorial mix
+	// instruction and must reach the plan unchanged; the policy default
+	// (audio.BackgroundMusicGainDB) only fills in when the layer sets none.
 	bgm := eventsForRole(plan, audio.TrackBGM)
 	wantBGM := []audio.AudioEvent{
-		{EventID: "bgm-0", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 0, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: audio.BackgroundMusicGainDB},
-		{EventID: "bgm-1", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 20_000_000, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: audio.BackgroundMusicGainDB},
-		{EventID: "bgm-2", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 40_000_000, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: audio.BackgroundMusicGainDB},
-		{EventID: "bgm-3", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 60_000_000, DurationUS: 15_000_000, SourceInUS: 0, SourceDurationUS: 15_000_000, GainDB: audio.BackgroundMusicGainDB},
+		{EventID: "bgm-0", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 0, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: -24},
+		{EventID: "bgm-1", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 20_000_000, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: -24},
+		{EventID: "bgm-2", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 40_000_000, DurationUS: 20_000_000, SourceInUS: 0, SourceDurationUS: 20_000_000, GainDB: -24},
+		{EventID: "bgm-3", Type: audio.EventBGM, AssetID: "bgm_20s", TimelineStartUS: 60_000_000, DurationUS: 15_000_000, SourceInUS: 0, SourceDurationUS: 15_000_000, GainDB: -24},
 	}
 	if len(bgm) != len(wantBGM) {
 		t.Fatalf("bgm events = %+v, want %d", bgm, len(wantBGM))
@@ -256,15 +259,21 @@ func TestCompileAudioWithIntents_FundamentalPlan(t *testing.T) {
 	if len(plan.Automation) != 4 {
 		t.Fatalf("automation = %+v, want 1 fade + 3 duck entries", plan.Automation)
 	}
+	// The fade ramps to the layer's own bed level (-24), not to the policy
+	// default: an explicit layer gain stays the bed the fade returns to.
 	fade := plan.Automation[0]
-	if fade.TargetTrackID != "bgm" || fade.AttackUS != 1_000_000 || fade.ReleaseUS != 1_800_000 || fade.GainDB != audio.BackgroundMusicGainDB {
+	if fade.TargetTrackID != "bgm" || fade.AttackUS != 1_000_000 || fade.ReleaseUS != 1_800_000 || fade.GainDB != -24 {
 		t.Fatalf("fade automation = %+v", fade)
 	}
+	// Duck windows honour the intent's explicit duck_gain_db (-30): the floor
+	// is derived from the layer (bed-6dB = -30), so the requested level lands
+	// unchanged instead of being raised to the global default floor.
 	wantDuckWindows := [][2]int64{{0, 20_000_000}, {25_000_000, 47_000_000}, {50_000_000, 68_000_000}}
+	const wantDuckGainDB = -30.0
 	for i, w := range wantDuckWindows {
 		d := plan.Automation[i+1]
-		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != CanonicalBGMDuckFloorDB || d.AttackUS != 120_000 || d.ReleaseUS != 350_000 {
-			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at %.1fdB", i, d, w[0], w[1], CanonicalBGMDuckFloorDB)
+		if d.TargetTrackID != "bgm" || d.TriggerTrackID != "voiceover" || d.StartUS != w[0] || d.EndUS != w[1] || d.GainDB != wantDuckGainDB || d.AttackUS != 120_000 || d.ReleaseUS != 350_000 {
+			t.Fatalf("duck automation[%d] = %+v, want window [%d,%d) at %.1fdB", i, d, w[0], w[1], wantDuckGainDB)
 		}
 	}
 

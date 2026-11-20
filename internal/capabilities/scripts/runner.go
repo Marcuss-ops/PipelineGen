@@ -306,17 +306,26 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	}
 	backpressure := p.Backpressure
 	coordinatorPlan := plan
+	optionalFixedScenes := 0
 	if plan != nil && !req.ScriptParams.SourceTextVerbatim && (plan.Intro != nil || plan.Outro != nil) {
 		// The non-verbatim streamer commits generated body scenes first. Fixed
 		// intro/outro scenes are materialized in a later phase, after its
-		// VidRush barrier, so including them in this coordinator's expected
-		// index set creates a false missing-scene failure.
+		// VidRush barrier, so including them in this coordinator's required
+		// index set creates a false missing-scene failure. They are still
+		// accepted when the streamer has already committed them.
+		if plan.Intro != nil {
+			optionalFixedScenes++
+		}
+		if plan.Outro != nil {
+			optionalFixedScenes++
+		}
 		streamPlan := *plan
 		streamPlan.Intro = nil
 		streamPlan.Outro = nil
 		coordinatorPlan = &streamPlan
 	}
 	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(enricher, coordinatorPlan, backpressure)
+	coordinator.optionalFixedScenes = optionalFixedScenes
 	coordinator.SetSegmentProviderResolver(providerResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)
 	coordinator.SetMetrics(p.Metrics)

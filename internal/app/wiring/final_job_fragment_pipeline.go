@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // Fragment pipeline: what one handoff measured while producing fragments, and
@@ -273,13 +274,16 @@ func (p *finalJobSegmentPreparer) remuxTaggedFragment(ctx context.Context, sourc
 func (p *finalJobSegmentPreparer) fragmentEncoderSettings() (string, string, error) {
 	codec := strings.TrimSpace(p.policy.Codec)
 	preset := strings.TrimSpace(p.policy.Preset)
-	if !strings.Contains(strings.ToLower(codec), "264") || preset == "" || p.policy.CRF <= 0 {
-		return "", "", fmt.Errorf("final-job fragment requires a resolved H.264 encoder policy")
+	// A fragment certificate compares the emitted avcC to the canonical
+	// libx264 identity. NVENC (and any other libx264 preset) emits a different
+	// SPS/PPS under the same nominal profile, so admitting it here would move
+	// the rejection to the remote mux. Fail before writing a single frame.
+	if !kernelmedia.IsCanonicalVideoEncoder(codec, preset, p.policy.CRF) {
+		return "", "", fmt.Errorf("final-job fragment requires the canonical %s/%s/%d encoder, got %q/%q/%d: only that lane emits the certified avcC",
+			kernelmedia.CanonicalVideoCodec, kernelmedia.CanonicalVideoPreset, kernelmedia.CanonicalVideoCRF,
+			codec, preset, p.policy.CRF)
 	}
-	if strings.Contains(strings.ToLower(codec), "nvenc") {
-		preset = nvencPresetFor(preset)
-	}
-	return codec, preset, nil
+	return kernelmedia.CanonicalVideoCodec, kernelmedia.CanonicalVideoPreset, nil
 }
 
 // finalJobFragmentVideoFilter is the ONE composition of the encoder's video
@@ -349,10 +353,22 @@ func (p *finalJobSegmentPreparer) encodeFragment(ctx context.Context, source, ou
 	if hardware {
 		args = append(args, "-no-scenecut", "1")
 	} else {
-		args = append(args, "-keyint_min", strconv.FormatInt(finalJobSegmentGOP, 10), "-sc_threshold", "0")
+		// The colour VUI and refs count are part of the certified avcC. A
+		// re-encode of a legacy overlay (for example one carrying the sRGB
+		// transfer tag) must overwrite them, not inherit them from the source.
+		args = append(args,
+			"-keyint_min", strconv.FormatInt(finalJobSegmentGOP, 10),
+			"-sc_threshold", "0",
+			"-refs", "1",
+			"-x264-params", fmt.Sprintf("scenecut=0:open-gop=0:keyint=%d:min-keyint=%d", finalJobSegmentGOP, finalJobSegmentGOP),
+		)
 	}
 	args = append(args,
 		"-bf", "0", "-flags", "+cgop",
+		"-colorspace", finalJobDelivery.ColorSpace,
+		"-color_primaries", finalJobDelivery.ColorPrimaries,
+		"-color_trc", finalJobDelivery.ColorTransfer,
+		"-color_range", finalJobDelivery.ColorRange,
 		"-video_track_timescale", strconv.Itoa(finalJobDelivery.VideoTimeBase.Den), "-map_metadata", "-1",
 	)
 	movflags := "+faststart"
@@ -394,19 +410,6 @@ func (p *finalJobSegmentPreparer) copyCertifiedWindow(ctx context.Context, sourc
 		return fmt.Errorf("copy certified final-job window: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
-}
-
-func nvencPresetFor(preset string) string {
-	switch strings.ToLower(strings.TrimSpace(preset)) {
-	case "ultrafast", "superfast", "veryfast", "faster":
-		return "p2"
-	case "fast", "medium", "slow":
-		return "p4"
-	case "slower", "veryslow":
-		return "p6"
-	default:
-		return strings.TrimSpace(preset)
-	}
 }
 
 // finalJobWindowOnGOPGrid reports whether the requested window starts exactly on

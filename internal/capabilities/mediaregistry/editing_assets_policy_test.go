@@ -20,7 +20,7 @@ func TestDefaultEditingAssetsPolicyIsValid(t *testing.T) {
 	if got := len(policy.SFX.TransitionPool); got != 9 {
 		t.Errorf("transition pool = %d, want 9 (whop1..6 + bound whoosh1..3)", got)
 	}
-	if policy.BGM.GainDB != -28 || policy.BGM.DuckGainDB != -32 || policy.SFX.GainDB != -12 {
+	if policy.BGM.GainDB != -30 || policy.BGM.DuckGainDB != -32 || policy.SFX.GainDB != -12 {
 		t.Errorf("unexpected audio defaults: %+v", policy.BGM)
 	}
 	if !policy.BGM.Loop || !policy.BGM.DuckUnderVoiceover {

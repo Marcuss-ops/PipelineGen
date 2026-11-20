@@ -6,11 +6,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
-// CanonicalStockEncoderCodec and CanonicalStockEncoderPreset are the encoder
-// lane certified by the canonical packet-copy SPS/PPS contract.
+// CanonicalStockEncoderCodec, CanonicalStockEncoderPreset and
+// CanonicalStockEncoderCRF are the encoder lane certified by the canonical
+// packet-copy SPS/PPS contract. They alias kernel/media so the stock cutter,
+// the final-job fragment certifier and the local assemblers cannot drift.
 const (
-	CanonicalStockEncoderCodec  = "libx264"
-	CanonicalStockEncoderPreset = "veryfast"
+	CanonicalStockEncoderCodec  = kernelmedia.CanonicalVideoCodec
+	CanonicalStockEncoderPreset = kernelmedia.CanonicalVideoPreset
+	CanonicalStockEncoderCRF    = kernelmedia.CanonicalVideoCRF
 )
 
 // CanonicalVideoProfile describes the materialized video artifact. It contains

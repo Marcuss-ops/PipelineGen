@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // Clip is one certified overlay render placed on the timeline.
@@ -83,6 +84,15 @@ func (s Spec) Validate() error {
 	}
 	if strings.TrimSpace(s.Encoder.Codec) == "" {
 		return fmt.Errorf("overlayjoin: resolved encoder codec is required")
+	}
+	// The joined video is the delivery artifact of the local overlay lane. It
+	// must carry the same certified H.264 identity as every other lane: a
+	// nominal H.264 policy with another preset (or NVENC) emits a different
+	// avcC and would make the deliverable a one-off. Fail before encoding.
+	if !kernelmedia.IsCanonicalVideoEncoder(s.Encoder.Codec, s.Encoder.Preset, s.Encoder.CRF) {
+		return fmt.Errorf("overlayjoin: final video requires the canonical %s/%s/%d encoder, got %q/%q/%d",
+			kernelmedia.CanonicalVideoCodec, kernelmedia.CanonicalVideoPreset, kernelmedia.CanonicalVideoCRF,
+			s.Encoder.Codec, s.Encoder.Preset, s.Encoder.CRF)
 	}
 	if info, err := os.Stat(s.AudioPath); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
 		return fmt.Errorf("overlayjoin: audio %s is unavailable", s.AudioPath)
@@ -160,9 +170,9 @@ func Args(spec Spec) ([]string, error) {
 	if durationMS > 0 {
 		args = append(args, "-t", strconv.FormatFloat(durationMS/1000, 'f', 3, 64))
 	}
+	args = append(args, kernelmedia.CanonicalVideoEncoderArgs()...)
 	args = append(args,
-		"-c:v", spec.Encoder.Codec, "-preset", spec.Encoder.Preset, "-crf", strconv.Itoa(spec.Encoder.CRF),
-		"-pix_fmt", "yuv420p", "-r", strconv.Itoa(spec.fps()),
+		"-r", strconv.Itoa(spec.fps()),
 		"-c:a", "aac", "-b:a", "192k",
 		"-movflags", "+faststart",
 		spec.OutputPath,

@@ -29,7 +29,7 @@ const (
 	// and trims it to the canonical loudness BEFORE this gain and the duck
 	// automation apply. Keep normalized music clearly below narration; the
 	// previous near-unity setting made the bed too prominent.
-	BackgroundMusicGainDB = -24.0
+	BackgroundMusicGainDB = -30.0
 	// SoundEffectGainDB remains a canonical absolute level relative to unity.
 	SoundEffectGainDB = -10.0
 
@@ -45,9 +45,8 @@ const (
 	// final-job master. The 2026-09-30 incident: the finalJobAudioInput
 	// projection dropped every AudioClip intent, so delivered videos carried
 	// narration + music with the source clip audio silent. Restored clips mix
-	// at -10 dB (8 dB above the local-lane duck base) so they stay clearly
-	// audible under narration and beside the near-unity BGM bed.
-	FinalJobRestoredClipGainDB = -10.0
+	// at -6 dB to keep quieter source interviews audible under narration.
+	FinalJobRestoredClipGainDB = -6.0
 
 	// DuckAttackUS and DuckReleaseUS are the automation ramp times applied at
 	// the start and end of a ducking window.

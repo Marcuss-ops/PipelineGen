@@ -213,18 +213,18 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		// publisher failed AFTER TTS work was already spent. Empty Project
 		// is unreachable here because the runner fails the run before the
 		// voiceover phase when it is missing.
-		Project:       input.Project,
-		RemoveSilence: strings.EqualFold(string(input.Language), "it"),
+		Project: input.Project,
+		// English and Italian narration use the same silence cleanup so short
+		// introductions do not leave long dead-air gaps over the source clip.
+		RemoveSilence: strings.EqualFold(string(input.Language), "it") || strings.EqualFold(string(input.Language), "en"),
 		// The cut policy is explicit and versioned. It is folded into the
 		// voiceover cache fingerprint, so changing the threshold cannot
 		// reuse audio cleaned under the previous policy.
 		SilencePolicy: capabilityaudio.DefaultSilenceRemovalPolicy(),
-		TTSRate: func() string {
-			if strings.EqualFold(string(input.Language), "it") || strings.EqualFold(string(input.Language), "en") {
-				return "+10%"
-			}
-			return ""
-		}(),
+		// Slower than natural: even the default rate left two E2E-04 scenes
+		// over the 17 chars/s gate, and the shorter scenes also squeezed
+		// entity/location overlays out of the plan. Edge TTS -20% = 0.8x.
+		TTSRate:        "-20%",
 		ForceSynthesis: input.ForceSynthesis,
 		Strategy:       asset.StrategyVerify,
 	}

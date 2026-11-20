@@ -99,15 +99,15 @@ func compilePlan(t CanonicalTimeline, profile CanonicalAudioProfile, bgm, sfx []
 			track.Events = append(track.Events, e)
 		}
 	}
-	// BGM/SFX levels are policy, not user-controlled asset metadata. Keep the
-	// payload gain fields for wire compatibility, but normalize them here so
-	// every producer (including translated runs) reaches the same master mix.
+	// Asset metadata must never set editorial gain. The layer gain is an
+	// explicit mix instruction from the payload/policy and is preserved here;
+	// SFX continue to use their canonical policy level.
 	protected := protectedAudioWindows(t)
 	filteredBGM := filterAudioLayersOutsideProtectedWindows(bgm, protected)
 	filteredSFX := filterSFXOutsideProtectedWindows(sfx, protected)
 	for i, layer := range filteredBGM {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackBGM, "bgm")
-		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: audio.BackgroundMusicGainDB})
+		track.Events = append(track.Events, AudioEvent{EventID: fmt.Sprintf("bgm-%d", i), Type: EventBGM, AssetID: layer.AssetID, TimelineStartUS: layer.TimelineStartUS, DurationUS: layer.DurationUS, SourceInUS: layer.SourceInUS, SourceDurationUS: layer.DurationUS, GainDB: layer.GainDB})
 	}
 	for i, layer := range filteredSFX {
 		track := findOrCreateLayerTrack(&p.Tracks, TrackSFX, "sfx")

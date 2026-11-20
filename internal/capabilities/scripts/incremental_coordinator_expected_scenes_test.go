@@ -92,6 +92,48 @@ func TestWaitForVidRushKeepsDynamicCountWithoutExplicitSegments(t *testing.T) {
 	}
 }
 
+// TestWaitForVidRushAcceptsOptionalFixedScenes pins the r10 live shape: the
+// non-verbatim streamer has already committed the fixed intro/outro scenes
+// when the barrier runs. They are optional (the later phase may add them), but
+// the barrier must accept them instead of reporting them as extra indexes.
+func TestWaitForVidRushAcceptsOptionalFixedScenes(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{Segments: []scriptpkg.ScriptSegment{{}, {}}}
+	coordinator := NewVidRushIncrementalCoordinator(nil, plan, 1)
+	coordinator.optionalFixedScenes = 2
+	for index, id := range []string{"scene-intro", "scene-0", "scene-1", "scene-outro"} {
+		if err := coordinator.OnSceneCommitted(context.Background(), SceneCommitted{
+			RunID: "run-optional-fixed", SceneID: id, SceneIndex: index, TextHash: "hash-" + id,
+			ExtractEntities: scriptpkg.ToggleDisabled,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := coordinator.WaitForVidRush(context.Background(), "run-optional-fixed"); err != nil {
+		t.Fatalf("WaitForVidRush with committed optional fixed scenes = %v, want nil", err)
+	}
+}
+
+// TestWaitForVidRushRejectsBeyondOptionalFixedScenes keeps the fail-closed
+// half: the optional allowance is exactly the fixed intro/outro count, so a
+// real extra scene still fails the barrier.
+func TestWaitForVidRushRejectsBeyondOptionalFixedScenes(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{Segments: []scriptpkg.ScriptSegment{{}, {}}}
+	coordinator := NewVidRushIncrementalCoordinator(nil, plan, 1)
+	coordinator.optionalFixedScenes = 2
+	for index := 0; index < 5; index++ {
+		if err := coordinator.OnSceneCommitted(context.Background(), SceneCommitted{
+			RunID: "run-extra-beyond-fixed", SceneID: "scene-" + string(rune('0'+index)), SceneIndex: index,
+			TextHash: "hash", ExtractEntities: scriptpkg.ToggleDisabled,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := coordinator.WaitForVidRush(context.Background(), "run-extra-beyond-fixed")
+	if err == nil || !strings.Contains(err.Error(), "extra indexes [4]") {
+		t.Fatalf("WaitForVidRush error = %v, want extra index [4] beyond the optional fixed allowance", err)
+	}
+}
+
 func TestWaitForVidRushRejectsMissingPlannedScene(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{Segments: []scriptpkg.ScriptSegment{{}, {}}}
 	coordinator := NewVidRushIncrementalCoordinator(nil, plan, 1)

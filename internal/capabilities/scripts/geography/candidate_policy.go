@@ -192,8 +192,10 @@ func normalizeGeocodePlaceQuery(value, language string) string {
 	words := strings.Fields(strings.TrimSpace(value))
 	lang := strings.ToLower(strings.TrimSpace(language))
 	lang = strings.SplitN(lang, "-", 2)[0]
-	if lang == "pt" && len(words) == 2 && strings.EqualFold(words[0], "o") && strings.EqualFold(words[1], "Brasil") {
-		words = words[1:]
+	if lang == "pt" && len(words) == 2 && strings.EqualFold(words[0], "o") {
+		if _, isCountry := geoNameWordSet(lang, "country_names")[strings.ToLower(words[1])]; isCountry {
+			words = words[1:]
+		}
 	}
 	if lang == "it" {
 		words = stripItalianRegionArticle(words, lang)

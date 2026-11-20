@@ -19,11 +19,13 @@ import (
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
@@ -184,7 +186,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
-	runner.SetOverlayJoinEncoder(root.MediaExec.Policy)
+	// The local join is a delivery artifact, not a renderer experiment: pin the
+	// certified lane instead of inheriting a user-facing NVENC policy. The
+	// assembler rejects any other policy anyway; wiring the right one here keeps
+	// overlays-only jobs working on a GPU-configured host.
+	runner.SetOverlayJoinEncoder(mediaexec.EncoderPolicy{
+		Codec:  kernelmedia.CanonicalVideoCodec,
+		Preset: kernelmedia.CanonicalVideoPreset,
+		CRF:    kernelmedia.CanonicalVideoCRF,
+	})
 	// The local render lane produces one certified clip per overlay item; the
 	// join needs those exact bytes back from the object store to place them on
 	// the plan timeline. Wiring the fetcher is what turns a render-enabled job

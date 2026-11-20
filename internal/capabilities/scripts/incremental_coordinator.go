@@ -37,6 +37,12 @@ type VidRushIncrementalCoordinator struct {
 	materializer SegmentMaterializer
 	plan         *scriptpkg.ResolvedGenerationPlan
 	backpressure VidRushBackpressure
+	// optionalFixedScenes is the number of fixed intro/outro SpecScenes the
+	// non-verbatim streaming path may commit before the VidRush barrier. They
+	// are optional there (fixed sections can be materialized later), but when
+	// they are already committed the barrier must accept them instead of
+	// reporting them as extra indexes (r10: expected 5 body scenes, got 7).
+	optionalFixedScenes int
 
 	// providerResolveBudget bounds the WHOLE run's provider fan-out, not each
 	// scene independently: a late scene must not get a fresh budget after the
@@ -487,6 +493,7 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 	}
 	c.mu.Unlock()
 	sort.Ints(indexes)
+	allowedScenes := expectedScenes + c.optionalFixedScenes
 	if expectedScenes > 0 {
 		committed := make(map[int]struct{}, len(indexes))
 		for _, idx := range indexes {
@@ -500,7 +507,7 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 		}
 		extra := make([]int, 0)
 		for _, idx := range indexes {
-			if idx < 0 || idx >= expectedScenes {
+			if idx < 0 || idx >= allowedScenes {
 				extra = append(extra, idx)
 			}
 		}

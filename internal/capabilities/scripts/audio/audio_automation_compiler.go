@@ -40,11 +40,9 @@ const (
 	DefaultBGMDuckReleaseUS = int64(350_000)
 )
 
-// CanonicalBGMDuckFloorDB is the quietest ducked level CompileBGMDucking
-// will ever emit: six dB below the canonical BGM bed, so a duck always
-// reads as a duck without driving a quiet bed into inaudibility. Legacy
-// payloads ship DuckGainDB values of -28/-30 dB, which used to collapse
-// onto the old -50 dB bed; they are now clamped up to this floor instead.
+// CanonicalBGMDuckFloorDB is the default bed's duck level. For explicit
+// per-layer gains, CompileBGMDucking derives the six-dB duck floor from that
+// layer so a quieter payload value is not raised back to the global default.
 const CanonicalBGMDuckFloorDB = audio.BackgroundMusicGainDB - 6
 
 // NewAudioAutomationCompiler builds the canonical compiler. No
@@ -86,7 +84,7 @@ func (r *AudioAutomationCompiler) CompileBGMFades(bgm []audio.ResolvedBGM) ([]au
 			TargetTrackID: "bgm",
 			StartUS:       layer.TimelineStartUS,
 			EndUS:         layer.TimelineStartUS + layer.DurationUS,
-			GainDB:        audio.BackgroundMusicGainDB,
+			GainDB:        layer.GainDB,
 			AttackUS:      fadeIn,
 			ReleaseUS:     fadeOut,
 		})
@@ -125,16 +123,15 @@ func (r *AudioAutomationCompiler) CompileBGMDucking(timeline audio.CanonicalTime
 		}
 		gain := layer.DuckGainDB
 		if gain == 0 {
-			gain = DefaultBGMDuckGainDB
+			gain = layer.GainDB - 6
 		}
-		// Keep the ducked track no louder than its base level, but prevent
-		// quiet source files from being ducked into inaudibility. The canonical
-		// floor leaves a six-dB duck while preserving a useful background bed.
-		if gain > audio.BackgroundMusicGainDB {
-			gain = audio.BackgroundMusicGainDB
+		// Keep the ducked track no louder than its base level and clamp it to
+		// six dB below this layer, preserving the requested bed level.
+		if gain > layer.GainDB {
+			gain = layer.GainDB
 		}
-		if gain < CanonicalBGMDuckFloorDB {
-			gain = CanonicalBGMDuckFloorDB
+		if floor := layer.GainDB - 6; gain < floor {
+			gain = floor
 		}
 		attack := layer.DuckAttackUS
 		if attack == 0 {

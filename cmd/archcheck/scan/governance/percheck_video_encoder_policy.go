@@ -68,6 +68,10 @@ var videoEncoderPolicyAllowPrefixes = []string{
 	// The fragment pipeline resolves p.policy.Codec for the actual argv and
 	// pins libx264 only as the certification constraint.
 	"internal/app/wiring/final_job_fragment_pipeline.go",
+	// The canonical H.264 lane declaration: the single owner of the certified
+	// encoder/preset/CRF tuple that the assemblers and the fragment certifier
+	// share. It declares policy values; it does not build a command line.
+	"internal/kernel/media/canonical_video.go",
 	"cmd/archcheck/scan",
 }
 

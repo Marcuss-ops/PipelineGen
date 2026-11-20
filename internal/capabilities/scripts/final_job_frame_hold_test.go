@@ -1,7 +1,6 @@
 package scriptgeneration
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -11,11 +10,14 @@ const (
 	frameHoldAudioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
-// TestFinalJobCompiledPlanCapsExhaustedStockTailToItsFrames pins the r25-r28
-// failure: a 60s stock tail whose frame-aligned master needs one frame more
-// than the file contains must ask for 1440 frames, not 1441. The muxer holds
-// the last displayed frame for the final <1/24s.
-func TestFinalJobCompiledPlanCapsExhaustedStockTailToItsFrames(t *testing.T) {
+// TestFinalJobCompiledPlanRejectsUnabsorbableStockTail pins the remote
+// constraint discovered by E2E-04: a 60s stock tail whose frame-aligned master
+// needs one frame more than the file contains cannot be sent as a 1440-frame
+// timeline, because the Master validates the timeline against the plan duration
+// and rejects the one-frame hold. With no earlier stock-pool placement to
+// absorb it, the producer must fail closed instead of emitting a plan the
+// remote will refuse.
+func TestFinalJobCompiledPlanRejectsUnabsorbableStockTail(t *testing.T) {
 	scenes := []map[string]any{{
 		"scene_id":         "closing-10",
 		"duration_seconds": 60.041667,
@@ -29,26 +31,11 @@ func TestFinalJobCompiledPlanCapsExhaustedStockTailToItsFrames(t *testing.T) {
 	audioRef := map[string]any{"asset_id": "final-audio", "sha256": frameHoldAudioSHA, "size_bytes": int64(200), "duration_ms": int64(60042)}
 
 	raw, _, err := finalJobCompiledPlanPayload(scenes, nil, nil, audio, audioRef, 60_041_667)
-	if err != nil {
-		t.Fatalf("a 60s stock tail with a frame-aligned 60.041667s master must hold, not fail: %v", err)
+	if err == nil {
+		t.Fatalf("an unabsorbable one-frame stock tail must fail closed, got plan %s", raw)
 	}
-
-	var plan finalJobCompiledPlan
-	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
-		t.Fatal(err)
-	}
-	if plan.DurationUS != 60_041_667 {
-		t.Fatalf("plan duration = %d, want the certified 60041667us master", plan.DurationUS)
-	}
-	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 {
-		t.Fatalf("segments = %+v, want one stock tail", plan.VideoTracks)
-	}
-	segment := plan.VideoTracks[0].Segments[0]
-	if segment.FrameCount != 1440 {
-		t.Fatalf("tail frame_count = %d, want 1440 (the source's certified frames, never 1441)", segment.FrameCount)
-	}
-	if segment.SourceInUS != 0 || segment.SourceDurationUS != 60_000_000 {
-		t.Fatalf("tail source window = %d+%d, want the whole 60s file", segment.SourceInUS, segment.SourceDurationUS)
+	if !strings.Contains(err.Error(), "no earlier stock-pool placement can absorb it") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -82,6 +69,41 @@ func TestFinalJobCompleteVideoFrameCoverageHoldsTrailingStockPoolSlot(t *testing
 	}
 	if err := finalJobValidateVideoCoverage(plan); err != nil {
 		t.Fatalf("one held frame after the stock tail is the allowed final gap: %v", err)
+	}
+}
+
+// TestFinalJobCompleteVideoFrameCoverageAbsorbsTailInEarlierStockSlot pins the
+// remote shape: a fixed trailing outro cannot donate a frame past its certified
+// render, so the one-frame audio tail must come from the earlier stock-pool
+// placement, which the Master loops. The trailing placement shifts by one frame
+// and the track stays contiguous and exact.
+func TestFinalJobCompleteVideoFrameCoverageAbsorbsTailInEarlierStockSlot(t *testing.T) {
+	segments := []finalJobPlanSegment{
+		{
+			SegmentID: "body-stock", AssetID: "stock", SHA256: frameHoldVideoSHA,
+			TimelineStartFrame: 0, FrameCount: 100, StockPoolSlot: true,
+		},
+		{
+			SegmentID: "outro", AssetID: "outro", SHA256: frameHoldVideoSHA,
+			TimelineStartFrame: 100, FrameCount: 50, SourceInUS: 0, SourceDurationUS: 2_083_333,
+		},
+	}
+	assets := []finalJobPlanAsset{{AssetID: "outro", Kind: "video", DurationUS: 2_083_333, FrameCount: 50}}
+
+	got, err := finalJobCompleteVideoFrameCoverage(segments, assets, 6_291_667, 24, 1)
+	if err != nil {
+		t.Fatalf("the earlier stock slot must absorb the one-frame tail: %v", err)
+	}
+	if len(got) != 2 || got[0].FrameCount != 101 || got[1].TimelineStartFrame != 101 || got[1].FrameCount != 50 {
+		t.Fatalf("tail absorption = %+v, want stock 101 then outro at 101 with 50 frames", got)
+	}
+	plan := finalJobCompiledPlan{
+		DurationUS:  6_291_667,
+		Output:      finalJobPlanOutputBlock(),
+		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: got}},
+	}
+	if err := finalJobValidateVideoCoverage(plan); err != nil {
+		t.Fatalf("the absorbed tail must cover the audio master exactly: %v", err)
 	}
 }
 

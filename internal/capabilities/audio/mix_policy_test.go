@@ -408,7 +408,7 @@ func TestCompileWithMixPolicy_StockClipBesideOrdinaryClipDucksOnlyOrdinary(t *te
 	}
 }
 
-func TestCompileWithLayers_EnforcesCanonicalBGMAndSFXLevels(t *testing.T) {
+func TestCompileWithLayers_PreservesPayloadBGMAndCanonicalSFXLevels(t *testing.T) {
 	bgm := []AudioLayer{{AssetID: "music", TimelineStartUS: 0, DurationUS: 10_000_000, GainDB: -2}}
 	sfx := []AudioLayer{{AssetID: "whoosh", TimelineStartUS: 2_000_000, DurationUS: 500_000, GainDB: 0}}
 	plan, err := CompileWithLayers(combinedTimeline(), DefaultAudioProfile(), bgm, sfx, nil)
@@ -417,8 +417,8 @@ func TestCompileWithLayers_EnforcesCanonicalBGMAndSFXLevels(t *testing.T) {
 	}
 	bgmTrack := findTrack(plan.Tracks, TrackBGM)
 	sfxTrack := findTrack(plan.Tracks, TrackSFX)
-	if bgmTrack == nil || len(bgmTrack.Events) != 1 || bgmTrack.Events[0].GainDB != kernelaudio.BackgroundMusicGainDB {
-		t.Fatalf("BGM gain = %+v, want %.1f dB", bgmTrack, kernelaudio.BackgroundMusicGainDB)
+	if bgmTrack == nil || len(bgmTrack.Events) != 1 || bgmTrack.Events[0].GainDB != -2 {
+		t.Fatalf("BGM gain = %+v, want payload gain -2 dB", bgmTrack)
 	}
 	if sfxTrack == nil || len(sfxTrack.Events) != 1 || sfxTrack.Events[0].GainDB != kernelaudio.SoundEffectGainDB {
 		t.Fatalf("SFX gain = %+v, want %.1f dB", sfxTrack, kernelaudio.SoundEffectGainDB)

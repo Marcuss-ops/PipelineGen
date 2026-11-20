@@ -1,7 +1,7 @@
 {
   "schema": "go_lexicon_profiles.v1",
   "source": "BrainRust/lexicon/profiles",
-  "rust_schema_version": "language_profiles.v1-b2fc4b8f51fed7a4",
+  "rust_schema_version": "language_profiles.v1-56428100db631f42",
   "profiles": [
     {
       "schema": "language_profile.v1",
@@ -2936,6 +2936,9 @@
           "sem",
           "sob",
           "sobre"
+        ],
+        "country_names": [
+          "brasil"
         ]
       },
       "phrase_policy": {

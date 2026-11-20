@@ -83,7 +83,7 @@ func DefaultEditingAssetsPolicy() EditingAssetsPolicy {
 		Backgrounds: EditingBackgroundsPolicy{Pool: EditorialBackgroundIDs()},
 		BGM: EditingBGMPolicy{
 			Pool:               bgmPool,
-			GainDB:             -28,
+			GainDB:             -30,
 			Loop:               true,
 			DuckUnderVoiceover: true,
 			DuckGainDB:         -32,
