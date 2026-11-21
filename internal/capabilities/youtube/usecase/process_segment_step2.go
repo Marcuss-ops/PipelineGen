@@ -25,6 +25,30 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 )
 
+// SegmentCacheHit reports whether the canonical cache already has a complete
+// artifact for this segment. The extraction orchestrator uses it BEFORE the
+// sectioned download so a fully cached re-run does not re-stage a video it is
+// not going to cut. The authoritative lookup stays step2_CacheLookup; this is
+// only the pre-fan-out projection of the same decision.
+func (u *ProcessYouTubeSegmentUseCase) SegmentCacheHit(ctx context.Context, cmd youtubetypes.ProcessSegmentCommand) bool {
+	if u == nil || u.core.Cache == nil {
+		return false
+	}
+	out := youtubetypes.ProcessSegmentResult{
+		Item: youtubetypes.ExtractItem{
+			Name:  cleanSegmentName(cmd.Segment.Name, cmd.Index),
+			Start: cmd.Segment.Start,
+			End:   cmd.Segment.End,
+		},
+	}
+	_, _, _, clipID, _, err := u.step1_BuildClipID(cmd, &out)
+	if err != nil {
+		return false
+	}
+	hit, err := u.step2_CacheLookup(ctx, cmd, &out, clipID)
+	return err == nil && hit
+}
+
 // step2_CacheLookup is the canonical owner of Step 2. Returns:
 //
 //   - cacheHit=true: the orchestrator must SKIP acquisition/cut

@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"strings"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
-	"strings"
 )
 
 // Public aliases preserve the scripts API while the versioned wire contract
@@ -134,16 +135,14 @@ func hasFinalJobStockBinding(binding *scriptpkg.StockBinding) bool {
 	return binding != nil && (strings.TrimSpace(binding.FolderID) != "" || hasFinalJobConcreteStockAsset(binding))
 }
 
-// finalJobStockPoolFolder selects the shared Drive folder carried by stock_only
-// requests. Individual scene bindings remain useful to the Producer while it
-// builds the script, but the remote render plan receives the folder once and
-// leaves clip selection to the Master.
+// finalJobStockPoolFolder selects a shared Drive folder for stock-only requests
+// or for explicitly marked stock-pool slots in mixed-media timelines.
 func finalJobStockPoolFolder(req GenerateRequest) (string, error) {
-	if req.MediaMode != scriptpkg.MediaModeStockOnly {
-		return "", nil
-	}
 	folderID := ""
 	for _, binding := range req.StockBindings {
+		if req.MediaMode != scriptpkg.MediaModeStockOnly && !binding.PoolSlot {
+			continue
+		}
 		candidate := strings.TrimSpace(binding.FolderID)
 		if candidate == "" && strings.TrimSpace(binding.FolderLink) != "" {
 			candidate = urlutil.FolderIDFromDriveLink(binding.FolderLink)
@@ -152,7 +151,7 @@ func finalJobStockPoolFolder(req GenerateRequest) (string, error) {
 			continue
 		}
 		if folderID != "" && folderID != candidate {
-			return "", fmt.Errorf("final_job stock_only request references multiple stock folders (%q and %q)", folderID, candidate)
+			return "", fmt.Errorf("final_job stock pool request references multiple stock folders (%q and %q)", folderID, candidate)
 		}
 		folderID = candidate
 	}
@@ -352,6 +351,16 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		}
 		if !sceneExists {
 			return nil, nil, fmt.Errorf("final_job scene %q has no generated scene", segment.ID)
+		}
+		if stockPoolFolderID != "" && localScene.Stock != nil && localScene.Stock.PoolSlot {
+			sceneText := firstFinalJobValue(localScene.Text[req.SourceLanguage], req.Title, localScene.ID)
+			sceneMS := (segment.DurationUS + 999) / 1000
+			scene := compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", nil, sceneMS, sceneText)
+			scene["stock_pool_slot"] = true
+			remoteScenes = append(remoteScenes, scene)
+			plannedDurationMS += sceneMS
+			clipOrdinal++
+			continue
 		}
 		// A single caller-provided stock folder is a stock pool for the whole
 		// run. Do not require a per-scene binding: the Master selects whole

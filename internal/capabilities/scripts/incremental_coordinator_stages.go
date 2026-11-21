@@ -36,6 +36,20 @@ var ErrProviderResolveBudget = errors.New("vidrush provider resolve budget exhau
 // stalled provider can no longer hold the run barrier for five minutes.
 const vidRushProviderResolveTimeout = 2 * time.Minute
 
+// vidRushProviderSegmentResolveTimeout caps a SINGLE scene's fan-out. The
+// measured distribution is bimodal: cache hits return in 8 ms, while a
+// challenging provider parks one scene for 54-117 s. Twenty seconds is still
+// ~3x the median live resolve but stops one segment from consuming the whole
+// run budget (ELIM-01).
+const vidRushProviderSegmentResolveTimeout = 20 * time.Second
+
+func (c *VidRushIncrementalCoordinator) providerSegmentTimeout() time.Duration {
+	if c != nil && c.providerSegmentBudget > 0 {
+		return c.providerSegmentBudget
+	}
+	return vidRushProviderSegmentResolveTimeout
+}
+
 func (c *VidRushIncrementalCoordinator) providerResolveTimeout() time.Duration {
 	if c != nil && c.providerResolveBudget > 0 {
 		return c.providerResolveBudget
@@ -92,12 +106,25 @@ func (c *VidRushIncrementalCoordinator) searchProviders(ctx context.Context, res
 		return result, nil
 	}
 	timeout := c.remainingProviderBudget()
+	if segmentTimeout := c.providerSegmentTimeout(); segmentTimeout > 0 && segmentTimeout < timeout {
+		// A single scene never gets more than its own slice, even while the run
+		// budget still has room.
+		timeout = segmentTimeout
+	}
 	if timeout <= 0 {
 		result.Warnings = append(result.Warnings, fmt.Sprintf(
 			"provider resolve exceeded %s; continuing without provider candidates", c.providerResolveTimeout()))
 		return result, nil
 	}
-	if err := c.acquire(ctx, c.providerSem); err != nil {
+	// Admission is MEASURED as its own operation: the wait for a fan-out slot
+	// belongs to the coordinator's contention, not to the provider (ELIM-02).
+	// Folding it into resolve made a semaphore wait look like a slow provider
+	// and left the phase residual unexplained.
+	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+		Stage: StageSceneAnalysis, Component: kernobs.ComponentProviderResolver, Operation: kernobs.OperationAdmissionWait,
+	}, func(opCtx context.Context) error {
+		return c.acquire(opCtx, c.providerSem)
+	}); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
 	defer c.release(c.providerSem)

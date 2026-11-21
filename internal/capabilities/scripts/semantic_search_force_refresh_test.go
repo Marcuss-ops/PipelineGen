@@ -2,10 +2,11 @@ package scriptgeneration
 
 import (
 	"context"
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"testing"
 	"time"
+
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 )
 
 func TestSemanticSearchBatchForceRefreshBypassesPlannerCache(t *testing.T) {

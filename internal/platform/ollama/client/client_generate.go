@@ -166,7 +166,7 @@ func extractGenerateControls(options map[string]any) (any, *bool, string, map[st
 		}
 		if key == "keep_alive" {
 			if value, ok := value.(string); ok && strings.TrimSpace(value) != "" {
-				keepAlive = value
+				keepAlive = effectiveOllamaKeepAlive(value)
 			}
 			continue
 		}

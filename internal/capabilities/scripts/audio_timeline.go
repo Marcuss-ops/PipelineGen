@@ -2,10 +2,11 @@ package scriptgeneration
 
 import (
 	"fmt"
-	audiocontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/audio"
 	"math"
 	"strings"
 	"time"
+
+	audiocontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/audio"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )

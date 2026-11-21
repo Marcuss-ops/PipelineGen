@@ -2,10 +2,11 @@ package scriptgeneration
 
 import (
 	"fmt"
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"slices"
 	"sort"
 	"strings"
+
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )

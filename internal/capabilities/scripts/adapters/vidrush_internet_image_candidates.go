@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
@@ -29,10 +30,23 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			// entity-image surface. It is a negative observation, not a hit: a
 			// plan that now enables entity images must search instead of
 			// inheriting the empty result.
-			if payload, ok := cached.(internetImageCachePayload); ok && (len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
-				candidates, err := f.verifyPersonImageCandidates(ctx, payload.Candidates)
-				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: err, allCacheHits: true}
-				return
+			if payload, ok := cached.(internetImageCachePayload); ok {
+				// ELIM-01: a completed-but-empty search is remembered for 15
+				// minutes so a repeated entity does not pay the same provider
+				// wait twice. It is only a reason not to wait: the outcome is an
+				// empty candidate set, exactly like the live search produced.
+				if internetImageNegativeFresh(payload, time.Now()) {
+					if f.log.Core() != nil {
+						f.log.Info("VidRush image negative cache hit", zap.String("segment_id", segmentID), zap.String("reason", payload.NegativeReason))
+					}
+					outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: nil, allCacheHits: true}
+					return
+				}
+				if len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+					candidates, err := f.verifyPersonImageCandidates(ctx, payload.Candidates)
+					outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: err, allCacheHits: true}
+					return
+				}
 			}
 		}
 		var persisted internetImageCachePayload
@@ -41,8 +55,15 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			return
 		} else if hit {
 			persisted = sanitizeInternetImageCachePayload(persisted)
-			if len(persisted.Candidates) > 0 {
+			if len(persisted.Candidates) > 0 || persisted.Negative {
 				cacheStore(vidrushImageCache, segmentCacheKeyStr, persisted)
+			}
+			if internetImageNegativeFresh(persisted, time.Now()) {
+				if f.log.Core() != nil {
+					f.log.Info("VidRush image negative cache hit (durable)", zap.String("segment_id", segmentID), zap.String("reason", persisted.NegativeReason))
+				}
+				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: nil, allCacheHits: true}
+				return
 			}
 			if len(persisted.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
 				candidates, scoreErr := f.verifyPersonImageCandidates(ctx, persisted.Candidates)
@@ -267,10 +288,29 @@ func (f *VidRushProviderFanout) finishInternetImageCandidates(ctx context.Contex
 	}
 	candidates = verified
 	payload := internetImageCachePayload{Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)}
+	// ELIM-01: a completed search with zero usable candidates is cached as a
+	// NEGATIVE observation (15 min) instead of being forgotten. Repeating the
+	// same entity no longer pays a 20-117 s provider wait for a result the run
+	// cannot use. This is never read as proof of absence.
+	negative := queryErr == nil && len(payload.Candidates) == 0
+	if negative {
+		payload.Negative = true
+		payload.NegativeReason = "no_results"
+		payload.ObservedAt = time.Now()
+	}
 	if len(payload.Candidates) > 0 && queryErr == nil {
 		cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
 	}
-	if queryErr == nil && (len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
+	if negative {
+		cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
+		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, sanitizeInternetImageCachePayload(payload)); cacheErr != nil {
+			// A negative projection that cannot be written is only a lost
+			// optimisation: the live (empty) result is still authoritative.
+			if f.log.Core() != nil {
+				f.log.Warn("VidRush negative image cache write failed; continuing with the live empty result", zap.String("segment_id", fanoutPlan.segmentID), zap.Error(cacheErr))
+			}
+		}
+	} else if queryErr == nil && (len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
 		cachePayload := sanitizeInternetImageCachePayload(payload)
 		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, cachePayload); cacheErr != nil {
 			// Cache persistence is a projection, not the source of truth for

@@ -71,12 +71,12 @@ func TestResidentKeepAliveEnvOverridePropagatesToChatAndGenerate(t *testing.T) {
 	}
 }
 
-func TestResidentKeepAliveNegativeOneIsAccepted(t *testing.T) {
+func TestResidentKeepAliveNegativeOneFallsBackToDefault(t *testing.T) {
 	t.Cleanup(resetEnvKeepAliveForTest)
 	t.Setenv(EnvResidentKeepAlive, "-1")
 	resetEnvKeepAliveForTest()
-	if got := residentKeepAlive(); got != "-1" {
-		t.Fatalf("residentKeepAlive() = %q, want -1", got)
+	if got := residentKeepAlive(); got != residentKeepAliveDefault {
+		t.Fatalf("residentKeepAlive() = %q, want default %q", got, residentKeepAliveDefault)
 	}
 }
 
@@ -91,13 +91,13 @@ func TestResidentKeepAliveInvalidOverrideFallsBackToDefault(t *testing.T) {
 
 func TestValidOllamaKeepAliveAcceptsOllamaContract(t *testing.T) {
 	t.Cleanup(resetEnvKeepAliveForTest)
-	valid := []string{"-1", "0", "30", "30m", "12h", "90s", "1500ms", "1.5m"}
+	valid := []string{"0", "30", "30m", "12h", "90s", "1500ms", "1.5m"}
 	for _, v := range valid {
 		if !validOllamaKeepAlive(v) {
 			t.Fatalf("validOllamaKeepAlive(%q) = false, want true", v)
 		}
 	}
-	invalid := []string{"", "forever", "12h30", "1.5", "-5m", "hm", "12 H"}
+	invalid := []string{"", "-1", "forever", "12h30", "1.5", "-5m", "hm", "12 H"}
 	for _, v := range invalid {
 		if validOllamaKeepAlive(v) {
 			t.Fatalf("validOllamaKeepAlive(%q) = true, want false", v)

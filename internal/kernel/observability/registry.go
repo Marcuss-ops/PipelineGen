@@ -130,6 +130,18 @@ const (
 	StageClipProbe              StageName = "clip.probe"
 	StageClipPublish            StageName = "clip.publish"
 
+	// ── YouTube clip-extraction phases ─────────────────────────────
+	// These names make the previously unattributed youtube_clip.extract
+	// wall clock visible in the job timing: section staging (network
+	// download), segment fan-out, local cut, transcript acquisition, Drive
+	// upload and the canonical PostgreSQL commit.
+	StageYouTubeSectionStaging StageName = "youtube.section_staging"
+	StageYouTubeFanout         StageName = "youtube.segment_fanout"
+	StageYouTubeCut            StageName = "youtube.cut"
+	StageYouTubeTranscript     StageName = "youtube.transcript"
+	StageYouTubeUpload         StageName = "youtube.upload"
+	StageYouTubeCommit         StageName = "youtube.commit"
+
 	// ── Stock pipeline phases ──────────────────────────────────────
 	// The stock.run step keys are the phases recorded by the stock
 	// orchestrator (a step key IS the stage name it is measured under).
@@ -175,6 +187,9 @@ var allStageRegistry = []StageName{
 	StageClipUploadSlot, StageClipDrive, StageClipFinalize,
 	StageClipDestinationResolve, StageClipSubtitles,
 	StageClipProbe, StageClipPublish,
+	// youtube clip extraction, in execution order
+	StageYouTubeSectionStaging, StageYouTubeFanout, StageYouTubeCut,
+	StageYouTubeTranscript, StageYouTubeUpload, StageYouTubeCommit,
 	// stock pipeline, in execution order
 	StageStockPlan, StageStockStageSources, StageStockSearch,
 	StageStockYouTubeDownload, StageStockExtractClips, StageStockExtract,
@@ -320,6 +335,15 @@ const (
 	// encode_wall_s.
 	OperationPrefetch OperationName = "prefetch"
 	OperationPrepare  OperationName = "prepare"
+	// OperationAdmissionWait is the time a scene spent queued on the provider
+	// fan-out semaphore BEFORE its resolve started. Measured separately
+	// because the same wall inside `resolve` would look like provider time and
+	// hide the contention (ELIM-02).
+	OperationAdmissionWait OperationName = "admission_wait"
+	// OperationJoinBarrier is the time the SceneTextReady join spent blocked on
+	// a branch that had not finished. It is the join's own work: without it,
+	// prepare_join wall is unattributed (ELIM-02).
+	OperationJoinBarrier OperationName = "join_barrier"
 
 	OperationRendererStartup OperationName = "renderer_startup"
 	OperationDecode          OperationName = "decode"
@@ -357,6 +381,7 @@ func AllOperations() []OperationName {
 		OperationMaterialize, OperationPlan, OperationRender, OperationHash,
 		OperationObjectStoreUpload, OperationDrivePublish,
 		OperationPrefetch, OperationPrepare,
+		OperationAdmissionWait, OperationJoinBarrier,
 		OperationRendererStartup, OperationDecode, OperationComposite,
 		OperationSubtitleRaster, OperationWatermarkRaster,
 		OperationFrameConversion, OperationEncode, OperationAudioMux,

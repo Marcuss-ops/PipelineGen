@@ -188,6 +188,10 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 			PhraseImpact: manifest.Analyzers.PhraseImpact, Lexicon: manifest.Analyzers.Lexicon,
 			EntityIndex: manifest.Analyzers.EntityIndex, Numbers: manifest.Analyzers.Numbers,
 			Dates: manifest.Analyzers.Dates, Quantities: manifest.Analyzers.Quantities,
+			Places: manifest.Analyzers.Places, Routes: manifest.Analyzers.Routes,
+			Roles: manifest.Analyzers.Roles, AgeFacts: manifest.Analyzers.AgeFacts,
+			PersonRelations: manifest.Analyzers.PersonRelations, Events: manifest.Analyzers.Events,
+			Discourse: manifest.Analyzers.Discourse,
 		}
 		bundle.Status = scene.Status
 		bundle.RejectedItems = scene.RejectedItems
@@ -204,6 +208,21 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		if scene.Status != "valid" {
 			bundles[scene.SceneID] = bundle
 			continue
+		}
+		if bundle.Places, err = projectSemanticPlaces(source, scene.Places); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q places: %w", scene.SceneID, err)
+		}
+		if bundle.Routes, err = projectSemanticRoutes(source, bundle.Places, scene.Routes); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q routes: %w", scene.SceneID, err)
+		}
+		if bundle.PersonRoles, err = projectSemanticPersonRoles(source, scene.Identities, scene.PersonRoles); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q person roles: %w", scene.SceneID, err)
+		}
+		if bundle.AgeFacts, err = projectSemanticPersonAges(source, scene.Identities, scene.AgeFacts); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q age facts: %w", scene.SceneID, err)
+		}
+		if bundle.PersonRelations, err = projectSemanticPersonRelations(source, scene.Identities, scene.PersonRelations); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q person relations: %w", scene.SceneID, err)
 		}
 		if bundle.Entities, err = projectSemanticEntities(source, scene.Entities); err != nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q entities: %w", scene.SceneID, err)
@@ -272,6 +291,27 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 	// bundle, including bundles for earlier scenes.
 	for _, bundle := range bundles {
 		bundle.Identities = append([]scriptgen.SemanticIdentity(nil), linkedIdentities...)
+	}
+	crossSceneRoutes, err := projectSemanticCrossSceneRoutes(texts, manifest.Scenes, manifest.CrossSceneRoutes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("semantic-engine: cross-scene routes: %w", err)
+	}
+	for _, bundle := range bundles {
+		bundle.CrossSceneRoutes = crossSceneRoutes
+	}
+	events, err := projectSemanticEvents(texts, manifest.Scenes, manifest.Entities, manifest.Events)
+	if err != nil {
+		return nil, nil, fmt.Errorf("semantic-engine: events: %w", err)
+	}
+	for _, bundle := range bundles {
+		bundle.Events = events
+	}
+	discourse, err := projectSemanticDiscourse(texts, manifest.Entities, manifest.Discourse)
+	if err != nil {
+		return nil, nil, fmt.Errorf("semantic-engine: discourse: %w", err)
+	}
+	for _, bundle := range bundles {
+		bundle.Discourse = discourse
 	}
 	if err := validateSemanticScriptViews(texts, manifest.StoryGraph, manifest.VisualCoverage, bundles); err != nil {
 		return nil, nil, fmt.Errorf("semantic-engine: %w", err)

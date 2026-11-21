@@ -154,6 +154,8 @@ type VoiceoverInput struct {
 	// forwards it verbatim into the per-item TTS command destination so a
 	// caller-explicit folder is never replaced by the configured default.
 	VoiceoverFolderID string
+	// TTSRate overrides the canonical rate for this generated voiceover.
+	TTSRate string
 	// Timing is the canonical voiceover timing policy for this scene.
 	// nil means the generator applies the canonical defaults
 	// (best_effort / word / [json]) — timing capture is never implicitly

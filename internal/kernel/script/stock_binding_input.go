@@ -20,6 +20,7 @@ type StockBindingInput struct {
 	FolderLink string  `json:"folder_link,omitempty"`
 	Score      float64 `json:"score,omitempty"`
 	Fallback   bool    `json:"fallback"`
+	PoolSlot   bool    `json:"stock_pool_slot,omitempty"`
 	StartMs    int64   `json:"start_ms,omitempty"`
 	EndMs      int64   `json:"end_ms,omitempty"`
 }

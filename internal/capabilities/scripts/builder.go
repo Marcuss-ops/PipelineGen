@@ -28,6 +28,7 @@ import (
 	audiocap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -259,6 +260,15 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		if err != nil {
 			return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
 		}
+		if len(resolved.AnimationPool) == 0 {
+			resolved.AnimationPool = capabilityoverlay.MapCompositionRandomPool()
+		}
+		if len(resolved.StylePool) == 0 {
+			resolved.StylePool = capabilityoverlay.NativeMapBasemapPool()
+		}
+		if err := validateMapPresentationPools(resolved); err != nil {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
+		}
 		mapPresentation = &resolved
 		// The legacy fields remain the compatibility projection consumed by
 		// the existing runtime pipeline; the spec resolves them once, here.
@@ -348,6 +358,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		// verbatim into the routing context so the per-scene TTS command
 		// honors the caller-explicit folder instead of dropping it.
 		VoiceoverFolderID:       item.Output.VoiceoverFolderID,
+		TTSRate:                 item.Output.TTSRate,
 		Audio:                   audioMode,
 		MixPolicy:               mixPolicy,
 		BackgroundMusic:         backgroundMusic,

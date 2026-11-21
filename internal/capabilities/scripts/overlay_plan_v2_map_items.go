@@ -1,0 +1,360 @@
+package scriptgeneration
+
+import (
+	"fmt"
+	"strings"
+
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+)
+
+// overlay_plan_v2_map_items.go — lowering of the Rust-selected map items onto
+// certified plates: chain presets, plate resolution, pin timing and the
+// presentation/style choices the canvas requested.
+
+// materializeEditorialMapItems lowers Rust-selected grounded places through
+// the existing certified map-plate resolver. Rust owns which place to show
+// and when; this Producer boundary attaches the licensed local/dynamic map
+// source needed by the renderer.
+// applyChainSegmentPresets mirrors the semantic_role → preset_id decision onto
+// every chain segment. Rust coalesces standalone overlays into one chain and
+// carries each segment's kind/template, but the preset decision belongs to
+// this resolver (ADR-029). Without it RenderingGen lowers the text segments
+// with no preset, emits a partial style (fill/stroke only, no font/font_size)
+// and the Chronon daemon rejects the whole render plan.
+func applyChainSegmentPresets(plan *capmodel.OverlayPlan) {
+	if plan == nil {
+		return
+	}
+	for i := range plan.Items {
+		item := &plan.Items[i]
+		firstPreset := ""
+		capmodel.UpdateChainSegmentMaps(item.Params, func(segments []map[string]any) bool {
+			changed := false
+			for _, segment := range segments {
+				preset := strings.TrimSpace(chainSegmentString(segment, "preset_id"))
+				if preset == "" {
+					templateID := strings.TrimSpace(chainSegmentString(segment, "template_id"))
+					if templateID == "" {
+						continue
+					}
+					resolved, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(templateID)
+					if !ok {
+						continue
+					}
+					preset = resolved
+					segment["preset_id"] = resolved
+					changed = true
+				}
+				if firstPreset == "" {
+					firstPreset = preset
+				}
+			}
+			return changed
+		})
+		// The chain item mirrors its first segment for consumers that do not
+		// read chain_segments (motion/preview paths).
+		if strings.TrimSpace(item.PresetID) == "" && firstPreset != "" {
+			item.PresetID = firstPreset
+		}
+	}
+}
+
+func chainSegmentString(segment map[string]any, key string) string {
+	if value, ok := segment[key].(string); ok {
+		return value
+	}
+	return ""
+}
+
+func materializeEditorialMapItems(plan *capmodel.OverlayPlan, plates capabilityoverlay.PlateResolver, canvas OverlayCanvasSpec, seed string) error {
+	if plan == nil {
+		return nil
+	}
+	applyChainSegmentPresets(plan)
+	grouping, _ := mapGroupingForCanvas(canvas)
+	ordinal := 0
+	originalLen := len(plan.Items)
+	dropped := make(map[int]struct{})
+	var appended []capmodel.OverlayItem
+	for i := 0; i < originalLen; i++ {
+		item := &plan.Items[i]
+		if strings.TrimSpace(item.PresetID) == "" {
+			if preset, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(strings.TrimSpace(item.TemplateID)); ok {
+				item.PresetID = preset
+			}
+		}
+		if !strings.EqualFold(strings.TrimSpace(item.Kind), "map") {
+			continue
+		}
+		if item.Map == nil {
+			return fmt.Errorf("overlay plan: Rust selected map %q without a grounded map declaration", item.ID)
+		}
+		if _, _, _, _, _, ok := item.Map.SemanticCandidate(); !ok {
+			// An already materialized map (a frozen/legacy plan or a response
+			// that includes the full renderer block) needs no plate selection,
+			// but its local paths are runtime-only and therefore do not survive
+			// the wire/checkpoint round-trip. Reattach them from the certified
+			// plate before the seal validates the raster.
+			if strings.EqualFold(strings.TrimSpace(item.Map.Provider), "local") && len(item.Map.Pins) > 0 {
+				attachMapAssetLocalPaths(item, plates)
+				continue
+			}
+			return fmt.Errorf("overlay plan: Rust map %q has no semantic place candidate", item.ID)
+		}
+		// Membership, spoken order, the pin cap and the readable floor are the
+		// Rust planner's decisions; this loop only attaches a certified plate.
+		// It never re-groups, so a rendered map can no longer be matched to a
+		// different Rust item (the swapped-label defect).
+		pins, err := mapGroupPins(item)
+		if err != nil {
+			return err
+		}
+		// The requested cartographic level is a hard scope gate: a country pin
+		// inside a city plate is noise, not a map.
+		if grouping.Level != "" {
+			kept := make([]capabilityoverlay.MapCandidate, 0, len(pins))
+			for _, pin := range pins {
+				if capabilityoverlay.ScopeFitsMapLevel(pin.Scope, grouping.Level) {
+					kept = append(kept, pin)
+				}
+			}
+			pins = kept
+			if len(pins) == 0 {
+				dropped[i] = struct{}{}
+				continue
+			}
+		}
+		sceneID := strings.TrimSpace(item.SceneID)
+		materialized := capabilityoverlay.MaterializeMapPins(
+			sceneID, pins, plates, canvas.Width, canvas.Height, ordinal, 0, seed, grouping,
+		)
+		if len(materialized) == 0 {
+			return fmt.Errorf("overlay plan: Rust-selected map %q has no certified local map plate", item.ID)
+		}
+		ordinal += len(materialized)
+		applyMaterializedMap(item, materialized[0])
+		// A group no single plate covers is split by plate, never dropped: the
+		// extra shots keep their own pins and are appended as derived items.
+		for _, extra := range materialized[1:] {
+			if strings.TrimSpace(extra.PresetID) == "" {
+				if preset, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(strings.TrimSpace(extra.TemplateID)); ok {
+					extra.PresetID = preset
+				}
+			}
+			appended = append(appended, extra)
+		}
+	}
+	if len(dropped) > 0 {
+		kept := plan.Items[:0]
+		for i := 0; i < originalLen; i++ {
+			if _, remove := dropped[i]; remove {
+				continue
+			}
+			kept = append(kept, plan.Items[i])
+		}
+		plan.Items = kept
+	}
+	plan.Items = append(plan.Items, appended...)
+	if canvas.MapPresentation != nil {
+		if err := applyRequestedMapPresentation(plan, canvas.MapPresentation.Animation, canvas.MapPresentation.Style,
+			canvas.MapPresentation.AnimationPool, canvas.MapPresentation.StylePool,
+			canvas.MapPresentation.CountryFeature, canvas.MapPresentation.TimelineLabel,
+			canvas.MapPresentation.MountainOverlayAsset); err != nil {
+			return err
+		}
+	} else if err := applyRequestedMapAnimation(plan, grouping.Animation); err != nil {
+		return err
+	}
+	return nil
+}
+
+// mapGroupPins resolves the pins of one Rust map item. The group is
+// authoritative; only an item that declares no group at all falls back to its
+// single semantic place.
+func mapGroupPins(item *capmodel.OverlayItem) ([]capabilityoverlay.MapCandidate, error) {
+	pins, err := capabilityoverlay.MapGroupPinsFromParams(item.Params)
+	if err != nil {
+		return nil, fmt.Errorf("overlay plan: Rust map %q: %w", item.ID, err)
+	}
+	if len(pins) > 0 {
+		return pins, nil
+	}
+	entityID, label, scope, latitude, longitude, ok := item.Map.SemanticCandidate()
+	if !ok {
+		return nil, fmt.Errorf("overlay plan: Rust map %q has no semantic place candidate", item.ID)
+	}
+	durationUS := item.DurationUS
+	if durationUS <= 0 {
+		durationUS = (item.EndMs - item.StartMs) * 1000
+	}
+	candidate, valid := capabilityoverlay.NewMapCandidate(entityID, label, latitude, longitude, item.StartUS, durationUS, 1, scope)
+	if !valid {
+		return nil, fmt.Errorf("overlay plan: Rust map %q contains an invalid grounded candidate", item.ID)
+	}
+	return []capabilityoverlay.MapCandidate{candidate}, nil
+}
+
+// mapGroupingForCanvas resolves the unified map_presentation contract into the
+// planner's grouping policy. A nil presentation keeps the historical behavior.
+func mapGroupingForCanvas(canvas OverlayCanvasSpec) (capabilityoverlay.MapGroupConfig, bool) {
+	presentation := canvas.MapPresentation
+	if presentation == nil {
+		return capabilityoverlay.MapGroupConfig{}, false
+	}
+	return capabilityoverlay.MapGroupConfig{
+		MaxPinsPerGroup:     presentation.MaxPinsPerGroup,
+		NoNarrativeGrouping: !presentation.GroupNearbyPlaces,
+		NoRoutes:            !presentation.AllowRoute,
+		Level:               presentation.Level,
+		Animation:           presentation.Animation,
+	}, true
+}
+
+// applyRequestedMapAnimation makes map_presentation.animation the single owner
+// of the composition when the caller named one. The planner still seeds a
+// compatible default for random/auto, but an explicit certified id is applied
+// to every map item and admitted against that item's real pins (count, scope,
+// territory and area-glow data). An incompatible explicit request fails here,
+// not inside the renderer after the expensive plate work.
+func applyRequestedMapAnimation(plan *capmodel.OverlayPlan, requested string) error {
+	requested = strings.TrimSpace(requested)
+	if plan == nil || requested == "" || strings.EqualFold(requested, "random") || strings.EqualFold(requested, "auto") {
+		return nil
+	}
+	for i := range plan.Items {
+		item := &plan.Items[i]
+		if !strings.EqualFold(strings.TrimSpace(item.Kind), "map") || item.Map == nil {
+			continue
+		}
+		pins := make([]map[string]any, 0, len(item.Map.Pins))
+		for _, pin := range item.Map.Pins {
+			pins = append(pins, map[string]any{
+				"id": pin.ID, "label": pin.Label, "scope": pin.Scope,
+				"latitude": pin.Latitude, "longitude": pin.Longitude,
+			})
+		}
+		input := capabilityoverlay.MapCompositionInput{
+			PinCount:             len(pins),
+			Pins:                 pins,
+			DurationUS:           item.DurationUS,
+			Strategy:             mapStringParam(item.Params, "map_group_strategy"),
+			AreaGlowRadiusKM:     item.Map.AreaGlowRadiusKM,
+			CountryFeature:       mapStringParam(item.Params, "country_feature"),
+			TimelineLabel:        mapStringParam(item.Params, "timeline_label"),
+			MountainOverlayAsset: mapStringParam(item.Params, "mountain_overlay_asset"),
+		}
+		if input.MountainOverlayAsset == "" {
+			input.MountainOverlayAsset = capabilityoverlay.MapMountainOverlayDefault()
+		}
+		if len(item.Map.Pins) > 0 {
+			pin := item.Map.Pins[0]
+			input.TerritoryScope = pin.Scope
+			if feature, ok := capabilityoverlay.ResolveMapTerritoryFeature(
+				capabilityoverlay.MapTerritoryCatalogDir(), pin.Latitude, pin.Longitude,
+			); ok {
+				input.TerritoryFeature = feature
+				if input.CountryFeature == "" {
+					input.CountryFeature = "Italy"
+				}
+			}
+		}
+		if err := capabilityoverlay.AdmitMapComposition(requested, input, capabilityoverlay.MapCompositionCertified()); err != nil {
+			return fmt.Errorf("map_presentation.animation %q cannot be applied to map %q: %w", requested, item.ID, err)
+		}
+		if item.Params == nil {
+			item.Params = make(map[string]any, 1)
+		}
+		item.Params["map_animation"] = requested
+	}
+	return nil
+}
+
+// applyRequestedMapPresentation applies the two independent runtime choices
+// to every materialized map. The pools are carried on each map item because
+// the dynamic renderer resolves style after the Rust planner seals the plan.
+func applyRequestedMapPresentation(plan *capmodel.OverlayPlan, animation, style string, animationPool, stylePool []string, country, timeline, mountainAsset string) error {
+	if plan == nil {
+		return nil
+	}
+	animation = strings.TrimSpace(animation)
+	if animation == "" || strings.EqualFold(animation, "auto") {
+		animation = "random"
+	}
+	for i := range plan.Items {
+		item := &plan.Items[i]
+		if !strings.EqualFold(strings.TrimSpace(item.Kind), "map") || item.Map == nil {
+			continue
+		}
+		if item.Params == nil {
+			item.Params = make(map[string]any, 4)
+		}
+		item.Params["map_animation"] = animation
+		item.Params["map_composition_pool"] = append([]string(nil), animationPool...)
+		item.Params["map_style_pool"] = append([]string(nil), stylePool...)
+		item.Params["map_type"] = style
+		if country != "" {
+			item.Params["country_feature"] = country
+		}
+		if timeline != "" {
+			item.Params["timeline_label"] = timeline
+		}
+		if mountainAsset != "" {
+			item.Params["mountain_overlay_asset"] = mountainAsset
+		}
+	}
+	if !strings.EqualFold(animation, "random") {
+		if err := applyRequestedMapAnimation(plan, animation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mapStringParam(params map[string]any, key string) string {
+	value, _ := params[key].(string)
+	return strings.TrimSpace(value)
+}
+
+// materializedMapHasEntity reports whether one of the renderer map's pins is
+// the given grounded entity. Pin IDs are the planner's entity IDs, so this is
+// the only stable join between a grouped map item and the Rust item that
+// proposed the place.
+func materializedMapHasEntity(item capmodel.OverlayItem, entityID string) bool {
+	if item.Map == nil || strings.TrimSpace(entityID) == "" {
+		return false
+	}
+	for _, pin := range item.Map.Pins {
+		if strings.TrimSpace(pin.ID) == strings.TrimSpace(entityID) {
+			return true
+		}
+	}
+	return false
+}
+
+// applyMaterializedMap copies the resolved renderer map onto the Rust-selected
+// item. The item keeps its editorial identity (id, scene, priority) AND its
+// window: the Rust planner owns the camera minimum, the readable floor and the
+// tail bound now, so this boundary only attaches the certified plate and the
+// per-pin schedule. Re-timing the item here would make Go a second owner of the
+// floor (the defect the late clamp used to paper over).
+func applyMaterializedMap(item *capmodel.OverlayItem, materialized capmodel.OverlayItem) {
+	item.Map = materialized.Map
+	item.AssetRefs = materialized.AssetRefs
+	if item.Params == nil {
+		item.Params = make(map[string]any, len(materialized.Params))
+	}
+	for key, value := range materialized.Params {
+		if key != "priority" {
+			item.Params[key] = value
+		}
+	}
+	// The materialized schedule is relative to that shot's own start. The item
+	// keeps the Rust start, so shift the offsets onto it: a level-gated or
+	// plate-dropped pin must not activate earlier than it was spoken.
+	if delta := materialized.StartUS - item.StartUS; delta != 0 {
+		if timing, ok := capabilityoverlay.MapPinTimingsFromParams(materialized.Params); ok {
+			item.Params["map_pin_timing"] = timing.WithOffset(delta).Params()
+		}
+	}
+}

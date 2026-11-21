@@ -46,6 +46,19 @@ import (
 	"go.uber.org/zap"
 )
 
+// overlayOutputProfileID is the ONE request-to-profile mapping for the overlay
+// plan. A final job and an overlays-only run both produce opaque H.264
+// video-only artifacts; every other overlay is an alpha-bearing intermediate
+// and keeps the empty profile that selects the alpha default. Keeping the
+// mapping in one function is what pins the wire `output_profile_id` to the
+// same answer the plan's media contract is derived from.
+func overlayOutputProfileID(req GenerateRequest) string {
+	if req.FinalJob || req.Render.OverlaysOnly {
+		return kernelmedia.OverlayVideoOnlyProfileID
+	}
+	return ""
+}
+
 func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string, req GenerateRequest, jobID string, result *GenerateResult) error {
 	planLanguage := req.SourceLanguage
 	// Each final-job language child keeps SourceLanguage as the language of
@@ -115,14 +128,13 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	canvas.EntityImagesRequireDrive = canvas.RequireEntityImages && req.MediaPlan.Extraction.EntityImages.UploadToDrive
 	canvas.RequiredEntityTypes = append([]string(nil), req.MediaPlan.Extraction.EntityImages.EntityTypes...)
 	// The final job composites this plan onto the source video and encodes it
-	// opaque (H.264/yuv420p, no audio), so that is the profile the artifact
-	// will be certified against — declared HERE, with the other output-shape
-	// facts and before the plan is sealed, so the plan's media contract is
-	// derived from the same answer and no consumer has to re-derive it. An
-	// intermediate (non-final-job) overlay keeps the alpha default.
-	if req.FinalJob {
-		canvas.OutputProfileID = kernelmedia.OverlayVideoOnlyProfileID
-	}
+	// opaque (H.264/yuv420p, no audio); an overlays-only run renders the same
+	// opaque per-item videos without the source layer. Both are certified
+	// against the video-only profile, so that is the profile declared HERE,
+	// with the other output-shape facts and before the plan is sealed, so the
+	// plan's media contract is derived from the same answer and no consumer has
+	// to re-derive it. An intermediate overlay keeps the alpha default.
+	canvas.OutputProfileID = overlayOutputProfileID(req)
 	canvas.Style = req.OverlayStyle
 	canvas.ShortPhraseMotion = req.ShortPhraseMotion
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily

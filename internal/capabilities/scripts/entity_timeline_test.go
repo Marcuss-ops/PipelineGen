@@ -2,10 +2,11 @@ package scriptgeneration
 
 import (
 	"context"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 	"time"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"github.com/stretchr/testify/require"
 

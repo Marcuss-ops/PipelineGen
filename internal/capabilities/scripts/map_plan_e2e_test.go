@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"image"
 	"image/color"
 	"image/png"
@@ -16,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"github.com/stretchr/testify/require"
 

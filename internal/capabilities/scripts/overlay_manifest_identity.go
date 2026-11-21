@@ -6,9 +6,10 @@ package scriptgeneration
 // handoff still consumes a remote manifest when one is supplied.
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strconv"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // isOverlayBackgroundTemplate is the single source of truth for the legacy

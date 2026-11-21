@@ -30,6 +30,18 @@ func (w *Worker) finalizeJobDispatchError(ctx context.Context, j *job.Job, worke
 		return
 	}
 
+	// Count the failure by its canonical class BEFORE the retry decision: a
+	// retryable failure is still a failure for the taxonomy, and the class is
+	// the only field that separates "no retry can help" from "retry is the
+	// correct response".
+	if classified, ok := job.ClassifiedFailureFrom(dispatchErr); ok {
+		observability.WorkerJobFailuresTotal.WithLabelValues(
+			j.Type, string(classified.Class), classified.Stage, classified.Code).Inc()
+	} else {
+		observability.WorkerJobFailuresTotal.WithLabelValues(
+			j.Type, string(job.FailureUnknown), "UNKNOWN_STAGE", "NO_ERROR_CODE").Inc()
+	}
+
 	w.log.Error("job failed", zap.String("job_id", j.ID), zap.Error(dispatchErr))
 
 	if retry.IsTransient(dispatchErr) && jobscheduling.DecideRetry(j) == jobscheduling.RetryScheduled {

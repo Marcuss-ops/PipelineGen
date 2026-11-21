@@ -1,8 +1,9 @@
 package scriptgeneration
 
 import (
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"testing"
+
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )

@@ -406,7 +406,7 @@ func ResolveTranslationModel(cfg *config.Config) string {
 // ComposeRoot (see ComposeRoot.DriveUploadGate). It is threaded in rather than
 // rebuilt here so the voiceover publisher shares ONE capacity with the
 // certified final-audio publisher instead of each enforcing its own ceiling.
-func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, mediaConfig mediaexec.ExecutionConfig, driveUploadGate *concurrent.FairSemaphore) (*DomainBundle, error) {
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, media *MediaRepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, mediaConfig mediaexec.ExecutionConfig, driveUploadGate *concurrent.FairSemaphore) (*DomainBundle, error) {
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	var canonicalCommitter persistence.AssetCommitter
@@ -454,7 +454,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	bundle := &DomainBundle{}
 
 	// ── Media domain: YouTube clip pipeline ──────────────────
-	voMetaWriter, clipWriter, folderPathWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, outbox, canonicalCommitter, bundle, mediaConfig)
+	voMetaWriter, clipWriter, folderPathWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, media, search, process, ai, outbox, canonicalCommitter, bundle, mediaConfig)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains (media): %w", err)
 	}

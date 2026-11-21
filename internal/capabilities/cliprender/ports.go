@@ -202,6 +202,13 @@ type RenderExecutorWithJobID interface {
 // still propagate as errors. Only "not terminal yet" is this sentinel.
 var ErrRenderPending = errors.New("clip.render: remote render is not terminal yet")
 
+// ErrRenderStalled marks a remote render that stopped reporting progress and
+// was cancelled by the settle watchdog. It is a FAILURE, not a wait: retrying
+// the same render identity cannot help, and the child's GPU lane has already
+// been released. The executor wraps the typed stall report (child id, last
+// frame, age) so the job error is actionable without the logs.
+var ErrRenderStalled = errors.New("clip.render: remote render stalled without progress")
+
 // RenderExecutorDeferring is the OPTIONAL capability a render boundary
 // implements when its settle can be BOUNDED instead of blocking.
 //

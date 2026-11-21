@@ -43,4 +43,15 @@ const (
 	// zero or negative. The value 1 mirrors the pre-Wave-19 in-process
 	// broker semantics: a worker polls one job at a time.
 	DefaultConcurrency = 1
+
+	// DefaultScriptGenerateConcurrency is the per-worker parallel-lease budget
+	// for script.generate. It is 2, not more: the measured p90 queue wait
+	// (24 s) is real, but script.generate spends most of its wall waiting on
+	// providers and TTS (generate p50 9.1 s, resolve 16.2 s/call,
+	// wait_completion 12.5 s/call). Two leases absorb a burst without
+	// multiplying the provider rate (the 429/timeout surface) or the peak
+	// memory of a run. Raise it only with a measured burst, and never for
+	// clip.render: that job is pinned to one lease because it owns a GPU lane
+	// (ELIM-04).
+	DefaultScriptGenerateConcurrency = 2
 )

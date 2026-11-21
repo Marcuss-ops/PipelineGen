@@ -2,10 +2,11 @@ package scriptgeneration
 
 import (
 	"context"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon

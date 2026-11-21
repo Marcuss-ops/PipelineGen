@@ -149,6 +149,36 @@ func TestAggregateEntityResultCanonicalizesPartialDates(t *testing.T) {
 	}
 }
 
+// TestAggregateEntityResultCanonicalizesMultilingualDates certifies that the
+// cleanup is not Italian-only: a French, Spanish, German and Portuguese surface
+// collapses onto its full date exactly like the Italian one, and a partial that
+// matches more than one full date is still dropped.
+func TestAggregateEntityResultCanonicalizesMultilingualDates(t *testing.T) {
+	surfaces := []string{
+		"13 août 2007", "13 août", "août 2007",
+		"17 diciembre 2009", "17 diciembre", "diciembre 2009",
+		"6 März 2011", "6 märz", "märz 2011",
+		"12 dezembro 2015", "12 dezembro", "dezembro 2015",
+		// Two full dates share the month, so the bare month-year is ambiguous
+		// and must not be guessed onto either of them.
+		"3 avril 2018", "9 avril 2019", "avril 2018",
+	}
+	entities := make([]scriptpkg.ExtractedEntity, 0, len(surfaces))
+	for _, surface := range surfaces {
+		entities = append(entities, scriptpkg.ExtractedEntity{Value: surface, Type: "DATE", Confidence: 0.7})
+	}
+	agg := aggregateEntityResult([]scriptpkg.VidRushSegmentResult{{SegmentID: "seg-0", Insights: scriptpkg.SegmentInsights{Entities: entities}}})
+	require.NotNil(t, agg)
+	got := make([]string, 0, len(agg.Concepts))
+	for _, concept := range agg.Concepts {
+		got = append(got, concept.Value)
+	}
+	assert.ElementsMatch(t, []string{
+		"13 août 2007", "17 diciembre 2009", "6 März 2011", "12 dezembro 2015",
+		"3 avril 2018", "9 avril 2019",
+	}, got)
+}
+
 // TestAggregateEntityResultNormalizesImportantPhrases pins the casing and
 // sentence-boundary repair for the two selector artefacts seen in Garlasco.
 func TestAggregateEntityResultNormalizesImportantPhrases(t *testing.T) {

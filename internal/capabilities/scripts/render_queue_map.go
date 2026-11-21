@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -193,20 +194,18 @@ func renderDynamicMapVideoWithGate(ctx context.Context, plan capmodel.OverlayPla
 // so a raster style fails closed by name (never a silent style swap) and
 // "random" draws from the servable subset. The registry vocabulary stays
 // cross-repo canonical; servability is decided here, at execution.
-func resolveMapBasemap(mapType, seed, slot string) (string, error) {
+func resolveMapBasemap(mapType, seed, slot string, requestedPools ...[]string) (string, error) {
 	servable := capoverlay.NativeMapBasemaps()
+	pool := capoverlay.NativeMapBasemapPool()
+	if len(requestedPools) > 0 && len(requestedPools[0]) > 0 {
+		pool = append([]string(nil), requestedPools[0]...)
+	}
 	// Empty means "no map_type requested": the registry's default is an Esri
 	// raster style (cross-repo canonical, unchanged), which the native renderer
 	// does not draw — so the empty request takes the servable draw, exactly
 	// like "random". applyMapPresentationToItems always writes the concrete
 	// default; this branch covers hand-built plans.
 	if strings.TrimSpace(mapType) == "" || strings.EqualFold(strings.TrimSpace(mapType), "random") {
-		pool := make([]string, 0, len(servable))
-		for _, style := range mapBasemapStyles() {
-			if servable[style] {
-				pool = append(pool, style)
-			}
-		}
 		selected := deterministicMapStyle(seed, "map_basemap", slot, pool)
 		if selected == "" {
 			return "", fmt.Errorf("no certified map basemap available")
@@ -220,7 +219,19 @@ func resolveMapBasemap(mapType, seed, slot string) (string, error) {
 	if !servable[id] {
 		return "", fmt.Errorf("basemap %q (map_type %q) is not available in the native map renderer: declare classic/chronon_editorial, modern_map_1/esri_topo, or satellite/esri_sat", id, mapType)
 	}
+	if !containsMapStyle(pool, id) {
+		return "", fmt.Errorf("basemap %q (map_type %q) is not in map_presentation.style_pool", id, mapType)
+	}
 	return id, nil
+}
+
+func containsMapStyle(pool []string, id string) bool {
+	for _, candidate := range pool {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveMapAnimation resolves ONE runtime map animation. An explicit
@@ -434,6 +445,12 @@ func (p mapRenderPresentation) decisionReport(plan capmodel.OverlayPlan, seed st
 // the canonical assembly avcC even when the visible H.264 profile and geometry
 // match.
 func dynamicMapEncodeProfile(plan capmodel.OverlayPlan, configured string) (capoverlay.MapEncodeProfile, error) {
+	for _, item := range plan.Items {
+		if animation, _ := item.Params["map_animation"].(string); strings.HasPrefix(strings.TrimSpace(animation), "editorial_") {
+			// EditorialMapPack encodes through its native libx264/veryfast path.
+			return capoverlay.ResolveMapEncodeProfile(capoverlay.MapCPUCodec)
+		}
+	}
 	if strings.EqualFold(strings.TrimSpace(plan.OutputProfileID), kernelmedia.OverlayVideoOnlyProfileID) {
 		return capoverlay.ResolveMapEncodeProfile(capoverlay.MapCPUCodec)
 	}

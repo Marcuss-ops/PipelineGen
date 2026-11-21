@@ -11,8 +11,9 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // finalJobPhraseOverlayClip projects the rendered full-frame phrase animation

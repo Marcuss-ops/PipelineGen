@@ -198,6 +198,7 @@ func (r *Run) finish(status string, finalErr error) *RunReport {
 	r.report.UnattributedPercent = bd.UnattributedPercent
 	r.report.BottleneckStage = bd.BottleneckStage
 	r.report.BottleneckOperation = bd.BottleneckOperation
+	AttachStageResiduals(r.report.Stages, r.report.Operations)
 	if status != "" {
 		r.report.Status = status
 	} else if finalErr != nil {

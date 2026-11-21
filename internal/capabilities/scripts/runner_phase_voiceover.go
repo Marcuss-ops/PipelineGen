@@ -287,6 +287,7 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 				// verbatim so the per-scene TTS command never replaces a
 				// caller-explicit destination with the default folder.
 				VoiceoverFolderID: routing.VoiceoverFolderID,
+				TTSRate:           req.TTSRate,
 				// Forward the request-level timing policy so the per-item
 				// pipeline can honour required/best-effort fail-closed
 				// semantics (missing/invalid timing fails the job instead of

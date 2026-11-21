@@ -295,6 +295,35 @@ func NewOllamaChecker(check func(ctx context.Context) bool) OllamaChecker {
 	return &ollamaHealthAdapter{check: check}
 }
 
+// OllamaResidencyReporter is the optional half of the Ollama probe that
+// answers "is the CONFIGURED model actually loaded?". Reachability alone was
+// not enough: the service reported ready and the first job paid a full model
+// load (ELIM-07).
+type OllamaResidencyReporter interface {
+	ModelResidency(ctx context.Context) (model string, resident bool, err error)
+}
+
+type ollamaResidencyAdapter struct {
+	check     func(ctx context.Context) bool
+	residency func(ctx context.Context) (string, bool, error)
+}
+
+func (a *ollamaResidencyAdapter) CheckOllama(ctx context.Context) error {
+	return (&ollamaHealthAdapter{check: a.check}).CheckOllama(ctx)
+}
+
+func (a *ollamaResidencyAdapter) ModelResidency(ctx context.Context) (string, bool, error) {
+	if a.residency == nil {
+		return "", false, nil
+	}
+	return a.residency(ctx)
+}
+
+// NewOllamaCheckerWithResidency builds the probe that also asserts residency.
+func NewOllamaCheckerWithResidency(check func(ctx context.Context) bool, residency func(ctx context.Context) (string, bool, error)) OllamaChecker {
+	return &ollamaResidencyAdapter{check: check, residency: residency}
+}
+
 // OutboxChecker verifies the outbox worker pool is running and
 // processing events (not just that the outbox table exists in
 // DB). nil-safe.

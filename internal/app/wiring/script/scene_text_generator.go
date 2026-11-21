@@ -265,6 +265,26 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		segmentPlan.UseMemory = plan.UseMemory
 		segmentPlan.RenderedPrompt = buildEditorialPromptFromGenReq(segmentReq)
 		segmentPlan.CacheKey = scriptpkg.BuildCacheKey(&segmentPlan)
+		// An explicitly authored intro is already the final editorial line.
+		// Sending it through a generative model repeatedly expanded short clip
+		// cues into long explanations (or failed the one-paragraph word gate).
+		// Preserve the caller's concise sentence exactly; downstream translation,
+		// voiceover, stock binding, and rendering still run through the normal path.
+		if strings.EqualFold(strings.TrimSpace(segment.Kind), "intro") {
+			intro := strings.TrimSpace(segment.SourceText)
+			if intro != "" {
+				sceneID := strings.TrimSpace(segment.ID)
+				if sceneID == "" {
+					sceneID = fmt.Sprintf("scene-%d", index)
+				}
+				return sceneResult{index: index, scene: scriptgen.Scene{
+					ID:         sceneID,
+					Index:      index,
+					DurationMS: segment.DurationMS,
+					Text:       map[scriptgen.Language]string{req.SourceLanguage: intro},
+				}}
+			}
+		}
 
 		result, genErr := g.Engine.Generate(ctx, &segmentPlan)
 		if genErr != nil {

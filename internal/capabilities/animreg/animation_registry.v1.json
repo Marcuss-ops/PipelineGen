@@ -10674,6 +10674,400 @@
         "phrase.short.words_4": 7,
         "phrase.short": 27
       }
+    },
+    {
+      "id": "radar_location_reveal",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 28
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "satellite_scan_reveal",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 29
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "territory_flood_fill",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 30
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "territory_tactical_fill",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 31
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "volumetric_laser_scan",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 32
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "vector_particle_flow",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 33
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "dark_mirror_diorama",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 34
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "voronoi_heat_contours",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 35
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "holographic_postfx",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 36
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "light_beam_drop",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 37
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "city_network_expansion",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 2,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 38
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "territory_extrusion",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 39
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "map_style_morph",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 40
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "mountain_ridge_callout",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 1,
+      "order": {
+        "map.composition": 751
+      }
+    },
+    {
+      "id": "continental_atlas",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 5,
+      "order": {
+        "map.composition": 41
+      },
+      "random": [
+        "map.composition"
+      ]
+    },
+    {
+      "id": "historic_location_timeline",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 1,
+      "order": {
+        "map.composition": 751
+      }
+    },
+    {
+      "id": "editorial_vox",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 1,
+      "order": {
+        "map.composition": 1651
+      }
+    },
+    {
+      "id": "editorial_paper_cutout",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 1,
+      "order": {
+        "map.composition": 1651
+      }
+    },
+    {
+      "id": "editorial_dark_radar",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 1,
+      "order": {
+        "map.composition": 1651
+      }
+    },
+    {
+      "id": "editorial_blueprint",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 1,
+      "order": {
+        "map.composition": 1651
+      }
+    },
+    {
+      "id": "editorial_connection_arc",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 1,
+      "order": {
+        "map.composition": 1651
+      }
+    },
+    {
+      "id": "editorial_floating_island",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "min_pin_count": 1,
+      "max_pin_count": 1,
+      "order": {
+        "map.composition": 1651
+      }
     }
   ]
 }

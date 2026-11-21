@@ -20,9 +20,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -32,11 +36,22 @@ import (
 // identical plan. It is a value, not a log line, so the receipt can prove it.
 const CacheHitPlan = "HIT_PLAN"
 
+// MaxBytesEnv caps the on-disk size of the plan-keyed master cache. A value
+// <= 0 disables the bound (the historical behaviour); the default is
+// DefaultMaxBytes.
+const MaxBytesEnv = "PIPELINEGEN_FINAL_AUDIO_CACHE_MAX_BYTES"
+
+// DefaultMaxBytes is the default cap: 4 GiB. A certified AAC master is a few
+// megabytes, so this holds well over a thousand plans while guaranteeing that
+// an eval loop cannot fill the data disk with revisions nobody will reuse.
+const DefaultMaxBytes int64 = 4 << 30
+
 // FinalAudioCache is a directory of certified masters addressed by plan hash.
 // A nil cache (or an empty directory) disables reuse, which is how an A/B run
 // measures the cache itself.
 type FinalAudioCache struct {
-	dir string
+	dir      string
+	maxBytes int64
 }
 
 // CachedFinalAudioReference is the immutable metadata needed to materialize a
@@ -92,7 +107,13 @@ func NewFinalAudioCache(dir string) *FinalAudioCache {
 		// end up with a cache it asked to disable.
 		return nil
 	}
-	return &FinalAudioCache{dir: strings.TrimSpace(dir)}
+	maxBytes := DefaultMaxBytes
+	if raw := strings.TrimSpace(os.Getenv(MaxBytesEnv)); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			maxBytes = parsed
+		}
+	}
+	return &FinalAudioCache{dir: strings.TrimSpace(dir), maxBytes: maxBytes}
 }
 
 func (c *FinalAudioCache) Enabled() bool {
@@ -247,6 +268,63 @@ func (c *FinalAudioCache) Put(plan capabilityaudio.CompiledAudioPlan, ref Cached
 		return
 	}
 	_ = os.Rename(sidecarPath, base+".json")
+	c.enforceByteBudget(base)
+}
+
+// enforceByteBudget keeps the cache within maxBytes, evicting the least
+// recently used entries (oldest modification time) first. base is the entry
+// just written and is never evicted. Errors are ignored on purpose: the cache
+// is an optimization, so a failed eviction leaves the previous bound in place
+// rather than failing a render.
+func (c *FinalAudioCache) enforceByteBudget(base string) {
+	if c == nil || c.maxBytes <= 0 {
+		return
+	}
+	type cachedEntry struct {
+		master  string
+		sidecar string
+		size    int64
+		mod     time.Time
+	}
+	var entries []cachedEntry
+	var total int64
+	walkErr := filepath.WalkDir(c.dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".json") {
+			return nil
+		}
+		payload, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		var meta finalAudioCacheEntry
+		if json.Unmarshal(payload, &meta) != nil {
+			return nil
+		}
+		master := strings.TrimSuffix(path, ".json") + FinalAudioContainerExt(meta.Container)
+		info, statErr := os.Stat(master)
+		if statErr != nil || !info.Mode().IsRegular() {
+			return nil
+		}
+		entries = append(entries, cachedEntry{master: master, sidecar: path, size: info.Size(), mod: info.ModTime()})
+		total += info.Size()
+		return nil
+	})
+	if walkErr != nil || total <= c.maxBytes {
+		return
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].mod.Before(entries[j].mod) })
+	for _, e := range entries {
+		if total <= c.maxBytes {
+			break
+		}
+		if strings.TrimSuffix(e.sidecar, ".json") == base {
+			continue
+		}
+		if os.Remove(e.master) == nil {
+			_ = os.Remove(e.sidecar)
+			total -= e.size
+		}
+	}
 }
 
 // stageCachedFinalAudio materializes independent run-owned bytes under a unique

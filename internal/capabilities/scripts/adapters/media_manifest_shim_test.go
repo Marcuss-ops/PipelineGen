@@ -10,8 +10,17 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 	"github.com/stretchr/testify/require"
 )
+
+// resetImageDiscoveryCaches isolates tests that assert on MISS/provider calls:
+// the fan-out L1 is package-scoped, and a zero-result discovery from an earlier
+// test is now remembered as a 15-minute negative observation (ELIM-01).
+func resetImageDiscoveryCaches() {
+	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
+	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
+}
 
 // panickingImageSearcher fails the run if the provider path is ever entered:
 // a pinned segment must never reach discovery.
@@ -173,6 +182,7 @@ func TestMediaManifestPinsServeCacheOnly(t *testing.T) {
 // TestMediaResolverImageStageUnpinnedKeepsNormalPath is the no-pins guard:
 // without the opt-in the stage must behave exactly as before (provider path).
 func TestMediaResolverImageStageUnpinnedKeepsNormalPath(t *testing.T) {
+	resetImageDiscoveryCaches()
 	searcher := &panickingImageSearcher{}
 	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil).
 		WithMediaManifestPins(nil)
@@ -188,6 +198,7 @@ func TestMediaResolverImageStageUnpinnedKeepsNormalPath(t *testing.T) {
 // TestMediaResolverImageStageUnpinnedSegmentKeepsDiscovery: pins loaded for
 // one scene must not suppress discovery of segments the manifest does not pin.
 func TestMediaResolverImageStageUnpinnedSegmentKeepsDiscovery(t *testing.T) {
+	resetImageDiscoveryCaches()
 	searcher := &panickingImageSearcher{}
 	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil).
 		WithMediaManifestPins(testPins(t))
@@ -275,6 +286,7 @@ func TestVidRushProviderFanoutStockBindingIgnoresBackgroundPins(t *testing.T) {
 // TestVidRushProviderFanoutUnpinnedKeepsProviders: without pins the fan-out
 // keeps its normal discovery behavior.
 func TestVidRushProviderFanoutUnpinnedKeepsProviders(t *testing.T) {
+	resetImageDiscoveryCaches()
 	searcher := &panickingImageSearcher{}
 	fanout := NewVidRushProviderFanout(searcher)
 

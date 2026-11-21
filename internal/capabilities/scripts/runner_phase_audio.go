@@ -269,7 +269,7 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 		// retry or a revision that leaves the plan untouched must not pay
 		// mix + AAC again. The cache re-hashes the bytes before answering,
 		// and the certification below still runs on the reused reference.
-		if req.FinalJob {
+		if r.finalAudioCacheApplies(req) {
 			cacheStarted := time.Now()
 			if cachedRef, ok := r.finalAudioCache.Take(compiledAudioPlan, os.TempDir()); ok {
 				cached := finalAudioReferenceFromCache(cachedRef)
@@ -331,7 +331,7 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 				return false
 			}
-			if req.FinalJob {
+			if r.finalAudioCacheApplies(req) {
 				r.finalAudioCache.Put(compiledAudioPlan, finalAudioCacheReference(finalAudio))
 			}
 		}

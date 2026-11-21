@@ -1,9 +1,10 @@
 package scriptgeneration
 
 import (
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"testing"
+
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 )
 
 func feedbackPlan(t *testing.T, queries []generationcontract.SemanticSearchQuery, entities ...string) *SemanticProductionPlan {

@@ -2,11 +2,12 @@ package scriptgeneration
 
 import (
 	"context"
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/providerbudget"
 )

@@ -203,15 +203,23 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		zap.Bool("require_zero_copy", req.Execution.RequireZeroCopy),
 	)
 
-	publishFolderID, err := w.resolvePublishFolder(ctx, j, &req, phase, inputs.resumeFolder)
-	if err != nil {
-		return nil, err
-	}
-
+	// Deterministic cache FIRST: a hit returns the previously certified and
+	// published locator, so it needs neither preparation nor the Drive leaf
+	// resolution. The fingerprint already carries the destination identity
+	// (drive_folder_id + subfolder_name), so a hit cannot cross destinations;
+	// the resolved leaf is only consumed by a job that actually renders,
+	// publishes and delivers. Resolving before this probe made every duplicate
+	// of an already-certified clip pay one Drive round-trip (measured: 882 ms
+	// average, 1.13 s in the 1.8 s cache-hit path) for a folder it never used.
 	if phase != RenderPhaseSettle {
 		if result, hit := w.tryCachedCompletion(ctx, j, &req, jobStart, progress); hit {
 			return result, nil
 		}
+	}
+
+	publishFolderID, err := w.resolvePublishFolder(ctx, j, &req, phase, inputs.resumeFolder)
+	if err != nil {
+		return nil, err
 	}
 
 	if phase == RenderPhaseSettle {
@@ -595,6 +603,21 @@ func (w *Worker) settleAndComplete(
 		// budget of zero waits to completion), so the delay is always positive.
 		return nil, job.DeferredAfter(waitBudget, fmt.Sprintf(
 			"remote render %s is still running after %s", continuation.Submission.RenderJobID, waitBudget))
+	}
+	if errors.Is(err, ErrRenderStalled) {
+		// The watchdog already cancelled the remote job: the lane is free. This
+		// is a FAILURE, not a wait — retrying the same render identity would
+		// park the lane again on a render that never advanced (ELIM-06).
+		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderEnd, kernobs.StageStatusFailed, err)
+		kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: StageClipRender}, renderStart, renderEnd, err)
+		w.log.Error("clip.render.job.settle_stalled",
+			zap.String("subsystem", "clip_render_worker"),
+			zap.String("job_id", j.ID),
+			zap.String("render_job_id", continuation.Submission.RenderJobID),
+			zap.Int64("elapsed_ms", renderMS),
+			zap.Error(err),
+		)
+		return nil, err
 	}
 	renderStatus := kernobs.StageStatusCompleted
 	if err != nil {

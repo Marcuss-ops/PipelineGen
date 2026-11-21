@@ -2,10 +2,11 @@ package scriptgeneration
 
 import (
 	"context"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"strings"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 func manifestTestPlan() capmodel.OverlayPlan {

@@ -40,15 +40,22 @@ func MapTerritoryFeatureScopeCompatible(scope string) bool {
 	}
 }
 
-// MapTerritoryOverlayCompositions lists the compositions served BY the
-// ported map producer that require `territory_feature` on the wire (the
-// renderer's payload validation refuses them without it). The full renderer
-// vocabulary also gates satellite_scan_reveal / territory_flood_fill /
-// territory_extrusion on this field, but those compositions are not in the
-// ported subset yet — adding one there must extend this list in the same
-// change as PortedMapCompositions.
+// MapTerritoryOverlayCompositions lists the compositions served by the
+// producer that require `territory_feature` on the wire. They all consume the
+// same exact ADM3 feature resolved from the first grounded pin.
 func MapTerritoryOverlayCompositions() []string {
-	return []string{"territory_glow_reveal"}
+	return []string{
+		"territory_glow_reveal",
+		"satellite_scan_reveal",
+		"territory_flood_fill",
+		"territory_tactical_fill",
+		"territory_extrusion",
+		"volumetric_laser_scan",
+		"vector_particle_flow",
+		"dark_mirror_diorama",
+		"voronoi_heat_contours",
+		"holographic_postfx",
+	}
 }
 
 // MapTerritoryOverlayRequired reports whether a composition requires the
@@ -63,6 +70,12 @@ func MapTerritoryOverlayRequired(id string) bool {
 }
 
 const adm3CatalogRelPath = "italy_admin/geoBoundaries_ITA_ADM3.simplified.geojson"
+
+// MapMountainOverlayDefault is installed beside the native map catalog and
+// gives the mountain-ridge composition a real, reusable RGBA relief asset.
+func MapMountainOverlayDefault() string {
+	return "showcases/assets/taurus_mountain_range.png"
+}
 
 type adm3Catalog struct {
 	features []adm3Feature

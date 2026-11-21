@@ -1,8 +1,9 @@
 package scriptgeneration
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
 // TestRenderRunIDDerivation pins the run-identity derivation shared with the

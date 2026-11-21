@@ -184,8 +184,10 @@ type ExternalConfig struct {
 	// job: a clip whose render finishes just after a poll is only noticed at
 	// the next tick.
 	//
-	// 0 (default) keeps the built-in 250 ms fallback cadence. See
-	// waitClipQueue and waitForCompletion for the two fallback loops.
+	// 0 (default) keeps the built-in fallback cadences: 500 ms for the
+	// clip.render executor and 250 ms for the overlay enqueuer. Neither value
+	// is spent on the event-driven path, so this key must not be lowered to
+	// "reduce latency" on a deployment that exposes GET /jobs/{id}/wait.
 	RenderingGenPollIntervalMS int `yaml:"renderinggen_poll_interval_ms" env:"RENDERINGGEN_POLL_INTERVAL_MS" default:"0"`
 
 	// GeocodingBaseURL wires a Nominatim-compatible geocoder for grounded

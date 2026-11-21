@@ -26,6 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // extractFanOut fans out ProcessYouTubeSegmentUseCase.Execute across the
@@ -49,7 +50,32 @@ func (s *ExtractionService) extractFanOut(
 	// state): the deferred release fires when this Extract() call completes, never
 	// for a sibling request. A block that failed to stage simply leaves its
 	// segments with the zero segmentSource, i.e. the per-segment yt-dlp path.
-	stagedSections := s.stageSectionBlocks(ctx, req, videoID, sectionBlocksForSegments(segments))
+	keepAudio := resolveKeepAudio(req)
+	// A fully cached re-run has every clip binary already on disk/Drive, so
+	// staging the source sections would download a file the fan-out is about
+	// to skip. Check the same authoritative cache the per-segment pipeline
+	// uses before paying the network cost.
+	allCached := len(segments) > 0
+	if allCached {
+		for i, seg := range segments {
+			cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, subtitleFolderID, keepAudio)
+			if !s.processSeg.SegmentCacheHit(ctx, cmd) {
+				allCached = false
+				break
+			}
+		}
+	}
+	var stagedSections []stagedSection
+	if !allCached {
+		blocks := sectionBlocksForSegments(segments)
+		_ = kernobs.MeasureStage(ctx, kernobs.StageYouTubeSectionStaging, func(stageCtx context.Context) error {
+			stagedSections = s.stageSectionBlocks(stageCtx, req, videoID, blocks)
+			return nil
+		})
+	} else {
+		s.log.Info("youtube section staging skipped: every segment is already cached",
+			zap.String("video_id", videoID), zap.Int("segments", len(segments)))
+	}
 	segmentSources := segmentSourcesFromStaged(len(segments), stagedSections)
 	if len(stagedSections) > 0 {
 		if stager := s.processSeg.FullSourceStager(); stager != nil {
@@ -58,44 +84,50 @@ func (s *ExtractionService) extractFanOut(
 	}
 
 	resp := buildInitialResponse(req, segments, videoID, driveFolderID, driveFolderPath)
-	keepAudio := resolveKeepAudio(req)
-	sem := make(chan struct{}, s.maxConcurrentVideos)
-	results := make([]youtubetypes.ProcessSegmentResult, len(segments))
-	var wg sync.WaitGroup
-	for i, seg := range segments {
-		i, seg := i, seg
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					panicErr := fmt.Errorf("segment %d panic: %v", i, r)
-					results[i] = failedFanOutResult(youtubetypes.ProcessSegmentResult{}, seg, i, driveFolderID, driveFolderPath, panicErr)
-					s.log.Error("panic in segment goroutine (extractFanOut recovered)",
-						zap.Int("segment_index", i),
-						zap.String("video_id", videoID),
-						zap.Error(panicErr),
-						zap.Any("recover", r))
+	var (
+		sem     chan struct{}
+		results []youtubetypes.ProcessSegmentResult
+		wg      sync.WaitGroup
+	)
+	_ = kernobs.MeasureStage(ctx, kernobs.StageYouTubeFanout, func(fanoutCtx context.Context) error {
+		sem = make(chan struct{}, s.maxConcurrentVideos)
+		results = make([]youtubetypes.ProcessSegmentResult, len(segments))
+		for i, seg := range segments {
+			i, seg := i, seg
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						panicErr := fmt.Errorf("segment %d panic: %v", i, r)
+						results[i] = failedFanOutResult(youtubetypes.ProcessSegmentResult{}, seg, i, driveFolderID, driveFolderPath, panicErr)
+						s.log.Error("panic in segment goroutine (extractFanOut recovered)",
+							zap.Int("segment_index", i),
+							zap.String("video_id", videoID),
+							zap.Error(panicErr),
+							zap.Any("recover", r))
+					}
+				}()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, subtitleFolderID, keepAudio)
+				// Both fields come from the SAME staged block, so the seek the pipeline
+				// performs (segment start - block start) always refers to the file it
+				// was cut from. Facts were probed once per block, never per segment.
+				src := segmentSources[i]
+				cmd.PreDownloadedPath = src.Path
+				cmd.PreDownloadedOffsetSec = src.OffsetSec
+				cmd.SourceFacts = src.Facts
+				res, execErr := s.processSeg.Execute(fanoutCtx, cmd)
+				if execErr != nil {
+					res = failedFanOutResult(res, seg, i, driveFolderID, driveFolderPath, execErr)
 				}
+				results[i] = res
 			}()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, subtitleFolderID, keepAudio)
-			// Both fields come from the SAME staged block, so the seek the pipeline
-			// performs (segment start - block start) always refers to the file it
-			// was cut from. Facts were probed once per block, never per segment.
-			src := segmentSources[i]
-			cmd.PreDownloadedPath = src.Path
-			cmd.PreDownloadedOffsetSec = src.OffsetSec
-			cmd.SourceFacts = src.Facts
-			res, execErr := s.processSeg.Execute(ctx, cmd)
-			if execErr != nil {
-				res = failedFanOutResult(res, seg, i, driveFolderID, driveFolderPath, execErr)
-			}
-			results[i] = res
-		}()
-	}
-	wg.Wait()
+		}
+		wg.Wait()
+		return nil
+	})
 	for _, res := range results {
 		resp.Items = append(resp.Items, res.Item)
 	}

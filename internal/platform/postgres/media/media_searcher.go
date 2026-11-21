@@ -43,6 +43,27 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
+// annEfSearch is the HNSW candidate window used for every media query.
+//
+// The pgvector default (40) is enough for an unfiltered nearest-neighbour
+// lookup, but the media search SQL applies the asset filters AFTER the
+// HNSW index scan (media_type, source, category, lifecycle, ...). A
+// selective filter can therefore discard every one of the 40 candidates
+// even when the true nearest neighbour matches the filter: the index returns
+// 40 images, the join keeps only videos, and the caller sees zero results.
+// Raising the window keeps enough candidates for the post-index filters;
+// the exact-scan fallback below covers the remaining cases (and older
+// pgvector versions without the hnsw.ef_search GUC).
+const annEfSearch = 400
+
+// mediaQueryer is the read surface shared by *sql.DB and *sql.Tx. The ANN
+// path runs on a transaction so SET LOCAL can tune the HNSW window for this
+// query only and never leak the setting into the connection pool.
+type mediaQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // MediaSearcher implements appsearch.VectorStorePort against the
 // PostgreSQL media SSOT (pgvector).
 type MediaSearcher struct {
@@ -157,7 +178,7 @@ func (s *MediaSearcher) Search(ctx context.Context, req appsearch.VectorSearchRe
 	`, family.dim, vecPlaceholder, where, family.dim, vecPlaceholder, limitPlaceholder)
 	args = append(args, vec, limit)
 
-	return s.queryResults(ctx, req.MinScore, query, args...)
+	return s.runANNQuery(ctx, query, args, req.MinScore)
 }
 
 // HybridSearch fuses the dense ANN ranking with lexical BM25 relevance
@@ -251,15 +272,86 @@ func (s *MediaSearcher) HybridSearch(ctx context.Context, req appsearch.HybridSe
 	`, vecPh, denseWhere, limitPh, sparsePh, sparsePh, family.dim, where)
 	args = append(args, vec, limit, req.SparseText)
 
-	return s.queryResults(ctx, req.MinScore, query, args...)
+	var out []appsearch.VectorSearchResult
+	err = s.withANNQuery(ctx, func(tx *sql.Tx) error {
+		var qerr error
+		out, qerr = s.queryResults(ctx, tx, req.MinScore, query, args...)
+		if qerr != nil || len(out) > 0 {
+			return qerr
+		}
+		if _, exactErr := tx.ExecContext(ctx, `SET LOCAL enable_indexscan = off`); exactErr != nil {
+			return qerr
+		}
+		out, qerr = s.queryResults(ctx, tx, req.MinScore, query, args...)
+		return qerr
+	})
+	return out, err
+}
+
+// runANNQuery executes the ANN query on a transaction with a wider HNSW
+// candidate window. When the filtered ANN leg yields no rows it retries the
+// same query with the index disabled, so a selective filter can never turn a
+// matching asset into a false "no results" page.
+func (s *MediaSearcher) runANNQuery(ctx context.Context, query string, args []any, minScore float64) ([]appsearch.VectorSearchResult, error) {
+	var out []appsearch.VectorSearchResult
+	err := s.withANNQuery(ctx, func(tx *sql.Tx) error {
+		var qerr error
+		out, qerr = s.queryResults(ctx, tx, minScore, query, args...)
+		if qerr != nil || len(out) > 0 {
+			return qerr
+		}
+		// The HNSW index returned only candidates that the asset filters
+		// removed. Fall back to an exact scan inside the same transaction;
+		// correctness is owned by the query, not by the approximate index.
+		if _, exactErr := tx.ExecContext(ctx, `SET LOCAL enable_indexscan = off`); exactErr != nil {
+			return qerr
+		}
+		out, qerr = s.queryResults(ctx, tx, minScore, query, args...)
+		return qerr
+	})
+	return out, err
+}
+
+// withANNQuery pins a transaction and widens the HNSW candidate window for
+// this statement only. SET LOCAL is intentionally used instead of a
+// session-level SET: the database/sql pool would otherwise carry the tuning
+// into unrelated requests. The vector GUC is registered by touching the
+// vector type first; if the running pgvector predates hnsw.ef_search, the
+// query falls back to an exact scan instead of returning a truncated page.
+func (s *MediaSearcher) withANNQuery(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("pgvector search: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Loading the vector type registers the hnsw.* custom GUCs in this
+	// session before SET LOCAL is parsed.
+	if _, err := tx.ExecContext(ctx, `SELECT '[1]'::vector`); err != nil {
+		return fmt.Errorf("pgvector search: load vector type: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", annEfSearch)); err != nil {
+		// Older pgvector: no tuning GUC. Use the exact scan rather than the
+		// default 40-candidate window that can lose filtered matches.
+		if _, exactErr := tx.ExecContext(ctx, `SET LOCAL enable_indexscan = off`); exactErr != nil {
+			return fmt.Errorf("pgvector search: configure ANN scan: %w (exact fallback: %v)", err, exactErr)
+		}
+	}
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("pgvector search: commit: %w", err)
+	}
+	return nil
 }
 
 // queryResults executes a (asset_id, similarity) query and hydrates the
 // full result surface from media_assets — the same PostgreSQL SSOT.
 // Rows below MinScore are dropped; missing rows cannot occur (the join
 // is in-query) but are skipped defensively.
-func (s *MediaSearcher) queryResults(ctx context.Context, minScore float64, query string, args ...any) ([]appsearch.VectorSearchResult, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
+func (s *MediaSearcher) queryResults(ctx context.Context, q mediaQueryer, minScore float64, query string, args ...any) ([]appsearch.VectorSearchResult, error) {
+	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("pgvector search: query: %w", err)
 	}
@@ -289,7 +381,7 @@ func (s *MediaSearcher) queryResults(ctx context.Context, minScore float64, quer
 		if minScore > 0 && h.score < minScore {
 			continue
 		}
-		asset, err := s.fetchAsset(ctx, h.assetID)
+		asset, err := s.fetchAsset(ctx, q, h.assetID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
@@ -304,8 +396,8 @@ func (s *MediaSearcher) queryResults(ctx context.Context, minScore float64, quer
 }
 
 // fetchAsset hydrates one asset from media_assets inside the same SSOT.
-func (s *MediaSearcher) fetchAsset(ctx context.Context, assetID string) (*assetRow, error) {
-	row := s.db.QueryRowContext(ctx, `
+func (s *MediaSearcher) fetchAsset(ctx context.Context, q mediaQueryer, assetID string) (*assetRow, error) {
+	row := q.QueryRowContext(ctx, `
 		SELECT id, name, title, source, media_type, category, language,
 		       tags, search_text, duration_ms, lifecycle_state,
 		       youtube_video_id, youtube_url, start_time, end_time, style

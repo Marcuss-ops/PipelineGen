@@ -3,10 +3,12 @@ package finalizer
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/remote"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 
@@ -25,8 +27,9 @@ import (
 //   - SizeBytes > 0
 //   - IdempotencyKey is non-empty
 type ArtifactPreparation struct {
-	publisher finalization.PublisherPort
-	log       *zap.Logger
+	publisher   finalization.PublisherPort
+	log         *zap.Logger
+	drivePolicy finalization.DrivePolicy
 }
 
 // NewArtifactPreparation creates an ArtifactPreparation with the given
@@ -36,10 +39,26 @@ func NewArtifactPreparation(pub finalization.PublisherPort, log *zap.Logger) *Ar
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &ArtifactPreparation{
-		publisher: pub,
-		log:       log,
+	policy, err := finalization.DrivePolicyFromEnv(os.Getenv)
+	if err != nil {
+		// A malformed switch must not decide where deliverables live: keep the
+		// historical behaviour and say so.
+		log.Warn("invalid artifact drive policy; keeping every artifact on Drive", zap.Error(err))
+		policy = finalization.DefaultDrivePolicy()
 	}
+	return &ArtifactPreparation{
+		publisher:   pub,
+		log:         log,
+		drivePolicy: policy,
+	}
+}
+
+// NewArtifactPreparationWithDrivePolicy is the explicit-policy constructor
+// (tests and composition roots that already parsed the switch).
+func NewArtifactPreparationWithDrivePolicy(pub finalization.PublisherPort, log *zap.Logger, policy finalization.DrivePolicy) *ArtifactPreparation {
+	preparation := NewArtifactPreparation(pub, log)
+	preparation.drivePolicy = policy
+	return preparation
 }
 
 // Compile-time assertion.
@@ -69,6 +88,21 @@ func (s *ArtifactPreparation) Prepare(
 		return s.validate(opCtx, artifact)
 	}); err != nil {
 		return finalization.PublishedArtifact{}, err
+	}
+
+	// ONE policy answers "does this artifact need Drive?". An intermediate is
+	// already immutable in the content-addressed object store, so copying it
+	// to Drive is pure cost: the decision (and its rollback switch) lives in
+	// finalization.DrivePolicy, never at a call site (ELIM-03).
+	if !s.drivePolicy.RequiresDrive(artifact) {
+		location := finalization.ObjectStoreLocation(artifact)
+		observability.ArtifactDrivePublishSkippedTotal.WithLabelValues(string(artifact.Kind)).Inc()
+		s.log.Info("artifact kept in the object store (intermediate, Drive policy=deliverables)",
+			zap.String("artifact_id", artifact.ArtifactID),
+			zap.String("kind", string(artifact.Kind)),
+			zap.String("sha256", artifact.SHA256),
+		)
+		return s.published(artifact, location), nil
 	}
 
 	// Publish to remote storage.
@@ -105,6 +139,13 @@ func (s *ArtifactPreparation) Prepare(
 		zap.String("action", string(location.Action)),
 	)
 
+	return s.published(artifact, location), nil
+}
+
+// published is the ONE projection from (artifact, location) to the published
+// document. Both the Drive path and the object-store path use it, so an
+// intermediate and a deliverable cannot disagree about their metadata shape.
+func (s *ArtifactPreparation) published(artifact finalization.VerifiedArtifact, location finalization.AssetLocation) finalization.PublishedArtifact {
 	// Stamp the post-publication Drive identity onto the artifact metadata
 	// so downstream projections (manifest, metadata_json, pgvector) read a
 	// single source of truth: drive_file_id ← Location.FileID, drive_link ←
@@ -141,7 +182,7 @@ func (s *ArtifactPreparation) Prepare(
 		Language:         artifact.Language,
 		ArtifactMetadata: metadata,
 		Location:         location,
-	}, nil
+	}
 }
 
 // validate performs fail-fast checks on the verified artifact.

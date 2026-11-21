@@ -446,9 +446,25 @@ func (e *executionRun) parallelFanOut() bool {
 	var assetsOutcome vidRushPrepareOutcome
 	joinStart := time.Now()
 	if err := kernobs.MeasureStage(e.ctx, "prepare_join", func(stageCtx context.Context) error {
-		semanticOutcome = <-semanticDone
-		assetsOutcome = <-assetsDone
-		return semanticOutcome.err
+		// The two branch waits are measured as their own operations inside the
+		// stage, so prepare_join wall is no longer unattributed: the semantic
+		// wait is the provider_resolver's barrier and the assets wait is the
+		// audio-prefetch barrier (ELIM-02). The receives are sequential on
+		// purpose: the second operation is only the ADDITIONAL wait the first
+		// one did not already cover.
+		semanticErr := kernobs.MeasureOperation(stageCtx, kernobs.OperationInfo{
+			Stage: kernobs.StageName("prepare_join"), Component: kernobs.ComponentProviderResolver, Operation: kernobs.OperationJoinBarrier,
+		}, func(context.Context) error {
+			semanticOutcome = <-semanticDone
+			return semanticOutcome.err
+		})
+		_ = kernobs.MeasureOperation(stageCtx, kernobs.OperationInfo{
+			Stage: kernobs.StageName("prepare_join"), Component: kernobs.ComponentFFmpeg, Operation: kernobs.OperationJoinBarrier,
+		}, func(context.Context) error {
+			assetsOutcome = <-assetsDone
+			return nil
+		})
+		return semanticErr
 	}); err != nil && semanticOutcome.err == nil {
 		semanticOutcome.err = err
 	}

@@ -129,14 +129,16 @@ type EditorialBulletStyle struct {
 // MapPresentation is the resolved unified map policy. Only the fields that
 // change planner decisions are typed; renderer parameters stay outside.
 type MapPresentation struct {
-	MapType           string `json:"map_type,omitempty"`
-	CameraAnimation   string `json:"camera_animation,omitempty"`
-	LabelAnimation    string `json:"label_animation,omitempty"`
-	Animation         string `json:"animation,omitempty"`
-	Level             string `json:"level,omitempty"`
-	MaxPinsPerGroup   int    `json:"max_pins_per_group,omitempty"`
-	GroupNearbyPlaces bool   `json:"group_nearby_places,omitempty"`
-	AllowRoute        bool   `json:"allow_route,omitempty"`
+	MapType           string   `json:"map_type,omitempty"`
+	CameraAnimation   string   `json:"camera_animation,omitempty"`
+	LabelAnimation    string   `json:"label_animation,omitempty"`
+	Animation         string   `json:"animation,omitempty"`
+	AnimationPool     []string `json:"animation_pool,omitempty"`
+	StylePool         []string `json:"style_pool,omitempty"`
+	Level             string   `json:"level,omitempty"`
+	MaxPinsPerGroup   int      `json:"max_pins_per_group,omitempty"`
+	GroupNearbyPlaces bool     `json:"group_nearby_places,omitempty"`
+	AllowRoute        bool     `json:"allow_route,omitempty"`
 }
 
 // Scene is one timed scene. TimelineStartUS/DurationUS are the canonical plan

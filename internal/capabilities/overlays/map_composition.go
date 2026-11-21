@@ -49,6 +49,11 @@ type MapCompositionInput struct {
 	// AreaGlowRadiusKM carries the plan item's area glow radius: the ported
 	// area_glow_pulse composition refuses to render without a positive one.
 	AreaGlowRadiusKM float64
+	// CountryFeature is supplied by the caller or inferred as Italy when the pin
+	// resolves to the shipped ADM3 catalog.
+	CountryFeature       string
+	TimelineLabel        string
+	MountainOverlayAsset string
 }
 
 // MapCompositionFamily is the editorial family of a certified cartographic
@@ -84,7 +89,7 @@ var MapEditorialSceneBounds = func() map[string][4]float64 {
 // explicit requests (the `exact` error path).
 func MapCompositionPresentationCompatible(id string, input MapCompositionInput) error {
 	label := strings.TrimSpace(input.Label)
-	if strings.HasPrefix(id, "ed_") && label != "" && label != "none" {
+	if (strings.HasPrefix(id, "ed_") || strings.HasPrefix(id, "editorial_")) && label != "" && label != "none" {
 		return fmt.Errorf("certified editorial map scenes require label_animation=none, got %q", label)
 	}
 	return nil
@@ -142,7 +147,17 @@ func MapCompositionCertified() []string {
 // base flyover presentation; a composition joins the pool the moment the
 // renderer draws it from planner-supplied data.
 func MapCompositionRandomPool() []string {
-	return PortedMapCompositions()
+	ported := make(map[string]bool, len(PortedMapCompositions()))
+	for _, id := range PortedMapCompositions() {
+		ported[id] = true
+	}
+	pool := make([]string, 0, len(ported))
+	for _, id := range AnimationRandomCandidates("map.composition") {
+		if ported[id] {
+			pool = append(pool, id)
+		}
+	}
+	return pool
 }
 
 // EligibleMapCompositions removes only renderer-documented multi-pin systems
@@ -201,6 +216,15 @@ func mapCompositionWireDataCompatible(id string, input MapCompositionInput) erro
 	}
 	if id == "area_glow_pulse" && input.AreaGlowRadiusKM <= 0 {
 		return fmt.Errorf("map_animation %q requires a positive area_glow_radius_km payload", id)
+	}
+	if (id == "continental_atlas" || id == "historic_location_timeline") && strings.TrimSpace(input.CountryFeature) == "" {
+		return fmt.Errorf("map_animation %q requires country_feature in map_presentation or a grounded Italian pin", id)
+	}
+	if id == "historic_location_timeline" && strings.TrimSpace(input.TimelineLabel) == "" {
+		return fmt.Errorf("map_animation %q requires timeline_label", id)
+	}
+	if id == "mountain_ridge_callout" && strings.TrimSpace(input.MountainOverlayAsset) == "" {
+		return fmt.Errorf("map_animation %q requires mountain_overlay_asset", id)
 	}
 	return nil
 }
@@ -289,7 +313,7 @@ func AdmitMapComposition(id string, input MapCompositionInput, certified []strin
 // closed with a precise reason — never a silent swap). The second result is
 // the DECLARED fallback reason recorded in the map decision report when the
 // planner's strategy redirected the presentation.
-func ResolveMapCompositionFor(requested, seed, slot string, input MapCompositionInput) (string, string, error) {
+func ResolveMapCompositionFor(requested, seed, slot string, input MapCompositionInput, randomPools ...[]string) (string, string, error) {
 	requested = strings.TrimSpace(requested)
 	if requested != "" && !strings.EqualFold(requested, "random") {
 		if err := AdmitMapComposition(requested, input, MapCompositionCertified()); err != nil {
@@ -297,7 +321,20 @@ func ResolveMapCompositionFor(requested, seed, slot string, input MapComposition
 		}
 		return requested, "", nil
 	}
-	pool := EligibleMapCompositionsFor(input, MapCompositionRandomPool())
+	randomPool := MapCompositionRandomPool()
+	if len(randomPools) > 0 && len(randomPools[0]) > 0 {
+		certified := make(map[string]bool, len(MapCompositionCertified()))
+		for _, id := range MapCompositionCertified() {
+			certified[id] = true
+		}
+		for _, id := range randomPools[0] {
+			if !certified[id] {
+				return "", "", fmt.Errorf("unsupported map composition in runtime pool: %q", id)
+			}
+		}
+		randomPool = append([]string(nil), randomPools[0]...)
+	}
+	pool := EligibleMapCompositionsFor(input, randomPool)
 	selected := DeterministicMapCompositionChoice(seed, slot, pool)
 	if selected == "" {
 		// Base flyover (map_animation empty): the native renderer's certified

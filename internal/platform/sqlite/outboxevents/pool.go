@@ -49,6 +49,7 @@ package outboxevents
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -98,6 +99,20 @@ type eventFinisher interface {
 	MarkDeferred(ctx context.Context, eventID int64, leaseID, errMsg string, nextAttemptAt time.Time) error
 	MarkFailed(ctx context.Context, eventID int64, leaseID, errMsg string, nextAttemptAt time.Time) error
 	MarkCompleted(ctx context.Context, eventID int64, leaseID string) error
+}
+
+// eventLeaseRenewer is implemented by Repository. Kept separate from
+// eventFinisher so small test and migration adapters do not need to expose
+// lease mechanics they do not own.
+type eventLeaseRenewer interface {
+	RenewLease(ctx context.Context, eventID int64, workerID, leaseID string, leaseTTL time.Duration) error
+}
+
+// eventTimeoutProvider lets handlers with known slow external work opt into a
+// longer execution deadline without weakening the timeout for every outbox
+// event. Their lease is kept alive by the pool while that deadline runs.
+type eventTimeoutProvider interface {
+	ProcessingTimeout() time.Duration
 }
 
 type Pool struct {
@@ -355,6 +370,75 @@ func (p *Pool) finish(ctx context.Context, evt Event, claim *Claim, outcome stri
 	}
 }
 
+// handleWithLease renews the fencing lease while a handler is running. The
+// lease uses the pool's ordinary timeout as its renewal window; a handler may
+// request a longer hard deadline for slow external work without allowing a
+// second worker to reclaim the event while it is still active.
+func (p *Pool) handleWithLease(ctx context.Context, claim *Claim, handler Handler) error {
+	processingTimeout := p.cfg.ProcessTimeout
+	if provider, ok := handler.(eventTimeoutProvider); ok {
+		if requested := provider.ProcessingTimeout(); requested > 0 {
+			processingTimeout = requested
+		}
+	}
+	procCtx, cancel := context.WithTimeout(ctx, processingTimeout)
+	defer cancel()
+
+	renewer, canRenew := p.finisher.(eventLeaseRenewer)
+	if !canRenew || p.cfg.ProcessTimeout <= 0 {
+		return handler.Handle(procCtx, claim.Event)
+	}
+
+	interval := p.cfg.ProcessTimeout / 3
+	if interval <= 0 {
+		interval = p.cfg.ProcessTimeout
+	}
+	stop := make(chan struct{})
+	renewed := make(chan error, 1)
+	var stopOnce sync.Once
+	var renewErr error
+	stopRenewal := func() {
+		stopOnce.Do(func() {
+			close(stop)
+			renewErr = <-renewed
+		})
+	}
+	defer stopRenewal()
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				renewed <- nil
+				return
+			case <-ctx.Done():
+				renewed <- nil
+				return
+			case <-ticker.C:
+				renewCtx, renewCancel := context.WithTimeout(ctx, min(interval, time.Second))
+				err := renewer.RenewLease(renewCtx, claim.Event.ID, claim.WorkerID, claim.LeaseID, p.cfg.ProcessTimeout)
+				renewCancel()
+				if err != nil {
+					cancel()
+					renewed <- err
+					return
+				}
+			}
+		}
+	}()
+
+	handlerErr := handler.Handle(procCtx, claim.Event)
+	stopRenewal()
+	if renewErr != nil {
+		if errors.Is(handlerErr, context.Canceled) || errors.Is(handlerErr, context.DeadlineExceeded) || handlerErr == nil {
+			return fmt.Errorf("outbox event lease renewal: %w", renewErr)
+		}
+		return fmt.Errorf("outbox event lease renewal: %w (handler also failed: %v)", renewErr, handlerErr)
+	}
+	return handlerErr
+}
+
 func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 	evt := claim.Event
 	p.log.Info("processing event", zap.Int64("event_id", evt.ID), zap.String("type", evt.EventType))
@@ -406,11 +490,7 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 			return
 		}
 
-		// Create timeout context for processing
-		procCtx, cancel := context.WithTimeout(ctx, p.cfg.ProcessTimeout)
-		defer cancel()
-
-		handlerErr = handler.Handle(procCtx, evt)
+		handlerErr = p.handleWithLease(ctx, claim, handler)
 	}()
 
 	// ── Route by error classification ────────────────────────────

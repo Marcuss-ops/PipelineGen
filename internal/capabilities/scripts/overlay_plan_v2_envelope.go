@@ -57,6 +57,8 @@ func overlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 		presentation.GroupNearbyPlaces = canvas.MapPresentation.GroupNearbyPlaces
 		presentation.MaxPinsPerGroup = canvas.MapPresentation.MaxPinsPerGroup
 		presentation.AllowRoute = canvas.MapPresentation.AllowRoute
+		presentation.AnimationPool = append([]string(nil), canvas.MapPresentation.AnimationPool...)
+		presentation.StylePool = append([]string(nil), canvas.MapPresentation.StylePool...)
 	}
 	// The pin is validated before it is encoded: a font the runtime does not
 	// bundle or a motion the registry does not certify must fail here, with the

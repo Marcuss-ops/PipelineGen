@@ -38,18 +38,25 @@ type mapCompositionFamily struct {
 // can never disagree about a family. Unknown ids stay in location_focus.
 func MapCompositionFamilyOf(id string) string {
 	switch strings.TrimSpace(id) {
-	case "territory_glow_reveal", "area_glow_pulse":
+	case "territory_glow_reveal", "satellite_scan_reveal", "territory_flood_fill",
+		"territory_tactical_fill", "territory_extrusion", "volumetric_laser_scan",
+		"vector_particle_flow", "dark_mirror_diorama", "voronoi_heat_contours",
+		"holographic_postfx", "area_glow_pulse":
 		return MapFamilyRegion
 	case "route_line", "multi_leg_flight":
 		return MapFamilyJourney
+	case "editorial_vox", "editorial_paper_cutout", "editorial_dark_radar",
+		"editorial_blueprint", "editorial_connection_arc", "editorial_floating_island":
+		return MapFamilyEditorial
 	}
 	return MapFamilyLocationFocus
 }
 
 // PortedMapCompositions lists the map compositions the single dynamic map
-// renderer (ChrononPlugin/maps_dynamic_map_render) exposes. The catalog is
-// intentionally limited to production map treatments; visual concept
-// showcases remain in the plugin archive and cannot be selected by the planner.
+// renderer (ChrononPlugin/maps_dynamic_map_render) can render from the data
+// PipelineGen carries or explicit map_presentation fields. Special geography
+// and extra-data styles remain exact-only and fail closed when requirements
+// are missing.
 //
 // This is the SINGLE ported-subset declaration: the resolver's random pool
 // (map_composition.go MapCompositionRandomPool) and the backend capability
@@ -59,6 +66,28 @@ func PortedMapCompositions() []string {
 		"route_line",
 		"multi_leg_flight",
 		"territory_glow_reveal",
+		"satellite_scan_reveal",
+		"territory_flood_fill",
+		"territory_tactical_fill",
+		"territory_extrusion",
+		"volumetric_laser_scan",
+		"vector_particle_flow",
+		"dark_mirror_diorama",
+		"voronoi_heat_contours",
+		"holographic_postfx",
+		"continental_atlas",
+		"historic_location_timeline",
+		"mountain_ridge_callout",
+		"radar_location_reveal",
+		"light_beam_drop",
+		"city_network_expansion",
+		"map_style_morph",
+		"editorial_vox",
+		"editorial_paper_cutout",
+		"editorial_dark_radar",
+		"editorial_blueprint",
+		"editorial_connection_arc",
+		"editorial_floating_island",
 		"area_glow_pulse",
 	}
 }

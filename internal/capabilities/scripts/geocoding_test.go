@@ -3,8 +3,9 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
-	geography "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/geography"
 	"testing"
+
+	geography "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/geography"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 

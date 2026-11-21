@@ -54,6 +54,47 @@ func TestProviderResolveBudgetDefaultsToTwoMinutes(t *testing.T) {
 	}
 }
 
+// TestSegmentBudgetCapsOneSceneInsideTheRunBudget is ELIM-01's per-segment
+// cap: the first slow scene must not be allowed to spend the whole run budget,
+// so a blocking resolver ends at the segment cap, not at the run cap.
+func TestSegmentBudgetCapsOneSceneInsideTheRunBudget(t *testing.T) {
+	resolver := &countingBlockingProviderResolver{}
+	coordinator := NewVidRushIncrementalCoordinator(&fakeSegmentEnricher{errs: map[string]error{}}, nil, 1)
+	coordinator.SetSegmentProviderResolver(resolver)
+	coordinator.providerResolveBudget = 5 * time.Second
+	coordinator.providerSegmentBudget = 25 * time.Millisecond
+
+	started := time.Now()
+	result, err := coordinator.searchProviders(context.Background(), scriptpkg.VidRushSegmentResult{SegmentID: "seg-capped"})
+	if err != nil {
+		t.Fatalf("searchProviders: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("searchProviders took %s, want the 25ms segment cap to end the stage", elapsed)
+	}
+	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "provider resolve exceeded") {
+		t.Fatalf("warnings = %v, want the degraded-provider warning", result.Warnings)
+	}
+}
+
+// TestSegmentBudgetNeverExceedsRemainingRunBudget keeps the two caps ordered:
+// a scene late in the run cannot claim a fresh 20 s slice.
+func TestSegmentBudgetNeverExceedsRemainingRunBudget(t *testing.T) {
+	resolver := &countingBlockingProviderResolver{}
+	coordinator := NewVidRushIncrementalCoordinator(&fakeSegmentEnricher{errs: map[string]error{}}, nil, 1)
+	coordinator.SetSegmentProviderResolver(resolver)
+	coordinator.providerResolveBudget = 30 * time.Millisecond
+	coordinator.providerSegmentBudget = time.Second
+
+	started := time.Now()
+	if _, err := coordinator.searchProviders(context.Background(), scriptpkg.VidRushSegmentResult{SegmentID: "seg-run-cap"}); err != nil {
+		t.Fatalf("searchProviders: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("searchProviders took %s, want the remaining run budget (30ms) to win", elapsed)
+	}
+}
+
 type countingBlockingProviderResolver struct {
 	calls atomic.Int32
 }

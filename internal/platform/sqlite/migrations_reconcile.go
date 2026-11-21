@@ -124,6 +124,113 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	return nil
 }
 
+// legacyCachePlaneRepair299Checksum is the sha256 of 299_cache_plane_repair.sql
+// as it was first applied (2026-11-18 17:18Z). Commit 86836ac6d later edited
+// that file in place, so live cache databases kept the pre-edit hash and the
+// fail-closed checksum guard refused to boot.
+const legacyCachePlaneRepair299Checksum = "5cb2d317b080b5b12594c4f1ad930d79bddace5682bb1ae965c0d678b933db3d"
+
+// canonicalCachePlaneRepair299Checksum is the sha256 of the current
+// 299_cache_plane_repair.sql. Pinned here so a third in-place edit cannot be
+// absorbed silently: it needs a new authorized constant and a new decision.
+const canonicalCachePlaneRepair299Checksum = "f001a96369db1e435f4aa711e3a39d3efede22f7a3de2297857149cc8dea7c0a"
+
+// reconcileCachePlaneRepair299Checksum repairs the cache-plane ledger row 299
+// after its file was edited in place. A forward SQL migration cannot do this:
+// the checksum guard runs BEFORE any pending migration is applied, so a
+// database carrying the legacy hash never reaches the repair. The repair is
+// therefore an explicit, narrow identity reconciliation executed before the
+// guard, mirroring reconcileHistoricalMigrationIdentities for 238→239.
+//
+// Narrowness rules: only the cache database, only version 299 with the exact
+// canonical filename, only when the recorded hash is the authorized legacy
+// one, only when the current file hashes to the authorized canonical value,
+// and only when the durable schema effect (vidrush_provider_cache) is present
+// — so a fabricated ledger row cannot be promoted by a schema that merely
+// looks right.
+func reconcileCachePlaneRepair299Checksum(db queryable, migrations []migrationFile, targetDB string, log *zap.Logger) error {
+	if targetDB != "cache" {
+		return nil
+	}
+	var canonical migrationFile
+	for _, m := range migrations {
+		if m.version == 299 && m.filename == "299_cache_plane_repair.sql" {
+			canonical = m
+			break
+		}
+	}
+	if canonical.filename == "" || !migrationAppliesToTargetDB(canonical.scope, targetDB) {
+		return nil
+	}
+
+	rows, err := db.Query(`SELECT filename, checksum FROM schema_migrations WHERE version = 299`)
+	if err != nil {
+		return fmt.Errorf("read legacy migration 299: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("read legacy migration 299 rows: %w", err)
+		}
+		return nil
+	}
+	var oldFilename, oldChecksum string
+	if err := rows.Scan(&oldFilename, &oldChecksum); err != nil {
+		return fmt.Errorf("scan legacy migration 299: %w", err)
+	}
+	// RunMigrationsOnDB limits the pool to one connection. Release the ledger
+	// cursor before issuing the following queries or the pool waits forever.
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close legacy migration 299 rows: %w", err)
+	}
+	if oldFilename != canonical.filename {
+		return fmt.Errorf("migration 299 identity changed: ledger has %q, repository has %q", oldFilename, canonical.filename)
+	}
+	if strings.EqualFold(strings.TrimSpace(oldChecksum), canonicalCachePlaneRepair299Checksum) {
+		return nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(oldChecksum), legacyCachePlaneRepair299Checksum) {
+		return fmt.Errorf("legacy migration 299 checksum is not authorized: got %q", oldChecksum)
+	}
+
+	content, err := os.ReadFile(canonical.path)
+	if err != nil {
+		return fmt.Errorf("read canonical migration 299: %w", err)
+	}
+	checksum := sha256Hex(content)
+	if !strings.EqualFold(checksum, canonicalCachePlaneRepair299Checksum) {
+		return fmt.Errorf("migration 299 drifted again: file hashes to %q, authorized %q", checksum, canonicalCachePlaneRepair299Checksum)
+	}
+
+	tableRows, err := db.Query(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vidrush_provider_cache'`)
+	if err != nil {
+		return fmt.Errorf("check cache plane schema: %w", err)
+	}
+	defer func() { _ = tableRows.Close() }()
+	var tableExists int
+	if !tableRows.Next() || tableRows.Scan(&tableExists) != nil {
+		return fmt.Errorf("scan cache plane schema presence")
+	}
+	if err := tableRows.Close(); err != nil {
+		return fmt.Errorf("close cache plane schema rows: %w", err)
+	}
+	if tableExists != 1 {
+		return fmt.Errorf("migration 299 is recorded but its cache plane (vidrush_provider_cache) is absent")
+	}
+
+	if _, err := db.Exec(`UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 299 AND filename = ?`, checksum, checksum, canonical.filename); err != nil {
+		return fmt.Errorf("realign migration 299 ledger: %w", err)
+	}
+	if log != nil {
+		log.Warn("reconciled cache plane migration 299 checksum",
+			zap.String("filename", canonical.filename),
+			zap.String("legacy_checksum", oldChecksum),
+			zap.String("canonical_checksum", checksum),
+		)
+	}
+	return nil
+}
+
 // isLegacyControlPlaneMetaSchema recognizes the schema produced by the one
 // deployed pre-singleton variant of migration 198. It is intentionally
 // narrow: the checksum shim must never turn an arbitrary schema drift into a

@@ -14,7 +14,11 @@ func registerScriptEntries(r *Registry) {
 	// artifacts and the script parent aggregator owns the terminal flip once
 	// every sibling child has finished. Google Docs was retired (2026-10-25),
 	// so there is no deferred `script.docs_publish` leg any more.
-	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerate, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifactsThenDefer}, Description: "Script generation", Timeout: 3 * time.Hour, DefaultMaxRetries: 2})
+	// Two parallel leases per worker: the job is I/O-bound (provider resolve,
+	// TTS, remote completion) and a single lease left a measured p90 queue wait
+	// of 24 s with a 809 s maximum (ELIM-04). The budget is explicit per job
+	// type, not a global default.
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerate, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifactsThenDefer}, Description: "Script generation", Timeout: 3 * time.Hour, DefaultMaxRetries: 2, Concurrency: DefaultScriptGenerateConcurrency})
 	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaCurate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// Step 11B sibling types (script.generate -> voiceover / image fan-out).

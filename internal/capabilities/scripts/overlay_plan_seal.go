@@ -17,7 +17,7 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 )
 
 // sealCompiledOverlayPlan adopts a plan produced by the v2 compiler. Rust owns

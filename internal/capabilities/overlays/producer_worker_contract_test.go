@@ -174,7 +174,7 @@ func TestProducerSchemaVersionMatchesSharedWorkerSchema(t *testing.T) {
 // the file), which is why each repository also pins the canonical key set in
 // its own test — that half is fail-closed with or without the sibling.
 func TestChainSegmentFieldsMatchRenderingGenMirror(t *testing.T) {
-	workerPath := filepath.Join("..", "..", "..", "..", "RenderingGen", "renderinggen", "internal", "overlay", "chain_compile.go")
+	workerPath := filepath.Join("..", "..", "..", "..", "RenderingGen", "renderinggen", "internal", "overlay", "chain_segments.go")
 	raw, err := os.ReadFile(workerPath)
 	if err != nil {
 		if os.IsNotExist(err) {

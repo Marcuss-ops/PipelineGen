@@ -3,12 +3,13 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"

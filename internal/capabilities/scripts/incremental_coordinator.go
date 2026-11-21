@@ -49,6 +49,11 @@ type VidRushIncrementalCoordinator struct {
 	// barrier has already waited. Zero uses vidRushProviderResolveTimeout;
 	// tests shorten it to exercise degradation.
 	providerResolveBudget time.Duration
+	// providerSegmentBudget caps ONE scene's provider fan-out inside the run
+	// budget. The run cap alone lets the first slow segment spend the whole two
+	// minutes; the measured p90 (53.9 s) is exactly that shape. Zero uses
+	// vidRushProviderSegmentResolveTimeout; tests shorten it.
+	providerSegmentBudget time.Duration
 	// providerBudgetStart is the first provider fan-out observation of this
 	// run. It is guarded by mu and set lazily so construction/generation time
 	// is not charged to the provider stage.

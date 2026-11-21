@@ -589,12 +589,28 @@ func TestVidRushProviderFanoutRetriesEmptyEntityImageResults(t *testing.T) {
 		},
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := fanout.ResolveProviders(context.Background(), plan, segment); err != nil {
+		out, err := fanout.ResolveProviders(context.Background(), plan, segment)
+		if err != nil {
 			t.Fatalf("run %d: %v", i+1, err)
 		}
+		if len(out.Assets.Candidates) != 0 {
+			t.Fatalf("run %d candidates = %d, want 0", i+1, len(out.Assets.Candidates))
+		}
+	}
+	// ELIM-01: a completed zero-result search is remembered for 15 minutes as
+	// a NEGATIVE observation, so the same entity does not pay the provider
+	// wait twice. It is not a positive hit and never proof of absence: the
+	// outcome is still an empty candidate set, and ForceRefresh bypasses it.
+	if searcher.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1; a completed zero result must be reused as a negative observation", searcher.calls)
+	}
+	refreshed := *plan
+	refreshed.ForceRefresh = true
+	if _, err := fanout.ResolveProviders(context.Background(), &refreshed, segment); err != nil {
+		t.Fatalf("force refresh: %v", err)
 	}
 	if searcher.calls != 2 {
-		t.Fatalf("provider calls = %d, want 2; empty entity-image result must not be cached", searcher.calls)
+		t.Fatalf("provider calls after force refresh = %d, want 2", searcher.calls)
 	}
 }
 

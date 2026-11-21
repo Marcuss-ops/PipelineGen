@@ -225,6 +225,19 @@ func (h *GenerateJobHandler) Handle(
 		}
 		return h.executeFinalJobLanguageRuns(ctx, j, run, tools)
 	}
+	if h.durableRunner != nil && h.runRepo != nil && len(env.Items) == 1 && run == nil {
+		// A single-item durable generation must be submitted through the
+		// canonical script endpoint, which commits the complete request to the
+		// run ledger before enqueueing. Accepting a generic /api/jobs payload
+		// here used to fall through to the legacy dispatcher with no canonical
+		// source record; clip runs then reached generation with source.type="".
+		return nil, job.NewClassifiedFailure(
+			job.FailureConfiguration,
+			"RUN_LEDGER",
+			"DURABLE_RUN_MISSING",
+			"single-item script.generate requires a durable run; submit through POST /api/script/generate",
+		)
+	}
 
 	// Single-item jobs use the durable capability runtime so the same
 	// CanonicalTimeline and RenderPlan flow reaches the canonical Velox
@@ -287,7 +300,23 @@ func (h *GenerateJobHandler) Handle(
 					zap.Int("run_attempt", updated.AttemptCount),
 					zap.Duration("delay", delay))
 			}
-			return nil, incompleteRunError(updated)
+			outcomeErr := incompleteRunError(updated)
+			// A deterministic/configuration failure cannot change on retry: the
+			// durable request is immutable by construction. Clear the run's
+			// scheduled retry so the ledger does not advertise work nobody will
+			// run, then fail the job permanently.
+			if classified, ok := job.ClassifiedFailureFrom(outcomeErr); ok && classified.Permanent() {
+				if h.log != nil {
+					h.log.Warn("durable run failed deterministically — clearing the scheduled retry",
+						zap.String("job_id", j.ID),
+						zap.String("run_id", updated.ID),
+						zap.String("failure_class", string(classified.Class)),
+						zap.String("run_stage", classified.Stage),
+						zap.String("run_code", classified.Code))
+				}
+				h.clearRunRetrySchedule(ctx, updated)
+			}
+			return nil, outcomeErr
 		}
 		// The durable runner owns generation/render execution, but the broker
 		// still requires the same canonical artifact manifest as the legacy
@@ -428,11 +457,44 @@ func incompleteRunError(updated *scriptgen.GenerationRun) error {
 	summary := fmt.Sprintf(
 		"run=%s status=%s stage=%s run attempt %d/%d code=%s message=%s",
 		updated.ID, status, stage, updated.AttemptCount, scriptgen.MaxRetries, code, message)
-	if delay, pending := pendingRunRetry(updated); pending {
-		return job.DeferredAfter(delay, fmt.Sprintf(
-			"durable run %s retry_at=%s", summary, updated.NextRetryAt.UTC().Format(time.RFC3339)))
+	class := classifyRunFailure(stage, code, message)
+	// Only a retryable class may become a WAIT. A deterministic or configuration
+	// failure is terminal even when the runner scheduled a retry: the request is
+	// immutable, so the retry would replay the same verdict and pay the whole
+	// downstream cost again.
+	if class.Retryable() {
+		if delay, pending := pendingRunRetry(updated); pending {
+			return job.DeferredAfter(delay, fmt.Sprintf(
+				"durable run %s class=%s retry_at=%s", summary, class, updated.NextRetryAt.UTC().Format(time.RFC3339)))
+		}
 	}
-	return fmt.Errorf("generate job handler: durable run failed: %s", summary)
+	return job.NewClassifiedFailure(class, stage, code,
+		fmt.Sprintf("generate job handler: durable run failed: %s", summary))
+}
+
+// clearRunRetryScheduleTimeout bounds the detached write that removes a retry
+// schedule the handler has just proven unreachable. The ctx that drove the
+// attempt may already be dead; the ledger write must not inherit it.
+const clearRunRetryScheduleTimeout = 5 * time.Second
+
+// clearRunRetrySchedule removes the run's scheduled retry while preserving its
+// real failure facts (stage/code/message/attempt). Without this, a
+// deterministic failure leaves a `next_retry_at` pointing at a retry nobody will
+// run — the exact orphan the deferral comment warns about.
+func (h *GenerateJobHandler) clearRunRetrySchedule(ctx context.Context, run *scriptgen.GenerationRun) {
+	if h == nil || h.runRepo == nil || run == nil {
+		return
+	}
+	detached, cancel := context.WithTimeout(context.WithoutCancel(ctx), clearRunRetryScheduleTimeout)
+	defer cancel()
+	noteRunLedgerFailure(h.log, "clear_permanent_retry", run.ID, h.runRepo.FailRun(detached, scriptgen.FailRunInput{
+		RunID:        run.ID,
+		FailedStage:  run.FailedStage,
+		ErrorCode:    run.ErrorCode,
+		ErrorMessage: run.ErrorMessage,
+		AttemptCount: run.AttemptCount,
+		NextRetryAt:  nil,
+	}))
 }
 
 // pendingRunRetry reports whether a durable run that did NOT complete is still

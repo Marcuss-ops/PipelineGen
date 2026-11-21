@@ -15,11 +15,12 @@ import (
 // resident model after this idle window. 30 minutes is the certified default
 // and stays the fallback — an explicit operator override must be deliberate.
 const residentKeepAliveDefault = "30m"
+const residentKeepAliveExtended = "24h"
 
 // EnvResidentKeepAlive is the operator override for the resident keep_alive
 // window (PipelineGen-owned PIPELINEGEN_* env namespace). Set it to a Go
-// duration (e.g. "12h") or "-1" (keep resident until the server stops) to stop
-// paying the measured model reload between jobs: the timing snapshot recorded
+// duration (e.g. "12h") to stop paying the measured model reload between jobs:
+// the timing snapshot recorded
 // 129 `ollama/warm` operations averaging 27.3s (max 600s) plus 38s cold loads
 // inside the first generate of a job, all of which are idle-unload reloads a
 // longer residency window makes disappear.
@@ -53,12 +54,13 @@ func residentKeepAlive() string {
 	return envKeepAlive
 }
 
-// validOllamaKeepAlive accepts the values Ollama's keep_alive contract allows
-// at the request level: "-1" (resident until server stop), "0" (unload
-// immediately), a bare integer (seconds) or a Go duration with one of the
-// ms/s/m/h units.
+// validOllamaKeepAlive accepts durations supported by the deployed Ollama
+// request parser: "0" (unload immediately), a bare integer (seconds) or a Go
+// duration with one of the ms/s/m/h units. The documented "-1" sentinel is
+// intentionally rejected: the production Ollama endpoint used by this service
+// parses keep_alive as a duration and returned "missing unit" for that value.
 func validOllamaKeepAlive(value string) bool {
-	if value == "-1" || value == "0" {
+	if value == "0" {
 		return true
 	}
 	if allDigits(value) {
@@ -72,6 +74,16 @@ func validOllamaKeepAlive(value string) bool {
 		return allDigits(numeric) || fractionalSeconds(numeric)
 	}
 	return false
+}
+
+// effectiveOllamaKeepAlive maps the documented indefinite sentinel to the
+// longest duration accepted by the Ollama version deployed here.
+func effectiveOllamaKeepAlive(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "-1" {
+		return residentKeepAliveExtended
+	}
+	return value
 }
 
 func allDigits(value string) bool {

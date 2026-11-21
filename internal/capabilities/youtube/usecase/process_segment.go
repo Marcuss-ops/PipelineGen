@@ -45,9 +45,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.
@@ -183,8 +185,20 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	if cacheHit {
 		fileHash = out.Item.ContentSHA256
 		localPath = out.Item.LocalPath
+		now := time.Now()
+		kernobs.RecordStage(ctx, kernobs.StageInfo{
+			Stage:       kernobs.StageYouTubeCut,
+			CacheStatus: "hit",
+			ItemsInput:  1,
+		}, now, now, nil)
 	} else {
+		cutStarted := time.Now()
 		fileHash, localPath, err = u.step3to5_CutRetryHash(ctx, cmd, &out, clipID, startSec, endSec, duration, keepAudio)
+		kernobs.RecordStage(ctx, kernobs.StageInfo{
+			Stage:          kernobs.StageYouTubeCut,
+			ItemsInput:     1,
+			ItemsCompleted: completedCount(err == nil),
+		}, cutStarted, time.Now(), err)
 		if err != nil {
 			return out, err
 		}
@@ -222,4 +236,11 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	out.Item.Status = "processed"
 	out.Status = "processed"
 	return out, nil
+}
+
+func completedCount(ok bool) int64 {
+	if ok {
+		return 1
+	}
+	return 0
 }

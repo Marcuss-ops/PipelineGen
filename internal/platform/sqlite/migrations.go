@@ -155,6 +155,9 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 	if err := reconcileHistoricalMigrationIdentities(db, migrations, targetDB, log); err != nil {
 		return fmt.Errorf("storage: reconcile historical migration identities: %w", err)
 	}
+	if err := reconcileCachePlaneRepair299Checksum(db, migrations, targetDB, log); err != nil {
+		return fmt.Errorf("storage: reconcile cache plane migration 299: %w", err)
+	}
 	// The reconciliation may have moved a ledger row to its canonical
 	// version, so load the ledger after it before validating gaps and
 	// out-of-scope entries.

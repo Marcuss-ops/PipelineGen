@@ -314,16 +314,26 @@ func (r *Runner) validateClipSceneOutput(ctx context.Context, runID string, req 
 		if scene.NativeClip || scene.ExecutionMode.IsFixedMedia() {
 			continue
 		}
+		// Short authored intro lines intentionally use only a few words. They
+		// are fixed copy supplied by the producer, so retain the standard floor
+		// for generated narration while allowing concise intro copy through.
+		minimumWords := minimumClipSceneWords
+		for _, segment := range req.ScriptParams.Segments {
+			if segment.ID == scene.ID && strings.EqualFold(strings.TrimSpace(segment.Kind), "intro") {
+				minimumWords = 1
+				break
+			}
+		}
 		text := strings.TrimSpace(scene.Text[req.SourceLanguage])
 		words := len(strings.Fields(text))
 		lower := strings.ToLower(text)
-		placeholder := text == "" || words < minimumClipSceneWords || lower == fmt.Sprintf("scene %d", i+1) || lower == "the"
+		placeholder := text == "" || words < minimumWords || lower == fmt.Sprintf("scene %d", i+1) || lower == "the"
 		if placeholder || contaminatedClipNarration(text) {
 			code := "SCRIPT_SCENE_TEXT_INVALID"
 			if contaminatedClipNarration(text) {
 				code = "SCRIPT_SCENE_TEXT_CONTAMINATED"
 			}
-			cause := fmt.Errorf("%s: scene=%d words=%d minimum=%d placeholder=%t", code, i, words, minimumClipSceneWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
+			cause := fmt.Errorf("%s: scene=%d words=%d minimum=%d placeholder=%t", code, i, words, minimumWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
 			if stepErr := r.failExecutionStep(ctx, exec, scriptStep, cause); stepErr != nil {
 				r.log.Warn("failed to record execution step failure", zap.String("step", scriptStep.Name), zap.Error(stepErr))
 			}

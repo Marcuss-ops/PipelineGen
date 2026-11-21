@@ -112,7 +112,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	// one capacity (see ComposeRoot.DriveUploadGate).
 	driveUploadGate := vowiring.NewDriveUploadGate(cfg.Voiceover)
 
-	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, search, process, ai, outbox, mediaConfig, driveUploadGate)
+	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, mediaBundle, search, process, ai, outbox, mediaConfig, driveUploadGate)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains: %w", err)
 	}
@@ -237,9 +237,17 @@ func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AI
 	}
 	scriptChecker := systemhealth.NewScriptGenerateChecker(
 		utility.HealthService,
-		systemhealth.NewOllamaChecker(func(ctx context.Context) bool {
-			return ai.OllamaClient != nil && ai.OllamaClient.CheckHealth(ctx)
-		}),
+		systemhealth.NewOllamaCheckerWithResidency(
+			func(ctx context.Context) bool {
+				return ai.OllamaClient != nil && ai.OllamaClient.CheckHealth(ctx)
+			},
+			func(ctx context.Context) (string, bool, error) {
+				if ai.OllamaClient == nil {
+					return "", false, nil
+				}
+				return ai.OllamaClient.ModelResidency(ctx)
+			},
+		),
 		systemhealth.NewDriveFolderChecker(driveBundle.Publisher),
 		cfg.Drive.ScriptsGenFolder(),
 		systemhealth.NewPublisherChecker(driveBundle.Publisher),

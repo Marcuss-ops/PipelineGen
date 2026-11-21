@@ -41,6 +41,15 @@ type MapPresentationSpec struct {
 	// Animation is the composition id, "random" (family-based seeded draw) or
 	// empty (same as random).
 	Animation string `json:"animation,omitempty"`
+	// AnimationPool restricts automatic composition draws to registered ids.
+	AnimationPool []string `json:"animation_pool,omitempty"`
+	// StylePool restricts automatic basemap draws to registered ids.
+	StylePool []string `json:"style_pool,omitempty"`
+	// Optional data for compositions that need a country, historical label, or
+	// a bundled RGBA mountain overlay. The renderer still validates each value.
+	CountryFeature       string `json:"country_feature,omitempty"`
+	TimelineLabel        string `json:"timeline_label,omitempty"`
+	MountainOverlayAsset string `json:"mountain_overlay_asset,omitempty"`
 	// Camera is the camera move id, "auto"/"random" (seeded draw) or empty.
 	Camera string `json:"camera,omitempty"`
 	// AllowRoute permits journey/route presentations when the text describes
@@ -54,16 +63,21 @@ type MapPresentationSpec struct {
 // MapPresentation is the RESOLVED canonical map configuration. It is the only
 // shape downstream owners consume.
 type MapPresentation struct {
-	Enabled           bool   `json:"enabled"`
-	Mode              string `json:"mode"`
-	GroupNearbyPlaces bool   `json:"group_nearby_places"`
-	MaxPinsPerGroup   int    `json:"max_pins_per_group"`
-	Style             string `json:"style"`
-	Level             string `json:"level"`
-	Animation         string `json:"animation"`
-	Camera            string `json:"camera"`
-	AllowRoute        bool   `json:"allow_route"`
-	SelectionMode     string `json:"selection_mode"`
+	Enabled              bool     `json:"enabled"`
+	Mode                 string   `json:"mode"`
+	GroupNearbyPlaces    bool     `json:"group_nearby_places"`
+	MaxPinsPerGroup      int      `json:"max_pins_per_group"`
+	Style                string   `json:"style"`
+	Level                string   `json:"level"`
+	Animation            string   `json:"animation"`
+	AnimationPool        []string `json:"animation_pool,omitempty"`
+	StylePool            []string `json:"style_pool,omitempty"`
+	CountryFeature       string   `json:"country_feature,omitempty"`
+	TimelineLabel        string   `json:"timeline_label,omitempty"`
+	MountainOverlayAsset string   `json:"mountain_overlay_asset,omitempty"`
+	Camera               string   `json:"camera"`
+	AllowRoute           bool     `json:"allow_route"`
+	SelectionMode        string   `json:"selection_mode"`
 }
 
 // DefaultMaxPinsPerGroup is the certified renderer budget for one map group.
@@ -88,6 +102,14 @@ func (s *MapPresentationSpec) Normalize() (MapPresentation, error) {
 	if s == nil {
 		resolved.Enabled = false
 		return resolved, nil
+	}
+	resolved.AnimationPool = append([]string(nil), s.AnimationPool...)
+	resolved.StylePool = append([]string(nil), s.StylePool...)
+	resolved.CountryFeature = strings.TrimSpace(s.CountryFeature)
+	resolved.TimelineLabel = strings.TrimSpace(s.TimelineLabel)
+	resolved.MountainOverlayAsset = strings.TrimSpace(s.MountainOverlayAsset)
+	if strings.TrimSpace(s.Style) == "" && len(s.StylePool) > 0 {
+		resolved.Style = "random"
 	}
 	if s.Enabled != nil {
 		resolved.Enabled = *s.Enabled
@@ -146,6 +168,9 @@ func (s *MapPresentationSpec) Normalize() (MapPresentation, error) {
 	}
 	if animation := strings.TrimSpace(s.Animation); animation != "" {
 		resolved.Animation = animation
+	}
+	if strings.HasPrefix(strings.ToLower(resolved.Animation), "editorial_") && strings.TrimSpace(s.Style) == "" {
+		resolved.Style = "chronon_editorial"
 	}
 	if camera := strings.TrimSpace(s.Camera); camera != "" {
 		switch strings.ToLower(camera) {

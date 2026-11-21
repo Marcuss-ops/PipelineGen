@@ -247,7 +247,9 @@ type GenerationItemV2 struct {
 	// catalog. Chain tuning rides here too: chain_gap_ms / chain_enabled opt
 	// into fusing nearby overlays into single multi-animation chain items,
 	// chain_max_segments bounds them, chain_handoff_ms sets the segment gap
-	// (zero abuts), chain_disabled forces legacy items.
+	// (zero abuts), chain_camera 1..4 selects a certified image-chain camera pan
+	// (0/omitted keeps the fly-under handoff), chain_disabled forces legacy
+	// items.
 	AnimationCounts map[string]int `json:"animation_counts,omitempty"`
 	// EntityStyleID pins the RenderingGen entity-card composition family for
 	// every generated entity card in this item: "random" (default, full 25

@@ -160,24 +160,54 @@ func unifySurnameOnlyPersons(persons []scriptpkg.Entity) []scriptpkg.Entity {
 	return out
 }
 
-var italianMonthNumbers = map[string]int{
-	"gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
-	"maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
-	"settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+// dateMonthNumbers is the calendar vocabulary of the projection: month names
+// for every language the pipeline emits (it, en, fr, es, de, pt). Calendar
+// months are fixed data, not language policy: keeping them here lets a French
+// or German date surface collapse onto its full form exactly like an Italian
+// one, instead of being an opaque DATE row that the overlay repeats verbatim.
+// No name maps to two different months across these languages.
+var dateMonthNumbers = map[string]int{
+	// January
+	"gennaio": 1, "january": 1, "janvier": 1, "enero": 1, "januar": 1, "janeiro": 1,
+	// February
+	"febbraio": 2, "february": 2, "février": 2, "fevrier": 2, "febrero": 2,
+	"februar": 2, "fevereiro": 2,
+	// March
+	"marzo": 3, "march": 3, "mars": 3, "märz": 3, "maerz": 3, "março": 3, "marco": 3,
+	// April
+	"aprile": 4, "april": 4, "avril": 4, "abril": 4,
+	// May
+	"maggio": 5, "may": 5, "mai": 5, "mayo": 5, "maio": 5,
+	// June
+	"giugno": 6, "june": 6, "juin": 6, "junio": 6, "juni": 6, "junho": 6,
+	// July
+	"luglio": 7, "july": 7, "juillet": 7, "julio": 7, "juli": 7, "julho": 7,
+	// August
+	"agosto": 8, "august": 8, "août": 8, "aout": 8,
+	// September
+	"settembre": 9, "september": 9, "septembre": 9, "septiembre": 9, "setembro": 9,
+	// October
+	"ottobre": 10, "october": 10, "octobre": 10, "octubre": 10, "oktober": 10, "outubro": 10,
+	// November
+	"novembre": 11, "november": 11, "noviembre": 11, "novembro": 11,
+	// December
+	"dicembre": 12, "december": 12, "décembre": 12, "decembre": 12, "diciembre": 12,
+	"dezember": 12, "dezembro": 12,
 }
 
-type parsedItalianDate struct {
+type parsedDateSurface struct {
 	Day, Month, Year int
 	Surface          string
 }
 
-// parseItalianDate recognizes the exact Italian date surfaces the extractor
-// emits: day month year, day month, month year and a bare four-digit year.
-// Anything else stays an opaque DATE rather than being guessed.
-func parseItalianDate(value string) (parsedItalianDate, bool) {
+// parseDateSurface recognizes the date surfaces the extractor emits in any of
+// the pipeline languages: day month year, day month, month year and a bare
+// four-digit year. Anything else stays an opaque DATE rather than being
+// guessed, so an unrecognized surface never loses information.
+func parseDateSurface(value string) (parsedDateSurface, bool) {
 	surface := strings.TrimSpace(value)
 	fields := strings.Fields(strings.ToLower(strings.Trim(surface, ".,;:")))
-	parsed := parsedItalianDate{Surface: surface}
+	parsed := parsedDateSurface{Surface: surface}
 	number := func(token string) (int, bool) {
 		n, err := strconv.Atoi(token)
 		return n, err == nil
@@ -190,17 +220,17 @@ func parseItalianDate(value string) (parsedItalianDate, bool) {
 		}
 	case 2:
 		if day, ok := number(fields[0]); ok {
-			month, ok := italianMonthNumbers[fields[1]]
+			month, ok := dateMonthNumbers[fields[1]]
 			if !ok || day < 1 || day > 31 {
-				return parsedItalianDate{}, false
+				return parsedDateSurface{}, false
 			}
 			parsed.Day, parsed.Month = day, month
 			return parsed, true
 		}
-		if month, ok := italianMonthNumbers[fields[0]]; ok {
+		if month, ok := dateMonthNumbers[fields[0]]; ok {
 			year, ok := number(fields[1])
 			if !ok || year < 1000 || year > 2100 {
-				return parsedItalianDate{}, false
+				return parsedDateSurface{}, false
 			}
 			parsed.Month, parsed.Year = month, year
 			return parsed, true
@@ -208,20 +238,20 @@ func parseItalianDate(value string) (parsedItalianDate, bool) {
 	case 3:
 		day, ok := number(fields[0])
 		if !ok {
-			return parsedItalianDate{}, false
+			return parsedDateSurface{}, false
 		}
-		month, ok := italianMonthNumbers[fields[1]]
+		month, ok := dateMonthNumbers[fields[1]]
 		if !ok {
-			return parsedItalianDate{}, false
+			return parsedDateSurface{}, false
 		}
 		year, ok := number(fields[2])
 		if !ok || day < 1 || day > 31 || year < 1000 || year > 2100 {
-			return parsedItalianDate{}, false
+			return parsedDateSurface{}, false
 		}
 		parsed.Day, parsed.Month, parsed.Year = day, month, year
 		return parsed, true
 	}
-	return parsedItalianDate{}, false
+	return parsedDateSurface{}, false
 }
 
 // canonicalizeDateConcepts maps partial DATE surfaces onto the unique full
@@ -230,12 +260,12 @@ func parseItalianDate(value string) (parsedItalianDate, bool) {
 // cleanup for the 22-row DATE list: six full dates plus five years, instead of
 // the same facts repeated as day/month fragments.
 func canonicalizeDateConcepts(concepts []scriptpkg.Entity) []scriptpkg.Entity {
-	fullDates := make([]parsedItalianDate, 0, len(concepts))
+	fullDates := make([]parsedDateSurface, 0, len(concepts))
 	for _, concept := range concepts {
 		if !strings.EqualFold(concept.Type, "DATE") {
 			continue
 		}
-		if parsed, ok := parseItalianDate(concept.Value); ok && parsed.Day > 0 && parsed.Month > 0 && parsed.Year > 0 {
+		if parsed, ok := parseDateSurface(concept.Value); ok && parsed.Day > 0 && parsed.Month > 0 && parsed.Year > 0 {
 			fullDates = append(fullDates, parsed)
 		}
 	}
@@ -243,7 +273,7 @@ func canonicalizeDateConcepts(concepts []scriptpkg.Entity) []scriptpkg.Entity {
 	seen := make(map[string]int, len(concepts))
 	for _, concept := range concepts {
 		if strings.EqualFold(concept.Type, "DATE") {
-			parsed, ok := parseItalianDate(concept.Value)
+			parsed, ok := parseDateSurface(concept.Value)
 			if ok {
 				switch {
 				case parsed.Day > 0 && parsed.Month > 0 && parsed.Year > 0:
@@ -280,7 +310,7 @@ func canonicalizeDateConcepts(concepts []scriptpkg.Entity) []scriptpkg.Entity {
 	return out
 }
 
-func uniqueFullDate(dates []parsedItalianDate, day, month, year int) (string, bool) {
+func uniqueFullDate(dates []parsedDateSurface, day, month, year int) (string, bool) {
 	matches := make(map[string]struct{})
 	for _, date := range dates {
 		if day > 0 && date.Day != day {

@@ -42,6 +42,7 @@ import (
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 func isAsyncEnrichmentEnabled() bool {
@@ -116,23 +117,26 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	var bundle *detail.ResolvedTextBundle
 	if u.media.TextTrackResolver != nil {
 		var acqErr error
-		bundle, acqErr = u.media.TextTrackResolver.AcquireSegmentText(ctx, TextTrackAcquireRequest{
-			ClipID:       clipID,
-			VideoID:      cmd.VideoID,
-			StartSec:     startSec,
-			EndSec:       endSec,
-			PayloadTexts: cmd.Segment.Texts,
-			LocalPath:    localPath,
-			// Fase 5 policy wiring (was the documented step6to9 TODO): the
-			// configured multilingual language list IS the acquisition
-			// policy. Without it the chain skipped the priority-2 DB
-			// fan-out entirely (empty list = no probe) and accepted ANY
-			// subtitle language the fetcher surfaced — so the operator's
-			// correctly configured language never reached the chain that
-			// picks the clip's subs. Same list the writer's
-			// RequireAllLanguagesBeforeVideo gate uses (godlike/06 SSOT:
-			// one PreferredLanguages per composition).
-			PreferredLanguages: u.observability.PreferredLanguages,
+		_ = kernobs.MeasureStage(ctx, kernobs.StageYouTubeTranscript, func(stageCtx context.Context) error {
+			bundle, acqErr = u.media.TextTrackResolver.AcquireSegmentText(stageCtx, TextTrackAcquireRequest{
+				ClipID:       clipID,
+				VideoID:      cmd.VideoID,
+				StartSec:     startSec,
+				EndSec:       endSec,
+				PayloadTexts: cmd.Segment.Texts,
+				LocalPath:    localPath,
+				// Fase 5 policy wiring (was the documented step6to9 TODO): the
+				// configured multilingual language list IS the acquisition
+				// policy. Without it the chain skipped the priority-2 DB
+				// fan-out entirely (empty list = no probe) and accepted ANY
+				// subtitle language the fetcher surfaced — so the operator's
+				// correctly configured language never reached the chain that
+				// picks the clip's subs. Same list the writer's
+				// RequireAllLanguagesBeforeVideo gate uses (godlike/06 SSOT:
+				// one PreferredLanguages per composition).
+				PreferredLanguages: u.observability.PreferredLanguages,
+			})
+			return acqErr
 		})
 		if acqErr != nil {
 			// Non-fatal — a Whisper failure must NOT kill the pipeline.
@@ -170,6 +174,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		videoUploadRes    *youtubeports.UploadResultDTO
 		videoUploadErr    error
 	)
+	uploadStarted := time.Now()
 	uploadGroup, uploadCtx := errgroup.WithContext(ctx)
 
 	// Subtitle sidecar destination. A configured subtitle root is an explicit
@@ -210,6 +215,15 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		})
 	}
 	_ = uploadGroup.Wait()
+	uploadStageErr := subtitleUploadErr
+	if uploadStageErr == nil {
+		uploadStageErr = videoUploadErr
+	}
+	kernobs.RecordStage(ctx, kernobs.StageInfo{
+		Stage:          kernobs.StageYouTubeUpload,
+		ItemsInput:     1,
+		ItemsCompleted: completedCount(uploadStageErr == nil),
+	}, uploadStarted, time.Now(), uploadStageErr)
 
 	if subtitleUploadErr != nil {
 		return nil, u.fail(out, NewExtractionError(
@@ -383,7 +397,14 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			MetadataEnrichmentJSON:         metadataEnrichmentJSON,
 		}
 
-		if wErr := u.metadata.LocalizedWriter.CommitClipTextAndIndexEvent(ctx, superCmd); wErr != nil {
+		commitStarted := time.Now()
+		wErr := u.metadata.LocalizedWriter.CommitClipTextAndIndexEvent(ctx, superCmd)
+		kernobs.RecordStage(ctx, kernobs.StageInfo{
+			Stage:          kernobs.StageYouTubeCommit,
+			ItemsInput:     1,
+			ItemsCompleted: completedCount(wErr == nil),
+		}, commitStarted, time.Now(), wErr)
+		if wErr != nil {
 			// BLOCKER #4 closure (audit 2026-07-03): when the outbox
 			// row insert is suppressed by an existing terminal row
 			// (dead_letter or superseded), the writer returns

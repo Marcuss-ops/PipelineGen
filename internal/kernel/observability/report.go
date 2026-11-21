@@ -170,6 +170,31 @@ type StageReport struct {
 	// "error" for untyped errors; without the message a failed stage is an
 	// unattributable row (the scene_analysis/post_writer_finalize lesson).
 	ErrorMessage string `json:"error_message,omitempty"`
+	// UnattributedMs is the stage wall not covered by operations recorded
+	// under the same stage name, clamped at 0 (parallel operations can exceed
+	// a single stage wall). It makes a phase residual visible in the sidecar
+	// instead of requiring a re-derivation from raw observations (ELIM-02).
+	UnattributedMs int64 `json:"unattributed_ms,omitempty"`
+}
+
+// AttachStageResiduals fills each stage's UnattributedMs from the operations
+// recorded with that stage. It is the ONE derivation, shared by the report
+// builder so every reader sees the same residual.
+func AttachStageResiduals(stages []StageReport, operations []OperationReport) {
+	if len(stages) == 0 {
+		return
+	}
+	byStage := make(map[string]int64, len(operations))
+	for _, op := range operations {
+		byStage[op.Stage] += op.DurationMs
+	}
+	for i := range stages {
+		residual := stages[i].DurationMs - byStage[stages[i].Name]
+		if residual < 0 {
+			residual = 0
+		}
+		stages[i].UnattributedMs = residual
+	}
 }
 
 type OperationReport struct {

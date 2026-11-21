@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
@@ -109,6 +110,12 @@ func (c *Client) WarmModel(ctx context.Context, model string) error {
 			meta["cold_start"] = chatMetrics.ColdStart()
 			if b, err := json.Marshal(meta); err == nil {
 				op.MetadataJSON = string(b)
+			}
+			// A recorded warm that paid a real load is a RELOAD, not a probe:
+			// the metric is the signal that the model was evicted or the runner
+			// configuration drifted (ELIM-07).
+			if chatMetrics.ModelLoadMS() > 1000 {
+				observability.OllamaWarmReloadTotal.WithLabelValues(model).Inc()
 			}
 		}
 		probeErr := kernobs.MeasureOperation(ctx, info, func(probeCtx context.Context) error {

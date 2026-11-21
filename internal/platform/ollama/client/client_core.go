@@ -253,7 +253,7 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 	}
 	keepAlive := residentKeepAlive()
 	if value, ok := options["keep_alive"].(string); ok && strings.TrimSpace(value) != "" {
-		keepAlive = value
+		keepAlive = effectiveOllamaKeepAlive(value)
 	}
 	// Single resident runner: a chat request without num_ctx would otherwise
 	// make Ollama rebuild the model the warm-up just loaded.

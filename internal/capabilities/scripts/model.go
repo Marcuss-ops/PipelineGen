@@ -281,6 +281,8 @@ type GenerateRequest struct {
 	// replaced by the configured default (mirror of plan.VoiceoverFolderID
 	// honored by the legacy processor_voiceover path).
 	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
+	// TTSRate is the caller-selected synthesis rate forwarded to each scene.
+	TTSRate string `json:"tts_rate,omitempty"`
 
 	// Intro is a literal intro section prepended verbatim. Never sent to
 	// the LLM — the runner injects it as the first protected fixed_media scene

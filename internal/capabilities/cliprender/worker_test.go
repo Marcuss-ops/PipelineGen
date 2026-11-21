@@ -1358,6 +1358,66 @@ func TestWorker_CacheHitReusesCertifiedRenderWithoutPublishing(t *testing.T) {
 	}
 }
 
+// TestWorker_CacheHitSkipsDestinationResolution pins the ordering that makes the
+// deterministic cache cheap: an already-certified clip is served WITHOUT asking
+// Drive to resolve destination.subfolder_name. The fingerprint already contains
+// the destination identity (drive_folder_id + subfolder_name), so a cached
+// artifact cannot cross folders; the resolved leaf is only consumed by a job
+// that actually renders, publishes and delivers. Resolving first made every
+// duplicate of an already-certified clip pay a Drive round-trip it never used.
+func TestWorker_CacheHitSkipsDestinationResolution(t *testing.T) {
+	ctx := context.Background()
+	w, _, _ := newTestWorker(t)
+	w.WithRenderExecutor(&fakeAsyncRenderExecutor{outcome: fullRenderOutcome()})
+
+	req := baseRenderRequest()
+	req.Destination = &DestinationSpec{
+		DriveFolderID: "root-folder-abc",
+		SubfolderName: "Matt Damon 5 Clips Verification",
+	}
+	req.Normalize()
+	payload := renderJobPayload(t, req)
+
+	var restored RenderRequest
+	if err := json.Unmarshal(payload, &restored); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	fp, err := restored.Fingerprint()
+	if err != nil {
+		t.Fatalf("fingerprint: %v", err)
+	}
+	cache := newMemoryRenderCache()
+	if err := cache.Put(ctx, &RenderCacheRecord{
+		Fingerprint: fp,
+		AssetID:     "reused-asset-002",
+		StorageKey:  "derived/reused-002.mp4",
+		ArtifactURL: "https://store/derived/reused-002.mp4",
+		ContentType: "video/mp4",
+		SHA256:      strings.Repeat("c", 64),
+		SizeBytes:   4096,
+		DurationSec: 3,
+		Backend:     BackendChrononVulkan,
+	}); err != nil {
+		t.Fatalf("seed cache: %v", err)
+	}
+	w.WithRenderCache(cache)
+
+	// Fail closed if Drive is touched: the only correct call count is zero.
+	resolver := &fakeDestinationFolderResolver{err: errors.New("Drive must not be called on a cache hit")}
+	w.WithDestinationFolderResolver(resolver)
+
+	result, err := w.Handle(ctx, &job.Job{ID: "job-cache-folder", Payload: payload}, nil)
+	if err != nil {
+		t.Fatalf("cache hit must not resolve the destination: %v", err)
+	}
+	if result["phase"] != "cached" || result["cache_hit"] != true {
+		t.Fatalf("cache result = %v, want phase=cached cache_hit=true", result)
+	}
+	if resolver.calls != 0 {
+		t.Fatalf("destination resolver calls = %d, want 0 on a cache hit", resolver.calls)
+	}
+}
+
 // TestWorker_CompletionWithoutPublisherFailsClosed pins the one rule that keeps
 // a clip.render job truthful: a render that produced certified bytes but has no
 // publication boundary attached is a CONFIGURATION FAULT, never a completed

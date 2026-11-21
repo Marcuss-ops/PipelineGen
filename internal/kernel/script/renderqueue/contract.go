@@ -223,6 +223,24 @@ type RenderQueueJob struct {
 	QueuedAt    time.Time `json:"queued_at,omitempty"`
 	StartedAt   time.Time `json:"started_at,omitempty"`
 	CompletedAt time.Time `json:"completed_at,omitempty"`
+
+	// Progress is the owning worker's last render progress (GET /jobs/{id}).
+	// It is the ONLY stall signal the producer can see without asking the
+	// worker: FramesDone plus LastFrameAt answer "is this render advancing?"
+	// (ELIM-06). Nil means the queue has no report yet.
+	Progress *RenderQueueProgress `json:"progress,omitempty"`
+}
+
+// RenderQueueProgress mirrors the queue's render-progress body.
+//
+// LastFrameAt is the observation clock: a render whose frames_done did not
+// move and whose last_frame_at is older than the stall threshold is stalled,
+// regardless of how long it has been running in absolute terms.
+type RenderQueueProgress struct {
+	FramesDone  int       `json:"frames_done"`
+	TotalFrames int       `json:"frames_total,omitempty"`
+	LastFrameAt time.Time `json:"last_frame_at,omitempty"`
+	Worker      string    `json:"worker,omitempty"`
 }
 
 // RenderQueuePreparedPackageRef identifies the immutable preparation shared

@@ -24,6 +24,9 @@ type OutputSpec struct {
 	// Audio is the explicit audio execution mode. Empty preserves the
 	// legacy voiceover behavior and is resolved once at the capability edge.
 	Audio AudioOutputConfig `json:"audio,omitempty"`
+	// TTSRate overrides the Edge TTS speaking rate for this generation item
+	// (for example "+10%"). Empty preserves the canonical script voiceover rate.
+	TTSRate string `json:"tts_rate,omitempty"`
 	// ── Postprocessors (Toggle tri-state) ──────────────────────────
 	//
 	// ExtractEntities is resolved by the semantic runner before the

@@ -293,7 +293,7 @@ func finalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRo
 	if err := alignFinalJobSegmentSourceWindows(&plan, stockAssetIDs); err != nil {
 		return "", "", fmt.Errorf("align final_job source windows to the output frame grid: %w", err)
 	}
-	plan.VideoTracks[0].Segments, err = finalJobCompleteVideoFrameCoverage(plan.VideoTracks[0].Segments, plan.Assets, plan.DurationUS, fpsNum, fpsDen)
+	plan.VideoTracks[0].Segments, err = finalJobCompleteVideoFrameCoverageWithStockAssets(plan.VideoTracks[0].Segments, plan.Assets, plan.DurationUS, fpsNum, fpsDen, stockAssetIDs)
 	if err != nil {
 		return "", "", err
 	}

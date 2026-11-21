@@ -53,7 +53,7 @@
         "area_glow_radius_km": 3.5
       },
       "params": {
-        "map_animation": "territory_glow_reveal",
+        "map_animation": "continental_atlas",
         "map_group": {
           "count": 1,
           "index": 1,
@@ -68,9 +68,9 @@
         },
         "priority": 0.93
       },
-      "render_key": "37c094fab4b07105e4d420767bbc085cf7d86d1ac2920e583ecb25360493907a",
+      "render_key": "c96927f570b85cfc0a1a750464e132c63f54ecc6092f06faaf164196c7604220",
       "duration_ms": 400
     }
   ],
-  "fingerprint": "7d6521caf8ec8b5ba3c13305f79e8a93caed8e4346a8d42e171e4a6aa4cae3e4"
+  "fingerprint": "9c18a17f2f2a955c11ac6714cdccb0f69f58367bef6013eb9743f14309f2e6dc"
 }

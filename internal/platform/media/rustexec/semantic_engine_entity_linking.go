@@ -88,8 +88,8 @@ func projectSemanticLinkedEntities(texts map[string]string, entities []semanticE
 				return nil, fmt.Errorf("linked entity %q repeats candidate %q", id, candidateID)
 			}
 			candidateIDs[candidateID] = struct{}{}
-			if len(candidate.Features) > 5 {
-				return nil, fmt.Errorf("linked entity %q candidate %q has more than five features", id, candidateID)
+			if len(candidate.Features) > 6 {
+				return nil, fmt.Errorf("linked entity %q candidate %q has more than six features", id, candidateID)
 			}
 			for _, feature := range candidate.Features {
 				if strings.TrimSpace(feature.Name) == "" {

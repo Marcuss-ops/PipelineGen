@@ -1,12 +1,12 @@
 # TICKET — Catene immagine/entità e backdrop: cosa resta dopo il 2026-11-19
 
-- **Status:** OPEN (2026-11-19) — geometria card (`fit: cover`, larghezza
-  dall'aspetto), backdrop per catene/ritratti e lane libx264 sono atterrati nel
-  working tree di RenderingGen, ma la validazione end-to-end è incompleta:
-  `chain-validation-20261119-r6-phrase` è **FAILED** in 1 s, la catena entità
-  con backdrop (`r11`/`r12`) è **FAILED**, `r13` era ancora `RUNNING` alle
-  10:43Z e i gate "movimento camera" e "gruppi da 2 immagini" non sono stati
-  eseguiti.
+- **Status:** PARTIAL (aggiornato 2026-11-20 sera) — catena e movimento camera
+  **verificati su job reale**: `r10` 22/22 gate (6 entità, pan destro,
+  `static_ratio 0,5556`, 56 coppie in movimento), `r9` 22/22 e controllo
+  fly-under `r3` PASS. Restano il gate di chiusura sul **backdrop** (la
+  variante `r11` è `FAILED` con `context canceled` in `COMPILING_AUDIO`, non
+  per il backdrop), la prova `fit: cover` con aspetti diversi, il gruppo da 2
+  immagini e i residui mappe r15.
 - **Severity:** P1 — la catena è la superficie che l'utente usa per mostrare
   più entità di seguito; un FAIL a 1 s in `COMPILING_AUDIO` blocca il job intero,
   non solo la clip.
@@ -113,6 +113,64 @@
 9. **Rieseguire la suite interna completa** (`go test -short ./internal/...`
    con `TMPDIR` fuori da `/tmp` e `-p 4`) dopo le ondate dead-code: la run
    finale del 19/11 è stata interrotta.
+
+## Aggiornamento 2026-11-20 — catena 6 entità verificata
+
+Evidenza completa: `ops/jobs/entity_chain_animation_20261120/REPORT.md`.
+
+- **PASS pan** (`r9`, `job_1795163816753257040_743aa63a`): 6 PERSON, 6 immagini
+  `retrieved/verified/materialized/bound`, una `image_chain` da 6 segmenti,
+  handoff 400 ms, 408 frame catena + 578 frame finali, PTS puliti, 22/22 gate.
+  `static_ratio=0.570`, 54 coppie in movimento, `max_diff=0.180`.
+- **PASS controllo fly-under** (`r3`, `job_1795164090550608845_14fa4d17`):
+  stesso scene shape, 6/6 entità, 6 segmenti, `static_ratio=0.778`, 27 coppie
+  in movimento, `max_diff=0.091`. Il pan è quindi una coreografia distinta e
+  misurata, non un'etichetta.
+- Cause corrette nel payload: `chain_gap_ms=15000` (con 5000 la fusione si
+  chiudeva a 2 segmenti); `animation_counts.entities=6` è la prenotazione
+  decisiva (le 3 still generiche occupavano i posti e lasciavano 4 entità
+  `verified_asset_not_planned`; `max_image_queries_per_segment=0` da sola non
+  bastava, r7 lo dimostra); run calda in `cache.read=true` dopo il retrieval
+  freddo che ha popolato il catalogo. `overlay_categories.images=disabled`
+  non è valido: spegne anche la catena.
+- Corretto un difetto di telemetria: l'artefatto registrava il backend
+  configurato (`vulkan`) invece di quello effettivo (`software` per il pan).
+  Fix in `RenderingGen/renderinggen/internal/processor` con test dedicato;
+  in attesa del deploy il verifier usa il worker log come witness.
+- Blocchi esterni: worker RenderingGen riavviato più volte da un'altra
+  sessione; PipelineGen terminato e `.venv-whisper` rimosso. Il venv è stato
+  ricreato dal lockfile e completato con `edge-tts`; le run finali sono passate
+  dopo il ripristino.
+- Il gate di movimento della suite misura ora i movimenti di handoff
+  (`moving_pairs`, `max_diff`, `max_static_run`), non un pan continuo durante
+  le pause da 2,5 s.
+
+### Aggiornamento 2026-11-20, sera — r10 e r11
+
+- **PASS pan corretto** (`r10`, `job_1795166123889306562_acaae690`): 22/22
+  gate, 6 entità e 6 asset distinti, `image_group_camera_pan_right`, handoff
+  400 ms, 408 frame catena + 578 finali, `static_ratio 0,5556`,
+  `moving_pairs 56`, `max_diff 0,180`. È la prova che il punto 6 (catena con
+  pan di camera su job reale) e il punto 5 (misura del movimento) sono
+  soddisfatti.
+- **FAIL infrastrutturale** (`r11`, `job_1795167689555666682_3c963e4f`): la
+  variante con backdrop si ferma in `COMPILING_AUDIO` con
+  `COMPILING_AUDIO_FAILED message=context canceled`, senza piano né item: il
+  backdrop non è stato esercitato. Va rifatta, non interpretata.
+- Il gate di chiusura resta quindi aperto sul solo job catena **con** backdrop;
+  tutto il resto della catena è verificato.
+
+### Fast path CPU per immagini `Cover` — misura locale 2026-11-20
+
+`Chronon3d/src/backends/assets/image_renderer_draw_detail.hpp` usa ora il
+framebuffer cached direttamente quando il fit lascia intatta tutta la sorgente;
+prima `Cover` copiata ogni volta in un framebuffer temporaneo. Sul fixture
+software camera-pan 1920×1080, un draw `Cover` è sceso da **21,26 / 21,55 /
+23,06 ms** a **5,64 / 5,18 / 5,64 ms** in tre processi. Lo SHA del frame
+decodificato coincide con il controllo `Stretch` (`abf64a0a…`). Build CLI e
+`chronon3d_renderer_core_tests` PASS. È una misura per draw, non una nuova run
+end-to-end della catena r10; il gate di throughput della chain resta da
+misurare sul job completo.
 
 ## Gate di chiusura
 

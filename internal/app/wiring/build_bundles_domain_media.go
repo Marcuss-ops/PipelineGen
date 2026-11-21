@@ -68,6 +68,7 @@ func buildDomainMediaServices(
 	log *zap.Logger,
 	drive *DriveBundle,
 	repos *RepoBundle,
+	media *MediaRepoBundle,
 	search *SearchBundle,
 	process *ProcessBundle,
 	ai *AIBundle,
@@ -158,7 +159,16 @@ func buildDomainMediaServices(
 	// transcript; the nine translations are produced later in the materializer
 	// by Argos/Ollama and must not be requested from YouTube.
 	subtitleFetcherAdapter := buildYouTubeSubtitleFetcher(cfg, mlCfg)
-	clipCache := imagesregistry.NewClipCacheAdapter(repos.ClipsRepo, log)
+	var clipCache youtubeports.ClipCachePort = imagesregistry.NewClipCacheAdapter(repos.ClipsRepo, log)
+	// MEDIA-SSOT cache fallback: the operational SQLite cache does not see
+	// clips committed by the canonical PostgreSQL pipeline. Try SQLite first
+	// (legacy rows) and the PostgreSQL media SSOT second (current rows), so a
+	// re-run of an existing clip skips the cut instead of re-downloading it.
+	if media != nil {
+		if pgCache := ytadapters.NewPostgresClipCache(media.Reader, log); pgCache != nil {
+			clipCache = ytadapters.NewFallbackClipCache(clipCache, pgCache, log)
+		}
+	}
 
 	// ── Step 5: clip metadata service + async enrichment ────────────────
 	clipMetadataService, metaErr := buildClipMetadataService(cfg, dbs, ai, clipMetadataWriter, log)

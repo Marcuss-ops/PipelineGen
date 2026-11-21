@@ -6,10 +6,11 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"sync"
 	"time"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
@@ -141,6 +142,12 @@ type Runner struct {
 	// hit across runs; this cache is content-scoped by construction. Nil
 	// disables reuse.
 	finalAudioCache *scriptaudio.FinalAudioCache
+	// finalAudioCacheAllRuns lets the plan-keyed master cache serve runs that
+	// are not final_job. The plan hash is the work identity, so an eval loop
+	// that re-runs the same payload must not re-mix and re-encode it; the
+	// historical final_job-only gate remains available as a rollback switch
+	// (PIPELINEGEN_FINAL_AUDIO_CACHE_ALL_RUNS=0).
+	finalAudioCacheAllRuns bool
 
 	// localizedRenderMu fences appends of certified localized-render videos
 	// onto the run result. The fan-out enqueues from concurrent TTS workers

@@ -13,16 +13,17 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"log"
 	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // RenderingGen queue job states are wire facts owned by the queue; the

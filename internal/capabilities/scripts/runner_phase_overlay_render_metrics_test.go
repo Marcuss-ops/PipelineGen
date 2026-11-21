@@ -18,10 +18,11 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sync"
 	"testing"
 	"time"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/prometheus/client_golang/prometheus"

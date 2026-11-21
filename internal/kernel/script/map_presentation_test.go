@@ -1,6 +1,9 @@
 package script
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func boolPtr(v bool) *bool { return &v }
 
@@ -16,7 +19,7 @@ func TestMapPresentationNormalizeDefaults(t *testing.T) {
 		Style: "esri_topo", Animation: "random", Camera: "auto",
 		AllowRoute: true, SelectionMode: "auto",
 	}
-	if resolved != want {
+	if !reflect.DeepEqual(resolved, want) {
 		t.Fatalf("normalized default = %+v, want %+v", resolved, want)
 	}
 	disabled, err := (*MapPresentationSpec)(nil).Normalize()

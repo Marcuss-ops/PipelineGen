@@ -22,6 +22,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -380,6 +381,32 @@ func (r *Runner) SetFinalAudioCacheDir(dir string) {
 	default:
 		r.finalAudioCache = scriptaudio.NewFinalAudioCache(dir)
 	}
+	r.finalAudioCacheAllRuns = finalAudioCacheAllRunsFromEnv()
+}
+
+// finalAudioCacheAllRunsEnv is the rollback switch for the non-final gate. The
+// compiled plan hash — not the run class — is the work identity, so the default
+// is every run; "=0" restores the historical final_job-only behaviour without
+// a rebuild.
+const finalAudioCacheAllRunsEnv = "PIPELINEGEN_FINAL_AUDIO_CACHE_ALL_RUNS"
+
+func finalAudioCacheAllRunsFromEnv() bool {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv(finalAudioCacheAllRunsEnv)))
+	switch raw {
+	case "0", "false", "off", "no", "disabled":
+		return false
+	}
+	return true
+}
+
+// finalAudioCacheApplies reports whether this run may read and write the
+// plan-keyed master cache. A hit still passes ValidateFinalAudioReference, so
+// widening the gate changes cost, not correctness.
+func (r *Runner) finalAudioCacheApplies(req GenerateRequest) bool {
+	if r == nil || r.finalAudioCache == nil || !r.finalAudioCache.Enabled() {
+		return false
+	}
+	return req.FinalJob || r.finalAudioCacheAllRuns
 }
 
 func finalAudioReferenceFromCache(ref scriptaudio.CachedFinalAudioReference) FinalAudioReference {

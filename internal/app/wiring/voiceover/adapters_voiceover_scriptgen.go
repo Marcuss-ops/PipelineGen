@@ -30,6 +30,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -139,6 +140,16 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	ctx context.Context,
 	input scriptgen.VoiceoverInput,
 ) (scriptgen.AudioReference, error) {
+	ttsRate := strings.TrimSpace(input.TTSRate)
+	if ttsRate == "" {
+		ttsRate = "-20%"
+	} else {
+		value := strings.TrimSuffix(strings.TrimPrefix(ttsRate, "+"), "%")
+		n, err := strconv.Atoi(value)
+		if err != nil || !strings.HasSuffix(ttsRate, "%") || n < -50 || n > 100 {
+			return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: invalid TTS rate %q (expected -50%%..+100%%)", input.TTSRate)
+		}
+	}
 	if input.Text == "" {
 		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: empty text for scene %s language %s", input.SceneID, input.Language)
 	}
@@ -224,7 +235,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		// Slower than natural: even the default rate left two E2E-04 scenes
 		// over the 17 chars/s gate, and the shorter scenes also squeezed
 		// entity/location overlays out of the plan. Edge TTS -20% = 0.8x.
-		TTSRate:        "-20%",
+		TTSRate:        ttsRate,
 		ForceSynthesis: input.ForceSynthesis,
 		Strategy:       asset.StrategyVerify,
 	}

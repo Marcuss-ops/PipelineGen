@@ -7,10 +7,11 @@
 package scriptgeneration
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"go.uber.org/zap"
 

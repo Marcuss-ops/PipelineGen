@@ -85,6 +85,25 @@ func (c *Client) IsModelResident(ctx context.Context, model string) (bool, error
 	return c.IsModelResidentWithContext(ctx, model, 0)
 }
 
+// ModelResidency reports whether the CONFIGURED production model is loaded
+// with the production runner context. It is the readiness fact ELIM-07 adds:
+// reachability alone does not prevent the next job from paying the load.
+// A nil client is "no model configured", never a false negative.
+func (c *Client) ModelResidency(ctx context.Context) (string, bool, error) {
+	if c == nil {
+		return "", false, nil
+	}
+	model := c.Model()
+	if strings.TrimSpace(model) == "" {
+		return "", false, nil
+	}
+	resident, err := c.IsModelResidentWithContext(ctx, model, types.ProductionRunnerContext)
+	if err != nil {
+		return model, false, err
+	}
+	return model, resident, nil
+}
+
 // IsModelResidentWithContext checks that a live model has the requested
 // runner context as well as the requested name. Ollama may keep the same
 // model loaded while rebuilding the runner for a different context length;

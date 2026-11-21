@@ -1850,7 +1850,10 @@ dalla sessione di profilazione:
    risparmiati. Il pin di regressione è
    `render_plan: repeated decoding reuses one validator per schema`: il
    contatore `render_plan_validator_construction_count()` non cresce dopo 32
-   decode, e non supera 2 nel processo.
+   decode, e non supera 2 nel processo. Un secondo pin copre il caso del
+   demone (`render_plan: validator cache is thread-safe across concurrent
+   decodes`): 8 thread × 32 decode condividono un solo validator per schema e
+   l'esito accetta/rifiuta resta deterministico.
 2. **Warm-up del pool saltato sul demone caldo**
    (`PipeExportSession::reused_persistent_render_state`): quando il job adotta
    il `FullGraphSession` persistente (renderer, slot e superfici già
@@ -1884,7 +1887,7 @@ dalla sessione di profilazione:
    end-to-end; il trasporto è pronto e testato, il cablaggio richiede un lease
    multiplo nella coda.
 6. **Capacità e binario** — azione operativa, non eseguita qui: a HEAD
-   (`78a7473b7`, gli stessi sorgenti di questa sessione) e con ~500 MiB per
+   (`cfc4a75a4` + `647adfe23`, i sorgenti di questa sessione) e con ~500 MiB per
    demone, **6–8 demoni** occupano **3–4 GiB** sui ~11 GiB liberi misurati
    (16.376 MiB totali, ~5.085 MiB già usati da altri processi). `p4` e `p2`
    davano lo stesso throughput (307,77 vs 306,35/min): NVENC non è saturo,
@@ -1895,14 +1898,22 @@ dalla sessione di profilazione:
 
 ```sh
 cd Chronon3d
-ninja -C build/chronon/linux-video-test -j4 tests/chronon3d_c_abi_tests
+ninja -C build/chronon/linux-video-test -j6 tests/chronon3d_c_abi_tests
 ./build/chronon/linux-video-test/tests/chronon3d_c_abi_tests --test-case="render_plan:*"
-# 13 test / 140 assertion PASS
-ninja -C build/chronon/linux-video-release -j2 apps/chronon3d_cli/chronon3d_cli
+# 14 test / 143 assertion PASS (cache per schema + pin concorrente)
+./build/chronon/linux-video-test/tests/chronon3d_cli_tests \
+  --test-case="daemon*,PipeExportHelpers:*,video timing sidecar*,PipeOptions:*,RenderWarmupOptions:*"
+# 13 test / 126 assertion PASS (RENDER_BATCH, deferred receipt, sidecar)
+ninja -C build/chronon/linux-video-release -j6 apps/chronon3d_cli/chronon3d_cli
+./build/chronon/linux-video-release/apps/chronon3d_cli/chronon3d_cli --version
+# Chronon3d 0.1.0 (chronon.render-plan.v2)
 
 cd ../RenderingGen/renderinggen
-go test ./internal/chronon -count=1
-CHRONON_IPC_HEADER=.../chronon_ipc.hpp go test ./internal/chronon -run TestIPCCommandEnumMatchesChrononHeader -count=1
+go build ./...
+go test ./internal/chronon ./internal/config ./internal/vramprobe ./cmd/vram-probe -count=1
+go test ./internal/processor -count=1
+CHRONON_IPC_HEADER="$PWD/../../Chronon3d/apps/chronon3d_cli/daemon/chronon_ipc.hpp" \
+  go test ./internal/chronon -run TestIPCCommandEnumMatchesChrononHeader -count=1
 ```
 
 **Non eseguito / non dichiarato:** run live da 100 overlay, riavvio dei demoni,

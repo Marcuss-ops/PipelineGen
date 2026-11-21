@@ -10,6 +10,7 @@ package adapters
 import (
 	"context"
 	"strings"
+	"time"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
@@ -38,9 +39,33 @@ func normalizeEntityMatch(value string) string {
 	return strings.TrimSuffix(strings.TrimSuffix(b.String(), "'s"), "’s")
 }
 
+// internetImageNegativeTTL bounds how long a completed-but-empty provider
+// search is remembered. Empty is a temporary observation, never a fact: 15
+// minutes is long enough to stop a scene loop from paying the same 20-117 s
+// wait for an entity that has no usable portrait, and short enough that a
+// provider index change is picked up by the next run (ELIM-01).
+const internetImageNegativeTTL = 15 * time.Minute
+
 // internetImageCachePayload stores only the image-provider delta so a cache
 type internetImageCachePayload struct {
 	Candidates []scriptpkg.SegmentAssetCandidate
+	// Negative marks a search that COMPLETED with zero usable candidates.
+	// It is a reason not to wait again, never proof of absence: every
+	// correctness gate still sees an empty candidate set, and readers must
+	// ignore the entry after internetImageNegativeTTL or on ForceRefresh.
+	Negative       bool      `json:"negative,omitempty"`
+	NegativeReason string    `json:"negative_reason,omitempty"`
+	ObservedAt     time.Time `json:"observed_at,omitempty"`
+}
+
+// internetImageNegativeFresh reports whether a negative entry may skip the
+// provider call. A zero timestamp is a legacy/unknown observation and is
+// treated as stale, so an old payload can never become a permanent block.
+func internetImageNegativeFresh(payload internetImageCachePayload, now time.Time) bool {
+	if !payload.Negative || payload.ObservedAt.IsZero() {
+		return false
+	}
+	return !now.After(payload.ObservedAt.Add(internetImageNegativeTTL))
 }
 
 // entityImageL1Capacity bounds the canonical entity-key L1 (see

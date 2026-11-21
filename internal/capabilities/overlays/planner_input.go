@@ -173,7 +173,9 @@ type PlanInput struct {
 	// short_important_phrase entries are UI preview hints only: the runtime
 	// always walks the full compatible phrase pool, because capping it made
 	// long runs repeat the same handful of motions. Chain tuning rides here
-	// too: chain_gap_ms, chain_max_segments, chain_handoff_ms, chain_disabled.
+	// too: chain_gap_ms, chain_max_segments, chain_handoff_ms, chain_camera and
+	// chain_disabled. chain_camera is the run-level image-chain choreography
+	// (1..4 = right/left/down/up pan; 0/omitted = fly_under_fade).
 	// Lane keys are canonicalized by animationLaneKeys (preset_motion_selection.go):
 	// images, images_with_text, entities, important_phrase, short_important_phrase,
 	// maps, timeline_date, metric_stat — each with documented aliases resolved

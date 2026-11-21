@@ -3,10 +3,11 @@ package scriptgeneration
 import (
 	"encoding/json"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"strings"
 	"sync"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -35,8 +36,8 @@ func mapCompositionFamily(id string) capoverlay.MapCompositionFamily {
 	return capoverlay.MapCompositionFamilyKindOf(id)
 }
 
-func resolveMapCompositionFor(requested, seed, slot string, input mapCompositionInput) (string, string, error) {
-	return capoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
+func resolveMapCompositionFor(requested, seed, slot string, input mapCompositionInput, randomPools ...[]string) (string, string, error) {
+	return capoverlay.ResolveMapCompositionFor(requested, seed, slot, input, randomPools...)
 }
 
 // mapLabelAnimationsCertified lists every label id the Python renderer
@@ -329,6 +330,9 @@ type mapRenderPresentation struct {
 	Fallback    string
 	Basemap     string
 	Territory   string
+	Country     string
+	Timeline    string
+	Mountain    string
 	Scope       string
 	MapLevel    string
 }
@@ -344,6 +348,11 @@ func mapRenderWirePins(item capmodel.OverlayItem) []map[string]any {
 		pins = append(pins, map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude})
 	}
 	return pins
+}
+
+func stringSliceParam(params map[string]any, key string) []string {
+	values, _ := params[key].([]string)
+	return append([]string(nil), values...)
 }
 
 // mapRenderStyleSlot selects the map treatment per map ITEM, not per parent
@@ -399,26 +408,61 @@ func resolveMapRenderPresentation(plan capmodel.OverlayPlan, seed, slot string, 
 	// precise failure, never a guessed name the renderer would refuse deep
 	// inside its render loop.
 	territoryFeature, territoryScope := mapTerritoryForFirstPin(item)
+	countryFeature := ""
+	if configured, _ := item.Params["country_feature"].(string); strings.TrimSpace(configured) != "" {
+		countryFeature = strings.TrimSpace(configured)
+	} else if territoryFeature != "" {
+		// The shipped ADM3 source contains Italian municipalities only. A
+		// successful point-in-polygon match therefore grounds this country.
+		countryFeature = "Italy"
+	}
+	timelineLabel, _ := item.Params["timeline_label"].(string)
+	mountainAsset, _ := item.Params["mountain_overlay_asset"].(string)
+	if strings.TrimSpace(mountainAsset) == "" {
+		mountainAsset = capoverlay.MapMountainOverlayDefault()
+	}
 	mapAnimation, mapFallbackReason, err := resolveMapCompositionFor(compositionChoice, seed, slot, mapCompositionInput{
-		PinCount:         len(item.Map.Pins),
-		Pins:             pins,
-		DurationUS:       capoverlay.MapItemDurationMS(item, plan.DurationMS) * 1000,
-		Strategy:         strategy,
-		Camera:           cameraAnimation,
-		Label:            labelAnimation,
-		TerritoryFeature: territoryFeature,
-		TerritoryScope:   territoryScope,
-		AreaGlowRadiusKM: item.Map.AreaGlowRadiusKM,
-	})
+		PinCount:             len(item.Map.Pins),
+		Pins:                 pins,
+		DurationUS:           capoverlay.MapItemDurationMS(item, plan.DurationMS) * 1000,
+		Strategy:             strategy,
+		Camera:               cameraAnimation,
+		Label:                labelAnimation,
+		TerritoryFeature:     territoryFeature,
+		TerritoryScope:       territoryScope,
+		AreaGlowRadiusKM:     item.Map.AreaGlowRadiusKM,
+		CountryFeature:       countryFeature,
+		TimelineLabel:        timelineLabel,
+		MountainOverlayAsset: mountainAsset,
+	}, stringSliceParam(item.Params, "map_composition_pool"))
 	if err != nil {
 		return mapRenderPresentation{}, err
 	}
-	if strings.HasPrefix(mapAnimation, "ed_") {
-		// This scene owns its name rail and marker inside the GPU compositor.
+	if strings.HasPrefix(mapAnimation, "ed_") || strings.HasPrefix(mapAnimation, "editorial_") {
+		// Editorial scene packs own their labels and marker.
 		labelAnimation = "none"
+		if strings.HasPrefix(mapAnimation, "editorial_") {
+			cameraAnimation = "editorial_pack_push_in"
+			sendZooms = false
+		}
 	}
 	mapType, _ := item.Params["map_type"].(string)
-	basemapStyle, err := resolveMapBasemap(mapType, seed, slot)
+	stylePool := stringSliceParam(item.Params, "map_style_pool")
+	var basemapStyle string
+	if strings.HasPrefix(mapAnimation, "editorial_") {
+		if strings.TrimSpace(mapType) != "" && !strings.EqualFold(strings.TrimSpace(mapType), "random") {
+			basemapStyle, err = resolveMapBasemap(mapType, seed, slot, stylePool)
+			if err == nil && basemapStyle != "chronon_editorial" {
+				err = fmt.Errorf("map animation %q requires style=chronon_editorial", mapAnimation)
+			}
+		} else if containsMapStyle(stylePool, "chronon_editorial") {
+			basemapStyle = "chronon_editorial"
+		} else {
+			err = fmt.Errorf("map animation %q requires chronon_editorial in style_pool", mapAnimation)
+		}
+	} else {
+		basemapStyle, err = resolveMapBasemap(mapType, seed, slot, stylePool)
+	}
 	if err != nil {
 		return mapRenderPresentation{}, err
 	}
@@ -437,7 +481,8 @@ func resolveMapRenderPresentation(plan capmodel.OverlayPlan, seed, slot string, 
 		Group: group, Strategy: strategy, Requested: compositionChoice,
 		Camera: cameraAnimation, Label: labelAnimation,
 		Composition: mapAnimation, Fallback: mapFallbackReason,
-		Basemap: basemapStyle, Territory: territoryFeature, Scope: territoryScope,
+		Basemap: basemapStyle, Territory: territoryFeature, Country: countryFeature,
+		Timeline: timelineLabel, Mountain: mountainAsset, Scope: territoryScope,
 		MapLevel: mapLevel,
 	}, nil
 }
@@ -506,6 +551,15 @@ func (p mapRenderPresentation) payload(plan capmodel.OverlayPlan, renderWidth, r
 	// its boundary and refuses silently-absent requirements.
 	if capoverlay.MapTerritoryOverlayRequired(p.Composition) {
 		payload["territory_feature"] = p.Territory
+	}
+	if p.Composition == "continental_atlas" || p.Composition == "historic_location_timeline" {
+		payload["country_feature"] = p.Country
+	}
+	if p.Composition == "historic_location_timeline" {
+		payload["timeline_label"] = p.Timeline
+	}
+	if p.Composition == "mountain_ridge_callout" {
+		payload["mountain_overlay_asset"] = p.Mountain
 	}
 	if p.Composition == "area_glow_pulse" {
 		// The admission gate guarantees a positive radius for this composition.

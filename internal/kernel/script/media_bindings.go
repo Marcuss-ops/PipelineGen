@@ -109,6 +109,7 @@ type StockBinding struct {
 	// Fallback is true when the drive_link comes from the scene's
 	// ClipBinding.DriveLink because no stock match was found.
 	Fallback   bool  `json:"fallback"`
+	PoolSlot   bool  `json:"stock_pool_slot,omitempty"`
 	StartMs    int64 `json:"start_ms,omitempty"`
 	EndMs      int64 `json:"end_ms,omitempty"`
 	DurationMs int64 `json:"duration_ms,omitempty"`

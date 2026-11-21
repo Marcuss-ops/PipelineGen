@@ -18,6 +18,7 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
@@ -152,7 +153,31 @@ func toScriptJob(job queueclient.Job) renderqueue.RenderQueueJob {
 		QueuedAt:    job.QueuedAt,
 		StartedAt:   job.StartedAt,
 		CompletedAt: job.CompletedAt,
+		Progress:    fromQueueProgress(job.Progress),
 	}
+}
+
+// fromQueueProgress maps the queue's progress body onto the capability type.
+func fromQueueProgress(in *queueclient.Progress) *renderqueue.RenderQueueProgress {
+	if in == nil {
+		return nil
+	}
+	return &renderqueue.RenderQueueProgress{
+		FramesDone: in.FramesDone, TotalFrames: in.TotalFrames,
+		LastFrameAt: in.LastFrameAt, Worker: in.Worker,
+	}
+}
+
+// Cancel releases the GPU lane of a render that the settle watchdog has proven
+// stalled. It implements renderqueue.RenderQueueCanceller.
+func (c *Client) Cancel(ctx context.Context, id string) error {
+	if c == nil || c.q == nil {
+		return fmt.Errorf("renderinggen cancel: client is not configured")
+	}
+	if err := c.q.Cancel(ctx, id); err != nil {
+		return fmt.Errorf("renderinggen cancel %s: %w", id, err)
+	}
+	return nil
 }
 
 func fromQueueFrameRange(in *queueclient.FrameRange) *renderqueue.RenderFrameRange {
@@ -543,10 +568,29 @@ func (e *ClipRenderExecutor) settle(ctx context.Context, plan cliprender.ClipRen
 	// overlay enqueue path must agree on what "terminal" means. A budget expiry
 	// is translated into the capability-owned pending sentinel — the transport's
 	// signal must never leak into the capability's error vocabulary.
-	completed, _, err := renderqueue.WaitRenderQueueTerminalBounded(ctx, e.queue, renderJobID, e.interval, waitBudget)
+	// A bounded settle is the phase that can park a worker lane on a render that
+	// never advances, so it is the phase that carries the progress watchdog.
+	// The blocking form (budget <= 0) keeps the historical long poll.
+	var (
+		completed renderqueue.RenderQueueJob
+		err       error
+	)
+	if waitBudget > 0 {
+		completed, _, err = renderqueue.WaitRenderQueueTerminalWatched(ctx, e.queue, renderJobID, e.interval, waitBudget, renderqueue.DefaultRenderStallAfter)
+	} else {
+		completed, _, err = renderqueue.WaitRenderQueueTerminalBounded(ctx, e.queue, renderJobID, e.interval, waitBudget)
+	}
 	if err != nil {
 		if errors.Is(err, renderqueue.ErrRenderQueuePending) {
 			return nil, fmt.Errorf("%w: job %s: %v", cliprender.ErrRenderPending, renderJobID, err)
+		}
+		if errors.Is(err, renderqueue.ErrRenderQueueStalled) {
+			observability.SettleProgressStallsTotal.WithLabelValues("clip.render").Inc()
+			var stalled *renderqueue.RenderStalledError
+			if errors.As(err, &stalled) && stalled.CancelErr == nil {
+				observability.SettleCancelledTotal.WithLabelValues("clip.render").Inc()
+			}
+			return nil, fmt.Errorf("%w: %v", cliprender.ErrRenderStalled, err)
 		}
 		return nil, fmt.Errorf("renderinggen clip executor: wait: %w", err)
 	}

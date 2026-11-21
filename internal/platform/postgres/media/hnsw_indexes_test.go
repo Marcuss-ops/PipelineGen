@@ -263,6 +263,100 @@ func TestHNSW_MediaSearcherPinsProductionFamily(t *testing.T) {
 	}
 }
 
+// TestHNSW_FilteredANNRecall guards the production failure mode where the
+// HNSW index returns its default candidate window BEFORE the asset filters
+// (media_type/source/...) are applied. With a selective filter, every one of
+// those candidates can be filtered out and the caller sees a false empty
+// page even though a matching vector exists. The searcher must widen the
+// candidate window (and fall back to an exact scan when needed).
+func TestHNSW_FilteredANNRecall(t *testing.T) {
+	db := newMediaTestDB(t)
+	ctx := context.Background()
+
+	vectors := pgmedia.NewVectorSurfaceWriter(db)
+	if err := vectors.RegisterEmbeddingFamily(ctx, "text", hnswSemanticModel, hnswSemanticDim); err != nil {
+		t.Fatalf("register semantic family: %v", err)
+	}
+
+	// The query is the first axis. The 200 near images are almost identical
+	// to it; the video clip is a valid semantic match but ranks behind all of
+	// them. With the pgvector default ef_search=40 the HNSW scan returns only
+	// images, the media_type='video' filter removes them all, and the clip is
+	// never seen. A wider candidate window must surface it.
+	query := make([]float32, hnswSemanticDim)
+	query[0] = 1
+	nearImage := make([]float32, hnswSemanticDim)
+	nearImage[0] = 1
+	nearImage[1] = 0.01
+	clipVector := make([]float32, hnswSemanticDim)
+	clipVector[0] = 0.7
+	clipVector[1] = 0.7
+	farImage := make([]float32, hnswSemanticDim)
+	farImage[0] = -1
+
+	for _, seed := range []struct {
+		prefix    string
+		count     int
+		mediaType string
+		vec       []float32
+	}{
+		{"img_near_", 200, "image", nearImage},
+		{"img_far_", 4800, "image", farImage},
+	} {
+		lit, err := pgvectorLiteralFor(seed.vec)
+		if err != nil {
+			t.Fatalf("vector literal: %v", err)
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf(`
+			INSERT INTO media_assets (id, source, name, media_type, lifecycle_state, index_state, deleted_at, created_at, updated_at)
+			SELECT '%s' || g, 'internet_images', 'fixture', '%s', 'ACTIVE', 'INDEXED', '', '', ''
+			FROM generate_series(1, %d) g`, seed.prefix, seed.mediaType, seed.count)); err != nil {
+			t.Fatalf("seed %s assets: %v", seed.prefix, err)
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf(`
+			INSERT INTO media_embeddings (asset_id, embedding_type, model_id, embedding)
+			SELECT '%s' || g, 'text', '%s', '%s'::vector FROM generate_series(1, %d) g`,
+			seed.prefix, hnswSemanticModel, lit, seed.count)); err != nil {
+			t.Fatalf("seed %s embeddings: %v", seed.prefix, err)
+		}
+	}
+
+	// Commit the video clip through the canonical writer so every hydration
+	// column is populated by the same path production uses.
+	box := pgmedia.NewOutboxRepository(db)
+	ledger, ledgerErr := pgmedia.NewRegistry(db)
+	if ledgerErr != nil {
+		t.Fatalf("registry: %v", ledgerErr)
+	}
+	committers := pgmedia.NewPostgresMediaCommitter(db, box, ledger, nil)
+	if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor("yt_filtered_ann_clip")); err != nil {
+		t.Fatalf("commit clip: %v", err)
+	}
+	if err := vectors.UpsertEmbedding(ctx, "yt_filtered_ann_clip", "text", hnswSemanticModel, clipVector); err != nil {
+		t.Fatalf("seed clip embedding: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "ANALYZE media_embeddings, media_assets"); err != nil {
+		t.Fatalf("analyze fixtures: %v", err)
+	}
+	queryLit, err := pgvectorLiteralFor(query)
+	if err != nil {
+		t.Fatalf("query literal: %v", err)
+	}
+	t.Logf("query vector: %s", queryLit[:32]+"...")
+
+	searcher := pgmedia.NewMediaSearcher(db)
+	req := pgmedia.SystemSearchRequest(query)
+	req.MediaType = "video"
+	req.Limit = 20
+	results, err := searcher.Search(ctx, req)
+	if err != nil {
+		t.Fatalf("filtered search: %v", err)
+	}
+	if len(results) != 1 || results[0].AssetID != "yt_filtered_ann_clip" {
+		t.Fatalf("filtered ANN results = %v, want the single video clip (false empty page regression)", results)
+	}
+}
+
 // queryVector768 builds the deterministic 768d fixture vector shared by
 // the HNSW tests.
 func queryVector768() []float32 {

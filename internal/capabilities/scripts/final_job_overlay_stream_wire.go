@@ -1,9 +1,10 @@
 package scriptgeneration
 
 import (
+	"strings"
+
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
-	"strings"
 )
 
 // finalJobOverlayStreamWire transports the certified video-stream identity

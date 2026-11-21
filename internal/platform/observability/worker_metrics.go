@@ -213,6 +213,51 @@ var WorkerJobDeferredTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "Total job deferrals (a wait, not a retry) by job_type and resulting status.",
 }, []string{"job_type", "status"})
 
+// OllamaWarmReloadTotal counts warm probes that actually paid a model load
+// (>1 s of model_load_ms). A non-zero rate means the model was evicted or the
+// runner configuration drifted, not that the probe got slower (ELIM-07).
+var OllamaWarmReloadTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "ollama_warm_reload_total",
+	Help: "Ollama warm probes that paid a model reload instead of finding it resident.",
+}, []string{"model"})
+
+// ArtifactDrivePublishSkippedTotal counts artifacts left in the object store
+// because the Drive policy classified them as intermediates (ELIM-03). It is
+// the direct measure of the removed drive_publish calls.
+var ArtifactDrivePublishSkippedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "artifact_drive_publish_skipped_total",
+	Help: "Artifacts kept in the object store instead of being published to Drive.",
+}, []string{"kind"})
+
+// WorkerJobFailuresTotal counts terminal dispatch failures by the canonical
+// failure class, stage and error code.
+//
+// It exists because the job error message is a single string: without this
+// counter an operator can see that failures rose but not whether they are
+// deterministic contract verdicts (no retry can help) or provider/infra
+// transients (retry is the correct response). The class comes from the typed
+// job.ClassifiedFailure, never from parsing log text.
+// SettleProgressStallsTotal counts bounded settles aborted because the remote
+// render stopped reporting progress (ELIM-06). A non-zero rate is the signal
+// that a renderer/host is wedging, not that clip renders got slower.
+var SettleProgressStallsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "settle_progress_stalls_total",
+	Help: "Remote renders aborted after the stall watchdog saw no progress.",
+}, []string{"job_type"})
+
+// SettleCancelledTotal counts the subset where the remote job was actually
+// cancelled (the lane is released). A stall without this increment means the
+// cancel failed and the lane is still held.
+var SettleCancelledTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "settle_cancelled_total",
+	Help: "Remote renders successfully cancelled by the settle watchdog.",
+}, []string{"job_type"})
+
+var WorkerJobFailuresTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "worker_job_failures_total",
+	Help: "Total job failures by job_type, failure class, stage and error code.",
+}, []string{"job_type", "class", "stage", "code"})
+
 // WorkerFallbackTotal counts production fallback activations by
 // kind ("downgraded_path", "stale_cache_return", "skip_optimization").
 // The certification gate (worker-certification-checklist.md §3) bans

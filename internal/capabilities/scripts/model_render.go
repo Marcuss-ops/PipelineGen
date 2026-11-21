@@ -21,6 +21,7 @@ package scriptgeneration
 import (
 	"encoding/json"
 	"fmt"
+
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	audiocontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/audio"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"

@@ -1,10 +1,8 @@
 package overlays
 
 // Single geographic manifest source for editorial map scenes.
-// accepted_pin_bounds filters admissibility (Go resolver); camera_bounds drives
-// framing/camera (Python renderer). Both projections MUST be generated from
-// this manifest — never hand-edited in two places — or a new scene diverges.
-// Python: ChrononTemplate/tools/map/map_geo_manifest.json (generated).
+// accepted_pin_bounds filters admissibility and camera_bounds records authored
+// scene framing. Keep the corresponding ChrononTemplate manifest in sync.
 type MapGeoEntry struct {
 	AcceptedPinBounds [4]float64 `json:"accepted_pin_bounds"`
 	CameraBounds      [4]float64 `json:"camera_bounds"`
@@ -17,4 +15,12 @@ var MapGeoManifest = map[string]MapGeoEntry{
 	"ed_yemen_markers":  {AcceptedPinBounds: [4]float64{12.2, 40.5, 19.8, 47.0}, CameraBounds: [4]float64{12.2, 40.5, 19.8, 47.0}},
 	"ed_hormuz_routes":  {AcceptedPinBounds: [4]float64{5.0, 37.0, 29.0, 75.0}, CameraBounds: [4]float64{5.0, 37.0, 29.0, 75.0}},
 	"ed_mocha_tactical": {AcceptedPinBounds: [4]float64{12.4, 42.0, 15.8, 45.2}, CameraBounds: [4]float64{12.4, 42.0, 15.8, 45.2}},
+	// EditorialMapPack's first four and floating-island treatments are authored
+	// around Indiana; connection_arc is the fixed Indianapolis–Washington map.
+	"editorial_vox":             {AcceptedPinBounds: [4]float64{37.7, -88.1, 41.8, -84.7}, CameraBounds: [4]float64{37.7, -88.1, 41.8, -84.7}},
+	"editorial_paper_cutout":    {AcceptedPinBounds: [4]float64{37.7, -88.1, 41.8, -84.7}, CameraBounds: [4]float64{37.7, -88.1, 41.8, -84.7}},
+	"editorial_dark_radar":      {AcceptedPinBounds: [4]float64{37.7, -88.1, 41.8, -84.7}, CameraBounds: [4]float64{37.7, -88.1, 41.8, -84.7}},
+	"editorial_blueprint":       {AcceptedPinBounds: [4]float64{37.7, -88.1, 41.8, -84.7}, CameraBounds: [4]float64{37.7, -88.1, 41.8, -84.7}},
+	"editorial_floating_island": {AcceptedPinBounds: [4]float64{37.7, -88.1, 41.8, -84.7}, CameraBounds: [4]float64{37.7, -88.1, 41.8, -84.7}},
+	"editorial_connection_arc":  {AcceptedPinBounds: [4]float64{36.6, -90.4, 43.0, -73.8}, CameraBounds: [4]float64{36.6, -90.4, 43.0, -73.8}},
 }

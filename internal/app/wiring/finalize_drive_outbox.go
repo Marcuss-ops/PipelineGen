@@ -15,6 +15,7 @@ import (
 	"mime"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -42,6 +43,14 @@ type finalizeDriveDeliveryHandler struct {
 	// block a publication.
 	observer *kernobs.RunObserver
 	log      *zap.Logger
+}
+
+// ProcessingTimeout gives large staged artifacts enough time for Drive upload
+// plus remote verification. The outbox pool renews the lease while this
+// handler runs, so another worker cannot publish the same file at the same
+// time when the ordinary short event timeout elapses.
+func (*finalizeDriveDeliveryHandler) ProcessingTimeout() time.Duration {
+	return 15 * time.Minute
 }
 
 func newFinalizeDriveDeliveryHandler(

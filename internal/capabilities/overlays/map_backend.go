@@ -104,18 +104,30 @@ func NativeMapBasemaps() map[string]bool {
 	}
 }
 
+// NativeMapBasemapPool is the stable, registry-ordered pool of actual dynamic
+// renderer basemaps. It is carried in the plan just like phrase-motion pools
+// so the runtime selector and catalog expose the same choices.
+func NativeMapBasemapPool() []string {
+	pool := make([]string, 0, len(NativeMapBasemaps()))
+	for _, id := range AnimationCandidates("map.basemap") {
+		if NativeMapBasemaps()[id] {
+			pool = append(pool, id)
+		}
+	}
+	return pool
+}
+
 // DynamicMapCapabilities: the native dynamic map renderer of ChrononPlugin
 // (maps_dynamic_map_render) draws the editorial vector basemap with the
 // certified dive flyover and camera-aligned labels, plus its own documentary
-// composition gallery from grounded places (NativeCompositions). Multi-stop
-// camera tours, label animations, editorial scene compositions and per-pin
-// spoken timing are not ported yet: those requirements fail closed with a
-// typed error.
+// composition gallery from grounded places (NativeCompositions). Editorial
+// pack compositions use authored geography and the separately bundled pack.
 func DynamicMapCapabilities() MapBackendCapabilities {
 	return MapBackendCapabilities{
-		StaticPlates:       true,
-		CameraFlyOver:      true,
-		NativeCompositions: true,
+		StaticPlates:          true,
+		CameraFlyOver:         true,
+		NativeCompositions:    true,
+		EditorialCompositions: true,
 	}
 }
 
@@ -187,7 +199,7 @@ func unmetMapRequirementsHint(r MapRenderRequirements) string {
 		parts = append(parts, "composed scenes/tours are demolition debt (parity gate pending) — request map_animation empty/random for the native gallery or the base flyover")
 	}
 	if r.EditorialComposition {
-		parts = append(parts, "editorial scene compositions are demolition debt (parity gate pending)")
+		parts = append(parts, "editorial scene composition does not match its authored geography or required style")
 	}
 	if r.LabelAnimation {
 		parts = append(parts, "label animations are demolition debt (parity gate pending)")
@@ -214,10 +226,10 @@ func MapRenderRequirementsFor(item capmodel.OverlayItem) MapRenderRequirements {
 	}
 	if composition, _ := item.Params["map_animation"].(string); !MapAnimationPlaceholder(composition) {
 		switch {
+		case strings.HasPrefix(strings.TrimSpace(composition), "ed_") || strings.HasPrefix(strings.TrimSpace(composition), "editorial_"):
+			req.EditorialComposition = true
 		case NativeMapCompositions(composition):
 			req.NativeComposition = true
-		case strings.HasPrefix(strings.TrimSpace(composition), "ed_"):
-			req.EditorialComposition = true
 		default:
 			req.DynamicCameraTour = true
 		}

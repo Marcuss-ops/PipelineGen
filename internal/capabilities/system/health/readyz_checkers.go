@@ -406,6 +406,37 @@ func (r *ReadyChecker) runOllamaCheck(ctx context.Context, resp *HealthResponse)
 	}
 	runProbe(resp, "ollama", func() error { return r.ollamaChecker.CheckOllama(ctx) },
 		CheckResult{"ollama_reachable": true}, CheckResult{}, "Ollama unreachable: ")
+	// Residency is a SECOND fact: the server can be reachable while the
+	// configured model is not loaded. Reporting ready in that state is what let
+	// the first job of a window pay a 17-59 s reload (ELIM-07).
+	reporter, ok := r.ollamaChecker.(OllamaResidencyReporter)
+	if !ok {
+		return
+	}
+	model, resident, resErr := reporter.ModelResidency(ctx)
+	detail := resp.Checks["ollama"]
+	if detail == nil {
+		detail = CheckResult{}
+	}
+	if model != "" {
+		detail["model"] = model
+	}
+	detail["model_resident"] = resident
+	switch {
+	case resErr != nil:
+		detail["ok"] = false
+		detail["error"] = "Ollama residency probe failed: " + resErr.Error()
+		resp.OK = false
+		resp.Status = "unhealthy"
+	case model != "" && !resident:
+		// A configured model that is not resident is a degraded readiness:
+		// the next generation would pay the load inside the job.
+		detail["ok"] = false
+		detail["error"] = "Ollama model " + model + " is not resident"
+		resp.OK = false
+		resp.Status = "unhealthy"
+	}
+	resp.Checks["ollama"] = detail
 }
 
 func (r *ReadyChecker) runOutboxCheck(ctx context.Context, resp *HealthResponse) {

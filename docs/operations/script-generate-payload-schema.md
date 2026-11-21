@@ -340,7 +340,7 @@ that lane; an unknown or lane-incompatible id fails closed at plan compilation.
 | Entity images | `entity_image_motions` | array of ids | full certified entity-image catalog, seeded per card |
 | Entity captions | `entity_caption_motions` | array of ids | certified automatic caption pool, seeded per card |
 | Entity card composition | `entity_style_id` | `random`, a tag selector, or `01`..`25` | `random` (full 25-card registry) |
-| Maps | `map_presentation.animation` / `.camera` / `.style` | composition id or `random`; camera `slow_approach`/`auto`/`random`; style `chronon_editorial`/`random` | `random` (seeded family draw; the native renderer serves the base flyover today) |
+| Maps | `map_presentation.animation` / `.animation_pool` / `.style` / `.style_pool` | registered composition id or `random`; optional arrays restrict the draw; style is `chronon_editorial`, `esri_topo`, `esri_sat`, or `random` | seeded draw from the renderer-certified pools |
 
 A one-element `image_motions`, `entity_image_motions`, or
 `entity_caption_motions` array pins that lane to the single id; a longer array
@@ -367,9 +367,34 @@ the compile-path assignment.
   "image_with_text_motions": ["image_fade_reveal"],
   "entity_image_motions": ["image_scale_reveal"],
   "entity_style_id": "camera",
-  "map_presentation": {"animation": "random", "camera": "slow_approach"}
+  "map_presentation": {
+    "animation": "random",
+    "animation_pool": ["continental_atlas", "territory_tactical_fill", "radar_location_reveal"],
+    "style": "random",
+    "style_pool": ["chronon_editorial", "esri_topo", "esri_sat"],
+    "camera": "slow_approach",
+    "country_feature": "Germany",
+    "timeline_label": "AUGUST 2007",
+    "mountain_overlay_asset": "showcases/assets/taurus_mountain_range.png"
+  }
 }
 ```
+
+`animation` chooses the map composition and `style` chooses the underlying
+basemap independently. Both pools accept only registered choices certified by
+the active native renderer; unknown ids fail before rendering. The current
+The registry contains all 26 ChrononPlugin composition ids. Eighteen can be
+drawn automatically. `historic_location_timeline` and `mountain_ridge_callout`
+are exact-only because they need extra data. The six authored editorial
+scenes are also exact-only and enforce their Indiana/US geography. There are
+three renderer-backed basemaps.
+`country_feature` and `timeline_label` let an exact historical timeline carry
+its required data; `mountain_overlay_asset` must identify a readable RGBA
+overlay. `continental_atlas` can infer Italy from a grounded Italian pin;
+other countries must be named explicitly. Editorial scenes require the
+`chronon_editorial` basemap and reject pins outside authored bounds. The
+connection-arc scene depicts a fixed Indianapolis–Washington route, so it
+cannot be used for unrelated routes.
 
 The `random` literal is accepted only where a field documents it
 (`map_presentation`, `entity_style_id`); for the phrase and image fields leave
@@ -475,6 +500,15 @@ most **ten segments**: `animation_counts.chain_max_segments` lowers that bound
 lowers the chain as one overlay render instead of one MP4 per member. A run
 that would spill past the scene end is trimmed to the segments that start
 inside the scene instead of being dropped whole.
+
+`animation_counts.chain_camera` selects the run-level choreography for
+**image** chains: `1` right, `2` left, `3` down, `4` up. It writes the
+certified `image_group_camera_pan_*` motion onto the chain's `chain_camera`
+parameter, where the images sit on one strip and the camera travels so each
+image reaches the centre at its segment start; the per-segment entrance and
+the `fly_under_fade` handoff are not applied. `0` or omission keeps the legacy
+per-segment `fly_under_fade` handoff. Out-of-range values fall back to the
+legacy handoff; the knob never affects text or mixed chains.
 
 Use `animation_directives` with `animation_contract_version: 2` for the
 canonical typed selection contract. Each entry requires `scope`, `scene_ref`

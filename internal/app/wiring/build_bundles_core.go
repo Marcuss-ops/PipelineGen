@@ -268,8 +268,9 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 	}
 	// Ollama reachability probe (nil-safe: nil client → applicable=false).
 	if ollamaClient != nil {
-		rc = rc.WithOllamaChecker(systemhealth.NewOllamaChecker(
+		rc = rc.WithOllamaChecker(systemhealth.NewOllamaCheckerWithResidency(
 			func(ctx context.Context) bool { return ollamaClient.CheckHealth(ctx) },
+			func(ctx context.Context) (string, bool, error) { return ollamaClient.ModelResidency(ctx) },
 		))
 	}
 

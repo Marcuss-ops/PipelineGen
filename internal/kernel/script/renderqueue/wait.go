@@ -126,6 +126,146 @@ func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id s
 // has to reconstruct the remote address.
 var ErrRenderQueuePending = errors.New("render queue job is not terminal yet")
 
+// ErrRenderQueueStalled marks a render that stopped reporting progress. It is
+// DISTINCT from Pending: a pending render is alive and may finish, a stalled one
+// holds a GPU lane without advancing. The measured case (2026-11-20) is three
+// clip.render children parked 847 s each on a render whose frames never moved.
+var ErrRenderQueueStalled = errors.New("render queue job reported no progress")
+
+// DefaultRenderStallAfter is how long a render may go without a new frame
+// before the settle watchdog aborts it. 180 s is above the p99 of normal clip
+// renders in the measured window, so a slow-but-advancing render is never
+// cancelled (ELIM-06).
+const DefaultRenderStallAfter = 180 * time.Second
+
+// RenderQueueCanceller is the optional capability the watchdog needs to release
+// the GPU lane. A client without it still reports the stall but cannot cancel.
+type RenderQueueCanceller interface {
+	Cancel(ctx context.Context, id string) error
+}
+
+// RenderStalledError is the typed stall report: child id, last known frame and
+// the age of that observation. The message is the only diagnostic an operator
+// gets when the lane is released, so it names all three.
+type RenderStalledError struct {
+	JobID          string
+	FramesDone     int
+	TotalFrames    int
+	LastProgressAt time.Time
+	StalledFor     time.Duration
+	CancelErr      error
+}
+
+func (e *RenderStalledError) Error() string {
+	if e == nil {
+		return ErrRenderQueueStalled.Error()
+	}
+	frames := fmt.Sprintf("frames %d", e.FramesDone)
+	if e.TotalFrames > 0 {
+		frames = fmt.Sprintf("frames %d/%d", e.FramesDone, e.TotalFrames)
+	}
+	last := "never"
+	if !e.LastProgressAt.IsZero() {
+		last = e.LastProgressAt.UTC().Format(time.RFC3339)
+	}
+	message := fmt.Sprintf("%s: render job %s stalled in %s for %s (last progress %s)",
+		ErrRenderQueueStalled, e.JobID, frames, e.StalledFor.Round(time.Second), last)
+	if e.CancelErr != nil {
+		message += fmt.Sprintf("; cancel failed: %v", e.CancelErr)
+	}
+	return message
+}
+
+// Unwrap makes errors.Is(err, ErrRenderQueueStalled) the classifier.
+func (e *RenderStalledError) Unwrap() error { return ErrRenderQueueStalled }
+
+// WaitRenderQueueTerminalWatched is the progress-aware bounded wait. It polls
+// (the server-side long poll cannot observe progress) and aborts a render whose
+// last recorded PROGRESS is older than stallAfter.
+//
+// Two rules keep it safe:
+//   - only progress counts, never absolute age: a render that keeps reporting
+//     frames is never cancelled, however long it runs; and
+//   - a job that has not started (no StartedAt, no Progress) is an admission
+//     wait, not a stall, and is left to the budget.
+//
+// A stall is reported as a typed RenderStalledError and the remote job is
+// cancelled when the client exposes RenderQueueCanceller, so the lane is freed
+// instead of being held to the end of the settle window.
+func WaitRenderQueueTerminalWatched(ctx context.Context, client RenderQueueClient, id string, interval, budget, stallAfter time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
+	if client == nil {
+		return RenderQueueJob{}, RenderCompletionMetrics{}, fmt.Errorf("render queue wait: client is not configured")
+	}
+	if interval <= 0 {
+		interval = DefaultPollInterval
+	}
+	if stallAfter <= 0 {
+		stallAfter = DefaultRenderStallAfter
+	}
+	waitStarted := time.Now()
+	metrics := RenderCompletionMetrics{PollInterval: interval}
+	deadline := time.Time{}
+	if budget > 0 {
+		deadline = waitStarted.Add(budget)
+	}
+	for {
+		job, err := client.Get(ctx, id)
+		metrics.PollCount++
+		if err != nil {
+			return RenderQueueJob{}, metrics, err
+		}
+		if terminalRenderState(job.State) {
+			metrics.CompletionWait = time.Since(waitStarted)
+			return terminalRenderResult(job, id, metrics)
+		}
+		now := time.Now()
+		lastProgress := job.StartedAt
+		framesDone, totalFrames := 0, 0
+		if job.Progress != nil {
+			if job.Progress.LastFrameAt.After(lastProgress) {
+				lastProgress = job.Progress.LastFrameAt
+			}
+			framesDone, totalFrames = job.Progress.FramesDone, job.Progress.TotalFrames
+		}
+		if !lastProgress.IsZero() && now.Sub(lastProgress) >= stallAfter {
+			stalled := &RenderStalledError{
+				JobID: id, FramesDone: framesDone, TotalFrames: totalFrames,
+				LastProgressAt: lastProgress, StalledFor: now.Sub(lastProgress),
+			}
+			if canceller, ok := client.(RenderQueueCanceller); ok {
+				if cancelErr := canceller.Cancel(ctx, id); cancelErr != nil {
+					stalled.CancelErr = cancelErr
+				}
+			}
+			metrics.CompletionWait = time.Since(waitStarted)
+			return job, metrics, stalled
+		}
+		if !deadline.IsZero() && !now.Before(deadline) {
+			metrics.CompletionWait = time.Since(waitStarted)
+			return job, metrics, fmt.Errorf("render queue job %s still %s after %s: %w", id, job.State, budget, ErrRenderQueuePending)
+		}
+		sleep := interval
+		if !deadline.IsZero() {
+			if remaining := time.Until(deadline); remaining < sleep {
+				sleep = remaining
+			}
+		}
+		if sleep <= 0 {
+			continue
+		}
+		timer := time.NewTimer(sleep)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			metrics.CompletionWait = time.Since(waitStarted)
+			return RenderQueueJob{}, metrics, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
 // WaitRenderQueueTerminalBounded is the deferrable form of
 // WaitRenderQueueTerminal: it waits at most budget for the terminal state and
 // reports ErrRenderQueuePending when the render outlives it.

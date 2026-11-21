@@ -134,15 +134,21 @@ func Args(spec Spec) ([]string, error) {
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
-	args := []string{"-y", "-hide_banner", "-loglevel", "error"}
+	// One decoder thread and one filter thread bound the per-input frame pools.
+	// A golden assembly carries 70+ certified clips, and ffmpeg's default
+	// frame-threaded decoders reserve a reference pool per input: with the
+	// defaults this graph reached 11.7 GiB on 74 inputs and was killed by the
+	// kernel in production at 15.6 GiB. The join is a single sequential overlay
+	// chain, so it has no parallelism to lose from these two knobs.
+	args := []string{"-y", "-hide_banner", "-loglevel", "error", "-filter_complex_threads", "1"}
 	if spec.BackgroundPath != "" {
-		args = append(args, "-stream_loop", "-1", "-i", spec.BackgroundPath)
+		args = append(args, "-threads", "1", "-stream_loop", "-1", "-i", spec.BackgroundPath)
 	} else {
 		args = append(args, "-f", "lavfi", "-i",
 			fmt.Sprintf("color=c=black:s=%dx%d:r=%d", spec.Width, spec.Height, spec.fps()))
 	}
 	for _, clip := range spec.Clips {
-		args = append(args, "-i", clip.Path)
+		args = append(args, "-threads", "1", "-i", clip.Path)
 	}
 	args = append(args, "-i", spec.AudioPath)
 
@@ -188,6 +194,12 @@ func (s Spec) fps() int {
 }
 
 // Run executes the assembly and returns the produced artifact facts.
+//
+// Up to segmentedInputThreshold clips the join is a single ffmpeg graph, which
+// is the cheapest shape. Above it the graph would open every certified clip at
+// once and each future-PTS overlay queues its input: that is the shape that
+// reached 15.6 GiB and was killed in production, so the timeline is rendered in
+// lossless segments instead (see segmented.go).
 func Run(ctx context.Context, spec Spec, ffmpeg string) (Result, error) {
 	args, err := Args(spec)
 	if err != nil {
@@ -198,6 +210,9 @@ func Run(ctx context.Context, spec Spec, ffmpeg string) (Result, error) {
 	}
 	if err := os.MkdirAll(filepath.Dir(spec.OutputPath), 0o755); err != nil {
 		return Result{}, fmt.Errorf("overlayjoin: mkdir output: %w", err)
+	}
+	if len(spec.Clips) > segmentedInputThreshold && spec.DurationUS > 0 {
+		return runSegmented(ctx, spec, ffmpeg)
 	}
 	timeout := 20 * time.Minute
 	runCtx, cancel := context.WithTimeout(ctx, timeout)

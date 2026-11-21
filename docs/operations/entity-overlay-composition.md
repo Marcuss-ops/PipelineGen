@@ -115,6 +115,17 @@ The renderer handoff is `fly_under_fade`: every non-first, non-map segment
 receives the camera dip and fade. Maps are excluded because their own
 `camera_move` is already an entrance animation.
 
+An image chain can instead opt into one continuous camera move with
+`animation_counts.chain_camera` (`1` right, `2` left, `3` down, `4` up;
+`0`/omitted keeps `fly_under_fade`). The planner writes the certified
+`image_group_camera_pan_*` id onto the chain's `chain_camera` parameter. The
+renderer then lays the members on a strip one canvas apart, drops every
+per-segment entrance and fly-under transition, and travels the strip so each
+image lands at the centre at its own `start_us`. Text and mixed chains ignore
+the knob. The strip lane is composed on the software/libx264 renderer because
+the IPC daemon cannot read back overlapping full-canvas animated surfaces;
+the execution policy owns that switch.
+
 ## Dynamic duration
 
 Implemented by `EntitySpokenWindowDuration` in

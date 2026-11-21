@@ -423,13 +423,24 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 	}
 	plans := make([]ClipPlan, 0, len(p.clips))
 	for i, clip := range p.clips {
+		clipSource := src
+		if clipURL := strings.TrimSpace(clip.URL); clipURL != "" {
+			// Explicit clip requests may mix different source videos. Their
+			// per-clip URL is authoritative; using the first request URL for
+			// every plan made the pipeline cut the first file repeatedly.
+			clipSource.URL = clipURL
+			clipSource.Source = clipURL
+			if strings.TrimSpace(clip.Title) != "" {
+				clipSource.Title = clip.Title
+			}
+		}
 		// godlike/06 SSOT — route through buildClipPlan so the
 		// inference + ID derivation stay canonical (PR-003 only
 		// added fields; the literal was deliberately modified here
 		// to share buildClipPlan rather than duplicate the
 		// 11-field struct literal — future field additions stay
 		// in one place).
-		plan := buildClipPlan(src, clip.StartSec, clip.EndSec, i, policyVer)
+		plan := buildClipPlan(clipSource, clip.StartSec, clip.EndSec, i, policyVer)
 		plan.Title = clip.Title
 		plan.Description = clip.Description
 		// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): thread the 4

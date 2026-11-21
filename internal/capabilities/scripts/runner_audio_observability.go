@@ -2,10 +2,11 @@ package scriptgeneration
 
 import (
 	"context"
+	"strings"
+
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
-	"strings"
 )
 
 // audioCompileStage is the canonical observability stage under which the

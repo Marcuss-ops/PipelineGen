@@ -3,8 +3,9 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"testing"
+
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 )
 
 type failingSemanticSearchPort struct{ calls int }

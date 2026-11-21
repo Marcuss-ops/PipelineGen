@@ -21,11 +21,12 @@ package scriptgeneration
 import (
 	"encoding/json"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strconv"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // overlayPlanDigestVersion tags the digest shape so a future field set cannot

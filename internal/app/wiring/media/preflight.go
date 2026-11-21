@@ -3,6 +3,9 @@ package media
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"os"
+	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -208,6 +211,49 @@ func (p *assetServiceClipProber) ProbeClip(ctx context.Context, clipID string) e
 	}
 	if details == nil || details.Asset == nil {
 		return fmt.Errorf("clip %q not found in registry", clipID)
+	}
+	if err := probeLocalLocation(details); err != nil {
+		return fmt.Errorf("clip %q: %w", clipID, err)
+	}
+	return nil
+}
+
+// probeLocalLocation verifies that a Creator-local location recorded in the
+// registry still has bytes on this host. Registry presence is not availability:
+// the measured 2026-11-17..20 window burned 1.08 h in 13 publishing jobs that
+// discovered a missing local source only inside the remote final job, after the
+// whole render had already been paid for.
+//
+// Only filesystem locations are checked. An asset whose bytes live in an
+// object store is left to its own resolver: stat-ing a URI there would turn a
+// valid remote-mode asset into a false preflight failure, which this ticket
+// explicitly forbids.
+func probeLocalLocation(details *asset.Details) error {
+	location := details.LocalLocation()
+	if location == nil {
+		return nil
+	}
+	raw := strings.TrimSpace(location.URI)
+	if raw == "" {
+		return nil
+	}
+	path := raw
+	if strings.HasPrefix(raw, "file://") {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return fmt.Errorf("creator-local location %q is not a valid file URI: %w", raw, err)
+		}
+		path = parsed.Path
+	} else if strings.Contains(raw, "://") {
+		// s3://, gs://, https://: not a filesystem path.
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("creator-local source %q unavailable: %w", path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("creator-local source %q is a directory, not a file", path)
 	}
 	return nil
 }

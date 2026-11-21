@@ -2,12 +2,13 @@ package scriptgeneration
 
 import (
 	"context"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // fakeDynamicMapGPUGate is the shared RenderingGen GPU admission double: it

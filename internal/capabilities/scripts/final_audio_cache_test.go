@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
@@ -221,6 +222,112 @@ func TestFinalAudioCacheNeverAnswersWithForeignOrStaleBytes(t *testing.T) {
 	}
 	if _, ok := cache.take(plan, t.TempDir()); ok {
 		t.Fatal("a size that disagrees with the sidecar must be a miss")
+	}
+}
+
+// TestFinalAudioCacheAppliesToNonFinalRunsByDefaultAndRollsBack pins the gate
+// that ELIM-08 widens: the plan hash is the work identity, so a non-final run
+// may reuse a certified master; the historical final_job-only gate stays
+// available as a rollback switch.
+func TestFinalAudioCacheAppliesToNonFinalRunsByDefaultAndRollsBack(t *testing.T) {
+	t.Setenv(finalAudioCacheAllRunsEnv, "1")
+	runner := &Runner{}
+	runner.SetFinalAudioCacheDir(t.TempDir())
+	nonFinal := GenerateRequest{FinalJob: false}
+	if !runner.finalAudioCacheApplies(nonFinal) {
+		t.Fatal("a configured cache must serve non-final runs by default")
+	}
+	if !runner.finalAudioCacheApplies(GenerateRequest{FinalJob: true}) {
+		t.Fatal("final runs must keep using the cache")
+	}
+
+	t.Setenv(finalAudioCacheAllRunsEnv, "0")
+	runner.SetFinalAudioCacheDir(t.TempDir())
+	if runner.finalAudioCacheApplies(nonFinal) {
+		t.Fatal("the rollback switch must restore the final_job-only gate")
+	}
+	if !runner.finalAudioCacheApplies(GenerateRequest{FinalJob: true}) {
+		t.Fatal("the rollback switch must not disable the cache for final runs")
+	}
+
+	// No cache dir, no reuse, regardless of the switch.
+	t.Setenv(finalAudioCacheAllRunsEnv, "1")
+	runner.SetFinalAudioCacheDir("off")
+	if runner.finalAudioCacheApplies(nonFinal) {
+		t.Fatal("a disabled cache must never apply")
+	}
+}
+
+// TestFinalAudioCacheNonFinalRepeatedPayloadHitRate models the eval loop the
+// ticket measured: the same compiled plan is run 10 times. One render pays the
+// mix+encode, the other nine are plan hits with identical certified bytes.
+func TestFinalAudioCacheNonFinalRepeatedPayloadHitRate(t *testing.T) {
+	cache := newFinalAudioCache(t.TempDir())
+	plan := finalAudioCacheTestPlan(strings.Repeat("9", 64))
+	body := []byte("certified aac bytes for the repeated eval payload")
+	ref := finalAudioCacheTestReference(t, t.TempDir(), body)
+	ref.PlanSHA256 = plan.PlanSHA256
+
+	const runs = 10
+	renders, hits := 0, 0
+	var firstSHA string
+	for i := 0; i < runs; i++ {
+		got, ok := cache.take(plan, t.TempDir())
+		if !ok {
+			renders++
+			cache.put(plan, ref)
+			got, ok = cache.take(plan, t.TempDir())
+			if !ok {
+				t.Fatalf("run %d: the master written for this plan must be reusable", i+1)
+			}
+		} else {
+			hits++
+		}
+		if err := ValidateFinalAudioReference(got, plan); err != nil {
+			t.Fatalf("run %d: %v", i+1, err)
+		}
+		if firstSHA == "" {
+			firstSHA = got.FinalAudioSHA256
+		}
+		if got.FinalAudioSHA256 != firstSHA {
+			t.Fatalf("run %d sha = %s, want %s", i+1, got.FinalAudioSHA256, firstSHA)
+		}
+		staged, err := os.ReadFile(got.Path)
+		if err != nil || string(staged) != string(body) {
+			t.Fatalf("run %d bytes = %q, %v", i+1, staged, err)
+		}
+	}
+	if renders != 1 || hits != runs-1 {
+		t.Fatalf("renders=%d hits=%d, want 1 and %d", renders, hits, runs-1)
+	}
+}
+
+// TestFinalAudioCacheEvictsOldestBeyondByteBudget pins the disk bound: with a
+// 4 KiB cap, the third 2 KiB master evicts the oldest entry and keeps the one
+// just written reusable.
+func TestFinalAudioCacheEvictsOldestBeyondByteBudget(t *testing.T) {
+	t.Setenv(scriptaudio.MaxBytesEnv, "4096")
+	cache := newFinalAudioCache(t.TempDir())
+	plans := []audio.CompiledAudioPlan{
+		finalAudioCacheTestPlan(strings.Repeat("a", 64)),
+		finalAudioCacheTestPlan(strings.Repeat("b", 64)),
+		finalAudioCacheTestPlan(strings.Repeat("c", 64)),
+	}
+	body := []byte(strings.Repeat("x", 2000))
+	for _, plan := range plans {
+		ref := finalAudioCacheTestReference(t, t.TempDir(), body)
+		ref.PlanSHA256 = plan.PlanSHA256
+		cache.put(plan, ref)
+		time.Sleep(5 * time.Millisecond)
+	}
+	if _, ok := cache.take(plans[0], t.TempDir()); ok {
+		t.Fatal("the oldest entry must be evicted when the byte budget is exceeded")
+	}
+	if _, ok := cache.take(plans[1], t.TempDir()); !ok {
+		t.Fatal("the middle entry must survive a single eviction")
+	}
+	if _, ok := cache.take(plans[2], t.TempDir()); !ok {
+		t.Fatal("the entry just written must never be evicted")
 	}
 }
 
