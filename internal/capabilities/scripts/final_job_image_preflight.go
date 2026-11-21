@@ -135,6 +135,14 @@ func finalJobImageURLVerified(ctx context.Context, location, sha string) bool {
 		if err != nil {
 			continue
 		}
+		// 4xx is a verdict, not a blip: retrying 403/404/410 spends the whole
+		// fetch budget on an answer that cannot change. 408 and 429 stay
+		// retryable because they describe time, not the resource.
+		if response.StatusCode >= 400 && response.StatusCode < 500 &&
+			response.StatusCode != http.StatusRequestTimeout && response.StatusCode != http.StatusTooManyRequests {
+			response.Body.Close()
+			return false
+		}
 		verified := false
 		if response.StatusCode >= 200 && response.StatusCode < 300 {
 			verified = finalJobImageBytesVerified(response.Body, sha)

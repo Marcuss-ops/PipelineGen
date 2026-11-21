@@ -125,7 +125,7 @@ func TestLiveSemanticProductionBlendRoutesRealProviders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("planner: %v", err)
 	}
-	coldReport, err := planner.Run(ctx, coldPlan, "it")
+	coldReport, err := planner.Run(ctx, coldPlan, "it", false)
 	if err != nil {
 		t.Fatalf("cold plan run: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestLiveSemanticProductionBlendRoutesRealProviders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rebuild production plan: %v", err)
 	}
-	warmReport, err := planner.Run(ctx, warmPlan, "it")
+	warmReport, err := planner.Run(ctx, warmPlan, "it", false)
 	if err != nil {
 		t.Fatalf("warm plan run: %v", err)
 	}

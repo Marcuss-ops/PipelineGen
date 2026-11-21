@@ -38,6 +38,28 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
+func TestRenderSetSatisfiesExpectation(t *testing.T) {
+	tests := []struct {
+		name       string
+		expected   int
+		successful int
+		failed     int
+		want       bool
+	}{
+		{name: "exact render set", expected: 3, successful: 3, want: true},
+		{name: "unexpected additional renders", expected: 3, successful: 6, want: false},
+		{name: "missing render", expected: 3, successful: 2, want: false},
+		{name: "any failed render", expected: 3, successful: 3, failed: 1, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := renderSetSatisfiesExpectation(tt.expected, tt.successful, tt.failed); got != tt.want {
+				t.Fatalf("renderSetSatisfiesExpectation(%d, %d, %d) = %t, want %t", tt.expected, tt.successful, tt.failed, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResumeFrom(t *testing.T) {
 	t.Run("nil run", func(t *testing.T) {
 		assert.Equal(t, StageNormalizing, ResumeFrom(nil))

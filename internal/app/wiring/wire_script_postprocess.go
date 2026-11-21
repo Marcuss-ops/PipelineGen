@@ -270,7 +270,6 @@ func registerScriptPostProcessors(
 }
 
 var _ scriptgen.SegmentProviderResolver = (*adapters.VidRushProviderFanout)(nil)
-var _ scriptgen.SegmentSceneMerger = (*adapters.VidRushSceneMerger)(nil)
 var _ scriptgen.VidRushMetrics = (*observability.VidRushMetricsAdapter)(nil)
 var _ scriptgen.SegmentMaterializer = (*adapters.VidRushMaterializationProcessor)(nil)
 

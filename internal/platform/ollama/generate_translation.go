@@ -9,7 +9,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
@@ -113,20 +112,8 @@ func (g *Generator) TranslateTextWithModel(ctx context.Context, text, targetLang
 	// e.g. "it" is confused with the English pronoun "it" → LLM defaults to Spanish.
 	langName := translateLanguageName(targetLanguage)
 
-	var systemPrompt, userPrompt string
-	if cfg := prompts.Get(); cfg != nil {
-		// Use the full language name in the configured prompt as well as
-		// in the fallback prompt. Short codes such as "es" are valid
-		// metadata, but are less explicit to the model than "Spanish".
-		s, u, err := cfg.RenderTranslation(text, langName)
-		if err == nil {
-			systemPrompt, userPrompt = s, u
-		}
-	}
-	if systemPrompt == "" {
-		systemPrompt = "You are a professional translator. CRITICAL RULES: 1. Translate the text LITERALLY — do NOT expand, explain, philosophize, or add any content. 2. Return ONLY the translated text — no intros, no conclusions, no meta-commentary. 3. Preserve the original structure, paragraphs, lists, and formatting. 4. If you don't know a word, keep it in the original language rather than guessing. 5. Do NOT write essays, do NOT generate philosophical analysis."
-		userPrompt = fmt.Sprintf("Translate this text to %s faithfully. No additions, no explanations, no creative writing.\n\nTEXT TO TRANSLATE:\n%s", langName, text)
-	}
+	systemPrompt := "You are a professional translator. CRITICAL RULES: 1. Translate the text LITERALLY — do NOT expand, explain, philosophize, or add any content. 2. Return ONLY the translated text — no intros, no conclusions, no meta-commentary. 3. Preserve the original structure, paragraphs, lists, and formatting. 4. If you don't know a word, keep it in the original language rather than guessing. 5. Do NOT write essays, do NOT generate philosophical analysis."
+	userPrompt := fmt.Sprintf("Translate this text to %s faithfully. No additions, no explanations, no creative writing.\n\nTEXT TO TRANSLATE:\n%s", langName, text)
 
 	messages := []types.Message{
 		{Role: "system", Content: systemPrompt},

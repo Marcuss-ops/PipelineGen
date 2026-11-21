@@ -179,3 +179,45 @@ func (c *VidRushIncrementalCoordinator) acquire(ctx context.Context, sem chan st
 func (c *VidRushIncrementalCoordinator) release(sem chan struct{}) {
 	<-sem
 }
+
+// enrichAndMaterialize runs the full per-scene enrichment chain and records
+// the nlp and asset stage lifecycles on the run bound to ctx.
+//
+// §7.3 trace:
+//   - nlp   — readyAt is the committed scene's text-ready instant; the stage
+//     covers semantic extraction and research.
+//   - asset — chains to the completed analysis (its readyAt) and covers the
+//     provider fan-out plus the acquire/verify/finalize stage.
+//
+// Each entry records the real span the scene waited for that stage, including
+// the stage's own bounded-pool waits, and carries the stage error (if any) so
+// a failed scene is visible in the trace instead of silently absent.
+func (c *VidRushIncrementalCoordinator) enrichAndMaterialize(ctx context.Context, event SceneCommitted, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
+	// Stage 1 — bounded BrainRust semantic extraction. This CPU worker is
+	// independent from the local Ollama model used for scene generation.
+	nlpStartedAt := time.Now().UTC()
+	result, err := c.enrichSegment(ctx, scene)
+	if err == nil {
+		result, err = c.researchSegment(ctx, result)
+	}
+	nlpCompletedAt := time.Now().UTC()
+	recordSceneStage(ctx, event.SceneID, kernobs.SceneStageNLP, kernobs.SceneStageTimes{
+		ReadyAt: event.ReadyAt, StartedAt: nlpStartedAt, CompletedAt: nlpCompletedAt,
+	}, "", err)
+	if err != nil {
+		return result, err
+	}
+
+	// Stage 2 — provider fan-out, then acquire/verify/finalize. This is the
+	// asset stage: it cannot begin before the analysis that produced the
+	// queries is complete.
+	assetStartedAt := time.Now().UTC()
+	result, err = c.searchProviders(ctx, result)
+	if err == nil {
+		result, err = c.materializeSegment(ctx, result)
+	}
+	recordSceneStage(ctx, event.SceneID, kernobs.SceneStageAsset, kernobs.SceneStageTimes{
+		ReadyAt: nlpCompletedAt, StartedAt: assetStartedAt, CompletedAt: time.Now().UTC(),
+	}, "", err)
+	return result, err
+}

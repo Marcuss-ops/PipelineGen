@@ -70,11 +70,22 @@ import (
 //     with {"ok":false,"error":{"code":"INVALID_PAYLOAD","message":..,"stage":"request.validation","retryable":false}}
 //
 // Validator runs BEFORE the submitter is invoked — P0.A invariant 3.
+// maxGenerateEnvelopeBytes bounds the generate request body. A generation
+// envelope is text + config; 8 MiB leaves ample room for long scripts while
+// refusing an unbounded read.
+const maxGenerateEnvelopeBytes = 8 << 20
+
 func bindGenerateEnvelope(c *gin.Context, validator *gencore.PayloadValidator) (*scriptpkg.GenerationEnvelopeV2, bool) {
 	var env scriptpkg.GenerationEnvelopeV2
-	body, err := io.ReadAll(c.Request.Body)
+	// Bound the inbound body: the envelope is untrusted input, and an
+	// unbounded io.ReadAll lets a client allocate without limit.
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxGenerateEnvelopeBytes+1))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
+		return nil, false
+	}
+	if len(body) > maxGenerateEnvelopeBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"ok": false, "error": "payload exceeds 8 MiB limit"})
 		return nil, false
 	}
 	// godlike/07 fail-closed: removed contract fields (e.g. assemble_final)

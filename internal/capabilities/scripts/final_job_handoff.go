@@ -9,8 +9,9 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // ── Certified rendered-clip handoff ───────────────────────────────────
@@ -130,7 +131,7 @@ func appendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, r
 }
 
 func finalJobAudioAsset(ctx context.Context, audio FinalAudioReference) (map[string]any, error) {
-	driveID := driveFileIDFromLink(audio.DriveLink)
+	driveID, _ := urlutil.FileIDFromDriveLink(audio.DriveLink)
 	if (!finalJobObjectStoreConfigured() && driveID == "") || len(strings.TrimSpace(audio.FinalAudioSHA256)) != 64 || audio.SizeBytes <= 0 || audio.DurationMS <= 0 || !audio.FinalMix || !audio.CopyEligible {
 		return nil, fmt.Errorf("final_job requires a published, certified FINAL_AUDIO_COPY mix with source identity, SHA-256, size, and duration")
 	}
@@ -175,21 +176,4 @@ func driveFileWebLink(driveID string) string {
 	// The Master resolver accepts the canonical deferred-Drive locator, which
 	// carries the exact Drive file ID without making the 77 fetch the asset.
 	return "velox-drive://" + strings.TrimSpace(driveID)
-}
-
-func driveFileIDFromLink(raw string) string {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return ""
-	}
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	for i, part := range parts {
-		if part == "d" && i+1 < len(parts) && parts[i+1] != "" {
-			return parts[i+1]
-		}
-		if part == "file" && i+2 < len(parts) && parts[i+1] == "d" && parts[i+2] != "" {
-			return parts[i+2]
-		}
-	}
-	return ""
 }

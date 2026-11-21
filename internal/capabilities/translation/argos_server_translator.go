@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,6 +37,10 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// ErrArgosBridgeUnavailable is returned when the Python interpreter or the
+// Argos bridge script is not reachable.
+var ErrArgosBridgeUnavailable = errors.New("argos bridge unavailable")
 
 // DefaultArgosServerConcurrency is the bounded parallelism of the sidecar
 // client. The sidecar is CPU-bound and thread-per-request, so more than one

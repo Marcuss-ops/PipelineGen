@@ -50,10 +50,19 @@ func (r *Runner) recordAudioCompileOperations(ctx context.Context, t AudioCompil
 	r.recordAudioOperation(ctx, "audio_plan_compile", "audio", t.AudioPlanCompileMS)
 }
 
-// recordAudioRenderOperations projects the Rust-render subtimings (mix, AAC
-// encode, probe, hash). Hash is computed in Go but is part of the same
-// combined-audio render boundary, so it shares the audio component.
+// recordAudioRenderOperations projects the Rust-render subtimings (prepare,
+// BGM loudness, mix, AAC encode, probe, hash). Hash is computed in Go but is
+// part of the same combined-audio render boundary, so it shares the audio
+// component.
+//
+// prepare/loudness are recorded under the rust component, next to the
+// audio_render operation they belong to: before them the pre-mix block (source
+// probing plus a whole-asset BGM decode) sat inside audio_render with no
+// operation owning it, which is why a 14 s timeline could show 24 s of
+// audio_compile with only ~1.6 s explained.
 func (r *Runner) recordAudioRenderOperations(ctx context.Context, m AudioPipelineMetrics) {
+	r.recordAudioOperation(ctx, "audio_prepare", "rust", m.PrepareMS)
+	r.recordAudioOperation(ctx, "audio_loudness", "rust", m.LoudnessMS)
 	r.recordAudioOperation(ctx, "mix", "audio", m.MixMS)
 	r.recordAudioOperation(ctx, "aac_encode", "audio", m.AACEncodeMS)
 	r.recordAudioOperation(ctx, "probe", "audio", m.ProbeMS)

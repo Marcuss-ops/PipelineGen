@@ -19,8 +19,6 @@ package models
 
 import (
 	"fmt"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // Role classifies how a model is used in the pipeline.
@@ -189,40 +187,6 @@ var (
 // strings.
 func (m Model) Identity() string {
 	return fmt.Sprintf("%s|%s", m.ID, m.Revision)
-}
-
-// HasVectorSpace reports whether the model emits vectors (embedding
-// models only). Cross-encoders and ASR models report false.
-func (m Model) HasVectorSpace() bool {
-	return m.Dimensions > 0
-}
-
-// Validate reports whether the entry is internally consistent:
-// a non-empty checksum must be a valid SHA-256 hex, vector-space models
-// must carry a positive dimension, and every model must have an id.
-func (m Model) Validate() error {
-	if m.ID == "" {
-		return fmt.Errorf("models: %s has empty id", m.Role)
-	}
-	if m.Role == "" {
-		return fmt.Errorf("models: %s has empty role", m.ID)
-	}
-	if m.License == "" {
-		return fmt.Errorf("models: %s has empty license", m.ID)
-	}
-	if m.Dimensions < 0 {
-		return fmt.Errorf("models: %s has negative dimensions=%d", m.ID, m.Dimensions)
-	}
-	if m.Checksum != "" && !digest.IsSHA256(m.Checksum) {
-		return fmt.Errorf("models: %s checksum is not SHA-256 hex", m.ID)
-	}
-	if m.HasVectorSpace() && m.Dimensions <= 0 {
-		return fmt.Errorf("models: %s claims a vector space with dimensions=%d", m.ID, m.Dimensions)
-	}
-	if m.Languages < 0 {
-		return fmt.Errorf("models: %s has negative languages=%d", m.ID, m.Languages)
-	}
-	return nil
 }
 
 var canonicalOrder = [...]Model{E5, SigLIP, Reranker, SegmentUnderstanding, CLAP, Whisper}

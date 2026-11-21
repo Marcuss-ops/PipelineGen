@@ -92,6 +92,10 @@ func BuildFallbackSearchText(title, summary string, topics []string, transcript 
 // Returns (0, 0) on parse failure (zero-value safe — the
 // caller is the write path, which treats 0 as "no
 // coords" and skips the duration stamp).
+// clipTimestampRE is the canonical yt_<videoID>_<start>_<end>[_<policy>]
+// shape. Compiled once: parseClipTimestamps runs per clip.
+var clipTimestampRE = regexp.MustCompile(`yt_[^_]+(?:_[^_]+)*_(\d+)_(\d+)(?:_|$)`)
+
 func parseClipTimestamps(clipID string) (startSec, endSec int) {
 	if clipID == "" {
 		return 0, 0
@@ -100,8 +104,7 @@ func parseClipTimestamps(clipID string) (startSec, endSec int) {
 	// shape. videoID may contain underscores (11-char YouTube
 	// IDs don't, but be defensive), so we anchor on the
 	// trailing "_<digits>_<digits>" pair.
-	re := regexp.MustCompile(`yt_[^_]+(?:_[^_]+)*_(\d+)_(\d+)(?:_|$)`)
-	m := re.FindStringSubmatch(clipID)
+	m := clipTimestampRE.FindStringSubmatch(clipID)
 	if len(m) != 3 {
 		return 0, 0
 	}

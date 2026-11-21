@@ -96,8 +96,8 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	mirrorKeyStr := ""
 	if mirroring && videoID != "" && len(req.DownloadSections) == 0 {
 		mirrorKeyStr = mirrorKey(videoID, d.mirrorFormatSignature(req))
-		lockMirrorKey(mirrorKeyStr).Lock()
-		defer lockMirrorKey(mirrorKeyStr).Unlock()
+		unlock := lockMirrorKey(mirrorKeyStr)
+		defer unlock()
 		if _, ok := d.mirrorLookup(mirrorRootDir, mirrorKeyStr, req.OutputPath); ok {
 			return nil
 		}

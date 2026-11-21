@@ -131,7 +131,12 @@ func (r *LocalizedClipRenderer) reusedArtifact(ctx context.Context, plan Localiz
 	if r == nil || r.reuseCache == nil {
 		return LocalizedClipArtifact{}, false
 	}
-	cached, hit, err := r.reuseCache.Lookup(ctx, plan.Fingerprint)
+	// Key on the ASS digest too: the plan fingerprint pins the translated track
+	// and style, but the ASS bytes are produced from them. A layout change can
+	// keep the same track hash and still change the burned pixels, so a lookup
+	// by fingerprint alone would return an artifact rendered with other
+	// subtitles.
+	cached, hit, err := r.reuseCache.Lookup(ctx, RenderReuseKey(plan, ass))
 	if err != nil || !hit || cached == nil {
 		// Fail-soft: an unavailable or erroneous cache is a miss, never a
 		// failed render. The render below is the authoritative path.
@@ -203,12 +208,12 @@ func reusableBytes(cached *ReusedRenderArtifact) bool {
 // A Store failure is deliberately swallowed: the artifact in hand is already
 // certified and complete, and failing the run because the OPTIMIZATION could not
 // be recorded would trade a working render for nothing.
-func (r *LocalizedClipRenderer) storeRendered(ctx context.Context, plan LocalizedClipPlan, facts RenderFacts) {
+func (r *LocalizedClipRenderer) storeRendered(ctx context.Context, plan LocalizedClipPlan, ass *SubtitleAsset, facts RenderFacts) {
 	if r == nil || r.reuseCache == nil {
 		return
 	}
 	_ = r.reuseCache.Store(ctx, ReusedRenderArtifact{
-		Fingerprint: plan.Fingerprint,
+		Fingerprint: RenderReuseKey(plan, ass),
 		LocalPath:   facts.LocalPath,
 		SHA256:      facts.SHA256,
 		SizeBytes:   facts.SizeBytes,

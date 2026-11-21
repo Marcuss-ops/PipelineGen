@@ -47,7 +47,23 @@ fi
 if [[ -z "${VELOX_MEDIA_EXECUTION_SLOTS:-}" ]]; then
     VELOX_MEDIA_EXECUTION_SLOTS=3
 fi
+# Static BGM loudness measurements are cached across renders by file identity
+# (path + size + mtime); the Rust worker decodes the whole music asset to
+# measure it, so a repeated job would pay 4-7 s per track for the same answer.
+# The cache lives under data/ instead of $TMPDIR (cleared on reboot and
+# invisible to operators); it is best-effort and never fails a render. An
+# explicit value wins, including an empty one, which disables the cache.
+if [[ -z "${PIPELINE_MUSCLES_CACHE_DIR+set}" ]]; then
+    PIPELINE_MUSCLES_CACHE_DIR="$DIR/data/cache/muscles"
+fi
 export VELOX_LEXICON_ROOT
 export VELOX_MEDIA_EXECUTION_SLOTS
+export PIPELINE_MUSCLES_CACHE_DIR
+# Use the locally installed multilingual GLiNER NER model for semantic
+# extraction. Keep explicit paths so the worker does not silently fall back
+# when the service is launched with a different working directory.
+export BRAINRUST_NER_MODEL="${BRAINRUST_NER_MODEL:-gliner25}"
+export BRAINRUST_NER_LOCATION_THRESHOLD="${BRAINRUST_NER_LOCATION_THRESHOLD:-0.90}"
+export GLINER25_MODEL_DIR="${GLINER25_MODEL_DIR:-${HOME:-/home/pierone}/.local/share/visualner/models/gliner2.5-multi-v1-onnx}"
 set +a
 exec "$DIR/bin/pipelinegen" --mode "${VELOX_RUN_MODE:-all}"

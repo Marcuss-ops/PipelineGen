@@ -201,8 +201,8 @@ func (d *YTDLPDownloader) ensureFullSourceCached(ctx context.Context, videoURL, 
 		return "", fmt.Errorf("mirror unavailable")
 	}
 	key := mirrorKey(videoID, d.fullSourceFormatSignature(formatOverride, mergeFormat))
-	lockMirrorKey(key).Lock()
-	defer lockMirrorKey(key).Unlock()
+	unlock := lockMirrorKey(key)
+	defer unlock()
 	// The fetch below writes .fetch-<key>.* twins (plus .part debris on
 	// failure). Without cleanup every mirrored video occupies 2x disk — the
 	// twin plus the entry — forever. The entry is an independent link/copy

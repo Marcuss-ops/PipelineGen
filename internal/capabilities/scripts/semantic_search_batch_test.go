@@ -94,7 +94,7 @@ func TestSemanticSearchBatchMeasuresRealProviderOutcomes(t *testing.T) {
 		},
 		delays: map[string]time.Duration{exact.Text: 10 * time.Millisecond, sentence.Text: 40 * time.Millisecond},
 	}
-	report, err := batchPlanner(t, port, clock).Run(context.Background(), plan, "it")
+	report, err := batchPlanner(t, port, clock).Run(context.Background(), plan, "it", false)
 	if err != nil {
 		t.Fatalf("batch failed: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestSemanticSearchBatchReportsProviderErrorsAsTypedFailure(t *testing.T) {
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact),
 	)
 	port := &batchTestPort{clock: clock, errors: map[string]error{exact.Text: errors.New("provider exploded")}}
-	report, err := batchPlanner(t, port, clock).Run(context.Background(), plan, "it")
+	report, err := batchPlanner(t, port, clock).Run(context.Background(), plan, "it", false)
 	var providerErr *SemanticSearchProviderError
 	if !errors.As(err, &providerErr) {
 		t.Fatalf("a provider outage must be a typed failure, got %v", err)
@@ -169,7 +169,7 @@ func TestSemanticSearchBatchHonorsTheQueryBudget(t *testing.T) {
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact, sentence),
 	)
 	port := &batchTestPort{clock: clock}
-	report, err := batchPlanner(t, port, clock, SemanticSearchBatchConfig{MaxQueries: 1}).Run(context.Background(), plan, "it")
+	report, err := batchPlanner(t, port, clock, SemanticSearchBatchConfig{MaxQueries: 1}).Run(context.Background(), plan, "it", false)
 	if err == nil || !strings.Contains(err.Error(), "query budget") {
 		t.Fatalf("the safety bound must abort, got %v", err)
 	}
@@ -185,7 +185,7 @@ func TestSemanticSearchBatchStopsOnCancellation(t *testing.T) {
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	report, err := batchPlanner(t, &batchTestPort{clock: clock}, clock).Run(ctx, plan, "it")
+	report, err := batchPlanner(t, &batchTestPort{clock: clock}, clock).Run(ctx, plan, "it", false)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation must propagate, got %v", err)
 	}
@@ -202,14 +202,14 @@ func TestSemanticSearchBatchRequiresAPortAndAPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := planner.Run(context.Background(), nil, "it"); err == nil {
+	if _, err := planner.Run(context.Background(), nil, "it", false); err == nil {
 		t.Fatal("a nil plan must be rejected")
 	}
 }
 
 func TestSemanticSearchBatchWithNothingToSearchIsANoop(t *testing.T) {
 	plan, clock := batchPlan(t, planCandidate("vc_0001", "timeline", "s01", 1, nil, "timeline:g1"))
-	report, err := batchPlanner(t, &batchTestPort{clock: clock}, clock).Run(context.Background(), plan, "it")
+	report, err := batchPlanner(t, &batchTestPort{clock: clock}, clock).Run(context.Background(), plan, "it", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestSemanticSearchBatchResolvedHitBecomesAnOverlayBinding(t *testing.T) {
 		SemanticProductionPlan: plan,
 	}
 	runner := &Runner{semanticSearchPlanner: batchPlanner(t, port, clock)}
-	runner.executeSemanticSearchBatch(context.Background(), "it", result)
+	runner.executeSemanticSearchBatch(context.Background(), "it", result, false)
 
 	unit := plan.Units[0]
 	if unit.ResolvedImage == nil || unit.ResolvedImage.SHA256 != hash || unit.ResolvedImage.Provider != "wikimedia_commons" {
@@ -266,7 +266,7 @@ func TestRunnerExecutesTheSemanticSearchBatch(t *testing.T) {
 	}}
 	runner := &Runner{semanticSearchPlanner: batchPlanner(t, port, clock)}
 	result := &GenerateResult{SemanticProductionPlan: plan, SemanticSearchFeedback: plan.SearchFeedback()}
-	runner.executeSemanticSearchBatch(context.Background(), "it", result)
+	runner.executeSemanticSearchBatch(context.Background(), "it", result, false)
 	if result.SemanticSearchReport == nil || result.SemanticSearchReport.Metrics.Hits != 1 {
 		t.Fatalf("the runner must publish the measured report: %+v", result.SemanticSearchReport)
 	}
@@ -278,7 +278,7 @@ func TestRunnerExecutesTheSemanticSearchBatch(t *testing.T) {
 	}
 
 	offline := &GenerateResult{SemanticProductionPlan: plan}
-	(&Runner{}).executeSemanticSearchBatch(context.Background(), "it", offline)
+	(&Runner{}).executeSemanticSearchBatch(context.Background(), "it", offline, false)
 	if offline.SemanticSearchReport != nil {
 		t.Fatal("an unwired planner must leave the result untouched")
 	}

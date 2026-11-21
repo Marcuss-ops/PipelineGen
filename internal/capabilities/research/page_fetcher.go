@@ -96,14 +96,22 @@ func isPrivateIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsLinkLocalUnicast()
 }
 
+var (
+	htmlTitleRE = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	// Noise blocks (script/style/nav/footer/header) must be removed BEFORE the
+	// generic tag strip: otherwise their text survives as page content.
+	htmlNoiseRE  = regexp.MustCompile(`(?is)<(?:script|style|nav|footer|header)[^>]*>.*?</(?:script|style|nav|footer|header)>`)
+	htmlAnyTagRE = regexp.MustCompile(`(?is)<[^>]+>`)
+)
+
 func extractHTML(body []byte, maxChars int) (string, string) {
 	raw := string(body)
 	title := ""
-	if m := regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`).FindStringSubmatch(raw); len(m) == 2 {
+	if m := htmlTitleRE.FindStringSubmatch(raw); len(m) == 2 {
 		title = trimHTML(m[1], 0)
 	}
-	raw = regexp.MustCompile(`(?is)<(?:script|style|nav|footer|header)[^>]*>.*?</(?:script|style|nav|footer|header)>`).ReplaceAllString(raw, " ")
-	raw = regexp.MustCompile(`(?is)<[^>]+>`).ReplaceAllString(raw, " ")
+	raw = htmlNoiseRE.ReplaceAllString(raw, " ")
+	raw = htmlAnyTagRE.ReplaceAllString(raw, " ")
 	return trimHTML(raw, maxChars), title
 }
 func trimHTML(s string, n int) string {

@@ -94,7 +94,13 @@ type FinalAudioReference = audiocontract.FinalAudioReference
 //	clip_audio_prepare_ms                 clip_audio_prepare_ms (unchanged)
 //
 // Projection-only fields with no legacy equivalent: media_fetch_ms, upload_ms,
-// audio_rtf, audio_speed, tts_scenes.
+// audio_rtf, audio_speed, tts_scenes, prepare_ms, loudness_ms.
+//
+// prepare_ms/loudness_ms are the Rust renderer's OWN pre-mix measurements:
+// source probing, chain resolution and the one-per-path BGM mean-volume
+// measurement that decodes the whole music asset. They are carried like
+// mix_ms/aac_encode_ms — never re-timed here — so the render wall and its
+// operations close the same budget.
 //
 // Do NOT add new timing fields here as an authority; derive them from the
 // canonical RunReport and keep this struct stable for API consumers.
@@ -108,6 +114,8 @@ type AudioPipelineMetrics struct {
 	TimelineCompileMS   int64             `json:"timeline_compile_ms"`
 	AudioPlanCompileMS  int64             `json:"audio_plan_compile_ms"`
 	ClipAudioPrepareMS  int64             `json:"clip_audio_prepare_ms"`
+	PrepareMS           int64             `json:"prepare_ms"`
+	LoudnessMS          int64             `json:"loudness_ms"`
 	MixMS               int64             `json:"mix_ms"`
 	AACEncodeMS         int64             `json:"aac_encode_ms"`
 	ProbeMS             int64             `json:"probe_ms"`

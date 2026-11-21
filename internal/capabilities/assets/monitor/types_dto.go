@@ -32,6 +32,7 @@ package monitor
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 )
 
@@ -160,11 +161,35 @@ func TranslateLedgerSentinel(err error) error {
 // raw mutations from tests bypassing the helper would be a code-review
 // violation.
 //
-// Thread-safety note: defaultNowFn is read+write guarded by Go's data
-// race detector (CI runs with -race). Tests that mutate it must not
-// run in parallel with other monitor tests; production code never
-// mutates it.
-var defaultNowFn = time.Now
+// Thread-safety note: the seam is an atomic pointer, so a test swap and a
+// concurrent DateAfterFromCursor read cannot race even under -race. Tests
+// still should restore via t.Cleanup to avoid cross-test pollution, and
+// production code never swaps it.
+var defaultNowClock atomic.Pointer[func() time.Time]
+
+// resolvedDefaultNow returns the injected clock or time.Now when the seam is
+// unset. Nil pointer = production default.
+func resolvedDefaultNow() time.Time {
+	if p := defaultNowClock.Load(); p != nil {
+		return (*p)()
+	}
+	return time.Now()
+}
+
+// SetDefaultNowForTests replaces the lazy-default clock for
+// DateAfterFromCursor. Pass nil to restore the production default
+// (time.Now). Intended for test fixtures that need a deterministic
+// calendar day without real-time waits.
+//
+// Pair the swap with t.Cleanup(func() { SetDefaultNowForTests(nil) })
+// to avoid cross-test pollution. NOT safe to call from production code.
+func SetDefaultNowForTests(fn func() time.Time) {
+	if fn == nil {
+		defaultNowClock.Store(nil)
+		return
+	}
+	defaultNowClock.Store(&fn)
+}
 
 // DateAfterFromCursor bridges channel.LastCursor (an RFC3339
 // timestamp stored in category_channels.last_cursor) and channel.LookbackDays
@@ -193,7 +218,7 @@ var defaultNowFn = time.Now
 // default rather than an explicit time.Now literal).
 func DateAfterFromCursor(lastCursorRFC3339 string, lookbackDays int, now func() time.Time) string {
 	if now == nil {
-		now = defaultNowFn
+		now = resolvedDefaultNow
 	}
 	if lastCursorRFC3339 != "" {
 		// Truncate RFC3339 to YYYYMMDD. The first 10 characters of

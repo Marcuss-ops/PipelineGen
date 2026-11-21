@@ -239,16 +239,21 @@ func (d *DuckDuckGoSearchProvider) searchOnce(ctx context.Context, query string,
 // parseDDGHTML extracts search results from DuckDuckGo's HTML lite page.
 // Each result has a link with class "result__a" and a snippet with
 // class "result__snippet".
+// The DDG result shape is fixed, so its patterns are compiled once at package
+// init instead of twice per parsed page.
+var (
+	ddgResultLinkRE    = regexp.MustCompile(`<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>`)
+	ddgResultSnippetRE = regexp.MustCompile(`<a[^>]+class="result__snippet"[^>]*>(.*?)</a>`)
+	htmlTagRE          = regexp.MustCompile(`<[^>]+>`)
+)
+
 func parseDDGHTML(html string) []scriptports.WebSearchHit {
 	var hits []scriptports.WebSearchHit
 	seen := make(map[string]struct{})
 
 	// Extract result blocks: each result has a link and a snippet.
-	linkRe := regexp.MustCompile(`<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>`)
-	snippetRe := regexp.MustCompile(`<a[^>]+class="result__snippet"[^>]*>(.*?)</a>`)
-
-	links := linkRe.FindAllStringSubmatch(html, -1)
-	snippets := snippetRe.FindAllStringSubmatch(html, -1)
+	links := ddgResultLinkRE.FindAllStringSubmatch(html, -1)
+	snippets := ddgResultSnippetRE.FindAllStringSubmatch(html, -1)
 
 	for i, match := range links {
 		if len(match) < 3 {
@@ -287,7 +292,7 @@ func parseDDGHTML(html string) []scriptports.WebSearchHit {
 }
 
 func stripHTMLTags(s string) string {
-	s = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(s, " ")
+	s = htmlTagRE.ReplaceAllString(s, " ")
 	s = strings.Join(strings.Fields(s), " ")
 	return strings.TrimSpace(s)
 }

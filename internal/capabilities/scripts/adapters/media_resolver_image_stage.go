@@ -59,13 +59,20 @@ type internetImageCachePayload struct {
 }
 
 // internetImageNegativeFresh reports whether a negative entry may skip the
-// provider call. A zero timestamp is a legacy/unknown observation and is
-// treated as stale, so an old payload can never become a permanent block.
+// provider call under the canonical 15-minute observation window.
 func internetImageNegativeFresh(payload internetImageCachePayload, now time.Time) bool {
-	if !payload.Negative || payload.ObservedAt.IsZero() {
+	return internetImageNegativeFreshWithin(payload, now, internetImageNegativeTTL)
+}
+
+// internetImageNegativeFreshWithin is the same rule parameterized by the
+// policy TTL. A zero timestamp is a legacy/unknown observation and is treated
+// as stale, so an old payload can never become a permanent block; a non-positive
+// TTL means negative payloads are never replayable.
+func internetImageNegativeFreshWithin(payload internetImageCachePayload, now time.Time, ttl time.Duration) bool {
+	if !payload.Negative || payload.ObservedAt.IsZero() || ttl <= 0 {
 		return false
 	}
-	return !now.After(payload.ObservedAt.Add(internetImageNegativeTTL))
+	return !now.After(payload.ObservedAt.Add(ttl))
 }
 
 // entityImageL1Capacity bounds the canonical entity-key L1 (see

@@ -2,15 +2,13 @@ package scriptgeneration
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"go.uber.org/zap"
 )
 
 func imageSFXTestPlan() *capmodel.OverlayPlan {
@@ -36,79 +34,159 @@ func imageSFXTestPlan() *capmodel.OverlayPlan {
 	return plan
 }
 
-func TestAttachImageAssetSFXBindsPinsBySceneAndStartOrder(t *testing.T) {
-	assetBytes := []byte("explicit-image-cue-bytes")
-	sum := sha256.Sum256(assetBytes)
-	path := filepath.Join(t.TempDir(), "cue.m4a")
-	if err := os.WriteFile(path, assetBytes, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	source := newFakeAudioAssetSource(map[string]string{"whoosh": path})
+func TestOverlaySFXIntentsBindExplicitPinsBySceneAndStartOrder(t *testing.T) {
 	long := int64(2000)
 	gain := -6.0
 	pins := []scriptpkg.OverlayImageAsset{{
 		SceneID: "scene_1", AssetID: "image-pin",
 		SoundEffect: &scriptpkg.OverlayImageSoundEffect{AssetID: "whoosh", GainDB: &gain, DurationMS: &long},
 	}}
-	plan := imageSFXTestPlan()
-	if err := attachImageAssetSFX(context.Background(), source, []*capmodel.OverlayPlan{plan}, pins); err != nil {
-		t.Fatalf("attach explicit image SFX: %v", err)
+	req := GenerateRequest{OverlayImages: pins}
+	intents, err := overlaySFXIntentsForPlan(req, imageSFXTestPlan())
+	if err != nil {
+		t.Fatalf("project explicit image SFX: %v", err)
 	}
-
-	byID := map[string]*capmodel.OverlayItem{}
-	for index := range plan.Items {
-		byID[plan.Items[index].ID] = &plan.Items[index]
+	if len(intents) != 1 {
+		t.Fatalf("intents = %d, want 1 (one pin, one image item)", len(intents))
 	}
-	early := byID["scene-1:img:early"]
-	if early.SoundEffect == nil {
-		t.Fatalf("earliest image item did not receive the cue: %+v", early)
-	}
-	// The requested 2000 ms cue is clamped to the 800 ms visible window.
-	if early.SoundEffect.DurationMS != 800 {
-		t.Fatalf("duration = %d, want 800 (visible window clamp)", early.SoundEffect.DurationMS)
-	}
-	if early.SoundEffect.StartOffsetMS != 0 || early.SoundEffect.GainDB != -6 {
-		t.Fatalf("cue timing/gain = %+v", early.SoundEffect)
-	}
-	if early.SoundEffect.AssetRef.SHA256 != hex.EncodeToString(sum[:]) || early.SoundEffect.AssetRef.MediaType != "audio/mp4" {
-		t.Fatalf("cue asset identity = %+v", early.SoundEffect.AssetRef)
-	}
-	if !strings.HasPrefix(early.SoundEffect.AssetRef.URL, "assets/semantic/overlay-sfx-") {
-		t.Fatalf("cue url = %q", early.SoundEffect.AssetRef.URL)
-	}
-	if byID["scene-1:img:late"].SoundEffect != nil {
-		t.Fatal("only one pin was declared; the second image must stay unclaimed")
-	}
-	if err := plan.Validate(); err != nil {
-		t.Fatalf("sealed plan must validate: %v", err)
-	}
-	// A remaining random pass must not overwrite the explicit cue.
-	if err := attachRandomOverlaySFXFromAssets([]*capmodel.OverlayPlan{plan}, []randomOverlaySFXAsset{{path: path, sha256: hex.EncodeToString(sum[:])}}); err != nil {
-		t.Fatalf("random pass over explicit cue: %v", err)
-	}
-	if byID["scene-1:img:early"].SoundEffect.DurationMS != 800 {
-		t.Fatal("random pass overwrote the explicit cue")
+	cue := intents[0]
+	// The earliest image item is the first positional candidate.
+	if cue.AssetID != "whoosh" || cue.AtMS != 1000 || cue.DurationMS != 800 || cue.GainDB != -6 {
+		t.Fatalf("cue = %+v, want whoosh at 1000ms clamped to the 800ms window at -6dB", cue)
 	}
 }
 
-func TestAttachImageAssetSFXFailsClosed(t *testing.T) {
-	pins := []scriptpkg.OverlayImageAsset{{
-		SceneID: "scene_1", SoundEffect: &scriptpkg.OverlayImageSoundEffect{AssetID: "whoosh"},
-	}}
-	if err := attachImageAssetSFX(context.Background(), nil, []*capmodel.OverlayPlan{imageSFXTestPlan()}, pins); err == nil ||
-		!strings.Contains(err.Error(), "resolver") {
-		t.Fatalf("nil resolver must fail closed, got %v", err)
+func TestOverlaySFXIntentsRandomCoversEveryChainSegment(t *testing.T) {
+	plan := &capmodel.OverlayPlan{
+		PlanID: "plan-chain", VideoID: "video",
+		Items: []capmodel.OverlayItem{{
+			ID: "chain:1", SceneID: "scene_1", Kind: "image", TemplateID: "image_popup",
+			StartMs: 1000, EndMs: 4000,
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "chain", SHA256: strings.Repeat("c", 64)}},
+			ImageLayers: []capmodel.OverlayImageLayer{
+				{ID: "a", AssetID: "a", StartMS: 0, EndMS: 1000},
+				{ID: "b", AssetID: "b", StartMS: 1000, EndMS: 2200},
+				// A simultaneous layer at the same start must not add a cue.
+				{ID: "b2", AssetID: "b2", StartMS: 1000, EndMS: 1800},
+				{ID: "c", AssetID: "c", StartMS: 2200, EndMS: 3000},
+			},
+		}},
 	}
+	req := GenerateRequest{RandomSFXOnImageOverlay: true}
+	intents, err := overlaySFXIntentsForPlan(req, plan)
+	if err != nil {
+		t.Fatalf("project random chain SFX: %v", err)
+	}
+	if len(intents) != 3 {
+		t.Fatalf("intents = %d, want one per distinct chain segment start", len(intents))
+	}
+	wantStarts := []int64{1000, 2000, 3200}
+	for i, intent := range intents {
+		if intent.AtMS != wantStarts[i] {
+			t.Fatalf("intent %d at %dms, want %dms", i, intent.AtMS, wantStarts[i])
+		}
+		if intent.DurationMS != overlaySFXCueDurationMS || intent.GainDB != overlaySFXCueGainDB {
+			t.Fatalf("intent %d = %+v, want the editorial 250ms/-18dB cue", i, intent)
+		}
+		if !isBuiltInWhoosh(intent.AssetID) {
+			t.Fatalf("intent %d asset %q is not a bound whoosh alias", i, intent.AssetID)
+		}
+	}
+	// Determinism: retries must select the same cues.
+	again, err := overlaySFXIntentsForPlan(req, plan)
+	if err != nil {
+		t.Fatalf("re-project random chain SFX: %v", err)
+	}
+	for i := range intents {
+		if intents[i] != again[i] {
+			t.Fatalf("intent %d is not deterministic: %+v vs %+v", i, intents[i], again[i])
+		}
+	}
+}
 
-	source := newFakeAudioAssetSource(map[string]string{"whoosh": "/nonexistent/cue.m4a"})
+func isBuiltInWhoosh(assetID string) bool {
+	for _, alias := range scriptpkg.BuiltInWhooshAliases() {
+		if alias == assetID {
+			return true
+		}
+	}
+	return false
+}
+
+func TestOverlaySFXIntentsFailClosed(t *testing.T) {
 	over := []scriptpkg.OverlayImageAsset{
 		{SceneID: "scene_1", SoundEffect: &scriptpkg.OverlayImageSoundEffect{AssetID: "whoosh"}},
 		{SceneID: "scene_1", SoundEffect: &scriptpkg.OverlayImageSoundEffect{AssetID: "whoosh"}},
 		{SceneID: "scene_1", SoundEffect: &scriptpkg.OverlayImageSoundEffect{AssetID: "whoosh"}},
 	}
-	if err := attachImageAssetSFX(context.Background(), source, []*capmodel.OverlayPlan{imageSFXTestPlan()}, over); err == nil ||
+	if _, err := overlaySFXIntentsForPlan(GenerateRequest{OverlayImages: over}, imageSFXTestPlan()); err == nil ||
 		!strings.Contains(err.Error(), "declares 3 cues") {
 		t.Fatalf("more cues than image items must fail closed, got %v", err)
+	}
+
+	invalid := []scriptpkg.OverlayImageAsset{{
+		SceneID: "scene_1", SoundEffect: &scriptpkg.OverlayImageSoundEffect{},
+	}}
+	if _, err := overlaySFXIntentsForPlan(GenerateRequest{OverlayImages: invalid}, imageSFXTestPlan()); err == nil ||
+		!strings.Contains(err.Error(), "asset_id is required") {
+		t.Fatalf("invalid cue must fail closed, got %v", err)
+	}
+}
+
+// TestExtendAudioPlanWithOverlaySFXAddsCuesAndAssets certifies the wiring: the
+// projected cues become SFX events on the compiled master plan and every
+// referenced alias is present in the merged resolved-asset table.
+func TestExtendAudioPlanWithOverlaySFXAddsCuesAndAssets(t *testing.T) {
+	timeline := capabilityaudio.CanonicalTimeline{
+		Version: capabilityaudio.TimelineVersion, DurationUS: 10_000_000,
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene_1", Index: 0, TimelineStartUS: 0, DurationUS: 10_000_000,
+		}},
+	}
+	plan, err := capabilityaudio.Compile(timeline, capabilityaudio.DefaultAudioProfile())
+	if err != nil {
+		t.Fatalf("compile fixture plan: %v", err)
+	}
+	before := plan.PlanSHA256
+	source := newFakeAudioAssetSource(nil)
+	for _, alias := range scriptpkg.BuiltInWhooshAliases() {
+		canonical := capabilityaudio.CanonicalAssetID(alias)
+		source.assets[canonical] = capabilityaudio.ResolvedAudioAsset{AssetID: canonical, Path: "/p/" + alias + ".m4a"}
+	}
+	runner := &Runner{audioAssetSource: source, log: zap.NewNop()}
+	result := &GenerateResult{OverlayPlan: imageSFXTestPlan()}
+	extended, assets, err := runner.extendAudioPlanWithOverlaySFX(
+		context.Background(), "run", GenerateRequest{RandomSFXOnImageOverlay: true}, result, timeline, plan, nil)
+	if err != nil {
+		t.Fatalf("extend master plan: %v", err)
+	}
+	sfx := 0
+	var starts []int64
+	for _, track := range extended.Tracks {
+		if track.Role != capabilityaudio.TrackSFX {
+			continue
+		}
+		for _, event := range track.Events {
+			sfx++
+			starts = append(starts, event.TimelineStartUS)
+		}
+	}
+	if sfx != 2 || len(starts) != 2 || starts[0] != 1_000_000 || starts[1] != 2_000_000 {
+		t.Fatalf("sfx events = %d at %v, want the two image windows at 1s and 2s", sfx, starts)
+	}
+	if extended.PlanSHA256 == before {
+		t.Fatal("the extended master plan must be re-sealed")
+	}
+	if err := extended.Validate(); err != nil {
+		t.Fatalf("extended master plan must validate: %v", err)
+	}
+	if len(assets) == 0 {
+		t.Fatal("the merged asset table must carry the resolved cue aliases")
+	}
+	for _, asset := range assets {
+		if asset.Path == "" {
+			t.Fatalf("asset %q has an empty path", asset.AssetID)
+		}
 	}
 }
 

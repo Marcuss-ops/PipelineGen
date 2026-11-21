@@ -82,6 +82,15 @@ func classifyRunFailure(stage, code, message string) job.FailureClass {
 			return job.FailureConfiguration
 		}
 	case "TEXT_GENERATION_FAILED":
+		if has("circuit breaker") {
+			// The Ollama breaker is a 15 s per-model cooldown that opens after
+			// three failed calls on one worker; an open breaker means "no model
+			// was even asked", not "no model can serve this request". Treating
+			// it as configuration killed en/fr/pl of the r18 multilingual suite
+			// at attempt 1/3 one second after submit, while the identical it
+			// payload succeeded nine minutes later on another worker.
+			return job.FailureProvider
+		}
 		if has("all models ski", "no model", "model not available") {
 			return job.FailureConfiguration
 		}

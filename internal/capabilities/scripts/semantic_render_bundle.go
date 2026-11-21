@@ -15,7 +15,7 @@ import (
 // surfaces into the single cross-stage bundle. It intentionally consumes the
 // existing EntityTimeline, OverlayIntents and OverlayPlan; it never reruns
 // extraction, asset search or timing.
-func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Language, runID, videoID string, perSceneImages ...bool) (*capabilityoverlay.SemanticRenderBundleV1, error) {
+func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Language, runID, videoID string, perSceneImages ...overlayPlanImageOptions) (*capabilityoverlay.SemanticRenderBundleV1, error) {
 	if result == nil || result.EntityTimeline == nil {
 		return nil, nil
 	}
@@ -45,7 +45,7 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 		Scene:          scene,
 		OverlayIntents: append([]capmodel.OverlayIntent(nil), result.OverlayIntents...),
 	}
-	sceneScopedImages := len(perSceneImages) > 0 && perSceneImages[0]
+	sceneScopedImages := len(perSceneImages) > 0 && perSceneImages[0].perSceneEntityCards()
 	for _, timelineScene := range result.EntityTimeline.Scenes {
 		for _, occurrence := range timelineScene.Entities {
 			text := strings.TrimSpace(occurrence.Name)

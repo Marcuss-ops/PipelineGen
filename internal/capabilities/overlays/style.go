@@ -9,14 +9,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// maxImageFrameShadowBlurPX is the strict-Vulkan separable-blur ceiling the
-// native image-card path certifies (Chronon's native drop shadow accepts
-// radius <= 64). The same bound gates the payload at ingress, and the
-// projection passes the authored value through: ImageFrame and the flat
-// runtime override (consumed by frameFromImageParams) never clamp it, so the
-// declared look and the rendered look cannot diverge silently.
-const maxImageFrameShadowBlurPX = scriptpkg.MaxImageShadowBlurPX
-
 // BackgroundFromPayload projects a kernel background into the render plan
 // domain while retaining verified asset references and style fields.
 func BackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capmodel.OverlayBackground {
@@ -81,6 +73,31 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 		}
 		if len(background.Padding) > 0 {
 			plate["padding"] = append([]float64(nil), background.Padding...)
+		}
+		if background.Stroke != nil {
+			plate["stroke"] = map[string]any{
+				"color": background.Stroke.Color,
+				"width": background.Stroke.Width,
+			}
+		}
+		if background.Shadow != nil {
+			shadow := map[string]any{}
+			if background.Shadow.Color != "" {
+				shadow["color"] = background.Shadow.Color
+			}
+			if background.Shadow.Opacity != nil {
+				shadow["opacity"] = *background.Shadow.Opacity
+			}
+			if background.Shadow.Blur != nil {
+				shadow["blur"] = *background.Shadow.Blur
+			}
+			if len(background.Shadow.Offset) == 2 {
+				shadow["offset"] = append([]float64(nil), background.Shadow.Offset...)
+			}
+			plate["shadow"] = shadow
+		}
+		if len(background.Motions) > 0 {
+			plate["motions"] = append([]string(nil), background.Motions...)
 		}
 		params["style"] = mergeStyleParam(params["style"], map[string]any{"background": plate})
 	}

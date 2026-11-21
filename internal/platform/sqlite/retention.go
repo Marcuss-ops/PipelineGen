@@ -216,6 +216,11 @@ func execRetentionWithRetry(ctx context.Context, db *sql.DB, query string, args 
 		if !isRetentionBusy(err) {
 			return nil, err
 		}
+		// No backoff after the final attempt: the caller is about to receive
+		// the error, and sleeping first only delays it.
+		if attempt == 2 {
+			break
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -252,6 +257,10 @@ func checkpointWALWithRetry(ctx context.Context, db *sql.DB) (bool, error) {
 		}
 		if !busy {
 			return false, nil
+		}
+		// The 20th busy result is final; do not sleep before reporting it.
+		if attempt == 19 {
+			break
 		}
 		select {
 		case <-ctx.Done():

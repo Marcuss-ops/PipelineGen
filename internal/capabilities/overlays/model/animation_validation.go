@@ -30,9 +30,6 @@ func validateAnimationReferences(item OverlayItem) error {
 	if id := strings.TrimSpace(item.CaptionMotionID); id != "" && !capanimreg.AnimationSelectable(id, "entity.caption") && !capanimreg.AnimationSelectable(id, "phrase.all") {
 		return fmt.Errorf("caption motion %q is unknown, retired, or renderer-unsupported", id)
 	}
-	if id := strings.TrimSpace(item.CameraMotionID); id != "" && !capanimreg.AnimationSelectable(id, "entity.sequence_camera") {
-		return fmt.Errorf("camera motion %q is unknown, retired, or renderer-unsupported", id)
-	}
 	if id := strings.TrimSpace(item.GroupMotionID); id != "" {
 		if len(item.ImageLayers) < 2 {
 			return fmt.Errorf("group motion %q requires a composite with at least two image layers", id)
@@ -41,8 +38,8 @@ func validateAnimationReferences(item OverlayItem) error {
 		if !capanimreg.AnimationSelectable(id, group) {
 			return fmt.Errorf("group motion %q is unknown, retired, renderer-unsupported, or incompatible with %s", id, group)
 		}
-		if strings.TrimSpace(item.MotionID) != "" || strings.TrimSpace(item.CameraMotionID) != "" {
-			return fmt.Errorf("group motion %q is mutually exclusive with item and camera motions", id)
+		if strings.TrimSpace(item.MotionID) != "" {
+			return fmt.Errorf("group motion %q is mutually exclusive with item motion", id)
 		}
 		for _, layer := range item.ImageLayers {
 			if strings.TrimSpace(layer.MotionID) != "" {

@@ -10,6 +10,7 @@ package soundeffect
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +26,27 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
+
+// copyFileStream copies src to dst without holding the whole file in memory.
+func copyFileStream(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Chmod(dst, 0o644)
+}
 
 // errSfxDispatcherUnavailable is the fail-closed sentinel surfaced in the
 // HTTP body when the canonical DispatcherPort is not wired at
@@ -189,13 +211,11 @@ func (h *Handler) Generate(c *gin.Context) {
 		return
 	}
 	if err := os.Rename(tempFile, dest.LocalPath); err != nil {
-		inputData, err := os.ReadFile(tempFile)
-		if err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to read temp file: %w", err))
-			return
-		}
-		if err := os.WriteFile(dest.LocalPath, inputData, 0644); err != nil {
-			apiutil.InternalError(c, fmt.Errorf("failed to write local path: %w", err))
+		// Cross-device rename falls back to a copy. Stream it: the audio file is
+		// size-bounded by the request, but reading it whole into RAM for a copy
+		// is unnecessary work on every cross-device save.
+		if copyErr := copyFileStream(tempFile, dest.LocalPath); copyErr != nil {
+			apiutil.InternalError(c, fmt.Errorf("failed to move local file: %w", copyErr))
 			return
 		}
 	}

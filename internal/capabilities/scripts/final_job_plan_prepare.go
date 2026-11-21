@@ -297,11 +297,7 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 }
 
 func finalJobFrameDurationUS(frameCount, fpsNum, fpsDen int64) int64 {
-	if frameCount <= 0 || fpsNum <= 0 || fpsDen <= 0 {
-		return 0
-	}
-	numerator := frameCount * 1_000_000 * fpsDen
-	return (numerator + fpsNum/2) / fpsNum
+	return kernelmedia.FrameDurationUSAtFPS(frameCount, fpsNum, fpsDen)
 }
 
 func sameFinalJobAssetIdentity(a, b map[string]any) bool {

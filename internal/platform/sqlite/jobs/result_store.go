@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -104,6 +105,11 @@ func (r *SQLiteStore) RecordOverlayDriveLink(ctx context.Context, jobID string, 
 		return fmt.Errorf("record overlay Drive link: job id, item id and Drive link are required")
 	}
 	for attempt := 0; attempt < 12; attempt++ {
+		// A cancelled context must stop the compare-and-swap loop even when
+		// every UPDATE keeps losing the race.
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("record overlay Drive link: %w", err)
+		}
 		var status string
 		if err := r.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id = ?`, jobID).Scan(&status); err != nil {
 			return fmt.Errorf("record overlay Drive link: read job status: %w", err)
@@ -201,6 +207,13 @@ func (r *SQLiteStore) RecordOverlayDriveLink(ctx context.Context, jobID string, 
 		}
 		if n == 1 {
 			return nil
+		}
+		// Lost the CAS to a concurrent writer: yield briefly, jittered, so the
+		// retries are not a busy loop; the ctx check at the top ends it.
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("record overlay Drive link: %w", ctx.Err())
+		case <-time.After(time.Duration(attempt+1) * 3 * time.Millisecond):
 		}
 	}
 	return fmt.Errorf("record overlay Drive link: result for job %s kept changing", jobID)

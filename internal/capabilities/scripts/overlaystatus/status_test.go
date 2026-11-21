@@ -2,8 +2,10 @@ package overlaystatus
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -68,5 +70,52 @@ func TestUpdateEmptyRunIsNoOp(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("empty run wrote %d files", len(entries))
+	}
+}
+
+// TestUpdateConcurrentRunsStayIsolated pins the per-run lock: independent runs
+// write concurrently without serialising on one global mutex, and each document
+// remains a complete, latest-state JSON (the atomic replace is not lost under
+// contention).
+func TestUpdateConcurrentRunsStayIsolated(t *testing.T) {
+	t.Setenv("VELOX_OVERLAY_STATUS_DIR", t.TempDir())
+	const runs = 8
+	const steps = 20
+	var wg sync.WaitGroup
+	for i := 0; i < runs; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runID := fmt.Sprintf("run_%d", i)
+			for step := 0; step < steps; step++ {
+				Update(runID, func(status *Status) {
+					status.Stage = fmt.Sprintf("stage_%d", step)
+				})
+			}
+		}()
+	}
+	wg.Wait()
+
+	for i := 0; i < runs; i++ {
+		runID := fmt.Sprintf("run_%d", i)
+		data, err := os.ReadFile(Path(runID))
+		if err != nil {
+			t.Fatalf("%s: %v", runID, err)
+		}
+		var status Status
+		if err := json.Unmarshal(data, &status); err != nil {
+			t.Fatalf("%s: decode: %v", runID, err)
+		}
+		if status.Stage != fmt.Sprintf("stage_%d", steps-1) {
+			t.Fatalf("%s: stage = %q, want the last update", runID, status.Stage)
+		}
+	}
+	// The lock table must not retain entries after every document is released.
+	runLocks.Lock()
+	left := len(runLocks.entries)
+	runLocks.Unlock()
+	if left != 0 {
+		t.Fatalf("run lock table retained %d entries", left)
 	}
 }

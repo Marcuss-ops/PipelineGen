@@ -252,7 +252,7 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		return nil, fmt.Errorf("source asset is missing an immutable HTTPS identity")
 	}
 	assetID := finalJobPreparedAssetID(request, inputSHA)
-	durationUS := framesDurationUS(request.FrameCount)
+	durationUS := kernelmedia.FrameDurationUS(request.FrameCount)
 	if strings.TrimSpace(request.PlacementTag) != "" && len(strings.TrimSpace(request.ReuseFromSHA256)) == 64 {
 		// A second placement of bytes this run already certified. Encoding the
 		// same window again produces the same pictures at full encode cost, so

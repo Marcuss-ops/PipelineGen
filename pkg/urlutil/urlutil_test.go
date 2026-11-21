@@ -37,6 +37,48 @@ func TestExtractVideoID(t *testing.T) {
 	}
 }
 
+func TestDriveFileURL(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"blank", "   ", ""},
+		{"id", "1abc123def456", "https://drive.google.com/file/d/1abc123def456/view"},
+		{"padded id", " 1abc123def456 ", "https://drive.google.com/file/d/1abc123def456/view"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DriveFileURL(tt.id); got != tt.want {
+				t.Errorf("DriveFileURL(%q) = %q, want %q", tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDriveFileURLRoundTrips pins the one-spelling contract: the canonical
+// constructor must be parsed back to the same ID by the canonical parser, for
+// every URL shape the project accepts.
+func TestDriveFileURLRoundTrips(t *testing.T) {
+	const id = "1abc123def456"
+	for _, link := range []string{
+		DriveFileURL(id),
+		"https://drive.google.com/file/d/" + id + "?usp=drivesdk",
+		"https://drive.google.com/uc?id=" + id,
+		"https://drive.google.com/open?id=" + id,
+	} {
+		got, err := FileIDFromDriveLink(link)
+		if err != nil {
+			t.Errorf("FileIDFromDriveLink(%q): %v", link, err)
+			continue
+		}
+		if got != id {
+			t.Errorf("FileIDFromDriveLink(%q) = %q, want %q", link, got, id)
+		}
+	}
+}
+
 func TestFileIDFromDriveLink(t *testing.T) {
 	tests := []struct {
 		name    string

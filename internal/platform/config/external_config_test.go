@@ -29,6 +29,25 @@ func TestExternalConfigRustVisualNERPathBindings(t *testing.T) {
 	assert.Equal(t, "/opt/brainrust/visualner", cfg.External.RustVisualNERPath)
 }
 
+// TestExternalConfigRenderingGenStoreURLBindings pins the single read of
+// RENDERINGGEN_STORE_URL: the field carries the local store default, the YAML
+// key binds it, and the environment overrides both. The composition root then
+// consumes the parsed field instead of calling os.Getenv itself.
+func TestExternalConfigRenderingGenStoreURLBindings(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	assert.Equal(t, "http://127.0.0.1:9000", cfg.External.RenderingGenStoreURL)
+
+	if err := yaml.Unmarshal([]byte("external:\n  renderinggen_store_url: https://store.example\n"), cfg); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "https://store.example", cfg.External.RenderingGenStoreURL)
+
+	t.Setenv("RENDERINGGEN_STORE_URL", "https://store-env.example")
+	applyEnvVars(cfg)
+	assert.Equal(t, "https://store-env.example", cfg.External.RenderingGenStoreURL)
+}
+
 func TestExternalConfigLocationOverlayBindings(t *testing.T) {
 	t.Run("defaultsKeepGeocodingAndMapsDisabled", func(t *testing.T) {
 		cfg := &Config{}

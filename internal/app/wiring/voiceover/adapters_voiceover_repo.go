@@ -24,8 +24,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -512,23 +510,6 @@ func voiceoverCacheDurationMs(durationSeconds float64, meta map[string]any) int6
 		return int64(durationUS) / 1000
 	}
 	return int64(durationSeconds * 1000)
-}
-
-func driveFileIDFromLink(raw string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", fmt.Errorf("parse timing artifact link: %w", err)
-	}
-	if id := strings.TrimSpace(parsed.Query().Get("id")); id != "" {
-		return id, nil
-	}
-	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	for i := 0; i+1 < len(parts); i++ {
-		if parts[i] == "d" && strings.TrimSpace(parts[i+1]) != "" {
-			return strings.TrimSpace(parts[i+1]), nil
-		}
-	}
-	return "", fmt.Errorf("timing artifact link has no Drive file ID")
 }
 
 // parseRFC3339OrNow parses an RFC3339 timestamp string into time.Time,

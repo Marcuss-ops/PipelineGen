@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -81,6 +82,42 @@ func TestArgsWithoutBackgroundUsesBlackCanvas(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(args, " "), "color=c=black:s=1920x1080:r=24") {
 		t.Fatalf("black canvas missing: %v", args)
+	}
+}
+
+// TestArgsBudgetsFilterThreadsByClipCount pins the measured join speed lever:
+// the graph is no longer serialized to one filter thread, but the budget never
+// exceeds maxFilterThreads and never drops below the historical floor of one.
+func TestArgsBudgetsFilterThreadsByClipCount(t *testing.T) {
+	spec := validSpec(t)
+	args, err := Args(spec)
+	if err != nil {
+		t.Fatalf("Args: %v", err)
+	}
+	if got := args[indexOf(args, "-filter_complex_threads")+1]; got != "3" {
+		t.Fatalf("3-clip graph filter threads = %q, want 3", got)
+	}
+
+	dir := t.TempDir()
+	spec.Clips = spec.Clips[:0]
+	for i := 0; i < 13; i++ {
+		spec.Clips = append(spec.Clips, Clip{
+			Path:       touch(t, dir, fmt.Sprintf("extra-%02d.mp4", i)),
+			StartUS:    int64(i) * 1_000_000,
+			DurationUS: 1_000_000,
+		})
+	}
+	args, err = Args(spec)
+	if err != nil {
+		t.Fatalf("Args: %v", err)
+	}
+	if got := args[indexOf(args, "-filter_complex_threads")+1]; got != "4" {
+		t.Fatalf("13-clip graph filter threads = %q, want the %d cap", got, maxFilterThreads)
+	}
+	// The decoder bound is what the memory fix owns: it must stay pinned on
+	// the background and on every clip input.
+	if got := strings.Count(strings.Join(args, " "), "-threads 1"); got != len(spec.Clips)+1 {
+		t.Fatalf("pinned decoder threads = %d, want %d (background + clips)", got, len(spec.Clips)+1)
 	}
 }
 

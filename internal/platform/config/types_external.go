@@ -190,6 +190,14 @@ type ExternalConfig struct {
 	// "reduce latency" on a deployment that exposes GET /jobs/{id}/wait.
 	RenderingGenPollIntervalMS int `yaml:"renderinggen_poll_interval_ms" env:"RENDERINGGEN_POLL_INTERVAL_MS" default:"0"`
 
+	// RenderingGenStoreURL is the object store RenderingGen and the producer
+	// share: rendered artifacts are read back from it (overlay clip fetch,
+	// prepared packages, Chronon timing sidecars) and written to it by the
+	// queue producer. RENDERINGGEN_STORE_URL is the environment override and
+	// this loader is the ONLY reader; the composition root consumes the parsed
+	// field instead of re-reading the environment.
+	RenderingGenStoreURL string `yaml:"renderinggen_store_url" env:"RENDERINGGEN_STORE_URL" default:"http://127.0.0.1:9000"`
+
 	// GeocodingBaseURL wires a Nominatim-compatible geocoder for grounded
 	// location overlays. Empty leaves location map generation unavailable.
 	GeocodingBaseURL string `yaml:"geocoding_base_url" env:"VELOX_GEOCODING_BASE_URL" default:""`

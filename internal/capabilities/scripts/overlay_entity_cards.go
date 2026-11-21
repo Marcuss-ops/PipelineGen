@@ -18,7 +18,6 @@ import (
 	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -44,75 +43,14 @@ func entityCardKind(kind capmodel.OverlayKind) bool {
 // image reaches the renderer. A nil or empty plan is a no-op, so deployments
 // without the consolidated view keep producing exactly the plans they produced
 // before.
-func admitIdentityImagesByProductionPlan(items []capmodel.OverlayItem, plan *SemanticProductionPlan) []capmodel.OverlayItem {
-	if plan == nil || len(plan.Identity) == 0 || len(items) == 0 {
-		return items
-	}
-	admitted := plan.IdentitiesAdmittedForMedia()
-	out := make([]capmodel.OverlayItem, 0, len(items))
-	for _, item := range items {
-		if len(item.AssetRefs) == 0 {
-			out = append(out, item)
-			continue
-		}
-		name := ""
-		if item.EntityRef != nil {
-			name = strings.TrimSpace(item.EntityRef.Name)
-		}
-		if name == "" {
-			name = strings.TrimSpace(item.EntityCaption)
-		}
-		if name == "" {
-			// The item cannot be attributed to an identity: keep it rather than
-			// silently dropping a composition the plan never judged.
-			out = append(out, item)
-			continue
-		}
-		if _, ok := admitted[normalizeIdentitySurface(name)]; ok {
-			out = append(out, item)
-			continue
-		}
-		// The asset already exists in verified form. The semantic plan's media
-		// budget controls acquisition, not whether produced bytes may render.
-		if overlayItemHasVerifiedIdentityAsset(item) {
-			out = append(out, item)
-			continue
-		}
-		out = append(out, demoteEntityImageToTextCard(item, name))
-	}
-	return out
-}
-
 // overlayItemHasVerifiedIdentityAsset reports whether the item carries a
 // content-addressed asset reference. Such a reference is the result of the
 // verified bundle/annotation binding; it is not an unproven search hit.
-func overlayItemHasVerifiedIdentityAsset(item capmodel.OverlayItem) bool {
-	for _, ref := range item.AssetRefs {
-		if overlayLooksLikeSHA256(ref.SHA256) || overlayLooksLikeSHA256(ref.AssetID) {
-			return true
-		}
-	}
-	return false
-}
 
 // demoteEntityImageToTextCard keeps the identity and its certified timing when
 // the image lacks verified bytes and the production plan did not admit it. The
 // alternative used to be deleting the whole overlay, which made a planned
 // person disappear from the run with no audit row and no text fallback.
-func demoteEntityImageToTextCard(item capmodel.OverlayItem, name string) capmodel.OverlayItem {
-	item.AssetRefs = nil
-	item.ImageLayers = nil
-	item.EntityCaption = ""
-	item.Text = name
-	if item.EntityRef != nil {
-		kind := capmodel.EntityTypeToKind(item.EntityRef.Type)
-		item.Kind = string(kind)
-		if entry, err := capmodel.DefaultChrononOverlayRegistry.Resolve(string(kind)); err == nil {
-			item.TemplateID = entry.Template
-		}
-	}
-	return item
-}
 
 // entityCardMediaIndex builds the run-scoped, canonical_entity_id-keyed media
 // index from the result's OWN entity-image bindings: every entity-card-kind
@@ -130,8 +68,8 @@ func demoteEntityImageToTextCard(item capmodel.OverlayItem, name string) capmode
 // The second return maps each annotated entity's StableEntityID to its
 // canonical id, so a resolver card item (keyed by the same StableEntityID)
 // can look up the identity to resolve.
-func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capabilityentities.EntityMediaResolver, map[string]string) {
-	sceneScoped := len(perSceneImages) > 0 && perSceneImages[0]
+func entityCardMediaIndex(result *GenerateResult, perSceneImages ...overlayPlanImageOptions) (*capabilityentities.EntityMediaResolver, map[string]string) {
+	sceneScoped := len(perSceneImages) > 0 && perSceneImages[0].perSceneEntityCards()
 	index := capabilityentities.NewEntityMediaIndex()
 	media := capabilityentities.NewEntityMediaResolver()
 	canonicalByStable := map[string]string{}
@@ -375,13 +313,13 @@ func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
 // first occurrence is deterministic and preserves the earliest spoken
 // identities. Later occurrences of a retained identity do not consume a
 // second image slot.
-func capEntityImageOverlays(items []capmodel.OverlayItem, max int, perScene ...bool) []capmodel.OverlayItem {
+func capEntityImageOverlays(items []capmodel.OverlayItem, max int, perScene ...overlayPlanImageOptions) []capmodel.OverlayItem {
 	if max <= 0 || len(items) == 0 {
 		return items
 	}
 	seen := make(map[string]struct{}, max)
 	seenAssetHashes := make(map[string]struct{}, max)
-	perSceneImages := len(perScene) > 0 && perScene[0]
+	perSceneImages := len(perScene) > 0 && perScene[0].perSceneEntityCards()
 	out := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
 		if item.Kind != string(capmodel.KindEntityImage) {
@@ -465,19 +403,3 @@ func capEntityImageOverlays(items []capmodel.OverlayItem, max int, perScene ...b
 // binding's verified content address (SHA256) is carried through so the
 // planner's asset ref and the queue manifest stay content-addressed (a
 // missing hash would silently drop the asset from the render manifest).
-func imageCandidate(binding *scriptpkg.EntityImageBinding, occ *capabilityentities.EntityOccurrence, score float64) capabilityoverlay.ImageCandidate {
-	startUS := (occ.AudioStartUS / 1000) * 1000
-	durationUS := capabilityentities.EntitySpokenWindowDuration(occ.AudioStartUS, occ.AudioEndUS)
-	return capabilityoverlay.ImageCandidate{
-		AssetID:    binding.SHA256,
-		URL:        entityImageURL(binding),
-		LocalPath:  binding.LocalPath,
-		SHA256:     binding.SHA256,
-		MediaType:  "image",
-		StartMs:    startUS / 1000,
-		EndMs:      startUS/1000 + durationUS/1000,
-		StartUS:    startUS,
-		DurationUS: durationUS,
-		Score:      score,
-	}
-}

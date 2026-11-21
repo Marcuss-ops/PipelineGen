@@ -139,7 +139,7 @@ func preferSelectableVidRushImages(in []scriptpkg.SegmentAssetCandidate) []scrip
 	}
 	addressed := make([]scriptpkg.SegmentAssetCandidate, 0, len(in))
 	for _, candidate := range in {
-		if isHexSHA256(candidate.ContentSHA256) {
+		if digest.IsSHA256(strings.TrimSpace(candidate.ContentSHA256)) {
 			addressed = append(addressed, candidate)
 		}
 	}

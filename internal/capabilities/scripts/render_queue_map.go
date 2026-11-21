@@ -363,12 +363,6 @@ func mapLevelCameraZooms(level string) (float64, float64, bool) {
 	}
 }
 
-// mapBasemapStyles returns the active cartographic palette for map_type=random.
-// TestMapBasemapStylesMatchChrononPalette guards cross-repository drift.
-func mapBasemapStyles() []string {
-	return capoverlay.AnimationCandidates("map.basemap")
-}
-
 var mapCameraAnimations = capoverlay.AnimationRandomCandidates("map.camera")
 
 // mapCameraAnimationsCertified lists every camera id the Python renderer

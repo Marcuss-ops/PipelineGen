@@ -19,7 +19,6 @@ package imagesregistry
 
 import (
 	"database/sql"
-	"fmt"
 	"strings"
 	"time"
 
@@ -27,6 +26,7 @@ import (
 	platformlogger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // ── Sql* type aliases (canonical back-compat surface) ──────────────────
@@ -171,7 +171,7 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 	// once the file has been published. This preserves the original
 	// source in metadata while surfacing the link users can actually open.
 	if driveFileIDNull.String != "" && !strings.Contains(a.SourceURL, "drive.google.com/") {
-		a.SourceURL = fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileIDNull.String)
+		a.SourceURL = urlutil.DriveFileURL(driveFileIDNull.String)
 	}
 
 	// Legacy fallback: drive_folder_id → folder_id.

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // ImageReader is the PostgreSQL media-SSOT reader for image identity lookups.
@@ -152,7 +153,7 @@ func canonicalPGImageURL(url, driveLink, driveFileID string) string {
 		return trimmed
 	}
 	if trimmed := strings.TrimSpace(driveFileID); trimmed != "" {
-		return fmt.Sprintf("https://drive.google.com/file/d/%s/view", trimmed)
+		return urlutil.DriveFileURL(trimmed)
 	}
 	return ""
 }

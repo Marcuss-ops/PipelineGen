@@ -15,6 +15,8 @@ func TestPayloadTextStyleReachesCaptionedEntityImagesAndChainSegments(t *testing
 	glow := 18.0
 	opacity := 0.82
 	radius := 10.0
+	shadowOpacity := 0.55
+	shadowBlur := 18.0
 	style := &scriptpkg.OverlayStyleSpec{
 		FontFamily: "oswald",
 		Color:      []float64{1.0, 0.78, 0.25, 1.0},
@@ -24,6 +26,11 @@ func TestPayloadTextStyleReachesCaptionedEntityImagesAndChainSegments(t *testing
 		// card_background every text lane uses; its colour is caller-owned.
 		CardBackground: &scriptpkg.OverlayCardBackgroundSpec{
 			Color: "#12233A", Opacity: &opacity, Radius: &radius, Padding: []float64{16, 10},
+			Stroke: &scriptpkg.OverlayCardBackgroundStrokeSpec{Color: "#FFD159", Width: 2.5},
+			Shadow: &scriptpkg.OverlayCardBackgroundShadowSpec{
+				Color: "#000000", Opacity: &shadowOpacity, Blur: &shadowBlur, Offset: []float64{0, 6},
+			},
+			Motions: []string{"fade", "slide_up"},
 		},
 	}
 	items := []capmodel.OverlayItem{
@@ -110,5 +117,17 @@ func assertCaptionBackground(t *testing.T, params map[string]any, label string) 
 	padding, ok := plate["padding"].([]float64)
 	if !ok || len(padding) != 2 || padding[0] != 16 || padding[1] != 10 {
 		t.Errorf("%s plate padding = %#v, want [16 10]", label, plate["padding"])
+	}
+	stroke, ok := plate["stroke"].(map[string]any)
+	if !ok || stroke["color"] != "#FFD159" || stroke["width"] != 2.5 {
+		t.Errorf("%s plate stroke = %#v, want #FFD159 at 2.5", label, plate["stroke"])
+	}
+	shadow, ok := plate["shadow"].(map[string]any)
+	if !ok || shadow["color"] != "#000000" || shadow["blur"] != 18.0 || shadow["opacity"] != 0.55 {
+		t.Errorf("%s plate shadow = %#v, want #000000 blur 18 opacity 0.55", label, plate["shadow"])
+	}
+	motions, ok := plate["motions"].([]string)
+	if !ok || len(motions) != 2 || motions[0] != "fade" || motions[1] != "slide_up" {
+		t.Errorf("%s plate motions = %#v, want [fade slide_up]", label, plate["motions"])
 	}
 }

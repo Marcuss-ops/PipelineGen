@@ -75,6 +75,57 @@ func TestProjectSemanticPersonRelationsAndEventsRequiresGroundedEvidence(t *test
 	}
 }
 
+func TestProjectSemanticEventsCollapsesIdenticalDuplicateFrames(t *testing.T) {
+	eventText := "Marco was arrested in Rome."
+	triggerStart := strings.Index(eventText, "was arrested")
+	event := semanticEngineEventFrame{
+		ID: "ev_01", EventType: "arrest", Trigger: "was arrested", TriggerStartByte: triggerStart,
+		TriggerEndByte: triggerStart + len("was arrested"), Participants: []semanticEngineEventParticipant{{Role: "patient", EntityID: "person_01"}},
+		Status: "asserted", SceneIDs: []string{"s1"}, Evidence: []semanticEngineEventEvidence{{SceneID: "s1", StartByte: 0, EndByte: len(eventText), Text: eventText}},
+	}
+	events, err := projectSemanticEvents(map[string]string{"s1": eventText}, []semanticEngineSceneManifest{{SceneID: "s1"}}, []semanticEngineLinkedEntity{{LocalID: "person_01"}}, []semanticEngineEventFrame{event, event})
+	if err != nil {
+		t.Fatalf("identical duplicate event was rejected: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %d, want the identical duplicate collapsed to 1", len(events))
+	}
+}
+
+func TestProjectSemanticEventsCollapsesLabelOnlyDuplicateFrames(t *testing.T) {
+	eventText := "Marco was arrested in Rome."
+	triggerStart := strings.Index(eventText, "was arrested")
+	event := semanticEngineEventFrame{
+		ID: "ev_01", EventType: "arrest", Trigger: "was arrested", TriggerStartByte: triggerStart,
+		TriggerEndByte: triggerStart + len("was arrested"), Participants: []semanticEngineEventParticipant{{Role: "patient", EntityID: "person_01"}},
+		Status: "asserted", SceneIDs: []string{"s1"}, Evidence: []semanticEngineEventEvidence{{SceneID: "s1", StartByte: 0, EndByte: len(eventText), Text: eventText}},
+	}
+	relabelled := event
+	relabelled.EventType = "match_competition_result"
+	events, err := projectSemanticEvents(map[string]string{"s1": eventText}, []semanticEngineSceneManifest{{SceneID: "s1"}}, []semanticEngineLinkedEntity{{LocalID: "person_01"}}, []semanticEngineEventFrame{event, relabelled})
+	if err != nil {
+		t.Fatalf("same grounded event with a second label was rejected: %v", err)
+	}
+	if len(events) != 1 || events[0].EventType != "arrest" {
+		t.Fatalf("events = %+v, want one event keeping the first label", events)
+	}
+}
+
+func TestProjectSemanticEventsRejectsConflictingDuplicateFrames(t *testing.T) {
+	eventText := "Marco was arrested in Rome."
+	triggerStart := strings.Index(eventText, "was arrested")
+	event := semanticEngineEventFrame{
+		ID: "ev_01", EventType: "arrest", Trigger: "was arrested", TriggerStartByte: triggerStart,
+		TriggerEndByte: triggerStart + len("was arrested"), Participants: []semanticEngineEventParticipant{{Role: "patient", EntityID: "person_01"}},
+		Status: "asserted", SceneIDs: []string{"s1"}, Evidence: []semanticEngineEventEvidence{{SceneID: "s1", StartByte: 0, EndByte: len(eventText), Text: eventText}},
+	}
+	conflicting := event
+	conflicting.Trigger = "convicted"
+	if _, err := projectSemanticEvents(map[string]string{"s1": eventText}, []semanticEngineSceneManifest{{SceneID: "s1"}}, []semanticEngineLinkedEntity{{LocalID: "person_01"}}, []semanticEngineEventFrame{event, conflicting}); err == nil {
+		t.Fatal("conflicting duplicate event id passed")
+	}
+}
+
 func TestProjectSemanticPersonRelationRejectsMissingIdentity(t *testing.T) {
 	source := "Marco is father of Luca."
 	_, err := projectSemanticPersonRelations(source, []semanticEngineIdentity{{ID: "person_01"}}, []semanticEnginePersonRelation{{

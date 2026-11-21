@@ -30,3 +30,30 @@ func TestRemoteFinalJobTimingKeepsSegmentPrepAcrossMerge(t *testing.T) {
 		t.Fatalf("new handoff segment_prep = %+v, want the newer observation", next.SegmentPrep)
 	}
 }
+
+// TestRemoteFinalJobTimingKeepsArtifactDownloadAcrossMerge pins the transfer
+// block: the attach observes Master phases only, so merging it must not erase
+// the download the adapter measured while materializing the artifact.
+func TestRemoteFinalJobTimingKeepsArtifactDownloadAcrossMerge(t *testing.T) {
+	base := &RemoteFinalJobTiming{
+		HandoffMS:             22_197,
+		ArtifactDownloadMS:    257_400,
+		ArtifactDownloadBytes: 891_734_780,
+	}
+	merged := base.Merge(&RemoteFinalJobTiming{QueueMS: 601_000, ExecutionMS: 26_473, WaitMS: 626_622})
+	if merged.ArtifactDownloadMS != 257_400 || merged.ArtifactDownloadBytes != 891_734_780 {
+		t.Fatalf("artifact download lost across merge: %+v", merged)
+	}
+	if merged.HandoffMS != 22_197 || merged.QueueMS != 601_000 {
+		t.Fatalf("merge must keep both sides: %+v", merged)
+	}
+	// Reuse is monotone: a later attach can only see the deterministic temp
+	// file already verified.
+	reused := merged.Merge(&RemoteFinalJobTiming{ArtifactDownloadReused: true})
+	if !reused.ArtifactDownloadReused {
+		t.Fatal("artifact_download_reused must survive a later attach merge")
+	}
+	if again := reused.Merge(&RemoteFinalJobTiming{ArtifactDownloadMS: 12}); again.ArtifactDownloadReused != true {
+		t.Fatal("a measured transfer must not clear a proven reuse")
+	}
+}

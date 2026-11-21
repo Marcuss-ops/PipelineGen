@@ -24,7 +24,11 @@
 # WHAT A PROFILE MAY DECLARE (all optional):
 #   subtitles       mode (burn|sidecar) + canonical preset + inline style
 #   watermark       text watermark (position/margin/opacity/style)
-#   overlay_style   phrase/word overlay color, size, shadow, entry animation
+#   overlay_style   phrase/word overlay block: the SAME keys as the published
+#                   overlay_style contract (color, size, shadow, transition_in,
+#                   font_family, glow_size, glow_color, stroke_size, bullet,
+#                   cursor, image, card_background). It decodes straight into
+#                   the kernel type, so no field is profile-only.
 #   sound_effects   SFX intents (absolute at_ms, or scene_id+anchor+offset)
 #   mix_policy      VOICEOVER_ONLY | VOICEOVER_DUCKED_CLIP
 #
@@ -34,6 +38,8 @@
 #
 # Vocabularies (validated at boot, fail-closed):
 #   subtitles.preset  → canonical subtitle presets (kernel/output_spec.go)
+#   overlay_style.shadow  a declared block is ENABLED by intent; write
+#                       enabled: false to keep the tuning but turn the shadow off
 #   image_motions     → certified layer-only image motions; empty = the
 #                       curated ten-motion single-image default. A non-empty
 #                       list explicitly replaces that default.

@@ -9,9 +9,8 @@
 package images
 
 import (
-	"fmt"
-
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 
 	"github.com/gin-gonic/gin"
 )
@@ -119,7 +118,7 @@ func imageDriveBlock(a *detail.ImageAsset) gin.H {
 	}
 	link := ""
 	if a.DriveFileID != "" {
-		link = fmt.Sprintf("https://drive.google.com/file/d/%s/view", a.DriveFileID)
+		link = urlutil.DriveFileURL(a.DriveFileID)
 	}
 	return gin.H{
 		"path":      a.PathRel,

@@ -2,7 +2,6 @@ package types
 
 import (
 	"strings"
-	"sync/atomic"
 )
 
 // FilteringConfig allows external packages to override the default filtering
@@ -12,14 +11,6 @@ type FilteringConfig struct {
 	StopPhrases      []string
 	SpeakerLabels    []string
 	MetaContentTypes []string
-}
-
-var filteringOverride atomic.Pointer[FilteringConfig]
-
-// SetFilteringConfig overrides the default filtering lists used by CleanScript.
-// Safe to call once at init time; reads in CleanScript are lock-free.
-func SetFilteringConfig(cfg FilteringConfig) {
-	filteringOverride.Store(&cfg)
 }
 
 // sanitizeInput removes potential injection from prompt

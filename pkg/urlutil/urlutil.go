@@ -140,6 +140,19 @@ func FileIDFromDriveLink(rawLink string) (string, error) {
 	return "", fmt.Errorf("unrecognised drive URL path: %q", parsed.Path)
 }
 
+// DriveFileURL builds the canonical human-facing Drive file link for a file
+// ID. It is the ONE constructor of that shape: every producer that publishes
+// or stores a web link builds it here, so the spelling cannot drift and
+// FileIDFromDriveLink round-trips it. An empty ID yields "" (no link) instead
+// of a malformed URL.
+func DriveFileURL(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	return "https://drive.google.com/file/d/" + id + "/view"
+}
+
 // FolderIDFromDriveLink extracts the folder ID from a Google Drive folder
 // URL. Behaviour is permissive: if the input is empty, the function
 // returns "". If the input is not a URL (or is a URL whose path doesn't

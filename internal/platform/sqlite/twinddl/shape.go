@@ -206,6 +206,7 @@ var (
 	// on the full keyword WITH its delimiter so a column named
 	// checkpoint_stage is never mistaken for a CHECK clause.
 	tableConstraintRe = regexp.MustCompile(`(?is)^(PRIMARY\s+KEY\s*\(|FOREIGN\s+KEY\s*\(|CONSTRAINT\s+|UNIQUE\s*\(|CHECK\s*\()`)
+	whereClauseRE     = regexp.MustCompile(`(?is)\bWHERE\b`)
 	tablePKRe         = regexp.MustCompile(`(?is)^PRIMARY\s+KEY\s*\(`)
 	tableCheckRe      = regexp.MustCompile(`(?is)^CHECK\s*\(`)
 )
@@ -437,7 +438,7 @@ func parseIndexTail(text string, open int) (cols, where string, partial bool) {
 	if stop := strings.Index(rest, ";"); stop >= 0 {
 		rest = rest[:stop]
 	}
-	if wm := regexp.MustCompile(`(?is)\bWHERE\b`).FindStringIndex(rest); wm != nil {
+	if wm := whereClauseRE.FindStringIndex(rest); wm != nil {
 		where = normalizeExpr(strings.TrimSpace(rest[wm[1]:]))
 		partial = where != ""
 	}

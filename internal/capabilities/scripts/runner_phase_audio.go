@@ -58,6 +58,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 	var err error
 	var canonicalTimeline capabilityaudio.CanonicalTimeline
 	var compiledAudioPlan capabilityaudio.CompiledAudioPlan
+	var audioAssets capabilityaudio.ResolvedAudioAssets
 	overlayPrepared := false
 	// planBranch is the P1 detached overlay-plan computation. It is started
 	// only on the COMBINED_TIMELINE path (where the master compile is heavy)
@@ -129,7 +130,6 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			if out != nil && out.OnPlanReady != nil {
 				out.Barrier = r.startOverlayRenderBarrier(ctx, runID, req, exec, resumeIdx, planBranch)
 			}
-			var audioAssets capabilityaudio.ResolvedAudioAssets
 			var compileTimings AudioCompileTimings
 			policy, clipAudioSource := r.combinedAudioInputs(result, req)
 			// Clip audio is materialized in EVERY lane since the 2026-09-30
@@ -199,7 +199,22 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				} else {
 					planProjected = r.compileAudioOverlayPlan(ctx, runID, req, exec, payloadStep, result)
 				}
-				if !planProjected || !out.OnPlanReady(result) {
+				if !planProjected {
+					return false
+				}
+				// The overlay plan is final NOW: project its image cues onto the
+				// master before the render (and before the overlay render fork
+				// starts) so both consumers see the same sealed plan.
+				extendedPlan, extendedAssets, sfxErr := r.extendAudioPlanWithOverlaySFX(ctx, runID, req, result, canonicalTimeline, compiledAudioPlan, audioAssets)
+				if sfxErr != nil {
+					cause := fmt.Errorf("overlay SFX projection into master audio: %w", sfxErr)
+					r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
+					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+					return false
+				}
+				compiledAudioPlan, audioAssets = extendedPlan, extendedAssets
+				result.AudioPlan = &compiledAudioPlan
+				if !out.OnPlanReady(result) {
 					return false
 				}
 				overlayPrepared = true
@@ -219,6 +234,19 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		result.CanonicalTimeline = &canonicalTimeline
 		if !r.projectAudioOverlayPlan(ctx, runID, req, exec, payloadStep, result, planBranch, overlayPrepared) {
 			return false
+		}
+		// Serial callers project the overlay plan here (the overlap path already
+		// did it before its render fork), so extend the master in the same place.
+		if !overlayPrepared && mode == capabilityaudio.AudioModeCombinedTimeline {
+			extendedPlan, extendedAssets, sfxErr := r.extendAudioPlanWithOverlaySFX(ctx, runID, req, result, canonicalTimeline, compiledAudioPlan, audioAssets)
+			if sfxErr != nil {
+				cause := fmt.Errorf("overlay SFX projection into master audio: %w", sfxErr)
+				r.failExecutionStepBestEffort(ctx, exec, payloadStep, cause)
+				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+				return false
+			}
+			compiledAudioPlan, audioAssets = extendedPlan, extendedAssets
+			result.AudioPlan = &compiledAudioPlan
 		}
 		r.logLocationOverlayPlan(req, result)
 	}

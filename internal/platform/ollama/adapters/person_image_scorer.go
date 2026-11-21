@@ -10,7 +10,6 @@ import (
 	"image"
 	"image/jpeg"
 	"math"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -66,7 +65,7 @@ func NewOllamaPersonImageScorer(client personImageScorerClient) *OllamaPersonIma
 		client:                 client,
 		MaxAttemptsPerIdentity: defaultVisualAttemptsPerIdentity,
 		download: func(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
-			data, mime, err := scriptadapters.DownloadVidRushImageForCandidate(ctx, http.DefaultClient, candidate, scriptadapters.DefaultVidRushImagePolicy())
+			data, mime, err := scriptadapters.DownloadVidRushImageForCandidate(ctx, scriptadapters.ProviderImageHTTPClient(), candidate, scriptadapters.DefaultVidRushImagePolicy())
 			return data, mime, err
 		},
 	}
@@ -187,7 +186,7 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 		download := s.download
 		if download == nil {
 			download = func(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
-				data, mime, err := scriptadapters.DownloadVidRushImageForCandidate(ctx, http.DefaultClient, candidate, scriptadapters.DefaultVidRushImagePolicy())
+				data, mime, err := scriptadapters.DownloadVidRushImageForCandidate(ctx, scriptadapters.ProviderImageHTTPClient(), candidate, scriptadapters.DefaultVidRushImagePolicy())
 				return data, mime, err
 			}
 		}

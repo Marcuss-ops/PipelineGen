@@ -32,7 +32,7 @@ import (
 
 // compileResultOverlayPlan attaches the sealed source/localized plans and
 // freezes their semantic intent lineage without mutating the prepare input.
-func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) error {
+func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) error {
 	if result == nil {
 		return nil
 	}
@@ -354,7 +354,7 @@ func entityTimelineLanguage(timeline *capabilityentities.EntityTimeline) string 
 // boundary shared by the source-language compatibility plan and translated
 // plans. Drive routing stays in the application-only plan field and never
 // crosses the RenderingGen queue contract.
-func compileOverlayPlanForLanguage(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
+func compileOverlayPlanForLanguage(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
 	plan, err := CompileOverlayPlanWithRustResolver(ctx, result, language, canvas, planID, planID, projectID, plates, compiler, perSceneImages...)
 	if err != nil {
 		return nil, err
@@ -369,7 +369,7 @@ func compileOverlayPlanForLanguage(ctx context.Context, result *GenerateResult, 
 // have translated voiceover timing. It never substitutes the source plan for
 // a missing translation: a language without its own annotations/timing has no
 // localized overlay artifact to publish.
-func buildLocalizedOverlayPlans(ctx context.Context, result *GenerateResult, sourceLanguage Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) error {
+func buildLocalizedOverlayPlans(ctx context.Context, result *GenerateResult, sourceLanguage Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) error {
 	if result == nil {
 		return nil
 	}

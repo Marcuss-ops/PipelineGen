@@ -24,7 +24,7 @@ import (
 // selection, timing and map resolution; this boundary owns only the derived
 // render identity and the master extent, so the document that reaches the
 // bundle hash, audit, renderer and checkpoint is the same sealed document.
-func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec, perScene ...bool) (*capmodel.OverlayPlan, error) {
+func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec, perScene ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
 	if plan == nil {
 		return nil, nil
 	}
@@ -43,7 +43,7 @@ func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult,
 // stable id), which is what lets a portrait verified for the source language
 // render unchanged in a translated plan. Explicit images=disabled wins; an
 // unverified or missing asset leaves the card text-only, as before.
-func promoteVerifiedEntityCards(plan *capmodel.OverlayPlan, result *GenerateResult, canvas OverlayCanvasSpec, perScene ...bool) {
+func promoteVerifiedEntityCards(plan *capmodel.OverlayPlan, result *GenerateResult, canvas OverlayCanvasSpec, perScene ...overlayPlanImageOptions) {
 	if plan == nil || result == nil || len(plan.Items) == 0 {
 		return
 	}
@@ -203,7 +203,7 @@ func chainSegmentOverlayItem(parent capmodel.OverlayItem, seg map[string]any) ca
 // finalizeSealedOverlayPlan derives the master extent, resets provisional render
 // keys and stamps the one output identity before Validate computes the final
 // fingerprint. It is the only place a plan becomes wire-eligible.
-func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec, perScene ...bool) (*capmodel.OverlayPlan, error) {
+func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec, perScene ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
 	// Identity media promotion runs before any derived field: the promoted item
 	// changes kind, template and asset refs, so the extent and fingerprint must
 	// be computed from the document the renderer will actually receive.

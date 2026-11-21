@@ -19,6 +19,6 @@ func TestMain(m *testing.M) {
 	}
 	// The former Go matcher is retained only as a test oracle; production uses
 	// the Rust localized-identity operation wired in script_generation_runtime.go.
-	defaultLocalizedIdentityMatcher = oracleLocalizedIdentityMatcher{}
+	setDefaultLocalizedIdentityMatcherForTests(oracleLocalizedIdentityMatcher{})
 	os.Exit(m.Run())
 }

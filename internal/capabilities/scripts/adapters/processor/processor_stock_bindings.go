@@ -92,7 +92,7 @@ func (p *StockBindingsProcessor) Process(_ context.Context, plan *scriptpkg.Reso
 		// shape to a candidate URL; the Drive reconciliation processor still
 		// verifies the file before publication.
 		if folderLink == "" && in.Source == "youtube" && assetID != "" && (driveLink == "" || driveLink == assetID) {
-			driveLink = "https://drive.google.com/file/d/" + assetID + "/view"
+			driveLink = urlutil.DriveFileURL(assetID)
 		}
 		scene.Bindings.Stock = &scriptpkg.StockBinding{
 			AssetID: assetID, Name: in.Name, Source: in.Source,

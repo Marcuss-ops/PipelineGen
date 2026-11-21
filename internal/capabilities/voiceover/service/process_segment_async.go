@@ -194,6 +194,13 @@ func (u *ProcessSegmentUseCase) runAsyncPublish(
 			zap.String("language", string(cmd.Language)),
 			zap.Error(commitErr))
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
+		// FASE 4 (RA-06 §1.3): the upload already succeeded, so the failed
+		// commit leaves a Drive file with no DB row. The tx-begin and
+		// finalize branches both enqueue the orphan cleanup; the commit
+		// branch must do the same instead of leaking the file.
+		if out.DriveFileID != "" && u.deps.TxOutboxEnqueuer != nil {
+			u.enqueueOrphanCleanup(ctx, cmd.ID, out.DriveFileID, out.LocalPath, out.CleanedPath)
+		}
 		return
 	}
 

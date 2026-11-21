@@ -6,7 +6,6 @@
 package scriptgeneration
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -34,10 +34,7 @@ func overlayPlanIdentity(planID, videoID, projectID, motionSeed string, canvas O
 func overlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 	entityBadgeColor := strings.TrimSpace(canvas.EntityBadgeColor)
 	if entityBadgeColor != "" {
-		if len(entityBadgeColor) != 7 || entityBadgeColor[0] != '#' {
-			return overlayplan.Canvas{}, fmt.Errorf("entity_badge_color must be #RRGGBB")
-		}
-		if _, err := hex.DecodeString(entityBadgeColor[1:]); err != nil {
+		if !color.IsHexRGB(entityBadgeColor) {
 			return overlayplan.Canvas{}, fmt.Errorf("entity_badge_color must be #RRGGBB")
 		}
 	}
@@ -215,7 +212,9 @@ func overlayPlanBudgets(canvas OverlayCanvasSpec) *overlayplan.Budgets {
 	return &overlayplan.Budgets{
 		PhraseOverlays: canvas.MaxPhraseOverlays, ImageOverlays: canvas.MaxImageOverlays,
 		MapOverlays: canvas.MaxMapOverlays, MaxPerScene: canvas.MaxOverlaysPerScene,
-		ShortPhrase: canvas.OverlayGroupLimits["short_phrase"], LongPhrase: canvas.OverlayGroupLimits["long_phrase"],
+		// Group limits are keyed by the documented plural names; reading the
+		// singular spelling here silently dropped every short/long cap.
+		ShortPhrase: canvas.OverlayGroupLimits[overlayGroupShortPhrases], LongPhrase: canvas.OverlayGroupLimits[overlayGroupLongPhrases],
 		Bullet: canvas.OverlayGroupLimits["bullets"],
 	}
 }

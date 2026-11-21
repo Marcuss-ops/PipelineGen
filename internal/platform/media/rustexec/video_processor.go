@@ -349,6 +349,8 @@ func (p *VideoProcessor) RenderAudioPlanWithMetrics(ctx context.Context, plan au
 		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("render_audio_plan returned no probe metadata")
 	}
 	var metrics scripts.AudioPipelineMetrics
+	metrics.PrepareMS = result.Metadata.PrepareMS
+	metrics.LoudnessMS = result.Metadata.LoudnessMS
 	metrics.MixMS = result.Metadata.MixMS
 	metrics.AACEncodeMS = result.Metadata.AACEncodeMS
 	metrics.ProbeMS = result.Metadata.ProbeMS

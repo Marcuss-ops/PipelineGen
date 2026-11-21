@@ -24,50 +24,29 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 	// replay (memory gate), so this cache produces HIT_EXACT without
 	// re-calling the provider.
 	segmentCacheKeyStr := vidRushFanoutImageCacheKey(&fanoutPlan, plan)
+	segmentCache := newInternetImageSegmentCache(vidrushImageCache, f.cache)
 	if !fanoutPlan.parallelQueryChild && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
-		if cached, ok := cacheLoad(vidrushImageCache, segmentCacheKeyStr); ok {
-			// An empty payload was cached under a plan that did not require an
-			// entity-image surface. It is a negative observation, not a hit: a
-			// plan that now enables entity images must search instead of
-			// inheriting the empty result.
-			if payload, ok := cached.(internetImageCachePayload); ok {
-				// ELIM-01: a completed-but-empty search is remembered for 15
-				// minutes so a repeated entity does not pay the same provider
-				// wait twice. It is only a reason not to wait: the outcome is an
-				// empty candidate set, exactly like the live search produced.
-				if internetImageNegativeFresh(payload, time.Now()) {
-					if f.log.Core() != nil {
-						f.log.Info("VidRush image negative cache hit", zap.String("segment_id", segmentID), zap.String("reason", payload.NegativeReason))
-					}
-					outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: nil, allCacheHits: true}
-					return
-				}
-				if len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
-					candidates, err := f.verifyPersonImageCandidates(ctx, payload.Candidates)
-					outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: err, allCacheHits: true}
-					return
-				}
-			}
-		}
-		var persisted internetImageCachePayload
-		if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, &persisted); err != nil {
-			outcomes <- vidRushProviderOutcome{provider: "internet_images", err: err}
+		// ELIM-01: a completed-but-empty search is remembered for 15 minutes so
+		// a repeated entity does not pay the same provider wait twice. It is
+		// only a reason not to wait: the outcome is an empty candidate set,
+		// exactly like the live search produced. The shared cache applies that
+		// rule; see internetImageObservationPolicy.
+		cached, hit, cacheErr := segmentCache.Load(ctx, segmentCacheKeyStr, internetImageObservationPolicy, time.Now())
+		if cacheErr != nil {
+			outcomes <- vidRushProviderOutcome{provider: "internet_images", err: cacheErr}
 			return
-		} else if hit {
-			persisted = sanitizeInternetImageCachePayload(persisted)
-			if len(persisted.Candidates) > 0 || persisted.Negative {
-				cacheStore(vidrushImageCache, segmentCacheKeyStr, persisted)
-			}
-			if internetImageNegativeFresh(persisted, time.Now()) {
+		}
+		if hit {
+			if cached.Negative {
 				if f.log.Core() != nil {
-					f.log.Info("VidRush image negative cache hit (durable)", zap.String("segment_id", segmentID), zap.String("reason", persisted.NegativeReason))
+					f.log.Info("VidRush image negative cache hit", zap.String("segment_id", segmentID), zap.String("reason", cached.NegativeReason))
 				}
 				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: nil, allCacheHits: true}
 				return
 			}
-			if len(persisted.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
-				candidates, scoreErr := f.verifyPersonImageCandidates(ctx, persisted.Candidates)
-				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: scoreErr, allCacheHits: true}
+			if len(cached.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+				candidates, verifyErr := f.verifyPersonImageCandidates(ctx, cached.Candidates)
+				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: verifyErr, allCacheHits: true}
 				return
 			}
 		}
@@ -80,6 +59,17 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 	candidates := make([]scriptpkg.SegmentAssetCandidate, 0)
 	seen := make(map[string]struct{})
 	allCacheHits := len(imageQueries) > 0
+	// The discovery lock is per query, not per function: the explicit release at
+	// the end of each iteration is the primary path, and this single outer defer
+	// is the safety net for the early-return paths. A defer registered inside the
+	// loop would keep one closure (and one captured handle) per query alive until
+	// the function returns, which is exactly the pattern this shape avoids.
+	var releaseDiscovery func()
+	defer func() {
+		if releaseDiscovery != nil {
+			releaseDiscovery()
+		}
+	}()
 	for _, query := range imageQueries {
 		// Discovery cache identity follows the canonical entity and verifier,
 		// so language and surrounding scene prose cannot fragment reuse.
@@ -90,14 +80,11 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}
 			return
 		}
-		results, catalogFallback, catalogRefreshRequired, fromCache, releaseDiscovery, resolutionErr := f.resolveEntityImageCatalogAndCache(ctx, plan, query, entityCacheKey, catalogIdentity, catalogEligible)
-		if releaseDiscovery != nil {
-			defer func() {
-				if releaseDiscovery != nil {
-					releaseDiscovery()
-				}
-			}()
-		}
+		var results, catalogFallback []scriptpkg.SegmentAssetCandidate
+		var catalogRefreshRequired, fromCache bool
+		var resolutionErr error
+		results, catalogFallback, catalogRefreshRequired, fromCache, releaseDiscovery, resolutionErr =
+			f.resolveEntityImageCatalogAndCache(ctx, plan, query, entityCacheKey, catalogIdentity, catalogEligible)
 		if resolutionErr != nil {
 			outcomes <- vidRushProviderOutcome{provider: "internet_images", err: resolutionErr}
 			return
@@ -298,26 +285,22 @@ func (f *VidRushProviderFanout) finishInternetImageCandidates(ctx context.Contex
 		payload.NegativeReason = "no_results"
 		payload.ObservedAt = time.Now()
 	}
-	if len(payload.Candidates) > 0 && queryErr == nil {
-		cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
-	}
-	if negative {
-		cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
-		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, sanitizeInternetImageCachePayload(payload)); cacheErr != nil {
-			// A negative projection that cannot be written is only a lost
-			// optimisation: the live (empty) result is still authoritative.
-			if f.log.Core() != nil {
-				f.log.Warn("VidRush negative image cache write failed; continuing with the live empty result", zap.String("segment_id", fanoutPlan.segmentID), zap.Error(cacheErr))
+	if queryErr == nil {
+		cacheErr := newInternetImageSegmentCache(vidrushImageCache, f.cache).Store(ctx, segmentCacheKeyStr, payload, internetImageObservationPolicy)
+		if cacheErr != nil {
+			if negative {
+				// A negative projection that cannot be written is only a lost
+				// optimisation: the live (empty) result is still authoritative.
+				if f.log.Core() != nil {
+					f.log.Warn("VidRush negative image cache write failed; continuing with the live empty result", zap.String("segment_id", fanoutPlan.segmentID), zap.Error(cacheErr))
+				}
+			} else {
+				// Cache persistence is a projection, not the source of truth for
+				// provider discovery. Preserve the live candidates so a cache
+				// outage cannot erase usable media before materialization.
+				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: cacheErr}
+				return
 			}
-		}
-	} else if queryErr == nil && (len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
-		cachePayload := sanitizeInternetImageCachePayload(payload)
-		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, cachePayload); cacheErr != nil {
-			// Cache persistence is a projection, not the source of truth for
-			// provider discovery. Preserve the live candidates so a cache
-			// outage cannot erase usable media before materialization.
-			outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: cacheErr}
-			return
 		}
 	}
 	if f.log.Core() != nil {

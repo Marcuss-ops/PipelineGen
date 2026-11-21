@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/pkg/slug"
@@ -114,24 +113,6 @@ func ClipFolderName(in NamingInput, clip ClipNamingInput, fallback string) strin
 	return TimestampGroupName(in)
 }
 
-// PerClipLeafName derives a stable explicit-clip leaf. Operator slugs use
-// filesystem-safe names; titles use the canonical title slug.
-func PerClipLeafName(clip ClipNamingInput) string {
-	if raw := strings.TrimSpace(clip.Slug); raw != "" {
-		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && containsAlphanumeric(safe) {
-			return safe
-		}
-	}
-	if title := strings.TrimSpace(clip.Title); title != "" {
-		if safe := SlugifyTitle(title); safe != "" && safe != "untitled" {
-			return safe
-		}
-	}
-	return timestampLeaf(clip.StartSec, clip.EndSec)
-}
-
-// TimestampParentLeafName derives the parent leaf for expanded timestamp clips.
-
 // SlugifyTitle delegates to the repository-wide canonical title slug.
 func SlugifyTitle(title string) string { return slug.SlugifyTitle(title) }
 
@@ -162,15 +143,4 @@ func sanitized(value string) string {
 		return ""
 	}
 	return pathutil.SafeFolderName(value)
-}
-func containsAlphanumeric(value string) bool {
-	for _, r := range value {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return true
-		}
-	}
-	return false
-}
-func timestampLeaf(start, end float64) string {
-	return fmt.Sprintf("%02d-%02d-%02d_to_%02d-%02d-%02d", int(start)/3600, (int(start)%3600)/60, int(start)%60, int(end)/3600, (int(end)%3600)/60, int(end)%60)
 }

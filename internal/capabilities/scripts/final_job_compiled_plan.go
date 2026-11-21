@@ -409,6 +409,10 @@ func finalJobMergeOverlayWindows(input []finalJobOverlayWindow) ([]finalJobOverl
 func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJobOverlayWindow, durationUS, fpsNum, fpsDen int64) ([]finalJobPlanSegment, error) {
 	segments := make([]finalJobPlanSegment, 0, len(base)+2*len(overlays))
 	cursorUS := int64(0)
+	// nextFrame is the output-frame cursor. Every segment starts where the
+	// previous one ended, so partial-microsecond boundaries can never open a
+	// one-frame gap or overlap between adjacent segments.
+	nextFrame := int64(0)
 	appendBase := func(startUS, endUS int64) error {
 		if endUS <= startUS {
 			return nil
@@ -418,8 +422,13 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 			if outUS <= inUS {
 				continue
 			}
-			startFrame := finalJobFrameAtUS(inUS, fpsNum, fpsDen)
-			endFrame := finalJobFrameAtUS(outUS, fpsNum, fpsDen)
+			startFrame := nextFrame
+			// The end boundary is a frame COUNT boundary, not a frame START:
+			// a partial trailing frame must be covered, so this uses the same
+			// ceiling rule as finalJobCompleteVideoFrameCoverage. Rounding to the
+			// nearest frame here could undercount a partial frame and leave the
+			// plan one frame short of the certified audio duration.
+			endFrame := finalJobFramesCoveringUS(outUS, fpsNum, fpsDen)
 			// The compiled timeline is frame-quantized. A positive microsecond
 			// interval shorter than half a frame can round to no output frame;
 			// omit it instead of emitting an invalid zero-frame worker segment.
@@ -431,6 +440,7 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 					SegmentID: fmt.Sprintf("segment-%04d", len(segments)), StockPoolSlot: true,
 					TimelineStartFrame: startFrame, FrameCount: endFrame - startFrame,
 				})
+				nextFrame = endFrame
 				continue
 			}
 			sourceInUS := source.sourceInUS + (inUS - source.startUS)
@@ -474,6 +484,7 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 				FrameCount:         endFrame - startFrame,
 				SourceInUS:         sourceInUS, SourceDurationUS: sourceDurationUS,
 			})
+			nextFrame = endFrame
 		}
 		return nil
 	}
@@ -484,7 +495,11 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 		if err := appendBase(cursorUS, overlay.startUS); err != nil {
 			return nil, err
 		}
-		startFrame := finalJobFrameAtUS(overlay.startUS, fpsNum, fpsDen)
+		startFrame := nextFrame
+		// Overlay artifacts are trimmed to their certified frame extent, not
+		// expanded to cover a partial trailing frame: their source bytes end at
+		// the artifact duration and a ceiling here would ask for a frame the
+		// artifact does not contain.
 		endFrame := finalJobFrameAtUS(overlay.endUS, fpsNum, fpsDen)
 		if endFrame > startFrame {
 			sourceInUS := overlay.artifactInUS
@@ -504,6 +519,7 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 				TimelineStartFrame: startFrame, FrameCount: endFrame - startFrame,
 				SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
 			})
+			nextFrame = endFrame
 		}
 		cursorUS = overlay.endUS
 	}

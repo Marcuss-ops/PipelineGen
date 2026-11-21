@@ -11,6 +11,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"go.uber.org/zap"
 )
 
@@ -119,9 +120,12 @@ func (a *VoiceoverCacheAdapter) loadTimingArtifact(ctx context.Context, rec *per
 		return nil, nil
 	}
 	link, _ := meta["timing_json_link"].(string)
-	fileID, err := driveFileIDFromLink(link)
+	fileID, err := urlutil.FileIDFromDriveLink(link)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse timing artifact link: %w", err)
+	}
+	if fileID == "" {
+		return nil, fmt.Errorf("timing artifact link has no Drive file ID")
 	}
 	reader, _, err := a.timingReader.DownloadFile(ctx, fileID)
 	if err != nil {

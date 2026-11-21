@@ -333,7 +333,11 @@ func (h *DeliveryHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 			zap.Int("attempt", evt.AttemptCount),
 			zap.Error(err),
 		)
-		return err
+		// A malformed envelope cannot become valid on retry. The typed sentinels
+		// already carry the legacy "(terminal)" breadcrumb; the plain
+		// "missing required field" errors did not, so they burned the whole
+		// attempt budget before dead-lettering. Wrapping is idempotent.
+		return outboxevents.NewTerminalError(err)
 	}
 
 	if req.Operation != "" {

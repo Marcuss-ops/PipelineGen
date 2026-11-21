@@ -594,9 +594,6 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		}
 	}
 	finalize["runtime_payload"] = runtimePayload
-	pre["compiled_render_plan_json"] = compiledPlan
-	pre["compiled_render_plan_sha256"] = compiledPlanSHA
-	finalize["runtime_assets"] = runtimeAssets
 	// The submitted envelope IS the durable diagnostic surface. Writing a
 	// second copy under /tmp made a temporary path look authoritative and
 	// lost the evidence whenever the host cleaned it up.

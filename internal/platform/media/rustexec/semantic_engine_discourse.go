@@ -3,14 +3,14 @@ package rustexec
 import (
 	"fmt"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 func projectSemanticDiscourse(
 	texts map[string]string,
 	entities []semanticEngineLinkedEntity,
 	discourse *semanticEngineDiscourseProjection,
-) (*scriptgen.SemanticDiscourseProjection, error) {
+) (*semanticscript.SemanticDiscourseProjection, error) {
 	if discourse == nil {
 		return nil, nil
 	}
@@ -22,8 +22,8 @@ func projectSemanticDiscourse(
 		entityIDs[entity.LocalID] = struct{}{}
 	}
 	referenceByID := make(map[string]semanticEngineDiscourseReference, len(discourse.References))
-	projected := &scriptgen.SemanticDiscourseProjection{Schema: discourse.Schema}
-	counts := scriptgen.SemanticDiscourseCounts{}
+	projected := &semanticscript.SemanticDiscourseProjection{Schema: discourse.Schema}
+	counts := semanticscript.SemanticDiscourseCounts{}
 	for _, reference := range discourse.References {
 		text, ok := texts[reference.SceneID]
 		if !ok || reference.ID == "" || reference.Mention == "" || reference.Evidence == "" ||
@@ -61,7 +61,7 @@ func projectSemanticDiscourse(
 		} else {
 			counts.Unresolved++
 		}
-		projected.References = append(projected.References, scriptgen.SemanticDiscourseReference{
+		projected.References = append(projected.References, semanticscript.SemanticDiscourseReference{
 			ID: reference.ID, SceneID: reference.SceneID, Mention: reference.Mention, Type: reference.Type,
 			Status: reference.Status, ResolutionBasis: derefString(reference.ResolutionBasis),
 			Reason: derefString(reference.Reason), Evidence: reference.Evidence,
@@ -79,7 +79,7 @@ func projectSemanticDiscourse(
 		if _, exists := entityIDs[thread.EntityID]; !exists {
 			return nil, fmt.Errorf("entity thread references missing identity %q", thread.EntityID)
 		}
-		beats := make([]scriptgen.SemanticThreadBeat, 0, len(thread.Beats))
+		beats := make([]semanticscript.SemanticThreadBeat, 0, len(thread.Beats))
 		for _, beat := range thread.Beats {
 			reference, exists := referenceByID[beat.ReferenceID]
 			if !exists || reference.Status != "resolved" || beat.SceneID != reference.SceneID ||
@@ -87,9 +87,9 @@ func projectSemanticDiscourse(
 				!oneOf(beat.State, "starts", "continues", "returns") {
 				return nil, fmt.Errorf("entity thread %q has an invalid beat", thread.EntityID)
 			}
-			beats = append(beats, scriptgen.SemanticThreadBeat{ReferenceID: beat.ReferenceID, SceneID: beat.SceneID, SentenceIndex: beat.SentenceIndex, State: beat.State})
+			beats = append(beats, semanticscript.SemanticThreadBeat{ReferenceID: beat.ReferenceID, SceneID: beat.SceneID, SentenceIndex: beat.SentenceIndex, State: beat.State})
 		}
-		projected.Threads = append(projected.Threads, scriptgen.SemanticEntityThread{
+		projected.Threads = append(projected.Threads, semanticscript.SemanticEntityThread{
 			EntityID: thread.EntityID, CanonicalSurface: thread.CanonicalSurface, Type: thread.Type,
 			SceneIDs: append([]string(nil), thread.SceneIDs...), FirstSceneID: thread.FirstSceneID,
 			LastSceneID: thread.LastSceneID, MentionCount: thread.MentionCount, ReturnCount: thread.ReturnCount,
@@ -111,7 +111,7 @@ func projectSemanticDiscourse(
 				}
 			}
 		}
-		projected.SceneContinuity = append(projected.SceneContinuity, scriptgen.SemanticSceneContinuity{
+		projected.SceneContinuity = append(projected.SceneContinuity, semanticscript.SemanticSceneContinuity{
 			SceneID: continuity.SceneID, Status: continuity.Status, Score: continuity.Score,
 			ActiveEntityIDs: append([]string(nil), continuity.ActiveEntityIDs...), SharedEntityIDs: append([]string(nil), continuity.SharedEntityIDs...),
 			EnteredEntityIDs: append([]string(nil), continuity.EnteredEntityIDs...), ExitedEntityIDs: append([]string(nil), continuity.ExitedEntityIDs...),
@@ -122,7 +122,7 @@ func projectSemanticDiscourse(
 		counts.Threads != discourse.Counts.Threads || counts.CrossSceneThreads != discourse.Counts.CrossSceneThreads {
 		return nil, fmt.Errorf("discourse aggregate counts disagree with the projections")
 	}
-	projected.Counts = scriptgen.SemanticDiscourseCounts{
+	projected.Counts = semanticscript.SemanticDiscourseCounts{
 		Total: counts.Total, Resolved: counts.Resolved, Ambiguous: counts.Ambiguous, Unresolved: counts.Unresolved,
 		Threads: counts.Threads, CrossSceneThreads: counts.CrossSceneThreads,
 	}

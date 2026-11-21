@@ -110,7 +110,7 @@ func TestEntityCardMediaIndexUsesSemanticBundleAssetsPerScene(t *testing.T) {
 		}},
 	}
 	result := &GenerateResult{SemanticRenderBundle: bundle}
-	media, canonicalByStable := entityCardMediaIndex(result, true)
+	media, canonicalByStable := entityCardMediaIndex(result, overlayPlanImageOptions{PerSceneEntityCards: true})
 	item := attachEntityCardAsset(capmodel.OverlayItem{
 		ID: "francis-card", SceneID: "scene-1", EntityID: stableID, Kind: string(capmodel.KindEntityCard),
 		EntityRef: &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Francis Kaufmann"},
@@ -243,7 +243,7 @@ func TestCapEntityImageOverlaysPerSceneKeepsEntityOnlyOnceAcrossRun(t *testing.T
 		{ID: "scene-2-other", SceneID: "scene-2", EntityID: "other", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:other"}},
 		{ID: "phrase", SceneID: "scene-2", Kind: "text_phrase"},
 	}
-	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
+	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, overlayPlanImageOptions{PerSceneEntityCards: true})
 	if len(got) != 3 || got[0].ID != "scene-1-milton" || got[1].ID != "scene-2-other" || got[2].Kind != "text_phrase" {
 		t.Fatalf("per-scene image cap = %+v; want repeated Milton omitted and unique entity plus phrase kept", got)
 	}
@@ -256,7 +256,7 @@ func TestCapEntityImageOverlaysPerSceneOnlyDropsRepeatedPhotoHashWithinScene(t *
 		{ID: "scene-2-second", SceneID: "scene-2", EntityID: "person-a", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-b", SHA256: "same-photo"}}},
 		{ID: "scene-3-third", SceneID: "scene-3", EntityID: "person-a", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-c", SHA256: "different-photo"}}},
 	}
-	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
+	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, overlayPlanImageOptions{PerSceneEntityCards: true})
 	if len(got) != 3 || got[0].ID != "scene-1-first" || got[1].ID != "scene-2-second" || got[2].ID != "scene-3-third" {
 		t.Fatalf("per-scene photo dedupe = %+v; want same-scene duplicate dropped and later reuse retained", got)
 	}
@@ -292,7 +292,7 @@ func TestCapEntityImageOverlaysDeduplicatesIdentityInPerSceneScope(t *testing.T)
 			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
 	}
 
-	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
+	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, overlayPlanImageOptions{PerSceneEntityCards: true})
 	if len(got) != 1 {
 		t.Fatalf("per-scene image count = %d, want one render for repeated identity", len(got))
 	}

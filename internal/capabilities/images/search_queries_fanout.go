@@ -88,63 +88,6 @@ func fanOutRetrieval(ctx context.Context, log *zap.Logger, backends []retrievalB
 	return img, src, page
 }
 
-func (s *ImageStorageService) runRetrievalFallbackForProvider(ctx context.Context, query, lang string, provider detail.ImageProvider) (imgURL, source, pageURL string) {
-	if provider != "" {
-		s.log.Info("explicit retrieved provider selected", zap.String("provider", string(provider)), zap.String("query", query))
-		if s.retrievalRegistry == nil {
-			s.log.Warn("explicit retrieved provider skipped: retrieval registry is not wired", zap.String("provider", string(provider)), zap.String("query", query))
-			return "", "", ""
-		}
-		p := s.retrievalRegistry.SearchByName(provider)
-		if p == nil {
-			s.log.Warn("explicit retrieved provider not found in registry", zap.String("provider", string(provider)), zap.String("query", query))
-			return "", "", ""
-		}
-		results, err := p.Search(ctx, query, retrieved.RetrievalSearchOptions{Lang: lang})
-		if err != nil {
-			s.log.Warn("explicit retrieved provider search failed", zap.String("provider", string(provider)), zap.String("query", query), zap.Error(err))
-			return "", "", ""
-		}
-		if len(results) == 0 {
-			s.log.Debug("explicit retrieved provider returned no results", zap.String("provider", string(provider)), zap.String("query", query))
-			return "", "", ""
-		}
-		hit := results[0]
-		if hit.PreviewURL == "" {
-			return "", "", ""
-		}
-		pageURL = hit.PageURL
-		if pageURL == "" {
-			pageURL = hit.PreviewURL
-		}
-		return hit.PreviewURL, string(p.Name()), pageURL
-	}
-
-	// Query recession (fanout=0 fix): a provider can answer empty for a flaky,
-	// rate-limited or over-narrow primary query. Before declaring the scene
-	// imageless, recede through deterministically relaxed variants of the same
-	// query. The ladder is bounded so a genuinely imageless subject does not
-	// multiply provider calls without limit.
-	rungs := retrieved.RelaxImageQuery(query)
-	if len(rungs) == 0 {
-		return "", "", ""
-	}
-	if len(rungs) > maxImageQueryRecessionRungs {
-		rungs = rungs[:maxImageQueryRecessionRungs]
-	}
-	for i, rung := range rungs {
-		imgURL, source, pageURL := s.runRetrievalRung(ctx, rung, lang)
-		if imgURL != "" {
-			if i > 0 {
-				s.log.Info("retrieval receded to a relaxed query",
-					zap.String("original_query", query), zap.String("relaxed_query", rung))
-			}
-			return imgURL, source, pageURL
-		}
-	}
-	return "", "", ""
-}
-
 // maxImageQueryRecessionRungs bounds how many relaxed query variants a single
 // retrieval attempt may try. Three covers the useful cases (instruction
 // prefix, clause strip, one truncation) without turning a miss into a burst.
@@ -154,28 +97,6 @@ const maxImageQueryRecessionRungs = 3
 // preferring the concurrent quality-ranked selection (SearchBest) over the
 // legacy first-hit-wins fan-out. The registry path uses SearchBest; the legacy
 // no-registry path keeps the parallel engine fan-out.
-func (s *ImageStorageService) runRetrievalRung(ctx context.Context, query, lang string) (string, string, string) {
-	if s.retrievalRegistry != nil {
-		results, err := s.retrievalRegistry.SearchBest(ctx, query, retrieved.RetrievalSearchOptions{Lang: lang})
-		if err != nil {
-			s.log.Warn("retrieval best search failed", zap.String("query", query), zap.Error(err))
-			return "", "", ""
-		}
-		if len(results) == 0 {
-			return "", "", ""
-		}
-		hit := results[0]
-		if hit.PreviewURL == "" {
-			return "", "", ""
-		}
-		pageURL := hit.PageURL
-		if pageURL == "" {
-			pageURL = hit.PreviewURL
-		}
-		return hit.PreviewURL, string(hit.Provider), pageURL
-	}
-	return s.legacyRetrievalFanOut(ctx, query, lang)
-}
 
 // retrievalCandidate is one downloadable hit with the provenance the ingest
 // path needs. The provider chain can return several candidates; the single

@@ -22,10 +22,23 @@ import (
 )
 
 // defaultRenderingGenStoreURL is the fallback object-store endpoint used when
-// RENDERINGGEN_STORE_URL is unset (the local single-host deployment default).
-// Owning it once keeps the overlay-asset prefetch and the Chronon timing
-// sidecar fetch pointed at the same store.
+// the loaded config carries none (the local single-host deployment default).
+// Owning it once keeps the overlay-asset prefetch, the overlay clip fetcher
+// and the Chronon timing sidecar fetch pointed at the same store.
 const defaultRenderingGenStoreURL = "http://127.0.0.1:9000"
+
+// renderingGenStoreURL returns the object-store endpoint the config loader
+// resolved once at startup (external.renderinggen_store_url, overridden by
+// RENDERINGGEN_STORE_URL). The environment is never re-read here: the constant
+// only guards a Config assembled without the loader.
+func renderingGenStoreURL(cfg *config.Config) string {
+	if cfg != nil {
+		if store := strings.TrimSpace(cfg.External.RenderingGenStoreURL); store != "" {
+			return store
+		}
+	}
+	return defaultRenderingGenStoreURL
+}
 
 // scriptGenerationTranslator adapts the application translation port to the
 // capability runtime without leaking provider DTOs into capabilities/scripts.
@@ -175,11 +188,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// join needs those exact bytes back from the object store to place them on
 	// the plan timeline. Wiring the fetcher is what turns a render-enabled job
 	// into a job that owns its own MP4 instead of shipping audio only.
-	storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
-	if storeURL == "" {
-		storeURL = defaultRenderingGenStoreURL
-	}
-	runner.SetOverlayClipFetcher(renderinggen.NewOverlayClipFetcher(storeURL))
+	runner.SetOverlayClipFetcher(renderinggen.NewOverlayClipFetcher(renderingGenStoreURL(cfg)))
 	if err := wireArtifactCheckpointRollout(runner, root, committer, log); err != nil {
 		return nil, err
 	}

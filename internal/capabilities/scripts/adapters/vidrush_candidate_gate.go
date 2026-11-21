@@ -73,22 +73,6 @@ func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 	return readyVidRushCandidateWithMode(candidate, false)
 }
 
-// isHexSHA256 is the content-address shape accepted by the durable catalog.
-// A legacy candidate with a Drive link but a placeholder hash is a diagnostic
-// row, not a selectable image: it cannot prove byte identity.
-func isHexSHA256(raw string) bool {
-	s := strings.TrimSpace(raw)
-	if len(s) != 64 {
-		return false
-	}
-	for _, r := range s {
-		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
-			return false
-		}
-	}
-	return true
-}
-
 // readyVidRushCandidateWithMode is the single readiness predicate for every
 // provider. allowURLFallback selects the explicit durable-vs-local mode used
 // by verifiedImageCandidateWithoutDrive: a verified content address may bind

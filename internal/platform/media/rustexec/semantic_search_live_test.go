@@ -189,7 +189,7 @@ func TestSemanticSearchLiveProviderMeasuresHitRateAndLatency(t *testing.T) {
 	client := &http.Client{Timeout: 15 * time.Second}
 
 	baselinePlanner := livePlanner(t, &liveCommonsSearch{client: client, supportsPerson: true}, false)
-	baseline, err := baselinePlanner.Run(context.Background(), liveGarlascoPlan(t), "it")
+	baseline, err := baselinePlanner.Run(context.Background(), liveGarlascoPlan(t), "it", false)
 	if err != nil {
 		t.Fatalf("baseline live batch failed: %v", err)
 	}
@@ -197,13 +197,13 @@ func TestSemanticSearchLiveProviderMeasuresHitRateAndLatency(t *testing.T) {
 
 	routingPort := &liveCommonsSearch{client: client, supportsPerson: false}
 	routingPlanner := livePlanner(t, routingPort, true)
-	routing, err := routingPlanner.Run(context.Background(), liveGarlascoPlan(t), "it")
+	routing, err := routingPlanner.Run(context.Background(), liveGarlascoPlan(t), "it", false)
 	if err != nil {
 		t.Fatalf("routed live batch failed: %v", err)
 	}
 	logLiveReport(t, "routed (person queries not sent to Commons)", routing)
 
-	warm, err := routingPlanner.Run(context.Background(), liveGarlascoPlan(t), "it")
+	warm, err := routingPlanner.Run(context.Background(), liveGarlascoPlan(t), "it", false)
 	if err != nil {
 		t.Fatalf("warm live batch failed: %v", err)
 	}

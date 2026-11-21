@@ -2,10 +2,10 @@ package scriptgeneration
 
 import (
 	"encoding/json"
-	"net/url"
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // overlayPlannedEntityImage is the plan's own entity-image binding. The audit
@@ -160,25 +160,13 @@ func overlayLooksLikeSHA256(value string) bool {
 	return true
 }
 
+// overlayPlanDriveFileID resolves the Drive identity a plan/audit image is
+// addressable by. The canonical parser owns every accepted shape, so this
+// projection cannot accept a URL the rest of the pipeline would reject.
 func overlayPlanDriveFileID(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
+	id, err := urlutil.FileIDFromDriveLink(raw)
+	if err != nil {
 		return ""
 	}
-	parsed, err := url.Parse(raw)
-	if err == nil {
-		if id := strings.TrimSpace(parsed.Query().Get("id")); id != "" {
-			return id
-		}
-		parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-		for i := 0; i+1 < len(parts); i++ {
-			if parts[i] == "d" {
-				return parts[i+1]
-			}
-		}
-	}
-	if !strings.Contains(raw, "://") && !strings.ContainsAny(raw, "/?") {
-		return raw
-	}
-	return ""
+	return strings.TrimSpace(id)
 }

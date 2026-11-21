@@ -11,7 +11,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
@@ -182,14 +181,6 @@ func batchTranslationOutputBudget(chunk []BatchTranslationSegment) int {
 // without a client.
 func batchTranslationPrompts(chunk []BatchTranslationSegment, langName string) (string, string) {
 	systemPrompt := "You are a professional translator. CRITICAL RULES: 1. Translate the text LITERALLY — do NOT expand, explain, philosophize, or add any content. 2. Translate every numbered segment EXACTLY ONCE and keep the same ids and the same order. 3. Never merge, split, reorder, drop or add segments, and never drop a sentence. 4. Return ONLY the requested JSON object — no intros, no conclusions, no markdown fences, no meta-commentary. 5. If you don't know a word, keep it in the original language rather than guessing."
-	if cfg := prompts.Get(); cfg != nil {
-		// Reuse the operator-visible single-text system prompt (one owner of
-		// the translation persona) and append the batch constraint, so a
-		// deployment that tunes prompts/config/core.yaml tunes both paths.
-		if s, _, err := cfg.RenderTranslation("", langName); err == nil && strings.TrimSpace(s) != "" {
-			systemPrompt = strings.TrimSpace(s) + " 6. When asked for a JSON object, return ONLY that JSON object."
-		}
-	}
 
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "Translate each of the following %d segments into %s faithfully. No additions, no explanations, no creative writing.\n", len(chunk), langName)

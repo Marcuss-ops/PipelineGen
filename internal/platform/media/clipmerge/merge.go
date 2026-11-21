@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media/clipsequence"
 )
@@ -256,7 +257,7 @@ func leakFilters(baseLabel, incomingLabel, outLabel string, index int, preset cl
 		return nil, fmt.Errorf("clipmerge: preset %q has no light-leak program", preset)
 	}
 	leak := *leakSpec
-	if len(leak.Color) != 7 || leak.Color[0] != '#' {
+	if !color.IsHexRGB(leak.Color) {
 		return nil, fmt.Errorf("clipmerge: light-leak colour %q must be #RRGGBB", leak.Color)
 	}
 	if leak.PeakAlpha <= 0 || leak.PeakAlpha > 1 {

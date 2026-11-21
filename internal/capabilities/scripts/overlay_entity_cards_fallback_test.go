@@ -28,7 +28,7 @@ func TestEntityCardMediaIndexFallsBackToRunLevelBinding(t *testing.T) {
 		{ID: "scene-a", Annotations: &scriptpkg.SceneAnnotations{SecondaryEntities: []scriptpkg.AnnotatedEntity{bound}}},
 		{ID: "scene-b", Annotations: &scriptpkg.SceneAnnotations{SecondaryEntities: []scriptpkg.AnnotatedEntity{unbound}}},
 	}}
-	media, canonicalByStable := entityCardMediaIndex(result, true)
+	media, canonicalByStable := entityCardMediaIndex(result, overlayPlanImageOptions{PerSceneEntityCards: true})
 	stable := capabilityentities.StableEntityID("PERSON", "Andrea Sempio")
 	sceneAOverlayID := "overlay-scene-a-" + capabilityentities.SafeEntityID("Andrea Sempio")
 	if canonicalByStable[sceneAOverlayID] == "" {

@@ -9,6 +9,37 @@ Sono state rimosse 9 delle 11 voci; le 2 rimaste hanno una ragione verificabile
 (§«Pool eseguito»). La misura è stata rigenerata dopo il taglio, non ereditata
 dal 28-10.
 
+**Aggiornamento 2026-11-21 (finale):** la misura `deadcode -test=false ./...` sul
+working tree è **229**. Il report congelato è
+`docs/operations/deadcode-2026-11-21.txt`. Classificazione:
+
+| Classe | Conteggio | Disposition |
+|---|---:|---|
+| Zero riferimenti (candidati a rimozione sicura) | **0** | Nessun taglio residuo possibile senza toccare test o feature |
+| Test-support in allowlist | **20** | Fuori perimetro: `tests/tools/*` 14 + `internal/platform/sqlite/sqltest` 6 |
+| Perimetro di produzione | **209** | Trattenuti: capabilities 124, platform 46, kernel 33, cmd/admin 3, app 2, archcheck 1 |
+
+Terza ondata 2026-11-21: ritirati la catena overlay category/group-limit (27),
+il merger e gli helper dead di `scene_annotations` (8), la naming/publish chain
+di `stockpipeline` (7), `cliprender/render_cache.go` (3) e due funzioni
+zero-reference in `images/search_queries_fanout.go`; i test ancora validi sono
+stati conservati come oracle in `_test.go`. La porta morta
+`SegmentSceneMerger` e la sua asserzione compile-time sono state rimosse. Il
+calo complessivo è 300 → 292 → 279 → 277 → **229**.
+
+I 209 residui di produzione non sono "morti ovunque": compaiono in test,
+contratti/interfacce o catene di feature non cablate. I cluster principali
+rimasti sono `kernel/observability/registry.go` (4), `kernel/entitytype` (4),
+`capabilities/images/entitycatalog` (3), `capabilities/mediamemory` (3) e le
+catene `scripts` non cablate. Restano perché i test li certificano o perché
+implementano un contratto di interfaccia; rimuoverli richiede una decisione di
+prodotto sulla feature, non un altro sweep.
+
+**Ratchet:** `make verify-deadcode` esegue
+`scripts/ci/check-deadcode-baseline.sh` e fallisce sopra **229**. La soglia può
+solo scendere; ogni sweep che riduce il numero deve abbassare `MAX` nello stesso
+cambio.
+
 ## Misure (riproducibili)
 
 ```bash

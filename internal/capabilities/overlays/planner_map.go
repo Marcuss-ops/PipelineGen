@@ -279,19 +279,6 @@ func mapItemsForScene(sceneID string, plans []MapPlan, resolver PlateResolver, c
 	return items
 }
 
-// MaterializeMapCandidate resolves one Rust-selected, grounded place against
-// the canonical map-plate catalog and lowers it to the renderer's certified
-// local-raster/dynamic-map contract. Editorial timing and selection remain
-// owned by the caller; this function only supplies map assets and provenance.
-func MaterializeMapCandidate(sceneID string, candidate MapCandidate, resolver PlateResolver, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) (capmodel.OverlayItem, bool) {
-	plans := mapPlansForScene(resolver, []MapCandidate{candidate}, canvasWidth, canvasHeight, grouping)
-	items := mapItemsForScene(sceneID, plans, resolver, canvasWidth, canvasHeight, ordinal, motionLimit, seed, grouping)
-	if len(items) == 0 {
-		return capmodel.OverlayItem{}, false
-	}
-	return items[0], true
-}
-
 // MaterializeMapPins lowers ONE Rust-decided map group onto the certified
 // plate catalog. Membership, spoken order, the pin cap, the presentation
 // ceiling and the readable floor are decided by the Rust planner and travel in

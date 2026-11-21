@@ -85,7 +85,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 						link = strings.TrimSpace(bindings.Clip.ClipID)
 					}
 					if len(link) >= 20 {
-						link = "https://drive.google.com/file/d/" + link + "/view"
+						link = urlutil.DriveFileURL(link)
 					}
 				}
 				if link != "" {
@@ -99,7 +99,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 				// verifier receives the same canonical URL as the source
 				// resolver and the published contract never contains a bare ID.
 				if !strings.HasPrefix(link, "http://") && !strings.HasPrefix(link, "https://") && len(link) >= 20 {
-					link = "https://drive.google.com/file/d/" + link + "/view"
+					link = urlutil.DriveFileURL(link)
 					bindings.Clip.DriveLink = link
 				}
 				clipFileID, _ := urlutil.FileIDFromDriveLink(link)
@@ -174,7 +174,7 @@ func (p *AssetLocationReconciliationProcessor) Process(
 			fileID := ""
 			if assetID != "" && (link == "" || link == assetID) {
 				fileID = assetID
-				link = "https://drive.google.com/file/d/" + assetID + "/view"
+				link = urlutil.DriveFileURL(assetID)
 				bindings.Stock.DriveLink = link
 			} else if parsedID, parseErr := urlutil.FileIDFromDriveLink(link); parseErr == nil {
 				// LocationVerifier requires the Drive file ID explicitly and

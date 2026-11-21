@@ -15,35 +15,6 @@ import (
 // images-with-text pool was capped by two different alias sets in different
 // planner branches, so one alias was silently ignored on one path). Adding a
 // lane means adding one entry here; call sites use laneAnimationCount.
-const (
-	laneImages          = "images"
-	laneImagesWithText  = "images_with_text"
-	laneEntities        = "entities"
-	laneImportantPhrase = "important_phrase"
-	laneShortPhrase     = "short_important_phrase"
-	laneMaps            = "maps"
-	laneTimelineDate    = "timeline_date"
-	laneMetricStat      = "metric_stat"
-)
-
-var animationLaneKeys = map[string][]string{
-	laneImages: {
-		"single_image", "image_double", "image_triplet", "image_four", "image_five",
-		"single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text",
-		"images",
-	},
-	laneImagesWithText: {
-		"images_with_text",
-		"single_image_with_text", "image_double_with_text", "image_triplet_with_text", "image_four_with_text", "image_five_with_text",
-		"entity_text_images",
-	},
-	laneEntities:        {"entities"},
-	laneImportantPhrase: {"important_phrase", "important_phrases"},
-	laneShortPhrase:     {"short_important_phrase", "short_phrases"},
-	laneMaps:            {"one_map", "two_maps", "maps"},
-	laneTimelineDate:    {"timeline_date", "dates"},
-	laneMetricStat:      {"metric_stat", "metrics"},
-}
 
 func uniqueMotionPool(pool []string) []string {
 	unique := make([]string, 0, len(pool))

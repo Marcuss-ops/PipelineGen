@@ -42,7 +42,7 @@ func TestOverlayStyleProjectsImageBackdropWithMemberOwnedPhotos(t *testing.T) {
 	canvas := OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{
 		Radius: &radius,
 		Backdrop: &scriptpkg.OverlayImageBackdropSpec{Zoom: &zoom, BlurPX: &blur,
-			Grid: &scriptpkg.OverlayImageBackdropGridSpec{Color: "#7FA8C8"}},
+			Grid: &scriptpkg.OverlayImageGridSpec{Color: "#7FA8C8"}},
 	}}}
 	applyPayloadOverlayStyleToItems(items, canvas)
 	backdrop, ok := items[0].Params["image_backdrop"].(map[string]any)

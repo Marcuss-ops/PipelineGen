@@ -27,13 +27,17 @@ func ExtractPeopleTags(parts ...string) []string {
 	return out
 }
 
+var (
+	capitalizedPhraseRE = regexp.MustCompile(`\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b`)
+	conceptWordRE       = regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9']+`)
+)
+
 // ExtractCapitalizedPhrases matches proper-noun phrases (2-3 capitalized words).
 func ExtractCapitalizedPhrases(text string) []string {
 	if text == "" {
 		return nil
 	}
-	re := regexp.MustCompile(`\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b`)
-	matches := re.FindAllString(text, -1)
+	matches := capitalizedPhraseRE.FindAllString(text, -1)
 	if len(matches) == 0 {
 		return nil
 	}
@@ -67,11 +71,10 @@ func ExtractConceptTags(text string, max int) []string {
 	}
 	freq := make(map[string]int)
 	order := make([]string, 0)
-	wordRe := regexp.MustCompile(`[a-zA-Z][a-zA-Z0-9']+`)
 	for _, raw := range strings.FieldsFunc(text, func(r rune) bool {
 		return r == '\n' || r == '\t' || r == '.' || r == ',' || r == ';' || r == ':' || r == '!' || r == '?' || r == '/' || r == '|' || r == '(' || r == ')'
 	}) {
-		words := wordRe.FindAllString(strings.ToLower(raw), -1)
+		words := conceptWordRE.FindAllString(strings.ToLower(raw), -1)
 		for _, w := range words {
 			if len(w) < 6 {
 				continue

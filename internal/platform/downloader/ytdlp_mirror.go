@@ -116,12 +116,40 @@ func mirrorKey(videoID, formatSignature string) string {
 	return digest.SHA256String(videoID + "\x00" + formatSignature)[:32]
 }
 
-// mirrorInFlight serializes same-key downloads across concurrent jobs.
-var mirrorInFlight sync.Map // key -> *sync.Mutex
+// mirrorInFlight serializes same-key downloads across concurrent jobs. Entries
+// are reference-counted and deleted by the last holder: a plain sync.Map with
+// LoadOrStore and no Delete kept one mutex per key for the life of the process.
+type mirrorLockEntry struct {
+	mu   sync.Mutex
+	refs int
+}
 
-func lockMirrorKey(key string) *sync.Mutex {
-	locked, _ := mirrorInFlight.LoadOrStore(key, &sync.Mutex{})
-	return locked.(*sync.Mutex)
+var mirrorLocks = struct {
+	sync.Mutex
+	entries map[string]*mirrorLockEntry
+}{entries: make(map[string]*mirrorLockEntry)}
+
+// lockMirrorKey acquires the per-key lock and returns its release function.
+func lockMirrorKey(key string) func() {
+	mirrorLocks.Lock()
+	entry := mirrorLocks.entries[key]
+	if entry == nil {
+		entry = &mirrorLockEntry{}
+		mirrorLocks.entries[key] = entry
+	}
+	entry.refs++
+	mirrorLocks.Unlock()
+
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		mirrorLocks.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(mirrorLocks.entries, key)
+		}
+		mirrorLocks.Unlock()
+	}
 }
 
 // mirrorLookup serves a cached full-source download. ok=false means "no
@@ -196,9 +224,8 @@ func mirrorStore(root, key, videoID, resolvedPath string) {
 // mirrorContentIdentity returns the immutable identity recorded for a cached
 // source. Older cache entries are upgraded once by hashing their bytes.
 func mirrorContentIdentity(root, key, path string) (string, int64, error) {
-	lock := lockMirrorKey(key)
-	lock.Lock()
-	defer lock.Unlock()
+	unlock := lockMirrorKey(key)
+	defer unlock()
 	metaPath := filepath.Join(root, key+".json")
 	raw, err := os.ReadFile(metaPath)
 	if err != nil {

@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"math"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
-func projectSemanticPlaces(source string, places []semanticEnginePlace) ([]scriptgen.SemanticPlace, error) {
-	out := make([]scriptgen.SemanticPlace, 0, len(places))
+func projectSemanticPlaces(source string, places []semanticEnginePlace) ([]semanticscript.SemanticPlace, error) {
+	out := make([]semanticscript.SemanticPlace, 0, len(places))
 	seen := make(map[string]struct{}, len(places))
 	for _, place := range places {
 		if place.ID == "" || place.EntityLocalID == "" || place.Name == "" || place.Kind == "" ||
@@ -45,7 +45,7 @@ func projectSemanticPlaces(source string, places []semanticEnginePlace) ([]scrip
 		if place.KBID != nil {
 			kbID = *place.KBID
 		}
-		out = append(out, scriptgen.SemanticPlace{
+		out = append(out, semanticscript.SemanticPlace{
 			ID: place.ID, EntityLocalID: place.EntityLocalID, KBID: kbID,
 			LinkStatus: place.LinkStatus, Kind: place.Kind, Name: place.Name,
 			Lat: place.Lat, Lon: place.Lon, ParentIDs: append([]string(nil), place.ParentIDs...),
@@ -56,12 +56,12 @@ func projectSemanticPlaces(source string, places []semanticEnginePlace) ([]scrip
 	return out, nil
 }
 
-func projectSemanticRoutes(source string, places []scriptgen.SemanticPlace, routes []semanticEngineRoute) ([]scriptgen.SemanticRoute, error) {
-	placeByID := make(map[string]scriptgen.SemanticPlace, len(places))
+func projectSemanticRoutes(source string, places []semanticscript.SemanticPlace, routes []semanticEngineRoute) ([]semanticscript.SemanticRoute, error) {
+	placeByID := make(map[string]semanticscript.SemanticPlace, len(places))
 	for _, place := range places {
 		placeByID[place.ID] = place
 	}
-	out := make([]scriptgen.SemanticRoute, 0, len(routes))
+	out := make([]semanticscript.SemanticRoute, 0, len(routes))
 	seen := make(map[string]struct{}, len(routes))
 	for _, route := range routes {
 		if route.ID == "" || route.Evidence == "" || !groundedSpan(source, route.StartByte, route.EndByte, route.Evidence) {
@@ -81,7 +81,7 @@ func projectSemanticRoutes(source string, places []scriptgen.SemanticPlace, rout
 		if len(route.Stops) < 2 || route.Stops[0].Role != "origin" || route.Stops[len(route.Stops)-1].Role != "destination" {
 			return nil, fmt.Errorf("route %q must have grounded origin and destination stops", route.ID)
 		}
-		stops := make([]scriptgen.SemanticRouteStop, 0, len(route.Stops))
+		stops := make([]semanticscript.SemanticRouteStop, 0, len(route.Stops))
 		lastStart := -1
 		for index, stop := range route.Stops {
 			place, ok := placeByID[stop.PlaceID]
@@ -98,7 +98,7 @@ func projectSemanticRoutes(source string, places []scriptgen.SemanticPlace, rout
 				return nil, fmt.Errorf("route %q has out-of-order or invalid stop role", route.ID)
 			}
 			lastStart = place.Start
-			stops = append(stops, scriptgen.SemanticRouteStop{PlaceID: stop.PlaceID, Role: stop.Role})
+			stops = append(stops, semanticscript.SemanticRouteStop{PlaceID: stop.PlaceID, Role: stop.Role})
 		}
 		if route.StraightLineKM != nil && (*route.StraightLineKM < 0 || math.IsNaN(*route.StraightLineKM) || math.IsInf(*route.StraightLineKM, 0)) {
 			return nil, fmt.Errorf("route %q has invalid straight-line distance", route.ID)
@@ -115,7 +115,7 @@ func projectSemanticRoutes(source string, places []scriptgen.SemanticPlace, rout
 		if route.SubjectID != nil {
 			subject = *route.SubjectID
 		}
-		out = append(out, scriptgen.SemanticRoute{
+		out = append(out, semanticscript.SemanticRoute{
 			ID: route.ID, Mode: route.Mode, SubjectID: subject, Status: route.Status,
 			Stops: stops, StraightLineKM: route.StraightLineKM, Evidence: route.Evidence,
 			Start: route.StartByte, End: route.EndByte,
@@ -128,7 +128,7 @@ func projectSemanticCrossSceneRoutes(
 	texts map[string]string,
 	scenes []semanticEngineSceneManifest,
 	routes []semanticEngineCrossSceneRoute,
-) ([]scriptgen.SemanticCrossSceneRoute, error) {
+) ([]semanticscript.SemanticCrossSceneRoute, error) {
 	sceneIndex := make(map[string]int, len(scenes))
 	placeByID := make(map[string]map[string]semanticEnginePlace, len(scenes))
 	routeByID := make(map[string]map[string]semanticEngineRoute, len(scenes))
@@ -143,7 +143,7 @@ func projectSemanticCrossSceneRoutes(
 			routeByID[scene.SceneID][route.ID] = route
 		}
 	}
-	out := make([]scriptgen.SemanticCrossSceneRoute, 0, len(routes))
+	out := make([]semanticscript.SemanticCrossSceneRoute, 0, len(routes))
 	seen := make(map[string]struct{}, len(routes))
 	for _, route := range routes {
 		if route.ID == "" || route.SubjectID == "" || route.Status != "asserted" || len(route.Evidence) < 2 || len(route.Stops) < 3 {
@@ -153,7 +153,7 @@ func projectSemanticCrossSceneRoutes(
 			return nil, fmt.Errorf("duplicate cross-scene route id %q", route.ID)
 		}
 		seen[route.ID] = struct{}{}
-		projectedEvidence := make([]scriptgen.SemanticRouteEvidence, 0, len(route.Evidence))
+		projectedEvidence := make([]semanticscript.SemanticRouteEvidence, 0, len(route.Evidence))
 		expectedStops := make([]semanticEngineCrossSceneRouteStop, 0, len(route.Stops))
 		lastIndex := -1
 		previousDestinationKBID := ""
@@ -203,7 +203,7 @@ func projectSemanticCrossSceneRoutes(
 				})
 			}
 			lastIndex = index
-			projectedEvidence = append(projectedEvidence, scriptgen.SemanticRouteEvidence{
+			projectedEvidence = append(projectedEvidence, semanticscript.SemanticRouteEvidence{
 				SceneID: evidence.SceneID, RouteID: evidence.RouteID, Evidence: evidence.Evidence,
 				Start: evidence.StartByte, End: evidence.EndByte,
 			})
@@ -211,7 +211,7 @@ func projectSemanticCrossSceneRoutes(
 		if route.Mode != expectedMode || len(route.Stops) != len(expectedStops) {
 			return nil, fmt.Errorf("cross-scene route %q disagrees with its scene-local hops", route.ID)
 		}
-		projectedStops := make([]scriptgen.SemanticCrossSceneRouteStop, 0, len(route.Stops))
+		projectedStops := make([]semanticscript.SemanticCrossSceneRouteStop, 0, len(route.Stops))
 		for index, stop := range route.Stops {
 			if _, ok := placeByID[stop.SceneID][stop.PlaceID]; !ok {
 				return nil, fmt.Errorf("cross-scene route %q references missing place %s/%s", route.ID, stop.SceneID, stop.PlaceID)
@@ -225,14 +225,14 @@ func projectSemanticCrossSceneRoutes(
 			if stop.Role != wantRole || stop != expectedStops[index] {
 				return nil, fmt.Errorf("cross-scene route %q has invalid stop role %q", route.ID, stop.Role)
 			}
-			projectedStops = append(projectedStops, scriptgen.SemanticCrossSceneRouteStop{
+			projectedStops = append(projectedStops, semanticscript.SemanticCrossSceneRouteStop{
 				SceneID: stop.SceneID, PlaceID: stop.PlaceID, Role: stop.Role,
 			})
 		}
 		if route.StraightLineKM == nil || *route.StraightLineKM < 0 || math.IsNaN(*route.StraightLineKM) || math.IsInf(*route.StraightLineKM, 0) {
 			return nil, fmt.Errorf("cross-scene route %q has invalid distance", route.ID)
 		}
-		out = append(out, scriptgen.SemanticCrossSceneRoute{
+		out = append(out, semanticscript.SemanticCrossSceneRoute{
 			ID: route.ID, SubjectID: route.SubjectID, Mode: route.Mode, Status: route.Status,
 			Stops: projectedStops, Evidence: projectedEvidence, StraightLineKM: route.StraightLineKM,
 		})

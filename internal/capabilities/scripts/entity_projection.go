@@ -483,5 +483,3 @@ func annotationCanonicalEntityID(entity scriptpkg.AnnotatedEntity) string {
 func annotationStableEntityID(entity scriptpkg.AnnotatedEntity) string {
 	return capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)
 }
-
-const maxNamedEntityCardsPerScene = 10

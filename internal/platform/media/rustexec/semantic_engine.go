@@ -267,9 +267,6 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		if bundle.MicroSummaries, err = projectSemanticMicroSummaries(source, scene.MicroSummaries); err != nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q micro summaries: %w", scene.SceneID, err)
 		}
-		if err := validateSemanticReferences(bundle); err != nil {
-			return nil, nil, fmt.Errorf("semantic-engine: scene %q references: %w", scene.SceneID, err)
-		}
 		if bundle.Charts, err = projectSemanticCharts(source, scene.VisualProposals); err != nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
 		}
@@ -291,6 +288,14 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 	// bundle, including bundles for earlier scenes.
 	for _, bundle := range bundles {
 		bundle.Identities = append([]scriptgen.SemanticIdentity(nil), linkedIdentities...)
+	}
+	// Reference validation runs after the document-level identity projection:
+	// a scene may legally mention an entity whose linked identity is registered
+	// from another scene, and the per-scene identity slice cannot see it yet.
+	for sceneID, bundle := range bundles {
+		if err := validateSemanticReferences(bundle); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q references: %w", sceneID, err)
+		}
 	}
 	crossSceneRoutes, err := projectSemanticCrossSceneRoutes(texts, manifest.Scenes, manifest.CrossSceneRoutes)
 	if err != nil {

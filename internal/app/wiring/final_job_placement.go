@@ -165,10 +165,6 @@ func finalJobPreparedAssetID(request scriptgen.FinalJobVideoSegmentRequest, sour
 	return "final-fragment-" + digest.SHA256String(material)[:32]
 }
 
-func framesDurationUS(frames int64) int64 {
-	return (frames*1_000_000 + finalJobSegmentFPS/2) / finalJobSegmentFPS
-}
-
 // finalJobSourceTimeBaseCertified reports whether a source's video-track time
 // base is one a 24 fps assembly-ready source may legitimately carry. Two
 // authorities are accepted: the delivery grid (1/90000) and x264's container
@@ -216,7 +212,7 @@ func (p finalJobFragmentProbe) certify(frameCount int64) error {
 	if p.declaredKnown && p.declaredCount != frameCount {
 		return fmt.Errorf("prepared fragment has %q frames; expected %d", p.declaredFrames, frameCount)
 	}
-	if p.durationUS < framesDurationUS(frameCount)-1_000 || p.durationUS > framesDurationUS(frameCount)+1_000 {
+	if expected := kernelmedia.FrameDurationUS(frameCount); p.durationUS < expected-1_000 || p.durationUS > expected+1_000 {
 		return fmt.Errorf("prepared fragment duration does not match its frame count")
 	}
 	for index := int64(0); index < frameCount; index++ {

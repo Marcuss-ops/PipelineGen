@@ -318,8 +318,8 @@ func NewSemanticSearchBatchPlanner(port SemanticAssetSearchPort, config ...Seman
 // Run executes every pending media ladder of the plan, records each outcome and
 // returns the measured report. A provider error is a miss, never a failed run;
 // only cancellation of the parent context or the query budget aborts the batch.
-func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProductionPlan, language string, forceRefresh ...bool) (*SemanticSearchBatchReport, error) {
-	bypassCache := len(forceRefresh) > 0 && forceRefresh[0]
+func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProductionPlan, language string, forceRefresh bool) (*SemanticSearchBatchReport, error) {
+	bypassCache := forceRefresh
 	if p == nil || p.port == nil {
 		return nil, fmt.Errorf("semantic search batch: planner is not configured")
 	}

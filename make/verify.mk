@@ -92,6 +92,13 @@ verify-static: go-version-check
 	$(GO) build ./...
 	@echo "✅ Static verification passed"
 
+# verify-deadcode — ratcheting dead-code guard. The threshold is the measured
+# unreachable count from the 2026-11-21 sweep and may only go down. Kept out
+# of verify-agent so the agent loop does not require the external deadcode
+# binary; CI can call this target when the tool is installed.
+verify-deadcode:
+	@bash scripts/ci/check-deadcode-baseline.sh
+
 # verify-fast — dev-loop gate: foundation + static. On a warm dependency
 # cache it is the cheapest fail-closed chain that catches the most common
 # errors (toolchain mismatch, leaked secrets, formatting drift, embedded UI

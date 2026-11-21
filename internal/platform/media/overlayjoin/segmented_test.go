@@ -51,6 +51,30 @@ func TestSegmentedAssemblyMatchesSinglePass(t *testing.T) {
 	}
 }
 
+// TestSegmentArgsBudgetsFilterThreadsByActiveClips pins the same measured
+// budget on the segmented path: only the clips visible in this segment count,
+// so a 15 s part is not given the whole-timeline thread budget.
+func TestSegmentArgsBudgetsFilterThreadsByActiveClips(t *testing.T) {
+	dir := t.TempDir()
+	clips := []Clip{
+		{Path: touch(t, dir, "a.mp4"), StartUS: 0, DurationUS: 1_000_000},
+		{Path: touch(t, dir, "b.mp4"), StartUS: 1_000_000, DurationUS: 1_000_000},
+		{Path: touch(t, dir, "c.mp4"), StartUS: 9_000_000, DurationUS: 1_000_000},
+	}
+	spec := Spec{
+		AudioPath:  touch(t, dir, "audio.m4a"),
+		OutputPath: filepath.Join(dir, "out.mp4"),
+		Width:      320, Height: 180, FPS: 24,
+		Encoder:    mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23},
+		DurationUS: 10_000_000,
+		Clips:      clips,
+	}
+	args := segmentArgs(spec, filepath.Join(dir, "bg.mov"), 0, 2_000_000, filepath.Join(dir, "part.mov"))
+	if got := args[indexOf(args, "-filter_complex_threads")+1]; got != "2" {
+		t.Fatalf("2-active-clip segment filter threads = %q, want 2", got)
+	}
+}
+
 func TestSegmentArgsTrimASegmentCrossingClip(t *testing.T) {
 	dir := t.TempDir()
 	clip := touch(t, dir, "clip.mp4")

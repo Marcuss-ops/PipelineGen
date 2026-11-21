@@ -66,11 +66,11 @@ func newGatedDownloader(t *testing.T, width int, cooldownSec int, runner Process
 	// Hermetic global gate per test; no parallel gate tests.
 	resetYouTubeGateForTest(width)
 	ytCooldownUntil.Store(0)
-	youTubeCooldownNow = nil
+	setYouTubeCooldownNowForTest(nil)
 	t.Cleanup(func() {
 		resetYouTubeGateForTest(3)
 		ytCooldownUntil.Store(0)
-		youTubeCooldownNow = nil
+		setYouTubeCooldownNowForTest(nil)
 	})
 	cfg := &ytcfg.Config{
 		External: ytcfg.ExternalConfig{
@@ -148,15 +148,15 @@ func TestYouTubeGate_DoesNotGateNonYouTube(t *testing.T) {
 func TestYouTubeGate_ArmsCooldownOn429(t *testing.T) {
 	setupTestAllowlist(t)
 	fixedNow := time.Now()
-	youTubeCooldownNow = func() time.Time { return fixedNow }
-	t.Cleanup(func() { youTubeCooldownNow = nil })
+	setYouTubeCooldownNowForTest(func() time.Time { return fixedNow })
+	t.Cleanup(func() { setYouTubeCooldownNowForTest(nil) })
 
 	runner := &scriptedRunner{
 		script: []scriptedCall{{err: fmt.Errorf("ERROR: HTTP Error 429: Too Many Requests")}},
 	}
 	d := newGatedDownloader(t, 3, 60, runner)
 	// Override now after newGatedDownloader reset the seam.
-	youTubeCooldownNow = func() time.Time { return fixedNow }
+	setYouTubeCooldownNowForTest(func() time.Time { return fixedNow })
 
 	output := filepath.Join(t.TempDir(), "out.mp4")
 	writeDummyOutputFile(t, output)
@@ -188,9 +188,9 @@ func TestYouTubeGate_RateLimitPatternMatchesTooManyRequests(t *testing.T) {
 	}
 	d := newGatedDownloader(t, 3, 30, runner)
 	fixedNow := time.Now()
-	youTubeCooldownNow = func() time.Time { return fixedNow }
-	t.Cleanup(func() { youTubeCooldownNow = nil })
-	youTubeCooldownNow = func() time.Time { return fixedNow }
+	setYouTubeCooldownNowForTest(func() time.Time { return fixedNow })
+	t.Cleanup(func() { setYouTubeCooldownNowForTest(nil) })
+	setYouTubeCooldownNowForTest(func() time.Time { return fixedNow })
 	output := filepath.Join(t.TempDir(), "out.mp4")
 	writeDummyOutputFile(t, output)
 	_ = d.Download(context.Background(), &DownloadRequest{URL: youTubeWatchURL, OutputPath: output})

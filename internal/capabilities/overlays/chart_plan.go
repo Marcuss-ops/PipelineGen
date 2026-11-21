@@ -43,13 +43,6 @@ const (
 	ChartMinWindowUS int64 = 2_000_000
 )
 
-// chartBarMotionID is the entrance motion every chart bar carries. It is
-// owned by the RenderingGen runtime catalog (histograms_data_v1): opacity plus
-// scale_y, no 3D and no camera, so it lowers to plain rect animation on every
-// backend. Keeping it in one constant means a calibration change is one edit
-// and the emitted plans stay deterministic.
-const chartBarMotionID = "data_histogram_stagger_up"
-
 // ChartPlacement is one bar chart bound to a scene's numeric span.
 type ChartPlacement struct {
 	SceneID       string

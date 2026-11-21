@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -330,7 +329,7 @@ func (p *vidRushInternetImageProvider) Search(ctx context.Context, req scriptpor
 	return results, err
 }
 func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
-	data, mime, err := adapters.DownloadVidRushImageForCandidate(ctx, http.DefaultClient, candidate, adapters.DefaultVidRushImagePolicy())
+	data, mime, err := adapters.DownloadVidRushImageForCandidate(ctx, adapters.ProviderImageHTTPClient(), candidate, adapters.DefaultVidRushImagePolicy())
 	if err != nil {
 		if p.log != nil {
 			p.log.Warn("VidRush internet image acquire failed", zap.String("query", candidate.Query), zap.String("source_url", candidate.SourceURL), zap.Error(err))

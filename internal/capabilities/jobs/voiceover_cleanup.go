@@ -240,6 +240,11 @@ func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outboxevents.E
 	// (no orphan to delete). When BOTH are empty, no prior row had a
 	// Drive file (never set). Both cases → fast success without any
 	// Drive call.
+	// terminalErr is returned after the local cleanup has run, so a
+	// composition-root misconfiguration on the Drive side does not also hide
+	// the local orphan files behind an early return.
+	var terminalErr error
+
 	if req.OldDriveFileID != "" && req.OldDriveFileID == req.NewDriveFileID {
 		log.Info("voiceover.cleanup.requested: old==new — swap landed on same Drive file, skipping Drive delete",
 			reqLog...,
@@ -254,12 +259,17 @@ func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outboxevents.E
 		// through NewTerminalError so the pool dead-letters
 		// immediately rather than burning max_attempts.
 		if h.driver == nil {
-			// No-driver branch is unusual: production wiring always
-			// supplies one. We log loudly so an operator inspects
-			// build_bundles_process.go::BuildOutboxBundle.
-			log.Warn("voiceover.cleanup.requested: driver nil, skipping Drive delete (composition root misconfig)",
-				reqLog...,
+			// A nil driver is a composition-root error, not a reason to ack:
+			// acknowledging loses the orphan Drive file silently. The local
+			// cleanup below still runs, then the terminal error is returned so
+			// the event dead-letters immediately instead of burning the retry
+			// budget on a fixable-only-by-deploy condition.
+			log.Warn("voiceover.cleanup.requested: Drive driver not wired — local cleanup runs, Drive orphan remains (composition root misconfig)",
+				append(reqLog, zap.String("orphan_drive_file_id", req.OldDriveFileID))...,
 			)
+			terminalErr = outboxevents.NewTerminalError(fmt.Errorf(
+				"voiceover.cleanup.requested: Drive driver not wired; orphan file %s not deleted",
+				req.OldDriveFileID))
 		} else {
 			log.Info("voiceover.cleanup.requested: deleting orphan Drive file", reqLog...)
 			if derr := h.driver.DeleteFile(ctx, req.OldDriveFileID); derr != nil {
@@ -343,6 +353,9 @@ func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outboxevents.E
 		}
 	}
 
+	if terminalErr != nil {
+		return terminalErr
+	}
 	log.Info("voiceover.cleanup.requested: cleanup complete", reqLog...)
 	return nil
 }

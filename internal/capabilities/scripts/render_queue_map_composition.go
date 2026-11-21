@@ -3,7 +3,6 @@ package scriptgeneration
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -236,14 +235,16 @@ func mapEntityLineage(mapOverlay *capmodel.MapOverlay) ([]string, []string) {
 // summary (renderer_fingerprint), so an artifact can always be re-attributed
 // to the code that produced it.
 func dynamicMapRendererFingerprint(nativeRenderer string) (string, error) {
-	data, err := os.ReadFile(nativeRenderer)
+	// Stream the hash: the native renderer is a large binary and reading it
+	// whole into RAM just to fingerprint it pinned a copy per call.
+	sum, size, err := digest.SHA256File(nativeRenderer)
 	if err != nil {
 		return "", err
 	}
-	if len(data) == 0 {
+	if size == 0 {
 		return "", fmt.Errorf("native map renderer %s is empty", nativeRenderer)
 	}
-	return digest.SHA256Bytes(data), nil
+	return sum, nil
 }
 
 // ── dynamic map import attestation (merged from render_queue_map_import.go) ──

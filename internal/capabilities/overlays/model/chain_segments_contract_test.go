@@ -34,7 +34,6 @@ var canonicalChainSegmentKeys = []string{
 	"caption_layout",
 	"caption_color",
 	"entity_style_id",
-	"camera_motion_id",
 	"start_us",
 	"duration_us",
 	"motion_params",

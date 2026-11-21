@@ -20,12 +20,16 @@ func MeasurePhraseOverlayBudgetWithLimit(items []capmodel.OverlayItem, requested
 		switch item.Kind {
 		case "text_phrase":
 			add(item.Text)
-		case capmodel.KindPhraseChain:
-			// Fused phrase chains carry their phrases per segment; count them
-			// so the reported materialization matches the rendered plan.
+		case capmodel.KindPhraseChain, capmodel.KindMixedChain:
+			// Fused chains carry their visible text per segment. Mixed chains
+			// also contain entity cards, quotes and numbers, so count only
+			// text_phrase segments there; otherwise the audit understates the
+			// phrase materialization and reports a false shortfall.
 			if segments, ok := capmodel.DecodeChainSegments(item.Params); ok {
 				for _, segment := range segments {
-					add(segment.Text)
+					if item.Kind == capmodel.KindPhraseChain || segment.Kind == "text_phrase" {
+						add(segment.Text)
+					}
 				}
 			}
 		}

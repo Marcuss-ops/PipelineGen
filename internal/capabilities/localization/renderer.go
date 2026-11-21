@@ -37,14 +37,19 @@ import (
 // the render boundary (the executor reads the actual output file and reports
 // codecs/duration); the renderer never re-derives them.
 type RenderFacts struct {
-	LocalPath  string
-	SHA256     string
-	SizeBytes  int64
-	DurationMS int64
-	VideoCodec string
-	AudioCodec string
-	Backend    string
-	Metrics    map[string]float64
+	// RenderJobID is the actual RenderingGen queue job id used for this render.
+	// It is the sealed plan revision plus the subtitle ASS digest (see
+	// RenderJobID), so a changed ASS is a different remote job instead of a
+	// collision with an older render of the same track/style.
+	RenderJobID string
+	LocalPath   string
+	SHA256      string
+	SizeBytes   int64
+	DurationMS  int64
+	VideoCodec  string
+	AudioCodec  string
+	Backend     string
+	Metrics     map[string]float64
 	// StorageKey / ArtifactURL / ContentType are the certified durable
 	// locator of the same bytes. RenderingGen already uploaded them and
 	// reported their identity, so a final-job consumer can hand this locator
@@ -161,8 +166,12 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 	// 3. Content-addressed reuse (render_reuse.go). Checked AFTER the subtitle
 	// wire on purpose: a reuse hit must still resolve and verify THIS language's
 	// translated track, so cached bytes can never carry a stale or wrong-language
-	// subtitle artifact. Only the GPU half (compile/submit/settle/probe) is
-	// skipped, and only against bytes that hash to the certified digest.
+	// subtitle artifact. The reuse key includes the generated ASS digest: the
+	// plan fingerprint pins the translated track and style, but not the ASS bytes
+	// they produce, so keying on the fingerprint alone would reuse video burned
+	// with a different subtitle artifact. Only the GPU half
+	// (compile/submit/settle/probe) is skipped, and only against bytes that hash
+	// to the certified digest.
 	if reused, ok := r.reusedArtifact(ctx, plan, ass); ok {
 		return reused, nil
 	}
@@ -216,8 +225,12 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 	// Record the certified bytes so the next identical plan skips this render
 	// (fail-soft: a cache write failure never fails the artifact, see
 	// render_reuse.go).
-	r.storeRendered(ctx, plan, facts)
+	r.storeRendered(ctx, plan, ass, facts)
 
+	planRevision := renderPlan.Revision
+	if strings.TrimSpace(facts.RenderJobID) != "" {
+		planRevision = facts.RenderJobID
+	}
 	return LocalizedClipArtifact{
 		Version:         LocalizedClipArtifactVersion,
 		JobID:           plan.JobID,
@@ -228,7 +241,7 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		// The render job identity travels with the certified bytes so a run
 		// result can name the render that produced them (previously it was
 		// only observable as a `plan_revision` line in the master log).
-		PlanRevision:   renderPlan.Revision,
+		PlanRevision:   planRevision,
 		LocalPath:      facts.LocalPath,
 		SubtitlePath:   ass.LocalPath,
 		SubtitleSHA256: ass.SHA256,
@@ -246,6 +259,39 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		// the presence or absence of timing metrics.
 		RenderSource: RenderSourceFreshGPU,
 	}, nil
+}
+
+// RenderJobID derives the RenderingGen queue job id for a localized render.
+//
+// The sealed plan revision is the content identity of the INPUTS the plan
+// fingerprints (source, track, style, renderer). The burned subtitle ASS is an
+// OUTPUT of those inputs, and its bytes are only known after the subtitle wire
+// runs. Two plans can therefore share a revision while carrying different ASS
+// bytes (for example after an ASS layout change): submitting the bare revision
+// would either collide with a completed job or reuse video burned with the old
+// subtitles. Appending the ASS digest makes the render job, the reuse key and
+// the certified artifact name the exact subtitle artifact that was rendered.
+func RenderJobID(revision, assSHA256 string) string {
+	revision = strings.TrimSpace(revision)
+	assSHA256 = strings.ToLower(strings.TrimSpace(assSHA256))
+	if len(assSHA256) > 16 {
+		assSHA256 = assSHA256[:16]
+	}
+	if revision == "" || assSHA256 == "" {
+		return revision
+	}
+	return revision + ":ass:" + assSHA256
+}
+
+// RenderReuseKey is the content-addressed cache key of a localized render. It
+// extends the plan fingerprint with the generated ASS digest so a cache hit can
+// only return video burned with THIS subtitle artifact.
+func RenderReuseKey(plan LocalizedClipPlan, ass *SubtitleAsset) string {
+	key := strings.TrimSpace(plan.Fingerprint)
+	if ass == nil || strings.TrimSpace(ass.SHA256) == "" {
+		return key
+	}
+	return key + ":ass:" + strings.ToLower(strings.TrimSpace(ass.SHA256))
 }
 
 func metricsJSON(metrics map[string]float64) string {

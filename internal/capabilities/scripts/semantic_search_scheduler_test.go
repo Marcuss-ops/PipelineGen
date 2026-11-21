@@ -168,7 +168,7 @@ func TestSemanticSearchBatchRunsIndependentLaddersConcurrently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := planner.Run(context.Background(), plan, "it")
+	report, err := planner.Run(context.Background(), plan, "it", false)
 	if err != nil {
 		t.Fatalf("batch failed: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 	}
 	planner.now = clock.Now
 
-	first, err := planner.Run(context.Background(), plan, "it")
+	first, err := planner.Run(context.Background(), plan, "it", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact,
 	))
 	clock.Advance(time.Minute)
-	warm, err := planner.Run(context.Background(), warmPlan, "it")
+	warm, err := planner.Run(context.Background(), warmPlan, "it", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", contextQuery,
 	))
 	clock.Advance(time.Minute)
-	contextRun, err := planner.Run(context.Background(), contextPlan, "it")
+	contextRun, err := planner.Run(context.Background(), contextPlan, "it", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact,
 	))
 	clock.Advance(7 * time.Hour)
-	expired, err := planner.Run(context.Background(), expiredPlan, "it")
+	expired, err := planner.Run(context.Background(), expiredPlan, "it", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,11 +296,11 @@ func TestStableLocationCacheOutlivesOrdinaryQueryTTL(t *testing.T) {
 		CandidateID: "location-pavia", Entity: "Pavia", Class: SearchClassLocation, Query: query,
 	}
 	key := cacheKey(attempt, "it", attempt.Class.ProviderLane(), planner.cfg.Limit, semanticPlanFingerprint(nil))
-	if _, _, _, _, err := planner.fetch(context.Background(), attempt, "it", key); err != nil {
+	if _, _, _, _, err := planner.fetch(context.Background(), attempt, "it", key, false); err != nil {
 		t.Fatalf("initial fetch: %v", err)
 	}
 	clock.Advance(7 * time.Hour)
-	_, cached, _, _, err := planner.fetch(context.Background(), attempt, "it", key)
+	_, cached, _, _, err := planner.fetch(context.Background(), attempt, "it", key, false)
 	if err != nil {
 		t.Fatalf("stable cache fetch: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestStableLocationCacheOutlivesOrdinaryQueryTTL(t *testing.T) {
 		t.Fatalf("stable location cache did not survive ordinary TTL: cached=%v provider_calls=%d", cached, len(port.calls))
 	}
 	clock.Advance(31 * 24 * time.Hour)
-	_, cached, _, _, err = planner.fetch(context.Background(), attempt, "it", key)
+	_, cached, _, _, err = planner.fetch(context.Background(), attempt, "it", key, false)
 	if err != nil {
 		t.Fatalf("expired stable cache fetch: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestSemanticSearchBatchRetries429OnTheSameRung(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := planner.Run(context.Background(), plan, "it")
+	report, err := planner.Run(context.Background(), plan, "it", false)
 	if err != nil {
 		t.Fatalf("batch failed: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestSemanticSearchBatchSkipsClassesThePortCannotAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := planner.Run(context.Background(), plan, "it")
+	report, err := planner.Run(context.Background(), plan, "it", false)
 	if err != nil {
 		t.Fatalf("batch failed: %v", err)
 	}

@@ -104,13 +104,35 @@ run-level text, including the context label under an entity name. `color` is
 required and accepts `#RRGGBB`; `opacity` is `0..1`, `radius` is `0..512` px,
 and `padding` accepts at most `[x,y]` with values `0..512` px. The plate is
 opt-in: omitting the block leaves every text lane plate-free, exactly as
-before. The colour reaches entity captions and captioned image layers as well
-as phrases, words, dates and metrics.
+before. The plate uses the text's `font_family`, so the label and the rectangle
+behind it are selected together. The colour reaches entity captions and
+captioned image layers as well as phrases, words, dates and metrics.
+
+`stroke` adds a border (`color` `#RRGGBB`, `width` `0..64` px). `shadow` adds a
+native drop shadow (`color` `#RRGGBB`, `opacity` `0..1`, `blur` `0..64` px, and
+an `offset` of exactly two values in `-128..128`). `motions` is an optional
+closed pool of plate entrances — `fade`, `slide_left`, `slide_right`,
+`slide_up`, `scale_in`, `wipe_right` — rotated in plan order so one job with
+several captions shows different rectangle animations.The plate entrance starts on
+the caption's own start frame. The label starts when the plate settles and
+fades in over four frames, so the word (and its shadow/glow) never hangs outside
+a half-drawn, half-slid or half-scaled rectangle. A selected motion owns the
+card entrance: it replaces the caption's layer-level
+opacity/position/scale tracks, while per-glyph text animators keep playing. Omitting `motions` keeps the historical
+behaviour: the plate copies the caption entrance. A pool may carry `1..8` ids;
+an unknown id fails validation.
 
 ```json
 "overlay_style": {
-  "card_background": {"color": "#12233A", "opacity": 0.82,
-    "radius": 10, "padding": [16, 10]}
+  "font_family": "oswald",
+  "card_background": {
+    "color": "#0B1F33", "opacity": 0.88, "radius": 14,
+    "padding": [24, 12],
+    "stroke": {"color": "#57D9FF", "width": 2.5},
+    "shadow": {"color": "#000000", "opacity": 0.55,
+      "blur": 18, "offset": [0, 8]},
+    "motions": ["fade", "slide_left", "wipe_right"]
+  }
 }
 ```
 

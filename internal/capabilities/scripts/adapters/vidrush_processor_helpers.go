@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // clampUnit is a neutral score-normalization helper for discovery metadata.
@@ -31,7 +32,7 @@ func clampUnit(value float64) float64 {
 }
 
 func vidRushFanoutImageCacheKey(plan *vidRushFanoutPlan, generation *scriptpkg.ResolvedGenerationPlan) string {
-	return segmentCacheKey("internet-images-assets-v5", plan.segmentID, plan.textHash, generation.Language, generation.Model, generation.PromptVersion, fmt.Sprintf("%d", plan.perQueryLimit))
+	return internetImageSegmentCacheKey(plan.segmentID, plan.textHash, generation.Language, generation.Model, generation.PromptVersion, plan.perQueryLimit)
 }
 
 // SceneImage is a single scene-image outcome from ImageProcessor.
@@ -49,7 +50,7 @@ func SceneImageDriveLink(img SceneImage) string {
 		return url
 	}
 	if img.DriveFileID != "" {
-		return fmt.Sprintf("https://drive.google.com/file/d/%s/view", img.DriveFileID)
+		return urlutil.DriveFileURL(img.DriveFileID)
 	}
 	return url
 }

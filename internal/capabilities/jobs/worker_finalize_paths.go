@@ -200,7 +200,10 @@ func (w *Worker) finalizeJobArtifactPath(ctx context.Context, j *job.Job, worker
 		InitialBackoff: 200 * time.Millisecond,
 		MaxBackoff:     2 * time.Second,
 		BackoffFactor:  2.0,
-		DisableJitter:  true,
+		// This path is contended by every worker finalizing a job against the
+		// same store; jitter keeps the retries from landing in lockstep.
+		JitterFraction: 0.3,
+		DisableJitter:  false,
 		IsRetryable:    retry.IsTransient,
 		OnRetry: func(attempt int, err error) {
 			w.log.Warn("finalization: transient storage contention — retrying CompleteWithArtifacts",

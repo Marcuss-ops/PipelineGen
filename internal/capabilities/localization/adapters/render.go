@@ -282,9 +282,14 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		zap.String("video_codec", contract.VideoCodec),
 		zap.String("audio_codec", contract.AudioCodec),
 	)
+	// The queue job id extends the sealed revision with the ASS digest: the
+	// revision fingerprints the plan inputs (track + style), not the ASS bytes
+	// generated from them. A changed ASS must address a different remote job
+	// and a different cached artifact, never collide with a completed render.
+	runID := localization.RenderJobID(plan.Revision, subtitleSHA256(subtitle))
 	compileStart := time.Now()
 	clipPlan, err := cliprender.Compile(cliprender.CompileInput{
-		RunID:                  plan.Revision,
+		RunID:                  runID,
 		DurationMS:             plan.Timeline.DurationUS / 1000,
 		Source:                 &cliprender.MaterializedAsset{AssetID: src.AssetID, LocalPath: src.Path, SHA256: src.SHA256},
 		Watermark:              opts.Watermark,
@@ -398,14 +403,15 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	)
 
 	return localization.RenderFacts{
-		LocalPath:  outcome.OutputPath,
-		SHA256:     sha,
-		SizeBytes:  outcome.SizeBytes,
-		DurationMS: int64(outcome.DurationSec * 1000),
-		VideoCodec: contract.VideoCodec,
-		AudioCodec: contract.AudioCodec,
-		Backend:    string(outcome.Backend),
-		Metrics:    metricsMap(outcome.Metrics),
+		RenderJobID: clipPlan.RunID,
+		LocalPath:   outcome.OutputPath,
+		SHA256:      sha,
+		SizeBytes:   outcome.SizeBytes,
+		DurationMS:  int64(outcome.DurationSec * 1000),
+		VideoCodec:  contract.VideoCodec,
+		AudioCodec:  contract.AudioCodec,
+		Backend:     string(outcome.Backend),
+		Metrics:     metricsMap(outcome.Metrics),
 		// Preserve the certified durable locator the render boundary
 		// returned: a consumer that only hands the clip to another machine
 		// must not require the Producer to hold or re-stat the bytes.
@@ -418,6 +424,15 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 // metricsMap is a compatibility projection of the canonical V2 report for
 // the localized artifact wire contract. NOT_INSTRUMENTED fields are omitted;
 // measured numeric fields are preserved without inventing zeroes.
+// subtitleSHA256 returns the wired ASS digest for RenderJobID. A nil subtitle
+// has no ASS digest; RenderJobID then keeps the sealed revision unchanged.
+func subtitleSHA256(sub *localization.SubtitleAsset) string {
+	if sub == nil {
+		return ""
+	}
+	return sub.SHA256
+}
+
 func metricsMap(m *cliprender.RenderMetricsV2) map[string]float64 {
 	if m == nil {
 		return nil

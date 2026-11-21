@@ -498,15 +498,18 @@ func TestSuccessfulRemoteRenderPersistsTimingBreakdown(t *testing.T) {
 	submitter := &stubFinalJobSubmitter{result: RemoteFinalJobResult{
 		JobID: "master-timing", Status: "SUCCEEDED", WorkerID: "w-51",
 		Timing: &RemoteFinalJobTiming{
-			MasterCreatedAt:   "2026-10-31T10:00:00Z",
-			MasterStartedAt:   "2026-10-31T10:00:12Z",
-			MasterCompletedAt: "2026-10-31T10:04:12Z",
-			QueueMS:           12_000,
-			ExecutionMS:       240_000,
-			HandoffMS:         3_500,
-			WaitMS:            243_800,
-			PollLagMS:         1_800,
-			Polls:             82,
+			MasterCreatedAt:        "2026-10-31T10:00:00Z",
+			MasterStartedAt:        "2026-10-31T10:00:12Z",
+			MasterCompletedAt:      "2026-10-31T10:04:12Z",
+			QueueMS:                12_000,
+			ExecutionMS:            240_000,
+			HandoffMS:              3_500,
+			WaitMS:                 243_800,
+			PollLagMS:              1_800,
+			Polls:                  82,
+			ArtifactDownloadMS:     257_400,
+			ArtifactDownloadBytes:  891_734_780,
+			ArtifactDownloadReused: true,
 		},
 	}}
 	result := &GenerateResult{}
@@ -529,7 +532,10 @@ func TestSuccessfulRemoteRenderPersistsTimingBreakdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal receipt: %v", err)
 	}
-	for _, key := range []string{"\"queue_ms\":12000", "\"execution_ms\":240000", "\"handoff_ms\":3500", "\"poll_lag_ms\":1800"} {
+	for _, key := range []string{
+		"\"queue_ms\":12000", "\"execution_ms\":240000", "\"handoff_ms\":3500", "\"poll_lag_ms\":1800",
+		"\"artifact_download_ms\":257400", "\"artifact_download_bytes\":891734780", "\"artifact_download_reused\":true",
+	} {
 		if !strings.Contains(string(raw), key) {
 			t.Fatalf("serialized receipt %s has no %s", raw, key)
 		}

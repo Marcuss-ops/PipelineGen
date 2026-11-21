@@ -95,7 +95,7 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # sentinel) were deleted by docs/operations/TICKET-ORPHAN-PACKAGES-2026-11-18.md;
 # re-declaring them without a package would demand an empty module, and
 # keeping them declared makes the layout gate fail on the deleted tree.
-kernel_subzones: asset, job, script, event, observability, embedding, entitytype, digest, media, assembly, delivery, primitives, transcript, idempotency, models, audio, sceneir, geodesy, overlayplan
+kernel_subzones: asset, job, script, event, observability, embedding, entitytype, digest, color, media, assembly, delivery, primitives, transcript, idempotency, models, audio, sceneir, geodesy, overlayplan
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,

@@ -62,10 +62,10 @@ type OverlayRenderCacheKey struct {
 
 // Validate reports whether the key is complete enough to address a cache row.
 func (k OverlayRenderCacheKey) Validate() error {
-	if len(k.RenderKey) != 64 || !isLowerHex(k.RenderKey) {
+	if len(k.RenderKey) != 64 || !digest.IsCanonicalSHA256(k.RenderKey) {
 		return fmt.Errorf("overlay render cache key: render key %q is not a 64-hex digest", k.RenderKey)
 	}
-	if len(k.PlanContext) != 64 || !isLowerHex(k.PlanContext) {
+	if len(k.PlanContext) != 64 || !digest.IsCanonicalSHA256(k.PlanContext) {
 		return fmt.Errorf("overlay render cache key: plan context %q is not a 64-hex digest", k.PlanContext)
 	}
 	if strings.TrimSpace(k.Epoch) == "" {
@@ -81,15 +81,6 @@ func (k OverlayRenderCacheKey) Digest() string {
 	return digest.SHA256String(strings.Join([]string{
 		"overlay-render-cache/v1", k.RenderKey, k.PlanContext, k.Epoch,
 	}, "\x00"))
-}
-
-func isLowerHex(s string) bool {
-	for _, r := range s {
-		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
-			return false
-		}
-	}
-	return s != ""
 }
 
 // OverlayRenderCache is the narrow persistence port. Lookup returns
@@ -180,14 +171,14 @@ func overlayRenderCacheKeyForPlan(plan capmodel.OverlayPlan, epoch string) (Over
 			if itemKey == "" {
 				itemKey = capmodel.ComputeRenderKey(plan, item)
 			}
-			if len(itemKey) != 64 || !isLowerHex(itemKey) {
+			if len(itemKey) != 64 || !digest.IsCanonicalSHA256(itemKey) {
 				return OverlayRenderCacheKey{}, false
 			}
 			parts = append(parts, fmt.Sprintf("%d:%s:%s", index, strings.TrimSpace(item.ID), itemKey))
 		}
 		renderKey = digest.SHA256String(strings.Join(parts, "\x00"))
 	}
-	if len(renderKey) != 64 || !isLowerHex(renderKey) {
+	if len(renderKey) != 64 || !digest.IsCanonicalSHA256(renderKey) {
 		return OverlayRenderCacheKey{}, false
 	}
 	contextHash := overlayPlanRenderContextDigest(plan)
@@ -211,8 +202,8 @@ func overlayRenderCacheKeyForPlan(plan capmodel.OverlayPlan, epoch string) (Over
 // overlayPlanRenderContextDigest hashes the plan-level facts that change the
 // pixels but are NOT part of an item's RenderKey: background/source, canvas
 // floor, foreground scale, entity variation seed, media
-// contract, and the two item fields RenderKey does not carry (Kind and
-// CameraMotionID). It deliberately excludes plan identity, Drive routing and
+// contract, and the item field RenderKey does not carry (Kind). It deliberately
+// excludes plan identity, Drive routing and
 // producer-only fields, so two runs that render the same clip agree.
 //
 // RenderKey itself is left untouched: persisted plans carry their RenderKey in
@@ -252,11 +243,10 @@ func overlayPlanRenderContextDigest(plan capmodel.OverlayPlan) string {
 		BitstreamLane string `json:"bitstream_lane,omitempty"`
 		// Policies keeps the retired pre-v2 wire in the cache identity so a
 		// historical plan cannot alias one that never carried it.
-		SourceSHA256   string                    `json:"source_sha256"`
-		Background     *overlayCacheBG           `json:"background"`
-		ItemKind       string                    `json:"item_kind"`
-		CameraMotionID string                    `json:"camera_motion_id"`
-		Items          []overlayCacheItemContext `json:"items,omitempty"`
+		SourceSHA256 string                    `json:"source_sha256"`
+		Background   *overlayCacheBG           `json:"background"`
+		ItemKind     string                    `json:"item_kind"`
+		Items        []overlayCacheItemContext `json:"items,omitempty"`
 		// MapBackend is the resolved dynamic-map backend. It is stamped onto
 		// the plan AFTER the item's RenderKey was computed, so it must be
 		// hashed here or a python-backend clip could satisfy a native-backend
@@ -308,7 +298,6 @@ func overlayPlanRenderContextDigest(plan capmodel.OverlayPlan) string {
 	if len(plan.Items) == 1 {
 		item := plan.Items[0]
 		context.ItemKind = strings.TrimSpace(item.Kind)
-		context.CameraMotionID = strings.TrimSpace(item.CameraMotionID)
 		if backend, ok := item.Params["map_backend"].(string); ok {
 			context.MapBackend = strings.TrimSpace(backend)
 		}
@@ -320,7 +309,7 @@ func overlayPlanRenderContextDigest(plan capmodel.OverlayPlan) string {
 	} else if len(plan.Items) > 1 {
 		context.Items = make([]overlayCacheItemContext, 0, len(plan.Items))
 		for _, item := range plan.Items {
-			fact := overlayCacheItemContext{ID: strings.TrimSpace(item.ID), Kind: strings.TrimSpace(item.Kind), CameraMotionID: strings.TrimSpace(item.CameraMotionID)}
+			fact := overlayCacheItemContext{ID: strings.TrimSpace(item.ID), Kind: strings.TrimSpace(item.Kind)}
 			if backend, ok := item.Params["map_backend"].(string); ok {
 				fact.MapBackend = strings.TrimSpace(backend)
 			}
@@ -345,7 +334,7 @@ func overlayPlanRenderContextDigest(plan capmodel.OverlayPlan) string {
 func overlayPlanCacheAssetsIdentified(plan capmodel.OverlayPlan) bool {
 	valid := func(raw string) bool {
 		sha := strings.ToLower(strings.TrimSpace(raw))
-		return len(sha) == 64 && isLowerHex(sha)
+		return len(sha) == 64 && digest.IsCanonicalSHA256(sha)
 	}
 	if plan.Source != nil && !valid(plan.Source.SHA256) {
 		return false
@@ -383,7 +372,6 @@ func samplingPlanIdentity(plan capmodel.OverlayPlan) string {
 type overlayCacheItemContext struct {
 	ID               string `json:"id"`
 	Kind             string `json:"kind,omitempty"`
-	CameraMotionID   string `json:"camera_motion_id,omitempty"`
 	MapBackend       string `json:"map_backend,omitempty"`
 	SamplingIdentity string `json:"sampling_identity,omitempty"`
 }
@@ -449,7 +437,7 @@ func validCachedOverlayArtifact(artifact *RenderArtifact) bool {
 		return false
 	}
 	sha := strings.ToLower(strings.TrimSpace(artifact.SHA256))
-	if len(sha) != 64 || !isLowerHex(sha) {
+	if len(sha) != 64 || !digest.IsCanonicalSHA256(sha) {
 		return false
 	}
 	if artifact.SizeBytes <= 0 {

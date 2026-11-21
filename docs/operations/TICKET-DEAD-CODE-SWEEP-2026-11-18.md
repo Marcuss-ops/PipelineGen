@@ -1,11 +1,32 @@
 # TICKET — Dead-code sweep outside the overlay planner (2026-11-18)
 
-- **Status:** CLOSED (2026-11-18) — da **793 a 476** funzioni unreachable; le 476 residue sono classificate senza item aperti: **18 in allowlist** (15 fixture/test-support, 3 superficie dormiente) e 458 fuori perimetro. **0** zero-reference, **0** in `capabilities/overlays`
+- **Status:** CLOSED (2026-11-18) — da **793 a 476** funzioni unreachable; le 476 residue sono classificate senza item aperti: **18 in allowlist** (15 fixture/test-support, 3 superficie dormiente) e 458 fuori perimetro. **0** zero-reference, **0** in `capabilities/overlays`. Aggiornamento 2026-11-21 (finale): misura **229**, 0 zero-reference, 20 test-support allowlisted, 209 nel perimetro di produzione.
 - **Severity:** P1 — the binary and the review surface carry code no request can execute
 - **Owner:** platform / capabilities maintainers by package
 - **Source:** audit 2026-11-18, `deadcode -test=false ./...` on `refactored@75b5b1def`
 - **Related:** `TICKET-OVERLAY-PLANNER-GO-DEMOLITION-2026-11-18` (same tool, different package)
 - **Rule:** delete only after confirming the symbol is not reached through an interface, reflection or a build tag; no assertion weakened
+
+## Chiusura sweep 2026-11-21
+
+- **Misura:** 300 → 292 (prima ondata) → 279 (seconda ondata) → 277 (helper
+  test-only spostati) → **229** (terza ondata: overlay, scene_annotations,
+  stockpipeline, render_cache e due zero-reference).
+- **Report congelato:** `docs/operations/deadcode-2026-11-21.txt` (229 righe).
+- **Classificazione:** 0 zero-reference, 20 test-support allowlisted, 209 nel
+  perimetro di produzione; dettaglio in
+  `docs/operations/deadcode-residuals-classification-2026-10-28.md`
+  (§ Aggiornamento 2026-11-21 finale).
+- **Nessun taglio di feature o test per abbassare il numero:** gli oracle
+  ancora validi sono stati spostati in `_test.go`; la porta morta
+  `SegmentSceneMerger` e i suoi test dead-only sono stati ritirati. I 209
+  residui restano perché referenziati da test, contratti/interfacce o catene
+  non cablate; una riduzione ulteriore richiede una decisione di prodotto.
+- **Ratchet:** `make verify-deadcode` fallisce sopra 229; soglia solo
+  decrescente.
+- **Verifiche finali:** `go build ./...` 0; `go vet ./...` 0;
+  `go test ./internal/... -count=1` 0; `go run ./cmd/archcheck --strict`
+  passed=true / 0 violations; `make verify-agent` PASS.
 
 ## Problem
 
@@ -109,28 +130,38 @@ deletion alone without that decision.
 
 ## Acceptance criteria
 
-- [ ] `/tmp/deadcode.before` and `/tmp/deadcode.after` are attached to the
-      ticket; the delta is accounted for per package.
-- [ ] Every truly-dead function outside `capabilities/overlays` is deleted or
+- [x] `/tmp/deadcode.before` and `/tmp/deadcode.after` are attached to the
+      ticket; the delta is accounted for per package. Report congelato:
+      `docs/operations/deadcode-2026-11-21.txt`; misura finale 229.
+- [x] Every truly-dead function outside `capabilities/overlays` is deleted or
       has a written reason to stay (interface/reflection/build tag) recorded
-      in this ticket.
-- [ ] No production file declares a helper that only a test calls; oracles
+      in this ticket. Zero-reference residue: **0**; i 209 residui di
+      produzione sono classificati nel documento di classificazione.
+- [x] No production file declares a helper that only a test calls; oracles
       live in `_test.go` with a comment naming the owner it mirrors.
-- [ ] `go build ./...`, `go vet ./...` and
+      `BatchItem.fail` e `randomSuffix` sono stati spostati in
+      `types_helpers_test.go`.
+- [x] `go build ./...`, `go vet ./...` and
       `go test ./internal/... -count=1` pass after each package wave.
-- [ ] `deadcode -test=false ./...` no longer reports truly-dead functions
+      Verifiche finali: build 0, vet 0, suite interna 0.
+- [x] `deadcode -test=false ./...` no longer reports truly-dead functions
       outside the two known packages; the guard threshold is recorded so a
-      future regression is visible.
-- [ ] The sweep does not touch the public wire contracts: no field, JSON tag
-      or operation name is removed.
+      future regression is visible. Misura 229, guard ≤ 229 (`make
+      verify-deadcode`).
+- [x] The sweep does not touch the public wire contracts: no field, JSON tag
+      or operation name is removed. `ErrArgosBridgeUnavailable` e
+      `ComponentQuery` sono stati preservati.
 
 ## Verification
 
 ```sh
+make verify-deadcode
 deadcode -test=false ./... | tee /tmp/deadcode.after
 awk -F: '/unreachable func/ {print $1}' /tmp/deadcode.after | sort | uniq -c | sort -rn
 go build ./... && go vet ./...
-go test ./internal/capabilities/scripts/... ./internal/kernel/... -count=1
+go test ./internal/... -count=1
+go run ./cmd/archcheck --strict
+make verify-agent
 ```
 
 ## Out of scope

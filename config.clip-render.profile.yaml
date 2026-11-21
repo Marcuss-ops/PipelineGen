@@ -12,7 +12,7 @@
 #
 #     VELOX_FEATURE_ARTLIST_ENABLED=false \
 #     VELOX_FEATURE_YOUTUBE_ENABLED=false \
-#     ./pipelinegen --config config.clip-render.profile.yaml --mode server
+#     ./bin/pipelinegen --config config.clip-render.profile.yaml --mode server
 #
 #   Environment variables always win over YAML (applyEnvVars runs last),
 #   so secrets (VELOX_DELIVERY_HMAC_SECRET, PIPELINEGEN_MEDIA_POSTGRES_DSN)

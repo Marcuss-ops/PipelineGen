@@ -25,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	platformgeocoding "github.com/Marcuss-ops/PipelineGen/internal/platform/geocoding"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"go.uber.org/zap"
 )
 
@@ -209,7 +210,7 @@ func (a *clipsNameSearchAdapter) SearchByName(ctx context.Context, query string,
 	for _, hit := range hits {
 		driveLink := ""
 		if hit.DriveFileID != "" {
-			driveLink = "https://drive.google.com/file/d/" + hit.DriveFileID + "/view"
+			driveLink = urlutil.DriveFileURL(hit.DriveFileID)
 		}
 		out = append(out, scriptapi.ClipSearchHit{
 			ID:        hit.AssetID,

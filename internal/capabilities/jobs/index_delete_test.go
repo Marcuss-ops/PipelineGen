@@ -693,3 +693,41 @@ func TestIndexDeleteHandler_PreservesUnwrapChain(t *testing.T) {
 		t.Errorf("errors.As must reach underlying json.SyntaxError; Unwrap chain is broken")
 	}
 }
+
+// TestIndexDeleteHandler_ConstructorRejectsMissingDependency pins the
+// composition contract: a handler built without either deleter panics at
+// wiring time instead of acknowledging events it cannot perform (RA-07).
+func TestIndexDeleteHandler_ConstructorRejectsMissingDependency(t *testing.T) {
+	cases := map[string]func(){
+		"missing vector deleter": func() {
+			NewIndexDeleteHandler(zap.NewNop(), nil, &mockAssetDeleter{})
+		},
+		"missing asset deleter": func() {
+			NewIndexDeleteHandler(zap.NewNop(), &mockVectorPointDeleter{}, nil)
+		},
+	}
+	for name, build := range cases {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("constructor accepted a missing dependency")
+				}
+			}()
+			build()
+		})
+	}
+}
+
+// TestIndexDeleteHandler_MissingDependencyIsTerminal covers a zero-value
+// handler that bypassed the constructor: it must fail closed as terminal,
+// never report success with the deletion skipped.
+func TestIndexDeleteHandler_MissingDependencyIsTerminal(t *testing.T) {
+	h := &IndexDeleteHandler{}
+	err := h.Handle(context.Background(), deleteEvt(t, validIndexDeletePayload(t, "clip-1", "idem-1")))
+	if err == nil {
+		t.Fatal("handler with missing dependencies acknowledged the event")
+	}
+	if !outboxevents.IsTerminal(err) {
+		t.Fatalf("missing dependency must be terminal; got: %v", err)
+	}
+}

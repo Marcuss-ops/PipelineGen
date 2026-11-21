@@ -855,8 +855,8 @@ func TestRegistry_CanonicalNames(t *testing.T) {
 	if len(AllComponents()) != 15 {
 		t.Fatalf("components = %d, want 15", len(AllComponents()))
 	}
-	if len(AllOperations()) != 43 {
-		t.Fatalf("operations = %d, want 43 (41 + admission_wait + join_barrier)", len(AllOperations()))
+	if len(AllOperations()) != 44 {
+		t.Fatalf("operations = %d, want 44 (41 + admission_wait + join_barrier + join)", len(AllOperations()))
 	}
 	if string(StageAcquire) != "acquire" || string(ComponentVectorSearch) != "vector_search" || string(ComponentLegacyVectorIndex) != "legacy_vector_index" || string(OperationUpsert) != "upsert" {
 		t.Fatal("registry literals drifted from the canonical strings")

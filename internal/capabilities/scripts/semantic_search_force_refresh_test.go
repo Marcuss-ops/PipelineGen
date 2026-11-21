@@ -21,13 +21,13 @@ func TestSemanticSearchBatchForceRefreshBypassesPlannerCache(t *testing.T) {
 	})
 
 	plan1, _ := batchPlan(t, candidate)
-	if _, err := planner.Run(context.Background(), plan1, "it"); err != nil {
+	if _, err := planner.Run(context.Background(), plan1, "it", false); err != nil {
 		t.Fatal(err)
 	}
 	firstCalls := len(port.calls)
 
 	plan2, _ := batchPlan(t, candidate)
-	if _, err := planner.Run(context.Background(), plan2, "it"); err != nil {
+	if _, err := planner.Run(context.Background(), plan2, "it", false); err != nil {
 		t.Fatal(err)
 	}
 	if len(port.calls) != firstCalls {

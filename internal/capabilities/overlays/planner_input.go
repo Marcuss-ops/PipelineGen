@@ -176,10 +176,10 @@ type PlanInput struct {
 	// too: chain_gap_ms, chain_max_segments, chain_handoff_ms, chain_camera and
 	// chain_disabled. chain_camera is the run-level image-chain choreography
 	// (1..4 = right/left/down/up pan; 0/omitted = fly_under_fade).
-	// Lane keys are canonicalized by animationLaneKeys (preset_motion_selection.go):
-	// images, images_with_text, entities, important_phrase, short_important_phrase,
-	// maps, timeline_date, metric_stat — each with documented aliases resolved
-	// in one place, so every reader of a lane sees the same limit.
+	// Lane keys: images, images_with_text, entities, important_phrase,
+	// short_important_phrase, maps, timeline_date, metric_stat — each with
+	// documented aliases resolved in one place, so every reader of a lane sees
+	// the same limit.
 	AnimationCounts map[string]int
 	// EntityStyleID pins the entity-card composition family for generated
 	// entity cards (a channel profile's or job's choice): "random" samples

@@ -200,7 +200,8 @@ func TestLocalizationRenderPlanExecutor_ExecutesViaClipRender(t *testing.T) {
 	if got.Output.ContractID != cliprender.OutputContractVeloxAssemblyReadyV1 || got.Output.Width != 1920 || got.Output.Height != 1080 || got.Output.FPSNum != 30 || got.Output.FPSDen != 1 || got.Output.VideoCodec != "h264" {
 		t.Fatalf("clip plan output: %+v", got.Output)
 	}
-	if got.OutputPath != outPath || got.RunID != "clip-1/es" {
+	wantRunID := localization.RenderJobID("clip-1/es", subtitle.SHA256)
+	if got.OutputPath != outPath || got.RunID != wantRunID {
 		t.Fatalf("clip plan identity: run=%q out=%q", got.RunID, got.OutputPath)
 	}
 }

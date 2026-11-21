@@ -281,7 +281,12 @@ const (
 	OperationCut       OperationName = "cut"
 	OperationNormalize OperationName = "normalize"
 	OperationMerge     OperationName = "merge"
-	OperationGenerate  OperationName = "generate"
+	// OperationJoin is the local assembly of the job's own MP4 from the
+	// certified per-item overlay renders (ffmpeg overlay graph + canonical
+	// encode). It is its own operation because that assembly is a full
+	// timeline re-encode, not part of any render or audio boundary.
+	OperationJoin     OperationName = "join"
+	OperationGenerate OperationName = "generate"
 	// OperationWarm is the explicit model-residency warm-up probe. It is a
 	// distinct operation rather than a second OperationGenerate so the model
 	// load paid by the warm-up is visible as its own measured fact; folded
@@ -374,6 +379,7 @@ func AllOperations() []OperationName {
 	return []OperationName{
 		OperationSearch, OperationUpsert, OperationUpload, OperationDownload,
 		OperationTranscode, OperationCut, OperationNormalize, OperationMerge,
+		OperationJoin,
 		OperationGenerate, OperationWarm, OperationSynthesize, OperationTranscribe,
 		OperationTransaction, OperationIndex, OperationEmbed, OperationPublish,
 		OperationProbe, OperationFetch, OperationExtract, OperationResolve,

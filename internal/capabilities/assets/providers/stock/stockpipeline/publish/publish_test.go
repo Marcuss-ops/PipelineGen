@@ -20,12 +20,3 @@ func TestNamingRejectsUnverifiedFolderID(t *testing.T) {
 		t.Fatalf("ResolvedFolderID() = %q", got)
 	}
 }
-
-func TestPerClipLeafNameFallbacks(t *testing.T) {
-	if got := PerClipLeafName(ClipNamingInput{Title: "Round 7 - Broner"}); got != "round-7-broner" {
-		t.Fatalf("title leaf = %q", got)
-	}
-	if got := PerClipLeafName(ClipNamingInput{StartSec: 32, EndSec: 51}); got != "00-00-32_to_00-00-51" {
-		t.Fatalf("timestamp leaf = %q", got)
-	}
-}

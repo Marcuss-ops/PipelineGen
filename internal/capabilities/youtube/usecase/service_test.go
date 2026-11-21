@@ -12,7 +12,6 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	ptrutil "github.com/Marcuss-ops/PipelineGen/internal/platform/ptrutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
@@ -314,32 +313,6 @@ func TestYouTubeClipServiceCreation(t *testing.T) {
 	// Test that service can be created
 	// This requires mocking all dependencies
 	t.Log("Service creation test - requires full mock setup")
-}
-
-func TestBoolDefault(t *testing.T) {
-	testCases := []struct {
-		input    *bool
-		def      bool
-		expected bool
-	}{
-		{nil, true, true},
-		{nil, false, false},
-		{boolPtr(true), true, true},
-		{boolPtr(true), false, true},
-		{boolPtr(false), true, false},
-		{boolPtr(false), false, false},
-	}
-
-	for _, tc := range testCases {
-		result := ptrutil.BoolDefault(tc.input, tc.def)
-		if result != tc.expected {
-			t.Errorf("BoolDefault(%v, %v) = %v, expected %v", tc.input, tc.def, result, tc.expected)
-		}
-	}
-}
-
-func boolPtr(b bool) *bool {
-	return &b
 }
 
 type fakeMediaProcessor struct {

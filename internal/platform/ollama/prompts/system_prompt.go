@@ -1,13 +1,7 @@
 package prompts
 
 // BuildSystemPrompt returns the system prompt based on language and tone.
-// It reads from the loaded YAML config. Falls back to hardcoded defaults
-// if config is not initialized (e.g. in tests).
 func BuildSystemPrompt(language, tone string) string {
-	if cfg := Get(); cfg != nil {
-		return cfg.RenderSystemPrompt(language, tone)
-	}
-	// Fallback (tests or config not loaded)
 	return buildSystemPromptFallback(language, tone)
 }
 

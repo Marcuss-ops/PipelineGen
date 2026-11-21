@@ -131,17 +131,8 @@ func (g *Generator) GenerateVisualPrompt(ctx context.Context, text, topic, style
 		return "", fmt.Errorf("ollama client not initialized")
 	}
 
-	var systemPrompt, userPrompt string
-	if cfg := prompts.Get(); cfg != nil {
-		s, u, err := cfg.RenderVisualPrompt(text, topic, style)
-		if err == nil {
-			systemPrompt, userPrompt = s, u
-		}
-	}
-	if systemPrompt == "" {
-		systemPrompt = "You are a visual design assistant. Convert narrative script blocks into concise, concrete visual prompts for image generation models."
-		userPrompt = fmt.Sprintf("Convert this narrative script block into a single concrete visual description for an image generator (like FLUX).\nSCRIPT BLOCK: %s\nTOPIC: %s\nSTYLE: %s\n\nRULES:\n1. Describe only what is visually seen in a single scene.\n2. Include mood, lighting, and camera angle.\n3. Do NOT include narrative text, subtitles, or time markers.\n4. Keep it concise (1-2 sentences maximum).\n5. Return ONLY the visual prompt.", text, topic, style)
-	}
+	systemPrompt := "You are a visual design assistant. Convert narrative script blocks into concise, concrete visual prompts for image generation models."
+	userPrompt := fmt.Sprintf("Convert this narrative script block into a single concrete visual description for an image generator (like FLUX).\nSCRIPT BLOCK: %s\nTOPIC: %s\nSTYLE: %s\n\nRULES:\n1. Describe only what is visually seen in a single scene.\n2. Include mood, lighting, and camera angle.\n3. Do NOT include narrative text, subtitles, or time markers.\n4. Keep it concise (1-2 sentences maximum).\n5. Return ONLY the visual prompt.", text, topic, style)
 
 	messages := []types.Message{
 		{Role: "system", Content: systemPrompt},

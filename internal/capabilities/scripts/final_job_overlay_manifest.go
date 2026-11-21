@@ -262,7 +262,12 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 				start := entry.InUS * int64(fpsNum) / (1_000_000 * int64(fpsDen))
 				end := (entry.OutUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen))
 				for priorID, prior := range batchFrames {
-					if start < prior.end && prior.start < end && owners[priorID] != batch.BatchID {
+					// Same-batch windows are validated by the batch's own manifest;
+					// only cross-artifact overlaps belong here, so skip early.
+					if owners[priorID] == batch.BatchID {
+						continue
+					}
+					if start < prior.end && prior.start < end {
 						return nil, nil, fmt.Errorf("final_job overlay %q overlaps %q across artifacts", entry.ItemID, priorID)
 					}
 				}

@@ -64,6 +64,11 @@ const replayHeader = "X-Idempotency-Replay"
 // maxKeyLen matches the port's enforced cap (255 chars).
 const maxKeyLen = 255
 
+// maxIdempotencyHashBytes bounds the body that is hashed for the idempotency
+// conflict check. The middleware must never io.ReadAll an unbounded request
+// body just to compute a digest.
+const maxIdempotencyHashBytes = 8 << 20
+
 // cleanupInterval is the background DeleteExpired tick cadence.
 const cleanupInterval = 15 * time.Minute
 
@@ -157,10 +162,17 @@ func buildMiddleware(store mw.IdempotencyStore, log *zap.Logger) gin.HandlerFunc
 		// Body hash. Multipart bypass — empty hash = no body-conflict check.
 		var bodyHash string
 		if !isMultipart {
-			body, err := io.ReadAll(c.Request.Body)
+			// Hashing is a bounded operation: refuse an unbounded body instead
+			// of allocating it just to compute a digest.
+			body, err := io.ReadAll(io.LimitReader(c.Request.Body, maxIdempotencyHashBytes+1))
 			if err != nil {
 				apiutilError(c, http.StatusBadRequest,
 					"failed to read request body for idempotency hashing: "+err.Error())
+				return
+			}
+			if len(body) > maxIdempotencyHashBytes {
+				apiutilError(c, http.StatusRequestEntityTooLarge,
+					"request body exceeds the idempotency hash limit")
 				return
 			}
 			// Reset Body so the downstream handler can re-read it.

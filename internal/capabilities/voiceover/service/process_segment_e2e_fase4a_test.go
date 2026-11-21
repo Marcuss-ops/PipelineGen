@@ -2,6 +2,7 @@ package voiceover
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -151,6 +152,73 @@ func TestProcessSegmentUseCase_Execute_FASE4_DriveUploadOK_FinalizeFail_EmitsCle
 	// Index events must NOT have been emitted.
 	assert.Len(t, outboxStub.indexEvents, 0,
 		"FASE 4: EnqueueIndexEvent must NOT be called on orphan-cleanup path")
+}
+
+// TestProcessSegmentUseCase_Execute_FASE4_CommitFailAfterUpload_EmitsCleanup
+// pins the commit branch of the FASE 4 contract (RA-06 §1.3): the Drive
+// upload succeeded, Finalize succeeded, and then tx.Commit() failed. The
+// remote file now has no row, so the cleanup event MUST be enqueued in a
+// separate tx exactly as the finalize-failure branch does. Before this test
+// the commit branch returned a failure and leaked the file silently.
+func TestProcessSegmentUseCase_Execute_FASE4_CommitFailAfterUpload_EmitsCleanup(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath:     "/tmp/vo/fase4-commit.mp3",
+			CleanedPath:   "/tmp/vo/fase4-commit-cleaned.mp3",
+			Voice:         "en-US-RogerNeural",
+			ContentSHA256: "hash-fase4-commit",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-fase4-commit"}
+	finalizer := &stubProcessFinalizer{
+		cannedRes: &FinalizeResult{ID: "vo-fase4-commit"},
+		// Roll the caller-owned tx back so the subsequent Commit fails while
+		// the database (and the cleanup tx) stays usable.
+		beforeReturn: func(tx *sql.Tx) { _ = tx.Rollback() },
+	}
+	outboxStub := &stubTxOutboxEnqueuer{}
+
+	dest := &stubProcessDestResolver{folderID: "dest-fase4-commit"}
+	resolvedDest, err := dest.Resolve(context.Background(),
+		&DestinationRequest{FolderID: "dest-fase4-commit"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		TxOutboxEnqueuer:    outboxStub,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-fase4-commit",
+		Language: "en",
+		Text:     "Commit fails after the upload.",
+		Voice:    "en-US-RogerNeural",
+		Filename: "fase4-commit.mp3",
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.Error(t, err, "FASE 4: commit failure MUST return error")
+	require.NotNil(t, out)
+	assert.Equal(t, StatusFailed, out.Status)
+	assert.Equal(t, string(FailureTxCommit), out.ErrorCode)
+	assert.Equal(t, "drive-fase4-commit", out.DriveFileID,
+		"the upload succeeded before the failed commit")
+
+	require.Len(t, outboxStub.cleanupEvents, 1,
+		"FASE 4: a failed commit after a successful upload MUST enqueue the orphan cleanup")
+	ce := outboxStub.cleanupEvents[0]
+	assert.Equal(t, "vo-fase4-commit", ce.voiceoverID)
+	assert.Equal(t, "drive-fase4-commit", ce.oldDriveFileID)
+	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/fase4-commit.mp3")
+	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/fase4-commit-cleaned.mp3")
+	assert.Len(t, outboxStub.indexEvents, 0)
 }
 
 // TestProcessSegmentUseCase_Execute_FASE4_Stage0Failure_NoCleanupEvent

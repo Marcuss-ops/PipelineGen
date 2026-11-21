@@ -50,6 +50,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 )
 
@@ -106,7 +107,7 @@ func TestEnrichmentIdempotencyKey_DifferentContentHash_DifferentKey(t *testing.T
 	// exactly one character. Both pass the isValidHex64 validator.
 	h1 := canonicalContentHash
 	h2 := strings.Replace(canonicalContentHash, "a", "b", 1) // first 'a' → 'b'
-	if !isValidHex64(h1) || !isValidHex64(h2) {
+	if !digest.IsCanonicalSHA256(h1) || !digest.IsCanonicalSHA256(h2) {
 		t.Fatalf("test setup: h1 or h2 is not valid hex: h1=%q h2=%q", h1, h2)
 	}
 	k1, err := EnrichmentIdempotencyKey(canonicalChunkID, h1, EnrichmentVersionV1)

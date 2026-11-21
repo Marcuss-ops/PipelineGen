@@ -23,8 +23,9 @@
 //   - old==new gate: old_drive_file_id == new_drive_file_id → no
 //     Drive.DeleteFile call, success (swap landed on same file, no orphan).
 //
-//   - nil driver: driver not wired → Warn, skip Drive delete, success
-//     (composition root misconfig; operator dashboards surface via log).
+//   - nil driver: driver not wired → local cleanup still runs, then a
+//     TERMINAL error is returned (composition root misconfig; dead-letter
+//     so the operator sees the Drive orphan instead of a silent ack).
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every test exercises the production
 // handler's error-classification logic, NOT a stub re-implementation.
@@ -36,6 +37,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -243,14 +247,38 @@ func TestVoiceoverCleanupHandler_MissingIdempotencyKey_Terminal(t *testing.T) {
 	}
 }
 
-// ── Test 9: Nil driver → skip Drive delete, success ──────────────────
+// ── Test 9: Nil driver → terminal error, local cleanup still runs ────
 
-func TestVoiceoverCleanupHandler_NilDriver_SkipsDriveDelete_Succeeds(t *testing.T) {
+func TestVoiceoverCleanupHandler_NilDriver_FailsClosedTerminal(t *testing.T) {
 	h := NewVoiceoverCleanupHandler(nil, zap.NewNop())
 	evt := buildVoiceoverCleanupEvent(t, nil)
 
-	if err := h.Handle(context.Background(), evt); err != nil {
-		t.Fatalf("nil-driver: Handle returned %v — must skip Drive but succeed", err)
+	err := h.Handle(context.Background(), evt)
+	if err == nil {
+		t.Fatal("nil-driver: Handle returned nil — acknowledging would lose the Drive orphan silently")
+	}
+	if !outboxevents.IsTerminal(err) {
+		t.Fatalf("nil-driver error must be terminal (dead-letter), got %v", err)
+	}
+	if !strings.Contains(err.Error(), "drive-old-abc123") {
+		t.Fatalf("error should name the orphan file, got %v", err)
+	}
+}
+
+func TestVoiceoverCleanupHandler_NilDriver_StillRemovesLocalOrphans(t *testing.T) {
+	dir := t.TempDir()
+	local := filepath.Join(dir, "orphan.wav")
+	if err := os.WriteFile(local, []byte("orphan"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := NewVoiceoverCleanupHandler(nil, zap.NewNop())
+	evt := buildVoiceoverCleanupEvent(t, map[string]any{"old_local_paths": []string{local}})
+
+	if err := h.Handle(context.Background(), evt); err == nil {
+		t.Fatal("nil-driver: want a terminal error")
+	}
+	if _, err := os.Stat(local); !os.IsNotExist(err) {
+		t.Fatalf("local orphan %s was not removed before returning: %v", local, err)
 	}
 }
 

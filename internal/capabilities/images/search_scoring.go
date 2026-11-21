@@ -9,11 +9,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 )
 
+// nonAlnumRE collapses every non-alphanumeric run to one space. Compiled once:
+// normalizeLookupTerm runs per candidate, and compiling per call was pure
+// per-item overhead.
+var nonAlnumRE = regexp.MustCompile(`[^a-z0-9]+`)
+
 func normalizeLookupTerm(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.NewReplacer("'", "'", "'", "'", "´", "'", "`", "'", "´", "'").Replace(value)
 	value = strings.ToLower(value)
-	value = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(value, " ")
+	value = nonAlnumRE.ReplaceAllString(value, " ")
 	return strings.Join(strings.Fields(value), " ")
 }
 

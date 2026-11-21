@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
 )
 
 const MaxClipEffects = 12
@@ -247,13 +249,8 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 		if !(grid.Opacity > 0 && grid.Opacity <= 1) {
 			return fmt.Errorf("grid.opacity must be in (0,1]")
 		}
-		if len(grid.Color) != 7 || grid.Color[0] != '#' {
+		if !color.IsHexRGB(grid.Color) {
 			return fmt.Errorf("grid.color must be #RRGGBB")
-		}
-		for _, c := range grid.Color[1:] {
-			if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
-				return fmt.Errorf("grid.color must be #RRGGBB")
-			}
 		}
 	}
 	return nil

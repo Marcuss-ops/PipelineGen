@@ -8,6 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 func canonicalClipDriveLink(clip *asset.Asset) string {
@@ -21,9 +22,9 @@ func canonicalClipDriveLink(clip *asset.Asset) string {
 		// Some live catalog rows expose the Drive file ID in the legacy
 		// drive_link field. Normalize that representation below.
 		if fileID := strings.TrimSpace(clip.DriveFileID()); fileID != "" {
-			return "https://drive.google.com/file/d/" + fileID + "/view"
+			return urlutil.DriveFileURL(fileID)
 		}
-		return "https://drive.google.com/file/d/" + link + "/view"
+		return urlutil.DriveFileURL(link)
 	}
 	// The internal asset ID is never a Drive locator. If the registry has no
 	// verified Drive location, keep the link absent and let downstream policy

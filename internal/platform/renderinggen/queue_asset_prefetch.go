@@ -53,6 +53,11 @@ var prefetchAssets = assetmaterializer.New(assetmaterializer.Options{})
 // miss would turn a recoverable first upload into a permanent failure.
 const objectPresenceTTL = 30 * time.Minute
 
+// maxObjectPresenceEntries caps the positive-presence memo. Entries expire by
+// TTL but were only removed when the same key was read again; a long-lived
+// process with many distinct keys grew the map without bound.
+const maxObjectPresenceEntries = 50_000
+
 type objectPresenceCache struct {
 	mu      sync.Mutex
 	entries map[string]time.Time
@@ -87,8 +92,25 @@ func markObjectPresent(store, key string) {
 	if strings.HasSuffix(key, "|") {
 		return
 	}
+	now := time.Now()
 	objectPresence.mu.Lock()
-	objectPresence.entries[key] = time.Now().Add(objectPresenceTTL)
+	objectPresence.entries[key] = now.Add(objectPresenceTTL)
+	if len(objectPresence.entries) > maxObjectPresenceEntries {
+		// Opportunistic sweep: drop expired entries, then evict arbitrary
+		// live ones until the cap holds. A positive answer is only a
+		// shortcut, so evicting one costs a HEAD at worst.
+		for k, expiresAt := range objectPresence.entries {
+			if !now.Before(expiresAt) {
+				delete(objectPresence.entries, k)
+			}
+		}
+		for k := range objectPresence.entries {
+			if len(objectPresence.entries) <= maxObjectPresenceEntries {
+				break
+			}
+			delete(objectPresence.entries, k)
+		}
+	}
 	objectPresence.mu.Unlock()
 }
 

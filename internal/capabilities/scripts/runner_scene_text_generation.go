@@ -8,6 +8,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -25,6 +26,12 @@ func (r *Runner) prepareSceneTextGeneration(ctx context.Context, runID string, r
 	path := sceneTextGenerationPath{
 		streamable:                   SceneStreamingEligibility(req),
 		topologyNeedsMaterialization: req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0,
+	}
+	// Stock needs the complete body scene list to bind before any SceneReady
+	// translation/TTS/render dispatch. The streaming coordinator starts before
+	// stock is projected, so keep stock-bound requests on the batch path.
+	if !req.Render.OverlaysOnly && req.MediaMode != scriptpkg.MediaModeClipOnly && len(req.StockBindings) > 0 {
+		path.streamable = false
 	}
 	if len(req.MediaPlan.Extraction.ImportantPhrases) > 0 && !importantPhraseHintOwnersAvailable(req) {
 		path.streamable = false
@@ -147,12 +154,35 @@ func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles m
 	}
 }
 
+// maxVerbatimEditorialTranscriptRunes bounds the semantic/editorial batch for
+// an authored verbatim script. The batch is needed for the automatic editorial
+// titles/bullets, but a long narration can exceed the local embedder's request
+// window; above this bound the historical "preserve only" behaviour is kept.
+const maxVerbatimEditorialTranscriptRunes = 12000
+
+// shouldComputeEditorialEnrichment decides whether the optional semantic batch
+// runs. A verbatim source is never rewritten, but it still needs the editorial
+// projection when the caller asked for automatic titles/bullets. The old guard
+// skipped the batch unconditionally, so a verbatim payload with editorial
+// overlays enabled reached the planner without an `editorial` section and the
+// whole plan failed closed.
+func shouldComputeEditorialEnrichment(req GenerateRequest, transcript string) bool {
+	if !req.ScriptParams.SourceTextVerbatim {
+		return true
+	}
+	if req.DisableEditorialOverlays {
+		return false
+	}
+	return utf8.RuneCountInString(transcript) <= maxVerbatimEditorialTranscriptRunes
+}
+
 func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript string, scenes []Scene, req GenerateRequest) (*phraseImpactEnrichment, error) {
-	// A verbatim source is already authored and must not be rewritten. Skip
-	// the optional semantic/editorial batch here: long narration transcripts
-	// can exceed the local embedder's request window, while callers using
-	// source_text_verbatim need only preserve the supplied script.
-	if req.ScriptParams.SourceTextVerbatim {
+	// A verbatim source is already authored and must not be rewritten. The
+	// optional semantic/editorial batch still runs for a short verbatim script
+	// when automatic editorial overlays are enabled: without it the planner has
+	// no scene titles/bullets and the plan fails closed. Long narration keeps
+	// the historical skip so it cannot exceed the local embedder window.
+	if !shouldComputeEditorialEnrichment(req, transcript) {
 		return &phraseImpactEnrichment{}, nil
 	}
 	chapterScenes, chapterTopics := make([]string, 0, len(scenes)), make([]string, 0, len(scenes))

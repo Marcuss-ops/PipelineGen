@@ -3,7 +3,6 @@ package wiring
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -18,11 +17,7 @@ import (
 func wireScriptGenerationOverlayQueue(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, log *zap.Logger) error {
 	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
 		queueClient := renderinggen.New(queueURL)
-		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
-		if storeURL == "" {
-			storeURL = defaultRenderingGenStoreURL
-		}
-		queueClient.SetAssetPrefetcher(renderinggen.NewHTTPAssetPrefetcher(storeURL))
+		queueClient.SetAssetPrefetcher(renderinggen.NewHTTPAssetPrefetcher(renderingGenStoreURL(cfg)))
 		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(queueClient)
 		if err != nil {
 			return fmt.Errorf("build queue prepare enqueuer: %w", err)

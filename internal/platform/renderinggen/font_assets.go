@@ -31,6 +31,10 @@ const (
 	FontPoppinsBold = "font-poppins-bold"
 	// FontDejaVuSans is the canonical semantic font for Cyrillic overlays.
 	FontDejaVuSans = "font-dejavu-sans"
+	// Runtime-selected overlay typography also includes these bundled faces.
+	FontInterBold    = "font-inter-bold"
+	FontOswald       = "font-oswald"
+	FontAbrilFatface = "font-abril-fatface"
 
 	// Modern local font fleet. The files are variable fonts from the
 	// Google Fonts source tree and are registered here so callers can resolve
@@ -66,6 +70,7 @@ var canonicalFonts = map[string]string{
 	FontPoppinsBold:                         "assets/fonts/Poppins-Bold.ttf",
 	FontDejaVuSans:                          "assets/fonts/DejaVuSans.ttf",
 	FontInter:                               "assets/fonts/Inter.ttf",
+	FontInterBold:                           "assets/fonts/Inter-Bold.ttf",
 	FontManrope:                             "assets/fonts/Manrope.ttf",
 	FontDMSans:                              "assets/fonts/DM-Sans.ttf",
 	FontInstrumentSans:                      "assets/fonts/Instrument-Sans.ttf",
@@ -75,6 +80,8 @@ var canonicalFonts = map[string]string{
 	FontOutfit:                              "assets/fonts/Outfit.ttf",
 	FontUrbanist:                            "assets/fonts/Urbanist.ttf",
 	FontBricolageGrotesque:                  "assets/fonts/Bricolage-Grotesque.ttf",
+	FontOswald:                              "assets/fonts/Oswald.ttf",
+	FontAbrilFatface:                        "assets/fonts/AbrilFatface-Regular.ttf",
 	FontPlayfairDisplayItalic:               "assets/fonts/PlayfairDisplay-Italic.ttf",
 	FontGoogleSans:                          "assets/fonts/Google-Sans.ttf",
 	FontChangaOne:                           "assets/fonts/Changa-One.ttf",
@@ -101,8 +108,13 @@ var canonicalFonts = map[string]string{
 }
 
 var (
-	assetRootOnce sync.Once
+	// assetRootMu guards the memoized root. A sync.Once cannot be reset while
+	// readers are inside Do or just after it, and the test seam below resets the
+	// root: the mutex makes the reset a normal critical section instead of a
+	// race on Once's internal state.
+	assetRootMu   sync.Mutex
 	assetRootPath string
+	assetRootSet  bool
 
 	fontCacheMu sync.Mutex
 	fontCache   = map[string]assetRef{}
@@ -110,9 +122,14 @@ var (
 
 // AssetRoot returns the configured asset root (absolute when resolvable), or
 // an empty string when no root could be discovered. Resolution happens once
-// per process.
+// per process until resetFontAssetCache is called by a test.
 func AssetRoot() string {
-	assetRootOnce.Do(func() { assetRootPath = discoverAssetRoot() })
+	assetRootMu.Lock()
+	defer assetRootMu.Unlock()
+	if !assetRootSet {
+		assetRootPath = discoverAssetRoot()
+		assetRootSet = true
+	}
 	return assetRootPath
 }
 
@@ -190,5 +207,10 @@ func resetFontAssetCache() {
 	fontCacheMu.Lock()
 	fontCache = map[string]assetRef{}
 	fontCacheMu.Unlock()
-	assetRootOnce = sync.Once{}
+	// Lock order is fontCacheMu then assetRootMu, never the reverse: AssetRoot
+	// never takes fontCacheMu, so the two critical sections cannot deadlock.
+	assetRootMu.Lock()
+	assetRootPath = ""
+	assetRootSet = false
+	assetRootMu.Unlock()
 }

@@ -14,11 +14,14 @@
 //   - RenderingGen still NEVER invents style: everything below projects into
 //     the typed fields PipelineGen already emits on renderinggen.overlay-plan.v1.
 //
-// The nested structs are deliberate field-for-field mirrors of the kernel
-// types they project onto (VideoVisualStyleSpec, OverlayStyleSpec,
-// SoundEffectIntent), because the kernel types carry JSON tags only and this
-// file is the YAML boundary. Keep a mirror in sync when the kernel block
-// grows — exactly the rule visual_style_resolver.go states for styleBlock.
+// The subtitle/watermark structs are deliberate field-for-field mirrors of the
+// kernel types they project onto (VideoVisualStyleSpec, SoundEffectIntent),
+// because those kernel types carry JSON tags only. Keep a mirror in sync when
+// the kernel block grows — exactly the rule visual_style_resolver.go states for
+// styleBlock. OverlayStyle is NOT a mirror: the kernel
+// script.OverlayStyleSpec carries the YAML tags too, so a profile decodes
+// straight into the canonical type and a new field is addressable from a
+// profile the moment it is added to the kernel block.
 package channelprofile
 
 import (
@@ -45,8 +48,11 @@ type Profile struct {
 	// this profile deliberately does not own.
 	Watermark *WatermarkProfile `yaml:"watermark,omitempty"`
 	// OverlayStyle fills the request-level overlay_style (phrase/word overlay
-	// color, size, shadow, entry animation) when the caller declared none.
-	OverlayStyle *OverlayStyleProfile `yaml:"overlay_style,omitempty"`
+	// typography, plate, cursor, image treatment) when the caller declared
+	// none. It decodes DIRECTLY into the canonical kernel type: the YAML and
+	// JSON shapes are the same block, so the profile cannot drift from the
+	// wire contract.
+	OverlayStyle *scriptpkg.OverlayStyleSpec `yaml:"overlay_style,omitempty"`
 	// SoundEffects fills the request's SFX intent list when it is empty.
 	// The intents flow through the canonical pipeline
 	// (AudioAssetResolver → AudioIntentResolver → CompileWithLayersAndPolicy)
@@ -166,78 +172,6 @@ func (w *WatermarkProfile) Watermark() *scriptpkg.VideoWatermarkSpec {
 		MarginPX: w.MarginPX,
 		Style:    w.Style.VisualStyle(),
 	}
-}
-
-// OverlayStyleProfile mirrors scriptpkg.OverlayStyleSpec.
-type OverlayStyleProfile struct {
-	Color        []float64                 `yaml:"color,omitempty"`
-	Size         *OverlaySizeProfile       `yaml:"size,omitempty"`
-	Shadow       *OverlayShadowProfile     `yaml:"shadow,omitempty"`
-	TransitionIn *OverlayTransitionProfile `yaml:"transition_in,omitempty"`
-	FontFamily   string                    `yaml:"font_family,omitempty"`
-	GlowSize     *float64                  `yaml:"glow_size,omitempty"`
-	StrokeSize   *float64                  `yaml:"stroke_size,omitempty"`
-}
-
-// OverlaySizeProfile mirrors scriptpkg.OverlaySizeSpec.
-type OverlaySizeProfile struct {
-	Width    *int     `yaml:"width,omitempty"`
-	Height   *int     `yaml:"height,omitempty"`
-	FontSize *float64 `yaml:"font_size,omitempty"`
-}
-
-// OverlayShadowProfile mirrors scriptpkg.OverlayShadowSpec.
-type OverlayShadowProfile struct {
-	Enabled *bool     `yaml:"enabled,omitempty"`
-	Color   string    `yaml:"color,omitempty"`
-	Opacity *float64  `yaml:"opacity,omitempty"`
-	Blur    *float64  `yaml:"blur,omitempty"`
-	Offset  []float64 `yaml:"offset,omitempty"`
-}
-
-// OverlayTransitionProfile mirrors scriptpkg.OverlayTransitionSpec.
-type OverlayTransitionProfile struct {
-	Preset         string `yaml:"preset"`
-	DurationFrames int    `yaml:"duration_frames,omitempty"`
-}
-
-// OverlayStyle projects the mirror onto the kernel type.
-func (o *OverlayStyleProfile) OverlayStyle() *scriptpkg.OverlayStyleSpec {
-	if o == nil {
-		return nil
-	}
-	out := &scriptpkg.OverlayStyleSpec{
-		Color:      append([]float64(nil), o.Color...),
-		FontFamily: o.FontFamily, GlowSize: o.GlowSize, StrokeSize: o.StrokeSize,
-	}
-	if o.Size != nil {
-		size := &scriptpkg.OverlaySizeSpec{
-			Width: o.Size.Width, Height: o.Size.Height, FontSize: o.Size.FontSize,
-		}
-		out.Size = size
-	}
-	if o.Shadow != nil {
-		shadow := &scriptpkg.OverlayShadowSpec{
-			Color:  o.Shadow.Color,
-			Offset: append([]float64(nil), o.Shadow.Offset...),
-		}
-		if o.Shadow.Enabled != nil {
-			shadow.Enabled = *o.Shadow.Enabled
-		} else {
-			// A shadow block that carries tuning is enabled by intent; an
-			// explicitly disabled block says so.
-			shadow.Enabled = true
-		}
-		shadow.Opacity = o.Shadow.Opacity
-		shadow.Blur = o.Shadow.Blur
-		out.Shadow = shadow
-	}
-	if o.TransitionIn != nil {
-		out.TransitionIn = &scriptpkg.OverlayTransitionSpec{
-			Preset: o.TransitionIn.Preset, DurationFrames: o.TransitionIn.DurationFrames,
-		}
-	}
-	return out
 }
 
 // SoundEffectProfile mirrors scriptpkg.SoundEffectIntent's wire keys

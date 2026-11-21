@@ -8,8 +8,3 @@ func DerefOr[T any](p *T, fallback T) T {
 	}
 	return *p
 }
-
-// BoolDefault returns the value of a *bool or def if nil.
-func BoolDefault(v *bool, def bool) bool {
-	return DerefOr(v, def)
-}

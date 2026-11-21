@@ -332,20 +332,3 @@ func TestSectionCutOffsetSec(t *testing.T) {
 		t.Fatalf("offset = %v, want 0 for a non-sectioned run", got)
 	}
 }
-
-func TestSectionDownloadForPlans(t *testing.T) {
-	plans := []ClipPlan{
-		{StartSec: 32, EndSec: 37},
-		{StartSec: 37, EndSec: 42},
-	}
-
-	if got := sectionDownloadForPlans(&RunInput{DownloadMode: DownloadModeSectionsOnly}, plans); got != "*00:00:32.000-00:00:42.000" {
-		t.Fatalf("section = %q, want *00:00:32.000-00:00:42.000", got)
-	}
-	if got := sectionDownloadForPlans(&RunInput{}, plans); got != "" {
-		t.Fatalf("section = %q, want empty for a non-sectioned run", got)
-	}
-	if got := sectionDownloadForPlans(&RunInput{DownloadMode: DownloadModeSectionsOnly}, nil); got != "" {
-		t.Fatalf("section = %q, want empty for an empty group", got)
-	}
-}

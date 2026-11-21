@@ -220,7 +220,11 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 			zap.Error(lastErr))
 		// Give edge-tts a moment to recover from rate limiting before the
 		// next attempt; honour ctx cancellation so the worker shutdown path
-		// is never delayed.
+		// is never delayed. No sleep after the LAST failed attempt: the loop
+		// would only delay returning the error by 300ms.
+		if attempt == maxRetryableAttempts-1 {
+			break
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

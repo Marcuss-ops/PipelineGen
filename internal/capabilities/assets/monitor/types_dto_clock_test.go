@@ -167,14 +167,14 @@ func TestDateAfterFromCursor_CursorTailIgnored(t *testing.T) {
 // t.Cleanup restores the default to avoid cross-test pollution.
 func TestSetDefaultNowForTests(t *testing.T) {
 	// Restore production default at end of test to avoid cross-test
-	// pollution. Even if this test panics mid-way, defaultNowFn
+	// pollution. Even if this test panics mid-way, the clock seam
 	// returns to time.Now via t.Cleanup.
 	t.Cleanup(func() { SetDefaultNowForTests(nil) })
 
 	// Swap in a fixed clock.
 	clock := func() time.Time { return time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC) }
 	SetDefaultNowForTests(clock)
-	got := DateAfterFromCursor("", 7, nil) // nil → defaultNowFn → fixed clock
+	got := DateAfterFromCursor("", 7, nil) // nil → injected clock
 	want := "20260108"
 	if got != want {
 		t.Fatalf("set-fixed-clock + DateAfterFromCursor(empty, 7, nil) = %q, want %q", got, want)
@@ -184,19 +184,4 @@ func TestSetDefaultNowForTests(t *testing.T) {
 	SetDefaultNowForTests(nil)
 	// Don't assert time.Now output — just confirm no panic / no UAF.
 	_ = DateAfterFromCursor("", 7, nil)
-}
-
-// SetDefaultNowForTests replaces the lazy-default clock for
-// DateAfterFromCursor. Pass nil to restore the production default
-// (time.Now). Intended for test fixtures that need a deterministic
-// calendar day without real-time waits.
-//
-// Pair the swap with t.Cleanup(func() { SetDefaultNowForTests(nil) })
-// to avoid cross-test pollution. NOT safe to call from production code.
-func SetDefaultNowForTests(fn func() time.Time) {
-	if fn == nil {
-		defaultNowFn = time.Now
-		return
-	}
-	defaultNowFn = fn
 }

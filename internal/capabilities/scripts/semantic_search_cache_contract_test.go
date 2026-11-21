@@ -40,7 +40,7 @@ func TestSemanticProviderFailureIsTypedAndNotAMiss(t *testing.T) {
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01",
 		generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"},
 	))
-	report, err := planner.Run(context.Background(), plan, "it")
+	report, err := planner.Run(context.Background(), plan, "it", false)
 	var providerErr *SemanticSearchProviderError
 	if !errors.As(err, &providerErr) {
 		t.Fatalf("Run error = %v, want SemanticSearchProviderError", err)

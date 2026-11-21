@@ -323,6 +323,35 @@ func TestSemanticEngineFailsClosedOnIncompleteManifestAndDanglingIdentity(t *tes
 	}
 }
 
+func TestSemanticEngineAllowsCrossSceneIdentityReference(t *testing.T) {
+	// A scene can mention an entity whose linked identity is registered by a
+	// later scene. Validation must see the document-level projection, not just
+	// the identities attached to the scene that owns the entity mention.
+	var response map[string]any
+	if err := json.Unmarshal(semanticFixtureWithScenes(t, 2), &response); err != nil {
+		t.Fatal(err)
+	}
+	manifest := response["manifest"].(map[string]any)
+	scenes := manifest["scenes"].([]any)
+	first := scenes[0].(map[string]any)
+	second := scenes[1].(map[string]any)
+	identities := first["identities"].([]any)
+	first["identities"] = []any{}
+	second["identities"] = identities
+	raw, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: raw}))
+	bundles, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes())
+	if err != nil {
+		t.Fatalf("cross-scene identity reference was rejected: %v", err)
+	}
+	if len(bundles["scene_01"].Identities) != 1 || bundles["scene_01"].Identities[0].ID != "person_01" {
+		t.Fatalf("scene_01 identities = %+v, want the document-level person_01", bundles["scene_01"].Identities)
+	}
+}
+
 func TestSemanticEngineRefusedSceneReturnsEmptyBundle(t *testing.T) {
 	refused := strings.Replace(semanticFixture, `"scene_id": "scene_02", "status": "valid", "reason": null`, `"scene_id": "scene_02", "status": "rejected", "reason": "unsupported language"`, 1)
 	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(refused)}))

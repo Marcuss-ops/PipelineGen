@@ -23,7 +23,7 @@
 // DownloadSections field above raises. The window is DERIVED from the plan,
 // never stored, and consumed twice:
 //
-//	stock.stage_sources  → sectionDownloadForPlans  → --download-sections
+//	stock.stage_sources  → ingestSourcesFromClipPlans → sectionDownloadString → --download-sections
 //	stock.extract_clips  → sectionCutOffsetSec      → local seek offset
 //
 // so the two can never disagree. A section that is not exactly
@@ -41,7 +41,7 @@
 // The plan side of the layout (re-anchoring each source's clips into ONE
 // contiguous block, deterministically) lives in step_plan_clips.go:
 // compactPlansIntoSections / sectionAnchorSec / assignSectionStageKeys. The
-// consumer-side helpers live next to their callers (sectionDownloadForPlans in
+// consumer-side helpers live next to their callers (sectionDownloadString in
 // naming.go with the ingest bridge, sectionCutOffsetSec in
 // step_extract_clips_cut.go with the seek it feeds).
 package stockpipeline

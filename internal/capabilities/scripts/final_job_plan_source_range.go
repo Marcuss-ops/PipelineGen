@@ -1,6 +1,10 @@
 package scriptgeneration
 
-import "fmt"
+import (
+	"fmt"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+)
 
 // final_job_plan_source_windows.go — source-window quantization and video
 // coverage of the final_job V2 plan: the frame math that binds a segment to the
@@ -162,8 +166,7 @@ func finalJobFrameAtUS(us, fpsNum, fpsDen int64) int64 {
 }
 
 func finalJobFrameStartUS(frame, fpsNum, fpsDen int64) int64 {
-	numerator := frame * 1_000_000 * fpsDen
-	return (numerator + fpsNum/2) / fpsNum
+	return kernelmedia.FrameIndexToUSAtFPS(frame, fpsNum, fpsDen)
 }
 
 // finalJobFramesCoveringUS returns how many output frames are needed to cover

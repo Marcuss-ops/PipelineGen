@@ -316,22 +316,22 @@ type VideoFrameStrokeSpec struct {
 // VideoClipEffectSpec selects a bounded native Chronon effect for the clip
 // composite. Validation is delegated to the cliprender contract at planning.
 type VideoClipEffectSpec struct {
-	Type       string  `json:"type"`
-	Amount     float64 `json:"amount,omitempty"`
-	Radius     float64 `json:"radius,omitempty"`
-	Softness   float64 `json:"softness,omitempty"`
-	BlockSize  int     `json:"block_size,omitempty"`
-	Size       int     `json:"size,omitempty"`
-	Angle      float64 `json:"angle,omitempty"`
-	Intensity  float64 `json:"intensity,omitempty"`
-	Amplitude  float64 `json:"amplitude,omitempty"`
-	Wavelength float64 `json:"wavelength,omitempty"`
-	Seed       uint32  `json:"seed,omitempty"`
-	Animated   bool    `json:"animated,omitempty"`
-	Curvature  float64 `json:"curvature,omitempty"`
-	Scale      float64 `json:"scale,omitempty"`
-	Threshold  float64 `json:"threshold,omitempty"`
-	Speed      float64 `json:"speed,omitempty"`
+	Type       string  `json:"type" yaml:"type"`
+	Amount     float64 `json:"amount,omitempty" yaml:"amount,omitempty"`
+	Radius     float64 `json:"radius,omitempty" yaml:"radius,omitempty"`
+	Softness   float64 `json:"softness,omitempty" yaml:"softness,omitempty"`
+	BlockSize  int     `json:"block_size,omitempty" yaml:"block_size,omitempty"`
+	Size       int     `json:"size,omitempty" yaml:"size,omitempty"`
+	Angle      float64 `json:"angle,omitempty" yaml:"angle,omitempty"`
+	Intensity  float64 `json:"intensity,omitempty" yaml:"intensity,omitempty"`
+	Amplitude  float64 `json:"amplitude,omitempty" yaml:"amplitude,omitempty"`
+	Wavelength float64 `json:"wavelength,omitempty" yaml:"wavelength,omitempty"`
+	Seed       uint32  `json:"seed,omitempty" yaml:"seed,omitempty"`
+	Animated   bool    `json:"animated,omitempty" yaml:"animated,omitempty"`
+	Curvature  float64 `json:"curvature,omitempty" yaml:"curvature,omitempty"`
+	Scale      float64 `json:"scale,omitempty" yaml:"scale,omitempty"`
+	Threshold  float64 `json:"threshold,omitempty" yaml:"threshold,omitempty"`
+	Speed      float64 `json:"speed,omitempty" yaml:"speed,omitempty"`
 }
 
 // VideoClipGridSpec draws a procedural grid over the full localized clip.

@@ -3,15 +3,12 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -141,129 +138,10 @@ func CompileOverlayPlanFromGenerationResult(
 }
 
 // ── overlay_image_sfx.go (merged to respect the package file cap) ──
-// overlay_image_sfx.go binds the payload's explicit
-// per-image cues (overlay_images[].sound_effect) to the image overlay items the
-// planner produced for that scene.
-//
-// Why it exists: audio.random_sfx_on_image_overlay only ever attaches a
-// deterministic RANDOM cue, and audio.sound_effects is scene/anchor-scoped, so
-// an operator had no way to say "this photo gets this whoosh". The item-level
-// cue is the producer-selected contract RenderingGen already validates and
-// mixes, so this file is the projection that fills it from the payload.
-//
-// Matching is positional and deterministic: pins are declaration-ordered, and
-// within a scene they attach to the image items in start-time order. A cue the
-// plan cannot host fails the run instead of being silently dropped.
-
-// attachImageAssetSFXForResult applies the explicit pins to the source plan and
-// every localized plan. Translation never changes the stills, so the same cue
-// belongs to the same scene in each language.
-func attachImageAssetSFXForResult(ctx context.Context, source AudioAssetSource, result *GenerateResult, pins []scriptpkg.OverlayImageAsset) error {
-	if result == nil {
-		return nil
-	}
-	plans := make([]*capmodel.OverlayPlan, 0, 1+len(result.LocalizedOverlayPlans))
-	if result.OverlayPlan != nil {
-		plans = append(plans, result.OverlayPlan)
-	}
-	for _, plan := range result.LocalizedOverlayPlans {
-		if plan != nil {
-			plans = append(plans, plan)
-		}
-	}
-	return attachImageAssetSFX(ctx, source, plans, pins)
-}
-
-// attachImageAssetSFX resolves each pinned cue through the same audio asset
-// resolver audio.sound_effects uses, then seals it onto the matching image item.
-func attachImageAssetSFX(ctx context.Context, source AudioAssetSource, plans []*capmodel.OverlayPlan, pins []scriptpkg.OverlayImageAsset) error {
-	sceneCues, sceneOrder := groupImageSFXByScene(pins)
-	if len(sceneOrder) == 0 {
-		return nil
-	}
-	if source == nil {
-		return fmt.Errorf("overlay_images.sound_effect requires the audio asset resolver, which is not wired")
-	}
-	for _, plan := range plans {
-		if plan == nil {
-			continue
-		}
-		imageItemsByScene := imageOverlayItemsByScene(plan)
-		changed := false
-		for _, scene := range sceneOrder {
-			cues := sceneCues[scene]
-			candidates := imageItemsByScene[scene]
-			if len(cues) > len(candidates) {
-				return fmt.Errorf("overlay_images.sound_effect: scene %q declares %d cues but the overlay plan has %d image items", scene, len(cues), len(candidates))
-			}
-			for cueIndex, cue := range cues {
-				item := candidates[cueIndex]
-				startOffsetMS, visibleEndMS := imageSFXWindow(*item)
-				durationMS := randomOverlaySFXDurationMS
-				if cue.DurationMS != nil {
-					durationMS = *cue.DurationMS
-				}
-				if visibleMS := visibleEndMS - startOffsetMS; durationMS > visibleMS {
-					durationMS = visibleMS
-				}
-				if durationMS <= 0 {
-					return fmt.Errorf("overlay_images.sound_effect: item %q has no positive visible image window for its cue", item.ID)
-				}
-				resolved, err := source.ResolveAudioAsset(ctx, capabilityaudio.CanonicalAssetID(cue.AssetID))
-				if err != nil {
-					return fmt.Errorf("overlay_images.sound_effect: resolve audio asset %q: %w", cue.AssetID, err)
-				}
-				path := strings.TrimSpace(resolved.Path)
-				if path == "" {
-					return fmt.Errorf("overlay_images.sound_effect: audio asset %q resolved to an empty path", cue.AssetID)
-				}
-				absolutePath, err := filepath.Abs(path)
-				if err != nil {
-					return fmt.Errorf("overlay_images.sound_effect: resolve cue path for %q: %w", item.ID, err)
-				}
-				contents, err := os.ReadFile(absolutePath)
-				if err != nil {
-					return fmt.Errorf("overlay_images.sound_effect: read cue %q: %w", absolutePath, err)
-				}
-				if resolved.DurationUS > 0 && durationMS*1000 > resolved.DurationUS {
-					durationMS = resolved.DurationUS / 1000
-					if durationMS <= 0 {
-						return fmt.Errorf("overlay_images.sound_effect: audio asset %q is shorter than one millisecond", cue.AssetID)
-					}
-				}
-				sum := digest.SHA256Sum(contents)
-				sha := fmt.Sprintf("%x", sum)
-				gainDB := randomOverlaySFXGainDB
-				if cue.GainDB != nil {
-					gainDB = *cue.GainDB
-				}
-				assetID := strings.TrimSpace(resolved.AssetID)
-				if assetID == "" {
-					assetID = strings.TrimSpace(cue.AssetID)
-				}
-				item.SoundEffect = &capmodel.OverlaySoundEffect{
-					AssetRef: capmodel.OverlayAssetRef{
-						AssetID: assetID, URL: "assets/semantic/overlay-sfx-" + sha + ".m4a",
-						LocalPath: absolutePath, SHA256: sha, MediaType: "audio/mp4",
-					},
-					StartOffsetMS: startOffsetMS,
-					DurationMS:    durationMS,
-					GainDB:        gainDB,
-				}
-				item.RenderKey = ""
-				changed = true
-			}
-		}
-		if !changed {
-			continue
-		}
-		plan.Fingerprint = ""
-		if err := plan.Validate(); err != nil {
-			return fmt.Errorf("seal overlay image SFX plan %q: %w", plan.PlanID, err)
-		}
-	}
-	return nil
-}
+// The explicit per-image cues (overlay_images[].sound_effect) are projected
+// into the canonical master audio plan by overlay_sfx_projection.go. This file
+// keeps only the positional matcher the projection shares with the image-style
+// lane; it never writes item.sound_effect onto the RenderingGen payload.
 
 // groupImageSFXByScene keeps declaration order for scenes while grouping the
 // cue entries of the same scene. Scene keys are compared case-insensitively,
@@ -287,16 +165,6 @@ func groupImageSFXByScene(pins []scriptpkg.OverlayImageAsset) (map[string][]scri
 		cues[scene] = append(cues[scene], *pin.SoundEffect)
 	}
 	return cues, order
-}
-
-// imageOverlayItemsByScene collects the image items still eligible for a cue,
-// ordered by start time (then id) so the positional match is deterministic.
-// Items that already carry a cue are skipped, which keeps a resumed run
-// idempotent.
-func imageOverlayItemsByScene(plan *capmodel.OverlayPlan) map[string][]*capmodel.OverlayItem {
-	return imageOverlayItemsBySceneWhere(plan, func(item *capmodel.OverlayItem) bool {
-		return item.SoundEffect == nil
-	})
 }
 
 // imageOverlayItemsBySceneWhere is the shared positional matcher: per scene,

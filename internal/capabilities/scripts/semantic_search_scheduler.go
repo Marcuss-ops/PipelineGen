@@ -234,8 +234,8 @@ func rankSemanticAssetHits(response SemanticAssetSearchResponse) SemanticAssetSe
 // fetch serves the answer from the plan cache when possible and otherwise
 // performs one budgeted provider call. The keyed lock collapses duplicate
 // same-entity fetches inside a single run; different entities stay independent.
-func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt SemanticSearchAttempt, language, key string, forceRefresh ...bool) (SemanticAssetSearchResponse, bool, int64, bool, error) {
-	bypassCache := len(forceRefresh) > 0 && forceRefresh[0]
+func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt SemanticSearchAttempt, language, key string, forceRefresh bool) (SemanticAssetSearchResponse, bool, int64, bool, error) {
+	bypassCache := forceRefresh
 	if p.cfg.Cache == nil {
 		response, latency, rateLimited, err := p.searchWithBudget(ctx, attempt, language)
 		return response, false, latency, rateLimited, err

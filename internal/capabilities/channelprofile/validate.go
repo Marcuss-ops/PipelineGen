@@ -159,16 +159,12 @@ func (p Profile) validateOverlayStyle() error {
 	if o.TransitionIn != nil && o.TransitionIn.DurationFrames < 0 {
 		return fmt.Errorf("overlay_style.transition_in.duration_frames is negative")
 	}
-	style := &scriptpkg.OverlayStyleSpec{
-		FontFamily: o.FontFamily, GlowSize: o.GlowSize, StrokeSize: o.StrokeSize,
-	}
-	if o.Size != nil {
-		style.Size = &scriptpkg.OverlaySizeSpec{FontSize: o.Size.FontSize}
-	}
-	if err := style.Validate(); err != nil {
-		return err
-	}
-	return nil
+	// The canonical validator owns every field bound (font families, bullet,
+	// plate, cursor, image, glow, stroke, size), so a profile and a caller
+	// payload are rejected by one rule set. The checks above cover only the
+	// three profile-side rules the run-level contract does not state: RGBA
+	// arity, shadow offset arity and the required entry preset.
+	return o.Validate()
 }
 
 func (p Profile) validateSoundEffects() error {

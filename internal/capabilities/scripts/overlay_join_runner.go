@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/overlayjoin"
 )
 
@@ -118,6 +120,7 @@ func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req Gener
 	if err := os.MkdirAll(joinDir, 0o755); err != nil {
 		return fmt.Errorf("final video join: mkdir %s: %w", joinDir, err)
 	}
+	fetchStarted := time.Now()
 	clips := make([]overlayjoin.Clip, 0, len(result.OverlayPlan.Items))
 	for _, item := range result.OverlayPlan.Items {
 		artifact, _, ok := overlayArtifactForItem(result.OverlayRender, item.ID)
@@ -145,12 +148,14 @@ func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req Gener
 			DurationUS: durationUS,
 		})
 	}
+	fetchMS := time.Since(fetchStarted).Milliseconds()
 	if len(clips) == 0 {
 		return fmt.Errorf("final video join: no certified overlay clip could be materialized")
 	}
 	sort.SliceStable(clips, func(i, j int) bool { return clips[i].StartUS < clips[j].StartUS })
 
 	outputPath := filepath.Join(joinDir, "final_video.mp4")
+	joinStarted := time.Now()
 	joined, err := overlayjoin.Run(ctx, overlayjoin.Spec{
 		BackgroundPath: backgroundPath,
 		AudioPath:      result.FinalAudio.Path,
@@ -162,13 +167,26 @@ func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req Gener
 		DurationUS:     durationUS,
 		Clips:          clips,
 	}, "")
+	joinMS := time.Since(joinStarted).Milliseconds()
 	if err != nil {
+		// A failed assembly still consumed its fetch and encode wall; attribute
+		// it before returning so the failure is not another silent stage wall.
+		recordFinalVideoJoin(ctx, finalVideoJoinTiming{clips: len(clips), fetchMS: fetchMS, joinMS: joinMS})
 		return fmt.Errorf("final video join: %w", err)
 	}
+	hashStarted := time.Now()
 	digest, err := fileSHA256(joined.Path)
+	hashMS := time.Since(hashStarted).Milliseconds()
 	if err != nil {
 		return fmt.Errorf("final video join: hash output: %w", err)
 	}
+	recordFinalVideoJoin(ctx, finalVideoJoinTiming{
+		clips:   len(clips),
+		bytes:   joined.SizeBytes,
+		fetchMS: fetchMS,
+		joinMS:  joinMS,
+		hashMS:  hashMS,
+	})
 	result.LocalFinalVideo = &LocalFinalVideoArtifact{
 		Path:        joined.Path,
 		SizeBytes:   joined.SizeBytes,
@@ -188,7 +206,10 @@ func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req Gener
 			zap.Int("plan_items", len(result.OverlayPlan.Items)),
 			zap.Int("width", width),
 			zap.Int("height", height),
-			zap.Int64("duration_us", durationUS))
+			zap.Int64("duration_us", durationUS),
+			zap.Int64("fetch_ms", fetchMS),
+			zap.Int64("join_ms", joinMS),
+			zap.Int64("hash_ms", hashMS))
 	}
 	return nil
 }
@@ -285,4 +306,43 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hash, nil
+}
+
+// finalVideoJoinTiming is the wall clock of the local assembly, split by the
+// three boundaries the join actually crosses.
+type finalVideoJoinTiming struct {
+	clips   int
+	bytes   int64
+	fetchMS int64
+	joinMS  int64
+	hashMS  int64
+}
+
+// recordFinalVideoJoin attributes the local assembly on the run bound to ctx.
+//
+// The assembly used to be charged to the persistence stage with no operation
+// of its own: on the r8 biography run 455,555 ms of a 648,922 ms wall (70.2%)
+// reported as `persistence` while the only operation recorded there was
+// persistence.sqlite at 1 ms. The stage was right — the join really is part
+// of persistence — but the report could not say which boundary owned the
+// time, so no speed lever could be aimed at it. The three operations are the
+// certified-clip fetch (object store), the ffmpeg overlay graph + canonical
+// encode, and the artifact hash.
+func recordFinalVideoJoin(ctx context.Context, t finalVideoJoinTiming) {
+	stage := kernobs.StageRunPersistence
+	component := kernobs.ComponentFFmpeg
+	items := int64(t.clips)
+	// A boundary that did not run (a failed join never hashes, for example) is
+	// not recorded as a zero-length operation: no fake measurements.
+	record := func(op kernobs.OperationName, ms int64, bytes int64) {
+		if ms <= 0 {
+			return
+		}
+		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
+			Stage: stage, Component: component, Operation: op, Items: items, Bytes: bytes,
+		}, ms)
+	}
+	record(kernobs.OperationFetch, t.fetchMS, 0)
+	record(kernobs.OperationJoin, t.joinMS, t.bytes)
+	record(kernobs.OperationHash, t.hashMS, t.bytes)
 }

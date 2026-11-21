@@ -438,6 +438,13 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.ErrorCode = string(FailureTxCommit)
 		out.Error = fmt.Sprintf("%s: %v", FailureTxCommit, err)
+		// FASE 4 (RA-06 §1.3): the Drive upload succeeded before the tx was
+		// opened, so a failed commit leaves a remote file with no row. The
+		// Finalize-failure branch above already enqueues the cleanup; this
+		// branch must not be the one that quietly leaks the file.
+		if out.DriveFileID != "" && u.deps.TxOutboxEnqueuer != nil {
+			u.enqueueOrphanCleanup(ctx, cmd.ID, out.DriveFileID, out.LocalPath, out.CleanedPath)
+		}
 		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		return out, newPipelineErrorCode(StageTxCommit, true, FailureTxCommit, err)
 	}

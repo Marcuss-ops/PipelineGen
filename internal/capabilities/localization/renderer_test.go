@@ -131,6 +131,33 @@ func TestLocalizedClipRenderer_RendersCertifiedArtifact(t *testing.T) {
 // it, so a run result can correlate a produced clip with its render job
 // directly. Before this the id existed only as a `plan_revision` line in the
 // master log and had to be scraped out.
+func TestRenderJobIDIncludesTheASSArtifactDigest(t *testing.T) {
+	ass := strings.Repeat("a", 64)
+	otherASS := strings.Repeat("b", 64)
+	got := RenderJobID("clip-1:es:overlay-v4:0123456789abcdef", ass)
+	if got != "clip-1:es:overlay-v4:0123456789abcdef:ass:aaaaaaaaaaaaaaaa" {
+		t.Fatalf("RenderJobID = %q", got)
+	}
+	if RenderJobID("clip-1:es:overlay-v4:0123456789abcdef", otherASS) == got {
+		t.Fatal("a different ASS digest must address a different render job")
+	}
+	if got := RenderJobID("rev", ""); got != "rev" {
+		t.Fatalf("empty ASS digest changed the revision: %q", got)
+	}
+}
+
+func TestRenderReuseKeyIncludesTheASSArtifactDigest(t *testing.T) {
+	plan := validPlan()
+	ass := &SubtitleAsset{SHA256: strings.Repeat("a", 64)}
+	key := RenderReuseKey(plan, ass)
+	if !strings.HasPrefix(key, plan.Fingerprint+":ass:") {
+		t.Fatalf("reuse key %q does not extend fingerprint %q", key, plan.Fingerprint)
+	}
+	if RenderReuseKey(plan, &SubtitleAsset{SHA256: strings.Repeat("b", 64)}) == key {
+		t.Fatal("a different ASS digest reused the same cache entry")
+	}
+}
+
 func TestLocalizedClipRenderer_ProjectsTheRenderJobIdentity(t *testing.T) {
 	// The revision doubles as the RenderingGen queue job id, so it must be a
 	// single valid workspace filename component (`:` separators, never `/`).

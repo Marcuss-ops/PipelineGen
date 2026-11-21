@@ -42,15 +42,25 @@ func ensureYouTubeGate(width int) concurrent.Semaphore {
 	return ytGate
 }
 
-// youTubeCooldownNow is an injectable clock seam matching the transportSleep
-// pattern in transport_retry.go. Nil = time.Now.
-var youTubeCooldownNow func() time.Time
+// youTubeCooldownClock is an injectable clock seam matching the
+// transportSleep pattern in transport_retry.go. Unset = time.Now. The atomic
+// pointer keeps a test swap from racing the workers that read the clock.
+var youTubeCooldownClock atomic.Pointer[func() time.Time]
 
 func nowForYouTubeCooldown() time.Time {
-	if youTubeCooldownNow != nil {
-		return youTubeCooldownNow()
+	if p := youTubeCooldownClock.Load(); p != nil {
+		return (*p)()
 	}
 	return time.Now()
+}
+
+// setYouTubeCooldownNowForTest swaps the cooldown clock; nil restores time.Now.
+func setYouTubeCooldownNowForTest(fn func() time.Time) {
+	if fn == nil {
+		youTubeCooldownClock.Store(nil)
+		return
+	}
+	youTubeCooldownClock.Store(&fn)
 }
 
 // runYouTube executes one yt-dlp invocation under the shared IP budget when

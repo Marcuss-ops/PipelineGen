@@ -75,7 +75,12 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 		// variants after merging the bounded contextual searches.
 		limit = 5
 	}
+	// Round-robin by depth, deduped once: appending through
+	// AppendProviderCandidatesUnique per single candidate cloned the whole
+	// result and rebuilt its identity map on every item, which is O(N²) in the
+	// number of candidates.
 	var candidates []scriptpkg.SegmentAssetCandidate
+	seen := make(map[string]struct{})
 	for depth := 0; ; depth++ {
 		addedAtDepth := false
 		for _, results := range resultSets {
@@ -83,7 +88,16 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 				continue
 			}
 			addedAtDepth = true
-			candidates = AppendProviderCandidatesUnique(candidates, results[depth:depth+1])
+			candidate := results[depth]
+			key := vidRushCandidateIdentity(candidate)
+			if key == "" {
+				continue
+			}
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+			candidates = append(candidates, candidate)
 			if limit > 0 && len(candidates) >= limit {
 				return candidates[:limit], nil
 			}

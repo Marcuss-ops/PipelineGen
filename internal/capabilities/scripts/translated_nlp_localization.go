@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -442,13 +443,26 @@ type LocalizedIdentityMatcher interface {
 }
 
 // defaultLocalizedIdentityMatcher is a test-only hook. Production leaves it
-// nil and fails closed; the package TestMain installs the former Go matcher as
-// an oracle for the translated-NLP integration tests.
-var defaultLocalizedIdentityMatcher LocalizedIdentityMatcher
+// unset and fails closed; the package TestMain installs the former Go matcher
+// as an oracle for the translated-NLP integration tests.
+//
+// The hook is an atomic.Value of a one-field wrapper because atomic.Value
+// cannot store a nil interface: an unset hook reads as nil, never as a typed
+// nil, and a TestMain swap cannot race a reader.
+var defaultLocalizedIdentityMatcher atomic.Value // localizedMatcherHook
+
+type localizedMatcherHook struct{ matcher LocalizedIdentityMatcher }
+
+func setDefaultLocalizedIdentityMatcherForTests(m LocalizedIdentityMatcher) {
+	defaultLocalizedIdentityMatcher.Store(localizedMatcherHook{matcher: m})
+}
 
 func (r *Runner) localizedIdentityMatcher() LocalizedIdentityMatcher {
 	if r != nil && r.localizedIdentity != nil {
 		return r.localizedIdentity
 	}
-	return defaultLocalizedIdentityMatcher
+	if v := defaultLocalizedIdentityMatcher.Load(); v != nil {
+		return v.(localizedMatcherHook).matcher
+	}
+	return nil
 }

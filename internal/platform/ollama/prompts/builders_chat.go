@@ -38,26 +38,7 @@ func BuildChatMessages(req *types.TextGenerationRequest) []types.Message {
 	sanitizedTitle := types.SanitizeInput(req.Title)
 
 	var userContent string
-	if cfg := Get(); cfg != nil {
-		if isStructured {
-			rendered, err := cfg.RenderStructuredScriptGeneration(
-				req.Duration, durationMinutes, sanitizedTitle, req.Tone,
-				sanitizedSource, maxChars,
-			)
-			if err == nil {
-				userContent = rendered
-			}
-		} else {
-			rendered, err := cfg.RenderScriptGeneration(
-				req.Duration, durationMinutes, sanitizedTitle, req.Tone,
-				sanitizedSource, targetWords,
-			)
-			if err == nil {
-				userContent = rendered
-			}
-		}
-	}
-	if userContent == "" && !isStructured {
+	if !isStructured {
 		userContent = fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
 
 VIDEO TITLE: %s
@@ -77,7 +58,7 @@ STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
 
 SCRIPT:`, req.Duration, durationMinutes, sanitizedTitle, req.Tone, sanitizedSource, durationMinutes, targetWords)
 	}
-	if userContent == "" && isStructured {
+	if isStructured {
 		// Build per-clip JSON prompt with actual clip IDs
 		clipIDsList := "clip_ids: " + strings.Join(req.ClipIDs, ", ")
 		if req.ClipIDs == nil {
@@ -155,19 +136,7 @@ func BuildTextPrompt(req *types.TextGenerationRequest) string {
 	sanitizedSource := types.SanitizeInput(req.SourceText)
 	sanitizedTitle := types.SanitizeInput(req.Title)
 
-	var taskBody string
-	if cfg := Get(); cfg != nil {
-		rendered, err := cfg.RenderScriptGeneration(
-			req.Duration, durationMinutes, sanitizedTitle, req.Tone,
-			sanitizedSource, targetWords,
-		)
-		if err == nil {
-			taskBody = rendered
-		}
-	}
-
-	if taskBody == "" {
-		taskBody = fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
+	taskBody := fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
 
 VIDEO TITLE: %s
 NARRATIVE STYLE: %s
@@ -185,10 +154,9 @@ STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
 7. NO STAGE DIRECTIONS: Do not include descriptions of shots, music, or tone in brackets.
 
 SCRIPT:`,
-			req.Duration, durationMinutes, sanitizedTitle, req.Tone,
-			sanitizedSource, durationMinutes, targetWords,
-		)
-	}
+		req.Duration, durationMinutes, sanitizedTitle, req.Tone,
+		sanitizedSource, durationMinutes, targetWords,
+	)
 
 	// Apply grounding policy to the task body so it sits after the
 	// system prompt once that is prepended.
@@ -220,15 +188,10 @@ func applyGroundingPolicy(policy string, content string) string {
 	return instruction + "\n\n" + content
 }
 
-// prependOverriding builds the overriding instructions block from config or fallback.
+// prependOverriding builds the overriding instructions block around the
+// operator-supplied prompt.
 func prependOverriding(rawPrompt string) string {
 	promptBlock := types.SanitizeInput(rawPrompt)
-	if cfg := Get(); cfg != nil {
-		rendered, err := cfg.RenderOverridingInstructions(promptBlock)
-		if err == nil {
-			return rendered
-		}
-	}
 	return "## OVERRIDING WRITING INSTRUCTIONS — THESE TAKE ABSOLUTE PRIORITY ##\n" +
 		promptBlock +
 		"\n\n## END OF OVERRIDING INSTRUCTIONS ##\n\n" +

@@ -115,9 +115,6 @@ func PerClipLeafName(plan ClipPlan) string {
 	}
 	return fmt.Sprintf("%02d-%02d-%02d_to_%02d-%02d-%02d", int(plan.StartSec)/3600, (int(plan.StartSec)%3600)/60, int(plan.StartSec)%60, int(plan.EndSec)/3600, (int(plan.EndSec)%3600)/60, int(plan.EndSec)%60)
 }
-func TimestampParentLeafName(plan ClipPlan) string {
-	return PerClipLeafName(ClipPlan{Slug: plan.ParentSlug, Title: plan.Title, StartSec: plan.StartSec, EndSec: plan.EndSec})
-}
 func firstLegacyQuery(values []string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -144,19 +141,6 @@ func publishClipNamingInput(plan ClipPlan) stockpublish.ClipNamingInput {
 		Round: plan.Round, Title: plan.Title, Slug: plan.Slug, ParentSlug: plan.ParentSlug,
 		StartSec: plan.StartSec, EndSec: plan.EndSec,
 	}
-}
-
-func toPublishChunk(chunk ChunkState, rootFolder, folderID, leaf string) stockpublish.Chunk {
-	return stockpublish.Chunk{Index: chunk.Index, ArtifactID: chunk.ArtifactID, Filename: chunk.Filename,
-		LocalPath: chunk.LocalPath, SizeBytes: chunk.SizeBytes, SHA256: chunk.SHA256,
-		Description: chunk.Description, RootFolder: rootFolder, FolderID: folderID,
-		FolderResolved: chunk.RemoteFileID != "" || folderID != "", PathLeaf: leaf}
-}
-
-func toPublishMetadata(metadata MetadataState, artifactID, rootFolder, folderID, leaf string) stockpublish.Metadata {
-	return stockpublish.Metadata{ArtifactID: artifactID, Filename: "metadata.json", LocalPath: metadata.LocalPath,
-		SizeBytes: metadata.SizeBytes, SHA256: metadata.SHA256, RootFolder: rootFolder,
-		FolderID: folderID, FolderResolved: metadata.RemoteFileID != "" || folderID != "", PathLeaf: leaf}
 }
 
 // ─── cleanup bridge ──────────────────────────────────────────────────────────
@@ -222,22 +206,6 @@ func ingestSourcesFromClipPlans(plans []ClipPlan, sectioned bool) []ingest.Sourc
 		sources = append(sources, source)
 	}
 	return sources
-}
-
-// sectionDownloadForPlans returns the yt-dlp --download-sections value for one
-// source's plan group, or "" when the run/source must be staged whole. It lives
-// here because this file owns the plan → ingest boundary that carries the value;
-// the derivation itself is sectionWindowForPlans (downloader_port.go) and the
-// seek side is sectionCutOffsetSec (step_extract_clips_cut.go).
-func sectionDownloadForPlans(in *RunInput, plans []ClipPlan) string {
-	if !isSectionedRun(in) {
-		return ""
-	}
-	start, end, ok := sectionWindowForPlans(plans)
-	if !ok {
-		return ""
-	}
-	return sectionDownloadString(start, end)
 }
 
 // stockIngestPreparer adapts the canonical acquisition port to the neutral

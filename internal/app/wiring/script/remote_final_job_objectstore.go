@@ -3,7 +3,6 @@ package script
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"go.uber.org/zap"
 )
 
@@ -66,7 +66,7 @@ func (a *RemoteFinalJobAdapter) ResolveFinalJobObjectStoreAsset(ctx context.Cont
 	}
 	driveID := strings.TrimSpace(mediaAsset.DriveFileID())
 	if driveID == "" {
-		driveID = driveFileIDFromLink(mediaAsset.DriveLink())
+		driveID, _ = urlutil.FileIDFromDriveLink(mediaAsset.DriveLink())
 	}
 	if path == "" && a.stock != nil && driveID != "" {
 		ext := filepath.Ext(mediaAsset.Filename)
@@ -108,24 +108,4 @@ func (a *RemoteFinalJobAdapter) ResolveFinalJobObjectStoreAsset(ctx context.Cont
 		ref["duration_ms"] = durationMS
 	}
 	return ref, nil
-}
-
-// driveFileIDFromLink extracts the identity from canonical Google Drive file
-// links. We only use it as a fallback when the media row's dedicated
-// drive_file_id field is empty; arbitrary URLs are never fetched as media.
-func driveFileIDFromLink(raw string) string {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || !strings.EqualFold(u.Hostname(), "drive.google.com") {
-		return ""
-	}
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	for i := 0; i+1 < len(parts); i++ {
-		if parts[i] == "d" && parts[i+1] != "" {
-			return parts[i+1]
-		}
-	}
-	if strings.Trim(u.Path, "/") == "open" || strings.Trim(u.Path, "/") == "uc" {
-		return strings.TrimSpace(u.Query().Get("id"))
-	}
-	return ""
 }

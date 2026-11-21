@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
@@ -139,11 +138,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// gap the observability matrix used to claim as DONE. Best-effort by
 	// construction: the projection can never fail a render.
 	if root.DB != nil && root.DB.DB != nil {
-		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
-		if storeURL == "" {
-			storeURL = defaultRenderingGenStoreURL
-		}
-		switch fetcher, fErr := renderinggen.NewChrononTimingFetcher(storeURL); {
+		switch fetcher, fErr := renderinggen.NewChrononTimingFetcher(renderingGenStoreURL(cfg)); {
 		case fErr != nil:
 			log.Warn("registerClipRender: chronon timing metrics NOT wired (object store URL invalid)", zap.Error(fErr))
 		default:

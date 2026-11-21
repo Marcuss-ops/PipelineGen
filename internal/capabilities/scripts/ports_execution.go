@@ -160,7 +160,7 @@ type LocalizedRenderResult struct {
 	Language   Language `json:"language"`
 	ClipID     string   `json:"clip_id"`
 	// RenderJobID is the render-plan identity of the job that produced these
-	// bytes (localization's plan revision: `<clip>:<language>:overlay-v4:`
+	// bytes (localization's plan revision: `<clip>:<language>:overlay-v5:`
 	// + the plan fingerprint prefix — `:` separators because the revision IS
 	// the RenderingGen queue job id, which must be one valid filename
 	// component). It is projected here so the run result
@@ -473,7 +473,7 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	policy audio.AudioMixPolicy,
 	bgm []scriptpkg.BackgroundMusicIntent,
 	sfx []scriptpkg.SoundEffectIntent,
-	randomSFXOnClipStart ...bool,
+	randomSFXOnClipStart bool,
 ) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, audiocontract.CompileTimings, error) {
 	// Audio-only narration runs may be compiled before clip materialization.
 	// With VOICEOVER_ONLY there is deliberately no dependency on a local clip
@@ -486,7 +486,7 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
 	}
-	if len(randomSFXOnClipStart) > 0 && randomSFXOnClipStart[0] {
+	if randomSFXOnClipStart {
 		sfx = append(append([]scriptpkg.SoundEffectIntent(nil), sfx...), randomClipStartSFXIntents(timeline)...)
 	}
 	planStarted := time.Now()

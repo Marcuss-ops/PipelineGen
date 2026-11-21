@@ -6,6 +6,7 @@ import (
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // overlay_plan_v2_map_items.go — lowering of the Rust-selected map items onto
@@ -316,22 +317,6 @@ func mapStringParam(params map[string]any, key string) string {
 	return strings.TrimSpace(value)
 }
 
-// materializedMapHasEntity reports whether one of the renderer map's pins is
-// the given grounded entity. Pin IDs are the planner's entity IDs, so this is
-// the only stable join between a grouped map item and the Rust item that
-// proposed the place.
-func materializedMapHasEntity(item capmodel.OverlayItem, entityID string) bool {
-	if item.Map == nil || strings.TrimSpace(entityID) == "" {
-		return false
-	}
-	for _, pin := range item.Map.Pins {
-		if strings.TrimSpace(pin.ID) == strings.TrimSpace(entityID) {
-			return true
-		}
-	}
-	return false
-}
-
 // applyMaterializedMap copies the resolved renderer map onto the Rust-selected
 // item. The item keeps its editorial identity (id, scene, priority) AND its
 // window: the Rust planner owns the camera minimum, the readable floor and the
@@ -357,4 +342,62 @@ func applyMaterializedMap(item *capmodel.OverlayItem, materialized capmodel.Over
 			item.Params["map_pin_timing"] = timing.WithOffset(delta).Params()
 		}
 	}
+}
+
+func validateMapPresentationPools(p scriptpkg.MapPresentation) error {
+	animations := make(map[string]bool, len(p.AnimationPool))
+	for _, id := range p.AnimationPool {
+		id = strings.TrimSpace(id)
+		if id == "" || !stringPoolHas(capabilityoverlay.MapCompositionRandomPool(), id) {
+			return fmt.Errorf("map_presentation.animation_pool contains unsupported runtime animation %q", id)
+		}
+		if animations[id] {
+			return fmt.Errorf("map_presentation.animation_pool repeats %q", id)
+		}
+		animations[id] = true
+	}
+	if len(animations) == 0 {
+		return fmt.Errorf("map_presentation.animation_pool has no renderer-supported choices")
+	}
+	if requested := strings.TrimSpace(p.Animation); requested != "" && !strings.EqualFold(requested, "random") && !strings.EqualFold(requested, "auto") && !capabilityoverlay.NativeMapCompositions(requested) {
+		return fmt.Errorf("map_presentation.animation %q is not runtime-supported", requested)
+	}
+	styles := make(map[string]bool, len(p.StylePool))
+	for _, id := range p.StylePool {
+		id = strings.TrimSpace(id)
+		if id == "" || !capabilityoverlay.NativeMapBasemaps()[id] {
+			return fmt.Errorf("map_presentation.style_pool contains unsupported runtime basemap %q", id)
+		}
+		if styles[id] {
+			return fmt.Errorf("map_presentation.style_pool repeats %q", id)
+		}
+		styles[id] = true
+	}
+	if len(styles) == 0 {
+		return fmt.Errorf("map_presentation.style_pool has no renderer-supported choices")
+	}
+	if requested := strings.TrimSpace(p.Style); requested != "" && !strings.EqualFold(requested, "random") && !capabilityoverlay.NativeMapBasemaps()[requested] {
+		return fmt.Errorf("map_presentation.style %q is not runtime-supported", requested)
+	}
+	if strings.HasPrefix(strings.TrimSpace(p.Animation), "editorial_") {
+		if p.Style != "chronon_editorial" && !strings.EqualFold(p.Style, "random") {
+			return fmt.Errorf("map_presentation.animation %q requires style=chronon_editorial", p.Animation)
+		}
+		if !styles["chronon_editorial"] {
+			return fmt.Errorf("map_presentation.animation %q requires chronon_editorial in style_pool", p.Animation)
+		}
+	}
+	return nil
+}
+
+// stringPoolHas reports whether id is one of the certified pool entries. It is
+// deliberately not named containsString: that name belongs to a test helper in
+// this package and the two were colliding at compile time.
+func stringPoolHas(pool []string, id string) bool {
+	for _, candidate := range pool {
+		if candidate == id {
+			return true
+		}
+	}
+	return false
 }

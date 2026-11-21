@@ -27,7 +27,7 @@ func TestFinalJobCertificateRequiresTheCanonicalDecoderConfiguration(t *testing.
 		streamOK:        true,
 		extradataSHA256: kernelmedia.CanonicalVideoExtradataSHA256,
 		startAtZero:     true,
-		durationUS:      framesDurationUS(96),
+		durationUS:      kernelmedia.FrameDurationUS(96),
 		keyframeAt:      map[int64]bool{0: true, 48: true},
 		packets:         96,
 	}
@@ -62,7 +62,7 @@ func TestFinalJobPreparedFragmentRefCarriesTheCanonicalDecoderConfiguration(t *t
 		SegmentID: "segment-0000", FrameCount: 24, TimelineRevision: 3,
 		TimelineSHA256: strings.Repeat("b", 64), TimelineStartFrame: 0,
 	}
-	durationUS := framesDurationUS(request.FrameCount)
+	durationUS := kernelmedia.FrameDurationUS(request.FrameCount)
 	ref := finalJobPreparedRef(map[string]any{"role": "clip"}, strings.Repeat("c", 64), 4096, durationUS, request)
 	if ref["extradata_sha256"] != kernelmedia.CanonicalVideoExtradataSHA256 {
 		t.Fatalf("prepared ref avcC = %v, want %s", ref["extradata_sha256"], kernelmedia.CanonicalVideoExtradataSHA256)
@@ -91,7 +91,7 @@ func TestFinalJobFragmentCacheMissesNonCanonicalEntries(t *testing.T) {
 	if err := os.WriteFile(payload, []byte("fragment"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	frames, durationUS := int64(24), framesDurationUS(24)
+	frames, durationUS := int64(24), kernelmedia.FrameDurationUS(24)
 	bytesSHA, _, err := digest.SHA256File(payload)
 	if err != nil {
 		t.Fatal(err)

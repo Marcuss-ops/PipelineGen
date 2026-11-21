@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 var (
@@ -274,7 +275,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 				rec.PublishStatus = publishStatus
 				driveLink, driveFileID = pubRes.WebViewLink, pubRes.FileID
 				if driveLink == "" && driveFileID != "" {
-					driveLink = "https://drive.google.com/file/d/" + driveFileID + "/view"
+					driveLink = urlutil.DriveFileURL(driveFileID)
 				}
 				if pubRes.DownloadLink != "" {
 					downloadLink = pubRes.DownloadLink

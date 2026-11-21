@@ -35,10 +35,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
 )
 
 // AnalyzerVersion is stamped on every media_asset_features row this
@@ -233,7 +233,7 @@ func (a *MediaFeatureAnalyzer) dominantColor(ctx context.Context, framePaths []s
 		if err != nil {
 			return "", err
 		}
-		r, g, b, err := parseHexColor(hex)
+		r, g, b, err := color.ParseHexRGB(hex)
 		if err != nil {
 			return "", err
 		}
@@ -333,19 +333,6 @@ func clamp01(v float64) float64 {
 		return 1
 	}
 	return v
-}
-
-var hexColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
-
-// parseHexColor parses a strict 6-digit hex color.
-func parseHexColor(hex string) (int, int, int, error) {
-	if !hexColorRe.MatchString(hex) {
-		return 0, 0, 0, fmt.Errorf("invalid hex color %q", hex)
-	}
-	r, _ := strconv.ParseInt(hex[1:3], 16, 32)
-	g, _ := strconv.ParseInt(hex[3:5], 16, 32)
-	b, _ := strconv.ParseInt(hex[5:7], 16, 32)
-	return int(r), int(g), int(b), nil
 }
 
 // FrameCleanup is a no-op convenience: the analyzer owns temp-dir cleanup

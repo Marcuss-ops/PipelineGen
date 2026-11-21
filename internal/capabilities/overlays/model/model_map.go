@@ -14,6 +14,7 @@ import (
 
 	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
 )
@@ -214,7 +215,7 @@ func (m *MapOverlay) validateCameraMove(canvasWidth, canvasHeight int, assets []
 		for _, asset := range assets {
 			if asset.AssetID == lod.AssetID {
 				assetFound = true
-				if len(strings.TrimSpace(asset.SHA256)) != 64 || strings.Trim(strings.TrimSpace(asset.SHA256), "0123456789abcdefABCDEF") != "" || strings.ToLower(strings.TrimSpace(strings.SplitN(asset.MediaType, ";", 2)[0])) != "image/png" ||
+				if !digest.IsSHA256(strings.TrimSpace(asset.SHA256)) || strings.ToLower(strings.TrimSpace(strings.SplitN(asset.MediaType, ";", 2)[0])) != "image/png" ||
 					strings.TrimSpace(asset.LocalPath) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "http://") ||
 					strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "https://") {
 					return fmt.Errorf("map LOD[%d] must reference a verified local image/png asset", index)
@@ -400,7 +401,7 @@ func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAss
 	}
 	if !m.DynamicRendererOnly {
 		asset := assets[0]
-		if strings.TrimSpace(asset.AssetID) == "" || len(strings.TrimSpace(asset.SHA256)) != 64 || strings.Trim(strings.TrimSpace(asset.SHA256), "0123456789abcdefABCDEF") != "" || strings.ToLower(strings.TrimSpace(strings.SplitN(asset.MediaType, ";", 2)[0])) != "image/png" {
+		if strings.TrimSpace(asset.AssetID) == "" || !digest.IsSHA256(strings.TrimSpace(asset.SHA256)) || strings.ToLower(strings.TrimSpace(strings.SplitN(asset.MediaType, ";", 2)[0])) != "image/png" {
 			return fmt.Errorf("map basemap requires a 64-hex content-addressed image/png asset")
 		}
 		if strings.TrimSpace(asset.LocalPath) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "http://") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "https://") {
@@ -437,7 +438,7 @@ func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAss
 		if pin.RadiusPX <= 0 || pin.RadiusPX > 128 || math.IsNaN(pin.RadiusPX) || math.IsInf(pin.RadiusPX, 0) {
 			return fmt.Errorf("map pin[%d] radius_px must be finite and in (0,128]", index)
 		}
-		if !isHexColor(pin.Color) {
+		if !color.IsHexRGB(pin.Color) {
 			return fmt.Errorf("map pin[%d] color must be #RRGGBB", index)
 		}
 		point := geodesy.Point{Latitude: pin.Latitude, Longitude: pin.Longitude}
@@ -504,18 +505,4 @@ func verifyPNGRasterDimensions(path string) (int, int, error) {
 		return 0, 0, fmt.Errorf("invalid PNG raster configuration")
 	}
 	return config.Width, config.Height, nil
-}
-
-func isHexColor(value string) bool {
-	if len(value) != 7 || value[0] != '#' {
-		return false
-	}
-	for _, digit := range value[1:] {
-		switch {
-		case digit >= '0' && digit <= '9', digit >= 'a' && digit <= 'f', digit >= 'A' && digit <= 'F':
-		default:
-			return false
-		}
-	}
-	return true
 }

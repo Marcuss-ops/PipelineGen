@@ -76,6 +76,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 )
 
@@ -174,7 +175,7 @@ func EnrichmentIdempotencyKey(chunkID, contentHash string, version EnrichmentVer
 	if chunkID == "" {
 		return "", fmt.Errorf("%w: chunkID is empty (godlike/07 no-fake-availability)", ErrEnrichmentIdempotencyKeyConflict)
 	}
-	if !isValidHex64(contentHash) {
+	if !digest.IsCanonicalSHA256(contentHash) {
 		return "", fmt.Errorf("%w: contentHash is not 64-char lowercase hex (godlike/07 no-fake-availability)", ErrEnrichmentIdempotencyKeyConflict)
 	}
 	if !version.IsValid() {
@@ -218,14 +219,3 @@ var ErrEnrichmentIdempotencyKeyConflict = errors.New("enrichment: idempotency ke
 // receive uppercase hex MUST lowercase before calling
 // EnrichmentIdempotencyKey (the helper does NOT auto-lowercase
 // to surface producer-side schema drift early).
-func isValidHex64(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for _, c := range s {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
-}

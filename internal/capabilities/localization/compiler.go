@@ -211,7 +211,16 @@ func localizedRevision(localized LocalizedClipPlan) string {
 	// The render canvas therefore changed for sources whose average rate
 	// exceeded 1001/1; reusing a v3 job id would collide with a request built
 	// from the pre-fix plan.
-	return localized.ClipID + ":" + localized.TargetLanguage + ":overlay-v4:" + fingerprint
+	//
+	// overlay-v5 (2026-11-21): the ASS generator changed with the font fix
+	// (`ResolveFontPreset` honours `oswald` instead of silently falling back to
+	// Montserrat). The ASS digest is NOT part of the sealed revision, and the
+	// `:ass:` suffix on the queue id is only applied when the subtitle asset
+	// already carries a SHA — for a localized clip the ASS is produced inside
+	// cliprender.Compile, after this revision is computed. Every cached v4
+	// artifact therefore collided with the new compiled plan and the submit
+	// failed closed with an identity conflict that no rerun could clear.
+	return localized.ClipID + ":" + localized.TargetLanguage + ":overlay-v5:" + fingerprint
 }
 
 // canonicalSHA256 folds an opaque profile/style hash string into a canonical

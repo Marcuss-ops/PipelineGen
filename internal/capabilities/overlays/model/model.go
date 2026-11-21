@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 const (
@@ -176,9 +177,6 @@ type OverlayItem struct {
 	// phrases can use the same phrase_default preset while carrying different
 	// motions.
 	MotionID string `json:"motion_id,omitempty"`
-	// CameraMotionID selects one of the subtle photo-documentary camera
-	// recipes applied to this visual item or shared image sequence.
-	CameraMotionID string `json:"camera_motion_id,omitempty"`
 	// EntityStyleID is the RenderingGen entity-card composition selector. The
 	// certified generated selector is "random" (resolved by RenderingGen as
 	// a tag query over the full 25 Apple Spatial entity styles with badge
@@ -353,6 +351,23 @@ func (p *OverlayPlan) Validate() error {
 	if p == nil {
 		return fmt.Errorf("overlay plan: nil")
 	}
+	if err := p.validateHeader(); err != nil {
+		return err
+	}
+	if source := p.Source; source != nil {
+		if strings.TrimSpace(source.AssetID) == "" || strings.TrimSpace(source.SHA256) == "" || (strings.TrimSpace(source.Path) == "" && strings.TrimSpace(source.LocalPath) == "") {
+			return fmt.Errorf("overlay plan: source requires asset_id, sha256 and a path")
+		}
+	}
+	if err := p.validateBackground(); err != nil {
+		return err
+	}
+	return p.validateItems()
+}
+
+// validateHeader checks the plan-level identity and canvas contract, in the
+// order callers rely on for the first actionable error.
+func (p *OverlayPlan) validateHeader() error {
 	if p.SchemaVersion != SchemaVersionPlan {
 		return fmt.Errorf("overlay plan: unsupported schema version %q", p.SchemaVersion)
 	}
@@ -376,170 +391,216 @@ func (p *OverlayPlan) Validate() error {
 	if err := p.validateOutputIdentity(); err != nil {
 		return fmt.Errorf("overlay plan: %w", err)
 	}
-	if source := p.Source; source != nil {
-		if strings.TrimSpace(source.AssetID) == "" || strings.TrimSpace(source.SHA256) == "" || (strings.TrimSpace(source.Path) == "" && strings.TrimSpace(source.LocalPath) == "") {
-			return fmt.Errorf("overlay plan: source requires asset_id, sha256 and a path")
+	return nil
+}
+
+// validateBackground checks the optional background block: colour, image or
+// video, and the asset references it may carry.
+func (p *OverlayPlan) validateBackground() error {
+	bg := p.Background
+	if bg == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(bg.Kind)) {
+	case "color":
+		if len(bg.Color) != 4 {
+			return fmt.Errorf("overlay plan: background color requires RGBA[4]")
+		}
+		for _, component := range bg.Color {
+			if component < 0 || component > 1 {
+				return fmt.Errorf("overlay plan: background color components must be in [0,1]")
+			}
+		}
+		if len(bg.AssetRefs) != 0 {
+			return fmt.Errorf("overlay plan: color background cannot carry asset_refs")
+		}
+	case "image", "video":
+		if len(bg.AssetRefs) == 0 || (strings.TrimSpace(bg.AssetRefs[0].URL) == "" && strings.TrimSpace(bg.AssetRefs[0].SHA256) == "") {
+			return fmt.Errorf("overlay plan: %s background requires a resolvable asset", bg.Kind)
+		}
+	default:
+		return fmt.Errorf("overlay plan: unsupported background kind %q", bg.Kind)
+	}
+	for index, ref := range bg.AssetRefs {
+		if strings.TrimSpace(ref.AssetID) == "" {
+			return fmt.Errorf("overlay plan: background asset[%d] requires asset_id", index)
 		}
 	}
-	if bg := p.Background; bg != nil {
-		switch strings.ToLower(strings.TrimSpace(bg.Kind)) {
-		case "color":
-			if len(bg.Color) != 4 {
-				return fmt.Errorf("overlay plan: background color requires RGBA[4]")
-			}
-			for _, component := range bg.Color {
-				if component < 0 || component > 1 {
-					return fmt.Errorf("overlay plan: background color components must be in [0,1]")
-				}
-			}
-			if len(bg.AssetRefs) != 0 {
-				return fmt.Errorf("overlay plan: color background cannot carry asset_refs")
-			}
-		case "image", "video":
-			if len(bg.AssetRefs) == 0 || (strings.TrimSpace(bg.AssetRefs[0].URL) == "" && strings.TrimSpace(bg.AssetRefs[0].SHA256) == "") {
-				return fmt.Errorf("overlay plan: %s background requires a resolvable asset", bg.Kind)
-			}
-		default:
-			return fmt.Errorf("overlay plan: unsupported background kind %q", bg.Kind)
-		}
-		for index, ref := range bg.AssetRefs {
-			if strings.TrimSpace(ref.AssetID) == "" {
-				return fmt.Errorf("overlay plan: background asset[%d] requires asset_id", index)
-			}
-		}
-	}
+	return nil
+}
+
+// validateItems walks the item list once, then pins the fingerprint.
+func (p *OverlayPlan) validateItems() error {
 	seenIDs := make(map[string]struct{}, len(p.Items))
 	for i := range p.Items {
-		item := p.Items[i]
-		if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.TemplateID) == "" {
-			return fmt.Errorf("overlay plan: item[%d] requires id and template_id", i)
-		}
-		if _, exists := seenIDs[item.ID]; exists {
-			return fmt.Errorf("overlay plan: duplicate item id %q", item.ID)
-		}
-		seenIDs[item.ID] = struct{}{}
-		if item.StartMs < 0 || item.EndMs <= item.StartMs {
-			return fmt.Errorf("overlay plan: item %q has invalid time range", item.ID)
-		}
-		if err := validateAnimationReferences(item); err != nil {
-			return fmt.Errorf("overlay plan: item %q: %w", item.ID, err)
-		}
-		// Integer-microsecond timing, when present, must be internally valid
-		// and consistent with the millisecond projection (floor start, ceil
-		// end) so the two representations never drift.
-		if item.DurationUS < 0 || item.StartUS < 0 {
-			return fmt.Errorf("overlay plan: item %q has invalid microsecond timing", item.ID)
-		}
-		if item.DurationUS > 0 {
-			if wantStart := item.StartUS / 1000; item.StartMs != wantStart {
-				return fmt.Errorf("overlay plan: item %q start_ms %d diverges from start_us %d", item.ID, item.StartMs, item.StartUS)
-			}
-			if wantEnd := (item.StartUS + item.DurationUS + 999) / 1000; item.EndMs != wantEnd {
-				return fmt.Errorf("overlay plan: item %q end_ms %d diverges from start_us+duration_us %d", item.ID, item.EndMs, item.StartUS+item.DurationUS)
-			}
-		}
-		// Preset contract: a preset_id is an opaque id resolved by the preset
-		// registry downstream — never validated against a local table here. It
-		// must only be non-empty when it carries a real value.
-		if strings.TrimSpace(item.PresetID) != item.PresetID {
-			return fmt.Errorf("overlay plan: item %q preset_id must not be blank-padded", item.ID)
-		}
-		if ref := item.EntityRef; ref != nil {
-			if strings.TrimSpace(ref.EntityID) == "" || strings.TrimSpace(ref.Type) == "" || strings.TrimSpace(ref.Name) == "" {
-				return fmt.Errorf("overlay plan: item %q entity_ref requires entity_id, type and name", item.ID)
-			}
-		}
-		assetIDs := make(map[string]bool, len(item.AssetRefs))
-		for assetIndex, ref := range item.AssetRefs {
-			if strings.TrimSpace(ref.AssetID) == "" {
-				return fmt.Errorf("overlay plan: item %q asset[%d] requires asset_id", item.ID, assetIndex)
-			}
-			assetIDs[ref.AssetID] = true
-		}
-		if sfx := item.SoundEffect; sfx != nil {
-			kind := strings.ToLower(strings.TrimSpace(item.Kind))
-			if kind != "image" && kind != "entity_image" && kind != "image_popup" && kind != "product" && kind != "logo" {
-				return fmt.Errorf("overlay plan: item %q sound_effect requires an image overlay", item.ID)
-			}
-			if strings.TrimSpace(sfx.AssetRef.AssetID) == "" || len(sfx.AssetRef.SHA256) != 64 || strings.Trim(sfx.AssetRef.SHA256, "0123456789abcdefABCDEF") != "" ||
-				strings.TrimSpace(sfx.AssetRef.URL) == "" || !strings.EqualFold(strings.TrimSpace(sfx.AssetRef.MediaType), "audio/mp4") ||
-				sfx.StartOffsetMS < 0 || sfx.DurationMS <= 0 || sfx.GainDB != sfx.GainDB || sfx.GainDB > 24 || sfx.GainDB < -96 ||
-				sfx.StartOffsetMS > item.EndMs-item.StartMs || sfx.DurationMS > item.EndMs-item.StartMs-sfx.StartOffsetMS {
-				return fmt.Errorf("overlay plan: item %q sound_effect requires valid audio identity, visible timing, positive duration, and gain in [-96,24] dB", item.ID)
-			}
-			visibleStartMS := int64(0)
-			visibleEndMS := item.EndMs - item.StartMs
-			if len(item.ImageLayers) > 0 {
-				firstLayer := item.ImageLayers[0]
-				for _, layer := range item.ImageLayers[1:] {
-					if layer.StartMS < firstLayer.StartMS {
-						firstLayer = layer
-					}
-				}
-				visibleStartMS, visibleEndMS = firstLayer.StartMS, firstLayer.EndMS
-				if visibleEndMS > item.EndMs-item.StartMs {
-					visibleEndMS = item.EndMs - item.StartMs
-				}
-			}
-			if sfx.StartOffsetMS != visibleStartMS || sfx.DurationMS > visibleEndMS-visibleStartMS {
-				return fmt.Errorf("overlay plan: item %q sound_effect must start with its first visible image and fit that image window", item.ID)
-			}
-		}
-		imageLayerIDs := make(map[string]struct{}, len(item.ImageLayers))
-		for layerIndex, layer := range item.ImageLayers {
-			if strings.TrimSpace(layer.ID) == "" || !assetIDs[layer.AssetID] {
-				return fmt.Errorf("overlay plan: item %q image_layers[%d] requires id and an asset_id declared by the item", item.ID, layerIndex)
-			}
-			if _, exists := imageLayerIDs[layer.ID]; exists {
-				return fmt.Errorf("overlay plan: item %q has duplicate image layer id %q", item.ID, layer.ID)
-			}
-			imageLayerIDs[layer.ID] = struct{}{}
-			if layer.StartMS < 0 || layer.EndMS <= layer.StartMS || layer.EndMS > item.EndMs-item.StartMs {
-				return fmt.Errorf("overlay plan: item %q image_layers[%d] has invalid relative time range", item.ID, layerIndex)
-			}
-		}
-		if len(item.ImageLayers) > 0 && (item.Kind != string(KindEntityImage) || len(item.ImageLayers) < 2 || len(item.AssetRefs) < 2) {
-			return fmt.Errorf("overlay plan: item %q composite images require an entity_image item with at least two image layers and assets", item.ID)
-		}
-		// Map contract: a map item MUST carry exactly one validated geospatial
-		// declaration over its single basemap asset, and no other kind may
-		// carry one. The declaration validates against the plan canvas so a
-		// plate authored for another size can never enter the wire.
-		if item.Kind == string(KindMap) {
-			if item.Map == nil {
-				return fmt.Errorf("overlay plan: map item %q requires a map declaration", item.ID)
-			}
-			if err := item.Map.Validate(p.Width, p.Height, item.AssetRefs); err != nil {
-				return fmt.Errorf("overlay plan: map item %q: %w", item.ID, err)
-			}
-		} else if item.Map != nil {
-			return fmt.Errorf("overlay plan: item %q must not carry a map declaration", item.ID)
-		}
-		if err := validateChartItem(item); err != nil {
+		if err := p.validateItem(i, seenIDs); err != nil {
 			return err
-		}
-		if err := ValidateChainItem(item); err != nil {
-			return err
-		}
-		if sfx := item.SoundEffect; sfx != nil {
-			if strings.TrimSpace(sfx.AssetRef.AssetID) == "" {
-				return fmt.Errorf("overlay plan: item %q sound_effect requires asset_ref.asset_id", item.ID)
-			}
-			assetIDs[sfx.AssetRef.AssetID] = true
-		}
-		key := ComputeRenderKey(*p, item)
-		if item.RenderKey != "" && item.RenderKey != key {
-			return fmt.Errorf("overlay plan: item %q render_key does not match render inputs", item.ID)
-		}
-		if item.RenderKey == "" {
-			item.RenderKey = key
-			p.Items[i] = item
 		}
 	}
 	if p.Fingerprint == "" {
 		p.Fingerprint = p.FingerprintValue()
 	} else if p.Fingerprint != p.FingerprintValue() {
 		return fmt.Errorf("overlay plan: fingerprint does not match plan contents")
+	}
+	return nil
+}
+
+// validateItem checks one item: identity, timing, asset and layer references,
+// sound effect, map/chart/chain contracts and the render key stamp.
+func (p *OverlayPlan) validateItem(i int, seenIDs map[string]struct{}) error {
+	item := &p.Items[i]
+	if strings.TrimSpace(item.ID) == "" || strings.TrimSpace(item.TemplateID) == "" {
+		return fmt.Errorf("overlay plan: item[%d] requires id and template_id", i)
+	}
+	if _, exists := seenIDs[item.ID]; exists {
+		return fmt.Errorf("overlay plan: duplicate item id %q", item.ID)
+	}
+	seenIDs[item.ID] = struct{}{}
+	if item.StartMs < 0 || item.EndMs <= item.StartMs {
+		return fmt.Errorf("overlay plan: item %q has invalid time range", item.ID)
+	}
+	if err := validateAnimationReferences(*item); err != nil {
+		return fmt.Errorf("overlay plan: item %q: %w", item.ID, err)
+	}
+	// Integer-microsecond timing, when present, must be internally valid
+	// and consistent with the millisecond projection (floor start, ceil
+	// end) so the two representations never drift.
+	if item.DurationUS < 0 || item.StartUS < 0 {
+		return fmt.Errorf("overlay plan: item %q has invalid microsecond timing", item.ID)
+	}
+	if item.DurationUS > 0 {
+		if wantStart := item.StartUS / 1000; item.StartMs != wantStart {
+			return fmt.Errorf("overlay plan: item %q start_ms %d diverges from start_us %d", item.ID, item.StartMs, item.StartUS)
+		}
+		if wantEnd := (item.StartUS + item.DurationUS + 999) / 1000; item.EndMs != wantEnd {
+			return fmt.Errorf("overlay plan: item %q end_ms %d diverges from start_us+duration_us %d", item.ID, item.EndMs, item.StartUS+item.DurationUS)
+		}
+	}
+	// Preset contract: a preset_id is an opaque id resolved by the preset
+	// registry downstream — never validated against a local table here. It
+	// must only be non-empty when it carries a real value.
+	if strings.TrimSpace(item.PresetID) != item.PresetID {
+		return fmt.Errorf("overlay plan: item %q preset_id must not be blank-padded", item.ID)
+	}
+	if ref := item.EntityRef; ref != nil {
+		if strings.TrimSpace(ref.EntityID) == "" || strings.TrimSpace(ref.Type) == "" || strings.TrimSpace(ref.Name) == "" {
+			return fmt.Errorf("overlay plan: item %q entity_ref requires entity_id, type and name", item.ID)
+		}
+	}
+	assetIDs, err := item.validateAssetRefs()
+	if err != nil {
+		return err
+	}
+	if err := item.validateSoundEffect(); err != nil {
+		return err
+	}
+	if err := item.validateImageLayers(assetIDs); err != nil {
+		return err
+	}
+	// Map contract: a map item MUST carry exactly one validated geospatial
+	// declaration over its single basemap asset, and no other kind may
+	// carry one. The declaration validates against the plan canvas so a
+	// plate authored for another size can never enter the wire.
+	if item.Kind == string(KindMap) {
+		if item.Map == nil {
+			return fmt.Errorf("overlay plan: map item %q requires a map declaration", item.ID)
+		}
+		if err := item.Map.Validate(p.Width, p.Height, item.AssetRefs); err != nil {
+			return fmt.Errorf("overlay plan: map item %q: %w", item.ID, err)
+		}
+	} else if item.Map != nil {
+		return fmt.Errorf("overlay plan: item %q must not carry a map declaration", item.ID)
+	}
+	if err := validateChartItem(*item); err != nil {
+		return err
+	}
+	if err := ValidateChainItem(*item); err != nil {
+		return err
+	}
+	if sfx := item.SoundEffect; sfx != nil {
+		if strings.TrimSpace(sfx.AssetRef.AssetID) == "" {
+			return fmt.Errorf("overlay plan: item %q sound_effect requires asset_ref.asset_id", item.ID)
+		}
+		assetIDs[sfx.AssetRef.AssetID] = true
+	}
+	key := ComputeRenderKey(*p, *item)
+	if item.RenderKey != "" && item.RenderKey != key {
+		return fmt.Errorf("overlay plan: item %q render_key does not match render inputs", item.ID)
+	}
+	if item.RenderKey == "" {
+		item.RenderKey = key
+	}
+	return nil
+}
+
+// validateAssetRefs checks the item's asset list and returns the declared
+// asset id set, which the layer and sound-effect checks consume.
+func (item *OverlayItem) validateAssetRefs() (map[string]bool, error) {
+	assetIDs := make(map[string]bool, len(item.AssetRefs))
+	for assetIndex, ref := range item.AssetRefs {
+		if strings.TrimSpace(ref.AssetID) == "" {
+			return nil, fmt.Errorf("overlay plan: item %q asset[%d] requires asset_id", item.ID, assetIndex)
+		}
+		assetIDs[ref.AssetID] = true
+	}
+	return assetIDs, nil
+}
+
+// validateSoundEffect pins the sound-effect audio identity, gain and the
+// window in which the first visible image is on screen.
+func (item *OverlayItem) validateSoundEffect() error {
+	sfx := item.SoundEffect
+	if sfx == nil {
+		return nil
+	}
+	kind := strings.ToLower(strings.TrimSpace(item.Kind))
+	if kind != "image" && kind != "entity_image" && kind != "image_popup" && kind != "product" && kind != "logo" {
+		return fmt.Errorf("overlay plan: item %q sound_effect requires an image overlay", item.ID)
+	}
+	if strings.TrimSpace(sfx.AssetRef.AssetID) == "" || !digest.IsSHA256(sfx.AssetRef.SHA256) ||
+		strings.TrimSpace(sfx.AssetRef.URL) == "" || !strings.EqualFold(strings.TrimSpace(sfx.AssetRef.MediaType), "audio/mp4") ||
+		sfx.StartOffsetMS < 0 || sfx.DurationMS <= 0 || sfx.GainDB != sfx.GainDB || sfx.GainDB > 24 || sfx.GainDB < -96 ||
+		sfx.StartOffsetMS > item.EndMs-item.StartMs || sfx.DurationMS > item.EndMs-item.StartMs-sfx.StartOffsetMS {
+		return fmt.Errorf("overlay plan: item %q sound_effect requires valid audio identity, visible timing, positive duration, and gain in [-96,24] dB", item.ID)
+	}
+	visibleStartMS := int64(0)
+	visibleEndMS := item.EndMs - item.StartMs
+	if len(item.ImageLayers) > 0 {
+		firstLayer := item.ImageLayers[0]
+		for _, layer := range item.ImageLayers[1:] {
+			if layer.StartMS < firstLayer.StartMS {
+				firstLayer = layer
+			}
+		}
+		visibleStartMS, visibleEndMS = firstLayer.StartMS, firstLayer.EndMS
+		if visibleEndMS > item.EndMs-item.StartMs {
+			visibleEndMS = item.EndMs - item.StartMs
+		}
+	}
+	if sfx.StartOffsetMS != visibleStartMS || sfx.DurationMS > visibleEndMS-visibleStartMS {
+		return fmt.Errorf("overlay plan: item %q sound_effect must start with its first visible image and fit that image window", item.ID)
+	}
+	return nil
+}
+
+// validateImageLayers pins layer identity, uniqueness, relative timing and the
+// composite-image contract that pairs layers with declared assets.
+func (item *OverlayItem) validateImageLayers(assetIDs map[string]bool) error {
+	imageLayerIDs := make(map[string]struct{}, len(item.ImageLayers))
+	for layerIndex, layer := range item.ImageLayers {
+		if strings.TrimSpace(layer.ID) == "" || !assetIDs[layer.AssetID] {
+			return fmt.Errorf("overlay plan: item %q image_layers[%d] requires id and an asset_id declared by the item", item.ID, layerIndex)
+		}
+		if _, exists := imageLayerIDs[layer.ID]; exists {
+			return fmt.Errorf("overlay plan: item %q has duplicate image layer id %q", item.ID, layer.ID)
+		}
+		imageLayerIDs[layer.ID] = struct{}{}
+		if layer.StartMS < 0 || layer.EndMS <= layer.StartMS || layer.EndMS > item.EndMs-item.StartMs {
+			return fmt.Errorf("overlay plan: item %q image_layers[%d] has invalid relative time range", item.ID, layerIndex)
+		}
+	}
+	if len(item.ImageLayers) > 0 && (item.Kind != string(KindEntityImage) || len(item.ImageLayers) < 2 || len(item.AssetRefs) < 2) {
+		return fmt.Errorf("overlay plan: item %q composite images require an entity_image item with at least two image layers and assets", item.ID)
 	}
 	return nil
 }

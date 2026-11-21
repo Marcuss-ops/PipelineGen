@@ -19,6 +19,10 @@ import (
 // caller's context cancellation also propagates through the request.
 const embeddingHTTPTimeout = 30 * time.Second
 
+// embeddingHTTPClient is shared across calls so pHash requests reuse the
+// connection pool; a per-call &http.Client{} opened a new pool every time.
+var embeddingHTTPClient = &http.Client{Timeout: embeddingHTTPTimeout}
+
 // checkPHashDeduplication checks if a similar clip already exists using perceptual hashing.
 func (p *Processor) checkPHashDeduplication(ctx context.Context, clipID, videoPath string) (string, error) {
 	phash := p.phashForVideo(ctx, videoPath)
@@ -115,7 +119,7 @@ func (p *Processor) extractPHash(ctx context.Context, videoPath string) string {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := (&http.Client{Timeout: embeddingHTTPTimeout}).Do(req)
+	resp, err := embeddingHTTPClient.Do(req)
 	if err != nil {
 		p.log.Warn("failed to connect to embedding server for pHash", zap.Error(err))
 		return ""

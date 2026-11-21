@@ -27,6 +27,46 @@ type document struct {
 	Profiles []Profile `yaml:"profiles"`
 }
 
+// shadowEnabledPresence reads only the enabled key of every
+// overlay_style.shadow block. The canonical script.OverlayShadowSpec carries
+// Enabled as a plain bool (the JSON wire contract), so decoding a profile
+// directly into it cannot tell an absent key from an explicit false. This
+// one-key probe restores the profile rule "declaring a shadow block enables it
+// unless it says enabled: false" without mirroring any other field: every
+// style value itself decodes into the kernel type.
+type shadowEnabledPresence struct {
+	Profiles []struct {
+		OverlayStyle *struct {
+			Shadow *struct {
+				Enabled *bool `yaml:"enabled"`
+			} `yaml:"shadow"`
+		} `yaml:"overlay_style"`
+	} `yaml:"profiles"`
+}
+
+// applyShadowEnabledDefault fills the profile-level shadow default after the
+// canonical decode. It is index-aligned with the profiles the same bytes
+// produced, and a block that spelled the key (true or false) is left alone.
+func applyShadowEnabledDefault(profiles []Profile, data []byte) {
+	var presence shadowEnabledPresence
+	if err := yaml.Unmarshal(data, &presence); err != nil {
+		return
+	}
+	for i := range profiles {
+		if i >= len(presence.Profiles) {
+			return
+		}
+		style := profiles[i].OverlayStyle
+		probe := presence.Profiles[i].OverlayStyle
+		if style == nil || style.Shadow == nil || probe == nil || probe.Shadow == nil {
+			continue
+		}
+		if probe.Shadow.Enabled == nil {
+			style.Shadow.Enabled = true
+		}
+	}
+}
+
 var (
 	registryMu sync.RWMutex
 	installed  = map[string]Profile{}
@@ -40,6 +80,7 @@ func Parse(data []byte) ([]Profile, error) {
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("channelprofile: decode document: %w", err)
 	}
+	applyShadowEnabledDefault(doc.Profiles, data)
 	if doc.Version != DocumentVersion {
 		return nil, fmt.Errorf("channelprofile: document version %d is not %d", doc.Version, DocumentVersion)
 	}

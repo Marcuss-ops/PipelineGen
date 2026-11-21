@@ -69,9 +69,6 @@ func TestExplicitClipNamingPreservesExistingFallbacks(t *testing.T) {
 	if got := ClipFolderName(&RunInput{Subfolder: "root/parent/child"}, ClipPlan{Round: 7}, "parent"); got != "parent" {
 		t.Fatalf("ClipFolderName() explicit subfolder = %q, want parent", got)
 	}
-	if got := TimestampParentLeafName(ClipPlan{ParentSlug: "parent_slug", Title: "ignored"}); got != "parent_slug" {
-		t.Fatalf("TimestampParentLeafName() parent slug = %q, want parent_slug", got)
-	}
 }
 
 func TestSanitizedURLBasenameStripsQueryAndFragment(t *testing.T) {

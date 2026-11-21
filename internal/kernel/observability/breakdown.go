@@ -16,6 +16,23 @@ type CriticalPathStage struct {
 	DurationMs int64 `json:"duration_ms"`
 	// Percent is the stage's share of total run wall time.
 	Percent float64 `json:"percent"`
+	// Anchored reports whether StartOffsetMs/EndOffsetMs are measured. A stage
+	// recorded without a start/finish pair keeps Anchored=false, so an
+	// unmeasured stage is never placed at offset 0 by accident.
+	Anchored bool `json:"anchored,omitempty"`
+	// StartOffsetMs and EndOffsetMs are the stage's wall-clock offsets from the
+	// run start, clamped to the run wall. They turn the critical path into a
+	// checkable timeline: two phases that are back-to-back prove the pipeline
+	// is serial, and two whose offsets overlap prove work ran concurrently.
+	// Omitted when zero (the run start itself); read them together with
+	// Anchored.
+	StartOffsetMs int64 `json:"start_offset_ms,omitempty"`
+	EndOffsetMs   int64 `json:"end_offset_ms,omitempty"`
+	// GapBeforeMs is the measured wall between the previous anchored stage's
+	// end and this stage's start (for the first anchored stage, the wall before
+	// it). Zero means the chain is back-to-back; a non-zero value is dead time
+	// between phases, not a missing duration.
+	GapBeforeMs int64 `json:"gap_before_ms,omitempty"`
 }
 
 // Breakdown is the canonical per-run timing breakdown derived from a
@@ -100,7 +117,7 @@ func (r *RunReport) breakdownWithWall(wall int64) Breakdown {
 		AttributedStageMs: attributed,
 		UnattributedMs:    unattributed,
 		OverlappedMs:      overlapped,
-		CriticalPath:      criticalPathStages(top, wall),
+		CriticalPath:      criticalPathStages(top, wall, r.StartedAt),
 	}
 	if wall > 0 {
 		b.UnattributedPercent = float64(unattributed) / float64(wall) * 100
@@ -260,7 +277,7 @@ func attributedFallback(r *RunReport, wall int64) int64 {
 // path. Stages are ordered by wall-time start; stages without a start anchor
 // keep their input order and sort after anchored ones so legacy unanchored
 // stages remain represented deterministically.
-func criticalPathStages(top []StageReport, wall int64) []CriticalPathStage {
+func criticalPathStages(top []StageReport, wall int64, base time.Time) []CriticalPathStage {
 	if len(top) == 0 {
 		return nil
 	}
@@ -279,10 +296,28 @@ func criticalPathStages(top []StageReport, wall int64) []CriticalPathStage {
 		return si.Before(sj)
 	})
 	out := make([]CriticalPathStage, 0, len(ordered))
+	prevEnd := int64(-1)
 	for _, st := range ordered {
 		cp := CriticalPathStage{Name: st.Name, DurationMs: nonNegative(st.DurationMs)}
 		if wall > 0 {
 			cp.Percent = float64(st.DurationMs) / float64(wall) * 100
+		}
+		// Anchored stages carry their real position on the wall, so a reader can
+		// tell a sequential chain (gap 0, contiguous offsets) from concurrent
+		// phases (overlapping offsets) without re-reading raw timestamps.
+		if iv, ok := wallIntervalFor(st.StartedAt, st.FinishedAt, base, wall); ok {
+			cp.Anchored = true
+			cp.StartOffsetMs = iv.start
+			cp.EndOffsetMs = iv.end
+			gap := iv.start
+			if prevEnd >= 0 {
+				gap = iv.start - prevEnd
+			}
+			if gap < 0 {
+				gap = 0
+			}
+			cp.GapBeforeMs = gap
+			prevEnd = iv.end
 		}
 		out = append(out, cp)
 	}

@@ -242,9 +242,14 @@ type mediaMetadata struct {
 	StartPTS         int64               `json:"start_pts"`
 	HasVideo         bool                `json:"has_video"`
 	HasAudio         bool                `json:"has_audio"`
-	// Stage timings populated only by render_audio_plan (mix → AAC encode →
-	// probe → hash). Zero everywhere else; final_audio_sha256 is the digest
-	// Rust computed over the published output.
+	// Stage timings populated only by render_audio_plan (prepare/loudness →
+	// mix → AAC encode → probe → hash). Zero everywhere else;
+	// final_audio_sha256 is the digest Rust computed over the published
+	// output. PrepareMS/LoudnessMS cover the pre-mix block: source probing and
+	// chain resolution, of which the BGM whole-asset mean-volume measurement
+	// is reported separately.
+	PrepareMS        int64  `json:"prepare_ms"`
+	LoudnessMS       int64  `json:"loudness_ms"`
 	MixMS            int64  `json:"mix_ms"`
 	AACEncodeMS      int64  `json:"aac_encode_ms"`
 	ProbeMS          int64  `json:"probe_ms"`

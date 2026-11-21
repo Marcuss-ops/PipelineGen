@@ -122,16 +122,6 @@ func CanonicalRightsStatusValues() []RightsStatus {
 	}
 }
 
-// validRightsStatusSet is the O(1) membership set backing
-// Valid(). Built once at init from CanonicalRightsStatusValues().
-var validRightsStatusSet = func() map[RightsStatus]struct{} {
-	m := make(map[RightsStatus]struct{}, len(CanonicalRightsStatusValues()))
-	for _, s := range CanonicalRightsStatusValues() {
-		m[s] = struct{}{}
-	}
-	return m
-}()
-
 // ── Review Status (parallel surface, distinct semantics) ─────────────
 
 // ReviewStatus tracks whether the operator is actively auditing

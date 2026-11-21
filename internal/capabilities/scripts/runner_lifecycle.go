@@ -98,6 +98,9 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 				zap.Int64("handoff_ms", timing.HandoffMS),
 				zap.Int64("wait_ms", timing.WaitMS),
 				zap.Int64("poll_lag_ms", timing.PollLagMS),
+				zap.Int64("artifact_download_ms", timing.ArtifactDownloadMS),
+				zap.Int64("artifact_download_bytes", timing.ArtifactDownloadBytes),
+				zap.Bool("artifact_download_reused", timing.ArtifactDownloadReused),
 				zap.Int("polls", timing.Polls))
 		}
 		r.log.Info("remote final job completed", fields...)
@@ -368,7 +371,11 @@ func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage
 }
 
 // completeRun marks the run as COMPLETED and saves the final result.
-func (r *Runner) completeRun(ctx context.Context, runID string, result *GenerateResult) {
+// completeRun certifies the result and persists the terminal state. It returns
+// the persistence error instead of swallowing it: a run whose checkpoint or
+// COMPLETED transition did not land is not complete, and the caller must
+// surface that as a durable failure rather than report success.
+func (r *Runner) completeRun(ctx context.Context, runID string, result *GenerateResult) error {
 	if result != nil && result.ExpectedRenderCount > 0 {
 		// A resumed durable attempt may load a checkpoint containing render
 		// receipts written before an earlier attempt failed. Collapse those
@@ -384,10 +391,10 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 			result.RenderMetrics.Successful = actual
 			result.RenderMetrics.Failed = failed
 		}
-		if actual != result.ExpectedRenderCount || failed != 0 {
+		if !renderSetSatisfiesExpectation(result.ExpectedRenderCount, actual, failed) {
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments,
 				fmt.Errorf("INCOMPLETE_RENDER_SET: expected=%d successful=%d failed=%d", result.ExpectedRenderCount, actual, failed))
-			return
+			return nil
 		}
 	}
 	r.log.Info("scriptgeneration: run completed",
@@ -451,14 +458,23 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 			zap.Float64("unattributed_percent", sum.UnattributedPercent),
 		)
 	}
-	r.checkpoint(ctx, runID, result)
-	if updateErr := r.repo.UpdateStage(ctx, runID, RunStatusCompleted, StageCompleted); updateErr != nil {
-		r.log.Error("failed to persist run completion",
-			zap.String("run_id", runID),
-			zap.Error(updateErr),
-		)
+	if err := r.checkpoint(ctx, runID, result); err != nil {
+		// The checkpoint is what a later resume adopts; losing it while writing
+		// COMPLETED would certify a run whose durable result is not stored.
+		return fmt.Errorf("final checkpoint: %w", err)
+	}
+	if err := r.repo.UpdateStage(ctx, runID, RunStatusCompleted, StageCompleted); err != nil {
+		return fmt.Errorf("persist run completion: %w", err)
 	}
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "complete_finalize"}, completeStarted, time.Now(), nil)
+	return nil
+}
+
+// renderSetSatisfiesExpectation enforces the exact render-unit contract.
+// Additional renders indicate a dispatch/planning mismatch and must not be
+// silently certified as a complete run.
+func renderSetSatisfiesExpectation(expected, successful, failed int) bool {
+	return successful == expected && failed == 0
 }
 
 func dedupeLocalizedRenders(renders []LocalizedRenderResult) []LocalizedRenderResult {

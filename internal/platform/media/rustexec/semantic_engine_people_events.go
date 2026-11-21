@@ -1,20 +1,22 @@
 package rustexec
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"unicode"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
-func projectSemanticPersonRoles(source string, identities []semanticEngineIdentity, roles []semanticEnginePersonRole) ([]scriptgen.SemanticPersonRole, error) {
+func projectSemanticPersonRoles(source string, identities []semanticEngineIdentity, roles []semanticEnginePersonRole) ([]semanticscript.SemanticPersonRole, error) {
 	identityIDs := make(map[string]struct{}, len(identities))
 	for _, identity := range identities {
 		identityIDs[identity.ID] = struct{}{}
 	}
-	out := make([]scriptgen.SemanticPersonRole, 0, len(roles))
+	out := make([]semanticscript.SemanticPersonRole, 0, len(roles))
 	for _, role := range roles {
 		if _, ok := identityIDs[role.PersonID]; !ok || role.ID == "" || role.RoleCode == "" || role.RoleSurface == "" ||
 			!groundedSpan(source, role.StartByte, role.EndByte, role.RoleSurface) || !evidenceContainsSpan(source, role.Evidence, role.StartByte, role.EndByte) {
@@ -38,18 +40,18 @@ func projectSemanticPersonRoles(source string, identities []semanticEngineIdenti
 				return nil, fmt.Errorf("role %q references missing place identity %q", role.ID, *role.PlaceID)
 			}
 		}
-		var temporal *scriptgen.SemanticRoleTemporal
+		var temporal *semanticscript.SemanticRoleTemporal
 		if role.Temporal != nil {
 			if !groundedSpan(source, role.Temporal.StartByte, role.Temporal.EndByte, role.Temporal.Surface) {
 				return nil, fmt.Errorf("role %q has ungrounded temporal evidence", role.ID)
 			}
-			temporal = &scriptgen.SemanticRoleTemporal{
+			temporal = &semanticscript.SemanticRoleTemporal{
 				Surface: role.Temporal.Surface, NormalizedDate: derefString(role.Temporal.NormalizedDate),
 				Precision: role.Temporal.Precision, Kind: role.Temporal.Kind, Era: derefString(role.Temporal.Era),
 				Start: role.Temporal.StartByte, End: role.Temporal.EndByte, Ambiguous: role.Temporal.Ambiguous,
 			}
 		}
-		out = append(out, scriptgen.SemanticPersonRole{
+		out = append(out, semanticscript.SemanticPersonRole{
 			ID: role.ID, PersonID: role.PersonID, RoleCode: role.RoleCode, RoleSurface: role.RoleSurface,
 			Gender: role.Gender, Rank: role.Rank, OrganizationID: derefString(role.OrganizationID),
 			PlaceID: derefString(role.PlaceID), Tense: role.Tense, Status: role.Status,
@@ -60,12 +62,12 @@ func projectSemanticPersonRoles(source string, identities []semanticEngineIdenti
 	return out, nil
 }
 
-func projectSemanticPersonAges(source string, identities []semanticEngineIdentity, ages []semanticEnginePersonAgeFact) ([]scriptgen.SemanticPersonAgeFact, error) {
+func projectSemanticPersonAges(source string, identities []semanticEngineIdentity, ages []semanticEnginePersonAgeFact) ([]semanticscript.SemanticPersonAgeFact, error) {
 	identityIDs := make(map[string]struct{}, len(identities))
 	for _, identity := range identities {
 		identityIDs[identity.ID] = struct{}{}
 	}
-	out := make([]scriptgen.SemanticPersonAgeFact, 0, len(ages))
+	out := make([]semanticscript.SemanticPersonAgeFact, 0, len(ages))
 	for _, age := range ages {
 		_, identityOK := identityIDs[age.PersonID]
 		surface := sourceSlice(source, age.StartByte, age.EndByte)
@@ -78,7 +80,7 @@ func projectSemanticPersonAges(source string, identities []semanticEngineIdentit
 			!evidenceContainsSpan(source, age.Evidence, age.StartByte, age.EndByte) {
 			return nil, fmt.Errorf("age fact for %q is ungrounded or invalid", age.PersonID)
 		}
-		out = append(out, scriptgen.SemanticPersonAgeFact{
+		out = append(out, semanticscript.SemanticPersonAgeFact{
 			PersonID: age.PersonID, Age: age.Age, AsOf: derefString(age.AsOf),
 			DerivedBirthYear: age.DerivedBirthYear, Start: age.StartByte, End: age.EndByte,
 			SentenceIndex: age.SentenceIndex, Evidence: age.Evidence,
@@ -112,12 +114,12 @@ func hasAgeContext(source string, start, end int) bool {
 	return false
 }
 
-func projectSemanticPersonRelations(source string, identities []semanticEngineIdentity, relations []semanticEnginePersonRelation) ([]scriptgen.SemanticPersonRelation, error) {
+func projectSemanticPersonRelations(source string, identities []semanticEngineIdentity, relations []semanticEnginePersonRelation) ([]semanticscript.SemanticPersonRelation, error) {
 	identityIDs := make(map[string]struct{}, len(identities))
 	for _, identity := range identities {
 		identityIDs[identity.ID] = struct{}{}
 	}
-	out := make([]scriptgen.SemanticPersonRelation, 0, len(relations))
+	out := make([]semanticscript.SemanticPersonRelation, 0, len(relations))
 	for _, relation := range relations {
 		_, fromOK := identityIDs[relation.FromID]
 		_, toOK := identityIDs[relation.ToID]
@@ -126,7 +128,7 @@ func projectSemanticPersonRelations(source string, identities []semanticEngineId
 			!evidenceContainsSpan(source, relation.Evidence, relation.StartByte, relation.EndByte) {
 			return nil, fmt.Errorf("person relation %q -> %q is ungrounded or invalid", relation.FromID, relation.ToID)
 		}
-		out = append(out, scriptgen.SemanticPersonRelation{
+		out = append(out, semanticscript.SemanticPersonRelation{
 			FromID: relation.FromID, ToID: relation.ToID, Kind: relation.Kind, Status: relation.Status,
 			Start: relation.StartByte, End: relation.EndByte, SentenceIndex: relation.SentenceIndex,
 			Evidence: relation.Evidence,
@@ -135,7 +137,7 @@ func projectSemanticPersonRelations(source string, identities []semanticEngineId
 	return out, nil
 }
 
-func projectSemanticEvents(texts map[string]string, scenes []semanticEngineSceneManifest, entities []semanticEngineLinkedEntity, events []semanticEngineEventFrame) ([]scriptgen.SemanticEventFrame, error) {
+func projectSemanticEvents(texts map[string]string, scenes []semanticEngineSceneManifest, entities []semanticEngineLinkedEntity, events []semanticEngineEventFrame) ([]semanticscript.SemanticEventFrame, error) {
 	sceneByID := make(map[string]semanticEngineSceneManifest, len(scenes))
 	for _, scene := range scenes {
 		sceneByID[scene.SceneID] = scene
@@ -144,19 +146,28 @@ func projectSemanticEvents(texts map[string]string, scenes []semanticEngineScene
 	for _, entity := range entities {
 		entityIDs[entity.LocalID] = struct{}{}
 	}
-	out := make([]scriptgen.SemanticEventFrame, 0, len(events))
-	seen := make(map[string]struct{}, len(events))
+	out := make([]semanticscript.SemanticEventFrame, 0, len(events))
+	seen := make(map[string]semanticEngineEventFrame, len(events))
 	for _, event := range events {
 		if event.ID == "" || event.EventType == "" || event.Trigger == "" ||
 			!oneOf(event.Status, "asserted", "negated", "uncertain") ||
 			len(event.Evidence) == 0 {
 			return nil, fmt.Errorf("event %q has an invalid trigger or status", event.ID)
 		}
-		if _, exists := seen[event.ID]; exists {
-			return nil, fmt.Errorf("duplicate event id %q", event.ID)
+		if previous, exists := seen[event.ID]; exists {
+			// The Rust worker can classify the same grounded event under more
+			// than one event_type (for example "won" is offered as both
+			// "election" and "match_competition_result"). That is one event
+			// with two candidate labels, not two facts: keep the first label
+			// and collapse the repeat. A duplicate whose grounding actually
+			// differs is a real identity conflict and stays fail-closed.
+			if !sameSemanticEventGrounding(previous, event) {
+				return nil, fmt.Errorf("duplicate event id %q with conflicting frames: first=%s second=%s", event.ID, semanticEventFrameJSON(previous), semanticEventFrameJSON(event))
+			}
+			continue
 		}
-		seen[event.ID] = struct{}{}
-		evidence := make([]scriptgen.SemanticEventEvidence, 0, len(event.Evidence))
+		seen[event.ID] = event
+		evidence := make([]semanticscript.SemanticEventEvidence, 0, len(event.Evidence))
 		mentionedScenes := make(map[string]struct{}, len(event.Evidence))
 		triggerGrounded := false
 		for _, item := range event.Evidence {
@@ -166,7 +177,7 @@ func projectSemanticEvents(texts map[string]string, scenes []semanticEngineScene
 			}
 			mentionedScenes[item.SceneID] = struct{}{}
 			triggerGrounded = triggerGrounded || groundedSpan(text, event.TriggerStartByte, event.TriggerEndByte, event.Trigger)
-			evidence = append(evidence, scriptgen.SemanticEventEvidence{SceneID: item.SceneID, Text: item.Text, Start: item.StartByte, End: item.EndByte})
+			evidence = append(evidence, semanticscript.SemanticEventEvidence{SceneID: item.SceneID, Text: item.Text, Start: item.StartByte, End: item.EndByte})
 		}
 		if !triggerGrounded {
 			return nil, fmt.Errorf("event %q trigger is not grounded in its evidence scenes", event.ID)
@@ -182,7 +193,7 @@ func projectSemanticEvents(texts map[string]string, scenes []semanticEngineScene
 		if len(event.SceneIDs) == 0 || len(mentionedScenes) != len(event.SceneIDs) {
 			return nil, fmt.Errorf("event %q scene ids do not match its evidence", event.ID)
 		}
-		participants := make([]scriptgen.SemanticEventParticipant, 0, len(event.Participants))
+		participants := make([]semanticscript.SemanticEventParticipant, 0, len(event.Participants))
 		for _, participant := range event.Participants {
 			if participant.Role == "" || participant.EntityID == "" {
 				return nil, fmt.Errorf("event %q has an incomplete participant", event.ID)
@@ -190,7 +201,7 @@ func projectSemanticEvents(texts map[string]string, scenes []semanticEngineScene
 			if _, ok := entityIDs[participant.EntityID]; !ok {
 				return nil, fmt.Errorf("event %q references missing participant %q", event.ID, participant.EntityID)
 			}
-			participants = append(participants, scriptgen.SemanticEventParticipant{Role: participant.Role, EntityID: participant.EntityID})
+			participants = append(participants, semanticscript.SemanticEventParticipant{Role: participant.Role, EntityID: participant.EntityID})
 		}
 		var placeID string
 		if event.PlaceID != nil {
@@ -205,13 +216,13 @@ func projectSemanticEvents(texts map[string]string, scenes []semanticEngineScene
 				return nil, fmt.Errorf("event %q references missing place %q", event.ID, placeID)
 			}
 		}
-		var eventTime *scriptgen.SemanticEventTime
+		var eventTime *semanticscript.SemanticEventTime
 		if event.Time != nil {
-			eventTime = &scriptgen.SemanticEventTime{
+			eventTime = &semanticscript.SemanticEventTime{
 				FactIndex: event.Time.FactIndex, Date: derefString(event.Time.NormalizedDate), Derived: event.Time.Derived,
 			}
 		}
-		out = append(out, scriptgen.SemanticEventFrame{
+		out = append(out, semanticscript.SemanticEventFrame{
 			ID: event.ID, EventType: event.EventType, Trigger: event.Trigger, Status: event.Status, PlaceID: placeID,
 			TriggerStart: event.TriggerStartByte, TriggerEnd: event.TriggerEndByte,
 			SceneIDs: append([]string(nil), event.SceneIDs...), Participants: participants, Evidence: evidence,
@@ -220,6 +231,37 @@ func projectSemanticEvents(texts map[string]string, scenes []semanticEngineScene
 		})
 	}
 	return out, nil
+}
+
+// sameSemanticEventGrounding reports whether two frames describe the same
+// grounded event. event_type is deliberately excluded: it is a classification
+// label, and the engine may emit the same span/evidence with more than one
+// candidate label. Every field that proves WHAT happened and WHERE it is
+// grounded must match.
+func sameSemanticEventGrounding(a, b semanticEngineEventFrame) bool {
+	return a.Trigger == b.Trigger &&
+		a.TriggerStartByte == b.TriggerStartByte &&
+		a.TriggerEndByte == b.TriggerEndByte &&
+		a.Status == b.Status &&
+		reflect.DeepEqual(a.Participants, b.Participants) &&
+		reflect.DeepEqual(a.PlaceID, b.PlaceID) &&
+		reflect.DeepEqual(a.Time, b.Time) &&
+		reflect.DeepEqual(a.SceneIDs, b.SceneIDs) &&
+		reflect.DeepEqual(a.Evidence, b.Evidence)
+}
+
+// semanticEventFrameJSON renders a conflicting frame for the operator without
+// letting an oversized evidence list swamp the log line.
+func semanticEventFrameJSON(frame semanticEngineEventFrame) string {
+	raw, err := json.Marshal(frame)
+	if err != nil {
+		return "<unencodable>"
+	}
+	const limit = 3000
+	if len(raw) > limit {
+		return string(raw[:limit]) + "..."
+	}
+	return string(raw)
 }
 
 func evidenceContainsSpan(source, evidence string, start, end int) bool {
@@ -241,15 +283,6 @@ func evidenceContainsSpan(source, evidence string, start, end int) bool {
 			return false
 		}
 	}
-}
-
-func groundedSpanInAnyScene(texts map[string]string, start, end int, value string) bool {
-	for _, text := range texts {
-		if groundedSpan(text, start, end, value) {
-			return true
-		}
-	}
-	return false
 }
 
 func sourceSlice(source string, start, end int) string {

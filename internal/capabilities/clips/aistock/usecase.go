@@ -13,6 +13,7 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"go.uber.org/zap"
 )
 
@@ -216,7 +217,7 @@ func (uc *UseCase) composeSearchText(doc visualanalysis.Document) string {
 
 // canonicalDriveWebURL returns the canonical Google Drive web view link.
 func canonicalDriveWebURL(fileID string) string {
-	return fmt.Sprintf("https://drive.google.com/file/d/%s/view", fileID)
+	return urlutil.DriveFileURL(fileID)
 }
 
 // canonicalDriveDownloadURL returns the canonical Google Drive download link.

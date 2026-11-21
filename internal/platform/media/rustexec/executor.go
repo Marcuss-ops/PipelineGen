@@ -109,13 +109,6 @@ func NewExecutorWithOutputLimit(binaryPath, ffmpegPath string, slots int, output
 	return executor
 }
 
-// NewMultiplexedExecutorWithOutputLimit uses one ordered NDJSON worker with a
-// bounded number of in-flight requests. It is intended for CPU-only workers
-// whose protocol guarantees one response line per request in input order.
-func NewMultiplexedExecutorWithOutputLimit(binaryPath, ffmpegPath string, maxInFlight int, outputLimit int64, log *zap.Logger) *Executor {
-	return NewMultiplexedExecutorWithEnvironment(binaryPath, ffmpegPath, maxInFlight, outputLimit, nil, log)
-}
-
 // NewMultiplexedExecutorWithEnvironment is the same worker with explicit
 // KEY=VALUE environment overrides (used to opt semantic-engine into its disk
 // cache). Nil env keeps the inherited environment.

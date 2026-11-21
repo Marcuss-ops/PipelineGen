@@ -102,9 +102,16 @@ func (e *executionRun) start() bool {
 	}
 	e.routing = routing
 
-	// Determine resume stage from the existing run (if any).
+	// Determine resume stage from the existing run (if any). Only a typed
+	// "not found" starts a fresh run: any other read failure (timeout, closed
+	// connection, decode error) must fail the attempt instead of overwriting the
+	// checkpoint with a from-scratch run, which would re-pay work the durable
+	// result already certified.
 	run, err := e.r.repo.Get(e.ctx, e.runID)
 	e.resumeIdx = -1 // -1 means start from beginning
+	if err != nil && !errors.Is(err, ErrRunNotFound) {
+		return e.fail(StageNormalizing, fmt.Errorf("load run %s: %w", e.runID, err))
+	}
 	if err == nil && run != nil {
 		resumeStage := ResumeFrom(run)
 		if run.Status == RunStatusFailed && run.FailedStage == StagePublishingDocuments && missingUnpublishedFinalAudio(run.Result) {
@@ -158,7 +165,8 @@ func (e *executionRun) start() bool {
 		)
 		e.run = run
 	} else {
-		// New run — set RUNNING.
+		// New run (or a repository that reports a nil run without a typed error)
+		// — set RUNNING.
 		if err := e.r.updateStage(e.ctx, e.runID, RunStatusRunning, StageNormalizing); err != nil {
 			return e.fail(StageNormalizing, err)
 		}
@@ -542,5 +550,13 @@ func (e *executionRun) complete() {
 		// complete so a restart never loses a successful upload.
 		e.r.checkpoint(e.ctx, e.runID, e.result)
 	}
-	e.r.completeRun(e.ctx, e.runID, e.result)
+	if err := e.r.completeRun(e.ctx, e.runID, e.result); err != nil {
+		// Completion persistence is part of the run's contract: without the
+		// checkpoint and the COMPLETED transition the run is not done. Mark it
+		// failed at the publication boundary (idempotent on resume) and let the
+		// durable state carry the error; a log line alone would report success
+		// while the row still says RUNNING.
+		e.r.failRunWithRetry(e.ctx, e.runID, StagePublishingDocuments,
+			fmt.Errorf("complete run: %w", err))
+	}
 }

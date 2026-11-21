@@ -73,7 +73,11 @@ func ApplyChannelProfile(req *GenerateRequest, p channelprofile.Profile) error {
 	}
 
 	if req.OverlayStyle == nil && p.OverlayStyle != nil {
-		req.OverlayStyle = p.OverlayStyle.OverlayStyle()
+		// The profile decodes the canonical kernel spec, so the fill is a
+		// direct reference: no projection step and therefore no field a
+		// newly added kernel block could silently miss. Profiles are
+		// immutable once installed and nothing downstream mutates the block.
+		req.OverlayStyle = p.OverlayStyle
 	}
 	if len(req.ImageMotions) == 0 && len(p.ImageMotions) > 0 {
 		req.ImageMotions = append([]string(nil), p.ImageMotions...)

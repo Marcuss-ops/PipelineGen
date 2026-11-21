@@ -25,8 +25,8 @@ func TestApplyChannelProfileFillsBlankSurfaces(t *testing.T) {
 		ChannelID: "crime",
 		Subtitles: &channelprofile.SubtitlesProfile{Preset: "impact"},
 		Watermark: &channelprofile.WatermarkProfile{Text: "CRIME FILES", Position: "top_right", MarginPX: 48},
-		OverlayStyle: &channelprofile.OverlayStyleProfile{
-			TransitionIn: &channelprofile.OverlayTransitionProfile{Preset: "fade_in", DurationFrames: 8},
+		OverlayStyle: &scriptpkg.OverlayStyleSpec{
+			TransitionIn: &scriptpkg.OverlayTransitionSpec{Preset: "fade_in", DurationFrames: 8},
 		},
 		SoundEffects: []channelprofile.SoundEffectProfile{{AssetID: "whoosh1", GainDB: &gain}},
 		MixPolicy:    "VOICEOVER_DUCKED_CLIP",
@@ -105,7 +105,7 @@ func TestApplyChannelProfileNeverOverridesCallerIntent(t *testing.T) {
 		ChannelID:    "crime",
 		Subtitles:    &channelprofile.SubtitlesProfile{Preset: "impact"},
 		Watermark:    &channelprofile.WatermarkProfile{Text: "CHANNEL BRAND"},
-		OverlayStyle: &channelprofile.OverlayStyleProfile{Color: []float64{1, 0, 0, 1}},
+		OverlayStyle: &scriptpkg.OverlayStyleSpec{Color: []float64{1, 0, 0, 1}},
 		SoundEffects: []channelprofile.SoundEffectProfile{{AssetID: "channel-whoosh"}},
 		MixPolicy:    "VOICEOVER_ONLY",
 	}

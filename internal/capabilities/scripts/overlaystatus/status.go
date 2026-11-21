@@ -75,7 +75,42 @@ type Status struct {
 	Error         string       `json:"error,omitempty"`
 }
 
-var writeMu sync.Mutex
+// runLocks serializes the read-modify-write of ONE run document. A single
+// process-wide mutex serialized every run against every other run although each
+// run owns a distinct file; the keyed lock keeps the atomic replace and lets
+// independent runs write concurrently. Entries are reference-counted and
+// deleted when the last holder releases, so the map does not grow forever.
+type runLockEntry struct {
+	mu   sync.Mutex
+	refs int
+}
+
+var runLocks = struct {
+	sync.Mutex
+	entries map[string]*runLockEntry
+}{entries: make(map[string]*runLockEntry)}
+
+func lockRun(key string) func() {
+	runLocks.Lock()
+	entry := runLocks.entries[key]
+	if entry == nil {
+		entry = &runLockEntry{}
+		runLocks.entries[key] = entry
+	}
+	entry.refs++
+	runLocks.Unlock()
+
+	entry.mu.Lock()
+	return func() {
+		entry.mu.Unlock()
+		runLocks.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(runLocks.entries, key)
+		}
+		runLocks.Unlock()
+	}
+}
 
 // Dir returns the status directory. The default lives under the system temp
 // directory so tests and ad-hoc runs never pollute the repository; production
@@ -100,8 +135,8 @@ func Update(runID string, mutate func(*Status)) {
 	if runID == "" {
 		return
 	}
-	writeMu.Lock()
-	defer writeMu.Unlock()
+	unlock := lockRun(safeName(runID))
+	defer unlock()
 
 	dir := Dir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {

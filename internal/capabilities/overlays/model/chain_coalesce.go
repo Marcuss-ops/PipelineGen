@@ -74,7 +74,6 @@ type ChainSegment struct {
 	CaptionLayout       string              `json:"caption_layout,omitempty"`
 	CaptionColor        string              `json:"caption_color,omitempty"`
 	EntityStyleID       string              `json:"entity_style_id,omitempty"`
-	CameraMotionID      string              `json:"camera_motion_id,omitempty"`
 	StartUS             int64               `json:"start_us"`
 	DurationUS          int64               `json:"duration_us"`
 	MotionParams        map[string]any      `json:"motion_params,omitempty"`

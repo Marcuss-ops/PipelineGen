@@ -38,20 +38,19 @@ const overlayPlanDigestVersion = "overlay-plan-render/v1"
 // (motion, preset, timing, render key, asset digests): a change in either must
 // produce a different digest, because either can change the pixels.
 type overlayPlanDigestItem struct {
-	ID             string   `json:"id"`
-	Kind           string   `json:"kind,omitempty"`
-	SceneID        string   `json:"scene_id,omitempty"`
-	TemplateID     string   `json:"template_id,omitempty"`
-	PresetID       string   `json:"preset_id,omitempty"`
-	ImagePresetID  string   `json:"image_preset_id,omitempty"`
-	MotionID       string   `json:"motion_id,omitempty"`
-	CameraMotionID string   `json:"camera_motion_id,omitempty"`
-	Text           string   `json:"text,omitempty"`
-	EntityID       string   `json:"entity_id,omitempty"`
-	EntityCaption  string   `json:"entity_caption,omitempty"`
-	StartUS        int64    `json:"start_us"`
-	EndUS          int64    `json:"end_us"`
-	Assets         []string `json:"assets,omitempty"`
+	ID            string   `json:"id"`
+	Kind          string   `json:"kind,omitempty"`
+	SceneID       string   `json:"scene_id,omitempty"`
+	TemplateID    string   `json:"template_id,omitempty"`
+	PresetID      string   `json:"preset_id,omitempty"`
+	ImagePresetID string   `json:"image_preset_id,omitempty"`
+	MotionID      string   `json:"motion_id,omitempty"`
+	Text          string   `json:"text,omitempty"`
+	EntityID      string   `json:"entity_id,omitempty"`
+	EntityCaption string   `json:"entity_caption,omitempty"`
+	StartUS       int64    `json:"start_us"`
+	EndUS         int64    `json:"end_us"`
+	Assets        []string `json:"assets,omitempty"`
 	// ContentKey is ComputeRenderKey recomputed from the item's own content. It
 	// covers the visual facts this document does not enumerate (params, image
 	// layers, style, frame, map, sound effect, caption motion), so two plans
@@ -151,21 +150,20 @@ func overlayPlanDigestDocument(plan *capmodel.OverlayPlan) *overlayPlanDigestPay
 		// covers params, layers, style, frame, map, sound effect and caption
 		// motion — the facts this document does not enumerate.
 		payload.Items = append(payload.Items, overlayPlanDigestItem{
-			ID:             strings.TrimSpace(item.ID),
-			Kind:           strings.TrimSpace(item.Kind),
-			SceneID:        strings.TrimSpace(item.SceneID),
-			TemplateID:     strings.TrimSpace(item.TemplateID),
-			PresetID:       strings.TrimSpace(item.PresetID),
-			ImagePresetID:  strings.TrimSpace(item.ImagePresetID),
-			MotionID:       strings.TrimSpace(item.MotionID),
-			CameraMotionID: strings.TrimSpace(item.CameraMotionID),
-			Text:           item.Text,
-			EntityID:       strings.TrimSpace(item.EntityID),
-			EntityCaption:  strings.TrimSpace(item.EntityCaption),
-			StartUS:        item.StartUSValue(),
-			EndUS:          item.EndUSValue(),
-			Assets:         overlayDigestAssetHashes(item.AssetRefs),
-			ContentKey:     capmodel.ComputeRenderKey(*plan, item),
+			ID:            strings.TrimSpace(item.ID),
+			Kind:          strings.TrimSpace(item.Kind),
+			SceneID:       strings.TrimSpace(item.SceneID),
+			TemplateID:    strings.TrimSpace(item.TemplateID),
+			PresetID:      strings.TrimSpace(item.PresetID),
+			ImagePresetID: strings.TrimSpace(item.ImagePresetID),
+			MotionID:      strings.TrimSpace(item.MotionID),
+			Text:          item.Text,
+			EntityID:      strings.TrimSpace(item.EntityID),
+			EntityCaption: strings.TrimSpace(item.EntityCaption),
+			StartUS:       item.StartUSValue(),
+			EndUS:         item.EndUSValue(),
+			Assets:        overlayDigestAssetHashes(item.AssetRefs),
+			ContentKey:    capmodel.ComputeRenderKey(*plan, item),
 		})
 	}
 	return &payload

@@ -6,6 +6,7 @@ import (
 	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 // ── Visual semantics, one worker call per scene (RUST-02) ──
@@ -176,125 +177,32 @@ type SemanticQuantityComparison struct {
 	EvidenceStart, EvidenceEnd             int
 }
 
-// SemanticPlace is one exact-source place mention with its conservative KB link.
-type SemanticPlace struct {
-	ID, EntityLocalID, KBID, LinkStatus, Kind, Name, Role, Evidence string
-	ParentIDs                                                       []string
-	Lat, Lon                                                        *float64
-	SentenceIndex, Start, End                                       int
-}
-
-// SemanticRoute is a grounded, scene-local movement route.
-type SemanticRoute struct {
-	ID, Mode, SubjectID, Status, Evidence string
-	Stops                                 []SemanticRouteStop
-	StraightLineKM                        *float64
-	Start, End                            int
-}
-
-type SemanticRouteStop struct {
-	PlaceID, Role string
-}
-
-// SemanticCrossSceneRoute records a route assembled from consecutive scenes.
-type SemanticCrossSceneRoute struct {
-	ID, SubjectID, Mode, Status string
-	Stops                       []SemanticCrossSceneRouteStop
-	Evidence                    []SemanticRouteEvidence
-	StraightLineKM              *float64
-}
-
-type SemanticCrossSceneRouteStop struct {
-	SceneID, PlaceID, Role string
-}
-
-type SemanticRouteEvidence struct {
-	SceneID, RouteID, Evidence string
-	Start, End                 int
-}
-
-type SemanticPersonRole struct {
-	ID, PersonID, RoleCode, RoleSurface, Gender, Rank, OrganizationID, PlaceID, Tense, Status, Evidence string
-	Start, End, SentenceIndex                                                                           int
-	Temporal                                                                                            *SemanticRoleTemporal
-}
-
-type SemanticRoleTemporal struct {
-	Surface, NormalizedDate, Precision, Kind, Era string
-	Start, End                                    int
-	Ambiguous                                     bool
-}
-
-type SemanticPersonAgeFact struct {
-	PersonID, Evidence, AsOf       string
-	Age, Start, End, SentenceIndex int
-	DerivedBirthYear               *int
-}
-
-type SemanticPersonRelation struct {
-	FromID, ToID, Kind, Status, Evidence string
-	Start, End, SentenceIndex            int
-}
-
-type SemanticEventFrame struct {
-	ID, EventType, Trigger, Status, PlaceID  string
-	TriggerStart, TriggerEnd                 int
-	SceneIDs, ConfidenceBasis, SourceFactIDs []string
-	Participants                             []SemanticEventParticipant
-	Evidence                                 []SemanticEventEvidence
-	Time                                     *SemanticEventTime
-}
-
-type SemanticEventTime struct {
-	FactIndex int
-	Date      string
-	Derived   bool
-}
-
-type SemanticDiscourseProjection struct {
-	Schema          string
-	References      []SemanticDiscourseReference
-	Threads         []SemanticEntityThread
-	SceneContinuity []SemanticSceneContinuity
-	Counts          SemanticDiscourseCounts
-}
-
-type SemanticDiscourseReference struct {
-	ID, SceneID, Mention, Type, Status, ResolutionBasis, Reason, Evidence string
-	SentenceIndex, Start, End, SentenceStart, SentenceEnd                 int
-	TargetEntityIDs, CandidateEntityIDs                                   []string
-}
-
-type SemanticThreadBeat struct {
-	ReferenceID, SceneID, State string
-	SentenceIndex               int
-}
-
-type SemanticEntityThread struct {
-	EntityID, CanonicalSurface, Type, FirstSceneID, LastSceneID string
-	SceneIDs                                                    []string
-	MentionCount, ReturnCount                                   int
-	Beats                                                       []SemanticThreadBeat
-}
-
-type SemanticSceneContinuity struct {
-	SceneID, Status                                                     string
-	Score                                                               float64
-	ActiveEntityIDs, SharedEntityIDs, EnteredEntityIDs, ExitedEntityIDs []string
-}
-
-type SemanticDiscourseCounts struct {
-	Total, Resolved, Ambiguous, Unresolved, Threads, CrossSceneThreads int
-}
-
-type SemanticEventParticipant struct {
-	Role, EntityID string
-}
-
-type SemanticEventEvidence struct {
-	SceneID, Text string
-	Start, End    int
-}
+// The grounded projection DTOs are owned by the neutral kernel package so
+// platform adapters can consume them without importing this business package.
+// These aliases keep the scriptgeneration API stable for the capability and
+// its tests.
+type (
+	SemanticPlace               = semanticscript.SemanticPlace
+	SemanticRoute               = semanticscript.SemanticRoute
+	SemanticRouteStop           = semanticscript.SemanticRouteStop
+	SemanticCrossSceneRoute     = semanticscript.SemanticCrossSceneRoute
+	SemanticCrossSceneRouteStop = semanticscript.SemanticCrossSceneRouteStop
+	SemanticRouteEvidence       = semanticscript.SemanticRouteEvidence
+	SemanticPersonRole          = semanticscript.SemanticPersonRole
+	SemanticRoleTemporal        = semanticscript.SemanticRoleTemporal
+	SemanticPersonAgeFact       = semanticscript.SemanticPersonAgeFact
+	SemanticPersonRelation      = semanticscript.SemanticPersonRelation
+	SemanticEventFrame          = semanticscript.SemanticEventFrame
+	SemanticEventTime           = semanticscript.SemanticEventTime
+	SemanticDiscourseProjection = semanticscript.SemanticDiscourseProjection
+	SemanticDiscourseReference  = semanticscript.SemanticDiscourseReference
+	SemanticThreadBeat          = semanticscript.SemanticThreadBeat
+	SemanticEntityThread        = semanticscript.SemanticEntityThread
+	SemanticSceneContinuity     = semanticscript.SemanticSceneContinuity
+	SemanticDiscourseCounts     = semanticscript.SemanticDiscourseCounts
+	SemanticEventParticipant    = semanticscript.SemanticEventParticipant
+	SemanticEventEvidence       = semanticscript.SemanticEventEvidence
+)
 
 // SemanticSearchIntent is a typed, short retrieval query produced by the
 // BrainRust entity linker. Go carries it unchanged to retrieval consumers.

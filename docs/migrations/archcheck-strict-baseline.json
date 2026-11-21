@@ -8,7 +8,7 @@
     "Retained only the eight current production findings reported by the strict production-only scan, with owner, deadline and removal trigger."
   ],
   "$v4_consumers": "This file is an operator-facing governance snapshot referenced by architecture/current.yaml; executable enforcement remains in cmd/archcheck, architecture/policy.yaml and the migration allowlists.",
-  "description": "Active transitional baseline for the cmd/archcheck --strict production-only snapshot captured on 2026-08-24. This document records current findings for ownership and removal tracking; it does not suppress hard gates or authorize new legacy code. Every active entry carries an owner, a future deadline and a concrete removal trigger.",
+  "description": "Active transitional baseline for the cmd/archcheck --strict production-only snapshot. All four transitional entries carried a 2026-09-30 deadline and were closed on 2026-11-21 after verification that none of their rules (percheck_binder_scene_field_writes, percheck_spec_aliases, percheck_asset_committer_event_ssot, struct_deps) emits a violation in either full-tree or --production-only mode. The list is intentionally empty: re-adding an entry requires an owner, a future deadline and a concrete removal trigger, and cmd/archcheck's TestTransitionalBaselineDeadlinesAreLive fails on any expired deadline.",
   "scan": {
     "captured_at": "2026-08-24",
     "git_commit_sha": "90233a7c172f9fd6c4e24d6fbc44a5e84af9ca33",
@@ -21,76 +21,5 @@
       "percheck_binder_scene_field_writes": 4
     }
   },
-  "transitional_baselines_sorted_urgency": [
-    {
-      "urgency": "primary",
-      "rule": "percheck_binder_scene_field_writes",
-      "failing_entries": [
-        {
-          "file": "internal/capabilities/scripts/durable_mapper.go",
-          "line": 117
-        },
-        {
-          "file": "internal/capabilities/scripts/result_reducer.go",
-          "line": 107
-        },
-        {
-          "file": "internal/capabilities/scripts/runner_phase_script.go",
-          "line": 78
-        },
-        {
-          "file": "internal/capabilities/scripts/runner_phase_script.go",
-          "line": 79
-        }
-      ],
-      "owner": "scripts capability scene-planning stream",
-      "deadline": "2026-09-30",
-      "removal_trigger": "All SpecScene shape writes flow through the canonical internal/capabilities/scripts/scene/scene_planner.go and the percheck reports zero production violations."
-    },
-    {
-      "urgency": "primary",
-      "rule": "percheck_spec_aliases",
-      "failing_entries": [
-        {
-          "file": "internal/capabilities/images/search/spec_aliases.go",
-          "line": 1
-        }
-      ],
-      "owner": "images capability ownership stream",
-      "deadline": "2026-09-30",
-      "removal_trigger": "Move the compatibility alias surface to an approved territory or remove it after all callers use the canonical retrieval types; the territory gate reports zero violations."
-    },
-    {
-      "urgency": "primary",
-      "rule": "percheck_asset_committer_event_ssot",
-      "failing_entries": [
-        {
-          "file": "internal/platform/sqlite/outboxevents/envelope.go",
-          "line": 76
-        },
-        {
-          "file": "internal/platform/sqlite/outboxevents/registry.go",
-          "line": 17
-        }
-      ],
-      "owner": "SQLite asset-committer event SSOT stream",
-      "deadline": "2026-09-30",
-      "removal_trigger": "Keep asset.index.requested emission behind the canonical AssetCommitter/AssetMutationDispatcher chain and make the percheck report zero non-canonical emission sites."
-    },
-    {
-      "urgency": "primary",
-      "rule": "struct_deps",
-      "failing_entries": [
-        {
-          "struct": "ProcessSegmentDeps",
-          "path": "internal/capabilities/voiceover/service/process_segment_types.go",
-          "fields": 9,
-          "max": 8
-        }
-      ],
-      "owner": "voiceover capability complexity stream",
-      "deadline": "2026-09-30",
-      "removal_trigger": "Split ProcessSegmentDeps into cohesive dependency bundles so every mandatory dependency struct has at most eight fields."
-    }
-  ]
+  "transitional_baselines_sorted_urgency": []
 }

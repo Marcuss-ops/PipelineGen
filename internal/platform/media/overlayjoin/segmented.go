@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,9 +119,6 @@ func backgroundArgs(spec Spec, out string) []string {
 // crossing the boundary is trimmed to the part inside the segment on the frame
 // grid, which is what `overlay` shows for that part of the window anyway.
 func segmentArgs(spec Spec, background string, start, end int64, out string) []string {
-	args := []string{"-y", "-hide_banner", "-loglevel", "error", "-filter_complex_threads", "1",
-		"-ss", seconds(start), "-threads", "1", "-i", background}
-
 	active := make([]int, 0, len(spec.Clips))
 	for i, clip := range spec.Clips {
 		clipEnd := clip.StartUS + clip.DurationUS
@@ -128,6 +126,10 @@ func segmentArgs(spec Spec, background string, start, end int64, out string) []s
 			active = append(active, i)
 		}
 	}
+
+	args := []string{"-y", "-hide_banner", "-loglevel", "error",
+		"-filter_complex_threads", strconv.Itoa(filterThreads(len(active))),
+		"-ss", seconds(start), "-threads", "1", "-i", background}
 	for _, i := range active {
 		args = append(args, "-threads", "1", "-i", spec.Clips[i].Path)
 	}

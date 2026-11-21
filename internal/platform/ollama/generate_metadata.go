@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
@@ -23,16 +22,8 @@ func (g *Generator) GenerateVideoMetadataWithModel(ctx context.Context, title st
 		return "", nil, fmt.Errorf("ollama client not initialized")
 	}
 
-	var systemPrompt, userPrompt string
-	if cfg := prompts.Get(); cfg != nil {
-		s, u, err := cfg.RenderVideoMetadata(title)
-		if err == nil {
-			systemPrompt, userPrompt = s, u
-		}
-	}
-	if systemPrompt == "" {
-		systemPrompt = "You are a professional video optimizer. Provide metadata strictly in English based on the given title."
-		userPrompt = fmt.Sprintf(`Given the video title: "%s"
+	systemPrompt := "You are a professional video optimizer. Provide metadata strictly in English based on the given title."
+	userPrompt := fmt.Sprintf(`Given the video title: "%s"
 
 Generate:
 1. A concise, professional, engaging video description (1 to 2 lines max) in English. Do not write intros or greetings, start directly.
@@ -43,7 +34,6 @@ You must respond ONLY with a raw JSON object matching the following structure:
   "description": "Engaging description of the video...",
   "tags": ["tag1", "tag2", "tag3"]
 }`, title)
-	}
 
 	messages := []types.Message{
 		{Role: "system", Content: systemPrompt},

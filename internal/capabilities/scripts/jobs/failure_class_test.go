@@ -107,6 +107,16 @@ func TestClassifyRunFailure_MeasuredMessages(t *testing.T) {
 			want:    job.FailureConfiguration,
 		},
 		{
+			// r18 multilingual: the breaker was open in the worker that claimed
+			// en/fr/pl, so the run failed in 0 s without a request. It is a 15 s
+			// cooldown, not a configuration verdict: it must keep its retries.
+			name:    "an open ollama circuit breaker is transient",
+			stage:   "GENERATING_SCENE_TEXT",
+			code:    "TEXT_GENERATION_FAILED",
+			message: "scenetext: segment 0 generate failed: engine: ollama generation failed: script generation failed: all models skipped by circuit breaker",
+			want:    job.FailureProvider,
+		},
+		{
 			name:    "provider timeout is transient",
 			stage:   "GENERATING_SCENE_TEXT",
 			code:    "PROVIDER_TIMEOUT",

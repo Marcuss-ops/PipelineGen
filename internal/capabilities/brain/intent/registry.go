@@ -6,6 +6,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
@@ -46,7 +47,7 @@ func NewResolverWithLexicon(lex *linguistics.Profiles) VisualIntentResolver {
 // and fall back to the multilingual resolver when no specific resolver
 // is available.
 func (r *IntentResolverRegistry) Resolve(ctx context.Context, language, originalText, normalizedText string) (brain.VisualIntent, error) {
-	lang := normalizeLanguageTag(language)
+	lang := resolverLanguage(language)
 	resolver, ok := r.resolvers[lang]
 	if !ok {
 		resolver = r.fallback
@@ -59,12 +60,19 @@ func (r *IntentResolverRegistry) Version() string {
 	return media.VersionIntentRegistry
 }
 
-func normalizeLanguageTag(language string) string {
-	lang := strings.ToLower(strings.TrimSpace(language))
-	if idx := strings.IndexByte(lang, '-'); idx >= 0 {
-		lang = lang[:idx]
+// normalizeLanguageTag reduces a request language to the primary BCP-47
+// subtag the registry keys its resolvers on ("en", "it"). kernel/asset owns
+// the canonical BCP-47 validation, so an input it rejects is not a language
+// the registry can dispatch on and falls through to the multilingual resolver.
+func resolverLanguage(language string) string {
+	tag, err := asset.Normalize(language)
+	if err != nil {
+		return ""
 	}
-	return lang
+	if idx := strings.IndexByte(tag, '-'); idx >= 0 {
+		return tag[:idx]
+	}
+	return tag
 }
 
 // ── Language-specific resolver configuration ─────────────────────

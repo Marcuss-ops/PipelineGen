@@ -188,7 +188,7 @@ func entityRuneSpans(source string, entities []VisualEntity) [][2]int {
 // imageSearchEntities derives the identity surface from the normal NLP
 // entities. People and brands are prioritized for verified identity imagery;
 // when neither category exists, the historical entity fan-out is preserved.
-func imageSearchEntities(entities []VisualEntity, categoryOnly ...bool) []VisualEntity {
+func imageSearchEntities(entities []VisualEntity, categoryOnly bool) []VisualEntity {
 	if len(entities) == 0 {
 		return nil
 	}
@@ -209,7 +209,7 @@ func imageSearchEntities(entities []VisualEntity, categoryOnly ...bool) []Visual
 	// Category/value selectors do not fan numeric/date/location values into
 	// image search. Preserve the legacy fallback only for truly broad entity
 	// requests with no selected typed category.
-	if len(categoryOnly) > 0 && categoryOnly[0] {
+	if categoryOnly {
 		return nil
 	}
 	return append([]VisualEntity(nil), entities...)

@@ -29,6 +29,8 @@ package clipsequence
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
 )
 
 // Preset is a certified fast transition between two clips.
@@ -140,13 +142,8 @@ func (s PresetSpec) ResolveLeak(override *LeakOverride) (*LeakSpec, error) {
 // assembler performs the same one at build time; validating here makes a bad
 // override a plan error the caller can read before any frame is rendered.
 func validateLeak(leak LeakSpec) error {
-	if len(leak.Color) != 7 || leak.Color[0] != '#' {
+	if !color.IsHexRGB(leak.Color) {
 		return fmt.Errorf("leak color %q must be #RRGGBB", leak.Color)
-	}
-	for _, c := range leak.Color[1:] {
-		if (c < '0' || c > '9') && (c < 'A' || c > 'F') && (c < 'a' || c > 'f') {
-			return fmt.Errorf("leak color %q must be #RRGGBB", leak.Color)
-		}
 	}
 	if leak.PeakAlpha <= 0 || leak.PeakAlpha > 1 {
 		return fmt.Errorf("leak peak_alpha %v must be in (0,1]", leak.PeakAlpha)

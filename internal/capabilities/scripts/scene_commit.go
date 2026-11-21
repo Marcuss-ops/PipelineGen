@@ -9,8 +9,10 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -81,4 +83,46 @@ func NewSceneCommitted(runID string, scene Scene, language Language, revision in
 // hash and therefore fences out stale enrichment results.
 func SceneTextHash(text string) string {
 	return scriptpkg.ComputeCanonicalSegmentTextHash(text)
+}
+
+func (r *Runner) emitSceneCommits(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scenes []Scene) error {
+	for _, scene := range scenes {
+		if err := r.emitSceneCommit(ctx, runID, req, exec, scene); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// emitSceneCommit publishes the SceneCommitted event for a single stable
+// scene. It is the per-scene emission behind emitSceneCommits and the
+// SceneTextReady(N) boundary used by the streaming path: the commit fires as
+// soon as one scene's text is final, never waiting for the whole script.
+//
+// The §7.3 per-scene trace anchor for the text stage is recorded here, BEFORE
+// the observer gate: the text stage is a boundary anchor (the per-scene text
+// start is not observable at this seam, so it carries CompletedAt only) and it
+// belongs to the run even when no incremental observer is wired.
+func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scene Scene) error {
+	event := NewSceneCommitted(runID, scene, req.SourceLanguage, int64(exec.Attempt))
+	event.SourceText = committedSegmentSourceText(req, scene)
+	event.ExtractEntities = sceneExtractionToggle(req, scene)
+	textReadyAt := scene.TextReadyAt
+	if textReadyAt.IsZero() {
+		textReadyAt = event.ReadyAt
+	}
+	// The text stage is the SHARED scene root: it feeds every language lane, so
+	// it is recorded language-agnostic (empty = wildcard in the critical-path
+	// DAG). Tagging it with the source language would orphan the target
+	// languages from the root.
+	recordSceneStage(ctx, scene.ID, kernobs.SceneStageText, kernobs.SceneStageTimes{CompletedAt: textReadyAt}, "", nil)
+
+	observer := r.sceneCommitObserverFor(runID)
+	if observer == nil {
+		return nil
+	}
+	if err := observer.OnSceneCommitted(ctx, event); err != nil {
+		return fmt.Errorf("scene %q commit: %w", scene.ID, err)
+	}
+	return nil
 }

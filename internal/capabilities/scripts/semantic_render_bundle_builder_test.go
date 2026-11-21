@@ -165,7 +165,7 @@ func TestBuildSemanticRenderBundleKeepsRepeatedEntityImageOccurrencesPerScene(t 
 	}
 	first.Scenes = append(first.Scenes, second.Scenes...)
 	first.EntityTimeline.Scenes = append(first.EntityTimeline.Scenes, second.EntityTimeline.Scenes...)
-	bundle, err := BuildSemanticRenderBundleFromResult(first, "en", "run-scenes", "video-scenes", true)
+	bundle, err := BuildSemanticRenderBundleFromResult(first, "en", "run-scenes", "video-scenes", overlayPlanImageOptions{PerSceneEntityCards: true})
 	if err != nil {
 		t.Fatalf("build scene-scoped bundle: %v", err)
 	}

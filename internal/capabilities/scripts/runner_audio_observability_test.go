@@ -13,7 +13,7 @@ func TestRecordAudioOperationsProjectsSubtimings(t *testing.T) {
 	r := &Runner{}
 
 	r.recordAudioCompileOperations(ctx, AudioCompileTimings{AudioAssetResolveMS: 12, TimelineCompileMS: 30, ClipAudioPrepareMS: 40, AudioPlanCompileMS: 25})
-	r.recordAudioRenderOperations(ctx, AudioPipelineMetrics{MixMS: 5000, AACEncodeMS: 8000, ProbeMS: 390, HashMS: 280})
+	r.recordAudioRenderOperations(ctx, AudioPipelineMetrics{PrepareMS: 640, LoudnessMS: 420, MixMS: 5000, AACEncodeMS: 8000, ProbeMS: 390, HashMS: 280})
 	r.recordAudioOperation(ctx, "upload", "drive", 3700)
 	run.Finish()
 
@@ -26,6 +26,8 @@ func TestRecordAudioOperationsProjectsSubtimings(t *testing.T) {
 		"timeline_compile":    {component: "audio", ms: 30},
 		"clip_audio_prepare":  {component: "audio", ms: 40},
 		"audio_plan_compile":  {component: "audio", ms: 25},
+		"audio_prepare":       {component: "rust", ms: 640},
+		"audio_loudness":      {component: "rust", ms: 420},
 		"mix":                 {component: "audio", ms: 5000},
 		"aac_encode":          {component: "audio", ms: 8000},
 		"probe":               {component: "audio", ms: 390},

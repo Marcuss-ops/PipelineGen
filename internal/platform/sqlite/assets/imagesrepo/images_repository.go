@@ -7,7 +7,6 @@ package imagesrepo
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -15,6 +14,7 @@ import (
 	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // ImagesRepository is the canonical SQLite-backed repository for image assets.
@@ -106,7 +106,7 @@ func scanImageAssetFromRow(s interface {
 	img.Origin = detail.ImageOrigin(origin.String)
 	img.Provider = detail.ImageProvider(provider.String)
 	if driveFileID.String != "" && !strings.Contains(img.SourceURL, "drive.google.com/") {
-		img.SourceURL = fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileID.String)
+		img.SourceURL = urlutil.DriveFileURL(driveFileID.String)
 	}
 
 	if createdAtStr.Valid {
@@ -145,7 +145,7 @@ func canonicalImageSourceURL(url, driveLink, driveFileID string) string {
 		return trimmed
 	}
 	if trimmed := strings.TrimSpace(driveFileID); trimmed != "" {
-		return fmt.Sprintf("https://drive.google.com/file/d/%s/view", trimmed)
+		return urlutil.DriveFileURL(trimmed)
 	}
 	return ""
 }

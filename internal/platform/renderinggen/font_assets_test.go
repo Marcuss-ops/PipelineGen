@@ -152,3 +152,21 @@ func TestModernFontPathsMapToCanonicalRegistry(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimeSelectedOverlayFontsHavePrefetchSources(t *testing.T) {
+	for family, want := range caprender.CanonicalFontAssetsByFamily {
+		fontID, ok := canonicalFontAssetID(want.Path)
+		if !ok {
+			t.Errorf("runtime font %q at %q has no object-store prefetch source", family, want.Path)
+			continue
+		}
+		got, err := ResolveFontAsset(fontID)
+		if err != nil {
+			t.Errorf("resolve prefetch source for %q: %v", family, err)
+			continue
+		}
+		if got.Hash != want.SHA256 {
+			t.Errorf("runtime font %q prefetch hash = %s, want %s", family, got.Hash, want.SHA256)
+		}
+	}
+}

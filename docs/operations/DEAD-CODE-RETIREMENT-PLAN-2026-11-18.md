@@ -16,16 +16,46 @@ chiusura. Misure su worktree puliti: **481** a `5bedaada6`/`b1c7e06cf`,
 **483** a `8d55a74a4`, sempre con 0 zero-reference e 0 in `overlays`; il delta
 +2 è in `internal/kernel/digest` (`HasPanelGridCollageBytes`,
 `PerceptualHashBytes`) e appartiene alla catena person-image/VLM non cablata.
-Guard corrente: **≤ 292** misurato sul working tree del 2026-11-19 dopo le
-sette ondate di sweep (`pkg/`, `internal/app/wiring`, `capabilities/remote`,
-`mediaregistry`, media-eligibility, contract-corpus, test-support) e le modifiche
-successive già presenti nel tree: 445 → 295 → 292, di cui **20 in allowlist
-test-only** (`tests/tools/*`, `sqlite/sqltest`) e quindi **272 nel perimetro di
+Guard corrente: **≤ 229** misurato sul working tree del 2026-11-21 dopo le
+ondate di sweep (`pkg/`, `internal/app/wiring`, `capabilities/remote`,
+`mediaregistry`, media-eligibility, contract-corpus, test-support, overlay,
+`scene_annotations`, `stockpipeline`, `render_cache`) e le modifiche successive
+già presenti nel tree: 445 → 295 → 292 → 277 → 229, di cui **20 in allowlist
+test-only** (`tests/tools/*`, `sqlite/sqltest`) e quindi **209 nel perimetro di
 produzione**. Il calo 295 → 292 è il ricontrollo a tree stabile del 2026-11-19
 (hash dei contenuti invariato per 180 s): ritirati
 `AnimationRegistry.MapTypeDefault`, `DefaultPhraseExtractionPolicy` e
 `isSHA256`; capabilities (59), scripts (108) e voiceover (8) chiuse per
-disposition, platform (61) e kernel/cmd (36+4) restano come registrato. Le schede di famiglia sotto restano la
+disposition, platform (61) e kernel/cmd (36+4) restano come registrato.
+**Sweep 2026-11-21:** il working tree misurava **300** funzioni unreachable.
+Prima ondata: ritirati otto simboli senza riferimento fuori dal file di
+definizione — `NewMultiplexedExecutorWithOutputLimit`, `MaterializeMapCandidate`,
+`materializedMapHasEntity`, `mapBasemapStyles`, `groundedSpanInAnyScene`,
+`SetFilteringConfig`, `Model.HasVectorSpace`, `Model.Validate` — e la misura
+successiva è **292**, il guard dell'epoca. Seconda ondata: ritirati il
+file `scripts/result_reducer.go` con `VidRushResultReducer`,
+`NewVidRushResultReducer`, `Reduce`, `isStaleSegment`, `matchSceneSegment` (e il
+relativo test; `SegmentSceneMerger` fu spostato in `scene_commit.go` e poi
+ritirato nella terza ondata), il
+file `embeddings/contract_probe.go` con `ContractProbe`, `NewContractProbe`,
+`Fetch`, il file `translation/argos_translator.go` con `ArgosTranslator`,
+`ArgosTranslatorConfig`, `NewArgosTranslator`, `Translate` (il sentinel
+`ErrArgosBridgeUnavailable` resta nel server translator), `prompts.Load` con
+`loadConfigData`/`loadPromptFile` e il relativo manifest, `ptrutil.BoolDefault`
+e `embedding.Verify` (mantenendo `ComponentQuery`, usato dall'embedder). La
+misura dopo la seconda ondata è **277** (i due helper test-only
+`BatchItem.fail` e `randomSuffix` sono stati spostati in `types_helpers_test.go`).
+Terza ondata 2026-11-21: ritirati overlay category/group-limit (27),
+`scene_annotations` merger/helper (8), `stockpipeline` naming/publish (7),
+`cliprender/render_cache.go` (3) e due zero-reference in
+`images/search_queries_fanout.go`; misura finale **229** e guard **≤ 229**
+(`make verify-deadcode`).
+**Audit dei 229 residui (2026-11-21):** nessuna funzione ha zero riferimenti.
+Tutte compaiono in test, contratti/interfacce o catene di feature non cablate,
+quindi non esiste un'ulteriore eliminazione a rischio zero: abbassare ancora il
+numero richiederebbe una decisione di prodotto su una feature o la rimozione di
+test che la certificano. Non è stato fatto in questo sweep. L'inventario test
+sotto è storico e include anche i file ritirati il 2026-11-21. Le schede di famiglia sotto restano la
 fotografia storica delle 445 misurate a inizio giornata; il conteggio puntuale è
 questo. Storia delle ultime ondate: 445 dopo l'ondata 13 del 2026-11-19 (il file
 `kernel/script/retrieval_query_builders.go` con 10 funzioni e 3 test, mai
@@ -496,6 +526,59 @@ Per non inseguire un numero che non può scendere, il piano propone:
    baseline; il calo si aggiorna a mano a ogni ondata.
 4. Il ticket dead-code resta la fonte dei numeri; questo piano la fonte delle
    decisioni.
+
+**Misura 2026-11-21 (sessione successiva):** `deadcode -test=false ./...` = **229**,
+`deadcode -test ./...` = **84**. Il guard scende per ratchet a **≤ 229**; la riduzione include
+la catena morta dei prompt config (`prompts.Get` senza writer).
+
+### Allowlist classificata — oracoli di test (2026-11-21)
+
+Due catene restano unreachable in produzione ma NON vanno ritirate: sono gli
+oracoli che certificano i contratti dei rispettivi package. Restano nel
+conteggio `deadcode -test=false` e sono qui classificate con il loro owner,
+così il budget 279 è stabile e ogni nuovo ingresso richiede una decisione
+esplicita.
+
+| Simbolo | Package | Perché resta | Owner |
+| --- | --- | --- | --- |
+| `memoryRenderCache.Get` / `.Put` | `internal/capabilities/cliprender` | doppio in-memory di `RenderCache`, costruito da `newMemoryRenderCache()` in `render_cache_memory_test.go` e usato da 4 test (hit, miss, invalidazione, record). Ritirarlo cancellerebbe la sola copertura dell'oracolo di cache. | capabilities/cliprender |
+| `NewUploadIntentUseCase` | `internal/capabilities/voiceover/service` | costruttore fail-fast del caso d'uso voiceover async, coperto da `upload_intent_test.go` (happy path + 3 fallimenti di dipendenza). Il wiring di produzione non lo costruisce ancora: è una catena RA-06 §1.3, non codice morto. | capabilities/voiceover |
+
+Regola: un simbolo usato solo dai test resta se il test certifica un contratto
+di produzione; si ritira solo quando nessun test lo richiede. Questa tabella è
+l'elenco chiuso: aggiungere una riga è una decisione, non una scorciatoia.
+
+### Sweep U1000 — 2026-11-21 (seconda sessione): cosa è stato rimosso davvero
+
+`deadcode -test=false ./...` resta **229** dopo lo sweep: il tool conta solo funzioni
+irraggiungibili dal `main`, e **tutte le 229 sono raggiunte da almeno un test o da un
+contratto** (censimento: 0 funzioni con zero riferimenti nel repo). Cancellarle significa
+cancellare i test che le certificano, non rimuovere debito.
+
+Il codice morto che `deadcode` non vede è stato cercato con
+`staticcheck -checks U1000 ./internal/... ./pkg/... ./cmd/...` (test inclusi): **49 simboli**,
+di cui **27 rimossi** e **22 residui classificati**.
+
+Rimossi (27 simboli, 5 file):
+
+| Tipo | Simboli |
+| --- | --- |
+| const (17) | `chartBarMotionID`, `maxImageFrameShadowBlurPX`, `maxNamedEntityCardsPerScene`, `longFamilyDocumentary/3D/ModernApple/ClassicApple/Count`, `laneImages/ImagesWithText/Entities/ImportantPhrase/ShortPhrase/Maps/TimelineDate/MetricStat`, `canonicalMotionCatalogFixture` |
+| var (8) | `editorialSectionCatalog`, `longCopyCrashedMotionIDs`, `promptInstructionEchoes`, `shortPhraseRecipeWordGroups`, `capitalizedNameRE` (adapter), `validRightsStatusSet`, `filteringOverride`, `animationLaneKeys` |
+| func (2) | `loadCanonicalMotionCatalog`, `containsString` |
+| file (5) | `overlays/long_phrase_lane.go`, `overlays/short_phrase_word_groups.go`, `overlays/long_copy_motion_guard.go`, `overlays/motion_catalog_fixture_test.go`, `overlays/render/test_helpers_test.go` |
+
+Residui classificati (22): 21 **campi** di struct ancora referenziate come gusci API
+(`providerassets.Registry`, `mediamemory.StrategyRegistry`, `localization.Scheduler`,
+`render.SmartResolver`, `indexing.VisualSummaryService`, `overlays/model.EntityOverlayPlanner`):
+rimuovere i campi senza ritirare il tipo e i call site è cosmesi, e ritirare i tipi è una
+decisione di contratto. 1 **var**: `allowedMetadataKeys`, che non è morto — è letto come testo
+dal percheck `percheck_metadata_key_registry`; la cancellazione è stata provata e riporta
+`total_violations: 2`, `has_hard_gate_hits: true`, quindi è stato ripristinato da HEAD.
+
+Verifiche: `go build ./...`, `go vet` sui package toccati, `gofmt -l` vuoto, `go test` su
+`overlays/...`, `kernel/asset/...`, `scripts/adapters`, `scripts`; `archcheck --strict` exit 0.
+Guard dead code invariato: **≤ 229**.
 
 ## Decisioni da prendere prima di iniziare
 

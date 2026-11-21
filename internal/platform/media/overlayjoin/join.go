@@ -134,13 +134,14 @@ func Args(spec Spec) ([]string, error) {
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
-	// One decoder thread and one filter thread bound the per-input frame pools.
-	// A golden assembly carries 70+ certified clips, and ffmpeg's default
-	// frame-threaded decoders reserve a reference pool per input: with the
-	// defaults this graph reached 11.7 GiB on 74 inputs and was killed by the
-	// kernel in production at 15.6 GiB. The join is a single sequential overlay
-	// chain, so it has no parallelism to lose from these two knobs.
-	args := []string{"-y", "-hide_banner", "-loglevel", "error", "-filter_complex_threads", "1"}
+	// One decoder thread per input bounds the per-input frame pools. A golden
+	// assembly carries 70+ certified clips, and ffmpeg's default frame-threaded
+	// decoders reserve a reference pool per input: with the defaults this graph
+	// reached 11.7 GiB on 74 inputs and was killed by the kernel in production
+	// at 15.6 GiB. The filter graph itself is NOT pinned any more: see
+	// filterThreads for the measured budget and its memory headroom.
+	args := []string{"-y", "-hide_banner", "-loglevel", "error",
+		"-filter_complex_threads", strconv.Itoa(filterThreads(len(spec.Clips)))}
 	if spec.BackgroundPath != "" {
 		args = append(args, "-threads", "1", "-stream_loop", "-1", "-i", spec.BackgroundPath)
 	} else {

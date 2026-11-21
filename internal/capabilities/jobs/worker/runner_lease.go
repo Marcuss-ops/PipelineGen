@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"go.uber.org/zap"
@@ -23,6 +24,14 @@ import (
 // at the default cadence (DefaultRenewInterval = 30s) but is
 // the safety net for a fast-cadence test (50ms minimum).
 const postRenewFailClosedCheckTimeout = 200 * time.Millisecond
+
+// claimFailureBackoff is the wait between claim attempts once the retry budget
+// is exhausted by an error the retry policy classifies as non-transient. It is
+// deliberately jittered (500ms..1.5s) so a fleet of workers that lost the same
+// broker does not retry in lockstep.
+func claimFailureBackoff() time.Duration {
+	return time.Duration(500+rand.Intn(1000)) * time.Millisecond
+}
 
 // ErrLeaseLostDuringRun surfaces a lease-lost condition detected
 // in the post-handler drain step BEFORE the final tools.Complete
@@ -132,8 +141,8 @@ func (r *Runner) Run(ctx context.Context) error {
 			InitialBackoff: 200 * time.Millisecond,
 			MaxBackoff:     2 * time.Second,
 			BackoffFactor:  2.0,
-			JitterFraction: 0,
-			DisableJitter:  true,
+			JitterFraction: 0.3,
+			DisableJitter:  false,
 			IsRetryable:    retry.IsTransient,
 		})
 		if err != nil {
@@ -146,6 +155,16 @@ func (r *Runner) Run(ctx context.Context) error {
 				return err
 			}
 			r.log.Warn("claim failed (retry budget exhausted)", zap.Error(err))
+			// The retry budget covers transient blips. A non-transient claim
+			// failure (closed DB, bad schema, permissions) must not turn the
+			// worker loop into a hot spin that hammers the broker: wait, jittered
+			// and cancellable, before the next claim. Jitter keeps N workers from
+			// retrying in lockstep.
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(claimFailureBackoff()):
+			}
 			continue
 		}
 		if lease == nil || lease.Job == nil {

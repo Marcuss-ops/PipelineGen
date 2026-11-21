@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"go.uber.org/zap"
 )
 
@@ -108,7 +109,7 @@ func (h *ImageDriveDeliveryHandler) HandlePayload(ctx context.Context, payloadJS
 
 	driveLink := result.WebViewLink
 	if driveLink == "" && result.FileID != "" {
-		driveLink = "https://drive.google.com/file/d/" + result.FileID + "/view"
+		driveLink = urlutil.DriveFileURL(result.FileID)
 	}
 	downloadLink := result.DownloadLink
 	if downloadLink == "" && result.FileID != "" {

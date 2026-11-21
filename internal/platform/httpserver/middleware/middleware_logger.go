@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware/requestlog"
@@ -15,26 +16,42 @@ import (
 // internal/platform/sqlite/logsink and is injected
 // from the composition root. A nil sink is treated as a no-op.
 func SetLogSink(sink requestlog.RequestLogSink) {
-	logSink = sink
+	if sink == nil {
+		logSink.Store(nil)
+		return
+	}
+	logSink.Store(&logSinkHolder{sink: sink})
 }
 
 // StopLogger flushes and stops the background log writer. Delegated
 // entirely to the sink; idempotent.
 func StopLogger() {
-	if logSink == nil {
+	sink := currentLogSink()
+	if sink == nil {
 		return
 	}
-	_ = logSink.Stop(context.Background())
+	_ = sink.Stop(context.Background())
 }
 
-// logSink is the typed persistent sink. Nil is treated as a no-op so
-// environments that don't need request logging (tests, dry-run CLI)
-// can leave it unset.
-var logSink requestlog.RequestLogSink
+// logSinkHolder keeps the interface in an atomic.Pointer so the wiring can
+// install the sink while request goroutines are already reading it. A plain
+// package variable was a data race whenever the sink was set after the server
+// started (and in every test that swapped it).
+type logSinkHolder struct{ sink requestlog.RequestLogSink }
+
+var logSink atomic.Pointer[logSinkHolder]
+
+// currentLogSink returns the installed sink, or nil when none is configured.
+func currentLogSink() requestlog.RequestLogSink {
+	if holder := logSink.Load(); holder != nil {
+		return holder.sink
+	}
+	return nil
+}
 
 // GetDroppedLogs returns the number of logs dropped due to backpressure.
 func GetDroppedLogs() uint64 {
-	if sink, ok := logSink.(interface{ DroppedLogs() uint64 }); ok {
+	if sink, ok := currentLogSink().(interface{ DroppedLogs() uint64 }); ok {
 		return sink.DroppedLogs()
 	}
 	return 0
@@ -131,12 +148,12 @@ func Logger(log *zap.Logger) gin.HandlerFunc {
 		}
 
 		// Persist via the typed sink (no raw *sql.DB in this layer).
-		if !isHealth && logSink != nil {
+		if sink := currentLogSink(); !isHealth && sink != nil {
 			reqID, _ := c.Get("request_id")
 			reqIDStr, _ := reqID.(string)
 
 			entry := loggerEntryFrom(c, reqIDStr, duration, status)
-			_ = logSink.Log(c.Request.Context(), entry)
+			_ = sink.Log(c.Request.Context(), entry)
 		}
 	}
 }

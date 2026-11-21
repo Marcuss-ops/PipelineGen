@@ -134,6 +134,19 @@ type RemoteFinalJobTiming struct {
 	// attribution that can tell a slow transfer from a slow encode; nil means
 	// the installed preparer did not report it, never zero work.
 	SegmentPrep *RemoteFinalJobSegmentPrepTiming `json:"segment_prep,omitempty"`
+	// ArtifactDownloadMS is the Producer-side transfer of the Master's
+	// published MP4: the GET plus the SHA-256 verification, measured by the
+	// adapter that owns the bytes. This is the phase the final-job stage used
+	// to hide: before it existed, a 891 MB artifact download of ~257 s was
+	// inside `remote_final_job` but in none of queue/handoff/execution, so the
+	// stage looked unexplained instead of transfer-bound.
+	ArtifactDownloadMS int64 `json:"artifact_download_ms,omitempty"`
+	// ArtifactDownloadBytes is the transferred size, or the verified local
+	// size on a reuse.
+	ArtifactDownloadBytes int64 `json:"artifact_download_bytes,omitempty"`
+	// ArtifactDownloadReused marks a retry that found the deterministic temp
+	// file already verified: no transfer, only the local hash check.
+	ArtifactDownloadReused bool `json:"artifact_download_reused,omitempty"`
 }
 
 // RemoteFinalJobWorkerTiming is what the remote worker reports about its own
@@ -210,7 +223,7 @@ func (t *RemoteFinalJobTiming) Merge(other *RemoteFinalJobTiming) *RemoteFinalJo
 	for _, phase := range []struct {
 		dst *int64
 		src int64
-	}{{&t.QueueMS, other.QueueMS}, {&t.ExecutionMS, other.ExecutionMS}, {&t.HandoffMS, other.HandoffMS}, {&t.HandoffResolveMS, other.HandoffResolveMS}, {&t.PayloadMS, other.PayloadMS}, {&t.PrepareMS, other.PrepareMS}, {&t.WaitMS, other.WaitMS}, {&t.PollLagMS, other.PollLagMS}} {
+	}{{&t.QueueMS, other.QueueMS}, {&t.ExecutionMS, other.ExecutionMS}, {&t.HandoffMS, other.HandoffMS}, {&t.HandoffResolveMS, other.HandoffResolveMS}, {&t.PayloadMS, other.PayloadMS}, {&t.PrepareMS, other.PrepareMS}, {&t.WaitMS, other.WaitMS}, {&t.PollLagMS, other.PollLagMS}, {&t.ArtifactDownloadMS, other.ArtifactDownloadMS}, {&t.ArtifactDownloadBytes, other.ArtifactDownloadBytes}} {
 		if phase.src > 0 {
 			*phase.dst = phase.src
 		}
@@ -218,6 +231,9 @@ func (t *RemoteFinalJobTiming) Merge(other *RemoteFinalJobTiming) *RemoteFinalJo
 	if other.Polls > t.Polls {
 		t.Polls = other.Polls
 	}
+	// Reuse is monotone: the deterministic temp path for a job is transferred
+	// once, so a later attach can only observe it already verified.
+	t.ArtifactDownloadReused = t.ArtifactDownloadReused || other.ArtifactDownloadReused
 	// The worker block is one atomic observation: a later report replaces the
 	// previous one instead of being merged field by field, so a resumed attach
 	// cannot mix phases from two different renders.

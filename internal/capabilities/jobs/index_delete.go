@@ -153,12 +153,19 @@ type IndexDeleteHandler struct {
 }
 
 // NewIndexDeleteHandler wires the producer-side dependencies. log nil →
-// nop logger. Either deleter nil is a programming error — the handler
-// guards each call site with a nil-check so partial wiring degrades to
-// "depend on the other" rather than crashing.
+// nop logger. Either deleter nil is a composition error and panics: a
+// handler that silently skips the missing half would acknowledge the event
+// with the deletion not performed, which is exactly the false-success class
+// this handler exists to prevent (RA-07).
 func NewIndexDeleteHandler(log *zap.Logger, vectorDeleter VectorPointDeleter, assetDeleter AssetDeleter) *IndexDeleteHandler {
 	if log == nil {
 		log = zap.NewNop()
+	}
+	if vectorDeleter == nil {
+		panic("jobs.NewIndexDeleteHandler: VectorPointDeleter is required (godlike/05 wiring-error fail-fast)")
+	}
+	if assetDeleter == nil {
+		panic("jobs.NewIndexDeleteHandler: AssetDeleter is required (godlike/05 wiring-error fail-fast)")
 	}
 	return &IndexDeleteHandler{
 		log:           log.Named("index_delete"),
@@ -193,6 +200,13 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 	log := h.log
 	if log == nil {
 		log = zap.NewNop()
+	}
+	// A zero-value or partially built handler must not acknowledge: the
+	// deletion cannot be performed, and retrying cannot conjure a missing
+	// dependency, so this is terminal. NewIndexDeleteHandler already panics
+	// on this composition error; the check also covers direct construction.
+	if h.vectorDeleter == nil || h.assetDeleter == nil {
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: index delete dependencies are not wired", errIndexLifecycleTerminal))
 	}
 
 	var req indexDeleteRequestV1

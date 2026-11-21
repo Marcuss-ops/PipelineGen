@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // ────────────────────────────────────────────────────────────────────────
@@ -196,7 +198,7 @@ func (c *VoiceoverPublishCommand) Validate() error {
 // CanonicalDriveWebURL returns the canonical human-facing Drive
 // webViewLink for an uploaded Drive file.
 func CanonicalDriveWebURL(fileID string) string {
-	return "https://drive.google.com/file/d/" + fileID + "/view"
+	return urlutil.DriveFileURL(fileID)
 }
 
 // CanonicalDriveDownloadURL returns the canonical Drive download

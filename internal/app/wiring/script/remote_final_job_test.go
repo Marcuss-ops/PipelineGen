@@ -269,7 +269,10 @@ func TestAttachFinalJobProjectsMasterTiming(t *testing.T) {
 	startedAt := now.Add(-120 * time.Second).Format(time.RFC3339Nano)
 	completedAt := now.Add(-10 * time.Second).Format(time.RFC3339Nano)
 	server, _ := finalJobMasterStub(t, "SUCCEEDED",
-		`{"job_id":"master-9","status":"SUCCEEDED","artifact_url":"https://master/final.mp4",`+
+		// A Drive URL is already published, so this timing test does not enter the
+		// artifact-download boundary; that boundary (including the fail-closed
+		// missing-token rule) is covered by remote_final_job_download_test.go.
+		`{"job_id":"master-9","status":"SUCCEEDED","artifact_url":"velox-drive://final",`+
 			`"created_at":"`+created+`","started_at":"`+startedAt+`","completed_at":"`+completedAt+`"}`)
 	adapter := newAttachTestAdapter(t, server.URL, time.Second, time.Second)
 

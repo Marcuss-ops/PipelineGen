@@ -176,13 +176,6 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	canvas.OverlayGroupLimits = cloneOverlayGroupLimits(req.OverlayGroupLimits)
 	canvas.OverlayCategories = scriptpkg.CloneOverlayCategories(req.OverlayCategories)
 	canvas.OverlayCategorySegments = scriptpkg.CloneScriptSegments(req.ScriptParams.Segments)
-	// The current chain wire carries visual segments only; it cannot preserve
-	// per-image sound_effect clips. Keep image overlays separate when per-image
-	// SFX are requested so the established asset resolver can attach one cue to
-	// each image before the plan is queued, rather than silently dropping cues.
-	if req.RandomSFXOnImageOverlay {
-		canvas.AnimationCounts["chain_disabled"] = 1
-	}
 	canvas.EntityStyleID = req.EntityStyleID
 	canvas.EntityBadgeColor = req.EntityBadgeColor
 	canvas.DisableNumberOverlays = req.DisableNumberOverlays
@@ -212,7 +205,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		zap.Any("animation_counts", canvas.AnimationCounts),
 	)
 	overlaystatus.Update(runID, func(status *overlaystatus.Status) { status.Stage = "planning" })
-	if err := compileResultOverlayPlan(ctx, result, planLanguage, runID, req.Project, driveFolderID, canvas, plates, r.overlayPlanCompiler, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
+	if err := compileResultOverlayPlan(ctx, result, planLanguage, runID, req.Project, driveFolderID, canvas, plates, r.overlayPlanCompiler, overlayPlanImageOptions{PerSceneEntityCards: req.MediaPlan.Extraction.EntityImages.PerScene(), DisableSceneImages: !genericSceneImagesEnabled}); err != nil {
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 		return cause
 	}
@@ -235,23 +228,15 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 			attachRandomImageEffectsToPlan(plan)
 		}
 	}
-	// Explicit per-image cues are attached first: the random path then only
-	// fills the images the payload left unclaimed.
-	if err := attachImageAssetSFXForResult(ctx, r.audioAssetSource, result, req.OverlayImages); err != nil {
-		cause := fmt.Errorf("attach image-overlay SFX: %w", err)
-		return cause
-	}
-	if req.RandomSFXOnImageOverlay {
-		if err := attachRandomOverlaySFXToPlan(result.OverlayPlan); err != nil {
-			cause := fmt.Errorf("attach random image-overlay SFX: %w", err)
-			return cause
-		}
-		for _, plan := range result.LocalizedOverlayPlans {
-			if err := attachRandomOverlaySFXToPlan(plan); err != nil {
-				cause := fmt.Errorf("attach random localized image-overlay SFX: %w", err)
-				return cause
-			}
-		}
+	// Image-bound SFX are master-audio events: project the sealed plan's
+	// windows into absolute cues here so an invalid explicit cue fails at plan
+	// compile, not at the audio render. The cues are appended to the
+	// CompiledAudioPlan after the overlay projection (overlay_sfx_projection.go).
+	// Nothing is written into item.sound_effect: RenderingGen stays video-only
+	// and chains stay fused.
+	sfxCues, err := overlaySFXIntentsForPlan(req, result.OverlayPlan)
+	if err != nil {
+		return fmt.Errorf("overlay SFX projection: %w", err)
 	}
 	if result.OverlayPlan != nil {
 		fields := []zap.Field{
@@ -263,6 +248,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 			zap.Int("recap_cards", result.OverlayPlan.RecapCards),
 			zap.Int("chart_placements", result.OverlayPlan.ChartPlacements),
 			zap.Int("chart_cards", result.OverlayPlan.ChartCards),
+			zap.Int("sfx_cues", len(sfxCues)),
 		}
 		if intake := result.OverlayPlanIntake; intake != nil {
 			fields = append(fields,

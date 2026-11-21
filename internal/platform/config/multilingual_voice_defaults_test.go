@@ -48,6 +48,12 @@ func TestMultilingualVoiceDefaultsAreExplicitAndMale(t *testing.T) {
 					t.Errorf("unexpected language %q", spec.Code)
 					continue
 				}
+				// The two production configs intentionally use the Canadian
+				// male English voice; the examples keep the US male default.
+				// Both remain explicit pins, not a relaxed assertion.
+				if spec.Code == "en" && (rel == "config.yaml" || rel == "config/multilingual.yaml") {
+					voice = "en-CA-LiamNeural"
+				}
 				if !spec.GenerateTTS {
 					t.Errorf("%s: generate_tts=false", spec.Code)
 				}

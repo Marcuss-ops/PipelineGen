@@ -305,6 +305,91 @@ func TestBreakdown_CriticalPathOrderedByWallStart(t *testing.T) {
 	}
 }
 
+// TestBreakdown_CriticalPathCarriesOffsetsAndGaps pins the timeline half of the
+// critical path: a strictly sequential chain is back-to-back (gap 0) and a real
+// idle stretch between phases is reported as a measured gap, not inferred.
+func TestBreakdown_CriticalPathCarriesOffsetsAndGaps(t *testing.T) {
+	report := &RunReport{
+		StartedAt:  time.Unix(1_700_000_000, 0),
+		WallTimeMs: 10_000,
+		Stages: []StageReport{
+			stageAt("generate", 0, 4_000),
+			stageAt("audio_compile", 4_500, 7_000),
+			stageAt("remote_final_job", 7_000, 10_000),
+		},
+	}
+	bd := report.Breakdown()
+	if len(bd.CriticalPath) != 3 {
+		t.Fatalf("CriticalPath len = %d, want 3", len(bd.CriticalPath))
+	}
+	for i, cp := range bd.CriticalPath {
+		if !cp.Anchored {
+			t.Fatalf("CriticalPath[%d] (%s) is not anchored", i, cp.Name)
+		}
+	}
+	if got := bd.CriticalPath[0]; got.StartOffsetMs != 0 || got.EndOffsetMs != 4_000 || got.GapBeforeMs != 0 {
+		t.Fatalf("generate offsets = %d..%d gap %d, want 0..4000 gap 0", got.StartOffsetMs, got.EndOffsetMs, got.GapBeforeMs)
+	}
+	if got := bd.CriticalPath[1]; got.StartOffsetMs != 4_500 || got.EndOffsetMs != 7_000 || got.GapBeforeMs != 500 {
+		t.Fatalf("audio offsets = %d..%d gap %d, want 4500..7000 gap 500", got.StartOffsetMs, got.EndOffsetMs, got.GapBeforeMs)
+	}
+	if got := bd.CriticalPath[2]; got.StartOffsetMs != 7_000 || got.GapBeforeMs != 0 {
+		t.Fatalf("final job offsets = %d gap %d, want 7000 gap 0 (back-to-back)", got.StartOffsetMs, got.GapBeforeMs)
+	}
+}
+
+// TestBreakdown_CriticalPathOverlapIsNotAGap pins the concurrency signal: two
+// top-level phases whose intervals overlap produce OverlappedMs and a zero gap,
+// so a reader can tell parallel work from serial work.
+func TestBreakdown_CriticalPathOverlapIsNotAGap(t *testing.T) {
+	parallel := stageAt("overlay_render", 3_000, 6_000)
+	parallel.Independent = true
+	report := &RunReport{
+		StartedAt:  time.Unix(1_700_000_000, 0),
+		WallTimeMs: 6_000,
+		Stages:     []StageReport{stageAt("generate", 0, 4_000), parallel},
+	}
+	bd := report.Breakdown()
+	if bd.OverlappedMs != 1_000 {
+		t.Fatalf("OverlappedMs = %d, want 1000 (4000 + 3000 work over 6000 wall)", bd.OverlappedMs)
+	}
+	if len(bd.CriticalPath) != 2 {
+		t.Fatalf("CriticalPath len = %d, want 2", len(bd.CriticalPath))
+	}
+	second := bd.CriticalPath[1]
+	if second.StartOffsetMs != 3_000 || second.GapBeforeMs != 0 {
+		t.Fatalf("parallel stage = start %d gap %d, want start 3000 gap 0 (overlap, not idle)", second.StartOffsetMs, second.GapBeforeMs)
+	}
+}
+
+// TestBreakdown_UnanchoredStageHasNoOffsets pins the no-fake-availability rule:
+// a stage without a start/finish pair is not placed at offset 0 and cannot
+// fabricate a gap.
+func TestBreakdown_UnanchoredStageHasNoOffsets(t *testing.T) {
+	report := &RunReport{
+		StartedAt:  time.Unix(1_700_000_000, 0),
+		WallTimeMs: 5_000,
+		Stages: []StageReport{
+			stageAt("generate", 0, 5_000),
+			{Name: "legacy_stage", DurationMs: 1_000},
+		},
+	}
+	bd := report.Breakdown()
+	if len(bd.CriticalPath) != 2 {
+		t.Fatalf("CriticalPath len = %d, want 2", len(bd.CriticalPath))
+	}
+	legacy := bd.CriticalPath[1]
+	if legacy.Name != "legacy_stage" {
+		t.Fatalf("CriticalPath[1] = %q, want the unanchored stage last", legacy.Name)
+	}
+	if legacy.Anchored || legacy.StartOffsetMs != 0 || legacy.EndOffsetMs != 0 || legacy.GapBeforeMs != 0 {
+		t.Fatalf("unanchored stage invented a position: %+v", legacy)
+	}
+	if got := bd.CriticalPath[0]; !got.Anchored || got.EndOffsetMs != 5_000 {
+		t.Fatalf("anchored stage lost its offsets: %+v", got)
+	}
+}
+
 // TestBreakdown_CriticalPathNilAndEmptyIsSafe pins nil/empty safety: a report
 // with no top-level stages yields no critical path.
 func TestBreakdown_CriticalPathNilAndEmptyIsSafe(t *testing.T) {

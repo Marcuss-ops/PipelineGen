@@ -331,4 +331,4 @@ type ResolvedDestination struct {
 // callers that want to mark a StatusFailed without a concrete
 // message (e.g. cancel race) can still surface the failure code in
 // Errors[] without lying about an empty message string.
-// ── Helper functions (fail, isSuccessful, randomSuffix, etc.) live in types_helpers.go ──
+// ── Test-only helpers (fail, randomSuffix) live in types_helpers_test.go ──

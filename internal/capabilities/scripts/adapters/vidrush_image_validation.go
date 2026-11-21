@@ -201,6 +201,23 @@ func isVidRushPrivateIP(ip net.IP) bool {
 // DownloadVidRushImageForCandidate carries the result page as a referrer when
 // the image host requires a normal browser-like navigation context. The image
 // URL itself still goes through the same SSRF, size, MIME and redirect guards.
+// ProviderImageHTTPClient is the bounded client for provider image downloads.
+// It exists so call sites stop passing http.DefaultClient — which has no
+// timeout at all — for a fetch that can hang on a slow origin.
+var providerImageHTTPClient = &http.Client{
+	Timeout: 60 * time.Second,
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 20 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+	},
+}
+
+// ProviderImageHTTPClient returns the shared bounded client for image fetches.
+func ProviderImageHTTPClient() *http.Client { return providerImageHTTPClient }
+
 func DownloadVidRushImageForCandidate(ctx context.Context, client *http.Client, candidate scriptpkg.SegmentAssetCandidate, policy VidRushImagePolicy) ([]byte, string, error) {
 	rawURL := strings.TrimSpace(candidate.SourceURL)
 	if rawURL == "" {

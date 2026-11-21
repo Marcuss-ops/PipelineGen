@@ -149,10 +149,17 @@ type stubProcessFinalizer struct {
 	calls     []*FinalizeCommand
 	cannedRes *FinalizeResult
 	cannedErr error
+	// beforeReturn runs with the caller-owned tx before the canned result is
+	// returned. A test can roll the tx back here to force the subsequent
+	// tx.Commit() to fail without closing the database.
+	beforeReturn func(*sql.Tx)
 }
 
-func (s *stubProcessFinalizer) Finalize(_ context.Context, _ *sql.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
+func (s *stubProcessFinalizer) Finalize(_ context.Context, tx *sql.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
 	s.calls = append(s.calls, cmd)
+	if s.beforeReturn != nil {
+		s.beforeReturn(tx)
+	}
 	return s.cannedRes, s.cannedErr
 }
 

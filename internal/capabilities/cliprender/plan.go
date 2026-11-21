@@ -16,6 +16,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -240,7 +241,7 @@ func ValidatePlanSourceFrame(frame *PlanSourceFrame, foregroundScalePercent int)
 		if stroke.WidthPX < 0 || stroke.WidthPX > MaxFrameStrokeWidth || math.IsNaN(stroke.WidthPX) || math.IsInf(stroke.WidthPX, 0) {
 			return fmt.Errorf("source_frame.stroke.width_px must be within [0,%g]", MaxFrameStrokeWidth)
 		}
-		if !isFrameHexColor(stroke.Color) {
+		if !color.IsHexRGB(stroke.Color) {
 			return fmt.Errorf("source_frame.stroke.color %q must be #RRGGBB", stroke.Color)
 		}
 	}
@@ -258,7 +259,7 @@ func ValidatePlanSourceFrame(frame *PlanSourceFrame, foregroundScalePercent int)
 		if border.RadiusPX < 0 || border.RadiusPX > MaxFrameRadius || math.IsNaN(border.RadiusPX) || math.IsInf(border.RadiusPX, 0) {
 			return fmt.Errorf("source_frame.border.radius_px must be within [0,%g]", MaxFrameRadius)
 		}
-		if !isFrameHexColor(border.Color) {
+		if !color.IsHexRGB(border.Color) {
 			return fmt.Errorf("source_frame.border.color %q must be #RRGGBB", border.Color)
 		}
 		if border.WidthPX > 0 && (foregroundScalePercent <= 0 || foregroundScalePercent >= 100) {
@@ -267,7 +268,7 @@ func ValidatePlanSourceFrame(frame *PlanSourceFrame, foregroundScalePercent int)
 	}
 	if frame.Shadow != nil {
 		shadow := frame.Shadow
-		if !isFrameHexColor(shadow.Color) {
+		if !color.IsHexRGB(shadow.Color) {
 			return fmt.Errorf("source_frame.shadow.color %q must be #RRGGBB", shadow.Color)
 		}
 		if shadow.Opacity < 0 || shadow.Opacity > 1 || math.IsNaN(shadow.Opacity) {
@@ -282,24 +283,6 @@ func ValidatePlanSourceFrame(frame *PlanSourceFrame, foregroundScalePercent int)
 		}
 	}
 	return nil
-}
-
-// isFrameHexColor accepts exactly the #RRGGBB spelling the render plan's colour
-// properties declare (the engine parses no other form).
-func isFrameHexColor(value string) bool {
-	if len(value) != 7 || value[0] != '#' {
-		return false
-	}
-	for _, digit := range value[1:] {
-		switch {
-		case digit >= '0' && digit <= '9':
-		case digit >= 'a' && digit <= 'f':
-		case digit >= 'A' && digit <= 'F':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 // PlanAudio is the resolved audio policy. Mode copy_if_compatible means the

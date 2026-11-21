@@ -17,10 +17,28 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// overlayPlanImageOptions is the named form of the two image-planning
+// switches that used to travel as positional booleans. A caller cannot swap
+// them silently, and omitting the bundle keeps the historical defaults: no
+// per-scene entity cards, scene images enabled.
+type overlayPlanImageOptions struct {
+	// PerSceneEntityCards enables per-scene entity image planning.
+	PerSceneEntityCards bool
+	// DisableSceneImages turns scene images off for this run.
+	DisableSceneImages bool
+}
+
+// perSceneEntityCards reports whether per-scene entity cards are requested.
+func (o overlayPlanImageOptions) perSceneEntityCards() bool { return o.PerSceneEntityCards }
+
+// sceneImagesEnabled reports the scene-image toggle with the historical
+// default (enabled) when the caller did not set it.
+func (o overlayPlanImageOptions) sceneImagesEnabled() bool { return !o.DisableSceneImages }
+
 // compileOverlayPlanWithMotionOffset is the production entry point. The
 // configured compiler is the only plan authority: there is no Go fallback and
 // no per-phase port invocation.
-func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
+func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
 	input, err := prepareOverlayPlanCompile(ctx, result, language, canvas, planID, videoID, projectID, plates, perSceneImages...)
 	if err != nil || input == nil {
 		return nil, err
@@ -59,12 +77,12 @@ type overlayPlanCompileInput struct {
 	imagePlan         *overlayplan.ImagePlan
 	resolved          []ResolvedScene
 	timelineBounds    map[string][2]int64
-	perSceneImages    []bool
+	perSceneImages    []overlayPlanImageOptions
 }
 
 // prepareOverlayPlanCompile builds the certified scene projection. It does not
 // call any map/entity/cascade port; those remain legacy-only.
-func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*overlayPlanCompileInput, error) {
+func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...overlayPlanImageOptions) (*overlayPlanCompileInput, error) {
 
 	if result == nil {
 		return nil, nil
@@ -126,13 +144,13 @@ func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, lang
 	if genericImageCeiling <= 0 {
 		genericImageCeiling = capabilityoverlay.MaxImageOverlaysPerRun
 	}
-	if len(perSceneImages) > 0 && perSceneImages[0] && canvas.AnimationCounts["entities"] > 0 {
+	if len(perSceneImages) > 0 && perSceneImages[0].perSceneEntityCards() && canvas.AnimationCounts["entities"] > 0 {
 		genericImageCeiling -= canvas.AnimationCounts["entities"]
 	}
 	if genericImageCeiling < 0 {
 		genericImageCeiling = 0
 	}
-	sceneImagesEnabled := len(perSceneImages) < 2 || perSceneImages[1]
+	sceneImagesEnabled := len(perSceneImages) == 0 || perSceneImages[0].sceneImagesEnabled()
 	for i := range result.Scenes {
 		scene := result.Scenes[i]
 		ref, ok := scene.Voiceover[language]
@@ -292,3 +310,5 @@ func chapterManifestToWire(in *scriptpkg.ChapterManifest) *overlayplan.ChapterMa
 	}
 	return out
 }
+
+const maxGenericSceneImagesPerScene = 10

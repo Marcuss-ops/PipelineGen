@@ -9,12 +9,14 @@ import (
 // Use errors.Is(err, ErrContractMismatch) to detect it.
 var ErrContractMismatch = errors.New("embedding contract mismatch")
 
+// ComponentQuery is the query-embedder leg name used in MismatchError.Component.
+const ComponentQuery = "query_embedder"
+
 // MismatchError reports which component diverged from the canonical contract.
 // Its code is the operator-facing gate identifier
 // EMBEDDING_CONTRACT_MISMATCH.
 type MismatchError struct {
-	// Component is the leg of the handshake that diverged (see the
-	// Component* constants in handshake.go).
+	// Component is the leg that diverged (see ComponentQuery).
 	Component string
 	// Expected is the canonical contract.
 	Expected Contract

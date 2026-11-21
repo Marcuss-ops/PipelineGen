@@ -29,17 +29,6 @@ type EditorialSection struct {
 	Order int                `json:"order"`
 }
 
-var editorialSectionCatalog = [...]EditorialSection{
-	{ID: EditorialSectionEntityTextImage, Title: "Entità con testo · 1 immagine", Order: 10},
-	{ID: EditorialSectionSingleImage, Title: "Immagini singole", Order: 20},
-	{ID: EditorialSectionImageStack, Title: "Immagini x2, x3, x4, x5…", Order: 30},
-	{ID: EditorialSectionImportantPhrase, Title: "Frasi importanti", Order: 40},
-	{ID: EditorialSectionShortPhrase, Title: "Frasi importanti brevi", Order: 50},
-	{ID: EditorialSectionNumbersAndDates, Title: "Numeri & date", Order: 60},
-	{ID: EditorialSectionMap, Title: "Mappe", Order: 70},
-	{ID: EditorialSectionOther, Title: "Altri elementi", Order: 80},
-}
-
 // EditorialPlanSection is one section of an organized plan. Items retain their
 // original plan order and are not copied into multiple sections.
 type EditorialPlanSection struct {

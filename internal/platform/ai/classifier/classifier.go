@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/prompts"
-
 	"go.uber.org/zap"
 )
 
@@ -61,23 +59,14 @@ func Classify(ctx context.Context, log *zap.Logger, client LLMClient, title stri
 
 	existingCategories := scanCategories(opts.DataDir, opts.ExcludeCategories, opts.EnsureCategories, opts.DefaultCategories)
 
-	var prompt string
-	if cfg := prompts.Get(); cfg != nil {
-		rendered, err := cfg.RenderClassification(title, strings.Join(existingCategories, ", "))
-		if err == nil {
-			prompt = rendered
-		}
-	}
-	if prompt == "" {
-		prompt = fmt.Sprintf("You are a classification assistant. Classify the video title: '%s' into ONE of these existing categories: %s. "+
-			"RULES:\n"+
-			"- You MUST pick from the list above. Do NOT create new categories.\n"+
-			"- Pick the closest match even if imperfect.\n"+
-			"- Do NOT add suffixes like 'tech' to category names (e.g. use 'music' not 'musictech').\n"+
-			"- Do NOT use format-based words: interviews, videos, general, other, clips, youtube.\n"+
-			"Your response must contain ONLY the category name as a single word in lowercase, with no explanation and no punctuation.",
-			title, strings.Join(existingCategories, ", "))
-	}
+	prompt := fmt.Sprintf("You are a classification assistant. Classify the video title: '%s' into ONE of these existing categories: %s. "+
+		"RULES:\n"+
+		"- You MUST pick from the list above. Do NOT create new categories.\n"+
+		"- Pick the closest match even if imperfect.\n"+
+		"- Do NOT add suffixes like 'tech' to category names (e.g. use 'music' not 'musictech').\n"+
+		"- Do NOT use format-based words: interviews, videos, general, other, clips, youtube.\n"+
+		"Your response must contain ONLY the category name as a single word in lowercase, with no explanation and no punctuation.",
+		title, strings.Join(existingCategories, ", "))
 
 	response, err := client.SimpleGenerate(ctx, opts.Model, prompt, 30*time.Second, nil)
 	if err != nil {
