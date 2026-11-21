@@ -19,7 +19,7 @@ type finalJobFrameWindow struct {
 	sceneID    string
 }
 
-var errFinalJobImageNoFreeGap = errors.New("final_job image overlay has no free scene window")
+var errFinalJobOptionalOverlayNoFreeGap = errors.New("final_job optional overlay has no free scene window")
 
 // OverlayPublicationSpec and OverlayArtifactPublisher are the kernel-owned
 // publication contract (internal/kernel/script/renderqueue): the queue adapter
@@ -227,11 +227,11 @@ func scheduleFinalJobOverlayFrames(result *GenerateResult, item capmodel.Overlay
 		}
 		candidate = conflictStart - duration
 	}
-	// Image cards are visual accents and may use a shorter source window when
-	// the full local render cannot fit beside the other replace overlays. Keep
-	// at least one second of the image, then take the largest free gap in the
-	// owning scene. Text and number overlays retain their certified duration.
-	if finalJobOverlayIsImageStyle(item) {
+	// Image, entity, location and number cards may use a shorter source window
+	// when the full local render cannot fit beside other replace overlays. Keep
+	// at least half a second, then take the largest free gap in the owning
+	// scene. Phrase and other editorial text overlays retain their full window.
+	if finalJobOverlayCanShrink(item) {
 		type frameGap struct{ start, end int64 }
 		windows := make([]frameGap, 0, len(occupied))
 		for _, prior := range occupied {
@@ -284,15 +284,25 @@ func scheduleFinalJobOverlayFrames(result *GenerateResult, item capmodel.Overlay
 			}
 			return start, start + available, nil
 		}
-		return 0, 0, fmt.Errorf("%w: overlay %q in scene %q", errFinalJobImageNoFreeGap, item.ID, item.SceneID)
+		return 0, 0, fmt.Errorf("%w: overlay %q in scene %q", errFinalJobOptionalOverlayNoFreeGap, item.ID, item.SceneID)
 	}
 	return 0, 0, fmt.Errorf("final_job overlay %q cannot fit a non-overlapping %d-frame window in scene %q", item.ID, duration, item.SceneID)
 }
 
-// finalJobOverlayIsImageStyle identifies replace-mode visual cards that may
-// move within their scene to avoid the Master rejecting intersecting overlay
-// frame windows. Entity cards render a full-frame image just like generic image
-// overlays, even though their semantic kind is "entity_card".
+// finalJobOverlayCanShrink identifies replace-mode cards that may move within
+// their scene and take a shorter source window to avoid the Master rejecting
+// intersecting overlay frame windows. Entity cards render a full-frame image
+// just like generic image overlays; number, location and organization cards are
+// optional accents too. Phrase text keeps its certified window.
+func finalJobOverlayCanShrink(item capmodel.OverlayItem) bool {
+	switch item.Kind {
+	case "image", "entity_card", "number", "location", "organization":
+		return true
+	default:
+		return false
+	}
+}
+
 func finalJobOverlayIsImageStyle(item capmodel.OverlayItem) bool {
 	return item.Kind == "image" || item.Kind == "entity_card"
 }

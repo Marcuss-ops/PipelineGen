@@ -403,7 +403,7 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 		if _, isConsumed := consumed[strings.TrimSpace(entry.ItemID)]; isConsumed {
 			continue
 		}
-		if finalJobOverlayIsImageStyle(item) {
+		if finalJobOverlayCanShrink(item) {
 			if _, isClip := clipWindows[item.SceneID]; isClip {
 				continue
 			}
@@ -543,10 +543,10 @@ func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, c
 			}
 			scheduledStart, scheduledEnd, scheduleErr := scheduleFinalJobOverlayFrames(result, item, startFrame, endFrame, fpsNum, fpsDen, admittedFrames)
 			if scheduleErr != nil {
-				if errors.Is(scheduleErr, errFinalJobImageNoFreeGap) {
-					// Images are optional accent layers. A completely occupied scene
-					// must not make the entire final video fail; text and numeric
-					// overlays remain fail-closed because they carry editorial content.
+				if errors.Is(scheduleErr, errFinalJobOptionalOverlayNoFreeGap) {
+					// Accent and reference cards are optional when the scene has no
+					// remaining frames. Phrase text remains fail-closed because it
+					// carries editorial content.
 					continue
 				}
 				return nil, scheduleErr

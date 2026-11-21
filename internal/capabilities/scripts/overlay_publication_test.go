@@ -64,6 +64,31 @@ func TestScheduleFinalJobImageOverlayShrinksToFreeSceneGap(t *testing.T) {
 	}
 }
 
+func TestScheduleFinalJobNumberOverlayShrinksToFreeSceneGap(t *testing.T) {
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Segments: []capabilityaudio.TimelineSegment{{
+				ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
+			}},
+		},
+	}
+	item := capmodel.OverlayItem{
+		ID: "date-late", SceneID: "scene-1", Kind: "number",
+		StartUS: 5_000_000, DurationUS: 5_000_000,
+	}
+	occupied := map[string]finalJobFrameWindow{
+		"text-a": {start: 0, end: 180, sceneID: "scene-1"},
+	}
+
+	start, end, err := scheduleFinalJobOverlayFrames(result, item, 120, 240, 24, 1, occupied)
+	if err != nil {
+		t.Fatalf("scheduleFinalJobOverlayFrames: %v", err)
+	}
+	if start != 180 || end != 240 {
+		t.Fatalf("number window = [%d,%d), want available 60-frame gap [180,240)", start, end)
+	}
+}
+
 func TestScheduleFinalJobImageOverlayCanBeOmittedWhenSceneHasNoGap(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
@@ -81,7 +106,7 @@ func TestScheduleFinalJobImageOverlayCanBeOmittedWhenSceneHasNoGap(t *testing.T)
 	}
 
 	_, _, err := scheduleFinalJobOverlayFrames(result, item, 120, 240, 24, 1, occupied)
-	if !errors.Is(err, errFinalJobImageNoFreeGap) {
-		t.Fatalf("scheduleFinalJobOverlayFrames error = %v, want no-free-image-gap sentinel", err)
+	if !errors.Is(err, errFinalJobOptionalOverlayNoFreeGap) {
+		t.Fatalf("scheduleFinalJobOverlayFrames error = %v, want no-free-optional-overlay sentinel", err)
 	}
 }
