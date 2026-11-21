@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/RenderingGen/queue/client"
 	"github.com/Marcuss-ops/RenderingGen/queue/internal/model"
+	"github.com/Marcuss-ops/RenderingGen/queue/internal/service"
 )
 
 // validClaimState reports whether s is a known job state in the canonical
@@ -119,6 +121,43 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeClaimResult(w, job, lease)
+}
+
+// claimBatch claims a window of jobs in one transaction. It is additive on
+// purpose: /jobs/claim keeps returning a single job for every existing worker,
+// and a caller that wants the RENDER_BATCH envelope asks here. The response is
+// a list of jobs, each carrying its own lease and fencing generation — a batch
+// is a claim window, never a shared lease.
+func (s *Server) claimBatch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Worker string `json:"worker"`
+		Limit  int    `json:"limit,omitempty"`
+	}
+	if !decodeRequestBody(w, r, &req) {
+		return
+	}
+	if req.Limit == 0 {
+		req.Limit = 1
+	}
+	if req.Limit < 0 || req.Limit > service.MaxClaimBatch {
+		http.Error(w, "limit must be between 1 and "+strconv.Itoa(service.MaxClaimBatch), http.StatusBadRequest)
+		return
+	}
+	jobs, lease, err := s.svc.ClaimBatch(r.Context(), req.Worker, req.Limit)
+	if err != nil {
+		writeClaimError(w, err)
+		return
+	}
+	if len(jobs) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	for _, job := range jobs {
+		job.Lease = lease
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Jobs []*model.Job `json:"jobs"`
+	}{Jobs: jobs})
 }
 
 // claimWait is the dedicated long-poll endpoint. It is a thin wrapper over

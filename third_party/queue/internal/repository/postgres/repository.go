@@ -551,6 +551,33 @@ func (r *Repository) Claim(ctx context.Context, workerID string) (*model.Job, ti
 }
 
 func (r *Repository) ClaimState(ctx context.Context, workerID string, state model.State) (*model.Job, time.Duration, error) {
+	jobs, lease, err := r.claimN(ctx, workerID, state, 1)
+	if err != nil || len(jobs) == 0 {
+		return nil, lease, err
+	}
+	return jobs[0], lease, nil
+}
+
+// ClaimBatch claims up to limit jobs for one worker inside a single
+// transaction. It is a claim window, not a shared lease: every job still gets
+// its own lease_generation and its own expiry, so a worker that dies loses
+// only the jobs it claimed, each when its own lease elapses, and the fencing
+// token of one job can never complete another.
+//
+// The batch exists to amortise one IPC frame over several RENDER_JOBs
+// (RENDER_BATCH): the daemons still serialise execution, so the win is fewer
+// dials and roundtrips per item, not parallel GPU work.
+func (r *Repository) ClaimBatch(ctx context.Context, workerID string, limit int) ([]*model.Job, time.Duration, error) {
+	if limit < 1 {
+		return nil, 0, fmt.Errorf("claim batch limit must be >= 1")
+	}
+	return r.claimN(ctx, workerID, "", limit)
+}
+
+// claimN is the single implementation behind Claim, ClaimState and
+// ClaimBatch. limit=1 preserves the historical single-claim behaviour exactly
+// (same SQL predicate, same poison rule, same event).
+func (r *Repository) claimN(ctx context.Context, workerID string, state model.State, limit int) ([]*model.Job, time.Duration, error) {
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -562,7 +589,37 @@ func (r *Repository) ClaimState(ctx context.Context, workerID string, state mode
 	now := time.Now()
 	leaseUntil := now.Add(r.lease)
 
-	var (
+	// The claimable vocabulary is owned by model.ClaimableStates(), so adding
+	// a claimable state updates this query instead of leaving a hand-typed
+	// literal behind. A requested state is validated against the same
+	// vocabulary before it reaches the query text.
+	stateFilter := "state IN " + stateIn(model.ClaimableStates()...)
+	if state != "" {
+		if !model.IsClaimable(state) {
+			return nil, 0, fmt.Errorf("unsupported claim state %q", state)
+		}
+		stateFilter = "state = " + stateLiteral(state)
+	}
+
+	// Select the whole window first: database/sql forbids running another
+	// statement on the same connection while rows are still open, and the
+	// per-job attempt bookkeeping below needs exactly that.
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, job_type, publication_policy, daemon_admission_wait_ms, job_schema, job_schema_version, render_plan, input_manifest, attempt_count, lease_generation, queued_at, artifact_id, parent_job_id, chunk_index, frame_range
+		FROM render_jobs
+		WHERE `+stateFilter+`
+		  AND (not_before IS NULL OR not_before <= $1)
+		  AND NOT EXISTS (
+		      SELECT 1 FROM render_jobs AS child
+		      WHERE child.parent_job_id = render_jobs.id)
+		ORDER BY queued_at ASC
+		FOR UPDATE SKIP LOCKED
+		LIMIT $2`, now, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	type claimCandidate struct {
 		id                    string
 		jobType               string
 		publicationPolicy     string
@@ -578,117 +635,127 @@ func (r *Repository) ClaimState(ctx context.Context, workerID string, state mode
 		parentJobID           sql.NullString
 		chunkIndex            int
 		frameRange            []byte
-	)
-	// The claimable vocabulary is owned by model.ClaimableStates(), so adding
-	// a claimable state updates this query instead of leaving a hand-typed
-	// literal behind. A requested state is validated against the same
-	// vocabulary before it reaches the query text.
-	stateFilter := "state IN " + stateIn(model.ClaimableStates()...)
-	if state != "" {
-		if !model.IsClaimable(state) {
-			return nil, 0, fmt.Errorf("unsupported claim state %q", state)
-		}
-		stateFilter = "state = " + stateLiteral(state)
+		frameRangeVal         *model.FrameRange
+		manifestVal           inputManifest
 	}
-	// Assembly anchors (model/lifecycle.go) are never claimable for rendering:
-	// a job that owns chunk children has its output assembled from them, so a
-	// claim here would re-render the whole plan on the GPU. The EXISTS form
-	// keeps the rule structural — no producer has to remember to flag a
-	// parent, and a parent submitted without children stays ordinary work.
-	err = tx.QueryRowContext(ctx, `
-		SELECT id, job_type, publication_policy, daemon_admission_wait_ms, job_schema, job_schema_version, render_plan, input_manifest, attempt_count, lease_generation, queued_at, artifact_id, parent_job_id, chunk_index, frame_range
-		FROM render_jobs
-		WHERE `+stateFilter+`
-		  AND (not_before IS NULL OR not_before <= $1)
-		  AND NOT EXISTS (
-		      SELECT 1 FROM render_jobs AS child
-		      WHERE child.parent_job_id = render_jobs.id)
-		ORDER BY queued_at ASC
-		FOR UPDATE SKIP LOCKED
-		LIMIT 1`, now).Scan(&id, &jobType, &publicationPolicy, &daemonAdmissionWaitMS, &schema, &version, &plan, &manifest, &attempts, &generation, &queuedAt, &artifactID, &parentJobID, &chunkIndex, &frameRange)
-	if errors.Is(err, sql.ErrNoRows) {
+
+	candidates := make([]claimCandidate, 0, limit)
+	poisoned := 0
+	for rows.Next() {
+		var c claimCandidate
+		if err := rows.Scan(&c.id, &c.jobType, &c.publicationPolicy, &c.daemonAdmissionWaitMS, &c.schema, &c.version, &c.plan, &c.manifest, &c.attempts, &c.generation, &c.queuedAt, &c.artifactID, &c.parentJobID, &c.chunkIndex, &c.frameRange); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		// Fail-closed JSONB: corrupt frame_range or input_manifest must poison
+		// the job (failed) rather than silently rendering full-plan with
+		// dropped SHA256. In a batch one corrupt row must not cost the healthy
+		// claims around it, so it is poisoned in this same transaction and
+		// simply left out of the returned window.
+		frameRangeVal, err := decodeFrameRange(c.frameRange)
+		if err != nil {
+			if err := poisonCorruptJob(ctx, tx, c.id, err.Error()); err != nil {
+				rows.Close()
+				return nil, 0, fmt.Errorf("postgres: corrupt job %s could not be poisoned: %w (decode: %v)", c.id, err, err)
+			}
+			poisoned++
+			continue
+		}
+		manifestVal, err := decodeInputManifest(c.manifest)
+		if err != nil {
+			if err := poisonCorruptJob(ctx, tx, c.id, err.Error()); err != nil {
+				rows.Close()
+				return nil, 0, fmt.Errorf("postgres: corrupt job %s could not be poisoned: %w (decode: %v)", c.id, err, err)
+			}
+			poisoned++
+			continue
+		}
+		c.frameRangeVal = frameRangeVal
+		c.manifestVal = manifestVal
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, 0, err
+	}
+	rows.Close()
+
+	if len(candidates) == 0 && poisoned == 0 {
 		return nil, 0, nil
 	}
-	if err != nil {
-		return nil, 0, err
-	}
 
-	// Fail-closed JSONB: corrupt frame_range or input_manifest must poison the
-	// job (failed) rather than silently rendering full-plan with dropped SHA256.
-	// Decode BEFORE creating an attempt so a corrupt row never gets a running
-	// attempt or a lease — it is directly failed.
-	frameRangeVal, err := decodeFrameRange(frameRange)
-	if err != nil {
-		return nil, 0, poisonCorruptClaim(ctx, tx, id, err)
-	}
-	manifestVal, err := decodeInputManifest(manifest)
-	if err != nil {
-		return nil, 0, poisonCorruptClaim(ctx, tx, id, err)
-	}
+	claimed := make([]*model.Job, 0, len(candidates))
+	for _, c := range candidates {
+		var maxRecordedAttempt int
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(attempt_number), 0) FROM render_attempts WHERE job_id = $1`, c.id).Scan(&maxRecordedAttempt); err != nil {
+			return nil, 0, err
+		}
+		attemptNumber := c.attempts + 1
+		if maxRecordedAttempt >= attemptNumber {
+			attemptNumber = maxRecordedAttempt + 1
+		}
+		nextGeneration := c.generation + 1
+		if err := createAttempt(ctx, tx, c.id, attemptNumber, workerID, now); err != nil {
+			return nil, 0, err
+		}
 
-	var maxRecordedAttempt int
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(attempt_number), 0) FROM render_attempts WHERE job_id = $1`, id).Scan(&maxRecordedAttempt); err != nil {
-		return nil, 0, err
-	}
-	attemptNumber := attempts + 1
-	if maxRecordedAttempt >= attemptNumber {
-		attemptNumber = maxRecordedAttempt + 1
-	}
-	nextGeneration := generation + 1
-	if err := createAttempt(ctx, tx, id, attemptNumber, workerID, now); err != nil {
-		return nil, 0, err
-	}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE render_jobs
+			SET state = `+stateLiteral(model.StateRunning)+`,
+			    current_worker_id = $2,
+			    lease_until = $3,
+			    started_at = $4,
+			    attempt_count = $5,
+			    lease_generation = $6
+			WHERE id = $1`, c.id, workerID, leaseUntil, now, attemptNumber, nextGeneration); err != nil {
+			return nil, 0, err
+		}
 
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE render_jobs
-		SET state = `+stateLiteral(model.StateRunning)+`,
-		    current_worker_id = $2,
-		    lease_until = $3,
-		    started_at = $4,
-		    attempt_count = $5,
-		    lease_generation = $6
-		WHERE id = $1`, id, workerID, leaseUntil, now, attemptNumber, nextGeneration); err != nil {
-		return nil, 0, err
-	}
+		if err := recordEvent(ctx, tx, eventJobClaimed, c.id, attemptID(c.id, attemptNumber), workerID, nil); err != nil {
+			return nil, 0, err
+		}
 
-	if err := recordEvent(ctx, tx, eventJobClaimed, id, attemptID(id, attemptNumber), workerID, nil); err != nil {
-		return nil, 0, err
+		claimed = append(claimed, &model.Job{ID: c.id,
+			ParentJobID:           c.parentJobID.String,
+			ChunkIndex:            c.chunkIndex,
+			FrameRange:            c.frameRangeVal,
+			JobType:               c.jobType,
+			PublicationPolicy:     c.publicationPolicy,
+			DaemonAdmissionWaitMS: c.daemonAdmissionWaitMS,
+			Schema:                c.schema,
+			Version:               schemaVersion(c.version),
+			RenderPlan:            json.RawMessage(c.plan),
+			Assets:                c.manifestVal.Assets,
+			PreparedRenderPackage: c.manifestVal.PreparedRenderPackage,
+			State:                 model.StateRunning,
+			Worker:                workerID,
+			Attempts:              attemptNumber,
+			QueuedAt:              c.queuedAt,
+			StartedAt:             now,
+			LeaseUntil:            leaseUntil,
+			LeaseGeneration:       nextGeneration,
+		})
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, 0, err
 	}
 
-	job := &model.Job{ID: id,
-		ParentJobID:           parentJobID.String,
-		ChunkIndex:            chunkIndex,
-		FrameRange:            frameRangeVal,
-		JobType:               jobType,
-		PublicationPolicy:     publicationPolicy,
-		DaemonAdmissionWaitMS: daemonAdmissionWaitMS,
-		Schema:                schema,
-		Version:               schemaVersion(version),
-		RenderPlan:            json.RawMessage(plan),
-		Assets:                manifestVal.Assets,
-		PreparedRenderPackage: manifestVal.PreparedRenderPackage,
-		State:                 model.StateRunning,
-		Worker:                workerID,
-		Attempts:              attemptNumber,
-		QueuedAt:              queuedAt,
-		StartedAt:             now,
-		LeaseUntil:            leaseUntil,
-		LeaseGeneration:       nextGeneration,
-	}
 	// A job re-claimed from the rendered state carries its already-stored
 	// artifact so the worker can skip rendering and only retry publication.
-	if artifactID.Valid {
-		artifact, err := getArtifact(ctx, r.db, artifactID.String)
-		if err != nil {
-			return nil, 0, fmt.Errorf("job %s artifact %s: %w", id, artifactID.String, err)
+	for _, job := range claimed {
+		for _, c := range candidates {
+			if c.id != job.ID || !c.artifactID.Valid {
+				continue
+			}
+			artifact, err := getArtifact(ctx, r.db, c.artifactID.String)
+			if err != nil {
+				return nil, 0, fmt.Errorf("job %s artifact %s: %w", job.ID, c.artifactID.String, err)
+			}
+			job.Artifact = artifact
 		}
-		job.Artifact = artifact
 	}
-	return job, r.lease, nil
+	return claimed, r.lease, nil
 }
 
 // Get returns the current state of a job, including its artifact when done.

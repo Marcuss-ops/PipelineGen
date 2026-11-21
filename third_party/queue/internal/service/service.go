@@ -208,6 +208,39 @@ func (s *Service) ClaimState(ctx context.Context, workerID string, state model.S
 	return job, lease, nil
 }
 
+// MaxClaimBatch caps one claim window. It matches the RENDER_BATCH envelope
+// the worker sends (1–64 jobs in one IPC frame), so a worker can never claim a
+// window it could not ship in a single frame.
+const MaxClaimBatch = 64
+
+// ClaimBatch claims up to limit jobs for one worker in one transaction. Every
+// job keeps its own lease and lease generation: the batch is a claim window,
+// not a shared lease. An empty queue returns an empty slice and a nil error.
+func (s *Service) ClaimBatch(ctx context.Context, workerID string, limit int) ([]*model.Job, time.Duration, error) {
+	if workerID == "" {
+		return nil, 0, fmt.Errorf("worker id is required")
+	}
+	if limit < 1 {
+		return nil, 0, fmt.Errorf("claim batch limit must be >= 1")
+	}
+	if limit > MaxClaimBatch {
+		return nil, 0, fmt.Errorf("claim batch limit must be <= %d", MaxClaimBatch)
+	}
+	jobs, lease, err := s.repo.ClaimBatch(ctx, workerID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	if s.metrics != nil {
+		for _, job := range jobs {
+			if !job.QueuedAt.IsZero() {
+				s.metrics.QueueWait.Observe(time.Since(job.QueuedAt).Seconds())
+			}
+		}
+	}
+	s.observePending(ctx)
+	return jobs, lease, nil
+}
+
 // WaitAndClaim long-polls for a claimable job. It re-runs the atomic claim
 // immediately on every wake-up and falls back to a bounded tick so spurious
 // signal loss (or a repository without notifications) cannot stall a worker.

@@ -60,6 +60,13 @@ type JobRepository interface {
 	Claim(ctx context.Context, workerID string) (*model.Job, time.Duration, error)
 	ClaimState(ctx context.Context, workerID string, state model.State) (*model.Job, time.Duration, error)
 
+	// ClaimBatch claims up to limit jobs for one worker in a single
+	// transaction. It is a claim window, not a shared lease: each job keeps
+	// its own lease_generation and expiry, so the fencing token of one job can
+	// never complete another. An empty queue returns an empty slice and a nil
+	// error.
+	ClaimBatch(ctx context.Context, workerID string, limit int) ([]*model.Job, time.Duration, error)
+
 	// Get returns the current state of a job, including its artifact when
 	// completed. It returns ErrNotFound when the job does not exist.
 	Get(ctx context.Context, id string) (*model.Job, error)

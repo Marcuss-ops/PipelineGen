@@ -55,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /jobs", s.submit)
 	mux.HandleFunc("POST /jobs/batch", s.submitBatch)
 	mux.HandleFunc("POST /jobs/claim", s.claim)
+	mux.HandleFunc("POST /jobs/claim/batch", s.claimBatch)
 	mux.HandleFunc("POST /jobs/claim/wait", s.claimWait)
 	mux.HandleFunc("POST /jobs/{id}/complete", s.complete)
 	mux.HandleFunc("POST /jobs/{parent}/{lang}/complete", s.complete)

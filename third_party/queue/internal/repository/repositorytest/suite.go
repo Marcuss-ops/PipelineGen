@@ -201,4 +201,60 @@ func Run(t *testing.T, newRepository Factory) {
 			}
 		}
 	})
+
+	// The batch is a claim WINDOW, not a shared lease: every job in it owns a
+	// generation and an expiry of its own, the window is FIFO, and asking for
+	// more than exists must return what exists instead of failing.
+	t.Run("claim batch takes a bounded FIFO window with per-job leases", func(t *testing.T) {
+		repo := newRepository(t)
+		wanted := []string{"batch-a", "batch-b", "batch-c"}
+		for _, id := range wanted {
+			if err := repo.Submit(ctx, model.Job{ID: id, RenderPlan: []byte(`{"schema":"chronon.render-plan.v2","version":2}`)}); err != nil {
+				t.Fatalf("submit %s: %v", id, err)
+			}
+		}
+
+		jobs, lease, err := repo.ClaimBatch(ctx, "batch-worker", 2)
+		if err != nil {
+			t.Fatalf("claim batch: %v", err)
+		}
+		if len(jobs) != 2 {
+			t.Fatalf("claimed %d jobs, want 2", len(jobs))
+		}
+		if lease <= 0 {
+			t.Fatalf("lease = %v, want > 0", lease)
+		}
+		for i, job := range jobs {
+			if job.ID != wanted[i] {
+				t.Fatalf("jobs[%d].ID = %q, want %q (FIFO)", i, job.ID, wanted[i])
+			}
+			if job.State != model.StateRunning {
+				t.Fatalf("jobs[%d].State = %q, want running", i, job.State)
+			}
+			if job.LeaseGeneration <= 0 {
+				t.Fatalf("jobs[%d].LeaseGeneration = %d, want > 0", i, job.LeaseGeneration)
+			}
+			if job.Worker != "batch-worker" {
+				t.Fatalf("jobs[%d].Worker = %q, want batch-worker", i, job.Worker)
+			}
+		}
+
+		// A second window must not hand back the same jobs: they are running.
+		rest, _, err := repo.ClaimBatch(ctx, "batch-worker", 2)
+		if err != nil {
+			t.Fatalf("second claim batch: %v", err)
+		}
+		if len(rest) != 1 || rest[0].ID != wanted[2] {
+			t.Fatalf("second window = %+v, want only %q", rest, wanted[2])
+		}
+
+		// Asking for more than remains is a short window, never an error.
+		empty, _, err := repo.ClaimBatch(ctx, "batch-worker", 4)
+		if err != nil {
+			t.Fatalf("claim batch on drained queue: %v", err)
+		}
+		if len(empty) != 0 {
+			t.Fatalf("claimed %d jobs from a drained queue", len(empty))
+		}
+	})
 }

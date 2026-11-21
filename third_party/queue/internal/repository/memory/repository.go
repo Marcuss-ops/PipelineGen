@@ -449,6 +449,30 @@ func (s *Repository) Claim(ctx context.Context, workerID string) (*model.Job, ti
 	return s.ClaimState(ctx, workerID, "")
 }
 
+// ClaimBatch claims up to limit jobs by repeating the same atomic claim. Each
+// claim still CAS-es one candidate under the write lock, so the memory store
+// keeps its FIFO guarantee per job; the batch only decides how many times it
+// is asked.
+func (s *Repository) ClaimBatch(ctx context.Context, workerID string, limit int) ([]*model.Job, time.Duration, error) {
+	if limit < 1 {
+		return nil, 0, fmt.Errorf("claim batch limit must be >= 1")
+	}
+	jobs := make([]*model.Job, 0, limit)
+	var lease time.Duration
+	for range limit {
+		job, l, err := s.ClaimState(ctx, workerID, "")
+		if err != nil {
+			return nil, 0, err
+		}
+		if job == nil {
+			break
+		}
+		lease = l
+		jobs = append(jobs, job)
+	}
+	return jobs, lease, nil
+}
+
 func (s *Repository) ClaimState(_ context.Context, workerID string, state model.State) (*model.Job, time.Duration, error) {
 	// Phase 1 (shared lock): snapshot the FIFO candidate IDs in order.
 	// Preallocate to the queue length so the snapshot is a single alloc.

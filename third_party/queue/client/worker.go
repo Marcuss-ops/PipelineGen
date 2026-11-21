@@ -114,6 +114,48 @@ func (c *Client) claimWait(ctx context.Context, workerID, state string, maxWait 
 	return &job, nil
 }
 
+// ClaimBatch claims up to limit jobs in one transaction. Every returned job
+// carries its own lease and lease generation; the batch is a claim window, not
+// a shared lease, so a worker that dies loses only the jobs it claimed, each on
+// its own expiry. An empty queue returns an empty slice and a nil error.
+func (c *Client) ClaimBatch(ctx context.Context, workerID string, limit int) ([]*ClaimedJob, error) {
+	if limit < 1 {
+		return nil, fmt.Errorf("queue claim batch: limit must be >= 1")
+	}
+	body, err := json.Marshal(struct {
+		Worker string `json:"worker"`
+		Limit  int    `json:"limit"`
+	}{Worker: workerID, Limit: limit})
+	if err != nil {
+		return nil, fmt.Errorf("queue claim batch marshal: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/jobs/claim/batch", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("queue claim batch request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("queue claim batch do: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("queue claim batch: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	var envelope struct {
+		Jobs []*ClaimedJob `json:"jobs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
+		return nil, fmt.Errorf("queue claim batch decode: %w", err)
+	}
+	return envelope.Jobs, nil
+}
+
 func (c *Client) claim(ctx context.Context, workerID, state string, wait time.Duration) (*ClaimedJob, error) {
 	waitMS := wait.Milliseconds()
 	if waitMS < 0 {
