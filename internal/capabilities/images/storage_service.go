@@ -60,14 +60,9 @@ type ImageStorageService struct {
 	commonsSearchMu   sync.Mutex
 	commonsLastSearch time.Time
 
-	// Pace the Wikipedia action API across concurrent scene/entity queries.
-	// Five scenes asking for the same biography used to burst past the
-	// Wikimedia rate limits and receive HTTP 429 for every query. One
-	// process-wide gate keeps the canonical minimum interval even when the
-	// requests originate from different fan-out goroutines.
-	wikipediaSearchMu      sync.Mutex
-	wikipediaLastSearch    time.Time
-	wikipediaCooldownUntil time.Time
+	// The Wikipedia request gate is process-wide and lives in
+	// search_engine_wikipedia.go. It must not be copied into the service:
+	// fan-out goroutines and independently constructed services share it.
 
 	// subjectTags is the typed port for extracting subject slug + tag list
 	// from a free-form description (PR C9, July 2026). Replaces the
