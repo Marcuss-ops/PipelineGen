@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-21
 **Priorità:** P1 (manutenibilità su percorso caldo)
-**Stato:** PARTIAL — 4 di 6 sotto soglia (§8); restano `materialize` 107 e `semanticBundles` 92
+**Stato:** DONE per il perimetro richiesto — `materialize` 107→13, `semanticBundles` 93→sotto 13 (§9); `buildFinalJobPayloads` resta 92 ed è tracciato in RA-16
 **Owner:** per funzione (kernel/script, adapters, scripts, overlays)
 **Origine:** report esterno 2026-11-21 §2.1
 **Verifica sul codice:** **DA MISURARE** — i valori di branch del report (143/120/114/111/101/100)
@@ -171,8 +171,24 @@ post-render (Objectstore + Drive), lasciando in `enqueueChrononPlan` la cache e 
 submit/wait. Verifiche: `go build ./...` ok, `go test ./internal/capabilities/scripts/` (16.1s)
 PASS, `go vet` pulito, `gofmt -l` vuoto.
 
-**Restano 2**: `materialize` 107, `semanticBundles` 92. Per `semanticBundles` è stato tentato lo split in
+**Restavano 2** (ora chiusi in §9): `materialize` 107, `semanticBundles` 92. Per `semanticBundles` è stato tentato lo split in
 `projectReferences`/`projectTextBlocks`: l'estrazione automatica ha prodotto un albero non
 compilabile ed è stata annullata con `git checkout HEAD --` sul file (nessun residuo). Va rifatta
 a mano, spezzando anche `semanticBundles` in richiesta/manifest/bundle, perché la sola
 estrazione del loop lascia due helper a ~45.
+
+## 9. Chiusura RA-18 — `materialize` e `semanticBundles` (2026-11-21)
+
+| Funzione | Prima | Dopo | Taglio |
+| --- | ---: | ---: | --- |
+| `(*vidRushMaterializationRun).materialize` | 107 | **13** | `prepareMaterializationCandidate` → `hydrateMaterializationCandidate` → `reuseMaterializationCandidate` → `acquireMaterializationCandidate` → `finalizeMaterializationCandidate`; stato del loop in `vidRushMaterializationState` |
+| `(*SemanticEngineAdapter).semanticBundles` | 93 | **8** | `buildSemanticEngineRequest` → `executeSemanticEngineRequest` → `buildSemanticCandidateBundles` (+ proiezioni per lingua/testo/visual/analisi) → `applySemanticDocumentProjections` → `buildSemanticEditorialResult` |
+
+Ordine dei controlli, condizioni e messaggi di errore sono rimasti invariati. Verifiche eseguite:
+`go test ./internal/capabilities/scripts/adapters/...` PASS,
+`go test ./internal/platform/media/rustexec/...` PASS,
+`go build ./...`, `go vet ./...`, `gofmt -l` pulito sui file toccati,
+`go run ./cmd/archcheck --strict` exit 0.
+
+`buildFinalJobPayloads` resta a **92**: non fa parte del perimetro richiesto di RA-18 ed è
+registrato come residuo legacy in RA-16 §7.

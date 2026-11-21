@@ -141,14 +141,14 @@ modifiche e i check che chiudono la scheda. Un ticket si chiude solo con la sezi
 | [RA-08](08-RETRY-HYGIENE.md) | Retry: spin loop, sleep finale, jitter, ctx | P1 | — | **DONE** |
 | [RA-09](09-GLOBAL-STATE-RACES.md) | Stato globale mutabile e race (`sync.Once`, `logSink`, registry, cache) | P1 | — | **DONE** — font, logSink, registry Ollama, clock seam e matcher atomici; cache VidRush già LRU thread-safe |
 | [RA-10](10-OVERLAYSTATUS-WRITE-LOCK.md) | `overlaystatus`: mutex globale su I/O disco | P1 | — | **DONE** |
-| [RA-11](11-CAPABILITY-PLATFORM-CYCLES.md) | Cicli `capabilities ↔ platform` e fan-out | P1 | RA-01 | OPEN — sessione dedicata |
-| [RA-12](12-SCRIPTS-SCC-SPLIT.md) | SCC di `scripts`: split contract-first di `GenerateRequest/Result` | P1 | RA-02 | OPEN — sessione dedicata |
-| [RA-13](13-SQL-IN-CAPABILITIES.md) | SQL/DDL dentro le capability (I/O binder) | P1 | — | OPEN — sessione dedicata |
-| [RA-14](14-PORT-BYPASS-DB.md) | Port bypass `interface{ DB() *sql.DB }` | P1 | — | OPEN — sessione dedicata |
-| [RA-15](15-WIRING-BUSINESS-LOGIC.md) | Logica media dentro `app/wiring` | P1 | RA-02 | OPEN — sessione dedicata |
-| [RA-16](16-UNTYPED-FINALJOB-BUS.md) | Bus `map[string]any` e ri-serializzazioni del final job | P1 | RA-12 | **PARTIAL** — duplicati + frame→µs DONE; bus tipizzato aperto |
+| [RA-11](11-CAPABILITY-PLATFORM-CYCLES.md) | Cicli `capabilities ↔ platform` e fan-out | P1 | RA-01 | **DONE** — coppie 19→18, `system ↔ httpserver` risolta, percheck attivo; fan-out wiring 217 |
+| [RA-12](12-SCRIPTS-SCC-SPLIT.md) | SCC di `scripts`: split contract-first di `GenerateRequest/Result` | P1 | RA-02 | **OPEN** — inventario 78+67 e contratti generation/audio fatti; SCC 118, migrazione lettori resta |
+| [RA-13](13-SQL-IN-CAPABILITIES.md) | SQL/DDL dentro le capability (I/O binder) | P1 | — | **DONE** — tre adapter in `platform`, migrazioni 015/016, percheck `capability_sql_ban` con inventario 21 file |
+| [RA-14](14-PORT-BYPASS-DB.md) | Port bypass `interface{ DB() *sql.DB }` | P1 | — | **DONE** — porta `EngineHandle`, SQL media in `platform/postgres/media`, percheck `capability_db_bypass` |
+| [RA-15](15-WIRING-BUSINESS-LOGIC.md) | Logica media dentro `app/wiring` | P1 | RA-02 | **DONE** — pipeline in `platform/media/finaljob`, contratti kernel, wiring 66 file, gate `os/exec` |
+| [RA-16](16-UNTYPED-FINALJOB-BUS.md) | Bus `map[string]any` e ri-serializzazioni del final job | P1 | RA-12 | **DONE** — builder 92→3, fasi ≤30, porte/wire tipizzati, golden round-trip |
 | [RA-17](17-PRIMITIVE-OBSESSION.md) | Primitive obsession e parametri opachi | P2 | RA-19 | **DONE** — bundle `overlayPlanImageOptions`, 0 `...bool`, tipi valore in kernel |
-| [RA-18](18-GOD-FUNCTIONS.md) | Sei funzioni oltre soglia di complessità | P1 | — | PARTIAL — 4 di 6 sotto soglia (183→25, 97→31, 99→37, 93→39, §8); restano 107 e 92 |
+| [RA-18](18-GOD-FUNCTIONS.md) | Sei funzioni oltre soglia di complessità | P1 | — | **DONE** — `materialize` 107→13, `semanticBundles` 93→8; `buildFinalJobPayloads` 92 tracciato in RA-16 |
 | [RA-19](19-DUPLICATION-SSOT.md) | Duplicazioni e deriva semantica (validatori, mirror, env) | P2 | — | **DONE** — tutti i sei punti chiusi (grid, mirror, cache L1/L2, parser/URL Drive, helper SHA/colore/lingua, env store) |
 | [RA-20](20-REGEXP-PRECOMPILE.md) | `regexp.MustCompile` a runtime | P2 | — | **DONE** — 11 siti a package-level |
 | [RA-21](21-QUADRATIC-LOOPS.md) | Loop quadratici e allocazioni nascoste | P2 | — | **DONE** — nessuna misura bench, solo complessità |
@@ -231,12 +231,12 @@ state rifatte il 2026-11-21: dead code **229**, RA-18 misurato (top: `OverlaySty
 - **P0 bloccanti** — RA-01, RA-02, RA-03, RA-04, RA-05, RA-06 chiusi.
 - **Robustezza** — RA-07, RA-08, RA-09, RA-10: due chiusi, due parziali con la parte restante
   scritta in scheda e il perché.
-- **Architettura** — cinque schede ancora OPEN (RA-11, RA-12, RA-13, RA-14, RA-15) e due
-  PARTIAL (RA-16, RA-18): **16 chiuse su 23**. Le aperte
-  non sono rattoppi: ognuna sposta contratti fra package e richiede una sessione propria con
-  la rete di test completa. Il tree contiene oltre 100 file non committati di lavoro
-  concorrente: avviarle ora significherebbe mischiare due autori nello stesso diff, che è
-  esattamente ciò che RA-23 vuole impedire.
+- **Architettura** — RA-11, RA-13, RA-14, RA-15 e RA-16 chiuse in questa wave; resta
+  OPEN RA-12: **22 chiuse su 23**. RA-12 (split contract-first di `scripts`, SCC 118) è una
+  migrazione multi-PR: richiede i contratti di fase, la migrazione dei lettori e solo dopo
+  il taglio dei file. Il tree contiene oltre 100 file non committati di lavoro concorrente:
+  avviare lo split ora mischierebbe due autori nello stesso diff, che è esattamente ciò che
+  RA-23 vuole impedire.
 - **Igiene e prestazioni** — RA-20, RA-21, RA-22, RA-23 chiusi.
 
 ### 8.2 Aggiornamento RA-19 (2026-11-21, sessione successiva)
@@ -321,3 +321,54 @@ Verifiche della sessione: `go build ./...`, `go vet ./...`, `gofmt -l` (nessun o
 Verifiche: `go build ./...` exit 0; `go vet` sui package toccati exit 0; `gofmt -l` vuoto;
 `go test` su `overlays/...`, `kernel/asset/...`, `scripts/adapters`, `scripts`,
 `voiceover/service` (FASE4) → ok; `archcheck --strict` exit 0, `has_hard_gate_hits=false`.
+
+### 8.6 Aggiornamento sessione 2026-11-21 (terza sessione)
+
+- **RA-14 DONE** — i cinque helper `DB()` di `app/wiring` e la seconda copia in
+  `capabilities/assets/artifacts` sono sostituiti dalla porta `pgmedia.EngineHandle`.
+  `ClipsRegistry` riceve un `artifacts.MediaReader` iniettato; SQL e `pgDB()` rimossi.
+  Nuovo percheck `percheck_capability_db_bypass` (app + capabilities, platform escluso).
+  I tre file nuovi sono stati consolidati in `platform/postgres/media/media_engine_ports.go`
+  per rispettare il cap di 65 file del package.
+- **RA-13 DONE** — `PostgresRenderCache`, `LocalizedRenderReuse` e `SQLiteRepository`
+  vivono ora in `platform/postgres/{cliprender,localizationreuse}` e
+  `platform/sqlite/artifacts`; le capability conservano solo i port. Migrazioni
+  `015_clip_render_cache.sql` e `016_localized_render_reuse.sql` registrate nel ledger
+  embedded. Nuovo percheck `percheck_capability_sql_ban`: DDL vietato in modo assoluto,
+  import `database/sql`/driver consentito solo per i 21 file inventariati con owner e
+  removal trigger (da 24 prima del ticket).
+
+Verifiche: `go build ./...` exit 0; `go test` su `boundaries`, `migrations/postgres`,
+`platform/postgres/cliprender`, `capabilities/cliprender`, `capabilities/localization/...`,
+`capabilities/assets/artifacts`, `app/wiring` → ok; `archcheck --strict` exit 0, 0 violazioni,
+67 warning; `gofmt -l` vuoto. Migrazioni applicate live sul Postgres di test: prima run 13
+migrazioni, seconda 0 applicate/13 skip, checksum tamper fail-closed
+(`TestRunMediaMigrations_LedgerIsChecksumPinned` PASS).
+
+### 8.7 Aggiornamento sessione 2026-11-21 (quarta sessione)
+
+- **RA-11 DONE** — baseline riprodotta: 19 coppie bidirezionali. RA-13 ne aveva
+  aggiunta una (`capabilities/cliprender ↔ platform/postgres`) con l'adapter in
+  platform; il contratto `RenderCache`/`RenderBackend` è stato spostato in
+  `internal/kernel/media/render_cache.go` e l'adapter non importa più la capability.
+  Rimossa anche la coppia `capabilities/system ↔ platform/httpserver` (il
+  `Module.Build` è passato al composition root via `StaticCapabilityModule`).
+  Misura finale: **18 coppie**; fan-out interno `app/wiring` **217** (da 218).
+  Nuovo percheck `percheck_system_http_boundary`.
+- **RA-15 DONE** — i quattro file della pipeline (1.777 righe) e i tre test sono
+  in `internal/platform/media/finaljob`; il wire è in `kernel/script/finaljob` e
+  il contratto del segmento in `kernel/media/finaljob`. Il publisher è iniettato
+  dal wiring, che resta a 66 file prod e zero `os/exec` nel root; il nuovo
+  `percheck_wiring_finaljob_process_exec` impedisce il ritorno. I due `os/exec`
+  residui in `wiring/lifecycle` e `wiring/rendering` sono debito separato.
+- **RA-12 resta OPEN.** Lo split contract-first di `scripts` (117 file nella
+  closure, god model `GenerateRequest`/`GenerateResult`) è una migrazione
+  multi-PR: richiede di definire i contratti di fase, migrare i lettori e solo
+  dopo tagliare i file. Non è un move meccanico e non è stato dichiarato chiuso.
+  **RA-16** viene chiuso in questa sessione con la separazione del builder in fasi
+  e la rimozione delle mappe dai contratti.
+
+Verifiche della sessione: `go build ./...` exit 0; `go vet ./...` exit 0;
+`gofmt -l` vuoto; test PASS su `boundaries`, `platform/httpserver`,
+`capabilities/system/...`, `app/wiring`, `platform/postgres/cliprender`,
+`capabilities/cliprender`; `archcheck --strict` exit 0, 0 violazioni, 67 warning.

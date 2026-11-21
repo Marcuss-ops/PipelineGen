@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-21
 **Priorità:** P1 (composition root con logica di dominio; aiuta RA-02)
-**Stato:** OPEN — non avviato: richiede una sessione dedicata (piano e ordine in `00-INDEX.md` §5; §8 per il blocco)
+**Stato:** **DONE (2026-11-21)** — pipeline spostata in `internal/platform/media/finaljob`; contratti in kernel; wiring root 66 file e zero `os/exec`; gate `percheck_wiring_finaljob_process_exec`
 **Owner:** composition root + platform/media
 **Origine:** report esterno 2026-11-21 §1.2; verificato sul codice
 **Verifica sul codice:** **CONFERMATO** — `final_job_segment_prepare.go` è **565 righe**;
@@ -89,3 +89,37 @@ go run ./cmd/archcheck --strict   # exit 0
   operazioni cambia i tempi. Mitigazione: spostamento verbatim, nessuna ottimizzazione in
   questo ticket (le perf hanno le loro schede).
 - **Rollback**: revert; RA-02 resta aperto ma la baseline non peggiora.
+
+## 5. Chiusura (2026-11-21)
+
+**DONE.** La pipeline non vive più nel composition root.
+
+- **Move verbatim** — `final_job_segment_prepare.go` (560 righe),
+  `final_job_fragment_pipeline.go` (421), `final_job_fragment_io.go` (482) e
+  `final_job_placement.go` (314) sono ora in `internal/platform/media/finaljob`,
+  insieme ai tre test (`avcc_certificate`, `canonical_encode`, `handoff_scope`).
+  Il comportamento non è cambiato: nessuna formula o ordine di operazioni è stato
+  toccato.
+- **Contratti neutri** — il wire del final job è passato da
+  `capabilities/scripts/finaljob` a `kernel/script/finaljob` (tutti gli import
+  aggiornati, nessun alias residuo). Il contratto del segmento e i tipi del
+  receipt sono in `kernel/media/finaljob/contract.go`; `scripts` li espone con
+  alias, quindi l'API pubblica della capability non cambia.
+- **Publisher iniettato** — l'adapter non chiama più
+  `scriptgen.PublishFinalJobLocalObjectVerified`: riceve `ObjectPublisher` dal
+  composition root (`PublishFunc(scriptgen.PublishFinalJobLocalObjectVerified)`).
+  Un publisher mancante fallisce chiuso prima di qualunque upload.
+- **Wiring** — `wire_script.go` costruisce `mediafinaljob.NewSegmentPreparer` e
+  usa `FragmentLanes`/`FragmentCacheDir`; il root di `internal/app/wiring` ha
+  **66 file prod** (≤70) e **zero import `os/exec`**.
+- **Ratchet** — `percheck_wiring_finaljob_process_exec` vieta `os/exec` nel root
+  di wiring con allowlist vuota. I due usi residui in `wiring/lifecycle` e
+  `wiring/rendering` sono famiglie separate, con owner diverso, e restano fuori
+  dal perimetro di questo ticket (debito dichiarato, non nascosto).
+
+Check eseguiti: `go build ./...` exit 0; `go test ./internal/platform/media/finaljob
+./internal/app/wiring ./cmd/archcheck/scan/boundaries` PASS; `go test
+./internal/capabilities/scripts -run 'BuildFinalJobPayloads|FinalJob'` PASS; test del nuovo
+gate PASS; `go run ./cmd/archcheck --strict` exit 0, 0 violazioni, 67 warning. Il package
+`scripts` completo ha un golden overlay rosso (`entity_cards_promotable_media`) in file
+modificati da lavoro concorrente, estraneo a questo move: non viene dichiarato verde.

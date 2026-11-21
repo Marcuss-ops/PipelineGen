@@ -487,6 +487,23 @@ that persisted receipt, not just the in-flight result: an attempt that rebuilt
 its result (a replay, or a fresh process resuming the run) still finds the
 handle instead of submitting a second render.
 
+### Idempotency conflict on a resumed attempt
+
+The PREPARE key is `<request/run key>-attempt-<N>-<first 12 hex of the compiled
+plan digest>`. A resumed run rebuilds its plan from the local render; if a
+re-encoded overlay moves the digest while the attempt number stays put, the new
+payload gets a new key instead of colliding with the old one. A byte-identical
+resubmission keeps the same key and replays the existing render.
+
+A `409 idempotency_key_reused` with `hash_mismatch` therefore means the same key
+was sent with different bytes (for example a manual replay of an edited
+payload) — retrying it unchanged cannot succeed. Change the request identity (a
+new `project`/run id) and submit the changed payload as a new job. The local
+`velox replay` command enforces the same rule before the network call: it
+rebuilds the exact submitted envelope (including the M2M `idempotency_key`
+field), refuses a changed payload, and only reuses the key when the stored
+SHA-256 matches.
+
 ### The run-level hand-off contract
 
 This is the RUN-level hand-off (the run's retry machinery). It is a different

@@ -3,7 +3,7 @@
 - **Data:** 2026-10-26
 - **Autori:** Antigravity + Pierone
 - **Moduli interessati:** `refactored` (PipelineGen), `RenderingGen`, `Chronon3d`, `BrainRust` (pipelinegen-muscles)
-- **Stato:** ATTIVO / IN IMPLEMENTAZIONE — gate ≥100 overlay/min **FAIL**: mediana certificata **77,32 item/min** (3 run closeout 30-10, 65–70 item senza mappe), packed cross-scene 43,73 FAIL; split per-scena default-on ed epoch cache stabile. Mix 100 item con mappe NOT RUN. **20-min Garlasco (03-11):** preflight immagini armato e cardinalità segmenti coperta; materializzazione immagini e run live **NOT RUN**.
+- **Stato:** ATTIVO / IN IMPLEMENTAZIONE (ricontrollato 2026-11-21) — gate ≥100 overlay/min **FAIL/non certificato**: una run supera la soglia su 70 item (**101,71 item/min**, `gate-100-r4`), la mediana comparabile è **95,79 item/min** su 65–70 item (`r4..r6`, senza mappe) e la serie closeout 30-10 dà **77,32 item/min**; packed cross-scene 43,73 FAIL; split per-scena default-on ed epoch cache stabile. Mix 100 item con mappe NOT RUN. **20-min Garlasco (03-11):** preflight immagini armato e cardinalità segmenti coperta; materializzazione immagini e run live **NOT RUN**. **Agg. 2026-11-21:** la leva encoder è chiusa dalla misura (PAR-03: conversione RGBA→NV12 0,056 ms/frame = 0,8% del loop; il preset è una decisione di prodotto), la lane di assembly è in corso (PAR-01), il riuso a livello scena è PASS sul perimetro frammenti (PAR-02); nessuna di queste riapre il gate, che resta una misura con mappe.
 - **Target Prestazionale:** Throughput overlay da ~80–100/min a **>2.500 overlay/min**; tempo di pianificazione da 4m45s a **<30s**; eliminazione del 90% dell'I/O disco.
 
 > **Lettura operativa (31-10-2026):** i target e i fattori delle sezioni

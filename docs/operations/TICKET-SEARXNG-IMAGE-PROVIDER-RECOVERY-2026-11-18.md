@@ -1,7 +1,7 @@
 # TICKET — SearXNG image provider recovery: Bing degraded, engine upgrade (2026-11-18)
 
-- **Stato:** RESOLVED (2026-11-18) — un solo criterio resta condizionato
-  dall'ambiente: il gate E2E, vedi §6.
+- **Stato:** CLOSED (2026-11-21) — il fix è verificato e il gate E2E, che era
+  condizionato dal carico dell'host, ora è verde (§6, §11).
 - **Priorità:** P1
 - **Owner:** image retrieval platform (`internal/capabilities/images`,
   `searxng/settings.yml`)
@@ -97,8 +97,9 @@ candidati **1 → 0**; falsi positivi per omonimia sulle tre entità prima al 10
 
 ## 6. Gate E2E: stato e prova di non-regressione
 
-`TestLiveImageRetrievalJobPersistsAndReusesAssets` è **rosso** al momento della
-chiusura: esaurisce il budget di 150 s e fallisce su
+`TestLiveImageRetrievalJobPersistsAndReusesAssets` era **rosso** al momento
+della chiusura del 2026-11-18 (superato il 2026-11-21, §11): esauriva il budget
+di 150 s e falliva su
 `upsert entity: context deadline exceeded` (contesto già scaduto, non errore di
 bind). Non è causato da questo fix:
 
@@ -126,7 +127,9 @@ acquisizione del resolver (download lenti) — non alzare il timeout del gate.
 - [x] La deny-list ha test dedicati e non consuma il budget per query.
 - [x] Il runbook documenta mount, engine policy, misure, diagnosi e comandi di
       verifica.
-- [ ] Gate E2E verde — condizionato dal carico dell'host, non dal fix (§6).
+- [x] Gate E2E verde — rieseguito a carico basso il 2026-11-21: PASS in
+      100,76 s, cold `searches=1` / `assets_saved=1`, warm `searches=0` /
+      `reused_ready=1` (§6, §11).
 
 ## 8. File toccati
 
@@ -173,7 +176,26 @@ SEARXNG_LIVE_POLICY=1 SEARXNG_URL=http://127.0.0.1:8080 \
 - **Nomi non pubblici** (es. Ferretti): nessun engine può verificare un volto
   senza riferimento; l'esito corretto è "nessuna immagine".
 
+## 11. Verifica di chiusura — 2026-11-21
+
+Eseguita a carico basso (load 1,30), con le stesse autorità del runbook:
+
+| Comando | Esito |
+|---|---|
+| `SEARXNG_LIVE_POLICY=1 SEARXNG_URL=http://127.0.0.1:8080 go test ./internal/capabilities/images -run '^TestSearXNGPersonPolicyLive$'` | **PASS** in 22,38 s: 13 query, **78 candidati**, `empty_entities=0`, `denied=0` |
+| `PERSON_CATALOG_LIVE=1 PERSON_CATALOG_QUERY='John Cena' SEARXNG_URL=http://127.0.0.1:8080 OLLAMA_MODEL=gemma4:e4b go test ./internal/capabilities/scripts/adapters -run '^TestLiveImageRetrievalJobPersistsAndReusesAssets$'` | **PASS** in 100,76 s: cold `searches=1 assets_saved=1 unique_candidates=16 materialized_catalog_rows=1`; warm `searches=0 new_saves=0 reused_ready=1`; 1 candidato verificato (score 0,99) su 39 hit |
+
+Il gate E2E era rosso per saturazione dell'host (load 23–28, tre `ffmpeg` al
+100%), non per il fix: a carico basso passa senza modifiche al codice né al
+timeout. **Nessun criterio resta aperto.** Il rischio §10 (tre engine soli,
+budget 5 s, VLM obbligatorio) resta un rischio operativo, non un criterio di
+accettazione.
+
 ## Prossimi passi (2026-11-19)
+
+> **Aggiornamento 2026-11-21:** i punti 1–3 sono chiusi dal §11; la scheda è
+> `CLOSED`. Resta valido solo il punto 4 come rischio da osservare nelle run
+> entità.
 
 1. **Chiudere l'unico criterio condizionato:** eseguire il gate live §6 con
    `SEARXNG_LIVE_POLICY=1 SEARXNG_URL=http://127.0.0.1:8080` e

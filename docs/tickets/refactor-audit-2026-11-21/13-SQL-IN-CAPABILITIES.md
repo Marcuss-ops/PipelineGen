@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-21
 **Priorità:** P1 (strutturale, schema accoppiato al dominio)
-**Stato:** OPEN — non avviato: richiede una sessione dedicata (piano e ordine in `00-INDEX.md` §5; §8 per il blocco)
+**Stato:** **DONE (2026-11-21)** — implementazioni SQL/DDL spostate in `platform`, migrazioni canoniche aggiunte, percheck `percheck_capability_sql_ban` attivo
 **Owner:** capability owners + platform owners (postgres/sqlite)
 **Origine:** report esterno 2026-11-21 §1.2; verificato sul codice
 **Verifica sul codice:** **CONFERMATO** — siti elencati sotto, righe misurate
@@ -94,3 +94,37 @@ go run ./cmd/archcheck --strict   # exit 0
 - **Rischio**: un deployment ha già la tabella creata a runtime e la migrazione fallisce.
   Mitigazione: migrazione idempotente (`IF NOT EXISTS`), e verifica su un DB esistente.
 - **Rollback**: le tabelle restano; si ripristina il codice precedente. Nessuna perdita dati.
+
+## 5. Chiusura (2026-11-21)
+
+**DONE.** Implementazioni spostate, contratti restati nelle capability, schema nel ledger.
+
+- **`cliprender`** — il contratto canonico `RenderCache`, `RenderCacheRecord`,
+  `RenderBackend` ed `ErrCacheMiss` vive in `internal/kernel/media/render_cache.go`
+  (spostato lì da RA-11 per non creare la coppia `capabilities/cliprender ↔
+  platform/postgres`); la capability mantiene alias, quindi l'API pubblica non cambia.
+  `PostgresRenderCache`, il DDL e `EnsureRenderCacheTable` vivono in
+  `internal/platform/postgres/cliprender`; il test live è stato spostato lì.
+- **`localization`** — `LocalizedRenderReuse` (lookup/store/Drive identity) vive in
+  `internal/platform/postgres/localizationreuse`; `capabilities/localization/adapters/render_reuse.go`
+  è stato eliminato e il wiring inietta il nuovo adapter.
+- **`artifacts`** — `SQLiteRepository` vive in `internal/platform/sqlite/artifacts`; la
+  capability conserva il contratto `Repository` e i tipi di dominio.
+- **Migrazioni** — `migrations/postgres/015_clip_render_cache.sql` e
+  `016_localized_render_reuse.sql`, registrate in `MediaSelfBootstrapMigrations` e pinnate
+  da `embed_ddl_contract_test.go`. Il DDL dei due adapter è identico alle migrazioni.
+- **Percheck** — `percheck_capability_sql_ban` vieta DDL e import di `database/sql`/driver
+  nelle capability; `percheck_capability_sql_inventory_stale` impedisce che l'inventario
+  resti più largo del debito reale. L'inventario registra **21 file** residui con owner e
+  removal trigger (erano 24 prima di questo ticket).
+
+Check eseguiti:
+
+| Check | Esito |
+| --- | --- |
+| `go build ./...` | exit 0 |
+| `go test ./cmd/archcheck/scan/boundaries ./migrations/postgres ./internal/platform/postgres/cliprender ./internal/capabilities/cliprender ./internal/capabilities/localization/... ./internal/capabilities/assets/artifacts ./internal/app/wiring` | PASS |
+| `go run ./cmd/archcheck --strict` | exit 0, `passed=true`, 0 violazioni, 67 warning |
+| `grep -rn 'CREATE TABLE\|ALTER TABLE' internal/capabilities` (non-test) | nessun output |
+| `grep -rl '"database/sql"' internal/capabilities` (non-test) | 21 file, tutti in `capabilitySQLInventory` |
+| `TEST_POSTGRES_DSN=… go test ./internal/platform/postgres/media -run TestRunMediaMigrations_LedgerIsChecksumPinned` | **PASS** — prima esecuzione 13 migrazioni (014 + 12 domain, incluse 015/016), ledger `schema_migrations` con 13 righe; seconda esecuzione 0 applicate / 13 skip; checksum tamper → errore fail-closed |

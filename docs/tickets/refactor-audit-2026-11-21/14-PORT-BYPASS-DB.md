@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-21
 **Priorità:** P1 (accoppiamento all'implementazione concreta)
-**Stato:** OPEN — non avviato: richiede una sessione dedicata (piano e ordine in `00-INDEX.md` §5; §8 per il blocco)
+**Stato:** **DONE (2026-11-21)** — porta `EngineHandle` tipizzata, reader media in `platform/postgres/media`, SQL rimosso da `ClipsRegistry`, percheck `percheck_capability_db_bypass` attivo
 **Owner:** `app/wiring` + `capabilities/assets/artifacts` + `platform/postgres/media`
 **Origine:** report esterno 2026-11-21 §1.2; verificato sul codice
 **Verifica sul codice:** **CONFERMATO** nel meccanismo; **RIDIMENSIONATO** nella causa
@@ -97,3 +97,22 @@ go test ./internal/platform/postgres/media/... ./internal/capabilities/assets/ar
 - **Rischio**: il committer è costruito in più punti; la porta deve essere soddisfatta da
   tutti. Mitigazione: assertion di compilazione nei costruttori.
 - **Rollback**: revert; il bypass torna funzionante.
+
+## 5. Chiusura (2026-11-21)
+
+**DONE.** La porta tipizzata esiste e i chiamanti non possono più estrarre il `*sql.DB`.
+
+- `pgmedia.EngineHandle` espone le nove letture derivate; `*PostgresMediaCommitter` la
+  implementa con assertion di compilazione. I tre file nuovi (`engine_handle.go`,
+  `clips_media_reader.go`, `folder_path_writer.go`) sono stati consolidati in
+  `internal/platform/postgres/media/media_engine_ports.go` per rispettare il cap di 65
+  file del package (erano 67).
+- `ClipsRegistry` riceve `artifacts.MediaReader` con `WithMediaReader`; il SQL e
+  `pgDB()` sono spariti dalla capability.
+- `percheck_capability_db_bypass` vieta `DB() *sql.DB` in `internal/app` e
+  `internal/capabilities` (i platform adapter sono l'implementazione della porta).
+
+Check eseguiti: `go build ./...` exit 0; `gofmt -l` vuoto; test PASS su
+`cmd/archcheck/scan/boundaries`, `app/wiring`, `capabilities/assets/artifacts`,
+`platform/postgres/media`; `go run ./cmd/archcheck --strict` exit 0, 0 violazioni,
+67 warning, `pkg_size` di `platform/postgres/media` rientrato a 65/65.

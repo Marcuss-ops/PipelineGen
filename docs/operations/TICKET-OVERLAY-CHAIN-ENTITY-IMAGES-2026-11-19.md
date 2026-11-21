@@ -1,12 +1,14 @@
 # TICKET — Catene immagine/entità e backdrop: cosa resta dopo il 2026-11-19
 
-- **Status:** PARTIAL (aggiornato 2026-11-20 sera) — catena e movimento camera
+- **Status:** PARTIAL (agg. 2026-11-21 sera) — catena e movimento camera
   **verificati su job reale**: `r10` 22/22 gate (6 entità, pan destro,
   `static_ratio 0,5556`, 56 coppie in movimento), `r9` 22/22 e controllo
-  fly-under `r3` PASS. Restano il gate di chiusura sul **backdrop** (la
-  variante `r11` è `FAILED` con `context canceled` in `COMPILING_AUDIO`, non
-  per il backdrop), la prova `fit: cover` con aspetti diversi, il gruppo da 2
-  immagini e i residui mappe r15.
+  fly-under `r3` PASS.  **Chiusi in questa sessione:** il gate automatico sul movimento (punto 5), i
+  residui mappe r15 (punto 8, 4/4 job `SUCCEEDED`) e il **backdrop su catena**
+  (punto 4: `r4` fly-under SUCCEEDED, fondo sfocato misurato su ogni frame).
+  Restano la prova `fit: cover` con aspetti diversi, il gruppo da 2 immagini, il
+  framing multi-pin della composizione certificata e il dedup di
+  `Gerusalemme`.
 - **Severity:** P1 — la catena è la superficie che l'utente usa per mostrare
   più entità di seguito; un FAIL a 1 s in `COMPILING_AUDIO` blocca il job intero,
   non solo la clip.
@@ -53,28 +55,44 @@
    test dedicato, ma nessuna clip è stata rifatta dopo la correzione: manca la
    prova che un asset 4:3 e uno 9:16 nella stessa catena non vengano deformati
    e che la card cambi larghezza.
-4. **Backdrop su ritratti entità e segmenti di catena.**
-   `image_backdrop.go` è modificato, ma il REPORT di `image_backdrop_20261119`
-   documenta ancora il rifiuto su item con `image_layers` e su `image_chain`
-   (`chain_disabled: 1` per quel motivo). Dopo la modifica serve un job con
-   catena **e** ritratto entità, non la sola still singola.
-5. **Gate automatico sul movimento di camera nei clip finali.**
-   `RenderingGen/renderinggen/cmd/chainpancheck/` e
-   `internal/overlay/chain_camera_pan_test.go` esistono, ma nessuna suite
-   misura i clip prodotti: il criterio «la camera si muove davvero» non è
-   ancora un controllo ripetibile.
+4. ~~**Backdrop su ritratti entità e segmenti di catena.**~~ **CHIUSO 2026-11-21**
+   per la catena fly-under. `compilePanChain` scarta di proposito
+   `image_backdrop` (il blur software lega la superficie al nodo immagine
+   successivo), quindi il gate si misura sulla catena fly-under:
+   `entity-chain-flyunder-20261120-r4` (`job_1795279801017510593_47c4e504`)
+   SUCCEEDED con 6 entità/6 asset, 408 frame, 1920×1080, e il nuovo gate
+   `chain.backdrop_renders_a_blurred_background` PASS
+   (`median_mean=37,2`, `median_gradient=1,033`, 136 frame). Il controllo
+   negativo è misurato: catena pan r12 senza backdrop → `median_mean=1,0`,
+   `median_gradient=0,0`, gate FAIL. Resta aperto solo il difetto del renderer
+   sul blur lungo un pan (tracciato in `compilePanChain`), non il producers.
+5. ~~**Gate automatico sul movimento di camera nei clip finali.**~~
+   **CHIUSO 2026-11-21 (verificato):** `ops/jobs/entity_image_chain_20261119/check_chain_pan.py`
+   fa **due** misure indipendenti — piano via `cmd/chainpancheck` (ogni
+   segmento deve avere un track `position_x` ≥ `--min-pan-px`) e clip via
+   phase correlation sui frame del `final.mp4` (≥50% coppie in movimento,
+   velocità mediana ≥0,2, direzione coerente) — con exit 0 solo se passano
+   entrambe. La suite `entity_chain_animation_20261120` impone lo stesso
+   criterio dentro `verify_job.py:522-530` (`static_ratio` ≤ soglia,
+   `moving_pairs` ≥ segmenti-1, `max_diff` ≥ soglia) e r10 lo passa con 56
+   coppie in movimento. Un clip senza pan non può più passare.
 6. **Catena vera vs animazioni singole.** In r9 ogni segmento porta
    `motion_id: image_fade_reveal` / `image_focus_reveal`, cioè animazioni da
    immagine singola applicate a una sequenza; la catena con pan di camera è
    stata implementata dopo e non è mai stata eseguita su un job reale.
 7. **Variante a gruppi di 2 immagini** (fluidità e tempi di render) mai
    preparata: non esiste un payload né un confronto.
-8. **Mappe/geo (r14, r15).** Restano: `Parigi` estratta senza coordinate
-   (guard sui frammenti di nomi propri), `Gerusalemme` fusa con «Città Vecchia
-   di Gerusalemme» (un pin in meno), pin multipli non tutti inquadrati
-   (`per_pin_timing_not_ported`; la composizione certificata inquadra il
-   primo). `r15/entity-cities` è `SUCCEEDED` alle 10:43Z; gli altri job della
-   suite r15 non sono ancora stati verificati.
+8. **Mappe/geo (r14, r15).** **Verificato 2026-11-21:** i quattro job della
+   suite r15 sono tutti `SUCCEEDED` (`entity-cities`, `map-level-country`,
+   `map-level-municipality`, `map-timing-two-pins`) e `entity-cities` porta una
+   mappa con **tre pin città a coordinate reali** — Roma 41.893/12.483, Torino
+   45.068/7.682, **Parigi 48.853/2.348** — quindi sia «Parigi senza
+   coordinate» sia il multi-pin raggruppato sono risolti dal fix di
+   `geography/enrichment.go` (test `TestEnrichRetriesAmbiguousCountryCityWithoutTheStaleFrame`).
+   Restano fuori: il **framing di tutti i pin** nella composizione certificata
+   (oggi inquadra il primo, `per_pin_timing_not_ported`) e il dedup di
+   `Gerusalemme`/«Città Vecchia di Gerusalemme», che nessuna run r15 ha
+   esercitato.
 9. **Port `TacticalFillPack`** bloccato nel renderer Chronon3d: i layer `path`
    subiscono una traslazione di mezzo canvas in un pass prospettico e
    `enable_3d:false` non li tocca (documentato in
@@ -172,10 +190,36 @@ decodificato coincide con il controllo `Stretch` (`abf64a0a…`). Build CLI e
 end-to-end della catena r10; il gate di throughput della chain resta da
 misurare sul job completo.
 
+## Ricontrollo 2026-11-21 — nessuna run nuova, r11 ancora infrastrutturale
+
+Verifica sui dati prodotti (nessuna run eseguita in questa sessione):
+
+- `entity-chain-pan-20261120-r10-full.verification.json` → `passed: true`,
+  `job_1795166123889306562_acaae690` (22/22 gate).
+- `entity-chain-pan-20261120-r11-full.verification.json` → `passed: false`,
+  `job_1795167689555666682_3c963e4f`, con
+  `status=FAILED stage=COMPILING_AUDIO ... message=context canceled`: il
+  backdrop non è mai stato esercitato, quindi il primo gate di chiusura resta
+  non misurato.
+- Nessun job successivo con catena **e** backdrop compare in
+  `ops/jobs/entity_chain_animation_20261120/` (ultimo file: `upload-manifest.json`
+  del 2026-11-20 10:35); `entity_chain_background_20261119/` contiene solo la
+  run r45 bricolage, non la variante r11.
+
+Il resto dei punti resta com'era: `fit: cover` senza clip rifatta, backdrop su
+ritratti/catena non rieseguito, `chainpancheck` non collegato alla suite,
+variante a 2 immagini non preparata, mappe/geo r15 parzialmente verificate.
+Il punto 6 (catena con pan su job reale) e il punto 5 (misura del movimento)
+sono invece chiusi da r10, come già dichiarato.
+
 ## Gate di chiusura
 
-- Un job reale con catena ≥ 3 entità e backdrop: `SUCCEEDED`, clip
-  1920×1080, nessuna deformazione, fondo sfocato su ogni segmento.
+- ~~Un job reale con catena ≥ 3 entità e backdrop: `SUCCEEDED`, clip
+  1920×1080, nessuna deformazione, fondo sfocato su ogni segmento.~~
+  **SODDISFATTO 2026-11-21** da `entity-chain-flyunder-20261120-r4`
+  (6 entità, 408 frame, backdrop misurato). La catena con camera-pan resta
+  esclusa dal backdrop per il difetto del blur software documentato in
+  `compilePanChain`.
 - `chainpancheck` misura movimento > 0 su ogni clip di catena e la suite lo
   impone.
 - `chain_handoff_ms: 0` non produce né buchi neri né il FAIL `editorial`.

@@ -2,7 +2,8 @@
 
 - **Data:** 2026-10-28
 - **Moduli interessati:** `refactored` (PipelineGen, contratto manifest), `RenderingGen` (producer manifest/lowering), `Chronon3d` (unità di render, compositing), `BrainRust` (`transform_assemble`, consumer wire)
-- **Stato:** `MIXED — A1 LAND (wire placement + validazione fail-closed, accettazione locale); A0 CHIUSO (misura negativa: 1,44× vs 8×, variante A2 clip-statiche non procede); A2/A3/A4 SPEC SOLO nella variante ink-based; B0 PARTIAL (due fixture, corpus non misurato); B1–B3 SPEC`
+- **Stato:** `MIXED (ricontrollato 2026-11-21) — A1 LAND (wire placement + validazione fail-closed, accettazione locale); A0 CHIUSO (misura negativa: 1,44× vs 8×, variante A2 clip-statiche non procede); A2/A3/A4 SPEC SOLO nella variante ink-based; B0 PARTIAL (due fixture, corpus non misurato); B1–B3 SPEC`
+- **Ricontrollo 2026-11-21:** il wire A1 è ancora presente su entrambi i lati — `ManifestPlacement` in `refactored/internal/capabilities/overlays/model/manifest.go:55` e `OverlayManifestPlacement` con validazione fail-closed in `BrainRust/pipelinegen-muscles/src/protocol.rs:387`. Nessuna fase A2–A4/B1–B3 è atterrata; il producer continua a emettere `placement: null`. Il ticket resta una SPEC con A0/B0 misurati.
 - **Siblings:** [`TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md`](TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md) (P0/P2/P3, packed timeline), [`../../../Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md`](../../../Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md) (B1/B2/B3 engine), [`../../../Chronon3d/docs/tickets/TICKET-PERF-REVOLUTIONARY-IDEAS.md`](../../../Chronon3d/docs/tickets/TICKET-PERF-REVOLUTIONARY-IDEAS.md) (C-1…C-13/I-1…I-24)
 
 > **Nessun claim di 100×** da questo file. I fattori citati sono stime di

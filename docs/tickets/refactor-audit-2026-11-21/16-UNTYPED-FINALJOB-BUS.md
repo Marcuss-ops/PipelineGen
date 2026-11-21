@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-21
 **Priorità:** P1 (fragilità + lavoro inutile sul percorso caldo)
-**Stato:** PARTIAL — doppie assegnazioni e frame→µs DONE, bus tipizzato aperto
+**Stato:** **DONE (2026-11-21)** — builder diviso in preflight, scene builder e finalizzazione; `buildFinalJobPayloads` 92→3, massimo 30; porte e wire restano tipizzati
 **Owner:** scripts capability — final job
 **Origine:** report esterno 2026-11-21 §1.3, §2.1, §5.1; verificato sul codice
 **Verifica sul codice:** **CONFERMATO**, incluse le tre riassegnazioni ridondanti
@@ -117,3 +117,54 @@ go run ./cmd/archcheck --strict   # exit 0
 - **Aperto**: sostituzione di `map[string]any`/`[]any` con `CompiledPlanV2`/`RuntimeAssetV1` e
   unificazione delle sei funzioni di coercion. Richiede il round-trip sul wire e va coordinato
   con RA-12.
+
+## 7. Chiusura del perimetro tipizzato (2026-11-21)
+
+- `FinalJobVideoSegmentPreparer`, `FinalJobAssetResolver` e `finalJobStockAssetResolver`
+  ricevono/restituiscono `FinalJobRuntimeAssetV1`; le implementazioni production e i fake dei
+  test sono state aggiornate. Le mappe entrano nel tipo solo tramite
+  `finaljob.RuntimeAssetFromMap` e ne escono solo tramite `RuntimeAssetV1.Map`.
+- `RuntimeAssetV1.UnmarshalJSON` conserva i campi non canonici in `Additional`; il round-trip
+  `map → typed → map` preserva `duration_ms`, `copy_eligible`, `profile_id` e gli altri campi
+  transport.
+- Una sola famiglia di coercion: `finaljob.Int64`, `finaljob.String`, `finaljob.Bool`, con test
+  tabellari. Gli alias di package mantengono i nomi storici senza duplicare la logica.
+- Golden test: `TestEnvelopeV1RoundTripKeepsPlanBytesAndHash` e
+  `TestRuntimeAssetV1RoundTripPreservesAdditionalFields` in
+  `internal/capabilities/scripts/finaljob/contract_roundtrip_test.go`. Verificano
+  `reflect.DeepEqual`, byte canonici del piano e `compiled_render_plan_sha256` stabile.
+- **Residuo dichiarato**: `buildFinalJobPayloads` continua a costruire mappe interne ed è a
+  complessità 92; non è stato riscritto in questa sessione. Il contratto delle porte è tipizzato,
+  ma la rimozione completa delle mappe dal builder legacy resta aperta e non viene rivendicata.
+
+Verifiche eseguite: `go test ./internal/capabilities/scripts/...`, `./internal/app/wiring/...`,
+`./internal/platform/media/rustexec/...` PASS; `go build ./...`, `go vet ./...` exit 0;
+`go run ./cmd/archcheck --strict` exit 0 (`passed=true`, 0 violazioni); `gofmt -l` pulito sui file
+toccati; `git diff --check` pulito.
+
+## 8. Chiusura del builder (2026-11-21)
+
+**DONE.** Il monolite non esiste più: la decisione visuale e la serializzazione sono due fasi
+separate, con un orchestratore che non contiene policy.
+
+| Funzione | Prima | Dopo |
+| --- | ---: | ---: |
+| `buildFinalJobPayloads` | 92 | **3** |
+| `finalJobPreflight` | (nel monolite) | 12 |
+| `finalJobSceneBuilder.appendSegment` | (nel monolite) | 17 |
+| `appendFixedSegment` / `appendClipScene` / `appendConcreteStockScene` | (nel monolite) | 17 / 8 / 7 |
+| `finalJobFinalizePayload` | (nel monolite) | 30 |
+
+Misura: `go run github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0` su `final_job_payload.go` e
+`final_job_payload_builder.go`; nessuna funzione supera 30. Il builder delle scene e la
+finalizzazione vivono nello stesso file `final_job_payload_builder.go`: il builder non
+serializza nulla, la finalizzazione è l'unico punto che produce i due payload Master. Le mappe residue sono il wire versionato del piano compilato, non un contratto di
+porta: `FinalJobVideoSegmentPreparer`/`FinalJobAssetResolver` restano tipizzati.
+
+Test final-job: `go test ./internal/capabilities/scripts -run 'BuildFinalJobPayloads|FinalJob'`
+PASS. Il package completo ha un golden overlay rosso (`entity_cards_promotable_media`,
+`mixed_chain` vs `image_chain`) in file overlay già modificati da lavoro concorrente non
+committato, estraneo a questo diff: non viene dichiarato verde.
+
+Verifiche: `go build ./...` exit 0; `go vet ./...` exit 0; `go run ./cmd/archcheck --strict`
+exit 0, 0 violazioni, 67 warning; `gofmt -l` pulito sui file toccati; `git diff --check` pulito.

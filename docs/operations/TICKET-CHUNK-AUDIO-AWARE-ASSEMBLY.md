@@ -3,7 +3,7 @@
 - **Data:** 2026-10-27
 - **Autori:** Pierone + Buffy (Codebuff)
 - **Moduli interessati:** `refactored` (PipelineGen: `cliprender`, `internal/platform/renderinggen`), `RenderingGen` (`internal/processor`), `Chronon3d` (solo verifica, nessuna modifica attesa), `BrainRust` (nessuna modifica — contratto artefatto invariato)
-- **Stato:** IN IMPLEMENTAZIONE — sblocco atterrato su tutti e tre i moduli (v. §9); parità su fixture reale verificata (2026-10-30, PASS 7,772 s) e final job R14 assemblato con 11 frammenti e audio muxato; gate completi e attivazione operativa del chunking ancora aperti
+- **Stato:** IN IMPLEMENTAZIONE (ricontrollato 2026-11-21) — sblocco atterrato su tutti e tre i moduli (v. §9); parità su fixture reale verificata (2026-10-30, PASS 7,772 s) e final job R14 assemblato con 11 frammenti e audio muxato; `chunkPolicy` è ora ATTIVO (nessun guard di dormienza, `TestChunkPolicyChunksAudioPlans`), `SetChunking` è cablato in `internal/app/wiring/clips/runtime.go:63`; restano i gate completi (`make verify-main`, suite Chronon3d) e l'ammissione parallela GPU come precondizione operativa
 - **Obiettivo:** Rendere il chunking realmente attivo per i clip source-only lunghi (children video-only + mux sorgente una sola volta all'anchor), riducendo la latenza per clip da ~1× a ~1/N sul pool di worker, senza cambiare il contratto dell'arte-fatto pubblicato.
 
 ---

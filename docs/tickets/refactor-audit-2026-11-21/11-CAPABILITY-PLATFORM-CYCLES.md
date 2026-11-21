@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-21
 **Priorità:** P1 (strutturale; nessuna violazione hard oggi, ma è la causa di RA-01)
-**Stato:** OPEN — non avviato: richiede una sessione dedicata (piano e ordine in `00-INDEX.md` §5; §8 per il blocco)
+**Stato:** **DONE (2026-11-21)** — coppie bidirezionali 19→18; coppia `system ↔ httpserver` risolta e protetta da `percheck_system_http_boundary`; fan-out `app/wiring` 217 ≤ 218
 **Owner:** architettura (`refactored`) — owner per famiglia da assegnare nel ticket
 **Origine:** report esterno 2026-11-21 §1.1
 **Verifica sul codice:** **DA RIPRODURRE** — il report dichiara 148 import
@@ -173,3 +173,39 @@ go run ./cmd/archcheck --strict   # exit 0
   pure; se serve `*sql.DB`, è il segno che il contratto è una porta di I/O e va in
   `capabilities/<x>/ports`, non nel kernel.
 - **Rollback**: revert per ciclo.
+
+## 6. Chiusura (2026-11-21)
+
+**DONE.** La baseline è stata riprodotta e ridotta, non ereditata.
+
+- **Regressione RA-13 corretta** — lo spostamento dell'adapter in
+  `platform/postgres/cliprender` aveva creato una coppia nuova con
+  `capabilities/cliprender` (misura intermedia: 20). Il contratto `RenderCache`,
+  `RenderCacheRecord`, `RenderBackend` ed `ErrCacheMiss` è stato spostato in
+  `internal/kernel/media/render_cache.go`; la capability mantiene alias, l'adapter
+  importa solo il kernel. La direzione `platform → capabilities/cliprender` è sparita.
+- **Coppia dichiarata risolta** — `capabilities/system` importava `platform/httpserver`
+  solo per `Module.Build`. Il runtime descriptor è passato al composition root
+  (`StaticCapabilityModule`, che ora implementa davvero `CapabilityModule.Name`);
+  la capability espone solo il route module. Resta la direzione consentita
+  `httpserver → capabilities/system/health`.
+- **Percheck** — `percheck_system_http_boundary` vieta l'import inverso con allowlist
+  vuota; un ritorno della coppia fallisce il gate.
+
+Misura finale (stesso metodo del §2.1, `go list` + normalizzazione a famiglia):
+
+| Misura | Baseline | Dopo |
+| --- | --- | --- |
+| Coppie bidirezionali | 19 | **18** |
+| Fan-out interno `internal/app/wiring` | 218 | **217** |
+| Fan-out interno `internal/capabilities/scripts` | 42 | 44 (misura del working tree attuale; nessun import di `scripts` è stato toccato da questa sessione) |
+
+Le 18 coppie residue restano debito registrato: sono famiglie di dominio
+(`assets ↔ clips/jobs/voiceover/youtube/scriptassets`), persistenza
+(`jobs/assets/youtube/operations ↔ platform/sqlite`), media/observability
+(`scripts ↔ platform/media|observability`) e `youtube ↔ platform/postgres`.
+Ognuna richiede l'estrazione del contratto proprietario, non un move di file.
+
+Check eseguiti: `go build ./...` exit 0; `go vet ./...` exit 0; `gofmt -l` vuoto;
+`go test ./cmd/archcheck/scan/boundaries ./internal/platform/httpserver/... ./internal/capabilities/system/... ./internal/app/wiring` PASS;
+`go run ./cmd/archcheck --strict` exit 0, 0 violazioni, 67 warning.

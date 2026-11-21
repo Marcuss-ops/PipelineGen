@@ -4,9 +4,9 @@
 overlay), una è già chiusa sul consumatore (copy/cache), tre richiedono una
 misura o un cambio al producer. **L1 passo 1 misurato (2026-11-03):** r100 =
 86 frammenti (83 cache, 2 encode, 1 derived), 0 copy, 0 padded, encode 3.428 ms.
-Il fix di ammissione del 02-11 è nel working tree di `Chronon3d` ma **non è
-formalizzato**: test non eseguito nell'export, ledger §7 ancora «Bloccato»,
-evidence doc assente.
+**Aggiornato 2026-11-21:** il fix di ammissione (L0) è formalizzato — evidence
+doc presente, ledger §7 aggiornato a «Chiuso», `Chronon3d` pulito a
+`fa37b3785`; restano L1–L5.
 **Creato:** 2026-11-02.
 **Owner:** `refactored` (PipelineGen, `internal/app/wiring/`,
 `internal/capabilities/scripts/`) + RenderingGen (`internal/chronon/`,
@@ -22,11 +22,20 @@ timeline ha lavoro sovrapposto.
 
 ## TODO — cosa manca
 
-- [ ] **L0 — Formalizzare il fix di ammissione** (test + evidence + ledger).
+- [x] **L0 — Formalizzare il fix di ammissione** (test + evidence + ledger).
+  CHIUSO 2026-11-21: `Chronon3d/docs/evidence/gpu-admission-two-jobs-2026-11-02.md`
+  (+ report grezzi nella dir omonima) è la prova misurata 1,98–1,99× e ~764 MiB/job;
+  `tests/cli/test_daemon_plan_admission_shape.cpp` esiste; il ledger §7 riga 3
+  dichiara «Chiuso 2026-11-02»; `git -C Chronon3d status` è pulito. Il target
+  C++ not rerun in questa sessione: la chiusura è documentale, la misura è
+  quella già registrata.
 - [ ] **L1 — Portare il copy-window al 100%** delle finestre coperte da una
   sorgente certificata (`encode = 0`).
 - [ ] **L2 — Togliere `prepare_join` dal critical path** o ridurlo a cache/reuse.
-- [ ] **L3 — Attivare 2–3 socket/daemon** e rimisurare la stessa run.
+- [~] **L3 — Attivare 2–3 socket/daemon** e rimisurare la stessa run.
+  **2026-11-21:** il `config.yaml` versionato è allineato al live
+  (`socket_paths` ×3, `gpu_lanes: 3`, `TestShippedConfigsLoad` PASS); resta
+  solo la rimisurazione before/after della stessa run.
 - [ ] **L4 — Tagliare la tassa fissa per frammento** (`PREPARE_PLAN`,
   `RENDER_BATCH`, sessione encoder).
 - [ ] **L5 — Ridurre il numero di frammenti** con un gate di pixel equality.
@@ -251,10 +260,15 @@ inutile. Non aggirare il compile: il piano è la dipendenza.
 
 **Obiettivo:** usare i tre daemon già vivi invece di accodare tre lane su uno.
 
-**Stato:** `config.yaml` ha `gpu_lanes: 3` ma un solo `socket_path`
-(`/var/run/chronon3d/chronon.sock`). I daemon `-b` e `-c` sono attivi su
-`/run/chronon3d-b/chronon.sock` e `/run/chronon3d-c/chronon.sock`. Il codice
-di spread è già pronto:
+**Stato:** `config.yaml` aveva `gpu_lanes: 3` e un solo `socket_path`
+(`/var/run/chronon3d/chronon.sock`); **corretto il 2026-11-21**: il file
+versionato dichiara ora `socket_paths` con i tre socket della topologia
+certificata, quindi il deployment è riproducibile dal repo.
+Il deployment live usa già tre runtime: l'evidence doc di L0 registra che
+`/etc/renderinggen/renderinggen.yaml` dichiara `socket_paths` con tre socket e
+che le unit `chronon3d`, `chronon3d-b`, `chronon3d-c` sono attive. Quindi L3
+non è più «il codice è pronto»: è **attivo fuori repo ma non riproducibile dal
+`config.yaml` versionato**. Il codice di spread è già pronto:
 
 - `internal/chronon/socket_spread.go:59` `SpreadAcrossSockets`;
 - `cmd/renderinggen/main.go:134`;
@@ -266,7 +280,7 @@ di spread è già pronto:
 
 1. Verificare che i tre socket siano serviti e che i daemon siano la stessa
    build/versione del worker.
-2. In `config.yaml` sostituire `socket_path` con:
+2. [x] In `config.yaml` sostituire `socket_path` con:
    ```yaml
    socket_paths:
      - /var/run/chronon3d/chronon.sock
@@ -274,7 +288,8 @@ di spread è già pronto:
      - /run/chronon3d-c/chronon.sock
    ```
    Tenere `gpu_lanes: 3` (un lane per socket) o `2` con due socket. Non
-   mettere più lane che socket: il surplus è coda.
+   mettere più lane che socket: il surplus è coda. Fatto il 2026-11-21;
+   `go test ./internal/config/` PASS.
 3. Allineare `infra/native/renderinggen-b.yaml` (già su `-b`) e la unit
    `renderinggen-worker-b.service`; la unit A non deve duplicare il worker B.
 4. Eseguire `go test ./internal/config ./internal/chronon ./cmd/renderinggen`.

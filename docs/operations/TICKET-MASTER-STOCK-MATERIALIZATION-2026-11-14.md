@@ -1,7 +1,7 @@
 # TICKET — Materializzazione stock e profilo video lato Master
 
 - **Data:** 2026-11-14
-- **Stato:** BLOCKED-EXTERNAL — owner Master 51 / stockpipeline; il codice non è in questo workspace.
+- **Stato:** BLOCKED-EXTERNAL (ricontrollato 2026-11-21) — owner Master 51 / stockpipeline; il codice non è in questo workspace. Confermato: il tree `refactored` contiene solo il lato Producer e i suoi test, nessuna materializzazione stock.
 - **Contesto:** chiusura del confine Producer/Master. Il Producer non processa più stock: trasporta solo il binding della stockpipeline.
 - **Contratto:** [`PRODUCER-MASTER-BOUNDARY.md`](PRODUCER-MASTER-BOUNDARY.md)
 - **Storico:** `RenderingGen/docs/tickets/archive/TICKET-PRODUCER-MASTER-BOUNDARY-2026-11-04.md`

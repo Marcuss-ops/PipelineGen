@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-21
 **Priorità:** P1 (strutturale; abilita RA-02 e RA-16)
-**Stato:** OPEN — non avviato: richiede una sessione dedicata (piano e ordine in `00-INDEX.md` §5; §8 per il blocco)
+**Stato:** OPEN — inventario 78+67 campi e contratti `generation`/`audio` consegnati; SCC 118, migrazione lettori e taglio file ancora da fare
 **Owner:** scripts capability
 **Origine:** report esterno 2026-11-21 §1.1, §5.4
 **Verifica sul codice:** **CONFERMATO** il punto di partenza (146 file prod, 40.508 LOC secondo
@@ -100,3 +100,33 @@ go list -f '{{.ImportPath}} {{len .Imports}}' ./internal/app/wiring
   rebase frequente, un contratto per PR.
 - **Rollback**: i passi (3a) e (3c) sono reversibili separatamente; i sottopackage possono
   restare anche se la migrazione si ferma.
+
+## 5. Verifica 2026-11-21
+
+**Non chiuso.** La prima fase contract-first è stata consegnata, ma il taglio dei file non è
+sicuro e non viene dichiarato.
+
+- **Contratti già estratti** — `kernel/script/finaljob` possiede il wire versionato
+  (`EnvelopeV1`, `CompiledPlanV2`, `RuntimeAssetV1`, `BuildEnvelope`);
+  `kernel/media/finaljob` possiede il contratto del segmento e i tipi del receipt. La
+  capability li espone con alias, quindi l'API pubblica non cambia. Questo abilita RA-15.
+- **Inventario completo** — [12-FIELD-INVENTORY.md](12-FIELD-INVENTORY.md): **78** campi di
+  `GenerateRequest` e **67** di `GenerateResult`, ognuno con tipo, tag JSON, fase, contratto di
+  destinazione e riferimenti statici nel package. Tutti classificati; nessun campo rimosso o
+  rinominato.
+- **Contratti generation/audio** — aggiunti `contracts/generation/request.go`,
+  `result.go` e `contracts/audio/config.go`, `output.go`, con test di round-trip JSON:
+  `go test ./internal/capabilities/scripts/contracts/...` PASS. I contratti sono puri (non
+  importano `scriptgeneration`), coprono 56 campi di request nella fase generation, 10 nella
+  fase audio, 15 di result generation e 9 di result audio. Non sono ancora la fonte di verità:
+  la migrazione dei lettori è lo step successivo.
+- **Misura SCC (file-level, stesso metodo del ticket)** — `files=142 cyclic_sccs=1 sql=118`.
+  La closure resta una sola: contiene runner, model, overlay e l'intero cluster `final_job_*`.
+  Non esiste un file foglia da spostare senza invertire un contratto: i cinque file estraibili
+  citati dal report non bastano a scendere sotto 117 e non toccano il god model.
+- **Cosa manca** — migrare i lettori ai contratti con accessor unico e test di proprietà,
+  definire i contratti delle fasi source/overlay/render/submission/publication, e solo dopo
+  tagliare i file quando la SCC scende. È una migrazione multi-PR ad alto churn; il working
+  tree contiene già oltre 100 file non committati di lavoro concorrente su overlay/scripts,
+  quindi avviarla ora mischierebbe due autori nello stesso diff (RA-23).
+- **Nessuna chiusura rivendicata**: RA-12 resta OPEN con la baseline misurata.

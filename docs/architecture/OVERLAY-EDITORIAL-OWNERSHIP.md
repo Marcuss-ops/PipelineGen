@@ -27,13 +27,32 @@ references and — through entity-image promotion only — a segment's
 `StartUS`/`DurationUS`, `GroupMotionID`, any `EntityID`, or the number of items
 and segments.
 
-**Why promotion is an exception.** Whether an entity has a certified portrait is
-own only to the PipelineGen media plane (`entity_image_catalog` in PostgreSQL).
-BrainRust ranks the card and writes the chain without that knowledge, and the
-Go pass attaches the verified asset after the seal. `attach_resolved_entity_images`
-in the Rust planner covers the donors that already travel in the request; the
-post-seal pass is the catalog-backed half, and it is the only place a segment's
-`kind` may change.
+**Promotion is owned by the planner (2026-11-21, landed).** Whether an identity
+has a certified portrait is known only to the PipelineGen media plane
+(`entity_image_catalog` in PostgreSQL), so PipelineGen still *resolves* it. It no
+longer *decides*: `overlayPlanMedia` ships the resolved portraits on
+`media.promotable_entity_assets` and the v2 planner promotes the card or the
+chain segment before it seals (`planner/promotion.rs`). The Go seal boundary now
+adopts the document unchanged. **Decision 2026-11-21 (see `TICKET-CHAIN-SEGMENT-SSOT-2026-11-18.md`).**
+
+- The entrance preset is resolved by decision **(a)**: `canvas.image_presets`
+  (the Chronon-owned `preset.image` vocabulary) travels in the request and the
+  seeded sampler is ported to Rust with byte-exact parity vectors
+  (`job_fingerprint`, `scene_id`, `semantic_id`, `preset_family`; SHA-256;
+  big-endian `u64` of the first eight **ASCII hex** characters, the Go quirk).
+  (b) — a different rotation per entity image — was rejected as a visual
+  regression.
+- The catalog half is **not** `verified_entity_assets`. That surface ships only
+  annotation images and already makes a card an `entity_image`; the Go resolver
+  also indexes `SemanticRenderBundle`, and the old pass skipped a segment that
+  already carried assets, so "has assets" and "is promotable" are disjoint sets.
+  `media.promotable_entity_assets` is the separate surface: one entry per plan
+  occurrence that resolves to renderable, content-addressed bytes, keyed by the
+  occurrence identity the planner stamps on the item.
+- Promotion is a single pass, post-coalescing, seeded with the fused chain item
+  id (so the preset matches what the Go pass chose). A card that already carries
+  assets or is already `entity_image` is left untouched; the run ceiling is
+  applied only when the pass promoted something, as before.
 
 ## Decision matrix
 
@@ -44,10 +63,9 @@ post-seal pass is the catalog-backed half, and it is the only place a segment's
 | Item ordering | BrainRust | sealed `FinalPlanV2` | No | `TestPostRustPlanPreservesEditorialDecisions` |
 | Timing / frame windows | BrainRust | planner | No | same test |
 | Motion / group motion | BrainRust | planner | No | same test |
-| Chain segment preset | PipelineGen (ADR-029) | `applyChainSegmentPresets` | Yes, `PresetID` only | `TestApplyChainSegmentPresetsResolvesEveryChainSegment`, `TestChainSegmentPresetResolutionTouchesOnlyPresetID` |
-| Entity-card → entity image (item and chain segment) | PipelineGen media plane (ADR-029 exception 2) | `promoteVerifiedEntityCards` / `promoteChainEntityCardSegments` | Yes: segment `Kind`, `TemplateID`, `PresetID`, `ImagePresetID`, `EntityCaption`, `AssetID`, `Assets`; drops segment `Text`, `MotionID`, `MotionParams`, `EntityStyleID`, `Params`; item `Kind`→`image_chain`, `TemplateID`→`IMAGE_CHAIN`, legacy `Text` cleared | `TestChainSegmentPromotionTouchesOnlyTheDeclaredSurface` |
-| Entity-image run ceiling | PipelineGen | `capEntityImageOverlays` | Yes: drops `entity_image` items past `MaxEntityImageOverlaysPerRun`, never any other kind | `TestEntityImageCeilingDropsOnlyEntityImages` |
-| Promotion replay | PipelineGen | `promoteVerifiedEntityCards` | No: a second pass over a promoted plan is a no-op and the fingerprint does not move | `TestPromotionIsIdempotent`, `TestPromotionFingerprintIsDeterministic` |
+| Chain segment preset | PipelineGen (ADR-029) until the v2 window; then BrainRust via `canvas.image_presets` (decision 2026-11-21 (a)) | `applyChainSegmentPresets` | Yes, `PresetID` only | `TestApplyChainSegmentPresetsResolvesEveryChainSegment`, `TestChainSegmentPresetResolutionTouchesOnlyPresetID` |
+| Entity-card → entity image (item and chain segment) | BrainRust planner, fed by the PipelineGen media plane | `editorial_plan_v2/planner/promotion.rs` | No | Rust `promotion::tests::*`, `overlay_plan_contract::promotable_media_is_promoted_by_the_planner_not_by_the_consumer`; Go `TestPromotableEntityAssetsCarryThePlanIdentityAndTheVerifiedBytes` |
+| Entity-image run ceiling | BrainRust planner (post-promotion only) + PipelineGen media resolver (pre-Rust) | `promotion::cap_entity_images`, `media_resolver_entity_binding.go` | No | Rust `the_ceiling_drops_entity_images_only_and_never_on_a_noop_plan` |
 | Map plate / local asset | PipelineGen + RenderingGen | `materializeEditorialMapItems` | Yes, `Map`/`AssetRefs` resolution only | `TestMaterializeEditorialMapItemsResolvesPresentationCardPresets` |
 | Fingerprint / render key | PipelineGen seal | `overlay_plan_seal.go` | Yes, derived state | seal tests |
 | Intake/audit/lineage | PipelineGen | `overlay_plan_freeze.go` | Yes, read-only telemetry | freeze tests |
@@ -61,7 +79,7 @@ exist at `main` on 2026-11-18. The dead-code sweep removed
 | Symbol | Production callers | Classification | Action |
 | --- | --- | --- | --- |
 | `MaxImageOverlaysPerRun` | `overlay_plan_compile.go:127`, `final_job_image_preflight.go:302`, `overlay_canvas.go:121`, `planner_config.go:55` | pre-Rust run ceiling | keep |
-| `MaxEntityImageOverlaysPerRun` | `overlay_plan_seal.go:78`, `media_resolver_entity_binding.go:79,122` | pre-Rust media ceiling | keep |
+| `MaxEntityImageOverlaysPerRun` | `media_resolver_entity_binding.go:79,122` | pre-Rust media ceiling | keep |
 | `MaxPhraseOverlaysPerRun`, `MaxPhraseOverlaysHardLimit`, `EffectivePhraseOverlayLimit` | `overlay_canvas.go:113,230,555,566`, `generation_envelope.go:220` | pre-Rust request ceiling | keep |
 | `MaxMapOverlaysPerScene`, `MaxMapOverlaysPerRun` | `planner_config.go:51`, `overlay_canvas.go:581,591` | pre-Rust map ceiling | keep |
 | `MaxNumberOverlaysPerRun`, `MaxBrandTextOverlaysPerRun` | no in-repo production caller found | exported contract constant | keep until the producer/API owner confirms retirement |

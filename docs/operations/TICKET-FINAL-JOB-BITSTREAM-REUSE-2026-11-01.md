@@ -1,6 +1,6 @@
 # TICKET-FINAL-JOB-BITSTREAM-REUSE — il final job non deve ri-encodare l'overlay che ha già prodotto
 
-**Stato (aggiornato 2026-11-03):** P0, P2 e P3 chiusi e misurati; P1 resta
+**Stato (aggiornato 2026-11-21):** P0, P2 e P3 chiusi e misurati; P1 resta
 chiuso per il certificato di singolo artefatto ma **riaperto per la compatibilità
 bitstream tra segmenti** (nuovo blocker P5, evidenza P4 sotto); il solo
 `profile_id` non autorizza più il packet-copy tra sorgenti diverse. P1 chiuso sul consumatore, sul
@@ -478,6 +478,24 @@ proiezione `timing` in `/full` è **corretta**: il reader preferisce il run
 111.706/61.835 e 16 stage nel `critical_path`. Evidenza:
 `ops/jobs/garlasco_editorial_e2e_20261030/REPORT-2026-11-02-r96-fragment-layer.md`
 §8–§9.
+
+## Ricontrollo 2026-11-21 — P5: codice presente, run live mancante
+
+Verifica sul working tree `refactored@029f9b972`:
+
+- Il gate avcC è reale e unico: `kernelmedia.CanonicalVideoExtradataSHA256`
+  (`internal/kernel/media/assembly_contract.go:92`,
+  `7201ce80a2b2b32a0c1a89501851099f267c1767d59ff799db744f72032aae5a`) è
+  confrontato in `final_job_fragment_io.go:116`, `final_job_placement.go:205`,
+  `video_processor_cut.go:97` e `mediaexec` (`overlay_render_cache.go:292`).
+- I test che pinnano il fail-closed ci sono: `final_job_avcc_certificate_test.go`,
+  `final_job_canonical_encode_test.go`, `avc_extradata_test.go`,
+  `join_test.go` (avcC del concat), più i test del profilo
+  `VELOX_OVERLAY_VIDEO_ONLY_V1` in `capabilities/scripts`.
+- Restano esattamente le due voci già dichiarate: **run end-to-end del job P4
+  sul worker** (confronto dei confini del filmato finale) e **mappe importate**
+  come gate separato. Nessuna delle due è eseguibile senza il worker/Master:
+  la scheda resta aperta su quelle, non sul codice.
 
 ## Non obiettivi
 

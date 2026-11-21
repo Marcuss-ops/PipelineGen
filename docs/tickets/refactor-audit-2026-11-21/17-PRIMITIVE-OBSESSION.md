@@ -2,10 +2,10 @@
 
 **Data:** 2026-11-21
 **Priorità:** P2 (dopo RA-19, che unifica i validatori)
-**Stato:** PARTIAL — §1.2 (validatori duplicati) **DONE** con RA-19: SHA-256, `#RRGGBB` e lingua
-hanno ora un solo helper ciascuno. Restano aperti il variadico §1.1 e la sostituzione delle
-stringhe con tipi valore (`SHA256`, `RGB`, `LanguageTag`, `FileID`): è la parte che cambia i
-contratti e richiede una sessione dedicata (piano e ordine in `00-INDEX.md` §5).
+**Stato:** DONE (2026-11-21) — §1.1 (variadico nominato) e §1.2 (validatori canonici)
+chiusi; l'ultimo residuo `validDigestHex` è stato rimosso. La sostituzione delle stringhe con
+tipi valore (`SHA256`, `RGB`, `LanguageTag`, `FileID`) resta una proposta di design, non un
+criterio di accettazione di questa scheda.
 **Owner:** `kernel/{digest,script,asset,media}` + chiamanti
 **Origine:** report esterno 2026-11-21 §1.3, §5.3; verificato sul codice
 **Verifica sul codice:** **CONFERMATO** per il variadico e per le copie di validazione
@@ -134,5 +134,10 @@ storico è preservato: bundle assente = nessuna entity card per scena, immagini 
   `go vet ./internal/capabilities/scripts/...` → exit 0; `gofmt -l` vuoto;
   `archcheck --strict` exit 0, `has_hard_gate_hits=false`.
 
-Resta fuori da questa scheda solo la migrazione dei tipi valore, già chiusa nella §1.2 dalla
-sessione precedente (`kernel/color`, `kernel/digest`, `asset.Normalize`). **RA-17 DONE**.
+La migrazione dei tipi valore resta una proposta di design, non un criterio di accettazione di
+questa scheda; i validatori canonici sono `kernel/color`, `kernel/digest` e `asset.Normalize`.
+**RA-17 DONE (2026-11-21)** — ultimo residuo `validDigestHex` rimosso da
+`media_manifest_shim.go`, che ora chiama direttamente `digest.IsCanonicalSHA256`.
+Verifiche: `rg 'func (isLowerHex|isHexSHA256|isValidHex64|validDigestHex|normalizeLanguageTag)'`
+→ vuoto; `go test ./internal/capabilities/scripts/... ./internal/capabilities/overlays/...
+./internal/kernel/... -count=1` → ok; `go build ./...`, `go vet`, `archcheck --strict` → exit 0.
