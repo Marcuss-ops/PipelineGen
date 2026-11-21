@@ -221,7 +221,11 @@ func resolveFinalJobAsset(ctx context.Context, resolver FinalJobAssetResolver, i
 		}
 		return publisher.ResolveFinalJobObjectStoreAsset(ctx, id)
 	}
-	return resolver.ResolveFinalJobAsset(ctx, id)
+	asset, err := resolver.ResolveFinalJobAsset(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return asset.Map()
 }
 
 func finalJobRenderArtifactRef(ctx context.Context, artifact *RenderArtifact) (map[string]any, error) {

@@ -1,4 +1,4 @@
-package cliprender
+package cliprender_test
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	capcliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	pgcliprender "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/cliprender"
 	pgmigration "github.com/Marcuss-ops/PipelineGen/migrations/postgres"
 )
 
@@ -27,7 +29,7 @@ import (
 //
 //	docker compose -f docker-compose.test-postgres.yml up -d --wait
 //	TEST_POSTGRES_DSN=postgres://pipelinegen:pipelinegen@localhost:16432/pipelinegen_media_test?sslmode=disable \
-//	  go test ./internal/capabilities/cliprender/ -run TestRenderCache -count=1
+//	  go test ./internal/platform/postgres/cliprender/ -run TestRenderCache -count=1
 
 // requireRenderCachePostgres opens the live media database and applies the
 // canonical migrations plus the cache DDL. It skips (never fakes) when
@@ -61,7 +63,7 @@ func requireRenderCachePostgres(t *testing.T) *sql.DB {
 			t.Fatalf("apply media migration %d: %v", i+1, err)
 		}
 	}
-	if err := EnsureRenderCacheTable(ctx, db); err != nil {
+	if err := pgcliprender.EnsureRenderCacheTable(ctx, db); err != nil {
 		t.Fatalf("ensure clip_render_cache: %v", err)
 	}
 	return db
@@ -100,12 +102,12 @@ func TestRenderCacheHitRequiresTheReferencedAssetToStillMatch(t *testing.T) {
 	)
 	insertRenderCacheAsset(t, ctx, db, assetID, goodSHA, "ACTIVE")
 
-	cache := NewPostgresRenderCache(db)
-	if err := cache.Put(ctx, &RenderCacheRecord{
+	cache := pgcliprender.NewPostgresRenderCache(db)
+	if err := cache.Put(ctx, &capcliprender.RenderCacheRecord{
 		Fingerprint: fingerprint, AssetID: assetID, StorageKey: "clip/key.mp4",
 		ArtifactURL: "https://example.test/key.mp4", ContentType: "video/mp4",
 		SHA256: goodSHA, SizeBytes: 1024, DurationSec: 60.007,
-		Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, Backend: BackendChrononVulkan,
+		Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, Backend: capcliprender.BackendChrononVulkan,
 	}); err != nil {
 		t.Fatalf("put cache record: %v", err)
 	}
@@ -115,20 +117,20 @@ func TestRenderCacheHitRequiresTheReferencedAssetToStillMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a live, matching asset must be a hit: %v", err)
 	}
-	if hit.AssetID != assetID || hit.SHA256 != goodSHA || hit.Backend != BackendChrononVulkan {
+	if hit.AssetID != assetID || hit.SHA256 != goodSHA || hit.Backend != capcliprender.BackendChrononVulkan {
 		t.Fatalf("hit = %+v, want the certified locator", hit)
 	}
 
 	// 2. The asset was overwritten (same id, different bytes) -> MISS.
 	//    Serving this would hand back the locator of a different artifact.
 	insertRenderCacheAsset(t, ctx, db, assetID, otherSHA, "ACTIVE")
-	if _, err := cache.Get(ctx, fingerprint); !errors.Is(err, ErrCacheMiss) {
+	if _, err := cache.Get(ctx, fingerprint); !errors.Is(err, capcliprender.ErrCacheMiss) {
 		t.Fatalf("an overwritten asset must miss (got %v)", err)
 	}
 
 	// 3. The asset was retired but the row still exists -> MISS.
 	insertRenderCacheAsset(t, ctx, db, assetID, goodSHA, "DELETED")
-	if _, err := cache.Get(ctx, fingerprint); !errors.Is(err, ErrCacheMiss) {
+	if _, err := cache.Get(ctx, fingerprint); !errors.Is(err, capcliprender.ErrCacheMiss) {
 		t.Fatalf("a retired asset must miss (got %v)", err)
 	}
 
@@ -137,7 +139,7 @@ func TestRenderCacheHitRequiresTheReferencedAssetToStillMatch(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `DELETE FROM media_assets WHERE id = $1`, assetID); err != nil {
 		t.Fatalf("delete media asset: %v", err)
 	}
-	if _, err := cache.Get(ctx, fingerprint); !errors.Is(err, ErrCacheMiss) {
+	if _, err := cache.Get(ctx, fingerprint); !errors.Is(err, capcliprender.ErrCacheMiss) {
 		t.Fatalf("a deleted asset must miss, not report a phantom CACHED (got %v)", err)
 	}
 
@@ -160,14 +162,14 @@ func TestRenderCacheIgnoresEntriesWhoseAssetWasNeverCommitted(t *testing.T) {
 		_, _ = db.ExecContext(ctx, `DELETE FROM clip_render_cache WHERE fingerprint = $1`, fingerprint)
 	})
 
-	cache := NewPostgresRenderCache(db)
-	if err := cache.Put(ctx, &RenderCacheRecord{
+	cache := pgcliprender.NewPostgresRenderCache(db)
+	if err := cache.Put(ctx, &capcliprender.RenderCacheRecord{
 		Fingerprint: fingerprint, AssetID: "cache-asset-never-committed",
-		SHA256: strings.Repeat("c", 64), SizeBytes: 2048, Backend: BackendChrononVulkan,
+		SHA256: strings.Repeat("c", 64), SizeBytes: 2048, Backend: capcliprender.BackendChrononVulkan,
 	}); err != nil {
 		t.Fatalf("put cache record: %v", err)
 	}
-	if _, err := cache.Get(ctx, fingerprint); !errors.Is(err, ErrCacheMiss) {
+	if _, err := cache.Get(ctx, fingerprint); !errors.Is(err, capcliprender.ErrCacheMiss) {
 		t.Fatalf("a cache row with no committed asset must miss (got %v)", err)
 	}
 }

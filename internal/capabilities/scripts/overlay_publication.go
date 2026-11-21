@@ -2,7 +2,9 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"sync"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -16,6 +18,8 @@ type finalJobFrameWindow struct {
 	start, end int64
 	sceneID    string
 }
+
+var errFinalJobImageNoFreeGap = errors.New("final_job image overlay has no free scene window")
 
 // OverlayPublicationSpec and OverlayArtifactPublisher are the kernel-owned
 // publication contract (internal/kernel/script/renderqueue): the queue adapter
@@ -222,6 +226,65 @@ func scheduleFinalJobOverlayFrames(result *GenerateResult, item capmodel.Overlay
 			return candidate, candidate + duration, nil
 		}
 		candidate = conflictStart - duration
+	}
+	// Image cards are visual accents and may use a shorter source window when
+	// the full local render cannot fit beside the other replace overlays. Keep
+	// at least one second of the image, then take the largest free gap in the
+	// owning scene. Text and number overlays retain their certified duration.
+	if finalJobOverlayIsImageStyle(item) {
+		type frameGap struct{ start, end int64 }
+		windows := make([]frameGap, 0, len(occupied))
+		for _, prior := range occupied {
+			if prior.sceneID != item.SceneID || prior.end <= sceneStartFrame || prior.start >= sceneEndFrame {
+				continue
+			}
+			start, end := prior.start, prior.end
+			if start < sceneStartFrame {
+				start = sceneStartFrame
+			}
+			if end > sceneEndFrame {
+				end = sceneEndFrame
+			}
+			windows = append(windows, frameGap{start: start, end: end})
+		}
+		sort.Slice(windows, func(i, j int) bool { return windows[i].start < windows[j].start })
+		minFrames := int64((fpsNum + 2*fpsDen - 1) / (2 * fpsDen)) // half a second
+		if minFrames < 1 {
+			minFrames = 1
+		}
+		best := frameGap{start: sceneStartFrame, end: sceneStartFrame}
+		cursor := sceneStartFrame
+		considerGap := func(start, end int64) {
+			if end-start > best.end-best.start {
+				best = frameGap{start: start, end: end}
+			}
+		}
+		for _, window := range windows {
+			if window.start > cursor {
+				considerGap(cursor, window.start)
+			}
+			if window.end > cursor {
+				cursor = window.end
+			}
+		}
+		if cursor < sceneEndFrame {
+			considerGap(cursor, sceneEndFrame)
+		}
+		available := best.end - best.start
+		if available >= minFrames {
+			if available > duration {
+				available = duration
+			}
+			start := startFrame
+			if start < best.start {
+				start = best.start
+			}
+			if start+available > best.end {
+				start = best.end - available
+			}
+			return start, start + available, nil
+		}
+		return 0, 0, fmt.Errorf("%w: overlay %q in scene %q", errFinalJobImageNoFreeGap, item.ID, item.SceneID)
 	}
 	return 0, 0, fmt.Errorf("final_job overlay %q cannot fit a non-overlapping %d-frame window in scene %q", item.ID, duration, item.SceneID)
 }

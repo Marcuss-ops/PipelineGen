@@ -4,19 +4,17 @@ import (
 	"strings"
 	"testing"
 
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 const fallbackTestSHA = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-// In per-scene media scope a scene without its own binding for an entity
-// must still resolve the entity's verified portrait from the run-level
-// fallback (first binding in scene order) instead of degrading to a
-// text-only card. A scene WITH its own binding keeps priority through its
-// scene-scoped key.
+// In per-scene media scope a scene without its own binding for an entity must
+// still resolve the entity's verified portrait from the run-level fallback
+// (first binding in scene order) instead of degrading to a text-only card. The
+// planner now consumes this identity projection through
+// `media.promotable_entity_assets`, so the index itself is what is pinned here.
 func TestEntityCardMediaIndexFallsBackToRunLevelBinding(t *testing.T) {
 	bound := scriptpkg.AnnotatedEntity{Type: "PERSON", CanonicalName: "Andrea Sempio", Confidence: 0.9,
 		Image: &scriptpkg.EntityImageBinding{
@@ -37,26 +35,19 @@ func TestEntityCardMediaIndexFallsBackToRunLevelBinding(t *testing.T) {
 	if canonicalByStable[stable] == "" {
 		t.Fatalf("run-level fallback key missing: %v", canonicalByStable)
 	}
-	card := capmodel.OverlayItem{
-		ID:      "overlay-scene-b-" + capabilityentities.SafeEntityID("Andrea Sempio"),
-		SceneID: "scene-b", EntityID: stable, TemplateID: "person_default",
-		Kind:      string(capmodel.KindEntityCard),
-		EntityRef: &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Andrea Sempio"},
+	ref, err := media.ResolveBest(canonicalByStable[stable])
+	if err != nil {
+		t.Fatalf("run-level fallback resolve: %v", err)
 	}
-	got := attachEntityCardAsset(card, media, canonicalByStable, "plan")
-	if got.Kind != string(capmodel.KindEntityImage) {
-		t.Fatalf("unbound scene card kind = %q, want entity_image via run-level fallback", got.Kind)
-	}
-	if len(got.AssetRefs) != 1 || !strings.EqualFold(got.AssetRefs[0].SHA256, fallbackTestSHA) {
-		t.Fatalf("unbound scene card refs = %+v, want the bound portrait", got.AssetRefs)
+	if !strings.EqualFold(ref.SHA256, fallbackTestSHA) {
+		t.Fatalf("run-level fallback sha = %q, want the bound portrait", ref.SHA256)
 	}
 	// A scene with its own binding still resolves its own scene-scoped key.
-	boundCard := capmodel.OverlayItem{
-		ID: sceneAOverlayID, SceneID: "scene-a", EntityID: stable, TemplateID: "person_default",
-		Kind:      string(capmodel.KindEntityCard),
-		EntityRef: &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Andrea Sempio"},
+	scoped, err := media.ResolveBest(canonicalByStable[sceneAOverlayID])
+	if err != nil {
+		t.Fatalf("scene-scoped resolve: %v", err)
 	}
-	if got := attachEntityCardAsset(boundCard, media, canonicalByStable, "plan"); got.Kind != string(capmodel.KindEntityImage) {
-		t.Fatalf("bound scene card kind = %q, want entity_image", got.Kind)
+	if !strings.EqualFold(scoped.SHA256, fallbackTestSHA) {
+		t.Fatalf("scene-scoped sha = %q, want the bound portrait", scoped.SHA256)
 	}
 }

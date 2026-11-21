@@ -2,35 +2,81 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
-	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/stretchr/testify/require"
 )
 
-// The post-seal mutation surface of one chain segment, declared in
-// docs/architecture/OVERLAY-EDITORIAL-OWNERSHIP.md (ADR-029 decision matrix).
-// Entity-card promotion is the ONE exception that may rewrite a segment's
-// identity, because whether a card has a certified portrait is known only to
-// the PipelineGen media plane, after Rust ranked it.
-var (
-	chainSegmentPromotableAddedKeys = []string{
-		"kind", "template_id", "preset_id", "image_preset_id",
-		"entity_caption", "asset_id", "assets",
+// Entity-card → entity-image promotion moved to the v2 planner (CHAIN-SEGMENT
+// v2). The Go seal boundary now adopts the plan as it arrives: this test pins
+// that no item, segment or identity is rewritten after the planner sealed.
+func TestSealBoundaryLeavesEveryItemAndChainSegmentUntouched(t *testing.T) {
+	plan := capmodel.OverlayPlan{
+		PlanID: "plan-chain-v2", VideoID: "video-chain-v2",
+		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Items: []capmodel.OverlayItem{
+			{
+				ID: "scene-1:chain-image:0", SceneID: "scene-1",
+				Kind: capmodel.KindImageChain, TemplateID: capmodel.TemplateImageChain,
+				StartUS: 1_000_000, DurationUS: 6_000_000, StartMs: 1_000, EndMs: 7_000,
+				PresetID: "image_slide_left",
+				Params: map[string]any{
+					"chain_segments": []any{
+						map[string]any{
+							"kind": string(capmodel.KindEntityImage), "template_id": "image_popup",
+							"preset_id": "image_slide_left", "image_preset_id": "image_scale_in",
+							"entity_caption": "Ada Lovelace", "entity_id": "person-ada",
+							"asset_id": "asset-ada",
+							"assets": []any{map[string]any{
+								"asset_id": "asset-ada", "url": "https://cdn.example/ada.jpg",
+								"sha256": strings.Repeat("1", 64),
+							}},
+							"start_us": 1_000_000, "duration_us": 2_500_000,
+						},
+						map[string]any{
+							"kind": string(capmodel.KindEntityCard), "template_id": "person_default",
+							"text": "Grace Hopper", "entity_id": "person-grace",
+							"motion_id": "card_reveal", "start_us": 3_900_000, "duration_us": 2_500_000,
+						},
+					},
+					"chain_motions": []any{"image_focus_reveal", "card_reveal"},
+					"chain_count":   2,
+					"chain_gap_us":  400_000,
+				},
+			},
+			{
+				ID: "card-grace", SceneID: "scene-1",
+				Kind: string(capmodel.KindEntityCard), TemplateID: "person_default",
+				Text: "Grace Hopper", EntityID: "person-grace",
+				StartUS: 8_000_000, DurationUS: 2_500_000, StartMs: 8_000, EndMs: 10_500,
+			},
+		},
 	}
-	chainSegmentPromotableDroppedKeys = []string{
-		"text", "entity_style_id", "motion_id", "motion_params", "params",
-	}
-)
+	before, err := json.Marshal(plan.Items)
+	require.NoError(t, err)
 
-func chainSegmentKeySet(keys []string) map[string]bool {
-	set := make(map[string]bool, len(keys))
-	for _, key := range keys {
-		set[key] = true
+	sealed, err := sealCompiledOverlayPlan(&plan, &GenerateResult{}, Language("it"), nil, OverlayCanvasSpec{})
+	require.NoError(t, err)
+
+	// `render_key` is the one derived field the seal stamps; every planner-owned
+	// byte must survive it.
+	for i := range sealed.Items {
+		sealed.Items[i].RenderKey = ""
 	}
-	return set
+	after, err := json.Marshal(sealed.Items)
+	require.NoError(t, err)
+	require.JSONEq(t, string(before), string(after),
+		"the seal boundary rewrote the plan the planner sealed")
+
+	// The two identities are still the planner's: a card segment stays a card
+	// and a standalone card is not flipped to entity_image.
+	segments, ok := capmodel.ChainSegmentMaps(sealed.Items[0].Params)
+	require.True(t, ok)
+	require.Equal(t, string(capmodel.KindEntityCard), segments[1]["kind"])
+	require.Equal(t, string(capmodel.KindEntityCard), sealed.Items[1].Kind)
+	require.Empty(t, sealed.Items[1].AssetRefs, "no promotion ran after the seal")
 }
 
 func cloneChainSegments(t *testing.T, item capmodel.OverlayItem) []map[string]any {
@@ -44,126 +90,8 @@ func cloneChainSegments(t *testing.T, item capmodel.OverlayItem) []map[string]an
 	return cloned
 }
 
-// promotionBundleForTwoEntities returns a bundle whose verified media covers
-// both entity cards of the chain under test.
-func promotionBundleForTwoEntities(t *testing.T, first, second promotionEntity) *capabilityoverlay.SemanticRenderBundleV1 {
-	t.Helper()
-	bundle := promotionTestBundle(first.stable, first.canonical, first.name, first.url)
-	bundle.Entities = append(bundle.Entities, capabilityoverlay.ResolvedEntity{
-		EntityID: second.stable, CanonicalEntityID: second.canonical, Type: "PERSON",
-		Text: second.name, CanonicalText: second.name, SceneID: "scene-1",
-	})
-	bundle.Assets = append(bundle.Assets, capabilityoverlay.BoundAsset{
-		EntityID: second.stable, AssetID: "asset-org",
-		ContentHash: "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
-		SourceURL:   second.url, Verified: true,
-	})
-	return bundle
-}
-
-type promotionEntity struct {
-	stable    string
-	canonical string
-	name      string
-	url       string
-}
-
-func TestChainSegmentPromotionTouchesOnlyTheDeclaredSurface(t *testing.T) {
-	person := promotionEntity{
-		stable:    capabilityentities.StableEntityID("PERSON", "Steve Jobs"),
-		canonical: "person:steve-jobs",
-		name:      "Steve Jobs",
-		url:       "https://drive.google.com/uc?export=download&id=steve",
-	}
-	org := promotionEntity{
-		stable:    capabilityentities.StableEntityID("ORGANIZATION", "Apple"),
-		canonical: "organization:apple",
-		name:      "Apple",
-		url:       "https://drive.google.com/uc?export=download&id=apple",
-	}
-	plan := &capmodel.OverlayPlan{
-		PlanID: "plan-chain-2",
-		Items: []capmodel.OverlayItem{{
-			ID: "ov-chain-2", SceneID: "scene-1",
-			Kind: capmodel.KindMixedChain, TemplateID: capmodel.TemplateMixedChain,
-			Text: person.name, StartUS: 1_000_000, DurationUS: 6_000_000,
-			StartMs: 1000, EndMs: 7000, PresetID: "",
-			Params: map[string]any{
-				"chain_segments": []any{
-					map[string]any{
-						"kind": string(capmodel.KindEntityCard), "text": person.name,
-						"entity_id": person.stable, "motion_id": "card_reveal",
-						"motion_params":   map[string]any{"enter_frames": 17},
-						"entity_style_id": "premium_below_random_v1",
-						"start_us":        1_000_000, "duration_us": 2_500_000,
-						"group_id": "group-a",
-					},
-					map[string]any{
-						"kind": string(capmodel.KindEntityCard), "text": org.name,
-						"entity_id": org.stable, "motion_id": "card_reveal",
-						"entity_style_id": "premium_below_random_v1",
-						"start_us":        3_900_000, "duration_us": 2_500_000,
-						"group_id": "group-b",
-					},
-				},
-			},
-		}},
-	}
-	before := cloneChainSegments(t, plan.Items[0])
-	beforeItem := plan.Items[0]
-
-	result := &GenerateResult{SemanticRenderBundle: promotionBundleForTwoEntities(t, person, org)}
-	promoteVerifiedEntityCards(plan, result, OverlayCanvasSpec{})
-
-	require.Len(t, plan.Items, 1, "promotion must not add or remove plan items")
-	item := plan.Items[0]
-
-	// Identity and timing stay Rust's: only the chain family flips, because
-	// every segment became an image.
-	require.Equal(t, beforeItem.ID, item.ID)
-	require.Equal(t, beforeItem.SceneID, item.SceneID)
-	require.Equal(t, beforeItem.StartUS, item.StartUS)
-	require.Equal(t, beforeItem.DurationUS, item.DurationUS)
-	require.Equal(t, beforeItem.StartMs, item.StartMs)
-	require.Equal(t, beforeItem.EndMs, item.EndMs)
-	require.Equal(t, capmodel.KindImageChain, item.Kind)
-	require.Equal(t, capmodel.TemplateImageChain, item.TemplateID)
-	require.Empty(t, item.Text, "the declared exception clears the legacy chain text")
-
-	after := cloneChainSegments(t, item)
-	require.Len(t, after, len(before), "promotion must not add or remove segments")
-
-	added := chainSegmentKeySet(chainSegmentPromotableAddedKeys)
-	dropped := chainSegmentKeySet(chainSegmentPromotableDroppedKeys)
-
-	for index := range before {
-		for key, value := range after[index] {
-			if _, ok := before[index][key]; !ok {
-				require.Truef(t, added[key],
-					"segment %d gained undeclared key %q", index, key)
-				continue
-			}
-			if added[key] {
-				continue
-			}
-			require.Equalf(t, before[index][key], value,
-				"segment %d changed key %q outside the declared promotion surface", index, key)
-		}
-		for key := range before[index] {
-			if _, ok := after[index][key]; ok {
-				continue
-			}
-			require.Truef(t, dropped[key],
-				"segment %d dropped undeclared key %q", index, key)
-		}
-		// Absolute timing is Rust's and must survive verbatim.
-		require.Equal(t, before[index]["start_us"], after[index]["start_us"])
-		require.Equal(t, before[index]["duration_us"], after[index]["duration_us"])
-		require.Equal(t, before[index]["entity_id"], after[index]["entity_id"])
-		require.Equal(t, string(capmodel.KindEntityImage), after[index]["kind"])
-	}
-}
-
+// Preset resolution after adoption may only fill preset_id: it is the one
+// derived attribute, and it never re-selects identity or motion.
 func TestChainSegmentPresetResolutionTouchesOnlyPresetID(t *testing.T) {
 	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{{
 		ID: "ov-chain-3", SceneID: "scene-1",

@@ -2,10 +2,12 @@ package script
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 
@@ -123,6 +125,8 @@ type SceneTextGenerator struct {
 	segmentConcurrency int
 }
 
+const defaultSceneGenerationTimeout = 3 * time.Minute
+
 // SetSegmentConcurrency configures the bounded fan-out used by streaming
 // scene generation. The Engine's GenerationGate remains the hard Ollama
 // ceiling; this controls how many scene jobs can be in flight locally.
@@ -175,7 +179,6 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 	if err != nil {
 		return scriptpkg.SourceTrace{}, err
 	}
-
 	segments := append([]scriptpkg.ScriptSegment(nil), plan.Segments...)
 	if len(segments) == 0 {
 		scenes, trace, batchErr := g.GenerateSceneTextWithTrace(ctx, req)
@@ -188,6 +191,14 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 			}
 		}
 		return trace, nil
+	}
+	// Probe liveness before scheduling segment calls. The probe does not
+	// consume an inference slot and reports an unavailable model distinctly.
+	healthCtx, healthCancel := context.WithTimeout(ctx, 3*time.Second)
+	healthErr := g.Engine.CheckGenerationHealth(healthCtx)
+	healthCancel()
+	if healthErr != nil {
+		return scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: model unavailable before generation: %w", healthErr)
 	}
 
 	type sceneResult struct {
@@ -286,8 +297,13 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 			}
 		}
 
-		result, genErr := g.Engine.Generate(ctx, &segmentPlan)
+		segmentCtx, cancelSegment := context.WithTimeout(ctx, defaultSceneGenerationTimeout)
+		defer cancelSegment()
+		result, genErr := g.Engine.Generate(segmentCtx, &segmentPlan)
 		if genErr != nil {
+			if errors.Is(genErr, context.DeadlineExceeded) {
+				return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d generation timed out after %s (model request or admission queue): %w", index, defaultSceneGenerationTimeout, genErr)}
+			}
 			return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d generate failed: %w", index, genErr)}
 		}
 		if g.Memory != nil && segmentPlan.UseMemory && result.CacheStatus == "generated" && result.Output.Text != "" {
@@ -426,8 +442,19 @@ func (g *SceneTextGenerator) GenerateSceneTextWithTrace(
 		)
 	}
 
-	engineResult, err := g.Engine.Generate(ctx, plan)
+	healthCtx, healthCancel := context.WithTimeout(ctx, 3*time.Second)
+	healthErr := g.Engine.CheckGenerationHealth(healthCtx)
+	healthCancel()
+	if healthErr != nil {
+		return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: model unavailable before generation: %w", healthErr)
+	}
+	generationCtx, cancelGeneration := context.WithTimeout(ctx, defaultSceneGenerationTimeout)
+	defer cancelGeneration()
+	engineResult, err := g.Engine.Generate(generationCtx, plan)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: generation timed out after %s (model request or admission queue): %w", defaultSceneGenerationTimeout, err)
+		}
 		return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: engine generate failed: %w", err)
 	}
 

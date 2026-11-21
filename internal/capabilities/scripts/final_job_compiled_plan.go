@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 // These wire structs mirror the strict CompiledRenderPlanV2 contract owned by

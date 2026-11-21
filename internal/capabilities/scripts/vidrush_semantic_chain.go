@@ -195,7 +195,8 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	}
 
 	extractedEntities := make([]scriptpkg.ExtractedEntity, 0, len(entities))
-	for _, ve := range entities {
+	for i := range entities {
+		ve := &entities[i]
 		if ve.Type == scriptpkg.EntityTypePerson {
 			// VisualNER can occasionally include a sentence connector and
 			// possessive in the PERSON span ("While Dolly Parton's"). The
@@ -203,6 +204,13 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			// provider queries and durable overlay IDs.
 			ve.Text = normalizeVisualPersonName(ve.Text)
 		}
+		intents := make([]string, 0, len(ve.SearchIntents))
+		for _, intent := range ve.SearchIntents {
+			if imageQueryAnchoredToEntity(intent, ve.Text) {
+				intents = append(intents, intent)
+			}
+		}
+		ve.SearchIntents = intents
 		entityType := ve.Type
 		if strings.TrimSpace(string(entityType)) == "" {
 			// Test/dry-run ports predating the typed contract are treated as

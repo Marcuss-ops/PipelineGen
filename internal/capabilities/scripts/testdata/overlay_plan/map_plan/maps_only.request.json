@@ -164,7 +164,14 @@
     "enable_charts": false,
     "disable_chart_overlays": false,
     "disable_number_overlays": false,
-    "maps_only": true
+    "maps_only": true,
+    "image_presets": [
+      "image_fade_in",
+      "image_focus_in",
+      "image_scale_in",
+      "image_slide_left",
+      "image_slide_right"
+    ]
   },
   "seal": {
     "audio_duration_us": 900000

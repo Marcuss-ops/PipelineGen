@@ -1,4 +1,4 @@
-package wiring
+package finaljob
 
 import (
 	"context"
@@ -7,9 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	segment "github.com/Marcuss-ops/PipelineGen/internal/kernel/media/finaljob"
 )
 
 // TestFragmentEncoderRewritesLegacyColourVUIToCanonicalAVCC is the regression
@@ -51,7 +50,7 @@ func TestFragmentEncoderRewritesLegacyColourVUIToCanonicalAVCC(t *testing.T) {
 		t.Fatal("fixture unexpectedly already carries the canonical avcC")
 	}
 
-	preparer := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{
+	preparer := NewSegmentPreparer("", kernelmedia.EncoderPolicy{
 		Codec: "h264_nvenc", Preset: "p1", CRF: 23,
 	}, "", 1)
 	if !kernelmedia.IsCanonicalVideoEncoder(preparer.policy.Codec, preparer.policy.Preset, preparer.policy.CRF) {
@@ -60,7 +59,7 @@ func TestFragmentEncoderRewritesLegacyColourVUIToCanonicalAVCC(t *testing.T) {
 	}
 
 	output := filepath.Join(dir, "fragment.mp4")
-	request := scriptgen.FinalJobVideoSegmentRequest{
+	request := segment.VideoSegmentRequest{
 		SegmentID: "legacy-overlay-0000", FrameCount: 24,
 		TimelineRevision: 1, TimelineSHA256: strings.Repeat("a", 64),
 		TimelineStartFrame: 0,
@@ -86,7 +85,7 @@ func TestFragmentEncoderRewritesLegacyColourVUIToCanonicalAVCC(t *testing.T) {
 // must still fail before ffmpeg starts instead of emitting bytes the remote mux
 // will reject.
 func TestFragmentEncoderRejectsANonCanonicalPolicy(t *testing.T) {
-	preparer := &finalJobSegmentPreparer{policy: mediaexec.EncoderPolicy{
+	preparer := &SegmentPreparer{policy: kernelmedia.EncoderPolicy{
 		Codec: "h264_nvenc", Preset: "p1", CRF: 23,
 	}}
 	if _, _, err := preparer.fragmentEncoderSettings(); err == nil {

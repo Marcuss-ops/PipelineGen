@@ -310,8 +310,24 @@ func cmdReplay(args []string) int {
 		fmt.Fprintf(os.Stderr, "velox replay: %v\n", err)
 		return exitUsage
 	}
+	// The stored digest covers the bytes SubmitBytes actually sent. In M2M the
+	// enqueue envelope carries the idempotency key inside the body, so rebuild
+	// that envelope before comparing: hashing the raw file would report drift on
+	// every M2M replay and would send a body the server never accepted.
+	if rec.Endpoint == veloxclient.RouteM2MJobs {
+		payload, err = addM2MIdempotencyKey(payload, rec.IdempotencyKey)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "velox replay: rebuild M2M payload: %v\n", err)
+			return exitUsage
+		}
+	}
+	if rec.PayloadSHA256 == "" {
+		fmt.Fprintf(os.Stderr, "velox replay: record %s has no payload digest; refusing to reuse key %s without proving the bytes\n", jobID, rec.IdempotencyKey)
+		return exitFailure
+	}
 	if got := payloadSHA256(payload); got != rec.PayloadSHA256 {
-		fmt.Fprintf(os.Stderr, "velox replay: WARNING payload %s changed since submission; the same Idempotency-Key now covers different bytes\n", rec.PayloadPath)
+		fmt.Fprintf(os.Stderr, "velox replay: payload %s changed since submission (stored %s, current %s); refusing to reuse idempotency key %s because the server would reject it with 409 idempotency_key_reused. Restore the original bytes or submit the changed payload as a new job with `velox submit ... --key PROJECT`.\n", rec.PayloadPath, rec.PayloadSHA256, got, rec.IdempotencyKey)
+		return exitUsage
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -320,6 +336,10 @@ func cmdReplay(args []string) int {
 	// job instead of creating a second one.
 	resp, err := newClient(cfg).SubmitBytes(ctx, rec.Endpoint, payload, rec.IdempotencyKey)
 	if err != nil {
+		if errors.Is(err, veloxclient.ErrNotReady) {
+			fmt.Fprintf(os.Stderr, "velox replay: server refused the stored idempotency key (409 conflict): %v\n", err)
+			return exitFailure
+		}
 		fmt.Fprintf(os.Stderr, "velox replay: %v\n", err)
 		return exitFailure
 	}

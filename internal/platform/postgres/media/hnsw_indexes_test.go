@@ -240,7 +240,12 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 			t.Fatalf("%s: latency query rows: %v", tc.label, err)
 		}
 		_ = latencyRows.Close()
-		if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		elapsed := time.Since(started)
+		// STK-09 asks for a measurable pgvector share: log it so the number is
+		// visible in `go test -v` and can be quoted next to the backend's
+		// `embed_ms`/`pgvector_ms` fields.
+		t.Logf("%s: ANN query latency %s", tc.label, elapsed)
+		if elapsed > 500*time.Millisecond {
 			t.Fatalf("%s: ANN query latency %s exceeds 500ms", tc.label, elapsed)
 		}
 	}

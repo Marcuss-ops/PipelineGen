@@ -21,6 +21,7 @@ import (
 	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 func TestFinalJobObjectPublicationChecksAvailabilityOnce(t *testing.T) {
@@ -167,8 +168,16 @@ func TestFinalJobLocalObjectProbeMissIsNotRepeated(t *testing.T) {
 
 type finalJobPayloadResolver struct{}
 
-func (finalJobPayloadResolver) ResolveFinalJobAsset(context.Context, string) (map[string]any, error) {
-	return map[string]any{"asset_id": "drive-asset", "drive_file_id": "drive-asset", "url": "velox-drive://drive-asset", "sha256": strings.Repeat("b", 64), "size_bytes": int64(20), "duration_ms": int64(2000)}, nil
+func finalJobTestRuntimeAsset(values map[string]any) finaljob.RuntimeAssetV1 {
+	asset, err := finaljob.RuntimeAssetFromMap(values)
+	if err != nil {
+		panic(err)
+	}
+	return asset
+}
+
+func (finalJobPayloadResolver) ResolveFinalJobAsset(context.Context, string) (FinalJobRuntimeAssetV1, error) {
+	return finalJobTestRuntimeAsset(map[string]any{"asset_id": "drive-asset", "drive_file_id": "drive-asset", "url": "velox-drive://drive-asset", "sha256": strings.Repeat("b", 64), "size_bytes": int64(20), "duration_ms": int64(2000)}), nil
 }
 
 func certifiedPhraseVideoArtifact() *RenderArtifact {
@@ -688,7 +697,7 @@ func (finalJobPayloadResolver) ListFinalJobStockFolder(context.Context, string) 
 // ResolveFinalJobStockAsset offers one whole file per common scene duration.
 // The production adapter reads these durations from the saved media registry;
 // the fixture does the same by parsing the id suffix.
-func (finalJobPayloadResolver) ResolveFinalJobStockAsset(_ context.Context, id string) (map[string]any, error) {
+func (finalJobPayloadResolver) ResolveFinalJobStockAsset(_ context.Context, id string) (FinalJobRuntimeAssetV1, error) {
 	durationMS := int64(2000)
 	sha := strings.Repeat("b", 64)
 	if id == "obama-stock-db-clip" {
@@ -700,15 +709,15 @@ func (finalJobPayloadResolver) ResolveFinalJobStockAsset(_ context.Context, id s
 		suffix := id[strings.LastIndex(id, "-")+1:]
 		value, err := strconv.ParseInt(suffix, 10, 64)
 		if err != nil || value <= 0 {
-			return nil, fmt.Errorf("unknown stock fixture %q", id)
+			return FinalJobRuntimeAssetV1{}, fmt.Errorf("unknown stock fixture %q", id)
 		}
 		durationMS = value
 		sha = digest.SHA256String(id)
 	}
-	return map[string]any{
+	return finalJobTestRuntimeAsset(map[string]any{
 		"asset_id": id, "drive_file_id": id, "url": "velox-drive://" + id,
 		"sha256": sha, "size_bytes": int64(20 + durationMS), "duration_ms": durationMS,
-	}, nil
+	}), nil
 }
 
 func (finalJobPayloadResolver) FinalJobPublishedFileSize(context.Context, string) (int64, error) {
@@ -757,6 +766,30 @@ func TestFinalJobAudioInputRestoresClipAudioAtFinalJobGain(t *testing.T) {
 	}
 	if result.Scenes[0].Audio.Mode != capabilityaudio.AudioClip || result.Scenes[0].Audio.GainDB != 0 {
 		t.Fatal("finalJobAudioInput mutated the original scene")
+	}
+}
+
+func TestFinalJobAudioInputPreservesSilentFixedMediaWithoutAddingClipAudio(t *testing.T) {
+	result := GenerateResult{Scenes: []Scene{{
+		ID:            "scene-intro",
+		ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		FixedPlayback: &scriptpkg.FixedPlaybackPolicy{
+			AudioMode:  scriptpkg.FixedPlaybackSilence,
+			SourceInMS: 0, SourceOutMS: 5_000,
+		},
+		Clip: &ClipReference{ID: "intro-clip", SourceInMS: 0, SourceOutMS: 5_000},
+		AudioIntents: []capabilityaudio.AudioIntent{{
+			Mode: capabilityaudio.AudioSilence, TimelineDurationUS: 5_000_000,
+		}},
+	}}}
+
+	projected := finalJobAudioInput(result, "it")
+	intents := projected.Scenes[0].AudioIntents
+	if len(intents) != 1 || intents[0].Mode != capabilityaudio.AudioSilence {
+		t.Fatalf("silent fixed-media audio intents = %#v, want only silence", intents)
+	}
+	if intents[0].ClipAssetID != "" {
+		t.Fatalf("silent fixed-media intent retained a clip asset: %#v", intents[0])
 	}
 }
 
@@ -1080,10 +1113,10 @@ func TestBuildFinalJobPayloadsClipOnlySceneWithoutRenderFailsClosed(t *testing.T
 // here would make the plan shorter than the canonical audio.
 type fixedMediaSourcePayloadResolver struct{ finalJobPayloadResolver }
 
-func (fixedMediaSourcePayloadResolver) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
+func (fixedMediaSourcePayloadResolver) ResolveFinalJobAsset(ctx context.Context, id string) (FinalJobRuntimeAssetV1, error) {
 	if strings.HasPrefix(id, "intro-source-clip-") {
-		return map[string]any{"asset_id": id, "drive_file_id": id, "url": "velox-drive://" + id,
-			"sha256": strings.Repeat("b", 64), "size_bytes": int64(20), "duration_ms": int64(5000)}, nil
+		return finalJobTestRuntimeAsset(map[string]any{"asset_id": id, "drive_file_id": id, "url": "velox-drive://" + id,
+			"sha256": strings.Repeat("b", 64), "size_bytes": int64(20), "duration_ms": int64(5000)}), nil
 	}
 	return finalJobPayloadResolver{}.ResolveFinalJobAsset(ctx, id)
 }
@@ -1327,14 +1360,25 @@ func TestFinalJobIdempotencyKeyStableAcrossLocalRunRetries(t *testing.T) {
 }
 
 func TestFinalJobAttemptIdempotencyKeyChangesOnlyForANewAttempt(t *testing.T) {
-	first := finalJobAttemptIdempotencyKey("request-1", "logical-run", 1)
-	replay := finalJobAttemptIdempotencyKey("request-1", "logical-run", 1)
-	retry := finalJobAttemptIdempotencyKey("request-1", "logical-run", 2)
+	plan := strings.Repeat("a", 64)
+	first := finalJobAttemptIdempotencyKey("request-1", "logical-run", 1, plan)
+	replay := finalJobAttemptIdempotencyKey("request-1", "logical-run", 1, plan)
+	retry := finalJobAttemptIdempotencyKey("request-1", "logical-run", 2, plan)
 	if first != replay {
 		t.Fatalf("same-attempt key changed on replay: %q != %q", first, replay)
 	}
 	if first == retry {
 		t.Fatalf("new remote attempt reused key %q", first)
+	}
+	// A resumed run rebuilds its plan, so a re-encoded overlay moves the digest
+	// while the attempt number stays put. The Master rejects that reuse as
+	// idempotency_key_reused/hash_mismatch, so the key must follow the payload.
+	drifted := finalJobAttemptIdempotencyKey("request-1", "logical-run", 1, strings.Repeat("b", 64))
+	if drifted == first {
+		t.Fatalf("drifted plan reused key %q and would be refused as a hash mismatch", first)
+	}
+	if !strings.Contains(first, plan[:12]) {
+		t.Fatalf("attempt key %q does not carry the plan digest", first)
 	}
 }
 

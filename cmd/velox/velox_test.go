@@ -89,23 +89,36 @@ func TestStoreRoundTripWritesNoTempFiles(t *testing.T) {
 // ── command-level tests ───────────────────────────────────────────────
 
 type fakeServer struct {
-	mu             sync.Mutex
-	idemKeys       []string
-	statusCalls    int
-	submitCount    int
-	downloadGET    bool
-	lastSearchBody string
+	mu                 sync.Mutex
+	idemKeys           []string
+	submitBodies       []string
+	statusCalls        int
+	submitCount        int
+	downloadGET        bool
+	lastSearchBody     string
+	conflictAfterFirst bool
 }
 
 func (f *fakeServer) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/clips/process", func(w http.ResponseWriter, r *http.Request) {
+	submit := func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
 		f.idemKeys = append(f.idemKeys, r.Header.Get("Idempotency-Key"))
+		f.submitBodies = append(f.submitBodies, string(body))
 		f.submitCount++
+		n := f.submitCount
+		conflict := f.conflictAfterFirst && n > 1
 		f.mu.Unlock()
+		if conflict {
+			w.WriteHeader(http.StatusConflict)
+			_, _ = w.Write([]byte(`{"ok":false,"error":"idempotency_key_reused","message":"idempotency key reused with a different payload"}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"ok":true,"job_id":"job_1","status":"queued"}`))
-	})
+	}
+	mux.HandleFunc("/api/clips/process", submit)
+	mux.HandleFunc("/api/v1/jobs", submit)
 	mux.HandleFunc("/api/jobs/job_1/full", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
 		f.statusCalls++
@@ -195,6 +208,109 @@ func TestSubmitThenPollAgainstFakeServer(t *testing.T) {
 	}
 	if !strings.Contains(out, "SUCCEEDED") {
 		t.Fatalf("poll did not report SUCCEEDED: %q", out)
+	}
+}
+
+func TestReplayRefusesChangedPayloadBeforeSubmitting(t *testing.T) {
+	fake := &fakeServer{}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+	home := t.TempDir()
+	t.Setenv("VELOX_BASE_URL", srv.URL)
+	t.Setenv("VELOX_HOME", home)
+
+	payloadPath := filepath.Join(home, "payload.json")
+	if err := os.WriteFile(payloadPath, []byte(`{"url":"https://youtu.be/abc"}`), 0o644); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	if code, _, e := capture(t, func() int {
+		return run([]string{"submit", "clips-process", "--key", "proj", "--payload", payloadPath})
+	}); code != exitOK {
+		t.Fatalf("submit failed: %s", e)
+	}
+	if err := os.WriteFile(payloadPath, []byte(`{"url":"https://youtu.be/CHANGED"}`), 0o644); err != nil {
+		t.Fatalf("rewrite payload: %v", err)
+	}
+
+	code, _, errOut := capture(t, func() int { return run([]string{"replay", "job_1"}) })
+	if code != exitUsage {
+		t.Fatalf("replay exit=%d, want %d (err=%q)", code, exitUsage, errOut)
+	}
+	if fake.submitCount != 1 {
+		t.Fatalf("replay sent %d submissions, want 1 (it must fail before the network)", fake.submitCount)
+	}
+	for _, want := range []string{"changed since submission", "409", "idempotency_key_reused"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("replay error %q does not mention %q", errOut, want)
+		}
+	}
+}
+
+func TestReplayM2MReconstructsTheSubmittedEnvelope(t *testing.T) {
+	fake := &fakeServer{}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+	home := t.TempDir()
+	t.Setenv("VELOX_BASE_URL", srv.URL)
+	t.Setenv("VELOX_HOME", home)
+	t.Setenv("VELOX_M2M_SECRET", "test-secret")
+
+	payloadPath := filepath.Join(home, "enqueue.json")
+	if err := os.WriteFile(payloadPath, []byte(`{"type":"script.generate","payload":{"n":1}}`), 0o644); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	if code, _, e := capture(t, func() int {
+		return run([]string{"submit", "jobs", "--m2m", "--key", "proj", "--payload", payloadPath})
+	}); code != exitOK {
+		t.Fatalf("m2m submit failed: %s", e)
+	}
+	if len(fake.submitBodies) != 1 {
+		t.Fatalf("submissions = %d, want 1", len(fake.submitBodies))
+	}
+	if !strings.Contains(fake.submitBodies[0], `"idempotency_key"`) {
+		t.Fatalf("M2M submit body lacks the enqueue key: %s", fake.submitBodies[0])
+	}
+
+	if code, _, e := capture(t, func() int { return run([]string{"replay", "job_1", "--m2m"}) }); code != exitOK {
+		t.Fatalf("m2m replay failed: %s", e)
+	}
+	if len(fake.idemKeys) != 2 {
+		t.Fatalf("expected 2 submissions, got %d", len(fake.idemKeys))
+	}
+	if fake.idemKeys[1] != fake.idemKeys[0] {
+		t.Fatalf("replay used key %q, want %q", fake.idemKeys[1], fake.idemKeys[0])
+	}
+	if fake.submitBodies[1] != fake.submitBodies[0] {
+		t.Fatalf("replay body differs from the submitted envelope:\nfirst=%s\nreplay=%s", fake.submitBodies[0], fake.submitBodies[1])
+	}
+}
+
+func TestReplaySurfacesServerConflict(t *testing.T) {
+	fake := &fakeServer{conflictAfterFirst: true}
+	srv := httptest.NewServer(fake.handler())
+	defer srv.Close()
+	home := t.TempDir()
+	t.Setenv("VELOX_BASE_URL", srv.URL)
+	t.Setenv("VELOX_HOME", home)
+
+	payloadPath := filepath.Join(home, "payload.json")
+	if err := os.WriteFile(payloadPath, []byte(`{"url":"https://youtu.be/abc"}`), 0o644); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	if code, _, e := capture(t, func() int {
+		return run([]string{"submit", "clips-process", "--key", "proj", "--payload", payloadPath})
+	}); code != exitOK {
+		t.Fatalf("submit failed: %s", e)
+	}
+
+	code, _, errOut := capture(t, func() int { return run([]string{"replay", "job_1"}) })
+	if code != exitFailure {
+		t.Fatalf("replay exit=%d, want %d (err=%q)", code, exitFailure, errOut)
+	}
+	for _, want := range []string{"409", "idempotency_key_reused"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("replay error %q does not mention %q", errOut, want)
+		}
 	}
 }
 

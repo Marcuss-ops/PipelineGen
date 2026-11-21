@@ -13,28 +13,38 @@ import (
 
 const editorialPlanLabel = "semantic-engine editorial plan"
 
-// compiledOverlayPlanV2 is the final-plan response. Items decode directly into
-// the renderer DTO; the planner counts stay explicit because OverlayPlan keeps
-// them application-only (json:"-").
+// compiledOverlayItemV2 is one final-plan item: the renderer DTO plus the
+// planner-owned entity identity. `entity_ref` exists only on the
+// editorial_plan.v2 response — `OverlayItem.EntityRef` is PipelineGen-internal
+// and is deliberately absent from the overlay-plan.v1 wire — so the projection
+// below moves it across and the renderer DTO keeps its exact JSON shape.
+type compiledOverlayItemV2 struct {
+	capmodel.OverlayItem
+	PlannerEntityRef *capmodel.OverlayEntityRef `json:"entity_ref,omitempty"`
+}
+
+// compiledOverlayPlanV2 is the final-plan response. Items decode into the
+// renderer DTO plus that identity; the planner counts stay explicit because
+// OverlayPlan keeps them application-only (json:"-").
 type compiledOverlayPlanV2 struct {
-	SchemaVersion   string                 `json:"schema_version"`
-	PlanID          string                 `json:"plan_id"`
-	VideoID         string                 `json:"video_id"`
-	ProjectID       string                 `json:"project_id,omitempty"`
-	Language        string                 `json:"language"`
-	Width           int                    `json:"width"`
-	Height          int                    `json:"height"`
-	FPSNum          int                    `json:"fps_num"`
-	FPSDen          int                    `json:"fps_den"`
-	DurationMS      int64                  `json:"duration_ms"`
-	Background      json.RawMessage        `json:"background,omitempty"`
-	Items           []capmodel.OverlayItem `json:"items"`
-	RecapPlacements int                    `json:"recap_placements"`
-	RecapCards      int                    `json:"recap_cards"`
-	ChartPlacements int                    `json:"chart_placements"`
-	ChartCards      int                    `json:"chart_cards"`
-	TimedScenes     int                    `json:"timed_scenes"`
-	OutputProfileID string                 `json:"output_profile_id,omitempty"`
+	SchemaVersion   string                  `json:"schema_version"`
+	PlanID          string                  `json:"plan_id"`
+	VideoID         string                  `json:"video_id"`
+	ProjectID       string                  `json:"project_id,omitempty"`
+	Language        string                  `json:"language"`
+	Width           int                     `json:"width"`
+	Height          int                     `json:"height"`
+	FPSNum          int                     `json:"fps_num"`
+	FPSDen          int                     `json:"fps_den"`
+	DurationMS      int64                   `json:"duration_ms"`
+	Background      json.RawMessage         `json:"background,omitempty"`
+	Items           []compiledOverlayItemV2 `json:"items"`
+	RecapPlacements int                     `json:"recap_placements"`
+	RecapCards      int                     `json:"recap_cards"`
+	ChartPlacements int                     `json:"chart_placements"`
+	ChartCards      int                     `json:"chart_cards"`
+	TimedScenes     int                     `json:"timed_scenes"`
+	OutputProfileID string                  `json:"output_profile_id,omitempty"`
 }
 
 type compileOverlayPlanV2Response struct {
@@ -84,6 +94,12 @@ func (a *SemanticEngineAdapter) CompileOverlayPlanV2(ctx context.Context, reques
 	if response.SchemaVersion != overlayplan.SchemaVersionV2 || plan.SchemaVersion != overlayplan.SchemaVersionV2 {
 		return nil, fmt.Errorf("%s returned schema %q/%q, want %q", editorialPlanLabel, response.SchemaVersion, plan.SchemaVersion, overlayplan.SchemaVersionV2)
 	}
+	items := make([]capmodel.OverlayItem, 0, len(plan.Items))
+	for _, wire := range plan.Items {
+		item := wire.OverlayItem
+		item.EntityRef = wire.PlannerEntityRef
+		items = append(items, item)
+	}
 	out := &capmodel.OverlayPlan{
 		// editorial_plan.v2 is the Rust compiler's request/response contract.
 		// Its compiled result is projected into the Go renderer model, whose
@@ -98,7 +114,7 @@ func (a *SemanticEngineAdapter) CompileOverlayPlanV2(ctx context.Context, reques
 		FPSNum:          plan.FPSNum,
 		FPSDen:          plan.FPSDen,
 		DurationMS:      plan.DurationMS,
-		Items:           plan.Items,
+		Items:           items,
 		RecapPlacements: plan.RecapPlacements,
 		RecapCards:      plan.RecapCards,
 		ChartPlacements: plan.ChartPlacements,

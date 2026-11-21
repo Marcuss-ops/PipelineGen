@@ -129,6 +129,25 @@ var MediaLegacyFileMd5ConvergeDDL string
 //go:embed 013_media_thumb_url_contract.sql
 var MediaThumbURLContractDDL string
 
+// MediaClipRenderCacheDDL is the verbatim DDL of
+// migrations/postgres/015_clip_render_cache.sql — the deterministic clip.render
+// cache. RA-13 moved the schema out of capabilities/cliprender and into the
+// canonical migration ledger; the platform adapter still calls an idempotent
+// ensure so a bootstrapped deployment converges without a separate step.
+//
+//go:embed 015_clip_render_cache.sql
+var MediaClipRenderCacheDDL string
+
+// MediaLocalizedRenderReuseDDL is the verbatim DDL of
+// migrations/postgres/016_localized_render_reuse.sql — the localized render
+// reuse cache. RA-13 moved the schema out of
+// capabilities/localization/adapters; the guarded ALTER statements keep the
+// migration applicable to deployments that created the table before the Drive
+// identity columns existed.
+//
+//go:embed 016_localized_render_reuse.sql
+var MediaLocalizedRenderReuseDDL string
+
 // MediaSchemaMigrationsDDL is the verbatim DDL of
 // migrations/postgres/014_media_schema_migrations.sql — the PostgreSQL media
 // migration ledger (PLANE_INVENTORY.md D2). RunMediaMigrations creates this
@@ -182,6 +201,8 @@ var MediaSelfBootstrapMigrations = []MediaMigration{
 	{Version: 9, Filename: "009_drop_media_asset_faces.sql", DDL: MediaDropAssetFacesDDL},
 	{Version: 12, Filename: "012_media_legacy_file_md5_converge.sql", DDL: MediaLegacyFileMd5ConvergeDDL},
 	{Version: 13, Filename: "013_media_thumb_url_contract.sql", DDL: MediaThumbURLContractDDL},
+	{Version: 15, Filename: "015_clip_render_cache.sql", DDL: MediaClipRenderCacheDDL},
+	{Version: 16, Filename: "016_localized_render_reuse.sql", DDL: MediaLocalizedRenderReuseDDL},
 }
 
 // MediaSelfBootstrapDDL is the canonical ORDERED self-bootstrap sequence for

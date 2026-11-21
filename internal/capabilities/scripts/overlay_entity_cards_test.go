@@ -1,10 +1,6 @@
 package scriptgeneration
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,58 +11,6 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *testing.T) {
-	localPath := filepath.Join(t.TempDir(), "verified-person.jpg")
-	if err := os.WriteFile(localPath, []byte("verified image"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	result := &GenerateResult{
-		Scenes: []Scene{{Annotations: &scriptpkg.SceneAnnotations{
-			PrimaryEntities: []scriptpkg.AnnotatedEntity{{
-				ID: "person-1", Type: "PERSON", CanonicalName: "Ada Lovelace", Confidence: 0.9,
-				Image: &scriptpkg.EntityImageBinding{
-					Status: "resolved", AssetID: "ada-asset", SHA256: "ada-sha",
-					PreviewURL: "https://drive.google.com/uc?export=download&id=ada",
-					MediaType:  "image/jpeg",
-				},
-			},
-			}}}},
-		Segments: []scriptpkg.VidRushSegmentResult{{Assets: scriptpkg.SegmentAssetSelection{
-			Candidates: []scriptpkg.SegmentAssetCandidate{{AssetID: "ada-asset", LocalPath: localPath}},
-		}}},
-	}
-	media, canonicalByStable := entityCardMediaIndex(result)
-	stableID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
-	item := attachEntityCardAsset(capmodel.OverlayItem{
-		ID: "ada-card", EntityID: stableID, Kind: string(capmodel.KindEntityCard),
-		EntityRef:    &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Ada Lovelace"},
-		MotionID:     "phrase_apple_clean_01_blur_soft_reveal",
-		MotionParams: map[string]any{"stagger": 3},
-	}, media, canonicalByStable, "plan-1")
-	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
-		t.Fatalf("entity image = %#v, want resolved image card", item)
-	}
-	if item.MotionID != "" || item.MotionParams != nil {
-		t.Fatalf("entity image motion = %q params=%v, want run-level selection without stale text params", item.MotionID, item.MotionParams)
-	}
-	if item.AssetRefs[0].LocalPath != localPath {
-		t.Fatalf("local path = %q, want verified producer path", item.AssetRefs[0].LocalPath)
-	}
-	if item.EntityCaption != "Ada Lovelace" || item.Text != "" {
-		t.Fatalf("single-image caption/text = %q/%q, want visible entity caption and no generic image text", item.EntityCaption, item.Text)
-	}
-	wire, err := json.Marshal(item)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(wire), localPath) {
-		t.Fatal("producer-local filesystem path leaked into the semantic overlay plan")
-	}
-	if !strings.Contains(string(wire), `"entity_caption":"Ada Lovelace"`) {
-		t.Fatalf("single-image caption missing from semantic plan wire: %s", wire)
-	}
-}
 
 func TestEntityCardMediaIndexUsesSemanticBundleAssets(t *testing.T) {
 	stableID := capabilityentities.StableEntityID("PERSON", "Francis Kaufmann")
@@ -82,18 +26,19 @@ func TestEntityCardMediaIndexUsesSemanticBundleAssets(t *testing.T) {
 	}
 	result := &GenerateResult{SemanticRenderBundle: bundle}
 	media, canonicalByStable := entityCardMediaIndex(result)
-	item := attachEntityCardAsset(capmodel.OverlayItem{
-		ID: "francis-card", EntityID: stableID, Kind: string(capmodel.KindEntityCard),
-		EntityRef: &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Francis Kaufmann"},
-	}, media, canonicalByStable, "plan-1")
-	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
-		t.Fatalf("bundle-only entity image = %#v, want resolved image card", item)
+	lookupID := canonicalByStable[stableID]
+	if lookupID != "person:francis-kaufmann" {
+		t.Fatalf("lookup id = %q, want the bundle canonical identity", lookupID)
 	}
-	if item.AssetRefs[0].URL != "https://drive.google.com/uc?export=download&id=francis" {
-		t.Fatalf("bundle-only asset URL = %q, want the verified bundle URL", item.AssetRefs[0].URL)
+	ref, err := media.ResolveBest(lookupID)
+	if err != nil {
+		t.Fatalf("resolve bundle portrait: %v", err)
 	}
-	if item.EntityRef == nil || item.EntityRef.CanonicalEntityID != "person:francis-kaufmann" {
-		t.Fatalf("bundle-only entity ref = %#v, want the bundle canonical identity", item.EntityRef)
+	if ref.URL != "https://drive.google.com/uc?export=download&id=francis" {
+		t.Fatalf("bundle-only asset URL = %q, want the verified bundle URL", ref.URL)
+	}
+	if ref.SHA256 != strings.Repeat("b", 64) {
+		t.Fatalf("bundle asset sha = %q, want the verified content address", ref.SHA256)
 	}
 }
 
@@ -111,34 +56,13 @@ func TestEntityCardMediaIndexUsesSemanticBundleAssetsPerScene(t *testing.T) {
 	}
 	result := &GenerateResult{SemanticRenderBundle: bundle}
 	media, canonicalByStable := entityCardMediaIndex(result, overlayPlanImageOptions{PerSceneEntityCards: true})
-	item := attachEntityCardAsset(capmodel.OverlayItem{
-		ID: "francis-card", SceneID: "scene-1", EntityID: stableID, Kind: string(capmodel.KindEntityCard),
-		EntityRef: &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Francis Kaufmann"},
-	}, media, canonicalByStable, "plan-1")
-	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
-		t.Fatalf("per-scene bundle-only entity image = %#v, want resolved image card", item)
+	scoped := canonicalByStable[stableID]
+	if !strings.Contains(scoped, "::person:francis-kaufmann") {
+		t.Fatalf("per-scene lookup id = %q, want a scene-scoped bundle identity", scoped)
 	}
-}
-
-func TestAttachEntityCardAssetResolvesCanonicalIdentityFallback(t *testing.T) {
-	stableID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
-	bundle := &capabilityoverlay.SemanticRenderBundleV1{
-		Entities: []capabilityoverlay.ResolvedEntity{{
-			EntityID: stableID, CanonicalEntityID: "person:ada-lovelace", Type: "PERSON",
-			Text: "Ada Lovelace", CanonicalText: "Ada Lovelace", SceneID: "scene-1",
-		}},
-		Assets: []capabilityoverlay.BoundAsset{{
-			EntityID: stableID, AssetID: "asset-ada", ContentHash: strings.Repeat("d", 64),
-			SourceURL: "https://drive.google.com/uc?export=download&id=ada", Verified: true,
-		}},
-	}
-	media, canonicalByStable := entityCardMediaIndex(&GenerateResult{SemanticRenderBundle: bundle})
-	item := attachEntityCardAsset(capmodel.OverlayItem{
-		ID: "ada-card", SceneID: "scene-1", Kind: string(capmodel.KindEntityCard),
-		EntityRef: &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Ada Lovelace", CanonicalEntityID: "person:ada-lovelace"},
-	}, media, canonicalByStable, "plan-1")
-	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
-		t.Fatalf("canonical-only entity image = %#v, want resolved image card", item)
+	ref, err := media.ResolveBest(scoped)
+	if err != nil || ref.SHA256 != strings.Repeat("c", 64) {
+		t.Fatalf("per-scene bundle asset = %#v (err %v), want the verified portrait", ref, err)
 	}
 }
 
@@ -160,144 +84,22 @@ func TestPersonEntityCardReachesPlanFromAdmittedIdentity(t *testing.T) {
 			ID: stableID, Surface: "Francis Kaufmann", Kind: "PERSON", Media: true,
 		}}},
 	}
-	media, canonicalByStable := entityCardMediaIndex(result)
-	card := attachEntityCardAsset(capmodel.OverlayItem{
+	card := capmodel.OverlayItem{
 		ID: "overlay-scene-1-francis-kaufmann", SceneID: "scene-1", EntityID: stableID,
-		Kind: string(capmodel.KindEntityCard), TemplateID: "person_default", Text: "Francis Kaufmann",
-		EntityRef: &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Francis Kaufmann"},
-	}, media, canonicalByStable, "plan-1")
+		Kind: string(capmodel.KindEntityImage), TemplateID: "image_popup", EntityCaption: "Francis Kaufmann",
+		EntityRef: &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Francis Kaufmann",
+			CanonicalEntityID: "person:francis-kaufmann"},
+		AssetRefs: []capmodel.OverlayAssetRef{{
+			AssetID: "asset-francis", URL: "https://drive.google.com/uc?export=download&id=francis",
+			SHA256: strings.Repeat("e", 64),
+		}},
+	}
 	got := admitIdentityImagesByProductionPlan([]capmodel.OverlayItem{card}, result.SemanticProductionPlan)
 	if len(got) != 1 || got[0].Kind != string(capmodel.KindEntityImage) || len(got[0].AssetRefs) != 1 {
 		t.Fatalf("admitted person card = %#v, want an image card with its bundle asset", got)
 	}
 	if got[0].EntityRef == nil || got[0].EntityRef.CanonicalEntityID != "person:francis-kaufmann" {
 		t.Fatalf("admitted person identity = %#v, want canonical entity id", got[0].EntityRef)
-	}
-}
-
-func TestAttachEntityCardAssetResolvesLocalizedStableIdentity(t *testing.T) {
-	image := &scriptpkg.EntityImageBinding{
-		Status: "resolved", AssetID: "asset-mike-tyson", SHA256: strings.Repeat("a", 64),
-		PreviewURL: "https://drive.google.com/uc?export=download&id=entity-image-person-mike-tyson",
-		MediaType:  "image/jpeg",
-	}
-	result := &GenerateResult{Scenes: []Scene{{
-		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
-			Type: "PERSON", CanonicalName: "Mike Tyson", CanonicalEntityID: "person:mike-tyson", Image: image,
-		}}},
-		LocalizedAnnotations: map[Language]*scriptpkg.SceneAnnotations{
-			"pl": {PrimaryEntities: []scriptpkg.AnnotatedEntity{{
-				Type: "PERSON", CanonicalName: "Mike’a Tysona", CanonicalEntityID: "person:mike-tyson", Image: image,
-			}}},
-		},
-	}}}
-
-	media, canonicalByStable := entityCardMediaIndex(result)
-	localizedStableID := capabilityentities.StableEntityID("PERSON", "Mike’a Tysona")
-	item := attachEntityCardAsset(capmodel.OverlayItem{
-		ID: "localized-mike-card", EntityID: localizedStableID, Kind: string(capmodel.KindEntityCard),
-	}, media, canonicalByStable, "plan-1")
-	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
-		t.Fatalf("localized entity image = %#v, want resolved image card", item)
-	}
-	if item.EntityRef == nil || item.EntityRef.CanonicalEntityID != "person:mike-tyson" {
-		t.Fatalf("localized entity ref = %#v, want canonical source identity", item.EntityRef)
-	}
-}
-
-func TestCapEntityImageOverlaysKeepsDistinctIdentitiesUpToRunCeiling(t *testing.T) {
-	maxImages := capabilityoverlay.MaxEntityImageOverlaysPerRun
-	items := make([]capmodel.OverlayItem, 0, maxImages+4)
-	for i := 0; i < maxImages+3; i++ {
-		entityID := fmt.Sprintf("entity-%d", i)
-		items = append(items, capmodel.OverlayItem{
-			ID:   "image-" + entityID,
-			Kind: string(capmodel.KindEntityImage), EntityID: entityID,
-		})
-	}
-	// A repeated occurrence must not consume a second slot.
-	items = append(items, capmodel.OverlayItem{
-		ID: "image-entity-0-repeat", Kind: string(capmodel.KindEntityImage), EntityID: "entity-0",
-	})
-	items = append(items, capmodel.OverlayItem{ID: "phrase", Kind: "text_phrase"})
-
-	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
-	if len(got) != maxImages+1 {
-		t.Fatalf("items=%d, want %d image items plus phrase", len(got), maxImages)
-	}
-	seen := map[string]bool{}
-	for _, item := range got {
-		if item.Kind == string(capmodel.KindEntityImage) {
-			seen[item.EntityID] = true
-		}
-	}
-	if len(seen) != capabilityoverlay.MaxEntityImageOverlaysPerRun {
-		t.Fatalf("distinct image identities=%d, want %d", len(seen), capabilityoverlay.MaxEntityImageOverlaysPerRun)
-	}
-}
-
-func TestCapEntityImageOverlaysPerSceneKeepsEntityOnlyOnceAcrossRun(t *testing.T) {
-	items := []capmodel.OverlayItem{
-		{ID: "scene-1-milton", SceneID: "scene-1", EntityID: "milton", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
-		{ID: "scene-2-milton", SceneID: "scene-2", EntityID: "milton", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
-		{ID: "scene-2-other", SceneID: "scene-2", EntityID: "other", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:other"}},
-		{ID: "phrase", SceneID: "scene-2", Kind: "text_phrase"},
-	}
-	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, overlayPlanImageOptions{PerSceneEntityCards: true})
-	if len(got) != 3 || got[0].ID != "scene-1-milton" || got[1].ID != "scene-2-other" || got[2].Kind != "text_phrase" {
-		t.Fatalf("per-scene image cap = %+v; want repeated Milton omitted and unique entity plus phrase kept", got)
-	}
-}
-
-func TestCapEntityImageOverlaysPerSceneOnlyDropsRepeatedPhotoHashWithinScene(t *testing.T) {
-	items := []capmodel.OverlayItem{
-		{ID: "scene-1-first", SceneID: "scene-1", EntityID: "person-a", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-a", SHA256: "same-photo"}}},
-		{ID: "scene-1-duplicate", SceneID: "scene-1", EntityID: "person-a-copy", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a-copy"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-a-copy", SHA256: "same-photo"}}},
-		{ID: "scene-2-second", SceneID: "scene-2", EntityID: "person-a", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-b", SHA256: "same-photo"}}},
-		{ID: "scene-3-third", SceneID: "scene-3", EntityID: "person-a", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-c", SHA256: "different-photo"}}},
-	}
-	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, overlayPlanImageOptions{PerSceneEntityCards: true})
-	if len(got) != 3 || got[0].ID != "scene-1-first" || got[1].ID != "scene-2-second" || got[2].ID != "scene-3-third" {
-		t.Fatalf("per-scene photo dedupe = %+v; want same-scene duplicate dropped and later reuse retained", got)
-	}
-}
-
-func TestCapEntityImageOverlaysDeduplicatesSameCanonicalEntity(t *testing.T) {
-	items := []capmodel.OverlayItem{
-		{ID: "scene-1", EntityID: "occurrence-1", Kind: string(capmodel.KindEntityImage),
-			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:mike-tyson"},
-			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "portrait-sha"}}},
-		{ID: "scene-2", EntityID: "occurrence-2", Kind: string(capmodel.KindEntityImage),
-			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:mike-tyson"},
-			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "portrait-sha"}}},
-		{ID: "scene-3", EntityID: "occurrence-3", Kind: string(capmodel.KindEntityImage),
-			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:evander-holyfield"},
-			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "other-sha"}}},
-	}
-
-	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
-	if len(got) != 2 {
-		t.Fatalf("items=%d, want one Tyson image plus one other entity", len(got))
-	}
-	if got[0].EntityRef == nil || got[0].EntityRef.CanonicalEntityID != "person:mike-tyson" {
-		t.Fatalf("first retained image = %#v, want Mike Tyson", got[0])
-	}
-}
-
-func TestCapEntityImageOverlaysDeduplicatesIdentityInPerSceneScope(t *testing.T) {
-	items := []capmodel.OverlayItem{
-		{ID: "scene-1", SceneID: "scene-1", EntityID: "occurrence-1", Kind: string(capmodel.KindEntityImage),
-			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
-		{ID: "scene-2", SceneID: "scene-2", EntityID: "occurrence-2", Kind: string(capmodel.KindEntityImage),
-			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
-	}
-
-	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, overlayPlanImageOptions{PerSceneEntityCards: true})
-	if len(got) != 1 {
-		t.Fatalf("per-scene image count = %d, want one render for repeated identity", len(got))
-	}
-	if got[0].SceneID != "scene-1" {
-		t.Fatalf("retained scene = %q, want first occurrence in scene-1", got[0].SceneID)
 	}
 }
 

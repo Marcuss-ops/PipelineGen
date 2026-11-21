@@ -57,17 +57,17 @@ func TestRunMediaMigrations_LedgerIsChecksumPinned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunMediaMigrations first run: %v", err)
 	}
-	// 014 (ledger) + 10 ordered media migrations = 11.
-	if len(report.Applied) != 11 {
-		t.Fatalf("first run applied %d migrations, want 11: %v", len(report.Applied), report.Applied)
+	// 014 (ledger) + 12 ordered media migrations = 13 (015/016 added by RA-13).
+	if len(report.Applied) != 13 {
+		t.Fatalf("first run applied %d migrations, want 13: %v", len(report.Applied), report.Applied)
 	}
 
 	var rows int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("count ledger rows: %v", err)
 	}
-	if rows != 11 {
-		t.Fatalf("ledger rows = %d, want 11", rows)
+	if rows != 13 {
+		t.Fatalf("ledger rows = %d, want 13", rows)
 	}
 	var filename, checksum string
 	if err := db.QueryRowContext(ctx, `SELECT filename, checksum_sha256 FROM schema_migrations WHERE version = 1`).Scan(&filename, &checksum); err != nil {
@@ -84,8 +84,8 @@ func TestRunMediaMigrations_LedgerIsChecksumPinned(t *testing.T) {
 	if len(second.Applied) != 0 {
 		t.Fatalf("second run applied %d migrations, want 0: %v", len(second.Applied), second.Applied)
 	}
-	if len(second.Skipped) != 11 {
-		t.Fatalf("second run skipped %d migrations, want 11", len(second.Skipped))
+	if len(second.Skipped) != 13 {
+		t.Fatalf("second run skipped %d migrations, want 13", len(second.Skipped))
 	}
 
 	if _, err := db.ExecContext(ctx, `UPDATE schema_migrations SET checksum_sha256 = 'deadbeef' WHERE version = 1`); err != nil {

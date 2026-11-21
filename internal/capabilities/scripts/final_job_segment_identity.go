@@ -26,12 +26,31 @@ func finalJobIdempotencyKey(requestKey, runID string) string {
 }
 
 // finalJobAttemptIdempotencyKey is stable while reconciling one PREPARE
-// attempt, and distinct after Master reports a terminal lease.
-func finalJobAttemptIdempotencyKey(requestKey, runID string, attempt int) string {
+// attempt, and distinct after Master reports a terminal lease or the payload
+// itself changes.
+//
+// The Master hashes the PREPARE payload and answers a reused key with a
+// different payload as HTTP 409 idempotency_key_reused (hash_mismatch). The
+// attempt counter alone cannot separate those calls: a run that resumes after a
+// restart rebuilds its plan from the local render, so a re-encoded overlay moves
+// the compiled plan digest while the attempt number stays the same. That 409 was
+// terminal — a render the Master was happy to accept became a failed job. The
+// plan digest IS the payload identity, so a byte-identical resubmission still
+// replays the existing render, and a drifted plan gets its own key instead of
+// colliding with the previous one.
+func finalJobAttemptIdempotencyKey(requestKey, runID string, attempt int, planSHA256 string) string {
 	if attempt < 1 {
 		attempt = 1
 	}
-	return finalJobIdempotencyKey(requestKey, runID) + fmt.Sprintf("-attempt-%d", attempt)
+	key := finalJobIdempotencyKey(requestKey, runID) + fmt.Sprintf("-attempt-%d", attempt)
+	digest := strings.TrimSpace(planSHA256)
+	if digest == "" {
+		return key
+	}
+	if len(digest) > 12 {
+		digest = digest[:12]
+	}
+	return key + "-" + digest
 }
 
 // compositeVideoScene preserves source identity in the remote contract. Stock

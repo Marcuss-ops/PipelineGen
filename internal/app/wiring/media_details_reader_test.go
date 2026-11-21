@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
 // stubConnector yields a non-nil *sql.DB without a real driver, so the helper's
@@ -26,9 +27,11 @@ func (stubDriver) Open(string) (driver.Conn, error) {
 	return nil, errors.New("stub driver: never connects")
 }
 
-// fakeCommitter carries an engine handle the way pgmedia.PostgresMediaCommitter
-// does, so the helper's engine derivation is exercised.
+// fakeCommitter carries the typed engine handle the way
+// pgmedia.PostgresMediaCommitter does, so the helper's engine derivation is
+// exercised without reintroducing a DB() surface.
 type fakeCommitter struct {
+	pgmedia.EngineHandle
 	db *sql.DB
 }
 
@@ -46,7 +49,12 @@ func (f *fakeCommitter) CommitAsset(context.Context, persistence.AssetCommitRequ
 	return persistence.CommittedAsset{}, nil
 }
 
-func (f *fakeCommitter) DB() *sql.DB { return f.db }
+func (f *fakeCommitter) MediaDetailsReader() *pgmedia.AssetDetailsReader {
+	if f == nil || f.db == nil {
+		return nil
+	}
+	return pgmedia.NewAssetDetailsReader(pgmedia.NewMediaSearcher(f.db))
+}
 
 // fakeCommitterWithoutDB has no engine handle (the legacy/degrade shape).
 type fakeCommitterWithoutDB struct{}

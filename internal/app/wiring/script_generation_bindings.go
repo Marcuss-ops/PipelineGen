@@ -37,15 +37,11 @@ func mediaCheckpointArtifactVerifier(committer assetspersistence.AssetCommitter,
 	if committer == nil {
 		return nil
 	}
-	getter, ok := committer.(interface{ DB() *sql.DB })
-	if !ok || getter == nil {
+	handle := mediaEngineHandle(committer)
+	if handle == nil {
 		return nil
 	}
-	db := getter.DB()
-	if db == nil {
-		return nil
-	}
-	verifier, err := pgmedia.NewMediaArtifactVerifier(db)
+	verifier, err := handle.MediaArtifactVerifier()
 	if err != nil {
 		if log != nil {
 			log.Warn("checkpoint artifact verifier NOT wired (media SSOT verifier unavailable)", zap.Error(err))

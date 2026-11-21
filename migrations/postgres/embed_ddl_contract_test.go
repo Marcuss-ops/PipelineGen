@@ -20,7 +20,9 @@ func TestMediaSelfBootstrapDDLOrderContract(t *testing.T) {
 		MediaAssetProcessingDDL,       // 008_media_asset_processing.sql
 		MediaDropAssetFacesDDL,        // 009_drop_media_asset_faces.sql — after 002
 		MediaLegacyFileMd5ConvergeDDL, // 012_media_legacy_file_md5_converge.sql
-		MediaThumbURLContractDDL,      // 013_media_thumb_url_contract.sql — LAST
+		MediaThumbURLContractDDL,      // 013_media_thumb_url_contract.sql
+		MediaClipRenderCacheDDL,       // 015_clip_render_cache.sql
+		MediaLocalizedRenderReuseDDL,  // 016_localized_render_reuse.sql — LAST
 	}
 	if len(MediaSelfBootstrapDDL) != len(want) {
 		t.Fatalf("MediaSelfBootstrapDDL has %d entries, want %d — new PG media migrations must be embedded AND appended here (010/011-style deployment-managed one-shots excepted, see the var's doc comment)",
@@ -32,10 +34,23 @@ func TestMediaSelfBootstrapDDLOrderContract(t *testing.T) {
 		}
 	}
 	last := len(MediaSelfBootstrapDDL) - 1
-	if MediaSelfBootstrapDDL[last] != MediaThumbURLContractDDL {
-		t.Fatalf("MediaThumbURLContractDDL must be the LAST self-bootstrap entry: it contracts the thumb_url mirror and must run after the table its guard probes (001)")
+	if MediaSelfBootstrapDDL[last] != MediaLocalizedRenderReuseDDL {
+		t.Fatalf("MediaLocalizedRenderReuseDDL must be the LAST self-bootstrap entry: RA-13 appends the new cache tables after the convergence migrations")
 	}
-	if MediaSelfBootstrapDDL[last-1] != MediaLegacyFileMd5ConvergeDDL {
-		t.Fatalf("MediaLegacyFileMd5ConvergeDDL must run directly before the thumb contract: both converge columns of the tables 001/006 create and must come after them")
+	if MediaSelfBootstrapDDL[last-1] != MediaClipRenderCacheDDL {
+		t.Fatalf("MediaClipRenderCacheDDL must run directly before the localized reuse cache")
+	}
+	thumb := -1
+	converge := -1
+	for i, ddl := range MediaSelfBootstrapDDL {
+		switch ddl {
+		case MediaThumbURLContractDDL:
+			thumb = i
+		case MediaLegacyFileMd5ConvergeDDL:
+			converge = i
+		}
+	}
+	if thumb != converge+1 {
+		t.Fatalf("MediaLegacyFileMd5ConvergeDDL must run directly before the thumb contract (got %d and %d)", converge, thumb)
 	}
 }

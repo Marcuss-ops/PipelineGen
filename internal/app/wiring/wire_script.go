@@ -24,6 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
+	mediafinaljob "github.com/Marcuss-ops/PipelineGen/internal/platform/media/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
@@ -323,14 +324,14 @@ func wireScriptGenerationFinalJob(runner *scriptgen.Runner, cfg *config.Config, 
 	if cfg == nil || root == nil || strings.TrimSpace(cfg.External.FfmpegPath) == "" || strings.TrimSpace(cfg.External.RustMusclesPath) == "" {
 		return fmt.Errorf("remote final-job requires the Rust media preflight, local non-stock fragment certifier, and configured ffmpeg")
 	}
-	fragmentLanes, err := finalJobFragmentLanes()
+	fragmentLanes, err := mediafinaljob.FragmentLanes()
 	if err != nil {
 		return err
 	}
-	fragmentCacheDir := finalJobFragmentCacheDir(cfg.Storage.DataDir)
-	remoteFinalJob.SetVideoSegmentPreparer(newFinalJobSegmentPreparer(cfg.External.FfmpegPath, mediaexec.EncoderPolicy{
+	fragmentCacheDir := mediafinaljob.FragmentCacheDir(cfg.Storage.DataDir)
+	remoteFinalJob.SetVideoSegmentPreparer(mediafinaljob.NewSegmentPreparer(cfg.External.FfmpegPath, mediaexec.EncoderPolicy{
 		Codec: root.MediaExec.Policy.Codec, Preset: root.MediaExec.Policy.Preset, CRF: root.MediaExec.Policy.CRF,
-	}, fragmentCacheDir, fragmentLanes))
+	}, fragmentCacheDir, fragmentLanes, mediafinaljob.PublishFunc(scriptgen.PublishFinalJobLocalObjectVerified)))
 	remoteFinalJob.SetMediaPreflighter(rustexec.NewClient(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log))
 	runner.SetFinalJobSubmitter(remoteFinalJob)
 	log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.BaseURL()), zap.Int("non_stock_fragment_lanes", fragmentLanes), zap.Bool("fragment_cache", fragmentCacheDir != ""))

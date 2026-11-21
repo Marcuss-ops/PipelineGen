@@ -58,6 +58,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
 	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 )
@@ -450,7 +451,7 @@ func buildDomainScriptServices(
 	if err != nil {
 		return fmt.Errorf("compose domains: artifact blob store: %w", err)
 	}
-	artifactRepo := artifacts.NewSQLiteRepository(dbs.DualPool.Writer)
+	artifactRepo := artifactsinfra.NewSQLiteRepository(dbs.DualPool.Writer)
 	bundle.ArtifactService = artifacts.NewService(artifactBlobStore, artifactRepo, log)
 	log.Info("P0.1: artifact blob service wired (content-addressed staging + verify + promote)",
 		zap.String("data_dir", cfg.Storage.DataDir))

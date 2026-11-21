@@ -18,6 +18,7 @@ type CircuitBreaker struct {
 	lastFailureTime time.Time
 	maxFailures     int
 	timeout         time.Duration
+	probeInFlight   bool
 }
 
 func NewCircuitBreaker(maxFailures int, timeout time.Duration) *CircuitBreaker {
@@ -38,10 +39,15 @@ func (cb *CircuitBreaker) AllowRequest() bool {
 	case "open":
 		if time.Since(cb.lastFailureTime) > cb.timeout {
 			cb.state = "half-open"
+			cb.probeInFlight = true
 			return true
 		}
 		return false
 	case "half-open":
+		if cb.probeInFlight {
+			return false
+		}
+		cb.probeInFlight = true
 		return true
 	}
 	return false
@@ -52,6 +58,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	defer cb.mu.Unlock()
 	cb.state = "closed"
 	cb.failureCount = 0
+	cb.probeInFlight = false
 }
 
 func (cb *CircuitBreaker) RecordFailure() {
@@ -59,9 +66,10 @@ func (cb *CircuitBreaker) RecordFailure() {
 	defer cb.mu.Unlock()
 	cb.failureCount++
 	cb.lastFailureTime = time.Now()
-	if cb.failureCount >= cb.maxFailures {
+	if cb.state == "half-open" || cb.failureCount >= cb.maxFailures {
 		cb.state = "open"
 	}
+	cb.probeInFlight = false
 }
 
 // modelFallbackChains defines fallback model chains

@@ -93,14 +93,6 @@ type MediaManifestPins struct {
 	path          string
 }
 
-// validDigestHex checks the exact contract accepted by the offline verifier:
-// 64 lowercase hex characters (information SHA-256). Hash strength is not a
-// crypto property here; the length+alphabet check is a corruption guard, and
-// the rule is owned by internal/kernel/digest rather than re-implemented here.
-func validDigestHex(raw string) bool {
-	return digest.IsCanonicalSHA256(strings.ToLower(strings.TrimSpace(raw)))
-}
-
 // LoadMediaManifestPins reads a media_manifest.v1 document from disk.
 // It rejects an unknown schema and any entry whose sha256 is not a well-formed
 // SHA-256 digest — the manifest is meant to gate runs, and a malformed gate
@@ -125,7 +117,11 @@ func LoadMediaManifestPins(path string) (*MediaManifestPins, error) {
 		path:          path,
 	}
 	for _, entry := range doc.Entries {
-		if !validDigestHex(entry.SHA256) {
+		// The manifest accepts the exact digest contract owned by
+		// internal/kernel/digest: 64 lowercase hex characters (information
+		// SHA-256). The length+alphabet check is a corruption guard, not a
+		// crypto property, so the canonical validator is used directly.
+		if !digest.IsCanonicalSHA256(strings.ToLower(strings.TrimSpace(entry.SHA256))) {
 			return nil, fmt.Errorf("media manifest %s: entry %q has malformed sha256 %q",
 				path, entry.ID, entry.SHA256)
 		}

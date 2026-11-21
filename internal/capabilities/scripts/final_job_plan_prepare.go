@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 // prepareFinalJobVideoSegments replaces source-video references with verified
@@ -118,7 +119,7 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 			item.request.PlacementTag = segment.SegmentID
 			item.request.ReuseFromSHA256 = asset.SHA256
 			item.request.ReuseFromURI = usedURI[asset.SHA256]
-			tagged, tagErr := preparer.PrepareFinalJobVideoSegment(ctx, source, item.request)
+			tagged, tagErr := prepareFinalJobSegmentMap(ctx, preparer, source, item.request)
 			if tagErr != nil {
 				return "", nil, finalJobSegmentPrepareError(item, tagErr)
 			}
@@ -306,11 +307,6 @@ func sameFinalJobAssetIdentity(a, b map[string]any) bool {
 		finalJobInt64(a["size_bytes"]) == finalJobInt64(b["size_bytes"])
 }
 
-func boolValue(value any) bool {
-	b, _ := value.(bool)
-	return b
-}
-
 // finalJobSegmentWork is one independent fragment preparation: the validated
 // source reference, its exact request, and its position in the compiled plan.
 type finalJobSegmentWork struct {
@@ -335,6 +331,28 @@ func finalJobSegmentPrepareError(item finalJobSegmentWork, err error) error {
 		item.request.SourceDurationUS,
 		err,
 	)
+}
+
+// prepareFinalJobSegmentMap is the only map boundary of the typed preparer
+// port: the source enters as a typed asset, the result leaves as a typed
+// asset, and the legacy plan builder receives a map only at this seam.
+func prepareFinalJobSegmentMap(ctx context.Context, preparer FinalJobVideoSegmentPreparer, source map[string]any, request FinalJobVideoSegmentRequest) (map[string]any, error) {
+	sourceAsset, err := finaljob.RuntimeAssetFromMap(source)
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := preparer.PrepareFinalJobVideoSegment(ctx, sourceAsset, request)
+	if err != nil {
+		return nil, err
+	}
+	if prepared.AssetID == "" && prepared.SHA256 == "" {
+		return nil, nil
+	}
+	values, err := prepared.Map()
+	if err != nil {
+		return nil, err
+	}
+	return values, nil
 }
 
 // finalJobPrepareSegments prepares the fragments concurrently and returns them
@@ -364,7 +382,7 @@ func finalJobPrepareSegments(ctx context.Context, preparer FinalJobVideoSegmentP
 	}
 	if lanes == 1 {
 		for _, item := range work {
-			result, err := preparer.PrepareFinalJobVideoSegment(ctx, item.source, item.request)
+			result, err := prepareFinalJobSegmentMap(ctx, preparer, item.source, item.request)
 			if err != nil {
 				return nil, finalJobSegmentPrepareError(item, err)
 			}
@@ -390,7 +408,7 @@ func finalJobPrepareSegments(ctx context.Context, preparer FinalJobVideoSegmentP
 			if runCtx.Err() != nil {
 				return
 			}
-			result, err := preparer.PrepareFinalJobVideoSegment(runCtx, item.source, item.request)
+			result, err := prepareFinalJobSegmentMap(runCtx, preparer, item.source, item.request)
 			if err != nil {
 				failures[item.index] = finalJobSegmentPrepareError(item, err)
 				cancel()

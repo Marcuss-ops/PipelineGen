@@ -10,7 +10,6 @@ import (
 	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
 	localized "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -147,7 +146,7 @@ func buildDomainMediaServices(
 		return nil, nil, nil, writerErr
 	}
 	clipWriter = canonicalWriter
-	folderPathWriter = &folderPathWriterAdapter{committer: clipWriterFolderPathSource(committer), log: log}
+	folderPathWriter = folderPathWriterFromCommitter(committer)
 
 	// ── Step 4: subtitle acquisition path ───────────────────────────────
 	mlCfg := ActiveMultilingualConfig(cfg)
@@ -267,7 +266,7 @@ func buildDomainMediaServices(
 			// MEDIA-SSOT write-bridge: asset_processing is media-authoritative,
 			// so the registry's step-progress port resolves from the canonical
 			// committer's engine rather than the operational SQLite store.
-			Registry: artifacts.NewClipsRegistryWithLogger(
+			Registry: newClipsRegistry(
 				mediaDetailsReaderFromCommitter(committer),
 				persistence.CanonicalAssetProcessingWriter(committer),
 				committer,

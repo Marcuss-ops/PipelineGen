@@ -1,4 +1,4 @@
-package wiring
+package finaljob
 
 import (
 	"context"
@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	segment "github.com/Marcuss-ops/PipelineGen/internal/kernel/media/finaljob"
 )
 
 // Placement identity: a second placement of already-certified bytes is a remux, not a
@@ -25,7 +25,7 @@ import (
 // placement needs distinct bytes. It does NOT need a second encode: the
 // pictures already exist in the fragment this placement repeats, and copying
 // them into a tagged container costs a remux instead of a render.
-func (p *finalJobSegmentPreparer) derivePlacement(ctx context.Context, request scriptgen.FinalJobVideoSegmentRequest, assetID string, durationUS int64, role string) (map[string]any, error) {
+func (p *SegmentPreparer) derivePlacement(ctx context.Context, request segment.VideoSegmentRequest, assetID string, durationUS int64, role string) (map[string]any, error) {
 	reuseSHA := strings.ToLower(strings.TrimSpace(request.ReuseFromSHA256))
 	tag := strings.TrimSpace(request.PlacementTag)
 	// The certified input SHA fully identifies copied packets; no encoder runs.
@@ -38,7 +38,7 @@ func (p *finalJobSegmentPreparer) derivePlacement(ctx context.Context, request s
 		defer unlock()
 	}
 	if cachedPath, cachedSHA, cachedSize, ok := p.cachedFragment(cacheKey, request.FrameCount, durationUS); ok {
-		ref, publishErr := scriptgen.PublishFinalJobLocalObjectVerified(ctx, assetID, cachedPath, cachedSHA, cachedSize)
+		ref, publishErr := p.publishVerified(ctx, assetID, cachedPath, cachedSHA, cachedSize)
 		if publishErr == nil {
 			p.rememberFragmentPath(cachedSHA, cachedPath)
 			return p.finishFragment(ctx, request, ref, role, cachedSHA, cachedSize, durationUS,
@@ -85,7 +85,7 @@ func (p *finalJobSegmentPreparer) derivePlacement(ctx context.Context, request s
 		return nil, fmt.Errorf("derived placement %q still certifies the bytes of %q; the container tag did not reach the object", tag, reuseSHA)
 	}
 	publishStarted := time.Now()
-	ref, err := scriptgen.PublishFinalJobLocalObjectVerified(ctx, assetID, outPath, sha, size)
+	ref, err := p.publishVerified(ctx, assetID, outPath, sha, size)
 	if err != nil {
 		return nil, fmt.Errorf("publish derived placement to HTTPS Objectstore: %w", err)
 	}
@@ -114,7 +114,7 @@ func (p *finalJobSegmentPreparer) derivePlacement(ctx context.Context, request s
 		}), nil
 }
 
-func finalJobSourceIsExactPreparedFragment(source map[string]any, request scriptgen.FinalJobVideoSegmentRequest, durationUS int64) bool {
+func finalJobSourceIsExactPreparedFragment(source map[string]any, request segment.VideoSegmentRequest, durationUS int64) bool {
 	return strings.EqualFold(strings.TrimSpace(stringValue(source["profile_id"])), finalJobSegmentProfile) &&
 		strings.EqualFold(strings.TrimSpace(stringValue(source["extradata_sha256"])), kernelmedia.CanonicalVideoExtradataSHA256) &&
 		boolFromAny(source["copy_eligible"]) && boolFromAny(source["first_frame_keyframe"]) && boolFromAny(source["closed_gop"]) &&
@@ -124,7 +124,7 @@ func finalJobSourceIsExactPreparedFragment(source map[string]any, request script
 		int64Value(source["fps_num"]) == finalJobSegmentFPS && int64Value(source["fps_den"]) == int64(finalJobDelivery.FPS.Den)
 }
 
-func finalJobPreparedRef(base map[string]any, sha string, size, durationUS int64, request scriptgen.FinalJobVideoSegmentRequest) map[string]any {
+func finalJobPreparedRef(base map[string]any, sha string, size, durationUS int64, request segment.VideoSegmentRequest) map[string]any {
 	ref := make(map[string]any, len(base)+13)
 	for key, value := range base {
 		ref[key] = value
@@ -155,7 +155,7 @@ func finalJobPreparedRef(base map[string]any, sha string, size, durationUS int64
 // same pictures are one asset referenced twice, not two assets that happen to
 // carry the same hash: the remote resolver rejects two ids sharing one asset_key
 // and the render plan refuses two assets with one canonical identity.
-func finalJobPreparedAssetID(request scriptgen.FinalJobVideoSegmentRequest, sourceSHA string) string {
+func finalJobPreparedAssetID(request segment.VideoSegmentRequest, sourceSHA string) string {
 	material := fmt.Sprintf("%s\n%d\n%d", strings.ToLower(sourceSHA), request.SourceInUS, request.FrameCount)
 	if tag := strings.TrimSpace(request.PlacementTag); tag != "" {
 		// A tagged placement certifies DIFFERENT bytes, so it is a different

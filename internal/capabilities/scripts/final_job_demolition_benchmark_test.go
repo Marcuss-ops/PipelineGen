@@ -144,12 +144,12 @@ type demolitionCountingResolver struct {
 	sizeLookups    int
 }
 
-func (r *demolitionCountingResolver) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
+func (r *demolitionCountingResolver) ResolveFinalJobAsset(ctx context.Context, id string) (FinalJobRuntimeAssetV1, error) {
 	r.assetResolves++
 	return r.inner.ResolveFinalJobAsset(ctx, id)
 }
 
-func (r *demolitionCountingResolver) ResolveFinalJobStockAsset(ctx context.Context, id string) (map[string]any, error) {
+func (r *demolitionCountingResolver) ResolveFinalJobStockAsset(ctx context.Context, id string) (FinalJobRuntimeAssetV1, error) {
 	r.stockResolves++
 	if stock, ok := r.inner.(finalJobStockAssetResolver); ok {
 		return stock.ResolveFinalJobStockAsset(ctx, id)

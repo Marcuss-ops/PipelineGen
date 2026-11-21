@@ -91,7 +91,14 @@ func (s *BackfillService) ProcessAsset(
 	// godlike/06 SSOT: the per-(asset,kind) source lookup is
 	// owned by Resolver.FindSourceTrack; the BackfillService
 	// delegates to it instead of inlining the SQL.
-	resolver := NewResolver(s.materializer.resolverCfg, s.materializer.repo, assetItem.ID, opts.TextKind)
+	// Backfill callers may choose a source language per asset (for example,
+	// an Italian clip being rendered with English subtitles). The materializer
+	// config's source language is only the application default; using it here
+	// makes the post-acquisition reread look for the wrong language and report
+	// acquired_but_save_failed even though the source track was saved.
+	resolverCfg := s.materializer.resolverCfg
+	resolverCfg.SourceLanguage = opts.SourceLanguage
+	resolver := NewResolver(resolverCfg, s.materializer.repo, assetItem.ID, opts.TextKind)
 	source, err := resolver.FindSourceTrack(ctx)
 	if err != nil {
 		var noSrc *ErrNoSourceTrack

@@ -402,6 +402,9 @@ hard_gates:
   # the explicitly grandfathered legacy read plane. The grandfather set is a
   # debt register that ratchets to zero as the P2-9 Phase 2 consumers migrate.
   - percheck_sqlite_media_reader_ban
+  # RA-14: app/capabilities must not expose or assert DB() *sql.DB; the
+  # PostgreSQL engine handle is a typed port (pgmedia.EngineHandle).
+  - percheck_capability_db_bypass
   # Overlay/motion catalog parity (added 2026-10-11): the ChrononTemplate
   # AUTHOR catalog, its EMITTED catalog and the RenderingGen EMBEDDED copy
   # must agree on overlay_presets and motions. Before this gate the only
@@ -445,6 +448,23 @@ hard_gates:
   # the stale half fails the build when a migrated file keeps its entry.
   - percheck_platform_port_boundary
   - percheck_platform_port_inventory_stale
+  # Capability SQL ban (added 2026-11-21 with RA-13). A capability must consume
+  # a client-owned port, not own database/sql, schema DDL or a driver. The
+  # exact-file inventory records the remaining I/O-binder debt with an owner and
+  # a removal trigger and ratchets DOWN only (stale entries fail the build).
+  - percheck_capability_sql_ban
+  - percheck_capability_sql_inventory_stale
+  # Family pair resolved by RA-11 (2026-11-21): capabilities/system no longer
+  # imports platform/httpserver. The capability owns its route module; the
+  # composition root owns the runtime descriptor. The reverse direction
+  # (httpserver → system/health) is the allowed one and stays.
+  - percheck_system_http_boundary
+  # Composition-root exec ratchet (added 2026-11-21 with RA-15). The final-job
+  # fragment pipeline moved to internal/platform/media/finaljob; app/wiring may
+  # construct the adapter but must never spawn ffmpeg/ffprobe again. The two
+  # remaining subpackages (lifecycle, rendering) have separate owners and are
+  # deliberately outside this root-only ratchet.
+  - percheck_wiring_finaljob_process_exec
   # Outbox envelope decode SSOT (added 2026-11-18). The v1 envelope checks
   # (valid JSON, exact schema_version, non-empty event_id, non-empty
   # idempotency_key) were written inline in six handlers and the decision they

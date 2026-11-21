@@ -311,11 +311,12 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 	result.Scenes = append([]Scene(nil), result.Scenes...)
 	for i := range result.Scenes {
 		scene := &result.Scenes[i]
+		fixedMedia := scene.ExecutionMode.IsFixedMedia()
 		// Fixed-media scenes normally require their source clip's original
 		// audio. The remote final-job path deliberately hands that clip to 51,
 		// so the local audio projection treats the slot as generated silence
 		// or narration while retaining its explicit duration.
-		if scene.ExecutionMode.IsFixedMedia() {
+		if fixedMedia {
 			scene.ExecutionMode = scriptpkg.SceneExecutionGenerated
 		}
 		intents := scene.AudioIntents
@@ -331,7 +332,7 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		// explicitly marked as used-as-stock: those keep the clip audio at full
 		// original volume because the caller asked for that clip to be HEARD.
 		stockClipIDs := sceneStockClipIDs(*scene)
-		if !scene.ExecutionMode.IsFixedMedia() && scene.Stock == nil && scene.Clip != nil && !hasClipAudioIntent(intents, scene.Clip.ID) {
+		if !fixedMedia && scene.Stock == nil && scene.Clip != nil && !hasClipAudioIntent(intents, scene.Clip.ID) {
 			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(scene.Clip); ok {
 				intents = append(intents, capabilityaudio.AudioIntent{
 					Mode: capabilityaudio.AudioClip, ClipAssetID: scene.Clip.ID,

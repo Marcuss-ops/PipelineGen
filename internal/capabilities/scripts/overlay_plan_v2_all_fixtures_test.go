@@ -33,6 +33,7 @@ func TestOverlayPlanV2AllFixturesMatchFrozenGoldens(t *testing.T) {
 		"recap_and_light_leaks",
 		"general_chain_rendering",
 		"chain_collision_resolution",
+		"entity_cards_promotable_media",
 	}
 	for _, name := range fixtures {
 		name := name
@@ -93,6 +94,9 @@ func TestOverlayPlanV2AllFixturesMatchFrozenGoldens(t *testing.T) {
 				require.Equal(t, want.MotionID, got.MotionID, label)
 				require.Equal(t, want.ImagePresetID, got.ImagePresetID, label)
 				require.Equal(t, want.EntityID, got.EntityID, label)
+				// This decoder reads the renderer DTO, which never carries the
+				// producer-only identity; the production adapter's projection of
+				// `entity_ref` is covered by the rustexec projection test.
 				require.Equal(t, want.EntityCaption, got.EntityCaption, label)
 				wantStart, wantDuration := frozenWindow(want.StartUS, want.DurationUS, want.StartMS, want.EndMS)
 				gotStart, gotDuration := frozenWindow(got.StartUS, got.DurationUS, got.StartMs, got.EndMs)

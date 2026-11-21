@@ -1,8 +1,7 @@
-package wiring
+package finaljob
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,10 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	segment "github.com/Marcuss-ops/PipelineGen/internal/kernel/media/finaljob"
+	scriptfinaljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -94,13 +93,27 @@ func finalJobDeliveryMatches(width, height int, avgFPS, pixelFmt string) bool {
 		pixelFmt == finalJobDelivery.PixelFormat
 }
 
-// finalJobSegmentPreparer creates only timeline fragments, never the final
+// SegmentPreparer creates only timeline fragments, never the final
 // video. Inputs that already carry a complete, trusted assembly certificate
 // are reused; incompatible windows are cut and encoded once locally, then
 // uploaded to Objectstore. Worker 51 receives only HTTPS, copy-ready pieces.
-type finalJobSegmentPreparer struct {
+// ObjectPublisher is the platform-side port for the HTTPS Objectstore
+// publication the fragment lane already performs. The composition root
+// injects the scripts implementation so the adapter never imports it.
+type ObjectPublisher interface {
+	PublishLocalObjectVerified(context.Context, string, string, string, int64) (map[string]any, error)
+}
+
+// PublishFunc adapts a plain function to ObjectPublisher.
+type PublishFunc func(context.Context, string, string, string, int64) (map[string]any, error)
+
+func (f PublishFunc) PublishLocalObjectVerified(ctx context.Context, preferredID, path, sha string, sizeBytes int64) (map[string]any, error) {
+	return f(ctx, preferredID, path, sha, sizeBytes)
+}
+
+type SegmentPreparer struct {
 	ffmpeg string
-	policy mediaexec.EncoderPolicy
+	policy kernelmedia.EncoderPolicy
 	client *http.Client
 	// cacheDir holds certified fragments keyed by their WORK identity (source
 	// bytes + source in-point + frame count + encoder policy). Empty disables
@@ -108,6 +121,9 @@ type finalJobSegmentPreparer struct {
 	cacheDir string
 	// lanes bounds how many fragments may be prepared at once.
 	lanes int
+	// publisher is injected by the composition root; nil fails closed before
+	// any fragment bytes are uploaded.
+	publisher ObjectPublisher
 
 	// stats accumulates the measured phase cost of every fragment this
 	// preparer produced, so the receipt can say whether the local handoff is
@@ -171,11 +187,11 @@ const (
 	finalJobWindowDerived = "derived"
 )
 
-// finalJobFragmentLanes reads VELOX_FINAL_JOB_PREPARE_LANES: how many fragments
+// FragmentLanes reads VELOX_FINAL_JOB_PREPARE_LANES: how many fragments
 // are prepared at once. The work is independent per fragment, so lanes only
 // trade wall time for CPU; 0 or a malformed value is a configuration error, not
 // a silent default.
-func finalJobFragmentLanes() (int, error) {
+func FragmentLanes() (int, error) {
 	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_PREPARE_LANES"))
 	if raw == "" {
 		return defaultFinalJobFragmentLanes, nil
@@ -202,7 +218,7 @@ func finalJobCopyWindowsEnabled() bool {
 	}
 }
 
-func newFinalJobSegmentPreparer(ffmpeg string, policy mediaexec.EncoderPolicy, cacheDir string, lanes int) *finalJobSegmentPreparer {
+func NewSegmentPreparer(ffmpeg string, policy kernelmedia.EncoderPolicy, cacheDir string, lanes int, publishers ...ObjectPublisher) *SegmentPreparer {
 	if lanes < 1 {
 		lanes = 1
 	}
@@ -210,31 +226,57 @@ func newFinalJobSegmentPreparer(ffmpeg string, policy mediaexec.EncoderPolicy, c
 	// must never inherit the user-facing renderer policy: production may select
 	// h264_nvenc, which cannot emit those parameter sets. Pinning here keeps a
 	// configuration change from turning every handoff into a late failure.
-	policy = mediaexec.EncoderPolicy{
+	policy = kernelmedia.EncoderPolicy{
 		Codec:  kernelmedia.CanonicalVideoCodec,
 		Preset: kernelmedia.CanonicalVideoPreset,
 		CRF:    kernelmedia.CanonicalVideoCRF,
 	}
-	return &finalJobSegmentPreparer{
-		ffmpeg:   strings.TrimSpace(ffmpeg),
-		policy:   policy,
-		client:   &http.Client{Timeout: 20 * time.Minute},
-		cacheDir: strings.TrimSpace(cacheDir),
-		lanes:    lanes,
-		verifier: digest.NewVerifier(nil),
+	var publisher ObjectPublisher
+	if len(publishers) > 0 {
+		publisher = publishers[0]
 	}
+	return &SegmentPreparer{
+		publisher: publisher,
+		ffmpeg:    strings.TrimSpace(ffmpeg),
+		policy:    policy,
+		client:    &http.Client{Timeout: 20 * time.Minute},
+		cacheDir:  strings.TrimSpace(cacheDir),
+		lanes:     lanes,
+		verifier:  digest.NewVerifier(nil),
+	}
+}
+
+// publishVerified is the only upload path of the fragment lane. It fails
+// closed when the composition root did not inject a publisher.
+func (p *SegmentPreparer) publishVerified(ctx context.Context, preferredID, path, sha string, sizeBytes int64) (map[string]any, error) {
+	if p == nil || p.publisher == nil {
+		return nil, fmt.Errorf("final_job segment publisher is not configured")
+	}
+	return p.publisher.PublishLocalObjectVerified(ctx, preferredID, path, sha, sizeBytes)
 }
 
 // Parallelism lets the plan builder prepare independent fragments concurrently;
 // it never changes WHICH fragments are prepared or in what order they bind.
-func (p *finalJobSegmentPreparer) Parallelism() int {
+func (p *SegmentPreparer) Parallelism() int {
 	if p == nil || p.lanes < 1 {
 		return 1
 	}
 	return p.lanes
 }
 
-func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Context, source map[string]any, request scriptgen.FinalJobVideoSegmentRequest) (map[string]any, error) {
+func (p *SegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Context, source scriptfinaljob.RuntimeAssetV1, request segment.VideoSegmentRequest) (scriptfinaljob.RuntimeAssetV1, error) {
+	sourceMap, err := source.Map()
+	if err != nil {
+		return scriptfinaljob.RuntimeAssetV1{}, fmt.Errorf("decode final_job segment source: %w", err)
+	}
+	prepared, err := p.prepareFinalJobVideoSegmentMap(ctx, sourceMap, request)
+	if err != nil || prepared == nil {
+		return scriptfinaljob.RuntimeAssetV1{}, err
+	}
+	return scriptfinaljob.RuntimeAssetFromMap(prepared)
+}
+
+func (p *SegmentPreparer) prepareFinalJobVideoSegmentMap(ctx context.Context, source map[string]any, request segment.VideoSegmentRequest) (map[string]any, error) {
 	if p == nil || p.client == nil {
 		return nil, fmt.Errorf("local fragment encoder is unavailable")
 	}
@@ -302,7 +344,7 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	if cachedPath, cachedSHA, cachedSize, ok := p.cachedFragment(cacheKey, request.FrameCount, durationUS); ok {
 		// cachedFragment already obtained the identity from the kernel verifier;
 		// publishing must not read and digest the same bytes a second time.
-		if ref, publishErr := scriptgen.PublishFinalJobLocalObjectVerified(ctx, assetID, cachedPath, cachedSHA, cachedSize); publishErr == nil {
+		if ref, publishErr := p.publishVerified(ctx, assetID, cachedPath, cachedSHA, cachedSize); publishErr == nil {
 			elapsed := time.Since(cacheStarted).Milliseconds()
 			// The bytes are on this disk: a duplicate placement later in the
 			// same run derives its object from them, not from the network.
@@ -382,7 +424,7 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	}
 	publishStarted := time.Now()
 	// sha/size were computed from this exact file one line above.
-	ref, err := scriptgen.PublishFinalJobLocalObjectVerified(ctx, assetID, outPath, sha, size)
+	ref, err := p.publishVerified(ctx, assetID, outPath, sha, size)
 	if err != nil {
 		return nil, fmt.Errorf("publish prepared fragment to HTTPS Objectstore: %w", err)
 	}
@@ -432,9 +474,9 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 // handoff that asked for it. Keeping reuse, cache, derived placement and fresh
 // production on this path is what stops the reference shape and the receipt
 // from drifting when one lane changes.
-func (p *finalJobSegmentPreparer) finishFragment(
+func (p *SegmentPreparer) finishFragment(
 	ctx context.Context,
-	request scriptgen.FinalJobVideoSegmentRequest,
+	request segment.VideoSegmentRequest,
 	base map[string]any,
 	role, sha string,
 	size, durationUS int64,
@@ -453,7 +495,7 @@ func (p *finalJobSegmentPreparer) finishFragment(
 // is the normal case; only a boundary window is padded, and only by its deficit.
 // Without a census the source length is unknown, so the historical full-length
 // tail is kept rather than cutting the plan's frame cap.
-func finalJobSourceShortfall(census finalJobSourceCensus, ok bool, request scriptgen.FinalJobVideoSegmentRequest) int64 {
+func finalJobSourceShortfall(census finalJobSourceCensus, ok bool, request segment.VideoSegmentRequest) int64 {
 	if !ok {
 		return request.FrameCount
 	}
@@ -468,38 +510,7 @@ func finalJobSourceShortfall(census finalJobSourceCensus, ok bool, request scrip
 	return request.FrameCount - available
 }
 
-func stringValue(value any) string {
-	if value == nil {
-		return ""
-	}
-	return strings.TrimSpace(fmt.Sprint(value))
-}
-
-func int64Value(value any) int64 {
-	switch n := value.(type) {
-	case int:
-		return int64(n)
-	case int64:
-		return n
-	case float64:
-		return int64(n)
-	case json.Number:
-		v, _ := n.Int64()
-		return v
-	case string:
-		v, _ := strconv.ParseInt(strings.TrimSpace(n), 10, 64)
-		return v
-	default:
-		return 0
-	}
-}
-
-func boolFromAny(value any) bool {
-	b, _ := value.(bool)
-	return b
-}
-
-var _ scriptgen.FinalJobVideoSegmentPreparer = (*finalJobSegmentPreparer)(nil)
+var _ segment.VideoSegmentPreparer = (*SegmentPreparer)(nil)
 
 // --- per-source census: one probe per content identity ---
 
@@ -512,7 +523,7 @@ var _ scriptgen.FinalJobVideoSegmentPreparer = (*finalJobSegmentPreparer)(nil)
 // (the avcC the remote copy-only mux compares exactly). A source whose metadata
 // claims VELOX_ASSEMBLY_READY_V1 but whose bytes do not is not copyable, and a
 // source that declares nothing but whose bytes are conformant is.
-func (p *finalJobSegmentPreparer) sourceCensus(ctx context.Context, sha, path string) (finalJobSourceCensus, bool) {
+func (p *SegmentPreparer) sourceCensus(ctx context.Context, sha, path string) (finalJobSourceCensus, bool) {
 	key := strings.ToLower(strings.TrimSpace(sha))
 	p.certificatesMu.Lock()
 	census, ok := p.certificates[key]
@@ -563,3 +574,11 @@ type finalJobSourceCensus struct {
 	certified          bool
 	needsNormalization bool
 }
+
+// Package-local aliases over the one final-job coercion family. Keeping them
+// here avoids adding another file to the wiring hotspot.
+var (
+	stringValue = scriptfinaljob.String
+	int64Value  = scriptfinaljob.Int64
+	boolFromAny = scriptfinaljob.Bool
+)

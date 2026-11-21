@@ -25,7 +25,6 @@
 package system
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -112,6 +111,6 @@ type Dependencies struct {
 	Reconciler    Reconciler
 }
 
-func (m *Module) Build(ctx httpserver.BuildContext) (httpserver.RuntimeModule, error) {
-	return httpserver.RuntimeModuleFor("system", "/api/system", m)
-}
+// Build lived here only to import platform/httpserver into the capability.
+// The composition root now registers StaticCapabilityModule{"system", "/api/system", m},
+// so the capability subtree has no import in the httpserver direction (RA-11).

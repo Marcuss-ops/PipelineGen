@@ -1,4 +1,4 @@
-package wiring
+package finaljob
 
 import (
 	"context"
@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	segment "github.com/Marcuss-ops/PipelineGen/internal/kernel/media/finaljob"
 )
 
 // Fragment pipeline: what one handoff measured while producing fragments, and
@@ -19,7 +19,7 @@ import (
 // keeps two concurrent handoffs from reading each other's work.
 // NewHandoffScope allocates the identity of one handoff. Everything recorded
 // under it is readable through Timing(scope) and belongs to that handoff alone.
-func (p *finalJobSegmentPreparer) NewHandoffScope() uint64 {
+func (p *SegmentPreparer) NewHandoffScope() uint64 {
 	if p == nil {
 		return 0
 	}
@@ -30,7 +30,7 @@ func (p *finalJobSegmentPreparer) NewHandoffScope() uint64 {
 // carries it. Fragment work records under that scope, and Timing(scope) reads
 // only this handoff's contribution, so two concurrent handoffs cannot report
 // each other's bytes or milliseconds in their receipts.
-func (p *finalJobSegmentPreparer) BeginHandoff(ctx context.Context) (context.Context, uint64) {
+func (p *SegmentPreparer) BeginHandoff(ctx context.Context) (context.Context, uint64) {
 	scope := p.NewHandoffScope()
 	return withFinalJobHandoffScope(ctx, scope), scope
 }
@@ -38,20 +38,20 @@ func (p *finalJobSegmentPreparer) BeginHandoff(ctx context.Context) (context.Con
 // Timing returns the receipt block of ONE handoff: its own counters and its own
 // windows. It is deliberately not a difference of process-wide snapshots, so a
 // concurrent handoff finishing between two reads cannot leak into this receipt.
-func (p *finalJobSegmentPreparer) Timing(scope uint64) scriptgen.RemoteFinalJobSegmentPrepTiming {
+func (p *SegmentPreparer) Timing(scope uint64) segment.SegmentPrepTiming {
 	if p == nil || scope == 0 {
-		return scriptgen.RemoteFinalJobSegmentPrepTiming{}
+		return segment.SegmentPrepTiming{}
 	}
 	p.mu.Lock()
 	stats, ok := p.scoped[scope]
 	p.mu.Unlock()
 	if !ok {
-		return scriptgen.RemoteFinalJobSegmentPrepTiming{}
+		return segment.SegmentPrepTiming{}
 	}
 	return stats.timing()
 }
 
-func (p *finalJobSegmentPreparer) recordWindow(ctx context.Context, window finalJobSegmentWindow) {
+func (p *SegmentPreparer) recordWindow(ctx context.Context, window finalJobSegmentWindow) {
 	if p == nil {
 		return
 	}
@@ -66,8 +66,8 @@ func (p *finalJobSegmentPreparer) recordWindow(ctx context.Context, window final
 
 // timing projects one accumulator onto the receipt block. The windows were
 // recorded under this scope, so there is nothing to filter out here.
-func (s finalJobSegmentStats) timing() scriptgen.RemoteFinalJobSegmentPrepTiming {
-	timing := scriptgen.RemoteFinalJobSegmentPrepTiming{
+func (s finalJobSegmentStats) timing() segment.SegmentPrepTiming {
+	timing := segment.SegmentPrepTiming{
 		Segments:     s.segments,
 		Reused:       s.reused,
 		Cached:       s.cached,
@@ -81,7 +81,7 @@ func (s finalJobSegmentStats) timing() scriptgen.RemoteFinalJobSegmentPrepTiming
 		PaddedFrames: s.paddedFrames,
 	}
 	for _, window := range s.windows {
-		timing.Windows = append(timing.Windows, scriptgen.RemoteFinalJobSegmentPrepWindow{
+		timing.Windows = append(timing.Windows, segment.SegmentPrepWindow{
 			SegmentID:    window.segmentID,
 			SourceSHA256: window.sourceSHA,
 			Normalized:   window.normalized,
@@ -108,7 +108,7 @@ func (s finalJobSegmentStats) timing() scriptgen.RemoteFinalJobSegmentPrepTiming
 }
 
 // Totals snapshots the accumulator (copy-on-read: the caller keeps a value).
-func (p *finalJobSegmentPreparer) Totals() finalJobSegmentStats {
+func (p *SegmentPreparer) Totals() finalJobSegmentStats {
 	if p == nil {
 		return finalJobSegmentStats{}
 	}
@@ -120,7 +120,7 @@ func (p *finalJobSegmentPreparer) Totals() finalJobSegmentStats {
 // record applies one update to the process aggregate AND to the handoff that
 // produced it. The aggregate is the log surface; the scoped entry is what a
 // receipt reads, so the two can never disagree about whose work this was.
-func (p *finalJobSegmentPreparer) record(ctx context.Context, update func(*finalJobSegmentStats)) {
+func (p *SegmentPreparer) record(ctx context.Context, update func(*finalJobSegmentStats)) {
 	scope := finalJobHandoffScope(ctx)
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -139,7 +139,7 @@ func (p *finalJobSegmentPreparer) record(ctx context.Context, update func(*final
 
 // evictScopesLocked drops the oldest handoff that is not the one being written,
 // so the map stays bounded without a slow handoff losing its own receipt.
-func (p *finalJobSegmentPreparer) evictScopesLocked(current uint64) {
+func (p *SegmentPreparer) evictScopesLocked(current uint64) {
 	if len(p.scoped) <= finalJobMaxScopedHandoffs {
 		return
 	}
@@ -239,7 +239,7 @@ func finalJobHandoffScope(ctx context.Context) uint64 {
 // remuxTaggedFragment copies the certified bitstream into a distinct container.
 // No pixel is decoded: the tag lives in the container metadata, so the pictures,
 // the keyframes and the closed GOP are exactly the ones the source certified.
-func (p *finalJobSegmentPreparer) remuxTaggedFragment(ctx context.Context, source, output, tag string) error {
+func (p *SegmentPreparer) remuxTaggedFragment(ctx context.Context, source, output, tag string) error {
 	ffmpeg := p.ffmpeg
 	if ffmpeg == "" {
 		var err error
@@ -271,7 +271,7 @@ func (p *finalJobSegmentPreparer) remuxTaggedFragment(ctx context.Context, sourc
 	return nil
 }
 
-func (p *finalJobSegmentPreparer) fragmentEncoderSettings() (string, string, error) {
+func (p *SegmentPreparer) fragmentEncoderSettings() (string, string, error) {
 	codec := strings.TrimSpace(p.policy.Codec)
 	preset := strings.TrimSpace(p.policy.Preset)
 	// A fragment certificate compares the emitted avcC to the canonical
@@ -307,7 +307,7 @@ func finalJobFragmentVideoFilter(normalizeGeometry bool, padFrames int64) string
 	return strings.Join(filters, ",")
 }
 
-func (p *finalJobSegmentPreparer) encodeFragment(ctx context.Context, source, output string, request scriptgen.FinalJobVideoSegmentRequest, normalizeGeometry bool, padFrames int64) error {
+func (p *SegmentPreparer) encodeFragment(ctx context.Context, source, output string, request segment.VideoSegmentRequest, normalizeGeometry bool, padFrames int64) error {
 	ffmpeg := p.ffmpeg
 	if ffmpeg == "" {
 		var err error
@@ -389,7 +389,7 @@ func (p *finalJobSegmentPreparer) encodeFragment(ctx context.Context, source, ou
 	return nil
 }
 
-func (p *finalJobSegmentPreparer) copyCertifiedWindow(ctx context.Context, source, output string, request scriptgen.FinalJobVideoSegmentRequest) error {
+func (p *SegmentPreparer) copyCertifiedWindow(ctx context.Context, source, output string, request segment.VideoSegmentRequest) error {
 	ffmpeg := p.ffmpeg
 	if ffmpeg == "" {
 		var err error
@@ -416,6 +416,6 @@ func (p *finalJobSegmentPreparer) copyCertifiedWindow(ctx context.Context, sourc
 // a GOP boundary. Only the geometry is checked here, because whether that
 // boundary is a real keyframe is a property of the bytes, not of the request:
 // it is answered by the source census immediately before the copy.
-func finalJobWindowOnGOPGrid(request scriptgen.FinalJobVideoSegmentRequest) bool {
+func finalJobWindowOnGOPGrid(request segment.VideoSegmentRequest) bool {
 	return request.SourceInUS >= 0 && request.SourceInUS%2_000_000 == 0 && request.FrameCount > 0
 }

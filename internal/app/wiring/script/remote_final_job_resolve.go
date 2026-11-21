@@ -2,6 +2,7 @@ package script
 
 import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 
 	"context"
 	"fmt"
@@ -29,8 +30,8 @@ func (a *RemoteFinalJobAdapter) resolverClock() func() {
 	}
 }
 
-func (a *RemoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
-	return a.resolveOnce("objectstore:"+strings.TrimSpace(id), func() (map[string]any, error) {
+func (a *RemoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id string) (scriptgen.FinalJobRuntimeAssetV1, error) {
+	ref, err := a.resolveOnce("objectstore:"+strings.TrimSpace(id), func() (map[string]any, error) {
 		defer a.resolverClock()()
 		started := time.Now()
 		ref, err := a.ResolveFinalJobObjectStoreAsset(ctx, id)
@@ -38,6 +39,10 @@ func (a *RemoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id str
 			id, ref["size_bytes"], time.Since(started).Milliseconds(), err != nil)
 		return ref, err
 	})
+	if err != nil {
+		return scriptgen.FinalJobRuntimeAssetV1{}, err
+	}
+	return finaljob.RuntimeAssetFromMap(ref)
 }
 
 // resolveOnce answers a repeated resolution from the handoff's own cache. The
@@ -135,10 +140,14 @@ func copyFinalJobRef(ref map[string]any) map[string]any {
 // reference becomes the FINALIZE stock entry, and the remote Master downloads
 // and processes it. The Producer never fetches the stock bytes or turns them
 // into a local fragment.
-func (a *RemoteFinalJobAdapter) ResolveFinalJobStockAsset(ctx context.Context, id string) (map[string]any, error) {
-	return a.resolveOnce("drive:"+strings.TrimSpace(id), func() (map[string]any, error) {
+func (a *RemoteFinalJobAdapter) ResolveFinalJobStockAsset(ctx context.Context, id string) (scriptgen.FinalJobRuntimeAssetV1, error) {
+	ref, err := a.resolveOnce("drive:"+strings.TrimSpace(id), func() (map[string]any, error) {
 		return a.stockDriveReference(ctx, id)
 	})
+	if err != nil {
+		return scriptgen.FinalJobRuntimeAssetV1{}, err
+	}
+	return finaljob.RuntimeAssetFromMap(ref)
 }
 
 func (a *RemoteFinalJobAdapter) stockDriveReference(ctx context.Context, id string) (map[string]any, error) {

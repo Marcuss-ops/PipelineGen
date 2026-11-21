@@ -1,23 +1,8 @@
-package adapters
-
-// render_reuse.go — the durable store behind localization's content-addressed
-// reuse seam (localization.RenderReuseCache).
-//
-// WHY A TABLE AND NOT THE cliprender CACHE: cliprender's clip_render_cache
-// records a DURABLE OBJECT-STORE LOCATOR and nothing else — it carries no media
-// codec facts and no local materialization, because its consumer only needs to
-// advertise a certified asset id. A localized render is consumed differently: the
-// localization service publishes LOCAL bytes to Drive and commits them to the
-// media SSOT with their codecs, so a reuse record must carry exactly those facts
-// (path, digest, size, duration, codecs, backend). Storing a locator-only record
-// here would produce hits that cannot be consumed; storing these facts in
-// clip_render_cache would widen a table whose integrity contract is a JOIN
-// against media_assets.
-//
-// The record is a HINT, never an authority: the renderer re-stats the file, checks
-// the size and re-hashes the bytes before a hit is accepted (render_reuse.go), so
-// a stale row costs a render, not a wrong artifact. A row whose file has since
-// been cleaned from the work directory therefore degrades to a normal render.
+// Package localizationreuse owns the PostgreSQL adapter for the localized
+// render reuse seam. The port and its records stay in
+// internal/capabilities/localization; this package owns the statements, the DDL
+// and the engine handle.
+package localizationreuse
 
 import (
 	"context"
@@ -28,7 +13,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
+	localization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 )
 
 // LocalizedRenderReuse is the PostgreSQL-backed reuse store.
@@ -38,6 +23,7 @@ type LocalizedRenderReuse struct {
 }
 
 var _ localization.RenderReuseCache = (*LocalizedRenderReuse)(nil)
+var _ localization.RenderDriveIdentityRecorder = (*LocalizedRenderReuse)(nil)
 
 // NewLocalizedRenderReuse builds the store. A nil database yields nil: the
 // caller then wires no cache at all, which means "always render" — the same
@@ -68,7 +54,7 @@ func EnsureLocalizedRenderReuseTable(ctx context.Context, db *sql.DB) error {
 			video_codec TEXT   NOT NULL DEFAULT '',
 			audio_codec TEXT   NOT NULL DEFAULT '',
 			backend     TEXT   NOT NULL DEFAULT '',
-			created_at  TEXT   NOT NULL DEFAULT ''
+			created_at  TEXT   NOT NULL
 		);`
 	if _, err := db.ExecContext(ctx, ddl); err != nil {
 		return fmt.Errorf("localization render reuse: ensure table: %w", err)
@@ -90,10 +76,6 @@ func EnsureLocalizedRenderReuseTable(ctx context.Context, db *sql.DB) error {
 // Lookup resolves a plan fingerprint to the artifact a previous render
 // certified. An absent row is a MISS, not an error: the first run of every plan
 // takes this path.
-//
-// A store-level failure is reported as an error, and the renderer treats it as a
-// miss (fail-soft, see render_reuse.go) — the cache can never fail a render, and
-// it can never turn a broken store into a wrong artifact either.
 func (s *LocalizedRenderReuse) Lookup(ctx context.Context, fingerprint string) (*localization.ReusedRenderArtifact, bool, error) {
 	if s == nil || s.db == nil {
 		return nil, false, errors.New("localization render reuse: store is not initialized")
@@ -126,8 +108,7 @@ func (s *LocalizedRenderReuse) Lookup(ctx context.Context, fingerprint string) (
 }
 
 // Store upserts the certified artifact under its fingerprint. A record with no
-// usable bytes is refused rather than stored: a row that cannot pass the
-// renderer's own verification is a row that would only ever cost a lookup.
+// usable bytes is refused rather than stored.
 func (s *LocalizedRenderReuse) Store(ctx context.Context, artifact localization.ReusedRenderArtifact) error {
 	if s == nil || s.db == nil {
 		return errors.New("localization render reuse: store is not initialized")
@@ -135,10 +116,6 @@ func (s *LocalizedRenderReuse) Store(ctx context.Context, artifact localization.
 	fingerprint := strings.ToLower(strings.TrimSpace(artifact.Fingerprint))
 	if fingerprint == "" || strings.TrimSpace(artifact.LocalPath) == "" || strings.TrimSpace(artifact.SHA256) == "" ||
 		artifact.SizeBytes <= 0 || artifact.DurationMS <= 0 {
-		// The renderer swallows Store errors (the artifact is already certified),
-		// so this log is the ONLY visibility a lost optimization gets. Without it
-		// a systematically failing store would be indistinguishable from a cold
-		// cache forever.
 		s.log.Warn("localization render reuse: refusing to store an incomplete artifact",
 			zap.String("subsystem", "localization_render_reuse"),
 			zap.String("fingerprint", fingerprint),
@@ -173,10 +150,7 @@ func (s *LocalizedRenderReuse) Store(ctx context.Context, artifact localization.
 
 // RecordDriveIdentity stores where certified bytes were published, so an
 // identical later run can certify them UPLOADED without moving 400 MB again.
-//
-// A missing row is deliberately not an error: the fingerprint is owned by the
-// render facts, and an identity recorded for a fingerprint the store does not
-// hold would be an orphan. The next render stores both.
+// A missing row is deliberately not an error.
 func (s *LocalizedRenderReuse) RecordDriveIdentity(ctx context.Context, fingerprint string, identity localization.RenderDriveIdentity) error {
 	if s == nil || s.db == nil {
 		return errors.New("localization render reuse: store is not initialized")
@@ -198,5 +172,3 @@ func (s *LocalizedRenderReuse) RecordDriveIdentity(ctx context.Context, fingerpr
 	}
 	return nil
 }
-
-var _ localization.RenderDriveIdentityRecorder = (*LocalizedRenderReuse)(nil)

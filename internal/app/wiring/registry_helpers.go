@@ -17,7 +17,6 @@ import (
 	"time"
 
 	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -86,7 +85,7 @@ func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, cacheDB *stora
 	ffmpegProc := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
 	// MEDIA-SSOT P2-9 step 2: MediaProcessor hydrates clip records from the
 	// canonical committer's engine, so it cannot read a divergent media mirror.
-	clipsRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetailsReaderFromCommitter(committer), processing, committer, log)
+	clipsRegistry := newClipsRegistry(mediaDetailsReaderFromCommitter(committer), processing, committer, log)
 	profile := mediaConfig.Profile
 	policy := mediaConfig.Policy
 	videoCfg := mediaexec.NormalizeOptions{Profile: profile, Policy: policy, Duration: cfg.Video.CanonicalClip().Duration,

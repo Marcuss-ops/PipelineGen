@@ -41,6 +41,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/localizationreuse"
 	"go.uber.org/zap"
 )
 
@@ -325,12 +326,12 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	// instead of failing the whole service, because the cache is an
 	// optimization and the render path is the authority.
 	var renderReuse localization.RenderReuseCache
-	if ensureErr := localizationadapters.EnsureLocalizedRenderReuseTable(context.Background(), root.MediaPostgres); ensureErr != nil {
+	if ensureErr := localizationreuse.EnsureLocalizedRenderReuseTable(context.Background(), root.MediaPostgres); ensureErr != nil {
 		log.Warn("localization service: render reuse cache unavailable; every plan will render",
 			zap.String("subsystem", "localization_service"),
 			zap.Error(ensureErr))
 	} else {
-		renderReuse = localizationadapters.NewLocalizedRenderReuse(root.MediaPostgres, log)
+		renderReuse = localizationreuse.NewLocalizedRenderReuse(root.MediaPostgres, log)
 	}
 
 	svc, err := NewLocalizationService(LocalizationDeps{

@@ -9,7 +9,6 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	voapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
@@ -96,7 +95,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		// read back rows written by the canonical committer.
 		mediaDetails := mediaDetailsReaderFromCommitter(bundle.Committer)
 		mediaProcessing := assetspersistence.CanonicalAssetProcessingWriter(bundle.Committer)
-		imagesRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, bundle.Committer, log)
+		imagesRegistry := newClipsRegistry(mediaDetails, mediaProcessing, bundle.Committer, log)
 		imagesLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: imagesRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService}, log)
 		voiceoverRegistry := voapp.NewVoiceoverRegistryAdapter(bundle.VoiceoverRepo)
 		voiceoverLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: voiceoverRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewVoiceoverStoreAdapter(bundle.VoiceoverRepo)}, log)
@@ -116,9 +115,9 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 		// operational SQLite store; it holds no committed media rows, so a
 		// listing served from it could never see the SSOT.
 		mediaDriveFileIDs := mediaDriveFileListerFromCommitter(bundle.Committer)
-		clipRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, bundle.Committer, log)
+		clipRegistry := newClipsRegistry(mediaDetails, mediaProcessing, bundle.Committer, log)
 		clipLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: clipRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
-		stockRegistry := artifacts.NewClipsRegistryWithLogger(mediaDetails, mediaProcessing, bundle.Committer, log)
+		stockRegistry := newClipsRegistry(mediaDetails, mediaProcessing, bundle.Committer, log)
 		stockLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{Registry: stockRegistry, Publisher: bundle.Publisher, DriveReader: bundle.DriveUploader, AssetIndex: bundle.AssetIndexService, Store: ingest.NewClipStoreAdapter(bundle.DB.DB, mediaRetirer, mediaDetails, mediaLocations, mediaProcessing, mutationsDisp, mediaDriveFileIDs)}, log)
 		var downloader assets.MediaDownloader = downloader.NewMediaDownloader(90 * time.Second)
 		// CAS-backed source-aware downloader (August 2026): optional

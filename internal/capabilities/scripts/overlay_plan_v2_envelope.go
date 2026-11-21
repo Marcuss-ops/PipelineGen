@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
@@ -90,6 +92,7 @@ func overlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 		LongPhraseMotions:        longPhraseMotions,
 		ImageMotions:             append([]string(nil), canvas.ImageMotions...),
 		ImageWithTextMotions:     append([]string(nil), canvas.ImageWithTextMotions...),
+		ImagePresets:             capabilityoverlay.ImagePresetCandidates(),
 		EntityImageMotions:       append([]string(nil), canvas.EntityImageMotions...),
 		EntityCaptionMotions:     append([]string(nil), canvas.EntityCaptionMotions...),
 		EntityStyleID:            canvas.EntityStyleID,
@@ -249,6 +252,11 @@ func overlayPlanMedia(result *GenerateResult, language Language, sceneInputs []c
 				})
 			}
 		}
+		// The promotion surface is separate from the verified one by ownership:
+		// `verified_entity_assets` already makes a card an image, while these are
+		// the portraits only the resolver can render. The planner promotes a card
+		// that has no asset yet, so a card covered above is never promoted twice.
+		media.PromotableEntityAssets = promotableEntityAssets(result)
 	}
 	for _, input := range sceneInputs {
 		if len(input.Images) == 0 {
@@ -259,6 +267,128 @@ func overlayPlanMedia(result *GenerateResult, language Language, sceneInputs []c
 		})
 	}
 	return media
+}
+
+// promotableEntityAssets projects the portraits the media resolver can render
+// for a plan occurrence onto the v2 request. The planner, not this boundary,
+// takes the card→image decision; shipping the resolved identity + bytes is what
+// lets it do so without the PostgreSQL catalog or the Go sampler.
+//
+// Only renderable, content-addressed bytes cross: a semantic placeholder URL or
+// a record without a 64-char digest is skipped here instead of failing the whole
+// request in the Rust validator.
+func promotableEntityAssets(result *GenerateResult) []overlayplan.PromotableEntityAsset {
+	if result == nil || result.EntityTimeline == nil || len(result.EntityTimeline.Scenes) == 0 {
+		return nil
+	}
+	resolver, canonicalByStable := entityCardMediaIndex(result)
+	if resolver == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(result.EntityTimeline.Scenes))
+	var out []overlayplan.PromotableEntityAsset
+	for _, scene := range result.EntityTimeline.Scenes {
+		for _, occurrence := range scene.Entities {
+			entityID := strings.TrimSpace(occurrence.EntityID)
+			if entityID == "" {
+				continue
+			}
+			if _, exists := seen[entityID]; exists {
+				continue
+			}
+			for _, lookupID := range promotableLookupIDs(occurrence, canonicalByStable) {
+				ref, err := resolver.ResolveBest(lookupID)
+				if err != nil {
+					continue
+				}
+				assetID := strings.TrimSpace(ref.AssetID)
+				url := strings.TrimSpace(ref.URL)
+				sha := strings.ToLower(strings.TrimSpace(ref.SHA256))
+				if assetID == "" || url == "" || len(sha) != 64 {
+					continue
+				}
+				if strings.HasPrefix(url, "assets/semantic/") || strings.HasPrefix(url, "semantic/") {
+					continue
+				}
+				seen[entityID] = struct{}{}
+				canonical := lookupID
+				if separator := strings.Index(canonical, "::"); separator >= 0 {
+					canonical = canonical[separator+2:]
+				}
+				out = append(out, overlayplan.PromotableEntityAsset{
+					EntityID:          entityID,
+					CanonicalEntityID: canonical,
+					Assets: []overlayplan.AssetRef{{
+						AssetID: assetID, URL: url, SHA256: sha, MediaType: ref.MediaType,
+					}},
+				})
+				break
+			}
+		}
+	}
+	return out
+}
+
+// promotableLookupIDs tries the identity projections the resolver card can
+// carry for one occurrence: the plan occurrence id, the plan item id the Rust
+// planner stamps, their canonical projections, and the verified display-name
+// alias a translated card may keep.
+func promotableLookupIDs(occurrence capabilityentities.EntityOccurrence, canonicalByStable map[string]string) []string {
+	keys := []string{strings.TrimSpace(occurrence.EntityID)}
+	sceneID := strings.TrimSpace(occurrence.SceneID)
+	name := strings.TrimSpace(occurrence.Name)
+	if sceneID != "" && name != "" {
+		if overlayID := capabilityentities.SafeEntityID(name); overlayID != "" {
+			keys = append(keys, "overlay-"+sceneID+"-"+overlayID)
+		}
+	}
+	out := make([]string, 0, len(keys)*2+1)
+	appendID := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return
+		}
+		for _, existing := range out {
+			if existing == id {
+				return
+			}
+		}
+		out = append(out, id)
+	}
+	for _, key := range keys {
+		appendID(canonicalByStable[key])
+	}
+	for _, key := range keys {
+		appendID(key)
+	}
+	if key := entitycatalog.NormalizeVerifiedAssetKey(name); key != "" {
+		appendID(canonicalByStable["bundle-name:"+key])
+	}
+	return out
+}
+
+// promotableLocalPaths returns the already-materialized cache location of every
+// bundle portrait, keyed by content address. The v2 wire carries no local path
+// (it is producer-only), so the seal reattaches it exactly like it does for
+// scene images.
+func promotableLocalPaths(result *GenerateResult) map[string]capmodel.OverlayAssetRef {
+	out := map[string]capmodel.OverlayAssetRef{}
+	if result == nil {
+		return out
+	}
+	catalog := newEntityBundleCatalog(result.SemanticRenderBundle)
+	for _, entry := range catalog.entries {
+		sha := strings.ToLower(strings.TrimSpace(entry.asset.ContentHash))
+		localPath := strings.TrimSpace(entry.asset.LocalPath)
+		if sha == "" || localPath == "" {
+			continue
+		}
+		out[sha] = capmodel.OverlayAssetRef{
+			AssetID: entry.asset.AssetID, URL: bundleAssetURL(entry.asset),
+			LocalPath: localPath, SHA256: sha,
+		}
+	}
+	return out
 }
 
 func overlayPlanEntityTimeline(result *GenerateResult, language Language, projectID string, bounds map[string][2]int64) *overlayplan.EntityTimeline {

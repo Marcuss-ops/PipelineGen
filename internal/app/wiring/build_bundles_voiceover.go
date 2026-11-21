@@ -25,7 +25,6 @@ package wiring
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
@@ -119,15 +118,11 @@ func voiceoverMediaReaderFromCommitter(committer assetspersistence.AssetCommitte
 	if committer == nil {
 		return nil
 	}
-	getter, ok := committer.(interface{ DB() *sql.DB })
-	if !ok || getter == nil {
+	handle := mediaEngineHandle(committer)
+	if handle == nil {
 		return nil
 	}
-	db := getter.DB()
-	if db == nil {
-		return nil
-	}
-	return voiceoverMediaReaderAdapter{inner: pgmedia.NewMediaVoiceoverMediaReader(db)}
+	return voiceoverMediaReaderAdapter{inner: handle.MediaVoiceoverMediaReader()}
 }
 
 // buildVoiceoverService sets up the voiceover service and its repository.

@@ -25,6 +25,7 @@ import (
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
+	pgcliprender "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	"github.com/gin-gonic/gin"
 
@@ -251,11 +252,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// GPU; a batch collapses identical items to one slot.
 	var renderCache cliprender.RenderCache
 	if root.MediaPostgres != nil {
-		if err := cliprender.EnsureRenderCacheTable(context.Background(), root.MediaPostgres); err != nil {
+		if err := pgcliprender.EnsureRenderCacheTable(context.Background(), root.MediaPostgres); err != nil {
 			log.Warn("registerClipRender: ensure render cache table failed; cache disabled",
 				zap.Error(err))
 		} else {
-			renderCache = cliprender.NewPostgresRenderCache(root.MediaPostgres)
+			renderCache = pgcliprender.NewPostgresRenderCache(root.MediaPostgres)
 			log.Info("registerClipRender: deterministic render cache wired",
 				zap.String("table", "clip_render_cache"))
 		}

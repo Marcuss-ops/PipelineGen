@@ -118,5 +118,14 @@ func resultFrom(jobID string, state jobEnvelope) Result {
 	if artifact.SHA256 == "" {
 		artifact.SHA256 = state.ArtifactSHA256
 	}
-	return Result{JobID: jobID, Status: state.Status, WorkerID: state.WorkerID, ArtifactURL: artifact.URL, SHA256: artifact.SHA256, Timing: timingFromState(state)}
+	return Result{JobID: jobID, Status: state.Status, DispatchStatus: state.DispatchStatus, WorkerID: state.WorkerID, ArtifactURL: artifact.URL, SHA256: artifact.SHA256, Timing: timingFromState(state)}
+}
+
+func remoteJobStillPrefetching(dispatchStatus string) bool {
+	switch strings.ToLower(strings.TrimSpace(dispatchStatus)) {
+	case "prefetch_queued", "prefetch_refresh_queued", "prefetch_waiting_assets", "waiting_runtime_assets":
+		return true
+	default:
+		return false
+	}
 }

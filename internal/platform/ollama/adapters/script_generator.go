@@ -3,6 +3,8 @@ package adapters
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
@@ -22,6 +24,20 @@ func (a *ScriptGeneratorAdapter) WarmModel(ctx context.Context, model string) er
 		return scriptports.ErrScriptGeneratorUnavailable
 	}
 	return a.generator.WarmModel(ctx, model)
+}
+
+// CheckHealth exposes the Ollama liveness probe through the narrow script
+// adapter without widening the provider-neutral generation interface.
+func (a *ScriptGeneratorAdapter) CheckHealth(ctx context.Context) error {
+	if a == nil || a.generator == nil || a.generator.GetClient() == nil {
+		return scriptports.ErrScriptGeneratorUnavailable
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if !a.generator.GetClient().CheckHealth(probeCtx) {
+		return fmt.Errorf("Ollama is unavailable")
+	}
+	return nil
 }
 
 // NewScriptGeneratorAdapter constructs an application-port adapter for Ollama.

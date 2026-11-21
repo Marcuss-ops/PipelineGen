@@ -1,4 +1,4 @@
-package wiring
+package finaljob
 
 import (
 	"context"
@@ -10,10 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	segment "github.com/Marcuss-ops/PipelineGen/internal/kernel/media/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -58,7 +57,7 @@ func TestFinalJobCertificateRequiresTheCanonicalDecoderConfiguration(t *testing.
 // certifies, and reuse must refuse a reference that does not declare it: a
 // ref from an older run cannot vouch for bytes it never identified.
 func TestFinalJobPreparedFragmentRefCarriesTheCanonicalDecoderConfiguration(t *testing.T) {
-	request := scriptgen.FinalJobVideoSegmentRequest{
+	request := segment.VideoSegmentRequest{
 		SegmentID: "segment-0000", FrameCount: 24, TimelineRevision: 3,
 		TimelineSHA256: strings.Repeat("b", 64), TimelineStartFrame: 0,
 	}
@@ -82,7 +81,7 @@ func TestFinalJobPreparedFragmentRefCarriesTheCanonicalDecoderConfiguration(t *t
 // get regenerated instead of poisoning the next mux.
 func TestFinalJobFragmentCacheMissesNonCanonicalEntries(t *testing.T) {
 	dir := t.TempDir()
-	preparer := &finalJobSegmentPreparer{cacheDir: dir}
+	preparer := &SegmentPreparer{cacheDir: dir}
 	key := strings.Repeat("d", 64)
 	payload := filepath.Join(dir, key[:2], key+".mp4")
 	if err := os.MkdirAll(filepath.Dir(payload), 0o755); err != nil {
@@ -138,7 +137,7 @@ func TestFinalJobForeignSourceRegeneratesToTheCanonicalConfiguration(t *testing.
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg is not installed")
 	}
-	dir := finalJobFragmentCacheDir(filepath.Join("..", "..", "..", "data"))
+	dir := FragmentCacheDir(filepath.Join("..", "..", "..", "data"))
 	if dir == "" {
 		t.Skip("fragment cache is disabled")
 	}
@@ -148,8 +147,8 @@ func TestFinalJobForeignSourceRegeneratesToTheCanonicalConfiguration(t *testing.
 	// The production policy, not a convenient one: the canonical avcC is the
 	// output of THIS lane (libx264/veryfast, ref=1), and a different preset
 	// emits different SPS/PPS for the same pictures.
-	preparer := &finalJobSegmentPreparer{
-		policy: mediaexec.EncoderPolicy{
+	preparer := &SegmentPreparer{
+		policy: kernelmedia.EncoderPolicy{
 			Codec:  "libx264",
 			Preset: config.CanonicalStockEncoderPreset,
 			CRF:    23,
@@ -168,7 +167,7 @@ func TestFinalJobForeignSourceRegeneratesToTheCanonicalConfiguration(t *testing.
 	}
 
 	// 2. The production encoder command turns it into a certifiable fragment.
-	request := scriptgen.FinalJobVideoSegmentRequest{
+	request := segment.VideoSegmentRequest{
 		SegmentID: "regenerated-0000", FrameCount: 24, TimelineRevision: 1,
 		TimelineSHA256: strings.Repeat("a", 64), TimelineStartFrame: 0,
 	}
@@ -223,7 +222,7 @@ func TestFinalJobCertifiedFragmentsShareOneDecoderConfiguration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("corpus probe reads the fragment cache")
 	}
-	dir := finalJobFragmentCacheDir(filepath.Join("..", "..", "..", "data"))
+	dir := FragmentCacheDir(filepath.Join("..", "..", "..", "data"))
 	if dir == "" {
 		t.Skip("fragment cache is disabled")
 	}

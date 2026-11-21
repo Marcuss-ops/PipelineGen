@@ -58,7 +58,15 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		drivewiring.NewSystemAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
 		nil,
 	)
-	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {
+	// The system capability must not import platform/httpserver (RA-11): the
+	// composition root owns the runtime descriptor, the capability owns only its
+	// route module. StaticCapabilityModule produces the exact same descriptor
+	// RuntimeModuleFor("system", "/api/system", capability) used to produce.
+	if err := registry.RegisterCapabilityModule(module.StaticCapabilityModule{
+		Capability: "system",
+		Point:      "/api/system",
+		Module:     capability,
+	}, module.BuildContext{}); err != nil {
 		return fmt.Errorf("wire registry: system capability: %w", err)
 	}
 	return nil

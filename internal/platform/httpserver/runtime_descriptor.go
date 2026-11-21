@@ -54,6 +54,12 @@ type StaticCapabilityModule struct {
 	Jobs       []JobHandlerDescriptor
 }
 
+// Name implements CapabilityModule. Without it the type could not actually be
+// registered as the capability module its doc comment promises (RA-11 made the
+// composition root the owner of the descriptor, so this adapter is now the
+// production path for a capability that no longer imports httpserver).
+func (m StaticCapabilityModule) Name() string { return m.Capability }
+
 func (m StaticCapabilityModule) Build(BuildContext) (RuntimeModule, error) {
 	descriptor := RuntimeModule{
 		Name: m.Capability,

@@ -2,7 +2,6 @@ package artifacts
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -49,7 +48,8 @@ type ClipsRegistry struct {
 	// engine of its own. Nil is a media-plane-closed signal: the write is
 	// skipped as best-effort observability rather than sent to a second
 	// database.
-	processing persistence.AssetProcessingWriter
+	processing  persistence.AssetProcessingWriter
+	mediaReader MediaReader
 }
 
 // AssetDetailsReader is the narrow media-details read the registry hydrates a
@@ -65,6 +65,30 @@ type AssetDetailsReader interface {
 	Get(ctx context.Context, id string) (*asset.Details, error)
 }
 
+// MediaReader is the PostgreSQL media-SSOT read port consumed by the registry.
+// It is the single owner of the media_assets reads the capability used to run
+// itself: Get, pHash lookup, content-identity lookup and the Drive-file sweep.
+// A nil reader means the media plane is closed and every method fails closed.
+type MediaReader interface {
+	Get(ctx context.Context, id string) (*MediaRecord, error)
+	FindByPHash(ctx context.Context, phash string) (string, error)
+	FindByContentHash(ctx context.Context, sha256 string) (*MediaRecord, error)
+	GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecord, error)
+}
+
+// ClipsRegistryOption customizes the registry without breaking the existing
+// positional constructors. The wiring passes WithMediaReader from the canonical
+// EngineHandle; tests that exercise the legacy details reader can omit it.
+type ClipsRegistryOption func(*ClipsRegistry)
+
+func WithMediaReader(reader MediaReader) ClipsRegistryOption {
+	return func(r *ClipsRegistry) {
+		if r != nil {
+			r.mediaReader = reader
+		}
+	}
+}
+
 // NewClipsRegistry is the canonical ctor. PR 7 (June 2026) added a 6th
 // positional `committer` arg so the registry's UpsertMedia path
 // enforces the canonical outbox+tx writer (VECTOR-002 atomicity
@@ -73,13 +97,20 @@ func NewClipsRegistry(
 	querySvc AssetDetailsReader,
 	processing persistence.AssetProcessingWriter,
 	committer persistence.AssetCommitter,
+	options ...ClipsRegistryOption,
 ) *ClipsRegistry {
-	return &ClipsRegistry{
+	registry := &ClipsRegistry{
 		querySvc:   querySvc,
 		processing: processing,
 		committer:  committer,
 		log:        zap.NewNop(),
 	}
+	for _, option := range options {
+		if option != nil {
+			option(registry)
+		}
+	}
+	return registry
 }
 
 // NewClipsRegistryWithLogger is the wiring variant that threads the
@@ -90,8 +121,9 @@ func NewClipsRegistryWithLogger(
 	processing persistence.AssetProcessingWriter,
 	committer persistence.AssetCommitter,
 	log *zap.Logger,
+	options ...ClipsRegistryOption,
 ) *ClipsRegistry {
-	r := NewClipsRegistry(querySvc, processing, committer)
+	r := NewClipsRegistry(querySvc, processing, committer, options...)
 	if log != nil {
 		r.log = log
 	}
@@ -241,10 +273,10 @@ func persistMediaProcessingState(ctx context.Context, processing persistence.Ass
 }
 
 func (r *ClipsRegistry) GetMedia(ctx context.Context, id string) (*MediaRecord, error) {
-	if pgDB := r.pgDB(); pgDB != nil {
-		return r.getMediaPG(ctx, pgDB, id)
+	if r != nil && r.mediaReader != nil {
+		return r.mediaReader.Get(ctx, id)
 	}
-	if r.querySvc == nil {
+	if r == nil || r.querySvc == nil {
 		// Fail closed: no media read authority is wired, so reporting "not
 		// found" would be a successful no-op for an unreadable catalog.
 		return nil, fmt.Errorf("clips registry: no media details reader wired (media SSOT closed)")
@@ -279,33 +311,23 @@ func (r *ClipsRegistry) DeleteMedia(ctx context.Context, id string) error {
 }
 
 func (r *ClipsRegistry) GetAllWithDriveFileID(ctx context.Context) ([]*MediaRecord, error) {
-	pgDB := r.pgDB()
-	if pgDB == nil {
+	if r == nil || r.mediaReader == nil {
 		// MEDIA-SSOT (Sept 2026): no SQLite fallback. The operational mirror
 		// holds no committed media rows, so degrading onto it could only ever
 		// answer "empty" while PostgreSQL held the assets.
 		return nil, fmt.Errorf("clips registry: no canonical media committer wired (media SSOT closed)")
 	}
-	return r.getAllWithDriveFileIDPG(ctx, pgDB)
+	return r.mediaReader.GetAllWithDriveFileID(ctx)
 }
 
 func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, error) {
 	if phash == "" {
 		return "", nil
 	}
-	pgDB := r.pgDB()
-	if pgDB == nil {
+	if r == nil || r.mediaReader == nil {
 		return "", fmt.Errorf("clips registry: no canonical media committer wired (media SSOT closed)")
 	}
-	var id string
-	err := pgDB.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE phash = $1 AND lifecycle_state != 'DELETED' LIMIT 1`, phash).Scan(&id)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	return id, nil
+	return r.mediaReader.FindByPHash(ctx, phash)
 }
 
 // FindByContentHash resolves the live logical asset that owns a physical
@@ -335,145 +357,10 @@ func (r *ClipsRegistry) FindByContentHash(ctx context.Context, sha256 string) (*
 	if r == nil {
 		return nil, fmt.Errorf("clips registry: content lookup unavailable on nil registry")
 	}
-	pgDB := r.pgDB()
-	if pgDB == nil {
+	if r.mediaReader == nil {
 		return nil, fmt.Errorf("clips registry: no canonical media committer wired (media SSOT closed)")
 	}
-	return r.findByContentHashPG(ctx, pgDB, digestValue)
-}
-
-// findByContentHashPG is the PostgreSQL media SSOT form of FindByContentHash.
-// It resolves the id under the canonical content columns and then hydrates the
-// row through the single shared projection, so a content match and an id match
-// return byte-identical records.
-func (r *ClipsRegistry) findByContentHashPG(ctx context.Context, pgDB *sql.DB, sha256 string) (*MediaRecord, error) {
-	var id string
-	err := pgDB.QueryRowContext(ctx, `
-		SELECT id FROM media_assets
-		WHERE (binary_sha256 = $1 OR content_sha256 = $1) AND UPPER(lifecycle_state) != 'DELETED'
-		ORDER BY id ASC LIMIT 1
-	`, sha256).Scan(&id)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return r.getMediaPG(ctx, pgDB, id)
-}
-
-// pgDB returns the PG media DB when the committer is the PG media
-// committer; nil otherwise (SQLite-only / degraded mode).
-func (r *ClipsRegistry) pgDB() *sql.DB {
-	if r == nil || r.committer == nil {
-		return nil
-	}
-	type pgDBGetter interface{ DB() *sql.DB }
-	if g, ok := r.committer.(pgDBGetter); ok && g != nil {
-		return g.DB()
-	}
-	return nil
-}
-
-// mediaRecordPGColumns is the SINGLE canonical MediaRecord column projection
-// for the PG media path. Both the single-row read and the list read build their
-// statement from it, so the column list and the scan order cannot drift apart.
-//
-// It deliberately stops at the column list and does NOT carry the
-// `FROM media_assets` tail: every statement that reads the table must name its
-// own bind placeholders. percheck_sqlite_media_reader_ban classifies a
-// media_assets read with no placeholder as SQLite dialect (a parameterless
-// full scan of the media SSOT is a defect either way), so a shared
-// `FROM media_assets` fragment would have to be pardoned in the debt register
-// instead of being unambiguously PostgreSQL. Keeping the FROM clause and its
-// parameters at the call site keeps each read self-identifying, which is what
-// lets the register stay empty.
-//
-// MEDIA-IDENTITY (Sept 2026): the projection resolves the CONTENT ADDRESS
-// (SHA-256 byte identity) from `binary_sha256 → content_sha256` and only then
-// the compatibility digest from `content_sha256`. The two are deliberately
-// separate columns of the MediaRecord: the content identity must NEVER fall
-// back to the legacy tier (a row whose content_sha256 is unknown is honestly
-// unknown, not an MD5 by another name), because the dedupe decision compares
-// content identities and an MD5 masquerading as one would collapse two
-// distinct logical assets.
-const mediaRecordPGColumns = `
-		id, COALESCE(source,''), COALESCE(name,''), COALESCE(filename,''),
-		COALESCE(media_type,''), COALESCE(category,''), COALESCE(group_name,''),
-		COALESCE(lifecycle_state,''), COALESCE(index_state,''),
-		COALESCE(metadata_json,'{}'), COALESCE(search_text,''),
-		COALESCE(drive_file_id,''), COALESCE(drive_link,''),
-		COALESCE(download_link,''), COALESCE(local_path,''),
-		COALESCE(NULLIF(binary_sha256,''), NULLIF(content_sha256,'')),
-		COALESCE(content_sha256,''), COALESCE(phash,'')`
-
-// mediaRecordScanner is the common row surface of *sql.Row and *sql.Rows.
-type mediaRecordScanner interface {
-	Scan(dest ...any) error
-}
-
-// scanMediaRecordPG decodes one row projected by mediaRecordPGColumns.
-func scanMediaRecordPG(scanner mediaRecordScanner) (*MediaRecord, error) {
-	var (
-		aID, source, name, filename, mediaType, category, groupName string
-		lifecycleState, indexState, metadataJSON                    string
-		searchText, driveFileID, driveLink, downloadLink, localPath string
-		contentHash, legacyMD5, phash                               string
-	)
-	if err := scanner.Scan(
-		&aID, &source, &name, &filename, &mediaType, &category, &groupName,
-		&lifecycleState, &indexState, &metadataJSON, &searchText,
-		&driveFileID, &driveLink, &downloadLink, &localPath, &contentHash, &legacyMD5, &phash); err != nil {
-		return nil, err
-	}
-	rec := &MediaRecord{
-		ID: aID, Source: source, Name: name, Filename: filename,
-		MediaType: mediaType, Category: category, Group: groupName,
-		Metadata: metadataJSON, ContentHash: contentHash, ContentSHA256: legacyMD5, PHash: phash,
-		DriveFileID: driveFileID, DriveLink: driveLink, DownloadLink: downloadLink,
-		LocalPath: localPath, Status: "ACTIVE",
-	}
-	if lifecycleState == string(asset.StateDeleted) {
-		rec.Status = "DELETED"
-	}
-	return rec, nil
-}
-
-func (r *ClipsRegistry) getMediaPG(ctx context.Context, pgDB *sql.DB, id string) (*MediaRecord, error) {
-	rec, err := scanMediaRecordPG(pgDB.QueryRowContext(ctx, `SELECT `+mediaRecordPGColumns+` FROM media_assets WHERE id = $1`, id))
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return rec, nil
-}
-
-// getAllWithDriveFileIDPG returns every live asset that carries a Drive file
-// id in ONE query. The previous implementation selected the ids and then
-// re-fetched each row by id (a classic N+1: N+1 round-trips and N record
-// decodes for a single sweep).
-func (r *ClipsRegistry) getAllWithDriveFileIDPG(ctx context.Context, pgDB *sql.DB) ([]*MediaRecord, error) {
-	rows, err := pgDB.QueryContext(ctx, `SELECT `+mediaRecordPGColumns+
-		` FROM media_assets WHERE drive_file_id IS NOT NULL AND drive_file_id != $1 AND lifecycle_state != $2`,
-		"", string(asset.StateDeleted))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var out []*MediaRecord
-	for rows.Next() {
-		rec, scanErr := scanMediaRecordPG(rows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		out = append(out, rec)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return r.mediaReader.FindByContentHash(ctx, digestValue)
 }
 
 func detailsToMediaRecord(details *asset.Details) *MediaRecord {

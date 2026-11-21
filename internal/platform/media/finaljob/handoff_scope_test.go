@@ -1,4 +1,4 @@
-package wiring
+package finaljob
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 // handoff scope, injecting it into the context and reading it back through
 // Timing must isolate one handoff's work from a concurrent one.
 func TestBeginHandoffScopesFragmentTiming(t *testing.T) {
-	p := &finalJobSegmentPreparer{}
+	p := &SegmentPreparer{}
 	ctxA, scopeA := p.BeginHandoff(context.Background())
 	ctxB, scopeB := p.BeginHandoff(context.Background())
 	if scopeA == 0 || scopeB == 0 || scopeA == scopeB {

@@ -91,17 +91,6 @@ func firstFinalJobValue(values ...string) string {
 	return "final-job"
 }
 
-func finalJobStringValue(value any) string {
-	if value == nil {
-		return ""
-	}
-	valueString := strings.TrimSpace(fmt.Sprint(value))
-	if valueString == "<nil>" {
-		return ""
-	}
-	return valueString
-}
-
 func appendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, ref map[string]any) {
 	if ref == nil {
 		return

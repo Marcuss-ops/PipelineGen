@@ -311,6 +311,14 @@ func compileOverlayPlanV2(
 			}
 		}
 	}
+	// A promoted card's portrait is not a scene image, so the scene loop above
+	// never sees it. Reattach its already-materialized cache location from the
+	// same bundle that resolved it.
+	for sha, ref := range promotableLocalPaths(result) {
+		if _, exists := localBySHA[sha]; !exists {
+			localBySHA[sha] = ref
+		}
+	}
 	if plan.Background != nil {
 		for j := range plan.Background.AssetRefs {
 			ref := &plan.Background.AssetRefs[j]

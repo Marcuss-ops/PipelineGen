@@ -328,6 +328,25 @@ func TestSceneIRSegmentEnricherCompilesIdentityAndExtractsEntities(t *testing.T)
 	}
 }
 
+func TestSceneIRSegmentEnricherDropsImageIntentNotAnchoredToItsEntity(t *testing.T) {
+	const source = "Corrado Augias racconta il suo lavoro in televisione."
+	const name = "Corrado Augias"
+	ner := stubVisualNER{entities: []VisualEntity{{
+		Text: name, Type: scriptpkg.EntityTypePerson, Score: 0.99,
+		Start: 0, End: len(name), Evidence: name,
+		SearchIntents: []string{"Paris", "Corrado Augias portrait"},
+	}}}
+	enricher, err := NewSceneIRSegmentEnricher(ner, stubPhraseSelector{})
+	require.NoError(t, err)
+	result, err := enricher.Enrich(context.Background(), &scriptpkg.ResolvedGenerationPlan{Language: "it"}, scriptpkg.SpecScene{
+		ID: "corrado-augias", Text: source,
+	})
+	require.NoError(t, err)
+	require.Len(t, result.Insights.Entities, 1)
+	require.Equal(t, []string{"Corrado Augias portrait"}, result.Insights.Entities[0].SearchIntents)
+	require.Equal(t, []string{"Corrado Augias portrait"}, result.Insights.ImageQueries)
+}
+
 // TestSceneIRSegmentEnricherPrefersCanonicalSegmentID prevents the legacy
 // scene-N identifier from replacing the source segment identity.
 func TestSceneIRSegmentEnricherPrefersCanonicalSegmentID(t *testing.T) {
@@ -581,7 +600,7 @@ func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testin
 	segments := []scriptpkg.VidRushSegmentResult{{
 		Insights: scriptpkg.SegmentInsights{
 			Entities: []scriptpkg.ExtractedEntity{
-				{Value: "Michael Jordan", Type: "PERSON", SearchIntents: []string{"Michael Jordan"}},
+				{Value: "Michael Jordan", Type: "PERSON", SearchIntents: []string{"Michael Jordan", "Paris"}},
 				{Value: "career", Type: "CONCEPT"},
 				{Value: "2025", Type: "DATE"},
 			},
@@ -602,7 +621,7 @@ func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testin
 		t.Fatalf("phrase/word surface = %+v/%+v, want phrase only", got[0].Insights.ImportantPhrases, got[0].Insights.ImportantWords)
 	}
 	if len(got[0].Insights.ImageQueries) != 1 || got[0].Insights.ImageQueries[0] != "Michael Jordan" {
-		t.Fatalf("image queries = %+v, want only entity query", got[0].Insights.ImageQueries)
+		t.Fatalf("image queries = %+v, want only the entity-anchored query", got[0].Insights.ImageQueries)
 	}
 }
 

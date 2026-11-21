@@ -90,9 +90,13 @@ type Canvas struct {
 	// LongPhraseMotions is the certified long-phrase (6+ words) entrance pool.
 	// It has no per-length buckets: the planner rotates this pool with the same
 	// deterministic sampler as the short lane, and the pin still wins.
-	LongPhraseMotions        []string          `json:"long_phrase_motions,omitempty"`
-	ImageMotions             []string          `json:"image_motions,omitempty"`
-	ImageWithTextMotions     []string          `json:"image_with_text_motions,omitempty"`
+	LongPhraseMotions    []string `json:"long_phrase_motions,omitempty"`
+	ImageMotions         []string `json:"image_motions,omitempty"`
+	ImageWithTextMotions []string `json:"image_with_text_motions,omitempty"`
+	// ImagePresets is the certified `preset.image` vocabulary. The planner's
+	// seeded sampler selects from it when it promotes an entity card to an
+	// image, so the Rust side never hardcodes a Chronon-owned preset id.
+	ImagePresets             []string          `json:"image_presets,omitempty"`
 	EntityImageMotions       []string          `json:"entity_image_motions,omitempty"`
 	EntityCaptionMotions     []string          `json:"entity_caption_motions,omitempty"`
 	ImageMotionOffset        int               `json:"image_motion_offset,omitempty"`
@@ -466,9 +470,25 @@ type EntityOccurrence struct {
 
 // Media is the materialized/verified media and certified scene image index.
 type Media struct {
-	MaterializedAssets   []AssetRef               `json:"materialized_assets,omitempty"`
-	VerifiedEntityAssets []VerifiedEntityAsset    `json:"verified_entity_assets,omitempty"`
-	SceneImageCandidates []SceneImageCandidateSet `json:"scene_image_candidates,omitempty"`
+	MaterializedAssets   []AssetRef            `json:"materialized_assets,omitempty"`
+	VerifiedEntityAssets []VerifiedEntityAsset `json:"verified_entity_assets,omitempty"`
+	// PromotableEntityAssets is the separate surface the planner promotes
+	// from. `verified_entity_assets` already makes a card an image; this surface
+	// carries the portraits only the producer's resolver can render (bundle-only
+	// identities and aliases), which the Go media plane used to attach after the
+	// seal.
+	PromotableEntityAssets []PromotableEntityAsset  `json:"promotable_entity_assets,omitempty"`
+	SceneImageCandidates   []SceneImageCandidateSet `json:"scene_image_candidates,omitempty"`
+}
+
+// PromotableEntityAsset is one portrait the planner may promote onto an
+// identity card. `entity_id` is the plan occurrence identity; the same shape as
+// VerifiedEntityAsset is deliberate — the two differ by ownership, not by
+// content.
+type PromotableEntityAsset struct {
+	EntityID          string     `json:"entity_id,omitempty"`
+	CanonicalEntityID string     `json:"canonical_entity_id,omitempty"`
+	Assets            []AssetRef `json:"assets,omitempty"`
 }
 
 // VerifiedEntityAsset is the certified asset set for one entity identity.

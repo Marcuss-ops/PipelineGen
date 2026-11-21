@@ -15,6 +15,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -542,6 +543,12 @@ func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, c
 			}
 			scheduledStart, scheduledEnd, scheduleErr := scheduleFinalJobOverlayFrames(result, item, startFrame, endFrame, fpsNum, fpsDen, admittedFrames)
 			if scheduleErr != nil {
+				if errors.Is(scheduleErr, errFinalJobImageNoFreeGap) {
+					// Images are optional accent layers. A completely occupied scene
+					// must not make the entire final video fail; text and numeric
+					// overlays remain fail-closed because they carry editorial content.
+					continue
+				}
 				return nil, scheduleErr
 			}
 			startFrame, endFrame = scheduledStart, scheduledEnd

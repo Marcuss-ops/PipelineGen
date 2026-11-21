@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -139,7 +140,7 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 			}
 			for _, query := range entity.SearchIntents {
 				key := strings.ToLower(strings.TrimSpace(query))
-				if key == "" {
+				if key == "" || !imageQueryAnchoredToEntity(key, entity.Value) {
 					continue
 				}
 				if _, ok := seenQueries[key]; ok {
@@ -152,6 +153,28 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 		out[i].Insights.ImageQueries = queries
 	}
 	return out
+}
+
+// imageQueryAnchoredToEntity rejects a semantic search intent that drifted
+// away from the entity that owns it. Its phrase containment check mirrors the
+// lexical entity-term check in mediacert.queryOwnedBy; filtering an orphan
+// intent here keeps that strict contract useful without letting an unrelated
+// place or phrase (for example "Paris" on a Corrado Augias segment) poison
+// the whole scene's image fan-out.
+func imageQueryAnchoredToEntity(query, entity string) bool {
+	query = normalizeImageQueryAnchor(query)
+	entity = normalizeImageQueryAnchor(entity)
+	if query == "" || entity == "" {
+		return false
+	}
+	return strings.Contains(" "+query+" ", " "+entity+" ") ||
+		strings.Contains(" "+entity+" ", " "+query+" ")
+}
+
+func normalizeImageQueryAnchor(value string) string {
+	return strings.Join(strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}), " ")
 }
 
 // toMediaResultSegments projects the VidRushSegmentResult slice into the

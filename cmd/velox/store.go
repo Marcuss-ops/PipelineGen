@@ -13,8 +13,8 @@ import (
 
 // jobRecord is one persisted submission. It carries everything a later command
 // needs: the endpoint, the deterministic Idempotency-Key (so `velox replay`
-// reuses it instead of inventing a new one) and the payload path (so replay can
-// re-read the exact bytes).
+// reuses it instead of inventing a new one) and the payload path + digest (so
+// replay can prove it is re-sending the exact bytes that key was issued for).
 type jobRecord struct {
 	JobID          string    `json:"job_id"`
 	Endpoint       string    `json:"endpoint"`

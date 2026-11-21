@@ -51,6 +51,7 @@ package gencore
 
 import (
 	"context"
+	"fmt"
 
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 
@@ -107,6 +108,19 @@ func (e *Engine) GenerationConcurrency() int {
 		return 0
 	}
 	return e.generationGate.Capacity()
+}
+
+// CheckGenerationHealth runs an optional provider liveness probe before a
+// script starts. Providers without a health surface keep the existing behavior.
+func (e *Engine) CheckGenerationHealth(ctx context.Context) error {
+	if e == nil || e.ollamaGen == nil {
+		return fmt.Errorf("engine: generation provider is not configured")
+	}
+	checker, ok := e.ollamaGen.(interface{ CheckHealth(context.Context) error })
+	if !ok {
+		return nil
+	}
+	return checker.CheckHealth(ctx)
 }
 
 // scriptOllamaGenerator is the narrow interface satisfied by both

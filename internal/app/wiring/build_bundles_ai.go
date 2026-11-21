@@ -52,6 +52,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 import (
@@ -444,7 +445,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		if artErr != nil {
 			return nil, fmt.Errorf("compose domains: artifact blob store: %w", artErr)
 		}
-		artifactRepo := artifacts.NewSQLiteRepository(dbs.DualPool.Writer)
+		artifactRepo := artifactsinfra.NewSQLiteRepository(dbs.DualPool.Writer)
 		degraded.ArtifactService = artifacts.NewService(artifactBlobStore, artifactRepo, log)
 		return degraded, nil
 	default:

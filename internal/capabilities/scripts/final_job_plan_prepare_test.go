@@ -11,9 +11,9 @@ type countingSegmentPreparer struct {
 	calls int
 }
 
-func (p *countingSegmentPreparer) PrepareFinalJobVideoSegment(_ context.Context, _ map[string]any, _ FinalJobVideoSegmentRequest) (map[string]any, error) {
+func (p *countingSegmentPreparer) PrepareFinalJobVideoSegment(_ context.Context, _ FinalJobRuntimeAssetV1, _ FinalJobVideoSegmentRequest) (FinalJobRuntimeAssetV1, error) {
 	p.calls++
-	return nil, nil
+	return FinalJobRuntimeAssetV1{}, nil
 }
 
 // stockBackedFinalJobPlan is the r14 shape: every scene carries a concrete

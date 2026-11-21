@@ -17,6 +17,14 @@ func SelectEntityImagePreset(jobID, sceneID, itemID string) string {
 	return selectImagePreset(jobID, sceneID, itemID)
 }
 
+// ImagePresetCandidates returns the certified `preset.image` vocabulary the
+// seeded entity-image sampler selects from. It travels in the v2 request so the
+// Rust planner can promote a card with the same entrance preset the Go sampler
+// used to choose, without hardcoding a Chronon-owned id.
+func ImagePresetCandidates() []string {
+	return append([]string(nil), imagePresetCandidates...)
+}
+
 // CertifiedSingleImageMotions returns the complete certified single-image
 // catalog, including the recipe families whose recipe lowers on one image.
 // Multi-image stacks stay in the group lane and are not part of this pool.

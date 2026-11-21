@@ -14,7 +14,7 @@ func usage(w *os.File) {
 Usage:
   velox submit   <job-alias|--path PATH> --key PROJECT --payload FILE [--m2m] [--json]
   velox poll     <job_id> [--m2m] [--timeout 30m] [--interval 3s] [--json]
-  velox replay   <job_id> [--json]
+  velox replay   <job_id> [--m2m] [--json]
   velox download <asset_id> [--source SOURCE] [-o FILE]
   velox download-final <job_id> [-o FILE] [--token-file FILE] [--json]
   velox burn-subtitles --input FILE --out FILE (--job-full FILE | --ass FILE)

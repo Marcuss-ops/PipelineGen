@@ -1,4 +1,4 @@
-package wiring
+package finaljob
 
 import (
 	"context"
@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	segment "github.com/Marcuss-ops/PipelineGen/internal/kernel/media/finaljob"
 )
 
 // Fragment I/O: the work identity of a fragment, the lock that makes identical
@@ -27,7 +27,7 @@ import (
 // run once, and the certified bytes each key resolves to.
 // lockFragment waits only for identical cacheable work and honors cancellation.
 // A failed producer leaves no cache entry, so the next waiter retries normally.
-func (p *finalJobSegmentPreparer) lockFragment(ctx context.Context, key string) (func(), error) {
+func (p *SegmentPreparer) lockFragment(ctx context.Context, key string) (func(), error) {
 	p.fragmentLocksMu.Lock()
 	if p.fragmentLocks == nil {
 		p.fragmentLocks = make(map[string]*finalJobFragmentLock)
@@ -71,7 +71,7 @@ func (p *finalJobSegmentPreparer) lockFragment(ctx context.Context, key string) 
 // window, encoder policy and the producing path (copy or encode). The cache, the
 // work lock and the tests that pin that contract all ask for it here, so a
 // second composition of the key cannot drift from the one production uses.
-func (p *finalJobSegmentPreparer) fragmentWorkKey(request scriptgen.FinalJobVideoSegmentRequest, sourceSHA, codec string) string {
+func (p *SegmentPreparer) fragmentWorkKey(request segment.VideoSegmentRequest, sourceSHA, codec string) string {
 	path := "encode-only"
 	if finalJobWindowOnGOPGrid(request) && finalJobCopyWindowsEnabled() {
 		path = "copy-enabled"
@@ -79,7 +79,7 @@ func (p *finalJobSegmentPreparer) fragmentWorkKey(request scriptgen.FinalJobVide
 	return p.fragmentCacheKey(request, sourceSHA, path+"|"+codec)
 }
 
-func (p *finalJobSegmentPreparer) fragmentCacheKey(request scriptgen.FinalJobVideoSegmentRequest, sourceSHA, codec string) string {
+func (p *SegmentPreparer) fragmentCacheKey(request segment.VideoSegmentRequest, sourceSHA, codec string) string {
 	policy := strings.ToLower(strings.TrimSpace(codec)) + "|" +
 		strings.ToLower(strings.TrimSpace(p.policy.Preset)) + "|" + strconv.Itoa(p.policy.CRF)
 	// The placement tag is part of the work identity: a tagged re-prepare must
@@ -92,7 +92,7 @@ func (p *finalJobSegmentPreparer) fragmentCacheKey(request scriptgen.FinalJobVid
 // cachedFragment returns the path and certified identity of a previously
 // prepared fragment. Its first use in this process is checked against bytes;
 // later checks use the kernel verifier's size/mtime invalidation rule.
-func (p *finalJobSegmentPreparer) cachedFragment(key string, frameCount, durationUS int64) (string, string, int64, bool) {
+func (p *SegmentPreparer) cachedFragment(key string, frameCount, durationUS int64) (string, string, int64, bool) {
 	if p.cacheDir == "" || len(key) < 2 {
 		return "", "", 0, false
 	}
@@ -130,7 +130,7 @@ func (p *finalJobSegmentPreparer) cachedFragment(key string, frameCount, duratio
 
 // storeFragment keeps a certified fragment for the next run. Failures are
 // silent: the cache is an optimization and must never fail a render.
-func (p *finalJobSegmentPreparer) storeFragment(key, path, sha string, size, frameCount, durationUS int64) {
+func (p *SegmentPreparer) storeFragment(key, path, sha string, size, frameCount, durationUS int64) {
 	if p.cacheDir == "" || len(key) < 2 {
 		return
 	}
@@ -184,7 +184,7 @@ func (p *finalJobSegmentPreparer) storeFragment(key, path, sha string, size, fra
 
 // rememberFragmentPath records where a certified fragment's bytes live so a
 // duplicate placement in the same run can reuse them without a transfer.
-func (p *finalJobSegmentPreparer) rememberFragmentPath(sha, path string) {
+func (p *SegmentPreparer) rememberFragmentPath(sha, path string) {
 	sha = strings.ToLower(strings.TrimSpace(sha))
 	if len(sha) != 64 || strings.TrimSpace(path) == "" {
 		return
@@ -197,7 +197,7 @@ func (p *finalJobSegmentPreparer) rememberFragmentPath(sha, path string) {
 	p.paths[sha] = path
 }
 
-func (p *finalJobSegmentPreparer) fragmentPath(sha string) string {
+func (p *SegmentPreparer) fragmentPath(sha string) string {
 	p.pathsMu.Lock()
 	path := p.paths[strings.ToLower(strings.TrimSpace(sha))]
 	p.pathsMu.Unlock()
@@ -219,7 +219,7 @@ func (p *finalJobSegmentPreparer) fragmentPath(sha string) string {
 	return path
 }
 
-func finalJobFragmentCacheDir(dataDir string) string {
+func FragmentCacheDir(dataDir string) string {
 	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR"))
 	switch strings.ToLower(raw) {
 	case "off", "disabled", "none":
@@ -260,7 +260,7 @@ type finalJobFragmentLock struct {
 // or only has to cut the window. The answer is memoized by content hash: a
 // fragment is a window of bytes we already looked at, so paying a probe per
 // fragment would redo the same inspection N times.
-func (p *finalJobSegmentPreparer) sourceNeedsNormalization(ctx context.Context, path, sha string) (bool, error) {
+func (p *SegmentPreparer) sourceNeedsNormalization(ctx context.Context, path, sha string) (bool, error) {
 	if path == "" || sha == "" {
 		return true, nil
 	}
@@ -331,7 +331,7 @@ func (p *finalJobSegmentPreparer) sourceNeedsNormalization(ctx context.Context, 
 // lockSource serializes preparation of the same source bytes across lanes: the
 // first fragment downloads them, every other lane waits and reads the verified
 // copy instead of asking for the same bytes a second time.
-func (p *finalJobSegmentPreparer) lockSource(key string) func() {
+func (p *SegmentPreparer) lockSource(key string) func() {
 	p.sourcesMu.Lock()
 	if p.sources == nil {
 		p.sources = make(map[string]*sync.Mutex)
@@ -349,7 +349,7 @@ func (p *finalJobSegmentPreparer) lockSource(key string) func() {
 // stagedSource returns a verified local copy of the source bytes and how long
 // obtaining it took. The bytes are hash-addressed, so they are fetched ONCE per
 // source: a source cache hit costs one stat and one hash, never a transfer.
-func (p *finalJobSegmentPreparer) stagedSource(ctx context.Context, sourceURL, expectedSHA string, expectedSize int64, workDir string) (string, time.Duration, error) {
+func (p *SegmentPreparer) stagedSource(ctx context.Context, sourceURL, expectedSHA string, expectedSize int64, workDir string) (string, time.Duration, error) {
 	stage := func(target string) (string, time.Duration, error) {
 		started := time.Now()
 		if err := p.downloadAndVerify(ctx, sourceURL, expectedSHA, expectedSize, target); err != nil {
@@ -389,7 +389,7 @@ func (p *finalJobSegmentPreparer) stagedSource(ctx context.Context, sourceURL, e
 	return cached, elapsed, nil
 }
 
-func (p *finalJobSegmentPreparer) downloadAndVerify(ctx context.Context, sourceURL, expectedSHA string, expectedSize int64, target string) error {
+func (p *SegmentPreparer) downloadAndVerify(ctx context.Context, sourceURL, expectedSHA string, expectedSize int64, target string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return fmt.Errorf("build HTTPS source request: %w", err)
@@ -433,7 +433,7 @@ func (p *finalJobSegmentPreparer) downloadAndVerify(ctx context.Context, sourceU
 // verifyLocalFile delegates all preparer-side file identity checks to the
 // kernel digest verifier. Content-addressed files are immutable after publish;
 // a stat change invalidates the memo and forces a new SHA-256 read.
-func (p *finalJobSegmentPreparer) verifyLocalFile(path string) (string, int64, error) {
+func (p *SegmentPreparer) verifyLocalFile(path string) (string, int64, error) {
 	if p != nil && p.verifier != nil {
 		return p.verifier.Verify(path)
 	}
@@ -443,7 +443,7 @@ func (p *finalJobSegmentPreparer) verifyLocalFile(path string) (string, int64, e
 // downloadReusedFragment stages a published fragment by its content address. It
 // has no declared size to compare against, so the digest is the only authority:
 // bytes that do not hash to the expected SHA-256 never reach the muxer.
-func (p *finalJobSegmentPreparer) downloadReusedFragment(ctx context.Context, sourceURL, expectedSHA, target string) error {
+func (p *SegmentPreparer) downloadReusedFragment(ctx context.Context, sourceURL, expectedSHA, target string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return fmt.Errorf("build HTTPS fragment request: %w", err)

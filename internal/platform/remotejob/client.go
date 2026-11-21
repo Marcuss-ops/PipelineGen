@@ -20,21 +20,20 @@ type Client struct {
 	HTTP           *http.Client
 	PollInterval   time.Duration
 	PollTimeout    time.Duration
-	// QueueTimeout bounds only the NOT-STARTED portion of a BOUNDED attach.
-	// A job the Master has not started cannot finish, so waiting the whole
-	// render budget for it changes nothing: r9 sat PENDING for 46 minutes and
-	// was then cancelled. Zero disables the rule. An unbounded attach
-	// (budget <= 0, the resume path) ignores it deliberately: by then the
-	// render exists and abandoning it would only duplicate the wait.
+	// QueueTimeout bounds the Master's prefetch/dispatch phase using the
+	// Master's creation time, including across resumed attaches. A bounded
+	// attach also applies it to a job that has not received started_at. Zero
+	// disables both watchdogs.
 	QueueTimeout time.Duration
 }
 
 type Result struct {
-	JobID       string
-	Status      string
-	WorkerID    string
-	ArtifactURL string
-	SHA256      string
+	JobID          string
+	Status         string
+	DispatchStatus string
+	WorkerID       string
+	ArtifactURL    string
+	SHA256         string
 	// Timing decomposes the wait on the Master clock. Zero fields mean the
 	// Master did not report that phase (or the job never reached it); they are
 	// never inferred from local wall time, because the render outlives any one
@@ -348,9 +347,34 @@ func (c *Client) Attach(ctx context.Context, jobID string, budget time.Duration)
 		// Master kept the job PENDING for 46 minutes and then cancelled it, and
 		// the local run held its worker for the whole time. The handle is still
 		// returned, so the next attempt resumes the SAME Master job.
-		if budget > 0 && c.QueueTimeout > 0 && result.Timing.StartedAt.IsZero() && time.Since(started) > c.QueueTimeout {
-			return finish(last, fmt.Errorf("remote job %s still %s after %s in queue (queue budget): %w",
-				jobID, last.Status, c.QueueTimeout, ErrRemotePending))
+		if c.QueueTimeout > 0 && remoteJobStillPrefetching(result.DispatchStatus) {
+			queuedFor := time.Since(started)
+			if !result.Timing.CreatedAt.IsZero() {
+				queuedFor = time.Since(result.Timing.CreatedAt)
+			}
+			if queuedFor < 0 {
+				queuedFor = 0
+			}
+			if queuedFor > c.QueueTimeout {
+				return finish(last, fmt.Errorf("remote job %s remains in prefetch phase %q for %s (cumulative prefetch watchdog): %w",
+					jobID, result.DispatchStatus, queuedFor, ErrRemotePending))
+			}
+		}
+		if budget > 0 && c.QueueTimeout > 0 && result.Timing.StartedAt.IsZero() {
+			queuedFor := time.Since(started)
+			if !result.Timing.CreatedAt.IsZero() {
+				queuedFor = time.Since(result.Timing.CreatedAt)
+			}
+			if queuedFor < 0 {
+				queuedFor = 0
+			}
+			if queuedFor > c.QueueTimeout {
+				// A per-attach timer resets on every local retry. Use the Master's
+				// creation time when available so a job stuck in prefetch cannot
+				// remain pending forever across repeated resumes.
+				return finish(last, fmt.Errorf("remote job %s stalled in %s for %s without a worker (queue budget): %w",
+					jobID, last.Status, queuedFor, ErrRemotePending))
+			}
 		}
 		// A QUEUED job cannot complete, so a long gap there costs nothing; a
 		// STARTED one can finish at any moment, and every second after the start

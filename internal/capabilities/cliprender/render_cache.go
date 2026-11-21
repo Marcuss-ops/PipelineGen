@@ -43,40 +43,24 @@
 package cliprender
 
 import (
-	"context"
-	"database/sql"
 	"errors"
-	"fmt"
-	"strings"
 
 	"go.uber.org/zap"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // RenderCacheRecord is the durable cache value addressed by fingerprint.
-type RenderCacheRecord struct {
-	Fingerprint string
-	AssetID     string
-	StorageKey  string
-	ArtifactURL string
-	ContentType string
-	SHA256      string
-	SizeBytes   int64
-	DurationSec float64
-	Width       uint32
-	Height      uint32
-	FPSNum      uint32
-	FPSDen      uint32
-	Backend     RenderBackend
-}
+// The record and the port live in the kernel so the PostgreSQL adapter can
+// implement them without importing this capability (RA-11); the aliases keep
+// the cliprender API unchanged for every caller.
+type RenderCacheRecord = kernelmedia.RenderCacheRecord
 
 // RenderCache is the port for the deterministic render cache.
-type RenderCache interface {
-	Get(ctx context.Context, fingerprint string) (*RenderCacheRecord, error)
-	Put(ctx context.Context, rec *RenderCacheRecord) error
-}
+type RenderCache = kernelmedia.RenderCache
 
 // ErrCacheMiss is returned when no cache entry exists for a fingerprint.
-var ErrCacheMiss = errors.New("clip.render cache: miss")
+var ErrCacheMiss = kernelmedia.ErrCacheMiss
 
 // logCacheLookupFailure records a cache read that failed for a reason other
 // than a miss. ErrCacheMiss is the normal path and stays silent; anything else
@@ -90,168 +74,4 @@ func logCacheLookupFailure(log *zap.Logger, scope, fingerprint string, err error
 		zap.String("scope", scope),
 		zap.String("fingerprint", digestPrefix(fingerprint)),
 		zap.Error(err))
-}
-
-var _ RenderCache = (*pgRenderCache)(nil)
-
-// pgRenderCache is the PostgreSQL implementation.
-//
-// DDL (applied via ensureRenderCacheTable):
-//
-//	CREATE TABLE IF NOT EXISTS clip_render_cache (
-//	    fingerprint  TEXT PRIMARY KEY,
-//	    asset_id     TEXT NOT NULL,
-//	    storage_key  TEXT NOT NULL DEFAULT '',
-//	    artifact_url TEXT NOT NULL DEFAULT '',
-//	    content_type TEXT NOT NULL DEFAULT '',
-//	    sha256       TEXT NOT NULL,
-//	    size_bytes   BIGINT NOT NULL,
-//	    duration_sec REAL NOT NULL DEFAULT 0,
-//	    width        INTEGER NOT NULL DEFAULT 0,
-//	    height       INTEGER NOT NULL DEFAULT 0,
-//	    fps_num      INTEGER NOT NULL DEFAULT 0,
-//	    fps_den      INTEGER NOT NULL DEFAULT 1,
-//	    backend      TEXT NOT NULL DEFAULT '',
-//	    created_at   TEXT NOT NULL DEFAULT ''
-//	);
-//
-// The table lives in the PostgreSQL media database (same DSN as
-// MediaSearcher/MediaCommitter). No trigger, no FK: the entry is a hint that
-// points at a row in media_assets, and Get() validates that row explicitly
-// (see the staleness contract above) rather than trusting the hint.
-type pgRenderCache struct {
-	db *sql.DB
-}
-
-// NewPostgresRenderCache constructs the cache. db is the PostgreSQL
-// media *sql.DB (nil → fail-closed at ensure time, never a silent SQLite
-// fallback).
-func NewPostgresRenderCache(db *sql.DB) RenderCache {
-	if db == nil {
-		return nil
-	}
-	return &pgRenderCache{db: db}
-}
-
-// renderCacheDDL is the full cache schema applied at boot. It owns exactly the
-// whole-clip table and its asset index; the segmented chunk table was removed
-// with the ChunkRenderCache port (no producer, no reader) and is deliberately
-// not recreated. An existing clip_render_chunk_cache in a deployed database is
-// left untouched: no destructive migration.
-const renderCacheDDL = `
-		CREATE TABLE IF NOT EXISTS clip_render_cache (
-			fingerprint  TEXT PRIMARY KEY,
-			asset_id     TEXT NOT NULL,
-			storage_key  TEXT NOT NULL DEFAULT '',
-			artifact_url TEXT NOT NULL DEFAULT '',
-			content_type TEXT NOT NULL DEFAULT '',
-			sha256       TEXT NOT NULL,
-			size_bytes   BIGINT NOT NULL,
-			duration_sec REAL  NOT NULL DEFAULT 0,
-			width        INTEGER NOT NULL DEFAULT 0,
-			height       INTEGER NOT NULL DEFAULT 0,
-			fps_num      INTEGER NOT NULL DEFAULT 0,
-			fps_den      INTEGER NOT NULL DEFAULT 1,
-			backend      TEXT NOT NULL DEFAULT '',
-			created_at   TEXT NOT NULL DEFAULT ''
-		);
-		CREATE INDEX IF NOT EXISTS idx_clip_render_cache_asset
-			ON clip_render_cache (asset_id);
-	`
-
-func ensureRenderCacheTable(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, renderCacheDDL)
-	if err != nil {
-		return fmt.Errorf("clip.render cache: ensure table: %w", err)
-	}
-	return nil
-}
-
-// EnsureRenderCacheTable ensures the cache table exists. Called once at
-// boot from the composition root; safe to call concurrently.
-func EnsureRenderCacheTable(ctx context.Context, db *sql.DB) error {
-	if db == nil {
-		return errors.New("clip.render cache: media DB is not deployed (nil handle)")
-	}
-	return ensureRenderCacheTable(ctx, db)
-}
-
-// renderCacheGetQuery resolves a fingerprint to a certified locator, but only
-// while the media row it references still carries the same bytes.
-//
-// The JOIN is the whole point: without it the cache advertised artifacts that
-// had already been deleted or overwritten. `lifecycle_state`/`deleted_at`
-// cover the retirement states media_assets can be left in; a row that is no
-// longer ACTIVE must not be served as a hit.
-const renderCacheGetQuery = `
-		SELECT c.fingerprint, c.asset_id, c.storage_key, c.artifact_url, c.content_type,
-		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend
-		FROM clip_render_cache c
-		JOIN media_assets a
-		  ON a.id = c.asset_id
-		 AND a.content_sha256 = c.sha256
-		WHERE c.fingerprint = $1
-		  AND a.lifecycle_state = 'ACTIVE'
-		  AND a.deleted_at = ''`
-
-func (c *pgRenderCache) Get(ctx context.Context, fingerprint string) (*RenderCacheRecord, error) {
-	fingerprint = strings.ToLower(strings.TrimSpace(fingerprint))
-	if fingerprint == "" {
-		return nil, fmt.Errorf("clip.render cache: fingerprint is required")
-	}
-	if c == nil || c.db == nil {
-		return nil, fmt.Errorf("clip.render cache: not wired (media DB nil)")
-	}
-	row := c.db.QueryRowContext(ctx, renderCacheGetQuery, fingerprint)
-	var r RenderCacheRecord
-	var backend string
-	if err := row.Scan(&r.Fingerprint, &r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
-		&r.SHA256, &r.SizeBytes, &r.DurationSec, &r.Width, &r.Height, &r.FPSNum, &r.FPSDen, &backend); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrCacheMiss
-		}
-		return nil, fmt.Errorf("clip.render cache: get %q: %w", fingerprint, err)
-	}
-	r.Backend = RenderBackend(backend)
-	return &r, nil
-}
-
-func (c *pgRenderCache) Put(ctx context.Context, rec *RenderCacheRecord) error {
-	if rec == nil || strings.TrimSpace(rec.Fingerprint) == "" {
-		return fmt.Errorf("clip.render cache: record/fingerprint is required")
-	}
-	if strings.TrimSpace(rec.SHA256) == "" || rec.SizeBytes <= 0 {
-		return fmt.Errorf("clip.render cache: sha256/size are required")
-	}
-	if c == nil || c.db == nil {
-		return fmt.Errorf("clip.render cache: not wired (media DB nil)")
-	}
-	const q = `
-		INSERT INTO clip_render_cache
-			(fingerprint, asset_id, storage_key, artifact_url, content_type,
-			 sha256, size_bytes, duration_sec, width, height, fps_num, fps_den, backend, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, NOW()::text)
-		ON CONFLICT (fingerprint) DO UPDATE SET
-			asset_id     = EXCLUDED.asset_id,
-			storage_key  = EXCLUDED.storage_key,
-			artifact_url = EXCLUDED.artifact_url,
-			content_type = EXCLUDED.content_type,
-			sha256       = EXCLUDED.sha256,
-			size_bytes   = EXCLUDED.size_bytes,
-			duration_sec = EXCLUDED.duration_sec,
-			width        = EXCLUDED.width,
-			height       = EXCLUDED.height,
-			fps_num      = EXCLUDED.fps_num,
-			fps_den      = EXCLUDED.fps_den,
-			backend      = EXCLUDED.backend,
-			created_at   = NOW()::text
-	`
-	_, err := c.db.ExecContext(ctx, q,
-		strings.ToLower(rec.Fingerprint), rec.AssetID, rec.StorageKey, rec.ArtifactURL, rec.ContentType,
-		strings.ToLower(rec.SHA256), rec.SizeBytes, rec.DurationSec,
-		rec.Width, rec.Height, rec.FPSNum, rec.FPSDen, string(rec.Backend))
-	if err != nil {
-		return fmt.Errorf("clip.render cache: put %q: %w", rec.Fingerprint, err)
-	}
-	return nil
 }

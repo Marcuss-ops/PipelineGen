@@ -1,10 +1,12 @@
-package artifacts
+package artifactsinfra
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 	"time"
+
+	artifacts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 )
 
 // SQLiteRepository persists artifact metadata in the unified media.db.sqlite.
@@ -17,10 +19,8 @@ func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 	return &SQLiteRepository{db: db}
 }
 
-// SchemaDDL returns the DDL for the artifacts table.
-
 // Create inserts a new artifact record.
-func (r *SQLiteRepository) Create(ctx context.Context, a *Artifact) error {
+func (r *SQLiteRepository) Create(ctx context.Context, a *artifacts.Artifact) error {
 	now := time.Now().UTC()
 	if a.CreatedAt.IsZero() {
 		a.CreatedAt = now
@@ -41,8 +41,8 @@ func (r *SQLiteRepository) Create(ctx context.Context, a *Artifact) error {
 }
 
 // Get retrieves an artifact by ID.
-func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Artifact, error) {
-	var a Artifact
+func (r *SQLiteRepository) Get(ctx context.Context, id string) (*artifacts.Artifact, error) {
+	var a artifacts.Artifact
 	var createdAt, updatedAt string
 	var verifiedAt sql.NullString
 
@@ -73,8 +73,8 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Artifact, error
 }
 
 // GetBySHA256 retrieves an artifact by its SHA-256 hash.
-func (r *SQLiteRepository) GetBySHA256(ctx context.Context, sha256 string) (*Artifact, error) {
-	var a Artifact
+func (r *SQLiteRepository) GetBySHA256(ctx context.Context, sha256 string) (*artifacts.Artifact, error) {
+	var a artifacts.Artifact
 	var createdAt, updatedAt string
 	var verifiedAt sql.NullString
 
@@ -107,7 +107,7 @@ func (r *SQLiteRepository) GetBySHA256(ctx context.Context, sha256 string) (*Art
 
 // UpdateStatus transitions an artifact to a new status and updates its
 // storage metadata atomically. Uses parameterized SQL for verified_at.
-func (r *SQLiteRepository) UpdateStatus(ctx context.Context, id string, status Status, sha256 string, sizeBytes int64) error {
+func (r *SQLiteRepository) UpdateStatus(ctx context.Context, id string, status artifacts.Status, sha256 string, sizeBytes int64) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	// Set verified_at via CASE expression for READY status
@@ -129,7 +129,7 @@ func (r *SQLiteRepository) UpdateStatus(ctx context.Context, id string, status S
 }
 
 // ListByJob returns all artifacts associated with a job.
-func (r *SQLiteRepository) ListByJob(ctx context.Context, jobID string) ([]Artifact, error) {
+func (r *SQLiteRepository) ListByJob(ctx context.Context, jobID string) ([]artifacts.Artifact, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, job_id, kind, status, storage_backend,
 			storage_key, sha256, size_bytes, mime_type,
@@ -141,9 +141,9 @@ func (r *SQLiteRepository) ListByJob(ctx context.Context, jobID string) ([]Artif
 	}
 	defer func() { _ = rows.Close() }()
 
-	var artifacts []Artifact
+	var out []artifacts.Artifact
 	for rows.Next() {
-		var a Artifact
+		var a artifacts.Artifact
 		var createdAt, updatedAt string
 		var verifiedAt sql.NullString
 		if err := rows.Scan(
@@ -159,15 +159,15 @@ func (r *SQLiteRepository) ListByJob(ctx context.Context, jobID string) ([]Artif
 			t, _ := time.Parse(time.RFC3339, verifiedAt.String)
 			a.VerifiedAt = &t
 		}
-		artifacts = append(artifacts, a)
+		out = append(out, a)
 	}
-	return artifacts, rows.Err()
+	return out, rows.Err()
 }
 
 // ── Provenance (PR3) ─────────────────────────────────────────────────
 
 // CreateSource inserts an artifact source record.
-func (r *SQLiteRepository) CreateSource(ctx context.Context, s *ArtifactSource) error {
+func (r *SQLiteRepository) CreateSource(ctx context.Context, s *artifacts.ArtifactSource) error {
 	if s.ImportedAt.IsZero() {
 		s.ImportedAt = time.Now().UTC()
 	}
@@ -187,7 +187,7 @@ func (r *SQLiteRepository) CreateSource(ctx context.Context, s *ArtifactSource) 
 // ── Job-artifact linking (PR3) ──────────────────────────────────────
 
 // UpsertJobArtifact inserts or updates a job-artifact link.
-func (r *SQLiteRepository) UpsertJobArtifact(ctx context.Context, ja *JobArtifact) error {
+func (r *SQLiteRepository) UpsertJobArtifact(ctx context.Context, ja *artifacts.JobArtifact) error {
 	if ja.CreatedAt.IsZero() {
 		ja.CreatedAt = time.Now().UTC()
 	}
@@ -206,7 +206,7 @@ func (r *SQLiteRepository) UpsertJobArtifact(ctx context.Context, ja *JobArtifac
 }
 
 // ListJobArtifacts returns all artifact links for a job.
-func (r *SQLiteRepository) ListJobArtifacts(ctx context.Context, jobID string) ([]JobArtifact, error) {
+func (r *SQLiteRepository) ListJobArtifacts(ctx context.Context, jobID string) ([]artifacts.JobArtifact, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT job_id, artifact_id, role, ordinal, required, created_at
 		FROM job_artifacts WHERE job_id = ? ORDER BY ordinal
@@ -216,22 +216,22 @@ func (r *SQLiteRepository) ListJobArtifacts(ctx context.Context, jobID string) (
 	}
 	defer func() { _ = rows.Close() }()
 
-	var artifacts []JobArtifact
+	var out []artifacts.JobArtifact
 	for rows.Next() {
-		var ja JobArtifact
+		var ja artifacts.JobArtifact
 		var createdAt string
 		if err := rows.Scan(&ja.JobID, &ja.ArtifactID, &ja.Role, &ja.Ordinal, &ja.Required, &createdAt); err != nil {
 			return nil, fmt.Errorf("artifacts: scan job artifact: %w", err)
 		}
 		ja.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
-		artifacts = append(artifacts, ja)
+		out = append(out, ja)
 	}
-	return artifacts, rows.Err()
+	return out, rows.Err()
 }
 
 // GetJobArtifact retrieves a single job-artifact link.
-func (r *SQLiteRepository) GetJobArtifact(ctx context.Context, jobID, artifactID string) (*JobArtifact, error) {
-	var ja JobArtifact
+func (r *SQLiteRepository) GetJobArtifact(ctx context.Context, jobID, artifactID string) (*artifacts.JobArtifact, error) {
+	var ja artifacts.JobArtifact
 	var createdAt string
 
 	err := r.db.QueryRowContext(ctx, `
@@ -256,4 +256,4 @@ func (r *SQLiteRepository) TouchAccess(ctx context.Context, artifactID string) e
 }
 
 // Compile-time check
-var _ Repository = (*SQLiteRepository)(nil)
+var _ artifacts.Repository = (*SQLiteRepository)(nil)

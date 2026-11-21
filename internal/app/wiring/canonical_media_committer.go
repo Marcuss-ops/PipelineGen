@@ -32,7 +32,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -466,63 +465,3 @@ func assertCanonicalMediaWriter(committer persistence.AssetCommitter) (canonical
 }
 
 // ── folder-path writer bridge ───────────────────────────────────────────
-
-// folderPathWriterAdapter bridges the texttracks.FolderPathWriter port
-// (3-arg UpdateFolderPath) to the canonical media writer's 5-arg
-// UpdateFolderPathTx. MEDIA DEMOLITION (September 2026): the adapter is
-// port-based — the concrete engine (PostgreSQL since the demolition) is
-// supplied by the composition root.
-type folderPathWriterAdapter struct {
-	committer interface {
-		DB() *sql.DB
-		UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error
-		CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error
-	}
-	log *zap.Logger
-}
-
-// clipWriterFolderPathSource asserts the narrow tx-mutation surface the
-// adapter needs from the canonical writer.
-func clipWriterFolderPathSource(committer persistence.AssetCommitter) interface {
-	DB() *sql.DB
-	UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error
-	CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error
-} {
-	return committer.(interface {
-		DB() *sql.DB
-		UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error
-		CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error
-	})
-}
-
-func (a *folderPathWriterAdapter) UpdateFolderPath(ctx context.Context, assetID, folderPath string) error {
-	if a == nil || a.committer == nil {
-		return fmt.Errorf("folderPathWriterAdapter: committer not wired")
-	}
-	tx, err := a.committer.DB().BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-	var sourceVersion string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(source_version,'') FROM media_assets WHERE id=$1`, assetID).Scan(&sourceVersion); err != nil {
-		return fmt.Errorf("folderPathWriterAdapter: asset: %w", err)
-	}
-	updatedAt := time.Now().UTC().Format(time.RFC3339)
-	if err := a.committer.UpdateFolderPathTx(ctx, tx, assetID, "", folderPath, updatedAt); err != nil {
-		return err
-	}
-	if err := a.committer.CommitIndexEventTx(ctx, tx, assetID, "youtube", sourceVersion, "video"); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	committed = true
-	return nil
-}

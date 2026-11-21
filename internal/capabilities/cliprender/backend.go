@@ -21,25 +21,19 @@ package cliprender
 // backend, if one is ever needed, must be resolved in its true owner —
 // RenderingGen — never by reintroducing a one-value registry here.
 
-import "errors"
+import (
+	"errors"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+)
 
 // RenderBackend identifies the execution backend that rendered a sealed plan.
-// It is a REPORTED identity, not a selector: the worker validates the
-// artifact's certified backend against the Chronon contract and fails closed
-// on any other value.
-type RenderBackend string
+// The type and its only value live in the kernel so the PostgreSQL cache
+// adapter can implement the port without importing this capability (RA-11).
+type RenderBackend = kernelmedia.RenderBackend
 
-// BackendChrononVulkan is the ONLY permitted render backend: the Chronon3d GPU
-// compositor (NVDEC → CUDA/Vulkan surface → render graph → NVENC) executed by
-// RenderingGen behind the shared queue boundary.
-const BackendChrononVulkan RenderBackend = "chronon_vulkan"
-
-// IsGPUBackend reports whether the backend executes on GPU hardware. Chronon
-// is the only render backend and is GPU-native, so it is the single authority
-// of "GPU-ness" for the worker's ExecutionSpec.RequireGPU gate.
-func (b RenderBackend) IsGPUBackend() bool {
-	return b == BackendChrononVulkan
-}
+// BackendChrononVulkan is the ONLY permitted render backend.
+const BackendChrononVulkan = kernelmedia.BackendChrononVulkan
 
 // ErrBackendUnavailable is returned when no render boundary is available
 // (unconfigured queue, failed submission). Fail-closed: a render is never
