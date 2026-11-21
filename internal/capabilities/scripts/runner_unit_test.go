@@ -102,6 +102,36 @@ func TestApplyDurableStockBindingsPreservesMixedClipOwnership(t *testing.T) {
 	}
 }
 
+// ORCH-07: the streaming path binds a scene before the SceneTextReady
+// coordinator can observe it. This test pins the single-scene projection and
+// its body index space, including the fixed-media exclusion.
+func TestApplyDurableStockBindingToSceneProjectsBeforeCoordinator(t *testing.T) {
+	req := GenerateRequest{
+		MediaMode: scriptpkg.MediaModeMixed,
+		StockBindings: []scriptpkg.StockBindingInput{{
+			Index: 1, FolderID: "folder-2", StartMs: 1000, EndMs: 4000,
+		}},
+	}
+	intro := Scene{ID: "intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia}
+	body0 := Scene{ID: "scene-0"}
+	body1 := Scene{ID: "scene-1"}
+	applyDurableStockBindingToScene(req, &intro, 0)
+	applyDurableStockBindingToScene(req, &body0, 0)
+	applyDurableStockBindingToScene(req, &body1, 1)
+	if intro.Stock != nil {
+		t.Fatal("fixed media must never receive a body stock binding")
+	}
+	if body0.Stock != nil {
+		t.Fatalf("body ordinal 0 must not match binding index 1: %#v", body0.Stock)
+	}
+	if body1.Stock == nil || body1.Stock.FolderID != "folder-2" {
+		t.Fatalf("body ordinal 1 must carry the stock binding: %#v", body1.Stock)
+	}
+	if body1.DurationMS != 3000 || body1.DurationUS != 3_000_000 {
+		t.Fatalf("stock window = %dms/%dus, want 3000ms/3000000us", body1.DurationMS, body1.DurationUS)
+	}
+}
+
 func TestApplyDurableStockBindingsSkipsOverlayOnlyRuns(t *testing.T) {
 	req := GenerateRequest{
 		MediaMode: scriptpkg.MediaModeMixed,

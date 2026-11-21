@@ -35,6 +35,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -156,7 +157,10 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	// root without this backend knowing. The ChannelText constant is
 	// the canonical SSOT channel name (godlike/06) and matches the
 	// pgvector vector name "text" (semanticDenseVectorName) 1:1.
+	started := time.Now()
+	embedStarted := time.Now()
 	vec, err := b.embeddings.EmbedQuery(ctx, search.ChannelText, q.Text)
+	embedMS := time.Since(embedStarted).Milliseconds()
 	if err != nil {
 		return nil, fmt.Errorf("semantic backend: embed channel %q: %w", search.ChannelText, err)
 	}
@@ -209,6 +213,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	}
 
 	// ── 5. Execute vector search ───────────────────────────────
+	vectorStarted := time.Now()
 	var results []search.VectorSearchResult
 	switch q.Mode {
 	case search.RetrievalModeHybrid:
@@ -254,6 +259,18 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	}
 	if err != nil {
 		return nil, fmt.Errorf("semantic backend: vector search: %w", err)
+	}
+	// STK-09: the batch report used to expose only total_ms, so a 10s search
+	// could not distinguish the embedder from pgvector. These two fields make
+	// the split explicit for every semantic (stock) query.
+	if b.log != nil {
+		b.log.Info("semantic search latency",
+			zap.String("mode", string(q.Mode)),
+			zap.Int64("embed_ms", embedMS),
+			zap.Int64("pgvector_ms", time.Since(vectorStarted).Milliseconds()),
+			zap.Int64("total_ms", time.Since(started).Milliseconds()),
+			zap.Int("vector_hits", len(results)),
+			zap.Int("fetch_limit", fetchLimit))
 	}
 
 	// ── 6. No external vector store results → done ────────────────────────────

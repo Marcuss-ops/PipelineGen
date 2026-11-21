@@ -44,13 +44,7 @@ func applyDurableStockBindings(req GenerateRequest, scenes []Scene) {
 		if target < 0 {
 			continue
 		}
-		scenes[target].Stock = &scriptpkg.StockBinding{
-			AssetID: input.AssetID, Name: input.Name, Source: input.Source,
-			DriveLink: input.DriveLink, FolderID: input.FolderID,
-			FolderLink: input.FolderLink, Score: input.Score, Fallback: input.Fallback,
-			PoolSlot: input.PoolSlot,
-			StartMs:  input.StartMs, EndMs: input.EndMs, DurationMs: input.EndMs - input.StartMs,
-		}
+		scenes[target].Stock = stockBindingFromInput(input)
 		// Stock-only scenes do not receive a clip duration or TTS duration.
 		// Project the editorial window onto the durable Scene now so the
 		// canonical timeline compiler never has to guess (or reject a valid
@@ -59,6 +53,58 @@ func applyDurableStockBindings(req GenerateRequest, scenes []Scene) {
 			scenes[target].DurationMS = scenes[target].Stock.DurationMs
 			scenes[target].DurationUS = scenes[target].Stock.DurationMs * 1000
 		}
+	}
+}
+
+// stockBindingFromInput is the single projection from the caller's binding
+// input onto the durable scene binding. Both the batch preflight and the
+// streaming per-scene path use it, so the two cannot diverge.
+func stockBindingFromInput(input scriptpkg.StockBindingInput) *scriptpkg.StockBinding {
+	return &scriptpkg.StockBinding{
+		AssetID: input.AssetID, Name: input.Name, Source: input.Source,
+		DriveLink: input.DriveLink, FolderID: input.FolderID,
+		FolderLink: input.FolderLink, Score: input.Score, Fallback: input.Fallback,
+		PoolSlot: input.PoolSlot,
+		StartMs:  input.StartMs, EndMs: input.EndMs, DurationMs: input.EndMs - input.StartMs,
+	}
+}
+
+// applyDurableStockBindingToScene is the streaming counterpart of
+// applyDurableStockBindings. ORCH-07: the SceneTextReady coordinator is
+// submitted one scene at a time, so projecting stock only after the stream
+// joins would let the coordinator observe `Stock == nil` and launch Chronon
+// renders the final assembler must then discard. Binding the scene BEFORE it
+// is committed makes `scene.Stock != nil` an invariant from birth.
+//
+// bodyOrdinal is the zero-based position of this scene among non-fixed-media
+// body scenes, matching the index space applyDurableStockBindings uses.
+func applyDurableStockBindingToScene(req GenerateRequest, scene *Scene, bodyOrdinal int) {
+	if scene == nil || scene.ExecutionMode.IsFixedMedia() {
+		return
+	}
+	if req.Render.OverlaysOnly || req.MediaMode == scriptpkg.MediaModeClipOnly || len(req.StockBindings) == 0 {
+		return
+	}
+	for _, input := range req.StockBindings {
+		input := input
+		matched := false
+		if sceneID := strings.TrimSpace(input.SceneID); sceneID != "" {
+			matched = sceneID == strings.TrimSpace(scene.ID)
+		} else {
+			matched = input.Index == bodyOrdinal
+		}
+		if !matched {
+			continue
+		}
+		scene.Stock = stockBindingFromInput(input)
+		// Stock-only scenes do not receive a clip duration or TTS duration:
+		// project the editorial window before the coordinator computes render
+		// expectations or durations.
+		if scene.DurationMS <= 0 && scene.Stock.DurationMs > 0 {
+			scene.DurationMS = scene.Stock.DurationMs
+			scene.DurationUS = scene.Stock.DurationMs * 1000
+		}
+		return
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
@@ -299,6 +300,7 @@ func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID 
 	var scenes []Scene
 	var sceneMu sync.Mutex
 	sceneByIndex := make(map[int]Scene)
+	var bodyOrdinal atomic.Int64
 	emit := func(scene Scene) error {
 		scene = applyOwnedImportantPhraseHints(req, scene)
 		// A no_voiceover cutaway must become fixed media BEFORE the
@@ -308,6 +310,12 @@ func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID 
 		applySegmentNoVoiceoverScenes(req, noVoiceoverScene)
 		scene = noVoiceoverScene[0]
 		applyExplicitSegmentDuration(req, &scene)
+		// ORCH-07: project the stock binding before the coordinator observes
+		// the scene. A streaming worker must never see Stock == nil for a
+		// scene the caller already bound to stock media.
+		if !scene.ExecutionMode.IsFixedMedia() {
+			applyDurableStockBindingToScene(req, &scene, int(bodyOrdinal.Add(1))-1)
+		}
 		// The SceneTextReady boundary: pin when this scene's text became
 		// final so the streaming overlap is durable and provable (scene N's
 		// translation/TTS must start before scene N+1's text is ready).

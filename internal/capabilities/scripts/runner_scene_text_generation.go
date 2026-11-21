@@ -27,12 +27,10 @@ func (r *Runner) prepareSceneTextGeneration(ctx context.Context, runID string, r
 		streamable:                   SceneStreamingEligibility(req),
 		topologyNeedsMaterialization: req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0,
 	}
-	// Stock needs the complete body scene list to bind before any SceneReady
-	// translation/TTS/render dispatch. The streaming coordinator starts before
-	// stock is projected, so keep stock-bound requests on the batch path.
-	if !req.Render.OverlaysOnly && req.MediaMode != scriptpkg.MediaModeClipOnly && len(req.StockBindings) > 0 {
-		path.streamable = false
-	}
+	// ORCH-07: stock bindings no longer force the batch path. The streaming
+	// emit applies the binding to each scene before it is committed and
+	// submitted to the SceneTextReady coordinator, so the coordinator can
+	// never observe a stock-bound scene with Stock == nil.
 	if len(req.MediaPlan.Extraction.ImportantPhrases) > 0 && !importantPhraseHintOwnersAvailable(req) {
 		path.streamable = false
 		path.topologyNeedsMaterialization = true
