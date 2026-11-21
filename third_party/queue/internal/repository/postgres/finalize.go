@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/Marcuss-ops/RenderingGen/queue/internal/model"
 )
@@ -31,39 +32,39 @@ var claimFinalizationSQL = `
 // ClaimFinalization atomically claims a parent row for one finalizer. Only a
 // job with chunk children is a valid target; a plain running job is rejected
 // without changing its state, owner or lease.
-func (r *Repository) ClaimFinalization(ctx context.Context, parentJobID, workerID string) (*model.Job, bool, error) {
+func (r *Repository) ClaimFinalization(ctx context.Context, parentJobID, workerID string) (*model.Job, bool, time.Duration, error) {
 	if parentJobID == "" || workerID == "" {
-		return nil, false, fmt.Errorf("parent job id and worker id are required")
+		return nil, false, 0, fmt.Errorf("parent job id and worker id are required")
 	}
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
 	res, err := r.db.ExecContext(ctx, claimFinalizationSQL, parentJobID, workerID, r.lease.Seconds())
 	if err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
 	n, err := rowsAffected(res)
 	if err != nil {
-		return nil, false, err
+		return nil, false, 0, err
 	}
 	if n == 0 {
 		job, getErr := r.Get(ctx, parentJobID)
 		if getErr != nil {
-			return nil, false, getErr
+			return nil, false, 0, getErr
 		}
 		if job.State == model.StateFinalizing || job.State == model.StateCompleted {
-			return job, false, nil
+			return job, false, 0, nil
 		}
 		// Name the actual refusal: an ordinary job is not a finalization
 		// target even when its state (pending/running) would otherwise match.
 		var hasChildren bool
 		if childErr := r.db.QueryRowContext(ctx,
 			`SELECT EXISTS (SELECT 1 FROM render_jobs WHERE parent_job_id = $1)`, parentJobID).Scan(&hasChildren); childErr == nil && !hasChildren {
-			return job, false, fmt.Errorf("job %s has no chunk children: only an assembly anchor may be finalized", parentJobID)
+			return job, false, 0, fmt.Errorf("job %s has no chunk children: only an assembly anchor may be finalized", parentJobID)
 		}
-		return job, false, fmt.Errorf("parent job %s is in state %q", parentJobID, job.State)
+		return job, false, 0, fmt.Errorf("parent job %s is in state %q", parentJobID, job.State)
 	}
 	job, err := r.Get(ctx, parentJobID)
-	return job, true, err
+	return job, true, r.lease, err
 }
 
 // Complete marks a running job as completed and, when the artifact has a

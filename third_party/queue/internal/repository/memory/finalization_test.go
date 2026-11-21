@@ -30,7 +30,7 @@ func TestClaimFinalizationHasSingleOwner(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, claimed, err := r.ClaimFinalization(context.Background(), "parent", "worker")
+			_, claimed, _, err := r.ClaimFinalization(context.Background(), "parent", "worker")
 			if err != nil {
 				t.Errorf("claim: %v", err)
 				return
@@ -68,7 +68,7 @@ func TestClaimFinalizationRequiresChunkChildren(t *testing.T) {
 	}
 
 	// Pending ordinary job: rejected, and nothing about it changes.
-	if _, _, err := r.ClaimFinalization(ctx, "ordinary", "finalizer"); err == nil {
+	if _, _, _, err := r.ClaimFinalization(ctx, "ordinary", "finalizer"); err == nil {
 		t.Fatal("ClaimFinalization accepted a job with no chunk children")
 	}
 	job, err := r.Get(ctx, "ordinary")
@@ -86,7 +86,7 @@ func TestClaimFinalizationRequiresChunkChildren(t *testing.T) {
 		t.Fatalf("claim ordinary job: job=%+v err=%v", claimed, err)
 	}
 	lease := claimed.LeaseUntil
-	if _, _, err := r.ClaimFinalization(ctx, "ordinary", "finalizer"); err == nil {
+	if _, _, _, err := r.ClaimFinalization(ctx, "ordinary", "finalizer"); err == nil {
 		t.Fatal("ClaimFinalization stole a running job with no chunk children")
 	}
 	job, err = r.Get(ctx, "ordinary")

@@ -154,7 +154,7 @@ func TestClaimSkipsAssemblyAnchorParent(t *testing.T) {
 		t.Fatalf("only the anchor is left and it must not be claimable, got %s", anchor.ID)
 	}
 
-	finalized, claimed, err := r.ClaimFinalization(context.Background(), "anchor", "finalizer")
+	finalized, claimed, _, err := r.ClaimFinalization(context.Background(), "anchor", "finalizer")
 	if err != nil {
 		t.Fatal(err)
 	}

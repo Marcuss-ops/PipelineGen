@@ -160,12 +160,12 @@ func (s *Service) SubmitIdempotent(ctx context.Context, job model.Job) (*model.J
 // wakes a waiting claim to re-run the atomic claim against the store.
 func (s *Service) Notify() *Notifier { return s.notify }
 
-func (s *Service) ClaimFinalization(ctx context.Context, parentID, workerID string) (*model.Job, bool, error) {
-	job, claimed, err := s.repo.ClaimFinalization(ctx, parentID, workerID)
+func (s *Service) ClaimFinalization(ctx context.Context, parentID, workerID string) (*model.Job, bool, time.Duration, error) {
+	job, claimed, lease, err := s.repo.ClaimFinalization(ctx, parentID, workerID)
 	if claimed {
 		s.notify.Notify()
 	}
-	return job, claimed, err
+	return job, claimed, lease, err
 }
 
 func (s *Service) Children(ctx context.Context, parentID string) ([]*model.Job, error) {

@@ -40,7 +40,7 @@ func TestClaimFinalizationRejectsNonAnchorRunningJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, _, err := r.ClaimFinalization(ctx, "ordinary", "finalizer"); err == nil {
+	if _, _, _, err := r.ClaimFinalization(ctx, "ordinary", "finalizer"); err == nil {
 		t.Fatal("ClaimFinalization accepted a job with no chunk children")
 	}
 

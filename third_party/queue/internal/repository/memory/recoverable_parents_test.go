@@ -42,7 +42,7 @@ func TestRecoverableParents(t *testing.T) {
 	// lease-recovery path requeued it; the scan must still list it so a
 	// restart can finalize the family.
 	submitFamily("parent-finalizing")
-	if _, ok, err := r.ClaimFinalization(ctx, "parent-finalizing", "w1"); err != nil || !ok {
+	if _, ok, _, err := r.ClaimFinalization(ctx, "parent-finalizing", "w1"); err != nil || !ok {
 		t.Fatalf("claim finalization: ok=%t err=%v", ok, err)
 	}
 

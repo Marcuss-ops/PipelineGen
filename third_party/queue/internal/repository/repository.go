@@ -85,7 +85,9 @@ type JobRepository interface {
 	ByParent(ctx context.Context, parentJobID string) ([]*model.Job, error)
 
 	// ClaimFinalization atomically claims a parent whose children are ready.
-	ClaimFinalization(ctx context.Context, parentJobID, workerID string) (*model.Job, bool, error)
+	// Like every other claim it returns the lease duration, so the finalizer
+	// can renew it while assembling instead of outliving it mid-mux.
+	ClaimFinalization(ctx context.Context, parentJobID, workerID string) (*model.Job, bool, time.Duration, error)
 	// RecoverableParents returns parent IDs that own children and are pending or finalizing after lease recovery.
 	RecoverableParents(ctx context.Context) ([]string, error)
 

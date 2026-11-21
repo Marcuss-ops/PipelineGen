@@ -104,7 +104,7 @@ func TestClaimSkipsAssemblyAnchorParent(t *testing.T) {
 
 	// The anchor is still claimable by the FINALIZER, which is the only claim
 	// allowed to take it.
-	anchor, claimed, err := s.ClaimFinalization(context.Background(), "anchor", "finalizer")
+	anchor, claimed, _, err := s.ClaimFinalization(context.Background(), "anchor", "finalizer")
 	if err != nil {
 		t.Fatalf("finalize claim: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestFinalizationLeaseRecoversAfterWorkerLoss(t *testing.T) {
 		t.Fatalf("submit child: %v", err)
 	}
 
-	claimed, ok, err := s.ClaimFinalization(context.Background(), "parent-1", "w1")
+	claimed, ok, _, err := s.ClaimFinalization(context.Background(), "parent-1", "w1")
 	if err != nil || !ok || claimed == nil {
 		t.Fatalf("claim finalization: job=%+v ok=%t err=%v", claimed, ok, err)
 	}
@@ -367,7 +367,7 @@ func TestFinalizationLeaseRecoversAfterWorkerLoss(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("want one finalizing parent recovered, got %d", n)
 	}
-	if _, ok, err := s.ClaimFinalization(context.Background(), "parent-1", "w2"); err != nil || !ok {
+	if _, ok, _, err := s.ClaimFinalization(context.Background(), "parent-1", "w2"); err != nil || !ok {
 		t.Fatalf("reclaimed parent: ok=%t err=%v", ok, err)
 	}
 }

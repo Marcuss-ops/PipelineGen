@@ -208,7 +208,7 @@ func (s *Server) claimFinalization(w http.ResponseWriter, r *http.Request) {
 	if !decodeRequestBody(w, r, &req) {
 		return
 	}
-	job, claimed, err := s.svc.ClaimFinalization(r.Context(), parseJobID(r), req.Worker)
+	job, claimed, lease, err := s.svc.ClaimFinalization(r.Context(), parseJobID(r), req.Worker)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -217,5 +217,8 @@ func (s *Server) claimFinalization(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeJSON(w, http.StatusOK, job)
+	// Same envelope as every other claim: the lease duration is what lets the
+	// finalizer renew while it assembles. Omitting it left the parent's lease
+	// unrenewed, so a long assembly was requeued mid-mux.
+	writeClaimResult(w, job, lease)
 }

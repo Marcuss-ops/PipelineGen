@@ -589,34 +589,34 @@ func (s *Repository) ByParent(_ context.Context, parentJobID string) ([]*model.J
 }
 
 // ClaimFinalization atomically claims a parent row for one finalizer.
-func (s *Repository) ClaimFinalization(_ context.Context, parentJobID, workerID string) (*model.Job, bool, error) {
+func (s *Repository) ClaimFinalization(_ context.Context, parentJobID, workerID string) (*model.Job, bool, time.Duration, error) {
 	if parentJobID == "" || workerID == "" {
-		return nil, false, fmt.Errorf("parent job id and worker id are required")
+		return nil, false, 0, fmt.Errorf("parent job id and worker id are required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	job := s.jobs[parentJobID]
 	if job == nil {
-		return nil, false, fmt.Errorf("parent job %s: %w", parentJobID, repository.ErrNotFound)
+		return nil, false, 0, fmt.Errorf("parent job %s: %w", parentJobID, repository.ErrNotFound)
 	}
 	// Mirror the PostgreSQL invariant: only a job that OWNS assembable chunk
 	// children may be claimed by the finalizer. Without this, the transition
 	// below rewrites Worker and LeaseUntil on an ordinary running job and steals
 	// it from the render worker that still holds it.
 	if !s.hasChildrenLocked(parentJobID) {
-		return nil, false, fmt.Errorf("job %s has no chunk children: only an assembly anchor may be finalized", parentJobID)
+		return nil, false, 0, fmt.Errorf("job %s has no chunk children: only an assembly anchor may be finalized", parentJobID)
 	}
 	if job.State == model.StateFinalizing {
-		return nil, false, nil
+		return nil, false, 0, nil
 	}
 	if job.State != model.StatePending && job.State != model.StateRunning {
-		return nil, false, fmt.Errorf("parent job %s is in state %q", parentJobID, job.State)
+		return nil, false, 0, fmt.Errorf("parent job %s is in state %q", parentJobID, job.State)
 	}
 	job.State = model.StateFinalizing
 	job.LeaseGeneration++
 	job.Worker = workerID
 	job.LeaseUntil = time.Now().Add(s.lease)
-	return s.jobCopyWithArtifactLocked(job), true, nil
+	return s.jobCopyWithArtifactLocked(job), true, s.lease, nil
 }
 
 // Complete marks a running job as completed and records its artifact.
