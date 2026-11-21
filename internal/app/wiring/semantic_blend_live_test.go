@@ -63,7 +63,13 @@ func TestLiveSemanticProductionBlendRoutesRealProviders(t *testing.T) {
 		t.Skipf("acceptance fixture not available: %v", err)
 	}
 
+	// STK-09: a silent probe cannot explain a 0-hit cold run. With
+	// VELOX_SEMANTIC_BLEND_LOG=1 the probe prints which provider lane answered
+	// (or why it was skipped) instead of only the final metrics.
 	log := zap.NewNop()
+	if os.Getenv("VELOX_SEMANTIC_BLEND_LOG") == "1" {
+		log, _ = zap.NewDevelopment()
+	}
 	scenes := make([]scriptgen.SemanticSceneInput, 0, 16)
 	for index, paragraph := range strings.Split(string(data), "\n\n") {
 		paragraph = strings.TrimSpace(paragraph)
