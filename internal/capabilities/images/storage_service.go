@@ -65,8 +65,9 @@ type ImageStorageService struct {
 	// Wikimedia rate limits and receive HTTP 429 for every query. One
 	// process-wide gate keeps the canonical minimum interval even when the
 	// requests originate from different fan-out goroutines.
-	wikipediaSearchMu   sync.Mutex
-	wikipediaLastSearch time.Time
+	wikipediaSearchMu      sync.Mutex
+	wikipediaLastSearch    time.Time
+	wikipediaCooldownUntil time.Time
 
 	// subjectTags is the typed port for extracting subject slug + tag list
 	// from a free-form description (PR C9, July 2026). Replaces the

@@ -28,14 +28,23 @@ import (
 // cooldown for every scene of the same biography.
 const wikipediaMinRequestInterval = 1200 * time.Millisecond
 
+// errWikipediaCoolingDown marks a request that was refused locally because the
+// shared Wikipedia lane is in its Retry-After window. It is not a transport
+// failure: callers stop querying Wikipedia and let the fallback providers run.
+var errWikipediaCoolingDown = errors.New("wikipedia: cooling down after HTTP 429")
+
 // paceWikipedia reserves the next Wikipedia request slot. It is safe for
 // concurrent fan-out goroutines because the mutex is held across the wait;
 // callers therefore leave the gate already spaced.
 func (s *ImageStorageService) paceWikipedia(ctx context.Context) error {
 	s.wikipediaSearchMu.Lock()
 	defer s.wikipediaSearchMu.Unlock()
+	now := time.Now()
+	if !s.wikipediaCooldownUntil.IsZero() && now.Before(s.wikipediaCooldownUntil) {
+		return errWikipediaCoolingDown
+	}
 	if !s.wikipediaLastSearch.IsZero() {
-		if wait := wikipediaMinRequestInterval - time.Since(s.wikipediaLastSearch); wait > 0 {
+		if wait := wikipediaMinRequestInterval - now.Sub(s.wikipediaLastSearch); wait > 0 {
 			timer := time.NewTimer(wait)
 			defer timer.Stop()
 			select {
@@ -49,17 +58,29 @@ func (s *ImageStorageService) paceWikipedia(ctx context.Context) error {
 	return nil
 }
 
-// logWikipediaRateLimit names a 429 at warn level with the provider's
-// Retry-After when present. It never retries inline: paceWikipedia already
-// prevents the burst, and an immediate retry is what turns one refusal into a
-// cooldown.
+// logWikipediaRateLimit opens the shared Wikipedia cooldown when the provider
+// answers 429. It never retries inline: an immediate retry is what turns one
+// refusal into a storm. Subsequent scenes skip Wikipedia until the Retry-After
+// window expires and use Commons/SearXNG instead.
 func (s *ImageStorageService) logWikipediaRateLimit(err error) {
 	var statusErr *httpjson.StatusError
-	if s == nil || s.log == nil || !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusTooManyRequests {
+	if s == nil || !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusTooManyRequests {
 		return
 	}
-	s.log.Warn("Wikipedia image search rate limited (HTTP 429); pacing the shared API",
-		zap.Duration("retry_after", statusErr.RetryAfterDuration()))
+	cooldown := statusErr.RetryAfterDuration()
+	if cooldown <= 0 {
+		cooldown = 60 * time.Second
+	}
+	s.wikipediaSearchMu.Lock()
+	until := time.Now().Add(cooldown)
+	if until.After(s.wikipediaCooldownUntil) {
+		s.wikipediaCooldownUntil = until
+	}
+	s.wikipediaSearchMu.Unlock()
+	if s.log != nil {
+		s.log.Warn("Wikipedia image search rate limited (HTTP 429); cooling down and deferring to fallbacks",
+			zap.Duration("retry_after", statusErr.RetryAfterDuration()), zap.Duration("cooldown", cooldown))
+	}
 }
 
 func (s *ImageStorageService) searchWikipedia(ctx context.Context, query, lang string) (string, string) {
