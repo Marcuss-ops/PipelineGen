@@ -29,6 +29,11 @@ type MapPresentationSpec struct {
 	// MaxPinsPerGroup caps one map group at this many pins (1..5). Zero uses
 	// the certified default of 5; above 5 fails closed (the renderer budget).
 	MaxPinsPerGroup int `json:"max_pins_per_group,omitempty"`
+	// Preset is one of the twelve approved Italy map treatments
+	// (see overlays.MapPresets). A preset is an alias for a composition +
+	// basemap pair and is expanded before Normalize; it cannot be combined
+	// with a conflicting Animation or Style. Empty means no preset.
+	Preset string `json:"preset,omitempty"`
 	// Style selects the cartographic look: classic (aliases chronon,
 	// chronon_editorial, editorial) draws the editorial vector basemap;
 	// modern_map_1 (aliases modern, topo, terrain, esri_topo) draws the real
@@ -67,6 +72,7 @@ type MapPresentation struct {
 	Mode                 string   `json:"mode"`
 	GroupNearbyPlaces    bool     `json:"group_nearby_places"`
 	MaxPinsPerGroup      int      `json:"max_pins_per_group"`
+	Preset               string   `json:"preset,omitempty"`
 	Style                string   `json:"style"`
 	Level                string   `json:"level"`
 	Animation            string   `json:"animation"`
@@ -105,6 +111,7 @@ func (s *MapPresentationSpec) Normalize() (MapPresentation, error) {
 	}
 	resolved.AnimationPool = append([]string(nil), s.AnimationPool...)
 	resolved.StylePool = append([]string(nil), s.StylePool...)
+	resolved.Preset = strings.TrimSpace(s.Preset)
 	resolved.CountryFeature = strings.TrimSpace(s.CountryFeature)
 	resolved.TimelineLabel = strings.TrimSpace(s.TimelineLabel)
 	resolved.MountainOverlayAsset = strings.TrimSpace(s.MountainOverlayAsset)

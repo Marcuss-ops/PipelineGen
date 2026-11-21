@@ -158,10 +158,7 @@ func materializeEditorialMapItems(plan *capmodel.OverlayPlan, plates capabilityo
 	}
 	plan.Items = append(plan.Items, appended...)
 	if canvas.MapPresentation != nil {
-		if err := applyRequestedMapPresentation(plan, canvas.MapPresentation.Animation, canvas.MapPresentation.Style,
-			canvas.MapPresentation.AnimationPool, canvas.MapPresentation.StylePool,
-			canvas.MapPresentation.CountryFeature, canvas.MapPresentation.TimelineLabel,
-			canvas.MapPresentation.MountainOverlayAsset); err != nil {
+		if err := applyRequestedMapPresentation(plan, canvas.MapPresentation); err != nil {
 			return err
 		}
 	} else if err := applyRequestedMapAnimation(plan, grouping.Animation); err != nil {
@@ -274,34 +271,46 @@ func applyRequestedMapAnimation(plan *capmodel.OverlayPlan, requested string) er
 // applyRequestedMapPresentation applies the two independent runtime choices
 // to every materialized map. The pools are carried on each map item because
 // the dynamic renderer resolves style after the Rust planner seals the plan.
-func applyRequestedMapPresentation(plan *capmodel.OverlayPlan, animation, style string, animationPool, stylePool []string, country, timeline, mountainAsset string) error {
-	if plan == nil {
+// A preset, when present, wins over the resolved defaults: it is expanded on
+// its own copy so the caller's request stays the record of intent.
+func applyRequestedMapPresentation(plan *capmodel.OverlayPlan, presentation *scriptpkg.MapPresentation) error {
+	if plan == nil || presentation == nil {
 		return nil
 	}
-	animation = strings.TrimSpace(animation)
+	resolved := *presentation
+	resolved.AnimationPool = append([]string(nil), presentation.AnimationPool...)
+	resolved.StylePool = append([]string(nil), presentation.StylePool...)
+	if err := expandMapPresetPresentation(&resolved); err != nil {
+		return err
+	}
+	animation := strings.TrimSpace(resolved.Animation)
 	if animation == "" || strings.EqualFold(animation, "auto") {
 		animation = "random"
 	}
+	style := strings.TrimSpace(resolved.Style)
 	for i := range plan.Items {
 		item := &plan.Items[i]
 		if !strings.EqualFold(strings.TrimSpace(item.Kind), "map") || item.Map == nil {
 			continue
 		}
 		if item.Params == nil {
-			item.Params = make(map[string]any, 4)
+			item.Params = make(map[string]any, 5)
+		}
+		if resolved.Preset != "" {
+			item.Params["map_preset"] = resolved.Preset
 		}
 		item.Params["map_animation"] = animation
-		item.Params["map_composition_pool"] = append([]string(nil), animationPool...)
-		item.Params["map_style_pool"] = append([]string(nil), stylePool...)
+		item.Params["map_composition_pool"] = append([]string(nil), resolved.AnimationPool...)
+		item.Params["map_style_pool"] = append([]string(nil), resolved.StylePool...)
 		item.Params["map_type"] = style
-		if country != "" {
-			item.Params["country_feature"] = country
+		if resolved.CountryFeature != "" {
+			item.Params["country_feature"] = resolved.CountryFeature
 		}
-		if timeline != "" {
-			item.Params["timeline_label"] = timeline
+		if resolved.TimelineLabel != "" {
+			item.Params["timeline_label"] = resolved.TimelineLabel
 		}
-		if mountainAsset != "" {
-			item.Params["mountain_overlay_asset"] = mountainAsset
+		if resolved.MountainOverlayAsset != "" {
+			item.Params["mountain_overlay_asset"] = resolved.MountainOverlayAsset
 		}
 	}
 	if !strings.EqualFold(animation, "random") {
@@ -310,6 +319,88 @@ func applyRequestedMapPresentation(plan *capmodel.OverlayPlan, animation, style 
 		}
 	}
 	return nil
+}
+
+// resolveMapPresentationPresetSpec expands a requested preset on the RAW spec,
+// before Normalize applies its defaults. Expanding earlier is what makes an
+// explicit style/animation a conflict only when it really disagrees: once
+// Normalize has filled esri_topo, every preset would look contradicted.
+func resolveMapPresentationPresetSpec(spec *scriptpkg.MapPresentationSpec) error {
+	if spec == nil {
+		return nil
+	}
+	id := strings.TrimSpace(spec.Preset)
+	if id == "" {
+		return nil
+	}
+	preset, ok := capabilityoverlay.LookupMapPreset(id)
+	if !ok {
+		return fmt.Errorf("map_presentation.preset %q is not a certified map preset", spec.Preset)
+	}
+	spec.Preset = preset.ID
+	if requested := strings.TrimSpace(spec.Animation); requested != "" &&
+		!strings.EqualFold(requested, "random") && !strings.EqualFold(requested, "auto") &&
+		requested != preset.Animation {
+		return fmt.Errorf("map_presentation.preset %q fixes animation %q; remove animation %q or the preset", preset.ID, preset.Animation, spec.Animation)
+	}
+	if requested := strings.TrimSpace(spec.Style); requested != "" && !strings.EqualFold(requested, "random") {
+		if canonicalMapPresentationStyle(requested) != preset.Basemap {
+			return fmt.Errorf("map_presentation.preset %q fixes style %q; remove style %q or the preset", preset.ID, preset.Basemap, spec.Style)
+		}
+	}
+	if len(spec.AnimationPool) > 0 && !stringPoolHas(spec.AnimationPool, preset.Animation) {
+		return fmt.Errorf("map_presentation.preset %q requires %q in animation_pool", preset.ID, preset.Animation)
+	}
+	if len(spec.StylePool) > 0 {
+		found := false
+		for _, candidate := range spec.StylePool {
+			if canonicalMapPresentationStyle(candidate) == preset.Basemap {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("map_presentation.preset %q requires %q in style_pool", preset.ID, preset.Basemap)
+		}
+	}
+	spec.Animation = preset.Animation
+	spec.Style = preset.Basemap
+	return nil
+}
+
+// expandMapPresetPresentation re-applies the preset pair on a RESOLVED
+// presentation, whose style may already carry Normalize's default rather than
+// the caller's intent. Unknown ids fail closed; no preset is a no-op.
+func expandMapPresetPresentation(p *scriptpkg.MapPresentation) error {
+	if p == nil {
+		return nil
+	}
+	id := strings.TrimSpace(p.Preset)
+	if id == "" {
+		return nil
+	}
+	preset, ok := capabilityoverlay.LookupMapPreset(id)
+	if !ok {
+		return fmt.Errorf("map_presentation.preset %q is not a certified map preset", p.Preset)
+	}
+	p.Preset = preset.ID
+	p.Animation = preset.Animation
+	p.Style = preset.Basemap
+	return nil
+}
+
+// canonicalMapPresentationStyle folds the accepted style aliases onto the
+// renderer's basemap ids so a preset can compare intent, not spelling.
+func canonicalMapPresentationStyle(style string) string {
+	switch strings.ToLower(strings.TrimSpace(style)) {
+	case "classic", "chronon_editorial", "chronon", "editorial":
+		return "chronon_editorial"
+	case "modern_map_1", "modernmap1", "modern", "topo", "terrain", "esri_topo":
+		return "esri_topo"
+	case "satellite", "esri_sat":
+		return "esri_sat"
+	}
+	return strings.TrimSpace(style)
 }
 
 func mapStringParam(params map[string]any, key string) string {

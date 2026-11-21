@@ -50,6 +50,23 @@ func TestMapPresentationNormalizeContract(t *testing.T) {
 	}
 }
 
+// TestMapPresentationCarriesPreset proves the preset id survives resolution so
+// the renderer boundary can re-apply the pair; the alias itself is expanded by
+// the script builder before Normalize runs.
+func TestMapPresentationCarriesPreset(t *testing.T) {
+	resolved, err := (&MapPresentationSpec{
+		Preset:    "italia_editoriale_voxel",
+		Animation: "editorial_vox",
+		Style:     "chronon_editorial",
+	}).Normalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Preset != "italia_editoriale_voxel" || resolved.Animation != "editorial_vox" || resolved.Style != "chronon_editorial" {
+		t.Fatalf("preset did not survive normalization: %+v", resolved)
+	}
+}
+
 // TestMapPresentationNormalizeFailsClosed pins the invalid configurations the
 // contract must reject instead of guessing.
 func TestMapPresentationNormalizeFailsClosed(t *testing.T) {

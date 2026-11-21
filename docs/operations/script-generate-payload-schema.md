@@ -366,7 +366,7 @@ that lane; an unknown or lane-incompatible id fails closed at plan compilation.
 | Entity images | `entity_image_motions` | array of ids | full certified entity-image catalog, seeded per card |
 | Entity captions | `entity_caption_motions` | array of ids | certified automatic caption pool, seeded per card |
 | Entity card composition | `entity_style_id` | `random`, a tag selector, or `01`..`25` | `random` (full 25-card registry) |
-| Maps | `map_presentation.animation` / `.animation_pool` / `.style` / `.style_pool` | registered composition id or `random`; optional arrays restrict the draw; style is `chronon_editorial`, `esri_topo`, `esri_sat`, or `random` | seeded draw from the renderer-certified pools |
+| Maps | `map_presentation.preset` / `.animation` / `.animation_pool` / `.style` / `.style_pool` | approved preset id, or a registered composition id or `random`; optional arrays restrict the draw; style is `chronon_editorial`, `esri_topo`, `esri_sat`, or `random` | seeded draw from the renderer-certified pools |
 
 A one-element `image_motions`, `entity_image_motions`, or
 `entity_caption_motions` array pins that lane to the single id; a longer array
@@ -375,6 +375,49 @@ over the seeded short-phrase rotation.
 `map_presentation` cannot be mixed with the legacy `map_type`,
 `map_camera_animation`, `map_label_animation` or `map_animation` fields: the
 mixture fails closed instead of guessing a winner.
+
+### Map presets
+
+`map_presentation.preset` selects one of the twelve approved Italy map
+presets by its stable id. A preset is an alias for a composition + basemap
+pair, not a second vocabulary: it is expanded before normalization, so the
+resolved plan carries the composition in `animation` and the basemap in
+`style`, and the render item carries the same id as `map_preset`.
+
+| preset id | composition | basemap |
+|---|---|---|
+| `italia_atlante_continentale_turchia` | `continental_atlas` | `esri_sat` |
+| `italia_mappa_storica_duisburg` | `historic_location_timeline` | `esri_sat` |
+| `italia_scansione_satellitare_pavia` | `satellite_scan_reveal` | `esri_sat` |
+| `italia_riempimento_tattico_gerusalemme` | `territory_tactical_fill` | `chronon_editorial` |
+| `italia_editoriale_voxel` | `editorial_vox` | `chronon_editorial` |
+| `italia_editoriale_paper_cutout` | `editorial_paper_cutout` | `chronon_editorial` |
+| `italia_editoriale_radar_scuro` | `editorial_dark_radar` | `chronon_editorial` |
+| `italia_editoriale_connessioni_ad_arco` | `editorial_connection_arc` | `chronon_editorial` |
+| `italia_editoriale_isola_fluttuante` | `editorial_floating_island` | `chronon_editorial` |
+| `italia_basemap_vettoriale_regionale` | `territory_flood_fill` | `chronon_editorial` |
+| `italia_basemap_chiara` | `territory_glow_reveal` | `esri_topo` |
+| `italia_basemap_regionale_toscana` | `territory_extrusion` | `chronon_editorial` |
+
+```json
+{
+  "map_presentation": {
+    "preset": "italia_basemap_vettoriale_regionale",
+    "level": "municipality",
+    "camera": "slow_approach"
+  }
+}
+```
+
+A preset composes with `camera`, `level`, `selection_mode`, pin grouping and
+the other map knobs. It fails closed when the id is unknown, when `animation`
+or `style` name a different treatment, and when an `animation_pool` or
+`style_pool` excludes half of the preset pair. Preset ids in `animation`,
+`selection_mode: "exact"` and `mode: "manual"` behave like any explicit
+composition id. The five editorial presets keep their authored US bounds and
+reject Italian pins; the remaining seven cover Italy. `editorial_blueprint`
+is a composition, not an approved PNG preset, so request it through
+`animation` as before.
 
 `date_motion_family: "typewriter"` restricts date cards to the ten certified
 `date_typewriter_*` presets. With `animation_counts.dates` omitted or set to

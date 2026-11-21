@@ -23,16 +23,19 @@
       "bullet": [
         "phrase.all",
         "phrase.short",
+        "phrase.long",
         "bullet"
       ],
       "important_phrase": [
         "phrase.all",
         "phrase.short",
+        "phrase.long",
         "bullet"
       ],
       "text_phrase": [
         "phrase.all",
         "phrase.short",
+        "phrase.long",
         "bullet"
       ],
       "chart": [

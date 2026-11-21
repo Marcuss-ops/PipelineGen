@@ -329,6 +329,7 @@ type mapRenderPresentation struct {
 	Label       string
 	Composition string
 	Fallback    string
+	Preset      string
 	Basemap     string
 	Territory   string
 	Country     string
@@ -400,6 +401,21 @@ func resolveMapRenderPresentation(plan capmodel.OverlayPlan, seed, slot string, 
 		return mapRenderPresentation{}, err
 	}
 	compositionChoice, _ := item.Params["map_animation"].(string)
+	// A preset is the stable alias of one (composition, basemap) pair. The
+	// plan already carries the expanded pair, but the render boundary is the
+	// last owner: it re-applies the pair and refuses an unknown preset instead
+	// of rendering a look the caller did not ask for.
+	presetID, _ := item.Params["map_preset"].(string)
+	presetID = strings.TrimSpace(presetID)
+	var preset capoverlay.MapPreset
+	if presetID != "" {
+		var known bool
+		preset, known = capoverlay.LookupMapPreset(presetID)
+		if !known {
+			return mapRenderPresentation{}, fmt.Errorf("map_preset %q is not a certified map preset", presetID)
+		}
+		compositionChoice = preset.Animation
+	}
 	// Wire DATA resolution BEFORE composition admission (TICKET map parity):
 	// the ported territory family carries the ADM3 shapeName of the map's
 	// FIRST pin — the same exact spelling the native renderer matches against
@@ -449,6 +465,10 @@ func resolveMapRenderPresentation(plan capmodel.OverlayPlan, seed, slot string, 
 	}
 	mapType, _ := item.Params["map_type"].(string)
 	stylePool := stringSliceParam(item.Params, "map_style_pool")
+	if presetID != "" {
+		mapType = preset.Basemap
+		stylePool = []string{preset.Basemap}
+	}
 	var basemapStyle string
 	if strings.HasPrefix(mapAnimation, "editorial_") {
 		if strings.TrimSpace(mapType) != "" && !strings.EqualFold(strings.TrimSpace(mapType), "random") {
@@ -481,7 +501,7 @@ func resolveMapRenderPresentation(plan capmodel.OverlayPlan, seed, slot string, 
 		StartZoom: startZoom, EndZoom: endZoom, SendZooms: sendZooms,
 		Group: group, Strategy: strategy, Requested: compositionChoice,
 		Camera: cameraAnimation, Label: labelAnimation,
-		Composition: mapAnimation, Fallback: mapFallbackReason,
+		Composition: mapAnimation, Fallback: mapFallbackReason, Preset: presetID,
 		Basemap: basemapStyle, Territory: territoryFeature, Country: countryFeature,
 		Timeline: timelineLabel, Mountain: mountainAsset, Scope: territoryScope,
 		MapLevel: mapLevel,
@@ -531,6 +551,9 @@ func (p mapRenderPresentation) payload(plan capmodel.OverlayPlan, renderWidth, r
 			"preset": profile.Preset, "quality": profile.Quality,
 		},
 		"sampler": sampler,
+	}
+	if p.Preset != "" {
+		payload["map_preset"] = p.Preset
 	}
 	if p.SendZooms {
 		payload["camera_start_zoom"] = p.StartZoom

@@ -256,7 +256,14 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 			strings.TrimSpace(mapLabel) != "" || strings.TrimSpace(mapAnimation) != "" {
 			return GenerateRequest{}, fmt.Errorf("scriptgeneration: map_presentation is the single map configuration contract; remove the legacy map_type/map_camera_animation/map_label_animation/map_animation fields")
 		}
-		resolved, err := item.MapPresentation.Normalize()
+		// A preset is an alias for a (composition, basemap) pair. Expand it on
+		// a copy before Normalize so the resolved defaults cannot be mistaken
+		// for a conflicting explicit choice.
+		spec := *item.MapPresentation
+		if err := resolveMapPresentationPresetSpec(&spec); err != nil {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
+		}
+		resolved, err := spec.Normalize()
 		if err != nil {
 			return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
 		}

@@ -13,9 +13,9 @@ import (
 // that loses its mapping falls back instead of silently admitting nothing.
 func TestMotionGroupsForItemIsRegistryBacked(t *testing.T) {
 	cases := map[string][]string{
-		"text_phrase":      {"phrase.all", "phrase.short", "bullet"},
-		"important_phrase": {"phrase.all", "phrase.short", "bullet"},
-		"bullet":           {"phrase.all", "phrase.short", "bullet"},
+		"text_phrase":      {"phrase.all", "phrase.short", "phrase.long", "bullet"},
+		"important_phrase": {"phrase.all", "phrase.short", "phrase.long", "bullet"},
+		"bullet":           {"phrase.all", "phrase.short", "phrase.long", "bullet"},
 		"chart":            {"data"},
 		"data":             {"data"},
 		"shape":            {"phrase.all", "image.all", "data"},
