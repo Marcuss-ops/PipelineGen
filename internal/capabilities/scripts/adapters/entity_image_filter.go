@@ -91,8 +91,19 @@ func formatPersonImageRejectionSummary(total int, rejected map[string]int) strin
 }
 
 func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candidate scriptpkg.SegmentAssetCandidate) (bool, float64, float64, string) {
+	semanticScore := 0.0
+	filenamePenaltyReason := ""
 	if reason := personImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, candidate.SourcePageURL); reason != "" {
-		return false, 0, 0, reason
+		penalty := PersonImageSourceIdentityPenalty(identity.CanonicalName, candidate.SourceURL)
+		if penalty <= 0 {
+			return false, 0, 0, reason
+		}
+		// IMG-05: a filename that names a second person is weak provenance,
+		// not proof of the wrong identity. Keep the candidate in the ranking
+		// with a penalty so the pixel verifier can still accept the sole
+		// correct portrait when clean candidates are scarce.
+		semanticScore = -penalty
+		filenamePenaltyReason = reason + "; ranked below single-person sources"
 	}
 	if reason := personImageSourceNotRaster(candidate.SourceURL); reason != "" {
 		return false, 0, 0, reason
@@ -109,7 +120,6 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 		return false, 0, 0, reason
 	}
 	expectedID := identity.CanonicalEntityID
-	semanticScore := 0.0
 	reason := "candidate is a retrieval match only; pixel identity remains unverified"
 
 	if entity := strings.TrimSpace(candidate.Entity); entity != "" {
@@ -141,6 +151,9 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 			technicalScore = 1
 		}
 		reason += "; dimensions meet minimum"
+	}
+	if filenamePenaltyReason != "" {
+		reason += "; " + filenamePenaltyReason
 	}
 	return true, semanticScore, technicalScore, reason
 }
@@ -292,6 +305,19 @@ func isASCIIDigits(value string) bool {
 // gate to adapters that verify cached or freshly discovered image pixels.
 func PersonImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL string) string {
 	return personImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL)
+}
+
+// PersonImageSourceIdentityPenalty returns a soft ranking penalty for a
+// filename that explicitly names more than the requested person. The hard
+// different-surname gate stays fail-closed; a multi-person editorial filename
+// is downgraded, not zeroed, so the pixel verifier can still recover a scarce
+// but valid portrait.
+func PersonImageSourceIdentityPenalty(canonicalName, sourceURL string) float64 {
+	reason := personImageSourceNameMismatch(canonicalName, sourceURL)
+	if strings.Contains(reason, "names multiple people") {
+		return 0.25
+	}
+	return 0
 }
 
 func personImageFilenameQualifier(token string) bool {

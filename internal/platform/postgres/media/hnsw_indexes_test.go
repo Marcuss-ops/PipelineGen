@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
@@ -209,6 +210,38 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 		// (the planner elides implied filters from the plan text).
 		if !strings.Contains(planText, "idx_media_embeddings_"+tc.embedding+"_hnsw") {
 			t.Fatalf("%s: plan does not reference the family HNSW index — partial index not matched. Plan:\n%s", tc.label, planText)
+		}
+
+		// STK-09: the pgvector share of the semantic search budget must stay
+		// under 500 ms. This is the real ANN query (not EXPLAIN) on the same
+		// 5k-row family fixture, so the assertion measures execution rather
+		// than planning. Embedding latency is logged separately by the
+		// semantic backend as `embed_ms`.
+		latencyQuery := fmt.Sprintf(`
+			SELECT e.asset_id
+			FROM media_embeddings e
+			JOIN media_assets a ON a.id = e.asset_id
+			WHERE e.embedding_type = '%s'
+			  AND e.model_id = '%s'
+			  AND a.deleted_at = ''
+			  AND a.lifecycle_state IN ('ACTIVE')
+			ORDER BY e.embedding::vector(%d) <=> $1::vector
+			LIMIT 8
+		`, tc.embedding, tc.modelID, explainDim)
+		started := time.Now()
+		latencyRows, err := db.QueryContext(ctx, latencyQuery, queryLiteral)
+		if err != nil {
+			t.Fatalf("%s: latency query: %v", tc.label, err)
+		}
+		for latencyRows.Next() {
+		}
+		if err := latencyRows.Err(); err != nil {
+			_ = latencyRows.Close()
+			t.Fatalf("%s: latency query rows: %v", tc.label, err)
+		}
+		_ = latencyRows.Close()
+		if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+			t.Fatalf("%s: ANN query latency %s exceeds 500ms", tc.label, elapsed)
 		}
 	}
 }

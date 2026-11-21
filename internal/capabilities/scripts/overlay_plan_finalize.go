@@ -349,6 +349,22 @@ func countRecapItems(items []capmodel.OverlayItem) int {
 	return n
 }
 
+// effectiveVisualMoments is the product-facing density metric: top-level GPU
+// render items plus every additional chain segment fused into them. A chain
+// with N segments is one GPU render item but N visual moments, so counting
+// only Items understates the plan the viewer actually sees.
+func effectiveVisualMoments(items []capmodel.OverlayItem) int {
+	total := len(items)
+	for i := range items {
+		segments, ok := capmodel.DecodeChainSegments(items[i].Params)
+		if !ok || len(segments) <= 1 {
+			continue
+		}
+		total += len(segments) - 1
+	}
+	return total
+}
+
 // countChartItems includes charts preserved inside fused chain items.
 func countChartItems(items []capmodel.OverlayItem) int {
 	n := 0

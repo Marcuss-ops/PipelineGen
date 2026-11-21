@@ -126,8 +126,13 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 			}
 			if !isEncyclopedicPersonSource(*candidate) {
 				if reason := scriptadapters.PersonImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, ""); reason != "" {
-					rejectPersonImage(candidate, reason)
-					continue
+					if penalty := scriptadapters.PersonImageSourceIdentityPenalty(identity.CanonicalName, candidate.SourceURL); penalty > 0 {
+						candidate.SemanticScore -= penalty
+						candidate.QualityReason = reason + "; ranked below single-person sources"
+					} else {
+						rejectPersonImage(candidate, reason)
+						continue
+					}
 				}
 			}
 			if isNoisyPersonImageSource(candidate.SourceURL, candidate.SourcePageURL) {
