@@ -31,10 +31,10 @@ func TestRetry_RequeuesCancelledJobAfterServiceRestart(t *testing.T) {
 
 	now := time.Now().UTC()
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO jobs (id, type, payload_json, status, worker_id, lease_id, lease_expiry,
+		`INSERT INTO jobs (id, type, payload_json, status, worker_id, lease_id, lease_expiry, cancelled_at,
 			created_at, updated_at, started_at, revision, max_retries, retry_count, progress, error, correlation_id)
-		VALUES (?, 'p1b.test', '{}', 'CANCELLED', '', '', NULL, ?, ?, ?, 1, 3, 0, 50, '', 'corr-retry-cancelled')`,
-		jobID, now.Format(time.RFC3339), now.Format(time.RFC3339), now.Format(time.RFC3339))
+		VALUES (?, 'p1b.test', '{}', 'CANCELLED', '', '', NULL, ?, ?, ?, ?, 1, 3, 0, 50, '', 'corr-retry-cancelled')`,
+		jobID, now.Format(time.RFC3339), now.Format(time.RFC3339), now.Format(time.RFC3339), now.Format(time.RFC3339))
 	require.NoError(t, err, "seed CANCELLED job")
 
 	retried, err := store.Retry(ctx, jobID)
@@ -44,6 +44,9 @@ func TestRetry_RequeuesCancelledJobAfterServiceRestart(t *testing.T) {
 	require.Equal(t, 0, retried.RetryCount, "requeue after cancel must NOT spend the retry budget")
 	require.Empty(t, retried.WorkerID)
 	require.Empty(t, retried.LeaseID)
+	var cancelledAt *string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT cancelled_at FROM jobs WHERE id = ?`, jobID).Scan(&cancelledAt))
+	require.Nil(t, cancelledAt, "retry must clear the cancellation signal or the next lease renewal cancels the resumed job")
 }
 
 // TestRetry_RequeuesFailedJobStillWorks pins the pre-existing contract the fix

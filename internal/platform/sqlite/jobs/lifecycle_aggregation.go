@@ -219,7 +219,7 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	// recorded has ended, and a stale hint would otherwise sit on a QUEUED row
 	// and mis-report the job's state to an operator.
 	res, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET status = 'QUEUED', progress = 0, error = '',
+		`UPDATE jobs SET status = 'QUEUED', progress = 0, error = '', cancelled_at = NULL,
 		 worker_id = '', lease_id = '', lease_expiry = NULL,
 		 deferred_until = NULL, revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status IN ('RETRY_WAIT', 'FAILED', 'CANCELLED') AND revision = ?`,
