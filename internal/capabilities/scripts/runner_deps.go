@@ -137,6 +137,24 @@ func (r *Runner) recordLocalizedRenderReady(ctx context.Context, runID string, e
 	return nil
 }
 
+// localizedRenderProduced reports whether this (scene, language, clip) unit is
+// already certified on the run result. The streaming coordinator and the
+// voiceover backfill are two owners of the same render matrix; this predicate
+// is how the later one knows the MP4 exists instead of asking Chronon again.
+func (r *Runner) localizedRenderProduced(result *GenerateResult, sceneID string, lang Language, clipID string) bool {
+	if result == nil {
+		return false
+	}
+	r.localizedRenderMu.Lock()
+	defer r.localizedRenderMu.Unlock()
+	for _, rendered := range result.LocalizedRenders {
+		if rendered.SceneID == sceneID && rendered.Language == lang && rendered.ClipID == clipID {
+			return true
+		}
+	}
+	return false
+}
+
 // recordLocalizedRender records one certified produced video of the
 // localized render fan-out onto the run result. It is the durable proof
 // that "this run produced this final MP4" (asset id, sha256, Drive link)

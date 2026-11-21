@@ -498,6 +498,16 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 				if clipID == "" {
 					continue
 				}
+				// ORCH-07: a unit already certified by another owner is not
+				// this backfill's work. The streaming coordinator renders from
+				// SceneTextReady and projects its videos into the result at the
+				// script join, so by the time this loop runs the streamed scenes
+				// are already produced; re-dispatching them pays Chronon twice
+				// for one certified MP4 (and violated the exact render set:
+				// successful > expected).
+				if r.localizedRenderProduced(result, scene.ID, lang, clipID) {
+					continue
+				}
 				text := strings.TrimSpace(scene.Text[lang])
 				if text == "" {
 					text = strings.TrimSpace(scene.Text[req.SourceLanguage])
