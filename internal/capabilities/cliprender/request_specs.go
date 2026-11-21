@@ -22,6 +22,17 @@ type BackgroundSpec struct {
 	// Kind is one of image|video (BackgroundKindImage / BackgroundKindVideo);
 	// empty means "derive from the resolved asset media type".
 	Kind string `json:"kind,omitempty"`
+	// BlurPX is the gaussian blur radius of the DERIVED blur_source plate, in
+	// output pixels. Zero means the renderer default (24 px). Declaring it on
+	// mode=none/asset is a contradiction and fails closed: those modes have no
+	// derived plate. Bounds: [6,48].
+	BlurPX float64 `json:"blur_px,omitempty"`
+	// Zoom scales the blurred plate before it is composited, as a factor
+	// (1.0 = cover, no extra crop). Zero means the renderer default (1.0, no
+	// key on the wire). Bounds: [1,10]. It exists because a gaussian blur
+	// samples outside the frame at the edges; a small zoom (1.05–1.15) keeps
+	// the plate clean and also lets a preset punch the background in.
+	Zoom float64 `json:"zoom,omitempty"`
 }
 
 // WatermarkSpec overlays a canonical watermark asset. When disabled the

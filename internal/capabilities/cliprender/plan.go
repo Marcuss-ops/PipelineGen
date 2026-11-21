@@ -62,6 +62,13 @@ type PlanBackground struct {
 	AssetID string `json:"asset_id,omitempty"`
 	Path    string `json:"path,omitempty"`
 	SHA256  string `json:"sha256,omitempty"`
+	// BlurPX and Zoom are the resolved blur_source treatment. They are
+	// populated ONLY for mode=blur_source; zero means "not declared" and the
+	// renderer default (24 px, 1x) applies. Carrying them in the sealed plan
+	// (not just the request) keeps the digest and the render cache honest: a
+	// changed treatment cannot reuse stale clip bytes.
+	BlurPX float64 `json:"blur_px,omitempty"`
+	Zoom   float64 `json:"zoom,omitempty"`
 }
 
 // The background media-family vocabulary (kinds, IsBackgroundKind,
@@ -344,6 +351,10 @@ type CompileInput struct {
 	WatermarkSpec  *WatermarkSpec     // normalized request watermark block; the SINGLE owner of watermark text/position/opacity/margin/style. A text-only watermark is WatermarkSpec.Text with Watermark == nil.
 	Background     *MaterializedAsset // the materialized background asset; non-nil ONLY for mode=asset
 	BackgroundMode string             // request-level background mode (none | blur_source | asset); empty falls back to none/asset from Background
+	// BackgroundBlurPX/BackgroundZoom are the request's blurred-plate
+	// treatment; they are validated and sealed only for mode=blur_source.
+	BackgroundBlurPX float64
+	BackgroundZoom   float64
 	// BackgroundKind is the resolved media family of Background
 	// (image | video). REQUIRED for mode=asset; ignored for the asset-less
 	// modes. It is resolved by the preparer from the asset's canonical
@@ -444,6 +455,9 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 	if in.BackgroundKind != "" && backgroundMode != BackgroundModeAsset {
 		return ClipRenderPlanV1{}, fmt.Errorf("%w: background_kind must be empty for mode=%s (got %q)", ErrInvalidClipPlan, backgroundMode, in.BackgroundKind)
 	}
+	if err := ValidateBackgroundTreatment(backgroundMode, in.BackgroundBlurPX, in.BackgroundZoom); err != nil {
+		return ClipRenderPlanV1{}, fmt.Errorf("%w: %w", ErrInvalidClipPlan, err)
+	}
 	switch backgroundMode {
 	case BackgroundModeNone:
 		if in.Background != nil {
@@ -454,7 +468,11 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 		if in.Background != nil {
 			return ClipRenderPlanV1{}, fmt.Errorf("%w: background mode=blur_source must not carry an asset", ErrInvalidClipPlan)
 		}
-		plan.Background = &PlanBackground{Mode: BackgroundModeBlurSource}
+		plan.Background = &PlanBackground{
+			Mode:   BackgroundModeBlurSource,
+			BlurPX: in.BackgroundBlurPX,
+			Zoom:   in.BackgroundZoom,
+		}
 	case BackgroundModeAsset:
 		if in.Background == nil || in.Background.LocalPath == "" || !isSHA256Hex(in.Background.SHA256) {
 			return ClipRenderPlanV1{}, fmt.Errorf("%w: background mode=asset requires the materialized asset with path + sha256", ErrInvalidClipPlan)

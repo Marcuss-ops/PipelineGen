@@ -290,6 +290,9 @@ func (r *RenderRequest) Validate() error {
 	default:
 		return fmt.Errorf("%w: background.mode must be one of none, blur_source, asset (got %q)", ErrInvalidRequest, r.Background.Mode)
 	}
+	if err := ValidateBackgroundTreatment(r.Background.Mode, r.Background.BlurPX, r.Background.Zoom); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidRequest, err)
+	}
 
 	if r.Watermark.Enabled {
 		if strings.TrimSpace(r.Watermark.AssetID) == "" && strings.TrimSpace(r.Watermark.Text) == "" {

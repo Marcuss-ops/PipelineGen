@@ -461,6 +461,72 @@ func TestCompile_BlurSourceBackground(t *testing.T) {
 	}
 }
 
+// TestCompile_BackgroundTreatment pins that blur_px/zoom are sealed into the
+// blur_source plan, that zero keeps the historical default, and that a
+// treatment on an asset-less/asset mode or outside the envelope fails closed.
+func TestCompile_BackgroundTreatment(t *testing.T) {
+	in := baseCompileInput()
+	in.BackgroundMode = BackgroundModeBlurSource
+	in.BackgroundBlurPX = 36
+	in.BackgroundZoom = 1.15
+	plan, err := Compile(in)
+	if err != nil {
+		t.Fatalf("Compile failed: %v", err)
+	}
+	if plan.Background.BlurPX != 36 || plan.Background.Zoom != 1.15 {
+		t.Fatalf("sealed treatment = blur %v zoom %v, want 36/1.15", plan.Background.BlurPX, plan.Background.Zoom)
+	}
+	if plan.PlanSHA256 == "" {
+		t.Fatal("expected a sealed digest")
+	}
+
+	// Undeclared treatment keeps the pre-existing plan shape: both fields are
+	// absent and the digest is the historical one.
+	plain := baseCompileInput()
+	plain.BackgroundMode = BackgroundModeBlurSource
+	plainPlan, err := Compile(plain)
+	if err != nil {
+		t.Fatalf("Compile default blur_source failed: %v", err)
+	}
+	if plainPlan.Background.BlurPX != 0 || plainPlan.Background.Zoom != 0 {
+		t.Fatalf("undeclared treatment must stay zero, got %+v", plainPlan.Background)
+	}
+
+	for _, tc := range []struct {
+		name string
+		in   CompileInput
+	}{
+		{"asset mode with treatment", func() CompileInput {
+			v := baseCompileInput()
+			v.BackgroundMode = BackgroundModeAsset
+			v.Background = backgroundMat()
+			v.BackgroundKind = BackgroundKindImage
+			v.BackgroundBlurPX = 24
+			return v
+		}()},
+		{"blur out of bounds", func() CompileInput {
+			v := baseCompileInput()
+			v.BackgroundMode = BackgroundModeBlurSource
+			v.BackgroundBlurPX = 60
+			return v
+		}()},
+		{"zoom out of bounds", func() CompileInput {
+			v := baseCompileInput()
+			v.BackgroundMode = BackgroundModeBlurSource
+			v.BackgroundZoom = 0.5
+			return v
+		}()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Compile(tc.in); err == nil {
+				t.Fatalf("%s must fail closed", tc.name)
+			} else if !errors.Is(err, ErrInvalidClipPlan) {
+				t.Fatalf("error must wrap ErrInvalidClipPlan, got %v", err)
+			}
+		})
+	}
+}
+
 // TestCompile_ForegroundScaleGatesBackgroundVisibility pins the ONE knob that
 // decides whether an asset background is actually VISIBLE: foreground_scale_percent.
 //

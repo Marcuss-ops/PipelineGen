@@ -116,6 +116,9 @@ func (p ClipRenderPlanV1) Validate() error {
 		default:
 			return fmt.Errorf("%w: invalid background mode %q", ErrInvalidClipPlan, p.Background.Mode)
 		}
+		if err := ValidateBackgroundTreatment(p.Background.Mode, p.Background.BlurPX, p.Background.Zoom); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidClipPlan, err)
+		}
 	}
 
 	if p.Watermark != nil {

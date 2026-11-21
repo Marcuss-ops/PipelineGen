@@ -363,10 +363,57 @@ func TestMapClipPlanToOverlayPlan_BlurSourceEmitsHonouredFit(t *testing.T) {
 	if bg.Kind != "video" || bg.Fit != "cover" || !bg.Loop {
 		t.Fatalf("blur_source background = %+v, want kind=video fit=cover loop=true", bg)
 	}
-	if bg.BlurPX != blurSourceRadiusPX {
-		t.Fatalf("blur_source background blur_px = %v, want %v (a sharp plate is the glitch)", bg.BlurPX, blurSourceRadiusPX)
+	if bg.BlurPX != cliprender.DefaultBackgroundBlurPX {
+		t.Fatalf("blur_source background blur_px = %v, want %v (a sharp plate is the glitch)", bg.BlurPX, cliprender.DefaultBackgroundBlurPX)
+	}
+	if bg.Zoom != 0 {
+		t.Fatalf("blur_source background zoom = %v, want absent (default 1x)", bg.Zoom)
 	}
 	if len(bg.AssetRefs) != 1 || bg.AssetRefs[0].SHA256 != plan.Source.SHA256 {
 		t.Fatalf("blur_source must reuse the source asset: %+v", bg.AssetRefs)
+	}
+}
+
+// TestMapClipPlanToOverlayPlan_BlurSourceTreatment pins that the declared
+// treatment reaches the wire verbatim: the renderer owns the geometry, the
+// mapper must not re-default a requested 1.15x back to 1x.
+func TestMapClipPlanToOverlayPlan_BlurSourceTreatment(t *testing.T) {
+	plan := mapperPlan(t, nil)
+	plan.Subtitles = nil
+	plan.Background = &cliprender.PlanBackground{
+		Mode: cliprender.BackgroundModeBlurSource, BlurPX: 36, Zoom: 1.15,
+	}
+	if err := plan.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := MapClipPlanToOverlayPlan(plan)
+	if err != nil {
+		t.Fatalf("map blur_source background: %v", err)
+	}
+	bg := decodeOverlayBackground(t, raw)
+	if bg.BlurPX != 36 || bg.Zoom != 1.15 {
+		t.Fatalf("blur_source treatment = blur %v zoom %v, want 36/1.15", bg.BlurPX, bg.Zoom)
+	}
+}
+
+// TestMapClipPlanToOverlayPlan_BlurSourceExplicitDefaultOmitsZoom keeps the
+// historical wire byte-stable: 1x is the absent default and must not appear as
+// a key, so a plan that never declared zoom cannot look changed downstream.
+func TestMapClipPlanToOverlayPlan_BlurSourceExplicitDefaultOmitsZoom(t *testing.T) {
+	plan := mapperPlan(t, nil)
+	plan.Subtitles = nil
+	plan.Background = &cliprender.PlanBackground{
+		Mode: cliprender.BackgroundModeBlurSource, BlurPX: cliprender.DefaultBackgroundBlurPX,
+		Zoom: cliprender.DefaultBackgroundZoom,
+	}
+	if err := plan.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := MapClipPlanToOverlayPlan(plan)
+	if err != nil {
+		t.Fatalf("map blur_source background: %v", err)
+	}
+	if strings.Contains(string(raw), "\"zoom\"") {
+		t.Fatalf("default zoom must stay absent from the wire: %s", raw)
 	}
 }

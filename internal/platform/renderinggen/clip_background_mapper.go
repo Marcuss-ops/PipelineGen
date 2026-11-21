@@ -25,12 +25,6 @@ import (
 const (
 	backgroundKindVideo = "video"
 	backgroundFitCover  = "cover"
-
-	// blurSourceRadiusPX is the fixed gaussian radius of a derived
-	// blur_source plate. The plate is the source video at canvas size, so a
-	// 24 px radius removes the sharp duplicate of the foreground without
-	// washing the scene into a flat colour.
-	blurSourceRadiusPX = 24.0
 )
 
 // mapBackground projects the sealed plan's background block onto the wire.
@@ -52,7 +46,15 @@ func mapBackground(plan cliprender.ClipRenderPlanV1) (*overlayBackground, error)
 		// was not a FitMode and was silently degraded to a sharp cover plate.
 		// BlurPX is what turns that plate into the soft backdrop the mode
 		// promises, instead of a visible second copy of the foreground.
-		return &overlayBackground{
+		//
+		// The treatment is declared per request (blur_px/zoom); an absent
+		// value resolves to the cliprender default, which is exactly the
+		// plate every pre-treatment render already produced.
+		blur := plan.Background.BlurPX
+		if blur == 0 {
+			blur = cliprender.DefaultBackgroundBlurPX
+		}
+		background := &overlayBackground{
 			Kind: backgroundKindVideo,
 			AssetRefs: []overlayAssetRef{{
 				AssetID:   plan.Source.AssetID,
@@ -62,8 +64,12 @@ func mapBackground(plan cliprender.ClipRenderPlanV1) (*overlayBackground, error)
 			}},
 			Fit:    backgroundFitCover,
 			Loop:   true,
-			BlurPX: blurSourceRadiusPX,
-		}, nil
+			BlurPX: blur,
+		}
+		if plan.Background.Zoom != cliprender.DefaultBackgroundZoom && plan.Background.Zoom != 0 {
+			background.Zoom = plan.Background.Zoom
+		}
+		return background, nil
 	case cliprender.BackgroundModeAsset:
 		filename, err := backgroundStagedFilename(plan)
 		if err != nil {

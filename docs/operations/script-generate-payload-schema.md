@@ -246,7 +246,7 @@ card controls plus native effects and a procedural grid:
 ```json
 "output": {"render": {
   "enabled": true,
-  "background": {"mode": "blur_source"},
+  "background": {"mode": "blur_source", "blur_px": 28, "zoom": 1.1},
   "foreground_scale_percent": 75,
   "watermark": {"enabled": true, "text": "VeloxEditing",
     "position": "top_right", "opacity": 0.72, "margin_px": 36,
@@ -278,7 +278,11 @@ sets its inset, `opacity` accepts 0..1, and `style` sets font, size, color,
 stroke, shadow and transition. Style width/height/scale can set a precise
 watermark box. The watermark travels in the same sealed Chronon render plan.
 `background.mode` is `none`, `blur_source`, or `asset` (with `asset_id` for an
-asset). `effects` uses the closed Chronon effect allowlist from
+asset). For `blur_source`, `background.blur_px` sets the gaussian radius of the
+derived plate (6–48 px, default 24) and `background.zoom` scales it (1–10×,
+default 1 = cover). Both are rejected on `none`/`asset`, which carry no derived
+plate, and both participate in the render fingerprint. `effects` uses the
+closed Chronon effect allowlist from
 `POST /api/clips/render`; `grid.scope` may be `full_canvas` (the default) or
 `foreground`, which confines it to the scaled source clip. Subtitle `font`, `color`, `stroke` and `shadow` use
 the `VideoVisualStyleSpec` contract. Invalid effects or grid geometry fail

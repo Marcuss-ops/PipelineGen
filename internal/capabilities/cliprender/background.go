@@ -14,6 +14,7 @@ package cliprender
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -28,6 +29,50 @@ const (
 	BackgroundKindImage = "image"
 	BackgroundKindVideo = "video"
 )
+
+// blur_source treatment defaults and bounds. The numbers mirror the renderer's
+// established image_backdrop envelope (6..48 px, up to 10x): a preset authored
+// on the clip path must not be renderable on one plate family and refused on
+// the other. BlurPX/zoom values of zero mean "not declared" — the renderer's
+// defaults (24 px, 1x) apply — so an unset treatment keeps the historical
+// blur_source plate byte-identical.
+const (
+	DefaultBackgroundBlurPX = 24.0
+	DefaultBackgroundZoom   = 1.0
+	MinBackgroundBlurPX     = 6.0
+	MaxBackgroundBlurPX     = 48.0
+	MaxBackgroundZoom       = 10.0
+)
+
+// ValidateBackgroundTreatment is the ONE validator for the blurred-plate
+// treatment. It is shared by the request boundary, the sealed plan and the
+// plan's validation so the three cannot disagree.
+//
+// The treatment belongs to blur_source alone: mode=none has no plate to blur,
+// and mode=asset has no derived plate (its asset is rendered verbatim). A
+// treatment declared on either is a contradiction and is refused instead of
+// dropped, so the caller learns the two inputs disagreed.
+func ValidateBackgroundTreatment(mode string, blurPX, zoom float64) error {
+	switch mode {
+	case BackgroundModeNone, BackgroundModeAsset:
+		if blurPX != 0 || zoom != 0 {
+			return fmt.Errorf("background.blur_px and background.zoom are only valid for mode=blur_source (mode=%s)", mode)
+		}
+		return nil
+	case BackgroundModeBlurSource:
+		if blurPX != 0 && (math.IsNaN(blurPX) || math.IsInf(blurPX, 0) || blurPX < MinBackgroundBlurPX || blurPX > MaxBackgroundBlurPX) {
+			return fmt.Errorf("background.blur_px must be within [%g,%g] when declared (got %v)", MinBackgroundBlurPX, MaxBackgroundBlurPX, blurPX)
+		}
+		if zoom != 0 && (math.IsNaN(zoom) || math.IsInf(zoom, 0) || zoom < 1 || zoom > MaxBackgroundZoom) {
+			return fmt.Errorf("background.zoom must be within [1,%g] when declared (got %v)", MaxBackgroundZoom, zoom)
+		}
+		return nil
+	default:
+		// The mode gate owns this error; do not report a treatment problem for
+		// a mode that will be rejected for being unknown.
+		return nil
+	}
+}
 
 // IsBackgroundKind reports whether value is a canonical background kind.
 // Comparison is exact: a near miss ("images", "VIDEO ") is a producer bug and

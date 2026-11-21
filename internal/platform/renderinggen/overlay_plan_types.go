@@ -127,6 +127,10 @@ type overlayBackground struct {
 	// sharp full-frame copy of the source and the card edge shows a duplicate
 	// of the foreground instead of a soft backdrop.
 	BlurPX float64 `json:"blur_px,omitempty"`
+	// Zoom scales the plate before compositing (1.0 = cover, no extra crop).
+	// Absent means the renderer default, so the wire stays byte-identical to
+	// the produces-before-zoom path.
+	Zoom float64 `json:"zoom,omitempty"`
 }
 
 type overlaySubtitles struct {

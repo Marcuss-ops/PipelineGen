@@ -180,6 +180,40 @@ func TestValidate_BackgroundModes(t *testing.T) {
 	}
 }
 
+// TestValidate_BackgroundTreatment pins the blurred-plate controls: they are
+// valid only on blur_source, inside the renderer's envelope, and zero means
+// "not declared" so the historical default plate is unchanged.
+func TestValidate_BackgroundTreatment(t *testing.T) {
+	valid := &RenderRequest{SourceAssetID: "a", Background: &BackgroundSpec{
+		Mode: BackgroundModeBlurSource, BlurPX: 36, Zoom: 1.15,
+	}}
+	valid.Normalize()
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("declared treatment must validate: %v", err)
+	}
+	for _, tc := range []struct {
+		name string
+		bg   BackgroundSpec
+	}{
+		{"blur below minimum", BackgroundSpec{Mode: BackgroundModeBlurSource, BlurPX: 5}},
+		{"blur above maximum", BackgroundSpec{Mode: BackgroundModeBlurSource, BlurPX: 49}},
+		{"zoom below 1", BackgroundSpec{Mode: BackgroundModeBlurSource, Zoom: 0.9}},
+		{"zoom above maximum", BackgroundSpec{Mode: BackgroundModeBlurSource, Zoom: 10.1}},
+		{"treatment on none", BackgroundSpec{Mode: BackgroundModeNone, BlurPX: 24}},
+		{"treatment on asset", BackgroundSpec{Mode: BackgroundModeAsset, AssetID: "bg", Zoom: 1.1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &RenderRequest{SourceAssetID: "a", Background: &tc.bg}
+			req.Normalize()
+			if err := req.Validate(); err == nil {
+				t.Fatalf("%s must fail validation", tc.name)
+			} else if !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("error must wrap ErrInvalidRequest, got %v", err)
+			}
+		})
+	}
+}
+
 // TestValidate_WatermarkContract verifies the watermark gate.
 func TestValidate_WatermarkContract(t *testing.T) {
 	// enabled without asset_id fails.
