@@ -1,54 +1,59 @@
 {
   "schema_version": "velox.chain-segments.conformance.v1",
-  "description": "Five nearby images must survive as five independently timed image segments, each with its own asset and motion. PipelineGen validates this plan as the producer; RenderingGen compiles the same bytes as the consumer.",
+  "description": "Five captioned entity portraits must survive as five independently timed image segments, each with its own asset and motion. BrainRust's planner emits this document's plan from tests/fixtures/overlay_plan/requests/chain_segments_conformance.request.json; PipelineGen validates the same bytes as the producer and RenderingGen compiles them as the consumer.",
   "plan": {
     "schema_version": "renderinggen.overlay-plan.v1",
-    "plan_id": "conformance-five-images",
+    "plan_id": "chain-segments-conformance",
     "video_id": "conformance-video",
-    "width": 1280,
-    "height": 720,
-    "fps_num": 30,
+    "project_id": "project-fixture",
+    "language": "it",
+    "width": 1920,
+    "height": 1080,
+    "fps_num": 24,
     "fps_den": 1,
-    "duration_ms": 15200,
+    "duration_ms": 15000,
+    "output_profile_id": "assemblyready.alpha.v1",
     "items": [
       {
-        "id": "scene-1:chain-image:0",
-        "scene_id": "scene-1",
+        "id": "static__s1-chain-image-0__image-chain__01",
+        "scene_id": "s1",
         "kind": "image_chain",
+        "start_ms": 500,
+        "end_ms": 14600,
+        "start_us": 500000,
+        "duration_us": 14100000,
         "template_id": "IMAGE_CHAIN",
-        "start_ms": 0,
-        "end_ms": 15200,
-        "start_us": 0,
-        "duration_us": 15200000,
+        "caption_font_family": "playfair_display_italic",
+        "caption_layout": "below",
         "asset_refs": [
           {
-            "asset_id": "img-0",
+            "asset_id": "asset-ada",
+            "url": "https://cdn.example/ada.jpg",
             "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-            "url": "https://example.test/img-0.jpg",
             "media_type": "image/jpeg"
           },
           {
-            "asset_id": "img-1",
+            "asset_id": "asset-grace",
+            "url": "https://cdn.example/grace.jpg",
             "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-            "url": "https://example.test/img-1.jpg",
             "media_type": "image/jpeg"
           },
           {
-            "asset_id": "img-2",
+            "asset_id": "asset-alan",
+            "url": "https://cdn.example/alan.jpg",
             "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
-            "url": "https://example.test/img-2.jpg",
             "media_type": "image/jpeg"
           },
           {
-            "asset_id": "img-3",
+            "asset_id": "asset-marie",
+            "url": "https://cdn.example/marie.jpg",
             "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
-            "url": "https://example.test/img-3.jpg",
             "media_type": "image/jpeg"
           },
           {
-            "asset_id": "img-4",
+            "asset_id": "asset-nikola",
+            "url": "https://cdn.example/nikola.jpg",
             "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
-            "url": "https://example.test/img-4.jpg",
             "media_type": "image/jpeg"
           }
         ],
@@ -57,100 +62,196 @@
           "chain_count": 5,
           "chain_gap_us": 400000,
           "chain_motions": [
-            "image_focus_reveal",
-            "image_roll_depth_in",
-            "image_photo_drop",
-            "image_spotlight_focus",
-            "image_parallax_frame"
+            "image_scale_reveal",
+            "image_slide_left_reveal",
+            "image_slide_right_reveal",
+            "image_card_push",
+            "image_focus_reveal"
           ],
           "chain_segments": [
             {
-              "motion_id": "image_focus_reveal",
-              "preset_id": "image_scale_in",
-              "template_id": "IMAGE_OVERLAY",
-              "kind": "image",
-              "start_us": 0,
-              "duration_us": 2800000,
-              "asset_id": "img-0",
+              "asset_id": "asset-ada",
               "assets": [
                 {
-                  "asset_id": "img-0",
+                  "asset_id": "asset-ada",
+                  "media_type": "image/jpeg",
                   "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-                  "url": "https://example.test/img-0.jpg",
-                  "media_type": "image/jpeg"
+                  "url": "https://cdn.example/ada.jpg"
                 }
-              ]
+              ],
+              "caption_color": "#000000",
+              "caption_font_family": "playfair_display_italic",
+              "caption_layout": "below",
+              "caption_motion_id": "caption_fade",
+              "duration_us": 2500000,
+              "entity_caption": "Ada Lovelace",
+              "entity_id": "person-ada",
+              "entity_style_id": "premium_below_random_v1",
+              "image_preset_id": "image_scale_in",
+              "kind": "entity_image",
+              "motion_id": "image_scale_reveal",
+              "motion_params": {
+                "enter_frames": 8
+              },
+              "params": {
+                "canonical_entity_id": "person:ada-lovelace",
+                "entity_type": "PERSON",
+                "height": 820,
+                "position_x": 0,
+                "position_y": 0,
+                "priority": 0.95,
+                "width": 820
+              },
+              "start_us": 500000,
+              "template_id": "image_popup"
             },
             {
-              "motion_id": "image_roll_depth_in",
-              "preset_id": "image_scale_in",
-              "template_id": "IMAGE_OVERLAY",
-              "kind": "image",
-              "start_us": 3000000,
-              "duration_us": 2800000,
-              "asset_id": "img-1",
+              "asset_id": "asset-grace",
               "assets": [
                 {
-                  "asset_id": "img-1",
+                  "asset_id": "asset-grace",
+                  "media_type": "image/jpeg",
                   "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-                  "url": "https://example.test/img-1.jpg",
-                  "media_type": "image/jpeg"
+                  "url": "https://cdn.example/grace.jpg"
                 }
-              ]
+              ],
+              "caption_color": "#000000",
+              "caption_font_family": "playfair_display_italic",
+              "caption_layout": "below",
+              "caption_motion_id": "caption_rise",
+              "duration_us": 2500000,
+              "entity_caption": "Grace Hopper",
+              "entity_id": "person-grace",
+              "entity_style_id": "premium_below_random_v1",
+              "image_preset_id": "image_scale_in",
+              "kind": "entity_image",
+              "motion_id": "image_slide_left_reveal",
+              "motion_params": {
+                "enter_frames": 8
+              },
+              "params": {
+                "canonical_entity_id": "person:grace-hopper",
+                "entity_type": "PERSON",
+                "height": 820,
+                "position_x": 0,
+                "position_y": 0,
+                "priority": 0.95,
+                "width": 820
+              },
+              "start_us": 3400000,
+              "template_id": "image_popup"
             },
             {
-              "motion_id": "image_photo_drop",
-              "preset_id": "image_scale_in",
-              "template_id": "IMAGE_OVERLAY",
-              "kind": "image",
-              "start_us": 6000000,
-              "duration_us": 2800000,
-              "asset_id": "img-2",
+              "asset_id": "asset-alan",
               "assets": [
                 {
-                  "asset_id": "img-2",
+                  "asset_id": "asset-alan",
+                  "media_type": "image/jpeg",
                   "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
-                  "url": "https://example.test/img-2.jpg",
-                  "media_type": "image/jpeg"
+                  "url": "https://cdn.example/alan.jpg"
                 }
-              ]
+              ],
+              "caption_color": "#000000",
+              "caption_font_family": "playfair_display_italic",
+              "caption_layout": "below",
+              "caption_motion_id": "caption_fade",
+              "duration_us": 2500000,
+              "entity_caption": "Alan Turing",
+              "entity_id": "person-alan",
+              "entity_style_id": "premium_below_random_v1",
+              "image_preset_id": "image_scale_in",
+              "kind": "entity_image",
+              "motion_id": "image_slide_right_reveal",
+              "motion_params": {
+                "enter_frames": 8
+              },
+              "params": {
+                "canonical_entity_id": "person:alan-turing",
+                "entity_type": "PERSON",
+                "height": 820,
+                "position_x": 0,
+                "position_y": 0,
+                "priority": 0.95,
+                "width": 820
+              },
+              "start_us": 6300000,
+              "template_id": "image_popup"
             },
             {
-              "motion_id": "image_spotlight_focus",
-              "preset_id": "image_scale_in",
-              "template_id": "IMAGE_OVERLAY",
-              "kind": "image",
-              "start_us": 9000000,
-              "duration_us": 2800000,
-              "asset_id": "img-3",
+              "asset_id": "asset-marie",
               "assets": [
                 {
-                  "asset_id": "img-3",
+                  "asset_id": "asset-marie",
+                  "media_type": "image/jpeg",
                   "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
-                  "url": "https://example.test/img-3.jpg",
-                  "media_type": "image/jpeg"
+                  "url": "https://cdn.example/marie.jpg"
                 }
-              ]
+              ],
+              "caption_color": "#000000",
+              "caption_font_family": "playfair_display_italic",
+              "caption_layout": "below",
+              "caption_motion_id": "caption_rise",
+              "duration_us": 2500000,
+              "entity_caption": "Marie Curie",
+              "entity_id": "person-marie",
+              "entity_style_id": "premium_below_random_v1",
+              "image_preset_id": "image_scale_in",
+              "kind": "entity_image",
+              "motion_id": "image_card_push",
+              "motion_params": {
+                "enter_frames": 8
+              },
+              "params": {
+                "canonical_entity_id": "person:marie-curie",
+                "entity_type": "PERSON",
+                "height": 820,
+                "position_x": 0,
+                "position_y": 0,
+                "priority": 0.95,
+                "width": 820
+              },
+              "start_us": 9200000,
+              "template_id": "image_popup"
             },
             {
-              "motion_id": "image_parallax_frame",
-              "preset_id": "image_scale_in",
-              "template_id": "IMAGE_OVERLAY",
-              "kind": "image",
-              "start_us": 12000000,
-              "duration_us": 2800000,
-              "asset_id": "img-4",
+              "asset_id": "asset-nikola",
               "assets": [
                 {
-                  "asset_id": "img-4",
+                  "asset_id": "asset-nikola",
+                  "media_type": "image/jpeg",
                   "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
-                  "url": "https://example.test/img-4.jpg",
-                  "media_type": "image/jpeg"
+                  "url": "https://cdn.example/nikola.jpg"
                 }
-              ]
+              ],
+              "caption_color": "#000000",
+              "caption_font_family": "playfair_display_italic",
+              "caption_layout": "below",
+              "caption_motion_id": "caption_fade",
+              "duration_us": 2500000,
+              "entity_caption": "Nikola Tesla",
+              "entity_id": "person-nikola",
+              "entity_style_id": "premium_below_random_v1",
+              "image_preset_id": "image_scale_in",
+              "kind": "entity_image",
+              "motion_id": "image_focus_reveal",
+              "motion_params": {
+                "enter_frames": 8
+              },
+              "params": {
+                "canonical_entity_id": "person:nikola-tesla",
+                "entity_type": "PERSON",
+                "height": 820,
+                "position_x": 0,
+                "position_y": 0,
+                "priority": 0.95,
+                "width": 820
+              },
+              "start_us": 12100000,
+              "template_id": "image_popup"
             }
           ]
-        }
+        },
+        "duration_ms": 14100
       }
     ]
   }

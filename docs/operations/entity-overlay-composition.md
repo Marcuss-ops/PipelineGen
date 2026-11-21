@@ -184,10 +184,19 @@ and per-layer asset references.
 The cross-repository fixture is
 `testdata/contracts/chain-segments-v1.json` in PipelineGen and
 `contracts/chain-segments-v1.json` in RenderingGen, byte-identical with SHA-256
-`7647670ee04550892cc9c8939bba6b71d354698ccdb2bdbdd8a4ba8d25dde9d0`.
+`a96712594aadf832c47674cfc557a4b20cea27898a70fa967dcaeedf87351093`.
 
-The fixture is **authored, not generated**: it proves the consumer lowers five
-segments, it does not prove the producer emitted those bytes. The key set is
+The fixture is **generated, not authored** (2026-11-21): `overlay-compiler`
+compiles `tests/fixtures/overlay_plan/requests/chain_segments_conformance.request.json`
+(five captioned PERSON portraits in one scene, five certified image motions) into
+`tests/fixtures/overlay_plan/plans/chain_segments_conformance.plan.json`, and the
+Go producer lowers that plan into the `overlay-plan.v1` document. Regenerate with
+`UPDATE_CHAIN_SEGMENTS_CONFORMANCE=1 go test ./internal/capabilities/scripts -run
+TestRegenerateChainSegmentsConformanceFixture`;
+`TestChainSegmentsConformanceFixtureMatchesProducer` recompiles the request on
+every run and fails if the segments drift. The previous fixture was unreachable
+by construction — it chained five plain `image` segments, and the planner never
+fuses plain photos into a chain. The key set is
 what the three sides assert independently — `CANONICAL_KEYS` in the Rust
 producer (`coalesce.rs`), `canonicalChainSegmentKeys` in PipelineGen and
 `canonicalChainSegmentKeys` in RenderingGen — so a key added on one side fails

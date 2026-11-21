@@ -12,7 +12,7 @@ import (
 // conformanceFixtureSHA256 pins the byte identity of the fixture shared with
 // RenderingGen's contracts/. If either repository edits its copy without the
 // other, this test fails before a producer/consumer drift can ship.
-const conformanceFixtureSHA256 = "7647670ee04550892cc9c8939bba6b71d354698ccdb2bdbdd8a4ba8d25dde9d0"
+const conformanceFixtureSHA256 = "a96712594aadf832c47674cfc557a4b20cea27898a70fa967dcaeedf87351093"
 
 // TestChainSegmentsSharedConformanceFixture is the producer half of the
 // cross-repository chain_segments contract: five images, five independent

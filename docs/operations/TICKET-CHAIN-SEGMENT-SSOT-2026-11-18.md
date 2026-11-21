@@ -1,6 +1,6 @@
 # TICKET — chain_segments single source of truth (2026-11-18)
 
-- **Status:** PARTIAL (agg. 2026-11-21 sera). The identity decision now runs
+- **Status:** PARTIAL (agg. 2026-11-21 sera; Open 5 chiuso il 2026-11-21). The identity decision now runs
   once: the planner promotes entity cards from
   `media.promotable_entity_assets` with the ported seeded sampler, the Go
   promotion pass is deleted, **Open 3 è chiuso** (il ceiling è campo della
@@ -141,9 +141,10 @@ a fixture and two SHA constants.
    `TestCompileChainRejectsMissingKind`. Evidenza di sicurezza: **227 file di
    piano, 3.094 segmenti** in `data/`, `refactored/data/`, `ops/`,
    `deliverables/` — **0** senza le due chiavi.
-5. **Generate the fixture or drop the SHA pin.** The fixture is authored, so it
+5. ~~**Generate the fixture or drop the SHA pin.** The fixture is authored, so it
    proves lowering, never producer parity. Either a Rust test emits these bytes or
-   the two SHA constants are replaced by a generated artifact.
+   the two SHA constants are replaced by a generated artifact.~~
+   **CHIUSO 2026-11-21.** Vedi §Open 5 eseguito.
 6. **Retire the local decoders.** `chainSegmentMaps`, `chainSegments`,
    `overlayPlanChainSegments` and `chainSegmentStyleMaps` are already gone; the
    remaining `DecodeChainSegments` / `ChainSegmentMaps` pair must survive only
@@ -360,11 +361,49 @@ Resta aperto:
    «viaggia dal media resolver» non descrive il tree attuale: il resolver
    produce solo il **default** run-level (`MaxImageOverlaysPerRun = 20`).
 3. Open 4 è **chiuso** (vedi §Open e il test `TestCompileChainRejectsMissingKind`).
-   Restano Open 5 (fixture generata invece che scritta a mano) e Open 6
-   (decoders locali `DecodeChainSegments`/`ChainSegmentMaps`).
+   Open 5 è **chiuso** (2026-11-21). Resta Open 6 (decoders locali
+   `DecodeChainSegments`/`ChainSegmentMaps`), che è un refactor dei consumer Go e
+   non un difetto del contratto.
 
 Chiuso con questa finestra: **provenienza canonica delle card promosse**. Il
 `PlanItemV2` espone `entity_ref`, la promozione lo conserva in place e Go lo
 proietta su `OverlayItem.EntityRef`; l'audit non ricade più su `entity_id`. I
 segmenti di catena restano senza ref — una catena fusa non ha una sola identità,
 come non l'avevano i segmenti prima del cutover.
+
+## Open 5 eseguito — fixture generata dal planner (2026-11-21)
+
+Il vecchio fixture era **irraggiungibile per costruzione**: incatenava cinque
+segmenti `image`/`IMAGE_OVERLAY` senza caption, e `coalesce_chained_overlays`
+non fonde mai le foto semplici (restano standalone). Non era quindi solo
+«authored invece che generato»: descriveva un piano che il producer non può più
+emettere.
+
+- **Fixture producer.**
+  `BrainRust/overlay-compiler/tests/fixtures/overlay_plan/requests/chain_segments_conformance.request.json`
+  (cinque PERSON con ritratto verificato, caption verbatim, cinque motion
+  certificate: `image_focus_reveal`, `image_scale_reveal`,
+  `image_slide_left_reveal`, `image_slide_right_reveal`, `image_card_push`) è
+  entrato nella matrice di `overlay_plan_contract.rs` insieme al piano generato
+  `plans/chain_segments_conformance.plan.json`; il test confronta i byte del
+  piano con l'output reale del planner (32/32 verdi).
+- **Fixture condivisa.** Il piano è abbassato in `overlay-plan.v1` e scritto in
+  `testdata/contracts/chain-segments-v1.json` e `RenderingGen/contracts/`
+  (byte identici, SHA-256
+  `a96712594aadf832c47674cfc557a4b20cea27898a70fa967dcaeedf87351093`). Il piano
+  emesso ha **5 segmenti `entity_image`**, 5 asset distinti e 5 motion distinte
+  (`image_scale_reveal`, `image_slide_left_reveal`, `image_slide_right_reveal`,
+  `image_card_push`, `image_focus_reveal`).
+- **Generatore.** `UPDATE_CHAIN_SEGMENTS_CONFORMANCE=1 go test
+  ./internal/capabilities/scripts -run TestRegenerateChainSegmentsConformanceFixture`
+  ricompila la richiesta col binario `semantic-engine` e riscrive entrambe le
+  copie; una seconda esecuzione produce lo stesso SHA (idempotente).
+- **Gate di deriva.** `TestChainSegmentsConformanceFixtureMatchesProducer`
+  ricompila la richiesta a ogni run, verifica che le due copie siano
+  byte-identiche e confronta `params.chain_segments` col piano reale. Le due
+  metà Go/RenderingGen passano: `TestChainSegmentsSharedConformanceFixture` e
+  `TestSharedChainSegmentsFixtureCompilesFiveImages`.
+
+Resta aperto solo Open 6 (ritiro dei decoder locali), che richiede di far
+arrivare ai consumer Go i segmenti già tipizzati, e l'A/B con il pianificatore
+pre-v2 per l'accettazione visiva.
