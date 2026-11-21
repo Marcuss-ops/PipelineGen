@@ -443,3 +443,18 @@ ops/jobs/*/drive_upload/
 # fully reproducible from the referenced videos; job definitions and payloads
 # stay tracked so a batch remains reproducible.
 ops/jobs/*/cache/
+
+# Purged from history 2026-11-21: generated effect plates, renders and
+# screenshots stay local (or on Drive). History carries code and docs.
+*.mp4
+*.mov
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.rgba
+*.ppm
+*.pgm
+*.mp3
+*.wav
