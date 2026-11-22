@@ -56,17 +56,20 @@ func TestImageSearchModeAutomaticKeepsIdentityAndContextLanes(t *testing.T) {
 	plan := imageModePlan(mediadomain.ImageSearchModeAutomatic)
 	plan.MediaPlan.Extraction.MaxImageQueriesPerSegment = 10
 	fanout := buildVidRushFanoutPlan(plan, imageModeSegment(), &gatedImageSearcher{}, nil)
+	// The identity lane is the dedicated portrait query, not the bare name:
+	// bare names let collages/news cards bind as portraits. The caller's
+	// contextual pin stays on its own lane.
 	hasPerson, hasContext := false, false
 	for _, query := range fanout.imageQueries {
-		if query == "Alberto Stasi" {
+		if query == "Alberto Stasi portrait" {
 			hasPerson = true
 		}
-		if query == "Alberto Stasi portrait" || query == "Garlasco piazza" {
+		if query == "Garlasco piazza" {
 			hasContext = true
 		}
 	}
 	if !hasPerson || !hasContext {
-		t.Fatalf("automatic queries = %#v, want both identity and caller context searches", fanout.imageQueries)
+		t.Fatalf("automatic queries = %#v, want both the identity portrait query and the caller context search", fanout.imageQueries)
 	}
 	if !fanout.imagesEnabled {
 		t.Fatal("automatic mode with derived queries must enable image retrieval")
@@ -86,8 +89,19 @@ func TestImageSearchModeExplicitThenFallbackDoesNotSuppressIdentitySearch(t *tes
 	plan := imageModePlan(mediadomain.ImageSearchModeExplicitThenFallback)
 	plan.MediaPlan.Extraction.MaxImageQueriesPerSegment = 10
 	fanout := buildVidRushFanoutPlan(plan, imageModeSegment(), &gatedImageSearcher{}, nil)
-	if len(fanout.imageQueries) < 3 || fanout.imageQueries[0] != "Alberto Stasi" {
-		t.Fatalf("explicit_then_fallback queries = %#v, want identity first plus context", fanout.imageQueries)
+	// Explicit pins cannot suppress the identity lane; when the pin already is
+	// the portrait query the two dedupe into one entry, but it must lead.
+	if len(fanout.imageQueries) < 2 || fanout.imageQueries[0] != "Alberto Stasi portrait" {
+		t.Fatalf("explicit_then_fallback queries = %#v, want the identity portrait query first plus caller context", fanout.imageQueries)
+	}
+	foundContext := false
+	for _, query := range fanout.imageQueries {
+		if query == "Garlasco piazza" {
+			foundContext = true
+		}
+	}
+	if !foundContext {
+		t.Fatalf("explicit_then_fallback queries = %#v, want the explicit context pin retained", fanout.imageQueries)
 	}
 }
 

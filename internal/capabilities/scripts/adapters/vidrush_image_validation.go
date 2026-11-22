@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -22,6 +23,7 @@ import (
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 const vidRushImageUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -174,7 +176,7 @@ func (p VidRushImagePolicy) AcceptsDimensions(width, height int) bool {
 }
 
 // ValidateVidRushRemoteImageURL rejects non-web schemes, credentials,
-// localhost and literal private/link-local addresses before any request is
+// loopback and literal private/link-local addresses before any request is
 // made. The HTTP client below repeats this check after every redirect.
 func ValidateVidRushRemoteImageURL(raw string) error {
 	u, err := url.Parse(strings.TrimSpace(raw))
@@ -185,7 +187,7 @@ func ValidateVidRushRemoteImageURL(raw string) error {
 		return ErrVidRushSSRFBlocked
 	}
 	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "metadata.google.internal" {
+	if config.IsLoopbackHost(host) || host == "metadata.google.internal" {
 		return ErrVidRushSSRFBlocked
 	}
 	if ip := net.ParseIP(host); ip != nil && isVidRushPrivateIP(ip) {
@@ -391,6 +393,9 @@ func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []b
 		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
 	}
 	if digest.HasPanelGridCollageImage(img) {
+		seamsV, seamsH, continuityV, continuityH := digest.PanelGridCollageEvidence(img)
+		log.Printf("vidrush image rejected as panel grid collage: seams_v=%d seams_h=%d continuity_v=%.2f continuity_h=%.2f",
+			seamsV, seamsH, continuityV, continuityH)
 		return scriptports.VerifiedArtifact{}, ErrVidRushImageCollage
 	}
 	sum := digest.SHA256Bytes(data)

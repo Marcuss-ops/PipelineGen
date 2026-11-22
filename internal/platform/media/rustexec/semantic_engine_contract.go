@@ -1,6 +1,8 @@
 package rustexec
 
 import (
+	"encoding/json"
+
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -175,29 +177,32 @@ type semanticEngineConsolidationInventory struct {
 }
 
 type semanticEngineProductionCandidate struct {
-	ID               string                    `json:"id"`
-	Recipe           string                    `json:"recipe"`
-	Rank             int                       `json:"rank"`
-	Priority         float64                   `json:"priority"`
-	SceneID          string                    `json:"scene_id"`
-	SceneIDs         []string                  `json:"scene_ids"`
-	EntityIDs        []string                  `json:"entity_ids"`
-	FactIDs          []string                  `json:"fact_ids"`
-	GroupIDs         []string                  `json:"group_ids"`
-	Title            string                    `json:"title"`
-	Evidence         string                    `json:"evidence"`
-	StartByte        int                       `json:"start_byte"`
-	EndByte          int                       `json:"end_byte"`
-	SuggestedVisual  string                    `json:"suggested_visual"`
-	ChartItems       []semanticEngineChartItem `json:"chart_items"`
-	ChartMeta        *semanticEngineChartMeta  `json:"chart_meta,omitempty"`
-	TemporalSurfaces []string                  `json:"temporal_surfaces"`
-	AssetKey         string                    `json:"asset_key"`
-	Queries          []semanticEngineQuery     `json:"queries"`
-	RequiresMedia    bool                      `json:"requires_media"`
-	DedupKey         string                    `json:"dedup_key"`
-	CoveredFactIDs   []string                  `json:"covered_fact_ids"`
-	Rationale        []string                  `json:"rationale"`
+	ID              string                    `json:"id"`
+	Recipe          string                    `json:"recipe"`
+	Rank            int                       `json:"rank"`
+	Priority        float64                   `json:"priority"`
+	SceneID         string                    `json:"scene_id"`
+	SceneIDs        []string                  `json:"scene_ids"`
+	EntityIDs       []string                  `json:"entity_ids"`
+	FactIDs         []string                  `json:"fact_ids"`
+	GroupIDs        []string                  `json:"group_ids"`
+	Title           string                    `json:"title"`
+	Evidence        string                    `json:"evidence"`
+	StartByte       int                       `json:"start_byte"`
+	EndByte         int                       `json:"end_byte"`
+	SuggestedVisual string                    `json:"suggested_visual"`
+	ChartItems      []semanticEngineChartItem `json:"chart_items"`
+	ChartMeta       *semanticEngineChartMeta  `json:"chart_meta,omitempty"`
+	// VisualPayload is the TICKET-45/46 recipe payload ("visual_recipe.v1").
+	// It is forwarded verbatim to overlay-compiler; this layer never reads it.
+	VisualPayload    json.RawMessage       `json:"visual_payload,omitempty"`
+	TemporalSurfaces []string              `json:"temporal_surfaces"`
+	AssetKey         string                `json:"asset_key"`
+	Queries          []semanticEngineQuery `json:"queries"`
+	RequiresMedia    bool                  `json:"requires_media"`
+	DedupKey         string                `json:"dedup_key"`
+	CoveredFactIDs   []string              `json:"covered_fact_ids"`
+	Rationale        []string              `json:"rationale"`
 }
 
 type semanticEngineQuery struct {

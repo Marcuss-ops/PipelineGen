@@ -30,6 +30,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"io"
 	"net/http"
 	"net/url"
@@ -140,7 +141,7 @@ func benchSaveReport(r *benchReport, path string) error {
 
 func RunBenchmark(args []string) error {
 	fs := flag.NewFlagSet("benchmark", flag.ExitOnError)
-	serverURL := fs.String("server", "http://localhost:8080", "PipelineGen server base URL")
+	serverURL := fs.String("server", config.LoopbackBaseURL(8080), "PipelineGen server base URL")
 	queriesPath := fs.String("queries", "config/benchmark_queries.json", "Path to labeled queries JSON")
 	outputPath := fs.String("output", "/tmp/benchmark_report.json", "Path for JSON report output")
 	searchLimit := fs.Int("limit", 20, "Max results per query")

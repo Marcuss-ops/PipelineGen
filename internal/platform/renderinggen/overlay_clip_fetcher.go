@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // OverlayClipFetcher materializes one certified overlay item render into a
@@ -54,5 +55,5 @@ func defaultStoreURL() string {
 	if store := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL")); store != "" {
 		return strings.TrimRight(store, "/")
 	}
-	return "http://127.0.0.1:9000"
+	return config.LoopbackURLPrefix + "9000"
 }

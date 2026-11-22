@@ -5,7 +5,7 @@ Go processor needs no second protocol):
 
   POST /synthesize
     {"text":"...", "lang":"en", "voice":"alba", "out":"/path.mp3",
-     "engine":"pocket", "boundary":"none"}
+     "engine":"pocket", "rate":"+10%", "boundary":"none"}
       -> {"ok":true, "engine":"pocket", "voice":"alba",
           "path":"/abs/path.mp3", "metadata_path":"", "boundary_count":0,
           "synth_ms":812, "audio_duration_ms":9100, "rtf":0.089}
@@ -38,7 +38,7 @@ from pathlib import Path
 from aiohttp import web
 
 from .engines import EngineError, build_registry
-from .request import SynthesizeRequest, SynthesizeRequestError
+from .request import SynthesizeRequest, SynthesizeRequestError, atempo_filter
 
 
 def _ffmpeg() -> str:
@@ -49,12 +49,14 @@ def _ffprobe() -> str:
     return os.environ.get("FFPROBE_PATH", "ffprobe")
 
 
-def _transcode(src: str, dst_part: str) -> None:
+def _transcode(src: str, dst_part: str, rate: str = "") -> None:
     """Transcode the engine WAV to the requested container/codec.
 
     The destination extension drives the codec: mp3 (default) keeps the
     existing `format=mp3-48k-stereo` fingerprint contract, wav is used by
-    the bench harness for lossless A/B listening.
+    the bench harness for lossless A/B listening. A non-identity `rate` is
+    applied here with FFmpeg's atempo filter, since local engines have no
+    native SSML rate support.
     """
     ext = Path(dst_part).suffix.lower()
     if ext == ".wav":
@@ -63,6 +65,7 @@ def _transcode(src: str, dst_part: str) -> None:
         codec = ["-c:a", "libopus", "-b:a", "128k"]
     else:
         codec = ["-c:a", "libmp3lame", "-b:a", "192k"]
+    filters = atempo_filter(rate)
     subprocess.run(
         [
             _ffmpeg(),
@@ -75,6 +78,7 @@ def _transcode(src: str, dst_part: str) -> None:
             "2",
             "-ar",
             "48000",
+            *filters,
             *codec,
             dst_part,
         ],
@@ -163,7 +167,7 @@ async def handle_synthesize(request: web.Request) -> web.Response:
                 engine.synthesize, parsed.text, parsed.lang, parsed.voice, tmp_wav
             )
             synth_ms = result.synth_ms or int((time.monotonic() - started) * 1000)
-            await asyncio.to_thread(_transcode, result.wav_path, part)
+            await asyncio.to_thread(_transcode, result.wav_path, part, parsed.rate)
 
         if not os.path.exists(part) or os.path.getsize(part) == 0:
             raise EngineError("transcoded output is empty or missing")

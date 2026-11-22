@@ -77,8 +77,10 @@ var semanticPresetTable = map[string]SemanticPreset{
 	"concept_default": PresetModernPhrase,
 	"logo_default":    PresetModernName,
 	"lower_third":     PresetModernName,
-	"image_popup":     PresetModernImage,
-	"quote":           PresetModernPhrase,
+	// Rust emits the registry's upper-case template id for the same preset.
+	"LOWER_THIRD": PresetModernName,
+	"image_popup": PresetModernImage,
+	"quote":       PresetModernPhrase,
 
 	// Rust emits these presentation templates for date and metric numbers.
 	// They are text cards, so they use the same canonical text preset as the

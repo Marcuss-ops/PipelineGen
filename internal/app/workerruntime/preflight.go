@@ -4,7 +4,7 @@
 //
 //  1. Master URL resolution (ResolveMasterURL, NormalizeURL,
 //     MasterURLSource) — the canonical $VELOX_MASTER_URL >
-//     cfg.External.VeloxMasterURL > http://127.0.0.1:<port>
+//     cfg.External.VeloxMasterURL > loopback:<port>
 //     precedence chain originally from cmd/worker/main.go.
 //
 //  2. Master readiness pre-flight loops (PreflightMasterHealth and
@@ -58,7 +58,7 @@ const (
 // ResolveMasterURL returns the canonical master URL with the
 // precedence chain:
 //
-//	$VELOX_MASTER_URL > cfg.External.VeloxMasterURL > "http://127.0.0.1:8000"
+//	$VELOX_MASTER_URL > cfg.External.VeloxMasterURL > canonical loopback URL
 //
 // Compose users can set service-based URLs (http://velox-server:8000)
 // so the worker on the same network reaches the master without
@@ -73,9 +73,9 @@ func ResolveMasterURL(cfg *config.Config) string {
 		return normalizeURL(cfg.External.VeloxMasterURL)
 	}
 	if cfg != nil && cfg.Server.Port > 0 {
-		return fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port)
+		return config.LoopbackBaseURL(cfg.Server.Port)
 	}
-	return "http://127.0.0.1:8000"
+	return config.LoopbackBaseURL(8000)
 }
 
 // normalizeURL strips trailing slash + ensures scheme prefix.
@@ -83,7 +83,7 @@ func ResolveMasterURL(cfg *config.Config) string {
 func normalizeURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "http://127.0.0.1:8000"
+		return config.LoopbackBaseURL(8000)
 	}
 	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
 		return "http://" + raw

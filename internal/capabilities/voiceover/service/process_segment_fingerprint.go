@@ -118,12 +118,22 @@ func voiceoverPostPolicy(rate string, silence audio.SilenceRemovalPolicy) Voiceo
 
 // Fingerprint is stable and explicit: an empty rate is distinct from the
 // canonical +1% policy, and every silence parameter is included.
+//
+// rate-contract=v2 is a one-time cache invalidation for explicit rates.
+// Before the 2026-11-22 processor fix, Rate was dropped between the
+// voiceover adapter and the TTS sidecar: the audio was synthesized at the
+// provider default (1.0x) while the fingerprint still claimed the caller's
+// rate. Old rows must therefore miss and be resynthesized. Provider-default
+// rows (empty rate) were not affected by that bug and keep their key.
 func (p VoiceoverPostPolicy) Fingerprint() string {
 	rate := strings.TrimSpace(p.Rate)
-	if rate == "" {
+	contract := ""
+	if rate != "" {
+		contract = "rate-contract=v2;"
+	} else {
 		rate = "provider-default"
 	}
-	return "rate=" + rate + ";" + p.Silence.Normalized().Fingerprint()
+	return contract + "rate=" + rate + ";" + p.Silence.Normalized().Fingerprint()
 }
 
 // BuildVoiceoverContentFingerprintV4 adds the actual rate and the versioned

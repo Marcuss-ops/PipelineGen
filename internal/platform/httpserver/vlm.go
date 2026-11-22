@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -41,7 +42,7 @@ import (
 // ErrVLMUnavailable); do not string-match the JSON "error" field.
 var ErrVLMUnavailable = errors.New(
 	"vlm_unavailable: VLM sidecar is not configured or unreachable; " +
-		"see config.external.vlm_endpoint (canonical default http://127.0.0.1:8000)")
+		"see config.external.vlm_endpoint (canonical default " + config.LoopbackBaseURL(8000) + ")")
 
 func registerVLMRoutes(engine *gin.Engine) {
 	if engine == nil {

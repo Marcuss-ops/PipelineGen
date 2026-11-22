@@ -25,7 +25,7 @@ import (
 // the loaded config carries none (the local single-host deployment default).
 // Owning it once keeps the overlay-asset prefetch, the overlay clip fetcher
 // and the Chronon timing sidecar fetch pointed at the same store.
-const defaultRenderingGenStoreURL = "http://127.0.0.1:9000"
+const defaultRenderingGenStoreURL = config.LoopbackURLPrefix + "9000"
 
 // renderingGenStoreURL returns the object-store endpoint the config loader
 // resolved once at startup (external.renderinggen_store_url, overridden by

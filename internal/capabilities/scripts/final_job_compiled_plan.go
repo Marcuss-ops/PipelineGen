@@ -293,7 +293,10 @@ func finalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRo
 	if err := alignFinalJobSegmentSourceWindows(&plan, stockAssetIDs); err != nil {
 		return "", "", fmt.Errorf("align final_job source windows to the output frame grid: %w", err)
 	}
-	plan.VideoTracks[0].Segments, err = finalJobCompleteVideoFrameCoverageWithStockAssets(plan.VideoTracks[0].Segments, plan.Assets, plan.DurationUS, fpsNum, fpsDen, stockAssetIDs)
+	// The stock slot carries stock, clip and overlay scenes alike, so the
+	// frame-coverage pass needs the immutable subset: only a "stock" scene's
+	// bytes are packet-copied by the Master and cannot be padded locally.
+	plan.VideoTracks[0].Segments, err = finalJobCompleteVideoFrameCoverageWithStockAssets(plan.VideoTracks[0].Segments, plan.Assets, plan.DurationUS, fpsNum, fpsDen, finalJobSourceLockedAssetIDs(scenes))
 	if err != nil {
 		return "", "", err
 	}

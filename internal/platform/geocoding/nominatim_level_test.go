@@ -99,10 +99,13 @@ func TestNominatimCacheIsScopedByLevel(t *testing.T) {
 		calls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Query().Get("featureType") == "country" {
-			_, _ = w.Write([]byte(`[{"lat":"42.6384","lon":"12.6743","display_name":"Italia","addresstype":"country","type":"administrative","class":"boundary","address":{"country":"Italia","country_code":"it"}}]`))
+			_, _ = w.Write([]byte(`[{"lat":"42.6384","lon":"12.6743","name":"Italia","display_name":"Italia","addresstype":"country","type":"administrative","class":"boundary","address":{"country":"Italia","country_code":"it"}}]`))
 			return
 		}
-		_, _ = w.Write([]byte(`[{"lat":"41.8933","lon":"12.4829","display_name":"Roma, Lazio, Italia","addresstype":"city","type":"administrative","class":"place","address":{"city":"Roma","state":"Lazio","country":"Italia","country_code":"it"}}]`))
+		// A same-name municipality, so the level-agnostic lookup stays a real
+		// candidate under the name-match rule while remaining a DIFFERENT place
+		// than the country answer.
+		_, _ = w.Write([]byte(`[{"lat":"41.8933","lon":"12.4829","name":"Italia","display_name":"Italia, Lazio, Italia","addresstype":"municipality","type":"administrative","class":"place","address":{"city":"Italia","state":"Lazio","country":"Italia","country_code":"it"}}]`))
 	})
 	if _, err := adapter.Geocode(context.Background(), capgeocoding.Request{Query: "Italia", Language: "it", Level: capgeocoding.LevelCountry}); err != nil {
 		t.Fatalf("country lookup: %v", err)

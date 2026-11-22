@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 
 	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
@@ -408,15 +409,18 @@ type SemanticProductionCandidate struct {
 	FactIDs, GroupIDs   []string
 	Title, Evidence     string
 	Start, End          int
-	SuggestedVisual     string
-	ChartItems          []SemanticChartItem
-	TemporalSurfaces    []string
-	AssetKey            string
-	Queries             []generationcontract.SemanticSearchQuery
-	RequiresMedia       bool
-	DedupKey            string
-	CoveredFactIDs      []string
-	Rationale           []string
+	// VisualPayload is the grounded recipe payload (visual_recipe.v1) forwarded
+	// verbatim to overlay-compiler. Nil for every candidate without a recipe.
+	VisualPayload    json.RawMessage
+	SuggestedVisual  string
+	ChartItems       []SemanticChartItem
+	TemporalSurfaces []string
+	AssetKey         string
+	Queries          []generationcontract.SemanticSearchQuery
+	RequiresMedia    bool
+	DedupKey         string
+	CoveredFactIDs   []string
+	Rationale        []string
 }
 
 // SemanticConsolidatedFact is a canonical fact after duplicate mentions are

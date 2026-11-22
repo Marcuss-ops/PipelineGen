@@ -201,6 +201,51 @@ func applySegmentNoVoiceoverScenes(req GenerateRequest, scenes []Scene) {
 	}
 }
 
+// applySegmentClipBindings binds caller-selected clips onto their generated
+// scenes before voiceover fan-out. Script segments carry the editorial source
+// clip independently of the model's prose; without this projection a narrated
+// clip segment keeps its text and audio window but has no visual render unit.
+func applySegmentClipBindings(segments []scriptpkg.ScriptSegment, scenes []Scene) {
+	for i := range scenes {
+		scene := &scenes[i]
+		if len(sceneClips(*scene)) != 0 {
+			continue
+		}
+		segment, ok := segmentForScene(segments, scene.ID, scene.Index)
+		if !ok || len(segment.ClipIDs) == 0 {
+			continue
+		}
+		clips := make([]*ClipReference, 0, len(segment.ClipIDs))
+		for _, id := range segment.ClipIDs {
+			if id = strings.TrimSpace(id); id != "" {
+				clips = append(clips, &ClipReference{ID: id})
+			}
+		}
+		if len(clips) == 0 {
+			continue
+		}
+		if segment.DurationMS > 0 {
+			for _, clip := range clips {
+				clip.Duration = float64(segment.DurationMS) / 1000
+				clip.DurationUS = segment.DurationMS * 1000
+				clip.SourceOutMS = segment.DurationMS
+			}
+			scene.DurationMS = segment.DurationMS
+			scene.DurationUS = segment.DurationMS * 1000
+			clipAudio := capabilityaudio.AudioIntent{
+				Mode: capabilityaudio.AudioClip, ClipAssetID: clips[0].ID,
+				SourceDurationUS: segment.DurationMS * 1000,
+				TimelineDurationUS: segment.DurationMS * 1000,
+				UseOriginalAudio: true,
+			}
+			scene.Audio = clipAudio
+			scene.AudioIntents = []capabilityaudio.AudioIntent{clipAudio}
+		}
+		scene.Clip = clips[0]
+		scene.Clips = clips
+	}
+}
+
 // applyExplicitSegmentDuration carries a caller's editorial duration onto the
 // scene. This is what lets a full-length body clip keep its span while a short
 // voiceover is mixed inside it; without it the TTS seal becomes the timeline

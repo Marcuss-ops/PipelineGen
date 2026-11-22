@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 
@@ -48,6 +49,11 @@ func buildRawOverlayScenes(
 			ChartsCertified:     result != nil && result.Editorial != nil && result.Editorial.Certified,
 			SourceNumericValues: sourceNumericValuesForScene(scene, result, language),
 		}
+		raw.VisualRecipes = visualRecipesForScene(result, scene.ID)
+		if len(raw.VisualRecipes) > 0 {
+			raw.VisualRecipe = raw.VisualRecipes[0].Recipe
+			raw.VisualPayload = append(json.RawMessage(nil), raw.VisualRecipes[0].Payload...)
+		}
 		if result != nil {
 			for _, highlight := range result.SceneHighlights {
 				if highlight.SceneID == scene.ID {
@@ -69,6 +75,74 @@ func buildRawOverlayScenes(
 			raw.SecondaryEntities = rawEntities(ann.SecondaryEntities, plates)
 		}
 		out = append(out, raw)
+	}
+	return out
+}
+
+// overlayVisualRecipes is the set overlay-compiler actually lowers today. A
+// producer hint outside this set (relationship_graph, choropleth_value_map,
+// lifespan_timeline) would be validated and then ignored, so it is not shipped:
+// an empty scene costs nothing and an unused payload is dead wire data.
+// TICKET-48 kept those three validated-but-inert by decision, so this filter
+// stays; reopening it means certifying a layout first.
+var overlayVisualRecipes = map[string]bool{
+	"counter_odometer":  true,
+	"role_lower_third":  true,
+	"route_map":         true,
+	"quote_attribution": true,
+	"source_highlight":  true,
+}
+
+// visualRecipesForScene forwards every supported grounded recipe of one scene,
+// ordered by the engine's priority. Go never inspects a payload beyond checking
+// that it is a JSON object and never chooses a layout: the planner applies each
+// recipe once. Duplicate `(recipe, payload)` pairs are dropped so the same fact
+// does not travel twice.
+func visualRecipesForScene(result *GenerateResult, sceneID string) []overlayplan.VisualRecipeSpec {
+	if result == nil || result.SemanticConsolidation == nil {
+		return nil
+	}
+	type ranked struct {
+		spec     overlayplan.VisualRecipeSpec
+		priority float64
+		rank     int
+	}
+	var ordered []ranked
+	seen := make(map[string]bool)
+	for _, candidate := range result.SemanticConsolidation.ProductionCandidates {
+		if strings.TrimSpace(candidate.SceneID) != sceneID || !overlayVisualRecipes[candidate.Recipe] {
+			continue
+		}
+		if len(candidate.VisualPayload) == 0 {
+			continue
+		}
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(candidate.VisualPayload, &object); err != nil || len(object) == 0 {
+			continue
+		}
+		key := candidate.Recipe + "\x00" + string(candidate.VisualPayload)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		ordered = append(ordered, ranked{
+			spec: overlayplan.VisualRecipeSpec{
+				Recipe:  candidate.Recipe,
+				Payload: append(json.RawMessage(nil), candidate.VisualPayload...),
+			},
+			priority: candidate.Priority,
+			rank:     candidate.Rank,
+		})
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].priority != ordered[j].priority {
+			return ordered[i].priority > ordered[j].priority
+		}
+		return ordered[i].rank < ordered[j].rank
+	})
+	out := make([]overlayplan.VisualRecipeSpec, 0, len(ordered))
+	for _, entry := range ordered {
+		out = append(out, entry.spec)
 	}
 	return out
 }

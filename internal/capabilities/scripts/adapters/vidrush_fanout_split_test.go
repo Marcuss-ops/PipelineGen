@@ -56,8 +56,8 @@ func TestVidRushFanoutPlanEntityImagesExcludeVisualConceptQueries(t *testing.T) 
 		},
 	}
 	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
-	if len(fanout.imageQueries) != 2 || fanout.imageQueries[0] != "Donald Trump's" || fanout.imageQueries[1] != "Donald Trump’s" {
-		t.Fatalf("entity image queries = %#v, want both PERSON surfaces", fanout.imageQueries)
+	if len(fanout.imageQueries) != 2 || fanout.imageQueries[0] != "Donald Trump's portrait" || fanout.imageQueries[1] != "Donald Trump’s portrait" {
+		t.Fatalf("entity image queries = %#v, want dedicated portrait queries for both PERSON surfaces", fanout.imageQueries)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestVidRushFanoutPlanPerSceneImagesUsesCanonicalEntityQuery(t *testing.T) {
 	base.Text = "Milton Leite contestou a decisão do Superior Tribunal de Justiça."
 	base.SourceText = "A defesa questionou a prisão temporária e contestou os fundamentos da decisão."
 	second := buildVidRushFanoutPlan(plan, base, &gatedImageSearcher{}, nil)
-	if len(first.imageQueries) != 1 || len(second.imageQueries) != 1 || first.imageQueries[0] != "Milton Leite" || second.imageQueries[0] != "Milton Leite" {
+	if len(first.imageQueries) != 1 || len(second.imageQueries) != 1 || first.imageQueries[0] != "Milton Leite portrait" || second.imageQueries[0] != "Milton Leite portrait" {
 		t.Fatalf("per-scene image queries must use the canonical entity identity: first=%q second=%q", first.imageQueries, second.imageQueries)
 	}
 }
@@ -136,7 +136,7 @@ func TestVidRushFanoutPlanPerSceneImagesKeepsBothPeople(t *testing.T) {
 		},
 	}
 	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
-	if len(fanout.imageQueries) != 2 || fanout.imageQueries[0] != "Alberto Stasi" || fanout.imageQueries[1] != "Giada Bocellari" {
+	if len(fanout.imageQueries) != 2 || fanout.imageQueries[0] != "Alberto Stasi portrait" || fanout.imageQueries[1] != "Giada Bocellari portrait" {
 		t.Fatalf("per-scene image queries = %#v, want one query per person", fanout.imageQueries)
 	}
 }
@@ -154,7 +154,7 @@ func TestVidRushFanoutPlanPerSceneImageQueryIgnoresNarrativeSuffix(t *testing.T)
 		},
 	}
 	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
-	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Chiara Poggi" {
+	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Chiara Poggi portrait" {
 		t.Fatalf("entity image query = %q, want canonical identity only", fanout.imageQueries)
 	}
 }
@@ -209,7 +209,7 @@ func TestVidRushFanoutPlanEntityModeDoesNotAddGenericLadder(t *testing.T) {
 	if len(fanout.imageQueries) != 2 {
 		t.Fatalf("image queries = %#v, want only the two identity queries", fanout.imageQueries)
 	}
-	if fanout.imageQueries[0] != "Alberto Stasi" || fanout.imageQueries[1] != "Garlasco" {
+	if fanout.imageQueries[0] != "Alberto Stasi portrait" || fanout.imageQueries[1] != "Garlasco" {
 		t.Fatalf("entity queries = %#v, want the two identities in order", fanout.imageQueries)
 	}
 	for _, query := range fanout.imageQueries {
@@ -297,7 +297,7 @@ func TestVidRushFanoutPlanPlannerCeilingDoesNotAddGenericLadder(t *testing.T) {
 		},
 	}
 	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
-	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Francis Kaufmann" {
+	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Francis Kaufmann portrait" {
 		t.Fatalf("planner ceiling widened the entity lane: %#v", fanout.imageQueries)
 	}
 }

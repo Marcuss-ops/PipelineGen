@@ -41,6 +41,27 @@ func TestMediaPlanSourcesRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEntityImageRequiredPolicyRoundTrips(t *testing.T) {
+	var plan MediaPlanSpec
+	if err := json.Unmarshal([]byte(`{"extraction":{"entity_images":{"enabled":true,"required":true,"entity_types":["PERSON"]}}}`), &plan); err != nil {
+		t.Fatalf("unmarshal required entity images: %v", err)
+	}
+	if !plan.Extraction.EntityImages.Enabled || !plan.Extraction.EntityImages.Required {
+		t.Fatalf("required entity-image policy was not decoded: %#v", plan.Extraction.EntityImages)
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("marshal required entity images: %v", err)
+	}
+	var roundTrip MediaPlanSpec
+	if err := json.Unmarshal(encoded, &roundTrip); err != nil {
+		t.Fatalf("round-trip required entity images: %v", err)
+	}
+	if !roundTrip.Extraction.EntityImages.Required {
+		t.Fatalf("required flag lost during round-trip: %s", encoded)
+	}
+}
+
 func TestSegmentMediaSourceValidateAcceptsAssetIDOrSourceURL(t *testing.T) {
 	base := SegmentMediaSource{SegmentID: "segment-001", Slot: SlotPrimaryVideo, Provider: "youtube", Mode: SegmentMediaSourceModeSuggested}
 	for _, source := range []SegmentMediaSource{

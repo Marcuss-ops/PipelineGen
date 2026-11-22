@@ -75,7 +75,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if cfg != nil && cfg.Security.DeliveryHMACSecret != "" {
 		baseURL := cfg.External.VeloxBaseURL
 		if baseURL == "" {
-			baseURL = fmt.Sprintf("http://localhost:%d", cfg.Server.Port)
+			baseURL = config.LoopbackBaseURL(cfg.Server.Port)
 		}
 		signer, err := delivery.NewSigner(
 			[]byte(cfg.Security.DeliveryHMACSecret),

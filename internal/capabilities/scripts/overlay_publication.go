@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -186,8 +187,12 @@ func scheduleFinalJobOverlayFrames(result *GenerateResult, item capmodel.Overlay
 	}
 	fpsNumerator := int64(fpsNum)
 	frameDenominator := int64(1_000_000 * fpsDen)
+	// Both ends round the same way the item windows do (ceil). A floor on the
+	// scene end made an item that ends exactly at the scene tail one frame
+	// longer than its own scene, so the last phrase of the video could never
+	// be placed even in an empty scene.
 	sceneStartFrame := (sceneStartUS*fpsNumerator + frameDenominator - 1) / frameDenominator
-	sceneEndFrame := sceneEndUS * fpsNumerator / frameDenominator
+	sceneEndFrame := (sceneEndUS*fpsNumerator + frameDenominator - 1) / frameDenominator
 	duration := endFrame - startFrame
 	candidate := startFrame
 	if candidate < sceneStartFrame {
@@ -286,7 +291,28 @@ func scheduleFinalJobOverlayFrames(result *GenerateResult, item capmodel.Overlay
 		}
 		return 0, 0, fmt.Errorf("%w: overlay %q in scene %q", errFinalJobOptionalOverlayNoFreeGap, item.ID, item.SceneID)
 	}
-	return 0, 0, fmt.Errorf("final_job overlay %q cannot fit a non-overlapping %d-frame window in scene %q", item.ID, duration, item.SceneID)
+	return 0, 0, fmt.Errorf("final_job overlay %q cannot fit a non-overlapping %d-frame window in scene %q (scene frames [%d,%d), occupied: %s)", item.ID, duration, item.SceneID, sceneStartFrame, sceneEndFrame, finalJobSceneOccupancy(occupied, item.SceneID, sceneStartFrame, sceneEndFrame))
+}
+
+// finalJobSceneOccupancy renders the admitted windows of one scene for the
+// no-space error, so a failed run names the overlay that owns the frames
+// instead of only reporting that none are left.
+func finalJobSceneOccupancy(occupied map[string]finalJobFrameWindow, sceneID string, sceneStart, sceneEnd int64) string {
+	spans := make([]string, 0, 8)
+	for id, window := range occupied {
+		if window.sceneID != sceneID || window.end <= sceneStart || window.start >= sceneEnd {
+			continue
+		}
+		spans = append(spans, fmt.Sprintf("%s[%d,%d)", id, window.start, window.end))
+	}
+	sort.Strings(spans)
+	if len(spans) > 8 {
+		spans = append(spans[:8], fmt.Sprintf("+%d more", len(spans)-8))
+	}
+	if len(spans) == 0 {
+		return "none"
+	}
+	return strings.Join(spans, ", ")
 }
 
 // finalJobOverlayCanShrink identifies replace-mode cards that may move within

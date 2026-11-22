@@ -14,6 +14,7 @@ import (
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 	"golang.org/x/sync/errgroup"
 )
@@ -128,7 +129,7 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, refs []assetRef) error {
 	store := strings.TrimRight(os.Getenv("RENDERINGGEN_STORE_URL"), "/")
 	if store == "" {
-		store = "http://127.0.0.1:9000"
+		store = config.LoopbackURLPrefix + "9000"
 	}
 	paths := map[string]string{plan.Source.SHA256: plan.Source.Path}
 	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeAsset {

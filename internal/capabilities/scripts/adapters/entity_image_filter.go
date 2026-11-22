@@ -428,6 +428,9 @@ func personCatalogIdentityForSegmentQuery(segment scriptpkg.VidRushSegmentResult
 		if normalizeAnnotationType(entity.Type) != entitycatalog.EntityTypePerson {
 			continue
 		}
+		if !personQueryIsIdentityFocused(query, entity.Value) {
+			continue
+		}
 		words := personQueryIdentityMatchWords(query, entity.Value)
 		if words > exactEntityWords || (words == exactEntityWords && words > 0 && strings.ToLower(entity.Value) < strings.ToLower(exactEntityName)) {
 			exactEntityName, exactEntityWords = entity.Value, words
@@ -479,6 +482,9 @@ func personCatalogIdentityForSegmentQuery(segment scriptpkg.VidRushSegmentResult
 				}
 				continue
 			}
+			if !personQueryIsIdentityFocused(query, name) {
+				continue
+			}
 			if words > bestWords || bestName == "" || strings.ToLower(name) < strings.ToLower(bestName) {
 				bestName, bestID, bestWords = name, id, words
 			}
@@ -508,6 +514,9 @@ func personCatalogIdentityForSegmentQuery(segment scriptpkg.VidRushSegmentResult
 		if normalizeAnnotationType(entity.Type) != entitycatalog.EntityTypePerson {
 			continue
 		}
+		if !personQueryIsIdentityFocused(query, entity.Value) {
+			continue
+		}
 		words := personQueryIdentityMatchWords(query, entity.Value)
 		if words > bestWords || (words == bestWords && words > 0 && strings.ToLower(entity.Value) < strings.ToLower(bestName)) {
 			bestName, bestWords = entity.Value, words
@@ -518,6 +527,48 @@ func personCatalogIdentityForSegmentQuery(segment scriptpkg.VidRushSegmentResult
 		return identity, err == nil, err
 	}
 	return entitycatalog.PersonIdentity{}, false, nil
+}
+
+// personQueryIsIdentityFocused keeps a PERSON catalog lookup for a name-only
+// query and provider-added retrieval suffixes, but not for a contextual query
+// that happens to mention the person (for example "Corrado Augias RAI studio").
+func personQueryIsIdentityFocused(query, identity string) bool {
+	queryWords := strings.Fields(normalizeEntityMatch(query))
+	identityWords := strings.Fields(normalizeEntityMatch(identity))
+	if len(identityWords) == 0 || len(queryWords) < len(identityWords) {
+		return false
+	}
+	qualifiers := map[string]struct{}{
+		"photo": {}, "photograph": {}, "portrait": {}, "headshot": {}, "image": {}, "img": {},
+		"picture": {}, "editorial": {}, "stock": {}, "foto": {}, "ritratto": {}, "profile": {},
+		"person": {}, "persona": {},
+	}
+	for start := 0; start <= len(queryWords)-len(identityWords); start++ {
+		matches := true
+		for i := range identityWords {
+			if strings.Trim(queryWords[start+i], ".,;:!?\"'") != strings.Trim(identityWords[i], ".,;:!?\"'") {
+				matches = false
+				break
+			}
+		}
+		if !matches {
+			continue
+		}
+		focused := true
+		for i, word := range queryWords {
+			if i >= start && i < start+len(identityWords) {
+				continue
+			}
+			if _, ok := qualifiers[strings.Trim(word, ".,;:!?\"'")]; !ok {
+				focused = false
+				break
+			}
+		}
+		if focused {
+			return true
+		}
+	}
+	return false
 }
 
 func personQueryIdentityMatchWords(query, identity string) int {

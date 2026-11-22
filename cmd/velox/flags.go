@@ -25,7 +25,7 @@ Usage:
   velox types    --m2m [--json]
 
 Environment:
-  VELOX_BASE_URL      server base URL (default http://127.0.0.1:$VELOX_PORT or :8000)
+  VELOX_BASE_URL      server base URL (default http://<loopback>:$VELOX_PORT or :8000)
   VELOX_ADMIN_TOKEN   admin bearer token (job metadata)
   VELOX_ARTIFACT_TOKEN / VELOX_MASTER_ADMIN_TOKEN
                       bearer accepted by the remote Master artifact route

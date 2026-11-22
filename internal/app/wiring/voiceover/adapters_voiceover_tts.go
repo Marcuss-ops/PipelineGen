@@ -32,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"go.uber.org/zap"
 )
 
@@ -322,7 +323,14 @@ func (a *useCaseAudioAdapter) Process(ctx context.Context, in voiceover.AudioPos
 	} else if err != nil {
 		return voiceover.AudioPostOutput{}, fmt.Errorf("voiceover.audio_post: probe cleaned audio: %w", err)
 	}
-	return voiceover.AudioPostOutput{CleanedPath: cleaned, DurationUS: durationUS, EditMap: edits}, nil
+	// The TTS provider hashed the raw stream before silence removal. The
+	// upload and the persisted/indexed digest must describe the cleaned
+	// bytes, so replace that hash with the post-clean digest here.
+	contentHash, err := checksum.LegacyMD5File(cleaned)
+	if err != nil {
+		return voiceover.AudioPostOutput{}, fmt.Errorf("voiceover.audio_post: hash cleaned audio: %w", err)
+	}
+	return voiceover.AudioPostOutput{CleanedPath: cleaned, ContentSHA256: contentHash, DurationUS: durationUS, EditMap: edits}, nil
 }
 
 var _ voiceover.AudioPostProcessor = (*useCaseAudioAdapter)(nil)

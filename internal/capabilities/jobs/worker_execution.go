@@ -249,6 +249,13 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	// typed Registry attached via WithRegistry().
 	jobCtx, jobCancel := context.WithTimeout(ctx, w.jobTimeoutFor(j.Type))
 	defer jobCancel()
+	// A graceful restart cancels the worker lifecycle context, which reaches
+	// every in-flight jobCtx. Bind the live probe so the finalize path and the
+	// durable runner can tell "the worker is stopping" from "the job failed":
+	// the first hands the attempt back for a resume, the second fails it.
+	// A job timeout or a user cancel leaves `parent` alive, so both keep their
+	// historical failure semantics.
+	jobCtx = job.WithWorkerStopProbe(jobCtx, func() bool { return parent.Err() != nil })
 
 	// Lease renewal — FASE 4(b) typed LeaseState integration.
 	// The renew-loop in worker_execution_heartbeat.go inspects the
@@ -331,6 +338,18 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 
 	result, dispatchErr := w.dispatcher.Dispatch(jobCtx, j, tools)
 	writerCompletedAt := time.Now().UTC()
+	// Shutdown is a WAIT, not a verdict: the handler died with the process, so
+	// its error describes the worker's exit. Finalising it as a failure is what
+	// dead-lettered healthy runs on restart and spent a retry per restart;
+	// deferring instead leaves retry_count untouched and re-dispatches the job
+	// after boot, where the durable run resumes from its checkpoint.
+	if interruption := workerShutdownInterruption(jobCtx, dispatchErr); interruption != nil {
+		w.log.Warn("worker: shutdown interrupted the attempt — deferring it instead of failing the job",
+			zap.String("job_id", j.ID),
+			zap.String("job_type", j.Type),
+			zap.Error(dispatchErr))
+		dispatchErr = interruption
+	}
 
 	// FASE 2 observability: the attempt status mirrors the dispatcher
 	// outcome (dispatchErr != nil → the run closes as FAILED with the
@@ -468,6 +487,24 @@ func (w *Worker) reportJobProgress(ctx context.Context, j *job.Job, progress int
 	}
 	value := progress
 	w.reportCalendar(j.ID, j.Type, "RUNNING", message, &value, nil)
+}
+
+// workerShutdownInterruption reports the deferral that replaces a dispatch
+// error caused by the worker lifecycle going away, and nil when the error is a
+// real verdict (or there is no error at all).
+//
+// The decisive facts are the job context having actually been cancelled and the
+// lifecycle probe saying the WORKER is stopping. Requiring both keeps a handler
+// that failed for its own reason a millisecond before shutdown from being
+// laundered into a deferral: only an attempt whose context died with the
+// process qualifies.
+func workerShutdownInterruption(jobCtx context.Context, dispatchErr error) error {
+	if dispatchErr == nil || jobCtx == nil || jobCtx.Err() == nil || !job.WorkerStopped(jobCtx) {
+		return nil
+	}
+	return job.DeferredAfter(0, fmt.Sprintf(
+		"worker shutdown interrupted the attempt (%v); the durable run resumes from its checkpoint on the next dispatch",
+		jobCtx.Err()))
 }
 
 func (w *Worker) jobTimeoutFor(jobType string) time.Duration {

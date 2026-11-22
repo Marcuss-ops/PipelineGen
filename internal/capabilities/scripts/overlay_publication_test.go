@@ -8,6 +8,35 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
 
+// TestScheduleFinalJobOverlayFramesAcceptsAnItemEndingAtTheSceneTail pins the
+// r18 failure: the last phrase of the video ended exactly at the scene tail,
+// but the scene end was floored while the item end was ceiled, so the item
+// looked one frame longer than an empty scene and could never be placed.
+func TestScheduleFinalJobOverlayFramesAcceptsAnItemEndingAtTheSceneTail(t *testing.T) {
+	const sceneEndUS = int64(1_119_456_000) // 26_866.944 frames at 24 fps
+	result := &GenerateResult{
+		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Segments: []capabilityaudio.TimelineSegment{{
+				ID: "scene-05", TimelineStartUS: 1_116_521_000, DurationUS: sceneEndUS - 1_116_521_000,
+			}},
+		},
+	}
+	item := capmodel.OverlayItem{
+		ID: "last-phrase", SceneID: "scene-05", Kind: "text_phrase",
+		StartUS: 1_116_521_000, DurationUS: sceneEndUS - 1_116_521_000,
+	}
+
+	start, end, err := scheduleFinalJobOverlayFrames(
+		result, item, 26_797, 26_867, 24, 1, map[string]finalJobFrameWindow{},
+	)
+	if err != nil {
+		t.Fatalf("a phrase that ends with its scene must fit: %v", err)
+	}
+	if start != 26_797 || end != 26_867 {
+		t.Fatalf("window = [%d,%d), want the planned [26797,26867)", start, end)
+	}
+}
+
 // TestScheduleFinalJobOverlayFramesUsesFreeGapBeforePlannedStart pins the r8
 // failure: a date card planned near the scene tail was blocked by a later
 // overlay, and the forward-only search rejected the whole final job even

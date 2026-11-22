@@ -31,7 +31,7 @@ type SearXNGProvider struct {
 }
 
 // NewSearXNGProvider constructs a SearXNGProvider. baseURL is the
-// canonical SearXNG root (e.g. http://localhost:18080); empty means
+// canonical SearXNG root (e.g. a loopback endpoint); empty means
 // provider is unconfigured and will be skipped at Search/Healthy time.
 func NewSearXNGProvider(bridge StorageBridge, client httpDoer, log *zap.Logger, baseURL string) *SearXNGProvider {
 	if client == nil {

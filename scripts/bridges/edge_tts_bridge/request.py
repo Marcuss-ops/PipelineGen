@@ -6,6 +6,7 @@ the server and voice resolver makes the schema testable and avoids
 duplicating request logic between the CLI and HTTP entry points.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict
 
@@ -35,6 +36,10 @@ _EDGE_BOUNDARY_MODES = {
     "sentence": "SentenceBoundary",
 }
 
+# Edge TTS accepts a signed integer percentage. Keep the sidecar's window
+# aligned with the Go boundary: -50% (0.5x) .. +100% (2.0x).
+_RATE_RE = re.compile(r"^([+-])(\d{1,3})%$")
+
 
 def edge_boundary_mode(boundary: str) -> str:
     """Map the canonical wire boundary value to the edge-tts literal.
@@ -44,6 +49,36 @@ def edge_boundary_mode(boundary: str) -> str:
     edge-tts default SentenceBoundary.
     """
     return _EDGE_BOUNDARY_MODES.get(boundary, "WordBoundary")
+
+
+def normalize_rate(rate: Any) -> str:
+    """Validate and canonicalise an Edge TTS speaking rate.
+
+    The wire contract is a signed integer percentage in Edge's supported
+    window: "-50%" .. "+100%". The empty string means "provider default"
+    and is preserved as "". Multiplier spellings ("1.1x") are normalised by
+    the Go boundary before they reach this sidecar; rejecting them here
+    keeps the HTTP contract unambiguous.
+    """
+    raw = str(rate or "").strip()
+    if not raw:
+        return ""
+
+    match = _RATE_RE.fullmatch(raw)
+    if not match:
+        raise SynthesizeRequestError(
+            f'invalid "rate" value: {raw!r} '
+            '(expected a signed percentage in [-50%, +100%], e.g. "+10%")'
+        )
+
+    value = int(match.group(2))
+    if match.group(1) == "-":
+        value = -value
+    if value < -50 or value > 100:
+        raise SynthesizeRequestError(
+            f'invalid "rate" value: {raw!r} (expected -50%..+100%)'
+        )
+    return f"{value:+d}%"
 
 
 @dataclass
@@ -92,9 +127,7 @@ class SynthesizeRequest:
 
         # Optional field: voice (verbatim, may be empty).
         voice = str(body.get("voice") or "").strip()
-        rate = str(body.get("rate") or "").strip()
-        if rate and rate != "+1%":
-            raise SynthesizeRequestError('unsupported "rate" value')
+        rate = normalize_rate(body.get("rate") or "")
 
         # Optional field: boundary (word|sentence, default word).
         boundary = str(body.get("boundary") or "word").strip().lower() or "word"

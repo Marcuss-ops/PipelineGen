@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // The final-job publisher runs once per clip and once per audio asset, so a
@@ -200,7 +201,7 @@ func PublishFinalJobLocalObjectVerified(ctx context.Context, preferredID, path, 
 func finalJobPrivateObjectStoreURL() string {
 	storeURL := strings.TrimRight(strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL")), "/")
 	if storeURL == "" {
-		return "http://127.0.0.1:9000"
+		return config.LoopbackURLPrefix + "9000"
 	}
 	return storeURL
 }

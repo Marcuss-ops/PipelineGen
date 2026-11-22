@@ -224,6 +224,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		if postOut.CleanedPath != "" {
 			out.CleanedPath = postOut.CleanedPath
 		}
+		if postOut.ContentSHA256 != "" {
+			out.ContentSHA256 = postOut.ContentSHA256
+		}
 		if postOut.DurationUS > 0 {
 			// The cleaned Edge file is the canonical scene audio. Do not
 			// continue exposing the pre-clean duration to the script runner.
@@ -361,6 +364,13 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	}
 	defer func() { _ = tx.Rollback() }() // safe after Commit
 
+	// Persist the FINAL audio duration. ttsOut.Duration describes the raw
+	// provider stream; after silence removal the cleaned file (and the
+	// duration in out.DurationMs) is the canonical artifact.
+	durationSeconds := ttsOut.Duration.Seconds()
+	if post != nil && post.DurationUS > 0 {
+		durationSeconds = float64(post.DurationUS) / 1e6
+	}
 	finalizeCmd := &FinalizeCommand{
 		Fingerprint:     u.contentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy)),
 		IdempotencyKey:  pub.IdemKey,
@@ -377,7 +387,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		LocalPath:       out.LocalPath,
 		CleanedPath:     out.CleanedPath,
 		ContentSHA256:   out.ContentSHA256,
-		DurationSeconds: ttsOut.Duration.Seconds(),
+		DurationSeconds: durationSeconds,
 		FolderID:        cmd.Dest.FolderID,
 		FolderPath:      cmd.Dest.FolderPath,
 		DriveFileID:     out.DriveFileID,

@@ -171,9 +171,16 @@ func isAcronymToken(word string) bool {
 	return letters >= 2
 }
 
-// completeGroundedPhrase retains a selected phrase only when it begins at a
-// sentence boundary and ends at sentence punctuation. It extends the span over
-// terminal punctuation when the selector returned the sentence without it.
+// completeGroundedPhrase completes a selected phrase to the sentence that
+// contains it: it snaps the start back to the previous sentence boundary and
+// extends the end over terminal punctuation when the selector returned the
+// sentence without it.
+//
+// The selector returns editorial noun phrases from inside a sentence by
+// design, so requiring the selected span itself to start at a boundary
+// discarded every candidate whose sentence-opening token was not part of the
+// phrase. English selections are mid-sentence much more often than Italian
+// ones, which silently removed the whole phrase surface from English scenes.
 func completeGroundedPhrase(text string, span scriptpkg.AnnotationSpan) (scriptpkg.AnnotationSpan, bool) {
 	runes := []rune(text)
 	start, end := span.StartRune, span.EndRune
@@ -181,37 +188,37 @@ func completeGroundedPhrase(text string, span scriptpkg.AnnotationSpan) (scriptp
 		return scriptpkg.AnnotationSpan{}, false
 	}
 	for i := start - 1; i >= 0; i-- {
-		if unicode.IsSpace(runes[i]) {
-			continue
-		}
-		if !isGroundingSentenceBoundary(runes[i]) {
-			return scriptpkg.AnnotationSpan{}, false
-		}
-		break
-	}
-	terminal := false
-	for i := end - 1; i >= start; i-- {
-		if unicode.IsSpace(runes[i]) {
-			continue
-		}
-		terminal = isGroundingSentenceBoundary(runes[i])
-		break
-	}
-	if !terminal {
-		for i := end; i < len(runes); i++ {
-			if unicode.IsSpace(runes[i]) {
-				continue
-			}
-			if !isGroundingSentenceBoundary(runes[i]) {
-				return scriptpkg.AnnotationSpan{}, false
-			}
-			end = i + 1
-			terminal = true
+		if isGroundingSentenceBoundary(runes[i]) {
+			start = i + 1
 			break
 		}
+		start = i
 	}
-	if !terminal {
+	for start < end && (unicode.IsSpace(runes[start]) || isSentenceOpeningPunctuation(runes[start])) {
+		start++
+	}
+	if start >= end {
 		return scriptpkg.AnnotationSpan{}, false
+	}
+	for end > start && unicode.IsSpace(runes[end-1]) {
+		end--
+	}
+	// Extend the end to the terminal punctuation of the containing sentence.
+	// A fragment selected from the middle of a sentence has words after it, so
+	// the old "the next non-space rune must be punctuation" rule rejected the
+	// candidate instead of completing it.
+	if !isGroundingSentenceBoundary(runes[end-1]) {
+		sentenceEnd := -1
+		for i := end; i < len(runes); i++ {
+			if isGroundingSentenceBoundary(runes[i]) {
+				sentenceEnd = i + 1
+				break
+			}
+		}
+		if sentenceEnd < 0 {
+			return scriptpkg.AnnotationSpan{}, false
+		}
+		end = sentenceEnd
 	}
 	span.Text = strings.TrimSpace(string(runes[start:end]))
 	span.EndRune = end
@@ -221,6 +228,18 @@ func completeGroundedPhrase(text string, span scriptpkg.AnnotationSpan) (scriptp
 func isGroundingSentenceBoundary(r rune) bool {
 	switch r {
 	case '.', '?', '!', ';', ':':
+		return true
+	default:
+		return false
+	}
+}
+
+// isSentenceOpeningPunctuation is the padding between a sentence boundary and
+// its first word: quotes and brackets around a sentence, never an apostrophe
+// that belongs to the first word.
+func isSentenceOpeningPunctuation(r rune) bool {
+	switch r {
+	case '"', '\u201c', '\u201d', '\u2018', '\u2019', '\u00ab', '\u00bb', '(', '[', '\u2014', '\u2013':
 		return true
 	default:
 		return false

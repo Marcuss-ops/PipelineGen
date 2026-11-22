@@ -11,6 +11,7 @@ import (
 	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -304,6 +305,27 @@ func observeCheckpointWait(started time.Time) {
 func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage Stage, err error) {
 	if pending, ok := ctx.Value(deferredAudioFailureKey{}).(*deferredAudioFailure); ok {
 		pending.cause = err
+		return
+	}
+	// A worker shutdown is not a failure of THIS run. The job that owns this
+	// attempt is re-dispatched as a deferral (no retry spent) and re-enters
+	// ExecuteWithContext, which resumes from the checkpoint of the items
+	// already generated. Writing FAILED here is what made a restart look like
+	// a terminal verdict: the ledger advertised a failed run while the job was
+	// still going to be run, and the attempt budget was spent by the restart
+	// itself (r26b, 2026-11-22).
+	//
+	// A USER cancellation never reaches this branch: it cancels the job ctx
+	// alone, so the lifecycle probe stays false and the run keeps failing as
+	// before (the caller asked for that).
+	if job.WorkerStopped(ctx) {
+		if r.log != nil {
+			r.log.Warn("scriptgeneration: worker shutdown interrupted the stage — leaving the run at its checkpoint for the deferred resume",
+				zap.String("run_id", runID),
+				zap.String("stage", string(failedStage)),
+				zap.Error(err),
+			)
+		}
 		return
 	}
 	r.log.Error("scriptgeneration: stage failed",

@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -68,7 +69,7 @@ type ProcessorConfig struct {
 	DataDir            string
 	TempDir            string
 	VideoCfg           mediaexec.NormalizeOptions
-	EmbeddingServerURL string // Python embedding/phash server (e.g. http://127.0.0.1:8001)
+	EmbeddingServerURL string // Python embedding/phash server (config.LoopbackBaseURL(8001))
 }
 
 // NewProcessor creates a new media processor with the given dependencies.
@@ -92,7 +93,7 @@ func NewProcessor(
 	}
 	embeddingURL := cfg.EmbeddingServerURL
 	if embeddingURL == "" {
-		embeddingURL = "http://127.0.0.1:8001"
+		embeddingURL = config.LoopbackBaseURL(8001)
 	}
 	return &Processor{
 		dl:           dl,

@@ -35,6 +35,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
@@ -163,7 +164,7 @@ func (a *ArgosServerTranslator) ensureStarted(ctx context.Context) error {
 	}
 
 	a.log.Info("argos: launching persistent server", zap.String("script", a.script))
-	cmd := exec.Command(a.pythonBin, a.script, "--host", "127.0.0.1", "--port", "0")
+	cmd := exec.Command(a.pythonBin, a.script, "--host", config.LoopbackHost, "--port", "0")
 	cmd.Env = append(os.Environ(), "PYTHONUNBUFFERED=1")
 	if a.packageDir != "" {
 		// ARGOS_PACKAGES_DIR (PLURAL) is the variable argostranslate >= 1.9
@@ -220,7 +221,7 @@ func (a *ArgosServerTranslator) ensureStarted(ctx context.Context) error {
 	}()
 
 	a.cmd = cmd
-	a.baseURL = fmt.Sprintf("http://127.0.0.1:%d", port)
+	a.baseURL = config.LoopbackBaseURL(port)
 	a.httpClient = newArgosHTTPClient(a.requestTimeout, cap(a.sem))
 	a.started = true
 

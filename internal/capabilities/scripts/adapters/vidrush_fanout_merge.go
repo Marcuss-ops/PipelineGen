@@ -32,6 +32,14 @@ func mergeVidRushProviderOutcome(updated *scriptpkg.VidRushSegmentResult, outcom
 		if outcome.provider == scriptpkg.VidRushProviderYouTube && youtubeSourceRequired(plan, segmentID) {
 			return fmt.Errorf("vidrush provider fanout: required youtube source failed for segment %s: %w", updated.SegmentID, outcome.err)
 		}
+		// A degradable provider must not fail the run, but it must not vanish
+		// either: dropping the error here left scenes with zero images and no
+		// diagnostic until the final preflight. Carry the failure on the
+		// segment warning surface so the operator sees which lane degraded.
+		if outcome.provider == scriptpkg.VidRushProviderInternetImages {
+			updated.Warnings = append(updated.Warnings, fmt.Sprintf(
+				"internet images provider degraded: %v", outcome.err))
+		}
 		return nil
 	}
 	switch outcome.provider {

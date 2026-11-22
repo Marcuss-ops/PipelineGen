@@ -8,18 +8,28 @@ import (
 
 const maxFinalWordOverrunUS = int64(750_000)
 
-// normalizeFinalWordTiming removes trailing TTS boundary words that begin at
-// or after the final encoded audio duration, then clamps a small overrun on
-// the new final word to the measured duration. Words are mutated in place and
-// indices remain contiguous because only the tail is truncated. Overruns
-// larger than maxFinalWordOverrunUS are left untouched so BuildSpeechTimingArtifact
-// fails closed rather than publishing inaccurate timestamps.
+// normalizeFinalWordTiming keeps the final TTS boundary word when it begins
+// just past the encoded audio duration, clamping it to a zero-length span at
+// the audio end, then clamps a small overrun on the final word to the measured
+// duration. A trailing word whose overrun is larger than
+// maxFinalWordOverrunUS is still dropped, so BuildSpeechTimingArtifact fails
+// closed instead of publishing inaccurate timestamps.
+//
+// Dropping the last word made the text/timing token lists differ, so the
+// whole-narration phrase anchor for that scene failed and the planner lost
+// every phrase/entity surface timed by that voiceover.
 func normalizeFinalWordTiming(words []audio.SpeechWordTiming, durationUS int64) ([]audio.SpeechWordTiming, int, int64) {
 	if durationUS <= 0 {
 		return words, 0, 0
 	}
 	dropped := 0
 	for len(words) > 1 && words[len(words)-1].StartUS >= durationUS {
+		last := &words[len(words)-1]
+		if last.StartUS-durationUS <= maxFinalWordOverrunUS {
+			last.StartUS = durationUS
+			last.EndUS = durationUS
+			break
+		}
 		words = words[:len(words)-1]
 		dropped++
 	}

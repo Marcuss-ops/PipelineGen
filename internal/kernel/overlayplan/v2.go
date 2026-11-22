@@ -178,7 +178,12 @@ type Clip struct {
 
 // SceneAnnotations is the planner's complete certified annotation projection.
 type SceneAnnotations struct {
-	Phrases           []TimedAnnotation  `json:"phrases,omitempty"`
+	Phrases []TimedAnnotation `json:"phrases,omitempty"`
+	// VisualRecipes carries every grounded recipe of the scene. VisualRecipe/
+	// VisualPayload stay the legacy first element.
+	VisualRecipe      string             `json:"visual_recipe,omitempty"`
+	VisualPayload     json.RawMessage    `json:"visual_payload,omitempty"`
+	VisualRecipes     []VisualRecipeSpec `json:"visual_recipes,omitempty"`
 	Keywords          []TimedAnnotation  `json:"keywords,omitempty"`
 	Images            []ImageCandidate   `json:"images,omitempty"`
 	Numbers           []TimedAnnotation  `json:"numbers,omitempty"`
@@ -206,10 +211,28 @@ type RawScene struct {
 	PrimaryEntities   []RawEntity `json:"primary_entities,omitempty"`
 	SecondaryEntities []RawEntity `json:"secondary_entities,omitempty"`
 	ChartValues       []string    `json:"chart_values,omitempty"`
-	ChartsCertified   bool        `json:"charts_certified,omitempty"`
+	// VisualRecipe is the opaque producer hint ("counter_odometer", ...). The
+	// producer never interprets it: overlay-compiler validates it and lowers it
+	// onto a certified template. Empty when the scene has no grounded recipe.
+	VisualRecipe string `json:"visual_recipe,omitempty"`
+	// VisualPayload is the recipe's grounded payload, forwarded verbatim.
+	VisualPayload json.RawMessage `json:"visual_payload,omitempty"`
+	// VisualRecipes is every supported grounded recipe, ordered by priority.
+	// VisualRecipe/VisualPayload remain the first element so older Rust
+	// compilers keep consuming the same wire.
+	VisualRecipes   []VisualRecipeSpec `json:"visual_recipes,omitempty"`
+	ChartsCertified bool               `json:"charts_certified,omitempty"`
 	// SourceNumericValues is the source-language numeric vocabulary used by the
 	// translated grounding gate. It is data, not a selected candidate.
 	SourceNumericValues []string `json:"source_numeric_values,omitempty"`
+}
+
+// VisualRecipeSpec is one grounded recipe plus its opaque payload. The
+// producer never interprets either; overlay-compiler validates the name and
+// lowers the payload onto a certified template.
+type VisualRecipeSpec struct {
+	Recipe  string          `json:"recipe"`
+	Payload json.RawMessage `json:"payload,omitempty"`
 }
 
 type RawPhrase struct {

@@ -55,6 +55,25 @@ func singlePhotoFixture(t *testing.T) image.Image {
 	return img
 }
 
+func photoWithPartialArchitecturalEdgesFixture() image.Image {
+	const width, height = 900, 900
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			shade := uint8(35 + (x*110)/width)
+			img.SetRGBA(x, y, color.RGBA{R: shade, G: shade, B: shade, A: 255})
+		}
+	}
+	// Two hard, partial-height edges resemble building columns in a single
+	// photograph. Their ~71% sampled continuity passed the old 58% grid gate.
+	for _, seam := range []int{280, 620} {
+		for y := height * 25 / 100; y < height*75/100; y++ {
+			img.SetRGBA(seam, y, color.RGBA{R: 245, G: 245, B: 245, A: 255})
+		}
+	}
+	return img
+}
+
 func TestHasPanelGridCollageImageDetectsTriptych(t *testing.T) {
 	if !HasPanelGridCollageImage(panelCollageFixture(t)) {
 		t.Fatal("three panels separated by white gutters must be a collage")
@@ -97,6 +116,12 @@ func TestHasPanelGridCollageImageAcceptsSinglePhoto(t *testing.T) {
 	}
 }
 
+func TestHasPanelGridCollageImageAcceptsPhotoWithPartialArchitecturalEdges(t *testing.T) {
+	if HasPanelGridCollageImage(photoWithPartialArchitecturalEdgesFixture()) {
+		t.Fatal("partial-height architectural edges in one photograph are not a panel collage")
+	}
+}
+
 func TestHasPanelGridCollageBytesDetectsTriptych(t *testing.T) {
 	var buffer bytes.Buffer
 	if err := png.Encode(&buffer, panelCollageFixture(t)); err != nil {
@@ -110,5 +135,24 @@ func TestHasPanelGridCollageBytesDetectsTriptych(t *testing.T) {
 func TestHasPanelGridCollageBytesIgnoresUndecodableData(t *testing.T) {
 	if HasPanelGridCollageBytes([]byte("not an image")) {
 		t.Fatal("undecodable bytes must not be classified as a collage")
+	}
+}
+
+func TestPanelGridCollageEvidenceExplainsRejection(t *testing.T) {
+	img := panelCollageFixture(t)
+	if !HasPanelGridCollageImage(img) {
+		t.Fatal("fixture must remain a collage verdict")
+	}
+	seamsV, seamsH, continuityV, continuityH := PanelGridCollageEvidence(img)
+	if seamsH < 2 {
+		t.Fatalf("horizontal seams = %d, want >= 2 for the triptych fixture", seamsH)
+	}
+	if continuityH < 0.82 {
+		t.Fatalf("horizontal continuity = %.2f, want >= 0.82", continuityH)
+	}
+	// The evidence must never invent a stronger vertical verdict than the
+	// horizontal one that drove the rejection.
+	if continuityV > 1 || seamsV < 0 {
+		t.Fatalf("invalid vertical evidence: seams=%d continuity=%.2f", seamsV, continuityV)
 	}
 }

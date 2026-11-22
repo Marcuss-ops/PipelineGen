@@ -26,6 +26,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -34,7 +35,7 @@ import (
 // synthesis requests are deliberately outside this critical section.
 //
 // Protocol:
-//  1. Spawn `python3 tts_edge_server.py --host 127.0.0.1 --port 0` with
+//  1. Spawn `python3 tts_edge_server.py --host <loopback> --port 0` with
 //     PYTHONUNBUFFERED=1 to force unbuffered stdout (without this, Python
 //     blocks the PORT=<n> line in its ~8KB stdout pipe buffer, causing
 //     scanner.Scan() to hang indefinitely — the root cause of the
@@ -45,7 +46,7 @@ import (
 //  3. Drain remaining stdout in a background goroutine (prevents pipe
 //     buffer from filling and blocking the Python process)
 //  4. Validate the /health endpoint responds 200
-//  5. Store baseURL = "http://127.0.0.1:<n>" for subsequent requests
+//  5. Store the loopback baseURL for subsequent requests
 //
 // godlike/07 typed-error contract (PR-VO-TTS-PERSISTENT-WORKER): every
 // failure path wraps a typed sentinel so callers can probe with
@@ -80,7 +81,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		zap.String("script", scriptPath))
 
 	// exec.Command (not CommandContext) because the worker outlives request contexts.
-	p.cmd = exec.Command("python3", scriptPath, "--host", "127.0.0.1", "--port", "0")
+	p.cmd = exec.Command("python3", scriptPath, "--host", config.LoopbackHost, "--port", "0")
 
 	// BUG-FIX (2026-07-10): PYTHONUNBUFFERED=1 forces unbuffered stdout.
 	// Without this, Python's print(f"PORT={port}") stays in the ~8KB pipe
@@ -161,7 +162,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		}
 	}()
 
-	p.baseURL = fmt.Sprintf("http://127.0.0.1:%d", port)
+	p.baseURL = config.LoopbackBaseURL(port)
 	// Synthesis of long translated scenes can legitimately exceed one minute
 	// under the bounded multilingual fan-out. Keep the implementation aligned
 	// with the processor contract documented above: the request deadline is

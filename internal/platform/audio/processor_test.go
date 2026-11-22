@@ -893,3 +893,122 @@ func TestNewProcessor_DefaultRequestConcurrencyMatchesBenchmark(t *testing.T) {
 		t.Fatalf("default request concurrency = %d, want 4", got)
 	}
 }
+
+// TestGenerateForwardsRateToPersistentWorker is the regression pin for the
+// 2026-11-22 rate-drop bug: Generate rebuilt the AudioInput for
+// sendSynthesizeStream without copying Rate, so the sidecar always received
+// the provider default. This test calls Generate (not the test-only
+// sendSynthesizeRequest wrapper) and asserts the actual JSON body.
+func TestGenerateForwardsRateToPersistentWorker(t *testing.T) {
+	t.Parallel()
+
+	outDir := t.TempDir()
+	rateCh := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.URL.Path != "/synthesize" {
+			http.Error(w, "unexpected path", http.StatusNotFound)
+			return
+		}
+		var req ttsSynthesizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request body", http.StatusBadRequest)
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(req.Out), 0o755); err != nil {
+			http.Error(w, "mkdir output", http.StatusInternalServerError)
+			return
+		}
+		if err := os.WriteFile(req.Out, []byte("FAKE_MP3_BYTES"), 0o644); err != nil {
+			http.Error(w, "write output", http.StatusInternalServerError)
+			return
+		}
+		rateCh <- req.Rate
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(ttsSynthesizeResponse{
+			OK:    true,
+			Voice: req.Voice,
+			Path:  req.Out,
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestProcessor(t, srv.URL, "en-US", nil)
+	if _, err := p.Generate(context.Background(), &AudioInput{
+		Text:      "hello world",
+		Language:  "en-US",
+		Voice:     "en-US-RogerNeural",
+		Rate:      "+10%",
+		Filename:  "rate_en.mp3",
+		OutputDir: outDir,
+	}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	select {
+	case got := <-rateCh:
+		if got != "+10%" {
+			t.Fatalf("worker received rate = %q, want %q", got, "+10%")
+		}
+	default:
+		t.Fatal("synthesize handler was not called")
+	}
+}
+
+// TestGenerateLegacyForwardsRateFlag pins the spawn-per-call fallback: the
+// deprecated CLI path must carry the same rate instead of silently dropping
+// it. The fake Python script records the parsed --rate next to its output.
+func TestGenerateLegacyForwardsRateFlag(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	script := `import argparse, json
+p = argparse.ArgumentParser()
+p.add_argument("--lang")
+p.add_argument("--out")
+p.add_argument("--voice")
+p.add_argument("--rate", default="")
+p.add_argument("--text")
+p.add_argument("--allow-voice-fallback", action="store_true")
+a = p.parse_args()
+with open(a.out + ".rate", "w", encoding="utf-8") as fh:
+    fh.write(a.rate)
+with open(a.out, "wb") as fh:
+    fh.write(b"FAKE_MP3_BYTES")
+print(json.dumps({"ok": True, "voice": a.voice, "path": a.out}))
+`
+	if err := os.WriteFile(filepath.Join(dir, "fake_tts.py"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake script: %v", err)
+	}
+
+	p := &Processor{
+		pythonScriptsDir: dir,
+		legacyScript:     "fake_tts.py",
+		log:              zap.NewNop(),
+	}
+	result, err := p.generateLegacy(context.Background(), &AudioInput{
+		Text:      "hello world",
+		Language:  "en-US",
+		Voice:     "en-US-RogerNeural",
+		Rate:      "-20%",
+		Filename:  "legacy.mp3",
+		OutputDir: dir,
+	}, "legacy.mp3")
+	if err != nil {
+		t.Fatalf("generateLegacy: %v", err)
+	}
+	if result == nil || result.LocalPath == "" {
+		t.Fatalf("generateLegacy returned no local artifact: %+v", result)
+	}
+
+	recorded, err := os.ReadFile(filepath.Join(dir, "legacy.mp3.rate"))
+	if err != nil {
+		t.Fatalf("read recorded rate: %v", err)
+	}
+	if got := strings.TrimSpace(string(recorded)); got != "-20%" {
+		t.Fatalf("legacy script received rate = %q, want %q", got, "-20%")
+	}
+}

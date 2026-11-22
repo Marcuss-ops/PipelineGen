@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"io"
 	"net"
 	"net/http"
@@ -110,7 +111,7 @@ func (s *httpObjectSource) Close() error {
 // objectStoreTokenForURL returns the shared object-store bearer token only
 // when rawURL addresses the configured store. The credential is host-scoped:
 // a redirect or a foreign artifact URL must never receive it. Loopback
-// spellings (localhost vs 127.0.0.1) are the same endpoint on this host, and
+// spellings (hostname vs address) are the same endpoint on this host, and
 // the store advertises one of them while callers may use the other.
 func objectStoreTokenForURL(rawURL string) string {
 	token := strings.TrimSpace(os.Getenv("OBJECTSTORE_TOKEN"))
@@ -142,7 +143,7 @@ func sameLoopbackEndpoint(a, b *url.URL) bool {
 		return false
 	}
 	loopback := func(host string) bool {
-		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+		return config.IsLoopbackBindHost(host)
 	}
 	return loopback(a.Hostname()) && loopback(b.Hostname())
 }

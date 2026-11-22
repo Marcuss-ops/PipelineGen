@@ -54,7 +54,7 @@ type Response struct {
 // VELOX_RERANKER_ENABLED=false to bypass the sidecar.
 type Config struct {
 	Enabled   bool    `yaml:"enabled" env:"VELOX_RERANKER_ENABLED" default:"true"`
-	URL       string  `yaml:"url" env:"VELOX_RERANKER_URL" default:"http://127.0.0.1:8091/rerank"`
+	URL       string  `yaml:"url" env:"VELOX_RERANKER_URL"`
 	Model     string  `yaml:"model" env:"VELOX_RERANKER_MODEL" default:"BAAI/bge-reranker-v2-m3"`
 	TopK      int     `yaml:"top_k" env:"VELOX_RERANKER_TOP_K" default:"30"`
 	TimeoutMs int     `yaml:"timeout_ms" env:"VELOX_RERANKER_TIMEOUT_MS" default:"150"`
@@ -64,7 +64,7 @@ type Config struct {
 // WithDefaults returns a copy with sensible defaults applied.
 func (c Config) WithDefaults() Config {
 	if strings.TrimSpace(c.URL) == "" {
-		c.URL = "http://127.0.0.1:8091/rerank"
+		c.URL = platformconfig.LoopbackBaseURL(8091) + "/rerank"
 	}
 	if strings.TrimSpace(c.Model) == "" {
 		c.Model = models.Reranker.ID

@@ -107,6 +107,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			return result, false
 		}
 		applyDurableStockBindings(req, scenes)
+		applySegmentClipBindings(req.ScriptParams.Segments, scenes)
 		// Explicit no_voiceover segments are editorial clip cutaways: keep the
 		// database clip, use its original audio, and never synthesize TTS or a
 		// localized render for it. This runs before render expectations and the

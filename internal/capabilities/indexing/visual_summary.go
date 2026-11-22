@@ -68,6 +68,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ── Defaults (audit-stable; godlike/06 SSOT) ──────────────────────
@@ -98,7 +99,7 @@ const (
 	// actual endpoint serving /vlm/visual-tag lives at port 8000
 	// (distinct from the embedding_server at port 8001 which hosts
 	// SigLIP / E5 / CLAP).
-	DefaultVLMHTTPEndpoint = "http://127.0.0.1:8000"
+	DefaultVLMHTTPEndpoint = config.LoopbackURLPrefix + "8000"
 
 	// DefaultVLMHTTPTimeoutSeconds is the per-request HTTP
 	// timeout for the /vlm/visual-tag call. Generous because the

@@ -11,7 +11,7 @@ apply_edge_tts_compat()
 from edge_tts import Communicate
 
 from edge_tts_bridge.boundaries import boundary_line, remove_partials
-from edge_tts_bridge.request import edge_boundary_mode, normalize_language
+from edge_tts_bridge.request import SynthesizeRequestError, edge_boundary_mode, normalize_language, normalize_rate
 from edge_tts_bridge.voice_resolver import VoiceResolutionError, resolve_voice
 
 
@@ -24,7 +24,23 @@ async def main():
     p.add_argument("--allow-voice-fallback", action="store_true",
                    help="Allow automatic voice selection when --voice is omitted (debug/smoke tests only)")
     p.add_argument("--boundary", default="word", choices=("word", "sentence"))
-    a = p.parse_args()
+    p.add_argument("--rate", default="",
+                   help='Speech rate, e.g. "+10%" or "-20%" (signed percentage)')
+    argv = sys.argv[1:]
+    # argparse treats a leading "-" value as another option. Rewrite the
+    # common "--rate -20%" form to "--rate=-20%" so negative rates work.
+    for i, arg in enumerate(argv[:-1]):
+        if arg == "--rate" and argv[i + 1].startswith("-") and argv[i + 1].endswith("%"):
+            argv[i] = f"--rate={argv[i + 1]}"
+            del argv[i + 1]
+            break
+    a = p.parse_args(argv)
+
+    try:
+        rate = normalize_rate(a.rate)
+    except SynthesizeRequestError as exc:
+        print(json.dumps({"ok": False, "error": exc.message}))
+        sys.exit(1)
 
     text = a.text
     if not text:
@@ -58,7 +74,9 @@ async def main():
         # WordBoundary is requested EXPLICITLY (edge-tts defaults to
         # SentenceBoundary) and audio + boundaries come from the SAME
         # stream in one synthesis pass.
-        communicate = Communicate(text, voice, boundary=edge_boundary_mode(a.boundary))
+        communicate = Communicate(
+            text, voice, boundary=edge_boundary_mode(a.boundary),
+            **({"rate": rate} if rate else {}))
         with open(audio_part, "wb") as audio_fh, \
                 open(meta_part, "w", encoding="utf-8") as meta_fh:
             async for chunk in communicate.stream():

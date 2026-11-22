@@ -379,11 +379,19 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 		if contextCountryContradicts(ctx, hit.Address["country_code"]) {
 			continue
 		}
-		s := scored{hit: hit, score: baseScore}
-		if nameMatches(query, hit) {
-			s.score += nameMatchScore
-			s.matched = "name"
+		// A candidate that does not carry the queried name is not a match at
+		// all. Grounded context may choose between namesakes (Paris, Texas vs
+		// Paris, France); it must never turn a different place into the pin.
+		// Live failure: "Roma" scoped by a scene that also mentions Libia was
+		// accepted as a Tripoli street whose Arabic name transliterates to
+		// Roma, because the country-context bonus alone cleared the threshold
+		// and there was no runner-up.
+		if !nameMatches(query, hit) {
+			continue
 		}
+		s := scored{hit: hit, score: baseScore}
+		s.score += nameMatchScore
+		s.matched = "name"
 		// Nominatim often returns both a city's administrative boundary and a
 		// same-name county. Prefer the city-level result when the requested
 		// name exactly matches it; this is a structural specificity signal,

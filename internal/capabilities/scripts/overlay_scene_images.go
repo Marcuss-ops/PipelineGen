@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/hex"
+	"log"
 	"net/url"
 	"os"
 	"strings"
@@ -65,6 +66,15 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 		localHashes[hash] = struct{}{}
 	}
 	var out []capabilityoverlay.ImageCandidate
+	// Per-scene decision counters. They explain an image-free scene with
+	// numbers (R23: 482 materialized, 1 planned) instead of requiring a
+	// re-run with ad-hoc instrumentation.
+	segmentCandidates, readyCandidates, excludedByHash := 0, 0, 0
+	logSelection := func() []capabilityoverlay.ImageCandidate {
+		log.Printf("scene images: scene_id=%s segment_candidates=%d ready=%d excluded_by_hash=%d limit=%d emitted=%d",
+			strings.TrimSpace(sceneID), segmentCandidates, readyCandidates, excludedByHash, limit, len(out))
+		return out
+	}
 	nextStartUS := ((startUS / 1000) * 1000) + capabilityoverlay.MaxImageOverlayDurationMS*1000
 	for _, pin := range result.OverlayImages {
 		if !strings.EqualFold(strings.TrimSpace(pin.SceneID), strings.TrimSpace(sceneID)) {
@@ -103,7 +113,7 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 		})
 		localHashes[digest] = struct{}{}
 		if durationUS < int64(capabilityoverlay.MaxImageOverlayDurationMS*1000) || len(out) >= limit {
-			return out
+			return logSelection()
 		}
 		nextStartUS += durationUS
 	}
@@ -114,6 +124,7 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 		candidates := append(append([]scriptpkg.SegmentAssetCandidate(nil), segment.Assets.SecondaryImages...), segment.Assets.Candidates...)
 		seen := make(map[string]struct{}, len(candidates))
 		for _, candidate := range candidates {
+			segmentCandidates++
 			assetID := strings.TrimSpace(candidate.AssetID)
 			digest := strings.TrimSpace(candidate.ContentSHA256)
 			if _, duplicate := seen[assetID]; duplicate {
@@ -123,8 +134,10 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 			if !sceneImageCandidateReady(candidate, digest) {
 				continue
 			}
+			readyCandidates++
 			digest = strings.ToLower(digest)
 			if _, duplicate := localHashes[digest]; duplicate {
+				excludedByHash++
 				continue
 			}
 			// Prefer the durable Drive copy: the provider URL is not stable for
@@ -168,13 +181,13 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 				break
 			}
 			if len(out) >= limit {
-				return out
+				return logSelection()
 			}
 			nextStartUS += durationUS
 		}
-		return out
+		return logSelection()
 	}
-	return nil
+	return logSelection()
 }
 
 // entityImageCardReservation counts the scene's unique image-bearing entity
@@ -238,11 +251,15 @@ func genericSceneImageLimit(result *GenerateResult, sceneID string, maxOverlaysP
 }
 
 func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest string) bool {
+	// IndexStatus is a post-persistence search-index lifecycle signal. The
+	// current run already owns verified bytes, a stable hash and a durable
+	// Drive/local reference, so waiting for asynchronous INDEXED here creates
+	// a scene-order race and drops otherwise renderable images.
 	if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) ||
 		strings.TrimSpace(candidate.AssetID) == "" || candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 		candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
 		candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
-		!strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), scriptpkg.VidRushStatusIndexed) || len(digest) != 64 {
+		len(digest) != 64 {
 		return false
 	}
 	_, err := hex.DecodeString(digest)

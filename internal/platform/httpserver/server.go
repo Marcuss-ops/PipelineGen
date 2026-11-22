@@ -88,7 +88,7 @@ type ServerDeps struct {
 	Ready     any
 	// ModelsSidecarURL is the Python embedding server URL for the /models endpoint
 	// (Task 10, July 2026). When empty, /models returns "sidecar not configured".
-	// Default: ClipIndexer.ServerURL (typically http://127.0.0.1:8001).
+	// Default: ClipIndexer.ServerURL (typically the loopback clip indexer).
 	ModelsSidecarURL string
 	// ImageSearchResolver (FASE 7, July 2026): the canonical routing
 	// singleton reached from app.DomainBundle.ImageSearchResolver.

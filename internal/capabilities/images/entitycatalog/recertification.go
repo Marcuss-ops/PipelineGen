@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"io"
 	"math"
 	"net"
@@ -338,11 +339,17 @@ func validateHTTPImageCandidateURL(raw string) error {
 		return fmt.Errorf("download URL must be http(s) without credentials")
 	}
 	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "metadata.google.internal" {
+	// The metadata endpoint stays blocked even for the httptest opt-in below.
+	if host == "metadata.google.internal" {
 		return fmt.Errorf("download URL host is not public")
 	}
+	// The opt-in must precede the loopback deny-list: httptest servers bind
+	// loopback addresses, which IsLoopbackHost also covers. Production never sets it.
 	if httpImageCandidateAllowLoopbackForTest {
 		return nil
+	}
+	if config.IsLoopbackHost(host) {
+		return fmt.Errorf("download URL host is not public")
 	}
 	if ip := net.ParseIP(host); ip != nil && isPrivateImageCandidateIP(ip) {
 		return fmt.Errorf("download URL host is not public")

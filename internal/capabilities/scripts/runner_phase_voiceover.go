@@ -336,7 +336,12 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		// scene. Only the source-language voiceover owns the canonical scene
 		// window; letting whichever translated TTS finishes last set DurationUS
 		// makes final-job stock windows nondeterministic across languages.
-		if item.lang == req.SourceLanguage && (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && audioRef.Duration > 0 {
+		// A caller-provided segment duration owns the editorial window. In a
+		// combined timeline the voiceover is mixed over that window; replacing
+		// it with the (usually much shorter) TTS duration truncates both the
+		// source clip and the canonical master. Only infer a scene duration
+		// from TTS when no duration was supplied by the source/segment.
+		if item.lang == req.SourceLanguage && (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && audioRef.Duration > 0 && item.scene.DurationUS <= 0 && item.scene.DurationMS <= 0 {
 			item.scene.DurationMS = int64(audioRef.Duration*1000 + 0.5)
 			item.scene.DurationUS = int64(audioRef.Duration*1_000_000 + 0.5)
 		}

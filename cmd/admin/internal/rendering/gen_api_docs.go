@@ -89,7 +89,7 @@ func RunGenAPIDocs(args []string) error {
 			// client is constructed, never dialed at boot), so the canonical
 			// config.yaml value is pinned here; like the ClipIndexer URL
 			// above it is a construction input, not an I/O dependency.
-			RenderingGenQueueURL: "http://127.0.0.1:8081",
+			RenderingGenQueueURL: config.LoopbackBaseURL(8081),
 		},
 		MediaPostgreSQL: config.PostgreSQLMediaConfig{
 			Enabled:                mediaPG,
@@ -105,7 +105,7 @@ func RunGenAPIDocs(args []string) error {
 		// the docs-only media DB (see the DSN above) has an empty outbox.
 		ClipIndexer: config.ClipIndexerConfig{
 			Enabled:               true,
-			ServerURL:             "http://127.0.0.1:8001",
+			ServerURL:             config.LoopbackBaseURL(8001),
 			MaxConcurrentIndexing: 1,
 			EmbedTimeoutSeconds:   60,
 		},

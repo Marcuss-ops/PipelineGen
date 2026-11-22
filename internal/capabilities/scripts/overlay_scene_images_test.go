@@ -8,6 +8,23 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestSceneImageCandidateReadyDoesNotWaitForSearchIndex(t *testing.T) {
+	digest := strings.Repeat("a", 64)
+	candidate := scriptpkg.SegmentAssetCandidate{
+		Provider:           "internet_images",
+		AssetID:            digest,
+		ContentSHA256:      digest,
+		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
+		VerificationStatus: scriptpkg.VidRushStatusVerified,
+		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		IndexStatus:        "discovered",
+		DriveLink:          "https://drive.google.com/uc?id=verified-asset",
+	}
+	if !sceneImageCandidateReady(candidate, digest) {
+		t.Fatal("persisted and verified image must be renderable while search indexing is pending")
+	}
+}
+
 func TestSceneImageCandidatePrefersDurableDriveOverProviderURL(t *testing.T) {
 	const sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{
@@ -123,6 +140,10 @@ func TestSceneImageCandidateRejectsNonContentAddressedSelection(t *testing.T) {
 	}
 }
 
+// TestSceneImageCandidateAcceptsUppercasePersistedIndexStatus keeps the
+// uppercase media-registry status renderable. IndexStatus is intentionally not
+// part of the readiness contract anymore, but an uppercase value must not
+// become a new rejection reason.
 func TestSceneImageCandidateAcceptsUppercasePersistedIndexStatus(t *testing.T) {
 	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{

@@ -39,7 +39,7 @@ import (
 // // Fields added (VO-DECOMPOSITION P0 #1 lazy worker state):
 //   - mu sync.Mutex — protects worker lifecycle only; HTTP calls are concurrent
 //   - cmd *exec.Cmd — the running subprocess (nil when not started)
-//   - baseURL string — "http://127.0.0.1:<port>" discovered from stdout
+//   - baseURL string — the loopback URL discovered from stdout
 //   - httpClient *http.Client — shared HTTP client (5-min timeout)
 //   - started bool — true after successful startup
 type Processor struct {
@@ -311,6 +311,7 @@ func (p *Processor) synthesizeOnce(ctx context.Context, input *AudioInput, safeN
 			Text:          input.Text,
 			Language:      input.Language,
 			Voice:         input.Voice,
+			Rate:          input.Rate,
 			Filename:      safeName,
 			OutputDir:     input.OutputDir,
 			RemoveSilence: input.RemoveSilence,
@@ -456,6 +457,12 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 		args = append(args, "--voice", input.Voice)
 	} else if input.AllowVoiceFallback {
 		args = append(args, "--allow-voice-fallback")
+	}
+
+	if rate := strings.TrimSpace(input.Rate); rate != "" {
+		// Use --rate=<value>: argparse treats a bare "-20%" as another
+		// option and would reject the canonical scriptgen default.
+		args = append(args, "--rate="+rate)
 	}
 
 	useStdin := input.UseStdin || len(input.Text) > 32*1024

@@ -44,6 +44,63 @@ def base_language(lang: str) -> str:
     return normalized.split("-", 1)[0] or "en"
 
 
+def normalize_rate(rate: Any) -> str:
+    """Validate and canonicalise a speaking rate.
+
+    Accepted wire values are signed integer percentages in the same window
+    as the Edge bridge: "-50%" .. "+100%". The empty string means "engine
+    default" and is preserved as "". Multiplier spellings ("1.1x") are
+    normalised by the Go boundary before they reach either sidecar.
+    """
+    raw = str(rate or "").strip()
+    if not raw:
+        return ""
+    if not raw.endswith("%"):
+        raise SynthesizeRequestError(
+            f'invalid "rate" value: {raw!r} '
+            '(expected a signed percentage in [-50%, +100%], e.g. "+10%")'
+        )
+
+    number = raw[:-1]
+    if number[:1] not in ("+", "-"):
+        raise SynthesizeRequestError(
+            f'invalid "rate" value: {raw!r} '
+            '(expected a signed percentage in [-50%, +100%], e.g. "+10%")'
+        )
+    sign = -1 if number[0] == "-" else 1
+    number = number[1:]
+    if not number.isdigit() or len(number) > 3:
+        raise SynthesizeRequestError(
+            f'invalid "rate" value: {raw!r} '
+            '(expected a signed percentage in [-50%, +100%], e.g. "+10%")'
+        )
+
+    value = sign * int(number)
+    if value < -50 or value > 100:
+        raise SynthesizeRequestError(
+            f'invalid "rate" value: {raw!r} (expected -50%..+100%)'
+        )
+    return f"{value:+d}%"
+
+
+def atempo_filter(rate: Any) -> list:
+    """Return the FFmpeg args that apply `rate` through the atempo filter.
+
+    Local engines synthesize at their native speed, so the only portable way
+    to honour a caller rate is a post-synthesis tempo change. A single atempo
+    instance covers the whole accepted window because the factor stays within
+    [0.5, 2.0]. An empty list means identity (no filter).
+    """
+    normalized = normalize_rate(rate)
+    if not normalized:
+        return []
+    percent = int(normalized[:-1])
+    if percent == 0:
+        return []
+    factor = 1.0 + percent / 100.0
+    return ["-af", f"atempo={factor:g}"]
+
+
 @dataclass
 class SynthesizeRequest:
     """Validated JSON-RPC body for POST /synthesize."""
@@ -53,6 +110,7 @@ class SynthesizeRequest:
     engine: str
     lang: str = "en"
     voice: str = ""
+    rate: str = ""
     boundary: str = "none"
 
     @classmethod
@@ -81,6 +139,7 @@ class SynthesizeRequest:
             )
 
         voice = str(body.get("voice") or "").strip()
+        rate = normalize_rate(body.get("rate") or "")
 
         boundary = str(body.get("boundary") or "none").strip().lower() or "none"
         if boundary not in _BOUNDARY_MODES:
@@ -95,5 +154,6 @@ class SynthesizeRequest:
             engine=engine,
             lang=lang,
             voice=voice,
+            rate=rate,
             boundary=boundary,
         )

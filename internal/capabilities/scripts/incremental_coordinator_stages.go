@@ -14,6 +14,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -36,12 +37,11 @@ var ErrProviderResolveBudget = errors.New("vidrush provider resolve budget exhau
 // stalled provider can no longer hold the run barrier for five minutes.
 const vidRushProviderResolveTimeout = 2 * time.Minute
 
-// vidRushProviderSegmentResolveTimeout caps a SINGLE scene's fan-out. The
-// measured distribution is bimodal: cache hits return in 8 ms, while a
-// challenging provider parks one scene for 54-117 s. Twenty seconds is still
-// ~3x the median live resolve but stops one segment from consuming the whole
-// run budget (ELIM-01).
-const vidRushProviderSegmentResolveTimeout = 20 * time.Second
+// vidRushProviderSegmentResolveTimeout caps a SINGLE scene's fan-out. A
+// contextual SearXNG search measured 28 s just to return candidates, so a
+// 20-second cap cancelled useful searches before they could be materialized.
+// The run-wide budget still bounds cumulative provider time across scenes.
+const vidRushProviderSegmentResolveTimeout = 45 * time.Second
 
 func (c *VidRushIncrementalCoordinator) providerSegmentTimeout() time.Duration {
 	if c != nil && c.providerSegmentBudget > 0 {
@@ -145,9 +145,26 @@ func (c *VidRushIncrementalCoordinator) searchProviders(ctx context.Context, res
 		err = fmt.Errorf("%w: %w", ErrProviderResolveBudget, err)
 	}
 	if errors.Is(err, ErrProviderResolveBudget) && ctx.Err() == nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf(
-			"provider resolve exceeded %s; continuing without provider candidates", timeout))
-		return result, nil
+		// Resolvers may finish one provider while another is still blocked. Keep
+		// candidates already merged by the resolver instead of turning a partial
+		// success into an empty scene when the bounded context expires.
+		partial := result
+		if strings.TrimSpace(resolved.SegmentID) != "" {
+			partial = resolved
+			if len(partial.Assets.Candidates) == 0 {
+				partial.Assets.Candidates = result.Assets.Candidates
+			}
+			if len(partial.Assets.SecondaryImages) == 0 {
+				partial.Assets.SecondaryImages = result.Assets.SecondaryImages
+			}
+			if len(partial.Warnings) == 0 {
+				partial.Warnings = append([]string(nil), result.Warnings...)
+			}
+		}
+		candidateCount := len(partial.Assets.Candidates)
+		partial.Warnings = append(partial.Warnings, fmt.Sprintf(
+			"provider resolve exceeded %s; continuing with %d candidate(s) retained", timeout, candidateCount))
+		return partial, nil
 	}
 	return resolved, err
 }

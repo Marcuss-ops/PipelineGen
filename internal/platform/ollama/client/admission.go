@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
@@ -29,6 +31,14 @@ import (
 // enrichment client, the creator client, ...). Each pool keeps its own width
 // (that is a scheduling choice about its own work); this is the hard ceiling on
 // requests actually outstanding against the server.
+// ErrAdmissionCanceled reports that a request never reached the model because
+// the shared in-flight budget stayed saturated until its context died. It is
+// deliberately a QUEUE fact, not a model verdict: the caller retries it as a
+// deadline, and the model's circuit breaker must not count it (an endpoint
+// under load would otherwise open its own breaker and turn saturation into
+// "all models skipped by circuit breaker" — the r24-r26 cascade).
+var ErrAdmissionCanceled = errors.New("ollama admission wait cancelled")
+
 const (
 	// DefaultMaxInFlightRequests mirrors the certified OLLAMA_NUM_PARALLEL.
 	// It is only a fallback: the value is resolved from the environment when
@@ -86,7 +96,7 @@ func normalizeOllamaEndpoint(baseURL string) string {
 	normalized := strings.TrimSpace(baseURL)
 	normalized = strings.TrimRight(normalized, "/")
 	if normalized == "" {
-		return "http://localhost:11434"
+		return config.LoopbackBaseURL(11434)
 	}
 	return strings.ToLower(normalized)
 }
@@ -156,7 +166,9 @@ func (a *ollamaAdmission) acquire(ctx context.Context) (bool, error) {
 		select {
 		case a.slots <- struct{}{}:
 		case <-ctx.Done():
-			return false, fmt.Errorf("ollama admission wait cancelled: %w", ctx.Err())
+			// Wrap BOTH sentinels: callers classify the queue fact and the
+			// context cause, and neither may be lost.
+			return false, fmt.Errorf("%w: %w", ErrAdmissionCanceled, ctx.Err())
 		}
 	}
 
@@ -246,6 +258,12 @@ func (c *Client) acquireOllamaSlot(ctx context.Context) error {
 	}
 	waited, err := c.admission.acquire(ctx)
 	if err != nil {
+		if errors.Is(err, ErrAdmissionCanceled) {
+			logger.Warn("ollama admission budget saturated until the request deadline — request never reached the model",
+				zap.Int("limit", c.admission.Limit()),
+				zap.Int64("deferred_total", c.admission.stats().Deferred),
+				zap.Error(err))
+		}
 		return err
 	}
 	if waited {

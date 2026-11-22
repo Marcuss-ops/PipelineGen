@@ -30,6 +30,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,14 @@ const (
 	voiceoverTTSMaxAttempts    = 3
 	voiceoverTTSInitialBackoff = 250 * time.Millisecond
 	voiceoverTTSMaxBackoff     = 2 * time.Second
+
+	// defaultScriptgenTTSRate is the canonical speaking rate for generated
+	// narration. -20% (0.8x) is intentional: the 17 chars/s quality gate
+	// still failed at natural speed on the E2E-04 scenes. Keeping the
+	// default at the script.generate boundary makes the contract explicit
+	// and keeps the cache fingerprint honest now that the rate actually
+	// reaches the synthesizer.
+	defaultScriptgenTTSRate = "-20%"
 )
 
 // isRetryableVoiceoverTTS honors the per-item pipeline's own retryability
@@ -140,15 +149,9 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	ctx context.Context,
 	input scriptgen.VoiceoverInput,
 ) (scriptgen.AudioReference, error) {
-	ttsRate := strings.TrimSpace(input.TTSRate)
-	if ttsRate == "" {
-		ttsRate = "-20%"
-	} else {
-		value := strings.TrimSuffix(strings.TrimPrefix(ttsRate, "+"), "%")
-		n, err := strconv.Atoi(value)
-		if err != nil || !strings.HasSuffix(ttsRate, "%") || n < -50 || n > 100 {
-			return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: invalid TTS rate %q (expected -50%%..+100%%)", input.TTSRate)
-		}
+	ttsRate, err := normalizeTTSRate(input.TTSRate)
+	if err != nil {
+		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: invalid TTS rate %q: %w", input.TTSRate, err)
 	}
 	if input.Text == "" {
 		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: empty text for scene %s language %s", input.SceneID, input.Language)
@@ -360,6 +363,47 @@ func (g *ScriptVoiceoverGenerator) Generate(
 	)
 
 	return ref, nil
+}
+
+// normalizeTTSRate converts every caller-facing tts_rate spelling into the
+// signed-percentage form Edge TTS expects ("+10%", "-20%"). Accepted inputs:
+//
+//	""             -> defaultScriptgenTTSRate
+//	"+10%", "10%" -> "+10%"
+//	"1.1x", "1.1" -> "+10%"
+//	"0.8x", "0.8" -> "-20%"
+//
+// The percentage must stay in Edge's supported [-50%, +100%] window; the
+// multiplier spelling is the same window expressed as [0.5x, 2.0x]. The
+// canonical output is what reaches the TTS provider AND the cache
+// fingerprint, so "1.1x" and "+10%" share one cache entry.
+func normalizeTTSRate(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return defaultScriptgenTTSRate, nil
+	}
+	if strings.HasSuffix(trimmed, "%") {
+		value := strings.TrimSuffix(strings.TrimPrefix(trimmed, "+"), "%")
+		n, err := strconv.Atoi(value)
+		if err != nil || n < -50 || n > 100 {
+			return "", fmt.Errorf("expected -50%%..+100%% or a multiplier 0.5x..2.0x")
+		}
+		return fmt.Sprintf("%+d%%", n), nil
+	}
+
+	multiplier := trimmed
+	if strings.HasSuffix(strings.ToLower(multiplier), "x") {
+		multiplier = multiplier[:len(multiplier)-1]
+	}
+	factor, err := strconv.ParseFloat(multiplier, 64)
+	if err != nil || math.IsNaN(factor) || math.IsInf(factor, 0) || factor <= 0 {
+		return "", fmt.Errorf("expected -50%%..+100%% or a multiplier 0.5x..2.0x")
+	}
+	pct := int(math.Round((factor - 1.0) * 100))
+	if pct < -50 || pct > 100 {
+		return "", fmt.Errorf("multiplier %.4gx is outside 0.5x..2.0x", factor)
+	}
+	return fmt.Sprintf("%+d%%", pct), nil
 }
 
 // sanitizeFilename replaces characters unsafe for filenames with

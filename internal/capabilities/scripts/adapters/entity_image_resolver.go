@@ -97,6 +97,21 @@ func resolveEntityImageCatalogCache(
 		releaseCatalog = nil
 	}
 
+	// A forced refresh replaces the discovery projection; it must not destroy
+	// the portraits the catalog already verified and copied to Drive. Load
+	// them as a fallback so a refresh that yields nothing usable (VLM offline,
+	// provider 429/timeout) still renders the already verified assets instead
+	// of leaving the scene with zero images.
+	if useCatalog && force {
+		release := entityImageLocks.Lock("entity-catalog:" + catalogIdentity.CanonicalEntityID)
+		pool, err := entityImageCatalogCandidates(ctx, deps.catalog, catalogIdentity, entityImageCatalogPoolSize)
+		release()
+		if err != nil {
+			return resolution, err
+		}
+		resolution.CatalogFallback = pool.Candidates
+	}
+
 	if useCatalog && !force {
 		releaseDiscovery := entityImageDiscoveryLocks.Lock("entity-discovery:" + catalogIdentity.CanonicalEntityID)
 		defer func() {

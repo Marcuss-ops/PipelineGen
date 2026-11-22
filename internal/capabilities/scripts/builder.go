@@ -23,6 +23,7 @@ package scriptgeneration
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	audiocap "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -405,7 +406,30 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	// and voiceover work.
 	req.EntityImageMotions = resolveEntityImageMotionPool(req.EntityImageMotions)
 	req.EntityCaptionMotions = resolveEntityCaptionMotionPool(req.EntityCaptionMotions)
+	// Three knobs describe the same generic-image lane: output.generate_scene_images,
+	// script_params.images_per_scene and max_image_overlays. Resolve them once so a
+	// payload cannot say "disabled" twice and still arm the lane through a stale
+	// budget (CFG-05).
+	normalizeImageToggleCoherence(&req)
 	return req, nil
+}
+
+// normalizeImageToggleCoherence turns the explicit "no scene images" pair into
+// a zero budget. The entity-image lane is independent and keeps its budget.
+// A single disabled knob is not enough: the payload contract treats an omitted
+// value as "keep the certified default", so only both-at-once is an opt-out.
+func normalizeImageToggleCoherence(req *GenerateRequest) {
+	if req == nil || req.GenerateSceneImages != scriptpkg.ToggleDisabled || req.ScriptParams.ImagesPerScene != 0 {
+		return
+	}
+	if req.MediaPlan.Extraction.EntityImages.Enabled || req.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		return
+	}
+	if req.MaxImageOverlays <= 0 {
+		return
+	}
+	log.Printf("scriptgeneration: output.generate_scene_images=disabled and script_params.images_per_scene=0; clearing max_image_overlays=%d for the generic image lane", req.MaxImageOverlays)
+	req.MaxImageOverlays = 0
 }
 
 // defaultRenderSubfolderName returns the run-scoped Drive folder used when the

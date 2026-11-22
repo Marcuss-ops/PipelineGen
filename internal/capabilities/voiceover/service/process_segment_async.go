@@ -142,6 +142,11 @@ func (u *ProcessSegmentUseCase) runAsyncPublish(
 	defer func() { _ = tx.Rollback() }()
 
 	fingerprint := u.contentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy))
+	// Persist the FINAL audio duration, not the pre-clean provider stream.
+	durationSeconds := ttsOut.Duration.Seconds()
+	if post != nil && post.DurationUS > 0 {
+		durationSeconds = float64(post.DurationUS) / 1e6
+	}
 	finalizeCmd := &FinalizeCommand{
 		Fingerprint:     fingerprint,
 		IdempotencyKey:  pub.IdemKey,
@@ -158,7 +163,7 @@ func (u *ProcessSegmentUseCase) runAsyncPublish(
 		LocalPath:       out.LocalPath,
 		CleanedPath:     out.CleanedPath,
 		ContentSHA256:   out.ContentSHA256,
-		DurationSeconds: ttsOut.Duration.Seconds(),
+		DurationSeconds: durationSeconds,
 		FolderID:        cmd.Dest.FolderID,
 		FolderPath:      cmd.Dest.FolderPath,
 		DriveFileID:     out.DriveFileID,

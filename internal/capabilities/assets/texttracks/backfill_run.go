@@ -114,17 +114,16 @@ func (s *BackfillService) Run(
 		res, perErr := s.ProcessAsset(ctx, item, opts)
 		report.PerAsset = append(report.PerAsset, res)
 
+		// The per-asset LABEL is the classification. ProcessAsset reports a
+		// missing/unready source as data (nil error), so gating these cases on
+		// perErr != nil made all three dead: a clip with no source was counted
+		// as neither failed nor acquired, which is what let a subtitle miss
+		// pass as a healthy run.
 		switch {
-		case perErr != nil && res.Err == "no_source_track":
+		case res.Err == "no_source_track", res.Err == "source_track_not_ready", res.Err == "acquired_but_save_failed":
 			report.SourceMissingCount++
 			report.FailedAssetIDs = append(report.FailedAssetIDs, item.ID)
-		case perErr != nil && res.Err == "source_track_not_ready":
-			report.SourceMissingCount++
-			report.FailedAssetIDs = append(report.FailedAssetIDs, item.ID)
-		case perErr != nil && res.Err == "acquired_but_save_failed":
-			report.SourceMissingCount++
-			report.FailedAssetIDs = append(report.FailedAssetIDs, item.ID)
-		case perErr != nil:
+		case perErr != nil || res.Err != "":
 			report.FailedAssetIDs = append(report.FailedAssetIDs, item.ID)
 		default:
 			if res.SourceReady {

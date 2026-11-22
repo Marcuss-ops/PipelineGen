@@ -16,6 +16,9 @@ func TestFoldIsTheSingleSpellingTable(t *testing.T) {
 	require.Equal(t, Place, Fold("FAC"))
 	require.Equal(t, Org, Fold("COMPANY"))
 	require.Equal(t, Org, Fold("COURT"))
+	// A publication folds onto the organization family so its identity and
+	// image binding stay deterministic; the editorial hint travels separately.
+	require.Equal(t, Org, Fold("MEDIA_OUTLET"))
 	require.Equal(t, Logo, Fold("BRAND"))
 	require.Equal(t, WorkOfArt, Fold("WORK"))
 	// One identity for one number, whatever the extractor called it.

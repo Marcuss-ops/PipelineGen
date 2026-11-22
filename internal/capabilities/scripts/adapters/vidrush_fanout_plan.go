@@ -222,6 +222,17 @@ func sceneScopedImageQueriesForTypes(segment scriptpkg.VidRushSegmentResult, ent
 		if _, ok := allowed[kind]; !ok {
 			continue
 		}
+		if kind == "PERSON" {
+			// Keep portrait retrieval on a dedicated identity-focused query.
+			// SearchIntents may include scene context (e.g. a program or book),
+			// which correctly belongs to the separate contextual-image lane; a
+			// bare name would let collages/news cards bind as portraits.
+			name := strings.TrimSpace(entity.Value)
+			if name != "" {
+				queries = appendUniqueImageQueries(queries, []string{name + " portrait"})
+			}
+			continue
+		}
 		queries = appendUniqueImageQueries(queries, entity.SearchIntents)
 	}
 	return plausibleSceneImageQueries(queries)

@@ -336,7 +336,11 @@ func (p MediaExtractionPolicy) EntityImageSurfaceEnabled() bool {
 }
 
 type EntityImagePolicy struct {
-	Enabled      bool     `json:"enabled,omitempty"`
+	Enabled bool `json:"enabled,omitempty"`
+	// Required makes a final job fail during preflight when the selected
+	// identity-image lane has no bound, verified portrait. Enabled controls
+	// discovery; Required controls whether text-only fallback is acceptable.
+	Required     bool     `json:"required,omitempty"`
 	EntityTypes  []string `json:"entity_types,omitempty"`
 	MaxPerEntity int      `json:"max_per_entity,omitempty"`
 	// Scope selects the identity surface used to retrieve and render images.

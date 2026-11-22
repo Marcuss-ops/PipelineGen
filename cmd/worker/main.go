@@ -18,7 +18,7 @@
 //
 // Operational Readiness note (AGENTS.md / docs/operations): the
 // port for the master is read from $VELOX_MASTER_URL or
-// VELOX_BROKER_URL, with canonical default http://127.0.0.1:8000.
+// VELOX_BROKER_URL, with the canonical loopback default.
 // The cfgPath flag is the canonical override surface (config.yaml
 // is the default per the Operational Readiness PR).
 package main

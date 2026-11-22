@@ -170,6 +170,20 @@ func meanRegionGradient(img image.Image, vertical bool, axisStart, axisEnd, cros
 // centeredDiptychSeam. Lines on each side of a narrow gutter are clustered
 // into one seam.
 func alignedPanelSeams(img image.Image, vertical bool) []int {
+	seams, _ := alignedPanelSeamsWithContinuity(img, vertical)
+	return seams
+}
+
+// PanelGridCollageEvidence exposes the decision inputs so a rejection can name
+// why it happened. Vertical and horizontal continuity are the best fraction
+// of the axis covered by a high-contrast line; the verdict needs >= 0.82.
+func PanelGridCollageEvidence(img image.Image) (verticalSeams, horizontalSeams int, verticalContinuity, horizontalContinuity float64) {
+	vertical, vContinuity := alignedPanelSeamsWithContinuity(img, true)
+	horizontal, hContinuity := alignedPanelSeamsWithContinuity(img, false)
+	return len(vertical), len(horizontal), vContinuity, hContinuity
+}
+
+func alignedPanelSeamsWithContinuity(img image.Image, vertical bool) ([]int, float64) {
 	bounds := img.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
 	axisLength, crossLength := height, width
@@ -177,7 +191,7 @@ func alignedPanelSeams(img image.Image, vertical bool) []int {
 		axisLength, crossLength = width, height
 	}
 	if axisLength < 320 || crossLength < 240 {
-		return nil
+		return nil, 0
 	}
 
 	crossStart, crossEnd := crossLength*15/100, crossLength*85/100
@@ -186,7 +200,7 @@ func alignedPanelSeams(img image.Image, vertical bool) []int {
 		crossSamples = 512
 	}
 	if crossSamples < 32 {
-		return nil
+		return nil, 0
 	}
 	interiorStart, interiorEnd := axisLength*15/100, axisLength*85/100
 	groupGap := axisLength / 512
@@ -197,9 +211,18 @@ func alignedPanelSeams(img image.Image, vertical bool) []int {
 		groupGap = 16
 	}
 	const edgeThreshold = 45
-	const continuityThreshold = 0.58
+	// Grid lines on a single photograph (street perspective, book-cover edges,
+	// studio columns) can exceed the old 58% threshold. Real panel dividers are
+	// typically uninterrupted across nearly the whole image, so require much
+	// stronger continuity before treating two seams as a collage.
+	const continuityThreshold = 0.82
 
-	strong := make([]int, 0, 4)
+	type seamSample struct {
+		position   int
+		continuity float64
+	}
+	strong := make([]seamSample, 0, 4)
+	bestContinuity := 0.0
 	for position := interiorStart + 3; position < interiorEnd-3; position++ {
 		edges := 0
 		for sample := 0; sample < crossSamples; sample++ {
@@ -216,26 +239,30 @@ func alignedPanelSeams(img image.Image, vertical bool) []int {
 				edges++
 			}
 		}
-		if float64(edges)/float64(crossSamples) >= continuityThreshold {
-			strong = append(strong, position)
+		continuity := float64(edges) / float64(crossSamples)
+		if continuity >= continuityThreshold {
+			strong = append(strong, seamSample{position: position, continuity: continuity})
+			if continuity > bestContinuity {
+				bestContinuity = continuity
+			}
 		}
 	}
 	if len(strong) == 0 {
-		return nil
+		return nil, 0
 	}
 
 	seams := make([]int, 0, len(strong))
-	start, previous := strong[0], strong[0]
-	for _, position := range strong[1:] {
-		if position-previous <= groupGap {
-			previous = position
+	start, previous := strong[0].position, strong[0].position
+	for _, sample := range strong[1:] {
+		if sample.position-previous <= groupGap {
+			previous = sample.position
 			continue
 		}
 		seams = append(seams, start+(previous-start)/2)
-		start, previous = position, position
+		start, previous = sample.position, sample.position
 	}
 	seams = append(seams, start+(previous-start)/2)
-	return seams
+	return seams, bestContinuity
 }
 
 func panelLuma(color color.Color) int {

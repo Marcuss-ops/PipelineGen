@@ -40,6 +40,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"net/url"
 	"strings"
 	"time"
@@ -84,7 +85,7 @@ func NewSigner(secret []byte, ttl time.Duration, baseURL, path string) (*Signer,
 		ttl = 5 * time.Minute
 	}
 	if strings.TrimSpace(baseURL) == "" {
-		baseURL = "http://localhost:8080"
+		baseURL = config.LoopbackBaseURL(8080)
 	}
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + strings.TrimLeft(path, "/")

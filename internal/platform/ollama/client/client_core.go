@@ -213,6 +213,20 @@ func (c *Client) chatWithRetryAndFallbackDetailed(ctx context.Context, model str
 			return resp, nil
 		}
 
+		if errors.Is(err, ErrAdmissionCanceled) {
+			// The request never reached this model: it queued for the endpoint's
+			// shared in-flight budget until its context died. Counting that as a
+			// model failure opened the breaker after three saturated waits and
+			// reported "all models skipped by circuit breaker" for a model that
+			// was merely busy — the saturation cascade observed on the
+			// multilingual suite. Surface the queue fact unchanged: the caller
+			// retries it as a deadline, and the breaker keeps its real verdicts.
+			logger.Warn("Ollama admission wait cancelled — not recording a model failure",
+				zap.String("model", model),
+				zap.Error(err),
+			)
+			return ChatResult{}, err
+		}
 		lastErr = err
 		breaker.RecordFailure()
 		logger.Warn("All retries failed for model, trying fallback", zap.String("model", model))

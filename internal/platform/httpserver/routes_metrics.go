@@ -54,7 +54,7 @@ func (r *Router) registerMetricsRoute(engine *gin.Engine, log *zap.Logger) {
 		// FAIL-CLOSED: the listener is not loopback-only, so a token is the
 		// only safe way to serve this surface on it. A front proxy cannot hide
 		// this case from us because the decision is made on the bind address.
-		log.Warn("/metrics not mounted: server is not bound to a loopback address and METRICS_AUTH_TOKEN is unset (fail-closed). Set METRICS_AUTH_TOKEN=<64-hex> and restart, or bind 127.0.0.1.")
+		log.Warn("/metrics not mounted: server is not bound to a loopback address and METRICS_AUTH_TOKEN is unset (fail-closed). Set METRICS_AUTH_TOKEN=<64-hex> and restart, or bind a loopback address.")
 	case isRelease:
 		// FAIL-CLOSED: token MUST be set in release mode.
 		log.Warn("/metrics not mounted: METRICS_AUTH_TOKEN is required in release mode (fail-closed). Set METRICS_AUTH_TOKEN=<64-hex> and restart to enable.")

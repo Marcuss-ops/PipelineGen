@@ -1,12 +1,14 @@
 package scriptgeneration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -121,6 +123,20 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 	}
 	if !cacheHit {
 		submitErr := e.client.Submit(ctx, job)
+		if submitErr != nil && errors.Is(submitErr, ErrRenderRequestConflict) {
+			// A retried submit can address a job the queue already owns: the id
+			// is the sealed plan revision, and without an idempotency key the
+			// queue cannot prove a replay, so it answers 409. Recover only when
+			// the stored overlay spec is semantically the same render; a
+			// genuinely different spec under the same id stays fail-closed.
+			if existing, getErr := e.client.Get(ctx, jobID); getErr == nil && overlaySpecEquivalent(existing.OverlaySpec, spec) {
+				if rearmErr := RearmFailedRenderJob(ctx, e.client, jobID); rearmErr != nil {
+					recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
+					return RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
+				}
+				submitErr = nil
+			}
+		}
 		if submitErr != nil {
 			if e.freshRender || !errors.Is(submitErr, ErrJobExists) {
 				message := "chronon queue render submit failed"
@@ -538,4 +554,20 @@ func (e *QueueRenderEnqueuer) foldDynamicMapBackground(
 		}
 	}
 	return semanticPlan, dynamicMapImportSpec, dynamicMapImportSHA, cleanup, nil
+}
+
+// overlaySpecEquivalent compares two overlay specs semantically. The queue
+// stores the plan as jsonb, so a retry's bytes can differ in key order or
+// whitespace while describing the same render; a byte compare would reject the
+// replay. Malformed JSON is never equivalent: the recovery must not admit what
+// it cannot prove.
+func overlaySpecEquivalent(a, b []byte) bool {
+	if bytes.Equal(a, b) {
+		return true
+	}
+	var left, right any
+	if json.Unmarshal(a, &left) != nil || json.Unmarshal(b, &right) != nil {
+		return false
+	}
+	return reflect.DeepEqual(left, right)
 }

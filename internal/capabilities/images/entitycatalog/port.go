@@ -338,13 +338,14 @@ func IsUsableCandidateQuality(candidate Candidate) bool {
 	if !IsCurrentCandidateVerifierVersion(candidate.VerifierVersion) {
 		return false
 	}
-	// The accepted bit is reusable only when its provenance records a visual
-	// identity decision. Historical catalog writes also set `accepted` from a
-	// query/name match plus dimensions; those rows are useful for audit and
-	// refresh, but cannot be served as verified identity images.
+	// The accepted bit is reusable only when its provenance records a supported
+	// identity decision: pixel verification, manual review, trusted-encyclopedia
+	// verification, or an offline content-addressed pin. Historical catalog
+	// writes that used only a query/name match plus dimensions remain audit-only.
 	qualityReason := strings.ToLower(strings.TrimSpace(candidate.QualityReason))
 	if !strings.Contains(qualityReason, "ollama visual identity verification confirmed") &&
 		!strings.Contains(qualityReason, "manual visual identity review confirmed") &&
+		!strings.Contains(qualityReason, "deterministic identity verification confirmed (trusted source)") &&
 		!strings.Contains(qualityReason, "pinned by media_manifest.v1: offline sha256 verify") {
 		return false
 	}
@@ -409,7 +410,10 @@ func ValidateSemanticStatus(status string) error {
 
 func ValidateCandidateStatus(status string) error {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case CandidateStatusFresh, CandidateStatusActive, CandidateStatusStale, CandidateStatusBroken, CandidateStatusRetired:
+	// An empty status is an uncertified legacy row, exactly like
+	// ValidateCandidate and IsUsableCandidateStatus treat it: durable for
+	// audit/refresh, never usable for discovery reuse.
+	case "", CandidateStatusFresh, CandidateStatusActive, CandidateStatusStale, CandidateStatusBroken, CandidateStatusRetired:
 		return nil
 	default:
 		return errors.New("entity image catalog: invalid candidate status")

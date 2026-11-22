@@ -92,6 +92,13 @@ func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, langu
 		admittedIdentityImages = result.SemanticProductionPlan.IdentitiesAdmittedForMedia()
 	}
 	applyRequestedEntityImageContract(result.OverlayAudit, bundle, plan, canvas.RequireEntityImages, canvas.EntityImagesRequireDrive, canvas.RequiredEntityTypes, admittedIdentityImages)
+	// The wire plan does not carry the requested budgets back, and the contract
+	// above rebuilds the entity-image audit; keep the diagnostic tied to the
+	// canvas ceiling instead of reporting "0" after the fact.
+	applyOverlayAuditImageBudget(result.OverlayAudit, canvas.MaxImageOverlays)
+	if result.OverlayAudit != nil && result.OverlayAudit.EntityImages != nil && canvas.StrictEntityImageRequirement {
+		result.OverlayAudit.EntityImages.Required = true
+	}
 	overlaystatus.Update(planID, func(status *overlaystatus.Status) {
 		status.PlanID = planID
 		status.Stage = "plan_frozen"

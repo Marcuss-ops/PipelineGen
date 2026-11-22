@@ -188,13 +188,17 @@ var aliases = map[string]string{
 	// Additive BrainRust entity types (TICKET-43). They fold into the
 	// existing closed families so identity stays deterministic for older
 	// consumers and no new canonical family is minted.
-	"ANIMAL":         Concept,
-	"FOOD":           Concept,
-	"VEHICLE":        Concept,
-	"DISEASE":        Concept,
-	"TECHNOLOGY":     Concept,
-	"CELESTIAL":      Concept,
-	"COURT_CASE":     Concept,
+	"ANIMAL":     Concept,
+	"FOOD":       Concept,
+	"VEHICLE":    Concept,
+	"DISEASE":    Concept,
+	"TECHNOLOGY": Concept,
+	"CELESTIAL":  Concept,
+	"COURT_CASE": Concept,
+	// A publication is an organization for identity, catalog and image binding.
+	// The editorial distinction (a citable source) travels in the visual-recipe
+	// payload, so the canonical kind stays closed.
+	"MEDIA_OUTLET":   Org,
 	"KEYWORD":        Keyword,
 	"VISUAL_SUBJECT": VisualSubject,
 	"CHAPTER":        Chapter,

@@ -125,6 +125,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	canvas.ForegroundScalePercent = req.Render.ForegroundScalePercent
 	canvas.Background = overlayBackgroundFromPayload(background)
 	canvas.RequireEntityImages = finalJobImageRequested(req) && req.MediaPlan.Extraction.EntityImages.Enabled
+	canvas.StrictEntityImageRequirement = finalJobImageRequested(req) && req.MediaPlan.Extraction.EntityImages.Required
 	canvas.EntityImagesRequireDrive = canvas.RequireEntityImages && req.MediaPlan.Extraction.EntityImages.UploadToDrive
 	canvas.RequiredEntityTypes = append([]string(nil), req.MediaPlan.Extraction.EntityImages.EntityTypes...)
 	// The final job composites this plan onto the source video and encodes it

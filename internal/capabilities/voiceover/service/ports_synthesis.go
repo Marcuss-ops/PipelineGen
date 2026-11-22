@@ -96,6 +96,12 @@ type AudioPostInput struct {
 type AudioPostOutput struct {
 	CleanedPath string
 
+	// ContentSHA256 is the content digest of CleanedPath, computed with the
+	// same hashing function as TTSOutput.ContentSHA256. When set, the use
+	// case replaces the pre-clean provider digest so the persisted file hash
+	// and index outbox refer to the bytes actually uploaded.
+	ContentSHA256 string
+
 	// DurationUS is the FINAL cleaned audio duration in microseconds.
 	// Required (together with EditMap) to build a valid timing artifact
 	// after silence removal.

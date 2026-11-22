@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	platformconfig "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
@@ -93,7 +94,7 @@ func loadConfig() config {
 		if port == "" {
 			port = defaults.DefaultPort
 		}
-		base = "http://127.0.0.1:" + port
+		base = platformconfig.LoopbackURLPrefix + port
 	}
 	m2m := strings.EqualFold(strings.TrimSpace(os.Getenv("VELOX_M2M")), "true")
 	token := strings.TrimSpace(os.Getenv("VELOX_ADMIN_TOKEN"))

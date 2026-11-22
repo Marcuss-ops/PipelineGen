@@ -135,8 +135,18 @@ func TestCanonicalTimeline_WaitsForTTS(t *testing.T) {
 		require.True(t, ok, "scene %d must carry an en voiceover", i)
 		require.NotNil(t, ref.Timing, "scene %d must carry certified word timing", i)
 		require.NoError(t, ref.Timing.Validate())
-		require.Equal(t, ref.Timing.DurationUS, res.CanonicalTimeline.Segments[i].DurationUS,
-			"scene %d timeline duration must equal the certified word-timing duration", i)
+		// The fixture supplies a 1s editorial window per scene, and a
+		// caller-provided duration owns the window: the TTS duration (300ms)
+		// must not truncate the clip the source asked for. What TTS still
+		// owns is the word timing, which is why it must be certified here.
+		suppliedUS := scene.DurationUS
+		if suppliedUS <= 0 {
+			suppliedUS = scene.DurationMS * 1000
+		}
+		require.Equal(t, suppliedUS, res.CanonicalTimeline.Segments[i].DurationUS,
+			"scene %d timeline duration must equal the supplied editorial window", i)
+		require.NotEqual(t, ref.Timing.DurationUS, res.CanonicalTimeline.Segments[i].DurationUS,
+			"scene %d proves the supplied window, not the shorter TTS duration, owns the segment", i)
 	}
 }
 

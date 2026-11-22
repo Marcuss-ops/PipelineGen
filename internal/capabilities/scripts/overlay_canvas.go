@@ -125,9 +125,13 @@ type OverlayCanvasSpec struct {
 	EditorialDensity string
 	// RequireEntityImages makes the entity-image expectation originate in the
 	// request policy, even when no entity_image overlay was successfully built.
-	RequireEntityImages      bool
-	EntityImagesRequireDrive bool
-	RequiredEntityTypes      []string
+	RequireEntityImages bool
+	// StrictEntityImageRequirement is the request-level opt-in for rejecting
+	// text-only identity cards. It is separate from RequireEntityImages, which
+	// also arms the ordinary image preflight for enabled image lanes.
+	StrictEntityImageRequirement bool
+	EntityImagesRequireDrive     bool
+	RequiredEntityTypes          []string
 	// OverlayGroupLimits carries the per-group caps (see overlay_group_limits).
 	OverlayGroupLimits      map[string]int
 	AnimationCounts         map[string]int

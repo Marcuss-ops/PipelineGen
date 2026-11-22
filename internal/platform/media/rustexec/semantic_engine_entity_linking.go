@@ -124,21 +124,41 @@ func projectSemanticLinkedEntities(texts map[string]string, entities []semanticE
 				return nil, fmt.Errorf("linked entity %q has no evidenced winning link candidate", id)
 			}
 		}
-		intents := make([]scriptgen.SemanticSearchIntent, 0, len(entity.SearchIntents))
-		for index, intent := range entity.SearchIntents {
+		// Intent ordering is repaired at this boundary instead of failing the
+		// whole run. A named entity's anchor is its identity query; when a
+		// worker reports the contextual queries first, the identity is moved
+		// back to the front. When the anchor is missing entirely (a long or
+		// punctuated surface the worker could not turn into a query) the
+		// contextual queries are dropped: a co-mention without its subject
+		// must not become a standalone search.
+		identityIntents := make([]scriptgen.SemanticSearchIntent, 0, 1)
+		contextualIntents := make([]scriptgen.SemanticSearchIntent, 0, len(entity.SearchIntents))
+		for _, intent := range entity.SearchIntents {
 			kind := strings.TrimSpace(intent.Kind)
 			query := strings.TrimSpace(intent.Query)
 			language := strings.TrimSpace(intent.Lang)
 			if (kind != "identity" && kind != "contextual") || query == "" || language == "" {
 				return nil, fmt.Errorf("linked entity %q has an invalid search intent", id)
 			}
-			if index == 0 && role == "named_entity" && kind != "identity" {
-				return nil, fmt.Errorf("named entity %q must begin with an identity search intent", id)
-			}
 			if role == "visual_concept" && kind == "identity" {
 				return nil, fmt.Errorf("visual concept %q cannot carry an identity search intent", id)
 			}
-			intents = append(intents, scriptgen.SemanticSearchIntent{Kind: kind, Query: query, Lang: language})
+			projected := scriptgen.SemanticSearchIntent{Kind: kind, Query: query, Lang: language}
+			if kind == "identity" {
+				identityIntents = append(identityIntents, projected)
+				continue
+			}
+			contextualIntents = append(contextualIntents, projected)
+		}
+		intents := make([]scriptgen.SemanticSearchIntent, 0, len(entity.SearchIntents))
+		if role == "named_entity" {
+			if len(identityIntents) > 0 {
+				intents = append(intents, identityIntents...)
+				intents = append(intents, contextualIntents...)
+			}
+		} else {
+			intents = append(intents, identityIntents...)
+			intents = append(intents, contextualIntents...)
 		}
 		linkCandidates := make([]scriptgen.SemanticLinkCandidate, 0, len(entity.LinkCandidates))
 		for _, candidate := range entity.LinkCandidates {

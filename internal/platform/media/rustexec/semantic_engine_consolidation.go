@@ -1,6 +1,7 @@
 package rustexec
 
 import (
+	"encoding/json"
 	"fmt"
 	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"sort"
@@ -163,6 +164,7 @@ func projectSemanticConsolidation(
 			GroupIDs:  append([]string(nil), wireCandidate.GroupIDs...),
 			Title:     wireCandidate.Title, Evidence: wireCandidate.Evidence,
 			Start: wireCandidate.StartByte, End: wireCandidate.EndByte,
+			VisualPayload:    append(json.RawMessage(nil), wireCandidate.VisualPayload...),
 			SuggestedVisual:  wireCandidate.SuggestedVisual,
 			TemporalSurfaces: append([]string(nil), wireCandidate.TemporalSurfaces...),
 			AssetKey:         wireCandidate.AssetKey, Queries: queries,

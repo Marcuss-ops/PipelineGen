@@ -155,6 +155,30 @@ type OverlayAuditTimingItem struct {
 	Reason   string `json:"reason"`
 }
 
+// applyOverlayAuditImageBudget keeps the audit's image budget honest when the
+// compiled plan omits planner-side intake telemetry (the wire plan adopted
+// from the Rust compiler does not echo budgets). The canvas is the requested
+// ceiling, so a plan that planned fewer images reports "budget unused" — not
+// the misleading "budget 0" that made R23's audit look like images were never
+// enabled.
+func applyOverlayAuditImageBudget(audit *OverlayAudit, imageBudget int) {
+	if audit == nil || imageBudget <= 0 || audit.EntityImages == nil {
+		return
+	}
+	info := audit.EntityImages
+	if info.Budget > 0 {
+		return
+	}
+	info.Budget = imageBudget
+	info.BudgetUnused = 0
+	if info.Budget > info.BudgetUsed {
+		info.BudgetUnused = info.Budget - info.BudgetUsed
+	}
+	if audit.Intake != nil && audit.Intake.ImageBudget == 0 {
+		audit.Intake.ImageBudget = imageBudget
+	}
+}
+
 // buildOverlayAuditEntityImages joins the plan's image items to the entities
 // that were selected for the video. It never invents an image: "bound" means
 // the plan carries image bytes for that entity.

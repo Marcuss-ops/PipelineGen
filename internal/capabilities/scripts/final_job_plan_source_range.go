@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	"strings"
 
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
@@ -189,18 +190,45 @@ func finalJobFramesCoveringUS(durationUS, fpsNum, fpsDen int64) int64 {
 // source still has frames, extend its window. When it is exhausted, absorb the
 // last frame in an earlier stock-pool placement: those placements have no
 // source binding and the Master loops the selected clip, while the remote
-// plan validator requires an exact frame count. Never ask the preparer for a
-// frame its bound source does not contain; more than one missing frame stays
-// fail-closed.
+// plan validator requires an exact frame count. A run with no stock-pool
+// placement at all (media_mode=clip_only, stock_enabled=disabled) certifies
+// the same frame on its own trailing prepared clip, whose fragment the local
+// preparer pads by exactly that one cloned frame; more than one missing frame
+// stays fail-closed.
 func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets []finalJobPlanAsset, durationUS, fpsNum, fpsDen int64) ([]finalJobPlanSegment, error) {
 	return finalJobCompleteVideoFrameCoverageWithStockAssets(segments, assets, durationUS, fpsNum, fpsDen, nil)
 }
 
+// finalJobSourceLockedAssetIDs names the assets whose source window is a
+// binding and not a cut: a "stock" scene is picked by the stockpipeline and the
+// Master packet-copies the whole file. Clip and overlay scenes also travel in
+// the `stock` media slot of the remote contract, so the slot alone cannot
+// decide this — the scene kind does.
+func finalJobSourceLockedAssetIDs(scenes []map[string]any) map[string]struct{} {
+	locked := make(map[string]struct{}, len(scenes))
+	for _, scene := range scenes {
+		if !strings.EqualFold(finalJobStringValue(scene["kind"]), "stock") {
+			continue
+		}
+		if stock, ok := scene["stock"].(map[string]any); ok {
+			if id := finalJobStringValue(stock["asset_id"]); id != "" {
+				locked[id] = struct{}{}
+			}
+		}
+	}
+	return locked
+}
+
 // finalJobCompleteVideoFrameCoverageWithStockAssets keeps concrete stock
 // windows immutable while allowing a trailing, non-stock clip to contribute
-// its immediately following source frame when AAC packet rounding leaves the
+// its immediately following source frame — or, when its source is exhausted,
+// one cloned copy of its final frame — when AAC packet rounding leaves the
 // final audio master one video frame longer than the authored timeline.
-func finalJobCompleteVideoFrameCoverageWithStockAssets(segments []finalJobPlanSegment, assets []finalJobPlanAsset, durationUS, fpsNum, fpsDen int64, stockAssetIDs map[string]struct{}) ([]finalJobPlanSegment, error) {
+//
+// sourceLockedAssetIDs is the set of "stock" scene assets (see
+// finalJobSourceLockedAssetIDs); every other video asset is a prepared cut the
+// Producer renders and pads itself.
+func finalJobCompleteVideoFrameCoverageWithStockAssets(segments []finalJobPlanSegment, assets []finalJobPlanAsset, durationUS, fpsNum, fpsDen int64, sourceLockedAssetIDs map[string]struct{}) ([]finalJobPlanSegment, error) {
 	if len(segments) == 0 || durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
 		return nil, fmt.Errorf("final_job V2 cannot complete video coverage without segments and a valid output clock")
 	}
@@ -298,7 +326,7 @@ func finalJobCompleteVideoFrameCoverageWithStockAssets(segments []finalJobPlanSe
 		// trailing non-stock clip, one extra frame is safe when the rendered
 		// asset contains it: it covers only the AAC-rounded audio tail and does
 		// not turn a short authored scene into a loop or a longer take.
-		if _, stockBound := stockAssetIDs[segment.AssetID]; stockBound || missing > 1 {
+		if _, stockBound := sourceLockedAssetIDs[segment.AssetID]; stockBound || missing > 1 {
 			available = 0
 		} else {
 			available = min(available, int64(1))
@@ -337,12 +365,26 @@ func finalJobCompleteVideoFrameCoverageWithStockAssets(segments []finalJobPlanSe
 		}
 		return segments, nil
 	}
-	// No earlier loopable placement exists. Leave the source at the frames it
-	// certifies: the local muxer holds the last displayed frame for the audio
-	// master's final <1/24s. The remote Master rejects this shape, so a plan
-	// with no stock-pool placement must never reach here; fail closed instead
-	// of silently producing a timeline the remote will refuse.
-	return nil, fmt.Errorf("final_job V2 trailing segment %q needs one frame but no earlier stock-pool placement can absorb it", segment.SegmentID)
+	// No earlier loopable placement exists. A prepared clip still certifies the
+	// audio master's final <1/24s itself: keep its source window inside the
+	// asset and ask the timeline for one more frame. The trailing source stays
+	// bound to the frames it certifies (alignFinalJobSegmentSourceWindows) and
+	// the local preparer clones its last frame (tpad stop_mode=clone capped by
+	// -frames:v), so the prepared fragment carries exactly frame_count frames
+	// and the timeline covers the audio master exactly. This is the r26b
+	// clip_only shape: media_mode=clip_only with stock_enabled=disabled has no
+	// StockPoolSlot anywhere, and the 7ms AAC tail made the run die at
+	// PUBLISHING_DOCUMENTS instead of shipping the frame the muxer already
+	// held.
+	//
+	// Stock-backed bytes must NOT take this shape: the Master packet-copies
+	// the whole file, so a sub-window/short-source segment is inadmissible and
+	// an unabsorbable stock tail stays fail-closed.
+	if _, stockBound := sourceLockedAssetIDs[segment.AssetID]; stockBound || totalFrames <= 0 {
+		return nil, fmt.Errorf("final_job V2 trailing segment %q needs one frame but no earlier stock-pool placement can absorb it", segment.SegmentID)
+	}
+	segment.FrameCount++
+	return segments, nil
 }
 
 // finalJobValidateVideoCoverage proves the sealed video track is either

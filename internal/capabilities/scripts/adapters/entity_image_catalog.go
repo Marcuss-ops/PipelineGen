@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -137,9 +138,21 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: list %s: %w", identity.CanonicalEntityID, err)
 		}
 	}
+	// Repository order is rank-first, but a highly ranked row that cannot be
+	// reused as-is must not consume the bounded pool ahead of one that can.
+	// Sorting on the accepted bit alone was not enough: an accepted row queued
+	// for layout recertification is reset to UNKNOWN below and still holds a
+	// slot, so a rank-first dirty head could leave usableCount at 0 while
+	// verified materialized portraits waited further down the ranking. Sort on
+	// the same predicate the loop uses to admit a row.
+	sort.SliceStable(rows, func(i, j int) bool {
+		iUsable := entitycatalog.IsUsableCandidateQuality(rows[i])
+		jUsable := entitycatalog.IsUsableCandidateQuality(rows[j])
+		return iUsable && !jUsable
+	})
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(rows))
 	decisions := make([]EntityImageCatalogDecision, 0, len(rows))
-	known := 0
+	known := len(rows)
 	materializations := make(map[int64]*entitycatalog.Materialization, len(rows))
 	canBatchMaterials := false
 	if batch, ok := repo.(entitycatalog.MaterializationBatchReader); ok {
@@ -155,7 +168,6 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 		canBatchMaterials = true
 	}
 	for _, row := range rows {
-		known++
 		decision := EntityImageCatalogDecision{Query: identity.CanonicalName, CandidateID: row.ID, SourceURL: row.SourceURL, Verdict: row.SemanticStatus, Materialization: "missing"}
 		if reason := personImageSourceIdentityFailure(identity.CanonicalName, row.SourceURL, row.SourcePageURL); reason != "" {
 			// Catalog reads are pure. Rejection persistence belongs to the

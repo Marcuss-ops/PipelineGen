@@ -19,7 +19,7 @@ import (
 // Config holds the VLM client configuration.
 type Config struct {
 	Enabled      bool    `yaml:"enabled" default:"false"`
-	Endpoint     string  `yaml:"endpoint" default:"http://127.0.0.1:8000"`
+	Endpoint     string  `yaml:"endpoint"`
 	Model        string  `yaml:"model" default:"nvidia/nemotron-nano-12b-v2-vl:free"`
 	ModelVersion string  `yaml:"model_version" default:""`
 	TimeoutMs    int     `yaml:"timeout_ms" default:"60000"`

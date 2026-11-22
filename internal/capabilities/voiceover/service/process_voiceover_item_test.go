@@ -231,8 +231,9 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 	dest := &stubProcessDestResolver{folderID: "folder-1"}
 	audioPost := &stubProcessAudioPost{
 		cannedOut: AudioPostOutput{
-			CleanedPath: "/tmp/vo/cleaned_test_en.mp3",
-			DurationUS:  43_870_000,
+			CleanedPath:   "/tmp/vo/cleaned_test_en.mp3",
+			ContentSHA256: "cleaned-hash-001",
+			DurationUS:    43_870_000,
 			EditMap: []audio.AudioEdit{
 				{SourceStartUS: 0, SourceEndUS: 620_000},
 				{SourceStartUS: 44_490_000, SourceEndUS: 45_210_000},
@@ -287,6 +288,13 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 	// Assertion 3: the cleaned path from AudioPostProcessor was used
 	assert.Equal(t, "/tmp/vo/cleaned_test_en.mp3", res.CleanedPath,
 		"Cleaned path from AudioPostProcessor must populate result.CleanedPath")
+	assert.Equal(t, "cleaned-hash-001", res.ContentSHA256,
+		"The final result must carry the cleaned audio hash, not the raw TTS hash")
+	require.Len(t, finalizer.calls, 1)
+	assert.Equal(t, "cleaned-hash-001", finalizer.calls[0].ContentSHA256,
+		"FinalizeCommand must persist the cleaned audio hash")
+	assert.InDelta(t, 43.87, finalizer.calls[0].DurationSeconds, 0.0001,
+		"FinalizeCommand must persist the cleaned duration, not the pre-clean TTS duration")
 
 	// Assertion 4: the silence-cleanup report is built and surfaced on the
 	// result, so operators can verify the timeline uses the cleaned duration.

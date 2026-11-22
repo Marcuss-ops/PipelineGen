@@ -12,6 +12,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 type PageFetcher struct {
@@ -77,7 +78,7 @@ func validatePublicURL(u *url.URL) error {
 		return fmt.Errorf("web page url blocked: only public http(s) URLs are allowed")
 	}
 	host := strings.ToLower(u.Hostname())
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".local") {
+	if config.IsLoopbackHost(host) || strings.HasSuffix(host, ".local") {
 		return fmt.Errorf("web page url blocked: local host")
 	}
 	ips, err := net.LookupIP(host)

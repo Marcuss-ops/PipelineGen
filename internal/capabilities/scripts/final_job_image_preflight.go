@@ -21,6 +21,7 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	_ "golang.org/x/image/webp"
 )
@@ -208,7 +209,7 @@ func validateFinalJobImageHost(ctx context.Context, host string) error {
 	if host == "" || host == "metadata.google.internal" {
 		return fmt.Errorf("final_job preflight: blocked image host")
 	}
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+	if config.IsLoopbackHost(host) {
 		if finalJobImageAllowLoopback.Load() {
 			return nil
 		}

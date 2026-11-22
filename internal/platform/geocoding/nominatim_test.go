@@ -136,6 +136,35 @@ func TestNominatimResolvesAmbiguityWithGroundedContext(t *testing.T) {
 	}
 }
 
+// TestNominatimRefusesContextOnlyCandidateWithoutNameMatch pins the r19 map
+// defect: a scene that mentions both Roma and Libia scoped the "Roma" lookup
+// to Libya, and the only provider hit was a Tripoli street transliterated as
+// "Roma". The country-context bonus alone cleared the threshold, so a pin
+// labelled Roma landed on the Libyan coast. A candidate must carry the queried
+// name; context only ranks namesakes.
+func TestNominatimRefusesContextOnlyCandidateWithoutNameMatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[
+			{"place_id":54211474,"lat":"32.8739345","lon":"13.2063523","name":"روما","display_name":"روما, شارع الجرابة, Ben Ashour, Tripoli, Libia","category":"highway","type":"residential","importance":0.1,"address":{"road":"روما","city":"Tripoli","country":"Libia","country_code":"ly"}}
+		]`))
+	}))
+	defer server.Close()
+	adapter, err := NewNominatim(NominatimConfig{
+		BaseURL: server.URL, UserAgent: "PipelineGen-test", CacheDir: t.TempDir(),
+		HTTPClient: server.Client(), MinimumInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = adapter.Geocode(context.Background(), capgeocoding.Request{
+		Query: "Roma", Language: "it",
+		Context: capgeocoding.Context{Country: "Libia", CountryCode: "ly"},
+	})
+	if !errors.Is(err, capgeocoding.ErrNoResult) {
+		t.Fatalf("a namesake street must not become the pin for Roma, got %v", err)
+	}
+}
+
 func TestNominatimPrefersCityBoundaryOverSameNameCounty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`[
@@ -323,7 +352,7 @@ func TestNominatimDoesNotRetryTerminalClientErrors(t *testing.T) {
 
 func TestNominatimPacesPublicRequestsAndHonorsContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[{"lat":"1","lon":"2"}]`))
+		_, _ = w.Write([]byte(`[{"lat":"1","lon":"2","name":"A","display_name":"A"}]`))
 	}))
 	defer server.Close()
 	adapter, err := NewNominatim(NominatimConfig{

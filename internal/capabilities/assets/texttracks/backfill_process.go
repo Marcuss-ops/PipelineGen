@@ -124,6 +124,21 @@ func (s *BackfillService) ProcessAsset(
 				// Re-query the source track (now it should be READY).
 				source, err = resolver.FindSourceTrack(ctx)
 				if err != nil {
+					// A dead caller is NOT a save failure. The acquisition already
+					// persisted the track; the re-read died with the run, so
+					// reporting acquired_but_save_failed recorded a permanent
+					// subtitle miss for a clip that will be READY on the retry.
+					// Surface the cancellation as the real error so the caller
+					// retries instead of trusting a false negative.
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						res.Err = "acquired_but_reread_cancelled"
+						res.SourceReady = false
+						res.DurationMs = time.Since(start).Milliseconds()
+						s.log.Warn("backfill: re-read after acquisition was cancelled; the saved track will be picked up on the retry",
+							zap.String("asset_id", assetItem.ID),
+							zap.Error(ctxErr))
+						return res, fmt.Errorf("backfill: re-read acquired source track for asset %s: %w", assetItem.ID, ctxErr)
+					}
 					res.Err = "acquired_but_save_failed"
 					res.DurationMs = time.Since(start).Milliseconds()
 					return res, nil

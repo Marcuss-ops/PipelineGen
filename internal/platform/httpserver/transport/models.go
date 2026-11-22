@@ -43,7 +43,7 @@ type ModelsHandler struct {
 }
 
 // NewModelsHandler constructs the handler. sidecarURL is the Python
-// embedding server URL (e.g. "http://127.0.0.1:8001"). Empty URL means
+// embedding server URL (config.LoopbackBaseURL(8001)). Empty URL means
 // the sidecar is not configured — probe returns applicable=false.
 func NewModelsHandler(sidecarURL string) *ModelsHandler {
 	return &ModelsHandler{
