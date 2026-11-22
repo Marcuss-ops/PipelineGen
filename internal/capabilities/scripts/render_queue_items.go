@@ -243,8 +243,8 @@ func separateOverlayItemPlan(parent capmodel.OverlayPlan, source capmodel.Overla
 		for k, v := range source.Params {
 			params[k] = v
 		}
-		params["chain_segments"] = rebased
 		source.Params = params
+		source.SetChainSegments(rebased)
 		targetUS = durationUS
 		maxDurationUS = durationUS
 	}
@@ -276,7 +276,7 @@ func separateOverlayItemPlan(parent capmodel.OverlayPlan, source capmodel.Overla
 		TargetDurationUS: targetUS,
 	}
 	if capmodel.IsChainItemKind(source.Kind) {
-		if segments, ok := capmodel.DecodeChainSegments(source.Params); ok {
+		if segments, ok := source.Segments(); ok {
 			for _, segment := range segments {
 				if segment.Kind != string(capmodel.KindEntityImage) && segment.Kind != string(capmodel.KindEntityCard) {
 					continue

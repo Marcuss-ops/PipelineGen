@@ -1,14 +1,16 @@
 # TICKET — Catene immagine/entità e backdrop: cosa resta dopo il 2026-11-19
 
-- **Status:** PARTIAL (agg. 2026-11-21 sera) — catena e movimento camera
+- **Status:** PARTIAL (agg. 2026-11-22) — catena e movimento camera
   **verificati su job reale**: `r10` 22/22 gate (6 entità, pan destro,
   `static_ratio 0,5556`, 56 coppie in movimento), `r9` 22/22 e controllo
-  fly-under `r3` PASS.  **Chiusi in questa sessione:** il gate automatico sul movimento (punto 5), i
-  residui mappe r15 (punto 8, 4/4 job `SUCCEEDED`) e il **backdrop su catena**
-  (punto 4: `r4` fly-under SUCCEEDED, fondo sfocato misurato su ogni frame).
-  Restano la prova `fit: cover` con aspetti diversi, il gruppo da 2 immagini, il
-  framing multi-pin della composizione certificata e il dedup di
-  `Gerusalemme`.
+  fly-under `r3` PASS. **Chiusi in questa sessione:** il gate automatico sul movimento
+  (punto 5), i residui mappe r15 (punto 8, 4/4 job `SUCCEEDED`) e il
+  **backdrop su catena** (punto 4: `r4` fly-under SUCCEEDED, fondo sfocato
+  misurato su ogni frame). **Chiusi il 2026-11-22 a livello di codice/test:**
+  il lowering `fit: cover` misto (4:3/1:1/9:16), il canary reale del gruppo a
+  2 immagini (121,58 s, H.264 1280×720), il clamp del framing multi-pin e il
+  dedup `Gerusalemme`. Restano le prove live: clip con aspetti misti, confronto
+  tempi 2 vs 6 e run r15 certificata dopo i fix mappa.
 - **Severity:** P1 — la catena è la superficie che l'utente usa per mostrare
   più entità di seguito; un FAIL a 1 s in `COMPILING_AUDIO` blocca il job intero,
   non solo la clip.
@@ -51,10 +53,11 @@
    with exit code 1`; serve il log del daemon Chronon per quell'item, non solo
    l'errore aggregato del processor.
 3. **`fit: cover` per-item e larghezza card dall'aspetto.**
-   `entity_card_layout.go` e `entity_image_geometry.go` sono modificati con
-   test dedicato, ma nessuna clip è stata rifatta dopo la correzione: manca la
-   prova che un asset 4:3 e uno 9:16 nella stessa catena non vengano deformati
-   e che la card cambi larghezza.
+   **COPERTURA UNITARIA CHIUSA 2026-11-22:** il test
+   `TestSizedCompileFitsMixedAspectEntityChain` compila una catena con asset
+   4:3, 1:1 e 9:16 e verifica le card 600×337, 600×600 e 338×600, tutte
+   `FitCover`, senza marker di geometria residui. Resta la clip live: nessun
+   render con quegli aspetti è stato eseguito dopo la correzione.
 4. ~~**Backdrop su ritratti entità e segmenti di catena.**~~ **CHIUSO 2026-11-21**
    per la catena fly-under. `compilePanChain` scarta di proposito
    `image_backdrop` (il blur software lega la superficie al nodo immagine
@@ -80,8 +83,11 @@
    `motion_id: image_fade_reveal` / `image_focus_reveal`, cioè animazioni da
    immagine singola applicate a una sequenza; la catena con pan di camera è
    stata implementata dopo e non è mai stata eseguita su un job reale.
-7. **Variante a gruppi di 2 immagini** (fluidità e tempi di render) mai
-   preparata: non esiste un payload né un confronto.
+7. **Variante a gruppi di 2 immagini** (fluidità e tempi di render).
+   **CANARY REALE PASS 2026-11-22:** `TestEntityGroupAndNewFontsRenderCanary`
+   con il binario release Chronon, backend software/pipe, ha reso un MP4 H.264
+   1280×720 in 121,58 s. Resta il confronto tempo/fluidità contro la catena da
+   6, che richiede una run della suite.
 8. **Mappe/geo (r14, r15).** **Verificato 2026-11-21:** i quattro job della
    suite r15 sono tutti `SUCCEEDED` (`entity-cities`, `map-level-country`,
    `map-level-municipality`, `map-timing-two-pins`) e `entity-cities` porta una
@@ -89,10 +95,14 @@
    45.068/7.682, **Parigi 48.853/2.348** — quindi sia «Parigi senza
    coordinate» sia il multi-pin raggruppato sono risolti dal fix di
    `geography/enrichment.go` (test `TestEnrichRetriesAmbiguousCountryCityWithoutTheStaleFrame`).
-   Restano fuori: il **framing di tutti i pin** nella composizione certificata
-   (oggi inquadra il primo, `per_pin_timing_not_ported`) e il dedup di
-   `Gerusalemme`/«Città Vecchia di Gerusalemme», che nessuna run r15 ha
-   esercitato.
+   **Fix codice/test 2026-11-22:** `mapRenderPresentation.payload` non lascia
+   più che `map_level` superi lo zoom di fit multi-pin; se il livello
+   ritaglierebbe un pin, usa l'intervallo di fit, mentre un livello più largo
+   resta valido (`TestMapLevelCannotCropMultiPinFit`,
+   `TestMapLevelWiderThanMultiPinFitIsKept`). `dedupeMapCandidatesByCompoundPlace`
+   fonde «Città Vecchia di Gerusalemme» in «Gerusalemme» conservando la
+   finestra e il pin città. Resta la run r15 certificata dopo il fix: nessun
+   job live ha ancora esercitato i due casi.
 9. **Port `TacticalFillPack`** bloccato nel renderer Chronon3d: i layer `path`
    subiscono una traslazione di mezzo canvas in un pass prospettico e
    `enable_3d:false` non li tocca (documentato in
@@ -111,23 +121,31 @@
    mancante, layer non supportato, OOM). Gate: la stessa clip catena+backdrop
    si renderizza, oppure il lowering rifiuta il caso con un errore esplicito.
 3. **Rifare la clip con asset di aspetto diverso** (4:3, 1:1, 9:16) e misurare
-   il rapporto sorgente/renderizzato per card. Gate: deformazione ≤ 1 % e
-   larghezza derivata dall'aspetto, non costante.
-4. **Eseguire `image_backdrop` con catena e ritratto entità** (niente
+   il rapporto sorgente/renderizzato per card. **Copertura unitaria chiusa
+   2026-11-22** (card 600×337/600×600/338×600, `FitCover`); resta la clip live.
+   Gate: deformazione ≤ 1 % e larghezza derivata dall'aspetto, non costante.
+4. ~~**Eseguire `image_backdrop` con catena e ritratto entità** (niente
    `chain_disabled`) e verificare i pixel del fondo (blur > 0, zoom applicato).
-   Gate: entrambe le famiglie mostrano il fondo sfocato.
-5. **Collegare `chainpancheck` alla suite** `chain_validation`: per ogni clip
+   Gate: entrambe le famiglie mostrano il fondo sfocato.~~ **CHIUSO 2026-11-21**
+   sulla catena fly-under (`r4`); il pan resta escluso per il difetto del blur
+   software.
+5. ~~**Collegare `chainpancheck` alla suite** `chain_validation`: per ogni clip
    finale registrare spostamento per frame e fallire sotto soglia. Gate: la
-   suite scrive il numero e il job con pan passa, quello senza pan fallisce.
-6. **Eseguire la catena con `image_chain` motions** (pan di camera) e
+   suite scrive il numero e il job con pan passa, quello senza pan fallisce.~~
+   **CHIUSO 2026-11-21** (`check_chain_pan.py` + `cmd/chainpancheck`; `r10`
+   22/22).
+6. ~~**Eseguire la catena con `image_chain` motions** (pan di camera) e
    confrontarla con r9. Gate: i `motion_id` dei segmenti sono quelli di
-   catena e il clip mostra il movimento misurato al punto 5.
+   catena e il clip mostra il movimento misurato al punto 5.~~ **CHIUSO
+   2026-11-20/21** (`r10`: `image_group_camera_pan_right`, 22/22).
 7. **Preparare e lanciare la variante a 2 immagini per gruppo**, misurando
-   tempo di render e fluidità contro la catena da 6. Gate: report con i due
-   numeri, non un'impressione.
-8. **Riallineare mappe/geo** sugli esiti r15: coordinate per `Parigi`, dedup
-   di `Gerusalemme`, framing multi-pin. Gate: i job r15 `SUCCEEDED` con i pin
-   attesi e nessun pin fuori cornice non dichiarato.
+   tempo di render e fluidità contro la catena da 6. **Canary 2 immagini PASS
+   2026-11-22** (121,58 s, H.264 1280×720); resta il confronto contro la
+   catena da 6. Gate: report con i due numeri, non un'impressione.
+8. **Riallineare mappe/geo** sugli esiti r15. **CHIUSO IN PARTE 2026-11-21:**
+   r15 4/4 `SUCCEEDED` e tre pin città con coordinate reali. **Fix codice/test
+   2026-11-22:** clamp del livello mappa sul fit multi-pin e dedup dei composti
+   relazionali. Resta la run r15 certificata dopo il fix.
 9. **Rieseguire la suite interna completa** (`go test -short ./internal/...`
    con `TMPDIR` fuori da `/tmp` e `-p 4`) dopo le ondate dead-code: la run
    finale del 19/11 è stata interrotta.
@@ -212,6 +230,18 @@ variante a 2 immagini non preparata, mappe/geo r15 parzialmente verificate.
 Il punto 6 (catena con pan su job reale) e il punto 5 (misura del movimento)
 sono invece chiusi da r10, come già dichiarato.
 
+## Aggiornamento 2026-11-22 — residui di codice coperti
+
+- `go test ./internal/capabilities/overlays -run 'TestDedupeMapCandidatesBy' -count=1` → PASS.
+- `go test ./internal/capabilities/scripts -run 'TestMapLevel' -count=1` → PASS.
+- Da `RenderingGen/renderinggen`:
+  `go test ./internal/overlay -run 'TestSizedCompileFitsMixedAspectEntityChain|TestEntityGroupDuoSlotsMembersSideBySide|TestEntityGroupUsesCertifiedCardSlots' -count=1` → PASS.
+- Da `RenderingGen/renderinggen` con il binario release:
+  `CHRONON_BIN=…/Chronon3d/build/chronon/linux-video-release/apps/chronon3d_cli/chronon3d_cli go test ./internal/overlay -run '^TestEntityGroupAndNewFontsRenderCanary$' -count=1 -v` → PASS (121,58 s; H.264 1280×720).
+- Limite: i test coprono lowering, payload e un canary del duo; non sostituiscono
+  la clip live con aspetti misti, il confronto temporale 2 vs 6, né la run r15
+  certificata per multi-pin e dedup.
+
 ## Gate di chiusura
 
 - ~~Un job reale con catena ≥ 3 entità e backdrop: `SUCCEEDED`, clip
@@ -225,3 +255,5 @@ sono invece chiusi da r10, come già dichiarato.
 - `chain_handoff_ms: 0` non produce né buchi neri né il FAIL `editorial`.
 - I punti 8–9 hanno esito registrato (mappe e suite interna), anche se il
   port `TacticalFillPack` resta al suo ticket Chronon3d.
+- I residui 3/7/8 hanno ora copertura di codice/test; le prove live (clip
+  aspetti misti, confronto 2 vs 6, run r15 dopo i fix mappa) restano da fare.

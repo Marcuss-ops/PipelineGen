@@ -211,10 +211,12 @@ Measured on the current working tree after the overlay clean-up:
   The dead `applyOverlayStyleToItems` is gone. `overlay_style.image` now reaches
   image items even when `overlay_images` declares no pins; previously the only
   remaining path returned early on an empty pin list.
-- The chain wire has one accessor: `capmodel.ChainSegmentMaps` /
-  `UpdateChainSegmentMaps`. The four local decoders (`chainSegmentMaps`,
+- The chain wire has one typed accessor: `OverlayItem.Segments()` /
+  `SetChainSegments()`. The four local decoders (`chainSegmentMaps`,
   `chainSegments`, `overlayPlanChainSegments`, `chainSegmentStyleMaps`) are
-  gone, and the deletion guard rejects their signatures.
+  gone, and the deletion guard rejects their signatures. The older
+  `ChainSegmentMaps`/`UpdateChainSegmentMaps` pair was removed on 2026-11-22
+  with Open 6 of `TICKET-CHAIN-SEGMENT-SSOT-2026-11-18`.
 - Remaining PARTIAL reason is unchanged and explicit: the 12 test-only helpers
   are the only unreachable overlay functions; no planner entry point is among
   them.

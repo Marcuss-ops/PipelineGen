@@ -1,7 +1,6 @@
 package scriptgeneration
 
 import (
-	"encoding/json"
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -39,12 +38,12 @@ func overlayPlanEntityImageIndex(plan *capmodel.OverlayPlan) map[string]overlayP
 				overlayAddPlannedEntityImage(index, item.SceneID, layer.EntityID, binding)
 			}
 		}
-		segments, _ := capmodel.ChainSegmentMaps(item.Params)
+		segments, _ := item.Segments()
 		for _, segment := range segments {
-			if !strings.EqualFold(overlayPlanString(segment, "kind"), "entity_image") {
+			if !strings.EqualFold(strings.TrimSpace(segment.Kind), "entity_image") {
 				continue
 			}
-			entityID := overlayPlanString(segment, "entity_id")
+			entityID := strings.TrimSpace(segment.EntityID)
 			if entityID == "" {
 				continue
 			}
@@ -112,39 +111,21 @@ func overlayPlanBindingFromAssetRefs(refs []capmodel.OverlayAssetRef, assetID st
 	return overlayPlannedEntityImage{}, false
 }
 
-func overlayPlanBindingFromChainSegment(segment map[string]any) (overlayPlannedEntityImage, bool) {
-	var assets []map[string]any
-	if raw, ok := segment["assets"]; ok {
-		encoded, err := json.Marshal(raw)
-		if err == nil {
-			_ = json.Unmarshal(encoded, &assets)
+func overlayPlanBindingFromChainSegment(segment capmodel.ChainSegment) (overlayPlannedEntityImage, bool) {
+	if len(segment.Assets) == 0 {
+		if assetID := strings.TrimSpace(segment.AssetID); assetID != "" {
+			return overlayPlannedEntityImage{AssetID: assetID}, true
 		}
+		return overlayPlannedEntityImage{}, false
 	}
-	if len(assets) == 0 {
-		rawURL := firstNonEmptyAuditValue(overlayPlanString(segment, "url"), overlayPlanString(segment, "source_url"))
-		if rawURL == "" {
-			return overlayPlannedEntityImage{}, false
-		}
-		return overlayPlannedEntityImage{
-			AssetID:     overlayPlanString(segment, "asset_id"),
-			DriveFileID: overlayPlanDriveFileID(rawURL),
-		}, true
-	}
-	asset := assets[0]
-	sha := firstNonEmptyAuditValue(overlayPlanString(asset, "sha256"), overlayPlanString(asset, "content_hash"))
-	assetID := firstNonEmptyAuditValue(overlayPlanString(asset, "asset_id"), overlayPlanString(segment, "asset_id"), sha)
-	rawURL := firstNonEmptyAuditValue(overlayPlanString(asset, "url"), overlayPlanString(asset, "source_url"), overlayPlanString(segment, "url"))
-	driveID := firstNonEmptyAuditValue(overlayPlanString(asset, "drive_file_id"), overlayPlanString(segment, "drive_file_id"), overlayPlanDriveFileID(rawURL))
+	asset := segment.Assets[0]
+	sha := strings.TrimSpace(asset.SHA256)
+	assetID := firstNonEmptyAuditValue(strings.TrimSpace(asset.AssetID), strings.TrimSpace(segment.AssetID), sha)
 	return overlayPlannedEntityImage{
 		AssetID:     assetID,
 		SHA256:      sha,
-		DriveFileID: driveID,
+		DriveFileID: overlayPlanDriveFileID(strings.TrimSpace(asset.URL)),
 	}, true
-}
-
-func overlayPlanString(values map[string]any, key string) string {
-	value, _ := values[key].(string)
-	return strings.TrimSpace(value)
 }
 
 func overlayLooksLikeSHA256(value string) bool {

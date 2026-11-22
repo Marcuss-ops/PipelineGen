@@ -65,40 +65,23 @@ func snapshotEditorial(plan *capmodel.OverlayPlan) []editorialSnapshot {
 			out[i].MapPins = len(item.Map.Pins)
 			out[i].MapMotionID = item.Map.MotionID
 		}
-		if segments, ok := capmodel.ChainSegmentMaps(item.Params); ok {
+		if segments, ok := item.Segments(); ok {
 			out[i].Segments = make([]segmentEditorialSnapshot, 0, len(segments))
 			for _, segment := range segments {
 				out[i].Segments = append(out[i].Segments, segmentEditorialSnapshot{
-					Kind:       segmentString(segment, "kind"),
-					TemplateID: segmentString(segment, "template_id"),
-					Text:       segmentString(segment, "text"),
-					EntityID:   segmentString(segment, "entity_id"),
-					MotionID:   segmentString(segment, "motion_id"),
-					GroupID:    segmentString(segment, "group_id"),
-					StartUS:    segmentInt(segment, "start_us"),
-					DurationUS: segmentInt(segment, "duration_us"),
+					Kind:       segment.Kind,
+					TemplateID: segment.TemplateID,
+					Text:       segment.Text,
+					EntityID:   segment.EntityID,
+					MotionID:   segment.MotionID,
+					GroupID:    segment.GroupID,
+					StartUS:    segment.StartUS,
+					DurationUS: segment.DurationUS,
 				})
 			}
 		}
 	}
 	return out
-}
-
-func segmentString(segment map[string]any, key string) string {
-	value, _ := segment[key].(string)
-	return value
-}
-
-func segmentInt(segment map[string]any, key string) int64 {
-	switch value := segment[key].(type) {
-	case int64:
-		return value
-	case int:
-		return int64(value)
-	case float64:
-		return int64(value)
-	}
-	return 0
 }
 
 // TestPostRustPlanPreservesEditorialDecisions is the ownership invariant for

@@ -117,7 +117,7 @@ func TestConformanceFixtureUsesOnlyContractedKeys(t *testing.T) {
 	// the key set, which is what a child-plan split and a durable-run reload do.
 	var wire []map[string]any
 	require.NoError(t, json.Unmarshal(rawSegments, &wire))
-	decoded, ok := DecodeChainSegments(map[string]any{"chain_segments": wire})
+	decoded, ok := decodeChainSegments(map[string]any{"chain_segments": wire})
 	require.True(t, ok)
 	require.Len(t, decoded, len(wire))
 	encoded, err := json.Marshal(decoded)

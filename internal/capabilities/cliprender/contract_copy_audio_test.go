@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestCopyModeDoesNotPinAudioBitrate(t *testing.T) {
+func TestCopyModeDoesNotPinAudioBitrateAndTranscodeIsRejected(t *testing.T) {
 	req := &RenderRequest{
 		Output: &OutputSpec{
 			Contract: OutputContractVeloxAssemblyReadyV1,
@@ -25,11 +25,7 @@ func TestCopyModeDoesNotPinAudioBitrate(t *testing.T) {
 	}
 
 	req.Audio.Mode = AudioModeTranscode
-	resolved, err = (defaultContractResolver{}).Resolve(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.AudioBitrate != "128k" {
-		t.Fatalf("transcode bitrate = %q, want 128k", resolved.AudioBitrate)
+	if _, err := (defaultContractResolver{}).Resolve(context.Background(), req); err == nil {
+		t.Fatal("transcode must be rejected: the native mux copies the source stream")
 	}
 }

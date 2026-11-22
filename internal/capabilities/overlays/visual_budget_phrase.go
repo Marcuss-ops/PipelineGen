@@ -25,7 +25,7 @@ func MeasurePhraseOverlayBudgetWithLimit(items []capmodel.OverlayItem, requested
 			// also contain entity cards, quotes and numbers, so count only
 			// text_phrase segments there; otherwise the audit understates the
 			// phrase materialization and reports a false shortfall.
-			if segments, ok := capmodel.DecodeChainSegments(item.Params); ok {
+			if segments, ok := item.Segments(); ok {
 				for _, segment := range segments {
 					if item.Kind == capmodel.KindPhraseChain || segment.Kind == "text_phrase" {
 						add(segment.Text)

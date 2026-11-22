@@ -562,9 +562,19 @@ func (p mapRenderPresentation) payload(plan capmodel.OverlayPlan, renderWidth, r
 	// The requested cartographic level owns the scale envelope: continent,
 	// country, region and municipality are four visibly different views of the
 	// same real basemap, not a label swap. It is sent as data too, so the wire
-	// and the decision report keep the caller's intent.
+	// and the decision report keep the caller's intent. A level is an envelope,
+	// not permission to crop: for a multi-place frame the fit zoom is the
+	// tightest zoom that keeps every drawn pin inside the canvas, so a level
+	// that zooms past it would hide a place. A wider level remains valid and is
+	// kept; an incompatible one falls back to the fit interval.
 	if p.MapLevel != "" {
 		if start, end, ok := mapLevelCameraZooms(p.MapLevel); ok {
+			if p.SendZooms && len(p.Pins) > 1 && p.EndZoom > 0 && end > p.EndZoom {
+				start, end = p.StartZoom, p.EndZoom
+			}
+			if start > end {
+				start = end
+			}
 			payload["map_level"] = p.MapLevel
 			payload["camera_start_zoom"] = start
 			payload["camera_end_zoom"] = end

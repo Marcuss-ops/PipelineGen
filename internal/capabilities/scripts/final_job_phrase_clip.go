@@ -123,7 +123,7 @@ func finalJobPhraseVisualItem(item capmodel.OverlayItem) bool {
 	if !strings.EqualFold(strings.TrimSpace(item.Kind), capmodel.KindPhraseChain) {
 		return false
 	}
-	segments, ok := capmodel.DecodeChainSegments(item.Params)
+	segments, ok := item.Segments()
 	if !ok || len(segments) == 0 {
 		return false
 	}

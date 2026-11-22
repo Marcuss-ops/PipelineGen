@@ -19,7 +19,7 @@ func (p OverlayPlan) FingerprintValue() string {
 		// Params may carry typed values (chain_segments as []ChainSegment)
 		// that the durable JSON checkpoint decodes into generic maps. Hash
 		// the canonical wire form so the fingerprint survives that round
-		// trip unchanged, exactly like DecodeChainSegments expects.
+		// trip unchanged, exactly like the chain decoder expects.
 		copyPlan.Items[i].Params = canonicalParamsMap(copyPlan.Items[i].Params)
 	}
 	b, _ := json.Marshal(copyPlan)

@@ -3,7 +3,7 @@
 - **Data:** 2026-10-27
 - **Autori:** Pierone + Buffy (Codebuff)
 - **Moduli interessati:** `refactored` (PipelineGen: `cliprender`, `internal/platform/renderinggen`), `RenderingGen` (`internal/processor`), `Chronon3d` (solo verifica, nessuna modifica attesa), `BrainRust` (nessuna modifica — contratto artefatto invariato)
-- **Stato:** IN IMPLEMENTAZIONE (ricontrollato 2026-11-21) — sblocco atterrato su tutti e tre i moduli (v. §9); parità su fixture reale verificata (2026-10-30, PASS 7,772 s) e final job R14 assemblato con 11 frammenti e audio muxato; `chunkPolicy` è ora ATTIVO (nessun guard di dormienza, `TestChunkPolicyChunksAudioPlans`), `SetChunking` è cablato in `internal/app/wiring/clips/runtime.go:63`; restano i gate completi (`make verify-main`, suite Chronon3d) e l'ammissione parallela GPU come precondizione operativa
+- **Stato:** CLOSED (2026-11-22) — sblocco atterrato su tutti e tre i moduli (v. §9); parità su fixture reale verificata (2026-10-30, PASS 7,772 s) e final job R14 assemblato con 11 frammenti e audio muxato. Gate finali verdi il 2026-11-22: `make verify-main` in `refactored@a755f46b2` (07:19:51–07:29:10), `go test ./... -count=1` in `RenderingGen/renderinggen@db18a02` (07:29:19–07:30:59), `chronon3d_cli_tests` in `Chronon3d@618901605` (1/1 PASS, 52,80 s). `chunkPolicy` è ATTIVO e `SetChunking` è cablato in `internal/app/wiring/clips/runtime.go:63`; l'attivazione in produzione resta opt-in e l'ammissione parallela GPU è coperta dall'evidenza L0 (1,98–1,99×, ~764 MiB/job).
 - **Obiettivo:** Rendere il chunking realmente attivo per i clip source-only lunghi (children video-only + mux sorgente una sola volta all'anchor), riducendo la latenza per clip da ~1× a ~1/N sul pool di worker, senza cambiare il contratto dell'arte-fatto pubblicato.
 
 ---
@@ -109,8 +109,28 @@ Lo sblocco è atterrato su tutti e tre i moduli, con pin su ogni contratto:
 ### 9.4 Residui dichiarati
 - **Criterio 5 (equivalenza artefatto)**: `TestAudioAwareChunkParentMatchesSingleJob` passa sul worker corrente con una fixture AAC di 12 secondi e due child; confronta fatti di output, durata, 360 frame decodificati e hash dei pacchetti audio non negativi della sorgente con parent e single-job. La verifica riguarda questa fixture, non ogni formato o configurazione.
 - **Pin C++ "esattamente una volta"**: i due test `Audio-aware assembly` passano (59 assertion); il conteggio riguarda i pacchetti con PTS/DTS non negativo, coerenti con l'origine del single-job. Il pacchetto AAC di priming negativo è escluso anche nell'assembler.
-- **Gate**: `go test ./... -count=1` e `go vet ./...` passano in `RenderingGen/renderinggen`; `make verify-agent` passa in `refactored` (17 componenti da cache, 3 eseguiti). `verify-main` e la suite Chronon3d completa non sono stati rieseguiti, quindi il ticket non è chiuso. Il test Vulkan surface materializer, precedentemente bloccato al linking, è stato ricompilato e passa 27 test / 162 assertion.
+- **Gate (chiuso 2026-11-22)**: `make verify-main` PASS in `refactored@a755f46b2` (07:19:51–07:29:10); `go test ./... -count=1` PASS in `RenderingGen/renderinggen@db18a02` (07:29:19–07:30:59); `chronon3d_cli_tests` PASS in `Chronon3d@618901605` (1/1, 52,80 s). I pin audio-aware sono inclusi nella suite CLI; il test Vulkan surface materializer passa 27 test / 162 assertion.
 - **Ammissione parallela GPU**: resta il gate operativo per l'attivazione in produzione (precondizione già dichiarata in `chunk_producer.go`); `SetChunking` resta l'opt-in cablato.
+
+## Chiusura 2026-11-22
+
+| Gate | SHA | Esito |
+|---|---|---|
+| `make verify-main` (`refactored`) | `a755f46b2` | PASS (07:19:51–07:29:10) |
+| `go test ./... -count=1` (`RenderingGen/renderinggen`) | `db18a02` | PASS (07:29:19–07:30:59) |
+| `ctest -R '^chronon3d_cli_tests$'` (`Chronon3d`) | `618901605` | 1/1 PASS, 52,80 s |
+
+Residuo operativo dichiarato: l'attivazione in produzione resta **opt-in**
+(`SetChunking` cablato, `chunkPolicy` attivo); l'ammissione parallela GPU non è
+un gate di codice di questo ticket ed è coperta dall'evidenza L0
+(`Chronon3d/docs/evidence/gpu-admission-two-job-2026-11-02.md`, 1,98–1,99×,
+~764 MiB/job). Nessun residuo tecnico aperto.
+
+Nota di sessione: durante l'esecuzione una sessione concorrente ha lasciato
+dieci file Go non committati in `refactored` (cliprender, `render_prepare_queue.go`,
+`queue_client_batch.go`), fuori dal perimetro di questo ticket; non sono stati
+toccati né revertiti. I gate sopra sono verdi sul tree così com'era al momento
+dell'esecuzione.
 
 ## 10. Scoperte dall'Implementazione (2026-10-27)
 

@@ -219,9 +219,15 @@ type OverlayItem struct {
 	// content-addressed basemap in AssetRefs. It rides the overlay-plan.v1
 	// wire (the worker's schema owns the map block) and participates in the
 	// plan fingerprint; nil on every non-map kind.
-	Map       *MapOverlay    `json:"map,omitempty"`
-	Params    map[string]any `json:"params,omitempty"`
-	RenderKey string         `json:"render_key,omitempty"`
+	Map    *MapOverlay    `json:"map,omitempty"`
+	Params map[string]any `json:"params,omitempty"`
+	// ChainSegments is the typed projection of Params["chain_segments"]. The
+	// wire contract still rides Params (an open map on both sides), but the
+	// item hydrates this field once at the JSON boundary so consumers never
+	// decode the segment shape themselves. It is excluded from JSON: the
+	// durable slot remains Params.
+	ChainSegments []ChainSegment `json:"-"`
+	RenderKey     string         `json:"render_key,omitempty"`
 }
 
 type OverlayItemFrame struct {

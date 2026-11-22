@@ -64,7 +64,7 @@ func runtimeFontAssets(plan capmodel.OverlayPlan) ([]RenderQueueAsset, error) {
 		if !capmodel.IsChainItemKind(item.Kind) {
 			continue
 		}
-		segments, ok := capmodel.DecodeChainSegments(item.Params)
+		segments, ok := item.Segments()
 		if !ok {
 			continue // malformed chains are rejected by plan validation
 		}

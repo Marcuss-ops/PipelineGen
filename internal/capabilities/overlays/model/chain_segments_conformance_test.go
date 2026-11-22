@@ -39,7 +39,7 @@ func TestChainSegmentsSharedConformanceFixture(t *testing.T) {
 	if len(document.Plan.Items) != 1 {
 		t.Fatalf("conformance plan items = %d, want 1", len(document.Plan.Items))
 	}
-	segments, ok := DecodeChainSegments(document.Plan.Items[0].Params)
+	segments, ok := document.Plan.Items[0].Segments()
 	if !ok || len(segments) != 5 {
 		t.Fatalf("conformance chain segments = %+v, want five", document.Plan.Items[0].Params["chain_segments"])
 	}

@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-
 	"github.com/stretchr/testify/require"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -185,7 +183,7 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	require.Len(t, res.OverlayPlan.Items, 2, "one coalesced entity-name chain per scene")
 	for _, item := range res.OverlayPlan.Items {
 		require.Empty(t, item.AssetRefs, "the narrated entities have no verified media")
-		segments, ok := capmodel.DecodeChainSegments(item.Params)
+		segments, ok := item.Segments()
 		require.True(t, ok, "entity-name chain must carry its decoded segments: %+v", item.Params)
 		require.Len(t, segments, 2, "Tom Hanks and Los Angeles share the scene")
 		kinds := []string{segments[0].Kind, segments[1].Kind}

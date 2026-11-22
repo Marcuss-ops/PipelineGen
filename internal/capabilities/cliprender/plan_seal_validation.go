@@ -90,7 +90,9 @@ func (p ClipRenderPlanV1) Validate() error {
 		return fmt.Errorf("%w: output.%w", ErrInvalidClipPlan, err)
 	}
 	switch p.Audio.Mode {
-	case AudioModeCopyIfCompatible, AudioModeTranscode:
+	case AudioModeCopyIfCompatible:
+	case AudioModeTranscode:
+		return fmt.Errorf("%w: audio mode transcode is not supported: the native mux copies the source stream", ErrInvalidClipPlan)
 	default:
 		return fmt.Errorf("%w: invalid audio mode %q", ErrInvalidClipPlan, p.Audio.Mode)
 	}

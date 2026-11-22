@@ -55,8 +55,8 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 		details = append(details, ref+": "+err.Error())
 	}
 	details = append(details, validateScript(item.ScriptParams, ref)...)
-	if item.ScriptParams.SourceTextVerbatim && item.Source.Type != scriptpkg.SourceText {
-		details = append(details, ref+": script_params.source_text_verbatim requires source.type=text")
+	if item.ScriptParams.SourceTextVerbatim && item.Source.Type != scriptpkg.SourceText && item.Source.Type != scriptpkg.SourceClips {
+		details = append(details, ref+": script_params.source_text_verbatim requires source.type=text or clips")
 	}
 	details = append(details, validateSegmentIDs(item, ref)...)
 	details = append(details, validateMediaPlan(item.MediaPlan, item.ScriptParams.Segments, ref)...)

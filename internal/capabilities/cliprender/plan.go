@@ -398,9 +398,11 @@ func Compile(in CompileInput) (ClipRenderPlanV1, error) {
 		return ClipRenderPlanV1{}, fmt.Errorf("%w: output_path is required", ErrInvalidClipPlan)
 	}
 	switch in.AudioMode {
-	case AudioModeCopyIfCompatible, AudioModeTranscode:
+	case AudioModeCopyIfCompatible:
+	case AudioModeTranscode:
+		return ClipRenderPlanV1{}, fmt.Errorf("%w: audio mode transcode is not supported: the native mux copies the source stream", ErrInvalidClipPlan)
 	default:
-		return ClipRenderPlanV1{}, fmt.Errorf("%w: audio mode must be copy_if_compatible or transcode (got %q)", ErrInvalidClipPlan, in.AudioMode)
+		return ClipRenderPlanV1{}, fmt.Errorf("%w: audio mode must be copy_if_compatible (got %q)", ErrInvalidClipPlan, in.AudioMode)
 	}
 
 	plan := ClipRenderPlanV1{

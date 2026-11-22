@@ -481,6 +481,9 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 	if req == nil || req.Output == nil {
 		return nil, fmt.Errorf("%w: request output block is missing", ErrUnsupportedContract)
 	}
+	if req.Audio != nil && req.Audio.Mode != "" && req.Audio.Mode != AudioModeCopyIfCompatible {
+		return nil, fmt.Errorf("%w: audio.mode %q is not supported: the native mux copies the source stream", ErrInvalidRequest, req.Audio.Mode)
+	}
 	build, ok := contractBuilders[req.Output.Contract]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedContract, req.Output.Contract)

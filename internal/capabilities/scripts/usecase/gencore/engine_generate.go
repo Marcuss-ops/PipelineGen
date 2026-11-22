@@ -360,8 +360,8 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 }
 
 func sourceTextVerbatimResult(plan *scriptpkg.ResolvedGenerationPlan) (*EngineResult, error) {
-	if plan.SourceKind != "" && plan.SourceKind != string(scriptpkg.SourceText) {
-		return nil, fmt.Errorf("engine: source_text_verbatim requires source.type=text")
+	if plan.SourceKind != "" && plan.SourceKind != string(scriptpkg.SourceText) && plan.SourceKind != string(scriptpkg.SourceClips) {
+		return nil, fmt.Errorf("engine: source_text_verbatim requires source.type=text or clips")
 	}
 	if len(plan.Segments) == 0 {
 		return nil, fmt.Errorf("engine: source_text_verbatim requires explicit script segments")

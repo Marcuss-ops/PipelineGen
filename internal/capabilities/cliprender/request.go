@@ -73,7 +73,10 @@ const (
 
 	// Audio copy policies.
 	AudioModeCopyIfCompatible = "copy_if_compatible"
-	AudioModeTranscode        = "transcode"
+	// AudioModeTranscode is retained in the wire vocabulary but is not
+	// accepted: the native mux copies the source stream and has no transcoder,
+	// so requests and sealed plans carrying it are rejected at the boundary.
+	AudioModeTranscode = "transcode"
 
 	// The output media contract identities live in output_contracts.go (they
 	// re-export kernel/media and stay out of this file's line budget).
@@ -360,9 +363,11 @@ func (r *RenderRequest) Validate() error {
 	}
 
 	switch r.Audio.Mode {
-	case AudioModeCopyIfCompatible, AudioModeTranscode:
+	case AudioModeCopyIfCompatible:
+	case AudioModeTranscode:
+		return fmt.Errorf("%w: audio.mode=transcode is not supported: the native mux copies the source stream; use copy_if_compatible", ErrInvalidRequest)
 	default:
-		return fmt.Errorf("%w: audio.mode must be one of copy_if_compatible, transcode (got %q)", ErrInvalidRequest, r.Audio.Mode)
+		return fmt.Errorf("%w: audio.mode must be copy_if_compatible (got %q)", ErrInvalidRequest, r.Audio.Mode)
 	}
 
 	if r.Destination.DriveFolderID == "" {

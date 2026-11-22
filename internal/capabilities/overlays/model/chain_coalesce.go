@@ -86,12 +86,15 @@ type ChainSegment struct {
 	Map                 *MapOverlay         `json:"map,omitempty"`
 }
 
-// DecodeChainSegments extracts the segment list from an item's Params.
+// decodeChainSegments extracts the segment list from an item's Params.
 // Params travel through JSON (durable runs, child-plan splits), where the
 // list decodes as []any instead of []ChainSegment, so a direct type
 // assertion alone rejects healthy deserialized chains. Decode via a JSON
 // round-trip instead, exactly like the RenderingGen consumer.
-func DecodeChainSegments(params map[string]any) ([]ChainSegment, bool) {
+//
+// It is the single decoder at the model boundary: consumers use
+// OverlayItem.Segments(), which caches the typed result.
+func decodeChainSegments(params map[string]any) ([]ChainSegment, bool) {
 	raw, ok := params["chain_segments"]
 	if !ok || raw == nil {
 		return nil, false
@@ -110,66 +113,61 @@ func DecodeChainSegments(params map[string]any) ([]ChainSegment, bool) {
 	return segments, true
 }
 
-// ChainSegmentMaps is the single mutable wire view of Params["chain_segments"].
-// []ChainSegment, []any and []map[string]any all normalize to the same maps, so
-// every consumer reads the durable shape instead of re-implementing the
-// type switch. The maps are the same references the Params slice holds; a
-// caller that replaces the slice itself must write it back (or use
-// UpdateChainSegmentMaps).
-func ChainSegmentMaps(params map[string]any) ([]map[string]any, bool) {
-	if len(params) == 0 {
+// Segments returns the typed chain segments carried by the item, decoding
+// Params["chain_segments"] once and caching the result. ok is false when the
+// item carries no segment list or the list is not decodable; a non-chain item
+// therefore keeps the zero value.
+func (i *OverlayItem) Segments() ([]ChainSegment, bool) {
+	if i == nil {
 		return nil, false
 	}
-	raw, ok := params["chain_segments"]
-	if !ok || raw == nil {
+	if i.ChainSegments != nil {
+		return i.ChainSegments, true
+	}
+	segments, ok := decodeChainSegments(i.Params)
+	if !ok {
 		return nil, false
 	}
-	switch typed := raw.(type) {
-	case []map[string]any:
-		return typed, true
-	case []any:
-		segments := make([]map[string]any, 0, len(typed))
-		for _, entry := range typed {
-			if segment, ok := entry.(map[string]any); ok {
-				segments = append(segments, segment)
-			}
-		}
-		return segments, true
-	}
-	data, err := json.Marshal(raw)
-	if err != nil {
-		return nil, false
-	}
-	var segments []map[string]any
-	if err := json.Unmarshal(data, &segments); err != nil {
-		return nil, false
-	}
+	i.ChainSegments = segments
 	return segments, true
 }
 
-// UpdateChainSegmentMaps decodes the segment maps, lets update mutate them and
-// writes the result back only when update reports a change. It returns whether
-// Params were rewritten.
-func UpdateChainSegmentMaps(params map[string]any, update func([]map[string]any) bool) bool {
-	if params == nil || update == nil {
-		return false
+// SetChainSegments replaces the typed segments and writes their durable object
+// form back to Params["chain_segments"]. Params feeds the semantic fingerprint,
+// so it keeps []map[string]any (sorted object keys) rather than the typed
+// structs, whose field order would otherwise change the serialized bytes and
+// split the cache identity of an unchanged chain.
+func (i *OverlayItem) SetChainSegments(segments []ChainSegment) {
+	if i == nil {
+		return
 	}
-	segments, ok := ChainSegmentMaps(params)
-	if !ok {
-		return false
+	if len(segments) == 0 {
+		i.ChainSegments = nil
+		if i.Params != nil {
+			delete(i.Params, "chain_segments")
+		}
+		return
 	}
-	if !update(segments) {
-		return false
+	data, err := json.Marshal(segments)
+	if err != nil {
+		return
 	}
-	params["chain_segments"] = segments
-	return true
+	var durable []map[string]any
+	if err := json.Unmarshal(data, &durable); err != nil {
+		return
+	}
+	i.ChainSegments = segments
+	if i.Params == nil {
+		i.Params = make(map[string]any, 1)
+	}
+	i.Params["chain_segments"] = durable
 }
 
 // RebaseChainSegments returns a copy of the chain segments shifted so the
 // chain starts at zero (child-plan-local times). The input Params are never
 // mutated: the child split owns the returned slice.
 func RebaseChainSegments(params map[string]any, baseUS int64) ([]ChainSegment, bool) {
-	segments, ok := DecodeChainSegments(params)
+	segments, ok := decodeChainSegments(params)
 	if !ok {
 		return nil, false
 	}
@@ -201,7 +199,7 @@ func ValidateChainItem(item OverlayItem) error {
 	if item.TemplateID != wantTemplate {
 		return fmt.Errorf("overlay plan: chain item %q kind %q requires template %q", item.ID, item.Kind, wantTemplate)
 	}
-	segments, ok := DecodeChainSegments(item.Params)
+	segments, ok := item.Segments()
 	if !ok {
 		return fmt.Errorf("overlay plan: chain item %q carries no chain_segments", item.ID)
 	}

@@ -3,7 +3,6 @@ package renderinggen
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
@@ -68,9 +67,6 @@ func uniqueBatchAssets(jobs []renderqueue.RenderQueueJob) []renderqueue.RenderQu
 				}
 				if current.SourceURL == "" {
 					current.SourceURL = asset.SourceURL
-				}
-				if current.SourceURL == "" && current.URL != asset.URL && strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "http") {
-					current.SourceURL = asset.URL
 				}
 				continue
 			}

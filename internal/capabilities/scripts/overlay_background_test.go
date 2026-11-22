@@ -66,11 +66,11 @@ func TestOverlayStyleProjectsImageBackdropWithMemberOwnedPhotos(t *testing.T) {
 	if _, ok := items[3].Params["image_backdrop"]; ok {
 		t.Fatalf("chain container must not carry item-level image_backdrop: %#v", items[3].Params)
 	}
-	segments, ok := capmodel.ChainSegmentMaps(items[3].Params)
+	segments, ok := items[3].Segments()
 	if !ok || len(segments) != 1 {
 		t.Fatalf("chain segments missing: %#v", items[3].Params)
 	}
-	segmentParams, _ := segments[0]["params"].(map[string]any)
+	segmentParams := segments[0].Params
 	if _, ok := segmentParams["image_backdrop"]; !ok {
 		t.Fatalf("chain image segment must receive image_backdrop: %#v", segments[0])
 	}

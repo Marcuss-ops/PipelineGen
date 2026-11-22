@@ -321,14 +321,19 @@ func TestValidate_OutputContract(t *testing.T) {
 // TestValidate_AudioAndTranscriptEnums verifies the remaining enum
 // gates.
 func TestValidate_AudioAndTranscriptEnums(t *testing.T) {
-	for _, mode := range []string{AudioModeCopyIfCompatible, AudioModeTranscode} {
+	req := &RenderRequest{SourceAssetID: "a", Audio: &AudioSpec{Mode: AudioModeCopyIfCompatible}}
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		t.Errorf("copy_if_compatible must validate: %v", err)
+	}
+	for _, mode := range []string{AudioModeTranscode, "bogus"} {
 		req := &RenderRequest{SourceAssetID: "a", Audio: &AudioSpec{Mode: mode}}
 		req.Normalize()
-		if err := req.Validate(); err != nil {
-			t.Errorf("audio mode %q must validate: %v", mode, err)
+		if err := req.Validate(); err == nil {
+			t.Errorf("audio mode %q must fail closed", mode)
 		}
 	}
-	req := &RenderRequest{SourceAssetID: "a", Audio: &AudioSpec{Mode: "bogus"}}
+	req = &RenderRequest{SourceAssetID: "a", Audio: &AudioSpec{Mode: "bogus"}}
 	req.Normalize()
 	if err := req.Validate(); err == nil {
 		t.Error("unknown audio mode must fail")

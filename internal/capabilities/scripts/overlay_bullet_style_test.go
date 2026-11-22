@@ -136,7 +136,7 @@ func TestBulletFontAppliesInsideFusedChains(t *testing.T) {
 
 	applyPayloadOverlayStyleToItems([]capmodel.OverlayItem{item}, canvas)
 
-	segments, ok := capmodel.DecodeChainSegments(item.Params)
+	segments, ok := item.Segments()
 	if !ok || len(segments) != 2 {
 		t.Fatalf("chain segments = %+v (decoded=%v)", item.Params["chain_segments"], ok)
 	}

@@ -75,11 +75,11 @@ func TestPayloadTextStyleReachesCaptionedEntityImagesAndChainSegments(t *testing
 	}
 	assertCaptionBackground(t, entityParams, "entity caption")
 
-	segments, ok := capmodel.ChainSegmentMaps(items[1].Params)
+	segments, ok := items[1].Segments()
 	if !ok || len(segments) != 1 {
 		t.Fatalf("chain segments = %#v, want one segment", items[1].Params["chain_segments"])
 	}
-	segmentParams, _ := segments[0]["params"].(map[string]any)
+	segmentParams := segments[0].Params
 	if got := segmentParams["font_family"]; got != "oswald" {
 		t.Errorf("chain caption font = %#v, want oswald", got)
 	}

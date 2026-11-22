@@ -183,12 +183,11 @@ func applyTextStyleToItem(item *capmodel.OverlayItem, styleParams map[string]any
 	item.RenderKey = ""
 }
 
-func applyTextStyleToChainSegment(segment map[string]any, styleParams map[string]any) {
-	if len(styleParams) == 0 {
+func applyTextStyleToChainSegment(segment *capmodel.ChainSegment, styleParams map[string]any) {
+	if segment == nil || len(styleParams) == 0 {
 		return
 	}
-	params, _ := segment["params"].(map[string]any)
-	segment["params"] = capabilityoverlay.MergeRuntimeTextStyleParams(params, styleParams)
+	segment.Params = capabilityoverlay.MergeRuntimeTextStyleParams(segment.Params, styleParams)
 	block := textStyleBlock(styleParams)
 	if size, ok := styleParams["glow_size"].(float64); ok && size <= 0 {
 		delete(block, "glow")
@@ -196,8 +195,7 @@ func applyTextStyleToChainSegment(segment map[string]any, styleParams map[string
 	if len(block) == 0 {
 		return
 	}
-	style, _ := segment["style"].(map[string]any)
-	segment["style"] = capabilityoverlay.MergeStyleParam(style, block)
+	segment.Style = capabilityoverlay.MergeStyleParam(segment.Style, block)
 }
 
 // overlayItemHasCaption reports a captioned entity/image card. Such a card is
@@ -213,28 +211,17 @@ func overlayItemHasCaption(item capmodel.OverlayItem) bool {
 // chainSegmentHasCaption is the chain-segment mirror of overlayItemHasCaption.
 // Segments carry their own kind/caption/assets, so the decision is local to the
 // segment rather than inherited from the container.
-func chainSegmentHasCaption(segment map[string]any) bool {
-	caption, _ := segment["entity_caption"].(string)
-	if strings.TrimSpace(caption) == "" {
+func chainSegmentHasCaption(segment capmodel.ChainSegment) bool {
+	if strings.TrimSpace(segment.EntityCaption) == "" {
 		return false
 	}
-	kind, _ := segment["kind"].(string)
-	if !capabilityoverlay.IsImageOverlayKind(kind) {
+	if !capabilityoverlay.IsImageOverlayKind(segment.Kind) {
 		return false
 	}
-	if asset, _ := segment["asset_id"].(string); strings.TrimSpace(asset) != "" {
+	if strings.TrimSpace(segment.AssetID) != "" {
 		return true
 	}
-	switch assets := segment["assets"].(type) {
-	case []any:
-		return len(assets) > 0
-	case []capmodel.OverlayAssetRef:
-		return len(assets) > 0
-	case []map[string]any:
-		return len(assets) > 0
-	default:
-		return false
-	}
+	return len(segment.Assets) > 0
 }
 
 // applyPayloadOverlayStyleToItems is the one payload-style projection onto the
@@ -265,32 +252,31 @@ func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas Overla
 		if imageStyle != nil && isImageOverlayItem(*item) {
 			applyOverlayImageStyle(item, imageStyle)
 		}
-		if segments, ok := capmodel.ChainSegmentMaps(item.Params); ok {
+		if segments, ok := item.Segments(); ok {
 			changed := false
-			for _, segment := range segments {
+			for n := range segments {
+				segment := &segments[n]
 				// Chains carry no item-level asset refs (each photo lives in its
 				// own segment), so the image frame and backdrop must be projected
 				// onto the segment params. Without this a chain never received
 				// image_backdrop, radius or shadow.
-				if imageStyle != nil && segmentIsImage(segment) {
+				if imageStyle != nil && segmentIsImage(*segment) {
 					applyImageStyleToChainSegment(segment, imageStyle)
 					changed = true
 					continue
 				}
-				segmentParams, _ := segment["params"].(map[string]any)
-				if editorialBulletParams(segmentParams) {
+				if editorialBulletParams(segment.Params) {
 					applyTextStyleToChainSegment(segment, bulletBaseParamsForScene(item.SceneID, pins, bulletStyle))
 					changed = true
 					continue
 				}
-				kind, _ := segment["kind"].(string)
-				if capabilityoverlay.IsTextOverlayKind(kind) || chainSegmentHasCaption(segment) {
+				if capabilityoverlay.IsTextOverlayKind(segment.Kind) || chainSegmentHasCaption(*segment) {
 					applyTextStyleToChainSegment(segment, runStyle)
 					changed = true
 				}
 			}
 			if changed {
-				item.Params["chain_segments"] = segments
+				item.SetChainSegments(segments)
 				item.RenderKey = ""
 			}
 			continue
@@ -307,23 +293,21 @@ func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas Overla
 
 // segmentIsImage reports whether a chain segment is an image segment, i.e.
 // one that owns an asset and can carry the image treatment.
-func segmentIsImage(segment map[string]any) bool {
-	kind, _ := segment["kind"].(string)
-	return capabilityoverlay.IsImageOverlayKind(kind)
+func segmentIsImage(segment capmodel.ChainSegment) bool {
+	return capabilityoverlay.IsImageOverlayKind(segment.Kind)
 }
 
 // applyImageStyleToChainSegment projects the run-level image treatment onto
 // one image segment: backdrop, radius, shadow, fit and any authored card
 // geometry. The segment is lowered as an image item of its own, so the params
 // it carries are exactly the ones the renderer reads.
-func applyImageStyleToChainSegment(segment map[string]any, style *scriptpkg.OverlayImageStyleSpec) {
-	params, _ := segment["params"].(map[string]any)
-	if params == nil {
-		params = map[string]any{}
+func applyImageStyleToChainSegment(segment *capmodel.ChainSegment, style *scriptpkg.OverlayImageStyleSpec) {
+	if segment == nil {
+		return
 	}
-	probe := capmodel.OverlayItem{Kind: "image", Params: params}
+	probe := capmodel.OverlayItem{Kind: "image", Params: segment.Params}
 	capabilityoverlay.ApplyImageStyle(&probe, style)
-	segment["params"] = probe.Params
+	segment.Params = probe.Params
 }
 
 // countRecapItems counts final recap survivors, including cards preserved
@@ -338,7 +322,7 @@ func countRecapItems(items []capmodel.OverlayItem) int {
 		if items[i].Params["recap"] == true {
 			n++
 		}
-		if segments, ok := capmodel.DecodeChainSegments(items[i].Params); ok {
+		if segments, ok := items[i].Segments(); ok {
 			for _, segment := range segments {
 				if segment.Params["recap"] == true {
 					n++
@@ -356,7 +340,7 @@ func countRecapItems(items []capmodel.OverlayItem) int {
 func effectiveVisualMoments(items []capmodel.OverlayItem) int {
 	total := len(items)
 	for i := range items {
-		segments, ok := capmodel.DecodeChainSegments(items[i].Params)
+		segments, ok := items[i].Segments()
 		if !ok || len(segments) <= 1 {
 			continue
 		}
@@ -372,7 +356,7 @@ func countChartItems(items []capmodel.OverlayItem) int {
 		if items[i].Params["chart_card"] == true || items[i].Params["chart_bar"] == true {
 			n++
 		}
-		if segments, ok := capmodel.DecodeChainSegments(items[i].Params); ok {
+		if segments, ok := items[i].Segments(); ok {
 			for _, segment := range segments {
 				if segment.Params["chart_card"] == true || segment.Params["chart_bar"] == true {
 					n++

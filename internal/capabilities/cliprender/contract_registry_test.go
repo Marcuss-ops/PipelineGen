@@ -62,10 +62,11 @@ func TestV2ResolverAcceptsCanonicalFPS(t *testing.T) {
 //
 // Chronon's native A/V mux copies the source audio stream verbatim
 // (RenderingGen audioModeCopyOnly / audioSourcePathFromPlan), so a 44.1 kHz
-// source produces a 44.1 kHz output and the sealed plan's requested
-// {"mode":"transcode"} is inert. The contract gate is therefore the ONLY
-// thing standing between a non-conforming artifact and publication, and it
-// must report the exact dimension that failed instead of degrading.
+// source produces a 44.1 kHz output. Transcode is now rejected at the
+// request/compile boundary; the remaining risk is a copy_if_compatible request
+// whose source rate differs from the contract. The contract gate is therefore
+// the ONLY thing standing between that non-conforming artifact and publication,
+// and it must report the exact dimension that failed instead of degrading.
 //
 // The audio timebase dimension deliberately has NO tolerance whitelist (unlike
 // video-timebase, which accepts 1/12288 and friends as legitimate 24 fps

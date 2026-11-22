@@ -16,3 +16,19 @@ func (i OverlayItem) MarshalJSON() ([]byte, error) {
 		DurationMS: i.EndMs - i.StartMs,
 	})
 }
+
+// UnmarshalJSON hydrates the typed chain projection at the wire boundary.
+// ChainSegments is never decoded from a sibling JSON key (it is tagged "-"),
+// so the typed view cannot drift from the durable Params slot on reload.
+func (i *OverlayItem) UnmarshalJSON(data []byte) error {
+	type alias OverlayItem
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*i = OverlayItem(decoded)
+	if segments, ok := decodeChainSegments(i.Params); ok {
+		i.ChainSegments = segments
+	}
+	return nil
+}

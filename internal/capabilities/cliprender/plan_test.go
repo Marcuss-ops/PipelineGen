@@ -387,6 +387,7 @@ func TestCompile_FailClosedMissingInputs(t *testing.T) {
 		{"nil contract", func(in *CompileInput) { in.Contract = nil }},
 		{"empty output path", func(in *CompileInput) { in.OutputPath = "" }},
 		{"invalid audio mode", func(in *CompileInput) { in.AudioMode = "reencode_everything" }},
+		{"transcode audio mode", func(in *CompileInput) { in.AudioMode = AudioModeTranscode }},
 		{"watermark without sha", func(in *CompileInput) {
 			in.Watermark = &MaterializedAsset{AssetID: "wm", LocalPath: "/x.png"}
 		}},

@@ -156,6 +156,7 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 	// occurrence and drop the article variant before it becomes a second map
 	// with a near-zero window.
 	valid = dedupeMapCandidatesByArticle(valid)
+	valid = dedupeMapCandidatesByCompoundPlace(valid)
 	if flyovers, ok := resolver.(FlyoverPlateResolver); ok && !grouping.NoRoutes && len(valid) > 0 && canvasWidth > 0 && canvasHeight > 0 {
 		from, to := routeEndpoints(valid, capmodel.MapCenter{Latitude: valid[0].Latitude, Longitude: valid[0].Longitude})
 		if plate, ok := flyovers.ResolveFlyover(from, to, canvasWidth, canvasHeight); ok && strings.TrimSpace(plate.ID) != "" && len(plate.LODs) > 0 {

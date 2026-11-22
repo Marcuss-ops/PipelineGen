@@ -1,13 +1,15 @@
 # TICKET — chain_segments single source of truth (2026-11-18)
 
-- **Status:** PARTIAL (agg. 2026-11-21 sera; Open 5 chiuso il 2026-11-21). The identity decision now runs
+- **Status:** PARTIAL (agg. 2026-11-22). The identity decision now runs
   once: the planner promotes entity cards from
   `media.promotable_entity_assets` with the ported seeded sampler, the Go
   promotion pass is deleted, **Open 3 è chiuso** (il ceiling è campo della
-  richiesta) e **Open 4 è chiuso** (l'inferenza del consumatore è ritirata).
-  What remains is the **visual acceptance run** on a real job with a card
-  chain, la fixture generata (Open 5) e i decoders locali (Open 6); i goldens e
-  le suite sono verdi.
+  richiesta), **Open 4 è chiuso** (l'inferenza del consumatore è ritirata),
+  **Open 5 è chiuso** (fixture generata dal planner) e **Open 6 è chiuso**
+  (modello tipizzato unico; `DecodeChainSegments`/`ChainSegmentMaps` rimossi).
+  L'accettazione visiva è stata eseguita il 2026-11-21 (`r12`/`r4`, 21/21
+  gate). Resta solo l'**A/B col pianificatore pre-v2** («identici a prima»);
+  i goldens e le suite sono verdi.
 - **Severity:** P1 — a post-seal pass rewrites chain segment identity, which the
   ownership doc forbade, and nothing failed when it did.
 - **Owner:** overlay/editorial pipeline + media plane
@@ -145,10 +147,19 @@ a fixture and two SHA constants.
    proves lowering, never producer parity. Either a Rust test emits these bytes or
    the two SHA constants are replaced by a generated artifact.~~
    **CHIUSO 2026-11-21.** Vedi §Open 5 eseguito.
-6. **Retire the local decoders.** `chainSegmentMaps`, `chainSegments`,
+6. ~~**Retire the local decoders.** `chainSegmentMaps`, `chainSegments`,
    `overlayPlanChainSegments` and `chainSegmentStyleMaps` are already gone; the
    remaining `DecodeChainSegments` / `ChainSegmentMaps` pair must survive only
-   until (1) makes the plan cross the boundary already validated.
+   until (1) makes the plan cross the boundary already validated.~~
+   **CHIUSO 2026-11-22.** `OverlayItem` porta `ChainSegments []ChainSegment`,
+   idratato da `UnmarshalJSON`, con `Segments()`/`SetChainSegments()` come unica
+   superficie; `DecodeChainSegments`, `ChainSegmentMaps` e
+   `UpdateChainSegmentMaps` sono rimossi. I consumer di produzione leggono il
+   tipo e non decodificano più mappe. `Params["chain_segments"]` resta lo slot
+   wire/fingerprint e il setter lo riscrive come mappe per non cambiare la cache
+   identity. Evidenza: `go test ./internal/capabilities/overlays/...
+   ./internal/capabilities/scripts/... -count=1` e `go vet` sui due alberi,
+   verdi il 2026-11-22; `git diff --check` pulito.
 
 ## Acceptance criteria for closing
 
@@ -203,10 +214,11 @@ verifica del movimento camera) non stanno qui: sono in
   vive nel planner (`promotion.rs:361`) e la promozione in `planner/promotion.rs`.
 - `segmentIdentity` **esiste ancora** (`RenderingGen/renderinggen/internal/overlay/chain_segments.go:98`,
   chiamato da `chain_compile.go:332`): è l'unico residuo di inferenza.
-- `DecodeChainSegments` sopravvive (`internal/capabilities/overlays/model/chain_coalesce.go`).
+- `DecodeChainSegments` era ancora presente in questo ricontrollo; è stato
+  rimosso il 2026-11-22 insieme a `ChainSegmentMaps` (vedi §Open 6 eseguito).
 
 Quindi Open 1 e Open 2 sono chiusi (finestra v2), Open 3 è verificato chiuso
-qui sotto, e restano Open 4–6 più la run di accettazione visiva.
+qui sotto; Open 4, Open 5 e Open 6 sono chiusi. Resta solo l'A/B pre-v2.
 
 ## Decisione 2026-11-21 — Open 1 = (a), Open 2 = chiusa con finestra v2
 
@@ -361,15 +373,41 @@ Resta aperto:
    «viaggia dal media resolver» non descrive il tree attuale: il resolver
    produce solo il **default** run-level (`MaxImageOverlaysPerRun = 20`).
 3. Open 4 è **chiuso** (vedi §Open e il test `TestCompileChainRejectsMissingKind`).
-   Open 5 è **chiuso** (2026-11-21). Resta Open 6 (decoders locali
-   `DecodeChainSegments`/`ChainSegmentMaps`), che è un refactor dei consumer Go e
-   non un difetto del contratto.
+   Open 5 è **chiuso** (2026-11-21) e Open 6 è **chiuso** (2026-11-22, modello
+   tipizzato unico; vedi §Open 6 eseguito).
 
 Chiuso con questa finestra: **provenienza canonica delle card promosse**. Il
 `PlanItemV2` espone `entity_ref`, la promozione lo conserva in place e Go lo
 proietta su `OverlayItem.EntityRef`; l'audit non ricade più su `entity_id`. I
 segmenti di catena restano senza ref — una catena fusa non ha una sola identità,
 come non l'avevano i segmenti prima del cutover.
+
+## Open 6 eseguito — modello tipizzato unico (2026-11-22)
+
+- **Modello.** `OverlayItem.ChainSegments []ChainSegment` (`json:"-"`) è la
+  proiezione tipizzata di `Params["chain_segments"]`; `UnmarshalJSON` la idrata
+  al boundary e `Segments()` la decodifica una volta sola per i piani costruiti
+  in memoria. `SetChainSegments()` aggiorna insieme campo e slot wire.
+- **Ritiro.** `DecodeChainSegments`, `ChainSegmentMaps` e
+  `UpdateChainSegmentMaps` non esistono più. `ValidateChainItem` usa il campo
+  tipizzato; il child split usa `RebaseChainSegments`, l'unico helper di rebase
+  al confine del modello. Nessun consumer di produzione contiene un decoder
+  locale.
+- **Consumer migrati.** `visual_budget_phrase`, `final_job_phrase_clip`,
+  `model_render_fonts`, `render_queue_items`, `overlay_plan_finalize`,
+  `overlay_plan_v2_map_items`, `overlay_audit_plan_images`. Gli helper di stile
+  (`applyTextStyleToChainSegment`, `applyImageStyleToChainSegment`,
+  `chainSegmentHasCaption`, `segmentIsImage`) ricevono `ChainSegment` o un suo
+  puntatore.
+- **Compatibilità del fingerprint.** Il setter riscrive `Params` come
+  `[]map[string]any` (chiavi ordinate), non come struct: un piano rielaborato
+  mantiene la stessa cache identity. `FingerprintValue` continua a
+  canonicalizzare `Params` con il round-trip JSON esistente.
+- **Verifica.** `go test ./internal/capabilities/overlays/...
+  ./internal/capabilities/scripts/... -count=1` → PASS (inclusi model, contract
+  e conformance); `go vet` sugli stessi package → PASS; `go build ./...` → PASS;
+  `git diff --check` → 0. Il gate `make verify-main` non è stato rilanciato in
+  questa passata.
 
 ## Open 5 eseguito — fixture generata dal planner (2026-11-21)
 
@@ -404,6 +442,5 @@ emettere.
   metà Go/RenderingGen passano: `TestChainSegmentsSharedConformanceFixture` e
   `TestSharedChainSegmentsFixtureCompilesFiveImages`.
 
-Resta aperto solo Open 6 (ritiro dei decoder locali), che richiede di far
-arrivare ai consumer Go i segmenti già tipizzati, e l'A/B con il pianificatore
-pre-v2 per l'accettazione visiva.
+Open 6 è chiuso il 2026-11-22 (vedi §Open 6 eseguito). Resta solo l'A/B con il
+pianificatore pre-v2 per l'accettazione visiva.

@@ -288,11 +288,11 @@ func TestApplyChainSegmentPresetsResolvesEveryChainSegment(t *testing.T) {
 	}}}
 	applyChainSegmentPresets(plan)
 
-	segments, ok := capmodel.ChainSegmentMaps(plan.Items[0].Params)
+	segments, ok := plan.Items[0].Segments()
 	require.True(t, ok)
 	require.Len(t, segments, 2)
 	for index, segment := range segments {
-		require.Equal(t, string(capabilityoverlay.PresetModernName), segment["preset_id"], "segment %d", index)
+		require.Equal(t, string(capabilityoverlay.PresetModernName), segment.PresetID, "segment %d", index)
 	}
 	require.Equal(t, string(capabilityoverlay.PresetModernName), plan.Items[0].PresetID)
 }

@@ -25,6 +25,77 @@ func dedupeMapCandidatesByArticle(candidates []MapCandidate) []MapCandidate {
 	return out
 }
 
+// dedupeMapCandidatesByCompoundPlace folds a relational description into the
+// base place it names ("Città Vecchia di Gerusalemme" -> "Gerusalemme"). NER
+// can surface both the description and the city, and drawing both would put two
+// pins on the same geography with one near-zero spoken window. The base place
+// keeps its own label and score; the compound occurrence only contributes its
+// timing span. A link without a simple base candidate is left untouched, so a
+// real distinct place is never dropped on a guess.
+func dedupeMapCandidatesByCompoundPlace(candidates []MapCandidate) []MapCandidate {
+	if len(candidates) < 2 {
+		return candidates
+	}
+	simple := make(map[string]int, len(candidates))
+	for index, candidate := range candidates {
+		if _, compound := mapCompoundPlaceSuffix(candidate.Label); compound {
+			continue
+		}
+		key := mapCandidateArticleKey(candidate.Label)
+		if key == "" {
+			continue
+		}
+		if _, exists := simple[key]; !exists {
+			simple[key] = index
+		}
+	}
+	dropped := make(map[int]bool)
+	for index, candidate := range candidates {
+		suffix, compound := mapCompoundPlaceSuffix(candidate.Label)
+		if !compound {
+			continue
+		}
+		target, exists := simple[suffix]
+		if !exists || target == index {
+			continue
+		}
+		mergeMapCandidateOccurrence(&candidates[target], candidate)
+		dropped[index] = true
+	}
+	if len(dropped) == 0 {
+		return candidates
+	}
+	out := make([]MapCandidate, 0, len(candidates)-len(dropped))
+	for index, candidate := range candidates {
+		if !dropped[index] {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+// mapCompoundPlaceSuffix returns the trailing base place of an Italian
+// relational name. Only the link word is interpreted: the suffix itself is
+// normalized like any other label, and at least one word must precede the link
+// so a normal multi-word place is never mistaken for a compound.
+func mapCompoundPlaceSuffix(label string) (string, bool) {
+	fields := strings.Fields(strings.ToLower(strings.TrimSpace(label)))
+	if len(fields) < 3 {
+		return "", false
+	}
+	for index := len(fields) - 2; index > 0; index-- {
+		switch strings.Trim(fields[index], ".,;:()") {
+		case "di", "del", "dello", "della", "dei", "degli", "delle":
+			suffix := strings.Trim(strings.Join(fields[index+1:], " "), ".,;:()")
+			if suffix == "" {
+				continue
+			}
+			return mapCandidateArticleKey(suffix), true
+		}
+	}
+	return "", false
+}
+
 // mapCandidateArticleKey normalizes only a leading Italian article so a
 // "La Francia" label collides with "Francia". It does not touch the rest of
 // the name, preserving official article-bearing names such as La Spezia.

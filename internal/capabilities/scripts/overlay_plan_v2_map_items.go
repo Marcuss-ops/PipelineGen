@@ -29,43 +29,41 @@ func applyChainSegmentPresets(plan *capmodel.OverlayPlan) {
 	}
 	for i := range plan.Items {
 		item := &plan.Items[i]
+		segments, ok := item.Segments()
+		if !ok {
+			continue
+		}
 		firstPreset := ""
-		capmodel.UpdateChainSegmentMaps(item.Params, func(segments []map[string]any) bool {
-			changed := false
-			for _, segment := range segments {
-				preset := strings.TrimSpace(chainSegmentString(segment, "preset_id"))
-				if preset == "" {
-					templateID := strings.TrimSpace(chainSegmentString(segment, "template_id"))
-					if templateID == "" {
-						continue
-					}
-					resolved, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(templateID)
-					if !ok {
-						continue
-					}
-					preset = resolved
-					segment["preset_id"] = resolved
-					changed = true
+		changed := false
+		for n := range segments {
+			segment := &segments[n]
+			preset := strings.TrimSpace(segment.PresetID)
+			if preset == "" {
+				templateID := strings.TrimSpace(segment.TemplateID)
+				if templateID == "" {
+					continue
 				}
-				if firstPreset == "" {
-					firstPreset = preset
+				resolved, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(templateID)
+				if !ok {
+					continue
 				}
+				preset = resolved
+				segment.PresetID = resolved
+				changed = true
 			}
-			return changed
-		})
+			if firstPreset == "" {
+				firstPreset = preset
+			}
+		}
+		if changed {
+			item.SetChainSegments(segments)
+		}
 		// The chain item mirrors its first segment for consumers that do not
 		// read chain_segments (motion/preview paths).
 		if strings.TrimSpace(item.PresetID) == "" && firstPreset != "" {
 			item.PresetID = firstPreset
 		}
 	}
-}
-
-func chainSegmentString(segment map[string]any, key string) string {
-	if value, ok := segment[key].(string); ok {
-		return value
-	}
-	return ""
 }
 
 func materializeEditorialMapItems(plan *capmodel.OverlayPlan, plates capabilityoverlay.PlateResolver, canvas OverlayCanvasSpec, seed string) error {

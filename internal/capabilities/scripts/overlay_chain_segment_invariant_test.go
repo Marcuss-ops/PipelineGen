@@ -72,16 +72,16 @@ func TestSealBoundaryLeavesEveryItemAndChainSegmentUntouched(t *testing.T) {
 
 	// The two identities are still the planner's: a card segment stays a card
 	// and a standalone card is not flipped to entity_image.
-	segments, ok := capmodel.ChainSegmentMaps(sealed.Items[0].Params)
+	segments, ok := sealed.Items[0].Segments()
 	require.True(t, ok)
-	require.Equal(t, string(capmodel.KindEntityCard), segments[1]["kind"])
+	require.Equal(t, string(capmodel.KindEntityCard), segments[1].Kind)
 	require.Equal(t, string(capmodel.KindEntityCard), sealed.Items[1].Kind)
 	require.Empty(t, sealed.Items[1].AssetRefs, "no promotion ran after the seal")
 }
 
 func cloneChainSegments(t *testing.T, item capmodel.OverlayItem) []map[string]any {
 	t.Helper()
-	segments, ok := capmodel.ChainSegmentMaps(item.Params)
+	segments, ok := item.Segments()
 	require.True(t, ok, "chain item %q carries no chain_segments", item.ID)
 	raw, err := json.Marshal(segments)
 	require.NoError(t, err)

@@ -11071,6 +11071,756 @@
       "order": {
         "map.composition": 1651
       }
+    },
+    {
+      "id": "short_phrase_web_aperture_scan",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_split_flap",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_halftone_dissolve",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_ink_bloom",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_parallax_depth",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_slice_glitch",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_curtain_reveal",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_kinetic_split",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_staggered_manifesto",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_marquee_sweep",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_card_stack",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_circle_wipe",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_grid_rhythm",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_serif_emphasis",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_diagonal_cut",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_count_to_twelve",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_word_slot",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_end_card",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_tilt_snap",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_glow_pulse",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_typewriter_carriage",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_typewriter_staccato",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_typewriter_line_feed",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_highlight_marker_fill",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_highlight_word_band",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_highlight_emphasis_settle",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_geometric_yaw_open",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_geometric_pow_scale",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_geometric_pitch_lift",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
+    },
+    {
+      "id": "short_phrase_web_geometric_depth_push",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_1",
+        "phrase.short.words_2",
+        "phrase.short.words_3",
+        "phrase.short.words_4",
+        "phrase.short.words_5",
+        "phrase.long"
+      ],
+      "lanes": [
+        "short",
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "caption",
+        "short_phrase",
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "web_phrase_v1"
     }
   ]
 }

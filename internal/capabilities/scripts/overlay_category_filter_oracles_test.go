@@ -80,7 +80,7 @@ func overlayItemCategoryDisabled(item capmodel.OverlayItem, sceneIndex int, canv
 	if category, ok := overlayItemCategory(item); ok && !overlayCategoryEnabled(category, item.SceneID, sceneIndex, canvas) {
 		return true
 	}
-	segments, ok := capmodel.DecodeChainSegments(item.Params)
+	segments, ok := item.Segments()
 	if !ok {
 		return false
 	}

@@ -124,10 +124,11 @@ func prepareAssets(intents []capmodel.OverlayIntent) []RenderQueueAsset {
 				continue
 			}
 			seen[key] = true
-			asset := NewRenderQueueAsset(identity, ref.URL, "")
+			sourceURL := strings.TrimSpace(ref.URL)
+			asset := NewRenderQueueAsset(identity, semanticAssetLogicalPath(ref), "")
 			asset.LocalPath = ref.LocalPath
-			if strings.HasPrefix(ref.URL, "http") {
-				asset.SourceURL = ref.URL
+			if strings.HasPrefix(sourceURL, "http") {
+				asset.SourceURL = sourceURL
 			}
 			assets = append(assets, asset)
 		}
