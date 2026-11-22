@@ -266,9 +266,10 @@ func TestApplyEditingAssetPolicyOverlayBackgroundIsGatedOnRender(t *testing.T) {
 	}
 }
 
-// TestApplyEditingAssetPolicyPreservesExplicitOverlayBackgroundWithoutRenderPlate
-// pins explicit background behavior only when there is no selected render
-// plate to serve as the shared source of truth.
+// TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground pins the
+// explicit-selection contract: a caller color is the intentional overlay
+// canvas in every mode, including final jobs, while a selected render plate
+// still becomes the shared source when no explicit overlay was given.
 func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T) {
 	policy := mediaregistry.DefaultEditingAssetsPolicy()
 
@@ -285,7 +286,7 @@ func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T)
 		}
 	})
 
-	t.Run("final job replaces opaque color overlay with moving plate", func(t *testing.T) {
+	t.Run("final job preserves an explicit color canvas", func(t *testing.T) {
 		req := combinedTimelineRequest("final-color-background")
 		req.Render.Enabled = true
 		req.FinalJob = true
@@ -295,15 +296,15 @@ func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T)
 			t.Fatal(err)
 		}
 		bg := req.OverlayBackground
-		if bg == nil || bg.Kind != overlayBackgroundPlateKind || bg.AssetID == "" || !bg.Loop {
-			t.Fatalf("final overlay background = %+v, want a moving editorial plate", bg)
+		if bg == nil || bg.Kind != "color" || bg.AssetID != "" || bg.Loop {
+			t.Fatalf("final overlay background = %+v, want the caller's color canvas", bg)
 		}
-		if _, ok := mediaregistry.LookupEditorialBackground(bg.AssetID); !ok {
-			t.Fatalf("selected final overlay plate %q is not canonical", bg.AssetID)
+		if len(bg.Color) != 4 || bg.Color[0] != 1 || bg.Color[1] != 1 || bg.Color[2] != 1 || bg.Color[3] != 1 {
+			t.Fatalf("final overlay color = %v, want opaque white", bg.Color)
 		}
 	})
 
-	t.Run("final job color uses the explicit render plate", func(t *testing.T) {
+	t.Run("final job color wins over the render plate", func(t *testing.T) {
 		req := combinedTimelineRequest("final-color-render-plate")
 		req.Render.Enabled = true
 		req.FinalJob = true
@@ -313,8 +314,8 @@ func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T)
 			t.Fatal(err)
 		}
 		bg := req.OverlayBackground
-		if bg == nil || bg.Kind != "video" || bg.AssetID != "drive-background-01" || !bg.Loop {
-			t.Fatalf("final overlay background = %+v, want the render's drive-background-01 video", bg)
+		if bg == nil || bg.Kind != "color" || bg.AssetID != "" {
+			t.Fatalf("final overlay background = %+v, want the caller's color canvas", bg)
 		}
 	})
 
