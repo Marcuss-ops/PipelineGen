@@ -188,13 +188,13 @@ var aliases = map[string]string{
 	// Additive BrainRust entity types (TICKET-43). They fold into the
 	// existing closed families so identity stays deterministic for older
 	// consumers and no new canonical family is minted.
-	"ANIMAL":     Concept,
-	"FOOD":       Concept,
-	"VEHICLE":    Concept,
-	"DISEASE":    Concept,
-	"TECHNOLOGY": Concept,
-	"CELESTIAL":  Concept,
-	"COURT_CASE": Concept,
+	"ANIMAL":         Concept,
+	"FOOD":           Concept,
+	"VEHICLE":        Concept,
+	"DISEASE":        Concept,
+	"TECHNOLOGY":     Concept,
+	"CELESTIAL":      Concept,
+	"COURT_CASE":     Concept,
 	"KEYWORD":        Keyword,
 	"VISUAL_SUBJECT": VisualSubject,
 	"CHAPTER":        Chapter,
