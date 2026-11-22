@@ -234,9 +234,9 @@ func applySegmentClipBindings(segments []scriptpkg.ScriptSegment, scenes []Scene
 			scene.DurationUS = segment.DurationMS * 1000
 			clipAudio := capabilityaudio.AudioIntent{
 				Mode: capabilityaudio.AudioClip, ClipAssetID: clips[0].ID,
-				SourceDurationUS: segment.DurationMS * 1000,
+				SourceDurationUS:   segment.DurationMS * 1000,
 				TimelineDurationUS: segment.DurationMS * 1000,
-				UseOriginalAudio: true,
+				UseOriginalAudio:   true,
 			}
 			scene.Audio = clipAudio
 			scene.AudioIntents = []capabilityaudio.AudioIntent{clipAudio}
