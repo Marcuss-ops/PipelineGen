@@ -162,39 +162,17 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 	if req.FinalJob && clipOnlySingleClipID(req) != "" && overlayBackgroundSelectionIsBlank(req.OverlayBackground) {
 		return nil
 	}
-	// Final-job overlays are encoded as opaque video clips and placed in
-	// replace-mode windows. A caller's solid color canvas would therefore hide
-	// the assembled picture for the entire overlay window. Replace only that
-	// unsafe final-job case with the render background when the caller named
-	// one; otherwise fall back to a curated moving plate. When the render
-	// background is an asset, let the shared-source block below inherit it in
-	// one place instead of selecting an unrelated plate here (r110).
-	if req.FinalJob && req.OverlayBackground != nil && strings.EqualFold(strings.TrimSpace(req.OverlayBackground.Kind), "color") {
-		renderBackground := req.Render.Background
-		hasRenderPlate := renderBackground != nil &&
-			strings.EqualFold(strings.TrimSpace(renderBackground.Mode), videoBackgroundModeAsset)
-		if !hasRenderPlate {
-			plate, err := policy.SelectBackgroundForChannel(seed, req.ChannelID)
-			if err != nil {
-				return fmt.Errorf("apply editing asset policy: final overlay background: %w", err)
-			}
-			req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
-				Kind: overlayBackgroundPlateKind, AssetID: plate.ID,
-				Fit: overlayBackgroundPlateFit, Loop: true,
-			}
-			return nil
-		}
+	// A caller-specified color is an intentional overlay canvas. In final jobs
+	// it occupies the overlay's replace-mode window; preserve that choice rather
+	// than silently substituting a channel video plate. This lets callers use
+	// deliberate white title/phrase cards while leaving the underlying video
+	// background and stock selection independent.
+	if req.OverlayBackground != nil && strings.EqualFold(strings.TrimSpace(req.OverlayBackground.Kind), "color") {
+		return nil
 	}
-	// A final-job overlay is handed off as a full-frame replacement window.
-	// A solid color therefore hides the picture underneath for the complete
-	// window (r79 produced a white interval when a phrase was rendered on an
-	// opaque white canvas). Keep explicit color plates for standalone renders,
-	// but final jobs must use a moving editorial plate so a text-only overlay
-	// cannot turn into a blank white/black screen in the delivered video.
-	// The assembled video background is the single source of truth for every
-	// overlay scene. Override a conflicting overlay_background declaration so
-	// image and phrase renders cannot publish on a second plate (for example a
-	// black gradient) while the final video uses a channel background.
+	// When the final render uses a named asset background, make that shared
+	// source the overlay canvas too. This prevents image and phrase renders
+	// from publishing over an unrelated plate.
 	if background := req.Render.Background; background != nil &&
 		strings.EqualFold(strings.TrimSpace(background.Mode), videoBackgroundModeAsset) {
 		assetID := strings.TrimSpace(background.AssetID)
