@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"image"
 	"image/color"
+	_ "image/jpeg"
 	"image/png"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -154,5 +158,73 @@ func TestPanelGridCollageEvidenceExplainsRejection(t *testing.T) {
 	// horizontal one that drove the rejection.
 	if continuityV > 1 || seamsV < 0 {
 		t.Fatalf("invalid vertical evidence: seams=%d continuity=%.2f", seamsV, continuityV)
+	}
+}
+
+// TestHasPanelGridCollageImageAcceptsRealPhotographs pins the four images run
+// R30 still rejected at 0.82 continuity: two stock photographs whose
+// architecture produces full-length edges (a corridor of typewriters with a
+// credit bar, a banded RAI facade) and a wall sign.
+// Downscaled to 640px so the fixtures stay small; each one must still reach
+// the seam detector, otherwise the assertion would be vacuous.
+func TestHasPanelGridCollageImageAcceptsRealPhotographs(t *testing.T) {
+	cases := []string{
+		"r30-typewriters-corridor.jpg",
+		"r30-rai-building.jpg",
+		"r30-rai-logo.jpg",
+	}
+	for _, name := range cases {
+		name := name
+		t.Run(strings.TrimSuffix(name, ".jpg"), func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", name))
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			img, _, err := image.Decode(bytes.NewReader(data))
+			if err != nil {
+				t.Fatalf("decode fixture: %v", err)
+			}
+			seamsV, seamsH, _, _ := PanelGridCollageEvidence(img)
+			if seamsV+seamsH < 2 {
+				t.Fatalf("fixture no longer exercises the seam detector: v=%d h=%d", seamsV, seamsH)
+			}
+			if HasPanelGridCollageImage(img) {
+				t.Fatalf("single photograph rejected as collage: v=%d h=%d", seamsV, seamsH)
+			}
+		})
+	}
+}
+
+// TestHasPanelGridCollageImageDetectsThreeByThreeGrid pins the other side of
+// the rule: a real grid repeats the same divider spacing on both axes, so the
+// equal-division test must still reject it.
+func TestHasPanelGridCollageImageDetectsThreeByThreeGrid(t *testing.T) {
+	const width, height, panel, gutter = 900, 900, 292, 8
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	white := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	shades := []color.RGBA{
+		{R: 40, G: 60, B: 90, A: 255}, {R: 120, G: 90, B: 60, A: 255}, {R: 30, G: 30, B: 30, A: 255},
+		{R: 200, G: 200, B: 60, A: 255}, {R: 60, G: 140, B: 60, A: 255}, {R: 140, G: 60, B: 140, A: 255},
+		{R: 20, G: 20, B: 20, A: 255}, {R: 90, G: 90, B: 90, A: 255}, {R: 220, G: 120, B: 120, A: 255},
+	}
+	for row := 0; row < 3; row++ {
+		for column := 0; column < 3; column++ {
+			shade := shades[row*3+column]
+			for y := row*(panel+gutter) + gutter; y < row*(panel+gutter)+gutter+panel; y++ {
+				for x := column*(panel+gutter) + gutter; x < column*(panel+gutter)+gutter+panel; x++ {
+					img.SetRGBA(x, y, shade)
+				}
+			}
+		}
+	}
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a == 0 {
+				img.SetRGBA(x, y, white)
+			}
+		}
+	}
+	if !HasPanelGridCollageImage(img) {
+		t.Fatal("a 3x3 contact sheet with even gutters must be a collage")
 	}
 }

@@ -3,6 +3,7 @@ package digest
 import (
 	"image"
 	"image/color"
+	"math"
 )
 
 // HasPanelGridCollageBytes rejects source images with multiple
@@ -21,15 +22,68 @@ func HasPanelGridCollageBytes(data []byte) bool {
 // already decoded the verified bytes, so one decode serves both the collage
 // check and the perceptual hash.
 func HasPanelGridCollageImage(img image.Image) bool {
+	bounds := img.Bounds()
 	vertical := alignedPanelSeams(img, true)
-	if len(vertical) >= 2 && !singlePhotoWithBlurredExtension(img, vertical, true) {
-		return true
-	}
 	if len(vertical) == 1 && centeredDiptychSeam(img, vertical[0]) {
 		return true
 	}
+	if panelGridDividers(vertical, bounds.Dx()) &&
+		!(len(vertical) == 2 && singlePhotoWithBlurredExtension(img, vertical, true)) {
+		return true
+	}
 	horizontal := alignedPanelSeams(img, false)
-	return len(horizontal) >= 2 && !singlePhotoWithBlurredExtension(img, horizontal, false)
+	return panelGridDividers(horizontal, bounds.Dy()) &&
+		!(len(horizontal) == 2 && singlePhotoWithBlurredExtension(img, horizontal, false))
+}
+
+// panelGridDividers reports whether the long edges fall where equal panels
+// would put them: n+1 panels of the same size share n dividers at k*axis/n+1.
+// A single photograph can carry several full-length high-contrast lines (a
+// facade with banded floors, a page of typographic rules, a stock-photo credit
+// bar), and every one of them looks like a gutter locally; what a montage has
+// and scenery does not is an even division of the frame. Measured on run R30:
+// the four photographs still rejected at 0.82 continuity produce dividers at
+// 0.367/0.600, 0.16/0.19/0.61/0.64/0.69/0.72, 0.23/0.59/0.70/0.94 and
+// 0.25/0.74 of the axis, none of which is an even division.
+func panelGridDividers(seams []int, axisLength int) bool {
+	if len(seams) < 2 || axisLength <= 0 {
+		return false
+	}
+	// One gutter yields an edge on each side. Merge the two edges of a single
+	// divider before checking the spacing.
+	mergeGap := axisLength * 4 / 100
+	centres := make([]float64, 0, len(seams))
+	sum, count, previous := float64(seams[0]), 1, seams[0]
+	for _, seam := range seams[1:] {
+		if seam-previous <= mergeGap {
+			sum += float64(seam)
+			count++
+			previous = seam
+			continue
+		}
+		centres = append(centres, sum/float64(count))
+		sum, count, previous = float64(seam), 1, seam
+	}
+	centres = append(centres, sum/float64(count))
+	if len(centres) < 2 {
+		return false
+	}
+
+	panels := len(centres) + 1
+	step := float64(axisLength) / float64(panels)
+	// A gutter is not a mathematical line: the detected edge sits inside it and
+	// panels are not guaranteed pixel-identical, so allow 15% of one panel.
+	tolerance := step * 0.15
+	if tolerance < 8 {
+		tolerance = 8
+	}
+	for index, centre := range centres {
+		expected := float64(index+1) * step
+		if math.Abs(centre-expected) > tolerance {
+			return false
+		}
+	}
+	return true
 }
 
 // singlePhotoWithBlurredExtension recognizes the common 16:9 news-thumbnail
