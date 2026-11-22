@@ -23,6 +23,24 @@ type compiledOverlayItemV2 struct {
 	PlannerEntityRef *capmodel.OverlayEntityRef `json:"entity_ref,omitempty"`
 }
 
+// UnmarshalJSON decodes the renderer DTO and the planner-only identity in two
+// passes. OverlayItem's own UnmarshalJSON is promoted onto this struct and
+// consumes the whole object for the typed chain projection; without this
+// override the embedded method would run and entity_ref would never be read.
+func (item *compiledOverlayItemV2) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &item.OverlayItem); err != nil {
+		return err
+	}
+	var identity struct {
+		EntityRef *capmodel.OverlayEntityRef `json:"entity_ref,omitempty"`
+	}
+	if err := json.Unmarshal(data, &identity); err != nil {
+		return err
+	}
+	item.PlannerEntityRef = identity.EntityRef
+	return nil
+}
+
 // compiledOverlayPlanV2 is the final-plan response. Items decode into the
 // renderer DTO plus that identity; the planner counts stay explicit because
 // OverlayPlan keeps them application-only (json:"-").

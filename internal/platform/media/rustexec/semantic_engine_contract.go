@@ -190,6 +190,7 @@ type semanticEngineProductionCandidate struct {
 	EndByte          int                       `json:"end_byte"`
 	SuggestedVisual  string                    `json:"suggested_visual"`
 	ChartItems       []semanticEngineChartItem `json:"chart_items"`
+	ChartMeta        *semanticEngineChartMeta  `json:"chart_meta,omitempty"`
 	TemporalSurfaces []string                  `json:"temporal_surfaces"`
 	AssetKey         string                    `json:"asset_key"`
 	Queries          []semanticEngineQuery     `json:"queries"`
@@ -689,10 +690,22 @@ type semanticEngineProposal struct {
 	Status                 string                    `json:"status"`
 	Score                  float64                   `json:"score"`
 	ChartItems             []semanticEngineChartItem `json:"chart_items"`
+	ChartMeta              *semanticEngineChartMeta  `json:"chart_meta,omitempty"`
 	TemporalSurfaces       []string                  `json:"temporal_surfaces"`
 	Evidence               string                    `json:"evidence"`
 	StartByte              int                       `json:"start_byte"`
 	EndByte                int                       `json:"end_byte"`
+}
+
+// semanticEngineChartMeta mirrors semantic-core::manifest::ChartMetadata: the
+// grounded metric/unit/dimension/period that downstream renderers use without
+// re-parsing the evidence text.
+type semanticEngineChartMeta struct {
+	Metric     string `json:"metric,omitempty"`
+	Unit       string `json:"unit,omitempty"`
+	Dimension  string `json:"dimension,omitempty"`
+	Period     string `json:"period,omitempty"`
+	SeriesType string `json:"series_type,omitempty"`
 }
 
 type semanticEngineChartItem struct {
