@@ -77,10 +77,13 @@ type YouTubeClipHandler struct {
 	// not deployed the port stays nil and the route fails closed with 503
 	// instead of degrading onto a divergent read plane.
 	existence ytports.YouTubeClipExistencePort
-	// transcript backs GET /api/clips/transcript: the canonical
+	// transcript backs GET /api/clips/transcript?url=...: the canonical
 	// SubtitleFetcherPort (VTT-only fetch — --skip-download, no Whisper
 	// when captions exist). Optional: nil answers 503.
 	transcript ytports.SubtitleFetcherPort
+	// assetTranscript backs GET /api/clips/transcript?asset_id=...: READY
+	// text tracks first, streaming ASR fallback. Optional: nil answers 503.
+	assetTranscript AssetTranscriptSource
 } // NewYouTubeClipHandler builds the YouTubeClipHandler.
 // service          - YouTube service used by this handler.
 // log              - zap logger for diagnostics.

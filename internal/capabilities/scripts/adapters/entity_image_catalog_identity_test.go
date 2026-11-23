@@ -80,7 +80,7 @@ func TestEntityImageCatalogAcceptsCachedGenericFilenameWithVisualVerdict(t *test
 	}); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10)
+	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestDurableEntityImagePoolForSegmentAttachesVerifiedRows(t *testing.T) {
 		Entity:   "Angela Taccia",
 	}}
 	segment.Insights.Entities = []scriptpkg.ExtractedEntity{{Value: "Angela Taccia", Type: "PERSON"}}
-	pooled := durableEntityImagePoolForSegment(ctx, repo, segment)
+	pooled := durableEntityImagePoolForSegment(ctx, repo, segment, nil)
 	if len(pooled) != 1 {
 		t.Fatalf("durable pool attached %d candidates, want 1 verified row", len(pooled))
 	}
@@ -137,10 +137,10 @@ func TestDurableEntityImagePoolForSegmentAttachesVerifiedRows(t *testing.T) {
 	}
 	// A segment without person queries attaches nothing; nil repo is safe.
 	other := scriptpkg.VidRushSegmentResult{SegmentID: "seg-2"}
-	if got := durableEntityImagePoolForSegment(ctx, repo, other); len(got) != 0 {
+	if got := durableEntityImagePoolForSegment(ctx, repo, other, nil); len(got) != 0 {
 		t.Fatalf("query-less segment attached %d candidates, want none", len(got))
 	}
-	if got := durableEntityImagePoolForSegment(ctx, nil, segment); len(got) != 0 {
+	if got := durableEntityImagePoolForSegment(ctx, nil, segment, nil); len(got) != 0 {
 		t.Fatalf("nil repo attached %d candidates, want none", len(got))
 	}
 }
@@ -166,7 +166,7 @@ func TestEntityImageCatalogReopensLegacyHeadshotOnlyVerdictForCurrentScorer(t *t
 		t.Fatal(err)
 	}
 
-	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10)
+	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

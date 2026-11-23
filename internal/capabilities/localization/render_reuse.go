@@ -30,7 +30,9 @@ package localization
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
@@ -70,6 +72,14 @@ type ReusedRenderArtifact struct {
 	VideoCodec string
 	AudioCodec string
 	Backend    string
+	// StorageKey / ArtifactURL are the DURABLE locator of the same certified
+	// bytes in RenderingGen's object store. They are what makes reuse survive
+	// the cleanup of a local workspace or a move to another host: when
+	// LocalPath is gone, the renderer can materialize the object and verify it
+	// against SHA256 + SizeBytes instead of paying the GPU again. Empty for
+	// records written before the columns existed; those remain local-only hits.
+	StorageKey  string
+	ArtifactURL string
 	// DriveFileID / DriveLink / DriveFolderID are the Drive identity these
 	// bytes were already published under. They are optional: a record written
 	// before the first publication has none, and a deployment that keeps one
@@ -79,6 +89,16 @@ type ReusedRenderArtifact struct {
 	DriveFileID   string
 	DriveLink     string
 	DriveFolderID string
+}
+
+// RenderReuseHydrator is the OPTIONAL half of the render boundary that can
+// fetch a certified artifact from its durable locator into a local file. The
+// reuse seam uses it when a cache row still names the bytes but the local copy
+// is gone (workspace cleanup, another host). The hydrator MUST verify size and
+// certified digest while streaming; the reuse seam re-verifies the file before
+// accepting it, so a bad fetch is a miss, never a corrupted hit.
+type RenderReuseHydrator interface {
+	HydrateReusedRender(ctx context.Context, artifact *ReusedRenderArtifact, destPath string) error
 }
 
 // RenderDriveIdentity is the Drive identity a certified localized render is
@@ -122,6 +142,17 @@ func (r *LocalizedClipRenderer) WithRenderReuseCache(cache RenderReuseCache) *Lo
 	return r
 }
 
+// WithRenderReuseDir attaches the scratch directory used to materialize a
+// certified object-store artifact when a cache row's local file no longer
+// exists. Without it the durable locator is not used and such a row is a miss.
+func (r *LocalizedClipRenderer) WithRenderReuseDir(dir string) *LocalizedClipRenderer {
+	if r == nil {
+		return r
+	}
+	r.reuseDir = strings.TrimSpace(dir)
+	return r
+}
+
 // reusedArtifact resolves a cache hit into the RENDERED artifact the cached
 // bytes certify, or ok=false when anything at all prevents reuse. ass is the
 // subtitle artifact this call already wired and verified; it is carried onto the
@@ -129,6 +160,7 @@ func (r *LocalizedClipRenderer) WithRenderReuseCache(cache RenderReuseCache) *Lo
 // language's own ASS.
 func (r *LocalizedClipRenderer) reusedArtifact(ctx context.Context, plan LocalizedClipPlan, ass *SubtitleAsset) (LocalizedClipArtifact, bool) {
 	if r == nil || r.reuseCache == nil {
+		recordReuseMiss("cache_disabled")
 		return LocalizedClipArtifact{}, false
 	}
 	// Key on the ASS digest too: the plan fingerprint pins the translated track
@@ -137,14 +169,21 @@ func (r *LocalizedClipRenderer) reusedArtifact(ctx context.Context, plan Localiz
 	// by fingerprint alone would return an artifact rendered with other
 	// subtitles.
 	cached, hit, err := r.reuseCache.Lookup(ctx, RenderReuseKey(plan, ass))
-	if err != nil || !hit || cached == nil {
+	if err != nil {
 		// Fail-soft: an unavailable or erroneous cache is a miss, never a
 		// failed render. The render below is the authoritative path.
+		recordReuseMiss("lookup_error")
 		return LocalizedClipArtifact{}, false
 	}
-	if !reusableBytes(cached) {
+	if !hit || cached == nil {
+		recordReuseMiss("no_entry")
 		return LocalizedClipArtifact{}, false
 	}
+	if reason := r.ensureReusableBytes(ctx, cached); reason != "" {
+		recordReuseMiss(reason)
+		return LocalizedClipArtifact{}, false
+	}
+	recordReuseHit()
 	artifact := LocalizedClipArtifact{
 		Version:         LocalizedClipArtifactVersion,
 		JobID:           plan.JobID,
@@ -165,6 +204,8 @@ func (r *LocalizedClipRenderer) reusedArtifact(ctx context.Context, plan Localiz
 		// that reported no metrics at all.
 		Reused:        true,
 		RenderSource:  RenderSourceDeterministicCache,
+		StorageKey:    cached.StorageKey,
+		ArtifactURL:   cached.ArtifactURL,
 		DriveFileID:   cached.DriveFileID,
 		DriveLink:     cached.DriveLink,
 		DriveFolderID: cached.DriveFolderID,
@@ -174,6 +215,64 @@ func (r *LocalizedClipRenderer) reusedArtifact(ctx context.Context, plan Localiz
 		artifact.SubtitleSHA256 = ass.SHA256
 	}
 	return artifact, true
+}
+
+// ensureReusableBytes makes a cache row usable, returning "" on success or the
+// metric reason it could not. When the recorded local file still hashes to the
+// certified digest the row is used as-is (the common case). Otherwise, if the
+// row carries a durable ArtifactURL and the render boundary can hydrate it, the
+// object is materialized under the reuse directory, verified again from the
+// bytes on disk, and only then accepted. Anything short of that is a MISS.
+func (r *LocalizedClipRenderer) ensureReusableBytes(ctx context.Context, cached *ReusedRenderArtifact) string {
+	verifyStart := time.Now()
+	verified := reusableBytes(cached)
+	LocalizedRenderReuseVerifySeconds.Observe(time.Since(verifyStart).Seconds())
+	if verified {
+		return ""
+	}
+	if cached == nil || strings.TrimSpace(cached.ArtifactURL) == "" || strings.TrimSpace(r.reuseDir) == "" {
+		return "unverifiable_bytes"
+	}
+	hydrator, ok := r.executor.(RenderReuseHydrator)
+	if !ok {
+		return "unverifiable_bytes"
+	}
+	if err := os.MkdirAll(r.reuseDir, 0o755); err != nil {
+		return "hydrate_failed"
+	}
+	// Content-addressed filename: the same fingerprint reuses the same local
+	// file on the next run, and concurrent hydrations of identical bytes race
+	// only on an atomic rename.
+	destPath := filepath.Join(r.reuseDir, digest.SHA256String(cached.Fingerprint)+".mp4")
+	tmp, err := os.CreateTemp(r.reuseDir, "reuse-*.mp4.part")
+	if err != nil {
+		return "hydrate_failed"
+	}
+	tmpPath := tmp.Name()
+	_ = tmp.Close()
+	_ = os.Remove(tmpPath)
+	hydrateStart := time.Now()
+	if err := hydrator.HydrateReusedRender(ctx, cached, tmpPath); err != nil {
+		_ = os.Remove(tmpPath)
+		LocalizedRenderReuseVerifySeconds.Observe(time.Since(hydrateStart).Seconds())
+		return "hydrate_failed"
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "hydrate_failed"
+	}
+	cached.LocalPath = destPath
+	verifyStart = time.Now()
+	verified = reusableBytes(cached)
+	LocalizedRenderReuseVerifySeconds.Observe(time.Since(verifyStart).Seconds())
+	if !verified {
+		return "hydrate_failed"
+	}
+	// Remember the local materialization so the next hit on this host reads it
+	// instead of downloading the same bytes again. Best-effort: the artifact is
+	// already certified, so a failed write must not turn a hit into a miss.
+	_ = r.reuseCache.Store(ctx, *cached)
+	return ""
 }
 
 // reusableBytes verifies that the cached record still describes bytes on disk:
@@ -221,5 +320,7 @@ func (r *LocalizedClipRenderer) storeRendered(ctx context.Context, plan Localize
 		VideoCodec:  facts.VideoCodec,
 		AudioCodec:  facts.AudioCodec,
 		Backend:     facts.Backend,
+		StorageKey:  facts.StorageKey,
+		ArtifactURL: facts.ArtifactURL,
 	})
 }

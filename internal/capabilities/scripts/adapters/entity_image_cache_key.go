@@ -62,18 +62,18 @@ func entityImageDiscoveryCacheKeyFor(identity entityImageCacheIdentity, queryCla
 }
 
 // contextualImageDiscoveryCacheKey is the query-keyed cache identity for a
-// scene query that has no canonical entity. It deliberately follows the
-// research-path contract: topic, query and language determine reuse, while
-// the regenerated scene text and its TextHash do not.
+// scene query that has no canonical entity. Reuse is determined by the query,
+// its class and the language — NOT by the plan topic. Including the topic
+// fragmented the cache per video: two runs looking for the same place or
+// organization ("RAI", "Via Teulada") missed each other because their titles
+// differed, so the provider was queried again for identical bytes.
 func contextualImageDiscoveryCacheKey(plan *scriptpkg.ResolvedGenerationPlan, query, queryClass string) string {
-	topic, language := "", ""
+	language := ""
 	if plan != nil {
-		topic = plan.Topic
 		language = plan.Language
 	}
 	return segmentCacheKey(
-		"internet-images-query-v1",
-		strings.TrimSpace(topic),
+		"internet-images-query-v2",
 		strings.TrimSpace(language),
 		strings.ToLower(strings.TrimSpace(queryClass)),
 		normalizeEntityMatch(query),

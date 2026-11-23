@@ -73,7 +73,9 @@ func EnsureRenderCacheTable(ctx context.Context, db *sql.DB) error {
 // while the media row it references still carries the same bytes.
 const renderCacheGetQuery = `
 		SELECT c.fingerprint, c.asset_id, c.storage_key, c.artifact_url, c.content_type,
-		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend
+		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend,
+		       COALESCE(a.drive_file_id, ''),
+		       COALESCE(NULLIF(a.metadata_json, '')::jsonb->>'delivery_status', '')
 		FROM clip_render_cache c
 		JOIN media_assets a
 		  ON a.id = c.asset_id
@@ -95,7 +97,8 @@ func (c *PostgresRenderCache) Get(ctx context.Context, fingerprint string) (*ker
 	var r kernelmedia.RenderCacheRecord
 	var backend string
 	if err := row.Scan(&r.Fingerprint, &r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
-		&r.SHA256, &r.SizeBytes, &r.DurationSec, &r.Width, &r.Height, &r.FPSNum, &r.FPSDen, &backend); err != nil {
+		&r.SHA256, &r.SizeBytes, &r.DurationSec, &r.Width, &r.Height, &r.FPSNum, &r.FPSDen, &backend,
+		&r.DriveFileID, &r.DeliveryStatus); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, kernelmedia.ErrCacheMiss
 		}
@@ -103,6 +106,70 @@ func (c *PostgresRenderCache) Get(ctx context.Context, fingerprint string) (*ker
 	}
 	r.Backend = kernelmedia.RenderBackend(backend)
 	return &r, nil
+}
+
+// GetMany resolves up to N fingerprints in ONE query. It is the batch cache
+// fast path: POST /render/batch previously issued one round-trip per unique
+// item (CR-05). Missing/stale fingerprints are simply absent from the map.
+func (c *PostgresRenderCache) GetMany(ctx context.Context, fingerprints []string) (map[string]*kernelmedia.RenderCacheRecord, error) {
+	if c == nil || c.db == nil {
+		return nil, fmt.Errorf("clip.render cache: not wired (media DB nil)")
+	}
+	seen := make(map[string]struct{}, len(fingerprints))
+	normalized := make([]string, 0, len(fingerprints))
+	for _, fp := range fingerprints {
+		fp = strings.ToLower(strings.TrimSpace(fp))
+		if fp == "" {
+			continue
+		}
+		if _, ok := seen[fp]; ok {
+			continue
+		}
+		seen[fp] = struct{}{}
+		normalized = append(normalized, fp)
+	}
+	out := make(map[string]*kernelmedia.RenderCacheRecord, len(normalized))
+	if len(normalized) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(normalized))
+	args := make([]any, len(normalized))
+	for i, fp := range normalized {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = fp
+	}
+	query := fmt.Sprintf(`
+		SELECT c.fingerprint, c.asset_id, c.storage_key, c.artifact_url, c.content_type,
+		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend,
+		       COALESCE(a.drive_file_id, ''),
+		       COALESCE(NULLIF(a.metadata_json, '')::jsonb->>'delivery_status', '')
+		FROM clip_render_cache c
+		JOIN media_assets a
+		  ON a.id = c.asset_id
+		 AND a.content_sha256 = c.sha256
+		WHERE c.fingerprint IN (%s)
+		  AND a.lifecycle_state = 'ACTIVE'
+		  AND a.deleted_at = ''`, strings.Join(placeholders, ","))
+	rows, err := c.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("clip.render cache: get many: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r kernelmedia.RenderCacheRecord
+		var backend string
+		if err := rows.Scan(&r.Fingerprint, &r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
+			&r.SHA256, &r.SizeBytes, &r.DurationSec, &r.Width, &r.Height, &r.FPSNum, &r.FPSDen, &backend,
+			&r.DriveFileID, &r.DeliveryStatus); err != nil {
+			return nil, fmt.Errorf("clip.render cache: get many scan: %w", err)
+		}
+		r.Backend = kernelmedia.RenderBackend(backend)
+		out[r.Fingerprint] = &r
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("clip.render cache: get many rows: %w", err)
+	}
+	return out, nil
 }
 
 // Put upserts a certified locator under its fingerprint.

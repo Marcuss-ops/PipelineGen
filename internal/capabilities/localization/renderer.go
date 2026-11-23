@@ -118,6 +118,10 @@ type LocalizedClipRenderer struct {
 	// reuseCache is the optional content-addressed reuse seam (render_reuse.go).
 	// Nil means "always render", which is the pre-existing behaviour.
 	reuseCache RenderReuseCache
+	// reuseDir is where a durable cache hit materializes the object-store bytes
+	// when the recorded local file is gone. Empty disables hydration: the row is
+	// still a hit only if its local file verifies.
+	reuseDir string
 }
 
 // NewLocalizedClipRenderer builds the renderer. Fail-closed: all three

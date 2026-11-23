@@ -3,6 +3,7 @@ package youtube
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -58,7 +59,12 @@ func (f *fakeWhisperCache) Metrics(context.Context, string) (capcache.Metrics, e
 
 var _ capcache.Cache = (*fakeWhisperCache)(nil)
 
-type countingWhisper struct{ calls int }
+type countingWhisper struct {
+	calls int
+	// empty makes the fake return a contentless result (a silent/music-only
+	// clip) instead of the default usable transcript.
+	empty bool
+}
 
 func (w *countingWhisper) TranscribeAudio(ctx context.Context, path string) (string, error) {
 	result, err := w.TranscribeAudioWithDetection(ctx, path)
@@ -66,7 +72,78 @@ func (w *countingWhisper) TranscribeAudio(ctx context.Context, path string) (str
 }
 func (w *countingWhisper) TranscribeAudioWithDetection(context.Context, string) (detail.TranscriptResult, error) {
 	w.calls++
+	if w.empty {
+		return detail.TranscriptResult{DetectedLanguage: "und"}, nil
+	}
 	return detail.TranscriptResult{Text: "cached transcript", DetectedLanguage: "en"}, nil
+}
+
+// TestCachedWhisperDoesNotCacheEmptyTranscript pins the poisoned-cache fix: an
+// ASR run that legitimately found no speech must stay a success, but the empty
+// answer must not become a READY artifact that answers every later attempt.
+func TestCachedWhisperDoesNotCacheEmptyTranscript(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "silent.mp4")
+	if err := os.WriteFile(source, []byte("silent source bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inner := &countingWhisper{empty: true}
+	cache := &fakeWhisperCache{entries: map[string][]byte{}}
+	decorated, err := NewCachedWhisperTranscriber(inner, cache, "whisper/bridge-v1", zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := decorated.TranscribeAudioWithDetection(context.Background(), source); err != nil {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+	}
+	if inner.calls != 2 {
+		t.Fatalf("an empty transcript must not be served from cache: calls=%d, want 2", inner.calls)
+	}
+	if cache.stores != 0 {
+		t.Fatalf("an empty transcript must not be stored: stores=%d, want 0", cache.stores)
+	}
+}
+
+// TestCachedWhisperHealsPoisonedEmptyEntry covers the seven entries already
+// written by the old behavior: reading one is a cache miss (invalidated),
+// the ASR runs again, and the real result replaces it.
+func TestCachedWhisperHealsPoisonedEmptyEntry(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "clip.mp4")
+	if err := os.WriteFile(source, []byte("poisoned source bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	key, ok := whisperCacheKey(source, "whisper/bridge-v1")
+	if !ok {
+		t.Fatal("test source is not cacheable")
+	}
+	digest, err := key.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	poisoned, err := json.Marshal(detail.TranscriptResult{DetectedLanguage: "und"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := &fakeWhisperCache{entries: map[string][]byte{digest: poisoned}}
+	inner := &countingWhisper{}
+	decorated, err := NewCachedWhisperTranscriber(inner, cache, "whisper/bridge-v1", zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := decorated.TranscribeAudioWithDetection(context.Background(), source)
+	if err != nil {
+		t.Fatalf("TranscribeAudioWithDetection: %v", err)
+	}
+	if result.Text != "cached transcript" {
+		t.Fatalf("poisoned entry was served: result=%+v", result)
+	}
+	if inner.calls != 1 || cache.stores != 1 {
+		t.Fatalf("healing activity calls=%d stores=%d, want 1/1", inner.calls, cache.stores)
+	}
+	if _, stillThere := cache.entries[digest]; !stillThere {
+		t.Fatal("the healed result must replace the poisoned entry")
+	}
 }
 
 func TestCachedWhisperUsesSourceBytesNotLocalPath(t *testing.T) {

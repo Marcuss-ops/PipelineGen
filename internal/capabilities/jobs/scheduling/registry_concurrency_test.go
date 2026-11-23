@@ -15,12 +15,13 @@ func TestScriptGenerateRunsTwoLeasesPerWorker(t *testing.T) {
 	}
 }
 
-// TestClipRenderStaysPinnedToOneLease: the render owns a GPU lane and its
-// VRAM, so its concurrency is a correctness constraint, not a tuning knob.
-func TestClipRenderStaysPinnedToOneLease(t *testing.T) {
+// TestClipRenderSubmitRunsTwoLeases: the submit half is local prepararation
+// and does not own the GPU lane; the settle half is on its own dedicated pool.
+// Two submit leases are the conservative measured starting point (CR-13).
+func TestClipRenderSubmitRunsTwoLeases(t *testing.T) {
 	registry := Compose()
-	if got := registry.Concurrency(TypeClipRender); got != 1 {
-		t.Fatalf("clip.render concurrency = %d, want 1 (GPU lane)", got)
+	if got := registry.Concurrency(TypeClipRender); got != 2 {
+		t.Fatalf("clip.render submit concurrency = %d, want 2", got)
 	}
 }
 

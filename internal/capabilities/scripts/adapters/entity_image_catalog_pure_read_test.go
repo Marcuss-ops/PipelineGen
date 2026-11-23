@@ -27,7 +27,7 @@ func TestEntityImageCatalogLookupDoesNotMutateCandidates(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10); err != nil {
+	if _, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10, nil); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -77,11 +79,12 @@ func TestBatchSequenceProjectsPositions(t *testing.T) {
 		}},
 		Output: SequenceOutput{Dir: "/tmp/out"},
 	}
-	jobIDs := []string{"job-a", "job-b", "job-c"}
+	positions := []int{0, 1, 2}
 	assetIDs := []string{"asset-a", "", ""}
 	cacheHit := []bool{true, false, false}
+	recovery := &SequenceBatchRecovery{BatchID: strings.Repeat("a", 64)}
 
-	request, err := batch.request(jobIDs, assetIDs, cacheHit, 3)
+	request, err := batch.request(assetIDs, cacheHit, positions, recovery, 3)
 	if err != nil {
 		t.Fatalf("projection: %v", err)
 	}
@@ -94,11 +97,14 @@ func TestBatchSequenceProjectsPositions(t *testing.T) {
 	if request.Clips[0].AssetID != "asset-a" || request.Clips[0].JobID != "" {
 		t.Fatalf("cache hit projected as %+v, want the asset id", request.Clips[0])
 	}
-	if request.Clips[1].JobID != "job-b" || request.Clips[1].TransitionIn != nil {
-		t.Fatalf("position 1 projected as %+v, want a hard cut on job-b", request.Clips[1])
+	if request.Clips[1].BatchPosition == nil || *request.Clips[1].BatchPosition != 1 || request.Clips[1].TransitionIn != nil {
+		t.Fatalf("position 1 projected as %+v, want batch position 1 and a hard cut", request.Clips[1])
 	}
-	if request.Clips[2].JobID != "job-c" || request.Clips[2].TransitionIn == nil {
-		t.Fatalf("position 2 projected as %+v, want the transition on job-c", request.Clips[2])
+	if request.Clips[2].BatchPosition == nil || *request.Clips[2].BatchPosition != 2 || request.Clips[2].TransitionIn == nil {
+		t.Fatalf("position 2 projected as %+v, want batch position 2 and the transition", request.Clips[2])
+	}
+	if request.Recovery != recovery {
+		t.Fatalf("recovery manifest was not attached to the sequence request")
 	}
 	if request.Clips[2].TransitionIn.Leak == nil || request.Clips[2].TransitionIn.Leak.Direction != "left" {
 		t.Fatalf("transition leak = %+v, want the per-join override", request.Clips[2].TransitionIn.Leak)
@@ -114,7 +120,7 @@ func TestBatchSequenceProjectsPositions(t *testing.T) {
 		{Transitions: []BatchSequenceTransition{{Position: 1, Preset: "warp"}}},
 	}
 	for i, candidate := range bad {
-		if _, err := candidate.request(jobIDs, assetIDs, cacheHit, 3); err == nil {
+		if _, err := candidate.request(assetIDs, cacheHit, positions, recovery, 3); err == nil {
 			t.Fatalf("bad projection %d was accepted", i)
 		}
 	}
@@ -185,9 +191,11 @@ func (s *stubSequenceJobs) IsTerminal(status job.Status) bool {
 
 type stubSequenceAssets struct {
 	paths map[string]string
+	calls int
 }
 
 func (s *stubSequenceAssets) MaterializeAsset(_ context.Context, assetID string) (*MaterializedAsset, error) {
+	s.calls++
 	path, ok := s.paths[assetID]
 	if !ok {
 		return nil, osErrAssetMissing{assetID}
@@ -264,6 +272,9 @@ func TestSequenceWorkerAssemblesPublishedClips(t *testing.T) {
 	if duration, _ := result["duration_ms"].(int64); duration != 7_750 {
 		t.Fatalf("duration_ms = %v, want 7750 (8s minus the 250ms join)", result["duration_ms"])
 	}
+	if result["local_only"] != true || result["delivery_status"] != "not_required" {
+		t.Fatalf("assembly delivery contract = local_only:%v delivery_status:%v", result["local_only"], result["delivery_status"])
+	}
 	probe, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration",
 		"-of", "default=nw=1:nk=1", paths[0]).Output()
 	if err != nil {
@@ -281,6 +292,45 @@ func TestSequenceWorkerAssemblesPublishedClips(t *testing.T) {
 // TestSequenceWorkerDefersWhileASiblingRenders pins the wait: a clip that is
 // still rendering defers the attempt (no retry budget spent, no failure) and
 // never touches the assembler.
+func TestSequenceWorkerDoesNotMaterializeBeforeAllSiblingsSettle(t *testing.T) {
+	assets := &stubSequenceAssets{paths: map[string]string{"asset-a": "/tmp/a.mp4"}}
+	worker := &Worker{log: zap.NewNop()}
+	worker.WithSequence(SequenceAssembly{
+		Jobs: &stubSequenceJobs{jobs: map[string]*job.Job{
+			"job-a": {ID: "job-a", Status: job.StatusSucceeded, Result: json.RawMessage(`{"asset":{"asset_id":"asset-a"}}`)},
+			"job-b": {ID: "job-b", Status: job.StatusRunning},
+		}},
+		Assets:  assets,
+		Encoder: media.EncoderPolicy{Codec: "libx264"},
+	})
+	payload, _ := json.Marshal(&SequenceRequest{RenderPhase: RenderPhaseSequence, Clips: []SequenceClip{{JobID: "job-a"}, {JobID: "job-b"}}})
+	if _, err := worker.Handle(context.Background(), &job.Job{ID: "job-seq", Payload: payload}, nil); err == nil {
+		t.Fatal("a running sibling must defer")
+	}
+	if assets.calls != 0 {
+		t.Fatalf("materialize calls = %d, want 0 before every sibling is terminal", assets.calls)
+	}
+}
+
+func TestSequenceWorkerFailsAfterMaxWait(t *testing.T) {
+	worker := &Worker{log: zap.NewNop()}
+	worker.WithSequence(SequenceAssembly{
+		Jobs: &stubSequenceJobs{jobs: map[string]*job.Job{
+			"job-b": {ID: "job-b", Status: job.StatusRunning},
+		}},
+		Assets:  &stubSequenceAssets{},
+		Encoder: media.EncoderPolicy{Codec: "libx264"},
+	})
+	payload, _ := json.Marshal(&SequenceRequest{
+		RenderPhase: RenderPhaseSequence, MaxWaitMS: 1,
+		Clips: []SequenceClip{{JobID: "job-b"}},
+	})
+	_, err := worker.Handle(context.Background(), &job.Job{ID: "job-seq", CreatedAt: time.Now().Add(-time.Minute), Payload: payload}, nil)
+	if !errors.Is(err, ErrSequenceTimeout) || !strings.Contains(err.Error(), "job-b") {
+		t.Fatalf("error = %v, want ErrSequenceTimeout naming job-b", err)
+	}
+}
+
 func TestSequenceWorkerDefersWhileASiblingRenders(t *testing.T) {
 	worker := &Worker{log: zap.NewNop()}
 	worker.WithSequence(SequenceAssembly{
@@ -346,9 +396,93 @@ func (s *recordingJobsSvc) ListEvents(_ context.Context, _ string) ([]job.Event,
 }
 func (s *recordingJobsSvc) Retry(_ context.Context, _ string) (*job.Job, error) { return nil, nil }
 
+// TestSequenceWorkerRecoversMissingBatchItems certifies the CR-04 recovery
+// half: the sequence job is durable before the items, resolves each batch
+// position by its deterministic correlation, and enqueues only the missing
+// render. Duplicate positions share the canonical job, and a second attempt is
+// a no-op.
+func TestSequenceWorkerRecoversMissingBatchItems(t *testing.T) {
+	batchID := strings.Repeat("b", 64)
+	position0, position1 := 0, 1
+	req := &SequenceRequest{
+		Recovery: &SequenceBatchRecovery{BatchID: batchID, Items: []BatchRecoveryItem{
+			{Position: 0, Request: RenderRequest{SourceAssetID: "asset-a"}},
+			{Position: 1, Request: RenderRequest{SourceAssetID: "asset-b"}},
+		}},
+		Clips: []SequenceClip{
+			{BatchPosition: &position0},
+			{BatchPosition: &position1},
+			{BatchPosition: &position0}, // duplicate item shares position 0
+		},
+	}
+	req.Normalize()
+	if err := req.Validate(); err != nil {
+		t.Fatalf("recovery request rejected: %v", err)
+	}
+
+	var enqueued []*job.EnqueueRequest
+	byCorrelation := make(map[string]job.Job)
+	assembly := SequenceAssembly{Batch: BatchRecoveryPorts{
+		List: func(_ context.Context, filter job.Filter) ([]job.Job, error) {
+			if filter.CorrelationPrefix != batchID+":" {
+				t.Fatalf("list prefix = %q, want %q", filter.CorrelationPrefix, batchID+":")
+			}
+			jobs := make([]job.Job, 0, len(byCorrelation))
+			for _, j := range byCorrelation {
+				jobs = append(jobs, j)
+			}
+			return jobs, nil
+		},
+		Enqueue: func(_ context.Context, in *job.EnqueueRequest) (*job.Job, error) {
+			enqueued = append(enqueued, in)
+			j := job.Job{ID: "job-" + strconv.Itoa(len(enqueued)), CorrelationID: in.CorrelationID, Status: job.StatusQueued}
+			byCorrelation[in.CorrelationID] = j
+			return &j, nil
+		},
+	}}
+	worker := &Worker{log: zap.NewNop()}
+	if err := worker.resolveBatchRecovery(context.Background(), req, assembly); err != nil {
+		t.Fatalf("first recovery: %v", err)
+	}
+	if len(enqueued) != 2 {
+		t.Fatalf("enqueued = %d, want one job per unique cold position", len(enqueued))
+	}
+	if req.Clips[0].JobID == "" || req.Clips[0].BatchPosition != nil {
+		t.Fatalf("clip 0 = %+v, want a resolved job id", req.Clips[0])
+	}
+	if req.Clips[2].JobID != req.Clips[0].JobID {
+		t.Fatalf("duplicate clip job = %q, want the canonical %q", req.Clips[2].JobID, req.Clips[0].JobID)
+	}
+	if req.Clips[1].JobID == "" || req.Clips[1].JobID == req.Clips[0].JobID {
+		t.Fatalf("clip 1 = %+v, want its own job id", req.Clips[1])
+	}
+
+	// A retry sees the durable rows and must not enqueue the renders again.
+	if err := worker.resolveBatchRecovery(context.Background(), req, assembly); err != nil {
+		t.Fatalf("second recovery: %v", err)
+	}
+	if len(enqueued) != 2 {
+		t.Fatalf("retry enqueued %d jobs, want the original 2", len(enqueued))
+	}
+}
+
 // TestRenderBatchEnqueuesTheAssemblyInOneRequest is the point of the batch
 // hook: one POST produces the clips AND the job that joins them, so no caller
 // runs the assembler by hand.
+// lastSequenceCorrelation returns the correlation of the most recent sequence
+// enqueue. The handler now enqueues the sequence before the items, so the last
+// request is an item and cannot be used to compare assembly identities.
+func lastSequenceCorrelation(t *testing.T, requests []*job.EnqueueRequest) string {
+	t.Helper()
+	for i := len(requests) - 1; i >= 0; i-- {
+		if _, ok := requests[i].Payload.(*SequenceRequest); ok {
+			return requests[i].CorrelationID
+		}
+	}
+	t.Fatal("no sequence request was enqueued")
+	return ""
+}
+
 func TestRenderBatchEnqueuesTheAssemblyInOneRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &recordingJobsSvc{}
@@ -372,15 +506,21 @@ func TestRenderBatchEnqueuesTheAssemblyInOneRequest(t *testing.T) {
 		t.Fatalf("status = %d, want 202: %s", rec.Code, rec.Body.String())
 	}
 	if len(svc.requests) != 3 {
-		t.Fatalf("enqueues = %d, want 3 (2 renders + 1 assembly)", len(svc.requests))
+		t.Fatalf("enqueues = %d, want 3 (1 assembly + 2 renders)", len(svc.requests))
 	}
-	assembly := svc.requests[2]
+	assembly := svc.requests[0]
 	payload, ok := assembly.Payload.(*SequenceRequest)
 	if !ok {
 		t.Fatalf("assembly payload type = %T, want *SequenceRequest", assembly.Payload)
 	}
-	if len(payload.Clips) != 2 || payload.Clips[0].JobID != "job-1" || payload.Clips[1].JobID != "job-2" {
-		t.Fatalf("assembly clips = %+v, want the two render jobs in order", payload.Clips)
+	if len(payload.Clips) != 2 || payload.Clips[0].BatchPosition == nil || *payload.Clips[0].BatchPosition != 0 || payload.Clips[1].BatchPosition == nil || *payload.Clips[1].BatchPosition != 1 {
+		t.Fatalf("assembly clips = %+v, want the two batch positions in order", payload.Clips)
+	}
+	if payload.Recovery == nil || len(payload.Recovery.Items) != 2 || payload.Recovery.Items[0].Position != 0 || payload.Recovery.Items[1].Position != 1 {
+		t.Fatalf("assembly recovery = %+v, want the two cold items", payload.Recovery)
+	}
+	if payload.Recovery.Items[0].Request.SourceAssetID != "asset-1" || payload.Recovery.Items[1].Request.SourceAssetID != "asset-2" {
+		t.Fatalf("assembly recovery lost an item request: %+v", payload.Recovery.Items)
 	}
 	if payload.Clips[1].TransitionIn == nil || payload.Clips[1].TransitionIn.Leak == nil {
 		t.Fatalf("assembly lost the transition: %+v", payload.Clips[1])
@@ -388,12 +528,18 @@ func TestRenderBatchEnqueuesTheAssemblyInOneRequest(t *testing.T) {
 	if payload.Output.Dir != "" || payload.Output.Codec != "libx264" {
 		t.Fatalf("assembly output = %+v, want the batch settings and a server-owned output dir", payload.Output)
 	}
+	if item, ok := svc.requests[1].Payload.(*RenderRequest); !ok || item.SourceAssetID != "asset-1" {
+		t.Fatalf("first item payload = %T %+v, want asset-1", svc.requests[1].Payload, svc.requests[1].Payload)
+	}
 	var response batchRenderResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if response.SequenceJobID != "job-3" {
-		t.Fatalf("sequence_job_id = %q, want job-3", response.SequenceJobID)
+	if response.SequenceJobID != "job-1" {
+		t.Fatalf("sequence_job_id = %q, want job-1 (the manifest enqueued before the items)", response.SequenceJobID)
+	}
+	if response.Jobs[0].JobID != "job-2" || response.Jobs[1].JobID != "job-3" {
+		t.Fatalf("item jobs = %+v, want the two renders after the manifest", response.Jobs)
 	}
 
 	// A transition that points at the first clip (or at nothing) fails the WHOLE

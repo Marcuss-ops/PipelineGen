@@ -110,15 +110,12 @@ func classicPaleOliveRequest() *RenderRequest {
 	}
 }
 
-// TestFingerprint_IncludesExecutionGPURequirement certifies that
-// execution.require_gpu lives INSIDE the canonical digest. This is a
-// cache-safety property, not a formality: the deterministic render cache and
-// the batch dedup map both return a previously certified artifact without
-// touching the GPU, keyed on this fingerprint. If Execution were dropped from
-// the projection the way Destination deliberately is, a request demanding GPU
-// could be served the artifact of a request that never demanded one — exactly
-// the silent downgrade ExecutionSpec.RequireGPU exists to prevent.
-func TestFingerprint_IncludesExecutionGPURequirement(t *testing.T) {
+// TestFingerprint_ExecutionGPURequirementIsNotIdentity pins the CR-01 choice:
+// execution is a policy/assertion, not a pixel input. Chronon is the only
+// backend and is GPU-native, so both requests address the same render bytes;
+// require_zero_copy remains unsatisfiable and is rejected by Validate before
+// it can reach the cache.
+func TestFingerprint_ExecutionGPURequirementIsNotIdentity(t *testing.T) {
 	plain := classicPaleOliveRequest()
 	plain.Execution = &ExecutionSpec{}
 	plain.Normalize()
@@ -133,20 +130,22 @@ func TestFingerprint_IncludesExecutionGPURequirement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fingerprint gpu: %v", err)
 	}
-	if fpPlain == fpGPU {
-		t.Fatalf("execution.require_gpu must be part of the fingerprint, got the same digest %q", fpPlain)
+	if fpPlain != fpGPU {
+		t.Fatalf("execution.require_gpu must not split render identity: %q vs %q", fpPlain, fpGPU)
 	}
 
 	// require_zero_copy is UNSATISFIABLE (no backend certifies video_zero_copy)
 	// and is rejected at the request gate (Validate), so it can never reach the
-	// render cache at all: Fingerprint refuses it exactly like every other
-	// invalid request. That is a stronger cache-safety property than a distinct
-	// byte-identity — the request addresses NO artifact, ever.
+	// render cache at all because Validate rejects it at the request gate.
+	// Fingerprint itself no longer repeats that validation (CR-07).
 	zeroCopy := classicPaleOliveRequest()
 	zeroCopy.Execution = &ExecutionSpec{RequireZeroCopy: true}
 	zeroCopy.Normalize()
-	if _, err := zeroCopy.Fingerprint(); err == nil {
-		t.Fatal("Fingerprint must reject execution.require_zero_copy (unsatisfiable demand, refused at the request gate)")
+	if _, err := zeroCopy.Fingerprint(); err != nil {
+		t.Fatalf("Fingerprint must not repeat validation: %v", err)
+	}
+	if err := zeroCopy.Validate(); err == nil {
+		t.Fatal("Validate must reject execution.require_zero_copy")
 	}
 }
 
@@ -283,8 +282,8 @@ func TestRenderBatch_DedupIdenticalCollapsesToOne(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode batch response: %v body=%s", err, rec.Body.String())
 	}
-	if resp.Accepted != 1 {
-		t.Fatalf("accepted: got %d, want 1 (3 identical collapse to 1)", resp.Accepted)
+	if resp.Accepted != 3 {
+		t.Fatalf("accepted: got %d, want 3 positions (3 identical share one job)", resp.Accepted)
 	}
 	if counting.calls != 1 {
 		t.Fatalf("Enqueue calls: got %d, want 1", counting.calls)
@@ -352,7 +351,7 @@ func TestRenderBatch_CacheHitReturnsCached(t *testing.T) {
 	req.Normalize()
 	fp, _ := req.Fingerprint()
 	cache := newMemoryRenderCache()
-	_ = cache.Put(context.Background(), &RenderCacheRecord{Fingerprint: fp, AssetID: "asset_cached_1", StorageKey: "k1", ArtifactURL: "http://x/1", SHA256: "abc", SizeBytes: 123})
+	_ = cache.Put(context.Background(), &RenderCacheRecord{Fingerprint: fp, AssetID: "asset_cached_1", StorageKey: "k1", ArtifactURL: "http://x/1", SHA256: "abc", SizeBytes: 123, DeliveryStatus: "pending", DriveFileID: "drive-1"})
 	svc := &stubJobsSvc{returnJob: &job.Job{ID: "job_new"}}
 	h := NewHandler(svc, zap.NewNop()).WithRenderCache(cache)
 	r := gin.New()
@@ -375,6 +374,9 @@ func TestRenderBatch_CacheHitReturnsCached(t *testing.T) {
 	}
 	if resp.Jobs[0].AssetID != "asset_cached_1" {
 		t.Fatalf("a cache hit must identify the reused asset, got %+v", resp.Jobs[0])
+	}
+	if resp.Jobs[0].DeliveryStatus != "pending" || !resp.Jobs[0].DeliveryPending || resp.Jobs[0].DriveFileID != "drive-1" {
+		t.Fatalf("cache hit must expose delivery state, got %+v", resp.Jobs[0])
 	}
 	if svc.enqueued != nil {
 		t.Fatal("CACHED must not enqueue")
@@ -450,7 +452,7 @@ func TestFingerprint_PinsTheLoweringVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fingerprint: %v", err)
 	}
-	const golden = "8e75a4d577bb018856a3007d7fce6e8a165f6b2a5ef9774b8dd9826f1b07c659"
+	const golden = "abd56d5f35817ab0b65fd7ab39749d58feeab193c3679d91ebc91fdd2d665c29"
 	if fp != golden {
 		t.Fatalf("render identity = %q, want %q; update the golden together with RendererLoweringVersion", fp, golden)
 	}

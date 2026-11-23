@@ -133,8 +133,23 @@ func (c *Client) WaitTerminal(ctx context.Context, id string) (renderqueue.Rende
 	return toScriptJob(job), nil
 }
 
+// WaitProgress performs one bounded server-side long poll and returns the
+// current job, including Progress, even when the wait window elapses without a
+// terminal state. WaitRenderQueueTerminalWatched uses it to observe stalls
+// without a second GET at every slice boundary (CR-03).
+func (c *Client) WaitProgress(ctx context.Context, id string) (renderqueue.RenderQueueJob, error) {
+	if c == nil || c.q == nil {
+		return renderqueue.RenderQueueJob{}, fmt.Errorf("renderinggen progress wait: client is not configured")
+	}
+	job, err := c.q.WaitProgress(ctx, id)
+	if err != nil {
+		return renderqueue.RenderQueueJob{}, fmt.Errorf("renderinggen progress wait: %w", err)
+	}
+	return toScriptJob(job), nil
+}
+
 // toScriptJob maps a queue wire job onto the capability's typed job. It is the
-// single projection shared by Get and WaitTerminal.
+// single projection shared by Get, WaitTerminal and WaitProgress.
 func toScriptJob(job queueclient.Job) renderqueue.RenderQueueJob {
 	return renderqueue.RenderQueueJob{
 		ID:                    job.ID,
@@ -568,18 +583,14 @@ func (e *ClipRenderExecutor) settle(ctx context.Context, plan cliprender.ClipRen
 	// overlay enqueue path must agree on what "terminal" means. A budget expiry
 	// is translated into the capability-owned pending sentinel — the transport's
 	// signal must never leak into the capability's error vocabulary.
-	// A bounded settle is the phase that can park a worker lane on a render that
-	// never advances, so it is the phase that carries the progress watchdog.
-	// The blocking form (budget <= 0) keeps the historical long poll.
-	var (
-		completed renderqueue.RenderQueueJob
-		err       error
-	)
-	if waitBudget > 0 {
-		completed, _, err = renderqueue.WaitRenderQueueTerminalWatched(ctx, e.queue, renderJobID, e.interval, waitBudget, renderqueue.DefaultRenderStallAfter)
-	} else {
-		completed, _, err = renderqueue.WaitRenderQueueTerminalBounded(ctx, e.queue, renderJobID, e.interval, waitBudget)
-	}
+	// A settle can park a worker lane on a render that never advances, so it
+	// ALWAYS carries the progress watchdog. The historical branch passed budget
+	// 0 after the settle window closed, which selected the plain long poll and
+	// lost the watchdog exactly when a stuck render needed it most (CR-03).
+	// With budget 0 the watched wait has no deadline: a progressing render is
+	// waited out, a stalled one is cancelled after DefaultRenderStallAfter.
+	completed, _, err := renderqueue.WaitRenderQueueTerminalWatched(
+		ctx, e.queue, renderJobID, e.interval, waitBudget, renderqueue.DefaultRenderStallAfter)
 	if err != nil {
 		if errors.Is(err, renderqueue.ErrRenderQueuePending) {
 			return nil, fmt.Errorf("%w: job %s: %v", cliprender.ErrRenderPending, renderJobID, err)

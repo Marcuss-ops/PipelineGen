@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
@@ -89,6 +90,13 @@ func (r *ClipRenderPGAssetResolver) ResolveAsset(ctx context.Context, assetID st
 		)
 		return nil, err
 	}
+	// The source-video identity feeds the 5-priority transcript chain. The
+	// canonical column is source_video_id; youtube_video_id is its legacy
+	// sibling and is used only when the canonical one is empty.
+	videoID := strings.TrimSpace(rec.SourceVideoID)
+	if videoID == "" {
+		videoID = strings.TrimSpace(rec.YouTubeVideoID)
+	}
 	ref := &cliprender.AssetRef{
 		AssetID:       rec.ID,
 		Title:         rec.TitleOrName(),
@@ -97,6 +105,9 @@ func (r *ClipRenderPGAssetResolver) ResolveAsset(ctx context.Context, assetID st
 		DriveFileID:   rec.DriveFileID,
 		ContentSHA256: rec.SHA256,
 		DurationMS:    rec.DurationMS,
+		VideoID:       videoID,
+		StartSec:      int(rec.StartMS / 1000),
+		EndSec:        int(rec.EndMS / 1000),
 	}
 	r.log.Info("clip.render.asset_resolve.done",
 		zap.String("subsystem", "cliprender_pg_asset_resolver"),
@@ -105,6 +116,9 @@ func (r *ClipRenderPGAssetResolver) ResolveAsset(ctx context.Context, assetID st
 		zap.String("media_type", ref.MediaType),
 		zap.String("local_path", ref.LocalPath),
 		zap.String("drive_file_id", ref.DriveFileID),
+		zap.String("video_id", ref.VideoID),
+		zap.Int("start_sec", ref.StartSec),
+		zap.Int("end_sec", ref.EndSec),
 		zap.String("file_hash", ref.ContentSHA256),
 		zap.Int64("duration_ms", time.Since(t0).Milliseconds()),
 	)

@@ -13,6 +13,23 @@ import (
 
 const vidRushCacheTTL = 48 * time.Hour
 
+// vidRushCacheMaterializedNamespace is the durable materialization snapshot:
+// it maps a provider URL/identity to an asset that is already published to
+// Drive with a content hash. It is a projection of durable media, not an
+// observation about an external provider, so it must not expire. Applying the
+// discovery TTL to it was what lost the link between a URL and the bytes that
+// were already uploaded once the 48h window closed.
+const vidRushCacheMaterializedNamespace = "materialized"
+
+// vidRushCacheTTLFor is the single retention policy of the cache plane. A zero
+// duration means "no expiry".
+func vidRushCacheTTLFor(namespace string) time.Duration {
+	if strings.EqualFold(strings.TrimSpace(namespace), vidRushCacheMaterializedNamespace) {
+		return 0
+	}
+	return vidRushCacheTTL
+}
+
 // SQLiteVidRushCacheAdapter is the durable L2 cache for VidRush provider
 // discovery and materialization. It owns only the cache table; canonical
 // media_assets, outbox and pgvector state remain owned by their normal writers.
@@ -46,7 +63,7 @@ func (a *SQLiteVidRushCacheAdapter) Get(ctx context.Context, namespace, key stri
 		return nil, false, fmt.Errorf("vidrush cache get: %w", err)
 	}
 	when, err := parseSQLiteTime(updated)
-	if err != nil || time.Since(when) > vidRushCacheTTL {
+	if ttl := vidRushCacheTTLFor(namespace); err != nil || (ttl > 0 && time.Since(when) > ttl) {
 		if _, deleteErr := a.db.ExecContext(ctx, `DELETE FROM vidrush_provider_cache WHERE namespace = ? AND cache_key = ?`, namespace, key); deleteErr != nil {
 			return nil, false, fmt.Errorf("vidrush cache expire: %w", deleteErr)
 		}

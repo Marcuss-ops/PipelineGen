@@ -246,6 +246,17 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		AssetKind:    capregistry.AssetKind(artifactMetadataString(artifact.ArtifactMetadata, "asset_kind")),
 		SemanticRole: artifactMetadataString(artifact.ArtifactMetadata, "semantic_role"),
 	})
+	// Image provenance columns. An image published by a retrieval provider is an
+	// origin=retrieved row whose provider is the concrete backend; leaving these
+	// empty made the canonical image-read filters (origin='retrieved') unable to
+	// see the row at all, so a finished image could never be found by the reuse
+	// lookup. Non-image artifacts keep the historical empty values: origin /
+	// provider are image-specific dimensions.
+	origin, provider := "", ""
+	if mediaType == "image" {
+		origin = artifactMetadataString(artifact.ArtifactMetadata, "origin")
+		provider = artifactMetadataString(artifact.ArtifactMetadata, "provider")
+	}
 	// Script-required acquisition: the stock pipeline finalizer emits
 	// asset.index.requested events whose assets unblock script
 	// generation. Stamp the outbox event with the high priority so
@@ -284,6 +295,8 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		RequestedAt:         time.Now(),
 		IndexPriority:       indexPriority,
 		IndexEventKeySuffix: ":search:" + searchRevision[:16],
+		Origin:              origin,
+		Provider:            provider,
 	}
 }
 

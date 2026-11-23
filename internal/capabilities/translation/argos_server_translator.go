@@ -69,6 +69,12 @@ type ArgosServerConfig struct {
 	// the sidecar must agree, or the sidecar answers "no model for en->it"
 	// while the models sit on disk.
 	PackageDir string
+
+	// SkipStartupProbe is a test-only escape hatch. Production must leave it
+	// false: the constructor then verifies that the interpreter can import
+	// argostranslate, so a venv that exists but lost its package fails at boot
+	// instead of after the first translation attempt.
+	SkipStartupProbe bool
 }
 
 // ArgosServerTranslator is the concrete TranslationPort adapter that talks
@@ -134,6 +140,24 @@ func NewArgosServerTranslator(cfg ArgosServerConfig, log *zap.Logger) (*ArgosSer
 	script := filepath.Join(cfg.ScriptsDir, "bridges", "argos_server.py")
 	if _, statErr := os.Stat(script); statErr != nil {
 		return nil, fmt.Errorf("%w: server script %s not accessible: %v", ErrArgosBridgeUnavailable, script, statErr)
+	}
+	// A Python interpreter on PATH is not enough: the default `python3` on this
+	// host has no argostranslate package, so the old constructor accepted the
+	// adapter and the failure surfaced only on the first Translate call, after
+	// the job had already spent minutes in the pipeline. Probe the import here
+	// so the composition root fails soft at boot with a precise reason.
+	if !cfg.SkipStartupProbe {
+		probeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		probe := exec.CommandContext(probeCtx, cfg.PythonBin, "-c", "import argostranslate")
+		output, probeErr := probe.CombinedOutput()
+		if probeErr != nil {
+			detail := strings.TrimSpace(string(output))
+			if len(detail) > 240 {
+				detail = detail[len(detail)-240:]
+			}
+			return nil, fmt.Errorf("%w: %s cannot import argostranslate: %v: %s", ErrArgosBridgeUnavailable, cfg.PythonBin, probeErr, detail)
+		}
 	}
 	return &ArgosServerTranslator{
 		pythonBin:      cfg.PythonBin,

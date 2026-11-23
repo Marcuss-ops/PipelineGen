@@ -154,6 +154,19 @@ func EntityImageDriveLeaf(candidate scriptpkg.SegmentAssetCandidate) string {
 	if !isEntityImageCandidate(candidate) {
 		return ""
 	}
+	// An already-stamped canonical id owns the leaf. This is what keeps a
+	// location/organization image from being re-canonicalized as a PERSON: the
+	// library folder follows the entity's own namespace ("place:tripoli" ->
+	// "tripoli") instead of inventing "person:<scene phrase>".
+	if canonicalID := strings.TrimSpace(candidate.EntityID); canonicalID != "" {
+		leaf := capabilityentities.CanonicalEntitySlug(canonicalID)
+		if leaf == "" {
+			return ""
+		}
+		return filesystem.SafeFolderName(leaf)
+	}
+	// Legacy candidates carry only a surface name. PERSON is the only type the
+	// name alone can be canonicalized as, and that is the historical behavior.
 	name := strings.TrimSpace(candidate.Entity)
 	if name == "" {
 		return ""

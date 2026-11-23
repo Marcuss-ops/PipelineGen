@@ -29,6 +29,29 @@ func (d *Details) LocalLocation() *Location {
 	return nil
 }
 
+// ObjectStorageLocation returns the object-storage Location for the asset.
+// It prefers the primary row, then any object-storage row: an asset delivered
+// without Drive (CR-19) has this as its only durable location.
+func (d *Details) ObjectStorageLocation() *Location {
+	if d == nil {
+		return nil
+	}
+	for _, loc := range d.Locations {
+		if loc == nil {
+			continue
+		}
+		if loc.IsPrimary && loc.LocationKind == LocationKindObjectStorage {
+			return loc
+		}
+	}
+	for _, loc := range d.Locations {
+		if loc != nil && loc.LocationKind == LocationKindObjectStorage {
+			return loc
+		}
+	}
+	return nil
+}
+
 // DriveLocation returns the drive Location for the asset.
 func (d *Details) DriveLocation() *Location {
 	if d == nil {

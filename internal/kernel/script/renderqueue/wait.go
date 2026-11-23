@@ -132,6 +132,11 @@ var ErrRenderQueuePending = errors.New("render queue job is not terminal yet")
 // clip.render children parked 847 s each on a render whose frames never moved.
 var ErrRenderQueueStalled = errors.New("render queue job reported no progress")
 
+// watchedProgressSlice is how long the progress watchdog parks on the queue's
+// long poll before sampling progress. It is a variable so tests can exercise
+// the slice boundary without sleeping 30 s; production never mutates it.
+var watchedProgressSlice = 30 * time.Second
+
 // DefaultRenderStallAfter is how long a render may go without a new frame
 // before the settle watchdog aborts it. 180 s is above the p99 of normal clip
 // renders in the measured window, so a slow-but-advancing render is never
@@ -179,9 +184,10 @@ func (e *RenderStalledError) Error() string {
 // Unwrap makes errors.Is(err, ErrRenderQueueStalled) the classifier.
 func (e *RenderStalledError) Unwrap() error { return ErrRenderQueueStalled }
 
-// WaitRenderQueueTerminalWatched is the progress-aware bounded wait. It polls
-// (the server-side long poll cannot observe progress) and aborts a render whose
-// last recorded PROGRESS is older than stallAfter.
+// WaitRenderQueueTerminalWatched is the progress-aware bounded wait. When the
+// client exposes RenderQueueProgressWaiter it parks on the long poll, which
+// returns Progress with the current job; otherwise it samples with Get. It
+// aborts a render whose last recorded PROGRESS is older than stallAfter.
 //
 // Two rules keep it safe:
 //   - only progress counts, never absolute age: a render that keeps reporting
@@ -208,12 +214,75 @@ func WaitRenderQueueTerminalWatched(ctx context.Context, client RenderQueueClien
 	if budget > 0 {
 		deadline = waitStarted.Add(budget)
 	}
+	// Event-driven progress: when the queue exposes the long poll, park on it in
+	// bounded slices. A progress-carrying wait returns the job (and Progress)
+	// directly, so the watchdog needs ONE request per slice, not a park plus a
+	// second Get. Clients without that capability keep the old sample-by-Get
+	// fallback. A 30 s slice keeps stall detection well inside stallAfter while
+	// cutting the request count by two orders of magnitude (CR-03).
+	waiter, canPark := client.(RenderQueueWaiter)
+	progressWaiter, canSampleProgress := client.(RenderQueueProgressWaiter)
+	progressSlice := watchedProgressSlice
+	var lastJob RenderQueueJob
 	for {
-		job, err := client.Get(ctx, id)
-		metrics.PollCount++
-		if err != nil {
-			return RenderQueueJob{}, metrics, err
+		sampled := false
+		if canPark {
+			slice := progressSlice
+			if !deadline.IsZero() {
+				remaining := time.Until(deadline)
+				if remaining <= 0 {
+					metrics.CompletionWait = time.Since(waitStarted)
+					return lastJob, metrics, fmt.Errorf("render queue job %s still %s after %s: %w", id, lastJob.State, budget, ErrRenderQueuePending)
+				}
+				if remaining < slice {
+					slice = remaining
+				}
+			}
+			parkCtx, cancel := context.WithTimeout(ctx, slice)
+			var job RenderQueueJob
+			var err error
+			if canSampleProgress {
+				job, err = progressWaiter.WaitProgress(parkCtx, id)
+			} else {
+				job, err = waiter.WaitTerminal(parkCtx, id)
+			}
+			cancel()
+			metrics.PollCount++
+			if err != nil {
+				if ctx.Err() != nil {
+					metrics.CompletionWait = time.Since(waitStarted)
+					return RenderQueueJob{}, metrics, ctx.Err()
+				}
+				// A failure BEFORE the slice expired is a transport fault, not a
+				// progress deadline: surface it like a failed Get. A slice expiry
+				// falls through to the progress sample below. A progress waiter
+				// may return its last observation with a deadline error, so keep
+				// that job rather than spending another Get.
+				if parkCtx.Err() == nil {
+					return RenderQueueJob{}, metrics, err
+				}
+				if canSampleProgress && lastJob.ID != "" {
+					sampled = true
+				}
+			} else {
+				lastJob = job
+				sampled = canSampleProgress
+				if terminalRenderState(job.State) {
+					metrics.CompletionWait = time.Since(waitStarted)
+					return terminalRenderResult(job, id, metrics)
+				}
+			}
 		}
+
+		if !sampled {
+			job, err := client.Get(ctx, id)
+			metrics.PollCount++
+			if err != nil {
+				return RenderQueueJob{}, metrics, err
+			}
+			lastJob = job
+		}
+		job := lastJob
 		if terminalRenderState(job.State) {
 			metrics.CompletionWait = time.Since(waitStarted)
 			return terminalRenderResult(job, id, metrics)
@@ -243,6 +312,10 @@ func WaitRenderQueueTerminalWatched(ctx context.Context, client RenderQueueClien
 		if !deadline.IsZero() && !now.Before(deadline) {
 			metrics.CompletionWait = time.Since(waitStarted)
 			return job, metrics, fmt.Errorf("render queue job %s still %s after %s: %w", id, job.State, budget, ErrRenderQueuePending)
+		}
+		if canPark {
+			// The next WaitTerminal parks; no fixed sleep is spent.
+			continue
 		}
 		sleep := interval
 		if !deadline.IsZero() {

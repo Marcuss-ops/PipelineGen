@@ -22,6 +22,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
@@ -173,8 +174,16 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	worker.WithRenderExecutor(renderRuntime.RenderingGenExecutor)
 	worker.WithContinuationStore(renderRuntime.ContinuationStore)
 	worker.WithContinuationEnqueuer(clipswiring.NewClipRenderContinuationEnqueuer(root.Jobs.Facade))
-	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
-		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
+	deliveryMode, modeErr := config.NormalizeClipRenderDeliveryMode(cfg.Jobs.ClipRenderDeliveryMode)
+	if modeErr != nil {
+		return fmt.Errorf("registerClipRender: %w", modeErr)
+	}
+	needsDrive := deliveryMode != config.ClipRenderDeliveryObjectStore
+	if root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
+		return fmt.Errorf("registerClipRender: SQLite DB and outbox are required for rendered asset publication")
+	}
+	if needsDrive && (root.Drive == nil || root.Drive.Publisher == nil) {
+		return fmt.Errorf("registerClipRender: Drive publisher is required for %s delivery", deliveryMode)
 	}
 	var committer assetspersistence.AssetCommitter
 	{
@@ -187,21 +196,29 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		}
 		committer = w
 	}
-	publisher, publisherErr := clipadapters.NewClipRenderPublisher(root.Drive.Publisher, committer, log)
+	var drivePublisher delivery.Publisher
+	if root.Drive != nil {
+		drivePublisher = root.Drive.Publisher
+	}
+	publisher, publisherErr := clipadapters.NewClipRenderPublisherWithMode(drivePublisher, committer, deliveryMode, log)
 	if publisherErr != nil {
 		return fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)
 	}
 	publisher.SetSubtitleArtifactRepository(root.Repos.SubtitleArtifactRepo)
-	// clip.render Drive delivery is UNCONDITIONALLY asynchronous, so the
-	// staging root is always required. The outbox consumer must exist or the
-	// committed delivery intent would never drain — fail the wiring closed
-	// instead of silently publishing into a void.
-	publisher.SetAsyncDriveStagingRoot(filepath.Join(cfg.Storage.TempPath(), "cliprender", "staging"))
-	if root.Outbox == nil || root.Outbox.MediaIndexWorker == nil {
-		return fmt.Errorf("registerClipRender: PostgreSQL media outbox worker is required for asynchronous clip.render Drive delivery")
+	if needsDrive {
+		// clip.render Drive delivery is UNCONDITIONALLY asynchronous, so the
+		// staging root is always required. The outbox consumer must exist or the
+		// committed delivery intent would never drain — fail the wiring closed
+		// instead of silently publishing into a void.
+		publisher.SetAsyncDriveStagingRoot(filepath.Join(cfg.Storage.TempPath(), "cliprender", "staging"))
+		if root.Outbox == nil || root.Outbox.MediaIndexWorker == nil {
+			return fmt.Errorf("registerClipRender: PostgreSQL media outbox worker is required for asynchronous clip.render Drive delivery")
+		}
+		log.Info("registerClipRender: PostgreSQL media outbox Drive delivery handler is available",
+			zap.String("event_type", cliprender.EventClipRenderDriveDeliveryRequested))
+	} else {
+		log.Info("registerClipRender: delivery_mode=object_store; Drive upload and outbox intent disabled (CR-19)")
 	}
-	log.Info("registerClipRender: PostgreSQL media outbox Drive delivery handler is available",
-		zap.String("event_type", cliprender.EventClipRenderDriveDeliveryRequested))
 	worker.WithRenderPublisher(publisher)
 	// Sequence assembly (batch joins): a sequence-phase clip.render job renders
 	// nothing, it waits for its sibling renders and runs the SAME kernel plan +
@@ -210,6 +227,12 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	worker.WithSequence(cliprender.SequenceAssembly{
 		Jobs:   root.Jobs.Facade,
 		Assets: preparer,
+		// The batch sequence job is the durable manifest: it lists the batch
+		// by correlation and recreates any item whose enqueue was lost.
+		Batch: cliprender.BatchRecoveryPorts{
+			List:    root.Jobs.Facade.List,
+			Enqueue: root.Jobs.Facade.Enqueue,
+		},
 		// The assembled sequence is a delivery/assembly artifact, not a
 		// diagnostic join: pin the certified lane instead of inheriting a
 		// user-facing NVENC choice.
@@ -221,11 +244,13 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// root): routed through the SAME delivery.Publisher, so folder creation
 	// has one canonical owner and the ClipRenderPublisher stays dumb (it
 	// receives the fully-resolved leaf folder ID and never creates folders).
-	destinationResolver, destinationResolverErr := clipadapters.NewClipRenderDestinationFolderResolver(root.Drive.Publisher, log)
-	if destinationResolverErr != nil {
-		return fmt.Errorf("registerClipRender: build clip render destination resolver: %w", destinationResolverErr)
+	if needsDrive {
+		destinationResolver, destinationResolverErr := clipadapters.NewClipRenderDestinationFolderResolver(root.Drive.Publisher, log)
+		if destinationResolverErr != nil {
+			return fmt.Errorf("registerClipRender: build clip render destination resolver: %w", destinationResolverErr)
+		}
+		worker.WithDestinationFolderResolver(destinationResolver)
 	}
-	worker.WithDestinationFolderResolver(destinationResolver)
 
 	// Overlay hop (entity overlays): the segment resolver reads the SAME
 	// content cache the overlay.render handler writes (the

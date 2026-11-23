@@ -407,7 +407,14 @@ func ResolveTranslationModel(cfg *config.Config) string {
 // ComposeRoot (see ComposeRoot.DriveUploadGate). It is threaded in rather than
 // rebuilt here so the voiceover publisher shares ONE capacity with the
 // certified final-audio publisher instead of each enforcing its own ceiling.
-func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, media *MediaRepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, mediaConfig mediaexec.ExecutionConfig, driveUploadGate *concurrent.FairSemaphore) (*DomainBundle, error) {
+// mediaPostgres is optional by convention (same shape as BuildRepoBundle):
+// without it the media-dependent domains degrade gracefully, and the image
+// reuse lookup falls back to the legacy SQLite repository.
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, media *MediaRepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, mediaConfig mediaexec.ExecutionConfig, driveUploadGate *concurrent.FairSemaphore, mediaPostgres ...*sql.DB) (*DomainBundle, error) {
+	var mediaPG *sql.DB
+	if len(mediaPostgres) > 0 {
+		mediaPG = mediaPostgres[0]
+	}
 	// ── Shared deps ──────────────────────────────────────────
 	var mutationsDisp mutations.AssetMutationDispatcher
 	var canonicalCommitter persistence.AssetCommitter
@@ -485,7 +492,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	}
 
 	// ── Scripts domain: artifacts, segment-selection ──
-	if err := buildDomainScriptServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, bundle, bundle.ImageService /* *imgservice.Service */); err != nil {
+	if err := buildDomainScriptServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, bundle, bundle.ImageService /* *imgservice.Service */, mediaPG); err != nil {
 		return nil, fmt.Errorf("compose domains (scripts): %w", err)
 	}
 

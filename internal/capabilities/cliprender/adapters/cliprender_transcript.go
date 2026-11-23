@@ -61,14 +61,24 @@ type ClipRenderStreamingTranscriber struct {
 // Fail-closed at construction: missing python/ffmpeg/bridge script is a typed
 // error (the caller decides whether to fall back to the WAV-based chain).
 func NewClipRenderStreamingTranscriber(cfg *config.Config, log *zap.Logger) (*ClipRenderStreamingTranscriber, error) {
+	// The bridge needs the .venv-whisper interpreter (faster-whisper +
+	// ctranslate2 are not installed in the system python3). Hardcoding
+	// "python3" only worked when the service PATH pointed at that venv; any
+	// invocation outside the systemd unit silently degraded every clip to the
+	// WAV fallback.
 	pythonBin := "python3"
 	scriptPath := "scripts/bridges/whisper_transcriber.py"
 	ffmpegPath := "ffmpeg"
-	if cfg != nil && cfg.External.FfmpegPath != "" {
-		ffmpegPath = cfg.External.FfmpegPath
+	if cfg != nil {
+		if configured := strings.TrimSpace(cfg.Paths.WhisperPythonBin); configured != "" {
+			pythonBin = configured
+		}
+		if cfg.External.FfmpegPath != "" {
+			ffmpegPath = cfg.External.FfmpegPath
+		}
 	}
 	if _, err := exec.LookPath(pythonBin); err != nil {
-		return nil, fmt.Errorf("streaming transcriber: python3 not on PATH: %w", err)
+		return nil, fmt.Errorf("streaming transcriber: interpreter %q not executable: %w", pythonBin, err)
 	}
 	if _, err := os.Stat(scriptPath); err != nil {
 		return nil, fmt.Errorf("streaming transcriber: bridge script %s not accessible: %w", scriptPath, err)
@@ -101,6 +111,15 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 			return cached, nil
 		}
 	}
+	// Whisper shares the GPU with Chronon. Hold one process-wide slot around
+	// the bridge subprocess (the cache hit above costs no slot). This is the
+	// gate that prevents an ASR fan-out from competing with a Vulkan render for
+	// VRAM (CR-15).
+	releaseGPU, err := acquireWhisperGPU(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("streaming transcribe: whisper GPU slot: %w", err)
+	}
+	defer releaseGPU()
 	execCtx := ctx
 	if s.timeout > 0 {
 		var cancel context.CancelFunc
@@ -187,7 +206,10 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 		return nil, fmt.Errorf("streaming transcribe: bridge error: %s", res.Error)
 	}
 	if res.Text == "" && len(res.Cues) == 0 {
-		return nil, fmt.Errorf("%w: empty transcript for %q", cliprender.ErrTranscriptGenerationUnavailable, source.AssetID)
+		// The bridge ran and completed: this is silence / non-speech audio,
+		// not an ASR failure. Classify it as such so the failure projection
+		// says NO_SPEECH instead of blaming transcript generation.
+		return nil, fmt.Errorf("%w: empty transcript for %q", cliprender.ErrNoSpeech, source.AssetID)
 	}
 
 	// The language of the TEXT: what the decode used (the forced request, or the
@@ -288,12 +310,19 @@ func (r *ClipRenderTranscriptResolver) Generate(ctx context.Context, in cliprend
 	// Preferred path (spec §4): streaming PCM decode → Whisper bridge stdin.
 	// Zero audio intermediates on disk; the typed transcript + cues are
 	// persisted, never a temp WAV.
+	// noSpeech remembers a completed-but-empty streaming ASR pass. The chain
+	// still falls back (YouTube subtitles may exist for the same clip), but if
+	// every priority also fails the operator must see NO_SPEECH rather than a
+	// generic acquisition error.
+	noSpeech := false
 	if r.streaming != nil {
 		result, err := r.streaming.TranscribeStream(ctx, source, in.Language)
 		if err != nil {
+			noSpeech = errors.Is(err, cliprender.ErrNoSpeech)
 			r.log.Warn("clip.render.transcript.streaming_failed",
 				zap.String("asset_id", in.AssetID),
 				zap.String("fallback", "acquire_chain"),
+				zap.Bool("no_speech", noSpeech),
 				zap.Error(err))
 		} else {
 			if err := validateRequestedTranscriptLanguage(in.Language, result.Language); err != nil {
@@ -304,17 +333,45 @@ func (r *ClipRenderTranscriptResolver) Generate(ctx context.Context, in cliprend
 	}
 	// Fallback: canonical Whisper chain (WAV-based helper).
 	if r.acquire == nil {
+		if noSpeech {
+			return nil, fmt.Errorf("%w: the streaming ASR found no speech and no acquisition service is wired", cliprender.ErrNoSpeech)
+		}
 		return nil, fmt.Errorf("%w: no Whisper acquisition service wired", cliprender.ErrTranscriptGenerationUnavailable)
 	}
+	// The fallback chain may itself invoke Whisper. Hold the same process-wide
+	// slot as the streaming path so the two routes cannot each start an ASR
+	// process at the same time (CR-15).
+	releaseGPU, gateErr := acquireWhisperGPU(ctx)
+	if gateErr != nil {
+		return nil, fmt.Errorf("acquire transcript for %q: whisper GPU slot: %w", in.AssetID, gateErr)
+	}
+	defer releaseGPU()
+	// The chain needs the SOURCE identity, not just the temporary local file:
+	// without VideoID/StartSec/EndSec priorities 3+4 (YouTube manual/auto
+	// subtitles) cannot run at all, and without DriveFileID priority 2.5 cannot
+	// repair a corrupt registered copy.
 	acquired, err := r.acquire.Acquire(ctx, texttracks.AcquireCommand{
-		AssetID:   in.AssetID,
-		LocalPath: source.LocalPath,
-		Language:  in.Language,
+		AssetID:     in.AssetID,
+		VideoID:     source.VideoID,
+		LocalPath:   source.LocalPath,
+		StartSec:    source.StartSec,
+		EndSec:      source.EndSec,
+		DriveFileID: source.DriveFileID,
+		Language:    in.Language,
 	})
 	if err != nil {
+		if noSpeech {
+			return nil, fmt.Errorf("acquire transcript for %q after an empty streaming ASR result: %w (%w)", in.AssetID, err, cliprender.ErrNoSpeech)
+		}
 		return nil, fmt.Errorf("acquire transcript for %q: %w", in.AssetID, err)
 	}
 	if acquired == nil || (acquired.PlainText == "" && len(acquired.Cues) == 0) {
+		// A silent acquire chain is NOT proof of silence on its own, but when
+		// the streaming ASR already completed with no text it is: report the
+		// no-speech condition instead of a bare "generation unavailable".
+		if noSpeech {
+			return nil, fmt.Errorf("%w: empty transcript for %q", cliprender.ErrNoSpeech, in.AssetID)
+		}
 		return nil, fmt.Errorf("%w: empty transcript for %q", cliprender.ErrTranscriptGenerationUnavailable, in.AssetID)
 	}
 	result := &cliprender.TranscriptResult{
@@ -460,9 +517,47 @@ func (r *ClipRenderTranscriptResolver) persistResult(
 		for _, c := range result.Cues {
 			cues = append(cues, detail.TimedCue{StartMs: c.StartMs, EndMs: c.EndMs, Text: c.Text})
 		}
-		return r.cueWriter.ReplaceTranscriptCues(ctx, assetID, map[string][]detail.TimedCue{lang: cues})
+		byLang, err := r.cuesForWholeAssetReplacement(ctx, assetID, lang, cues)
+		if err != nil {
+			return err
+		}
+		return r.cueWriter.ReplaceTranscriptCues(ctx, assetID, byLang)
 	}
 	return nil
+}
+
+// cuesForWholeAssetReplacement preserves the other READY languages before a
+// transcript cue write. ReplaceTranscriptCues deletes EVERY READY transcript
+// cue for the asset and then inserts only the languages present in the map;
+// passing a single language would silently erase every other language's
+// timing. The merge is the caller-side half of that whole-asset contract.
+func (r *ClipRenderTranscriptResolver) cuesForWholeAssetReplacement(
+	ctx context.Context,
+	assetID string,
+	lang string,
+	cues []detail.TimedCue,
+) (map[string][]detail.TimedCue, error) {
+	byLang := map[string][]detail.TimedCue{lang: cues}
+	if r.repo == nil {
+		return nil, errors.New("clip.render: text track repository not wired for cue preservation")
+	}
+	tracks, err := r.repo.ListByAsset(ctx, assetID)
+	if err != nil {
+		return nil, fmt.Errorf("clip.render: list transcript cues for %q: %w", assetID, err)
+	}
+	for _, track := range tracks {
+		if track.LanguageCode == lang || track.TextKind != detail.TextTrackTranscript || track.Status != detail.TextTrackReady {
+			continue
+		}
+		_, existing, err := r.repo.FindReady(ctx, assetID, track.LanguageCode, detail.TextTrackTranscript)
+		if err != nil {
+			return nil, fmt.Errorf("clip.render: load %q transcript cues for %q: %w", track.LanguageCode, assetID, err)
+		}
+		if existing != nil {
+			byLang[track.LanguageCode] = existing
+		}
+	}
+	return byLang, nil
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

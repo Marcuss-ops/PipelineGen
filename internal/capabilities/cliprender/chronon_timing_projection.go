@@ -19,6 +19,14 @@ type ChrononTimingFetcher interface {
 	FetchChrononTiming(ctx context.Context, storageKey, url string) ([]byte, error)
 }
 
+// ChrononTimingSummaryFetcher is the optional compact-sidecar capability. The
+// hot path uses it when present; a fetcher without it keeps the raw read, so
+// the optimization is additive and never required by a test double or an older
+// deployment.
+type ChrononTimingSummaryFetcher interface {
+	FetchChrononTimingSummary(ctx context.Context, storageKey, url string) ([]byte, error)
+}
+
 // chrononTimingFetchTimeout bounds the sidecar fetch. The sidecar is
 // diagnostics: a slow or hanging object store must not extend a certified
 // render's completion, so the fetch is capped well below any render timeout.
@@ -65,7 +73,8 @@ func (w *Worker) publishChrononTiming(ctx context.Context, outcome *RenderOutcom
 
 	fetchCtx, cancel := context.WithTimeout(ctx, chrononTimingFetchTimeout)
 	defer cancel()
-	raw, err := w.chrononTimingFetcher.FetchChrononTiming(fetchCtx, outcome.ChrononTimingStorageKey, outcome.ChrononTimingURL)
+	fetchStarted := time.Now()
+	raw, source, err := w.fetchChrononTiming(fetchCtx, outcome)
 	if err != nil {
 		w.log.Warn("chronon timing sidecar fetch failed; phase projection skipped",
 			zap.String("storage_key", outcome.ChrononTimingStorageKey),
@@ -73,6 +82,9 @@ func (w *Worker) publishChrononTiming(ctx context.Context, outcome *RenderOutcom
 		)
 		return
 	}
+	outcome.ChrononTimingSource = source
+	outcome.ChrononTimingReadBytes = int64(len(raw))
+	outcome.ChrononTimingFetchMS = time.Since(fetchStarted).Milliseconds()
 	sidecar, err := ParseChrononSidecar(raw)
 	if err != nil {
 		w.log.Warn("chronon timing sidecar parse failed; phase projection skipped",
@@ -97,4 +109,24 @@ func (w *Worker) publishChrononTiming(ctx context.Context, outcome *RenderOutcom
 		opts.SourceDurationMS = prepared.Source.DurationMS
 	}
 	w.chrononMetrics.Publish(ctx, sidecar, opts)
+}
+
+// fetchChrononTiming prefers the compact summary companion and falls back to
+// the raw document. A summary failure is debug-level because the fallback is
+// expected during the rollout and costs only the larger read; a raw failure is
+// the existing warn path. The source and byte count are recorded on the outcome
+// so the result can report which document the hot path actually read.
+func (w *Worker) fetchChrononTiming(ctx context.Context, outcome *RenderOutcome) ([]byte, string, error) {
+	if summaryFetcher, ok := w.chrononTimingFetcher.(ChrononTimingSummaryFetcher); ok {
+		raw, err := summaryFetcher.FetchChrononTimingSummary(ctx, outcome.ChrononTimingStorageKey, outcome.ChrononTimingURL)
+		if err == nil {
+			return raw, "summary", nil
+		}
+		w.log.Debug("chronon timing summary unavailable; falling back to raw",
+			zap.String("storage_key", outcome.ChrononTimingStorageKey),
+			zap.Error(err),
+		)
+	}
+	raw, err := w.chrononTimingFetcher.FetchChrononTiming(ctx, outcome.ChrononTimingStorageKey, outcome.ChrononTimingURL)
+	return raw, "raw", err
 }

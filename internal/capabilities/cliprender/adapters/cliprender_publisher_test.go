@@ -161,6 +161,60 @@ func TestClipRenderPublisher_LocatorOnly_StreamsFromObjectStore(t *testing.T) {
 
 // TestClipRenderPublisher_RequiresOutputOrLocator pins the fail-closed rule:
 // neither a local path nor a locator is a typed error.
+// TestClipRenderPublisher_ObjectStoreDelivery_NoDriveNoOutbox covers CR-19:
+// object_store mode commits the certified locator as the primary location,
+// emits no Drive intent, and exposes the authenticated content URL. No Drive
+// publisher is wired at all.
+func TestClipRenderPublisher_ObjectStoreDelivery_NoDriveNoOutbox(t *testing.T) {
+	committer := &fakeAssetCommitter{}
+	publisher, err := NewClipRenderPublisherWithMode(nil, committer, "object_store", zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPublisherWithMode: %v", err)
+	}
+	sha := strings.Repeat("c", 64)
+	url := "http://127.0.0.1:9000/objects/" + sha
+	in := cliprender.RenderPublishInput{
+		RunID:               "run-obj-1",
+		SourceAssetID:       "source-asset-001",
+		SourceTitle:         "Object Store Clip",
+		ArtifactStorageKey:  sha,
+		ArtifactURL:         url,
+		ArtifactContentType: "video/mp4",
+		Outcome:             &cliprender.RenderOutcome{SizeBytes: 4242, SHA256: sha, DurationSec: 5},
+		CertifiedSHA256:     sha,
+		CertifiedSizeBytes:  4242,
+	}
+	got, err := publisher.Publish(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if got.DeliveryStatus != "not_required" || got.DrivePending || got.DriveFileID != "" {
+		t.Fatalf("delivery = %+v, want not_required with no Drive identity", got)
+	}
+	wantURL := "/api/v1/media/assets/" + got.AssetID + "/content"
+	if got.ContentURL != wantURL {
+		t.Fatalf("content_url = %q, want %q", got.ContentURL, wantURL)
+	}
+	commits := committer.commitRequests()
+	if len(commits) != 1 {
+		t.Fatalf("commits = %d, want 1", len(commits))
+	}
+	if len(commits[0].AdditionalOutboxEvents) != 0 {
+		t.Fatalf("object_store delivery emitted %d outbox events, want 0", len(commits[0].AdditionalOutboxEvents))
+	}
+	if len(commits[0].Locations) != 1 {
+		t.Fatalf("locations = %d, want 1", len(commits[0].Locations))
+	}
+	loc := commits[0].Locations[0]
+	if loc.Kind != "object_storage" || !loc.IsPrimary || loc.URI != url || loc.ExternalID != sha ||
+		loc.ContentSHA256 != sha || loc.FileSizeBytes != 4242 || loc.MimeType != "video/mp4" {
+		t.Fatalf("object storage location = %+v", loc)
+	}
+	if status := commits[0].Metadata.Extra["delivery_status"]; status != "not_required" {
+		t.Fatalf("committed delivery_status = %v, want not_required", status)
+	}
+}
+
 func TestClipRenderPublisher_RequiresOutputOrLocator(t *testing.T) {
 	p := newAsyncPublisher(t, &fakeDeliveryPublisher{}, &fakeAssetCommitter{})
 	_, err := p.Publish(context.Background(), cliprender.RenderPublishInput{

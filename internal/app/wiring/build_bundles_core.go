@@ -446,6 +446,7 @@ func buildDomainScriptServices(
 	ai *AIBundle,
 	bundle *DomainBundle,
 	imageSvc *imgservice.Service,
+	mediaPostgres *sql.DB,
 ) error {
 	artifactBlobStore, err := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)
 	if err != nil {
@@ -458,7 +459,7 @@ func buildDomainScriptServices(
 
 	// ImageSearchResolver: the orchestrator provides the concrete image
 	// service so this helper stays free of the images import.
-	imageSearchResolver, err := buildImageSearchResolver(imageSvc, repos.ImageRepo, log)
+	imageSearchResolver, err := buildImageSearchResolver(imageSvc, repos.ImageRepo, mediaPostgres, log)
 	if err != nil {
 		return fmt.Errorf("compose images: %w", err)
 	}

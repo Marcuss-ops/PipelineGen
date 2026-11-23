@@ -41,6 +41,15 @@ import (
 
 // ── Typed errors ─────────────────────────────────────────────────────
 
+// noSpeechError is the concrete ErrNoSpeech value. It is a struct rather than
+// fmt.Errorf so the message stays stable and Unwrap can expose the broader
+// generation-unavailable sentinel.
+type noSpeechError struct{}
+
+func (noSpeechError) Error() string { return "clip.render: no speech detected in source audio" }
+
+func (noSpeechError) Unwrap() error { return ErrTranscriptGenerationUnavailable }
+
 var (
 	// ErrTranscriptUnavailable is returned when the transcript policy is
 	// "reuse" but no READY canonical track exists. Fail-closed: the pipeline
@@ -49,6 +58,14 @@ var (
 	// ErrTranscriptGenerationUnavailable is returned when generation is
 	// required (reuse missed) but no generation source is available.
 	ErrTranscriptGenerationUnavailable = errors.New("clip.render: transcript generation required but no generation source available")
+	// ErrNoSpeech classifies a generation attempt that RAN and found no
+	// speech (silent or music-only clip). It is intentionally distinct from an
+	// infrastructure/Whisper failure: the ASR worked, there is simply nothing
+	// to transcribe. It unwraps to ErrTranscriptGenerationUnavailable so
+	// callers that already treat "no transcript" as fail-closed keep working
+	// while operators (and the render failure projection) can tell the two
+	// cases apart.
+	ErrNoSpeech = noSpeechError{}
 	// ErrMaterializerReturnedNoArtifact is the typed contract violation for an
 	// AssetMaterializer that returns (nil, nil). The port promises a verified
 	// artifact on success; a nil result is a defect, never a valid empty asset.
@@ -203,6 +220,13 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	})
 	if err := wave1.Wait(); err != nil {
 		return nil, err
+	}
+
+	// Fail-fast: a strict `reuse` request whose READY track is absent is
+	// already decided after wave 1. Starting wave 2 would download source,
+	// watermark and background only to fail with the same typed error (CR-06).
+	if !existingFound && req.Transcript.Mode == TranscriptModeReuse {
+		return nil, fmt.Errorf("%w: asset %q language %q", ErrTranscriptUnavailable, req.SourceAssetID, req.Transcript.Language)
 	}
 
 	// Resolve the background media family ONCE, before any byte is materialized:

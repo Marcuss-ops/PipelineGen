@@ -299,6 +299,14 @@ type RenderQueueWaiter interface {
 	WaitTerminal(ctx context.Context, id string) (RenderQueueJob, error)
 }
 
+// RenderQueueProgressWaiter is the optional progress-carrying long poll. One
+// bounded wait returns the current job even when it is still running, so the
+// settle watchdog can inspect Progress without a second GET at every slice
+// boundary. Clients that do not implement it keep the waiter/Get fallback.
+type RenderQueueProgressWaiter interface {
+	WaitProgress(ctx context.Context, id string) (RenderQueueJob, error)
+}
+
 // RenderQueueRetrier is the optional reset-to-pending capability. It exists for
 // ONE decision: a submission that collides with an existing job in FAILED state
 // (idempotent replay of a failed render) must be re-armed, never silently

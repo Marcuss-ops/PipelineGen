@@ -176,7 +176,11 @@ func (w *Worker) completeRendered(
 		outcome.Metrics.DriveUploadMS = Metric(driveMS)
 		logPublishMS = pm.TotalMS
 	}
-	if publication.AssetID == "" || (!publication.DrivePending && publication.DriveFileID == "") {
+	// A publication is valid when the asset was committed AND some delivery
+	// authority owns the bytes: a durable Drive intent (pending), a Drive file,
+	// or the object-store locator committed as the delivery itself (CR-19).
+	delivered := publication.DrivePending || publication.DriveFileID != "" || publication.DeliveryStatus == "not_required"
+	if publication.AssetID == "" || !delivered {
 		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
 	}
 
@@ -214,19 +218,21 @@ func (w *Worker) completeRendered(
 	if w.renderCache != nil && req != nil {
 		if fp, fpErr := req.Fingerprint(); fpErr == nil {
 			rec := &RenderCacheRecord{
-				Fingerprint: fp,
-				AssetID:     publication.AssetID,
-				StorageKey:  outcome.StorageKey,
-				ArtifactURL: outcome.ArtifactURL,
-				ContentType: outcome.ContentType,
-				SHA256:      outcome.SHA256,
-				SizeBytes:   outcome.SizeBytes,
-				DurationSec: outcome.DurationSec,
-				Width:       outcome.Width,
-				Height:      outcome.Height,
-				FPSNum:      outcome.FPSNum,
-				FPSDen:      outcome.FPSDen,
-				Backend:     outcome.Backend,
+				Fingerprint:    fp,
+				AssetID:        publication.AssetID,
+				StorageKey:     outcome.StorageKey,
+				ArtifactURL:    outcome.ArtifactURL,
+				ContentType:    outcome.ContentType,
+				SHA256:         outcome.SHA256,
+				SizeBytes:      outcome.SizeBytes,
+				DurationSec:    outcome.DurationSec,
+				Width:          outcome.Width,
+				Height:         outcome.Height,
+				FPSNum:         outcome.FPSNum,
+				FPSDen:         outcome.FPSDen,
+				Backend:        outcome.Backend,
+				DeliveryStatus: publicationDeliveryStatus(publication),
+				DriveFileID:    publication.DriveFileID,
 			}
 			if err := w.renderCache.Put(ctx, rec); err != nil {
 				w.log.Warn("clip.render cache put failed",
@@ -241,5 +247,7 @@ func (w *Worker) completeRendered(
 	// parsed (one parse, one canonical write into performance_operations).
 	w.publishChrononTiming(ctx, outcome, prepared, probe)
 	progress(100, "clip.render completed")
-	return renderedResult(resultJob, req, prepared, plan, subtitleArtifact, outcome, publication), nil
+	result := renderedResult(resultJob, req, prepared, plan, subtitleArtifact, outcome, publication)
+	addQueueWaitMS(result, j, jobStart)
+	return result, nil
 }

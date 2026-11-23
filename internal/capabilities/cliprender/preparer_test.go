@@ -315,6 +315,9 @@ func TestPrepare_ReuseRequiredButMissing(t *testing.T) {
 	if len(tr.genSources) != 0 {
 		t.Fatalf("mode=reuse must never generate, got %d Generate calls", len(tr.genSources))
 	}
+	if len(mat.calls) != 0 {
+		t.Fatalf("mode=reuse with no READY track must fail before materialization, got %v", mat.calls)
+	}
 }
 
 // TestPrepare_ModeGenerateSkipsLookup verifies mode=generate never performs

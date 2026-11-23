@@ -62,7 +62,7 @@ func TestGetTranscript_RejectsBadInput(t *testing.T) {
 
 	rec := invokeGetTranscript(t, h, "/api/clips/transcript")
 	require.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Contains(t, rec.Body.String(), "url parameter is required")
+	assert.Contains(t, rec.Body.String(), "url or asset_id parameter is required")
 
 	rec = invokeGetTranscript(t, h, "/api/clips/transcript?url=https%3A%2F%2Fexample.com%2Fnot-youtube")
 	require.Equal(t, http.StatusBadRequest, rec.Code)

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -108,7 +109,7 @@ func entityImageCatalogPoolMeetsDemand(pool entityImageCatalogPool, imagesPerSce
 // VidRush candidate shape. A catalog hit remains a discovery result unless it
 // also has a successful materialization, in which case the common materializer
 // sees the existing Drive/hash state and does not download or upload again.
-func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Repository, identity entitycatalog.PersonIdentity, limit int) (entityImageCatalogPool, error) {
+func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Repository, identity entitycatalog.PersonIdentity, limit int, contentStore EntityImageContentStore) (entityImageCatalogPool, error) {
 	if repo == nil || identity.CanonicalEntityID == "" {
 		return entityImageCatalogPool{}, nil
 	}
@@ -187,7 +188,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 				return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: get materialization %d: %w", row.ID, matErr)
 			}
 		}
-		_, durableImage := applyEntityImageCatalogMaterialization(scriptpkg.SegmentAssetCandidate{}, materialization)
+		_, durableImage := applyEntityImageCatalogMaterialization(scriptpkg.SegmentAssetCandidate{}, materialization, nil)
 		durableImage = durableImage && row.SemanticStatus == entitycatalog.CandidateSemanticAccepted &&
 			entitycatalog.IsUsableCandidateQuality(row)
 		if durableImage {
@@ -231,6 +232,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			RetrievalProvider:     row.Provider,
 			Query:                 identity.CanonicalName,
 			Entity:                identity.CanonicalName,
+			EntityID:              identity.CanonicalEntityID,
 			Score:                 1.0 / float64(max(1, row.Rank)),
 			SourceURL:             row.SourceURL,
 			SourcePageURL:         row.SourcePageURL,
@@ -246,7 +248,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			RightsStatus:          "unknown",
 			SelectionReason:       "persistent PERSON entity image catalog candidate",
 		}
-		if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization); ok {
+		if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization, contentStore); ok {
 			candidate = hydrated
 		}
 		out = append(out, candidate)
@@ -289,7 +291,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 // fetched editorial URLs then rebinds the same photo on every scene and
 // per-scene variety is impossible. Callers append the result with
 // AppendProviderCandidatesUnique, which collapses same-URL duplicates.
-func durableEntityImagePoolForSegment(ctx context.Context, repo entitycatalog.Repository, segment scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+func durableEntityImagePoolForSegment(ctx context.Context, repo entitycatalog.Repository, segment scriptpkg.VidRushSegmentResult, contentStore EntityImageContentStore) []scriptpkg.SegmentAssetCandidate {
 	if repo == nil {
 		return nil
 	}
@@ -305,7 +307,7 @@ func durableEntityImagePoolForSegment(ctx context.Context, repo entitycatalog.Re
 			return
 		}
 		seenIdentities[identity.CanonicalEntityID] = struct{}{}
-		pool, err := entityImageCatalogCandidates(ctx, repo, identity, entityImageCatalogPoolSize)
+		pool, err := entityImageCatalogCandidates(ctx, repo, identity, entityImageCatalogPoolSize, contentStore)
 		if err == nil && len(pool.Candidates) > 0 {
 			out = append(out, pool.Candidates...)
 		}
@@ -439,12 +441,64 @@ func excludeUnavailableEntityImageCatalogCandidates(ctx context.Context, repo en
 	return out, nil
 }
 
+// personCatalogCandidateIdentity resolves the canonical PERSON identity a
+// candidate is allowed to write into the durable catalog.
+//
+// The durable catalog is PERSON-only. A candidate whose EntityID names another
+// entity type (org:/place:/object:/...) is never promoted here, and a caller
+// that established an identity (fallback) is the authority: a candidate that
+// canonicalizes to a DIFFERENT person is skipped instead of minting a second
+// pool. Discovery candidates whose Entity is really the contextual scene query
+// ("tripoli-libya-1930s-colonial-streets-...") therefore cannot create a
+// person:<scene-phrase> row.
+func personCatalogCandidateIdentity(candidate scriptpkg.SegmentAssetCandidate, fallback entitycatalog.PersonIdentity, graph *entitycatalog.PersonAliasGraph) (entitycatalog.PersonIdentity, bool) {
+	suppliedID := strings.ToLower(strings.TrimSpace(candidate.EntityID))
+	switch {
+	case strings.HasPrefix(suppliedID, "person:"):
+		// The candidate already carries the canonical PERSON identity.
+	case suppliedID == "" || strings.HasPrefix(suppliedID, "entity:"):
+		// "entity:<provenance-slug>" is the neutral segment stamp, not a type
+		// claim; the surface name must still resolve as a PERSON below.
+		suppliedID = ""
+	default:
+		// org:/place:/object:/brand:/local:/... — never promote to PERSON.
+		return entitycatalog.PersonIdentity{}, false
+	}
+	name := strings.TrimSpace(candidate.Entity)
+	if name == "" {
+		name = strings.TrimSpace(fallback.CanonicalName)
+	}
+	if name == "" {
+		return entitycatalog.PersonIdentity{}, false
+	}
+	identity, err := entitycatalog.CanonicalizePersonIdentityWithAliases(name, suppliedID, graph)
+	if err != nil || identity.Unresolved || identity.CanonicalEntityID == "" {
+		return entitycatalog.PersonIdentity{}, false
+	}
+	if fallback.CanonicalEntityID != "" && identity.CanonicalEntityID != fallback.CanonicalEntityID {
+		return entitycatalog.PersonIdentity{}, false
+	}
+	// An alias surface resolves to the established identity. Keep the identity's
+	// canonical display name so the catalog entity does not take the alias text
+	// ("Augias") as the canonical name of "Corrado Augias".
+	if fallback.CanonicalEntityID != "" && strings.TrimSpace(fallback.CanonicalName) != "" &&
+		identity.CanonicalEntityID == fallback.CanonicalEntityID {
+		identity.CanonicalName = fallback.CanonicalName
+	}
+	return identity, true
+}
+
 // persistPersonImageVisualVerdicts writes the final pixel-level decision back
 // to the same PERSON catalog row that owns provider identity and URL quality.
 // This prevents an earlier metadata-only promotion from remaining usable after
 // visual verification rejected the pixels.
-func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Repository, results []scriptpkg.SegmentAssetCandidate) error {
-	if repo == nil {
+//
+// identity is the PERSON the caller established for this batch (the query class
+// was decided upstream); it is REQUIRED. Without it a contextual query would
+// reach CanonicalizePersonName and be persisted as a fake person pool — the
+// exact contamination this boundary exists to stop.
+func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Repository, identity entitycatalog.PersonIdentity, graph *entitycatalog.PersonAliasGraph, results []scriptpkg.SegmentAssetCandidate) error {
+	if repo == nil || strings.TrimSpace(identity.CanonicalEntityID) == "" {
 		return nil
 	}
 	for rank, result := range results {
@@ -456,8 +510,8 @@ func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 		if result.SemanticStatus == entitycatalog.CandidateSemanticAccepted && !ReusablePersonImageVerdict(result) {
 			continue
 		}
-		identity, err := entitycatalog.CanonicalizePersonName(result.Entity)
-		if err != nil {
+		identity, ok := personCatalogCandidateIdentity(result, identity, graph)
+		if !ok {
 			continue
 		}
 		if err := repo.UpsertEntity(ctx, entitycatalog.Entity{
@@ -499,7 +553,7 @@ func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 // outage-shaped rejection stays retryable exactly like inside the scorer. Any
 // catalog error degrades to no hydration (the candidate is simply re-verified
 // later) — the catalog is a replay projection, never truth.
-func hydratePersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Repository, candidates []scriptpkg.SegmentAssetCandidate) {
+func hydratePersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Repository, graph *entitycatalog.PersonAliasGraph, candidates []scriptpkg.SegmentAssetCandidate) {
 	if repo == nil || len(candidates) == 0 {
 		return
 	}
@@ -517,8 +571,8 @@ func hydratePersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 		if ReusablePersonImageVerdict(*candidate) {
 			continue
 		}
-		identity, err := entitycatalog.CanonicalizePersonName(candidate.Entity)
-		if err != nil {
+		identity, ok := personCatalogCandidateIdentity(*candidate, entitycatalog.PersonIdentity{}, graph)
+		if !ok {
 			continue
 		}
 		byEntity[identity.CanonicalEntityID] = append(byEntity[identity.CanonicalEntityID], pendingIndex{
@@ -562,6 +616,14 @@ func hydratePersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 func nowUTC() time.Time { return time.Now().UTC() }
 
 func entityImageCatalogCandidateID(ctx context.Context, repo entitycatalog.Repository, candidate scriptpkg.SegmentAssetCandidate) (int64, error) {
+	return entityImageCatalogCandidateIDWithAliases(ctx, repo, nil, candidate)
+}
+
+// entityImageCatalogCandidateIDWithAliases is the alias-aware catalog row
+// lookup. A segment's PersonAliasGraph must be applied here for the same reason
+// it is applied on write: an alias ("Augias") and its canonical name
+// ("Corrado Augias") must resolve to the SAME candidate row.
+func entityImageCatalogCandidateIDWithAliases(ctx context.Context, repo entitycatalog.Repository, graph *entitycatalog.PersonAliasGraph, candidate scriptpkg.SegmentAssetCandidate) (int64, error) {
 	if repo == nil || !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) {
 		return 0, nil
 	}
@@ -573,8 +635,8 @@ func entityImageCatalogCandidateID(ctx context.Context, repo entitycatalog.Repos
 	if strings.TrimSpace(candidate.Entity) == "" || strings.TrimSpace(candidate.SourceURL) == "" {
 		return 0, nil
 	}
-	identity, err := entitycatalog.CanonicalizePersonName(candidate.Entity)
-	if err != nil {
+	identity, ok := personCatalogCandidateIdentity(candidate, entitycatalog.PersonIdentity{}, graph)
+	if !ok {
 		return 0, nil
 	}
 	rows, err := repo.ListCandidates(ctx, identity.CanonicalEntityID, 100)
@@ -600,7 +662,7 @@ func setEntityImageCatalogCandidateStatus(ctx context.Context, repo entitycatalo
 	return repo.SetCandidateStatus(ctx, candidateID, status)
 }
 
-func applyEntityImageCatalogMaterialization(candidate scriptpkg.SegmentAssetCandidate, materialization *entitycatalog.Materialization) (scriptpkg.SegmentAssetCandidate, bool) {
+func applyEntityImageCatalogMaterialization(candidate scriptpkg.SegmentAssetCandidate, materialization *entitycatalog.Materialization, contentStore EntityImageContentStore) (scriptpkg.SegmentAssetCandidate, bool) {
 	if materialization == nil || materialization.Status != entitycatalog.MaterializationStatusMaterialized ||
 		strings.TrimSpace(materialization.AssetID) == "" || strings.TrimSpace(materialization.DriveLink) == "" ||
 		strings.TrimSpace(materialization.ContentSHA256) == "" {
@@ -611,14 +673,56 @@ func applyEntityImageCatalogMaterialization(candidate scriptpkg.SegmentAssetCand
 	candidate.ContentSHA256 = materialization.ContentSHA256
 	// The catalog row deliberately carries no local path: a path is runtime
 	// state, and injecting a stale one here is what let a media row disagree
-	// with its own content address. Bytes are located by the canonical
-	// materializer from the content address, not remembered in a database.
+	// with its own content address. The bytes are located from the content
+	// address instead: when the CAS on THIS host holds the object, the
+	// candidate carries its canonical path, so reuse does not have to
+	// re-download a copy that is already local. A miss leaves the path empty
+	// and the normal materializer falls back to the Drive copy.
+	candidate.LocalPath = resolveMaterializedImageLocalPath(contentStore, materialization.ContentSHA256)
 	candidate.RightsStatus = "unknown_allowed"
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
 	candidate.IndexStatus = "indexed"
 	return candidate, true
+}
+
+// EntityImageContentStore is the READ side of the content-addressed store: it
+// answers "where do the bytes with this address live on this host?". It is the
+// shape of *cas.Store.LocalPath; the adapters package depends on the port, not
+// on the storage implementation, so a composition without a data dir simply
+// supplies nothing and every caller keeps working.
+type EntityImageContentStore interface {
+	LocalPath(contentSHA256 string) (string, error)
+}
+
+// resolveMaterializedImageLocalPath returns the CAS path of an already
+// published image, or "" when the store is absent, the address is not a real
+// content address, or the object is not on this host.
+//
+// A catalog row carries a content address, not a path: a path is runtime state
+// and a remembered one can point at another machine's disk or at bytes that
+// were deleted. The address is the durable fact, so the path is DERIVED from it
+// here and only returned when the object is actually present and non-empty. A
+// miss is absence, never an error: the caller falls back to the Drive copy.
+func resolveMaterializedImageLocalPath(store EntityImageContentStore, contentSHA256 string) string {
+	sha := entityImageCatalogContentSHA256(contentSHA256)
+	if store == nil || sha == "" {
+		return ""
+	}
+	path, err := store.LocalPath(sha)
+	if err != nil {
+		return ""
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Size() == 0 {
+		return ""
+	}
+	return path
 }
 
 const (

@@ -7,6 +7,7 @@ package cliprender
 import (
 	"context"
 	"strings"
+	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -47,7 +48,8 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 		"source_asset_id": req.SourceAssetID,
 		"phase":           "rendered",
 		"transcript_mode": req.Transcript.Mode,
-		"source":          materializationResult(prepared.Source),
+		// The source exists once, under materialization.source. The historical
+		// top-level alias duplicated the same block (CR-21).
 		"transcript": map[string]any{
 			"language":            prepared.Transcript.Language,
 			"reused":              prepared.Transcript.Reused,
@@ -139,7 +141,8 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 		}
 
 		if outcome.Metrics != nil {
-			renderBlock["render_wall_ms"] = outcome.Metrics.RenderWallMS
+			// render_wall_ms lives only in the canonical metrics_v2 report.
+			// Mirroring it in render.* made one number look like two (CR-21).
 			renderBlock["metrics_v2"] = outcome.Metrics
 		}
 		// The raw deep-profile timing sidecar reference preserved by
@@ -154,6 +157,9 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 				"sha256":       outcome.ChrononTimingSHA256,
 				"size_bytes":   outcome.ChrononTimingSizeBytes,
 				"content_type": outcome.ChrononTimingContentType,
+				"source":       outcome.ChrononTimingSource,
+				"read_bytes":   outcome.ChrononTimingReadBytes,
+				"fetch_ms":     outcome.ChrononTimingFetchMS,
 			}
 		}
 		result["render"] = renderBlock
@@ -195,6 +201,15 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"drive_file_id": published.DriveFileID,
 			"drive_link":    published.DriveLink,
 			"drive_pending": published.DrivePending,
+			"delivery_status": func() string {
+				if published.DeliveryStatus != "" {
+					return published.DeliveryStatus
+				}
+				if published.DrivePending {
+					return "pending"
+				}
+				return "completed"
+			}(),
 			"publication_status": func() string {
 				switch {
 				case published.Reused:
@@ -208,6 +223,7 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 					return "PUBLISHED"
 				}
 			}(),
+			"content_url":  published.ContentURL,
 			"size_bytes":   published.SizeBytes,
 			"sidecar_link": published.SidecarLink,
 		}
@@ -285,10 +301,23 @@ func materializationResult(asset *MaterializedAsset) map[string]any {
 		"sha256":         asset.SHA256,
 		"size_bytes":     asset.SizeBytes,
 		"from_cache":     asset.FromCache,
-		"cache_hit":      asset.FromCache,
 		"download_bytes": downloadBytes,
 		"materialized":   true,
 	}
+}
+
+// addQueueWaitMS projects the measured admission wait into the job result.
+// It is never a fabricated zero: a missing/zero creation time (or a clock
+// inversion) reports NOT_INSTRUMENTED (CR-08).
+func addQueueWaitMS(result job.Result, j *job.Job, startedAt time.Time) {
+	if result == nil {
+		return
+	}
+	if j == nil || j.CreatedAt.IsZero() || startedAt.Before(j.CreatedAt) {
+		result["queue_wait_ms"] = "NOT_INSTRUMENTED"
+		return
+	}
+	result["queue_wait_ms"] = startedAt.Sub(j.CreatedAt).Milliseconds()
 }
 
 // finalizeMetrics sets the job-level total wall time on the V2 report and

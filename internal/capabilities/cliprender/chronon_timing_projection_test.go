@@ -28,6 +28,18 @@ func (f *stubTimingFetcher) FetchChrononTiming(_ context.Context, key, url strin
 	return f.raw, nil
 }
 
+type stubSummaryTimingFetcher struct {
+	*stubTimingFetcher
+	summary      []byte
+	summaryCalls int
+}
+
+func (f *stubSummaryTimingFetcher) FetchChrononTimingSummary(_ context.Context, key, url string) ([]byte, error) {
+	f.summaryCalls++
+	f.lastKey, f.lastURL = key, url
+	return f.summary, nil
+}
+
 func newTimingProjectionWorker(rec *recordingRecorder, fetcher ChrononTimingFetcher) *Worker {
 	w := &Worker{log: zap.NewNop()}
 	w.SetChrononMetrics(NewChrononMetricsAdapter(rec, zap.NewNop()), fetcher)
@@ -73,6 +85,38 @@ func TestPublishChrononTimingRecordsMeasuredPhasesFromTheReferencedSidecar(t *te
 			report.OutputSizeBytes != 2_500_000 || report.Width != 1920 || report.Height != 1080 || report.FPS != 30 {
 			t.Errorf("report %s carries incomplete certified facts: %+v", report.Operation, report)
 		}
+	}
+}
+
+// TestPublishChrononTimingPrefersTheSummaryCompanion pins the CR-17 hot path:
+// when the fetcher supports the compact companion, the worker reads it and does
+// not fetch the raw per-frame document. The result records the source and the
+// bytes actually read.
+func TestPublishChrononTimingPrefersTheSummaryCompanion(t *testing.T) {
+	rec := &recordingRecorder{}
+	fetcher := &stubSummaryTimingFetcher{
+		stubTimingFetcher: &stubTimingFetcher{raw: []byte(chrononSidecarFixture)},
+		summary:           []byte(chrononSidecarFixture),
+	}
+	w := newTimingProjectionWorker(rec, fetcher)
+	outcome := &RenderOutcome{
+		ChrononTimingStorageKey: "timing-key-1",
+		ChrononTimingURL:        "http://store:9000/objects/timing-key-1",
+	}
+
+	w.publishChrononTiming(context.Background(), outcome, nil, nil)
+
+	if fetcher.summaryCalls != 1 || fetcher.calls != 0 {
+		t.Fatalf("summary calls = %d, raw calls = %d; want 1/0", fetcher.summaryCalls, fetcher.calls)
+	}
+	if outcome.ChrononTimingSource != "summary" {
+		t.Fatalf("source = %q, want summary", outcome.ChrononTimingSource)
+	}
+	if outcome.ChrononTimingReadBytes != int64(len(chrononSidecarFixture)) {
+		t.Fatalf("read bytes = %d, want %d", outcome.ChrononTimingReadBytes, len(chrononSidecarFixture))
+	}
+	if len(rec.reports) == 0 {
+		t.Fatal("summary must still project measured phases")
 	}
 }
 

@@ -47,6 +47,9 @@ func (m Metric) MarshalJSON() ([]byte, error) {
 // render work when a render wall is unavailable. This prevents subtitle,
 // watermark, conversion and encoder diagnostics from being counted twice.
 type RenderMetricsV2 struct {
+	// Deprecated: the removed multi-backend probe/resolve/fallback path never
+	// populated these fields; they stay readable for old report rows only.
+	// New consumers must use BackendSelected + BackendAttempts.
 	BackendProbeMS   Metric        `json:"backend_probe_ms"`
 	BackendResolveMS Metric        `json:"backend_resolve_ms"`
 	BackendSelected  RenderBackend `json:"backend_selected"`
@@ -138,7 +141,9 @@ type RenderMetricsV2 struct {
 	ArtifactPublishMS        Metric `json:"artifact_publish_ms"`
 	DriveUploadMS            Metric `json:"drive_upload_ms"`
 	PublicationTotalMS       Metric `json:"publication_total_ms"`
-	PublishMS                Metric `json:"publish_ms,omitempty"`
+	// Deprecated: PublicationTotalMS is the publication wall. PublishMS was a
+	// second spelling that no writer populates.
+	PublishMS Metric `json:"publish_ms,omitempty"`
 
 	// RenderWallMS is the worker-owned top-level wall around backend selection
 	// + execution. Fine-grained renderer timings are diagnostics inside this
@@ -153,8 +158,9 @@ type RenderMetricsV2 struct {
 	// Compute from a different boundary. Unexported: it is wire-invisible and
 	// only meaningful while the report is being assembled (before Compute).
 	renderFPSMeasured bool
-	// RealtimeFactor is retained as the compatibility field for the speed
-	// factor. It is the inverse of ProcessingXRT: media duration / total wall.
+	// Deprecated: RealtimeFactor is the compatibility spelling. SpeedFactor is
+	// its identical alias; ProcessingXRT is the inverse (total wall / media
+	// duration). New consumers must read ProcessingXRT.
 	RealtimeFactor float64 `json:"realtime_factor"`
 	SpeedFactor    float64 `json:"speed_factor"`
 	ProcessingXRT  float64 `json:"processing_xrt"`
@@ -178,8 +184,8 @@ type RenderMetricsV2 struct {
 	SubtitleRasterCPU       bool   `json:"subtitle_raster_cpu"`
 
 	TotalMS Metric `json:"total_ms"`
-	// UnaccountedMS is retained for wire compatibility. UnattributedMS is the
-	// explicit name used by new consumers. They are always identical.
+	// Deprecated: UnaccountedMS is the compatibility spelling. UnattributedMS
+	// is the explicit name for new consumers; the two are always identical.
 	UnaccountedMS  Metric `json:"unaccounted_ms"`
 	UnattributedMS Metric `json:"unattributed_ms"`
 }

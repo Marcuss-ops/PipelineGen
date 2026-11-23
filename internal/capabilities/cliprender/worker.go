@@ -167,8 +167,14 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 
 	progress(0, "clip.render started")
 	jobStart := time.Now()
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseSubmitted, jobStart, jobStart, kernobs.StageStatusCompleted, nil)
-	kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseClaimed, jobStart, jobStart, kernobs.StageStatusCompleted, nil)
+	// submitted is the real queue wait: from the durable creation time to the
+	// instant this handler started. A zero-width marker measured nothing and
+	// made queue wait indistinguishable from a real zero (CR-08). claimed has no
+	// durable timestamp in this job shape, so it is omitted rather than faked as
+	// a zero-width phase.
+	if !j.CreatedAt.IsZero() && !jobStart.Before(j.CreatedAt) {
+		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseSubmitted, j.CreatedAt, jobStart, kernobs.StageStatusCompleted, nil)
+	}
 	// Per-phase progress is a Debug trace: the canonical operator events for a
 	// clip are accepted (clip.render.job.start), completed
 	// (clip.render.job.completed) and failed. Emitting one Info line per phase
@@ -258,6 +264,7 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 	if w.renderer == nil {
 		result := renderedResult(j, &req, inputs.prepared, inputs.plan, inputs.subtitles, nil, nil)
 		result["phase"] = "plan_sealed"
+		addQueueWaitMS(result, j, jobStart)
 		return result, fmt.Errorf(
 			"%w: job_id=%s source_asset_id=%s plan_sha256=%s",
 			ErrRenderPhaseNotImplemented, j.ID, req.SourceAssetID, inputs.plan.PlanSHA256)
@@ -434,11 +441,18 @@ func (w *Worker) tryCachedCompletion(ctx context.Context, j *job.Job, req *Rende
 	// delivery, so the projection must claim neither PUBLISHED (a fact this job
 	// never observed) nor PENDING (the historical fabrication, which announced a
 	// Drive delivery that nobody would ever perform).
-	res := renderedResult(j, req, synthPrepared, ClipRenderPlanV1{}, nil, cached, &RenderPublishResult{
-		AssetID:   rec.AssetID,
-		Reused:    true,
-		SizeBytes: rec.SizeBytes,
-	})
+	publication := &RenderPublishResult{
+		AssetID:        rec.AssetID,
+		Reused:         true,
+		SizeBytes:      rec.SizeBytes,
+		DriveFileID:    rec.DriveFileID,
+		DrivePending:   rec.DeliveryStatus == "pending",
+		DeliveryStatus: rec.DeliveryStatus,
+	}
+	if rec.DeliveryStatus == "not_required" {
+		publication.ContentURL = AssetContentURL(rec.AssetID)
+	}
+	res := renderedResult(j, req, synthPrepared, ClipRenderPlanV1{}, nil, cached, publication)
 	// The job wall IS measured even on a cache hit, so it is reported; the
 	// render phases stay NotInstrumented because no render ran, and Compute()
 	// never derives a value from an uninstrumented input.
@@ -446,6 +460,9 @@ func (w *Worker) tryCachedCompletion(ctx context.Context, j *job.Job, req *Rende
 	res["cache_hit"] = true
 	res["fingerprint"] = fp
 	res["phase"] = "cached"
+	res["delivery_status"] = rec.DeliveryStatus
+	res["drive_file_id"] = rec.DriveFileID
+	addQueueWaitMS(res, j, jobStart)
 	progress(100, "clip.render cache hit")
 	return res, true
 }

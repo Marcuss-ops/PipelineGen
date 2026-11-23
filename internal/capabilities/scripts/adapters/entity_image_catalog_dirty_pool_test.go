@@ -133,7 +133,7 @@ func TestEntityImageCatalogDirtyHeadKeepsAcceptedMaterializedPortraits(t *testin
 	}
 
 	const limit = 6 // entityImageCatalogPoolSize shrunk to a per-scene request
-	pool, err := entityImageCatalogCandidates(ctx, repo, identity, limit)
+	pool, err := entityImageCatalogCandidates(ctx, repo, identity, limit, nil)
 	if err != nil {
 		t.Fatalf("entityImageCatalogCandidates: %v", err)
 	}

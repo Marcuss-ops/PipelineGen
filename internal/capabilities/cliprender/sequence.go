@@ -20,11 +20,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media/clipsequence"
@@ -42,6 +44,15 @@ const MaxSequenceClips = MaxClipRenderBatchItems
 // retry), so this is a politeness interval, not a timeout.
 const DefaultSequencePollDelay = 15 * time.Second
 
+// DefaultSequenceMaxWait bounds how long a deferral chain may wait for sibling
+// renders. A sequence without a deadline could be deferred forever because a
+// deferral spends no retry budget (CR-04).
+const DefaultSequenceMaxWait = 30 * time.Minute
+
+// ErrSequenceTimeout is the typed failure for a sequence whose siblings did not
+// settle inside MaxWaitMS/the default deadline.
+var ErrSequenceTimeout = errors.New("clip.sequence: max wait exceeded")
+
 // SequenceClip is one position of the deliverable. Exactly one source is set.
 type SequenceClip struct {
 	// Path is an explicit local artifact the caller already holds.
@@ -52,6 +63,12 @@ type SequenceClip struct {
 	// JobID is a clip.render job that produces this position. The sequence
 	// job waits for it, then resolves its published asset.
 	JobID string `json:"job_id,omitempty"`
+	// BatchPosition names a position of the durable batch manifest carried by
+	// Recovery. It is used by the batch endpoint so the sequence job can be
+	// enqueued BEFORE its sibling renders and recover any item whose enqueue
+	// was lost with the process (CR-04). It is resolved to a durable JobID by
+	// the worker before the normal wait/materialize path runs.
+	BatchPosition *int `json:"batch_position,omitempty"`
 	// DurationMS is the clip's own length. Required with path; with asset_id
 	// and job_id the certified duration is used when this is zero.
 	DurationMS int64 `json:"duration_ms,omitempty"`
@@ -71,6 +88,29 @@ type SequenceOutput struct {
 	CRF int `json:"crf,omitempty"`
 }
 
+// BatchRecoveryItem is the durable copy of one batch item needed to recreate
+// its render job if the process died after the batch was accepted but before
+// every item was enqueued. Position is the canonical (first-occurrence)
+// position in the batch.
+type BatchRecoveryItem struct {
+	Position int           `json:"position"`
+	Request  RenderRequest `json:"request"`
+}
+
+// SequenceBatchRecovery is the batch manifest carried by a sequence job. The
+// sequence job is enqueued BEFORE the item renders, so its existence is the
+// durable proof that an accepted batch can still be completed: on every
+// attempt the worker resolves each BatchPosition by its deterministic
+// correlation and enqueues the item when it is missing.
+type SequenceBatchRecovery struct {
+	// BatchID is the canonical BatchFingerprint of the request.
+	BatchID string `json:"batch_id"`
+	// Items are the cold items, one per canonical position. Cache hits are not
+	// recoverable work (their bytes are already certified), so they travel as
+	// asset ids on the clips instead.
+	Items []BatchRecoveryItem `json:"items"`
+}
+
 // SequenceRequest is the canonical payload of a sequence phase job and the body
 // of POST /api/clips/render/sequence.
 type SequenceRequest struct {
@@ -79,6 +119,76 @@ type SequenceRequest struct {
 	RenderPhase RenderPhase    `json:"render_phase,omitempty"`
 	Clips       []SequenceClip `json:"clips"`
 	Output      SequenceOutput `json:"output,omitempty"`
+	// Recovery is set only by the batch endpoint: it makes this sequence job
+	// the durable manifest that recovers missing item jobs (CR-04).
+	Recovery *SequenceBatchRecovery `json:"recovery,omitempty"`
+	// MaxWaitMS bounds the deferral chain. Zero uses DefaultSequenceMaxWait.
+	MaxWaitMS int64 `json:"max_wait_ms,omitempty"`
+}
+
+// Fingerprint is the deterministic identity of an assembly request. The
+// transport uses it as the queue correlation so an identical retry returns the
+// same assembly job, while a different transition/edit addresses a different
+// one (CR-02). It is computed over the normalized payload, so wire key order
+// and omitted defaults cannot split one assembly.
+func (r *SequenceRequest) Fingerprint() (string, error) {
+	if r == nil {
+		return "", fmt.Errorf("%w: sequence request is nil", ErrInvalidRequest)
+	}
+	cp := *r
+	cp.Clips = append([]SequenceClip(nil), r.Clips...)
+	for i := range cp.Clips {
+		if r.Clips[i].TransitionIn != nil {
+			transition := *r.Clips[i].TransitionIn
+			if r.Clips[i].TransitionIn.Leak != nil {
+				leak := *r.Clips[i].TransitionIn.Leak
+				transition.Leak = &leak
+			}
+			cp.Clips[i].TransitionIn = &transition
+		}
+		if r.Clips[i].BatchPosition != nil {
+			position := *r.Clips[i].BatchPosition
+			cp.Clips[i].BatchPosition = &position
+		}
+	}
+	if r.Recovery != nil {
+		recovery := *r.Recovery
+		recovery.Items = append([]BatchRecoveryItem(nil), r.Recovery.Items...)
+		cp.Recovery = &recovery
+	}
+	cp.Normalize()
+	if err := cp.Validate(); err != nil {
+		return "", fmt.Errorf("clip.render sequence fingerprint: %w", err)
+	}
+	// The per-item request fingerprints, not the full requests, are the
+	// canonical batch identity: the same items must address the same sequence
+	// job while the recovery copy stays a transport detail.
+	var batchItems []string
+	if cp.Recovery != nil {
+		batchItems = make([]string, len(cp.Recovery.Items))
+		for i := range cp.Recovery.Items {
+			itemFP, err := cp.Recovery.Items[i].Request.Fingerprint()
+			if err != nil {
+				return "", fmt.Errorf("clip.render sequence fingerprint: batch item %d: %w", cp.Recovery.Items[i].Position, err)
+			}
+			batchItems[i] = itemFP
+		}
+	}
+	// MaxWaitMS is a WAIT policy, not assembly identity: hashing it would make
+	// the same clips with a different timeout address two queue entries and
+	// assemble the same output twice (the same rule CR-01 applies to render
+	// execution). RenderPhase is constant for this payload and is omitted too.
+	type identity struct {
+		Clips      []SequenceClip `json:"clips"`
+		Output     SequenceOutput `json:"output"`
+		BatchID    string         `json:"batch_id,omitempty"`
+		BatchItems []string       `json:"batch_items,omitempty"`
+	}
+	payload, err := json.Marshal(identity{Clips: cp.Clips, Output: cp.Output, BatchID: batchIDOf(cp.Recovery), BatchItems: batchItems})
+	if err != nil {
+		return "", fmt.Errorf("clip.render sequence fingerprint: marshal: %w", err)
+	}
+	return digest.SHA256Bytes(payload), nil
 }
 
 // Normalize fills the defaults a caller may omit.
@@ -96,6 +206,12 @@ func (r *SequenceRequest) Normalize() {
 		r.Clips[i].Path = strings.TrimSpace(r.Clips[i].Path)
 		r.Clips[i].AssetID = strings.TrimSpace(r.Clips[i].AssetID)
 		r.Clips[i].JobID = strings.TrimSpace(r.Clips[i].JobID)
+	}
+	if r.Recovery != nil {
+		r.Recovery.BatchID = strings.TrimSpace(r.Recovery.BatchID)
+		for i := range r.Recovery.Items {
+			r.Recovery.Items[i].Request.Normalize()
+		}
 	}
 }
 
@@ -146,8 +262,14 @@ func (r *SequenceRequest) Validate() error {
 				sources++
 			}
 		}
+		if clip.BatchPosition != nil {
+			if r.Recovery == nil {
+				return fmt.Errorf("%w: clips[%d].batch_position requires a batch recovery manifest", ErrInvalidRequest, i)
+			}
+			sources++
+		}
 		if sources != 1 {
-			return fmt.Errorf("%w: clips[%d] needs exactly one of path, asset_id or job_id (got %d)", ErrInvalidRequest, i, sources)
+			return fmt.Errorf("%w: clips[%d] needs exactly one of path, asset_id, job_id or batch_position (got %d)", ErrInvalidRequest, i, sources)
 		}
 		if clip.DurationMS < 0 {
 			return fmt.Errorf("%w: clips[%d].duration_ms must not be negative", ErrInvalidRequest, i)
@@ -161,8 +283,51 @@ func (r *SequenceRequest) Validate() error {
 			}
 		}
 	}
+	if r.Recovery != nil {
+		if !isSHA256Hex(r.Recovery.BatchID) {
+			return fmt.Errorf("%w: recovery.batch_id=%q is not a SHA-256 hex digest", ErrInvalidRequest, r.Recovery.BatchID)
+		}
+		if len(r.Recovery.Items) == 0 {
+			return fmt.Errorf("%w: recovery.items must not be empty", ErrInvalidRequest)
+		}
+		if len(r.Recovery.Items) > MaxSequenceClips {
+			return fmt.Errorf("%w: recovery.items too large: %d (max %d)", ErrInvalidRequest, len(r.Recovery.Items), MaxSequenceClips)
+		}
+		byPosition := make(map[int]bool, len(r.Recovery.Items))
+		for i, item := range r.Recovery.Items {
+			if item.Position < 0 || item.Position >= len(r.Clips) {
+				return fmt.Errorf("%w: recovery.items[%d].position %d is outside 0..%d", ErrInvalidRequest, i, item.Position, len(r.Clips)-1)
+			}
+			if byPosition[item.Position] {
+				return fmt.Errorf("%w: recovery.items[%d].position %d is declared twice", ErrInvalidRequest, i, item.Position)
+			}
+			byPosition[item.Position] = true
+			if err := item.Request.Validate(); err != nil {
+				return fmt.Errorf("%w: recovery.items[%d].request: %v", ErrInvalidRequest, i, err)
+			}
+		}
+		for position := range byPosition {
+			if r.Clips[position].BatchPosition == nil {
+				return fmt.Errorf("%w: recovery.items position %d has no clip with batch_position", ErrInvalidRequest, position)
+			}
+		}
+		for _, clip := range r.Clips {
+			if clip.BatchPosition == nil {
+				continue
+			}
+			if *clip.BatchPosition < 0 || *clip.BatchPosition >= len(r.Clips) {
+				return fmt.Errorf("%w: clip.batch_position %d is outside 0..%d", ErrInvalidRequest, *clip.BatchPosition, len(r.Clips)-1)
+			}
+			if !byPosition[*clip.BatchPosition] {
+				return fmt.Errorf("%w: clip.batch_position %d has no recovery item", ErrInvalidRequest, *clip.BatchPosition)
+			}
+		}
+	}
 	if r.Output.CRF < 0 || r.Output.CRF > 51 {
 		return fmt.Errorf("%w: output.crf must be in [0,51]", ErrInvalidRequest)
+	}
+	if r.MaxWaitMS < 0 {
+		return fmt.Errorf("%w: max_wait_ms must not be negative", ErrInvalidRequest)
 	}
 	return nil
 }
@@ -185,6 +350,10 @@ type SequenceJobLookup interface {
 type SequenceAssembly struct {
 	Jobs   SequenceJobLookup
 	Assets SequenceAssetResolver
+	// Batch is the durable enqueue/list surface used by a sequence job that
+	// carries a batch recovery manifest. It is optional for non-batch
+	// assemblies; a recovery payload without it fails closed.
+	Batch BatchRecoveryPorts
 	// Encoder is the caller's resolved policy. CanonicalVideo overrides it with
 	// the certified recipe when the assembled sequence is an assembly input.
 	Encoder media.EncoderPolicy
@@ -212,6 +381,22 @@ func (w *Worker) WithSequence(in SequenceAssembly) *Worker {
 
 type sequenceAssembly struct {
 	in SequenceAssembly
+}
+
+// BatchRecoveryPorts is the narrow job surface a recovery manifest needs: list
+// the durable jobs of one batch and enqueue a missing item idempotently. The
+// composition root satisfies it with job.Service.List/Enqueue.
+type BatchRecoveryPorts struct {
+	List    func(context.Context, job.Filter) ([]job.Job, error)
+	Enqueue func(context.Context, *job.EnqueueRequest) (*job.Job, error)
+}
+
+// batchIDOf returns the manifest batch id, or empty for a plain sequence.
+func batchIDOf(recovery *SequenceBatchRecovery) string {
+	if recovery == nil {
+		return ""
+	}
+	return recovery.BatchID
 }
 
 // isSequencePayload reports whether a job payload belongs to the sequence
@@ -264,11 +449,21 @@ func (w *Worker) handleSequence(ctx context.Context, j *job.Job, tools *job.JobE
 	emit := safeEvent(tools)
 	progress(5, "clip.sequence: resolving clips")
 
+	if req.Recovery != nil {
+		progress(8, "clip.sequence: recovering batch items")
+		if err := w.resolveBatchRecovery(ctx, &req, assembly); err != nil {
+			return nil, err
+		}
+	}
+
 	clips, waiting, err := w.resolveSequenceClips(ctx, req, assembly)
 	if err != nil {
 		return nil, err
 	}
 	if waiting != "" {
+		if sequenceWaitExceeded(j, req) {
+			return nil, fmt.Errorf("%w: %s", ErrSequenceTimeout, waiting)
+		}
 		// A sibling render is still running: wait, do not fail.
 		emit("clip.sequence.waiting", waiting, map[string]any{"job_id": j.ID})
 		return nil, job.DeferredAfter(sequencePollDelay(assembly), waiting)
@@ -327,14 +522,29 @@ func (w *Worker) handleSequence(ctx context.Context, j *job.Job, tools *job.JobE
 		paths = append(paths, artifact.Path)
 	}
 	return job.Result{
-		"job_id":      j.ID,
-		"phase":       "assembled",
-		"artifacts":   entries,
-		"paths":       paths,
-		"duration_ms": plan.DurationMS,
-		"output_dir":  outputDir,
-		"groups":      len(plan.Groups),
+		"job_id":          j.ID,
+		"phase":           "assembled",
+		"artifacts":       entries,
+		"paths":           paths,
+		"duration_ms":     plan.DurationMS,
+		"output_dir":      outputDir,
+		"groups":          len(plan.Groups),
+		"local_only":      true,
+		"delivery_status": "not_required",
 	}, nil
+}
+
+// sequenceWaitExceeded reports whether the deferral chain has outlived its
+// deadline. A missing durable creation time is not treated as an expired wait.
+func sequenceWaitExceeded(j *job.Job, req SequenceRequest) bool {
+	if j == nil || j.CreatedAt.IsZero() {
+		return false
+	}
+	maxWait := DefaultSequenceMaxWait
+	if req.MaxWaitMS > 0 {
+		maxWait = time.Duration(req.MaxWaitMS) * time.Millisecond
+	}
+	return time.Since(j.CreatedAt) >= maxWait
 }
 
 func sequencePollDelay(assembly SequenceAssembly) time.Duration {
@@ -344,9 +554,109 @@ func sequencePollDelay(assembly SequenceAssembly) time.Duration {
 	return time.Duration(assembly.PollDelayMS) * time.Millisecond
 }
 
+// resolveBatchRecovery makes a batch sequence job self-healing. The sequence
+// job is enqueued BEFORE the item renders, so its durable row is the proof that
+// the batch was accepted. On every attempt it resolves each recovery position by
+// the same deterministic correlation the HTTP handler uses and enqueues the item
+// only when it is missing. Enqueue is idempotent on (type, correlation_id), so
+// the handler racing this recovery cannot create a duplicate render.
+func (w *Worker) resolveBatchRecovery(ctx context.Context, req *SequenceRequest, assembly SequenceAssembly) error {
+	if req == nil || req.Recovery == nil {
+		return nil
+	}
+	if assembly.Batch.List == nil || assembly.Batch.Enqueue == nil {
+		return fmt.Errorf("clip.render: batch recovery requires job list/enqueue ports")
+	}
+	jobType := TypeClipRender
+	jobs, err := assembly.Batch.List(ctx, job.Filter{
+		Type:              &jobType,
+		CorrelationPrefix: req.Recovery.BatchID + ":",
+		Limit:             MaxClipRenderBatchItems*2 + 2,
+	})
+	if err != nil {
+		return fmt.Errorf("clip.render: list batch %s jobs: %w", req.Recovery.BatchID, err)
+	}
+	byCorrelation := make(map[string]string, len(jobs))
+	for i := range jobs {
+		byCorrelation[jobs[i].CorrelationID] = jobs[i].ID
+	}
+	for _, item := range req.Recovery.Items {
+		position := item.Position
+		if position < 0 || position >= len(req.Clips) {
+			return fmt.Errorf("clip.render: batch recovery position %d is outside 0..%d", position, len(req.Clips)-1)
+		}
+		request := item.Request
+		request.Normalize()
+		fingerprint, err := request.Fingerprint()
+		if err != nil {
+			return fmt.Errorf("clip.render: batch recovery position %d fingerprint: %w", position, err)
+		}
+		correlation := req.Recovery.BatchID + ":" + digestPrefix(fingerprint)
+		jobID := byCorrelation[correlation]
+		if jobID == "" {
+			enqueued, enqueueErr := assembly.Batch.Enqueue(ctx, &job.EnqueueRequest{
+				Type:          TypeClipRender,
+				CorrelationID: correlation,
+				Payload:       &request,
+				Scheduling:    &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
+			})
+			if enqueueErr != nil {
+				return fmt.Errorf("clip.render: recover batch item %d: %w", position, enqueueErr)
+			}
+			if enqueued == nil || strings.TrimSpace(enqueued.ID) == "" {
+				return fmt.Errorf("clip.render: recover batch item %d: broker returned an empty job", position)
+			}
+			jobID = enqueued.ID
+			byCorrelation[correlation] = jobID
+			w.log.Info("clip.render.sequence.recovered_item",
+				zap.Int("position", position),
+				zap.String("job_id", jobID),
+				zap.String("batch_id", req.Recovery.BatchID))
+		}
+		// Duplicate items share one canonical position: every clip that names
+		// it must receive the same job id, not just the first occurrence.
+		for i := range req.Clips {
+			if req.Clips[i].BatchPosition != nil && *req.Clips[i].BatchPosition == position {
+				req.Clips[i].JobID = jobID
+				req.Clips[i].BatchPosition = nil
+			}
+		}
+	}
+	for i := range req.Clips {
+		if req.Clips[i].BatchPosition != nil {
+			return fmt.Errorf("clip.render: batch recovery left clip %d at position %d unresolved", i, *req.Clips[i].BatchPosition)
+		}
+	}
+	return nil
+}
+
 // resolveSequenceClips turns each position into local bytes. It returns a
 // non-empty `waiting` message when a sibling job has not settled yet.
 func (w *Worker) resolveSequenceClips(ctx context.Context, req SequenceRequest, assembly SequenceAssembly) ([]resolvedSequenceClip, string, error) {
+	// Pass 1: inspect every sibling BEFORE materializing anything. A later
+	// running clip must not make this attempt download the earlier ready clips
+	// again; the previous single pass materialized position 0..N-1 and only then
+	// discovered position N was still rendering (CR-04).
+	for i, clip := range req.Clips {
+		if clip.JobID == "" {
+			continue
+		}
+		child, err := assembly.Jobs.Get(ctx, clip.JobID)
+		if err != nil {
+			return nil, "", fmt.Errorf("clip.render: sequence clip %d: load job %s: %w", i, clip.JobID, err)
+		}
+		if child == nil {
+			return nil, "", fmt.Errorf("clip.render: sequence clip %d: job %s does not exist", i, clip.JobID)
+		}
+		if !assembly.Jobs.IsTerminal(child.Status) {
+			return nil, fmt.Sprintf("clip %d (job %s) is still %s", i, clip.JobID, child.Status), nil
+		}
+		if child.Status != job.StatusSucceeded {
+			return nil, "", fmt.Errorf("clip.render: sequence clip %d: job %s ended %s: %s", i, clip.JobID, child.Status, child.Error)
+		}
+	}
+
+	// Pass 2: every sibling is terminal, so materialize each position once.
 	clips := make([]resolvedSequenceClip, len(req.Clips))
 	for i, clip := range req.Clips {
 		resolved := resolvedSequenceClip{assetID: clip.AssetID, path: clip.Path, durationMS: clip.DurationMS, transition: clip.TransitionIn}

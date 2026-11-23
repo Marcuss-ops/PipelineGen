@@ -397,7 +397,7 @@ func TestEntityImageCatalogReusesMaterializedImageWhenSourceIsBroken(t *testing.
 		t.Fatal(err)
 	}
 
-	pool, err := entityImageCatalogCandidates(ctx, repo, identity, 10)
+	pool, err := entityImageCatalogCandidates(ctx, repo, identity, 10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

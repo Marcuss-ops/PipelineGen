@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -51,6 +52,17 @@ func decodeStrictBody[T any](c *gin.Context, limit int64, bodyLabel string) (T, 
 		})
 		return req, false
 	}
+	// A single document is the contract. Decode once more and require EOF:
+	// without this, `{...}{...}` or `{...}garbage` silently used the first
+	// document and ignored the trailing bytes (CR-09).
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		c.JSON(http.StatusBadRequest, renderResponse{
+			Status:    StatusError,
+			Error:     "invalid JSON payload: unexpected trailing data",
+			ErrorCode: ErrCodeInvalidPayload,
+		})
+		return req, false
+	}
 	return req, true
 }
 
@@ -95,6 +107,8 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	}
 	r.POST("/render", idem, h.Render)
 	r.POST("/render/batch", idem, h.RenderBatch)
+	r.GET("/render/batch/:batch_id", h.GetRenderBatch)
+	r.DELETE("/render/batch/:batch_id", h.CancelRenderBatch)
 	r.POST("/render/sequence", idem, h.RenderSequence)
 }
 
@@ -139,37 +153,57 @@ func (h *Handler) Render(c *gin.Context) {
 		return
 	}
 
+	// One identity for cache lookup AND enqueue idempotency. Deriving the
+	// correlation from the fingerprint (rather than from a per-request header)
+	// makes a retried identical POST return the SAME job, and keeps two
+	// different bodies from collapsing onto one queue key (CR-02).
+	fp, fpErr := req.Fingerprint()
+	if fpErr != nil {
+		c.JSON(http.StatusBadRequest, renderResponse{
+			Status:    StatusError,
+			Error:     "cannot fingerprint request: " + fpErr.Error(),
+			ErrorCode: ErrCodeInvalidPayload,
+		})
+		return
+	}
+
 	// Deterministic cache fast path: identical semantics → same bytes
 	// without touching the GPU. Served synchronously in milliseconds.
 	if h.renderCache != nil {
-		if fp, fpErr := req.Fingerprint(); fpErr == nil {
-			rec, cacheErr := h.renderCache.Get(c.Request.Context(), fp)
-			logCacheLookupFailure(h.log, "handler", fp, cacheErr)
-			if cacheErr == nil && rec != nil {
-				h.log.Info("clip.render cache hit (handler)",
-					zap.String("fingerprint", digestPrefix(fp)),
-					zap.String("asset_id", rec.AssetID),
-				)
-				c.JSON(http.StatusOK, gin.H{
-					"status":      "CACHED",
-					"fingerprint": fp,
-					"asset_id":    rec.AssetID,
-					"artifact": gin.H{
-						"storage_key":  rec.StorageKey,
-						"artifact_url": rec.ArtifactURL,
-						"sha256":       rec.SHA256,
-						"size_bytes":   rec.SizeBytes,
-					},
-				})
-				return
+		rec, cacheErr := h.renderCache.Get(c.Request.Context(), fp)
+		logCacheLookupFailure(h.log, "handler", fp, cacheErr)
+		if cacheErr == nil && rec != nil {
+			h.log.Info("clip.render cache hit (handler)",
+				zap.String("fingerprint", digestPrefix(fp)),
+				zap.String("asset_id", rec.AssetID),
+			)
+			cachedResponse := gin.H{
+				"status":           "CACHED",
+				"fingerprint":      fp,
+				"asset_id":         rec.AssetID,
+				"delivery_status":  rec.DeliveryStatus,
+				"delivery_pending": strings.EqualFold(rec.DeliveryStatus, "pending"),
+				"drive_file_id":    rec.DriveFileID,
 			}
+			if strings.EqualFold(rec.DeliveryStatus, "not_required") {
+				cachedResponse["content_url"] = AssetContentURL(rec.AssetID)
+			}
+			cachedResponse["artifact"] = gin.H{
+				"storage_key":  rec.StorageKey,
+				"artifact_url": rec.ArtifactURL,
+				"sha256":       rec.SHA256,
+				"size_bytes":   rec.SizeBytes,
+			}
+			c.JSON(http.StatusOK, cachedResponse)
+			return
 		}
 	}
 
 	enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{
-		Type:       TypeClipRender,
-		Payload:    &req,
-		Scheduling: &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
+		Type:          TypeClipRender,
+		CorrelationID: "cliprender:" + fp,
+		Payload:       &req,
+		Scheduling:    &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
 	})
 	if err != nil {
 		h.log.Error("clip.render enqueue failed",
@@ -190,6 +224,6 @@ func (h *Handler) Render(c *gin.Context) {
 
 	apiutil.Accepted(c, renderResponse{
 		JobID:  enqueued.ID,
-		Status: StatusQueued,
+		Status: enqueuedStatus(enqueued),
 	})
 }

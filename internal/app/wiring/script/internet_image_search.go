@@ -3,6 +3,7 @@ package script
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -106,10 +107,44 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 	if lookup, ok := a.resolver.(interface {
 		ExistingImages(context.Context, string, int) ([]imagesrouting.ImageSearchResult, error)
 	}); ok && !req.ForceRefresh {
-		cached, lookupErr := lookup.ExistingImages(ctx, req.Query, req.Limit)
-		if lookupErr != nil {
-			a.log.Warn("VidRush existing image lookup failed; falling back to DuckDuckGo", zap.String("query", req.Query), zap.Error(lookupErr))
-		} else if len(cached) > 0 {
+		// The durable row is keyed by the ENTITY, while the provider query can
+		// carry retrieval qualifiers ("Corrado Augias portrait"). Resolving the
+		// entity first is what makes a warm reuse hit regardless of the query
+		// variant; the raw query remains the fallback for contextual searches.
+		subjects := make([]string, 0, 2)
+		for _, subject := range []string{req.Entity, req.Query} {
+			subject = strings.TrimSpace(subject)
+			if subject == "" || slices.Contains(subjects, subject) {
+				continue
+			}
+			subjects = append(subjects, subject)
+		}
+		var cached []imagesrouting.ImageSearchResult
+		seenCached := make(map[string]struct{})
+		for _, subject := range subjects {
+			rows, lookupErr := lookup.ExistingImages(ctx, subject, req.Limit)
+			if lookupErr != nil {
+				a.log.Warn("VidRush existing image lookup failed; falling back to DuckDuckGo", zap.String("subject", subject), zap.Error(lookupErr))
+				continue
+			}
+			for _, row := range rows {
+				key := strings.TrimSpace(row.AssetID)
+				if key == "" {
+					key = strings.TrimSpace(row.DriveLink)
+				}
+				if key != "" {
+					if _, dup := seenCached[key]; dup {
+						continue
+					}
+					seenCached[key] = struct{}{}
+				}
+				cached = append(cached, row)
+			}
+			if req.Limit > 0 && len(cached) >= req.Limit {
+				break
+			}
+		}
+		if len(cached) > 0 {
 			// A time-seeded shuffle made the same plan bind different images on
 			// every run. The seed is now the retrieval subject, and the rows are
 			// sorted by content identity first, so a warm catalog replay is

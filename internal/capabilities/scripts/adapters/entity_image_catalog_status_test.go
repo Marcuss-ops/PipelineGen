@@ -42,7 +42,7 @@ func TestEntityImageCatalogLifecycleFailsClosedExceptBrokenDurable(t *testing.T)
 		t.Run(tc.name, func(t *testing.T) {
 			repo := newIntegrationEntityImageCatalog()
 			identity, candidateID := seedStatusCatalogCandidate(t, repo, tc.status, tc.lastSeen, tc.materialized)
-			pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10)
+			pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10, nil)
 			if err != nil {
 				t.Fatalf("catalog pool: %v", err)
 			}

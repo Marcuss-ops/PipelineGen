@@ -21,6 +21,7 @@ package wiring
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -211,6 +212,17 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	}
 	built, err := a.buildLocalizedRenderRequest(ctx, in)
 	if err != nil {
+		// A silent/music-only clip is not a Whisper defect: state it with the
+		// NO_SPEECH code so the run's failure projection tells the operator
+		// what to fix (clip selection or the subtitle contract), instead of
+		// reading like a broken ASR backend.
+		if errors.Is(err, cliprender.ErrNoSpeech) {
+			a.log.Warn("localized render: source clip has no speech for a timed transcript",
+				zap.String("scene_id", in.SceneID),
+				zap.String("clip_asset_id", assetID),
+				zap.Error(err))
+			return fmt.Errorf("localized render: scene %q clip %q: NO_SPEECH: %w", in.SceneID, assetID, err)
+		}
 		return err
 	}
 	clipID := built.identity.clipID

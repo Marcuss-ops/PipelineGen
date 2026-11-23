@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
@@ -67,11 +68,21 @@ func (w *CachedWhisperTranscriber) TranscribeAudioWithDetection(ctx context.Cont
 				leaseID = claim.LeaseID
 				if claim.Entry != nil {
 					if result, readErr := w.readCached(ctx, claim.Entry); readErr == nil {
-						w.log.Debug("whisper artifact cache hit", zap.String("source_sha256", key.SourceSHA256))
-						return result, nil
+						if hasTranscriptContent(result) {
+							w.log.Debug("whisper artifact cache hit", zap.String("source_sha256", key.SourceSHA256))
+							return result, nil
+						}
+						// An empty transcript is a legitimate ASR answer, but it is
+						// not a reusable artifact: older versions cached it as READY,
+						// so every retry was answered from cache without running the
+						// model. Heal the poisoned entry and recompute.
+						w.log.Warn("whisper artifact cache holds an empty transcript; invalidating and recomputing",
+							zap.String("cache_key", claim.Entry.CacheKey))
+						_ = w.cache.Invalidate(ctx, key)
+					} else {
+						w.log.Warn("whisper artifact cache entry could not be read; recomputing", zap.String("cache_key", claim.Entry.CacheKey))
+						_ = w.cache.Invalidate(ctx, key)
 					}
-					w.log.Warn("whisper artifact cache entry could not be read; recomputing", zap.String("cache_key", claim.Entry.CacheKey))
-					_ = w.cache.Invalidate(ctx, key)
 				}
 			} else {
 				w.log.Warn("whisper artifact cache claim failed; falling back to lookup", zap.Error(claimErr))
@@ -80,11 +91,18 @@ func (w *CachedWhisperTranscriber) TranscribeAudioWithDetection(ctx context.Cont
 		if !claimed {
 			if entry, hit, err := w.cache.Lookup(ctx, key, 5000); err == nil && hit {
 				if result, readErr := w.readCached(ctx, entry); readErr == nil {
-					w.log.Debug("whisper artifact cache hit", zap.String("source_sha256", key.SourceSHA256))
-					return result, nil
+					if hasTranscriptContent(result) {
+						w.log.Debug("whisper artifact cache hit", zap.String("source_sha256", key.SourceSHA256))
+						return result, nil
+					}
+					// Same poisoned-entry healing as the claim path above.
+					w.log.Warn("whisper artifact cache holds an empty transcript; invalidating and recomputing",
+						zap.String("cache_key", entry.CacheKey))
+					_ = w.cache.Invalidate(ctx, key)
+				} else {
+					w.log.Warn("whisper artifact cache entry could not be read; recomputing", zap.String("cache_key", entry.CacheKey))
+					_ = w.cache.Invalidate(ctx, key)
 				}
-				w.log.Warn("whisper artifact cache entry could not be read; recomputing", zap.String("cache_key", entry.CacheKey))
-				_ = w.cache.Invalidate(ctx, key)
 			} else if err != nil {
 				w.log.Warn("whisper artifact cache lookup failed; recomputing", zap.Error(err))
 			}
@@ -102,6 +120,20 @@ func (w *CachedWhisperTranscriber) TranscribeAudioWithDetection(ctx context.Cont
 		return detail.TranscriptResult{}, err
 	}
 	if ok {
+		// Never persist a contentless result as a READY artifact. The ASR run
+		// itself stays a success (a music-only/silent clip legitimately has no
+		// text), but caching it would make the empty answer permanent: the
+		// next attempt would read it back and fail without ever re-running the
+		// model. Release the build lease so the row does not linger as
+		// BUILDING.
+		if !hasTranscriptContent(result) {
+			if claimed {
+				w.releaseClaim(ctx, key, leaseID, "empty transcript is not cacheable")
+			}
+			w.log.Warn("whisper artifact cache skipped: empty transcript",
+				zap.String("source_sha256", key.SourceSHA256))
+			return result, nil
+		}
 		body, marshalErr := json.Marshal(result)
 		if marshalErr == nil {
 			var storeErr error
@@ -123,6 +155,14 @@ func (w *CachedWhisperTranscriber) TranscribeAudioWithDetection(ctx context.Cont
 		}
 	}
 	return result, nil
+}
+
+// hasTranscriptContent reports whether an ASR result carries usable text. An
+// empty result is a real outcome (silence, music-only, non-speech audio) but it
+// is never a cacheable artifact: caching it converts one empty answer into a
+// permanent one.
+func hasTranscriptContent(result detail.TranscriptResult) bool {
+	return strings.TrimSpace(result.Text) != "" || len(result.Cues) > 0
 }
 
 func (w *CachedWhisperTranscriber) releaseClaim(ctx context.Context, key capcache.Key, leaseID, reason string) {

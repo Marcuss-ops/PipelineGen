@@ -27,6 +27,15 @@ type AssetRef struct {
 	DriveFileID   string // canonical Drive source (may be absent)
 	ContentSHA256 string // registry-persisted hash (may be absent)
 	DurationMS    int64
+	// VideoID is the canonical source-video identity (YouTube video id) used
+	// by the 5-priority transcript chain when the clip has no local sidecar.
+	// Empty for assets that do not originate from a video platform.
+	VideoID string
+	// StartSec/EndSec are the clip window inside that source video. They are
+	// the values the acquisition chain needs to fetch and rebase the source
+	// video's subtitles onto the clip timeline.
+	StartSec int
+	EndSec   int
 }
 
 // MaterializedAsset is a local, content-addressed artifact ready for the
@@ -42,6 +51,15 @@ type MaterializedAsset struct {
 	// FromCache is true when the asset was already local (no download was
 	// performed). Observability only — the render pass never branches on it.
 	FromCache bool
+	// VideoID / DriveFileID / StartSec / EndSec carry the canonical identity
+	// of the SOURCE the bytes came from. A materialized file is temporary and
+	// content-addressed, so the acquisition chain cannot recover the original
+	// video id or the clip window from the path alone; they travel with the
+	// artifact instead.
+	VideoID     string
+	DriveFileID string
+	StartSec    int
+	EndSec      int
 }
 
 // Cue is a single timed subtitle cue (millisecond precision), mirroring the

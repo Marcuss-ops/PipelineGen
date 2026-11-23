@@ -11,6 +11,7 @@ import (
 	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"go.uber.org/zap"
 )
 
 // vidRushMaterializationRun carries the per-segment state shared by the
@@ -62,6 +63,24 @@ func newVidRushMaterializationState(targetImages int, plan *scriptpkg.ResolvedGe
 
 func (r *vidRushMaterializationRun) belowSourceMinimum(state *vidRushMaterializationState, provider string) bool {
 	return state.minPerSource > 0 && state.readyByProvider[strings.ToLower(strings.TrimSpace(provider))] < state.minPerSource
+}
+
+// observeCatalogReuse records what a warm catalog hit actually saved. A local
+// path here means the CAS already held the bytes on this host, so the run bound
+// them without any provider or Drive transfer; an empty path means the scene
+// will bind the Drive locator and fetch the remote copy. Without this line a
+// live run cannot tell the two reuses apart.
+func (r *vidRushMaterializationRun) observeCatalogReuse(candidate scriptpkg.SegmentAssetCandidate) {
+	if r == nil || r.processor == nil || r.processor.log == nil {
+		return
+	}
+	localPath := strings.TrimSpace(candidate.LocalPath)
+	r.processor.log.Debug("vidrush materialization: durable catalog image reused",
+		zap.String("asset_id", candidate.AssetID),
+		zap.String("entity_id", candidate.EntityID),
+		zap.String("content_sha256", candidate.ContentSHA256),
+		zap.Bool("local_bytes", localPath != ""),
+	)
 }
 
 func (r *vidRushMaterializationRun) markReadyImage(state *vidRushMaterializationState, candidate scriptpkg.SegmentAssetCandidate) {
@@ -226,6 +245,7 @@ func (r *vidRushMaterializationRun) reuseMaterializationCandidate(ctx context.Co
 	if !item.refreshMaterialized && readyVidRushCandidate(candidate) && (!candidate.IsLegacyCandidate() || legacyPersisted) {
 		if item.catalogImage {
 			incEntityImageCatalogLifecycle(r.processor.metrics, scriptmetrics.EntityImageStageReuse, scriptmetrics.EntityImageOutcomeSuccess)
+			r.observeCatalogReuse(candidate)
 		}
 		r.markReadyImage(state, candidate)
 		return item, true, true
@@ -386,6 +406,10 @@ func (r *vidRushMaterializationRun) finalizeMaterializationCandidate(ctx context
 	// run bundle and published by the finalizer into the canonical image
 	// library (<ImagesRootFolder>/<canonical-entity-slug>/<file>).
 	verified = routeGenerationOutputToPlanBundle(r.plan, verified)
+	// The provider wrote the acquired bytes into os.TempDir. Once the finalizer
+	// has promoted them into the content-addressed store (and only then) the
+	// download is disposable; the helper compares the two paths itself.
+	downloadedPath := verified.LocalPath
 	cacheKey := vidRushCandidateIdentity(candidate)
 	var persisted scriptpkg.SegmentAssetCandidate
 	err := measureVidRushProvider(ctx, r.processor.metrics, kernobs.OperationInfo{
@@ -400,12 +424,14 @@ func (r *vidRushMaterializationRun) finalizeMaterializationCandidate(ctx context
 			incEntityImageCatalogLifecycle(r.processor.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeFailure)
 			addEntityImageCatalogCandidates(r.processor.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeRejected, 1)
 		}
+		cleanupVidRushDownloadedTempArtifact(downloadedPath, "")
 		verified.Candidate.PersistenceStatus = scriptpkg.VidRushStatusFailed
 		verified.Candidate.FailLifecycle(scriptpkg.VidRushLifecycleStageFinalize, err.Error())
 		observeEntityImageCatalogMaterialization(r.processor.metrics, item.catalogStarted)
 		r.warnings = append(r.warnings, fmt.Sprintf("vidrush_materialization: finalize %s for %s: %v", strings.ToLower(strings.TrimSpace(candidate.Provider)), r.segment.SegmentID, err))
 		return verified.Candidate, nil
 	}
+	cleanupVidRushDownloadedTempArtifact(downloadedPath, persisted.LocalPath)
 	persisted.ClearLifecycleFailure()
 	if item.catalogImage {
 		incEntityImageCatalogLifecycle(r.processor.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeSuccess)

@@ -25,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -100,7 +101,7 @@ func BuildVidRushMaterialization(cfg *config.Config, deps VidRushMaterialization
 	if cfg != nil {
 		imagesRootFolderID = cfg.Drive.ImagesFolder()
 	}
-	finalizer := &vidRushArtifactFinalizer{mediaDB: deps.MediaPG, preparation: preparation, assetTx: assetTx, imagesRootFolderID: imagesRootFolderID}
+	finalizer := &vidRushArtifactFinalizer{mediaDB: deps.MediaPG, preparation: preparation, assetTx: assetTx, imagesRootFolderID: imagesRootFolderID, log: log, cas: BuildVidRushCASStore(cfg, log)}
 
 	registry := adapters.NewVidRushAssetProviderRegistry()
 	if deps.ImageSearcher != nil {
@@ -129,6 +130,12 @@ type vidRushArtifactFinalizer struct {
 	mediaDB     *sql.DB
 	preparation finalization.ArtifactPreparationService
 	assetTx     finalization.AssetFinalizerTx
+	log         *zap.Logger
+	// cas is the local content-addressed store. A downloaded image is promoted
+	// here before publication so the bytes become durable local state addressed
+	// by their own hash, and the ephemeral vidrush-image-* download can be
+	// removed. Nil (no config) leaves the historical temp-file behavior.
+	cas *cas.Store
 	// imagesRootFolderID is the canonical image library root
 	// (config.Drive.ImagesFolder()). Entity images are published there under a
 	// single canonical-entity SubFolder instead of into the run bundle, so the
@@ -144,6 +151,19 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 	if strings.TrimSpace(candidate.AssetID) == "" || strings.TrimSpace(artifact.LocalPath) == "" || strings.TrimSpace(artifact.ContentSHA256) == "" {
 		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: artifact identity, local path and hash are required")
 	}
+	// Content-addressed dedup BEFORE the Drive publication boundary. The same
+	// bytes served by another provider, under another alias, or for another
+	// entity are one canonical asset: uploading them again produced duplicate
+	// Drive files with distinct links for a single photograph. The check is on
+	// the canonical content address, never on the provider/candidate identity.
+	if reuse, ok := f.reusePublishedImageByContent(ctx, artifact); ok {
+		return reuse, nil
+	}
+	// Promote the downloaded bytes into the local CAS before publication. From
+	// here on the artifact's local path is content-addressed and stable: the
+	// caller may delete the ephemeral download, and a later run can re-open the
+	// bytes by hash instead of fetching them from Drive again.
+	artifact.LocalPath = f.promoteArtifactToCAS(ctx, artifact.LocalPath, artifact.ContentSHA256)
 	kind := finalization.KindImage
 	ext := filepath.Ext(artifact.LocalPath)
 	if ext == "" {
@@ -203,6 +223,11 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 		"duration_ms": artifact.DurationMs,
 		"local_path":  artifact.LocalPath,
 	}
+	// Subject/entity provenance makes the finalized image discoverable by the
+	// local reuse lookup (ExistingImages) instead of only by provider search.
+	// Without it the PostgreSQL row exists but can never be found again, so a
+	// warm run re-downloads and re-uploads the same picture.
+	stampEntityImageSubjectMetadata(published.ArtifactMetadata, candidate)
 	_, _, err = f.assetTx.FinalizeAsset(ctx, assetfinalizer.WrapTx(tx), published)
 	if err != nil {
 		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: commit asset: %w", err)

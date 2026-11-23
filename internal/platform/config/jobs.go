@@ -1,5 +1,38 @@
 package config
 
+import (
+	"fmt"
+	"strings"
+)
+
+// Clip render delivery modes (CR-19).
+const (
+	// ClipRenderDeliveryDrive is the historical behaviour: the certified
+	// artifact is committed with a durable Drive-delivery outbox intent.
+	ClipRenderDeliveryDrive = "drive"
+	// ClipRenderDeliveryObjectStore commits the RenderingGen object-store
+	// locator as the PRIMARY location and emits no Drive intent. The bytes are
+	// served by GET /api/v1/media/assets/:id/content.
+	ClipRenderDeliveryObjectStore = "object_store"
+	// ClipRenderDeliveryBoth keeps the Drive outbox intent and also commits
+	// the object-store locator (transition/migration mode).
+	ClipRenderDeliveryBoth = "both"
+)
+
+// NormalizeClipRenderDeliveryMode validates the operator-selected delivery
+// mode. An empty value is the backwards-compatible `drive`; anything else is a
+// fail-closed configuration error (a typo must not silently disable Drive).
+func NormalizeClipRenderDeliveryMode(raw string) (string, error) {
+	switch mode := strings.ToLower(strings.TrimSpace(raw)); mode {
+	case "":
+		return ClipRenderDeliveryDrive, nil
+	case ClipRenderDeliveryDrive, ClipRenderDeliveryObjectStore, ClipRenderDeliveryBoth:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("invalid clip render delivery mode %q (want drive, object_store or both)", raw)
+	}
+}
+
 // JobsConfig holds job-related configuration.
 type JobsConfig struct {
 	NewJobsPaused         bool `yaml:"new_jobs_paused" default:"false"`
@@ -29,10 +62,15 @@ type JobsConfig struct {
 	// SINGLE attempt. It is the loop guard: without it, a render that never
 	// reports terminal would be re-dispatched forever. 0 disables the
 	// deferral entirely (same effect as the wait knob).
-	ClipRenderSettleWindowSeconds int    `yaml:"clip_render_settle_window_seconds" env:"VELOX_CLIP_RENDER_SETTLE_WINDOW_SECONDS" default:"1200"`
-	AutoCleanupHours              int    `yaml:"auto_cleanup_hours" default:"24"`
-	CatalogSyncInterval           string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
-	YouTubeExtractTimeout         int    `yaml:"youtube_extract_timeout_seconds" env:"VELOX_YOUTUBE_EXTRACT_TIMEOUT" default:"1200"`
+	ClipRenderSettleWindowSeconds int `yaml:"clip_render_settle_window_seconds" env:"VELOX_CLIP_RENDER_SETTLE_WINDOW_SECONDS" default:"1200"`
+	// ClipRenderDeliveryMode selects how a rendered clip is delivered:
+	// `drive` (default, historical), `object_store` (no Drive upload; the
+	// certified locator is the primary location and bytes are served by the
+	// authenticated media route) or `both` (transitional). See CR-19.
+	ClipRenderDeliveryMode string `yaml:"clip_render_delivery_mode" env:"VELOX_CLIP_RENDER_DELIVERY_MODE" default:"drive"`
+	AutoCleanupHours       int    `yaml:"auto_cleanup_hours" default:"24"`
+	CatalogSyncInterval    string `yaml:"catalog_sync_interval" env:"VELOX_CATALOG_SYNC_INTERVAL" default:"6h"`
+	YouTubeExtractTimeout  int    `yaml:"youtube_extract_timeout_seconds" env:"VELOX_YOUTUBE_EXTRACT_TIMEOUT" default:"1200"`
 	// YoutubeMaxSegmentDurationSeconds caps the per-clip duration the
 	// YouTube segment pipeline accepts (SegmentPolicy.MaxDuration). The
 	// canonical default is 60s (DefaultSegmentPolicy); production may

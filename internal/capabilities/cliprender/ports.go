@@ -147,6 +147,13 @@ type RenderOutcome struct {
 	ChrononTimingSHA256      string
 	ChrononTimingSizeBytes   int64
 	ChrononTimingContentType string
+
+	// ChrononTimingSource, ChrononTimingReadBytes and ChrononTimingFetchMS
+	// report which sidecar the hot path read (“summary” or “raw”) and what it
+	// cost. They are producer-observed diagnostics, not persisted cache fields.
+	ChrononTimingSource    string
+	ChrononTimingReadBytes int64
+	ChrononTimingFetchMS   int64
 }
 
 // RenderExecutor is the canonical clip.render boundary, exposed as its TWO
@@ -353,6 +360,15 @@ type RenderPublishResult struct {
 	// continues in the background.
 	DrivePending bool
 
+	// DeliveryStatus names the durable delivery state committed with the
+	// asset: "pending" for the asynchronous Drive outbox, "not_required"
+	// when the certified object-store locator IS the delivery (CR-19).
+	DeliveryStatus string
+	// ContentURL is the authenticated route that streams the committed bytes
+	// (object-store delivery). Empty on the Drive-only path, where the Drive
+	// link is the consumer-facing address.
+	ContentURL string
+
 	// Reused means this job performed NO publication: the asset identity below
 	// belongs to a render that already completed and published, and the
 	// deterministic render cache handed back its certified locator.
@@ -368,6 +384,13 @@ type RenderPublishResult struct {
 	SidecarFileID string
 	SidecarLink   string
 	Publish       *PublicationMetrics
+}
+
+// AssetContentURL is the authenticated route that streams a committed asset's
+// bytes. Object-store delivery (CR-19) is the only mode that sets it; a
+// Drive-delivered asset keeps drive_link as its consumer-facing address.
+func AssetContentURL(assetID string) string {
+	return "/api/v1/media/assets/" + assetID + "/content"
 }
 
 // EventClipRenderDriveDeliveryRequested is emitted atomically with the

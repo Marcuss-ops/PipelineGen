@@ -30,6 +30,14 @@ import (
 
 const readyProbeTimeout = 15 * time.Second
 
+// GPUAdmissionStatus is the admission/worker slot snapshot published on
+// /ready. ParityOK is false when either side is invalid or the two disagree.
+type GPUAdmissionStatus struct {
+	Lanes    int  `json:"lanes"`
+	Slots    int  `json:"slots"`
+	ParityOK bool `json:"parity_ok"`
+}
+
 // HealthHandler exposes /health and /ready endpoints.
 type HealthHandler struct {
 	svc   *systemhealth.Service
@@ -58,6 +66,10 @@ type HealthHandler struct {
 	// startup log; one health poll now answers "is this process reusing
 	// certified overlay renders, under which epoch, and if not why?".
 	renderCache func() rendercacheinfo.Status
+	// gpuAdmission publishes the admission/worker slot contract on /ready so
+	// the 2026-11-22 drift (3 admitted vs 2 executed) is visible without
+	// reading systemd units or the worker config.
+	gpuAdmission func() GPUAdmissionStatus
 }
 
 // NewHealthHandler constructs the handler. Both deps are required;
@@ -86,6 +98,20 @@ func (h *HealthHandler) SetBuildInfo(fn func() buildinfo.Identity) {
 // snapshot. nil keeps the historical payload shape for direct fixtures.
 func (h *HealthHandler) SetRenderCacheStatus(fn func() rendercacheinfo.Status) {
 	h.renderCache = fn
+}
+
+// SetGPUAdmission installs the admission/worker slot accessor. nil keeps the
+// ready payload unchanged for fixtures that construct the handler directly.
+func (h *HealthHandler) SetGPUAdmission(fn func() GPUAdmissionStatus) {
+	h.gpuAdmission = fn
+}
+
+func (h *HealthHandler) gpuAdmissionStatus() *GPUAdmissionStatus {
+	if h.gpuAdmission == nil {
+		return nil
+	}
+	status := h.gpuAdmission()
+	return &status
 }
 
 // renderCacheStatus returns a snapshot, or nil when unwired so the response
@@ -211,6 +237,9 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 		if status := h.renderCacheStatus(); status != nil {
 			unwired["render_cache"] = status
 		}
+		if gpu := h.gpuAdmissionStatus(); gpu != nil {
+			unwired["gpu_admission"] = gpu
+		}
 		c.JSON(http.StatusServiceUnavailable, unwired)
 		return
 	}
@@ -237,6 +266,11 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 		// A canary that waits on /ready also observes whether the render
 		// reuse plane is active in the process it just certified.
 		payload["render_cache"] = cache
+	}
+	if gpu := h.gpuAdmissionStatus(); gpu != nil {
+		// Admission and worker lanes are two sides of one GPU contract; a
+		// canary must see a disagreement before it admits more work.
+		payload["gpu_admission"] = gpu
 	}
 	c.JSON(status, payload)
 }

@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -252,6 +254,7 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 	// §7.3 trace: the batch path has no per-scene ready boundary, so the TTS
 	// entry carries the dispatch→start interval as its real queue wait.
 	enqueuedAt := time.Now().UTC()
+	var completed atomic.Int64
 	results, err := concurrent.Map(ctx, work, r.ttsConcurrency, func(opCtx context.Context, idx int, item voiceoverWork) (voiceoverResult, error) {
 		// ── Pipeline KPI: first TTS dispatch ───────────────
 		ttsStartedOnce.Do(func() {
@@ -302,6 +305,11 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		}, string(item.lang), ttsErr)
 		if ttsErr != nil {
 			return voiceoverResult{}, fmt.Errorf("scene %s lang %s: %w", item.sceneID, item.lang, ttsErr)
+		}
+		// Project the live fan-out counter: the durable stage row now moves
+		// while the pool drains instead of staying at 0 until the stage closes.
+		if n := int(completed.Add(1)); n <= len(work) {
+			r.writeJobStageProgress(ctx, runID, job.StageVoiceover, n, len(work))
 		}
 		metric := TTSSSceneMetric{
 			SceneID:          item.sceneID,

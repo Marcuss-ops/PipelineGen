@@ -11,6 +11,7 @@ package adapters
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -137,6 +138,11 @@ func TestStreamingTranscriber_EmptyTranscript_FailClosed(t *testing.T) {
 	if !errors.Is(err, cliprender.ErrTranscriptGenerationUnavailable) {
 		t.Fatalf("expected ErrTranscriptGenerationUnavailable, got: %v", err)
 	}
+	// An empty ASR payload is not a transcription failure: it must keep the
+	// dedicated no-speech identity so the operator-facing code is NO_SPEECH.
+	if !errors.Is(err, cliprender.ErrNoSpeech) {
+		t.Fatalf("expected ErrNoSpeech, got: %v", err)
+	}
 }
 
 // fakeStreamingCache is the narrow artifact-cache fake: enough to prove the
@@ -248,6 +254,85 @@ print(%s)
 	}
 	if cache.stores != 2 {
 		t.Fatalf("stores=%d after a language change, want 2", cache.stores)
+	}
+}
+
+// TestTranscriptResolverGeneratePreservesNoSpeechThroughFallback pins the
+// classification contract: the resolver still tries the acquisition chain
+// after an empty streaming result (YouTube subtitles may exist), but when that
+// fallback cannot run, the returned error keeps the ErrNoSpeech identity so the
+// localized-render failure says NO_SPEECH instead of blaming transcript
+// generation.
+func TestTranscriptResolverGeneratePreservesNoSpeechThroughFallback(t *testing.T) {
+	ffmpeg := writeStubScript(t, "stub_ffmpeg.py", pcmDecoderStub)
+	bridge := writeStubScript(t, "stub_bridge.py", fmt.Sprintf(bridgeStubTemplate, `json.dumps({"text": "", "detected_language": "und", "cues": []})`))
+	resolver := NewClipRenderTranscriptResolver(zap.NewNop())
+	resolver.SetStreaming(newTestStreamingTranscriber(t, ffmpeg, bridge))
+
+	_, err := resolver.Generate(context.Background(), cliprender.TranscriptInput{
+		AssetID:  "asset-1",
+		Language: "en",
+	}, &cliprender.MaterializedAsset{AssetID: "asset-1", LocalPath: "/fake/source.mp4"})
+	if err == nil {
+		t.Fatal("expected a fail-closed error when every source is unavailable")
+	}
+	if !errors.Is(err, cliprender.ErrNoSpeech) {
+		t.Fatalf("the no-speech identity must survive the fallback, got: %v", err)
+	}
+	if !errors.Is(err, cliprender.ErrTranscriptGenerationUnavailable) {
+		t.Fatalf("ErrNoSpeech must still unwrap to ErrTranscriptGenerationUnavailable, got: %v", err)
+	}
+}
+
+// TestStreamingTranscriber_HealsEmptyCachedTranscript pins the streaming half
+// of the poisoned-cache fix: an empty result written by an older build is a
+// cache miss, the ASR runs, and the real transcript replaces it.
+func TestStreamingTranscriber_HealsEmptyCachedTranscript(t *testing.T) {
+	ffmpeg := writeStubScript(t, "stub_ffmpeg.py", pcmDecoderStub)
+	runsPath := filepath.Join(t.TempDir(), "bridge-runs.txt")
+	bridge := writeStubScript(t, "stub_bridge.py", fmt.Sprintf(`
+import json, sys
+data = sys.stdin.buffer.read()
+if len(data) == 0:
+    sys.exit(2)
+with open(%q, "a") as f:
+    f.write("run\n")
+print(json.dumps({"text": "real speech", "language": "en", "detected_language": "en", "cues": [{"start_ms": 0, "end_ms": 1000, "text": "real speech"}]}))
+`, runsPath))
+
+	source := &cliprender.MaterializedAsset{
+		AssetID:   "asset-1",
+		LocalPath: "/fake/source.mp4",
+		SHA256:    strings.Repeat("b", 64),
+	}
+	key, ok := streamingWhisperCacheKey(source.SHA256, "en", "whisper/stream/test")
+	if !ok {
+		t.Fatal("test source is not cacheable")
+	}
+	digest, err := key.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty, err := json.Marshal(cliprender.TranscriptResult{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := &fakeStreamingCache{entries: map[string][]byte{digest: empty}}
+
+	tr := newTestStreamingTranscriber(t, ffmpeg, bridge)
+	tr.SetArtifactCache(cache, "whisper/stream/test")
+	result, err := tr.TranscribeStream(context.Background(), source, "en")
+	if err != nil {
+		t.Fatalf("TranscribeStream: %v", err)
+	}
+	if result.Text != "real speech" {
+		t.Fatalf("empty cached entry was served: %+v", result)
+	}
+	if got := countBridgeRuns(t, runsPath); got != 1 {
+		t.Fatalf("bridge invoked %d times after a poisoned cache entry, want 1", got)
+	}
+	if cache.stores != 1 {
+		t.Fatalf("stores=%d, want the real transcript stored", cache.stores)
 	}
 }
 

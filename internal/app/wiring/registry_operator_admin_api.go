@@ -72,6 +72,10 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 		if wiring.Assets != nil && wiring.Assets.DownloadClip != nil {
 			m2mMedia.SetDownloadHandler(wiring.Assets.DownloadClip)
 		}
+		// CR-19: object-store delivery exposes its bytes through the same
+		// authenticated media surface. The proxy reads the asset's primary
+		// object_storage location; it never redirects to the internal store URL.
+		m2mMedia.SetContentHandler(newMediaContentHandler(assetReader, log))
 		wiring.M2MMediaHandler = m2mMedia
 		log.Info("created M2M media module (GET /assets, /assets/:id, /facets, POST download on /api/v1/media)")
 	}

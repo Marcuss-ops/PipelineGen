@@ -33,6 +33,41 @@ type ClipRenderPublisher struct {
 	log               *zap.Logger
 	asyncStagingRoot  string
 	subtitleArtifacts detail.SubtitleArtifactRepository
+	// deliveryMode is "drive" (default), "object_store" or "both" (CR-19).
+	// In object_store mode no Drive publisher/folder/outbox is required: the
+	// certified RenderingGen locator is committed as the primary location and
+	// the authenticated media route serves the bytes.
+	deliveryMode string
+}
+
+const (
+	deliveryModeDrive       = "drive"
+	deliveryModeObjectStore = "object_store"
+	deliveryModeBoth        = "both"
+)
+
+// SetDeliveryMode selects the publication destination. Unknown values are a
+// configuration error, never a silent fallback to Drive.
+func (p *ClipRenderPublisher) SetDeliveryMode(mode string) error {
+	if p == nil {
+		return errors.New("clip.render publisher: nil publisher")
+	}
+	switch mode = strings.ToLower(strings.TrimSpace(mode)); mode {
+	case "", deliveryModeDrive:
+		p.deliveryMode = deliveryModeDrive
+	case deliveryModeObjectStore, deliveryModeBoth:
+		p.deliveryMode = mode
+	default:
+		return fmt.Errorf("clip.render publisher: invalid delivery mode %q", mode)
+	}
+	return nil
+}
+
+func (p *ClipRenderPublisher) mode() string {
+	if p == nil || strings.TrimSpace(p.deliveryMode) == "" {
+		return deliveryModeDrive
+	}
+	return p.deliveryMode
 }
 
 // SetSubtitleArtifactRepository attaches the canonical ASS artifact registry.
@@ -60,7 +95,27 @@ func NewClipRenderPublisher(drive delivery.Publisher, committer persistence.Asse
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &ClipRenderPublisher{drive: drive, committer: committer, log: log}, nil
+	return &ClipRenderPublisher{drive: drive, committer: committer, log: log, deliveryMode: deliveryModeDrive}, nil
+}
+
+// NewClipRenderPublisherWithMode builds a publisher in an explicit delivery
+// mode. It is the CR-19 constructor: object_store does not require a Drive
+// publisher at all, so the composition root can start without Google Drive.
+func NewClipRenderPublisherWithMode(drive delivery.Publisher, committer persistence.AssetCommitter, mode string, log *zap.Logger) (*ClipRenderPublisher, error) {
+	if committer == nil {
+		return nil, errors.New("clip.render publisher: asset committer is required")
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	p := &ClipRenderPublisher{drive: drive, committer: committer, log: log}
+	if err := p.SetDeliveryMode(mode); err != nil {
+		return nil, err
+	}
+	if p.mode() != deliveryModeObjectStore && drive == nil {
+		return nil, errors.New("clip.render publisher: Drive publisher is required outside object_store delivery")
+	}
+	return p, nil
 }
 
 // publishPhase is a per-boundary-step diagnostic trace (hash, video upload,
@@ -91,11 +146,18 @@ type publishMetrics struct {
 }
 
 func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderPublishInput) (*cliprender.RenderPublishResult, error) {
-	if p == nil || p.drive == nil || p.committer == nil {
-		return nil, fmt.Errorf("clip.render publisher: Drive publisher and asset committer are required")
+	if p == nil || p.committer == nil {
+		return nil, fmt.Errorf("clip.render publisher: asset committer is required")
 	}
-	if in.Outcome == nil || in.DriveFolderID == "" {
-		return nil, fmt.Errorf("clip.render publisher: outcome and destination folder are required")
+	mode := p.mode()
+	if mode != deliveryModeObjectStore && p.drive == nil {
+		return nil, fmt.Errorf("clip.render publisher: Drive publisher is required for %s delivery", mode)
+	}
+	if in.Outcome == nil {
+		return nil, fmt.Errorf("clip.render publisher: outcome is required")
+	}
+	if mode != deliveryModeObjectStore && in.DriveFolderID == "" {
+		return nil, fmt.Errorf("clip.render publisher: destination folder is required for %s delivery", mode)
 	}
 	// Locator-first: the artifact is either a local path (a consumer
 	// materialized it) or a certified object-store locator. At least one must
@@ -171,8 +233,14 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 		zap.String("asset_id", assetID),
 		zap.String("drive_filename", driveFilename),
 		zap.Bool("has_subtitle_sidecar", hasSubtitleSidecar),
-		zap.Int64("duration_ms", metrics.HashMS),
+		// The artifact's media duration, not the hash-phase wall. The old
+		// metrics.HashMS field made every healthy clip log duration_ms:0 and
+		// hid the derived-duration contract from operators.
+		zap.Int64("duration_ms", int64(in.Outcome.DurationSec*1000)),
 	)
+	if mode == deliveryModeObjectStore {
+		return p.publishObjectStore(ctx, in, started, metrics.HashMS, contentHash, size, assetID, driveFilename, hasSubtitleSidecar)
+	}
 	// Clip publication is UNCONDITIONALLY asynchronous: the rendered asset and
 	// a durable Drive-delivery intent are committed together, and the outbox
 	// consumer owns the later upload. The synchronous Drive branch (and the
@@ -181,6 +249,27 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	// critical path, and there is deliberately no synchronous fallback left to
 	// select by accident.
 	return p.publishAsyncDrive(ctx, in, started, metrics.HashMS, contentHash, size, assetID, driveFilename, hasSubtitleSidecar)
+}
+
+// objectStorageLocation is the canonical primary location for object-store
+// delivery: ContentSHA256 + FileSizeBytes are the certified bytes, and URI is
+// the object-store locator the authenticated content route proxies.
+func objectStorageLocation(in cliprender.RenderPublishInput, contentHash string, size int64, primary bool) persistence.LocationCommit {
+	mime := strings.TrimSpace(in.ArtifactContentType)
+	if mime == "" {
+		mime = "video/mp4"
+	}
+	return persistence.LocationCommit{
+		Kind:          "object_storage",
+		Provider:      "renderinggen",
+		ExternalID:    strings.TrimSpace(in.ArtifactStorageKey),
+		URI:           strings.TrimSpace(in.ArtifactURL),
+		DownloadURL:   strings.TrimSpace(in.ArtifactURL),
+		MimeType:      mime,
+		FileSizeBytes: size,
+		ContentSHA256: contentHash,
+		IsPrimary:     primary,
+	}
 }
 
 // languageFilenameTag returns the filename discriminator for a render's
@@ -288,8 +377,14 @@ func (p *ClipRenderPublisher) publishAsyncDrive(
 		return nil, fmt.Errorf("marshal Drive delivery intent: %w", err)
 	}
 	keyDigest := digest.SHA256Bytes([]byte(assetID + "|" + contentHash + "|" + in.DriveFolderID))
+	var locations []persistence.LocationCommit
+	if p.mode() == deliveryModeBoth {
+		// `both` keeps Drive as the consumer-facing primary; the object-store
+		// row is the durable secondary copy used by the content route.
+		locations = append(locations, objectStorageLocation(in, contentHash, size, false))
+	}
 	commitRequest := persistence.AssetCommitRequest{
-		AssetID: assetID, Source: "clip.render", Name: driveFilename,
+		AssetID: assetID, Source: "clip.render", Name: driveFilename, Locations: locations,
 		// The derived asset MUST carry a search_text: the index worker reads it
 		// back to embed the asset, and an empty value makes the embedder fail
 		// closed, so every render dead-lettered asset.index.requested (delivered
@@ -328,7 +423,83 @@ func (p *ClipRenderPublisher) publishAsyncDrive(
 		zap.String("asset_id", assetID), zap.String("event_type", cliprender.EventClipRenderDriveDeliveryRequested),
 		zap.Int64("duration_ms", metrics.TotalMS), zap.Int64("drive_upload_ms", -1),
 	)
+	result := &cliprender.RenderPublishResult{
+		AssetID: assetID, DrivePending: true, DeliveryStatus: "pending", SizeBytes: size, Publish: metrics,
+	}
+	if p.mode() == deliveryModeBoth {
+		result.ContentURL = clipContentURL(assetID)
+	}
+	return result, nil
+}
+
+// clipContentURL is the canonical authenticated content route (CR-19).
+func clipContentURL(assetID string) string {
+	return cliprender.AssetContentURL(assetID)
+}
+
+// publishObjectStore commits the certified RenderingGen locator as the PRIMARY
+// asset location and emits NO Drive intent. The render boundary already put the
+// bytes in the object store; staging a second local copy and scheduling a Drive
+// upload were the 403,5 MB/run the ticket removes.
+func (p *ClipRenderPublisher) publishObjectStore(
+	ctx context.Context,
+	in cliprender.RenderPublishInput,
+	started time.Time,
+	hashMS int64,
+	contentHash string,
+	size int64,
+	assetID, driveFilename string,
+	hasSubtitleSidecar bool,
+) (*cliprender.RenderPublishResult, error) {
+	if strings.TrimSpace(in.ArtifactURL) == "" || strings.TrimSpace(in.ArtifactStorageKey) == "" {
+		return nil, fmt.Errorf("clip.render publisher: object_store delivery requires a certified storage key and artifact URL")
+	}
+	// A sidecar subtitle has no certified object-store locator in this request;
+	// dropping it silently would ship a clip that declared subtitles and lost
+	// them. Fail closed instead.
+	if hasSubtitleSidecar {
+		return nil, fmt.Errorf("clip.render publisher: object_store delivery does not support subtitle sidecars yet (use drive or both)")
+	}
+	taxonomyStart := time.Now()
+	taxonomy, err := mediaregistry.ResolveTaxonomy(mediaregistry.TaxonomyInput{
+		AssetID: assetID, Provider: "pipelinegen", MediaType: mediaregistry.MediaVideo,
+		AssetKind: mediaregistry.AssetRenderedVideo,
+	})
+	taxonomyMS := time.Since(taxonomyStart).Milliseconds()
+	if err != nil {
+		return nil, fmt.Errorf("resolve rendered taxonomy: %w", err)
+	}
+	contentURL := clipContentURL(assetID)
+	commitRequest := persistence.AssetCommitRequest{
+		AssetID: assetID, Source: "clip.render", Name: driveFilename,
+		SearchText: clipSearchText(in.SourceTitle, in.Transcript),
+		Filename:   driveFilename, MediaType: "video", Category: "clip-render",
+		DurationMs: int64(in.Outcome.DurationSec * 1000), ContentHash: contentHash,
+		LifecycleState: "ACTIVE", IndexState: "DISCOVERED",
+		SourceURL: in.SourceAssetID, AssetVersion: contentHash, Rendition: "rendered",
+		Title: driveFilename, SourceProvider: "pipelinegen", Taxonomy: taxonomy,
+		Locations: []persistence.LocationCommit{objectStorageLocation(in, contentHash, size, true)},
+		Metadata: persistence.TypedMetadata{Title: driveFilename, Origin: "clip.render", SourceVersion: contentHash,
+			PublishAction: "clip.render", SizeBytes: size, Extra: map[string]any{
+				"source_asset_id": in.SourceAssetID, "plan_run_id": in.RunID,
+				"delivery_status": "not_required", "content_url": contentURL,
+			}},
+		EmitIndexEvent: true,
+	}
+	commitStart := time.Now()
+	if _, err := p.committer.CommitAsset(ctx, commitRequest); err != nil {
+		return nil, fmt.Errorf("commit rendered asset with object-store location: %w", err)
+	}
+	metrics := &cliprender.PublicationMetrics{
+		HashMS: hashMS, TaxonomyResolveMS: taxonomyMS,
+		AssetCommitMS: time.Since(commitStart).Milliseconds(),
+		TotalMS:       time.Since(started).Milliseconds(),
+	}
+	p.publishPhase("object_store_committed", in.RunID,
+		zap.String("asset_id", assetID), zap.String("content_url", contentURL),
+		zap.String("storage_key", in.ArtifactStorageKey), zap.Int64("duration_ms", metrics.TotalMS))
 	return &cliprender.RenderPublishResult{
-		AssetID: assetID, DrivePending: true, SizeBytes: size, Publish: metrics,
+		AssetID: assetID, SizeBytes: size, DeliveryStatus: "not_required",
+		ContentURL: contentURL, Publish: metrics,
 	}, nil
 }

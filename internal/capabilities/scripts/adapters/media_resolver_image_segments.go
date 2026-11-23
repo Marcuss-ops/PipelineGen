@@ -256,7 +256,7 @@ func (p *MediaResolverImageStage) resolveInternetImageQuery(
 	catalogFallback := []scriptpkg.SegmentAssetCandidate(nil)
 	catalogMetrics := entityImageCatalogMetricsFor(p.metrics)
 	resolution, resolutionErr := resolveEntityImageCatalogCache(ctx, entityImageResolverDeps{
-		catalog: p.catalog, cache: p.cache, metrics: p.metrics,
+		catalog: p.catalog, cache: p.cache, metrics: p.metrics, contentStore: p.contentStore,
 	}, plan, query, entityCacheKey, catalogIdentity, catalogEligible, cacheOnly)
 	if resolution.ReleaseDiscovery != nil {
 		defer resolution.ReleaseDiscovery()
@@ -382,7 +382,13 @@ func (p *MediaResolverImageStage) finalizeInternetImageQuery(
 	// durable catalog verdicts first so a warm reuse skips the download
 	// + VLM call (the allCandidatesHaveReusableVerdict fast path in
 	// scoreInternetImageCandidates then serves the whole batch).
-	hydratePersonImageVisualVerdicts(ctx, p.catalog, qr.candidates)
+	aliasGraph := segmentPersonAliasGraph(updated)
+	if personIdentityQuery {
+		// Only a PERSON query may inherit a durable PERSON verdict. A
+		// contextual/typed-entity query that happens to share a surface must
+		// not be stamped with a verdict about different pixels.
+		hydratePersonImageVisualVerdicts(ctx, p.catalog, aliasGraph, qr.candidates)
+	}
 	visualClass := searchClassForEntityQuery(updated.Insights.Entities, qr.query)
 	if visualClass == "" && personIdentityQuery {
 		visualClass = "person"
@@ -393,8 +399,11 @@ func (p *MediaResolverImageStage) finalizeInternetImageQuery(
 	} else {
 		qr.candidates = scored
 	}
-	if p.semanticScorer != nil {
-		if err := persistPersonImageVisualVerdicts(ctx, p.catalog, qr.candidates); err != nil {
+	// The durable entity catalog is PERSON-only. Persisting here regardless of
+	// personIdentityQuery was the write that turned contextual scene queries
+	// (places, newsroom phrases, "...-portrait" strings) into person:* pools.
+	if personIdentityQuery && p.semanticScorer != nil {
+		if err := persistPersonImageVisualVerdicts(ctx, p.catalog, identity, aliasGraph, qr.candidates); err != nil {
 			return nil, nil, fmt.Errorf("internet_images: persist visual person-image verdicts for segment %s: %w", updated.SegmentID, err)
 		}
 	}

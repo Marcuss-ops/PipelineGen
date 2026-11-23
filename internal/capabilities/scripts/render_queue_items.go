@@ -100,9 +100,11 @@ const (
 
 // phraseWindowLimitUS is the longest the phrase clip may run before it would
 // overlap the next overlay or leave the plan: the distance to the next item's
-// start (or the plan end), floored at the certified spoken window so the
-// interval itself is never truncated. A phrase with no free space returns the
-// spoken window, i.e. it keeps its current length instead of growing.
+// start or the plan end, whichever comes first. The plan boundary is absolute:
+// a spoken window that would escape it (the 4,075-frame R33 phrase) is clamped
+// to the available space instead of commissioning a clip longer than the
+// scene, which stalled the overlay scheduler (CODEX-12). Only a phrase with no
+// next item and no plan duration keeps its spoken window.
 func phraseWindowLimitUS(parent capmodel.OverlayPlan, sourceID string, startUS, spokenUS int64) int64 {
 	limit := int64(0)
 	if next := nextPlanItemStartUS(parent, sourceID, startUS); next > 0 {
@@ -113,7 +115,7 @@ func phraseWindowLimitUS(parent capmodel.OverlayPlan, sourceID string, startUS, 
 			limit = end
 		}
 	}
-	if limit <= 0 || limit < spokenUS {
+	if limit <= 0 {
 		return spokenUS
 	}
 	return limit

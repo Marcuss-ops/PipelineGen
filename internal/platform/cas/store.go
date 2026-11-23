@@ -72,6 +72,21 @@ func NewStore(cfg Config) (*Store, error) {
 	return &Store{root: filepath.Clean(cfg.Root), stager: cfg.Stager}, nil
 }
 
+// OpenReader opens the store for READ-ONLY inspection: audits and reuse paths
+// need to ask where an address lives without owning a staging workspace.
+//
+// No Stager is required because nothing is written, and a root that does not
+// exist yet is not an error: an empty store simply holds no objects. Any
+// attempt to Put through this handle fails with ErrNotWired instead of
+// creating bytes somewhere a reader was not authorized to write.
+func OpenReader(root string) (*Store, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil, fmt.Errorf("%w: Config.Root is empty", ErrInvalidConfig)
+	}
+	return &Store{root: filepath.Clean(root)}, nil
+}
+
 // Put streams content into the CAS store and returns the object addressed
 // by its SHA-256. The write path reuses the LocalStore staging discipline
 // (stream-through-hash + fsync + atomic rename) and lands the object at

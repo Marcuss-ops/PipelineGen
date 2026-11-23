@@ -359,6 +359,12 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 		query += ` AND correlation_id = ?`
 		args = append(args, *filter.CorrelationID)
 	}
+	if filter.CorrelationPrefix != "" {
+		// substr avoids LIKE wildcard semantics entirely: a prefix containing
+		// `%` or `_` must be matched literally, never interpreted by SQL.
+		query += ` AND substr(correlation_id, 1, ?) = ?`
+		args = append(args, len(filter.CorrelationPrefix), filter.CorrelationPrefix)
+	}
 
 	query += ` ORDER BY created_at DESC`
 	if filter.Limit > 0 {

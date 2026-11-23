@@ -404,3 +404,45 @@ func TestIntegrityScanMisplacedObject(t *testing.T) {
 			scan.Total, scan.Verified, scan.Misplaced, scan.Corrupt)
 	}
 }
+
+// TestOpenReaderReadsWithoutStager pins the read-only handle: it resolves and
+// opens objects a full store wrote, accepts a root that does not exist yet, and
+// refuses to write.
+func TestOpenReaderReadsWithoutStager(t *testing.T) {
+	writer, root, _ := newTestStore(t)
+	ctx := context.Background()
+	payload := []byte("catalog audit bytes")
+	object, err := writer.Put(ctx, bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	reader, err := OpenReader(root)
+	if err != nil {
+		t.Fatalf("OpenReader: %v", err)
+	}
+	path, err := reader.LocalPath(object.SHA256)
+	if err != nil || path == "" {
+		t.Fatalf("LocalPath = %q, %v", path, err)
+	}
+	file, err := reader.Open(ctx, object.SHA256)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	got, err := io.ReadAll(file)
+	_ = file.Close()
+	if err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("read back = %q, %v; want %q", got, err, payload)
+	}
+	if _, err := reader.Put(ctx, bytes.NewReader(payload)); !errors.Is(err, ErrNotWired) {
+		t.Fatalf("Put through a read-only reader = %v, want ErrNotWired", err)
+	}
+
+	empty, err := OpenReader(filepath.Join(t.TempDir(), "not-created-yet"))
+	if err != nil {
+		t.Fatalf("OpenReader on a missing root: %v", err)
+	}
+	if _, err := empty.LocalPath(object.SHA256); err != nil {
+		t.Fatalf("LocalPath on a missing root must not error: %v", err)
+	}
+}

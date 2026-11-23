@@ -112,6 +112,10 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	}
 	if deps.RenderReuse != nil {
 		renderer = renderer.WithRenderReuseCache(deps.RenderReuse)
+		// A durable cache row outlives the workspace that produced it. This
+		// directory is where such a row's object-store bytes are materialized
+		// and verified before the hit is accepted (CR-14).
+		renderer = renderer.WithRenderReuseDir(filepath.Join(cfg.WorkDir, "render-reuse"))
 	}
 	drivePublisher, err := localization.NewDrivePublisher(deps.Uploader)
 	if err != nil {
@@ -132,6 +136,11 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	svc, err := localization.NewServiceWithConcurrency(renderer, drivePublisher, renderConcurrency, uploadConcurrency)
 	if err != nil {
 		return nil, fmt.Errorf("localization service: service: %w", err)
+	}
+	// The executor owns the GPU slot around Submit/Settle only; sharing the
+	// service gate is what moves Materialize outside it (CR-14).
+	if setter, ok := deps.Executor.(interface{ SetGPUGate(chan struct{}) }); ok {
+		setter.SetGPUGate(svc.GPUGate())
 	}
 	svc.WithPublishedDriveReuse(cfg.DriveReusePublished)
 	plans, err := localization.NewLocalizationPlanBuilder(deps.TrackResolver)

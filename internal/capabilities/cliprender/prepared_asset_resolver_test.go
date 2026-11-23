@@ -35,9 +35,19 @@ func TestPreparedAssetResolver_HitAvoidsFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-1", MediaType: "video", ContentSHA256: sha})
+	ref := AssetRef{
+		AssetID: "asset-1", MediaType: "video", ContentSHA256: sha,
+		VideoID: "yt-video-1", DriveFileID: "drive-1", StartSec: 11, EndSec: 21,
+	}
+	got, err := resolver.Materialize(context.Background(), ref)
 	if err != nil || got.LocalPath != path || !got.FromCache || fallback.calls != 0 {
 		t.Fatalf("cache hit: got=%#v err=%v fallback_calls=%d", got, err, fallback.calls)
+	}
+	// The hit path must keep the acquisition identity; otherwise a shared
+	// content-addressed source silently reaches the transcript chain with an
+	// empty video_id.
+	if got.VideoID != ref.VideoID || got.DriveFileID != ref.DriveFileID || got.StartSec != ref.StartSec || got.EndSec != ref.EndSec {
+		t.Fatalf("identity lost on the prepared fast path: %#v", got)
 	}
 }
 

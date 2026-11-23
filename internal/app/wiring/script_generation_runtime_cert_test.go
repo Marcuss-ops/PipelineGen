@@ -125,6 +125,47 @@ func TestBuildRuntimeMediaCertSpecStockBoundViaFolderLink(t *testing.T) {
 	}
 }
 
+func TestBuildRuntimeMediaCertSpecExcludesNoVoiceoverSegments(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Mode:      "text",
+		MediaPlan: media.MediaPlanSpec{Mode: media.MediaPlanModeAuto},
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "scene-0", Topic: "narrated opening"},
+			{ID: "intro-fixed", Topic: "fixed cutaway", NoVoiceover: true, StockFolderID: "stock-folder"},
+			{ID: "scene-2", Topic: "narrated close"},
+		},
+	}
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
+	if spec.Segments != 2 {
+		t.Fatalf("segments = %d, want 2: a no_voiceover segment is fixed media, not a VidRush scene", spec.Segments)
+	}
+	if len(spec.SegmentsExpected) != 2 {
+		t.Fatalf("segments_expected = %+v, want only the two narrated scenes", spec.SegmentsExpected)
+	}
+	if spec.SegmentsExpected[0].ID != "scene-0" || spec.SegmentsExpected[1].ID != "scene-2" {
+		t.Fatalf("unexpected scene identity contract: %+v", spec.SegmentsExpected)
+	}
+	for _, expected := range spec.SegmentsExpected {
+		if expected.ID == "intro-fixed" {
+			t.Fatal("a no_voiceover fixed cutaway must not enter the MediaCertBarrier expectation")
+		}
+	}
+}
+
+func TestBuildRuntimeMediaCertSpecNoVoiceoverOnlyHasNoBarrierExpectation(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Mode:      "text",
+		MediaPlan: media.MediaPlanSpec{Mode: media.MediaPlanModeAuto},
+		Segments: []scriptpkg.ScriptSegment{
+			{ID: "intro-fixed", Topic: "fixed cutaway", NoVoiceover: true},
+		},
+	}
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
+	if spec.Segments != 0 || len(spec.SegmentsExpected) != 0 {
+		t.Fatalf("a fixed-media-only plan acquired a barrier expectation: %+v", spec)
+	}
+}
+
 func TestBuildRuntimeMediaCertSpecSkipsDisabledVisualMediaPlan(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Mode:     "text",

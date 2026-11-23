@@ -171,23 +171,44 @@ func RenderWidth(machineBound, requested int) (effective int, cramped bool) {
 // resource pools. Render slots cover only the renderer; upload slots cover
 // only Drive I/O.
 func NewServiceWithConcurrency(renderer *LocalizedClipRenderer, uploader *DrivePublisher, renderConcurrency, uploadConcurrency int) (*Service, error) {
+	if renderConcurrency < 1 {
+		renderConcurrency = defaultGlobalRenderConcurrency
+	}
+	return NewServiceWithConcurrencyAndGate(renderer, uploader, make(chan struct{}, renderConcurrency), uploadConcurrency)
+}
+
+// NewServiceWithConcurrencyAndGate lets the composition root share the SAME
+// admission channel with the render executor. The executor holds it around
+// Submit/Settle only, so a 22–33 MB Materialize no longer occupies a GPU slot
+// (CR-14).
+func NewServiceWithConcurrencyAndGate(renderer *LocalizedClipRenderer, uploader *DrivePublisher, renderGate chan struct{}, uploadConcurrency int) (*Service, error) {
 	if renderer == nil {
 		return nil, fmt.Errorf("localization.NewService: renderer is required")
 	}
 	if uploader == nil {
 		return nil, fmt.Errorf("localization.NewService: drive publisher is required")
 	}
-	if renderConcurrency < 1 {
-		renderConcurrency = defaultGlobalRenderConcurrency
+	if renderGate == nil || cap(renderGate) < 1 {
+		renderGate = make(chan struct{}, defaultGlobalRenderConcurrency)
 	}
 	if uploadConcurrency < 1 {
 		uploadConcurrency = defaultUploadConcurrency
 	}
 	return &Service{
 		renderer: renderer, uploader: uploader,
-		renderGate: make(chan struct{}, renderConcurrency),
+		renderGate: renderGate,
 		uploadGate: make(chan struct{}, uploadConcurrency),
 	}, nil
+}
+
+// GPUGate exposes the shared admission channel for the render executor. It is
+// a capability seam, not a second owner: the service still owns its width, the
+// executor only acquires/releases around Submit/Settle.
+func (s *Service) GPUGate() chan struct{} {
+	if s == nil {
+		return nil
+	}
+	return s.renderGate
 }
 
 // Localize runs the full fan-out: render + upload each plan with bounded
@@ -241,17 +262,12 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 				recordFailure(LocalizedClipArtifact{Status: LocalizedClipFailed}, err)
 				return
 			}
-			releaseGlobal, err := kernobs.AcquireSlot(ctx, s.renderGate, kernobs.ComponentRenderQueue, kernobs.WaitSemaphore)
-			if err != nil {
-				releaseLocal()
-				recordFailure(LocalizedClipArtifact{Status: LocalizedClipFailed}, err)
-				return
-			}
+			// GPU admission is held by the executor around Submit/Settle only;
+			// renderer.Render still compiles, wires and hashes outside that slot.
 			renderStart := time.Now().UTC()
 			rendered, renderErr := s.renderer.Render(ctx, plan)
 			renderEnd := time.Now().UTC()
 			kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseFFmpeg, renderStart, renderEnd, kernobs.StageStatusCompleted, renderErr)
-			releaseGlobal()
 			releaseLocal()
 			if renderErr != nil {
 				recordFailure(rendered, renderErr)

@@ -253,6 +253,12 @@ var registry = []Knob{
 		Description:    "Machine-wide ceiling for localized render jobs.",
 	},
 	{
+		Name: "VELOX_SCRIPTS_TTS_CONCURRENCY", Kind: KindConfig, Default: "0",
+		Owner:          "internal/platform/config/scripts.go",
+		SafeProduction: "0 (defer to the voiceover provider bound, then 4)",
+		Description:    "Concurrency of the script-generation voiceover pool; 0 defers to the voiceover provider bound and then to 4.",
+	},
+	{
 		Name: "VELOX_SEMANTIC_BLEND_FIXTURE", Kind: KindTestOnly, Default: "",
 		Owner:          "internal/app/wiring/semantic_blend_live_test.go",
 		SafeProduction: "unset",

@@ -58,10 +58,21 @@ func (h *Handler) RenderSequence(c *gin.Context) {
 		return
 	}
 
+	fp, fpErr := req.Fingerprint()
+	if fpErr != nil {
+		c.JSON(http.StatusBadRequest, renderResponse{
+			Status:    StatusError,
+			Error:     "cannot fingerprint sequence: " + fpErr.Error(),
+			ErrorCode: ErrCodeInvalidPayload,
+		})
+		return
+	}
+
 	enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{
-		Type:       TypeClipRender,
-		Payload:    &req,
-		Scheduling: &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
+		Type:          TypeClipRender,
+		CorrelationID: "cliprender:seq:" + fp,
+		Payload:       &req,
+		Scheduling:    &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
 	})
 	if err != nil {
 		h.log.Error("clip.render sequence enqueue failed", zap.Error(err))
@@ -77,6 +88,6 @@ func (h *Handler) RenderSequence(c *gin.Context) {
 
 	apiutil.Accepted(c, renderResponse{
 		JobID:  enqueued.ID,
-		Status: StatusQueued,
+		Status: enqueuedStatus(enqueued),
 	})
 }

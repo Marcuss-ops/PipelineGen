@@ -337,6 +337,18 @@ func (d ResumeDocument) Attributes(renderJobID, planSHA256 string) error {
 	return nil
 }
 
+// IsResumeDocument reports whether raw is a structurally valid ResumeDocument.
+// It is the GC's type discriminator over a content-addressed blob: media bytes
+// are not JSON and are never considered, while a JSON object that fails the
+// resume contract is rejected instead of deleted as if it were a resume.
+func IsResumeDocument(raw []byte) bool {
+	var doc ResumeDocument
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return false
+	}
+	return doc.Validate() == nil
+}
+
 // ContinuationStore persists and loads the resume document in the canonical
 // content-addressed store. It is a capability-owned port so the worker never
 // imports the platform store.

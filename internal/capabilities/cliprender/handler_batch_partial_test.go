@@ -56,7 +56,7 @@ func (s *flakyEnqueueStub) Retry(_ context.Context, _ string) (*job.Job, error) 
 
 func TestRenderBatchReportsJobsCreatedBeforeAFailedEnqueue(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	svc := &flakyEnqueueStub{failAt: 2}
+	svc := &flakyEnqueueStub{failAt: 3}
 	handler := NewHandler(svc, zap.NewNop())
 	router := gin.New()
 	handler.RegisterRoutes(&router.RouterGroup)
@@ -96,13 +96,16 @@ func TestRenderBatchReportsJobsCreatedBeforeAFailedEnqueue(t *testing.T) {
 	if resp.Jobs[2].Status != StatusQueued || resp.Jobs[2].JobID == "" {
 		t.Fatalf("position 2 = %+v, want the fan-out to continue past the failure", resp.Jobs[2])
 	}
-	if resp.SequenceJobID != "" {
-		t.Fatalf("sequence_job_id = %q: the assembly must not be enqueued over a gap", resp.SequenceJobID)
+	if resp.SequenceJobID == "" {
+		t.Fatal("sequence_job_id is empty: the durable manifest must be enqueued before the items")
 	}
-	if svc.calls != 3 {
-		t.Fatalf("enqueue calls = %d, want exactly the three items (no assembly)", svc.calls)
+	if resp.SequenceJobID != "job-1" {
+		t.Fatalf("sequence_job_id = %q, want the manifest created before the fan-out", resp.SequenceJobID)
 	}
-	if !strings.Contains(resp.Error, "WERE created") {
-		t.Fatalf("error = %q, want it to state that the listed jobs exist", resp.Error)
+	if svc.calls != 4 {
+		t.Fatalf("enqueue calls = %d, want the sequence + three item attempts", svc.calls)
+	}
+	if !strings.Contains(resp.Error, "WERE created") || !strings.Contains(resp.Error, "WILL recover") {
+		t.Fatalf("error = %q, want it to state that the listed jobs exist and the sequence recovers the gap", resp.Error)
 	}
 }

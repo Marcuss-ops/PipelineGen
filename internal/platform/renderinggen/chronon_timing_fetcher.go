@@ -24,10 +24,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// maxChrononTimingBytes caps a sidecar read. The unbounded per-frame
-// frame_times_ms array makes the document large but finite; the cap keeps a
-// hostile or corrupt store from streaming without limit.
-const maxChrononTimingBytes = 64 << 20
+// maxChrononTimingBytes caps a raw sidecar read. The unbounded per-frame
+// frame_times_ms array makes the document large but finite; 16 MiB is above
+// the measured 5–10.6 MiB documents and still bounds a corrupt store.
+const maxChrononTimingBytes = 16 << 20
+
+// maxChrononTimingSummaryBytes caps the compact companion. It omits the
+// per-frame array, so anything near this size is a producer bug, not a valid
+// summary; the producer falls back to raw rather than trusting it.
+const maxChrononTimingSummaryBytes = 8 << 20
 
 // ErrChrononTimingUnavailable is the typed sentinel for a reference that
 // carries neither a fetchable URL nor a content-addressable storage key.
@@ -58,18 +63,54 @@ func NewChrononTimingFetcher(storeURL string) (*ChrononTimingFetcher, error) {
 // re-hashed and must match — a transport that silently serves different bytes
 // than the content address promises is rejected, not recorded.
 func (f *ChrononTimingFetcher) FetchChrononTiming(ctx context.Context, storageKey, url string) ([]byte, error) {
+	key, target, err := f.resolveTarget(storageKey, url)
+	if err != nil {
+		return nil, err
+	}
+	body, err := f.fetch(ctx, target, maxChrononTimingBytes)
+	if err != nil {
+		return nil, err
+	}
+	if digest.IsCanonicalSHA256(key) {
+		if !strings.EqualFold(digest.SHA256Bytes(body), key) {
+			return nil, fmt.Errorf("chronon timing sidecar digest mismatch: content-address %s", key)
+		}
+	}
+	return body, nil
+}
+
+// FetchChrononTimingSummary fetches the compact companion the RenderingGen
+// worker stores next to the raw sidecar under `<raw-key>.summary.json`. The hot
+// projection path uses it because it omits the unbounded frame_times_ms array;
+// the raw document remains the post-mortem evidence.
+//
+// The companion is derived from a content address rather than being one, so it
+// is not re-hashed here. It is still bounded and fail-closed on HTTP errors; a
+// missing summary makes the caller fall back to the raw document.
+func (f *ChrononTimingFetcher) FetchChrononTimingSummary(ctx context.Context, storageKey, url string) ([]byte, error) {
 	if f == nil {
 		return nil, errors.New("renderinggen chronon timing fetcher: not wired")
 	}
+	_, target, err := f.resolveTarget(storageKey, url)
+	if err != nil {
+		return nil, err
+	}
+	return f.fetch(ctx, target+".summary.json", maxChrononTimingSummaryBytes)
+}
+
+func (f *ChrononTimingFetcher) resolveTarget(storageKey, url string) (string, string, error) {
 	key := strings.TrimSpace(storageKey)
 	target := strings.TrimSpace(url)
 	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
 		if key == "" {
-			return nil, fmt.Errorf("%w (no URL, no storage key)", ErrChrononTimingUnavailable)
+			return "", "", fmt.Errorf("%w (no URL, no storage key)", ErrChrononTimingUnavailable)
 		}
 		target = f.storeURL + "/objects/" + key
 	}
+	return key, target, nil
+}
 
+func (f *ChrononTimingFetcher) fetch(ctx context.Context, target string, maxBytes int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return nil, fmt.Errorf("chronon timing sidecar request: %w", err)
@@ -82,18 +123,12 @@ func (f *ChrononTimingFetcher) FetchChrononTiming(ctx context.Context, storageKe
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("chronon timing sidecar: HTTP %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxChrononTimingBytes+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("chronon timing sidecar read: %w", err)
 	}
-	if int64(len(body)) > maxChrononTimingBytes {
-		return nil, fmt.Errorf("chronon timing sidecar exceeds %d bytes", maxChrononTimingBytes)
-	}
-
-	if digest.IsCanonicalSHA256(key) {
-		if !strings.EqualFold(digest.SHA256Bytes(body), key) {
-			return nil, fmt.Errorf("chronon timing sidecar digest mismatch: content-address %s", key)
-		}
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("chronon timing sidecar exceeds %d bytes", maxBytes)
 	}
 	return body, nil
 }

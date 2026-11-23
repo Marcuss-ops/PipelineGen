@@ -17,6 +17,8 @@ Usage:
   python3 scripts/transcribe_detect_lang.py file.mp4 --json-only
 """
 import argparse
+import contextlib
+import errno
 import json
 import os
 import subprocess
@@ -25,6 +27,11 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Optional
+
+try:
+    import fcntl
+except ImportError:  # non-POSIX host: the gate degrades to a no-op
+    fcntl = None  # type: ignore[assignment]
 
 try:
     from whisper_runtime import prepare_cuda_runtime
@@ -52,6 +59,98 @@ except ModuleNotFoundError:  # direct execution from scripts/tools
 # shared across all transcribe() calls. Avoids reloading for batch mode.
 # ---------------------------------------------------------------------------
 _MODEL_CACHE: dict = {}
+
+# ---------------------------------------------------------------------------
+# Cross-process ASR gate.
+#
+# Every transcription helper process loads its OWN model into VRAM. The
+# clip.render fan-out runs scenes in parallel, so N simultaneous clips meant N
+# Whisper models on one GPU and CUDA raised "out of memory" for every one of
+# them — including the WAV fallback that was supposed to rescue the streaming
+# path. The gate is an N-slot advisory file lock shared by every helper
+# process on the host (streaming PCM, WAV chain, CLI): the model load AND the
+# inference happen inside one slot, so a slot really bounds resident models.
+#
+# Default 1 (one model at a time) is the safe choice for a single GPU; raise
+# VELOX_WHISPER_MAX_CONCURRENCY when VRAM allows, or set
+# VELOX_WHISPER_LOCK_DIR to put the slots on a shared filesystem for hosts
+# that run workers in separate containers/namespaces.
+# ---------------------------------------------------------------------------
+_ASR_SLOT_POLL_SECONDS = 0.2
+_ASR_SLOT_MAX = 32
+
+
+def _asr_concurrency_limit() -> int:
+    """Resolve the host-wide concurrent-ASR limit (default 1)."""
+    raw = os.environ.get("VELOX_WHISPER_MAX_CONCURRENCY", "").strip()
+    if raw == "":
+        return 1
+    try:
+        limit = int(raw)
+    except ValueError:
+        return 1
+    return max(1, min(limit, _ASR_SLOT_MAX))
+
+
+def _asr_slot_dir() -> str:
+    configured = os.environ.get("VELOX_WHISPER_LOCK_DIR", "").strip()
+    if configured:
+        return configured
+    return os.path.join(tempfile.gettempdir(), "velox-whisper-asr-slots")
+
+
+@contextlib.contextmanager
+def _asr_concurrency_slot():
+    """Hold one of the N host-wide ASR slots for model load + inference.
+
+    Fail-soft: a platform/filesystem without advisory locks (or a directory we
+    cannot create) runs ungated rather than failing transcription. The lock is
+    released by the OS even if this process is killed, so a crashed clip can
+    never wedge every later one.
+    """
+    if fcntl is None:
+        yield
+        return
+    limit = _asr_concurrency_limit()
+    slot_dir = _asr_slot_dir()
+    try:
+        os.makedirs(slot_dir, exist_ok=True)
+    except OSError:
+        yield
+        return
+    handle = None
+    try:
+        while handle is None:
+            for index in range(limit):
+                candidate = open(os.path.join(slot_dir, "slot-%d.lock" % index), "a+")
+                # Keep the descriptor out of any exec/spawn: an inherited lock
+                # would be re-acquired by the child and wedge the gate.
+                try:
+                    os.set_inheritable(candidate.fileno(), False)
+                except OSError:
+                    pass
+                try:
+                    fcntl.flock(candidate.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError as exc:
+                    candidate.close()
+                    if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                        # Advisory locks unsupported here: never block ASR on
+                        # the gate itself.
+                        yield
+                        return
+                    continue
+                handle = candidate
+                break
+            if handle is None:
+                time.sleep(_ASR_SLOT_POLL_SECONDS)
+        yield
+    finally:
+        if handle is not None:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+            handle.close()
 
 # faster-whisper loads CTranslate2 builds, while the canonical ASR identity in
 # internal/kernel/models is the upstream OpenAI repo (transformers weights).
@@ -181,11 +280,12 @@ def detect_language(audio_path: str, model_size: str = "tiny", language: Optiona
     if not os.path.exists(audio_path):
         return {"error": f"File not found: {audio_path}"}
 
-    model = _get_model(model_size)
-    segments, info = model.transcribe(audio_path, beam_size=1, language=language)
-    # Materialize just the first segment to trigger detection
-    for _ in segments:
-        break
+    with _asr_concurrency_slot():
+        model = _get_model(model_size)
+        segments, info = model.transcribe(audio_path, beam_size=1, language=language)
+        # Materialize just the first segment to trigger detection
+        for _ in segments:
+            break
 
     return {
         "language": info.language,
@@ -319,17 +419,18 @@ def transcribe(audio_path: str, model_size: str = WHISPER_MODEL_NAME, language: 
     if not os.path.exists(audio_path):
         return {"error": f"File not found: {audio_path}"}
 
-    model = _get_model(model_size)
-    language_forced = bool(language)
-    detected_language, detected_probability = (None, None)
-    if language_forced:
-        detected_language, detected_probability = _detect_language_unforced(model, audio_path)
-    start = time.time()
-    segments, info = model.transcribe(
-        audio_path, beam_size=5, language=language, vad_filter=_vad_enabled()
-    )
-    segments = list(segments)  # materialize generator
-    elapsed = time.time() - start
+    with _asr_concurrency_slot():
+        model = _get_model(model_size)
+        language_forced = bool(language)
+        detected_language, detected_probability = (None, None)
+        if language_forced:
+            detected_language, detected_probability = _detect_language_unforced(model, audio_path)
+        start = time.time()
+        segments, info = model.transcribe(
+            audio_path, beam_size=5, language=language, vad_filter=_vad_enabled()
+        )
+        segments = list(segments)  # materialize generator
+        elapsed = time.time() - start
     return _segments_to_result(
         segments, info, elapsed, detected_language, detected_probability, language_forced
     )
@@ -353,17 +454,18 @@ def transcribe_pcm_stream(pcm_bytes: bytes, model_size: str = WHISPER_MODEL_NAME
     if audio.size == 0:
         return {"error": "empty PCM stream after conversion"}
 
-    model = _get_model(model_size)
-    language_forced = bool(language)
-    detected_language, detected_probability = (None, None)
-    if language_forced:
-        detected_language, detected_probability = _detect_language_unforced(model, audio)
-    start = time.time()
-    segments, info = model.transcribe(
-        audio, beam_size=5, language=language, vad_filter=_vad_enabled()
-    )
-    segments = list(segments)  # materialize generator
-    elapsed = time.time() - start
+    with _asr_concurrency_slot():
+        model = _get_model(model_size)
+        language_forced = bool(language)
+        detected_language, detected_probability = (None, None)
+        if language_forced:
+            detected_language, detected_probability = _detect_language_unforced(model, audio)
+        start = time.time()
+        segments, info = model.transcribe(
+            audio, beam_size=5, language=language, vad_filter=_vad_enabled()
+        )
+        segments = list(segments)  # materialize generator
+        elapsed = time.time() - start
     return _segments_to_result(
         segments, info, elapsed, detected_language, detected_probability, language_forced
     )

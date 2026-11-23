@@ -119,6 +119,10 @@ type RenderPlanExecutor struct {
 	// them re-renders an overlay. Nil is allowed only while no plan carries an
 	// overlay — a plan that does is a typed error, never a silent drop.
 	overlayResolver cliprender.OverlaySegmentResolver
+	// gpuGate bounds GPU ownership. It is held around Submit/Settle only, not
+	// around Materialize: the download must not consume a GPU admission slot
+	// (CR-14). Nil means no external gate (tests/legacy callers).
+	gpuGate chan struct{}
 }
 
 // NewRenderPlanExecutor builds the bridge. profile is normalized to defaults
@@ -149,6 +153,26 @@ func (a *RenderPlanExecutor) WithOverlayResolver(resolver cliprender.OverlaySegm
 	return a
 }
 
+// SetGPUGate attaches the shared admission channel. The composition root passes
+// the same channel the localization service uses for its width.
+func (a *RenderPlanExecutor) SetGPUGate(gate chan struct{}) {
+	if a != nil {
+		a.gpuGate = gate
+	}
+}
+
+func acquireGPUGate(ctx context.Context, gate chan struct{}) (func(), error) {
+	if gate == nil {
+		return func() {}, nil
+	}
+	select {
+	case gate <- struct{}{}:
+		return func() { <-gate }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (a *RenderPlanExecutor) logPhase(phase, planID string, fields ...zap.Field) {
 	all := append([]zap.Field{
 		zap.String("subsystem", "localization_render"),
@@ -176,6 +200,38 @@ func (a *RenderPlanExecutor) logPhaseFailure(phase, planID string, fields ...zap
 // RenderFacts carry the certified output path, the content SHA-256 (read from
 // the actual bytes on disk), the size, the duration, and the codecs pinned by
 // the output contract (Chronon re-audits these before reporting success).
+// HydrateReusedRender materializes a certified render from its durable
+// object-store locator when the reuse cache's local copy is gone. It delegates
+// to the same RenderArtifactMaterializer the render path uses, so the download
+// verifies size and certified digest while streaming (no second HTTP or copy
+// implementation). A boundary without a materializer is a typed error; the
+// reuse seam turns it into a MISS and renders normally.
+func (a *RenderPlanExecutor) HydrateReusedRender(ctx context.Context, artifact *localization.ReusedRenderArtifact, destPath string) error {
+	if a == nil || a.renderer == nil {
+		return fmt.Errorf("localization: hydrate reused render: executor is not initialized")
+	}
+	if artifact == nil {
+		return fmt.Errorf("localization: hydrate reused render: artifact is nil")
+	}
+	if strings.TrimSpace(artifact.ArtifactURL) == "" {
+		return fmt.Errorf("localization: hydrate reused render: artifact has no durable URL")
+	}
+	materializer, ok := a.renderer.(cliprender.RenderArtifactMaterializer)
+	if !ok {
+		return fmt.Errorf("localization: hydrate reused render: render boundary cannot materialize a locator")
+	}
+	outcome := &cliprender.RenderOutcome{
+		ArtifactURL: artifact.ArtifactURL,
+		StorageKey:  artifact.StorageKey,
+		SHA256:      artifact.SHA256,
+		SizeBytes:   artifact.SizeBytes,
+	}
+	if _, err := materializer.Materialize(ctx, outcome, destPath); err != nil {
+		return fmt.Errorf("localization: hydrate reused render: %w", err)
+	}
+	return nil
+}
+
 func (a *RenderPlanExecutor) Execute(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset) (localization.RenderFacts, error) {
 	return a.execute(ctx, plan, subtitle, localization.RenderOptions{})
 }
@@ -328,12 +384,21 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	// renders are driven from the client-side scheduler, so the two halves are
 	// adjacent here, but there is now exactly ONE way to drive a render (and
 	// exactly one place that can release a worker slot while RenderingGen runs).
+	releaseGPU, gateErr := acquireGPUGate(ctx, a.gpuGate)
+	if gateErr != nil {
+		a.logPhaseFailure("gpu_admission_failed", plan.Revision, zap.Error(gateErr))
+		return localization.RenderFacts{}, fmt.Errorf("localization: acquire GPU slot: %w", gateErr)
+	}
 	if submitErr := a.renderer.Submit(ctx, clipPlan); submitErr != nil {
+		releaseGPU()
 		submitMS := time.Since(renderStart).Milliseconds()
 		a.logPhaseFailure("render_submit_failed", plan.Revision, zap.Int64("duration_ms", submitMS), zap.Error(submitErr))
 		return localization.RenderFacts{}, fmt.Errorf("localization: submit clip render: %w", submitErr)
 	}
 	outcome, err := a.renderer.Settle(ctx, clipPlan)
+	// Release before Materialize: GPU admission covers the render, not the
+	// object-store download.
+	releaseGPU()
 	renderMS := time.Since(renderStart).Milliseconds()
 	if err != nil {
 		a.logPhaseFailure("render_failed", plan.Revision, zap.Int64("duration_ms", renderMS), zap.Error(err))

@@ -16,19 +16,35 @@ type ResolvedScene = scenecontract.ResolvedScene
 // ResolvedVoiceover is the canonical voiceover contract.
 type ResolvedVoiceover = scenecontract.ResolvedVoiceover
 
+// sceneEditorialSilenceAllowanceUS is how much silence a caller-supplied
+// window may reserve beyond the measured narration before it is treated as
+// dead air. It keeps an intentional editorial hold of up to one second while
+// collapsing the 4-5s gaps seen in R34 (CODEX-09). The explicit-window
+// contract test (1s supplied / 300ms TTS) stays green because its 700ms gap
+// is inside this allowance.
+const sceneEditorialSilenceAllowanceUS int64 = 1_000_000
+
 // SceneDurationResolver is the single policy point for scene timeline
-// duration. The explicit editorial duration wins; legacy milliseconds and
-// clip duration are accepted only while resolving the boundary input.
-// For COMBINED_TIMELINE scenes whose clip video is materialized, the scene
-// duration is max(visual, voiceover) so a short clip freezes under a longer
-// narration instead of clamping the voiceover to the clip window.
+// duration. For COMBINED_TIMELINE scenes whose clip video is materialized, the
+// scene duration is max(visual, voiceover) so a short clip freezes under a
+// longer narration instead of clamping the voiceover to the clip window, and a
+// long clip is never truncated to the voiceover span (CODEX-07). Without a
+// materialized clip, the measured voiceover wins unless the supplied window is
+// within the editorial-silence allowance; a stale planning estimate that would
+// leave 4-5s of dead air is discarded (CODEX-09).
 type SceneDurationResolver struct{}
 
 func (SceneDurationResolver) Resolve(scene Scene, mode audio.AudioMode, clipBound bool, intents []audio.AudioIntent, voiceoverDurationUS int64) (int64, error) {
-	// The combined master must never end before its certified voiceover. This
-	// also handles scenes with an explicit planning duration: after synthesis,
-	// the measured (post-cleanup) audio extent can be longer than that estimate.
 	if mode == audio.AudioModeCombinedTimeline && voiceoverDurationUS > 0 {
+		if clipBound {
+			if visual := sceneVisualDurationUS(scene, intents); visual > voiceoverDurationUS {
+				return visual, nil
+			}
+			return voiceoverDurationUS, nil
+		}
+		// No materialized visual span: the narration is the timeline. Preserve
+		// a supplied editorial window only when it is not materially longer
+		// than the speech; beyond the allowance the tail is dead air.
 		explicitUS := scene.DurationUS
 		if explicitUS <= 0 && scene.DurationMS > 0 {
 			var err error
@@ -37,27 +53,13 @@ func (SceneDurationResolver) Resolve(scene Scene, mode audio.AudioMode, clipBoun
 				return 0, err
 			}
 		}
-		if voiceoverDurationUS > explicitUS {
-			if sceneVisual := sceneVisualDurationUS(scene, intents); clipBound && sceneVisual > voiceoverDurationUS {
-				return sceneVisual, nil
-			}
+		if explicitUS > voiceoverDurationUS && explicitUS-voiceoverDurationUS > sceneEditorialSilenceAllowanceUS {
 			return voiceoverDurationUS, nil
 		}
-	}
-	// COMBINED_TIMELINE materializes both the clip video and the narration
-	// into one master. When the clip is part of that materialized timeline,
-	// a clip shorter than its narration freezes on its last frame until the
-	// voiceover completes, so the canonical duration is the larger of the two
-	// spans — never the clip duration alone. This resolver is the single
-	// owner of that policy: nothing else may rewrite DurationUS to force one
-	// side of the max().
-	if mode == audio.AudioModeCombinedTimeline && clipBound {
-		if visual := sceneVisualDurationUS(scene, intents); visual > 0 {
-			if voiceoverDurationUS > visual {
-				return voiceoverDurationUS, nil
-			}
-			return visual, nil
+		if explicitUS > voiceoverDurationUS {
+			return explicitUS, nil
 		}
+		return voiceoverDurationUS, nil
 	}
 	if scene.DurationUS > 0 {
 		return scene.DurationUS, nil

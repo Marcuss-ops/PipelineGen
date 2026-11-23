@@ -37,7 +37,24 @@ type GPUGate struct {
 	slots chan struct{}
 }
 
-const DefaultGPUGateSlots = 3
+// DefaultGPUGateSlots is the shipped worker lane count. RenderingGen's
+// config.yaml and the systemd drop-in both pin 2: three concurrent GPU sessions
+// plus resident Ollama reproduced VK_ERROR_OUT_OF_DEVICE_MEMORY on 2026-11-22.
+// Admission must never silently allow one more than the worker can execute.
+const DefaultGPUGateSlots = 2
+
+// ValidateGPUSlotParity is the startup assertion that admission cannot exceed
+// the worker's real lane count. RenderingGen declares worker.gpu_lanes;
+// PipelineGen declares RENDERINGGEN_GPU_SLOTS. They must be the same number.
+func ValidateGPUSlotParity(workerLanes, admissionSlots int) error {
+	if workerLanes < 1 || admissionSlots < 1 {
+		return fmt.Errorf("GPU slot parity: worker lanes and admission slots must be >= 1 (lanes=%d, slots=%d)", workerLanes, admissionSlots)
+	}
+	if workerLanes != admissionSlots {
+		return fmt.Errorf("GPU slot parity: worker.gpu_lanes=%d but RENDERINGGEN_GPU_SLOTS=%d; set both to the same value", workerLanes, admissionSlots)
+	}
+	return nil
+}
 
 // ResolveGPUGateSlots parses the shared RenderingGen GPU slot declaration.
 // Invalid or absent values use the same conservative repository default in

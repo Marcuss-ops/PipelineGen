@@ -112,7 +112,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	// one capacity (see ComposeRoot.DriveUploadGate).
 	driveUploadGate := vowiring.NewDriveUploadGate(cfg.Voiceover)
 
-	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, mediaBundle, search, process, ai, outbox, mediaConfig, driveUploadGate)
+	domains, err := BuildDomainBundle(ctx, cfg, dbs, log, driveBundle, repos, mediaBundle, search, process, ai, outbox, mediaConfig, driveUploadGate, mediaPG)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains: %w", err)
 	}

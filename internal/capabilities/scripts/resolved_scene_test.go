@@ -162,6 +162,66 @@ func TestResolvedScenesTrimVideoWindowToVoiceoverGovernedDuration(t *testing.T) 
 	}
 }
 
+func TestSceneDurationResolverCombinedNarrationOnlyKeepsWindowWithinAllowance(t *testing.T) {
+	// The explicit-window contract: a 1s supplied window with a 300ms
+	// narration is a 700ms editorial hold, inside the one-second allowance, so
+	// it must survive.
+	scenes := []Scene{{
+		ID:         "scene-0",
+		Index:      0,
+		DurationUS: 1_000_000,
+		Voiceover:  map[Language]AudioReference{"it": {ID: "vo-0", FilePath: "/media/vo-0.m4a", Duration: 0.3}},
+	}}
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeCombinedTimeline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].DurationUS; got != 1_000_000 {
+		t.Fatalf("scene duration = %dus, want 1000000us (supplied window inside the silence allowance)", got)
+	}
+}
+
+func TestSceneDurationResolverCombinedNarrationOnlyUsesMeasuredVoiceover(t *testing.T) {
+	// CODEX-09 / R34: a 9s planning estimate with a 5s narration left ~4s of
+	// dead air before the next scene. A scene without a clip has no visual
+	// span to protect, so the measured voiceover is the timeline.
+	scenes := []Scene{{
+		ID:         "scene-0",
+		Index:      0,
+		DurationUS: 9_000_000,
+		Voiceover:  map[Language]AudioReference{"it": {ID: "vo-0", FilePath: "/media/vo-0.m4a", Duration: 5.0}},
+	}}
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeCombinedTimeline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].DurationUS; got != 5_000_000 {
+		t.Fatalf("scene duration = %dus, want 5000000us (measured narration, not the 9s estimate)", got)
+	}
+}
+
+func TestSceneDurationResolverCombinedClipNeverTruncatedByShortVoiceover(t *testing.T) {
+	// CODEX-07 / v12: the combined-timeline branch must not shorten a 43s
+	// source clip to the 5s lead-in voiceover.
+	clip := &ClipReference{ID: "clip-43", SourceInMS: 0, SourceOutMS: 43000, AudioPath: "/media/clip-43.m4a"}
+	scenes := []Scene{{
+		ID:           "body-01",
+		Index:        0,
+		DurationUS:   43_000_000,
+		Clip:         clip,
+		Clips:        []*ClipReference{clip},
+		AudioIntents: []audio.AudioIntent{{Mode: audio.AudioClip, ClipAssetID: "clip-43", SourceInUS: 0, SourceDurationUS: 43_000_000, UseOriginalAudio: true}},
+		Voiceover:    map[Language]AudioReference{"it": {ID: "vo-0", FilePath: "/media/vo-0.m4a", Duration: 5.0}},
+	}}
+	resolved, err := ResolveScenes(scenes, "it", audio.AudioModeCombinedTimeline, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := resolved[0].DurationUS; got != 43_000_000 {
+		t.Fatalf("scene duration = %dus, want 43000000us (clip span, not the 5s voiceover)", got)
+	}
+}
+
 func TestSceneDurationResolverNonCombinedKeepsEditorialDuration(t *testing.T) {
 	// max() belongs to COMBINED_TIMELINE only. In any other mode the explicit
 	// editorial duration still wins, even when the narration is longer.

@@ -125,5 +125,12 @@ func (m *ClipRenderMaterializer) Materialize(ctx context.Context, ref cliprender
 		SizeBytes:  result.SizeBytes,
 		DurationMS: ref.DurationMS,
 		FromCache:  result.FromCache,
+		// Carry the source identity past materialization: the local path is a
+		// content-addressed scratch file, so the acquisition chain would
+		// otherwise have no video id / clip window to fetch subtitles for.
+		VideoID:     ref.VideoID,
+		DriveFileID: ref.DriveFileID,
+		StartSec:    ref.StartSec,
+		EndSec:      ref.EndSec,
 	}, nil
 }

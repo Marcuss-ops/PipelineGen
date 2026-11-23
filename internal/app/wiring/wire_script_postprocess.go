@@ -31,6 +31,7 @@ import (
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
+	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/vidrush"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
@@ -261,7 +262,10 @@ func registerScriptPostProcessors(
 	if root.Repos != nil {
 		entityImageCatalogRepo = root.Repos.EntityImageCatalog
 	}
-	if !ppReg.Register(adapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, ppReg.TimingMetrics())) {
+	// The CAS read side lets a recycled catalog image name the local copy of
+	// its bytes instead of re-downloading them from Drive.
+	contentStore := vidrushwiring.BuildVidRushCASStore(cfg, log)
+	if !ppReg.Register(adapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, ppReg.TimingMetrics()).WithCASStore(contentStore)) {
 		return fmt.Errorf("register vidrush materialization processor: composition bug")
 	}
 	log.Info("VidRushMaterializationProcessor wired through the canonical provider registry")
@@ -359,7 +363,8 @@ func registerAIBackedProcessors(
 		if root != nil && root.Repos != nil {
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
-		imageStage := adapters.NewMediaResolverImageStageWithCatalog(imageSearcher, vidRushCache, entityImageCatalogRepo, vidrushMetrics)
+		imageStage := adapters.NewMediaResolverImageStageWithCatalog(imageSearcher, vidRushCache, entityImageCatalogRepo, vidrushMetrics).
+			WithCASStore(vidrushwiring.BuildVidRushCASStore(cfg, log))
 		// Opt-in media_manifest fast-path: when VELOX_MEDIA_MANIFEST_PATH points
 		// at a verified manifest, pinned segment candidates bypass cache tiers
 		// and provider search entirely (zero network calls per run). Fail-open:

@@ -203,7 +203,9 @@ type OutputSpec struct {
 	FPSNum   int    `json:"fps_num,omitempty"`  // default 24
 	FPSDen   int    `json:"fps_den,omitempty"`  // default 1
 	// ForegroundScalePercent scales the source over the canvas while keeping
-	// the resolved background visible. Zero means the contract default (100).
+	// the resolved background visible. Zero is accepted on the wire as the
+	// contract default (100); Normalize promotes it to 100 so identity and the
+	// sealed plan carry one value.
 	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
 	// SourceFrame is the optional card treatment of the rendered clip (border
 	// frame behind the clip, drop shadow, clip radius, and/or perimeter stroke).

@@ -113,6 +113,17 @@ type MediaResolverImageStage struct {
 	// media_manifest_shim.go). Nil keeps every call site byte-for-byte
 	// identical to the un-pinned behavior.
 	manifestPins *MediaManifestPins
+	// contentStore resolves a materialized catalog candidate's local path from
+	// its content address.
+	contentStore EntityImageContentStore
+}
+
+// WithCASStore installs the content-addressed store read side. Optional.
+func (p *MediaResolverImageStage) WithCASStore(store EntityImageContentStore) *MediaResolverImageStage {
+	if p != nil {
+		p.contentStore = store
+	}
+	return p
 }
 
 func NewMediaResolverImageStageWithCatalog(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *MediaResolverImageStage {

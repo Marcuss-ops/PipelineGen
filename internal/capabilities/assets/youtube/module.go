@@ -27,10 +27,14 @@ type CoreDeps struct {
 	// ExistencePort (T1.3) backs GET /api/clips/exists. Optional: nil
 	// leaves the route answering 503 (media PostgreSQL SSOT not deployed).
 	ExistencePort ytports.YouTubeClipExistencePort
-	// TranscriptSource backs GET /api/clips/transcript: the canonical
+	// TranscriptSource backs GET /api/clips/transcript?url=...: the canonical
 	// SubtitleFetcherPort (VTT-only yt-dlp fetch, never the video).
-	// Optional: nil leaves the route answering 503.
+	// Optional: nil leaves the URL route answering 503.
 	TranscriptSource ytports.SubtitleFetcherPort
+	// AssetTranscriptSource backs GET /api/clips/transcript?asset_id=...:
+	// READY text tracks first, streaming ASR fallback for canonical assets.
+	// Optional: nil leaves the asset route answering 503.
+	AssetTranscriptSource AssetTranscriptSource
 }
 
 // SearchDeps groups the optional search surfaces used by advanced search and
@@ -114,6 +118,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	handler.stockService = deps.Core.StockService
 	handler.existence = deps.Core.ExistencePort
 	handler.transcript = deps.Core.TranscriptSource
+	handler.assetTranscript = deps.Core.AssetTranscriptSource
 
 	module := api.NewRouteModule(
 		"clips",

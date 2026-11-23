@@ -30,6 +30,19 @@ type VidRushMaterializationProcessor struct {
 	sampler      scriptports.MediaSamplerPort
 	groupSampler scriptports.MediaSamplerGroupPort
 	log          *zap.Logger
+	// contentStore resolves a catalog candidate's local path from its content
+	// address, so a durable portrait whose bytes are already on this host is
+	// bound from the CAS instead of being fetched from Drive again.
+	contentStore EntityImageContentStore
+}
+
+// WithCASStore installs the content-addressed store read side. Optional: a
+// composition without a data dir keeps the historical Drive-only reuse.
+func (p *VidRushMaterializationProcessor) WithCASStore(store EntityImageContentStore) *VidRushMaterializationProcessor {
+	if p != nil {
+		p.contentStore = store
+	}
+	return p
 }
 
 // WithLogger makes materialization failures observable in live runs without
@@ -203,7 +216,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 				if _, loaded := pools[identity.CanonicalEntityID]; loaded {
 					continue
 				}
-				pool, poolErr := entityImageCatalogCandidates(ctx, p.catalog, identity, entityImageCatalogPoolSize)
+				pool, poolErr := entityImageCatalogCandidates(ctx, p.catalog, identity, entityImageCatalogPoolSize, p.contentStore)
 				if poolErr != nil {
 					return nil, fmt.Errorf("vidrush materialization: load per-scene entity image pool %s: %w", identity.CanonicalEntityID, poolErr)
 				}
@@ -351,7 +364,7 @@ func (p *VidRushMaterializationProcessor) hydrateEntityCatalogMaterialization(ct
 			if matErr != nil && !errors.Is(matErr, entitycatalog.ErrCandidateNotFound) {
 				return candidate, matErr
 			}
-			if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization); ok {
+			if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization, p.contentStore); ok {
 				return hydrated, nil
 			}
 		}
@@ -379,7 +392,7 @@ func (p *VidRushMaterializationProcessor) hydrateEntityCatalogMaterialization(ct
 		if matErr != nil {
 			return candidate, matErr
 		}
-		if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization); ok {
+		if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization, p.contentStore); ok {
 			return hydrated, nil
 		}
 	}

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -83,6 +85,25 @@ func (c *memoryRenderReuseCache) Store(_ context.Context, artifact ReusedRenderA
 	c.artifact = &copy
 	c.stores++
 	return nil
+}
+
+// hydratingRenderPlanExecutor is a render boundary that can materialize a
+// certified artifact from its durable locator, like the production
+// RenderingGen boundary. It records the hydration separately from real renders
+// so a test can prove the GPU was skipped, not merely that bytes appeared.
+type hydratingRenderPlanExecutor struct {
+	*fakeRenderPlanExecutor
+	payload      []byte
+	hydrateErr   error
+	hydrateCalls int
+}
+
+func (f *hydratingRenderPlanExecutor) HydrateReusedRender(_ context.Context, _ *ReusedRenderArtifact, destPath string) error {
+	f.hydrateCalls++
+	if f.hydrateErr != nil {
+		return f.hydrateErr
+	}
+	return os.WriteFile(destPath, f.payload, 0o600)
 }
 
 func newTestRenderer(t *testing.T, compiler Compiler, wire *SubtitleWire, executor RenderPlanExecutor) *LocalizedClipRenderer {
@@ -193,6 +214,8 @@ func TestLocalizedClipRenderer_ReplayUsesCertifiedCacheHit(t *testing.T) {
 	executor := &fakeRenderPlanExecutor{facts: facts}
 	r := newTestRenderer(t, &fakeRendererCompiler{plan: render.RenderPlan{OutputPath: path}}, newTestWire(t, &fakeSubtitleResolver{track: matchingTrack()}, &fakeSubtitleCompiler{asset: validSubtitleAsset()}), executor).WithRenderReuseCache(cache)
 	plan := validPlan()
+	hitsBefore := testutil.ToFloat64(LocalizedRenderReuseTotal.WithLabelValues("hit", ""))
+	missesBefore := testutil.ToFloat64(LocalizedRenderReuseTotal.WithLabelValues("miss", "no_entry"))
 
 	first, err := r.Render(context.Background(), plan)
 	if err != nil {
@@ -219,6 +242,117 @@ func TestLocalizedClipRenderer_ReplayUsesCertifiedCacheHit(t *testing.T) {
 	}
 	if !second.Reused || second.RenderSource != RenderSourceDeterministicCache {
 		t.Errorf("replay: reused=%v source=%q, want true/%q", second.Reused, second.RenderSource, RenderSourceDeterministicCache)
+	}
+	if got := testutil.ToFloat64(LocalizedRenderReuseTotal.WithLabelValues("hit", "")) - hitsBefore; got != 1 {
+		t.Errorf("reuse hit metric delta = %v, want 1", got)
+	}
+	if got := testutil.ToFloat64(LocalizedRenderReuseTotal.WithLabelValues("miss", "no_entry")) - missesBefore; got != 1 {
+		t.Errorf("reuse miss metric delta = %v, want 1", got)
+	}
+}
+
+// TestLocalizedClipRenderer_HydratesDurableReuseFromObjectStore covers the
+// last CR-14 criterion: a cache row whose local file is gone is still a HIT
+// when it names a durable object-store locator. The renderer must materialize
+// the bytes, verify them against the certified digest, and skip the GPU; the
+// second call must reuse the materialized file without downloading again.
+func TestLocalizedClipRenderer_HydratesDurableReuseFromObjectStore(t *testing.T) {
+	payload := []byte("durable-certified-render")
+	sha := digest.SHA256String(string(payload))
+	url := "https://store.example/objects/" + sha
+	plan := validPlan()
+	cache := &memoryRenderReuseCache{artifact: &ReusedRenderArtifact{
+		Fingerprint: RenderReuseKey(plan, validSubtitleAsset()),
+		LocalPath:   filepath.Join(t.TempDir(), "cleaned-up.mp4"),
+		StorageKey:  sha,
+		ArtifactURL: url,
+		SHA256:      sha,
+		SizeBytes:   int64(len(payload)),
+		DurationMS:  8432,
+	}}
+	executor := &hydratingRenderPlanExecutor{
+		fakeRenderPlanExecutor: &fakeRenderPlanExecutor{facts: validRenderFacts()},
+		payload:                payload,
+	}
+	r := newTestRenderer(t, &fakeRendererCompiler{plan: render.RenderPlan{OutputPath: "/tmp/renders/clip-1.es.mp4"}}, newTestWire(t, &fakeSubtitleResolver{track: matchingTrack()}, &fakeSubtitleCompiler{asset: validSubtitleAsset()}), executor).
+		WithRenderReuseCache(cache).
+		WithRenderReuseDir(t.TempDir())
+
+	got, err := r.Render(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("Render with durable locator: %v", err)
+	}
+	if executor.hydrateCalls != 1 {
+		t.Fatalf("hydrate calls = %d, want 1", executor.hydrateCalls)
+	}
+	if executor.calls != 0 {
+		t.Fatalf("executor render calls = %d, want 0 (the hit must skip the GPU)", executor.calls)
+	}
+	if !got.Reused || got.RenderSource != RenderSourceDeterministicCache {
+		t.Errorf("reused=%v source=%q, want true/%q", got.Reused, got.RenderSource, RenderSourceDeterministicCache)
+	}
+	if got.SHA256 != sha || got.SizeBytes != int64(len(payload)) {
+		t.Errorf("certified facts: sha=%q size=%d", got.SHA256, got.SizeBytes)
+	}
+	if got.StorageKey != sha || got.ArtifactURL != url {
+		t.Errorf("durable locator not carried onto the artifact: %q / %q", got.StorageKey, got.ArtifactURL)
+	}
+	materialized, err := os.ReadFile(got.LocalPath)
+	if err != nil {
+		t.Fatalf("read materialized artifact: %v", err)
+	}
+	if string(materialized) != string(payload) {
+		t.Errorf("materialized bytes = %q, want %q", materialized, payload)
+	}
+
+	// The materialized file is now local: the next identical plan must hit it
+	// without another object-store round trip.
+	if _, err := r.Render(context.Background(), plan); err != nil {
+		t.Fatalf("second Render: %v", err)
+	}
+	if executor.hydrateCalls != 1 {
+		t.Errorf("hydrate calls after local hit = %d, want 1", executor.hydrateCalls)
+	}
+	if executor.calls != 0 {
+		t.Errorf("executor render calls after local hit = %d, want 0", executor.calls)
+	}
+}
+
+// TestLocalizedClipRenderer_DurableHydrationFailureFallsBackToRender verifies
+// the safety direction: an unreachable object store, a stale locator, or a
+// boundary without a materializer is a MISS, never a failed render or a hit
+// built from unverified bytes.
+func TestLocalizedClipRenderer_DurableHydrationFailureFallsBackToRender(t *testing.T) {
+	payload := []byte("durable-certified-render")
+	sha := digest.SHA256String(string(payload))
+	plan := validPlan()
+	cache := &memoryRenderReuseCache{artifact: &ReusedRenderArtifact{
+		Fingerprint: RenderReuseKey(plan, validSubtitleAsset()),
+		LocalPath:   filepath.Join(t.TempDir(), "cleaned-up.mp4"),
+		StorageKey:  sha,
+		ArtifactURL: "https://store.example/objects/" + sha,
+		SHA256:      sha,
+		SizeBytes:   int64(len(payload)),
+		DurationMS:  8432,
+	}}
+	executor := &hydratingRenderPlanExecutor{
+		fakeRenderPlanExecutor: &fakeRenderPlanExecutor{facts: validRenderFacts()},
+		payload:                payload,
+		hydrateErr:             errors.New("object store unavailable"),
+	}
+	r := newTestRenderer(t, &fakeRendererCompiler{plan: render.RenderPlan{OutputPath: "/tmp/renders/clip-1.es.mp4"}}, newTestWire(t, &fakeSubtitleResolver{track: matchingTrack()}, &fakeSubtitleCompiler{asset: validSubtitleAsset()}), executor).
+		WithRenderReuseCache(cache).
+		WithRenderReuseDir(t.TempDir())
+
+	got, err := r.Render(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("Render must fall back to a fresh render, got error: %v", err)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("executor render calls = %d, want 1 after a failed hydration", executor.calls)
+	}
+	if got.Reused || got.RenderSource != RenderSourceFreshGPU {
+		t.Errorf("reused=%v source=%q, want false/%q", got.Reused, got.RenderSource, RenderSourceFreshGPU)
 	}
 }
 

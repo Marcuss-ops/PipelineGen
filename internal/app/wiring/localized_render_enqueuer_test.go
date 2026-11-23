@@ -3,6 +3,7 @@ package wiring
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1192,6 +1193,49 @@ func TestLocalizedRenderEnqueuer_UploadRenderedPublishedArtifactSkipsDrive(t *te
 	}
 	if projected.DriveFileID != published.DriveFileID || projected.AssetID != published.AssetID {
 		t.Fatalf("projected published artifact = %+v", projected)
+	}
+}
+
+// noSpeechTranscript is the TranscriptResolver of a clip whose ASR ran and
+// found no speech. Lookup misses (nothing cached) and Generate returns the
+// typed sentinel the canonical streaming path produces.
+type noSpeechTranscript struct{}
+
+func (noSpeechTranscript) Lookup(context.Context, cliprender.TranscriptInput) (*cliprender.TranscriptResult, bool, error) {
+	return nil, false, nil
+}
+
+func (noSpeechTranscript) Generate(context.Context, cliprender.TranscriptInput, *cliprender.MaterializedAsset) (*cliprender.TranscriptResult, error) {
+	return nil, fmt.Errorf("%w", cliprender.ErrNoSpeech)
+}
+
+var _ cliprender.TranscriptResolver = noSpeechTranscript{}
+
+// TestLocalizedRenderEnqueuer_NoSpeechIsClassified pins the operator-facing
+// contract for a silent/music-only clip: the failure names NO_SPEECH (so it is
+// not read as a broken ASR backend) and stays errors.Is(ErrNoSpeech), while the
+// broader generation-unavailable sentinel keeps matching old callers.
+func TestLocalizedRenderEnqueuer_NoSpeechIsClassified(t *testing.T) {
+	a := newTestEnqueuerAdapter(&recordingLocalizer{}, &recordingTrackRepo{}, &recordingCueWriter{})
+	a.tracks.(*recordingTrackRepo).ready = map[string][]detail.TimedCue{}
+	a.assets = &fakeClipAssets{resolved: map[string]cliprender.AssetRef{
+		"clip-1": {AssetID: "clip-1", MediaType: "video", LocalPath: "/local/clip-1.mp4"},
+	}}
+	a.material = &fakeClipMaterializer{}
+	a.transcript = noSpeechTranscript{}
+
+	err := a.EnqueueLocalizedRender(context.Background(), testEnqueuerInput())
+	if err == nil {
+		t.Fatal("a clip without a timed transcript must fail closed")
+	}
+	if !errors.Is(err, cliprender.ErrNoSpeech) {
+		t.Fatalf("error must keep the ErrNoSpeech identity, got: %v", err)
+	}
+	if !errors.Is(err, cliprender.ErrTranscriptGenerationUnavailable) {
+		t.Fatalf("ErrNoSpeech must unwrap to ErrTranscriptGenerationUnavailable, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "NO_SPEECH") {
+		t.Fatalf("failure must carry the NO_SPEECH code, got: %v", err)
 	}
 }
 

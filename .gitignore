@@ -431,6 +431,11 @@ ops/jobs/*/drive_upload/
 # Local build artifact (2026-11-03): the velox-knobs CLI is compiled, not source.
 /velox-knobs
 
+# Local build artifact (2026-11-22): the cliprender-gc CLI is compiled, not
+# source. Rebuild on demand:
+#   go build -o cliprender-gc ./cmd/cliprender-gc/
+/cliprender-gc
+
 # Local build output of ./cmd/overlaystatus (not source).
 /overlaystatus
 

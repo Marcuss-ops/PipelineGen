@@ -17,6 +17,7 @@ import (
 //
 //	GET  /api/v1/media/assets      → List  (scope: media.read)
 //	GET  /api/v1/media/assets/:id  → Get   (scope: media.read)
+//	GET  /api/v1/media/assets/:id/content → Content (scope: media.read; CR-19)
 //	GET  /api/v1/media/facets      → Facets(scope: media.read)
 //	POST /api/v1/media/clips/:source/clips/:id/download
 //	                               → DownloadClip (scope: media.read)
@@ -49,6 +50,9 @@ type M2MModule struct {
 	handler  *Handler
 	enabled  func() bool
 	download gin.HandlerFunc
+	// content streams an asset's committed bytes (object-store delivery,
+	// CR-19). Optional: a deployment without the proxy stays GET-only.
+	content gin.HandlerFunc
 }
 
 // ScopeMediaRead gates the M2M media-read surface. The admin key-creation
@@ -79,6 +83,15 @@ func NewM2MModule(readModel AssetInventoryReader, log *zap.Logger, enabled func(
 func (m *M2MModule) SetDownloadHandler(h gin.HandlerFunc) {
 	if m != nil {
 		m.download = h
+	}
+}
+
+// SetContentHandler mounts the authenticated asset-content route used by
+// object-store delivery (GET /assets/:id/content). It streams with Range and
+// never redirects to the internal store URL.
+func (m *M2MModule) SetContentHandler(h gin.HandlerFunc) {
+	if m != nil {
+		m.content = h
 	}
 }
 
@@ -119,6 +132,9 @@ func (m *M2MModule) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/assets", apimw.RequireScope(ScopeMediaRead), m.handler.handleListAssets)
 	rg.GET("/assets/:id", apimw.RequireScope(ScopeMediaRead), m.handler.handleGetAsset)
 	rg.GET("/facets", apimw.RequireScope(ScopeMediaRead), m.handler.handleFacets)
+	if m.content != nil {
+		rg.GET("/assets/:id/content", apimw.RequireScope(ScopeMediaRead), m.content)
+	}
 	if m.download != nil {
 		rg.POST(
 			"/clips/:source/clips/:id/download",

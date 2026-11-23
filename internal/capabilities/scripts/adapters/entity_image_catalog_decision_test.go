@@ -42,7 +42,7 @@ func TestEntityImageCatalogPoolRecordsPerCandidateDecisions(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10)
+	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

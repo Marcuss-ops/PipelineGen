@@ -44,6 +44,18 @@ type VidRushProviderFanout struct {
 	// manifestPins is the opt-in pinned-manifest fast path (see
 	// media_manifest_shim.go). Nil keeps every provider call unchanged.
 	manifestPins *MediaManifestPins
+	// contentStore resolves a catalog candidate's local path from its content
+	// address so a warm discovery replay names the local CAS copy.
+	contentStore EntityImageContentStore
+}
+
+// WithCASStore installs the content-addressed store read side. Optional: nil
+// keeps the catalog's Drive-only reuse.
+func (f *VidRushProviderFanout) WithCASStore(store EntityImageContentStore) *VidRushProviderFanout {
+	if f != nil {
+		f.contentStore = store
+	}
+	return f
 }
 
 // WithSemanticScorer applies the same pixel-level person-image gate to

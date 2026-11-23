@@ -288,6 +288,10 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 			// ParseVTTFile). Nil when the domain bundle built without it →
 			// GET /api/clips/transcript answers 503.
 			TranscriptSource: root.Domains.YoutubeClipService.Subtitles(),
+			// Asset-side fallback for ?asset_id=...: READY text track first,
+			// streaming Whisper when the track is missing. Nil keeps the
+			// asset route at 503 instead of pretending it is YouTube.
+			AssetTranscriptSource: buildYouTubeAssetTranscriptSource(cfg, root, log),
 		},
 		Search: youtubeapi.SearchDeps{
 			Service: searchSvc,

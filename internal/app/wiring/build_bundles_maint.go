@@ -9,6 +9,7 @@ package wiring
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
@@ -261,16 +262,31 @@ func (a *imageListRepoAdapter) ListImagesByAssetIDs(ctx context.Context, assetID
 var _ images.ImageListRepository = (*imageListRepoAdapter)(nil)
 var _ images.LocalImageAssetHydrator = (*imageListRepoAdapter)(nil)
 
-func buildImageSearchResolver(imageSvc *images.Service, imageRepo *imagesrepo.ImagesRepository, log *zap.Logger) (images.ImageSearchResolver, error) {
+func buildImageSearchResolver(imageSvc *images.Service, imageRepo *imagesrepo.ImagesRepository, mediaPostgres *sql.DB, log *zap.Logger) (images.ImageSearchResolver, error) {
 	if imageSvc == nil || imageSvc.RetrievalRegistry() == nil {
 		return nil, fmt.Errorf("images.NewImageSearchResolver: retrieval backend is nil — image service must be constructed first")
 	}
-	if imageRepo == nil {
-		return nil, fmt.Errorf("images.NewImageSearchResolver: image list repository is nil — repos.ImageRepo required")
+	// PostgreSQL is the media SSOT and therefore the FIRST reuse source. The
+	// SQLite repository stays in the chain for rows written before the media
+	// cutover; reading SQLite alone made ExistingImages a guaranteed miss for
+	// every image the VidRush finalizer had already published to Drive.
+	listRepos := make([]images.ImageListRepository, 0, 2)
+	if mediaPostgres != nil {
+		listRepos = append(listRepos, newPostgresImageListRepository(mediaPostgres))
+	}
+	if imageRepo != nil {
+		listRepos = append(listRepos, &imageListRepoAdapter{repo: imageRepo})
+	}
+	if len(listRepos) == 0 {
+		return nil, fmt.Errorf("images.NewImageSearchResolver: no image list repository — media PostgreSQL and repos.ImageRepo are both unavailable")
+	}
+	var listRepo images.ImageListRepository = listRepos[0]
+	if len(listRepos) > 1 {
+		listRepo = &compositeImageListRepository{repos: listRepos}
 	}
 	resolver, err := images.NewImageSearchResolver(
 		images.WithRetrievalBackend(imageSvc.RetrievalRegistry()),
-		images.WithImageListRepository(&imageListRepoAdapter{repo: imageRepo}),
+		images.WithImageListRepository(listRepo),
 		images.WithLocalResolvedImageIndex(imageSvc.LocalResolvedImageIndex()),
 	)
 	if err != nil {

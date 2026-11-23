@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -272,7 +273,7 @@ func (f *VidRushProviderFanout) verifySegmentImageCandidates(ctx context.Context
 			contextCandidates = append(contextCandidates, candidate)
 		}
 	}
-	verifiedPeople, err := f.verifyPersonImageCandidates(ctx, personCandidates)
+	verifiedPeople, err := f.verifyPersonImageCandidatesForSegment(ctx, segment, personCandidates)
 	if err != nil {
 		return nil, err
 	}
@@ -326,47 +327,126 @@ func (f *VidRushProviderFanout) verifyTypedEntityImageCandidates(ctx context.Con
 }
 
 func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	return f.verifyPersonImageCandidatesForSegment(ctx, scriptpkg.VidRushSegmentResult{}, candidates)
+}
+
+// verifyPersonImageCandidatesForSegment is the PERSON gate of the fan-out.
+//
+// Segment-aware is a correctness requirement, not a convenience: the segment's
+// PERSON mentions and PersonAliasGraph are the only authority that says a
+// candidate's Entity is a person. Without them, a contextual query promoted to
+// candidate.Entity ("italian-newspaper-newsroom-journalists-typewriters-...")
+// was canonicalized by CanonicalizePersonName and written into the durable
+// PERSON catalog as its own entity pool. Candidates that are not PERSON under
+// the segment classification are returned untouched for the typed-entity/stock
+// paths instead of being scored or persisted as people.
+func (f *VidRushProviderFanout) verifyPersonImageCandidatesForSegment(ctx context.Context, segment scriptpkg.VidRushSegmentResult, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
 	if f == nil {
 		return filterVerifiedPersonImageCandidates(candidates), nil
 	}
+	aliasGraph := segmentPersonAliasGraph(segment)
+	personCandidates := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	others := make([]scriptpkg.SegmentAssetCandidate, 0)
+	identities := make(map[string]entitycatalog.PersonIdentity)
+	for _, candidate := range candidates {
+		identity, ok, err := personCandidateIdentityForSegment(segment, aliasGraph, candidate)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			others = append(others, candidate)
+			continue
+		}
+		candidate.Entity = identity.CanonicalName
+		candidate.EntityID = identity.CanonicalEntityID
+		identities[identity.CanonicalEntityID] = identity
+		personCandidates = append(personCandidates, candidate)
+	}
+	if len(personCandidates) == 0 {
+		return others, nil
+	}
 	// Cached/provider candidates arrive PRE-verification: stamp the durable
 	// catalog verdicts first so a warm reuse skips the download + VLM call
 	// entirely (the scorer itself honors the same ReusablePersonImageVerdict
 	// contract per candidate).
-	hydratePersonImageVisualVerdicts(ctx, f.catalog, candidates)
+	hydratePersonImageVisualVerdicts(ctx, f.catalog, aliasGraph, personCandidates)
 	if f.semanticScorer == nil {
 		// No scorer, no verdict. Keep discovery candidates pending so the
 		// downstream stage/materializer can decide; the catalog still refuses
 		// to reuse them until a real pixel verdict exists.
-		out := append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)
-		recordEntityImageVisualOutcomes(f.metrics, out, nil)
-		return out, nil
+		recordEntityImageVisualOutcomes(f.metrics, personCandidates, nil)
+		return append(personCandidates, others...), nil
 	}
-	if allCandidatesHaveReusableVerdict(candidates) {
+	if allCandidatesHaveReusableVerdict(personCandidates) {
 		// Every candidate carries a definitive pixel verdict already —
 		// re-running the visual scorer is exactly the double download + VLM
 		// call this fast path removes.
-		recordEntityImageVisualOutcomes(f.metrics, candidates, nil)
-		return filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), "person entity image"))), nil
+		recordEntityImageVisualOutcomes(f.metrics, personCandidates, nil)
+		return append(filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(personCandidates, "person entity image"))), others...), nil
 	}
-	scored, err := resolveEntityVisualCandidates(ctx, f.semanticScorer, "person", "", candidates)
+	scored, err := resolveEntityVisualCandidates(ctx, f.semanticScorer, "person", "", personCandidates)
 	if err != nil {
-		verified := filterVerifiedPersonImageCandidates(candidates)
+		verified := filterVerifiedPersonImageCandidates(personCandidates)
 		recordEntityImageVisualOutcomes(f.metrics, verified, err)
-		return verified, err
+		return append(verified, others...), err
 	}
 	if scored == nil {
-		scored = candidates
+		scored = personCandidates
 	}
-	if err := persistPersonImageVisualVerdicts(ctx, f.catalog, scored); err != nil {
-		recordEntityImageVisualOutcomes(f.metrics, scored, err)
-		return scored, err
+	// Persist per identity: the catalog write target comes from the segment
+	// classification, never from whatever text a provider echoed back.
+	for _, identity := range identities {
+		group := filterPersonCandidatesByIdentity(scored, identity.CanonicalEntityID)
+		if err := persistPersonImageVisualVerdicts(ctx, f.catalog, identity, aliasGraph, group); err != nil {
+			recordEntityImageVisualOutcomes(f.metrics, scored, err)
+			return scored, err
+		}
 	}
 	recordEntityImageVisualOutcomes(f.metrics, scored, nil)
-	return filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(scored, "person entity image"))), nil
+	return append(filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(scored, "person entity image"))), others...), nil
+}
+
+// personCandidateIdentityForSegment resolves a candidate's canonical PERSON
+// identity from the segment's own evidence. An empty segment (direct callers
+// and tests) falls back to the candidate's stamped identity, but a non-PERSON
+// EntityID always wins: the catalog must never promote another entity type.
+func personCandidateIdentityForSegment(segment scriptpkg.VidRushSegmentResult, graph *entitycatalog.PersonAliasGraph, candidate scriptpkg.SegmentAssetCandidate) (entitycatalog.PersonIdentity, bool, error) {
+	query := strings.TrimSpace(candidate.Entity)
+	if query == "" {
+		query = strings.TrimSpace(candidate.Query)
+	}
+	if query != "" {
+		identity, ok, err := personCatalogIdentityForSegmentQuery(segment, query)
+		if err != nil || ok {
+			return identity, ok, err
+		}
+	}
+	// The name-only fallback exists for callers with no segment evidence at all
+	// (direct compatibility entry points). A segment that DID carry entities
+	// already answered above: "not a person" is final, and canonicalizing the
+	// contextual query here is exactly how person:<scene-phrase> rows were
+	// minted.
+	if len(segment.Insights.Entities) > 0 || len(segment.Insights.ImageEntityCanonicalIDs) > 0 {
+		return entitycatalog.PersonIdentity{}, false, nil
+	}
+	identity, ok := personCatalogCandidateIdentity(candidate, entitycatalog.PersonIdentity{}, graph)
+	return identity, ok, nil
+}
+
+// filterPersonCandidatesByIdentity keeps only the rows the catalog write is
+// allowed to attribute to this identity.
+func filterPersonCandidatesByIdentity(candidates []scriptpkg.SegmentAssetCandidate, canonicalEntityID string) []scriptpkg.SegmentAssetCandidate {
+	canonicalEntityID = strings.TrimSpace(canonicalEntityID)
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if strings.EqualFold(strings.TrimSpace(candidate.EntityID), canonicalEntityID) {
+			out = append(out, candidate)
+		}
+	}
+	return out
 }
 
 // The YouTube source-hint helpers live in

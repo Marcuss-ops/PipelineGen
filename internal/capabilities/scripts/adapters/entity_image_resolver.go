@@ -17,6 +17,10 @@ type entityImageResolverDeps struct {
 	catalog entitycatalog.Repository
 	cache   scriptports.VidRushCachePort
 	metrics VidRushMetrics
+	// contentStore resolves a materialized candidate's local path from its
+	// content address. Optional: without it the catalog still reuses the
+	// Drive artifact, it just cannot name a local copy.
+	contentStore EntityImageContentStore
 }
 
 // entityImageCatalogCacheResolution is the result of the shared resolver.
@@ -65,7 +69,7 @@ func resolveEntityImageCatalogCache(
 
 	if useCatalog && !force {
 		lookupStarted := time.Now()
-		pool, err := entityImageCatalogCandidates(ctx, deps.catalog, catalogIdentity, entityImageCatalogPoolSize)
+		pool, err := entityImageCatalogCandidates(ctx, deps.catalog, catalogIdentity, entityImageCatalogPoolSize, deps.contentStore)
 		observeEntityImageCatalogLookup(deps.metrics, lookupStarted)
 		if err != nil {
 			return resolution, err
@@ -104,7 +108,7 @@ func resolveEntityImageCatalogCache(
 	// of leaving the scene with zero images.
 	if useCatalog && force {
 		release := entityImageLocks.Lock("entity-catalog:" + catalogIdentity.CanonicalEntityID)
-		pool, err := entityImageCatalogCandidates(ctx, deps.catalog, catalogIdentity, entityImageCatalogPoolSize)
+		pool, err := entityImageCatalogCandidates(ctx, deps.catalog, catalogIdentity, entityImageCatalogPoolSize, deps.contentStore)
 		release()
 		if err != nil {
 			return resolution, err
@@ -121,7 +125,7 @@ func resolveEntityImageCatalogCache(
 		}()
 		// A concurrent first population may have filled the catalog while this
 		// request waited. Re-check before spending a provider call.
-		pool, err := entityImageCatalogCandidates(ctx, deps.catalog, catalogIdentity, entityImageCatalogPoolSize)
+		pool, err := entityImageCatalogCandidates(ctx, deps.catalog, catalogIdentity, entityImageCatalogPoolSize, deps.contentStore)
 		if err != nil {
 			return resolution, err
 		}

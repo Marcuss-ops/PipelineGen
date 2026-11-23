@@ -242,11 +242,53 @@ func (r *Runner) relayJobStage(ctx context.Context, runID string, stage Stage) {
 }
 
 func (r *Runner) writeJobStage(ctx context.Context, jobID string, stage job.StageName, status job.StageStatus, at time.Time) {
-	rec := job.JobStageStatus{JobID: jobID, Stage: stage, Status: status, UpdatedAt: at}
+	progress := 0
+	if status == job.StageCompleted {
+		progress = 100
+	}
+	rec := job.JobStageStatus{JobID: jobID, Stage: stage, Status: status, Progress: progress, UpdatedAt: at}
 	if err := r.jobStageSink.UpsertJobStageStatus(ctx, rec); err != nil && r.log != nil {
 		r.log.Warn("job stage status write failed",
 			zap.String("job_id", jobID),
 			zap.String("stage", string(stage)),
+			zap.Error(err))
+	}
+}
+
+// writeJobStageProgress projects the live fan-out counter onto the durable
+// job_stage_status row. The stage relay alone only knows open/closed, so a
+// voiceover stage with hundreds of TTS items stayed at progress=0 for its
+// whole run (the r14-r16 "parent progress frozen" report). The counter is
+// best-effort: a sink failure is logged, never allowed to fail the run.
+func (r *Runner) writeJobStageProgress(ctx context.Context, runID string, stage job.StageName, completed, total int) {
+	if r == nil || r.jobStageSink == nil || total <= 0 {
+		return
+	}
+	raw, ok := r.jobStages.Load(runID)
+	if !ok {
+		return
+	}
+	state, ok := raw.(*jobStageState)
+	if !ok || state == nil || state.jobID == "" {
+		return
+	}
+	pct := completed * 100 / total
+	if pct < 0 {
+		pct = 0
+	}
+	if pct > 100 {
+		pct = 100
+	}
+	rec := job.JobStageStatus{
+		JobID: state.jobID, Stage: stage, Status: job.StageRunning, Progress: pct,
+		Detail: fmt.Sprintf("%d/%d", completed, total), UpdatedAt: time.Now().UTC(),
+	}
+	if err := r.jobStageSink.UpsertJobStageStatus(ctx, rec); err != nil && r.log != nil {
+		r.log.Warn("job stage progress write failed",
+			zap.String("job_id", state.jobID),
+			zap.String("stage", string(stage)),
+			zap.Int("completed", completed),
+			zap.Int("total", total),
 			zap.Error(err))
 	}
 }

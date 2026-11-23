@@ -585,16 +585,32 @@ func (c *sceneReadyCoordinator) renderFailures() []LocalizedRenderFailure {
 	return append([]LocalizedRenderFailure(nil), c.failures...)
 }
 
-// sealedSceneDurationMS seals one scene after TTS. An explicit editorial
-// duration is authoritative: a full-length clip with a short lead-in
-// voiceover keeps the clip span, and the voiceover is mixed inside it. Only a
-// scene without an explicit duration adopts the voiceover span.
+// sealedSceneDurationMS seals one scene after TTS. A bound clip owns the
+// visual span: the explicit editorial duration wins and the voiceover is
+// mixed inside it, so a full-length clip is never truncated by a short
+// lead-in (CODEX-07). A scene without a clip has no visual span to protect:
+// the measured voiceover is the timeline, but a supplied window within the
+// editorial-silence allowance is preserved and a 4-5s tail is discarded
+// (CODEX-09).
 func sealedSceneDurationMS(explicitMS int64, mode capabilityaudio.AudioMode, clipPresent bool, voiceoverSeconds float64) int64 {
-	if explicitMS > 0 {
+	if clipPresent {
+		if explicitMS > 0 {
+			return explicitMS
+		}
+		if voiceoverSeconds > 0 && mode == capabilityaudio.AudioModeCombinedTimeline {
+			return int64(voiceoverSeconds*1000 + 0.5)
+		}
 		return explicitMS
 	}
 	if voiceoverSeconds > 0 && (mode == capabilityaudio.AudioModeCombinedTimeline || !clipPresent) {
-		return int64(voiceoverSeconds*1000 + 0.5)
+		measuredMS := int64(voiceoverSeconds*1000 + 0.5)
+		if explicitMS <= 0 || measuredMS > explicitMS {
+			return measuredMS
+		}
+		if explicitMS-measuredMS > sceneEditorialSilenceAllowanceUS/1000 {
+			return measuredMS
+		}
+		return explicitMS
 	}
 	return explicitMS
 }

@@ -11,7 +11,7 @@
     "client/httpclient.go": "1a36c474eaa0717a80ec837229e3d1c0ad1d4a5e933d6fcab7850cc5a0767267",
     "client/lease_generation_test.go": "bc517c4ac7775bc1ee15c40f9e65fce82050c65c73bdf357a436987d633261ca",
     "client/prepared_render_package_test.go": "36a7c6344b337599dab9d060ca69a5eb0fc635646655ab2f090e9c390bad454b",
-    "client/wait.go": "b673f809b8982eaee4d1db31d1938f36107fd1956a931e7d9888a92f57047878",
+    "client/wait.go": "95f6524dad829144ff30cde2da292a9111487887b2850364decfec606b3f8fe2",
     "client/wait_integration_test.go": "a760193b54ef16ef69e0079e97f96a8e7a2387e768f21353c8c6350499fc53ca",
     "client/wait_test.go": "0c464934fe9d066e450a4c3274e108cfa8dd982bc80e1d33b004bde102242f9c",
     "client/worker.go": "f0693e65d39602a71db17fe8a5f8e043a577f04790336903d70cc9c226bcb843",

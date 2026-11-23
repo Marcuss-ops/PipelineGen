@@ -105,6 +105,16 @@ func (s *ClipRenderStreamingTranscriber) lookupCachedTranscript(ctx context.Cont
 		_ = s.cache.Invalidate(ctx, key)
 		return nil, false
 	}
+	if !result.HasText() {
+		// A contentless result must never satisfy a later request: it would
+		// make one silent/music-only answer permanent and skip the model
+		// forever. Invalidate so the ASR runs again (and the current store
+		// path will not re-cache an empty answer).
+		s.log.Warn("streaming transcribe: cached transcript is empty; invalidating and running ASR",
+			zap.String("cache_key", entry.CacheKey))
+		_ = s.cache.Invalidate(ctx, key)
+		return nil, false
+	}
 	// The cached result was computed from the same bytes but may have been
 	// addressed through another asset id: keep the current identity.
 	result.AssetID = source.AssetID
@@ -117,6 +127,15 @@ func (s *ClipRenderStreamingTranscriber) lookupCachedTranscript(ctx context.Cont
 }
 
 func (s *ClipRenderStreamingTranscriber) storeCachedTranscript(ctx context.Context, key capcache.Key, result *cliprender.TranscriptResult) {
+	// Only a result with actual text/cues is a reusable artifact. The caller
+	// already fails closed on an empty transcript, but keeping the guard here
+	// makes the invariant local: nothing can poison the cache with an empty
+	// answer.
+	if !result.HasText() {
+		s.log.Warn("streaming transcribe: empty transcript is not cacheable",
+			zap.String("source_sha256", key.SourceSHA256))
+		return
+	}
 	body, err := json.Marshal(result)
 	if err != nil {
 		s.log.Warn("streaming transcribe: cache serialization failed; result not cached", zap.Error(err))

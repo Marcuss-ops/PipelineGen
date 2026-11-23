@@ -15,6 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
+	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/vidrush"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
@@ -99,13 +100,17 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 		if root.Repos != nil {
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
+		// One CAS read side for the whole VidRush image path: the fan-out and the
+		// materializer must resolve a catalog candidate's local path from the
+		// same content-addressed store.
+		contentStore := vidrushwiring.BuildVidRushCASStore(cfg, log)
 		registryMediaResolver := &documentadapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
 		fanout := documentadapters.NewVidRushProviderFanoutWithResolver(
 			registryMediaResolver,
 			vidRushCache,
 			entityImageCatalogRepo,
 			vidRushMetrics,
-		).WithLogger(log)
+		).WithLogger(log).WithCASStore(contentStore)
 		// Opt-in media_manifest fast-path on the fan-out (the discovery owner
 		// for plans without the internet_images postprocessor). Fail-open: a
 		// broken manifest logs a warning and never fails a run.
@@ -127,7 +132,7 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 		if root.Repos != nil {
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
-		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics).WithMediaSampler(mediaSampler).WithMediaSamplerGroup(mediaSampler).WithLogger(log)
+		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics).WithMediaSampler(mediaSampler).WithMediaSamplerGroup(mediaSampler).WithLogger(log).WithCASStore(vidrushwiring.BuildVidRushCASStore(cfg, log))
 	}
 	pipeline := &scriptgen.VidRushPipeline{
 		ProviderResolver: vidRushFanout,

@@ -42,6 +42,11 @@ type RenderCacheRecord struct {
 	FPSNum      uint32
 	FPSDen      uint32
 	Backend     RenderBackend
+	// DeliveryStatus/DriveFileID come from the joined media_assets row. They
+	// answer the second question a cache hit must not confuse with "the bytes
+	// exist": is the Drive delivery complete? Empty means not instrumented.
+	DeliveryStatus string
+	DriveFileID    string
 }
 
 // RenderCache is the port for the deterministic render cache.

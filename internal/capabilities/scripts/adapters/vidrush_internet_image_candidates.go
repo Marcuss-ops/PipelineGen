@@ -45,7 +45,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 				return
 			}
 			if len(cached.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
-				candidates, verifyErr := f.verifyPersonImageCandidates(ctx, cached.Candidates)
+				candidates, verifyErr := f.verifyPersonImageCandidatesForSegment(ctx, workerInput, cached.Candidates)
 				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: verifyErr, allCacheHits: true}
 				return
 			}
@@ -252,7 +252,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 // The fan-out owns provider discovery, not a private catalog/cache policy.
 func (f *VidRushProviderFanout) resolveEntityImageCatalogAndCache(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, query, entityCacheKey string, catalogIdentity entitycatalog.PersonIdentity, catalogEligible bool) ([]scriptpkg.SegmentAssetCandidate, []scriptpkg.SegmentAssetCandidate, bool, bool, func(), error) {
 	resolution, err := resolveEntityImageCatalogCache(ctx, entityImageResolverDeps{
-		catalog: f.catalog, cache: f.cache, metrics: f.metrics,
+		catalog: f.catalog, cache: f.cache, metrics: f.metrics, contentStore: f.contentStore,
 	}, plan, query, entityCacheKey, catalogIdentity, catalogEligible, false)
 	if err != nil {
 		return nil, nil, false, false, nil, err

@@ -44,10 +44,17 @@ func BuildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	if plan.MediaMode == scriptpkg.MediaModeMixed && plan.MediaPlan.ProviderPolicy.YouTube.AsBool() {
 		spec.VideoProvider = scriptpkg.VidRushProviderYouTube
 	}
-	// Only authored plan segments define an external scene-identity contract.
+	// Only authored scenes that enter the VidRush enrichment path define the
+	// external scene-identity contract. Explicit no_voiceover segments are
+	// fixed-media cutaways: they remain in the final timeline, but do not
+	// produce VidRush results and must not be counted by MediaCertBarrier.
 	// Free-form text generation may legitimately produce multiple structured
 	// scenes, so do not invent a synthetic scene-0 expectation here.
-	spec.Segments = len(plan.Segments)
+	for _, segment := range plan.Segments {
+		if !segment.NoVoiceover {
+			spec.Segments++
+		}
+	}
 	spec.EntitiesPerSegment = plan.MediaPlan.Extraction.MaxEntitiesPerSegment
 	// Stock-only and clip-only plans use their video references for scene
 	// visuals and do not depend on the secondary-image selection lane. Keep
@@ -64,6 +71,9 @@ func BuildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 	// falls back to reuse, so the certifier must see those candidates too.
 	spec.AllowCrossSceneAssetReuse = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() || !plan.MediaPlan.Extraction.EntityImages.PerScene()
 	for i, segment := range plan.Segments {
+		if segment.NoVoiceover {
+			continue
+		}
 		id := strings.TrimSpace(segment.ID)
 		if id == "" {
 			id = fmt.Sprintf("scene-%d", i)

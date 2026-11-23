@@ -65,9 +65,11 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 	// change the request it measures.
 	cp := r.cloneForFingerprint()
 	cp.Normalize()
-	if err := cp.Validate(); err != nil {
-		return "", fmt.Errorf("clip.render fingerprint: normalized request invalid: %w", err)
-	}
+	// Fingerprint deliberately does NOT Validate. Callers validate at their own
+	// boundary (HTTP handler, worker payload, batch item) and then reuse this
+	// digest; validating here repeated the contract resolver and made one cold
+	// request pay five Normalize/Validate/Fingerprint passes (CR-07). An invalid
+	// request is rejected by Validate before it can be enqueued or cached.
 	// Canonical JSON projection: the fields that affect the rendered bytes
 	// AND the fields that decide where those bytes are delivered.
 	//
@@ -79,31 +81,51 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 	// delivery folders silently (ticket CR-19-03). Queue correlation IDs and
 	// idempotency headers stay excluded: they identify a submission, not a
 	// deliverable.
+	// Project only what can change the rendered bytes or the published
+	// destination. A disabled block is not part of the visual contract: its
+	// position, margins, style or mode are inert and must not split one render
+	// into two cache entries (CR-01).
+	background := cp.Background
+	if background != nil && background.Mode == BackgroundModeNone {
+		background = nil
+	}
+	watermark := cp.Watermark
+	if watermark != nil && !watermark.Enabled {
+		watermark = nil
+	}
+	subtitles := cp.Subtitles
+	if subtitles != nil && !subtitles.Enabled {
+		subtitles = nil
+	}
+
+	// Execution is deliberately NOT render identity. Chronon is the only
+	// backend and is GPU-native, so require_gpu changes an assertion, not the
+	// pixels; require_zero_copy is rejected at Validate. Including it made two
+	// equivalent requests miss the same cache entry. Destination stays in the
+	// identity because a hit returns the previously published asset.
 	type fp struct {
 		RendererVersion string           `json:"renderer_version"`
 		SourceAssetID   string           `json:"source_asset_id"`
-		Background      *BackgroundSpec  `json:"background"`
-		Watermark       *WatermarkSpec   `json:"watermark"`
+		Background      *BackgroundSpec  `json:"background,omitempty"`
+		Watermark       *WatermarkSpec   `json:"watermark,omitempty"`
 		Transcript      *TranscriptSpec  `json:"transcript"`
-		Subtitles       *SubtitlesSpec   `json:"subtitles"`
+		Subtitles       *SubtitlesSpec   `json:"subtitles,omitempty"`
 		Output          *OutputSpec      `json:"output"`
 		Audio           *AudioSpec       `json:"audio"`
 		Overlays        []OverlayRefSpec `json:"overlays,omitempty"`
-		Execution       *ExecutionSpec   `json:"execution,omitempty"`
 		DriveFolderID   string           `json:"drive_folder_id,omitempty"`
 		SubfolderName   string           `json:"subfolder_name,omitempty"`
 	}
 	canonical := fp{
 		RendererVersion: RendererLoweringVersion,
 		SourceAssetID:   cp.SourceAssetID,
-		Background:      cp.Background,
-		Watermark:       cp.Watermark,
+		Background:      background,
+		Watermark:       watermark,
 		Transcript:      cp.Transcript,
-		Subtitles:       cp.Subtitles,
+		Subtitles:       subtitles,
 		Output:          cp.Output,
 		Audio:           cp.Audio,
 		Overlays:        cp.Overlays,
-		Execution:       cp.Execution,
 		DriveFolderID:   cp.Destination.DriveFolderID,
 		SubfolderName:   cp.Destination.SubfolderName,
 	}

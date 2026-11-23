@@ -23,16 +23,19 @@ func (f *fakePGMediaReader) GetAsset(_ context.Context, assetID string) (*pgmedi
 
 func TestClipRenderPGAssetResolver_ResolveAsset(t *testing.T) {
 	reader := &fakePGMediaReader{rec: &pgmedia.MediaAssetRecord{
-		ID:           "asset-1",
-		Name:         "fallback name",
-		Title:        "", // exercises the Title → Name fallback
-		MediaType:    "video",
-		LocalPath:    "/media/asset-1.mp4",
-		DriveFileID:  "drive-1",
-		SHA256:       "sha256:abc",
-		DurationMS:   4321,
-		DriveLink:    "https://drive.example/1",
-		DownloadLink: "https://drive.example/1?export=download",
+		ID:            "asset-1",
+		Name:          "fallback name",
+		Title:         "", // exercises the Title → Name fallback
+		MediaType:     "video",
+		LocalPath:     "/media/asset-1.mp4",
+		DriveFileID:   "drive-1",
+		SHA256:        "sha256:abc",
+		DurationMS:    4321,
+		DriveLink:     "https://drive.example/1",
+		DownloadLink:  "https://drive.example/1?export=download",
+		SourceVideoID: "yt-video-1",
+		StartMS:       10000,
+		EndMS:         25000,
 	}}
 	resolver, err := NewClipRenderPGAssetResolver(reader, zap.NewNop())
 	if err != nil {
@@ -50,6 +53,31 @@ func TestClipRenderPGAssetResolver_ResolveAsset(t *testing.T) {
 		ref.MediaType != "video" || ref.LocalPath != "/media/asset-1.mp4" ||
 		ref.DriveFileID != "drive-1" || ref.ContentSHA256 != "sha256:abc" || ref.DurationMS != 4321 {
 		t.Fatalf("unexpected ref: %+v", ref)
+	}
+	// The 5-priority transcript chain needs the source video identity and the
+	// clip window; without them priorities 3+4 cannot run.
+	if ref.VideoID != "yt-video-1" || ref.StartSec != 10 || ref.EndSec != 25 {
+		t.Fatalf("source identity = video %q %d..%d, want yt-video-1 10..25", ref.VideoID, ref.StartSec, ref.EndSec)
+	}
+}
+
+// TestClipRenderPGAssetResolver_UsesLegacyYouTubeIDWhenCanonicalEmpty keeps the
+// pre-cutover rows working: source_video_id is the canonical column, but
+// youtube_video_id still carries the same identity on older assets.
+func TestClipRenderPGAssetResolver_UsesLegacyYouTubeIDWhenCanonicalEmpty(t *testing.T) {
+	reader := &fakePGMediaReader{rec: &pgmedia.MediaAssetRecord{
+		ID: "asset-1", MediaType: "video", YouTubeVideoID: "legacy-yt-1",
+	}}
+	resolver, err := NewClipRenderPGAssetResolver(reader, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClipRenderPGAssetResolver: %v", err)
+	}
+	ref, err := resolver.ResolveAsset(context.Background(), "asset-1")
+	if err != nil {
+		t.Fatalf("ResolveAsset: %v", err)
+	}
+	if ref.VideoID != "legacy-yt-1" {
+		t.Fatalf("VideoID = %q, want legacy-yt-1", ref.VideoID)
 	}
 }
 

@@ -58,9 +58,15 @@ func (r *PreparedAssetResolver) verifiedPreparedAsset(path, expected string, ref
 	if err != nil || size <= 0 || computed != expected {
 		return nil, false
 	}
+	// The shared bytes are the SAME source, so the acquisition identity must
+	// survive the fast path too: dropping VideoID/DriveFileID/the clip window
+	// here would send an empty video_id to the 5-priority chain for every
+	// prepared (cache-hit) asset, disabling YouTube subtitles silently.
 	return &MaterializedAsset{
 		AssetID: ref.AssetID, LocalPath: path, SHA256: computed,
 		SizeBytes: size, DurationMS: ref.DurationMS, FromCache: true,
+		VideoID: ref.VideoID, DriveFileID: ref.DriveFileID,
+		StartSec: ref.StartSec, EndSec: ref.EndSec,
 	}, true
 }
 

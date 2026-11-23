@@ -23,10 +23,13 @@ func registerMediaEntries(r *Registry) {
 	// per-job tx (mirror of media.clip), so the broker's legacy Complete is
 	// the canonical mark-SUCCEEDED seam. ArtifactOwnershipApplication +
 	// FinalizationStrategyLegacyComplete.
-	// Concurrency: 1 is PINNED, not a default: clip.render owns a GPU lane and
-	// its VRAM. Two leases would queue two renders on the same lane and make
-	// the settle watchdog's stall signal meaningless (ELIM-04).
-	registerMediaPolicy(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeClipRender, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Clip render (background/watermark/subtitles baked in one render pass -> VeloxEditing-compatible derived media asset + provenance)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 1})
+	// Concurrency: 2 applies to the SUBMIT half only. The submit worker does
+	// local preparation (asset materialization, ASS compile, plan seal) and
+	// returns without touching Chronon; the remote GPU has its own 2 lanes.
+	// The settle half runs on a dedicated pool selected by render_phase=settle,
+	// so it is not serialized by this value. Keep this at 2 until a cold-batch
+	// measurement shows the local CPU/I/O can absorb more (CR-13).
+	registerMediaPolicy(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeClipRender, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Clip render (background/watermark/subtitles baked in one render pass -> VeloxEditing-compatible derived media asset + provenance)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 2})
 
 	// ── System ──
 	registerMediaPolicy(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeSystemCleanup, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "System cleanup", Timeout: 2 * time.Minute, DefaultMaxRetries: 1}) // ── AI Image Generation ──

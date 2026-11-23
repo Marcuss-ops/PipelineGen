@@ -228,6 +228,13 @@ func (r *RenderRequest) Normalize() {
 	} else if r.Output.FPSDen == 0 {
 		r.Output.FPSDen = 1
 	}
+	// 0 is the wire-level "use the contract default" spelling. Promote it to
+	// the actual default HERE so the persisted payload, the sealed plan and the
+	// render fingerprint all agree: 0 and 100 describe the same pixels and must
+	// not address two different cache entries (CR-01).
+	if r.Output.ForegroundScalePercent == 0 {
+		r.Output.ForegroundScalePercent = 100
+	}
 	if r.Audio == nil {
 		r.Audio = &AudioSpec{}
 	}

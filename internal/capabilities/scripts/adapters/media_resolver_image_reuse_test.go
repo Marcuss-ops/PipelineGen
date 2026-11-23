@@ -144,7 +144,7 @@ func TestEntityImageCatalogCandidatesBoundsMaterializationLookups(t *testing.T) 
 	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
 	require.NoError(t, err)
 
-	pool, err := entityImageCatalogCandidates(context.Background(), counting, identity, 5)
+	pool, err := entityImageCatalogCandidates(context.Background(), counting, identity, 5, nil)
 	require.NoError(t, err)
 	require.Len(t, pool.Candidates, 5)
 	require.True(t, pool.Sufficient)

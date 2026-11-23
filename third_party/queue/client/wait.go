@@ -92,6 +92,25 @@ func (c *Client) WaitTerminal(ctx context.Context, id string) (Job, error) {
 	}
 }
 
+// WaitProgress performs ONE bounded server-side long poll and returns the
+// current job document even when the wait window elapses without a terminal
+// state. It is the progress-aware primitive used by the settle watchdog: the
+// document carries Progress, so the caller can detect a stalled render without
+// spending a second GET at every slice boundary.
+//
+// A queue without the wait route degrades to one Get; an unknown job still
+// fails with ErrNotFound.
+func (c *Client) WaitProgress(ctx context.Context, id string) (Job, error) {
+	job, err := c.waitRound(ctx, id)
+	if errors.Is(err, errWaitRouteUnsupported) {
+		return c.Get(ctx, id)
+	}
+	if err != nil {
+		return Job{}, err
+	}
+	return job, nil
+}
+
 // waitRound performs one bounded server-side long poll. A 404 on the wait route
 // is ambiguous: it means either the job is gone or the route does not exist.
 // The job lookup disambiguates, so an older queue degrades to polling while an

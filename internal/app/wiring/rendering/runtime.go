@@ -8,6 +8,7 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -18,24 +19,17 @@ import (
 	"go.uber.org/zap"
 )
 
-// DefaultGPUGateSlots is the measured overlay GPU concurrency: three
-// concurrent holders, i.e. the ceiling after retuning 2026-09-27.
+// DefaultGPUGateSlots mirrors RenderingGen's shipped worker lane count.
 //
-// 3 is the new certified value together with the GPU peers:
+// 2 is the certified value after the 2026-11-22 VRAM incident: three
+// concurrent GPU sessions plus resident Ollama reproduced
+// VK_ERROR_OUT_OF_DEVICE_MEMORY, while two lanes completed the same job with
+// 15.4 GB of 16.3 GB free. The shipped config (`gpu_lanes: 2`) and the systemd
+// drop-in (`RENDERINGGEN_GPU_SLOTS=2`) are the authority; this constant is the
+// built-in fallback and must never admit more work than the worker can run.
 //
-//   - RenderingGen's worker `gpu_lanes: 3` (was 2) after queue-wait audit
-//     showed 62% wall at width 4 behind 2 lanes; throttling overlay pool
-//     4→2 + raising lanes 2→3 keeps pipelining while cutting queue wait;
-//   - a Chronon video job is itself mutex-serialized by the daemon
-//     execution-domain contract
-//     (Chronon3d/apps/chronon3d_cli/daemon/daemon_render_concurrency.hpp),
-//     so the gain is admission concurrency (less queue wait), not overlapping
-//     Chronon execution. RTX A4000 VMA peak 451 MB @ 16 GB leaves headroom.
-//
-// Every process sharing the GPU must therefore be given the SAME
-// RENDERINGGEN_GPU_SLOTS value (see overlays.GPUGate). The shipped
-// systemd drop-in `scripts/systemd/pipelinegen.service.d/gpu-slots.conf`
-// pins RENDERINGGEN_GPU_SLOTS=3 to keep the contract byte-identical.
+// Every process sharing the GPU must be given the SAME
+// RENDERINGGEN_GPU_SLOTS value (see overlays.GPUGate).
 const DefaultGPUGateSlots = infraoverlays.DefaultGPUGateSlots
 
 func newOverlayGPUGate() (*infraoverlays.GPUGate, string, int, error) {
@@ -90,6 +84,17 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 	explicitSlots := strings.TrimSpace(os.Getenv("RENDERINGGEN_GPU_SLOTS")) != ""
 	if err != nil {
 		return nil, nil, err
+	}
+	if rawLanes := strings.TrimSpace(os.Getenv("RENDERINGGEN_GPU_LANES")); rawLanes != "" {
+		lanes, laneErr := strconv.Atoi(rawLanes)
+		if laneErr != nil {
+			return nil, nil, fmt.Errorf("RENDERINGGEN_GPU_LANES=%q is not an integer: %w", rawLanes, laneErr)
+		}
+		if err := infraoverlays.ValidateGPUSlotParity(lanes, slots); err != nil {
+			return nil, nil, err
+		}
+		log.Info("GPU admission parity verified",
+			zap.Int("worker_gpu_lanes", lanes), zap.Int("admission_slots", slots))
 	}
 	if explicitSlots {
 		log.Info("overlay GPU gate slots resolved",

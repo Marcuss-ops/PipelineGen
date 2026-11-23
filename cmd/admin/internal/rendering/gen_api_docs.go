@@ -244,7 +244,7 @@ var routeDescriptions = map[string]string{
 	"GET /api/clips/info":             "Get YouTube video metadata",
 	"GET /api/clips/search":           "Search and rank YouTube videos by topic",
 	"GET /api/clips/exists":           "Pre-extraction dedup probe: answers {exists, clip_id} for a YouTube URL so callers skip /api/clips/process for known candidates",
-	"GET /api/clips/transcript":       "Transcript-as-a-service: readable text + per-cue timings for a YouTube URL without downloading the video (yt-dlp --skip-download + canonical VTT parser)",
+	"GET /api/clips/transcript":       "Transcript-as-a-service: readable text + per-cue timings for a YouTube URL (url=, yt-dlp --skip-download + VTT) or a canonical media asset (asset_id=, READY text track or Whisper ASR fallback)",
 	"GET /api/clips/diagnostics":      "Clips diagnostics",
 
 	// ── Media / Clips ─────────────────────────────────────────

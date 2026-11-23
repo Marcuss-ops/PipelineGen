@@ -43,6 +43,7 @@
 package cliprender
 
 import (
+	"context"
 	"errors"
 
 	"go.uber.org/zap"
@@ -59,8 +60,35 @@ type RenderCacheRecord = kernelmedia.RenderCacheRecord
 // RenderCache is the port for the deterministic render cache.
 type RenderCache = kernelmedia.RenderCache
 
+// RenderCacheBatch is the optional one-round-trip extension for batch
+// lookups. A cache that implements it lets POST /render/batch resolve N
+// fingerprints with ONE query; callers fall back to sequential Get when it is
+// absent, so the port stays backwards compatible (CR-05).
+type RenderCacheBatch interface {
+	GetMany(ctx context.Context, fingerprints []string) (map[string]*RenderCacheRecord, error)
+}
+
 // ErrCacheMiss is returned when no cache entry exists for a fingerprint.
 var ErrCacheMiss = kernelmedia.ErrCacheMiss
+
+// publicationDeliveryStatus classifies what the publisher actually completed.
+// It is the value stored with the cache locator so a later CACHED response can
+// say whether Drive is ready instead of assuming it (CR-10).
+func publicationDeliveryStatus(publication *RenderPublishResult) string {
+	if publication == nil {
+		return ""
+	}
+	if publication.Reused {
+		return "reused"
+	}
+	if publication.DeliveryStatus != "" {
+		return publication.DeliveryStatus
+	}
+	if publication.DrivePending {
+		return "pending"
+	}
+	return "completed"
+}
 
 // logCacheLookupFailure records a cache read that failed for a reason other
 // than a miss. ErrCacheMiss is the normal path and stays silent; anything else

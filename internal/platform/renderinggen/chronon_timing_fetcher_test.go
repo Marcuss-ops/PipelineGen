@@ -39,6 +39,35 @@ func TestChrononTimingFetcherFetchesByContentAddress(t *testing.T) {
 	}
 }
 
+// TestChrononTimingFetcherFetchesSummaryCompanion pins the hot-path URL: the
+// summary is addressed next to the raw content address, so the producer reads
+// the compact document without the per-frame array.
+func TestChrononTimingFetcherFetchesSummaryCompanion(t *testing.T) {
+	body := []byte(`{"schema":"chronon3d.frame-timing.v3","frame_times_omitted":true}`)
+	key := digest.SHA256Bytes([]byte(`{"schema":"chronon3d.frame-timing.v3","frame_times_ms":[]}`))
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	fetcher, err := NewChrononTimingFetcher(srv.URL)
+	if err != nil {
+		t.Fatalf("NewChrononTimingFetcher: %v", err)
+	}
+	got, err := fetcher.FetchChrononTimingSummary(context.Background(), key, "")
+	if err != nil {
+		t.Fatalf("FetchChrononTimingSummary: %v", err)
+	}
+	if string(got) != string(body) {
+		t.Fatalf("body = %q, want the served summary", got)
+	}
+	if want := "/objects/" + key + ".summary.json"; gotPath != want {
+		t.Fatalf("request path = %q, want %q", gotPath, want)
+	}
+}
+
 // TestChrononTimingFetcherRejectsDigestMismatch pins that bytes served under a
 // content address are re-hashed: a store that returns different bytes than the
 // address promises is rejected, never recorded.

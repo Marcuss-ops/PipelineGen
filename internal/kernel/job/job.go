@@ -103,8 +103,13 @@ type Filter struct {
 	Type          *string
 	WorkerID      string
 	CorrelationID *string
-	Limit         int
-	Offset        int
+	// CorrelationPrefix narrows to jobs whose correlation_id starts with the
+	// value. The batch status/cancel route uses it to reconstruct a batch from
+	// its durable job rows (`<batch_id>:<fingerprint>` and
+	// `<batch_id>:sequence:<fingerprint>`), with no second batch table.
+	CorrelationPrefix string
+	Limit             int
+	Offset            int
 }
 
 // ── Canonical Job entity (kernel, ≥2-capability) ───────────────────

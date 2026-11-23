@@ -196,9 +196,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	if err != nil {
 		return nil, err
 	}
-	if cfg != nil && cfg.Scripts.LocalizedRenderConcurrency > 0 {
-		runner.SetTTSConcurrency(cfg.Scripts.LocalizedRenderConcurrency)
-	}
+	// TTSConcurrency is owned by script_generation_wiring.go (config field,
+	// voiceover ceiling, then default). LocalizedRenderConcurrency governs the
+	// parallel render fan-out, NOT the TTS pool: overriding one with the other
+	// silently discarded VELOX_SCRIPTS_TTS_CONCURRENCY and made larger render
+	// concurrency worsen TTS wall time (CR-15).
 	if err := wireScriptGenerationAudioAssets(runner, cfg, root, committer, audioRenderer, log); err != nil {
 		return nil, err
 	}

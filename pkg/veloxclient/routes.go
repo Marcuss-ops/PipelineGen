@@ -50,11 +50,11 @@ const (
 	// skips /api/clips/process entirely for candidates already in the
 	// catalog (0 downloads, 0 jobs, 0 rate-limit).
 	RouteClipsExists = "/api/clips/exists"
-	// RouteClipsTranscript is GET /api/clips/transcript?url=...&start=&end=
-	// — transcript-as-a-service: readable text + per-cue timings for a
-	// YouTube URL WITHOUT downloading the video or running Whisper
-	// (yt-dlp --write-subs/--write-auto-subs --skip-download + the
-	// canonical VTT parser server-side).
+	// RouteClipsTranscript is GET /api/clips/transcript with either
+	// url=...&start=&end= (YouTube: yt-dlp --write-subs/--write-auto-subs
+	// --skip-download + canonical VTT parser, no Whisper when captions
+	// exist) or asset_id=...&language=&start=&end= (canonical media asset:
+	// READY text track first, Whisper ASR fallback).
 	RouteClipsTranscript = "/api/clips/transcript"
 	// RouteClipsStock is POST /api/clips/stock — the clip-side stock ingest.
 	RouteClipsStock = "/api/clips/stock"

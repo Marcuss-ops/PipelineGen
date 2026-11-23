@@ -3,6 +3,7 @@ package clipswiring
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -59,8 +60,15 @@ func BuildClipRenderRuntime(cfg *config.Config, mediaExec mediaexec.ExecutionCon
 	if err != nil {
 		return nil, fmt.Errorf("clip render runtime: build RenderingGen executor: %w", err)
 	}
-	video := cfg.Video.WithDefaults()
-	executor.SetChunking(time.Duration(video.ChunkDuration)*time.Second, int64(video.KeyframeInterval), 2)
+	// CR-18: chunking is a measured NO-GO (2 chunks = 31.51 s vs 18.66 s for
+	// one job), so production must opt in explicitly. The historical wiring
+	// enabled it unconditionally and armed the slower path for every eligible
+	// clip. Keep the executor default (no chunking) unless the operator sets
+	// the flag for a new V3 measurement.
+	if ClipRenderChunkingEnabled() {
+		video := cfg.Video.WithDefaults()
+		executor.SetChunking(time.Duration(video.ChunkDuration)*time.Second, int64(video.KeyframeInterval), 2)
+	}
 	if cfg.External.RenderingGenPollIntervalMS > 0 {
 		executor.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
 	}
@@ -78,6 +86,23 @@ func BuildClipRenderRuntime(cfg *config.Config, mediaExec mediaexec.ExecutionCon
 		return nil, fmt.Errorf("clip render runtime: build continuation store: %w", err)
 	}
 	return &ClipRenderRuntime{RenderingGenExecutor: executor, ContinuationStore: continuationStore}, nil
+}
+
+// EnvClipRenderChunking is the explicit opt-in for the chunking experiment.
+// Absent, empty, "0" and "false" keep the measured NO-GO policy: one job per
+// plan, no chunk family, no anchor overhead.
+const EnvClipRenderChunking = "PIPELINEGEN_CLIP_RENDER_CHUNKING"
+
+// ClipRenderChunkingEnabled reports whether the operator explicitly armed the
+// chunking experiment. The default is OFF because the only certified measurement
+// is negative (2026-11-20: 2 chunks 31.51 s vs 18.66 s single job).
+func ClipRenderChunkingEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(EnvClipRenderChunking))) {
+	case "1", "true":
+		return true
+	default:
+		return false
+	}
 }
 
 // NewClipRenderMediaResolver creates the single media read surface for

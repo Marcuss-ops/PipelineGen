@@ -56,7 +56,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		// verified-but-never-downloaded catalog rows get a real
 		// Acquire → Verify → Finalize attempt in-run instead of arriving
 		// after materialization, when they can no longer be fetched.
-		if pooled := durableEntityImagePoolForSegment(ctx, p.catalog, updated); len(pooled) > 0 {
+		if pooled := durableEntityImagePoolForSegment(ctx, p.catalog, updated, p.contentStore); len(pooled) > 0 {
 			discoveredCandidates = AppendProviderCandidatesUnique(discoveredCandidates, pooled)
 		}
 	}

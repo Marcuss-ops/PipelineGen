@@ -46,15 +46,17 @@ func EnsureLocalizedRenderReuseTable(ctx context.Context, db *sql.DB) error {
 	}
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS localized_render_reuse (
-			fingerprint TEXT PRIMARY KEY,
-			local_path  TEXT   NOT NULL,
-			sha256      TEXT   NOT NULL,
-			size_bytes  BIGINT NOT NULL,
-			duration_ms BIGINT NOT NULL,
-			video_codec TEXT   NOT NULL DEFAULT '',
-			audio_codec TEXT   NOT NULL DEFAULT '',
-			backend     TEXT   NOT NULL DEFAULT '',
-			created_at  TEXT   NOT NULL
+			fingerprint  TEXT PRIMARY KEY,
+			local_path   TEXT   NOT NULL,
+			storage_key  TEXT   NOT NULL DEFAULT '',
+			artifact_url TEXT   NOT NULL DEFAULT '',
+			sha256       TEXT   NOT NULL,
+			size_bytes   BIGINT NOT NULL,
+			duration_ms  BIGINT NOT NULL,
+			video_codec  TEXT   NOT NULL DEFAULT '',
+			audio_codec  TEXT   NOT NULL DEFAULT '',
+			backend      TEXT   NOT NULL DEFAULT '',
+			created_at   TEXT   NOT NULL
 		);`
 	if _, err := db.ExecContext(ctx, ddl); err != nil {
 		return fmt.Errorf("localization render reuse: ensure table: %w", err)
@@ -66,7 +68,9 @@ func EnsureLocalizedRenderReuseTable(ctx context.Context, db *sql.DB) error {
 	const alter = `
 		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS drive_file_id   TEXT NOT NULL DEFAULT '';
 		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS drive_link      TEXT NOT NULL DEFAULT '';
-		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS drive_folder_id TEXT NOT NULL DEFAULT '';`
+		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS drive_folder_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS storage_key     TEXT NOT NULL DEFAULT '';
+		ALTER TABLE localized_render_reuse ADD COLUMN IF NOT EXISTS artifact_url    TEXT NOT NULL DEFAULT '';`
 	if _, err := db.ExecContext(ctx, alter); err != nil {
 		return fmt.Errorf("localization render reuse: ensure publication columns: %w", err)
 	}
@@ -85,7 +89,7 @@ func (s *LocalizedRenderReuse) Lookup(ctx context.Context, fingerprint string) (
 		return nil, false, errors.New("localization render reuse: fingerprint is required")
 	}
 	const q = `
-		SELECT local_path, sha256, size_bytes, duration_ms, video_codec, audio_codec, backend,
+		SELECT local_path, storage_key, artifact_url, sha256, size_bytes, duration_ms, video_codec, audio_codec, backend,
 		       drive_file_id, drive_link, drive_folder_id
 		FROM localized_render_reuse
 		WHERE fingerprint = $1`
@@ -94,7 +98,8 @@ func (s *LocalizedRenderReuse) Lookup(ctx context.Context, fingerprint string) (
 		backend string
 	)
 	err := s.db.QueryRowContext(ctx, q, fingerprint).
-		Scan(&record.LocalPath, &record.SHA256, &record.SizeBytes, &record.DurationMS, &record.VideoCodec, &record.AudioCodec, &backend,
+		Scan(&record.LocalPath, &record.StorageKey, &record.ArtifactURL, &record.SHA256, &record.SizeBytes, &record.DurationMS,
+			&record.VideoCodec, &record.AudioCodec, &backend,
 			&record.DriveFileID, &record.DriveLink, &record.DriveFolderID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
@@ -125,19 +130,22 @@ func (s *LocalizedRenderReuse) Store(ctx context.Context, artifact localization.
 	}
 	const q = `
 		INSERT INTO localized_render_reuse
-			(fingerprint, local_path, sha256, size_bytes, duration_ms, video_codec, audio_codec, backend, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW()::text)
+			(fingerprint, local_path, storage_key, artifact_url, sha256, size_bytes, duration_ms, video_codec, audio_codec, backend, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW()::text)
 		ON CONFLICT (fingerprint) DO UPDATE SET
-			local_path  = EXCLUDED.local_path,
-			sha256      = EXCLUDED.sha256,
-			size_bytes  = EXCLUDED.size_bytes,
-			duration_ms = EXCLUDED.duration_ms,
-			video_codec = EXCLUDED.video_codec,
-			audio_codec = EXCLUDED.audio_codec,
-			backend     = EXCLUDED.backend,
-			created_at  = NOW()::text`
+			local_path   = EXCLUDED.local_path,
+			storage_key  = EXCLUDED.storage_key,
+			artifact_url = EXCLUDED.artifact_url,
+			sha256       = EXCLUDED.sha256,
+			size_bytes   = EXCLUDED.size_bytes,
+			duration_ms  = EXCLUDED.duration_ms,
+			video_codec  = EXCLUDED.video_codec,
+			audio_codec  = EXCLUDED.audio_codec,
+			backend      = EXCLUDED.backend,
+			created_at   = NOW()::text`
 	if _, err := s.db.ExecContext(ctx, q,
-		fingerprint, artifact.LocalPath, strings.ToLower(artifact.SHA256), artifact.SizeBytes,
+		fingerprint, artifact.LocalPath, artifact.StorageKey, artifact.ArtifactURL,
+		strings.ToLower(artifact.SHA256), artifact.SizeBytes,
 		artifact.DurationMS, artifact.VideoCodec, artifact.AudioCodec, artifact.Backend); err != nil {
 		s.log.Warn("localization render reuse: store failed",
 			zap.String("subsystem", "localization_render_reuse"),

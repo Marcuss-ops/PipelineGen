@@ -157,6 +157,12 @@ knobs:
     safe_production: "6 (machine render ceiling)"
     owner: "internal/platform/config/scripts.go"
     description: "Machine-wide ceiling for localized render jobs."
+  VELOX_SCRIPTS_TTS_CONCURRENCY:
+    kind: config
+    default: "0"
+    safe_production: "0 (defer to the voiceover provider bound, then 4)"
+    owner: "internal/platform/config/scripts.go"
+    description: "Concurrency of the script-generation voiceover pool; 0 defers to the voiceover provider bound and then to 4."
   VELOX_YOUTUBE_ASYNC_ENRICHMENT:
     kind: env
     default: ""

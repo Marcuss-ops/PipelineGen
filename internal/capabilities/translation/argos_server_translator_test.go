@@ -74,6 +74,9 @@ func newStubArgosServerTranslator(t *testing.T) *ArgosServerTranslator {
 	a, err := NewArgosServerTranslator(ArgosServerConfig{
 		PythonBin:  "python3",
 		ScriptsDir: scriptsDir,
+		// The stub only needs an interpreter; the system python3 does not
+		// carry argostranslate, so the production import probe is bypassed.
+		SkipStartupProbe: true,
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewArgosServerTranslator: %v", err)
@@ -102,6 +105,32 @@ func TestNewArgosServerTranslator_MissingScript(t *testing.T) {
 	}, zap.NewNop())
 	if err == nil {
 		t.Fatal("expected error for missing script, got nil")
+	}
+	if !errors.Is(err, ErrArgosBridgeUnavailable) {
+		t.Fatalf("expected ErrArgosBridgeUnavailable, got: %v", err)
+	}
+}
+
+func TestNewArgosServerTranslator_ImportProbeFails(t *testing.T) {
+	scriptsDir := t.TempDir()
+	bridgeDir := filepath.Join(scriptsDir, "bridges")
+	if err := os.MkdirAll(bridgeDir, 0o755); err != nil {
+		t.Fatalf("mkdir bridges: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bridgeDir, "argos_server.py"), []byte("#!/usr/bin/env python3\n"), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	fakePython := filepath.Join(t.TempDir(), "python3")
+	if err := os.WriteFile(fakePython, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
+		t.Fatalf("write fake python: %v", err)
+	}
+
+	_, err := NewArgosServerTranslator(ArgosServerConfig{
+		PythonBin:  fakePython,
+		ScriptsDir: scriptsDir,
+	}, zap.NewNop())
+	if err == nil {
+		t.Fatal("expected error when the interpreter cannot import argostranslate")
 	}
 	if !errors.Is(err, ErrArgosBridgeUnavailable) {
 		t.Fatalf("expected ErrArgosBridgeUnavailable, got: %v", err)
@@ -270,6 +299,9 @@ func newStubArgosTelemetryTranslatorFull(t *testing.T, concurrency int, packageD
 		ScriptsDir:  scriptsDir,
 		Concurrency: concurrency,
 		PackageDir:  packageDir,
+		// The telemetry stub is interpreted by the system python3, which does
+		// not carry argostranslate; the production import probe is bypassed.
+		SkipStartupProbe: true,
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewArgosServerTranslator: %v", err)

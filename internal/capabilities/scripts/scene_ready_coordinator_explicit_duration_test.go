@@ -50,4 +50,9 @@ func TestSealedSceneDurationPreservesExplicitClipDuration(t *testing.T) {
 	if got := sealedSceneDurationMS(0, capabilityaudio.AudioModeCombinedTimeline, false, 8.568); got != 8_568 {
 		t.Fatalf("clip-less voiceover duration = %dms, want 8568ms", got)
 	}
+	// CODEX-09 / R34: a clip-less scene with a 9s planning estimate and a 5s
+	// narration must seal to 5s, otherwise the extra 4s is dead air.
+	if got := sealedSceneDurationMS(9_000, capabilityaudio.AudioModeCombinedTimeline, false, 5.0); got != 5_000 {
+		t.Fatalf("clip-less measured duration = %dms, want 5000ms (planning estimate must not leave dead air)", got)
+	}
 }

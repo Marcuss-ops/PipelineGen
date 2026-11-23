@@ -1,6 +1,10 @@
 package httpserver
 
 import (
+	"os"
+	"strconv"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
@@ -8,6 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
+	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/rendercacheinfo"
 )
 
@@ -52,6 +57,7 @@ func (r *Router) registerHealthRoutes(engine *gin.Engine, log *zap.Logger) *tran
 	// the script render runtime, so the health surface reflects the SAME cache
 	// instance the enqueuer uses instead of a re-derived guess.
 	healthHandler.SetRenderCacheStatus(rendercacheinfo.Current)
+	healthHandler.SetGPUAdmission(gpuAdmissionSnapshot)
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
 
@@ -67,4 +73,35 @@ func (r *Router) registerHealthRoutes(engine *gin.Engine, log *zap.Logger) *tran
 	engine.GET("/models", modelsHandler.Models)
 
 	return healthHandler
+}
+
+// gpuAdmissionSnapshot reads the same environment contract as the overlay
+// gate. No env means the shipped 2/2; an unparsable value is published as 0
+// plus parity_ok=false so /ready exposes the drift instead of hiding it.
+func gpuAdmissionSnapshot() transport.GPUAdmissionStatus {
+	slots := infraoverlays.DefaultGPUGateSlots
+	if raw := strings.TrimSpace(os.Getenv("RENDERINGGEN_GPU_SLOTS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			slots = n
+		} else {
+			slots = 0
+		}
+	}
+	// Lanes default to the SHIPPED worker lane count, not to the admission
+	// value: defaulting to slots made a deployment that raised only
+	// RENDERINGGEN_GPU_SLOTS (3) report parity_ok=true while the worker still
+	// executed 2 lanes — exactly the drift this probe exists to expose.
+	lanes := infraoverlays.DefaultGPUGateSlots
+	if raw := strings.TrimSpace(os.Getenv("RENDERINGGEN_GPU_LANES")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			lanes = n
+		} else {
+			lanes = 0
+		}
+	}
+	return transport.GPUAdmissionStatus{
+		Lanes:    lanes,
+		Slots:    slots,
+		ParityOK: lanes > 0 && slots > 0 && lanes == slots,
+	}
 }

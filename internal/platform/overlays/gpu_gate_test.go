@@ -73,6 +73,32 @@ func TestGPUGateSlotsAreMutuallyExclusiveAcrossInstances(t *testing.T) {
 	rb()
 }
 
+// TestGPUGateDefaultMatchesShippedLanes pins the admission default to the
+// worker's shipped 2 lanes so a missing env var cannot admit a third GPU job.
+func TestGPUGateDefaultMatchesShippedLanes(t *testing.T) {
+	if DefaultGPUGateSlots != 2 {
+		t.Fatalf("DefaultGPUGateSlots = %d, want 2 (RenderingGen gpu_lanes)", DefaultGPUGateSlots)
+	}
+	if slots, explicit := ResolveGPUGateSlots(""); slots != 2 || explicit {
+		t.Fatalf("absent env = (%d, %v), want (2, false)", slots, explicit)
+	}
+	if slots, explicit := ResolveGPUGateSlots("3"); slots != 3 || !explicit {
+		t.Fatalf("explicit 3 = (%d, %v), want (3, true)", slots, explicit)
+	}
+}
+
+func TestGPUSlotParityRejectsAdmissionDrift(t *testing.T) {
+	if err := ValidateGPUSlotParity(2, 2); err != nil {
+		t.Fatalf("matching 2/2 must pass: %v", err)
+	}
+	if err := ValidateGPUSlotParity(2, 3); err == nil {
+		t.Fatal("2 worker lanes with 3 admission slots must fail")
+	}
+	if err := ValidateGPUSlotParity(0, 2); err == nil {
+		t.Fatal("a zero lane count must fail")
+	}
+}
+
 func TestGPUGateSerializesAndHonorsCancellation(t *testing.T) {
 	g, err := NewGPUGate(t.TempDir() + "/gpu.lock")
 	if err != nil {
