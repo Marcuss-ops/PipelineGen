@@ -222,7 +222,7 @@
         "internal/app/modules/drive",
         "internal/app/modules/lifecycle",
         "internal/app/modules/media",
-        "internal/app/modules/process",
+        "internal/capabilities/indexing/wiring",
         "internal/app/modules/registry",
         "internal/app/modules/rendering",
         "internal/app/modules/script",
