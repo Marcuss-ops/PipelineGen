@@ -5,9 +5,9 @@
 // typography, motion pools) that CompileOverlayPlan receives, and the
 // helpers project OverlayStyleSpec into the plan's param map.
 //
-// Split from overlay_plan.go (625 → <600) to satisfy the strict 600-LOC
-// forward-prevention gate (godlike/08) without changing behaviour. The two
-// files share package scriptgeneration and no new package is introduced.
+// The canvas is a distinct responsibility inside the derivation: it is an input
+// value object plus pure projections, with no knowledge of the compiler, the
+// seal, or the audit. Nothing in this file may grow into a planning step.
 package scriptgeneration
 
 import (
@@ -278,16 +278,6 @@ func applyOverlayImageStyle(item *capmodel.OverlayItem, style *scriptpkg.Overlay
 // baseline: the filter is canvas policy (it reads OverlayCanvasSpec) and
 // this file is its cohesive home. No behaviour change.
 
-// dropCategoryDisabledCandidates removes a scene's candidates for every
-// disabled overlay lane BEFORE the planner runs. The run-level budgets dedupe
-// globally, so a disabled scene's identical date, phrase or image surface
-// would otherwise evict the enabled scene's copy before the end category
-// filter can remove the disabled one. Quotes and keywords pass through: the
-// internal editorial budget never retains them, so they cannot evict anything.
-// Numbers survive when charts are enabled because chart placements derive from
-// grounded numbers, while the number cards themselves still die at the end
-// filter.
-
 // Merged here to keep the registered scripts hotspot at its committed
 // baseline: group capping reads the canvas OverlayGroupLimits and the
 // canvas helpers above. No behaviour change.
@@ -308,17 +298,10 @@ const (
 	overlayGroupDates = "dates"
 )
 
-var overlayGroupKeys = map[string]bool{
-	overlayGroupMaps:             true,
-	overlayGroupShortPhrases:     true,
-	overlayGroupLongPhrases:      true,
-	overlayGroupEntitiesWithText: true,
-	overlayGroupLocations:        true,
-	overlayGroupImages:           true,
-	overlayGroupBullets:          true,
-	overlayGroupDates:            true,
-}
-
+// cloneOverlayGroupLimits copies the payload's per-group caps. The caps are
+// enforced by the v2 planner (admission.rs) and validated there on compile; Go
+// only transports them, so this file carries no second classifier, no budget
+// pass and no group-key allowlist of its own (OVL-03 removed the retired ones).
 func cloneOverlayGroupLimits(src map[string]int) map[string]int {
 	if src == nil {
 		return nil
@@ -329,43 +312,3 @@ func cloneOverlayGroupLimits(src map[string]int) map[string]int {
 	}
 	return dst
 }
-
-// validateOverlayGroupLimits fails closed on unknown keys or negative caps.
-
-// overlayImageLayersHaveCaptions reports whether a composite carries any
-// per-layer caption text. Composite parents clear EntityCaption to avoid
-// duplicating the first name, so the group classifier must look at layers.
-
-// overlayGroupOf assigns one overlay to exactly one group. Maps, images,
-// entity cards and phrases are disjoint; short phrases use the exact-cardinality
-// short recipes, every other grounded phrase counts as long.
-
-// applyOverlayGroupLimits keeps, per group, at most the configured number of
-// overlays. Present zero drops the group; absent keys and ungrouped items pass
-// through unchanged.
-//
-// A capped group spends its allowance across SCENES before taking a second
-// overlay from any one scene. Counting the candidates in plan order starves
-// every scene past the allowance, because the plan carries both cards of the
-// first scenes before the first card of the last one: a fifteen-scene run with
-// an entities_with_text cap of fifteen rendered ten name cards in ten scenes
-// and left five scenes empty. The kept set is therefore chosen per group —
-// the first overlay of every scene in plan order, then the ranked remainder —
-// while the emitted items still follow plan order, so the render plan's
-// z-order and content identity are unchanged.
-
-// overlayGroupLimit returns the cap for a group and whether it was set.
-// applyPhraseLaneCaps forwards explicit short/long phrase group caps into the
-// planner's first editorial budget pass. BuildPlan budgets before the later
-// materialization pass, so without these caps its default long-first selector
-// can discard short candidates before the split-lane budget admits them.
-
-// effectivePhraseOverlayCeiling combines the explicit run-level phrase limit
-// with any phrase-group caps. A single configured group is enough to raise the
-// planner ceiling; the other group is left uncapped (not treated as zero).
-
-// effectiveMapOverlayCeiling combines the request and group caps under the
-// hard run limit. Explicit ceilings are honored exactly — the smaller of the
-// request and the maps group cap wins — while oversized requests are bounded
-// by MaxMapOverlaysPerRun so payloads cannot create unbounded basemap
-// renders. Zero keeps the certified run ceiling.

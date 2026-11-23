@@ -15,44 +15,32 @@ then:
 2. calls `OverlayPlanCompiler.CompileOverlayPlanV2` once;
 3. reattaches producer-only `LocalPath` values;
 4. materializes chain presets and map plates;
-5. promotes an entity card to an entity image when the media plane holds a
-   verified portrait for it (item and chain segment);
-6. seals and audits the plan.
+5. seals and audits the plan.
 
-Steps 3-5 are the only post-seal mutations. They are **materialization** and one
-declared identity exception, not re-selection. The invariant is: after the
-compiler returns, Go may change `PresetID`, `Params` metadata, map/asset
-references and — through entity-image promotion only — a segment's
-`Kind`/`TemplateID`/`Text`/`MotionID`, but may not change item order,
+Steps 3-4 are the only post-seal mutations. They are **materialization**, not
+re-selection. The invariant is: after the compiler returns, Go may change
+`PresetID`, `Params` metadata and map/asset references, but may not change item
+order, `Kind`, `TemplateID`, `Text`, `EntityCaption`, `MotionID`,
 `StartUS`/`DurationUS`, `GroupMotionID`, any `EntityID`, or the number of items
 and segments.
 
-**Promotion is owned by the planner (2026-11-21, landed).** Whether an identity
-has a certified portrait is known only to the PipelineGen media plane
-(`entity_image_catalog` in PostgreSQL), so PipelineGen still *resolves* it. It no
-longer *decides*: `overlayPlanMedia` ships the resolved portraits on
-`media.promotable_entity_assets` and the v2 planner promotes the card or the
-chain segment before it seals (`planner/promotion.rs`). The Go seal boundary now
-adopts the document unchanged. **Decision 2026-11-21 (see `TICKET-CHAIN-SEGMENT-SSOT-2026-11-18.md`).**
+**Card vs image is owned by the planner (2026-11-23, OVL-01).** Whether an
+identity has a certified portrait is known to the PipelineGen media plane
+(`entity_image_catalog` in PostgreSQL), so PipelineGen *resolves* it. It does
+not *decide*: `overlayPlanMedia` ships **one** surface,
+`media.verified_entity_assets`, keyed by the plan occurrence identity.
+Annotation bindings and bundle/timeline resolutions share that list; there is no
+separate `promotable` surface and no post-plan promotion pass. The v2 planner
+decides in `media.rs::append_entity_cards`, before admission, coalescing and
+clipping, and seals the result. The Go seal boundary adopts the document
+unchanged.
 
-- The entrance preset is resolved by decision **(a)**: `canvas.image_presets`
-  (the Chronon-owned `preset.image` vocabulary) travels in the request and the
-  seeded sampler is ported to Rust with byte-exact parity vectors
-  (`job_fingerprint`, `scene_id`, `semantic_id`, `preset_family`; SHA-256;
-  big-endian `u64` of the first eight **ASCII hex** characters, the Go quirk).
-  (b) — a different rotation per entity image — was rejected as a visual
-  regression.
-- The catalog half is **not** `verified_entity_assets`. That surface ships only
-  annotation images and already makes a card an `entity_image`; the Go resolver
-  also indexes `SemanticRenderBundle`, and the old pass skipped a segment that
-  already carried assets, so "has assets" and "is promotable" are disjoint sets.
-  `media.promotable_entity_assets` is the separate surface: one entry per plan
-  occurrence that resolves to renderable, content-addressed bytes, keyed by the
-  occurrence identity the planner stamps on the item.
-- Promotion is a single pass, post-coalescing, seeded with the fused chain item
-  id (so the preset matches what the Go pass chose). A card that already carries
-  assets or is already `entity_image` is left untouched; the run ceiling is
-  applied only when the pass promoted something, as before.
+- A disabled `images` category keeps the card textual: `append_entity_cards`
+  does not attach the portrait, so admission does not drop the card.
+- The run ceiling is the single `image_overlays` budget in `admission.rs`;
+  there is no second, post-plan entity-image ceiling.
+- A fused image chain gets no special promotion preset: an entity image takes
+  the same presentation path as every other image.
 
 ## Decision matrix
 
@@ -63,9 +51,9 @@ adopts the document unchanged. **Decision 2026-11-21 (see `TICKET-CHAIN-SEGMENT-
 | Item ordering | BrainRust | sealed `FinalPlanV2` | No | `TestPostRustPlanPreservesEditorialDecisions` |
 | Timing / frame windows | BrainRust | planner | No | same test |
 | Motion / group motion | BrainRust | planner | No | same test |
-| Chain segment preset | PipelineGen (ADR-029) until the v2 window; then BrainRust via `canvas.image_presets` (decision 2026-11-21 (a)) | `applyChainSegmentPresets` | Yes, `PresetID` only | `TestApplyChainSegmentPresetsResolvesEveryChainSegment`, `TestChainSegmentPresetResolutionTouchesOnlyPresetID` |
-| Entity-card → entity image (item and chain segment) | BrainRust planner, fed by the PipelineGen media plane | `editorial_plan_v2/planner/promotion.rs` | No | Rust `promotion::tests::*`, `overlay_plan_contract::promotable_media_is_promoted_by_the_planner_not_by_the_consumer`; Go `TestPromotableEntityAssetsCarryThePlanIdentityAndTheVerifiedBytes` |
-| Entity-image run ceiling | BrainRust planner (post-promotion only) + PipelineGen media resolver (pre-Rust) | `promotion::cap_entity_images`, `media_resolver_entity_binding.go` | No | Rust `the_ceiling_drops_entity_images_only_and_never_on_a_noop_plan` |
+| Chain segment preset | PipelineGen (ADR-029) | `applyChainSegmentPresets` | Yes, `PresetID` only | `TestApplyChainSegmentPresetsResolvesEveryChainSegment`, `TestChainSegmentPresetResolutionTouchesOnlyPresetID` |
+| Entity-card → entity image (item and chain segment) | BrainRust planner, fed by the PipelineGen media plane | `editorial_plan_v2/planner/media.rs::append_entity_cards` | No | Rust `overlay_plan_contract::bundle_media_binds_the_card_without_a_post_plan_promotion`; Go `TestResolvedEntityAssetsCarryThePlanIdentityAndTheVerifiedBytes` |
+| Entity-image run ceiling | BrainRust admission (`budgets.image_overlays`) + PipelineGen media resolver (pre-Rust) | `admission.rs`, `media_resolver_entity_binding.go` | No | Rust `entity_image_priority.rs`, `explicit_image_budget_is_a_run_ceiling` |
 | Map plate / local asset | PipelineGen + RenderingGen | `materializeEditorialMapItems` | Yes, `Map`/`AssetRefs` resolution only | `TestMaterializeEditorialMapItemsResolvesPresentationCardPresets` |
 | Fingerprint / render key | PipelineGen seal | `overlay_plan_seal.go` | Yes, derived state | seal tests |
 | Intake/audit/lineage | PipelineGen | `overlay_plan_freeze.go` | Yes, read-only telemetry | freeze tests |

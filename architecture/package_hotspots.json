@@ -11,16 +11,19 @@
         "max_loc": 11473
       },
       "current": {
-        "files": 57,
-        "max_loc": 526
+        "files": 14,
+        "max_loc": 525
       },
-      "note": "Re-merged 2026-08-26 (50 + 13 support → 63): the temporary support sub-package split was reverted in f6126dba7; the planner/orchestrator/steps/query/run/rounds/ports surface now lives flat in stockpipeline. Baseline ratcheted to the committed 63-file count; owner/deadline/targets unchanged. RE-BASELINE 2026-10-01: remaining decomposition work is still active under the named owner and target packages; deadline reset to 2026-12-31, with the file baseline unchanged. RE-RATCHETED 2026-11-10 (56->57): SourceWindow is now an explicit stock extraction input, preserving requested time windows through mirror staging and cutting; tests pin the window contract.",
+      "note": "Re-merged 2026-08-26 (50 + 13 support → 63): the temporary support sub-package split was reverted in f6126dba7; the planner/orchestrator/steps/query/run/rounds/ports surface now lives flat in stockpipeline. Baseline ratcheted to the committed 63-file count; owner/deadline/targets unchanged. RE-BASELINE 2026-10-01: remaining decomposition work is still active under the named owner and target packages; deadline reset to 2026-12-31, with the file baseline unchanged. RE-RATCHETED 2026-11-10 (56->57): SourceWindow is now an explicit stock extraction input, preserving requested time windows through mirror staging and cutting; tests pin the window contract. SPLIT 2026-11-23 (BON-04): phase code moved to core/plan/ingest/extract/publish/finalize/cleanup/pipeline; root reduced 57 -> 14 prod files, largest root file 525 LoC.",
       "target_packages": [
-        "internal/capabilities/assets/stock/ingest",
-        "internal/capabilities/assets/stock/finalize",
-        "internal/capabilities/assets/stock/publish",
-        "internal/capabilities/assets/stock/cleanup",
-        "internal/capabilities/assets/stock/reconcile"
+        "internal/capabilities/assets/providers/stock/stockpipeline/core",
+        "internal/capabilities/assets/providers/stock/stockpipeline/plan",
+        "internal/capabilities/assets/providers/stock/stockpipeline/ingest",
+        "internal/capabilities/assets/providers/stock/stockpipeline/extract",
+        "internal/capabilities/assets/providers/stock/stockpipeline/publish",
+        "internal/capabilities/assets/providers/stock/stockpipeline/finalize",
+        "internal/capabilities/assets/providers/stock/stockpipeline/cleanup",
+        "internal/capabilities/assets/providers/stock/stockpipeline/pipeline"
       ]
     },
     {
@@ -213,21 +216,21 @@
       },
       "note": "Registered 2026-11-17: the composition root measures 70 production files against max_files_per_package=65. The measured count is locked here so the gate keeps ratcheting: any further root growth hard-fails. The surface grew with the in-flight vector-index-removal bundle work (the legacy vector-index process bundle was folded into build_process_bundle.go, then merged into build_bundles_process.go) plus the overlay/texttracks/scripting wiring landings of the same wave; those files are cohesive composition glue, not new capability surface. The 65-file target stays open and the declared targets are the existing wiring subpackages; the split must keep the root as the composition facade.",
       "target_packages": [
-        "internal/app/wiring/assets",
-        "internal/app/wiring/audio",
-        "internal/app/wiring/clips",
-        "internal/app/wiring/drive",
-        "internal/app/wiring/lifecycle",
-        "internal/app/wiring/media",
-        "internal/app/wiring/process",
-        "internal/app/wiring/registry",
-        "internal/app/wiring/rendering",
-        "internal/app/wiring/script",
-        "internal/app/wiring/search",
-        "internal/app/wiring/stock",
-        "internal/app/wiring/vidrush",
-        "internal/app/wiring/voiceover",
-        "internal/app/wiring/youtube"
+        "internal/app/modules/assets",
+        "internal/app/modules/audio",
+        "internal/app/modules/clips",
+        "internal/app/modules/drive",
+        "internal/app/modules/lifecycle",
+        "internal/app/modules/media",
+        "internal/app/modules/process",
+        "internal/app/modules/registry",
+        "internal/app/modules/rendering",
+        "internal/app/modules/script",
+        "internal/app/modules/search",
+        "internal/app/modules/stock",
+        "internal/app/modules/vidrush",
+        "internal/app/modules/voiceover",
+        "internal/app/modules/youtube"
       ]
     }
   ],

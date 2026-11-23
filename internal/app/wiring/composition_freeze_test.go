@@ -101,10 +101,15 @@ const (
 	frozenGoroutineInBuildDriveBundle = 0
 	// PR9-B (June 2026): concurrent.SafeGo x2 (pool start + shutdown)
 	// moved from BuildOutboxBundle body into startOutboxEventsPool.
-	// MEDIA-CUTOVER (September 2026): +1 concurrent.SafeGo — the pgvector
-	// PostgresIndexWorker drain loop (PG mode only, launched inside the
-	// bundle start closure via SafeGo per the documented pattern).
-	frozenGoroutineInBuildOutboxBundle = 1
+	// BON-03 decomposition (2026-11-23): the last spawn — the pgvector
+	// PostgresIndexWorker drain loop — moved out of the builder body into
+	// newOutboxStartClosure, so the builder now spawns nothing at all. The
+	// spawn is still pinned, on the closure that owns it.
+	frozenGoroutineInBuildOutboxBundle = 0
+	// MEDIA-CUTOVER (September 2026): exactly one SafeGo — the pgvector
+	// PostgresIndexWorker drain loop (PG mode only), launched from the start
+	// closure the composition root runs after boot.
+	frozenGoroutineInNewOutboxStartClosure = 1
 )
 
 // frozenZeroSpawnBuilders lists the Build*Bundle family members that
@@ -162,7 +167,18 @@ func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 	require.Equal(t, frozenGoroutineInBuildDriveBundle, counts["BuildDriveBundle"],
 		"BuildDriveBundle spawn count drifted (expected 0 after Wave A Item 15, June 2026 — the drive-style-folders SafeGo goroutine was REMOVED, not just moved).")
 	require.Equal(t, frozenGoroutineInBuildOutboxBundle, counts["BuildOutboxBundle"],
-		"BuildOutboxBundle spawn count drifted. MEDIA-CUTOVER (September 2026) pins 1 SafeGo spawn: the pgvector PostgresIndexWorker drain loop; update `frozenGoroutineInBuildOutboxBundle` in lockstep.")
+		"BuildOutboxBundle must not spawn goroutines: composition-time spawns belong to the start closure, not to a builder body.")
+
+	// The bundle's only spawn lives in the start closure (BON-03 moved it
+	// there so the builder body stayed pure assembly). Pin it where it is.
+	closureSpawns := -1
+	for _, file := range files {
+		if n := countGoroutineSpawns("newOutboxStartClosure", readSourceSilent(file)); n >= 0 {
+			closureSpawns = n
+		}
+	}
+	require.Equal(t, frozenGoroutineInNewOutboxStartClosure, closureSpawns,
+		"newOutboxStartClosure must own exactly one spawn: the pgvector PostgresIndexWorker drain loop.")
 
 	for _, name := range frozenZeroSpawnBuilders {
 		require.Equal(t, 0, counts[name],

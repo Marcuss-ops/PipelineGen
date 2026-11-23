@@ -74,6 +74,12 @@ type SemanticAssetHit struct {
 type SemanticAssetSearchResponse struct {
 	Hits     []SemanticAssetHit
 	Provider string
+	// RecallMS and VerifyMS are the two measured stages of the provider call:
+	// recall is the search/download candidate fetch, verification is the
+	// pixel/VLM verdict. They stay zero for ports and cached answers that do
+	// not measure them, so an aggregate never invents a split.
+	RecallMS int64
+	VerifyMS int64
 }
 
 // SemanticAssetSearchPort is the narrow retrieval port the batch planner needs.
@@ -208,9 +214,13 @@ type SemanticSearchAttemptResult struct {
 	// Status is `hit`, `miss`, `error` or `skipped`.
 	Status    string
 	LatencyMS int64
-	Hits      int
-	Provider  string
-	Error     string
+	// RecallMS and VerifyMS separate the two stages of LatencyMS. They are
+	// zero for cache hits: no provider recall or pixel verification ran.
+	RecallMS int64
+	VerifyMS int64
+	Hits     int
+	Provider string
+	Error    string
 	// RetryAction is the planner decision this attempt produced (`broaden`,
 	// `skip_visual` or empty on a hit).
 	RetryAction string
@@ -245,6 +255,12 @@ type SemanticSearchBatchMetrics struct {
 	P50MS            int64
 	P95MS            int64
 	TotalMS          int64
+	// RecallMS/VerifyMS are the accumulated stage costs. The P50 variants are
+	// nearest-rank over provider attempts, matching P50MS's population.
+	RecallMS    int64
+	VerifyMS    int64
+	RecallP50MS int64
+	VerifyP50MS int64
 }
 
 // SemanticSearchBatchReport is the durable measurement of one executed batch:
@@ -489,6 +505,8 @@ func summarizeSemanticSearchBatch(report *SemanticSearchBatchReport) {
 		return
 	}
 	latencies := make([]int64, 0, len(report.Attempts))
+	recallLatencies := make([]int64, 0, len(report.Attempts))
+	verifyLatencies := make([]int64, 0, len(report.Attempts))
 	var total int64
 	for _, row := range report.Attempts {
 		if row.RouteSkip {
@@ -522,6 +540,12 @@ func summarizeSemanticSearchBatch(report *SemanticSearchBatchReport) {
 		}
 		latencies = append(latencies, row.LatencyMS)
 		total += row.LatencyMS
+		report.Metrics.RecallMS += row.RecallMS
+		report.Metrics.VerifyMS += row.VerifyMS
+		if row.RecallMS > 0 || row.VerifyMS > 0 {
+			recallLatencies = append(recallLatencies, row.RecallMS)
+			verifyLatencies = append(verifyLatencies, row.VerifyMS)
+		}
 	}
 	report.Metrics.ProviderQueries = report.Metrics.Queries - report.Metrics.CacheHits
 	if report.Metrics.Queries > 0 {
@@ -533,6 +557,10 @@ func summarizeSemanticSearchBatch(report *SemanticSearchBatchReport) {
 	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 	report.Metrics.P50MS = nearestRank(latencies, 0.50)
 	report.Metrics.P95MS = nearestRank(latencies, 0.95)
+	sort.Slice(recallLatencies, func(i, j int) bool { return recallLatencies[i] < recallLatencies[j] })
+	sort.Slice(verifyLatencies, func(i, j int) bool { return verifyLatencies[i] < verifyLatencies[j] })
+	report.Metrics.RecallP50MS = nearestRank(recallLatencies, 0.50)
+	report.Metrics.VerifyP50MS = nearestRank(verifyLatencies, 0.50)
 }
 
 func nearestRank(sorted []int64, percentile float64) int64 {

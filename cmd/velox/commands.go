@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 )
@@ -220,6 +221,7 @@ func cmdPoll(args []string) int {
 	deadline := time.Now().Add(timeout)
 	client := newClient(cfg)
 	prev := ""
+	restarts := 0
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		status, gerr := client.GetJobStatus(ctx, jobID)
@@ -228,6 +230,21 @@ func cmdPoll(args []string) int {
 			if errors.Is(gerr, veloxclient.ErrNotFound) {
 				fmt.Fprintf(os.Stderr, "velox poll: job %s not found\n", jobID)
 				return exitMissing
+			}
+			// A restarted service (or a transient 5xx) is NOT a failed job: the
+			// run is durable and resumes on its own, so keep polling instead of
+			// abandoning a job that is still alive.
+			if errors.Is(gerr, veloxclient.ErrServer) {
+				restarts++
+				if restarts == 1 {
+					fmt.Fprintf(os.Stderr, "velox poll: server non raggiungibile (%v) — il job resta durabile, riprovo\n", gerr)
+				}
+				if time.Now().After(deadline) {
+					fmt.Fprintf(os.Stderr, "velox poll: timed out after %s while the server was unreachable (%d interruption(s)); check `velox jobs` later, the run is not lost\n", timeout, restarts)
+					return exitFailure
+				}
+				time.Sleep(interval)
+				continue
 			}
 			fmt.Fprintf(os.Stderr, "velox poll: %v\n", gerr)
 			return exitFailure
@@ -251,7 +268,11 @@ func cmdPoll(args []string) int {
 				fmt.Fprintln(os.Stderr)
 				return exitFailure
 			}
-			fmt.Printf("%s SUCCEEDED\n", jobID)
+			if restarts > 0 {
+				fmt.Printf("%s SUCCEEDED (dopo %d interruzione/i di rete)\n", jobID, restarts)
+			} else {
+				fmt.Printf("%s SUCCEEDED\n", jobID)
+			}
 			return exitOK
 		}
 		if time.Now().After(deadline) {
@@ -367,6 +388,10 @@ func cmdDownload(args []string) int {
 		fmt.Fprintln(os.Stderr, "velox download: <asset_id> is required")
 		return exitUsage
 	}
+	if fs.has("m2m") {
+		cfg.m2m = true
+		cfg.token = strings.TrimSpace(os.Getenv("VELOX_M2M_SECRET"))
+	}
 	assetID := fs.pos[0]
 	source := fs.get("source", defaultSourceFor(assetID))
 	out := fs.get("out", "")
@@ -376,16 +401,27 @@ func cmdDownload(args []string) int {
 	if out == "" {
 		out = defaultDownloadName(assetID)
 	}
-
-	endpoint := veloxclient.RouteClipsDownload(source, assetID)
 	client := newClient(cfg)
 
-	// The download endpoint is POST-only; PostToWriter encodes that so a GET
-	// (which the server answers with 404) is not even possible from here.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	var contentType string
+	var endpoint string
+	var expectedSHA string
 	writeErr := atomicwrite.Write(out, 0o644, func(w io.Writer) error {
+		if cfg.m2m {
+			// The unified M2M route serves ANY ACTIVE asset (video, audio,
+			// image, script) and supports Range. The clip POST route below is
+			// retained for the admin surface.
+			endpoint = veloxclient.RouteM2MAssetDownload(assetID)
+			result, perr := client.GetToWriter(ctx, endpoint, map[string]string{"Range": fs.get("range", "")}, w)
+			contentType = result.ContentType
+			expectedSHA = result.SHA256
+			return perr
+		}
+		// The download endpoint is POST-only; PostToWriter encodes that so a
+		// GET (which the server answers with 404) is not even possible.
+		endpoint = veloxclient.RouteClipsDownload(source, assetID)
 		ct, perr := client.PostToWriter(ctx, endpoint, map[string]any{}, w)
 		contentType = ct
 		return perr
@@ -403,12 +439,23 @@ func cmdDownload(args []string) int {
 			return exitFailure
 		}
 	}
-	info, _ := os.Stat(out)
-	size := int64(0)
-	if info != nil {
-		size = info.Size()
+	actualSHA, size, hashErr := digest.SHA256File(out)
+	if hashErr != nil {
+		fmt.Fprintf(os.Stderr, "velox download: hash %s: %v\n", out, hashErr)
+		return exitFailure
 	}
-	fmt.Printf("downloaded %s → %s (%d bytes, %s)\n", assetID, out, size, contentType)
+	if expectedSHA != "" && !strings.EqualFold(expectedSHA, actualSHA) {
+		_ = os.Remove(out)
+		fmt.Fprintf(os.Stderr, "velox download: sha256 mismatch for %s (expected %s, got %s)\n", assetID, expectedSHA, actualSHA)
+		return exitFailure
+	}
+	if cfg.json {
+		return emitJSON(map[string]any{
+			"asset_id": assetID, "file": out, "size_bytes": size,
+			"sha256": actualSHA, "content_type": contentType, "m2m": cfg.m2m,
+		})
+	}
+	fmt.Printf("downloaded %s → %s (%d bytes, %s, sha256 %s)\n", assetID, out, size, contentType, actualSHA[:12])
 	return exitOK
 }
 
@@ -444,6 +491,10 @@ func cmdSearch(args []string) int {
 		return exitUsage
 	}
 	cfg.json = fs.has("json")
+	if fs.has("m2m") {
+		cfg.m2m = true
+		cfg.token = strings.TrimSpace(os.Getenv("VELOX_M2M_SECRET"))
+	}
 	if len(fs.pos) == 0 {
 		fmt.Fprintln(os.Stderr, "velox search: <query> is required")
 		return exitUsage
@@ -482,7 +533,12 @@ func cmdSearch(args []string) int {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	raw, err := newClient(cfg).PostJSON(ctx, veloxclient.RouteMediaSearch, body)
+	route := veloxclient.RouteMediaSearch
+	if cfg.m2m {
+		// Same Aggregator (hybrid/ANN), scoped media.read instead of admin.
+		route = veloxclient.RouteM2MMediaSearch
+	}
+	raw, err := newClient(cfg).PostJSON(ctx, route, body)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "velox search: %v\n", err)
 		return exitFailure

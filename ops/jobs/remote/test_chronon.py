@@ -57,11 +57,13 @@ class ClipLikeTest(unittest.TestCase):
             )
         )
 
-    def test_image_is_not_clip_like(self) -> None:
-        self.assertFalse(
+    def test_image_is_routable_by_the_unified_download(self) -> None:
+        # GET /api/v1/media/assets/{id}/download serves every ACTIVE asset,
+        # including images; only filesystem-path ids are unroutable.
+        self.assertTrue(
             chronon.is_clip_like({"id": "img-1", "media_type": "image"})
         )
-        self.assertFalse(
+        self.assertTrue(
             chronon.is_clip_like({"id": "img-1", "source": "internet_images"})
         )
 

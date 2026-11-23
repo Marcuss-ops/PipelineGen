@@ -15,7 +15,7 @@ package wiring
 // route at 503, because there is no honest source left.
 
 import (
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
 	youtubeapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/youtube"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"

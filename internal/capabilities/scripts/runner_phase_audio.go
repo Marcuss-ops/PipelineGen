@@ -164,7 +164,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 					return false
 				}
 				audioInput := audioCompileInput(result, req)
-				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntents(ctx, audioInput, audioLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects, req.RandomSFXOnClipStart)
+				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(ctx, audioInput, audioLanguage, capabilityaudio.DefaultAudioProfile(), audioSource, policy, req.BackgroundMusic, req.SoundEffects, req.RandomSFXOnClipStart, r.soundEffectPool(ctx, runID))
 			} else {
 				audioInput := audioCompileInput(result, req)
 				canonicalTimeline, compiledAudioPlan, audioAssets, compileTimings, err = CompileCanonicalAudioPlanAudioOnly(audioInput, audioLanguage, capabilityaudio.DefaultAudioProfile())

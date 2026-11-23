@@ -15,6 +15,13 @@ import (
 // never be certified. Stock-bound scenes remain governed by the separate
 // STOCK ISOLATION rule.
 func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
+	if spec.ImagesPerSegment <= 0 {
+		return CheckResult{
+			Name:       CheckImageFanout,
+			Skipped:    true,
+			SkipReason: "no image requirement",
+		}
+	}
 	expected := segmentByID(spec)
 	total, pass := 0, 0
 	var violations []Violation

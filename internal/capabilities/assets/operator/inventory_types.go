@@ -24,6 +24,11 @@ type AssetInventoryReader interface {
 }
 
 // AssetInventoryQuery is the filter/pagination surface for List.
+//
+// The *bool fields are tri-state on purpose: nil means "do not filter", so a
+// remote indexer can ask for only rows with an embedding without accidentally
+// excluding rows whose flag is unknown. UpdatedAfter is the incremental-sync
+// watermark (rows updated at or after the instant).
 type AssetInventoryQuery struct {
 	Source         string
 	Provider       string
@@ -32,6 +37,10 @@ type AssetInventoryQuery struct {
 	AssetState     string
 	IndexState     string
 	Search         string
+	UpdatedAfter   *time.Time
+	HasEmbedding   *bool
+	HasDriveFile   *bool
+	HasSpeech      *bool
 	Limit          int
 	Offset         int
 }
@@ -66,6 +75,10 @@ type AssetInventoryItem struct {
 	HasLocalFile bool `json:"has_local_file"`
 	HasDriveFile bool `json:"has_drive_file"`
 	HasEmbedding bool `json:"has_embedding"`
+	// HasSpeech reports a CURRENT READY transcript track (speech-to-text
+	// content), which is what lets a remote indexer sync transcript coverage
+	// without downloading the video.
+	HasSpeech bool `json:"has_speech"`
 
 	ContentHash        string `json:"content_hash,omitempty"`
 	IndexedContentHash string `json:"indexed_content_hash,omitempty"`
@@ -123,6 +136,17 @@ type TextTrackProjection struct {
 	Status             string    `json:"status"`
 	Confidence         *float64  `json:"confidence,omitempty"`
 	UpdatedAt          time.Time `json:"updated_at"`
+	// Cues are the timed segments of this track. They let a remote reader
+	// select a temporal window without downloading the video.
+	Cues []TextCueProjection `json:"cues,omitempty"`
+}
+
+// TextCueProjection is one timed cue segment (asset_text_track_segments).
+type TextCueProjection struct {
+	Sequence int    `json:"sequence"`
+	StartMS  int64  `json:"start_ms"`
+	EndMS    int64  `json:"end_ms"`
+	Text     string `json:"text"`
 }
 
 // EmbeddingProjection is one vector row attached to the asset: family

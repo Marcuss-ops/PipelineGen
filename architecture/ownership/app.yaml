@@ -217,6 +217,6 @@ http_transport:
 composition_root:
   owner: internal/app
   rule: Only place where concrete adapters (DB, Drive, exec) are instantiated.
-  target_files: [wiring/bootstrap.go, wiring/composition.go, wiring/lifecycle.go, wiring/lifecycle/*.go]
+  target_files: [wiring/bootstrap.go, wiring/composition.go, wiring/lifecycle.go, modules/lifecycle/*.go]
 
 # ── Domain (canonical contracts + types) ─────────────────────────────────────

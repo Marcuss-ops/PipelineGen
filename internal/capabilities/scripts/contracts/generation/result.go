@@ -23,8 +23,10 @@ type Result struct {
 	SceneHighlights []scriptpkg.SceneHighlight    `json:"scene_highlights,omitempty"`
 	Editorial       *scriptpkg.EditorialManifest  `json:"editorial,omitempty"`
 
-	BinarySHA256 string `json:"binary_sha256,omitempty"`
-	RustRelease  string `json:"rust_release,omitempty"`
+	BinarySHA256     string `json:"binary_sha256,omitempty"`
+	RustRelease      string `json:"rust_release,omitempty"`
+	RustGitSHA       string `json:"rust_git_sha,omitempty"`
+	RustBinarySHA256 string `json:"rust_binary_sha256,omitempty"`
 
 	TranslationMetrics TranslationMetrics `json:"translation_metrics,omitempty"`
 }

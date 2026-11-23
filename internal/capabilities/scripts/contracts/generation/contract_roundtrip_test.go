@@ -39,6 +39,7 @@ func TestResultRoundTripPreservesEditorialFields(t *testing.T) {
 		Title:  "Titolo", SourceLanguage: scenecontract.Language("it"), OutputName: "out.mp4",
 		WordCount: 1, VoiceoverGroup: "group", Summary: "summary", BulletPoints: []string{"b"},
 		BinarySHA256: "abc", RustRelease: "r1",
+		RustGitSHA: "def", RustBinarySHA256: "engine-sha",
 		TranslationMetrics: TranslationMetrics{Calls: 2, Concurrency: 1, WallMS: 10},
 	}
 	raw, err := json.Marshal(result)

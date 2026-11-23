@@ -446,7 +446,7 @@
             "audio_start_us": 500000,
             "audio_end_us": 900000,
             "confidence": 0.93,
-            "canonical_entity_id": "ent_5d06710f3ec2ac53"
+            "canonical_entity_id": "place:new-orleans"
           }
         ]
       }

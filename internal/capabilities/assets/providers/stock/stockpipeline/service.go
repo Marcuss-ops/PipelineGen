@@ -51,6 +51,7 @@
 package stockpipeline
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
@@ -278,7 +279,7 @@ func serviceFromDeps(deps Deps) *Service {
 		// PR-STOCK-DESTINATION-RECONCILE: the post-publish hygiene pass is
 		// attached whenever a Drive read port is wired. Nil port ⇒ nil
 		// reconciler ⇒ the publish step skips the GC (pre-existing behaviour).
-		destinationReconciler: portDestinationReconciler(deps.Delivery.DriveReader),
+		destinationReconciler: core.PortDestinationReconciler(deps.Delivery.DriveReader),
 		projection:            deps.Delivery.Projection,
 		sourceProbe:           deps.Execution.SourceProbe,
 		sourceStager:          deps.Execution.SourceStager,

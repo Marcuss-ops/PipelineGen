@@ -14,8 +14,8 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
-	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/vidrush"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
+	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/vidrush"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
@@ -91,7 +91,14 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 	// batch entity projection; translated/different text is analyzed by that
 	// same engine on demand.
 	semanticCandidateScorer := scriptVisualCandidateScorer(root)
-	scriptwiring.WireSemanticSearchPlanner(runner, cfg, scriptCacheDB(root), vidrushInternetImageSearcher(root, log), semanticCandidateScorer, log)
+	scriptwiring.WireSemanticSearchPlanner(scriptwiring.SemanticSearchPlannerDeps{
+		Runner:   runner,
+		Config:   cfg,
+		CacheDB:  scriptCacheDB(root),
+		Searcher: vidrushInternetImageSearcher(root, log),
+		Scorer:   semanticCandidateScorer,
+		Log:      log,
+	})
 
 	vidRushMetrics := observability.NewVidRushMetricsAdapter()
 	var vidRushFanout scriptgen.SegmentProviderResolver

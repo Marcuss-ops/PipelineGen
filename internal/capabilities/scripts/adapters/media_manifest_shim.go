@@ -6,7 +6,7 @@
 // already pinned by content SHA-256 must not re-enter the provider search or
 // the VLM scorer at runtime. The manifest is the floor: pinned entries carry
 // the durable verdict (accepted) and the content hash, so the fast path in
-// scoreInternetImageCandidates (allCandidatesHaveReusableVerdict) has nothing
+// scoreInternetImageCandidates (imagegate.AllCandidatesHaveReusableVerdict) has nothing
 // left to score. A pinned run delivers candidates with zero provider calls —
 // the stage keeps its contract of attaching candidates, never selecting.
 //
@@ -248,7 +248,7 @@ func segmentAssetCandidateFromPin(entry mediaManifestEntry, seg scriptpkg.VidRus
 		}
 	}
 	// SemanticStatus accepted + SemanticScore 1.0 is the durable-verdict
-	// encoding the entity catalog owns (ReusablePersonImageVerdict). A pin IS
+	// encoding the entity catalog owns (imagegate.ReusablePersonImageVerdict). A pin IS
 	// an offline verdict: ops/tools/media_manifest.py verified the physical
 	// bytes against this exact sha256 before the manifest was ever released
 	// to the runtime.

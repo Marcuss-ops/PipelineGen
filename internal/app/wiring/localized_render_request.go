@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
@@ -15,7 +16,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
-import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 
 type localizedRenderRequest struct {
 	identity           localizedRenderIdentity

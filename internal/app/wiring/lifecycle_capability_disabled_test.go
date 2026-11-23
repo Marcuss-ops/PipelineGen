@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/lifecycle"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"

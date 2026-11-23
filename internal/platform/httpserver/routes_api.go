@@ -5,6 +5,7 @@ import (
 
 	"go.uber.org/zap"
 
+	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 ) // registerAPIRoutes wires the public /api surface: the protected subtree
 // (Auth + RateLimit + WorkspaceScope) that hosts the module registry for
@@ -42,6 +43,20 @@ func (r *Router) registerAPIRoutes(engine *gin.Engine, log *zap.Logger) *gin.Rou
 			} else {
 				log.Warn("no module registry available, no routes registered")
 			}
+		}
+
+		// Admin M2M key surface — /api/v1/admin/m2m/keys. Mounted on its own
+		// admin-only group (RequireAdminToken, NOT the shared admin/worker
+		// Auth) so a worker token cannot mint or revoke submitter keys. Skipped
+		// when the M2M store is absent or does not implement the admin port
+		// (dev/test fixtures).
+		if adminStore, ok := r.cfg.M2M.(mwports.M2MKeyAdminPort); ok && adminStore != nil {
+			keyGroup := api.Group("/v1/admin/m2m")
+			keyGroup.Use(middleware.RequireAdminToken(r.cfg.Auth, r.cfg.Log))
+			registerM2MKeyAdminRoutes(keyGroup, adminStore, r.cfg.Log)
+			log.Info("M2M admin key surface mounted", zap.String("prefix", "/api/v1/admin/m2m/keys"))
+		} else {
+			log.Info("M2M admin key surface not mounted (store does not implement M2MKeyAdminPort)")
 		}
 
 		// M2M (machine-to-machine) job surface — /api/v1/jobs.

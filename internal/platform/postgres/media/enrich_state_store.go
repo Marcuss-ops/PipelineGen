@@ -218,3 +218,90 @@ func (s *MediaEnrichStateStore) GetEnrichState(ctx context.Context, id string) (
 // TYPE rather than on prose. That is a capability+kernel change with its own
 // blast radius, so it is recorded here rather than folded into an engine
 // migration.
+
+// ── absorbed from enrichment_candidate_reader.go ──
+
+// MediaEnrichmentCandidateReader selects VLM sweep candidates from the
+// PostgreSQL media SSOT.
+//
+// It returns asset IDS ONLY, deliberately. The selector's contract already
+// fixes the state (the predicate is `enrich_state = 'PENDING'`), so returning
+// the state would mean either a struct shared with the consumer — which this
+// package cannot declare, since platform must not import the autotag capability
+// — or a mapping adapter at the wiring site for a value no caller acts on. The
+// consumer-owned port therefore names ids and its godoc carries the "PENDING
+// only" clause as part of the contract.
+type MediaEnrichmentCandidateReader struct {
+	db *sql.DB
+}
+
+// NewMediaEnrichmentCandidateReader returns a reader bound to the PostgreSQL
+// media database. The handle is required: a nil database is a programming
+// error, not a degrade path.
+func NewMediaEnrichmentCandidateReader(db *sql.DB) *MediaEnrichmentCandidateReader {
+	if db == nil {
+		panic("media.NewMediaEnrichmentCandidateReader: db is required")
+	}
+	return &MediaEnrichmentCandidateReader{db: db}
+}
+
+// DB exposes the underlying handle so callers can assert the reader lives on
+// the media SSOT.
+func (r *MediaEnrichmentCandidateReader) DB() *sql.DB {
+	if r == nil {
+		return nil
+	}
+	return r.db
+}
+
+// PendingEnrichCandidates returns the PENDING assets whose enrich_state stamp is
+// older than claimFence, oldest first, capped at limit. A non-positive limit is
+// treated as the sweep default of 10, mirroring the retired selector.
+//
+// enrichStateUpdatedAtExpr is the effective ordering/fence timestamp: the typed
+// mirror when present, and '-infinity' when absent so an unstamped row is the
+// oldest possible candidate (SQLite empty-string parity, see the package note).
+const enrichStateUpdatedAtExpr = `COALESCE(enrich_state_updated_at_ts, '-infinity'::timestamptz)`
+
+func (r *MediaEnrichmentCandidateReader) PendingEnrichCandidates(
+	ctx context.Context,
+	claimFence time.Duration,
+	limit int,
+) ([]string, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("media enrichment candidate reader: media SSOT handle is not configured")
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+
+	// make_interval(secs => $1) replaces SQLite's relative-modifier string. The
+	// fence is passed as seconds, so the two engines express the same instant.
+	query := `
+		SELECT id FROM media_assets
+		WHERE enrich_state = 'PENDING'
+		  AND ` + enrichStateUpdatedAtExpr + ` < now() - make_interval(secs => $1)
+		  AND media_type <> 'folder'
+		  AND local_path <> ''
+		ORDER BY ` + enrichStateUpdatedAtExpr + ` ASC
+		LIMIT $2
+	`
+	rows, err := r.db.QueryContext(ctx, query, claimFence.Seconds(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("media enrichment candidate reader: query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("media enrichment candidate reader: scan: %w", err)
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("media enrichment candidate reader: iterate: %w", err)
+	}
+	return out, nil
+}

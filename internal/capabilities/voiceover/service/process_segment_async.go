@@ -88,7 +88,50 @@ func buildCachedResult(cmd *ProcessSegmentCommand, hit *VoiceoverCacheHit, timin
 	return out
 }
 
-// enqueueOrphanCleanup is defined in process_segment_orphan.go.
+// shouldPublishAsync reports whether Stage 3 + Stage 4 can run in the
+// background. A timing request keeps the boundary synchronous because the
+// script runner consumes the canonical artifact immediately;
+// a local-only run has no upload to overlap. enqueueOrphanCleanup is
+// defined in process_segment_orphan.go.
+func shouldPublishAsync(pool AsyncPublishPool, publisher VoiceoverPublisher, policy audio.TimingRequest) bool {
+	return pool != nil && publisher != nil && policy.Mode == audio.TimingDisabled
+}
+
+// startAsyncPublish marks the partial result, captures value copies and
+// submits the publish+finalize worker. The caller returns immediately so
+// the TTS slot is freed.
+func (u *ProcessSegmentUseCase) startAsyncPublish(
+	ctx context.Context,
+	cmd *ProcessSegmentCommand,
+	out *VoiceoverItemResult,
+	ttsOut TTSOutput,
+	post *AudioPostOutput,
+	log *zap.Logger,
+) {
+	out.Status = StatusGenerated
+	setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
+	observability.VoiceoverJobsTotal.WithLabelValues("generated").Inc()
+
+	// Capture by-value copies so the returned partial result and the
+	// background goroutine never share mutable state.
+	capturedCmd := *cmd
+	capturedOut := *out
+	capturedTTS := ttsOut
+	var capturedPost *AudioPostOutput
+	if post != nil {
+		cp := *post
+		capturedPost = &cp
+	}
+
+	log.Info("voiceover: async publish submitted — TTS slot freed",
+		zap.String("scene_id", cmd.ID),
+		zap.String("language", string(cmd.Language)),
+		zap.Int64("duration_ms", out.DurationMs))
+
+	u.deps.Cache.AsyncPublish.Submit(ctx, func() {
+		u.runAsyncPublish(ctx, &capturedCmd, &capturedOut, &capturedTTS, capturedPost, log)
+	})
+}
 
 // runAsyncPublish executes Stage 3 (Drive upload + timing publish) and
 // Stage 4 (SQLite finalize) in a background goroutine via the async
@@ -141,39 +184,11 @@ func (u *ProcessSegmentUseCase) runAsyncPublish(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	fingerprint := u.contentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy))
-	// Persist the FINAL audio duration, not the pre-clean provider stream.
-	durationSeconds := ttsOut.Duration.Seconds()
-	if post != nil && post.DurationUS > 0 {
-		durationSeconds = float64(post.DurationUS) / 1e6
-	}
-	finalizeCmd := &FinalizeCommand{
-		Fingerprint:     fingerprint,
-		IdempotencyKey:  pub.IdemKey,
-		JobID:           cmd.JobID,
-		ID:              cmd.ID,
-		RequestID:       cmd.RequestID,
-		TextHash:        string(cmd.TextHash),
-		Text:            cmd.Text,
-		Language:        cmd.Language,
-		Voice:           out.Voice,
-		Filename:        cmd.Filename,
-		Strategy:        cmd.Strategy,
-		MetaJSON:        pub.MetaJSON,
-		LocalPath:       out.LocalPath,
-		CleanedPath:     out.CleanedPath,
-		ContentSHA256:   out.ContentSHA256,
-		DurationSeconds: durationSeconds,
-		FolderID:        cmd.Dest.FolderID,
-		FolderPath:      cmd.Dest.FolderPath,
-		DriveFileID:     out.DriveFileID,
-		DriveLink:       out.DriveLink,
-		DownloadLink:    out.DownloadLink,
-		ShouldSwap:      cmd.ShouldSwap,
-		OldDriveFileID:  cmd.OldDriveFileID,
-		OldLocalPath:    cmd.OldLocalPath,
-		OldCleanedPath:  cmd.OldCleanedPath,
-	}
+	finalizeCmd := buildFinalizeCommand(
+		cmd, out, pub,
+		u.contentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy)),
+		finalDurationSeconds(*ttsOut, post),
+	)
 
 	finalizeRes, finalizeErr := u.deps.Finalizer.Finalize(ctx, tx, finalizeCmd)
 	if finalizeErr != nil {

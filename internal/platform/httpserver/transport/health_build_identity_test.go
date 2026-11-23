@@ -141,6 +141,34 @@ func TestReady_PublishesBuildIdentity(t *testing.T) {
 	assert.Equal(t, "ready", resp["status"])
 }
 
+// TestReady_DirtyBuildIsNotReady is the runtime half of the clean-tree deploy
+// gate: a binary built from modified sources remains diagnosable on /health,
+// but /ready must fail closed because it cannot be attributed to a revision.
+func TestReady_DirtyBuildIsNotReady(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewHealthHandler(healthyService(), systemhealth.NewReadyChecker(healthyService()))
+	handler.SetBuildInfo(func() buildinfo.Identity {
+		identity := fixedBuildIdentity()
+		identity.GitDirty = true
+		return identity
+	})
+
+	router := gin.New()
+	router.GET("/ready", handler.Ready)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/ready", nil))
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	resp := decodeBody(t, w)
+	assert.False(t, resp["ok"].(bool))
+	assert.Equal(t, "not ready", resp["status"])
+	assert.Equal(t, "dirty_build", resp["ready_blocked_by"])
+	build, ok := resp["build"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, build["git_dirty"])
+}
+
 // TestReady_503StillCarriesIdentity: a not-ready process must still be
 // identifiable, otherwise "the canary never became ready" is undiagnosable.
 func TestReady_503StillCarriesIdentity(t *testing.T) {

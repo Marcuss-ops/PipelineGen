@@ -13,8 +13,9 @@ const fallbackTestSHA = "0123456789abcdef0123456789abcdef0123456789abcdef0123456
 // In per-scene media scope a scene without its own binding for an entity must
 // still resolve the entity's verified portrait from the run-level fallback
 // (first binding in scene order) instead of degrading to a text-only card. The
-// planner now consumes this identity projection through
-// `media.promotable_entity_assets`, so the index itself is what is pinned here.
+// planner now consumes this identity projection through the single
+// `media.verified_entity_assets` surface, so the index itself is what is pinned
+// here.
 func TestEntityCardMediaIndexFallsBackToRunLevelBinding(t *testing.T) {
 	bound := scriptpkg.AnnotatedEntity{Type: "PERSON", CanonicalName: "Andrea Sempio", Confidence: 0.9,
 		Image: &scriptpkg.EntityImageBinding{

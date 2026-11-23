@@ -63,7 +63,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	indexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
@@ -115,7 +115,7 @@ func RunBackfillAssetEmbeddings(args []string) error {
 	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
 	// PostgreSQL media SSOT. The operational handle above stays bound to the
 	// canonical outbox the repair enqueues through.
-	candidateSource := pgmedia.NewBackfillReader(root.MediaPostgres)
+	candidateSource := pgbackfill.NewBackfillReader(root.MediaPostgres)
 	if candidateSource == nil {
 		return fmt.Errorf("media PostgreSQL SSOT is required for embedding backfill")
 	}

@@ -12,6 +12,8 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
 	"strings"
 	"time"
 
@@ -77,11 +79,11 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	// the orchestrator, which only understands DirectURLs.
 	searchInputCount := len(input.SearchQueries)
 	searchURLCount := len(input.DirectURLs)
-	searchMetric := startServiceStockPhase(ctx, "stock.search", jobID)
+	searchMetric := core.StartServiceStockPhase(ctx, "stock.search", jobID)
 	searchErr := s.resolveInputQueries(ctx, input)
 	if searchMetric != nil {
 		searchMetric.SetItems(int64(searchInputCount), int64(len(input.DirectURLs)-searchURLCount))
-		finishServiceStockPhase(s.log, searchMetric, searchErr)
+		core.FinishServiceStockPhase(s.log, searchMetric, searchErr)
 	}
 	if searchErr != nil {
 		return nil, fmt.Errorf("Service.runOrchestratorResilient: %w", searchErr)
@@ -122,7 +124,7 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	stager := s.stagerForRun()
 	writer := TransactionalAssetWriter(nil)
 	if s.dispatcher != nil {
-		writer = stockDispatcherWriter{dispatcher: s.dispatcher}
+		writer = core.NewStockDispatcherWriter(s.dispatcher)
 	}
 	artifactPreparation := finalization.ArtifactPreparationService(nil)
 	if s.publisher != nil {
@@ -228,4 +230,103 @@ func (s *Service) runSyncPersist(ctx context.Context, input *RunInput) (*Pipelin
 		return nil, fmt.Errorf("Service.runSyncPersist: %w", err)
 	}
 	return projected, nil
+}
+
+// effectiveChunkDurationSec resolves the per-run chunk duration
+// (sec) override chain. Mirrors the prior run.go body semantics
+// (input.ChunkDuration takes precedence over the runtime config)
+// which falls back to the minimal runtime chunk duration).
+//
+// Centralised here so Service.Run and Service.runOrchestrator
+// (and future Commit 4-7 entrypoints) share the same override
+// chain without re-deriving it on every call site.
+func effectiveChunkDurationSec(input *RunInput, s *Service) int {
+	if input != nil && input.ChunkDuration > 0 {
+		return input.ChunkDuration
+	}
+	if s != nil && s.runtime != nil {
+		return s.runtime.ChunkDurationSec
+	}
+	return 0
+}
+
+// effectiveClipDurationSec resolves the per-run clip duration
+// (sec) override chain. Mirrors the prior run.go body semantics.
+// Centralised for the same reason as effectiveChunkDurationSec.
+func effectiveClipDurationSec(input *RunInput, s *Service) int {
+	if input != nil && input.ClipDuration > 0 {
+		return input.ClipDuration
+	}
+	if s != nil && s.runtime != nil {
+		return s.runtime.ClipDurationSec
+	}
+	return 0
+}
+
+// effectiveExecutionBounds resolves the stock run's two fan-out bounds from the
+// Service's operator config (concurrency.max_concurrent_stock_downloads /
+// max_concurrent_stock_cuts, flattened by wiring.stockRuntimeConfig).
+//
+// Both are returned as 0 when the Service has no RuntimeConfig (test/CLI
+// callers) or the operator left them unset, and 0 means "unset" all the way
+// down: OrchestratorConfig normalizes <=0 to DefaultMaxConcurrentDownloads and
+// DefaultMaxConcurrentJobs. This site therefore must NOT substitute a value the
+// operator did not ask for — same contract as the youtube runtime flattening.
+//
+// Downloads and cuts stay separate because their bottlenecks differ: staging
+// pays yt-dlp's fixed per-invocation cost (latency-bound), cutting is CPU-bound.
+func effectiveExecutionBounds(s *Service) (downloads, cuts int) {
+	if s == nil || s.runtime == nil {
+		return 0, 0
+	}
+	return s.runtime.MaxConcurrentDownloads, s.runtime.MaxConcurrentCuts
+}
+
+// stagerForRun resolves the canonical acquisition.SourceStager for the
+// stock pipeline. StockStager implements acquisition.SourceStager via
+// the Prepare/Release adapter methods (stager_adapter.go).
+//
+// nil receiver returns a nil SourceStager; the orchestrator's
+// nil-guard handles that case (ErrOrchestratorNilDeps) so the
+// production error path is observable.
+func (s *Service) stagerForRun() acquisition.SourceStager {
+	if s == nil {
+		return nil
+	}
+	stockStager := NewStockStager(s).
+		WithSourceCache(s.sourceCacheReader, s.sourceCacheWriter).
+		WithDownloader(serviceSourceDownloader{service: s})
+	if s.driveReader != nil {
+		stockStager = stockStager.WithDriveReader(s.driveReader)
+	}
+	return stockStager
+}
+
+// Run is the Stock Cutover thin Orchestrator delegate.
+//
+// Signature preserved at (*PipelineResult, error) for backwards
+// compat with the ServiceRunner interface
+// (var _ ServiceRunner = (*Service)(nil) in stockpipeline/usecase.go)
+// and stock.Adapter's stockRunner interface.
+//
+// All sync paths now route through runSyncPersist →
+// runOrchestratorResilient with a synthetic broker lease, so
+// StockFinalizeStep writes to media_assets via the single-TX spine
+// (same contract as production broker jobs).
+//
+// On error the underlying orchestrator error is wrapped via %w
+// so callers can errors.Is/As inspect the orchestrator's signal
+// class (ErrOrchestratorNilDeps etc.).
+func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, error) {
+	if s == nil {
+		return nil, fmt.Errorf("Service.Run: nil receiver")
+	}
+	if input == nil {
+		return nil, fmt.Errorf("Service.Run: nil *RunInput")
+	}
+
+	// All sync paths route through the resilient orchestrator
+	// via runSyncPersist, which provides a synthetic lease and
+	// delegates to runOrchestratorResilient.
+	return s.runSyncPersist(ctx, input)
 }

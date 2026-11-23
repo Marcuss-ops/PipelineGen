@@ -5,17 +5,21 @@ import (
 	"context"
 	"strings"
 
-	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
-)
-import (
 	"database/sql"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
+
 	brainCore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/core"
+
 	brainIntent "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/intent"
+
 	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
+
 	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"

@@ -720,6 +720,15 @@ type semanticEngineChartItem struct {
 	Value     float64 `json:"value"`
 	StartByte int     `json:"start_byte"`
 	EndByte   int     `json:"end_byte"`
+	// Qualifier/Period/Lower/Upper/RangeID mirror the additive
+	// semantic-core::manifest::ChartItem fields (ChartsPack.hpp cues). Rust
+	// omits them when absent, so they stay pointers: a nil value here means
+	// "not asserted", never "zero".
+	Qualifier *string  `json:"qualifier,omitempty"`
+	Period    *string  `json:"period,omitempty"`
+	Lower     *float64 `json:"lower,omitempty"`
+	Upper     *float64 `json:"upper,omitempty"`
+	RangeID   *string  `json:"range_id,omitempty"`
 }
 
 type semanticEngineNumeric struct {

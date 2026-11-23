@@ -41,7 +41,11 @@ func OpenSQLiteDB(path string, log *zap.Logger) (*SQLiteDB, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	dsn := path + "?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000"
+	// _txlock=immediate takes the write lock at BEGIN. A deferred transaction that
+	// reads and then writes gets SQLITE_BUSY on the upgrade immediately, and the
+	// busy_timeout does not cover that path: the entity image catalog upsert was
+	// failing intermittently with "database is locked" for exactly this reason.
+	dsn := path + "?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate"
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("storage: open %s: %w", path, err)
@@ -85,7 +89,9 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 	}
 
 	fullPath := filepath.Join(dataDir, dbName)
-	dsn := fullPath + "?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000"
+	// Keep the write lock acquisition eager (see OpenSQLiteDB): read-then-write
+	// deferred transactions must not fail with "database is locked".
+	dsn := fullPath + "?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate"
 
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {

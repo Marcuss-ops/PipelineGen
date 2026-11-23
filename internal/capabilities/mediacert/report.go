@@ -64,6 +64,12 @@ func aggregateFanout(r Report) string {
 
 func formatCheck(c CheckResult) string {
 	name := padName(string(c.Name))
+	if c.Skipped {
+		if c.SkipReason == "" {
+			return fmt.Sprintf("%s SKIP", name)
+		}
+		return fmt.Sprintf("%s SKIP (%s)", name, c.SkipReason)
+	}
 	if c.TotalCount == 1 {
 		verdict := "FAIL"
 		if c.Passed {

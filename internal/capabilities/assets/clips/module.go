@@ -76,6 +76,18 @@ type ClipsModule struct {
 	// to a remote reader without granting it the admin token.
 	DownloadClip gin.HandlerFunc
 
+	// DriveDownload is the narrow Drive fetch surface (metadata + full/range
+	// download) used by the unified asset download route, which must serve
+	// images and scripts too. Kept as an interface so the M2M wiring does not
+	// depend on the concrete adapter.
+	DriveDownload interface{}
+
+	// Folders is the read-only folder/tree surface (list, status, children,
+	// tree, breadcrumb). The M2M media surface mounts it under
+	// /api/v1/media/clips/:source so a remote reader can see the same folder
+	// projection as the admin console.
+	Folders catalog.FolderReadRoutes
+
 	bulk   *bulk.Descriptor
 	jobReg *clipJobRegistrar
 }
@@ -214,13 +226,15 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 	)
 
 	return &ClipsModule{
-		Module:       mod,
-		Catalog:      catalogDesc,
-		Ingest:       ingestDesc,
-		Processing:   processingDesc,
-		Operations:   operationsDesc,
-		DownloadClip: handler.actions.DownloadClip,
-		bulk:         bulkDesc,
+		Module:        mod,
+		Catalog:       catalogDesc,
+		Ingest:        ingestDesc,
+		Processing:    processingDesc,
+		Operations:    operationsDesc,
+		DownloadClip:  handler.actions.DownloadClip,
+		DriveDownload: deps.Handlers.Actions.DriveAdmin,
+		Folders:       handler.ops,
+		bulk:          bulkDesc,
 		jobReg: &clipJobRegistrar{
 			bulkUploadWorker: deps.Handlers.NonOps.BulkUploadWorker,
 			jobsSvc:          deps.Handlers.NonOps.JobsSvc,

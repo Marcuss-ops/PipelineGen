@@ -94,6 +94,7 @@ func (m *M2MJobsModule) RegisterRoutes(rg *gin.RouterGroup) {
 	}
 	rg.POST("", apimw.RequireScope(ScopeJobsSubmit), m.handler.Enqueue)
 	rg.GET("/types", apimw.RequireScope(ScopeJobsRead), m.handler.M2MTypes)
+	rg.GET("/:id/artifact", apimw.RequireScope(ScopeJobsRead), apimw.M2MDownloadConcurrency(2), m.handler.M2MArtifact)
 	rg.GET("/:id", apimw.RequireScope(ScopeJobsRead), m.handler.M2MGet)
 	rg.POST("/:id/cancel", apimw.RequireScope(ScopeJobsCancel), m.handler.M2MCancel)
 }

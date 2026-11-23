@@ -68,6 +68,9 @@ func (h *ScriptFlowHandler) jobsRegisterRoutes(r *gin.RouterGroup) {
 // Legacy generate adapters are no longer mounted.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.gen.GenerateRoute(r)
+	// Stage 0, server-side: the same contract validation as /generate plus
+	// the catalog verdict for every bound clip, without TTS or GPU.
+	h.gen.PreflightRoute(r)
 
 	r.GET("/clips/search", h.SearchClipsByName)
 

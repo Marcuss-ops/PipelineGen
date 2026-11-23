@@ -1,10 +1,11 @@
 package wiring
 
 import (
-	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"slices"
 	"strings"
 	"testing"
+
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 )
 
 func TestInteractiveWorkerBudgetDefault(t *testing.T) {

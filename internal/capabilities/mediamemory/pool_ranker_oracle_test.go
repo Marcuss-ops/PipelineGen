@@ -5,7 +5,7 @@
 // parity comparison stays honest.
 //
 // Production wires mediamemory.PoolRanker to the mediasampler worker
-// (internal/app/wiring/media_pool_ranker.go). Nothing in a non-test build can
+// (internal/app/modules/media_pool_ranker.go). Nothing in a non-test build can
 // reach this implementation: the type lives in a _test.go file.
 package mediamemory
 

@@ -195,14 +195,3 @@ func extractLease(queuedJob *appjobs.Job) finalization.Lease {
 		ExpiresAt: expiresAt,
 	}
 }
-
-func manifestBytes(manifest *job.ArtifactManifest) ([]byte, error) {
-	if manifest == nil {
-		return nil, fmt.Errorf("stockpipeline.manifestBytes: nil manifest")
-	}
-	raw, err := json.Marshal(manifest)
-	if err != nil {
-		return nil, fmt.Errorf("stockpipeline.manifestBytes: marshal: %w", err)
-	}
-	return raw, nil
-}

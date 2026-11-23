@@ -125,22 +125,102 @@ func RunMigrationsOnDB(dbPath string, log *zap.Logger, targetDir, targetDB strin
 // migrations_reconcile.go, migrations_status.go). The historical
 // checksum-reconciliation shims are likewise split out.
 func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error {
+	state, migrations, err := prepareMigrationRun(db, log, targetDir, targetDB)
+	if err != nil {
+		return err
+	}
+
+	appliedCount := 0
+	for _, m := range migrations {
+		if skipMigrationForLedgerState(db, log, m, state, migrations, targetDB) {
+			continue
+		}
+		content, err := os.ReadFile(m.path)
+		if err != nil {
+			return fmt.Errorf("storage: read %s: %w", m.filename, err)
+		}
+		checksum := sha256Hex(content)
+
+		if prev, ok := state.applied[m.version]; ok {
+			if prev.filename == m.filename && prev.checksum == checksum { // Already applied with matching checksum — skip
+				continue
+			}
+			handled, err := reconcileChecksumDrift(db, log, m, prev, checksum, content, targetDB)
+			if err != nil {
+				return err
+			}
+			if handled {
+				continue
+			}
+			return fmt.Errorf(
+				"storage: migration %03d (%s) identity/checksum mismatch — "+
+					"applied=%s/%s current=%s/%s. Migrations must never be modified or renamed after being applied",
+				m.version, m.filename, prev.filename, prev.checksum, m.filename, checksum,
+			)
+		}
+
+		// Apply migration inside its own transaction
+		log.Info("applying migration", zap.Int("version", m.version), zap.String("filename", m.filename))
+
+		if err := applyMigration(db, log, m.version, m.filename, checksum, content); err != nil {
+			return fmt.Errorf("storage: apply %s: %w", m.filename, err)
+		}
+		appliedCount++
+		if isBaselineMigrationFile(m) {
+			state.baselineAppliedNow = true
+		}
+	}
+
+	// Declared-vs-live verification: the ledger proves a file ran, not that its
+	// schema survived. A table that an APPLIED migration declares but the
+	// database does not contain is drift (an operator restore, a rebuilt file,
+	// a dropped table) and the only correct repair is a NEW numbered migration —
+	// editing the applied file can never work, because the ledger skips it.
+	// Reported at error level and deliberately non-fatal: a drifted production
+	// database must still boot so the forward migration can be applied.
+	if err := verifyDeclaredTables(db, targetDir, targetDB, log); err != nil {
+		log.Warn("migration schema verification could not run", zap.String("target_db", targetDB), zap.Error(err))
+	}
+
+	log.Info("migrations complete",
+		zap.Int("total", len(migrations)),
+		zap.Int("newly_applied", appliedCount),
+		zap.Int("already_applied", len(state.applied)),
+	)
+	return nil
+}
+
+// migrationRunState is the ledger snapshot the apply loop reads and the two
+// flags it mutates. Keeping it in one value makes the loop's inputs explicit:
+// the loop itself no longer recomputes the baseline threshold or re-queries the
+// ledger.
+type migrationRunState struct {
+	applied            map[int]appliedRecord
+	baselineThreshold  int
+	baselineAppliedNow bool
+}
+
+// prepareMigrationRun bootstraps and expands the ledger, discovers and
+// validates the migration files, reconciles historical identities, and reloads
+// the ledger once reconciliation may have moved a row. It returns the state the
+// apply loop needs plus the ordered file list.
+func prepareMigrationRun(db queryable, log *zap.Logger, targetDir, targetDB string) (*migrationRunState, []migrationFile, error) {
 	// Bootstrap and expand the ledger before reading migration files. Existing
 	// databases may have the legacy four-column shape; expansion backfills the
 	// canonical identity/checksum fields without dropping migration history.
 	if err := ensureMigrationLedger(db); err != nil {
-		return fmt.Errorf("storage: ensure schema_migrations: %w", err)
+		return nil, nil, fmt.Errorf("storage: ensure schema_migrations: %w", err)
 	}
 
 	// Discover migration files
 	migrations, err := discoverMigrations(targetDir)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	// Validate: no duplicate versions
 	if err := validateNoDuplicateVersions(migrations, log); err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	// Validate: log gaps as warnings (not errors) since real migration dirs
@@ -150,23 +230,23 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 
 	// Load already-applied migrations for checksum validation
 	if _, err := loadAppliedMigrations(db); err != nil {
-		return fmt.Errorf("storage: load applied migrations: %w", err)
+		return nil, nil, fmt.Errorf("storage: load applied migrations: %w", err)
 	}
 	if err := reconcileHistoricalMigrationIdentities(db, migrations, targetDB, log); err != nil {
-		return fmt.Errorf("storage: reconcile historical migration identities: %w", err)
+		return nil, nil, fmt.Errorf("storage: reconcile historical migration identities: %w", err)
 	}
 	if err := reconcileCachePlaneRepair299Checksum(db, migrations, targetDB, log); err != nil {
-		return fmt.Errorf("storage: reconcile cache plane migration 299: %w", err)
+		return nil, nil, fmt.Errorf("storage: reconcile cache plane migration 299: %w", err)
 	}
 	// The reconciliation may have moved a ledger row to its canonical
 	// version, so load the ledger after it before validating gaps and
 	// out-of-scope entries.
 	applied, err := loadAppliedMigrations(db)
 	if err != nil {
-		return fmt.Errorf("storage: reload applied migrations after reconciliation: %w", err)
+		return nil, nil, fmt.Errorf("storage: reload applied migrations after reconciliation: %w", err)
 	}
 	if err := validateAppliedMigrationSet(db, applied, migrations, targetDB); err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	// Baseline bookkeeping: the consolidated baseline sentinel (version 0)
@@ -190,319 +270,101 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 			baselineThreshold = appliedThreshold
 		}
 	}
-	baselineAppliedNow := baselineApplied(applied)
-	appliedCount := 0
-	for _, m := range migrations {
-		// Baseline sentinel handling.
-		if isBaselineMigrationFile(m) {
-			// Scope gate still applies to the baseline itself.
-			if !migrationAppliesToTargetDB(m.scope, targetDB) {
-				if log != nil {
-					log.Debug("skipping baseline (out of DB scope)",
-						zap.Int("version", m.version),
-						zap.String("filename", m.filename),
-						zap.String("scope", m.scope),
-						zap.String("target_db", targetDB),
-					)
-				}
-				continue
-			}
-			if baselineAppliedNow {
-				if log != nil {
-					log.Debug("skipping baseline (already applied)", zap.String("filename", m.filename))
-				}
-				continue
-			}
-			// Old or partially-migrated DB: any non-baseline history
-			// means the incremental path was already chosen — skip
-			// the consolidated baseline (BASELINE_PLAN.md §2.2).
-			if hasAnyHistory(applied) {
-				if log != nil {
-					log.Info("skipping baseline (incremental history already present)", zap.String("filename", m.filename))
-				}
-				// Do NOT set baselineAppliedNow: the baseline was skipped,
-				// so it does not satisfy the frozen window. A partially
-				// migrated DB (e.g. ledger 1..197 with threshold 267) MUST
-				// still apply the missing historical incrementals 198..267
-				// through the incremental path. Marking the baseline as
-				// covered here would skip them, leaving both a real schema
-				// gap and a ledger gap that the next run's
-				// validateAppliedMigrationSet rejects as soon as a later
-				// migration (> threshold) is applied. Already-applied
-				// incrementals are still skipped by the checksum-matched
-				// ledger check below.
-				continue
-			}
-			if isHistoricalWindowCovered(applied, migrations, targetDB, baselineThreshold) {
-				if log != nil {
-					log.Info("skipping baseline (historical window already covered by individual ledger rows)", zap.String("filename", m.filename))
-				}
-				// Mark as covered so subsequent historical incrementals are
-				// not re-evaluated against an empty baseline flag — the
-				// window is already satisfied by the 1..N rows.
-				baselineAppliedNow = true
-				continue
-			}
-			// Fresh database: fall through to apply the baseline as a
-			// normal migration (version 0). After it commits, 1..N will be
-			// skipped via baselineAppliedNow below.
-		} else {
-			// Skip out-of-scope migrations BEFORE the
-			// checksum check. A primary-only migration must NEVER land on
-			// the observability ledger, regardless of whether its checksum
-			// matches. The skip is silent at INFO level (operators
-			// running with -v can grep the log for confirmation).
-			if !migrationAppliesToTargetDB(m.scope, targetDB) {
-				if log != nil {
-					log.Debug("skipping migration (out of DB scope)",
-						zap.Int("version", m.version),
-						zap.String("filename", m.filename),
-						zap.String("scope", m.scope),
-						zap.String("target_db", targetDB),
-					)
-				}
-				continue
-			}
-			// Historical incrementals satisfied by baseline sentinel (either
-			// pre-existing from a prior run or just applied in this run).
-			if baselineThreshold > 0 && m.version > 0 && m.version <= baselineThreshold && baselineAppliedNow {
-				if log != nil {
-					log.Debug("skipping historical migration (covered by baseline)", zap.Int("version", m.version), zap.String("filename", m.filename))
-				}
-				continue
-			}
-			if skipMigrationAfterExecutionCutover(db, applied, m, targetDB) {
-				if log != nil {
-					log.Warn("skipping historical migration after completed execution-plane cutover", zap.Int("version", m.version), zap.String("filename", m.filename))
-				}
-				continue
-			}
-		}
-		content, err := os.ReadFile(m.path)
-		if err != nil {
-			return fmt.Errorf("storage: read %s: %w", m.filename, err)
-		}
-		checksum := sha256Hex(content)
 
-		if prev, ok := applied[m.version]; ok {
-			if prev.filename != m.filename || prev.checksum != checksum { // Identity or checksum drift
-				// Migration 198 was deployed once with the equivalent
-				// database_id-primary-key form of control_plane_meta. The
-				// canonical file now contains the stronger singleton form.
-				// Reconcile only that known deployment hash and only after
-				// proving the live schema is the expected compatible shape.
-				// This repairs the ledger; it does not silently accept an
-				// arbitrary edited migration.
-				if m.version == 198 && targetDB == "primary" &&
-					prev.filename == m.filename &&
-					prev.checksum == "c5b770ce3c9fca18234ac8953e143535ec7da8b7740f186f7ce9edb0c518843b" &&
-					isLegacyControlPlaneMetaSchema(db) {
-					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 198", checksum, checksum); err != nil {
-						return fmt.Errorf("storage: shim update 198 checksum: %w", err)
-					}
-					if log != nil {
-						log.Warn("reconciled migration 198 ledger for compatible deployed control-plane schema", zap.Int("version", m.version), zap.String("filename", m.filename))
-					}
-					continue
-				}
-				// Migration 201 was applied by an earlier deployment but its
-				// file was not retained in the repository. The deployed schema
-				// already contains the taxonomy columns; accept only the known
-				// ledger hash and only after verifying those columns exist.
-				if m.version == 201 && targetDB == "primary" &&
-					prev.filename == m.filename &&
-					prev.checksum == "1f1d9052bd130dd810215705923088e79ccd8748f1f7ec46ff47419a1f75c019" &&
-					hasMediaTaxonomyColumns(db) {
-					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 201", checksum, checksum); err != nil {
-						return fmt.Errorf("storage: shim update 201 checksum: %w", err)
-					}
-					if log != nil {
-						log.Warn("reconciled missing migration 201 ledger for deployed media taxonomy", zap.Int("version", m.version), zap.String("filename", m.filename))
-					}
-					continue
-				}
-				if m.version == 195 && targetDB == "primary" &&
-					prev.filename == m.filename &&
-					prev.checksum == "a341d66a5411f4e8db9c66b75dc57dce44275972db98684ab4602497890b6b6a" &&
-					hasMediaTaxonomyColumns(db) {
-					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 195", checksum, checksum); err != nil {
-						return fmt.Errorf("storage: shim update 195 checksum: %w", err)
-					}
-					if log != nil {
-						log.Warn("reconciled migration 195 ledger for deployed media taxonomy", zap.Int("version", m.version), zap.String("filename", m.filename))
-					}
-					continue
-				}
-				// Deployment reconciliation for the already-applied local 186
-				// outbox-priority migration. The SQL is unchanged in effect;
-				// only the untracked deployment copy's checksum differs.
-				if m.version == 186 && targetDB == "primary" && prev.filename == m.filename &&
-					prev.checksum == "06d40a3bee8655737dacdc758aeb4bf3fe36b5731da74e5f804f39a78b43e807" &&
-					checksum == "aa56b176ff008dde206b6da3946859712fbf76fb24bb40d3e42a930a8f950d40" {
-					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 186", checksum, checksum); err != nil {
-						return fmt.Errorf("storage: shim update 186 checksum: %w", err)
-					}
-					if log != nil {
-						log.Warn("applied one-time checksum reconciliation for migration 186", zap.Int("version", m.version), zap.String("filename", m.filename))
-					}
-					continue
-				}
-				// shim. Migration 109 was edited to prepend the
-				// `-- database: primary` header directive, which
-				// changes its SHA-256 checksum. Existing primary
-				// DBs that already applied the pre-edit version hit
-				// this mismatch; the shim rewrites the recorded
-				// checksum so the runner can mark the migration as
-				// already-applied without losing the audit trail.
-				// The shim is gated on (version == 109 && targetDB
-				// == "primary") — migrations other than 109 are NOT
-				// shimmed, preserving the never-modify-already-
-				// applied invariant (the SHA-256 ledger is the
-				// canonical audit trail for everything else).
-				if m.version == 109 && targetDB == "primary" && prev.filename == m.filename {
-					// The shim ONLY fires when
-					// the file content carries the magic marker
-					// `-- TODO-8-SCOPE-FLAG-RECONCILE-109`. Without
-					// the marker, an unexpected modify of migration
-					// 109 surfaces as a hard error so the SHA-256
-					// ledger invariant is preserved (an attacker or
-					// careless edit cannot silently rewrite the
-					// ledger). The marker is added alongside the
-					// `-- database: primary` directive in the
-					// canonical 109 file.
-					const shimMarker = "-- TODO-8-SCOPE-FLAG-RECONCILE-109"
-					if !strings.Contains(string(content), shimMarker) {
-						return fmt.Errorf(
-							"storage: migration %03d (%s) checksum mismatch — "+
-								"missing shim marker %q in file. The shim "+
-								"only fires when the marker is present, so an "+
-								"unexpected modify of 109 surfaces as a hard error "+
-								"instead of silently rewriting the ledger. To "+
-								"honour the legitimate scope-aware modification "+
-								"add the marker above the existing content and re-run",
-							m.version, m.filename, shimMarker,
-						)
-					}
-					if _, err := db.Exec(
-						"UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = 109",
-						checksum, checksum,
-					); err != nil {
-						return fmt.Errorf(
-							"storage: shim update 109 checksum: %w", err,
-						)
-					}
-					if log != nil {
-						// WARN level (was INFO): operators searching
-						// for anomalies should NOT have to descend
-						// into INFO to discover that the SHA-256
-						// ledger was silently rewritten. The new
-						// SHA-256 is included in the log line so a
-						// future audit can pinpoint what landed.
-						log.Warn("applied one-time checksum shim for migration 109 (-- database: primary header added; ledger rewritten with new SHA-256)",
-							zap.Int("version", m.version),
-							zap.String("filename", m.filename),
-							zap.String("new_checksum", checksum),
-						)
-					}
-					continue
-				}
-				// A pair of early migrations only changed stale package-path
-				// comments after deployment.  Their SQL/schema effects are
-				// byte-for-byte identical; reconcile only the exact historical
-				// hashes so arbitrary edits still fail closed.
-				legacyCommentChecksums := map[int]string{
-					37:  "9162ff7a29771c01fa0b3467960b94207f3f6bd3330e0a81bce1dcbfd14ec59f",
-					68:  "e9eaf9a2118f658b0c47102b8d8b0bb256bf27b48ba7df8072dc3cc398e6b537",
-					89:  "34a6f63829f13ba816b39e27c4642b7ba6bba28505a4145fab929dbd1c03b0a8",
-					90:  "7fc081ead4bc3ef108174ae0e585f4ddb334dcf903e6c42b8f60258295acff48",
-					91:  "b2ae5a7681fd614243542901d253fda875033869071fd5dcdcbcd8e6f6b04a91",
-					92:  "0f91943040205c0ec74ddfea633dc54c7ecce13c1d34508398bc15df32399d01",
-					94:  "81a59ffe3bf1c981e30248149c8549a358f19a231d9cec2ead01797a085ddc89",
-					95:  "1886cb3e4208fe39eb6ed9d2379dac758cf5e6648be7a12014401e1eaa862359",
-					96:  "addeefa96ae3ba1a67cfee75c89f519a2508b6aa28a57399b66d3492b6810433",
-					97:  "2f4d9a40129d1dfcd74b039a9b79a2eb1a4b98d4545bf306d6d281e2356633a6",
-					98:  "d8aafb61b2928fb6955e300020a53530f9aee11adc4aa1edac88b32c292d01a7",
-					102: "41baff1a82b1ee03b6a3aeff43495957c87a6591f9d3a3c9fed045d825496751",
-					105: "028713f76b05017b46d7cd0f4f520469daf1276100185145b2000ee979e57aee",
-					108: "63cb5dffd6a1ab755646f7eac6c463e3f71f25b99ca733c58a89313e4b90ea23",
-					120: "1682c4c47796d18921696c93df1adf561ff75eb78c5d6ffb59137440789b06f2",
-					123: "14c0e244e5972568c448d852d08bb04cfd96b2fe9f42c70d441986b640420334",
-					129: "01af20ab1757ffb8a704c7a488593421e18feb6144df54fdbd338b68646bd8d4",
-					137: "0def3c2a2309e2bc0e8c29e9ff8ef31af3c1f51efa3b85612790b23be11c0bb5",
-					148: "ae4c43979c67ca21d01cf78fe2955627add216181106015961992c74bc445343",
-					151: "46ce7b091341338e85bdefd01543b4f737231b7adabeb66f23dab445d43e50e0",
-					154: "75a625c49558e7f0dcd00703598f323942df1787efcbeb3a54ed73729f79392e",
-					155: "088b151a5370f4b522f109472956dd6d790b4c70207ff3fc376acf4cf8f0fe81",
-					158: "042ffb06cbba8324b6e07de3ab5a900e02d2d91e1da934ce21c1b2b31d9e0e47",
-					159: "940568ccd17e194b16b53a7f2bb5772424ad34fb9e957c2e0f9548ff09a27a63",
-					160: "2a666620d1c5c5bd54c0986f7eb3c910fcc12442a4f758c58c9f542f42b70ea9",
-					162: "587b31be29358b8f72a9ebdf2775bcd14ea4f3798e6816ce22819aeefe1d017a",
-					163: "5fc93683400092a2b7546d79bbb7733b2bcbca4313fd0da0d4362cc57b6d5692",
-					169: "2fa6489ebcae70eff4073a2caab7f0cee78796a850f0d47a584b66d4c6d953ab",
-					170: "0a4da5918aab3f68f744a19d0bdc2d419c7042e7cf4b47da188b7d59a16c178f",
-					230: "0a471101a2bfc372236ca551d87f95200801da816551c9caaf2289ec3900d4ea",
-					268: "6c4ee47536ce159249cfed000c8de253dcee760d071f529cdce5b89186f582bf",
-				}
-				if expected, ok := legacyCommentChecksums[m.version]; ok && (targetDB == "primary" || targetDB == "observability") && prev.filename == m.filename && prev.checksum == expected {
-					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = ?", checksum, checksum, m.version); err != nil {
-						return fmt.Errorf("storage: shim update %03d checksum: %w", m.version, err)
-					}
-					if log != nil {
-						log.Warn("reconciled historical comment-only migration checksum", zap.Int("version", m.version), zap.String("filename", m.filename))
-					}
-					continue
-				}
-				legacyChecksums := map[int]string{
-					191: "441f6502693e3ffceb4bf85a18d22559b937624861c5db6daa6cc59233f91d5b",
-					192: "90a5ffc831f380fa4e0763835b5699d0049db5192f84125c3b15bac8f77d6d66",
-					193: "e5f9ea1d18ca6542346cf6abe0e07d145b992d7b95e50a05affb1b4f44e43358",
-				}
-				if expected, ok := legacyChecksums[m.version]; ok && targetDB == "primary" && prev.filename == m.filename && prev.checksum == expected {
-					if _, err := db.Exec("UPDATE schema_migrations SET checksum = ?, checksum_sha256 = ? WHERE version = ?", checksum, checksum, m.version); err != nil {
-						return fmt.Errorf("storage: shim update %03d checksum: %w", m.version, err)
-					}
-					if log != nil {
-						log.Warn("reconciled removed historical migration ledger entry", zap.Int("version", m.version), zap.String("filename", m.filename))
-					}
-					continue
-				}
-				return fmt.Errorf(
-					"storage: migration %03d (%s) identity/checksum mismatch — "+
-						"applied=%s/%s current=%s/%s. Migrations must never be modified or renamed after being applied",
-					m.version, m.filename, prev.filename, prev.checksum, m.filename, checksum,
+	return &migrationRunState{
+		applied:            applied,
+		baselineThreshold:  baselineThreshold,
+		baselineAppliedNow: baselineApplied(applied),
+	}, migrations, nil
+}
+
+// skipMigrationForLedgerState reports whether the runner must skip m before
+// reading it: out-of-scope files, baseline/sentinel bookkeeping and the
+// execution-plane cutover. Skipping a baseline because an existing history
+// already satisfies the frozen window flips baselineAppliedNow, exactly like
+// applying the baseline does — the two are the only places that flag moves.
+func skipMigrationForLedgerState(db queryable, log *zap.Logger, m migrationFile, state *migrationRunState, migrations []migrationFile, targetDB string) bool {
+	if !isBaselineMigrationFile(m) {
+		// Skip out-of-scope migrations BEFORE the
+		// checksum check. A primary-only migration must NEVER land on
+		// the observability ledger, regardless of whether its checksum
+		// matches. The skip is silent at INFO level (operators
+		// running with -v can grep the log for confirmation).
+		if !migrationAppliesToTargetDB(m.scope, targetDB) {
+			if log != nil {
+				log.Debug("skipping migration (out of DB scope)",
+					zap.Int("version", m.version),
+					zap.String("filename", m.filename),
+					zap.String("scope", m.scope),
+					zap.String("target_db", targetDB),
 				)
 			}
-			// Already applied with matching checksum — skip
-			continue
+			return true
 		}
-
-		// Apply migration inside its own transaction
-		log.Info("applying migration", zap.Int("version", m.version), zap.String("filename", m.filename))
-
-		if err := applyMigration(db, log, m.version, m.filename, checksum, content); err != nil {
-			return fmt.Errorf("storage: apply %s: %w", m.filename, err)
+		// Historical incrementals satisfied by baseline sentinel (either
+		// pre-existing from a prior run or just applied in this run).
+		if state.baselineThreshold > 0 && m.version > 0 && m.version <= state.baselineThreshold && state.baselineAppliedNow {
+			if log != nil {
+				log.Debug("skipping historical migration (covered by baseline)", zap.Int("version", m.version), zap.String("filename", m.filename))
+			}
+			return true
 		}
-		appliedCount++
-		if isBaselineMigrationFile(m) {
-			baselineAppliedNow = true
+		if skipMigrationAfterExecutionCutover(db, state.applied, m, targetDB) {
+			if log != nil {
+				log.Warn("skipping historical migration after completed execution-plane cutover", zap.Int("version", m.version), zap.String("filename", m.filename))
+			}
+			return true
 		}
+		return false
 	}
 
-	// Declared-vs-live verification: the ledger proves a file ran, not that its
-	// schema survived. A table that an APPLIED migration declares but the
-	// database does not contain is drift (an operator restore, a rebuilt file,
-	// a dropped table) and the only correct repair is a NEW numbered migration —
-	// editing the applied file can never work, because the ledger skips it.
-	// Reported at error level and deliberately non-fatal: a drifted production
-	// database must still boot so the forward migration can be applied.
-	if err := verifyDeclaredTables(db, targetDir, targetDB, log); err != nil {
-		log.Warn("migration schema verification could not run", zap.String("target_db", targetDB), zap.Error(err))
+	// Scope gate still applies to the baseline itself.
+	if !migrationAppliesToTargetDB(m.scope, targetDB) {
+		if log != nil {
+			log.Debug("skipping baseline (out of DB scope)",
+				zap.Int("version", m.version),
+				zap.String("filename", m.filename),
+				zap.String("scope", m.scope),
+				zap.String("target_db", targetDB),
+			)
+		}
+		return true
 	}
-
-	log.Info("migrations complete",
-		zap.Int("total", len(migrations)),
-		zap.Int("newly_applied", appliedCount),
-		zap.Int("already_applied", len(applied)),
-	)
-	return nil
+	if state.baselineAppliedNow {
+		if log != nil {
+			log.Debug("skipping baseline (already applied)", zap.String("filename", m.filename))
+		}
+		return true
+	}
+	// Old or partially-migrated DB: any non-baseline history means the
+	// incremental path was already chosen — skip the consolidated baseline
+	// (BASELINE_PLAN.md §2.2).
+	if hasAnyHistory(state.applied) {
+		if log != nil {
+			log.Info("skipping baseline (incremental history already present)", zap.String("filename", m.filename))
+		}
+		// Do NOT set baselineAppliedNow: the baseline was skipped, so it does
+		// not satisfy the frozen window. A partially migrated DB (e.g. ledger
+		// 1..197 with threshold 267) MUST still apply the missing historical
+		// incrementals 198..267 through the incremental path. Marking the
+		// baseline as covered here would skip them, leaving both a real schema
+		// gap and a ledger gap that the next run's validateAppliedMigrationSet
+		// rejects as soon as a later migration (> threshold) is applied.
+		// Already-applied incrementals are still skipped by the
+		// checksum-matched ledger check in migrateAll.
+		return true
+	}
+	if isHistoricalWindowCovered(state.applied, migrations, targetDB, state.baselineThreshold) {
+		if log != nil {
+			log.Info("skipping baseline (historical window already covered by individual ledger rows)", zap.String("filename", m.filename))
+		}
+		// Mark as covered so subsequent historical incrementals are not
+		// re-evaluated against an empty baseline flag — the window is already
+		// satisfied by the 1..N rows.
+		state.baselineAppliedNow = true
+		return true
+	}
+	// Fresh database: apply the baseline as a normal migration (version 0).
+	// After it commits, 1..N will be skipped via baselineAppliedNow.
+	return false
 }

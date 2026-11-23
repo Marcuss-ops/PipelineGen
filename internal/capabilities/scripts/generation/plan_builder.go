@@ -86,6 +86,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		}
 		plan.VideoMetadata.TranslationStatus = ""
 	}
+	plan.MediaRequirements = buildMediaRequirements(item)
 	plan.Postprocessors = adapters.ProcessorNamesToStrings(buildPostprocessorListForItem(item))
 	plan.RenderedPrompt = buildEditorialPrompt(item)
 	plan.SourceKind = string(item.Source.Type)
@@ -172,6 +173,12 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 		out.GenerateMetadata = scriptpkg.ToggleEnabled
 	}
 	processors := buildPostprocessorList(out)
+	// Extraction and acquisition are separate capabilities. Entity extraction
+	// alone must not arm the provider-image/materialization processors when the
+	// resolved contract requests neither scene images nor entity images.
+	if !imageAcquisitionRequested(item) {
+		processors = removeProcessors(processors, adapters.ProcessorInternetImages, adapters.ProcessorVidRushMaterialization)
+	}
 	if mediaPlanRequested(item) {
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualSlots)
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualPlanning)
@@ -242,6 +249,39 @@ func buildPostprocessorList(output scriptpkg.OutputSpec) []adapters.ProcessorNam
 		processors = append(processors, adapters.ProcessorPersistence)
 	}
 	return processors
+}
+
+// buildMediaRequirements is the single place where output toggles become
+// acquisition requirements. A planner budget (ImagesPerScene) is copied into
+// ImageFanout only when the generic scene-image lane is actually requested.
+func buildMediaRequirements(item scriptpkg.GenerationItemV2) *scriptpkg.MediaRequirements {
+	return scriptpkg.ResolveMediaRequirements(
+		item.MediaMode,
+		item.Output.GenerateSceneImages,
+		item.ScriptParams.ImagesPerScene,
+		item.OverlayCategories,
+		item.MediaPlan.Extraction.EntityImages,
+	)
+}
+
+func imageAcquisitionRequested(item scriptpkg.GenerationItemV2) bool {
+	requirements := buildMediaRequirements(item)
+	return requirements.SceneImages || requirements.EntityImages != scriptpkg.MediaRequirementDisabled
+}
+
+func removeProcessors(processors []adapters.ProcessorName, remove ...adapters.ProcessorName) []adapters.ProcessorName {
+	blocked := make(map[adapters.ProcessorName]struct{}, len(remove))
+	for _, name := range remove {
+		blocked[name] = struct{}{}
+	}
+	out := make([]adapters.ProcessorName, 0, len(processors))
+	for _, processor := range processors {
+		if _, drop := blocked[processor]; drop {
+			continue
+		}
+		out = append(out, processor)
+	}
+	return out
 }
 
 func ensureInlineClipArtifacts(processors []adapters.ProcessorName) []adapters.ProcessorName {

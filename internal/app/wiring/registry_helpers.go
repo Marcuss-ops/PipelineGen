@@ -14,9 +14,9 @@
 package wiring
 
 import (
+	"database/sql"
 	"time"
 
-	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -28,11 +28,12 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 
 	"go.uber.org/zap"
-)
 
-import (
-	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
+	assetsmod "github.com/Marcuss-ops/PipelineGen/internal/app/modules/assets"
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	platformcache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifactcache"
+
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 )
 
@@ -97,7 +98,7 @@ func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, cacheDB *stora
 	// reprocess re-executes Rust/FFmpeg (warm runs would be cold).
 	// Fail-soft: a cache wiring failure degrades to uncached processing.
 	if cacheDB != nil && cacheDB.DB != nil {
-		if cache, cacheErr := assetswiring.NewArtifactCache(cfg, cacheDB.DB, db.DB, log); cacheErr == nil {
+		if cache, cacheErr := newArtifactCache(cfg, cacheDB.DB, db.DB, log); cacheErr == nil {
 			proc.SetArtifactCache(cache)
 			log.Info("media processor artifact cache wired")
 		} else {
@@ -136,7 +137,12 @@ func bootstrapProviderRegistry(provReg *providers.Registry, entries []TrackedPro
 }
 
 func registerCapabilities(reg *module.Registry, provReg *providers.Registry, deps CapabilityDeps) error {
-	return registrywiring.RegisterCapabilities(reg, provReg, deps, registrywiring.ValidateRuntimeGraph)
+	return registrywiring.RegisterCapabilities(registrywiring.CapabilityRegistrationDeps{
+		Registry:     reg,
+		Providers:    provReg,
+		Capabilities: deps,
+		Validate:     registrywiring.ValidateRuntimeGraph,
+	})
 }
 
 func WithRegistrationPoint(point string) strictOption {
@@ -144,9 +150,24 @@ func WithRegistrationPoint(point string) strictOption {
 }
 
 func tryRegisterModuleStrict(reg *module.Registry, log *zap.Logger, mod module.Module, opts ...strictOption) error {
-	return registrywiring.TryRegisterModuleStrict(reg, log, mod, opts...)
+	return registrywiring.TryRegisterModuleStrict(registrywiring.RegisterModuleDeps{Registry: reg, Log: log, Module: mod}, opts...)
 }
 
 func tryRegisterModule(reg *module.Registry, log *zap.Logger, mod module.Module) error {
 	return registrywiring.TryRegisterModule(reg, log, mod)
+}
+
+// newArtifactCache is the single composition-site entry into the assets
+// module's artifact cache (BON-03 step B): the six wiring sites that need a
+// cache pass their two handles here, and this function is the only code in the
+// root that knows the module's Deps shape. It lives in this helper file rather
+// than its own because internal/app/wiring is a registered package-count
+// hotspot at its baseline and must not grow.
+func newArtifactCache(cfg *config.Config, cacheDB, contentDB *sql.DB, log *zap.Logger) (*platformcache.Cache, error) {
+	return assetsmod.NewArtifactCache(assetsmod.ArtifactCacheDeps{
+		Config:    cfg,
+		CacheDB:   cacheDB,
+		ContentDB: contentDB,
+		Log:       log,
+	})
 }

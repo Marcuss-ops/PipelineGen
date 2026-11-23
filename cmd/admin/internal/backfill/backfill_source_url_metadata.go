@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 )
 
 // RunBackfillSourceURLMetadata reconciles the source_url metadata mirror
@@ -49,7 +49,7 @@ func RunBackfillSourceURLMetadata(args []string) error {
 	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
 	// PostgreSQL media SSOT. Reads and the canonical patches now agree on one
 	// engine instead of scanning a mirror that holds no committed media rows.
-	source := pgmedia.NewBackfillReader(root.MediaPostgres)
+	source := pgbackfill.NewBackfillReader(root.MediaPostgres)
 	if source == nil {
 		return fmt.Errorf("media PostgreSQL SSOT is required for source_url backfill")
 	}
@@ -64,11 +64,11 @@ func RunBackfillSourceURLMetadata(args []string) error {
 // sourceURLMetadataSource is the narrow media read this backfill depends on.
 //
 // MEDIA-SSOT: production binds the PostgreSQL reader
-// (pgmedia.BackfillReader); the port is engine-specific so the candidate scan
+// (pgbackfill.BackfillReader); the port is engine-specific so the candidate scan
 // cannot drift back onto the operational SQLite mirror.
 type sourceURLMetadataSource interface {
 	CountSourceURLMetadataCandidates(ctx context.Context) (int, error)
-	ListSourceURLMetadataCandidates(ctx context.Context, limit int) ([]pgmedia.SourceURLMetadataCandidate, error)
+	ListSourceURLMetadataCandidates(ctx context.Context, limit int) ([]pgbackfill.SourceURLMetadataCandidate, error)
 }
 
 func backfillSourceURLMetadataCanonical(ctx context.Context, src sourceURLMetadataSource, mutator persistence.AssetMutator, limit int) (int, int, error) {

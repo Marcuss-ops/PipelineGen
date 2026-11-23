@@ -46,7 +46,59 @@ func (u *ProcessSegmentUseCase) publishStage(
 	post *AudioPostOutput,
 	log *zap.Logger,
 ) (*publishStageResult, error) {
-	// Build metadata JSON envelope.
+	metaBuf, err := u.buildPublishMetadata(ctx, cmd, out)
+	if err != nil {
+		return nil, err
+	}
+
+	idemKey := u.voiceoverIdempotencyKey(cmd)
+
+	// Delivery upload ONLY when a Publisher is wired. The video pipeline is
+	// local-only (waste-cut 2026-10-24): per-scene audio + timing are
+	// certified LOCAL artifacts (intermediates of the video composition),
+	// never delivery products — so there is nothing to upload here.
+	uploadPath := out.CleanedPath
+	if uploadPath == "" {
+		uploadPath = out.LocalPath
+	}
+	fileID, err := u.publishAudio(ctx, cmd, out, uploadPath, idemKey, log)
+	if err != nil {
+		return nil, err
+	}
+
+	// Timing bundle: publish timing.json + optional SRT/VTT projections
+	// STRICTLY AFTER the audio upload. required failures fail the segment
+	// with a typed PipelineError; best-effort failures degrade the timing
+	// status while the audio stays completed; disabled preserves the
+	// legacy behavior (no timing work at all).
+	timingRes, err := u.publishTimingBundle(ctx, cmd, out, tts, post, uploadPath, log)
+	if err != nil {
+		return nil, err
+	}
+	out.Timing = timingRes
+	injectTimingMetadata(metaBuf, timingRes)
+
+	if fileID != "" {
+		metaBuf["drive_file_id"] = fileID
+		metaBuf["drive_link"] = out.DriveLink
+	}
+
+	metaJSON, err := marshalVoiceoverMetadata(metaBuf)
+	if err != nil {
+		return nil, err
+	}
+
+	return &publishStageResult{MetaJSON: metaJSON, IdemKey: idemKey}, nil
+}
+
+// buildPublishMetadata builds the metadata envelope for the voiceover row,
+// merges the caller's metadata overlay, validates serializability BEFORE any
+// external side effect, and applies best-effort semantic enrichment.
+func (u *ProcessSegmentUseCase) buildPublishMetadata(
+	ctx context.Context,
+	cmd *ProcessSegmentCommand,
+	out *VoiceoverItemResult,
+) (map[string]any, error) {
 	metaBuf := map[string]any{
 		"text_hash":    cmd.TextHash,
 		"text_preview": textutil.Truncate(cmd.Text, 100),
@@ -65,15 +117,10 @@ func (u *ProcessSegmentUseCase) publishStage(
 	}
 	mergeUserMetadata(metaBuf, cmd.Dest, cmd.Metadata, u.deps.Logger)
 	// Validate caller metadata before any external side effect. The final
-	// envelope is marshalled again below after publish-time fields are added,
+	// envelope is marshalled again after publish-time fields are added,
 	// but unsupported values must fail at the metadata stage, before Drive.
-	if _, err := json.Marshal(metaBuf); err != nil {
-		return nil, newPipelineErrorCode(
-			StageMetadata,
-			false,
-			FailureMetadataSerialization,
-			fmt.Errorf("voiceover metadata serialization: %w", err),
-		)
+	if _, err := marshalVoiceoverMetadata(metaBuf); err != nil {
+		return nil, err
 	}
 
 	// Semantic enrichment belongs to the canonical pipeline, immediately
@@ -94,96 +141,97 @@ func (u *ProcessSegmentUseCase) publishStage(
 			out.SearchText = semantic.SearchText
 		}
 	}
+	return metaBuf, nil
+}
 
-	// Derive deterministic idempotency key.
-	var idemKey string
-	if cmd.JobID != "" {
-		idemKey = BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, idempotencyPolicyFingerprint(u.deps.TTSProvider, cmd.Language, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy)))
+// voiceoverIdempotencyKey derives the deterministic audio idempotency key.
+// Empty JobID preserves the legacy "no key" behavior (the gate is skipped).
+func (u *ProcessSegmentUseCase) voiceoverIdempotencyKey(cmd *ProcessSegmentCommand) string {
+	if cmd.JobID == "" {
+		return ""
 	}
+	return BuildVoiceoverIdempotencyKey(
+		cmd.JobID,
+		cmd.Language,
+		cmd.TextHash,
+		idempotencyPolicyFingerprint(u.deps.TTSProvider, cmd.Language, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy)),
+	)
+}
 
-	// Delivery upload ONLY when a Publisher is wired. The video pipeline is
-	// local-only (waste-cut 2026-10-24): per-scene audio + timing are
-	// certified LOCAL artifacts (intermediates of the video composition),
-	// never delivery products — so there is nothing to upload here.
-	uploadPath := out.CleanedPath
-	if uploadPath == "" {
-		uploadPath = out.LocalPath
-	}
-
+// publishAudio uploads the final audio when a Publisher is wired and stamps
+// the verified file ID + canonical links on the result. Local-only
+// compositions skip the upload and return an empty file ID.
+func (u *ProcessSegmentUseCase) publishAudio(
+	ctx context.Context,
+	cmd *ProcessSegmentCommand,
+	out *VoiceoverItemResult,
+	uploadPath, idemKey string,
+	log *zap.Logger,
+) (string, error) {
 	emitPublish := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "publish", string(cmd.Language))
-	var fileID string
-	if u.deps.Publisher != nil {
-		var pubErr error
-		fileID, pubErr = u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
-			ID:             cmd.ID,
-			LocalPath:      uploadPath,
-			Filename:       cmd.Filename,
-			FolderID:       cmd.Dest.FolderID,
-			Project:        cmd.Project,
-			Language:       string(cmd.Language),
-			IdempotencyKey: idemKey,
-		})
-		if pubErr != nil {
-			emitPublish("failed")
-			return nil, pubErr
-		}
-		emitPublish("completed")
-		out.DriveFileID = fileID
-		out.DriveLink = CanonicalDriveWebURL(fileID)
-		out.DownloadLink = CanonicalDriveDownloadURL(fileID)
-	} else {
+	if u.deps.Publisher == nil {
 		emitPublish("skipped_local_only")
+		return "", nil
 	}
-
-	// Timing bundle: publish timing.json + optional SRT/VTT projections
-	// STRICTLY AFTER the audio upload. required failures fail the segment
-	// with a typed PipelineError; best-effort failures degrade the timing
-	// status while the audio stays completed; disabled preserves the
-	// legacy behavior (no timing work at all).
-	timingRes, err := u.publishTimingBundle(ctx, cmd, out, tts, post, uploadPath, log)
+	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
+		ID:             cmd.ID,
+		LocalPath:      uploadPath,
+		Filename:       cmd.Filename,
+		FolderID:       cmd.Dest.FolderID,
+		Project:        cmd.Project,
+		Language:       string(cmd.Language),
+		IdempotencyKey: idemKey,
+	})
 	if err != nil {
-		return nil, err
+		emitPublish("failed")
+		return "", err
 	}
-	out.Timing = timingRes
+	emitPublish("completed")
+	out.DriveFileID = fileID
+	out.DriveLink = CanonicalDriveWebURL(fileID)
+	out.DownloadLink = CanonicalDriveDownloadURL(fileID)
+	return fileID, nil
+}
 
-	// Inject timing links into the metadata so the cross-run voiceover
-	// cache can verify timing artifacts without re-downloading audio.
-	// These links survive in the voiceovers.metadata JSON column.
-	if timingRes != nil {
-		// Remote links exist only when the projections were delivered;
-		// local paths ALWAYS record where the certified SSOT lives so the
-		// cross-run cache can rehydrate word timing without any network.
-		if timingRes.JSONLink != "" {
-			metaBuf["timing_json_link"] = timingRes.JSONLink
-		}
-		if timingRes.SRTLink != "" {
-			metaBuf["timing_srt_link"] = timingRes.SRTLink
-		}
-		if timingRes.VTTLink != "" {
-			metaBuf["timing_vtt_link"] = timingRes.VTTLink
-		}
-		if timingRes.JSONPath != "" {
-			metaBuf["timing_json_path"] = timingRes.JSONPath
-		}
-		if timingRes.SRTPath != "" {
-			metaBuf["timing_srt_path"] = timingRes.SRTPath
-		}
-		if timingRes.VTTPath != "" {
-			metaBuf["timing_vtt_path"] = timingRes.VTTPath
-		}
-		if timingRes.AudioSHA256 != "" {
-			metaBuf["audio_sha256"] = timingRes.AudioSHA256
-		}
-		metaBuf["timing_boundary_mode"] = timingRes.BoundaryMode
-		metaBuf["timing_word_count"] = timingRes.WordCount
-		metaBuf["timing_duration_us"] = timingRes.DurationUS
-		metaBuf["timing_status"] = timingRes.Status
+// injectTimingMetadata copies the timing summary into the voiceover metadata
+// envelope. Links are recorded only when the projection was delivered; local
+// paths ALWAYS record where the certified SSOT lives so the cross-run cache
+// can rehydrate word timing without any network.
+func injectTimingMetadata(metaBuf map[string]any, res *VoiceoverTimingResult) {
+	if res == nil {
+		return
 	}
-	if fileID != "" {
-		metaBuf["drive_file_id"] = fileID
-		metaBuf["drive_link"] = out.DriveLink
+	if res.JSONLink != "" {
+		metaBuf["timing_json_link"] = res.JSONLink
 	}
+	if res.SRTLink != "" {
+		metaBuf["timing_srt_link"] = res.SRTLink
+	}
+	if res.VTTLink != "" {
+		metaBuf["timing_vtt_link"] = res.VTTLink
+	}
+	if res.JSONPath != "" {
+		metaBuf["timing_json_path"] = res.JSONPath
+	}
+	if res.SRTPath != "" {
+		metaBuf["timing_srt_path"] = res.SRTPath
+	}
+	if res.VTTPath != "" {
+		metaBuf["timing_vtt_path"] = res.VTTPath
+	}
+	if res.AudioSHA256 != "" {
+		metaBuf["audio_sha256"] = res.AudioSHA256
+	}
+	metaBuf["timing_boundary_mode"] = res.BoundaryMode
+	metaBuf["timing_word_count"] = res.WordCount
+	metaBuf["timing_duration_us"] = res.DurationUS
+	metaBuf["timing_status"] = res.Status
+}
 
+// marshalVoiceoverMetadata serializes the envelope and maps any failure to
+// the typed permanent metadata error, so both the pre-publish validation and
+// the final serialization keep identical failure semantics.
+func marshalVoiceoverMetadata(metaBuf map[string]any) ([]byte, error) {
 	metaJSON, err := json.Marshal(metaBuf)
 	if err != nil {
 		return nil, newPipelineErrorCode(
@@ -193,8 +241,7 @@ func (u *ProcessSegmentUseCase) publishStage(
 			fmt.Errorf("voiceover metadata serialization: %w", err),
 		)
 	}
-
-	return &publishStageResult{MetaJSON: metaJSON, IdemKey: idemKey}, nil
+	return metaJSON, nil
 }
 
 // publishTimingBundle builds the canonical timing bundle (timing.json SSOT
@@ -223,10 +270,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	uploadPath string,
 	log *zap.Logger,
 ) (*VoiceoverTimingResult, error) {
-	policy := audio.DefaultTimingRequest()
-	if cmd.Timing != nil {
-		policy = cmd.Timing.Normalized()
-	}
+	policy := timingPolicyFor(cmd)
 	if err := policy.Validate(); err != nil {
 		return nil, newPipelineErrorCode(StageTiming, false, FailureTimingBuild,
 			fmt.Errorf("voiceover timing policy: %w", err))
@@ -237,94 +281,43 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 
 	emitTiming := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "timing", string(cmd.Language))
 
-	if len(tts.WordBoundaries) == 0 {
+	// Raw provider boundaries describe the PRE-clean timeline. With an edit
+	// map + final duration from the post-processor the boundaries are remapped
+	// onto the cleaned timeline; without them accurate timestamps are
+	// impossible, so required fails closed and best-effort degrades explicitly
+	// (never fabricate timestamps). An empty edit map is the identity
+	// transform: the final duration alone still binds the artifact to the
+	// post-processed audio.
+	if blocked := timingInputBlocker(tts, post, cmd.RemoveSilence); blocked != nil {
 		if policy.Mode == audio.TimingRequired {
 			emitTiming("failed")
 			timingEvent(log, "voiceover.timing.failed", cmd, tts.Provider, tts.BoundaryMode, len(tts.WordBoundaries), tts.Duration.Microseconds())
-			return nil, newPipelineErrorCode(StageTiming, false, FailureTimingUnavailable,
-				fmt.Errorf("%s: TTS produced no word boundaries for required timing", FailureTimingUnavailable))
+			return nil, newPipelineErrorCode(StageTiming, false, blocked.code, fmt.Errorf("%s", blocked.message))
 		}
 		emitTiming("unavailable")
 		return &VoiceoverTimingResult{Status: TimingStatusUnavailable}, nil
 	}
 
-	// Silence removal: raw provider boundaries describe the PRE-clean
-	// timeline. With an edit map + final duration from the post-processor
-	// the boundaries are remapped onto the cleaned timeline; without them
-	// accurate timestamps are impossible, so required fails closed and
-	// best-effort degrades explicitly (never fabricate timestamps).
-	var postEditMap []audio.AudioEdit
-	if cmd.RemoveSilence {
-		// An empty edit map is the identity transform (Rust reports no cut
-		// intervals when the audio already has no qualifying silence). The
-		// final duration is still required so the timing artifact binds to the
-		// actual post-processed audio.
-		if post == nil || post.DurationUS <= 0 {
-			if policy.Mode == audio.TimingRequired {
-				emitTiming("failed")
-				timingEvent(log, "voiceover.timing.failed", cmd, tts.Provider, tts.BoundaryMode, len(tts.WordBoundaries), tts.Duration.Microseconds())
-				return nil, newPipelineErrorCode(StageTiming, false, FailureTimingIncompatible,
-					fmt.Errorf("timing required + remove_silence: the audio post-processor reported no edit map, so accurate timestamps are impossible"))
-			}
-			emitTiming("unavailable")
-			return &VoiceoverTimingResult{Status: TimingStatusUnavailable}, nil
-		}
-		postEditMap = post.EditMap
-	}
-
 	// Build the canonical artifact bound to the FINAL audio bytes.
-	words := make([]audio.SpeechWordTiming, 0, len(tts.WordBoundaries))
-	for i, b := range tts.WordBoundaries {
-		words = append(words, audio.SpeechWordTiming{
-			Index:   i,
-			Text:    b.Text,
-			StartUS: b.StartUS,
-			EndUS:   b.EndUS,
-		})
+	timeline, err := buildTimingWordTimeline(tts, post, cmd.RemoveSilence)
+	if err != nil {
+		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("remap speech timing after silence removal: %w", err))
 	}
-	durationUS := tts.Duration.Microseconds()
-	if len(postEditMap) > 0 {
-		remapped, err := audio.RemapSpeechTiming(words, postEditMap)
-		if err != nil {
-			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("remap speech timing after silence removal: %w", err))
-		}
-		words = remapped
-		durationUS = post.DurationUS
-	}
-	// Some speech providers report the final word boundary a few hundred
-	// milliseconds beyond the encoded audio duration, and may even emit a
-	// trailing boundary that starts after the audio has ended. Keep the
-	// canonical artifact bound to the actual audio: drop trailing words that
-	// start at/after the measured duration, then clamp a small final-word
-	// overrun. Larger overruns still fail closed in BuildSpeechTimingArtifact.
-	words, droppedWords, clampedOverrunUS := normalizeFinalWordTiming(words, durationUS)
-	if droppedWords > 0 {
+	if timeline.DroppedWords > 0 {
 		log.Warn("dropping TTS timing words beyond encoded audio duration",
 			zap.String("voiceover_id", cmd.ID),
-			zap.Int("dropped_words", droppedWords),
-			zap.Int64("audio_duration_us", durationUS),
+			zap.Int("dropped_words", timeline.DroppedWords),
+			zap.Int64("audio_duration_us", timeline.DurationUS),
 		)
 	}
-	if clampedOverrunUS > 0 {
+	if timeline.ClampedOverrunUS > 0 {
 		log.Warn("clamping small TTS final-word timing overrun to encoded audio duration",
 			zap.String("voiceover_id", cmd.ID),
-			zap.Int64("overrun_us", clampedOverrunUS),
-			zap.Int64("audio_duration_us", durationUS),
+			zap.Int64("overrun_us", timeline.ClampedOverrunUS),
+			zap.Int64("audio_duration_us", timeline.DurationUS),
 		)
 	}
-	audioSHA, _, err := digest.SHA256File(uploadPath)
-	if err != nil {
-		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("hash final audio %q: %w", uploadPath, err))
-	}
-	artifact, err := audio.BuildSpeechTimingArtifact(
-		tts.Provider,
-		string(cmd.Language),
-		out.Voice,
-		digest.SHA256String(cmd.Text),
-		audioSHA,
-		durationUS,
-		words,
-	)
+	artifact, err := buildVoiceoverTimingArtifact(cmd, out, tts, uploadPath, timeline)
 	if err != nil {
 		return u.timingBuildFailure(cmd, log, policy, err)
 	}
@@ -338,58 +331,15 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("marshal timing artifact: %w", err))
 	}
 
-	projections := map[audio.TimingFormat][]byte{}
-	if policy.HasFormat(audio.TimingJSON) {
-		projections[audio.TimingJSON] = artifactJSON
-	}
-	if policy.HasFormat(audio.TimingSRT) {
-		srt, err := audio.RenderSRT(*artifact, audio.CueOptions{})
-		if err != nil {
-			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("render SRT: %w", err))
-		}
-		projections[audio.TimingSRT] = srt
-	}
-	if policy.HasFormat(audio.TimingVTT) {
-		vtt, err := audio.RenderVTT(*artifact, audio.CueOptions{})
-		if err != nil {
-			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("render VTT: %w", err))
-		}
-		projections[audio.TimingVTT] = vtt
+	projections, err := renderTimingProjections(artifact, artifactJSON, policy)
+	if err != nil {
+		return u.timingBuildFailure(cmd, log, policy, err)
 	}
 
-	res := &VoiceoverTimingResult{Status: TimingStatusCompleted}
 	base := timingBaseName(cmd.Filename)
-	dir := cmd.Dest.FolderPath
-
-	// ── Persist the certified projections locally (durable SSOT) ──
-	// The canonical timing.json is written next to the audio REGARDLESS of
-	// the requested delivery formats: word-level rehydration (cross-run
-	// cache, retry, overlay timing) must never depend on a remote link.
-	// SRT/VTT are persisted only when the policy requests those formats.
-	// These files are certified artifacts — never deleted, never re-built.
-	localPaths := map[audio.TimingFormat]string{}
-	timingJSONPath := filepath.Join(dir, timingProjectionFilename(base, audio.TimingJSON))
-	if err := os.WriteFile(timingJSONPath, artifactJSON, 0o644); err != nil {
-		return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("write timing artifact %s: %w", timingJSONPath, err))
-	}
-	res.JSONPath = timingJSONPath
-	localPaths[audio.TimingJSON] = timingJSONPath
-	for format, data := range projections {
-		if format == audio.TimingJSON {
-			continue // SSOT JSON already persisted above
-		}
-		filename := timingProjectionFilename(base, format)
-		localPath := filepath.Join(dir, filename)
-		if err := os.WriteFile(localPath, data, 0o644); err != nil {
-			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("write timing projection %s: %w", filename, err))
-		}
-		localPaths[format] = localPath
-		switch format {
-		case audio.TimingSRT:
-			res.SRTPath = localPath
-		case audio.TimingVTT:
-			res.VTTPath = localPath
-		}
+	local, err := persistTimingProjections(cmd.Dest.FolderPath, base, artifactJSON, projections)
+	if err != nil {
+		return u.timingBuildFailure(cmd, log, policy, err)
 	}
 
 	// ── Remote delivery ONLY when a Publisher is wired ────────────
@@ -397,69 +347,19 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	// product and there is nothing to upload (waste-cut 2026-10-24).
 	// Delivery surfaces publish the SAME local files just persisted —
 	// one write per artifact, no staging copies.
-	if u.deps.Publisher != nil && len(projections) > 0 {
-		// P2: JSON, SRT, VTT uploads are independent Drive writes that
-		// can run concurrently (typically 1-3 projections per scene),
-		// so the total publish latency is MAX(of N), not SUM(of N).
-		// Bounded to 3 (the max number of formats: json + srt + vtt).
-		const timingPublishConcurrency = 3
-		type timingPubResult struct {
-			format audio.TimingFormat
-			fileID string
-		}
-		timingPubSem := make(chan struct{}, timingPublishConcurrency)
-		var timingPubWg sync.WaitGroup
-		timingPubResults := make([]timingPubResult, 0, len(projections))
-		var timingPubMu sync.Mutex
-		var timingPubFirstErr error
+	links, err := u.publishTimingProjections(ctx, cmd, base, local)
+	if err != nil {
+		return u.timingPublishFailure(cmd, log, policy, err)
+	}
 
-		for format := range projections {
-			format := format
-			timingPubWg.Add(1)
-			go func() {
-				defer timingPubWg.Done()
-				timingPubSem <- struct{}{}
-				defer func() { <-timingPubSem }()
-
-				filename := timingProjectionFilename(base, format)
-				fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
-					ID:             cmd.ID + "-timing-" + string(format),
-					LocalPath:      localPaths[format],
-					Filename:       filename,
-					FolderID:       cmd.Dest.FolderID,
-					Project:        cmd.Project,
-					Language:       string(cmd.Language),
-					IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, idempotencyPolicyFingerprint(u.deps.TTSProvider, cmd.Language, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy)), string(format)),
-				})
-				if err != nil {
-					timingPubMu.Lock()
-					if timingPubFirstErr == nil {
-						timingPubFirstErr = fmt.Errorf("publish timing projection %s: %w", filename, err)
-					}
-					timingPubMu.Unlock()
-					return
-				}
-				timingPubMu.Lock()
-				timingPubResults = append(timingPubResults, timingPubResult{format: format, fileID: fileID})
-				timingPubMu.Unlock()
-			}()
-		}
-		timingPubWg.Wait()
-
-		if timingPubFirstErr != nil {
-			return u.timingPublishFailure(cmd, log, policy, timingPubFirstErr)
-		}
-
-		for _, r := range timingPubResults {
-			switch r.format {
-			case audio.TimingJSON:
-				res.JSONLink = CanonicalDriveWebURL(r.fileID)
-			case audio.TimingSRT:
-				res.SRTLink = CanonicalDriveWebURL(r.fileID)
-			case audio.TimingVTT:
-				res.VTTLink = CanonicalDriveWebURL(r.fileID)
-			}
-		}
+	res := &VoiceoverTimingResult{
+		Status:   TimingStatusCompleted,
+		JSONPath: local.JSONPath,
+		SRTPath:  local.SRTPath,
+		VTTPath:  local.VTTPath,
+		JSONLink: links.JSON,
+		SRTLink:  links.SRT,
+		VTTLink:  links.VTT,
 	}
 
 	res.BoundaryMode = string(artifact.BoundaryMode)
@@ -472,33 +372,303 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	// result keeps only the summary fields above.
 	res.Artifact = artifact
 
-	// Moments: the Rust worker owns the word/phrase match. Go sends every
-	// unique annotation surface once, with allow_missing so a value the
-	// speech never said is skipped instead of failing the segment, and joins
-	// the returned spans back to the queries. A missing aligner fails closed
-	// only when moments were requested; no Go matcher is a fallback.
-	if len(cmd.Moments) > 0 {
-		if u.deps.Enrichment.PhraseAligner == nil {
-			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: phrase aligner is required"))
-		}
-		values := momentQueryValues(cmd.Moments)
-		alignments, err := u.deps.Enrichment.PhraseAligner.AlignPhrases(ctx, audio.PhraseAlignmentRequest{
-			Timing: *artifact, Phrases: values, AllowMissing: true, AllOccurrences: true,
-		})
-		if err != nil {
-			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: %w", err))
-		}
-		moments, err := audio.ProjectMoments(*artifact, cmd.Moments, alignments)
-		if err != nil {
-			return u.timingBuildFailure(cmd, log, policy, fmt.Errorf("locate moments: %w", err))
-		}
-		res.Moments = moments
+	moments, err := u.projectTimingMoments(ctx, cmd, artifact)
+	if err != nil {
+		return u.timingBuildFailure(cmd, log, policy, err)
 	}
+	res.Moments = moments
 
 	timingEvent(log, "voiceover.timing.published", cmd, artifact.Provider, artifact.BoundaryMode, res.WordCount, res.DurationUS)
 
 	emitTiming("completed")
 	return res, nil
+}
+
+// timingInputBlock is a typed reason the TTS/post outputs cannot yield an
+// accurate timeline. code is the failure the required policy surfaces.
+type timingInputBlock struct {
+	code    FailureCode
+	message string
+}
+
+// timingInputBlocker returns a blocking reason when the outputs cannot yield
+// accurate timing, or nil when they can. The messages are operator-facing and
+// stable: tests and runbooks match on them.
+func timingInputBlocker(tts *TTSOutput, post *AudioPostOutput, removeSilence bool) *timingInputBlock {
+	if len(tts.WordBoundaries) == 0 {
+		return &timingInputBlock{
+			code:    FailureTimingUnavailable,
+			message: fmt.Sprintf("%s: TTS produced no word boundaries for required timing", FailureTimingUnavailable),
+		}
+	}
+	if removeSilence && (post == nil || post.DurationUS <= 0) {
+		return &timingInputBlock{
+			code:    FailureTimingIncompatible,
+			message: "timing required + remove_silence: the audio post-processor reported no edit map, so accurate timestamps are impossible",
+		}
+	}
+	return nil
+}
+
+// projectTimingMoments locates the requested moment annotations. The Rust
+// worker owns the word/phrase match: Go sends every unique annotation surface
+// once, with allow_missing so a value the speech never said is skipped, and
+// joins the returned spans back to the queries. A missing aligner fails closed
+// only when moments were requested; no Go matcher is a fallback.
+func (u *ProcessSegmentUseCase) projectTimingMoments(
+	ctx context.Context,
+	cmd *ProcessSegmentCommand,
+	artifact *audio.SpeechTimingArtifact,
+) ([]audio.Moment, error) {
+	if len(cmd.Moments) == 0 {
+		return nil, nil
+	}
+	if u.deps.Enrichment.PhraseAligner == nil {
+		return nil, fmt.Errorf("locate moments: phrase aligner is required")
+	}
+	alignments, err := u.deps.Enrichment.PhraseAligner.AlignPhrases(ctx, audio.PhraseAlignmentRequest{
+		Timing: *artifact, Phrases: momentQueryValues(cmd.Moments), AllowMissing: true, AllOccurrences: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("locate moments: %w", err)
+	}
+	moments, err := audio.ProjectMoments(*artifact, cmd.Moments, alignments)
+	if err != nil {
+		return nil, fmt.Errorf("locate moments: %w", err)
+	}
+	return moments, nil
+}
+
+// timingWordTimeline is the canonical word timeline ready for artifact
+// construction: provider boundaries (optionally remapped onto the cleaned
+// timeline) normalized against the final audio duration.
+type timingWordTimeline struct {
+	Words            []audio.SpeechWordTiming
+	DurationUS       int64
+	DroppedWords     int
+	ClampedOverrunUS int64
+}
+
+// buildTimingWordTimeline converts raw provider boundaries into the canonical
+// timeline. When silence removal emitted an edit map, the words are remapped
+// onto the cleaned timeline and the post-processed duration becomes
+// authoritative; otherwise the TTS duration is used. Trailing words beyond
+// the encoded audio are dropped and a small final-word overrun is clamped (the
+// full rule lives in normalizeFinalWordTiming).
+func buildTimingWordTimeline(tts *TTSOutput, post *AudioPostOutput, removeSilence bool) (timingWordTimeline, error) {
+	words := make([]audio.SpeechWordTiming, 0, len(tts.WordBoundaries))
+	for i, b := range tts.WordBoundaries {
+		words = append(words, audio.SpeechWordTiming{
+			Index:   i,
+			Text:    b.Text,
+			StartUS: b.StartUS,
+			EndUS:   b.EndUS,
+		})
+	}
+	durationUS := tts.Duration.Microseconds()
+	if removeSilence && post != nil && len(post.EditMap) > 0 {
+		remapped, err := audio.RemapSpeechTiming(words, post.EditMap)
+		if err != nil {
+			return timingWordTimeline{}, err
+		}
+		words = remapped
+		durationUS = post.DurationUS
+	}
+	normalized, dropped, clamped := normalizeFinalWordTiming(words, durationUS)
+	return timingWordTimeline{
+		Words:            normalized,
+		DurationUS:       durationUS,
+		DroppedWords:     dropped,
+		ClampedOverrunUS: clamped,
+	}, nil
+}
+
+// buildVoiceoverTimingArtifact binds the canonical artifact to the FINAL audio
+// bytes (the exact delivered file) and to the source text.
+func buildVoiceoverTimingArtifact(
+	cmd *ProcessSegmentCommand,
+	out *VoiceoverItemResult,
+	tts *TTSOutput,
+	uploadPath string,
+	timeline timingWordTimeline,
+) (*audio.SpeechTimingArtifact, error) {
+	audioSHA, _, err := digest.SHA256File(uploadPath)
+	if err != nil {
+		return nil, fmt.Errorf("hash final audio %q: %w", uploadPath, err)
+	}
+	return audio.BuildSpeechTimingArtifact(
+		tts.Provider,
+		string(cmd.Language),
+		out.Voice,
+		digest.SHA256String(cmd.Text),
+		audioSHA,
+		timeline.DurationUS,
+		timeline.Words,
+	)
+}
+
+// renderTimingProjections renders the requested delivery formats from the
+// canonical artifact. timing.json is the SSOT bytes already marshalled by the
+// caller, so it is never re-serialized here.
+func renderTimingProjections(
+	artifact *audio.SpeechTimingArtifact,
+	artifactJSON []byte,
+	policy audio.TimingRequest,
+) (map[audio.TimingFormat][]byte, error) {
+	projections := map[audio.TimingFormat][]byte{}
+	if policy.HasFormat(audio.TimingJSON) {
+		projections[audio.TimingJSON] = artifactJSON
+	}
+	if policy.HasFormat(audio.TimingSRT) {
+		srt, err := audio.RenderSRT(*artifact, audio.CueOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("render SRT: %w", err)
+		}
+		projections[audio.TimingSRT] = srt
+	}
+	if policy.HasFormat(audio.TimingVTT) {
+		vtt, err := audio.RenderVTT(*artifact, audio.CueOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("render VTT: %w", err)
+		}
+		projections[audio.TimingVTT] = vtt
+	}
+	return projections, nil
+}
+
+// timingLocalFiles records the durable local projections. timing.json is
+// ALWAYS persisted; SRT/VTT only when the policy requested those formats.
+type timingLocalFiles struct {
+	JSONPath string
+	SRTPath  string
+	VTTPath  string
+	Paths    map[audio.TimingFormat]string
+}
+
+// persistTimingProjections writes the certified projections next to the
+// audio. These files are the durable SSOT (cross-run cache, retry, overlay
+// timing): they are never deleted and never rebuilt from a remote link.
+func persistTimingProjections(
+	dir, base string,
+	artifactJSON []byte,
+	projections map[audio.TimingFormat][]byte,
+) (timingLocalFiles, error) {
+	local := timingLocalFiles{Paths: make(map[audio.TimingFormat]string, len(projections))}
+	timingJSONPath := filepath.Join(dir, timingProjectionFilename(base, audio.TimingJSON))
+	if err := os.WriteFile(timingJSONPath, artifactJSON, 0o644); err != nil {
+		return timingLocalFiles{}, fmt.Errorf("write timing artifact %s: %w", timingJSONPath, err)
+	}
+	local.JSONPath = timingJSONPath
+	// Paths mirrors the REQUESTED delivery set: the JSON SSOT is always
+	// written locally, but it is only uploaded when the policy requested it.
+	if _, requested := projections[audio.TimingJSON]; requested {
+		local.Paths[audio.TimingJSON] = timingJSONPath
+	}
+	for format, data := range projections {
+		if format == audio.TimingJSON {
+			continue // SSOT JSON already persisted above
+		}
+		filename := timingProjectionFilename(base, format)
+		localPath := filepath.Join(dir, filename)
+		if err := os.WriteFile(localPath, data, 0o644); err != nil {
+			return timingLocalFiles{}, fmt.Errorf("write timing projection %s: %w", filename, err)
+		}
+		local.Paths[format] = localPath
+		switch format {
+		case audio.TimingSRT:
+			local.SRTPath = localPath
+		case audio.TimingVTT:
+			local.VTTPath = localPath
+		}
+	}
+	return local, nil
+}
+
+// timingPublishedLinks carries the verified remote links, one per delivered
+// projection. Empty means the format was not requested or not delivered.
+type timingPublishedLinks struct {
+	JSON string
+	SRT  string
+	VTT  string
+}
+
+// publishTimingProjections uploads the persisted projections ONLY when a
+// Publisher is wired. JSON, SRT and VTT are independent Drive writes, so they
+// run concurrently (bounded at 3) and the first failure wins. The video
+// pipeline wires no publisher: local artifacts are the product.
+func (u *ProcessSegmentUseCase) publishTimingProjections(
+	ctx context.Context,
+	cmd *ProcessSegmentCommand,
+	base string,
+	local timingLocalFiles,
+) (timingPublishedLinks, error) {
+	if u.deps.Publisher == nil || len(local.Paths) == 0 {
+		return timingPublishedLinks{}, nil
+	}
+	const timingPublishConcurrency = 3
+	type timingPubResult struct {
+		format audio.TimingFormat
+		fileID string
+	}
+	timingPubSem := make(chan struct{}, timingPublishConcurrency)
+	var timingPubWg sync.WaitGroup
+	timingPubResults := make([]timingPubResult, 0, len(local.Paths))
+	var timingPubMu sync.Mutex
+	var timingPubFirstErr error
+	policyFingerprint := idempotencyPolicyFingerprint(
+		u.deps.TTSProvider, cmd.Language, cmd.Timing, cmd.RemoveSilence,
+		voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy),
+	)
+
+	for format := range local.Paths {
+		format := format
+		timingPubWg.Add(1)
+		go func() {
+			defer timingPubWg.Done()
+			timingPubSem <- struct{}{}
+			defer func() { <-timingPubSem }()
+
+			filename := timingProjectionFilename(base, format)
+			fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
+				ID:             cmd.ID + "-timing-" + string(format),
+				LocalPath:      local.Paths[format],
+				Filename:       filename,
+				FolderID:       cmd.Dest.FolderID,
+				Project:        cmd.Project,
+				Language:       string(cmd.Language),
+				IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, policyFingerprint, string(format)),
+			})
+			if err != nil {
+				timingPubMu.Lock()
+				if timingPubFirstErr == nil {
+					timingPubFirstErr = fmt.Errorf("publish timing projection %s: %w", filename, err)
+				}
+				timingPubMu.Unlock()
+				return
+			}
+			timingPubMu.Lock()
+			timingPubResults = append(timingPubResults, timingPubResult{format: format, fileID: fileID})
+			timingPubMu.Unlock()
+		}()
+	}
+	timingPubWg.Wait()
+
+	if timingPubFirstErr != nil {
+		return timingPublishedLinks{}, timingPubFirstErr
+	}
+
+	var links timingPublishedLinks
+	for _, r := range timingPubResults {
+		switch r.format {
+		case audio.TimingJSON:
+			links.JSON = CanonicalDriveWebURL(r.fileID)
+		case audio.TimingSRT:
+			links.SRT = CanonicalDriveWebURL(r.fileID)
+		case audio.TimingVTT:
+			links.VTT = CanonicalDriveWebURL(r.fileID)
+		}
+	}
+	return links, nil
 }
 
 // momentQueryValues returns the unique, non-empty annotation surfaces to send

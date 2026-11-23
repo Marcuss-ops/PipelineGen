@@ -302,10 +302,14 @@ func (r *Router) Setup() *gin.Engine {
 	// /metrics — fail-closed in release mode (PR-METRICS-FAILCLOSED).
 	r.registerMetricsRoute(engine, log)
 
-	// Serve static assets (images, etc.)
+	// Serve static assets (images, etc.) behind the SAME auth guard as /api.
+	// These mounts used to be public: any file under DataDir/assets or
+	// DownloadDir was reachable without a key. They carry media bytes, so they
+	// must not be an unauthenticated bypass of the M2M media surface.
 	assetsDir := filepath.Join(r.cfg.DataDir, "assets")
-	engine.Static("/assets", assetsDir)
-	engine.Static("/media/google-accounting", r.cfg.DownloadDir)
+	staticFiles := engine.Group("", middleware.Auth(r.cfg.Auth, r.cfg.Log))
+	staticFiles.Static("/assets", assetsDir)
+	staticFiles.Static("/media/google-accounting", r.cfg.DownloadDir)
 
 	// Public /api surface (admin auth + protected module registry).
 	// Returns the group so /api/capabilities can mount AFTER the

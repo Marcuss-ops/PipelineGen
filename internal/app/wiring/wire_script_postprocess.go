@@ -31,7 +31,7 @@ import (
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
-	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/vidrush"
+	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/vidrush"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
@@ -44,13 +44,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 
-	"go.uber.org/zap"
-)
-import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"go.uber.org/zap"
+
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	"github.com/prometheus/client_golang/prometheus"
 )

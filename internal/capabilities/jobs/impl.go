@@ -141,10 +141,25 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 	// semantics. The client_id is the non-secret projection of the
 	// Bearer VELOX_M2M_SECRET; the plaintext token is never stored.
 	var clientID string
+	var m2mClient *mwm2m.M2MClient
 	if raw, exists := c.Get("m2m_client"); exists && raw != nil {
-		if m2mClient, ok := raw.(*mwm2m.M2MClient); ok && m2mClient != nil {
-			clientID = m2mClient.ClientID
+		if resolved, ok := raw.(*mwm2m.M2MClient); ok && resolved != nil {
+			m2mClient = resolved
+			clientID = resolved.ClientID
 		}
+	}
+	if decision := checkM2MQuota(m2mClient, dto.Payload); decision != nil {
+		c.Header("Retry-After", "60")
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"ok":        false,
+			"error":     "m2m_quota_exceeded",
+			"message":   decision.Error(),
+			"quota":     decision.Quota,
+			"limit":     decision.Limit,
+			"used":      decision.Used,
+			"requested": decision.Request,
+		})
+		return
 	}
 
 	j, err := h.service.Enqueue(c.Request.Context(), h.domainEnqueueRequest(dto, clientID))

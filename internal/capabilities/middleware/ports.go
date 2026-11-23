@@ -33,7 +33,10 @@
 // consumer sites land as additional methods, one PR at a time.
 package middleware
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // AuthSecurityPort is the canonical narrow surface of *config.Config's
 // Security substruct used by the auth/worker-auth/admin-token
@@ -152,6 +155,14 @@ type M2MClient struct {
 	Enabled        bool
 	RateLimitRPS   float64
 	RateLimitBurst int
+
+	// QuotaMaxScenes / QuotaMaxTotalSecs are the operator-configured caps from
+	// m2m_clients. QuotaUsedScenes / QuotaUsedTotalSecs are the live usage
+	// derived from the jobs table at lookup time. Zero max means unlimited.
+	QuotaMaxScenes     int64
+	QuotaMaxTotalSecs  int64
+	QuotaUsedScenes    int64
+	QuotaUsedTotalSecs int64
 }
 
 // HasScope reports whether the client was granted the given scope.
@@ -172,4 +183,48 @@ func (c *M2MClient) HasScope(scope string) bool {
 	return false
 }
 
-// Compile-time assertion lives at internal/platform/httpserver/middleware/adapters_assertions.go (round-2 relocation to keep ports.go cycle-free).
+// Admin key store sentinels. Declared on the port surface so the HTTP layer
+// can map them to 409/404 without importing the SQLite adapter.
+var (
+	ErrM2MClientExists   = errors.New("m2m client already exists")
+	ErrM2MClientNotFound = errors.New("m2m client not found")
+)
+
+// M2MKeyCreateParams is the admin key-minting input. It mirrors the
+// m2m_clients columns the runtime reads so provisioning through HTTP and
+// provisioning through provision-key.sh produce the same row shape.
+type M2MKeyCreateParams struct {
+	ClientID          string
+	Description       string
+	Scopes            []string
+	RateLimitRPS      float64
+	RateLimitBurst    int
+	QuotaMaxScenes    int64
+	QuotaMaxTotalSecs int64
+}
+
+// M2MKeyRecord is the non-secret projection of a client row. The secret hash
+// is deliberately absent: an admin listing must never expose credential
+// material.
+type M2MKeyRecord struct {
+	ClientID          string   `json:"client_id"`
+	Description       string   `json:"description"`
+	Scopes            []string `json:"scopes"`
+	Enabled           bool     `json:"enabled"`
+	RateLimitRPS      float64  `json:"rate_limit_rps"`
+	RateLimitBurst    int      `json:"rate_limit_burst"`
+	QuotaMaxScenes    int64    `json:"quota_max_scenes"`
+	QuotaMaxTotalSecs int64    `json:"quota_max_total_secs"`
+	CreatedAt         string   `json:"created_at,omitempty"`
+	LastUsedAt        string   `json:"last_used_at,omitempty"`
+}
+
+// M2MKeyAdminPort is the optional admin half of the M2M store. It is separate
+// from M2MSecurityPort so the middleware/auth contract stays read-only and
+// every fake keeps compiling. POST/GET/DELETE /api/v1/admin/m2m/keys require
+// the concrete store to implement it.
+type M2MKeyAdminPort interface {
+	CreateClient(ctx context.Context, params M2MKeyCreateParams) (*M2MClient, string, error)
+	ListClients(ctx context.Context) ([]M2MKeyRecord, error)
+	RevokeClient(ctx context.Context, clientID string) error
+}

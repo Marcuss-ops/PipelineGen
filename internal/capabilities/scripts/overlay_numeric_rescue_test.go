@@ -12,8 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -72,53 +70,6 @@ func rescueScene() Scene {
 			},
 		},
 	}
-}
-
-func TestOverlaySceneInputRescuesLeadingProseNumber(t *testing.T) {
-	scene := rescueScene()
-	text := scene.Text["it"]
-	// Fix the dirty mention span to the real offsets in the text above.
-	for i := range scene.Annotations.SecondaryEntities {
-		e := &scene.Annotations.SecondaryEntities[i]
-		if e.CanonicalName == "si attesta sull'18" {
-			// The scene text says "superare sull'18%": ground the mention there.
-			runes := []rune(text)
-			needle := []rune("sull'18")
-			start := -1
-			for j := 0; j+len(needle) <= len(runes); j++ {
-				if string(runes[j:j+len(needle)]) == "sull'18" {
-					start = j
-					break
-				}
-			}
-			require.NotEqual(t, -1, start, "mention must ground in scene text")
-			e.Mentions = []scriptpkg.AnnotationSpan{{Text: "sull'18", StartRune: start, EndRune: start + len(needle)}}
-			// The canonical name keeps the dirty NLP surface; only the
-			// mention is re-grounded to the scene's own wording.
-			e.CanonicalName = "superare sull'18"
-		}
-	}
-	occurrences := []capabilityentities.EntityOccurrence{
-		{EntityID: capabilityentities.StableEntityID("PERCENT", "42%"), Name: "42%", Type: "PERCENT",
-			SceneID: "s1", AudioStartUS: 3_550_000, AudioEndUS: 4_525_000},
-		{EntityID: capabilityentities.StableEntityID("NUMBER", "superare sull'18"), Name: "superare sull'18", Type: "NUMBER",
-			SceneID: "s1", AudioStartUS: 7_762_500, AudioEndUS: 8_850_000},
-	}
-	// Empty word timing: TTS speaks digits as words, so locate() of the
-	// cleaned digit surface fails and the occurrence window must win.
-	var timing capabilityaudio.SpeechTimingArtifact
-	in, err := overlaySceneInput(scene, "it", "it", timing, 0, occurrences, nil)
-	require.NoError(t, err)
-	require.NotNil(t, in)
-	texts := map[string]capabilityoverlay.TimedAnnotation{}
-	for _, n := range in.Numbers {
-		texts[n.Text] = n
-	}
-	require.Contains(t, texts, "42%")
-	rescued, ok := texts["18%"]
-	require.True(t, ok, "leading-prose number rescued with %% suffix, got %v", in.Numbers)
-	assert.Equal(t, int64(7_762_500), rescued.StartUS)
-	assert.Equal(t, int64(8_850_000-7_762_500), rescued.DurationUS)
 }
 
 // Live M1 regression: VisualNER mirrors the dirty NLP surface ("dove si

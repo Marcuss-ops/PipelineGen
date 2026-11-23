@@ -84,6 +84,7 @@ func operatorItemProjection() string {
     COALESCE(loc.has_local, 0) AS has_local_file,
     COALESCE(loc.has_drive, 0) AS has_drive_file,
     CASE WHEN COALESCE(emb.n, 0) > 0 THEN 1 ELSE 0 END AS has_embedding,
+    COALESCE(sp.has_speech, 0) AS has_speech,
     COALESCE(o.pending_events, 0) AS pending_outbox_events,
     ` + operatorJSONText("m.metadata_json", "last_index_error") + ` AS last_error,
     m.created_at,
@@ -115,8 +116,43 @@ embedding_flags AS (
     SELECT asset_id, COUNT(*) AS n, MIN(model_id) AS model_id
     FROM media_embeddings
     GROUP BY asset_id
+),
+speech_flags AS (
+    -- A READY current transcript is the speech-to-text coverage flag. The
+    -- column existed as a list projection before this CTE, so a remote
+    -- incremental sync could not ask "which assets still need a transcript".
+    SELECT asset_id, MAX(CASE WHEN status = 'READY' THEN 1 ELSE 0 END) AS has_speech
+    FROM asset_text_tracks
+    WHERE text_kind = 'transcript' AND is_current = 1
+    GROUP BY asset_id
 )
 `
+
+// embeddingPresenceSQL turns the tri-state HasEmbedding filter into a
+// predicate on the embedding_flags CTE. The CTE is always joined by the
+// caller, so the alias is stable.
+func embeddingPresenceSQL(alias string, want bool) string {
+	if want {
+		return "COALESCE(" + alias + ".n, 0) > 0"
+	}
+	return "COALESCE(" + alias + ".n, 0) = 0"
+}
+
+// driveFilePresenceSQL is the derived loc_flags counterpart.
+func driveFilePresenceSQL(want bool) string {
+	if want {
+		return "COALESCE(loc.has_drive, 0) > 0"
+	}
+	return "COALESCE(loc.has_drive, 0) = 0"
+}
+
+// speechPresenceSQL filters on a current READY transcript.
+func speechPresenceSQL(want bool) string {
+	if want {
+		return "COALESCE(sp.has_speech, 0) > 0"
+	}
+	return "COALESCE(sp.has_speech, 0) = 0"
+}
 
 // list returns a page of AssetInventoryItem projections matching the query.
 //
@@ -163,6 +199,18 @@ func (r *OperatorInventoryReader) list(ctx context.Context, query operator.Asset
 	if query.IndexState != "" {
 		conds = append(conds, "m.index_state = "+bind(query.IndexState))
 	}
+	if query.UpdatedAfter != nil {
+		conds = append(conds, TimestampExpr("m.updated_at")+" >= "+bind(*query.UpdatedAfter))
+	}
+	if query.HasEmbedding != nil {
+		conds = append(conds, embeddingPresenceSQL("emb", *query.HasEmbedding))
+	}
+	if query.HasDriveFile != nil {
+		conds = append(conds, driveFilePresenceSQL(*query.HasDriveFile))
+	}
+	if query.HasSpeech != nil {
+		conds = append(conds, speechPresenceSQL(*query.HasSpeech))
+	}
 
 	searchCond := "TRUE"
 	if strings.TrimSpace(query.Search) != "" {
@@ -189,8 +237,9 @@ FROM media_assets m
 LEFT JOIN loc_flags loc ON loc.asset_id = m.id
 LEFT JOIN outbox_counts o ON o.aggregate_id = m.id
 LEFT JOIN embedding_flags emb ON emb.asset_id = m.id
+LEFT JOIN speech_flags sp ON sp.asset_id = m.id
 WHERE ` + where + `
-ORDER BY ` + tsExpr("m.updated_at") + ` DESC, m.id DESC
+ORDER BY ` + TimestampExpr("m.updated_at") + ` DESC, m.id DESC
 LIMIT ` + fmt.Sprintf("$%d OFFSET $%d", len(pageArgs)-1, len(pageArgs))
 
 	rows, err := r.db.QueryContext(ctx, q, pageArgs...)
@@ -227,6 +276,8 @@ func (r *OperatorInventoryReader) countList(ctx context.Context, where string, a
 FROM media_assets m
 LEFT JOIN loc_flags loc ON loc.asset_id = m.id
 LEFT JOIN outbox_counts o ON o.aggregate_id = m.id
+LEFT JOIN embedding_flags emb ON emb.asset_id = m.id
+LEFT JOIN speech_flags sp ON sp.asset_id = m.id
 WHERE ` + where
 	var total int64
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
@@ -244,7 +295,7 @@ func scanOperatorItems(rows *sql.Rows) ([]*operator.AssetInventoryItem, error) {
 		item := &operator.AssetInventoryItem{}
 		var lifecycleStr, assetStateStr, indexStateStr string
 		var indexedHash, embeddingVersion, lastError sql.NullString
-		var hasLocal, hasDrive, hasEmbedding int
+		var hasLocal, hasDrive, hasEmbedding, hasSpeech int
 		var createdAt, updatedAt string
 
 		if err := rows.Scan(
@@ -265,6 +316,7 @@ func scanOperatorItems(rows *sql.Rows) ([]*operator.AssetInventoryItem, error) {
 			&hasLocal,
 			&hasDrive,
 			&hasEmbedding,
+			&hasSpeech,
 			&item.PendingOutboxEvents,
 			&lastError,
 			&createdAt,
@@ -281,6 +333,7 @@ func scanOperatorItems(rows *sql.Rows) ([]*operator.AssetInventoryItem, error) {
 		item.HasLocalFile = hasLocal == 1
 		item.HasDriveFile = hasDrive == 1
 		item.HasEmbedding = hasEmbedding == 1
+		item.HasSpeech = hasSpeech == 1
 		item.LastError = lastError.String
 
 		item.IndexHealth = operator.ResolveIndexHealth(operator.IndexHealthInput{
@@ -400,7 +453,47 @@ func (r *OperatorInventoryReader) listTextTracks(ctx context.Context, assetID st
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if err := r.attachTextCues(ctx, assetID, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// attachTextCues fills TextTrackProjection.Cues from
+// asset_text_track_segments. One bounded query for all current tracks keeps
+// the detail arm at two round trips instead of one per track.
+func (r *OperatorInventoryReader) attachTextCues(ctx context.Context, assetID string, tracks []operator.TextTrackProjection) error {
+	if len(tracks) == 0 {
+		return nil
+	}
+	const q = `SELECT s.track_id, s.sequence_no, s.start_ms, s.end_ms, s.text
+	FROM asset_text_track_segments s
+	JOIN asset_text_tracks t ON t.id = s.track_id
+	WHERE t.asset_id = $1 AND t.is_current = 1
+	ORDER BY s.track_id, s.sequence_no`
+
+	rows, err := r.db.QueryContext(ctx, q, assetID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	byTrack := make(map[int64][]operator.TextCueProjection)
+	for rows.Next() {
+		var trackID int64
+		var cue operator.TextCueProjection
+		if err := rows.Scan(&trackID, &cue.Sequence, &cue.StartMS, &cue.EndMS, &cue.Text); err != nil {
+			return err
+		}
+		byTrack[trackID] = append(byTrack[trackID], cue)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range tracks {
+		tracks[i].Cues = byTrack[tracks[i].ID]
+	}
+	return nil
 }
 
 // listVectors returns the vector-family identity of every embedding attached
@@ -445,6 +538,7 @@ FROM media_assets m
 LEFT JOIN loc_flags loc ON loc.asset_id = m.id
 LEFT JOIN outbox_counts o ON o.aggregate_id = m.id
 LEFT JOIN embedding_flags emb ON emb.asset_id = m.id
+LEFT JOIN speech_flags sp ON sp.asset_id = m.id
 WHERE m.id = $1 AND m.lifecycle_state <> 'DELETED'`
 
 	rows, err := r.db.QueryContext(ctx, q, assetID)
@@ -556,7 +650,7 @@ func (r *OperatorInventoryReader) listOutboxEvents(ctx context.Context, assetID 
 	q := `SELECT event_type, aggregate_id, event_key, status, attempt_count, last_error, created_at, updated_at
 	FROM outbox_events
 	WHERE aggregate_id = $1
-	ORDER BY ` + tsExpr("created_at") + ` DESC
+	ORDER BY ` + TimestampExpr("created_at") + ` DESC
 	LIMIT 50`
 	rows, err := r.db.QueryContext(ctx, q, assetID)
 	if err != nil {

@@ -1,9 +1,15 @@
 package adapters
 
 import (
+	"context"
+	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
+	"go.uber.org/zap"
+
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -248,4 +254,158 @@ func safeAnnotationID(value string) string {
 		}
 	}
 	return strings.Trim(b.String(), "-")
+}
+
+// semanticProductionProvider is the provenance stamped on assets retrieved by
+// the semantic production plan. It is distinct from the per-segment
+// `internet_images` path so a report can prove which queries were executed by
+// the planner.
+const semanticProductionProvider = "semantic_production_plan"
+
+// SemanticAssetSearch adapts the canonical InternetImageSearcher to the
+// semantic batch planner's narrow port. It performs no search of its own and
+// owns no cache: every call is the provider path the rest of the pipeline uses,
+// so the measured hit rate and latency describe the real retrieval surface.
+type SemanticAssetSearch struct {
+	searcher InternetImageSearcher
+	scorer   SemanticCandidateScorer
+}
+
+// NewSemanticAssetSearch builds the adapter. A nil searcher yields a nil
+// adapter, which the wiring treats as "planner unavailable" instead of
+// registering a port that can only fail.
+func NewSemanticAssetSearch(searcher InternetImageSearcher, scorers ...SemanticCandidateScorer) *SemanticAssetSearch {
+	if searcher == nil {
+		return nil
+	}
+	var scorer SemanticCandidateScorer
+	if len(scorers) > 0 {
+		scorer = scorers[0]
+	}
+	return &SemanticAssetSearch{searcher: searcher, scorer: scorer}
+}
+
+var _ scriptgen.SemanticAssetSearchPort = (*SemanticAssetSearch)(nil)
+
+// MaxSemanticVerificationCandidates bounds how many provider candidates one
+// semantic query sends to the pixel/VLM verifier. Provider recall returns
+// 16–24 images per query; verifying all of them was the dominant cost of the
+// 10 s batch (the ANN lookup is ~1.7 ms). The provider order is the ranking,
+// and a candidate without an accepted verdict can never become a hit, so the
+// tail only spends budget without changing the answer.
+const MaxSemanticVerificationCandidates = 8
+
+// capSemanticVerificationCandidates keeps the first limit candidates, which
+// are the ones the provider ranked highest. It never reorders the input and
+// returns the original slice when no cap is needed.
+func capSemanticVerificationCandidates(in []scriptpkg.SegmentAssetCandidate, limit int) []scriptpkg.SegmentAssetCandidate {
+	if limit <= 0 || len(in) <= limit {
+		return in
+	}
+	return in[:limit]
+}
+
+// Search executes one exact-source query.
+func (s *SemanticAssetSearch) Search(ctx context.Context, req scriptgen.SemanticAssetSearchRequest) (scriptgen.SemanticAssetSearchResponse, error) {
+	if s == nil || s.searcher == nil {
+		return scriptgen.SemanticAssetSearchResponse{}, fmt.Errorf("semantic asset search: searcher is not configured")
+	}
+	entity := strings.TrimSpace(req.Entity)
+	if entity == "" {
+		entity = strings.TrimSpace(req.Query)
+	}
+	recallStarted := time.Now()
+	candidates, err := s.searcher.SearchImages(ctx, InternetImageSearchRequest{
+		SegmentID:    strings.TrimSpace(req.CandidateID),
+		Query:        req.Query,
+		Entity:       entity,
+		QueryClass:   req.QueryClass,
+		QueryOrigin:  req.QueryOrigin,
+		TemplateID:   req.TemplateID,
+		Illustrative: req.Illustrative,
+		Language:     req.Language,
+		Limit:        req.Limit,
+		Provider:     semanticProductionProvider,
+	})
+	if err != nil {
+		return scriptgen.SemanticAssetSearchResponse{}, err
+	}
+	recallMS := time.Since(recallStarted).Milliseconds()
+	candidates = capSemanticVerificationCandidates(candidates, MaxSemanticVerificationCandidates)
+	for i := range candidates {
+		if candidates[i].RetrievalProvider == "" && strings.TrimSpace(candidates[i].Provider) != "" &&
+			!strings.EqualFold(strings.TrimSpace(candidates[i].Provider), scriptpkg.VidRushProviderInternetImages) {
+			candidates[i].RetrievalProvider = strings.TrimSpace(candidates[i].Provider)
+		}
+		candidates[i].Provider = scriptpkg.VidRushProviderInternetImages
+	}
+	class := strings.TrimSpace(req.QueryClass)
+	if class == "" {
+		class = "generic"
+	}
+	verifyStarted := time.Now()
+	candidates, err = resolveEntityVisualCandidates(ctx, s.scorer, class, req.SceneContext, candidates)
+	if err != nil {
+		return scriptgen.SemanticAssetSearchResponse{}, fmt.Errorf("semantic candidate verification: %w", err)
+	}
+	// Split recall from verification: the batch previously exposed only
+	// total_ms, so a 10 s query could not be attributed to provider recall or
+	// to the pixel/VLM verdict. Both stages are now visible per query and are
+	// carried to the batch report for aggregation.
+	verifyMS := time.Since(verifyStarted).Milliseconds()
+	zap.L().Info("semantic asset search timing",
+		zap.String("query", req.Query),
+		zap.String("class", class),
+		zap.Int("candidates", len(candidates)),
+		zap.Int("verify_cap", MaxSemanticVerificationCandidates),
+		zap.Int64("recall_ms", recallMS),
+		zap.Int64("verify_ms", verifyMS))
+	response := scriptgen.SemanticAssetSearchResponse{
+		Hits:     make([]scriptgen.SemanticAssetHit, 0, len(candidates)),
+		Provider: semanticProductionProvider,
+		RecallMS: recallMS,
+		VerifyMS: verifyMS,
+	}
+	for _, candidate := range candidates {
+		if isPlaceholderImageReference(candidate.SourceURL, candidate.MIMEType) ||
+			isPlaceholderImageReference(candidate.PreviewURL, candidate.MIMEType) {
+			continue
+		}
+		assetID := strings.TrimSpace(candidate.AssetID)
+		if assetID == "" {
+			assetID = strings.TrimSpace(candidate.ContentSHA256)
+		}
+		if assetID == "" {
+			assetID = strings.TrimSpace(candidate.PreviewURL)
+		}
+		url := strings.TrimSpace(candidate.PreviewURL)
+		if url == "" {
+			url = strings.TrimSpace(candidate.SourceURL)
+		}
+		if assetID == "" && url == "" {
+			continue
+		}
+		// The upstream provider is the provenance the plan cache invalidates
+		// by. When a cascade returns several providers, the answer is attributed
+		// to the first one that produced a hit, not to whichever candidate
+		// happened to be appended last.
+		provider := strings.TrimSpace(candidate.RetrievalProvider)
+		if provider == "" {
+			provider = strings.TrimSpace(candidate.Provider)
+		}
+		if provider != "" && response.Provider == semanticProductionProvider {
+			response.Provider = provider
+		}
+		response.Hits = append(response.Hits, scriptgen.SemanticAssetHit{
+			AssetID: assetID, URL: url, SHA256: strings.TrimSpace(candidate.ContentSHA256),
+			DriveLink: strings.TrimSpace(candidate.DriveLink), MediaType: strings.TrimSpace(candidate.MIMEType),
+			Provider: provider, Entity: strings.TrimSpace(candidate.Entity),
+			Width: candidate.Width, Height: candidate.Height,
+			Score: candidate.Score, RelevanceScore: candidate.RelevanceScore,
+			SemanticScore: candidate.SemanticScore, TechnicalQualityScore: candidate.TechnicalQualityScore,
+			SemanticStatus:  strings.TrimSpace(candidate.SemanticStatus),
+			VerifierVersion: strings.TrimSpace(candidate.VerifierVersion),
+		})
+	}
+	return response, nil
 }

@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -23,7 +23,7 @@ import (
 // backfill's narrow sourceURLMetadataSource port.
 //
 // The production read moved to the PostgreSQL media SSOT
-// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// (pgbackfill.BackfillReader) because media_assets is PostgreSQL-owned and the
 // operational mirror holds no committed media rows. These tests keep pinning
 // the SELECTION rules — image rows excluded, existing keys never overwritten,
 // idempotence — against a deterministic in-memory fixture, so the adapter
@@ -40,7 +40,7 @@ func (s sqliteSourceURLMetadataSource) CountSourceURLMetadataCandidates(ctx cont
 	return matched, err
 }
 
-func (s sqliteSourceURLMetadataSource) ListSourceURLMetadataCandidates(ctx context.Context, limit int) ([]pgmedia.SourceURLMetadataCandidate, error) {
+func (s sqliteSourceURLMetadataSource) ListSourceURLMetadataCandidates(ctx context.Context, limit int) ([]pgbackfill.SourceURLMetadataCandidate, error) {
 	query := `SELECT id, url FROM media_assets WHERE ` + sqliteSourceURLMetadataPredicate + ` ORDER BY id`
 	var args []any
 	if limit > 0 {
@@ -52,9 +52,9 @@ func (s sqliteSourceURLMetadataSource) ListSourceURLMetadataCandidates(ctx conte
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []pgmedia.SourceURLMetadataCandidate
+	var out []pgbackfill.SourceURLMetadataCandidate
 	for rows.Next() {
-		var rec pgmedia.SourceURLMetadataCandidate
+		var rec pgbackfill.SourceURLMetadataCandidate
 		if err := rows.Scan(&rec.AssetID, &rec.SourceURL); err != nil {
 			return nil, err
 		}

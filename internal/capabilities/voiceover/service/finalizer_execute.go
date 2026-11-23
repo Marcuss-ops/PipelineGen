@@ -56,18 +56,10 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// verifier warn-level. Hard fail here, surface typed message,
 	// let the caller (Service.finalizeStage) translate to
 	// BatchItem.Status=StatusFailed.
-	if f.deps.LifecycleService == nil {
-		return nil, fmt.Errorf(errRequiredStepNotWired+
-			" (LifecycleService / UpsertVoiceoverProjectionTx missing at composition)",
-			requiredStepMediaAssetsProjection)
-	}
-	if f.deps.Outbox == nil {
-		return nil, fmt.Errorf(errRequiredStepNotWired+
-			" (Outbox / TxOutboxEnqueuer missing at composition; BOTH index + cleanup outbox steps fatal)",
-			requiredStepIndexOutbox)
+	if err := f.validateRequiredWiring(); err != nil {
+		return nil, err
 	}
 
-	var optional []string
 	var required []string
 
 	// ── Step 0: FASE 3 Idempotency Gate (July 2026) ──
@@ -90,59 +82,21 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	//   - FindByIdempotencyKeyTx returns non-ErrNoRows error →
 	//     fail-closed (idempotency-gate semantics must be validated
 	//     BEFORE the dedupe gate runs).
-	if cmd.IdempotencyKey != "" {
-		matchedID, err := f.deps.VoiceoverRepo.FindByIdempotencyKeyTx(ctx, tx, cmd.IdempotencyKey)
-		if err != nil && err != sql.ErrNoRows {
-			return nil, fmt.Errorf("voiceoverFinalizer: idempotency lookup: %w", err)
-		}
-		if matchedID != "" {
-			f.deps.Logger.Info("voiceoverFinalizer: FASE 3 idempotency reuse — matched prior row with same idempotency_key, skipping all 6 steps",
-				zap.String("item_id", cmd.ID),
-				zap.String("matched_id", matchedID),
-				zap.String("idempotency_key", cmd.IdempotencyKey))
-			return &FinalizeResult{
-				ID:            matchedID,
-				Reused:        true,
-				OptionalSteps: []string{"idempotency: reuse existing row (FASE 3)"},
-			}, nil
-		}
+	if res, reused, err := f.reuseByIdempotencyKey(ctx, tx, cmd); err != nil {
+		return nil, err
+	} else if reused {
+		return res, nil
 	}
 
 	// ── Step 1: Dedupe Gate (PR-VO-B3) ──
 	// Optional — guard-skipped when DriveFileID is empty. Early-
 	// return on dedupe-reuse hit (Reused=true) skips Steps 2-6.
-	if cmd.DriveFileID != "" {
-		// Audit P0 #3 (July 2026): a SQLite transient failure
-		// during the dedupe lookup MUST propagate. A swallowed err
-		// here would silently degrade to count==0 ⇒ DedupeContinue,
-		// letting the finalizer proceed with DeleteByIDTx + InsertTx
-		// + UpsertVoiceoverProjectionTx + EnqueueIndexEvent +
-		// EnqueueCleanupEvent even though the dedupe gate's
-		// semantics were never validated. The caller would then
-		// observe a successful StatusCompleted against a partially-
-		// verified guarantee. We fail-closed here.
-		matchedID, count, err := f.deps.VoiceoverRepo.CountByDriveFileIDTx(ctx, tx, cmd.ID, cmd.DriveFileID)
-		if err != nil {
-			return nil, fmt.Errorf("voiceoverFinalizer: dedupe lookup: %w", err)
-		}
-		switch DecideDedupe(count) {
-		case DedupeConflict:
-			return nil, fmt.Errorf("voiceoverFinalizer: PR-VO-B3 ambiguous dedupe (count=%d, dedupe_id=%s) — refusing to insert duplicate row against established DriveFileID",
-				count, matchedID)
-		case DedupeReuse:
-			f.deps.Logger.Info("voiceoverFinalizer: dedupe reuse — matched single prior row, skipping insert",
-				zap.String("item_id", cmd.ID),
-				zap.String("dedupe_id", matchedID))
-			return &FinalizeResult{
-				ID:            matchedID,
-				Reused:        true,
-				OptionalSteps: []string{"dedupe: reuse existing row"},
-			}, nil
-		case DedupeContinue:
-			// Proceed with insert.
-		}
-	} else {
-		optional = append(optional, "dedupe: empty DriveFileID")
+	res, optional, reused, err := f.reuseByDedupe(ctx, tx, cmd)
+	if err != nil {
+		return nil, err
+	}
+	if reused {
+		return res, nil
 	}
 
 	// ── Step 2: Atomic Swap — DELETE old row ──
@@ -156,7 +110,145 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	now := time.Now().UTC().Format(time.RFC3339)
 	textPreview := voiceoverTextPreview(cmd.Text)
 
-	rec := &persistence.VoiceoverRecord{
+	rec := voiceoverRecordFromCommand(cmd, textPreview, now)
+	if err := f.deps.VoiceoverRepo.InsertTx(ctx, tx, rec); err != nil {
+		return nil, fmt.Errorf("voiceoverFinalizer: InsertTx: %w", err)
+	}
+
+	// ── Step 4 + Step 5: media_assets projection + asset.index.requested outbox ──
+	// PR-ASSET-COMMITTER-COMMITASSET (July 2026): when Committer is
+	// wired, BOTH writes (media_assets row + asset.index.requested
+	// outbox event) are produced by the canonical committer. For a same-store
+	// composition CommitTx keeps them inside the caller's transaction. For the
+	// production split-store composition (SQLite voiceovers + PostgreSQL
+	// media_assets), CommitAndIndex opens the PostgreSQL transaction itself;
+	// a distributed transaction across the two databases is not available, so
+	// each side remains retry-safe and idempotent rather than sending a foreign
+	// *sql.Tx across the database boundary.
+	//
+	// godlike/06 SSOT: when Committer is wired, it is the SOLE canonical
+	// producer of both writes; the dispatcher is the SOLE canonical
+	// consumer of the outbox event.
+	//
+	// The canonical AssetCommitter owns the media_assets write even when the
+	// bytes are not materialized yet. Empty ContentSHA256 means REGISTERED-only:
+	// the committer persists the asset and deliberately suppresses the index event.
+	// The LifecycleService branch remains only as a migration compatibility
+	// seam for old compositions where the committer is not wired.
+	stepRequired, err := f.projectVoiceoverAsset(ctx, tx, cmd, textPreview)
+	if err != nil {
+		return nil, err
+	}
+	required = append(required, stepRequired...)
+
+	// ── Step 6: Outbox — voiceover.cleanup.requested (REQUIRED) ──
+	// Extracted to finalizer_cleanup_outbox.go (PR-VO-FINALIZER-STEP6-EXTRACT,
+	// P0 #3 in VO-DECOMPOSITION-2026-07-04, deadline 2026-08-01).
+	// The P0.7 Step 10/12 atomic swap-and-cleanup triplo contract
+	// (OldDriveFileID + OldLocalPath + OldCleanedPath) is preserved
+	// VERBATIM inside the extracted function. The fail-fast Outbox
+	// nil check stays at Finalize() entry above (godlike/07 ZERO
+	// LEGACY: wiring is a precondition for BOTH Step 5 index outbox
+	// AND Step 6 cleanup outbox).
+	step6Marker, err := executeCleanupOutboxStep(ctx, tx, f.deps.Outbox, cmd)
+	if err != nil {
+		return nil, err
+	}
+	required = append(required, step6Marker)
+
+	return &FinalizeResult{
+		ID:            cmd.ID,
+		Reused:        false,
+		OptionalSteps: optional,
+		RequiredSteps: required,
+	}, nil
+}
+
+// validateRequiredWiring enforces the Audit P0 #2 fail-fast contract:
+// production-required deps must be wired at composition time. Recording
+// "executed" on a step whose dependency is nil would corrupt the downstream
+// verifier and mask the wiring failure, so the finalizer refuses to run.
+func (f *voiceoverFinalizer) validateRequiredWiring() error {
+	if f.deps.LifecycleService == nil {
+		return fmt.Errorf(errRequiredStepNotWired+
+			" (LifecycleService / UpsertVoiceoverProjectionTx missing at composition)",
+			requiredStepMediaAssetsProjection)
+	}
+	if f.deps.Outbox == nil {
+		return fmt.Errorf(errRequiredStepNotWired+
+			" (Outbox / TxOutboxEnqueuer missing at composition; BOTH index + cleanup outbox steps fatal)",
+			requiredStepIndexOutbox)
+	}
+	return nil
+}
+
+// reuseByIdempotencyKey runs the FASE 3 gate. An empty key skips the gate
+// (backward compatibility). A match is the canonical outcome: the entire
+// 6-step sequence is skipped and the matched row identity is returned. A
+// lookup error fails closed BEFORE the dedupe gate can run.
+func (f *voiceoverFinalizer) reuseByIdempotencyKey(
+	ctx context.Context,
+	tx *sql.Tx,
+	cmd *FinalizeCommand,
+) (*FinalizeResult, bool, error) {
+	if cmd.IdempotencyKey == "" {
+		return nil, false, nil
+	}
+	matchedID, err := f.deps.VoiceoverRepo.FindByIdempotencyKeyTx(ctx, tx, cmd.IdempotencyKey)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, false, fmt.Errorf("voiceoverFinalizer: idempotency lookup: %w", err)
+	}
+	if matchedID == "" {
+		return nil, false, nil
+	}
+	f.deps.Logger.Info("voiceoverFinalizer: FASE 3 idempotency reuse — matched prior row with same idempotency_key, skipping all 6 steps",
+		zap.String("item_id", cmd.ID),
+		zap.String("matched_id", matchedID),
+		zap.String("idempotency_key", cmd.IdempotencyKey))
+	return &FinalizeResult{
+		ID:            matchedID,
+		Reused:        true,
+		OptionalSteps: []string{"idempotency: reuse existing row (FASE 3)"},
+	}, true, nil
+}
+
+// reuseByDedupe runs the optional PR-VO-B3 dedupe gate. A lookup error must
+// propagate: swallowing it would degrade to DedupeContinue and let the
+// finalizer run against an unverified dedupe guarantee.
+func (f *voiceoverFinalizer) reuseByDedupe(
+	ctx context.Context,
+	tx *sql.Tx,
+	cmd *FinalizeCommand,
+) (*FinalizeResult, []string, bool, error) {
+	if cmd.DriveFileID == "" {
+		return nil, []string{"dedupe: empty DriveFileID"}, false, nil
+	}
+	matchedID, count, err := f.deps.VoiceoverRepo.CountByDriveFileIDTx(ctx, tx, cmd.ID, cmd.DriveFileID)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("voiceoverFinalizer: dedupe lookup: %w", err)
+	}
+	switch DecideDedupe(count) {
+	case DedupeConflict:
+		return nil, nil, false, fmt.Errorf("voiceoverFinalizer: PR-VO-B3 ambiguous dedupe (count=%d, dedupe_id=%s) — refusing to insert duplicate row against established DriveFileID",
+			count, matchedID)
+	case DedupeReuse:
+		f.deps.Logger.Info("voiceoverFinalizer: dedupe reuse — matched single prior row, skipping insert",
+			zap.String("item_id", cmd.ID),
+			zap.String("dedupe_id", matchedID))
+		return &FinalizeResult{
+			ID:            matchedID,
+			Reused:        true,
+			OptionalSteps: []string{"dedupe: reuse existing row"},
+		}, nil, true, nil
+	}
+	return nil, nil, false, nil
+}
+
+// voiceoverRecordFromCommand maps the finalize command onto the canonical
+// voiceovers row. Status stays Generated until the post-commit verifier
+// confirms the projection.
+func voiceoverRecordFromCommand(cmd *FinalizeCommand, textPreview, now string) *persistence.VoiceoverRecord {
+	return &persistence.VoiceoverRecord{
 		ID:              cmd.ID,
 		RequestID:       cmd.RequestID,
 		TextHash:        cmd.TextHash,
@@ -182,30 +274,21 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		JobID:           cmd.JobID,
 		Fingerprint:     cmd.Fingerprint,
 	}
-	if err := f.deps.VoiceoverRepo.InsertTx(ctx, tx, rec); err != nil {
-		return nil, fmt.Errorf("voiceoverFinalizer: InsertTx: %w", err)
-	}
+}
 
-	// ── Step 4 + Step 5: media_assets projection + asset.index.requested outbox ──
-	// PR-ASSET-COMMITTER-COMMITASSET (July 2026): when Committer is
-	// wired, BOTH writes (media_assets row + asset.index.requested
-	// outbox event) are produced by the canonical committer. For a same-store
-	// composition CommitTx keeps them inside the caller's transaction. For the
-	// production split-store composition (SQLite voiceovers + PostgreSQL
-	// media_assets), CommitAndIndex opens the PostgreSQL transaction itself;
-	// a distributed transaction across the two databases is not available, so
-	// each side remains retry-safe and idempotent rather than sending a foreign
-	// *sql.Tx across the database boundary.
-	//
-	// godlike/06 SSOT: when Committer is wired, it is the SOLE canonical
-	// producer of both writes; the dispatcher is the SOLE canonical
-	// consumer of the outbox event.
-	//
-	// The canonical AssetCommitter owns the media_assets write even when the
-	// bytes are not materialized yet. Empty ContentSHA256 means REGISTERED-only:
-	// the committer persists the asset and deliberately suppresses the index event.
-	// The LifecycleService branch remains only as a migration compatibility
-	// seam for old compositions where the committer is not wired.
+// projectVoiceoverAsset performs Steps 4+5: the media_assets projection and
+// the asset.index.requested outbox event. The canonical AssetCommitter is the
+// sole producer when wired (same-store CommitTx or split-store
+// CommitAndIndex); the LifecycleService+Outbox pair remains only as a
+// migration seam for old compositions. It returns the required-step markers
+// the caller records on the result.
+func (f *voiceoverFinalizer) projectVoiceoverAsset(
+	ctx context.Context,
+	tx *sql.Tx,
+	cmd *FinalizeCommand,
+	textPreview string,
+) ([]string, error) {
+	var required []string
 	if f.deps.Committer != nil {
 		commitRequest := buildVoiceoverCommitRequest(cmd, textPreview, f.deps.Logger)
 		var err error
@@ -231,65 +314,45 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		} else {
 			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty ContentSHA256"))
 		}
-	} else {
-		// ── Legacy pre-Cutover path (Step 4 + Step 5 separately) ──
-		// Audit P0 #2: LifecycleService nil is a fatal wiring error
-		// (fail-fast at Finalize() entry), so a non-nil
-		// LifecycleService here is always present.
-		if err := f.deps.LifecycleService.UpsertVoiceoverProjectionTx(ctx, tx, &VoiceoverProjectionInput{
-			ID:            cmd.ID,
-			Source:        "voiceover",
-			Name:          textPreview,
-			Filename:      cmd.Filename,
-			FolderID:      cmd.FolderID,
-			FolderPath:    cmd.FolderPath,
-			MediaType:     "audio",
-			LocalPath:     cmd.LocalPath,
-			DriveFileID:   cmd.DriveFileID,
-			DriveLink:     cmd.DriveLink,
-			DownloadLink:  cmd.DownloadLink,
-			ContentSHA256: cmd.ContentSHA256,
-			Language:      cmd.Language,
-			Status:        string(StatusGenerated),
-			Metadata:      string(cmd.MetaJSON),
-		}); err != nil {
-			return nil, fmt.Errorf("voiceoverFinalizer: UpsertVoiceoverProjectionTx (media_assets): %w", err)
-		}
-		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
-
-		// Audit P0 #2: Outbox nil is fatal (fail-fast above). ContentSHA256
-		// empty is a data-state guard-skip with execution marker.
-		if cmd.ContentSHA256 != "" {
-			if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, "voiceover", cmd.ContentSHA256); err != nil {
-				return nil, fmt.Errorf("voiceoverFinalizer: EnqueueIndexEvent: %w", err)
-			}
-			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
-		} else {
-			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty ContentSHA256"))
-		}
+		return required, nil
 	}
 
-	// ── Step 6: Outbox — voiceover.cleanup.requested (REQUIRED) ──
-	// Extracted to finalizer_cleanup_outbox.go (PR-VO-FINALIZER-STEP6-EXTRACT,
-	// P0 #3 in VO-DECOMPOSITION-2026-07-04, deadline 2026-08-01).
-	// The P0.7 Step 10/12 atomic swap-and-cleanup triplo contract
-	// (OldDriveFileID + OldLocalPath + OldCleanedPath) is preserved
-	// VERBATIM inside the extracted function. The fail-fast Outbox
-	// nil check stays at Finalize() entry above (godlike/07 ZERO
-	// LEGACY: wiring is a precondition for BOTH Step 5 index outbox
-	// AND Step 6 cleanup outbox).
-	step6Marker, err := executeCleanupOutboxStep(ctx, tx, f.deps.Outbox, cmd)
-	if err != nil {
-		return nil, err
-	}
-	required = append(required, step6Marker)
-
-	return &FinalizeResult{
+	// ── Legacy pre-Cutover path (Step 4 + Step 5 separately) ──
+	// Audit P0 #2: LifecycleService nil is a fatal wiring error
+	// (fail-fast at Finalize() entry), so a non-nil LifecycleService here is
+	// always present.
+	if err := f.deps.LifecycleService.UpsertVoiceoverProjectionTx(ctx, tx, &VoiceoverProjectionInput{
 		ID:            cmd.ID,
-		Reused:        false,
-		OptionalSteps: optional,
-		RequiredSteps: required,
-	}, nil
+		Source:        "voiceover",
+		Name:          textPreview,
+		Filename:      cmd.Filename,
+		FolderID:      cmd.FolderID,
+		FolderPath:    cmd.FolderPath,
+		MediaType:     "audio",
+		LocalPath:     cmd.LocalPath,
+		DriveFileID:   cmd.DriveFileID,
+		DriveLink:     cmd.DriveLink,
+		DownloadLink:  cmd.DownloadLink,
+		ContentSHA256: cmd.ContentSHA256,
+		Language:      cmd.Language,
+		Status:        string(StatusGenerated),
+		Metadata:      string(cmd.MetaJSON),
+	}); err != nil {
+		return nil, fmt.Errorf("voiceoverFinalizer: UpsertVoiceoverProjectionTx (media_assets): %w", err)
+	}
+	required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
+
+	// Audit P0 #2: Outbox nil is fatal (fail-fast above). ContentSHA256 empty
+	// is a data-state guard-skip with execution marker.
+	if cmd.ContentSHA256 != "" {
+		if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, "voiceover", cmd.ContentSHA256); err != nil {
+			return nil, fmt.Errorf("voiceoverFinalizer: EnqueueIndexEvent: %w", err)
+		}
+		required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
+	} else {
+		required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty ContentSHA256"))
+	}
+	return required, nil
 }
 
 // formatRequiredState formats a RequiredSteps entry as

@@ -12,7 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"go.uber.org/zap"
 )
@@ -111,7 +111,7 @@ func RunBackfillProviderTimestamps(args []string) error {
 	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
 	// PostgreSQL media SSOT; the canonical patches already wrote there. The
 	// operational handle is no longer needed for this command's reads.
-	source := pgmedia.NewBackfillReader(root.MediaPostgres)
+	source := pgbackfill.NewBackfillReader(root.MediaPostgres)
 	if source == nil {
 		return fmt.Errorf("media PostgreSQL SSOT is required for provider-timestamp backfill")
 	}
@@ -125,12 +125,12 @@ func RunBackfillProviderTimestamps(args []string) error {
 
 // providerTimestampSource is the narrow media read this backfill depends on.
 //
-// MEDIA-SSOT: production binds the PostgreSQL reader (pgmedia.BackfillReader).
+// MEDIA-SSOT: production binds the PostgreSQL reader (pgbackfill.BackfillReader).
 // The rule SQL (which column feeds which metadata key) lives in that package,
 // so this command names a rule instead of assembling dialect-specific SQL.
 type providerTimestampSource interface {
 	CountProviderTimestampCandidates(ctx context.Context) (int, error)
-	ListProviderTimestampCandidates(ctx context.Context, key string) ([]pgmedia.ProviderTimestampCandidate, error)
+	ListProviderTimestampCandidates(ctx context.Context, key string) ([]pgbackfill.ProviderTimestampCandidate, error)
 }
 
 func backfillProviderTimestampsCanonical(ctx context.Context, src providerTimestampSource, mutator persistence.AssetMutator, limit int) (int, int, error) {
@@ -144,7 +144,7 @@ func backfillProviderTimestampsCanonical(ctx context.Context, src providerTimest
 	matchedIDs := make(map[string]struct{})
 	updatedIDs := make(map[string]struct{})
 	now := time.Now().UTC().Format(time.RFC3339)
-	for _, key := range pgmedia.ProviderTimestampRuleKeys() {
+	for _, key := range pgbackfill.ProviderTimestampRuleKeys() {
 		candidates, err := src.ListProviderTimestampCandidates(ctx, key)
 		if err != nil {
 			return len(matchedIDs), len(updatedIDs), fmt.Errorf("backfill-provider-timestamps: candidates %s: %w", key, err)

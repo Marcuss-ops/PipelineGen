@@ -3,7 +3,7 @@ package wiring
 import (
 	"testing"
 
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
 	media "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )

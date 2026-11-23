@@ -8,7 +8,7 @@
 // IndexDispatcherPort still has a live consumer (sourcing/youtube/service.go's
 // indexDisp field) but its canonical implementer is
 // ytadapters.YoutubeIndexDispatcherAdapter, pinned in the composition root at
-// internal/app/wiring/assets_register_adapters.go:37. Two adapters satisfied the
+// internal/app/modules/assets_register_adapters.go:37. Two adapters satisfied the
 // same port and only one was ever constructed, so this one's EnqueueAndIndex was
 // unreachable.
 package adapters

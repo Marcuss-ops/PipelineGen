@@ -29,7 +29,7 @@ import (
 
 	"go.uber.org/zap"
 
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -256,7 +256,12 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				}
 			}
 		}
-		return fmt.Errorf("localized render: scene %q lang %q produced %d failure(s)", in.SceneID, built.identity.targetLang, len(res.Failures))
+		// Carry the first real cause into the returned error. "produced 1
+		// failure(s)" used to be the only text the job result kept, so the
+		// operator had to grep journald to learn whether the child died on a
+		// decoder EOF, a missing transcript or a CUDA OOM.
+		return fmt.Errorf("localized render: scene %q lang %q clip %q produced %d failure(s): %s",
+			in.SceneID, built.identity.targetLang, clipID, len(res.Failures), summarizeLocalizedRenderFailures(res.Failures))
 	}
 	// Project the certified produced videos back to the runner so the final
 	// MP4 (asset id, sha256, Drive link) is recorded on the run result — a
@@ -265,6 +270,23 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if in.OnRendered != nil {
 		for _, artifact := range res.Artifacts {
 			renderFinishedAt := time.Now().UTC()
+			// The unit's own work window is admission → publication, as measured
+			// by the localization service. Falling back to this call's boundaries
+			// keeps adapters that predate the timing fields working, but the
+			// fallback must never be preferred: it charges the unit with the wait
+			// for a render slot.
+			startedAt := artifact.AdmittedAt
+			if startedAt.IsZero() {
+				startedAt = renderStartedAt
+			}
+			finishedAt := artifact.FinishedAt
+			if finishedAt.IsZero() {
+				finishedAt = renderFinishedAt
+			}
+			wallMS := finishedAt.Sub(startedAt).Milliseconds()
+			if wallMS < 0 {
+				wallMS = 0
+			}
 			produced := scriptgeneration.LocalizedRenderResult{
 				SceneID:       artifact.SceneID,
 				SceneIndex:    in.SceneIndex,
@@ -286,9 +308,10 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				Status:        string(artifact.Status),
 				Backend:       artifact.Backend,
 				Metrics:       metricsMapFromJSON(artifact.MetricsJSON),
-				StartedAt:     renderStartedAt,
-				FinishedAt:    renderFinishedAt,
-				WallMS:        renderFinishedAt.Sub(renderStartedAt).Milliseconds(),
+				StartedAt:     startedAt,
+				FinishedAt:    finishedAt,
+				WallMS:        wallMS,
+				QueueWaitMS:   artifact.QueueWaitMS,
 			}
 			canonicalAssetID, err := a.commitLocalizedRenderAsset(ctx, in, artifact)
 			if err != nil {
@@ -307,6 +330,32 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 		}
 	}
 	return nil
+}
+
+// summarizeLocalizedRenderFailures condenses per-language render failures into
+// one self-describing line. The job result keeps only the returned error, so
+// the first cause (decoder EOF at frame 924, NO_SPEECH, hash mismatch, CUDA
+// OOM) must survive here instead of living only in the log stream.
+func summarizeLocalizedRenderFailures(failures []localization.TaskResult) string {
+	const maxReported = 3
+	parts := make([]string, 0, maxReported)
+	for i, failure := range failures {
+		if i == maxReported {
+			break
+		}
+		text := "render failed without a cause"
+		if failure.Err != nil {
+			text = strings.TrimSpace(failure.Err.Error())
+		}
+		if text == "" {
+			text = "render failed without a cause"
+		}
+		parts = append(parts, fmt.Sprintf("priority=%d: %s", failure.Priority, text))
+	}
+	if extra := len(failures) - len(parts); extra > 0 {
+		parts = append(parts, fmt.Sprintf("+%d more", extra))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func metricsMapFromJSON(raw string) map[string]float64 {

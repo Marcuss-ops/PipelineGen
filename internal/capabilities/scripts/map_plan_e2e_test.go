@@ -544,3 +544,34 @@ func TestNativeMapRenderCountryRegionCityScopes(t *testing.T) {
 	}
 	t.Logf("country/region/city map artifact=%s", path)
 }
+
+// Fixtures shared with the retired per-scene projection test: the certified
+// word timing and the grounded occurrence the map window is derived from.
+// They moved here with the end-to-end map test, which is the surviving
+// owner of this scenario (OVL-03).
+
+func groundedPlaceTiming() capabilityaudio.SpeechTimingArtifact {
+	return capabilityaudio.SpeechTimingArtifact{
+		Version: capabilityaudio.SpeechTimingVersion, Provider: "edge_tts",
+		BoundaryMode: capabilityaudio.BoundaryWord, Language: "en",
+		TextSHA256: "text-hash", AudioSHA256: "audio-hash", DurationUS: 900_000,
+		Words: []capabilityaudio.SpeechWordTiming{
+			{Index: 0, Text: "We", StartUS: 0, EndUS: 100_000},
+			{Index: 1, Text: "drove", StartUS: 100_000, EndUS: 300_000},
+			{Index: 2, Text: "into", StartUS: 300_000, EndUS: 500_000},
+			{Index: 3, Text: "New", StartUS: 500_000, EndUS: 700_000},
+			{Index: 4, Text: "Orleans", StartUS: 700_000, EndUS: 900_000},
+		},
+	}
+}
+
+func groundedPlaceOccurrence() capabilityentities.EntityOccurrence {
+	return capabilityentities.EntityOccurrence{
+		EntityID: capabilityentities.StableEntityID("GPE", "New Orleans"),
+		Name:     "New Orleans", Type: "GPE", SceneID: "scene-0",
+		TextStart: 17, TextEnd: 28, WordStart: 3, WordEnd: 4,
+		LocalStartUS: 500_000, LocalEndUS: 900_000,
+		TimelineStartUS: 0, AudioStartUS: 500_000, AudioEndUS: 900_000,
+		Confidence: 0.93,
+	}
+}

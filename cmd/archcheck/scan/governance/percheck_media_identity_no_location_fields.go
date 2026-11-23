@@ -133,7 +133,11 @@ const (
 // the baseline kept 11 offenses of slack that no longer existed. A baseline
 // above reality authorises exactly the drift it was meant to prevent, so the
 // value is now the measured count. It shrinks, never grows.
-var mediaIdentityBaselineOffenses = 254
+// 2026-11-23 (BON-09 workstream A): the unused AssetExecutionResult DTO and
+// two orphaned location fields (OverlayArtifactRef.DriveLink,
+// VLMJobConfig.LocalPath) were removed. The baseline is lowered to the
+// measured count in the same change, as the ratchet requires.
+var mediaIdentityBaselineOffenses = 251
 
 // mediaIdentityContentAddressFields are the field names that make a struct an
 // IDENTITY record: the canonical content-address vocabulary. Without one of

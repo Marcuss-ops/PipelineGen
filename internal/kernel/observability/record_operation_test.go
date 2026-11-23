@@ -63,6 +63,56 @@ func TestRunRecordOperationClampsNegativeDuration(t *testing.T) {
 	}
 }
 
+// TestRecordOperationZeroQueuedAtIsNotAMaxDurationWait pins the 2026-11-22
+// Augias r39 regression: a download op reported only StartedAt/FinishedAt, and
+// the derived QueueWaitMs subtracted time.Time zero (year 1), saturating at the
+// max duration and surfacing queue_wait_ms=9223372036854 in /full.
+func TestRecordOperationZeroQueuedAtIsNotAMaxDurationWait(t *testing.T) {
+	started := time.Date(2026, 11, 22, 19, 25, 58, 0, time.UTC)
+	run := NewRunObserver(nil).StartRun(context.Background(), RunInfo{JobID: "job-1", AttemptID: "attempt-1"})
+	run.RecordOperation(OperationInfo{
+		Component: "render_queue", Operation: "download",
+		StartedAt: started, FinishedAt: started.Add(54 * time.Second),
+	}, 54610)
+	run.Finish()
+
+	op := run.Report().Operations[0]
+	if op.QueueWaitMs != 0 {
+		t.Fatalf("queue_wait_ms = %d, want 0 (no enqueue timestamp, no derived wait)", op.QueueWaitMs)
+	}
+	if op.DurationMs != 54610 {
+		t.Fatalf("duration_ms = %d, want 54610", op.DurationMs)
+	}
+}
+
+// TestRecordOperationDerivesQueueWaitOnlyFromOwnerTimestamps keeps the measured
+// wait when the owner reports both boundaries, and never a negative one.
+func TestRecordOperationDerivesQueueWaitOnlyFromOwnerTimestamps(t *testing.T) {
+	queued := time.Date(2026, 11, 22, 19, 19, 5, 0, time.UTC)
+	cases := []struct {
+		name   string
+		queued time.Time
+		start  time.Time
+		want   int64
+	}{
+		{name: "reported", queued: queued, start: queued.Add(2500 * time.Millisecond), want: 2500},
+		{name: "clock inversion", queued: queued, start: queued.Add(-time.Second), want: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			run := NewRunObserver(nil).StartRun(context.Background(), RunInfo{JobID: "job-1", AttemptID: "attempt-1"})
+			run.RecordOperation(OperationInfo{
+				Component: "render_queue", Operation: "wait_completion",
+				QueuedAt: tc.queued, StartedAt: tc.start,
+			}, 10)
+			run.Finish()
+			if got := run.Report().Operations[0].QueueWaitMs; got != tc.want {
+				t.Fatalf("queue_wait_ms = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRecordOperationFromContextNoRunIsNoop(t *testing.T) {
 	// No run bound: must be a safe no-op, never a panic.
 	RecordOperation(context.Background(), OperationInfo{Component: "audio", Operation: "mix"}, 10)

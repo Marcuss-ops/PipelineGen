@@ -57,6 +57,8 @@ func run(args []string) int {
 	case "-h", "--help", "help":
 		usage(os.Stdout)
 		return exitOK
+	case "preflight":
+		return cmdPreflight(rest)
 	case "submit":
 		return cmdSubmit(rest)
 	case "poll":
@@ -73,6 +75,8 @@ func run(args []string) int {
 		return cmdSearch(rest)
 	case "jobs":
 		return cmdJobs(rest)
+	case "gc":
+		return cmdGC(rest)
 	case "types":
 		return cmdTypes(rest)
 	default:

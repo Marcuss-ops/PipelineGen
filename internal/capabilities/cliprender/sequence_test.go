@@ -441,24 +441,32 @@ func TestSequenceWorkerRecoversMissingBatchItems(t *testing.T) {
 		},
 	}}
 	worker := &Worker{log: zap.NewNop()}
-	if err := worker.resolveBatchRecovery(context.Background(), req, assembly); err != nil {
+	resolved, err := worker.resolveBatchRecovery(context.Background(), *req, assembly)
+	if err != nil {
 		t.Fatalf("first recovery: %v", err)
 	}
 	if len(enqueued) != 2 {
 		t.Fatalf("enqueued = %d, want one job per unique cold position", len(enqueued))
 	}
-	if req.Clips[0].JobID == "" || req.Clips[0].BatchPosition != nil {
-		t.Fatalf("clip 0 = %+v, want a resolved job id", req.Clips[0])
+	// The recovery contract is read-only on the input: the caller owns the
+	// returned slice and the request keeps its original pending positions.
+	if req.Clips[0].JobID != "" || req.Clips[0].BatchPosition == nil || *req.Clips[0].BatchPosition != 0 {
+		t.Fatalf("input clip 0 mutated: %+v", req.Clips[0])
 	}
-	if req.Clips[2].JobID != req.Clips[0].JobID {
-		t.Fatalf("duplicate clip job = %q, want the canonical %q", req.Clips[2].JobID, req.Clips[0].JobID)
+	if resolved[0].JobID == "" || resolved[0].BatchPosition != nil {
+		t.Fatalf("clip 0 = %+v, want a resolved job id", resolved[0])
 	}
-	if req.Clips[1].JobID == "" || req.Clips[1].JobID == req.Clips[0].JobID {
-		t.Fatalf("clip 1 = %+v, want its own job id", req.Clips[1])
+	if resolved[2].JobID != resolved[0].JobID {
+		t.Fatalf("duplicate clip job = %q, want the canonical %q", resolved[2].JobID, resolved[0].JobID)
+	}
+	if resolved[1].JobID == "" || resolved[1].JobID == resolved[0].JobID {
+		t.Fatalf("clip 1 = %+v, want its own job id", resolved[1])
 	}
 
-	// A retry sees the durable rows and must not enqueue the renders again.
-	if err := worker.resolveBatchRecovery(context.Background(), req, assembly); err != nil {
+	// The caller commits the resolved slice before retrying; the retry then
+	// sees the durable rows and must not enqueue the renders again.
+	req.Clips = resolved
+	if _, err := worker.resolveBatchRecovery(context.Background(), *req, assembly); err != nil {
 		t.Fatalf("second recovery: %v", err)
 	}
 	if len(enqueued) != 2 {

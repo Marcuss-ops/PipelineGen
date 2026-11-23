@@ -132,6 +132,15 @@ func (r *Run) RecordOperation(info OperationInfo, durationMs int64) {
 	if r == nil || info.Operation == "" {
 		return
 	}
+	// QueueWaitMs is a derived fact, not a measurement this boundary owns: only
+	// a call whose owner reported BOTH enqueue and start timestamps has a wait.
+	// Subtracting a zero QueuedAt is not "0 ms" — time.Time zero is year 1, so
+	// the subtraction saturates at the max duration and a 390 MB download was
+	// reported with queue_wait_ms=9223372036854 (2026-11-22 Augias r39).
+	var queueWaitMs int64
+	if !info.QueuedAt.IsZero() && !info.StartedAt.IsZero() && !info.StartedAt.Before(info.QueuedAt) {
+		queueWaitMs = nonNegative(info.StartedAt.Sub(info.QueuedAt).Milliseconds())
+	}
 	op := OperationReport{
 		ObservationID: NewObservationID(),
 		Stage:         string(info.Stage),
@@ -148,7 +157,7 @@ func (r *Run) RecordOperation(info OperationInfo, durationMs int64) {
 		QueuedAt:      info.QueuedAt,
 		StartedAt:     info.StartedAt,
 		FinishedAt:    info.FinishedAt,
-		QueueWaitMs:   nonNegative(info.StartedAt.Sub(info.QueuedAt).Milliseconds()),
+		QueueWaitMs:   queueWaitMs,
 		MetadataJSON:  info.MetadataJSON,
 	}
 	r.recordOperation(op)

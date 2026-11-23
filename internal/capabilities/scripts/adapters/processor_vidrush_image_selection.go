@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -360,7 +362,7 @@ func filterEntityImageSelectionCandidates(candidates []scriptpkg.SegmentAssetCan
 		// unscored place/organization image is still an unverified identity
 		// claim. Discovery keeps it for a later verifier; selection does not
 		// let it consume a slot.
-		if !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
+		if !imagegate.CandidateEligibleForSlot(candidate, false) {
 			continue
 		}
 		if kind != "PERSON" && !entityImageSourceSupportsName(candidate, name) {

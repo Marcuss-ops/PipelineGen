@@ -84,6 +84,7 @@ var commandRegistry = map[string]commandHandler{
 	"gen-api-docs":                   rendering.RunGenAPIDocs,
 	"index-drive-clip":               drive.RunIndexDriveClip,
 	"index-provided-sound-effects":   soundeffects.RunIndexProvidedSoundEffects,
+	"index-sound-effects-drive":      soundeffects.RunIndexSoundEffectsDrive,
 	"keep-drive-folder-files":        drive.RunKeepDriveFolderFiles,
 	"list-drive-folder":              drive.RunListDriveFolder,
 	"normalize-sound-effects-drive":  soundeffects.RunNormalizeSoundEffectsDrive,

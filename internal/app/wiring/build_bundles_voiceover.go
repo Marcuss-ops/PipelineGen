@@ -27,7 +27,7 @@ import (
 	"context"
 	"fmt"
 
-	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/voiceover"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 
@@ -49,9 +49,9 @@ import (
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-)
-import (
+
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
 )
 
@@ -315,7 +315,12 @@ func buildVoiceoverPipeline(
 	// Destination resolver adapters — extracted to
 	// build_voiceover_destinations.go (includes the nil-tolerant
 	// nopDestinationResolver fallback for stub-bootstrap helpers).
-	destResolverAdapter, defaultFolderResolver := vowiring.BuildVoiceoverDestResolvers(destResolver, cfg, voDir, log)
+	destResolverAdapter, defaultFolderResolver := vowiring.BuildVoiceoverDestResolvers(vowiring.VoiceoverDestResolversDeps{
+		DestResolver: destResolver,
+		Config:       cfg,
+		VoiceoverDir: voDir,
+		Log:          log,
+	})
 
 	// No Publisher on the per-item pipeline (waste-cut 2026-10-24):
 	// per-scene audio + timing are certified LOCAL intermediates of the

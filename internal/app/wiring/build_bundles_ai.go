@@ -19,7 +19,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -33,7 +32,7 @@ import (
 
 	"go.uber.org/zap"
 
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
@@ -45,19 +44,20 @@ import (
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
-)
-import (
-	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
+
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+
 	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-)
-import (
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+
 	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
+
 	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditpublishing"
 )
@@ -302,7 +302,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 		// Derived transcript cache: source bytes + Whisper processor version
 		// identify the result; local temporary paths never become cache keys.
 		if dbs.Cache != nil && dbs.Cache.DB != nil && dbs.Main != nil && dbs.Main.DB != nil {
-			if cache, cacheErr := assetswiring.NewArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
+			if cache, cacheErr := newArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
 				// The Whisper bridge has its own execution contract; the Ollama
 				// chat model is unrelated and must not invalidate or alias
 				// transcription artifacts.

@@ -1,0 +1,736 @@
+{
+  "version": 1,
+  "generated_at": "2026-11-23T07:59:54Z",
+  "drive_root": "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW",
+  "count": 31,
+  "families": [
+    "foley",
+    "photo",
+    "transition",
+    "ui"
+  ],
+  "assets": [
+    {
+      "asset_id": "1zdt3pqA-GO9SSAqbPuyH50c1Ljv9dkJh",
+      "name": "sfx_foley_camera_flash_shot_02",
+      "filename": "sfx_foley_camera_flash_shot_02.wav",
+      "drive_file_id": "1zdt3pqA-GO9SSAqbPuyH50c1Ljv9dkJh",
+      "drive_link": "https://drive.google.com/file/d/1zdt3pqA-GO9SSAqbPuyH50c1Ljv9dkJh/view",
+      "family": "foley",
+      "subtype": "camera_shutter",
+      "mood": "documentary",
+      "energy": "low",
+      "best_for": [
+        "action_match",
+        "realism",
+        "texture"
+      ],
+      "tags": [
+        "foley",
+        "camera_shutter",
+        "documentary",
+        "low"
+      ],
+      "duration_seconds": 1.053,
+      "folder_path": "sound_effects/Foley/Camera/sfx_foley_camera_flash_shot_02.wav"
+    },
+    {
+      "asset_id": "1138uApWv0_rD3rfdNc5yqN5IPNfOV8DW",
+      "name": "sfx_foley_camera_flash_shot_04",
+      "filename": "sfx_foley_camera_flash_shot_04.wav",
+      "drive_file_id": "1138uApWv0_rD3rfdNc5yqN5IPNfOV8DW",
+      "drive_link": "https://drive.google.com/file/d/1138uApWv0_rD3rfdNc5yqN5IPNfOV8DW/view",
+      "family": "foley",
+      "subtype": "camera_shutter",
+      "mood": "documentary",
+      "energy": "low",
+      "best_for": [
+        "action_match",
+        "realism",
+        "texture"
+      ],
+      "tags": [
+        "foley",
+        "camera_shutter",
+        "documentary",
+        "low"
+      ],
+      "duration_seconds": 0.786,
+      "folder_path": "sound_effects/Foley/Camera/sfx_foley_camera_flash_shot_04.wav"
+    },
+    {
+      "asset_id": "1A45OTTmz0SrN8UP58ONzxGMrzWjuFUJd",
+      "name": "sfx_foley_camera_shutter_03",
+      "filename": "sfx_foley_camera_shutter_03.mp3",
+      "drive_file_id": "1A45OTTmz0SrN8UP58ONzxGMrzWjuFUJd",
+      "drive_link": "https://drive.google.com/file/d/1A45OTTmz0SrN8UP58ONzxGMrzWjuFUJd/view",
+      "family": "foley",
+      "subtype": "camera_shutter",
+      "mood": "documentary",
+      "energy": "low",
+      "best_for": [
+        "action_match",
+        "realism",
+        "texture"
+      ],
+      "tags": [
+        "foley",
+        "camera_shutter",
+        "documentary",
+        "low"
+      ],
+      "duration_seconds": 0.84,
+      "folder_path": "sound_effects/Foley/sfx_foley_camera_shutter_03.mp3"
+    },
+    {
+      "asset_id": "1pgoWspYJVulAU5sf9OTjU-MO4w09AWEn",
+      "name": "sfx_foley_camera_shutter_slr_01",
+      "filename": "sfx_foley_camera_shutter_slr_01.mp3",
+      "drive_file_id": "1pgoWspYJVulAU5sf9OTjU-MO4w09AWEn",
+      "drive_link": "https://drive.google.com/file/d/1pgoWspYJVulAU5sf9OTjU-MO4w09AWEn/view",
+      "family": "foley",
+      "subtype": "camera_shutter",
+      "mood": "documentary",
+      "energy": "low",
+      "best_for": [
+        "action_match",
+        "realism",
+        "texture"
+      ],
+      "tags": [
+        "foley",
+        "camera_shutter",
+        "documentary",
+        "low"
+      ],
+      "duration_seconds": 0.992,
+      "folder_path": "sound_effects/Foley/Camera/sfx_foley_camera_shutter_slr_01.mp3"
+    },
+    {
+      "asset_id": "1vzIb3u-K-ljwYB6Gn_qavkrcdNpr2Vtl",
+      "name": "Cameraman Vol 2 by Soundkrampf SFX - Artlist",
+      "filename": "Cameraman Vol 2 by Soundkrampf SFX - Artlist.m4a",
+      "drive_file_id": "1vzIb3u-K-ljwYB6Gn_qavkrcdNpr2Vtl",
+      "drive_link": "https://drive.google.com/file/d/1vzIb3u-K-ljwYB6Gn_qavkrcdNpr2Vtl/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 1.114,
+      "folder_path": "sound_effects/Photo/Cameraman Vol 2 by Soundkrampf SFX - Artlist.m4a"
+    },
+    {
+      "asset_id": "1OYcAHXewiGCxVmA6QvLAWuijE7laZCAi",
+      "name": "Cameraman Vol 2 by Soundkrampf SFX - Artlist-01",
+      "filename": "Cameraman Vol 2 by Soundkrampf SFX - Artlist-01.m4a",
+      "drive_file_id": "1OYcAHXewiGCxVmA6QvLAWuijE7laZCAi",
+      "drive_link": "https://drive.google.com/file/d/1OYcAHXewiGCxVmA6QvLAWuijE7laZCAi/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.998,
+      "folder_path": "sound_effects/Photo/Cameraman Vol 2 by Soundkrampf SFX - Artlist-01.m4a"
+    },
+    {
+      "asset_id": "1gMHd69l0urvwR-fqlpMD60IAcLQoS1C6",
+      "name": "Cameraman Vol 2 by Soundkrampf SFX - Artlist-02",
+      "filename": "Cameraman Vol 2 by Soundkrampf SFX - Artlist-02.m4a",
+      "drive_file_id": "1gMHd69l0urvwR-fqlpMD60IAcLQoS1C6",
+      "drive_link": "https://drive.google.com/file/d/1gMHd69l0urvwR-fqlpMD60IAcLQoS1C6/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.394,
+      "folder_path": "sound_effects/Photo/Cameraman Vol 2 by Soundkrampf SFX - Artlist-02.m4a"
+    },
+    {
+      "asset_id": "1PMkC3cQeGc7N8VI-ZFMef-n9Nt2dbfjw",
+      "name": "Cameraman Vol 2 by Soundkrampf SFX - Artlist-03",
+      "filename": "Cameraman Vol 2 by Soundkrampf SFX - Artlist-03.m4a",
+      "drive_file_id": "1PMkC3cQeGc7N8VI-ZFMef-n9Nt2dbfjw",
+      "drive_link": "https://drive.google.com/file/d/1PMkC3cQeGc7N8VI-ZFMef-n9Nt2dbfjw/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.557,
+      "folder_path": "sound_effects/Photo/Cameraman Vol 2 by Soundkrampf SFX - Artlist-03.m4a"
+    },
+    {
+      "asset_id": "1Ulsn6Y73rmJitToqkzV2hz3wbBGi_4G5",
+      "name": "Cameraman Vol 2 by Soundkrampf SFX - Artlist-04",
+      "filename": "Cameraman Vol 2 by Soundkrampf SFX - Artlist-04.m4a",
+      "drive_file_id": "1Ulsn6Y73rmJitToqkzV2hz3wbBGi_4G5",
+      "drive_link": "https://drive.google.com/file/d/1Ulsn6Y73rmJitToqkzV2hz3wbBGi_4G5/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 1.486,
+      "folder_path": "sound_effects/Photo/Cameraman Vol 2 by Soundkrampf SFX - Artlist-04.m4a"
+    },
+    {
+      "asset_id": "1G5vJJDd7_dZ61jwYc0147cpExvbTz8C4",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist.m4a",
+      "drive_file_id": "1G5vJJDd7_dZ61jwYc0147cpExvbTz8C4",
+      "drive_link": "https://drive.google.com/file/d/1G5vJJDd7_dZ61jwYc0147cpExvbTz8C4/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.673,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist.m4a"
+    },
+    {
+      "asset_id": "1l5Xsyjtb_EL9cWPikuQlYv1f3RqheKNL",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist-01",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist-01.m4a",
+      "drive_file_id": "1l5Xsyjtb_EL9cWPikuQlYv1f3RqheKNL",
+      "drive_link": "https://drive.google.com/file/d/1l5Xsyjtb_EL9cWPikuQlYv1f3RqheKNL/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.626,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist-01.m4a"
+    },
+    {
+      "asset_id": "1jof_14I3eQ430yhxFVpbNsWiPE0lMDuu",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist-02",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist-02.m4a",
+      "drive_file_id": "1jof_14I3eQ430yhxFVpbNsWiPE0lMDuu",
+      "drive_link": "https://drive.google.com/file/d/1jof_14I3eQ430yhxFVpbNsWiPE0lMDuu/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.464,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist-02.m4a"
+    },
+    {
+      "asset_id": "1k4TaC2LTU3xs5I5mXCEUx_GlOp_hwAU2",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist-03",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist-03.m4a",
+      "drive_file_id": "1k4TaC2LTU3xs5I5mXCEUx_GlOp_hwAU2",
+      "drive_link": "https://drive.google.com/file/d/1k4TaC2LTU3xs5I5mXCEUx_GlOp_hwAU2/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.882,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist-03.m4a"
+    },
+    {
+      "asset_id": "1FggHWPxJCGPPcgphNsSmU2DuICeq-r9C",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist-04",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist-04.m4a",
+      "drive_file_id": "1FggHWPxJCGPPcgphNsSmU2DuICeq-r9C",
+      "drive_link": "https://drive.google.com/file/d/1FggHWPxJCGPPcgphNsSmU2DuICeq-r9C/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.673,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist-04.m4a"
+    },
+    {
+      "asset_id": "1PSo3p9Cn9O-B-RJ-0zKyGp5f2TVtVHEf",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist-05",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist-05.m4a",
+      "drive_file_id": "1PSo3p9Cn9O-B-RJ-0zKyGp5f2TVtVHEf",
+      "drive_link": "https://drive.google.com/file/d/1PSo3p9Cn9O-B-RJ-0zKyGp5f2TVtVHEf/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.812,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist-05.m4a"
+    },
+    {
+      "asset_id": "1g2ZyYv2B-ey6xhs6eQ5pDT_8p6yG0WR9",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist-06",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist-06.m4a",
+      "drive_file_id": "1g2ZyYv2B-ey6xhs6eQ5pDT_8p6yG0WR9",
+      "drive_link": "https://drive.google.com/file/d/1g2ZyYv2B-ey6xhs6eQ5pDT_8p6yG0WR9/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 1.578,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist-06.m4a"
+    },
+    {
+      "asset_id": "1vP-FM-5NOhsjIOIg0yw67tGnSm7FeMv-",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist-07",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist-07.m4a",
+      "drive_file_id": "1vP-FM-5NOhsjIOIg0yw67tGnSm7FeMv-",
+      "drive_link": "https://drive.google.com/file/d/1vP-FM-5NOhsjIOIg0yw67tGnSm7FeMv-/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 1.137,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist-07.m4a"
+    },
+    {
+      "asset_id": "13VdpFeINt6yuki-v3H8fQWJiSn90Ut_H",
+      "name": "Creator Kit by Dauzkobza SFX - Artlist-08",
+      "filename": "Creator Kit by Dauzkobza SFX - Artlist-08.m4a",
+      "drive_file_id": "13VdpFeINt6yuki-v3H8fQWJiSn90Ut_H",
+      "drive_link": "https://drive.google.com/file/d/13VdpFeINt6yuki-v3H8fQWJiSn90Ut_H/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.51,
+      "folder_path": "sound_effects/Photo/Creator Kit by Dauzkobza SFX - Artlist-08.m4a"
+    },
+    {
+      "asset_id": "15v02nVzh6Jz9BmcF8wL7dv4Zaef4JvQO",
+      "name": "Digital Cameras by 2496 SFX SFX - Artlist",
+      "filename": "Digital Cameras by 2496 SFX SFX - Artlist.m4a",
+      "drive_file_id": "15v02nVzh6Jz9BmcF8wL7dv4Zaef4JvQO",
+      "drive_link": "https://drive.google.com/file/d/15v02nVzh6Jz9BmcF8wL7dv4Zaef4JvQO/view",
+      "family": "photo",
+      "subtype": "photo",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "accent",
+        "transition"
+      ],
+      "tags": [
+        "photo",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 0.51,
+      "folder_path": "sound_effects/Photo/Digital Cameras by 2496 SFX SFX - Artlist.m4a"
+    },
+    {
+      "asset_id": "1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2",
+      "name": "sfx_whoosh_arrow_fast_01",
+      "filename": "sfx_whoosh_arrow_fast_01.wav",
+      "drive_file_id": "1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2",
+      "drive_link": "https://drive.google.com/file/d/1hHMV6dc4yC2EsC5nTBg3mgqOtUAgw9t2/view",
+      "family": "transition",
+      "subtype": "fast_swipe",
+      "mood": "action",
+      "energy": "high",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "fast_swipe",
+        "action",
+        "high"
+      ],
+      "duration_seconds": 1.099,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_arrow_fast_01.wav"
+    },
+    {
+      "asset_id": "1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK",
+      "name": "sfx_whoosh_cinematic_wind_01",
+      "filename": "sfx_whoosh_cinematic_wind_01.wav",
+      "drive_file_id": "1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK",
+      "drive_link": "https://drive.google.com/file/d/1joPGUccrhAxJq1-LyFNp27xDuCjPwZhK/view",
+      "family": "transition",
+      "subtype": "transition",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 1.322,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_cinematic_wind_01.wav"
+    },
+    {
+      "asset_id": "1rNnmb3if98M3aSpj2O9EtuvSNJ4AdSen",
+      "name": "sfx_whoosh_cinematic_wind_deep_01",
+      "filename": "sfx_whoosh_cinematic_wind_deep_01.wav",
+      "drive_file_id": "1rNnmb3if98M3aSpj2O9EtuvSNJ4AdSen",
+      "drive_link": "https://drive.google.com/file/d/1rNnmb3if98M3aSpj2O9EtuvSNJ4AdSen/view",
+      "family": "transition",
+      "subtype": "transition",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 1.451,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_cinematic_wind_deep_01.wav"
+    },
+    {
+      "asset_id": "1T7TJuqrwtvR3se1nlvY2k19lA5zAOODs",
+      "name": "sfx_whoosh_clean_fast_swoosh_14784",
+      "filename": "sfx_whoosh_clean_fast_swoosh_14784.mp3",
+      "drive_file_id": "1T7TJuqrwtvR3se1nlvY2k19lA5zAOODs",
+      "drive_link": "https://drive.google.com/file/d/1T7TJuqrwtvR3se1nlvY2k19lA5zAOODs/view",
+      "family": "transition",
+      "subtype": "fast_swipe",
+      "mood": "action",
+      "energy": "high",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "fast_swipe",
+        "action",
+        "high"
+      ],
+      "duration_seconds": 0.984,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_clean_fast_swoosh_14784.mp3"
+    },
+    {
+      "asset_id": "1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L",
+      "name": "sfx_whoosh_cutscene_swishes_01",
+      "filename": "sfx_whoosh_cutscene_swishes_01.mp3",
+      "drive_file_id": "1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L",
+      "drive_link": "https://drive.google.com/file/d/1rZmroLS1ec9A7xswJvQl8HnRhZfFbT_L/view",
+      "family": "transition",
+      "subtype": "transition",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 1.933,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_cutscene_swishes_01.mp3"
+    },
+    {
+      "asset_id": "1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC",
+      "name": "sfx_whoosh_jump_swish_01",
+      "filename": "sfx_whoosh_jump_swish_01.mp3",
+      "drive_file_id": "1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC",
+      "drive_link": "https://drive.google.com/file/d/1P1CbjRkOjPXxZR9reAwijtP-W9wXY5kC/view",
+      "family": "transition",
+      "subtype": "fast_swipe",
+      "mood": "action",
+      "energy": "high",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "fast_swipe",
+        "action",
+        "high"
+      ],
+      "duration_seconds": 1.2,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_jump_swish_01.mp3"
+    },
+    {
+      "asset_id": "1NQyz3d5JPcLrA6NtM2TMIKdmlTKqepNg",
+      "name": "sfx_whoosh_long_cinematic_01",
+      "filename": "sfx_whoosh_long_cinematic_01.mp3",
+      "drive_file_id": "1NQyz3d5JPcLrA6NtM2TMIKdmlTKqepNg",
+      "drive_link": "https://drive.google.com/file/d/1NQyz3d5JPcLrA6NtM2TMIKdmlTKqepNg/view",
+      "family": "transition",
+      "subtype": "transition",
+      "mood": "cinematic",
+      "energy": "medium",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "cinematic",
+        "medium"
+      ],
+      "duration_seconds": 1.944,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_long_cinematic_01.mp3"
+    },
+    {
+      "asset_id": "127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY",
+      "name": "sfx_whoosh_whoosh_fast_02",
+      "filename": "sfx_whoosh_whoosh_fast_02.mp3",
+      "drive_file_id": "127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY",
+      "drive_link": "https://drive.google.com/file/d/127ZLnNn-4iL0TcDtjOVOWefJASUoqXfY/view",
+      "family": "transition",
+      "subtype": "fast_swipe",
+      "mood": "action",
+      "energy": "high",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "fast_swipe",
+        "action",
+        "high"
+      ],
+      "duration_seconds": 1.071,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_whoosh_fast_02.mp3"
+    },
+    {
+      "asset_id": "1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
+      "name": "sfx_whoosh_zoom_sweep_01",
+      "filename": "sfx_whoosh_zoom_sweep_01.wav",
+      "drive_file_id": "1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX",
+      "drive_link": "https://drive.google.com/file/d/1Fgr2jWQC1G6EHo-jhBAwjGtdcZo1PfaX/view",
+      "family": "transition",
+      "subtype": "camera_sweep",
+      "mood": "motion",
+      "energy": "medium",
+      "best_for": [
+        "cut",
+        "reveal",
+        "rank_change",
+        "motion"
+      ],
+      "tags": [
+        "transition",
+        "camera_sweep",
+        "motion",
+        "medium"
+      ],
+      "duration_seconds": 1.25,
+      "folder_path": "sound_effects/Transition/sfx_whoosh_zoom_sweep_01.wav"
+    },
+    {
+      "asset_id": "1UmfeO-gi_vk0bqpKaV7MKlmsKok_KcHB",
+      "name": "sfx_ui_mouse_click_02",
+      "filename": "sfx_ui_mouse_click_02.mp3",
+      "drive_file_id": "1UmfeO-gi_vk0bqpKaV7MKlmsKok_KcHB",
+      "drive_link": "https://drive.google.com/file/d/1UmfeO-gi_vk0bqpKaV7MKlmsKok_KcHB/view",
+      "family": "ui",
+      "subtype": "notification_click",
+      "mood": "clean",
+      "energy": "low",
+      "best_for": [
+        "label",
+        "counter",
+        "notification",
+        "micro_accent"
+      ],
+      "tags": [
+        "ui",
+        "notification_click",
+        "clean",
+        "low"
+      ],
+      "duration_seconds": 0.464,
+      "folder_path": "sound_effects/Ui/Clicks & Selects/sfx_ui_mouse_click_02.mp3"
+    },
+    {
+      "asset_id": "1DdFuFAFfuIr23dWbRFbzMymRbWsN5IpL",
+      "name": "sfx_ui_mouse_click_04",
+      "filename": "sfx_ui_mouse_click_04.mp3",
+      "drive_file_id": "1DdFuFAFfuIr23dWbRFbzMymRbWsN5IpL",
+      "drive_link": "https://drive.google.com/file/d/1DdFuFAFfuIr23dWbRFbzMymRbWsN5IpL/view",
+      "family": "ui",
+      "subtype": "notification_click",
+      "mood": "clean",
+      "energy": "low",
+      "best_for": [
+        "label",
+        "counter",
+        "notification",
+        "micro_accent"
+      ],
+      "tags": [
+        "ui",
+        "notification_click",
+        "clean",
+        "low"
+      ],
+      "duration_seconds": 1.032,
+      "folder_path": "sound_effects/Ui/Clicks & Selects/sfx_ui_mouse_click_04.mp3"
+    },
+    {
+      "asset_id": "1lGZ0GVsVgUnQbHm3eakeh9H9upBmY7Vl",
+      "name": "sfx_ui_mouse_click_05",
+      "filename": "sfx_ui_mouse_click_05.mp3",
+      "drive_file_id": "1lGZ0GVsVgUnQbHm3eakeh9H9upBmY7Vl",
+      "drive_link": "https://drive.google.com/file/d/1lGZ0GVsVgUnQbHm3eakeh9H9upBmY7Vl/view",
+      "family": "ui",
+      "subtype": "notification_click",
+      "mood": "clean",
+      "energy": "low",
+      "best_for": [
+        "label",
+        "counter",
+        "notification",
+        "micro_accent"
+      ],
+      "tags": [
+        "ui",
+        "notification_click",
+        "clean",
+        "low"
+      ],
+      "duration_seconds": 0.344,
+      "folder_path": "sound_effects/Ui/Clicks & Selects/sfx_ui_mouse_click_05.mp3"
+    }
+  ]
+}

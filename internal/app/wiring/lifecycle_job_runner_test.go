@@ -15,7 +15,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/lifecycle"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -278,14 +278,14 @@ func TestJobRunnerStepDrainsTheCalendarSpool(t *testing.T) {
 // asserted inside buildJobRunnerStep's own body, so moving the call into a dead
 // branch or deleting it fails here instead of in production.
 func TestBuildJobRunnerStepStartsTheDrains(t *testing.T) {
-	src, err := os.ReadFile("lifecycle/jobrunner.go")
+	src, err := os.ReadFile("../modules/lifecycle/jobrunner.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	const start = "func BuildJobRunnerStep("
 	begin := strings.Index(string(src), start)
 	if begin < 0 {
-		t.Fatalf("lifecycle/jobrunner.go no longer declares %s", start)
+		t.Fatalf("../modules/lifecycle/jobrunner.go no longer declares %s", start)
 	}
 	rest := string(src)[begin+len(start):]
 	end := strings.Index(rest, "\nfunc ")

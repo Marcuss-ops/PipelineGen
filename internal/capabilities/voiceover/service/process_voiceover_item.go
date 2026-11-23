@@ -286,35 +286,9 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	// Pre-DRY this was a ~30-line if-else cascade duplicated in
 	// usecase.go::Execute. Post-DRY both callers route through the
 	// same single function.
-	dest, err := ResolveDestinationWithFallback(ctx, item.Destination,
-		u.deps.Pipeline.DestinationResolver, u.deps.Recovery.DefaultFolderResolver, u.deps.Logger)
+	dest, out, err := u.resolveItemDestination(ctx, item)
 	if err != nil {
-		out := &VoiceoverItemResult{
-			Language:  item.Language,
-			Status:    StatusFailed,
-			ErrorCode: string(FailureDestinationUnavailable),
-			Error:     fmt.Sprintf("destination_resolve_failed: %v", err),
-		}
-		if errors.Is(err, ErrVoiceoverDestinationUnavailable) {
-			out.ErrorCode = VoiceoverDestinationUnavailableCode
-			out.Error = fmt.Sprintf("%s: %v", VoiceoverDestinationUnavailableCode, err)
-		}
-		setFinalStageProgress(out, string(item.Language), item.ParentJobID)
-		return out, newPipelineError(StageDestinationResolve, false, err)
-	}
-	// The destination is required for its LOCAL output folder path and its
-	// identity namespace; the Drive FolderID is NOT required any more because
-	// this pipeline never uploads (waste-cut 2026-10-24). A missing folder
-	// identity simply participates as empty in the row ID + fingerprint.
-	if dest == nil {
-		out := &VoiceoverItemResult{
-			Language:  item.Language,
-			Status:    StatusFailed,
-			ErrorCode: string(FailureMissingFolder),
-			Error:     "missing_folder_id: voiceover destination could not be resolved",
-		}
-		setFinalStageProgress(out, string(item.Language), item.ParentJobID)
-		return out, newPipelineErrorCode(StageDestinationResolve, false, FailureMissingFolder, fmt.Errorf("missing_folder_id"))
+		return out, err
 	}
 
 	// PR-VO-PERITEM-OUTPUTDIR (July 2026): the resolved destination
@@ -330,77 +304,14 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		dest.FolderPath = u.deps.Output.OutputDir
 	}
 
+	u.auditCrossRunCache(ctx, item, dest)
+
 	// Trust item.TextHash from fanout (P0.6 invariant — no re-derive).
-	// PR-VO-TYPED-PRIMITIVES (July 2026): item.TextHash is the typed
-	// TextHash envelope; buildVoiceoverID first param is raw string,
-	// so convert at the seam.
-	itemHash := item.TextHash
-
-	// Audit the cross-run cache before doing TTS. Reuse is deliberately not
-	// claimed here yet when timing artifacts are required: the row currently
-	// stores the audio artifact but not a verifiable timing bundle. This
-	// makes the run report honest (candidate/hit/miss) without risking an
-	// unsynchronised subtitle timeline.
-	fingerprint := BuildVoiceoverContentFingerprintV4(itemHash, item.Language, item.Voice, providerIdentityForTTS(u.deps.Pipeline.TTSProvider, item.Language), dest.FolderID, item.Timing, item.RemoveSilence, voiceoverPostPolicy(item.TTSRate, item.SilencePolicy))
-	cacheStatus := "miss"
-	cacheReason := "not_found"
-	if lookup, ok := u.deps.Pipeline.VoiceoverRepository.(voiceoverFingerprintLookup); ok {
-		cached, lookupErr := lookup.FindByFingerprint(ctx, fingerprint)
-		if lookupErr != nil {
-			cacheStatus = "lookup_error"
-			cacheReason = lookupErr.Error()
-		} else if cached != nil {
-			cacheStatus = "candidate"
-			cacheReason = "timing_artifact_not_hydrated"
-		}
-	} else {
-		cacheStatus = "unavailable"
-		cacheReason = "repository_does_not_expose_fingerprint_lookup"
-	}
-	u.deps.Logger.Info("voiceover cross-run cache audit",
-		zap.String("language", string(item.Language)),
-		zap.String("fingerprint", fingerprint),
-		zap.String("status", cacheStatus),
-		zap.String("reason", cacheReason))
-
 	// ID is derived deterministically from (textHash, language, folderID).
-	id := buildVoiceoverID(string(itemHash), item.Language, dest.FolderID)
+	id := buildVoiceoverID(string(item.TextHash), item.Language, dest.FolderID)
+	cmd := buildProcessSegmentCommand(item, dest, id)
 
-	// Build the neutral DTO consumed by the shared ProcessSegmentUseCase.
-	// The StyleGroup injection (metaBuf["style_group"] if !empty) is
-	// now inside the ProcessSegmentUseCase; the per-item path's prior
-	// meta-merge logic is preserved by passing item.Metadata
-	// through (mergeUserMetadata in the ProcessSegmentUseCase handles
-	// the user-meta overlay + StyleGroup injection in one place).
-	cmd := &ProcessSegmentCommand{
-		ID:             id,
-		RequestID:      item.RequestID,
-		TextHash:       itemHash,
-		Text:           item.Text,
-		Language:       item.Language,
-		Voice:          item.Voice,
-		TTSRate:        item.TTSRate,
-		SilencePolicy:  item.SilencePolicy,
-		Filename:       item.Filename,
-		Strategy:       string(item.Strategy),
-		Metadata:       item.Metadata,
-		RemoveSilence:  item.RemoveSilence,
-		ForceSynthesis: item.ForceSynthesis,
-		Timing:         item.Timing,
-		Moments:        item.Moments,
-		// PR-P12-VOICEOVER-SEMANTIC-FIELDS (July 2026): forward the
-		// canonical semantic project identifier from the per-item command
-		// (API request or internal caller) so the adapter (Stage 3
-		// Publisher) builds the canonical {project}/{language}/ subpath
-		// via VoiceoverPath. Empty Project is OK: the adapter falls back
-		// to FolderID (legacy) or voiceover ID (graceful degradation).
-		Project: item.Project,
-		Dest:    dest,
-		// Per-item path (child pipeline): no old-row swap context.
-		// ShouldSwap stays false (no cleanup event).
-	}
-
-	out, err := u.processSeg.Execute(ctx, cmd)
+	out, err = u.processSeg.Execute(ctx, cmd)
 	if err != nil {
 		// ProcessSegmentUseCase owns the stage classification. Propagate
 		// its typed PipelineError unchanged; no caller parses Error() text.
@@ -427,6 +338,125 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		zap.String("id", out.ID),
 		zap.String("drive_link", out.DriveLink))
 	return out, nil
+}
+
+// resolveItemDestination resolves the destination for a single item. It
+// applies the shared DefaultFolderResolver fallback and maps a resolution
+// failure onto the caller-visible result shape. The per-item path also fills
+// FolderPath from the configured OutputDir: the destination carries the
+// identity namespace but not necessarily a local filesystem directory.
+func (u *ProcessVoiceoverItemUseCase) resolveItemDestination(
+	ctx context.Context,
+	item *GenerateVoiceoverItemCommand,
+) (*ResolvedDestination, *VoiceoverItemResult, error) {
+	dest, err := ResolveDestinationWithFallback(ctx, item.Destination,
+		u.deps.Pipeline.DestinationResolver, u.deps.Recovery.DefaultFolderResolver, u.deps.Logger)
+	if err != nil {
+		out := &VoiceoverItemResult{
+			Language:  item.Language,
+			Status:    StatusFailed,
+			ErrorCode: string(FailureDestinationUnavailable),
+			Error:     fmt.Sprintf("destination_resolve_failed: %v", err),
+		}
+		if errors.Is(err, ErrVoiceoverDestinationUnavailable) {
+			out.ErrorCode = VoiceoverDestinationUnavailableCode
+			out.Error = fmt.Sprintf("%s: %v", VoiceoverDestinationUnavailableCode, err)
+		}
+		setFinalStageProgress(out, string(item.Language), item.ParentJobID)
+		return nil, out, newPipelineError(StageDestinationResolve, false, err)
+	}
+	// The destination is required for its LOCAL output folder path and its
+	// identity namespace; the Drive FolderID is NOT required any more because
+	// this pipeline never uploads (waste-cut 2026-10-24). A missing folder
+	// identity simply participates as empty in the row ID + fingerprint.
+	if dest == nil {
+		out := &VoiceoverItemResult{
+			Language:  item.Language,
+			Status:    StatusFailed,
+			ErrorCode: string(FailureMissingFolder),
+			Error:     "missing_folder_id: voiceover destination could not be resolved",
+		}
+		setFinalStageProgress(out, string(item.Language), item.ParentJobID)
+		return nil, out, newPipelineErrorCode(StageDestinationResolve, false, FailureMissingFolder, fmt.Errorf("missing_folder_id"))
+	}
+	if dest.FolderPath == "" && u.deps.Output.OutputDir != "" {
+		dest.FolderPath = u.deps.Output.OutputDir
+	}
+	return dest, nil, nil
+}
+
+// auditCrossRunCache records the cross-run cache candidate state before TTS.
+// Reuse is deliberately not claimed here when timing artifacts are required:
+// the row stores the audio artifact but not a verifiable timing bundle, so
+// the run report stays honest without risking an unsynchronised timeline.
+func (u *ProcessVoiceoverItemUseCase) auditCrossRunCache(
+	ctx context.Context,
+	item *GenerateVoiceoverItemCommand,
+	dest *ResolvedDestination,
+) {
+	fingerprint := BuildVoiceoverContentFingerprintV4(
+		item.TextHash, item.Language, item.Voice,
+		providerIdentityForTTS(u.deps.Pipeline.TTSProvider, item.Language),
+		dest.FolderID, item.Timing, item.RemoveSilence,
+		voiceoverPostPolicy(item.TTSRate, item.SilencePolicy),
+	)
+	cacheStatus := "miss"
+	cacheReason := "not_found"
+	if lookup, ok := u.deps.Pipeline.VoiceoverRepository.(voiceoverFingerprintLookup); ok {
+		cached, lookupErr := lookup.FindByFingerprint(ctx, fingerprint)
+		if lookupErr != nil {
+			cacheStatus = "lookup_error"
+			cacheReason = lookupErr.Error()
+		} else if cached != nil {
+			cacheStatus = "candidate"
+			cacheReason = "timing_artifact_not_hydrated"
+		}
+	} else {
+		cacheStatus = "unavailable"
+		cacheReason = "repository_does_not_expose_fingerprint_lookup"
+	}
+	u.deps.Logger.Info("voiceover cross-run cache audit",
+		zap.String("language", string(item.Language)),
+		zap.String("fingerprint", fingerprint),
+		zap.String("status", cacheStatus),
+		zap.String("reason", cacheReason))
+}
+
+// buildProcessSegmentCommand builds the neutral DTO consumed by the shared
+// ProcessSegmentUseCase. StyleGroup injection and the user-metadata overlay
+// live in that use case, so item.Metadata is forwarded verbatim.
+func buildProcessSegmentCommand(
+	item *GenerateVoiceoverItemCommand,
+	dest *ResolvedDestination,
+	id string,
+) *ProcessSegmentCommand {
+	return &ProcessSegmentCommand{
+		ID:             id,
+		RequestID:      item.RequestID,
+		TextHash:       item.TextHash,
+		Text:           item.Text,
+		Language:       item.Language,
+		Voice:          item.Voice,
+		TTSRate:        item.TTSRate,
+		SilencePolicy:  item.SilencePolicy,
+		Filename:       item.Filename,
+		Strategy:       string(item.Strategy),
+		Metadata:       item.Metadata,
+		RemoveSilence:  item.RemoveSilence,
+		ForceSynthesis: item.ForceSynthesis,
+		Timing:         item.Timing,
+		Moments:        item.Moments,
+		// PR-P12-VOICEOVER-SEMANTIC-FIELDS (July 2026): forward the
+		// canonical semantic project identifier from the per-item command
+		// (API request or internal caller) so the adapter (Stage 3
+		// Publisher) builds the canonical {project}/{language}/ subpath
+		// via VoiceoverPath. Empty Project is OK: the adapter falls back
+		// to FolderID (legacy) or voiceover ID (graceful degradation).
+		Project: item.Project,
+		Dest:    dest,
+		// Per-item path (child pipeline): no old-row swap context.
+		// ShouldSwap stays false (no cleanup event).
+	}
 }
 
 // Compile-time assertion (AGENTS.md Pattern 0): the production concrete

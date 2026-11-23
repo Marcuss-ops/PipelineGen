@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -141,6 +142,26 @@ type fixedInternetImageSearcher struct {
 
 func (s fixedInternetImageSearcher) SearchImages(context.Context, InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	return s.candidates, nil
+}
+
+func TestCapSemanticVerificationCandidatesKeepsProviderRankOrder(t *testing.T) {
+	in := make([]scriptpkg.SegmentAssetCandidate, 0, MaxSemanticVerificationCandidates+3)
+	for i := 0; i < MaxSemanticVerificationCandidates+3; i++ {
+		in = append(in, semanticGateCandidate(fmt.Sprintf("cand-%02d", i)))
+	}
+	out := capSemanticVerificationCandidates(in, MaxSemanticVerificationCandidates)
+	if len(out) != MaxSemanticVerificationCandidates {
+		t.Fatalf("capped candidates = %d, want %d", len(out), MaxSemanticVerificationCandidates)
+	}
+	for i, candidate := range out {
+		want := fmt.Sprintf("cand-%02d", i)
+		if candidate.AssetID != want {
+			t.Fatalf("candidate[%d] = %q, want %q (provider order must be preserved)", i, candidate.AssetID, want)
+		}
+	}
+	if got := capSemanticVerificationCandidates(in[:3], MaxSemanticVerificationCandidates); len(got) != 3 {
+		t.Fatalf("short input was truncated to %d", len(got))
+	}
 }
 
 func semanticStageInput() ProcessInput {

@@ -1,0 +1,440 @@
+package vidrush
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
+
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
+	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"go.uber.org/zap"
+)
+
+// firstNonEmpty returns the first non-blank value, trim-normalized. The
+// embedded TrimSpace preserves this package's historical contract (the
+// canonical textutil.FirstNonEmpty returns the value as-is).
+func firstNonEmpty(values ...string) string {
+	return strings.TrimSpace(textutil.FirstNonEmpty(values...))
+}
+
+// BuildVidRushCache wires the SQLite-backed VidRush cache port over the
+// cache database plane. Nil-tolerant: a missing cache plane disables the
+// cache (callers treat nil as cache-off).
+func BuildVidRushCache(cacheDB *sql.DB, log *zap.Logger) scriptports.VidRushCachePort {
+	if cacheDB == nil {
+		return nil
+	}
+	return sqlitescripts.NewSQLiteVidRushCacheAdapter(cacheDB, log)
+}
+
+// vidRushProviderWiring is composition-root-only. It creates one closed
+// registry and one common finalizer; providers never write canonical tables.
+// VidRushDeliveryPorts groups the delivery-side ports (publication, durable
+// events, provider acquisition) so no single struct exceeds the archcheck
+// max_struct_deps=8 budget. Dependency inversion: this sub-package never
+// imports the root wiring package.
+type VidRushDeliveryPorts struct {
+	Publisher      delivery.Publisher
+	EventsRepo     *outboxevents.Repository
+	ProviderAssets *providerassets.Registry
+}
+
+// VidRushMaterializationDeps carries the composed surfaces the VidRush
+// materialization wiring needs from the composition root.
+// The post-cutover media SSOT is PostgreSQL-only (MediaPG); MediaSQLite
+// as a second media truth is REMOVED — a single DB commit + poll on
+// media_assets.index_state (pgx $ placeholders, no SQLite `?`).
+type VidRushMaterializationDeps struct {
+	MediaPG        *sql.DB
+	Delivery       VidRushDeliveryPorts
+	ImageSearcher  adapters.InternetImageSearcher
+	ImageGenerator *imagesapp.Service
+	MediaExec      mediaexec.ExecutionConfig
+}
+
+// BuildVidRushMaterialization composes the closed VidRush provider registry
+// and the shared artifact finalizer. Providers never write canonical tables;
+// the finalizer is the sole persistence boundary.
+func BuildVidRushMaterialization(cfg *config.Config, deps VidRushMaterializationDeps, log *zap.Logger) (*adapters.VidRushAssetProviderRegistry, scriptports.VidRushArtifactFinalizer) {
+	if deps.Delivery.Publisher == nil || deps.Delivery.EventsRepo == nil {
+		return nil, nil
+	}
+	committer, err := newCanonicalAssetCommitterBridge(deps.MediaPG, log)
+	if err != nil {
+		log.Warn("buildVidRushMaterialization: canonical media writer error", zap.Error(err))
+		return nil, nil
+	}
+	if committer == nil {
+		log.Warn("buildVidRushMaterialization: media PostgreSQL unavailable — vidrush materialization degraded (graceful degrade, godlike/07)")
+		return nil, nil
+	}
+	assetTx := assetfinalizer.NewAssetTxFinalizer(log, committer)
+	preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(deps.Delivery.Publisher, log), log)
+	// The canonical image library root. cfg is resolved through the config
+	// owner (Drive.ImagesFolder), which falls back to
+	// config.DefaultImagesRootFolderID, so an entity image is published to the
+	// SAME root regardless of what the local config says.
+	imagesRootFolderID := ""
+	if cfg != nil {
+		imagesRootFolderID = cfg.Drive.ImagesFolder()
+	}
+	finalizer := &vidRushArtifactFinalizer{mediaDB: deps.MediaPG, preparation: preparation, assetTx: assetTx, imagesRootFolderID: imagesRootFolderID, log: log, cas: BuildVidRushCASStore(cfg, log)}
+
+	registry := adapters.NewVidRushAssetProviderRegistry()
+	if deps.ImageSearcher != nil {
+		if err := registry.Register(&vidRushInternetImageProvider{searcher: deps.ImageSearcher, log: log}); err != nil {
+			log.Error("vidrush: internet image provider registration failed", zap.Error(err))
+			return nil, nil
+		}
+	}
+	if deps.ImageGenerator != nil {
+		if err := registry.Register(&vidRushImageGenerationProvider{generator: deps.ImageGenerator}); err != nil {
+			log.Error("vidrush: image generation provider registration failed", zap.Error(err))
+			return nil, nil
+		}
+	}
+	registry.Freeze()
+	log.Info("VidRush asset provider registry composed",
+		zap.Strings("providers", registry.Names()),
+	)
+	if len(registry.Names()) == 0 {
+		return nil, nil
+	}
+	return registry, finalizer
+}
+
+type vidRushArtifactFinalizer struct {
+	mediaDB     *sql.DB
+	preparation finalization.ArtifactPreparationService
+	assetTx     finalization.AssetFinalizerTx
+	log         *zap.Logger
+	// cas is the local content-addressed store. A downloaded image is promoted
+	// here before publication so the bytes become durable local state addressed
+	// by their own hash, and the ephemeral vidrush-image-* download can be
+	// removed. Nil (no config) leaves the historical temp-file behavior.
+	cas *cas.Store
+	// imagesRootFolderID is the canonical image library root
+	// (config.Drive.ImagesFolder()). Entity images are published there under a
+	// single canonical-entity SubFolder instead of into the run bundle, so the
+	// library is shared by every run and an image is stored once.
+	imagesRootFolderID string
+}
+
+func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
+	if f == nil || f.mediaDB == nil || f.preparation == nil || f.assetTx == nil {
+		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: canonical dependencies unavailable")
+	}
+	candidate := artifact.Candidate
+	if strings.TrimSpace(candidate.AssetID) == "" || strings.TrimSpace(artifact.LocalPath) == "" || strings.TrimSpace(artifact.ContentSHA256) == "" {
+		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: artifact identity, local path and hash are required")
+	}
+	// Content-addressed dedup BEFORE the Drive publication boundary. The same
+	// bytes served by another provider, under another alias, or for another
+	// entity are one canonical asset: uploading them again produced duplicate
+	// Drive files with distinct links for a single photograph. The check is on
+	// the canonical content address, never on the provider/candidate identity.
+	if reuse, ok := f.reusePublishedImageByContent(ctx, artifact); ok {
+		return reuse, nil
+	}
+	// Promote the downloaded bytes into the local CAS before publication. From
+	// here on the artifact's local path is content-addressed and stable: the
+	// caller may delete the ephemeral download, and a later run can re-open the
+	// bytes by hash instead of fetching them from Drive again.
+	artifact.LocalPath = f.promoteArtifactToCAS(ctx, artifact.LocalPath, artifact.ContentSHA256)
+	kind := finalization.KindImage
+	ext := filepath.Ext(artifact.LocalPath)
+	if ext == "" {
+		if strings.EqualFold(artifact.MIMEType, "image/png") {
+			ext = ".png"
+		} else {
+			ext = ".jpg"
+		}
+	}
+	filename := safeArtifactFilename(candidate.AssetID, ext)
+	verified := finalization.VerifiedArtifact{
+		ArtifactID: candidate.AssetID, Kind: kind, Filename: filename,
+		LocalPath: artifact.LocalPath, MIMEType: firstNonEmpty(artifact.MIMEType, "application/octet-stream"),
+		SizeBytes: artifact.SizeBytes,
+		// MEDIA-IDENTITY (Sept 2026): VerifiedArtifact.SHA256 is a content-address
+		// slot; the producer field is named ContentSHA256 for historical reasons,
+		// so it is RESOLVED through the canonical rule rather than forwarded
+		// verbatim (a legacy MD5 becomes "" = unknown). The idempotency key below
+		// keeps the raw digest on purpose: it is a per-artifact dedup LABEL, not an
+		// identity claim, and must keep matching previously written keys.
+		SHA256:         asset.ResolveContentAddress(artifact.ContentSHA256),
+		SourceVersion:  1,
+		Requirement:    finalization.ArtifactRequirementOptional,
+		IdempotencyKey: "vidrush:" + candidate.Provider + ":" + candidate.AssetID + ":" + artifact.ContentSHA256,
+		Description:    candidate.Query, Source: candidate.Provider,
+	}
+	if strings.TrimSpace(artifact.OutputDriveFolderID) != "" {
+		verified.ResolvedFolderID = strings.TrimSpace(artifact.OutputDriveFolderID)
+		verified.RootFolderResolved = true
+		verified.RootFolderName = firstNonEmpty(artifact.OutputDriveSubpath...)
+		verified.DriveSubpath = append([]string(nil), artifact.OutputDriveSubpath...)
+	}
+	if folderID, subpath, ok := entityImageLibraryDestination(candidate, f.imagesRootFolderID); ok {
+		verified.ResolvedFolderID = folderID
+		verified.RootFolderResolved = true
+		verified.RootFolderName = subpath[0]
+		verified.DriveSubpath = subpath
+	}
+	published, err := f.preparation.Prepare(ctx, verified)
+	if err != nil {
+		return scriptpkg.SegmentAssetCandidate{}, err
+	}
+	tx, err := f.mediaDB.BeginTx(ctx, nil)
+	if err != nil {
+		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	published.ArtifactMetadata = map[string]any{
+		"source_url": candidate.SourceURL, "source_page_url": candidate.SourcePageURL,
+		"query": candidate.Query, "rights_status": candidate.RightsStatus,
+		"rights_basis": candidate.RightsBasis, "width": artifact.Width, "height": artifact.Height,
+		"duration_ms": artifact.DurationMs,
+		"local_path":  artifact.LocalPath,
+	}
+	// Subject/entity provenance makes the finalized image discoverable by the
+	// local reuse lookup (ExistingImages) instead of only by provider search.
+	// Without it the PostgreSQL row exists but can never be found again, so a
+	// warm run re-downloads and re-uploads the same picture.
+	stampEntityImageSubjectMetadata(published.ArtifactMetadata, candidate)
+	_, _, err = f.assetTx.FinalizeAsset(ctx, assetfinalizer.WrapTx(tx), published)
+	if err != nil {
+		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: commit asset: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: commit tx: %w", err)
+	}
+	committed = true
+	candidate.DriveLink = published.Location.WebViewLink
+	if candidate.DriveLink == "" {
+		candidate.DriveLink = published.Location.DownloadLink
+	}
+	candidate.ContentSHA256, candidate.MIMEType = artifact.ContentSHA256, verified.MIMEType
+	candidate.LocalPath = artifact.LocalPath
+	candidate.Width, candidate.Height, candidate.DurationMs = artifact.Width, artifact.Height, artifact.DurationMs
+	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
+	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
+	candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
+	// The transactional outbox request is durable at this boundary, while
+	// the projection worker owns the physical pgvector write. Rendering only
+	// needs the verified, persisted file; semantic indexing is for later
+	// reuse and must not hold this request open. The pending state remains
+	// visible to the catalog and the outbox worker will update it asynchronously.
+	candidate.IndexStatus = "pending"
+	if current, err := readVidRushIndexState(ctx, f.mediaDB, candidate.AssetID); err == nil && current != "" {
+		candidate.IndexStatus = current
+	}
+	return candidate, nil
+}
+
+// entityImageLibraryDestination resolves the canonical image library location of
+// an entity image: <imagesRoot>/<canonical-entity-slug>. It returns ok=false
+// when the artifact is not an entity image, when its name yields no canonical
+// identity, or when the images root is not configured — and the caller then
+// keeps the generic per-image destination, which is still a single folder level
+// under the images root.
+//
+// The subpath is the CANONICAL ENTITY IDENTITY ("person:michael-jordan" →
+// "michael-jordan"), never the run title/language/job id, so the same person's
+// image is one folder that every future video reuses, and the
+// <slug>/<slug>/<file> nesting produced by the retired run-bundle routing cannot
+// come back. The root is pinned EXPLICITLY (RootFolderResolved + ResolvedFolderID)
+// rather than left to the destination registry, so the library layout holds even
+// when a local config maps the image destination elsewhere.
+func entityImageLibraryDestination(candidate scriptpkg.SegmentAssetCandidate, imagesRoot string) (string, []string, bool) {
+	root := strings.TrimSpace(imagesRoot)
+	if root == "" {
+		return "", nil, false
+	}
+	leaf := adapters.EntityImageDriveLeaf(candidate)
+	if leaf == "" {
+		return "", nil, false
+	}
+	return root, []string{leaf}, true
+}
+
+func readVidRushIndexState(ctx context.Context, db *sql.DB, assetID string) (string, error) {
+	var state string
+	err := db.QueryRowContext(ctx, `SELECT COALESCE(index_state, '') FROM media_assets WHERE id = $1`, assetID).Scan(&state)
+	return strings.TrimSpace(state), err
+}
+
+type vidRushInternetImageProvider struct {
+	searcher adapters.InternetImageSearcher
+	log      *zap.Logger
+}
+
+// vidRushImageGenerationProvider is the VidRush adapter for the existing
+// registry-backed image.generate.google use case. It returns the existing
+// ArtifactManifest to the common finalization boundary; it never writes
+// media_assets itself.
+type vidRushImageGenerationProvider struct {
+	generator *imagesapp.Service
+}
+
+func (p *vidRushImageGenerationProvider) Name() string {
+	return scriptpkg.VidRushProviderImageGeneration
+}
+func (p *vidRushImageGenerationProvider) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	return nil, nil
+}
+func (p *vidRushImageGenerationProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	if p == nil || p.generator == nil {
+		return scriptports.LocalArtifact{}, fmt.Errorf("vidrush image generation: generator unavailable")
+	}
+	output, err := p.generator.GenerateArtifact(ctx, "vidrush-"+candidate.AssetID, candidate.Query, "cinematic", kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight, nil)
+	if err != nil {
+		return scriptports.LocalArtifact{}, err
+	}
+	if output == nil || output.Result == nil || strings.TrimSpace(output.OutputPath) == "" || output.Manifest == nil {
+		return scriptports.LocalArtifact{}, fmt.Errorf("vidrush image generation: incomplete ArtifactManifest output")
+	}
+	hash, size, err := hashFile(output.OutputPath)
+	if err != nil {
+		return scriptports.LocalArtifact{}, err
+	}
+	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
+	candidate.LocalPath, candidate.ContentSHA256 = output.OutputPath, hash
+	candidate.MIMEType = firstNonEmpty(output.Result.Format, "image/png")
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: output.OutputPath, MIMEType: candidate.MIMEType, SizeBytes: size, ContentSHA256: hash, Manifest: output.Manifest}, nil
+}
+func (p *vidRushImageGenerationProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	verified, err := adapters.VerifyVidRushImageFile(artifact.Candidate, artifact.LocalPath, adapters.DefaultVidRushImagePolicy())
+	if err != nil {
+		return scriptports.VerifiedArtifact{}, err
+	}
+	candidate := verified.Candidate
+	candidate.RightsStatus = "verified"
+	candidate.RightsBasis = "image.generate.google provider manifest"
+	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: verified.MIMEType, SizeBytes: verified.SizeBytes, ContentSHA256: verified.ContentSHA256, Width: verified.Width, Height: verified.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "generated ArtifactManifest and image decode validated", Manifest: artifact.Manifest}, nil
+}
+
+func (p *vidRushInternetImageProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
+func (p *vidRushInternetImageProvider) Search(ctx context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	if p == nil || p.searcher == nil {
+		return nil, fmt.Errorf("vidrush images: search resolver unavailable")
+	}
+	entity := strings.TrimSpace(req.Entity)
+	if entity == "" {
+		entity = req.Query
+	}
+	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Position: req.Position, Query: req.Query, Entity: entity, QueryClass: req.QueryClass, TextHash: req.TextHash, Language: req.Language, ForceRefresh: req.ForceRefresh, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
+	return results, err
+}
+func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	data, mime, err := adapters.DownloadVidRushImageForCandidate(ctx, adapters.ProviderImageHTTPClient(), candidate, adapters.DefaultVidRushImagePolicy())
+	if err != nil {
+		if p.log != nil {
+			p.log.Warn("VidRush internet image acquire failed", zap.String("query", candidate.Query), zap.String("source_url", candidate.SourceURL), zap.Error(err))
+		}
+		return scriptports.LocalArtifact{}, err
+	}
+	file, err := os.CreateTemp("", "vidrush-image-*")
+	if err != nil {
+		return scriptports.LocalArtifact{}, err
+	}
+	path := file.Name()
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return scriptports.LocalArtifact{}, err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return scriptports.LocalArtifact{}, err
+	}
+	hash := digest.SHA256Bytes(data)
+	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
+	candidate.LocalPath, candidate.MIMEType, candidate.ContentSHA256 = path, mime, hash
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: path, MIMEType: mime, SizeBytes: int64(len(data)), ContentSHA256: hash}, nil
+}
+func (p *vidRushInternetImageProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	verified, err := adapters.VerifyVidRushImageFile(artifact.Candidate, artifact.LocalPath, adapters.DefaultVidRushImagePolicy())
+	if err != nil {
+		if p.log != nil {
+			p.log.Warn("VidRush internet image verify failed", zap.String("query", artifact.Candidate.Query), zap.String("source_url", artifact.Candidate.SourceURL), zap.Error(err))
+		}
+		return scriptports.VerifiedArtifact{}, err
+	}
+	candidate := verified.Candidate
+	if !strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "verified") {
+		candidate.RightsStatus = "unknown_allowed"
+		if strings.TrimSpace(candidate.RightsBasis) == "" {
+			candidate.RightsBasis = "source-license metadata required"
+		}
+	}
+	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
+	// Production binding remains verified-only; unknown_allowed is retained
+	// as a durable candidate but cannot become the scene winner.
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: verified.MIMEType, SizeBytes: verified.SizeBytes, ContentSHA256: verified.ContentSHA256, Width: verified.Width, Height: verified.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "image decoded and dimensions validated"}, nil
+}
+
+// newCanonicalAssetCommitterBridge resolves the canonical media writer
+// through the canonical wiring/media factory (the composition-root
+// newCanonicalAssetCommitter delegates to the same engine-aware factory).
+func newCanonicalAssetCommitterBridge(db *sql.DB, log *zap.Logger) (persistence.CanonicalAssetWriter, error) {
+	if db == nil {
+		return nil, nil
+	}
+	return mediasub.NewPostgresMediaCommitter(mediasub.CommitterDeps{DB: db, Log: log})
+}
+
+func hashFile(path string) (string, int64, error) {
+	return digest.SHA256File(path)
+}
+
+// safeArtifactFilename derives the Drive file name of a VidRush artifact from
+// its asset id, guarding two shapes that produced unusable names in the
+// library:
+//
+//   - an id whose base is empty or "." (e.g. a trailing-slash URL) would name
+//     the file just ".jpg"; it falls back to a stable placeholder.
+//   - an id that ALREADY carries the artifact's extension (web-image candidates
+//     are commonly stored as their source filename or URL) must not get a
+//     second one: `File_Scottie Pippen 5-2-22.jpg` + ".jpg" published
+//     `…jpg.jpg` into Drive, and the per-image folder inherited the doubled name.
+func safeArtifactFilename(assetID, ext string) string {
+	name := filepath.Base(strings.TrimSpace(assetID))
+	if name == "." || name == "" {
+		name = "vidrush-asset"
+	}
+	if ext != "" && strings.EqualFold(filepath.Ext(name), ext) {
+		return name
+	}
+	return name + ext
+}
+
+var _ scriptports.VidRushAssetProvider = (*vidRushInternetImageProvider)(nil)
+var _ scriptports.VidRushArtifactFinalizer = (*vidRushArtifactFinalizer)(nil)

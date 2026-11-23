@@ -14,7 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	admindrive "github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/drive"
-	wiringmedia "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	wiringmedia "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -90,10 +90,15 @@ func RunRegisterEditorialAssets(ctx context.Context, args []string) error {
 		dir = strings.TrimSpace(os.Getenv(wiringmedia.EditorialBackgroundsDirEnv))
 	}
 
-	registrations, err := wiringmedia.EnsureEditorialAssets(ctx, db, materializer, wiringmedia.EditorialAssetsOptions{
-		PlateIDs:  cli.SplitCSV(*platesFlag),
-		PlatesDir: dir,
-	}, log)
+	registrations, err := wiringmedia.EnsureEditorialAssets(ctx, wiringmedia.EditorialAssetsDeps{
+		DB:    db,
+		Bytes: materializer,
+		Options: wiringmedia.EditorialAssetsOptions{
+			PlateIDs:  cli.SplitCSV(*platesFlag),
+			PlatesDir: dir,
+		},
+		Log: log,
+	})
 	if err != nil {
 		return err
 	}

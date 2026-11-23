@@ -2,8 +2,9 @@ package wiring
 
 import (
 	"context"
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
 	"testing"
+
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
 )
 
 // TestPostgresCatalogPort_FailsClosedWithoutSearcher pins the engine-named

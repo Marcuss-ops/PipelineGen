@@ -9,29 +9,29 @@ a registry entry.
 
 | Knob | Kind | Default | Owner | Safe in production | Description |
 | --- | --- | --- | --- | --- | --- |
-| `VELOX_ARTIFACT_TOKEN` | env |  | `internal/app/wiring/script/remote_final_job.go` | unset (or artifact-store token) | Bearer token used by remote_final_job when downloading artifacts from the artifact store. |
+| `VELOX_ARTIFACT_TOKEN` | env |  | `internal/app/modules/script/remote_final_job.go` | unset (or artifact-store token) | Bearer token used by remote_final_job when downloading artifacts from the artifact store. |
 | `VELOX_CONCURRENT_OLLAMA_CALLS` | config | 4 | `internal/platform/config/types.go` | 4 | Parallel Ollama calls allowed per host. |
 | `VELOX_CONCURRENT_VIDEO_EXTRACTS` | config | 5 | `internal/platform/config/types.go` | 5 | Parallel stock-video extraction jobs. |
 | `VELOX_CREDENTIALS_FILE` | config | credentials.json | `internal/platform/config/types_misc.go` | /etc/pipelinegen/credentials.json | OAuth client credentials file used by the Drive publisher. |
 | `VELOX_DRIVE_STRICT_STARTUP_VALIDATION` | config | true | `internal/app/wiring/build_bundles_drive_gates.go` | true | Fail boot when Drive credentials/roots are invalid; false is the soft-mode escape hatch. |
-| `VELOX_EDITORIAL_BACKGROUNDS_DIR` | env |  | `internal/app/wiring/media/editorial_assets_bootstrap.go` | unset (plates are fetched and verified from Drive) | Local directory of certified editorial plate fixtures; an optimization, not the authority. |
-| `VELOX_FAKE_FINAL_JOB` | env |  | `internal/app/wiring/script/fake_final_job.go` | unset | Simulate the remote final-job handoff so a run measures only the local pipeline. |
-| `VELOX_FINAL_AUDIO_CACHE_DIR` | env |  | `internal/app/wiring/script_generation_bindings.go` | unset (default cache root) | Relocates the per-run final-audio cache. |
-| `VELOX_FINAL_JOB_ATTACH_SECONDS` | env | 3000 | `internal/app/wiring/script/remote_final_job_config.go` | 3000 | Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait). |
+| `VELOX_EDITORIAL_BACKGROUNDS_DIR` | env |  | `internal/app/modules/media/editorial_assets_bootstrap.go` | unset (plates are fetched and verified from Drive) | Local directory of certified editorial plate fixtures; an optimization, not the authority. |
+| `VELOX_FAKE_FINAL_JOB` | env |  | `internal/app/modules/script/fake_final_job.go` | unset | Simulate the remote final-job handoff so a run measures only the local pipeline. |
+| `VELOX_FINAL_AUDIO_CACHE_DIR` | env |  | `internal/app/modules/script_generation_bindings.go` | unset (default cache root) | Relocates the per-run final-audio cache. |
+| `VELOX_FINAL_JOB_ATTACH_SECONDS` | env | 3000 | `internal/app/modules/script/remote_final_job_config.go` | 3000 | Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait). |
 | `VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS` | env | 1 | `internal/app/wiring/final_job_segment_prepare.go` | 1 (enabled) | Packet-copies certified aligned windows instead of re-encoding them; set 0 only for A/B measurement. |
-| `VELOX_FINAL_JOB_CREDENTIALS_FILE` | env |  | `internal/app/wiring/script/remote_final_job_config.go` | /etc/pipelinegen/final_job_credentials.json | Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset. |
-| `VELOX_FINAL_JOB_DUMP_DIR` | env |  | `internal/app/wiring/script/remote_final_job.go` | unset | Optional directory that keeps the exact final-job prepare/finalize envelopes for diagnosis (off by default; may contain payload text). |
+| `VELOX_FINAL_JOB_CREDENTIALS_FILE` | env |  | `internal/app/modules/script/remote_final_job_config.go` | /etc/pipelinegen/final_job_credentials.json | Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset. |
+| `VELOX_FINAL_JOB_DUMP_DIR` | env |  | `internal/app/modules/script/remote_final_job.go` | unset | Optional directory that keeps the exact final-job prepare/finalize envelopes for diagnosis (off by default; may contain payload text). |
 | `VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR` | env |  | `internal/app/wiring/final_job_fragment_io.go` | unset (dataDir/final-job-fragments) | Relocates or disables the final-job fragment cache; off/disabled/none disables it. |
-| `VELOX_FINAL_JOB_M2M_SECRET` | env |  | `internal/app/wiring/script/remote_final_job_config.go` | 64-hex secret from the host env file | Per-client bearer secret for job.submit against the Master. |
-| `VELOX_FINAL_JOB_MASTER_URL` | env |  | `internal/app/wiring/script/remote_final_job_config.go` | https://<master-host> | Master URL for the remote final-job handoff; unset falls back to the configured base URL. |
+| `VELOX_FINAL_JOB_M2M_SECRET` | env |  | `internal/app/modules/script/remote_final_job_config.go` | 64-hex secret from the host env file | Per-client bearer secret for job.submit against the Master. |
+| `VELOX_FINAL_JOB_MASTER_URL` | env |  | `internal/app/modules/script/remote_final_job_config.go` | https://<master-host> | Master URL for the remote final-job handoff; unset falls back to the configured base URL. |
 | `VELOX_FINAL_JOB_PREPARE_LANES` | env | 4 | `internal/app/wiring/final_job_segment_prepare.go` | 4 (1..16) | Number of final-job fragments prepared in parallel; 0 or malformed fails the job. |
-| `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/wiring/script/remote_final_job_config.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
-| `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/wiring/script/remote_final_job_config.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |
-| `VELOX_MASTER_ADMIN_TOKEN` | env |  | `internal/app/wiring/script/remote_final_job.go` | unset (or Master admin token) | Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset. |
+| `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/modules/script/remote_final_job_config.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
+| `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/modules/script/remote_final_job_config.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |
+| `VELOX_MASTER_ADMIN_TOKEN` | env |  | `internal/app/modules/script/remote_final_job.go` | unset (or Master admin token) | Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset. |
 | `VELOX_MEDIA_MANIFEST_PATH` | env |  | `internal/capabilities/scripts/adapters/media_manifest_shim.go` | unset | Opt-in media_manifest fast-path used by the composition root. |
 | `VELOX_POLL_MAX_BACKOFF` | config | 60s | `internal/platform/config/jobs.go` | 60s | Ceiling of the job-runner poll backoff. |
 | `VELOX_PROGRESS_COALESCE_WINDOW` | config | 100ms | `internal/platform/config/jobs.go` | 100ms | Window over which job progress writes are coalesced (0 = passthrough). |
-| `VELOX_RUST_MEDIASAMPLER_PATH` | env | bin/mediasampler | `internal/app/wiring/media_pool_ranker.go` | bin/mediasampler | Rust mediasampler worker used by the canonical media ranker (rank_candidates). |
+| `VELOX_RUST_MEDIASAMPLER_PATH` | env | bin/mediasampler | `internal/app/modules/media_pool_ranker.go` | bin/mediasampler | Rust mediasampler worker used by the canonical media ranker (rank_candidates). |
 | `VELOX_SCHEDULER_INTERVAL` | config | 30s | `internal/platform/config/jobs.go` | 30s | Scheduler tick interval for background jobs. |
 | `VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY` | config | 6 | `internal/platform/config/scripts.go` | 6 (machine render ceiling) | Machine-wide ceiling for localized render jobs. |
 | `VELOX_SCRIPTS_TTS_CONCURRENCY` | config | 0 | `internal/platform/config/scripts.go` | 0 (defer to the voiceover provider bound, then 4) | Concurrency of the script-generation voiceover pool; 0 defers to the voiceover provider bound and then to 4. |

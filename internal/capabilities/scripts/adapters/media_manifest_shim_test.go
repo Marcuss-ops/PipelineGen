@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -102,7 +104,7 @@ func TestMediaManifestPinsBypassProviderAndScorer(t *testing.T) {
 		cand := seg.Assets.Candidates[0]
 		require.Equal(t, MediaManifestProvider, cand.Provider)
 		require.Equal(t, entitycatalog.CandidateSemanticAccepted, cand.SemanticStatus)
-		require.True(t, ReusablePersonImageVerdict(cand), "a pin must carry a durable verdict: zero VLM calls")
+		require.True(t, imagegate.ReusablePersonImageVerdict(cand), "a pin must carry a durable verdict: zero VLM calls")
 		require.Equal(t, "437d7377a2a8adbe7f5be03a99aebff4ccb9f6edb8cf884da1ccc2c2e45de533", cand.ContentSHA256)
 		require.False(t, cand.LifecycleFailed())
 	}

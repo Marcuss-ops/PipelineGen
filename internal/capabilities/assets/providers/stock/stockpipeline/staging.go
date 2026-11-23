@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	assetsports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"go.uber.org/zap"
@@ -21,7 +22,7 @@ func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref a
 		var downloadErr error
 		h := (*kernobs.StageHandle)(nil)
 		if s.svc != nil {
-			h = startServiceStockPhase(ctx, "stock.youtube_download", "")
+			h = core.StartServiceStockPhase(ctx, "stock.youtube_download", "")
 			defer func() {
 				out, bytes := int64(0), int64(0)
 				if result != nil {
@@ -29,8 +30,8 @@ func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref a
 				}
 				h.SetItems(1, out)
 				h.SetBytes(0, bytes)
-				h.SetItemsFailed(boolToInt64(downloadErr != nil))
-				finishServiceStockPhase(s.svc.log, h, downloadErr)
+				h.SetItemsFailed(core.BoolToInt64(downloadErr != nil))
+				core.FinishServiceStockPhase(s.svc.log, h, downloadErr)
 			}()
 		}
 		dlResult, err := s.downloader.Download(ctx, req)
@@ -39,7 +40,7 @@ func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref a
 			return nil, downloadErr
 		}
 		result = &assetsports.StagedAsset{LocalPath: dlResult.ResolvedPath, Bytes: dlResult.SizeBytes, SourceWindow: dlResult.SourceWindow}
-		s.populateCache(ctx, cacheKey, "youtube", extractVideoID(ref.URL), ref, dlResult.ResolvedPath, dlResult.SizeBytes)
+		s.populateCache(ctx, cacheKey, "youtube", core.ExtractVideoID(ref.URL), ref, dlResult.ResolvedPath, dlResult.SizeBytes)
 		return result, nil
 	})
 	if sfErr != nil {

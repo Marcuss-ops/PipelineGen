@@ -11,7 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 )
 
 // runBackfillEmbeddingContract stamps the canonical contract hash only on
@@ -47,7 +47,7 @@ func RunBackfillEmbeddingContract(args []string) error {
 	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
 	// PostgreSQL media SSOT rather than the operational mirror, which holds no
 	// committed media rows.
-	source := pgmedia.NewBackfillReader(root.MediaPostgres)
+	source := pgbackfill.NewBackfillReader(root.MediaPostgres)
 	if source == nil {
 		return fmt.Errorf("media PostgreSQL SSOT is required for embedding-contract backfill")
 	}

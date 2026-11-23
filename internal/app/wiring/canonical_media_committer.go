@@ -35,7 +35,7 @@ import (
 
 	"go.uber.org/zap"
 
-	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
 	appadminconsole "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
 	localized "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
@@ -58,7 +58,7 @@ func newCanonicalAssetCommitter(db *sql.DB, log *zap.Logger) (persistence.Canoni
 	if db == nil {
 		return nil, nil
 	}
-	return mediasub.NewPostgresMediaCommitterFromDB(db, log)
+	return mediasub.NewPostgresMediaCommitter(mediasub.CommitterDeps{DB: db, Log: log})
 }
 
 // canonicalCommitterForRoot resolves the canonical media writer from the
@@ -71,7 +71,7 @@ func canonicalCommitterForRoot(root *ComposeRoot, log *zap.Logger) (persistence.
 	if root == nil || root.MediaPostgres == nil {
 		return nil, nil
 	}
-	return mediasub.NewPostgresMediaCommitterFromDB(root.MediaPostgres, log)
+	return mediasub.NewPostgresMediaCommitter(mediasub.CommitterDeps{DB: root.MediaPostgres, Log: log})
 }
 
 // canonicalMediaWriterRequired is the fail-closed variant for wiring sites

@@ -56,19 +56,19 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 )
 
 // embeddingCandidateSource is the narrow media read the embedding backfill
 // depends on.
 //
-// MEDIA-SSOT: production binds the PostgreSQL reader (pgmedia.BackfillReader),
+// MEDIA-SSOT: production binds the PostgreSQL reader (pgbackfill.BackfillReader),
 // whose scan applies capregistry.SearchIndexTaxonomySQL — the same eligibility
 // boundary the projection planes use. The retired SQLite scan graded the
 // operational mirror, which holds no committed media rows.
 type embeddingCandidateSource interface {
-	ListEmbeddingBackfillCandidates(ctx context.Context, q pgmedia.EmbeddingCandidateQuery) ([]pgmedia.EmbeddingCandidate, error)
-	ListEmbeddingCandidatesByID(ctx context.Context, ids []string) ([]pgmedia.EmbeddingCandidate, error)
+	ListEmbeddingBackfillCandidates(ctx context.Context, q pgbackfill.EmbeddingCandidateQuery) ([]pgbackfill.EmbeddingCandidate, error)
+	ListEmbeddingCandidatesByID(ctx context.Context, ids []string) ([]pgbackfill.EmbeddingCandidate, error)
 }
 
 // fetchEmbeddingCandidates queries the media SSOT for assets that need
@@ -84,7 +84,7 @@ func fetchEmbeddingCandidates(
 		return nil, fmt.Errorf("query embedding candidates: media SSOT reader is not wired")
 	}
 
-	q := pgmedia.EmbeddingCandidateQuery{Source: deps.Source, Limit: deps.Limit}
+	q := pgbackfill.EmbeddingCandidateQuery{Source: deps.Source, Limit: deps.Limit}
 	// Resume: start after the last processed ID.
 	if cp != nil && cp.LastProcessedID != "" && deps.Resume {
 		q.AfterID = cp.LastProcessedID
@@ -99,9 +99,9 @@ func fetchEmbeddingCandidates(
 
 // embeddingCandidatesFromRows maps SSOT rows onto the indexing candidate model,
 // dropping already-embedded rows in --only-missing mode. "Embedded" is the
-// live text channel (pgmedia.EmbeddingCandidate.HasText = a media_embeddings
+// live text channel (pgbackfill.EmbeddingCandidate.HasText = a media_embeddings
 // text vector): the only channel the indexing pipeline produces.
-func embeddingCandidatesFromRows(found []pgmedia.EmbeddingCandidate, onlyMissing bool) []indexing.Candidate {
+func embeddingCandidatesFromRows(found []pgbackfill.EmbeddingCandidate, onlyMissing bool) []indexing.Candidate {
 	out := make([]indexing.Candidate, 0, len(found))
 	for _, rec := range found {
 		candidate := indexing.Candidate{

@@ -21,8 +21,8 @@ import (
 
 	"go.uber.org/zap"
 
-	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/assets"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
 	assetmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -292,7 +292,12 @@ func registerPostgresMediaOutboxHandlers(
 	if worker == nil {
 		return nil
 	}
-	clipHandler, clipErr := clipswiring.NewClipRenderDriveDeliveryHandler(drivePublisher, mutator, subtitles, log)
+	clipHandler, clipErr := clipswiring.NewClipRenderDriveDeliveryHandler(clipswiring.ClipRenderDeliveryDeps{
+		Publisher: drivePublisher,
+		Mutator:   mutator,
+		Subtitles: subtitles,
+		Log:       log,
+	})
 	if clipErr != nil {
 		return fmt.Errorf("clip.render PostgreSQL Drive delivery handler: %w", clipErr)
 	}

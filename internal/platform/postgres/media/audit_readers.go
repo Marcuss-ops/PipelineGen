@@ -17,6 +17,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
+	"go.uber.org/zap"
 )
 
 // ClipAuditRow is the projection of a canonical YouTube clip row that the
@@ -307,4 +312,195 @@ func (r *StructuredAssetIdentityReader) ListStructuredAssetIdentities(ctx contex
 		return nil, fmt.Errorf("postgres structured asset identity: iterate: %w", err)
 	}
 	return out, nil
+}
+
+// ── absorbed from operator_inventory_reader.go ──
+
+// OperatorInventoryReader is the PostgreSQL implementation of the operator
+// read model. It is intentionally read-only and projects rows for the UI.
+type OperatorInventoryReader struct {
+	db  *sql.DB
+	log *zap.Logger
+}
+
+// Compile-time assertion: the reader satisfies the canonical capability port.
+// Drift on the interface is a build failure, not a runtime gap.
+var _ operator.AssetInventoryReader = (*OperatorInventoryReader)(nil)
+
+// NewOperatorInventoryReader constructs the read-only inventory reader on the
+// PostgreSQL media database. db is required: a nil handle is a programming
+// error, not a degrade path (wiring resolves it from the canonical media
+// handle and leaves the port unwired when the media plane is closed).
+func NewOperatorInventoryReader(db *sql.DB, log *zap.Logger) *OperatorInventoryReader {
+	if db == nil {
+		panic("media.NewOperatorInventoryReader: db is required")
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &OperatorInventoryReader{db: db, log: log}
+}
+
+// DB exposes the underlying handle so callers can assert the reader lives on
+// the media SSOT.
+func (r *OperatorInventoryReader) DB() *sql.DB {
+	if r == nil {
+		return nil
+	}
+	return r.db
+}
+
+// List implements operator.AssetInventoryReader.
+func (r *OperatorInventoryReader) List(ctx context.Context, query operator.AssetInventoryQuery) (operator.AssetInventoryPage, error) {
+	return r.list(ctx, query)
+}
+
+// Get implements operator.AssetInventoryReader.
+func (r *OperatorInventoryReader) Get(ctx context.Context, assetID string) (*operator.AssetInspection, error) {
+	return r.get(ctx, assetID)
+}
+
+// Facets implements operator.AssetInventoryReader.
+func (r *OperatorInventoryReader) Facets(ctx context.Context) (*operator.AssetInventoryFacets, error) {
+	return r.facets(ctx)
+}
+
+// facets counts every filter dimension over the non-deleted catalog and merges
+// the canonical enum members in, so a value with no rows still renders as a
+// zero-count option. The retired SQLite reader's facet set is reproduced
+// exactly: five raw value distributions plus the derived asset_state
+// projection.
+func (r *OperatorInventoryReader) facets(ctx context.Context) (*operator.AssetInventoryFacets, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("postgres media: operator inventory reader is not wired")
+	}
+	mediaTypes := map[string]int64{}
+	lifecycleStates := map[string]int64{}
+	assetStates := map[string]int64{}
+	indexStates := map[string]int64{}
+	sources := map[string]int64{}
+	providers := map[string]int64{}
+
+	queries := []struct {
+		name      string
+		keyColumn string
+		out       map[string]int64
+	}{
+		{name: "media_type", keyColumn: "media_type", out: mediaTypes},
+		{name: "lifecycle_state", keyColumn: "lifecycle_state", out: lifecycleStates},
+		{name: "index_state", keyColumn: "index_state", out: indexStates},
+		{name: "source", keyColumn: "source", out: sources},
+		{name: "provider", keyColumn: "provider", out: providers},
+	}
+
+	for _, q := range queries {
+		if err := r.runFacetQuery(ctx, q.name, q.keyColumn, q.out); err != nil {
+			return nil, fmt.Errorf("operatorinventory.facets %s: %w", q.name, err)
+		}
+	}
+	if err := r.runAssetStateFacetQuery(ctx, assetStates); err != nil {
+		return nil, fmt.Errorf("operatorinventory.facets asset_state: %w", err)
+	}
+
+	return &operator.AssetInventoryFacets{
+		MediaTypes:      mergeCanonicalFacet(mediaTypes, operator.MediaTypeLabels()),
+		LifecycleStates: mergeCanonicalFacet(lifecycleStates, operator.LifecycleStateLabels()),
+		AssetStates:     mergeCanonicalFacet(assetStates, operator.AssetStateLabels()),
+		IndexStates:     mergeCanonicalFacet(indexStates, operator.IndexStateLabels()),
+		Sources:         facetsFromMap(sources),
+		Providers:       facetsFromMap(providers),
+	}, nil
+}
+
+// runAssetStateFacetQuery counts the DERIVED asset_state projection, never the
+// physical compatibility column: the facet sidebar must agree with the rows the
+// Content Library renders.
+func (r *OperatorInventoryReader) runAssetStateFacetQuery(ctx context.Context, out map[string]int64) error {
+	q := `SELECT ` + operatorAssetStateProjectionSQL("m") + ` AS k, COUNT(*) AS c
+	FROM media_assets m WHERE m.lifecycle_state <> 'DELETED' GROUP BY k`
+	rows, err := r.db.QueryContext(ctx, q)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var key string
+		var count int64
+		if err := rows.Scan(&key, &count); err != nil {
+			return err
+		}
+		out[key] = count
+	}
+	return rows.Err()
+}
+
+func (r *OperatorInventoryReader) runFacetQuery(ctx context.Context, name, keyColumn string, out map[string]int64) error {
+	// keyColumn comes from the closed set above, never from caller input, so
+	// interpolating it cannot become an injection surface.
+	q := `SELECT COALESCE(` + keyColumn + `, '') AS k, COUNT(*) AS c
+	FROM media_assets WHERE lifecycle_state <> 'DELETED' GROUP BY k`
+	rows, err := r.db.QueryContext(ctx, q)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var key string
+		var count int64
+		if err := rows.Scan(&key, &count); err != nil {
+			return err
+		}
+		// An empty source/provider is a real facet ("" = unset); an empty
+		// canonical enum value is not a value at all.
+		if key == "" && name != "source" && name != "provider" {
+			continue
+		}
+		out[key] = count
+	}
+	return rows.Err()
+}
+
+// mergeCanonicalFacet ensures every canonical value appears in the facet
+// group, even when the database count is zero. Labels are supplied by helpers
+// in the domain package. The returned slice is sorted by code for stable
+// output.
+func mergeCanonicalFacet(counts map[string]int64, labels map[string]string) []operator.FacetGroup {
+	out := make([]operator.FacetGroup, 0, len(labels))
+	for code, label := range labels {
+		out = append(out, operator.FacetGroup{
+			Code:  code,
+			Label: label,
+			Count: counts[code],
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+	return out
+}
+
+// facetsFromMap renders a raw value distribution (source / provider) where the
+// value IS its own label.
+func facetsFromMap(m map[string]int64) []operator.FacetGroup {
+	out := make([]operator.FacetGroup, 0, len(m))
+	for code, count := range m {
+		out = append(out, operator.FacetGroup{Code: code, Label: code, Count: count})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+	return out
+}
+
+// parseOperatorTime parses the RFC3339 / naive-timestamp TEXT columns the
+// media SSOT mirrors from SQLite. An unparseable or empty stamp yields the
+// zero time, exactly as the retired SQLite read model did.
+func parseOperatorTime(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t
+	}
+	if t, err := time.Parse("2006-01-02T15:04:05", s); err == nil {
+		return t
+	}
+	return time.Time{}
 }

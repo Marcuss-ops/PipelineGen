@@ -55,18 +55,82 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		return GenerateRequest{}, fmt.Errorf("scriptgeneration: envelope has no items")
 	}
 
+	item, err := normalizeBuilderItem(env, idempotencyKey)
+	if err != nil {
+		return GenerateRequest{}, err
+	}
+	// SSOT: output.render.watermark / output.render.subtitles are the only
+	// spellings. The legacy top-level output.watermark/output.subtitles
+	// compatibility blocks were removed; requests carrying them fail at the
+	// schema boundary instead of silently merging two sources of truth.
+
+	source := buildBuilderSource(item)
+
+	languages, sourceLang, err := resolveBuilderTranslation(item)
+	if err != nil {
+		return GenerateRequest{}, err
+	}
+
+	generateTimeline, audio, err := resolveBuilderAudio(item, languages, sourceLang)
+	if err != nil {
+		return GenerateRequest{}, err
+	}
+
+	mapCfg, err := resolveBuilderMapConfig(item)
+	if err != nil {
+		return GenerateRequest{}, err
+	}
+
+	req := buildGenerateRequestCore(item, env, idempotencyKey, source, languages, sourceLang, mapCfg)
+	applyBuilderOutput(&req, item, generateTimeline, audio)
+	req.ScriptParams.Segments = scriptpkg.CloneScriptSegments(item.ScriptParams.Segments)
+	// Channel profile: curated per-channel defaults for the choices this
+	// request left BLANK (subtitles, watermark, overlay style, SFX, mix
+	// policy, phrase-motion pool). Applied BEFORE the editing asset policy so
+	// the policy can still fill whatever the profile — like the caller — left
+	// unset. An unknown/empty channel is a no-op: profiles are curated, not a
+	// closed vocabulary.
+	if profile, ok := channelprofile.Lookup(item.ChannelID); ok {
+		if err := ApplyChannelProfile(&req, profile); err != nil {
+			return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply channel profile: %w", err)
+		}
+	}
+	// Background centralizzato ON (Intro V2): the canonical editorial
+	// selection policy fills the assets the caller left blank (background
+	// plate, BGM in COMBINED_TIMELINE). It NEVER overrides a
+	// caller-provided selection — an explicit mode (including "none") is
+	// preserved — so this is a pure default-fill at the single ingress
+	// point both job handlers share.
+	if err := ApplyEditingAssetPolicy(&req, mediaregistry.DefaultEditingAssetsPolicy()); err != nil {
+		return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply editing asset policy: %w", err)
+	}
+	// Every request carries the certified entity-image and caption pools. The
+	// Rust planner rejects an admitted entity image or caption when these pools
+	// are empty; an omitted pool means "automatic rotation", not "no motion",
+	// so resolve them once here instead of failing after script, translation
+	// and voiceover work.
+	req.EntityImageMotions = resolveEntityImageMotionPool(req.EntityImageMotions)
+	req.EntityCaptionMotions = resolveEntityCaptionMotionPool(req.EntityCaptionMotions)
+	// Three knobs describe the same generic-image lane: output.generate_scene_images,
+	// script_params.images_per_scene and max_image_overlays. Resolve them once so a
+	// payload cannot say "disabled" twice and still arm the lane through a stale
+	// budget (CFG-05).
+	normalizeImageToggleCoherence(&req)
+	return req, nil
+}
+
+// normalizeBuilderItem validates the envelope shape and applies the input
+// normalizations that must happen before any field is projected.
+func normalizeBuilderItem(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey string) (scriptpkg.GenerationItemV2, error) {
+	if env == nil {
+		return scriptpkg.GenerationItemV2{}, fmt.Errorf("scriptgeneration: envelope is nil")
+	}
+	if len(env.Items) == 0 {
+		return scriptpkg.GenerationItemV2{}, fmt.Errorf("scriptgeneration: envelope has no items")
+	}
 	item := env.Items[0]
-	provider := strings.ToLower(strings.TrimSpace(item.Translation.Provider))
-	if provider != "" && provider != "ollama" && provider != "argos" {
-		return GenerateRequest{}, fmt.Errorf("scriptgeneration: unsupported translation provider %q", item.Translation.Provider)
-	}
-	if item.Translation.Concurrency < 0 || item.Translation.Concurrency > 16 {
-		return GenerateRequest{}, fmt.Errorf("scriptgeneration: translation concurrency must be between 0 and 16")
-	}
 	// Envelope-level force refresh is authoritative across every cache layer,
-	// not only the job/idempotency boundary. A fresh job that leaves the
-	// script, extraction, or asset caches warm can replay stale scene text and
-	// provider bindings, defeating a real cold VidRush certification.
+	// not only the job/idempotency boundary.
 	if env.ForceRefresh {
 		item.ScriptParams.ForceRefresh = true
 		item.Source.ForceRefresh = true
@@ -74,28 +138,69 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		item.MediaPlan.ForceRefreshExtraction = true
 		item.MediaPlan.ForceRefreshBindings = true
 	}
-	// Rendered clips are grouped under the generated script name. Keep the
-	// source clip IDs untouched; this field only controls Drive routing.
-	// The default is run-scoped so two submissions with the same title can
-	// never publish into one folder (the R102 collision). An explicit
-	// caller folder remains authoritative.
+	// Rendered clips are grouped under the generated script name. The default
+	// is run-scoped so two submissions with the same title never publish into
+	// one folder; an explicit caller folder remains authoritative.
 	if strings.TrimSpace(item.Output.Render.DriveSubfolderName) == "" {
 		item.Output.Render.DriveSubfolderName = defaultRenderSubfolderName(item.Title, item.Source.Topic, idempotencyKey)
 	}
 	if err := resolveBackgroundReference(&item.Output.Render); err != nil {
-		return GenerateRequest{}, fmt.Errorf("scriptgeneration: resolve render background: %w", err)
+		return scriptpkg.GenerationItemV2{}, fmt.Errorf("scriptgeneration: resolve render background: %w", err)
 	}
 	item.Output.Render.Normalize()
-	// SSOT: output.render.watermark / output.render.subtitles are the only
-	// spellings. The legacy top-level output.watermark/output.subtitles
-	// compatibility blocks were removed; requests carrying them fail at the
-	// schema boundary instead of silently merging two sources of truth.
+	// output.drive_folder_id is the job's explicit artifact root. Keep it
+	// connected to the render contract as well.
+	if strings.TrimSpace(item.Output.Render.DriveFolderID) == "" {
+		item.Output.Render.DriveFolderID = item.Output.DriveFolderID
+	}
+	return item, nil
+}
 
-	// Map SourceSpec → scriptgeneration.Source (pure field copy).
-	// Source policy fields must survive this durable-runtime boundary:
-	// dropping Search/CachePolicy/Research turns a web-research request into
-	// an offline cache lookup and fails with RESEARCH_DISABLED_CACHE_MISS.
-	source := Source{
+// resolveBuilderTranslation validates the translation contract and resolves
+// the deduplicated target languages plus the source language.
+func resolveBuilderTranslation(item scriptpkg.GenerationItemV2) ([]Language, Language, error) {
+	provider := strings.ToLower(strings.TrimSpace(item.Translation.Provider))
+	if provider != "" && provider != "ollama" && provider != "argos" {
+		return nil, "", fmt.Errorf("scriptgeneration: unsupported translation provider %q", item.Translation.Provider)
+	}
+	if item.Translation.Concurrency < 0 || item.Translation.Concurrency > 16 {
+		return nil, "", fmt.Errorf("scriptgeneration: translation concurrency must be between 0 and 16")
+	}
+	languages := make([]Language, 0, len(item.Output.Languages))
+	seenLanguages := make(map[Language]struct{}, len(item.Output.Languages))
+	for _, raw := range item.Output.Languages {
+		lang := Language(strings.TrimSpace(raw))
+		if lang == "" {
+			continue
+		}
+		if _, exists := seenLanguages[lang]; exists {
+			return nil, "", fmt.Errorf("scriptgeneration: output.languages repeats %q", lang)
+		}
+		seenLanguages[lang] = struct{}{}
+		languages = append(languages, lang)
+	}
+	sourceLang := Language(strings.TrimSpace(item.Language))
+	if sourceLang == "" {
+		sourceLang = "en"
+	}
+	if provider != "" {
+		hasTarget := false
+		for _, lang := range languages {
+			if lang != sourceLang {
+				hasTarget = true
+				break
+			}
+		}
+		if !hasTarget {
+			return nil, "", fmt.Errorf("scriptgeneration: translation provider %q is configured but output.languages has no target different from source language %q; add the target language or remove translation.provider", provider, sourceLang)
+		}
+	}
+	return languages, sourceLang, nil
+}
+
+// buildBuilderSource projects SourceSpec into the durable source contract.
+func buildBuilderSource(item scriptpkg.GenerationItemV2) Source {
+	return Source{
 		Type:               SourceType(item.Source.Type),
 		Topic:              item.Source.Topic,
 		SourceText:         item.Source.SourceText,
@@ -119,99 +224,40 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		CachePolicy:        item.Source.CachePolicy,
 		Research:           item.Source.Research,
 	}
+}
 
-	// Map languages from the output spec. Trim at the boundary so a
-	// whitespace-only or duplicated target can never become a silent
-	// translation no-op downstream.
-	languages := make([]Language, 0, len(item.Output.Languages))
-	seenLanguages := make(map[Language]struct{}, len(item.Output.Languages))
-	for _, raw := range item.Output.Languages {
-		lang := Language(strings.TrimSpace(raw))
-		if lang == "" {
-			continue
-		}
-		if _, exists := seenLanguages[lang]; exists {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: output.languages repeats %q", lang)
-		}
-		seenLanguages[lang] = struct{}{}
-		languages = append(languages, lang)
-	}
+// builderAudioIntent is the validated audio projection consumed by the
+// request builder. It keeps the compat fallbacks in one place.
+type builderAudioIntent struct {
+	mode                    audiocap.AudioMode
+	timing                  *audiocap.TimingRequest
+	mixPolicy               audiocap.AudioMixPolicy
+	backgroundMusic         []scriptpkg.BackgroundMusicIntent
+	soundEffects            []scriptpkg.SoundEffectIntent
+	randomSFXOnClipStart    bool
+	randomSFXOnImageOverlay bool
+	voiceoverLanguages      []Language
+}
 
-	// Source language defaults to the item's language if set,
-	// otherwise "en" (the canonical safety default).
-	sourceLang := Language(strings.TrimSpace(item.Language))
-	if sourceLang == "" {
-		sourceLang = "en"
-	}
-	// R108 regression gate: a configured translator with no target that
-	// differs from the source is a mislabelled source-only request, not a
-	// successful translation. Fail at submit instead of delivering source
-	// text under the target language tag.
-	if provider != "" {
-		hasTarget := false
-		for _, lang := range languages {
-			if lang != sourceLang {
-				hasTarget = true
-				break
-			}
-		}
-		if !hasTarget {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: translation provider %q is configured but output.languages has no target different from source language %q; add the target language or remove translation.provider", provider, sourceLang)
-		}
-	}
-
-	// Google Docs is retired (see ErrGoogleDocsRetired): the tombstone in
-	// item.Docs is carried through verbatim so Start fails closed when a
-	// payload still asks for it.
-	// output.drive_folder_id is the job's explicit artifact root. Keep it
-	// connected to the render contract as well: the existing publisher then
-	// creates/reuses its deterministic <script>/<language>/overlay child.
-	artifactFolderID := item.Output.DriveFolderID
-	if strings.TrimSpace(item.Output.Render.DriveFolderID) == "" {
-		item.Output.Render.DriveFolderID = artifactFolderID
-	}
-
-	// generate_timeline is the explicit opt-in for the canonical timeline
-	// metadata artifact. Video rendering is no longer part of PipelineGen; the
-	// timeline is audio/metadata-only.
-	generateTimeline := item.Output.GenerateTimeline
+// resolveBuilderAudio validates the audio mode and resolves the canonical
+// audio intent, including the nested output.audio compatibility fallbacks.
+func resolveBuilderAudio(item scriptpkg.GenerationItemV2, languages []Language, sourceLang Language) (bool, builderAudioIntent, error) {
 	audioModeInput := item.Audio.Mode
-	if audioModeInput == "" { // compatibility with the initial nested output shape
+	if audioModeInput == "" {
 		audioModeInput = item.Output.Audio.Mode
 	}
 	audioMode, err := audiocap.ResolveAudioMode(audiocap.AudioMode(audioModeInput), item.Output.VoiceoverEnabled.AsBool())
 	if err != nil {
-		return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
+		return false, builderAudioIntent{}, fmt.Errorf("scriptgeneration: %w", err)
 	}
-
-	// godlike/07 NO-FAKE-AVAILABILITY: a voiceover-producing audio mode
-	// publishes artifacts, so Project is REQUIRED. Fail at the preflight
-	// boundary (before the run is enqueued/started) rather than at the
-	// voiceover phase — this turns "job FAILED after pipeline start" into
-	// an immediate 400. The runner-phase gate (runner_phase_voiceover.go)
-	// remains as a defensive backstop for resumed runs and internal callers.
 	needsVoiceover := audioMode == audiocap.AudioModeChunkedVoiceover || audioMode == audiocap.AudioModeCombinedTimeline
 	if needsVoiceover && strings.TrimSpace(item.Project) == "" {
-		return GenerateRequest{}, fmt.Errorf("%w: voiceover publishing requires a resolved Project", ErrProjectRequired)
+		return false, builderAudioIntent{}, fmt.Errorf("%w: voiceover publishing requires a resolved Project", ErrProjectRequired)
 	}
-
-	// Voiceover timing policy: the canonical top-level audio config carries
-	// the policy; the nested output.audio shape is the compat fallback. nil
-	// means the pipeline applies the canonical defaults downstream — timing
-	// capture is never implicitly mandatory.
 	timing := item.Audio.Timing
 	if timing == nil {
 		timing = item.Output.Audio.Timing
 	}
-
-	// Editorial audio intent block: the canonical top-level audio config
-	// carries mix_policy / background_music / sound_effects and opt-in
-	// random SFX on each clip start; the nested
-	// output.audio shape is the compat fallback (same pattern as mode and
-	// timing). background_music was already normalized to a slice at the
-	// wire boundary (AudioOutputConfig.UnmarshalJSON accepts a single
-	// object), so the durable domain always works with
-	// []BackgroundMusicIntent — no second normalization here.
 	mixPolicy := item.Audio.MixPolicy
 	if mixPolicy == "" {
 		mixPolicy = item.Output.Audio.MixPolicy
@@ -224,15 +270,13 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	if soundEffects == nil {
 		soundEffects = item.Output.Audio.SoundEffects
 	}
-	randomSFXOnClipStart := item.Audio.RandomSFXOnClipStart || item.Output.Audio.RandomSFXOnClipStart
-	randomSFXOnImageOverlay := item.Audio.RandomSFXOnImageOverlay || item.Output.Audio.RandomSFXOnImageOverlay
 	voiceoverLanguages := item.Audio.VoiceoverLanguages
 	if voiceoverLanguages == nil {
 		voiceoverLanguages = item.Output.Audio.VoiceoverLanguages
 	}
 	if needsVoiceover && voiceoverLanguages != nil {
 		if len(voiceoverLanguages) == 0 {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages must not be empty when audio is enabled")
+			return false, builderAudioIntent{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages must not be empty when audio is enabled")
 		}
 		allowed := make(map[string]struct{}, len(languages)+1)
 		allowed[string(sourceLang)] = struct{}{}
@@ -241,54 +285,74 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		}
 		for _, lang := range voiceoverLanguages {
 			if _, ok := allowed[lang]; !ok {
-				return GenerateRequest{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages entry %q must be the source language or included in output.languages", lang)
+				return false, builderAudioIntent{}, fmt.Errorf("scriptgeneration: audio.voiceover_languages entry %q must be the source language or included in output.languages", lang)
 			}
 		}
 	}
+	return item.Output.GenerateTimeline, builderAudioIntent{
+		mode:                    audioMode,
+		timing:                  timing,
+		mixPolicy:               mixPolicy,
+		backgroundMusic:         backgroundMusic,
+		soundEffects:            soundEffects,
+		randomSFXOnClipStart:    item.Audio.RandomSFXOnClipStart || item.Output.Audio.RandomSFXOnClipStart,
+		randomSFXOnImageOverlay: item.Audio.RandomSFXOnImageOverlay || item.Output.Audio.RandomSFXOnImageOverlay,
+		voiceoverLanguages:      toLanguages(voiceoverLanguages),
+	}, nil
+}
 
-	// map_presentation is the ONE map configuration contract: when present it
-	// replaces the legacy map_* fields. Mixing both spellings fails closed
-	// instead of guessing which one wins.
-	mapType, mapCamera, mapLabel, mapAnimation := item.MapType, item.MapCameraAnimation, item.MapLabelAnimation, item.MapAnimation
-	mapLevel := ""
-	var mapPresentation *scriptpkg.MapPresentation
-	if item.MapPresentation != nil {
-		if strings.TrimSpace(mapType) != "" || strings.TrimSpace(mapCamera) != "" ||
-			strings.TrimSpace(mapLabel) != "" || strings.TrimSpace(mapAnimation) != "" {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: map_presentation is the single map configuration contract; remove the legacy map_type/map_camera_animation/map_label_animation/map_animation fields")
-		}
-		// A preset is an alias for a (composition, basemap) pair. Expand it on
-		// a copy before Normalize so the resolved defaults cannot be mistaken
-		// for a conflicting explicit choice.
-		spec := *item.MapPresentation
-		if err := resolveMapPresentationPresetSpec(&spec); err != nil {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
-		}
-		resolved, err := spec.Normalize()
-		if err != nil {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
-		}
-		if len(resolved.AnimationPool) == 0 {
-			resolved.AnimationPool = capabilityoverlay.MapCompositionRandomPool()
-		}
-		if len(resolved.StylePool) == 0 {
-			resolved.StylePool = capabilityoverlay.NativeMapBasemapPool()
-		}
-		if err := validateMapPresentationPools(resolved); err != nil {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: %w", err)
-		}
-		mapPresentation = &resolved
-		// The legacy fields remain the compatibility projection consumed by
-		// the existing runtime pipeline; the spec resolves them once, here.
-		mapType = resolved.Style
-		mapLevel = resolved.Level
-		mapLabel = "none"
-		mapAnimation = resolved.Animation
-		if resolved.Camera != "auto" {
-			mapCamera = resolved.Camera
-		}
+// builderMapConfig is the resolved map presentation and its legacy
+// compatibility projection.
+type builderMapConfig struct {
+	typ, camera, label, animation, level string
+	presentation                         *scriptpkg.MapPresentation
+}
+
+// resolveBuilderMapConfig resolves the single map_presentation contract and
+// rejects mixed legacy spellings instead of guessing a winner.
+func resolveBuilderMapConfig(item scriptpkg.GenerationItemV2) (builderMapConfig, error) {
+	cfg := builderMapConfig{
+		typ: item.MapType, camera: item.MapCameraAnimation,
+		label: item.MapLabelAnimation, animation: item.MapAnimation,
 	}
+	if item.MapPresentation == nil {
+		return cfg, nil
+	}
+	if strings.TrimSpace(cfg.typ) != "" || strings.TrimSpace(cfg.camera) != "" ||
+		strings.TrimSpace(cfg.label) != "" || strings.TrimSpace(cfg.animation) != "" {
+		return builderMapConfig{}, fmt.Errorf("scriptgeneration: map_presentation is the single map configuration contract; remove the legacy map_type/map_camera_animation/map_label_animation/map_animation fields")
+	}
+	spec := *item.MapPresentation
+	if err := resolveMapPresentationPresetSpec(&spec); err != nil {
+		return builderMapConfig{}, fmt.Errorf("scriptgeneration: %w", err)
+	}
+	resolved, err := spec.Normalize()
+	if err != nil {
+		return builderMapConfig{}, fmt.Errorf("scriptgeneration: %w", err)
+	}
+	if len(resolved.AnimationPool) == 0 {
+		resolved.AnimationPool = capabilityoverlay.MapCompositionRandomPool()
+	}
+	if len(resolved.StylePool) == 0 {
+		resolved.StylePool = capabilityoverlay.NativeMapBasemapPool()
+	}
+	if err := validateMapPresentationPools(resolved); err != nil {
+		return builderMapConfig{}, fmt.Errorf("scriptgeneration: %w", err)
+	}
+	cfg.presentation = &resolved
+	cfg.typ = resolved.Style
+	cfg.level = resolved.Level
+	cfg.label = "none"
+	cfg.animation = resolved.Animation
+	if resolved.Camera != "auto" {
+		cfg.camera = resolved.Camera
+	}
+	return cfg, nil
+}
 
+// buildGenerateRequestCore projects the identity, source, media and overlay
+// fields. Output/audio fields are applied by applyBuilderOutput.
+func buildGenerateRequestCore(item scriptpkg.GenerationItemV2, env *scriptpkg.GenerationEnvelopeV2, idempotencyKey string, source Source, languages []Language, sourceLang Language, mapCfg builderMapConfig) GenerateRequest {
 	req := GenerateRequest{
 		Model:                         item.Model,
 		TranslationProvider:           strings.ToLower(strings.TrimSpace(item.Translation.Provider)),
@@ -299,12 +363,12 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		Render:                        item.Output.Render,
 		OverlayBackground:             item.OverlayBackground,
 		OverlayStyle:                  item.OverlayStyle,
-		MapType:                       mapType,
-		MapCameraAnimation:            mapCamera,
-		MapLabelAnimation:             mapLabel,
-		MapAnimation:                  mapAnimation,
-		MapLevel:                      mapLevel,
-		MapPresentation:               mapPresentation,
+		MapType:                       mapCfg.typ,
+		MapCameraAnimation:            mapCfg.camera,
+		MapLabelAnimation:             mapCfg.label,
+		MapAnimation:                  mapCfg.animation,
+		MapLevel:                      mapCfg.level,
+		MapPresentation:               mapCfg.presentation,
 		ShortPhraseMotion:             strings.TrimSpace(item.ShortPhraseMotion),
 		PhraseMotionFamily:            item.PhraseMotionFamily,
 		EditorialBulletStyles:         append([]scriptpkg.EditorialBulletStyle(nil), item.EditorialBulletStyles...),
@@ -346,72 +410,33 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		GenerateSceneImages:           item.Output.GenerateSceneImages,
 		SourceLanguage:                sourceLang,
 		Languages:                     languages,
-		GenerateTimeline:              generateTimeline,
-		Timing:                        timing,
-		VoiceoverLanguages:            toLanguages(voiceoverLanguages),
-		Docs:                          item.Docs,
-		DocsEnabled:                   item.Docs.Enabled,
-		SaveToDB:                      item.Output.SaveToDB,
-		Title:                         item.Title,
-		Intro:                         scriptpkg.CloneFixedSection(item.Intro),
-		Outro:                         scriptpkg.CloneFixedSection(item.Outro),
-		// Project is the canonical semantic project namespace for artifact
-		// routing, resolved ONCE here from the explicit generation input.
-		// Empty Project for a voiceover-enabled generation fails closed
-		// before the first TTS call (ErrProjectRequired).
-		Project:    item.Project,
-		OutputName: item.Title, // fallback: output name defaults to title
-		// VoiceoverFolderID is the explicit caller destination for voiceover
-		// artifacts; empty falls back to the configured default. Threaded
-		// verbatim into the routing context so the per-scene TTS command
-		// honors the caller-explicit folder instead of dropping it.
-		VoiceoverFolderID:       item.Output.VoiceoverFolderID,
-		TTSRate:                 item.Output.TTSRate,
-		Audio:                   audioMode,
-		MixPolicy:               mixPolicy,
-		BackgroundMusic:         backgroundMusic,
-		SoundEffects:            soundEffects,
-		RandomSFXOnClipStart:    randomSFXOnClipStart,
-		RandomSFXOnImageOverlay: randomSFXOnImageOverlay,
-		// ChannelID is carried verbatim from the envelope item: it is the
-		// lookup key for the channel profile applied below, never a value the
-		// builder derives.
-		ChannelID: item.ChannelID,
+		ChannelID:                     item.ChannelID,
 	}
-	req.ScriptParams.Segments = scriptpkg.CloneScriptSegments(item.ScriptParams.Segments)
-	// Channel profile: curated per-channel defaults for the choices this
-	// request left BLANK (subtitles, watermark, overlay style, SFX, mix
-	// policy, phrase-motion pool). Applied BEFORE the editing asset policy so
-	// the policy can still fill whatever the profile — like the caller — left
-	// unset. An unknown/empty channel is a no-op: profiles are curated, not a
-	// closed vocabulary.
-	if profile, ok := channelprofile.Lookup(item.ChannelID); ok {
-		if err := ApplyChannelProfile(&req, profile); err != nil {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply channel profile: %w", err)
-		}
-	}
-	// Background centralizzato ON (Intro V2): the canonical editorial
-	// selection policy fills the assets the caller left blank (background
-	// plate, BGM in COMBINED_TIMELINE). It NEVER overrides a
-	// caller-provided selection — an explicit mode (including "none") is
-	// preserved — so this is a pure default-fill at the single ingress
-	// point both job handlers share.
-	if err := ApplyEditingAssetPolicy(&req, mediaregistry.DefaultEditingAssetsPolicy()); err != nil {
-		return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply editing asset policy: %w", err)
-	}
-	// Every request carries the certified entity-image and caption pools. The
-	// Rust planner rejects an admitted entity image or caption when these pools
-	// are empty; an omitted pool means "automatic rotation", not "no motion",
-	// so resolve them once here instead of failing after script, translation
-	// and voiceover work.
-	req.EntityImageMotions = resolveEntityImageMotionPool(req.EntityImageMotions)
-	req.EntityCaptionMotions = resolveEntityCaptionMotionPool(req.EntityCaptionMotions)
-	// Three knobs describe the same generic-image lane: output.generate_scene_images,
-	// script_params.images_per_scene and max_image_overlays. Resolve them once so a
-	// payload cannot say "disabled" twice and still arm the lane through a stale
-	// budget (CFG-05).
-	normalizeImageToggleCoherence(&req)
-	return req, nil
+	return req
+}
+
+// applyBuilderOutput projects the output, project, documentation and audio
+// fields onto the request built from the envelope item.
+func applyBuilderOutput(req *GenerateRequest, item scriptpkg.GenerationItemV2, generateTimeline bool, audio builderAudioIntent) {
+	req.GenerateTimeline = generateTimeline
+	req.Timing = audio.timing
+	req.VoiceoverLanguages = audio.voiceoverLanguages
+	req.Docs = item.Docs
+	req.DocsEnabled = item.Docs.Enabled
+	req.SaveToDB = item.Output.SaveToDB
+	req.Title = item.Title
+	req.Intro = scriptpkg.CloneFixedSection(item.Intro)
+	req.Outro = scriptpkg.CloneFixedSection(item.Outro)
+	req.Project = item.Project
+	req.OutputName = item.Title
+	req.VoiceoverFolderID = item.Output.VoiceoverFolderID
+	req.TTSRate = item.Output.TTSRate
+	req.Audio = audio.mode
+	req.MixPolicy = audio.mixPolicy
+	req.BackgroundMusic = audio.backgroundMusic
+	req.SoundEffects = audio.soundEffects
+	req.RandomSFXOnClipStart = audio.randomSFXOnClipStart
+	req.RandomSFXOnImageOverlay = audio.randomSFXOnImageOverlay
 }
 
 // normalizeImageToggleCoherence turns the explicit "no scene images" pair into

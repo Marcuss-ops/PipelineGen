@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -345,7 +347,7 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidatesForSegment(ctx contex
 		return nil, nil
 	}
 	if f == nil {
-		return filterVerifiedPersonImageCandidates(candidates), nil
+		return imagegate.FilterVerifiedPersonImageCandidates(candidates), nil
 	}
 	aliasGraph := segmentPersonAliasGraph(segment)
 	personCandidates := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
@@ -370,7 +372,7 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidatesForSegment(ctx contex
 	}
 	// Cached/provider candidates arrive PRE-verification: stamp the durable
 	// catalog verdicts first so a warm reuse skips the download + VLM call
-	// entirely (the scorer itself honors the same ReusablePersonImageVerdict
+	// entirely (the scorer itself honors the same imagegate.ReusablePersonImageVerdict
 	// contract per candidate).
 	hydratePersonImageVisualVerdicts(ctx, f.catalog, aliasGraph, personCandidates)
 	if f.semanticScorer == nil {
@@ -380,7 +382,7 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidatesForSegment(ctx contex
 		recordEntityImageVisualOutcomes(f.metrics, personCandidates, nil)
 		return append(personCandidates, others...), nil
 	}
-	if allCandidatesHaveReusableVerdict(personCandidates) {
+	if imagegate.AllCandidatesHaveReusableVerdict(personCandidates) {
 		// Every candidate carries a definitive pixel verdict already —
 		// re-running the visual scorer is exactly the double download + VLM
 		// call this fast path removes.
@@ -389,7 +391,7 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidatesForSegment(ctx contex
 	}
 	scored, err := resolveEntityVisualCandidates(ctx, f.semanticScorer, "person", "", personCandidates)
 	if err != nil {
-		verified := filterVerifiedPersonImageCandidates(personCandidates)
+		verified := imagegate.FilterVerifiedPersonImageCandidates(personCandidates)
 		recordEntityImageVisualOutcomes(f.metrics, verified, err)
 		return append(verified, others...), err
 	}

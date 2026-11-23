@@ -12,8 +12,8 @@ import (
 
 	"go.uber.org/zap"
 
+	assetwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	assetwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 

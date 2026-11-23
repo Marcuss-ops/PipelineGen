@@ -99,7 +99,27 @@ sudo_can_restart() {
   "$SUDO_BIN" -n -l "$(systemctl_path)" restart "$SERVICE" >/dev/null 2>&1
 }
 
+step_rust_freshness() {
+  local brainrust="$ROOT_DIR/../BrainRust" out
+  # Release-only hosts have no BrainRust checkout: rust-fetch owns the binary
+  # and there is no worktree to compare against.
+  if [ ! -d "$brainrust/.git" ] && [ ! -f "$brainrust/.git" ]; then
+    log "rust: no BrainRust checkout at $brainrust; release binary freshness not checked"
+    return 0
+  fi
+  if [ "${DEPLOY_SKIP_RUST_FRESHNESS:-0}" = "1" ]; then
+    log "rust: freshness check skipped (DEPLOY_SKIP_RUST_FRESHNESS=1)"
+    return 0
+  fi
+  if out="$(bash "$ROOT_DIR/scripts/ci/build-semantic-engine.sh" --check 2>&1)"; then
+    log "rust: $out"
+    return 0
+  fi
+  die "$out (rebuild with 'make build-rust-local' or set DEPLOY_SKIP_RUST_FRESHNESS=1)"
+}
+
 step_preflight() {
+  step_rust_freshness
   if [ "$SKIP_RESTART" = "1" ]; then
     log "preflight: restart skipped (--skip-restart)"
     return 0

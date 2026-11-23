@@ -6,8 +6,9 @@
 // can build a job payload from real rows. The load-bearing invariants
 // pinned here:
 //
-//   - The routes mount read-only: only GET /assets, GET /assets/:id and
-//     GET /facets — no mutation can reach the remote principal.
+//   - The routes mount read-only semantics: the asset/facets/folder routes
+//     are GET, search is POST, and the two legacy/unified download POST/GET
+//     routes only stream bytes — no mutation can reach the remote principal.
 //   - The group carries the M2M auth guard: a missing/wrong secret is 401.
 //   - The per-route scope check requires `media.read`: a client holding
 //     only jobs.read/jobs.submit is 403, a client with media.read is 200.
@@ -231,5 +232,96 @@ func TestM2MModule_NilReadModelFailsClosed(t *testing.T) {
 func TestM2MModule_ScopeConstantIsStable(t *testing.T) {
 	if ScopeMediaRead != "media.read" {
 		t.Fatalf("ScopeMediaRead must stay \"media.read\" (issued keys grant it verbatim), got %q", ScopeMediaRead)
+	}
+}
+
+type fakeFolderSurface struct{}
+
+func (fakeFolderSurface) ListFolders(c *gin.Context)       { c.Status(http.StatusOK) }
+func (fakeFolderSurface) FolderStatus(c *gin.Context)      { c.Status(http.StatusOK) }
+func (fakeFolderSurface) GetFolderChildren(c *gin.Context) { c.Status(http.StatusOK) }
+func (fakeFolderSurface) GetTree(c *gin.Context)           { c.Status(http.StatusOK) }
+func (fakeFolderSurface) GetBreadcrumb(c *gin.Context)     { c.Status(http.StatusOK) }
+
+// TestM2MModule_RegistersExtendedReadRoutes pins the additive read surface:
+// unified download, search, folder tree and object-store content all mount
+// under /api/v1/media, and the only POST remains the legacy clip download
+// (which streams bytes, it does not mutate the catalog).
+func TestM2MModule_RegistersExtendedReadRoutes(t *testing.T) {
+	module := NewM2MModule(fakeInventoryReader{}, zap.NewNop(), func() bool { return true })
+	ok := func(c *gin.Context) { c.Status(http.StatusOK) }
+	module.SetAssetDownloadHandler(ok)
+	module.SetContentHandler(ok)
+	module.SetSearchHandler(ok)
+	module.SetFolderReadHandler(fakeFolderSurface{})
+	engine := mountM2MMedia(t, module, newFakeM2MSecurity(false, nil, ""))
+
+	want := []string{
+		"GET /api/v1/media/assets/:id/download",
+		"GET /api/v1/media/assets/:id/content",
+		"POST /api/v1/media/search",
+		"GET /api/v1/media/clips/:source/tree",
+		"GET /api/v1/media/clips/:source/folders",
+		"GET /api/v1/media/clips/:source/folders/:id",
+		"GET /api/v1/media/clips/:source/folders/:id/children",
+		"GET /api/v1/media/clips/:source/breadcrumb",
+	}
+	registered := map[string]bool{}
+	for _, route := range engine.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+	for _, route := range want {
+		if !registered[route] {
+			t.Errorf("route %q is not registered", route)
+		}
+	}
+}
+
+// TestM2MModule_ExtendedRoutesRequireMediaRead pins the scope gate on every
+// ADDED route (unified download, object-store content, semantic search,
+// folder tree). The route-registration test above runs in pass-through mode,
+// which would happily mount a handler with no scope check at all; this test
+// runs with M2M enabled so a regression there is a 403/200 difference.
+func TestM2MModule_ExtendedRoutesRequireMediaRead(t *testing.T) {
+	module := NewM2MModule(fakeInventoryReader{}, zap.NewNop(), func() bool { return true })
+	ok := func(c *gin.Context) { c.Status(http.StatusOK) }
+	module.SetAssetDownloadHandler(ok)
+	module.SetContentHandler(ok)
+	module.SetSearchHandler(ok)
+	module.SetFolderReadHandler(fakeFolderSurface{})
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{"unified download", http.MethodGet, "/api/v1/media/assets/asset-1/download"},
+		{"object-store content", http.MethodGet, "/api/v1/media/assets/asset-1/content"},
+		{"semantic search", http.MethodPost, "/api/v1/media/search"},
+		{"folder tree", http.MethodGet, "/api/v1/media/clips/youtube/tree"},
+		{"folder children", http.MethodGet, "/api/v1/media/clips/youtube/folders/f1/children"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := mountM2MMedia(t, module, newFakeM2MSecurity(true, []string{"jobs.read"}, "s1"))
+			var w *httptest.ResponseRecorder
+			if tc.method == http.MethodPost {
+				w = doPOST(engine, tc.path, "s1")
+			} else {
+				w = doGET(engine, tc.path, "s1")
+			}
+			if w.Code != http.StatusForbidden {
+				t.Fatalf("without media.read: status = %d, want 403 (body=%q)", w.Code, w.Body.String())
+			}
+
+			engine = mountM2MMedia(t, module, newFakeM2MSecurity(true, []string{"media.read"}, "s2"))
+			if tc.method == http.MethodPost {
+				w = doPOST(engine, tc.path, "s2")
+			} else {
+				w = doGET(engine, tc.path, "s2")
+			}
+			if w.Code != http.StatusOK {
+				t.Fatalf("with media.read: status = %d, want 200 (body=%q)", w.Code, w.Body.String())
+			}
+		})
 	}
 }

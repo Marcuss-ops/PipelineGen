@@ -17,6 +17,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -385,7 +386,7 @@ func (e *executionRun) parallelFanOut() bool {
 				if timelineErr != nil {
 					e.r.log.Warn("clip-start SFX prefetch timeline unavailable; compile will resolve assets synchronously", zap.String("run_id", e.runID), zap.Error(timelineErr))
 				} else {
-					for _, intent := range randomClipStartSFXIntents(clipStartTimeline) {
+					for _, intent := range scriptaudio.RandomClipStartSFXIntentsWithPool(clipStartTimeline, e.r.soundEffectPool(prepareCtx, e.runID)) {
 						sfxIDs = append(sfxIDs, intent.AssetID)
 					}
 				}

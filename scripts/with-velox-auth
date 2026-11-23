@@ -33,4 +33,21 @@ if [[ -z "${METRICS_AUTH_TOKEN:-}" && -r "$TOKEN_FILE" ]]; then
     export METRICS_AUTH_TOKEN
 fi
 
+# Master artifact credential. The remote Master signs artifact downloads with
+# its OWN admin token, not with VELOX_ADMIN_TOKEN (a 401), and that file is not
+# under $HOME when the caller runs from an agent profile directory. Resolve it
+# once here, in the canonical order, and hand the PATH to velox download-final
+# through VELOX_MASTER_TOKEN_FILE (the token itself is never printed).
+if [[ -z "${VELOX_MASTER_TOKEN_FILE:-}" ]]; then
+    for candidate in \
+        /etc/pipelinegen/master.env \
+        "${HOME:-}/creator-77-master.env" \
+        /home/pierone/creator-77-master.env; do
+        [[ -n "$candidate" && -r "$candidate" ]] || continue
+        VELOX_MASTER_TOKEN_FILE="$candidate"
+        export VELOX_MASTER_TOKEN_FILE
+        break
+    done
+fi
+
 exec "$@"

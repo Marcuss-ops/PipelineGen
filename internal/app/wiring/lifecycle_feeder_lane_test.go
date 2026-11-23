@@ -10,9 +10,10 @@ package wiring
 // lifecycle_feeder_lane_starvation_test.go.
 
 import (
-	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"slices"
 	"testing"
+
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 )
 
 func TestFeederWorkerBudgetDefault(t *testing.T) {

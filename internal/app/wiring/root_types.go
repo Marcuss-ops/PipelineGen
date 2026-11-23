@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"sync"
 
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"

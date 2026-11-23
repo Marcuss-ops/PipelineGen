@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -41,7 +43,7 @@ func TestOptionalEntityImageScorerOffSkipsVLM(t *testing.T) {
 	if vlm.calls != 0 {
 		t.Fatalf("expected 0 VLM calls in off mode, got %d", vlm.calls)
 	}
-	if got[0].SemanticStatus != entitycatalog.CandidateSemanticAccepted || !ReusablePersonImageVerdict(got[0]) {
+	if got[0].SemanticStatus != entitycatalog.CandidateSemanticAccepted || !imagegate.ReusablePersonImageVerdict(got[0]) {
 		t.Fatalf("expected deterministic acceptance for candidate 0, got %+v", got[0])
 	}
 	if got[1].SemanticStatus != entitycatalog.CandidateSemanticRejected {
@@ -64,10 +66,10 @@ func TestOptionalEntityImageScorerOptionalSkipsVLMForWikipediaAndFallsBackOnErro
 	if vlm.calls != 1 {
 		t.Fatalf("expected 1 VLM call (only for non-wikipedia candidate), got %d", vlm.calls)
 	}
-	if got[0].SemanticStatus != entitycatalog.CandidateSemanticAccepted || !ReusablePersonImageVerdict(got[0]) {
+	if got[0].SemanticStatus != entitycatalog.CandidateSemanticAccepted || !imagegate.ReusablePersonImageVerdict(got[0]) {
 		t.Fatalf("expected wikipedia candidate accepted deterministically, got %+v", got[0])
 	}
-	if got[1].SemanticStatus != entitycatalog.CandidateSemanticAccepted || !ReusablePersonImageVerdict(got[1]) {
+	if got[1].SemanticStatus != entitycatalog.CandidateSemanticAccepted || !imagegate.ReusablePersonImageVerdict(got[1]) {
 		t.Fatalf("expected fallback acceptance on VLM error, got %+v", got[1])
 	}
 }

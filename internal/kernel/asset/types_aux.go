@@ -144,24 +144,6 @@ type Version struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-// AssetExecutionResult is a unified result type for asset processing across
-// all modules. It combines fields from BatchItem, RunTagItem, ExtractItem,
-// AssetResult, FinalizeResult. It is a DTO passed between pipeline stages
-// rather than a stored entity — see processing_types.go for the persistent
-// ProcessingRecord shape.
-type AssetExecutionResult struct {
-	ID            string `json:"id,omitempty"`
-	Source        string `json:"source,omitempty"`     // e.g. "youtube", "artlist", "voiceover"
-	MediaType     string `json:"media_type,omitempty"` // e.g. "video", "audio", "image"
-	Filename      string `json:"filename,omitempty"`
-	LocalPath     string `json:"local_path,omitempty"`
-	DriveLink     string `json:"drive_link,omitempty"`
-	DownloadLink  string `json:"download_link,omitempty"`
-	ContentSHA256 string `json:"content_sha256,omitempty"`
-	Status        string `json:"status,omitempty"` // e.g. "processed", "skipped_existing", "failed"
-	Error         string `json:"error,omitempty"`
-}
-
 // Filter defines query parameters for listing assets.
 //
 // WorkspaceID + IsAdmin (VECTOR-001 closure): the Filter carries a

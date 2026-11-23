@@ -1,5 +1,7 @@
 package localization
 
+import "time"
+
 // artifact.go owns LocalizedClipArtifact — the certified per-language output
 // of a localized render. It is the single shape the render boundary returns
 // (never a bare path like "/tmp/es.mp4") and that the Drive uploader and the
@@ -146,4 +148,21 @@ type LocalizedClipArtifact struct {
 	// "deterministic_render_cache" for a verified cache hit
 	// (localization.RenderSourceFreshGPU / RenderSourceDeterministicCache).
 	RenderSource string `json:"render_source,omitempty"`
+
+	// ── Timing ───────────────────────────────────────────────────
+	// AdmittedAt is when the Localize call acquired a render slot; FinishedAt
+	// is when publication returned. AdmittedAt→FinishedAt is the unit's own
+	// work window. The wait BEFORE AdmittedAt is QueueWaitMS, reported
+	// separately instead of being folded into the work span: the previous
+	// shape measured "call start → return", so the last clip of a 25-render
+	// lane carried the whole lane's admission wait as its own wall time
+	// (2026-11-22 Augias r39: sum of per-render wall = 1 965 s for 25 cache
+	// hits that published 598 MB).
+	// These are IN-PROCESS facts: the artifact's wire contract stays the
+	// certified identity (see TestLocalizedClipArtifact_JSONRoundTrip), and the
+	// run result is where the timing is published (LocalizedRenderResult).
+	AdmittedAt time.Time `json:"-"`
+	FinishedAt time.Time `json:"-"`
+	// QueueWaitMS is call start → render-slot admission, in milliseconds.
+	QueueWaitMS int64 `json:"-"`
 }

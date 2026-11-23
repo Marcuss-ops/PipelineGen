@@ -10,9 +10,9 @@
 // its own translated voiceover timing, compiled by the same SSOT compiler and
 // never substituting the source plan for a missing translation.
 //
-// Both live beside overlay_plan.go (not inside it): the file is at the strict
-// LOC cap, and each seam is a boundary rather than a compilation step. The
-// intent join is the identity-sensitive half of the lowering — the intent is
+// Both are seams around an already sealed plan rather than compilation steps, so
+// they live apart from overlay_plan.go. The intent join is the identity-sensitive
+// half of the lowering — the intent is
 // authored before media resolution, so it is matched to the final item by
 // IDENTITY, never by the display text two independent surfaces happen to carry
 // — while the per-language boundary is the publication-sensitive half.
@@ -145,6 +145,19 @@ func setOverlayDriveJobID(result *GenerateResult, jobID string) {
 func intentMatchesEntityItem(intent capmodel.OverlayIntent, item capmodel.OverlayItem) bool {
 	if _, ok := entityImageLayerForIntent(intent, item); ok {
 		return true
+	}
+	// The intent carries the canonical identity verbatim; the plan item may
+	// carry it either directly or through its internal EntityRef. Check both
+	// before deriving the content-addressed id, so a planner that emits the
+	// readable identity ("person:corrado-augias") still joins by identity and
+	// never falls back to matching display text.
+	if canonical := strings.TrimSpace(intent.Entity.CanonicalEntityID); canonical != "" {
+		if strings.TrimSpace(item.EntityID) == canonical {
+			return true
+		}
+		if item.EntityRef != nil && strings.TrimSpace(item.EntityRef.CanonicalEntityID) == canonical {
+			return true
+		}
 	}
 	if item.EntityID != "" {
 		stable := capabilityentities.StableEntityID(intent.Entity.Type, intent.Entity.CanonicalName)

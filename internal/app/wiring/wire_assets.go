@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	wiringaudio "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/audio"
+	wiringaudio "github.com/Marcuss-ops/PipelineGen/internal/app/modules/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips"
@@ -26,12 +26,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-)
 
-import (
-	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
-)
-import (
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/assets"
+
 	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/voiceover"
 )
 
@@ -235,6 +232,9 @@ func WireAssets(
 		SearchAggregator:     searchAggregator,
 		SearchFanOut:         searchFanOut,
 		DownloadClip:         clipsDesc.DownloadClip,
+		DriveDownload:        clipsDesc.DriveDownload,
+		SearchHandler:        search.NewHandler(searchAggregator, assetresolver.NewService(providerRegistry), log).Search,
+		Folders:              clipsDesc.Folders,
 	}, nil
 }
 
@@ -259,12 +259,12 @@ func buildSoundeffectBundle(params buildSoundeffectParams) (*assetsfx.Soundeffec
 	if params.Cfg == nil {
 		return nil, fmt.Errorf("soundeffect: config is required")
 	}
-	sfxAdapters := wiringaudio.NewSoundEffectAdapters(
-		params.Soundeffect.ClipsRepo,
-		params.Soundeffect.MetaWriter,
-		params.Soundeffect.Dispatcher,
-		"data",
-	)
+	sfxAdapters := wiringaudio.NewSoundEffectAdapters(wiringaudio.SoundEffectAdaptersDeps{
+		Clips:      params.Soundeffect.ClipsRepo,
+		Metadata:   params.Soundeffect.MetaWriter,
+		Dispatcher: params.Soundeffect.Dispatcher,
+		MediaRoot:  "data",
+	})
 
 	descriptor, err := assetsfx.Build(assetsfx.Dependencies{
 		Core: assetsfx.CoreDeps{

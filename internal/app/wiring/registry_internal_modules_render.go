@@ -13,8 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -40,7 +39,7 @@ func clipRenderArtifactCache(cfg *config.Config, root *ComposeRoot, log *zap.Log
 	if cfg == nil || root == nil || root.CacheDB == nil || root.CacheDB.DB == nil || root.DB == nil || root.DB.DB == nil {
 		return nil
 	}
-	cache, err := assetswiring.NewArtifactCache(cfg, root.CacheDB.DB, root.DB.DB, log)
+	cache, err := newArtifactCache(cfg, root.CacheDB.DB, root.DB.DB, log)
 	if err != nil {
 		if log != nil {
 			log.Warn("clip.render: streaming Whisper cache unavailable; ASR results will not be reused", zap.Error(err))
@@ -166,7 +165,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if mediaConfig == (mediaexec.ExecutionConfig{}) {
 		return fmt.Errorf("registerClipRender: resolved media execution config is required when ClipRenderEnabled=true (root.MediaExec)")
 	}
-	renderRuntime, runtimeErr := clipswiring.BuildClipRenderRuntime(cfg, root.MediaExec, root.ClipRenderRuntime, log)
+	renderRuntime, runtimeErr := clipswiring.BuildClipRenderRuntime(clipswiring.ClipRenderRuntimeDeps{
+		Config:    cfg,
+		MediaExec: root.MediaExec,
+		Existing:  root.ClipRenderRuntime,
+	})
 	if runtimeErr != nil {
 		return fmt.Errorf("registerClipRender: build shared render runtime: %w", runtimeErr)
 	}

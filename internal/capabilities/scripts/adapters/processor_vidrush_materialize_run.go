@@ -441,7 +441,7 @@ func (r *vidRushMaterializationRun) finalizeMaterializationCandidate(ctx context
 		r.newInternetImageUploads++
 	}
 	observeEntityImageCatalogMaterialization(r.processor.metrics, item.catalogStarted)
-	if catalogErr := r.processor.persistEntityCatalogMaterialization(ctx, candidate, persisted); catalogErr != nil {
+	if catalogErr := r.processor.persistEntityCatalogMaterialization(ctx, r.plan, candidate, persisted); catalogErr != nil {
 		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush_materialization: entity catalog materialization: %w", catalogErr)
 	}
 	if item.isImage && readyVidRushCandidate(persisted) {

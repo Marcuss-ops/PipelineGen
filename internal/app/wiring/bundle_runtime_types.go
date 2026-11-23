@@ -15,32 +15,45 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/gin-gonic/gin"
-)
-import (
+
 	artifactfinalize "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifact_finalize"
+
 	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
+
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-)
-import (
-	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
+
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
+
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+
 	scriptgencore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
+
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
+
 	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
+
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
+
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
+
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
@@ -106,6 +119,27 @@ type AssetsWiring struct {
 	// M2M media surface so a remote reader streams the same artifact without
 	// receiving the admin token.
 	DownloadClip gin.HandlerFunc
+	// DriveDownload is the narrow Drive fetch surface used by the unified
+	// asset download route (images/scripts included). nil when Drive is not
+	// configured; the route then answers 503 for Drive-only assets.
+	DriveDownload interface{}
+	// SearchHandler is the canonical POST /api/media/search transport,
+	// reused by the M2M media surface so remote readers query the SAME
+	// hybrid/ANN Aggregator instead of the ILIKE listing fallback.
+	SearchHandler gin.HandlerFunc
+	// Folders is the clip folder/tree read surface reused by the M2M media
+	// surface (GET /api/v1/media/clips/:source/...).
+	Folders FolderReadHandler
+}
+
+// FolderReadHandler is the read-only folder projection (same five handlers
+// the admin /api/media/clips/:source routes mount).
+type FolderReadHandler interface {
+	ListFolders(c *gin.Context)
+	FolderStatus(c *gin.Context)
+	GetFolderChildren(c *gin.Context)
+	GetTree(c *gin.Context)
+	GetBreadcrumb(c *gin.Context)
 }
 
 // StagingBundle owns the canonical staging store, repository and resolved

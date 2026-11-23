@@ -9,13 +9,12 @@
 # The M2M auth middleware resolves `Authorization: Bearer <secret>` by looking
 # up SHA-256(secret) — LOWERCASE HEX — in the primary SQLite `m2m_clients`
 # table (internal/platform/sqlite/m2m/store.go, migration
-# 252_m2m_clients.sql). This checkout exposes NO admin HTTP endpoint that mints
-# keys: `POST /api/v1/admin/m2m/keys` exists only on the remote master build,
-# and `cmd/admin` has zero M2M references. So a key is provisioned HERE, with
-# the same digest primitive the middleware uses
-# (internal/kernel/digest.SHA256String → SHA-256 of the exact bytes, no
-# trailing newline), never a second hasher. `preflight.sh` probes that admin
-# route; a 404 on this host is expected and is exactly why this script exists.
+# 252_m2m_clients.sql). The server exposes the admin HTTP surface
+# (`POST/GET/DELETE /api/v1/admin/m2m/keys`), but this script remains the
+# offline/emergency path: it writes the client env file 0600 in one step and
+# never prints the secret. Both paths use the same digest primitive the
+# middleware uses (internal/kernel/digest.SHA256String → SHA-256 of the exact
+# bytes, no trailing newline), never a second hasher.
 #
 # ── SECRET HANDLING ───────────────────────────────────────────────────────
 #   * the plaintext secret is generated locally, written ONCE to a 0600 env

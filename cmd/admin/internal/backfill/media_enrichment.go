@@ -13,6 +13,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 )
 
 // RunMediaEnrichmentBackfill implements the `backfill-media-enrichment`
@@ -76,7 +77,7 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	}
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)
-	cfg := pgmedia.EnrichmentBackfillConfig{BatchSize: *batchSize, Limit: *limit, Force: *force}
+	cfg := pgbackfill.EnrichmentBackfillConfig{BatchSize: *batchSize, Limit: *limit, Force: *force}
 	switch strings.TrimSpace(*legs) {
 	case "", "all":
 		// all legs (zero-value selects all)
@@ -101,18 +102,18 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	// any model (ffmpeg only).
 	wantFeatures := cfg.AnalyzeFeatures || (!cfg.AnalyzeFeatures && !cfg.BackfillSemantic && !cfg.BackfillVisual)
 	wantVisual := cfg.BackfillVisual || (!cfg.AnalyzeFeatures && !cfg.BackfillSemantic && !cfg.BackfillVisual)
-	var analyzer *pgmedia.MediaFeatureAnalyzer
+	var analyzer *pgbackfill.MediaFeatureAnalyzer
 	var visual *pgmedia.VisualEmbeddingPipeline
 	var registry *pgmedia.VisualEmbeddingModelRegistry
 	if sidecar := strings.TrimSpace(*sidecarURL); sidecar != "" {
 		registry = pgmedia.DefaultVisualEmbeddingModelRegistry()
 		if wantFeatures {
-			probe := pgmedia.NewFFMPEGProbeAdapter("")
-			sampler, serr := pgmedia.NewFFMPEGKeyframeSamplerAdapter("")
+			probe := pgbackfill.NewFFMPEGProbeAdapter("")
+			sampler, serr := pgbackfill.NewFFMPEGKeyframeSamplerAdapter("")
 			if serr != nil {
 				return serr
 			}
-			analyzer = pgmedia.NewMediaFeatureAnalyzer(pgmedia.FeatureAnalyzerDeps{
+			analyzer = pgbackfill.NewMediaFeatureAnalyzer(pgbackfill.FeatureAnalyzerDeps{
 				Probe: probe, Keyframes: sampler,
 			})
 		}
@@ -121,7 +122,7 @@ func RunMediaEnrichmentBackfill(args []string) error {
 			if verr != nil {
 				return verr
 			}
-			sampler, serr := pgmedia.NewFFMPEGKeyframeSamplerAdapter("")
+			sampler, serr := pgbackfill.NewFFMPEGKeyframeSamplerAdapter("")
 			if serr != nil {
 				return serr
 			}
@@ -143,14 +144,14 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	var semanticModel string
 	if sidecar := strings.TrimSpace(*sidecarURL); sidecar != "" {
 		semanticModel = "intfloat/multilingual-e5-base"
-		semantic = pgmedia.NewEmbedAssetTextAdapter(db, pgmedia.NewSidecarTextEmbedderAdapter(sidecar))
+		semantic = pgmedia.NewEmbedAssetTextAdapter(db, pgbackfill.NewSidecarTextEmbedderAdapter(sidecar))
 	}
 
-	engine, err := pgmedia.NewEnrichmentEngine(db, vectors, analyzer, visual, semantic, semanticModel)
+	engine, err := pgbackfill.NewEnrichmentEngine(db, vectors, analyzer, visual, semantic, semanticModel)
 	if err != nil {
 		return err
 	}
-	report, err := engine.Run(ctx, pgmedia.ResolveAssetPathFromDB(db), cfg)
+	report, err := engine.Run(ctx, pgbackfill.ResolveAssetPathFromDB(db), cfg)
 	if report != nil {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

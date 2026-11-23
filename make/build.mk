@@ -117,11 +117,31 @@ build: go-version-check rust-fetch
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/worker           ./cmd/worker
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/velox            ./cmd/velox
 
+# Fail closed when a release build starts from a dirty tree. The live drift
+# incident of 2026-11-23 was caused by a build from a modified worktree; the
+# gate belongs before rust-fetch so a dirty tree fails before downloading or
+# compiling anything. See scripts/ci/check-clean-tree.sh.
+check-clean-tree:
+	@bash scripts/ci/check-clean-tree.sh
+
 # Build only the server binary. This is the canonical target for server
-# smoke checks and lightweight container builds.
-build-server: go-version-check rust-fetch
+# smoke checks and lightweight container builds. It is a release path, so it
+# requires a clean tree: a dirty binary cannot be attributed to a revision.
+build-server: check-clean-tree go-version-check rust-fetch
 	@mkdir -p bin
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/pipelinegen ./cmd/server
+
+# Build semantic-engine from the BrainRust worktree, not from the pinned
+# release, and stamp bin/BRAINRUST_RELEASE.json + bin/.rust-release with the
+# exact git_sha so a Go test can never silently run an older planner.
+build-rust-local:
+	@bash scripts/ci/build-semantic-engine.sh
+
+# Fail when the installed semantic-engine cannot be attributed to the current
+# BrainRust HEAD or when a Rust source is newer than the binary. Read-only: no
+# cargo/toolchain required.
+verify-rust-binary:
+	@bash scripts/ci/build-semantic-engine.sh --check
 
 # Run Go unit tests (Go is the canonical test surface; tests here run
 # for every `make test` invocation and in CI without requiring Node).

@@ -261,6 +261,16 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 		// must travel with the readiness verdict: one poll answers both
 		// "is it up?" and "is it the code I deployed?".
 		payload["build"] = identity
+		// A binary built from a modified tree cannot be attributed to a
+		// revision. Liveness (/health) stays 200 so the process is still
+		// diagnosable, but readiness fails closed: this is the runtime half
+		// of the clean-tree deploy gate.
+		if identity.GitDirty {
+			status = http.StatusServiceUnavailable
+			payload["ok"] = false
+			payload["status"] = "not ready"
+			payload["ready_blocked_by"] = "dirty_build"
+		}
 	}
 	if cache := h.renderCacheStatus(); cache != nil {
 		// A canary that waits on /ready also observes whether the render

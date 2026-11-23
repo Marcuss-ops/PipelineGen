@@ -5,11 +5,12 @@ package wiring
 import (
 	"context"
 	"fmt"
-	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
-	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
+
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
@@ -244,15 +245,15 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		params.Log,
 	)
 
-	clipsOpsPorts := clipswiring.NewOpsPorts(
-		clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
-		params.Jobs.VoiceoverRepo,
-		params.Jobs.ImagesRepo,
-		params.Jobs.DriveUploader,
-		params.Jobs.DriveUploader,
-		params.Jobs.DriveLifecycle,
-		params.Jobs.Facade,
-	)
+	clipsOpsPorts := clipswiring.NewOpsPorts(clipswiring.OpsPortsDeps{
+		ClipRepo:       clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
+		VoiceoverRepo:  params.Jobs.VoiceoverRepo,
+		ImageRepo:      params.Jobs.ImagesRepo,
+		DriveAdmin:     params.Jobs.DriveUploader,
+		DriveReader:    params.Jobs.DriveUploader,
+		DriveLifecycle: params.Jobs.DriveLifecycle,
+		JobsFacade:     params.Jobs.Facade,
+	})
 	clipOpsSvc := appclips.NewClipOpsService(
 		clipsOpsPorts.ClipRepo,
 		clipsOpsPorts.VoiceoverRepo,

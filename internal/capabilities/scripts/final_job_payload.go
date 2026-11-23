@@ -201,16 +201,44 @@ func exposeFinalJobSourceURLs(assets []any) {
 	}
 }
 
+// finalJobInputFor is the narrow read contract of the final-job assembly. The
+// payload builder may consume only the certified result surfaces below; every
+// other GenerateResult field is intentionally excluded so a phase cannot start
+// reading unrelated run state by accident.
+func finalJobInputFor(result *GenerateResult) *GenerateResult {
+	if result == nil {
+		return nil
+	}
+	return &GenerateResult{
+		CanonicalTimeline: result.CanonicalTimeline,
+		FinalAudio:        result.FinalAudio,
+		Scenes:            result.Scenes,
+		OverlayAudit:      result.OverlayAudit,
+		OverlayPlan:       result.OverlayPlan,
+		OverlayRender:     result.OverlayRender,
+		LocalizedRenders:  result.LocalizedRenders,
+		RemoteFinalJob:    result.RemoteFinalJob,
+		FinalJobPreflight: result.FinalJobPreflight,
+	}
+}
+
 func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
-	stockPoolFolderID, hasFinalAudio, imageRequested, err := finalJobPreflight(ctx, runID, req, result)
+	input := finalJobInputFor(result)
+	stockPoolFolderID, hasFinalAudio, imageRequested, err := finalJobPreflight(ctx, runID, req, input)
 	if err != nil {
 		return nil, nil, err
 	}
-	builder := newFinalJobSceneBuilder(ctx, req, result, resolver, stockPoolFolderID)
+	builder := newFinalJobSceneBuilder(ctx, req, input, resolver, stockPoolFolderID)
 	if err := builder.appendSegments(); err != nil {
 		return nil, nil, err
 	}
-	return finalJobFinalizePayload(ctx, runID, req, result, builder, preparers, hasFinalAudio, imageRequested)
+	prepareMap, finalizeMap, err := finalJobFinalizePayload(ctx, runID, req, input, builder, preparers, hasFinalAudio, imageRequested)
+	if result != nil {
+		// The image-preflight marker is the only write the projection may make;
+		// forward it to the durable run result after the handoff is assembled.
+		result.FinalJobPreflight = input.FinalJobPreflight
+	}
+	return prepareMap, finalizeMap, err
 }
 
 // Package-local aliases over the one coercion family. They keep the existing

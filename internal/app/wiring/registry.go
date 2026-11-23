@@ -24,7 +24,7 @@
 //   - registerYouTubeClip + registerMediaIngest
 //   - registerScraper + registerStockPipeline
 //     (bundle-driven modules).
-//   - search leaf (internal/app/wiring/search)  search.Build helper
+//   - search leaf (internal/app/modules/search)  search.Build helper
 //     (BuildCanonicalSearchFanOut + explicit search capability value).
 //   - registry_assets.go          registerAssets module
 //     (maintenanceSvc + voiceoverSvc + assetsBundle + WireAssets
@@ -100,27 +100,33 @@ package wiring
 import (
 	"context"
 	"fmt"
+
 	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
-	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
-	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
-	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/registry"
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/stock"
+	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/youtube"
 	infraassets "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"go.uber.org/zap"
-)
-import (
+
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
+
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
+
 	platformjobregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
+
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 )
 

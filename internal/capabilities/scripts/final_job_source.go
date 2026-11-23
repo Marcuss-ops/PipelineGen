@@ -177,11 +177,21 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 				zap.Int("yields", receipt.Yields), zap.Bool("wait_to_completion", receipt.Yields > 0))
 		}
 		remote, err := attacher.AttachFinalJob(ctx, jobID, receipt.Yields > 0)
+		if err != nil && ctx.Err() != nil {
+			// A local cancel interrupted the wait. The Master may have finished
+			// the render: ask before turning the run into CANCELLED.
+			remote, err = reconcileInterruptedFinalJob(ctx, attacher, jobID)
+		}
 		remote.Attempt = receipt.Attempt
 		// The durable receipt already carries the locally measured handoff (and,
 		// on a resumed job, possibly earlier Master phases); keep them when the
 		// attach result only reports its own side.
 		remote.Timing = receipt.Timing.Merge(remote.Timing)
+		if err == nil && ctx.Err() != nil {
+			settleCtx, settleCancel := finalJobSettleContext(ctx)
+			defer settleCancel()
+			return r.settleFinalJob(settleCtx, runID, result, remote, receipt.Yields, nil)
+		}
 		return r.settleFinalJob(ctx, runID, result, remote, receipt.Yields, err)
 	}
 	// Burn translated captions into each protected intro/mid/outro clip before
@@ -218,10 +228,18 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("remote final job starter cannot attach to job %s", remote.JobID))
 		}
 		attached, err := attacher.AttachFinalJob(ctx, remote.JobID, false)
+		if err != nil && ctx.Err() != nil {
+			attached, err = reconcileInterruptedFinalJob(ctx, attacher, remote.JobID)
+		}
 		attached.Attempt = attempt
 		// StartFinalJob measured the local handoff; the attach result knows the
 		// Master phases. The persisted receipt must carry both.
 		attached.Timing = remote.Timing.Merge(attached.Timing)
+		if err == nil && ctx.Err() != nil {
+			settleCtx, settleCancel := finalJobSettleContext(ctx)
+			defer settleCancel()
+			return r.settleFinalJob(settleCtx, runID, result, attached, 0, nil)
+		}
 		return r.settleFinalJob(ctx, runID, result, attached, 0, err)
 	}
 	remote, err := r.finalJobSubmitter.SubmitFinalJob(ctx, runID, req, result)

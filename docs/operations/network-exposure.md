@@ -319,15 +319,69 @@ Provisioning di una key (admin):
 
 ```bash
 curl -sS -X POST https://pipeline.example.com/api/v1/admin/m2m/keys \
-  -H "Authorization: Bearer $VELOX_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" -H 'Content-Type: application/json' \
   -d '{"client_id":"computer-editor-77-01","scopes":["jobs.submit","jobs.read","media.read"]}'
+# il segreto in chiaro è restituito UNA sola volta; salvalo subito.
+curl -sS -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" \
+  https://pipeline.example.com/api/v1/admin/m2m/keys
+curl -sS -X DELETE -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" \
+  "https://pipeline.example.com/api/v1/admin/m2m/keys?client_id=computer-editor-77-01"
 ```
+
+La superficie admin (`POST`/`GET`/`DELETE`) richiede **solo** il token admin:
+un token worker non può creare o revocare chiavi. La revoca imposta
+`enabled=0` (la riga resta per l'audit). `last_used_at` viene aggiornato a ogni
+richiesta autenticata e le quote `quota_max_scenes` / `quota_max_total_secs`
+sono applicate su `POST /api/v1/jobs` (429 `m2m_quota_exceeded`).
 
 Lettura remota degli elementi (M2M):
 
 ```bash
 curl -sS -H "Authorization: Bearer $VELOX_M2M_SECRET" \
   "https://pipeline.example.com/api/v1/media/assets?source=youtube&limit=20"
+
+# sync incrementale: solo ciò che è cambiato, con copertura indice/trascrizione
+curl -sS -H "Authorization: Bearer $VELOX_M2M_SECRET" \
+  "https://pipeline.example.com/api/v1/media/assets?updated_after=2026-11-23T00:00:00Z&has_speech=false&has_embedding=false"
+```
+
+`GET /api/v1/media/assets` accetta `updated_after` (RFC3339), `has_embedding`,
+`has_drive_file` e `has_speech` (`true|false`) oltre ai filtri esistenti;
+`GET /api/v1/media/assets/{id}` include i cue temporizzati
+(`text_tracks[].cues[]` con `start_ms`/`end_ms`) e `GET
+/api/v1/media/clips/{source}/tree|folders|breadcrumb` espone l'albero cartelle.
+
+Download unificato (qualsiasi asset ACTIVE: video, audio, immagini, script):
+
+```bash
+curl -sS -L -H "Authorization: Bearer $VELOX_M2M_SECRET" \
+  -H "Range: bytes=0-1048575" \
+  "https://pipeline.example.com/api/v1/media/assets/<asset_id>/download" -o part.bin
+```
+
+La risposta dichiara `X-Content-SHA256` ed `X-Content-Source`
+(`local|object_storage|drive`) e supporta `Range`. Le rotte `/assets/*` e
+`/media/google-accounting` non sono più pubbliche: passano dallo stesso guard
+`Auth` del resto di `/api`.
+
+Ricerca semantica (stesso Aggregator della superficie admin, scope
+`media.read`):
+
+```bash
+curl -sS -X POST -H "Authorization: Bearer $VELOX_M2M_SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"elon musk factory","mode":"hybrid","limit":10}' \
+  https://pipeline.example.com/api/v1/media/search
+```
+
+Render finale di un job posseduto dal client (`jobs.read`): il Master verifica
+`job.client_id == client_id`, estrae il receipt `remote_final_job` e fa da
+proxy all'artifact con il proprio bearer, quindi il PC remoto non ha bisogno di
+`VELOX_ADMIN_TOKEN`:
+
+```bash
+curl -sS -H "Authorization: Bearer $VELOX_M2M_SECRET" \
+  "https://pipeline.example.com/api/v1/jobs/<job_id>/artifact" -o final.mp4
 ```
 
 Il polling dello stato job resta `GET /api/v1/jobs/{id}` (superficie M2M). La stessa superficie accetta tutti i job type con un handler realmente attivo sul Master: clip, script, stock, voiceover e quelli aggiunti successivamente al runtime. Il catalogo è disponibile con `GET /api/v1/jobs/types` (scope `jobs.read`); i tipi presenti solo nella policy ma senza consumer vengono rifiutati con `422`, così un PC remoto non può lasciare job non eseguibili in coda. Il body standard è `{type, payload, idempotency_key, project}`.
@@ -342,6 +396,9 @@ export VELOX_M2M=true
 # enqueue generico: enqueue.json contiene {"type":"...","payload":{...}}
 velox submit jobs --m2m --key progetto-01 --payload enqueue.json --json
 velox poll <job_id> --m2m --interval 3s --timeout 30m
+velox download <asset_id> --m2m -o clip.mp4
+velox search "elon musk factory" --m2m --mode ann
+velox download-final <job_id> --m2m -o final.mp4
 ```
 
 Il comando usa `POST /api/v1/jobs` per l’invio e `GET /api/v1/jobs/{id}` per il polling, riconosce gli stati `queued/running/completed` e `SUCCEEDED/FAILED/CANCELLED`, e restituisce codice d’uscita non-zero in caso di errore o timeout. Per gli endpoint admin legacy (`/api/script/generate`, `/api/clips/process`) resta disponibile il comando senza `--m2m`, con `VELOX_ADMIN_TOKEN`.

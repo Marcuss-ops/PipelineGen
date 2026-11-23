@@ -21,6 +21,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/extract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -123,7 +124,7 @@ func TestStockExtract_RecordsOneCutOperationPerSourceGroup(t *testing.T) {
 		{StartSec: 5, EndSec: 10, OutputLogicalID: "clip-1"},
 	}
 
-	result, err := executeCuts(ctx, runner, "src-1", "/staged/src-1.mp4", 30, groupPlans, 0, false, 0)
+	result, err := extract.ExecuteCuts(ctx, runner, "src-1", "/staged/src-1.mp4", 30, groupPlans, 0, false, 0)
 	if err != nil {
 		t.Fatalf("executeCuts: %v", err)
 	}

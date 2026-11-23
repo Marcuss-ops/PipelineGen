@@ -158,7 +158,7 @@ func TestWarmSourceCache_MakesInRunStagingACacheHit(t *testing.T) {
 	// populates and the key the run's stock.stage_sources derives from the
 	// planned source URL must be identical.
 	warmKey := DeriveSourceCacheKey(url, "", "", false)
-	runKey := DeriveSourceCacheKey(stagingSourceURL(ClipPlan{SourceID: url}), "", "", false)
+	runKey := DeriveSourceCacheKey(StagingSourceURL(ClipPlan{SourceID: url}), "", "", false)
 	if warmKey != runKey {
 		t.Fatalf("warm cache key %q != in-run staging cache key %q for %s", warmKey, runKey, url)
 	}

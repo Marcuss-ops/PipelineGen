@@ -27,8 +27,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
-	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
+	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -318,7 +318,11 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	subtitleResolver := localizationadapters.NewSubtitleResolver(trackStore)
 	subtitleCompiler := localizationadapters.NewSubtitleCompiler()
 
-	renderRuntime, runtimeErr := clipswiring.BuildClipRenderRuntime(cfg, root.MediaExec, root.ClipRenderRuntime, log)
+	renderRuntime, runtimeErr := clipswiring.BuildClipRenderRuntime(clipswiring.ClipRenderRuntimeDeps{
+		Config:    cfg,
+		MediaExec: root.MediaExec,
+		Existing:  root.ClipRenderRuntime,
+	})
 	if runtimeErr != nil {
 		return nil, fmt.Errorf("localization service: build shared render runtime: %w", runtimeErr)
 	}

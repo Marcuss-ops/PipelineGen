@@ -113,10 +113,18 @@ func (r *AssetResolver) Resolve(ctx context.Context, bgm []scriptpkg.BackgroundM
 
 // ── merged from random_clip_start_sfx.go ─────────────────────────────────────
 
-// randomClipStartSFXIntents creates one deterministic random whoosh at the
+// RandomClipStartSFXIntents creates one deterministic random cue at the
 // beginning of each real video segment. Synthetic freeze tails are excluded.
-// Selecting a bound alias here lets the normal asset resolver handle the cue.
+// Selecting one alias here lets the normal asset resolver handle the cue.
 func RandomClipStartSFXIntents(timeline capabilityaudio.CanonicalTimeline) []scriptpkg.SoundEffectIntent {
+	return RandomClipStartSFXIntentsWithPool(timeline, nil)
+}
+
+// RandomClipStartSFXIntentsWithPool is RandomClipStartSFXIntents over an
+// explicit selection pool (the indexed SFX library projection). An empty pool
+// keeps the built-in whoosh vocabulary, so a deployment without an indexed
+// library behaves exactly as before.
+func RandomClipStartSFXIntentsWithPool(timeline capabilityaudio.CanonicalTimeline, pool []string) []scriptpkg.SoundEffectIntent {
 	intents := make([]scriptpkg.SoundEffectIntent, 0)
 	for _, scene := range timeline.Segments {
 		for _, clip := range scene.EffectiveVideoSegments() {
@@ -128,7 +136,7 @@ func RandomClipStartSFXIntents(timeline capabilityaudio.CanonicalTimeline) []scr
 				continue
 			}
 			intent := scriptpkg.SoundEffectIntent{AtMS: startUS / 1000, GainDB: -6}
-			intent.AssetID = RandomWhooshID(timeline, len(intents), intent)
+			intent.AssetID = RandomSFXID(timeline, len(intents), intent, pool)
 			// Keep the cue short and clearly below the voice/music bed.
 			// The canonical SFX bus is -10 dB, so -6 dB here yields -16 dB.
 			intent.DurationMS = 250

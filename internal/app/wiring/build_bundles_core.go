@@ -12,7 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
-	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
@@ -49,16 +49,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	sqliteimageindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imageindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
-)
 
-import (
-	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
+	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/transcripts"
+
 	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+
 	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
+
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 )

@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
@@ -245,7 +247,7 @@ func entityImageMatches(want, entityType string, seg scriptpkg.VidRushSegmentRes
 		// a query such as "Milano" can return a title containing "Rotmilan";
 		// substring/query matches must never bind that result to an entity.
 		if !entitySurfaceMatches(candidateEntity, rawCandidateEntity, wantSurface, aliases, kind) ||
-			!strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
+			!imagegate.CandidateEligibleForSlot(candidate, false) {
 			continue
 		}
 		// Search results are projected once before acquisition and again after

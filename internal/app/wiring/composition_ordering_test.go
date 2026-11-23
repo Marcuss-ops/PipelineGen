@@ -301,7 +301,7 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 var frozenCompositionSequence = []string{
 	"BuildRepoBundle(",
 	"BuildSearchBundle(",
-	"drivewiring.BuildBundle(",
+	"drivewiring.Provide(",
 	"BuildJobsBundle(",
 	"BuildAIBundle(",
 	"buildIndexDeps(",

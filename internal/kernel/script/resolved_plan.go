@@ -86,6 +86,10 @@ type ResolvedGenerationPlan struct {
 	ImagesPerScene     int    `json:"images_per_scene,omitempty"`
 	MinImagesPerSource int    `json:"min_images_per_source,omitempty"`
 	MediaDensity       string `json:"media_density,omitempty"`
+	// MediaRequirements is the resolved output/media contract. It is set by
+	// the plan builder from the request, not inferred from ImagesPerScene at
+	// certification time. Nil keeps legacy plan literals compatible.
+	MediaRequirements *MediaRequirements `json:"media_requirements,omitempty"`
 
 	// ── Style ─────────────────────────────────────────────────────────
 	Style string `json:"style,omitempty"`

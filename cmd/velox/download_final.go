@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 )
 
@@ -47,17 +48,22 @@ func cmdDownloadFinal(args []string) int {
 		return exitUsage
 	}
 	cfg.json = fs.has("json")
-	if fs.has("m2m") {
-		fmt.Fprintln(os.Stderr, "velox download-final: --m2m cannot read the final-job receipt; use the admin token")
-		return exitUsage
-	}
-	// The receipt path is admin-only even when the operator's shell has
-	// VELOX_M2M=true set globally for submit/poll.
-	cfg.m2m = false
-	if token := strings.TrimSpace(os.Getenv("VELOX_ADMIN_TOKEN")); token != "" {
-		cfg.token = token
-	} else if token := strings.TrimSpace(os.Getenv("VELOX_WORKER_TOKEN")); token != "" {
-		cfg.token = token
+	m2m := fs.has("m2m") || cfg.m2m
+	if m2m {
+		// M2M path: the scoped artifact route owner-checks the job and the
+		// Master redeems its own artifact bearer. No admin token is needed (or
+		// accepted) on the client.
+		cfg.m2m = true
+		cfg.token = strings.TrimSpace(os.Getenv("VELOX_M2M_SECRET"))
+	} else {
+		// The admin receipt path stays admin-only even when the operator's
+		// shell has VELOX_M2M=true set globally for submit/poll.
+		cfg.m2m = false
+		if token := strings.TrimSpace(os.Getenv("VELOX_ADMIN_TOKEN")); token != "" {
+			cfg.token = token
+		} else if token := strings.TrimSpace(os.Getenv("VELOX_WORKER_TOKEN")); token != "" {
+			cfg.token = token
+		}
 	}
 	if len(fs.pos) == 0 {
 		fmt.Fprintln(os.Stderr, "velox download-final: <job_id> is required")
@@ -77,6 +83,26 @@ func cmdDownloadFinal(args []string) int {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
+
+	if m2m {
+		result, err := downloadFinalArtifactM2M(ctx, cfg, jobID, out)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "velox download-final: %v\n", err)
+			if errors.Is(err, veloxclient.ErrNotFound) {
+				return exitMissing
+			}
+			return exitFailure
+		}
+		if cfg.json {
+			return emitJSON(map[string]any{
+				"job_id": jobID, "file": out, "size_bytes": result.SizeBytes,
+				"sha256": result.SHA256, "content_type": result.ContentType, "m2m": true,
+			})
+		}
+		fmt.Printf("downloaded final artifact %s → %s (%d bytes, sha256 %s)\n",
+			jobID, out, result.SizeBytes, result.SHA256)
+		return exitOK
+	}
 
 	raw, err := newClient(cfg).GetJobFull(ctx, jobID)
 	if err != nil {
@@ -98,7 +124,14 @@ func cmdDownloadFinal(args []string) int {
 		return exitFailure
 	}
 	if token == "" {
-		fmt.Fprintln(os.Stderr, "velox download-final: no artifact bearer found; set VELOX_MASTER_ADMIN_TOKEN (or VELOX_ARTIFACT_TOKEN / --token-file)")
+		// Print the paths that were actually consulted: the old message left
+		// the operator guessing why a file that exists in $HOME was not seen
+		// (multi-agent profiles change $HOME, so the canonical file is under
+		// the real user home, not the profile home).
+		fmt.Fprintf(os.Stderr, "velox download-final: no artifact bearer found.\n"+
+			"  set VELOX_MASTER_ADMIN_TOKEN or VELOX_ARTIFACT_TOKEN, or point "+
+			"VELOX_MASTER_TOKEN_FILE at a KEY=VALUE file, or pass --token-file.\n"+
+			"  consulted: %s\n", strings.Join(artifactBearerCandidates(), ", "))
 		return exitFailure
 	}
 
@@ -244,16 +277,7 @@ func resolveArtifactBearer(explicitFile string) (token, source string, err error
 			return value, "env:" + key, nil
 		}
 	}
-	var candidates []string
-	for _, key := range []string{"VELOX_MASTER_TOKEN_FILE", "VELOX_FINAL_JOB_CREDENTIALS_FILE"} {
-		if path := strings.TrimSpace(os.Getenv(key)); path != "" {
-			candidates = append(candidates, path)
-		}
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		candidates = append(candidates, filepath.Join(home, "creator-77-master.env"))
-	}
-	for _, path := range candidates {
+	for _, path := range artifactBearerCandidateFiles() {
 		value, readErr := readArtifactTokenFile(path)
 		if readErr != nil {
 			continue
@@ -261,6 +285,35 @@ func resolveArtifactBearer(explicitFile string) (token, source string, err error
 		return value, "file:" + path, nil
 	}
 	return "", "", nil
+}
+
+// artifactBearerCandidateFiles is the ordered list of credential files the
+// resolver tries. It is also printed on failure so the operator can see the
+// exact paths instead of guessing which $HOME was assumed.
+func artifactBearerCandidateFiles() []string {
+	var files []string
+	for _, key := range []string{"VELOX_MASTER_TOKEN_FILE", "VELOX_FINAL_JOB_CREDENTIALS_FILE"} {
+		if path := strings.TrimSpace(os.Getenv(key)); path != "" {
+			files = append(files, path)
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		files = append(files, filepath.Join(home, "creator-77-master.env"))
+	}
+	return files
+}
+
+// artifactBearerCandidates renders every credential source the resolver
+// consults, in order, for the "not found" diagnostic.
+func artifactBearerCandidates() []string {
+	candidates := []string{"--token-file"}
+	for _, key := range []string{"VELOX_MASTER_ADMIN_TOKEN", "VELOX_ARTIFACT_TOKEN", "VELOX_FINAL_JOB_M2M_SECRET"} {
+		candidates = append(candidates, "env:"+key)
+	}
+	for _, path := range artifactBearerCandidateFiles() {
+		candidates = append(candidates, path)
+	}
+	return candidates
 }
 
 // readArtifactTokenFile accepts the deployment's KEY=VALUE env file and the
@@ -297,6 +350,48 @@ func readArtifactTokenFile(path string) (string, error) {
 		return text, nil
 	}
 	return "", fmt.Errorf("token file %s has no artifact bearer", path)
+}
+
+// downloadFinalArtifactM2M streams the final render through the scoped M2M
+// artifact route. The server puts the receipt's SHA-256 in X-Content-SHA256,
+// so the client can still verify the bytes without ever holding the admin
+// token or the artifact URL.
+func downloadFinalArtifactM2M(ctx context.Context, cfg config, jobID, out string) (finalDownload, error) {
+	dir := filepath.Dir(out)
+	if dir == "" {
+		dir = "."
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return finalDownload{}, fmt.Errorf("create output directory: %w", err)
+	}
+	result := finalDownload{}
+	writeErr := atomicwrite.Write(out, 0o644, func(w io.Writer) error {
+		stream, err := newClient(cfg).GetToWriter(ctx, veloxclient.RouteM2MJobArtifact(jobID), nil, w)
+		if err != nil {
+			return err
+		}
+		result.ContentType = stream.ContentType
+		result.SHA256 = stream.SHA256
+		result.SizeBytes = stream.Bytes
+		return nil
+	})
+	if writeErr != nil {
+		return finalDownload{}, writeErr
+	}
+	actual, size, err := digest.SHA256File(out)
+	if err != nil {
+		return finalDownload{}, fmt.Errorf("hash downloaded artifact: %w", err)
+	}
+	if result.SHA256 == "" {
+		return finalDownload{}, fmt.Errorf("master did not declare X-Content-SHA256; refusing an unverified download")
+	}
+	if !strings.EqualFold(actual, result.SHA256) {
+		_ = os.Remove(out)
+		return finalDownload{}, fmt.Errorf("artifact sha256 mismatch (expected %s, got %s)", result.SHA256, actual)
+	}
+	result.SHA256 = actual
+	result.SizeBytes = size
+	return result, nil
 }
 
 func downloadFinalArtifact(ctx context.Context, artifact finalArtifact, token, out string) (finalDownload, error) {

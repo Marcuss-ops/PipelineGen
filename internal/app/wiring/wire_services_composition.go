@@ -41,8 +41,9 @@ package wiring
 import (
 	"context"
 	"fmt"
-	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"time"
+
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"

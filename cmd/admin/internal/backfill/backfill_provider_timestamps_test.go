@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"testing"
 
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -24,7 +24,7 @@ import (
 // backfill's narrow providerTimestampSource port.
 //
 // The production read moved to the PostgreSQL media SSOT
-// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// (pgbackfill.BackfillReader) because media_assets is PostgreSQL-owned and the
 // operational mirror holds no committed media rows. These tests keep pinning
 // the RULES — which column feeds which canonical key, additive-only stamping,
 // ms→seconds conversion, idempotence — against a deterministic fixture, so the
@@ -54,7 +54,7 @@ var sqliteProviderTimestampRules = map[string]struct{ predicate, valueExpr strin
 
 func (s sqliteProviderTimestampSource) CountProviderTimestampCandidates(ctx context.Context) (int, error) {
 	predicates := make([]string, 0, len(sqliteProviderTimestampRules))
-	for _, key := range pgmedia.ProviderTimestampRuleKeys() {
+	for _, key := range pgbackfill.ProviderTimestampRuleKeys() {
 		predicates = append(predicates, sqliteProviderTimestampRules[key].predicate)
 	}
 	var count int
@@ -72,7 +72,7 @@ func (s sqliteProviderTimestampSource) CountProviderTimestampCandidates(ctx cont
 	return count, nil
 }
 
-func (s sqliteProviderTimestampSource) ListProviderTimestampCandidates(ctx context.Context, key string) ([]pgmedia.ProviderTimestampCandidate, error) {
+func (s sqliteProviderTimestampSource) ListProviderTimestampCandidates(ctx context.Context, key string) ([]pgbackfill.ProviderTimestampCandidate, error) {
 	rule, ok := sqliteProviderTimestampRules[key]
 	if !ok {
 		return nil, fmt.Errorf("unknown provider timestamp rule %q", key)
@@ -83,9 +83,9 @@ func (s sqliteProviderTimestampSource) ListProviderTimestampCandidates(ctx conte
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []pgmedia.ProviderTimestampCandidate
+	var out []pgbackfill.ProviderTimestampCandidate
 	for rows.Next() {
-		var rec pgmedia.ProviderTimestampCandidate
+		var rec pgbackfill.ProviderTimestampCandidate
 		if err := rows.Scan(&rec.AssetID, &rec.RawValue); err != nil {
 			return nil, err
 		}

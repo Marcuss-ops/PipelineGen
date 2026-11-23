@@ -32,7 +32,7 @@
         }
       },
       "params": {
-        "canonical_entity_id": "ent_5d06710f3ec2ac53",
+        "canonical_entity_id": "place:new-orleans",
         "entity_type": "GPE",
         "fill": "#000000",
         "font_family": "playfair_display_italic",
@@ -44,9 +44,9 @@
         "priority": 0.93,
         "width": 1700
       },
-      "render_key": "07265d96255c36e2c1a3f4702850f5d40d2d5aaeceb9e4bbf5f4d4157c7e9391",
+      "render_key": "0a2f96eea5079a4bbd01169429fb3635451929bc523901d6868e4afb43dd5515",
       "duration_ms": 400
     }
   ],
-  "fingerprint": "ab6354877d232d7fbb04ba377c4ec5db601614508f2abd47629e5e7cf0d4db4c"
+  "fingerprint": "e5fe5a2ad84de6340e2482594e0f8d1306a4bff2e0e004fb9ae3a9d77f69e8ab"
 }

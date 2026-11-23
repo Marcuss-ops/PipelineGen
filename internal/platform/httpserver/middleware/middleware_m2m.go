@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -75,6 +76,12 @@ import (
 // requireScope/rate-limit checks and the future idempotency-key uniqueness
 // constraint.
 const jobClientContextKey = "m2m_client"
+
+// m2mLastUsedToucher is the optional store capability behind last_used_at.
+// Kept separate from M2MSecurityPort so every existing fake remains valid.
+type m2mLastUsedToucher interface {
+	TouchClient(ctx context.Context, clientID string) error
+}
 
 // M2MClientFromContext returns the authenticated M2M client stored by
 // JobClientAuthMiddleware. The bool is false for the dev/test pass-through
@@ -169,6 +176,15 @@ func jobClientAuthMiddleware(sec mw.M2MSecurityPort, log *zap.Logger) gin.Handle
 			})
 			c.Abort()
 			return
+		}
+
+		// Best-effort audit: record that the credential was used. A failed
+		// timestamp write must never fail an otherwise authorized request.
+		if toucher, ok := sec.(m2mLastUsedToucher); ok {
+			if err := toucher.TouchClient(c.Request.Context(), client.ClientID); err != nil && log != nil {
+				log.Debug("jobClientAuthMiddleware: last_used_at update failed",
+					zap.String("client_id", client.ClientID), zap.Error(err))
+			}
 		}
 
 		// Store the resolved client for downstream requireScope + the

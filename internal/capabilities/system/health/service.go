@@ -86,6 +86,13 @@ type HealthResponse struct {
 	OK     bool                   `json:"ok"`
 	Status string                 `json:"status"`
 	Checks map[string]CheckResult `json:"checks,omitempty"`
+	// Warm is the performance state of the optional inference plane, NOT a
+	// readiness verdict: false means "reachable but the configured model is not
+	// resident", so the next generation would pay the model load. A cold model
+	// must not take the whole service out of rotation (a clip-render or
+	// text-verbatim job never calls it); callers that require warmth read this
+	// flag instead of treating /ready as a warm-up barrier.
+	Warm *bool `json:"warm,omitempty"`
 }
 
 // Check runs the requested component checks and returns a unified response.

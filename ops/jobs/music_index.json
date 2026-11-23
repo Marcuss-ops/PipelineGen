@@ -1,0 +1,430 @@
+{
+  "version": 1,
+  "generated_at": "2026-11-23T10:42:14Z",
+  "count": 8,
+  "assets": [
+    {
+      "asset_id": "yt_CWFTuHJSAms_0.95x",
+      "name": "a_world_without_shadows",
+      "title": "\"A World Without Shadows\" - Ambient Electronic Music made with SUNO AI",
+      "family": "music",
+      "subtype": "ambient_electronic",
+      "mood": "cinematic",
+      "energy": "low",
+      "best_for": [
+        "documentary_bed",
+        "voiceover_bed",
+        "long_form"
+      ],
+      "tags": [
+        "music",
+        "ambient",
+        "electronic",
+        "suno",
+        "slowed",
+        "0.95x"
+      ],
+      "source": {
+        "provider": "youtube",
+        "video_id": "CWFTuHJSAms",
+        "url": "https://www.youtube.com/watch?v=CWFTuHJSAms",
+        "uploader": "Lekahil",
+        "upload_date": "2025-11-25"
+      },
+      "speed_factor": 0.95,
+      "pitch_preserved": true,
+      "filters": {
+        "video": "setpts=PTS/0.95,fps=60",
+        "audio": "atempo=0.95"
+      },
+      "source_file": "ops/jobs/music_cwftuhjsams_20261123/source/source_CWFTuHJSAms.mp4",
+      "source_duration_seconds": 305.551,
+      "file": "ops/jobs/music_cwftuhjsams_20261123/a_world_without_shadows_0.95x.mp4",
+      "duration_seconds": 321.608,
+      "size_bytes": 245021680,
+      "bit_rate": 6094914,
+      "width": 1920,
+      "height": 1080,
+      "fps": "60/1",
+      "video_codec": "h264",
+      "audio_codec": "aac",
+      "sample_rate": "44100",
+      "channels": 2,
+      "checks": {
+        "duration_ratio": 1.0526,
+        "expected_ratio": 1.0526
+      }
+    },
+    {
+      "asset_id": "gd_1dzgD6p2tG9aZLdhlYLwTYh75YoMNvklw_norm",
+      "name": "bgm_1123",
+      "title": null,
+      "family": "music",
+      "subtype": "ambient",
+      "mood": "calm",
+      "energy": "low",
+      "best_for": [
+        "voiceover_bed",
+        "documentary_bed",
+        "long_form"
+      ],
+      "tags": [
+        "music",
+        "ambient",
+        "bgm",
+        "normalized",
+        "gdrive"
+      ],
+      "source": {
+        "provider": "google_drive",
+        "folder_id": "1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "folder_name": "BgmMusic",
+        "folder_url": "https://drive.google.com/drive/folders/1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "file_id": "1dzgD6p2tG9aZLdhlYLwTYh75YoMNvklw",
+        "original_filename": "1123.mp4"
+      },
+      "source_file": "ops/jobs/gdrive_bgm_20261123/source/bgm_1123.mp4",
+      "source_video": {
+        "duration_seconds": 505.685,
+        "width": 1920,
+        "height": 1080,
+        "fps": "24/1",
+        "video_codec": "h264"
+      },
+      "file": "ops/jobs/gdrive_bgm_20261123/audio/bgm_1123.m4a",
+      "duration_seconds": 505.685,
+      "size_bytes": 12281374,
+      "bit_rate": 194292,
+      "audio_codec": "aac",
+      "sample_rate": "44100",
+      "channels": 2,
+      "loudness": {
+        "input_lufs": -33.35,
+        "input_true_peak_db": -18.51,
+        "input_lra": 10.0,
+        "gain_db": 15.35,
+        "target_lufs": -18.0,
+        "target_true_peak_db": -2.0,
+        "method": "two_pass_loudnorm_linear"
+      }
+    },
+    {
+      "asset_id": "gd_1Xf0YO4WI4w6IeTAx9dZO0NlNr8P9Ro9B_norm",
+      "name": "bgm_1123_1",
+      "title": null,
+      "family": "music",
+      "subtype": "ambient",
+      "mood": "calm",
+      "energy": "low",
+      "best_for": [
+        "voiceover_bed",
+        "documentary_bed",
+        "long_form"
+      ],
+      "tags": [
+        "music",
+        "ambient",
+        "bgm",
+        "normalized",
+        "gdrive"
+      ],
+      "source": {
+        "provider": "google_drive",
+        "folder_id": "1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "folder_name": "BgmMusic",
+        "folder_url": "https://drive.google.com/drive/folders/1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "file_id": "1Xf0YO4WI4w6IeTAx9dZO0NlNr8P9Ro9B",
+        "original_filename": "1123(1).mp4"
+      },
+      "source_file": "ops/jobs/gdrive_bgm_20261123/source/bgm_1123_1.mp4",
+      "source_video": {
+        "duration_seconds": 244.971,
+        "width": 1920,
+        "height": 1080,
+        "fps": "24/1",
+        "video_codec": "h264"
+      },
+      "file": "ops/jobs/gdrive_bgm_20261123/audio/bgm_1123_1.m4a",
+      "duration_seconds": 245.001,
+      "size_bytes": 6119745,
+      "bit_rate": 199827,
+      "audio_codec": "aac",
+      "sample_rate": "96000",
+      "channels": 2,
+      "loudness": {
+        "input_lufs": -35.18,
+        "input_true_peak_db": -21.51,
+        "input_lra": 11.6,
+        "gain_db": 17.18,
+        "target_lufs": -18.0,
+        "target_true_peak_db": -2.0,
+        "method": "two_pass_loudnorm_linear"
+      }
+    },
+    {
+      "asset_id": "gd_1iojuqSV3R5v-KoraG1MMEpiRBTyyIo3B_norm",
+      "name": "bgm_1123_2",
+      "title": null,
+      "family": "music",
+      "subtype": "ambient",
+      "mood": "calm",
+      "energy": "low",
+      "best_for": [
+        "voiceover_bed",
+        "documentary_bed",
+        "long_form"
+      ],
+      "tags": [
+        "music",
+        "ambient",
+        "bgm",
+        "normalized",
+        "gdrive"
+      ],
+      "source": {
+        "provider": "google_drive",
+        "folder_id": "1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "folder_name": "BgmMusic",
+        "folder_url": "https://drive.google.com/drive/folders/1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "file_id": "1iojuqSV3R5v-KoraG1MMEpiRBTyyIo3B",
+        "original_filename": "1123(2).mp4"
+      },
+      "source_file": "ops/jobs/gdrive_bgm_20261123/source/bgm_1123_2.mp4",
+      "source_video": {
+        "duration_seconds": 403.261,
+        "width": 1920,
+        "height": 1080,
+        "fps": "24/1",
+        "video_codec": "h264"
+      },
+      "file": "ops/jobs/gdrive_bgm_20261123/audio/bgm_1123_2.m4a",
+      "duration_seconds": 403.261,
+      "size_bytes": 9848425,
+      "bit_rate": 195375,
+      "audio_codec": "aac",
+      "sample_rate": "44100",
+      "channels": 2,
+      "loudness": {
+        "input_lufs": -33.96,
+        "input_true_peak_db": -20.37,
+        "input_lra": 8.7,
+        "gain_db": 15.96,
+        "target_lufs": -18.0,
+        "target_true_peak_db": -2.0,
+        "method": "two_pass_loudnorm_linear"
+      }
+    },
+    {
+      "asset_id": "gd_13t3lAdqmVL56B-BuezdrFB2xT_L_lCBX_norm",
+      "name": "bgm_1123_3",
+      "title": null,
+      "family": "music",
+      "subtype": "ambient",
+      "mood": "calm",
+      "energy": "low",
+      "best_for": [
+        "voiceover_bed",
+        "documentary_bed",
+        "long_form"
+      ],
+      "tags": [
+        "music",
+        "ambient",
+        "bgm",
+        "normalized",
+        "gdrive"
+      ],
+      "source": {
+        "provider": "google_drive",
+        "folder_id": "1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "folder_name": "BgmMusic",
+        "folder_url": "https://drive.google.com/drive/folders/1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "file_id": "13t3lAdqmVL56B-BuezdrFB2xT_L_lCBX",
+        "original_filename": "1123(3).mp4"
+      },
+      "source_file": "ops/jobs/gdrive_bgm_20261123/source/bgm_1123_3.mp4",
+      "source_video": {
+        "duration_seconds": 310.428,
+        "width": 1920,
+        "height": 1080,
+        "fps": "24/1",
+        "video_codec": "h264"
+      },
+      "file": "ops/jobs/gdrive_bgm_20261123/audio/bgm_1123_3.m4a",
+      "duration_seconds": 310.428,
+      "size_bytes": 7524955,
+      "bit_rate": 193924,
+      "audio_codec": "aac",
+      "sample_rate": "44100",
+      "channels": 2,
+      "loudness": {
+        "input_lufs": -35.48,
+        "input_true_peak_db": -20.92,
+        "input_lra": 10.9,
+        "gain_db": 17.48,
+        "target_lufs": -18.0,
+        "target_true_peak_db": -2.0,
+        "method": "two_pass_loudnorm_linear"
+      }
+    },
+    {
+      "asset_id": "gd_12i-EInYEvGpSefcMsPQytyilEX8T10UN_norm",
+      "name": "bgm_1123_4",
+      "title": null,
+      "family": "music",
+      "subtype": "ambient",
+      "mood": "calm",
+      "energy": "low",
+      "best_for": [
+        "voiceover_bed",
+        "documentary_bed",
+        "long_form"
+      ],
+      "tags": [
+        "music",
+        "ambient",
+        "bgm",
+        "normalized",
+        "gdrive"
+      ],
+      "source": {
+        "provider": "google_drive",
+        "folder_id": "1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "folder_name": "BgmMusic",
+        "folder_url": "https://drive.google.com/drive/folders/1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "file_id": "12i-EInYEvGpSefcMsPQytyilEX8T10UN",
+        "original_filename": "1123(4).mp4"
+      },
+      "source_file": "ops/jobs/gdrive_bgm_20261123/source/bgm_1123_4.mp4",
+      "source_video": {
+        "duration_seconds": 223.678,
+        "width": 1920,
+        "height": 1080,
+        "fps": "24/1",
+        "video_codec": "h264"
+      },
+      "file": "ops/jobs/gdrive_bgm_20261123/audio/bgm_1123_4.m4a",
+      "duration_seconds": 223.701,
+      "size_bytes": 5560085,
+      "bit_rate": 198839,
+      "audio_codec": "aac",
+      "sample_rate": "96000",
+      "channels": 2,
+      "loudness": {
+        "input_lufs": -35.17,
+        "input_true_peak_db": -21.63,
+        "input_lra": 13.3,
+        "gain_db": 17.17,
+        "target_lufs": -18.0,
+        "target_true_peak_db": -2.0,
+        "method": "two_pass_loudnorm_linear"
+      }
+    },
+    {
+      "asset_id": "gd_1oEaSxwV1XJgko1v72WxnLkatkp4deEba_norm",
+      "name": "bgm_1123_5",
+      "title": null,
+      "family": "music",
+      "subtype": "ambient",
+      "mood": "calm",
+      "energy": "low",
+      "best_for": [
+        "voiceover_bed",
+        "documentary_bed",
+        "long_form"
+      ],
+      "tags": [
+        "music",
+        "ambient",
+        "bgm",
+        "normalized",
+        "gdrive"
+      ],
+      "source": {
+        "provider": "google_drive",
+        "folder_id": "1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "folder_name": "BgmMusic",
+        "folder_url": "https://drive.google.com/drive/folders/1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "file_id": "1oEaSxwV1XJgko1v72WxnLkatkp4deEba",
+        "original_filename": "1123(5).mp4"
+      },
+      "source_file": "ops/jobs/gdrive_bgm_20261123/source/bgm_1123_5.mp4",
+      "source_video": {
+        "duration_seconds": 290.877,
+        "width": 1920,
+        "height": 1080,
+        "fps": "24/1",
+        "video_codec": "h264"
+      },
+      "file": "ops/jobs/gdrive_bgm_20261123/audio/bgm_1123_5.m4a",
+      "duration_seconds": 290.901,
+      "size_bytes": 7192737,
+      "bit_rate": 197805,
+      "audio_codec": "aac",
+      "sample_rate": "96000",
+      "channels": 2,
+      "loudness": {
+        "input_lufs": -32.12,
+        "input_true_peak_db": -21.37,
+        "input_lra": 14.3,
+        "gain_db": 14.12,
+        "target_lufs": -18.0,
+        "target_true_peak_db": -2.0,
+        "method": "two_pass_loudnorm_linear"
+      }
+    },
+    {
+      "asset_id": "gd_1vedOtykm4jREXc7LmSXxyDG6ifjVtvgn_norm",
+      "name": "bgm_msuci1",
+      "title": null,
+      "family": "music",
+      "subtype": "ambient",
+      "mood": "calm",
+      "energy": "low",
+      "best_for": [
+        "voiceover_bed",
+        "documentary_bed",
+        "long_form"
+      ],
+      "tags": [
+        "music",
+        "ambient",
+        "bgm",
+        "normalized",
+        "gdrive"
+      ],
+      "source": {
+        "provider": "google_drive",
+        "folder_id": "1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "folder_name": "BgmMusic",
+        "folder_url": "https://drive.google.com/drive/folders/1ftrl6WDe4ZmmEzmHV6cC3AxGjCoy2M5X",
+        "file_id": "1vedOtykm4jREXc7LmSXxyDG6ifjVtvgn",
+        "original_filename": "msuci1.mp4"
+      },
+      "source_file": "ops/jobs/gdrive_bgm_20261123/source/bgm_msuci1.mp4",
+      "source_video": {
+        "duration_seconds": 189.312,
+        "width": 1920,
+        "height": 1080,
+        "fps": "24/1",
+        "video_codec": "h264"
+      },
+      "file": "ops/jobs/gdrive_bgm_20261123/audio/bgm_msuci1.m4a",
+      "duration_seconds": 189.312,
+      "size_bytes": 4593645,
+      "bit_rate": 194119,
+      "audio_codec": "aac",
+      "sample_rate": "44100",
+      "channels": 2,
+      "loudness": {
+        "input_lufs": -39.54,
+        "input_true_peak_db": -27.82,
+        "input_lra": 7.2,
+        "gain_db": 21.54,
+        "target_lufs": -18.0,
+        "target_true_peak_db": -2.0,
+        "method": "two_pass_loudnorm_linear"
+      }
+    }
+  ]
+}

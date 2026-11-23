@@ -628,3 +628,39 @@ func TestUploadIntentUseCase_SentinelImportSanity(t *testing.T) {
 		t.Errorf("sentinel text unexpected: %q", ErrUploadIntentNotFound.Error())
 	}
 }
+
+func TestValidateUploadIntentInputs(t *testing.T) {
+	tests := []struct {
+		name                             string
+		voiceoverID, localPath, folderID string
+		want                             string
+	}{
+		{name: "valid", voiceoverID: "vo-1", localPath: "/tmp/a.mp3", folderID: "folder"},
+		{
+			name: "missing voiceover id", localPath: "/tmp/a.mp3", folderID: "folder",
+			want: "UploadIntentUseCase.Execute: empty voiceoverID (godlike/05 wiring-error fail-fast)",
+		},
+		{
+			name: "missing local path", voiceoverID: "vo-1", folderID: "folder",
+			want: "UploadIntentUseCase.Execute: empty localPath (finalizer would orphan row to no-payload)",
+		},
+		{
+			name: "missing folder", voiceoverID: "vo-1", localPath: "/tmp/a.mp3",
+			want: "UploadIntentUseCase.Execute: empty folderID (Drive upload requires destination)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateUploadIntentInputs(tt.voiceoverID, tt.localPath, tt.folderID)
+			if tt.want == "" {
+				if err != nil {
+					t.Fatalf("validateUploadIntentInputs() error = %v; want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.want {
+				t.Fatalf("validateUploadIntentInputs() error = %v; want %q", err, tt.want)
+			}
+		})
+	}
+}

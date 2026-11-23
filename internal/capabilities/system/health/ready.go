@@ -209,6 +209,11 @@ func mergeHealthResponse(dst, src *HealthResponse) {
 	for name, result := range src.Checks {
 		dst.Checks[name] = result
 	}
+	// Warm is a performance fact that rides alongside the verdict, not a
+	// verdict of its own: keep the explicit false, never lose it in the merge.
+	if src.Warm != nil {
+		dst.Warm = src.Warm
+	}
 	if !src.OK {
 		dst.OK = false
 		dst.Status = "unhealthy"

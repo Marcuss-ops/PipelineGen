@@ -33,7 +33,7 @@ func TestOverlayPlanV2AllFixturesMatchFrozenGoldens(t *testing.T) {
 		"recap_and_light_leaks",
 		"general_chain_rendering",
 		"chain_collision_resolution",
-		"entity_cards_promotable_media",
+		"entity_cards_bundle_media",
 	}
 	for _, name := range fixtures {
 		name := name

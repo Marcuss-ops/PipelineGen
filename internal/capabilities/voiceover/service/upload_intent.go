@@ -244,35 +244,64 @@ func NewUploadIntentUseCase(deps UploadIntentDeps) *UploadIntentUseCase {
 // (godlike/05 wiring guards; DO NOT panic on caller-supplied inputs,
 // return typed errors).
 func (u *UploadIntentUseCase) Execute(ctx context.Context, voiceoverID, localPath, filename, folderID string) (string, error) {
-	if voiceoverID == "" {
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: empty voiceoverID (godlike/05 wiring-error fail-fast)")
-	}
-	if localPath == "" {
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: empty localPath (finalizer would orphan row to no-payload)")
-	}
-	if folderID == "" {
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: empty folderID (Drive upload requires destination)")
+	if err := validateUploadIntentInputs(voiceoverID, localPath, folderID); err != nil {
+		return "", err
 	}
 
-	// ── Step 1: BeginTx + InsertTx + Commit ──
-	// InsertTx errors propagate to caller per godlike/07 (no
-	// silent-retry, no fake-availability). A UNIQUE-violation
-	// surfaces the raw driver error; callers (production routing,
-	// orphan sweeper B/2, ops tooling) decide whether the conflict
-	// is a recoverable idempotent-replay signal. This commit (A/2)
-	// does NOT short-circuit replay — forward-pointer in
-	// architecture/current.yaml#upload_intents_replay_fix.
-	//
-	// CRITICAL (audit fix): the tx is COMMITTED immediately after
-	// InsertTx succeeds so the row becomes visible to subsequent
-	// Mark* operations. Without Commit, the Mark* methods (which
-	// run on the *sql.DB autocommitt handle, NOT on the tx-bound
-	// connection per sqlite3 connection isolation) would 0-rows-match
-	// every UPDATE and re-emit ErrUploadIntentNotFound. The deferred
-	// Rollback is a no-op after Commit per Go's database/sql contract.
+	if err := u.insertIntent(ctx, voiceoverID); err != nil {
+		return "", err
+	}
+
+	driveFileID, err := u.publishUpload(ctx, voiceoverID, localPath, filename, folderID)
+	if err != nil {
+		return "", err
+	}
+
+	if err := u.markUploaded(ctx, voiceoverID, driveFileID); err != nil {
+		return "", err
+	}
+
+	if err := u.finalizeProjection(ctx, voiceoverID, driveFileID); err != nil {
+		return "", err
+	}
+
+	if err := u.markFinalized(ctx, voiceoverID); err != nil {
+		return "", err
+	}
+
+	if err := u.markCompleted(ctx, voiceoverID); err != nil {
+		return "", err
+	}
+
+	// All 5 steps succeeded.
+	return driveFileID, nil
+}
+
+// validateUploadIntentInputs enforces the caller-supplied input guards.
+// These are data errors, not wiring errors: return them, never panic.
+func validateUploadIntentInputs(voiceoverID, localPath, folderID string) error {
+	if voiceoverID == "" {
+		return fmt.Errorf("UploadIntentUseCase.Execute: empty voiceoverID (godlike/05 wiring-error fail-fast)")
+	}
+	if localPath == "" {
+		return fmt.Errorf("UploadIntentUseCase.Execute: empty localPath (finalizer would orphan row to no-payload)")
+	}
+	if folderID == "" {
+		return fmt.Errorf("UploadIntentUseCase.Execute: empty folderID (Drive upload requires destination)")
+	}
+	return nil
+}
+
+// insertIntent runs Step 1: BeginTx + InsertTx + Commit. The tx is COMMITTED
+// immediately so the row becomes visible to the Mark* methods, which run on
+// the *sql.DB autocommit handle (sqlite3 connection isolation). The deferred
+// Rollback is a no-op after Commit per database/sql. InsertTx errors
+// propagate: a UNIQUE violation is an idempotent-replay signal the caller
+// decides on, not something this layer swallows.
+func (u *UploadIntentUseCase) insertIntent(ctx context.Context, voiceoverID string) error {
 	tx, err := u.deps.Repo.BeginTx(ctx)
 	if err != nil {
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: BeginTx: %w", err)
+		return fmt.Errorf("UploadIntentUseCase.Execute: BeginTx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }() // no-op after Commit() per database/sql
 
@@ -280,26 +309,22 @@ func (u *UploadIntentUseCase) Execute(ctx context.Context, voiceoverID, localPat
 		VoiceoverID: voiceoverID,
 		Attempts:    0,
 	}); err != nil {
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: InsertTx: %w", err)
+		return fmt.Errorf("UploadIntentUseCase.Execute: InsertTx: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: tx.Commit (post-InsertTx): %w", err)
+		return fmt.Errorf("UploadIntentUseCase.Execute: tx.Commit (post-InsertTx): %w", err)
 	}
+	return nil
+}
 
-	// ── Step 2: Drive.Publish (external side-effect) ──
-	// P2.6 migration: routes through canonical `delivery.Publisher.Publish`
-	// per architecture/deprecations.yaml#DRIVE-CUTOVER-P0-1 closure.
-	// The caller-resolved `folderID` is preserved via
-	// `PublishRequest.ParentFolderID` to keep byte-equivalent
-	// behaviour vs the prior `drive.Admin.UploadFile(ctx, folderID, ...)`
-	// 3-arg signature. Failure semantics unchanged: drive upload
-	// failure advances intent row to 'failed' with reason
-	// `upload_failed: <cause>`. Sweeper does NOT need to compensate
-	// because Drive file does NOT exist on upload failure (no orphan
-	// Drive file). The MarkFailed error is logged (warn-level) instead
-	// of silently swallowed so operator dashboards can correlate
-	// Step-2-fail with missing-MarkFailed (e.g., row absent due to
-	// operator delete).
+// publishUpload runs Step 2: the external Drive publish. On failure the intent
+// row advances to 'failed' with `upload_failed: <cause>`; no Drive file exists
+// so the orphan sweeper has nothing to compensate. A failing MarkFailed is
+// logged, never allowed to hide the publisher error.
+func (u *UploadIntentUseCase) publishUpload(
+	ctx context.Context,
+	voiceoverID, localPath, filename, folderID string,
+) (string, error) {
 	result, err := u.deps.Publisher.Publish(ctx, delivery.PublishRequest{
 		Destination:         delivery.DestinationVoiceover,
 		LocalPath:           localPath,
@@ -317,92 +342,65 @@ func (u *UploadIntentUseCase) Execute(ctx context.Context, voiceoverID, localPat
 		}
 		return "", fmt.Errorf("UploadIntentUseCase.Execute: Publisher.Publish: %w", err)
 	}
-	driveFileID := result.FileID
+	return result.FileID, nil
+}
 
-	// ── Step 3: MarkUploaded (status 'pending' → 'uploaded', drive_file_id stamped) ──
+// markUploaded runs Step 3: 'pending' → 'uploaded' with the Drive file ID.
+// A row-absent error is a DB invariant violation: surface it and do NOT emit
+// MarkFailed (there is no row to mark). Any other failure marks the row failed
+// and is surfaced to the caller.
+func (u *UploadIntentUseCase) markUploaded(ctx context.Context, voiceoverID, driveFileID string) error {
 	if err := u.deps.Repo.MarkUploaded(ctx, voiceoverID, driveFileID); err != nil {
 		if isMarkNotFoundError(err) {
-			// Row absent — DB-side invariant violation. The orphan
-			// sweeper will eventually re-discover (no intent for a
-			// real Drive upload). Surface the typed failure; do NOT
-			// emit MarkFailed (the row isn't there to mark).
-			return "", fmt.Errorf("UploadIntentUseCase.Execute: MarkUploaded: %w (row absent — DB corruption or pre-Step-1 rollback)", err)
+			return fmt.Errorf("UploadIntentUseCase.Execute: MarkUploaded: %w (row absent — DB corruption or pre-Step-1 rollback)", err)
 		}
 		_ = u.deps.Repo.MarkFailed(ctx, voiceoverID,
 			fmt.Sprintf("mark_uploaded_failed: %v", err))
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: MarkUploaded: %w", err)
+		return fmt.Errorf("UploadIntentUseCase.Execute: MarkUploaded: %w", err)
 	}
+	return nil
+}
 
-	// ── Step 4: ProjectFinalize (local DB finalize — the voiceover
-	// pipeline's finalizeStage). USER-SPEC HARD CONTRACT:
-	// Drive-had-file + Finalize-failed → row STAYS at 'uploaded' →
-	// orphan sweeper (B/2) detects via ListPending → sweeper
-	// compensates (Drive.FileDelete or replay per policy). DO NOT
-	// emit MarkFailed here: failing this row to 'failed' removes
-	// the sweeper's ability to find the orphan (the sweeper
-	// filter is `WHERE status='pending' OR status='uploaded'`).
-	// MarkFailed on this path would be silent state lost
-	// (godlike/07 NO_FAKE_AVAILABILITY violations ≠ here, because
-	// the failure is durably logged at the call site + reason
-	// column stays empty for orphan-sweeper-visible rows).
+// finalizeProjection runs Step 4: the local canonical finalize. On failure the
+// intent row STAYS at 'uploaded' — MarkFailed would hide the existing Drive
+// file from the orphan sweeper, whose filter is `status='pending' OR
+// status='uploaded'`.
+func (u *UploadIntentUseCase) finalizeProjection(ctx context.Context, voiceoverID, driveFileID string) error {
 	if err := u.deps.ProjectFinalizer.Finalize(ctx, voiceoverID, driveFileID); err != nil {
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: ProjectFinalizer.Finalize (intent row left at 'uploaded' for orphan sweeper): %w", err)
+		return fmt.Errorf("UploadIntentUseCase.Execute: ProjectFinalizer.Finalize (intent row left at 'uploaded' for orphan sweeper): %w", err)
 	}
+	return nil
+}
 
-	// ── Step 4.5: MarkFinalized (upload_intents row 'uploaded' → 'finalized') ──
-	// The canonical upload_intents state machine is a 4-hop chain
-	// `pending → uploaded → finalized → completed`. ProjectFinalizer
-	// (the port) finalizes the voiceover canonical row — it does
-	// NOT transition the upload_intents row. We need an explicit
-	// MarkFinalized call here so MarkCompleted's WHERE filter
-	// (`status='finalized'`) on Step 5 matches.
-	//
-	// USER-SPEC CRITICAL CONTRACT (matches Step 4 Finalize-FAIL semantics):
-	// On MarkFinalized-FAIL, the row STAYS AT 'uploaded' (NOT 'failed').
-	// Reason: orphan sweeper (B/2) filter is `WHERE status='pending' OR
-	// status='uploaded'`; emitting MarkFailed would push the row to
-	// 'failed', hiding it from the sweeper. The Drive file exists
-	// (Step 2 succeeded) so a Drive-side orphan would go unrecovered
-	// if the sweeper can't see the row. Sticking at 'uploaded' also
-	// lets the sweeper retry MarkFinalized → MarkCompleted when the
-	// transient error resolves. Wrapped error is surfaced to the
-	// caller for operator visibility (logged at the call site via
-	// zap.Error — matches Step 4's logging surface). This is the
-	// AUDIT FIX for the original implementation that emitted
-	// MarkFailed here (a godlike/07 silent-state-lost violation:
-	// spec calls for sweeper-visible state, not operator-fail-state).
+// markFinalized runs Step 4.5: 'uploaded' → 'finalized', the bridge required
+// by MarkCompleted's `status='finalized'` filter. On failure the row STAYS at
+// 'uploaded' for the same orphan-sweeper-visibility contract as Step 4: the
+// sweeper can retry MarkFinalized → MarkCompleted when the transient error
+// resolves.
+func (u *UploadIntentUseCase) markFinalized(ctx context.Context, voiceoverID string) error {
 	if err := u.deps.Repo.MarkFinalized(ctx, voiceoverID); err != nil {
 		if isMarkNotFoundError(err) {
-			// Row absent — DB-side invariant violation. Same
-			// handling as MarkUploaded's row-absent case above.
-			return "", fmt.Errorf("UploadIntentUseCase.Execute: MarkFinalized: %w (row absent — DB corruption or pre-Step-1 rollback)", err)
+			return fmt.Errorf("UploadIntentUseCase.Execute: MarkFinalized: %w (row absent — DB corruption or pre-Step-1 rollback)", err)
 		}
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: MarkFinalized (intent row left at 'uploaded' for orphan sweeper): %w", err)
+		return fmt.Errorf("UploadIntentUseCase.Execute: MarkFinalized (intent row left at 'uploaded' for orphan sweeper): %w", err)
 	}
+	return nil
+}
 
-	// ── Step 5: MarkCompleted (status 'finalized' → 'completed') ──
-	// User-spec hard requirement: "NON ritornare success se step 5
-	// fallisce senza lasciare MarkFailed". A MarkCompleted failure
-	// produces row state 'finalized' (NOT 'completed' yet); the row
-	// is functionally complete except for the lifecycle stamp.
-	// Emit MarkFailed so operator audit + future sweep cycles see
-	// the partial-success state. Race-handled below: a parallel
-	// worker may have completed this row already — surface that as
-	// idempotent success.
+// markCompleted runs Step 5: 'finalized' → 'completed'. A row-absent error is
+// a concurrent-retry race (another worker already completed the row): that is
+// idempotent success. Any other failure emits MarkFailed so the partial state
+// is auditable, then surfaces the error.
+func (u *UploadIntentUseCase) markCompleted(ctx context.Context, voiceoverID string) error {
 	if err := u.deps.Repo.MarkCompleted(ctx, voiceoverID); err != nil {
 		if isMarkNotFoundError(err) {
-			// Race: another worker marked 'completed' before us
-			// (concurrent retry). The canonical happy path is
-			// already recorded; treat as idempotent success.
 			u.deps.Logger.Info("UploadIntentUseCase.Execute: MarkCompleted race (already completed by parallel worker); treating as success",
 				zap.String("voiceover_id", voiceoverID))
-			return driveFileID, nil
+			return nil
 		}
 		_ = u.deps.Repo.MarkFailed(ctx, voiceoverID,
 			fmt.Sprintf("mark_completed_failed: %v", err))
-		return "", fmt.Errorf("UploadIntentUseCase.Execute: MarkCompleted: %w", err)
+		return fmt.Errorf("UploadIntentUseCase.Execute: MarkCompleted: %w", err)
 	}
-
-	// All 5 steps succeeded.
-	return driveFileID, nil
+	return nil
 }

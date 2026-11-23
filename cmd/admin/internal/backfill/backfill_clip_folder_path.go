@@ -42,7 +42,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 )
 
 // maxFolderDepth guards the parent-chain walk against Drive cycles (a
@@ -65,16 +65,16 @@ type clipFolderPathStats struct {
 // clipFolderSource is the narrow media read this backfill depends on.
 //
 // MEDIA-SSOT: production binds the PostgreSQL reader
-// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// (pgbackfill.BackfillReader) because media_assets is PostgreSQL-owned and the
 // operational mirror holds no committed media rows. The port is engine-specific
 // so the candidate scan cannot drift back onto that mirror.
 type clipFolderSource interface {
-	ListYouTubeClipFolderCandidates(ctx context.Context, limit int) ([]pgmedia.ClipFolderCandidate, error)
+	ListYouTubeClipFolderCandidates(ctx context.Context, limit int) ([]pgbackfill.ClipFolderCandidate, error)
 }
 
 // resolvedClipAssetRow pairs a candidate with its Drive resolution outcome.
 type resolvedClipAssetRow struct {
-	row        pgmedia.ClipFolderCandidate
+	row        pgbackfill.ClipFolderCandidate
 	folderID   string
 	folderPath string
 	err        error
@@ -140,7 +140,7 @@ func RunBackfillClipFolderPath(args []string) error {
 	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
 	// PostgreSQL media SSOT; the writes already went through the canonical
 	// mutator, so both halves now agree on one engine.
-	source := pgmedia.NewBackfillReader(rootCtx.MediaPostgres)
+	source := pgbackfill.NewBackfillReader(rootCtx.MediaPostgres)
 	if source == nil {
 		return fmt.Errorf("media PostgreSQL SSOT is required for clip-folder-path backfill")
 	}

@@ -24,7 +24,7 @@
 # mapping is visible at-a-glance.
 .PHONY: \
 	help all \
-	go-version-guard go-version-check build rust-fetch build-server clean rebuild run dev \
+	go-version-guard go-version-check build rust-fetch build-rust-local verify-rust-binary check-clean-tree build-server clean rebuild run dev \
 	test test-all test-unit coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \

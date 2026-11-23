@@ -31,7 +31,7 @@ import (
 
 	"go.uber.org/zap"
 
-	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/voiceover"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 

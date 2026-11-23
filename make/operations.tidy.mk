@@ -179,7 +179,9 @@ verify-format:
 	    echo "   Do NOT use in normal pre-push runs: a green verify-main with this"; \
 	    echo "   flag is NOT a proxy for a green CI signal (CI does not pass it)."; \
 	else \
-	    files="$$(git ls-files -z -- '*.go' | xargs -0 -r gofmt -l)"; \
+	    files="$$(git ls-files --cached --others --exclude-standard -z -- '*.go' \
+	      | xargs -0 -r sh -c 'for f do [ -f "$$f" ] && printf "%s\n" "$$f"; done' sh \
+	      | xargs -r gofmt -l)"; \
 	    test -z "$$files" || { echo "❌ Files not formatted:"; printf '%s\n' "$$files"; exit 1; }; \
 	fi
 

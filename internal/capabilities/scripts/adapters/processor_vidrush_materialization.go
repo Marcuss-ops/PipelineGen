@@ -128,6 +128,11 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	if result, handled := p.metadataOnlyResult(plan, input); handled {
 		return result, nil
 	}
+	if !plan.RequestsImageAcquisition() {
+		// Extraction is still required for text/phrase overlays, but no image
+		// lane exists to acquire. Skip the provider/catalog path entirely.
+		return &PostProcessResult{VidRushSegments: input.VidRushSegments}, nil
+	}
 	if allSegmentsFixedMedia(input.SpecScene, input.VidRushSegments) {
 		segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input.VidRushSegments))
 		for _, segment := range input.VidRushSegments {
@@ -260,6 +265,12 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 	}
 	if result, handled := p.metadataOnlyResult(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}); handled {
 		return result.VidRushSegments[0], nil
+	}
+	if !plan.RequestsImageAcquisition() {
+		// Incremental scene enrichment still runs for text/phrase overlays.
+		// With no image lane, the provider/catalog materialization must be a
+		// no-op here exactly as it is in Process.
+		return segment, nil
 	}
 	if segment.ExecutionMode.IsFixedMedia() {
 		cloned := CloneVidRushSegmentResult(segment)
@@ -399,7 +410,24 @@ func (p *VidRushMaterializationProcessor) hydrateEntityCatalogMaterialization(ct
 	return candidate, nil
 }
 
-func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ctx context.Context, discovered, persisted scriptpkg.SegmentAssetCandidate) error {
+// entityImageCatalogStatusFailureFatal distinguishes an optional catalog
+// bookkeeping failure from a required acquisition failure. Only an explicit
+// required entity-image contract may fail the run on a transition error; any
+// other catalog error remains visible as a real failure.
+func entityImageCatalogStatusFailureFatal(plan *scriptpkg.ResolvedGenerationPlan, err error) bool {
+	if err == nil {
+		return false
+	}
+	if !errors.Is(err, entitycatalog.ErrInvalidCandidateTransition) {
+		return true
+	}
+	if plan == nil || !plan.MediaPlan.Extraction.EntityImages.Enabled {
+		return true
+	}
+	return plan.MediaPlan.Extraction.EntityImages.Required
+}
+
+func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, discovered, persisted scriptpkg.SegmentAssetCandidate) error {
 	if p == nil || p.catalog == nil || !strings.EqualFold(strings.TrimSpace(discovered.Provider), scriptpkg.VidRushProviderInternetImages) {
 		return nil
 	}
@@ -435,6 +463,16 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 		return err
 	}
 	if err := p.catalog.SetCandidateStatus(ctx, candidateID, entitycatalog.CandidateStatusFresh); err != nil {
+		if !entityImageCatalogStatusFailureFatal(plan, err) {
+			// Optional entity imagery must degrade, not fail the whole scene.
+			// The materialized bytes remain usable for this run; only the
+			// catalog row could not be re-certified.
+			outcome = scriptmetrics.EntityImageOutcomeSuccess
+			if p.log != nil {
+				p.log.Warn("entity image catalog status update skipped for optional entity imagery", zap.Error(err))
+			}
+			return nil
+		}
 		outcome = scriptmetrics.EntityImageOutcomeFailure
 		return err
 	}

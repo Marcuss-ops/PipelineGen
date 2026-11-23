@@ -1,24 +1,23 @@
-// Package scriptgeneration — overlay_entity_cards.go: the entity-card half
-// of the overlay plan derivation (PERSON / ORGANIZATION / LOCATION /
-// CONCEPT cards resolved from the certified EntityTimeline).
-//
-// Extracted 2026-09-12 from overlay_plan.go to keep both halves under
-// max_lines_per_file_strict=600 (godlike/08 forward-prevention cap).
+// Package scriptgeneration — overlay_entity_cards.go: the entity-card half of the
+// overlay plan derivation. It owns the media index for PERSON / ORGANIZATION /
+// LOCATION / CONCEPT cards (resolved from the certified EntityTimeline), the
+// bundle-name join that keeps a surname alias from crossing families, and the
+// spoken-date grounding that decides whether a date may become a card.
+
 package scriptgeneration
 
 import (
-	"os"
-	"strings"
-
+	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-
-	"go.uber.org/zap"
-
-	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
-
-	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"go.uber.org/zap"
+	"net/url"
+	"os"
+	"regexp"
+	"strings"
 )
 
 // entityCardKind reports whether an overlay kind is an entity-card kind
@@ -32,25 +31,6 @@ func entityCardKind(kind capmodel.OverlayKind) bool {
 	}
 	return false
 }
-
-// admitIdentityImagesByProductionPlan enforces the semantic production plan on
-// identity imagery without ever deleting a card. The semantic plan governs
-// external SEARCH: a verified content-addressed asset was already produced,
-// either by the runtime media stage or by the bundle, so its bytes must render
-// even when the search budget did not allocate a media unit to that identity.
-// A non-admitted item that has no verified content address is demoted to a
-// text-only card: the identity and its timing stay visible, but no unverified
-// image reaches the renderer. A nil or empty plan is a no-op, so deployments
-// without the consolidated view keep producing exactly the plans they produced
-// before.
-// overlayItemHasVerifiedIdentityAsset reports whether the item carries a
-// content-addressed asset reference. Such a reference is the result of the
-// verified bundle/annotation binding; it is not an unproven search hit.
-
-// demoteEntityImageToTextCard keeps the identity and its certified timing when
-// the image lacks verified bytes and the production plan did not admit it. The
-// alternative used to be deleting the whole overlay, which made a planned
-// person disappear from the run with no audit row and no text fallback.
 
 // entityCardMediaIndex builds the run-scoped, canonical_entity_id-keyed media
 // index from the result's OWN entity-image bindings: every entity-card-kind
@@ -121,16 +101,15 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...overlayPlanI
 				}
 				lookupID := canonical
 				if sceneScoped {
-					lookupID = strings.TrimSpace(result.Scenes[i].ID) + "::" + canonical
+					sceneID := strings.TrimSpace(result.Scenes[i].ID)
+					lookupID = sceneID + "::" + canonical
 					name := strings.TrimSpace(entity.CanonicalName)
 					if name == "" {
 						name = strings.TrimSpace(entity.Text)
 					}
-					overlayEntityID := capabilityentities.SafeEntityID(name)
-					if overlayEntityID == "" {
-						overlayEntityID = stable
+					if alias := overlayDisplayAlias(sceneID, name, stable); alias != "" {
+						canonicalByStable[alias] = lookupID
 					}
-					canonicalByStable["overlay-"+strings.TrimSpace(result.Scenes[i].ID)+"-"+overlayEntityID] = lookupID
 					// Run-level fallback: a scene without its own binding for the
 					// same entity still resolves the first verified portrait in
 					// scene order instead of degrading to a text-only card.
@@ -208,9 +187,9 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...overlayPlanI
 			// differs from the resolver card id.
 			if entity, ok := catalog.entityByID[entry.stable]; ok {
 				for _, name := range []string{entity.CanonicalText, entity.Text} {
-					if key := entitycatalog.NormalizeVerifiedAssetKey(name); key != "" {
-						if canonicalByStable["bundle-name:"+key] == "" {
-							canonicalByStable["bundle-name:"+key] = lookupID
+					if key := bundleNameKey(entity.Type, name); key != "" {
+						if canonicalByStable[key] == "" {
+							canonicalByStable[key] = lookupID
 						}
 					}
 				}
@@ -251,7 +230,7 @@ func indexUniqueBundleSurnameAliases(catalog *entityBundleCatalog, canonicalBySt
 		if len(tokens) < 2 {
 			continue
 		}
-		key := entitycatalog.NormalizeVerifiedAssetKey(tokens[len(tokens)-1])
+		key := bundleNameKey(entity.Type, tokens[len(tokens)-1])
 		lookupID := catalog.canonicalFor(stable)
 		if key == "" || lookupID == "" {
 			continue
@@ -266,10 +245,53 @@ func indexUniqueBundleSurnameAliases(catalog *entityBundleCatalog, canonicalBySt
 		delete(aliases, key)
 	}
 	for key, lookupID := range aliases {
-		if canonicalByStable["bundle-name:"+key] == "" {
-			canonicalByStable["bundle-name:"+key] = lookupID
+		if canonicalByStable[key] == "" {
+			canonicalByStable[key] = lookupID
 		}
 	}
+}
+
+// overlayDisplayAlias is the SINGLE owner of the legacy
+// "overlay-<scene>-<slug>" key. It exists because a resolver card that predates
+// the stable occurrence id still spells its entity this way, and the media
+// index has to find the canonical id that card already carries.
+//
+// It is an alias, never an identity: it is not written to a plan, an audit
+// record, a bundle or a job payload, no canonical_entity_id ever holds it, and
+// no component may compare two of them as the same entity. The scene segment
+// alone makes a shared identity impossible — the same entity in two scenes has
+// two different aliases. TestOverlayDisplayAliasIsNeverAnIdentity and
+// TestOverlayPlanProductionHasSingleAuthority keep this the only producer.
+func overlayDisplayAlias(sceneID, name, fallback string) string {
+	slug := capabilityentities.SafeEntityID(strings.TrimSpace(name))
+	if slug == "" {
+		slug = strings.TrimSpace(fallback)
+	}
+	if slug == "" {
+		return ""
+	}
+	return "overlay-" + strings.TrimSpace(sceneID) + "-" + slug
+}
+
+// bundleNameKey is the typed display-name join key. The entity family is part
+// of the key on purpose: a surname alias is a projection of a PERSON portrait
+// (Desiree Washington → "washington"), and the GPE of the same surface
+// (Washington) is a DIFFERENT identity. Keeping the family in the key means a
+// place can never inherit a person's portrait through a shared spelling, while
+// a translated card that keeps only the family name still joins its own
+// family. Non-PERSON types index their full display name, so a verified place
+// or organisation portrait still resolves by name when the occurrence id
+// differs.
+func bundleNameKey(entityType, name string) string {
+	key := entitycatalog.NormalizeVerifiedAssetKey(name)
+	if key == "" {
+		return ""
+	}
+	family := entitytype.Fold(entityType)
+	if family == "" {
+		return ""
+	}
+	return "bundle-name:" + family + ":" + key
 }
 
 func usableLocalAssetPath(path string) bool {
@@ -307,3 +329,31 @@ func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
 	// for legacy bindings that predate media_type.
 	return "photo_jpeg"
 }
+
+var explicitDatePattern = regexp.MustCompile(`(?i)\b(?:[0-9]{1,2}\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+[0-9]{4}|[0-9]{4})\b`)
+var groundedDateIdentityPattern = regexp.MustCompile(`(?i)^([0-9]{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+([0-9]{4}))?$`)
+
+func entityImageURL(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	// The durableDrive copy is the only location whose bytes are stable for
+	// the content address. Provider URLs can return different bytes later,
+	// which makes RenderingGen reject the prefetch with HTTP 422.
+	if id := strings.TrimSpace(binding.DriveFileID); id != "" {
+		return "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(id)
+	}
+	if id := driveFileID(binding.DriveLink); id != "" {
+		return "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(id)
+	}
+	if preview := strings.TrimSpace(binding.PreviewURL); preview != "" {
+		return preview
+	}
+	return strings.TrimSpace(binding.DriveLink)
+}
+
+// PhraseAnchoringDiagnostic reports one important-phrase candidate considered
+// by the overlay planner together with whether it anchored to the certified
+// speech timing. It exists purely for observability: a phrase that fails to
+// anchor is dropped silently, which makes "the phrases are not taken"
+// impossible to diagnose from logs alone.

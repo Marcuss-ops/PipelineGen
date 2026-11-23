@@ -42,7 +42,7 @@ func TestOverlaySFXIntentsBindExplicitPinsBySceneAndStartOrder(t *testing.T) {
 		SoundEffect: &scriptpkg.OverlayImageSoundEffect{AssetID: "whoosh", GainDB: &gain, DurationMS: &long},
 	}}
 	req := GenerateRequest{OverlayImages: pins}
-	intents, err := overlaySFXIntentsForPlan(req, imageSFXTestPlan())
+	intents, err := overlaySFXIntentsForPlan(req, imageSFXTestPlan(), nil)
 	if err != nil {
 		t.Fatalf("project explicit image SFX: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestOverlaySFXIntentsBindExplicitPinsBySceneAndStartOrder(t *testing.T) {
 	}
 }
 
-func TestOverlaySFXIntentsRandomCoversEveryChainSegment(t *testing.T) {
+func TestOverlaySFXIntentsRandomEmitsOneCueAtClipStart(t *testing.T) {
 	plan := &capmodel.OverlayPlan{
 		PlanID: "plan-chain", VideoID: "video",
 		Items: []capmodel.OverlayItem{{
@@ -73,33 +73,56 @@ func TestOverlaySFXIntentsRandomCoversEveryChainSegment(t *testing.T) {
 		}},
 	}
 	req := GenerateRequest{RandomSFXOnImageOverlay: true}
-	intents, err := overlaySFXIntentsForPlan(req, plan)
+	intents, err := overlaySFXIntentsForPlan(req, plan, nil)
 	if err != nil {
 		t.Fatalf("project random chain SFX: %v", err)
 	}
-	if len(intents) != 3 {
-		t.Fatalf("intents = %d, want one per distinct chain segment start", len(intents))
+	// A chain is ONE clip: the cue fires once at its start, never again on an
+	// internal segment boundary.
+	if len(intents) != 1 {
+		t.Fatalf("intents = %d, want one cue at the clip start", len(intents))
 	}
-	wantStarts := []int64{1000, 2000, 3200}
-	for i, intent := range intents {
-		if intent.AtMS != wantStarts[i] {
-			t.Fatalf("intent %d at %dms, want %dms", i, intent.AtMS, wantStarts[i])
-		}
-		if intent.DurationMS != overlaySFXCueDurationMS || intent.GainDB != overlaySFXCueGainDB {
-			t.Fatalf("intent %d = %+v, want the editorial 250ms/-18dB cue", i, intent)
-		}
-		if !isBuiltInWhoosh(intent.AssetID) {
-			t.Fatalf("intent %d asset %q is not a bound whoosh alias", i, intent.AssetID)
-		}
+	intent := intents[0]
+	if intent.AtMS != 1000 {
+		t.Fatalf("cue at %dms, want the item start 1000ms", intent.AtMS)
 	}
-	// Determinism: retries must select the same cues.
-	again, err := overlaySFXIntentsForPlan(req, plan)
+	if intent.DurationMS != overlaySFXCueDurationMS || intent.GainDB != overlaySFXCueGainDB {
+		t.Fatalf("cue = %+v, want the editorial 250ms/-18dB cue", intent)
+	}
+	if !isBuiltInWhoosh(intent.AssetID) {
+		t.Fatalf("asset %q is not a bound whoosh alias", intent.AssetID)
+	}
+	// Determinism: retries must select the same cue.
+	again, err := overlaySFXIntentsForPlan(req, plan, nil)
 	if err != nil {
 		t.Fatalf("re-project random chain SFX: %v", err)
 	}
 	for i := range intents {
 		if intents[i] != again[i] {
 			t.Fatalf("intent %d is not deterministic: %+v vs %+v", i, intents[i], again[i])
+		}
+	}
+}
+
+func TestOverlaySFXIntentsRandomUsesIndexedPool(t *testing.T) {
+	pool := []string{"sfx_indexed_a", "sfx_indexed_b", "sfx_indexed_c"}
+	intents, err := overlaySFXIntentsForPlan(GenerateRequest{RandomSFXOnImageOverlay: true}, imageSFXTestPlan(), pool)
+	if err != nil {
+		t.Fatalf("project random SFX with indexed pool: %v", err)
+	}
+	if len(intents) != 2 {
+		t.Fatalf("intents = %d, want one per image item", len(intents))
+	}
+	allowed := map[string]struct{}{}
+	for _, id := range pool {
+		allowed[id] = struct{}{}
+	}
+	for i, intent := range intents {
+		if _, ok := allowed[intent.AssetID]; !ok {
+			t.Fatalf("intent %d asset %q is not in the supplied indexed pool", i, intent.AssetID)
+		}
+		if intent.DurationMS != overlaySFXCueDurationMS || intent.GainDB != overlaySFXCueGainDB {
+			t.Fatalf("intent %d = %+v, want the editorial 250ms/-18dB cue", i, intent)
 		}
 	}
 }
@@ -119,7 +142,7 @@ func TestOverlaySFXIntentsFailClosed(t *testing.T) {
 		{SceneID: "scene_1", SoundEffect: &scriptpkg.OverlayImageSoundEffect{AssetID: "whoosh"}},
 		{SceneID: "scene_1", SoundEffect: &scriptpkg.OverlayImageSoundEffect{AssetID: "whoosh"}},
 	}
-	if _, err := overlaySFXIntentsForPlan(GenerateRequest{OverlayImages: over}, imageSFXTestPlan()); err == nil ||
+	if _, err := overlaySFXIntentsForPlan(GenerateRequest{OverlayImages: over}, imageSFXTestPlan(), nil); err == nil ||
 		!strings.Contains(err.Error(), "declares 3 cues") {
 		t.Fatalf("more cues than image items must fail closed, got %v", err)
 	}
@@ -127,7 +150,7 @@ func TestOverlaySFXIntentsFailClosed(t *testing.T) {
 	invalid := []scriptpkg.OverlayImageAsset{{
 		SceneID: "scene_1", SoundEffect: &scriptpkg.OverlayImageSoundEffect{},
 	}}
-	if _, err := overlaySFXIntentsForPlan(GenerateRequest{OverlayImages: invalid}, imageSFXTestPlan()); err == nil ||
+	if _, err := overlaySFXIntentsForPlan(GenerateRequest{OverlayImages: invalid}, imageSFXTestPlan(), nil); err == nil ||
 		!strings.Contains(err.Error(), "asset_id is required") {
 		t.Fatalf("invalid cue must fail closed, got %v", err)
 	}

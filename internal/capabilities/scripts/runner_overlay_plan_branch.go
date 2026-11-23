@@ -235,7 +235,9 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	// CompiledAudioPlan after the overlay projection (overlay_sfx_projection.go).
 	// Nothing is written into item.sound_effect: RenderingGen stays video-only
 	// and chains stay fused.
-	sfxCues, err := overlaySFXIntentsForPlan(req, result.OverlayPlan)
+	// Early validation only: the master-audio projection is applied later with
+	// the run's selection pool (runner_phase_audio_sfx.go).
+	sfxCues, err := overlaySFXIntentsForPlan(req, result.OverlayPlan, nil)
 	if err != nil {
 		return fmt.Errorf("overlay SFX projection: %w", err)
 	}

@@ -13,10 +13,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/pgtest"
 )
 
 // stubVisualSampler reuses the fakeSampler PNG writer but is declared
@@ -30,7 +32,7 @@ func (f stubVisualSampler) ExtractPercentageFrames(ctx context.Context, localPat
 	for i, p := range percentages {
 		c := f.colors[i%len(f.colors)]
 		path := filepath.Join(outDir, fmt.Sprintf("vframe_%03d_%.0f.png", i, p*100))
-		if err := writeSolidPNG(path, color.RGBA{R: c.r, G: c.g, B: c.b, A: 0xFF}); err != nil {
+		if err := pgtest.WriteSolidPNG(path, color.RGBA{R: c.r, G: c.g, B: c.b, A: 0xFF}); err != nil {
 			return nil, err
 		}
 		samples = append(samples, pgmedia.KeyframeSample{Path: path, Percentage: p})
@@ -192,7 +194,7 @@ func TestVisualPipeline_SidecarFailClosed(t *testing.T) {
 				t.Fatalf("pipeline: %v", err)
 			}
 			_, err = pipeline.EmbedAndStore(context.Background(), pgmedia.NewVectorSurfaceWriter(db), "asset-noop", touchMediaSource(t))
-			if err == nil || !contains(err.Error(), tc.wantSub) {
+			if err == nil || !strings.Contains(err.Error(), tc.wantSub) {
 				t.Fatalf("expected %q error, got %v", tc.wantSub, err)
 			}
 		})
@@ -212,7 +214,7 @@ func TestVisualPipeline_UnknownModelFailsClosed(t *testing.T) {
 		Registry:  registry,
 		ModelID:   "not-a/model",
 	})
-	if err == nil || !contains(err.Error(), "unknown model") {
+	if err == nil || !strings.Contains(err.Error(), "unknown model") {
 		t.Fatalf("expected unknown-model fail-closed error, got %v", err)
 	}
 }
@@ -225,14 +227,11 @@ func (fakeVisualEmbedder) EmbedFrames(context.Context, []string) ([][]float32, e
 }
 
 // newCommitterOnDB builds a PostgresMediaCommitter over an existing db
-// handle (no second newMediaTestDB truncation).
+// handle (no second newMediaTestDB truncation); the builder is owned by the
+// shared fixture so the backfill test package uses the identical shape.
 func newCommitterOnDB(t *testing.T, db *sql.DB) *pgmedia.PostgresMediaCommitter {
 	t.Helper()
-	ledger, err := pgmedia.NewRegistry(db)
-	if err != nil {
-		t.Fatalf("registry: %v", err)
-	}
-	return pgmedia.NewPostgresMediaCommitter(db, pgmedia.NewOutboxRepository(db), ledger, nil)
+	return pgtest.NewCommitterOnDB(t, db)
 }
 
 func min(a, b int) int {

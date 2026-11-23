@@ -1,0 +1,149 @@
+package extract
+
+import (
+	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/publish"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+)
+
+// core.StockAssetKind and core.StockSemanticRole are the canonical taxonomy dimensions
+// of the STOCK asset family (media_assets.asset_kind / semantic_role).
+//
+// They are the family discriminator: the physical acquisition provider stays
+// in `source` / `source_type` / `source_provider` (a YouTube-acquired stock
+// clip is source="youtube"), while the stock USAGE intent is what the unified
+// taxonomy filters read. Both producers that commit a stock clip — this
+// package's post-publication commit and the stock job finalizer's spine write
+// — MUST declare these same values, otherwise the second commit resolves
+// semantic_role from the provider default ("discovery") and, because the
+// taxonomy upsert is insert-wins, silently restamps the row.
+
+// buildRichStockAsset constructs a canonical asset.Asset from a ClipPlan
+// and the cut results. Used by publishCuts for outbox writes.
+//
+// godlike/06 SSOT: Name is the slug derived from Title via publish.PerClipLeafName
+// (or publish.SlugifyTitle fallback). Filename is only the basename of outputPath.
+// Metadata carries title, description, round, start_sec, end_sec, slug,
+// local_path, sha256, and file_hash so downstream consumers (pgvector indexer,
+// asset search, media_assets projection) see the full rich surface.
+func buildRichStockAsset(plan core.ClipPlan, sourceIdx, clipIdx int, outputPath, hash string) *asset.Asset {
+	_, _ = sourceIdx, clipIdx
+	slug := publish.PerClipLeafName(plan)
+	if slug == "" {
+		slug = publish.SlugifyTitle(plan.Title)
+	}
+
+	name := slug
+	filename := filepath.Base(outputPath)
+
+	searchText := fmt.Sprintf("Stock video clip title: %s", plan.Title)
+	if plan.Description != "" {
+		searchText += fmt.Sprintf(" description: %s", plan.Description)
+	}
+	if plan.Round > 0 {
+		searchText += fmt.Sprintf(" round %d", plan.Round)
+	}
+	if plan.Category != "" {
+		searchText += fmt.Sprintf(" category: %s", plan.Category)
+	}
+	if len(plan.Tags) > 0 {
+		searchText += fmt.Sprintf(" tags: %s", strings.Join(plan.Tags, ", "))
+	}
+	searchText += fmt.Sprintf(" start_sec: %.0f", plan.StartSec)
+	searchText += fmt.Sprintf(" end_sec: %.0f", plan.EndSec)
+
+	provider := plan.SourceProvider
+	if provider == "" {
+		provider = "stock"
+	}
+	// Migration 189 canonical state constraints: media_assets writes MUST
+	// carry a valid lifecycle_state (the SQLite trigger
+	// trg_media_assets_state_valid_insert aborts on the zero value "").
+	// The state mirrors the canonical finalizer convention
+	// (asset_finalizer_committer.go::buildCommitRequest): youtube-sourced
+	// clips start ACTIVE, everything else PUBLISHED. publishCuts commits
+	// this asset only AFTER the clip's Drive publication has succeeded, so
+	// the state is committed alongside a real Drive location rather than as
+	// an optimistic placeholder (see step_extract_clips_publish.go for the
+	// ordering contract). index_state is left to the column default
+	// (DISCOVERED).
+	lifecycleState := asset.StatePublished
+	if provider == core.SourceProviderYouTube {
+		lifecycleState = asset.StateActive
+	}
+	a := &asset.Asset{
+		ID: plan.OutputLogicalID,
+		// Preserve the provider identity of the source URL. YouTube stock
+		// acquisitions are consumed by the canonical YouTube asset resolver;
+		// labelling them only as "stock" loses source_video_id and makes the
+		// resulting row unusable for subject/role validation.
+		Source:     asset.Source(provider),
+		Name:       name,
+		Filename:   filename,
+		MediaType:  "video",
+		Category:   plan.Category,
+		SourceURL:  plan.SourceID,
+		Duration:   time.Duration(plan.EndSec-plan.StartSec) * time.Second,
+		Tags:       append([]string(nil), plan.Tags...),
+		SearchText: searchText,
+		Metadata:   make(map[string]any),
+		// CreatedAt MUST be stamped by the producer: UpsertClipTx persists
+		// clip.CreatedAt verbatim, and a zero time writes an empty
+		// created_at column, which breaks time-bucketed queries (e.g. the
+		// stock live battery's "created in the last 30 minutes" probe) and
+		// ordering by recency. updated_at is re-stamped by UpsertClipTx.
+		LifecycleState: lifecycleState,
+		CreatedAt:      time.Now().UTC(),
+	}
+	// Every clip produced by the stock pipeline is a stock USAGE intent, even
+	// when the physical provenance is YouTube. `source` / `source_type` keep
+	// the acquisition provider (see above), while the searchable taxonomy
+	// discriminates stock acquisition from ordinary discovery clips. Declared
+	// for every provider, not only YouTube: the stock job finalizer declares
+	// the same family on its spine write, and the two commits must agree so
+	// that whichever lands second cannot restamp the row.
+	a.Metadata["asset_kind"] = core.StockAssetKind
+	a.Metadata["semantic_role"] = core.StockSemanticRole
+
+	// Populate rich Metadata.
+	if plan.Title != "" {
+		a.SetTitle(plan.Title)
+	}
+	if plan.Description != "" {
+		a.SetDescription(plan.Description)
+	}
+	if plan.Round > 0 {
+		a.SetRound(plan.Round)
+	}
+	a.SetStartSec(float64(plan.StartSec))
+	a.SetEndSec(float64(plan.EndSec))
+	if slug != "" {
+		a.SetSlug(slug)
+	}
+	a.SetLocalPath(outputPath)
+	a.SetContentHash(hash)
+	// Keep the canonical SHA-256 projection and the legacy compatibility
+	// key in sync for downstream consumers that still read either name.
+	a.SetSha256(hash)
+	a.SetMetadataString("file_hash", hash)
+	if plan.SourceProvider != "" {
+		a.SetMetadataSourceProvider(plan.SourceProvider)
+	}
+	if plan.SourceVideoID != "" {
+		a.SetMetadataSourceVideoID(plan.SourceVideoID)
+	}
+	if plan.SourceID != "" {
+		// The typed SourceURL field is set in the struct literal above;
+		// the metadata key is a provenance mirror for pgvector search-text
+		// and legacy consumers. Both are written so the two surfaces stay
+		// in sync (godlike/06 source_url convergence).
+		a.SetMetadataSourceURL(plan.SourceID)
+	}
+
+	return a
+}

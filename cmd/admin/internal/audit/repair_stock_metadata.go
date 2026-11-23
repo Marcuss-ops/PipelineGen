@@ -43,7 +43,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 	sqlitemediaregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
@@ -215,7 +215,7 @@ func RunRepairStockMetadata(args []string) error {
 		// MEDIA-SSOT: the candidate scan is a media_assets read, so it resolves
 		// from the PostgreSQL media SSOT. Writes still go through the canonical
 		// mutator, so both halves agree on one engine.
-		searchTextSource := pgmedia.NewSearchTextBackfillReader(root.MediaPostgres)
+		searchTextSource := pgbackfill.NewSearchTextBackfillReader(root.MediaPostgres)
 		if searchTextSource == nil {
 			return fmt.Errorf("search_text repair: media PostgreSQL SSOT is required")
 		}
@@ -297,11 +297,11 @@ func printRepairStockMetadataReport(r repairStockMetadataReport) {
 // searchTextBackfillSource is the narrow media read the repair depends on.
 //
 // MEDIA-SSOT: production binds the PostgreSQL reader
-// (pgmedia.SearchTextBackfillReader) because both media_assets and
+// (pgbackfill.SearchTextBackfillReader) because both media_assets and
 // asset_text_tracks are PostgreSQL-owned; the composer's inputs must never come
 // from the operational mirror, which holds no committed media rows.
 type searchTextBackfillSource interface {
-	ListSearchTextBackfillCandidates(ctx context.Context, sources []string, limit int) ([]pgmedia.SearchTextBackfillCandidate, error)
+	ListSearchTextBackfillCandidates(ctx context.Context, sources []string, limit int) ([]pgbackfill.SearchTextBackfillCandidate, error)
 }
 
 // backfillSearchTextCanonical composes search_text from read-only asset data

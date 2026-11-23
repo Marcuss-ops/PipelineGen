@@ -183,17 +183,87 @@ type MediaPreflightInput struct {
 // probes so malformed fixed media fails closed at the pre-generation gate.
 func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightResult {
 	started := time.Now()
-
-	var (
-		mu       sync.Mutex
-		failures []PreflightFailure
-		wg       sync.WaitGroup
-	)
+	collector := &preflightCollector{}
 
 	// Validate the fixed-media contract synchronously before any asset probe.
 	// A malformed intro/outro is a hard request failure and must not reach the
 	// LLM, translator, or TTS phases.
-	for _, section := range in.FixedSections {
+	for _, failure := range validateFixedSectionContracts(in.FixedSections) {
+		collector.fail(failure)
+	}
+
+	// Provider registration checks are synchronous and run before the asset
+	// fan-out, so appending their failures cannot race with concurrent probes.
+	for _, failure := range RunVidRushProviderAvailabilityPreflight(ctx, in.MediaPlan, in.VidRushProviderAvailability).Failures {
+		collector.fail(failure)
+	}
+
+	probeClipExistence(ctx, in, collector)
+	probeOriginalAudio(ctx, in, collector)
+
+	// Resolve each canonical audio asset once. An effect may intentionally be
+	// placed on many scenes, but concurrent materialization of the same Drive
+	// asset races on the shared content-addressed `.part` file.
+	probeResolvedAudioAssets(ctx, in, collector, canonicalAudioIDs(in.BGMIDs), "bgm", "BGM")
+	probeResolvedAudioAssets(ctx, in, collector, canonicalAudioIDs(in.SFXIDs), "sfx", "SFX")
+
+	probeRenderAsset(ctx, in, collector, "watermark", "watermark", in.WatermarkAssetID, in.WatermarkResolver)
+	probeRenderAsset(ctx, in, collector, "background", "background", in.BackgroundAssetID, in.BackgroundResolver)
+
+	// Run the foreign probe on the same concurrent fan-out as every other
+	// check so a slow provider probe cannot serialise the preflight. Only a
+	// probe error becomes a failure; one healthy provider is enough.
+	if in.ImageProviderHealth != nil {
+		collector.goRun(func() {
+			if err := in.ImageProviderHealth.ProbeImageProviderHealth(ctx); err != nil {
+				collector.fail(PreflightFailure{
+					Category: "image_providers",
+					Detail:   fmt.Sprintf("no usable image retrieval provider: %v", err),
+				})
+			}
+		})
+	}
+
+	return PreflightResult{
+		Failures: collector.wait(),
+		WallMS:   time.Since(started).Milliseconds(),
+	}
+}
+
+// preflightCollector serialises the concurrent probe fan-out. Every append goes
+// through fail() under the mutex, and goRun() adds to the WaitGroup BEFORE
+// spawning so wait() can never miss a probe.
+type preflightCollector struct {
+	mu       sync.Mutex
+	wg       sync.WaitGroup
+	failures []PreflightFailure
+}
+
+func (c *preflightCollector) fail(failure PreflightFailure) {
+	c.mu.Lock()
+	c.failures = append(c.failures, failure)
+	c.mu.Unlock()
+}
+
+func (c *preflightCollector) goRun(probe func()) {
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		probe()
+	}()
+}
+
+func (c *preflightCollector) wait() []PreflightFailure {
+	c.wg.Wait()
+	return c.failures
+}
+
+// validateFixedSectionContracts rejects a malformed intro/outro before any
+// asset probe: a fixed section with no clip or an invalid playback window would
+// otherwise reach the LLM/translator/TTS phases and fail there.
+func validateFixedSectionContracts(sections []FixedSectionPreflight) []PreflightFailure {
+	var failures []PreflightFailure
+	for _, section := range sections {
 		name := strings.TrimSpace(section.Name)
 		if name == "" {
 			name = "fixed"
@@ -211,14 +281,13 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 			})
 		}
 	}
+	return failures
+}
 
-	// Provider registration checks are synchronous and run before the asset
-	// fan-out, so appending their failures cannot race with concurrent probes.
-	providerResult := RunVidRushProviderAvailabilityPreflight(ctx, in.MediaPlan, in.VidRushProviderAvailability)
-	failures = append(failures, providerResult.Failures...)
-
-	// Flatten: one goroutine per check item. Add to wg BEFORE spawning.
-	// ── Clip existence ──────────────────────────────────────────
+// probeClipExistence verifies every generated and fixed clip resolves in the
+// catalog. A nil prober is a failure, not a skip: an unverified clip is exactly
+// what the preflight exists to catch.
+func probeClipExistence(ctx context.Context, in MediaPreflightInput, collector *preflightCollector) {
 	allClipIDs := make([]string, 0, len(in.ClipIDs)+len(in.FixedClips))
 	allClipIDs = append(allClipIDs, in.ClipIDs...)
 	for _, fixed := range in.FixedClips {
@@ -227,256 +296,136 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 	for _, id := range uniqueClipProbeIDs(allClipIDs) {
 		id := id
 		if in.ClipProber == nil {
-			mu.Lock()
-			failures = append(failures, PreflightFailure{
+			collector.fail(PreflightFailure{
 				Category: "clip", AssetID: id,
 				Detail: "clip prober not wired — cannot verify clip existence",
 			})
-			mu.Unlock()
 			continue
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		collector.goRun(func() {
 			if err := in.ClipProber.ProbeClip(ctx, id); err != nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{
+				collector.fail(PreflightFailure{
 					Category: "clip", AssetID: id,
 					Detail: fmt.Sprintf("clip not reachable: %v", err),
 				})
-				mu.Unlock()
 			}
-		}()
+		})
 	}
+}
 
-	// ── Original audio stream ───────────────────────────────────
-	// Fixed media always requires its authoritative original audio, regardless
-	// of the request-level mix policy. Ordinary generated clip audio retains
-	// the legacy VOICEOVER_DUCKED_CLIP gate below.
+// probeOriginalAudio verifies the authoritative original audio of fixed media
+// (always required) and of generated clips under VOICEOVER_DUCKED_CLIP.
+func probeOriginalAudio(ctx context.Context, in MediaPreflightInput, collector *preflightCollector) {
 	fixedIDs := make(map[string]struct{}, len(in.FixedClips))
 	for _, fixed := range in.FixedClips {
 		fixedIDs[fixed.ClipID] = struct{}{}
 		if in.ClipAudioSource == nil {
-			mu.Lock()
-			failures = append(failures, PreflightFailure{
+			collector.fail(PreflightFailure{
 				Category: "fixed_clip_audio", AssetID: fixed.ClipID,
 				Detail: "clip audio source not wired — cannot verify authoritative original audio",
 			})
-			mu.Unlock()
 			continue
 		}
 		fixed := fixed
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		collector.goRun(func() {
 			resolved, err := in.ClipAudioSource.ResolveClipAudioAsset(ctx, fixed.ClipID)
 			if err != nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{Category: "fixed_clip_audio", AssetID: fixed.ClipID, Detail: fmt.Sprintf("authoritative original audio unavailable: %v", err)})
-				mu.Unlock()
+				collector.fail(PreflightFailure{Category: "fixed_clip_audio", AssetID: fixed.ClipID, Detail: fmt.Sprintf("authoritative original audio unavailable: %v", err)})
 				return
 			}
 			if err := validateFixedClipAudio(resolved, fixed); err != nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{Category: "fixed_clip_audio", AssetID: fixed.ClipID, Detail: err.Error()})
-				mu.Unlock()
+				collector.fail(PreflightFailure{Category: "fixed_clip_audio", AssetID: fixed.ClipID, Detail: err.Error()})
 			}
-		}()
+		})
 	}
-	if in.MixPolicy.Normalize() == capabilityaudio.MixVoiceoverWithDuckedClip {
-		for _, id := range in.ClipIDs {
-			if _, isFixed := fixedIDs[id]; isFixed {
-				continue
-			}
-			id := id
-			if in.ClipAudioSource == nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{
+	if in.MixPolicy.Normalize() != capabilityaudio.MixVoiceoverWithDuckedClip {
+		return
+	}
+	for _, id := range in.ClipIDs {
+		if _, isFixed := fixedIDs[id]; isFixed {
+			continue
+		}
+		id := id
+		if in.ClipAudioSource == nil {
+			collector.fail(PreflightFailure{
+				Category: "clip_audio", AssetID: id,
+				Detail: "clip audio source not wired — cannot verify original audio stream for VOICEOVER_DUCKED_CLIP",
+			})
+			continue
+		}
+		collector.goRun(func() {
+			resolved, err := in.ClipAudioSource.ResolveClipAudioAsset(ctx, id)
+			if err != nil {
+				collector.fail(PreflightFailure{
 					Category: "clip_audio", AssetID: id,
-					Detail: "clip audio source not wired — cannot verify original audio stream for VOICEOVER_DUCKED_CLIP",
+					Detail: fmt.Sprintf("original audio stream unavailable: %v", err),
 				})
-				mu.Unlock()
-				continue
-			}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				resolved, err := in.ClipAudioSource.ResolveClipAudioAsset(ctx, id)
-				if err != nil {
-					mu.Lock()
-					failures = append(failures, PreflightFailure{
-						Category: "clip_audio", AssetID: id,
-						Detail: fmt.Sprintf("original audio stream unavailable: %v", err),
-					})
-					mu.Unlock()
-					return
-				}
-				if _, statErr := os.Stat(resolved.Path); statErr != nil {
-					mu.Lock()
-					failures = append(failures, PreflightFailure{
-						Category: "clip_audio", AssetID: id,
-						Detail: fmt.Sprintf("resolved audio path not readable: %s: %v", resolved.Path, statErr),
-					})
-					mu.Unlock()
-				}
-			}()
-		}
-	}
-
-	// Resolve each canonical audio asset once. An effect may intentionally be
-	// placed on many scenes, but concurrent materialization of the same Drive
-	// asset races on the shared content-addressed `.part` file.
-	bgmIDs := canonicalAudioIDs(in.BGMIDs)
-	sfxIDs := canonicalAudioIDs(in.SFXIDs)
-
-	// ── BGM assets ────────────────────────────────────────────
-	for _, id := range bgmIDs {
-		id := id
-		if in.AudioAssetSource == nil {
-			mu.Lock()
-			failures = append(failures, PreflightFailure{
-				Category: "bgm", AssetID: id,
-				Detail: "audio asset source not wired — cannot verify BGM",
-			})
-			mu.Unlock()
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			resolved, err := in.AudioAssetSource.ResolveAudioAsset(ctx, id)
-			if err != nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{
-					Category: "bgm", AssetID: id,
-					Detail: fmt.Sprintf("BGM asset unavailable: %v", err),
-				})
-				mu.Unlock()
 				return
 			}
 			if _, statErr := os.Stat(resolved.Path); statErr != nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{
-					Category: "bgm", AssetID: id,
-					Detail: fmt.Sprintf("BGM file not readable: %s: %v", resolved.Path, statErr),
+				collector.fail(PreflightFailure{
+					Category: "clip_audio", AssetID: id,
+					Detail: fmt.Sprintf("resolved audio path not readable: %s: %v", resolved.Path, statErr),
 				})
-				mu.Unlock()
 			}
-		}()
+		})
 	}
+}
 
-	// ── SFX assets ────────────────────────────────────────────
-	for _, id := range sfxIDs {
+// probeResolvedAudioAssets resolves each BGM/SFX asset once and proves the file
+// is readable. category/noun keep the failure taxonomy and the operator-facing
+// wording identical to the pre-split body.
+func probeResolvedAudioAssets(ctx context.Context, in MediaPreflightInput, collector *preflightCollector, ids []string, category, noun string) {
+	for _, id := range ids {
 		id := id
 		if in.AudioAssetSource == nil {
-			mu.Lock()
-			failures = append(failures, PreflightFailure{
-				Category: "sfx", AssetID: id,
-				Detail: "audio asset source not wired — cannot verify SFX",
+			collector.fail(PreflightFailure{
+				Category: category, AssetID: id,
+				Detail: fmt.Sprintf("audio asset source not wired — cannot verify %s", noun),
 			})
-			mu.Unlock()
 			continue
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		collector.goRun(func() {
 			resolved, err := in.AudioAssetSource.ResolveAudioAsset(ctx, id)
 			if err != nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{
-					Category: "sfx", AssetID: id,
-					Detail: fmt.Sprintf("SFX asset unavailable: %v", err),
+				collector.fail(PreflightFailure{
+					Category: category, AssetID: id,
+					Detail: fmt.Sprintf("%s asset unavailable: %v", noun, err),
 				})
-				mu.Unlock()
 				return
 			}
 			if _, statErr := os.Stat(resolved.Path); statErr != nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{
-					Category: "sfx", AssetID: id,
-					Detail: fmt.Sprintf("SFX file not readable: %s: %v", resolved.Path, statErr),
+				collector.fail(PreflightFailure{
+					Category: category, AssetID: id,
+					Detail: fmt.Sprintf("%s file not readable: %s: %v", noun, resolved.Path, statErr),
 				})
-				mu.Unlock()
 			}
-		}()
+		})
 	}
+}
 
-	// ── Watermark asset ────────────────────────────────────────
-	if in.RenderEnabled && strings.TrimSpace(in.WatermarkAssetID) != "" {
-		id := in.WatermarkAssetID
-		if in.WatermarkResolver == nil {
-			mu.Lock()
-			failures = append(failures, PreflightFailure{
-				Category: "watermark", AssetID: id,
-				Detail: "watermark resolver not wired",
+// probeRenderAsset verifies a render-time asset (watermark, background in
+// mode=asset) that the materialized render cannot proceed without.
+func probeRenderAsset(ctx context.Context, in MediaPreflightInput, collector *preflightCollector, category, noun, assetID string, resolver ClipPreflighter) {
+	if !in.RenderEnabled || strings.TrimSpace(assetID) == "" {
+		return
+	}
+	id := assetID
+	if resolver == nil {
+		collector.fail(PreflightFailure{
+			Category: category, AssetID: id,
+			Detail: fmt.Sprintf("%s resolver not wired", noun),
+		})
+		return
+	}
+	collector.goRun(func() {
+		if err := resolver.ProbeClip(ctx, id); err != nil {
+			collector.fail(PreflightFailure{
+				Category: category, AssetID: id,
+				Detail: fmt.Sprintf("%s asset unavailable: %v", noun, err),
 			})
-			mu.Unlock()
-		} else {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := in.WatermarkResolver.ProbeClip(ctx, id); err != nil {
-					mu.Lock()
-					failures = append(failures, PreflightFailure{
-						Category: "watermark", AssetID: id,
-						Detail: fmt.Sprintf("watermark asset unavailable: %v", err),
-					})
-					mu.Unlock()
-				}
-			}()
 		}
-	}
-
-	// ── Background asset (mode=asset only) ─────────────────────
-	if in.RenderEnabled && strings.TrimSpace(in.BackgroundAssetID) != "" {
-		id := in.BackgroundAssetID
-		if in.BackgroundResolver == nil {
-			mu.Lock()
-			failures = append(failures, PreflightFailure{
-				Category: "background", AssetID: id,
-				Detail: "background resolver not wired",
-			})
-			mu.Unlock()
-		} else {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := in.BackgroundResolver.ProbeClip(ctx, id); err != nil {
-					mu.Lock()
-					failures = append(failures, PreflightFailure{
-						Category: "background", AssetID: id,
-						Detail: fmt.Sprintf("background asset unavailable: %v", err),
-					})
-					mu.Unlock()
-				}
-			}()
-		}
-	}
-
-	// ── Image provider health ──────────────────────────────────
-	// Run the foreign probe on the same concurrent fan-out as every other
-	// check so a slow provider probe cannot serialise the preflight. Only a
-	// probe error becomes a failure; one healthy provider is enough.
-	if in.ImageProviderHealth != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := in.ImageProviderHealth.ProbeImageProviderHealth(ctx); err != nil {
-				mu.Lock()
-				failures = append(failures, PreflightFailure{
-					Category: "image_providers",
-					Detail:   fmt.Sprintf("no usable image retrieval provider: %v", err),
-				})
-				mu.Unlock()
-			}
-		}()
-	}
-
-	wg.Wait()
-	return PreflightResult{
-		Failures: failures,
-		WallMS:   time.Since(started).Milliseconds(),
-	}
+	})
 }
 
 // RunVidRushProviderAvailabilityPreflight checks every explicitly enabled

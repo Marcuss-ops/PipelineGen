@@ -7,8 +7,8 @@ package wiring
 // The parallel Chronon-phase half of this test was removed together with the
 // orphan internal/app/wiring/chronon package (zero production importers). The
 // live granular-phase path is
-// internal/app/wiring/rendering/metrics.go::NewChrononMetricsAdapter, pinned by
-// internal/app/wiring/rendering/metrics_integration_test.go.
+// internal/app/modules/rendering/metrics.go::NewChrononMetricsAdapter, pinned by
+// internal/app/modules/rendering/metrics_integration_test.go.
 
 import (
 	"context"

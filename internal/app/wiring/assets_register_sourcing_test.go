@@ -13,10 +13,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 	"testing"
 	"time"
+
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	"go.uber.org/zap"
 

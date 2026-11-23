@@ -27,7 +27,7 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 
-	drivewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/drive"
+	drivewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	platformdrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 
@@ -55,7 +55,12 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		toolCheckerAdapter,
 		processRunnerAdapter,
 		dbHealthCheckerAdapter,
-		drivewiring.NewSystemAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
+		drivewiring.NewSystemAdminAdapter(drivewiring.SystemAdminAdapterDeps{
+			Admin:     driveUploaderAdapter,
+			Reader:    driveUploaderAdapter,
+			Lifecycle: root.Drive.Lifecycle,
+			Log:       log,
+		}),
 		nil,
 	)
 	// The system capability must not import platform/httpserver (RA-11): the

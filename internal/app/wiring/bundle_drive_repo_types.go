@@ -3,7 +3,7 @@ package wiring
 import (
 	"database/sql"
 
-	drivewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/drive"
+	drivewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/drive"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
@@ -15,11 +15,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/monitors"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
-)
 
-import (
-	processwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/process"
-	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
+	processwiring "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/wiring"
+
+	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/search"
 )
 
 // DriveBundle and DriveDestinations preserve the composition root's bundle

@@ -126,7 +126,7 @@ func (r *FolderRepository) ListFolders(ctx context.Context, source string) ([]*d
 		query += ` WHERE source = $1`
 		args = append(args, source)
 	}
-	query += " ORDER BY " + tsExpr("updated_at") + " DESC"
+	query += " ORDER BY " + TimestampExpr("updated_at") + " DESC"
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -224,4 +224,119 @@ func isFilteredFolderSource(source string) bool {
 // group + folder path with spaces removed).
 func folderSearchKey(folder *detail.ClipFolder) string {
 	return strings.ToLower(strings.ReplaceAll(folder.Group+" "+folder.FolderPath, " ", ""))
+}
+
+// ── absorbed from media_folder_resolver.go ──
+
+// MediaFolderResolver resolves the canonical Drive folder id of a media asset.
+// It satisfies finalization.ArtifactFolderResolver structurally so this package
+// does not import the capability.
+type MediaFolderResolver struct {
+	db *sql.DB
+}
+
+// NewMediaFolderResolver returns a resolver bound to the PostgreSQL media
+// database. The handle is required: a nil database is a programming error, not
+// a degrade path.
+func NewMediaFolderResolver(db *sql.DB) *MediaFolderResolver {
+	if db == nil {
+		panic("media.NewMediaFolderResolver: db is required")
+	}
+	return &MediaFolderResolver{db: db}
+}
+
+// DB exposes the underlying handle so callers can assert the resolver lives on
+// the media SSOT.
+func (r *MediaFolderResolver) DB() *sql.DB {
+	if r == nil {
+		return nil
+	}
+	return r.db
+}
+
+// ResolveArtifactFolder returns the Drive folder id of the parent video.
+//
+// An empty return means "not resolved" and the caller keeps the legacy path
+// (see the finalization.ArtifactFolderResolver contract) — that includes the
+// unknown-asset case, which the retired SQLite statement also mapped to an empty
+// string rather than an error.
+func (r *MediaFolderResolver) ResolveArtifactFolder(ctx context.Context, parentVideoID string) (string, error) {
+	if r == nil || r.db == nil {
+		return "", fmt.Errorf("media folder resolver: media SSOT handle is not configured")
+	}
+	var folderID string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(folder_id, '') FROM media_assets WHERE id = $1`,
+		parentVideoID,
+	).Scan(&folderID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("resolve artifact folder %q: %w", parentVideoID, err)
+	}
+	return folderID, nil
+}
+
+// ── absorbed from drive_file_lister.go ──
+
+// MediaDriveFileLister lists the asset ids of media-SSOT rows that still carry
+// a non-empty Drive file id and are not soft-deleted.
+type MediaDriveFileLister struct {
+	db *sql.DB
+}
+
+// NewMediaDriveFileLister returns a lister bound to the PostgreSQL media
+// database. The handle is required: a nil database is a programming error, not
+// a degrade path, so this panics in the same way NewMediaSearcher does.
+func NewMediaDriveFileLister(db *sql.DB) *MediaDriveFileLister {
+	if db == nil {
+		panic("media.NewMediaDriveFileLister: db is required")
+	}
+	return &MediaDriveFileLister{db: db}
+}
+
+// DB exposes the underlying handle so the composition root can assert it lives
+// on the media SSOT (see the media write/read bridge probes).
+func (l *MediaDriveFileLister) DB() *sql.DB {
+	if l == nil {
+		return nil
+	}
+	return l.db
+}
+
+// ListAssetIDsWithDriveFileID returns the media asset ids with a Drive file id.
+//
+// The predicate mirrors the retired SQLite statement exactly; `<>` is used
+// rather than `IS DISTINCT FROM` on purpose, because `lifecycle_state <> 'DELETED'`
+// is NULL — and therefore excludes the row — for a NULL lifecycle_state under
+// both engines. Restating it as `IS DISTINCT FROM` would silently start
+// including NULL-lifecycle rows and change the result set.
+func (l *MediaDriveFileLister) ListAssetIDsWithDriveFileID(ctx context.Context) ([]string, error) {
+	if l == nil || l.db == nil {
+		return nil, fmt.Errorf("media drive file lister: media SSOT handle is not configured")
+	}
+	rows, err := l.db.QueryContext(ctx, `
+		SELECT id FROM media_assets
+		WHERE drive_file_id IS NOT NULL AND drive_file_id <> ''
+		  AND lifecycle_state <> 'DELETED'
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("media drive file lister: query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("media drive file lister: scan: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("media drive file lister: iterate: %w", err)
+	}
+	return ids, nil
 }

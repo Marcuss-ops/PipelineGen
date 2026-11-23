@@ -1,3 +1,9 @@
+// Package scriptgeneration — overlay_numeric_grounding.go: the numeric-value half
+// of the entity-card admission path. A NUMBER annotation is admitted only when it
+// names a value the source-language annotations actually carry.
+// isNumericOverlayValue has exactly one caller, in this file: the numeric rescue
+// path may recover a value the annotation layer lost, and may never invent one to
+// fill a card.
 package scriptgeneration
 
 import (
@@ -11,13 +17,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-// Package scriptgeneration — the numeric-value half of the entity-card
-// admission path: a NUMBER annotation is only admitted when it names a
-// value the source-language annotations actually carry. Extracted
-// 2026-10-10 from overlay_plan.go to keep both files under
-// max_lines_per_file_strict=600 (godlike/08 forward-prevention cap):
-// isNumericOverlayValue has exactly one caller, in this file.
 
 // isNumericOverlayValue rejects prose that the annotation model occasionally
 // mislabels as NUMBER in translated scenes. Digits cover normalized facts and

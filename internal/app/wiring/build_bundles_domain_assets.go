@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
@@ -24,9 +24,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-)
-import (
-	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
+
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/stock"
 )
 
 // buildDomainAssetServicesParams groups the dependencies required to

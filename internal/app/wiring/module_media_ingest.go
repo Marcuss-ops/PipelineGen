@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/registry"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"

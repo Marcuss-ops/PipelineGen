@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -27,7 +27,7 @@ import (
 // backfill's narrow durationBackfillSource port.
 //
 // The production read moved to the PostgreSQL media SSOT
-// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// (pgbackfill.BackfillReader) because media_assets is PostgreSQL-owned and the
 // operational mirror holds no committed media rows. The eligibility rules are
 // still pinned here end-to-end against a deterministic fixture, so the adapter
 // carries the retired SQLite selector verbatim — INCLUDING the legacy
@@ -37,7 +37,7 @@ import (
 // SQLite any more.
 type sqliteDurationBackfillSource struct{ db *sql.DB }
 
-func (s sqliteDurationBackfillSource) ListDurationBackfillCandidates(ctx context.Context, q pgmedia.DurationBackfillQuery) ([]string, error) {
+func (s sqliteDurationBackfillSource) ListDurationBackfillCandidates(ctx context.Context, q pgbackfill.DurationBackfillQuery) ([]string, error) {
 	where := []string{
 		"media_type IN ('video', 'clip')",
 		"UPPER(COALESCE(lifecycle_state, '')) = 'ACTIVE'",

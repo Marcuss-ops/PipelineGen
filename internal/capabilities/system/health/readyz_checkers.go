@@ -424,17 +424,29 @@ func (r *ReadyChecker) runOllamaCheck(ctx context.Context, resp *HealthResponse)
 	detail["model_resident"] = resident
 	switch {
 	case resErr != nil:
+		// Unknown is not warm: the probe failed, so the caller cannot assume
+		// either state. This stays a readiness failure.
 		detail["ok"] = false
 		detail["error"] = "Ollama residency probe failed: " + resErr.Error()
 		resp.OK = false
 		resp.Status = "unhealthy"
 	case model != "" && !resident:
-		// A configured model that is not resident is a degraded readiness:
-		// the next generation would pay the load inside the job.
-		detail["ok"] = false
-		detail["error"] = "Ollama model " + model + " is not resident"
-		resp.OK = false
-		resp.Status = "unhealthy"
+		// Reachable but cold: a WARM-UP fact, not an outage. The first
+		// generation will load the model (17-59 s, ELIM-07), and that cost is
+		// reported here through warm=false instead of turning /ready into a
+		// 503 that blocks jobs which never call Ollama (2026-11-23: the local
+		// /ready was 503 on a cold gemma4:e2b while the master was healthy and
+		// a clip-compilation payload sat unsent).
+		detail["warm"] = false
+		detail["note"] = "Ollama model " + model + " is not resident; the first generation will load it"
+		warm := false
+		resp.Warm = &warm
+	default:
+		if model != "" {
+			detail["warm"] = true
+			warm := true
+			resp.Warm = &warm
+		}
 	}
 	resp.Checks["ollama"] = detail
 }

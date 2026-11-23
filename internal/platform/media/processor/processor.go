@@ -124,36 +124,90 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 		Status: "failed",
 	}
 
-	// Validate required inputs.
-	if input.ID == "" {
-		return result, fmt.Errorf("ProcessInput.ID is required")
-	}
-	if input.Name == "" {
-		return result, fmt.Errorf("ProcessInput.Name is required")
-	}
-	// Step 9/12 wire-up (July 2026): relaxed from "SourceURL==" → error"
-	// to OR-relationship with LocalPath. Either field is valid; if both
-	// are set, LocalPath takes precedence (download skipped).
-	if input.SourceURL == "" && input.LocalPath == "" {
-		return result, fmt.Errorf("ProcessInput.SourceURL or LocalPath is required")
-	}
-	if p.dl == nil && input.LocalPath == "" {
-		return result, fmt.Errorf("processor.dl (YTDLP) is nil - cannot download and LocalPath not set")
+	if err := p.validateProcessInput(input); err != nil {
+		return result, err
 	}
 
 	// Setup paths.
 	tmpDir, saveDir := p.setupDirectories(input)
-	// Output filenames are built from the clip name; cap the name portion so
-	// the final filename (and its atomic temp sibling) stays under the
-	// 255-byte filesystem component limit. Long clip names otherwise make
-	// reprocess fail with ENAMETOOLONG at temp-file creation.
-	//
-	// Reprocess contract fix (August 2026): honor input.Filename when the
-	// caller supplies the canonical clip filename
-	// (yt_<videoID>_<start>_<end>_<policy>_<slug>.mp4). Matching the
-	// original Drive upload name lets the publisher's ConflictOverwrite
-	// lookup find the existing file and update it in place instead of
-	// creating a fresh (orphaned) Drive file on every reprocess.
+	processedPath := OutputPath(saveDir, processOutputFilename(input))
+
+	actualRawPath, err := p.acquireRawSource(ctx, input, tmpDir)
+	if err != nil {
+		result.Error = fmt.Sprintf("download failed: %v", err)
+		return result, err
+	}
+
+	if input.RenditionLayout {
+		// Rendition layout (July 2026): preserve the immutable master and
+		// generate preview/thumbnail/storyboard/manifest renditions. The master
+		// IS the canonical processed output (Sept 2026: the redundant mezzanine
+		// copy was retired).
+		masterPath, stop, err := p.processRenditionLayout(ctx, input, actualRawPath, result)
+		if err != nil {
+			return result, err
+		}
+		if stop {
+			return result, nil
+		}
+		processedPath = masterPath
+	} else {
+		normalizedPath, stop, err := p.processNormalized(ctx, input, actualRawPath, processedPath, result)
+		if err != nil {
+			return result, err
+		}
+		if stop {
+			return result, nil
+		}
+		processedPath = normalizedPath
+	}
+
+	p.publishProcessedAsset(ctx, input, result, processedPath)
+
+	// Cleanup raw file after processing.
+	// Skip when LocalPath was caller-provided (Step 9/12 wire-up): the caller
+	// (e.g. shared SourceStager) owns the staged file's lifecycle. Also skip in
+	// rendition layout mode: the master rendition is the preserved raw source
+	// and must remain on disk.
+	if input.LocalPath == "" && !input.RenditionLayout {
+		_ = os.Remove(actualRawPath)
+	}
+
+	result.Status = "processed"
+	return result, nil
+}
+
+func (p *Processor) validateProcessInput(input *detail.ProcessInput) error {
+	if input.ID == "" {
+		return fmt.Errorf("ProcessInput.ID is required")
+	}
+	if input.Name == "" {
+		return fmt.Errorf("ProcessInput.Name is required")
+	}
+	// Step 9/12 wire-up (July 2026): relaxed from "SourceURL==\"\" → error" to
+	// OR-relationship with LocalPath. Either field is valid; if both are set,
+	// LocalPath takes precedence (download skipped).
+	if input.SourceURL == "" && input.LocalPath == "" {
+		return fmt.Errorf("ProcessInput.SourceURL or LocalPath is required")
+	}
+	if p.dl == nil && input.LocalPath == "" {
+		return fmt.Errorf("processor.dl (YTDLP) is nil - cannot download and LocalPath not set")
+	}
+	return nil
+}
+
+// processOutputFilename builds the output name from the clip name, capped so the
+// final filename (and its atomic temp sibling) stays under the 255-byte
+// filesystem component limit — long clip names otherwise make reprocess fail
+// with ENAMETOOLONG at temp-file creation.
+//
+// Reprocess contract fix (August 2026): honor input.Filename when the caller
+// supplies the canonical clip filename
+// (yt_<videoID>_<start>_<end>_<policy>_<slug>.mp4). Matching the original Drive
+// upload name lets the publisher's ConflictOverwrite lookup find the existing
+// file and update it in place instead of creating a fresh (orphaned) Drive file
+// on every reprocess.
+func processOutputFilename(input *detail.ProcessInput) string {
 	finalFilename := filepath.Base(input.Filename)
 	if finalFilename == "" || finalFilename == "." {
 		namePart := textutil.SafeName(input.Name)
@@ -163,287 +217,221 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 		}
 		finalFilename = namePart + " " + input.ID + ".mp4"
 	}
-	processedPath := OutputPath(saveDir, finalFilename)
+	return finalFilename
+}
 
-	// Step 1: Download (use path without extension so yt-dlp can add %(ext)s correctly).
-	// Step 9/12 wire-up (July 2026): when input.LocalPath != "", the download
-	// step is BYPASSED — the caller (typically the shared SourceStager port)
-	// already staged the source bytes. This eliminates the redundant
-	// bandwidth double-download that was previously a probed pre-flight only.
-	// The caller owns cleanup of the staged file; Processor must NOT delete it.
-	var (
-		actualRawPath string
-		err           error
-	)
+// acquireRawSource returns the source bytes to process: the caller's staged file
+// when present, otherwise a fresh yt-dlp download at the canonical raw path.
+// Step 9/12 wire-up (July 2026): a caller-provided LocalPath BYPASSES the
+// download step entirely, eliminating the redundant bandwidth double-download
+// that was previously only a probed pre-flight.
+func (p *Processor) acquireRawSource(ctx context.Context, input *detail.ProcessInput, tmpDir string) (string, error) {
 	if input.LocalPath != "" {
-		actualRawPath = input.LocalPath
 		p.log.Info("Process: bypassing downloadStep — using caller-provided LocalPath",
 			zap.String("id", input.ID),
 			zap.String("local_path", input.LocalPath))
-	} else {
-		rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s", input.ID))
-		actualRawPath, err = p.downloadStep(ctx, input, rawPath)
-		if err != nil {
-			result.Error = fmt.Sprintf("download failed: %v", err)
-			return result, err
-		}
+		return input.LocalPath, nil
 	}
+	// Use a path without extension so yt-dlp can add %(ext)s correctly.
+	rawPath := TmpPath(tmpDir, fmt.Sprintf("raw_%s", input.ID))
+	return p.downloadStep(ctx, input, rawPath)
+}
 
-	// Rendition layout (July 2026): preserve the immutable master and
-	// generate preview/thumbnail/storyboard/manifest renditions. The master
-	// IS the canonical processed output (Sept 2026: the redundant mezzanine
-	// copy was retired).
-	if input.RenditionLayout {
-		renditions, err := p.processRenditions(ctx, input, actualRawPath)
-		if err != nil {
-			if input.LocalPath == "" {
-				_ = os.Remove(actualRawPath)
-			}
-			result.Error = fmt.Sprintf("rendition processing failed: %v", err)
-			return result, err
-		}
-		result.Renditions = renditions
-
-		// The master is the canonical processed output.
-		master := p.findRendition(renditions, detail.RenditionKindMaster)
-		if master == nil {
-			if input.LocalPath == "" {
-				_ = os.Remove(actualRawPath)
-			}
-			result.Error = "master rendition missing after processing"
-			return result, fmt.Errorf("%s", result.Error)
-		}
-		processedPath = master.LocalPath
-		result.ContentSHA256 = master.ContentSHA256
-		result.LocalPath = master.LocalPath
-		result.Filename = master.Filename
-
-		// Perceptual deduplication on the master.
-		duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
-		if duplicateID != "" {
-			p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
-			result.DuplicateOf = duplicateID
-			if existing, err := p.registry.GetMedia(ctx, duplicateID); err == nil && existing != nil {
-				result.DriveLink = existing.DriveLink
-				result.DriveFileID = existing.DriveFileID
-				result.DownloadLink = existing.DownloadLink
-				result.Status = "duplicate"
-
-				// Clean up local files to avoid duplicate drive.
-				_ = os.Remove(actualRawPath)
-				_ = os.Remove(processedPath)
-
-				p.log.Info("Reusing Drive details from duplicate asset", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
-				return result, nil
-			}
-		}
-
-		// Remove the temporary downloaded raw file; the immutable master
-		// copy under OutputDir/master/ is the preserved source.
+// processRenditionLayout materializes the rendition set and promotes the master
+// to the canonical output. stop=true means the run is already concluded (a
+// perceptual duplicate was found and reused); err carries a failure with
+// result.Error stamped.
+func (p *Processor) processRenditionLayout(ctx context.Context, input *detail.ProcessInput, actualRawPath string, result *detail.ProcessResult) (string, bool, error) {
+	renditions, err := p.processRenditions(ctx, input, actualRawPath)
+	if err != nil {
 		if input.LocalPath == "" {
 			_ = os.Remove(actualRawPath)
 		}
-	} else {
-		// Step 2: Process/Normalize. The normalized output is a deterministic
-		// derived artifact keyed by source bytes + encoder policy/version.
-		// Normalize=false bypasses both the cache (a raw passthrough must
-		// never be served from or stored under the "normalize" key) and
-		// the ffmpeg normalize itself.
-		normalizeEnabled := input.Normalize == nil || *input.Normalize
-		sourceSHA := hashFileSHA256(actualRawPath)
-		normalizeKey := capcache.Key{}
-		normalizeCached := false
-		normalizeLeaseID := ""
-		if normalizeEnabled && sourceSHA != "" {
-			normalizeKey = capcacheKey(sourceSHA, "normalize", p.videoCfg, "media-normalize/v1")
-			normalizeCached, normalizeLeaseID = p.materializeCachedFile(ctx, normalizeKey, processedPath)
+		result.Error = fmt.Sprintf("rendition processing failed: %v", err)
+		return "", false, err
+	}
+	result.Renditions = renditions
+
+	// The master is the canonical processed output.
+	master := p.findRendition(renditions, detail.RenditionKindMaster)
+	if master == nil {
+		if input.LocalPath == "" {
+			_ = os.Remove(actualRawPath)
 		}
-		if !normalizeCached {
-			processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
-			if err != nil {
-				p.releaseCachedClaim(ctx, normalizeKey, normalizeLeaseID, err.Error())
-				if input.LocalPath == "" {
-					_ = os.Remove(actualRawPath)
-				}
-				result.Error = fmt.Sprintf("process failed: %v", err)
-				return result, err
-			}
-			if normalizeEnabled && sourceSHA != "" {
-				p.storeCachedFile(ctx, normalizeKey, normalizeLeaseID, processedPath, "video/mp4")
-			}
-		}
+		result.Error = "master rendition missing after processing"
+		return "", false, fmt.Errorf("%s", result.Error)
+	}
+	result.ContentSHA256 = master.ContentSHA256
+	result.LocalPath = master.LocalPath
+	result.Filename = master.Filename
 
-		// Perceptual deduplication.
-		duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
-		if duplicateID != "" {
-			p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
-			result.DuplicateOf = duplicateID
-			if existing, err := p.registry.GetMedia(ctx, duplicateID); err == nil && existing != nil {
-				result.DriveLink = existing.DriveLink
-				result.DriveFileID = existing.DriveFileID
-				result.DownloadLink = existing.DownloadLink
-				result.Status = "duplicate"
+	if p.applyPerceptualDuplicate(ctx, input, master.LocalPath, actualRawPath, result) {
+		return "", true, nil
+	}
 
-				// Clean up local files to avoid duplicate drive.
-				_ = os.Remove(actualRawPath)
-				_ = os.Remove(processedPath)
+	// Remove the temporary downloaded raw file; the immutable master copy under
+	// OutputDir/master/ is the preserved source.
+	if input.LocalPath == "" {
+		_ = os.Remove(actualRawPath)
+	}
+	return master.LocalPath, false, nil
+}
 
-				p.log.Info("Reusing Drive details from duplicate asset", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
-				return result, nil
-			}
-		}
-
-		// Step 3: Hash. Caller-provided LocalPath cleanup skipped below
-		// (Step 9/12 wire-up): the stager owns the staged file lifecycle.
-		fileHash, err := p.hashStep(ctx, processedPath)
+// processNormalized normalizes (or passes through) the source, then hashes it.
+// Normalize=false bypasses both the cache (a raw passthrough must never be
+// served from or stored under the "normalize" key) and the ffmpeg normalize.
+// stop=true means a perceptual duplicate was reused.
+func (p *Processor) processNormalized(ctx context.Context, input *detail.ProcessInput, actualRawPath, processedPath string, result *detail.ProcessResult) (string, bool, error) {
+	normalizeEnabled := input.Normalize == nil || *input.Normalize
+	sourceSHA := hashFileSHA256(actualRawPath)
+	normalizeKey := capcache.Key{}
+	normalizeCached := false
+	normalizeLeaseID := ""
+	if normalizeEnabled && sourceSHA != "" {
+		normalizeKey = capcacheKey(sourceSHA, "normalize", p.videoCfg, "media-normalize/v1")
+		normalizeCached, normalizeLeaseID = p.materializeCachedFile(ctx, normalizeKey, processedPath)
+	}
+	if !normalizeCached {
+		normalizedPath, err := p.processStep(ctx, input, actualRawPath, processedPath)
 		if err != nil {
+			p.releaseCachedClaim(ctx, normalizeKey, normalizeLeaseID, err.Error())
 			if input.LocalPath == "" {
 				_ = os.Remove(actualRawPath)
 			}
-			_ = os.Remove(processedPath)
-			result.Error = fmt.Sprintf("hash failed: %v", err)
-			return result, err
+			result.Error = fmt.Sprintf("process failed: %v", err)
+			return "", false, err
 		}
-		result.ContentSHA256 = fileHash
-		result.LocalPath = processedPath
-		result.Filename = filepath.Base(processedPath)
+		processedPath = normalizedPath
+		if normalizeEnabled && sourceSHA != "" {
+			p.storeCachedFile(ctx, normalizeKey, normalizeLeaseID, processedPath, "video/mp4")
+		}
 	}
 
-	// Step 4: Canonical Drive upload via delivery.Publisher.
-	//
-	// F2.8 (June 2026): pre-F2.8 the upload went through the
-	// legacy `p.driveUploader.UploadFile(ctx, localPath, FolderID,
-	// filename)` bypass which skipped the DestinationRegistry +
-	// RequireSubpath + ConflictPolicy belt. Post-migration every
-	// Drive write from the asset processor routes through the
-	// canonical Publisher — the sidecar metadata.json upload
-	// (which used raw Drive SDK List/Download/Trash/Upload) is
-	// REMOVED entirely: the canonical metadata ledger is the
-	// artifacts.Registry → media_assets SQLite table (Wave C SSOT).
-	// The pre-F2.8 step "build metaData + write local metadata.json
-	// + update cumulative Drive metadata.json" is gone.
-	//
-	// DestinationKey defaulting: input has no Destination field today
-	// (detail.ProcessInput is the canonical DTO and is owned by the
-	// domain layer — adding Destination is a follow-up wave when a
-	// correct default.
-	//
-	// ConflictPolicy (August 2026, reprocess certification fix):
-	// explicitly ConflictOverwrite. The processor's outputs are
-	// regenerable renditions — a reprocess MUST replace the previous
-	// rendition on Drive. Leaving the policy unset consults the
-	// (P1.1, July 2026: "immutable curated assets") — that silently
-	// kept Drive pinned to the FIRST rendition forever (every
-	// re-render logged publish_action=skipped with the stale md5).
-	// This processor is the upload seam for generated outputs, so
-	// overwrite is the correct explicit policy here.
-	// ParentFolderID is input.FolderID so callers that explicitly
-	// target a specific Drive folder (e.g. legacy pipeline scripts)
-	// keep working.
-	//
-	// Subject defaulting (reviewer-feedback Q1): Subject defaults to
-	// empty string, NOT input.ID. The pre-F2.7 implementation had no
-	// Subject concept (this is greenfield). Defaulting Subject to the
-	// media_assets.id leaks an opaque UUID into Drive-side folder
-	// metadata that humans see via PathSegments. Empty Subject lets
-	// the Publisher derive uniqueness from PublisherRequest alone
-	// per the canonical resolution rules (Publisher must handle
-	// empty Subject). A real caller that knows a meaningful Subject
-	// via a follow-up F2.9 field plumb (tracked in
-	// architecture/current.yaml).
-	//
-	// DownloadLink strict policy (reviewer-feedback Q2): NO
-	// fallback interpolation. F2.7 closure made PublishResult.
-	// DownloadLink the canonical single-source-of-truth URL per
-	// godlike/06 "one owner per fact". A Publisher that returns
-	// empty DownloadLink on success is a Publisher BUG and MUST
-	// surface loudly (already pinned at
-	// internal/platform/drive/publisher_policies_test.go,
-	// the F1.6 Canon-URL test). Allowing a silent reconstruction
-	// via "https://drive.google.com/uc?id="+FileID would produce a
-	// URL Drive never actually surfaced — a worse outcome than the
-	// visible failure. Empty DownloadLink ⇄ Result.DownloadLink=""
-	// ⇄ downstream can branch on the empty value.
-	//
-	// Fail-closed semantics on Publish failure: the processor is
-	// UPSTREAM of the lifecycle.Service / assets/lifecycle.Finalize
-	// layer, which is where RequireDrive is enforced. The processor's
-	// job is to ATTEMPT the canonical upload and surface success or
-	// warn+continue on failure; the lifecycle layer decides whether
-	// to persist. To avoid silent lossy uploads (where a caller
-	// looks at Result.Status=="processed"+empty DriveLink and has to
-	// grep the log to find why), the processor ALSO stamps
-	// Result.Error with the publisher error message at non-zero status.
-	// Status itself stays "processed" so the lifecycle layer's
-	// RequireDrive gate is the single canonical place that flips
-	// to a required Drive-upload error (per the lifecycle contract).
-	if input.FolderID != "" && !input.SkipPublish {
-		destKey, parentFolderID := p.resolvePublishDestination(input)
-		group := strings.TrimSpace(input.Group)
-		if group == "" {
-			group = input.Term
+	// Perceptual deduplication.
+	if p.applyPerceptualDuplicate(ctx, input, processedPath, actualRawPath, result) {
+		return "", true, nil
+	}
+
+	// Step 3: Hash. Caller-provided LocalPath cleanup skipped below (Step 9/12
+	// wire-up): the stager owns the staged file lifecycle.
+	fileHash, err := p.hashStep(ctx, processedPath)
+	if err != nil {
+		if input.LocalPath == "" {
+			_ = os.Remove(actualRawPath)
 		}
-		pubReq := delivery.PublishRequest{
-			Destination:    destKey,
-			LocalPath:      processedPath,
-			Filename:       result.Filename,
-			Description:    fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
-			AssetID:        input.ID,
-			Group:          group, // legacy search term or explicit group path segment
-			Subject:        strings.TrimSpace(input.Subject),
-			ParentFolderID: parentFolderID,
-			// Regenerable output: the latest rendition always wins on
-			// Drive (see the ConflictPolicy doc above).
-			ConflictPolicy: delivery.ConflictOverwrite,
-		}
-		pubRes, pubErr := p.publisher.Publish(ctx, pubReq)
-		if pubErr != nil {
-			p.log.Warn("Drive upload failed (continuing with local only; lifecycle.RequireDrive reports the operational error)",
-				zap.String("id", input.ID),
-				zap.String("destination", string(destKey)),
-				zap.Error(pubErr),
-			)
-			// Failure stamping so a caller surfacing Result.Status=="processed"
-			// doesn't have to grep the log to discover why Drive fields are empty.
-			// Status stays "processed" so the lifecycle.RequireDrive gate is
-			// the SINGLE canonical authority that flips to UPLOAD_FAILED.
-			result.Error = fmt.Sprintf("drive upload failed: %v", pubErr)
-		} else {
-			result.DriveLink = pubRes.WebViewLink
-			result.DriveFileID = pubRes.FileID
-			// Strict canonical-URL policy (F2.7): PublishResult.DownloadLink
-			// is the single source of truth for the drive download URL.
-			// Empty if Publisher didn't surface one — that is a Publisher
-			// bug, NOT an opportunity for silent reconstruction.
-			result.DownloadLink = pubRes.DownloadLink
-			result.MD5 = pubRes.MD5Checksum
-			result.PublishAction = string(pubRes.Action)
-			p.log.Info("File uploaded to Drive via Publisher (F2.8)",
-				zap.String("id", input.ID),
-				zap.String("file_id", pubRes.FileID),
-				zap.String("folder_id", input.FolderID),
-				zap.String("destination", string(destKey)),
-				zap.String("publish_action", string(pubRes.Action)),
-				zap.String("md5", pubRes.MD5Checksum),
-			)
-		}
-	} else if input.FolderID != "" {
+		_ = os.Remove(processedPath)
+		result.Error = fmt.Sprintf("hash failed: %v", err)
+		return "", false, err
+	}
+	result.ContentSHA256 = fileHash
+	result.LocalPath = processedPath
+	result.Filename = filepath.Base(processedPath)
+	return processedPath, false, nil
+}
+
+// applyPerceptualDuplicate reuses an existing asset when the processed bytes are
+// a perceptual duplicate. A hit removes the local raw and processed copies so a
+// duplicate never creates a second Drive file, and reports true: the caller must
+// NOT publish or continue the pipeline.
+func (p *Processor) applyPerceptualDuplicate(ctx context.Context, input *detail.ProcessInput, processedPath, rawPath string, result *detail.ProcessResult) bool {
+	duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
+	if duplicateID == "" {
+		return false
+	}
+	p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
+	result.DuplicateOf = duplicateID
+	existing, err := p.registry.GetMedia(ctx, duplicateID)
+	if err != nil || existing == nil {
+		return false
+	}
+	result.DriveLink = existing.DriveLink
+	result.DriveFileID = existing.DriveFileID
+	result.DownloadLink = existing.DownloadLink
+	result.Status = "duplicate"
+
+	// Clean up local files to avoid duplicate drive.
+	_ = os.Remove(rawPath)
+	_ = os.Remove(processedPath)
+
+	p.log.Info("Reusing Drive details from duplicate asset", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
+	return true
+}
+
+// publishProcessedAsset performs the canonical Drive upload via
+// delivery.Publisher.
+//
+// F2.8 (June 2026): pre-F2.8 the upload went through the legacy
+// `p.driveUploader.UploadFile` bypass which skipped the DestinationRegistry +
+// RequireSubpath + ConflictPolicy belt. Post-migration every Drive write from the
+// asset processor routes through the canonical Publisher — the sidecar
+// metadata.json upload is REMOVED entirely: the canonical metadata ledger is the
+// artifacts.Registry → media_assets SQLite table (Wave C SSOT).
+//
+// Fail-closed semantics: the processor is UPSTREAM of the lifecycle.Service /
+// assets/lifecycle.Finalize layer, which is where RequireDrive is enforced. The
+// processor ATTEMPTS the upload and stamps Result.Error on failure while Status
+// stays "processed", so the lifecycle gate remains the single canonical place
+// that flips to a required Drive-upload error.
+func (p *Processor) publishProcessedAsset(ctx context.Context, input *detail.ProcessInput, result *detail.ProcessResult, processedPath string) {
+	if input.FolderID == "" {
+		return
+	}
+	if input.SkipPublish {
 		// SkipPublish (July 2026, reprocess contract fix): upload_drive=false
 		// skips the canonical publish; the local rendition + hash still stand.
 		p.log.Info("Drive publish skipped by caller (upload_drive=false)", zap.String("id", input.ID))
+		return
 	}
 
-	// Cleanup raw file after processing.
-	// Skip when LocalPath was caller-provided (Step 9/12 wire-up): the
-	// caller (e.g. shared SourceStager) owns the staged file's lifecycle.
-	// Also skip in rendition layout mode: the master rendition is the
-	// preserved raw source and must remain on disk.
-	if input.LocalPath == "" && !input.RenditionLayout {
-		_ = os.Remove(actualRawPath)
+	destKey, parentFolderID := p.resolvePublishDestination(input)
+	group := strings.TrimSpace(input.Group)
+	if group == "" {
+		group = input.Term
 	}
-
-	result.Status = "processed"
-	return result, nil
+	pubReq := delivery.PublishRequest{
+		Destination:    destKey,
+		LocalPath:      processedPath,
+		Filename:       result.Filename,
+		Description:    fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
+		AssetID:        input.ID,
+		Group:          group, // legacy search term or explicit group path segment
+		Subject:        strings.TrimSpace(input.Subject),
+		ParentFolderID: parentFolderID,
+		// Regenerable output: the latest rendition always wins on Drive.
+		// Leaving the policy unset consulted the P1.1 immutable-curated-assets
+		// rule and silently kept Drive pinned to the FIRST rendition forever
+		// (every re-render logged publish_action=skipped with the stale md5).
+		ConflictPolicy: delivery.ConflictOverwrite,
+	}
+	pubRes, pubErr := p.publisher.Publish(ctx, pubReq)
+	if pubErr != nil {
+		p.log.Warn("Drive upload failed (continuing with local only; lifecycle.RequireDrive reports the operational error)",
+			zap.String("id", input.ID),
+			zap.String("destination", string(destKey)),
+			zap.Error(pubErr),
+		)
+		// Failure stamping so a caller surfacing Result.Status=="processed"
+		// doesn't have to grep the log to discover why Drive fields are empty.
+		result.Error = fmt.Sprintf("drive upload failed: %v", pubErr)
+		return
+	}
+	result.DriveLink = pubRes.WebViewLink
+	result.DriveFileID = pubRes.FileID
+	// Strict canonical-URL policy (F2.7): PublishResult.DownloadLink is the
+	// single source of truth for the drive download URL. Empty means a Publisher
+	// bug, NOT an opportunity for silent reconstruction (the F1.6 Canon-URL test
+	// pins this).
+	result.DownloadLink = pubRes.DownloadLink
+	result.MD5 = pubRes.MD5Checksum
+	result.PublishAction = string(pubRes.Action)
+	p.log.Info("File uploaded to Drive via Publisher (F2.8)",
+		zap.String("id", input.ID),
+		zap.String("file_id", pubRes.FileID),
+		zap.String("folder_id", input.FolderID),
+		zap.String("destination", string(destKey)),
+		zap.String("publish_action", string(pubRes.Action)),
+		zap.String("md5", pubRes.MD5Checksum),
+	)
 }
 
 // resolvePublishDestination maps a TransformSpec.Destination into the

@@ -493,25 +493,13 @@ type EntityOccurrence struct {
 
 // Media is the materialized/verified media and certified scene image index.
 type Media struct {
-	MaterializedAssets   []AssetRef            `json:"materialized_assets,omitempty"`
-	VerifiedEntityAssets []VerifiedEntityAsset `json:"verified_entity_assets,omitempty"`
-	// PromotableEntityAssets is the separate surface the planner promotes
-	// from. `verified_entity_assets` already makes a card an image; this surface
-	// carries the portraits only the producer's resolver can render (bundle-only
-	// identities and aliases), which the Go media plane used to attach after the
-	// seal.
-	PromotableEntityAssets []PromotableEntityAsset  `json:"promotable_entity_assets,omitempty"`
-	SceneImageCandidates   []SceneImageCandidateSet `json:"scene_image_candidates,omitempty"`
-}
-
-// PromotableEntityAsset is one portrait the planner may promote onto an
-// identity card. `entity_id` is the plan occurrence identity; the same shape as
-// VerifiedEntityAsset is deliberate — the two differ by ownership, not by
-// content.
-type PromotableEntityAsset struct {
-	EntityID          string     `json:"entity_id,omitempty"`
-	CanonicalEntityID string     `json:"canonical_entity_id,omitempty"`
-	Assets            []AssetRef `json:"assets,omitempty"`
+	MaterializedAssets []AssetRef `json:"materialized_assets,omitempty"`
+	// VerifiedEntityAssets is the ONE entity-portrait surface: annotation
+	// bindings and bundle/timeline resolutions land here under the same
+	// occurrence identity. The planner owns the card-vs-image decision; there
+	// is no second list of "promotable" portraits.
+	VerifiedEntityAssets []VerifiedEntityAsset    `json:"verified_entity_assets,omitempty"`
+	SceneImageCandidates []SceneImageCandidateSet `json:"scene_image_candidates,omitempty"`
 }
 
 // VerifiedEntityAsset is the certified asset set for one entity identity.

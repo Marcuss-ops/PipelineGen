@@ -22,8 +22,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
+
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

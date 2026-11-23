@@ -75,6 +75,14 @@ func (e *GenerationEnvelopeV2) Validate() error {
 		if details := validateSegmentEntityExtractionToggles(item.ScriptParams.Segments, ref); len(details) > 0 {
 			return &PlanInvalidError{ItemID: item.ID, Details: details}
 		}
+		// The narration word floor is a deterministic copy contract, not a
+		// runtime surprise: a verbatim narration below the floor used to pass
+		// the ingress and fail at GENERATING_SCENE_TEXT after the expensive
+		// stages had been scheduled. Same function as the runner and the CLI
+		// preflight (narration_contract.go).
+		if details := ValidateAuthoredNarration(item.ScriptParams); len(details) > 0 {
+			return &PlanInvalidError{ItemID: item.ID, Details: details}
+		}
 		if err := ValidateOverlayCategories(item.OverlayCategories); err != nil {
 			return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": " + err.Error()}}
 		}

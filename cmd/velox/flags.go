@@ -12,16 +12,19 @@ func usage(w *os.File) {
 	_, _ = fmt.Fprint(w, `velox — PipelineGen operations CLI
 
 Usage:
+  velox preflight --payload FILE [--offline] [--server URL] [--data-dir DIR]
+                 [--min-free-gb N] [--json]
   velox submit   <job-alias|--path PATH> --key PROJECT --payload FILE [--m2m] [--json]
   velox poll     <job_id> [--m2m] [--timeout 30m] [--interval 3s] [--json]
   velox replay   <job_id> [--m2m] [--json]
-  velox download <asset_id> [--source SOURCE] [-o FILE]
-  velox download-final <job_id> [-o FILE] [--token-file FILE] [--json]
+  velox download <asset_id> [--source SOURCE] [-o FILE] [--m2m] [--range BYTES] [--json]
+  velox download-final <job_id> [-o FILE] [--m2m] [--token-file FILE] [--json]
   velox burn-subtitles --input FILE --out FILE (--job-full FILE | --ass FILE)
                  [--font NAME] [--font-size PX] [--keep-ass DIR] [--no-verify] [--json]
   velox search   "<query>" [--source SOURCE] [--kind ASSET_KIND] [--role SEMANTIC_ROLE]
-                 [--limit N] [--universe U] [--json]
+                 [--limit N] [--universe U] [--mode hybrid|ann] [--m2m] [--json]
   velox jobs     [--json]
+  velox gc       [--data-dir DIR] [--older-than 168h] [--include-cas] [--apply] [--json]
   velox types    --m2m [--json]
 
 Environment:
@@ -38,10 +41,25 @@ Environment:
 
 Job aliases: clips-process, clips-render, render-batch, script-generate, jobs
 
+Preflight:
+  velox preflight runs the canonical script.generate ingress validation on a
+  payload WITHOUT submitting it (same strict decoder + GenerationEnvelopeV2.Validate
+  as POST /api/script/generate), then Stage 0: every bound clip is checked on
+  the live catalog (exists, ACTIVE, READY, known duration, text track when the
+  segment needs subtitles) and the data directory must have free space.
+  Exit 1 means the server would answer 400 OR the run would fail on an asset.
+  --offline keeps the structural-only behaviour (no server needed).
+  The compiled plan (certified renders, stock isolation, media certificates)
+  remains server-side: a green preflight does not promise the run will finish.
+
 M2M mode:
   velox submit jobs --m2m --key PROJECT --payload enqueue.json
   enqueue.json must be {"type":"...","payload":{...}}; the same
   VELOX_M2M_SECRET is used for POST /api/v1/jobs and GET /api/v1/jobs/{id}.
+  Media and final render:
+    velox download <asset_id> --m2m -o FILE   (GET /api/v1/media/assets/{id}/download)
+    velox search "query" --m2m --mode ann      (POST /api/v1/media/search)
+    velox download-final <job_id> --m2m -o FILE (GET /api/v1/jobs/{id}/artifact)
 `)
 }
 

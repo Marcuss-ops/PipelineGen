@@ -30,33 +30,7 @@ import (
 // leases.
 func (r *Runner) runLease(parent context.Context, lease *jobs.Lease) (retErr error) {
 	job := lease.Job
-	ledger := jobs.NewJobRegistryRecorder(r.jobLedger, r.log)
-	attemptID := fmt.Sprintf("%s:%d", job.ID, job.Revision)
-	stepID := ""
-	var handlerResult map[string]any
-	var terminalErr error
-	ledgerFinished := false
-	finishLedger := func(report *kernobs.RunReport) {
-		if ledgerFinished {
-			return
-		}
-		ledgerFinished = true
-		status := "SUCCEEDED"
-		var finishErr error
-		if retErr != nil {
-			status = "FAILED"
-			finishErr = retErr
-		}
-		if terminalErr != nil {
-			status = "FAILED"
-			finishErr = terminalErr
-		}
-		var resultJSON []byte
-		if handlerResult != nil {
-			resultJSON, _ = json.Marshal(handlerResult)
-		}
-		ledger.Finish(parent, job, stepID, r.workerID, attemptID, status, resultJSON, finishErr, report)
-	}
+	attempt := newLeaseAttempt(r, job)
 
 	// PR-COMPLETE-FAIL-CLOSED (August 2026): if the registry is nil
 	// (composition bug or unwired worker), fail-closed immediately.
@@ -70,9 +44,10 @@ func (r *Runner) runLease(parent context.Context, lease *jobs.Lease) (retErr err
 			zap.String("job_type", job.Type),
 			zap.String("job_id", job.ID),
 		)
-		terminalErr = fmt.Errorf("%w: nil registry — worker must be composed with a job Registry", ErrHandlerNotRegistered)
-		stepID = ledger.Start(parent, job, r.workerID, attemptID)
-		finishLedger(nil)
+		terminalErr := fmt.Errorf("%w: nil registry — worker must be composed with a job Registry", ErrHandlerNotRegistered)
+		attempt.terminalErr = terminalErr
+		attempt.start(parent)
+		attempt.finish(parent, nil, nil)
 		return r.fail(parent, lease, terminalErr)
 	}
 
@@ -84,39 +59,169 @@ func (r *Runner) runLease(parent context.Context, lease *jobs.Lease) (retErr err
 			zap.String("job_id", job.ID),
 		)
 		unsupportedErr := fmt.Errorf("%w: %s", ErrHandlerNotRegistered, job.Type)
-		terminalErr = unsupportedErr
-		stepID = ledger.Start(parent, job, r.workerID, attemptID)
-		finishLedger(nil)
+		attempt.terminalErr = unsupportedErr
+		attempt.start(parent)
+		attempt.finish(parent, nil, nil)
 		return r.fail(parent, lease, unsupportedErr)
 	}
 
 	jobCtx, cancel := context.WithCancel(parent)
 	defer cancel()
 
-	// FASE 2 observability (kernel/observability): every claimed lease
-	// is one Run (= one attempt). queue_wait_ms = server-side
-	// started_at − created_at (the broker's Claim populates StartedAt
-	// via ClaimNext); the per-attempt token is the canonical lease. The
-	// run is bound to jobCtx so the handler and adapters can record
-	// stages/operations.
+	// FASE 2 observability: every claimed lease is one Run (= one attempt).
+	// queue_wait_ms = server-side started_at − created_at; the per-attempt token
+	// is the canonical lease. The run is bound to jobCtx so the handler and
+	// adapters can record stages/operations.
 	//
-	// Terminal-status classification: tools.Fail / r.fail can return
-	// NIL when the broker accepts the failure report, so the return
-	// value alone cannot distinguish "attempt failed, broker
-	// accepted" from "attempt succeeded". terminalErr is set at each
-	// fail-return site; the deferred closure prefers retErr (a
-	// non-nil finalisation error, e.g. ErrLeaseLostDuringRun), then
-	// terminalErr, and only otherwise closes the run as SUCCEEDED.
+	// Terminal-status classification: tools.Fail / r.fail can return NIL when
+	// the broker accepts the failure report, so the return value alone cannot
+	// distinguish "attempt failed, broker accepted" from "attempt succeeded".
+	// attempt.terminalErr is set at each fail-return site; the deferred closure
+	// prefers retErr (a non-nil finalisation error, e.g.
+	// ErrLeaseLostDuringRun), then terminalErr, and only otherwise closes the
+	// run as SUCCEEDED.
+	jobCtx, run := r.startLeaseRun(parent, jobCtx, lease, attempt)
+	defer func() {
+		if rec := recover(); rec != nil {
+			if run != nil {
+				run.FinishWithPanic(rec)
+			}
+			attempt.finish(parent, retErr, runReport(run))
+			panic(rec)
+		}
+		if run != nil {
+			switch {
+			case retErr != nil:
+				run.FinishWithError(retErr)
+			case attempt.terminalErr != nil:
+				run.FinishWithError(attempt.terminalErr)
+			default:
+				run.Finish()
+			}
+		}
+		attempt.finish(parent, retErr, runReport(run))
+	}()
+
+	jobDir, err := r.workspace.Prepare(job.ID)
+	if err != nil {
+		attempt.terminalErr = err
+		return r.fail(jobCtx, lease, err)
+	}
+	defer func() {
+		_ = r.workspace.Cleanup(job.ID)
+	}()
+
+	tools := r.executionTools(job, jobDir, attempt.ledger)
+
+	// Start lease renewal loop (W1 Phase 7).
+	renewal := r.startLeaseRenewalCheck(jobCtx, tools, job, cancel)
+	defer renewal.stop()
+
+	if err := renewal.check(); err != nil {
+		attempt.terminalErr = err
+		return tools.Fail(jobCtx, err.Error())
+	}
+
+	// Asset download phase
+	if err := r.downloadInputAssets(jobCtx, lease, tools, attempt, renewal); err != nil {
+		attempt.terminalErr = err
+		return tools.Fail(jobCtx, err.Error())
+	}
+
+	// Handler dispatch + manifest upload
+	resultJSON, uploaded, err := r.dispatchAndUpload(jobCtx, lease, tools, attempt, renewal)
+	if err != nil {
+		attempt.terminalErr = err
+		return tools.Fail(jobCtx, err.Error())
+	}
+
+	// Stop renewal BEFORE Complete so a final tick that lands while Complete is
+	// mid-flight doesn't try to flip a job we just terminal-reported.
+	renewal.stop()
+	// P0 #5 (July 2026) — fail-closed seam: drain the renewal loop's error
+	// channel BEFORE calling tools.Complete.
+	if preCompleteErr := postRenewFailClosedCheck(renewal.errs); preCompleteErr != nil {
+		return preCompleteErr
+	}
+
+	if completeErr := r.completeLease(jobCtx, lease, tools, attempt, resultJSON, uploaded); completeErr != nil {
+		attempt.terminalErr = completeErr
+		return completeErr
+	}
+	return nil
+}
+
+// leaseAttempt owns the ledger bookkeeping of one claimed lease: the attempt
+// identity, the step it opened, and the handler result the terminal row must
+// carry. finish is idempotent because the panic path and the normal path can both
+// reach it.
+type leaseAttempt struct {
+	ledger        *jobs.JobRegistryRecorder
+	job           *jobs.Job
+	workerID      string
+	attemptID     string
+	stepID        string
+	handlerResult map[string]any
+	terminalErr   error
+	finished      bool
+}
+
+func newLeaseAttempt(r *Runner, job *jobs.Job) *leaseAttempt {
+	return &leaseAttempt{
+		ledger:    jobs.NewJobRegistryRecorder(r.jobLedger, r.log),
+		job:       job,
+		workerID:  r.workerID,
+		attemptID: fmt.Sprintf("%s:%d", job.ID, job.Revision),
+	}
+}
+
+func (a *leaseAttempt) start(ctx context.Context) {
+	a.stepID = a.ledger.Start(ctx, a.job, a.workerID, a.attemptID)
+}
+
+func (a *leaseAttempt) finish(parent context.Context, retErr error, report *kernobs.RunReport) {
+	if a.finished {
+		return
+	}
+	a.finished = true
+	status := "SUCCEEDED"
+	var finishErr error
+	if retErr != nil {
+		status = "FAILED"
+		finishErr = retErr
+	}
+	if a.terminalErr != nil {
+		status = "FAILED"
+		finishErr = a.terminalErr
+	}
+	var resultJSON []byte
+	if a.handlerResult != nil {
+		resultJSON, _ = json.Marshal(a.handlerResult)
+	}
+	a.ledger.Finish(parent, a.job, a.stepID, a.workerID, a.attemptID, status, resultJSON, finishErr, report)
+}
+
+func runReport(run *kernobs.Run) *kernobs.RunReport {
+	if run == nil {
+		return nil
+	}
+	return run.Report()
+}
+
+// startLeaseRun opens the observability Run (when wired) and binds the attempt
+// identity to the job context. Without an observer the context is returned with
+// only the activity trace, and every downstream Run binding is a pass-through.
+func (r *Runner) startLeaseRun(parent, jobCtx context.Context, lease *jobs.Lease, attempt *leaseAttempt) (context.Context, *kernobs.Run) {
+	job := lease.Job
 	var run *kernobs.Run
 	if r.observer != nil {
 		// The lease fence MUST be surfaced on the run: RecoverAbandoned
-		// (run_recorder.go) only reclaims RUNNING runs whose
-		// lease_expires_at has a non-NULL past value. Without LeaseID /
-		// WorkerID / LeaseExpiresAt here, lease_expires_at stays NULL for
-		// every run and a worker crash can never be recovered into
-		// ABANDONED. Prefer the Lease envelope's ExpiresAt; fall back to
-		// the claimed Job's LeaseExpiry when the envelope is unset (test
-		// stubs populate only one of the two).
+		// (run_recorder.go) only reclaims RUNNING runs whose lease_expires_at
+		// has a non-NULL past value. Without LeaseID / WorkerID /
+		// LeaseExpiresAt here, lease_expires_at stays NULL for every run and a
+		// worker crash can never be recovered into ABANDONED. Prefer the Lease
+		// envelope's ExpiresAt; fall back to the claimed Job's LeaseExpiry when
+		// the envelope is unset (test stubs populate only one of the two).
 		leaseExpiry := lease.ExpiresAt
 		if leaseExpiry.IsZero() && job.LeaseExpiry != nil {
 			leaseExpiry = *job.LeaseExpiry
@@ -135,148 +240,126 @@ func (r *Runner) runLease(parent context.Context, lease *jobs.Lease) (retErr err
 			RetryCount:     job.RetryCount,
 		})
 		jobCtx = kernobs.WithRun(jobCtx, run)
-		defer func() {
-			if run == nil {
-				return
-			}
-			if rec := recover(); rec != nil {
-				run.FinishWithPanic(rec)
-				finishLedger(run.Report())
-				panic(rec)
-			}
-			switch {
-			case retErr != nil:
-				run.FinishWithError(retErr)
-			case terminalErr != nil:
-				run.FinishWithError(terminalErr)
-			default:
-				run.Finish()
-			}
-			finishLedger(run.Report())
-		}()
 	}
-	if run == nil {
-		defer func() { finishLedger(nil) }()
-	}
+
 	trace := kerneljob.ActivityTrace{CorrelationID: job.CorrelationID}
 	if link := kerneljob.ParentLinkFromPayload(job.Payload); link.ParentRunID != "" {
 		trace.ParentRunID = link.ParentRunID
 	}
-	if run != nil {
-		if report := run.Report(); report != nil {
-			trace.RunID = report.RunID
-			trace.AttemptID = report.AttemptID
-			trace.ParentRunID = report.ParentRunID
-			attemptID = report.AttemptID
-		}
+	if report := runReport(run); report != nil {
+		trace.RunID = report.RunID
+		trace.AttemptID = report.AttemptID
+		trace.ParentRunID = report.ParentRunID
+		attempt.attemptID = report.AttemptID
 	}
 	if trace.AttemptID == "" {
-		trace.AttemptID = attemptID
+		trace.AttemptID = attempt.attemptID
 	}
 	jobCtx = kerneljob.WithActivityTraceIfAbsent(jobCtx, trace)
+	return jobCtx, run
+}
 
-	jobDir, err := r.workspace.Prepare(lease.Job.ID)
-	if err != nil {
-		terminalErr = err
-		return r.fail(jobCtx, lease, err)
-	}
-	defer func() {
-		_ = r.workspace.Cleanup(lease.Job.ID)
-	}()
-
+func (r *Runner) executionTools(job *jobs.Job, jobDir string, ledger *jobs.JobRegistryRecorder) *Tools {
 	var store eventStore
 	if s, ok := r.broker.(eventStore); ok {
 		store = s
 	}
-	tools := NewTools(r.broker, store, r.workerID, r.sessionID, lease.Job, jobDir, r.assetClient).WithJobRegistry(ledger)
+	// The SAME recorder instance the attempt finishes with: the handler's stage
+	// rows and the terminal ledger row must belong to one attempt.
+	return NewTools(r.broker, store, r.workerID, r.sessionID, job, jobDir, r.assetClient).WithJobRegistry(ledger)
+}
 
-	// Start lease renewal loop (W1 Phase 7).
+// leaseRenewal is the lease renewal loop plus its non-blocking error drain.
+// check() is the single seam every phase uses to notice a lost lease before it
+// writes a terminal state.
+type leaseRenewal struct {
+	r      *Runner
+	cancel context.CancelFunc
+	errs   chan error
+	jobID  string
+}
+
+func (r *Runner) startLeaseRenewalCheck(jobCtx context.Context, tools *Tools, job *jobs.Job, jobCancel context.CancelFunc) *leaseRenewal {
 	renewCtx, renewCancel := context.WithCancel(jobCtx)
-	defer renewCancel()
-	renewErrs := make(chan error, 1)
-	go r.renewLoop(renewCtx, tools, job.ID, renewErrs, cancel)
+	errs := make(chan error, 1)
+	go r.renewLoop(renewCtx, tools, job.ID, errs, jobCancel)
+	return &leaseRenewal{r: r, cancel: renewCancel, errs: errs, jobID: job.ID}
+}
 
-	// checkRenew non-blockingly reads any error that the renewal
-	// goroutine has already emitted.
-	checkRenew := func() error {
-		select {
-		case err := <-renewErrs:
-			if err != nil {
-				r.log.Warn("lease renewal failed — failing the job",
-					zap.String("job_id", job.ID),
-					zap.Error(err))
-			}
+// check non-blockingly reads any error that the renewal goroutine has already
+// emitted.
+func (n *leaseRenewal) check() error {
+	select {
+	case err := <-n.errs:
+		if err != nil {
+			n.r.log.Warn("lease renewal failed — failing the job",
+				zap.String("job_id", n.jobID),
+				zap.Error(err))
+		}
+		return err
+	default:
+		return nil
+	}
+}
+
+func (n *leaseRenewal) stop() {
+	n.cancel()
+}
+
+// downloadInputAssets stages every payload input_assets entry through the
+// worker's tools. A failed download or a lost lease aborts the attempt before
+// dispatch, so the handler never runs on missing bytes.
+func (r *Runner) downloadInputAssets(jobCtx context.Context, lease *jobs.Lease, tools *Tools, attempt *leaseAttempt, renewal *leaseRenewal) error {
+	for i, assetID := range ParseInputAssets(lease.Job.Payload) {
+		if _, err := tools.DownloadAsset(jobCtx, assetID); err != nil {
+			return fmt.Errorf("download asset %d (%s): %w", i, assetID, err)
+		}
+		attempt.ledger.Downloaded(jobCtx, lease.Job.ID, assetID, i)
+		// FASE 0.2 (July 4 2026) silent-drop rewrite per
+		// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability:
+		// pre-PR the runner used `_ = tools.Progress(...)` which dropped the
+		// broker emit error without any observability.
+		if progErr := tools.Progress(jobCtx, 5+i, "staged input asset"); progErr != nil {
+			r.log.Warn("worker Progress emit failed (FASE 0.2 silent-drop rewrite)",
+				zap.String("job_id", lease.Job.ID),
+				zap.String("job_type", lease.Job.Type),
+				zap.Int("progress", 5+i),
+				zap.Error(progErr))
+			observability.WorkerProgressEmittedTotal.WithLabelValues(lease.Job.Type, "error").Inc()
+			observability.WorkerProgressErrorsTotal.WithLabelValues(lease.Job.Type, "broker_emit_failed").Inc()
+		} else {
+			observability.WorkerProgressEmittedTotal.WithLabelValues(lease.Job.Type, "success").Inc()
+		}
+		if err := renewal.check(); err != nil {
 			return err
-		default:
-			return nil
 		}
 	}
+	return nil
+}
 
-	if err := checkRenew(); err != nil {
-		terminalErr = err
-		return tools.Fail(jobCtx, err.Error())
-	}
-
-	// Asset download phase
-	if assets := ParseInputAssets(lease.Job.Payload); len(assets) > 0 {
-		for i, assetID := range assets {
-			if _, err := tools.DownloadAsset(jobCtx, assetID); err != nil {
-				downloadErr := fmt.Errorf("download asset %d (%s): %w", i, assetID, err)
-				terminalErr = downloadErr
-				return tools.Fail(jobCtx, downloadErr.Error())
-			}
-			ledger.Downloaded(jobCtx, job.ID, assetID, i)
-			// FASE 0.2 (July 4 2026) silent-drop rewrite per
-			// PR-GODOBJ-14-WORKER-REGISTRY godlike/07 no-fake-availability:
-			// pre-PR the runner used `_ = tools.Progress(...)` which
-			// dropped the broker emit error without any observability.
-			if progErr := tools.Progress(jobCtx, 5+i, "staged input asset"); progErr != nil {
-				r.log.Warn("worker Progress emit failed (FASE 0.2 silent-drop rewrite)",
-					zap.String("job_id", job.ID),
-					zap.String("job_type", job.Type),
-					zap.Int("progress", 5+i),
-					zap.Error(progErr))
-				observability.WorkerProgressEmittedTotal.WithLabelValues(job.Type, "error").Inc()
-				observability.WorkerProgressErrorsTotal.WithLabelValues(job.Type, "broker_emit_failed").Inc()
-			} else {
-				observability.WorkerProgressEmittedTotal.WithLabelValues(job.Type, "success").Inc()
-			}
-			if err := checkRenew(); err != nil {
-				terminalErr = err
-				return tools.Fail(jobCtx, err.Error())
-			}
-		}
-	}
-
-	// Handler dispatch
-	handlerResult, err = r.registry.Dispatch(jobCtx, lease.Job, tools)
+// dispatchAndUpload runs the handler and, for artifact-producing job types,
+// uploads the manifest. Only artifact producers should attempt the upload:
+// non-artifact jobs (e.g. media.reindex) legitimately run with a nil assetClient
+// and a non-empty handlerResult, and calling uploadManifest for them would
+// fail an otherwise successful job with ErrArtifactClientRequired.
+func (r *Runner) dispatchAndUpload(jobCtx context.Context, lease *jobs.Lease, tools *Tools, attempt *leaseAttempt, renewal *leaseRenewal) (json.RawMessage, *kerneljob.RemoteArtifactManifest, error) {
+	result, err := r.registry.Dispatch(jobCtx, lease.Job, tools)
 	if err != nil {
-		terminalErr = err
-		return tools.Fail(jobCtx, err.Error())
+		return nil, nil, err
 	}
-	if err := checkRenew(); err != nil {
-		terminalErr = err
-		return tools.Fail(jobCtx, err.Error())
+	attempt.handlerResult = result
+	if err := renewal.check(); err != nil {
+		return nil, nil, err
 	}
 
-	// Manifest upload. Only artifact-producing job types should
-	// attempt to upload a manifest; non-artifact jobs (e.g.
-	// media.reindex) legitimately run with a nil assetClient and
-	// a non-empty handlerResult. Calling uploadManifest for those
-	// jobs would fail with ErrArtifactClientRequired and
-	// incorrectly terminal-fail an otherwise successful job.
-	//
-	// The typed nil pointer preserves the nil-check semantics:
-	// a typed-nil *RemoteArtifactManifest satisfies uploaded != nil
-	// correctly, unlike an interface-typed any which would treat a
-	// typed-nil pointer as non-nil.
+	// The typed nil pointer preserves the nil-check semantics: a typed-nil
+	// *RemoteArtifactManifest satisfies uploaded != nil correctly, unlike an
+	// interface-typed any which would treat a typed-nil pointer as non-nil.
 	var uploaded *kerneljob.RemoteArtifactManifest
 	if r.registry.ProducesArtifacts(lease.Job.Type) {
-		var upErr error
-		uploaded, upErr = r.uploadManifest(jobCtx, lease.Job.ID, handlerResult)
-		if upErr != nil {
-			terminalErr = upErr
-			return tools.Fail(jobCtx, upErr.Error())
+		uploaded, err = r.uploadManifest(jobCtx, lease.Job.ID, result)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
@@ -284,60 +367,41 @@ func (r *Runner) runLease(parent context.Context, lease *jobs.Lease) (retErr err
 	if uploaded != nil {
 		resultJSON, err = json.Marshal(uploaded)
 	} else {
-		resultJSON, err = json.Marshal(handlerResult)
+		resultJSON, err = json.Marshal(result)
 	}
 	if err != nil {
-		terminalErr = err
-		return tools.Fail(jobCtx, err.Error())
+		return nil, nil, err
 	}
-	if err := checkRenew(); err != nil {
-		terminalErr = err
-		return tools.Fail(jobCtx, err.Error())
+	if err := renewal.check(); err != nil {
+		return nil, nil, err
 	}
+	return resultJSON, uploaded, nil
+}
 
-	// Stop renewal BEFORE Complete so a final tick that lands while
-	// Complete is mid-flight doesn't try to flip a job we just
-	// terminal-reported.
-	renewCancel()
-	// P0 #5 (July 2026) — fail-closed seam: drain the renewal
-	// loop's error channel BEFORE calling tools.Complete.
-	if preCompleteErr := postRenewFailClosedCheck(renewErrs); preCompleteErr != nil {
-		return preCompleteErr
-	}
-
-	// AZIONE 7 (July 2026): branch on registry.ProducesArtifacts.
+// completeLease performs the terminal write. Artifact producers publish through
+// CompleteWithArtifacts and record the publication spine as
+// post_writer_finalize (mirrors the legacy Worker's RecordStage) so the finalize
+// wall time stays attributed instead of surfacing as unattributed time.
+func (r *Runner) completeLease(jobCtx context.Context, lease *jobs.Lease, tools *Tools, attempt *leaseAttempt, resultJSON json.RawMessage, uploaded *kerneljob.RemoteArtifactManifest) error {
 	if r.registry.ProducesArtifacts(lease.Job.Type) {
 		var publishedJSON json.RawMessage
 		if uploaded != nil {
+			var err error
 			publishedJSON, err = json.Marshal(uploaded)
 			if err != nil {
-				terminalErr = err
-				return tools.Fail(jobCtx, err.Error())
+				return err
 			}
 		}
 		finalizeStarted := time.Now().UTC()
 		canonicalAssetIDs, completeErr := tools.CompleteWithArtifacts(jobCtx, resultJSON, publishedJSON, nil)
-		// FASE 2 observability — finalize attribution: the artifact
-		// publication spine runs on the worker critical path but outside
-		// the dispatcher-owned stages. Record it as post_writer_finalize
-		// (mirrors the legacy Worker's RecordStage in
-		// worker_execution.go) so the finalize wall time — including the
-		// broker-side bounded-parallel Drive publication — stays
-		// attributed to the RunReport instead of surfacing as
-		// unattributed time.
 		kernobs.RecordStage(jobCtx, kernobs.StageInfo{
 			Stage: kernobs.StagePostWriterFinalize,
 		}, finalizeStarted, time.Now().UTC(), completeErr)
 		if completeErr != nil {
-			terminalErr = completeErr
 			return completeErr
 		}
-		ledger.RecordCanonicalOutputs(jobCtx, job.ID, jobs.OutputRelationForJobType(job.Type), canonicalAssetIDs)
+		attempt.ledger.RecordCanonicalOutputs(jobCtx, lease.Job.ID, jobs.OutputRelationForJobType(lease.Job.Type), canonicalAssetIDs)
 		return nil
 	}
-	if completeErr := tools.Complete(jobCtx, resultJSON); completeErr != nil {
-		terminalErr = completeErr
-		return completeErr
-	}
-	return nil
+	return tools.Complete(jobCtx, resultJSON)
 }

@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -68,6 +69,34 @@ func (h *Handler) handleListAssets(c *gin.Context) {
 		AssetState:     c.Query("asset_state"),
 		IndexState:     c.Query("index_state"),
 		Search:         c.Query("search"),
+	}
+
+	// Incremental-sync filters: a remote reader asks for the delta instead of
+	// re-downloading the whole catalog. Invalid values are a 400, never a
+	// silently dropped filter.
+	if raw := strings.TrimSpace(c.Query("updated_after")); raw != "" {
+		updatedAfter, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			apiutil.BadRequest(c, "updated_after must be an RFC3339 timestamp")
+			return
+		}
+		query.UpdatedAfter = &updatedAfter
+	}
+	for name, target := range map[string]**bool{
+		"has_embedding":  &query.HasEmbedding,
+		"has_drive_file": &query.HasDriveFile,
+		"has_speech":     &query.HasSpeech,
+	} {
+		raw := strings.TrimSpace(c.Query(name))
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			apiutil.BadRequest(c, name+" must be true or false")
+			return
+		}
+		*target = &value
 	}
 
 	if l := c.Query("limit"); l != "" {

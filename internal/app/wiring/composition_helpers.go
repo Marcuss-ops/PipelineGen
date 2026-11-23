@@ -16,6 +16,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
@@ -25,11 +26,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-)
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+
 	"strings"
+
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // registryCrossStepState carries dependencies produced by the internal-module

@@ -20,9 +20,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	assetstorage "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/storage"
 	"go.uber.org/zap"
-)
-import (
+
 	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/diagnostics"
+
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 

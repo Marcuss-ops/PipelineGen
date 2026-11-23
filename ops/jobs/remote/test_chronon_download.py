@@ -54,7 +54,7 @@ class DownloadAssetTest(unittest.TestCase):
     def test_download_verifies_sha256_and_returns_it(self) -> None:
         captured: dict[str, object] = {}
 
-        def fake_post(_self, path: str, extra_headers=None):
+        def fake_get(_self, path: str, extra_headers=None):
             captured["path"] = path
             captured["range"] = extra_headers
             return FakeResponse(
@@ -68,7 +68,7 @@ class DownloadAssetTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = os.path.join(directory, "clip.mp4")
             with mock.patch.object(chronon, "fetch_asset", return_value=self.asset), mock.patch.object(
-                chronon.Api, "post_stream_raw", fake_post
+                chronon.Api, "get_stream_raw", fake_get
             ):
                 size, content_type, digest = chronon.download_asset(
                     self.api, "yt_test", output
@@ -79,13 +79,13 @@ class DownloadAssetTest(unittest.TestCase):
             self.assertEqual(digest, self.asset["content_hash"])
             self.assertEqual(Path(output).read_bytes(), self.payload)
             self.assertIsNone(captured["range"])
-            self.assertIn("/api/v1/media/clips/youtube/clips/yt_test/download", captured["path"])
+            self.assertEqual("/api/v1/media/assets/yt_test/download", captured["path"])
 
     def test_resume_appends_from_part_file(self) -> None:
         prefix = self.payload[:7]
         captured: dict[str, object] = {}
 
-        def fake_post(_self, _path: str, extra_headers=None):
+        def fake_get(_self, _path: str, extra_headers=None):
             captured["range"] = extra_headers
             return FakeResponse(
                 self.payload[len(prefix):],
@@ -101,7 +101,7 @@ class DownloadAssetTest(unittest.TestCase):
             with open(output + ".part", "wb") as handle:
                 handle.write(prefix)
             with mock.patch.object(chronon, "fetch_asset", return_value=self.asset), mock.patch.object(
-                chronon.Api, "post_stream_raw", fake_post
+                chronon.Api, "get_stream_raw", fake_get
             ):
                 size, _content_type, digest = chronon.download_asset(
                     self.api, "yt_test", output, resume=True
@@ -115,7 +115,7 @@ class DownloadAssetTest(unittest.TestCase):
     def test_hash_mismatch_fails_closed(self) -> None:
         bad_asset = dict(self.asset, content_hash="0" * 64)
 
-        def fake_post(_self, _path: str, _extra_headers=None):
+        def fake_get(_self, _path: str, _extra_headers=None):
             return FakeResponse(
                 self.payload,
                 headers={
@@ -127,7 +127,7 @@ class DownloadAssetTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = os.path.join(directory, "clip.mp4")
             with mock.patch.object(chronon, "fetch_asset", return_value=bad_asset), mock.patch.object(
-                chronon.Api, "post_stream_raw", fake_post
+                chronon.Api, "get_stream_raw", fake_get
             ):
                 with self.assertRaises(SystemExit):
                     chronon.download_asset(self.api, "yt_test", output)

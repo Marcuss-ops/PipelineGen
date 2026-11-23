@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"path/filepath"
 	"strings"
 
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -73,7 +74,9 @@ func (uc *DownloadUseCase) Resolve(ctx context.Context, source, clipID string) (
 
 	// 1. Try local file
 	if clip.LocalPath() != "" {
-		ext := strings.ToLower(clip.LocalPath()[strings.LastIndex(clip.LocalPath(), "."):])
+		// filepath.Ext returns "" for a path with no dot instead of the
+		// [-1:] slice panic the previous LastIndex(".") form produced.
+		ext := strings.ToLower(filepath.Ext(clip.LocalPath()))
 		if !blockedExtensions[ext] {
 			return &DownloadResult{
 				Clip:      clip,

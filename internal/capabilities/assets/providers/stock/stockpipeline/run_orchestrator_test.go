@@ -105,18 +105,18 @@ func TestEffectiveExecutionBounds(t *testing.T) {
 // fan-out, which would suspend every worker forever.
 func TestOrchestratorConfigNormalizesUnsetExecutionBounds(t *testing.T) {
 	o := newStockPipeline(OrchestratorConfig{}, nil, nil, nil)
-	if o.cfg.MaxConcurrentJobs != DefaultMaxConcurrentJobs {
-		t.Fatalf("MaxConcurrentJobs = %d, want %d", o.cfg.MaxConcurrentJobs, DefaultMaxConcurrentJobs)
+	if o.Config().MaxConcurrentJobs != DefaultMaxConcurrentJobs {
+		t.Fatalf("MaxConcurrentJobs = %d, want %d", o.Config().MaxConcurrentJobs, DefaultMaxConcurrentJobs)
 	}
-	if o.cfg.MaxConcurrentDownloads != DefaultMaxConcurrentDownloads {
-		t.Fatalf("MaxConcurrentDownloads = %d, want %d", o.cfg.MaxConcurrentDownloads, DefaultMaxConcurrentDownloads)
+	if o.Config().MaxConcurrentDownloads != DefaultMaxConcurrentDownloads {
+		t.Fatalf("MaxConcurrentDownloads = %d, want %d", o.Config().MaxConcurrentDownloads, DefaultMaxConcurrentDownloads)
 	}
 
 	// Explicit values are preserved: only the <=0 "unset" case is normalized.
 	explicit := newStockPipeline(OrchestratorConfig{MaxConcurrentJobs: 2, MaxConcurrentDownloads: 9}, nil, nil, nil)
-	if explicit.cfg.MaxConcurrentJobs != 2 || explicit.cfg.MaxConcurrentDownloads != 9 {
+	if explicit.Config().MaxConcurrentJobs != 2 || explicit.Config().MaxConcurrentDownloads != 9 {
 		t.Fatalf("explicit bounds were rewritten: jobs=%d downloads=%d, want 2/9",
-			explicit.cfg.MaxConcurrentJobs, explicit.cfg.MaxConcurrentDownloads)
+			explicit.Config().MaxConcurrentJobs, explicit.Config().MaxConcurrentDownloads)
 	}
 }
 

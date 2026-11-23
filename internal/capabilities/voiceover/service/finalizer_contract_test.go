@@ -413,3 +413,43 @@ func TestFinalize_IndexOutbox_GuardedEmptyFileHash(t *testing.T) {
 	// Cleanup outbox (Step 6) MUST still execute independently.
 	require.Len(t, outbox.cleanupCalls, 1, "cleanup outbox MUST execute even when index outbox guard-skipped")
 }
+
+func TestVoiceoverRecordFromCommand_MapsCanonicalFields(t *testing.T) {
+	cmd := &FinalizeCommand{
+		ID: "vo-1", RequestID: "req-1", TextHash: "hash-1", Text: "testo",
+		Language: Language("it"), Voice: "it-IT-DiegoNeural", Filename: "scene.mp3",
+		LocalPath: "/tmp/scene.mp3", CleanedPath: "/tmp/scene.cleaned.mp3",
+		FolderID: "folder", FolderPath: "/tmp", DriveFileID: "drive-1",
+		DriveLink: "https://drive/1", DownloadLink: "https://download/1",
+		ContentSHA256: "abcdef", DurationSeconds: 12.5, Strategy: "replace",
+		MetaJSON: []byte(`{"k":"v"}`), IdempotencyKey: "idem-1", JobID: "job-1",
+		Fingerprint: "fp-1",
+	}
+
+	rec := voiceoverRecordFromCommand(cmd, "preview", "2026-11-23T10:00:00Z")
+
+	assert.Equal(t, "vo-1", rec.ID)
+	assert.Equal(t, "req-1", rec.RequestID)
+	assert.Equal(t, "hash-1", rec.TextHash)
+	assert.Equal(t, "preview", rec.TextPreview)
+	assert.Equal(t, "it", rec.Language)
+	assert.Equal(t, "it-IT-DiegoNeural", rec.Voice)
+	assert.Equal(t, "scene.mp3", rec.Filename)
+	assert.Equal(t, "/tmp/scene.mp3", rec.LocalPath)
+	assert.Equal(t, "/tmp/scene.cleaned.mp3", rec.CleanedPath)
+	assert.Equal(t, "folder", rec.FolderID)
+	assert.Equal(t, "/tmp", rec.FolderPath)
+	assert.Equal(t, "drive-1", rec.DriveFileID)
+	assert.Equal(t, "https://drive/1", rec.DriveLink)
+	assert.Equal(t, "https://download/1", rec.DownloadLink)
+	assert.Equal(t, "abcdef", rec.ContentSHA256)
+	assert.Equal(t, 12.5, rec.DurationSeconds)
+	assert.Equal(t, string(StatusGenerated), rec.Status)
+	assert.Equal(t, "replace", rec.Strategy)
+	assert.Equal(t, `{"k":"v"}`, rec.Metadata)
+	assert.Equal(t, "idem-1", rec.IdempotencyKey)
+	assert.Equal(t, "job-1", rec.JobID)
+	assert.Equal(t, "fp-1", rec.Fingerprint)
+	assert.Equal(t, "2026-11-23T10:00:00Z", rec.CreatedAt)
+	assert.Equal(t, rec.CreatedAt, rec.UpdatedAt)
+}

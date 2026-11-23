@@ -33,19 +33,20 @@ import (
 
 	"go.uber.org/zap"
 
+	"context"
+	"errors"
+
 	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	artifactstages "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifact_stages"
-)
 
-import (
-	"context"
-	"errors"
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	infacq "github.com/Marcuss-ops/PipelineGen/internal/platform/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+
 	"os"
 	"path/filepath"
+
+	infacq "github.com/Marcuss-ops/PipelineGen/internal/platform/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 )
 
 // BuildStagingBundle constructs the canonical FASE 3 Spina Dorsale

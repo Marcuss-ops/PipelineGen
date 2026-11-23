@@ -119,6 +119,16 @@ func TestSpeechTiming_AllWordsWithinFinalAudioDuration(t *testing.T) {
 	}
 }
 
+func TestBuildSpeechTimingArtifact_RejectsLargeProviderOverhang(t *testing.T) {
+	words := []SpeechWordTiming{
+		{Index: 0, StartUS: 0, EndUS: 400_000},
+		{Index: 1, StartUS: 400_000, EndUS: 3_000_000},
+	}
+	if _, err := BuildSpeechTimingArtifact("tts", "en", "voice", "text-sha", "audio-sha", 1_000_000, words); !errors.Is(err, ErrTimingPastAudioDuration) {
+		t.Fatalf("error = %v, want ErrTimingPastAudioDuration for a 2s overhang", err)
+	}
+}
+
 func TestSpeechTiming_JSONRoundTrip(t *testing.T) {
 	original := validSpeechTimingArtifact()
 	encoded, err := json.Marshal(original)

@@ -5,6 +5,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,24 +25,68 @@ func attachBuildIdentity(result *GenerateResult) {
 	}
 	identity := buildinfo.Current()
 	result.BinarySHA256 = strings.TrimSpace(identity.BinarySHA256)
-	result.RustRelease = currentRustRelease()
+	rust := currentRustReleaseIdentity()
+	result.RustRelease = rust.Version
+	result.RustGitSHA = rust.GitSHA
+	result.RustBinarySHA256 = rust.BinarySHA256
 }
 
-func currentRustRelease() string {
+// rustReleaseIdentity is the BrainRust provenance a durable result must carry:
+// the release version, the worktree commit the binary was built from and the
+// installed semantic-engine digest. The manifest is the primary source because
+// it is written by the same build that installs the binary; the legacy
+// .rust-release stamp is the fallback for hosts that only have version/git_sha.
+type rustReleaseIdentity struct {
+	Version      string
+	GitSHA       string
+	BinarySHA256 string
+}
+
+func currentRustReleaseIdentity() rustReleaseIdentity {
+	identity := rustReleaseIdentity{}
 	if release := strings.TrimSpace(os.Getenv("BRAINRUST_RELEASE")); release != "" {
-		return release
+		identity.Version = release
 	}
-	data, err := os.ReadFile(filepath.Join("bin", ".rust-release"))
-	if err != nil {
-		return ""
+	manifestPath := strings.TrimSpace(os.Getenv("BRAINRUST_RELEASE_MANIFEST"))
+	if manifestPath == "" {
+		manifestPath = filepath.Join("bin", "BRAINRUST_RELEASE.json")
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "version=") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "version="))
+	if data, err := os.ReadFile(manifestPath); err == nil {
+		var manifest struct {
+			Version  string            `json:"version"`
+			GitSHA   string            `json:"git_sha"`
+			Binaries map[string]string `json:"binaries"`
+		}
+		if err := json.Unmarshal(data, &manifest); err == nil {
+			if identity.Version == "" {
+				identity.Version = strings.TrimSpace(manifest.Version)
+			}
+			identity.GitSHA = strings.TrimSpace(manifest.GitSHA)
+			identity.BinarySHA256 = strings.ToLower(strings.TrimSpace(manifest.Binaries["semantic-engine"]))
 		}
 	}
-	return ""
+	if identity.Version == "" || identity.GitSHA == "" {
+		data, err := os.ReadFile(filepath.Join("bin", ".rust-release"))
+		if err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+				if !ok {
+					continue
+				}
+				switch strings.TrimSpace(key) {
+				case "version":
+					if identity.Version == "" {
+						identity.Version = strings.TrimSpace(value)
+					}
+				case "git_sha":
+					if identity.GitSHA == "" {
+						identity.GitSHA = strings.TrimSpace(value)
+					}
+				}
+			}
+		}
+	}
+	return identity
 }
 
 // vidRushEntityImageOwnsDiscovery names the one owner of entity-image query

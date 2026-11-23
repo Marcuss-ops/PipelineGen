@@ -209,8 +209,12 @@ resolved through the same audio asset registry as `audio.sound_effects`:
 }]
 ```
 
-`gain_db` is `-96..24`; `duration_ms` is optional and clamped to the image's
-visible window. Within a scene, cues attach to that scene's image items in
+`asset_id` accepts any effect id from the indexed library (see
+`ops/jobs/sfx_index.json`; refresh it with `bin/admin index-sound-effects-drive
+-apply`). `gain_db` is `-96..24`; `duration_ms` is optional, capped at 60 s and
+clamped to the image's visible window. The cue fires **once at the start of the
+clip**: an image chain is one clip, so its internal segment boundaries never
+repeat the effect. Within a scene, cues attach to that scene's image items in
 declaration order and start-time order; a scene that declares more cues than
 image items fails the run rather than dropping a cue.
 
@@ -595,11 +599,16 @@ RenderingGen.
 overlay at the beginning of each real video clip (synthetic freeze tails are
 skipped). Light leaks on image overlays can be selected with an `image` motion
 directive and a `lightleak_*` motion ID. Pair clip-start accents with
-`audio.random_sfx_on_clip_start` for a deterministic whoosh, or use explicit
-`audio.sound_effects` to place a chosen SFX; image overlay SFX are chosen per
-image with `overlay_images[].sound_effect`, while
+`audio.random_sfx_on_clip_start` for a deterministic cue at each clip start, or
+use explicit `audio.sound_effects` to place a chosen SFX; image overlay SFX are
+chosen per image with `overlay_images[].sound_effect`, while
 `audio.random_sfx_on_image_overlay` remains the deterministic random fallback
-for images the payload leaves unclaimed. `random_image_effects: true` is the
+for images the payload leaves unclaimed. Both random lanes select from the
+indexed effect families (`whoosh`, `transition`, `impact`, `riser`, `foley`,
+`photo`, `ui`) in `ops/jobs/sfx_index.json`, so a run no longer repeats the
+same three whooshes;
+the selection is content-addressed, therefore a retry picks the same cue. An
+unindexed deployment keeps the built-in whoosh aliases as the fallback. `random_image_effects: true` is the
 visual counterpart: each image overlay gets one deterministic yes/no draw and,
 when it says yes, one light EffectsPack-derived treatment (native effect type,
 light parameters, per-image grain seed) attached as that image's `effects`

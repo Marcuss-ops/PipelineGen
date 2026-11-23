@@ -156,6 +156,47 @@ func ReadTokenFile(path string) (string, error) {
 	return "", fmt.Errorf("remote master credentials file has no VELOX_M2M_SECRET")
 }
 
+// ErrJobNotCancellable reports that the Master refused a cancel because the
+// job already reached a terminal state. The caller must re-read the status
+// instead of treating the refusal as a transport failure: the render may have
+// SUCCEEDED while the cancel was in flight.
+var ErrJobNotCancellable = errors.New("remote job is not cancellable")
+
+// Cancel asks the Master to stop a job that is still active. 200/202/204 mean
+// the cancellation was accepted; 409 means the job already finished, which is
+// the race the local-cancel reconciler resolves by polling again.
+func (c *Client) Cancel(ctx context.Context, jobID string) error {
+	if err := c.ready(); err != nil {
+		return err
+	}
+	id := strings.TrimSpace(jobID)
+	if id == "" {
+		return fmt.Errorf("remote cancel requires a job id")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.BaseURL+"/api/v1/jobs/"+url.PathEscape(id), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("cancel remote job %s: %w", id, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	detail := strings.TrimSpace(string(data))
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusAccepted, http.StatusNoContent:
+		return nil
+	case http.StatusConflict:
+		return fmt.Errorf("cancel remote job %s: %w: %s", id, ErrJobNotCancellable, detail)
+	case http.StatusNotFound:
+		return fmt.Errorf("cancel remote job %s: job not found: %s", id, detail)
+	default:
+		return fmt.Errorf("cancel remote job %s: HTTP %d: %s", id, resp.StatusCode, detail)
+	}
+}
+
 func (c *Client) ready() error {
 	if c == nil || c.HTTP == nil || c.BaseURL == "" || c.Token == "" {
 		return fmt.Errorf("remote job client is not configured")

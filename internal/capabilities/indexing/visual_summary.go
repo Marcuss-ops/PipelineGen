@@ -135,18 +135,12 @@ var (
 // ── Port types ────────────────────────────────────────────────────
 
 // VLMJobConfig is the canonical request shape for one
-// frame-sampler + VLM invocation pass on ONE asset's local_path.
-// All fields except AssetID and LocalPath have audit-stable defaults
-// (the Default* consts above).
+// frame-sampler + VLM invocation pass on ONE asset. All fields except
+// AssetID have audit-stable defaults (the Default* consts above).
 type VLMJobConfig struct {
 	// AssetID is the canonical media_assets.id — the
 	// primary key of the VisualSummary row.
 	AssetID string
-
-	// LocalPath is the absolute filesystem path to the source
-	// media (mp4 / mov / wav / png / ...).
-	// Used by FFmpeg.Probe + FFmpeg.ExtractFrame.
-	LocalPath string
 
 	// IntervalSeconds is the per-frame cadence. Must be > 0;
 	// defaults to DefaultVLMFrameIntervalSeconds when zero.

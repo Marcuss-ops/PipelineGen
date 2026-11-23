@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"

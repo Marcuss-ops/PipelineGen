@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	wiringaudio "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/audio"
-	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
-	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
+	wiringaudio "github.com/Marcuss-ops/PipelineGen/internal/app/modules/audio"
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/voiceover"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -135,7 +135,13 @@ func wireScriptGenerationAudioAssets(runner *scriptgen.Runner, cfg *config.Confi
 		}
 		finalAudioDriveGate = root.DriveUploadGate
 	}
-	runner.SetFinalAudioPublisher(vowiring.NewFinalAudioPublisher(finalAudioDB, finalAudioDrivePublisher, committer, finalAudioDriveGate, log))
+	runner.SetFinalAudioPublisher(vowiring.NewFinalAudioPublisher(vowiring.FinalAudioPublisherDeps{
+		DB:        finalAudioDB,
+		Publisher: finalAudioDrivePublisher,
+		Committer: committer,
+		Gate:      finalAudioDriveGate,
+		Log:       log,
+	}))
 	if cfg != nil {
 		// Cross-run reuse of a certified master: the audio plan hash is the work
 		// identity, so an unchanged plan must not be re-mixed and re-encoded.
@@ -195,7 +201,11 @@ func wireScriptGenerationMediaPreflight(runner *scriptgen.Runner, cfg *config.Co
 	if vidRushProviders != nil {
 		providerAvailability = mediasub.NewVidRushProviderAvailabilityProbe(vidRushProviders)
 	}
-	runner.SetMediaPreflight(mediasub.NewPreflightWithProviderAvailability(assetLookup, nil, nil, imageProviderHealth, providerAvailability))
+	runner.SetMediaPreflight(mediasub.NewPreflight(mediasub.PreflightDeps{
+		Assets:               assetLookup,
+		ImageProviderHealth:  imageProviderHealth,
+		ProviderAvailability: providerAvailability,
+	}))
 	if assetLookup != nil {
 		var driveReader drive.Reader
 		if root.Drive != nil {
@@ -206,12 +216,25 @@ func wireScriptGenerationMediaPreflight(runner *scriptgen.Runner, cfg *config.Co
 		if matErr != nil {
 			return fmt.Errorf("audio asset resolver: wire canonical materializer: %w", matErr)
 		}
-		audioAdapter := wiringaudio.NewAudioAssetSourceAdapter(assetLookup, canonical)
+		// The indexed SFX library (media SSOT) feeds the clip-start/overlay
+		// selection pool. Without it the selector keeps the built-in whoosh
+		// aliases, so an unindexed deployment never fails here.
+		var sfxPool wiringaudio.SoundEffectCandidateLister
+		if root.MediaPostgres != nil {
+			sfxPool = wiringaudio.NewPostgresSoundEffectPool(root.MediaPostgres)
+		}
+		audioAdapter := wiringaudio.NewAudioAssetSourceAdapter(assetLookup, canonical, sfxPool)
 		runner.SetAudioAssetSource(audioAdapter)
 		runner.SetOverlayBackgroundSource(audioAdapter)
 		// Add canonical audio resolvers to the already-wired preflight without
 		// changing its unconditional provider-availability check.
-		runner.SetMediaPreflight(mediasub.NewPreflightWithProviderAvailability(assetLookup, audioAdapter, audioAdapter, imageProviderHealth, providerAvailability))
+		runner.SetMediaPreflight(mediasub.NewPreflight(mediasub.PreflightDeps{
+			Assets:               assetLookup,
+			AudioAssetSource:     audioAdapter,
+			ClipAudioAssetSource: audioAdapter,
+			ImageProviderHealth:  imageProviderHealth,
+			ProviderAvailability: providerAvailability,
+		}))
 		log.Info("audio asset resolver wired (BGM/SFX asset_id → local path) including P0.5 media preflight adapter")
 	} else {
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")

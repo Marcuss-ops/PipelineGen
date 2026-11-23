@@ -24,19 +24,18 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-)
-import (
+
 	artifactfinalize "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifact_finalize"
-)
-import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+
 	voservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
+
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )

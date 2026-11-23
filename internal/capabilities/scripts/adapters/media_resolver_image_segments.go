@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
+
 	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/metrics"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -380,7 +382,7 @@ func (p *MediaResolverImageStage) finalizeInternetImageQuery(
 	}
 	// Cached/provider candidates arrive PRE-verification: stamp the
 	// durable catalog verdicts first so a warm reuse skips the download
-	// + VLM call (the allCandidatesHaveReusableVerdict fast path in
+	// + VLM call (the imagegate.AllCandidatesHaveReusableVerdict fast path in
 	// scoreInternetImageCandidates then serves the whole batch).
 	aliasGraph := segmentPersonAliasGraph(updated)
 	if personIdentityQuery {
@@ -414,7 +416,7 @@ func (p *MediaResolverImageStage) finalizeInternetImageQuery(
 		// documented fail-open discovery contract and leaves the rows
 		// pending for downstream verification; the catalog still refuses
 		// to reuse them until a real verdict exists.
-		qr.candidates = filterVerifiedPersonImageCandidates(qr.candidates)
+		qr.candidates = imagegate.FilterVerifiedPersonImageCandidates(qr.candidates)
 	}
 	recordEntityImageVisualOutcomes(p.metrics, qr.candidates, scoreErr)
 	qr.candidates = filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(qr.candidates, qr.query)))

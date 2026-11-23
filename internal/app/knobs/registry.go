@@ -73,7 +73,7 @@ type Knob struct {
 var registry = []Knob{
 	{
 		Name: "VELOX_ARTIFACT_TOKEN", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script/remote_final_job.go",
+		Owner:          "internal/app/modules/script/remote_final_job.go",
 		SafeProduction: "unset (or artifact-store token)",
 		Description:    "Bearer token used by remote_final_job when downloading artifacts from the artifact store.",
 	},
@@ -109,7 +109,7 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_EDITORIAL_BACKGROUNDS_DIR", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/media/editorial_assets_bootstrap.go",
+		Owner:          "internal/app/modules/media/editorial_assets_bootstrap.go",
 		SafeProduction: "unset (plates are fetched and verified from Drive)",
 		Description:    "Local directory of certified editorial plate fixtures; an optimization, not the authority.",
 	},
@@ -121,7 +121,7 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FAKE_FINAL_JOB", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script/fake_final_job.go",
+		Owner:          "internal/app/modules/script/fake_final_job.go",
 		SafeProduction: "unset",
 		Description:    "Simulate the remote final-job handoff so a run measures only the local pipeline.",
 	},
@@ -133,13 +133,13 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FINAL_AUDIO_CACHE_DIR", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script_generation_bindings.go",
+		Owner:          "internal/app/modules/script_generation_bindings.go",
 		SafeProduction: "unset (default cache root)",
 		Description:    "Relocates the per-run final-audio cache.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_ATTACH_SECONDS", Kind: KindEnv, Default: "3000",
-		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
+		Owner:          "internal/app/modules/script/remote_final_job_config.go",
 		SafeProduction: "3000",
 		Description:    "Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait).",
 	},
@@ -151,13 +151,13 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FINAL_JOB_CREDENTIALS_FILE", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
+		Owner:          "internal/app/modules/script/remote_final_job_config.go",
 		SafeProduction: "/etc/pipelinegen/final_job_credentials.json",
 		Description:    "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_DUMP_DIR", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script/remote_final_job.go",
+		Owner:          "internal/app/modules/script/remote_final_job.go",
 		SafeProduction: "unset",
 		Description:    "Optional directory that keeps the exact final-job prepare/finalize envelopes for diagnosis (off by default; may contain payload text).",
 	},
@@ -169,13 +169,13 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FINAL_JOB_M2M_SECRET", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
+		Owner:          "internal/app/modules/script/remote_final_job_config.go",
 		SafeProduction: "64-hex secret from the host env file",
 		Description:    "Per-client bearer secret for job.submit against the Master.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_MASTER_URL", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
+		Owner:          "internal/app/modules/script/remote_final_job_config.go",
 		SafeProduction: "https://<master-host>",
 		Description:    "Master URL for the remote final-job handoff; unset falls back to the configured base URL.",
 	},
@@ -187,20 +187,20 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FINAL_JOB_QUEUE_SECONDS", Kind: KindEnv, Default: "180",
-		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
+		Owner:          "internal/app/modules/script/remote_final_job_config.go",
 		SafeProduction: "180",
 		Description:    "How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget).",
 	},
 
 	{
 		Name: "VELOX_FINAL_JOB_WORKER_ID", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script/remote_final_job_config.go",
+		Owner:          "internal/app/modules/script/remote_final_job_config.go",
 		SafeProduction: "unset (Master places the job)",
 		Description:    "Pins the handoff to one worker; the retired worker-51 id is rejected loudly.",
 	},
 	{
 		Name: "VELOX_MASTER_ADMIN_TOKEN", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/script/remote_final_job.go",
+		Owner:          "internal/app/modules/script/remote_final_job.go",
 		SafeProduction: "unset (or Master admin token)",
 		Description:    "Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset.",
 	},
@@ -230,7 +230,7 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_RUST_MEDIASAMPLER_PATH", Kind: KindEnv, Default: "bin/mediasampler",
-		Owner:          "internal/app/wiring/media_pool_ranker.go",
+		Owner:          "internal/app/modules/media_pool_ranker.go",
 		SafeProduction: "bin/mediasampler",
 		Description:    "Rust mediasampler worker used by the canonical media ranker (rank_candidates).",
 	},

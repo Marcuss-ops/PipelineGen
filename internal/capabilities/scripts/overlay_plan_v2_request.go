@@ -55,6 +55,7 @@ func buildOverlayPlanV2Request(
 	if err != nil {
 		return overlayplan.V2Request{}, err
 	}
+	media := overlayPlanMedia(result, language, sceneInputs)
 	request := overlayplan.V2Request{
 		Operation:      "compile_editorial_plan",
 		SchemaVersion:  overlayplan.SchemaVersionV2,
@@ -64,8 +65,8 @@ func buildOverlayPlanV2Request(
 		Seal:           overlayPlanSeal(result, canvas, timelineBounds),
 		Canvas:         canvasWire,
 		Scenes:         make([]overlayplan.Scene, 0, len(timedScenes)),
-		EntityTimeline: overlayPlanEntityTimeline(result, language, projectID, timelineBounds),
-		Media:          overlayPlanMedia(result, language, sceneInputs),
+		EntityTimeline: overlayPlanEntityTimeline(result, language, projectID, timelineBounds, overlayPlanCanonicalEntityIDs(result, media)),
+		Media:          media,
 		ImagePlan:      imagePlan,
 		Budgets:        overlayPlanBudgets(canvas),
 		SceneWindows:   make(map[string][2]int64, len(timedScenes)),
@@ -311,10 +312,10 @@ func compileOverlayPlanV2(
 			}
 		}
 	}
-	// A promoted card's portrait is not a scene image, so the scene loop above
-	// never sees it. Reattach its already-materialized cache location from the
-	// same bundle that resolved it.
-	for sha, ref := range promotableLocalPaths(result) {
+	// An entity portrait is not a scene image, so the scene loop above never
+	// sees it. Reattach its already-materialized cache location from the same
+	// unified surface (bundle or annotation binding) that resolved it.
+	for sha, ref := range entityAssetLocalPaths(result) {
 		if _, exists := localBySHA[sha]; !exists {
 			localBySHA[sha] = ref
 		}

@@ -47,7 +47,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
-	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"

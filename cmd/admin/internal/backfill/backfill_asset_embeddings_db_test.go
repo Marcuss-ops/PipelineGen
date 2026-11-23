@@ -7,15 +7,15 @@ import (
 	"testing"
 
 	indexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing/backfill"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 )
 
 type embeddingCandidateSourceStub struct {
-	rows []pgmedia.EmbeddingCandidate
+	rows []pgbackfill.EmbeddingCandidate
 }
 
-func (s *embeddingCandidateSourceStub) ListEmbeddingBackfillCandidates(_ context.Context, q pgmedia.EmbeddingCandidateQuery) ([]pgmedia.EmbeddingCandidate, error) {
-	rows := make([]pgmedia.EmbeddingCandidate, 0, len(s.rows))
+func (s *embeddingCandidateSourceStub) ListEmbeddingBackfillCandidates(_ context.Context, q pgbackfill.EmbeddingCandidateQuery) ([]pgbackfill.EmbeddingCandidate, error) {
+	rows := make([]pgbackfill.EmbeddingCandidate, 0, len(s.rows))
 	for _, row := range s.rows {
 		if q.Source != "" && row.Source != q.Source {
 			continue
@@ -32,12 +32,12 @@ func (s *embeddingCandidateSourceStub) ListEmbeddingBackfillCandidates(_ context
 	return rows, nil
 }
 
-func (s *embeddingCandidateSourceStub) ListEmbeddingCandidatesByID(_ context.Context, ids []string) ([]pgmedia.EmbeddingCandidate, error) {
+func (s *embeddingCandidateSourceStub) ListEmbeddingCandidatesByID(_ context.Context, ids []string) ([]pgbackfill.EmbeddingCandidate, error) {
 	wanted := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
 		wanted[id] = struct{}{}
 	}
-	rows := make([]pgmedia.EmbeddingCandidate, 0, len(ids))
+	rows := make([]pgbackfill.EmbeddingCandidate, 0, len(ids))
 	for _, row := range s.rows {
 		if _, ok := wanted[row.ID]; ok {
 			rows = append(rows, row)
@@ -48,7 +48,7 @@ func (s *embeddingCandidateSourceStub) ListEmbeddingCandidatesByID(_ context.Con
 }
 
 func seedEmbeddingCandidate(s *embeddingCandidateSourceStub, id, source string, hasText, hasTranscript, hasVisual, hasAudio bool) {
-	s.rows = append(s.rows, pgmedia.EmbeddingCandidate{
+	s.rows = append(s.rows, pgbackfill.EmbeddingCandidate{
 		ID:            id,
 		Source:        source,
 		MediaType:     "video",

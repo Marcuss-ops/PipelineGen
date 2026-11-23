@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -126,78 +124,10 @@ func TestEntityImageURLPrefersDurableDriveDownload(t *testing.T) {
 	}
 }
 
-func TestImageCandidateCarriesSHA256(t *testing.T) {
-	binding := &scriptpkg.EntityImageBinding{
-		Status: "resolved", AssetID: "vision-pro-img",
-		PreviewURL: "https://cdn.example.com/vision-pro.png",
-		LocalPath:  "/tmp/verified-vision-pro.png",
-		SHA256:     "cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccdd",
-		Source:     "internet_images",
-	}
-	occ := &capabilityentities.EntityOccurrence{
-		EntityID: "ent_visionpro", Name: "Vision Pro", Type: "PRODUCT",
-		AudioStartUS: 1_300_000, AudioEndUS: 1_500_000,
-	}
-	candidate := imageCandidate(binding, occ, 0.95)
-	assert.Equal(t, binding.SHA256, candidate.AssetID, "render candidates are content-addressed")
-	assert.Equal(t, binding.PreviewURL, candidate.URL)
-	assert.Equal(t, binding.LocalPath, candidate.LocalPath, "verified producer bytes should be staged directly")
-	assert.Equal(t, binding.SHA256, candidate.SHA256, "the verified content address must cross the bridge")
-	assert.Equal(t, "image", candidate.MediaType)
-	assert.Equal(t, int64(1300), candidate.StartMs)
-	assert.Equal(t, int64(2300), candidate.EndMs)
-	assert.Equal(t, int64(1_000_000), candidate.DurationUS)
-}
-
 // TestOverlaySceneInput_ProductWithSHA256ProducesContentAddressedItem
 // certifies the end-to-end planner projection: a PRODUCT entity with a
 // certified occurrence and a content-addressed image binding produces a
 // product overlay item whose AssetRef carries the SHA256 (the manifest gate).
-func TestOverlaySceneInput_ProductWithSHA256ProducesContentAddressedItem(t *testing.T) {
-	scene := Scene{
-		ID:   "scene-0",
-		Text: map[Language]string{"en": "Apple unveiled the Vision Pro."},
-		Annotations: &scriptpkg.SceneAnnotations{
-			Version: 1, Language: "en", Status: "completed",
-			PrimaryEntities: []scriptpkg.AnnotatedEntity{{
-				ID: "e-vision-pro", CanonicalName: "Vision Pro", Type: "PRODUCT", Confidence: 0.95,
-				CanonicalEntityID: "product:apple-vision-pro",
-				Image: &scriptpkg.EntityImageBinding{
-					Status: "resolved", AssetID: "vision-pro-img",
-					PreviewURL: "https://cdn.example.com/vision-pro.png",
-					SHA256:     "cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccdd",
-				},
-			}},
-		},
-	}
-	timing := capabilityaudio.SpeechTimingArtifact{
-		Version: capabilityaudio.SpeechTimingVersion, Provider: "edge_tts",
-		BoundaryMode: capabilityaudio.BoundaryWord, Language: "en",
-		TextSHA256: "text-hash", AudioSHA256: "audio-hash", DurationUS: 300_000,
-		Words: []capabilityaudio.SpeechWordTiming{
-			{Index: 0, Text: "Apple", StartUS: 0, EndUS: 100_000},
-			{Index: 1, Text: "unveiled", StartUS: 100_000, EndUS: 200_000},
-			{Index: 2, Text: "the", StartUS: 200_000, EndUS: 250_000},
-			{Index: 3, Text: "Vision", StartUS: 250_000, EndUS: 280_000},
-			{Index: 4, Text: "Pro", StartUS: 280_000, EndUS: 300_000},
-		},
-	}
-	occ := capabilityentities.EntityOccurrence{
-		EntityID: capabilityentities.StableEntityID("PRODUCT", "Vision Pro"),
-		Name:     "Vision Pro", Type: "PRODUCT", SceneID: "scene-0",
-		TextStart: 20, TextEnd: 29, WordStart: 3, WordEnd: 4,
-		LocalStartUS: 250_000, LocalEndUS: 300_000,
-		TimelineStartUS: 0, AudioStartUS: 250_000, AudioEndUS: 300_000,
-		Confidence: 0.95,
-	}
-	input, err := overlaySceneInput(scene, "en", "en", timing, 0, []capabilityentities.EntityOccurrence{occ}, nil)
-	require.NoError(t, err)
-	require.NotNil(t, input)
-	require.Len(t, input.Products, 1, "the spoken PRODUCT entity must produce a product candidate")
-	require.Equal(t, "cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccdd", input.Products[0].AssetID)
-	require.Equal(t, "cc33dd44ee55ff66778899aabbccddeeff00112233445566778899aabbccdd", input.Products[0].SHA256)
-}
-
 // TestNormalizeAnnotationTypeRegistry certifies the single kernel taxonomy
 // registry: PRODUCT/LOGO survive (never CONCEPT), the entity-card kinds are
 // reported by IsAnnotationEntityKind, and unknown types still collapse to

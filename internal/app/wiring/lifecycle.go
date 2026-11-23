@@ -7,7 +7,7 @@
 // root.Outbox, root.Jobs, root.Domains.RealtimeService, etc.
 //
 // PR4.8 (June 2026): the typed job-runner lifecycle (construction +
-// START/STOP closure) now lives in internal/app/wiring/lifecycle/jobrunner.go;
+// START/STOP closure) now lives in internal/app/modules/lifecycle/jobrunner.go;
 // this file adapts ComposeRoot dependencies into that typed module. startBackgroundJobs is now
 // orchestrator-only — the "var jobRunner := appjobs.NewRunner(...) +
 // inline StartupStep literal" pattern is replaced by a single typed
@@ -57,8 +57,8 @@ package wiring
 import (
 	"context"
 
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
-	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/lifecycle"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
@@ -242,7 +242,7 @@ var ErrCapabilityDisabled = lifecyclewiring.ErrCapabilityDisabled
 // The startupPlan field encodes every background worker, scanner, monitor,
 // sweeper, and the job runner as a StartupStep so zero goroutines start
 // during composition. The job-runner StartupStep is built by
-// internal/app/wiring/lifecycle/jobrunner.go::BuildJobRunnerStep (PR4.8) and
+// internal/app/modules/lifecycle/jobrunner.go::BuildJobRunnerStep (PR4.8) and
 // is appended LAST in the plan (asserted by TestLifecycle_JobRunnerLast
 // in internal/app/lifecycle_test.go).
 type backgroundJobs struct {

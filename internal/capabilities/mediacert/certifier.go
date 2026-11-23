@@ -27,7 +27,9 @@ func Certify(spec Spec, result MediaResult) Report {
 		if cr.Name == CheckSceneIdentity && len(spec.SegmentsExpected) == 0 {
 			cr = ruleImplicitSceneIdentity(result)
 		}
-		if !cr.Passed {
+		// A skipped check is not applicable, not a failure. Every applicable
+		// check still has to pass for CERTIFIED=true.
+		if !cr.Skipped && !cr.Passed {
 			allPassed = false
 		}
 		checks = append(checks, cr)

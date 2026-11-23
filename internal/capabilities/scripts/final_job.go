@@ -56,6 +56,25 @@ type FinalJobAttacher interface {
 	AttachFinalJob(ctx context.Context, jobID string, waitToCompletion bool) (RemoteFinalJobResult, error)
 }
 
+// FinalJobStater is the OPTIONAL read-only half used when a local cancel
+// interrupts an attach: one status read decides whether the Master finished a
+// render that must be adopted instead of discarded.
+type FinalJobStater interface {
+	FinalJobStatus(ctx context.Context, jobID string) (RemoteFinalJobResult, error)
+}
+
+// FinalJobCanceller is the OPTIONAL stop half: a job that is still active when
+// the local run is cancelled is stopped remotely, so the two sides cannot
+// diverge by a render that completes after the local CANCELLED.
+type FinalJobCanceller interface {
+	CancelFinalJob(ctx context.Context, jobID string) error
+}
+
+// ErrFinalJobCancelRejected reports that the Master reached a terminal state
+// before the remote cancel: the reconciler re-reads the status and adopts a
+// SUCCEEDED artifact instead of reporting the race as a failure.
+var ErrFinalJobCancelRejected = errors.New("remote final job finished before cancel")
+
 // RemoteFinalJobResult is the durable receipt for the two-stage remote job.
 type RemoteFinalJobResult struct {
 	JobID  string `json:"job_id"`

@@ -64,6 +64,7 @@ var videoEncoderPolicyAllowPrefixes = []string{
 	// Declarative policy owners: the stock pipeline and map profiles define
 	// default codec values, not a call-site encoder selection.
 	"internal/capabilities/assets/providers/stock/stockpipeline/service_types.go",
+	"internal/capabilities/assets/providers/stock/stockpipeline/core/config.go",
 	"internal/capabilities/overlays/map_encode_profile.go",
 	// The fragment pipeline resolves p.policy.Codec for the actual argv and
 	// pins libx264 only as the certification constraint.

@@ -15,11 +15,13 @@ package scriptgeneration
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -451,15 +453,14 @@ func lookupOverlayIntent(index map[string]capmodel.OverlayIntent, sceneID, stabl
 }
 
 // OverlayArtifactRef is the reference to a rendered overlay artifact
-// that gets included in the editing timeline. It carries the identity,
-// timing, and Drive publication references.
+// that gets included in the editing timeline. It carries the identity
+// and timing; the location lives in the canonical asset_locations row.
 type OverlayArtifactRef struct {
 	ArtifactID string `json:"artifact_id"`
 	SceneID    string `json:"scene_id"`
 	TemplateID string `json:"template_id"`
 	StartUS    int64  `json:"start_us"`
 	EndUS      int64  `json:"end_us"`
-	DriveLink  string `json:"drive_link,omitempty"`
 	SHA256     string `json:"sha256"`
 	// MediaContract is the contract ID this artifact was validated against.
 	MediaContract string `json:"media_contract"`
@@ -483,6 +484,36 @@ func planOverlayIntentsForAnnotations(snapshot []sceneTextSnapshot, annotations 
 	return capmodel.PlanOverlayIntents(inputs, registry)
 }
 
+// entityIntentExcludedTypes are the annotation families that never author an
+// entity intent. DATE/TIME/NUMBER/MONEY/PERCENT belong to the planner's
+// numeric lane: admitting them here only creates unresolved intents that can
+// never become an entity card (TICKET-49).
+var entityIntentExcludedTypes = map[string]struct{}{
+	entitytype.Date:    {},
+	entitytype.Time:    {},
+	entitytype.Number:  {},
+	entitytype.Money:   {},
+	entitytype.Percent: {},
+}
+
+// slugUUIDPattern matches the UUID tail of a URL/slug. An extracted "entity"
+// that carries one is a tokenization artifact, not a canonical identity.
+var slugUUIDPattern = regexp.MustCompile(`(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
+// entityIntentEligible is the admission gate for one annotation entity. It
+// keeps the numeric families in their own lane and rejects slug/UUID
+// fragments; every other type keeps the existing type -> template contract.
+func entityIntentEligible(entity scriptpkg.AnnotatedEntity) bool {
+	name := strings.TrimSpace(entity.CanonicalName)
+	if name == "" {
+		return false
+	}
+	if _, excluded := entityIntentExcludedTypes[entitytype.Fold(entity.Type)]; excluded {
+		return false
+	}
+	return !slugUUIDPattern.MatchString(name)
+}
+
 // sceneEntityInput projects one scene's grounded annotations onto the neutral
 // input types the overlay planner consumes. It returns false when the scene
 // has no annotations (or no derivable entities/phrases/words), so the caller
@@ -493,6 +524,9 @@ func sceneEntityInput(sceneID string, sceneIndex int, ann *scriptpkg.SceneAnnota
 	}
 	var entities []capmodel.EntityOverlayInput
 	appendEntity := func(entity scriptpkg.AnnotatedEntity) {
+		if !entityIntentEligible(entity) {
+			return
+		}
 		name := strings.TrimSpace(entity.CanonicalName)
 		if name == "" {
 			return

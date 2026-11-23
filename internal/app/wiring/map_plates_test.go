@@ -3,8 +3,6 @@ package wiring
 import (
 	"bytes"
 	"context"
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"image"
 	"image/png"
 	"net/http"
@@ -12,6 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"go.uber.org/zap"
 

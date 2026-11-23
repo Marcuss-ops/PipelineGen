@@ -115,10 +115,11 @@ func buildEditorialManifest(req GenerateRequest, inputs []scriptpkg.SceneAnalysi
 	return m
 }
 
-// Clip-backed narrator intros are intentionally short-form. Keep a small
-// floor to reject empty/placeholders without imposing long-form documentary
-// minimums on an 18-word target scene.
-const minimumClipSceneWords = 12
+// The narration word floor lives in the kernel (script.MinimumClipSceneWords)
+// so the ingress, `velox preflight` and this runner can never disagree about
+// it. Clip-backed narrator intros and no_voiceover cutaways are exempted by
+// script.NarrationFloorForScene; the former constant was the drift that let a
+// ten-word narration pass every static check and die here after scheduling.
 
 // outputFromScenes builds the single durable BODY narration projection from
 // the ordered scene list. The requested source language wins; a first
@@ -314,18 +315,17 @@ func (r *Runner) validateClipSceneOutput(ctx context.Context, runID string, req 
 		if scene.NativeClip || scene.ExecutionMode.IsFixedMedia() {
 			continue
 		}
-		// Short authored intro lines intentionally use only a few words. They
-		// are fixed copy supplied by the producer, so retain the standard floor
-		// for generated narration while allowing concise intro copy through.
-		minimumWords := minimumClipSceneWords
-		for _, segment := range req.ScriptParams.Segments {
-			if segment.ID == scene.ID && strings.EqualFold(strings.TrimSpace(segment.Kind), "intro") {
-				minimumWords = 1
-				break
-			}
+		// Short authored intro lines intentionally use only a few words and
+		// no_voiceover cutaways have no narration surface: the kernel contract
+		// returns zero for both. Every other scene keeps the canonical floor.
+		minimumWords := scriptpkg.NarrationFloorForScene(req.ScriptParams.Segments, scene.ID)
+		if minimumWords == 0 {
+			// Exempt from the long-form floor, not from having copy at all:
+			// one word is enough for an intro, zero is still a placeholder.
+			minimumWords = 1
 		}
 		text := strings.TrimSpace(scene.Text[req.SourceLanguage])
-		words := len(strings.Fields(text))
+		words := scriptpkg.WordCount(text)
 		lower := strings.ToLower(text)
 		placeholder := text == "" || words < minimumWords || lower == fmt.Sprintf("scene %d", i+1) || lower == "the"
 		if placeholder || contaminatedClipNarration(text) {

@@ -451,9 +451,11 @@ func (w *Worker) handleSequence(ctx context.Context, j *job.Job, tools *job.JobE
 
 	if req.Recovery != nil {
 		progress(8, "clip.sequence: recovering batch items")
-		if err := w.resolveBatchRecovery(ctx, &req, assembly); err != nil {
+		resolved, err := w.resolveBatchRecovery(ctx, req, assembly)
+		if err != nil {
 			return nil, err
 		}
+		req.Clips = resolved
 	}
 
 	clips, waiting, err := w.resolveSequenceClips(ctx, req, assembly)
@@ -560,12 +562,19 @@ func sequencePollDelay(assembly SequenceAssembly) time.Duration {
 // the same deterministic correlation the HTTP handler uses and enqueues the item
 // only when it is missing. Enqueue is idempotent on (type, correlation_id), so
 // the handler racing this recovery cannot create a duplicate render.
-func (w *Worker) resolveBatchRecovery(ctx context.Context, req *SequenceRequest, assembly SequenceAssembly) error {
-	if req == nil || req.Recovery == nil {
-		return nil
+//
+// The request is an input, not a scratch buffer: it is taken by value, the
+// clips are copied before any job id is stamped in, and the resolved slice is
+// returned. Writing through `req.Clips[i]` in place would mutate the caller's
+// backing array while it still holds the request it validated (percheck input
+// immutability, BON-09).
+func (w *Worker) resolveBatchRecovery(ctx context.Context, req SequenceRequest, assembly SequenceAssembly) ([]SequenceClip, error) {
+	clips := append([]SequenceClip(nil), req.Clips...)
+	if req.Recovery == nil {
+		return clips, nil
 	}
 	if assembly.Batch.List == nil || assembly.Batch.Enqueue == nil {
-		return fmt.Errorf("clip.render: batch recovery requires job list/enqueue ports")
+		return nil, fmt.Errorf("clip.render: batch recovery requires job list/enqueue ports")
 	}
 	jobType := TypeClipRender
 	jobs, err := assembly.Batch.List(ctx, job.Filter{
@@ -574,7 +583,7 @@ func (w *Worker) resolveBatchRecovery(ctx context.Context, req *SequenceRequest,
 		Limit:             MaxClipRenderBatchItems*2 + 2,
 	})
 	if err != nil {
-		return fmt.Errorf("clip.render: list batch %s jobs: %w", req.Recovery.BatchID, err)
+		return nil, fmt.Errorf("clip.render: list batch %s jobs: %w", req.Recovery.BatchID, err)
 	}
 	byCorrelation := make(map[string]string, len(jobs))
 	for i := range jobs {
@@ -582,14 +591,14 @@ func (w *Worker) resolveBatchRecovery(ctx context.Context, req *SequenceRequest,
 	}
 	for _, item := range req.Recovery.Items {
 		position := item.Position
-		if position < 0 || position >= len(req.Clips) {
-			return fmt.Errorf("clip.render: batch recovery position %d is outside 0..%d", position, len(req.Clips)-1)
+		if position < 0 || position >= len(clips) {
+			return nil, fmt.Errorf("clip.render: batch recovery position %d is outside 0..%d", position, len(clips)-1)
 		}
 		request := item.Request
 		request.Normalize()
 		fingerprint, err := request.Fingerprint()
 		if err != nil {
-			return fmt.Errorf("clip.render: batch recovery position %d fingerprint: %w", position, err)
+			return nil, fmt.Errorf("clip.render: batch recovery position %d fingerprint: %w", position, err)
 		}
 		correlation := req.Recovery.BatchID + ":" + digestPrefix(fingerprint)
 		jobID := byCorrelation[correlation]
@@ -601,10 +610,10 @@ func (w *Worker) resolveBatchRecovery(ctx context.Context, req *SequenceRequest,
 				Scheduling:    &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
 			})
 			if enqueueErr != nil {
-				return fmt.Errorf("clip.render: recover batch item %d: %w", position, enqueueErr)
+				return nil, fmt.Errorf("clip.render: recover batch item %d: %w", position, enqueueErr)
 			}
 			if enqueued == nil || strings.TrimSpace(enqueued.ID) == "" {
-				return fmt.Errorf("clip.render: recover batch item %d: broker returned an empty job", position)
+				return nil, fmt.Errorf("clip.render: recover batch item %d: broker returned an empty job", position)
 			}
 			jobID = enqueued.ID
 			byCorrelation[correlation] = jobID
@@ -615,19 +624,19 @@ func (w *Worker) resolveBatchRecovery(ctx context.Context, req *SequenceRequest,
 		}
 		// Duplicate items share one canonical position: every clip that names
 		// it must receive the same job id, not just the first occurrence.
-		for i := range req.Clips {
-			if req.Clips[i].BatchPosition != nil && *req.Clips[i].BatchPosition == position {
-				req.Clips[i].JobID = jobID
-				req.Clips[i].BatchPosition = nil
+		for i := range clips {
+			if clips[i].BatchPosition != nil && *clips[i].BatchPosition == position {
+				clips[i].JobID = jobID
+				clips[i].BatchPosition = nil
 			}
 		}
 	}
-	for i := range req.Clips {
-		if req.Clips[i].BatchPosition != nil {
-			return fmt.Errorf("clip.render: batch recovery left clip %d at position %d unresolved", i, *req.Clips[i].BatchPosition)
+	for i := range clips {
+		if clips[i].BatchPosition != nil {
+			return nil, fmt.Errorf("clip.render: batch recovery left clip %d at position %d unresolved", i, *clips[i].BatchPosition)
 		}
 	}
-	return nil
+	return clips, nil
 }
 
 // resolveSequenceClips turns each position into local bytes. It returns a

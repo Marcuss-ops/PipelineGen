@@ -44,7 +44,12 @@ type overlaySFXCueWindow struct {
 // closed: a scene that declares more cues than planned image items, a cue that
 // does not fit its item, or an invalid cue is a job error, never a silent
 // drop. Plans without image items legitimately return no cues.
-func overlaySFXIntentsForPlan(req GenerateRequest, plan *capmodel.OverlayPlan) ([]scriptpkg.SoundEffectIntent, error) {
+//
+// ONE cue per image item, anchored at the item start: a chain of photos is a
+// single clip, so repeating the effect on every chain segment made the same
+// sound play several times inside one clip. pool is the indexed SFX library
+// projection; nil keeps the built-in whoosh vocabulary.
+func overlaySFXIntentsForPlan(req GenerateRequest, plan *capmodel.OverlayPlan, pool []string) ([]scriptpkg.SoundEffectIntent, error) {
 	if plan == nil {
 		return nil, nil
 	}
@@ -52,7 +57,9 @@ func overlaySFXIntentsForPlan(req GenerateRequest, plan *capmodel.OverlayPlan) (
 	if err != nil {
 		return nil, err
 	}
-	aliases := scriptpkg.BuiltInWhooshAliases()
+	if len(pool) == 0 {
+		pool = scriptpkg.BuiltInWhooshAliases()
+	}
 	intents := make([]scriptpkg.SoundEffectIntent, 0, len(plan.Items))
 	for index := range plan.Items {
 		item := &plan.Items[index]
@@ -63,44 +70,38 @@ func overlaySFXIntentsForPlan(req GenerateRequest, plan *capmodel.OverlayPlan) (
 		if len(windows) == 0 {
 			continue
 		}
+		// The cue belongs to the clip start, not to every internal segment.
+		window := windows[0]
 		cue := explicit[item.ID]
-		for windowIndex, window := range windows {
-			// An explicit pin declares one cue for the image, so it lands on
-			// the first visible window only. Random cues follow every
-			// distinct chain segment start.
-			if cue != nil && windowIndex > 0 {
-				continue
+		durationMS := overlaySFXCueDurationMS
+		gainDB := overlaySFXCueGainDB
+		assetID := ""
+		if cue != nil {
+			assetID = strings.TrimSpace(cue.AssetID)
+			if cue.DurationMS != nil {
+				durationMS = *cue.DurationMS
 			}
-			durationMS := overlaySFXCueDurationMS
-			gainDB := overlaySFXCueGainDB
-			assetID := ""
-			if cue != nil {
-				assetID = strings.TrimSpace(cue.AssetID)
-				if cue.DurationMS != nil {
-					durationMS = *cue.DurationMS
-				}
-				if cue.GainDB != nil {
-					gainDB = *cue.GainDB
-				}
-			} else if req.RandomSFXOnImageOverlay {
-				assetID = selectOverlayWhoosh(aliases, plan, *item, window.startOffsetMS)
+			if cue.GainDB != nil {
+				gainDB = *cue.GainDB
 			}
-			if assetID == "" {
-				continue
-			}
-			if durationMS > window.durationMS {
-				durationMS = window.durationMS
-			}
-			if durationMS <= 0 {
-				return nil, fmt.Errorf("overlay SFX: item %q has no positive visible window for its cue", item.ID)
-			}
-			intents = append(intents, scriptpkg.SoundEffectIntent{
-				AssetID:    assetID,
-				AtMS:       item.StartMs + window.startOffsetMS,
-				DurationMS: durationMS,
-				GainDB:     gainDB,
-			})
+		} else if req.RandomSFXOnImageOverlay {
+			assetID = selectOverlayWhoosh(pool, plan, *item, window.startOffsetMS)
 		}
+		if assetID == "" {
+			continue
+		}
+		if durationMS > window.durationMS {
+			durationMS = window.durationMS
+		}
+		if durationMS <= 0 {
+			return nil, fmt.Errorf("overlay SFX: item %q has no positive visible window for its cue", item.ID)
+		}
+		intents = append(intents, scriptpkg.SoundEffectIntent{
+			AssetID:    assetID,
+			AtMS:       item.StartMs + window.startOffsetMS,
+			DurationMS: durationMS,
+			GainDB:     gainDB,
+		})
 	}
 	// Chronological order keeps the master plan readable and makes event ids
 	// (overlay-sfx-N) stable for a given plan.
@@ -185,10 +186,10 @@ func overlaySFXCueWindows(item capmodel.OverlayItem) []overlaySFXCueWindow {
 	return windows
 }
 
-// selectOverlayWhoosh picks a bound whoosh alias from stable plan/item/window/
-// content identity, so retries are idempotent and different photos normally
-// receive different cues. Only BuiltInWhooshAliases may be selected: those are
-// the aliases the editorial catalog binds to a resolvable media identity.
+// selectOverlayWhoosh picks a cue from stable plan/item/window/content
+// identity, so retries are idempotent and different photos normally receive
+// different cues. The pool is either the indexed SFX library projection or the
+// built-in whoosh aliases when no library is indexed.
 func selectOverlayWhoosh(aliases []string, plan *capmodel.OverlayPlan, item capmodel.OverlayItem, startOffsetMS int64) string {
 	if len(aliases) == 0 {
 		return ""

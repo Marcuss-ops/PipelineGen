@@ -28,6 +28,12 @@ type GenerateResult struct {
 	// job report can prove which executable and Rust release produced it.
 	BinarySHA256 string `json:"binary_sha256,omitempty"`
 	RustRelease  string `json:"rust_release,omitempty"`
+	// RustGitSHA and RustBinarySHA256 are the BrainRust worktree commit and the
+	// installed semantic-engine digest, read from bin/BRAINRUST_RELEASE.json.
+	// BinarySHA256 above is the Go executable; keeping the engine separate lets
+	// a report prove which Rust planner actually produced the plan.
+	RustGitSHA       string `json:"rust_git_sha,omitempty"`
+	RustBinarySHA256 string `json:"rust_binary_sha256,omitempty"`
 	// renderFirstStartedAt/renderLastFinishedAt are runtime-only aggregation
 	// state. They are deliberately not serialized; RenderMetrics exposes the
 	// derived wall/work values.
@@ -309,9 +315,16 @@ type RenderMetrics struct {
 	Successful int   `json:"successful"`
 	Failed     int   `json:"failed"`
 	WallMS     int64 `json:"wall_ms"`
-	// WorkMS is the sum of child localized-render durations. It may exceed
-	// WallMS when renders overlap and must not be used as wall-clock time.
-	WorkMS        int64 `json:"work_ms,omitempty"`
+	// WorkMS is the sum of child localized-render work spans (admission →
+	// publication). It may exceed WallMS when renders overlap and must not be
+	// used as wall-clock time. A render's wait for a slot is NOT work: it is
+	// accumulated separately in QueueWaitMS.
+	WorkMS int64 `json:"work_ms,omitempty"`
+	// QueueWaitMS is the summed admission wait of the localized renders
+	// (submission → render slot). It is the part of the lane that a wider
+	// concurrency (or a shorter queue) can remove, and the reason WorkMS is
+	// smaller than the old "call start → return" sum on a saturated lane.
+	QueueWaitMS   int64 `json:"queue_wait_ms,omitempty"`
 	MaterializeMS int64 `json:"materialize_ms,omitempty"`
 	RenderMS      int64 `json:"render_ms,omitempty"`
 	UploadMS      int64 `json:"upload_ms,omitempty"`

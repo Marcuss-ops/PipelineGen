@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# scripts/velox — the ONE cwd-free entrypoint for the operations CLI.
+#
+# Why (2026-11-23): `go run ./refactored/cmd/velox` fails from the repo root
+# ("cannot find main module") because cmd/velox lives in the refactored module,
+# and `scripts/with-velox-auth /tmp/velox ...` required a hand-built binary.
+# This wrapper resolves the module itself, rebuilds only when a source file is
+# newer than the cached binary, loads the canonical admin token when available
+# and then execs the CLI. Callers never need to know the cwd or the module.
+#
+#   scripts/velox preflight --payload p.json
+#   scripts/velox submit script-generate --key augias --payload p.json
+#   scripts/velox poll <job_id>
+#   scripts/velox download-final <job_id> -o out.mp4
+#
+# Environment:
+#   VELOX_BIN_DIR   where the cached binary lives (default <repo>/.tmp/velox-bin)
+#   NO_AUTH=1       skip the auth wrapper (structural-only commands)
+set -Eeuo pipefail
+
+# readlink -f so a symlink at the repo root (./velox) still resolves to this
+# file's real directory instead of the link's.
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"           # the refactored Go module
+REPO="$(cd "$ROOT/.." && pwd)"                 # the super-repo root
+
+BIN_DIR="${VELOX_BIN_DIR:-$ROOT/.tmp/velox-bin}"
+BIN="$BIN_DIR/velox"
+
+needs_build=0
+if [[ ! -x "$BIN" ]]; then
+    needs_build=1
+elif [[ -n "$(find "$ROOT/cmd/velox" "$ROOT/pkg/veloxclient" "$ROOT/internal/kernel/script" \
+        -name '*.go' -newer "$BIN" -print -quit 2>/dev/null)" ]]; then
+    needs_build=1
+fi
+if (( needs_build )); then
+    mkdir -p "$BIN_DIR"
+    if ! ( cd "$ROOT" && go build -o "$BIN" ./cmd/velox ); then
+        echo "velox: go build ./cmd/velox failed" >&2
+        exit 1
+    fi
+fi
+
+# One auth contract: if no token is inherited, load the canonical one. The
+# wrapper is optional (structural commands work offline), so a missing file is
+# a warning, not a failure.
+AUTH="$ROOT/scripts/with-velox-auth"
+if [[ "${NO_AUTH:-0}" != "1" && -z "${VELOX_ADMIN_TOKEN:-}" && -x "$AUTH" ]]; then
+    if [[ -r "${VELOX_TOKEN_FILE:-/etc/pipelinegen/pipelinegen.env}" ]]; then
+        exec "$AUTH" "$BIN" "$@"
+    fi
+fi
+
+exec "$BIN" "$@"

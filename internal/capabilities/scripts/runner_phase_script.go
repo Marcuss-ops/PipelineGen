@@ -543,6 +543,10 @@ func (r *Runner) executeSemanticSearchBatch(ctx context.Context, language Langua
 			zap.Float64("hit_rate", report.Metrics.HitRate),
 			zap.Int64("p50_ms", report.Metrics.P50MS),
 			zap.Int64("p95_ms", report.Metrics.P95MS),
+			zap.Int64("recall_ms", report.Metrics.RecallMS),
+			zap.Int64("verify_ms", report.Metrics.VerifyMS),
+			zap.Int64("recall_p50_ms", report.Metrics.RecallP50MS),
+			zap.Int64("verify_p50_ms", report.Metrics.VerifyP50MS),
 			zap.Int64("total_ms", report.Metrics.TotalMS))
 	}
 }

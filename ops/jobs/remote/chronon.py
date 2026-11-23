@@ -154,6 +154,23 @@ class Api:
         )
         return urllib.request.urlopen(request, timeout=self.timeout)
 
+    def get_stream_raw(self, path: str, extra_headers: dict[str, str] | None = None):
+        """Open a GET stream (unified asset download / job artifact).
+
+        Like post_stream_raw, errors propagate so the download loop keeps its
+        own retry/Range policy.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.secret}",
+            "Accept": "*/*",
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+        request = urllib.request.Request(
+            self.base_url + path, data=None, headers=headers, method="GET"
+        )
+        return urllib.request.urlopen(request, timeout=self.timeout)
+
     def probe(self, method: str, path: str, raw_body: bytes = b"") -> tuple[int, bytes]:
         """Non-fatal request used by `verify`: return status + body instead of exiting."""
         headers = {
@@ -214,19 +231,27 @@ def probe_json(api: Api, method: str, path: str, raw_body: bytes = b"") -> tuple
 
 
 def is_clip_like(asset: dict) -> bool:
-    """The M2M download route is the canonical CLIP route, not a generic
-    asset download. Images/scripts are visible in the catalog but must not be
-    chosen by the automatic verifier: the clip handler answers 500 for them.
-    Rows whose id is a filesystem path are not routable asset ids either.
+    """Whether an asset id is routable by the unified download endpoint.
+
+    GET /api/v1/media/assets/{id}/download serves EVERY ACTIVE asset (video,
+    audio, image, script/plate), so media-type filtering is gone. Only ids that
+    are filesystem paths (not routable asset rows) are rejected.
     """
     asset_id = str(asset.get("id") or "")
-    if not asset_id or "/" in asset_id or "\\" in asset_id:
-        return False
+    return bool(asset_id) and "/" not in asset_id and "\\" not in asset_id
+
+
+def is_image_asset(asset: dict) -> bool:
+    """Whether an inventory row is an image, for the dedicated image smoke."""
     media_type = str(asset.get("media_type") or "").strip().lower()
-    source = str(asset.get("source") or "").strip().lower()
-    if media_type in {"image", "text", "script", "document"}:
-        return False
-    return source not in {"internet_images", "script"}
+    content_type = str(
+        asset.get("content_type") or asset.get("mime_type") or ""
+    ).strip().lower()
+    return (
+        media_type in {"image", "images"}
+        or media_type.startswith("image/")
+        or content_type.startswith("image/")
+    )
 
 
 def resolve_download_path(raw_output: str, asset_id: str) -> str:
@@ -288,10 +313,16 @@ def download_asset(
     if directory and not os.path.isdir(directory):
         die(f"la directory {directory} non esiste", 1)
 
+    # Canonical unified route: any ACTIVE asset, local/object_storage/drive.
     path = (
+        "/api/v1/media/assets/"
+        f"{urllib.parse.quote(asset_id, safe='')}/download"
+    )
+    legacy_path = (
         f"/api/v1/media/clips/{urllib.parse.quote(source, safe='')}"
         f"/clips/{urllib.parse.quote(asset_id, safe='')}/download"
     )
+    legacy = False
     stream_api = Api(api.base_url, api.secret, timeout)
     temporary = output + ".part"
     resume_offset = os.path.getsize(temporary) if resume and os.path.exists(temporary) else 0
@@ -303,7 +334,12 @@ def download_asset(
             resume_offset = os.path.getsize(temporary) if resume else 0
         headers = {"Range": f"bytes={resume_offset}-"} if resume_offset > 0 else None
         try:
-            with stream_api.post_stream_raw(path, headers) as response:
+            opener = (
+                stream_api.post_stream_raw(path, headers)
+                if legacy
+                else stream_api.get_stream_raw(path, headers)
+            )
+            with opener as response:
                 status = int(response.getcode() or 200)
                 if resume_offset > 0 and status != 206:
                     # Range ignored: start clean instead of appending a full body.
@@ -346,6 +382,11 @@ def download_asset(
                 os.remove(temporary)
             raise
         except urllib.error.HTTPError as exc:
+            if exc.code in (404, 405) and not legacy:
+                # Older masters only expose the clip POST route.
+                legacy = True
+                path = legacy_path
+                continue
             if exc.code == 416 and resume_offset > 0:
                 os.remove(temporary)
                 resume_offset = 0
@@ -356,7 +397,8 @@ def download_asset(
                 continue
             if not resume and os.path.exists(temporary):
                 os.remove(temporary)
-            die(f"HTTP {exc.code} su POST {path}: {detail}", 1)
+            verb = "POST" if legacy else "GET"
+            die(f"HTTP {exc.code} su {verb} {path}: {detail}", 1)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             if attempt < attempts:
                 time.sleep(min(10, 2**attempt))
@@ -402,6 +444,10 @@ def list_assets(api: Api, args: argparse.Namespace, search: str = "") -> list[di
         "asset_state": getattr(args, "asset_state", ""),
         "index_state": getattr(args, "index_state", ""),
         "search": search or getattr(args, "search", ""),
+        "updated_after": getattr(args, "updated_after", ""),
+        "has_embedding": getattr(args, "has_embedding", ""),
+        "has_drive_file": getattr(args, "has_drive_file", ""),
+        "has_speech": getattr(args, "has_speech", ""),
         "limit": getattr(args, "limit", 50),
         "cursor": getattr(args, "cursor", ""),
     }
@@ -480,6 +526,20 @@ def cmd_asset(api: Api, args: argparse.Namespace) -> int:
         )
         if preview:
             print(f"      {preview}")
+        cues = track.get("cues") or []
+        if cues:
+            first = cues[0]
+            last = cues[-1]
+            print(
+                f"      cue: {len(cues)} segmenti "
+                f"{first.get('start_ms', 0)}-{last.get('end_ms', 0)} ms"
+            )
+            if args.full:
+                for cue in cues:
+                    print(
+                        f"        [{cue.get('start_ms', 0)}-{cue.get('end_ms', 0)}] "
+                        f"{cue.get('text', '')}"
+                    )
 
     vectors = asset.get("vectors") or []
     print(f"\nvettori ({len(vectors)}):")
@@ -565,6 +625,184 @@ def _record_check(
     if skipped:
         item["skipped"] = True
     checks.append(item)
+
+
+def _verify_semantic_search(
+    api: Api, checks: list[dict[str, object]], query: str
+) -> None:
+    """Probe POST /api/v1/media/search (semantic/hybrid, M2M media.read)."""
+    body = json.dumps({"query": query, "mode": "hybrid", "limit": 5}).encode("utf-8")
+    code, payload = probe_json(api, "POST", "/api/v1/media/search", body)
+    items = payload.get("items")
+    ok = code == 200 and isinstance(items, list)
+    if code in (404, 405):
+        detail = f"HTTP {code} · endpoint /api/v1/media/search non esposto"
+    elif code == 200 and not isinstance(items, list):
+        detail = "HTTP 200 · risposta senza items[]"
+    else:
+        detail = f"HTTP {code} · {len(items) if isinstance(items, list) else 0} hit"
+    _record_check(checks, "semantic_search", ok, detail)
+
+
+def _verify_image_download(
+    api: Api,
+    checks: list[dict[str, object]],
+    image_id: str,
+    timeout: int,
+    max_bytes: int,
+) -> None:
+    """Download an image through the unified M2M route and verify its bytes."""
+    code, detail = probe_json(api, "GET", asset_path(image_id))
+    if code in (404, 405):
+        _record_check(
+            checks,
+            "image_download",
+            False,
+            f"{image_id}: HTTP {code} · dettaglio immagine non disponibile",
+        )
+        return
+    if code != 200 or not detail.get("id"):
+        _record_check(
+            checks, "image_download", False, f"{image_id}: HTTP {code} · dettaglio non valido"
+        )
+        return
+
+    expected_hash = str(detail.get("content_hash") or "").strip().lower()
+    if not expected_hash:
+        # A download that cannot be checked against a declared digest is not a
+        # verified image, even if the bytes arrive with HTTP 200.
+        _record_check(
+            checks,
+            "image_download",
+            False,
+            f"{image_id}: content_hash assente; SHA-256 non verificabile",
+        )
+        return
+
+    temporary_directory = tempfile.mkdtemp(prefix="pipelinegen-verify-image-")
+    output = os.path.join(temporary_directory, "image.bin")
+    try:
+        size, content_type, digest = download_asset(
+            api,
+            image_id,
+            output,
+            timeout=timeout,
+            max_bytes=max_bytes,
+            force=True,
+        )
+        content_type_ok = str(content_type or "").lower().startswith("image/")
+        ok = size > 0 and digest == expected_hash and content_type_ok
+        _record_check(
+            checks,
+            "image_download",
+            ok,
+            f"{image_id} · {size} byte · {content_type or '-'} · "
+            f"sha256={digest[:12]}… · hash={'ok' if digest == expected_hash else 'MISMATCH'}"
+            + (" · content-type non image" if not content_type_ok else ""),
+        )
+    except SystemExit as exc:
+        _record_check(
+            checks, "image_download", False, f"{image_id}: download fallito (exit {exc.code})"
+        )
+    except Exception as exc:
+        _record_check(checks, "image_download", False, f"{image_id}: {exc}")
+    finally:
+        shutil.rmtree(temporary_directory, ignore_errors=True)
+
+
+def _find_sha256(value: object) -> str:
+    """Find a declared SHA-256 in a job result/manifest, preferring sha256 keys."""
+    if isinstance(value, dict):
+        for key in ("sha256", "content_hash", "artifact_sha256"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and len(candidate.strip()) == 64:
+                return candidate.strip().lower()
+        for child in value.values():
+            found = _find_sha256(child)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_sha256(child)
+            if found:
+                return found
+    return ""
+
+
+def _verify_job_artifact(
+    api: Api,
+    checks: list[dict[str, object]],
+    job_id: str,
+    timeout: int,
+    max_bytes: int,
+) -> None:
+    """Stream GET /api/v1/jobs/:id/artifact and verify digest/content-type."""
+    path = "/api/v1/jobs/" + urllib.parse.quote(job_id, safe="") + "/artifact"
+    temporary_directory = tempfile.mkdtemp(prefix="pipelinegen-verify-artifact-")
+    output = os.path.join(temporary_directory, "artifact.bin")
+    expected_hash = ""
+    code = 0
+    content_type = ""
+    try:
+        try:
+            with api.get_stream_raw(path) as response:
+                code = int(response.getcode() or 200)
+                content_type = response.headers.get("Content-Type", "") or ""
+                expected_hash = str(
+                    response.headers.get("X-Content-SHA256", "") or ""
+                ).strip().lower()
+                declared = (response.headers.get("Content-Length") or "").strip()
+                size = 0
+                with open(output, "wb") as handle:
+                    while True:
+                        chunk = response.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        size += len(chunk)
+                        if max_bytes > 0 and size > max_bytes:
+                            die(
+                                f"artifact {job_id}: supera il limite di {max_bytes} byte", 1
+                            )
+                        handle.write(chunk)
+        except urllib.error.HTTPError as exc:
+            detail = _http_error_detail(exc)
+            _record_check(
+                checks,
+                "job_artifact",
+                False,
+                f"{job_id}: HTTP {exc.code} · {detail}"
+                + (" · endpoint non esposto" if exc.code in (404, 405) else ""),
+            )
+            return
+
+        digest = _sha256_file(output) if os.path.exists(output) else ""
+        if not expected_hash:
+            # Older Masters may omit the header; the persisted job result is
+            # the next authoritative receipt. Never accept an unchecked file.
+            job_code, job = probe_json(
+                api, "GET", "/api/v1/jobs/" + urllib.parse.quote(job_id, safe="")
+            )
+            if job_code == 200:
+                expected_hash = _find_sha256(job)
+        content_type_ok = content_type.lower().startswith(
+            ("video/", "application/octet-stream")
+        )
+        hash_ok = bool(expected_hash) and digest == expected_hash
+        ok = code in (200, 206) and size > 0 and hash_ok and content_type_ok
+        detail = (
+            f"{job_id} · {size} byte · {content_type or '-'} · "
+            f"sha256={digest[:12] if digest else '-'}… · "
+            f"hash={'ok' if hash_ok else ('assente' if not expected_hash else 'MISMATCH')}"
+        )
+        if not content_type_ok:
+            detail += " · content-type non video"
+        if declared:
+            detail += f" · content-length={declared}"
+        _record_check(checks, "job_artifact", ok, detail)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        _record_check(checks, "job_artifact", False, f"{job_id}: {exc}")
+    finally:
+        shutil.rmtree(temporary_directory, ignore_errors=True)
 
 
 def _finish_verify(
@@ -753,8 +991,10 @@ def cmd_verify(api: Api, args: argparse.Namespace) -> int:
             def add_candidate(asset: dict | None) -> None:
                 if not asset or not is_clip_like(asset):
                     return
-                if not (asset.get("has_local_file") or asset.get("has_drive_file")):
-                    return
+                # The unified download route also resolves object_storage-only
+                # assets, so local/Drive presence is a sort preference, not a
+                # hard requirement. A candidate with no bytes falls through to
+                # the next one inside the loop.
                 asset_id = str(asset.get("id") or "")
                 if not asset_id or asset_id in seen:
                     return
@@ -838,6 +1078,40 @@ def cmd_verify(api: Api, args: argparse.Namespace) -> int:
                 "nessun asset audio/video con file locale/Drive nella pagina",
             )
 
+    # The semantic probe is part of the default verify: the old ILIKE-only
+    # smoke could pass while POST /api/v1/media/search was missing or broken.
+    _verify_semantic_search(
+        api, checks, args.semantic_query or "intervista"
+    )
+    # Auto-pick an image from the inventory page when the operator did not
+    # name one, so the unified image download is exercised by default too.
+    if args.skip_download:
+        _record_check(
+            checks, "image_download", True, "saltato (--skip-download)", skipped=True
+        )
+    else:
+        if not args.image_id:
+            for item in items:
+                if is_image_asset(item):
+                    args.image_id = str(item.get("id") or "")
+                    if args.image_id:
+                        break
+        if args.image_id:
+            _verify_image_download(
+                api, checks, args.image_id, args.download_timeout, args.max_download_bytes
+            )
+        else:
+            _record_check(
+                checks,
+                "image_download",
+                False,
+                "nessun asset immagine nella pagina; usa --image-id",
+            )
+    if args.job_id:
+        _verify_job_artifact(
+            api, checks, args.job_id, args.download_timeout, args.max_download_bytes
+        )
+
     if args.skip_jobs:
         _record_check(checks, "jobs_submit", True, "saltato (--skip-jobs)", skipped=True)
     else:
@@ -920,6 +1194,20 @@ def add_filters(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--asset-state", dest="asset_state", default="")
     parser.add_argument("--index-state", dest="index_state", default="")
     parser.add_argument("--search", default="", help="ricerca testuale nel catalogo")
+    parser.add_argument(
+        "--updated-after",
+        dest="updated_after",
+        default="",
+        help="solo asset aggiornati da questo istante RFC3339 (sync incrementale)",
+    )
+    for name in ("has_embedding", "has_drive_file", "has_speech"):
+        parser.add_argument(
+            f"--{name.replace('_', '-')}",
+            dest=name,
+            choices=["true", "false"],
+            default="",
+            help=f"filtra per {name} (true|false)",
+        )
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--cursor", default="")
 
@@ -990,6 +1278,21 @@ def main() -> int:
         "--asset-id",
         default="",
         help="asset da ispezionare (default: cerca tra i primi N)",
+    )
+    verify.add_argument(
+        "--semantic-query",
+        default="",
+        help="query per POST /api/v1/media/search (ricerca semantica/ibrida)",
+    )
+    verify.add_argument(
+        "--image-id",
+        default="",
+        help="asset immagine da scaricare e verificare (SHA-256 + content-type)",
+    )
+    verify.add_argument(
+        "--job-id",
+        default="",
+        help="job il cui artefatto finale va scaricato e verificato",
     )
     verify.add_argument(
         "--download-id",

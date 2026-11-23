@@ -15,9 +15,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// buildSceneImageProjection keeps only the materialized image candidates in
-// the request. Text surfaces are sent raw and projected by Rust; this function
-// must not call overlaySceneInput or any phrase/entity selector.
 func buildSceneImageProjection(
 	timedScenes []Scene,
 	imagesByScene map[string][]capabilityoverlay.ImageCandidate,

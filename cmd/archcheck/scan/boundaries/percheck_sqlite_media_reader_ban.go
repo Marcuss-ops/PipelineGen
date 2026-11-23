@@ -220,7 +220,7 @@ var sqliteMediaReaderGrandfatheredZones = []string{}
 // $N), so listing them misstated the debt and inflated the counter:
 // `internal/app/wiring/build_bundles_domain_media.go` (source_version read
 // inside the media-commit pg transaction) and
-// `internal/app/wiring/vidrush/vidrush_materialization.go` (index_state read
+// `internal/app/modules/vidrush/vidrush_materialization.go` (index_state read
 // on the media SSOT). Their absence is load-bearing: if the dialect
 // discrimination in sqlMediaSpans regresses, they reappear as violations and
 // TestScanSQLiteMediaReaderBan_RepoTreeIsClean fails.
@@ -244,7 +244,7 @@ var sqliteMediaReaderGrandfatheredZones = []string{}
 //     was retired the same way on the same day (SQLiteAssetRepository →
 //     PostgresAssetRepository over the media SSOT handle).
 //
-//   - internal/app/wiring/assets/folders.go was DELETED (not migrated) on
+//   - internal/app/modules/assets/folders.go was DELETED (not migrated) on
 //     2026-09-16: its parent-video folder read moved to
 //     pgmedia.MediaFolderResolver over root.MediaPostgres, and its
 //     `COALESCE(folder_id, drive_folder_id)` fallback was removed rather than
@@ -253,13 +253,13 @@ var sqliteMediaReaderGrandfatheredZones = []string{}
 //     file if a new SQLite media reader were added to this package.
 //
 //   - BOTH voiceover entries left on 2026-09-16, and they left for different
-//     reasons. internal/app/wiring/voiceover/adapters_voiceover_repo.go was a
+//     reasons. internal/app/modules/voiceover/adapters_voiceover_repo.go was a
 //     genuine live migration: its two media_assets reads
 //     (findVoiceoverMediaAsset, the cross-run cache location lookup, and
 //     CountByDriveFileIDTx, the PR-VO-B3 dedupe gate) now resolve through the
 //     capability-owned VoiceoverMediaReader port over the media SSOT
 //     (pgmedia.MediaVoiceoverMediaReader).
-//     internal/app/wiring/voiceover/adapters_voiceover_projection.go is the more
+//     internal/app/modules/voiceover/adapters_voiceover_projection.go is the more
 //     instructive removal: its media_assets read was in
 //     VoiceoverPostCommitVerifierAdapter.Verify, which has NO production
 //     construction site at all (PostCommitVerifier is never assigned), and the
@@ -308,7 +308,7 @@ var sqliteMediaReaderGrandfatheredZones = []string{}
 //     the PostgreSQL transaction. Keeping the port meant a second copy of the
 //     rule with no way to prove the two agreed.
 //
-//   - internal/app/wiring/lifecycle_sweepers.go — THE LAST ENTRY — left on
+//   - internal/app/modules/lifecycle_sweepers.go — THE LAST ENTRY — left on
 //     2026-09-16, and it is the entry that explains why this register had a
 //     tail at all. runDedupSweep scanned media_assets through the OPERATIONAL
 //     handle AND retired the duplicates it found through that same handle

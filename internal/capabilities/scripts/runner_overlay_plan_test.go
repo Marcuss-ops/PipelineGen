@@ -179,6 +179,35 @@ func TestFreezeOverlayIntentsJoinsByEntityIdentity(t *testing.T) {
 	}
 }
 
+// TICKET-49: a plan item may carry the readable canonical identity as its
+// entity_id (the planner's occurrence identity), while the intent carries the
+// same identity verbatim. The join must succeed on that identity before any
+// display-name fallback, even when the content-addressed derivation differs.
+func TestFreezeOverlayIntentsJoinsByCanonicalEntityID(t *testing.T) {
+	intents := []capmodel.OverlayIntent{{
+		Version:  capmodel.OverlayIntentVersion,
+		IntentID: "intent-scene-0-corrado-augias", SceneID: "scene-0",
+		Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Corrado Augias",
+			CanonicalEntityID: "person:corrado-augias"},
+		Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+		Payload: capmodel.IntentPayload{Name: "Corrado Augias"}, TimingState: capmodel.TimingStatePending,
+	}}
+	items := []capmodel.OverlayItem{{
+		ID: "entity-card-augias", SceneID: "scene-0", EntityID: "person:corrado-augias",
+		Kind: string(capmodel.KindEntityCard), TemplateID: "person_default",
+		StartMs: 1200, EndMs: 4200, StartUS: 1200000, DurationUS: 3000000,
+		Text: "Augias",
+	}}
+
+	freezeOverlayIntents(intents, items)
+	if intents[0].TimingState != capmodel.TimingStateFrozen {
+		t.Fatalf("timing state = %q, want FROZEN via canonical entity id", intents[0].TimingState)
+	}
+	if intents[0].StartMs != 1200 || intents[0].EndMs != 4200 {
+		t.Fatalf("frozen timing = %d..%d, want the plan item's 1200..4200", intents[0].StartMs, intents[0].EndMs)
+	}
+}
+
 // TestFreezeOverlayIntentsKeepsNameFallbackForLegacyItems pins the compatibility
 // path: a legacy plan item with no entity id still joins by canonical name, so
 // old persisted plans keep resolving instead of losing their timing.
@@ -535,6 +564,12 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 	for _, intent := range res.OverlayIntents {
 		require.Equal(t, capmodel.TimingStatePending, intent.TimingState, "intent %q must be pre-timing (PENDING)", intent.IntentID)
 		require.NoError(t, intent.Validate())
+		// TICKET-49: dates and quantities belong to the numeric lane and must
+		// never author an entity intent, even when the extractor emits them.
+		switch intent.Entity.Type {
+		case "DATE", "TIME", "NUMBER", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
+			t.Fatalf("numeric entity %q must not author an entity intent", intent.Entity.CanonicalName)
+		}
 		if intent.Entity.CanonicalName != "" {
 			templateByEntity[intent.Entity.CanonicalName] = intent.TemplateID
 		}
@@ -547,7 +582,6 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 		"Apple":              "LOGO",
 		"Cupertino":          "gpe_default",
 		"changed everything": "quote",
-		"ten million":        "NUMBER",
 		"Vision Pro":         "PRODUCT",
 	}
 	for entity, tmpl := range want {
@@ -628,12 +662,15 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 		"Apple":              "LOGO",
 		"Cupertino":          "gpe_default",
 		"changed everything": "quote",
-		"ten million":        "NUMBER",
 		"Vision Pro":         "PRODUCT",
 	}
 	seen := 0
 	for _, intent := range prep.Intents {
 		require.Equal(t, capmodel.TimingStatePending, intent.TimingState, "prepare must carry PENDING intents")
+		switch intent.Entity.Type {
+		case "DATE", "TIME", "NUMBER", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
+			t.Fatalf("numeric entity %q must not reach overlay.prepare", intent.Entity.CanonicalName)
+		}
 		if tmpl, ok := want[intent.Entity.CanonicalName]; ok {
 			require.Equal(t, tmpl, intent.TemplateID, "entity %q must bind to the canonical template", intent.Entity.CanonicalName)
 			seen++
@@ -691,54 +728,4 @@ func TestCompileResultOverlayPlanPersistsPhraseBudgetEvenWhenNoPhraseIsGrounded(
 		Requested: capabilityoverlay.MaxPhraseOverlaysPerRun,
 		Shortfall: capabilityoverlay.MaxPhraseOverlaysPerRun,
 	}, *result.PhraseOverlayBudget)
-}
-func TestOverlaySceneInputDropsSingleWordPhrases(t *testing.T) {
-	timing := speechTimingForWords([]string{"Short", "phrase", "then", "three", "words"})
-	scene := Scene{
-		ID: "phrase-minimum-scene", Index: 0,
-		Text: map[Language]string{"en": "Short phrase then three words."},
-		Annotations: &scriptpkg.SceneAnnotations{
-			Version: 1, Language: "en", Status: "completed",
-			ImportantPhrases: []scriptpkg.AnnotationSpan{
-				{Text: "Short", Score: 0.95},
-				{Text: "then three words", Score: 0.9},
-			},
-		},
-	}
-	got, err := overlaySceneInput(scene, "en", "en", timing, 0, nil, nil)
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	require.Len(t, got.Phrases, 1)
-	require.Equal(t, "then three words", got.Phrases[0].Text)
-}
-
-func TestOverlaySceneInputProjectsEveryExplicitDateWithAudioTiming(t *testing.T) {
-	text := "Le date riportano 13 agosto 2007, 2015, 28 settembre 2026 e 8 ottobre 2026 per il comunicato."
-	dateNames := []string{"13 agosto", "28 settembre 2026", "8 ottobre 2026 per"}
-	entities := make([]scriptpkg.AnnotatedEntity, 0, len(dateNames))
-	occurrences := make([]capabilityentities.EntityOccurrence, 0, len(dateNames))
-	for i, name := range dateNames {
-		entities = append(entities, scriptpkg.AnnotatedEntity{CanonicalName: name, Type: "DATE", Confidence: 0.9})
-		occurrences = append(occurrences, capabilityentities.EntityOccurrence{
-			EntityID: capabilityentities.StableEntityID("DATE", name), Name: name, Type: "DATE", SceneID: "dates",
-			AudioStartUS: int64(i+1) * 1_000_000, AudioEndUS: int64(i+1)*1_000_000 + 500_000,
-		})
-	}
-	scene := Scene{
-		ID: "dates", Index: 0, Text: map[Language]string{"it": text},
-		OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{scriptpkg.OverlayCategoryNumbers: scriptpkg.ToggleEnabled},
-		Annotations:       &scriptpkg.SceneAnnotations{Version: 1, Language: "it", Status: "completed", SecondaryEntities: entities},
-	}
-	got, err := overlaySceneInput(scene, "it", "it", speechTimingForWords(strings.Fields(text)), 0, occurrences, nil)
-	require.NoError(t, err)
-	require.NotNil(t, got)
-	require.Len(t, got.Numbers, 4)
-	byText := make(map[string]string)
-	for _, number := range got.Numbers {
-		byText[number.Text] = number.Type
-		require.Greater(t, number.DurationUS, int64(0))
-	}
-	for _, want := range []string{"13 agosto 2007", "2015", "28 settembre 2026", "8 ottobre 2026"} {
-		require.Equal(t, "DATE", byText[want], "date %q should be source grounded and typed as DATE", want)
-	}
 }

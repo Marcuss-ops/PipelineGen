@@ -19,14 +19,14 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 )
 
 // sqliteClipFolderSource adapts the in-memory SQLite fixture to the backfill's
 // narrow clipFolderSource port.
 //
 // The production read moved to the PostgreSQL media SSOT
-// (pgmedia.BackfillReader) because media_assets is PostgreSQL-owned and the
+// (pgbackfill.BackfillReader) because media_assets is PostgreSQL-owned and the
 // operational mirror holds no committed media rows — the candidate scan would
 // have found nothing to realign. These tests keep pinning the RESOLUTION and
 // write-path behaviour (nested-path walk, cycle bound, idempotence, dry-run)
@@ -34,7 +34,7 @@ import (
 // statement verbatim. It is test-only by construction.
 type sqliteClipFolderSource struct{ db *sql.DB }
 
-func (s sqliteClipFolderSource) ListYouTubeClipFolderCandidates(ctx context.Context, limit int) ([]pgmedia.ClipFolderCandidate, error) {
+func (s sqliteClipFolderSource) ListYouTubeClipFolderCandidates(ctx context.Context, limit int) ([]pgbackfill.ClipFolderCandidate, error) {
 	query := `SELECT id, COALESCE(drive_file_id,''), COALESCE(folder_id,''), COALESCE(folder_path,'')
 		FROM media_assets
 		WHERE source = 'youtube'
@@ -51,9 +51,9 @@ func (s sqliteClipFolderSource) ListYouTubeClipFolderCandidates(ctx context.Cont
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []pgmedia.ClipFolderCandidate
+	var out []pgbackfill.ClipFolderCandidate
 	for rows.Next() {
-		var rec pgmedia.ClipFolderCandidate
+		var rec pgbackfill.ClipFolderCandidate
 		if err := rows.Scan(&rec.ID, &rec.DriveFileID, &rec.FolderID, &rec.FolderPath); err != nil {
 			return nil, err
 		}

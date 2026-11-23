@@ -12,6 +12,12 @@
   i goldens e le suite sono verdi.
 - **Severity:** P1 — a post-seal pass rewrites chain segment identity, which the
   ownership doc forbade, and nothing failed when it did.
+
+> **Superato in parte il 2026-11-23 (OVL-01).** `media.promotable_entity_assets`,
+> `planner/promotion.rs` e il sampler Rust non esistono più: i ritratti viaggiano
+> sull'unica `media.verified_entity_assets` e la decisione card/immagine avviene
+> prima di `admit`. Questo ticket resta la storia della finestra 2026-11-21, non
+> il contratto corrente.
 - **Owner:** overlay/editorial pipeline + media plane
 - **Source:** analysis 2026-11-18 on `refactored@8b41b5bf1`,
   `BrainRust/overlay-compiler`, `RenderingGen@1c799cfd6`

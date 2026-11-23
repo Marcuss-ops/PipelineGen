@@ -114,6 +114,10 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 	row.Cached = cached
 	row.LatencyMS = latency
 	row.RateLimited = rateLimited
+	if !cached {
+		row.RecallMS = response.RecallMS
+		row.VerifyMS = response.VerifyMS
+	}
 
 	best, hasVerified := bestVerifiedSemanticHit(response.Hits)
 	outcome := SemanticSearchOutcome{CandidateID: attempt.CandidateID, Rung: attempt.Rung}

@@ -249,6 +249,10 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 	// the submission order changes.
 	for _, idx := range longestFirstLaunchOrder(in.Plans) {
 		plan := in.Plans[idx]
+		// Per-plan submission time: the admission wait is measured from here to
+		// the render slot, never from the call's first plan (which would charge
+		// plan N with the work of plans 1..N-1).
+		submittedAt := time.Now().UTC()
 		pipelineWG.Add(1)
 		go func() {
 			defer pipelineWG.Done()
@@ -259,9 +263,10 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 			}
 			releaseLocal, err := kernobs.AcquireSlot(ctx, localRenderGate, kernobs.ComponentRenderQueue, kernobs.WaitSemaphore)
 			if err != nil {
-				recordFailure(LocalizedClipArtifact{Status: LocalizedClipFailed}, err)
+				recordFailure(LocalizedClipArtifact{Status: LocalizedClipFailed, QueueWaitMS: time.Since(submittedAt).Milliseconds()}, err)
 				return
 			}
+			admittedAt := time.Now().UTC()
 			// GPU admission is held by the executor around Submit/Settle only;
 			// renderer.Render still compiles, wires and hashes outside that slot.
 			renderStart := time.Now().UTC()
@@ -286,6 +291,7 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 				}
 			}
 			published, publishErr := s.UploadRendered(ctx, rendered, in.FolderID)
+			finishedAt := time.Now().UTC()
 			if publishErr == nil {
 				// A reused artifact lives in the folder that already holds it; only
 				// a fresh publication belongs to this run's destination.
@@ -293,6 +299,11 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 					published.DriveFolderID = in.FolderID
 				}
 				s.recordDriveIdentity(ctx, published)
+				// The unit's own span is admission → publication; the wait before
+				// admission is a separate fact (see LocalizedClipArtifact).
+				published.AdmittedAt = admittedAt
+				published.FinishedAt = finishedAt
+				published.QueueWaitMS = admittedAt.Sub(submittedAt).Milliseconds()
 			}
 			recordFailure(published, publishErr)
 		}()

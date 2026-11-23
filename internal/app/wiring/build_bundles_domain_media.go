@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
-	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
-	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
+	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/foldermemory"
@@ -383,7 +382,7 @@ func buildClipMetadataService(
 	)
 	var ollamaBuilder ytmetadata.ClipMetadataBuilder = ollamaBuilderInner
 	if dbs.Cache != nil && dbs.Cache.DB != nil && dbs.Main != nil && dbs.Main.DB != nil {
-		if cache, cacheErr := assetswiring.NewArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
+		if cache, cacheErr := newArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
 			model := youtubewiring.RuntimeConfigFromConfig(cfg).OllamaMetadataModel
 			if model == "" && ai.OllamaClient != nil {
 				model = ai.OllamaClient.Model()

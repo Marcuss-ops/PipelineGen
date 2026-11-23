@@ -16,6 +16,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	imagegate "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
@@ -103,7 +104,7 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 	// Pre-filter: apply deterministic rejections (invalid name, noisy sources, source mismatches)
 	for i := range out {
 		candidate := &out[i]
-		if scriptadapters.ReusablePersonImageVerdict(*candidate) {
+		if imagegate.ReusablePersonImageVerdict(*candidate) {
 			if strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), entitycatalog.CandidateSemanticAccepted) {
 				identityName := strings.TrimSpace(candidate.Entity)
 				identityKey := strings.ToLower(strings.Join(strings.Fields(identityName), " "))
@@ -163,7 +164,7 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 
 	for _, i := range evalIndices {
 		candidate := &out[i]
-		if scriptadapters.ReusablePersonImageVerdict(*candidate) {
+		if imagegate.ReusablePersonImageVerdict(*candidate) {
 			continue
 		}
 		if !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) || strings.TrimSpace(candidate.Entity) == "" {

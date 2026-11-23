@@ -49,8 +49,12 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	// the test's expected set back to 6 routes, restoring SSOT integrity.
 	// REMOTION-LEGACY-REMOVAL (August 2026): the 3 POST /shorts/* routes
 	// are RETIRED with the external Remotion renderer hand-off.
+	// POST /api/script/preflight (2026-11-23): the server-side Stage 0. It
+	// reuses the submit validator and adds the catalog verdict per bound clip.
+	// architecture/ownership/modules.yaml#ScriptFlow is updated in lockstep.
 	expectedRoutes := map[string]bool{
 		"POST /api/script/generate":    true,
+		"POST /api/script/preflight":   true,
 		"GET /api/script/jobs/:id":     true,
 		"GET /api/script/clips/search": true,
 	}

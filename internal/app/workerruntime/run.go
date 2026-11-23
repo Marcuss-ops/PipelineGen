@@ -33,8 +33,8 @@ import (
 
 	"go.uber.org/zap"
 
+	renderingwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/rendering"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	renderingwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/rendering"
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"

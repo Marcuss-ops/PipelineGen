@@ -15,6 +15,7 @@ Everything here was verified on 2026-09-20 from **creator-77 (this host,
 | `chronon.py` | Client portabile (solo Python 3 stdlib): asset, Drive link, trascrizioni, vettori, ricerca, download, invio/poll job e `verify` end-to-end. |
 | `test_chronon.py` | Test unitari stdlib del client (in particolare: il path di download non perde la directory). |
 | `test_chronon_download.py` | Test stdlib di integrità SHA-256, resume da `.part` e fail-closed su hash errato. |
+| `test_chronon_verify_extended.py` | Test locali dei tre check estesi: ricerca semantica, download immagine e artefatto finale (SHA-256 + content-type). |
 | `preflight.sh` | Read-only connection check: liveness, readiness, M2M key, route inventory. Never enqueues work. |
 | `inventory.sh` | Read-only inventory of the media SSOT (`pipelinegen_media`) — what material a pre-job can reference. |
 | `pre-job.creator-77.json` | First PREPARE payload, built from real DB assets. |
@@ -89,12 +90,17 @@ presence, pending outbox events):
 | Method + path | Scope | Returns |
 |---|---|---|
 | `GET /api/v1/media/assets` | `media.read` | `{items[], total, has_more, next_cursor}` |
-| `GET /api/v1/media/assets/{id}` | `media.read` | full `AssetInspection` (locations, processing, outbox) |
+| `GET /api/v1/media/assets/{id}` | `media.read` | full `AssetInspection` (locations, processing, outbox, timed text cues) |
+| `GET /api/v1/media/assets/{id}/download` | `media.read` | any ACTIVE asset (local -> object storage -> drive), Range + `X-Content-SHA256` |
+| `POST /api/v1/media/search` | `media.read` | hybrid/ANN results from the canonical Aggregator |
+| `GET /api/v1/media/clips/{source}/tree` | `media.read` | folder tree (also `folders`, `folder/:id/children`, `breadcrumb`) |
+| `GET /api/v1/jobs/{id}/artifact` | `jobs.read` | owner-checked final-render proxy (no admin token) |
 | `GET /api/v1/media/facets` | `media.read` | counts per source / media type / lifecycle / asset state / index state |
 
 Filters on `/assets`: `source`, `provider`, `media_type`, `lifecycle_state`,
-`asset_state`, `index_state`, `search`, plus `limit` (page size) and `cursor`
-(the next offset). This is the HTTP equivalent of `./inventory.sh` — use it so
+`asset_state`, `index_state`, `search`, `updated_after` (RFC3339),
+`has_embedding`, `has_drive_file`, `has_speech` (`true|false`), plus `limit`
+(page size) and `cursor` (the next offset). This is the HTTP equivalent of `./inventory.sh` — use it so
 a remote host does NOT need a `docker exec psql` session against the master:
 
 ```bash
@@ -107,6 +113,29 @@ curl -sS -H "Authorization: Bearer $VELOX_M2M_SECRET" \
 The surface is read-only by construction: no mutation route is mounted on the
 `/api/v1/media` group, and `jobs.read` alone is NOT enough — the key must be
 granted `media.read` (a key with only `jobs.read`/`jobs.submit` gets 403).
+
+### 3.0.1 Smoke esteso: semantica, immagine e artefatto finale
+
+`chronon.py verify` now covers the three paths that were previously only tested
+by hand:
+
+```bash
+# a read-only key needs --skip-jobs (jobs.submit is intentionally absent)
+python3 chronon.py verify --env ~/creator-77-master.env --skip-jobs \
+  --semantic-query "corrado augias intervista" \
+  --image-id img_xxx \
+  --job-id job_xxx
+```
+
+| flag | endpoint | owning service | checks |
+|---|---|---|---|
+| `--semantic-query` | `POST /api/v1/media/search` | Master `media-m2m` module (same Aggregator as `/api/media/search`) | HTTP 200 + `items[]`; 404/405 is FAIL, never SKIP |
+| `--image-id` | `GET /api/v1/media/assets/{id}/download` | Master `media-m2m` module (unified local → object storage → Drive) | bytes, SHA-256 against `content_hash`, `image/*` content-type |
+| `--job-id` | `GET /api/v1/jobs/{id}/artifact` | Master `jobs-m2m` module | bytes, `X-Content-SHA256` (or the job receipt), `video/*`/octet-stream |
+
+All three flags are optional and additive; without them `verify` behaves as
+before. A download whose expected digest is absent fails closed instead of
+reporting a green status-only check.
 
 **Enforcement.** The M2M guard is only real when the master has
 `security.enable_m2m: true` (env `VELOX_ENABLE_M2M=true`). With it `false` the

@@ -142,6 +142,11 @@ const (
 type CheckResult struct {
 	Name   CheckName `json:"name"`
 	Passed bool      `json:"passed"`
+	// Skipped marks a check that is not applicable to this run. A skipped
+	// check is not a failure: CERTIFIED only requires that no applicable
+	// check failed. SkipReason is the machine-readable explanation.
+	Skipped    bool   `json:"skipped,omitempty"`
+	SkipReason string `json:"skip_reason,omitempty"`
 	// PassCount/TotalCount render the X/Y metric (e.g. 5/5). When the
 	// check is a simple boolean, TotalCount=1 and PassCount=1 on pass.
 	PassCount  int `json:"pass_count,omitempty"`

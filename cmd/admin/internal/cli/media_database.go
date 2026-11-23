@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 

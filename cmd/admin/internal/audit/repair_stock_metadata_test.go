@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -15,7 +15,7 @@ import (
 // repair's narrow searchTextBackfillSource port.
 //
 // The production read moved to the PostgreSQL media SSOT
-// (pgmedia.SearchTextBackfillReader) because media_assets and asset_text_tracks
+// (pgbackfill.SearchTextBackfillReader) because media_assets and asset_text_tracks
 // are PostgreSQL-owned and the operational mirror holds no committed media
 // rows. These tests keep pinning the COMPOSITION behaviour — which rows are
 // candidates, which are left alone, and that nothing is written on dry-run —
@@ -25,7 +25,7 @@ import (
 // SQLite any more.
 type sqliteSearchTextBackfillSource struct{ db *sql.DB }
 
-func (s sqliteSearchTextBackfillSource) ListSearchTextBackfillCandidates(ctx context.Context, sources []string, limit int) ([]pgmedia.SearchTextBackfillCandidate, error) {
+func (s sqliteSearchTextBackfillSource) ListSearchTextBackfillCandidates(ctx context.Context, sources []string, limit int) ([]pgbackfill.SearchTextBackfillCandidate, error) {
 	placeholders := make([]string, len(sources))
 	args := make([]any, len(sources))
 	for i, source := range sources {
@@ -54,9 +54,9 @@ func (s sqliteSearchTextBackfillSource) ListSearchTextBackfillCandidates(ctx con
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []pgmedia.SearchTextBackfillCandidate
+	var out []pgbackfill.SearchTextBackfillCandidate
 	for rows.Next() {
-		var rec pgmedia.SearchTextBackfillCandidate
+		var rec pgbackfill.SearchTextBackfillCandidate
 		if err := rows.Scan(&rec.ID, &rec.Source, &rec.Name, &rec.Category, &rec.TagsJSON, &rec.SourceURL,
 			&rec.Description, &rec.Summary, &rec.Title, &rec.Transcript); err != nil {
 			return nil, err

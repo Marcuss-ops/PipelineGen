@@ -14,10 +14,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 
-	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
+
+	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
@@ -249,7 +250,7 @@ func newAssetRegisterService(
 // the event ONE super-transaction.
 //
 // ENGINE RULE: it is the SAME PostgreSQL media SSOT committer the canonical
-// extraction path uses (media.NewPostgresMediaCommitterFromDB), resolved from
+// extraction path uses (media.NewPostgresMediaCommitter), resolved from
 // the same media handle passed into this composition site. Never a second
 // writer, never an operational-mirror fallback — a register path committing
 // through a different engine is the split-brain the media cutover removed.
@@ -267,7 +268,7 @@ func canonicalRegisterAtomicWriter(db *sql.DB, log *zap.Logger) localized.Locali
 	if db == nil {
 		return nil
 	}
-	committer, err := mediasub.NewPostgresMediaCommitterFromDB(db, log)
+	committer, err := mediasub.NewPostgresMediaCommitter(mediasub.CommitterDeps{DB: db, Log: log})
 	if err != nil {
 		if log != nil {
 			log.Warn("register atomic writer: canonical media committer unavailable; register path falls back to the legacy split write", zap.Error(err))

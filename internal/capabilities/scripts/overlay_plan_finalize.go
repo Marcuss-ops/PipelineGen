@@ -3,10 +3,10 @@
 // run-level text/image style onto the sealed items, and the per-job Scene
 // Intelligence observability report.
 //
-// Both were extracted from overlay_plan.go to keep that file inside the
-// godlike/08 max_lines_per_file_strict cap (600). The split is a pure move:
-// no behaviour changed, the functions are the same ones the sealing path
-// called before.
+// Both run AFTER the seal and never rewrite a sealed item: the style projection
+// stamps the run-level spec a segment inherited, and the report only observes.
+// That ordering is the reason they are a separate responsibility from the
+// compile and seal boundary in overlay_plan_compile.go.
 //
 // Ownership split inside this file:
 //

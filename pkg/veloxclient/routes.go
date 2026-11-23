@@ -91,6 +91,22 @@ func RouteJobsFull(jobID string) string {
 	return "/api/jobs/" + jobID + "/full"
 }
 
+// RouteM2MMediaSearch is POST /api/v1/media/search, the scoped hybrid/ANN
+// search surface (same Aggregator as the admin /api/media/search).
+const RouteM2MMediaSearch = "/api/v1/media/search"
+
+// RouteM2MAssetDownload is GET /api/v1/media/assets/{id}/download, the
+// unified any-media-type download (local -> object storage -> drive).
+func RouteM2MAssetDownload(assetID string) string {
+	return "/api/v1/media/assets/" + url.PathEscape(assetID) + "/download"
+}
+
+// RouteM2MJobArtifact is GET /api/v1/jobs/{id}/artifact, the scoped final
+// render proxy (owner-checked; the Master holds the artifact bearer).
+func RouteM2MJobArtifact(jobID string) string {
+	return "/api/v1/jobs/" + url.PathEscape(jobID) + "/artifact"
+}
+
 // RouteM2MJobTypes is GET /api/v1/jobs/types, the scoped runnable-job catalog.
 const RouteM2MJobTypes = "/api/v1/jobs/types"
 

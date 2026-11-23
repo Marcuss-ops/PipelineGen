@@ -15,7 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -75,7 +75,7 @@ func RunBackfillMediaDurations(args []string) error {
 	// MEDIA-SSOT: the candidate scan reads media_assets, so it resolves from the
 	// PostgreSQL media SSOT rather than the operational mirror, which holds no
 	// committed media rows.
-	durationSource := pgmedia.NewBackfillReader(root.MediaPostgres)
+	durationSource := pgbackfill.NewBackfillReader(root.MediaPostgres)
 	if durationSource == nil {
 		return fmt.Errorf("media PostgreSQL SSOT is required for duration backfill")
 	}
@@ -128,12 +128,12 @@ type durationBackfillRow struct {
 
 // durationBackfillSource is the narrow media read this backfill depends on.
 //
-// MEDIA-SSOT: production binds the PostgreSQL reader (pgmedia.BackfillReader).
+// MEDIA-SSOT: production binds the PostgreSQL reader (pgbackfill.BackfillReader).
 // The eligibility predicate (media_type / lifecycle / index_state / location)
 // lives in that package, so this command cannot grade a different boundary than
 // the media SSOT.
 type durationBackfillSource interface {
-	ListDurationBackfillCandidates(ctx context.Context, q pgmedia.DurationBackfillQuery) ([]string, error)
+	ListDurationBackfillCandidates(ctx context.Context, q pgbackfill.DurationBackfillQuery) ([]string, error)
 }
 
 // selectDurationBackfillRows resolves the candidate set. The CLI-side CSV
@@ -142,7 +142,7 @@ func selectDurationBackfillRows(ctx context.Context, src durationBackfillSource,
 	if src == nil {
 		return nil, fmt.Errorf("select duration backfill assets: media SSOT reader is not wired")
 	}
-	ids, err := src.ListDurationBackfillCandidates(ctx, pgmedia.DurationBackfillQuery{
+	ids, err := src.ListDurationBackfillCandidates(ctx, pgbackfill.DurationBackfillQuery{
 		FolderID: strings.TrimSpace(folderID),
 		IDs:      cli.SplitBackfillCSV(rawIDs),
 		Limit:    limit,

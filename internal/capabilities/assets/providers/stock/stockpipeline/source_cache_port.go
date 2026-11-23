@@ -21,50 +21,15 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/fs"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/ingest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
-
-// LocalFSPort is the Pattern 0 typed port for local filesystem I/O.
-//
-// godlike/07 PR-REFACTOR-P0-IO-BINDER (July 2026): the application
-// layer MUST NOT import "os" or call os.* directly. Every file
-// read/write/stat call goes through this port; the concrete
-// implementation lives in internal/platform/filesystem and
-// is injected via the SourceCacheDeps.LocalFS dependency at
-// composition time.
-//
-// SSOT: this interface lives only in this package (the only
-// consumer across the stock pipeline). Concrete implementations
-// (filesystem.LocalAdapter) implement it structurally.
-type LocalFSPort interface {
-	// Stat returns the FileInfo for the named file.
-	Stat(name string) (fs.FileInfo, error)
-	// Open opens the named file for reading.
-	Open(name string) (io.ReadCloser, error)
-	// Create creates or truncates the named file for writing.
-	Create(name string) (io.WriteCloser, error)
-	// MkdirTemp creates a new temporary directory and returns its path.
-	MkdirTemp(dir, pattern string) (string, error)
-	// Remove removes the named file or (empty) directory.
-	Remove(name string) error
-	// RemoveAll removes path and any children it contains.
-	RemoveAll(path string) error
-	// MkdirAll creates a directory along with any necessary parents.
-	MkdirAll(path string, perm fs.FileMode) error
-	// CreateTemp creates a new temporary file, returning its path
-	// and a WriteCloser for writing. The caller must close the
-	// returned WriteCloser before using the path for hashing.
-	CreateTemp(dir, pattern string) (string, io.WriteCloser, error)
-	// TempDir returns the default directory to use for temporary files.
-	TempDir() string
-}
 
 // SourceCacheReader abstracts the read side of the source download cache.
 // Concrete: stocksourcecache.Repository.
@@ -427,4 +392,15 @@ func (s *Service) warmOneSource(ctx context.Context, stager acquisition.SourceSt
 			zap.Int64("bytes", prepared.SizeBytes))
 	}
 	return warmOutcome{}
+}
+
+// DeriveSourceCacheKey is the canonical identity of a staged source. The
+// implementation lives in the pure `ingest` subpackage (no filesystem, DB,
+// downloader or orchestration dependency); this delegate keeps the callers in
+// this package and in `stockplan` on that single implementation instead of
+// duplicating the hashing rule.
+// DeriveSourceCacheKey computes the deterministic cache identity for a source
+// and its download parameters.
+func DeriveSourceCacheKey(rawURL, downloadSection, mergeFormat string, forceKeyframes bool) string {
+	return ingest.DeriveSourceCacheKey(rawURL, downloadSection, mergeFormat, forceKeyframes)
 }

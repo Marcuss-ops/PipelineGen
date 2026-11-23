@@ -32,8 +32,15 @@ module_route_map:
     # The /shorts/* surface (POST /shorts/generate, POST /shorts/render,
     # POST /shorts/render/async) is RETIRED (August 2026) with the external
     # Remotion renderer hand-off.
+    #
+    # POST /preflight (2026-11-23) is the server-side Stage 0: the SAME
+    # PayloadValidator the submit runs plus the catalog verdict for every clip
+    # the body binds (ACTIVE, READY, duration, text track when the segment
+    # burns subtitles). No TTS, no GPU, no job row; the compiled plan is still
+    # validated during the run.
     routes:
       - POST /generate
+      - POST /preflight
       - GET  /clips/search
       - GET  /jobs/:id
   - module: Assets
@@ -390,7 +397,7 @@ http_transport:
 composition_root:
   owner: internal/app
   rule: Only place where concrete adapters (DB, Drive, exec) are instantiated.
-  target_files: [wiring/bootstrap.go, wiring/composition.go, wiring/lifecycle.go, wiring/lifecycle/*.go]
+  target_files: [wiring/bootstrap.go, wiring/composition.go, wiring/lifecycle.go, modules/lifecycle/*.go]
 
 # ── Domain (canonical contracts + types) ─────────────────────────────────────
 

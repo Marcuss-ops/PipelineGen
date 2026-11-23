@@ -1,8 +1,8 @@
 // overlay_plan_v2_envelope.go owns the run-level envelope projection of the
 // v2 request: identity, canvas, clips, seal/background, budgets, media,
-// entity timeline and the extractive timing/category filters. It is split from
-// overlay_plan_v2_request.go by DOMAIN so the request builder stays within the
-// repo's max_lines_per_file_strict=600 gate.
+// entity timeline and the extractive timing/category filters. The split from
+// overlay_plan_v2_request.go is by DOMAIN: the request file builds the request,
+// this file projects the run-level envelope the compiler receives.
 package scriptgeneration
 
 import (
@@ -12,7 +12,6 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
@@ -222,6 +221,49 @@ func overlayPlanBudgets(canvas OverlayCanvasSpec) *overlayplan.Budgets {
 	}
 }
 
+// overlayPlanCanonicalEntityIDs projects the canonical identity of every
+// annotation occurrence and of every verified portrait onto the stable
+// occurrence id the plan joins by. The annotation surface wins: it is the
+// authored identity, while the media entry only names the same identity through
+// a resolved portrait. An occurrence nobody resolved keeps an empty canonical
+// id instead of claiming its stable id is canonical.
+func overlayPlanCanonicalEntityIDs(result *GenerateResult, media *overlayplan.Media) map[string]string {
+	out := map[string]string{}
+	record := func(stable, canonical string) {
+		stable = strings.TrimSpace(stable)
+		canonical = strings.TrimSpace(canonical)
+		if separator := strings.Index(canonical, "::"); separator >= 0 {
+			canonical = canonical[separator+2:]
+		}
+		if stable == "" || canonical == "" || out[stable] != "" {
+			return
+		}
+		out[stable] = canonical
+	}
+	if result != nil {
+		collect := func(annotations *scriptpkg.SceneAnnotations) {
+			if annotations == nil {
+				return
+			}
+			for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotations.PrimaryEntities...), annotations.SecondaryEntities...) {
+				record(annotationStableEntityID(entity), annotationCanonicalEntityID(entity))
+			}
+		}
+		for i := range result.Scenes {
+			collect(result.Scenes[i].Annotations)
+			for _, localized := range result.Scenes[i].LocalizedAnnotations {
+				collect(localized)
+			}
+		}
+	}
+	if media != nil {
+		for _, entry := range media.VerifiedEntityAssets {
+			record(entry.EntityID, entry.CanonicalEntityID)
+		}
+	}
+	return out
+}
+
 func overlayPlanMedia(result *GenerateResult, language Language, sceneInputs []capabilityoverlay.SceneInput) *overlayplan.Media {
 	media := &overlayplan.Media{}
 	if result != nil {
@@ -252,11 +294,11 @@ func overlayPlanMedia(result *GenerateResult, language Language, sceneInputs []c
 				})
 			}
 		}
-		// The promotion surface is separate from the verified one by ownership:
-		// `verified_entity_assets` already makes a card an image, while these are
-		// the portraits only the resolver can render. The planner promotes a card
-		// that has no asset yet, so a card covered above is never promoted twice.
-		media.PromotableEntityAssets = promotableEntityAssets(result)
+		// The resolver also sees bundle portraits and localized aliases that the
+		// annotation pass above cannot name. They belong to the same verified
+		// surface: one entity-id list and one planner decision. There is no
+		// second "promotable" list and no post-plan promotion pass.
+		media.VerifiedEntityAssets = append(media.VerifiedEntityAssets, resolvedEntityAssets(result, media.VerifiedEntityAssets)...)
 	}
 	for _, input := range sceneInputs {
 		if len(input.Images) == 0 {
@@ -269,15 +311,16 @@ func overlayPlanMedia(result *GenerateResult, language Language, sceneInputs []c
 	return media
 }
 
-// promotableEntityAssets projects the portraits the media resolver can render
-// for a plan occurrence onto the v2 request. The planner, not this boundary,
-// takes the card→image decision; shipping the resolved identity + bytes is what
-// lets it do so without the PostgreSQL catalog or the Go sampler.
+// resolvedEntityAssets projects the portraits the media resolver can render for
+// a plan occurrence onto the ONE verified surface. The planner, not this
+// boundary, takes the card→image decision; shipping the resolved identity +
+// bytes is what lets it do so without the PostgreSQL catalog or the Go sampler.
 //
 // Only renderable, content-addressed bytes cross: a semantic placeholder URL or
 // a record without a 64-char digest is skipped here instead of failing the whole
-// request in the Rust validator.
-func promotableEntityAssets(result *GenerateResult) []overlayplan.PromotableEntityAsset {
+// request in the Rust validator. Entries already named by the annotation pass
+// are not duplicated: the first entry for an identity wins.
+func resolvedEntityAssets(result *GenerateResult, existing []overlayplan.VerifiedEntityAsset) []overlayplan.VerifiedEntityAsset {
 	if result == nil || result.EntityTimeline == nil || len(result.EntityTimeline.Scenes) == 0 {
 		return nil
 	}
@@ -285,8 +328,18 @@ func promotableEntityAssets(result *GenerateResult) []overlayplan.PromotableEnti
 	if resolver == nil {
 		return nil
 	}
+	// Dedupe by occurrence identity only. Two occurrences can legitimately
+	// resolve to the same canonical portrait (a localized card that keeps the
+	// surname); each one needs its own entity_id entry, because that is the id
+	// the planner's card actually carries. Rust takes the first matching entry.
+	covered := make(map[string]struct{}, len(existing))
+	for _, entry := range existing {
+		if id := strings.TrimSpace(entry.EntityID); id != "" {
+			covered[id] = struct{}{}
+		}
+	}
 	seen := make(map[string]struct{}, len(result.EntityTimeline.Scenes))
-	var out []overlayplan.PromotableEntityAsset
+	var out []overlayplan.VerifiedEntityAsset
 	for _, scene := range result.EntityTimeline.Scenes {
 		for _, occurrence := range scene.Entities {
 			entityID := strings.TrimSpace(occurrence.EntityID)
@@ -296,7 +349,10 @@ func promotableEntityAssets(result *GenerateResult) []overlayplan.PromotableEnti
 			if _, exists := seen[entityID]; exists {
 				continue
 			}
-			for _, lookupID := range promotableLookupIDs(occurrence, canonicalByStable) {
+			if _, exists := covered[entityID]; exists {
+				continue
+			}
+			for _, lookupID := range entityAssetLookupIDs(occurrence, canonicalByStable) {
 				ref, err := resolver.ResolveBest(lookupID)
 				if err != nil {
 					continue
@@ -310,12 +366,13 @@ func promotableEntityAssets(result *GenerateResult) []overlayplan.PromotableEnti
 				if strings.HasPrefix(url, "assets/semantic/") || strings.HasPrefix(url, "semantic/") {
 					continue
 				}
-				seen[entityID] = struct{}{}
 				canonical := lookupID
 				if separator := strings.Index(canonical, "::"); separator >= 0 {
 					canonical = canonical[separator+2:]
 				}
-				out = append(out, overlayplan.PromotableEntityAsset{
+				seen[entityID] = struct{}{}
+				covered[entityID] = struct{}{}
+				out = append(out, overlayplan.VerifiedEntityAsset{
 					EntityID:          entityID,
 					CanonicalEntityID: canonical,
 					Assets: []overlayplan.AssetRef{{
@@ -329,17 +386,20 @@ func promotableEntityAssets(result *GenerateResult) []overlayplan.PromotableEnti
 	return out
 }
 
-// promotableLookupIDs tries the identity projections the resolver card can
+// entityAssetLookupIDs tries the identity projections the resolver card can
 // carry for one occurrence: the plan occurrence id, the plan item id the Rust
 // planner stamps, their canonical projections, and the verified display-name
 // alias a translated card may keep.
-func promotableLookupIDs(occurrence capabilityentities.EntityOccurrence, canonicalByStable map[string]string) []string {
+func entityAssetLookupIDs(occurrence capabilityentities.EntityOccurrence, canonicalByStable map[string]string) []string {
 	keys := []string{strings.TrimSpace(occurrence.EntityID)}
 	sceneID := strings.TrimSpace(occurrence.SceneID)
 	name := strings.TrimSpace(occurrence.Name)
 	if sceneID != "" && name != "" {
-		if overlayID := capabilityentities.SafeEntityID(name); overlayID != "" {
-			keys = append(keys, "overlay-"+sceneID+"-"+overlayID)
+		// The legacy spelling is a lookup alias (see overlayDisplayAlias), and
+		// this is the only place it enters the join: as an input key whose
+		// value is the canonical id, never as an identity of its own.
+		if alias := overlayDisplayAlias(sceneID, name, ""); alias != "" {
+			keys = append(keys, alias)
 		}
 	}
 	out := make([]string, 0, len(keys)*2+1)
@@ -361,17 +421,21 @@ func promotableLookupIDs(occurrence capabilityentities.EntityOccurrence, canonic
 	for _, key := range keys {
 		appendID(key)
 	}
-	if key := entitycatalog.NormalizeVerifiedAssetKey(name); key != "" {
-		appendID(canonicalByStable["bundle-name:"+key])
+	// The display-name projection is typed: a PERSON surname alias must never
+	// resolve the GPE of the same surface. See bundleNameKey.
+	if key := bundleNameKey(occurrence.Type, name); key != "" {
+		appendID(canonicalByStable[key])
 	}
 	return out
 }
 
-// promotableLocalPaths returns the already-materialized cache location of every
-// bundle portrait, keyed by content address. The v2 wire carries no local path
+// entityAssetLocalPaths returns the already-materialized cache location of every
+// entity portrait, keyed by content address. The v2 wire carries no local path
 // (it is producer-only), so the seal reattaches it exactly like it does for
-// scene images.
-func promotableLocalPaths(result *GenerateResult) map[string]capmodel.OverlayAssetRef {
+// scene images. It covers both the verified bundle and the annotation bindings:
+// the unified verified surface can resolve either, and the renderer must get
+// the same bytes without a second download.
+func entityAssetLocalPaths(result *GenerateResult) map[string]capmodel.OverlayAssetRef {
 	out := map[string]capmodel.OverlayAssetRef{}
 	if result == nil {
 		return out
@@ -388,10 +452,51 @@ func promotableLocalPaths(result *GenerateResult) map[string]capmodel.OverlayAss
 			LocalPath: localPath, SHA256: sha,
 		}
 	}
+	localPathByAsset := map[string]string{}
+	for _, segment := range result.Segments {
+		candidates := append(append([]scriptpkg.SegmentAssetCandidate(nil), segment.Assets.Candidates...), segment.Assets.SecondaryImages...)
+		for _, candidate := range candidates {
+			if id := strings.TrimSpace(candidate.AssetID); id != "" && usableLocalAssetPath(candidate.LocalPath) {
+				localPathByAsset[id] = candidate.LocalPath
+			}
+		}
+	}
+	collect := func(ann *scriptpkg.SceneAnnotations) {
+		if ann == nil {
+			return
+		}
+		for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
+			binding := entity.Image
+			if binding == nil {
+				continue
+			}
+			sha := strings.ToLower(strings.TrimSpace(binding.SHA256))
+			localPath := strings.TrimSpace(binding.LocalPath)
+			if !usableLocalAssetPath(localPath) {
+				localPath = localPathByAsset[binding.AssetID]
+			}
+			if sha == "" || localPath == "" {
+				continue
+			}
+			if _, exists := out[sha]; exists {
+				continue
+			}
+			out[sha] = capmodel.OverlayAssetRef{
+				AssetID: binding.AssetID, URL: entityImageURL(binding),
+				LocalPath: localPath, SHA256: sha, MediaType: binding.MediaType,
+			}
+		}
+	}
+	for i := range result.Scenes {
+		collect(result.Scenes[i].Annotations)
+		for _, localized := range result.Scenes[i].LocalizedAnnotations {
+			collect(localized)
+		}
+	}
 	return out
 }
 
-func overlayPlanEntityTimeline(result *GenerateResult, language Language, projectID string, bounds map[string][2]int64) *overlayplan.EntityTimeline {
+func overlayPlanEntityTimeline(result *GenerateResult, language Language, projectID string, bounds map[string][2]int64, canonicalByEntity map[string]string) *overlayplan.EntityTimeline {
 	durationUS := timelineDurationUS(bounds)
 	out := &overlayplan.EntityTimeline{Version: 1, ProjectID: projectID, Language: string(language), DurationUS: durationUS}
 	if result.EntityTimeline == nil {
@@ -408,6 +513,12 @@ func overlayPlanEntityTimeline(result *GenerateResult, language Language, projec
 			TimelineStartUS: scene.TimelineStartUS, VoiceoverAssetID: scene.VoiceoverAssetID,
 		}
 		for _, entity := range scene.Entities {
+			// The stable occurrence id is the wire identity; the canonical id
+			// is metadata that only exists when the annotation or media lane
+			// actually resolved one. Stamping the stable id here made every
+			// consumer compare two ids that were declared different and were
+			// the same value (OVL-03).
+			canonicalID := strings.TrimSpace(canonicalByEntity[strings.TrimSpace(entity.EntityID)])
 			wireScene.Entities = append(wireScene.Entities, overlayplan.EntityOccurrence{
 				EntityID: entity.EntityID, Name: entity.Name, Type: entity.Type,
 				SceneID: entity.SceneID, SceneIndex: entity.SceneIndex,
@@ -415,7 +526,7 @@ func overlayPlanEntityTimeline(result *GenerateResult, language Language, projec
 				WordStart: entity.WordStart, WordEnd: entity.WordEnd,
 				LocalStartUS: entity.LocalStartUS, LocalEndUS: entity.LocalEndUS,
 				TimelineStartUS: entity.TimelineStartUS, AudioStartUS: entity.AudioStartUS, AudioEndUS: entity.AudioEndUS,
-				Confidence: entity.Confidence, CanonicalEntityID: entity.EntityID,
+				Confidence: entity.Confidence, CanonicalEntityID: canonicalID,
 			})
 		}
 		out.Scenes = append(out.Scenes, wireScene)

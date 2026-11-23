@@ -47,7 +47,7 @@ import "os/exec"
 
 var _ = exec.Command
 `)
-	writeGoFile(t, tmp, "internal/app/wiring/rendering/handlers.go", `package rendering
+	writeGoFile(t, tmp, "internal/app/modules/rendering/handlers.go", `package rendering
 
 import "os/exec"
 

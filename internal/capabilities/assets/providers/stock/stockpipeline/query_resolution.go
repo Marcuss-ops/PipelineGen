@@ -3,6 +3,7 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
 	"strings"
 	"sync"
 	"time"
@@ -251,7 +252,7 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 	// Canonical stage: the per-URL provider probe is a serial, network-bound
 	// span that runs BEFORE planning. Recording it lets the timing breakdown
 	// attribute it instead of folding it into unattributed wall time.
-	probeMetric := startServiceStockPhase(ctx, "stock.duration_probe", "")
+	probeMetric := core.StartServiceStockPhase(ctx, "stock.duration_probe", "")
 	defer func() {
 		if probeMetric != nil {
 			resolved := 0
@@ -262,7 +263,7 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 			}
 			probeMetric.SetItems(int64(len(input.DirectURLs)), int64(resolved))
 		}
-		finishServiceStockPhase(s.log, probeMetric, nil)
+		core.FinishServiceStockPhase(s.log, probeMetric, nil)
 	}()
 
 	// Deterministic work list: DirectURLs order, minus the URLs that already

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
-	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"

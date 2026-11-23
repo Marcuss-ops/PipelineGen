@@ -254,8 +254,8 @@ repository puoi usare anche `ops/jobs/remote/verify-remote.sh` e
   e revocala subito se un PC viene perso.
 - Il traffico è HTTPS con certificato IP attendibile; la chiave non viaggia in
   chiaro. Non disattivare TLS e non esporre la 8000.
-- `/metrics` richiede un token (401 senza), mentre `/assets` e
-  `/media/google-accounting` non sono serviti (404).
+- `/metrics`, `/assets` e `/media/google-accounting` richiedono un token
+  (401 senza): le due superfici statiche non sono più pubbliche.
 
 ## 8. Se qualcosa non funziona
 

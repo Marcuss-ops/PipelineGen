@@ -89,6 +89,11 @@ type HandlerGenerate struct {
 	log          *zap.Logger
 	validator    *gencore.PayloadValidator
 	preflight    usecase.ResearchPreflight
+	// preflightAssets is the catalog reader for POST /preflight (Stage 0: the
+	// clips this body binds must exist, be ACTIVE/READY and speak when the
+	// segment burns subtitles). Optional: nil keeps the route contract-only
+	// and reports unverified=true.
+	preflightAssets AssetPreflightReader
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.

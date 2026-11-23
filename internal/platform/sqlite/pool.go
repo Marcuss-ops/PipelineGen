@@ -117,8 +117,17 @@ func NewDualPool(ctx context.Context, fileUri string, numReaders int) (*DualPool
 	if err != nil {
 		return nil, fmt.Errorf("sqlite.NewDualPool: enrich uri: %w", err)
 	}
+	// Writer transactions take the write lock at BEGIN (IMMEDIATE). A deferred
+	// transaction that reads and then writes fails with SQLITE_BUSY_SNAPSHOT
+	// when another connection wrote in between, and busy_timeout does not
+	// retry that path: the entity image catalog upsert surfaced it as an
+	// intermittent "database is locked". Readers keep deferred transactions.
+	writerUri, err := withImmediateTxLock(walUri)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite.NewDualPool: writer txlock: %w", err)
+	}
 
-	writer, err := sql.Open("sqlite3", walUri)
+	writer, err := sql.Open("sqlite3", writerUri)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite.NewDualPool: open writer: %w", err)
 	}
@@ -226,6 +235,19 @@ func (p *DualPool) Close() error {
 // set or risk the "in-memory per-connection database" footgun
 // seen in `assets/txmutation/primitives_test.go` and the
 // `assets/clip_atomic_writer_test.go` fixtures.
+// withImmediateTxLock marks a SQLite URI so every BeginTx acquires the write
+// lock eagerly, and busy_timeout can actually apply to contending writers.
+func withImmediateTxLock(fileUri string) (string, error) {
+	u, err := url.Parse(fileUri)
+	if err != nil {
+		return "", fmt.Errorf("withImmediateTxLock: parse %q: %w", fileUri, err)
+	}
+	q := u.Query()
+	q.Set("_txlock", "immediate")
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
 func walPragmas(fileUri string) (string, error) {
 	u, err := url.Parse(fileUri)
 	if err != nil {

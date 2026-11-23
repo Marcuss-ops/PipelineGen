@@ -20,10 +20,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-)
 
-import (
-	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/lifecycle"
 )
 
 // ServerRuntime is the constructed runtime for the cmd/server binary.

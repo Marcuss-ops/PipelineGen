@@ -13,6 +13,8 @@ package adapters
 import (
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
+
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
@@ -261,7 +263,7 @@ func entityImageFailureReason(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 		if strings.EqualFold(candidate.PersistenceStatus, "failed") {
 			return "UPLOAD_FAILED"
 		}
-		if !validVidRushCandidate(candidate) || !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
+		if !validVidRushCandidate(candidate) || !imagegate.CandidateEligibleForSlot(candidate, false) {
 			unverified = true
 			continue
 		}

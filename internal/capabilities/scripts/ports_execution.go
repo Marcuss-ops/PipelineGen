@@ -202,10 +202,14 @@ type LocalizedRenderResult struct {
 	RenderSource string             `json:"render_source,omitempty"`
 	Metrics      map[string]float64 `json:"metrics,omitempty"`
 	// Boundary timestamps let the parent distinguish summed child work from
-	// actual fan-out wall time when localized renders overlap.
-	StartedAt  time.Time `json:"started_at,omitempty"`
-	FinishedAt time.Time `json:"finished_at,omitempty"`
-	WallMS     int64     `json:"wall_ms,omitempty"`
+	// actual fan-out wall time when localized renders overlap. StartedAt is
+	// ADMISSION (the render slot was granted), not the call's submission: the
+	// wait before it is QueueWaitMS, so WallMS describes the unit's own work
+	// (render + publication) and never the lane's queueing.
+	StartedAt   time.Time `json:"started_at,omitempty"`
+	FinishedAt  time.Time `json:"finished_at,omitempty"`
+	WallMS      int64     `json:"wall_ms,omitempty"`
+	QueueWaitMS int64     `json:"queue_wait_ms,omitempty"`
 
 	// CheckpointFingerprint is computed from the enqueue inputs that determine
 	// these bytes. It is in-process only (never serialized), so the envelope
@@ -475,6 +479,24 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	sfx []scriptpkg.SoundEffectIntent,
 	randomSFXOnClipStart bool,
 ) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, audiocontract.CompileTimings, error) {
+	return CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(ctx, result, language, profile, source, policy, bgm, sfx, randomSFXOnClipStart, nil)
+}
+
+// CompileCanonicalAudioPlanAudioOnlyWithIntentsPool is the same compile with
+// an explicit clip-start SFX selection pool (the indexed SFX library). An
+// empty pool keeps the built-in whoosh vocabulary.
+func CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(
+	ctx context.Context,
+	result GenerateResult,
+	language Language,
+	profile audio.CanonicalAudioProfile,
+	source AudioAssetSource,
+	policy audio.AudioMixPolicy,
+	bgm []scriptpkg.BackgroundMusicIntent,
+	sfx []scriptpkg.SoundEffectIntent,
+	randomSFXOnClipStart bool,
+	sfxPool []string,
+) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, audiocontract.CompileTimings, error) {
 	// Audio-only narration runs may be compiled before clip materialization.
 	// With VOICEOVER_ONLY there is deliberately no dependency on a local clip
 	// audio path: the master is narration + optional BGM, while the rendered
@@ -487,7 +509,7 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
 	}
 	if randomSFXOnClipStart {
-		sfx = append(append([]scriptpkg.SoundEffectIntent(nil), sfx...), randomClipStartSFXIntents(timeline)...)
+		sfx = append(append([]scriptpkg.SoundEffectIntent(nil), sfx...), scriptaudio.RandomClipStartSFXIntentsWithPool(timeline, sfxPool)...)
 	}
 	planStarted := time.Now()
 	compiled, err := CompileAudioWithIntents(ctx, timeline, profile, policy, bgm, sfx, source)

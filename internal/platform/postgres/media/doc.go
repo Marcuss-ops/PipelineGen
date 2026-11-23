@@ -5,7 +5,8 @@
 // persistence.CanonicalAssetWriter. It mirrors SQLiteMediaCommitter
 // (internal/platform/sqlite/assets/imagesregistry) statement-for-statement
 // so the media-domain cutover (FASE 7 of the staged migration) is a
-// Images, Voiceover, recovery) keep calling the identical
+// composition-root swap. Every existing capability (YouTube, Artlist, Stock,
+// Images, Voiceover, recovery) keeps calling the identical
 // persistence.AssetCommitter surface.
 //
 // The canonical 8-step commit sequence (identical to SQLiteMediaCommitter):
@@ -31,3 +32,18 @@
 // enrichment pipeline writers).
 
 package media
+
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+
+// ── absorbed from assets.go ──
+
+// Canonical writer family assertions — PostgresMediaCommitter is the single
+// production writer (CanonicalAssetWriter = AssetCommitter + AssetMutator +
+// dispatcher-facing tx-bound mutations); PostgresAssetCommitter is the
+// raw-path sibling owning the rendition and index-event seams.
+var (
+	_ persistence.CanonicalAssetWriter     = (*PostgresMediaCommitter)(nil)
+	_ persistence.AssetMutator             = (*PostgresMediaCommitter)(nil)
+	_ persistence.AssetRenditionCommitter  = (*PostgresAssetCommitter)(nil)
+	_ persistence.AssetIndexEventCommitter = (*PostgresAssetCommitter)(nil)
+)

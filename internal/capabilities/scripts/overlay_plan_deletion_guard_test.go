@@ -44,7 +44,22 @@ func TestOverlayPlanProductionHasSingleAuthority(t *testing.T) {
 		"func chainSegments(",
 		"func overlayPlanChainSegments(",
 		"func chainSegmentStyleMaps(",
+		// OVL-01: one verified-portrait surface. A second "promotable" list
+		// or a post-plan promotion symbol would recreate the double channel.
+		"PromotableEntityAssets",
+		"PromotableEntityAsset",
+		// OVL-03: the stable occurrence id is the wire identity. Stamping it
+		// as the canonical id makes two identities look different while they
+		// are the same value, which is what every id bug started from.
+		"CanonicalEntityID: entity.EntityID",
 	}
+
+	// OVL-03: the two legacy key spellings ("overlay-<scene>-<slug>" and
+	// "bundle-name:<family>:<key>") are declared aliases, not identities, and
+	// each may have exactly one producer. A second literal means a component is
+	// inventing a join key again — the shape of every recent id bug.
+	aliasBudget := map[string]int{"\"overlay-\"": 1, "\"bundle-name:\"": 1}
+	aliasProducers := map[string]string{}
 
 	entries, err := os.ReadDir(scriptsDir)
 	if err != nil {
@@ -63,6 +78,36 @@ func TestOverlayPlanProductionHasSingleAuthority(t *testing.T) {
 			if strings.Contains(string(content), symbol) {
 				t.Errorf("retired Go planner symbol %q reappeared in %s", symbol, entry.Name())
 			}
+		}
+		// OVL-03: files are split by responsibility, never to satisfy a line
+		// budget. The hard cap remains enforced by archcheck; a header that
+		// explains a split by line count is the anti-pattern this guard bans.
+		if strings.HasPrefix(entry.Name(), "overlay_") {
+			for _, marker := range []string{
+				"max_lines_per_file_strict",
+				"split to stay under 600",
+				"split to keep both halves under",
+				"600-LOC cap",
+			} {
+				if strings.Contains(string(content), marker) {
+					t.Errorf("line-budget split comment %q reappeared in %s; split by responsibility instead", marker, entry.Name())
+				}
+			}
+		}
+		for spelling := range aliasBudget {
+			if n := strings.Count(string(content), spelling); n > 0 {
+				aliasBudget[spelling] -= n
+				aliasProducers[spelling] = entry.Name()
+			}
+		}
+	}
+
+	for spelling, remaining := range aliasBudget {
+		if remaining != 0 {
+			t.Errorf("legacy alias spelling %s must have exactly one declared producer (found %d extra); OVL-03: no component may invent a join key", spelling, -remaining)
+		}
+		if file := aliasProducers[spelling]; file != "overlay_entity_cards.go" {
+			t.Errorf("legacy alias spelling %s is produced by %q; the declared alias owner is overlay_entity_cards.go", spelling, file)
 		}
 	}
 

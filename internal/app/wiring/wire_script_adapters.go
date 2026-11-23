@@ -4,17 +4,16 @@ package wiring
 
 import (
 	"fmt"
+
 	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
 	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
-	"go.uber.org/zap"
-)
-import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"go.uber.org/zap"
 )
 
 func newInternetImageSearchAdapter(resolver imagesrouting.ImageSearchResolver, log *zap.Logger) adapters.InternetImageSearcher {

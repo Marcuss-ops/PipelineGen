@@ -13,8 +13,9 @@ package wiring
 import (
 	"context"
 	"errors"
-	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
 	"testing"
+
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/stock"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"

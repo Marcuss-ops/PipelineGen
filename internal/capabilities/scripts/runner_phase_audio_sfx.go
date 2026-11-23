@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	"go.uber.org/zap"
 )
 
@@ -32,7 +33,7 @@ func (r *Runner) extendAudioPlanWithOverlaySFX(
 	if result == nil {
 		return plan, assets, nil
 	}
-	intents, err := overlaySFXIntentsForPlan(req, result.OverlayPlan)
+	intents, err := overlaySFXIntentsForPlan(req, result.OverlayPlan, r.soundEffectPool(ctx, runID))
 	if err != nil {
 		return plan, assets, err
 	}
@@ -99,4 +100,27 @@ func (r *Runner) extendAudioPlanWithOverlaySFX(
 		return plan, assets, err
 	}
 	return plan, merged, nil
+}
+
+// soundEffectPool adapts the runner's audio source to the audio package's
+// selection filter. It stays here because it is the only part that needs the
+// Runner's narrow AudioAssetSource field; the filtering itself belongs to the
+// audio target package.
+func (r *Runner) soundEffectPool(ctx context.Context, runID string) []string {
+	if r == nil || r.audioAssetSource == nil {
+		return nil
+	}
+	source, ok := r.audioAssetSource.(scriptaudio.SoundEffectPoolSource)
+	if !ok {
+		return nil
+	}
+	candidates, err := source.ListSoundEffectCandidates(ctx)
+	if err != nil {
+		if r.log != nil {
+			r.log.Warn("sound-effect pool unavailable; falling back to built-in whoosh aliases",
+				zap.String("run_id", runID), zap.Error(err))
+		}
+		return nil
+	}
+	return scriptaudio.FilterSoundEffectCandidates(candidates)
 }

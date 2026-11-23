@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
-	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/vidrush"
-	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
+	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/vidrush"
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/voiceover"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
@@ -200,6 +200,16 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		clipsSearcher = scriptwiring.NewClipsNameSearchAdapter(root.MediaPostgres)
 	}
 
+	// Stage 0, server-side (POST /api/script/preflight): the SAME operator
+	// inventory read model the console serves, so the preflight cannot see a
+	// different catalog than the operator inspecting the asset. Nil when the
+	// media plane is closed — the route then answers unverified=true rather
+	// than a false green.
+	var preflightAssets scriptapi.AssetPreflightReader
+	if root.MediaPostgres != nil {
+		preflightAssets = newScriptAssetPreflightGate(pgmedia.NewOperatorInventoryReader(root.MediaPostgres, log))
+	}
+
 	adminToken := ""
 	if cfg != nil {
 		adminToken = cfg.Security.AdminToken
@@ -283,6 +293,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			Log:  log,
 		},
 		ClipsSearcher: clipsSearcher,
+		Preflight:     scriptapi.PreflightDeps{Assets: preflightAssets},
 		AdminToken:    adminToken,
 		EnabledFunc:   func() bool { return scriptGenerationEnabled(cfg) },
 		ModuleOpts: []module.RouteModuleOption{

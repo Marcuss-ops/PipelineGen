@@ -71,6 +71,11 @@ type ScriptFlowDeps struct {
 	// AdminToken (the AdminTokenProvider interface satisfaction
 	// locked by middleware_auth.go's compile-time assertion).
 	AdminToken string
+
+	// Preflight is the optional dep bag for POST /preflight. A nil
+	// Assets reader keeps the route mounted (contract-only) and makes
+	// it answer unverified=true instead of a false green.
+	Preflight PreflightDeps
 }
 
 // NewScriptFlowHandler constructs the slim ScriptFlowHandler.
@@ -80,19 +85,22 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		log = zap.NewNop()
 	}
 
+	gen := NewHandlerGenerate(
+		deps.Generate.Submission,
+		deps.Generate.GenRunStarter,
+		deps.Generate.Factory,
+		deps.Generate.Log,
+		deps.Generate.Validator,
+		deps.Generate.ResearchPreflight,
+	)
+	gen.SetAssetPreflight(deps.Preflight.Assets)
+
 	return &ScriptFlowHandler{
 		log:           log,
 		adminToken:    deps.AdminToken,
 		clipsSearcher: deps.ClipsSearcher,
-		gen: NewHandlerGenerate(
-			deps.Generate.Submission,
-			deps.Generate.GenRunStarter,
-			deps.Generate.Factory,
-			deps.Generate.Log,
-			deps.Generate.Validator,
-			deps.Generate.ResearchPreflight,
-		),
-		jobs: NewJobsHandler(deps.Jobs.Jobs, deps.Jobs.Log),
+		gen:           gen,
+		jobs:          NewJobsHandler(deps.Jobs.Jobs, deps.Jobs.Log),
 	}
 }
 

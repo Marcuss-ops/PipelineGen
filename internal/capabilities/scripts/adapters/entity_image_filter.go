@@ -1,8 +1,12 @@
 // Package adapters — entity_image_filter.go: person identity/quality
 // filtering for internet entity-image catalog results.
 //
-// Split out of entity_image_catalog.go to respect max_lines_per_file_strict
-// (same package, no behavior change).
+// Historically split out of entity_image_catalog.go to respect
+// max_lines_per_file_strict (same package, no behavior change). The split no
+// longer achieves that goal: this file is now the only one in the package above
+// the 600-line soft cap, so the next change here should group the filtering
+// helpers by concern instead of adding a third mechanical half (BON-02 plan,
+// item 3).
 package adapters
 
 import (
@@ -12,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -46,7 +52,7 @@ func filterPersonEntityImageCandidatesWithRejections(identity entitycatalog.Pers
 		// filename conflicts and technical dimensions). It cannot certify the
 		// depicted person. Keep the candidate pending until the pixel verifier
 		// returns an explicit identity verdict.
-		if !ReusablePersonImageVerdict(result) {
+		if !imagegate.ReusablePersonImageVerdict(result) {
 			result.SemanticStatus = entitycatalog.CandidateSemanticUnknown
 			result.SemanticScore = 0
 			result.QualityReason = reason
@@ -112,7 +118,7 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 	// it. A rejection caused by a scorer outage stays retryable (its reason
 	// is one of the transient shapes) and falls through to the unknown path.
 	if strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), entitycatalog.CandidateSemanticRejected) &&
-		ReusablePersonImageVerdict(candidate) {
+		imagegate.ReusablePersonImageVerdict(candidate) {
 		reason := strings.TrimSpace(candidate.QualityReason)
 		if reason == "" {
 			reason = "candidate was rejected by visual identity verification"

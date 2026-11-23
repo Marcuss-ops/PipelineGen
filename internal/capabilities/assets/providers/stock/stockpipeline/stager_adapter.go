@@ -8,6 +8,7 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -105,11 +106,11 @@ func (s *StockStager) stageSource(ctx context.Context, ref assets.SourceRef) (re
 	s.sharedRefsMu.Unlock()
 	if sa, hit := s.checkSourceCache(ctx, cacheKey, ref, outputPath, fs); hit {
 		if isYouTubeSourceURL(ref.URL) {
-			cacheMetric := startServiceStockPhase(ctx, "stock.youtube_download", "")
+			cacheMetric := core.StartServiceStockPhase(ctx, "stock.youtube_download", "")
 			if cacheMetric != nil {
 				cacheMetric.SetItems(1, 1)
 				cacheMetric.SetBytes(0, 0)
-				finishServiceStockPhase(s.svc.log, cacheMetric, nil)
+				core.FinishServiceStockPhase(s.svc.log, cacheMetric, nil)
 			}
 		}
 		return sa, nil

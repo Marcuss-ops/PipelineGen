@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
 )
 
 // RunMediaBackfillPostgres implements the `backfill-media-postgres` admin
 // command: the FASE-3 SQLite → PostgreSQL media backfill with fail-closed
 // parity verification. It is a thin flag-delegator over
-// internal/platform/postgres/media.RunMediaBackfill — all engine logic
+// internal/platform/postgres/media/backfill.RunMediaBackfill — all engine logic
 // (mapping, batching, upserts, parity checks) lives there so tests can
 // exercise it without the CLI.
 //
@@ -48,7 +48,7 @@ func RunMediaBackfillPostgres(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	report, err := pgmedia.RunMediaBackfill(ctx, pgmedia.BackfillConfig{
+	report, err := pgbackfill.RunMediaBackfill(ctx, pgbackfill.BackfillConfig{
 		SQLiteDSN:   *sqliteDSN,
 		PostgresDSN: *pgDSN,
 		BatchSize:   *batchSize,

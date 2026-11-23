@@ -76,6 +76,20 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 		// authenticated media surface. The proxy reads the asset's primary
 		// object_storage location; it never redirects to the internal store URL.
 		m2mMedia.SetContentHandler(newMediaContentHandler(assetReader, log))
+		// Unified download: any ACTIVE asset (video/audio/image/script), local
+		// or object-storage or Drive, with Range + SHA-256. The clip-only route
+		// stays for backward compatibility.
+		m2mMedia.SetAssetDownloadHandler(newMediaAssetDownloadHandler(assetReader, wiring.Assets.DriveDownload, log))
+		// The remote reader must be able to query the real vector/keyword
+		// indexes, not only GET /assets?search= (ILIKE). Same Aggregator as
+		// the admin route, gated by media.read.
+		if wiring.Assets.SearchHandler != nil {
+			m2mMedia.SetSearchHandler(wiring.Assets.SearchHandler)
+		}
+		// Folder tree / breadcrumb / children for selective material fetching.
+		if wiring.Assets.Folders != nil {
+			m2mMedia.SetFolderReadHandler(wiring.Assets.Folders)
+		}
 		wiring.M2MMediaHandler = m2mMedia
 		log.Info("created M2M media module (GET /assets, /assets/:id, /facets, POST download on /api/v1/media)")
 	}

@@ -55,6 +55,10 @@ type Dependencies struct {
 	// endpoint returns 503.
 	ClipsSearcher ClipSearcher
 
+	// Preflight is the optional dep bag for POST /script/preflight. A nil
+	// Assets reader keeps the route contract-only (unverified=true).
+	Preflight PreflightDeps
+
 	// AdminToken is the auth secret consumed by EnableAuth +
 	// AdminToken (AdminTokenProvider interface satisfaction).
 	AdminToken string
@@ -147,6 +151,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		Generate:      deps.Generate,
 		Jobs:          deps.Jobs,
 		ClipsSearcher: deps.ClipsSearcher,
+		Preflight:     deps.Preflight,
 		AdminToken:    deps.AdminToken,
 		// Caps is read directly from deps.Generate.Caps inside
 		// NewScriptFlowHandler (godlike/06 SSOT one canonical owner

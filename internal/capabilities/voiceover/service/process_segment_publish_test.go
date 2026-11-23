@@ -398,3 +398,168 @@ func TestPublishTimingBundle_Moments_AnchorsAnnotationsDeterministically(t *test
 	assert.Equal(t, int64(125_000), got.StartUS)
 	assert.Equal(t, int64(487_000), got.EndUS)
 }
+
+func TestTimingInputBlocker(t *testing.T) {
+	withWords := func() *TTSOutput {
+		return &TTSOutput{WordBoundaries: []RawSpeechBoundary{{Text: "x", StartUS: 0, EndUS: 100}}}
+	}
+	const incompatibleMessage = "timing required + remove_silence: the audio post-processor reported no edit map, so accurate timestamps are impossible"
+
+	tests := []struct {
+		name          string
+		tts           *TTSOutput
+		post          *AudioPostOutput
+		removeSilence bool
+		wantNil       bool
+		wantCode      FailureCode
+		wantMessage   string
+	}{
+		{name: "usable without silence removal", tts: withWords(), wantNil: true},
+		{name: "usable with edit map duration", tts: withWords(), post: &AudioPostOutput{DurationUS: 1000}, removeSilence: true, wantNil: true},
+		{name: "post output ignored when silence removal is off", tts: withWords(), post: &AudioPostOutput{}, removeSilence: false, wantNil: true},
+		{
+			name:        "no word boundaries",
+			tts:         &TTSOutput{},
+			wantCode:    FailureTimingUnavailable,
+			wantMessage: "VOICEOVER_TIMING_UNAVAILABLE: TTS produced no word boundaries for required timing",
+		},
+		{
+			name: "silence removal without post output", tts: withWords(), removeSilence: true,
+			wantCode: FailureTimingIncompatible, wantMessage: incompatibleMessage,
+		},
+		{
+			name: "silence removal with zero duration", tts: withWords(), post: &AudioPostOutput{}, removeSilence: true,
+			wantCode: FailureTimingIncompatible, wantMessage: incompatibleMessage,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := timingInputBlocker(tt.tts, tt.post, tt.removeSilence)
+			if tt.wantNil {
+				require.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got)
+			assert.Equal(t, tt.wantCode, got.code)
+			assert.Equal(t, tt.wantMessage, got.message)
+		})
+	}
+}
+
+func TestBuildTimingWordTimeline_RemapsOntoCleanedTimeline(t *testing.T) {
+	tts := &TTSOutput{
+		Duration: 3 * time.Second,
+		WordBoundaries: []RawSpeechBoundary{
+			{Text: "Il", StartUS: 0, EndUS: 500_000},
+			{Text: "celebre", StartUS: 500_000, EndUS: 900_000},
+			{Text: "incontro.", StartUS: 2_100_000, EndUS: 2_500_000},
+		},
+	}
+	post := &AudioPostOutput{
+		DurationUS: 2_000_000,
+		EditMap: []audio.AudioEdit{
+			{SourceStartUS: 1_000_000, SourceEndUS: 2_000_000, OutputStartUS: 1_000_000, OutputEndUS: 1_000_000},
+		},
+	}
+
+	timeline, err := buildTimingWordTimeline(tts, post, true)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(2_000_000), timeline.DurationUS, "the cleaned duration is authoritative")
+	require.Len(t, timeline.Words, 3)
+	assert.Equal(t, 2, timeline.Words[2].Index, "remap reindexes the surviving words contiguously")
+	assert.Equal(t, int64(1_100_000), timeline.Words[2].StartUS, "the removed second must shift the trailing word left")
+	assert.Zero(t, timeline.DroppedWords)
+	assert.Zero(t, timeline.ClampedOverrunUS)
+}
+
+func TestBuildTimingWordTimeline_IgnoresEditMapWithoutSilenceRemoval(t *testing.T) {
+	tts := &TTSOutput{
+		Duration:       3 * time.Second,
+		WordBoundaries: []RawSpeechBoundary{{Text: "x", StartUS: 2_100_000, EndUS: 2_500_000}},
+	}
+	post := &AudioPostOutput{
+		DurationUS: 2_000_000,
+		EditMap: []audio.AudioEdit{
+			{SourceStartUS: 1_000_000, SourceEndUS: 2_000_000, OutputStartUS: 1_000_000, OutputEndUS: 1_000_000},
+		},
+	}
+
+	timeline, err := buildTimingWordTimeline(tts, post, false)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(3_000_000), timeline.DurationUS)
+	assert.Equal(t, int64(2_100_000), timeline.Words[0].StartUS, "the provider timeline stays authoritative without silence removal")
+}
+
+func TestPersistTimingProjections_WritesCertifiedLocalSSOT(t *testing.T) {
+	dir := t.TempDir()
+	artifactJSON := []byte(`{"version":1}`)
+	projections := map[audio.TimingFormat][]byte{
+		audio.TimingJSON: artifactJSON,
+		audio.TimingSRT:  []byte("1\n00:00:00,000 --> 00:00:01,000\nx\n"),
+	}
+
+	local, err := persistTimingProjections(dir, "scene-0-it", artifactJSON, projections)
+
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dir, "scene-0-it-timing.json"), local.JSONPath)
+	assert.Equal(t, filepath.Join(dir, "scene-0-it.srt"), local.SRTPath)
+	assert.Empty(t, local.VTTPath)
+	assert.FileExists(t, local.JSONPath)
+	assert.FileExists(t, local.SRTPath)
+	assert.NoFileExists(t, filepath.Join(dir, "scene-0-it.vtt"))
+	got, err := os.ReadFile(local.JSONPath)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(artifactJSON), string(got))
+}
+
+func TestInjectTimingMetadata(t *testing.T) {
+	meta := map[string]any{}
+	injectTimingMetadata(meta, nil)
+	assert.Empty(t, meta, "nil timing result must not touch the envelope")
+
+	meta["timing_status"] = "stale"
+	injectTimingMetadata(meta, &VoiceoverTimingResult{Status: TimingStatusUnavailable})
+	assert.Equal(t, TimingStatusUnavailable, meta["timing_status"])
+	assert.Equal(t, "", meta["timing_boundary_mode"])
+	assert.Equal(t, 0, meta["timing_word_count"])
+	assert.Equal(t, int64(0), meta["timing_duration_us"])
+	assert.NotContains(t, meta, "timing_json_link")
+	assert.NotContains(t, meta, "audio_sha256")
+
+	injectTimingMetadata(meta, &VoiceoverTimingResult{
+		Status: TimingStatusCompleted, JSONLink: "https://json.example", SRTPath: "/tmp/a.srt",
+		AudioSHA256: "sha", BoundaryMode: "word", WordCount: 3, DurationUS: 2500,
+	})
+	assert.Equal(t, "https://json.example", meta["timing_json_link"])
+	assert.Equal(t, "/tmp/a.srt", meta["timing_srt_path"])
+	assert.Equal(t, "sha", meta["audio_sha256"])
+	assert.Equal(t, 3, meta["timing_word_count"])
+	assert.Equal(t, int64(2500), meta["timing_duration_us"])
+}
+
+func TestMarshalVoiceoverMetadata_TypedSerializationFailure(t *testing.T) {
+	_, err := marshalVoiceoverMetadata(map[string]any{"unsupported": func() {}})
+
+	require.Error(t, err)
+	var pipelineErr *PipelineError
+	require.ErrorAs(t, err, &pipelineErr)
+	assert.Equal(t, StageMetadata, pipelineErr.Stage)
+	assert.Equal(t, FailureMetadataSerialization, pipelineErr.FailureCode())
+	assert.False(t, pipelineErr.Retryable)
+}
+
+func TestPersistTimingProjections_KeepsUnrequestedJSONLocalOnly(t *testing.T) {
+	dir := t.TempDir()
+	artifactJSON := []byte(`{"version":1}`)
+	projections := map[audio.TimingFormat][]byte{audio.TimingSRT: []byte("srt")}
+
+	local, err := persistTimingProjections(dir, "scene-0-it", artifactJSON, projections)
+
+	require.NoError(t, err)
+	assert.FileExists(t, local.JSONPath, "the JSON SSOT is always persisted locally")
+	assert.NotContains(t, local.Paths, audio.TimingJSON, "an unrequested JSON format must not be uploaded")
+	assert.Len(t, local.Paths, 1)
+	assert.Equal(t, filepath.Join(dir, "scene-0-it.srt"), local.Paths[audio.TimingSRT])
+}

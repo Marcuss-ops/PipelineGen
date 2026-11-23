@@ -116,191 +116,45 @@ import (
 // loud Warn when it is missing. Production wiring always supplies
 // the canonical drive.FileLifecycle adapter.
 func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, qd *IndexDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo detail.ArtifactStageRepository, drivePublisher delivery.Publisher, driveDeleter jobsoutbox.DriveDeleter, mediaPostgres *sql.DB) (*OutboxBundle, IOpaqueStartFunc, error) {
-	if qd == nil {
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: indexDeps is nil (VECTOR-002 PR8 fail-closed; composition forgot to call buildIndexDeps first?)")
-	}
-	if stagingSvc == nil {
-		// FASE 3 Push 3.1c: the Publisher worker is the canonical
-		// outbox→staging adapter. It MUST be wired here (otherwise
-		// publish_requested events dead-letter on the first
-		// emission). Composition must call BuildStagingBundle
-		// BEFORE BuildOutboxBundle so the typed port is available.
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: stagingSvc is required (FASE 3 Push 3.1c; composition must call BuildStagingBundle before BuildOutboxBundle)")
-	}
-	if repo == nil {
-		// FASE 3 Push 3.1e: the DriveUploader worker consumes
-		// artifact.Repository for the MarkPublished fenced-CAS. A
-		// nil repo is fail-closed — composition must inject the
-		// same artifact.Repository port that StagingBundle uses
-		// (single-writer SSOT; no second DB wrapper).
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: repo is required (FASE 3 Push 3.1e; composition must inject StagingBundle.Repository)")
-	}
-	if drivePublisher == nil {
-		// FASE 3 Push 3.1e: the DriveUploader worker is the
-		// canonical outbox→Drive adapter. It MUST be wired here
-		// (otherwise artifact.staged.v1 events dead-letter the
-		// moment the saga's first Publish step). A nil
-		// drivePublisher is fail-closed — composition must
-		// inject the canonical delivery.Publisher from
-		// DriveBundle (built in BuildDriveBundle).
-		return nil, nil, fmt.Errorf("BuildOutboxBundle: drivePublisher is required (FASE 3 Push 3.1e; composition must inject DriveBundle.Publisher)")
-	}
-
-	// The former vector engine config-mismatch gate and the media pgvector handler
-	// registrations (IndexingHandler + IndexDeleteHandler) were deleted with
-	// the legacy vector engine on 2026-11-17. The outbox now registers no media index
-	// handler; the PostgreSQL pgvector index worker is the canonical consumer.
-	outboxEventsRepo := outboxevents.NewRepository(dbs.DualPool.Writer)
-
-	// PR 3 fix/pgvector-outbox-fail-closed BL-1 fix: dispatcher
-	// construction happens AFTER the fail-closed media-index-owner
-	// assertion (assertSingleMediaIndexOwner above), so when
-	// repos.ClipsRepo was nil the call returns the typed error the
-	// fail-closed contract requires instead of an internal panic
-	// (NewDispatcher / NewMultiClipsUpserter panic on nil inputs).
-	// The dispatcher is additionally built BEFORE
-	// RegisterOptionalHandlers so the DriveDeleteDeps StateAdvancer
-	// port can be populated (Blocco 3.1 commit 2/3 wiring, fixed in
-	// production July 2026 — previously the DriveDeleteDeps were
-	// never populated and every asset.drive.delete_requested.v1
-	// event dead-lettered).
-
-	eventsRegistry := outboxevents.NewHandlerRegistry()
-	// A split jobs plane has its own outbox registry. It must receive
-	// execution-plane completion events (not the media outbox registry).
-	jobsRegistry := eventsRegistry
-	if dbs.Jobs != nil {
-		jobsRegistry = outboxevents.NewHandlerRegistry()
-	}
-
-	// POSTGRES-MEDIA-CUTOVER: in media-SSOT mode, build the canonical
-	// pgvector index worker and its runtime drain loop. The embedder is
-	// routed through cfg.ClipIndexer.ServerURL (the E5 sidecar contract, so
-	// document vectors stay in one space) and the model identity comes from
-	// cfg.MediaPostgreSQL.EmbeddingModel. Fail-closed: an empty sidecar
-	// URL in PG mode aborts composition (no embedder → no vectors → no
-	// fake availability).
-	var pgIndexWorker *pgmedia.PostgresIndexWorker
-	// POSTGRES-MEDIA-CUTOVER: the two ports the TextTrackMaterializer needs
-	// AFTER translation — the canonical PG reindex requester and the
-	// multilingual search_text rebuilder. Both are nil in the degraded
-	// (PG-disabled) mode; BuildTextTrackBundle then keeps the legacy path.
-	var mediaIndexRequester texttracks.IndexRequester
-	var mediaSearchTextRebuilder texttracks.SearchTextRebuilder
-	if cfg.MediaPostgreSQL.Enabled {
-		if mediaPostgres == nil {
-			return nil, nil, fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but mediaPostgres handle is nil (composition must call RequireMediaPostgres first)")
-		}
-		sidecarURL := strings.TrimSpace(cfg.ClipIndexer.ServerURL)
-		if sidecarURL == "" {
-			return nil, nil, fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but ClipIndexer.ServerURL is empty (the pgvector index worker requires the canonical E5 embedding sidecar)")
-		}
-		pgOutboxRepo := pgmedia.NewOutboxRepository(mediaPostgres)
-		pgVectors := pgmedia.NewVectorSurfaceWriter(mediaPostgres)
-		embedder := pgmedia.NewEmbedAssetTextAdapter(mediaPostgres, embeddings.NewHTTPTextEmbedderWithTimeout(sidecarURL, cfg.ClipIndexer.EmbedTimeout()))
-		if err := pgVectors.EnsureEmbeddingFamily(ctx, "text", cfg.MediaPostgreSQL.EmbeddingModel, 768); err != nil {
-			return nil, nil, fmt.Errorf("BuildOutboxBundle: pgvector embedding family bootstrap: %w", err)
-		}
-		pgIndexWorker = pgmedia.NewPostgresIndexWorker(pgOutboxRepo, pgVectors, embedder, cfg.MediaPostgreSQL.EmbeddingModel)
-
-		// The materializer's post-translation reindex must land on this same
-		// PostgreSQL outbox (the ONLY media index owner). ReindexRequester
-		// owns the canonical envelope + terminal-conflict handling.
-		mediaIndexRequester = pgmedia.NewReindexRequester(mediaPostgres)
-
-		// Rebuild media_assets.search_text from the metadata + READY
-		// transcripts before that reindex, so the translations enter the E5
-		// embedding. The configured multilingual set filters the transcript
-		// tracks exactly as the indexing path does.
-		langsCSV, csvErr := BuildMultilingualLanguageCSV(ActiveMultilingualConfig(cfg), nil)
-		if csvErr != nil {
-			log.Warn("BuildOutboxBundle: multilingual index languages unavailable; search_text rebuild runs without a language filter",
-				zap.Error(csvErr))
-			langsCSV = ""
-		}
-		mediaSearchTextRebuilder = pgmedia.NewSearchTextRebuilder(mediaPostgres, langsCSV).WithLogger(log)
-	}
-
-	// Deps + handler registration sub-blocks (extracted July 2026 to
-	// build_outbox_handlers.go). Same order as the pre-split flat
-	// body: deps construction → core handlers → optional/worker
-	// handlers.
-	outboxDeps, metadataExportHandler := buildOutboxDeps(dbs, cfg, repos, jobs, qd, voiceoverDriver, mediaPostgres, log)
-	// POSTGRES-MEDIA-CUTOVER: fail-closed single-owner assertion for the media
-	// index plane (replaces the retired registerOutboxCoreHandlers no-op).
-	if err := assertSingleMediaIndexOwner(cfg, eventsRegistry, pgIndexWorker, log); err != nil {
+	if err := validateOutboxBundleInputs(qd, stagingSvc, repo, drivePublisher); err != nil {
 		return nil, nil, err
 	}
 
-	// ── Dispatcher construction (post core fail-closed gate). ─────
-	// Moved BEFORE RegisterOptionalHandlers (previously after) so the
-	// DriveDeleteDeps.StateAdvancer port below can be populated with
-	// the concrete *outbox.Dispatcher. The PR 3 fail-closed contract
-	// is preserved: the core handlers registered above abort boot on a
-	// nil mandatory dep before this block ever runs.
-	outboxTxMgr := outbox.NewManager(dbs.DualPool.Writer, log)
-	canonicalCommitter, canonicalCommitterErr := newCanonicalAssetCommitter(mediaPostgres, log)
-	if canonicalCommitterErr != nil {
-		return nil, nil, fmt.Errorf("compose process: canonical media writer: %w", canonicalCommitterErr)
+	eventsRegistry, jobsRegistry := newOutboxRegistries(dbs)
+	outboxEventsRepo := outboxevents.NewRepository(dbs.DualPool.Writer)
+
+	// POSTGRES-MEDIA-CUTOVER: the canonical pgvector index worker and its two
+	// post-translation ports exist only in media-SSOT mode; degraded mode
+	// leaves them nil and the outbox keeps the legacy path.
+	mediaIndex, err := buildOutboxMediaIndex(ctx, cfg, mediaPostgres, log)
+	if err != nil {
+		return nil, nil, err
 	}
-	if canonicalCommitter == nil {
-		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — canonical media writer degraded; media outbox events will dead-letter (graceful degrade, godlike/07)")
+
+	// Deps + handler registration sub-blocks (extracted July 2026 to
+	// build_outbox_handlers.go). Same order as the pre-split flat body:
+	// deps construction → core handlers → optional/worker handlers.
+	outboxDeps, metadataExportHandler := buildOutboxDeps(dbs, cfg, repos, jobs, qd, voiceoverDriver, mediaPostgres, log)
+	// POSTGRES-MEDIA-CUTOVER: fail-closed single-owner assertion for the media
+	// index plane (replaces the retired registerOutboxCoreHandlers no-op).
+	if err := assertSingleMediaIndexOwner(cfg, eventsRegistry, mediaIndex.worker, log); err != nil {
+		return nil, nil, err
 	}
-	if pgIndexWorker != nil {
-		if err := registerPostgresMediaOutboxHandlers(pgIndexWorker, drivePublisher, canonicalCommitter, repos.SubtitleArtifactRepo, log); err != nil {
-			return nil, nil, fmt.Errorf("BuildOutboxBundle: register PostgreSQL media outbox handlers: %w", err)
-		}
+
+	dispatcher, canonicalCommitter, err := newOutboxDispatcher(dbs, repos, mediaPostgres, log, outboxEventsRepo, mediaIndex, drivePublisher)
+	if err != nil {
+		return nil, nil, err
 	}
-	// The production dispatcher receives the single canonical writer directly.
-	// Legacy ClipsUpserter/ClipsStateWriter arguments remain accepted by
-	// NewDispatcher only for compatibility with older tests and adapters.
-	if repos.ClipsRepo != nil {
-		repos.ClipsRepo.SetCanonicalWriter(canonicalCommitter)
-	}
-	// POSTGRES-MEDIA-CUTOVER: the canonical media writer lives on PostgreSQL
-	// while this dispatcher's TxManager is the SQLite outbox pool — the two
-	// cannot share a transaction. NewDispatcher therefore accepts the
-	// canonical committer directly and has NO tx-bound media path: every media
-	// commit goes through canonicalCommitter.CommitAndIndex (one PostgreSQL tx
-	// for media_assets + the PostgreSQL outbox event). The former variadic
-	// `extra ...any` surface is gone, so an incoherent cross-engine dispatcher
-	// is no longer expressible at the call site.
-	dispatcher := outbox.NewDispatcher(outboxEventsRepo, outboxTxMgr, log, canonicalCommitter)
-	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (VECTOR-002 PR7)")
-	// POSTGRES-MEDIA-CUTOVER: in portable mode SaveDiscoveredAsset also routes
-	// through the committer's own transaction, so the canonical writer must
-	// satisfy the self-owned-transaction discovery port too.
-	var _ outbox.DiscoveryCommitAndIndexCommitter = (*pgmedia.PostgresMediaCommitter)(nil)
 
 	// Blocco 3.1 commit 2/3 (June 2026): DriveDeleteHandler deps
 	// (asset.drive.delete_requested.v1 → Drive Trash/Delete → atomic
 	// AdvanceAndEmit to DRIVE_DELETED + emit index.delete_requested).
-	// All 4 narrow ports are populated from production wiring;
-	// RegisterOptionalHandlers registers the handler only when ALL
-	// four are non-nil (partial dev wiring skips at Info, never aborts
-	// boot). A nil driveDeleter in production is a silent
-	// dead-letter regression, so it is surfaced as a loud Warn here.
-	if driveDeleter != nil && repos.ClipsRepo != nil {
-		// MEDIA-SSOT P0-2 (September 2026): when the canonical writer is the
-		// PostgreSQL media committer, the saga's state reads/writes and the
-		// advance+emit hop route through the PG media SSOT; the SQLite
-		// lifecycle ports stay only for the non-PG legacy path.
-		lifecycleReader, lifecycleWriter, stateAdvancer := outboxDepsSagaPorts(repos.ClipsRepo, dispatcher, canonicalCommitter)
-		outboxDeps.DriveDelete = jobsoutbox.DriveDeleteDeps{
-			DrivePatchLifecycle:  lifecycleReader,
-			DrivePatchLifecycleW: lifecycleWriter,
-			DrivePatchStateAdv:   stateAdvancer,
-			DriveDeleteHandler:   driveDeleter,
-		}
-		log.Info("outbox DriveDeleteHandler deps wired: asset.drive.delete_requested.v1 → Drive Trash/Delete → AdvanceAndEmit (Blocco 3.1 commit 2/3)")
-	} else {
-		log.Warn("outbox DriveDeleteHandler deps NOT wired (driveDeleter or ClipsRepo nil) — asset.drive.delete_requested.v1 events will dead-letter with 'no handler registered'")
-	}
+	outboxDeps.DriveDelete = newOutboxDriveDeleteDeps(repos, dispatcher, canonicalCommitter, driveDeleter, log)
 	// MEDIA-SSOT (September 2026, audit finding #3): the canonical PG committer
 	// emits asset.drive.delete_requested into the PostgreSQL outbox, so the
 	// PostgreSQL worker must own a consumer for it. Registering only on the
 	// SQLite registry left every PG-emitted delete event to dead-letter.
-	if err := registerPostgresDeleteSagaHandlers(pgIndexWorker, canonicalCommitter, outboxDeps.DriveDelete, log); err != nil {
+	if err := registerPostgresDeleteSagaHandlers(mediaIndex.worker, canonicalCommitter, outboxDeps.DriveDelete, log); err != nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: register PostgreSQL delete-saga handler: %w", err)
 	}
 
@@ -308,80 +162,23 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 	if err != nil {
 		return nil, nil, err
 	}
-	if dbs.Jobs != nil {
-		// Generation submission writes script.generate.queued to the
-		// execution-plane outbox. The handler is a validation-only consumer;
-		// register the same typed handler on that plane so the event is acked
-		// there instead of being dead-lettered as "no handler registered".
-		queuedHandler, queuedErr := jobsoutbox.NewScriptGenerateQueuedHandler(jobs.Repo)
-		if queuedErr != nil {
-			return nil, nil, fmt.Errorf("BuildOutboxBundle: split jobs script.generate.queued handler: %w", queuedErr)
-		}
-		if regErr := jobsRegistry.Register(queuedHandler); regErr != nil {
-			return nil, nil, fmt.Errorf("BuildOutboxBundle: register split jobs script.generate.queued handler: %w", regErr)
-		}
-	}
 
+	if err := registerSplitJobsQueuedHandler(dbs, jobsRegistry, jobs); err != nil {
+		return nil, nil, err
+	}
 	// Derived performance projection: job.completed events → performance_runs/
 	// performance_steps. Best-effort (see registerPerformanceProjectionHandler).
-	// The overlayEvents repo is the split media plane's outbox (the same
-	// repository the durable overlay Drive publisher enqueues into): the
-	// job.completed handler uses it to wake the overlay-drive publications
-	// deferred during the run so they become due at the terminal commit
-	// instead of waiting out their own 60 s deferral cadence.
+	// The overlayEvents repo is the split media plane's outbox: the job.completed
+	// handler uses it to wake the overlay-drive publications deferred during the
+	// run so they become due at the terminal commit.
 	if dbs.Jobs != nil {
 		registerPerformanceProjectionHandler(jobsRegistry, dbs, dbs.Jobs, dbs.Main, log, outboxEventsRepo)
 	} else {
 		registerPerformanceProjectionHandler(eventsRegistry, dbs, dbs.Main, dbs.Main, log, outboxEventsRepo)
 	}
 
-	// ── Pool construction (post fail-closed). ─────────────────────
-	cfgPoll := 500 * time.Millisecond
-	if cfg.Outbox.PollIntervalMs > 0 {
-		cfgPoll = time.Duration(cfg.Outbox.PollIntervalMs) * time.Millisecond
-	}
-	cfgReclaim := 60 * time.Second
-	if cfg.Outbox.ReclaimIntervalSeconds > 0 {
-		cfgReclaim = time.Duration(cfg.Outbox.ReclaimIntervalSeconds) * time.Second
-	}
-	cfgProcess := 30 * time.Second
-	if cfg.Outbox.ProcessTimeoutSeconds > 0 {
-		cfgProcess = time.Duration(cfg.Outbox.ProcessTimeoutSeconds) * time.Second
-	}
-	outboxEventsCfg := outboxevents.WorkerPollConfig{
-		Workers:         cfg.Outbox.Workers,
-		PollInterval:    cfgPoll,
-		ProcessTimeout:  cfgProcess,
-		ReclaimInterval: cfgReclaim,
-	}
-	eventsPool := outboxevents.NewPool("outbox-events", outboxEventsRepo, eventsRegistry, log, outboxEventsCfg)
-
-	// In split mode job.completed is committed to the execution DB's local
-	// outbox. It gets its own registry/pool so media outbox events remain
-	// transactionally owned and consumed by media.db.sqlite.
-	var jobsEventsPool *outboxevents.Pool
-	if dbs.Jobs != nil {
-		jobsEventsPool = outboxevents.NewPool("jobs-outbox-events", outboxevents.NewRepository(dbs.Jobs.DB), jobsRegistry, log, outboxEventsCfg)
-	}
-
-	startClosure := func() error {
-		if err := startOutboxEventsPool(ctx, eventsPool, outboxEventsCfg, log); err != nil {
-			return err
-		}
-		if err := startOutboxEventsPool(ctx, jobsEventsPool, outboxEventsCfg, log); err != nil {
-			return err
-		}
-		// POSTGRES-MEDIA-CUTOVER: launch the pgvector index worker's drain
-		// loop (panic-recovered goroutine, exits on ctx.Done). It is the
-		// canonical asset.index.requested consumer in media-SSOT mode.
-		if pgIndexWorker != nil {
-			concurrent.SafeGo("pg-media-index-worker", func() {
-				pgIndexWorker.Run(ctx, pgmedia.DefaultPollInterval, pgmedia.DefaultLeaseTTL, zapLoggerAsMediaLogger(log))
-			})
-			log.Info("POSTGRES-MEDIA-CUTOVER: pgvector index worker drain loop started (asset.index.requested -> embed -> media_embeddings -> INDEXED -> completed)")
-		}
-		return nil
-	}
+	eventsPool, jobsEventsPool, poolCfg := newOutboxPools(cfg, dbs, outboxEventsRepo, eventsRegistry, jobsRegistry, log)
+	startClosure := newOutboxStartClosure(ctx, eventsPool, jobsEventsPool, mediaIndex.worker, poolCfg, log)
 
 	return &OutboxBundle{
 		CanonicalWriter:    canonicalCommitter,
@@ -391,12 +188,12 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 		EventsPool:         eventsPool,
 		JobsEventsRegistry: jobsRegistry,
 		JobsEventsPool:     jobsEventsPool,
-		MediaIndexWorker:   pgIndexWorker,
+		MediaIndexWorker:   mediaIndex.worker,
 		Publisher:          publisherHandler,
 		DriveUploader:      driveUploadHandler,
 
-		MediaIndexRequester:      mediaIndexRequester,
-		MediaSearchTextRebuilder: mediaSearchTextRebuilder,
+		MediaIndexRequester:      mediaIndex.requester,
+		MediaSearchTextRebuilder: mediaIndex.rebuilder,
 	}, startClosure, nil
 }
 
@@ -545,4 +342,222 @@ func BuildProcessBundle(
 
 func buildIndexDeps(cfg *config.Config) *IndexDeps {
 	return &IndexDeps{ClipIndexerService: capindexing.NewReindexRequesterHolder(cfg.ClipIndexer.Enabled)}
+}
+
+// newOutboxRegistries returns the media-plane registry and, when the jobs plane
+// is split, its own registry: a split jobs plane must receive execution-plane
+// completion events on its own outbox, never on the media one.
+func newOutboxRegistries(dbs *Databases) (*outboxevents.HandlerRegistry, *outboxevents.HandlerRegistry) {
+	eventsRegistry := outboxevents.NewHandlerRegistry()
+	jobsRegistry := eventsRegistry
+	if dbs.Jobs != nil {
+		jobsRegistry = outboxevents.NewHandlerRegistry()
+	}
+	return eventsRegistry, jobsRegistry
+}
+
+// outboxMediaIndex groups the three PostgreSQL media-index ports. They are zero
+// in degraded mode (the outbox keeps the legacy path); the requester and the
+// rebuilder feed the TextTrackMaterializer AFTER translation.
+type outboxMediaIndex struct {
+	worker    *pgmedia.PostgresIndexWorker
+	requester texttracks.IndexRequester
+	rebuilder texttracks.SearchTextRebuilder
+}
+
+// buildOutboxMediaIndex builds the canonical pgvector index worker and its two
+// post-translation ports. Fail-closed: in media-SSOT mode an empty sidecar URL
+// aborts composition (no embedder → no vectors → no fake availability).
+func buildOutboxMediaIndex(ctx context.Context, cfg *config.Config, mediaPostgres *sql.DB, log *zap.Logger) (outboxMediaIndex, error) {
+	var index outboxMediaIndex
+	if !cfg.MediaPostgreSQL.Enabled {
+		return index, nil
+	}
+	if mediaPostgres == nil {
+		return index, fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but mediaPostgres handle is nil (composition must call RequireMediaPostgres first)")
+	}
+	sidecarURL := strings.TrimSpace(cfg.ClipIndexer.ServerURL)
+	if sidecarURL == "" {
+		return index, fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but ClipIndexer.ServerURL is empty (the pgvector index worker requires the canonical E5 embedding sidecar)")
+	}
+	pgOutboxRepo := pgmedia.NewOutboxRepository(mediaPostgres)
+	pgVectors := pgmedia.NewVectorSurfaceWriter(mediaPostgres)
+	embedder := pgmedia.NewEmbedAssetTextAdapter(mediaPostgres, embeddings.NewHTTPTextEmbedderWithTimeout(sidecarURL, cfg.ClipIndexer.EmbedTimeout()))
+	if err := pgVectors.EnsureEmbeddingFamily(ctx, "text", cfg.MediaPostgreSQL.EmbeddingModel, 768); err != nil {
+		return index, fmt.Errorf("BuildOutboxBundle: pgvector embedding family bootstrap: %w", err)
+	}
+	index.worker = pgmedia.NewPostgresIndexWorker(pgOutboxRepo, pgVectors, embedder, cfg.MediaPostgreSQL.EmbeddingModel)
+	// The materializer's post-translation reindex must land on this same
+	// PostgreSQL outbox (the ONLY media index owner). ReindexRequester owns the
+	// canonical envelope + terminal-conflict handling.
+	index.requester = pgmedia.NewReindexRequester(mediaPostgres)
+	// Rebuild media_assets.search_text from the metadata + READY transcripts
+	// before that reindex, so the translations enter the E5 embedding. The
+	// configured multilingual set filters the transcript tracks exactly as the
+	// indexing path does.
+	langsCSV, csvErr := BuildMultilingualLanguageCSV(ActiveMultilingualConfig(cfg), nil)
+	if csvErr != nil {
+		log.Warn("BuildOutboxBundle: multilingual index languages unavailable; search_text rebuild runs without a language filter", zap.Error(csvErr))
+		langsCSV = ""
+	}
+	index.rebuilder = pgmedia.NewSearchTextRebuilder(mediaPostgres, langsCSV).WithLogger(log)
+	return index, nil
+}
+
+// newOutboxDispatcher builds the canonical dispatcher AFTER the fail-closed
+// media-index-owner assertion, so a nil ClipsRepo surfaces the typed error the
+// contract requires instead of an internal panic in NewDispatcher. It also
+// registers the PostgreSQL media handlers and hands the single canonical writer
+// to the clips repository.
+//
+// The canonical media writer lives on PostgreSQL while this dispatcher's
+// TxManager is the SQLite outbox pool: the two cannot share a transaction, so
+// NewDispatcher receives the committer directly and has NO tx-bound media path.
+// Every media commit goes through canonicalCommitter.CommitAndIndex (one
+// PostgreSQL tx for media_assets + the outbox event).
+func newOutboxDispatcher(dbs *Databases, repos *RepoBundle, mediaPostgres *sql.DB, log *zap.Logger, eventsRepo *outboxevents.Repository, index outboxMediaIndex, drivePublisher delivery.Publisher) (*outbox.Dispatcher, assetspersistence.CanonicalAssetWriter, error) {
+	outboxTxMgr := outbox.NewManager(dbs.DualPool.Writer, log)
+	canonicalCommitter, err := newCanonicalAssetCommitter(mediaPostgres, log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compose process: canonical media writer: %w", err)
+	}
+	if canonicalCommitter == nil {
+		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — canonical media writer degraded; media outbox events will dead-letter (graceful degrade, godlike/07)")
+	}
+	if index.worker != nil {
+		if err := registerPostgresMediaOutboxHandlers(index.worker, drivePublisher, canonicalCommitter, repos.SubtitleArtifactRepo, log); err != nil {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: register PostgreSQL media outbox handlers: %w", err)
+		}
+	}
+	// The production dispatcher receives the single canonical writer directly.
+	// Legacy ClipsUpserter/ClipsStateWriter arguments remain accepted by
+	// NewDispatcher only for compatibility with older tests and adapters.
+	if repos.ClipsRepo != nil {
+		repos.ClipsRepo.SetCanonicalWriter(canonicalCommitter)
+	}
+	dispatcher := outbox.NewDispatcher(eventsRepo, outboxTxMgr, log, canonicalCommitter)
+	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (VECTOR-002 PR7)")
+	// POSTGRES-MEDIA-CUTOVER: in portable mode SaveDiscoveredAsset also routes
+	// through the committer's own transaction, so the canonical writer must
+	// satisfy the self-owned-transaction discovery port too.
+	var _ outbox.DiscoveryCommitAndIndexCommitter = (*pgmedia.PostgresMediaCommitter)(nil)
+	return dispatcher, canonicalCommitter, nil
+}
+
+// newOutboxDriveDeleteDeps populates the four narrow ports of the Drive delete
+// saga. RegisterOptionalHandlers registers the handler only when ALL four are
+// non-nil, so partial dev wiring skips at Info and never aborts boot; a nil
+// driveDeleter in production is a dead-letter regression, hence the loud Warn.
+func newOutboxDriveDeleteDeps(repos *RepoBundle, dispatcher *outbox.Dispatcher, canonicalCommitter assetspersistence.CanonicalAssetWriter, driveDeleter jobsoutbox.DriveDeleter, log *zap.Logger) jobsoutbox.DriveDeleteDeps {
+	if driveDeleter == nil || repos.ClipsRepo == nil {
+		log.Warn("outbox DriveDeleteHandler deps NOT wired (driveDeleter or ClipsRepo nil) — asset.drive.delete_requested.v1 events will dead-letter with 'no handler registered'")
+		return jobsoutbox.DriveDeleteDeps{}
+	}
+	lifecycleReader, lifecycleWriter, stateAdvancer := outboxDepsSagaPorts(repos.ClipsRepo, dispatcher, canonicalCommitter)
+	log.Info("outbox DriveDeleteHandler deps wired: asset.drive.delete_requested.v1 → Drive Trash/Delete → AdvanceAndEmit (Blocco 3.1 commit 2/3)")
+	return jobsoutbox.DriveDeleteDeps{
+		DrivePatchLifecycle:  lifecycleReader,
+		DrivePatchLifecycleW: lifecycleWriter,
+		DrivePatchStateAdv:   stateAdvancer,
+		DriveDeleteHandler:   driveDeleter,
+	}
+}
+
+// registerSplitJobsQueuedHandler registers the validation-only consumer of
+// script.generate.queued on the execution plane. Generation submission writes
+// that event to the execution-plane outbox, so the handler must exist there or
+// the event is dead-lettered as "no handler registered".
+func registerSplitJobsQueuedHandler(dbs *Databases, jobsRegistry *outboxevents.HandlerRegistry, jobs *JobsBundle) error {
+	if dbs.Jobs == nil {
+		return nil
+	}
+	queuedHandler, err := jobsoutbox.NewScriptGenerateQueuedHandler(jobs.Repo)
+	if err != nil {
+		return fmt.Errorf("BuildOutboxBundle: split jobs script.generate.queued handler: %w", err)
+	}
+	if err := jobsRegistry.Register(queuedHandler); err != nil {
+		return fmt.Errorf("BuildOutboxBundle: register split jobs script.generate.queued handler: %w", err)
+	}
+	return nil
+}
+
+// newOutboxPools builds the media pool and, in split mode, the jobs pool that
+// owns job.completed on the execution DB. It returns the shared poll config so
+// the start closure drains both with the same cadence.
+func newOutboxPools(cfg *config.Config, dbs *Databases, eventsRepo *outboxevents.Repository, eventsRegistry, jobsRegistry *outboxevents.HandlerRegistry, log *zap.Logger) (*outboxevents.Pool, *outboxevents.Pool, outboxevents.WorkerPollConfig) {
+	cfgPoll := 500 * time.Millisecond
+	if cfg.Outbox.PollIntervalMs > 0 {
+		cfgPoll = time.Duration(cfg.Outbox.PollIntervalMs) * time.Millisecond
+	}
+	cfgReclaim := 60 * time.Second
+	if cfg.Outbox.ReclaimIntervalSeconds > 0 {
+		cfgReclaim = time.Duration(cfg.Outbox.ReclaimIntervalSeconds) * time.Second
+	}
+	cfgProcess := 30 * time.Second
+	if cfg.Outbox.ProcessTimeoutSeconds > 0 {
+		cfgProcess = time.Duration(cfg.Outbox.ProcessTimeoutSeconds) * time.Second
+	}
+	outboxEventsCfg := outboxevents.WorkerPollConfig{
+		Workers:         cfg.Outbox.Workers,
+		PollInterval:    cfgPoll,
+		ProcessTimeout:  cfgProcess,
+		ReclaimInterval: cfgReclaim,
+	}
+	eventsPool := outboxevents.NewPool("outbox-events", eventsRepo, eventsRegistry, log, outboxEventsCfg)
+	var jobsEventsPool *outboxevents.Pool
+	if dbs.Jobs != nil {
+		jobsEventsPool = outboxevents.NewPool("jobs-outbox-events", outboxevents.NewRepository(dbs.Jobs.DB), jobsRegistry, log, outboxEventsCfg)
+	}
+	return eventsPool, jobsEventsPool, outboxEventsCfg
+}
+
+// newOutboxStartClosure returns the opaque start function the composition root
+// runs after boot: both pools drain on ctx.Done(), and in media-SSOT mode the
+// pgvector worker's loop owns the canonical asset.index.requested consumption.
+func newOutboxStartClosure(ctx context.Context, eventsPool, jobsEventsPool *outboxevents.Pool, worker *pgmedia.PostgresIndexWorker, cfg outboxevents.WorkerPollConfig, log *zap.Logger) IOpaqueStartFunc {
+	return func() error {
+		if err := startOutboxEventsPool(ctx, eventsPool, cfg, log); err != nil {
+			return err
+		}
+		if err := startOutboxEventsPool(ctx, jobsEventsPool, cfg, log); err != nil {
+			return err
+		}
+		if worker != nil {
+			concurrent.SafeGo("pg-media-index-worker", func() {
+				worker.Run(ctx, pgmedia.DefaultPollInterval, pgmedia.DefaultLeaseTTL, zapLoggerAsMediaLogger(log))
+			})
+			log.Info("POSTGRES-MEDIA-CUTOVER: pgvector index worker drain loop started (asset.index.requested -> embed -> media_embeddings -> INDEXED -> completed)")
+		}
+		return nil
+	}
+}
+
+// validateOutboxBundleInputs is the fail-closed gate of the outbox bundle. Each
+// missing port names the composition call that must precede this one, so the
+// operator sees the ordering mistake instead of a nil dereference later.
+func validateOutboxBundleInputs(qd *IndexDeps, stagingSvc staging.Store, repo detail.ArtifactStageRepository, drivePublisher delivery.Publisher) error {
+	if qd == nil {
+		return fmt.Errorf("BuildOutboxBundle: indexDeps is nil (VECTOR-002 PR8 fail-closed; composition forgot to call buildIndexDeps first?)")
+	}
+	if stagingSvc == nil {
+		// FASE 3 Push 3.1c: the Publisher worker is the canonical
+		// outbox→staging adapter. It MUST be wired here (otherwise
+		// publish_requested events dead-letter on the first emission).
+		return fmt.Errorf("BuildOutboxBundle: stagingSvc is required (FASE 3 Push 3.1c; composition must call BuildStagingBundle before BuildOutboxBundle)")
+	}
+	if repo == nil {
+		// FASE 3 Push 3.1e: the DriveUploader worker consumes
+		// artifact.Repository for the MarkPublished fenced-CAS. A nil repo is
+		// fail-closed — composition must inject the same artifact.Repository
+		// port that StagingBundle uses (single-writer SSOT).
+		return fmt.Errorf("BuildOutboxBundle: repo is required (FASE 3 Push 3.1e; composition must inject StagingBundle.Repository)")
+	}
+	if drivePublisher == nil {
+		// FASE 3 Push 3.1e: the DriveUploader worker is the canonical
+		// outbox→Drive adapter. It MUST be wired here (otherwise
+		// artifact.staged.v1 events dead-letter the moment the saga's first
+		// Publish step).
+		return fmt.Errorf("BuildOutboxBundle: drivePublisher is required (FASE 3 Push 3.1e; composition must inject DriveBundle.Publisher)")
+	}
+	return nil
 }

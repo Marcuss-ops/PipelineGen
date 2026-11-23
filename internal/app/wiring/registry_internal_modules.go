@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
-	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
+	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/search"
+	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/youtube"
@@ -24,16 +24,17 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"go.uber.org/zap"
-)
-import (
+
 	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-)
-import (
-	wiringlifecycle "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
+
+	wiringlifecycle "github.com/Marcuss-ops/PipelineGen/internal/app/modules/lifecycle"
+
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
+
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
 )
 
@@ -54,7 +55,11 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// fail-closed resolver for the media search store; the deleted
 	// certify-media-cutover driver's Gate A/C used to probe it, and the live
 	// enforcement is now the Go gate suite + the postgres/media tests.
-	vectorStoreForSearch, mediaRepo, mediaSearchSelected, mediaSearchErr := searchwiring.SelectMediaSearchStore(cfg, root.MediaPostgres, log)
+	vectorStoreForSearch, mediaRepo, mediaSearchSelected, mediaSearchErr := searchwiring.SelectMediaSearchStore(searchwiring.StoreDeps{
+		Config:   cfg,
+		Database: root.MediaPostgres,
+		Log:      log,
+	})
 	if mediaSearchErr != nil {
 		return registryCrossStepState{}, mediaSearchErr
 	}
@@ -187,17 +192,17 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// PostgreSQL media read repository (mediaRepo) inside Build. The legacy
 	// SQLite ClipsRepo is deliberately NOT passed — it must never back a
 	// media catalog search again.
-	searchFanOut, searchBackends, searchAgg, searchErr := searchwiring.Build(
-		log,
-		providerReg,
-		embeddingReg,
-		vectorStoreForSearch,
-		mediaRepo,
-		deliveryPort,
-		rerankerPort,
-		canonicalResolver,
-		localScorer,
-	)
+	searchFanOut, searchBackends, searchAgg, searchErr := searchwiring.Build(searchwiring.Deps{
+		Log:         log,
+		Providers:   providerReg,
+		Embeddings:  embeddingReg,
+		VectorStore: vectorStoreForSearch,
+		MediaRepo:   mediaRepo,
+		Delivery:    deliveryPort,
+		Reranker:    rerankerPort,
+		Resolver:    canonicalResolver,
+		LocalScorer: localScorer,
+	})
 	if searchErr != nil {
 		return registryCrossStepState{}, searchErr
 	}

@@ -37,6 +37,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
@@ -562,4 +563,187 @@ func normalizeSearchLimit(limit int) (int, error) {
 		limit = appsearch.MaxLimit
 	}
 	return limit, nil
+}
+
+// ── absorbed from media_local_search.go ──
+
+// LocalMediaSearchRequest is the canonical input for the PostgreSQL lexical
+// (non-vector) media search: the local/hash/keyword path that previously read
+// SQLite media_assets. All filters are optional; Text is matched against the
+// name, search_text and search_terms columns.
+type LocalMediaSearchRequest struct {
+	Text string
+	// AllTerms is the multi-keyword form: every term must match, which is the
+	// exact AND semantics of the retired SQLite `clip_search_terms` inverted
+	// index lookup (HAVING COUNT(DISTINCT term) = N). It is the PostgreSQL
+	// replacement for that index: the canonical term corpus now lives on the
+	// media_assets.search_terms column, so no secondary term table is needed.
+	// A term only needs to appear (substring) in name, search_text or
+	// search_terms; Text and AllTerms compose (both must hold).
+	AllTerms  []string
+	Source    string // empty or "all" means every source
+	Category  string
+	MediaType string
+	// AssetKind / SemanticRole are the canonical TAXONOMY equality filters
+	// (media_assets.asset_kind / semantic_role). They are distinct from
+	// Source, which is physical PROVENANCE: a stock clip acquired from
+	// YouTube is source="youtube" with asset_kind="stock_video" /
+	// semantic_role="stock". Empty means "no constraint".
+	AssetKind    string
+	SemanticRole string
+	// Language is the BCP-47 equality filter on media_assets.language
+	// (migration 099). Empty means "no constraint"; the column has existed
+	// since 099 but the local path did not read it until
+	// TICKET-MEDIA-ASSETS-LANGUAGE-COLUMN. It is NOT a fallback to
+	// original_language: an empty language row is simply not a match.
+	Language            string
+	Limit               int
+	ExcludeUnclassified bool
+}
+
+// SearchLocal performs a bounded lexical search over the PostgreSQL media
+// SSOT. It is the single non-vector media search surface; callers must not
+// re-introduce a SQLite media mirror.
+func (s *MediaSearcher) SearchLocal(ctx context.Context, req LocalMediaSearchRequest) ([]MediaAssetRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("postgres media: local search not wired")
+	}
+	query, args := buildLocalMediaSearchQuery(req)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres media: local search: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanMediaAssetRows(rows)
+}
+
+// buildLocalMediaSearchQuery compiles the single lexical-search WHERE clause.
+// It is a pure function so the language predicate is testable without a
+// PostgreSQL server, and so the ?-free positional contract stays in one place.
+func buildLocalMediaSearchQuery(req LocalMediaSearchRequest) (string, []any) {
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	text := strings.TrimSpace(req.Text)
+	pattern := "%" + strings.ToLower(text) + "%"
+	source := strings.TrimSpace(req.Source)
+	if source == "all" {
+		source = ""
+	}
+
+	query := `
+		SELECT ` + mediaAssetReadColumns + `
+		FROM media_assets
+		WHERE ($1 = '' OR LOWER(name) LIKE $2 OR LOWER(search_text) LIKE $2 OR LOWER(search_terms) LIKE $2)
+		  AND ($3 = '' OR source = $3)
+		  AND ($4 = '' OR category = $4)
+		  AND ($5 = '' OR media_type = $5)
+		  AND ($6 = '' OR asset_kind = $6)
+		  AND ($7 = '' OR semantic_role = $7)
+		  AND ($8 = '' OR language = $8)`
+	args := []any{text, pattern, source, strings.TrimSpace(req.Category), strings.TrimSpace(req.MediaType),
+		strings.TrimSpace(req.AssetKind), strings.TrimSpace(req.SemanticRole), strings.TrimSpace(req.Language)}
+	// One AND clause per term: the caller asked for every keyword to match.
+	for _, term := range req.AllTerms {
+		trimmed := strings.ToLower(strings.TrimSpace(term))
+		if trimmed == "" {
+			continue
+		}
+		args = append(args, "%"+trimmed+"%")
+		index := len(args)
+		query += fmt.Sprintf("\n\t\t  AND (LOWER(name) LIKE $%d OR LOWER(search_text) LIKE $%d OR LOWER(search_terms) LIKE $%d)", index, index, index)
+	}
+	if req.ExcludeUnclassified {
+		query += " AND asset_kind <> ''"
+	}
+	query += `
+		  AND lifecycle_state IN ('ACTIVE', 'INDEXED', 'READY', 'PUBLISHED')
+		ORDER BY ` + TimestampExpr("updated_at") + ` DESC, id ASC
+		LIMIT $` + strconv.Itoa(len(args)+1)
+	args = append(args, limit)
+	return query, args
+}
+
+// FindAllByHash returns every asset matching the supplied fingerprint (raw hex
+// or `sha256:`-prefixed). This is the PostgreSQL counterpart of the retired
+// SQLite hash search.
+func (s *MediaSearcher) FindAllByHash(ctx context.Context, hash string, limit int) ([]MediaAssetRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("postgres media: local search not wired")
+	}
+	candidates := mediaHashCandidates(hash)
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("postgres media: hash is required")
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+mediaAssetReadColumns+`
+		FROM media_assets
+		WHERE binary_sha256 = $1 OR content_sha256 = $1 OR content_sha256 = $1
+		   OR binary_sha256 = $2 OR content_sha256 = $2 OR content_sha256 = $2
+		ORDER BY `+TimestampExpr("updated_at")+` DESC, id ASC
+		LIMIT $3
+	`, candidates[0], candidates[len(candidates)-1], limit)
+	if err != nil {
+		return nil, fmt.Errorf("postgres media: find all by hash: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanMediaAssetRows(rows)
+}
+
+func scanMediaAssetRows(rows *sql.Rows) ([]MediaAssetRecord, error) {
+	out := make([]MediaAssetRecord, 0, 16)
+	for rows.Next() {
+		rec, err := scanMediaAssetRecord(rows)
+		if err != nil {
+			return nil, fmt.Errorf("postgres media: scan media row: %w", err)
+		}
+		out = append(out, *rec)
+	}
+	if err := rows.Err(); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("postgres media: iterate media rows: %w", err)
+	}
+	return out, nil
+}
+
+// ── absorbed from media_drive_location_size.go ──
+
+// DriveLocationSize returns the byte size this registry already recorded for a
+// Drive location. Ingest writes it to asset_locations.file_size_bytes from the
+// VerifiedArtifact it uploaded, so a handoff can use that fact instead of
+// asking the provider for metadata the commit already knew.
+//
+// A missing row or an unmeasured legacy row returns (0, nil): "unknown" stays
+// representable, and the caller decides whether the provider fallback is
+// justified.
+func (s *MediaSearcher) DriveLocationSize(ctx context.Context, fileID string) (int64, error) {
+	if s == nil || s.db == nil {
+		return 0, errors.New("postgres media: media read repository not wired")
+	}
+	id := strings.TrimSpace(fileID)
+	if id == "" {
+		return 0, nil
+	}
+	var size int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(file_size_bytes, 0)
+		FROM asset_locations
+		WHERE location_kind = 'drive'
+		  AND (external_id = $1 OR uri = 'drive://' || $1)
+		ORDER BY is_primary DESC
+		LIMIT 1`, id).Scan(&size)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("postgres media: drive location size %q: %w", id, err)
+	}
+	return size, nil
 }
