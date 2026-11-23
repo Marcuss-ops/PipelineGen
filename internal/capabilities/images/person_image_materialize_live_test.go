@@ -67,9 +67,9 @@ func TestPersonImageMaterializeLive_9_10(t *testing.T) {
 		t.Skip("set PERSON_MATERIALIZE_LIVE=1 and VELOX_ADMIN_TOKEN to run")
 	}
 
-	token := resolveToken(t)
+	token := resolveToken()
 	if token == "" {
-		t.Fatal("VELOX_ADMIN_TOKEN not set and not found in /etc/pipelinegen/pipelinegen.env or .env")
+		t.Fatal("VELOX_ADMIN_TOKEN not set: run under scripts/with-velox-auth")
 	}
 
 	people := []string{
@@ -252,24 +252,13 @@ func materializeOnePerson(ctx context.Context, client *http.Client, baseURL, tok
 	return result
 }
 
-func resolveToken(t *testing.T) string {
-	t.Helper()
-	if t := os.Getenv("VELOX_ADMIN_TOKEN"); t != "" {
-		return t
-	}
-	for _, f := range []string{"/etc/pipelinegen/pipelinegen.env", "refactored/.env"} {
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "VELOX_ADMIN_TOKEN=") {
-				return strings.Trim(line[len("VELOX_ADMIN_TOKEN="):], `"' `)
-			}
-		}
-	}
-	return ""
+// resolveToken follows the authentication SSOT: the credential arrives in the
+// environment, exported by scripts/with-velox-auth. Reading the canonical file
+// (or a repository-local .env) here would copy the secret into a process that
+// the rotation procedure does not cover; regression gate:
+// internal/platform/config/credential_file_gate_test.go.
+func resolveToken() string {
+	return os.Getenv("VELOX_ADMIN_TOKEN")
 }
 
 func filterOk(results []liveMatResult) []liveMatResult {
