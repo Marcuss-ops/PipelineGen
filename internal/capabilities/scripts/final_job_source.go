@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	"go.uber.org/zap"
 )
 
@@ -36,7 +37,7 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("final_job=true but remote final-job submitter is not configured"))
 		return false
 	}
-	r.auditFinalJobArtifactReuse(runID, result)
+	r.auditFinalJobArtifactReuse(runID, req, result)
 	receipt := (*RemoteFinalJobResult)(nil)
 	if result != nil {
 		receipt = result.RemoteFinalJob
@@ -182,19 +183,18 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 // it is archived as TERMINAL (see settleFinalJob), and the next attempt rotates
 // the idempotency key (see finalJobAttemptIdempotencyKey) to prepare a fresh
 // remote job instead of replaying the dead one.
-func (r *Runner) auditFinalJobArtifactReuse(runID string, result *GenerateResult) {
+func (r *Runner) auditFinalJobArtifactReuse(runID string, req GenerateRequest, result *GenerateResult) {
 	if r == nil || r.log == nil || result == nil {
 		return
 	}
+	receipt := finaljob.RenderReceiptFor(req, result)
 	scenes := len(result.Scenes)
 	localizedRenders := len(result.LocalizedRenders)
 	overlayItems, overlayRenders := 0, 0
 	if result.OverlayPlan != nil {
 		overlayItems = len(result.OverlayPlan.Items)
 	}
-	if result.OverlayRender != nil {
-		overlayRenders = len(result.OverlayRender.Items) + len(result.OverlayRender.Batches)
-	}
+	overlayRenders = len(receipt.Items) + len(receipt.Batches)
 	finalAudioMS := int64(0)
 	finalAudioID := ""
 	if result.FinalAudio != nil {
@@ -208,6 +208,7 @@ func (r *Runner) auditFinalJobArtifactReuse(runID string, result *GenerateResult
 		zap.Int64("final_audio_ms", finalAudioMS),
 		zap.Int("overlay_items", overlayItems),
 		zap.Int("overlay_renders", overlayRenders),
+		zap.Bool("subtitles_enabled", receipt.Subtitles != nil && receipt.Subtitles.Enabled),
 		zap.Int("localized_renders", localizedRenders))
 }
 

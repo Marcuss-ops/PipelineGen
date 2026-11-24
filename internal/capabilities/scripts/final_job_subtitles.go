@@ -1,24 +1,37 @@
 package scriptgeneration
 
-// final_job_subtitles.go owns the last render step of the Producer lane:
-// before a final job is handed to the remote Master, every protected fixed-media
-// clip that must carry burned-in subtitles is rendered by the existing localized
-// clip renderer. The Master then receives the certified fragment, never the
-// unmodified library clip, and the final assembly stays on the remote worker.
-//
-// The regular localized-render fan-out remains sealed (see
-// sceneRenderDispatchSealed); this is deliberately a final-job-only seam. It is
-// triggered by the same subtitle policy the fixed-media fan-out used to apply
-// (Render.Subtitles.Enabled plus a non-empty display caption), so a run that
-// asks for subtitles cannot silently deliver an un-subtitled intro/outro.
+// final_job_subtitles.go is the root adapter for the fixed-media subtitle
+// workflow. The policy (which scene/clip/language needs a render, and with
+// which caption) lives in scripts/runner/subtitles behind a narrow port; this
+// file owns only the run-state effects: checkpointing, result mutation and the
+// configured renderer.
 
 import (
 	"context"
 	"fmt"
-	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner/subtitles"
 	"go.uber.org/zap"
 )
+
+// finalJobSubtitlePort is the narrow read side of the subtitles policy.
+type finalJobSubtitlePort struct {
+	result *GenerateResult
+}
+
+func (p finalJobSubtitlePort) FixedMediaNeedsRender(req contract.GenerateRequest, scene contract.Scene) bool {
+	return fixedMediaNeedsLocalizedRender(req, scene)
+}
+
+func (p finalJobSubtitlePort) CaptionText(req contract.GenerateRequest, scene contract.Scene) string {
+	return localizedRenderCaptionText(req, scene)
+}
+
+func (p finalJobSubtitlePort) CertifiedLocalRender(sceneID, clipID, language string) bool {
+	_, ok := certifiedLocalizedRenderForClip(p.result, sceneID, clipID, language)
+	return ok
+}
 
 // ensureFinalJobFixedMediaSubtitles renders the fixed-media fragments that the
 // final job will use when subtitles are enabled. It is idempotent across
@@ -32,113 +45,61 @@ func (r *Runner) ensureFinalJobFixedMediaSubtitles(ctx context.Context, runID st
 	if r == nil || result == nil {
 		return nil
 	}
-	if req.Render.Subtitles == nil || !req.Render.Subtitles.Enabled {
-		return nil
+	jobs, err := subtitles.BuildPlan(req, subtitles.Source{
+		Scenes:           result.Scenes,
+		LocalizedRenders: result.LocalizedRenders,
+		Subtitles:        req.Render.Subtitles,
+	}, finalJobSubtitlePort{result: result})
+	if err != nil {
+		return fmt.Errorf("final_job subtitles: %w", err)
 	}
-	needsRender := false
-	for i := range result.Scenes {
-		scene := result.Scenes[i]
-		if !fixedMediaNeedsLocalizedRender(req, scene) || localizedRenderCaptionText(req, scene) == "" {
-			continue
+	for _, job := range jobs {
+		input := LocalizedRenderInput{
+			RunID:          runID,
+			JobID:          runID,
+			SceneID:        job.Scene.ID,
+			SceneIndex:     job.Scene.Index,
+			Language:       job.Language,
+			Text:           job.Text,
+			SourceLanguage: req.SourceLanguage,
+			SourceText:     job.SourceText,
+			ClipID:         job.ClipID,
+			ClipAssetID:    job.ClipAssetID,
+			ClipSHA256:     job.ClipSHA256,
+			ClipDurationMS: job.ClipDurationMS,
+			Render:         sceneRenderSpec(req, job.Scene),
 		}
-		if len(RenderUnitsForScene(scene)) > 0 {
-			needsRender = true
-			break
+		input.OnRendered = func(rendered LocalizedRenderResult) error {
+			return r.recordFinalJobFixedMediaRender(ctx, runID, result, rendered)
 		}
-	}
-	if !needsRender {
-		return nil
-	}
-	language := ""
-	if existing, err := finalJobRenderLanguage(req, result); err != nil {
-		return fmt.Errorf("final_job subtitles: resolve render language: %w", err)
-	} else {
-		language = existing
-	}
-	if language == "" {
-		language = strings.TrimSpace(string(req.SourceLanguage))
-	}
-	if language == "" {
-		for _, scene := range result.Scenes {
-			if !fixedMediaNeedsLocalizedRender(req, scene) {
-				continue
+		// The in-memory envelope wins; the checkpoint is the fallback. Both
+		// paths receive the v2 input fingerprint before publishing.
+		if staged := r.stagedLocalizedRender(result, job.Scene.ID, job.Language, job.ClipID); staged != nil {
+			input.ResumeFrom = staged
+		}
+		prepared, err := r.prepareLocalizedRenderInput(ctx, input, true)
+		if err != nil {
+			return fmt.Errorf("final_job subtitles: prepare resume for scene %q clip %q: %w", job.Scene.ID, job.ClipID, err)
+		}
+		input = prepared
+		if input.ResumeFrom != nil {
+			recovery, ok := r.localizedRenderEnqueuer.(LocalizedRenderRecoveryEnqueuer)
+			if !ok {
+				return fmt.Errorf("final_job subtitles: staged render for scene %q clip %q is not publishable (recovery enqueuer is not wired)", job.Scene.ID, job.ClipID)
 			}
-			for lang := range scene.Text {
-				if strings.TrimSpace(scene.Text[lang]) != "" {
-					language = strings.TrimSpace(string(lang))
-					break
-				}
+			if err := recovery.UploadRendered(ctx, input, *input.ResumeFrom); err != nil {
+				return fmt.Errorf("final_job subtitles: publish staged render for scene %q clip %q: %w", job.Scene.ID, job.ClipID, err)
 			}
-			if language != "" {
-				break
+		} else {
+			if r.localizedRenderEnqueuer == nil {
+				return fmt.Errorf("final_job subtitles: localized renderer is not wired for scene %q clip %q", job.Scene.ID, job.ClipID)
+			}
+			if err := r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input); err != nil {
+				return fmt.Errorf("final_job subtitles: render scene %q clip %q language %q: %w", job.Scene.ID, job.ClipID, job.Language, err)
 			}
 		}
-	}
-	if language == "" {
-		return nil
-	}
-
-	for i := range result.Scenes {
-		scene := result.Scenes[i]
-		if !fixedMediaNeedsLocalizedRender(req, scene) || localizedRenderCaptionText(req, scene) == "" {
-			continue
-		}
-		for _, unit := range RenderUnitsForScene(scene) {
-			if unit.Clip == nil || strings.TrimSpace(unit.Clip.ID) == "" {
-				continue
-			}
-			if _, ok := certifiedLocalizedRenderForClip(result, scene.ID, unit.Clip.ID, language); ok {
-				continue
-			}
-			clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
-			text := fixedCaptionText(scene, req.SourceLanguage, Language(language))
-			input := LocalizedRenderInput{
-				RunID:          runID,
-				JobID:          runID,
-				SceneID:        scene.ID,
-				SceneIndex:     scene.Index,
-				Language:       Language(language),
-				Text:           text,
-				SourceLanguage: req.SourceLanguage,
-				SourceText:     strings.TrimSpace(scene.Text[req.SourceLanguage]),
-				ClipID:         clipID,
-				ClipAssetID:    clipAssetID,
-				ClipSHA256:     clipSHA256,
-				ClipDurationMS: clipDurationMS,
-				Render:         sceneRenderSpec(req, scene),
-			}
-			input.OnRendered = func(rendered LocalizedRenderResult) error {
-				return r.recordFinalJobFixedMediaRender(ctx, runID, result, rendered)
-			}
-			// The in-memory envelope wins; the checkpoint is the fallback. Both
-			// paths receive the v2 input fingerprint before publishing.
-			if staged := r.stagedLocalizedRender(result, scene.ID, Language(language), clipID); staged != nil {
-				input.ResumeFrom = staged
-			}
-			prepared, err := r.prepareLocalizedRenderInput(ctx, input, true)
-			if err != nil {
-				return fmt.Errorf("final_job subtitles: prepare resume for scene %q clip %q: %w", scene.ID, clipID, err)
-			}
-			input = prepared
-			if input.ResumeFrom != nil {
-				recovery, ok := r.localizedRenderEnqueuer.(LocalizedRenderRecoveryEnqueuer)
-				if !ok {
-					return fmt.Errorf("final_job subtitles: staged render for scene %q clip %q is not publishable (recovery enqueuer is not wired)", scene.ID, clipID)
-				}
-				if err := recovery.UploadRendered(ctx, input, *input.ResumeFrom); err != nil {
-					return fmt.Errorf("final_job subtitles: publish staged render for scene %q clip %q: %w", scene.ID, clipID, err)
-				}
-			} else {
-				if r.localizedRenderEnqueuer == nil {
-					return fmt.Errorf("final_job subtitles: localized renderer is not wired for scene %q clip %q", scene.ID, clipID)
-				}
-				if err := r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input); err != nil {
-					return fmt.Errorf("final_job subtitles: render scene %q clip %q language %q: %w", scene.ID, clipID, language, err)
-				}
-			}
-			if _, ok := certifiedLocalizedRenderForClip(result, scene.ID, clipID, language); !ok {
-				return fmt.Errorf("final_job subtitles: scene %q clip %q language %q produced no certified render", scene.ID, clipID, language)
-			}
+		if _, ok := certifiedLocalizedRenderForClip(result, job.Scene.ID, job.ClipID, string(job.Language)); !ok {
+			return fmt.Errorf("final_job subtitles: scene %q clip %q language %q produced no certified render", job.Scene.ID, job.ClipID, job.Language)
 		}
 	}
 	return nil
