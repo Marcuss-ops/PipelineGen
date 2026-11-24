@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 import (
 	"context"
@@ -331,7 +331,7 @@ type OverlayPlanItemEnqueuer interface {
 // EnqueueChrononPlanItems emits one short alpha-bearing artifact per semantic
 // overlay. No scene-wide or whole-timeline canvas is made.
 func (e *QueueRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (contract.RenderReference, error) {
-	candidates := overlayRenderableCandidates(plan)
+	candidates := finaljob.OverlayRenderableCandidates(plan)
 	if len(candidates) == 0 {
 		return contract.RenderReference{}, fmt.Errorf("overlay plan %q has no renderable items", plan.PlanID)
 	}

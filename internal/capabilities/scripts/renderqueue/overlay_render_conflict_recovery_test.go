@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 // overlay_render_conflict_recovery_test.go pins the submit idempotency rule of
 // the overlay enqueuer. The queue job id is the sealed plan revision, and the

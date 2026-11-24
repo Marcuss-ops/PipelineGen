@@ -8,7 +8,7 @@
 // the same package — never a new subpackage and never a compat shim — so the
 // registered package hotspot stays at its baseline. The companion file keeps
 // the adapter surface: the enqueuer, its setters and the enqueue path.
-package scriptgeneration
+package renderqueue
 
 import (
 	"context"
@@ -46,7 +46,7 @@ func NewQueueRenderEnqueuer(client RenderQueueClient) (*QueueRenderEnqueuer, err
 	if client == nil {
 		return nil, fmt.Errorf("queue render enqueuer requires a queue client")
 	}
-	return &QueueRenderEnqueuer{client: client, pollInterval: defaultQueuePollInterval}, nil
+	return &QueueRenderEnqueuer{client: client, pollInterval: DefaultQueuePollInterval}, nil
 }
 
 func (e *QueueRenderEnqueuer) SetPollInterval(interval time.Duration) {
@@ -61,7 +61,7 @@ func (e *QueueRenderEnqueuer) SetRecorder(r RenderAttemptRecorder) {
 	}
 }
 
-func (e *QueueRenderEnqueuer) SetArtifactPublisher(p OverlayArtifactPublisher) {
+func (e *QueueRenderEnqueuer) SetArtifactPublisher(p renderqueue.OverlayArtifactPublisher) {
 	if e != nil {
 		e.publisher = p
 	}
@@ -159,7 +159,7 @@ func (e *QueueRenderEnqueuer) itemRenderWorkers() int {
 // observation (waitForCompletion) and the job wall time is the run's own
 // WallTimeMs, so neither is duplicated here.
 //
-// The operations are bound to StageOverlayRender, the stage the render phase
+// The operations are bound to kernobs.StageOverlayRender, the stage the render phase
 // is measured under. Binding them to StageProcess instead left the render's
 // work attached to a stage that no phase produced: the operations could never
 // be joined to a stage wall time, so the breakdown reported the render's cost
@@ -187,7 +187,7 @@ func recordRenderingGenPhases(ctx context.Context, artifact *contract.RenderArti
 			continue
 		}
 		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
-			Stage:     StageOverlayRender,
+			Stage:     kernobs.StageOverlayRender,
 			Component: kernobs.ComponentRenderingGen,
 			Operation: phase.operation,
 		}, phase.durationMS)
@@ -197,7 +197,7 @@ func recordRenderingGenPhases(ctx context.Context, artifact *contract.RenderArti
 // recordQueueBoundaryPhases projects the two halves of the blocking queue
 // boundary PipelineGen itself owns — the submit round-trip and the
 // terminal-state wait — onto the run bound to ctx as canonical operations
-// under StageOverlayRender, next to the worker-reported phases. With them the
+// under kernobs.StageOverlayRender, next to the worker-reported phases. With them the
 // stage wall decomposes as submit + wait + Σ worker phases, and the dominant
 // term of a slow overlay stage (waiting for the remote GPU lane) is joinable
 // to the stage instead of living only in the run-level wait list. Each
@@ -219,7 +219,7 @@ func recordQueueBoundaryPhases(ctx context.Context, submitMS, waitMS int64) {
 			continue
 		}
 		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
-			Stage:     StageOverlayRender,
+			Stage:     kernobs.StageOverlayRender,
 			Component: kernobs.ComponentRenderQueue,
 			Operation: phase.operation,
 		}, phase.durationMS)
@@ -278,7 +278,7 @@ func (e *QueueRenderEnqueuer) renderStallAfter() time.Duration {
 // (the queue's GET /jobs/{id}/wait) and spends no client-side polling sleep; a
 // client without it (older deployment, test double) falls back to the bounded
 // poll loop, whose sleeps and poll count are measured rather than guessed.
-// interval <= 0 selects defaultQueuePollInterval, and only the fallback loop
+// interval <= 0 selects DefaultQueuePollInterval, and only the fallback loop
 // uses it.
 func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id string, interval time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
 	return renderqueue.WaitRenderQueueTerminal(ctx, client, id, interval)

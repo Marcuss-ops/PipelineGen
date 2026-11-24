@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	kernrenderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
@@ -27,7 +28,7 @@ type DynamicMapGPUAdmission interface {
 type QueueRenderEnqueuer struct {
 	client       RenderQueueClient
 	pollInterval time.Duration
-	publisher    OverlayArtifactPublisher
+	publisher    kernrenderqueue.OverlayArtifactPublisher
 	// freshRender forces each submission through this enqueuer to receive a
 	// new queue identity. It is used for overlay artifacts: input assets are
 	// reusable, but the rendered video must always be produced by a new

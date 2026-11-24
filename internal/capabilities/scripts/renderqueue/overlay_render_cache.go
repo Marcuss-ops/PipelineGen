@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 // overlay_render_cache.go owns the CONTENT-ADDRESSED reuse contract for
 // per-item overlay clips.

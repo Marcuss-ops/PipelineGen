@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 import (
 	"context"
@@ -326,7 +326,7 @@ func publishMapDecisionReport(workspace mapRenderWorkspace, report *capoverlay.M
 	return nil
 }
 
-func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
+func RenderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
 	profile, err := dynamicMapEncodeProfile(plan, os.Getenv(capoverlay.MapEncodeProfileEnv))
 	if err != nil {
 		return "", err

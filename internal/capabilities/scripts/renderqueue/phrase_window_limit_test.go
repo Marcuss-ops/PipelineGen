@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 import (
 	"testing"

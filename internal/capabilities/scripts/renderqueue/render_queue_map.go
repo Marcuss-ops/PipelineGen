@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 import (
 	"context"
@@ -76,7 +76,7 @@ func dynamicMapVideoIdentity(path string) (string, int64, error) {
 
 // projectMapRendererPhases projects the dynamic-map renderer's OWN measured
 // phases from the chronon.dynamic-map-telemetry.v1 summary onto the run bound
-// to ctx as canonical operations under StageOverlayRender (prefetch ← tile
+// to ctx as canonical operations under kernobs.StageOverlayRender (prefetch ← tile
 // prefetch, prepare ← plate prepare, encode ← render+encode wall). The
 // renderer measured these phases and reported them in its summary; the kernel
 // records the owner-reported durations and never re-times the boundary. Until
@@ -91,7 +91,7 @@ func projectMapRendererPhases(ctx context.Context, tilePrefetchMS, platePrepareM
 			return
 		}
 		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
-			Stage:     StageOverlayRender,
+			Stage:     kernobs.StageOverlayRender,
 			Component: kernobs.ComponentChronon,
 			Operation: op,
 		}, int64(ms+0.5))
@@ -180,10 +180,10 @@ func (e *QueueRenderEnqueuer) preMaterializeMapUnit(ctx context.Context, semanti
 }
 
 // renderDynamicMapVideoWithGate de-duplicates concurrent renders of the same
-// map video around renderDynamicMapVideoOnce (the render body).
+// map video around RenderDynamicMapVideoOnce (the render body).
 func renderDynamicMapVideoWithGate(ctx context.Context, plan capmodel.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
 	return joinDynamicMapVideoRender(ctx, plan, func() (string, error) {
-		return renderDynamicMapVideoOnce(ctx, plan, gate, cacheDirs...)
+		return RenderDynamicMapVideoOnce(ctx, plan, gate, cacheDirs...)
 	})
 }
 

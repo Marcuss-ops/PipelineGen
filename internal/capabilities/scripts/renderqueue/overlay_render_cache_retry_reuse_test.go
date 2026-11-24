@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 // overlay_render_cache_retry_reuse_test.go pins the retry contract of the
 // content-addressed overlay cache: a second attempt of the SAME plan (the

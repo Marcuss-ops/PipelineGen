@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 // render_queue_items_batch.go owns the per-item overlay render path: every
 // semantic overlay becomes its own certified artifact through bounded pools.

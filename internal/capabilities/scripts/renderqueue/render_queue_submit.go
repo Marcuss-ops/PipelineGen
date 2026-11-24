@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 import (
 	"bytes"
@@ -18,6 +18,7 @@ import (
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	finaljob "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -59,7 +60,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 	if len(dynamicMapImportSpec) > 0 {
 		spec = dynamicMapImportSpec
 	} else {
-		spec, err = marshalRenderingGenOverlayPlan(wirePlan)
+		spec, err = MarshalRenderingGenOverlayPlan(wirePlan)
 		if err != nil {
 			return contract.RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)
 		}
@@ -309,7 +310,7 @@ func (e *QueueRenderEnqueuer) publishChrononArtifacts(
 		if done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "" {
 			return fmt.Errorf("render job %s completed without certified artifact", jobID)
 		}
-		publication := OverlayPublicationSpec{
+		publication := renderqueue.OverlayPublicationSpec{
 			ScriptName:               plan.ScriptName,
 			Language:                 plan.Language,
 			ProjectID:                plan.ProjectID,
@@ -365,7 +366,7 @@ func (e *QueueRenderEnqueuer) publishChrononArtifacts(
 				}
 			}
 			if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-				Stage: StageOverlayRender, Component: "drive", Operation: "overlay_upload", Provider: "drive",
+				Stage: kernobs.StageOverlayRender, Component: "drive", Operation: "overlay_upload", Provider: "drive",
 			}, func(measureCtx context.Context) error {
 				return e.publisher.PublishOverlay(measureCtx, spec, output.Artifact)
 			}); err != nil {
@@ -445,7 +446,7 @@ func (e *QueueRenderEnqueuer) stageChrononPlanAssets(
 		// Image presets may build their own text layer for entity captions even
 		// when the source overlay has no standalone Text field. Stage the preset
 		// fonts for those items too so the runtime can compile that caption.
-		if item.Text != "" || item.TemplateID == "IMPORTANT_WORD" || item.TemplateID == "IMPORTANT_PHRASE" || item.TemplateID == "lower_third" || isImageOverlayItem(item) || item.EntityCaption != "" || len(item.ImageLayers) > 0 {
+		if item.Text != "" || item.TemplateID == "IMPORTANT_WORD" || item.TemplateID == "IMPORTANT_PHRASE" || item.TemplateID == "lower_third" || finaljob.IsImageOverlayItem(item) || item.EntityCaption != "" || len(item.ImageLayers) > 0 {
 			if _, ok := seen[caprender.GoldenPresetFontHash]; !ok {
 				assets = append(assets, NewRenderQueueAsset(
 					kernelasset.Ref{AssetID: caprender.CanonicalPresetFontPath, SHA256: caprender.GoldenPresetFontHash},
@@ -463,7 +464,7 @@ func (e *QueueRenderEnqueuer) stageChrononPlanAssets(
 	// workspace-relative path must be staged alongside the preset fonts before
 	// the worker mounts the plan. The runtime family vocabulary is closed at
 	// OverlayStyleSpec.Validate, and this mapping is the matching asset owner.
-	fontAssets, err := runtimeFontAssets(semanticPlan)
+	fontAssets, err := RuntimeFontAssets(semanticPlan)
 	if err != nil {
 		return nil, fmt.Errorf("stage selected runtime fonts: %w", err)
 	}

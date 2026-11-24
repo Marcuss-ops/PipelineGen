@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 // overlay_render_cache_epoch_test.go pins the reuse contract the cache exists
 // for: two builds of identical source must name the same epoch. make/build.mk
