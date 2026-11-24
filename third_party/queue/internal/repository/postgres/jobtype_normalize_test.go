@@ -10,6 +10,10 @@ import (
 // empty job_type normalizes to render_segment (never silently) and bumps
 // EmptyJobTypeNormalizedTotal; unknown types are rejected.
 func TestNormalizeJobTypeEmptyWarnsAndCounts(t *testing.T) {
+	// The counter is process-wide by design; reset it to a known baseline so
+	// this test does not depend on execution order.
+	previous := emptyJobTypeTotal.Swap(0)
+	t.Cleanup(func() { emptyJobTypeTotal.Store(previous) })
 	before := EmptyJobTypeNormalizedTotal()
 	got, err := normalizeJobType("")
 	if err != nil {

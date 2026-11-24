@@ -240,6 +240,8 @@ func serve(ctx context.Context, server *http.Server, listener net.Listener, shut
 	shutdownErr := server.Shutdown(shutdownCtx)
 	if shutdownErr != nil {
 		logf("queue shutdown: drain deadline exceeded, closing connections: %v", shutdownErr)
+		// Close is the forced fallback after the drain deadline; shutdownErr is
+		// the error returned to the caller.
 		_ = server.Close()
 	}
 	if err := <-serveErr; err != nil {
@@ -293,6 +295,7 @@ func listenForJobNotifications(ctx context.Context, dsn string, srv *server.Serv
 
 		if _, err := conn.Exec(ctx, "LISTEN rendering_jobs"); err != nil {
 			log.Printf("queue notify LISTEN: %v", err)
+			// The retry loop owns the outcome; a close failure cannot change it.
 			_ = conn.Close(context.Background())
 			if !sleepContext(ctx, retryDelay) {
 				return
@@ -309,6 +312,7 @@ func listenForJobNotifications(ctx context.Context, dsn string, srv *server.Serv
 			}
 			srv.NotifyState(model.State(notification.Payload))
 		}
+		// The reconnect loop owns the outcome; a close failure cannot change it.
 		_ = conn.Close(context.Background())
 		if !sleepContext(ctx, retryDelay) {
 			return

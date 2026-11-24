@@ -45,14 +45,6 @@ func decodeFrameRange(raw []byte) (*model.FrameRange, error) {
 	return &result, nil
 }
 
-func decodeAssets(raw []byte) ([]model.AssetRef, error) {
-	manifest, err := decodeInputManifest(raw)
-	if err != nil {
-		return nil, err
-	}
-	return manifest.Assets, nil
-}
-
 func decodeInputManifest(raw []byte) (inputManifest, error) {
 	if len(raw) == 0 {
 		return inputManifest{}, nil
@@ -95,28 +87,10 @@ func poisonCorruptJob(ctx context.Context, tx *sql.Tx, jobID string, reason stri
 	return nil
 }
 
-// poisonCorruptClaim is the fail-closed handling of a corrupt JSONB column
-// found while a job row is locked in a claim transaction: poison the job,
-// persist the poison, and report the decode error.
-//
-// Both failure modes are surfaced instead of dropped. A poison that was not
-// written (or was rolled back by a failed commit) would leave the job
-// claimable, so the queue would hand the same corrupt row to a worker again
-// and again, failing identically every time with no durable explanation.
-func poisonCorruptClaim(ctx context.Context, tx *sql.Tx, jobID string, decodeErr error) error {
-	if err := poisonCorruptJob(ctx, tx, jobID, decodeErr.Error()); err != nil {
-		return fmt.Errorf("postgres: corrupt job %s could not be poisoned: %w (decode: %v)", jobID, err, decodeErr)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("postgres: corrupt job %s: poison not persisted: %w (decode: %v)", jobID, err, decodeErr)
-	}
-	return decodeErr
-}
-
-// poisonCorruptRead is the Get-side counterpart of poisonCorruptClaim: the row
-// is read outside a transaction, so the poison is one statement. Its failure is
-// reported rather than dropped — a row that could not be poisoned would keep
-// being reported as corrupt on every read with nothing saying why.
+// poisonCorruptRead is the Get-side poison path: the row is read outside a
+// transaction, so the poison is one statement. Its failure is reported rather
+// than dropped — a row that could not be poisoned would keep being reported as
+// corrupt on every read with nothing saying why.
 func (r *Repository) poisonCorruptRead(ctx context.Context, jobID string, decodeErr error) error {
 	if _, err := r.db.ExecContext(ctx, `
 		UPDATE render_jobs

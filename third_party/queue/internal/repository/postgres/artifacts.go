@@ -23,7 +23,19 @@ func insertArtifact(ctx context.Context, tx *sql.Tx, jobID string, a model.Artif
 		kind = defaultArtifactKind
 	}
 
-	_, err := tx.ExecContext(ctx, `
+	// Serialize before touching the row: a marshal failure is a data error,
+	// not a legacy artifact. Writing NULL here would claim "the worker did not
+	// certify this" and turn a broken payload into a silent success.
+	facts, err := jsonFacts(a.OutputFacts)
+	if err != nil {
+		return fmt.Errorf("artifact %s output facts: %w", a.ID, err)
+	}
+	provenance, err := jsonProvenance(a.Provenance)
+	if err != nil {
+		return fmt.Errorf("artifact %s provenance: %w", a.ID, err)
+	}
+
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO render_artifacts
 		    (id, job_id, kind, storage_key, artifact_url, sha256, mime_type, size_bytes,
 		     width, height, fps_num, fps_den, frame_count, duration_us,
@@ -43,7 +55,7 @@ func insertArtifact(ctx context.Context, tx *sql.Tx, jobID string, a model.Artif
 		nullIfEmpty(a.Backend), nullIfEmpty(a.ChrononVersion), nullIfEmpty(a.DriveFileID), nullIfEmpty(a.DriveLink),
 		nullIfEmpty(a.Container), nullIfEmpty(a.PixelFormat), a.AudioStreams,
 		nullIfEmpty(a.ChrononTimingStorageKey), nullIfEmpty(a.ChrononTimingURL), nullIfEmpty(a.ChrononTimingSHA256),
-		a.ChrononTimingSizeBytes, nullIfEmpty(a.ChrononTimingContentType), jsonFacts(a.OutputFacts), jsonProvenance(a.Provenance))
+		a.ChrononTimingSizeBytes, nullIfEmpty(a.ChrononTimingContentType), facts, provenance)
 	if err != nil {
 		return err
 	}
@@ -58,26 +70,26 @@ func insertArtifact(ctx context.Context, tx *sql.Tx, jobID string, a model.Artif
 // jsonFacts serializes the complete structural certification for the JSONB
 // column. nil stays NULL (a legacy worker that did not certify the fact set),
 // never an empty object.
-func jsonFacts(facts *model.OutputFacts) any {
+func jsonFacts(facts *model.OutputFacts) (any, error) {
 	if facts == nil {
-		return nil
+		return nil, nil
 	}
 	raw, err := json.Marshal(facts)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return string(raw)
+	return string(raw), nil
 }
 
-func jsonProvenance(provenance *model.ArtifactProvenance) any {
+func jsonProvenance(provenance *model.ArtifactProvenance) (any, error) {
 	if provenance == nil {
-		return nil
+		return nil, nil
 	}
 	raw, err := json.Marshal(provenance)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return string(raw)
+	return string(raw), nil
 }
 
 func insertRenderTelemetry(ctx context.Context, tx *sql.Tx, jobID, attemptID string, raw []byte) error {

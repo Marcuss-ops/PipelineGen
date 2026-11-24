@@ -183,60 +183,70 @@ func ValidateJobBatch(jobs []Job) error {
 		}
 	}
 	if familyPackage != nil {
-		// A prepared package certifies one ordered set of child ranges. Treat
-		// chunk_index and frame_range as the durable family manifest: every
-		// child must belong to the same anchor, indices must be dense from zero,
-		// and their half-open frame ranges must cover one contiguous timeline.
-		var anchorID string
-		children := make([]*Job, 0, len(jobs)-1)
-		for i := range jobs {
-			job := &jobs[i]
-			if job.ParentJobID == "" {
-				if anchorID != "" {
-					return fmt.Errorf("prepared render family has multiple assembly anchors")
-				}
-				anchorID = job.ID
-				continue
+		return validatePreparedRenderFamily(jobs, familyPackage)
+	}
+	return nil
+}
+
+// validatePreparedRenderFamily owns the batch-shape checks that only apply
+// when the members carry a prepared render package: one anchor, dense chunk
+// indices from zero, contiguous half-open frame ranges, and a final range that
+// matches the package total. Kept separate so the per-job ingress loop stays a
+// flat sequence of independent checks.
+func validatePreparedRenderFamily(jobs []Job, familyPackage *client.PreparedRenderPackageRef) error {
+	// A prepared package certifies one ordered set of child ranges. Treat
+	// chunk_index and frame_range as the durable family manifest: every
+	// child must belong to the same anchor, indices must be dense from zero,
+	// and their half-open frame ranges must cover one contiguous timeline.
+	var anchorID string
+	children := make([]*Job, 0, len(jobs)-1)
+	for i := range jobs {
+		job := &jobs[i]
+		if job.ParentJobID == "" {
+			if anchorID != "" {
+				return fmt.Errorf("prepared render family has multiple assembly anchors")
 			}
-			children = append(children, job)
+			anchorID = job.ID
+			continue
 		}
-		if anchorID == "" || len(children) == 0 {
-			return fmt.Errorf("prepared render family requires one assembly anchor and at least one chunk")
+		children = append(children, job)
+	}
+	if anchorID == "" || len(children) == 0 {
+		return fmt.Errorf("prepared render family requires one assembly anchor and at least one chunk")
+	}
+	ordered := make([]*Job, len(children))
+	for _, child := range children {
+		if child.ParentJobID != anchorID {
+			return fmt.Errorf("prepared render chunk %s belongs to anchor %s, want %s", child.ID, child.ParentJobID, anchorID)
 		}
-		ordered := make([]*Job, len(children))
-		for _, child := range children {
-			if child.ParentJobID != anchorID {
-				return fmt.Errorf("prepared render chunk %s belongs to anchor %s, want %s", child.ID, child.ParentJobID, anchorID)
-			}
-			if child.ChunkIndex < 0 || child.ChunkIndex >= len(children) || ordered[child.ChunkIndex] != nil {
-				return fmt.Errorf("prepared render family has invalid or duplicate chunk index %d", child.ChunkIndex)
-			}
-			if child.FrameRange == nil {
-				return fmt.Errorf("prepared render chunk %s has no frame range", child.ID)
-			}
-			ordered[child.ChunkIndex] = child
+		if child.ChunkIndex < 0 || child.ChunkIndex >= len(children) || ordered[child.ChunkIndex] != nil {
+			return fmt.Errorf("prepared render family has invalid or duplicate chunk index %d", child.ChunkIndex)
 		}
-		for i, child := range ordered {
-			if child == nil {
-				return fmt.Errorf("prepared render family is missing chunk index %d", i)
-			}
-			if i == 0 && child.FrameRange.Start != 0 {
-				return fmt.Errorf("prepared render family starts at frame %d, want 0", child.FrameRange.Start)
-			}
-			if i > 0 && child.FrameRange.Start != ordered[i-1].FrameRange.End {
-				return fmt.Errorf("prepared render chunk %d range starts at %d, previous chunk ends at %d", i, child.FrameRange.Start, ordered[i-1].FrameRange.End)
-			}
-			if child.FrameRange.End > familyPackage.TotalFrames {
-				return fmt.Errorf("prepared render chunk %d ends at frame %d past package total %d", i, child.FrameRange.End, familyPackage.TotalFrames)
-			}
-			if i == len(ordered)-1 && child.FrameRange.End != familyPackage.TotalFrames {
-				return fmt.Errorf("prepared render family ends at frame %d, want package total %d", child.FrameRange.End, familyPackage.TotalFrames)
-			}
+		if child.FrameRange == nil {
+			return fmt.Errorf("prepared render chunk %s has no frame range", child.ID)
 		}
-		for _, job := range jobs {
-			if job.ParentJobID != "" && job.PreparedRenderPackage == nil {
-				return fmt.Errorf("chunk %s is missing the family prepared render package", job.ID)
-			}
+		ordered[child.ChunkIndex] = child
+	}
+	for i, child := range ordered {
+		if child == nil {
+			return fmt.Errorf("prepared render family is missing chunk index %d", i)
+		}
+		if i == 0 && child.FrameRange.Start != 0 {
+			return fmt.Errorf("prepared render family starts at frame %d, want 0", child.FrameRange.Start)
+		}
+		if i > 0 && child.FrameRange.Start != ordered[i-1].FrameRange.End {
+			return fmt.Errorf("prepared render chunk %d range starts at %d, previous chunk ends at %d", i, child.FrameRange.Start, ordered[i-1].FrameRange.End)
+		}
+		if child.FrameRange.End > familyPackage.TotalFrames {
+			return fmt.Errorf("prepared render chunk %d ends at frame %d past package total %d", i, child.FrameRange.End, familyPackage.TotalFrames)
+		}
+		if i == len(ordered)-1 && child.FrameRange.End != familyPackage.TotalFrames {
+			return fmt.Errorf("prepared render family ends at frame %d, want package total %d", child.FrameRange.End, familyPackage.TotalFrames)
+		}
+	}
+	for _, job := range jobs {
+		if job.ParentJobID != "" && job.PreparedRenderPackage == nil {
+			return fmt.Errorf("chunk %s is missing the family prepared render package", job.ID)
 		}
 	}
 	return nil
