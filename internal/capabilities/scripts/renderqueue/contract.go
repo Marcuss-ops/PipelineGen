@@ -1,4 +1,4 @@
-// Package scriptgeneration — model_render.go: the render and audio projection
+// Package renderqueue — contract.go: the render and audio projection
 // types of the pure domain model (ZERO I/O: the standard library plus the
 // kernel's pure contract types, never an adapter), plus the CONTRACT of the
 // central RenderingGen queue those types travel to and from.
@@ -16,7 +16,7 @@
 //
 // Extracted 2026-09-12 from model.go to keep every file under
 // max_lines_per_file_strict=600 (godlike/08 forward-prevention cap).
-package scriptgeneration
+package renderqueue
 
 import (
 	"encoding/json"
@@ -24,7 +24,7 @@ import (
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
+	kernrenderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // ── Central RenderingGen queue contract (kernel-owned) ──────────────────
@@ -36,33 +36,33 @@ import (
 // re-declarations — the JSON shape, the field set and the methods are the
 // kernel type, so the two sides cannot drift.
 type (
-	RenderQueueAsset              = renderqueue.RenderQueueAsset
-	RenderQueueJob                = renderqueue.RenderQueueJob
-	RenderQueuePreparedPackageRef = renderqueue.RenderQueuePreparedPackageRef
-	RenderFrameRange              = renderqueue.RenderFrameRange
-	RenderQueueClient             = renderqueue.RenderQueueClient
-	RenderQueueBatchSubmitter     = renderqueue.RenderQueueBatchSubmitter
-	RenderQueueChildrenReader     = renderqueue.RenderQueueChildrenReader
-	RenderQueueWaiter             = renderqueue.RenderQueueWaiter
-	RenderQueueRetrier            = renderqueue.RenderQueueRetrier
-	RenderCompletionMetrics       = renderqueue.RenderCompletionMetrics
+	RenderQueueAsset              = kernrenderqueue.RenderQueueAsset
+	RenderQueueJob                = kernrenderqueue.RenderQueueJob
+	RenderQueuePreparedPackageRef = kernrenderqueue.RenderQueuePreparedPackageRef
+	RenderFrameRange              = kernrenderqueue.RenderFrameRange
+	RenderQueueClient             = kernrenderqueue.RenderQueueClient
+	RenderQueueBatchSubmitter     = kernrenderqueue.RenderQueueBatchSubmitter
+	RenderQueueChildrenReader     = kernrenderqueue.RenderQueueChildrenReader
+	RenderQueueWaiter             = kernrenderqueue.RenderQueueWaiter
+	RenderQueueRetrier            = kernrenderqueue.RenderQueueRetrier
+	RenderCompletionMetrics       = kernrenderqueue.RenderCompletionMetrics
 )
 
 // ErrJobExists is returned by RenderQueueClient.Submit when a job with the
 // same ID was already enqueued (idempotent replay).
-var ErrJobExists = renderqueue.ErrJobExists
+var ErrJobExists = kernrenderqueue.ErrJobExists
 
 // ErrRenderRequestConflict is returned when a queue job id already exists but
 // its immutable request identity differs from the one being submitted.
-var ErrRenderRequestConflict = renderqueue.ErrRenderRequestConflict
+var ErrRenderRequestConflict = kernrenderqueue.ErrRenderRequestConflict
 
 // defaultQueuePollInterval mirrors the kernel default so the enqueuer keeps its
 // historical cadence from ONE declaration.
-const defaultQueuePollInterval = renderqueue.DefaultPollInterval
+const DefaultQueuePollInterval = kernrenderqueue.DefaultPollInterval
 
 // NewRenderQueueAsset builds the wire projection from the canonical identity.
 func NewRenderQueueAsset(ref kernelasset.Ref, logicalPath, sourceURL string) RenderQueueAsset {
-	return renderqueue.NewRenderQueueAsset(ref, logicalPath, sourceURL)
+	return kernrenderqueue.NewRenderQueueAsset(ref, logicalPath, sourceURL)
 }
 
 // marshalRenderingGenOverlayPlan converts a PipelineGen OverlayPlan into the
@@ -70,7 +70,7 @@ func NewRenderQueueAsset(ref kernelasset.Ref, logicalPath, sourceURL string) Ren
 // resolves the canonical font assets the queue job must carry. Both are wire-
 // model conversions, so they live next to RenderQueueJob/RenderQueueAsset.
 
-func marshalRenderingGenOverlayPlan(plan capmodel.OverlayPlan) ([]byte, error) {
+func MarshalRenderingGenOverlayPlan(plan capmodel.OverlayPlan) ([]byte, error) {
 	raw, err := json.Marshal(plan)
 	if err != nil {
 		return nil, err

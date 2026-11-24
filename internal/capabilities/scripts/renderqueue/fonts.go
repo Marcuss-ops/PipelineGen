@@ -1,4 +1,4 @@
-package scriptgeneration
+package renderqueue
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	kernrenderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // runtimeFontAssets stages one queue asset per payload-selected font family
@@ -15,9 +16,9 @@ import (
 // caprender.CanonicalFontAssetsByFamily registry. Every supported family is
 // staged — never a hardcoded subset — so the family a payload selects is the
 // family the worker materializes. Assets are deduplicated and stably ordered.
-func runtimeFontAssets(plan capmodel.OverlayPlan) ([]RenderQueueAsset, error) {
+func RuntimeFontAssets(plan capmodel.OverlayPlan) ([]kernrenderqueue.RenderQueueAsset, error) {
 	seen := map[string]struct{}{}
-	var assets []RenderQueueAsset
+	var assets []kernrenderqueue.RenderQueueAsset
 	add := func(family string) error {
 		family = strings.TrimSpace(family)
 		if family == "" {
@@ -31,7 +32,7 @@ func runtimeFontAssets(plan capmodel.OverlayPlan) ([]RenderQueueAsset, error) {
 			return fmt.Errorf("unknown runtime font family %q", family)
 		}
 		seen[family] = struct{}{}
-		assets = append(assets, NewRenderQueueAsset(
+		assets = append(assets, kernrenderqueue.NewRenderQueueAsset(
 			kernelasset.Ref{AssetID: entry.Path, SHA256: entry.SHA256},
 			entry.Path, ""))
 		return nil

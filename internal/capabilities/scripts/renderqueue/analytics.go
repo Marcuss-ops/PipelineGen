@@ -1,4 +1,4 @@
-// Package scriptgeneration — render_attempt_analytics.go owns the durable
+// Package renderqueue — analytics.go owns the durable
 // per-render-attempt analytics contract. It is the PipelineGen-side record of
 // one Chronon render attempt produced through the RenderingGen queue: what
 // content the plan carried, how long the render/encode phases took, what the
@@ -10,7 +10,7 @@
 // durations and Drive identity come verbatim from the artifact; when the worker
 // did not report a phase or did not publish to Drive, the corresponding fields
 // stay zero/empty.
-package scriptgeneration
+package renderqueue
 
 import (
 	"context"
