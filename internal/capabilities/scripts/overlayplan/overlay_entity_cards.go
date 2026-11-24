@@ -9,7 +9,6 @@ package overlayplan
 import (
 	"net/url"
 	"os"
-	"regexp"
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
@@ -331,9 +330,6 @@ func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
 	// for legacy bindings that predate media_type.
 	return "photo_jpeg"
 }
-
-var explicitDatePattern = regexp.MustCompile(`(?i)\b(?:[0-9]{1,2}\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+[0-9]{4}|[0-9]{4})\b`)
-var groundedDateIdentityPattern = regexp.MustCompile(`(?i)^([0-9]{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+([0-9]{4}))?$`)
 
 func EntityImageURL(binding *scriptpkg.EntityImageBinding) string {
 	if binding == nil {

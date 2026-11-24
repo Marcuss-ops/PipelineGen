@@ -10,26 +10,13 @@ import (
 
 type (
 	PhraseAlignmentRequest = overlayplan.PhraseAlignmentRequest
-	PhraseTimingSource     = overlayplan.PhraseTimingSource
 	timingProjectionSkip   = overlayplan.TimingProjectionSkip
-)
-
-const (
-	EntityImageReasonBound                 = overlayplan.EntityImageReasonBound
-	EntityImageReasonNoVerifiedAsset       = overlayplan.EntityImageReasonNoVerifiedAsset
-	EntityImageReasonNotSelected           = overlayplan.EntityImageReasonNotSelected
-	EntityImageReasonUploadFailed          = overlayplan.EntityImageReasonUploadFailed
-	OverlayIntentReasonEntityNotPlanned    = overlayplan.OverlayIntentReasonEntityNotPlanned
-	OverlayIntentReasonSourceTextNotInPlan = overlayplan.OverlayIntentReasonSourceTextNotInPlan
 )
 
 // Exported names that were already public in the root keep their surface.
 var (
 	ApplySemanticResolvedImages            = overlayplan.ApplySemanticResolvedImages
-	BuildSemanticRenderBundleFromResult    = overlayplan.BuildSemanticRenderBundleFromResult
 	CompileOverlayPlanFromGenerationResult = overlayplan.CompileOverlayPlanFromGenerationResult
-	CompilePhraseTimings                   = overlayplan.CompilePhraseTimings
-	CompileSceneSpeechTimings              = overlayplan.CompileSceneSpeechTimings
 	DiagnosePhraseAnchoring                = overlayplan.DiagnosePhraseAnchoring
 	ProjectSegmentAnnotations              = overlayplan.ProjectSegmentAnnotations
 )

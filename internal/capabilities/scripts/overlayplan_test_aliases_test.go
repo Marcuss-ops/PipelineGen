@@ -5,9 +5,23 @@ package scriptgeneration
 
 import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlayplan"
 
+// PhraseTimingSource is named only by the phrase-alignment projection test.
+type PhraseTimingSource = overlayplan.PhraseTimingSource
+
 const (
 	maxGenericSceneImagesPerScene = overlayplan.MaxGenericSceneImagesPerScene
 	requireEntityImagesEnv        = overlayplan.RequireEntityImagesEnv
+)
+
+// The audit reason values are asserted by the overlay-plan tests; no
+// production root code names them.
+const (
+	EntityImageReasonBound                 = overlayplan.EntityImageReasonBound
+	EntityImageReasonNoVerifiedAsset       = overlayplan.EntityImageReasonNoVerifiedAsset
+	EntityImageReasonNotSelected           = overlayplan.EntityImageReasonNotSelected
+	EntityImageReasonUploadFailed          = overlayplan.EntityImageReasonUploadFailed
+	OverlayIntentReasonEntityNotPlanned    = overlayplan.OverlayIntentReasonEntityNotPlanned
+	OverlayIntentReasonSourceTextNotInPlan = overlayplan.OverlayIntentReasonSourceTextNotInPlan
 )
 
 var (
@@ -56,4 +70,12 @@ var (
 	sceneImageCandidates               = overlayplan.SceneImageCandidates
 	sealCompiledOverlayPlan            = overlayplan.SealCompiledOverlayPlan
 	visualRecipesForScene              = overlayplan.VisualRecipesForScene
+)
+
+// Entry points exercised only by the root tests. Other packages use the
+// overlayplan package directly, so the production root facade stays narrow.
+var (
+	BuildSemanticRenderBundleFromResult = overlayplan.BuildSemanticRenderBundleFromResult
+	CompilePhraseTimings                = overlayplan.CompilePhraseTimings
+	CompileSceneSpeechTimings           = overlayplan.CompileSceneSpeechTimings
 )
