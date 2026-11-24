@@ -466,7 +466,6 @@ func computeReachabilityGraph(ctx context.Context, db *sql.DB, limitIDs int) (*r
 				st.Error = fmt.Sprintf("orphan query: %v", err)
 				break
 			}
-			defer func() { _ = orphanRows.Close() }()
 			for orphanRows.Next() {
 				var val string
 				if err := orphanRows.Scan(&val); err != nil {
