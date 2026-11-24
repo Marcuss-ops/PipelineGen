@@ -95,7 +95,7 @@ type alignPhrasesWireResponse struct {
 // AlignPhrases is the production boundary of the Rust deterministic word /
 // phrase matcher. The artifact is validated here, and every returned span must
 // reference the requested word boundaries; otherwise the call fails closed.
-func (a *SemanticEngineAdapter) AlignPhrases(ctx context.Context, request scriptgen.PhraseAlignmentRequest) ([]capabilityaudio.LocatedPhrase, error) {
+func (a *SemanticEngineAdapter) AlignPhrases(ctx context.Context, request capabilityaudio.PhraseAlignmentRequest) ([]capabilityaudio.LocatedPhrase, error) {
 	if a == nil || a.executor == nil {
 		return nil, fmt.Errorf("semantic-engine: executor is not configured")
 	}

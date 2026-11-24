@@ -50,7 +50,7 @@ func TestAlignPhrasesAllowMissingSkipsUnknownAndKeepsBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	alignments, err := adapter.AlignPhrases(context.Background(), scriptgen.PhraseAlignmentRequest{
+	alignments, err := adapter.AlignPhrases(context.Background(), capabilityaudio.PhraseAlignmentRequest{
 		Timing: capabilityaudio.SpeechTimingArtifact{
 			Version: capabilityaudio.SpeechTimingVersion, BoundaryMode: capabilityaudio.BoundaryWord,
 			TextSHA256: "text", AudioSHA256: "audio", DurationUS: 300,
@@ -79,7 +79,7 @@ func TestAlignPhrasesAllOccurrencesReturnsEveryMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	alignments, err := adapter.AlignPhrases(context.Background(), scriptgen.PhraseAlignmentRequest{
+	alignments, err := adapter.AlignPhrases(context.Background(), capabilityaudio.PhraseAlignmentRequest{
 		Timing: capabilityaudio.SpeechTimingArtifact{
 			Version: capabilityaudio.SpeechTimingVersion, BoundaryMode: capabilityaudio.BoundaryWord,
 			TextSHA256: "text", AudioSHA256: "audio", DurationUS: 300,
