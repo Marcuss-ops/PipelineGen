@@ -1,0 +1,128 @@
+{
+  "batch": "garlasco_interviste_20261124",
+  "generated_at": "2026-11-24T13:27:46.226160+00:00",
+  "destination": {
+    "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+    "folder_name": "Garlasco_TG_Interviste_Stock_20x60s_5s",
+    "subfolder_name": "Interviste_20261124",
+    "create_subfolder": true
+  },
+  "totals": {
+    "videos": 10,
+    "main_clips": 98,
+    "hook_clips": 56,
+    "segments": 154
+  },
+  "videos": [
+    {
+      "video_id": "3L6fqRn2WrA",
+      "title": "Tg1 Talks con Andrea Sempio",
+      "program": "TG1",
+      "source_file": "01_3L6fqRn2WrA.json",
+      "payload": "payloads/01_3L6fqRn2WrA.process.json",
+      "sha256": "7122e8c34be4df4de054ca7c6c5294ebe2cf307cbbbb39fffc264d54fd72e34c",
+      "main_clips": 21,
+      "hook_clips": 11,
+      "segments": 32
+    },
+    {
+      "video_id": "xxpJfbMG7Oo",
+      "title": "Garlasco, Sempio al TG1: \"Mai visto il video intimo nel PC di Chiara. Dalle indagini esco innocente\"",
+      "program": "TG1",
+      "source_file": "02_xxpJfbMG7Oo.json",
+      "payload": "payloads/02_xxpJfbMG7Oo.process.json",
+      "sha256": "a1bec487c5a6c9ce996a3b662eae29ef49bf7dd5655b0bba49d27ed42b518347",
+      "main_clips": 8,
+      "hook_clips": 5,
+      "segments": 13
+    },
+    {
+      "video_id": "HqshVryJ6lg",
+      "title": "Delitto di Garlasco, parla Andrea Sempio - Vita in diretta 13/01/2026",
+      "program": "Vita in diretta",
+      "source_file": "03_HqshVryJ6lg.json",
+      "payload": "payloads/03_HqshVryJ6lg.process.json",
+      "sha256": "a222372f56ab360a138738fc1165d9b1b3a30e75b2558de110171a61e815f71d",
+      "main_clips": 7,
+      "hook_clips": 4,
+      "segments": 11
+    },
+    {
+      "video_id": "zldJjKZqbZE",
+      "title": "Garlasco, l'omicidio di Chiara Poggi: dalla condanna di Stasi alla pista di Sempio. Cosa sappiamo",
+      "program": "Approfondimento",
+      "source_file": "04_zldJjKZqbZE.json",
+      "payload": "payloads/04_zldJjKZqbZE.process.json",
+      "sha256": "e20b5defcbfe37cda0f79f0f1b162b56e7f825b9a006e7f077df71abca6a7b2f",
+      "main_clips": 9,
+      "hook_clips": 5,
+      "segments": 14
+    },
+    {
+      "video_id": "jdr5-Qx479g",
+      "title": "Garlasco, i nuovi video choc di Andrea Sempio - Storie italiane 29/10/2026",
+      "program": "Storie italiane",
+      "source_file": "05_jdr5-Qx479g.json",
+      "payload": "payloads/05_jdr5-Qx479g.process.json",
+      "sha256": "b6d70ff2cdba98b42bea0d4c384f6add7cea48656638e4aa0222ee1e34670a45",
+      "main_clips": 8,
+      "hook_clips": 5,
+      "segments": 13
+    },
+    {
+      "video_id": "YJ6NTtHPEt8",
+      "title": "Garlasco, gli errori da evitare nel racconto mediatico: intervista a Carmelo Schininà",
+      "program": "Intervista",
+      "source_file": "06_YJ6NTtHPEt8.json",
+      "payload": "payloads/06_YJ6NTtHPEt8.process.json",
+      "sha256": "d9ed9a5a41c067cacd46686c20c9833cff5afe17f2d0207da78afc4f21103afe",
+      "main_clips": 5,
+      "hook_clips": 4,
+      "segments": 9
+    },
+    {
+      "video_id": "Koa43BvVe2w",
+      "title": "Garlasco, vengono a galla tutti i segreti dei Ris | Segreti",
+      "program": "Segreti",
+      "source_file": "07_Koa43BvVe2w.json",
+      "payload": "payloads/07_Koa43BvVe2w.process.json",
+      "sha256": "90a7ed91a3d7a424accecaecf0acd83c3a9ca6be4bb3c19fc2174703d0815a55",
+      "main_clips": 10,
+      "hook_clips": 5,
+      "segments": 15
+    },
+    {
+      "video_id": "sf5ZrrVqY3Q",
+      "title": "GARLASCO: CHI HA RECLUTATO I SATANISTI?",
+      "program": "Approfondimento",
+      "source_file": "08_sf5ZrrVqY3Q.json",
+      "payload": "payloads/08_sf5ZrrVqY3Q.process.json",
+      "sha256": "2fdd61576264b1084ecf538a665b902f505bfaf95ae62582364edd39921ca0ab",
+      "main_clips": 11,
+      "hook_clips": 5,
+      "segments": 16
+    },
+    {
+      "video_id": "Bu3wqhZPR48",
+      "title": "Caso Garlasco, la Verità Scomoda: L'Avv. Lovati smonta i Processi in TV",
+      "program": "Intervista",
+      "source_file": "09_Bu3wqhZPR48.json",
+      "payload": "payloads/09_Bu3wqhZPR48.process.json",
+      "sha256": "fef08446d6d4db09f782e0bfb68d4efbb04b0212adac178d631b12713629a373",
+      "main_clips": 10,
+      "hook_clips": 6,
+      "segments": 16
+    },
+    {
+      "video_id": "nnF8Z2o27u8",
+      "title": "GARLASCO, parla il giudice che assolse STASI: \"Vi spiego perché è innocente\"",
+      "program": "Intervista",
+      "source_file": "10_nnF8Z2o27u8.json",
+      "payload": "payloads/10_nnF8Z2o27u8.process.json",
+      "sha256": "cb2b9c47b7d9064b6c06af3df37ddbaa8d7ad1a00cfce92a1cefe0b2ddd194a8",
+      "main_clips": 9,
+      "hook_clips": 6,
+      "segments": 15
+    }
+  ]
+}

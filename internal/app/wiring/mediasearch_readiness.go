@@ -17,6 +17,7 @@ import (
 
 	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
 
+	wiringranking "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/ranking"
 	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 
@@ -145,7 +146,7 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 	// in-process fallback: if the worker is not available the resolver must
 	// not be handed out, because every slot would fail closed at request
 	// time with no way to recover.
-	poolRanker, err := newMediaPoolRankerBridge(mediaSamplerBinaryPath(), log)
+	poolRanker, err := wiringranking.NewMediaPoolRankerBridge(wiringranking.MediaSamplerBinaryPath(), log)
 	if err != nil {
 		return nil, err
 	}

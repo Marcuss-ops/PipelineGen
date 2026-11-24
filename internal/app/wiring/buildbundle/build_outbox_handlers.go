@@ -1,0 +1,584 @@
+// Package app — outbox deps + handler-registration sub-blocks.
+//
+// Extracted from build_bundles_process.go::BuildOutboxBundle (July 2026
+// sub-section split). Owns: buildOutboxDeps (outbox.Deps construction
+// incl. httpClient/HMAC secrets/source querier/metadata-export handler),
+// assertSingleMediaIndexOwner (fail-closed single-owner assertion for the
+// media index plane) and registerOutboxWorkers (optional +
+// script.generate.queued + publisher + drive-uploader workers). All
+// error strings keep the canonical "BuildOutboxBundle:" prefix so the
+// fail-closed contract observed by composition_failclosed_test.go is
+// unchanged.
+package buildbundle
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"go.uber.org/zap"
+
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/assets"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
+	assetmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobindexrestore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/indexrestore"
+	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	sqldelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/delivery"
+
+	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_drive"
+	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/metadataexport"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	filesmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem/metadataexport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	perfstore "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/performance"
+)
+
+// buildOutboxDeps constructs the jobsoutbox.Deps consumed by the core +
+// optional handler registrations and the pre-built
+// metadataexport.MetadataExportHandler. Extracted verbatim from
+// BuildOutboxBundle (July 2026); called by the reduced orchestrator.
+func buildOutboxDeps(
+	dbs *Databases,
+	cfg *config.Config,
+	repos *RepoBundle,
+	jobs *JobsBundle,
+	qd *IndexDeps,
+	voiceoverDriver jobsoutbox.VoiceoverCleanupDriver,
+	mediaPostgres *sql.DB,
+	log *zap.Logger,
+) (*jobsoutbox.Deps, outboxevents.Handler) {
+	// PR-REFACTOR-P0-IO-BINDER-HTTP (July 2026): route the outbox http.Client
+	// construction through internal/platform/httpclient.NewDefaultClient
+	// (the canonical owner of *http.Client construction for the application
+	// port surface). The result satisfies ports.Client, which is the
+	// field type of InfraDeps.HTTPClient (consumed by the DeliveryHandler).
+	httpClient := httpclient.NewDefaultClient(30 * time.Second)
+
+	var hmacSecrets [][]byte
+	if cur := strings.TrimSpace(cfg.Security.DeliveryHMACSecret); cur != "" {
+		hmacSecrets = append(hmacSecrets, []byte(cur))
+	}
+	if prev := strings.TrimSpace(cfg.Security.DeliveryHMACSecretPrevious); prev != "" {
+		hmacSecrets = append(hmacSecrets, []byte(prev))
+	}
+
+	// MEDIA-CUTOVER (2026-09-12): the SourceVersionQuerier wiring is
+	// REMOVED with the retired IndexingHandler family. The supersede gate
+	// it fed consumed SQLite-outbox asset.index.requested events — a
+	// pipeline with zero production consumers since the PostgreSQL media
+	// cutover (media index plane = PostgresIndexWorker).
+
+	// Step 2 (June 2026): pre-build the canonical MetadataExportHandler
+	// via the new typed-port adapters. The composition root is the ONLY
+	// place infra concrete types meet application ports — the
+	// outbox.Deps struct no longer needs MetadataDir because the
+	// handler gets its output dir as part of HandlerDeps at wire time.
+	var metadataExportResolver assetmetadata.AssetResolver
+	if mediaPostgres != nil {
+		metadataExportResolver = pgmedia.NewMetadataExportResolver(mediaPostgres, dbs.DualPool.Writer)
+	}
+	if metadataExportResolver == nil {
+		metadataExportResolver = sqmetadataexport.NewSQLiteAdapter(dbs.DualPool.Writer)
+	}
+	metadataExportWriter := &filesmetadataexport.FileWriter{}
+	metadataExportDeps := jobsoutbox.MetadataExportHandlerDeps{
+		Resolver:  metadataExportResolver,
+		Writer:    metadataExportWriter,
+		OutputDir: cfg.Storage.FullPath("asset_metadata"),
+		Log:       log,
+	}
+	metadataExportHandler := jobsoutbox.NewMetadataExportHandler(metadataExportDeps)
+
+	outboxDeps := &jobsoutbox.Deps{
+		Infra: jobsoutbox.InfraDeps{
+			DeliveryAudit: sqldelivery.NewRepository(dbs.DualPool.Writer),
+			HTTPClient:    httpClient,
+			HMACSecrets:   hmacSecrets,
+			InsecureDev:   cfg.Security.DeliveryInsecureDev,
+		},
+		Jobs: jobsoutbox.JobDeps{
+			Jobs: jobs.Service,
+		},
+	}
+	// PR 3 fix/pgvector-outbox-fail-closed (#4): wire the canonical
+	// AssetDeleter so IndexDeleteHandler has BOTH its dep slots
+	// populated. *assets.ClipsRepository statically implements the
+	// local outbox.AssetDeleter port (compile-time assertion at the
+	// top of this file pins GetClip + SoftDelete + SetIndexState
+	// conformance). Before this wiring, IndexDeleteHandler
+	// registered in a partially-wired state whenever
+	// pgvector.Enabled=true but composer's ClipsRepo wiring failed —
+	// every asset.index.delete_requested event then dead-lettered
+	// with "no handler for event type X". Fail-closed wiring: only
+	// when cfg.pgvector.Enabled AND ClipsRepo is present.
+	if repos.ClipsRepo != nil {
+		outboxDeps.Jobs.AssetDeleter = repos.ClipsRepo
+	}
+	// P0.7 Wave 21 Step 10/12 (June 2026): voiceover orphan cleanup
+	// driver (production concrete = drive.Admin, which saturates the
+	// narrow VoiceoverCleanupDriver port via its DeleteFile method
+	// — structural conformance, no wrapper needed). nil is
+	// tolerated — RegisterOptionalHandlers unconditionally registers
+	// the handler, and the handler's driver==nil branch logs+skips
+	// the Drive delete step (local file removal still runs via
+	// stdlib os.Remove, no port ceremony). Production wiring always
+	// supplies a non-nil adapter via composition.go (built from
+	// driveBundle.Admin).
+	if voiceoverDriver != nil {
+		outboxDeps.Jobs.VoiceoverCleanupDriver = voiceoverDriver
+	}
+	return outboxDeps, metadataExportHandler
+}
+
+// assertSingleMediaIndexOwner is the fail-closed composition assertion that
+// replaced the retired registerOutboxCoreHandlers no-op (POSTGRES-MEDIA-CUTOVER,
+// September 2026). The previous function registered nothing and returned nil in
+// every mode, so its six parameters were dead architecture kept alive only by
+// `_ = param` pins; a no-op cannot fail closed, so it could not actually enforce
+// the invariant its log line described.
+//
+// The invariant it now *enforces* at boot is that the media index plane has
+// exactly one owner — the pgvector PostgresIndexWorker over the PostgreSQL SSOT:
+//
+//   - PostgreSQL media enabled but no worker built => the plane has NO owner.
+//     Boot aborts: continuing would dead-letter every asset.index.requested.
+//   - the SQLite control-plane outbox registering a consumer for
+//     asset.index.requested => a SECOND owner. Boot aborts: a stray media event
+//     must dead-letter loudly rather than project into a third plane.
+//
+// The retired legacy media projection branch is gone, so there is no ordering
+// dependency left and this assertion takes no Repository/pgvector handles.
+func assertSingleMediaIndexOwner(
+	cfg *config.Config,
+	eventsRegistry *outboxevents.HandlerRegistry,
+	pgIndexWorker *pgmedia.PostgresIndexWorker,
+	log *zap.Logger,
+) error {
+	if cfg == nil {
+		return fmt.Errorf("BuildOutboxBundle: media index owner assertion requires a config")
+	}
+	if cfg.MediaPostgreSQL.Enabled && pgIndexWorker == nil {
+		return fmt.Errorf("BuildOutboxBundle: media PostgreSQL is enabled but no PostgresIndexWorker was built; the media index plane would have no owner (POSTGRES-MEDIA-CUTOVER)")
+	}
+	if eventsRegistry != nil {
+		if _, registered := eventsRegistry.Get(outboxevents.EventAssetIndexRequested); registered {
+			return fmt.Errorf("BuildOutboxBundle: SQLite outbox registered a handler for %q; the media index plane is owned by the PostgreSQL PostgresIndexWorker (POSTGRES-MEDIA-CUTOVER)", outboxevents.EventAssetIndexRequested)
+		}
+	}
+	log.Info("POSTGRES-MEDIA-CUTOVER: single media index owner asserted; media index plane = pgvector PostgresIndexWorker",
+		zap.Bool("postgres_media_enabled", cfg.MediaPostgreSQL.Enabled))
+	return nil
+}
+
+// registerOutboxWorkers registers the optional + worker handlers
+// (metadata export, script.generate.queued, publish_outbox Publisher,
+// publish_drive DriveUploader) and returns the two canonical workers
+// for the OutboxBundle fields. Extracted verbatim from
+// BuildOutboxBundle (July 2026).
+func registerOutboxWorkers(
+	eventsRegistry *outboxevents.HandlerRegistry,
+	log *zap.Logger,
+	outboxDeps *jobsoutbox.Deps,
+	metadataExportHandler outboxevents.Handler,
+	jobs *JobsBundle,
+	stagingSvc staging.Store,
+	repo detail.ArtifactStageRepository,
+	drivePublisher delivery.Publisher,
+) (*publishoutbox.Handler, *publishdrive.Handler, error) {
+	// Optional handlers: best-effort. Missing deps here are logged
+	// and skipped; missing deps do NOT abort boot (delivery,
+	// metadata_export, provider_sync are non-essential at boot).
+	// Step 2 (June 2026): the pre-built metadataexport.MetadataExportHandler
+	// (composition-root owned) is passed to RegisterOptionalHandlers via
+	// a new metadataExportHandler arg.
+	if err := jobsoutbox.RegisterOptionalHandlers(eventsRegistry, log, outboxDeps, metadataExportHandler); err != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register optional outbox handlers: %w", err)
+	}
+	queuedHandler, queuedErr := jobsoutbox.NewScriptGenerateQueuedHandler(jobs.Repo)
+	if queuedErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: script.generate.queued handler: %w", queuedErr)
+	}
+	if regErr := eventsRegistry.Register(queuedHandler); regErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register script.generate.queued handler: %w", regErr)
+	}
+
+	// FASE 3 Push 3.1c (July 2026): register the canonical
+	// Promote→Publisher worker. Drains
+	// `artifact.publish_requested.v1` events from outbox_events
+	// and forwards them to staging.Store.Stage (which then
+	// co-emits `artifact.staged.v1` via
+	// Repository.InsertWithOutbox — the canonical atomic
+	// primitive). Fail-closed: a nil/errored handler
+	// registration aborts boot — a half-wired publisher would
+	// dead-letter every publish_requested event on the first
+	// emission, which is a worse failure mode than a clean
+	// compose-time abort.
+	publisherHandler, pubErr := publishoutbox.NewHandler(stagingSvc, log)
+	if pubErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: publish_outbox.NewHandler (fail-fast at construction): %w", pubErr)
+	}
+	if regErr := eventsRegistry.Register(publisherHandler); regErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register publish_outbox handler (fail-closed): %w", regErr)
+	}
+	log.Info("outbox publish handler registered: artifact.publish_requested.v1 → staging.Store.Stage (FASE 3 Push 3.1c)")
+
+	// FASE 3 Push 3.1e (July 2026): register the canonical
+	// Stage→Publish worker. Drains `artifact.staged.v1` events
+	// (atomically co-emitted by Repository.InsertWithOutbox in
+	// Push 3.1c) and forwards each event to
+	// delivery.Publisher.Publish (the canonical Drive upload
+	// canal) + Repository.MarkPublished with a canonical JSON
+	// PublishedLocation payload. Fail-closed: a nil/errored
+	// handler registration aborts boot — a half-wired
+	// DriveUploader would dead-letter every staged.v1 event on
+	// the first emission, which is a worse failure mode than a
+	// clean compose-time abort.
+	//
+	// The handler consumes the SAME artifact.Repository port
+	// that staging.StoreService.Stage uses (canonical single-
+	// writer; the Repository is the typed cursor to the same
+	// underlying *artifactstages.Repository concrete — godlike/06
+	// SSOT per FASE 3 Spina Dorsale). Threading the Repository
+	// explicitly into BuildOutboxBundle (rather than re-fetching
+	// from a downstream service) keeps the wiring fail-closed:
+	// a NULL repo at compose-time is a typed-error abort, not a
+	// silent runtime nil-deref.
+	driveUploadHandler, driveErr := publishdrive.NewHandler(repo, drivePublisher, log)
+	if driveErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: publish_drive.NewHandler (fail-fast at construction): %w", driveErr)
+	}
+	if regErr := eventsRegistry.Register(driveUploadHandler); regErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register publish_drive handler (fail-closed): %w", regErr)
+	}
+	log.Info("outbox publish_drive handler registered: artifact.staged.v1 → delivery.Publisher.Publish + Repository.MarkPublished (FASE 3 Push 3.1e)")
+
+	// NB: image.drive_delivery.requested is deliberately NOT registered on the
+	// SQLite outbox. The canonical media committer emits it into the
+	// PostgreSQL outbox (see registerPostgresMediaOutboxHandlers), so a SQLite
+	// registration could never receive an event: it would only be a second
+	// consumer for the same fact. The image Drive handler is wired once, on
+	// the PG worker.
+
+	return publisherHandler, driveUploadHandler, nil
+}
+
+// registerPostgresMediaOutboxHandlers wires external delivery consumers into
+// the same PostgreSQL outbox that the canonical media committer writes. This
+// is deliberately separate from registerOutboxWorkers: the latter drains the
+// control-plane SQLite outbox, while media assets are owned by PostgreSQL.
+func registerPostgresMediaOutboxHandlers(
+	worker *pgmedia.PostgresIndexWorker,
+	drivePublisher delivery.Publisher,
+	mutator assetspersistence.AssetMutator,
+	subtitles detail.SubtitleArtifactRepository,
+	log *zap.Logger,
+) error {
+	if worker == nil {
+		return nil
+	}
+	clipHandler, clipErr := clipswiring.NewClipRenderDriveDeliveryHandler(clipswiring.ClipRenderDeliveryDeps{
+		Publisher: drivePublisher,
+		Mutator:   mutator,
+		Subtitles: subtitles,
+		Log:       log,
+	})
+	if clipErr != nil {
+		return fmt.Errorf("clip.render PostgreSQL Drive delivery handler: %w", clipErr)
+	}
+	if err := worker.RegisterHandler(cliprender.EventClipRenderDriveDeliveryRequested, clipHandler); err != nil {
+		return fmt.Errorf("register clip.render PostgreSQL Drive delivery handler: %w", err)
+	}
+	worker.WithOutboxStatusMetrics(
+		observability.NewMediaOutboxStatusCountAdapter(),
+		cliprender.EventClipRenderDriveDeliveryRequested,
+	)
+	imageHandler, imageErr := assetswiring.NewImageDriveDeliveryPGHandler(mutator, drivePublisher, log)
+	if imageErr != nil {
+		return fmt.Errorf("image PostgreSQL Drive delivery handler: %w", imageErr)
+	}
+	if err := worker.RegisterHandler(imagesapp.EventTypeImageDriveDeliveryRequested, imageHandler); err != nil {
+		return fmt.Errorf("register image PostgreSQL Drive delivery handler: %w", err)
+	}
+	log.Info("PostgreSQL media outbox Drive delivery handlers registered")
+	return nil
+}
+
+// sqliteOutboxHandler is the shared surface of the capability-owned outbox
+// handlers (declared here, Pattern 0 consumer side, so the composition root can
+// bridge any of them onto the PostgreSQL worker and the adapters stay
+// unit-testable without a live Drive stack). Production concretes:
+// *jobsoutbox.DriveDeleteHandler, *jobsoutbox.IndexDeleteHandler.
+type sqliteOutboxHandler interface {
+	Handle(ctx context.Context, evt outboxevents.Event) error
+}
+
+// pgOutboxHandlerAdapter bridges a capability-owned (SQLite-shaped)
+// outboxevents.Handler onto the PostgreSQL media outbox worker.
+//
+// MEDIA-SSOT (September 2026, audit finding #3): the deletion saga is a MEDIA
+// fact. Once PostgresMediaCommitter stamps a saga event into the PostgreSQL
+// outbox, the PostgreSQL worker is the agent that must drain it — the SQLite
+// registration can never see that row. Without this adapter every PG-emitted
+// saga event dead-letters with "no handler registered for event type".
+type pgOutboxHandlerAdapter struct {
+	handler sqliteOutboxHandler
+}
+
+// Handle maps the PostgreSQL claim envelope onto the canonical SQLite
+// outboxevents.Event shape the capability handler consumes. The two engines
+// share one event fact family, so the mapping is total and lossless for every
+// field the handler reads.
+func (h pgOutboxHandlerAdapter) Handle(ctx context.Context, claim *pgmedia.OutboxClaim) error {
+	if claim == nil {
+		return fmt.Errorf("postgres outbox handler adapter: nil outbox claim")
+	}
+	if h.handler == nil {
+		return fmt.Errorf("postgres outbox handler adapter: handler is not wired")
+	}
+	evt := claim.Event
+	return h.handler.Handle(ctx, outboxevents.Event{
+		ID:            evt.ID,
+		EventType:     evt.EventType,
+		AggregateID:   evt.AggregateID,
+		AggregateType: evt.AggregateType,
+		PayloadJSON:   evt.PayloadJSON,
+		Status:        evt.Status,
+		AttemptCount:  evt.AttemptCount,
+		MaxAttempts:   evt.MaxAttempts,
+		LastError:     evt.LastError,
+		EventKey:      evt.EventKey,
+		CreatedAt:     evt.CreatedAt,
+		UpdatedAt:     evt.UpdatedAt,
+		Priority:      evt.Priority,
+	})
+}
+
+// pgMediaAssetDeleter adapts the PostgreSQL media SSOT to the jobs.AssetDeleter
+// port consumed by the index-delete hop of the deletion saga. Binding the port
+// here (rather than letting the SQLite ClipsRepository serve the PostgreSQL
+// outbox) is what keeps the terminal lifecycle/index-state stamps on the media
+// SSOT instead of the quarantined SQLite mirror.
+type pgMediaAssetDeleter struct {
+	committer *pgmedia.PostgresMediaCommitter
+}
+
+var _ jobsoutbox.AssetDeleter = pgMediaAssetDeleter{}
+
+func (a pgMediaAssetDeleter) GetClip(ctx context.Context, id string) (*asset.Asset, error) {
+	return a.committer.GetClip(ctx, id)
+}
+
+func (a pgMediaAssetDeleter) SoftDelete(ctx context.Context, id string) error {
+	return a.committer.SoftDeleteAsset(ctx, id)
+}
+
+func (a pgMediaAssetDeleter) SetIndexState(ctx context.Context, id string, state asset.IndexState) error {
+	return a.committer.SetIndexState(ctx, id, state, "")
+}
+
+func (a pgMediaAssetDeleter) SetLifecycleState(ctx context.Context, id string, state asset.LifecycleState) error {
+	return a.committer.SetLifecycleState(ctx, id, state)
+}
+
+// pgMediaVectorPointDeleter adapts the pgvector media index surface to the
+// jobs.VectorPointDeleter port. The port name is legacy (pgvector era); binding
+// it to the PostgreSQL media plane is precisely what keeps the media index
+// deletion OFF pgvector in PostgreSQL mode (pgvector media writes are forbidden).
+type pgMediaVectorPointDeleter struct {
+	committer *pgmedia.PostgresMediaCommitter
+}
+
+var _ jobsoutbox.VectorPointDeleter = pgMediaVectorPointDeleter{}
+
+// DeleteAssetPoints removes the assets' pgvector index rows. Idempotent: a
+// missing row is success, never a 404 analogue.
+func (d pgMediaVectorPointDeleter) DeleteAssetPoints(ctx context.Context, assetIDs []string) error {
+	return d.committer.DeleteAssetIndexPoints(ctx, assetIDs)
+}
+
+// registerPostgresDeleteSagaHandlers registers BOTH hops of the deletion saga
+// on the PostgreSQL media outbox worker. In PostgreSQL media mode the canonical
+// committer writes the saga events there, so the PG worker must drain them:
+//
+//	asset.drive.delete_requested → Drive Trash/Delete → AdvanceAndEmit
+//	asset.index.delete_requested → pgvector retire + lifecycle DELETED
+//
+// The second hop is emitted by the FIRST hop's AdvanceAndEmit into this same
+// outbox, so registering only the Drive hop left every asset stuck at
+// INDEX_DELETE_PENDING. The SQLite registrations (jobs.RegisterOptionalHandlers)
+// stay for the legacy/non-PG plane, which is the only producer there.
+func registerPostgresDeleteSagaHandlers(
+	worker *pgmedia.PostgresIndexWorker,
+	canonicalWriter assetspersistence.CanonicalAssetWriter,
+	deps jobsoutbox.DriveDeleteDeps,
+	log *zap.Logger,
+) error {
+	if worker == nil {
+		return nil
+	}
+	if deps.DriveDeleteHandler == nil || deps.DrivePatchLifecycle == nil ||
+		deps.DrivePatchLifecycleW == nil || deps.DrivePatchStateAdv == nil {
+		log.Warn("PostgreSQL delete-saga handler NOT wired (incomplete DriveDeleteDeps) — asset.drive.delete_requested events will dead-letter on the PostgreSQL outbox")
+		return nil
+	}
+	handler := jobsoutbox.NewDriveDeleteHandler(
+		log, deps.DriveDeleteHandler, deps.DrivePatchLifecycle, deps.DrivePatchLifecycleW, deps.DrivePatchStateAdv,
+	)
+	if err := worker.RegisterHandler(jobsoutbox.DriveDeleteEventType, pgOutboxHandlerAdapter{handler: handler}); err != nil {
+		return fmt.Errorf("register PostgreSQL drive-delete handler: %w", err)
+	}
+	log.Info("PostgreSQL media outbox delete-saga handler registered: asset.drive.delete_requested → Drive Trash/Delete → AdvanceAndEmit")
+
+	committer, _ := canonicalWriter.(*pgmedia.PostgresMediaCommitter)
+	if committer == nil {
+		log.Warn("PostgreSQL index-delete handler NOT wired (canonical media committer unavailable) — asset.index.delete_requested events will dead-letter on the PostgreSQL outbox")
+		return nil
+	}
+	indexHandler := jobsoutbox.NewIndexDeleteHandler(
+		log,
+		pgMediaVectorPointDeleter{committer: committer},
+		pgMediaAssetDeleter{committer: committer},
+	)
+	if err := worker.RegisterHandler(outboxevents.EventAssetIndexDeleteRequested, pgOutboxHandlerAdapter{handler: indexHandler}); err != nil {
+		return fmt.Errorf("register PostgreSQL index-delete handler: %w", err)
+	}
+	log.Info("PostgreSQL media outbox index-delete handler registered: asset.index.delete_requested → pgvector retire + lifecycle DELETED")
+
+	// Restore hop. The producer (EnqueueAndRestore) stamps index_state=DISCOVERED
+	// and documents "outbox handler re-indexes from scratch" — until this
+	// registration existed that event had no consumer on any engine, so every
+	// restore dead-lettered and the asset never returned to the index.
+	restoreHandler := jobindexrestore.NewIndexRestoreHandler(log, committer)
+	if err := worker.RegisterHandler(outboxevents.EventAssetIndexRestoreRequested, pgOutboxHandlerAdapter{handler: restoreHandler}); err != nil {
+		return fmt.Errorf("register PostgreSQL index-restore handler: %w", err)
+	}
+	log.Info("PostgreSQL media outbox index-restore handler registered: asset.index.restore_requested → re-emit asset.index.requested")
+	return nil
+}
+
+// registerPerformanceProjectionHandler registers the job.completed
+// performance-projection handler. It is best-effort (derived projection): a
+// missing DB handle or a construction error logs a Warn and skips — the
+// performance-backfill admin command remains the recovery path. It never
+// aborts boot.
+//
+// overlayEvents (optional) adds the overlay-drive wake half of job.completed:
+// every publication event the overlay Drive outbox deferred while the parent
+// script job was RUNNING is made due IMMEDIATELY at the terminal flip instead
+// of waiting out its own defer delay (60 s per event in the golden runs).
+// The registry holds ONE job.completed handler, so the wake lives inside the
+// same adapter; a nil overlayEvents simply drops the wake half (the deferral
+// delay then remains the event's own recovery cadence).
+func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *Databases, executionDB *storage.SQLiteDB, registryDB *storage.SQLiteDB, log *zap.Logger, overlayEvents *outboxevents.Repository) {
+	if eventsRegistry == nil {
+		return
+	}
+	var projection capperformance.ProjectionService
+	if dbs != nil && dbs.Set != nil && executionDB != nil && executionDB.DB != nil && registryDB != nil && registryDB.DB != nil &&
+		dbs.Set.Observability != nil && dbs.Set.Observability.DB != nil {
+		var performanceTable string
+		if err := registryDB.DB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='performance_runs'`).Scan(&performanceTable); err != nil || performanceTable == "" {
+			log.Warn("outbox job.completed performance handler skipped (performance registry table is unavailable)")
+		} else if proj, err := perfstore.NewSplitProjection(executionDB.DB, registryDB.DB, dbs.Set.Observability.DB); err != nil {
+			log.Warn("outbox job.completed performance handler NOT wired", zap.Error(err))
+		} else {
+			projection = proj
+		}
+	} else {
+		log.Warn("outbox job.completed performance handler NOT wired (execution/registry/observability DB missing)")
+	}
+	if projection == nil && overlayEvents == nil {
+		return
+	}
+	adapter := jobCompletedPerformanceAdapter{projection: projection, log: log}
+	if overlayEvents != nil {
+		adapter.wake = &overlayDrivePublicationWake{events: overlayEvents, log: log}
+	}
+	if err := eventsRegistry.Register(adapter); err != nil {
+		log.Warn("outbox job.completed performance handler registration failed", zap.Error(err))
+		return
+	}
+	log.Info("outbox job.completed handler registered: performance_runs/steps projection + overlay-drive deferral wake")
+}
+
+// jobCompletedPerformanceAdapter keeps the SQLite outbox envelope at the
+// composition boundary. The
+// performance capability owns only the ProjectionService port; this adapter
+// owns the concrete outboxevents.Handler contract and extracts the job id
+// from the event envelope before delegating to the projection.
+// The optional wake half makes the overlay Drive publications the parent's
+// render deferred (parent RUNNING) claimable at the commit that flips this
+// job terminal — the projection contract itself is unchanged.
+type jobCompletedPerformanceAdapter struct {
+	projection capperformance.ProjectionService
+	wake       *overlayDrivePublicationWake
+	log        *zap.Logger
+}
+
+func (a jobCompletedPerformanceAdapter) EventType() string {
+	return outboxevents.EventJobCompleted
+}
+
+func (a jobCompletedPerformanceAdapter) IdempotencyKey() string {
+	return outboxevents.EventJobCompleted + ".project.v1"
+}
+
+func (a jobCompletedPerformanceAdapter) Handle(ctx context.Context, evt outboxevents.Event) error {
+	jobID := evt.AggregateID
+	if jobID == "" {
+		var payload struct {
+			JobID string `json:"job_id"`
+		}
+		if err := json.Unmarshal([]byte(evt.PayloadJSON), &payload); err == nil && payload.JobID != "" {
+			jobID = payload.JobID
+		}
+	}
+	if jobID == "" {
+		return fmt.Errorf("job.completed performance handler: missing job id (aggregate_id=%q)", evt.AggregateID)
+	}
+	// Wake half FIRST: the terminal flip just committed the result the
+	// deferred overlay publications were waiting on. They will be claimed by
+	// the outbox-events pool on its very next poll, so their delivery lands
+	// at commit+poll instead of commit+defer-delay. A wake failure is a
+	// real infrastructure error: surface it so the pool retries the event.
+	if a.wake != nil {
+		if err := a.wake.Handle(ctx, jobID); err != nil {
+			return fmt.Errorf("overlay-drive deferral wake after job.completed: %w", err)
+		}
+	}
+	if a.projection == nil {
+		// Degraded wiring (no execution/registry/observability DB): the wake
+		// half still ran; there is no projection to delegate to.
+		a.log.Debug("job.completed wake handled without projection (projection unavailable)", zap.String("job_id", jobID))
+		return nil
+	}
+	if err := a.projection.ProjectCompletedJob(ctx, jobID); err != nil {
+		// Fire-and-forget: the job is already committed with its artifacts, so
+		// retrying only the DERIVED performance projection would hold a worker
+		// slot with jittered backoff to re-read telemetry that has no effect on
+		// the run. Log and return success; the `performance-backfill` admin
+		// command is the recovery path for a projection that was skipped here.
+		a.log.Warn("job.completed performance projection failed (fire-and-forget; recover via performance backfill)",
+			zap.String("job_id", jobID), zap.Error(err))
+		return nil
+	}
+	a.log.Debug("job.completed performance projected", zap.String("job_id", jobID))
+	return nil
+}

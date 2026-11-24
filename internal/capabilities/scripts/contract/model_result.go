@@ -6,7 +6,6 @@ import (
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
@@ -186,7 +185,7 @@ type GenerateResult struct {
 	// records which branch (semantic or assets) was still running at the join
 	// and how long each branch took, so the stage stops being opaque. It is
 	// deliberately not part of render identity.
-	PrepareJoin *scriptrunner.PrepareJoinBreakdown `json:"prepare_join,omitempty"`
+	PrepareJoin *PrepareJoinBreakdown `json:"prepare_join,omitempty"`
 	// LocalizedOverlayRenders contains certified Chronon outputs for the
 	// translated plans above. OverlayRender remains the source-language
 	// compatibility projection.

@@ -40,7 +40,7 @@ import (
 //   - text_track_repository.go (domain port) — interface contract
 //   - text_track_repository_*.go (concrete)   — schema, queries, lookup, mapping
 //   - localized/port.go           — CommitLocalizedClipCommand + ErrClipLocaleNotReady
-//   - build_bundles_domain_media.go — composition-root wire-up site;
+//   - buildbundle/build_bundles_domain_media.go — composition-root wire-up site;
 //     this is where SubtitleFetcherAdapter.DefaultLangs is plumbed
 //     from cfg.Multilingual.MaterializeLanguages via buildBcp47CSV.
 //     The pre-Fase-1.b file had a hardcoded `DefaultLangs: "en,en-US"`
@@ -69,7 +69,7 @@ var hardcodedENScopeFiles = []string{
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_lookup.go",
 	"internal/platform/sqlite/assets/texttracks/text_track_repository_mapping.go",
 	"internal/capabilities/assets/localized/port.go",
-	"internal/app/wiring/build_bundles_domain_media.go",
+	"internal/app/wiring/buildbundle/build_bundles_domain_media.go",
 }
 
 // hardcodedENPatterns is the canonical pattern set. Each pattern

@@ -19,7 +19,8 @@ func TestScriptGenerationMasterDoesNotConcatOrPublishFinalVideo(t *testing.T) {
 		filepath.Join(root, "runner.go"),
 		filepath.Join(root, "runner_localized_render.go"),
 		filepath.Join(root, "runner_setters.go"),
-		filepath.Join(root, "runner_execution.go"),
+		filepath.Join(root, "runner", "execution.go"),
+		filepath.Join(root, "runner", "execution_run.go"),
 		filepath.Join(root, "runner_lifecycle.go"),
 		filepath.Join(root, "ports.go"),
 	}

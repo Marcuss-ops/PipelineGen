@@ -325,10 +325,19 @@ func (p *MediaResolverImageStage) searchAndCacheInternetImageQuery(ctx context.C
 		// Labelling every result with the first entity in a multi-person
 		// segment makes the semantic catalog gate discard later people.
 		searchEntity := query
+		searchQuery := query
 		if personIdentityQuery {
 			searchEntity = catalogIdentity.CanonicalName
+			// Short first-name queries are ambiguous even when the catalog has
+			// resolved a canonical identity. Search with the complete identity
+			// and the generation topic so a story about Corrado Augias cannot
+			// retrieve an unrelated Natalia (for example Natalia Oreiro).
+			searchQuery = strings.TrimSpace(catalogIdentity.CanonicalName + " " + plan.Topic)
+			if searchQuery == "" {
+				searchQuery = catalogIdentity.CanonicalName
+			}
 		}
-		results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{SegmentID: updated.SegmentID, Position: updated.Position, Query: query, Entity: searchEntity,
+		results, searchErr = p.searcher.SearchImages(callCtx, InternetImageSearchRequest{SegmentID: updated.SegmentID, Position: updated.Position, Query: searchQuery, Entity: searchEntity,
 			TextHash: updated.TextHash, Language: plan.Language, Limit: imageLimit,
 			QueryClass:   searchClassForEntityQuery(updated.Insights.Entities, query),
 			Provider:     "internet_images",

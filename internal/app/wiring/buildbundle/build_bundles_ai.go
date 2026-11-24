@@ -1,0 +1,599 @@
+// Package app — build_bundles_ai.go (split July 2026).
+//
+// This file owns the AI bundle construction. Extracted from
+// build_bundles_domain.go per AGENTS.md Pattern 5.
+//
+// godlike/06 SSOT: BuildAIBundle is the single canonical owner of the
+// Ollama + script-gen + translation stack construction, of the
+// policy → provider/model resolution that stack is built from, and of the
+// composition-root bridge that projects the stack's admission budget onto the
+// canonical Prometheus collectors. That bridge lives here (not in its own
+// file) because it has exactly one caller — BuildAIBundle — exactly like the
+// DEFINITIONS stay owned by internal/platform/observability
+// (policy.yaml::prometheus_boundary), and the ollama client package defines
+// the consumer-side port and never imports the telemetry package.
+package buildbundle
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+
+	"os"
+	"strings"
+
+	"time"
+
+	"go.uber.org/zap"
+
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
+	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/vidrush"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
+	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
+
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/registry"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+
+	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+
+	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
+
+	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditpublishing"
+)
+
+// ollamaAdmissionObserver projects the in-flight admission budget of an Ollama
+// endpoint onto Prometheus.
+type ollamaAdmissionObserver struct{}
+
+// AdmissionChanged publishes the ceiling and the current in-flight count.
+func (ollamaAdmissionObserver) AdmissionChanged(endpoint string, limit int, inFlight int64) {
+	observability.OllamaAdmissionLimit.WithLabelValues(endpoint).Set(float64(limit))
+	observability.OllamaAdmissionInFlight.WithLabelValues(endpoint).Set(float64(inFlight))
+}
+
+// AdmissionDeferred counts one request that had to wait for a slot.
+func (ollamaAdmissionObserver) AdmissionDeferred(endpoint string) {
+	observability.OllamaAdmissionDeferredTotal.WithLabelValues(endpoint).Inc()
+}
+
+// observeOllamaAdmission wires the telemetry sink for a client's endpoint.
+//
+// The limiter is shared by every client pointing at the same Ollama URL, so
+// wiring the client the AI bundle builds also covers the pools created by the
+// other bundles (embed, stock enrichment, creator) for that endpoint. A nil
+// client is a no-op: telemetry is optional, the budget is not.
+func observeOllamaAdmission(c *client.Client) {
+	if c == nil {
+		return
+	}
+	c.SetAdmissionObserver(ollamaAdmissionObserver{})
+}
+
+// newVisionVerdictClient selects the client used for entity-image verdicts.
+// With no dedicated vision endpoint it returns the script-generation client,
+// preserving the legacy behavior. With one configured it builds a separate
+// client: the Ollama admission limiter is keyed by endpoint, so a distinct URL
+// also gets a distinct in-flight budget instead of competing with script
+// generation for the same slots.
+func newVisionVerdictClient(cfg *config.Config, scriptClient *client.Client) *client.Client {
+	if cfg == nil || scriptClient == nil {
+		return scriptClient
+	}
+	visionURL := strings.TrimSpace(cfg.External.OllamaVisionURL)
+	if visionURL == "" {
+		return scriptClient
+	}
+	visionModel := strings.TrimSpace(cfg.External.OllamaVisionModel)
+	if visionModel == "" {
+		visionModel = strings.TrimSpace(cfg.External.OllamaModel)
+	}
+	return client.NewClient(visionURL, visionModel, cfg.External.OllamaTimeoutSeconds)
+}
+
+func whisperBridgeVersion(scriptPath string) string {
+	body, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return "whisper/bridge-v1"
+	}
+	whisperDigest := digest.SHA256Bytes(body)
+	return "whisper/bridge-v1/" + whisperDigest
+}
+
+// BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
+// and Drive.DriveUploader (which were constructed earlier).
+// PR4.A (June 2026): MemoryRepo is created here (dbs.DualPool.Writer), not in BuildRepoBundle,
+// so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
+// without going through RepoBundle.
+//
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the RepoBundle parameter was
+// REMOVED. This builder's only RepoBundle use was wiring the operational SQLite
+// ClipsRepository as the SceneTextGenerator clip asset resolver; that resolver
+// is a media read and therefore must come from the PostgreSQL media SSOT, which
+// the builder now takes as a direct mediaDB handle instead.
+func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, mediaDB *sql.DB) (*AIBundle, error) {
+	_ = ctx
+	_ = drive
+	ollamaClient := client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, cfg.External.OllamaTimeoutSeconds)
+	ollamaClient.SetNvidiaConfig(cfg.External.UseNvidiaForLLM, cfg.External.NvidiaAPIKey, cfg.External.NvidiaLLMModel)
+	// Publish the endpoint's shared admission budget (limit vs in-flight vs
+	// deferred) so a saturated model server is observable instead of being
+	// diagnosed by feel. One call covers every pool on this endpoint.
+	observeOllamaAdmission(ollamaClient)
+
+	// Entity-image verdicts get their own client when OLLAMA_VISION_ADDR is
+	// configured. This is the separation boundary: the script-generation
+	// client and the vision client must not share the same in-flight budget.
+	visionVerdictClient := newVisionVerdictClient(cfg, ollamaClient)
+	if visionVerdictClient == ollamaClient {
+		log.Warn("vision verdicts share the script generation Ollama client; set OLLAMA_VISION_ADDR to isolate pixel verification")
+	} else {
+		observeOllamaAdmission(visionVerdictClient)
+		if strings.EqualFold(strings.TrimRight(cfg.External.OllamaVisionURL, "/"), strings.TrimRight(cfg.External.OllamaURL, "/")) {
+			log.Warn("OLLAMA_VISION_ADDR equals OLLAMA_ADDR; the admission budget is still shared — use a distinct Ollama instance to separate capacity",
+				zap.String("ollama_url", cfg.External.OllamaVisionURL))
+		} else {
+			log.Info("vision verdict client configured",
+				zap.String("ollama_url", cfg.External.OllamaVisionURL),
+				zap.String("vision_model", visionVerdictClient.Model()))
+		}
+	}
+	// One scorer instance is shared by every wiring site. The scorer owns the
+	// per-identity attempt budget; the client owns transport retries.
+	visionVerdictScorer := scriptadapters.NewOptionalEntityImageScorer(
+		cfg.External.EntityImageVLMMode,
+		ollamaadapters.NewOllamaPersonImageScorerWithDownloader(visionVerdictClient, func(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+			return vidrush.DownloadVidRushImageForCandidate(ctx, vidrush.ProviderImageHTTPClient(), candidate, vidrush.DefaultVidRushImagePolicy())
+		}),
+	)
+
+	// Dedicated embedding client: uses a separate model (the canonical
+	// the canonical E5 registry entry by default, configurable via
+	// OLLAMA_EMBED_MODEL / ollama_embed_model. Ollama returns 500 when a
+	// chat model (gemma4:e4b) is used for /api/embeddings — the embed model
+	// MUST be an embedding model. An empty manually-assembled config is
+	// resolved to the registry entry rather than falling back to the chat model.
+	embedModel := cfg.External.OllamaEmbedModel
+	if embedModel == "" {
+		embedModel = models.E5.ID
+	}
+	ollamaEmbedClient := client.NewClient(cfg.External.OllamaURL, embedModel, cfg.External.OllamaTimeoutSeconds)
+	log.Info("embedding client configured",
+		zap.String("ollama_url", cfg.External.OllamaURL),
+		zap.String("embed_model", embedModel),
+	)
+
+	if cfg.External.SearxngURL != "" {
+		ws := client.NewWebSearcherWithConfig(client.WebSearcherConfig{
+			BaseURL: cfg.External.SearxngURL, MaxResults: cfg.External.SearxngMaxResults,
+			Timeout:  time.Duration(cfg.External.WebSearchTimeoutSeconds) * time.Second,
+			Language: cfg.External.SearxngLanguage, Categories: "general", SafeSearch: 0,
+			Engines: strings.Split(cfg.External.SearxngEngines, ","),
+		})
+		ollamaClient.SetWebSearcher(ws)
+		log.Info("SearXNG web search enabled for LLM context",
+			zap.String("searxng_url", cfg.External.SearxngURL),
+			zap.Int("max_results", cfg.External.SearxngMaxResults),
+		)
+	}
+
+	var rerankerClient *reranker.Client
+	if cfg.Reranker.Enabled {
+		var rerankerErr error
+		rerankerClient, rerankerErr = reranker.NewValidatedClient(reranker.Config{
+			Enabled:   cfg.Reranker.Enabled,
+			URL:       cfg.Reranker.URL,
+			Model:     cfg.Reranker.Model,
+			TopK:      cfg.Reranker.TopK,
+			TimeoutMs: cfg.Reranker.TimeoutMs,
+			Weight:    cfg.Reranker.Weight,
+		})
+		if rerankerErr != nil {
+			return nil, fmt.Errorf("build AI bundle: reranker configuration: %w", rerankerErr)
+		}
+		log.Info("reranker client configured",
+			zap.Bool("enabled", rerankerClient.IsEnabled()),
+			zap.String("url", cfg.Reranker.URL),
+			zap.String("model", cfg.Reranker.Model),
+			zap.Int("top_k", cfg.Reranker.TopK),
+			zap.Float64("weight", cfg.Reranker.Weight),
+		)
+	}
+
+	scriptGen := ollama.NewGenerator(ollamaClient)
+	// WST-02: ONE resident model. The server runs a single loaded runner, so a
+	// payload asking another size used to evict it and pay a full reload; the
+	// policy maps every per-call model onto the configured one.
+	scriptGen.SetResidentModel(cfg.External.OllamaModel)
+	if dbs.Cache != nil && dbs.Cache.DB != nil {
+		translationCache := sqlitescripts.NewCache(dbs.Cache.DB)
+		scriptGen.SetTranslationCache(translationCache)
+		log.Info("translation cache initialized", zap.String("db", dbs.Cache.Path()))
+	} else {
+		log.Warn("translation cache unavailable; continuing without persistent cache")
+	}
+
+	// Construct the single application-layer OllamaTranslator per
+	// process and route the canonical TranslationPort through it. Wrap
+	// the scriptGen (a
+	// *ollama.Generator) — the canonical `TranslationCache` is
+	// already wired into scriptGen by the SetTranslationCache call
+	// above, so its underlying translation call respects the same
+	// SQLite-backed cache lookup. The translation logic has one owner in
+	// translation.ollama_translator.go.
+	ollamaTranslator := translation.NewOllamaTranslator(scriptGen, log)
+	log.Info("OllamaTranslator wired", zap.String("port", "translation.TranslationPort"))
+
+	// PR-2 GemmaMemory wiring: construct the real SQLite-backed cache
+	// service and inject it into the engine. The engine uses it for
+	// CheckGate on the read path; the finalizer uses the same instance
+	// for SaveAfterGeneration on the write path. MemoryRepo is retained
+	// because root.AI.MemoryRepo is consumed by startBackgroundJobs's
+	// gemma-memory-sweeper (internal/app/go:393).
+	//
+	// The application-layer processor.Service depends on the typed
+	// scriptports.MemoryGate port; the concrete SQLite implementation is
+	// provided by sqlitescripts.MemoryRepository and wrapped here in the
+	// composition root so that no application-layer package imports
+	// database/sql (PR-REFACTOR-P0-IO-BINDER).
+	scriptMemRepo := sqlitescripts.NewMemoryRepository(dbs.DualPool.Writer)
+	memGate := scriptwiring.NewMemoryGate(scriptMemRepo)
+	memSvc := processor.NewService(memGate, log)
+	engine := gencore.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), gencore.NewMemoryGateChecker(memSvc), log)
+	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
+	engine.ConfigureSegmentValidation(
+		cfg.Scripts.SegmentWordsTolerancePercent,
+		cfg.Scripts.TotalWordsTolerancePercent,
+		cfg.Scripts.MaxSegmentRegenerationAttempts,
+	)
+
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
+	// WhisperTranscriber adapter is the SOLE canonical concrete
+	// for the WhisperTranscriber interface
+	// (internal/platform/youtube/ports.go). Constructed
+	// here so the AIBundle can expose it for the backfill
+	// CLI's 5-priority chain (priority 5: Whisper fallback).
+	// The adapter spawns scripts/bridges/whisper_transcriber.py
+	// via subprocess and parses its JSON output into the
+	// typed detail.TranscriptResult. The concrete instance
+	// satisfies BOTH the infrastructure-layer interface
+	// AND the application-layer youtubeports.WhisperTranscriberPort
+	// (structural subset). DefaultTimeout is left at 0 — the
+	// adapter's constructor applies the canonical 5-minute
+	// default (see ytinfra.WhisperTranscriberConfig).
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (Aug 2026): Whisper is
+	// fail-SOFT at composition time. When python3 or the bridge script
+	// (scripts/bridges/whisper_transcriber.py) is missing, the adapter
+	// returns ErrWhisperBridgeUnavailable — we log a warning and leave
+	// the port nil so the 5-priority acquisition chain simply SKIPS
+	// the Whisper fallback (priority 5) instead of failing the whole
+	// boot. The gap is observable (AcquireService surfaces
+	// ErrNoSourceAcquired for clips with no other transcript source),
+	// never a silent placeholder transcript (godlike/07 no-fake-
+	// availability: nil port = capability absent, not fake data).
+	var whisperAdapter ytinfra.WhisperTranscriber
+	// The Whisper bridge requires the .venv-whisper interpreter: the system
+	// python3 has no faster-whisper/ctranslate2, so an empty interpreter here
+	// silently disabled local transcription entirely. An empty configured
+	// value keeps the documented "resolve python3 from PATH" degrade.
+	whisperConcrete, wErr := ytinfra.NewWhisperTranscriberAdapter(ytinfra.WhisperTranscriberConfig{
+		PythonBin: cfg.Paths.WhisperPythonBin,
+	}, log)
+	if wErr != nil {
+		log.Warn("WhisperTranscriber adapter unavailable; the acquisition chain will skip the Whisper fallback",
+			zap.Error(wErr))
+	} else {
+		log.Info("WhisperTranscriber adapter configured (Fase 5)")
+		whisperAdapter = whisperConcrete
+		// Derived transcript cache: source bytes + Whisper processor version
+		// identify the result; local temporary paths never become cache keys.
+		if dbs.Cache != nil && dbs.Cache.DB != nil && dbs.Main != nil && dbs.Main.DB != nil {
+			if cache, cacheErr := newArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
+				// The Whisper bridge has its own execution contract; the Ollama
+				// chat model is unrelated and must not invalidate or alias
+				// transcription artifacts.
+				version := whisperBridgeVersion("scripts/bridges/whisper_transcriber.py")
+				if cached, wrapErr := ytinfra.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
+					whisperAdapter = cached
+					log.Info("Whisper artifact cache wired", zap.String("processor_version", version))
+				} else {
+					log.Warn("Whisper artifact cache decorator unavailable", zap.Error(wrapErr))
+				}
+			} else {
+				log.Warn("Whisper artifact cache unavailable; using uncached transcriber", zap.Error(cacheErr))
+			}
+		}
+	}
+
+	// P1 verdetto: SceneTextGenerator wraps the Engine to produce
+	// AI-generated scene text (scene-by-scene) separate from the
+	// Translator. The adapter bridges scriptgeneration.GenerateRequest
+	// to the existing engine ResolvedGenerationPlan.
+	sceneTextGen := scriptwiring.NewSceneTextGenerator(engine, log)
+	sceneTextGen.SetMemoryService(memSvc)
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the clip asset resolver
+	// reads the PostgreSQL media SSOT (pgmedia.MediaSearcher implements
+	// ClipAssetResolver's ResolveByMediaAssetID), NEVER the operational SQLite
+	// ClipsRepository — media_assets is PostgreSQL-owned, so a SQLite-backed
+	// resolver returned not-found for every post-cutover clip while also reading
+	// a second engine. Without the media handle the resolver stays nil and the
+	// canonical render plan fails closed.
+	if mediaDB != nil {
+		sceneTextGen.SetClipAssetResolver(pgmedia.NewMediaSearcher(mediaDB))
+		log.Info("SceneTextGenerator canonical clip asset resolver configured (PostgreSQL media SSOT)")
+	} else {
+		log.Warn("SceneTextGenerator clip asset resolver unavailable; canonical render plans will fail closed")
+	}
+	log.Info("SceneTextGenerator adapter configured (P1 verdetto)")
+
+	return &AIBundle{
+		OllamaClient:        ollamaClient,
+		OllamaEmbedClient:   ollamaEmbedClient,
+		VisionVerdictClient: visionVerdictClient,
+		VisionVerdictScorer: visionVerdictScorer,
+		Reranker:            rerankerClient,
+		ScriptGen:           scriptGen,
+		OllamaTranslator:    ollamaTranslator,
+		MemoryRepo:          memGate,
+		MemorySvc:           memSvc,
+		ScriptEngine:        engine,
+		WhisperTranscriber:  whisperAdapter,
+		SceneTextGenerator:  sceneTextGen,
+	}, nil
+}
+
+// resolveTranslationPromptVersion returns the active translation
+// prompt version. Hardcoded to "v1" for Fase 3; a future PR
+// adds cfg.AI.TranslationPromptVersion.
+func resolveTranslationPromptVersion(_ *config.Config) string {
+	return "v1"
+}
+
+// resolveTranslationModel maps MultilingualConfig.TranslationPolicy
+// to the concrete Ollama model name passed to TranslationPort.
+//
+// godlike/06 SSOT: this helper is the SOLE canonical owner of
+// the policy → model mapping.
+//
+//   - "auto"    → "" (server default; provider picks)
+//   - "fast"    → "gemma3:4b" (canonical fast model)
+//   - "quality" → "llama3:70b" (canonical quality model)
+//
+// A future PR adds cfg.AI.TranslationModel so operators can
+// override the concrete model without editing the Go struct.
+func resolveTranslationModel(policy string) string {
+	switch policy {
+	case "fast":
+		return "gemma3:4b"
+	case "quality":
+		return "llama3:70b"
+	default:
+		return ""
+	}
+}
+
+// ResolveTranslationModel exposes the canonical policy → model mapping to the
+// operator CLIs, so the CueTranslator they build routes the Ollama fallback to
+// the same model the runtime bundle uses (godlike/06: one owner of the
+// policy → model decision, never two).
+func ResolveTranslationModel(cfg *config.Config) string {
+	return resolveTranslationModel(ActiveMultilingualConfig(cfg).TranslationPolicy)
+}
+
+// BuildDomainBundle builds the media-domain services by delegating to
+// three per-domain helpers (media, assets, scripts).
+//
+// godlike/06 SSOT: each helper is the SOLE canonical owner of its
+// domain's composition glue. The orchestrator owns ONLY the shared
+// deps (mutations dispatcher) and the bundle assembly.
+//
+// Requires outbox.Dispatcher (injected via OutboxBundle, last arg).
+//
+// driveUploadGate is the process-wide fair Drive-upload gate owned by
+// ComposeRoot (see ComposeRoot.DriveUploadGate). It is threaded in rather than
+// rebuilt here so the voiceover publisher shares ONE capacity with the
+// certified final-audio publisher instead of each enforcing its own ceiling.
+// mediaPostgres is optional by convention (same shape as BuildRepoBundle):
+// without it the media-dependent domains degrade gracefully, and the image
+// reuse lookup falls back to the legacy SQLite repository.
+func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, media *MediaRepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, mediaConfig mediaexec.ExecutionConfig, driveUploadGate *concurrent.FairSemaphore, mediaPostgres ...*sql.DB) (*DomainBundle, error) {
+	var mediaPG *sql.DB
+	if len(mediaPostgres) > 0 {
+		mediaPG = mediaPostgres[0]
+	}
+	// ── Shared deps ──────────────────────────────────────────
+	var mutationsDisp mutations.AssetMutationDispatcher
+	var canonicalCommitter persistence.AssetCommitter
+	switch {
+	case outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter != nil:
+		// MEDIA-SSOT P0-2 (September 2026): when the canonical writer is the
+		// PostgreSQL media committer, the delete/restore saga routes through
+		// the PG media SSOT (lifecycle + PG outbox in one PG tx) instead of
+		// the SQLite dispatcher state machine.
+		if pgCommitter, ok := outbox.CanonicalWriter.(*pgmedia.PostgresMediaCommitter); ok {
+			var err error
+			mutationsDisp, err = registrywiring.NewPGMediaSagaDispatcher(pgCommitter)
+			if err != nil {
+				return nil, fmt.Errorf("compose domains: pg media saga dispatcher: %w", err)
+			}
+		} else {
+			var err error
+			mutationsDisp, err = registrywiring.NewMutationsDispatcherAdapter(outbox.Dispatcher)
+			if err != nil {
+				return nil, fmt.Errorf("compose domains: %w", err)
+			}
+		}
+		canonicalCommitter = outbox.CanonicalWriter
+	case outbox != nil && outbox.Dispatcher != nil && outbox.CanonicalWriter == nil:
+		// MEDIA DEMOLITION graceful degrade (September 2026): the canonical
+		// media writer is nil when the media PostgreSQL plane is NOT
+		// DEPLOYED (no DSN configured). The media + assets domains are
+		// media-SSOT writers by construction, so they cannot register;
+		// only the media-independent artifact store is wired.
+		// godlike/07: degraded is honest — the writer family no longer
+		// exists outside PostgreSQL, and a fake writer would not be.
+		log.Warn("POSTGRES-MEDIA-CUTOVER: media PostgreSQL unavailable — media-dependent domain services (youtube clips, voiceover, images, ingest, autotag) NOT registered (graceful degrade, godlike/07)")
+		degraded := &DomainBundle{}
+		artifactBlobStore, artErr := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)
+		if artErr != nil {
+			return nil, fmt.Errorf("compose domains: artifact blob store: %w", artErr)
+		}
+		artifactRepo := artifactsinfra.NewSQLiteRepository(dbs.DualPool.Writer)
+		degraded.ArtifactService = artifacts.NewService(artifactBlobStore, artifactRepo, log)
+		return degraded, nil
+	default:
+		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required — VECTOR-002 PR7 removed the legacy fallback; root.Outbox must be built first")
+	}
+
+	bundle := &DomainBundle{}
+
+	// ── Media domain: YouTube clip pipeline ──────────────────
+	voMetaWriter, clipWriter, folderPathWriter, err := buildDomainMediaServices(ctx, cfg, dbs, log, drive, repos, media, search, process, ai, outbox, canonicalCommitter, bundle, mediaConfig)
+	if err != nil {
+		return nil, fmt.Errorf("compose domains (media): %w", err)
+	}
+	bundle.CueWriter = clipWriter
+	bundle.FolderPathWriter = folderPathWriter
+
+	// ── Assets domain: voiceover, ingest, images ──
+	if err := buildDomainAssetServices(buildDomainAssetServicesParams{
+		ctx:                ctx,
+		cfg:                cfg,
+		dbs:                dbs,
+		log:                log,
+		drive:              drive,
+		repos:              repos,
+		search:             search,
+		process:            process,
+		ai:                 ai,
+		outbox:             outbox,
+		canonicalCommitter: canonicalCommitter,
+		mutationsDisp:      mutationsDisp,
+		voMetaWriter:       voMetaWriter,
+		bundle:             bundle,
+		mediaConfig:        mediaConfig,
+		driveUploadGate:    driveUploadGate,
+	}); err != nil {
+		return nil, fmt.Errorf("compose domains (assets): %w", err)
+	}
+
+	// ── Scripts domain: artifacts, segment-selection ──
+	if err := buildDomainScriptServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, bundle, bundle.ImageService /* *imgservice.Service */, mediaPG); err != nil {
+		return nil, fmt.Errorf("compose domains (scripts): %w", err)
+	}
+
+	// ── Late-bindings (populated at composition.go) ──────────
+	bundle.VoiceoverGenerateItemHandler = nil
+
+	return bundle, nil
+}
+
+// wireYoutubeCatalogJobBindings registers catalog sync + youtube clip extract
+// handlers into jobs.Service. Extracted from NewComposition per PG-028.
+func wireYoutubeCatalogJobBindings(sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle, log *zap.Logger) error {
+	if sync.CatalogSync != nil && jobs.Service != nil {
+		if err := sync.CatalogSync.RegisterHandler(jobs.Service); err != nil {
+			return fmt.Errorf("catalogsync.catalog_sync: %w", err)
+		}
+		if err := sync.CatalogSync.RegisterDriveFolderSyncHandler(jobs.Service); err != nil {
+			return fmt.Errorf("catalogsync.drive_folder_sync: %w", err)
+		}
+	}
+	if domains.YoutubeClipService != nil && jobs.Service != nil {
+		if err := domains.YoutubeClipService.RegisterHandler(jobs.Service); err != nil {
+			return fmt.Errorf("youtube.clip_extract: %w", err)
+		}
+	}
+	if jobs != nil && jobs.Service != nil {
+		if err := wireYoutubeUploadBinding(jobs.Service, log); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// wireYoutubeUploadBinding registers the direct InstaEdit publishing handler
+// when the workspace-scoped publishing credentials are present. The handler is
+// intentionally optional: a deployment that only extracts clips must not fail
+// to boot because it has no InstaEdit publishing key.
+func wireYoutubeUploadBinding(svc *appjobs.Service, log *zap.Logger) error {
+	if svc == nil {
+		return nil
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	cfg, err := instaeditpublishing.LoadConfig()
+	if err != nil {
+		log.Warn("youtube.upload handler disabled: InstaEdit publishing credentials are not configured", zap.Error(err))
+		return nil
+	}
+	client, err := instaeditpublishing.NewClient(cfg)
+	if err != nil {
+		return fmt.Errorf("youtube.upload: %w", err)
+	}
+	handler := ytjobs.NewUploadJobHandler(client, log)
+	if err := svc.RegisterHandler(jobyoutube.TypeUpload, appjobs.HandlerFunc(handler.HandleJob)); err != nil {
+		return fmt.Errorf("youtube.upload: %w", err)
+	}
+	log.Info("registered youtube.upload job handler",
+		zap.String("type", jobyoutube.TypeUpload),
+		zap.Int64("workspace_id", cfg.WorkspaceID))
+	return nil
+}
+
+// appendYoutubeCatalogCriticalValidators populates the critical-handler
+// validators slice with catalog sync + youtube clip extract bindings.
+// Extracted from NewComposition per PG-028.
+func appendYoutubeCatalogCriticalValidators(sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
+	if sync.CatalogSync != nil && jobs.Service != nil && jobs != nil {
+		catSync := sync.CatalogSync
+		*validators = append(*validators,
+			CriticalHandler{
+				Name: "catalogsync.catalog_sync",
+				Bind: func(svc *appjobs.Service) error {
+					return catSync.RegisterHandler(svc)
+				},
+			},
+			CriticalHandler{
+				Name: "catalogsync.drive_folder_sync",
+				Bind: func(svc *appjobs.Service) error {
+					return catSync.RegisterDriveFolderSyncHandler(svc)
+				},
+			},
+		)
+	}
+	if domains.YoutubeClipService != nil && jobs.Service != nil {
+		yt := domains.YoutubeClipService
+		*validators = append(*validators,
+			CriticalHandler{
+				Name: "youtube.clip_extract",
+				Bind: func(svc *appjobs.Service) error {
+					return yt.RegisterHandler(svc)
+				},
+			},
+		)
+	}
+}

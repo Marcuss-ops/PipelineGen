@@ -97,7 +97,7 @@ tetti**, non quote garantite; il budget frasi reale si misura da
 ## 2. Le fasi canoniche
 
 Ordine garantito: `RunnerPhaseSequence()` in
-`internal/capabilities/scripts/runner_execution_pipeline.go`, pinnato da
+`internal/capabilities/scripts/runner/execution_run.go`, pinnato da
 `runner_phase_sequence_test.go`. I nomi fase sono di proprietà di
 `internal/kernel/observability/registry.go` (`AllStages`).
 
@@ -557,7 +557,7 @@ vuoto; 85 run con osservabilità parziale (`observability_degraded`).
 
 ## 10. Riferimenti
 
-- Sequenza fasi: `internal/capabilities/scripts/runner_execution_pipeline.go`
+- Sequenza fasi: `internal/capabilities/scripts/runner/execution_run.go`
   (`RunnerPhaseSequence`), nomi in `internal/kernel/observability/registry.go`
 - Retry/resume: `internal/capabilities/scripts/model_run.go` (`stageOrder`,
   `ResumeFrom`, `RetryDelay`)

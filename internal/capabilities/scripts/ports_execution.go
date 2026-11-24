@@ -1,182 +1,46 @@
-// Package scriptgeneration — ports_execution.go: the render/overlay enqueuer
-// ports and the execution-recorder contract.
-//
-// These are the seams the durable runner uses to enqueue follow-up render
-// work (localized renders, overlay plans) and to record per-step execution
-// evidence. Every port returns domain types only (verdetto invariant,
-// ports.go).
-//
-// Extracted 2026-09-12 from ports.go to keep every file under
-// max_lines_per_file_strict=600 (godlike/08 forward-prevention cap).
 package scriptgeneration
 
 import (
 	"context"
 	"time"
 
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	audiocontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/audio"
+	portexec "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/exec"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// ── RenderEnqueuer removed ───────────────────────────────────────
-// The video render enqueue port was removed with the video render path.
-// The future Chronon overlay path submits through
-// QueueRenderEnqueuer.EnqueueChrononPlan, which does not need this port.
+// Compatibility facade: execution ports moved to scripts/ports/exec.
+type (
+	OverlayPrepareEnqueuer          = portexec.OverlayPrepareEnqueuer
+	OverlayRenderEnqueuer           = portexec.OverlayRenderEnqueuer
+	LocalizedRenderInput            = portexec.LocalizedRenderInput
+	LocalizedOverlayLineage         = portexec.LocalizedOverlayLineage
+	LocalizedRenderEnqueuer         = portexec.LocalizedRenderEnqueuer
+	LocalizedRenderRecoveryEnqueuer = portexec.LocalizedRenderRecoveryEnqueuer
+	CombinedAudioRenderer           = portexec.CombinedAudioRenderer
+	MediaPreflight                  = portexec.MediaPreflight
+	FinalAudioPublishResult         = portexec.FinalAudioPublishResult
+	FinalAudioPublisher             = portexec.FinalAudioPublisher
+	ExecutionContext                = portexec.ExecutionContext
+	ExecutionStep                   = portexec.ExecutionStep
+	ArtifactOperation               = portexec.ArtifactOperation
+	ExecutionRecorder               = portexec.ExecutionRecorder
+)
 
-// OverlayPrepareEnqueuer enqueues the overlay.prepare job for the run's
-// pre-timing OverlayIntents. It is fire-and-forget: prepare resolves
-// templates and prefetches entity assets independently of the timing-frozen
-// render path and must never block the pipeline. The runner treats a nil
-// enqueuer as "prepare not registered" (a legitimate no-op for environments
-// without a RenderingGen queue) and a non-nil enqueuer as fail-closed (an
-// enqueue error fails the run — never a silent no-op).
-type OverlayPrepareEnqueuer interface {
-	EnqueuePrepare(context.Context, capabilityoverlay.PrepareRequest) error
-}
+var NewExecutionContext = portexec.NewExecutionContext
 
-// OverlayRenderEnqueuer submits the timing-frozen OverlayPlan to
-// RenderingGen and returns the certified per-item artifacts. Prepare is
-// fire-and-forget; render is allowed only after canonical timing exists.
-//
-// The whole-timeline and per-scene canvas submissions were removed: local
-// rendering only produces independent overlay item clips.
-type OverlayRenderEnqueuer interface {
-	EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (contract.RenderReference, error)
-}
-
-// LocalizedRenderInput is one ready-to-render localized unit: a scene whose
-// translation and voiceover for one language are final. It is the per-(scene,
-// language) trigger of the localized render fan-out — the runner emits it the
-// moment that unit's TTS completes, never after a global join.
-type LocalizedRenderInput struct {
-	RunID       string
-	ParentJobID string `json:"parent_job_id,omitempty"`
-
-	// JobID is the job whose artifact tree the produced localized clip
-	// publishes into: <clips root | payload folder>/<drive_subfolder_name>
-	// with the language nested inside. It is resolved ONCE at generation
-	// start and propagated verbatim (godlike/06 SSOT).
-	JobID string `json:"job_id,omitempty"`
-
-	SceneID    string
-	SceneIndex int
-	Language   contract.Language
-	Text       string
-	Voiceover  contract.AudioReference
-
-	// SourceLanguage / SourceText carry the source-language scene text (the
-	// transcript the localized render's source plan references). They are
-	// populated for every language so the enqueuer can persist the source
-	// transcript track alongside the translated subtitle track without
-	// re-deriving them; SourceText is empty only for a scene whose source
-	// text was never produced.
-	SourceLanguage contract.Language `json:"source_language,omitempty"`
-	SourceText     string            `json:"source_text,omitempty"`
-
-	// ClipID / ClipAssetID / ClipSHA256 / ClipDurationMS carry the source
-	// clip the localized render burns subtitles onto. They are empty for
-	// audio-only scenes (no source clip); the enqueuer decides whether an
-	// empty reference is a no-op or a fail-closed error.
-	ClipID         string `json:"clip_id,omitempty"`
-	ClipAssetID    string `json:"clip_asset_id,omitempty"`
-	ClipSHA256     string `json:"clip_sha256,omitempty"`
-	ClipDurationMS int64  `json:"clip_duration_ms,omitempty"`
-
-	// Render carries the caller's explicit watermark/subtitle request. The
-	// adapter resolves the referenced watermark asset and passes the sealed
-	// choices to the local Chronon clip-render pass.
-	Render scriptpkg.VideoRenderSpec `json:"render,omitempty"`
-
-	// Overlays carries the certified lineage of EVERY rendered entity overlay
-	// this clip composites INSIDE the same render pass: production renders one
-	// short video per semantic overlay item, so a scene with a phrase, an entity
-	// card and a keyword carries three lineages. They are LANGUAGE-INDEPENDENT:
-	// every language variant of the same (run, scene) carries the identical
-	// lineages, so one certified overlay render per item is reused by the whole
-	// fan-out and no overlay is ever re-rendered per language — each segment is
-	// content addressed (render_key), so the resolver hashes it once and every
-	// variant reuses those bytes.
-	//
-	// Empty means "this clip carries no overlay" for callers that can prove it
-	// (a scene with no overlay item) AND for callers whose run has not certified
-	// the overlays yet. It is in-process only: the lineages are resolved at
-	// render time, never persisted on the job payload.
-	Overlays []LocalizedOverlayLineage `json:"-"`
-
-	// OnRendered, when non-nil, is invoked once per certified produced video
-	// of the fan-out (render + upload completed) with that video's identity.
-	// The runner records each produced localized clip (asset id, sha256,
-	// Drive link) on the run result. A non-nil sink is fail-closed: a sink
-	// error fails the enqueue. Nil means the caller does not need the outcome.
-	OnRendered func(contract.LocalizedRenderResult) error `json:"-"`
-	// OnRenderReady is invoked after local render certification and before
-	// upload, allowing durable recovery to retry Drive without rerendering.
-	OnRenderReady func(contract.LocalizedRenderResult) error `json:"-"`
-	// FinalJob marks a render whose consumer is the remote final compositor.
-	// It is the input fact used to decide whether the render may skip Drive.
-	FinalJob bool `json:"-"`
-	// SkipDrivePublication marks a final-job render whose bytes are consumed
-	// from the local/object-store path. The renderer still produces and
-	// certifies the local artifact; the Drive upload and destination-folder
-	// creation are skipped because no downstream reader of this run reads a
-	// Drive identity.
-	SkipDrivePublication bool `json:"-"`
-	// ResumeFrom, when set, identifies a locally certified RENDERED artifact
-	// restored from a partial result. The adapter may publish it directly.
-	ResumeFrom *contract.LocalizedRenderResult             `json:"-"`
-	OnFailed   func(contract.LocalizedRenderFailure) error `json:"-"`
-}
-
-// LocalizedOverlayLineage is the domain mirror of ONE clip.render overlay
-// lineage (cliprender.OverlayRefSpec) this package's ports carry. The scripts
-// capability owns the orchestration seam, not the clip.render wire contract, so
-// the port stays free of the cliprender dependency (Verdetto invariant:
-// ports return domain types from this package). The composition root maps each
-// lineage to the cliprender type at the boundary.
-type LocalizedOverlayLineage struct {
-	// RenderJobID is the overlay.render queue job id that produced the
-	// composited overlay artifact.
-	RenderJobID string `json:"render_job_id"`
-	// PlanFingerprint is the frozen OverlayPlan fingerprint the render was
-	// validated against.
-	PlanFingerprint string `json:"plan_fingerprint"`
-	// RenderKey is the content-addressed render key of the plan item.
-	RenderKey string `json:"render_key"`
-	// SourceVideoAssetID is the video asset the overlay is composited over.
-	SourceVideoAssetID string `json:"source_video_asset_id"`
-	// StartUS / EndUS are the declared compositing window on the final
-	// timeline (integer microseconds).
-	StartUS int64 `json:"start_us"`
-	EndUS   int64 `json:"end_us"`
-}
-
-// LocalizedRenderEnqueuer enqueues one localized render as soon as a scene's
-// translation + TTS for a language are ready, so Chronon can start on scene 1 ES
-// while scene 2 is still being translated/voiced. A nil enqueuer is a
-// legitimate no-op (render not registered); a non-nil enqueuer is fail-closed
-// (an enqueue error fails the run, never a silent skip).
-type LocalizedRenderEnqueuer interface {
-	EnqueueLocalizedRender(context.Context, LocalizedRenderInput) error
-}
-
-// LocalizedRenderRecoveryEnqueuer is optional for backwards-compatible
-// adapters. It publishes a staged local artifact without rerendering it.
-type LocalizedRenderRecoveryEnqueuer interface {
-	UploadRendered(context.Context, LocalizedRenderInput, contract.LocalizedRenderResult) error
-}
-
-// CombinedAudioRenderer is required only for COMBINED_TIMELINE jobs. It must
-// return a probed, certified final audio artifact; the runner never falls
-// back to chunked mixing when this port is unavailable or fails.
-type CombinedAudioRenderer interface {
-	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (audiocontract.FinalAudioReference, contract.AudioPipelineMetrics, error)
-}
+const (
+	OperationTranslation = portexec.OperationTranslation
+	OperationTTS         = portexec.OperationTTS
+	OperationSubtitles   = portexec.OperationSubtitles
+	OperationRender      = portexec.OperationRender
+	OperationValidation  = portexec.OperationValidation
+	OperationDriveUpload = portexec.OperationDriveUpload
+)
 
 type AudioAssetResolver = scriptaudio.AssetResolver
 
@@ -217,57 +81,6 @@ func CompileAudioWithIntents(
 ) (AudioIntentCompileResult, error) {
 	return scriptaudio.CompileWithIntents(ctx, timeline, profile, policy, bgmIntents, sfxIntents, source)
 }
-
-// MediaPreflight is the optional fail-fast media requirement verification
-// port (P0.5). When wired, the runner executes it synchronously after
-// normalization and before scene-text generation. Any failure aborts the run
-// before LLM, translation, or TTS. Nil is tolerated for requests without
-// fixed media; fixed-media requests fail closed when no preflight is wired.
-type MediaPreflight interface {
-	Run(ctx context.Context, req contract.GenerateRequest) PreflightResult
-}
-
-// FinalAudioPublishResult is the canonical publication outcome: the canonical
-// MediaRegistry asset ID, provider-owned Drive file ID, and public Drive link.
-// It never carries a local filesystem path.
-type FinalAudioPublishResult struct {
-	AssetID string `json:"audio_asset_id"`
-	// DriveFileID is an in-process publication fact: it never crosses the wire
-	// because DriveLink is the canonical location and AssetID is the identity
-	// (media-identity gate: one owner per fact).
-	DriveFileID string `json:"-"`
-	DriveLink   string `json:"drive_link"`
-}
-
-// FinalAudioPublisher publishes the already-certified combined master before
-// document publication and registers it as a canonical MediaRegistry asset.
-// It returns the canonical asset ID (never a local path), provider-owned
-// Drive file ID, and public Drive link. voiceoverFolderID is the caller-explicit Drive folder
-// (output.voiceover_folder_id); empty means "use the configured default".
-type FinalAudioPublisher interface {
-	PublishFinalAudio(context.Context, string, contract.Language, audiocontract.FinalAudioReference, string) (FinalAudioPublishResult, error)
-}
-
-// ExecutionContext, ExecutionStep, ArtifactOperation and ExecutionRecorder
-// are owned by the kernel; this package re-exports them for the existing
-// scripts callers.
-type (
-	ExecutionContext  = scriptpkg.ExecutionContext
-	ExecutionStep     = scriptpkg.ExecutionStep
-	ArtifactOperation = scriptpkg.ArtifactOperation
-	ExecutionRecorder = scriptpkg.ExecutionRecorder
-)
-
-var NewExecutionContext = scriptpkg.NewExecutionContext
-
-const (
-	OperationTranslation = scriptpkg.OperationTranslation
-	OperationTTS         = scriptpkg.OperationTTS
-	OperationSubtitles   = scriptpkg.OperationSubtitles
-	OperationRender      = scriptpkg.OperationRender
-	OperationValidation  = scriptpkg.OperationValidation
-	OperationDriveUpload = scriptpkg.OperationDriveUpload
-)
 
 // noopExecutionRecorder keeps local/unit runtimes safe when durable lineage
 // is intentionally not wired. Production composition injects the Job Registry

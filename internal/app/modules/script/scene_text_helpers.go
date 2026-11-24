@@ -10,7 +10,8 @@ import (
 )
 
 func buildEditorialPromptFromGenReq(req scriptgen.GenerateRequest) string {
-	return buildEditorialPrompt(req.Source.Topic, req.Source.SourceText, req.Title, req.Source.Query, req.ScriptParams.TargetWords, req.ScriptParams.MinWords, firstNonEmpty(req.Style, req.ScriptParams.Style), req.ScriptParams.Guidelines, string(req.SourceLanguage), req.ScriptParams.PromptVersion)
+	gen := req.Generation()
+	return buildEditorialPrompt(req.Source.Topic, req.Source.SourceText, gen.Title, req.Source.Query, gen.ScriptParams.TargetWords, gen.ScriptParams.MinWords, firstNonEmpty(gen.Style, gen.ScriptParams.Style), gen.ScriptParams.Guidelines, string(gen.SourceLanguage), gen.ScriptParams.PromptVersion)
 }
 
 func firstNonEmpty(values ...string) string {
@@ -95,12 +96,13 @@ func genSourceToSourceSpec(src scriptgen.Source) scriptpkg.SourceSpec {
 }
 
 func genRequestToResolutionContext(req scriptgen.GenerateRequest) scriptpkg.SourceResolutionContext {
+	gen := req.Generation()
 	return scriptpkg.SourceResolutionContext{
-		Title:             req.Title,
-		Language:          string(req.SourceLanguage),
-		TargetWords:       req.ScriptParams.TargetWords,
-		SegmentWords:      req.ScriptParams.SegmentWords,
-		Segments:          scriptpkg.CloneScriptSegments(req.ScriptParams.Segments),
+		Title:             gen.Title,
+		Language:          string(gen.SourceLanguage),
+		TargetWords:       gen.ScriptParams.TargetWords,
+		SegmentWords:      gen.ScriptParams.SegmentWords,
+		Segments:          scriptpkg.CloneScriptSegments(gen.ScriptParams.Segments),
 		NumClips:          req.Source.NumClips,
 		RequireDriveLink:  true,
 		RequireLocalMedia: false,

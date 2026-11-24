@@ -1,0 +1,316 @@
+package localizedrender
+
+// localization_service.go is the localization composition root: it wires the
+// full fan-out — source resolution, plan building, the bounded render
+// scheduler, and Drive upload — into one service with a single Localize entry
+// point.
+//
+// Pipeline (per call):
+//
+//	LocalizeInput (asset_id + source language + ordered request)
+//	  → SourceResolver.ResolveSource       (verified SHA-256 + duration + fps)
+//	  → SourceInput
+//	  → PlanBuilder.Build                  ([]LocalizedClipPlan, fingerprinted)
+//	  → Service.Localize                   (render → upload)
+//	  → LocalizeResult
+//
+// godlike/06 SSOT (one canonical owner per fact): this is the SINGLE wiring
+// of the localization capability. It composes the capability ports with the
+// already-wired concrete adapters (asset registry, text-track store, Drive
+// publisher, RenderingGen/Chronon render boundary) — no second path, no direct
+// FFmpeg/ffprobe, no duplicated Drive logic.
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"go.uber.org/zap"
+)
+
+// LocalizationConfig pins the deployment-scoped render facts every
+// LocalizedClipPlan fingerprints. These are resolved ONCE at the composition
+// root and shared by every localized render — never re-derived per plan.
+type LocalizationConfig struct {
+	SourceLanguage          string
+	OutputProfileHash       string
+	RendererVersion         string
+	SubtitleStyleHash       string
+	EncoderPolicyHash       string
+	WorkDir                 string
+	GlobalRenderConcurrency int
+	UploadConcurrency       int
+	// DriveReusePublished reuses the Drive identity of already-published,
+	// byte-identical clips instead of uploading them again. See
+	// config.Scripts.LocalizedRenderDriveReuse.
+	DriveReusePublished bool
+}
+
+const LocalizationRendererVersion = "chronon-render/localization-v1"
+
+// LocalizationSubtitleStyleHash is the canonical ASS style + generator hash
+// prefix. The rule that turns a style into the full id lives in kernel/script
+// (SubtitleStyleHash) so the wiring and the per-language plan builder cannot
+// derive two different ids for one render.
+const LocalizationSubtitleStyleHash = scriptpkg.LocalizationSubtitleStyleHash
+
+type LocalizationService struct {
+	sources localization.SourceResolver
+	plans   localization.PlanBuilder
+	service *localization.Service
+	cfg     LocalizationConfig
+	// log reports a render_concurrency request the deployment's global render
+	// gate will throttle. It is never nil: NewLocalizationService installs a
+	// no-op logger so the warning path cannot nil-panic in a hermetic test.
+	log *zap.Logger
+}
+
+type LocalizationDeps struct {
+	Sources          localization.SourceResolver
+	TrackResolver    localization.TrackResolver
+	SubtitleResolver localization.SubtitleResolver
+	SubtitleCompiler localization.SubtitleArtifactCompiler
+	Executor         localization.RenderPlanExecutor
+	Uploader         localization.DriveUploader
+	// RenderReuse is the optional content-addressed reuse cache. Nil means
+	// "always render" (the pre-existing behaviour); it is never required.
+	RenderReuse localization.RenderReuseCache
+}
+
+func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*LocalizationService, error) {
+	compiler, err := localization.NewLocalizedClipCompiler(deps.Sources, localization.CompilerConfig{
+		WorkDir:           cfg.WorkDir,
+		EncoderPolicyHash: cfg.EncoderPolicyHash,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("localization service: compiler: %w", err)
+	}
+	wire, err := localization.NewSubtitleWire(deps.SubtitleResolver, deps.SubtitleCompiler, cfg.WorkDir)
+	if err != nil {
+		return nil, fmt.Errorf("localization service: subtitle wire: %w", err)
+	}
+	renderer, err := localization.NewLocalizedClipRenderer(compiler, wire, deps.Executor)
+	if err != nil {
+		return nil, fmt.Errorf("localization service: renderer: %w", err)
+	}
+	if deps.RenderReuse != nil {
+		renderer = renderer.WithRenderReuseCache(deps.RenderReuse)
+		// A durable cache row outlives the workspace that produced it. This
+		// directory is where such a row's object-store bytes are materialized
+		// and verified before the hit is accepted (CR-14).
+		renderer = renderer.WithRenderReuseDir(filepath.Join(cfg.WorkDir, "render-reuse"))
+	}
+	drivePublisher, err := localization.NewDrivePublisher(deps.Uploader)
+	if err != nil {
+		return nil, fmt.Errorf("localization service: drive publisher: %w", err)
+	}
+	// Resolve the machine render bound ONCE. The gate width, the per-call clamp
+	// and the Localize warning must read the SAME number: an unset value used to
+	// mean 4 at the gate but 0 in the warning path, so a clamped request could go
+	// unreported — the exact silent-throttle the 2026-09-21 tail audit found.
+	if cfg.GlobalRenderConcurrency < 1 {
+		cfg.GlobalRenderConcurrency = localization.DefaultRenderConcurrency
+	}
+	renderConcurrency := cfg.GlobalRenderConcurrency
+	uploadConcurrency := cfg.UploadConcurrency
+	if uploadConcurrency < 1 {
+		uploadConcurrency = 4
+	}
+	svc, err := localization.NewServiceWithConcurrency(renderer, drivePublisher, renderConcurrency, uploadConcurrency)
+	if err != nil {
+		return nil, fmt.Errorf("localization service: service: %w", err)
+	}
+	// The executor owns the GPU slot around Submit/Settle only; sharing the
+	// service gate is what moves Materialize outside it (CR-14).
+	if setter, ok := deps.Executor.(interface{ SetGPUGate(chan struct{}) }); ok {
+		setter.SetGPUGate(svc.GPUGate())
+	}
+	svc.WithPublishedDriveReuse(cfg.DriveReusePublished)
+	plans, err := localization.NewLocalizationPlanBuilder(deps.TrackResolver)
+	if err != nil {
+		return nil, fmt.Errorf("localization service: plan builder: %w", err)
+	}
+	return &LocalizationService{sources: deps.Sources, plans: plans, service: svc, cfg: cfg, log: zap.NewNop()}, nil
+}
+
+type LocalizeInput struct {
+	AssetID                string
+	JobID                  string
+	SceneID                string
+	ClipID                 string
+	SourceLanguage         string
+	Watermark              *cliprender.MaterializedAsset
+	WatermarkSpec          *cliprender.WatermarkSpec
+	Background             *cliprender.MaterializedAsset
+	BackgroundMode         string
+	BackgroundKind         string
+	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
+	ForegroundScalePercent int
+	// SourceFrame is the clip card treatment (bounding frame, shadow, stroke,
+	// radius) requested by the payload; it is sealed into every language plan.
+	SourceFrame *cliprender.PlanSourceFrame
+	Effects     []cliprender.ClipEffectSpec
+	Grid        *cliprender.ClipGridSpec
+	// Overlays carries the certified, LANGUAGE-INDEPENDENT entity overlay
+	// lineages every language plan of this source reuses, one per semantic
+	// overlay item. Empty means the source carries no overlay (or it is not
+	// certified yet); a partial lineage is rejected by the plan contract rather
+	// than silently dropped.
+	Overlays               []cliprender.OverlayRefSpec
+	Request                localization.LocalizationRequest
+	FolderID               string
+	SubtitleFolderID       string
+	UploadSubtitleArtifact bool
+	// SkipDrivePublication renders and certifies locally without uploading:
+	// the final-job object-store path consumes the local bytes and never reads
+	// a Drive identity for this clip.
+	SkipDrivePublication bool
+	OnRendered           func(localization.LocalizedClipArtifact) error
+}
+
+func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*localization.LocalizeResult, error) {
+	if s == nil || s.sources == nil || s.plans == nil || s.service == nil {
+		return nil, fmt.Errorf("localization service is not initialized")
+	}
+	if err := in.Request.Validate(); err != nil {
+		return nil, fmt.Errorf("localization: localize: %w", err)
+	}
+
+	sourceLanguage := in.SourceLanguage
+	if sourceLanguage == "" {
+		sourceLanguage = s.cfg.SourceLanguage
+	}
+
+	facts, err := s.sources.ResolveSource(ctx, in.AssetID)
+	if err != nil {
+		return nil, fmt.Errorf("localization: localize: resolve source %q: %w", in.AssetID, err)
+	}
+
+	sourceInput := localization.SourceInput{
+		JobID:                  in.JobID,
+		SceneID:                in.SceneID,
+		AssetID:                facts.AssetID,
+		ClipID:                 in.ClipID,
+		SourceLanguage:         sourceLanguage,
+		SourceSHA256:           facts.SHA256,
+		DurationMS:             facts.DurationMS,
+		OutputProfileHash:      s.cfg.OutputProfileHash,
+		RendererVersion:        s.cfg.RendererVersion,
+		SubtitleStyleHash:      s.resolveSubtitleStyleHash(in.SubtitlesStyle),
+		Watermark:              in.Watermark,
+		WatermarkSpec:          in.WatermarkSpec,
+		Background:             in.Background,
+		BackgroundMode:         in.BackgroundMode,
+		BackgroundKind:         in.BackgroundKind,
+		ForegroundScalePercent: in.ForegroundScalePercent,
+		SourceFrame:            in.SourceFrame,
+		Effects:                in.Effects,
+		Grid:                   in.Grid,
+		SubtitlesStyle:         in.SubtitlesStyle,
+		Overlays:               in.Overlays,
+	}
+
+	plans, err := s.plans.Build(ctx, sourceInput, in.Request.Languages)
+	if err != nil {
+		return nil, fmt.Errorf("localization: localize: build plans: %w", err)
+	}
+
+	// A payload wider than the shared machine gate is throttled by that gate, so
+	// the operator must see the clamp instead of paying an unexplained per-scene
+	// wait (the fifth render of a 5-scene job used to wait for a slot with no
+	// signal at all). The gate stays the authority; only the invisibility goes.
+	if _, cramped := localization.RenderWidth(s.cfg.GlobalRenderConcurrency, in.Request.RenderConcurrency); cramped {
+		s.log.Warn("localization: render_concurrency request exceeds the global render gate; the machine bound wins",
+			zap.String("subsystem", "localization_service"),
+			zap.Int("requested_render_concurrency", in.Request.RenderConcurrency),
+			zap.Int("global_render_concurrency", s.cfg.GlobalRenderConcurrency),
+			zap.Int("upload_concurrency", s.cfg.UploadConcurrency),
+			zap.String("lever", "VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY"))
+	}
+
+	return s.service.Localize(ctx, localization.LocalizeInput{
+		Concurrency:            in.Request.RenderConcurrency,
+		FolderID:               in.FolderID,
+		SubtitleFolderID:       in.SubtitleFolderID,
+		UploadSubtitleArtifact: in.UploadSubtitleArtifact,
+		SkipDrivePublication:   in.SkipDrivePublication,
+		Plans:                  plans,
+	})
+}
+
+func (s *LocalizationService) resolveSubtitleStyleHash(style *scriptpkg.VideoVisualStyleSpec) string {
+	// A deployment-scoped override still wins for a style with no font (there is
+	// no font slug to encode); every other case goes through the canonical rule
+	// in kernel/script, which is also what the plan builder uses when it has to
+	// substitute the font for a language's script.
+	if style == nil || strings.TrimSpace(style.Font) == "" {
+		if s != nil && s.cfg.SubtitleStyleHash != "" {
+			return s.cfg.SubtitleStyleHash
+		}
+	}
+	return scriptpkg.SubtitleStyleHash(style)
+}
+
+func (s *LocalizationService) UploadRendered(ctx context.Context, artifact localization.LocalizedClipArtifact, folderID string) (localization.LocalizedClipArtifact, error) {
+	if s == nil || s.service == nil {
+		return artifact, fmt.Errorf("localization service: upload-only service is not wired")
+	}
+	return s.service.UploadRendered(ctx, artifact, folderID)
+}
+
+func LocalizationConfigFromConfig(cfg *config.Config) LocalizationConfig {
+	sourceLanguage := "en"
+	if cfg != nil && cfg.Media.Multilingual.SourceLanguage != "" {
+		sourceLanguage = cfg.Media.Multilingual.SourceLanguage
+	}
+
+	mediaConfig := mediawiring.MediaexecConfig(cfg)
+	profile := mediaConfig.Profile.WithDefaults()
+	policy := mediaConfig.Policy
+
+	workDir := "data/media/localized"
+	if cfg != nil && cfg.Storage.TempPath() != "" {
+		workDir = filepath.Join(cfg.Storage.TempPath(), "localization")
+	}
+
+	return LocalizationConfig{
+		SourceLanguage:          sourceLanguage,
+		OutputProfileHash:       canonicalFactHash(profile),
+		RendererVersion:         LocalizationRendererVersion,
+		SubtitleStyleHash:       LocalizationSubtitleStyleHash,
+		EncoderPolicyHash:       canonicalFactHash(policy),
+		WorkDir:                 workDir,
+		GlobalRenderConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
+		UploadConcurrency:       cfg.Scripts.LocalizedRenderUploadConcurrency,
+		DriveReusePublished:     cfg.Scripts.LocalizedRenderDriveReuse,
+	}
+}
+
+func canonicalFactHash(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return digest.SHA256Bytes(b)
+}
+
+type LocalizationTrackStore interface {
+	detail.TextTrackRepository
+	FindByID(ctx context.Context, trackID int64) (*detail.TextTrack, []detail.TimedCue, error)
+}
+
+func (s *LocalizationService) SetLogger(log *zap.Logger) {
+	if s != nil {
+		s.log = log
+	}
+}

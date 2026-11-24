@@ -35,6 +35,13 @@ type voiceoverResult struct {
 	metric   contract.TTSSSceneMetric
 }
 
+// sanitizeNarrationForTTS removes Markdown emphasis markers from authored
+// narration. Asterisks are formatting syntax and must never be sent to a
+// speech provider as words or punctuation.
+func sanitizeNarrationForTTS(text string) string {
+	return strings.TrimSpace(strings.ReplaceAll(text, "*", ""))
+}
+
 func buildVoiceoverWorkForLanguages(scenes []contract.Scene, sourceLanguage contract.Language, targetLanguages, voiceoverLanguages []contract.Language) []voiceoverWork {
 	work := make([]voiceoverWork, 0)
 	for i := range scenes {
@@ -43,10 +50,14 @@ func buildVoiceoverWorkForLanguages(scenes []contract.Scene, sourceLanguage cont
 			continue
 		}
 		for _, item := range buildVoiceoverLanguageWork(scene.Text, sourceLanguage, targetLanguages, voiceoverLanguages) {
+			text := sanitizeNarrationForTTS(item.Text)
+			if text == "" {
+				continue
+			}
 			if existing, ok := scene.Voiceover[item.Lang]; ok && existing.ID != "" {
 				continue
 			}
-			work = append(work, voiceoverWork{scene: scene, sceneID: scene.ID, lang: item.Lang, text: item.Text})
+			work = append(work, voiceoverWork{scene: scene, sceneID: scene.ID, lang: item.Lang, text: text})
 		}
 	}
 	return work

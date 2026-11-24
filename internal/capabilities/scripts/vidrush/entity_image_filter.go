@@ -99,6 +99,9 @@ func formatPersonImageRejectionSummary(total int, rejected map[string]int) strin
 func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candidate scriptpkg.SegmentAssetCandidate) (bool, float64, float64, string) {
 	semanticScore := 0.0
 	filenamePenaltyReason := ""
+	if personImageCandidateHasWatermarkSignal(candidate) {
+		return false, 0, 0, "candidate metadata identifies a watermarked preview"
+	}
 	if reason := personImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, candidate.SourcePageURL); reason != "" {
 		penalty := PersonImageSourceIdentityPenalty(identity.CanonicalName, candidate.SourceURL)
 		if penalty <= 0 {
@@ -162,6 +165,23 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 		reason += "; " + filenamePenaltyReason
 	}
 	return true, semanticScore, technicalScore, reason
+}
+
+// personImageCandidateHasWatermarkSignal rejects explicit watermark evidence
+// carried by a provider URL or visual-quality verdict. It is intentionally
+// metadata-only: absence of a signal does not claim pixel-level watermark
+// verification, which belongs to the image verifier.
+func personImageCandidateHasWatermarkSignal(candidate scriptpkg.SegmentAssetCandidate) bool {
+	for _, value := range []string{candidate.SourceURL, candidate.SourcePageURL, candidate.PreviewURL, candidate.QualityReason} {
+		value = strings.ToLower(strings.TrimSpace(value))
+		for _, clean := range []string{"no watermark", "without watermark", "watermark-free", "watermark free"} {
+			value = strings.ReplaceAll(value, clean, "")
+		}
+		if strings.Contains(value, "watermark") || strings.Contains(value, "watermarked") || strings.Contains(value, "agency-preview") {
+			return true
+		}
+	}
+	return false
 }
 
 // personImageSourceNotRaster rejects provider links that resolve to a

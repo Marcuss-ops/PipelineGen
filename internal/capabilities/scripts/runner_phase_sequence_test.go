@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"testing"
 
+	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -10,7 +11,7 @@ import (
 // is a registered work phase, that none is declared twice, and that no
 // milestone has been smuggled in as a phase.
 func TestRunnerPhaseSequenceIsCanonical(t *testing.T) {
-	sequence := RunnerPhaseSequence()
+	sequence := scriptrunner.RunnerPhaseSequence()
 	if len(sequence) == 0 {
 		t.Fatal("RunnerPhaseSequence is empty")
 	}
@@ -43,20 +44,20 @@ func TestRunnerPhaseSequenceIsCanonical(t *testing.T) {
 // earlier than its predecessor's phase would mean the run reports progress the
 // pipeline has not reached.
 func TestRunnerPhaseSequenceMatchesRunStageOrder(t *testing.T) {
-	position := make(map[kernobs.StageName]int, len(RunnerPhaseSequence()))
-	for i, phase := range RunnerPhaseSequence() {
+	position := make(map[kernobs.StageName]int, len(scriptrunner.RunnerPhaseSequence()))
+	for i, phase := range scriptrunner.RunnerPhaseSequence() {
 		position[phase] = i
 	}
 
 	previous := -1
 	for _, stage := range stageOrder {
-		phase, ok := runStagePhase(stage)
+		phase, ok := scriptrunner.RunStagePhase(stage)
 		if !ok {
 			t.Fatalf("durable run stage %q has no observability phase", stage)
 		}
 		index, ok := position[phase]
 		if !ok {
-			t.Fatalf("phase %q for run stage %q is missing from RunnerPhaseSequence()", phase, stage)
+			t.Fatalf("phase %q for run stage %q is missing from scriptrunner.RunnerPhaseSequence()", phase, stage)
 		}
 		if index <= previous {
 			t.Fatalf("run stage %q (phase %q) is out of order: index %d after %d", stage, phase, index, previous)
@@ -70,7 +71,7 @@ func TestRunnerPhaseSequenceMatchesRunStageOrder(t *testing.T) {
 // terminal stages are outcomes, not boundaries.
 func TestRunStagePhaseExcludesMilestonesAndTerminals(t *testing.T) {
 	for _, stage := range []Stage{StageCompleted, StageFailed, StageCoreReady} {
-		if phase, ok := runStagePhase(stage); ok {
+		if phase, ok := scriptrunner.RunStagePhase(stage); ok {
 			t.Errorf("stage %q mapped to phase %q; milestones and terminals are not phases", stage, phase)
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
 	vidrushwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/vidrush"
 	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/voiceover"
+	scriptpreflight "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/scriptpreflight"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
@@ -260,7 +261,7 @@ func buildScriptFlowRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	// than a false green.
 	var preflightAssets scriptapi.AssetPreflightReader
 	if root.MediaPostgres != nil {
-		preflightAssets = newScriptAssetPreflightGate(pgmedia.NewOperatorInventoryReader(root.MediaPostgres, log))
+		preflightAssets = scriptpreflight.NewScriptAssetPreflightGate(pgmedia.NewOperatorInventoryReader(root.MediaPostgres, log))
 	}
 
 	adminToken := ""

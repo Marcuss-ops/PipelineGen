@@ -211,11 +211,12 @@ func (g *SceneTextGenerator) ResolveVidRushPlan(ctx context.Context, req scriptg
 // it delegates to the injected SourceRegistry to fetch clip evidence
 // and the canonical source text.
 func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
+	gen := req.Generation()
 	topic := req.Source.Topic
 	if topic == "" && req.Source.SourceText != "" {
 		topic = firstLine(req.Source.SourceText)
 	}
-	title := req.Title
+	title := gen.Title
 	if title == "" {
 		title = topic
 		if title == "" {
@@ -271,7 +272,7 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		}
 		// Re-render the prompt from the resolved source text so the
 		// engine actually sees the clip evidence.
-		plan.RenderedPrompt = buildEditorialPrompt(plan.Topic, plan.SourceText, req.Title, req.Source.Query, req.ScriptParams.TargetWords, req.ScriptParams.MinWords, req.ScriptParams.Style, req.ScriptParams.Guidelines, string(req.SourceLanguage), req.ScriptParams.PromptVersion)
+		plan.RenderedPrompt = buildEditorialPrompt(plan.Topic, plan.SourceText, gen.Title, req.Source.Query, gen.ScriptParams.TargetWords, gen.ScriptParams.MinWords, gen.ScriptParams.Style, gen.ScriptParams.Guidelines, string(gen.SourceLanguage), gen.ScriptParams.PromptVersion)
 	}
 
 	// Text sources do not go through a resolver; derive the canonical
@@ -288,6 +289,7 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 // newResolvedGenerationPlan builds the plan skeleton (including the media
 // requirements) before source resolution enriches it.
 func newResolvedGenerationPlan(req scriptgen.GenerateRequest, topic, title, renderedPrompt string) *scriptpkg.ResolvedGenerationPlan {
+	gen := req.Generation()
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:    req.IdempotencyKey,
 		Title: title,
@@ -295,35 +297,35 @@ func newResolvedGenerationPlan(req scriptgen.GenerateRequest, topic, title, rend
 		// materialization and overlay publication. Generated media belongs
 		// under this explicit render/artifact root, never under the script
 		// JSON tree.
-		DriveFolderID:     strings.TrimSpace(req.Render.DriveFolderID),
-		Project:           req.Project,
-		Model:             req.Model,
-		Tone:              req.Tone,
+		DriveFolderID:     strings.TrimSpace(gen.Render.DriveFolderID),
+		Project:           gen.Project,
+		Model:             gen.Model,
+		Tone:              gen.Tone,
 		Topic:             topic,
-		Language:          string(req.SourceLanguage),
+		Language:          string(gen.SourceLanguage),
 		SourceText:        req.Source.SourceText,
 		RenderedPrompt:    renderedPrompt,
 		Mode:              scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
 		SaveToDB:          req.SaveToDB,
 		SourceKind:        string(req.Source.Type),
 		MediaMode:         req.MediaMode,
-		TargetWords:       req.ScriptParams.TargetWords,
-		SingleScene:       req.ScriptParams.SingleScene,
-		Duration:          req.ScriptParams.Duration,
-		MinWords:          req.ScriptParams.MinWords,
-		SegmentWords:      req.ScriptParams.SegmentWords,
-		Segments:          append([]scriptpkg.ScriptSegment(nil), req.ScriptParams.Segments...),
-		SentencesPerImage: req.ScriptParams.SentencesPerImage,
-		ImagesPerScene:    req.ScriptParams.ImagesPerScene,
-		Style:             textutil.FirstNonEmpty(req.Style, req.ScriptParams.Style),
-		Guidelines:        req.ScriptParams.Guidelines,
+		TargetWords:       gen.ScriptParams.TargetWords,
+		SingleScene:       gen.ScriptParams.SingleScene,
+		Duration:          gen.ScriptParams.Duration,
+		MinWords:          gen.ScriptParams.MinWords,
+		SegmentWords:      gen.ScriptParams.SegmentWords,
+		Segments:          append([]scriptpkg.ScriptSegment(nil), gen.ScriptParams.Segments...),
+		SentencesPerImage: gen.ScriptParams.SentencesPerImage,
+		ImagesPerScene:    gen.ScriptParams.ImagesPerScene,
+		Style:             textutil.FirstNonEmpty(gen.Style, gen.ScriptParams.Style),
+		Guidelines:        gen.ScriptParams.Guidelines,
 		NumClips:          req.Source.NumClips,
 		MediaPlan:         req.MediaPlan.Clone(),
 		// The incremental VidRush coordinator needs the same fixed sections
 		// as the runner: applyFixedSections commits each non-empty intro/outro
 		// as an additional scene around the generated body.
-		Intro: scriptpkg.CloneFixedSection(req.Intro),
-		Outro: scriptpkg.CloneFixedSection(req.Outro),
+		Intro: scriptpkg.CloneFixedSection(gen.Intro),
+		Outro: scriptpkg.CloneFixedSection(gen.Outro),
 		// The direct stock-binding gate (search + materialization) runs in the
 		// incremental VidRush coordinator against THIS plan, so the caller's
 		// stock bindings — explicit stock_bindings AND the per-segment
@@ -331,10 +333,10 @@ func newResolvedGenerationPlan(req scriptgen.GenerateRequest, topic, title, rend
 		StockBindings:       append([]scriptpkg.StockBindingInput(nil), req.StockBindings...),
 		GroundingPolicy:     req.Source.GroundingPolicy,
 		FallbackPolicy:      req.Source.FallbackPolicy,
-		PromptVersion:       req.ScriptParams.PromptVersion,
-		EditorPromptVersion: req.ScriptParams.EditorPromptVersion,
-		QAPromptVersion:     req.ScriptParams.QAPromptVersion,
-		UseMemory:           req.ScriptParams.UseMemory,
+		PromptVersion:       gen.ScriptParams.PromptVersion,
+		EditorPromptVersion: gen.ScriptParams.EditorPromptVersion,
+		QAPromptVersion:     gen.ScriptParams.QAPromptVersion,
+		UseMemory:           gen.ScriptParams.UseMemory,
 		ForceRefresh:        req.ForceRefresh || req.ScriptParams.ForceRefresh,
 		PromptProfile:       "default-v1",
 		// Postprocessors left empty — the engine generates raw

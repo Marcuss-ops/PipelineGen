@@ -23,6 +23,7 @@ const packageHotspotRegistryPath = "architecture/package_hotspots.json"
 type packageHotspotRegistry struct {
 	Version        int                     `json:"version"`
 	Hotspots       []packageHotspot        `json:"hotspots"`
+	LineBudgets    []packageLineBudget     `json:"line_budgets"`
 	RootMigrations []internalRootMigration `json:"root_migrations"`
 }
 
@@ -32,6 +33,16 @@ type packageHotspot struct {
 	Deadline       string   `json:"deadline"`
 	BaselineFiles  int      `json:"baseline_files"`
 	TargetPackages []string `json:"target_packages"`
+}
+
+// packageLineBudget freezes the total production LOC of a package. The file
+// ratchet alone cannot see growth inside existing files; this budget closes
+// that gap for the packages that are already large.
+type packageLineBudget struct {
+	Path     string `json:"path"`
+	MaxLoc   int    `json:"max_loc"`
+	Owner    string `json:"owner"`
+	Deadline string `json:"deadline"`
 }
 
 type internalRootMigration struct {
@@ -49,6 +60,7 @@ type internalRootMigration struct {
 // expiry and unregistered production hotspots remain fail-closed.
 func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int, productionOnly bool) {
 	pkgCounts := map[string]int{}
+	pkgLines := map[string]int{}
 	// The historical skip set matched directory BASENAMES, which silently
 	// exempted the production roots internal/capabilities/scripts and
 	// internal/platform/sqlite/scripts from this rule family (the
@@ -102,6 +114,7 @@ func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, file
 			return nil
 		}
 		fileLines[path] = n
+		pkgLines[filepath.ToSlash(relDir)] += n
 		if n > pol.MaxLinesPerFile {
 			// The 1000-LOC ceiling is the HARD cap (policy.yaml
 			// max_lines_per_file, godlike/08 §"Mandatory checks"): a file
@@ -150,11 +163,39 @@ func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, file
 	}
 
 	for pkg, count := range pkgCounts {
-		if count <= pol.MaxFilesPerPackage {
+		// Registered hotspots are checked even below the global cap. The old
+		// count > cap guard meant a package that had already been ratcheted
+		// down (for example scripts at 62 files) was not evaluated at all, so
+		// its stale baseline could never fire until it crossed 65 again.
+		if _, registered := hotspots[pkg]; !registered && count <= pol.MaxFilesPerPackage {
 			continue
 		}
 		appendPackageHotspotResult(r, pkg, count, pol.MaxFilesPerPackage, hotspots, productionOnly, time.Now().UTC())
 	}
+
+	if registry != nil {
+		for _, budget := range registry.LineBudgets {
+			appendPackageLineBudgetResult(r, budget, pkgLines[filepath.ToSlash(budget.Path)])
+		}
+	}
+}
+
+func appendPackageLineBudgetResult(r *report.Report, budget packageLineBudget, actual int) {
+	if actual <= budget.MaxLoc {
+		return
+	}
+	r.Violations = append(r.Violations, report.Violation{
+		Package:     budget.Path,
+		ActualLines: actual,
+		MaxLines:    budget.MaxLoc,
+		MatchedRule: "package_line_budget_growth",
+		Rule:        "pkg_size",
+		Severity:    "error",
+		Note: fmt.Sprintf(
+			"package exceeded line budget=%d owner=%q deadline=%s",
+			budget.MaxLoc, budget.Owner, budget.Deadline,
+		),
+	})
 }
 
 func appendPackageHotspotResult(
@@ -259,6 +300,18 @@ func loadPackageHotspotRegistry(root string) (*packageHotspotRegistry, error) {
 		seenHotspots[path] = true
 	}
 
+	seenBudgets := map[string]bool{}
+	for _, budget := range registry.LineBudgets {
+		if err := validatePackageLineBudget(budget); err != nil {
+			return nil, err
+		}
+		path := filepath.ToSlash(budget.Path)
+		if seenBudgets[path] {
+			return nil, fmt.Errorf("duplicate package line budget path %q", path)
+		}
+		seenBudgets[path] = true
+	}
+
 	seenRoots := map[string]bool{}
 	for _, migration := range registry.RootMigrations {
 		if err := validateInternalRootMigration(migration); err != nil {
@@ -271,6 +324,16 @@ func loadPackageHotspotRegistry(root string) (*packageHotspotRegistry, error) {
 		seenRoots[path] = true
 	}
 	return &registry, nil
+}
+
+func validatePackageLineBudget(b packageLineBudget) error {
+	if b.Path == "" || b.MaxLoc <= 0 || b.Owner == "" || b.Deadline == "" {
+		return fmt.Errorf("invalid package line budget for %q: path, positive max_loc, owner and deadline are required", b.Path)
+	}
+	if _, err := time.Parse("2006-01-02", b.Deadline); err != nil {
+		return fmt.Errorf("invalid package line budget deadline for %q: %w", b.Path, err)
+	}
+	return nil
 }
 
 func validatePackageHotspot(h packageHotspot) error {

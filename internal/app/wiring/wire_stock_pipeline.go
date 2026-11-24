@@ -35,6 +35,7 @@ import (
 	"go.uber.org/zap"
 
 	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/stock"
+	wiringfinalization "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/finalization"
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/enrichment"
@@ -386,12 +387,12 @@ func newStockFinalizer(root *ComposeRoot, log *zap.Logger) (finalization.JobFina
 	// committer) into jobsfinalizer.New alongside a SQLite job DB was the
 	// cross-engine branch: the job tx would have carried PostgreSQL SQL and
 	// failed with `unrecognized token: ":"`.
-	return &splitPlaneFinalizer{
-		mediaDB:       root.MediaPostgres,
-		mediaOutbox:   pgmedia.NewOutboxRepository(root.MediaPostgres),
-		assetTx:       assetTx,
-		jobsFinalizer: jobsFinalizer,
-	}, nil
+	return wiringfinalization.NewSplitPlaneFinalizer(
+		root.MediaPostgres,
+		pgmedia.NewOutboxRepository(root.MediaPostgres),
+		assetTx,
+		jobsFinalizer,
+	), nil
 }
 
 // newStockSourceCache builds the cross-run source cache. It is optional: nil

@@ -77,7 +77,7 @@ sono corretti in §3.
   inventory 0). Ogni slice ha spostato i contratti nel kernel o nella porta
   sanzionata `scripts/ports/run` e cancellato l'entry nello stesso cambio.
 - **Ondata 3 — BON-01.** RA-12 è stato chiuso come SUPERSEDED il 2026-11-24:
-  root `scripts` a **63 file**, SCC ≤63, gate verdi. Il residuo dei lettori di
+  root `scripts` a **62 file**, SCC ≤62, gate verdi. Il residuo dei lettori di
   `GenerateRequest/GenerateResult` è ora in BON-01 §Riapertura 2026-11-24; il
   numero 87 del report è superato e non va usato come baseline.
 - **Ondata 4 — god function e deadcode "decisionale".** RA-18 ha misurato
@@ -120,7 +120,7 @@ avviati.
 
 Riverifica finale: `go build ./...` rc 0; `go test` su root `scripts` e sui
 package cleanup PASS; `go run ./cmd/archcheck --strict` rc 0;
-`python3 scripts/regen_hotspots.py --check` OK (root 63, target ≤65).
+`python3 scripts/regen_hotspots.py --check` OK (root 62, target ≤65).
 CLEANUP-01..04 chiusi e committati (vedi §9).
 
 ## 9. Chiusura wave e gate correnti (2026-11-24)
@@ -211,7 +211,7 @@ Restano solo attività non richieste o fuori perimetro:
 | --- | --- | --- |
 | Commit/push del working tree | non eseguito | le modifiche di 05–07 sono nel working tree condiviso; nessun push |
 | `go test ./...` completo | non dichiarato verde | unico FAIL noto: `TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` (latenza sotto carico); passa isolato |
-| BON-01 / Ondata 3 | non avviato | spostamento di `GenerateRequest`/`GenerateResult` nel kernel; non serve per l'inventario platform |
+| BON-01 / Ondata 3 | primo slice chiuso 2026-11-24 | viste generation + `vidrush.WiringRegistry`; l'inversione completa dei 29 `runner*.go` resta debito tracciato in BON-01 |
 | CLEANUP-06 — porte tipizzate per owner | follow-up architetturale | `pkg/sqlport` è il surface attuale; non era criterio di chiusura |
 | Ondata 4 — god function | non avviata | interventi semantici, non pulizia meccanica |
 | `gofmt` su tre file sqlite fuori scheda | debito locale | `assets/imagesregistry/index_request_committer.go`, `outbox/ports.go`, `outboxevents/repository.go`; non toccati da questa chiusura |

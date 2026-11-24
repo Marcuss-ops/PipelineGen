@@ -5,19 +5,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/creatorruntime"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	stockbatches "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stockbatches"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
@@ -27,10 +24,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-
-	"strings"
-
-	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 )
 
 // registryCrossStepState carries dependencies produced by the internal-module
@@ -178,36 +171,6 @@ func appendImagesCriticalValidator(domains *DomainBundle, jobs *JobsBundle, vali
 	}
 }
 
-// aistockDriveReaderAdapter adapts drive.Reader to aistock.DriveReaderPort.
-type aistockDriveReaderAdapter struct {
-	reader drive.Reader
-}
-
-// Compile-time assertion.
-var _ aistock.DriveReaderPort = (*aistockDriveReaderAdapter)(nil)
-
-func newAistockDriveReaderAdapter(reader drive.Reader) aistock.DriveReaderPort {
-	if reader == nil {
-		return nil
-	}
-	return &aistockDriveReaderAdapter{reader: reader}
-}
-
-func (a *aistockDriveReaderAdapter) DownloadFile(ctx context.Context, fileID string) (body io.ReadCloser, contentType string, err error) {
-	return a.reader.DownloadFile(ctx, fileID)
-}
-
-func (a *aistockDriveReaderAdapter) GetFileMeta(ctx context.Context, fileID string) (*aistock.DriveFileMeta, error) {
-	meta, err := a.reader.GetFileMeta(ctx, fileID)
-	if err != nil {
-		return nil, err
-	}
-	if meta == nil {
-		return nil, nil
-	}
-	return &aistock.DriveFileMeta{Name: meta.Name}, nil
-}
-
 // Package app — voiceover use case adapters orchestrator
 // (PR-VO-ADAPTERS-SPLIT, July 2026).
 //
@@ -324,7 +287,7 @@ var (
 )
 
 // CleanupFunc is the type returned by initialization functions for teardown.
-type CleanupFunc func()
+type CleanupFunc = creatorruntime.CleanupFunc
 
 // databases is the composition-root view of `storage.DatabaseSet`.
 // Exists only to keep the consumer-facing API of composition.go stable
@@ -348,145 +311,3 @@ type CleanupFunc func()
 //   - dbs.Logs: dbs.Set.Observability.
 //   - dbs.DualPool: a true reader/writer pool over the canonical primary file.
 //   - dbs.Jobs: non-nil only when the explicit jobs split is enabled.
-type Databases struct {
-	Set      *storage.DatabaseSet
-	Main     *storage.SQLiteDB
-	Logs     *storage.SQLiteDB
-	Cache    *storage.SQLiteDB
-	DualPool *storage.DualPool
-
-	// Jobs is the execution-plane handle when the canonical split is enabled;
-	// it remains nil only for explicit rollback/staged deployments.
-	Jobs *storage.SQLiteDB
-}
-
-func (d *Databases) Close() {
-	// Close the compatibility adapter before DatabaseSet. Attached adapters do
-	// not own the primary handle; DatabaseSet remains the sole owner.
-	if d.DualPool != nil {
-		_ = d.DualPool.Close()
-	}
-	if d.Set != nil {
-		_ = d.Set.Close()
-	}
-}
-
-// InitDatabases opens the primary + observability DBs and, when enabled, the
-// jobs + cache planes via the
-// canonical `storage.OpenSet` (codex/db-set-and-paths). No `sql.Open`
-// remains outside `internal/platform/sqlite/**`.
-//
-// Bundle constructors may still consume the compatibility DualPool shape,
-// but it is attached to the DatabaseSet primary below. No alternative
-// primary opening is allowed here.
-//
-// The jobs.db.sqlite split is opt-in and opens an independent execution-plane
-// database. It is never used for media transactions or cross-DB atomicity.
-func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*Databases, error) {
-	if cfg == nil {
-		return nil, fmt.Errorf("init databases: config is nil")
-	}
-	if strings.TrimSpace(cfg.Jobs.JobsDBPath) != "" && !cfg.Jobs.SplitDBEnabled {
-		return nil, fmt.Errorf("init databases: jobs_db_path requires jobs.split_db_enabled=true")
-	}
-
-	setCfg := storage.StorageConfig{
-		DataDir:             cfg.Storage.DataDir,
-		ObservabilityDBPath: cfg.Storage.ObservabilityDBFullPath(),
-		CacheDBPath:         cfg.Storage.CacheDBFullPath(),
-		WorkspaceDir:        cfg.Storage.WorkspaceDir,
-		CacheDir:            cfg.Storage.CacheDir,
-		ExportDir:           cfg.Storage.ExportDir,
-	}
-	if cfg.Jobs.SplitDBEnabled {
-		setCfg.JobsDBPath = cfg.Storage.JobsDBFullPath()
-		if strings.TrimSpace(cfg.Jobs.JobsDBPath) != "" {
-			setCfg.JobsDBPath = cfg.Jobs.JobsDBPath
-		}
-	}
-	set, err := storage.OpenSet(setCfg, log)
-	if err != nil {
-		return nil, fmt.Errorf("init databases: %w", err)
-	}
-	dbs := &Databases{
-		Set:   set,
-		Main:  set.Primary,
-		Logs:  set.Observability,
-		Cache: set.Cache,
-		Jobs:  set.Jobs,
-	}
-
-	// Transitional bundle constructors consume the reader/writer-shaped field.
-	// Open a real reader pool over the same media file; unlike AttachDualPool,
-	// this prevents reads from queueing behind the primary's single connection.
-	dualPool, err := storage.NewDualPool(ctx, set.Primary.Path(), cfg.Storage.SQLiteReaderCount())
-	if err != nil {
-		dbs.Close()
-		return nil, fmt.Errorf("init databases: open media dual pool: %w", err)
-	}
-	dbs.DualPool = dualPool
-
-	return dbs, nil
-}
-
-// ValidateControlPlaneIdentity verifies the durable identity of the primary
-// control plane and the configured single-writer topology. The observability
-// database is intentionally excluded: it is an operational log store, not a
-// control-plane writer. A split jobs database is a second writable control
-// plane and therefore fails closed until it is assigned a non-writer role by
-// an explicit migration/cutover.
-func (d *Databases) ValidateControlPlaneIdentity(ctx context.Context) error {
-	if d == nil || d.Main == nil || d.Main.DB == nil {
-		return fmt.Errorf("control plane identity: primary database is not configured")
-	}
-	meta, err := storage.ReadControlPlaneMeta(ctx, d.Main.DB)
-	if err != nil {
-		return err
-	}
-	if meta.InstanceRole != storage.ControlPlaneRoleCanonical {
-		return fmt.Errorf("control plane identity: primary database_id=%q has role %q, want %q", meta.DatabaseID, meta.InstanceRole, storage.ControlPlaneRoleCanonical)
-	}
-
-	databases := []storage.ConfiguredDatabase{{
-		Name:         "primary",
-		Path:         d.Main.Path(),
-		Role:         meta.InstanceRole,
-		Writable:     true,
-		ControlPlane: true,
-	}}
-	if d.Logs != nil {
-		// Observability is a separately writable operational log store,
-		// not a control-plane writer. Keeping it in the inventory makes
-		// that boundary explicit instead of silently omitting a known DB.
-		databases = append(databases, storage.ConfiguredDatabase{
-			Name:         "observability",
-			Path:         d.Logs.Path(),
-			Role:         storage.ControlPlaneRoleReadOnly,
-			Writable:     true,
-			ControlPlane: false,
-		})
-	}
-	if d.Jobs != nil {
-		databases = append(databases, storage.ConfiguredDatabase{
-			Name:         "jobs",
-			Path:         d.Jobs.Path(),
-			Role:         storage.ControlPlaneRoleReadOnly,
-			Writable:     true,
-			ControlPlane: false,
-		})
-	}
-	if err := storage.ValidateConfiguredControlPlaneWriters(databases); err != nil {
-		return err
-	}
-	return nil
-}
-
-func RunAllMigrations(dbs *Databases, log *zap.Logger) error {
-	if err := dbs.Set.Migrate(log); err != nil {
-		return err
-	}
-	if err := dbs.ValidateControlPlaneIdentity(context.Background()); err != nil {
-		return fmt.Errorf("validate control plane identity: %w", err)
-	}
-	return nil
-}

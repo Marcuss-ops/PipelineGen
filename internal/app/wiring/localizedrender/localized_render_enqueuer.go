@@ -1,0 +1,540 @@
+package localizedrender
+
+// localized_render_enqueuer.go bridges the script-generation runner's
+// per-(scene, language) localized-render fan-out to the canonical
+// LocalizationService (the RenderingGen/Chronon render boundary). The runner emits a
+// LocalizedRenderInput the moment one scene's translation + TTS for a language
+// are final; this adapter turns it into a single-language LocalizeInput so
+// Chronon starts on that clip without waiting for the other scenes/languages.
+//
+// The LocalizationService resolves the source clip + transcript/subtitle text
+// tracks from the canonical stores by (asset_id, language). This adapter
+// ensures the source transcript exists, then delegates a MISSING requested
+// language to the canonical BackfillService (translate → align cues →
+// persist) BEFORE Localize — otherwise the plan builder would find no READY
+// track and fail closed. It never falls back to the source-language track.
+//
+// godlike/07 fail-closed: an enqueue error is returned to the runner (which
+// fails the run), never a silent skip. A scene with no source clip (audio-only)
+// is a legitimate no-op: there is nothing to burn subtitles onto.
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
+	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/localization"
+	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+)
+
+// localizedLocalizer is the narrow seam the adapter needs from the
+// LocalizationService (render + upload + doc assembly for one fan-out).
+type localizedLocalizer interface {
+	Localize(ctx context.Context, in LocalizeInput) (*localization.LocalizeResult, error)
+}
+
+type localizedArtifactUploader interface {
+	UploadRendered(ctx context.Context, artifact localization.LocalizedClipArtifact, folderID string) (localization.LocalizedClipArtifact, error)
+}
+
+// localizedSubtitleMaterializer is the narrow seam for creating a missing
+// requested-language subtitle track through the canonical backfill pipeline.
+// The implementation re-reads the track after writing, so a nil error is a
+// verified success rather than a best-effort write.
+type localizedSubtitleMaterializer interface {
+	EnsureTranslatedSubtitleTrack(ctx context.Context, assetID, sourceLang, targetLang string) error
+}
+
+var _ localizedLocalizer = (*LocalizationService)(nil)
+var _ localizedArtifactUploader = (*LocalizationService)(nil)
+
+// LocalizedRenderEnqueuerConfig pins the deployment-scoped facts the adapter
+// needs to map a LocalizedRenderInput into a LocalizeInput. It is resolved at
+// composition time, never re-derived per enqueue.
+type LocalizedRenderEnqueuerConfig struct {
+	// SourceLanguage is the fallback source language when the input does not
+	// carry one (the canonical clip source language).
+	SourceLanguage string
+	// FolderID is the Drive folder the rendered localized clips upload into.
+	FolderID string
+	// FolderAdmin creates/reuses a per-script child under FolderID.
+	FolderAdmin drive.Admin
+	JobBroker   job.JobBroker
+	// SubtitleFolderID is the Drive root for generated ASS subtitle artifacts.
+	SubtitleFolderID string
+	// Concurrency is the render fan-out parallelism per Localize call (a
+	// single-language call needs only one slot). <1 is clamped to
+	// localization.DefaultRenderConcurrency.
+	Concurrency int
+	// GlobalConcurrency bounds Localize calls across the runner. GPU rendering
+	// starts at one slot until VRAM peak usage has been measured safely.
+	GlobalConcurrency int
+}
+
+// localizedRenderEnqueuerAdapter implements scriptgeneration.LocalizedRenderEnqueuer
+// over the canonical LocalizationService. It is safe for concurrent
+// EnqueueLocalizedRender calls (the fan-out fires per language in parallel).
+type localizedRenderEnqueuerAdapter struct {
+	svc    localizedLocalizer
+	tracks detail.TextTrackRepository
+	cues   texttracks.TimedCueWriter
+	cfg    LocalizedRenderEnqueuerConfig
+	log    *zap.Logger
+	// cueState accumulates every language's full-span cues before the
+	// wholesale transcript-cue replacement: ReplaceTranscriptCues deletes
+	// and re-inserts the complete cue set per source clip, so all languages
+	// of a scene are staged before the rewrite.
+	cueState          map[string]map[string][]detail.TimedCue
+	assets            cliprender.AssetResolver
+	material          cliprender.AssetMaterializer
+	transcript        cliprender.TranscriptResolver
+	subtitleArtifacts detail.SubtitleArtifactRepository
+	// backfill is the canonical text-track materialization pipeline used when
+	// the requested language's subtitle track is missing. Optional: nil keeps
+	// the documented fail-closed behavior (never burn the source language).
+	backfill  localizedSubtitleMaterializer
+	committer persistence.AssetCommitter
+
+	folderMu    sync.Mutex
+	folderCache map[string]string
+	// translationGate bounds missing subtitle-track backfills. A shared stock
+	// clip can be rendered by many narrated scenes at once; allowing each
+	// request to translate the same source concurrently overloads the local
+	// Ollama model and trips its circuit breaker.
+	translationGate chan struct{}
+}
+
+func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
+	if cfg.Concurrency < 1 {
+		cfg.Concurrency = localization.DefaultRenderConcurrency
+	}
+	if cfg.GlobalConcurrency < 1 {
+		cfg.GlobalConcurrency = 1
+	}
+	var assets cliprender.AssetResolver
+	var material cliprender.AssetMaterializer
+	if len(extras) > 0 {
+		assets, _ = extras[0].(cliprender.AssetResolver)
+	}
+	if len(extras) > 1 {
+		material, _ = extras[1].(cliprender.AssetMaterializer)
+	}
+	var transcript cliprender.TranscriptResolver
+	if len(extras) > 2 {
+		transcript, _ = extras[2].(cliprender.TranscriptResolver)
+	}
+	var subtitleArtifacts detail.SubtitleArtifactRepository
+	if len(extras) > 3 {
+		subtitleArtifacts, _ = extras[3].(detail.SubtitleArtifactRepository)
+	}
+	var committer persistence.AssetCommitter
+	if len(extras) > 4 {
+		committer, _ = extras[4].(persistence.AssetCommitter)
+	}
+	return &localizedRenderEnqueuerAdapter{
+		svc:               svc,
+		tracks:            tracks,
+		cues:              cues,
+		cfg:               cfg,
+		log:               log,
+		cueState:          make(map[string]map[string][]detail.TimedCue),
+		assets:            assets,
+		material:          material,
+		transcript:        transcript,
+		subtitleArtifacts: subtitleArtifacts,
+		committer:         committer,
+		folderCache:       make(map[string]string),
+		translationGate:   make(chan struct{}, 1),
+	}
+}
+
+var _ scriptgeneration.LocalizedRenderEnqueuer = (*localizedRenderEnqueuerAdapter)(nil)
+
+// SetSubtitleMaterializer attaches the canonical text-track pipeline used to
+// create a missing requested-language track on demand. Passing nil preserves
+// the fail-closed contract: a missing track is an error, never a fallback to
+// the source-language track.
+func (a *localizedRenderEnqueuerAdapter) SetSubtitleMaterializer(m localizedSubtitleMaterializer) {
+	if a != nil {
+		a.backfill = m
+	}
+}
+
+// ReplaceTranscriptCues keeps the policy adapter compatible with the
+// canonical cue-writer port while preserving the concrete writer ownership in
+// the composition root.  The policy refactor uses the adapter as a writer
+// boundary; it must not silently drop cue replacements.
+func (a *localizedRenderEnqueuerAdapter) ReplaceTranscriptCues(ctx context.Context, assetID string, byLang map[string][]detail.TimedCue) error {
+	if a == nil || a.cues == nil {
+		return fmt.Errorf("localized render: cue writer not wired")
+	}
+	return a.cues.ReplaceTranscriptCues(ctx, assetID, byLang)
+}
+
+// EnqueueLocalizedRender persists the source transcript + translated subtitle
+// text tracks (with full-span cues), then runs a single-language Localize.
+func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (err error) {
+	if a == nil || a.svc == nil {
+		return nil // render not registered: legitimate no-op
+	}
+	renderStartedAt := time.Now().UTC()
+	assetID := strings.TrimSpace(in.ClipAssetID)
+	if assetID == "" {
+		assetID = strings.TrimSpace(in.ClipID)
+	}
+	// No child JOB is created here. The production worker claims queued jobs
+	// globally, even when a caller supplies a narrow type filter, so an inline
+	// child would race it (or reach a worker with no child handler) and fail its
+	// CAS fence. Until the broker exposes an atomic claim-by-ID operation the
+	// parent run's own record of each certified render and its timing is the
+	// authority. The previous `beginChild`/`inlineRenderChild.finish` pair was
+	// unreachable by construction (it always returned nil) and carried two
+	// discarded broker state transitions; it was deleted rather than kept as a
+	// disabled feature nobody could exercise.
+	if assetID == "" {
+		// Audio-only scene: no source clip to burn subtitles onto.
+		return nil
+	}
+	built, err := a.buildLocalizedRenderRequest(ctx, in)
+	if err != nil {
+		// A silent/music-only clip is not a Whisper defect: state it with the
+		// NO_SPEECH code so the run's failure projection tells the operator
+		// what to fix (clip selection or the subtitle contract), instead of
+		// reading like a broken ASR backend.
+		if errors.Is(err, cliprender.ErrNoSpeech) {
+			a.log.Warn("localized render: source clip has no speech for a timed transcript",
+				zap.String("scene_id", in.SceneID),
+				zap.String("clip_asset_id", assetID),
+				zap.Error(err))
+			return fmt.Errorf("localized render: scene %q clip %q: NO_SPEECH: %w", in.SceneID, assetID, err)
+		}
+		return err
+	}
+	clipID := built.identity.clipID
+	res, err := a.svc.Localize(ctx, a.localizeInput(in, built))
+	if err != nil {
+		return fmt.Errorf("localized render: scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
+	}
+	if len(res.Failures) > 0 {
+		for _, failure := range res.Failures {
+			failureText := ""
+			if failure.Err != nil {
+				failureText = failure.Err.Error()
+			}
+			a.log.Error("localized render child failed",
+				zap.String("scene_id", in.SceneID),
+				zap.String("language", built.identity.targetLang),
+				zap.String("clip_id", clipID),
+				zap.String("error", failureText),
+			)
+			code := "LOCALIZED_RENDER_FAILED"
+			upper := strings.ToUpper(failureText)
+			if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
+				code = "CUDA_OUT_OF_MEMORY"
+			}
+			if in.OnFailed != nil {
+				if sinkErr := in.OnFailed(scriptgeneration.LocalizedRenderFailure{
+					SceneID: in.SceneID, Language: scriptgeneration.Language(built.identity.targetLang), ClipID: clipID,
+					ErrorCode: code, Error: failureText,
+				}); sinkErr != nil {
+					return fmt.Errorf("localized render: record failure for scene %q: %w", in.SceneID, sinkErr)
+				}
+			}
+		}
+		// Carry the first real cause into the returned error. "produced 1
+		// failure(s)" used to be the only text the job result kept, so the
+		// operator had to grep journald to learn whether the child died on a
+		// decoder EOF, a missing transcript or a CUDA OOM.
+		return fmt.Errorf("localized render: scene %q lang %q clip %q produced %d failure(s): %s",
+			in.SceneID, built.identity.targetLang, clipID, len(res.Failures), summarizeLocalizedRenderFailures(res.Failures))
+	}
+	// Project the certified produced videos back to the runner so the final
+	// MP4 (asset id, sha256, Drive link) is recorded on the run result — a
+	// video that was rendered and uploaded must never be orphaned from the
+	// run that produced it. Fail-closed: a sink error fails the enqueue.
+	if in.OnRendered != nil {
+		for _, artifact := range res.Artifacts {
+			renderFinishedAt := time.Now().UTC()
+			// The unit's own work window is admission → publication, as measured
+			// by the localization service. Falling back to this call's boundaries
+			// keeps adapters that predate the timing fields working, but the
+			// fallback must never be preferred: it charges the unit with the wait
+			// for a render slot.
+			startedAt := artifact.AdmittedAt
+			if startedAt.IsZero() {
+				startedAt = renderStartedAt
+			}
+			finishedAt := artifact.FinishedAt
+			if finishedAt.IsZero() {
+				finishedAt = renderFinishedAt
+			}
+			wallMS := finishedAt.Sub(startedAt).Milliseconds()
+			if wallMS < 0 {
+				wallMS = 0
+			}
+			produced := scriptgeneration.LocalizedRenderResult{
+				SceneID:       artifact.SceneID,
+				SceneIndex:    in.SceneIndex,
+				Language:      scriptgeneration.Language(artifact.Language),
+				RenderJobID:   artifact.PlanRevision,
+				Reused:        artifact.Reused,
+				RenderSource:  artifact.RenderSource,
+				ClipID:        artifact.ClipID,
+				AssetID:       artifact.AssetID,
+				SHA256:        artifact.SHA256,
+				DriveFileID:   artifact.DriveFileID,
+				DriveLink:     artifact.DriveLink,
+				DriveFolderID: artifact.DriveFolderID,
+				DurationMS:    artifact.DurationMS,
+				SizeBytes:     artifact.SizeBytes,
+				StorageKey:    artifact.StorageKey,
+				ArtifactURL:   artifact.ArtifactURL,
+				LocalPath:     artifact.LocalPath,
+				Status:        string(artifact.Status),
+				Backend:       artifact.Backend,
+				Metrics:       metricsMapFromJSON(artifact.MetricsJSON),
+				StartedAt:     startedAt,
+				FinishedAt:    finishedAt,
+				WallMS:        wallMS,
+				QueueWaitMS:   artifact.QueueWaitMS,
+			}
+			canonicalAssetID, err := a.commitLocalizedRenderAsset(ctx, in, artifact)
+			if err != nil {
+				return fmt.Errorf("localized render: canonical asset commit for scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
+			}
+			if canonicalAssetID != "" {
+				// The run records the CANONICAL content-addressed identity the media
+				// SSOT owns, not the render-local one, so a later lookup by asset id
+				// finds the committed row. Without a committer the artifact keeps its
+				// own identity (hermetic and Drive-projection-only compositions).
+				produced.AssetID = canonicalAssetID
+			}
+			if err := in.OnRendered(produced); err != nil {
+				return fmt.Errorf("localized render: record produced video for scene %q lang %q: %w", in.SceneID, built.identity.targetLang, err)
+			}
+		}
+	}
+	return nil
+}
+
+// summarizeLocalizedRenderFailures condenses per-language render failures into
+// one self-describing line. The job result keeps only the returned error, so
+// the first cause (decoder EOF at frame 924, NO_SPEECH, hash mismatch, CUDA
+// OOM) must survive here instead of living only in the log stream.
+func summarizeLocalizedRenderFailures(failures []localization.TaskResult) string {
+	const maxReported = 3
+	parts := make([]string, 0, maxReported)
+	for i, failure := range failures {
+		if i == maxReported {
+			break
+		}
+		text := "render failed without a cause"
+		if failure.Err != nil {
+			text = strings.TrimSpace(failure.Err.Error())
+		}
+		if text == "" {
+			text = "render failed without a cause"
+		}
+		parts = append(parts, fmt.Sprintf("priority=%d: %s", failure.Priority, text))
+	}
+	if extra := len(failures) - len(parts); extra > 0 {
+		parts = append(parts, fmt.Sprintf("+%d more", extra))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func metricsMapFromJSON(raw string) map[string]float64 {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var metrics map[string]float64
+	if err := json.Unmarshal([]byte(raw), &metrics); err != nil || len(metrics) == 0 {
+		return nil
+	}
+	return metrics
+}
+
+func (a *localizedRenderEnqueuerAdapter) resolveExistingSubtitleLanguage(ctx context.Context, assetID, requested string) (string, error) {
+	track, cues, err := a.tracks.FindReady(ctx, assetID, requested, detail.TextTrackTranscript)
+	if err != nil {
+		return "", fmt.Errorf("localized render: find source subtitles for %q: %w", assetID, err)
+	}
+	if track != nil && len(cues) > 0 && !invalidSubtitleText(track.TextContent, cues) {
+		return requested, nil
+	}
+	languages, err := a.tracks.ListReadyLanguages(ctx, assetID, detail.TextTrackTranscript)
+	if err != nil {
+		return "", fmt.Errorf("localized render: list source subtitle languages for %q: %w", assetID, err)
+	}
+	for _, language := range languages {
+		candidate, candidateCues, findErr := a.tracks.FindReady(ctx, assetID, language, detail.TextTrackTranscript)
+		if findErr != nil {
+			return "", fmt.Errorf("localized render: find fallback subtitles for %q/%q: %w", assetID, language, findErr)
+		}
+		if candidate != nil && len(candidateCues) > 0 && !invalidSubtitleText(candidate.TextContent, candidateCues) {
+			return language, nil
+		}
+	}
+	return "", nil
+}
+
+func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Context, assetID, sourceLang, targetLang string, in scriptgeneration.LocalizedRenderInput) (bool, error) {
+	// Localization plans always require a timed source transcript, even when
+	// the final burn-in is disabled. Ensure the source track and requested
+	// language track exist here; the render spec still controls whether the
+	// renderer draws subtitles into the output.
+	if a.tracks == nil {
+		return false, fmt.Errorf("localized render: text track repository not wired")
+	}
+	// A durable ASS artifact is an existing input, never a newly generated
+	// subtitle for this render. Keep this fact separate from the text-track
+	// lookup: an ASS may already be on Drive even when an older database row
+	// has incomplete cue materialization. In that case fail closed; do not
+	// invoke Whisper and do not create a duplicate Drive artifact.
+	existingSubtitle := false
+	if a.subtitleArtifacts != nil {
+		artifact, artifactErr := a.subtitleArtifacts.FindCurrent(ctx, assetID, sourceLang, detail.SubtitleFormatASS)
+		if artifactErr != nil {
+			return false, fmt.Errorf("localized render: find existing subtitle artifact for %q: %w", assetID, artifactErr)
+		}
+		existingSubtitle = artifact != nil && artifact.Status == detail.SubtitleStatusReady && artifact.IsCurrent &&
+			strings.TrimSpace(artifact.DriveFileID) != "" && strings.TrimSpace(artifact.DriveURL) != ""
+	}
+	track, cues, err := a.tracks.FindReady(ctx, assetID, sourceLang, detail.TextTrackTranscript)
+	if err != nil {
+		return false, fmt.Errorf("localized render: find source subtitles for %q: %w", assetID, err)
+	}
+	generated := false
+	if track != nil && invalidSubtitleText(track.TextContent, cues) {
+		// Older runs incorrectly persisted the scene brief as transcript.
+		// Treat it as a cache miss so the canonical clip transcriber replaces
+		// both the track and its timed cues.
+		track, cues = nil, nil
+	}
+	if track == nil || len(cues) == 0 {
+		if existingSubtitle {
+			return false, fmt.Errorf("localized render: existing subtitle artifact for %q has no READY timed transcript; refusing ASR regeneration", assetID)
+		}
+		if a.transcript == nil || a.assets == nil || a.material == nil {
+			return false, fmt.Errorf("localized render: no timed subtitles in database for %q and transcript generation is not wired", assetID)
+		}
+		ref, err := a.assets.ResolveAsset(ctx, assetID)
+		if err != nil {
+			return false, fmt.Errorf("localized render: resolve source for subtitle generation %q: %w", assetID, err)
+		}
+		source, err := a.material.Materialize(ctx, *ref)
+		if err != nil {
+			return false, fmt.Errorf("localized render: materialize source for subtitle generation %q: %w", assetID, err)
+		}
+		generatedResult, err := a.transcript.Generate(ctx, cliprender.TranscriptInput{
+			AssetID: assetID, Language: sourceLang, Mode: "generate", Persist: true,
+			SourceSHA256: source.SHA256,
+		}, source)
+		if err != nil || generatedResult == nil || len(generatedResult.Cues) == 0 {
+			if err == nil {
+				err = fmt.Errorf("empty timed transcript")
+			}
+			return false, fmt.Errorf("localized render: generate/persist subtitles for %q: %w", assetID, err)
+		}
+		generated = true
+		track, cues, err = a.tracks.FindReady(ctx, assetID, sourceLang, detail.TextTrackTranscript)
+		if err != nil || track == nil || len(cues) == 0 || invalidSubtitleText(track.TextContent, cues) {
+			return false, fmt.Errorf("localized render: generated subtitles for %q were not readable from database", assetID)
+		}
+	}
+	// Existing canonical subtitles are inputs to this render. They must never
+	// activate the localization subtitle uploader, even when the caller's
+	// request was assembled by a retry path.
+	if existingSubtitle {
+		generated = false
+	}
+	if targetLang != sourceLang {
+		if err := a.ensureTargetSubtitleTrack(ctx, assetID, sourceLang, targetLang); err != nil {
+			return false, err
+		}
+	}
+	return generated, nil
+}
+
+// ensureTargetSubtitleTrack makes the requested language's timed subtitle
+// track exist, using the canonical BackfillService when it is missing. The
+// re-read after the write is the success signal: BackfillService reports
+// per-asset failures in its result rather than as a transport error, so a nil
+// error alone would be a fake success. If no pipeline is wired, or the write
+// still leaves no timed cues, the render fails closed instead of burning the
+// source language.
+func (a *localizedRenderEnqueuerAdapter) ensureTargetSubtitleTrack(ctx context.Context, assetID, sourceLang, targetLang string) error {
+	track, cues, err := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
+	if err != nil {
+		return fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, err)
+	}
+	if track != nil && len(cues) > 0 {
+		return nil
+	}
+	if a.backfill == nil {
+		return fmt.Errorf("localized render: no timed subtitles for requested language %q on %q; refusing source-language fallback (on-demand subtitle materialization is not wired)", targetLang, assetID)
+	}
+	if a.translationGate != nil {
+		select {
+		case a.translationGate <- struct{}{}:
+			defer func() { <-a.translationGate }()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		// Another render may have materialized this exact track while this
+		// request waited. Recheck under the gate so repeated shared-stock scenes
+		// cause one translation, not a burst of identical model calls.
+		track, cues, err = a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
+		if err != nil {
+			return fmt.Errorf("localized render: recheck translated subtitles for %q/%q: %w", assetID, targetLang, err)
+		}
+		if track != nil && len(cues) > 0 {
+			return nil
+		}
+	}
+	if err := a.backfill.EnsureTranslatedSubtitleTrack(ctx, assetID, sourceLang, targetLang); err != nil {
+		return fmt.Errorf("localized render: materialize requested subtitles %q on %q: %w", targetLang, assetID, err)
+	}
+	track, cues, err = a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
+	if err != nil {
+		return fmt.Errorf("localized render: verify translated subtitles for %q/%q: %w", assetID, targetLang, err)
+	}
+	if track == nil || len(cues) == 0 {
+		return fmt.Errorf("localized render: no timed subtitles for requested language %q on %q after materialization; refusing source-language fallback", targetLang, assetID)
+	}
+	return nil
+}
+
+func invalidSubtitleText(trackText string, cues []detail.TimedCue) bool {
+	text := strings.ToLower(strings.TrimSpace(trackText))
+	if strings.Contains(text, "clip description:") || strings.Contains(text, "source text:") ||
+		strings.Contains(text, "write a script") || strings.Contains(text, "write a narration") ||
+		strings.Contains(text, "write a brief") || strings.Contains(text, "write a summary") {
+		return true
+	}
+	for _, cue := range cues {
+		cueText := strings.ToLower(strings.TrimSpace(cue.Text))
+		if strings.Contains(cueText, "clip description:") || strings.Contains(cueText, "source text:") ||
+			strings.Contains(cueText, "write a script") || strings.Contains(cueText, "write a narration") ||
+			strings.Contains(cueText, "write a brief") || strings.Contains(cueText, "write a summary") {
+			return true
+		}
+	}
+	return false
+}
+
+func NewLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.TextTrackRepository, cues texttracks.TimedCueWriter, cfg LocalizedRenderEnqueuerConfig, log *zap.Logger, extras ...interface{}) *localizedRenderEnqueuerAdapter {
+	return newLocalizedRenderEnqueuerAdapter(svc, tracks, cues, cfg, log, extras...)
+}

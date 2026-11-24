@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/mediahttp"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,7 +29,7 @@ func (f *fakeContentAssets) Count(context.Context, asset.Filter) (int64, error) 
 func newContentTestRouter(details *asset.Details) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/assets/:id/content", newMediaContentHandler(&fakeContentAssets{details: details}, zap.NewNop()))
+	r.GET("/assets/:id/content", mediahttp.NewMediaContentHandler(&fakeContentAssets{details: details}, zap.NewNop()))
 	return r
 }
 

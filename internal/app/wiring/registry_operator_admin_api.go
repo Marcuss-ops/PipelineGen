@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/mediahttp"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -75,11 +76,11 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 		// CR-19: object-store delivery exposes its bytes through the same
 		// authenticated media surface. The proxy reads the asset's primary
 		// object_storage location; it never redirects to the internal store URL.
-		m2mMedia.SetContentHandler(newMediaContentHandler(assetReader, log))
+		m2mMedia.SetContentHandler(mediahttp.NewMediaContentHandler(assetReader, log))
 		// Unified download: any ACTIVE asset (video/audio/image/script), local
 		// or object-storage or Drive, with Range + SHA-256. The clip-only route
 		// stays for backward compatibility.
-		m2mMedia.SetAssetDownloadHandler(newMediaAssetDownloadHandler(assetReader, wiring.Assets.DriveDownload, log))
+		m2mMedia.SetAssetDownloadHandler(mediahttp.NewMediaAssetDownloadHandler(assetReader, wiring.Assets.DriveDownload, log))
 		// The remote reader must be able to query the real vector/keyword
 		// indexes, not only GET /assets?search= (ILIKE). Same Aggregator as
 		// the admin route, gated by media.read.

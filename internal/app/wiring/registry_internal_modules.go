@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/buildbundle"
 	"strings"
 
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/search"
 	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/youtube"
+	wiringmedia "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock"
 	youtubeadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/youtube"
@@ -92,7 +94,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 			log.Warn("registerInternalModules: delivery signer construction failed; semantic backend delivery disabled",
 				zap.Error(err))
 		} else {
-			deliveryPort = &deliverySignerAdapter{signer: signer}
+			deliveryPort = buildbundle.NewDeliverySignerAdapter(signer)
 		}
 	}
 
@@ -172,7 +174,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		// Identity is a MEDIA fact: resolve against the PostgreSQL media SSOT
 		// whenever it is deployed, and keep the operational SQLite registry
 		// only for the graceful-degrade path (MEDIA-SSOT P1-8).
-		canonicalResolver = newCanonicalIdentityResolver(root.MediaPostgres, legacyDB)
+		canonicalResolver = wiringmedia.NewCanonicalIdentityResolver(root.MediaPostgres, legacyDB)
 	}
 	var localScorer search.LocalScorer
 	if _, ok := mediaRepo.(searchwiring.PostgresLocalSearchPort); ok {

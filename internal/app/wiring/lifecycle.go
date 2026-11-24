@@ -60,15 +60,9 @@ import (
 	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/clips"
 	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/lifecycle"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/monitor"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 
 	"go.uber.org/zap"
 )
@@ -353,58 +347,3 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *Databases
 // (drive.Reader) is the canonical read-side port for the reconcile
 // service's DriveIsNotTrashed check. The composition root threads
 // both directly — no unsafe type-assertion needed.
-type AssetLifecycleDeps struct {
-	Registry      artifacts.Registry
-	Publisher     delivery.Publisher
-	AssetIndex    *assetindex.Service
-	DriveVerifier artifacts.DriveVerifier
-	DriveReader   drive.Reader
-	Finalizer     *artifacts.Finalizer
-	Store         lifecycle.AssetRecordStore
-}
-
-// NewLifecycleFromDeps creates a lifecycle Service using the provided dependencies.
-//
-// FASE 9 Step 7: DriveAdmin (drive.Admin) replaces the former *drive.Uploader.
-// A drive.Reader is extracted via safe type-assertion for verifier + reconcile.
-// All production callers pass *drive.Uploader which satisfies both interfaces.
-//
-// F2.7 (June 2026): DriveAdmin REMOVED. NewLifecycleFromDeps now takes
-// Publisher (delivery.Publisher) + DriveReader (drive.Reader) — the
-// application-layer holds ZERO references to the legacy drive.Admin
-// port. Service uses Publisher for Drive writes (closes P0
-// #7) and DriveReader for the read-only reconcile/verify surface.
-func NewLifecycleFromDeps(
-	deps *AssetLifecycleDeps,
-	log *zap.Logger,
-) *lifecycle.Service {
-	driveReader := deps.DriveReader
-
-	if deps.DriveVerifier == nil && driveReader != nil {
-		deps.DriveVerifier = drive.NewDriveVerifierAdapter(driveReader)
-	}
-
-	if deps.Finalizer == nil && deps.Registry != nil && deps.DriveVerifier != nil && deps.AssetIndex != nil {
-		deps.Finalizer = artifacts.NewFinalizerWithPorts(
-			deps.Registry,
-			deps.DriveVerifier,
-			newArtifactAssetIndexAdapter(deps.AssetIndex),
-			semantic.NewArtifactsMetadataAdapter(),
-			log,
-		)
-	}
-
-	if deps.Store == nil && deps.Registry != nil {
-		deps.Store = lifecycle.NewRegistryStoreAdapter(deps.Registry)
-	}
-
-	return lifecycle.NewService(lifecycle.ServiceDeps{
-		Store:       deps.Store,
-		Publisher:   deps.Publisher,
-		DriveReader: driveReader,
-		Registry:    deps.Registry,
-		AssetIndex:  deps.AssetIndex,
-		Finalizer:   deps.Finalizer,
-		Log:         log,
-	}, lifecycle.DefaultConfig())
-}

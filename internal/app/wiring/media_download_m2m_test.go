@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/mediahttp"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,7 +40,7 @@ func newDownloadM2MRouter(t *testing.T, details *asset.Details, scopes []string)
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	module := operator.NewM2MModule(nil, zap.NewNop(), func() bool { return true })
-	module.SetAssetDownloadHandler(newMediaAssetDownloadHandler(&fakeContentAssets{details: details}, nil, zap.NewNop()))
+	module.SetAssetDownloadHandler(mediahttp.NewMediaAssetDownloadHandler(&fakeContentAssets{details: details}, nil, zap.NewNop()))
 
 	engine := gin.New()
 	group := engine.Group("/api/v1/media")

@@ -1,0 +1,507 @@
+// Package app — voiceover service bundle construction (Wave 15 PR4d-final).
+//
+// Extracted from compose_media.go per architecture/current.yaml::Wave 15
+// pending #1 ("Migrate the 3 shared helpers... into modules/voiceover.go,
+// modules/content.go, modules/images.go"). The "modules/" path in the
+// pending item is a forward reference; the canonical current target for
+// per-capability helpers is `internal/app/build_bundles_<capability>.go`,
+// matching the buildIngestService / buildHealthService / catalog sync builder
+// pattern already established by build_bundles_core.go / build_bundles_process.go
+// / build_bundles_domain.go.
+//
+// Private-helper convention (lowercase `build*`) — these helpers are NOT
+// standalone composable bundles; they are internal to BuildDomainBundle
+// (build_bundles_domain.go) which aggregates their output into
+// ComposeRoot.Domains.
+//
+// File layout (domain split, July 2026):
+//   - this file: buildVoiceoverService orchestrator
+//   - build_voiceover_tts.go: TTS provider chain construction
+//   - build_voiceover_destinations.go: destination resolver adapters
+//     (+ nopDestinationResolver test-bootstrap fallback)
+//   - build_voiceover_jobs.go: wireVoiceoverJobBindings
+//   - build_voiceover_validators.go: appendVoiceoverCriticalValidators
+package buildbundle
+
+import (
+	"context"
+	"fmt"
+
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/voiceover"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+
+	"go.uber.org/zap"
+
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	capindexing "github.com/Marcuss-ops/PipelineGen/internal/capabilities/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
+	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
+
+	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
+
+	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
+)
+
+// appendVoiceoverCriticalValidators retains the composition-root call site
+// while the voiceover module owns its handler registration policy.
+func appendVoiceoverCriticalValidators(domains *DomainBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
+	if domains == nil || jobs == nil || validators == nil {
+		return
+	}
+	var generate, generateItem vowiring.HandlerRegistrar
+	if domains.VoiceoverGenerateHandler != nil {
+		generate = domains.VoiceoverGenerateHandler
+	}
+	if domains.VoiceoverGenerateItemHandler != nil {
+		generateItem = domains.VoiceoverGenerateItemHandler
+	}
+	*validators = append(*validators, vowiring.CriticalHandlers(
+		jobs.Service,
+		generate,
+		generateItem,
+	)...)
+}
+
+// voiceoverMediaReaderAdapter maps the platform media reader onto the
+// capability-owned VoiceoverMediaReader port.
+//
+// The mapping exists because the two packages declare their own location type on
+// purpose (godlike/06 one-owner-per-fact): the capability must not import the
+// platform, and the platform must not import the capability. The composition root
+// is the only place that holds both, so it is where the translation belongs —
+// the same reason mediaDetailsReaderFromCommitter and
+// enrichStateStoreFromCommitter live here.
+type voiceoverMediaReaderAdapter struct {
+	inner *pgmedia.MediaVoiceoverMediaReader
+}
+
+func (a voiceoverMediaReaderAdapter) MediaAssetLocation(ctx context.Context, assetID string) (vowiring.VoiceoverMediaLocation, bool, error) {
+	loc, found, err := a.inner.MediaAssetLocation(ctx, assetID)
+	if err != nil || !found {
+		return vowiring.VoiceoverMediaLocation{}, found, err
+	}
+	return vowiring.VoiceoverMediaLocation{
+		DriveFileID:  loc.DriveFileID,
+		DriveLink:    loc.DriveLink,
+		DownloadLink: loc.DownloadLink,
+		LocalPath:    loc.LocalPath,
+		Name:         loc.Name,
+	}, true, nil
+}
+
+func (a voiceoverMediaReaderAdapter) CountByDriveFileID(ctx context.Context, driveFileID, currentID string) (string, int, error) {
+	return a.inner.CountByDriveFileID(ctx, driveFileID, currentID)
+}
+
+var _ vowiring.VoiceoverMediaReader = voiceoverMediaReaderAdapter{}
+
+// voiceoverMediaReaderFromCommitter resolves the voiceover media read surface
+// from the canonical committer's own engine, so the voiceover capability reads
+// the same media SSOT the canonical committer writes. nil means the media plane
+// is closed: the caller passes nil through and both adapter call sites fail
+// closed rather than degrading onto the operational mirror, which is exactly the
+// split-brain MEDIA-SSOT P2-9 Phase 2 removes.
+func voiceoverMediaReaderFromCommitter(committer assetspersistence.AssetCommitter) vowiring.VoiceoverMediaReader {
+	if committer == nil {
+		return nil
+	}
+	handle := mediaEngineHandle(committer)
+	if handle == nil {
+		return nil
+	}
+	return voiceoverMediaReaderAdapter{inner: handle.MediaVoiceoverMediaReader()}
+}
+
+// buildVoiceoverService sets up the voiceover service and its repository.
+//
+// PR4-H (June 2026): SetSemanticTagger / SetTranslator / SetClipIndexer
+// setters have been removed from voiceover.NewService — the callbacks
+// required for promo generation, translation, and post-enrichment
+// indexing are now passed as constructor arguments.
+//
+// PR-VO-A3 (June 2026): the legacy ClipIndexFunc callback is gone —
+// the indexing handoff now flows through the canonical outbox path.
+// The voiceover swap (swapVoiceoverRow) enqueues
+// `asset.index.requested` inside its SQLite transaction via the
+// TxOutboxEnqueuer port, so the metadata UPSERT and the indexing
+// event INSERT commit atomically. The concrete adapter is the
+// production outbox.Dispatcher (passed as outboxDispatcher below),
+// structurally satisfying voiceover.TxOutboxEnqueuer via Go's
+// implicit-interface rules.
+//
+// Azione #9 follow-up (July 2026): DriveUploaderPort interface removed
+// from ports.go; voiceoverDriveAdapter struct also removed from
+// adapters_voiceover_publisher.go. Post-commit Drive cleanup now flows
+// directly through drive.Admin → jobsoutbox.VoiceoverCleanupDriver
+// (structural conformance, no wrapper needed).
+func buildVoiceoverPipeline(
+	ctx context.Context,
+	cfg *config.Config,
+	dbs *Databases,
+	log *zap.Logger,
+
+	driveUploader *drive.Uploader,
+	publisher delivery.Publisher,
+	assetIndexService *assetindex.Service,
+	clipIndexerService *capindexing.ReindexRequesterHolder, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
+	destResolver asset.Resolver,
+	metaWriter semantic.MetadataWriterPort,
+	outboxDispatcher *outbox.Dispatcher,
+	committer assetspersistence.AssetCommitter,
+	mediaConfig mediaexec.ExecutionConfig,
+	driveUploadGate *concurrent.FairSemaphore,
+) (*assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor, voiceover.AsyncPublishPool, error) {
+	voDir := cfg.Storage.VoiceoversPath()
+	voRepo := imagesregistry.NewVoiceoversRepository(dbs.DualPool.Writer)
+
+	deps, err := buildVoiceoverPersistence(cfg, dbs, log, voRepo, driveUploader, publisher, assetIndexService, clipIndexerService, outboxDispatcher, committer)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	executor, audioProcessor, err := buildVoiceoverItemUseCase(cfg, log, mediaConfig, destResolver, voDir, deps)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	log.Info("Voiceover canonical pipeline initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
+	return voRepo, executor, audioProcessor, deps.publishPool, nil
+}
+
+type voiceoverPersistence struct {
+	voRepoAdapter  *vowiring.UseCaseRepoAdapter
+	voCacheAdapter *vowiring.VoiceoverCacheAdapter
+	publishPool    voiceover.AsyncPublishPool
+	finalizer      voiceover.VoiceoverFinalizer
+}
+
+func buildVoiceoverPersistence(cfg *config.Config, dbs *Databases, log *zap.Logger, voRepo *assets.VoiceoversRepository, driveUploader *drive.Uploader, publisher delivery.Publisher, assetIndexService *assetindex.Service, clipIndexerService *capindexing.ReindexRequesterHolder, outboxDispatcher *outbox.Dispatcher, committer assetspersistence.AssetCommitter) (*voiceoverPersistence, error) {
+	// P1-2 (June 2026): persistence.Repository adapter — wraps the
+	// production *sqassets.VoiceoversRepository + *sql.DB so the
+	// voiceover.Service can thread the PR-VO-A2 atomic swap tx
+	// through a canonical port instead of holding a *sql.DB field
+	// (the previous field was removed in P1-2 commit 1).
+	// MEDIA-SSOT P2-9 Phase 2: the adapter's media_assets reads (the cross-run
+	// cache location lookup and the PR-VO-B3 dedupe gate) resolve from the media
+	// SSOT, not from dbs.DualPool.Writer. media_assets is PostgreSQL-owned, so
+	// reading it on the operational handle graded a database that holds no
+	// committed media rows. A closed media plane passes a nil reader, and both
+	// call sites then report explicitly rather than answering from a mirror.
+	voRepoAdapter := vowiring.NewUseCaseRepoAdapter(voRepo, sqlport.WrapDB(dbs.DualPool.Writer), voiceoverMediaReaderFromCommitter(committer))
+
+	// Cross-run voiceover cache (August 2026): wraps the existing
+	// FindByFingerprint on the SQLite repository to short-circuit
+	// TTS + upload + finalize when a previous run already produced
+	// the same voiceover for the same content fingerprint.
+	voCacheAdapter := vowiring.NewVoiceoverCacheAdapter(voRepoAdapter, log)
+	voCacheAdapter.SetTimingArtifactReader(driveUploader)
+
+	// P0.4 async publish pool: Drive uploads + timing publishes +
+	// SQLite commits run in a bounded background pool so TTS slots
+	// are freed after synthesis. The runner drains this pool after
+	// the voiceover phase (before audio compile).
+	publishPool := vowiring.NewVoiceoverPublishPool(cfg.Voiceover.MaxConcurrentTTS, log)
+
+	// Voiceover registry adapter — wraps the SQLite vo repo as a
+	// Registry so NewLifecycleFromDeps accepts it.
+	voRegistryAdapter := voiceover.NewVoiceoverRegistryAdapter(voRepo)
+
+	voLifecycle := NewLifecycleFromDeps(&AssetLifecycleDeps{
+		Registry:    voRegistryAdapter,
+		Publisher:   publisher,
+		DriveReader: driveUploader,
+		AssetIndex:  assetIndexService,
+	}, log)
+
+	// P0.4 Fase 3a (July 2026): construct the unified VoiceoverFinalizer
+	// once and inject it into BOTH the per-item use case (child pipeline)
+	// and the legacy Service (batch pipeline). The finalizer replaces the
+	// two divergent finalization paths with a single 6-step atomic commit
+	// sequence: dedupe → delete → insert → media_assets projection →
+	// index outbox → cleanup outbox.
+	//
+	// Dependencies:
+	//   - voRepoAdapter:   persistence.Repository (BeginTx, InsertTx,
+	//                       DeleteByIDTx, CountByDriveFileIDTx)
+	//   - outboxEnqueuer:  TxOutboxEnqueuer (EnqueueIndexEvent,
+	//                       EnqueueCleanupEvent) — nil-safe
+	//   - voLifecycle:     *Service → LifecycleProjectionUpserter
+	//                       via voiceoverProjectionAdapter
+	//   - log:             *zap.Logger
+	// PR-VO-A3: outbox enqueuer. Production wiring supplies
+	// the *outbox.Dispatcher; the field satisfies the TxOutboxEnqueuer
+	// port structurally (no wrapper required).
+	var outboxEnqueuer voiceover.TxOutboxEnqueuer
+	if outboxDispatcher != nil {
+		outboxEnqueuer = outboxDispatcher
+		// POSTGRES-MEDIA-CUTOVER (2026-09-12): the media index consumer is
+		// the PostgreSQL outbox worker (PostgresIndexWorker), NOT clipindexer.
+		// clipindexer.Enabled is therefore no longer a precondition for
+		// consumer-side indexing; the check is retained only to flag a
+		// half-wired compatibility seam (imperative IndexClip callers that
+		// would fall through to the retired SQLite → pgvector implementation).
+		if clipIndexerService == nil || !clipIndexerService.IsEnabled() {
+			log.Warn("voiceover service wired with outbox dispatcher but the clipindexer compatibility seam is disabled — asset.index.requested events are still consumed by the PostgreSQL outbox worker (pgvector), but imperative IndexClip callers have no fallback")
+		}
+	} else {
+		log.Warn("voiceover service wired WITHOUT outbox dispatcher — indexing will be SKIPPED (no asset.index.requested events emitted)")
+	}
+
+	projectionAdapter := vowiring.NewVoiceoverProjectionAdapter(voLifecycle)
+	// NewVoiceoverFinalizer sig is (repo, outbox, lifecycle, committer, logger)
+	// The canonical AssetCommitter owns Step 4+5; this composition uses its
+	// self-owned PostgreSQL transaction because the voiceover repository is
+	// SQLite.
+	// Voiceovers are persisted in SQLite while the canonical media projection
+	// is PostgreSQL. Keep the voiceover swap in the caller-owned SQLite tx and
+	// let the canonical committer own its PostgreSQL tx; forwarding the SQLite
+	// tx would cross database dialects.
+	finalizer := voiceover.NewVoiceoverFinalizerWithSelfOwnedCommitter(
+		voRepoAdapter,     // VoiceoverRepository
+		outboxEnqueuer,    // TxOutboxEnqueuer (nil-safe in finalizer)
+		projectionAdapter, // LifecycleProjectionUpserter
+		committer,         // canonical AssetCommitter (self-owned PostgreSQL tx)
+		log,               // *zap.Logger
+	)
+
+	return &voiceoverPersistence{
+		voRepoAdapter:  voRepoAdapter,
+		voCacheAdapter: voCacheAdapter,
+		publishPool:    publishPool,
+		finalizer:      finalizer,
+	}, nil
+}
+
+func buildVoiceoverItemUseCase(cfg *config.Config, log *zap.Logger, mediaConfig mediaexec.ExecutionConfig, destResolver asset.Resolver, voDir string, deps *voiceoverPersistence) (voiceover.VoiceoverItemExecutor, *audioasset.Processor, error) {
+	voRepoAdapter := deps.voRepoAdapter
+	voCacheAdapter := deps.voCacheAdapter
+	publishPool := deps.publishPool
+	finalizer := deps.finalizer
+
+	// TTS chain — raw processor → use-case adapter → retryable → rate-limited.
+	// Extracted to build_voiceover_tts.go (shared by the legacy batch
+	// service and the canonical per-item use case).
+	audioProcessor, ttsProvider := vowiring.BuildVoiceoverTTSProvider(cfg, log, mediaConfig)
+
+	// Azione #1 (July 2026): construct the shared per-item pipeline
+	// runner. The legacy batch path (process.go::processLanguage) now
+	// delegates to ProcessSegmentUseCase.Execute instead of calling
+	// synthesizeStage/destinationStage/finalizeStage inline.
+	//
+	// FASE 8: Publisher wrapped with rate-limiting + retry.
+	//
+	// 2026-09-28: the gate is the process-wide one owned by ComposeRoot, NOT
+	// a publisher-owned one. One Drive-upload ceiling must be enforced across
+	// every Drive publisher in the process (this voiceover publisher AND the
+	// certified final-audio publisher in BuildScriptGenerationRuntime); two
+	// independently built gates would double the configured capacity and
+	// leave cross-job contention (a starving job's upload queued behind
+	// another job's pipelined uploads) unfixed.
+	// (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
+	// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
+	// top of the same adapter surface the legacy service consumes.
+	// All 7 ports are mandatory (panic on nil per AGENTS.md WireUp
+	// pattern); the composition root owns this construction so any
+	// missing wire-up fails fast at boot rather than mid-job.	// Step 8/12 closure (June 2026 — BLOC5.4): wire the canonical
+	// per-item use case ProcessVoiceoverItemUseCase on top of the
+	// typed seam (Pattern 0 — AGENTS.md). The mandatory deps
+	// mirror the surface the legacy Service consumes.
+	// NewProcessVoiceoverItemUseCase panics on nil per fail-fast
+	// WireUp pattern so a partial wire-up surfaces at boot, not at
+	// handler dispatch.
+	//
+	// Azione #6 (July 2026): TransactionalOutbox and FilenameBuilder
+	// removed from ProcessVoiceoverItemDeps. TransactionalOutbox was
+	// a type-alias never used by Execute (finalizer owns the outbox,
+	// PR-VO-B3). FilenameBuilder was nil-safe per Azione #5.
+	//
+	//
+	// Nil-tolerant construction (mirrors the in-file outboxDispatcher
+	// block above: ~line 110). When destResolver is NOT supplied (typical
+	// of `internal/app/*_test.go` stub-bootstrap helpers, which exercise
+	// the composition root without standing up the full asset.Resolver
+	// chain), a nil-tolerant nopDestinationResolver is wired so the
+	// ProcessVoiceoverItemUseCase constructor's
+	// `if deps.DestinationResolver == nil { panic }` check passes.
+	// The use case's Execute tolerates a resolver that returns
+	// (nil, nil) via the canonical "missing_folder_id" short-circuit
+	// in ResolveDestinationWithFallback — the production semantics
+	// are preserved (a request without an explicit Destination always
+	// fails closed, regardless of whether the resolver is real or
+	// nop).
+	//
+	// P0-#3 (July 2026): processItemUseCase is now ALWAYS constructed
+	// (not gated on destResolver != nil) because the NewService
+	// composition-time fail-fast panics when ProcessItem is nil. The
+	// use case itself tolerates nil DestinationResolver + nil
+	// DefaultFolderResolver via the canonical short-circuit path.
+	// Destination resolver adapters — extracted to
+	// build_voiceover_destinations.go (includes the nil-tolerant
+	// nopDestinationResolver fallback for stub-bootstrap helpers).
+	destResolverAdapter, defaultFolderResolver := vowiring.BuildVoiceoverDestResolvers(vowiring.VoiceoverDestResolversDeps{
+		DestResolver: destResolver,
+		Config:       cfg,
+		VoiceoverDir: voDir,
+		Log:          log,
+	})
+
+	// No Publisher on the per-item pipeline (waste-cut 2026-10-24):
+	// per-scene audio + timing are certified LOCAL intermediates of the
+	// video composition, never delivery products. Explicit delivery
+	// surfaces (batch GenerateBatch, UploadIntentUseCase) still wire the
+	// rate-limited Drive publisher.
+
+	// Adapter: AudioPostProcessor port — silence-removal bridge
+	// built on the canonical media execution adapter. Nil-safe
+	// at the use case boundary (only invoked when RemoveSilence == true).
+	audioAdapter := vowiring.NewUseCaseAudioAdapter(log, rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log))
+
+	// Moment grounding is a Rust decision, like phrase timing. The adapter is
+	// the same semantic-engine worker the script bundle uses; a missing binary
+	// fails closed only when a command actually carries moments.
+	phraseAligner, phraseErr := rustexec.NewSemanticEngineAdapter(
+		rustexec.NewSemanticEngineExecutor(cfg.External.RustSemanticEnginePath, cfg.External.FfmpegPath, log),
+	)
+	if phraseErr != nil {
+		return nil, nil, fmt.Errorf("voiceover phrase aligner: %w", phraseErr)
+	}
+
+	// The use case satisfies voiceover.VoiceoverItemExecutor
+	// structurally — compile-time assertion in process_voiceover_item.go
+	// pins the conformance.
+	processItemUseCase := voiceover.NewProcessVoiceoverItemUseCase(voiceover.ProcessVoiceoverItemDeps{
+		Pipeline: voiceover.ProcessVoiceoverPipelineDeps{
+			TTSProvider:         ttsProvider,
+			DestinationResolver: destResolverAdapter,
+			AudioPostProcessor:  audioAdapter,
+			VoiceoverRepository: voRepoAdapter,
+			VoiceoverCache:      voCacheAdapter,
+			AsyncPublish:        publishPool,
+			PhraseAligner:       phraseAligner,
+		},
+		Recovery: voiceover.ProcessVoiceoverRecoveryDeps{
+			DefaultFolderResolver: defaultFolderResolver,
+		},
+		Finalize: voiceover.ProcessVoiceoverFinalizeDeps{
+			Finalizer: finalizer,
+		},
+		Output: voiceover.ProcessVoiceoverOutputDeps{
+			OutputDir: voDir,
+		},
+		Logger: log,
+	})
+	log.Info("voiceover.processVoiceoverItemUseCase wired (Step 8/12 — child pipeline for voiceover.generate_item jobs)")
+
+	// P0.4 Fase 4a (July 2026): wire the post-commit SQL verifier.
+	// After the tx commits, finalizeStage calls Verify to confirm both
+	// the voiceovers row and the media_assets projection are durably
+	// present. The adapter uses dbs.DualPool.Writer for post-commit SELECTs.
+	// PR-CATALOG-MULTILINGUA step 3 (July 2026): build the canonical
+	// per-language capability surface used by the voiceover pipeline to
+	// resolve EdgeTTSVoice identifiers. A nil registry falls through
+	// to the bridge's emergency fallback (nil-safe in process.go).
+	// P0-#3 (July 2026): wire the canonical per-item voiceover use
+	// case into the legacy Service so GeneratePromo can route
+	// through it. processItemUseCase was already constructed above
+	// (Step 8/12 — BLOC5.4 cutover); the field is now consumed by
+	// the Service's promo path via the promoVoiceoverAdapter
+	// (voiceover/promo.go). When the wire-up is skipped (the
+	// destResolver==nil branch above), processItemUseCase is nil
+	// and Service.GeneratePromo surfaces a typed error — fail-closed
+	// per godlike/07 NO-FAKE-AVAILABILITY.
+	log.Info("Voiceover canonical pipeline initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
+
+	return processItemUseCase, audioProcessor, nil
+}
+
+// wireVoiceoverJobBindings registers voiceover.generate (Catena A P0) +
+// voiceover.generate_item (BLOC5.3 child fanout) handlers into jobs.Service.
+// Extracted from NewComposition per PG-028 (July 2026).
+func wireVoiceoverJobBindings(domains *DomainBundle, jobs *JobsBundle, log *zap.Logger) error {
+	// Voiceover registration moved to the new GenerateJobHandler path
+	// (P0.1, June 2026) — see buildVoiceoverService.
+	// The legacy Service.RegisterHandler hook (which registered
+	// voiceover.batch + voiceover.promo) is intentionally removed here;
+	// the legacy codes will be retired in the next refactor (P0.3).
+	if domains.VoiceoverGenerateHandler != nil && jobs.Service != nil {
+		// Catena A P0 (June 2026): the canonical `voiceover.generate`
+		// job type is now backfilled with the typed-port GenerateJobHandler.
+		// The boot smoke test at internal/app/voiceover_wiring_test.go
+		// fails closed if this registration is absent — the failure mode
+		// of HEAD pre-Catena-A was /api/voiceover/generate → 202 → job
+		// queued → no consumer → silence.
+		//
+		// Audit P0 #2 (July 2026): Register now returns error so this
+		// wiring step fails loud at boot instead of silently dropping
+		// jobs onto an unsigned dispatcher.
+		if err := domains.VoiceoverGenerateHandler.Register(jobs.Service); err != nil {
+			return fmt.Errorf("voiceover.generate handler wiring (Catena A P0): %w", err)
+		}
+		log.Info("voiceover.generate handler registered (Catena A P0 wiring complete)")
+	} else {
+		log.Warn("voiceover.generate handler NOT registered (typed-port chain incomplete — Drive / destResolver / outbox / lifecycle / repo / audio / db must all be wired)",
+			zap.Bool("generate_handler_built", domains.VoiceoverGenerateHandler != nil),
+			zap.Bool("jobs_service_available", jobs.Service != nil))
+	}
+	// PR-VOICEOVER-PARENT-CHILD-FANOUT (P0.3, June 2026): construct the
+	// parent GenerateJobHandler (Fanout-bound) and the child
+	// GenerateItemJobHandler (per-language) at composition time, where
+	// jobs.Service is available for both FanoutUseCase construction AND
+	// the late-binding Register calls.
+	//
+	// Audit P0 #2 (July 2026): both Register calls now return error;
+	// NewComposition aborts if either fails (fail-closed at boot).
+	// Pre-P0 #2 a silent-Warn here would lose the parent-child wiring
+	// and the parent fan-out would dead-letter every N children.
+	if jobs.Service != nil && domains.VoiceoverProcessItem != nil {
+		fanout := voiceoverjobs.NewFanoutVoiceoversUseCase(voiceoverjobs.FanoutDeps{
+			Enqueuer: jobs.Service,
+			Logger:   log,
+		})
+		parentHandler := voiceoverjobs.NewGenerateJobHandler(fanout, log)
+		// Audit P0 #2 (July 2026): the dispatcher's duplicate-
+		// Register contract is not part of its surface. Block A above
+		// may have already bound a handler for TypeVoiceoverGenerate
+		// when BuildDomainBundle succeeded. The pre-P0 #2 silent-Warn
+		// path masked this; Post-P0 #2 must explicitly preserve
+		// idempotency via dispatcher's HasHandler probe (canonical per
+		// internal/app/voiceover_wiring_test.go).
+		// If already bound, skip the re-Register — the domains field
+		// is still overwritten with the BLOC5.3 fanout-bound handler
+		// for downstream state-tracking consumers.
+		if !jobs.Service.HasHandler(domainvoiceover.TypeGenerate) {
+			if err := parentHandler.Register(jobs.Service); err != nil {
+				return fmt.Errorf("voiceover.generate parent handler Register (BLOC5.3 commit-2): %w", err)
+			}
+		} else {
+			log.Info("voiceover.generate handler already bound (Catena A P0 wiring succeeded) — preserving dispatcher binding; BLOC5.3 fanout-bound handler canonicals the domains.VoiceoverGenerateHandler field reference for downstream state-tracking",
+				zap.String("job_type", domainvoiceover.TypeGenerate))
+		}
+		domains.VoiceoverGenerateHandler = parentHandler
+
+		// TypeVoiceoverGenerateItem is NOT pre-registered by Block A
+		// (Block A only touches TypeVoiceoverGenerate). Per-language
+		// child handler registration is uniquely owned by this block;
+		// any failure surfaces as a typed error and aborts composition
+		// (fail-closed at boot, audit P0.2).
+		childHandler := voiceoverjobs.NewGenerateItemJobHandler(domains.VoiceoverProcessItem, log)
+		if err := childHandler.Register(jobs.Service); err != nil {
+			return fmt.Errorf("voiceover.generate_item child handler Register (BLOC5.3 commit-2): %w", err)
+		}
+		domains.VoiceoverGenerateItemHandler = childHandler
+		log.Info("BLOC5.3 commit-2 voiceover handlers wired: parent voiceover.generate + child voiceover.generate_item")
+	}
+	return nil
+}

@@ -18,6 +18,8 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/vidrush"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -91,7 +93,7 @@ type Runner struct {
 	// byte-determinism before the operator moves beyond 2.
 	overlayRenderConcurrency int
 
-	// vidRushRuns is the per-run VidRush wiring registry. beginVidRush
+	// vidRushRegistry is the per-run VidRush wiring registry. beginVidRush
 	// registers the fresh coordinator for its run so concurrent runs on this
 	// shared Runner never observe each other's coordinator (the pre-registry
 	// design stored the coordinator in the single observer/barrier/timing
@@ -99,8 +101,7 @@ type Runner struct {
 	// in B's coordinator, failing closed with a run mismatch). The single
 	// fields below remain as the injection seam for tests and as the fallback
 	// when a run has no registered wiring.
-	vidRushMu   sync.RWMutex
-	vidRushRuns map[string]vidRushWiring
+	vidRushRegistry *vidrush.WiringRegistry
 
 	// overlayCanvas is the target render canvas for the derived OverlayPlan.
 	// Zero means the production contract default (1920×1080 @ 24 FPS) applies.
@@ -210,15 +211,6 @@ type Runner struct {
 	log *zap.Logger
 }
 
-// vidRushWiring bundles the run-scoped VidRush coordinator behind all three
-// runner seams (observer, barrier, timing recorder) so a single registry entry
-// wires the same coordinator for the run.
-type vidRushWiring struct {
-	observer SceneCommitObserver
-	barrier  VidRushBarrier
-	timing   VidRushTimingRecorder
-}
-
 type vidRushSceneWaiter interface {
 	WaitForScene(context.Context, string, int) (scriptpkg.VidRushSegmentResult, error)
 }
@@ -239,7 +231,7 @@ func NewRunner(
 		translator:               translator,
 		voiceoverGen:             voiceoverGen,
 		recorder:                 noopExecutionRecorder{},
-		vidRushRuns:              make(map[string]vidRushWiring),
+		vidRushRegistry:          vidrush.NewWiringRegistry(),
 		ttsConcurrency:           DefaultTTSConcurrency,
 		nlpConcurrency:           DefaultNLPConcurrency,
 		translationConcurrency:   DefaultTranslationConcurrency,
@@ -354,10 +346,10 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req contract.Ge
 		barrier = certBarrier
 	}
 
-	r.registerVidRush(runID, vidRushWiring{
-		observer: coordinator,
-		barrier:  barrier,
-		timing:   coordinator,
+	r.registerVidRush(runID, vidrush.Wiring{
+		Observer: coordinator,
+		Barrier:  barrier,
+		Timing:   coordinator,
 	})
 	return coordinator, nil
 }
@@ -368,30 +360,29 @@ func (r *Runner) endVidRush(runID string) {
 	r.unregisterVidRush(runID)
 }
 
-// registerVidRush records the per-run wiring under its run ID.
-func (r *Runner) registerVidRush(runID string, w vidRushWiring) {
-	r.vidRushMu.Lock()
-	defer r.vidRushMu.Unlock()
-	if r.vidRushRuns == nil {
-		r.vidRushRuns = make(map[string]vidRushWiring)
+// registerVidRush records the per-run wiring under its run ID. The registry
+// owns the mutex and the map; Runner only holds the reference.
+func (r *Runner) registerVidRush(runID string, w vidrush.Wiring) {
+	if r.vidRushRegistry == nil {
+		r.vidRushRegistry = vidrush.NewWiringRegistry()
 	}
-	r.vidRushRuns[runID] = w
+	r.vidRushRegistry.Register(runID, w)
 }
 
 // unregisterVidRush removes the per-run wiring for runID.
 func (r *Runner) unregisterVidRush(runID string) {
-	r.vidRushMu.Lock()
-	defer r.vidRushMu.Unlock()
-	delete(r.vidRushRuns, runID)
+	if r.vidRushRegistry != nil {
+		r.vidRushRegistry.Unregister(runID)
+	}
 }
 
 // sceneCommitObserverFor resolves the observer for runID: the per-run wiring
 // wins when registered; otherwise the single injected seam (tests) is used.
 func (r *Runner) sceneCommitObserverFor(runID string) SceneCommitObserver {
-	r.vidRushMu.RLock()
-	defer r.vidRushMu.RUnlock()
-	if w, ok := r.vidRushRuns[runID]; ok {
-		return w.observer
+	if r.vidRushRegistry != nil {
+		if w, ok := r.vidRushRegistry.Lookup(runID); ok {
+			return w.Observer
+		}
 	}
 	return r.sceneCommitObserver
 }
@@ -399,10 +390,10 @@ func (r *Runner) sceneCommitObserverFor(runID string) SceneCommitObserver {
 // vidRushBarrierFor resolves the barrier for runID: the per-run wiring wins
 // when registered; otherwise the single injected seam (tests) is used.
 func (r *Runner) vidRushBarrierFor(runID string) VidRushBarrier {
-	r.vidRushMu.RLock()
-	defer r.vidRushMu.RUnlock()
-	if w, ok := r.vidRushRuns[runID]; ok {
-		return w.barrier
+	if r.vidRushRegistry != nil {
+		if w, ok := r.vidRushRegistry.Lookup(runID); ok {
+			return w.Barrier
+		}
 	}
 	return r.vidRushBarrier
 }
@@ -410,10 +401,10 @@ func (r *Runner) vidRushBarrierFor(runID string) VidRushBarrier {
 // vidRushTimingFor resolves the timing recorder for runID: the per-run wiring
 // wins when registered; otherwise the single injected seam (tests) is used.
 func (r *Runner) vidRushTimingFor(runID string) VidRushTimingRecorder {
-	r.vidRushMu.RLock()
-	defer r.vidRushMu.RUnlock()
-	if w, ok := r.vidRushRuns[runID]; ok {
-		return w.timing
+	if r.vidRushRegistry != nil {
+		if w, ok := r.vidRushRegistry.Lookup(runID); ok {
+			return w.Timing
+		}
 	}
 	return r.vidRushTiming
 }
@@ -523,5 +514,5 @@ func (r *Runner) prepareExecution(ctx context.Context, runID string, req contrac
 // phase is an explicit named step below; a phase returning false stops the
 // run (a terminal error was already classified and persisted).
 func (r *Runner) runExecution(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext) {
-	r.runExecutionPhases(ctx, runID, req, exec)
+	scriptrunner.NewExecution(r, ctx, runID, req, exec).Run()
 }

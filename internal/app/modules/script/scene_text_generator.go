@@ -223,6 +223,7 @@ func (g *SceneTextGenerator) generateStreamSegment(
 	segment scriptpkg.ScriptSegment,
 ) sceneSegmentResult {
 	segmentReq := req
+	gen := req.Generation()
 	// Each provider call owns exactly one topic. Keep it on the legacy
 	// single-topic surface so the multi-segment paragraph validator does
 	// not expect a five-paragraph envelope inside one call.
@@ -230,10 +231,10 @@ func (g *SceneTextGenerator) generateStreamSegment(
 	segmentReq.ScriptParams.SingleScene = true
 	segmentTarget := segment.TargetWords
 	if segmentTarget <= 0 {
-		segmentTarget = req.ScriptParams.SegmentWords
+		segmentTarget = gen.ScriptParams.SegmentWords
 	}
-	if segmentTarget <= 0 && req.ScriptParams.TargetWords > 0 && len(segments) > 0 {
-		segmentTarget = req.ScriptParams.TargetWords / len(segments)
+	if segmentTarget <= 0 && gen.ScriptParams.TargetWords > 0 && len(segments) > 0 {
+		segmentTarget = gen.ScriptParams.TargetWords / len(segments)
 	}
 	// The live Mike Tyson run measured 14% under the requested whole-script
 	// target with this local model. For generated text with a near-target
@@ -307,7 +308,7 @@ func (g *SceneTextGenerator) generateStreamSegment(
 				ID:         sceneID,
 				Index:      index,
 				DurationMS: segment.DurationMS,
-				Text:       map[scriptgen.Language]string{req.SourceLanguage: intro},
+				Text:       map[scriptgen.Language]string{gen.SourceLanguage: intro},
 			}}
 		}
 	}

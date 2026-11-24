@@ -1,6 +1,10 @@
 # TICKET — chain_segments single source of truth (2026-11-18)
 
-- **Status:** PARTIAL (agg. 2026-11-22). The identity decision now runs
+- **Status:** CLOSED (SUPERSEDED 2026-11-24) — la decisione di identità e la
+  promozione entità sono state sostituite da OVL-01 (`media.verified_entity_assets`,
+  decisione prima di `admit`); il residuo dichiarato (A/B col pianificatore
+  pre-v2) non è più eseguibile perché quel pianificatore non esiste. Storico:
+  PARTIAL (agg. 2026-11-22). The identity decision now runs
   once: the planner promotes entity cards from
   `media.promotable_entity_assets` with the ported seeded sampler, the Go
   promotion pass is deleted, **Open 3 è chiuso** (il ceiling è campo della

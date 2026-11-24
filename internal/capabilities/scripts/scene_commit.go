@@ -1,5 +1,6 @@
-// Package scriptgeneration — scene_commit.go owns the SceneCommitted
-// boundary: the immutable event emitted when a generated scene becomes
+// Package scriptgeneration — scene_commit.go re-exports the VidRush
+// SceneCommitted boundary and owns its emission from the runner: the immutable
+// event emitted when a generated scene becomes
 // stable. Incremental VidRush enrichment reacts to this event, never to
 // partial model tokens. A scene is committed only after the text generator
 // has returned the complete scene envelope; no incremental chunk is ever
@@ -13,51 +14,18 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/vidrush"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// SceneCommitted is the stable per-scene boundary consumed by incremental
-// VidRush enrichment. It is emitted exactly once per scene version after the
-// scene text is complete and immutable. It never carries partial tokens.
-type SceneCommitted struct {
-	RunID      string `json:"run_id"`
-	SceneID    string `json:"scene_id"`
-	SceneIndex int    `json:"scene_index"`
-	Text       string `json:"text"`
-	TextHash   string `json:"text_hash"`
-	// SourceText is the immutable per-segment editorial evidence. It is
-	// carried separately from narration so the incremental enricher never
-	// has to infer evidence from a generated scene or from a global brief.
-	SourceText string    `json:"source_text,omitempty"`
-	Revision   int64     `json:"revision"`
-	Language   string    `json:"language"`
-	ReadyAt    time.Time `json:"ready_at"`
-
-	// ExecutionMode carries the canonical scene authorization policy through
-	// the incremental boundary. Empty is backward-compatible generated mode.
-	ExecutionMode scriptpkg.SceneExecutionMode `json:"execution_mode,omitempty"`
-	// ExtractEntities is the per-scene extraction override. default inherits
-	// the run-level output toggle; disabled skips this scene's enrichment.
-	ExtractEntities scriptpkg.Toggle `json:"extract_entities,omitempty"`
-
-	// SemanticProfile is populated by the canonical segment-understanding
-	// stage when the event is emitted. It is optional for compatibility with
-	// older producers; the enricher derives it when absent.
-	SemanticProfile *scriptpkg.SegmentSemanticProfile `json:"semantic_profile,omitempty"`
-}
-
-// SceneTextReadyEvent is the coordinator-facing name for the stable scene
-// boundary. SceneCommitted remains the compatibility name for VidRush.
-type SceneTextReadyEvent = SceneCommitted
-
-// SceneCommitObserver receives SceneCommitted events. It is the single seam
-// through which the incremental VidRush coordinator reacts to a stable scene.
-// Implementations must be safe to call from the runner's generation goroutine
-// and must not mutate the SceneCommitted value.
-type SceneCommitObserver interface {
-	OnSceneCommitted(ctx context.Context, event SceneCommitted) error
-}
+// SceneCommitted, SceneTextReadyEvent and SceneCommitObserver are owned by the
+// vidrush subpackage, next to the pipeline that consumes them and the
+// run-scoped wiring registry. The root keeps compatibility aliases so existing
+// callers and tests do not change.
+type SceneCommitted = vidrush.SceneCommitted
+type SceneTextReadyEvent = vidrush.SceneCommitted
+type SceneCommitObserver = vidrush.SceneCommitObserver
 
 // NewSceneCommitted builds the commit event for a stable scene. Text is read
 // from the scene's source-language entry so the hash identity always reflects

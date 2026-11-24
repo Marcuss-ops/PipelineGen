@@ -33,7 +33,7 @@ func TestDriveUploadGate_IsSharedAcrossPublisherSites(t *testing.T) {
 	// it must not construct a publisher at all, so it can neither bypass nor
 	// duplicate the process-wide Drive ceiling. Delivery surfaces keep the
 	// shared gate through their own publisher construction.
-	voiceoverBundle := read("build_bundles_voiceover.go")
+	voiceoverBundle := read("buildbundle/build_bundles_voiceover.go")
 	require.NotContains(t, voiceoverBundle, "NewRateLimitedPublisher(",
 		"voiceover bundle must NOT build a self-owned gate")
 	require.NotContains(t, voiceoverBundle, "NewRateLimitedPublisherWithGate(",

@@ -16,10 +16,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
-// IOpaqueStartFunc is the opaque type for deferred initialisation closures
-// returned by Build*Bundle constructors.
-type IOpaqueStartFunc func() error
-
 // ComposeRoot is the assembled composition tree. Bundle ownership is split
 // across focused type files; this root contains only the graph itself.
 type ComposeRoot struct {

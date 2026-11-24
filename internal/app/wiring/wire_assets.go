@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/buildbundle"
 	"os"
 
 	wiringaudio "github.com/Marcuss-ops/PipelineGen/internal/app/modules/audio"
@@ -83,7 +84,7 @@ func WireAssets(
 	case deps.MediaPostgres != nil:
 		mediaSearcher := pgmedia.NewMediaSearcher(deps.MediaPostgres)
 		assetRepo = pgmedia.NewMediaClipAssetReader(mediaSearcher)
-		mediaSearch = newPostgresClipMediaSearch(mediaSearcher)
+		mediaSearch = buildbundle.NewPostgresClipMediaSearch(mediaSearcher)
 	case deps.Core.Services.Assets != nil:
 		assetRepo = deps.Core.Services.Assets.Repository()
 	}
@@ -107,11 +108,11 @@ func WireAssets(
 		idemHandler = deps.Background.IdempotencyStoreHandler
 	}
 
-	clipsDesc, clipEnricher, err := buildClipsBundle(buildClipsParams{
+	clipsDesc, clipEnricher, err := buildbundle.BuildClipsBundle(buildbundle.BuildClipsParams{
 		Cfg: cfg,
 		Log: log,
-		Clips: ClipsCapabilityDeps{
-			Repositories: ClipsRepositoryDeps{
+		Clips: buildbundle.ClipsCapabilityDeps{
+			Repositories: buildbundle.ClipsRepositoryDeps{
 				ClipsRepo:     deps.Core.Repositories.ClipsRepo,
 				VoiceoverRepo: deps.Core.Repositories.VoiceoverRepo,
 				ImageRepo:     deps.Core.Repositories.ImageRepo,
@@ -163,12 +164,12 @@ func WireAssets(
 		)
 	}
 
-	storageDesc, err := buildStorageBundle(log, jobs, deps.Core.Services.CatalogSyncService)
+	storageDesc, err := buildbundle.BuildStorageBundle(log, jobs, deps.Core.Services.CatalogSyncService)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: storage: %w", err)
 	}
 
-	dd, diagSvc, err := buildDiagnosticsBundle(log, deps.Core.Repositories.ClipsRepo)
+	dd, diagSvc, err := buildbundle.BuildDiagnosticsBundle(log, deps.Core.Repositories.ClipsRepo)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: diagnostics: %w", err)
 	}

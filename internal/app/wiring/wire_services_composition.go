@@ -46,6 +46,8 @@ import (
 
 	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
+	wiringfinalization "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/finalizedrive"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
@@ -179,10 +181,9 @@ func initCompositionMinimalWithContext(_ context.Context, cfg *config.Config, lo
 			// two-phase split-plane boundary unconditionally; the legacy
 			// single-transaction shape would have handed a PostgreSQL committer
 			// a SQLite job transaction.
-			broker.WithFinalizer(&splitPlaneFinalizer{
-				mediaDB: root.MediaPostgres, mediaOutbox: pgmedia.NewOutboxRepository(root.MediaPostgres),
-				assetTx: assetTx, jobsFinalizer: finalizer,
-			})
+			broker.WithFinalizer(wiringfinalization.NewSplitPlaneFinalizer(
+				root.MediaPostgres, pgmedia.NewOutboxRepository(root.MediaPostgres), assetTx, finalizer,
+			))
 			if root.Drive != nil && root.Drive.Publisher != nil {
 				preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
 				broker.WithArtifactPreparation(preparation)
@@ -199,18 +200,18 @@ func initCompositionMinimalWithContext(_ context.Context, cfg *config.Config, lo
 				splitJobsPlane := root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != nil
 				var outboxRegistry *outboxevents.HandlerRegistry
 				if root.Outbox != nil {
-					outboxRegistry = finalizeDriveOutboxRegistry(root.Outbox.EventsRegistry, root.Outbox.JobsEventsRegistry, splitJobsPlane)
+					outboxRegistry = finalizedrive.FinalizeDriveOutboxRegistry(root.Outbox.EventsRegistry, root.Outbox.JobsEventsRegistry, splitJobsPlane)
 				}
 				if mutator, mutatorOK := assetCommitter.(persistence.AssetMutator); mutatorOK && outboxRegistry != nil {
-					objectStore, storeErr := buildFinalizeDriveObjectStore(cfg)
+					objectStore, storeErr := finalizedrive.BuildFinalizeDriveObjectStore(cfg)
 					if storeErr != nil {
 						log.Warn("deferred finalize Drive publication NOT wired: object store unavailable; keeping the synchronous publication path", zap.Error(storeErr))
 					} else {
 						var observer *kernobs.RunObserver
 						if root.ObservabilityDB != nil {
-							observer = finalizeDriveDeliveryObserver(root.ObservabilityDB.DB)
+							observer = finalizedrive.FinalizeDriveDeliveryObserver(root.ObservabilityDB.DB)
 						}
-						if regErr := registerFinalizeDriveDeliveryHandler(outboxRegistry, preparation, mutator, objectStore, observer, log); regErr != nil {
+						if regErr := finalizedrive.RegisterFinalizeDriveDeliveryHandler(outboxRegistry, preparation, mutator, objectStore, observer, log); regErr != nil {
 							partialCleanup()
 							return nil, nil, nil, fmt.Errorf("wire services composition: %w", regErr)
 						}

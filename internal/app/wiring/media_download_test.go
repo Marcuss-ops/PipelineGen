@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/mediahttp"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +39,7 @@ func localAssetDetails(t *testing.T, path, expectedHash string) *asset.Details {
 func newDownloadTestRouter(details *asset.Details) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/assets/:id/download", newMediaAssetDownloadHandler(&fakeContentAssets{details: details}, nil, zap.NewNop()))
+	r.GET("/assets/:id/download", mediahttp.NewMediaAssetDownloadHandler(&fakeContentAssets{details: details}, nil, zap.NewNop()))
 	return r
 }
 
@@ -140,10 +141,10 @@ func (f *fakeDriveArtifact) DownloadFileRange(_ context.Context, _ string, start
 	return io.NopCloser(strings.NewReader(f.content[start : end+1])), f.mime, nil
 }
 
-func newDriveDownloadRouter(details *asset.Details, driver DriveArtifactReader) *gin.Engine {
+func newDriveDownloadRouter(details *asset.Details, driver mediahttp.DriveArtifactReader) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.GET("/assets/:id/download", newMediaAssetDownloadHandler(&fakeContentAssets{details: details}, driver, zap.NewNop()))
+	r.GET("/assets/:id/download", mediahttp.NewMediaAssetDownloadHandler(&fakeContentAssets{details: details}, driver, zap.NewNop()))
 	return r
 }
 

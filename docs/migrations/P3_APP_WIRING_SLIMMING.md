@@ -1,5 +1,14 @@
 # P3 `app/wiring` slimming inventory (2026-11-15)
 
+> **Snapshot 2026-11-24 (target reached):** the production root is
+> **42 files / 9,996 LOC**, down from 64 files / 19,358 LOC at the start of
+> this wave. The final extraction moved bundle construction to
+> `wiring/buildbundle`, localized rendering to `wiring/localizedrender`,
+> media byte handlers to `wiring/mediahttp`, and the Creator runtime to
+> `wiring/creatorruntime`. The root now keeps composition, lifecycle
+> ordering, `ComposeRoot`, and the compatibility aliases/facades. The
+> inventory below is the historical 2026-11-15 baseline.
+
 ## Current size
 
 - 167 production Go files, 36,080 production LOC.

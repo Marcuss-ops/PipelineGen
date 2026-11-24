@@ -9,7 +9,7 @@ import (
 // TestNoCrossEngineJobFinalizer pins MEDIA-SSOT P0-2: wiring must never build a
 // JobFinalizer with the PostgreSQL assetTx and a SQLite job DB (the SQLite job
 // transaction cannot carry PostgreSQL SQL — `unrecognized token: ":"`). The
-// two-phase splitPlaneFinalizer is the only allowed shape once the canonical
+// two-phase split-plane finalizer is the only allowed shape once the canonical
 // media writer is PostgreSQL.
 func TestNoCrossEngineJobFinalizer(t *testing.T) {
 	files := []string{
@@ -23,7 +23,7 @@ func TestNoCrossEngineJobFinalizer(t *testing.T) {
 		}
 		body := string(src)
 		if strings.Contains(body, "jobsfinalizer.New(jobDB, jobOutbox, assetTx") {
-			t.Errorf("%s: cross-engine jobsfinalizer.New(jobDB, jobOutbox, assetTx) is banned; use the splitPlaneFinalizer two-phase boundary (MEDIA-SSOT P0-2)", file)
+			t.Errorf("%s: cross-engine jobsfinalizer.New(jobDB, jobOutbox, assetTx) is banned; use the split-plane two-phase boundary (MEDIA-SSOT P0-2)", file)
 		}
 	}
 }

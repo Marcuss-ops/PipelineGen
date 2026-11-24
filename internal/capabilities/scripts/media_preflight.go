@@ -19,7 +19,6 @@ package scriptgeneration
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -28,75 +27,17 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// ErrMediaPreflight identifies a fail-closed media requirement failure.
-// Callers can probe it with errors.Is and inspect the structured
-// MediaPreflightError with errors.As.
-var ErrMediaPreflight = errors.New("scriptgeneration: media preflight failed")
+var ErrMediaPreflight = scriptrunner.ErrMediaPreflight
 
-// MediaPreflightError carries the complete structured preflight result.
-type MediaPreflightError struct {
-	Result PreflightResult
-}
-
-func (e *MediaPreflightError) Error() string {
-	if e == nil {
-		return ErrMediaPreflight.Error()
-	}
-	if message := e.Result.Error(); message != "" {
-		return fmt.Sprintf("%s: %s", ErrMediaPreflight, message)
-	}
-	return ErrMediaPreflight.Error()
-}
-
-func (e *MediaPreflightError) Unwrap() error { return ErrMediaPreflight }
-
-// AsError converts a failed result to the canonical typed error.
-func (r PreflightResult) AsError() error {
-	if !r.HasFailures() {
-		return nil
-	}
-	return &MediaPreflightError{Result: r}
-}
-
-// PreflightResult carries every failure found during the media preflight.
-// A nil or empty PreflightFailure slice means all checks passed.
-type PreflightResult struct {
-	Failures []PreflightFailure
-	WallMS   int64
-}
-
-// HasFailures returns true when at least one check failed.
-func (r PreflightResult) HasFailures() bool { return len(r.Failures) > 0 }
-
-// Error returns all failures joined by newlines.
-func (r PreflightResult) Error() string {
-	if len(r.Failures) == 0 {
-		return ""
-	}
-	parts := make([]string, len(r.Failures))
-	for i, f := range r.Failures {
-		parts[i] = f.Error()
-	}
-	return strings.Join(parts, "\n")
-}
-
-// PreflightFailure is one discrete media requirement check failure.
-type PreflightFailure struct {
-	Category string
-	AssetID  string
-	Detail   string
-}
-
-func (f PreflightFailure) Error() string {
-	if f.AssetID != "" {
-		return fmt.Sprintf("[%s] %s: %s", f.Category, f.AssetID, f.Detail)
-	}
-	return fmt.Sprintf("[%s] %s", f.Category, f.Detail)
-}
+type MediaPreflightError = scriptrunner.MediaPreflightError
+type PreflightResult = scriptrunner.PreflightResult
+type PreflightFailure = scriptrunner.PreflightFailure
+type VidRushProviderAvailabilityPreflight = scriptrunner.VidRushProviderAvailabilityPreflight
 
 // ────────────────────────────────────────────────────────────────────────
 // MediaPreflight — ports
@@ -122,14 +63,6 @@ type ImageProviderHealthProbe interface {
 // registry. This is a registration check, not a network health check.
 type VidRushProviderAvailabilityProbe interface {
 	ProbeVidRushProvider(ctx context.Context, provider string) error
-}
-
-// VidRushProviderAvailabilityPreflight rechecks the static provider registry
-// when a durable run resumes after MEDIA_PREFLIGHT. A retry must not skip a
-// known-missing composition dependency merely because its asset checks already
-// completed in an earlier attempt.
-type VidRushProviderAvailabilityPreflight interface {
-	RunVidRushProviderAvailability(ctx context.Context, req contract.GenerateRequest) PreflightResult
 }
 
 // MediaPreflightInput carries everything needed to verify media

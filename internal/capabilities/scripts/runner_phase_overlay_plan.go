@@ -42,20 +42,21 @@ type audioOverlayOutcome struct {
 
 // audioCompile overlaps snapshot-only overlays with encoding. All exits join
 // both siblings; one caller owns result writes and exactly-once failures.
-func (e *executionRun) audioCompile() bool {
+func (r *Runner) audioCompilePhase(ctx context.Context, runID string, req contract.GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *contract.GenerateResult) bool {
+	baseCtx := ctx
 	var state audioCompileState
 	failure := &deferredAudioFailure{}
-	ctx, cancel := context.WithCancel(context.WithValue(e.ctx, deferredAudioFailureKey{}, failure))
+	ctx, cancel := context.WithCancel(context.WithValue(baseCtx, deferredAudioFailureKey{}, failure))
 	defer cancel()
 	failJoined := func(cause error) bool {
-		failCtx, finish := context.WithTimeout(context.WithoutCancel(e.ctx), 5*time.Second)
+		failCtx, finish := context.WithTimeout(context.WithoutCancel(baseCtx), 5*time.Second)
 		defer finish()
 		step := failure.step
 		if step.StepID == "" {
 			step = state.Step
 		}
-		e.r.failExecutionStepBestEffort(failCtx, e.exec, step, cause)
-		e.r.failRunWithRetry(failCtx, e.runID, StageCompilingAudio, cause)
+		r.failExecutionStepBestEffort(failCtx, exec, step, cause)
+		r.failRunWithRetry(failCtx, runID, StageCompilingAudio, cause)
 		return false
 	}
 	var done chan audioOverlayOutcome
@@ -65,7 +66,7 @@ func (e *executionRun) audioCompile() bool {
 		// the persisted plan and the rendered plan the same document (and
 		// therefore the same digest). Doing it on the snapshot instead was the
 		// divergence this hand-off used to create.
-		if err := FreezeFinalJobOverlayPlans(result, e.req.FinalJob); err != nil {
+		if err := FreezeFinalJobOverlayPlans(result, req.FinalJob); err != nil {
 			failure.cause = fmt.Errorf("freeze overlay plan: %w", err)
 			return false
 		}
@@ -77,7 +78,7 @@ func (e *executionRun) audioCompile() bool {
 		// The overlay branch runs from a detached snapshot. Reassert the
 		// broker job identity at this hand-off so publication cannot fall back
 		// to the internal run/plan ID after JSON checkpointing.
-		setOverlayDriveJobID(snapshot, e.exec.JobID)
+		setOverlayDriveJobID(snapshot, exec.JobID)
 		done = make(chan audioOverlayOutcome, 1)
 		// The P2 barrier (spun in runAudioCompilePhase off the P1 plan branch)
 		// may already have certified some languages while the master compiled.
@@ -97,13 +98,13 @@ func (e *executionRun) audioCompile() bool {
 					barrierOutcomes = barrier.applyToSnapshot(snapshot)
 				}
 				var err error
-				outcome.outcomes, err = e.r.renderOverlayPlans(c, e.req, e.resumeIdx, snapshot)
-				if err == nil && e.req.FinalJob && e.r.overlayPublicationDrainer != nil {
+				outcome.outcomes, err = r.renderOverlayPlans(c, req, resumeIdx, snapshot)
+				if err == nil && req.FinalJob && r.overlayPublicationDrainer != nil {
 					// All child renders are now submitted; join their bounded Drive
 					// publications before closing the measured overlay stage. The
 					// final master consumes the certified object-store locators.
 					drainStarted := time.Now()
-					err = e.r.overlayPublicationDrainer.Wait(c)
+					err = r.overlayPublicationDrainer.Wait(c)
 					recordPublicationDrainWait(c, drainStarted)
 				}
 				return err
@@ -116,8 +117,8 @@ func (e *executionRun) audioCompile() bool {
 		}()
 		return true
 	}
-	compiled := e.r.measurePhase(ctx, kernobs.StageName(audioCompileStage), func(c context.Context) bool {
-		return e.r.runAudioCompilePhase(c, e.runID, e.req, e.exec, e.resumeIdx, e.result, &state)
+	compiled := r.measurePhase(ctx, kernobs.StageName(audioCompileStage), func(c context.Context) bool {
+		return r.runAudioCompilePhase(c, runID, req, exec, resumeIdx, result, &state)
 	})
 	if !compiled {
 		cancel()
@@ -127,17 +128,17 @@ func (e *executionRun) audioCompile() bool {
 	// timeline itself remains in audio_finalize below, after both siblings join.
 	audioPublished := false
 	if compiled {
-		if !publishFinalAudioNeeded(e.req, e.r) {
+		if !publishFinalAudioNeeded(req, r) {
 			// The final-job handoff publishes certified master-audio bytes to
 			// Objectstore over HTTPS; no run needs a Drive copy.
-			if e.r.log != nil {
-				e.r.log.Info("final audio Drive publish skipped: final handoff uses HTTPS Objectstore",
-					zap.String("run_id", e.runID))
+			if r.log != nil {
+				r.log.Info("final audio Drive publish skipped: final handoff uses HTTPS Objectstore",
+					zap.String("run_id", runID))
 			}
 			audioPublished = true
 		} else {
-			audioPublished = e.measure(StageAudioPublish, func(c context.Context) bool {
-				return e.r.publishFinalAudio(c, e.runID, e.req, e.routing, e.exec, e.result)
+			audioPublished = r.measurePhase(ctx, StageAudioPublish, func(c context.Context) bool {
+				return r.publishFinalAudio(c, runID, req, routing, exec, result)
 			})
 			if !audioPublished {
 				cancel()
@@ -156,7 +157,7 @@ func (e *executionRun) audioCompile() bool {
 		joinStarted := time.Now()
 		outcome := <-done
 		if joinFinished := time.Now(); joinFinished.After(joinStarted) {
-			kernobs.RecordWait(e.ctx, kernobs.WaitInfo{
+			kernobs.RecordWait(baseCtx, kernobs.WaitInfo{
 				Kind:       kernobs.WaitCompletion,
 				Component:  kernobs.ComponentRenderQueue,
 				StartedAt:  joinStarted,
@@ -172,7 +173,7 @@ func (e *executionRun) audioCompile() bool {
 		if !audioPublished {
 			return false
 		}
-		e.r.applyOverlayRenderOutcomes(e.runID, e.result, outcome.outcomes)
+		r.applyOverlayRenderOutcomes(runID, result, outcome.outcomes)
 	} else {
 		if !compiled {
 			return failJoined(failure.cause)
@@ -180,20 +181,20 @@ func (e *executionRun) audioCompile() bool {
 		if !audioPublished {
 			return false
 		}
-		if !e.measure(StageOverlayRender, func(c context.Context) bool {
-			return e.r.runOverlayRenderPhase(c, e.runID, e.req, e.exec, e.resumeIdx, state, e.result)
+		if !r.measurePhase(ctx, StageOverlayRender, func(c context.Context) bool {
+			return r.runOverlayRenderPhase(c, runID, req, exec, resumeIdx, state, result)
 		}) {
 			return false
 		}
 	}
-	if err := e.ctx.Err(); err != nil {
+	if err := baseCtx.Err(); err != nil {
 		return failJoined(err)
 	}
 	if !audioPublished {
 		return false
 	}
-	if !e.measure(StageAudioFinalize, func(c context.Context) bool {
-		return e.r.runAudioFinalizePhase(c, e.runID, e.exec, state, e.result)
+	if !r.measurePhase(ctx, StageAudioFinalize, func(c context.Context) bool {
+		return r.runAudioFinalizePhase(c, runID, exec, state, result)
 	}) {
 		return false
 	}
@@ -217,4 +218,19 @@ func (r *Runner) resolveOverlayBackground(ctx context.Context, src *scriptpkg.Ov
 		return nil, fmt.Errorf("visual background asset cannot be resolved: runner is nil")
 	}
 	return ResolveOverlayBackground(ctx, r.overlayBackgroundSource, src)
+}
+
+// recordPublicationDrainWait closes the interval spent joining the bounded
+// publication pools.
+func recordPublicationDrainWait(ctx context.Context, started time.Time) {
+	finished := time.Now()
+	if finished.Sub(started) < time.Millisecond {
+		return
+	}
+	kernobs.RecordWait(ctx, kernobs.WaitInfo{
+		Kind:       kernobs.WaitOutboxDelivery,
+		Component:  kernobs.ComponentDrive,
+		StartedAt:  started,
+		FinishedAt: finished,
+	})
 }

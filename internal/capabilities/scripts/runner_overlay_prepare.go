@@ -19,31 +19,20 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	geography "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/geography"
+	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// sceneTextSnapshot is the read-only scene identity the prepare branch needs
-// (id, index, source-language text, and any pre-existing annotations). It
-// deliberately excludes Voiceover and duration fields so the branch can run
-// concurrently with TTS without racing the TTS writer. Annotations is a shared
-// read-only pointer: the branch never mutates it.
-type sceneTextSnapshot struct {
-	ID              string
-	Index           int
-	Text            string
-	Annotations     *scriptpkg.SceneAnnotations
-	ClipIDs         []string
-	ExtractEntities scriptpkg.Toggle
-}
+// sceneTextSnapshot is the orchestrator-owned read-only scene projection.
+type sceneTextSnapshot = scriptrunner.SceneTextSnapshot
 
 // snapshotSceneText projects the source-language text (and any pre-existing
 // annotations) of every scene into a lightweight read-only snapshot. It is
@@ -81,30 +70,6 @@ type vidRushPrepareResult struct {
 	annotations    map[int]*scriptpkg.SceneAnnotations
 	disabledScenes map[int]bool
 	intents        []capmodel.OverlayIntent
-}
-
-// vidRushPrepareOutcome is the channel payload the prepare branch sends back
-// to the main goroutine.
-//
-// err and nlpErr are kept SEPARATE because they are different facts reported
-// against different stages: err is the VidRush prepare/join failure
-// (StageGeneratingSceneText), while nlpErr is the translated-NLP failure
-// (StageTranslatingScenes) of the work the semantic branch now also carries.
-// Folding them into one field would mislabel the failed stage.
-type vidRushPrepareOutcome struct {
-	result     vidRushPrepareResult
-	prefetched *contract.AudioPrefetchResult
-	err        error
-	// localizedAnnotations is the translated-NLP output COMPUTED on the
-	// semantic branch, to be applied to the durable result by the phase
-	// goroutine after the join. It rides the outcome as a value precisely so no
-	// worker writes onto result.Scenes while TTS is running.
-	localizedAnnotations map[int]map[contract.Language]*scriptpkg.SceneAnnotations
-	nlpErr               error
-	// completedAt is set by the producing goroutine at the instant it sends
-	// the outcome. The join uses it to attribute the wall to the branch that
-	// actually finished last instead of reporting an opaque prepare_join.
-	completedAt time.Time
 }
 
 // runVidRushJoinAndPrepare is the background branch of the SceneTextReady

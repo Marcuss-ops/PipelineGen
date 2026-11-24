@@ -120,6 +120,9 @@ var frozenZeroSpawnBuilders = []string{
 	"BuildSearchBundle",
 	"BuildDriveBundle",
 	"BuildProcessBundle",
+	"BuildStorageBundle",
+	"BuildDiagnosticsBundle",
+	"BuildClipsBundle",
 	"BuildAIBundle",
 	"BuildDomainBundle",
 	"BuildJobsBundle",
@@ -206,9 +209,13 @@ func TestComposition_NoGoroutinesSpawned_FrozenSiteCount(t *testing.T) {
 // Test files excluded; list sorted for deterministic iteration.
 func compositionBundleSourceFiles(t *testing.T) []string {
 	t.Helper()
-	pattern := "internal/app/wiring/*.go"
-	files, err := filepath.Glob(pattern)
-	require.NoError(t, err, "glob composition sources")
+	patterns := []string{"internal/app/wiring/*.go", "internal/app/wiring/buildbundle/*.go"}
+	var files []string
+	for _, pattern := range patterns {
+		matched, err := filepath.Glob(pattern)
+		require.NoError(t, err, "glob composition sources")
+		files = append(files, matched...)
+	}
 	out := make([]string, 0, len(files))
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {

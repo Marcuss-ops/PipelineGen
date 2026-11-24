@@ -7,9 +7,9 @@ import (
 )
 
 func TestBuildImagesServiceDoesNotWireChromeImageGeneration(t *testing.T) {
-	source, err := os.ReadFile("build_bundles_core.go")
+	source, err := os.ReadFile("buildbundle/build_bundles_core.go")
 	if err != nil {
-		t.Fatalf("read build_bundles_core.go: %v", err)
+		t.Fatalf("read buildbundle/build_bundles_core.go: %v", err)
 	}
 	text := string(source)
 	for _, forbidden := range []string{
@@ -17,7 +17,7 @@ func TestBuildImagesServiceDoesNotWireChromeImageGeneration(t *testing.T) {
 		"chromeimages.NewChromeImageProviderPoolFromProfile(",
 	} {
 		if strings.Contains(text, forbidden) {
-			t.Fatalf("build_bundles_core.go still wires retired Chrome image generation %q", forbidden)
+			t.Fatalf("buildbundle/build_bundles_core.go still wires retired Chrome image generation %q", forbidden)
 		}
 	}
 	if !strings.Contains(text, "ImageGen: nil") {

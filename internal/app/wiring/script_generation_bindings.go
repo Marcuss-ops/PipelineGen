@@ -198,10 +198,3 @@ func scriptCacheDB(root *ComposeRoot) *sql.DB {
 	}
 	return root.CacheDB.DB
 }
-
-// SceneTextGenerator remains a composition-root facade over the script
-// subsystem implementation.
-type SceneTextGenerator = scriptwiring.SceneTextGenerator
-
-type ClipAssetResolver = scriptwiring.ClipAssetResolver
-type ClipProber = scriptwiring.ClipProber

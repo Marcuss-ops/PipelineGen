@@ -181,15 +181,24 @@ type rankedIdentitySearcher struct {
 
 func (s *rankedIdentitySearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	s.calls.Add(1)
+	// Providers label results with the canonical entity, not the possibly
+	// topic-qualified provider query. Using req.Query here would make every
+	// person candidate fail the identity gate once disambiguation adds the
+	// topic to the search string.
+	entity := strings.TrimSpace(req.Entity)
+	if entity == "" {
+		entity = strings.TrimSpace(req.Query)
+	}
+	slug := strings.ToLower(strings.ReplaceAll(entity, " ", "-"))
 	results := make([]scriptpkg.SegmentAssetCandidate, 0, 10)
 	for rank := 1; rank <= 10; rank++ {
 		results = append(results, scriptpkg.SegmentAssetCandidate{
-			AssetID:   fmt.Sprintf("%s-%02d", strings.ToLower(strings.ReplaceAll(req.Query, " ", "-")), rank),
+			AssetID:   fmt.Sprintf("%s-%02d", slug, rank),
 			Provider:  scriptpkg.VidRushProviderInternetImages,
 			Query:     req.Query,
-			Entity:    req.Query,
+			Entity:    entity,
 			Score:     1.0 / float64(rank),
-			SourceURL: fmt.Sprintf("https://images.example/catalog/%s/%02d.jpg", strings.ToLower(strings.ReplaceAll(req.Query, " ", "-")), rank),
+			SourceURL: fmt.Sprintf("https://images.example/catalog/%s/%02d.jpg", slug, rank),
 		})
 	}
 	return results, nil
