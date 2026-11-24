@@ -7,13 +7,9 @@
 package overlayproject
 
 import (
-	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -182,103 +178,4 @@ func RecoverNumericSuffix(text, value string, mentions []scriptpkg.AnnotationSpa
 		return value
 	}
 	return value
-}
-
-func numericEntityGroundedForLanguage(scene contract.Scene, language, sourceLanguage contract.Language, value string) bool {
-	if language == sourceLanguage {
-		return true
-	}
-	source := AnnotationsForLanguage(scene, sourceLanguage, sourceLanguage)
-	if source == nil {
-		return false
-	}
-	allowed := make(map[int64]struct{})
-	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), source.PrimaryEntities...), source.SecondaryEntities...) {
-		if capmodel.EntityTypeToKind(entity.Type) != capmodel.KindNumber {
-			continue
-		}
-		for _, number := range numericValues(entity.CanonicalName) {
-			allowed[number] = struct{}{}
-		}
-	}
-	values := numericValues(value)
-	if len(values) == 0 {
-		return false
-	}
-	for _, number := range values {
-		if _, ok := allowed[number]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func numericValues(value string) []int64 {
-	words := map[string]int64{
-		"zero": 0, "cero": 0, "uno": 1, "una": 1, "one": 1, "um": 1, "uma": 1, "un": 1,
-		"two": 2, "dos": 2, "due": 2, "dois": 2, "duas": 2,
-		"three": 3, "tres": 3, "tre": 3, "três": 3,
-		"four": 4, "cuatro": 4, "quattro": 4, "quatro": 4,
-		"five": 5, "cinco": 5, "cinque": 5,
-		"six": 6, "seis": 6, "sei": 6,
-		"seven": 7, "siete": 7, "sette": 7,
-		"eight": 8, "ocho": 8, "otto": 8, "oito": 8,
-		"nine": 9, "nueve": 9, "nove": 9,
-		"ten": 10, "diez": 10, "dieci": 10, "dez": 10,
-		"eleven": 11, "once": 11, "undici": 11, "onze": 11,
-		"twelve": 12, "doce": 12, "dodici": 12, "doze": 12,
-		"thirteen": 13, "trece": 13, "tredici": 13, "treze": 13,
-		"fourteen": 14, "catorce": 14, "quattordici": 14, "quatorze": 14,
-		"fifteen": 15, "quince": 15, "quindici": 15, "quinze": 15,
-		"sixteen": 16, "dieciséis": 16, "sedici": 16, "dezesseis": 16,
-		"seventeen": 17, "diciassette": 17,
-		"eighteen": 18, "diciotto": 18,
-		"nineteen": 19, "diciannove": 19,
-		"twenty": 20, "veinte": 20, "venti": 20, "vinte": 20,
-		"thirty": 30, "treinta": 30, "trenta": 30, "trinta": 30,
-		"forty": 40, "cuarenta": 40, "quaranta": 40,
-		"fifty": 50, "cincuenta": 50, "cinquanta": 50,
-		"sixty": 60, "sesenta": 60, "sessanta": 60,
-		"seventy": 70, "setenta": 70, "settanta": 70,
-		"eighty": 80, "ochenta": 80, "ottanta": 80,
-		"ninety": 90, "noventa": 90, "novanta": 90,
-		"hundred": 100, "cien": 100, "ciento": 100, "cento": 100, "cem": 100,
-	}
-	tokens := strings.FieldsFunc(strings.ToLower(value), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
-	var values []int64
-	current := int64(0)
-	flush := func() {
-		if current != 0 {
-			values = append(values, current)
-			current = 0
-		}
-	}
-	for _, token := range tokens {
-		if number, err := strconv.ParseInt(token, 10, 64); err == nil {
-			flush()
-			values = append(values, number)
-			continue
-		}
-		if token == "and" || token == "e" || token == "y" || token == "de" || token == "del" {
-			continue
-		}
-		number, ok := words[token]
-		if !ok {
-			flush()
-			continue
-		}
-		if number >= 20 && number%10 == 0 {
-			current += number
-		} else if number == 100 {
-			if current == 0 {
-				current = 100
-			} else {
-				current *= 100
-			}
-		} else {
-			current += number
-		}
-	}
-	flush()
-	return values
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/semantics"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -543,8 +542,4 @@ func mergeTranslatedNamedEntities(visual, named []VisualEntity) []VisualEntity {
 		}
 	}
 	return out
-}
-
-func limitTranslatedNLPStrings(values []string, limit int) []string {
-	return semantics.LimitStrings(values, limit)
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/semantics"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/timeline"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // Package scriptgeneration — audio_aliases.go: facade for the audio stage
@@ -269,16 +268,8 @@ const SearchClassObject = contract.SearchClassObject
 const SearchClassOrganization = contract.SearchClassOrganization
 const SearchClassPerson = contract.SearchClassPerson
 
-func checkedFloatSeconds(value float64, field string) int64 {
-	return contract.CheckedFloatSeconds(value, field)
-}
-
 func normalizeIdentitySurface(surface string) string {
 	return contract.NormalizeIdentitySurface(surface)
-}
-
-func segmentExtractionExplicitlyEnabled(segment scriptpkg.ScriptSegment) bool {
-	return contract.SegmentExtractionExplicitlyEnabled(segment)
 }
 
 func SearchClassForIdentityKind(kind string) contract.SemanticSearchClass {

@@ -5,21 +5,10 @@ package overlayplan
 import (
 	"strings"
 
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-func entityImageCaption(item capmodel.OverlayItem) string {
-	if item.EntityRef != nil {
-		if name := strings.TrimSpace(item.EntityRef.Name); name != "" {
-			return name
-		}
-	}
-	return strings.TrimSpace(item.Text)
-}
 
 // ResolveEntityImageMotionPool returns the caller pool when present, otherwise
 // the complete certified generated-entity catalog. The Rust planner rejects an

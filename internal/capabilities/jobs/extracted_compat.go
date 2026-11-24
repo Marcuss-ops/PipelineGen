@@ -218,10 +218,6 @@ func checkM2MQuota(client *mwm2m.M2MClient, payload any) *M2MQuotaDecision {
 	return handlers.CheckM2MQuota(client, payload)
 }
 
-func estimatePayloadSeconds(payload any) int64 {
-	return handlers.EstimatePayloadSeconds(payload)
-}
-
 func ComposeSearchText(destination, origin, subject, category, provider string, tags []string, drivePath, contentType string) string {
 	return handlers.ComposeSearchText(destination, origin, subject, category, provider, tags, drivePath, contentType)
 }

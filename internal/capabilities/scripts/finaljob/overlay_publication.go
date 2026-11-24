@@ -208,10 +208,6 @@ func finalJobOverlayCanShrink(item capmodel.OverlayItem) bool {
 	}
 }
 
-func finalJobOverlayIsImageStyle(item capmodel.OverlayItem) bool {
-	return item.Kind == "image" || item.Kind == "entity_card"
-}
-
 type finalJobClipWindow struct {
 	StartUS         int64
 	previousStartUS int64

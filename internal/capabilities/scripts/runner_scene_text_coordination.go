@@ -17,7 +17,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -130,13 +129,6 @@ func nonEmptyParagraphs(source string) []string {
 // meaning of a brief while omitting its literal phrase; the hint is still a
 // caller-owned, source-grounded overlay requirement, so append it to the
 // first eligible scene when no generated scene contains it.
-func fixedPlaybackDurationUS(playback scriptpkg.FixedPlaybackPolicy) int64 {
-	if playback.SourceOutMS <= playback.SourceInMS || playback.SourceOutMS == 0 {
-		return 0
-	}
-	return (playback.SourceOutMS - playback.SourceInMS) * 1000
-}
-
 // normalizeGeneratedSceneIdentity repairs model-produced duplicate or missing
 // scene identities before downstream VidRush fan-out. A model may return a
 // valid number of prose chunks while copying the last scene id/index onto
