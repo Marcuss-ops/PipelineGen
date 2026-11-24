@@ -13,7 +13,6 @@ package acceptance_test
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -26,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ── in-memory detail.TextTrackRepository stub ─────────────────────────
@@ -219,7 +219,7 @@ func newRecordingOutbox() *recordingOutbox {
 // Enqueue mirrors production dedup: same eventKey → supersede;
 // new eventKey → enqueued. Returns the canonical
 // outboxevents.EnqueueResult shape (Inserted + ExistingStatus).
-func (o *recordingOutbox) Enqueue(_ context.Context, _ *sql.Tx, eventType, aggID, _aggType, payload, key string) (*outboxevents.EnqueueResult, error) {
+func (o *recordingOutbox) Enqueue(_ context.Context, _ sqlport.Tx, eventType, aggID, _aggType, payload, key string) (*outboxevents.EnqueueResult, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if key != "" {
