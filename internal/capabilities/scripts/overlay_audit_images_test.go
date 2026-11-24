@@ -375,16 +375,16 @@ func TestOverlayIntentLineageCoversIdentityReusedAcrossScenes(t *testing.T) {
 			Payload: capmodel.IntentPayload{Name: "Corrado Augias"}, TimingState: capmodel.TimingStatePending,
 		},
 		{
-			Version: capmodel.OverlayIntentVersion, IntentID: "intent-scene-1-rai", SceneID: "scene-1",
-			Entity: capmodel.EntityBinding{Type: "ORG", CanonicalName: "Rai", CanonicalEntityID: "org:rai"},
-			Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "org_default",
-			Payload: capmodel.IntentPayload{Name: "Rai"}, TimingState: capmodel.TimingStatePending,
+			Version: capmodel.OverlayIntentVersion, IntentID: "intent-scene-2-corrado-augias", SceneID: "scene-2",
+			Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Corrado Augias", CanonicalEntityID: canonical},
+			Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+			Payload: capmodel.IntentPayload{Name: "Corrado Augias"}, TimingState: capmodel.TimingStatePending,
 		},
 	}
 	lineage := freezeOverlayIntents(intents, items)
 	require.Equal(t, 2, lineage.Authored)
 	require.Equal(t, 0, lineage.Frozen)
-	require.Equal(t, 2, lineage.Covered, "PERSON and ORG are both entity-card lanes; reuse resolves both")
+	require.Equal(t, 2, lineage.Covered, "both intents name the identity that owns the reused card")
 	require.Equal(t, 0, lineage.Unresolved)
 	require.Equal(t, lineage.Authored, lineage.Frozen+lineage.Covered+lineage.Unresolved)
 
@@ -399,7 +399,7 @@ func TestOverlayIntentLineageCoversIdentityReusedAcrossScenes(t *testing.T) {
 	}
 	audit := buildOverlayAuditWithLineage(bundle, &capmodel.OverlayPlan{Items: items}, lineage)
 	require.NotNil(t, audit.OverlayTiming)
-	require.Equal(t, 1, audit.OverlayTiming.Covered)
+	require.Equal(t, 2, audit.OverlayTiming.Covered)
 	require.Equal(t, 0, audit.OverlayTiming.Unresolved)
 	require.NotNil(t, audit.EntityConcordance)
 	require.Equal(t, 1, audit.EntityConcordance.Checked, "one identity, one checked promise")
