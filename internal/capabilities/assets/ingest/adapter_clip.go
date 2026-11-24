@@ -2,7 +2,6 @@ package ingest
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"strings"
@@ -13,11 +12,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 type clipStoreAdapter struct {
-	db *sql.DB
+	db sqlport.QueryRower
 	// retirer is the canonical media-retirement surface for
 	// DeleteAssetRecord. It replaced the generic `repo detail.Repository`
 	// field (Wave 12 follow-up Phase 2 PR-3 had renamed it from `assets`):
@@ -106,7 +106,7 @@ type AssetContentHashReader interface {
 }
 
 func NewClipStoreAdapter(
-	db *sql.DB,
+	db sqlport.QueryRower,
 	retirer persistence.AssetSoftDeleter,
 	querySvc AssetDetailsReader,
 	locations persistence.AssetLocationWriter,

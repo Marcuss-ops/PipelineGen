@@ -24,6 +24,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/vidrush"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
@@ -67,7 +69,9 @@ func scriptVisualCandidateScorer(root *ComposeRoot) adapters.SemanticCandidateSc
 	if client == nil {
 		return nil
 	}
-	return ollamaadapters.NewOllamaPersonImageScorer(client)
+	return ollamaadapters.NewOllamaPersonImageScorerWithDownloader(client, func(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		return vidrush.DownloadVidRushImageForCandidate(ctx, vidrush.ProviderImageHTTPClient(), candidate, vidrush.DefaultVidRushImagePolicy())
+	})
 }
 
 // wireScriptFlow constructs and registers the ScriptFlow module.

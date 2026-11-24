@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
@@ -19,7 +20,7 @@ import (
 type splitPlaneFinalizer struct {
 	mediaDB     *sql.DB
 	mediaOutbox interface {
-		Enqueue(context.Context, *sql.Tx, string, string, string, string, string) (*pgmedia.EnqueueResult, error)
+		Enqueue(context.Context, assetspersistence.Transaction, string, string, string, string, string) (*pgmedia.EnqueueResult, error)
 	}
 	assetTx       finalization.AssetFinalizerTx
 	jobsFinalizer *jobsfinalizer.Finalizer

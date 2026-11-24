@@ -51,6 +51,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -67,25 +68,25 @@ type stubTxOutboxEnqueuer struct {
 }
 
 type indexEventCall struct {
-	tx          *sql.Tx
+	tx          sqlport.Tx
 	assetID     string
 	contentHash string
 }
 
 type cleanupEventCall struct {
-	tx             *sql.Tx
+	tx             sqlport.Tx
 	voiceoverID    string
 	oldDriveFileID string
 	newDriveFileID string
 	oldLocalPaths  []string
 }
 
-func (s *stubTxOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, tx *sql.Tx, assetID, _, contentHash string) error {
+func (s *stubTxOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, tx sqlport.Tx, assetID, _, contentHash string) error {
 	s.indexEvents = append(s.indexEvents, indexEventCall{tx: tx, assetID: assetID, contentHash: contentHash})
 	return nil
 }
 
-func (s *stubTxOutboxEnqueuer) EnqueueCleanupEvent(_ context.Context, tx *sql.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error {
+func (s *stubTxOutboxEnqueuer) EnqueueCleanupEvent(_ context.Context, tx sqlport.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error {
 	s.cleanupEvents = append(s.cleanupEvents, cleanupEventCall{
 		tx: tx, voiceoverID: voiceoverID, oldDriveFileID: oldDriveFileID,
 		newDriveFileID: newDriveFileID, oldLocalPaths: oldLocalPaths,
@@ -109,7 +110,7 @@ type stubLifecycleProjectionUpserter struct {
 	calls []*VoiceoverProjectionInput
 }
 
-func (s *stubLifecycleProjectionUpserter) UpsertVoiceoverProjectionTx(_ context.Context, _ *sql.Tx, input *VoiceoverProjectionInput) error {
+func (s *stubLifecycleProjectionUpserter) UpsertVoiceoverProjectionTx(_ context.Context, _ sqlport.WriteTx, input *VoiceoverProjectionInput) error {
 	s.calls = append(s.calls, input)
 	return nil
 }
@@ -138,7 +139,7 @@ func newStubIdempotencyVoRepo(t *testing.T) *stubIdempotencyVoRepo {
 	}
 }
 
-func (r *stubIdempotencyVoRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx, idempotencyKey string) (string, error) {
+func (r *stubIdempotencyVoRepo) FindByIdempotencyKeyTx(_ context.Context, _ sqlport.Tx, idempotencyKey string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if idempotencyKey == "" {
@@ -151,7 +152,7 @@ func (r *stubIdempotencyVoRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql
 	return rec.ID, nil
 }
 
-func (r *stubIdempotencyVoRepo) InsertTx(_ context.Context, _ *sql.Tx, rec *persistence.VoiceoverRecord) error {
+func (r *stubIdempotencyVoRepo) InsertTx(_ context.Context, _ sqlport.Tx, rec *persistence.VoiceoverRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Simulate the UNIQUE INDEX: if a row with the same idempotency key
@@ -202,7 +203,7 @@ func newStubVoRepoFailSecondBeginTx(t *testing.T, failErr error) *stubVoRepoFail
 	}
 }
 
-func (r *stubVoRepoFailSecondBeginTx) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (r *stubVoRepoFailSecondBeginTx) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	r.mu.Lock()
 	r.callCount++
 	count := r.callCount
@@ -229,7 +230,7 @@ type stubFailingInsertRepo struct {
 	insertErr error
 }
 
-func (r *stubFailingInsertRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
+func (r *stubFailingInsertRepo) InsertTx(ctx context.Context, tx sqlport.Tx, rec *persistence.VoiceoverRecord) error {
 	return r.insertErr
 }
 

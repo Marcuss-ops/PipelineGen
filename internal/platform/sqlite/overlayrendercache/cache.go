@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // ErrNotWired is returned when the adapter is constructed without a database.

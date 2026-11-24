@@ -20,7 +20,6 @@ package texttracks
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sync"
 	"time"
@@ -28,6 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"go.uber.org/zap"
 )
 
@@ -36,7 +36,7 @@ import (
 type OutboxEnqueuer interface {
 	Enqueue(
 		ctx context.Context,
-		tx *sql.Tx,
+		tx sqlport.Tx,
 		eventType, aggregateID, aggregateType, payloadJSON, eventKey string,
 	) (*outboxevents.EnqueueResult, error)
 }

@@ -173,7 +173,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		enrichCandidates = pgmedia.NewMediaEnrichmentCandidateReader(store.DB())
 	}
 	autotagSvc := autotag.NewService(autotag.ServiceDeps{
-		DB: params.dbs.DualPool.Writer, Repo: params.repos.Assets.Repository(),
+		Repo:             params.repos.Assets.Repository(),
 		EnrichCandidates: enrichCandidates,
 		VLMClient:        params.process.VLMClient, Committer: canonicalCommitter,
 		EnrichState: enrichState, Log: params.log,

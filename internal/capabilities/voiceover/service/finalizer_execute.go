@@ -2,7 +2,6 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // voiceoverTextPreview limits stored preview text by Unicode characters so a
@@ -37,7 +37,7 @@ func voiceoverTextPreview(text string) string {
 // pattern that hid the wiring fallback from operators. P0 #2 closes
 // the gap by treating unwired-required-deps as a hard error, leaving
 // only data-state guard-skips as recordable RequiredSteps entries.
-func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
+func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx sqlport.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
 	if cmd == nil {
 		return nil, fmt.Errorf("voiceoverFinalizer.Finalize: nil cmd")
 	}
@@ -188,14 +188,14 @@ func (f *voiceoverFinalizer) validateRequiredWiring() error {
 // lookup error fails closed BEFORE the dedupe gate can run.
 func (f *voiceoverFinalizer) reuseByIdempotencyKey(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	cmd *FinalizeCommand,
 ) (*FinalizeResult, bool, error) {
 	if cmd.IdempotencyKey == "" {
 		return nil, false, nil
 	}
 	matchedID, err := f.deps.VoiceoverRepo.FindByIdempotencyKeyTx(ctx, tx, cmd.IdempotencyKey)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && err != sqlport.ErrNoRows {
 		return nil, false, fmt.Errorf("voiceoverFinalizer: idempotency lookup: %w", err)
 	}
 	if matchedID == "" {
@@ -217,7 +217,7 @@ func (f *voiceoverFinalizer) reuseByIdempotencyKey(
 // finalizer run against an unverified dedupe guarantee.
 func (f *voiceoverFinalizer) reuseByDedupe(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	cmd *FinalizeCommand,
 ) (*FinalizeResult, []string, bool, error) {
 	if cmd.DriveFileID == "" {
@@ -284,7 +284,7 @@ func voiceoverRecordFromCommand(cmd *FinalizeCommand, textPreview, now string) *
 // the caller records on the result.
 func (f *voiceoverFinalizer) projectVoiceoverAsset(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	cmd *FinalizeCommand,
 	textPreview string,
 ) ([]string, error) {

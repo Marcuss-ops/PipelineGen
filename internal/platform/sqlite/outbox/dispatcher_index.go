@@ -2,9 +2,9 @@ package outbox
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"time"
 
 	"go.uber.org/zap"
@@ -208,7 +208,7 @@ var ErrSQLiteMediaIndexEmissionDisabled = errors.New("outbox: SQLite asset.index
 // committer, this SQLite envelope has no owner and MUST NOT be written. The
 // method remains only for legacy compositions that have not wired the
 // canonical committer yet; it never silently succeeds in the Postgres plane.
-func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, source, contentHash string) error {
+func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx sqlport.Tx, assetID, source, contentHash string) error {
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
 	}

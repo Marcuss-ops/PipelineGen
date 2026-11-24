@@ -9,7 +9,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 type Reader struct{ jobs, obs *sql.DB }
@@ -186,8 +186,8 @@ func (r *Reader) GetScriptRunSnapshot(ctx context.Context, jobID string) (*appjo
 		return nil, fmt.Errorf("read script run snapshot %s: %w", jobID, err)
 	}
 	var checkpoint struct {
-		Status       scriptgen.RunStatus `json:"status"`
-		CurrentStage scriptgen.Stage     `json:"current_stage"`
+		Status       scriptpkg.RunStatus `json:"status"`
+		CurrentStage scriptpkg.Stage     `json:"current_stage"`
 		Result       json.RawMessage     `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(payload), &checkpoint); err != nil {

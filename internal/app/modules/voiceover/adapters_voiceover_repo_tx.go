@@ -2,7 +2,6 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,18 +10,19 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 	"go.uber.org/zap"
 )
 
-func (a *UseCaseRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
+func (a *UseCaseRepoAdapter) InsertTx(ctx context.Context, tx sqlport.Tx, rec *persistence.VoiceoverRecord) error {
 	if rec == nil {
 		return fmt.Errorf("UseCaseRepoAdapter.InsertTx: nil record")
 	}
 	return a.repo.InsertTx(ctx, tx, a.toInfraRecord(rec))
 }
 
-func (a *UseCaseRepoAdapter) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error {
+func (a *UseCaseRepoAdapter) DeleteByIDTx(ctx context.Context, tx sqlport.Tx, id string) error {
 	if id == "" {
 		return fmt.Errorf("UseCaseRepoAdapter.DeleteByIDTx: empty id")
 	}
@@ -32,18 +32,18 @@ func (a *UseCaseRepoAdapter) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id st
 // FindByIdempotencyKeyTx runs the FASE 3 idempotency gate (July 2026)
 // INSIDE the caller-owned tx. Scans voiceovers for an existing row
 // with the same idempotency_key. Returns (matchedID, nil) when a
-// match is found (idempotency gate fires); returns ("", sql.ErrNoRows)
+// match is found (idempotency gate fires); returns ("", sqlport.ErrNoRows)
 // when no match exists (first-time run).
 //
-// Empty idempotencyKey short-circuits to ("", sql.ErrNoRows, nil) —
+// Empty idempotencyKey short-circuits to ("", sqlport.ErrNoRows, nil) —
 // the gate is intentionally skipped for pre-FASE-3 callers.
 func (a *UseCaseRepoAdapter) FindByIdempotencyKeyTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	idempotencyKey string,
 ) (string, error) {
 	if idempotencyKey == "" {
-		return "", sql.ErrNoRows
+		return "", sqlport.ErrNoRows
 	}
 	if tx == nil {
 		return "", fmt.Errorf("UseCaseRepoAdapter.FindByIdempotencyKeyTx: nil tx")
@@ -56,8 +56,8 @@ func (a *UseCaseRepoAdapter) FindByIdempotencyKeyTx(
 		`SELECT id FROM voiceovers WHERE idempotency_key = ? LIMIT 1`,
 		idempotencyKey,
 	).Scan(&matchedID)
-	if err == sql.ErrNoRows {
-		return "", sql.ErrNoRows
+	if err == sqlport.ErrNoRows {
+		return "", sqlport.ErrNoRows
 	}
 	if err != nil {
 		return "", fmt.Errorf("FindByIdempotencyKeyTx: scan: %w", err)

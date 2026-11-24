@@ -2,7 +2,9 @@ package scriptgeneration
 
 import (
 	"context"
+
 	"fmt"
+	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,44 +44,9 @@ type SemanticAssetSearchRequest struct {
 	Limit        int
 }
 
-// SemanticAssetHit is one untrusted retrieval candidate. It becomes consumable
-// only after the verifier stamps an accepted verdict and version. The location
-// fields then carry the exact materialization reference and content address.
-type SemanticAssetHit struct {
-	AssetID string
-	URL     string
-	SHA256  string
-	// DriveLink is a provider locator, not a durable identity. It is carried
-	// in-process to the materializer and must never become a serialized second
-	// source of truth for the content address.
-	DriveLink string `json:"-"`
-	MediaType string
-	Provider  string
-	Entity    string
-	Width     int
-	Height    int
-	// Ranking evidence is preserved from the canonical image search result so
-	// the production planner can choose the strongest hit instead of treating
-	// provider order as quality. Identity rejection is a hard exclusion.
-	Score                 float64
-	RelevanceScore        float64
-	SemanticScore         float64
-	TechnicalQualityScore float64
-	SemanticStatus        string
-	VerifierVersion       string
-}
+type SemanticAssetHit = semanticscript.SemanticAssetHit
 
-// SemanticAssetSearchResponse is the provider answer for one query.
-type SemanticAssetSearchResponse struct {
-	Hits     []SemanticAssetHit
-	Provider string
-	// RecallMS and VerifyMS are the two measured stages of the provider call:
-	// recall is the search/download candidate fetch, verification is the
-	// pixel/VLM verdict. They stay zero for ports and cached answers that do
-	// not measure them, so an aggregate never invents a split.
-	RecallMS int64
-	VerifyMS int64
-}
+type SemanticAssetSearchResponse = semanticscript.SemanticAssetSearchResponse
 
 // SemanticAssetSearchPort is the narrow retrieval port the batch planner needs.
 // It is implemented in production over the canonical internet image searcher.

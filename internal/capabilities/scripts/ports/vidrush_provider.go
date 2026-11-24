@@ -75,28 +75,8 @@ type LocalArtifact struct {
 }
 
 // VerifiedArtifact is the only artifact shape accepted by the common
-// finalization path. Technical verification and rights policy are explicit.
-type VerifiedArtifact struct {
-	Candidate        scriptpkg.SegmentAssetCandidate
-	LocalPath        string
-	MIMEType         string
-	SizeBytes        int64
-	ContentSHA256    string
-	DurationMs       int64
-	Width            int
-	Height           int
-	RightsStatus     string
-	VerificationNote string
-	Manifest         *job.ArtifactManifest
-	// OutputDriveFolderID is the resolved Drive root selected by the
-	// generation plan. Entity images are published below this root so a
-	// script run is self-contained in Drive; the canonical entity catalog
-	// remains the owner of reuse/indexing metadata.
-	OutputDriveFolderID string
-	// OutputDriveSubpath is the deterministic child path below
-	// OutputDriveFolderID (for example: title/language/images).
-	OutputDriveSubpath []string
-}
+// finalization path. The kernel owns the shape; this port re-exports it.
+type VerifiedArtifact = scriptpkg.VerifiedArtifact
 
 // retrieval and image generation. Persistence remains outside this interface.
 type VidRushAssetProvider interface {

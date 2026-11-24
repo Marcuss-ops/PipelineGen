@@ -37,11 +37,11 @@ package finalize
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ── Job row (lease fence) ───────────────────────────────────────────
@@ -53,7 +53,7 @@ type jobRow struct {
 	leaseID     string
 	revision    int
 	retryCount  int
-	leaseExpiry sql.NullString
+	leaseExpiry sqlport.NullString
 	resultJSON  string
 }
 
@@ -62,7 +62,7 @@ type jobRow struct {
 //
 // Validation surface (godlike/07 typed-error contract):
 //
-//   - sql.ErrNoRows → JOB_NOT_FOUND (no sentinel wrap — caller decides
+//   - sqlport.ErrNoRows → JOB_NOT_FOUND (no sentinel wrap — caller decides
 //     whether to retry or escalate).
 //   - status ∉ {RUNNING, FINALIZING, SUCCEEDED} → INVALID_STATUS
 //     (transitions to terminal but not completable).
@@ -86,7 +86,7 @@ type jobRow struct {
 // duplicate is a pure refactor with no behavior drift).
 func (f *Finalizer) selectJobForFinalization(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	lease *finalization.Lease,
 ) (*jobRow, error) {
 	var row jobRow
@@ -101,7 +101,7 @@ func (f *Finalizer) selectJobForFinalization(
 		   AND (lease_expiry IS NULL OR lease_expiry > CURRENT_TIMESTAMP)`,
 		lease.JobID,
 	).Scan(&row.status, &row.workerID, &row.leaseID, &row.revision, &row.retryCount, &row.leaseExpiry, &row.resultJSON)
-	if err == sql.ErrNoRows {
+	if err == sqlport.ErrNoRows {
 		return nil, finalization.NewFinalizationError(
 			"JOB_NOT_FOUND", "job not found",
 			lease.JobID, lease.Attempt, nil,

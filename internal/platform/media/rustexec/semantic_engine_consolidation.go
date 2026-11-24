@@ -6,8 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 // consolidationScope is the immutable manifest index shared by every
@@ -22,7 +21,7 @@ type consolidationScope struct {
 // consolidationCandidates is the candidate projection state. It owns the
 // duplicate indexes so every check sees the same identity map.
 type consolidationCandidates struct {
-	items             []scriptgen.SemanticProductionCandidate
+	items             []semantic.SemanticProductionCandidate
 	byID              map[string]int
 	dedupKeys         map[string]struct{}
 	mediaAssets       map[string]struct{}
@@ -36,8 +35,8 @@ type consolidationCandidates struct {
 func projectSemanticConsolidation(
 	texts map[string]string,
 	wire *semanticEngineConsolidation,
-	bundles map[string]*scriptgen.SemanticCandidateBundle,
-) (*scriptgen.SemanticVisualConsolidation, error) {
+	bundles map[string]*semantic.SemanticCandidateBundle,
+) (*semantic.SemanticVisualConsolidation, error) {
 	if wire == nil {
 		// Older workers do not carry the projection. The raw per-scene
 		// collections remain usable; only the new selective view is absent.
@@ -92,7 +91,7 @@ func validateConsolidationSchema(wire *semanticEngineConsolidation) error {
 	return nil
 }
 
-func indexConsolidationScope(bundles map[string]*scriptgen.SemanticCandidateBundle) (*consolidationScope, error) {
+func indexConsolidationScope(bundles map[string]*semantic.SemanticCandidateBundle) (*consolidationScope, error) {
 	groupScenes, err := indexSemanticGroupScenes(bundles)
 	if err != nil {
 		return nil, err
@@ -130,7 +129,7 @@ func validateProductionCandidates(
 	canonicalFacts map[string]struct{},
 ) (*consolidationCandidates, error) {
 	out := &consolidationCandidates{
-		items:       make([]scriptgen.SemanticProductionCandidate, 0, len(wireCandidates)),
+		items:       make([]semantic.SemanticProductionCandidate, 0, len(wireCandidates)),
 		byID:        make(map[string]int, len(wireCandidates)),
 		dedupKeys:   make(map[string]struct{}, len(wireCandidates)),
 		mediaAssets: make(map[string]struct{}),
@@ -161,7 +160,7 @@ func validateProductionCandidate(
 	scriptText string,
 	scope *consolidationScope,
 	canonicalFacts map[string]struct{},
-) ([]generationcontract.SemanticSearchQuery, error) {
+) ([]semantic.SemanticSearchQuery, error) {
 	if wireCandidate.ID == "" || wireCandidate.Recipe == "" || wireCandidate.AssetKey == "" || wireCandidate.DedupKey == "" {
 		return nil, fmt.Errorf("semantic consolidation: candidate identity is incomplete: %+v", wireCandidate)
 	}
@@ -218,8 +217,8 @@ func validateCandidateQueries(
 	wireCandidate semanticEngineProductionCandidate,
 	source string,
 	scriptText string,
-) ([]generationcontract.SemanticSearchQuery, error) {
-	queries := make([]generationcontract.SemanticSearchQuery, 0, len(wireCandidate.Queries))
+) ([]semantic.SemanticSearchQuery, error) {
+	queries := make([]semantic.SemanticSearchQuery, 0, len(wireCandidate.Queries))
 	seenQueries := make(map[string]struct{}, len(wireCandidate.Queries))
 	for _, query := range wireCandidate.Queries {
 		// Exact identity mentions are grounded against the whole script:
@@ -241,7 +240,7 @@ func validateCandidateQueries(
 			return nil, fmt.Errorf("semantic consolidation: candidate %q repeats query %q", wireCandidate.ID, query.Text)
 		}
 		seenQueries[query.Text] = struct{}{}
-		projectedQuery := generationcontract.SemanticSearchQuery{
+		projectedQuery := semantic.SemanticSearchQuery{
 			Kind: query.Kind, Text: query.Text, Origin: query.Origin,
 			Illustrative: query.Illustrative,
 		}
@@ -259,7 +258,7 @@ func validateCandidateQueries(
 		}
 		projectedQuery.DerivedTerms = append(projectedQuery.DerivedTerms, query.DerivedTerms...)
 		for _, component := range query.Components {
-			projectedQuery.Components = append(projectedQuery.Components, generationcontract.SemanticSearchQueryComponent{
+			projectedQuery.Components = append(projectedQuery.Components, semantic.SemanticSearchQueryComponent{
 				Kind: component.Kind, ComponentType: component.ComponentType, Text: component.Text,
 				StartByte: component.StartByte, EndByte: component.EndByte,
 			})
@@ -271,10 +270,10 @@ func validateCandidateQueries(
 
 func projectProductionCandidate(
 	wireCandidate semanticEngineProductionCandidate,
-	queries []generationcontract.SemanticSearchQuery,
+	queries []semantic.SemanticSearchQuery,
 	source string,
-) (scriptgen.SemanticProductionCandidate, error) {
-	projected := scriptgen.SemanticProductionCandidate{
+) (semantic.SemanticProductionCandidate, error) {
+	projected := semantic.SemanticProductionCandidate{
 		ID: wireCandidate.ID, Recipe: wireCandidate.Recipe, Rank: wireCandidate.Rank,
 		Priority: wireCandidate.Priority, SceneID: wireCandidate.SceneID,
 		SceneIDs:  append([]string(nil), wireCandidate.SceneIDs...),
@@ -293,9 +292,9 @@ func projectProductionCandidate(
 	}
 	for _, item := range wireCandidate.ChartItems {
 		if !groundedSpan(source, item.StartByte, item.EndByte, item.Text) {
-			return scriptgen.SemanticProductionCandidate{}, fmt.Errorf("semantic consolidation: candidate %q chart item is not grounded", wireCandidate.ID)
+			return semantic.SemanticProductionCandidate{}, fmt.Errorf("semantic consolidation: candidate %q chart item is not grounded", wireCandidate.ID)
 		}
-		projected.ChartItems = append(projected.ChartItems, scriptgen.SemanticChartItem{
+		projected.ChartItems = append(projected.ChartItems, semantic.SemanticChartItem{
 			Label: item.Label, Text: item.Text, Kind: item.Kind, Value: item.Value,
 			Start: item.StartByte, End: item.EndByte,
 		})
@@ -306,10 +305,10 @@ func projectProductionCandidate(
 func projectConsolidatedFacts(
 	wireFacts []semanticEngineConsolidatedFact,
 	texts map[string]string,
-	candidates []scriptgen.SemanticProductionCandidate,
+	candidates []semantic.SemanticProductionCandidate,
 	candidateByID map[string]int,
-) ([]scriptgen.SemanticConsolidatedFact, error) {
-	facts := make([]scriptgen.SemanticConsolidatedFact, 0, len(wireFacts))
+) ([]semantic.SemanticConsolidatedFact, error) {
+	facts := make([]semantic.SemanticConsolidatedFact, 0, len(wireFacts))
 	for _, fact := range wireFacts {
 		if err := validateConsolidatedFact(fact, texts, candidates, candidateByID); err != nil {
 			return nil, err
@@ -322,7 +321,7 @@ func projectConsolidatedFacts(
 func validateConsolidatedFact(
 	fact semanticEngineConsolidatedFact,
 	texts map[string]string,
-	candidates []scriptgen.SemanticProductionCandidate,
+	candidates []semantic.SemanticProductionCandidate,
 	candidateByID map[string]int,
 ) error {
 	if fact.Evidence == "" {
@@ -365,8 +364,8 @@ func validateConsolidatedFact(
 	return nil
 }
 
-func projectConsolidatedFact(fact semanticEngineConsolidatedFact) scriptgen.SemanticConsolidatedFact {
-	projected := scriptgen.SemanticConsolidatedFact{
+func projectConsolidatedFact(fact semanticEngineConsolidatedFact) semantic.SemanticConsolidatedFact {
+	projected := semantic.SemanticConsolidatedFact{
 		ID: fact.ID, FactKey: fact.FactKey,
 		FactIDs:         append([]string(nil), fact.FactIDs...),
 		SubjectEntityID: fact.SubjectEntityID, Predicate: fact.Predicate,
@@ -380,20 +379,20 @@ func projectConsolidatedFact(fact semanticEngineConsolidatedFact) scriptgen.Sema
 		UncoveredReason: derefString(fact.UncoveredReason),
 	}
 	if fact.Representation != nil {
-		projected.Representation = &scriptgen.SemanticFactRepresentation{
+		projected.Representation = &semantic.SemanticFactRepresentation{
 			CandidateID: fact.Representation.CandidateID, Recipe: fact.Representation.Recipe,
 		}
 	}
 	return projected
 }
 
-func projectConsolidatedDates(wireDates []semanticEngineConsolidatedDate, texts map[string]string) ([]scriptgen.SemanticConsolidatedDate, error) {
-	dates := make([]scriptgen.SemanticConsolidatedDate, 0, len(wireDates))
+func projectConsolidatedDates(wireDates []semanticEngineConsolidatedDate, texts map[string]string) ([]semantic.SemanticConsolidatedDate, error) {
+	dates := make([]semantic.SemanticConsolidatedDate, 0, len(wireDates))
 	for _, date := range wireDates {
 		if date.NormalizedDate == "" {
 			return nil, fmt.Errorf("semantic consolidation: date without normalized value")
 		}
-		projected := scriptgen.SemanticConsolidatedDate{
+		projected := semantic.SemanticConsolidatedDate{
 			NormalizedDate: date.NormalizedDate,
 			Count:          date.Count,
 			Surfaces:       append([]string(nil), date.Surfaces...),
@@ -403,7 +402,7 @@ func projectConsolidatedDates(wireDates []semanticEngineConsolidatedDate, texts 
 			if !ok || !groundedSpan(source, span.StartByte, span.EndByte, span.Surface) {
 				return nil, fmt.Errorf("semantic consolidation: date span %q is not grounded", span.Surface)
 			}
-			projected.Spans = append(projected.Spans, scriptgen.SemanticConsolidatedDateSpan{
+			projected.Spans = append(projected.Spans, semantic.SemanticConsolidatedDateSpan{
 				SceneID: span.SceneID, Surface: span.Surface, Start: span.StartByte, End: span.EndByte,
 			})
 		}
@@ -412,14 +411,14 @@ func projectConsolidatedDates(wireDates []semanticEngineConsolidatedDate, texts 
 	return dates, nil
 }
 
-func projectReferenceNumbers(wireReferences []semanticEngineReferenceNumber, texts map[string]string) ([]scriptgen.SemanticReferenceNumber, error) {
-	references := make([]scriptgen.SemanticReferenceNumber, 0, len(wireReferences))
+func projectReferenceNumbers(wireReferences []semanticEngineReferenceNumber, texts map[string]string) ([]semantic.SemanticReferenceNumber, error) {
+	references := make([]semantic.SemanticReferenceNumber, 0, len(wireReferences))
 	for _, reference := range wireReferences {
 		source, ok := texts[reference.SceneID]
 		if !ok || !groundedSpan(source, reference.StartByte, reference.EndByte, reference.Surface) {
 			return nil, fmt.Errorf("semantic consolidation: reference number %q is not grounded", reference.Surface)
 		}
-		references = append(references, scriptgen.SemanticReferenceNumber{
+		references = append(references, semantic.SemanticReferenceNumber{
 			SceneID: reference.SceneID, Surface: reference.Surface, Reason: reference.Reason,
 			Start: reference.StartByte, End: reference.EndByte,
 		})
@@ -431,8 +430,8 @@ func projectEventLinks(
 	wireLinks []semanticEngineEventLink,
 	texts map[string]string,
 	groupScenes map[string]map[string]struct{},
-) ([]scriptgen.SemanticEventLink, error) {
-	links := make([]scriptgen.SemanticEventLink, 0, len(wireLinks))
+) ([]semantic.SemanticEventLink, error) {
+	links := make([]semantic.SemanticEventLink, 0, len(wireLinks))
 	for _, link := range wireLinks {
 		if link.Kind != "precedes" {
 			return nil, fmt.Errorf("semantic consolidation: unsupported event link kind %q", link.Kind)
@@ -448,7 +447,7 @@ func projectEventLinks(
 		if !ok || !groundedSpan(source, link.StartByte, link.EndByte, link.Evidence) {
 			return nil, fmt.Errorf("semantic consolidation: event link %q is not grounded", link.ID)
 		}
-		links = append(links, scriptgen.SemanticEventLink{
+		links = append(links, semantic.SemanticEventLink{
 			ID: link.ID, GroupID: link.GroupID, SceneID: link.SceneID,
 			FromCandidateID: link.FromCandidateID, ToCandidateID: link.ToCandidateID,
 			Kind: link.Kind, Evidence: link.Evidence, Start: link.StartByte, End: link.EndByte,
@@ -460,13 +459,13 @@ func projectEventLinks(
 func projectConsolidationScenes(
 	wireScenes []semanticEngineConsolidationSceneStats,
 	texts map[string]string,
-) ([]scriptgen.SemanticConsolidationSceneStats, error) {
-	scenes := make([]scriptgen.SemanticConsolidationSceneStats, 0, len(wireScenes))
+) ([]semantic.SemanticConsolidationSceneStats, error) {
+	scenes := make([]semantic.SemanticConsolidationSceneStats, 0, len(wireScenes))
 	for _, scene := range wireScenes {
 		if _, ok := texts[scene.SceneID]; !ok {
 			return nil, fmt.Errorf("semantic consolidation: scene stats reference unknown scene %q", scene.SceneID)
 		}
-		scenes = append(scenes, scriptgen.SemanticConsolidationSceneStats{
+		scenes = append(scenes, semantic.SemanticConsolidationSceneStats{
 			SceneID: scene.SceneID, RawProposals: scene.RawProposals,
 			ProductionCandidates: scene.ProductionCandidates, RawQueries: scene.RawQueries,
 			CanonicalFacts: scene.CanonicalFacts, CoveredFacts: scene.CoveredFacts,
@@ -479,7 +478,7 @@ func projectConsolidationScenes(
 func validateConsolidationCounts(
 	wire *semanticEngineConsolidation,
 	candidates *consolidationCandidates,
-	facts []scriptgen.SemanticConsolidatedFact,
+	facts []semantic.SemanticConsolidatedFact,
 	scope *consolidationScope,
 ) error {
 	if wire.Metrics.ProductionCandidates != len(candidates.items) ||
@@ -499,16 +498,16 @@ func validateConsolidationCounts(
 
 func projectConsolidationView(
 	wire *semanticEngineConsolidation,
-	candidates []scriptgen.SemanticProductionCandidate,
-	facts []scriptgen.SemanticConsolidatedFact,
-	dates []scriptgen.SemanticConsolidatedDate,
-	references []scriptgen.SemanticReferenceNumber,
-	links []scriptgen.SemanticEventLink,
-	scenes []scriptgen.SemanticConsolidationSceneStats,
-) *scriptgen.SemanticVisualConsolidation {
-	return &scriptgen.SemanticVisualConsolidation{
+	candidates []semantic.SemanticProductionCandidate,
+	facts []semantic.SemanticConsolidatedFact,
+	dates []semantic.SemanticConsolidatedDate,
+	references []semantic.SemanticReferenceNumber,
+	links []semantic.SemanticEventLink,
+	scenes []semantic.SemanticConsolidationSceneStats,
+) *semantic.SemanticVisualConsolidation {
+	return &semantic.SemanticVisualConsolidation{
 		Schema: wire.Schema,
-		Inventory: scriptgen.SemanticConsolidationInventory{
+		Inventory: semantic.SemanticConsolidationInventory{
 			EntityMentions: wire.Inventory.EntityMentions, UniqueIdentities: wire.Inventory.UniqueIdentities,
 			NamedIdentities: wire.Inventory.NamedIdentities, Facts: wire.Inventory.Facts,
 			CanonicalFacts: wire.Inventory.CanonicalFacts, Proposals: wire.Inventory.Proposals,
@@ -523,7 +522,7 @@ func projectConsolidationView(
 		ReferenceNumbers:     references,
 		EventLinks:           links,
 		Scenes:               scenes,
-		Metrics: scriptgen.SemanticConsolidationMetrics{
+		Metrics: semantic.SemanticConsolidationMetrics{
 			RawProposals: wire.Metrics.RawProposals, ProductionCandidates: wire.Metrics.ProductionCandidates,
 			RawSearchEntries: wire.Metrics.RawSearchEntries, ProductionSearchCandidates: wire.Metrics.ProductionSearchCandidates,
 			RawQueries: wire.Metrics.RawQueries, ProductionQueries: wire.Metrics.ProductionQueries,
@@ -561,7 +560,7 @@ func candidateOwnsGroupScene(candidate semanticEngineProductionCandidate, declar
 // event link names a group and only the scene of its target member, so the
 // link could silently point at another scene's composition. Fail closed
 // instead of guessing which scene the group belongs to.
-func indexSemanticGroupScenes(bundles map[string]*scriptgen.SemanticCandidateBundle) (map[string]map[string]struct{}, error) {
+func indexSemanticGroupScenes(bundles map[string]*semantic.SemanticCandidateBundle) (map[string]map[string]struct{}, error) {
 	index := make(map[string]map[string]struct{}, len(bundles))
 	for sceneID, bundle := range bundles {
 		if bundle == nil {

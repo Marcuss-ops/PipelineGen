@@ -3,10 +3,12 @@
 // kernel/platform/audio value types, never on the scriptgeneration root.
 package scene
 
+import kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
+
 import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 
 // Language is an ISO 639-1 two-letter code (e.g. "en", "es").
-type Language string
+type Language = kernelaudio.Language
 
 // ResolvedScene is the sealed technical projection of an editorial Scene.
 // Once created, downstream timeline/render/audio code must not read legacy

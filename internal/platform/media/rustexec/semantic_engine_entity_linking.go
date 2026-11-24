@@ -5,11 +5,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
-func projectSemanticLinkedEntities(texts map[string]string, entities []semanticEngineLinkedEntity) ([]scriptgen.SemanticIdentity, error) {
-	projected := make([]scriptgen.SemanticIdentity, 0, len(entities))
+func projectSemanticLinkedEntities(texts map[string]string, entities []semanticEngineLinkedEntity) ([]semantic.SemanticIdentity, error) {
+	projected := make([]semantic.SemanticIdentity, 0, len(entities))
 	seenIDs := make(map[string]struct{}, len(entities))
 	seenSurfaceKeys := make(map[string]struct{}, len(entities))
 	for _, entity := range entities {
@@ -41,7 +41,7 @@ func projectSemanticLinkedEntities(texts map[string]string, entities []semanticE
 		if err != nil {
 			return nil, err
 		}
-		projected = append(projected, scriptgen.SemanticIdentity{
+		projected = append(projected, semantic.SemanticIdentity{
 			ID: id, CanonicalSurface: entity.CanonicalSurface, Kind: entity.EntityType, Mentions: mentions,
 			SurfaceKey: entity.SurfaceKey, CanonicalID: canonicalID, LinkStatus: status,
 			CanonicalName: entity.CanonicalName, Role: role, DisambiguationGloss: gloss,
@@ -96,8 +96,8 @@ func validateLinkedEntityHeader(
 	return id, status, role, canonicalID, gloss, nil
 }
 
-func projectEntityMentions(entity semanticEngineLinkedEntity, texts map[string]string) ([]scriptgen.SemanticIdentityMention, error) {
-	mentions := make([]scriptgen.SemanticIdentityMention, 0, len(entity.Mentions))
+func projectEntityMentions(entity semanticEngineLinkedEntity, texts map[string]string) ([]semantic.SemanticIdentityMention, error) {
+	mentions := make([]semantic.SemanticIdentityMention, 0, len(entity.Mentions))
 	seenMentions := make(map[string]struct{}, len(entity.Mentions))
 	canonicalMention := false
 	for _, mention := range entity.Mentions {
@@ -111,7 +111,7 @@ func projectEntityMentions(entity semanticEngineLinkedEntity, texts map[string]s
 		}
 		seenMentions[key] = struct{}{}
 		canonicalMention = canonicalMention || mention.Surface == entity.CanonicalSurface
-		mentions = append(mentions, scriptgen.SemanticIdentityMention{
+		mentions = append(mentions, semantic.SemanticIdentityMention{
 			SceneID: mention.SceneID, Surface: mention.Surface, Start: mention.StartByte, End: mention.EndByte,
 		})
 	}
@@ -170,9 +170,9 @@ func validateEntityLinkCandidates(
 	return winnerHasEvidence, candidateIDs, nil
 }
 
-func projectEntitySearchIntents(entity semanticEngineLinkedEntity, id, role string) ([]scriptgen.SemanticSearchIntent, error) {
-	identityIntents := make([]scriptgen.SemanticSearchIntent, 0, 1)
-	contextualIntents := make([]scriptgen.SemanticSearchIntent, 0, len(entity.SearchIntents))
+func projectEntitySearchIntents(entity semanticEngineLinkedEntity, id, role string) ([]semantic.SemanticSearchIntent, error) {
+	identityIntents := make([]semantic.SemanticSearchIntent, 0, 1)
+	contextualIntents := make([]semantic.SemanticSearchIntent, 0, len(entity.SearchIntents))
 	for _, intent := range entity.SearchIntents {
 		kind := strings.TrimSpace(intent.Kind)
 		query := strings.TrimSpace(intent.Query)
@@ -183,7 +183,7 @@ func projectEntitySearchIntents(entity semanticEngineLinkedEntity, id, role stri
 		if role == "visual_concept" && kind == "identity" {
 			return nil, fmt.Errorf("visual concept %q cannot carry an identity search intent", id)
 		}
-		projected := scriptgen.SemanticSearchIntent{Kind: kind, Query: query, Lang: language}
+		projected := semantic.SemanticSearchIntent{Kind: kind, Query: query, Lang: language}
 		if kind == "identity" {
 			identityIntents = append(identityIntents, projected)
 			continue
@@ -197,7 +197,7 @@ func projectEntitySearchIntents(entity semanticEngineLinkedEntity, id, role stri
 	// punctuated surface the worker could not turn into a query) the
 	// contextual queries are dropped: a co-mention without its subject
 	// must not become a standalone search.
-	intents := make([]scriptgen.SemanticSearchIntent, 0, len(entity.SearchIntents))
+	intents := make([]semantic.SemanticSearchIntent, 0, len(entity.SearchIntents))
 	if role == "named_entity" {
 		if len(identityIntents) > 0 {
 			intents = append(intents, identityIntents...)
@@ -210,24 +210,24 @@ func projectEntitySearchIntents(entity semanticEngineLinkedEntity, id, role stri
 	return intents, nil
 }
 
-func projectEntityLinkCandidates(entity semanticEngineLinkedEntity) []scriptgen.SemanticLinkCandidate {
-	linkCandidates := make([]scriptgen.SemanticLinkCandidate, 0, len(entity.LinkCandidates))
+func projectEntityLinkCandidates(entity semanticEngineLinkedEntity) []semantic.SemanticLinkCandidate {
+	linkCandidates := make([]semantic.SemanticLinkCandidate, 0, len(entity.LinkCandidates))
 	for _, candidate := range entity.LinkCandidates {
-		features := make([]scriptgen.SemanticLinkFeature, 0, len(candidate.Features))
+		features := make([]semantic.SemanticLinkFeature, 0, len(candidate.Features))
 		for _, feature := range candidate.Features {
-			features = append(features, scriptgen.SemanticLinkFeature{
+			features = append(features, semantic.SemanticLinkFeature{
 				Name: feature.Name, Value: feature.Value, Terms: append([]string(nil), feature.Terms...),
-				Spans: append([]scriptgen.SemanticLinkEvidenceSpan(nil), feature.Spans...),
+				Spans: append([]semantic.SemanticLinkEvidenceSpan(nil), feature.Spans...),
 			})
 		}
-		linkCandidates = append(linkCandidates, scriptgen.SemanticLinkCandidate{
+		linkCandidates = append(linkCandidates, semantic.SemanticLinkCandidate{
 			KBID: candidate.KBID, Name: candidate.Name, Score: candidate.Score, Features: features,
 		})
 	}
 	return linkCandidates
 }
 
-func validateLinkedEntityCoverage(scenes []semanticEngineSceneManifest, linked []scriptgen.SemanticIdentity) error {
+func validateLinkedEntityCoverage(scenes []semanticEngineSceneManifest, linked []semantic.SemanticIdentity) error {
 	expected := make(map[string]semanticEngineIdentity)
 	for _, scene := range scenes {
 		for _, identity := range scene.Identities {
@@ -244,7 +244,7 @@ func validateLinkedEntityCoverage(scenes []semanticEngineSceneManifest, linked [
 			}
 		}
 	}
-	actual := make(map[string]scriptgen.SemanticIdentity, len(linked))
+	actual := make(map[string]semantic.SemanticIdentity, len(linked))
 	for _, identity := range linked {
 		actual[identity.ID] = identity
 	}

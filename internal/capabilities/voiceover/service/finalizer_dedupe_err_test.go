@@ -32,6 +32,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -53,18 +54,18 @@ type recordingDedupeErrRepo struct {
 
 // BeginTx is part of the VoiceoverRepository interface but is NEVER
 // invoked by voiceoverFinalizer.Finalize because the finalizer
-// receives a caller-owned *sql.Tx. We panic on call so any future
+// receives a caller-owned sqlport.Tx. We panic on call so any future
 // drift is caught at test time, not at production runtime.
-func (r *recordingDedupeErrRepo) BeginTx(_ context.Context) (*sql.Tx, error) {
+func (r *recordingDedupeErrRepo) BeginTx(_ context.Context) (sqlport.Tx, error) {
 	panic("recordingDedupeErrRepo.BeginTx: NOT expected (caller owns the tx; finalizer.Finalize receives it as a parameter)")
 }
 
-func (r *recordingDedupeErrRepo) InsertTx(_ context.Context, _ *sql.Tx, _ *persistence.VoiceoverRecord) error {
+func (r *recordingDedupeErrRepo) InsertTx(_ context.Context, _ sqlport.Tx, _ *persistence.VoiceoverRecord) error {
 	r.insertCalls++
 	return nil
 }
 
-func (r *recordingDedupeErrRepo) DeleteByIDTx(_ context.Context, _ *sql.Tx, _ string) error {
+func (r *recordingDedupeErrRepo) DeleteByIDTx(_ context.Context, _ sqlport.Tx, _ string) error {
 	r.deleteCalls++
 	return nil
 }
@@ -73,12 +74,12 @@ func (r *recordingDedupeErrRepo) PreReadByID(_ context.Context, _ string) (*pers
 	return nil, nil
 }
 
-func (r *recordingDedupeErrRepo) CountByDriveFileIDTx(_ context.Context, _ *sql.Tx, _, _ string) (string, int, error) {
+func (r *recordingDedupeErrRepo) CountByDriveFileIDTx(_ context.Context, _ sqlport.Tx, _, _ string) (string, int, error) {
 	r.countCalls++
 	return "", 0, r.countErr
 }
 
-func (r *recordingDedupeErrRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx, idempotencyKey string) (string, error) {
+func (r *recordingDedupeErrRepo) FindByIdempotencyKeyTx(_ context.Context, _ sqlport.Tx, idempotencyKey string) (string, error) {
 	if idempotencyKey == "" {
 		return "", sql.ErrNoRows
 	}
@@ -94,12 +95,12 @@ type recordingOutbox struct {
 	cleanupCalls int
 }
 
-func (r *recordingOutbox) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, _, _, _ string) error {
+func (r *recordingOutbox) EnqueueIndexEvent(_ context.Context, _ sqlport.Tx, _, _, _ string) error {
 	r.indexCalls++
 	return nil
 }
 
-func (r *recordingOutbox) EnqueueCleanupEvent(_ context.Context, _ *sql.Tx, _, _, _ string, _ []string) error {
+func (r *recordingOutbox) EnqueueCleanupEvent(_ context.Context, _ sqlport.Tx, _, _, _ string, _ []string) error {
 	r.cleanupCalls++
 	return nil
 }
@@ -112,7 +113,7 @@ type recordingProjection struct {
 	calls int
 }
 
-func (r *recordingProjection) UpsertVoiceoverProjectionTx(_ context.Context, _ *sql.Tx, _ *VoiceoverProjectionInput) error {
+func (r *recordingProjection) UpsertVoiceoverProjectionTx(_ context.Context, _ sqlport.WriteTx, _ *VoiceoverProjectionInput) error {
 	r.calls++
 	return nil
 }

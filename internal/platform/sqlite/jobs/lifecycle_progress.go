@@ -8,6 +8,7 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -241,7 +242,7 @@ func (r *SQLiteStore) AddEvent(ctx context.Context, id string, eventType, messag
 	return nil
 }
 
-func insertJobTimelineEvent(ctx context.Context, tx *sql.Tx, jobID, eventType, message string, data map[string]any, createdAt time.Time) error {
+func insertJobTimelineEvent(ctx context.Context, tx sqlport.Tx, jobID, eventType, message string, data map[string]any, createdAt time.Time) error {
 	if trace, ok := data["trace"].(map[string]any); ok {
 		data = cloneTimelineData(data)
 		data["run_id"] = trace["run_id"]

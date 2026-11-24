@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // fakeDiscoveryRecorder records the self-owned discovery commits the
@@ -194,7 +195,7 @@ func TestDispatcher_EmptyContentHashRejected(t *testing.T) {
 // interface so Dispatcher tests can wire all deps non-nil.
 type noopOutboxEventsRepo struct{}
 
-func (noopOutboxEventsRepo) Enqueue(_ context.Context, _ *sql.Tx, _, _, _, _, _ string) (*outboxevents.EnqueueResult, error) {
+func (noopOutboxEventsRepo) Enqueue(_ context.Context, _ sqlport.Tx, _, _, _, _, _ string) (*outboxevents.EnqueueResult, error) {
 	return &outboxevents.EnqueueResult{}, nil
 }
 

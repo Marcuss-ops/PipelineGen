@@ -2,10 +2,10 @@
 
 **Data:** 2026-11-24
 **Priorità:** P1 (I/O binder, SSOT dello schema)
-**Stato:** OPEN
+**Stato:** CLOSED (2026-11-24) — inventario SQL = 0; nessun `database/sql` o DDL runtime nelle capability
 **Owner:** capability owners + `platform/sqlite` / `platform/postgres`
 **Origine:** radiografia 2026-11-24, Ondata 2; inventario RA-13
-**Base:** `refactored` @ `3e0a9e3ae`
+**Base:** `refactored` @ `3e0a9e3ae`; rilettura @ `e89a0a3dc`
 
 ## 1. Problema
 
@@ -96,3 +96,29 @@ go test ./internal/capabilities/... ./internal/platform/sqlite/... \
 - **Rollback:** si ripristinano gli import e le entry; nessuna migrazione dati.
 - **Regola di chiusura:** CLEANUP-06 si chiude solo con inventario SQL a zero;
   nessuna chiusura per gruppo parziale.
+
+## 5. Stato pre-migrazione (superato)
+
+- Snapshot iniziale: HEAD `e89a0a3dc`; `capabilitySQLInventory` = **21** entry
+  (1 AI, 7 assets, 6 jobs, 1 operations, 6 voiceover).
+- Stato finale: inventario **0**, nessun import `database/sql` non-test,
+  nessun DDL runtime; vedi §6.
+
+## 6. Esito 2026-11-24
+
+- `capabilitySQLInventory`: 0 entry.
+- `rg -l '"database/sql"' --glob '!**/*_test.go' internal/capabilities`: nessun output.
+- `rg -n 'CREATE TABLE|ALTER TABLE' --glob '!**/*_test.go' internal/capabilities`: nessun output.
+- Il confine SQL e' il surface stretto `pkg/sqlport` (Result/Row/Tx/DB), con le implementazioni in `internal/platform`; le porte tipizzate per owner restano un follow-up architetturale, non un criterio di accettazione di questa scheda.
+- `go build ./...` rc 0; `go vet ./internal/capabilities/... ./internal/platform/...` rc 0.
+- `go run ./cmd/archcheck --strict` rc 0, 0 violazioni.
+- `go test ./internal/capabilities/... ./internal/platform/sqlite/... ./internal/platform/postgres/... ./internal/app/wiring/... -count=1` rc 0.
+- I criteri del §3 sono verdi; CLEANUP-06 chiuso.
+
+## 7. Cosa resta
+
+Niente di bloccante: inventario SQL a 0 e nessun `database/sql` o DDL runtime
+non-test nelle capability. Follow-up architetturale esplicito, non criterio di
+questa scheda: porte tipizzate per owner oltre al surface `pkg/sqlport`. Restano
+fuori perimetro push e suite completa
+(`TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` flaky sotto carico).

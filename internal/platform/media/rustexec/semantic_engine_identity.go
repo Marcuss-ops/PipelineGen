@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 type localizedSourceEntityJSON struct {
@@ -49,8 +49,8 @@ type localizeIdentitiesResponse struct {
 func (a *SemanticEngineAdapter) MatchLocalizedIdentities(
 	ctx context.Context,
 	language, text string,
-	sources []scriptgen.LocalizedSourceEntity,
-) ([]scriptgen.LocalizedIdentityMatch, error) {
+	sources []semantic.LocalizedSourceEntity,
+) ([]semantic.LocalizedIdentityMatch, error) {
 	return a.localizeIdentities(ctx, "match", language, text, sources, nil, nil)
 }
 
@@ -60,20 +60,20 @@ func (a *SemanticEngineAdapter) MatchLocalizedIdentities(
 func (a *SemanticEngineAdapter) CompleteLocalizedIdentities(
 	ctx context.Context,
 	language, text string,
-	sources []scriptgen.LocalizedSourceEntity,
+	sources []semantic.LocalizedSourceEntity,
 	visual []string,
-	existing []scriptgen.LocalizedIdentityMatch,
-) ([]scriptgen.LocalizedIdentityMatch, error) {
+	existing []semantic.LocalizedIdentityMatch,
+) ([]semantic.LocalizedIdentityMatch, error) {
 	return a.localizeIdentities(ctx, "complete", language, text, sources, visual, existing)
 }
 
 func (a *SemanticEngineAdapter) localizeIdentities(
 	ctx context.Context,
 	mode, language, text string,
-	sources []scriptgen.LocalizedSourceEntity,
+	sources []semantic.LocalizedSourceEntity,
 	visual []string,
-	existing []scriptgen.LocalizedIdentityMatch,
-) ([]scriptgen.LocalizedIdentityMatch, error) {
+	existing []semantic.LocalizedIdentityMatch,
+) ([]semantic.LocalizedIdentityMatch, error) {
 	if a == nil || a.executor == nil {
 		return nil, fmt.Errorf("semantic-engine: executor is not configured")
 	}
@@ -130,7 +130,7 @@ func (a *SemanticEngineAdapter) localizeIdentities(
 	}
 
 	runes := []rune(text)
-	out := make([]scriptgen.LocalizedIdentityMatch, 0, len(response.Matches))
+	out := make([]semantic.LocalizedIdentityMatch, 0, len(response.Matches))
 	for index, match := range response.Matches {
 		if match.SourceIndex < 0 || match.SourceIndex >= len(sources) {
 			return nil, fmt.Errorf("semantic-engine: localized identity match %d has source index %d out of range", index, match.SourceIndex)
@@ -144,7 +144,7 @@ func (a *SemanticEngineAdapter) localizeIdentities(
 		if got := string(runes[match.StartRune:match.EndRune]); got != match.Surface {
 			return nil, fmt.Errorf("semantic-engine: localized identity match %d surface %q does not match text span %q", index, match.Surface, got)
 		}
-		out = append(out, scriptgen.LocalizedIdentityMatch{
+		out = append(out, semantic.LocalizedIdentityMatch{
 			SourceIndex: match.SourceIndex,
 			Kind:        match.Kind,
 			StartRune:   match.StartRune,

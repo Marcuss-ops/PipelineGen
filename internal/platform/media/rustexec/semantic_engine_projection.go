@@ -5,11 +5,11 @@ import (
 	"strings"
 	"unicode"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
-func projectSemanticBullets(source string, bullets []semanticEngineCandidate) []scriptgen.BulletCandidate {
-	out := make([]scriptgen.BulletCandidate, 0, len(bullets))
+func projectSemanticBullets(source string, bullets []semanticEngineCandidate) []semantic.BulletCandidate {
+	out := make([]semantic.BulletCandidate, 0, len(bullets))
 	for _, bullet := range bullets {
 		// Rust enforces this before serialization; retain the Go boundary check
 		// because malformed worker output must not reach the render plan.
@@ -19,7 +19,7 @@ func projectSemanticBullets(source string, bullets []semanticEngineCandidate) []
 		if !groundedSpan(source, bullet.StartByte, bullet.EndByte, bullet.Evidence) {
 			continue
 		}
-		out = append(out, scriptgen.BulletCandidate{
+		out = append(out, semantic.BulletCandidate{
 			Text: bullet.Text, SentenceIndex: bullet.SentenceIndex, Start: bullet.StartByte, End: bullet.EndByte,
 			Score: bullet.Score, ID: bullet.ID, Kind: bullet.Kind, Evidence: bullet.Evidence, Provenance: bullet.Provenance,
 		})
@@ -27,15 +27,15 @@ func projectSemanticBullets(source string, bullets []semanticEngineCandidate) []
 	return out
 }
 
-func projectSemanticEntities(source string, candidates []semanticEngineCandidate) ([]scriptgen.SemanticEntityCandidate, error) {
-	out := make([]scriptgen.SemanticEntityCandidate, 0, len(candidates))
+func projectSemanticEntities(source string, candidates []semanticEngineCandidate) ([]semantic.SemanticEntityCandidate, error) {
+	out := make([]semantic.SemanticEntityCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		if candidate.ID == "" || candidate.Kind == "" || candidate.Evidence == "" ||
 			!groundedSpan(source, candidate.StartByte, candidate.EndByte, candidate.Evidence) {
 			return nil, fmt.Errorf("entity candidate %q is not grounded in source_text", candidate.Text)
 		}
-		out = append(out, scriptgen.SemanticEntityCandidate{
-			SemanticTextCandidate: scriptgen.SemanticTextCandidate{
+		out = append(out, semantic.SemanticEntityCandidate{
+			SemanticTextCandidate: semantic.SemanticTextCandidate{
 				ID: candidate.ID, Text: candidate.Text, Kind: candidate.Kind,
 				Evidence: candidate.Evidence, Provenance: candidate.Provenance,
 				SentenceIndex: candidate.SentenceIndex, Start: candidate.StartByte, End: candidate.EndByte, Score: candidate.Score,
@@ -46,8 +46,8 @@ func projectSemanticEntities(source string, candidates []semanticEngineCandidate
 	return out, nil
 }
 
-func projectSemanticEntityFacts(source string, facts []semanticEngineEntityFact) ([]scriptgen.SemanticEntityFact, error) {
-	out := make([]scriptgen.SemanticEntityFact, 0, len(facts))
+func projectSemanticEntityFacts(source string, facts []semanticEngineEntityFact) ([]semantic.SemanticEntityFact, error) {
+	out := make([]semantic.SemanticEntityFact, 0, len(facts))
 	for _, fact := range facts {
 		if fact.ID == "" || fact.SubjectEntityID == "" || fact.Predicate == "" || fact.Value == "" ||
 			fact.Evidence == "" || !groundedSpan(source, fact.StartByte, fact.EndByte, fact.Value) ||
@@ -60,7 +60,7 @@ func projectSemanticEntityFacts(source string, facts []semanticEngineEntityFact)
 		if fact.Importance < 0 || fact.Importance > 1 {
 			return nil, fmt.Errorf("entity fact %q has importance %.3f outside [0,1]", fact.ID, fact.Importance)
 		}
-		entry := scriptgen.SemanticEntityFact{
+		entry := semantic.SemanticEntityFact{
 			ID: fact.ID, SubjectEntityID: fact.SubjectEntityID, Predicate: fact.Predicate,
 			Value: fact.Value, ValueType: fact.ValueType, Status: fact.Status,
 			Evidence: fact.Evidence, SentenceIndex: fact.SentenceIndex, Start: fact.StartByte,
@@ -88,14 +88,14 @@ func projectSemanticEntityFacts(source string, facts []semanticEngineEntityFact)
 	return out, nil
 }
 
-func projectSemanticText(source string, candidates []semanticEngineCandidate) ([]scriptgen.SemanticTextCandidate, error) {
-	out := make([]scriptgen.SemanticTextCandidate, 0, len(candidates))
+func projectSemanticText(source string, candidates []semanticEngineCandidate) ([]semantic.SemanticTextCandidate, error) {
+	out := make([]semantic.SemanticTextCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		if candidate.ID == "" || candidate.Evidence == "" ||
 			!groundedSpan(source, candidate.StartByte, candidate.EndByte, candidate.Evidence) {
 			return nil, fmt.Errorf("candidate %q is not grounded in source_text", candidate.Text)
 		}
-		out = append(out, scriptgen.SemanticTextCandidate{
+		out = append(out, semantic.SemanticTextCandidate{
 			ID: candidate.ID, Text: candidate.Text, Kind: candidate.Kind,
 			Evidence: candidate.Evidence, Provenance: candidate.Provenance,
 			SentenceIndex: candidate.SentenceIndex, Start: candidate.StartByte, End: candidate.EndByte, Score: candidate.Score,
@@ -104,33 +104,33 @@ func projectSemanticText(source string, candidates []semanticEngineCandidate) ([
 	return out, nil
 }
 
-func projectSemanticImportantSegments(source string, items []semanticEngineImportantSegment) ([]scriptgen.SemanticImportantSegment, error) {
-	out := make([]scriptgen.SemanticImportantSegment, 0, len(items))
+func projectSemanticImportantSegments(source string, items []semanticEngineImportantSegment) ([]semantic.SemanticImportantSegment, error) {
+	out := make([]semantic.SemanticImportantSegment, 0, len(items))
 	for _, item := range items {
 		if item.ID == "" || item.Kind != "important_segment" || item.SentenceStart < 0 || item.SentenceEnd < item.SentenceStart ||
 			item.Score < 0 || item.Score > 1 || item.VisualMentions < 0 || item.MeasurementMentions < 0 ||
 			!groundedSpan(source, item.StartByte, item.EndByte, item.Evidence) {
 			return nil, fmt.Errorf("important segment %q is invalid or not grounded", item.ID)
 		}
-		out = append(out, scriptgen.SemanticImportantSegment{ID: item.ID, Kind: item.Kind, Evidence: item.Evidence,
+		out = append(out, semantic.SemanticImportantSegment{ID: item.ID, Kind: item.Kind, Evidence: item.Evidence,
 			SentenceStart: item.SentenceStart, SentenceEnd: item.SentenceEnd, Start: item.StartByte, End: item.EndByte,
 			Score: item.Score, VisualMentions: item.VisualMentions, MeasurementMentions: item.MeasurementMentions})
 	}
 	return out, nil
 }
 
-func projectSemanticQueryComponents(source string, items []semanticEngineQueryComponent) ([]scriptgen.SemanticQueryComponent, error) {
-	out := make([]scriptgen.SemanticQueryComponent, 0, len(items))
+func projectSemanticQueryComponents(source string, items []semanticEngineQueryComponent) ([]semantic.SemanticQueryComponent, error) {
+	out := make([]semantic.SemanticQueryComponent, 0, len(items))
 	for _, item := range items {
 		if item.Kind == "" || item.ComponentType == "" || !groundedSpan(source, item.StartByte, item.EndByte, item.Text) {
 			return nil, fmt.Errorf("query component %q is invalid or not grounded", item.Text)
 		}
-		out = append(out, scriptgen.SemanticQueryComponent{Kind: item.Kind, ComponentType: item.ComponentType, Text: item.Text, Start: item.StartByte, End: item.EndByte})
+		out = append(out, semantic.SemanticQueryComponent{Kind: item.Kind, ComponentType: item.ComponentType, Text: item.Text, Start: item.StartByte, End: item.EndByte})
 	}
 	return out, nil
 }
 
-func componentsWithin(items []scriptgen.SemanticQueryComponent, start, end int) bool {
+func componentsWithin(items []semantic.SemanticQueryComponent, start, end int) bool {
 	for i, item := range items {
 		if item.Start < start || item.End > end {
 			return false
@@ -144,8 +144,8 @@ func componentsWithin(items []scriptgen.SemanticQueryComponent, start, end int) 
 	return true
 }
 
-func projectSemanticComposedImageQueries(source string, items []semanticEngineComposedImageQuery) ([]scriptgen.SemanticComposedImageQuery, error) {
-	out := make([]scriptgen.SemanticComposedImageQuery, 0, len(items))
+func projectSemanticComposedImageQueries(source string, items []semanticEngineComposedImageQuery) ([]semantic.SemanticComposedImageQuery, error) {
+	out := make([]semantic.SemanticComposedImageQuery, 0, len(items))
 	for _, item := range items {
 		components, err := projectSemanticQueryComponents(source, item.Components)
 		if err != nil {
@@ -156,13 +156,13 @@ func projectSemanticComposedImageQueries(source string, items []semanticEngineCo
 			!componentsWithin(components, item.StartByte, item.EndByte) {
 			return nil, fmt.Errorf("composed query %q is invalid or not grounded", item.ID)
 		}
-		out = append(out, scriptgen.SemanticComposedImageQuery{ID: item.ID, Kind: item.Kind, Query: item.Query, Start: item.StartByte, End: item.EndByte, SentenceIndex: item.SentenceIndex, Components: components})
+		out = append(out, semantic.SemanticComposedImageQuery{ID: item.ID, Kind: item.Kind, Query: item.Query, Start: item.StartByte, End: item.EndByte, SentenceIndex: item.SentenceIndex, Components: components})
 	}
 	return out, nil
 }
 
-func projectSemanticContextualImageQueries(source string, items []semanticEngineContextualImageQuery) ([]scriptgen.SemanticContextualImageQuery, error) {
-	out := make([]scriptgen.SemanticContextualImageQuery, 0, len(items))
+func projectSemanticContextualImageQueries(source string, items []semanticEngineContextualImageQuery) ([]semantic.SemanticContextualImageQuery, error) {
+	out := make([]semantic.SemanticContextualImageQuery, 0, len(items))
 	for _, item := range items {
 		components, err := projectSemanticQueryComponents(source, item.Components)
 		if err != nil {
@@ -177,14 +177,14 @@ func projectSemanticContextualImageQueries(source string, items []semanticEngine
 			!componentsWithin(components, item.EvidenceStartByte, item.EvidenceEndByte) {
 			return nil, fmt.Errorf("contextual query %q is invalid or not grounded", item.ID)
 		}
-		out = append(out, scriptgen.SemanticContextualImageQuery{ID: item.ID, Kind: item.Kind, Query: item.Query, Evidence: item.Evidence,
+		out = append(out, semantic.SemanticContextualImageQuery{ID: item.ID, Kind: item.Kind, Query: item.Query, Evidence: item.Evidence,
 			EvidenceStart: item.EvidenceStartByte, EvidenceEnd: item.EvidenceEndByte, SentenceIndex: item.SentenceIndex, Components: components})
 	}
 	return out, nil
 }
 
-func projectSemanticIdentities(texts map[string]string, identities []semanticEngineIdentity) ([]scriptgen.SemanticIdentity, error) {
-	out := make([]scriptgen.SemanticIdentity, 0, len(identities))
+func projectSemanticIdentities(texts map[string]string, identities []semanticEngineIdentity) ([]semantic.SemanticIdentity, error) {
+	out := make([]semantic.SemanticIdentity, 0, len(identities))
 	for _, identity := range identities {
 		if identity.ID == "" || identity.Kind == "" || identity.CanonicalSurface == "" {
 			return nil, fmt.Errorf("identity has missing id, type, or canonical surface")
@@ -193,13 +193,13 @@ func projectSemanticIdentities(texts map[string]string, identities []semanticEng
 		if identity.CanonicalID != nil {
 			canonicalID = strings.TrimSpace(*identity.CanonicalID)
 		}
-		projected := scriptgen.SemanticIdentity{ID: identity.ID, CanonicalSurface: identity.CanonicalSurface, Kind: identity.Kind, CanonicalID: canonicalID}
+		projected := semantic.SemanticIdentity{ID: identity.ID, CanonicalSurface: identity.CanonicalSurface, Kind: identity.Kind, CanonicalID: canonicalID}
 		for _, mention := range identity.Mentions {
 			source, ok := texts[mention.SceneID]
 			if !ok || mention.Surface == "" || !groundedSpan(source, mention.StartByte, mention.EndByte, mention.Surface) {
 				return nil, fmt.Errorf("identity %q mention %q is not grounded in requested scenes", identity.ID, mention.Surface)
 			}
-			projected.Mentions = append(projected.Mentions, scriptgen.SemanticIdentityMention{
+			projected.Mentions = append(projected.Mentions, semantic.SemanticIdentityMention{
 				SceneID: mention.SceneID, Surface: mention.Surface, Start: mention.StartByte, End: mention.EndByte,
 			})
 		}
@@ -208,17 +208,17 @@ func projectSemanticIdentities(texts map[string]string, identities []semanticEng
 	return out, nil
 }
 
-func projectSemanticRelations(source string, relations semanticEngineRelationView) (scriptgen.SemanticRelationView, error) {
-	out := scriptgen.SemanticRelationView{
-		CoMentions:        make([]scriptgen.SemanticCoMention, 0, len(relations.CoMentions)),
-		AssertedRelations: make([]scriptgen.SemanticAssertedRelation, 0, len(relations.AssertedRelations)),
+func projectSemanticRelations(source string, relations semanticEngineRelationView) (semantic.SemanticRelationView, error) {
+	out := semantic.SemanticRelationView{
+		CoMentions:        make([]semantic.SemanticCoMention, 0, len(relations.CoMentions)),
+		AssertedRelations: make([]semantic.SemanticAssertedRelation, 0, len(relations.AssertedRelations)),
 	}
 	for _, relation := range relations.CoMentions {
 		if relation.LeftID == "" || relation.RightID == "" || relation.LeftID == relation.RightID ||
 			relation.Evidence == "" || !strings.Contains(source, relation.Evidence) {
 			return out, fmt.Errorf("co-mention is not grounded in source_text")
 		}
-		out.CoMentions = append(out.CoMentions, scriptgen.SemanticCoMention{
+		out.CoMentions = append(out.CoMentions, semantic.SemanticCoMention{
 			LeftID: relation.LeftID, RightID: relation.RightID, Evidence: relation.Evidence, SentenceIndex: relation.SentenceIndex,
 		})
 	}
@@ -232,7 +232,7 @@ func projectSemanticRelations(source string, relations semanticEngineRelationVie
 		if relation.Predicate != nil {
 			predicate = *relation.Predicate
 		}
-		out.AssertedRelations = append(out.AssertedRelations, scriptgen.SemanticAssertedRelation{
+		out.AssertedRelations = append(out.AssertedRelations, semantic.SemanticAssertedRelation{
 			SourceID: relation.SourceID, TargetID: relation.TargetID, Predicate: predicate,
 			Status: relation.Status, Evidence: relation.Evidence, SentenceIndex: relation.SentenceIndex,
 		})
@@ -245,8 +245,8 @@ func validRelationStatus(status string) bool {
 		status == "asserted" || status == "negated" || status == "uncertain"
 }
 
-func projectSemanticProposals(source string, proposals []semanticEngineProposal) ([]scriptgen.SemanticVisualProposal, error) {
-	out := make([]scriptgen.SemanticVisualProposal, 0, len(proposals))
+func projectSemanticProposals(source string, proposals []semanticEngineProposal) ([]semantic.SemanticVisualProposal, error) {
+	out := make([]semantic.SemanticVisualProposal, 0, len(proposals))
 	seenIDs := make(map[string]struct{}, len(proposals))
 	for _, proposal := range proposals {
 		if proposal.ProposalType == "" || proposal.Evidence == "" ||
@@ -263,7 +263,7 @@ func projectSemanticProposals(source string, proposals []semanticEngineProposal)
 			return nil, fmt.Errorf("visual proposal id %q is repeated", id)
 		}
 		seenIDs[id] = struct{}{}
-		projected := scriptgen.SemanticVisualProposal{
+		projected := semantic.SemanticVisualProposal{
 			ID:   id,
 			Type: proposal.ProposalType, SuggestedVisual: proposal.SuggestedVisual,
 			Status: proposal.Status, Evidence: proposal.Evidence, EntityIDs: append([]string(nil), proposal.EntityIDs...),
@@ -280,7 +280,7 @@ func projectSemanticProposals(source string, proposals []semanticEngineProposal)
 			if item.Text == "" || !groundedSpan(source, item.StartByte, item.EndByte, item.Text) {
 				return nil, fmt.Errorf("proposal chart item %q is not grounded in source_text", item.Text)
 			}
-			projected.ChartItems = append(projected.ChartItems, scriptgen.SemanticChartItem{
+			projected.ChartItems = append(projected.ChartItems, semantic.SemanticChartItem{
 				Label: item.Label, Text: item.Text, Kind: item.Kind, Value: item.Value, Start: item.StartByte, End: item.EndByte,
 			})
 		}
@@ -320,8 +320,8 @@ func groundedQuery(source, query string) bool {
 	return true
 }
 
-func projectSemanticGroups(currentSceneID string, texts map[string]string, groups []semanticEngineGroup) ([]scriptgen.SemanticGroup, error) {
-	out := make([]scriptgen.SemanticGroup, 0, len(groups))
+func projectSemanticGroups(currentSceneID string, texts map[string]string, groups []semanticEngineGroup) ([]semantic.SemanticGroup, error) {
+	out := make([]semantic.SemanticGroup, 0, len(groups))
 	for _, group := range groups {
 		if group.ID == "" || group.Title == "" || len(group.Members) < 2 ||
 			!validSemanticGroupType(group.GroupType) {
@@ -333,7 +333,7 @@ func projectSemanticGroups(currentSceneID string, texts map[string]string, group
 		if group.Complete != nil && *group.Complete && group.TargetCount != nil && len(group.Members) != *group.TargetCount {
 			return nil, fmt.Errorf("group %q is marked complete with %d of %d members", group.ID, len(group.Members), *group.TargetCount)
 		}
-		projected := scriptgen.SemanticGroup{ID: group.ID, Type: group.GroupType, Title: group.Title,
+		projected := semantic.SemanticGroup{ID: group.ID, Type: group.GroupType, Title: group.Title,
 			TargetCount: group.TargetCount, Complete: group.Complete}
 		if group.RankingBasis != nil {
 			projected.RankingBasis = *group.RankingBasis
@@ -369,7 +369,7 @@ func projectSemanticGroups(currentSceneID string, texts map[string]string, group
 			if group.GroupType == "ranking" && member.Rank == nil {
 				return nil, fmt.Errorf("ranking group %q has an unranked member", group.ID)
 			}
-			entry := scriptgen.SemanticGroupMember{CandidateID: member.CandidateID, SceneID: sceneID, Rank: member.Rank,
+			entry := semantic.SemanticGroupMember{CandidateID: member.CandidateID, SceneID: sceneID, Rank: member.Rank,
 				SentenceIndex: member.SentenceIndex, Text: member.Text, Evidence: member.Evidence,
 				Start: member.StartByte, End: member.EndByte}
 			if member.TemporalSurface != nil {
@@ -388,8 +388,8 @@ func projectSemanticGroups(currentSceneID string, texts map[string]string, group
 // projectSemanticMicroSummaries carries the fact-backed phrases across the
 // worker boundary. The paraphrased Text is preserved for provenance, but the
 // span that planning may act on is always the verbatim Evidence sentence.
-func projectSemanticMicroSummaries(source string, summaries []semanticEngineMicroSummary) ([]scriptgen.SemanticMicroSummary, error) {
-	out := make([]scriptgen.SemanticMicroSummary, 0, len(summaries))
+func projectSemanticMicroSummaries(source string, summaries []semanticEngineMicroSummary) ([]semantic.SemanticMicroSummary, error) {
+	out := make([]semantic.SemanticMicroSummary, 0, len(summaries))
 	for _, summary := range summaries {
 		if summary.ID == "" || summary.Text == "" || summary.Evidence == "" ||
 			len(summary.EvidenceFactIDs) == 0 || !validMicroSummaryKind(summary.Kind) {
@@ -398,7 +398,7 @@ func projectSemanticMicroSummaries(source string, summaries []semanticEngineMicr
 		if !groundedSpan(source, summary.StartByte, summary.EndByte, summary.Evidence) {
 			return nil, fmt.Errorf("micro summary %q evidence is not grounded in source_text", summary.ID)
 		}
-		entry := scriptgen.SemanticMicroSummary{
+		entry := semantic.SemanticMicroSummary{
 			ID: summary.ID, Kind: summary.Kind, Text: summary.Text,
 			EvidenceFactIDs: append([]string(nil), summary.EvidenceFactIDs...),
 			SentenceIndex:   summary.SentenceIndex, Evidence: summary.Evidence,
@@ -433,8 +433,8 @@ func validSemanticGroupType(kind string) bool {
 	}
 }
 
-func projectSemanticCharts(source string, proposals []semanticEngineProposal) ([]scriptgen.ChartValueCandidate, error) {
-	out := make([]scriptgen.ChartValueCandidate, 0)
+func projectSemanticCharts(source string, proposals []semanticEngineProposal) ([]semantic.ChartValueCandidate, error) {
+	out := make([]semantic.ChartValueCandidate, 0)
 	for _, proposal := range proposals {
 		if proposal.ProposalType != "chart" {
 			continue
@@ -445,14 +445,14 @@ func projectSemanticCharts(source string, proposals []semanticEngineProposal) ([
 			if item.Text == "" || !groundedSpan(source, item.StartByte, item.EndByte, item.Text) {
 				return nil, fmt.Errorf("chart item %q is not grounded in source_text", item.Text)
 			}
-			out = append(out, scriptgen.ChartValueCandidate{Text: item.Text, Value: item.Value})
+			out = append(out, semantic.ChartValueCandidate{Text: item.Text, Value: item.Value})
 		}
 	}
 	return out, nil
 }
 
-func projectSemanticTemporal(source string, facts []semanticEngineTemporal) ([]scriptgen.TemporalFactCandidate, error) {
-	out := make([]scriptgen.TemporalFactCandidate, 0, len(facts))
+func projectSemanticTemporal(source string, facts []semanticEngineTemporal) ([]semantic.TemporalFactCandidate, error) {
+	out := make([]semantic.TemporalFactCandidate, 0, len(facts))
 	for _, fact := range facts {
 		if fact.Kind != "DATE" {
 			return nil, fmt.Errorf("temporal fact %q has kind %q", fact.Surface, fact.Kind)
@@ -460,7 +460,7 @@ func projectSemanticTemporal(source string, facts []semanticEngineTemporal) ([]s
 		if !groundedSpan(source, fact.StartByte, fact.EndByte, fact.Surface) || fact.Evidence != fact.Surface {
 			return nil, fmt.Errorf("temporal fact %q is not grounded in source_text", fact.Surface)
 		}
-		candidate := scriptgen.TemporalFactCandidate{
+		candidate := semantic.TemporalFactCandidate{
 			Text: fact.Surface, Precision: fact.Precision,
 			Start: fact.StartByte, End: fact.EndByte, Ambiguous: fact.Ambiguous,
 		}
@@ -475,8 +475,8 @@ func projectSemanticTemporal(source string, facts []semanticEngineTemporal) ([]s
 	return out, nil
 }
 
-func projectSemanticNumeric(source string, facts []semanticEngineNumeric) ([]scriptgen.NumericFactCandidate, error) {
-	out := make([]scriptgen.NumericFactCandidate, 0, len(facts))
+func projectSemanticNumeric(source string, facts []semanticEngineNumeric) ([]semantic.NumericFactCandidate, error) {
+	out := make([]semantic.NumericFactCandidate, 0, len(facts))
 	for _, fact := range facts {
 		if !visualNumericKinds[fact.Kind] {
 			return nil, fmt.Errorf("numeric fact %q has unknown kind %q", fact.Surface, fact.Kind)
@@ -484,7 +484,7 @@ func projectSemanticNumeric(source string, facts []semanticEngineNumeric) ([]scr
 		if !groundedSpan(source, fact.StartByte, fact.EndByte, fact.Surface) || fact.Evidence != fact.Surface {
 			return nil, fmt.Errorf("numeric fact %q is not grounded in source_text", fact.Surface)
 		}
-		candidate := scriptgen.NumericFactCandidate{
+		candidate := semantic.NumericFactCandidate{
 			Text: fact.Surface, Kind: fact.Kind, Start: fact.StartByte, End: fact.EndByte,
 		}
 		if fact.Value != nil {

@@ -57,7 +57,6 @@ package enrichment
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -65,6 +64,7 @@ import (
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // aggregateTypeMediaAsset is the canonical aggregate_type value
@@ -90,10 +90,9 @@ const aggregateTypeMediaAsset = "media_asset"
 // (NOT a nil adapter) when db is nil. Callers MUST propagate
 // the error per the existing pattern in NewEnrichmentHandler.
 type outboxBackedAssetPublishedEmitter struct {
-	// db is the canonical *sql.DB handle. The composition root
-	// injects the same DB handle the broker uses (canonical
-	// SSOT for "which DB does the system read from").
-	db *sql.DB
+	// db is the canonical database port. The composition root injects the
+	// same DB handle the broker uses (canonical SSOT for the read engine).
+	db sqlport.DB
 
 	// log is the canonical zap logger. godlike/07 nil-tolerance:
 	// nil-logger falls back to zap.NewNop() (defense-in-depth).
@@ -104,7 +103,7 @@ type outboxBackedAssetPublishedEmitter struct {
 // outbox-backed emitter with fail-closed nil-deps gate per
 // godlike/07 typed-error contract. Returns (nil,
 // ErrEnrichmentHandlerNotConfigured) when db is nil.
-func NewOutboxBackedAssetPublishedEmitter(db *sql.DB, log *zap.Logger) (*outboxBackedAssetPublishedEmitter, error) {
+func NewOutboxBackedAssetPublishedEmitter(db sqlport.DB, log *zap.Logger) (*outboxBackedAssetPublishedEmitter, error) {
 	if db == nil {
 		return nil, WrapHandlerNotConfigured("db")
 	}
@@ -156,7 +155,7 @@ func (e *outboxBackedAssetPublishedEmitter) EmitAssetPublished(ctx context.Conte
 	// + UPDATE + emit as 3 independent operations), so the
 	// emit is its own logical unit. A fresh tx is the canonical
 	// scope per godlike/07 minimum-blast-radius.
-	tx, err := e.db.BeginTx(ctx, nil)
+	tx, err := e.db.BeginTx(ctx)
 	if err != nil {
 		return WrapEmitFailed(fmt.Errorf("outboxBackedAssetPublishedEmitter.EmitAssetPublished: BeginTx: %w", err))
 	}

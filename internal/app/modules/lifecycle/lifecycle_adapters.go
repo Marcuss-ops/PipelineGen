@@ -30,9 +30,9 @@ package lifecycle
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/monitor"
@@ -354,7 +354,7 @@ type uploadIntentsAdapter struct {
 // InsertTx satisfies voiceover.UploadIntentsRepository. The option
 // struct is re-bound with identical field values so the SQLite
 // repository sees the canonical infra type it expects.
-func (a *uploadIntentsAdapter) InsertTx(ctx context.Context, tx *sql.Tx, opts *voiceover.UploadIntentInsertOptions) (int64, error) {
+func (a *uploadIntentsAdapter) InsertTx(ctx context.Context, tx sqlport.Tx, opts *voiceover.UploadIntentInsertOptions) (int64, error) {
 	if a == nil || a.UploadIntentsRepository == nil {
 		return 0, fmt.Errorf("uploadIntentsAdapter: nil repository")
 	}

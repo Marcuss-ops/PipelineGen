@@ -8,21 +8,21 @@ import (
 	"fmt"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	runport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/run"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 
 type workflowCheckpoint struct {
-	Request      scriptgen.GenerateRequest `json:"request"`
-	Result       *scriptgen.GenerateResult `json:"result,omitempty"`
-	Status       scriptgen.RunStatus       `json:"status"`
-	CurrentStage scriptgen.Stage           `json:"current_stage"`
-	ErrorCode    string                    `json:"error_code,omitempty"`
-	ErrorMessage string                    `json:"error_message,omitempty"`
-	FailedStage  scriptgen.Stage           `json:"failed_stage,omitempty"`
-	AttemptCount int                       `json:"attempt_count"`
-	NextRetryAt  *time.Time                `json:"next_retry_at,omitempty"`
+	Request      runport.GenerateRequest `json:"request"`
+	Result       *runport.GenerateResult `json:"result,omitempty"`
+	Status       runport.RunStatus       `json:"status"`
+	CurrentStage runport.Stage           `json:"current_stage"`
+	ErrorCode    string                  `json:"error_code,omitempty"`
+	ErrorMessage string                  `json:"error_message,omitempty"`
+	FailedStage  runport.Stage           `json:"failed_stage,omitempty"`
+	AttemptCount int                     `json:"attempt_count"`
+	NextRetryAt  *time.Time              `json:"next_retry_at,omitempty"`
 }
 
 type SQLiteRunRepository struct {
@@ -40,7 +40,7 @@ func NewSQLiteRunRepository(db *sql.DB, log *zap.Logger) (*SQLiteRunRepository, 
 	return &SQLiteRunRepository{db: db, log: log}, nil
 }
 
-func (r *SQLiteRunRepository) Create(ctx context.Context, run *scriptgen.GenerationRun) error {
+func (r *SQLiteRunRepository) Create(ctx context.Context, run *runport.GenerationRun) error {
 	if run == nil || run.ID == "" {
 		return errors.New("scriptgeneration: Create requires a run with ID")
 	}
@@ -103,7 +103,7 @@ func (r *SQLiteRunRepository) SetJobID(ctx context.Context, runID, jobID string)
 	return nil
 }
 
-func (r *SQLiteRunRepository) Get(ctx context.Context, runID string) (*scriptgen.GenerationRun, error) {
+func (r *SQLiteRunRepository) Get(ctx context.Context, runID string) (*runport.GenerationRun, error) {
 	if runID == "" {
 		return nil, errors.New("scriptgeneration: Get requires run ID")
 	}
@@ -135,7 +135,7 @@ const submissionRunPredicate = `WHERE job_id=? AND attempt_id=run_id||':script'`
 // went through the HTTP starter have no submission row; they keep the
 // historical correlation (any row for that job) so the durable lane still
 // receives a run.
-func (r *SQLiteRunRepository) GetByJobID(ctx context.Context, jobID string) (*scriptgen.GenerationRun, error) {
+func (r *SQLiteRunRepository) GetByJobID(ctx context.Context, jobID string) (*runport.GenerationRun, error) {
 	if jobID == "" {
 		return nil, errors.New("scriptgeneration: GetByJobID requires job ID")
 	}
@@ -146,14 +146,14 @@ func (r *SQLiteRunRepository) GetByJobID(ctx context.Context, jobID string) (*sc
 	return r.scan(ctx, `WHERE job_id=? ORDER BY created_at DESC LIMIT 1`, jobID)
 }
 
-func (r *SQLiteRunRepository) GetByIdempotencyKey(ctx context.Context, key string) (*scriptgen.GenerationRun, error) {
+func (r *SQLiteRunRepository) GetByIdempotencyKey(ctx context.Context, key string) (*runport.GenerationRun, error) {
 	if key == "" {
 		return nil, nil
 	}
 	return r.scan(ctx, `WHERE json_extract(workflow_payload_json,'$.request.idempotency_key')=? ORDER BY created_at DESC LIMIT 1`, key)
 }
 
-func (r *SQLiteRunRepository) UpdateStage(ctx context.Context, runID string, status scriptgen.RunStatus, stage scriptgen.Stage) error {
+func (r *SQLiteRunRepository) UpdateStage(ctx context.Context, runID string, status runport.RunStatus, stage runport.Stage) error {
 	run, err := r.Get(ctx, runID)
 	if err != nil || run == nil {
 		return err
@@ -167,12 +167,12 @@ func (r *SQLiteRunRepository) UpdateStage(ctx context.Context, runID string, sta
 	return err
 }
 
-func (r *SQLiteRunRepository) FailRun(ctx context.Context, input scriptgen.FailRunInput) error {
+func (r *SQLiteRunRepository) FailRun(ctx context.Context, input runport.FailRunInput) error {
 	run, err := r.Get(ctx, input.RunID)
 	if err != nil || run == nil {
 		return err
 	}
-	run.Status, run.CurrentStage, run.FailedStage = scriptgen.RunStatusFailed, scriptgen.StageFailed, input.FailedStage
+	run.Status, run.CurrentStage, run.FailedStage = runport.RunStatusFailed, runport.StageFailed, input.FailedStage
 	run.ErrorCode, run.ErrorMessage, run.AttemptCount, run.NextRetryAt, run.UpdatedAt = input.ErrorCode, input.ErrorMessage, input.AttemptCount, input.NextRetryAt, time.Now().UTC()
 	body, err := marshalCheckpoint(run)
 	if err != nil {
@@ -182,7 +182,7 @@ func (r *SQLiteRunRepository) FailRun(ctx context.Context, input scriptgen.FailR
 	return err
 }
 
-func (r *SQLiteRunRepository) SavePartialResult(ctx context.Context, runID string, result *scriptgen.GenerateResult) error {
+func (r *SQLiteRunRepository) SavePartialResult(ctx context.Context, runID string, result *runport.GenerateResult) error {
 	run, err := r.Get(ctx, runID)
 	if err != nil || run == nil {
 		return err
@@ -201,7 +201,7 @@ func (r *SQLiteRunRepository) SavePartialResult(ctx context.Context, runID strin
 	return err
 }
 
-func (r *SQLiteRunRepository) scan(ctx context.Context, suffix, arg string) (*scriptgen.GenerationRun, error) {
+func (r *SQLiteRunRepository) scan(ctx context.Context, suffix, arg string) (*runport.GenerationRun, error) {
 	var id, jobID, status, created, updated, payload string
 	var started, finished sql.NullString
 	err := r.db.QueryRowContext(ctx, `SELECT run_id,job_id,status,created_at,updated_at,started_at,finished_at,workflow_payload_json FROM run_observability `+suffix, arg).Scan(&id, &jobID, &status, &created, &updated, &started, &finished, &payload)
@@ -223,36 +223,36 @@ func (r *SQLiteRunRepository) scan(ctx context.Context, suffix, arg string) (*sc
 	if err != nil {
 		return nil, err
 	}
-	run := &scriptgen.GenerationRun{ID: id, JobID: jobID, Request: cp.Request, Status: cp.Status, CurrentStage: cp.CurrentStage, Result: cp.Result, ErrorCode: cp.ErrorCode, ErrorMessage: cp.ErrorMessage, FailedStage: cp.FailedStage, AttemptCount: cp.AttemptCount, NextRetryAt: cp.NextRetryAt, CreatedAt: createdAt, UpdatedAt: updatedAt}
+	run := &runport.GenerationRun{ID: id, JobID: jobID, Request: cp.Request, Status: cp.Status, CurrentStage: cp.CurrentStage, Result: cp.Result, ErrorCode: cp.ErrorCode, ErrorMessage: cp.ErrorMessage, FailedStage: cp.FailedStage, AttemptCount: cp.AttemptCount, NextRetryAt: cp.NextRetryAt, CreatedAt: createdAt, UpdatedAt: updatedAt}
 	if run.Status == "" {
 		run.Status = scriptStatus(status)
 	}
 	if run.CurrentStage == "" {
-		run.CurrentStage = scriptgen.StageNormalizing
+		run.CurrentStage = runport.StageNormalizing
 	}
 	return run, nil
 }
 
-func marshalCheckpoint(run *scriptgen.GenerationRun) ([]byte, error) {
+func marshalCheckpoint(run *runport.GenerationRun) ([]byte, error) {
 	return json.Marshal(workflowCheckpoint{Request: run.Request, Result: run.Result, Status: run.Status, CurrentStage: run.CurrentStage, ErrorCode: run.ErrorCode, ErrorMessage: run.ErrorMessage, FailedStage: run.FailedStage, AttemptCount: run.AttemptCount, NextRetryAt: run.NextRetryAt})
 }
-func canonicalStatus(s scriptgen.RunStatus) string {
-	if s == scriptgen.RunStatusCompleted {
+func canonicalStatus(s runport.RunStatus) string {
+	if s == runport.RunStatusCompleted {
 		return "SUCCEEDED"
 	}
-	if s == scriptgen.RunStatusFailed {
+	if s == runport.RunStatusFailed {
 		return "FAILED"
 	}
 	return "RUNNING"
 }
-func scriptStatus(s string) scriptgen.RunStatus {
+func scriptStatus(s string) runport.RunStatus {
 	if s == "SUCCEEDED" {
-		return scriptgen.RunStatusCompleted
+		return runport.RunStatusCompleted
 	}
 	if s == "FAILED" {
-		return scriptgen.RunStatusFailed
+		return runport.RunStatusFailed
 	}
-	return scriptgen.RunStatusRunning
+	return runport.RunStatusRunning
 }
 func formatTime(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
 func parseTime(v string) (time.Time, error) {
@@ -263,4 +263,4 @@ func parseTime(v string) (time.Time, error) {
 	return t, err
 }
 
-var _ scriptgen.RunRepository = (*SQLiteRunRepository)(nil)
+var _ runport.RunRepository = (*SQLiteRunRepository)(nil)

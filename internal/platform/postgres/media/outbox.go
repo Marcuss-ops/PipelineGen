@@ -36,6 +36,7 @@ import (
 	"github.com/google/uuid"
 
 	appexport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
@@ -100,17 +101,17 @@ var _ outboxRepository = (*Repository)(nil)
 // The partial unique index ux_outbox_events_event_key (event_key <> ”)
 // is the conflict arbiter: non-empty event keys are idempotent-arbitered,
 // empty event keys (one-shot inserts) never conflict.
-func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error) {
+func (r *Repository) Enqueue(ctx context.Context, tx persistence.Transaction, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error) {
 	return r.enqueue(ctx, tx, false, 0, eventType, aggregateID, aggregateType, payloadJSON, eventKey)
 }
 
 // EnqueueWithPriority inserts one outbox row with an explicit scheduling
 // priority (SQLite parity: outboxevents.EnqueueWithPriority).
-func (r *Repository) EnqueueWithPriority(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*EnqueueResult, error) {
+func (r *Repository) EnqueueWithPriority(ctx context.Context, tx persistence.Transaction, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*EnqueueResult, error) {
 	return r.enqueue(ctx, tx, true, priority, eventType, aggregateID, aggregateType, payloadJSON, eventKey)
 }
 
-func (r *Repository) enqueue(ctx context.Context, tx *sql.Tx, withPriority bool, priority int, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error) {
+func (r *Repository) enqueue(ctx context.Context, tx persistence.Transaction, withPriority bool, priority int, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error) {
 	now := timeutil.FormatRFC3339(time.Now())
 	queryRow := r.db.QueryRowContext
 	if tx != nil {
@@ -179,7 +180,7 @@ func (r *Repository) enqueue(ctx context.Context, tx *sql.Tx, withPriority bool,
 
 // CommitIndexEventTx emits the canonical asset.index.requested event when
 // the caller already owns the asset transaction.
-func (c *PostgresAssetCommitter) CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error {
+func (c *PostgresAssetCommitter) CommitIndexEventTx(ctx context.Context, tx persistence.Transaction, assetID, source, contentHash, mediaType string) error {
 	if c == nil || c.box == nil {
 		return fmt.Errorf("asset committer: canonical outbox is unavailable")
 	}
@@ -215,7 +216,7 @@ func (c *PostgresAssetCommitter) CommitIndexEventTx(ctx context.Context, tx *sql
 
 // CommitIndexEventTx on the aggregate committer delegates to the embedded
 // canonical asset committer.
-func (c *PostgresMediaCommitter) CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error {
+func (c *PostgresMediaCommitter) CommitIndexEventTx(ctx context.Context, tx persistence.Transaction, assetID, source, contentHash, mediaType string) error {
 	if c == nil || c.assets == nil {
 		return fmt.Errorf("media committer: canonical asset committer is unavailable")
 	}

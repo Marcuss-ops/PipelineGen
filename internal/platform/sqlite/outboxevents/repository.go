@@ -34,7 +34,9 @@ package outboxevents
 import (
 	"context"
 	"database/sql"
+
 	"errors"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
@@ -108,11 +110,11 @@ type EnqueueResult struct {
 
 // Repository wraps SQL access to the outbox_events table.
 type Repository struct {
-	db *sql.DB
+	db sqlport.ExecQueryer
 }
 
 // NewRepository creates a Repository backed by db.
-func NewRepository(db *sql.DB) *Repository {
+func NewRepository(db sqlport.ExecQueryer) *Repository {
 	return &Repository{db: db}
 }
 
@@ -157,7 +159,7 @@ func scanEvent(s scanner) (*Event, error) {
 // outbox writes that must be atomic with their producer-state mutation);
 // callers passing nil get a direct db.ExecContext (rare; used by
 // non-tx-bound diagnostic paths).
-func (r *Repository) exec(ctx context.Context, tx *sql.Tx) func(context.Context, string, ...any) (sql.Result, error) {
+func (r *Repository) exec(ctx context.Context, tx sqlport.Tx) func(context.Context, string, ...any) (sql.Result, error) {
 	if tx != nil {
 		return tx.ExecContext
 	}

@@ -68,6 +68,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -208,13 +209,13 @@ type txRecordingOutbox struct {
 	cleanupEventCalls int
 }
 
-func (s *txRecordingOutbox) EnqueueIndexEvent(_ context.Context, tx *sql.Tx, _ string, _, _ string) error {
-	s.lastTx = tx
+func (s *txRecordingOutbox) EnqueueIndexEvent(_ context.Context, tx sqlport.Tx, _ string, _, _ string) error {
+	s.lastTx, _ = tx.(*sql.Tx)
 	s.indexEventCalls++
 	return nil
 }
-func (s *txRecordingOutbox) EnqueueCleanupEvent(_ context.Context, tx *sql.Tx, _ string, _ string, _ string, _ []string) error {
-	s.lastTx = tx
+func (s *txRecordingOutbox) EnqueueCleanupEvent(_ context.Context, tx sqlport.Tx, _ string, _ string, _ string, _ []string) error {
+	s.lastTx, _ = tx.(*sql.Tx)
 	s.cleanupEventCalls++
 	return nil
 }
@@ -235,8 +236,8 @@ type txRecordingLifecycle struct {
 	calls  int
 }
 
-func (s *txRecordingLifecycle) UpsertVoiceoverProjectionTx(_ context.Context, tx *sql.Tx, _ *voiceover.VoiceoverProjectionInput) error {
-	s.lastTx = tx
+func (s *txRecordingLifecycle) UpsertVoiceoverProjectionTx(_ context.Context, tx sqlport.WriteTx, _ *voiceover.VoiceoverProjectionInput) error {
+	s.lastTx, _ = tx.(*sql.Tx)
 	s.calls++
 	return nil
 }
@@ -256,12 +257,12 @@ type txRecordingVoiceoverRepo struct {
 	dedupeN int
 }
 
-func (s *txRecordingVoiceoverRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (s *txRecordingVoiceoverRepo) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	return s.db.BeginTx(ctx, nil)
 }
 
-func (s *txRecordingVoiceoverRepo) InsertTx(_ context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
-	s.lastTx = tx
+func (s *txRecordingVoiceoverRepo) InsertTx(_ context.Context, tx sqlport.Tx, rec *persistence.VoiceoverRecord) error {
+	s.lastTx, _ = tx.(*sql.Tx)
 	s.insertN++
 	_, err := tx.ExecContext(context.Background(), `
 		INSERT INTO voiceovers (
@@ -279,8 +280,8 @@ func (s *txRecordingVoiceoverRepo) InsertTx(_ context.Context, tx *sql.Tx, rec *
 	return err
 }
 
-func (s *txRecordingVoiceoverRepo) DeleteByIDTx(_ context.Context, tx *sql.Tx, _ string) error {
-	s.lastTx = tx
+func (s *txRecordingVoiceoverRepo) DeleteByIDTx(_ context.Context, tx sqlport.Tx, _ string) error {
+	s.lastTx, _ = tx.(*sql.Tx)
 	s.deleteN++
 	return nil
 }
@@ -293,8 +294,8 @@ func (s *txRecordingVoiceoverRepo) PreReadByID(_ context.Context, _ string) (*pe
 	return nil, nil
 }
 
-func (s *txRecordingVoiceoverRepo) CountByDriveFileIDTx(_ context.Context, tx *sql.Tx, _ string, _ string) (string, int, error) {
-	s.lastTx = tx
+func (s *txRecordingVoiceoverRepo) CountByDriveFileIDTx(_ context.Context, tx sqlport.Tx, _ string, _ string) (string, int, error) {
+	s.lastTx, _ = tx.(*sql.Tx)
 	s.dedupeN++
 	// count=0 → DecideDedupe returns DedupeContinue → finalizer proceeds
 	// with Step 2 (DELETE) + Step 3 (INSERT) + Step 4 (projection) +
@@ -304,7 +305,7 @@ func (s *txRecordingVoiceoverRepo) CountByDriveFileIDTx(_ context.Context, tx *s
 	return "", 0, nil
 }
 
-func (s *txRecordingVoiceoverRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx, idempotencyKey string) (string, error) {
+func (s *txRecordingVoiceoverRepo) FindByIdempotencyKeyTx(_ context.Context, _ sqlport.Tx, idempotencyKey string) (string, error) {
 	if idempotencyKey == "" {
 		return "", sql.ErrNoRows
 	}

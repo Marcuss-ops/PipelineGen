@@ -2,10 +2,10 @@ package outbox
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	sqlport "github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,7 +58,7 @@ type cleanupRequestV1 struct {
 const VoiceoverCleanupSchemaVersion = event.VoiceoverCleanupRequestedV1Schema
 
 // EnqueueCleanupEvent emits the canonical voiceover.cleanup.requested.v1
-// envelope INSIDE a caller-owned *sql.Tx. P0.7 Wave 21 Step 10/12
+// envelope INSIDE a caller-owned sqlport.Tx. P0.7 Wave 21 Step 10/12
 // (June 2026): the Voiceover finalizer surface uses this method
 // instead of `go s.cleanupOrphanVoiceover(...)` (fire-and-forget
 // goroutine detached via context.Background). The outbox event
@@ -66,7 +66,7 @@ const VoiceoverCleanupSchemaVersion = event.VoiceoverCleanupRequestedV1Schema
 // projection UPSERT + asset.index.requested event, so a tx rollback
 // discards the entire finalize surface (no half-state orphans).
 //
-// Atomicity guarantee: caller passes a *sql.Tx already bound to the
+// Atomicity guarantee: caller passes a sqlport.Tx already bound to the
 // finalizeStage tx. The Insert into outbox_events runs INSIDE that tx
 // so the event row commits (or rolls back) together with the
 // voiceovers + media_assets + asset.index.requested writes. The
@@ -83,7 +83,7 @@ const VoiceoverCleanupSchemaVersion = event.VoiceoverCleanupRequestedV1Schema
 // fingerprint available).
 func (d *Dispatcher) EnqueueCleanupEvent(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	voiceoverID,
 	oldDriveFileID,
 	newDriveFileID string,

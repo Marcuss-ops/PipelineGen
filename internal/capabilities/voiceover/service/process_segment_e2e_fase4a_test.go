@@ -2,10 +2,10 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -175,7 +175,7 @@ func TestProcessSegmentUseCase_Execute_FASE4_CommitFailAfterUpload_EmitsCleanup(
 		cannedRes: &FinalizeResult{ID: "vo-fase4-commit"},
 		// Roll the caller-owned tx back so the subsequent Commit fails while
 		// the database (and the cleanup tx) stays usable.
-		beforeReturn: func(tx *sql.Tx) { _ = tx.Rollback() },
+		beforeReturn: func(tx sqlport.Tx) { _ = tx.Rollback() },
 	}
 	outboxStub := &stubTxOutboxEnqueuer{}
 

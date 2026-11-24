@@ -501,7 +501,7 @@ func isSearchableMediaLifecycle(state string) bool {
 // location inside the caller-owned transaction.
 func (c *PostgresAssetCommitter) CommitRenditionTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx persistence.Transaction,
 	assetID string,
 	r persistence.RenditionCommit,
 	nowStr string,
@@ -585,7 +585,7 @@ func (c *PostgresAssetCommitter) CommitRenditionTx(
 // canonical asset committer while preserving the caller-owned transaction.
 func (c *PostgresMediaCommitter) CommitRenditionTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx persistence.Transaction,
 	assetID string,
 	r persistence.RenditionCommit,
 	nowStr string,

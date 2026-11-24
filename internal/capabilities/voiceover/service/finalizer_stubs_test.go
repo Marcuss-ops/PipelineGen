@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ type stubFinalizer struct {
 	cannedErr error
 }
 
-func (s *stubFinalizer) Finalize(_ context.Context, _ *sql.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
+func (s *stubFinalizer) Finalize(_ context.Context, _ sqlport.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
 	s.calls = append(s.calls, cmd)
 	return s.cannedRes, s.cannedErr
 }
@@ -86,11 +87,11 @@ type finalizerTestRepo struct {
 	db *sql.DB
 }
 
-func (r *finalizerTestRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (r *finalizerTestRepo) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
 }
 
-func (r *finalizerTestRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
+func (r *finalizerTestRepo) InsertTx(ctx context.Context, tx sqlport.Tx, rec *persistence.VoiceoverRecord) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO voiceovers (
 			id, request_id, text_hash, text_preview, language, voice, filename,
@@ -107,7 +108,7 @@ func (r *finalizerTestRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persi
 	return err
 }
 
-func (r *finalizerTestRepo) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error {
+func (r *finalizerTestRepo) DeleteByIDTx(ctx context.Context, tx sqlport.Tx, id string) error {
 	_, err := tx.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, id)
 	return err
 }
@@ -116,11 +117,11 @@ func (r *finalizerTestRepo) PreReadByID(_ context.Context, _ string) (*persisten
 	return nil, nil
 }
 
-func (r *finalizerTestRepo) CountByDriveFileIDTx(_ context.Context, _ *sql.Tx, _ string, _ string) (string, int, error) {
+func (r *finalizerTestRepo) CountByDriveFileIDTx(_ context.Context, _ sqlport.Tx, _ string, _ string) (string, int, error) {
 	return "", 0, nil
 }
 
-func (r *finalizerTestRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx, idempotencyKey string) (string, error) {
+func (r *finalizerTestRepo) FindByIdempotencyKeyTx(_ context.Context, _ sqlport.Tx, idempotencyKey string) (string, error) {
 	if idempotencyKey == "" {
 		return "", sql.ErrNoRows
 	}
@@ -160,10 +161,10 @@ var _ persistence.Repository = (*finalizerTestRepo)(nil)
 // (ProcessSegmentDeps.Finalizer)`. Uses require.PanicsWithValue so a
 // regression in the panic MESSAGE (e.g. a future refactor that rewords
 
-func (s *stubOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, _, _, _ string) error {
+func (s *stubOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, _ sqlport.Tx, _, _, _ string) error {
 	return nil
 }
-func (s *stubOutboxEnqueuer) EnqueueCleanupEvent(_ context.Context, _ *sql.Tx, _, _, _ string, _ []string) error {
+func (s *stubOutboxEnqueuer) EnqueueCleanupEvent(_ context.Context, _ sqlport.Tx, _, _, _ string, _ []string) error {
 	return nil
 }
 
@@ -171,7 +172,7 @@ var _ TxOutboxEnqueuer = (*stubOutboxEnqueuer)(nil)
 
 type stubProjectionUpserter struct{}
 
-func (s *stubProjectionUpserter) UpsertVoiceoverProjectionTx(_ context.Context, _ *sql.Tx, _ *VoiceoverProjectionInput) error {
+func (s *stubProjectionUpserter) UpsertVoiceoverProjectionTx(_ context.Context, _ sqlport.WriteTx, _ *VoiceoverProjectionInput) error {
 	return nil
 }
 
@@ -210,22 +211,22 @@ func newRecordingFinalizerRepo(t *testing.T, db *sql.DB) *recordingFinalizerRepo
 	}
 }
 
-func (r *recordingFinalizerRepo) CountByDriveFileIDTx(ctx context.Context, tx *sql.Tx, id, driveFileID string) (string, int, error) {
+func (r *recordingFinalizerRepo) CountByDriveFileIDTx(ctx context.Context, tx sqlport.Tx, id, driveFileID string) (string, int, error) {
 	r.countByDriveCalls++
 	return r.countByDriveFileIDMatchedID, r.countByDriveFileIDCount, r.countByDriveFileIDErr
 }
 
-func (r *recordingFinalizerRepo) FindByIdempotencyKeyTx(ctx context.Context, tx *sql.Tx, idempotencyKey string) (string, error) {
+func (r *recordingFinalizerRepo) FindByIdempotencyKeyTx(ctx context.Context, tx sqlport.Tx, idempotencyKey string) (string, error) {
 	r.findByIdemCalls++
 	return r.findByIdempotencyKeyMatchedID, r.findByIdempotencyKeyErr
 }
 
-func (r *recordingFinalizerRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
+func (r *recordingFinalizerRepo) InsertTx(ctx context.Context, tx sqlport.Tx, rec *persistence.VoiceoverRecord) error {
 	r.inserted = append(r.inserted, rec)
 	return nil
 }
 
-func (r *recordingFinalizerRepo) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error {
+func (r *recordingFinalizerRepo) DeleteByIDTx(ctx context.Context, tx sqlport.Tx, id string) error {
 	r.deleted = append(r.deleted, id)
 	return nil
 }
@@ -251,12 +252,12 @@ type outboxCleanupCall struct {
 	oldLocalPaths  []string
 }
 
-func (o *payloadRecordingOutbox) EnqueueIndexEvent(_ context.Context, _ *sql.Tx, assetID, _, contentHash string) error {
+func (o *payloadRecordingOutbox) EnqueueIndexEvent(_ context.Context, _ sqlport.Tx, assetID, _, contentHash string) error {
 	o.indexCalls = append(o.indexCalls, outboxIndexCall{assetID: assetID, contentHash: contentHash})
 	return nil
 }
 
-func (o *payloadRecordingOutbox) EnqueueCleanupEvent(_ context.Context, _ *sql.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error {
+func (o *payloadRecordingOutbox) EnqueueCleanupEvent(_ context.Context, _ sqlport.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error {
 	paths := make([]string, len(oldLocalPaths))
 	copy(paths, oldLocalPaths)
 	o.cleanupCalls = append(o.cleanupCalls, outboxCleanupCall{
@@ -276,7 +277,7 @@ type payloadRecordingProjection struct {
 	inputs []*VoiceoverProjectionInput
 }
 
-func (p *payloadRecordingProjection) UpsertVoiceoverProjectionTx(_ context.Context, _ *sql.Tx, input *VoiceoverProjectionInput) error {
+func (p *payloadRecordingProjection) UpsertVoiceoverProjectionTx(_ context.Context, _ sqlport.WriteTx, input *VoiceoverProjectionInput) error {
 	p.inputs = append(p.inputs, input)
 	return nil
 }

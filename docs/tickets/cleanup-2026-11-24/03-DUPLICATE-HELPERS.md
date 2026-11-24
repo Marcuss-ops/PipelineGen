@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-24
 **Priorità:** P1 (SSOT, rischio basso)
-**Stato:** DONE
+**Stato:** DONE (commit `c6126a4ef`)
 **Owner:** `pkg/*`, `platform/sqlite`
 **Origine:** radiografia 2026-11-24, §2C
 **Base:** `refactored` @ `2a3ea0b2c` (working tree pulito)
@@ -83,5 +83,13 @@ gofmt -l <file toccati>
 - `go vet` superficie stabile → rc 0; `gofmt -l` → vuoto.
 - `sqlite.MigrationsDir()` è l'unico resolver di `migrations/sqlite`;
   `resolveJobsMigrationsDir` resta separato perché risolve `sqlite_jobs`.
-- Nessun commit: vale lo stesso blocco del working tree condiviso.
+- Commit: `c6126a4ef` — `refactor: share range, JSON, tag and whitespace
+  helpers`.
+
+## 5. Cosa resta
+
+Niente di bloccante. Il ticket è DONE e committato; i cinque comportamenti
+hanno un solo owner nei leaf package. Restano fuori perimetro push e suite
+completa (`TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` flaky sotto
+carico).
 

@@ -11,6 +11,7 @@ import (
 
 	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/enrichment"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // wireStockEnrichment wires the stock RLM/LLM enrichment handler
@@ -114,7 +115,7 @@ func WireEnrichment(deps StockBundleDeps) error {
 				emitter = deps.Enrichment.EnrichmentEmitter
 				deps.Runtime.Log.Info("stock.BuildStockBundle: enrichment using injected AssetPublishedEmitter")
 			} else if deps.Runtime.DB != nil {
-				emitter, repoErr = stockenrich.NewOutboxBackedAssetPublishedEmitter(deps.Runtime.DB, deps.Runtime.Log)
+				emitter, repoErr = stockenrich.NewOutboxBackedAssetPublishedEmitter(sqlport.WrapDB(deps.Runtime.DB), deps.Runtime.Log)
 				if repoErr != nil {
 					return fmt.Errorf("stock.BuildStockBundle: enrichment.NewOutboxBackedAssetPublishedEmitter: %w", repoErr)
 				}

@@ -173,7 +173,7 @@ func PatchMediaAssetMetadataJSON(ctx context.Context, exec mediaAssetSQLExecutor
 // PatchMetadataJSONTx applies a metadata patch in a caller-owned
 // transaction. It is the only tx-bound metadata mutation exposed to
 // producer adapters.
-func (c *PostgresAssetCommitter) PatchMetadataJSONTx(ctx context.Context, tx *sql.Tx, assetID, patchJSON, updatedAt string) error {
+func (c *PostgresAssetCommitter) PatchMetadataJSONTx(ctx context.Context, tx persistence.Transaction, assetID, patchJSON, updatedAt string) error {
 	return PatchMediaAssetMetadataJSON(ctx, tx, assetID, patchJSON, updatedAt)
 }
 
@@ -221,7 +221,7 @@ func (c *PostgresAssetCommitter) UpdateFolderPath(ctx context.Context, assetID, 
 
 // UpdateFolderPathTx applies a folder-path mutation in the caller-owned
 // transaction so the caller can emit the canonical index request atomically.
-func (c *PostgresAssetCommitter) UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error {
+func (c *PostgresAssetCommitter) UpdateFolderPathTx(ctx context.Context, tx persistence.Transaction, assetID, folderID, folderPath, updatedAt string) error {
 	return UpdateMediaAssetFolderPath(ctx, tx, assetID, folderID, folderPath, updatedAt)
 }
 

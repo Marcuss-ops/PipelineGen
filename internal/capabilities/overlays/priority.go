@@ -15,6 +15,7 @@ package overlays
 
 import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernelrenderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // Canonical content priorities (the GOLDEN 08 editorial table).
@@ -65,13 +66,7 @@ func contentPriorityForTemplateLegacy(item capmodel.OverlayItem) int {
 // phrases, words, numbers, images, and effects it carries. It is the
 // deterministic summary the render-attempt analytics record stores (never the
 // item list).
-type ContentCounts struct {
-	Phrases int `json:"phrases"`
-	Words   int `json:"words"`
-	Numbers int `json:"numbers"`
-	Images  int `json:"images"`
-	Leaks   int `json:"leaks"`
-}
+type ContentCounts = kernelrenderqueue.ContentCounts
 
 // CountContent tallies an OverlayPlan's items into semantic content buckets.
 // NUMBER shares editorial priority with text emphasis for overlap degradation,

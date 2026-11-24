@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
@@ -78,14 +79,14 @@ func newMockRepoWithDB(t *testing.T) *mockUploadIntentRepo {
 	return &mockUploadIntentRepo{db: db}
 }
 
-func (m *mockUploadIntentRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (m *mockUploadIntentRepo) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	m.mu.Lock()
 	m.startedTx++
 	m.mu.Unlock()
 	return m.db.BeginTx(ctx, nil)
 }
 
-func (m *mockUploadIntentRepo) InsertTx(ctx context.Context, tx *sql.Tx, opts *UploadIntentInsertOptions) (int64, error) {
+func (m *mockUploadIntentRepo) InsertTx(ctx context.Context, tx sqlport.Tx, opts *UploadIntentInsertOptions) (int64, error) {
 	m.mu.Lock()
 	if m.insertErr != nil {
 		m.mu.Unlock()

@@ -2,8 +2,9 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ────────────────────────────────────────────────────────────────────────
@@ -26,14 +27,14 @@ type TxOutboxEnqueuer interface {
 	// EnqueueIndexEvent emits the canonical asset.index.requested
 	// envelope (schema_version="asset.index.requested.v1") inside
 	// the caller-owned transaction.
-	EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, source, contentHash string) error
+	EnqueueIndexEvent(ctx context.Context, tx sqlport.Tx, assetID, source, contentHash string) error
 
 	// EnqueueCleanupEvent emits the canonical
 	// voiceover.cleanup.requested envelope inside the caller-owned
 	// transaction. P0.7 Wave 21 Step 10/12 (June 2026) replaces
 	// the pre-fix fire-and-forget cleanupOrphanVoiceover goroutine
 	// with this durable outbox event.
-	EnqueueCleanupEvent(ctx context.Context, tx *sql.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error
+	EnqueueCleanupEvent(ctx context.Context, tx sqlport.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error
 }
 
 // Azione #9 follow-up (July 2026): DriveUploaderPort interface removed;
@@ -58,7 +59,7 @@ type TxOutboxEnqueuer interface {
 //  5. asset.index.requested outbox (EnqueueIndexEvent)
 //  6. voiceover.cleanup.requested outbox (EnqueueCleanupEvent)
 type VoiceoverFinalizer interface {
-	Finalize(ctx context.Context, tx *sql.Tx, cmd *FinalizeCommand) (*FinalizeResult, error)
+	Finalize(ctx context.Context, tx sqlport.Tx, cmd *FinalizeCommand) (*FinalizeResult, error)
 }
 
 // VoiceoverPostCommitVerifier is the optional narrow port for post-commit

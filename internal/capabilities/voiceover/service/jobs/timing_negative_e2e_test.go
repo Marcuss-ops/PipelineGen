@@ -35,6 +35,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // noBoundaryTTS synthesizes audio with ZERO word boundaries in one pass.
@@ -90,15 +91,15 @@ var _ voiceover.VoiceoverPublisher = (*e2ePublisher)(nil)
 // the remaining methods are no-op stubs.
 type e2eVoRepo struct{ db *sql.DB }
 
-func (r *e2eVoRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (r *e2eVoRepo) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
 }
 
-func (r *e2eVoRepo) InsertTx(context.Context, *sql.Tx, *persistence.VoiceoverRecord) error {
+func (r *e2eVoRepo) InsertTx(context.Context, sqlport.Tx, *persistence.VoiceoverRecord) error {
 	return nil
 }
 
-func (r *e2eVoRepo) DeleteByIDTx(context.Context, *sql.Tx, string) error {
+func (r *e2eVoRepo) DeleteByIDTx(context.Context, sqlport.Tx, string) error {
 	return nil
 }
 
@@ -106,11 +107,11 @@ func (r *e2eVoRepo) PreReadByID(context.Context, string) (*persistence.Voiceover
 	return nil, nil
 }
 
-func (r *e2eVoRepo) CountByDriveFileIDTx(context.Context, *sql.Tx, string, string) (string, int, error) {
+func (r *e2eVoRepo) CountByDriveFileIDTx(context.Context, sqlport.Tx, string, string) (string, int, error) {
 	return "", 0, nil
 }
 
-func (r *e2eVoRepo) FindByIdempotencyKeyTx(context.Context, *sql.Tx, string) (string, error) {
+func (r *e2eVoRepo) FindByIdempotencyKeyTx(context.Context, sqlport.Tx, string) (string, error) {
 	return "", sql.ErrNoRows
 }
 
@@ -118,7 +119,7 @@ var _ persistence.Repository = (*e2eVoRepo)(nil)
 
 type e2eFinalizer struct{ id string }
 
-func (f *e2eFinalizer) Finalize(_ context.Context, _ *sql.Tx, _ *voiceover.FinalizeCommand) (*voiceover.FinalizeResult, error) {
+func (f *e2eFinalizer) Finalize(_ context.Context, _ sqlport.Tx, _ *voiceover.FinalizeCommand) (*voiceover.FinalizeResult, error) {
 	return &voiceover.FinalizeResult{ID: f.id}, nil
 }
 

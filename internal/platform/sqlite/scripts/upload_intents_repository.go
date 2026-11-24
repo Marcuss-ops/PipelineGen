@@ -31,6 +31,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // Compile-time assertion (AGENTS.md Pattern 0): the concrete
@@ -44,8 +46,8 @@ import (
 // assertion in upload_intent_test.go goes through the same
 // interface). Drift here surfaces as a vet error.
 var _ interface {
-	BeginTx(ctx context.Context) (*sql.Tx, error)
-	InsertTx(ctx context.Context, tx *sql.Tx, opts *InsertUploadIntentOptions) (int64, error)
+	BeginTx(ctx context.Context) (sqlport.Tx, error)
+	InsertTx(ctx context.Context, tx sqlport.Tx, opts *InsertUploadIntentOptions) (int64, error)
 	MarkUploaded(ctx context.Context, voiceoverID, driveFileID string) error
 	MarkFinalized(ctx context.Context, voiceoverID string) error
 	MarkCompleted(ctx context.Context, voiceoverID string) error
@@ -115,7 +117,7 @@ func NewUploadIntentsRepository(db *sql.DB) *UploadIntentsRepository {
 // surface sql.ErrConstraintFailed for the conflict case so a
 // caller can detect "row already exists" and short-circuit MarkUploaded
 // instead of INSERT-failing.
-func (r *UploadIntentsRepository) InsertTx(ctx context.Context, tx *sql.Tx, opts *InsertUploadIntentOptions) (int64, error) {
+func (r *UploadIntentsRepository) InsertTx(ctx context.Context, tx sqlport.Tx, opts *InsertUploadIntentOptions) (int64, error) {
 	if tx == nil {
 		return 0, fmt.Errorf("upload_intents_repository.InsertTx: nil tx (caller must open tx before calling)")
 	}
@@ -146,7 +148,7 @@ func (r *UploadIntentsRepository) InsertTx(ctx context.Context, tx *sql.Tx, opts
 // directly except via the canonical port, which then passes the
 // *sql.Tx into InsertTx). Exposed on the port surface for the
 // application-layer orchestrator (upload_intent.go).
-func (r *UploadIntentsRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (r *UploadIntentsRepository) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
 }
 

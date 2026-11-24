@@ -8,7 +8,6 @@
 package phrases
 
 import (
-	"context"
 	"regexp"
 	"sort"
 	"strings"
@@ -16,50 +15,20 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
-// PhraseSelectionProfile is the lexicon data the Rust selector needs. The
-// selector decision stays in Rust; Go only loads and forwards the profile.
-type PhraseSelectionProfile struct {
-	StopWords          []string `json:"stop_words,omitempty"`
-	FunctionWords      []string `json:"function_words,omitempty"`
-	VisualVerbs        []string `json:"visual_verbs,omitempty"`
-	MinWords           int      `json:"min_words,omitempty"`
-	MaxWords           int      `json:"max_words,omitempty"`
-	MaxResults         int      `json:"max_results,omitempty"`
-	RejectVerbsWhenAll bool     `json:"reject_verbs_when_all"`
-}
+// PhraseSelectionProfile is owned by the neutral kernel package.
+type PhraseSelectionProfile = semanticscript.PhraseSelectionProfile
 
-// PhraseSelectionRequest asks the Rust worker for source-grounded phrases in
-// editorial order. BlockedRuneSpans are the entity ranges the caller already
-// grounded; the selector may not overlap them.
-type PhraseSelectionRequest struct {
-	Text             string
-	BlockedRuneSpans [][2]int
-	Limit            int
-	MinWords         int
-	MaxWords         int
-	Corpus           []string
-	Profile          *PhraseSelectionProfile
-}
+// PhraseSelectionRequest is owned by the neutral kernel package.
+type PhraseSelectionRequest = semanticscript.PhraseSelectionRequest
 
-// SelectedPhrase is one phrase returned by the Rust selector. Byte spans index
-// the trimmed request text; rune spans are the same coordinates Go annotations
-// use.
-type SelectedPhrase struct {
-	Text      string `json:"text"`
-	StartByte int    `json:"start_byte"`
-	EndByte   int    `json:"end_byte"`
-	StartRune int    `json:"start_rune"`
-	EndRune   int    `json:"end_rune"`
-	Score     int64  `json:"score"`
-}
+// SelectedPhrase is owned by the neutral kernel package.
+type SelectedPhrase = semanticscript.SelectedPhrase
 
-// PhraseSelector is the single production seam for phrase selection. The
-// semantic-engine adapter implements it over the Rust worker.
-type PhraseSelector interface {
-	SelectPhrases(ctx context.Context, request PhraseSelectionRequest) ([]SelectedPhrase, error)
-}
+// PhraseSelector is owned by the neutral kernel package.
+type PhraseSelector = semanticscript.PhraseSelector
 
 // NewPhraseSelectionProfile projects a loaded lexicon profile onto the wire
 // contract. Keys are sorted so the request is deterministic across map

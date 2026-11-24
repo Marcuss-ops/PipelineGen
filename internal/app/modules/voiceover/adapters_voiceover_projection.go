@@ -43,10 +43,10 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/lifecycle"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ func NewVoiceoverProjectionAdapter(svc *lifecycle.Service) *VoiceoverProjectionA
 	return &VoiceoverProjectionAdapter{svc: svc}
 }
 
-func (a *VoiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, in *voiceover.VoiceoverProjectionInput) error {
+func (a *VoiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Context, tx sqlport.WriteTx, in *voiceover.VoiceoverProjectionInput) error {
 	return a.svc.UpsertVoiceoverProjectionTx(ctx, tx, &lifecycle.VoiceoverProjectionInput{
 		ID:            in.ID,
 		Source:        in.Source,

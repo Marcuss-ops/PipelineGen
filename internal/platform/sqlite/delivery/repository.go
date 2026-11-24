@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -88,7 +89,7 @@ func NewRepository(db *sql.DB) *Repository {
 // constants — validation is deferred to the caller (the admin bootstrap
 // and publisher are the canonical writers and own value correctness
 // per godlike/06 SSOT).
-func (r *Repository) Upsert(ctx context.Context, tx *sql.Tx, entry *CatalogEntry) (int64, error) {
+func (r *Repository) Upsert(ctx context.Context, tx sqlport.Tx, entry *CatalogEntry) (int64, error) {
 	if err := validateEntry(entry); err != nil {
 		return 0, err
 	}
@@ -236,7 +237,7 @@ func (r *Repository) FindByStatus(ctx context.Context, status string) ([]Catalog
 // Delete removes a catalog entry by destination + path. Returns
 // ErrNotFound if no row matched. Accepts an optional *sql.Tx; pass
 // nil for standalone execution.
-func (r *Repository) Delete(ctx context.Context, tx *sql.Tx, destination, path string) error {
+func (r *Repository) Delete(ctx context.Context, tx sqlport.Tx, destination, path string) error {
 	if strings.TrimSpace(destination) == "" {
 		return fmt.Errorf("%w: destination is required", ErrInvalidEntry)
 	}
@@ -265,7 +266,7 @@ func (r *Repository) Delete(ctx context.Context, tx *sql.Tx, destination, path s
 // pair. Used by the reconcile command (F5) to flip entries to StatusMissing
 // or StatusInvalid without touching other fields. Returns ErrNotFound if no
 // row matched.
-func (r *Repository) MarkStatus(ctx context.Context, tx *sql.Tx, destination, path, status string) error {
+func (r *Repository) MarkStatus(ctx context.Context, tx sqlport.Tx, destination, path, status string) error {
 	if strings.TrimSpace(destination) == "" {
 		return fmt.Errorf("%w: destination is required", ErrInvalidEntry)
 	}
@@ -291,6 +292,29 @@ func (r *Repository) MarkStatus(ctx context.Context, tx *sql.Tx, destination, pa
 	affected, _ := result.RowsAffected()
 	if affected == 0 {
 		return fmt.Errorf("delivery.catalog.MarkStatus(%q, %q): %w", destination, path, ErrNotFound)
+	}
+	return nil
+}
+
+// RecordDeliveryLog writes (or updates) the delivery_log audit row keyed by
+// delivery_id. The ON CONFLICT update collapses webhook retries onto the same
+// audit row. The implementation is owned here so the jobs capability never
+// imports database/sql or names the delivery_log schema.
+func (r *Repository) RecordDeliveryLog(ctx context.Context, assetID, endpointURL, deliveryID string, statusCode int, responseHash, deliveredAt, note string) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("delivery.Repository.RecordDeliveryLog: db not wired")
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO delivery_log (asset_id, endpoint_url, delivery_id, status_code, response_hash, delivered_at, created_at, note)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(delivery_id) DO UPDATE SET
+		  status_code = excluded.status_code,
+		  response_hash = excluded.response_hash,
+		  delivered_at = excluded.delivered_at,
+		  note = excluded.note
+	`, assetID, endpointURL, deliveryID, statusCode, responseHash, deliveredAt, deliveredAt, note)
+	if err != nil {
+		return fmt.Errorf("delivery.Repository.RecordDeliveryLog(%s): %w", deliveryID, err)
 	}
 	return nil
 }

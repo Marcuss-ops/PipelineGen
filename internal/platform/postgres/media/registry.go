@@ -23,6 +23,7 @@ import (
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"github.com/google/uuid"
 )
 
@@ -255,7 +256,7 @@ func assetIndexRequestedPayload(req IndexRequest, eventID, eventKey string) map[
 // outbox consumer cannot tell which engine produced the event.
 func CommitIndexRequestTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.WriteTx,
 	box outboxRepository,
 	req IndexRequest,
 ) (IndexRequestCommitResult, error) {

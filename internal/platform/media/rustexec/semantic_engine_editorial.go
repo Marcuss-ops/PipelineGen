@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 type passageBatchEmbedder interface {
@@ -74,7 +74,7 @@ func (a *SemanticEngineAdapter) AnalyzeSemanticEditorial(
 	transcript string,
 	language string,
 	scenes []scriptpkg.SceneAnalysisInput,
-) (map[string]*scriptgen.SemanticCandidateBundle, scriptpkg.PhraseImpactResult, error) {
+) (map[string]*semantic.SemanticCandidateBundle, scriptpkg.PhraseImpactResult, error) {
 	language = strings.TrimSpace(language)
 	transcript = strings.TrimSpace(transcript)
 	if transcript == "" {
@@ -87,9 +87,9 @@ func (a *SemanticEngineAdapter) AnalyzeSemanticEditorial(
 	if err != nil {
 		return nil, scriptpkg.PhraseImpactResult{}, err
 	}
-	semanticScenes := make([]scriptgen.SemanticSceneInput, 0, len(scenes))
+	semanticScenes := make([]semantic.SemanticSceneInput, 0, len(scenes))
 	for _, scene := range scenes {
-		semanticScenes = append(semanticScenes, scriptgen.SemanticSceneInput{SceneID: scene.SceneID, Text: scene.Text})
+		semanticScenes = append(semanticScenes, semantic.SemanticSceneInput{SceneID: scene.SceneID, Text: scene.Text})
 	}
 	bundles, result, err := a.semanticBundles(ctx, language, semanticScenes, editorial)
 	if err != nil {
@@ -166,7 +166,7 @@ func (a *SemanticEngineAdapter) prepareEditorialRequest(
 	}, nil
 }
 
-var _ scriptgen.SceneSemanticEditorialBatchAnalyzer = (*SemanticEngineAdapter)(nil)
+var _ semantic.SceneSemanticEditorialBatchAnalyzer = (*SemanticEngineAdapter)(nil)
 
 func validateSceneHighlights(transcript string, in []scriptpkg.SceneHighlight) ([]scriptpkg.SceneHighlight, bool) {
 	if len(in) == 0 {

@@ -3,7 +3,6 @@ package autotag
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,7 +27,6 @@ import (
 var videoFramePercentages = []float64{0.0, 0.25, 0.50, 0.75, 1.0}
 
 type Service struct {
-	db          *sql.DB
 	repo        detail.Repository
 	vlmClient   *vlm.Client
 	committer   persistence.AssetCommitter
@@ -55,7 +53,6 @@ type Service struct {
 // ServiceDeps groups the persistence, inference and video-analysis ports
 // required by the auto-tagging workflow.
 type ServiceDeps struct {
-	DB            *sql.DB
 	Repo          detail.Repository
 	VLMClient     *vlm.Client
 	Committer     persistence.AssetCommitter
@@ -87,7 +84,6 @@ type VideoAnalysisDeps struct {
 // single-shot behaviour.
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		db:               deps.DB,
 		repo:             deps.Repo,
 		vlmClient:        deps.VLMClient,
 		committer:        deps.Committer,

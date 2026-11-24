@@ -8,13 +8,13 @@ package lifecycle
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"path/filepath"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // UploadOnly uploads a local file to Drive WITHOUT any database
@@ -156,7 +156,7 @@ func (s *Service) UploadOnly(ctx context.Context, input *FinalizeInput) (*Upload
 // (else we persist a projection without a Drive URL — fail-closed
 // at the voiceover.persistence.Repository layer per its own
 // fail-fast policies; this method does not re-validate).
-func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, in *VoiceoverProjectionInput) error {
+func (s *Service) UpsertVoiceoverProjectionTx(ctx context.Context, tx sqlport.WriteTx, in *VoiceoverProjectionInput) error {
 	_ = ctx
 	_ = tx
 	_ = in

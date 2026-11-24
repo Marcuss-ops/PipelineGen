@@ -10,6 +10,7 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 // GenerationRun is the canonical aggregate that tracks a single
@@ -30,25 +31,13 @@ type PhraseImpactTimings = scriptpkg.PhraseImpactTimings
 // ChartValueCandidate is a numeric label grounded as an exact source span by
 // the VisualNER worker. The scripts layer re-checks Text with the strict chart
 // parser before any value can authorize a chart.
-type ChartValueCandidate struct {
-	Text  string
-	Value float64
-}
+type ChartValueCandidate = semanticscript.ChartValueCandidate
 
 // BulletCandidate is one VisualNER sentence bullet grounded as an exact
 // source span. SentenceIndex is the worker's scene-local sentence number;
 // the scripts layer re-maps it onto the Go sentence splitter before it can
 // become an editorial bullet.
-type BulletCandidate struct {
-	ID, Kind, Evidence, Provenance string
-	Text                           string
-	SentenceIndex                  int
-	Start                          int
-	End                            int
-	// Score is the semantic engine's grounded salience; it travels to
-	// Phrase Impact so candidate ranking uses one shared priority function.
-	Score float64
-}
+type BulletCandidate = semanticscript.BulletCandidate
 
 // SetSceneSemanticAnalyzer wires the unified semantic source. A batch-capable
 // implementation analyses the whole script in one call; the per-category

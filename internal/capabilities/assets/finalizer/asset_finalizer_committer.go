@@ -25,11 +25,7 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 ) (finalization.ArtifactRef, []finalization.OutboxEvent, error) {
 	req := s.buildCommitRequest(artifact)
 
-	sqlTx, ok := UnwrapSQLTx(tx)
-	if !ok {
-		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: transaction is not *sql.Tx")
-	}
-	res, err := s.committer.CommitTx(ctx, sqlTx, req)
+	res, err := s.committer.CommitTx(ctx, tx, req)
 	if err != nil {
 		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: commit asset: %w", err)
 	}
@@ -37,7 +33,7 @@ func (s *AssetTxFinalizer) finalizeWithCommitter(
 	var events []finalization.OutboxEvent
 	if res.OutboxEventKey != "" {
 		var eventType, aggregateID, payload string
-		if err := sqlTx.QueryRowContext(ctx, `
+		if err := tx.QueryRowContext(ctx, `
 			SELECT event_type, aggregate_id, payload_json
 			FROM outbox_events WHERE event_key = $1`, res.OutboxEventKey).
 			Scan(&eventType, &aggregateID, &payload); err != nil {

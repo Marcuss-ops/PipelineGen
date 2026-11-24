@@ -8,30 +8,30 @@ import (
 	"unicode/utf8"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 type selectPhrasesWireRequest struct {
-	Operation        string                            `json:"operation"`
-	Text             string                            `json:"text"`
-	BlockedRuneSpans [][2]int                          `json:"blocked_rune_spans,omitempty"`
-	Limit            int                               `json:"limit,omitempty"`
-	MinWords         int                               `json:"min_words,omitempty"`
-	MaxWords         int                               `json:"max_words,omitempty"`
-	Corpus           []string                          `json:"corpus,omitempty"`
-	Profile          *scriptgen.PhraseSelectionProfile `json:"profile,omitempty"`
+	Operation        string                           `json:"operation"`
+	Text             string                           `json:"text"`
+	BlockedRuneSpans [][2]int                         `json:"blocked_rune_spans,omitempty"`
+	Limit            int                              `json:"limit,omitempty"`
+	MinWords         int                              `json:"min_words,omitempty"`
+	MaxWords         int                              `json:"max_words,omitempty"`
+	Corpus           []string                         `json:"corpus,omitempty"`
+	Profile          *semantic.PhraseSelectionProfile `json:"profile,omitempty"`
 }
 
 type selectPhrasesWireResponse struct {
-	OK      bool                       `json:"ok"`
-	Error   string                     `json:"error,omitempty"`
-	Phrases []scriptgen.SelectedPhrase `json:"phrases"`
+	OK      bool                      `json:"ok"`
+	Error   string                    `json:"error,omitempty"`
+	Phrases []semantic.SelectedPhrase `json:"phrases"`
 }
 
 // SelectPhrases is the production boundary of the Rust deterministic phrase
 // selector. Every returned phrase must be the exact requested-text slice at
 // its byte span; an ungrounded response fails closed.
-func (a *SemanticEngineAdapter) SelectPhrases(ctx context.Context, request scriptgen.PhraseSelectionRequest) ([]scriptgen.SelectedPhrase, error) {
+func (a *SemanticEngineAdapter) SelectPhrases(ctx context.Context, request semantic.PhraseSelectionRequest) ([]semantic.SelectedPhrase, error) {
 	if a == nil || a.executor == nil {
 		return nil, fmt.Errorf("semantic-engine: executor is not configured")
 	}
@@ -166,6 +166,6 @@ func normalizeAlignmentText(value string) string {
 }
 
 var (
-	_ scriptgen.PhraseSelector = (*SemanticEngineAdapter)(nil)
-	_ scriptgen.PhraseAligner  = (*SemanticEngineAdapter)(nil)
+	_ semantic.PhraseSelector       = (*SemanticEngineAdapter)(nil)
+	_ capabilityaudio.PhraseAligner = (*SemanticEngineAdapter)(nil)
 )

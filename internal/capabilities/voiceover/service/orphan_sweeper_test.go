@@ -15,12 +15,12 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"go.uber.org/zap"
@@ -68,11 +68,11 @@ func (m *sweepMockRepo) MarkFailed(ctx context.Context, voiceoverID, reason stri
 
 // Unused methods (panic on call):
 
-func (m *sweepMockRepo) BeginTx(context.Context) (*sql.Tx, error) {
+func (m *sweepMockRepo) BeginTx(context.Context) (sqlport.Tx, error) {
 	panic("sweepMockRepo.BeginTx: orphan sweeper does NOT use BeginTx (caller-owned INSERT tx is the use case's responsibility, not the sweeper's)")
 }
 
-func (m *sweepMockRepo) InsertTx(context.Context, *sql.Tx, *UploadIntentInsertOptions) (int64, error) {
+func (m *sweepMockRepo) InsertTx(context.Context, sqlport.Tx, *UploadIntentInsertOptions) (int64, error) {
 	panic("sweepMockRepo.InsertTx: orphan sweeper does NOT call InsertTx")
 }
 

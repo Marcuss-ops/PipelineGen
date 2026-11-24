@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	scriptrun "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 type GenerationRun struct {
@@ -46,39 +47,32 @@ type GenerationRun struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// RunStatus is the high-level lifecycle status of a GenerationRun.
-type RunStatus string
+// RunStatus is the high-level lifecycle status of a GenerationRun. The
+// vocabulary is owned by the kernel so platform adapters can decode a durable
+// run without importing the scripts business package.
+type RunStatus = scriptrun.RunStatus
 
 const (
-	RunStatusPending   RunStatus = "PENDING"
-	RunStatusRunning   RunStatus = "RUNNING"
-	RunStatusCompleted RunStatus = "COMPLETED"
-	RunStatusFailed    RunStatus = "FAILED"
+	RunStatusPending   = scriptrun.RunStatusPending
+	RunStatusRunning   = scriptrun.RunStatusRunning
+	RunStatusCompleted = scriptrun.RunStatusCompleted
+	RunStatusFailed    = scriptrun.RunStatusFailed
 )
 
 // Stage identifies the exact phase within the workflow.
-// Verdetto: extend CurrentStage with these explicit values.
-type Stage string
+type Stage = scriptrun.Stage
 
 const (
-	StageNormalizing          Stage = "NORMALIZING"
-	StagePreflight            Stage = "MEDIA_PREFLIGHT" // P0.5: fail-fast asset verification before GENERATING_SCENE_TEXT
-	StageGeneratingSceneText  Stage = "GENERATING_SCENE_TEXT"
-	StageTranslatingScenes    Stage = "TRANSLATING_SCENES"
-	StageGeneratingVoiceovers Stage = "GENERATING_VOICEOVERS"
-	StageCompilingAudio       Stage = "COMPILING_AUDIO"
-	// StagePublishingDocuments is the LEGACY publication stage. Document
-	// publication was removed with Google Docs; the stage value survives for
-	// persisted-run resume compatibility and as the failure stage the remote
-	// final-job/artifact publication path reports.
-	StagePublishingDocuments Stage = "PUBLISHING_DOCUMENTS"
-	StageCompleted           Stage = "COMPLETED"
-	StageFailed              Stage = "FAILED"
-	// StageCoreReady is the LEGACY CORE_READY milestone, kept only so a run
-	// persisted before the Google Docs demolition still resumes at the
-	// post-core publication stage instead of replaying from NORMALIZING.
-	// Nothing writes it any more.
-	StageCoreReady Stage = "CORE_READY"
+	StageNormalizing          = scriptrun.StageNormalizing
+	StagePreflight            = scriptrun.StagePreflight
+	StageGeneratingSceneText  = scriptrun.StageGeneratingSceneText
+	StageTranslatingScenes    = scriptrun.StageTranslatingScenes
+	StageGeneratingVoiceovers = scriptrun.StageGeneratingVoiceovers
+	StageCompilingAudio       = scriptrun.StageCompilingAudio
+	StagePublishingDocuments  = scriptrun.StagePublishingDocuments
+	StageCompleted            = scriptrun.StageCompleted
+	StageFailed               = scriptrun.StageFailed
+	StageCoreReady            = scriptrun.StageCoreReady
 )
 
 // ErrProjectRequired is the typed sentinel surfaced when a
@@ -101,11 +95,6 @@ var ErrEmptyGeneratedText = errors.New("scriptgeneration: generated narration is
 // request fail-closed means a caller never believes a document was produced
 // when it was not (godlike/07 NO-FAKE-AVAILABILITY).
 var ErrGoogleDocsRetired = errors.New("scriptgeneration: Google Docs publication has been retired; omit the docs block or set docs.enabled=false")
-
-// IsTerminal returns true when the stage signals a terminal state.
-func (s Stage) IsTerminal() bool {
-	return s == StageCompleted || s == StageFailed
-}
 
 // ── Completion contract ─────────────────────────────────────────────
 

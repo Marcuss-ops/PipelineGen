@@ -6,8 +6,24 @@
 `percheck_state_matrix` (`cmd/archcheck/scan/migrations/percheck_state_matrix.go`).
 Questa matrice è la SSOT **machine-readable** dei vocabolari di stato dichiarati
 dallo schema; la semantica (owner, significato, transizioni) delle colonne di
-`media_assets` resta in `internal/platform/sqlite/canonical.go`, che non viene
-ripetuta qui.
+`media_assets` è nella sezione [Asset state columns](#asset-state-columns-media_assets)
+qui sotto.
+
+## Asset state columns (`media_assets`)
+
+`media_assets` ha esattamente TRE colonne che portano stato. Nessuna shadow,
+nessun fallback `COALESCE`, nessuna doppia fonte di verità.
+
+| Colonna | Owner (scrittura) | Significato |
+| --- | --- | --- |
+| `lifecycle_state` | `MediaCommitter` (write), `AssetMutationDispatcher` (restore/delete) | Disponibilità / cancellazione. Valori: `ACTIVE`, `DELETED`, `DELETE_REQUESTED`, `STAGING`, `ARCHIVED`. È la SOLA fonte operativa di verità per la disponibilità dell'asset. |
+| `index_state` | Handler outbox dell'indice (write), `AssetMutationDispatcher` (restore) | Stato della proiezione / ricerca. Valori: `DISCOVERED`, `INDEXING`, `INDEXED`, `INDEX_FAILED`, `DELETE_PENDING`, `DELETED`. Indica se pgvector ha un embedding corrente per l'asset. |
+| `asset_state` | Trigger della migration 189 (read-only) | Colonna di compatibilità DERIVATA, calcolata da `lifecycle_state` + `index_state`. Il codice applicativo NON deve mai scriverla direttamente (il trigger guard fallisce chiuso). Solo lettura per dashboard/operatori. |
+
+Colonne rimosse (non riaggiungere):
+
+- `status` → rimossa dalla migration 101 (duplicava `lifecycle_state`)
+- `lifecycle_status` → rimossa dalla migration 230 (shadow di `lifecycle_state`)
 
 ## Convenzioni normative
 

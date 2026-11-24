@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-24
 **Priorità:** P1 (igiene, rischio zero)
-**Stato:** DONE
+**Stato:** DONE (commit `b7a7ca2ec`)
 **Owner:** `capabilities/scripts`, `capabilities/jobs`, `stockpipeline/publish`
 **Origine:** radiografia 2026-11-24, §2A
 **Base:** `refactored` @ `2a3ea0b2c` (working tree pulito)
@@ -25,7 +25,7 @@ sotto esiste **solo la definizione**, nessun riferimento.
 | `internal/capabilities/scripts/public_aliases_a.go:258` | `segmentExtractionExplicitlyEnabled` | wrapper morto di `contract.SegmentExtractionExplicitlyEnabled` |
 | `internal/capabilities/scripts/translated_nlp.go:548` | `limitTranslatedNLPStrings` | wrapper morto di `semantics.LimitStrings` |
 | `internal/capabilities/scripts/runner_scene_text_coordination.go:133` | `fixedPlaybackDurationUS` | duplicato morto: la copia viva è `scripts/workunits/fixed_playback.go:8`, usata da `workunits/scene_bindings.go:123` |
-| `internal/capabilities/scripts/entity_image_motions.go:15` | `entityImageCaption` | nessun chiamante |
+| `internal/capabilities/scripts/overlayplan/entity_image_motions.go:15` | `entityImageCaption` | nessun chiamante; file spostato in `overlayplan` il 2026-11-24 |
 | `internal/capabilities/scripts/finaljob/overlay_publication.go:211` | `finalJobOverlayIsImageStyle` | nessun chiamante |
 | `internal/capabilities/scripts/overlayproject/numeric_grounding.go:187` | `numericEntityGroundedForLanguage` | nessun chiamante |
 | `internal/capabilities/scripts/overlayproject/numeric_grounding.go:216` | `numericValues` | orfano: usato solo dalla funzione precedente |
@@ -84,6 +84,14 @@ go run ./cmd/archcheck --strict
 - `go build ./...` rc 0; `go test ./internal/capabilities/scripts -count=1`
   PASS (20,4 s); `jobs`, `stockpipeline` e `clips` PASS.
 - `go run ./cmd/archcheck --strict` rc 0, `has_hard_gate_hits: false`.
-- Nessun commit: il working tree condiviso contiene 20+ rename `RM` di un'altra
-  sessione; un commit selettivo includerebbe o spezzerebbe quel lavoro.
+- Commit: `b7a7ca2ec` — `refactor(scripts): remove dead overlay and adapter
+  helpers`. Il commit è selettivo e non include il lavoro concorrente.
+
+## 5. Cosa resta
+
+Niente di bloccante. Il ticket è DONE e committato; non ci sono simboli morti
+noti nel perimetro. Restano solo attività non richieste e fuori perimetro:
+push del commit e suite completa `go test ./...` (il noto
+`TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` è flaky sotto carico e
+passa isolato).
 

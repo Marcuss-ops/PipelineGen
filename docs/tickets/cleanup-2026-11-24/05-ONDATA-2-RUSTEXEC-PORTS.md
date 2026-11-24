@@ -2,10 +2,10 @@
 
 **Data:** 2026-11-24
 **Priorità:** P1 (strutturale, sblocca il ratchet archcheck)
-**Stato:** OPEN
+**Stato:** CLOSED (2026-11-24) — inventario `rustexec` = 0; 13 adapter migrati al kernel
 **Owner:** `media-rust` + `kernel/script`
 **Origine:** radiografia 2026-11-24, Ondata 2; inventario RA-01
-**Base:** `refactored` @ `3e0a9e3ae`
+**Base:** `refactored` @ `3e0a9e3ae`; rilettura @ `e89a0a3dc`
 
 ## 1. Problema
 
@@ -125,3 +125,33 @@ go test ./internal/platform/media/rustexec/... ./internal/kernel/script/... \
   Si ripristinano gli import e le entry di inventario nello stesso commit.
 - **Regola di chiusura:** CLEANUP-05 si chiude solo quando l'inventario
   `rustexec` è zero; nessuna chiusura per famiglia parziale.
+
+## 5. Stato pre-migrazione (superato)
+
+- HEAD `e89a0a3dc`; `platformCapabilityScriptsInventory` = **24** entry, di cui
+  **13 `rustexec`**: nessuna entry rimossa.
+- Tutti i 13 file importano ancora `internal/capabilities/scripts`; il
+  censimento dei simboli è invariato (7/7/13/3/3/6/2/5/21/4/5/3/0).
+- `d9e973e76` allinea `semantic_engine_phrases.go` a
+  `capabilityaudio.PhraseAlignmentRequest`: elimina l'alias rimosso del root,
+  ma lascia il contratto in `capabilities/audio` (il §2.3 lo vuole nel kernel)
+  e non cancella l'import `scriptgen` usato da `SelectPhrases`.
+- `e89a0a3dc` (sessione concorrente) estrae la policy subtitles del final job:
+  fuori perimetro `rustexec`.
+- Stato finale: inventario `rustexec` = 0; vedi §6.
+
+## 6. Esito 2026-11-24
+
+- `platformCapabilityScriptsInventory`: 0 entry `rustexec`.
+- Nessun adapter `rustexec` importa `internal/capabilities/scripts` (resta solo `scripts/ports`, ammesso).
+- `go build ./...` rc 0; `go vet` e `go test` su `rustexec`, `kernel/script`, `kernel/audio` PASS.
+- `go run ./cmd/archcheck --strict` rc 0, `has_hard_gate_hits: false`.
+- Verifica full-repo 2026-11-24: `go build ./...`, `go vet` e suite CLEANUP-06 rc 0.
+- CLEANUP-05 chiuso.
+
+## 7. Cosa resta
+
+Niente di bloccante: inventario `rustexec` a 0 e 13 adapter migrati. Non ci
+sono entry di inventario né import business da rimuovere. Restano fuori
+perimetro push del working tree e suite completa
+(`TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` flaky sotto carico).

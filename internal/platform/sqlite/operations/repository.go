@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -48,19 +49,19 @@ type Repository interface {
 	// When `tx != nil`, the insert participates in the caller's
 	// transaction; when `tx == nil`, the insert runs in its own
 	// implicit transaction (database/sql default).
-	Insert(ctx context.Context, op *operations.Operation, tx *sql.Tx) error
+	Insert(ctx context.Context, op *operations.Operation, tx sqlport.Tx) error
 
 	// GetByID returns the operation with the given primary-key
 	// operation_id, or (nil, operations.ErrOperationNotFound) when
 	// no row matches.
-	GetByID(ctx context.Context, id string, tx *sql.Tx) (*operations.Operation, error)
+	GetByID(ctx context.Context, id string, tx sqlport.Tx) (*operations.Operation, error)
 
 	// GetLatestForKey returns the most recent operation for a
 	// (scope, idempotency_key) pair, or (nil, nil) when no row
 	// matches. The lookup uses the idx_operations_idem_lookup
 	// composite index (migration 145). Used by the idempotency-
 	// hit path AND the force_refresh-supersedes path.
-	GetLatestForKey(ctx context.Context, scope operations.Scope, idempotencyKey string, tx *sql.Tx) (*operations.Operation, error)
+	GetLatestForKey(ctx context.Context, scope operations.Scope, idempotencyKey string, tx sqlport.Tx) (*operations.Operation, error)
 
 	// UpdateState transitions the operation to newState. The
 	// updated_at column is bumped to the call time. Returns
@@ -68,7 +69,7 @@ type Repository interface {
 	// given id. Used by the force_refresh path to flip the
 	// prior operation's state to SUPERSEDED in the same atomic
 	// TX as the new operation's INSERT.
-	UpdateState(ctx context.Context, id string, newState operations.State, tx *sql.Tx) error
+	UpdateState(ctx context.Context, id string, newState operations.State, tx sqlport.Tx) error
 }
 
 // SQLiteRepository is the canonical concrete adapter for the
@@ -208,7 +209,7 @@ func validateForWrite(op *operations.Operation) error {
 // (validateForWrite rejects zero-value timestamps) so the
 // service layer is forced to think about the time source and
 // stamp both rows with the same value inside the atomic TX.
-func (r *SQLiteRepository) Insert(ctx context.Context, op *operations.Operation, tx *sql.Tx) error {
+func (r *SQLiteRepository) Insert(ctx context.Context, op *operations.Operation, tx sqlport.Tx) error {
 	if err := validateForWrite(op); err != nil {
 		return err
 	}
@@ -238,7 +239,7 @@ func (r *SQLiteRepository) Insert(ctx context.Context, op *operations.Operation,
 // GetByID returns the operation with the given primary-key
 // operation_id, or (nil, operations.ErrOperationNotFound) when
 // no row matches.
-func (r *SQLiteRepository) GetByID(ctx context.Context, id string, tx *sql.Tx) (*operations.Operation, error) {
+func (r *SQLiteRepository) GetByID(ctx context.Context, id string, tx sqlport.Tx) (*operations.Operation, error) {
 	if id == "" {
 		return nil, fmt.Errorf("operations.GetByID: empty operation_id")
 	}
@@ -263,7 +264,7 @@ func (r *SQLiteRepository) GetByID(ctx context.Context, id string, tx *sql.Tx) (
 // (scope, idempotency_key) pair, or (nil, nil) when no row
 // matches. The lookup uses the idx_operations_idem_lookup
 // composite index (migration 145).
-func (r *SQLiteRepository) GetLatestForKey(ctx context.Context, scope operations.Scope, idempotencyKey string, tx *sql.Tx) (*operations.Operation, error) {
+func (r *SQLiteRepository) GetLatestForKey(ctx context.Context, scope operations.Scope, idempotencyKey string, tx sqlport.Tx) (*operations.Operation, error) {
 	if !scope.IsValid() {
 		return nil, fmt.Errorf("%w: %q", operations.ErrInvalidOperationScope, scope)
 	}
@@ -301,7 +302,7 @@ func (r *SQLiteRepository) GetLatestForKey(ctx context.Context, scope operations
 // created with `supersedes_operation_id` set, the prior
 // operation's state is flipped to SUPERSEDED in the SAME
 // atomic TX as the new operation's INSERT.
-func (r *SQLiteRepository) UpdateState(ctx context.Context, id string, newState operations.State, tx *sql.Tx) error {
+func (r *SQLiteRepository) UpdateState(ctx context.Context, id string, newState operations.State, tx sqlport.Tx) error {
 	if id == "" {
 		return fmt.Errorf("operations.UpdateState: empty operation_id")
 	}

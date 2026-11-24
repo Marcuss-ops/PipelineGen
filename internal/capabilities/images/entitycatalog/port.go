@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 const (
@@ -36,9 +38,9 @@ const (
 	// usable for discovery.
 	CandidateStatusUnknown = "unknown"
 
-	CandidateSemanticUnknown  = "unknown"
-	CandidateSemanticAccepted = "accepted"
-	CandidateSemanticRejected = "rejected"
+	CandidateSemanticUnknown  = scriptpkg.CandidateSemanticUnknown
+	CandidateSemanticAccepted = scriptpkg.CandidateSemanticAccepted
+	CandidateSemanticRejected = scriptpkg.CandidateSemanticRejected
 
 	RefreshStatusNever     = "never"
 	RefreshStatusRunning   = "running"

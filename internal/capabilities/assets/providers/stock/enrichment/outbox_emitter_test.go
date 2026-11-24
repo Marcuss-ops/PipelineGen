@@ -50,6 +50,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // outboxEventsSchema is the canonical outbox_events DDL
@@ -137,7 +138,7 @@ func TestNewOutboxBackedAssetPublishedEmitter_NilDB(t *testing.T) {
 // in outbox_events with the canonical column values.
 func TestOutboxBackedAssetPublishedEmitter_HappyPath_InsertsRow(t *testing.T) {
 	db := outboxEmitterDB(t)
-	emitter, err := NewOutboxBackedAssetPublishedEmitter(db, nil)
+	emitter, err := NewOutboxBackedAssetPublishedEmitter(sqlport.WrapDB(db), nil)
 	if err != nil {
 		t.Fatalf("NewOutboxBackedAssetPublishedEmitter: %v", err)
 	}
@@ -213,7 +214,7 @@ func TestOutboxBackedAssetPublishedEmitter_HappyPath_InsertsRow(t *testing.T) {
 // emitted twice → exactly 1 row (idempotency contract).
 func TestOutboxBackedAssetPublishedEmitter_OnConflict_IdempotentReplay(t *testing.T) {
 	db := outboxEmitterDB(t)
-	emitter, err := NewOutboxBackedAssetPublishedEmitter(db, nil)
+	emitter, err := NewOutboxBackedAssetPublishedEmitter(sqlport.WrapDB(db), nil)
 	if err != nil {
 		t.Fatalf("NewOutboxBackedAssetPublishedEmitter: %v", err)
 	}
@@ -241,7 +242,7 @@ func TestOutboxBackedAssetPublishedEmitter_OnConflict_IdempotentReplay(t *testin
 // Test 4: different event_keys → multiple rows (canonical fan-out).
 func TestOutboxBackedAssetPublishedEmitter_DifferentEventKeys_MultipleRows(t *testing.T) {
 	db := outboxEmitterDB(t)
-	emitter, err := NewOutboxBackedAssetPublishedEmitter(db, nil)
+	emitter, err := NewOutboxBackedAssetPublishedEmitter(sqlport.WrapDB(db), nil)
 	if err != nil {
 		t.Fatalf("NewOutboxBackedAssetPublishedEmitter: %v", err)
 	}
@@ -301,7 +302,7 @@ func TestOutboxBackedAssetPublishedEmitter_NilDB_ReturnsSentinel(t *testing.T) {
 // the same struct and reads the same fields.
 func TestOutboxBackedAssetPublishedEmitter_PayloadJSON_PersistedAtomically(t *testing.T) {
 	db := outboxEmitterDB(t)
-	emitter, err := NewOutboxBackedAssetPublishedEmitter(db, nil)
+	emitter, err := NewOutboxBackedAssetPublishedEmitter(sqlport.WrapDB(db), nil)
 	if err != nil {
 		t.Fatalf("NewOutboxBackedAssetPublishedEmitter: %v", err)
 	}

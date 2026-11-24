@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-24
 **Priorità:** P1 (igiene, rischio basso)
-**Stato:** DONE
+**Stato:** DONE (commit `d41dcdf52`)
 **Owner:** `capabilities/scripts`, `capabilities/cliprender`, `stockpipeline`, `cmd/admin`
 **Origine:** radiografia 2026-11-24, §2B
 **Base:** `refactored` @ `2a3ea0b2c` (working tree pulito)
@@ -40,6 +40,16 @@ compilare questi simboli; i test continuano a usarli.
 | `buildStockManifest` | `stockpipeline/aliases.go` | `stockpipeline/lease_extractor_test.go` (chiamare `core.BuildStockManifest`) |
 | `buildPublishPlan` | `stockpipeline/publish/step_publish.go` | `stockpipeline/publish/publish_plan_test.go` |
 | `writeRuntimeRouteManifest` | `cmd/admin/internal/rendering/gen_api_docs_manifest.go` | `cmd/admin/internal/rendering/gen_api_docs_manifest_test.go` |
+
+> **Destinazioni effettive (2026-11-24).** Dopo il consolidamento i tre helper
+> del root `scripts` vivono in `scripts/cleanup_test_helpers_test.go`, quelli di
+> `vidrush` in `scripts/vidrush/cleanup_test_helpers_test.go` e quelli di
+> `renderqueue` in `scripts/renderqueue/cleanup_test_helpers_test.go`; restano
+> `cliprender/payload_test_helpers_test.go`,
+> `stockpipeline/publish/publish_plan_helpers_test.go` e
+> `cmd/admin/internal/rendering/write_runtime_route_manifest_test.go`. La
+> colonna "Destinazione" indica il piano iniziale; i test condividono un solo
+> helper per package, non una copia per ciascun file di test.
 
 ### Casi che richiedono attenzione
 
@@ -88,4 +98,12 @@ gofmt -l <file toccati>
 - `rg` sui file di produzione non trova i 12 helper; resta solo il gemello vivo
   `capSemanticVerificationCandidates` in `scripts/adapters/scene_annotations.go`.
 - `go vet` sulla superficie stabile → rc 0.
+- Commit: `d41dcdf52` — `test: move test-only helpers out of production files`.
+
+## 5. Cosa resta
+
+Niente di bloccante. Il ticket è DONE e committato; i 12 helper vivono nei file
+`_test.go` e il gemello vivo in `scripts/adapters/scene_annotations.go` resta
+intenzionalmente in produzione. Restano fuori perimetro push e suite completa
+(`TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` flaky sotto carico).
 

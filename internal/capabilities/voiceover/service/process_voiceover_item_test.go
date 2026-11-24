@@ -3,7 +3,7 @@
 // Tests the ProcessVoiceoverItemUseCase.Execute pipeline at the use case
 // boundary with stub ports. Uses in-memory SQLite for real tx lifecycle so
 // the Execute flow can exercise BeginTx → Finalize → Commit without panicking
-// on a zero-value *sql.Tx.
+// on a zero-value sqlport.Tx.
 package voiceover
 
 import (
@@ -22,6 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -82,17 +83,17 @@ func (s *stubProcessPublisher) Publish(_ context.Context, cmd VoiceoverPublishCo
 var _ VoiceoverPublisher = (*stubProcessPublisher)(nil)
 
 // stubProcessVoRepo wraps an in-memory *sql.DB so BeginTx returns a real
-// *sql.Tx that supports Commit/Rollback without panicking. Mirrors the
+// sqlport.Tx that supports Commit/Rollback without panicking. Mirrors the
 // pattern established in finalizer_test.go::finalizerTestRepo.
 type stubProcessVoRepo struct {
 	db *sql.DB
 }
 
-func (r *stubProcessVoRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (r *stubProcessVoRepo) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
 }
 
-func (r *stubProcessVoRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
+func (r *stubProcessVoRepo) InsertTx(ctx context.Context, tx sqlport.Tx, rec *persistence.VoiceoverRecord) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO voiceovers (
 			id, request_id, text_hash, text_preview, language, voice, filename,
@@ -109,7 +110,7 @@ func (r *stubProcessVoRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persi
 	return err
 }
 
-func (r *stubProcessVoRepo) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error {
+func (r *stubProcessVoRepo) DeleteByIDTx(ctx context.Context, tx sqlport.Tx, id string) error {
 	_, err := tx.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, id)
 	return err
 }
@@ -118,11 +119,11 @@ func (r *stubProcessVoRepo) PreReadByID(_ context.Context, _ string) (*persisten
 	return nil, nil
 }
 
-func (r *stubProcessVoRepo) CountByDriveFileIDTx(_ context.Context, _ *sql.Tx, _ string, _ string) (string, int, error) {
+func (r *stubProcessVoRepo) CountByDriveFileIDTx(_ context.Context, _ sqlport.Tx, _ string, _ string) (string, int, error) {
 	return "", 0, nil
 }
 
-func (r *stubProcessVoRepo) FindByIdempotencyKeyTx(ctx context.Context, tx *sql.Tx, idempotencyKey string) (string, error) {
+func (r *stubProcessVoRepo) FindByIdempotencyKeyTx(ctx context.Context, tx sqlport.Tx, idempotencyKey string) (string, error) {
 	if idempotencyKey == "" {
 		return "", sql.ErrNoRows
 	}
@@ -152,10 +153,10 @@ type stubProcessFinalizer struct {
 	// beforeReturn runs with the caller-owned tx before the canned result is
 	// returned. A test can roll the tx back here to force the subsequent
 	// tx.Commit() to fail without closing the database.
-	beforeReturn func(*sql.Tx)
+	beforeReturn func(sqlport.Tx)
 }
 
-func (s *stubProcessFinalizer) Finalize(_ context.Context, tx *sql.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
+func (s *stubProcessFinalizer) Finalize(_ context.Context, tx sqlport.Tx, cmd *FinalizeCommand) (*FinalizeResult, error) {
 	s.calls = append(s.calls, cmd)
 	if s.beforeReturn != nil {
 		s.beforeReturn(tx)

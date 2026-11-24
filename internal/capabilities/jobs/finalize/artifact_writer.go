@@ -29,11 +29,11 @@ package finalize
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"go.uber.org/zap"
 )
 
@@ -116,7 +116,7 @@ func (f *Finalizer) writeArtifacts(
 // JSON-parse on the consumer side.
 func (f *Finalizer) writeOutboxEvents(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	events []finalization.OutboxEvent,
 ) error {
 	for i, evt := range events {

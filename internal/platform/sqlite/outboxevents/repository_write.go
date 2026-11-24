@@ -18,11 +18,11 @@ package outboxevents
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/google/uuid"
 )
@@ -41,7 +41,7 @@ import (
 // with the existing row's ID and status so the producer can distinguish
 // "fresh event" from "suppressed by existing completed/dead_letter/
 // superseded row".
-func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error) {
+func (r *Repository) Enqueue(ctx context.Context, tx sqlport.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error) {
 	now := timeutil.FormatRFC3339(time.Now())
 	exec := r.exec(ctx, tx)
 	result, err := exec(ctx,
@@ -90,7 +90,7 @@ func (r *Repository) Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggrega
 // Requires the backing table to carry the priority column (migration
 // 186). In-memory test fixtures that omit the column must use Enqueue
 // (column default applies) or add the column to their CREATE TABLE.
-func (r *Repository) EnqueueWithPriority(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*EnqueueResult, error) {
+func (r *Repository) EnqueueWithPriority(ctx context.Context, tx sqlport.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*EnqueueResult, error) {
 	now := timeutil.FormatRFC3339(time.Now())
 	exec := r.exec(ctx, tx)
 	result, err := exec(ctx,

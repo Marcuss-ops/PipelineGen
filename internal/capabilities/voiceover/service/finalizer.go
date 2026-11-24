@@ -47,12 +47,12 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -252,7 +252,7 @@ type voiceoverFinalizerDeps struct {
 // depend on the full lifecycle.Service surface. The production
 // concrete is *lifecycle.Service.UpsertVoiceoverProjectionTx.
 type LifecycleProjectionUpserter interface {
-	UpsertVoiceoverProjectionTx(ctx context.Context, tx *sql.Tx, input *VoiceoverProjectionInput) error
+	UpsertVoiceoverProjectionTx(ctx context.Context, tx sqlport.WriteTx, input *VoiceoverProjectionInput) error
 }
 
 // VoiceoverProjectionInput is the canonical input shape for the

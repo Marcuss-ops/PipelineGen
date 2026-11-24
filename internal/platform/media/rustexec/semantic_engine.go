@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 	"go.uber.org/zap"
 )
 
@@ -85,12 +85,12 @@ func workerFailure(response semanticEngineResponse) error {
 // returns the grounded projections keyed by scene id. The whole batch fails
 // closed on a contract violation; a scene the extractor refused is returned
 // with an empty bundle (never invented values).
-func (a *SemanticEngineAdapter) SemanticBundles(ctx context.Context, language string, scenes []scriptgen.SemanticSceneInput) (map[string]*scriptgen.SemanticCandidateBundle, error) {
+func (a *SemanticEngineAdapter) SemanticBundles(ctx context.Context, language string, scenes []semantic.SemanticSceneInput) (map[string]*semantic.SemanticCandidateBundle, error) {
 	bundles, _, err := a.semanticBundles(ctx, language, scenes, nil)
 	return bundles, err
 }
 
-func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language string, scenes []scriptgen.SemanticSceneInput, editorial *semanticEngineEditorial) (map[string]*scriptgen.SemanticCandidateBundle, *scriptpkg.PhraseImpactResult, error) {
+func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language string, scenes []semantic.SemanticSceneInput, editorial *semanticEngineEditorial) (map[string]*semantic.SemanticCandidateBundle, *scriptpkg.PhraseImpactResult, error) {
 	if a == nil || a.executor == nil {
 		return nil, nil, fmt.Errorf("semantic-engine: executor is not configured")
 	}
@@ -116,7 +116,7 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 	return bundles, editorialResult, nil
 }
 
-func buildSemanticEngineRequest(language string, scenes []scriptgen.SemanticSceneInput, editorial *semanticEngineEditorial) (semanticEngineRequest, map[string]string, error) {
+func buildSemanticEngineRequest(language string, scenes []semantic.SemanticSceneInput, editorial *semanticEngineEditorial) (semanticEngineRequest, map[string]string, error) {
 	language = strings.TrimSpace(language)
 	if language == "" {
 		return semanticEngineRequest{}, nil, fmt.Errorf("semantic-engine: language is required")
@@ -192,7 +192,7 @@ func (a *SemanticEngineAdapter) executeSemanticEngineRequest(ctx context.Context
 	return manifest, nil
 }
 
-func buildSemanticCandidateBundles(manifest *semanticEngineManifest, request semanticEngineRequest, texts map[string]string) (map[string]*scriptgen.SemanticCandidateBundle, error) {
+func buildSemanticCandidateBundles(manifest *semanticEngineManifest, request semanticEngineRequest, texts map[string]string) (map[string]*semantic.SemanticCandidateBundle, error) {
 	linkedIdentities, err := projectSemanticLinkedEntities(texts, manifest.Entities)
 	if err != nil {
 		return nil, fmt.Errorf("semantic-engine: linked entities: %w", err)
@@ -200,7 +200,7 @@ func buildSemanticCandidateBundles(manifest *semanticEngineManifest, request sem
 	if err := validateLinkedEntityCoverage(manifest.Scenes, linkedIdentities); err != nil {
 		return nil, fmt.Errorf("semantic-engine: linked entity coverage: %w", err)
 	}
-	bundles := make(map[string]*scriptgen.SemanticCandidateBundle, len(manifest.Scenes))
+	bundles := make(map[string]*semantic.SemanticCandidateBundle, len(manifest.Scenes))
 	for index, scene := range manifest.Scenes {
 		source, ok := texts[scene.SceneID]
 		if !ok {
@@ -226,7 +226,7 @@ func buildSemanticCandidateBundles(manifest *semanticEngineManifest, request sem
 	// registered. Publish that single authoritative projection to every
 	// bundle, including bundles for earlier scenes.
 	for _, bundle := range bundles {
-		bundle.Identities = append([]scriptgen.SemanticIdentity(nil), linkedIdentities...)
+		bundle.Identities = append([]semantic.SemanticIdentity(nil), linkedIdentities...)
 	}
 	// Reference validation runs after the document-level identity projection:
 	// a scene may legally mention an entity whose linked identity is registered
@@ -239,12 +239,12 @@ func buildSemanticCandidateBundles(manifest *semanticEngineManifest, request sem
 	return bundles, nil
 }
 
-func newSemanticCandidateBundle(manifest *semanticEngineManifest, scene semanticEngineSceneManifest) *scriptgen.SemanticCandidateBundle {
-	bundle := &scriptgen.SemanticCandidateBundle{}
+func newSemanticCandidateBundle(manifest *semanticEngineManifest, scene semanticEngineSceneManifest) *semantic.SemanticCandidateBundle {
+	bundle := &semantic.SemanticCandidateBundle{}
 	bundle.SchemaVersion = manifest.SchemaVersion
 	bundle.Language = manifest.Language
 	bundle.Fingerprint = manifest.Fingerprint
-	bundle.Analyzers = scriptgen.SemanticAnalyzerVersions{
+	bundle.Analyzers = semantic.SemanticAnalyzerVersions{
 		VisualNER: manifest.Analyzers.VisualNER, SemanticCore: manifest.Analyzers.SemanticCore,
 		PhraseImpact: manifest.Analyzers.PhraseImpact, Lexicon: manifest.Analyzers.Lexicon,
 		EntityIndex: manifest.Analyzers.EntityIndex, Numbers: manifest.Analyzers.Numbers,
@@ -270,7 +270,7 @@ func semanticSceneCollectionsMissing(scene semanticEngineSceneManifest) bool {
 		scene.ComposedImageQueries == nil || scene.ContextualImageQueries == nil || scene.VisualProposals == nil || scene.MicroSummaries == nil
 }
 
-func projectSemanticSceneBundle(bundle *scriptgen.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string, texts map[string]string) error {
+func projectSemanticSceneBundle(bundle *semantic.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string, texts map[string]string) error {
 	if err := projectSemanticSceneLanguage(bundle, scene, source, texts); err != nil {
 		return err
 	}
@@ -283,7 +283,7 @@ func projectSemanticSceneBundle(bundle *scriptgen.SemanticCandidateBundle, scene
 	return projectSemanticSceneAnalysis(bundle, scene, source)
 }
 
-func projectSemanticSceneLanguage(bundle *scriptgen.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string, texts map[string]string) error {
+func projectSemanticSceneLanguage(bundle *semantic.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string, texts map[string]string) error {
 	var err error
 	if bundle.Places, err = projectSemanticPlaces(source, scene.Places); err != nil {
 		return fmt.Errorf("semantic-engine: scene %q places: %w", scene.SceneID, err)
@@ -315,7 +315,7 @@ func projectSemanticSceneLanguage(bundle *scriptgen.SemanticCandidateBundle, sce
 	return nil
 }
 
-func projectSemanticSceneText(bundle *scriptgen.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string) error {
+func projectSemanticSceneText(bundle *semantic.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string) error {
 	var err error
 	bundle.Bullets = projectSemanticBullets(source, scene.Bullets)
 	if bundle.ShortPhrases, err = projectSemanticText(source, scene.ShortPhrases); err != nil {
@@ -336,7 +336,7 @@ func projectSemanticSceneText(bundle *scriptgen.SemanticCandidateBundle, scene s
 	return nil
 }
 
-func projectSemanticSceneVisuals(bundle *scriptgen.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string, texts map[string]string) error {
+func projectSemanticSceneVisuals(bundle *semantic.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string, texts map[string]string) error {
 	var err error
 	if bundle.ComposedImageQueries, err = projectSemanticComposedImageQueries(source, scene.ComposedImageQueries); err != nil {
 		return fmt.Errorf("semantic-engine: scene %q composed image queries: %w", scene.SceneID, err)
@@ -356,7 +356,7 @@ func projectSemanticSceneVisuals(bundle *scriptgen.SemanticCandidateBundle, scen
 	return nil
 }
 
-func projectSemanticSceneAnalysis(bundle *scriptgen.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string) error {
+func projectSemanticSceneAnalysis(bundle *semantic.SemanticCandidateBundle, scene semanticEngineSceneManifest, source string) error {
 	var err error
 	if bundle.Charts, err = projectSemanticCharts(source, scene.VisualProposals); err != nil {
 		return fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
@@ -375,7 +375,7 @@ func projectSemanticSceneAnalysis(bundle *scriptgen.SemanticCandidateBundle, sce
 	return nil
 }
 
-func applySemanticDocumentProjections(manifest *semanticEngineManifest, texts map[string]string, bundles map[string]*scriptgen.SemanticCandidateBundle) error {
+func applySemanticDocumentProjections(manifest *semanticEngineManifest, texts map[string]string, bundles map[string]*semantic.SemanticCandidateBundle) error {
 	crossSceneRoutes, err := projectSemanticCrossSceneRoutes(texts, manifest.Scenes, manifest.CrossSceneRoutes)
 	if err != nil {
 		return fmt.Errorf("semantic-engine: cross-scene routes: %w", err)
@@ -448,13 +448,13 @@ func (a *SemanticEngineAdapter) Extract(
 	language string,
 	sourceText string,
 	_ int,
-) ([]scriptgen.VisualEntity, error) {
+) ([]semantic.VisualEntity, error) {
 	bundle, err := a.SemanticCandidates(ctx, language, sourceText, 0)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]scriptgen.VisualEntity, 0, len(bundle.Entities))
-	identitiesByID := make(map[string]scriptgen.SemanticIdentity, len(bundle.Identities))
+	out := make([]semantic.VisualEntity, 0, len(bundle.Entities))
+	identitiesByID := make(map[string]semantic.SemanticIdentity, len(bundle.Identities))
 	for _, identity := range bundle.Identities {
 		identitiesByID[identity.ID] = identity
 	}
@@ -486,7 +486,7 @@ func (a *SemanticEngineAdapter) Extract(
 				searchIntents = append(searchIntents, intent.Query)
 			}
 		}
-		out = append(out, scriptgen.VisualEntity{
+		out = append(out, semantic.VisualEntity{
 			Text: entity.Text, Type: scriptpkg.EntityType(entity.Kind), Score: float32(entity.Score),
 			Start: entity.Start, End: entity.End, Evidence: entity.Evidence, IdentityID: entity.IdentityID, CanonicalID: canonicalID,
 			Role:              role,
@@ -502,7 +502,7 @@ func (a *SemanticEngineAdapter) Extract(
 	return out, nil
 }
 
-func validateSemanticReferences(bundle *scriptgen.SemanticCandidateBundle) error {
+func validateSemanticReferences(bundle *semantic.SemanticCandidateBundle) error {
 	ids := make(map[string]struct{}, len(bundle.Identities))
 	for _, identity := range bundle.Identities {
 		ids[identity.ID] = struct{}{}
@@ -564,8 +564,8 @@ func validateSemanticReferences(bundle *scriptgen.SemanticCandidateBundle) error
 
 // SemanticCandidates keeps the per-scene contract for callers that have no
 // batch. It is one engine call for one scene, never a second analysis path.
-func (a *SemanticEngineAdapter) SemanticCandidates(ctx context.Context, language, sourceText string, _ int) (*scriptgen.SemanticCandidateBundle, error) {
-	bundles, err := a.SemanticBundles(ctx, language, []scriptgen.SemanticSceneInput{{SceneID: "scene", Text: sourceText}})
+func (a *SemanticEngineAdapter) SemanticCandidates(ctx context.Context, language, sourceText string, _ int) (*semantic.SemanticCandidateBundle, error) {
+	bundles, err := a.SemanticBundles(ctx, language, []semantic.SemanticSceneInput{{SceneID: "scene", Text: sourceText}})
 	if err != nil {
 		return nil, err
 	}
@@ -576,5 +576,5 @@ func (a *SemanticEngineAdapter) SemanticCandidates(ctx context.Context, language
 	return bundle, nil
 }
 
-var _ scriptgen.SceneSemanticAnalyzer = (*SemanticEngineAdapter)(nil)
-var _ scriptgen.SceneSemanticBatchAnalyzer = (*SemanticEngineAdapter)(nil)
+var _ semantic.SceneSemanticAnalyzer = (*SemanticEngineAdapter)(nil)
+var _ semantic.SceneSemanticBatchAnalyzer = (*SemanticEngineAdapter)(nil)

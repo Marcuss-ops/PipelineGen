@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernelrenderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 )
 
 // Registry is the SQLite-backed render-attempt analytics recorder.
@@ -30,7 +30,7 @@ func New(db *sql.DB) (*Registry, error) {
 	return &Registry{db: db, now: func() time.Time { return time.Now().UTC() }}, nil
 }
 
-var _ scriptgen.RenderAttemptRecorder = (*Registry)(nil)
+var _ kernelrenderqueue.RenderAttemptRecorder = (*Registry)(nil)
 
 func formatOptionalTime(value *time.Time) any {
 	if value == nil || value.IsZero() {
@@ -41,7 +41,7 @@ func formatOptionalTime(value *time.Time) any {
 
 // RecordAttempt upserts one render-attempt analytics row. It fails closed on a
 // missing attempt identity; it never silently succeeds as a no-op.
-func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAttemptAnalytics) error {
+func (r *Registry) RecordAttempt(ctx context.Context, attempt kernelrenderqueue.RenderAttemptAnalytics) error {
 	if r == nil || r.db == nil {
 		return errors.New("render metrics registry: not configured")
 	}

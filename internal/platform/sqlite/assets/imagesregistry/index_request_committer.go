@@ -3,7 +3,6 @@ package imagesregistry
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 const indexRequestOperationUpsert = "UPSERT"
@@ -23,7 +23,7 @@ const indexRequestOperationUpsert = "UPSERT"
 // asset committer. Production uses *outboxevents.Repository; tests may provide
 // a structural fake.
 type IndexRequestOutbox interface {
-	Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*outboxevents.EnqueueResult, error)
+	Enqueue(ctx context.Context, tx sqlport.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*outboxevents.EnqueueResult, error)
 }
 
 // priorityIndexRequestOutbox is the OPTIONAL priority-aware extension of
@@ -34,7 +34,7 @@ type IndexRequestOutbox interface {
 // jumps the outbox queue only when the backing repository supports
 // priorities, never by silently dropping the event.
 type priorityIndexRequestOutbox interface {
-	EnqueueWithPriority(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*outboxevents.EnqueueResult, error)
+	EnqueueWithPriority(ctx context.Context, tx sqlport.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*outboxevents.EnqueueResult, error)
 }
 
 // IndexRequest describes one canonical indexing request emitted after the
@@ -128,7 +128,7 @@ func BuildIndexRequestEvent(req IndexRequest) (eventID, eventKey string, payload
 // using that same caller-owned transaction.
 func CommitIndexRequestTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	box IndexRequestOutbox,
 	req IndexRequest,
 ) (IndexRequestCommitResult, error) {

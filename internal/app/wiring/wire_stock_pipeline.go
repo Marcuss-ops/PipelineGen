@@ -29,6 +29,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	sqlport "github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"os"
 
 	"go.uber.org/zap"
@@ -376,7 +377,7 @@ func newStockFinalizer(root *ComposeRoot, log *zap.Logger) (finalization.JobFina
 		jobDB = root.Jobs.DB.DB
 	}
 	jobOutbox := outboxevents.NewRepository(jobDB)
-	jobsFinalizer := jobsfinalizer.New(jobDB, jobOutbox, nil, log)
+	jobsFinalizer := jobsfinalizer.New(sqlport.WrapDB(jobDB), jobOutbox, nil, log)
 	// MEDIA-SSOT P0-2 (September 2026): the canonical media writer is ALWAYS
 	// PostgreSQL (newCanonicalAssetCommitter returns non-nil only for a media
 	// PostgreSQL handle), while the job terminal state lives on the SQLite job

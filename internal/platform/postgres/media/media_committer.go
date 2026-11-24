@@ -20,8 +20,8 @@ import (
 // canonical commit. Production: *pgoutbox.Repository (this package family);
 // tests may provide a structural fake.
 type outboxRepository interface {
-	Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error)
-	EnqueueWithPriority(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*EnqueueResult, error)
+	Enqueue(ctx context.Context, tx persistence.Transaction, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*EnqueueResult, error)
+	EnqueueWithPriority(ctx context.Context, tx persistence.Transaction, eventType, aggregateID, aggregateType, payloadJSON, eventKey string, priority int) (*EnqueueResult, error)
 }
 
 // registryTxWriter is the transaction-scoped registry surface the
@@ -586,7 +586,7 @@ func (c *PostgresMediaCommitter) PatchMetadataJSON(ctx context.Context, assetID,
 	return c.assets.PatchMetadataJSON(ctx, assetID, patchJSON, updatedAt)
 }
 
-func (c *PostgresMediaCommitter) PatchMetadataJSONTx(ctx context.Context, tx *sql.Tx, assetID, patchJSON, updatedAt string) error {
+func (c *PostgresMediaCommitter) PatchMetadataJSONTx(ctx context.Context, tx persistence.Transaction, assetID, patchJSON, updatedAt string) error {
 	return c.assets.PatchMetadataJSONTx(ctx, tx, assetID, patchJSON, updatedAt)
 }
 
@@ -600,7 +600,7 @@ func (c *PostgresMediaCommitter) UpdateFolderPath(ctx context.Context, assetID, 
 	return c.assets.UpdateFolderPath(ctx, assetID, folderID, folderPath, updatedAt)
 }
 
-func (c *PostgresMediaCommitter) UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error {
+func (c *PostgresMediaCommitter) UpdateFolderPathTx(ctx context.Context, tx persistence.Transaction, assetID, folderID, folderPath, updatedAt string) error {
 	return c.assets.UpdateFolderPathTx(ctx, tx, assetID, folderID, folderPath, updatedAt)
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // recordingOutboxEventsRepo is a test-only outboxEnqueuer that captures
@@ -36,7 +37,7 @@ type recordedEnqueue struct {
 	EventKey     string
 }
 
-func (r *recordingOutboxEventsRepo) Enqueue(_ context.Context, _ *sql.Tx, eventType, aggregateID, aggregateTyp, payload, eventKey string) (*outboxevents.EnqueueResult, error) {
+func (r *recordingOutboxEventsRepo) Enqueue(_ context.Context, _ sqlport.Tx, eventType, aggregateID, aggregateTyp, payload, eventKey string) (*outboxevents.EnqueueResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls = append(r.calls, recordedEnqueue{

@@ -21,7 +21,6 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -31,6 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
 )
@@ -54,7 +54,7 @@ var _ persistence.Repository = (*UseCaseRepoAdapter)(nil)
 
 type UseCaseRepoAdapter struct {
 	repo *sqassets.VoiceoversRepository
-	db   *sql.DB
+	db   sqlport.Beginner
 	// media is the media-SSOT read surface for the two media_assets queries this
 	// adapter needs (MEDIA-SSOT P2-9 Phase 2). It is deliberately separate from db
 	// above: the voiceovers table is operational while media_assets is owned by
@@ -84,7 +84,7 @@ type VoiceoverMediaLocation struct {
 	Name         string
 }
 
-func NewUseCaseRepoAdapter(repo *sqassets.VoiceoversRepository, db *sql.DB, media VoiceoverMediaReader) *UseCaseRepoAdapter {
+func NewUseCaseRepoAdapter(repo *sqassets.VoiceoversRepository, db sqlport.Beginner, media VoiceoverMediaReader) *UseCaseRepoAdapter {
 	if repo == nil {
 		panic("app.adapters_voiceover_use_case: NewUseCaseRepoAdapter: repo is required (*sqassets.VoiceoversRepository)")
 	}
@@ -103,11 +103,11 @@ func NewUseCaseRepoAdapter(repo *sqassets.VoiceoversRepository, db *sql.DB, medi
 // voiceover Service can thread the PR-VO-A2 atomic swap tx through
 // the canonical persistence.Repository port instead of holding a
 // bare *sql.DB handle.
-func (a *UseCaseRepoAdapter) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (a *UseCaseRepoAdapter) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	if a == nil || a.db == nil {
 		return nil, fmt.Errorf("UseCaseRepoAdapter.BeginTx: db not wired")
 	}
-	return a.db.BeginTx(ctx, nil)
+	return a.db.BeginTx(ctx)
 }
 
 // CountByDriveFileIDTx runs the PR-VO-B3 post-upload dedupe gate
@@ -117,7 +117,7 @@ func (a *UseCaseRepoAdapter) BeginTx(ctx context.Context) (*sql.Tx, error) {
 // P1-2 (June 2026): the application-layer helper
 // applyDedupeByDriveFileID that lived in
 // internal/capabilities/voiceover/dedupe.go and consumed raw
-// *sql.DB + *sql.Tx is NOT re-implemented here. The port
+// *sql.DB + sqlport.Tx is NOT re-implemented here. The port
 // method takes the tx parameter from the caller (which is
 // already inside the PR-VO-A2 atomic-swap transaction) so the
 // count runs against the same visibility boundary as the
@@ -128,7 +128,7 @@ func (a *UseCaseRepoAdapter) BeginTx(ctx context.Context) (*sql.Tx, error) {
 // empty id without a separate sentinel.
 func (a *UseCaseRepoAdapter) CountByDriveFileIDTx(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	currentID string,
 	driveFileID string,
 ) (string, int, error) {

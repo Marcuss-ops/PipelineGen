@@ -65,11 +65,7 @@ func (s *AssetTxFinalizer) upsertRenditionLocation(
 	if !ok || committer == nil {
 		return fmt.Errorf("asset finalizer: canonical rendition committer is required")
 	}
-	sqlTx, ok := UnwrapSQLTx(tx)
-	if !ok || sqlTx == nil {
-		return fmt.Errorf("asset finalizer: rendition transaction is not a *sql.Tx")
-	}
-	return committer.CommitRenditionTx(ctx, sqlTx, a.ArtifactID, persistence.RenditionCommit{
+	return committer.CommitRenditionTx(ctx, tx, a.ArtifactID, persistence.RenditionCommit{
 		Kind:        r.Kind,
 		Provider:    r.Provider,
 		FileID:      r.FileID,

@@ -2,9 +2,9 @@ package outbox
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ── Ports ──────────────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ import (
 // methods (MarkCompleted, MarkFailed, etc.) are owned by the outbox
 // worker pool, not the dispatcher.
 type outboxEnqueuer interface {
-	Enqueue(ctx context.Context, tx *sql.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*outboxevents.EnqueueResult, error)
+	Enqueue(ctx context.Context, tx sqlport.Tx, eventType, aggregateID, aggregateType, payloadJSON, eventKey string) (*outboxevents.EnqueueResult, error)
 }
 
 // Compile-time assertion: any signature drift between the

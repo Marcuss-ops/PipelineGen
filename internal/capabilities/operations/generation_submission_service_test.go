@@ -32,6 +32,7 @@ import (
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // schemasFASE2 is the inline mirror of migrations/sqlite/092
@@ -184,7 +185,7 @@ func newJobsRepoAdapter(store *sqlitejobs.SQLiteStore) *jobsRepoAdapter {
 	return &jobsRepoAdapter{store: store}
 }
 
-func (a *jobsRepoAdapter) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) error {
+func (a *jobsRepoAdapter) CreateInTx(ctx context.Context, tx sqlport.Tx, j *job.Job) error {
 	return a.store.CreateInTx(ctx, tx, j)
 }
 
@@ -197,7 +198,7 @@ func newDBTxManager(db *sql.DB) *dbTxManager {
 	return &dbTxManager{db: db}
 }
 
-func (m *dbTxManager) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (m *dbTxManager) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	return m.db.BeginTx(ctx, nil)
 }
 

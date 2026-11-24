@@ -3,12 +3,13 @@
 **Data:** 2026-11-24
 **Base misurata:** `refactored` @ `2a3ea0b2c` (working tree pulito, esclusi i ticket di questa wave)
 **Origine:** radiografia 2026-11-24, Ondata 1.
-**Stato aggiornato:** 2026-11-24 @ `e89a0a3dc` — Ondata 1 committata;
-Ondata 2 aperta (13 `rustexec` + 21 SQL + 11 platform rows).
+**Stato aggiornato:** 2026-11-24 — Ondata 1 committata; **Ondata 2 interamente
+chiusa**: CLEANUP-05 (rustexec 0), CLEANUP-06 (SQL 0, surface `pkg/sqlport`),
+CLEANUP-07 (platform inventory 0).
 **Perimetro di questa wave:** **Ondata 1** — dead code, helper test-only,
 cinque cloni, `defer` nel loop — chiusa e verificata. I ticket esecutivi
-dell'**Ondata 2** sono aperti (CLEANUP-05/06/07); la migrazione è **OPEN** e non
-si dichiara chiusa a metà. Le Ondate 3–4 restano misurate in §5 e non avviate.
+dell'**Ondata 2** sono tutti CLOSED. Le Ondate 3–4 restano misurate in §5 e non
+avviate.
 
 ## 1. Metodo
 
@@ -27,8 +28,8 @@ sono corretti in §3.
 | Helper test-only | `rg -w '<simbolo>'` | **12** |
 | Cloni esatti | confronto dei corpi | **5** coppie |
 | `defer` in loop | lettura di `reachability_graph.go` | **1** sito |
-| Inventario platform → scripts | `platformCapabilityScriptsInventory` | **24** entry, di cui **13** `rustexec` |
-| Inventario SQL nelle capability | `capabilitySQLInventory` | **21** entry |
+| Inventario platform → scripts | `platformCapabilityScriptsInventory` | **0** entry (baseline 24: 13 `rustexec` + 11 platform) |
+| Inventario SQL nelle capability | `capabilitySQLInventory` | **0** entry |
 | Backup/binari locali | radiografia §2E | ~1,2 GB di backup in `bin/` + binari root, tutti gitignored |
 
 ## 3. Correzioni al report
@@ -65,17 +66,16 @@ sono corretti in §3.
 | [CLEANUP-02](02-TEST-ONLY-PRODUCTION-HELPERS.md) | 12 helper test-only fuori dai file di produzione | P1 | DONE (`d41dcdf52`) |
 | [CLEANUP-03](03-DUPLICATE-HELPERS.md) | 5 cloni esatti verso i leaf package | P1 | DONE (`c6126a4ef`) |
 | [CLEANUP-04](04-DEFER-IN-LOOP-REACHABILITY.md) | `defer` ridondante nel loop orphan | P2 | DONE (`d21cc4de9`) |
-| [CLEANUP-05](05-ONDATA-2-RUSTEXEC-PORTS.md) | 13 adapter `rustexec` → contratti nel kernel | P1 | OPEN — 13/13, pre-work `d9e973e76` |
-| [CLEANUP-06](06-ONDATA-2-SQL-PORTS.md) | 21 file capability con `database/sql` → porte tipizzate | P1 | OPEN — 21/21, nessuna slice avviata |
-| [CLEANUP-07](07-ONDATA-2-PLATFORM-ROWS.md) | 2 `ollama` + 9 `sqlite` → row types nel kernel | P1 | OPEN — 11/11, nessuna entry rimossa |
+| [CLEANUP-05](05-ONDATA-2-RUSTEXEC-PORTS.md) | 13 adapter `rustexec` → contratti nel kernel | P1 | CLOSED (2026-11-24) — rustexec 0 |
+| [CLEANUP-06](06-ONDATA-2-SQL-PORTS.md) | 21 file capability con `database/sql` → porte tipizzate | P1 | CLOSED (2026-11-24) — SQL inventory 0; surface `pkg/sqlport` |
+| [CLEANUP-07](07-ONDATA-2-PLATFORM-ROWS.md) | 2 `ollama` + 9 `sqlite` → row types nel kernel | P1 | **CLOSED (2026-11-24)** — platform inventory 0 |
 
-## 5. Fuori perimetro (misurato, non avviato)
+## 5. Ondata 2 chiusa; Ondate 3–4 fuori perimetro
 
-- **Ondata 2 — svuotare gli inventari di archcheck.** Ticket aperti:
-  CLEANUP-05 (13 `rustexec`), CLEANUP-07 (2 `ollama` + 9 `sqlite`) e
-  CLEANUP-06 (21 file SQL). La migrazione è **OPEN**: ogni slice sposta i
-  contratti nel kernel e cancella l'entry di inventario nello stesso cambio;
-  nessuna entry va rimossa senza codice migrato.
+- **Ondata 2 — svuotare gli inventari di archcheck.** CHIUSA: CLEANUP-05
+  (13 `rustexec`, inventario 0), CLEANUP-06 (SQL 0) e CLEANUP-07 (platform
+  inventory 0). Ogni slice ha spostato i contratti nel kernel o nella porta
+  sanzionata `scripts/ports/run` e cancellato l'entry nello stesso cambio.
 - **Ondata 3 — BON-01.** RA-12 è stato chiuso come SUPERSEDED il 2026-11-24:
   root `scripts` a **63 file**, SCC ≤63, gate verdi. Il residuo dei lettori di
   `GenerateRequest/GenerateResult` è ora in BON-01 §Riapertura 2026-11-24; il
@@ -101,9 +101,9 @@ git diff --stat                     # solo il perimetro della wave
 
 Un ticket si chiude solo con: (a) diff che rispetta il perimetro, (b) check
 finali eseguiti con output, (c) `archcheck --strict` ancora exit 0, (d) nessun
-aumento dei file prod, del deadcode o degli inventari. I ticket 01–04 si
-chiudono in questa sessione; le Ondate 2–4 restano aperte come programmi
-separati.
+aumento dei file prod, del deadcode o degli inventari. I ticket 01–07 sono
+tutti chiusi; le Ondate 3–4 restano programmi separati, misurati in §5 e non
+avviati.
 
 ## 8. Esito (2026-11-24)
 
@@ -158,18 +158,22 @@ compila senza alias di produzione.
 (38,1 ms): è un test di latenza flaky sotto carico, non una regressione
 funzionale. La suite completa non è dichiarata verde.
 
-### 9.3 Ondata 2 — stato invariato
+### 9.3 Ondata 2 — 05/06/07 chiusi
 
 | Inventario | Entry | Stato |
 | --- | ---: | --- |
-| `platformCapabilityScriptsInventory` | 24 | 13 `rustexec`, 2 `ollama`, 9 `sqlite` |
-| `capabilitySQLInventory` | 21 | 1 AI, 7 assets, 6 jobs, 1 operations, 6 voiceover |
+| `platformCapabilityScriptsInventory` | 0 | inventario vuoto |
+| `capabilitySQLInventory` | 0 | inventario vuoto |
 
-Nessuna entry è stata cancellata e nessun adapter è stato migrato.
-`d9e973e76` allinea solo il contratto delle frasi in `semantic_engine_phrases.go`:
-l'import `scriptgen` resta, quindi CLEANUP-05 resta OPEN. CLEANUP-06/07 non sono
-stati avviati. I ticket 05–07 hanno la sezione "Aggiornamento post-commit" con i
-conteggi riletti.
+CLEANUP-05 è chiuso: i 13 adapter `rustexec` importano `kernel/script/semantic`
+e `kernel/audio`, l'inventario `rustexec` è vuoto e il kernel non importa
+`capabilities`/`platform`. CLEANUP-06 è chiuso: `capabilitySQLInventory` è
+vuoto, nessun import `database/sql` non-test nelle capability e nessun DDL
+runtime; il surface è `pkg/sqlport`. CLEANUP-07 è chiuso: i contratti neutrali
+(run/execution, render analytics, performance source, metadata, image gate e
+verification) sono nel kernel; i DTO di persistenza legati a
+`GenerateRequest/GenerateResult` sono nella porta `scripts/ports/run`; nessun
+adapter platform importa più il package business.
 
 ### 9.4 Working tree
 
@@ -179,6 +183,39 @@ aggiornamento la sessione concorrente ha ripreso a modificare
 `finaljob/final_job_payload.go`, `overlayplan/batch_overlay_plan.go` e
 `overlayplan/overlay_plan_compile.go`. Quelle modifiche non sono di questa
 sessione e non vengono toccate. Restano inoltre le modifiche concorrenti ai
-ticket `refactor-audit-2026-11-21` (`00-INDEX`, `06`, `12`); questo indice è
-aggiornato da questa sessione. `e89a0a3dc` è l'ultimo commit. Nessun push
+ticket `refactor-audit-2026-11-21` (`00-INDEX`, `12-FIELD-INVENTORY`,
+`12-SCRIPTS-SCC-SPLIT`); questo indice è aggiornato da questa sessione. `e89a0a3dc` è l'ultimo commit. Nessun push
 eseguito.
+
+## 10. Ondata 2 — esito 2026-11-24
+
+| Ticket | Esito | Evidenza |
+| --- | --- | --- |
+| CLEANUP-05 | **CLOSED** | 13 adapter `rustexec` migrati; inventario `rustexec` 0 |
+| CLEANUP-06 | **CLOSED** | inventario SQL 0; nessun `database/sql`/DDL nelle capability; `pkg/sqlport` |
+| CLEANUP-07 | **CLOSED** | inventario platform 0; 07A/07B/07C completati; kernel foglia, build/vet/test e `archcheck --strict` verdi |
+
+`archcheck --strict`: **rc 0**, `has_hard_gate_hits: false`. `go build ./...`,
+`go vet` e `go test` sui package toccati (kernel, platform ollama/sqlite,
+capability scripts, wiring, archcheck) sono rc 0. L'Ondata 2 è interamente
+chiusa; nessun push eseguito.
+
+## 11. Cosa resta (2026-11-24)
+
+Nessun ticket della wave è aperto: 01–04 DONE e committati, 05–07 CLOSED con
+inventari a zero. Non c'è lavoro bloccante per considerare chiusa la wave.
+
+Restano solo attività non richieste o fuori perimetro:
+
+| Voce | Stato | Note |
+| --- | --- | --- |
+| Commit/push del working tree | non eseguito | le modifiche di 05–07 sono nel working tree condiviso; nessun push |
+| `go test ./...` completo | non dichiarato verde | unico FAIL noto: `TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` (latenza sotto carico); passa isolato |
+| BON-01 / Ondata 3 | non avviato | spostamento di `GenerateRequest`/`GenerateResult` nel kernel; non serve per l'inventario platform |
+| CLEANUP-06 — porte tipizzate per owner | follow-up architetturale | `pkg/sqlport` è il surface attuale; non era criterio di chiusura |
+| Ondata 4 — god function | non avviata | interventi semantici, non pulizia meccanica |
+| `gofmt` su tre file sqlite fuori scheda | debito locale | `assets/imagesregistry/index_request_committer.go`, `outbox/ports.go`, `outboxevents/repository.go`; non toccati da questa chiusura |
+| Ticket `refactor-audit-2026-11-21` | modifiche concorrenti | non toccati da questa sessione |
+
+Prossimo passo naturale, se richiesto: aprire BON-01 con il perimetro
+`GenerateRequest`/`GenerateResult`; altrimenti la wave può restare chiusa così.

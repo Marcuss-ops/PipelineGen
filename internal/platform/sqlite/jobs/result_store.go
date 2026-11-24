@@ -12,6 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // ErrOverlayDriveParentNotTerminal marks a publication event that arrived
@@ -222,7 +223,7 @@ func (r *SQLiteStore) RecordOverlayDriveLink(ctx context.Context, jobID string, 
 // persistJobResult is the sole write path for durable job results. The hot
 // jobs row intentionally does not carry the result payload; callers invoke
 // this with the same transaction as the lifecycle transition.
-func persistJobResult(ctx context.Context, tx *sql.Tx, jobID string, attempt int, payload string) error {
+func persistJobResult(ctx context.Context, tx sqlport.Tx, jobID string, attempt int, payload string) error {
 	if tx == nil {
 		return fmt.Errorf("persist job result: nil transaction")
 	}
@@ -279,7 +280,7 @@ func (r *SQLiteStore) hydrateLatestResult(ctx context.Context, j *job.Job) error
 	return nil
 }
 
-func persistJobPayload(ctx context.Context, tx *sql.Tx, jobID string, payload string) error {
+func persistJobPayload(ctx context.Context, tx sqlport.Tx, jobID string, payload string) error {
 	if tx == nil {
 		return fmt.Errorf("persist job payload: nil transaction")
 	}

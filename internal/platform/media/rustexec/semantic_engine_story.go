@@ -3,10 +3,10 @@ package rustexec
 import (
 	"fmt"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
-func validateSemanticScriptViews(texts map[string]string, graph *scriptgen.SemanticStoryGraph, coverage *scriptgen.SemanticVisualCoverage, bundles map[string]*scriptgen.SemanticCandidateBundle) error {
+func validateSemanticScriptViews(texts map[string]string, graph *semantic.SemanticStoryGraph, coverage *semantic.SemanticVisualCoverage, bundles map[string]*semantic.SemanticCandidateBundle) error {
 	identities := map[string]bool{}
 	for _, bundle := range bundles {
 		for _, identity := range bundle.Identities {
@@ -19,7 +19,7 @@ func validateSemanticScriptViews(texts map[string]string, graph *scriptgen.Seman
 	return validateVisualCoverage(coverage, bundles)
 }
 
-func semanticFactFor(bundles map[string]*scriptgen.SemanticCandidateBundle, sceneID, factID string) *scriptgen.SemanticEntityFact {
+func semanticFactFor(bundles map[string]*semantic.SemanticCandidateBundle, sceneID, factID string) *semantic.SemanticEntityFact {
 	if bundle := bundles[sceneID]; bundle != nil {
 		for i := range bundle.EntityFacts {
 			if bundle.EntityFacts[i].ID == factID {
@@ -32,14 +32,14 @@ func semanticFactFor(bundles map[string]*scriptgen.SemanticCandidateBundle, scen
 
 func validateStoryGraph(
 	texts map[string]string,
-	graph *scriptgen.SemanticStoryGraph,
-	bundles map[string]*scriptgen.SemanticCandidateBundle,
+	graph *semantic.SemanticStoryGraph,
+	bundles map[string]*semantic.SemanticCandidateBundle,
 	identities map[string]bool,
 ) error {
 	if graph == nil {
 		return nil
 	}
-	nodes := map[string]scriptgen.SemanticStoryNode{}
+	nodes := map[string]semantic.SemanticStoryNode{}
 	for _, node := range graph.Nodes {
 		source, ok := texts[node.SceneID]
 		if !ok || node.ID == "" || node.Label == "" || !groundedSpan(source, node.StartByte, node.EndByte, node.Evidence) {
@@ -106,7 +106,7 @@ func validateStoryGraph(
 	return nil
 }
 
-func validateVisualCoverage(coverage *scriptgen.SemanticVisualCoverage, bundles map[string]*scriptgen.SemanticCandidateBundle) error {
+func validateVisualCoverage(coverage *semantic.SemanticVisualCoverage, bundles map[string]*semantic.SemanticCandidateBundle) error {
 	if coverage == nil {
 		return nil
 	}

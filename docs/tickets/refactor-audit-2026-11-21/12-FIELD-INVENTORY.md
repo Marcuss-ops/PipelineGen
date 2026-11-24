@@ -9,6 +9,15 @@ può avere meno riferimenti di quanti ne abbia davvero.
 Campi classificati: 78/78 e 67/67.
 Nessun campo è stato rimosso o rinominato.
 
+> **Aggiornamento 2026-11-24 — audio migrato.** I 19 campi audio della
+> fotografia (10 in `GenerateRequest`, 9 in `GenerateResult`) non sono più
+> piatti: `GenerateRequest` embed `contracts/audio.Config`, `GenerateResult`
+> embed `contracts/audio.Output`, e `AudioMetrics`/`AudioPrefetch` vivono in
+> `contracts/audio.Output` (commit `562d8e6b4`, `5f49ce393`). Il JSON resta
+> piatto con le stesse chiavi. Le tabelle sotto restano la misura del
+> 2026-11-21; il residuo è il sottoinsieme generation/source/submission/
+> publication/final job/scene/overlay/render/semantic tracciato in BON-01.
+
 ## 1. `GenerateRequest` (78 campi)
 
 Fasi: audio=10, editorial=52, finaljob=1, publication=3, render=1, source=6, submission=2, translation=3.
@@ -183,8 +192,11 @@ Fasi: audio=9, delivery=1, finaljob=5, overlay=9, publication=1, render=12, runt
   (già esistenti, RA-15).
 
 I contratti sono **puri**: non importano `scriptgeneration` e non contengono I/O. La migrazione
-dei lettori (step 3 del ticket) non è stata eseguita: i campi piatti restano l'unica fonte di
-verità finché ogni fase non ha un accessor e un test di proprietà.
+del sottoinsieme audio (step 3 del ticket) è stata eseguita il 2026-11-24: i 10 campi
+`audio.Config` del request e i 9 campi `audio.Output` del result sono dietro gli embed, con
+`AudioMetrics`/`AudioPrefetch` in `contracts/audio.Output` e il wire piatto coperto da
+`contract/audio_embed_test.go`. Restano da migrare i lettori dei campi generation/source/
+submission/publication/final job/scene/overlay/render/semantic.
 
 ## 4. Campi ancora fuori dai contratti generation/audio
 

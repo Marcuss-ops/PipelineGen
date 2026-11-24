@@ -5,8 +5,9 @@
 **Stato:** CLOSED (SUPERSEDED, 2026-11-24) — i criteri quantitativi sono superati: root
 `internal/capabilities/scripts` = **63 file di produzione** (target ≤141; cap di wave ≤65),
 quindi la SCC file-level è **≤63** (target <117). Il cap file e la SCC sono stati chiusi da
-GOP-01 (`3e0a9e3ae`). Il residuo non coperto — migrazione dei lettori dei campi piatti — è
-ora in **BON-01 §Riapertura 2026-11-24**
+GOP-01 (`3e0a9e3ae`). Il residuo non coperto — migrazione dei lettori dei campi generation — è
+ora in **BON-01 §Riapertura 2026-11-24**; il sottoinsieme audio è stato migrato il
+2026-11-24 (`562d8e6b4`, `5f49ce393`), quindi non fa più parte del residuo.
 (`bonifica-complessita-2026-11-23/01-SCRIPTS-RUNNER-FINALJOB-SCC.md`). Nessun lavoro di
 codice resta in questa scheda.
 **Owner:** scripts capability
@@ -142,17 +143,18 @@ sicuro e non viene dichiarato.
 La scheda è chiusa perché i due criteri che la tenevano aperta sono stati superati da GOP-01,
 non perché la migrazione dei campi piatti sia stata completata.
 
-| Criterio | Misura 2026-11-24 | Esito |
+| Criterio | Misura 2026-11-24 @ `5f49ce393` | Esito |
 | --- | --- | --- |
 | File di produzione nella root `scripts` ≤141 | **63** (`find ... -maxdepth 1 -name '*.go' ! -name '*_test.go'`) | ✅ |
 | SCC file-level <117 | **≤63** per costruzione (una SCC non può contenere più file del package); la misura GOP-01 precedente all'estrazione `overlayplan` era 81 | ✅ |
 | `regen_hotspots.py --check` | `OK: hotspots fresh` | ✅ |
-| Contratti di fase esistenti | `contracts/generation`, `contracts/audio`, `kernel/script/finaljob`, `kernel/media/finaljob`; **12** file di produzione importano i contratti generation/audio | ✅ presenza |
-| Contratti come fonte di verità | I campi piatti di `GenerateRequest` (**78**) e `GenerateResult` (**69**) restano letti dai consumer; **18** file fuori `scripts` usano i tipi, **107** importano `contract` | ❌ trasferito a BON-01 |
+| Contratti di fase esistenti | `contracts/generation`, `contracts/audio`, `kernel/script/finaljob`, `kernel/media/finaljob`; **14** file di produzione importano i contratti generation/audio | ✅ presenza |
+| Contratti come fonte di verità | Audio migrato il 2026-11-24: `GenerateRequest` embed `AudioConfig`, `GenerateResult` embed `AudioOutput`, `AudioMetrics`/`AudioPrefetch` in `contracts/audio.Output`. Restano letti dai consumer i campi generation; **18** file fuori `scripts` usano i tipi, **111** importano `contract` | ⚠️ audio ✅, generation in BON-01 |
 | `go build`, `go vet`, `go test ./internal/capabilities/scripts/...`, `archcheck --strict` | tutti RC 0 il 2026-11-24; `archcheck` 0 violazioni; hotspot freschi | ✅ |
 | Wiring non peggiorato | `go list -f '{{len .Imports}}' ./internal/app/wiring` = **246** (baseline 218 del 2026-11-21; crescita non attribuibile a RA-12) | ⚠️ baseline da riallineare in BON-01 |
 
-Il residuo è ora **BON-01**, riaperto il 2026-11-24 per il solo debito runner/campi piatti:
-la migrazione dei lettori, i contratti mancanti (source, submission, publication, final job,
+Il residuo è ora **BON-01**, riaperto il 2026-11-24 per il solo debito runner/campi generation:
+la migrazione dei lettori **generation** (l'audio è stato chiuso il 2026-11-24 con
+`562d8e6b4`/`5f49ce393`), i contratti mancanti (source, submission, publication, final job,
 scene, overlay, render, semantic) e il residuo runner dichiarato da GOP-01. La chiusura di
 RA-12 non dichiara verde quel lavoro.

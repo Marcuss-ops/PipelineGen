@@ -8,7 +8,6 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -20,6 +19,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/imageverify"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -29,15 +29,11 @@ import (
 const vidRushImageUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 var (
-	ErrVidRushImageTooLarge = errors.New("vidrush image exceeds download limit")
-	ErrVidRushImageInvalid  = errors.New("vidrush image is not a valid supported image")
-	// ErrVidRushImageCollage marks a contact sheet, montage or triptych. It
-	// wraps ErrVidRushImageInvalid so every soft-reject path keeps working,
-	// while the reason stays precise: one "photo" that shows several pictures
-	// reads to the viewer as stacked images, so the candidate must not bind.
-	ErrVidRushImageCollage = fmt.Errorf("%w: panel grid collage", ErrVidRushImageInvalid)
-	ErrVidRushSSRFBlocked  = errors.New("vidrush remote image URL blocked by SSRF policy")
-	vidRushImageTransport  = newVidRushImageTransport()
+	ErrVidRushImageTooLarge = imageverify.ErrImageTooLarge
+	ErrVidRushImageInvalid  = imageverify.ErrImageInvalid
+	ErrVidRushImageCollage  = imageverify.ErrImageCollage
+	ErrVidRushSSRFBlocked   = errors.New("vidrush remote image URL blocked by SSRF policy")
+	vidRushImageTransport   = newVidRushImageTransport()
 )
 
 func newVidRushImageTransport() *http.Transport {
@@ -75,105 +71,22 @@ func newVidRushImageTransport() *http.Transport {
 
 // VidRushImagePolicy is deliberately conservative and CPU-friendly. The
 // policy is shared by web-image and generated-image verification.
-type VidRushImagePolicy struct {
-	MaxBytes int64
-	// MinWidth/MinHeight remain the canonical area floor (both were the
-	// historical two-sided minimum). MinLongSide/MinShortSide add the
-	// orientation-aware rule that admits vertical portraits instead of
-	// rejecting a 600x900 image for being narrower than 640.
-	MinWidth       int
-	MinHeight      int
-	MinLongSide    int
-	MinShortSide   int
-	MaxAspectRatio float64
-	// MaxPixels rejects a declared decompression bomb before a full decode.
-	MaxPixels    int
-	Timeout      time.Duration
-	MaxRedirects int
-}
+type VidRushImagePolicy = imageverify.Policy
 
-func DefaultVidRushImagePolicy() VidRushImagePolicy {
-	return VidRushImagePolicy{
-		MaxBytes:       20 << 20,
-		MinWidth:       640,
-		MinHeight:      360,
-		MinLongSide:    640,
-		MinShortSide:   360,
-		MaxAspectRatio: 3.0,
-		MaxPixels:      digest.DefaultImagePixelBudget,
-		Timeout:        15 * time.Second,
-		MaxRedirects:   3,
-	}
-}
+func DefaultVidRushImagePolicy() VidRushImagePolicy { return imageverify.DefaultPolicy() }
 
 func normalizeVidRushImagePolicy(policy VidRushImagePolicy) VidRushImagePolicy {
-	defaults := DefaultVidRushImagePolicy()
-	if policy.MaxBytes <= 0 {
-		policy.MaxBytes = defaults.MaxBytes
-	}
-	if policy.MinWidth <= 0 {
-		policy.MinWidth = defaults.MinWidth
-	}
-	if policy.MinHeight <= 0 {
-		policy.MinHeight = defaults.MinHeight
-	}
-	if policy.MinLongSide <= 0 {
-		policy.MinLongSide = defaults.MinLongSide
-	}
-	if policy.MinShortSide <= 0 {
-		policy.MinShortSide = defaults.MinShortSide
-	}
-	if policy.MaxAspectRatio <= 0 {
-		policy.MaxAspectRatio = defaults.MaxAspectRatio
-	}
-	if policy.MaxPixels <= 0 {
-		policy.MaxPixels = defaults.MaxPixels
-	}
-	if policy.Timeout <= 0 {
-		policy.Timeout = defaults.Timeout
-	}
-	if policy.MaxRedirects < 0 {
-		policy.MaxRedirects = defaults.MaxRedirects
-	}
-	return policy
+	return imageverify.NormalizePolicy(policy)
 }
 
 // WithinPixelBudget reports whether the declared dimensions fit the decode
 // budget. It is a header check only; it never allocates the pixel buffer.
-func (p VidRushImagePolicy) WithinPixelBudget(width, height int) bool {
-	if width <= 0 || height <= 0 {
-		return false
-	}
-	policy := normalizeVidRushImagePolicy(p)
-	return int64(width)*int64(height) <= int64(policy.MaxPixels)
-}
 
 // AcceptsDimensions applies the orientation-aware minimum: long side, short
 // side, area and aspect ratio. A portrait 600x900 passes; a 1200x300 banner
 // and a tiny 320x240 thumbnail fail. It does not apply the upper pixel bound;
 // callers check WithinPixelBudget separately so a bomb maps to "too large"
 // rather than "invalid".
-func (p VidRushImagePolicy) AcceptsDimensions(width, height int) bool {
-	if width <= 0 || height <= 0 {
-		return false
-	}
-	policy := normalizeVidRushImagePolicy(p)
-	longSide, shortSide := width, height
-	if shortSide > longSide {
-		longSide, shortSide = shortSide, longSide
-	}
-	if longSide < policy.MinLongSide || shortSide < policy.MinShortSide {
-		return false
-	}
-	if policy.MinWidth > 0 && policy.MinHeight > 0 &&
-		int64(width)*int64(height) < int64(policy.MinWidth)*int64(policy.MinHeight) {
-		return false
-	}
-	if policy.MaxAspectRatio > 0 && float64(longSide)/float64(shortSide) > policy.MaxAspectRatio {
-		return false
-	}
-	return true
-}
 
 // ValidateVidRushRemoteImageURL rejects non-web schemes, credentials,
 // loopback and literal private/link-local addresses before any request is
@@ -345,61 +258,7 @@ func validateVidRushResolvedHost(ctx context.Context, raw string) error {
 // VerifyVidRushImageBytes performs the deterministic technical checks after
 // acquisition. It does not assert rights: rights are a separate policy input.
 func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []byte, mime string, policy VidRushImagePolicy) (scriptports.VerifiedArtifact, error) {
-	policy = normalizeVidRushImagePolicy(policy)
-	if len(data) == 0 {
-		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
-	}
-	if int64(len(data)) > policy.MaxBytes {
-		return scriptports.VerifiedArtifact{}, ErrVidRushImageTooLarge
-	}
-	if !allowedVidRushImageMIME(mime) {
-		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
-	}
-	config, _, err := digest.DecodeImageConfigBounded(data, policy.MaxPixels)
-	if err != nil {
-		if errors.Is(err, digest.ErrImagePixelBudget) {
-			return scriptports.VerifiedArtifact{}, ErrVidRushImageTooLarge
-		}
-		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
-	}
-	if !policy.AcceptsDimensions(config.Width, config.Height) {
-		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
-	}
-	img, _, err := digest.DecodeImageBounded(data, policy.MaxPixels)
-	if err != nil {
-		if errors.Is(err, digest.ErrImagePixelBudget) {
-			return scriptports.VerifiedArtifact{}, ErrVidRushImageTooLarge
-		}
-		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
-	}
-	if digest.HasPanelGridCollageImage(img) {
-		seamsV, seamsH, continuityV, continuityH := digest.PanelGridCollageEvidence(img)
-		log.Printf("vidrush image rejected as panel grid collage: seams_v=%d seams_h=%d continuity_v=%.2f continuity_h=%.2f",
-			seamsV, seamsH, continuityV, continuityH)
-		return scriptports.VerifiedArtifact{}, ErrVidRushImageCollage
-	}
-	sum := digest.SHA256Bytes(data)
-	candidate.ContentSHA256 = sum
-	candidate.MIMEType = mime
-	candidate.Width = config.Width
-	candidate.Height = config.Height
-	// The perceptual hash is best-effort: it powers near-duplicate detection
-	// across providers, but a decoder that cannot produce one must not fail
-	// technical verification.
-	if perceptualHash, hashErr := digest.PerceptualHash(img); hashErr == nil {
-		candidate.PerceptualHash = perceptualHash
-	}
-	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
-	return scriptports.VerifiedArtifact{
-		Candidate:     candidate,
-		MIMEType:      mime,
-		SizeBytes:     int64(len(data)),
-		ContentSHA256: candidate.ContentSHA256,
-		Width:         config.Width,
-		Height:        config.Height,
-		RightsStatus:  candidate.RightsStatus,
-	}, nil
+	return imageverify.VerifyBytes(candidate, data, mime, policy)
 }
 
 // VerifyVidRushImageFile is the file-based bridge used by providers that

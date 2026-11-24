@@ -10,6 +10,7 @@ import (
 
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	imageadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/vidrush"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
@@ -59,7 +60,9 @@ func TestPersonImageE2ELiveBattery(t *testing.T) {
 	searcher := newInternetImageSearchAdapter(resolver, log)
 	skipVLM := os.Getenv("PERSON_E2E_SKIP_VLM") == "1"
 	visionClient := ollamaclient.NewClient(ollamaURL, visionModel, 90)
-	scorer := ollamaadapters.NewOllamaPersonImageScorer(visionClient)
+	scorer := ollamaadapters.NewOllamaPersonImageScorerWithDownloader(visionClient, func(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		return vidrush.DownloadVidRushImageForCandidate(ctx, vidrush.ProviderImageHTTPClient(), candidate, vidrush.DefaultVidRushImagePolicy())
+	})
 
 	cases := []struct {
 		id     string

@@ -49,7 +49,6 @@ package finalize
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -62,6 +61,7 @@ import (
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // Finalizer is the concrete implementation of finalization.JobFinalizer.
@@ -81,7 +81,7 @@ import (
 // roll back the terminal job flip — the bus is a derived notification
 // channel, not part of the SQLite canonical state.
 type Finalizer struct {
-	db              *sql.DB
+	db              sqlport.Beginner
 	outbox          *outboxevents.Repository
 	assetTx         finalization.AssetFinalizerTx
 	log             *zap.Logger
@@ -95,7 +95,7 @@ type Finalizer struct {
 // and asset-finalizer port (Pattern-0 port abstraction). Production
 // callers pass *assetfinalizer.AssetTxFinalizer which satisfies the
 // interface.
-func New(db *sql.DB, outbox *outboxevents.Repository, assetTx finalization.AssetFinalizerTx, log *zap.Logger) *Finalizer {
+func New(db sqlport.Beginner, outbox *outboxevents.Repository, assetTx finalization.AssetFinalizerTx, log *zap.Logger) *Finalizer {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -183,7 +183,7 @@ func (f *Finalizer) CompleteWithArtifacts(
 	}
 
 	// 2. Open transaction.
-	tx, err := f.db.BeginTx(ctx, nil)
+	tx, err := f.db.BeginTx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("finalizer: begin tx: %w", err)
 	}

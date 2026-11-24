@@ -39,8 +39,9 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // requiredStepCleanupOutbox is the wire-stable step identifier for
@@ -84,7 +85,7 @@ const requiredStepCleanupOutbox = "cleanup_outbox"
 // finalizer.go. NO refactoring of the tripla logic is in scope.
 func executeCleanupOutboxStep(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	outbox TxOutboxEnqueuer,
 	cmd *FinalizeCommand,
 ) (string, error) {

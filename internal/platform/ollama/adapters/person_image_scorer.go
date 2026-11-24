@@ -15,10 +15,11 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	imagegate "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	imagegate "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/imagegate"
+	imageverify "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/imageverify"
+	kernelsemantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
@@ -65,14 +66,20 @@ func NewOllamaPersonImageScorer(client personImageScorerClient) *OllamaPersonIma
 	return &OllamaPersonImageScorer{
 		client:                 client,
 		MaxAttemptsPerIdentity: defaultVisualAttemptsPerIdentity,
-		download: func(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
-			data, mime, err := scriptadapters.DownloadVidRushImageForCandidate(ctx, scriptadapters.ProviderImageHTTPClient(), candidate, scriptadapters.DefaultVidRushImagePolicy())
-			return data, mime, err
-		},
 	}
 }
 
-var _ scriptadapters.SemanticCandidateScorer = (*OllamaPersonImageScorer)(nil)
+// NewOllamaPersonImageScorerWithDownloader wires the provider fetch policy
+// from the composition root. The adapter owns the VLM judgement; the scripts
+// capability owns the SSRF-bounded download policy, so the platform package
+// never imports the business package.
+func NewOllamaPersonImageScorerWithDownloader(client personImageScorerClient, download func(context.Context, scriptpkg.SegmentAssetCandidate) ([]byte, string, error)) *OllamaPersonImageScorer {
+	scorer := NewOllamaPersonImageScorer(client)
+	scorer.download = download
+	return scorer
+}
+
+var _ kernelsemantic.CandidateScorer = (*OllamaPersonImageScorer)(nil)
 
 func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, query string, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
 	out := append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)
@@ -126,8 +133,8 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 				continue
 			}
 			if !isEncyclopedicPersonSource(*candidate) {
-				if reason := scriptadapters.PersonImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, ""); reason != "" {
-					if penalty := scriptadapters.PersonImageSourceIdentityPenalty(identity.CanonicalName, candidate.SourceURL); penalty > 0 {
+				if reason := imageverify.PersonImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, ""); reason != "" {
+					if penalty := imageverify.PersonImageSourceIdentityPenalty(identity.CanonicalName, candidate.SourceURL); penalty > 0 {
 						candidate.SemanticScore -= penalty
 						candidate.QualityReason = reason + "; ranked below single-person sources"
 					} else {
@@ -191,17 +198,18 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 		attemptsByIdentity[identityKey]++
 		download := s.download
 		if download == nil {
-			download = func(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
-				data, mime, err := scriptadapters.DownloadVidRushImageForCandidate(ctx, scriptadapters.ProviderImageHTTPClient(), candidate, scriptadapters.DefaultVidRushImagePolicy())
-				return data, mime, err
-			}
+			// Fail closed: without the provider downloader the pixels were
+			// never judged, so the candidate stays retryable instead of being
+			// accepted on discovery metadata.
+			rejectPersonImage(candidate, "visual verification downloader unavailable")
+			continue
 		}
 		data, mime, err := download(ctx, *candidate)
 		if err != nil {
 			rejectPersonImage(candidate, "image could not be downloaded for visual verification")
 			continue
 		}
-		verified, err := scriptadapters.VerifyVidRushImageBytes(*candidate, data, mime, scriptadapters.DefaultVidRushImagePolicy())
+		verified, err := imageverify.VerifyBytes(*candidate, data, mime, imageverify.DefaultPolicy())
 		if err != nil {
 			rejectPersonImage(candidate, "technical image verification rejected candidate: "+err.Error())
 			continue

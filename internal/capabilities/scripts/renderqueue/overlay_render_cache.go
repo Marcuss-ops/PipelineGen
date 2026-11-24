@@ -51,49 +51,11 @@ const OverlayRenderCacheKillSwitch = rendercacheinfo.KillSwitchEnv
 // pipeline binary (for example a new Chronon build on the render worker).
 const OverlayRenderCacheEpochEnv = "PIPELINEGEN_OVERLAY_CACHE_EPOCH"
 
-// OverlayRenderCacheKey is the identity of one reusable overlay render. The
-// fields are kept alongside the digest because a cache row must be inspectable
-// by an operator without recomputing anything: RenderKey names the item,
-// PlanContext names the canvas around it, Epoch names the renderer build.
-type OverlayRenderCacheKey struct {
-	RenderKey   string
-	PlanContext string
-	Epoch       string
-}
+// OverlayRenderCacheKey and its methods are owned by the kernel renderqueue
+// package so the SQLite adapter implements the port without a capability import.
+type OverlayRenderCacheKey = renderqueue.OverlayRenderCacheKey
 
-// Validate reports whether the key is complete enough to address a cache row.
-func (k OverlayRenderCacheKey) Validate() error {
-	if len(k.RenderKey) != 64 || !digest.IsCanonicalSHA256(k.RenderKey) {
-		return fmt.Errorf("overlay render cache key: render key %q is not a 64-hex digest", k.RenderKey)
-	}
-	if len(k.PlanContext) != 64 || !digest.IsCanonicalSHA256(k.PlanContext) {
-		return fmt.Errorf("overlay render cache key: plan context %q is not a 64-hex digest", k.PlanContext)
-	}
-	if strings.TrimSpace(k.Epoch) == "" {
-		return fmt.Errorf("overlay render cache key: epoch is required")
-	}
-	return nil
-}
-
-// Digest is the canonical cache identity: SHA-256 over the three fields with
-// length-independent separators. The version tag keeps a future key shape from
-// silently reusing rows written by this one.
-func (k OverlayRenderCacheKey) Digest() string {
-	return digest.SHA256String(strings.Join([]string{
-		"overlay-render-cache/v1", k.RenderKey, k.PlanContext, k.Epoch,
-	}, "\x00"))
-}
-
-// OverlayRenderCache is the narrow persistence port. Lookup returns
-// (nil, false, nil) for a miss; a transport/storage error must never be turned
-// into a hit. Store is idempotent on the key digest. Invalidate is
-// best-effort: a row that cannot be invalidated is reported to the caller,
-// which logs it and continues with the render.
-type OverlayRenderCache interface {
-	Lookup(ctx context.Context, key OverlayRenderCacheKey) (*contract.RenderArtifact, bool, error)
-	Store(ctx context.Context, key OverlayRenderCacheKey, artifact contract.RenderArtifact) error
-	Invalidate(ctx context.Context, key OverlayRenderCacheKey, reason string) error
-}
+type OverlayRenderCache = renderqueue.OverlayRenderCache
 
 // OverlayArtifactProber verifies that a cached locator still resolves in the
 // object store. The cache is an index, not a second copy: the bytes live in a

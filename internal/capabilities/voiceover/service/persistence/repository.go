@@ -2,7 +2,8 @@ package persistence
 
 import (
 	"context"
-	"database/sql"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // Repository is the application-layer port for the voiceovers
@@ -35,7 +36,7 @@ type Repository interface {
 	// read-write semantics. The caller is responsible for calling
 	// tx.Rollback in a defer (safe after a successful Commit) to
 	// release the lock on error.
-	BeginTx(ctx context.Context) (*sql.Tx, error)
+	BeginTx(ctx context.Context) (sqlport.Tx, error)
 
 	// InsertTx persists the new voiceover row in the caller-owned
 	// tx. Equivalent to *sqassets.VoiceoversRepository.InsertTx.
@@ -44,11 +45,11 @@ type Repository interface {
 	// voiceovers_repository.go::Record. Adding a column here
 	// without a SQLite migration will fail at INSERT time, NOT
 	// at compile time.
-	InsertTx(ctx context.Context, tx *sql.Tx, rec *VoiceoverRecord) error
+	InsertTx(ctx context.Context, tx sqlport.Tx, rec *VoiceoverRecord) error
 
 	// DeleteByIDTx removes the OLD voiceover row in the
 	// caller-owned tx. Atomic-swap prerequisite for PR-VO-A2.
-	DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error
+	DeleteByIDTx(ctx context.Context, tx sqlport.Tx, id string) error
 
 	// PreReadByID reads the OLD voiceover row by id (no tx). Used
 	// in processLanguage to capture orphan-candidate paths BEFORE
@@ -81,7 +82,7 @@ type Repository interface {
 	// (`id != ?`) so a re-run never shadows its own existence.
 	CountByDriveFileIDTx(
 		ctx context.Context,
-		tx *sql.Tx,
+		tx sqlport.Tx,
 		currentID string,
 		driveFileID string,
 	) (matchedID string, count int, err error)
@@ -102,7 +103,7 @@ type Repository interface {
 	// that don't supply a key (backward-compat).
 	FindByIdempotencyKeyTx(
 		ctx context.Context,
-		tx *sql.Tx,
+		tx sqlport.Tx,
 		idempotencyKey string,
 	) (matchedID string, err error)
 }

@@ -9,6 +9,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 	"strings"
 	"sync/atomic"
 
@@ -325,30 +326,17 @@ func localizedSourceEntityType(raw string) scriptpkg.EntityType {
 // LocalizedSourceEntity is one SOURCE annotation identity offered to the Rust
 // localized-identity matcher. Kind is already normalized to the annotation
 // vocabulary (PERSON, LOCATION, ORGANIZATION, ...).
-type LocalizedSourceEntity struct {
-	Kind          string
-	CanonicalName string
-	Text          string
-}
+type LocalizedSourceEntity = semanticscript.LocalizedSourceEntity
 
 // LocalizedIdentityMatch is one SOURCE identity grounded in translated text.
 // The span is in rune coordinates and Surface is the verbatim translated
 // surface; the canonical id remains on the source identity, never here.
-type LocalizedIdentityMatch struct {
-	SourceIndex int
-	Kind        string
-	StartRune   int
-	EndRune     int
-	Surface     string
-}
+type LocalizedIdentityMatch = semanticscript.LocalizedIdentityMatch
 
 // LocalizedIdentityMatcher is the Rust boundary for the localization seam.
 // Match is called before translated NER; Complete is called after it with the
 // translated PERSON candidates and may only fill the still-unmatched people.
-type LocalizedIdentityMatcher interface {
-	MatchLocalizedIdentities(ctx context.Context, language, text string, sources []LocalizedSourceEntity) ([]LocalizedIdentityMatch, error)
-	CompleteLocalizedIdentities(ctx context.Context, language, text string, sources []LocalizedSourceEntity, visual []string, existing []LocalizedIdentityMatch) ([]LocalizedIdentityMatch, error)
-}
+type LocalizedIdentityMatcher = semanticscript.LocalizedIdentityMatcher
 
 // defaultLocalizedIdentityMatcher is a test-only hook. Production leaves it
 // unset and fails closed; the package TestMain installs the former Go matcher

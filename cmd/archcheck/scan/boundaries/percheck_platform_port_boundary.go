@@ -48,49 +48,22 @@ var platformForbiddenCapabilityPackages = map[string]string{
 // platformAllowedCapabilitySubpackages are the SUBpackages of a forbidden
 // package that stay importable: they are thin port packages (interfaces and
 // wire DTOs only, no policy and no service layer), which is exactly the
-// dependency direction an adapter owes. `scripts/ports` is today's only such
-// package; adding an entry here is a deliberate architectural decision, not a
-// convenience.
+// dependency direction an adapter owes. `scripts/ports` (including its
+// `ports/run` durable-run port) is today's only such package; adding an entry
+// here is a deliberate architectural decision, not a convenience.
 var platformAllowedCapabilitySubpackages = []string{
 	"internal/capabilities/scripts/ports",
 }
 
 // platformCapabilityScriptsInventory is the exact-file inventory of adapters
-// that already imported a forbidden package on 2026-11-18, when the gate was
-// introduced. Every entry is real debt with an owner and a removal trigger; the
-// list ratchets DOWN only (a migrating file must delete its entry, and the
-// stale half of the gate enforces that).
-//
-// These are durable-store and Rust-executor adapters whose ports are declared
-// inside capabilities/scripts itself (run repositories, render-metrics
-// registry, semantic engine contracts). Extracting those ports to the kernel is
-// a separate programme; until then the coupling is recorded rather than
-// hidden.
-var platformCapabilityScriptsInventory = map[string]string{
-	"internal/platform/media/rustexec/semantic_adapters.go":               "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine.go":                 "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_consolidation.go":   "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_contract.go":        "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_editorial.go":       "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_entity_linking.go":  "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_identity.go":        "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_phrases.go":         "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_projection.go":      "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_search_feedback.go": "owner=media-rust; removal_trigger=semantic ports move to kernel/script", "internal/platform/media/rustexec/semantic_engine_story.go": "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/semantic_engine_quantities.go":     "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/media/rustexec/video_processor.go":                "owner=media-rust; removal_trigger=semantic ports move to kernel/script",
-	"internal/platform/ollama/adapters/metadata_generator.go":            "owner=ollama-adapters; removal_trigger=script metadata generator port moves to kernel",
-	"internal/platform/ollama/adapters/person_image_scorer.go":           "owner=ollama-adapters; removal_trigger=person image scorer port moves to kernel",
-	"internal/platform/sqlite/history/reader.go":                         "owner=sqlite-history; removal_trigger=history row types move to kernel",
-	"internal/platform/sqlite/jobregistry/execution_recorder.go":         "owner=sqlite-jobregistry; removal_trigger=run/step types move to kernel",
-	"internal/platform/sqlite/overlayrendercache/cache.go":               "owner=sqlite-overlaycache; removal_trigger=cache key/artifact types move to kernel",
-	"internal/platform/sqlite/performance/source.go":                     "owner=sqlite-performance; removal_trigger=metrics types move to kernel",
-	"internal/platform/sqlite/rendermetrics/registry.go":                 "owner=sqlite-rendermetrics; removal_trigger=metrics types move to kernel",
-	"internal/platform/sqlite/scripts/artifact_checkpoint_repository.go": "owner=sqlite-scripts; removal_trigger=script run/checkpoint types move to kernel",
-	"internal/platform/sqlite/scripts/run_reconciliation.go":             "owner=sqlite-scripts; removal_trigger=script run types move to kernel",
-	"internal/platform/sqlite/scripts/run_repository.go":                 "owner=sqlite-scripts; removal_trigger=script run types move to kernel",
-	"internal/platform/sqlite/scripts/semantic_plan_cache_adapter.go":    "owner=sqlite-scripts; removal_trigger=cache types move to kernel",
-}
+// that still import a forbidden package. It reached ZERO on 2026-11-24: the
+// neutral contracts (execution/run vocabulary, image gate and verification,
+// render analytics, metadata port, performance report source) moved to
+// internal/kernel, and the domain-bound durable-run DTOs moved to the
+// sanctioned scripts/ports/run port package. The stale half of this gate keeps
+// the list exact: a new entry needs an owner and a removal trigger, and a
+// migrated file must delete its entry in the same change.
+var platformCapabilityScriptsInventory = map[string]string{}
 
 // ScanPlatformPortBoundary enforces that no adapter under internal/platform
 // imports a capability's business package (see

@@ -8,15 +8,12 @@ import (
 
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	kernelperf "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/performance"
 )
 
-// ReportSource loads the canonical inputs for one job. It is the read-only
-// seam the aggregator depends on; production wiring supplies an adapter that
-// reads the persisted RunReport and its audio-operation projection, plus the
-// recorded execution steps. No implementation in this package performs I/O.
-type ReportSource interface {
-	Load(ctx context.Context, jobID string) (kernobs.RunReport, scriptgeneration.AudioPipelineMetrics, []scriptgeneration.ExecutionStep, error)
-}
+// ReportSource loads the canonical inputs for one job. The port is owned by
+// the kernel so the SQLite adapter no longer imports this package.
+type ReportSource = kernelperf.ReportSource
 
 // Aggregator is the read-only performance aggregator. It projects canonical
 // inputs into PerformanceReport and AggregatePerformanceReport views and never

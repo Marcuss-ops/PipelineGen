@@ -13,7 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	"go.uber.org/zap"
 )
 
@@ -38,21 +38,21 @@ func NewCombinedAudioRenderer(processor *VideoProcessor) (*CombinedAudioRenderer
 	return &CombinedAudioRenderer{processor: processor}, nil
 }
 
-func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (scripts.FinalAudioReference, scripts.AudioPipelineMetrics, error) {
+func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (kernelaudio.FinalAudioReference, kernelaudio.AudioPipelineMetrics, error) {
 	if r == nil || r.processor == nil {
-		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("combined audio renderer is not configured")
+		return kernelaudio.FinalAudioReference{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("combined audio renderer is not configured")
 	}
 	if plan.PlanSHA256 == "" {
-		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("combined audio plan hash is missing")
+		return kernelaudio.FinalAudioReference{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("combined audio plan hash is missing")
 	}
 	output, err := audio.FinalAudioOutputPath(plan.PlanSHA256)
 	if err != nil {
-		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, err
+		return kernelaudio.FinalAudioReference{}, kernelaudio.AudioPipelineMetrics{}, err
 	}
 	started := time.Now()
 	asset, stageMetrics, err := r.processor.RenderAudioPlanWithMetrics(ctx, plan, assets, output)
 	if err != nil {
-		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, err
+		return kernelaudio.FinalAudioReference{}, kernelaudio.AudioPipelineMetrics{}, err
 	}
 	metrics := stageMetrics
 	metrics.TotalMS = time.Since(started).Milliseconds()
@@ -65,7 +65,7 @@ func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledA
 	if metrics.AudioEncodePasses <= 0 {
 		metrics.AudioEncodePasses = 1
 	}
-	return scripts.FinalAudioReference{
+	return kernelaudio.FinalAudioReference{
 		AssetID: asset.AssetID, Path: output, Container: strings.TrimPrefix(filepath.Ext(output), "."),
 		AudioContractVersion: asset.AudioContractVersion,
 		AudioPlanVersion:     asset.AudioPlanVersion, PlanSHA256: asset.AudioPlanSHA256,
@@ -75,8 +75,6 @@ func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledA
 		StartPTS: asset.StartPTS, SizeBytes: asset.SizeBytes, FinalMix: asset.FinalMix, CopyEligible: asset.CopyEligible,
 	}, metrics, nil
 }
-
-var _ scripts.CombinedAudioRenderer = (*CombinedAudioRenderer)(nil)
 
 func NewVideoProcessor(binaryPath, ffmpegPath string, log *zap.Logger) *VideoProcessor {
 	return NewVideoProcessorWithExecutor(NewExecutor(binaryPath, ffmpegPath, log), log)
@@ -329,13 +327,13 @@ func (p *VideoProcessor) RenderAudioPlan(ctx context.Context, plan audio.Compile
 // RenderAudioPlanWithMetrics is the same combined-audio render as
 // RenderAudioPlan but also returns the per-stage timing metrics (mix, AAC
 // encode, probe, hash) so the script runner can persist them durably.
-func (p *VideoProcessor) RenderAudioPlanWithMetrics(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, scripts.AudioPipelineMetrics, error) {
+func (p *VideoProcessor) RenderAudioPlanWithMetrics(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, kernelaudio.AudioPipelineMetrics, error) {
 	if err := plan.Validate(); err != nil {
-		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, err
+		return audio.FinalAudioAsset{}, kernelaudio.AudioPipelineMetrics{}, err
 	}
 	planJSON, err := json.Marshal(plan)
 	if err != nil {
-		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("marshal audio plan: %w", err)
+		return audio.FinalAudioAsset{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("marshal audio plan: %w", err)
 	}
 	wireAssets := make([]audioAsset, len(assets))
 	for i, asset := range assets {
@@ -343,12 +341,12 @@ func (p *VideoProcessor) RenderAudioPlanWithMetrics(ctx context.Context, plan au
 	}
 	result, err := p.client.call(ctx, request{Operation: OperationRenderAudioPlan, OutputPath: output, AudioPlan: planJSON, AudioAssets: wireAssets})
 	if err != nil {
-		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, err
+		return audio.FinalAudioAsset{}, kernelaudio.AudioPipelineMetrics{}, err
 	}
 	if result.Metadata == nil {
-		return audio.FinalAudioAsset{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("render_audio_plan returned no probe metadata")
+		return audio.FinalAudioAsset{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("render_audio_plan returned no probe metadata")
 	}
-	var metrics scripts.AudioPipelineMetrics
+	var metrics kernelaudio.AudioPipelineMetrics
 	metrics.PrepareMS = result.Metadata.PrepareMS
 	metrics.LoudnessMS = result.Metadata.LoudnessMS
 	metrics.MixMS = result.Metadata.MixMS

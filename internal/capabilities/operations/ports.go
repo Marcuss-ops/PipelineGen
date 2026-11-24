@@ -17,10 +17,10 @@ package operations
 
 import (
 	"context"
-	"database/sql"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // JobEnqueuer is the canonical narrow port for inserting a job
@@ -47,7 +47,7 @@ type JobEnqueuer interface {
 	// Returns the underlying driver error on failure. The
 	// caller (submission service) treats any non-nil error
 	// as a TX-rollback trigger.
-	CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) error
+	CreateInTx(ctx context.Context, tx sqlport.Tx, j *job.Job) error
 }
 
 // OutboxEmitter is the canonical narrow port for emitting a
@@ -72,7 +72,7 @@ type OutboxEmitter interface {
 	// NOTHING), and the existing row's ID is returned.
 	Enqueue(
 		ctx context.Context,
-		tx *sql.Tx,
+		tx sqlport.Tx,
 		eventType, aggregateID, aggregateType, payloadJSON, eventKey string,
 	) (*outboxevents.EnqueueResult, error)
 }
@@ -93,16 +93,16 @@ type OutboxEmitter interface {
 // since the service uses it directly).
 type OperationsRepository interface {
 	// Insert atomically writes a new operation row.
-	Insert(ctx context.Context, op *Operation, tx *sql.Tx) error
+	Insert(ctx context.Context, op *Operation, tx sqlport.Tx) error
 	// GetLatestForKey returns the most recent operation for
 	// the (scope, idempotency_key) pair, or (nil, nil) when
 	// no row matches.
-	GetLatestForKey(ctx context.Context, scope Scope, idempotencyKey string, tx *sql.Tx) (*Operation, error)
+	GetLatestForKey(ctx context.Context, scope Scope, idempotencyKey string, tx sqlport.Tx) (*Operation, error)
 	// UpdateState transitions the operation to newState.
 	// Used by the force_refresh path to flip the prior
 	// operation to SUPERSEDED in the same atomic TX as the
 	// new operation's INSERT.
-	UpdateState(ctx context.Context, id string, newState State, tx *sql.Tx) error
+	UpdateState(ctx context.Context, id string, newState State, tx sqlport.Tx) error
 }
 
 // TxManager is the canonical narrow port for opening a
@@ -118,7 +118,7 @@ type TxManager interface {
 	// all 3 atomic operations (operations + jobs + outbox).
 	// Production uses BEGIN IMMEDIATE (sql.LevelSerializable
 	// maps to immediate on SQLite via TxOptions).
-	BeginTx(ctx context.Context) (*sql.Tx, error)
+	BeginTx(ctx context.Context) (sqlport.Tx, error)
 }
 
 // JobGetter is the canonical narrow port for reading a single

@@ -5,12 +5,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
-func projectSemanticQuantities(source string, quantities []semanticEngineQuantity, comparisons []semanticEngineQuantityComparison) ([]scriptgen.SemanticQuantity, []scriptgen.SemanticQuantityComparison, error) {
-	out := make([]scriptgen.SemanticQuantity, 0, len(quantities))
-	byID := make(map[string]scriptgen.SemanticQuantity, len(quantities))
+func projectSemanticQuantities(source string, quantities []semanticEngineQuantity, comparisons []semanticEngineQuantityComparison) ([]semantic.SemanticQuantity, []semantic.SemanticQuantityComparison, error) {
+	out := make([]semantic.SemanticQuantity, 0, len(quantities))
+	byID := make(map[string]semantic.SemanticQuantity, len(quantities))
 	for _, quantity := range quantities {
 		if quantity.ID == "" || quantity.Dimension == "" || quantity.Unit == "" || quantity.UnitSurface == "" {
 			return nil, nil, fmt.Errorf("quantity %q omits its identity, dimension, or unit", quantity.ID)
@@ -34,7 +34,7 @@ func projectSemanticQuantities(source string, quantities []semanticEngineQuantit
 		if quantity.Period != nil && (quantity.Period.Year < 1 || quantity.Period.Year > 9999 || quantity.Period.FactIndex < 0) {
 			return nil, nil, fmt.Errorf("quantity %q has an invalid period", quantity.ID)
 		}
-		candidate := scriptgen.SemanticQuantity{
+		candidate := semantic.SemanticQuantity{
 			ID: quantity.ID, Dimension: quantity.Dimension, Unit: quantity.Unit,
 			UnitSurface: quantity.UnitSurface, Qualifier: quantity.Qualifier,
 			Evidence: quantity.Evidence, Status: quantity.Status,
@@ -45,7 +45,7 @@ func projectSemanticQuantities(source string, quantities []semanticEngineQuantit
 			candidate.RangeID = *quantity.RangeID
 		}
 		if quantity.Period != nil {
-			candidate.Period = &scriptgen.SemanticQuantityPeriod{Year: quantity.Period.Year, FactIndex: quantity.Period.FactIndex}
+			candidate.Period = &semantic.SemanticQuantityPeriod{Year: quantity.Period.Year, FactIndex: quantity.Period.FactIndex}
 		}
 		if quantity.SubjectEntityID != nil {
 			candidate.SubjectEntityID = *quantity.SubjectEntityID
@@ -60,7 +60,7 @@ func projectSemanticQuantities(source string, quantities []semanticEngineQuantit
 		out = append(out, candidate)
 	}
 
-	projectedComparisons := make([]scriptgen.SemanticQuantityComparison, 0, len(comparisons))
+	projectedComparisons := make([]semantic.SemanticQuantityComparison, 0, len(comparisons))
 	for _, comparison := range comparisons {
 		left, hasLeft := byID[comparison.Left]
 		right, hasRight := byID[comparison.Right]
@@ -80,7 +80,7 @@ func projectSemanticQuantities(source string, quantities []semanticEngineQuantit
 			return nil, nil, fmt.Errorf("currency comparison %q/%q has mismatched periods", comparison.Left, comparison.Right)
 		}
 		start, end := comparison.EvidenceStartByte, comparison.EvidenceEndByte
-		projectedComparisons = append(projectedComparisons, scriptgen.SemanticQuantityComparison{
+		projectedComparisons = append(projectedComparisons, semantic.SemanticQuantityComparison{
 			Kind: comparison.Kind, Left: comparison.Left, Right: comparison.Right,
 			Dimension: comparison.Dimension, Evidence: source[start:end],
 			Ratio: comparison.Ratio, Difference: comparison.Difference,

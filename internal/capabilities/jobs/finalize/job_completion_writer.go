@@ -28,7 +28,6 @@ package finalize
 
 import (
 	"context"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -38,6 +37,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -55,7 +55,7 @@ import (
 // shipped (P1.2 invariant: success == sidecar persisted).
 func (f *Finalizer) markSucceeded(
 	ctx context.Context,
-	tx *sql.Tx,
+	tx sqlport.Tx,
 	req *finalization.FinalizationRequest,
 	optionalReport []finalization.OptionalArtifactRecord,
 ) error {
@@ -171,17 +171,17 @@ func (f *Finalizer) markSucceeded(
 	return nil
 }
 
-func insertFinalizerActivityEvent(ctx context.Context, tx *sql.Tx, jobID, eventType, message, microKind, status string, payload map[string]any, trace job.ActivityTrace, at time.Time) error {
+func insertFinalizerActivityEvent(ctx context.Context, tx sqlport.Tx, jobID, eventType, message, microKind, status string, payload map[string]any, trace job.ActivityTrace, at time.Time) error {
 	var kind, correlationID string
 	err := tx.QueryRowContext(ctx, `SELECT type FROM jobs WHERE id = ?`, jobID).Scan(&kind)
-	if err != nil && err != sql.ErrNoRows && !strings.Contains(err.Error(), "no such column: type") {
+	if err != nil && err != sqlport.ErrNoRows && !strings.Contains(err.Error(), "no such column: type") {
 		return fmt.Errorf("load activity job type: %w", err)
 	}
 	if kind == "" {
 		kind = "job"
 	}
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(correlation_id, '') FROM jobs WHERE id = ?`, jobID).Scan(&correlationID); err != nil {
-		if trace.CorrelationID == "" && err != sql.ErrNoRows && !strings.Contains(err.Error(), "no such column: correlation_id") {
+		if trace.CorrelationID == "" && err != sqlport.ErrNoRows && !strings.Contains(err.Error(), "no such column: correlation_id") {
 			return fmt.Errorf("load activity correlation: %w", err)
 		}
 	}
@@ -203,7 +203,7 @@ func insertFinalizerActivityEvent(ctx context.Context, tx *sql.Tx, jobID, eventT
 	return nil
 }
 
-func hasJobsColumn(ctx context.Context, tx *sql.Tx, wanted string) bool {
+func hasJobsColumn(ctx context.Context, tx sqlport.Tx, wanted string) bool {
 	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(jobs)`)
 	if err != nil {
 		return false
@@ -212,7 +212,7 @@ func hasJobsColumn(ctx context.Context, tx *sql.Tx, wanted string) bool {
 	var cid int
 	var name, columnType string
 	var notNull, primaryKey int
-	var defaultValue sql.NullString
+	var defaultValue sqlport.NullString
 	for rows.Next() {
 		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
 			return false

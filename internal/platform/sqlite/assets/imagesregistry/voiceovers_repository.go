@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -203,7 +204,7 @@ func (r *VoiceoversRepository) Delete(ctx context.Context, id string) error {
 // DeleteByIDTx deletes a voiceovers row inside a caller-owned transaction.
 // Used by voiceover.GenerateVoiceoversUseCase for the PR-VO-A2 atomic
 // swap (Delete + Insert in one tx).
-func (r *VoiceoversRepository) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string) error {
+func (r *VoiceoversRepository) DeleteByIDTx(ctx context.Context, tx sqlport.Tx, id string) error {
 	_, err := tx.ExecContext(ctx, `DELETE FROM voiceovers WHERE id = ?`, id)
 	return err
 }
@@ -212,7 +213,7 @@ func (r *VoiceoversRepository) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id 
 // (plain INSERT — atomicity is enforced by the caller's
 // DELETE-then-INSERT sequence in the same tx; the caller is the
 // canonical source of truth on swap semantics).
-func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Record) error {
+func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx sqlport.Tx, rec *Record) error {
 	if rec.CreatedAt.IsZero() {
 		rec.CreatedAt = time.Now()
 	}

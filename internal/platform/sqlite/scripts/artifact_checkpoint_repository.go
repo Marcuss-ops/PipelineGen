@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // SQLiteArtifactCheckpointRepository stores one row per completed artifact in

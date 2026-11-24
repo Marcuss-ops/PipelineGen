@@ -14,11 +14,10 @@ package scriptgeneration
 
 import (
 	"context"
-	"errors"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	runport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/run"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -179,94 +178,17 @@ type VoiceoverGenerator interface {
 	Generate(ctx context.Context, input VoiceoverInput) (contract.AudioReference, error)
 }
 
-// ── FailRunInput ────────────────────────────────────────────────────
+// ── Durable run port ────────────────────────────────────────────────
 
-// FailRunInput carries the structured failure metadata that the runner
-// persists when a stage fails. All fields except RunID and FailedStage
-// are optional; implementations persist whatever non-zero fields the
-// runner provides.
-type FailRunInput struct {
-	// RunID is the canonical run identifier (required).
-	RunID string
+// The durable run DTOs and interfaces live in scripts/ports/run: they embed
+// the generate request/result, so they cannot move to the kernel, but the
+// platform adapters may import that thin port package directly.
+type FailRunInput = runport.FailRunInput
 
-	// FailedStage identifies which stage failed (required).
-	FailedStage Stage
+type RunRepository = runport.RunRepository
 
-	// ErrorCode is a stable machine-readable error code
-	// (e.g. "TEXT_GENERATION_FAILED", "TRANSLATION_FAILED",
-	// "PROVIDER_TIMEOUT").
-	ErrorCode string
+type StaleSubmissionRun = runport.StaleSubmissionRun
 
-	// ErrorMessage is a human-readable description of the failure.
-	ErrorMessage string
+type RunReconciliationRepository = runport.RunReconciliationRepository
 
-	// AttemptCount is the current retry attempt number (0-based).
-	AttemptCount int
-
-	// NextRetryAt is the earliest time a retry should be attempted.
-	// Nil means no retry is scheduled.
-	NextRetryAt *time.Time
-}
-
-// ── RunRepository ───────────────────────────────────────────────────
-
-// RunRepository persists and retrieves GenerationRun aggregates.
-// Used by the runner for checkpoint persistence after each stage.
-// ErrRunNotFound is the canonical sentinel for "the durable repository has no
-// run with that id".
-//
-// It is declared here, in the package that owns the RunRepository port, rather
-// than at every call site: the repository is the only component that can
-// decide a run is missing, and callers that classify that outcome re-export
-// this one value instead of defining a second one. Two sentinels for one fact
-// is how a deterministic failure ends up looking transient.
-var ErrRunNotFound = errors.New("scriptgeneration: run not found")
-
-type RunRepository interface {
-	// Create persists a new GenerationRun.
-	Create(ctx context.Context, run *GenerationRun) error
-
-	// Get retrieves a GenerationRun by ID.
-	Get(ctx context.Context, runID string) (*GenerationRun, error)
-
-	// GetByJobID retrieves a GenerationRun associated with the given
-	// worker-assigned job ID. Returns nil, nil when no run is found.
-	GetByJobID(ctx context.Context, jobID string) (*GenerationRun, error)
-
-	// UpdateStage persists the current stage and status atomically.
-	// Implementations should only UPDATE the stage-relevant columns
-	// (current_stage, status, updated_at) — not the full run.
-	UpdateStage(ctx context.Context, runID string, status RunStatus, stage Stage) error
-
-	// FailRun persists failure metadata for a run atomically.
-	// Sets status=FAILED, updates failed_stage, error_code,
-	// error_message, attempt_count, and next_retry_at.
-	// Implementations persist whatever non-zero fields the input
-	// carries; zero-valued optional fields are left unchanged.
-	FailRun(ctx context.Context, input FailRunInput) error
-
-	// SavePartialResult persists intermediate result data (e.g. after
-	// each translated scene) so a retry can resume from the checkpoint.
-	SavePartialResult(ctx context.Context, runID string, result *contract.GenerateResult) error
-}
-
-// StaleSubmissionRun is a durable nonterminal submission whose last update is
-// old enough to reconcile against the authoritative job broker.
-type StaleSubmissionRun struct {
-	RunID          string
-	JobID          string
-	IdempotencyKey string
-	CurrentStage   Stage
-	UpdatedAt      time.Time
-}
-
-// RunReconciliationRepository is the narrow durable surface used to repair
-// submission/run correlation after a process crash. It is separate from
-// RunRepository so ordinary execution does not depend on reconciliation scans.
-type RunReconciliationRepository interface {
-	ListStaleSubmissionRuns(context.Context, time.Time, int) ([]StaleSubmissionRun, error)
-	Get(context.Context, string) (*GenerationRun, error)
-	SetJobID(context.Context, string, string) error
-	UpdateStage(context.Context, string, RunStatus, Stage) error
-	FailRun(context.Context, FailRunInput) error
-}
+var ErrRunNotFound = runport.ErrRunNotFound

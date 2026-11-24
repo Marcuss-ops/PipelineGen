@@ -24,6 +24,7 @@ import (
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
@@ -284,7 +285,7 @@ type sqliteTxManager struct {
 	db *sql.DB
 }
 
-func (m *sqliteTxManager) BeginTx(ctx context.Context) (*sql.Tx, error) {
+func (m *sqliteTxManager) BeginTx(ctx context.Context) (sqlport.Tx, error) {
 	if m == nil || m.db == nil {
 		return nil, fmt.Errorf("script submission: tx manager not wired")
 	}

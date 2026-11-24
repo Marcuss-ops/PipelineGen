@@ -41,6 +41,7 @@ package wiring
 import (
 	"context"
 	"fmt"
+	sqlport "github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"time"
 
 	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
@@ -171,7 +172,7 @@ func initCompositionMinimalWithContext(_ context.Context, cfg *config.Config, lo
 				jobDB = root.Jobs.DB.DB
 			}
 			jobOutbox := outboxevents.NewRepository(jobDB)
-			finalizer := jobsfinalizer.New(jobDB, jobOutbox, nil, log)
+			finalizer := jobsfinalizer.New(sqlport.WrapDB(jobDB), jobOutbox, nil, log)
 			// MEDIA-SSOT P0-2 (September 2026): assetCommitter is non-nil only for
 			// a media PostgreSQL handle, and the job terminal state is always on
 			// the SQLite job plane — the engines cannot share a tx. Use the

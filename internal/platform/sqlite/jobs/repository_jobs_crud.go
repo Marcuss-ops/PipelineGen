@@ -26,6 +26,7 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -140,7 +141,7 @@ func scanJobColumns(s scanner, j *job.Job) error {
 // connection that began it; no other goroutine touches the
 // same row in the same TX. SQLite single-writer semantics
 // apply at the connection level.
-func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) error {
+func (r *SQLiteStore) CreateInTx(ctx context.Context, tx sqlport.Tx, j *job.Job) error {
 	if tx == nil {
 		return fmt.Errorf("jobs.CreateInTx: tx is nil (caller MUST supply the open *sql.Tx)")
 	}

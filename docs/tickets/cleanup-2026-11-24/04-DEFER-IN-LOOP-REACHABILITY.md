@@ -2,7 +2,7 @@
 
 **Data:** 2026-11-24
 **Priorità:** P2 (igiene, rischio zero)
-**Stato:** DONE
+**Stato:** DONE (commit `d21cc4de9`)
 **Owner:** `cmd/admin/internal/audit`
 **Origine:** radiografia 2026-11-24, §2D
 **Base:** `refactored` @ `2a3ea0b2c` (working tree pulito)
@@ -52,4 +52,12 @@ gofmt -l cmd/admin/internal/audit/reachability_graph.go
 - Riverifica finale: `go test ./cmd/admin/internal/audit/... -count=1` PASS
   (0,174 s); `go vet` sullo stesso package rc 0.
 - `gofmt -l` sul file → vuoto.
+- Commit: `d21cc4de9` — `fix(admin): close orphan rows outside the loop`.
+
+## 5. Cosa resta
+
+Niente di bloccante. Il ticket è DONE e committato; il `defer` ridondante è
+rimosso e la chiusura esplicita resta l'unico owner di `orphanRows`. Restano
+fuori perimetro push e suite completa
+(`TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` flaky sotto carico).
 

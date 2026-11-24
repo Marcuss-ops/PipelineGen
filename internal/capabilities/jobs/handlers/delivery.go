@@ -45,7 +45,6 @@ package handlers
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -191,7 +190,7 @@ type deliveryRequest struct {
 type DeliveryHandler struct {
 	log             *zap.Logger
 	client          httpclient.Client
-	db              *sql.DB
+	audit           DeliveryAuditWriter
 	hmacSecrets     [][]byte
 	insecureDev     bool
 	remoteRegistrar assetdelivery.RemoteReferenceRegistrar
@@ -208,8 +207,6 @@ type DeliveryHandler struct {
 //     longer builds a fallback default. A nil client keeps the handler
 //     constructible for validation-only callers, but any webhook POST
 //     is refused with a terminal error (no hidden I/O dependency).
-//   - db          nil → no delivery_log writes (handler still POSTs and
-//     signs).
 //   - hmacSecrets rotated secret keys; current secret FIRST, then the
 //     previous secret (if any). Empty slice + insecureDev
 //     false → the handler refuses every event with a
@@ -219,11 +216,11 @@ type DeliveryHandler struct {
 //     handler logs a structured warn on every signed-or-not
 //     POST so the dev escape hatch is impossible to mistake
 //     for production behaviour.
-func NewDeliveryHandlerWithOperations(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
-	return newDeliveryHandler(log, client, db, hmacSecrets, insecureDev, operations)
+func NewDeliveryHandlerWithOperations(log *zap.Logger, client httpclient.Client, audit DeliveryAuditWriter, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
+	return newDeliveryHandler(log, client, audit, hmacSecrets, insecureDev, operations)
 }
 
-func newDeliveryHandler(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
+func newDeliveryHandler(log *zap.Logger, client httpclient.Client, audit DeliveryAuditWriter, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -233,7 +230,7 @@ func newDeliveryHandler(log *zap.Logger, client httpclient.Client, db *sql.DB, h
 	h := &DeliveryHandler{
 		log:         log.Named("delivery"),
 		client:      client,
-		db:          db,
+		audit:       audit,
 		hmacSecrets: hmacSecrets,
 		insecureDev: insecureDev,
 	}

@@ -13,12 +13,13 @@ import (
 	"fmt"
 	"time"
 
-	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	perf "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/performance"
+	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	kernelperf "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/performance"
 )
 
-// Source implements perf.ReportSource over the observability and job-registry
+// Source implements kernelperf.ReportSource over the observability and job-registry
 // SQLite databases. It is the single read path shared by any CLI/API/report
 // surface that projects a job's performance — no consumer should re-derive
 // these queries locally.
@@ -36,30 +37,30 @@ func NewSource(jobsDB, obsDB *sql.DB) (*Source, error) {
 	return &Source{jobs: jobsDB, obs: obsDB}, nil
 }
 
-var _ perf.ReportSource = (*Source)(nil)
+var _ kernelperf.ReportSource = (*Source)(nil)
 
 // Load reads the canonical RunReport and projects audio metrics from its
 // operations. Workflow payloads are not an authority for timings.
-func (s *Source) Load(ctx context.Context, jobID string) (kernobs.RunReport, scriptgeneration.AudioPipelineMetrics, []scriptgeneration.ExecutionStep, error) {
+func (s *Source) Load(ctx context.Context, jobID string) (kernobs.RunReport, kernelaudio.AudioPipelineMetrics, []scriptpkg.ExecutionStep, error) {
 	if s == nil || s.obs == nil || s.jobs == nil {
-		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, nil, errors.New("performance source: databases are not configured")
+		return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, nil, errors.New("performance source: databases are not configured")
 	}
 	if jobID == "" {
-		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, nil, errors.New("performance source: job id is required")
+		return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, nil, errors.New("performance source: job id is required")
 	}
 
 	run, audio, err := s.loadRun(ctx, jobID)
 	if err != nil {
-		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, nil, err
+		return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, nil, err
 	}
 	steps, err := s.loadSteps(ctx, jobID)
 	if err != nil {
-		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, nil, err
+		return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, nil, err
 	}
 	return run, audio, steps, nil
 }
 
-func (s *Source) loadRun(ctx context.Context, jobID string) (kernobs.RunReport, scriptgeneration.AudioPipelineMetrics, error) {
+func (s *Source) loadRun(ctx context.Context, jobID string) (kernobs.RunReport, kernelaudio.AudioPipelineMetrics, error) {
 	// A job owns more than one run_observability row: the canonical worker
 	// run, a pre-job synthetic run, and finalize/delivery child runs. Their
 	// created_at ordering is not the job's execution order (a delivery child
@@ -69,9 +70,9 @@ func (s *Source) loadRun(ctx context.Context, jobID string) (kernobs.RunReport, 
 	var jobType string
 	if err := s.jobs.QueryRowContext(ctx, `SELECT type FROM jobs WHERE id=?`, jobID).Scan(&jobType); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: no job for id %s", jobID)
+			return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("performance source: no job for id %s", jobID)
 		}
-		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: read job %s: %w", jobID, err)
+		return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("performance source: read job %s: %w", jobID, err)
 	}
 
 	var reportJSON string
@@ -83,21 +84,21 @@ func (s *Source) loadRun(ctx context.Context, jobID string) (kernobs.RunReport, 
 		jobID, jobType).Scan(&reportJSON)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: no finalized run for job %s", jobID)
+			return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("performance source: no finalized run for job %s", jobID)
 		}
-		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: read run %s: %w", jobID, err)
+		return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("performance source: read run %s: %w", jobID, err)
 	}
 
 	var run kernobs.RunReport
 	if err := json.Unmarshal([]byte(reportJSON), &run); err != nil {
-		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: decode run report %s: %w", jobID, err)
+		return kernobs.RunReport{}, kernelaudio.AudioPipelineMetrics{}, fmt.Errorf("performance source: decode run report %s: %w", jobID, err)
 	}
 
 	return run, projectAudioMetrics(run), nil
 }
 
-func projectAudioMetrics(run kernobs.RunReport) scriptgeneration.AudioPipelineMetrics {
-	var audio scriptgeneration.AudioPipelineMetrics
+func projectAudioMetrics(run kernobs.RunReport) kernelaudio.AudioPipelineMetrics {
+	var audio kernelaudio.AudioPipelineMetrics
 	for _, op := range run.Operations {
 		if op.OutputDurationMS > audio.AudioDurationMS {
 			audio.AudioDurationMS = op.OutputDurationMS
@@ -148,7 +149,7 @@ func projectAudioMetrics(run kernobs.RunReport) scriptgeneration.AudioPipelineMe
 	return audio
 }
 
-func (s *Source) loadSteps(ctx context.Context, jobID string) ([]scriptgeneration.ExecutionStep, error) {
+func (s *Source) loadSteps(ctx context.Context, jobID string) ([]scriptpkg.ExecutionStep, error) {
 	rows, err := s.jobs.QueryContext(ctx,
 		`SELECT step_id, step_name, step_type, status, started_at, completed_at, duration_ms, error_message FROM job_steps WHERE job_id=? ORDER BY created_at ASC, rowid ASC`,
 		jobID)
@@ -157,10 +158,10 @@ func (s *Source) loadSteps(ctx context.Context, jobID string) ([]scriptgeneratio
 	}
 	defer func() { _ = rows.Close() }()
 
-	steps := make([]scriptgeneration.ExecutionStep, 0, 8)
+	steps := make([]scriptpkg.ExecutionStep, 0, 8)
 	for rows.Next() {
 		var (
-			step         scriptgeneration.ExecutionStep
+			step         scriptpkg.ExecutionStep
 			startedAt    sql.NullString
 			completedAt  sql.NullString
 			errorMessage sql.NullString

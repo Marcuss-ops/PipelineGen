@@ -49,29 +49,7 @@ var capabilitySQLForbiddenImports = []string{
 // artifacts repository) from the capability tree. What remains is I/O binder
 // debt inside capabilities that use sql.Tx/sql.DB directly; moving each one to
 // a typed port is the follow-up recorded by its trigger.
-var capabilitySQLInventory = map[string]string{
-	"internal/capabilities/ai/autotag/autotag.go":                                   "owner=ai; removal_trigger=tag persistence moves behind a kernel port",
-	"internal/capabilities/assets/finalizer/tx_adapter.go":                          "owner=assets-finalizer; removal_trigger=tx adapter moves to platform/sqlite",
-	"internal/capabilities/assets/ingest/adapter_clip.go":                           "owner=assets-ingest; removal_trigger=clip ingest reads move to pgmedia ports",
-	"internal/capabilities/assets/lifecycle/service_voiceover.go":                   "owner=assets-lifecycle; removal_trigger=voiceover lifecycle store moves to platform",
-	"internal/capabilities/assets/persistence/committer.go":                         "owner=assets-persistence; removal_trigger=committer port types replace *sql.Tx/sql.DB",
-	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go": "owner=stock-enrichment; removal_trigger=handler repository moves to platform",
-	"internal/capabilities/assets/providers/stock/enrichment/outbox_emitter.go":     "owner=stock-enrichment; removal_trigger=outbox emitter uses a domain port",
-	"internal/capabilities/assets/texttracks/materializer.go":                       "owner=texttracks; removal_trigger=materializer store moves to platform/sqlite",
-	"internal/capabilities/jobs/handlers/delivery.go":                               "owner=jobs; removal_trigger=delivery persistence moves to platform",
-	"internal/capabilities/jobs/finalize/artifact_writer.go":                        "owner=jobs-finalize; removal_trigger=artifact writer moves to platform/sqlite",
-	"internal/capabilities/jobs/finalize/job_completion_writer.go":                  "owner=jobs-finalize; removal_trigger=completion writer moves to platform/sqlite",
-	"internal/capabilities/jobs/finalize/job_finalizer.go":                          "owner=jobs-finalize; removal_trigger=finalizer tx ownership moves to platform",
-	"internal/capabilities/jobs/finalize/lease_fence.go":                            "owner=jobs-finalize; removal_trigger=lease fence moves to platform/sqlite",
-	"internal/capabilities/jobs/outbox_registry.go":                                 "owner=jobs; removal_trigger=outbox registry moves to platform",
-	"internal/capabilities/operations/ports.go":                                     "owner=operations; removal_trigger=tx-scoped repository port replaces *sql.Tx",
-	"internal/capabilities/voiceover/service/finalizer.go":                          "owner=voiceover; removal_trigger=finalizer persistence moves to platform",
-	"internal/capabilities/voiceover/service/finalizer_cleanup_outbox.go":           "owner=voiceover; removal_trigger=cleanup outbox moves to platform",
-	"internal/capabilities/voiceover/service/finalizer_execute.go":                  "owner=voiceover; removal_trigger=finalizer execute moves to platform",
-	"internal/capabilities/voiceover/service/persistence/repository.go":             "owner=voiceover; removal_trigger=persistence repository moves to platform/sqlite",
-	"internal/capabilities/voiceover/service/ports_finalization.go":                 "owner=voiceover; removal_trigger=finalization port replaces *sql.Tx",
-	"internal/capabilities/voiceover/service/upload_intent.go":                      "owner=voiceover; removal_trigger=upload intent persistence moves to platform",
-}
+var capabilitySQLInventory = map[string]string{}
 
 // ScanCapabilitySQLBan bans SQL engine ownership in internal/capabilities.
 //

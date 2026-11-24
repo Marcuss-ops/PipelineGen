@@ -39,9 +39,10 @@ package enrichment
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // PostgresAssetRepository is the production concrete AssetRepository.
@@ -54,15 +55,15 @@ import (
 // root wires this concrete with the same DB handle the canonical media
 // committer owns.
 type PostgresAssetRepository struct {
-	// DB is the PostgreSQL media-SSOT *sql.DB handle.
-	DB              *sql.DB
+	// DB is the PostgreSQL media-SSOT query handle.
+	DB              sqlport.QueryRower
 	MetadataUpdater AssetMetadataUpdater
 }
 
 // NewPostgresAssetRepository constructs the canonical concrete with a
 // fail-closed nil-DB gate per godlike/07 typed-error contract.
 // Returns (nil, WrapHandlerNotConfigured) when db is nil.
-func NewPostgresAssetRepository(db *sql.DB) (*PostgresAssetRepository, error) {
+func NewPostgresAssetRepository(db sqlport.QueryRower) (*PostgresAssetRepository, error) {
 	if db == nil {
 		return nil, WrapHandlerNotConfigured("media postgres db")
 	}
@@ -122,7 +123,7 @@ func (r *PostgresAssetRepository) GetByID(ctx context.Context, id string) (*Asse
 		&out.DrivePath, &out.ContentSHA256,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, sqlport.ErrNoRows) {
 			return nil, WrapChunkNotFound(id)
 		}
 		return nil, WrapPersistFailed(err)

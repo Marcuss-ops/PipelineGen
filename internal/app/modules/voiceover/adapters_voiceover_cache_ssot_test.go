@@ -29,6 +29,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 func newVoiceoverCacheTestDB(t *testing.T) *sql.DB {
@@ -145,7 +146,7 @@ VALUES (?, ?, ?, '', '', '')`, id, name, driveFileID)
 func TestVoiceoverCacheSSOT_MissingMediaAssetRowIsMiss(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
+	adapter := NewUseCaseRepoAdapter(repo, sqlport.WrapDB(db), sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-1", "fp-1", "completed", "{}")
@@ -163,7 +164,7 @@ func TestVoiceoverCacheSSOT_MissingMediaAssetRowIsMiss(t *testing.T) {
 func TestVoiceoverCacheSSOT_EmptyDriveFileIDIsMiss(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
+	adapter := NewUseCaseRepoAdapter(repo, sqlport.WrapDB(db), sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-2", "fp-2", "completed", "{}")
@@ -180,7 +181,7 @@ func TestVoiceoverCacheSSOT_EmptyDriveFileIDIsMiss(t *testing.T) {
 func TestVoiceoverCacheUsesCleanedDurationFromMetadata(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
+	adapter := NewUseCaseRepoAdapter(repo, sqlport.WrapDB(db), sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-clean", "fp-clean", "completed", `{"silence_cleanup":{"clean_duration_us":4000000}}`)
@@ -200,7 +201,7 @@ func TestVoiceoverCacheUsesCleanedDurationFromMetadata(t *testing.T) {
 func TestVoiceoverCacheSSOT_HealthyRowReturnsHitWithSSOTData(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
+	adapter := NewUseCaseRepoAdapter(repo, sqlport.WrapDB(db), sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-3", "fp-3", "completed", `{"timing_json_link":"https://drive.google.com/file/d/timing-drive-id/view","audio_sha256":"audio-hash-1","timing_duration_us":5000000,"timing_word_count":1}`)
@@ -224,7 +225,7 @@ func TestVoiceoverCacheSSOT_HealthyRowReturnsHitWithSSOTData(t *testing.T) {
 func TestVoiceoverCacheSSOT_NonReusableStatusIsMiss(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
+	adapter := NewUseCaseRepoAdapter(repo, sqlport.WrapDB(db), sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-4", "fp-4", "failed", "{}")
@@ -241,7 +242,7 @@ func TestVoiceoverCacheSSOT_NonReusableStatusIsMiss(t *testing.T) {
 func TestVoiceoverCacheSSOT_TimingRequiredButMissingIsMiss(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
+	adapter := NewUseCaseRepoAdapter(repo, sqlport.WrapDB(db), sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	insertVoiceoverRow(t, db, "vo-5", "fp-5", "completed", "{}") // no timing_json_link
@@ -275,7 +276,7 @@ func TestVoiceoverCacheSSOT_NilAdapterReturnsNil(t *testing.T) {
 func TestVoiceoverCacheSSOT_MetadataFromMediaAssetsNotCacheRow(t *testing.T) {
 	db := newVoiceoverCacheTestDB(t)
 	repo := sqassets.NewVoiceoversRepository(db)
-	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
+	adapter := NewUseCaseRepoAdapter(repo, sqlport.WrapDB(db), sqliteVoiceoverMediaReader{db: db})
 	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
 
 	metaJSON := `{"timing_json_link":"https://drive.google.com/file/d/timing-drive-id/view","cleaned_path":"/tmp/cleaned.wav","audio_sha256":"audio-hash-1","timing_duration_us":5000000,"timing_word_count":1}`

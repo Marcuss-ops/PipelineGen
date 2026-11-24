@@ -6,7 +6,6 @@ package texttracks
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -18,6 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"go.uber.org/zap"
 )
 
@@ -194,7 +194,7 @@ type fakeOutbox struct {
 	hook         func() error
 }
 
-func (f *fakeOutbox) Enqueue(_ context.Context, _ *sql.Tx, eventType, aggregateID, _ string, payloadJSON, eventKey string) (*outboxevents.EnqueueResult, error) {
+func (f *fakeOutbox) Enqueue(_ context.Context, _ sqlport.Tx, eventType, aggregateID, _ string, payloadJSON, eventKey string) (*outboxevents.EnqueueResult, error) {
 	atomic.AddInt32(&f.enqueueCalls, 1)
 	f.mu.Lock()
 	hook := f.hook

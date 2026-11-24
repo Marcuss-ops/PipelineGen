@@ -49,6 +49,7 @@ import (
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 
 	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover"
 
@@ -198,7 +199,7 @@ func buildVoiceoverPersistence(cfg *config.Config, dbs *Databases, log *zap.Logg
 	// reading it on the operational handle graded a database that holds no
 	// committed media rows. A closed media plane passes a nil reader, and both
 	// call sites then report explicitly rather than answering from a mirror.
-	voRepoAdapter := vowiring.NewUseCaseRepoAdapter(voRepo, dbs.DualPool.Writer, voiceoverMediaReaderFromCommitter(committer))
+	voRepoAdapter := vowiring.NewUseCaseRepoAdapter(voRepo, sqlport.WrapDB(dbs.DualPool.Writer), voiceoverMediaReaderFromCommitter(committer))
 
 	// Cross-run voiceover cache (August 2026): wraps the existing
 	// FindByFingerprint on the SQLite repository to short-circuit

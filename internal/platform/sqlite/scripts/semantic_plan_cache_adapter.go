@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 	"go.uber.org/zap"
 )
 

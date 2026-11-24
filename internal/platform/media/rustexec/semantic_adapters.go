@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	entityports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities/ports"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 type visualNERRequest struct {
@@ -30,7 +30,7 @@ type visualNERRequest struct {
 	EntityCount int `json:"entity_count"`
 }
 type visualNERResponse struct {
-	Entities []scriptgen.VisualEntity `json:"entities"`
+	Entities []semantic.VisualEntity `json:"entities"`
 	// Error is set by the Rust worker when it rejects a line without
 	// killing the persistent process (decode/contract failure). Empty on
 	// success; absent on responses from older binaries.
@@ -55,11 +55,11 @@ func (a *VisualNERAdapter) Close() {
 // operation. Entity references in relations, lower-thirds and chart points
 // are indexes into Entities.
 type VisualAnalysis struct {
-	Entities    []scriptgen.VisualEntity `json:"entities"`
-	Relations   []visualRelation         `json:"relations"`
-	LowerThirds []visualLowerThird       `json:"lower_thirds"`
-	Bullets     []visualBullet           `json:"bullets"`
-	ChartPoints []visualChartPoint       `json:"chart_points"`
+	Entities    []semantic.VisualEntity `json:"entities"`
+	Relations   []visualRelation        `json:"relations"`
+	LowerThirds []visualLowerThird      `json:"lower_thirds"`
+	Bullets     []visualBullet          `json:"bullets"`
+	ChartPoints []visualChartPoint      `json:"chart_points"`
 	// TemporalFacts carries every source-grounded date occurrence,
 	// independent of the visual top-N budget (absent from older binaries).
 	TemporalFacts []visualTemporalFact `json:"temporal_facts"`
@@ -323,8 +323,8 @@ func daysInGoMonth(month, year int) int {
 
 // projectBullets projects the analyze response's grounded sentence bullets
 // into the capability contract; nothing is inferred.
-func projectBullets(sourceText string, analysis *VisualAnalysis) []scriptgen.BulletCandidate {
-	out := make([]scriptgen.BulletCandidate, 0, len(analysis.Bullets))
+func projectBullets(sourceText string, analysis *VisualAnalysis) []semantic.BulletCandidate {
+	out := make([]semantic.BulletCandidate, 0, len(analysis.Bullets))
 	for _, b := range analysis.Bullets {
 		if b.Start < 0 || b.End <= b.Start || b.End > len(sourceText) {
 			continue
@@ -335,20 +335,20 @@ func projectBullets(sourceText string, analysis *VisualAnalysis) []scriptgen.Bul
 		if strings.TrimSpace(b.Text) == "" || b.SentenceIndex < 0 {
 			continue
 		}
-		out = append(out, scriptgen.BulletCandidate{Text: b.Text, SentenceIndex: b.SentenceIndex, Start: b.Start, End: b.End})
+		out = append(out, semantic.BulletCandidate{Text: b.Text, SentenceIndex: b.SentenceIndex, Start: b.Start, End: b.End})
 	}
 	return out
 }
 
 // projectCharts projects the analyze response's grounded chart points into the
 // capability contract; nothing is inferred.
-func projectCharts(sourceText string, analysis *VisualAnalysis) []scriptgen.ChartValueCandidate {
-	out := make([]scriptgen.ChartValueCandidate, 0, len(analysis.ChartPoints))
+func projectCharts(sourceText string, analysis *VisualAnalysis) []semantic.ChartValueCandidate {
+	out := make([]semantic.ChartValueCandidate, 0, len(analysis.ChartPoints))
 	for _, cp := range analysis.ChartPoints {
 		if cp.Start < 0 || cp.End <= cp.Start || cp.End > len(sourceText) || sourceText[cp.Start:cp.End] != cp.Text {
 			continue
 		}
-		out = append(out, scriptgen.ChartValueCandidate{Text: cp.Text, Value: cp.Value})
+		out = append(out, semantic.ChartValueCandidate{Text: cp.Text, Value: cp.Value})
 	}
 	return out
 }
@@ -357,14 +357,14 @@ func projectCharts(sourceText string, analysis *VisualAnalysis) []scriptgen.Char
 // consumes for one scene: one worker call yields the grounded Bullet,
 // ChartValue and TemporalFact candidates. Nothing is inferred and each
 // surface is byte-verified against sourceText by Analyze.
-func (a *VisualNERAdapter) SemanticCandidates(ctx context.Context, language, sourceText string, limit int) (*scriptgen.SemanticCandidateBundle, error) {
+func (a *VisualNERAdapter) SemanticCandidates(ctx context.Context, language, sourceText string, limit int) (*semantic.SemanticCandidateBundle, error) {
 	analysis, err := a.Analyze(ctx, language, sourceText, limit)
 	if err != nil {
 		return nil, err
 	}
-	temporal := make([]scriptgen.TemporalFactCandidate, 0, len(analysis.TemporalFacts))
+	temporal := make([]semantic.TemporalFactCandidate, 0, len(analysis.TemporalFacts))
 	for _, fact := range analysis.TemporalFacts {
-		candidate := scriptgen.TemporalFactCandidate{
+		candidate := semantic.TemporalFactCandidate{
 			Text: fact.Surface, Precision: fact.Precision,
 			Start: fact.StartByte, End: fact.EndByte, Ambiguous: fact.Ambiguous,
 		}
@@ -376,9 +376,9 @@ func (a *VisualNERAdapter) SemanticCandidates(ctx context.Context, language, sou
 		}
 		temporal = append(temporal, candidate)
 	}
-	numeric := make([]scriptgen.NumericFactCandidate, 0, len(analysis.NumericFacts))
+	numeric := make([]semantic.NumericFactCandidate, 0, len(analysis.NumericFacts))
 	for _, fact := range analysis.NumericFacts {
-		candidate := scriptgen.NumericFactCandidate{
+		candidate := semantic.NumericFactCandidate{
 			Text: fact.Surface, Kind: fact.Kind,
 			Start: fact.StartByte, End: fact.EndByte,
 		}
@@ -388,7 +388,7 @@ func (a *VisualNERAdapter) SemanticCandidates(ctx context.Context, language, sou
 		}
 		numeric = append(numeric, candidate)
 	}
-	return &scriptgen.SemanticCandidateBundle{
+	return &semantic.SemanticCandidateBundle{
 		Bullets:  projectBullets(sourceText, analysis),
 		Charts:   projectCharts(sourceText, analysis),
 		Temporal: temporal,
@@ -400,7 +400,7 @@ func (a *VisualNERAdapter) SemanticCandidates(ctx context.Context, language, sou
 // includes pairwise relations and sentence evidence; that response is useful
 // to callers that need it, but can exceed the persistent worker's bounded
 // output for long narration. Scene entity extraction only needs grounded spans.
-func (a *VisualNERAdapter) Extract(ctx context.Context, language, sourceText string, limit int) ([]scriptgen.VisualEntity, error) {
+func (a *VisualNERAdapter) Extract(ctx context.Context, language, sourceText string, limit int) ([]semantic.VisualEntity, error) {
 	if a == nil || a.executor == nil {
 		return nil, fmt.Errorf("visualner: executor is not configured")
 	}
@@ -509,6 +509,5 @@ type mediaSamplerResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
-var _ scriptgen.VisualNERPort = (*VisualNERAdapter)(nil)
 var _ entityports.EntityExtractor = (*VisualNERAdapter)(nil)
 var _ scriptports.MediaSamplerPort = (*MediaSamplerAdapter)(nil)

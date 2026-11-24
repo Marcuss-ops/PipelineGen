@@ -31,6 +31,7 @@ import (
 	jobindexrestore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/indexrestore"
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	sqldelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/delivery"
 
 	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_drive"
 	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/publish_outbox"
@@ -107,10 +108,10 @@ func buildOutboxDeps(
 
 	outboxDeps := &jobsoutbox.Deps{
 		Infra: jobsoutbox.InfraDeps{
-			DB:          dbs.DualPool.Writer,
-			HTTPClient:  httpClient,
-			HMACSecrets: hmacSecrets,
-			InsecureDev: cfg.Security.DeliveryInsecureDev,
+			DeliveryAudit: sqldelivery.NewRepository(dbs.DualPool.Writer),
+			HTTPClient:    httpClient,
+			HMACSecrets:   hmacSecrets,
+			InsecureDev:   cfg.Security.DeliveryInsecureDev,
 		},
 		Jobs: jobsoutbox.JobDeps{
 			Jobs: jobs.Service,

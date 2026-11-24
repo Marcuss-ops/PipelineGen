@@ -23,6 +23,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 
 	"os"
@@ -35,6 +36,7 @@ import (
 	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/script"
 	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/vidrush"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -162,7 +164,9 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// per-identity attempt budget; the client owns transport retries.
 	visionVerdictScorer := scriptadapters.NewOptionalEntityImageScorer(
 		cfg.External.EntityImageVLMMode,
-		ollamaadapters.NewOllamaPersonImageScorer(visionVerdictClient),
+		ollamaadapters.NewOllamaPersonImageScorerWithDownloader(visionVerdictClient, func(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+			return vidrush.DownloadVidRushImageForCandidate(ctx, vidrush.ProviderImageHTTPClient(), candidate, vidrush.DefaultVidRushImagePolicy())
+		}),
 	)
 
 	// Dedicated embedding client: uses a separate model (the canonical

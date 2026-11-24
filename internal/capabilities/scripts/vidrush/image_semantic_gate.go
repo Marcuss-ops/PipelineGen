@@ -7,6 +7,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	kernelsemantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 // MinInternetImageSemanticScore is the acceptance floor applied to a candidate
@@ -20,9 +21,7 @@ const MinInternetImageSemanticScore = 0.35
 // RelevanceScore / QualityReason). Implementations belong to infrastructure;
 // returning an error is treated as "scoring unavailable" and the unscored
 // candidates flow through unchanged.
-type SemanticCandidateScorer interface {
-	ScoreImageCandidates(ctx context.Context, query string, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error)
-}
+type SemanticCandidateScorer = kernelsemantic.CandidateScorer
 
 // resolveEntityVisualCandidates is the shared semantic-verification boundary
 // used by the batch planner, VidRush fanout and MediaResolver. It keeps source

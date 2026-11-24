@@ -23,8 +23,6 @@
 package jobs
 
 import (
-	"database/sql"
-
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
@@ -94,8 +92,8 @@ import (
 // InfraDeps groups the infrastructure / configuration knobs so Deps
 // stays under the archcheck 8-field cap.
 type InfraDeps struct {
-	DB                 *sql.DB
 	HTTPClient         httpclient.Client
+	DeliveryAudit      handlers.DeliveryAuditWriter
 	HMACSecrets        [][]byte
 	InsecureDev        bool
 	DeliveryOperations DeliveryOperation
@@ -214,7 +212,7 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 		// means the webhook delivery path is intentionally skipped
 		// rather than silently depending on an infrastructure driver.
 		if deps.Infra.HTTPClient != nil && (len(deps.Infra.HMACSecrets) > 0 || deps.Infra.InsecureDev) {
-			optional = append(optional, NewDeliveryHandlerWithOperations(log, deps.Infra.HTTPClient, deps.Infra.DB, deps.Infra.HMACSecrets, deps.Infra.InsecureDev, deps.Infra.DeliveryOperations))
+			optional = append(optional, NewDeliveryHandlerWithOperations(log, deps.Infra.HTTPClient, deps.Infra.DeliveryAudit, deps.Infra.HMACSecrets, deps.Infra.InsecureDev, deps.Infra.DeliveryOperations))
 		}
 	}
 	optional = append(optional, NewProviderSyncHandler(log, depsOrNil(deps).Jobs.Jobs))
@@ -285,10 +283,9 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 }
 
 // NewDeliveryHandlerWithOperations keeps the historical root constructor
-// while the implementation lives in jobs/handlers. The database/sql import
-// stays in this already-inventoried file, not in a new compatibility file.
-func NewDeliveryHandlerWithOperations(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
-	return handlers.NewDeliveryHandlerWithOperations(log, client, db, hmacSecrets, insecureDev, operations)
+// while the implementation lives in jobs/handlers.
+func NewDeliveryHandlerWithOperations(log *zap.Logger, client httpclient.Client, audit handlers.DeliveryAuditWriter, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
+	return handlers.NewDeliveryHandlerWithOperations(log, client, audit, hmacSecrets, insecureDev, operations)
 }
 
 func depsOrNil(d *Deps) *Deps {

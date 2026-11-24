@@ -1,8 +1,8 @@
 package rustexec
 
 import (
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 // semanticEngineRequest is the NDJSON request shape of the engine.
@@ -52,33 +52,33 @@ type semanticEngineManifest struct {
 	CrossSceneRoutes    []semanticEngineCrossSceneRoute    `json:"cross_scene_routes,omitempty"`
 	Events              []semanticEngineEventFrame         `json:"events,omitempty"`
 	Entities            []semanticEngineLinkedEntity       `json:"entities"`
-	StoryGraph          *scriptgen.SemanticStoryGraph      `json:"story_graph,omitempty"`
-	VisualCoverage      *scriptgen.SemanticVisualCoverage  `json:"visual_coverage,omitempty"`
+	StoryGraph          *semantic.SemanticStoryGraph       `json:"story_graph,omitempty"`
+	VisualCoverage      *semantic.SemanticVisualCoverage   `json:"visual_coverage,omitempty"`
 	VisualConsolidation *semanticEngineConsolidation       `json:"visual_consolidation,omitempty"`
 	SearchFeedback      *semanticEngineSearchFeedback      `json:"search_feedback,omitempty"`
 	Editorial           *semanticEngineEditorialResult     `json:"editorial,omitempty"`
 }
 
 type semanticEngineLinkedEntity struct {
-	LocalID             string                            `json:"local_id"`
-	EditorialSurface    string                            `json:"editorial_surface"`
-	EditorialType       string                            `json:"editorial_type"`
-	PromptEcho          bool                              `json:"prompt_echo"`
-	VisualAdmission     bool                              `json:"visual_admission"`
-	SurfaceKey          string                            `json:"surface_key"`
-	CanonicalSurface    string                            `json:"canonical_surface"`
-	CanonicalID         *string                           `json:"canonical_id"`
-	LinkStatus          string                            `json:"link_status"`
-	CanonicalName       string                            `json:"canonical_name"`
-	EntityType          string                            `json:"entity_type"`
-	Role                string                            `json:"role"`
-	DisambiguationGloss *string                           `json:"disambiguation_gloss"`
-	NegativeConstraints []string                          `json:"negative_constraints"`
-	Mentions            []semanticEngineMention           `json:"mentions"`
-	SearchIntents       []semanticEngineSearchIntent      `json:"search_intents"`
-	LinkCandidates      []scriptgen.SemanticLinkCandidate `json:"link_candidates"`
-	LinkMargin          *int                              `json:"link_margin"`
-	LinkRule            string                            `json:"link_rule"`
+	LocalID             string                           `json:"local_id"`
+	EditorialSurface    string                           `json:"editorial_surface"`
+	EditorialType       string                           `json:"editorial_type"`
+	PromptEcho          bool                             `json:"prompt_echo"`
+	VisualAdmission     bool                             `json:"visual_admission"`
+	SurfaceKey          string                           `json:"surface_key"`
+	CanonicalSurface    string                           `json:"canonical_surface"`
+	CanonicalID         *string                          `json:"canonical_id"`
+	LinkStatus          string                           `json:"link_status"`
+	CanonicalName       string                           `json:"canonical_name"`
+	EntityType          string                           `json:"entity_type"`
+	Role                string                           `json:"role"`
+	DisambiguationGloss *string                          `json:"disambiguation_gloss"`
+	NegativeConstraints []string                         `json:"negative_constraints"`
+	Mentions            []semanticEngineMention          `json:"mentions"`
+	SearchIntents       []semanticEngineSearchIntent     `json:"search_intents"`
+	LinkCandidates      []semantic.SemanticLinkCandidate `json:"link_candidates"`
+	LinkMargin          *int                             `json:"link_margin"`
+	LinkRule            string                           `json:"link_rule"`
 }
 
 // semanticEngineSearchFeedback mirrors semantic-core::manifest::SearchFeedback.

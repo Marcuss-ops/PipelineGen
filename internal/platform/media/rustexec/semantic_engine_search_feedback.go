@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
-
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
 // searchQueryWidening is the documented ladder order: the exact identity is
@@ -28,14 +26,14 @@ var searchQueryWidening = map[string]int{
 func projectSemanticSearchFeedback(
 	texts map[string]string,
 	wire *semanticEngineSearchFeedback,
-	bundles map[string]*scriptgen.SemanticCandidateBundle,
-) (*scriptgen.SemanticSearchFeedback, error) {
+	bundles map[string]*semantic.SemanticCandidateBundle,
+) (*semantic.SemanticSearchFeedback, error) {
 	if wire == nil {
 		return nil, nil
 	}
-	proposalByScene := make(map[string]map[string]*scriptgen.SemanticVisualProposal, len(bundles))
+	proposalByScene := make(map[string]map[string]*semantic.SemanticVisualProposal, len(bundles))
 	for sceneID, bundle := range bundles {
-		byID := make(map[string]*scriptgen.SemanticVisualProposal, len(bundle.Proposals))
+		byID := make(map[string]*semantic.SemanticVisualProposal, len(bundle.Proposals))
 		for index := range bundle.Proposals {
 			proposal := &bundle.Proposals[index]
 			byID[proposal.ID] = proposal
@@ -44,7 +42,7 @@ func projectSemanticSearchFeedback(
 	}
 
 	scriptText := scriptGroundingText(texts)
-	feedback := &scriptgen.SemanticSearchFeedback{Entries: make([]scriptgen.SemanticSearchFeedbackEntry, 0, len(wire.Entries))}
+	feedback := &semantic.SemanticSearchFeedback{Entries: make([]semantic.SemanticSearchFeedbackEntry, 0, len(wire.Entries))}
 	seen := make(map[string]struct{}, len(wire.Entries))
 	for _, entry := range wire.Entries {
 		proposalID := strings.TrimSpace(entry.ProposalID)
@@ -81,7 +79,7 @@ func projectSemanticSearchFeedback(
 		for _, suggestion := range proposal.VisualQuerySuggestions {
 			suggested[suggestion] = struct{}{}
 		}
-		queries := make([]generationcontract.SemanticSearchQuery, 0, len(entry.Queries))
+		queries := make([]semantic.SemanticSearchQuery, 0, len(entry.Queries))
 		seenQueries := make(map[string]struct{}, len(entry.Queries))
 		previousKind := -1
 		for _, query := range entry.Queries {
@@ -112,11 +110,11 @@ func projectSemanticSearchFeedback(
 				return nil, fmt.Errorf("semantic search feedback: proposal %q repeats query %q", proposalID, text)
 			}
 			seenQueries[text] = struct{}{}
-			queries = append(queries, generationcontract.SemanticSearchQuery{
+			queries = append(queries, semantic.SemanticSearchQuery{
 				Kind: kind, Text: text, Origin: query.Origin, Illustrative: query.Illustrative,
 			})
 		}
-		feedback.Entries = append(feedback.Entries, scriptgen.SemanticSearchFeedbackEntry{
+		feedback.Entries = append(feedback.Entries, semantic.SemanticSearchFeedbackEntry{
 			ProposalID: proposalID,
 			SceneID:    sceneID,
 			Queries:    queries,

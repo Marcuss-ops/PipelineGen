@@ -1,6 +1,6 @@
-// Package adapters — metadata_generator.go bridges the application-layer
-// MetadataGenerator port (internal/capabilities/scripts/adapters) with the
-// real ollama.Generator video metadata generation backend.
+// Package adapters — metadata_generator.go bridges the kernel-owned
+// script.MetadataGenerator port with the real ollama.Generator video metadata
+// generation backend.
 //
 // PR-METADATA-GENERATOR-WIRING (July 2026): the V2 postprocessor pipeline
 // had the metadata processor wired through the fail-closed
@@ -25,13 +25,11 @@ import (
 	"context"
 	"strings"
 
-	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
 )
 
-// OllamaMetadataGeneratorAdapter implements scriptadapters.MetadataGenerator
+// OllamaMetadataGeneratorAdapter implements script.MetadataGenerator
 // by delegating to the real ollama.Generator video metadata backend.
 type OllamaMetadataGeneratorAdapter struct {
 	gen *ollama.Generator
@@ -39,13 +37,13 @@ type OllamaMetadataGeneratorAdapter struct {
 
 // NewOllamaMetadataGeneratorAdapter constructs the adapter. gen may be
 // nil — in that case, GenerateMetadata returns
-// processor.ErrMetadataGeneratorUnavailable (fail-closed per
+// script.ErrMetadataGeneratorUnavailable (fail-closed per
 // godlike/07) so callers probe identically to the unavailable adapter.
-func NewOllamaMetadataGeneratorAdapter(gen *ollama.Generator) scriptadapters.MetadataGenerator {
+func NewOllamaMetadataGeneratorAdapter(gen *ollama.Generator) script.MetadataGenerator {
 	return &OllamaMetadataGeneratorAdapter{gen: gen}
 }
 
-// GenerateMetadata implements scriptadapters.MetadataGenerator.
+// GenerateMetadata implements script.MetadataGenerator.
 //
 // Flow:
 //  1. Call ollama.Generator.GenerateVideoMetadataWithModel with the
@@ -58,7 +56,7 @@ func NewOllamaMetadataGeneratorAdapter(gen *ollama.Generator) scriptadapters.Met
 //     - TranslationStatus = "translated" (backend returns English)
 func (a *OllamaMetadataGeneratorAdapter) GenerateMetadata(ctx context.Context, req script.MetadataGenerationRequest) ([]script.VideoMetadata, error) {
 	if a.gen == nil {
-		return nil, processor.ErrMetadataGeneratorUnavailable
+		return nil, script.ErrMetadataGeneratorUnavailable
 	}
 
 	title := strings.TrimSpace(req.Title)
@@ -83,5 +81,5 @@ func (a *OllamaMetadataGeneratorAdapter) GenerateMetadata(ctx context.Context, r
 }
 
 // Compile-time pin: OllamaMetadataGeneratorAdapter satisfies
-// scriptadapters.MetadataGenerator.
-var _ scriptadapters.MetadataGenerator = (*OllamaMetadataGeneratorAdapter)(nil)
+// script.MetadataGenerator.
+var _ script.MetadataGenerator = (*OllamaMetadataGeneratorAdapter)(nil)

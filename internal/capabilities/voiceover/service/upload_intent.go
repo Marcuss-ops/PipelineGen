@@ -64,13 +64,13 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"go.uber.org/zap"
 )
 
@@ -93,7 +93,7 @@ type UploadIntentsRepository interface {
 	// visibility per row: a successful MarkUploaded after tx-commit
 	// signals to concurrent replicas that this voiceover_id is at
 	// 'uploaded').
-	BeginTx(ctx context.Context) (*sql.Tx, error)
+	BeginTx(ctx context.Context) (sqlport.Tx, error)
 
 	// InsertTx persists a new intent row inside the caller-owned
 	// tx. Returns (lastInsertID, nil) on success. Returns the raw
@@ -101,7 +101,7 @@ type UploadIntentsRepository interface {
 	// mattn/go-sqlite3's "UNIQUE constraint failed" error chain)
 	// when the row already exists; the caller decides whether to
 	// treat this as idempotent-replay or fatal.
-	InsertTx(ctx context.Context, tx *sql.Tx, opts *UploadIntentInsertOptions) (int64, error)
+	InsertTx(ctx context.Context, tx sqlport.Tx, opts *UploadIntentInsertOptions) (int64, error)
 
 	// MarkUploaded transitions the row to 'uploaded' with the
 	// given DriveFileID. Returns ErrUploadIntentNotFound when the

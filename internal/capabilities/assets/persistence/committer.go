@@ -22,7 +22,6 @@ package persistence
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,6 +29,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // TypedMetadata carries the canonical semantic fields that must be
@@ -206,17 +206,14 @@ type AssetCommitRequest = CommitRequest
 type CommittedAsset = CommitResult
 
 // Transaction is the narrow write surface consumed by AssetCommitter.
-// Production concrete: *sql.Tx.
-type Transaction interface {
-	ExecContext(ctx context.Context, query string, args ...any) (Result, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) Row
-}
+// Production concrete: *sql.Tx, which satisfies sqlport.WriteTx.
+type Transaction = sqlport.WriteTx
 
 // Result is the narrow result surface from Transaction.ExecContext.
-type Result = sql.Result
+type Result = sqlport.Result
 
 // Row is the narrow result surface from Transaction.QueryRowContext.
-type Row = *sql.Row
+type Row = sqlport.Row
 
 // AssetCommitter is the canonical port for committing an asset and
 // its indexing outbox event in a single atomic transaction.
@@ -230,10 +227,10 @@ type AssetMutationCommitter interface {
 	SetIndexState(ctx context.Context, assetID string, state asset.IndexState, lastError string) error
 	SetIndexed(ctx context.Context, assetID, contentHash, sourceVersion, embeddingModel, embeddingVersion, contractHash string) (bool, error)
 	PatchMetadataJSON(ctx context.Context, assetID, patchJSON, updatedAt string) error
-	PatchMetadataJSONTx(ctx context.Context, tx *sql.Tx, assetID, patchJSON, updatedAt string) error
+	PatchMetadataJSONTx(ctx context.Context, tx Transaction, assetID, patchJSON, updatedAt string) error
 	ReplaceMetadataJSON(ctx context.Context, assetID, metadataJSON, updatedAt string) error
 	UpdateFolderPath(ctx context.Context, assetID, folderID, folderPath, updatedAt string) error
-	UpdateFolderPathTx(ctx context.Context, tx *sql.Tx, assetID, folderID, folderPath, updatedAt string) error
+	UpdateFolderPathTx(ctx context.Context, tx Transaction, assetID, folderID, folderPath, updatedAt string) error
 	UpdateLifecycle(ctx context.Context, assetID string, state, deletedAt, updatedAt string) error
 	UpdateTaxonomy(ctx context.Context, taxonomy mediaregistry.AssetTaxonomy) error
 	LinkContent(ctx context.Context, assetID, contentSHA256 string) error
@@ -353,7 +350,7 @@ type RenditionCommit struct {
 // producer fakes do not gain a second write surface; production committers
 // implement both interfaces.
 type AssetRenditionCommitter interface {
-	CommitRenditionTx(ctx context.Context, tx *sql.Tx, assetID string, rendition RenditionCommit, nowStr string) error
+	CommitRenditionTx(ctx context.Context, tx Transaction, assetID string, rendition RenditionCommit, nowStr string) error
 }
 
 // AssetIndexEventCommitter is the canonical tx-bound seam for emitting an
@@ -362,7 +359,7 @@ type AssetRenditionCommitter interface {
 // producer fakes do not gain a second method, while production adapters can
 // still prove that the outbox write has the same canonical owner.
 type AssetIndexEventCommitter interface {
-	CommitIndexEventTx(ctx context.Context, tx *sql.Tx, assetID, source, contentHash, mediaType string) error
+	CommitIndexEventTx(ctx context.Context, tx Transaction, assetID, source, contentHash, mediaType string) error
 }
 
 // ── Typed sentinels ──────────────────────────────────────────────────
