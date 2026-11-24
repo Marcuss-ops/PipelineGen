@@ -7,7 +7,7 @@
 //
 // Extracted 2026-09-12 from model.go to keep every file under
 // max_lines_per_file_strict=600 (godlike/08 forward-prevention cap).
-package scriptgeneration
+package modelvalues
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
@@ -30,7 +30,7 @@ const (
 // Merged here to keep builder.go under max_lines_per_file_strict=600:
 // pure zero-I/O request normalization helpers. No behaviour change.
 
-func toLanguages(src []string) []contract.Language {
+func ToLanguages(src []string) []contract.Language {
 	if src == nil {
 		return nil
 	}
@@ -43,8 +43,8 @@ func toLanguages(src []string) []contract.Language {
 	return dst
 }
 
-// copyStrings returns a copy of the string slice (nil-safe).
-func copyStrings(src []string) []string {
+// CopyStrings returns a copy of the string slice (nil-safe).
+func CopyStrings(src []string) []string {
 	if src == nil {
 		return nil
 	}
@@ -53,7 +53,7 @@ func copyStrings(src []string) []string {
 	return dst
 }
 
-func cloneFloat64(src *float64) *float64 {
+func CloneFloat64(src *float64) *float64 {
 	if src == nil {
 		return nil
 	}
@@ -61,7 +61,7 @@ func cloneFloat64(src *float64) *float64 {
 	return &value
 }
 
-func cloneInt(src *int) *int {
+func CloneInt(src *int) *int {
 	if src == nil {
 		return nil
 	}
@@ -69,7 +69,7 @@ func cloneInt(src *int) *int {
 	return &value
 }
 
-func cloneAnimationCounts(src map[string]int) map[string]int {
+func CloneAnimationCounts(src map[string]int) map[string]int {
 	dst := make(map[string]int, len(src)+1)
 	for key, value := range src {
 		dst[key] = value

@@ -4,7 +4,7 @@
 // classification (PERSON/ORG/GPE → primary, everything else → secondary) so
 // the durable runner and the legacy batch flow produce the same per-scene
 // annotation contract from the same segment insights.
-package scriptgeneration
+package overlayplan
 
 import (
 	"net/url"
@@ -16,12 +16,12 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// projectEntityAnnotations builds the scene-local semantic annotations from a
+// ProjectEntityAnnotations builds the scene-local semantic annotations from a
 // single VidRush segment result. Entities are grounded in the scene text
 // (rune offsets); an entity whose value never occurs verbatim in the text is
 // skipped, never faked. Returns nil when the segment produced no grounded
 // entity.
-func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.SceneAnnotations {
+func ProjectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.SceneAnnotations {
 	ann := &scriptpkg.SceneAnnotations{Version: 1, Language: strings.TrimSpace(language), Status: "completed"}
 	if ann.Language == "" {
 		ann.Language = "und"
@@ -67,11 +67,11 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		if value == "" {
 			continue
 		}
-		kind := normalizeEntityAnnotationType(entity.Type)
+		kind := NormalizeEntityAnnotationType(entity.Type)
 		admitted := true
 		if entity.EditorialDecision {
 			value = strings.TrimSpace(entity.EditorialSurface)
-			kind = normalizeEntityAnnotationType(entity.EditorialType)
+			kind = NormalizeEntityAnnotationType(entity.EditorialType)
 			if value == "" || entity.PromptEcho || kind == "" {
 				continue
 			}
@@ -91,7 +91,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		}
 		canonical := value
 		if kind == "PERSON" {
-			canonical = expandPersonName(text, value)
+			canonical = ExpandPersonName(text, value)
 		}
 		// A multi-word CONCEPT is editorial emphasis, not a second NER
 		// entity. Keep it source-grounded and feed the canonical phrase
@@ -124,7 +124,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		// Carry BrainRust's linked identity through to the overlay media index.
 		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
 		if scriptpkg.IsAnnotationEntityKind(kind) && admitted {
-			item.Image = entityImageBindingFor(canonical, kind, seg)
+			item.Image = EntityImageBindingFor(canonical, kind, seg)
 		}
 		if kind == "LOGO" && item.Image == nil {
 			item.Type = "BRAND"
@@ -150,11 +150,11 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 	return ann
 }
 
-// entityImageBindingFor projects only a durable, semantically approved,
+// EntityImageBindingFor projects only a durable, semantically approved,
 // identity-scoped internet image onto an annotation. Search queries are not
 // identity evidence: a location mentioned in a person's image query must not
 // bind that person's image to the location annotation (or vice versa).
-func entityImageBindingFor(name, kind string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityImageBinding {
+func EntityImageBindingFor(name, kind string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityImageBinding {
 	want := normalizeEntityImageName(name)
 	if want == "" {
 		return nil
@@ -278,11 +278,11 @@ func driveFileID(link string) string {
 	return ""
 }
 
-// normalizeEntityAnnotationType maps an extracted entity type onto the
+// NormalizeEntityAnnotationType maps an extracted entity type onto the
 // canonical annotation kind through the single kernel registry
 // (script.NormalizeAnnotationType), mirroring the batch adapter
 // classification with one shared taxonomy owner.
-func normalizeEntityAnnotationType(raw string) string {
+func NormalizeEntityAnnotationType(raw string) string {
 	return scriptpkg.NormalizeAnnotationType(raw)
 }
 
@@ -312,7 +312,7 @@ func findAllEntitySpans(text, value string) []scriptpkg.AnnotationSpan {
 // swallow a whole headline of capitalized words into one identity.
 const maxPersonNameRunTokens = 4
 
-// expandPersonName expands a surname-only entity value to the full capitalized
+// ExpandPersonName expands a surname-only entity value to the full capitalized
 // name present in the text (e.g. "Johnson" → "Dwayne Johnson", "Musk" →
 // "Elon Musk"). A multi-token value is already a full name and is returned
 // unchanged.
@@ -335,7 +335,7 @@ const maxPersonNameRunTokens = 4
 // ("Elon Musk" vs "Musk"): every partial mention that can be resolved to the
 // same grounded full name collapses onto the same canonical (type, name) key
 // and therefore onto the same StableEntityID.
-func expandPersonName(text, value string) string {
+func ExpandPersonName(text, value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" || len(strings.Fields(value)) > 1 {
 		return value
@@ -422,12 +422,12 @@ func normalizePersonToken(token string) string {
 	return strings.Trim(token, "'’-.")
 }
 
-// applySegmentEntityAnnotations projects each segment's grounded entities onto
+// ApplySegmentEntityAnnotations projects each segment's grounded entities onto
 // the matching scene's Annotations. Matching uses the canonical identity
 // precedence (SceneID, then Position); scenes without a matching segment keep
 // their nil Annotations. It mutates result.Scenes in place and never invents
 // annotations for a segment whose entities do not occur in the scene text.
-func applySegmentEntityAnnotations(result *contract.GenerateResult, language contract.Language, segments []scriptpkg.VidRushSegmentResult) {
+func ApplySegmentEntityAnnotations(result *contract.GenerateResult, language contract.Language, segments []scriptpkg.VidRushSegmentResult) {
 	if result == nil {
 		return
 	}
@@ -451,7 +451,7 @@ func applySegmentEntityAnnotations(result *contract.GenerateResult, language con
 		if text == "" {
 			continue
 		}
-		if ann := projectEntityAnnotations(text, string(language), seg); ann != nil {
+		if ann := ProjectEntityAnnotations(text, string(language), seg); ann != nil {
 			result.Scenes[idx].Annotations = ann
 		}
 	}
@@ -481,17 +481,17 @@ func ProjectSegmentAnnotations(spec *scriptpkg.SpecSceneOutput, language contrac
 		if text == "" {
 			continue
 		}
-		if annotations := projectEntityAnnotations(text, string(language), seg); annotations != nil {
+		if annotations := ProjectEntityAnnotations(text, string(language), seg); annotations != nil {
 			spec.Scenes[idx].Annotations = annotations
 		}
 	}
 }
 
-// applySegmentEntityResults projects each segment's typed entities onto the
+// ApplySegmentEntityResults projects each segment's typed entities onto the
 // matching scene's canonical per-scene EntityResult surface (no second entity
-// model), mirroring applySegmentEntityAnnotations matching (SceneID, then
+// model), mirroring ApplySegmentEntityAnnotations matching (SceneID, then
 // Position). An empty scene stays explicit; an entity is never invented.
-func applySegmentEntityResults(result *contract.GenerateResult, segments []scriptpkg.VidRushSegmentResult) {
+func ApplySegmentEntityResults(result *contract.GenerateResult, segments []scriptpkg.VidRushSegmentResult) {
 	if result == nil {
 		return
 	}
@@ -509,8 +509,8 @@ func applySegmentEntityResults(result *contract.GenerateResult, segments []scrip
 		if !ok {
 			continue
 		}
-		res := projectSceneEntityResult(seg)
+		res := ProjectSceneEntityResult(seg)
 		result.Scenes[idx].Entities = res
-		result.Scenes[idx].EntityOverlayRequired = entityResultHasValues(res)
+		result.Scenes[idx].EntityOverlayRequired = EntityResultHasValues(res)
 	}
 }

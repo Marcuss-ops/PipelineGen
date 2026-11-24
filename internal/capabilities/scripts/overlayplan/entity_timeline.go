@@ -15,7 +15,7 @@
 // Entity candidates that cannot be grounded in the captured speech are
 // omitted. A missing optional overlay must not fail an otherwise valid run,
 // and no timestamp is fabricated for an unspoken candidate.
-package scriptgeneration
+package overlayplan
 
 import (
 	"context"
@@ -28,16 +28,16 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// compileResultEntityTimeline derives the deterministic entity→timestamp
+// CompileResultEntityTimeline derives the deterministic entity→timestamp
 // projection for one language. It mirrors
-// compileResultPhraseTimings: per-scene inputs come from the scene's
+// CompileResultPhraseTimings: per-scene inputs come from the scene's
 // annotations (NLP output), the scene's voiceover word timing (the actual
 // synthesis stream) and the scene's canonical timeline offset.
 //
 // Nil when no scene carries both annotations and word timing. Unspoken
 // candidates are omitted individually and reported; matching candidates and
 // other scenes remain in the projection.
-func compileResultEntityTimeline(ctx context.Context, aligner PhraseAligner, result *GenerateResult, language Language, reporters ...func(timingProjectionSkip)) error {
+func CompileResultEntityTimeline(ctx context.Context, aligner PhraseAligner, result *GenerateResult, language Language, reporters ...func(TimingProjectionSkip)) error {
 	if result == nil || result.CanonicalTimeline == nil {
 		return nil
 	}
@@ -68,7 +68,7 @@ func compileResultEntityTimeline(ctx context.Context, aligner PhraseAligner, res
 		if text == "" {
 			continue
 		}
-		sources := entitySourcesFromAnnotations(annotations, text)
+		sources := EntitySourcesFromAnnotations(annotations, text)
 		// A translated annotation can outlive the exact surface that produced
 		// it (for example when the final translation is regenerated). Keep the
 		// low-level projection available for compatibility/audit callers, but do
@@ -118,7 +118,7 @@ func compileResultEntityTimeline(ctx context.Context, aligner PhraseAligner, res
 			}
 			alignment, ok := byText[normalizeEntityPhrase(name)]
 			if !ok {
-				reportTimingProjectionSkip(reporters, timingProjectionSkip{SceneID: scene.ID, Surface: "entity", Cause: capabilityaudio.ErrPhraseNotFound})
+				reportTimingProjectionSkip(reporters, TimingProjectionSkip{SceneID: scene.ID, Surface: "entity", Cause: capabilityaudio.ErrPhraseNotFound})
 				continue
 			}
 			source.Alignment = &alignment
@@ -161,14 +161,14 @@ func normalizeEntityPhrase(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
-// entitySourcesFromAnnotations projects a scene's annotations onto the
+// EntitySourcesFromAnnotations projects a scene's annotations onto the
 // neutral EntitySource inputs consumed by the capability builder. It emits
 // exactly ONE source per entity (entityRepeatPolicy = once_per_scene): the
 // rune span of the entity's first mention is forwarded so the builder
 // verifies the exact text anchor instead of re-deriving it. Later mentions
 // of the same entity in the scene are intentionally NOT projected as
 // separate sources.
-func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText string) []capabilityentities.EntitySource {
+func EntitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText string) []capabilityentities.EntitySource {
 	if ann == nil {
 		return nil
 	}
@@ -215,7 +215,7 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 		if !exactNameFound && !isValueEntity && strings.TrimSpace(spokenName) != "" {
 			if _, exactSpokenFound := findEntitySpan(sceneText, spokenName); exactSpokenFound {
 				groundedName = spokenName
-			} else if _, mentionOK := findLocalizedEntitySpan(sceneText, spokenName); mentionOK {
+			} else if _, mentionOK := FindLocalizedEntitySpan(sceneText, spokenName); mentionOK {
 				groundedName = spokenName
 			}
 		}
@@ -234,7 +234,7 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 		// entity fail the builder's explicit text gate.
 		span, ok := findEntitySpan(sceneText, groundedName)
 		if !ok && !isValueEntity {
-			span, ok = findLocalizedEntitySpan(sceneText, groundedName)
+			span, ok = FindLocalizedEntitySpan(sceneText, groundedName)
 		}
 		if ok {
 			source.TextStart = span.StartRune
@@ -264,7 +264,7 @@ func entitySourcesFromAnnotations(ann *scriptpkg.SceneAnnotations, sceneText str
 // whose span ends before an English possessive suffix, retain that suffix.
 func annotationSpokenSurface(text, canonical string, mentions []scriptpkg.AnnotationSpan) string {
 	if len(mentions) == 0 {
-		if span, ok := findLocalizedEntitySpan(text, canonical); ok {
+		if span, ok := FindLocalizedEntitySpan(text, canonical); ok {
 			return span.Text
 		}
 		return canonical
@@ -289,20 +289,20 @@ func annotationSpokenSurface(text, canonical string, mentions []scriptpkg.Annota
 		}
 	}
 	for _, candidate := range []string{mention.Text, canonical} {
-		if span, ok := findLocalizedEntitySpan(text, candidate); ok {
+		if span, ok := FindLocalizedEntitySpan(text, candidate); ok {
 			return span.Text
 		}
 	}
 	return canonical
 }
 
-// findLocalizedEntitySpan finds a candidate in the requested text while
+// FindLocalizedEntitySpan finds a candidate in the requested text while
 // tolerating localization orthography that joins or separates words (for
 // example English/annotation "South Africa" versus Italian "Sudafrica").
 // Matching ignores Unicode punctuation and spacing, but the returned span is
 // the exact original text, so downstream TTS lookup and text grounding remain
 // verbatim. No transliteration or semantic translation is invented here.
-func findLocalizedEntitySpan(text, candidate string) (scriptpkg.AnnotationSpan, bool) {
+func FindLocalizedEntitySpan(text, candidate string) (scriptpkg.AnnotationSpan, bool) {
 	want := make([]rune, 0, len([]rune(candidate)))
 	parts := make([][]rune, 0, len(strings.Fields(candidate)))
 	hasSingleRunePart := false

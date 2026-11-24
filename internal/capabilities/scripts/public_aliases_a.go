@@ -5,6 +5,7 @@ import (
 	audio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/modelvalues"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlayproject"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/semantics"
@@ -27,6 +28,27 @@ import (
 // moved to scripts/timeline. The subpackages import only contract and the
 // audio value package, so a consumer of the timeline no longer needs the
 // whole root.
+
+// Pure domain model values, owned by scripts/modelvalues since the overlay-plan
+// extraction so the root and overlayplan share one definition without a cycle.
+const (
+	SourceText     = modelvalues.SourceText
+	SourceClips    = modelvalues.SourceClips
+	SourceCatalog  = modelvalues.SourceCatalog
+	SourceSearch   = modelvalues.SourceSearch
+	SourceCurate   = modelvalues.SourceCurate
+	SourceResearch = modelvalues.SourceResearch
+)
+
+var (
+	toLanguages          = modelvalues.ToLanguages
+	copyStrings          = modelvalues.CopyStrings
+	cloneFloat64         = modelvalues.CloneFloat64
+	cloneInt             = modelvalues.CloneInt
+	cloneAnimationCounts = modelvalues.CloneAnimationCounts
+	cloneFixedPlayback   = modelvalues.CloneFixedPlayback
+	fixedSceneKind       = modelvalues.FixedSceneKind
+)
 
 // Types owned by the timeline projection.
 type (

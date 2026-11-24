@@ -1,6 +1,6 @@
 // Package scriptgeneration assigns deterministic motions to admitted images
 // and applies the text-only named-entity-card ceiling.
-package scriptgeneration
+package overlayplan
 
 import (
 	"strings"
@@ -21,35 +21,35 @@ func entityImageCaption(item capmodel.OverlayItem) string {
 	return strings.TrimSpace(item.Text)
 }
 
-// resolveEntityImageMotionPool returns the caller pool when present, otherwise
+// ResolveEntityImageMotionPool returns the caller pool when present, otherwise
 // the complete certified generated-entity catalog. The Rust planner rejects an
 // admitted entity image with an empty pool, and an omitted pool means automatic
 // rotation, so the builder and the runtime branch share this resolution.
-func resolveEntityImageMotionPool(requested []string) []string {
+func ResolveEntityImageMotionPool(requested []string) []string {
 	if len(requested) > 0 {
 		return requested
 	}
 	return capabilityoverlay.CertifiedEntityImageMotions()
 }
 
-// resolveEntityCaptionMotionPool returns the caller pool when present, otherwise
+// ResolveEntityCaptionMotionPool returns the caller pool when present, otherwise
 // the complete certified generated-entity caption catalog. The Rust planner
 // rejects an admitted captioned entity image with an empty pool, and an omitted
 // pool means automatic rotation, so the builder and the runtime branch share this resolution.
-func resolveEntityCaptionMotionPool(requested []string) []string {
+func ResolveEntityCaptionMotionPool(requested []string) []string {
 	if len(requested) > 0 {
 		return requested
 	}
 	return capabilityoverlay.CertifiedEntityCaptionMotions()
 }
 
-// projectSceneEntityResult builds the per-scene typed EntityResult from one
+// ProjectSceneEntityResult builds the per-scene typed EntityResult from one
 // segment's extracted entities, using the same classification as the
 // aggregate projection (PERSON → persons; LOCATION/PLACE/COUNTRY/CITY →
 // places; every other type → concepts). It returns an explicit empty result
 // (never nil) so a scene with no entities is represented as entities=[] with
 // entity_overlay_required=false — no entity is invented.
-func projectSceneEntityResult(seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityResult {
+func ProjectSceneEntityResult(seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityResult {
 	res := &scriptpkg.EntityResult{
 		Persons:          []scriptpkg.Entity{},
 		Places:           []scriptpkg.Entity{},
@@ -75,10 +75,10 @@ func projectSceneEntityResult(seg scriptpkg.VidRushSegmentResult) *scriptpkg.Ent
 	return res
 }
 
-// entityResultHasValues reports whether a per-scene EntityResult carries at
+// EntityResultHasValues reports whether a per-scene EntityResult carries at
 // least one typed entity value (the entity_overlay_required signal). It
 // never invents an entity: an empty result is false.
-func entityResultHasValues(res *scriptpkg.EntityResult) bool {
+func EntityResultHasValues(res *scriptpkg.EntityResult) bool {
 	if res == nil {
 		return false
 	}

@@ -1,4 +1,4 @@
-package scriptgeneration
+package overlayplan
 
 import (
 	"encoding/json"
@@ -12,14 +12,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// buildOverlayAuditWithLineage is the ONE entry point: the intent lineage is
+// BuildOverlayAuditWithLineage is the ONE entry point: the intent lineage is
 // computed by the same pass that freezes the intents, so the audit describes
 // the plan that was actually rendered. A second, lineage-less entry point
 // existed briefly and was removed: it produced an audit without
 // overlay_timing, which reads as "every intent was fine" instead of "the
 // lineage was not measured". A caller that genuinely has no lineage passes
 // nil, and the field is then omitted rather than fabricated.
-func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan, lineage *overlayIntentLineage) *contract.OverlayAudit {
+func BuildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan, lineage *OverlayIntentLineage) *contract.OverlayAudit {
 	if bundle == nil && plan == nil {
 		return nil
 	}
@@ -230,16 +230,16 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 	audit.PlannedOverlayCount = len(audit.PlannedOverlays)
 	audit.EntityImages = buildOverlayAuditEntityImages(audit, bundle, plan)
 	audit.OverlayTiming = buildOverlayAuditOverlayTiming(lineage)
-	audit.EntityConcordance = buildOverlayAuditEntityConcordance(audit)
+	audit.EntityConcordance = BuildOverlayAuditEntityConcordance(audit)
 	return audit
 }
 
-// buildOverlayAuditEntityConcordance projects the one contradiction TICKET-49
+// BuildOverlayAuditEntityConcordance projects the one contradiction TICKET-49
 // measured: the image contract reported a planned portrait while the intent
 // lineage reported the same identity as never planned. Both sides join on the
 // entity id / canonical id first and fall back to the grounded surface only for
 // a legacy item that carries no identity.
-func buildOverlayAuditEntityConcordance(audit *contract.OverlayAudit) *contract.OverlayAuditEntityConcordance {
+func BuildOverlayAuditEntityConcordance(audit *contract.OverlayAudit) *contract.OverlayAuditEntityConcordance {
 	if audit == nil || audit.OverlayTiming == nil {
 		return nil
 	}

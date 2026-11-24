@@ -3,7 +3,7 @@
 // The production planner calls exactly one editorial_plan.v2 compiler. The Go
 // planner and its four timing/ranking ports have been removed.
 
-package scriptgeneration
+package overlayplan
 
 import (
 	"context"
@@ -37,20 +37,20 @@ func (o overlayPlanImageOptions) perSceneEntityCards() bool { return o.PerSceneE
 // default (enabled) when the caller did not set it.
 func (o overlayPlanImageOptions) sceneImagesEnabled() bool { return !o.DisableSceneImages }
 
-// compileOverlayPlanWithMotionOffset is the production entry point. The
+// CompileOverlayPlanWithMotionOffset is the production entry point. The
 // configured compiler is the only plan authority: there is no Go fallback and
 // no per-phase port invocation.
-func compileOverlayPlanWithMotionOffset(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
-	input, err := prepareOverlayPlanCompile(ctx, result, language, canvas, planID, videoID, projectID, plates, perSceneImages...)
+func CompileOverlayPlanWithMotionOffset(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
+	input, err := PrepareOverlayPlanCompile(ctx, result, language, canvas, planID, videoID, projectID, plates, perSceneImages...)
 	if err != nil || input == nil {
 		return nil, err
 	}
 	if compiler == nil {
 		return nil, fmt.Errorf("overlay plan: configured BrainRust compiler is required")
 	}
-	compiled, err := compileOverlayPlanV2(ctx, compiler, input.result, input.language, input.canvas,
-		input.planID, input.videoID, input.projectID, input.motionSeed,
-		input.timedScenes, input.scenes, input.rawScenes, input.imagePlan, input.timelineBounds, plates)
+	compiled, err := CompileOverlayPlanV2(ctx, compiler, input.Result, input.Language, input.Canvas,
+		input.PlanID, input.VideoID, input.ProjectID, input.MotionSeed,
+		input.TimedScenes, input.Scenes, input.RawScenes, input.ImagePlan, input.TimelineBounds, plates)
 	if err != nil || compiled == nil {
 		return compiled, err
 	}
@@ -58,32 +58,33 @@ func compileOverlayPlanWithMotionOffset(ctx context.Context, result *contract.Ge
 	// not wire-eligible until its derived render identity and master extent are
 	// stamped. Doing this here (not later in the render phase) keeps the bundle
 	// hash, audit, checkpoint and renderer bound to the same document.
-	return sealCompiledOverlayPlan(compiled, input.result, input.language, input.resolved, input.canvas)
+	return SealCompiledOverlayPlan(compiled, input.Result, input.Language, input.Resolved, input.Canvas)
 }
 
-// overlayPlanCompileInput is the projection shared by the production entry
-// point and the v2 request builder.
-type overlayPlanCompileInput struct {
-	result            *contract.GenerateResult
-	language          contract.Language
-	canvas            OverlayCanvasSpec
-	planID            string
-	videoID           string
-	projectID         string
-	motionSeed        string
-	imageMotionOffset int
-	entityTimeline    *capabilityentities.EntityTimeline
-	timedScenes       []contract.Scene
-	scenes            []capabilityoverlay.SceneInput
-	rawScenes         []overlayplan.RawScene
-	imagePlan         *overlayplan.ImagePlan
-	resolved          []contract.ResolvedScene
-	timelineBounds    map[string][2]int64
+// PlanCompileInput is the projection shared by the production entry point and
+// the v2 request builder. The fields are exported because the fixture tests
+// inspect the projection directly.
+type PlanCompileInput struct {
+	Result            *contract.GenerateResult
+	Language          contract.Language
+	Canvas            OverlayCanvasSpec
+	PlanID            string
+	VideoID           string
+	ProjectID         string
+	MotionSeed        string
+	ImageMotionOffset int
+	EntityTimeline    *capabilityentities.EntityTimeline
+	TimedScenes       []contract.Scene
+	Scenes            []capabilityoverlay.SceneInput
+	RawScenes         []overlayplan.RawScene
+	ImagePlan         *overlayplan.ImagePlan
+	Resolved          []contract.ResolvedScene
+	TimelineBounds    map[string][2]int64
 }
 
-// prepareOverlayPlanCompile builds the certified scene projection. It does not
+// PrepareOverlayPlanCompile builds the certified scene projection. It does not
 // call any map/entity/cascade port; those remain legacy-only.
-func prepareOverlayPlanCompile(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...overlayPlanImageOptions) (*overlayPlanCompileInput, error) {
+func PrepareOverlayPlanCompile(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...overlayPlanImageOptions) (*PlanCompileInput, error) {
 
 	if result == nil {
 		return nil, nil
@@ -97,7 +98,7 @@ func prepareOverlayPlanCompile(ctx context.Context, result *contract.GenerateRes
 	// semantic filter runs; that filter intentionally keeps only KindMap and
 	// would then discard the fused map segment along with the disabled phrase.
 	if canvas.MapsOnly {
-		counts := cloneAnimationCounts(canvas.AnimationCounts)
+		counts := CloneAnimationCounts(canvas.AnimationCounts)
 		if counts == nil {
 			counts = make(map[string]int)
 		}
@@ -130,7 +131,7 @@ func prepareOverlayPlanCompile(ctx context.Context, result *contract.GenerateRes
 			SourceLanguage: result.SourceLanguage, AudioMode: result.AudioMode,
 			ResolvedScenes: result.ResolvedScenes,
 		}
-		if err := compileResultEntityTimeline(ctx, result.Aligner, localized, language); err != nil {
+		if err := CompileResultEntityTimeline(ctx, result.Aligner, localized, language); err != nil {
 			return nil, fmt.Errorf("overlay plan: resolve %s entity timeline: %w", language, err)
 		}
 		entityTimeline = localized.EntityTimeline
@@ -190,8 +191,8 @@ func prepareOverlayPlanCompile(ctx context.Context, result *contract.GenerateRes
 			if !ok {
 				continue
 			}
-			limit := genericSceneImageLimit(result, scene.ID, canvas.MaxOverlaysPerScene)
-			candidates := sceneImageCandidates(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID], limit)
+			limit := GenericSceneImageLimit(result, scene.ID, canvas.MaxOverlaysPerScene)
+			candidates := SceneImageCandidates(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID], limit)
 			if len(candidates) > 0 {
 				imagesByScene[scene.ID] = candidates
 			}
@@ -212,12 +213,12 @@ func prepareOverlayPlanCompile(ctx context.Context, result *contract.GenerateRes
 	for sceneID, startUS := range timelineStartUS {
 		timelineBounds[sceneID] = [2]int64{startUS, timelineEndUS[sceneID]}
 	}
-	return &overlayPlanCompileInput{
-		result: result, language: language, canvas: canvas,
-		planID: planID, videoID: videoID, projectID: projectID,
-		motionSeed: motionSeed, imageMotionOffset: imageMotionOffset,
-		entityTimeline: entityTimeline, timedScenes: timedScenes, scenes: scenes, rawScenes: rawScenes, imagePlan: imagePlan,
-		resolved: resolved, timelineBounds: timelineBounds,
+	return &PlanCompileInput{
+		Result: result, Language: language, Canvas: canvas,
+		PlanID: planID, VideoID: videoID, ProjectID: projectID,
+		MotionSeed: motionSeed, ImageMotionOffset: imageMotionOffset,
+		EntityTimeline: entityTimeline, TimedScenes: timedScenes, Scenes: scenes, RawScenes: rawScenes, ImagePlan: imagePlan,
+		Resolved: resolved, TimelineBounds: timelineBounds,
 	}, nil
 }
 
@@ -313,7 +314,7 @@ func chapterManifestToWire(in *scriptpkg.ChapterManifest) *overlayplan.ChapterMa
 	return out
 }
 
-const maxGenericSceneImagesPerScene = 10
+const MaxGenericSceneImagesPerScene = 10
 
 // ── Sealing boundary (merged from overlay_plan_seal.go, OVL-03) ──
 //
@@ -325,12 +326,12 @@ const maxGenericSceneImagesPerScene = 10
 // `media.verified_entity_assets` surface, and this boundary adopts the sealed
 // plan. No post-seal pass rewrites a segment's identity, text, motion or preset.
 
-// sealCompiledOverlayPlan adopts a plan produced by the v2 compiler. Rust owns
+// SealCompiledOverlayPlan adopts a plan produced by the v2 compiler. Rust owns
 // selection, timing, map resolution and the card/image decision; this boundary
 // owns only the derived render identity and the master extent, so the document
 // that reaches the bundle hash, audit, renderer and checkpoint is the same
 // sealed document.
-func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *contract.GenerateResult, language contract.Language, resolved []contract.ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
+func SealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *contract.GenerateResult, language contract.Language, resolved []contract.ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
 	if plan == nil {
 		return nil, nil
 	}
@@ -348,7 +349,7 @@ func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *contract.Gener
 	// overlay_style.bullet block styles bullet-point copy only and falls back to
 	// the run-level choice field by field. Fields the payload left unset keep the
 	// planner default.
-	applyPayloadOverlayStyleToItems(plan.Items, canvas)
+	ApplyPayloadOverlayStyleToItems(plan.Items, canvas)
 	plan.DurationMS = overlayPlanDurationMS(result, language, resolved, plan.Items)
 	// Item transforms above (font/style projection and image composition) can
 	// change renderer-owned inputs after an upstream planner has sealed its own
@@ -418,4 +419,11 @@ func overlayPlanDurationMS(result *contract.GenerateResult, language contract.La
 	// DurationMS is a transport projection; round up so a sub-ms tail is
 	// never lost when it crosses the PipelineGen → Chronon boundary.
 	return (durationUS + 999) / 1000
+}
+
+// CompileOverlayPlanWithRustResolver is the package entry point: it compiles
+// and seals a plan with the configured BrainRust compiler. There is no Go
+// planner and no per-phase fallback.
+func CompileOverlayPlanWithRustResolver(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...ImageOptions) (*capmodel.OverlayPlan, error) {
+	return CompileOverlayPlanWithMotionOffset(ctx, result, language, canvas, planID, videoID, projectID, plates, compiler, perSceneImages...)
 }

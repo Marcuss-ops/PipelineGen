@@ -3,7 +3,7 @@
 // selector owns candidate selection; this file only completes, merges and
 // balances the returned source-grounded spans. Split out of
 // runner_overlay_prepare.go to keep that file under the strict 600-LOC gate.
-package scriptgeneration
+package overlayplan
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func supplementSourceImportantPhrases(ctx context.Context, selector PhraseSelector, ann *scriptpkg.SceneAnnotations, text, language string, limit int, corpus []string) error {
+func SupplementSourceImportantPhrases(ctx context.Context, selector PhraseSelector, ann *scriptpkg.SceneAnnotations, text, language string, limit int, corpus []string) error {
 	if ann == nil || limit <= 0 {
 		return nil
 	}

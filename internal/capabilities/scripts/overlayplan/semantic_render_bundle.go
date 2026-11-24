@@ -1,4 +1,4 @@
-package scriptgeneration
+package overlayplan
 
 import (
 	"fmt"
@@ -134,7 +134,7 @@ func BuildSemanticRenderBundleFromResult(result *contract.GenerateResult, langua
 			if identity.AssetID == "" || !identity.IsCanonicalDigest() {
 				continue
 			}
-			url := entityImageURL(entity.Image)
+			url := EntityImageURL(entity.Image)
 			// The asset's join key is the entity's StableEntityID as projected
 			// into bundle.Entities (the EntityTimeline occurrence id), derived
 			// here through the ONE identity owner (annotationStableEntityID) so

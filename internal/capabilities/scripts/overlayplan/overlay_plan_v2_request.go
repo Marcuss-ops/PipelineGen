@@ -1,10 +1,10 @@
 // overlay_plan_v2_request.go — producer and single-call cutover for the
 // versioned 13d contract.
 //
-// The request is built from the certified scene projection. compileOverlayPlanV2
+// The request is built from the certified scene projection. CompileOverlayPlanV2
 // sends that complete envelope in one call to the configured v2 compiler; the
 // returned plan is adopted only after the Go seal boundary validates it.
-package scriptgeneration
+package overlayplan
 
 import (
 	"context"
@@ -18,10 +18,10 @@ import (
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 )
 
-// buildOverlayPlanV2Request maps the planner's scenes and the two extractive
+// BuildOverlayPlanV2Request maps the planner's scenes and the two extractive
 // manifests onto the versioned full-plan envelope. It fails closed on identity
 // or timing that the planner would otherwise have to guess.
-func buildOverlayPlanV2Request(
+func BuildOverlayPlanV2Request(
 	result *contract.GenerateResult,
 	language contract.Language,
 	canvas OverlayCanvasSpec,
@@ -52,11 +52,11 @@ func buildOverlayPlanV2Request(
 	if localizedSourceEditorial {
 		canvas = withoutSourceEditorialCategories(canvas)
 	}
-	canvasWire, err := overlayPlanCanvas(canvas)
+	canvasWire, err := OverlayPlanCanvas(canvas)
 	if err != nil {
 		return overlayplan.V2Request{}, err
 	}
-	media := overlayPlanMedia(result, language, sceneInputs)
+	media := OverlayPlanMedia(result, language, sceneInputs)
 	request := overlayplan.V2Request{
 		Operation:      "compile_editorial_plan",
 		SchemaVersion:  overlayplan.SchemaVersionV2,
@@ -66,7 +66,7 @@ func buildOverlayPlanV2Request(
 		Seal:           overlayPlanSeal(result, canvas, timelineBounds),
 		Canvas:         canvasWire,
 		Scenes:         make([]overlayplan.Scene, 0, len(timedScenes)),
-		EntityTimeline: overlayPlanEntityTimeline(result, language, projectID, timelineBounds, overlayPlanCanonicalEntityIDs(result, media)),
+		EntityTimeline: OverlayPlanEntityTimeline(result, language, projectID, timelineBounds, OverlayPlanCanonicalEntityIDs(result, media)),
 		Media:          media,
 		ImagePlan:      imagePlan,
 		Budgets:        overlayPlanBudgets(canvas),
@@ -135,7 +135,7 @@ func buildOverlayPlanV2Request(
 	// localized render and is not an editorial scene). Projecting the canonical
 	// timeline unfiltered sent that intro clip anyway and failed the run with
 	// `invalid clips: unknown scene id "scene-intro"`.
-	request.Clips = overlayPlanClips(result, seen)
+	request.Clips = OverlayPlanClips(result, seen)
 	// A bullet pin names its bullet by scene, so an unknown scene would style
 	// nothing. Reject it instead of shipping a silent no-op. (The style fields
 	// themselves were already validated when the canvas was encoded.)
@@ -252,12 +252,12 @@ type OverlayPlanCompiler interface {
 	CompileOverlayPlanV2(context.Context, json.RawMessage) (*capmodel.OverlayPlan, error)
 }
 
-// compileOverlayPlanV2 sends one request for the whole run. The request is the
+// CompileOverlayPlanV2 sends one request for the whole run. The request is the
 // same envelope the Rust planner validates and seals; no Go selection runs
 // before or after it. Render keys are derived state and are stamped by the Go
 // seal boundary after adoption.
 
-func compileOverlayPlanV2(
+func CompileOverlayPlanV2(
 	ctx context.Context,
 	compiler OverlayPlanCompiler,
 	result *contract.GenerateResult,
@@ -271,7 +271,7 @@ func compileOverlayPlanV2(
 	timelineBounds map[string][2]int64,
 	plates capabilityoverlay.PlateResolver,
 ) (*capmodel.OverlayPlan, error) {
-	request, err := buildOverlayPlanV2Request(result, language, canvas, planID, videoID, projectID, motionSeed, timedScenes, scenes, rawScenes, imagePlan, timelineBounds)
+	request, err := BuildOverlayPlanV2Request(result, language, canvas, planID, videoID, projectID, motionSeed, timedScenes, scenes, rawScenes, imagePlan, timelineBounds)
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +316,7 @@ func compileOverlayPlanV2(
 	// An entity portrait is not a scene image, so the scene loop above never
 	// sees it. Reattach its already-materialized cache location from the same
 	// unified surface (bundle or annotation binding) that resolved it.
-	for sha, ref := range entityAssetLocalPaths(result) {
+	for sha, ref := range EntityAssetLocalPaths(result) {
 		if _, exists := localBySHA[sha]; !exists {
 			localBySHA[sha] = ref
 		}
@@ -343,7 +343,7 @@ func compileOverlayPlanV2(
 			}
 		}
 	}
-	if err := materializeEditorialMapItems(plan, plates, canvas, motionSeed); err != nil {
+	if err := MaterializeEditorialMapItems(plan, plates, canvas, motionSeed); err != nil {
 		return nil, err
 	}
 	return plan, nil

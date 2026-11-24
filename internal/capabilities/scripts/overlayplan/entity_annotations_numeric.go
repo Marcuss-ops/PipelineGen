@@ -1,4 +1,4 @@
-package scriptgeneration
+package overlayplan
 
 import (
 	"regexp"
@@ -50,7 +50,7 @@ func appendGroundedNumberEntities(ann *scriptpkg.SceneAnnotations, text string) 
 func overlapsGroundedNumber(ann *scriptpkg.SceneAnnotations, mentions []scriptpkg.AnnotationSpan) bool {
 	entities := append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...)
 	for _, entity := range entities {
-		switch normalizeEntityAnnotationType(entity.Type) {
+		switch NormalizeEntityAnnotationType(entity.Type) {
 		case "NUMBER", "CARDINAL", "MONEY", "PERCENT", "QUANTITY":
 		default:
 			continue

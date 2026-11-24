@@ -1,4 +1,4 @@
-package scriptgeneration
+package overlayplan
 
 // overlay_audit_images.go owns the two questions the r20minuti artifact could
 // not answer:
@@ -80,20 +80,20 @@ const (
 var ErrEntityImageGate = errors.New("entity image gate")
 
 const (
-	requireEntityImagesEnv = "VELOX_REQUIRE_ENTITY_IMAGES"
+	RequireEntityImagesEnv = "VELOX_REQUIRE_ENTITY_IMAGES"
 	// maxAuditMissingEntities bounds the human-readable list; the counts stay
 	// complete.
 	maxAuditMissingEntities = 20
 	maxAuditUnresolvedItems = 100
 )
 
-// applyOverlayAuditImageBudget keeps the audit's image budget honest when the
+// ApplyOverlayAuditImageBudget keeps the audit's image budget honest when the
 // compiled plan omits planner-side intake telemetry (the wire plan adopted
 // from the Rust compiler does not echo budgets). The canvas is the requested
 // ceiling, so a plan that planned fewer images reports "budget unused" — not
 // the misleading "budget 0" that made R23's audit look like images were never
 // enabled.
-func applyOverlayAuditImageBudget(audit *contract.OverlayAudit, imageBudget int) {
+func ApplyOverlayAuditImageBudget(audit *contract.OverlayAudit, imageBudget int) {
 	if audit == nil || imageBudget <= 0 || audit.EntityImages == nil {
 		return
 	}
@@ -169,7 +169,7 @@ func buildOverlayAuditEntityImages(audit *contract.OverlayAudit, bundle *capabil
 	for _, key := range order {
 		entity := bestAuditImageEntity(groups[key])
 		info.Selected++
-		reason := entityImageOutcome(entity, verified)
+		reason := EntityImageOutcome(entity, verified)
 		info.Reasons[reason]++
 		if reason == EntityImageReasonBound {
 			info.Bound++
@@ -324,11 +324,11 @@ func auditEntityHasPlannedImageCard(entity contract.OverlayAuditEntity) bool {
 	return false
 }
 
-// applyRequestedEntityImageContract derives the audit denominator from the
+// ApplyRequestedEntityImageContract derives the audit denominator from the
 // request's eligible entity types, not from overlays that happened to survive
 // planning. It preserves SelectedForVideo separately so a missing selection
 // remains distinguishable from a failed search or binding.
-func applyRequestedEntityImageContract(audit *contract.OverlayAudit, bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan, required, requireDrive bool, types []string, admittedSets ...map[string]struct{}) {
+func ApplyRequestedEntityImageContract(audit *contract.OverlayAudit, bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan, required, requireDrive bool, types []string, admittedSets ...map[string]struct{}) {
 	if audit == nil || !required {
 		return
 	}
@@ -373,10 +373,10 @@ func applyRequestedEntityImageContract(audit *contract.OverlayAudit, bundle *cap
 	audit.EntityImages = buildOverlayAuditEntityImages(audit, bundle, plan)
 }
 
-// entityImageOutcome maps the audit's image_status onto the gate vocabulary.
+// EntityImageOutcome maps the audit's image_status onto the gate vocabulary.
 // The status already distinguishes "no asset" from "verified but not planned";
 // this keeps that distinction in the reason the gate reports.
-func entityImageOutcome(entity contract.OverlayAuditEntity, verified map[string]bool) string {
+func EntityImageOutcome(entity contract.OverlayAuditEntity, verified map[string]bool) string {
 	switch strings.ToUpper(strings.TrimSpace(entity.ImageFailureReason)) {
 	case EntityImageReasonSearchEmpty, EntityImageReasonDownloadFailed, EntityImageReasonUnverified,
 		EntityImageReasonUploadFailed, EntityImageReasonIdentityMismatch, EntityImageReasonBudgetExhausted,
@@ -412,7 +412,7 @@ func entityImageOutcome(entity contract.OverlayAuditEntity, verified map[string]
 // buildOverlayAuditOverlayTiming projects the intent lineage. A nil lineage
 // (older call sites, tests of the plan projection alone) yields nil so the
 // audit never claims a lineage it did not compute.
-func buildOverlayAuditOverlayTiming(lineage *overlayIntentLineage) *contract.OverlayAuditOverlayTiming {
+func buildOverlayAuditOverlayTiming(lineage *OverlayIntentLineage) *contract.OverlayAuditOverlayTiming {
 	if lineage == nil {
 		return nil
 	}
@@ -444,7 +444,7 @@ func buildOverlayAuditOverlayTiming(lineage *overlayIntentLineage) *contract.Ove
 // audit is always emitted, the failure is opt-in so an existing run that
 // accepts text-only cards keeps working.
 func entityImageGateRequired() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(requireEntityImagesEnv))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(RequireEntityImagesEnv))) {
 	case "1", "true", "on", "enabled", "yes", "strict":
 		return true
 	default:
@@ -452,10 +452,10 @@ func entityImageGateRequired() bool {
 	}
 }
 
-// enforceEntityImageGate fails the plan when the operator asked for images and
+// EnforceEntityImageGate fails the plan when the operator asked for images and
 // a selected entity has none. The message names the counts, the reasons and a
 // few entities, so the failure is actionable without opening the artifact.
-func enforceEntityImageGate(audit *contract.OverlayAudit) error {
+func EnforceEntityImageGate(audit *contract.OverlayAudit) error {
 	if audit == nil || audit.EntityImages == nil || !audit.EntityImages.Required {
 		return nil
 	}

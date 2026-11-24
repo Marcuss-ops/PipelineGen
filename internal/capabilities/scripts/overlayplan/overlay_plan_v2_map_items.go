@@ -1,4 +1,4 @@
-package scriptgeneration
+package overlayplan
 
 import (
 	"fmt"
@@ -13,17 +13,17 @@ import (
 // certified plates: chain presets, plate resolution, pin timing and the
 // presentation/style choices the canvas requested.
 
-// materializeEditorialMapItems lowers Rust-selected grounded places through
+// MaterializeEditorialMapItems lowers Rust-selected grounded places through
 // the existing certified map-plate resolver. Rust owns which place to show
 // and when; this Producer boundary attaches the licensed local/dynamic map
 // source needed by the renderer.
-// applyChainSegmentPresets mirrors the semantic_role → preset_id decision onto
+// ApplyChainSegmentPresets mirrors the semantic_role → preset_id decision onto
 // every chain segment. Rust coalesces standalone overlays into one chain and
 // carries each segment's kind/template, but the preset decision belongs to
 // this resolver (ADR-029). Without it RenderingGen lowers the text segments
 // with no preset, emits a partial style (fill/stroke only, no font/font_size)
 // and the Chronon daemon rejects the whole render plan.
-func applyChainSegmentPresets(plan *capmodel.OverlayPlan) {
+func ApplyChainSegmentPresets(plan *capmodel.OverlayPlan) {
 	if plan == nil {
 		return
 	}
@@ -66,11 +66,11 @@ func applyChainSegmentPresets(plan *capmodel.OverlayPlan) {
 	}
 }
 
-func materializeEditorialMapItems(plan *capmodel.OverlayPlan, plates capabilityoverlay.PlateResolver, canvas OverlayCanvasSpec, seed string) error {
+func MaterializeEditorialMapItems(plan *capmodel.OverlayPlan, plates capabilityoverlay.PlateResolver, canvas OverlayCanvasSpec, seed string) error {
 	if plan == nil {
 		return nil
 	}
-	applyChainSegmentPresets(plan)
+	ApplyChainSegmentPresets(plan)
 	grouping, _ := mapGroupingForCanvas(canvas)
 	ordinal := 0
 	originalLen := len(plan.Items)
@@ -156,10 +156,10 @@ func materializeEditorialMapItems(plan *capmodel.OverlayPlan, plates capabilityo
 	}
 	plan.Items = append(plan.Items, appended...)
 	if canvas.MapPresentation != nil {
-		if err := applyRequestedMapPresentation(plan, canvas.MapPresentation); err != nil {
+		if err := ApplyRequestedMapPresentation(plan, canvas.MapPresentation); err != nil {
 			return err
 		}
-	} else if err := applyRequestedMapAnimation(plan, grouping.Animation); err != nil {
+	} else if err := ApplyRequestedMapAnimation(plan, grouping.Animation); err != nil {
 		return err
 	}
 	return nil
@@ -207,13 +207,13 @@ func mapGroupingForCanvas(canvas OverlayCanvasSpec) (capabilityoverlay.MapGroupC
 	}, true
 }
 
-// applyRequestedMapAnimation makes map_presentation.animation the single owner
+// ApplyRequestedMapAnimation makes map_presentation.animation the single owner
 // of the composition when the caller named one. The planner still seeds a
 // compatible default for random/auto, but an explicit certified id is applied
 // to every map item and admitted against that item's real pins (count, scope,
 // territory and area-glow data). An incompatible explicit request fails here,
 // not inside the renderer after the expensive plate work.
-func applyRequestedMapAnimation(plan *capmodel.OverlayPlan, requested string) error {
+func ApplyRequestedMapAnimation(plan *capmodel.OverlayPlan, requested string) error {
 	requested = strings.TrimSpace(requested)
 	if plan == nil || requested == "" || strings.EqualFold(requested, "random") || strings.EqualFold(requested, "auto") {
 		return nil
@@ -266,19 +266,19 @@ func applyRequestedMapAnimation(plan *capmodel.OverlayPlan, requested string) er
 	return nil
 }
 
-// applyRequestedMapPresentation applies the two independent runtime choices
+// ApplyRequestedMapPresentation applies the two independent runtime choices
 // to every materialized map. The pools are carried on each map item because
 // the dynamic renderer resolves style after the Rust planner seals the plan.
 // A preset, when present, wins over the resolved defaults: it is expanded on
 // its own copy so the caller's request stays the record of intent.
-func applyRequestedMapPresentation(plan *capmodel.OverlayPlan, presentation *scriptpkg.MapPresentation) error {
+func ApplyRequestedMapPresentation(plan *capmodel.OverlayPlan, presentation *scriptpkg.MapPresentation) error {
 	if plan == nil || presentation == nil {
 		return nil
 	}
 	resolved := *presentation
 	resolved.AnimationPool = append([]string(nil), presentation.AnimationPool...)
 	resolved.StylePool = append([]string(nil), presentation.StylePool...)
-	if err := expandMapPresetPresentation(&resolved); err != nil {
+	if err := ExpandMapPresetPresentation(&resolved); err != nil {
 		return err
 	}
 	animation := strings.TrimSpace(resolved.Animation)
@@ -312,18 +312,18 @@ func applyRequestedMapPresentation(plan *capmodel.OverlayPlan, presentation *scr
 		}
 	}
 	if !strings.EqualFold(animation, "random") {
-		if err := applyRequestedMapAnimation(plan, animation); err != nil {
+		if err := ApplyRequestedMapAnimation(plan, animation); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// resolveMapPresentationPresetSpec expands a requested preset on the RAW spec,
+// ResolveMapPresentationPresetSpec expands a requested preset on the RAW spec,
 // before Normalize applies its defaults. Expanding earlier is what makes an
 // explicit style/animation a conflict only when it really disagrees: once
 // Normalize has filled esri_topo, every preset would look contradicted.
-func resolveMapPresentationPresetSpec(spec *scriptpkg.MapPresentationSpec) error {
+func ResolveMapPresentationPresetSpec(spec *scriptpkg.MapPresentationSpec) error {
 	if spec == nil {
 		return nil
 	}
@@ -366,10 +366,10 @@ func resolveMapPresentationPresetSpec(spec *scriptpkg.MapPresentationSpec) error
 	return nil
 }
 
-// expandMapPresetPresentation re-applies the preset pair on a RESOLVED
+// ExpandMapPresetPresentation re-applies the preset pair on a RESOLVED
 // presentation, whose style may already carry Normalize's default rather than
 // the caller's intent. Unknown ids fail closed; no preset is a no-op.
-func expandMapPresetPresentation(p *scriptpkg.MapPresentation) error {
+func ExpandMapPresetPresentation(p *scriptpkg.MapPresentation) error {
 	if p == nil {
 		return nil
 	}
@@ -433,7 +433,7 @@ func applyMaterializedMap(item *capmodel.OverlayItem, materialized capmodel.Over
 	}
 }
 
-func validateMapPresentationPools(p scriptpkg.MapPresentation) error {
+func ValidateMapPresentationPools(p scriptpkg.MapPresentation) error {
 	animations := make(map[string]bool, len(p.AnimationPool))
 	for _, id := range p.AnimationPool {
 		id = strings.TrimSpace(id)

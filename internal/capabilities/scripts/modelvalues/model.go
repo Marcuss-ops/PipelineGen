@@ -19,7 +19,7 @@
 //
 // model.go was split three ways on 2026-09-12 (values | render | aggregates)
 // to keep every file under max_lines_per_file_strict=600 (godlike/08).
-package scriptgeneration
+package modelvalues
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
@@ -28,12 +28,12 @@ import (
 
 // ── Domain aggregates ───────────────────────────────────────────────
 
-// fixedSceneKind maps a protected fixed-media scene onto the domain SceneKind
+// FixedSceneKind maps a protected fixed-media scene onto the domain SceneKind
 // from its explicit Role. The scene ID is identity only — it never selects the
 // section kind. Opening/closing roles produce the intro/outro sections; a
 // legacy fixed scene without a role degrades to the generic fixed clip
 // treatment.
-func fixedSceneKind(scene contract.Scene) scriptpkg.SceneKind {
+func FixedSceneKind(scene contract.Scene) scriptpkg.SceneKind {
 	switch scene.Role.Normalize() {
 	case scriptpkg.SceneRoleOpening:
 		return scriptpkg.SceneIntro
@@ -44,7 +44,7 @@ func fixedSceneKind(scene contract.Scene) scriptpkg.SceneKind {
 	}
 }
 
-func cloneFixedPlayback(in *scriptpkg.FixedPlaybackPolicy) *scriptpkg.FixedPlaybackPolicy {
+func CloneFixedPlayback(in *scriptpkg.FixedPlaybackPolicy) *scriptpkg.FixedPlaybackPolicy {
 	if in == nil {
 		return nil
 	}

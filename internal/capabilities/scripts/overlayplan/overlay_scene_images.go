@@ -5,7 +5,7 @@
 // counterparts. Both are media projections onto a plan that is already sealed:
 // nothing here decides WHICH image, only whether the bytes the plan names are
 // the bytes the render can fetch.
-package scriptgeneration
+package overlayplan
 
 import (
 	"encoding/hex"
@@ -46,23 +46,23 @@ func sceneEntityImageHashes(result *contract.GenerateResult) map[string]struct{}
 	return hashes
 }
 
-// sceneImageCandidate projects one already-materialized still image onto its
+// SceneImageCandidate projects one already-materialized still image onto its
 // owning scene. Scene images are independent of entity cards: recurring people
 // can keep their canonical portrait while each scene gets its own contextual
 // visual. Timing is anchored at the certified scene start, never estimated
 // from the narration text.
-func sceneImageCandidate(result *contract.GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64) (capabilityoverlay.ImageCandidate, bool) {
-	candidates := sceneImageCandidates(result, sceneID, startUS, excludedHashes, sceneEndUS, 1)
+func SceneImageCandidate(result *contract.GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64) (capabilityoverlay.ImageCandidate, bool) {
+	candidates := SceneImageCandidates(result, sceneID, startUS, excludedHashes, sceneEndUS, 1)
 	if len(candidates) == 0 {
 		return capabilityoverlay.ImageCandidate{}, false
 	}
 	return candidates[0], true
 }
 
-// sceneImageCandidates projects distinct contextual stills onto one scene.
+// SceneImageCandidates projects distinct contextual stills onto one scene.
 // When a scene has enough certified duration, later stills run sequentially
 // after the first one, preserving the replace-only image timeline contract.
-func sceneImageCandidates(result *contract.GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64, limit int) []capabilityoverlay.ImageCandidate {
+func SceneImageCandidates(result *contract.GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64, limit int) []capabilityoverlay.ImageCandidate {
 	if result == nil || strings.TrimSpace(sceneID) == "" || startUS < 0 {
 		return nil
 	}
@@ -139,7 +139,7 @@ func sceneImageCandidates(result *contract.GenerateResult, sceneID string, start
 				continue
 			}
 			seen[assetID] = struct{}{}
-			if !sceneImageCandidateReady(candidate, digest) {
+			if !SceneImageCandidateReady(candidate, digest) {
 				continue
 			}
 			readyCandidates++
@@ -198,12 +198,12 @@ func sceneImageCandidates(result *contract.GenerateResult, sceneID string, start
 	return logSelection()
 }
 
-// entityImageCardReservation counts the scene's unique image-bearing entity
+// EntityImageCardReservation counts the scene's unique image-bearing entity
 // cards. Rust admits base candidates (generic stills and maps) before it merges
 // entity cards, so a scene full of generic stills silently loses every entity
 // image to the per-scene ceiling. Reserving their slots here keeps the generic
 // lane from consuming the budget the certified portraits need.
-func entityImageCardReservation(result *contract.GenerateResult, sceneID string) int {
+func EntityImageCardReservation(result *contract.GenerateResult, sceneID string) int {
 	if result == nil || strings.TrimSpace(sceneID) == "" {
 		return 0
 	}
@@ -235,16 +235,16 @@ func entityImageCardReservation(result *contract.GenerateResult, sceneID string)
 	return len(seen)
 }
 
-// genericSceneImageLimit returns how many generic stills one scene may offer
+// GenericSceneImageLimit returns how many generic stills one scene may offer
 // without evicting its certified entity images from the shared per-scene
 // overlay budget. With no image-bearing entities the certified generic limit
 // is unchanged.
-func genericSceneImageLimit(result *contract.GenerateResult, sceneID string, maxOverlaysPerScene int) int {
-	limit := maxGenericSceneImagesPerScene
+func GenericSceneImageLimit(result *contract.GenerateResult, sceneID string, maxOverlaysPerScene int) int {
+	limit := MaxGenericSceneImagesPerScene
 	if maxOverlaysPerScene <= 0 {
 		return limit
 	}
-	reserved := entityImageCardReservation(result, sceneID)
+	reserved := EntityImageCardReservation(result, sceneID)
 	if reserved <= 0 {
 		return limit
 	}
@@ -258,7 +258,7 @@ func genericSceneImageLimit(result *contract.GenerateResult, sceneID string, max
 	return limit
 }
 
-func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest string) bool {
+func SceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest string) bool {
 	// IndexStatus is a post-persistence search-index lifecycle signal. The
 	// current run already owns verified bytes, a stable hash and a durable
 	// Drive/local reference, so waiting for asynchronous INDEXED here creates
@@ -299,12 +299,12 @@ func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest 
 // verified bytes is never replaced.
 
 func canHydrateEntityImage(binding *scriptpkg.EntityImageBinding) bool {
-	return binding != nil && overlayLooksLikeSHA256(binding.SHA256) && entityImageURL(binding) != ""
+	return binding != nil && overlayLooksLikeSHA256(binding.SHA256) && EntityImageURL(binding) != ""
 }
 
-// hydrateLocalizedEntityImages returns the number of localized entities that
+// HydrateLocalizedEntityImages returns the number of localized entities that
 // received a verified source binding.
-func hydrateLocalizedEntityImages(result *contract.GenerateResult, language contract.Language) int {
+func HydrateLocalizedEntityImages(result *contract.GenerateResult, language contract.Language) int {
 	if result == nil || strings.TrimSpace(string(language)) == "" ||
 		strings.EqualFold(strings.TrimSpace(string(result.SourceLanguage)), strings.TrimSpace(string(language))) {
 		return 0
@@ -323,7 +323,7 @@ func hydrateLocalizedEntityImages(result *contract.GenerateResult, language cont
 			if !canHydrateEntityImage(entity.Image) {
 				continue
 			}
-			canonical := strings.TrimSpace(annotationCanonicalEntityID(entity))
+			canonical := strings.TrimSpace(AnnotationCanonicalEntityID(entity))
 			stable := strings.TrimSpace(annotationStableEntityID(entity))
 			if canonical != "" {
 				byCanonical[canonical] = *entity.Image
@@ -385,7 +385,7 @@ func sourceImageBindingByAlias(
 	byCanonical, byStable map[string]scriptpkg.EntityImageBinding,
 	surnameBinding map[string]scriptpkg.EntityImageBinding,
 ) (scriptpkg.EntityImageBinding, bool) {
-	if canonical := strings.TrimSpace(annotationCanonicalEntityID(entity)); canonical != "" {
+	if canonical := strings.TrimSpace(AnnotationCanonicalEntityID(entity)); canonical != "" {
 		if binding, ok := byCanonical[canonical]; ok {
 			return binding, true
 		}

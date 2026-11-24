@@ -1,4 +1,4 @@
-package scriptgeneration
+package overlayplan
 
 import (
 	"encoding/json"
@@ -47,7 +47,7 @@ func buildRawOverlayScenes(
 			ChartsCertified:     result != nil && result.Editorial != nil && result.Editorial.Certified,
 			SourceNumericValues: sourceNumericValuesForScene(scene, result, language),
 		}
-		raw.VisualRecipes = visualRecipesForScene(result, scene.ID)
+		raw.VisualRecipes = VisualRecipesForScene(result, scene.ID)
 		if len(raw.VisualRecipes) > 0 {
 			raw.VisualRecipe = raw.VisualRecipes[0].Recipe
 			raw.VisualPayload = append(json.RawMessage(nil), raw.VisualRecipes[0].Payload...)
@@ -91,12 +91,12 @@ var overlayVisualRecipes = map[string]bool{
 	"source_highlight":  true,
 }
 
-// visualRecipesForScene forwards every supported grounded recipe of one scene,
+// VisualRecipesForScene forwards every supported grounded recipe of one scene,
 // ordered by the engine's priority. Go never inspects a payload beyond checking
 // that it is a JSON object and never chooses a layout: the planner applies each
 // recipe once. Duplicate `(recipe, payload)` pairs are dropped so the same fact
 // does not travel twice.
-func visualRecipesForScene(result *contract.GenerateResult, sceneID string) []overlayplan.VisualRecipeSpec {
+func VisualRecipesForScene(result *contract.GenerateResult, sceneID string) []overlayplan.VisualRecipeSpec {
 	if result == nil || result.SemanticConsolidation == nil {
 		return nil
 	}
@@ -173,7 +173,7 @@ func rawEntities(entities []scriptpkg.AnnotatedEntity, plates capabilityoverlay.
 		}
 		if entity.Image != nil {
 			raw.Image = &overlayplan.RawEntityImage{
-				AssetID: entity.Image.AssetID, URL: entityImageURL(entity.Image),
+				AssetID: entity.Image.AssetID, URL: EntityImageURL(entity.Image),
 				SHA256: entity.Image.SHA256, MediaType: entity.Image.MediaType,
 			}
 		}

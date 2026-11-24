@@ -4,7 +4,7 @@
 // bundle-name join that keeps a surname alias from crossing families, and the
 // spoken-date grounding that decides whether a date may become a card.
 
-package scriptgeneration
+package overlayplan
 
 import (
 	"net/url"
@@ -34,7 +34,7 @@ func entityCardKind(kind capmodel.OverlayKind) bool {
 	return false
 }
 
-// entityCardMediaIndex builds the run-scoped, canonical_entity_id-keyed media
+// EntityCardMediaIndex builds the run-scoped, canonical_entity_id-keyed media
 // index from the result's OWN entity-image bindings: every entity-card-kind
 // annotation entity with a content-addressed binding (asset id + sha256 +
 // url) is indexed so the EntityMediaResolver can pick the best asset for its
@@ -42,7 +42,7 @@ func entityCardKind(kind capmodel.OverlayKind) bool {
 // was supplied by BrainRust, else the deterministic derivation from (type,
 // canonical name) — the two agree whenever the
 // surface IS the canonical name. Both come from the ONE identity helper
-// (annotationCanonicalEntityID), so this index and the overlay-intent/bundle
+// (AnnotationCanonicalEntityID), so this index and the overlay-intent/bundle
 // joins can never disagree on the spelling. Bindings without a content address are
 // deliberately NOT indexed: a card asset must be verifiable, never a bare
 // reference.
@@ -50,7 +50,7 @@ func entityCardKind(kind capmodel.OverlayKind) bool {
 // The second return maps each annotated entity's StableEntityID to its
 // canonical id, so a resolver card item (keyed by the same StableEntityID)
 // can look up the identity to resolve.
-func entityCardMediaIndex(result *contract.GenerateResult, perSceneImages ...overlayPlanImageOptions) (*capabilityentities.EntityMediaResolver, map[string]string) {
+func EntityCardMediaIndex(result *contract.GenerateResult, perSceneImages ...overlayPlanImageOptions) (*capabilityentities.EntityMediaResolver, map[string]string) {
 	sceneScoped := len(perSceneImages) > 0 && perSceneImages[0].perSceneEntityCards()
 	index := capabilityentities.NewEntityMediaIndex()
 	media := capabilityentities.NewEntityMediaResolver()
@@ -94,7 +94,7 @@ func entityCardMediaIndex(result *contract.GenerateResult, perSceneImages ...ove
 				if !useBundle && (binding == nil || strings.TrimSpace(binding.AssetID) == "") {
 					continue
 				}
-				canonical := annotationCanonicalEntityID(entity)
+				canonical := AnnotationCanonicalEntityID(entity)
 				if canonical == "" && useBundle {
 					canonical = catalog.canonicalFor(stable)
 				}
@@ -109,7 +109,7 @@ func entityCardMediaIndex(result *contract.GenerateResult, perSceneImages ...ove
 					if name == "" {
 						name = strings.TrimSpace(entity.Text)
 					}
-					if alias := overlayDisplayAlias(sceneID, name, stable); alias != "" {
+					if alias := OverlayDisplayAlias(sceneID, name, stable); alias != "" {
 						canonicalByStable[alias] = lookupID
 					}
 					// Run-level fallback: a scene without its own binding for the
@@ -131,7 +131,7 @@ func entityCardMediaIndex(result *contract.GenerateResult, perSceneImages ...ove
 					}
 					continue
 				}
-				url := entityImageURL(binding)
+				url := EntityImageURL(binding)
 				if url == "" || strings.TrimSpace(binding.SHA256) == "" {
 					continue
 				}
@@ -189,7 +189,7 @@ func entityCardMediaIndex(result *contract.GenerateResult, perSceneImages ...ove
 			// differs from the resolver card id.
 			if entity, ok := catalog.entityByID[entry.stable]; ok {
 				for _, name := range []string{entity.CanonicalText, entity.Text} {
-					if key := bundleNameKey(entity.Type, name); key != "" {
+					if key := BundleNameKey(entity.Type, name); key != "" {
 						if canonicalByStable[key] == "" {
 							canonicalByStable[key] = lookupID
 						}
@@ -232,7 +232,7 @@ func indexUniqueBundleSurnameAliases(catalog *entityBundleCatalog, canonicalBySt
 		if len(tokens) < 2 {
 			continue
 		}
-		key := bundleNameKey(entity.Type, tokens[len(tokens)-1])
+		key := BundleNameKey(entity.Type, tokens[len(tokens)-1])
 		lookupID := catalog.canonicalFor(stable)
 		if key == "" || lookupID == "" {
 			continue
@@ -253,7 +253,7 @@ func indexUniqueBundleSurnameAliases(catalog *entityBundleCatalog, canonicalBySt
 	}
 }
 
-// overlayDisplayAlias is the SINGLE owner of the legacy
+// OverlayDisplayAlias is the SINGLE owner of the legacy
 // "overlay-<scene>-<slug>" key. It exists because a resolver card that predates
 // the stable occurrence id still spells its entity this way, and the media
 // index has to find the canonical id that card already carries.
@@ -264,7 +264,7 @@ func indexUniqueBundleSurnameAliases(catalog *entityBundleCatalog, canonicalBySt
 // alone makes a shared identity impossible — the same entity in two scenes has
 // two different aliases. TestOverlayDisplayAliasIsNeverAnIdentity and
 // TestOverlayPlanProductionHasSingleAuthority keep this the only producer.
-func overlayDisplayAlias(sceneID, name, fallback string) string {
+func OverlayDisplayAlias(sceneID, name, fallback string) string {
 	slug := capabilityentities.SafeEntityID(strings.TrimSpace(name))
 	if slug == "" {
 		slug = strings.TrimSpace(fallback)
@@ -275,7 +275,7 @@ func overlayDisplayAlias(sceneID, name, fallback string) string {
 	return "overlay-" + strings.TrimSpace(sceneID) + "-" + slug
 }
 
-// bundleNameKey is the typed display-name join key. The entity family is part
+// BundleNameKey is the typed display-name join key. The entity family is part
 // of the key on purpose: a surname alias is a projection of a PERSON portrait
 // (Desiree Washington → "washington"), and the GPE of the same surface
 // (Washington) is a DIFFERENT identity. Keeping the family in the key means a
@@ -284,7 +284,7 @@ func overlayDisplayAlias(sceneID, name, fallback string) string {
 // family. Non-PERSON types index their full display name, so a verified place
 // or organisation portrait still resolves by name when the occurrence id
 // differs.
-func bundleNameKey(entityType, name string) string {
+func BundleNameKey(entityType, name string) string {
 	key := entitycatalog.NormalizeVerifiedAssetKey(name)
 	if key == "" {
 		return ""
@@ -318,7 +318,7 @@ func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
 		case "image/jpeg", "image/jpg":
 			return "photo_jpeg"
 		}
-		url := strings.ToLower(strings.TrimSpace(entityImageURL(binding)))
+		url := strings.ToLower(strings.TrimSpace(EntityImageURL(binding)))
 		if strings.HasSuffix(url, ".png") {
 			return "photo"
 		}
@@ -335,7 +335,7 @@ func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
 var explicitDatePattern = regexp.MustCompile(`(?i)\b(?:[0-9]{1,2}\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+[0-9]{4}|[0-9]{4})\b`)
 var groundedDateIdentityPattern = regexp.MustCompile(`(?i)^([0-9]{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+([0-9]{4}))?$`)
 
-func entityImageURL(binding *scriptpkg.EntityImageBinding) string {
+func EntityImageURL(binding *scriptpkg.EntityImageBinding) string {
 	if binding == nil {
 		return ""
 	}

@@ -61,43 +61,49 @@ func TestOverlayPlanProductionHasSingleAuthority(t *testing.T) {
 	aliasBudget := map[string]int{"\"overlay-\"": 1, "\"bundle-name:\"": 1}
 	aliasProducers := map[string]string{}
 
-	entries, err := os.ReadDir(scriptsDir)
-	if err != nil {
-		t.Fatalf("read scripts package: %v", err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			continue
-		}
-		path := filepath.Join(scriptsDir, entry.Name())
-		content, err := os.ReadFile(path)
+	// The overlay-plan family moved to the scripts/overlayplan leaf; the guard
+	// scans the root facade and the extracted owner together, because the
+	// forbidden symbols and the alias producers are production code wherever
+	// they live.
+	for _, dir := range []string{scriptsDir, filepath.Join(scriptsDir, "overlayplan")} {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			t.Fatalf("read %s: %v", entry.Name(), err)
+			t.Fatalf("read %s: %v", dir, err)
 		}
-		for _, symbol := range forbidden {
-			if strings.Contains(string(content), symbol) {
-				t.Errorf("retired Go planner symbol %q reappeared in %s", symbol, entry.Name())
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+				continue
 			}
-		}
-		// OVL-03: files are split by responsibility, never to satisfy a line
-		// budget. The hard cap remains enforced by archcheck; a header that
-		// explains a split by line count is the anti-pattern this guard bans.
-		if strings.HasPrefix(entry.Name(), "overlay_") {
-			for _, marker := range []string{
-				"max_lines_per_file_strict",
-				"split to stay under 600",
-				"split to keep both halves under",
-				"600-LOC cap",
-			} {
-				if strings.Contains(string(content), marker) {
-					t.Errorf("line-budget split comment %q reappeared in %s; split by responsibility instead", marker, entry.Name())
+			path := filepath.Join(dir, entry.Name())
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			for _, symbol := range forbidden {
+				if strings.Contains(string(content), symbol) {
+					t.Errorf("retired Go planner symbol %q reappeared in %s", symbol, path)
 				}
 			}
-		}
-		for spelling := range aliasBudget {
-			if n := strings.Count(string(content), spelling); n > 0 {
-				aliasBudget[spelling] -= n
-				aliasProducers[spelling] = entry.Name()
+			// OVL-03: files are split by responsibility, never to satisfy a line
+			// budget. The hard cap remains enforced by archcheck; a header that
+			// explains a split by line count is the anti-pattern this guard bans.
+			if strings.HasPrefix(entry.Name(), "overlay_") {
+				for _, marker := range []string{
+					"max_lines_per_file_strict",
+					"split to stay under 600",
+					"split to keep both halves under",
+					"600-LOC cap",
+				} {
+					if strings.Contains(string(content), marker) {
+						t.Errorf("line-budget split comment %q reappeared in %s; split by responsibility instead", marker, path)
+					}
+				}
+			}
+			for spelling := range aliasBudget {
+				if n := strings.Count(string(content), spelling); n > 0 {
+					aliasBudget[spelling] -= n
+					aliasProducers[spelling] = entry.Name()
+				}
 			}
 		}
 	}
@@ -151,9 +157,9 @@ func TestOverlayPlanProductionHasSingleAuthority(t *testing.T) {
 	// guard checks the production call sites rather than deleting the helpers.
 	plannerFiles := []string{
 		"overlay_plan.go",
-		"overlay_plan_compile.go",
-		"overlay_plan_v2_request.go",
-		"overlay_plan_seal.go",
+		"overlayplan/overlay_plan_compile.go",
+		"overlayplan/overlay_plan_v2_request.go",
+		"overlayplan/freeze.go",
 		"runner_phase_overlay_plan.go",
 	}
 	for _, name := range plannerFiles {

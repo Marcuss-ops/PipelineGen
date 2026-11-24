@@ -7,7 +7,7 @@
 // silently drops a binding without a hash. A URL-only hit stays a discovery
 // record on the plan; it is not promoted to a rendered card, and the media
 // stage remains the owner of acquiring those bytes.
-package scriptgeneration
+package overlayplan
 
 import (
 	"strings"

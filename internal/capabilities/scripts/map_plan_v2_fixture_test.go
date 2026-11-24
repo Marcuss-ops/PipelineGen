@@ -132,9 +132,9 @@ func buildMapPlanV2RequestForFixture(t *testing.T, fixture mapPlanV2Fixture) ove
 		fixture.planID, fixture.videoID, fixture.projectID, fixture.plates)
 	require.NoError(t, err)
 	require.NotNil(t, input)
-	request, err := buildOverlayPlanV2Request(input.result, input.language, input.canvas,
-		input.planID, input.videoID, input.projectID, input.motionSeed,
-		input.timedScenes, input.scenes, input.rawScenes, input.imagePlan, input.timelineBounds)
+	request, err := buildOverlayPlanV2Request(input.Result, input.Language, input.Canvas,
+		input.PlanID, input.VideoID, input.ProjectID, input.MotionSeed,
+		input.TimedScenes, input.Scenes, input.RawScenes, input.ImagePlan, input.TimelineBounds)
 	require.NoError(t, err)
 	return request
 }

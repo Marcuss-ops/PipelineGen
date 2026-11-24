@@ -12,7 +12,7 @@
 // so every downstream join (overlay intent, entity-card media index, semantic
 // render bundle) resolves an entity's identity through ONE function instead of
 // re-deriving it from a display name.
-package scriptgeneration
+package overlayplan
 
 import (
 	"strconv"
@@ -25,7 +25,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// aggregateEntityResult merges the fenced per-scene VidRush segment results
+// AggregateEntityResult merges the fenced per-scene VidRush segment results
 // into one canonical EntityResult. Classification is deterministic and matches
 // the legacy batch projection: PERSON → persons; LOCATION/PLACE/COUNTRY/CITY →
 // places; every other type → concepts. Repeated mentions collapse onto one row
@@ -33,7 +33,7 @@ import (
 // the grounded full name of its segment. Returns nil when no segment produced
 // any entity (or no segments were passed), so the durable surface omits the
 // block instead of exposing an empty aggregate.
-func aggregateEntityResult(segments []scriptpkg.VidRushSegmentResult) *scriptpkg.EntityResult {
+func AggregateEntityResult(segments []scriptpkg.VidRushSegmentResult) *scriptpkg.EntityResult {
 	agg := &scriptpkg.EntityResult{}
 	seenPhrases := make(map[string]struct{})
 	seenWords := make(map[string]struct{})
@@ -89,7 +89,7 @@ func aggregateEntityResult(segments []scriptpkg.VidRushSegmentResult) *scriptpkg
 				// One identity per person: a surname-only mention that this
 				// segment resolves to a grounded full name collapses onto it,
 				// exactly like the annotation projection.
-				value = expandPersonName(text, value)
+				value = ExpandPersonName(text, value)
 			}
 			entity := scriptpkg.Entity{Value: value, Type: ent.Type, Score: float32(ent.Confidence)}
 			switch {
@@ -377,12 +377,12 @@ func capitalizeFirstRune(value string) string {
 	return string(runes)
 }
 
-// dropSurnameOnlyAnnotationDuplicates removes a one-token PERSON annotation
+// DropSurnameOnlyAnnotationDuplicates removes a one-token PERSON annotation
 // when exactly one grounded multi-token PERSON in the run ends with that
 // token. The full name is already spoken and annotated elsewhere; keeping the
 // surname-only copy would mint a second identity and an extra entity card.
 // With zero or multiple candidate full names the surname is preserved.
-func dropSurnameOnlyAnnotationDuplicates(annotations map[int]*scriptpkg.SceneAnnotations) {
+func DropSurnameOnlyAnnotationDuplicates(annotations map[int]*scriptpkg.SceneAnnotations) {
 	fullBySurname := make(map[string]map[string]struct{})
 	for _, ann := range annotations {
 		if ann == nil {
@@ -437,10 +437,10 @@ func dropSurnameOnlyAnnotationDuplicates(annotations map[int]*scriptpkg.SceneAnn
 	}
 }
 
-// projectEntityCompatibility restores the legacy wire surfaces consumed by
+// ProjectEntityCompatibility restores the legacy wire surfaces consumed by
 // existing E2E clients while keeping EntityResult and VidRush segment results
 // as the only semantic sources of truth.
-func projectEntityCompatibility(result *contract.GenerateResult, segments []scriptpkg.VidRushSegmentResult) {
+func ProjectEntityCompatibility(result *contract.GenerateResult, segments []scriptpkg.VidRushSegmentResult) {
 	if result == nil {
 		return
 	}
@@ -452,7 +452,7 @@ func projectEntityCompatibility(result *contract.GenerateResult, segments []scri
 	}
 }
 
-// annotationCanonicalEntityID returns the canonical, readable identity
+// AnnotationCanonicalEntityID returns the canonical, readable identity
 // ("person:floyd-mayweather", "gpe:los-angeles") of one annotation entity.
 //
 // Precedence — use BrainRust's linked ID when available, otherwise the stable
@@ -462,7 +462,7 @@ func projectEntityCompatibility(result *contract.GenerateResult, segments []scri
 // then treat the entity as identity-less rather than mint an id itself. Every
 // consumer that needs the canonical id (overlay intent, entity card media
 // index, semantic render bundle) joins through this one function.
-func annotationCanonicalEntityID(entity scriptpkg.AnnotatedEntity) string {
+func AnnotationCanonicalEntityID(entity scriptpkg.AnnotatedEntity) string {
 	if id := strings.TrimSpace(entity.CanonicalEntityID); id != "" {
 		return id
 	}
@@ -472,7 +472,7 @@ func annotationCanonicalEntityID(entity scriptpkg.AnnotatedEntity) string {
 // annotationStableEntityID returns the content-addressed machine identity
 // ("ent_<16 hex>") of one annotation entity — the id the canonical entity
 // timeline stamps on every occurrence and the render plane keys plan items by.
-// It is derived through the same single owner as annotationCanonicalEntityID,
+// It is derived through the same single owner as AnnotationCanonicalEntityID,
 // so the annotation surface, the overlay intent and the plan item always agree
 // WITHOUT any consumer comparing display names.
 func annotationStableEntityID(entity scriptpkg.AnnotatedEntity) string {

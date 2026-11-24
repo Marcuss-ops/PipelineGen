@@ -1,4 +1,4 @@
-package scriptgeneration
+package overlayplan
 
 import (
 	"context"
@@ -67,7 +67,7 @@ func CompileOverlayPlanFromGenerationResult(
 			// do not carry generated speech timing or semantic overlay input.
 			capResult.Scenes = append(capResult.Scenes, Scene{
 				ID: source.ID, Index: i, Text: map[Language]string{language: source.DisplayText},
-				ExecutionMode: source.ExecutionMode, FixedPlayback: cloneFixedPlayback(source.FixedPlayback),
+				ExecutionMode: source.ExecutionMode, FixedPlayback: CloneFixedPlayback(source.FixedPlayback),
 				Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip},
 			})
 			continue
@@ -118,14 +118,14 @@ func CompileOverlayPlanFromGenerationResult(
 	// the overlay compiler consumes scene-local annotations. Project the exact
 	// enriched segments here, using the same grounding rules as the durable
 	// runner, before compiling the entity timeline and phrase intents.
-	applySegmentEntityAnnotations(capResult, language, result.Segments)
+	ApplySegmentEntityAnnotations(capResult, language, result.Segments)
 
 	timeline, err := CompileCanonicalTimeline(*capResult)
 	if err != nil {
 		return nil, fmt.Errorf("batch overlay plan: compile canonical timeline: %w", err)
 	}
 	capResult.CanonicalTimeline = &timeline
-	if err := compileResultEntityTimeline(ctx, aligner, capResult, language); err != nil {
+	if err := CompileResultEntityTimeline(ctx, aligner, capResult, language); err != nil {
 		return nil, fmt.Errorf("batch overlay plan: compile entity timeline: %w", err)
 	}
 	canvas := OverlayCanvasSpec{
@@ -162,10 +162,10 @@ func imageSFXWindow(item capmodel.OverlayItem) (startOffsetMS, visibleEndMS int6
 	return first.StartMS, visibleEndMS
 }
 
-// applyImageAssetStylesForResult applies the per-pin styles to the source plan
+// ApplyImageAssetStylesForResult applies the per-pin styles to the source plan
 // and every localized plan: translation never changes the stills, so a pin's
 // look belongs to the same scene in each language.
-func applyImageAssetStylesForResult(result *GenerateResult, pins []scriptpkg.OverlayImageAsset, runStyle *scriptpkg.OverlayImageStyleSpec) error {
+func ApplyImageAssetStylesForResult(result *GenerateResult, pins []scriptpkg.OverlayImageAsset, runStyle *scriptpkg.OverlayImageStyleSpec) error {
 	if result == nil {
 		return nil
 	}
@@ -178,10 +178,10 @@ func applyImageAssetStylesForResult(result *GenerateResult, pins []scriptpkg.Ove
 			plans = append(plans, plan)
 		}
 	}
-	return applyImageAssetStyles(plans, pins, runStyle)
+	return ApplyImageAssetStyles(plans, pins, runStyle)
 }
 
-func applyImageAssetStyles(plans []*capmodel.OverlayPlan, pins []scriptpkg.OverlayImageAsset, runStyle *scriptpkg.OverlayImageStyleSpec) error {
+func ApplyImageAssetStyles(plans []*capmodel.OverlayPlan, pins []scriptpkg.OverlayImageAsset, runStyle *scriptpkg.OverlayImageStyleSpec) error {
 	sceneStyles, sceneOrder := groupImageStylesByScene(pins)
 	if len(sceneOrder) == 0 {
 		return nil
@@ -263,11 +263,11 @@ func groupImageStylesByScene(pins []scriptpkg.OverlayImageAsset) (map[string][]*
 
 // ── random_image_effects.go (merged to respect the package file cap) ──
 
-// attachRandomImageEffectsToPlan applies the deterministic per-image runtime
+// AttachRandomImageEffectsToPlan applies the deterministic per-image runtime
 // decoration to one plan. The selection lives in the overlays package (single
 // owner of the EffectsPack decoration vocabulary); this is only the plan-level
 // binding the runner calls when the payload asked for random_image_effects.
-func attachRandomImageEffectsToPlan(plan *capmodel.OverlayPlan) {
+func AttachRandomImageEffectsToPlan(plan *capmodel.OverlayPlan) {
 	if plan == nil {
 		return
 	}

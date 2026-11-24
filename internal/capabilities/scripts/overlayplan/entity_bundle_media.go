@@ -6,7 +6,7 @@
 // surface and may be absent, localized or stale by the time a plan is lowered.
 // This catalog indexes bundle assets under their canonical identity and keeps
 // the annotation surface only as a localized alias source.
-package scriptgeneration
+package overlayplan
 
 import (
 	"strings"

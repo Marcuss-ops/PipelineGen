@@ -163,9 +163,9 @@ func TestBuildOverlayPlanV2RequestCarriesRawSurfacesNotTextSelection(t *testing.
 	require.NoError(t, err)
 	require.NotNil(t, input)
 
-	request, err := buildOverlayPlanV2Request(input.result, input.language, input.canvas,
-		input.planID, input.videoID, input.projectID, input.motionSeed,
-		input.timedScenes, input.scenes, input.rawScenes, input.imagePlan, input.timelineBounds)
+	request, err := buildOverlayPlanV2Request(input.Result, input.Language, input.Canvas,
+		input.PlanID, input.VideoID, input.ProjectID, input.MotionSeed,
+		input.TimedScenes, input.Scenes, input.RawScenes, input.ImagePlan, input.TimelineBounds)
 	require.NoError(t, err)
 	require.Len(t, request.Scenes, 1)
 	wire := request.Scenes[0]

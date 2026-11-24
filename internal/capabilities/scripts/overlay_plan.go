@@ -27,17 +27,36 @@ import (
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlayplan"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
+// The overlay-plan family now lives in scripts/overlayplan. The root keeps the
+// public names and the option/compiler types so existing call sites and the
+// exported capability surface stay source-compatible.
+type (
+	overlayPlanImageOptions = overlayplan.ImageOptions
+	OverlayPlanCompiler     = overlayplan.OverlayPlanCompiler
+)
+
+// Overlay-family helpers still called by the root ingress/runner. They are
+// owned by the extracted package; the root keeps the historical lower-case
+// names so no call site moves.
+var (
+	resolveEntityImageMotionPool     = overlayplan.ResolveEntityImageMotionPool
+	resolveEntityCaptionMotionPool   = overlayplan.ResolveEntityCaptionMotionPool
+	resolveMapPresentationPresetSpec = overlayplan.ResolveMapPresentationPresetSpec
+	validateMapPresentationPools     = overlayplan.ValidateMapPresentationPools
+)
+
 // CompileOverlayPlanWithRustResolver compiles and seals a plan using the
 // configured BrainRust compiler. There is no Go planner and no per-phase
 // fallback: the v2 compiler is the only plan authority.
 func CompileOverlayPlanWithRustResolver(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(ctx, result, language, canvas, planID, videoID, projectID, plates, compiler, perSceneImages...)
+	return overlayplan.CompileOverlayPlanWithRustResolver(ctx, result, language, canvas, planID, videoID, projectID, plates, compiler, perSceneImages...)
 }
 
 // ── Visual bullet values (merged from editorial_bullet_values.go) ──

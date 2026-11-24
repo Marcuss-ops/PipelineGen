@@ -10,7 +10,7 @@
 //
 // Ownership split inside this file:
 //
-//	applyPayloadOverlayStyleToItems → the one run-level OverlayStyleSpec
+//	ApplyPayloadOverlayStyleToItems → the one run-level OverlayStyleSpec
 //	                                  projection (explicit typography, bullet
 //	                                  block/pins, image frame/layer params).
 //	recap/chart counters      → what survived the overlap + budget gates.
@@ -18,7 +18,7 @@
 //	                            this way" snapshot (logic only, no HTTP, no
 //	                            persistence; JSON-serializable for a future
 //	                            page/log sink).
-package scriptgeneration
+package overlayplan
 
 import (
 	"strings"
@@ -224,7 +224,7 @@ func chainSegmentHasCaption(segment capmodel.ChainSegment) bool {
 	return len(segment.Assets) > 0
 }
 
-// applyPayloadOverlayStyleToItems is the one payload-style projection onto the
+// ApplyPayloadOverlayStyleToItems is the one payload-style projection onto the
 // sealed plan, after the planner's presentation defaults. Non-bullet text uses
 // the run-level typography; captioned entity/image cards use it for their
 // caption layer too; bullet-point copy (including a bullet fused into a chain)
@@ -233,7 +233,7 @@ func chainSegmentHasCaption(segment capmodel.ChainSegment) bool {
 // the payload actually chose are written, so an omitted field keeps the
 // planner's default instead of being reset. Cursor controls are dropped by
 // payloadTextStyleParams because the Chronon lowering rejects them.
-func applyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
+func ApplyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
 	runStyle := payloadTextStyleParams(canvas.Style)
 	bulletStyle := payloadBulletStyleParams(canvas.Style)
 	pins := editorialBulletPins(canvas.EditorialBulletStyles)
@@ -333,11 +333,11 @@ func countRecapItems(items []capmodel.OverlayItem) int {
 	return n
 }
 
-// effectiveVisualMoments is the product-facing density metric: top-level GPU
+// EffectiveVisualMoments is the product-facing density metric: top-level GPU
 // render items plus every additional chain segment fused into them. A chain
 // with N segments is one GPU render item but N visual moments, so counting
 // only Items understates the plan the viewer actually sees.
-func effectiveVisualMoments(items []capmodel.OverlayItem) int {
+func EffectiveVisualMoments(items []capmodel.OverlayItem) int {
 	total := len(items)
 	for i := range items {
 		segments, ok := items[i].Segments()

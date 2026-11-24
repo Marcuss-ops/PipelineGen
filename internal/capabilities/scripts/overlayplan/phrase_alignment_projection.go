@@ -1,4 +1,4 @@
-package scriptgeneration
+package overlayplan
 
 import (
 	"context"
@@ -25,13 +25,13 @@ type PhraseTimingSource struct {
 // contract without a second definition.
 type PhraseAlignmentRequest = capabilityaudio.PhraseAlignmentRequest
 
-type timingProjectionSkip struct {
+type TimingProjectionSkip struct {
 	SceneID string
 	Surface string
 	Cause   error
 }
 
-func reportTimingProjectionSkip(reporters []func(timingProjectionSkip), skip timingProjectionSkip) {
+func reportTimingProjectionSkip(reporters []func(TimingProjectionSkip), skip TimingProjectionSkip) {
 	for _, report := range reporters {
 		if report != nil {
 			report(skip)
@@ -160,7 +160,7 @@ func CompileSceneSpeechTimings(ctx context.Context, aligner contract.PhraseAlign
 	return out, nil
 }
 
-// compileResultPhraseTimings derives the deterministic phrase→timestamp
+// CompileResultPhraseTimings derives the deterministic phrase→timestamp
 // projection for the result's source language from the per-scene voiceover
 // timing artifacts captured in the same synthesis stream. Each scene's
 // narration is anchored as a single phrase spanning its voiceover from the
@@ -173,7 +173,7 @@ func CompileSceneSpeechTimings(ctx context.Context, aligner contract.PhraseAlign
 // carries timing the projection stays nil — timing capture is opt-in at the
 // voiceover port, so a timing-less run is a legitimate no-op rather than a
 // failure.
-func compileResultPhraseTimings(ctx context.Context, aligner contract.PhraseAligner, result *contract.GenerateResult, language contract.Language, reporters ...func(timingProjectionSkip)) error {
+func CompileResultPhraseTimings(ctx context.Context, aligner contract.PhraseAligner, result *contract.GenerateResult, language contract.Language, reporters ...func(TimingProjectionSkip)) error {
 	if result == nil {
 		return nil
 	}
@@ -201,7 +201,7 @@ func compileResultPhraseTimings(ctx context.Context, aligner contract.PhraseAlig
 			return fmt.Errorf("phrase timing: scene %q align: %w", scene.ID, err)
 		}
 		if len(alignments) == 0 {
-			reportTimingProjectionSkip(reporters, timingProjectionSkip{SceneID: scene.ID, Surface: "narration", Cause: capabilityaudio.ErrPhraseNotFound})
+			reportTimingProjectionSkip(reporters, TimingProjectionSkip{SceneID: scene.ID, Surface: "narration", Cause: capabilityaudio.ErrPhraseNotFound})
 			continue
 		}
 		sources[scene.ID] = PhraseTimingSource{Timing: *ref.Timing, Phrases: []string{text}, VoiceoverAssetID: ref.ID}
@@ -303,10 +303,10 @@ func normalizePhraseText(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
-// occurrenceFor matches an annotation entity to its certified timeline
+// OccurrenceFor matches an annotation entity to its certified timeline
 // occurrence by the canonical StableEntityID (both surfaces derive the same
 // content-addressed id from the (type, canonical name) key).
-func occurrenceFor(occurrences []capabilityentities.EntityOccurrence, entity scriptpkg.AnnotatedEntity) *capabilityentities.EntityOccurrence {
+func OccurrenceFor(occurrences []capabilityentities.EntityOccurrence, entity scriptpkg.AnnotatedEntity) *capabilityentities.EntityOccurrence {
 	want := capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)
 	for i := range occurrences {
 		if occurrences[i].EntityID == want {
