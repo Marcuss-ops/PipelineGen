@@ -1,4 +1,4 @@
-package script
+package spec
 
 import (
 	"sort"
@@ -41,11 +41,11 @@ const (
 // The lists are explicit rather than generated from a count on purpose: a
 // closed wire vocabulary must be reviewable as a diff.
 
-// builtInCanonicalAliases are the aliases the canonical editorial catalog
+// BuiltInCanonicalAliases are the aliases the canonical editorial catalog
 // binds to a Drive identity and editorial metadata
 // (internal/capabilities/mediaregistry/editorial_catalog.go). Only these may be
 // presented to a caller as editorial BGM/SFX assets.
-var builtInCanonicalAliases = map[string]BuiltInAudioKind{
+var BuiltInCanonicalAliases = map[string]BuiltInAudioKind{
 	"bgm1": BuiltInAudioBackgroundMusic,
 	"bgm2": BuiltInAudioBackgroundMusic,
 	"bgm3": BuiltInAudioBackgroundMusic,
@@ -68,7 +68,7 @@ var builtInCanonicalAliases = map[string]BuiltInAudioKind{
 	"whoosh3": BuiltInAudioSoundEffect,
 }
 
-// builtInCompatAliases are historical aliases that are deliberately NOT in the
+// BuiltInCompatAliases are historical aliases that are deliberately NOT in the
 // canonical catalog but must keep decoding as built-in, so the safe default
 // (a one-shot effect is attenuated unless the caller says otherwise) is not
 // silently dropped for payloads written against the earlier vocabulary.
@@ -87,7 +87,7 @@ var builtInCanonicalAliases = map[string]BuiltInAudioKind{
 //     also accepted; they are enumerated here instead of being re-matched by
 //     prefix, so a caller-supplied registry id such as `whoosh_custom_hit`
 //     stops silently inheriting the built-in attenuation.
-var builtInCompatAliases = map[string]BuiltInAudioKind{
+var BuiltInCompatAliases = map[string]BuiltInAudioKind{
 	"whoop1": BuiltInAudioSoundEffect,
 	"whoop2": BuiltInAudioSoundEffect,
 	"whoop3": BuiltInAudioSoundEffect,
@@ -118,10 +118,10 @@ const RandomWhooshDirective = "random_whoosh"
 // or an error for the layer that resolves them.
 func BuiltInAudioAliasKind(id string) (BuiltInAudioKind, bool) {
 	id = strings.ToLower(strings.TrimSpace(id))
-	if kind, ok := builtInCanonicalAliases[id]; ok {
+	if kind, ok := BuiltInCanonicalAliases[id]; ok {
 		return kind, true
 	}
-	kind, ok := builtInCompatAliases[id]
+	kind, ok := BuiltInCompatAliases[id]
 	return kind, ok
 }
 
@@ -129,8 +129,8 @@ func BuiltInAudioAliasKind(id string) (BuiltInAudioKind, bool) {
 // list of aliases the canonical editorial catalog binds. The drift gate in
 // internal/capabilities/mediaregistry compares this set with the catalog.
 func BuiltInAudioCanonicalAliases() []string {
-	out := make([]string, 0, len(builtInCanonicalAliases))
-	for alias := range builtInCanonicalAliases {
+	out := make([]string, 0, len(BuiltInCanonicalAliases))
+	for alias := range BuiltInCanonicalAliases {
 		out = append(out, alias)
 	}
 	sort.Strings(out)

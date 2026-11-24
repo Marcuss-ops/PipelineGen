@@ -13,7 +13,7 @@
 // through this resolver.
 // Merged 2026-10-10 with asset_location_commit.go: verifying a resolved
 // location and committing it are one operation on one type.
-package script
+package spec
 
 import (
 	"context"

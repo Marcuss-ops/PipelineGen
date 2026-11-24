@@ -1,9 +1,9 @@
-package script
+package spec
 
-// knownSourceTypes is the canonical set of script-side SourceType
+// KnownSourceTypes is the canonical set of script-side SourceType
 // values. Map lookup keeps the C2-C AST check deterministic.
 // detection (godlike/06 SSOT co-located structural validation).
-var knownSourceTypes = map[SourceType]struct{}{
+var KnownSourceTypes = map[SourceType]struct{}{
 	SourceText:     {},
 	SourceClips:    {},
 	SourceCatalog:  {},
@@ -12,40 +12,40 @@ var knownSourceTypes = map[SourceType]struct{}{
 	SourceResearch: {},
 }
 
-// clipSourceTypes is the canonical set of SourceType values that
+// ClipSourceTypes is the canonical set of SourceType values that
 // may carry clip evidence (godlike/07 NO-FAKE-AVAILABILITY).
-var clipSourceTypes = map[SourceType]struct{}{
+var ClipSourceTypes = map[SourceType]struct{}{
 	SourceClips:   {},
 	SourceCatalog: {},
 	SourceSearch:  {},
 	SourceCurate:  {},
 }
 
-// validGroundingPolicies and validFallbackPolicies are the canonical
+// ValidGroundingPolicies and ValidFallbackPolicies are the canonical
 // membership sets. Map lookup keeps the C2-C AST check deterministic.
 // switch-case detection.
 var (
-	validGroundingPolicies = map[string]struct{}{
+	ValidGroundingPolicies = map[string]struct{}{
 		GroundingPolicyClipsPrimary:  {},
 		GroundingPolicySourcePrimary: {},
 		GroundingPolicyBalanced:      {},
 	}
-	validFallbackPolicies = map[string]struct{}{
+	ValidFallbackPolicies = map[string]struct{}{
 		FallbackPolicyStrict:     {},
 		FallbackPolicyAllowProse: {},
 	}
 )
 
-// isKnownSourceType returns true for the canonical source types.
-func isKnownSourceType(st SourceType) bool {
-	_, ok := knownSourceTypes[st]
+// IsKnownSourceType returns true for the canonical source types.
+func IsKnownSourceType(st SourceType) bool {
+	_, ok := KnownSourceTypes[st]
 	return ok
 }
 
 // IsClipSourceType returns true for source types that may carry
 // clip evidence.
 func IsClipSourceType(st SourceType) bool {
-	_, ok := clipSourceTypes[st]
+	_, ok := ClipSourceTypes[st]
 	return ok
 }
 
@@ -61,14 +61,14 @@ func ModeForSource(st SourceType) string {
 	return "text"
 }
 
-// isValidGroundingPolicy returns true for the canonical policies.
-func isValidGroundingPolicy(p string) bool {
-	_, ok := validGroundingPolicies[p]
+// IsValidGroundingPolicy returns true for the canonical policies.
+func IsValidGroundingPolicy(p string) bool {
+	_, ok := ValidGroundingPolicies[p]
 	return ok
 }
 
-// isValidFallbackPolicy returns true for the canonical policies.
-func isValidFallbackPolicy(p string) bool {
-	_, ok := validFallbackPolicies[p]
+// IsValidFallbackPolicy returns true for the canonical policies.
+func IsValidFallbackPolicy(p string) bool {
+	_, ok := ValidFallbackPolicies[p]
 	return ok
 }

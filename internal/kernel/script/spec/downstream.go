@@ -38,7 +38,7 @@
 //   - OutputDestination is INDEPENDENT of voiceover.DestinationRequest
 //     so kernel/script does NOT import voiceover (AGENTS.md Pattern 8:
 //     domain is the bottom of the import graph, no cross-cut).
-package script
+package spec
 
 // ── DownstreamKind — discriminated enum ────────────────────────────────
 

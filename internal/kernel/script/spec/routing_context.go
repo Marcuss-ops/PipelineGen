@@ -1,6 +1,6 @@
 // Package script — routing_context.go defines the canonical artifact
 // routing decision for a generation item's published artifacts.
-package script
+package spec
 
 import "strings"
 

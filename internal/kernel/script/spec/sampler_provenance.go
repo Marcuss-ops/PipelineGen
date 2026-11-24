@@ -9,7 +9,7 @@
 // Determinism: the type does NOT carry time.Time or any
 // non-deterministic field. Same input \u2192 byte-identical Provenance.
 // This matches the FASE-3 ClipPrePlanner contract pin.
-package script
+package spec
 
 // GateProvenanceRecord is one (candidate, gate) evaluation. It is
 // deterministic (no time.Time, no rand, no goroutine-ordering

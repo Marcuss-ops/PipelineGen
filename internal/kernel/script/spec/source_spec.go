@@ -1,6 +1,6 @@
 // Package script defines the canonical source-agnostic contracts used by
 // script generation.
-package script
+package spec
 
 import (
 	"fmt"

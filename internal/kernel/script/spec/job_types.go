@@ -1,4 +1,4 @@
-package script
+package spec
 
 import job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 

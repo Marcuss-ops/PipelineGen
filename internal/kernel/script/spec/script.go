@@ -2,7 +2,7 @@
 //
 // Scripts are the central artifact of PipelineGen: AI-generated narrative
 // text that drives video production from clips, images, and voiceovers.
-package script
+package spec
 
 import "time"
 

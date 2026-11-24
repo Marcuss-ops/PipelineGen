@@ -9,7 +9,7 @@
 // kernel/script → kernel/script). The legacy root is deleted; all importers
 // consume this package directly.
 // No transport, no SQL, no logger dependencies allowed here.
-package script
+package spec
 
 import "errors"
 

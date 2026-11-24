@@ -1,4 +1,4 @@
-package script
+package spec
 
 // VisualTimingBudget is the kernel-level timing input for visual planning.
 // Source is voiceover, scene, or estimated and is informational; DurationMs

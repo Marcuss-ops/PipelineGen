@@ -2,7 +2,7 @@
 // extract a ClipBinding live beside the type they serve. The package-size
 // cap (max_files_per_package) is the reason for the consolidation, not a
 // change of ownership.
-package script
+package spec
 
 // ClipBinding anchors a scene to a selected YouTube clip. The LLM
 // outputs the clip_id; the application layer enriches title and

@@ -1,4 +1,4 @@
-package script
+package spec
 
 // Preset encodes the endpoint variant for a generation job so the
 // worker can apply the correct defaults without the caller repeating

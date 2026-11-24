@@ -1,4 +1,4 @@
-package script
+package evidence
 
 import (
 	"encoding/json"

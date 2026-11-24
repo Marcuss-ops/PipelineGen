@@ -4,7 +4,7 @@
 // The visual plan is attached to each SpecScene and carries the
 // winning layers (slot, asset_id, provider, duration) plus the
 // cold candidates that were evaluated but not materialized.
-package script
+package spec
 
 import ()
 

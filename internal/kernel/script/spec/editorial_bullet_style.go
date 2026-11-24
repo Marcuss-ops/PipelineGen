@@ -10,7 +10,7 @@
 // deliberately absent from the generation fingerprint, which
 // pins the model output and the editorial decisions, not the look of an
 // already-decided bullet.
-package script
+package spec
 
 // EditorialBulletStyle pins the presentation of one projected editorial bullet.
 //
