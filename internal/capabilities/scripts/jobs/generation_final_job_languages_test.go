@@ -10,10 +10,10 @@ import (
 func TestFinalJobLanguageRequestCreatesIndependentTargetRun(t *testing.T) {
 	parent := scriptgen.GenerateRequest{
 		SourceLanguage: "it", Languages: []scriptgen.Language{"pt", "pl", "ru", "it", "en"},
-		VoiceoverLanguages: []scriptgen.Language{"pt", "pl", "ru", "it", "en"},
-		IdempotencyKey:     "mike-tyson", Project: "mike-tyson",
+
+		IdempotencyKey: "mike-tyson", Project: "mike-tyson",
 		OutputName: "tyson", FinalJob: true,
-		Render: scriptgen.GenerateRequest{}.Render,
+		Render: scriptgen.GenerateRequest{}.Render, AudioConfig: scriptgen.AudioConfig{VoiceoverLanguages: []scriptgen.Language{"pt", "pl", "ru", "it", "en"}},
 	}
 	parent.Render.DriveSubfolderName = "tyson"
 	parent.MediaPlan.Cache = media.MediaCachePolicy{Read: false, Write: false}

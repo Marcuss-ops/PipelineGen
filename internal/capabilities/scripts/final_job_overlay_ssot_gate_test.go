@@ -30,15 +30,15 @@ import (
 // the given overlay items through ONE timeline artifact plus its manifest.
 func ssotGateResult(items []overlaymodel.OverlayItem, artifact *RenderArtifact) *GenerateResult {
 	return &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}}},
-		FinalAudio:        certifiedFinalAudio(5000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
+
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
 		OverlayPlan: &overlaymodel.OverlayPlan{
 			SchemaVersion: overlaymodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 			Items: items,
 		},
-		OverlayRender: manifestOverlayRender(items, artifact),
+		OverlayRender: manifestOverlayRender(items, artifact), AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}}},
+			FinalAudio: certifiedFinalAudio(5000)},
 	}
 }
 

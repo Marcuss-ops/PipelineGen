@@ -27,7 +27,7 @@ func TestRunner_SourceTextVerbatim_PreservesSceneIdentityAndSkipsGenerator(t *te
 		Source:         Source{Type: SourceText, Topic: "existing script"},
 		SourceLanguage: "en",
 		Languages:      []Language{"en", "it"},
-		Audio:          capabilityaudio.AudioModeNone,
+
 		ScriptParams: scriptpkg.ScriptSpec{
 			SourceTextVerbatim: true,
 			Segments: []scriptpkg.ScriptSegment{
@@ -37,7 +37,7 @@ func TestRunner_SourceTextVerbatim_PreservesSceneIdentityAndSkipsGenerator(t *te
 		},
 		MediaPlan: mediadomain.MediaPlanSpec{Extraction: mediadomain.MediaExtractionPolicy{
 			ImportantPhrases: []string{"A phrase absent from the fixed source text."},
-		}},
+		}}, AudioConfig: AudioConfig{Audio: capabilityaudio.AudioModeNone},
 	}
 	runID := "run-verbatim-source-text"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{

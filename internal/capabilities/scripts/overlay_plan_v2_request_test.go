@@ -183,7 +183,7 @@ func TestBuildOverlayPlanV2RequestCarriesRawSurfacesNotTextSelection(t *testing.
 }
 
 func TestOverlayPlanClipsProjectsCanonicalSpans(t *testing.T) {
-	result := &GenerateResult{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 		Version:    capabilityaudio.TimelineVersion,
 		DurationUS: 10_000_000,
 		Segments: []capabilityaudio.TimelineSegment{{
@@ -195,7 +195,7 @@ func TestOverlayPlanClipsProjectsCanonicalSpans(t *testing.T) {
 				{AssetID: "asset-b", TimelineOffsetUS: 2_000_000, TimelineDurationUS: 1_000_000, Freeze: true},
 			},
 		}},
-	}}
+	}}}
 	clips := overlayPlanClips(result, map[string]struct{}{"scene-1": {}})
 	require.Len(t, clips, 2)
 	require.Equal(t, overlayplan.Clip{
@@ -221,8 +221,7 @@ func TestBuildOverlayPlanV2RequestKeepsClipsInsideThePlanScenes(t *testing.T) {
 		}}},
 	}
 	result := &GenerateResult{
-		SourceLanguage: "it",
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		SourceLanguage: "it", AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 			Version:    capabilityaudio.TimelineVersion,
 			DurationUS: 8_000_000,
 			Segments: []capabilityaudio.TimelineSegment{
@@ -237,7 +236,7 @@ func TestBuildOverlayPlanV2RequestKeepsClipsInsideThePlanScenes(t *testing.T) {
 					Video: capabilityaudio.VideoSegment{AssetID: "asset-narration", SourceDurationUS: 2_000_000, TimelineDurationUS: 2_000_000},
 				},
 			},
-		},
+		}},
 	}
 	request, err := buildOverlayPlanV2Request(result, "it", OverlayCanvasSpec{
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, MaxOverlaysPerScene: 5,

@@ -39,7 +39,7 @@ func TestSceneTraceContract_RealSeamsFeedTheTimelineAndCriticalPath(t *testing.T
 	ctx := kernobs.WithRun(context.Background(), run)
 
 	runner := &Runner{translator: traceContractTranslator{}, voiceoverGen: traceContractVoiceover{}}
-	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"en", "es"}, Audio: capabilityaudio.AudioModeChunkedVoiceover}
+	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"en", "es"}, AudioConfig: AudioConfig{Audio: capabilityaudio.AudioModeChunkedVoiceover}}
 	coordinator := newSceneReadyCoordinator(ctx, runner, "run-trace-contract", req, scriptpkg.ArtifactRoutingContext{Project: "trace-project"}, ExecutionContext{})
 
 	textReadyAt := time.Now().UTC().Add(-3 * time.Millisecond)

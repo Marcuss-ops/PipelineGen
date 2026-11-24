@@ -66,8 +66,7 @@ func TestFinalJobDoesNotStartDuringOverlayRender(t *testing.T) {
 		OverlayPlan: &capmodel.OverlayPlan{
 			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1",
 			Items: []capmodel.OverlayItem{{ID: "item-1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE"}},
-		},
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000},
+		}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000}},
 	}
 
 	phaseDone := make(chan bool, 1)

@@ -8,6 +8,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -48,8 +49,10 @@ func CompileOverlayPlanFromGenerationResult(
 		SourceLanguage: language,
 		Title:          result.Title,
 		OutputName:     result.Title,
-		AudioMode:      capabilityaudio.AudioMode(strings.ToUpper(strings.TrimSpace(result.AudioMode))),
-		Aligner:        aligner,
+		AudioOutput: contract.AudioOutput{
+			AudioMode: capabilityaudio.AudioMode(strings.ToUpper(strings.TrimSpace(result.AudioMode))),
+		},
+		Aligner: aligner,
 	}
 	if capResult.AudioMode == "" {
 		capResult.AudioMode = capabilityaudio.AudioModeCombinedTimeline

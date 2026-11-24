@@ -14,8 +14,8 @@ import (
 func renderRequest() GenerateRequest {
 	return GenerateRequest{
 		IdempotencyKey: "channel-key",
-		Audio:          capabilityaudio.AudioModeCombinedTimeline,
-		Render:         scriptpkg.VideoRenderSpec{Enabled: true},
+
+		Render: scriptpkg.VideoRenderSpec{Enabled: true}, AudioConfig: AudioConfig{Audio: capabilityaudio.AudioModeCombinedTimeline},
 	}
 }
 
@@ -151,7 +151,7 @@ func TestApplyChannelProfileIsGatedOnRenderAndAudioMode(t *testing.T) {
 		MixPolicy:    "VOICEOVER_ONLY",
 	}
 	t.Run("no render requested", func(t *testing.T) {
-		req := GenerateRequest{Audio: capabilityaudio.AudioModeCombinedTimeline}
+		req := GenerateRequest{AudioConfig: AudioConfig{Audio: capabilityaudio.AudioModeCombinedTimeline}}
 		if err := ApplyChannelProfile(&req, profile); err != nil {
 			t.Fatal(err)
 		}
@@ -161,7 +161,7 @@ func TestApplyChannelProfileIsGatedOnRenderAndAudioMode(t *testing.T) {
 	})
 	t.Run("audio layers outside COMBINED_TIMELINE", func(t *testing.T) {
 		for _, mode := range []capabilityaudio.AudioMode{capabilityaudio.AudioModeNone, capabilityaudio.AudioModeChunkedVoiceover, ""} {
-			req := GenerateRequest{Audio: mode}
+			req := GenerateRequest{AudioConfig: AudioConfig{Audio: mode}}
 			if err := ApplyChannelProfile(&req, profile); err != nil {
 				t.Fatal(err)
 			}

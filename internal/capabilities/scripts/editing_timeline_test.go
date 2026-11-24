@@ -16,21 +16,20 @@ type testSceneEntityTimeline = capabilityentities.SceneEntityTimeline
 type testEntityOccurrence = capabilityentities.EntityOccurrence
 
 func TestEditingTimeline_UsesCanonicalMicroseconds(t *testing.T) {
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 30000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
-				{ID: "scene-02", Index: 1, TimelineStartUS: 15000000, DurationUS: 15000000},
-			},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 30000000,
+		Segments: []capabilityaudio.TimelineSegment{
+			{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+			{ID: "scene-02", Index: 1, TimelineStartUS: 15000000, DurationUS: 15000000},
 		},
+	},
 		FinalAudio: &FinalAudioReference{
 			AssetID:          "final-audio-001",
 			FinalAudioSHA256: "abc123",
 			DurationUS:       30000000,
 			DurationMS:       30000,
-		},
+		}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -55,19 +54,7 @@ func TestEditingTimeline_UsesCanonicalMicroseconds(t *testing.T) {
 
 func TestEditingTimeline_OverlayTimesMatchCanonicalTimeline(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 30000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
-			},
-		},
-		FinalAudio: &FinalAudioReference{
-			AssetID:          "final-audio-001",
-			FinalAudioSHA256: "abc123",
-			DurationUS:       30000000,
-			DurationMS:       30000,
-		},
+
 		EntityTimeline: func() *testEntityTimeline {
 			tl := capabilityEntityTimeline(t)
 			return &tl
@@ -91,7 +78,19 @@ func TestEditingTimeline_OverlayTimesMatchCanonicalTimeline(t *testing.T) {
 					EndMs:      5100, // 5100ms = 5100000us
 				},
 			},
+		}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 30000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+			},
 		},
+			FinalAudio: &FinalAudioReference{
+				AssetID:          "final-audio-001",
+				FinalAudioSHA256: "abc123",
+				DurationUS:       30000000,
+				DurationMS:       30000,
+			}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -121,20 +120,7 @@ func TestEditingTimeline_OverlayTimesMatchCanonicalTimeline(t *testing.T) {
 func TestEditingTimeline_EntityTimingIsSceneScoped(t *testing.T) {
 	const sharedID = "ent_shared_person"
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 30000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
-				{ID: "scene-02", Index: 1, TimelineStartUS: 15000000, DurationUS: 15000000},
-			},
-		},
-		FinalAudio: &FinalAudioReference{
-			AssetID:          "final-audio-001",
-			FinalAudioSHA256: "abc123",
-			DurationUS:       30000000,
-			DurationMS:       30000,
-		},
+
 		EntityTimeline: &testEntityTimeline{
 			Version:    1,
 			DurationUS: 30000000,
@@ -164,7 +150,20 @@ func TestEditingTimeline_EntityTimingIsSceneScoped(t *testing.T) {
 				{ID: "card-scene-01", SceneID: "scene-01", EntityID: sharedID, Kind: "entity_card", TemplateID: "person_default", Text: "Mike Tyson", StartMs: 1572, EndMs: 2486},
 				{ID: "card-scene-02", SceneID: "scene-02", EntityID: sharedID, Kind: "entity_card", TemplateID: "person_default", Text: "Mike Tyson", StartMs: 20000, EndMs: 22000},
 			},
+		}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 30000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+				{ID: "scene-02", Index: 1, TimelineStartUS: 15000000, DurationUS: 15000000},
+			},
 		},
+			FinalAudio: &FinalAudioReference{
+				AssetID:          "final-audio-001",
+				FinalAudioSHA256: "abc123",
+				DurationUS:       30000000,
+				DurationMS:       30000,
+			}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -189,22 +188,21 @@ func TestEditingTimeline_EntityTimingIsSceneScoped(t *testing.T) {
 }
 
 func TestEditingTimeline_SceneSpansAreContiguous(t *testing.T) {
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 30000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 10000000},
-				{ID: "scene-02", Index: 1, TimelineStartUS: 10000000, DurationUS: 10000000},
-				{ID: "scene-03", Index: 2, TimelineStartUS: 20000000, DurationUS: 10000000},
-			},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 30000000,
+		Segments: []capabilityaudio.TimelineSegment{
+			{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 10000000},
+			{ID: "scene-02", Index: 1, TimelineStartUS: 10000000, DurationUS: 10000000},
+			{ID: "scene-03", Index: 2, TimelineStartUS: 20000000, DurationUS: 10000000},
 		},
+	},
 		FinalAudio: &FinalAudioReference{
 			AssetID:          "final-audio-001",
 			FinalAudioSHA256: "abc123",
 			DurationUS:       30000000,
 			DurationMS:       30000,
-		},
+		}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -223,21 +221,20 @@ func TestEditingTimeline_SceneSpansAreContiguous(t *testing.T) {
 }
 
 func TestEditingTimeline_AudioSHA256MatchesFinalAudio(t *testing.T) {
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 10000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 10000000},
-			},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 10000000,
+		Segments: []capabilityaudio.TimelineSegment{
+			{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 10000000},
 		},
+	},
 		FinalAudio: &FinalAudioReference{
 			AssetID:          "final-audio-001",
 			FinalAudioSHA256: "deadbeef12345678",
 			DurationUS:       10000000,
 			DurationMS:       10000,
 			DriveLink:        "https://drive.google.com/file/d/abc",
-		},
+		}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -253,19 +250,7 @@ func TestEditingTimeline_AudioSHA256MatchesFinalAudio(t *testing.T) {
 
 func TestEditingTimeline_OverlaySpansCarryRenderedArtifactIdentityAndContract(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 15000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
-			},
-		},
-		FinalAudio: &FinalAudioReference{
-			AssetID:          "final-audio-001",
-			FinalAudioSHA256: "abc123",
-			DurationUS:       15000000,
-			DurationMS:       15000,
-		},
+
 		OverlayPlan: &capmodel.OverlayPlan{
 			SchemaVersion: capmodel.SchemaVersionPlan,
 			PlanID:        "test-plan",
@@ -294,7 +279,19 @@ func TestEditingTimeline_OverlaySpansCarryRenderedArtifactIdentityAndContract(t 
 				DriveLink:   "https://drive.google.com/file/d/overlay",
 				DriveFileID: "drive-overlay-1",
 			},
+		}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 15000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+			},
 		},
+			FinalAudio: &FinalAudioReference{
+				AssetID:          "final-audio-001",
+				FinalAudioSHA256: "abc123",
+				DurationUS:       15000000,
+				DurationMS:       15000,
+			}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -359,19 +356,7 @@ func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
 	}
 
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 15000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
-			},
-		},
-		FinalAudio: &FinalAudioReference{
-			AssetID:          "final-audio-001",
-			FinalAudioSHA256: "abc123",
-			DurationUS:       15000000,
-			DurationMS:       15000,
-		},
+
 		OverlayPlan:    plan,
 		OverlayIntents: []capmodel.OverlayIntent{intent},
 		OverlayRender: &RenderReference{
@@ -382,7 +367,19 @@ func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
 				DriveLink:   "https://drive.google.com/file/d/overlay",
 				DriveFileID: "drive-overlay-1",
 			},
+		}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 15000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+			},
 		},
+			FinalAudio: &FinalAudioReference{
+				AssetID:          "final-audio-001",
+				FinalAudioSHA256: "abc123",
+				DurationUS:       15000000,
+				DurationMS:       15000,
+			}},
 	}
 
 	et, err := BuildEditingTimeline(result)
@@ -421,19 +418,7 @@ func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
 
 func TestEditingTimeline_OverlaySpansWithoutRenderLeaveIdentityEmpty(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 15000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
-			},
-		},
-		FinalAudio: &FinalAudioReference{
-			AssetID:          "final-audio-001",
-			FinalAudioSHA256: "abc123",
-			DurationUS:       15000000,
-			DurationMS:       15000,
-		},
+
 		OverlayPlan: &capmodel.OverlayPlan{
 			SchemaVersion: capmodel.SchemaVersionPlan,
 			PlanID:        "test-plan",
@@ -452,7 +437,19 @@ func TestEditingTimeline_OverlaySpansWithoutRenderLeaveIdentityEmpty(t *testing.
 					EndMs:      5100,
 				},
 			},
+		}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			Version:    capabilityaudio.TimelineVersion,
+			DurationUS: 15000000,
+			Segments: []capabilityaudio.TimelineSegment{
+				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 15000000},
+			},
 		},
+			FinalAudio: &FinalAudioReference{
+				AssetID:          "final-audio-001",
+				FinalAudioSHA256: "abc123",
+				DurationUS:       15000000,
+				DurationMS:       15000,
+			}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -481,11 +478,10 @@ func TestEditingTimeline_NilResultReturnsNil(t *testing.T) {
 }
 
 func TestEditingTimeline_NilTimelineReturnsNil(t *testing.T) {
-	result := &GenerateResult{
-		FinalAudio: &FinalAudioReference{
-			AssetID:    "final-audio-001",
-			DurationUS: 10000000,
-		},
+	result := &GenerateResult{AudioOutput: AudioOutput{FinalAudio: &FinalAudioReference{
+		AssetID:    "final-audio-001",
+		DurationUS: 10000000,
+	}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -497,14 +493,13 @@ func TestEditingTimeline_NilTimelineReturnsNil(t *testing.T) {
 }
 
 func TestEditingTimeline_NilAudioReturnsNil(t *testing.T) {
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Version:    capabilityaudio.TimelineVersion,
-			DurationUS: 10000000,
-			Segments: []capabilityaudio.TimelineSegment{
-				{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 10000000},
-			},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Version:    capabilityaudio.TimelineVersion,
+		DurationUS: 10000000,
+		Segments: []capabilityaudio.TimelineSegment{
+			{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 10000000},
 		},
+	}},
 	}
 	et, err := BuildEditingTimeline(result)
 	if err != nil {
@@ -623,20 +618,20 @@ func TestEditingTimeline_CarriesTheStampedOutputContract(t *testing.T) {
 	}
 	newResult := func(plan *capmodel.OverlayPlan) *GenerateResult {
 		return &GenerateResult{
-			CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+
+			OverlayPlan: plan, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 				Version:    capabilityaudio.TimelineVersion,
 				DurationUS: 30000000,
 				Segments: []capabilityaudio.TimelineSegment{
 					{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 30000000},
 				},
 			},
-			FinalAudio: &FinalAudioReference{
-				AssetID:          "final-audio-001",
-				FinalAudioSHA256: "abc123",
-				DurationUS:       30000000,
-				DurationMS:       30000,
-			},
-			OverlayPlan: plan,
+				FinalAudio: &FinalAudioReference{
+					AssetID:          "final-audio-001",
+					FinalAudioSHA256: "abc123",
+					DurationUS:       30000000,
+					DurationMS:       30000,
+				}},
 		}
 	}
 

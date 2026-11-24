@@ -20,17 +20,20 @@ func TestFinalJobKaufmannCheckpointRepair(t *testing.T) {
 	plan := overlayPlanBindingFixture()
 	result := &GenerateResult{
 		OverlayPlan: plan,
-		FinalAudio:  &FinalAudioReference{DurationMS: 5000},
-		Scenes:      []Scene{{ID: "scene-1", Index: 0}},
-		Segments:    []scriptpkg.VidRushSegmentResult{{SceneID: "scene-1"}},
+
+		Scenes:   []Scene{{ID: "scene-1", Index: 0}},
+		Segments: []scriptpkg.VidRushSegmentResult{{SceneID: "scene-1"}},
 		LocalizedOverlayPlans: map[Language]*capmodel.OverlayPlan{
 			"en": {SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-kaufmann-en", Items: []capmodel.OverlayItem{
 				{ID: "phrase-en-1", SceneID: "scene-1", Kind: "text_phrase", StartUS: 0, DurationUS: 500_000},
 			}},
-		},
+		}, AudioOutput:
+
+		// The failed checkpoint: a render of an OLDER plan, plus an ID the current
+		// plan does not contain at all.
+		AudioOutput{FinalAudio: &FinalAudioReference{DurationMS: 5000}},
 	}
-	// The failed checkpoint: a render of an OLDER plan, plus an ID the current
-	// plan does not contain at all.
+
 	result.OverlayRender = &RenderReference{
 		JobID:      "job-stale",
 		PlanDigest: strings.Repeat("c", 64),

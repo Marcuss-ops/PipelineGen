@@ -92,7 +92,13 @@ func TestFixedMediaNeedsLocalizedRenderSkipsNativeClipCutaways(t *testing.T) {
 
 func TestBuildFinalJobPayloadsBodyFixedClipUsesDatabaseAsset(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+
+		Scenes: []Scene{{
+			ID: "cut-01", Index: 0,
+			ExecutionMode: scriptpkg.SceneExecutionFixedMedia, NativeClip: true, Role: scriptpkg.SceneRoleBody,
+			Clip: &ClipReference{ID: "cliprender_cut", DurationUS: 2_000_000, SourceOutMS: 2_000},
+			Text: map[Language]string{"it": ""},
+		}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 			DurationUS: 2_000_000,
 			Segments: []capabilityaudio.TimelineSegment{{
 				ID: "cut-01", DurationUS: 2_000_000, FixedMedia: true,
@@ -102,13 +108,7 @@ func TestBuildFinalJobPayloadsBodyFixedClipUsesDatabaseAsset(t *testing.T) {
 				}},
 			}},
 		},
-		FinalAudio: certifiedFinalAudio(2_000),
-		Scenes: []Scene{{
-			ID: "cut-01", Index: 0,
-			ExecutionMode: scriptpkg.SceneExecutionFixedMedia, NativeClip: true, Role: scriptpkg.SceneRoleBody,
-			Clip: &ClipReference{ID: "cliprender_cut", DurationUS: 2_000_000, SourceOutMS: 2_000},
-			Text: map[Language]string{"it": ""},
-		}},
+			FinalAudio: certifiedFinalAudio(2_000)},
 	}
 
 	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-cut", GenerateRequest{Title: "Cutaway", SourceLanguage: "it"}, result, finalJobPayloadResolver{})

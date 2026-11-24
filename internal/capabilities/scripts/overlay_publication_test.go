@@ -14,12 +14,11 @@ import (
 // looked one frame longer than an empty scene and could never be placed.
 func TestScheduleFinalJobOverlayFramesAcceptsAnItemEndingAtTheSceneTail(t *testing.T) {
 	const sceneEndUS = int64(1_119_456_000) // 26_866.944 frames at 24 fps
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Segments: []capabilityaudio.TimelineSegment{{
-				ID: "scene-05", TimelineStartUS: 1_116_521_000, DurationUS: sceneEndUS - 1_116_521_000,
-			}},
-		},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene-05", TimelineStartUS: 1_116_521_000, DurationUS: sceneEndUS - 1_116_521_000,
+		}},
+	}},
 	}
 	item := capmodel.OverlayItem{
 		ID: "last-phrase", SceneID: "scene-05", Kind: "text_phrase",
@@ -43,12 +42,11 @@ func TestScheduleFinalJobOverlayFramesAcceptsAnItemEndingAtTheSceneTail(t *testi
 // though the scene had free time before the card. The scheduler must keep the
 // card inside its scene, as close as possible to the planned start.
 func TestScheduleFinalJobOverlayFramesUsesFreeGapBeforePlannedStart(t *testing.T) {
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Segments: []capabilityaudio.TimelineSegment{{
-				ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
-			}},
-		},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
+		}},
+	}},
 	}
 	item := capmodel.OverlayItem{
 		ID: "date-late", SceneID: "scene-1", Kind: "number",
@@ -68,12 +66,11 @@ func TestScheduleFinalJobOverlayFramesUsesFreeGapBeforePlannedStart(t *testing.T
 }
 
 func TestScheduleFinalJobImageOverlayShrinksToFreeSceneGap(t *testing.T) {
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Segments: []capabilityaudio.TimelineSegment{{
-				ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
-			}},
-		},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
+		}},
+	}},
 	}
 	item := capmodel.OverlayItem{
 		ID: "image-late", SceneID: "scene-1", Kind: "image",
@@ -94,12 +91,11 @@ func TestScheduleFinalJobImageOverlayShrinksToFreeSceneGap(t *testing.T) {
 }
 
 func TestScheduleFinalJobNumberOverlayShrinksToFreeSceneGap(t *testing.T) {
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Segments: []capabilityaudio.TimelineSegment{{
-				ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
-			}},
-		},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
+		}},
+	}},
 	}
 	item := capmodel.OverlayItem{
 		ID: "date-late", SceneID: "scene-1", Kind: "number",
@@ -119,12 +115,11 @@ func TestScheduleFinalJobNumberOverlayShrinksToFreeSceneGap(t *testing.T) {
 }
 
 func TestScheduleFinalJobImageOverlayCanBeOmittedWhenSceneHasNoGap(t *testing.T) {
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			Segments: []capabilityaudio.TimelineSegment{{
-				ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
-			}},
-		},
+	result := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+		Segments: []capabilityaudio.TimelineSegment{{
+			ID: "scene-1", TimelineStartUS: 0, DurationUS: 10_000_000,
+		}},
+	}},
 	}
 	item := capmodel.OverlayItem{
 		ID: "image-late", SceneID: "scene-1", Kind: "image",

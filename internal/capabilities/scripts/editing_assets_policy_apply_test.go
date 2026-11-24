@@ -11,8 +11,7 @@ import (
 
 func combinedTimelineRequest(key string) GenerateRequest {
 	return GenerateRequest{
-		IdempotencyKey: key,
-		Audio:          audio.AudioModeCombinedTimeline,
+		IdempotencyKey: key, AudioConfig: AudioConfig{Audio: audio.AudioModeCombinedTimeline},
 	}
 }
 
@@ -145,7 +144,7 @@ func TestApplyEditingAssetPolicyNeverOverridesCallerIntent(t *testing.T) {
 
 	t.Run("bgm is not injected outside COMBINED_TIMELINE", func(t *testing.T) {
 		for _, mode := range []audio.AudioMode{audio.AudioModeNone, audio.AudioModeChunkedVoiceover, ""} {
-			req := GenerateRequest{IdempotencyKey: "key", Audio: mode}
+			req := GenerateRequest{IdempotencyKey: "key", AudioConfig: AudioConfig{Audio: mode}}
 			if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
 				t.Fatal(err)
 			}

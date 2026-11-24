@@ -47,13 +47,13 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 	localAudio := filepath.Join(t.TempDir(), "final-audio.m4a")
 	require.NoError(t, os.WriteFile(localAudio, []byte("audio"), 0o600))
 	result := &GenerateResult{
-		FinalAudio: &FinalAudioReference{
+
+		AudioMetrics: &AudioPipelineMetrics{}, AudioOutput: AudioOutput{FinalAudio: &FinalAudioReference{
 			AssetID:          localAudio,
 			Path:             localAudio,
 			FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			DurationMS:       1000,
-		},
-		AudioMetrics: &AudioPipelineMetrics{},
+		}},
 	}
 
 	ok := runner.publishFinalAudio(context.Background(), "run-1", req, testRoutingContext(), NewExecutionContext("run-1", "corr-1"), result)
@@ -81,12 +81,11 @@ func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T)
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: "run-2", Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
 	}))
-	result := &GenerateResult{
-		FinalAudio: &FinalAudioReference{
-			AssetID:          localAudio,
-			Path:             localAudio,
-			FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		},
+	result := &GenerateResult{AudioOutput: AudioOutput{FinalAudio: &FinalAudioReference{
+		AssetID:          localAudio,
+		Path:             localAudio,
+		FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	}},
 	}
 
 	ok := runner.publishFinalAudio(context.Background(), "run-2", req, testRoutingContext(), NewExecutionContext("run-2", "corr-2"), result)
@@ -111,9 +110,9 @@ func TestRunnerPublishFinalAudioFailsClosedWithoutDriveFileID(t *testing.T) {
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: "run-no-drive-id", Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
 	}))
-	result := &GenerateResult{FinalAudio: &FinalAudioReference{
+	result := &GenerateResult{AudioOutput: AudioOutput{FinalAudio: &FinalAudioReference{
 		Path: localAudio, FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	}}
+	}}}
 
 	if runner.publishFinalAudio(context.Background(), "run-no-drive-id", req, testRoutingContext(), NewExecutionContext("run-no-drive-id", "corr-3"), result) {
 		t.Fatal("publisher result without DriveFileID must fail closed")
@@ -136,10 +135,10 @@ func TestRunnerPublishFinalAudioDoesNotTreatDriveLocatorWithoutCanonicalAssetAsP
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: "run-missing-canonical-id", Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
 	}))
-	result := &GenerateResult{FinalAudio: &FinalAudioReference{
+	result := &GenerateResult{AudioOutput: AudioOutput{FinalAudio: &FinalAudioReference{
 		Path: localAudio, DriveFileID: "drive-audio", DriveLink: "https://drive.google.com/file/d/drive-audio",
 		FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	}}
+	}}}
 
 	if !runner.publishFinalAudio(context.Background(), "run-missing-canonical-id", req, testRoutingContext(), NewExecutionContext("run-missing-canonical-id", "corr-4"), result) {
 		t.Fatal("republishing the incomplete reference should succeed")

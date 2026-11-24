@@ -188,6 +188,11 @@ type GenerateArtifacts = contract.GenerateArtifacts
 type GenerateOutput = contract.GenerateOutput
 type GenerateRequest = contract.GenerateRequest
 type GenerateResult = contract.GenerateResult
+
+// AudioConfig and AudioOutput keep phase consumers source-compatible while
+// contract owns the audio fields. They are aliases, never copies.
+type AudioConfig = contract.AudioConfig
+type AudioOutput = contract.AudioOutput
 type Language = contract.Language
 type LanguageDeliveryResult = contract.LanguageDeliveryResult
 type LocalFinalVideoArtifact = contract.LocalFinalVideoArtifact

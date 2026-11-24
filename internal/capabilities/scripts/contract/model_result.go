@@ -3,7 +3,6 @@ package contract
 import (
 	"time"
 
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -85,27 +84,11 @@ type GenerateResult struct {
 	// timeline/audio/render compilation. Scenes remain editorial input.
 	ResolvedScenes []ResolvedScene `json:"resolved_scenes,omitempty"`
 
-	// CanonicalTimeline and AudioPlan are persisted so the renderer and
-	// audio compiler consume the same timing decision rather than deriving
-	// independent offsets on either side of the enqueue boundary.
-	CanonicalTimeline *capabilityaudio.CanonicalTimeline `json:"canonical_timeline,omitempty"`
-	AudioPlan         *capabilityaudio.CompiledAudioPlan `json:"audio_plan,omitempty"`
-
-	// PhraseTimings is the deterministic per-scene phrase→timestamp
-	// projection. Each entry anchors one script phrase to the canonical
-	// word timing (local span) and the final combined timeline (global
-	// span = the scene's canonical timeline offset + local span). It is a
-	// read-only projection of the canonical SpeechTimingArtifact files —
-	// recomputable and verifiable, never a source of truth.
-	PhraseTimings []capabilityaudio.PhraseTiming `json:"phrase_timings,omitempty"`
-
-	// SceneSpeechTimings is the scene-level speech timing projection: one
-	// entry per scene that captured canonical word timing, bundling that
-	// scene's word boundaries with its derived phrase spans. It is the
-	// durable, document-facing mirror of PhraseTimings (the flat projection);
-	// both are read-only projections of the canonical SpeechTimingArtifact
-	// files, never a source of truth.
-	SceneSpeechTimings []capabilityaudio.SceneSpeechTiming `json:"scene_speech_timings,omitempty"`
+	// AudioOutput is the audio-phase result contract: canonical timeline,
+	// compiled plan, speech timings and certified final audio. It is embedded
+	// so the durable result keeps its flat wire keys while contracts/audio
+	// owns the fields.
+	AudioOutput `json:",inline"`
 
 	// Entities is the deterministic typed entity aggregate (persons /
 	// places / concepts) projected from the run's VidRush segment
@@ -246,9 +229,6 @@ type GenerateResult struct {
 	WordCount      int    `json:"word_count"`
 	VoiceoverGroup string `json:"voiceover_group,omitempty"`
 
-	AudioMode     capabilityaudio.AudioMode           `json:"audio_mode,omitempty"`
-	AudioStrategy capabilityaudio.AudioRenderStrategy `json:"audio_strategy,omitempty"`
-	FinalAudio    *FinalAudioReference                `json:"final_audio,omitempty"`
 	// LocalFinalVideo is the job's own MP4, joined from the certified
 	// per-item overlay renders on the plan timeline and muxed with the
 	// certified final audio. It is the local-lane counterpart of

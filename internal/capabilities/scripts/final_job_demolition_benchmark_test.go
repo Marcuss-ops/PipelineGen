@@ -106,11 +106,7 @@ func newDemolitionScenario() demolitionScenario {
 
 	result := &GenerateResult{
 		SourceLanguage: "en",
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			DurationUS: introDurationUS + int64(demolitionStockScenes)*sceneDurationUS,
-			Segments:   segments,
-		},
-		FinalAudio:       certifiedFinalAudio(60_000),
+
 		Scenes:           scenes,
 		LocalizedRenders: localized,
 		OverlayPlan: &capmodel.OverlayPlan{
@@ -121,7 +117,11 @@ func newDemolitionScenario() demolitionScenario {
 		OverlayRender: manifestOverlayRender(items, &RenderArtifact{
 			ID: "bench-timeline", DriveFileID: "bench-timeline-drive", SHA256: strings.Repeat("d", 64),
 			SizeBytes: 100, DurationUS: 60_000_000, FrameCount: 60_000_000 * demolitionFPS / 1_000_000, CopyEligible: true,
-		}),
+		}), AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			DurationUS: introDurationUS + int64(demolitionStockScenes)*sceneDurationUS,
+			Segments:   segments,
+		},
+			FinalAudio: certifiedFinalAudio(60_000)},
 	}
 	bounds := make(map[string][2]int64, demolitionStockScenes)
 	for _, segment := range segments {

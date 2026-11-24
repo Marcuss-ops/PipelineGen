@@ -45,7 +45,7 @@ func voiceoverIntent(t *testing.T, segment audio.TimelineSegment) audio.AudioInt
 // clip 16s + VO 17.52s → scene duration 17.52s, video 16s real + 1.52s
 // freeze, VO source 17.52s, and the clip audio track ending at 16s.
 func TestAVSyncCertificationFreezeTail(t *testing.T) {
-	result := GenerateResult{AudioMode: audio.AudioModeCombinedTimeline, Scenes: []Scene{combinedScene("scene-8", "clip-16", 0, 16000, 17.52)}}
+	result := GenerateResult{Scenes: []Scene{combinedScene("scene-8", "clip-16", 0, 16000, 17.52)}, AudioOutput: AudioOutput{AudioMode: audio.AudioModeCombinedTimeline}}
 	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
 	require.NoError(t, err)
 
@@ -77,7 +77,7 @@ func TestAVSyncCertificationFreezeTail(t *testing.T) {
 // VO 17.544s → scene duration 18.8s, no freeze, and the ducking window ends
 // at 17.544s (the real speech length), leaving a 1.256s base-gain remainder.
 func TestAVSyncCertificationClipWins(t *testing.T) {
-	result := GenerateResult{AudioMode: audio.AudioModeCombinedTimeline, Scenes: []Scene{combinedScene("scene-0", "clip-18", 0, 18800, 17.544)}}
+	result := GenerateResult{Scenes: []Scene{combinedScene("scene-0", "clip-18", 0, 18800, 17.544)}, AudioOutput: AudioOutput{AudioMode: audio.AudioModeCombinedTimeline}}
 	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
 	require.NoError(t, err)
 
@@ -132,7 +132,7 @@ func TestAVSyncCertificationFullExample(t *testing.T) {
 	for i, r := range rows {
 		scenes[i] = combinedScene("scene-"+r.clipID, r.clipID, i, r.clipMS, r.voSec)
 	}
-	result := GenerateResult{AudioMode: audio.AudioModeCombinedTimeline, Scenes: scenes}
+	result := GenerateResult{Scenes: scenes, AudioOutput: AudioOutput{AudioMode: audio.AudioModeCombinedTimeline}}
 
 	timeline, plan, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
 	require.NoError(t, err)

@@ -186,21 +186,20 @@ func TestDurableResultToDomainMapsTimingBundle(t *testing.T) {
 // codec/profile/hash surface, so the technical JSON emitted to consumers is
 // the same block the document renders — never a re-derived copy.
 func TestDurableResultToDomainPreservesFinalAudioContainerAndDurationUS(t *testing.T) {
-	in := &GenerateResult{
-		FinalAudio: &FinalAudioReference{
-			AssetID:       "final-audio-it",
-			Path:          "/tmp/final_audio_it.m4a",
-			Container:     "m4a",
-			Codec:         "aac",
-			Profile:       "LC",
-			SampleRate:    48000,
-			Channels:      2,
-			ChannelLayout: "stereo",
-			DurationUS:    45_000_000,
-			DurationMS:    45_000,
-			FinalMix:      true,
-			CopyEligible:  true,
-		},
+	in := &GenerateResult{AudioOutput: AudioOutput{FinalAudio: &FinalAudioReference{
+		AssetID:       "final-audio-it",
+		Path:          "/tmp/final_audio_it.m4a",
+		Container:     "m4a",
+		Codec:         "aac",
+		Profile:       "LC",
+		SampleRate:    48000,
+		Channels:      2,
+		ChannelLayout: "stereo",
+		DurationUS:    45_000_000,
+		DurationMS:    45_000,
+		FinalMix:      true,
+		CopyEligible:  true,
+	}},
 	}
 
 	out := DurableResultToDomain(in)

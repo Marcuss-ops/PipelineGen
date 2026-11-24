@@ -245,11 +245,11 @@ func phraseOnlyFinalJobResult(sceneID string) *GenerateResult {
 	artifact := certifiedPhraseVideoArtifact()
 	item := capmodel.OverlayItem{ID: "phrase-item", SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Garlasco, provincia di Pavia.", StartUS: 0, DurationUS: 5_000_000}
 	return &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: sceneID, DurationUS: 5_000_000}}},
-		FinalAudio:        certifiedFinalAudio(5000),
-		Scenes:            []Scene{{ID: sceneID, Text: map[Language]string{"it": "Garlasco, provincia di Pavia."}}},
-		OverlayPlan:       &capmodel.OverlayPlan{SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-phrase", VideoID: "run-phrase", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{item}},
-		OverlayRender:     manifestOverlayRender([]capmodel.OverlayItem{item}, artifact),
+
+		Scenes:        []Scene{{ID: sceneID, Text: map[Language]string{"it": "Garlasco, provincia di Pavia."}}},
+		OverlayPlan:   &capmodel.OverlayPlan{SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-phrase", VideoID: "run-phrase", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{item}},
+		OverlayRender: manifestOverlayRender([]capmodel.OverlayItem{item}, artifact), AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: sceneID, DurationUS: 5_000_000}}},
+			FinalAudio: certifiedFinalAudio(5000)},
 	}
 }
 
@@ -419,9 +419,9 @@ func TestFinalJobManifestAdmitsOverlappingEntriesWithTracks(t *testing.T) {
 	}
 	artifact := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("d", 64), SizeBytes: 100, FrameCount: 480}
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 20_000_000}}},
-		OverlayPlan:       &capmodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
-		OverlayRender:     manifestOverlayRender(items, artifact),
+
+		OverlayPlan:   &capmodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
+		OverlayRender: manifestOverlayRender(items, artifact), AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 20_000_000}}}},
 	}
 	overlays, manifestWire, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
 	if err != nil {
@@ -455,9 +455,9 @@ func TestFinalJobManifestKeepsRenderedWindowPastCertifiedBaseEnd(t *testing.T) {
 	item := capmodel.OverlayItem{ID: "last-date", SceneID: "scene-1", Kind: "number", StartUS: 29_939_000_000 / 24, DurationUS: 5_000_000}
 	artifact := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("a", 64), SizeBytes: 100, FrameCount: 719_808}
 	result := &GenerateResult{
-		FinalAudio:    &FinalAudioReference{DurationMS: 1_249_708}, // floor to complete frames at 24 fps
+		// floor to complete frames at 24 fps
 		OverlayPlan:   &capmodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{item}},
-		OverlayRender: manifestOverlayRender([]capmodel.OverlayItem{item}, artifact),
+		OverlayRender: manifestOverlayRender([]capmodel.OverlayItem{item}, artifact), AudioOutput: AudioOutput{FinalAudio: &FinalAudioReference{DurationMS: 1_249_708}},
 	}
 	_, manifestWire, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
 	if err != nil {
@@ -479,9 +479,9 @@ func TestFinalJobRejectsDedicatedRowsThatCannotFitBesideComposition(t *testing.T
 	timeline := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("f", 64), SizeBytes: 100, FrameCount: 120}
 	mapArtifact := &RenderArtifact{ID: "map-artifact", DriveFileID: "map-drive", SHA256: strings.Repeat("g", 64), SizeBytes: 100, FrameCount: 120}
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 5_000_000}}},
-		OverlayPlan:       &capmodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{phrase, mapItem}},
-		OverlayRender:     manifestOverlayRender([]capmodel.OverlayItem{phrase}, timeline),
+
+		OverlayPlan:   &capmodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{phrase, mapItem}},
+		OverlayRender: manifestOverlayRender([]capmodel.OverlayItem{phrase}, timeline), AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 5_000_000}}}},
 	}
 	result.OverlayRender.Items = append(result.OverlayRender.Items, OverlayItemRenderReference{ItemID: "map-a", Status: "SUCCEEDED", Artifact: mapArtifact})
 	_, _, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
@@ -499,14 +499,14 @@ func TestEnforceFinalJobMinimumSceneDurationFailsWhenNoTimeCanBeBorrowed(t *test
 
 func TestBuildFinalJobPayloadsRequiresPublishedOverlayAssets(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
-		FinalAudio:        &FinalAudioReference{AssetID: "audio-1", DriveLink: "https://drive.google.com/file/d/audio-drive-id/view", FinalAudioSHA256: strings.Repeat("a", 64), SizeBytes: 12, DurationMS: 1000, Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", FinalMix: true, CopyEligible: true},
-		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-1000", 0, 1000)}},
+
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-1000", 0, 1000)}},
 		OverlayPlan: &capmodel.OverlayPlan{
 			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 			Items: []capmodel.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 500}},
-		},
+		}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
+			FinalAudio: &FinalAudioReference{AssetID: "audio-1", DriveLink: "https://drive.google.com/file/d/audio-drive-id/view", FinalAudioSHA256: strings.Repeat("a", 64), SizeBytes: 12, DurationMS: 1000, Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", FinalMix: true, CopyEligible: true}},
 	}
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "no published overlay render artifacts") {
@@ -516,9 +516,9 @@ func TestBuildFinalJobPayloadsRequiresPublishedOverlayAssets(t *testing.T) {
 
 func TestBuildFinalJobPayloadsStockOnlyNeverFallsBackToClip(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1000_000}}},
-		FinalAudio:        certifiedFinalAudio(1000),
-		Scenes:            []Scene{{ID: "scene-1", Clip: &ClipReference{ID: "yt_wrong_clip"}}},
+
+		Scenes: []Scene{{ID: "scene-1", Clip: &ClipReference{ID: "yt_wrong_clip"}}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1000_000}}},
+			FinalAudio: certifiedFinalAudio(1000)},
 	}
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt", MediaMode: scriptpkg.MediaModeStockOnly}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "stock_only scene") {
@@ -532,13 +532,13 @@ func TestBuildFinalJobPayloadsStockOnlyNeverFallsBackToClip(t *testing.T) {
 // binding — the compiled render plan carries that visual, never a clip fallback.
 func TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
-		FinalAudio:        certifiedFinalAudio(2000),
+
 		Scenes: []Scene{{
 			ID:    "scene-1",
 			Clips: []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000}},
 			Stock: concreteStockBinding("drive-asset", 0, 2000),
-		}},
+		}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
+			FinalAudio: certifiedFinalAudio(2000)},
 	}
 	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -556,9 +556,9 @@ func TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder(t *testing.T) {
 // Producer never downloads, cuts or re-encodes stock windows locally.
 func TestBuildFinalJobPayloadsKeepsTruncatedWholeFileWindowMasterOwned(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
-		FinalAudio:        certifiedFinalAudio(1000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-4086", 0, 3586)}},
+
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-4086", 0, 3586)}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
+			FinalAudio: certifiedFinalAudio(1000)},
 	}
 	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -582,9 +582,9 @@ func TestBuildFinalJobPayloadsKeepsTruncatedWholeFileWindowMasterOwned(t *testin
 // re-encodes the window locally.
 func TestBuildFinalJobPayloadsSendsLongerStockSceneToMaster(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 3_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 3_000_000}}},
-		FinalAudio:        certifiedFinalAudio(3000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-2000", 0, 2000)}},
+
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-2000", 0, 2000)}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 3_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 3_000_000}}},
+			FinalAudio: certifiedFinalAudio(3000)},
 	}
 	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -616,9 +616,9 @@ func TestBuildFinalJobPayloadsSendsLongerStockSceneToMaster(t *testing.T) {
 // Master-owned Drive source.
 func TestBuildFinalJobPayloadsLeavesPartialStockWindowsToMaster(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
-		FinalAudio:        certifiedFinalAudio(1000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-2000", 0, 500)}},
+
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-2000", 0, 500)}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
+			FinalAudio: certifiedFinalAudio(1000)},
 	}
 	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -643,12 +643,12 @@ func TestBuildFinalJobPayloadsLeavesPartialStockWindowsToMaster(t *testing.T) {
 // scene.
 func TestBuildFinalJobPayloadsAllStockClipsWithoutFolderFailsClosed(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
-		FinalAudio:        certifiedFinalAudio(2000),
+
 		Scenes: []Scene{{
 			ID:    "scene-1",
 			Clips: []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000}},
-		}},
+		}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
+			FinalAudio: certifiedFinalAudio(2000)},
 	}
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "has only stock-marked clips") {
@@ -665,17 +665,17 @@ func TestFinalJobIntermediateClipWindowsNeverClassifiesStockAudio(t *testing.T) 
 	stockIntent := capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: "stock-clip", SourceInUS: 0, SourceDurationUS: 2_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 2_000_000, UseOriginalAudio: true, StockOriginalAudio: true}
 	ordinaryIntent := capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: "clip-1", SourceInUS: 0, SourceDurationUS: 2_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 2_000_000, UseOriginalAudio: true}
 	voiceover := capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: "vo-1", SourceDurationUS: 2_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 2_000_000}
-	stockResult := &GenerateResult{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 4_000_000, Segments: []capabilityaudio.TimelineSegment{
+	stockResult := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 4_000_000, Segments: []capabilityaudio.TimelineSegment{
 		{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover}},
 		{ID: "scene-1", Index: 1, TimelineStartUS: 2_000_000, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover, stockIntent}},
-	}}}
+	}}}}
 	if windows := finalJobIntermediateClipWindows(stockResult); len(windows) != 0 {
 		t.Fatalf("stock-audio scene classified as intermediate clip window: %+v", windows)
 	}
-	ordinaryResult := &GenerateResult{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 4_000_000, Segments: []capabilityaudio.TimelineSegment{
+	ordinaryResult := &GenerateResult{AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 4_000_000, Segments: []capabilityaudio.TimelineSegment{
 		{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover}},
 		{ID: "scene-1", Index: 1, TimelineStartUS: 2_000_000, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover, ordinaryIntent}},
-	}}}
+	}}}}
 	windows := finalJobIntermediateClipWindows(ordinaryResult)
 	if len(windows) != 1 || windows["scene-1"].StartUS != 2_000_000 {
 		t.Fatalf("ordinary clip scene must stay classified, got %+v", windows)
@@ -988,7 +988,13 @@ func certifiedFinalAudio(durationMS int64) *FinalAudioReference {
 // library never reaches the payload.
 func TestBuildFinalJobPayloadsClipOnlyScenesSendTheCertifiedRenderedClip(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+
+		Scenes: []Scene{{ID: "scene-1", Clip: &ClipReference{ID: "yt_source_clip"}, Text: map[Language]string{"en": "Dolly lands the hotel joke."}}},
+		LocalizedRenders: []LocalizedRenderResult{{
+			SceneID: "scene-1", Language: "en", ClipID: "yt_source_clip", Status: "UPLOADED",
+			AssetID: "derived-render-1", DriveFileID: "render-drive-1", DriveLink: "https://drive.google.com/file/d/render-drive-1/view",
+			SHA256: strings.Repeat("d", 64), DurationMS: 12_000, RenderSource: "fresh_gpu",
+		}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 			DurationUS: 30_000_000,
 			Segments: []capabilityaudio.TimelineSegment{{
 				ID: "scene-1", DurationUS: 30_000_000,
@@ -996,13 +1002,7 @@ func TestBuildFinalJobPayloadsClipOnlyScenesSendTheCertifiedRenderedClip(t *test
 				AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioClip, ClipAssetID: "yt_source_clip", SourceDurationUS: 12_000_000, UseOriginalAudio: true}},
 			}},
 		},
-		FinalAudio: certifiedFinalAudio(30_000),
-		Scenes:     []Scene{{ID: "scene-1", Clip: &ClipReference{ID: "yt_source_clip"}, Text: map[Language]string{"en": "Dolly lands the hotel joke."}}},
-		LocalizedRenders: []LocalizedRenderResult{{
-			SceneID: "scene-1", Language: "en", ClipID: "yt_source_clip", Status: "UPLOADED",
-			AssetID: "derived-render-1", DriveFileID: "render-drive-1", DriveLink: "https://drive.google.com/file/d/render-drive-1/view",
-			SHA256: strings.Repeat("d", 64), DurationMS: 12_000, RenderSource: "fresh_gpu",
-		}},
+			FinalAudio: certifiedFinalAudio(30_000)},
 	}
 	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "Dolly", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -1046,14 +1046,7 @@ func TestBuildFinalJobPayloadsKeepsStockSourceUntouched(t *testing.T) {
 	const sceneID = "scene-stock-vo"
 	const sourceAsset = "obama-stock-db-clip"
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			DurationUS: 5_000_000,
-			Segments: []capabilityaudio.TimelineSegment{{
-				ID: sceneID, DurationUS: 5_000_000,
-				AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioVoiceover, TimelineDurationUS: 5_000_000}},
-			}},
-		},
-		FinalAudio: certifiedFinalAudio(5_000),
+
 		Scenes: []Scene{{
 			ID: sceneID, Text: map[Language]string{"en": "Obama explains the decision and its historical context."},
 			Voiceover: map[Language]AudioReference{"en": {ID: "voiceover-1"}},
@@ -1063,7 +1056,14 @@ func TestBuildFinalJobPayloadsKeepsStockSourceUntouched(t *testing.T) {
 			SceneID: sceneID, Language: "en", ClipID: sourceAsset, Status: "UPLOADED",
 			AssetID: "chronon-rendered-stock", DriveFileID: "chronon-drive-id",
 			SHA256: strings.Repeat("e", 64), DurationMS: 12_000,
-		}},
+		}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			DurationUS: 5_000_000,
+			Segments: []capabilityaudio.TimelineSegment{{
+				ID: sceneID, DurationUS: 5_000_000,
+				AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioVoiceover, TimelineDurationUS: 5_000_000}},
+			}},
+		},
+			FinalAudio: certifiedFinalAudio(5_000)},
 	}
 	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-stock", GenerateRequest{
 		Title: "Obama", SourceLanguage: "en", Render: scriptpkg.VideoRenderSpec{Enabled: true},
@@ -1092,12 +1092,12 @@ func TestBuildFinalJobPayloadsKeepsStockSourceUntouched(t *testing.T) {
 // handing the runtime the unmodified source clip.
 func TestBuildFinalJobPayloadsClipOnlySceneWithoutRenderFailsClosed(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+
+		Scenes: []Scene{{ID: "scene-1", Clip: &ClipReference{ID: "yt_source_clip"}, Text: map[Language]string{"en": "Dolly lands the hotel joke."}}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 			DurationUS: 12_000_000,
 			Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 12_000_000, Video: capabilityaudio.VideoSegment{AssetID: "yt_source_clip"}}},
 		},
-		FinalAudio: certifiedFinalAudio(12_000),
-		Scenes:     []Scene{{ID: "scene-1", Clip: &ClipReference{ID: "yt_source_clip"}, Text: map[Language]string{"en": "Dolly lands the hotel joke."}}},
+			FinalAudio: certifiedFinalAudio(12_000)},
 	}
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "Dolly", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "refusing to hand the unmodified source clip") {
@@ -1126,13 +1126,7 @@ func (fixedMediaSourcePayloadResolver) ResolveFinalJobAsset(ctx context.Context,
 // section declared without a render keeps the library asset.
 func TestBuildFinalJobPayloadsFixedMediaPrefersTheCertifiedRenderedClip(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			DurationUS: 15_000_000,
-			Segments: []capabilityaudio.TimelineSegment{{
-				ID: "scene-intro", DurationUS: 15_000_000, FixedMedia: true,
-			}},
-		},
-		FinalAudio: certifiedFinalAudio(15_000),
+
 		// The fixed section carries no generated scene of its own; the guard
 		// only requires the run to have produced scenes at all.
 		Scenes: []Scene{
@@ -1147,7 +1141,13 @@ func TestBuildFinalJobPayloadsFixedMediaPrefersTheCertifiedRenderedClip(t *testi
 			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-1", Status: "UPLOADED", AssetID: "derived-intro-render-1", DriveFileID: "intro-render-drive-1", SHA256: strings.Repeat("e", 64), DurationMS: 5_000},
 			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-2", Status: "UPLOADED", AssetID: "derived-intro-render-2", DriveFileID: "intro-render-drive-2", SHA256: strings.Repeat("f", 64), DurationMS: 5_000},
 			{SceneID: "scene-intro", Language: "en", ClipID: "intro-source-clip-3", Status: "UPLOADED", AssetID: "derived-intro-render-3", DriveFileID: "intro-render-drive-3", SHA256: strings.Repeat("c", 64), DurationMS: 5_000},
+		}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+			DurationUS: 15_000_000,
+			Segments: []capabilityaudio.TimelineSegment{{
+				ID: "scene-intro", DurationUS: 15_000_000, FixedMedia: true,
+			}},
 		},
+			FinalAudio: certifiedFinalAudio(15_000)},
 	}
 	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "Dolly", SourceLanguage: "en"}, result, fixedMediaSourcePayloadResolver{})
 	if err != nil {
@@ -1204,18 +1204,20 @@ func TestFinalJobAudioInputKeepsProtectedFixedMediaAtUnity(t *testing.T) {
 // resolved library clip is still sent.
 func TestBuildFinalJobPayloadsFixedMediaWithoutRenderKeepsTheLibraryClip(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+
+		// The fake resolver reports a 2000 ms library clip: the fixed-media
+		// duration comes from the resolved asset, so the certified final audio
+		// and the segment agree at 2 s.
+
+		Scenes: []Scene{{ID: "scene-body", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 			DurationUS: 2_000_000,
 			Segments: []capabilityaudio.TimelineSegment{{
 				ID: "scene-intro", DurationUS: 2_000_000, FixedMedia: true,
 				AudioIntents: []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioClip, ClipAssetID: "intro-source-clip", SourceDurationUS: 2_000_000, UseOriginalAudio: true, ProtectedOriginalAudio: true}},
 			}},
 		},
-		// The fake resolver reports a 2000 ms library clip: the fixed-media
-		// duration comes from the resolved asset, so the certified final audio
-		// and the segment agree at 2 s.
-		FinalAudio: certifiedFinalAudio(2_000),
-		Scenes:     []Scene{{ID: "scene-body", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
+
+			FinalAudio: certifiedFinalAudio(2_000)},
 	}
 	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "Dolly", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -1229,12 +1231,12 @@ func TestBuildFinalJobPayloadsFixedMediaWithoutRenderKeepsTheLibraryClip(t *test
 
 func TestBuildFinalJobPayloadsDoesNotSendSubtitlesWithStockChunks(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 			DurationUS: 5_000_000,
 			Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}},
 		},
-		FinalAudio: &FinalAudioReference{AssetID: "audio-1", DriveLink: "https://drive.google.com/file/d/audio-drive-id/view", FinalAudioSHA256: strings.Repeat("a", 64), SizeBytes: 12, DurationMS: 5000, Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", FinalMix: true, CopyEligible: true},
-		Scenes:     []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
+			FinalAudio: &FinalAudioReference{AssetID: "audio-1", DriveLink: "https://drive.google.com/file/d/audio-drive-id/view", FinalAudioSHA256: strings.Repeat("a", 64), SizeBytes: 12, DurationMS: 5000, Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", FinalMix: true, CopyEligible: true}},
 	}
 	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -1270,12 +1272,12 @@ func TestBuildFinalJobPayloadsDoesNotSendSubtitlesWithStockChunks(t *testing.T) 
 
 func TestBuildFinalJobPayloadsRejectsShiftedFinalAudio(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+
+		Scenes: []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 			DurationUS: 1_000_000,
 			Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}},
 		},
-		FinalAudio: certifiedFinalAudio(1000),
-		Scenes:     []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
+			FinalAudio: certifiedFinalAudio(1000)},
 	}
 	result.FinalAudio.StartPTS = 1
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{SourceLanguage: "en"}, result, finalJobPayloadResolver{})
@@ -1286,9 +1288,8 @@ func TestBuildFinalJobPayloadsRejectsShiftedFinalAudio(t *testing.T) {
 
 func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}}},
-		FinalAudio:        certifiedFinalAudio(5000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
+
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
 		OverlayPlan: &capmodel.OverlayPlan{
 			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -1297,7 +1298,8 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 		OverlayRender: manifestOverlayRender(
 			[]capmodel.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 4500, Text: "hello"}},
 			&RenderArtifact{ID: "overlay-1", DriveFileID: "overlay-drive-1", SHA256: strings.Repeat("d", 64), SizeBytes: 50, FrameCount: 105, CopyEligible: true},
-		),
+		), AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}}},
+			FinalAudio: certifiedFinalAudio(5000)},
 	}
 	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {

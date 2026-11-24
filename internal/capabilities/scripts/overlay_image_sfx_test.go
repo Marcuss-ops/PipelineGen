@@ -72,7 +72,7 @@ func TestOverlaySFXIntentsRandomEmitsOneCueAtClipStart(t *testing.T) {
 			},
 		}},
 	}
-	req := GenerateRequest{RandomSFXOnImageOverlay: true}
+	req := GenerateRequest{AudioConfig: AudioConfig{RandomSFXOnImageOverlay: true}}
 	intents, err := overlaySFXIntentsForPlan(req, plan, nil)
 	if err != nil {
 		t.Fatalf("project random chain SFX: %v", err)
@@ -106,7 +106,7 @@ func TestOverlaySFXIntentsRandomEmitsOneCueAtClipStart(t *testing.T) {
 
 func TestOverlaySFXIntentsRandomUsesIndexedPool(t *testing.T) {
 	pool := []string{"sfx_indexed_a", "sfx_indexed_b", "sfx_indexed_c"}
-	intents, err := overlaySFXIntentsForPlan(GenerateRequest{RandomSFXOnImageOverlay: true}, imageSFXTestPlan(), pool)
+	intents, err := overlaySFXIntentsForPlan(GenerateRequest{AudioConfig: AudioConfig{RandomSFXOnImageOverlay: true}}, imageSFXTestPlan(), pool)
 	if err != nil {
 		t.Fatalf("project random SFX with indexed pool: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestExtendAudioPlanWithOverlaySFXAddsCuesAndAssets(t *testing.T) {
 	runner := &Runner{audioAssetSource: source, log: zap.NewNop()}
 	result := &GenerateResult{OverlayPlan: imageSFXTestPlan()}
 	extended, assets, err := runner.extendAudioPlanWithOverlaySFX(
-		context.Background(), "run", GenerateRequest{RandomSFXOnImageOverlay: true}, result, timeline, plan, nil)
+		context.Background(), "run", GenerateRequest{AudioConfig: AudioConfig{RandomSFXOnImageOverlay: true}}, result, timeline, plan, nil)
 	if err != nil {
 		t.Fatalf("extend master plan: %v", err)
 	}

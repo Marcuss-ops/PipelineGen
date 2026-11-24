@@ -227,7 +227,7 @@ func TestCompileCanonicalAudioPlanAudioOnlyKeepsDuckedClipAudio(t *testing.T) {
 	// longer (12s): audio-only must clamp the placed clip audio to 8s.
 	clip := &ClipReference{ID: "clip-12", AudioPath: "/media/clip-12.mp4", SourceInMS: 1000, SourceOutMS: 13000}
 	result := GenerateResult{
-		AudioMode: audio.AudioModeCombinedTimeline,
+
 		Scenes: []Scene{{
 			ID:         "scene-audio-only",
 			Index:      0,
@@ -239,7 +239,7 @@ func TestCompileCanonicalAudioPlanAudioOnlyKeepsDuckedClipAudio(t *testing.T) {
 				{Mode: audio.AudioClip, ClipAssetID: "clip-12", SourceInUS: 1_000_000, SourceDurationUS: 12_000_000, TimelineOffsetUS: 0, TimelineDurationUS: 12_000_000, UseOriginalAudio: true},
 			},
 			Voiceover: map[Language]AudioReference{"it": {ID: "vo-a", FilePath: "/audio/vo-a.m4a", Duration: 8.0}},
-		}},
+		}}, AudioOutput: AudioOutput{AudioMode: audio.AudioModeCombinedTimeline},
 	}
 	timeline, plan, assets, _, err := CompileCanonicalAudioPlanAudioOnly(result, "it", audio.DefaultAudioProfile())
 	if err != nil {
@@ -296,7 +296,7 @@ func TestCompileCanonicalAudioPlanRepresentsFreezeTailInTimeline(t *testing.T) {
 	// leaving the renderer to guess a black gap.
 	clip := &ClipReference{ID: "clip-16", AudioPath: "/media/clip-16.m4a", SourceInMS: 0, SourceOutMS: 16000}
 	result := GenerateResult{
-		AudioMode: audio.AudioModeCombinedTimeline,
+
 		Scenes: []Scene{{
 			ID:    "scene-8",
 			Index: 0,
@@ -307,7 +307,7 @@ func TestCompileCanonicalAudioPlanRepresentsFreezeTailInTimeline(t *testing.T) {
 				{Mode: audio.AudioClip, ClipAssetID: "clip-16", SourceInUS: 0, SourceDurationUS: 16_000_000, UseOriginalAudio: true},
 			},
 			Voiceover: map[Language]AudioReference{"it": {ID: "vo-8", FilePath: "/media/vo-8.m4a", Duration: 17.52}},
-		}},
+		}}, AudioOutput: AudioOutput{AudioMode: audio.AudioModeCombinedTimeline},
 	}
 	timeline, _, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
 	if err != nil {
@@ -333,7 +333,7 @@ func TestCompileCanonicalAudioPlanNoFreezeWhenClipCoversScene(t *testing.T) {
 	// Clip 18.8s covers its 17.544s narration: no freeze tail.
 	clip := &ClipReference{ID: "clip-18", AudioPath: "/media/clip-18.m4a", SourceInMS: 0, SourceOutMS: 18800}
 	result := GenerateResult{
-		AudioMode: audio.AudioModeCombinedTimeline,
+
 		Scenes: []Scene{{
 			ID:    "scene-0",
 			Index: 0,
@@ -344,7 +344,7 @@ func TestCompileCanonicalAudioPlanNoFreezeWhenClipCoversScene(t *testing.T) {
 				{Mode: audio.AudioClip, ClipAssetID: "clip-18", SourceInUS: 0, SourceDurationUS: 18_800_000, UseOriginalAudio: true},
 			},
 			Voiceover: map[Language]AudioReference{"it": {ID: "vo-0", FilePath: "/media/vo-0.m4a", Duration: 17.544}},
-		}},
+		}}, AudioOutput: AudioOutput{AudioMode: audio.AudioModeCombinedTimeline},
 	}
 	timeline, _, _, err := CompileCanonicalAudioPlan(result, "it", audio.DefaultAudioProfile())
 	if err != nil {

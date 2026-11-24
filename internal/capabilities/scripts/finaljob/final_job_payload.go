@@ -210,8 +210,10 @@ func finalJobInputFor(result *contract.GenerateResult) *contract.GenerateResult 
 		return nil
 	}
 	return &contract.GenerateResult{
-		CanonicalTimeline: result.CanonicalTimeline,
-		FinalAudio:        result.FinalAudio,
+		AudioOutput: contract.AudioOutput{
+			CanonicalTimeline: result.CanonicalTimeline,
+			FinalAudio:        result.FinalAudio,
+		},
 		Scenes:            result.Scenes,
 		OverlayAudit:      result.OverlayAudit,
 		OverlayPlan:       result.OverlayPlan,

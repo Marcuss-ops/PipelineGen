@@ -120,41 +120,11 @@ type GenerateRequest struct {
 	// it is transported into the sealed OverlayPlan at render time.
 	OverlayBackground *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
 	OverlayStyle      *scriptpkg.OverlayStyleSpec      `json:"overlay_style,omitempty"`
-	Audio             capabilityaudio.AudioMode        `json:"audio_mode,omitempty"`
-	// VoiceoverLanguages optionally narrows TTS synthesis without narrowing
-	// scene translation or localized NLP. Nil preserves legacy source+targets.
-	VoiceoverLanguages []Language `json:"voiceover_languages,omitempty"`
-	// Timing is the canonical voiceover timing policy nested inside the
-	// audio config (wire key "timing"). nil means the pipeline applies the
-	// canonical defaults (best_effort / word / [json]) — timing capture is
-	// never implicitly mandatory. Forwarded to the per-scene VoiceoverInput
-	// so the required/best-effort fail-closed semantics are honoured
-	// end-to-end by the per-item voiceover pipeline.
-	Timing *capabilityaudio.TimingRequest `json:"voiceover_timing,omitempty"`
-	// RandomSFXOnClipStart requests one deterministic random whoosh at the
-	// start of every real clip in the generated timeline. It is opt-in and is
-	// carried from audio.random_sfx_on_clip_start.
-	RandomSFXOnClipStart bool `json:"random_sfx_on_clip_start,omitempty"`
-	// RandomSFXOnImageOverlay requests one deterministic cue on each finalized
-	// image overlay; concrete content-addressed assets are selected before queueing.
-	RandomSFXOnImageOverlay bool `json:"random_sfx_on_image_overlay,omitempty"`
-	// MixPolicy is the editorial mix decision requested by the caller
-	// (audio.mix_policy). Empty means no policy (legacy full-volume
-	// overlap). The wire alias "voiceover_with_ducked_clip" is normalized
-	// to the canonical VOICEOVER_DUCKED_CLIP by AudioMixPolicy.Normalize
-	// when the plan is compiled.
-	MixPolicy capabilityaudio.AudioMixPolicy `json:"mix_policy,omitempty"`
-	// BackgroundMusic is the normalized list of BGM layer intents. It is
-	// ALWAYS a slice in the domain, even when the wire carried a single
-	// object (AudioOutputConfig.UnmarshalJSON normalizes at the boundary)
-	// — supporting multiple segmented musics later needs no schema change.
-	// Entries reference assets by asset_id only; resolution to physical
-	// paths happens downstream.
-	BackgroundMusic []scriptpkg.BackgroundMusicIntent `json:"background_music,omitempty"`
-	// SoundEffects is the list of SFX intents, placed at absolute timeline
-	// offsets or relative to a scene (anchor + offset). Entries reference
-	// assets by asset_id only.
-	SoundEffects []scriptpkg.SoundEffectIntent `json:"sound_effects,omitempty"`
+	// AudioConfig is the audio-phase request contract: mode, voiceover
+	// languages and timing, SFX/BGM intents, mix policy and publish target.
+	// It is embedded so the durable request keeps its flat wire keys while
+	// contracts/audio owns the fields.
+	AudioConfig `json:",inline"`
 	// IdempotencyKey is the caller-supplied idempotency key.
 	IdempotencyKey string `json:"idempotency_key"`
 
@@ -249,17 +219,9 @@ type GenerateRequest struct {
 	// OutputName is the caller-specified output filename.
 	OutputName string `json:"output_name,omitempty"`
 
-	// VoiceoverFolderID is the explicit Drive folder for voiceover
-	// artifacts supplied by the caller (output.voiceover_folder_id).
-	// Empty means "use the configured default" (drive.voiceover_root_folder).
-	// It is resolved ONCE by BuildGenerateRequest from the generation
-	// input and threaded verbatim through the routing context into the
-	// per-scene TTS command so a caller-explicit destination is never
-	// replaced by the configured default (mirror of plan.VoiceoverFolderID
-	// honored by the legacy processor_voiceover path).
-	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
-	// TTSRate is the caller-selected synthesis rate forwarded to each scene.
-	TTSRate string `json:"tts_rate,omitempty"`
+	// VoiceoverFolderID and TTSRate live in the embedded AudioConfig
+	// (output.voiceover_folder_id / output.tts_rate at ingress). Keeping a
+	// second declaration here would shadow the contract at the JSON boundary.
 
 	// Intro is a literal intro section prepended verbatim. Never sent to
 	// the LLM — the runner injects it as the first protected fixed_media scene

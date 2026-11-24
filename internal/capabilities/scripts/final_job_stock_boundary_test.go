@@ -17,9 +17,9 @@ import (
 // a SHA, size or duration.
 func TestBuildFinalJobPayloadsRejectsFolderOnlyStockBinding(t *testing.T) {
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
-		FinalAudio:        certifiedFinalAudio(2000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1", StartMs: 0, EndMs: 2000, DurationMs: 2000}}},
+
+		Scenes: []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1", StartMs: 0, EndMs: 2000, DurationMs: 2000}}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
+			FinalAudio: certifiedFinalAudio(2000)},
 	}
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-boundary", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "folder-only stock binding") {
@@ -33,9 +33,9 @@ func TestBuildFinalJobPayloadsRejectsFolderOnlyStockBinding(t *testing.T) {
 func TestBuildFinalJobPayloadsCarriesStockBindingWindow(t *testing.T) {
 	const windowStartMS, windowEndMS = int64(1000), int64(4000)
 	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 3_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 3_000_000}}},
-		FinalAudio:        certifiedFinalAudio(3000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", windowStartMS, windowEndMS)}},
+
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", windowStartMS, windowEndMS)}}, AudioOutput: AudioOutput{CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 3_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 3_000_000}}},
+			FinalAudio: certifiedFinalAudio(3000)},
 	}
 	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-boundary", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {

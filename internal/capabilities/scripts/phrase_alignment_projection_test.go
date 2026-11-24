@@ -179,19 +179,18 @@ func TestCompileResultPhraseTimingsSkipsOnlyUnanchoredScene(t *testing.T) {
 // surface: the projection survives a JSON round-trip on GenerateResult and
 // stays valid.
 func TestCompilePhraseTimings_SerializesOnGenerateResult(t *testing.T) {
-	res := &GenerateResult{
-		PhraseTimings: []audio.PhraseTiming{{
-			SceneIndex:      0,
-			PhraseIndex:     0,
-			Text:            "Jackie Chan",
-			WordStart:       0,
-			WordEnd:         1,
-			LocalStartUS:    0,
-			LocalEndUS:      200_000,
-			TimelineStartUS: 8_200_000,
-			GlobalStartUS:   8_200_000,
-			GlobalEndUS:     8_400_000,
-		}},
+	res := &GenerateResult{AudioOutput: AudioOutput{PhraseTimings: []audio.PhraseTiming{{
+		SceneIndex:      0,
+		PhraseIndex:     0,
+		Text:            "Jackie Chan",
+		WordStart:       0,
+		WordEnd:         1,
+		LocalStartUS:    0,
+		LocalEndUS:      200_000,
+		TimelineStartUS: 8_200_000,
+		GlobalStartUS:   8_200_000,
+		GlobalEndUS:     8_400_000,
+	}}},
 	}
 	raw, err := json.Marshal(res)
 	if err != nil {
@@ -278,28 +277,27 @@ func TestCompileSceneSpeechTimings_BundlesPerSceneWordsAndPhrases(t *testing.T) 
 // persistence surface: the scene-level projection survives a JSON round-trip
 // on GenerateResult and stays valid.
 func TestCompileSceneSpeechTimings_SerializesOnGenerateResult(t *testing.T) {
-	res := &GenerateResult{
-		SceneSpeechTimings: []audio.SceneSpeechTiming{{
-			SceneID:          "scene-0",
-			VoiceoverAssetID: "vo-0",
-			LocalDurationUS:  200_000,
-			Words: []audio.SpeechWordTiming{
-				{Index: 0, Text: "Jackie", StartUS: 0, EndUS: 100_000},
-				{Index: 1, Text: "Chan", StartUS: 100_000, EndUS: 200_000},
-			},
-			Phrases: []audio.PhraseTiming{{
-				SceneIndex:      0,
-				PhraseIndex:     0,
-				Text:            "Jackie Chan",
-				WordStart:       0,
-				WordEnd:         1,
-				LocalStartUS:    0,
-				LocalEndUS:      200_000,
-				TimelineStartUS: 0,
-				GlobalStartUS:   0,
-				GlobalEndUS:     200_000,
-			}},
+	res := &GenerateResult{AudioOutput: AudioOutput{SceneSpeechTimings: []audio.SceneSpeechTiming{{
+		SceneID:          "scene-0",
+		VoiceoverAssetID: "vo-0",
+		LocalDurationUS:  200_000,
+		Words: []audio.SpeechWordTiming{
+			{Index: 0, Text: "Jackie", StartUS: 0, EndUS: 100_000},
+			{Index: 1, Text: "Chan", StartUS: 100_000, EndUS: 200_000},
+		},
+		Phrases: []audio.PhraseTiming{{
+			SceneIndex:      0,
+			PhraseIndex:     0,
+			Text:            "Jackie Chan",
+			WordStart:       0,
+			WordEnd:         1,
+			LocalStartUS:    0,
+			LocalEndUS:      200_000,
+			TimelineStartUS: 0,
+			GlobalStartUS:   0,
+			GlobalEndUS:     200_000,
 		}},
+	}}},
 	}
 	raw, err := json.Marshal(res)
 	if err != nil {

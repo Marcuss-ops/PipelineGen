@@ -343,17 +343,19 @@ func defaultTestRequest() GenerateRequest {
 			Type:  SourceText,
 			Topic: "Test topic",
 		},
-		SourceLanguage:  "en",
-		Languages:       []Language{"en", "es"},
-		Audio:           capabilityaudio.AudioModeChunkedVoiceover,
+		SourceLanguage: "en",
+		Languages:      []Language{"en", "es"},
+
 		ExtractEntities: scriptpkg.ToggleEnabled,
 		// Project is the resolved semantic project namespace; voiceover-mode
 		// runs fail closed before TTS when it is empty (ErrProjectRequired).
-		Project: "test-project",
+		Project: "test-project", AudioConfig:
+
+		// defaultTestScenes returns 3 scenes with English text.
+		AudioConfig{Audio: capabilityaudio.AudioModeChunkedVoiceover},
 	}
 }
 
-// defaultTestScenes returns 3 scenes with English text.
 func defaultTestScenes() []Scene {
 	return []Scene{
 		{ID: "scene-0", Index: 0, DurationMS: 1000, Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}, Text: map[Language]string{"en": "First scene text"}},

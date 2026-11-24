@@ -127,8 +127,12 @@ func PrepareOverlayPlanCompile(ctx context.Context, result *contract.GenerateRes
 		// Build into a shallow result copy so a localized plan does not replace
 		// the source-language EntityTimeline stored on GenerateResult.
 		localized := &contract.GenerateResult{
-			Scenes: result.Scenes, CanonicalTimeline: result.CanonicalTimeline,
-			SourceLanguage: result.SourceLanguage, AudioMode: result.AudioMode,
+			Scenes: result.Scenes,
+			AudioOutput: contract.AudioOutput{
+				CanonicalTimeline: result.CanonicalTimeline,
+				AudioMode:         result.AudioMode,
+			},
+			SourceLanguage: result.SourceLanguage,
 			ResolvedScenes: result.ResolvedScenes,
 		}
 		if err := CompileResultEntityTimeline(ctx, result.Aligner, localized, language); err != nil {
