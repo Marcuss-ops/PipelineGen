@@ -36,18 +36,10 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req contra
 		r.markGenerationStart(runID, time.Now())
 		hb := r.startStageHeartbeat(runID, StageGeneratingSceneText)
 		defer hb.close()
-		var scenes []contract.Scene
-		var genErr error
-		var generatedTrace scriptpkg.SourceTrace
-		streamed := false
-		var streamTranslationMetrics *contract.TranslationPipelineMetrics
-		var streamAudioMetrics *contract.AudioPipelineMetrics
 		hb.setOp("prepare_scene_text_generation")
 		path := r.prepareSceneTextGeneration(ctx, runID, req, routing, exec)
-		ready := path.ready
 		hb.setOp("generate_scene_text")
-		scenes, generatedTrace, streamed, genErr = r.generateSceneText(ctx, runID, req, exec, path)
-		segmentTopologyNeedsMaterialization := path.topologyNeedsMaterialization
+		scenes, generatedTrace, streamed, genErr := r.generateSceneText(ctx, runID, req, exec, path)
 		if genErr != nil {
 			cause := fmt.Errorf("generate scene text failed: %w", hb.annotate(genErr))
 			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
@@ -61,7 +53,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req contra
 		r.log.Info("scene_text_path",
 			zap.String("run_id", runID),
 			zap.Bool("streamed", streamed),
-			zap.String("reason", sceneTextPathReason(req, streamed, segmentTopologyNeedsMaterialization, r.textGen)),
+			zap.String("reason", sceneTextPathReason(req, streamed, path.topologyNeedsMaterialization, r.textGen)),
 			zap.Int("scenes", len(scenes)))
 		// Small/local models commonly return one opaque prose scene even when
 		// the request declares a per-segment budget. The batch postprocessor
@@ -80,9 +72,11 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req contra
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
-		if ready != nil {
+		var streamTranslationMetrics *contract.TranslationPipelineMetrics
+		var streamAudioMetrics *contract.AudioPipelineMetrics
+		if path.ready != nil {
 			hb.setOp("scene_ready_wait")
-			scenes, streamTranslationMetrics, streamAudioMetrics, genErr = ready.wait(ctx, scenes)
+			scenes, streamTranslationMetrics, streamAudioMetrics, genErr = path.ready.wait(ctx, scenes)
 			if genErr != nil {
 				cause := fmt.Errorf("scene ready downstream failed: %w", hb.annotate(genErr))
 				r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
@@ -92,149 +86,187 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req contra
 			// The normal translation/TTS stages become idempotent no-ops for
 			// these scenes, while their metrics remain visible on the result.
 		}
-		hb.setOp("postprocess_scene_output")
-		bindExplicitClipSceneText(req, scenes)
-		if req.Source.Type == SourceClips && !r.validateClipSceneOutput(ctx, runID, req, exec, scriptStep, scenes) {
+		var ok bool
+		result, ok = r.assembleSceneTextResult(ctx, runID, req, exec, scriptStep, scenes,
+			generatedTrace, streamTranslationMetrics, streamAudioMetrics, hb)
+		if !ok {
 			return result, false
 		}
-		// Literal intro/outro: injected verbatim post-LLM, never rewritten.
-		// They are not part of the LLM prompt and bypass source_text.
-		var fixedErr error
-		scenes, fixedErr = applyFixedSections(req, scenes)
-		if fixedErr != nil {
-			cause := fmt.Errorf("fixed section injection failed: %w", hb.annotate(fixedErr))
-			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
-			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+		if !r.finishSceneTextPhase(ctx, runID, req, exec, scriptStep, result, scenes, path, streamed, hb) {
 			return result, false
-		}
-		applyDurableStockBindings(req, scenes)
-		applySegmentClipBindings(req.ScriptParams.Segments, scenes)
-		// Explicit no_voiceover segments are editorial clip cutaways: keep the
-		// database clip, use its original audio, and never synthesize TTS or a
-		// localized render for it. This runs before render expectations and the
-		// output word budget, so the cutaway is not counted as narration.
-		applySegmentNoVoiceoverScenes(req, scenes)
-		// Caller-provided important phrases are an explicit overlay contract.
-		// Keep them grounded in the final narration text even when a small/local
-		// model paraphrases the brief and drops the requested literal surface.
-		scenes = ensureRequestedImportantPhrases(req, scenes)
-		output := outputFromScenes(scenes, req.SourceLanguage)
-		if output.SourceLanguageFallbackUsed {
-			// A masked translation bug must be observable: the body is in the
-			// wrong language but the word-count gate cannot detect it.
-			observability.ScriptFallbackUsedTotal.WithLabelValues("source_language_missing").Inc()
-			r.log.Warn("script body fell back to a non-requested scene language",
-				zap.String("run_id", runID),
-				zap.String("requested_language", string(req.SourceLanguage)))
-		}
-		if gateErr := validateMinimumGeneratedOutput(req, output); gateErr != nil {
-			cause := fmt.Errorf("minimum generated text gate: %w", hb.annotate(gateErr))
-			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
-			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
-			return nil, false
-		}
-		result = &contract.GenerateResult{
-			SourceLanguage:           req.SourceLanguage,
-			SourceTrace:              generatedTrace,
-			Render:                   req.Render,
-			Output:                   output,
-			WordCount:                output.WordCount,
-			Scenes:                   scenes,
-			Title:                    req.Title,
-			OutputName:               req.OutputName,
-			VoiceoverGroup:           req.ScriptParams.VoiceoverGroup,
-			TranslationMetrics:       streamTranslationMetrics,
-			AudioMetrics:             streamAudioMetrics,
-			EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan),
-		}
-		setSceneRenderExpectations(req, scenes, result)
-		r.applySceneEditorialEnrichment(ctx, runID, req, result, scenes, output.Text, hb)
-		// IMG-002: one owner per retrieval decision. When the VidRush
-		// entity-image lane is active, it owns query generation, candidate
-		// discovery and selection for entity images. The semantic plan must
-		// exit instead of running a second retrieval/binding flow over the
-		// same identities. Overlay-only plans keep the semantic fallback.
-		if vidRushEntityImageOwnsDiscovery(req.MediaPlan) {
-			r.log.Info("semantic search batch skipped: VidRush entity-image lane owns discovery")
-		} else {
-			// The plan is only useful if its exact-source ladder is executed
-			// against the real provider. This phase is optional: an unwired
-			// planner leaves the plan and its feedback pending, unchanged.
-			hb.setOp("semantic_search_batch")
-			r.executeSemanticSearchBatch(ctx, req.SourceLanguage, result, req.MediaPlan.ForceRefreshAssets)
-			// Consume what the batch resolved. Only content-addressed hits bind,
-			// and only where the media stage has not already chosen an asset, so
-			// this can add coverage but can never overwrite verified media.
-			if bound := ApplySemanticResolvedImages(result); bound > 0 {
-				r.log.Info("semantic plan resolved images bound to scene entities", zap.Int("bindings", bound))
-			}
-		}
-		// Explicit clip workflows may request real video reconstruction without
-		// generating TTS. The historical fan-out was only entered after a
-		// voiceover existed, which made audio.mode=NONE silently produce a script
-		// and no MP4. Keep this path source-language-only and reuse the same
-		// localized renderer, watermark contract, and certified result sink.
-		if !r.renderNoAudioLocalizedBatch(ctx, runID, req, exec, scriptStep, result, scenes, hb) {
-			return result, false
-		}
-
-		// Merge the certified produced videos the streaming fan-out
-		// accumulated (the coordinator has no result pointer of its own) so
-		// the run result records the final MP4s it rendered.
-		if ready != nil {
-			for _, rendered := range ready.renderedVideos() {
-				applyLocalizedRenderLinkLocked(result, rendered)
-				result.LocalizedRenders = append(result.LocalizedRenders, rendered)
-				accumulateLocalizedRenderMetrics(result, rendered)
-				// The streaming fan-out has no result pointer of its own, so its
-				// parent-visible render observations are projected here, at the
-				// join, instead of being lost with the coordinator.
-				recordRenderStageProgress(result, rendered)
-			}
-			failures := ready.renderFailures()
-			result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failures...)
-			for _, failure := range failures {
-				recordRenderStageFailure(result, failure)
-			}
-		}
-		r.checkpoint(ctx, runID, result)
-		if !streamed {
-			hb.setOp("emit_scene_commits")
-			var emitErr error
-			_ = kernobs.MeasureStage(ctx, "emit_scene_commits", func(stageCtx context.Context) error {
-				emitErr = r.emitSceneCommits(stageCtx, runID, req, exec, scenes)
-				return emitErr
-			})
-			if emitErr != nil {
-				cause := fmt.Errorf("emit scene commits: %w", hb.annotate(emitErr))
-				r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
-				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
-				return result, false
-			}
 		}
 		r.markGenerationComplete(runID, time.Now())
 		r.log.Info("stage complete", zap.String("run_id", runID), zap.String("stage", string(StageGeneratingSceneText)))
 	} else {
-		r.log.Info("skipping completed stage", zap.String("stage", string(StageGeneratingSceneText)))
-		// Load result from repo if available.
-		if run != nil && run.Result != nil {
-			result = run.Result
-		}
-		// SceneCommitObserver is attempt-scoped (the VidRush coordinator is
-		// rebuilt for each Execute). A voiceover or later-stage retry resumes
-		// past scene generation, so replay the durable scenes into this attempt's
-		// fresh coordinator before its final VidRush barrier. Without this, the
-		// barrier sees an empty result and MediaCert reports every check failed.
-		if result != nil {
-			if err := r.emitSceneCommits(ctx, runID, req, exec, result.Scenes); err != nil {
-				cause := fmt.Errorf("replay scene commits from checkpoint: %w", err)
-				r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
-				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
-				return result, false
-			}
+		var ok bool
+		result, ok = r.resumeSceneTextFromCheckpoint(ctx, runID, req, exec, scriptStep, run)
+		if !ok {
+			return result, false
 		}
 	}
+	return r.finalizeSceneTextPhase(ctx, runID, req, exec, scriptStep, result, scriptSkipped)
+}
 
+// assembleSceneTextResult validates the generated scenes and projects them
+// into the stage result. It owns the post-processing order: explicit clip
+// text, fixed sections, durable bindings, phrase grounding, output gates and
+// editorial enrichment.
+func (r *Runner) assembleSceneTextResult(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, scenes []contract.Scene, generatedTrace scriptpkg.SourceTrace, streamTranslationMetrics *contract.TranslationPipelineMetrics, streamAudioMetrics *contract.AudioPipelineMetrics, hb *stageHeartbeat) (*contract.GenerateResult, bool) {
+	hb.setOp("postprocess_scene_output")
+	bindExplicitClipSceneText(req, scenes)
+	if req.Source.Type == SourceClips && !r.validateClipSceneOutput(ctx, runID, req, exec, scriptStep, scenes) {
+		return nil, false
+	}
+	// Literal intro/outro: injected verbatim post-LLM, never rewritten.
+	// They are not part of the LLM prompt and bypass source_text.
+	var fixedErr error
+	scenes, fixedErr = applyFixedSections(req, scenes)
+	if fixedErr != nil {
+		cause := fmt.Errorf("fixed section injection failed: %w", hb.annotate(fixedErr))
+		r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
+		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+		return nil, false
+	}
+	applyDurableStockBindings(req, scenes)
+	applySegmentClipBindings(req.ScriptParams.Segments, scenes)
+	// Explicit no_voiceover segments are editorial clip cutaways: keep the
+	// database clip, use its original audio, and never synthesize TTS or a
+	// localized render for it. This runs before render expectations and the
+	// output word budget, so the cutaway is not counted as narration.
+	applySegmentNoVoiceoverScenes(req, scenes)
+	// Caller-provided important phrases are an explicit overlay contract.
+	// Keep them grounded in the final narration text even when a small/local
+	// model paraphrases the brief and drops the requested literal surface.
+	scenes = ensureRequestedImportantPhrases(req, scenes)
+	output := outputFromScenes(scenes, req.SourceLanguage)
+	if output.SourceLanguageFallbackUsed {
+		// A masked translation bug must be observable: the body is in the
+		// wrong language but the word-count gate cannot detect it.
+		observability.ScriptFallbackUsedTotal.WithLabelValues("source_language_missing").Inc()
+		r.log.Warn("script body fell back to a non-requested scene language",
+			zap.String("run_id", runID),
+			zap.String("requested_language", string(req.SourceLanguage)))
+	}
+	if gateErr := validateMinimumGeneratedOutput(req, output); gateErr != nil {
+		cause := fmt.Errorf("minimum generated text gate: %w", hb.annotate(gateErr))
+		r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
+		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+		return nil, false
+	}
+	result := &contract.GenerateResult{
+		SourceLanguage:           req.SourceLanguage,
+		SourceTrace:              generatedTrace,
+		Render:                   req.Render,
+		Output:                   output,
+		WordCount:                output.WordCount,
+		Scenes:                   scenes,
+		Title:                    req.Title,
+		OutputName:               req.OutputName,
+		VoiceoverGroup:           req.ScriptParams.VoiceoverGroup,
+		TranslationMetrics:       streamTranslationMetrics,
+		AudioMetrics:             streamAudioMetrics,
+		EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan),
+	}
+	setSceneRenderExpectations(req, scenes, result)
+	r.applySceneEditorialEnrichment(ctx, runID, req, result, scenes, output.Text, hb)
+	return result, true
+}
+
+// finishSceneTextPhase runs the retrieval/render work that depends on the
+// assembled result, then checkpoints it and emits the scene commits.
+func (r *Runner) finishSceneTextPhase(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, result *contract.GenerateResult, scenes []contract.Scene, path sceneTextGenerationPath, streamed bool, hb *stageHeartbeat) bool {
+	// IMG-002: one owner per retrieval decision. When the VidRush
+	// entity-image lane is active, it owns query generation, candidate
+	// discovery and selection for entity images. The semantic plan must
+	// exit instead of running a second retrieval/binding flow over the
+	// same identities. Overlay-only plans keep the semantic fallback.
+	if vidRushEntityImageOwnsDiscovery(req.MediaPlan) {
+		r.log.Info("semantic search batch skipped: VidRush entity-image lane owns discovery")
+	} else {
+		// The plan is only useful if its exact-source ladder is executed
+		// against the real provider. This phase is optional: an unwired
+		// planner leaves the plan and its feedback pending, unchanged.
+		hb.setOp("semantic_search_batch")
+		r.executeSemanticSearchBatch(ctx, req.SourceLanguage, result, req.MediaPlan.ForceRefreshAssets)
+		// Consume what the batch resolved. Only content-addressed hits bind,
+		// and only where the media stage has not already chosen an asset, so
+		// this can add coverage but can never overwrite verified media.
+		if bound := ApplySemanticResolvedImages(result); bound > 0 {
+			r.log.Info("semantic plan resolved images bound to scene entities", zap.Int("bindings", bound))
+		}
+	}
+	// Explicit clip workflows may request real video reconstruction without
+	// generating TTS. The historical fan-out was only entered after a
+	// voiceover existed, which made audio.mode=NONE silently produce a script
+	// and no MP4. Keep this path source-language-only and reuse the same
+	// localized renderer, watermark contract, and certified result sink.
+	if !r.renderNoAudioLocalizedBatch(ctx, runID, req, exec, scriptStep, result, scenes, hb) {
+		return false
+	}
+	// Merge the certified produced videos the streaming fan-out
+	// accumulated (the coordinator has no result pointer of its own) so
+	// the run result records the final MP4s it rendered.
+	if path.ready != nil {
+		for _, rendered := range path.ready.renderedVideos() {
+			applyLocalizedRenderLinkLocked(result, rendered)
+			result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+			accumulateLocalizedRenderMetrics(result, rendered)
+			// The streaming fan-out has no result pointer of its own, so its
+			// parent-visible render observations are projected here, at the
+			// join, instead of being lost with the coordinator.
+			recordRenderStageProgress(result, rendered)
+		}
+		failures := path.ready.renderFailures()
+		result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failures...)
+		for _, failure := range failures {
+			recordRenderStageFailure(result, failure)
+		}
+	}
+	r.checkpoint(ctx, runID, result)
+	if !streamed {
+		hb.setOp("emit_scene_commits")
+		var emitErr error
+		_ = kernobs.MeasureStage(ctx, "emit_scene_commits", func(stageCtx context.Context) error {
+			emitErr = r.emitSceneCommits(stageCtx, runID, req, exec, scenes)
+			return emitErr
+		})
+		if emitErr != nil {
+			cause := fmt.Errorf("emit scene commits: %w", hb.annotate(emitErr))
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+			return false
+		}
+	}
+	return true
+}
+
+// resumeSceneTextFromCheckpoint reloads a completed stage and replays the
+// durable scenes into this attempt's SceneCommitObserver.
+func (r *Runner) resumeSceneTextFromCheckpoint(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, run *GenerationRun) (*contract.GenerateResult, bool) {
+	r.log.Info("skipping completed stage", zap.String("stage", string(StageGeneratingSceneText)))
+	var result *contract.GenerateResult
+	if run != nil && run.Result != nil {
+		result = run.Result
+	}
+	// SceneCommitObserver is attempt-scoped (the VidRush coordinator is
+	// rebuilt for each Execute). A voiceover or later-stage retry resumes
+	// past scene generation, so replay the durable scenes into this attempt's
+	// fresh coordinator before its final VidRush barrier. Without this, the
+	// barrier sees an empty result and MediaCert reports every check failed.
+	if result != nil {
+		if err := r.emitSceneCommits(ctx, runID, req, exec, result.Scenes); err != nil {
+			cause := fmt.Errorf("replay scene commits from checkpoint: %w", err)
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+			return result, false
+		}
+	}
+	return result, true
+}
+
+// finalizeSceneTextPhase closes the execution step, applies the nil guard and
+// attaches the build identity before downstream stages read the result.
+func (r *Runner) finalizeSceneTextPhase(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, result *contract.GenerateResult, scriptSkipped bool) (*contract.GenerateResult, bool) {
 	// Record resolved clip assets as script inputs once the scene plan exists.
 	if result != nil && !r.attachSceneClipInputAssets(ctx, runID, exec, scriptStep, result) {
 		return result, false
@@ -249,13 +281,11 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req contra
 		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
 		return result, false
 	}
-
 	// Nil guard: result must be non-nil before downstream stages.
 	if result == nil {
 		result = &contract.GenerateResult{SourceLanguage: req.SourceLanguage, Scenes: []contract.Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup, EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan)}
 	}
 	attachBuildIdentity(result)
-
 	return result, true
 }
 
