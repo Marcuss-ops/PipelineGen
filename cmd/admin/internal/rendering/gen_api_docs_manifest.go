@@ -24,14 +24,6 @@ type runtimeManifestRoute struct {
 	Source string `yaml:"source"`
 }
 
-func writeRuntimeRouteManifest(path string, routes []gin.RouteInfo) error {
-	data, err := runtimeRouteManifestData(routes)
-	if err != nil {
-		return err
-	}
-	return writeAtomicFile(path, data, 0644)
-}
-
 func runtimeRouteManifestData(routes []gin.RouteInfo) ([]byte, error) {
 	seen := make(map[string]struct{}, len(routes))
 	manifest := runtimeRouteManifest{Routes: make([]runtimeManifestRoute, 0, len(routes))}

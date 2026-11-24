@@ -361,10 +361,6 @@ var defaultLocalizedIdentityMatcher atomic.Value // localizedMatcherHook
 
 type localizedMatcherHook struct{ matcher LocalizedIdentityMatcher }
 
-func setDefaultLocalizedIdentityMatcherForTests(m LocalizedIdentityMatcher) {
-	defaultLocalizedIdentityMatcher.Store(localizedMatcherHook{matcher: m})
-}
-
 func (r *Runner) localizedIdentityMatcher() LocalizedIdentityMatcher {
 	if r != nil && r.localizedIdentity != nil {
 		return r.localizedIdentity

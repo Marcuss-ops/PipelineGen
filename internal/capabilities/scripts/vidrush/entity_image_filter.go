@@ -193,40 +193,6 @@ func personImageSourceIdentityFailure(canonicalName, sourceURL, _ string) string
 	return personImageSourceNameMismatch(canonicalName, sourceURL)
 }
 
-func sourcePathHasCanonicalPersonName(canonicalName, source string) bool {
-	if strings.TrimSpace(canonicalName) == "" || strings.TrimSpace(source) == "" {
-		return false
-	}
-	parsed, err := url.Parse(strings.TrimSpace(source))
-	if err != nil {
-		return false
-	}
-	decoded := parsed.Path
-	for i := 0; i < 2; i++ {
-		if next, decodeErr := url.PathUnescape(decoded); decodeErr == nil && next != decoded {
-			decoded = next
-		}
-	}
-	tokens := strings.FieldsFunc(strings.ToLower(decoded), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
-	want := strings.FieldsFunc(normalizeEntityMatch(canonicalName), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
-	if len(want) < 2 || len(tokens) < len(want) {
-		return false
-	}
-	for start := 0; start <= len(tokens)-len(want); start++ {
-		match := true
-		for i := range want {
-			if tokens[start+i] != want[i] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
-}
-
 // personImageSourceNameMismatch catches a high-confidence provenance conflict
 // when an image filename explicitly names the queried person but spells the
 // surname differently (for example Angela-Tuccia for Angela Taccia). Provider

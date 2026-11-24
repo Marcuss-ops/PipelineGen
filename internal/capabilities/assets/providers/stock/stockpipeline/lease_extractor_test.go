@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -144,7 +145,7 @@ func TestManifestBytes_NilManifest_ReturnsTypedError(t *testing.T) {
 // workflow_id + job_id + 5 fixed artifact entries. The finalizer
 // embeds these bytes verbatim into result_data.
 func TestManifestBytes_PopulatedManifest_MarshalsAllFields(t *testing.T) {
-	manifest := buildStockManifest("wf-001", "job-stock-001")
+	manifest := core.BuildStockManifest("wf-001", "job-stock-001")
 	require.NotNil(t, manifest)
 
 	raw, err := manifestBytes(manifest)
@@ -166,7 +167,7 @@ func TestManifestBytes_PopulatedManifest_MarshalsAllFields(t *testing.T) {
 // the JobFinalizer.IdempotencyCache + completion fingerprint
 // recognise a replay as the SAME request (godlike/07 idempotency).
 func TestManifestBytes_StableAcrossReencode(t *testing.T) {
-	manifest := buildStockManifest("wf", "job-id")
+	manifest := core.BuildStockManifest("wf", "job-id")
 	first, err1 := manifestBytes(manifest)
 	require.NoError(t, err1)
 	second, err2 := manifestBytes(manifest)

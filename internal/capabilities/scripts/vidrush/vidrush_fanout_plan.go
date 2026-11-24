@@ -163,10 +163,6 @@ func entityImageLaneRequested(perSceneImages, automaticImageSearch, manualImageE
 	return perSceneImages && automaticImageSearch && !manualImageExclusive
 }
 
-func contextualImageLaneRequested(perSceneImages, automaticImageSearch, manualImageExclusive bool) bool {
-	return automaticImageSearch && !manualImageExclusive && !perSceneImages
-}
-
 func plausibleSceneImageQueries(queries []string) []string {
 	out := make([]string, 0, len(queries))
 	for _, query := range queries {

@@ -252,9 +252,6 @@ type (
 
 // projectManifestToPipelineResult keeps the historical unexported helper name
 // used by the remaining root-file call sites.
-func buildStockManifest(workflowID, jobID string) *job.ArtifactManifest {
-	return core.BuildStockManifest(workflowID, jobID)
-}
 
 func projectManifestToPipelineResult(manifest *job.ArtifactManifest) (*PipelineResult, error) {
 	return pipeline.ProjectManifestToPipelineResult(manifest)

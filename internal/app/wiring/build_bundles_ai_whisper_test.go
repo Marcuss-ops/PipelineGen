@@ -18,7 +18,7 @@ import (
 func TestBuildAIBundle_WhisperUnavailableDegradesSoftly(t *testing.T) {
 	// chdir to a scratch dir WITHOUT scripts/bridges/whisper_transcriber.py
 	// so NewWhisperTranscriberAdapter fails its os.Stat gate (the default
-	// ScriptPath is relative). resolveMigrationsDir walks up from the
+	// ScriptPath is relative). MigrationsDir walks up from the
 	// source file via runtime.Caller, so migrations still resolve even
 	// though the test cwd is not the project root.
 	scratch := t.TempDir()

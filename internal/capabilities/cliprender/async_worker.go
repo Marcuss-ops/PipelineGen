@@ -50,13 +50,6 @@ func decodeContinuationPayload(raw json.RawMessage) (RenderPhase, *Continuation,
 	return phase, nil, nil
 }
 
-func encodeContinuationPayload(c Continuation) (json.RawMessage, error) {
-	if err := c.Validate(); err != nil {
-		return nil, err
-	}
-	return json.Marshal(continuationPayload{RenderPhase: RenderPhaseSettle, Continuation: &c})
-}
-
 func preparedFromResume(doc ResumeDocument) *Prepared {
 	prepared := &Prepared{
 		RunID:      doc.Plan.RunID,

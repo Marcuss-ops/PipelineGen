@@ -291,26 +291,6 @@ func downloadVidRushImage(ctx context.Context, client *http.Client, rawURL, sour
 	return data, mime, nil
 }
 
-func validateVidRushImageHead(status int, _ string, contentLength int64, policy VidRushImagePolicy) error {
-	policy = normalizeVidRushImagePolicy(policy)
-	if status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented || status == http.StatusForbidden {
-		// Some image CDNs deny HEAD while serving the same URL to a normal GET.
-		// Treat the preflight as advisory; the guarded GET validates status, MIME,
-		// byte limits, and decoded image content before accepting anything.
-		return nil
-	}
-	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		return fmt.Errorf("vidrush image: upstream HEAD status %d", status)
-	}
-	// HEAD metadata is advisory: several image hosts return text/plain or a
-	// placeholder length here even though GET serves the actual image. GET
-	// validates the response MIME against sniffed bytes and decodes the image.
-	if contentLength > policy.MaxBytes {
-		return ErrVidRushImageTooLarge
-	}
-	return nil
-}
-
 func newVidRushImageRequest(ctx context.Context, rawURL, sourcePageURL string) (*http.Request, error) {
 	return newVidRushImageRequestMethod(ctx, http.MethodGet, rawURL, sourcePageURL)
 }

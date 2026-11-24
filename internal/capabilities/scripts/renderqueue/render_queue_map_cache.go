@@ -135,11 +135,6 @@ func loadDynamicMapVideoCacheVerified(key, destination string, cacheDirs ...stri
 	return append(json.RawMessage(nil), manifest.Telemetry...), actual, size, true
 }
 
-func storeDynamicMapVideoCache(key, source string, telemetry []byte, cacheDirs ...string) error {
-	_, _, err := storeDynamicMapVideoCacheVerified(key, source, telemetry, cacheDirs...)
-	return err
-}
-
 func storeDynamicMapVideoCacheVerified(key, source string, telemetry []byte, cacheDirs ...string) (string, int64, error) {
 	sha, size, err := hashDynamicMapVideo(source)
 	if err != nil {

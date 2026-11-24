@@ -185,10 +185,6 @@ type AudioAssetResolver = scriptaudio.AssetResolver
 
 var NewAudioAssetResolver = scriptaudio.NewAssetResolver
 
-func randomClipStartSFXIntents(timeline audio.CanonicalTimeline) []scriptpkg.SoundEffectIntent {
-	return scriptaudio.RandomClipStartSFXIntents(timeline)
-}
-
 // Compatibility facade for the pure audio resolvers in scripts/audio.
 type (
 	AudioAutomationCompiler = scriptaudio.AudioAutomationCompiler
