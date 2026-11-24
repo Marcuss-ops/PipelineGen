@@ -121,50 +121,15 @@ func (e *Engine) generateSegments(
 	plan *scriptpkg.ResolvedGenerationPlan,
 	req ports.TextGenerationRequest,
 ) (*ports.GenerationResult, error) {
-	// Optional production seam: warm the selected model once before the
-	// segment fan-out. The narrow interface keeps provider fakes and remote
-	// generators compatible while the Ollama adapter uses singleflight.
-	//
-	// BEST-EFFORT BY CONTRACT: warm is a latency optimization, never a
-	// correctness gate — the generate call itself surfaces a real model
-	// problem. Failing the generation here burned whole attempts on a warm
-	// timeout (measured on the live ledger: 125 failed `ollama.warm` ops,
-	// up to 600s each, each one killing a generation attempt before any
-	// segment was produced).
-	if warmer, ok := e.ollamaGen.(interface {
-		WarmModel(context.Context, string) error
-	}); ok {
-		if err := warmer.WarmModel(ctx, req.Model); err != nil && e.log != nil {
-			e.log.Warn("engine: warm model failed — continuing best-effort",
-				zap.String("model", req.Model), zap.Error(err))
-		}
-	}
-	// The Ollama generator owns the canonical ollama/generate measurement
-	// (see *ollama.Generator.GenerateScript). This closure only applies the
-	// concurrency gate; it must not re-time the same inference boundary.
-	generate := func(ctx context.Context, req ports.TextGenerationRequest) (*ports.GenerationResult, error) {
-		if e.generationGate != nil {
-			if err := e.generationGate.Acquire(ctx); err != nil {
-				return nil, err
-			}
-			defer e.generationGate.Release()
-		}
-		return e.ollamaGen.GenerateScript(ctx, req)
-	}
+	e.warmGenerationModel(ctx, req.Model)
+	generate := e.segmentGenerator()
 	if plan == nil || len(plan.Segments) == 0 {
 		return generate(ctx, req)
 	}
 	// Batch scene prose into at most ten model requests. The pair size grows
 	// only for scripts longer than twenty scenes; each response must preserve
 	// one blank-line-delimited paragraph per scene, in order.
-	hasSegmentSourceText := false
-	for _, segment := range plan.Segments {
-		if cleanSegmentSourceText(segment.SourceText) != "" {
-			hasSegmentSourceText = true
-			break
-		}
-	}
-	if plan.ClipEvidence == nil && plan.ResearchEvidence == nil && !hasSegmentSourceText && len(plan.Segments) > 1 {
+	if shouldBatchSegments(plan) {
 		return e.generateSegmentBatches(ctx, plan, req, generate)
 	}
 	settings := e.segmentSettings()
@@ -175,229 +140,312 @@ func (e *Engine) generateSegments(
 	stopWords := linguistics.DefaultProfiles().StopWords("en")
 	texts := make([]string, len(plan.Segments))
 	var first *ports.GenerationResult
-	type segmentOutput struct {
-		index  int
-		text   string
-		result *ports.GenerationResult
-		err    error
-	}
-	generateOne := func(index int, segment scriptpkg.ScriptSegment, workerID string, queuedAt time.Time) segmentOutput {
-		segmentPlan := *plan
-		segmentPlan.Segments = []scriptpkg.ScriptSegment{segment}
-		segmentPlan.TargetWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
-		segmentPlan.SegmentWords = 0
-		if len(segment.ClipIDs) == 0 {
-			// A narration-only segment inside a clip-source run is a text
-			// plan: it owns no clip evidence, so it must not inherit the
-			// clip-native identity and fail the engine's evidence gate.
-			segmentPlan.ClipEvidence = nil
-			segmentPlan.SourceKind = string(scriptpkg.SourceText)
-			segmentPlan.Mode = scriptpkg.ModeForSource(scriptpkg.SourceText)
-			if text := cleanSegmentSourceText(segment.SourceText); text != "" {
-				segmentPlan.SourceText = text
+	results := e.runSegmentFanout(ctx, plan, req, settings, stopWords, generate)
+	for output := range results {
+		if output.err != nil {
+			fallback, ok := e.recoverSegmentFallback(plan, output.index, output.err, settings)
+			if !ok {
+				return nil, output.err
 			}
-		} else if plan.ClipEvidence != nil {
-			scoped := scriptpkg.NewClipEvidence(*plan.ClipEvidence)
-			var owned scriptpkg.SegmentClipEvidence
-			found := false
-			if id := strings.TrimSpace(segment.ID); id != "" {
-				for _, candidate := range plan.ClipEvidence.SegmentEvidence {
-					if strings.TrimSpace(candidate.SegmentID) == id {
-						owned = candidate
-						found = true
-						break
-					}
+			texts[output.index] = fallback
+			continue
+		}
+		texts[output.index] = output.text
+		if first == nil {
+			first = output.result
+		}
+	}
+	return assembleSegmentResult(plan, first, texts, settings)
+}
+
+// segmentOutput is one completed (or failed) segment generation.
+type segmentOutput struct {
+	index  int
+	text   string
+	result *ports.GenerationResult
+	err    error
+}
+
+// warmGenerationModel runs the optional best-effort warm. It is a latency
+// optimization, never a correctness gate: the generate call itself surfaces a
+// real model problem.
+func (e *Engine) warmGenerationModel(ctx context.Context, model string) {
+	if warmer, ok := e.ollamaGen.(interface {
+		WarmModel(context.Context, string) error
+	}); ok {
+		if err := warmer.WarmModel(ctx, model); err != nil && e.log != nil {
+			e.log.Warn("engine: warm model failed — continuing best-effort",
+				zap.String("model", model), zap.Error(err))
+		}
+	}
+}
+
+// segmentGenerator builds the inference closure. The Ollama generator owns the
+// canonical ollama/generate measurement; this closure only applies the
+// concurrency gate and must not re-time the same inference boundary.
+func (e *Engine) segmentGenerator() func(context.Context, ports.TextGenerationRequest) (*ports.GenerationResult, error) {
+	return func(ctx context.Context, req ports.TextGenerationRequest) (*ports.GenerationResult, error) {
+		if e.generationGate != nil {
+			if err := e.generationGate.Acquire(ctx); err != nil {
+				return nil, err
+			}
+			defer e.generationGate.Release()
+		}
+		return e.ollamaGen.GenerateScript(ctx, req)
+	}
+}
+
+// shouldBatchSegments is the canonical batching predicate: no clip evidence,
+// no research evidence, no per-segment source text and more than one segment.
+func shouldBatchSegments(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if plan == nil {
+		return false
+	}
+	for _, segment := range plan.Segments {
+		if cleanSegmentSourceText(segment.SourceText) != "" {
+			return false
+		}
+	}
+	return plan.ClipEvidence == nil && plan.ResearchEvidence == nil && len(plan.Segments) > 1
+}
+
+// generateSegment builds and runs the isolated generation plan for one
+// segment. The body is the previous inline worker closure; the only change is
+// that the accepted text is returned instead of written into the shared texts
+// slice from the worker goroutine.
+func (e *Engine) generateSegment(
+	ctx context.Context,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	req ports.TextGenerationRequest,
+	index int,
+	segment scriptpkg.ScriptSegment,
+	workerID string,
+	queuedAt time.Time,
+	settings segmentValidationSettings,
+	stopWords map[string]struct{},
+	generate func(context.Context, ports.TextGenerationRequest) (*ports.GenerationResult, error),
+) segmentOutput {
+	segmentPlan := *plan
+	segmentPlan.Segments = []scriptpkg.ScriptSegment{segment}
+	segmentPlan.TargetWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
+	segmentPlan.SegmentWords = 0
+	if len(segment.ClipIDs) == 0 {
+		// A narration-only segment inside a clip-source run is a text
+		// plan: it owns no clip evidence, so it must not inherit the
+		// clip-native identity and fail the engine's evidence gate.
+		segmentPlan.ClipEvidence = nil
+		segmentPlan.SourceKind = string(scriptpkg.SourceText)
+		segmentPlan.Mode = scriptpkg.ModeForSource(scriptpkg.SourceText)
+		if text := cleanSegmentSourceText(segment.SourceText); text != "" {
+			segmentPlan.SourceText = text
+		}
+	} else if plan.ClipEvidence != nil {
+		scoped := scriptpkg.NewClipEvidence(*plan.ClipEvidence)
+		var owned scriptpkg.SegmentClipEvidence
+		found := false
+		if id := strings.TrimSpace(segment.ID); id != "" {
+			for _, candidate := range plan.ClipEvidence.SegmentEvidence {
+				if strings.TrimSpace(candidate.SegmentID) == id {
+					owned = candidate
+					found = true
+					break
 				}
 			}
-			if !found && index < len(plan.ClipEvidence.SegmentEvidence) {
-				owned = plan.ClipEvidence.SegmentEvidence[index]
-				found = true
-			}
-			if found {
-				scoped.SegmentEvidence = []scriptpkg.SegmentClipEvidence{owned}
-			}
-			scoped.AcceptedClipIDs = append([]string(nil), segment.ClipIDs...)
-			scoped.ClipCount = len(segment.ClipIDs)
-			segmentPlan.ClipEvidence = scoped
 		}
-		segmentReq := req
-		// Layout and opening scope are composed by one pure helper so the
-		// fan-out and its tests share exactly one prompt contract. The
-		// opening-scope directive keeps the script's mandated opening sentence
-		// in the first segment instead of letting the shared style repeat it in
-		// every segment (see segmentOpeningScopeDirective).
-		segmentReq.Prompt, segmentReq.SharedPrefix, segmentReq.SegmentAssignment =
-			segmentPromptParts(&segmentPlan, index, len(plan.Segments))
-		// Clip jobs use the editorial description of the assigned clip as the
-		// primary source text for Gemma. This is the historical, stable
-		// contract: rewrite the supplied description in a funny YouTube voice.
-		// Timed transcript and clip metadata remain in the prompt as grounding
-		// evidence, but must not replace the per-clip source description with a
-		// large global evidence blob.
-		segmentReq.SourceText = cleanSegmentSourceText(segment.SourceText)
-		if segmentReq.SourceText == "" {
-			segmentReq.SourceText = cleanSegmentSourceText(req.SourceText)
+		if !found && index < len(plan.ClipEvidence.SegmentEvidence) {
+			owned = plan.ClipEvidence.SegmentEvidence[index]
+			found = true
 		}
-		segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
-		// P1-5 (anti-muda): repair suffix must NOT accumulate. Keep the
-		// first-attempt base so retry N renders base+suffix instead of
-		// base+suffix+...+suffix (prompt growth = slower + KV-miss).
-		baseRepairPrompt := segmentReq.Prompt
-		baseRepairAssignment := segmentReq.SegmentAssignment
-		useSharedPrefix := SegmentPromptLayout() == SegmentPromptLayoutSharedPrefix
-		budget := segmentBudgetFor(plan, index, settings.segmentTolerancePercent)
-		// MinWords is the provider's writing target and output-token budget;
-		// the independent QA gate below still uses budget.Min.
-		segmentReq.MinWords = budget.Target
-		metaCtx := kernobs.WithOperationMeta(ctx, kernobs.OperationMeta{
+		if found {
+			scoped.SegmentEvidence = []scriptpkg.SegmentClipEvidence{owned}
+		}
+		scoped.AcceptedClipIDs = append([]string(nil), segment.ClipIDs...)
+		scoped.ClipCount = len(segment.ClipIDs)
+		segmentPlan.ClipEvidence = scoped
+	}
+	segmentReq := req
+	// Layout and opening scope are composed by one pure helper so the
+	// fan-out and its tests share exactly one prompt contract. The
+	// opening-scope directive keeps the script's mandated opening sentence
+	// in the first segment instead of letting the shared style repeat it in
+	// every segment (see segmentOpeningScopeDirective).
+	segmentReq.Prompt, segmentReq.SharedPrefix, segmentReq.SegmentAssignment =
+		segmentPromptParts(&segmentPlan, index, len(plan.Segments))
+	// Clip jobs use the editorial description of the assigned clip as the
+	// primary source text for Gemma. This is the historical, stable
+	// contract: rewrite the supplied description in a funny YouTube voice.
+	// Timed transcript and clip metadata remain in the prompt as grounding
+	// evidence, but must not replace the per-clip source description with a
+	// large global evidence blob.
+	segmentReq.SourceText = cleanSegmentSourceText(segment.SourceText)
+	if segmentReq.SourceText == "" {
+		segmentReq.SourceText = cleanSegmentSourceText(req.SourceText)
+	}
+	segmentReq.ClipIDs = append([]string(nil), segment.ClipIDs...)
+	// P1-5 (anti-muda): repair suffix must NOT accumulate. Keep the
+	// first-attempt base so retry N renders base+suffix instead of
+	// base+suffix+...+suffix (prompt growth = slower + KV-miss).
+	baseRepairPrompt := segmentReq.Prompt
+	baseRepairAssignment := segmentReq.SegmentAssignment
+	useSharedPrefix := SegmentPromptLayout() == SegmentPromptLayoutSharedPrefix
+	budget := segmentBudgetFor(plan, index, settings.segmentTolerancePercent)
+	// MinWords is the provider's writing target and output-token budget;
+	// the independent QA gate below still uses budget.Min.
+	segmentReq.MinWords = budget.Target
+	metaCtx := kernobs.WithOperationMeta(ctx, kernobs.OperationMeta{
+		WorkerID: workerID,
+		QueuedAt: queuedAt,
+		Metadata: map[string]string{
+			"segment_id":    segmentIdentity(segment, index),
+			"segment_index": strconv.Itoa(index),
+		},
+	})
+	var result *ports.GenerationResult
+	var lastErr error
+	acceptedText := ""
+	validationExhausted := false
+	attemptLimit := settings.maxRegenerationAttempts
+	// A bad clip rewrite gets one targeted repair even when general word
+	// budget retries are disabled. This preserves the 1+repair policy.
+	if plan.ClipEvidence != nil && attemptLimit < 1 {
+		attemptLimit = 1
+	}
+	for attempt := 0; attempt <= attemptLimit; attempt++ {
+		var genErr error
+		// Keep every inference tied to both its scene and retry ordinal.
+		// This makes the Ollama operation report sufficient to explain
+		// extra calls without adding a second timer around inference.
+		attemptMeta := kernobs.OperationMeta{
 			WorkerID: workerID,
 			QueuedAt: queuedAt,
 			Metadata: map[string]string{
 				"segment_id":    segmentIdentity(segment, index),
 				"segment_index": strconv.Itoa(index),
+				"attempt":       strconv.Itoa(attempt + 1),
 			},
-		})
-		var result *ports.GenerationResult
-		var lastErr error
-		validationExhausted := false
-		attemptLimit := settings.maxRegenerationAttempts
-		// A bad clip rewrite gets one targeted repair even when general word
-		// budget retries are disabled. This preserves the 1+repair policy.
-		if plan.ClipEvidence != nil && attemptLimit < 1 {
-			attemptLimit = 1
 		}
-		for attempt := 0; attempt <= attemptLimit; attempt++ {
-			var genErr error
-			// Keep every inference tied to both its scene and retry ordinal.
-			// This makes the Ollama operation report sufficient to explain
-			// extra calls without adding a second timer around inference.
-			attemptMeta := kernobs.OperationMeta{
-				WorkerID: workerID,
-				QueuedAt: queuedAt,
-				Metadata: map[string]string{
-					"segment_id":    segmentIdentity(segment, index),
-					"segment_index": strconv.Itoa(index),
-					"attempt":       strconv.Itoa(attempt + 1),
-				},
-			}
-			attemptCtx := kernobs.WithOperationMeta(metaCtx, attemptMeta)
-			result, genErr = generate(attemptCtx, segmentReq)
-			if genErr != nil {
-				lastErr = genErr
+		attemptCtx := kernobs.WithOperationMeta(metaCtx, attemptMeta)
+		result, genErr = generate(attemptCtx, segmentReq)
+		if genErr != nil {
+			lastErr = genErr
+			break
+		}
+		candidate := splitGeneratedSegmentParagraphs(result.Script)
+		// This request owns exactly one editorial segment. Models may
+		// still insert an internal blank line; collapse those fragments
+		// into the one deterministic paragraph for this segment. The
+		// fragments cannot contain another segment because the request
+		// carries only this segment's evidence.
+		if len(candidate) > 1 {
+			candidate = []string{strings.Join(candidate, " ")}
+		}
+		if len(candidate) == 1 {
+			acceptedText = candidate[0]
+			// Short clip narrations on e2b are intentionally latency-first:
+			// a non-empty answer is useful even when it misses the editorial
+			// word band or paragraph shape by a small amount. Keep only the
+			// hard safety check (empty output) and avoid a second Ollama call.
+			if (relaxedShortClipQuality(plan) || relaxedStockOnlyQuality(plan, candidate[0], budget)) && strings.TrimSpace(candidate[0]) != "" &&
+				!isRepeatedClipSource(candidate[0], segment.SourceText) {
 				break
 			}
-			candidate := splitGeneratedSegmentParagraphs(result.Script)
-			// This request owns exactly one editorial segment. Models may
-			// still insert an internal blank line; collapse those fragments
-			// into the one deterministic paragraph for this segment. The
-			// fragments cannot contain another segment because the request
-			// carries only this segment's evidence.
-			if len(candidate) > 1 {
-				candidate = []string{strings.Join(candidate, " ")}
+			singleReport := validateSegmentTexts(&segmentPlan, candidate, settings)
+			if plan.ClipEvidence != nil && isRepeatedClipSource(candidate[0], segment.SourceText) {
+				singleReport.Valid = false
+				singleReport.InvalidIndexes = []int{0}
+				singleReport.Reasons = append(singleReport.Reasons, "clip source copied or repeated instead of rewritten")
 			}
-			if len(candidate) == 1 {
-				texts[index] = candidate[0]
-				// Short clip narrations on e2b are intentionally latency-first:
-				// a non-empty answer is useful even when it misses the editorial
-				// word band or paragraph shape by a small amount. Keep only the
-				// hard safety check (empty output) and avoid a second Ollama call.
-				if (relaxedShortClipQuality(plan) || relaxedStockOnlyQuality(plan, candidate[0], budget)) && strings.TrimSpace(candidate[0]) != "" &&
-					!isRepeatedClipSource(candidate[0], segment.SourceText) {
-					break
+			if plan.ClipEvidence != nil && !clipNarrationHasEvidence(candidate[0], segment, &segmentPlan, stopWords) && e.log != nil {
+				// Clip descriptions and narration may use different languages
+				// (for example an Italian source brief with an English output).
+				// Keep this lexical check observational: non-empty output,
+				// bounded length, anti-copy and prompt grounding remain the
+				// blocking quality gates for clip-backed scenes.
+				e.log.Debug("clip narration lexical evidence check advisory",
+					zap.String("segment_id", segmentIdentity(segment, index)))
+			}
+			if singleReport.Valid {
+				break
+			}
+			if e.log != nil {
+				e.log.Debug("segment response rejected",
+					zap.String("segment_id", segmentIdentity(segment, index)),
+					zap.Int("raw_chars", len(result.Script)),
+					zap.Int("raw_words", textutil.CountWords(result.Script)),
+					zap.Int("normalized_chars", len(candidate[0])),
+					zap.Int("normalized_words", textutil.CountWords(candidate[0])),
+					zap.Strings("validation_reasons", singleReport.Reasons),
+				)
+			}
+		}
+		if attempt == attemptLimit {
+			lastErr = fmt.Errorf("%w: segment[%d] did not produce one valid paragraph (target=%d words, minimum=%d, requested_minimum=%d, maximum=%d)", scriptpkg.ErrSegmentValidationFailed, index, budget.Target, budget.Min, budget.RequestedMin, budget.Max)
+			validationExhausted = true
+			break
+		}
+		// P1-5 (anti-muda): the legacy code appended the repair suffix
+		// to Prompt unconditionally, but in shared-prefix layout Prompt
+		// is ignored (rendered from SharedPrefix/SegmentAssignment), so
+		// the repair was silent. Route it to the layout in use and
+		// rebuild from the base instead of accumulating.
+		var repairSuffix string
+		if budget.Max > 0 {
+			repairSuffix = fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target %d) and no more than the explicitly requested %d words. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target, budget.Max)
+		} else {
+			repairSuffix = fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target about %d). There is no maximum word count. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target)
+		}
+		if useSharedPrefix {
+			segmentReq.SegmentAssignment = baseRepairAssignment + repairSuffix
+		} else {
+			segmentReq.Prompt = baseRepairPrompt + repairSuffix
+		}
+		// Vary the sample on repair: same prompt + same seed reprints
+		// the same rejection (~20s wasted). A warmer, unpinned sample
+		// gives the retry a chance to actually differ.
+		segmentReq.Temperature = 0.7
+		segmentReq.Seed = 0
+		if segmentReq.Options != nil {
+			delete(segmentReq.Options, "seed")
+			delete(segmentReq.Options, "temperature")
+		}
+	}
+	if lastErr != nil {
+		validationFailure := validationExhausted || isSegmentValidationExhausted(lastErr)
+		// Per-segment source_text is editorial context, not finished
+		// narration; repeating it to hit the target would publish the brief
+		// instead of the script. Only use plan-level source text when this
+		// segment has no own brief.
+		fallbackSource := ""
+		if strings.TrimSpace(segment.SourceText) == "" {
+			fallbackSource = strings.TrimSpace(segmentReq.SourceText)
+		}
+		if plan.ClipEvidence == nil && (validationFailure || lastErr != nil) && fallbackSource != "" {
+			fallback := sourceTextFallbackParagraph(fallbackSource, budget)
+			if fallback != "" && validateSegmentTexts(&segmentPlan, []string{fallback}, settings).Valid {
+				fallbackResult := result
+				if fallbackResult == nil {
+					fallbackResult = &ports.GenerationResult{}
 				}
-				singleReport := validateSegmentTexts(&segmentPlan, candidate, settings)
-				if plan.ClipEvidence != nil && isRepeatedClipSource(candidate[0], segment.SourceText) {
-					singleReport.Valid = false
-					singleReport.InvalidIndexes = []int{0}
-					singleReport.Reasons = append(singleReport.Reasons, "clip source copied or repeated instead of rewritten")
-				}
-				if plan.ClipEvidence != nil && !clipNarrationHasEvidence(candidate[0], segment, &segmentPlan, stopWords) && e.log != nil {
-					// Clip descriptions and narration may use different languages
-					// (for example an Italian source brief with an English output).
-					// Keep this lexical check observational: non-empty output,
-					// bounded length, anti-copy and prompt grounding remain the
-					// blocking quality gates for clip-backed scenes.
-					e.log.Debug("clip narration lexical evidence check advisory",
+				fallbackCopy := *fallbackResult
+				fallbackCopy.Script = fallback
+				fallbackCopy.WordCount = textutil.CountWords(fallback)
+				fallbackCopy.GenerationSource = "source_text_fallback"
+				observability.ScriptFallbackUsedTotal.WithLabelValues("segment_validation_source_text").Inc()
+				if e.log != nil {
+					e.log.Warn("segment validation exhausted; used source-text fallback paragraph",
 						zap.String("segment_id", segmentIdentity(segment, index)))
 				}
-				if singleReport.Valid {
-					break
-				}
-				if e.log != nil {
-					e.log.Debug("segment response rejected",
-						zap.String("segment_id", segmentIdentity(segment, index)),
-						zap.Int("raw_chars", len(result.Script)),
-						zap.Int("raw_words", textutil.CountWords(result.Script)),
-						zap.Int("normalized_chars", len(candidate[0])),
-						zap.Int("normalized_words", textutil.CountWords(candidate[0])),
-						zap.Strings("validation_reasons", singleReport.Reasons),
-					)
-				}
-			}
-			if attempt == attemptLimit {
-				lastErr = fmt.Errorf("%w: segment[%d] did not produce one valid paragraph (target=%d words, minimum=%d, requested_minimum=%d, maximum=%d)", scriptpkg.ErrSegmentValidationFailed, index, budget.Target, budget.Min, budget.RequestedMin, budget.Max)
-				validationExhausted = true
-				break
-			}
-			// P1-5 (anti-muda): the legacy code appended the repair suffix
-			// to Prompt unconditionally, but in shared-prefix layout Prompt
-			// is ignored (rendered from SharedPrefix/SegmentAssignment), so
-			// the repair was silent. Route it to the layout in use and
-			// rebuild from the base instead of accumulating.
-			var repairSuffix string
-			if budget.Max > 0 {
-				repairSuffix = fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target %d) and no more than the explicitly requested %d words. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target, budget.Max)
-			} else {
-				repairSuffix = fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target about %d). There is no maximum word count. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target)
-			}
-			if useSharedPrefix {
-				segmentReq.SegmentAssignment = baseRepairAssignment + repairSuffix
-			} else {
-				segmentReq.Prompt = baseRepairPrompt + repairSuffix
-			}
-			// Vary the sample on repair: same prompt + same seed reprints
-			// the same rejection (~20s wasted). A warmer, unpinned sample
-			// gives the retry a chance to actually differ.
-			segmentReq.Temperature = 0.7
-			segmentReq.Seed = 0
-			if segmentReq.Options != nil {
-				delete(segmentReq.Options, "seed")
-				delete(segmentReq.Options, "temperature")
+				return segmentOutput{index: index, result: &fallbackCopy, text: fallback}
 			}
 		}
-		if lastErr != nil {
-			validationFailure := validationExhausted || isSegmentValidationExhausted(lastErr)
-			// Per-segment source_text is editorial context, not finished
-			// narration; repeating it to hit the target would publish the brief
-			// instead of the script. Only use plan-level source text when this
-			// segment has no own brief.
-			fallbackSource := ""
-			if strings.TrimSpace(segment.SourceText) == "" {
-				fallbackSource = strings.TrimSpace(segmentReq.SourceText)
-			}
-			if plan.ClipEvidence == nil && (validationFailure || lastErr != nil) && fallbackSource != "" {
-				fallback := sourceTextFallbackParagraph(fallbackSource, budget)
-				if fallback != "" && validateSegmentTexts(&segmentPlan, []string{fallback}, settings).Valid {
-					fallbackResult := result
-					if fallbackResult == nil {
-						fallbackResult = &ports.GenerationResult{}
-					}
-					fallbackCopy := *fallbackResult
-					fallbackCopy.Script = fallback
-					fallbackCopy.WordCount = textutil.CountWords(fallback)
-					fallbackCopy.GenerationSource = "source_text_fallback"
-					observability.ScriptFallbackUsedTotal.WithLabelValues("segment_validation_source_text").Inc()
-					if e.log != nil {
-						e.log.Warn("segment validation exhausted; used source-text fallback paragraph",
-							zap.String("segment_id", segmentIdentity(segment, index)))
-					}
-					return segmentOutput{index: index, result: &fallbackCopy, text: fallback}
-				}
-			}
-			return segmentOutput{index: index, result: result, err: lastErr}
-		}
-		return segmentOutput{index: index, text: texts[index], result: result}
+		return segmentOutput{index: index, result: result, err: lastErr}
 	}
+	return segmentOutput{index: index, text: acceptedText, result: result}
+}
+
+// runSegmentFanout runs the bounded worker pool and returns the completion
+// channel. Results arrive in completion order, exactly as the inline pool did.
+func (e *Engine) runSegmentFanout(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, req ports.TextGenerationRequest, settings segmentValidationSettings, stopWords map[string]struct{}, generate func(context.Context, ports.TextGenerationRequest) (*ports.GenerationResult, error)) <-chan segmentOutput {
 	workers := len(plan.Segments)
 	if e.generationGate != nil {
 		workers = e.generationGate.Capacity()
@@ -423,7 +471,7 @@ func (e *Engine) generateSegments(
 		go func(workerID int) {
 			defer wg.Done()
 			for job := range jobs {
-				results <- generateOne(job.index, plan.Segments[job.index], fmt.Sprintf("seg-worker-%d", workerID), job.queuedAt)
+				results <- e.generateSegment(ctx, plan, req, job.index, plan.Segments[job.index], fmt.Sprintf("seg-worker-%d", workerID), job.queuedAt, settings, stopWords, generate)
 			}
 		}(worker)
 	}
@@ -443,31 +491,33 @@ func (e *Engine) generateSegments(
 		wg.Wait()
 		close(results)
 	}()
-	for output := range results {
-		if output.err != nil {
-			if plan.ClipEvidence != nil && output.index >= 0 && output.index < len(plan.Segments) &&
-				isSegmentValidationExhausted(output.err) {
-				budget := segmentBudgetFor(plan, output.index, settings.segmentTolerancePercent)
-				// Clip paths may use only their own segment brief as recovery;
-				// never substitute a non-clip editorial brief for generated prose.
-				fallbackSource := plan.Segments[output.index].SourceText
-				fallback := sourceTextFallbackParagraph(fallbackSource, budget)
-				fallbackPlan := *plan
-				fallbackPlan.Segments = []scriptpkg.ScriptSegment{plan.Segments[output.index]}
-				fallbackPlan.TargetWords = budget.Target
-				if fallback != "" && validateSegmentTexts(&fallbackPlan, []string{fallback}, settings).Valid {
-					observability.ScriptFallbackUsedTotal.WithLabelValues("segment_validation_source_text").Inc()
-					texts[output.index] = fallback
-					continue
-				}
-			}
-			return nil, output.err
-		}
-		texts[output.index] = output.text
-		if first == nil {
-			first = output.result
-		}
+	return results
+}
+
+// recoverSegmentFallback applies the clip-path source-text recovery for a
+// segment whose validation was exhausted.
+func (e *Engine) recoverSegmentFallback(plan *scriptpkg.ResolvedGenerationPlan, index int, err error, settings segmentValidationSettings) (string, bool) {
+	if plan.ClipEvidence == nil || index < 0 || index >= len(plan.Segments) || !isSegmentValidationExhausted(err) {
+		return "", false
 	}
+	budget := segmentBudgetFor(plan, index, settings.segmentTolerancePercent)
+	// Clip paths may use only their own segment brief as recovery;
+	// never substitute a non-clip editorial brief for generated prose.
+	fallbackSource := plan.Segments[index].SourceText
+	fallback := sourceTextFallbackParagraph(fallbackSource, budget)
+	fallbackPlan := *plan
+	fallbackPlan.Segments = []scriptpkg.ScriptSegment{plan.Segments[index]}
+	fallbackPlan.TargetWords = budget.Target
+	if fallback == "" || !validateSegmentTexts(&fallbackPlan, []string{fallback}, settings).Valid {
+		return "", false
+	}
+	observability.ScriptFallbackUsedTotal.WithLabelValues("segment_validation_source_text").Inc()
+	return fallback, true
+}
+
+// assembleSegmentResult validates the assembled texts and builds the final
+// result from the first engine response.
+func assembleSegmentResult(plan *scriptpkg.ResolvedGenerationPlan, first *ports.GenerationResult, texts []string, settings segmentValidationSettings) (*ports.GenerationResult, error) {
 	if first == nil {
 		return nil, fmt.Errorf("%w: no segments generated", scriptpkg.ErrSegmentValidationFailed)
 	}

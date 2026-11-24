@@ -2,23 +2,20 @@
 //
 // Owns the per-parent aggregation method (aggregateOne). Extracted from
 // parent_aggregator.go per godlike/06 SSOT one-canonical-owner-per-fact:
-// this file is the SOLE canonical owner of the aggregateOne method
-// (the per-parent deserialise → StateMachine.Transition loop →
-// VoiceoverAggregateResult construction pipeline).
+// this file is the SOLE canonical owner of the aggregateOne orchestration
+// (decode → reconcile → eligibility → children → aggregate → finalize).
 //
 // Sibling files in the parent_* family (post-split canonical layout):
 //   - parent_aggregator.go (slim orchestrator) — deps + struct + interface
 //   - NewParentAggregator + Start + Tick + var _ compile-time pin
 //   - isKnownTypedParentState whitelist.
 //   - parent_aggregator_aggregate.go (this file) — aggregateOne (per-parent
-//     aggregation loop: deserialise parent result + read-side preference for
-//     typed parent_state_typed column + StateMachine.Transition loop with
-//     cached-terminal-child short-circuit + VoiceoverAggregateResult
-//     construction).
+//     orchestration) + decodeParentResult + eligibleChildIDs +
+//     loadChildOutcomes + buildAggregateResult.
 //   - parent_aggregator_finalize.go (sibling) — finalizeParent
 //     (per-parent persist + log + cache clear).
 //   - parent_aggregator_state.go — JobParentStateColumn constant (P1.2 typed
-//     column SSOT) + dual-write contract documentation.
+//     column SSOT) + reconcileParentState + dual-write contract documentation.
 //   - parent_state_machine.go — domainToVoiceoverParentState (the 5-state →
 //     4-state wire-shape mapping).
 //   - parent_eligibility.go — cached terminal child state helpers (§15.2) +
@@ -44,117 +41,29 @@ import (
 // typed DTOs (VoiceoverParentResult, VoiceoverChildResult,
 // VoiceoverAggregateResult). The broker boundary (FinalizeAggregateParent) still
 // accepts map[string]any for wire-shape back-compat.
+//
+// GOP-11 (November 2026): the body is now the orchestration only. The
+// typed/JSON reconciliation lives in parent_aggregator_state.go, the child
+// loading loop in loadChildOutcomes and the result construction in
+// buildAggregateResult. Behaviour (including the §15.2 cache contract and
+// the version-CAS source) is unchanged.
 func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
-	// Step 1: unmarshal parent result into typed VoiceoverParentResult.
-	var parentResult VoiceoverParentResult
-	if len(j.Result) > 0 {
-		if err := json.Unmarshal(j.Result, &parentResult); err != nil {
-			a.deps.Logger.Debug("ParentAggregator: cannot unmarshal parent result, skipping",
-				zap.String("parent_job_id", j.ID), zap.Error(err))
-			return nil
-		}
+	parentResult, ok := decodeParentResult(a.deps.Logger, j)
+	if !ok {
+		return nil
 	}
 
-	// PR-P1.2-SQL-DUAL-WRITE (July 2026): READ-SIDE PREFERENCE.
-	// The typed parent_state_typed column (added by migration 129,
-	// populated atomically by repository_lifecycle.go::FinalizeAggregateParent)
-	// is the AUTHORITATIVE source going forward. During the BACKFILL
-	// window, override the JSON-derived parentResult.ParentState with
-	// the typed-column value when it is non-empty AND well-formed.
-	// The JSON fallback (parentResult.ParentState) covers pre-P1.2
-	// rows + concurrent writes in flight (the typed column is empty
-	// until the FinalizeAggregateParent UPDATE commits) + malformed
-	// typed values (a writer bug or a backfill-CLI race that wrote
-	// an unknown string).
-	//
-	// godlike/06 SSOT (one canonical owner per fact): the typed
-	// column name lives ONLY in
-	// internal/capabilities/voiceover/jobs/parent_aggregator_state.go::JobParentStateColumn
-	// — the SQL mirror (internal/platform/sqlite/jobs/parentStateTypedColumn)
-	// is package-private. Both must agree (per the cross-package
-	// SSOT discipline; the explicit drift test was DROPPED per
-	// godlike/07 minimum-blast-radius — see repository_lifecycle_dualwrite_test.go).
-	//
-	// godlike/07 no-fake-availability (MUST-FIX #1 from code-reviewer):
-	// validate the typed-column value is a KNOWN voiceover.ParentState
-	// constant before overriding. An unknown value (e.g. "garbage"
-	// from a writer bug) would otherwise cause
-	// IsParentAwaitingAggregation to silently return false, the
-	// aggregator to silently skip the parent, and no log/counter to
-	// surface the issue. The validation is a 4-value whitelist
-	// (the canonical voiceover.ParentState value space) — anything
-	// outside it falls back to the JSON value with a Warn log so
-	// the operator dashboard can alert.
-	//
-	// godlike/07 NIT #1: when BOTH surfaces are populated AND
-	// disagree (e.g. typed="failed", JSON="waiting_children" from a
-	// concurrent writer or a stale reader view), the typed column
-	// silently wins. This is the correct precedence per the
-	// contract, but the disagreement is a diagnostic signal of a
-	// racing writer or a backfill-CLI bug. Log a Warn (no error
-	// return — the typed column is authoritative).
-	//
-	// Field-key convention (MUST-FIX #3 from code-reviewer, PR-P1.2-SQL-DUAL-WRITE):
-	// the 2 new Warn field keys use `parent_state_typed` and
-	// `parent_state_json` to match the existing aggregator log
-	// format (`zap.String("parent_state", ...)` in finalizeParent).
-	// Operator dashboards can group by field rather than by the
-	// legacy ad-hoc `typed_column` / `json_field` / `json_fallback`
-	// keys.
-	if j.ParentStateTyped != "" {
-		if isKnownTypedParentState(j.ParentStateTyped) {
-			if parentResult.ParentState != "" && parentResult.ParentState != j.ParentStateTyped {
-				// Typed/JSON disagreement — log a Warn, then typed wins.
-				a.deps.Logger.Warn("ParentAggregator: typed parent_state_typed and JSON parent_state disagree; typed column wins per BACKFILL contract",
-					zap.String("parent_job_id", j.ID),
-					zap.String("parent_state_typed", j.ParentStateTyped),
-					zap.String("parent_state_json", parentResult.ParentState))
-			}
-			parentResult.ParentState = j.ParentStateTyped
-		} else {
-			// Malformed typed column — log Warn + fall back to JSON
-			// (the existing parentResult.ParentState from the
-			// json.Unmarshal above).
-			a.deps.Logger.Warn("ParentAggregator: typed parent_state_typed has unknown value; falling back to JSON resultMap[parent_state]",
-				zap.String("parent_job_id", j.ID),
-				zap.String("parent_state_typed", j.ParentStateTyped),
-				zap.String("parent_state_json", parentResult.ParentState))
-		}
-	}
+	reconcileParentState(a.deps.Logger, j, &parentResult)
 
 	// Step 2: only process parents awaiting aggregation.
 	if !IsParentAwaitingAggregation(&parentResult) {
 		return nil
 	}
 
-	// Step 3: extract child job IDs.
-	childIDs := parentResult.ChildJobIDs
-	// Filter empty strings (failed-enqueue placeholders), retaining the
-	// original child→language relationship for post-aggregation telemetry.
-	childLanguages := make(map[string]string, len(childIDs))
-	filtered := make([]string, 0, len(childIDs))
-	for index, id := range childIDs {
-		if id == "" {
-			continue
-		}
-		filtered = append(filtered, id)
-		if index < len(parentResult.PerLanguage) {
-			childLanguages[id] = parentResult.PerLanguage[index]
-		}
-	}
-	childIDs = filtered
+	// Step 3: extract child job IDs and their languages.
+	childIDs, childLanguages := eligibleChildIDs(&parentResult)
 	if len(childIDs) == 0 {
-		res := ZeroChildrenAggregateResult()
-		// PR-P1.2-SQL-DUAL-WRITE: the typed column is authoritative.
-		// If it says a non-waiting non-terminal state (e.g. partial_success),
-		// preserve it even in the zero-children short-circuit. Otherwise
-		// keep the FASE 4 failed mapping for waiting_children/empty typed.
-		if j.ParentStateTyped != "" &&
-			j.ParentStateTyped != "waiting_children" &&
-			isKnownTypedParentState(j.ParentStateTyped) {
-			res.ParentState = voiceover.ParentState(j.ParentStateTyped)
-		}
-		a.finalizeParent(ctx, j.ID, res)
+		a.finalizeZeroChildren(ctx, j)
 		return nil
 	}
 
@@ -166,17 +75,99 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		return nil
 	}
 
+	allTerminal, requiredFailed, childStageProgress := a.loadChildOutcomes(ctx, j, sm, childIDs)
+
+	// Step 5: skip if not all children are terminal.
+	if !allTerminal {
+		return nil
+	}
+
+	// Step 6: compute canonical aggregate state.
+	if err := sm.Compute(); err != nil {
+		a.deps.Logger.Error("ParentAggregator: StateMachine.Compute failed",
+			zap.String("parent_job_id", j.ID), zap.Error(err))
+		return nil
+	}
+
+	newPS := domainToVoiceoverParentState(sm)
+	// FASE 2 (July 2026): version CAS uses j.Revision (the DB-level
+	// revision at the time of List), NOT sm.Version() (the in-memory
+	// StateMachine counter). The SQL `revision` column is bumped on
+	// every Complete/Fail/FinalizeAggregateParent transaction; passing the
+	// pre-flip revision lets the UPDATE check `AND revision = ?`
+	// for optimistic locking. A concurrent FinalizeAggregateParent would have
+	// bumped revision, causing a 0 rows-affected → CAS conflict.
+	aggResult := buildAggregateResult(j, sm, childIDs, childLanguages,
+		parentResult.PerLanguage, requiredFailed, childStageProgress, newPS)
+	a.finalizeParent(ctx, j.ID, aggResult)
+	return nil
+}
+
+// decodeParentResult unmarshals the parent job's result. A malformed payload
+// is logged at Debug and skipped (the parent is retried by the next Tick, as
+// before); an empty result decodes to the zero DTO.
+func decodeParentResult(log *zap.Logger, j job.Job) (VoiceoverParentResult, bool) {
+	var parentResult VoiceoverParentResult
+	if len(j.Result) > 0 {
+		if err := json.Unmarshal(j.Result, &parentResult); err != nil {
+			log.Debug("ParentAggregator: cannot unmarshal parent result, skipping",
+				zap.String("parent_job_id", j.ID), zap.Error(err))
+			return VoiceoverParentResult{}, false
+		}
+	}
+	return parentResult, true
+}
+
+// eligibleChildIDs filters the failed-enqueue placeholders (empty strings)
+// from the parent's child list, retaining the original child→language
+// relationship for post-aggregation telemetry.
+func eligibleChildIDs(parentResult *VoiceoverParentResult) ([]string, map[string]string) {
+	childIDs := parentResult.ChildJobIDs
+	childLanguages := make(map[string]string, len(childIDs))
+	filtered := make([]string, 0, len(childIDs))
+	for index, id := range childIDs {
+		if id == "" {
+			continue
+		}
+		filtered = append(filtered, id)
+		if index < len(parentResult.PerLanguage) {
+			childLanguages[id] = parentResult.PerLanguage[index]
+		}
+	}
+	return filtered, childLanguages
+}
+
+// finalizeZeroChildren writes the canonical zero-children aggregate.
+//
+// PR-P1.2-SQL-DUAL-WRITE: the typed column is authoritative. If it says a
+// non-waiting non-terminal state (e.g. partial_success), preserve it even in
+// the zero-children short-circuit. Otherwise keep the FASE 4 failed mapping
+// for waiting_children/empty typed.
+func (a *ParentAggregator) finalizeZeroChildren(ctx context.Context, j job.Job) {
+	res := ZeroChildrenAggregateResult()
+	if j.ParentStateTyped != "" &&
+		j.ParentStateTyped != "waiting_children" &&
+		isKnownTypedParentState(j.ParentStateTyped) {
+		res.ParentState = voiceover.ParentState(j.ParentStateTyped)
+	}
+	a.finalizeParent(ctx, j.ID, res)
+}
+
+// loadChildOutcomes reads every child's terminal state (cache first), feeds
+// the StateMachine, and returns whether every child is terminal, the
+// required-failed count and the merged child stage progress.
+//
+// §15.2 (July 2026): children that were terminal on the previous tick are fed
+// directly to the StateMachine without a broker round-trip. Only truly
+// terminal children are cached; the Required flag from the child payload is
+// preserved so REQUIRED-failed children are not downgraded on retry ticks.
+func (a *ParentAggregator) loadChildOutcomes(ctx context.Context, j job.Job, sm *job.StateMachine, childIDs []string) (bool, int, map[string]job.StageProgress) {
 	allTerminal := true
 	requiredFailed := 0
 	childStageProgress := make(map[string]job.StageProgress)
+
 	for _, childID := range childIDs {
 		var childResult VoiceoverChildResult
-		// Step 4a (§15.2, July 2026): check the previously-terminal
-		// cache before hitting Get(). Children that were terminal on
-		// the previous tick are fed directly to the StateMachine
-		// without a broker round-trip. This prevents the retry tick
-		// from re-querying already-terminal siblings when only one
-		// child changed status.
 		var status job.Status
 		var childErr string
 		var childRequired bool
@@ -280,35 +271,30 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		}
 	}
 
-	// Step 5: skip if not all children are terminal.
-	if !allTerminal {
-		return nil
-	}
+	return allTerminal, requiredFailed, childStageProgress
+}
 
-	// Step 6: compute canonical aggregate state.
-	if err := sm.Compute(); err != nil {
-		a.deps.Logger.Error("ParentAggregator: StateMachine.Compute failed",
-			zap.String("parent_job_id", j.ID), zap.Error(err))
-		return nil
-	}
-
-	newPS := domainToVoiceoverParentState(sm)
-	// FASE 2 (July 2026): version CAS uses j.Revision (the DB-level
-	// revision at the time of List), NOT sm.Version() (the in-memory
-	// StateMachine counter). The SQL `revision` column is bumped on
-	// every Complete/Fail/FinalizeAggregateParent transaction; passing the
-	// pre-flip revision lets the UPDATE check `AND revision = ?`
-	// for optimistic locking. A concurrent FinalizeAggregateParent would have
-	// bumped revision, causing a 0 rows-affected → CAS conflict.
-
+// buildAggregateResult constructs the typed VoiceoverAggregateResult from the
+// StateMachine outcome, preserving the per-language telemetry mapping and the
+// legacy positional fallback for parents without aligned per-language data.
+func buildAggregateResult(
+	j job.Job,
+	sm *job.StateMachine,
+	childIDs []string,
+	childLanguages map[string]string,
+	perLanguage []string,
+	requiredFailed int,
+	childStageProgress map[string]job.StageProgress,
+	newPS voiceover.ParentState,
+) VoiceoverAggregateResult {
 	stageStatuses := make([]job.StageLanguageStatus, 0, len(childIDs))
 	for i, childID := range childIDs {
 		language := childLanguages[childID]
-		if language == "" && i < len(parentResult.PerLanguage) {
+		if language == "" && i < len(perLanguage) {
 			// Legacy parents may not have aligned per-language telemetry;
 			// retain the old positional fallback only when no explicit
 			// child mapping is available.
-			language = parentResult.PerLanguage[i]
+			language = perLanguage[i]
 		}
 		status := job.StageFailed
 		for _, succeededID := range sm.Succeeded() {
@@ -322,7 +308,7 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		})
 	}
 
-	aggResult := VoiceoverAggregateResult{
+	return VoiceoverAggregateResult{
 		ParentState:         newPS,
 		TotalChildren:       len(childIDs),
 		SucceededCount:      len(sm.Succeeded()),
@@ -332,6 +318,4 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 		ChildIDs:            childIDs,
 		StageProgress:       job.MergeStageProgress(job.AggregateStageProgressByStage(stageStatuses), childStageProgress),
 	}
-	a.finalizeParent(ctx, j.ID, aggResult)
-	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
@@ -60,7 +61,7 @@ func (r *Runner) recordAudioCompileOperations(ctx context.Context, t AudioCompil
 // probing plus a whole-asset BGM decode) sat inside audio_render with no
 // operation owning it, which is why a 14 s timeline could show 24 s of
 // audio_compile with only ~1.6 s explained.
-func (r *Runner) recordAudioRenderOperations(ctx context.Context, m AudioPipelineMetrics) {
+func (r *Runner) recordAudioRenderOperations(ctx context.Context, m contract.AudioPipelineMetrics) {
 	r.recordAudioOperation(ctx, "audio_prepare", "rust", m.PrepareMS)
 	r.recordAudioOperation(ctx, "audio_loudness", "rust", m.LoudnessMS)
 	r.recordAudioOperation(ctx, "mix", "audio", m.MixMS)
@@ -111,7 +112,7 @@ func (r *Runner) logPhraseMotionSelections(runID string, plan *capmodel.OverlayP
 // timing, its word count and the skip reason. A phrase that does not anchor is
 // dropped from the render, so this is the only place that shows how many long
 // phrases were taken versus silently discarded.
-func (r *Runner) logPhraseAnchoringDiagnostics(ctx context.Context, runID string, result *GenerateResult, language Language) {
+func (r *Runner) logPhraseAnchoringDiagnostics(ctx context.Context, runID string, result *contract.GenerateResult, language contract.Language) {
 	if r == nil || r.log == nil || result == nil {
 		return
 	}

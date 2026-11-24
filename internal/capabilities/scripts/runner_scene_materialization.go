@@ -13,11 +13,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	sceneplanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/scene"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
+func materializeGeneratedScenes(req contract.GenerateRequest, scenes []contract.Scene) []contract.Scene {
 	if req.ScriptParams.SingleScene || req.ScriptParams.SegmentWords <= 0 || len(scenes) != 1 {
 		return scenes
 	}
@@ -42,7 +43,7 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 	// the same text_hash and contaminate downstream semantic/provider queries.
 	if len(req.ScriptParams.Segments) > 0 {
 		paragraphs := nonEmptyParagraphs(req.Source.SourceText)
-		out := make([]Scene, 0, len(req.ScriptParams.Segments))
+		out := make([]contract.Scene, 0, len(req.ScriptParams.Segments))
 		for i, segment := range req.ScriptParams.Segments {
 			segmentText := strings.TrimSpace(segment.SourceText)
 			if segmentText == "" && i < len(paragraphs) {
@@ -58,10 +59,10 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 			if id == "" {
 				id = fmt.Sprintf("scene-%d", i)
 			}
-			out = append(out, Scene{
+			out = append(out, contract.Scene{
 				ID: id, Index: i,
 				DurationMS: segment.DurationMS,
-				Text:       map[Language]string{req.SourceLanguage: segmentText},
+				Text:       map[contract.Language]string{req.SourceLanguage: segmentText},
 			})
 		}
 		return out
@@ -81,11 +82,11 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 	if len(planned) < 2 {
 		return scenes
 	}
-	out := make([]Scene, 0, len(planned))
+	out := make([]contract.Scene, 0, len(planned))
 	for _, plannedScene := range planned {
-		out = append(out, Scene{
+		out = append(out, contract.Scene{
 			ID: plannedScene.ID, Index: plannedScene.Index,
-			Text: map[Language]string{req.SourceLanguage: plannedScene.Text},
+			Text: map[contract.Language]string{req.SourceLanguage: plannedScene.Text},
 		})
 	}
 	return out
@@ -94,7 +95,7 @@ func materializeGeneratedScenes(req GenerateRequest, scenes []Scene) []Scene {
 // importantPhraseHintOwnersAvailable reports whether every explicit phrase
 // hint has exactly one segment brief that owns it. That owner lets the
 // streaming path finalize the scene text before any translation or TTS sees it.
-func importantPhraseHintOwnersAvailable(req GenerateRequest) bool {
+func importantPhraseHintOwnersAvailable(req contract.GenerateRequest) bool {
 	if len(req.MediaPlan.Extraction.ImportantPhrases) == 0 {
 		return true
 	}
@@ -124,7 +125,7 @@ func importantPhraseHintOwnersAvailable(req GenerateRequest) bool {
 // applyOwnedImportantPhraseHints finalizes this scene's caller-owned phrase
 // hints before SceneTextReady. It mirrors the batch materializer's punctuation
 // behavior and only touches hints whose unique brief owner is this scene.
-func applyOwnedImportantPhraseHints(req GenerateRequest, scene Scene) Scene {
+func applyOwnedImportantPhraseHints(req contract.GenerateRequest, scene contract.Scene) contract.Scene {
 	if len(req.MediaPlan.Extraction.ImportantPhrases) == 0 || len(req.ScriptParams.Segments) == 0 {
 		return scene
 	}
@@ -140,7 +141,7 @@ func applyOwnedImportantPhraseHints(req GenerateRequest, scene Scene) Scene {
 	}
 	owner := req.ScriptParams.Segments[segmentIndex]
 	if scene.Text == nil {
-		scene.Text = make(map[Language]string)
+		scene.Text = make(map[contract.Language]string)
 	}
 	text := strings.TrimSpace(scene.Text[req.SourceLanguage])
 	for _, raw := range req.MediaPlan.Extraction.ImportantPhrases {
@@ -168,7 +169,7 @@ func applyOwnedImportantPhraseHints(req GenerateRequest, scene Scene) Scene {
 // is translating or processing an already-authored script and must preserve
 // every scene's narration without a model rewrite. Clip sources are supported
 // when their explicit segments also bind the visual clips used by each scene.
-func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
+func materializeVerbatimSourceTextScenes(req contract.GenerateRequest) ([]contract.Scene, error) {
 	if req.Source.Type != SourceText && req.Source.Type != SourceClips {
 		return nil, fmt.Errorf("source_text_verbatim requires a text or clips source")
 	}
@@ -179,7 +180,7 @@ func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
 		return nil, fmt.Errorf("source_text_verbatim requires a source language")
 	}
 
-	scenes := make([]Scene, 0, len(req.ScriptParams.Segments))
+	scenes := make([]contract.Scene, 0, len(req.ScriptParams.Segments))
 	seen := make(map[string]struct{}, len(req.ScriptParams.Segments))
 	for i, segment := range req.ScriptParams.Segments {
 		id := strings.TrimSpace(segment.ID)
@@ -193,13 +194,13 @@ func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
 		if strings.TrimSpace(segment.SourceText) == "" {
 			return nil, fmt.Errorf("source_text_verbatim segment %q has no source_text", id)
 		}
-		scenes = append(scenes, Scene{
+		scenes = append(scenes, contract.Scene{
 			ID:                 id,
 			Index:              i,
 			DurationMS:         segment.DurationMS,
 			ShortPhraseOverlay: segment.ShortPhraseOverlay,
 			OverlayCategories:  scriptpkg.CloneOverlayCategories(segment.OverlayCategories),
-			Text:               map[Language]string{req.SourceLanguage: segment.SourceText},
+			Text:               map[contract.Language]string{req.SourceLanguage: segment.SourceText},
 		})
 	}
 	return scenes, nil
@@ -208,7 +209,7 @@ func materializeVerbatimSourceTextScenes(req GenerateRequest) ([]Scene, error) {
 // sceneForSegment returns the eligible scene that corresponds to the given
 // brief: matched by scene ID first, then by position, and finally the first
 // eligible scene. This keeps a hint on the scene that owns its brief.
-func sceneForSegment(scenes []Scene, eligible []int, segment scriptpkg.ScriptSegment, segmentIndex int) int {
+func sceneForSegment(scenes []contract.Scene, eligible []int, segment scriptpkg.ScriptSegment, segmentIndex int) int {
 	for _, index := range eligible {
 		if segment.ID != "" && scenes[index].ID == segment.ID {
 			return index
@@ -220,7 +221,7 @@ func sceneForSegment(scenes []Scene, eligible []int, segment scriptpkg.ScriptSeg
 	return eligible[0]
 }
 
-func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scene {
+func ensureRequestedImportantPhrases(req contract.GenerateRequest, scenes []contract.Scene) []contract.Scene {
 	// Verbatim source segments are authoritative. For generated narration,
 	// callers require their requested phrase surfaces to survive generation so
 	// downstream phrase overlays can ground them literally.
@@ -282,7 +283,7 @@ func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scen
 			text += "."
 		}
 		if scenes[index].Text == nil {
-			scenes[index].Text = make(map[Language]string)
+			scenes[index].Text = make(map[contract.Language]string)
 		}
 		scenes[index].Text[req.SourceLanguage] = text
 	}
@@ -291,22 +292,22 @@ func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scen
 
 // accumulating the ordered scene list for the downstream stages. An emit
 // error (e.g. a failed SceneCommitObserver) aborts generation immediately.
-func (r *Runner) generateSceneTextStreaming(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, streamer SceneTextStreamer, ready *sceneReadyCoordinator) ([]Scene, error) {
+func (r *Runner) generateSceneTextStreaming(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, streamer SceneTextStreamer, ready *sceneReadyCoordinator) ([]contract.Scene, error) {
 	scenes, _, err := r.generateSceneTextStreamingWithTrace(ctx, runID, req, exec, streamer, ready)
 	return scenes, err
 }
 
-func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, streamer SceneTextStreamer, ready *sceneReadyCoordinator) ([]Scene, scriptpkg.SourceTrace, error) {
-	var scenes []Scene
+func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, streamer SceneTextStreamer, ready *sceneReadyCoordinator) ([]contract.Scene, scriptpkg.SourceTrace, error) {
+	var scenes []contract.Scene
 	var sceneMu sync.Mutex
-	sceneByIndex := make(map[int]Scene)
+	sceneByIndex := make(map[int]contract.Scene)
 	var bodyOrdinal atomic.Int64
-	emit := func(scene Scene) error {
+	emit := func(scene contract.Scene) error {
 		scene = applyOwnedImportantPhraseHints(req, scene)
 		// A no_voiceover cutaway must become fixed media BEFORE the
 		// SceneTextReady boundary: the ready coordinator dispatches TTS
 		// immediately, and a later batch-only pass would be too late.
-		noVoiceoverScene := []Scene{scene}
+		noVoiceoverScene := []contract.Scene{scene}
 		applySegmentNoVoiceoverScenes(req, noVoiceoverScene)
 		scene = noVoiceoverScene[0]
 		applyExplicitSegmentDuration(req, &scene)
@@ -347,7 +348,7 @@ func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID 
 		indexes = append(indexes, index)
 	}
 	sort.Ints(indexes)
-	scenes = make([]Scene, 0, len(indexes))
+	scenes = make([]contract.Scene, 0, len(indexes))
 	for _, index := range indexes {
 		scenes = append(scenes, sceneByIndex[index])
 	}

@@ -10,6 +10,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
@@ -31,7 +32,7 @@ type audioCompileState struct {
 	// The caller joins it before finalization; nil preserves serial callers.
 	// non-nil is also what marks the overlap path: NULL callers render through
 	// the serial overlay render phase instead.
-	OnPlanReady func(*GenerateResult) bool
+	OnPlanReady func(*contract.GenerateResult) bool
 	// Barrier is the P2 overlay-language submit-barrier (running_on the detached
 	// P1 plan-branch outcome while this master compile runs). The OnPlanReady
 	// render fork applies its certified outcomes onto its own snapshot before
@@ -44,7 +45,7 @@ type audioCompileState struct {
 // OverlayPlan. It deliberately stops before the overlay render and before the
 // editing-timeline projection: both are separate measured boundaries owned by
 // runOverlayRenderPhase and runAudioFinalizePhase.
-func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult, out *audioCompileState) bool {
+func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, resumeIdx int, result *contract.GenerateResult, out *audioCompileState) bool {
 	audioLanguage := primaryVoiceoverLanguage(req)
 	// ── Compile Audio (before document publication) ───────────────
 	payloadStep, startErr := r.startExecutionStep(ctx, exec, "AUDIO_COMPILE", "audio")
@@ -257,10 +258,10 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 	return true
 }
 
-func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, audioStep ExecutionStep, result *GenerateResult, canonicalTimeline capabilityaudio.CanonicalTimeline, compiledAudioPlan capabilityaudio.CompiledAudioPlan, audioAssets capabilityaudio.ResolvedAudioAssets, compileTimings AudioCompileTimings) bool {
+func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, audioStep ExecutionStep, result *contract.GenerateResult, canonicalTimeline capabilityaudio.CanonicalTimeline, compiledAudioPlan capabilityaudio.CompiledAudioPlan, audioAssets capabilityaudio.ResolvedAudioAssets, compileTimings AudioCompileTimings) bool {
 	audioLanguage := primaryVoiceoverLanguage(req)
-	var finalAudio FinalAudioReference
-	var metrics AudioPipelineMetrics
+	var finalAudio contract.FinalAudioReference
+	var metrics contract.AudioPipelineMetrics
 	resumeAudio := result.FinalAudio != nil && ValidateFinalAudioReference(*result.FinalAudio, compiledAudioPlan) == nil
 	if resumeAudio && r.checkpoints != nil {
 		// Durable checkpoint gate on the idempotency boundary: the
@@ -473,7 +474,7 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 // combinedAudioInputs picks the mix policy and clip-audio source for the
 // combined master. Prefetched clip paths win over the live adapter so the
 // compile never blocks on materialization that TTS already performed.
-func (r *Runner) combinedAudioInputs(result *GenerateResult, req GenerateRequest) (capabilityaudio.AudioMixPolicy, ClipAudioAssetSource) {
+func (r *Runner) combinedAudioInputs(result *contract.GenerateResult, req contract.GenerateRequest) (capabilityaudio.AudioMixPolicy, contract.ClipAudioAssetSource) {
 	policy := req.MixPolicy
 	if policy == "" {
 		policy = capabilityaudio.MixVoiceoverWithDuckedClip
@@ -481,14 +482,14 @@ func (r *Runner) combinedAudioInputs(result *GenerateResult, req GenerateRequest
 	if result.AudioPrefetch != nil && result.AudioPrefetch.ClipAudioSource != nil {
 		return policy, result.AudioPrefetch.ClipAudioSource
 	}
-	candidate, _ := r.audioAssetSource.(ClipAudioAssetSource)
+	candidate, _ := r.audioAssetSource.(contract.ClipAudioAssetSource)
 	return policy, candidate
 }
 
 // compileTimelineOnlyAudio handles the modes that need a canonical timeline
 // but no master render. Chunked voiceover additionally validates that every
 // requested language has complete chunks before persistence.
-func (r *Runner) compileTimelineOnlyAudio(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, step ExecutionStep, result *GenerateResult, mode capabilityaudio.AudioMode, timeline *capabilityaudio.CanonicalTimeline) bool {
+func (r *Runner) compileTimelineOnlyAudio(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, step ExecutionStep, result *contract.GenerateResult, mode capabilityaudio.AudioMode, timeline *capabilityaudio.CanonicalTimeline) bool {
 	compiled, err := CompileCanonicalTimeline(*result)
 	if err != nil {
 		cause := fmt.Errorf("compile canonical timeline failed: %w", err)
@@ -508,7 +509,7 @@ func (r *Runner) compileTimelineOnlyAudio(ctx context.Context, runID string, req
 	return true
 }
 
-func audioCompileInput(result *GenerateResult, req GenerateRequest) GenerateResult {
+func audioCompileInput(result *contract.GenerateResult, req contract.GenerateRequest) contract.GenerateResult {
 	if req.FinalJob {
 		return finalJobAudioInput(*result, primaryVoiceoverLanguage(req))
 	}
@@ -518,7 +519,7 @@ func audioCompileInput(result *GenerateResult, req GenerateRequest) GenerateResu
 // primaryVoiceoverLanguage chooses the selected voice track for the master.
 // An explicit target-only voiceover request produces a localized final audio
 // master; legacy requests keep the source-language master.
-func primaryVoiceoverLanguage(req GenerateRequest) Language {
+func primaryVoiceoverLanguage(req contract.GenerateRequest) contract.Language {
 	for _, language := range req.VoiceoverLanguages {
 		if language == req.SourceLanguage {
 			return language
@@ -532,7 +533,7 @@ func primaryVoiceoverLanguage(req GenerateRequest) Language {
 
 // validateAudioCompileSceneIdentity keeps the report-only scene↔clip gate out
 // of the compile flow while preserving the fail-closed opt-in.
-func (r *Runner) validateAudioCompileSceneIdentity(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, step ExecutionStep, result *GenerateResult) bool {
+func (r *Runner) validateAudioCompileSceneIdentity(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, step ExecutionStep, result *contract.GenerateResult) bool {
 	mismatches := AuditSceneClipIdentity(*result)
 	if len(mismatches) == 0 {
 		return true
@@ -577,7 +578,7 @@ func (r *Runner) alignFinalJobAudioMaster(ctx context.Context, runID string, exe
 	return true
 }
 
-func (r *Runner) ensureResolvedScenesForAudioCompile(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, step ExecutionStep, result *GenerateResult, mode capabilityaudio.AudioMode) bool {
+func (r *Runner) ensureResolvedScenesForAudioCompile(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, step ExecutionStep, result *contract.GenerateResult, mode capabilityaudio.AudioMode) bool {
 	if len(result.ResolvedScenes) != 0 {
 		return true
 	}
@@ -596,7 +597,7 @@ func (r *Runner) ensureResolvedScenesForAudioCompile(ctx context.Context, runID 
 	return true
 }
 
-func (r *Runner) projectAudioOverlayPlan(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, step ExecutionStep, result *GenerateResult, branch *overlayPlanBranch, alreadyPrepared bool) bool {
+func (r *Runner) projectAudioOverlayPlan(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, step ExecutionStep, result *contract.GenerateResult, branch *overlayPlanBranch, alreadyPrepared bool) bool {
 	if alreadyPrepared {
 		return true
 	}
@@ -606,9 +607,9 @@ func (r *Runner) projectAudioOverlayPlan(ctx context.Context, runID string, req 
 	return r.compileAudioOverlayPlan(ctx, runID, req, exec, step, result)
 }
 
-func resultWithoutClipAudioIntents(result GenerateResult) GenerateResult {
+func resultWithoutClipAudioIntents(result contract.GenerateResult) contract.GenerateResult {
 	result.ResolvedScenes = nil
-	result.Scenes = append([]Scene(nil), result.Scenes...)
+	result.Scenes = append([]contract.Scene(nil), result.Scenes...)
 	for i := range result.Scenes {
 		scene := &result.Scenes[i]
 		intents := make([]capabilityaudio.AudioIntent, 0, len(scene.AudioIntents))

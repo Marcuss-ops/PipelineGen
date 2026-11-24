@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -13,25 +14,6 @@ import (
 
 // SemanticProductionPlanSchema versions the planner-owned execution view.
 const SemanticProductionPlanSchema = "semantic_production_plan.v1"
-
-// Deterministic unit statuses. The plan never invents a composition: a unit is
-// either admitted, admitted by reusing an already retrieved asset, or dropped
-// with an explicit reason.
-const (
-	ProductionUnitPlanned            = "planned"
-	ProductionUnitReuse              = "reuse"
-	ProductionUnitDroppedBudget      = "dropped_budget"
-	ProductionUnitDroppedSceneBudget = "dropped_scene_budget"
-	ProductionUnitSkipped            = "skipped"
-)
-
-// Search statuses owned by the planner.
-const (
-	ProductionSearchPending   = "pending"
-	ProductionSearchSatisfied = "satisfied"
-	ProductionSearchFailed    = "failed"
-	ProductionSearchReuse     = "reuse"
-)
 
 // SemanticProductionPlanConfig bounds the compositions a run may produce.
 // Zero values fall back to the certified defaults; the overlay planner still
@@ -62,29 +44,9 @@ func (c SemanticProductionPlanConfig) normalized() SemanticProductionPlanConfig 
 	return c
 }
 
-// SemanticProductionPlan is the executable projection of the consolidated
-// view: which compositions this run will produce, which asset is searched once
-// and reused, what remains uncovered, and the planner-owned search outcomes.
-type SemanticProductionPlan struct {
-	Schema   string
-	Units    []generationcontract.SemanticProductionUnit
-	Identity []generationcontract.SemanticPlannedIdentity
-	Coverage generationcontract.SemanticProductionCoverage
-	Metrics  generationcontract.SemanticProductionMetrics
-
-	// factsByCandidate and coveredFacts make coverage revocable when a
-	// retrieval settles as skipped. They are planner state, never wire data.
-	factsByCandidate map[string][]string
-	coveredFacts     map[string]bool
-	// identityByID is the canonical identity registry the plan was built
-	// against. The batch scheduler reads it to classify a composition's query
-	// and to key the plan cache on the normalized entity surface.
-	identityByID map[string]SemanticIdentity
-}
-
 // ScriptConsolidationFromBundles returns the shared script-level consolidation
 // projection carried by every scene bundle, or nil when the worker predates it.
-func ScriptConsolidationFromBundles(bundles map[string]*SemanticCandidateBundle) *SemanticVisualConsolidation {
+func ScriptConsolidationFromBundles(bundles map[string]*SemanticCandidateBundle) *contract.SemanticVisualConsolidation {
 	for _, bundle := range bundles {
 		if bundle != nil && bundle.Consolidation != nil {
 			return bundle.Consolidation
@@ -94,7 +56,7 @@ func ScriptConsolidationFromBundles(bundles map[string]*SemanticCandidateBundle)
 }
 
 // ScriptSearchFeedbackFromBundles returns the shared engine handshake.
-func ScriptSearchFeedbackFromBundles(bundles map[string]*SemanticCandidateBundle) *SemanticSearchFeedback {
+func ScriptSearchFeedbackFromBundles(bundles map[string]*SemanticCandidateBundle) *contract.SemanticSearchFeedback {
 	for _, bundle := range bundles {
 		if bundle != nil && bundle.SearchFeedback != nil {
 			return bundle.SearchFeedback
@@ -107,7 +69,7 @@ func ScriptSearchFeedbackFromBundles(bundles map[string]*SemanticCandidateBundle
 // the consolidated projection, its executable plan and the search feedback the
 // plan currently reports. A worker without the consolidation projection yields
 // nils, so older deployments keep their existing planning unchanged.
-func PlanScriptProduction(bundles map[string]*SemanticCandidateBundle, configs ...SemanticProductionPlanConfig) (*SemanticVisualConsolidation, *SemanticProductionPlan, *SemanticSearchFeedback, error) {
+func PlanScriptProduction(bundles map[string]*SemanticCandidateBundle, configs ...SemanticProductionPlanConfig) (*contract.SemanticVisualConsolidation, *contract.SemanticProductionPlan, *contract.SemanticSearchFeedback, error) {
 	consolidation := ScriptConsolidationFromBundles(bundles)
 	if consolidation == nil {
 		return nil, nil, nil, nil
@@ -128,8 +90,8 @@ func PlanScriptProduction(bundles map[string]*SemanticCandidateBundle, configs .
 // SemanticIdentitiesFromBundles merges the cross-scene identity registry. Every
 // scene bundle carries the registry as known at that scene, so the merge is
 // idempotent and the last occurrence wins.
-func SemanticIdentitiesFromBundles(bundles map[string]*SemanticCandidateBundle) []SemanticIdentity {
-	byID := make(map[string]SemanticIdentity)
+func SemanticIdentitiesFromBundles(bundles map[string]*SemanticCandidateBundle) []contract.SemanticIdentity {
+	byID := make(map[string]contract.SemanticIdentity)
 	for _, bundle := range bundles {
 		if bundle == nil {
 			continue
@@ -141,7 +103,7 @@ func SemanticIdentitiesFromBundles(bundles map[string]*SemanticCandidateBundle) 
 			byID[identity.ID] = identity
 		}
 	}
-	out := make([]SemanticIdentity, 0, len(byID))
+	out := make([]contract.SemanticIdentity, 0, len(byID))
 	for _, identity := range byID {
 		out = append(out, identity)
 	}
@@ -153,7 +115,7 @@ func SemanticIdentitiesFromBundles(bundles map[string]*SemanticCandidateBundle) 
 // It fails closed on a broken projection: an unknown represented candidate, a
 // fact that is neither represented nor explained, a duplicated candidate id or
 // an unreachable identity reference is an error, not a silent omission.
-func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, identities []SemanticIdentity, config SemanticProductionPlanConfig) (*SemanticProductionPlan, error) {
+func BuildSemanticProductionPlan(consolidation *contract.SemanticVisualConsolidation, identities []contract.SemanticIdentity, config SemanticProductionPlanConfig) (*contract.SemanticProductionPlan, error) {
 	if consolidation == nil {
 		return nil, fmt.Errorf("semantic production plan: consolidation is required")
 	}
@@ -161,11 +123,11 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 		return nil, fmt.Errorf("semantic production plan: unsupported consolidation schema %q", consolidation.Schema)
 	}
 	config = config.normalized()
-	knownIdentities := make(map[string]SemanticIdentity, len(identities))
+	knownIdentities := make(map[string]contract.SemanticIdentity, len(identities))
 	for _, identity := range identities {
 		knownIdentities[identity.ID] = identity
 	}
-	candidates := append([]SemanticProductionCandidate(nil), consolidation.ProductionCandidates...)
+	candidates := append([]contract.SemanticProductionCandidate(nil), consolidation.ProductionCandidates...)
 	sort.SliceStable(candidates, func(i, j int) bool {
 		leftScore := semanticPlannerPriority(candidates[i], knownIdentities)
 		rightScore := semanticPlannerPriority(candidates[j], knownIdentities)
@@ -181,13 +143,13 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 		return candidates[i].ID < candidates[j].ID
 	})
 
-	plan := &SemanticProductionPlan{
+	plan := &contract.SemanticProductionPlan{
 		Schema:           SemanticProductionPlanSchema,
 		Units:            make([]generationcontract.SemanticProductionUnit, 0, len(candidates)),
 		Coverage:         generationcontract.SemanticProductionCoverage{CanonicalFacts: len(consolidation.Facts)},
-		factsByCandidate: make(map[string][]string, len(candidates)),
-		coveredFacts:     make(map[string]bool, len(consolidation.Facts)),
-		identityByID:     knownIdentities,
+		FactsByCandidate: make(map[string][]string, len(candidates)),
+		CoveredFacts:     make(map[string]bool, len(consolidation.Facts)),
+		IdentityByID:     knownIdentities,
 	}
 	plan.Metrics.RawCandidates = len(candidates)
 	plan.Metrics.CanonicalFacts = len(consolidation.Facts)
@@ -224,39 +186,39 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 			AssetKey:      candidate.AssetKey,
 			RequiresMedia: candidate.RequiresMedia,
 			Queries:       append([]generationcontract.SemanticSearchQuery(nil), candidate.Queries...),
-			Status:        ProductionUnitPlanned,
-			SearchStatus:  ProductionSearchPending,
+			Status:        contract.ProductionUnitPlanned,
+			SearchStatus:  contract.ProductionSearchPending,
 		}
 		if candidate.RequiresMedia && strings.TrimSpace(candidate.AssetKey) == "" {
 			return nil, fmt.Errorf("semantic production plan: media candidate %q has no asset key", candidate.ID)
 		}
 		if candidate.RequiresMedia {
 			if reason := weakVisualEntityQuery(candidate, knownIdentities); reason != "" {
-				unit.Status = ProductionUnitSkipped
-				unit.SearchStatus = ProductionSearchFailed
+				unit.Status = contract.ProductionUnitSkipped
+				unit.SearchStatus = contract.ProductionSearchFailed
 				unit.DroppedReason = reason
 				unit.Queries = nil
 				// No retrieval was attempted, so this is not a skipped search.
 			} else if owner, reused := assetOwner[candidate.AssetKey]; reused {
 				// One retrieval per asset key: the later composition reuses the
 				// bytes and must not issue a second external search.
-				unit.Status = ProductionUnitReuse
+				unit.Status = contract.ProductionUnitReuse
 				unit.ReusedFrom = owner
-				unit.SearchStatus = ProductionSearchReuse
+				unit.SearchStatus = contract.ProductionSearchReuse
 				if len(unit.Queries) > 0 {
 					plan.Metrics.DuplicateQueriesDrop += len(unit.Queries)
 					unit.Queries = nil
 				}
 				plan.Metrics.ReusedAssets++
 			} else if sceneMedia[candidate.SceneID] >= config.MaxMediaUnitsPerScene {
-				unit.Status = ProductionUnitDroppedSceneBudget
-				unit.SearchStatus = ProductionSearchFailed
+				unit.Status = contract.ProductionUnitDroppedSceneBudget
+				unit.SearchStatus = contract.ProductionSearchFailed
 				unit.DroppedReason = fmt.Sprintf("scene %q already holds %d searched compositions", candidate.SceneID, config.MaxMediaUnitsPerScene)
 				unit.Queries = nil
 				plan.Metrics.DroppedSceneBudget++
 			} else if mediaUnits >= config.MaxMediaUnits {
-				unit.Status = ProductionUnitDroppedBudget
-				unit.SearchStatus = ProductionSearchFailed
+				unit.Status = contract.ProductionUnitDroppedBudget
+				unit.SearchStatus = contract.ProductionSearchFailed
 				unit.DroppedReason = fmt.Sprintf("dropped by the run budget: %d searched compositions exhausted", config.MaxMediaUnits)
 				unit.Queries = nil
 				plan.Metrics.DroppedBudget++
@@ -273,9 +235,9 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 				// and never invents a per-identity fallback query from display names.
 			}
 		} else {
-			unit.SearchStatus = ProductionSearchReuse
+			unit.SearchStatus = contract.ProductionSearchReuse
 		}
-		if unit.Status == ProductionUnitPlanned || unit.Status == ProductionUnitReuse {
+		if unit.Status == contract.ProductionUnitPlanned || unit.Status == contract.ProductionUnitReuse {
 			plan.Metrics.AdmittedUnits++
 			admitted[unit.CandidateID] = struct{}{}
 		}
@@ -301,7 +263,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 		_, ok := admitted[fact.Representation.CandidateID]
 		if ok {
 			plan.Coverage.CoveredFacts++
-			plan.coveredFacts[fact.ID] = true
+			plan.CoveredFacts[fact.ID] = true
 			continue
 		}
 		reason := fmt.Sprintf("representation %q was dropped by the run budget", fact.Representation.CandidateID)
@@ -322,7 +284,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 	// composition searches or reuses its asset.
 	byIdentity := make(map[string]*generationcontract.SemanticPlannedIdentity, len(knownIdentities))
 	for _, unit := range plan.Units {
-		if unit.Status != ProductionUnitPlanned && unit.Status != ProductionUnitReuse {
+		if unit.Status != contract.ProductionUnitPlanned && unit.Status != contract.ProductionUnitReuse {
 			continue
 		}
 		for _, entityID := range unit.EntityIDs {
@@ -349,7 +311,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 		plan.Identity = append(plan.Identity, *identity)
 	}
 	sort.Slice(plan.Identity, func(i, j int) bool { return plan.Identity[i].ID < plan.Identity[j].ID })
-	plan.factsByCandidate = candidateFacts
+	plan.FactsByCandidate = candidateFacts
 	return plan, nil
 }
 
@@ -358,7 +320,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 // with multiple grounded components. Those bare terms routinely return
 // generic biographies, maps, or unrelated venue pages. Contextual scene
 // searches and person identities remain eligible.
-func weakVisualEntityQuery(candidate SemanticProductionCandidate, identities map[string]SemanticIdentity) string {
+func weakVisualEntityQuery(candidate contract.SemanticProductionCandidate, identities map[string]contract.SemanticIdentity) string {
 	if candidate.Recipe != "entity_search" || len(candidate.EntityIDs) != 1 {
 		return ""
 	}
@@ -389,7 +351,7 @@ func weakVisualEntityQuery(candidate SemanticProductionCandidate, identities map
 // query and its result. A manual query is attached to at most one production
 // unit per scene to avoid multiplying provider calls across co-mentioned
 // entities.
-func ApplyCallerImageSearches(plan *SemanticProductionPlan, searches []mediadomain.SegmentMediaSearch, assignments []mediadomain.SegmentMediaAssignment) int {
+func ApplyCallerImageSearches(plan *contract.SemanticProductionPlan, searches []mediadomain.SegmentMediaSearch, assignments []mediadomain.SegmentMediaAssignment) int {
 	if plan == nil || len(searches) == 0 {
 		return 0
 	}
@@ -407,10 +369,10 @@ func ApplyCallerImageSearches(plan *SemanticProductionPlan, searches []mediadoma
 		late := false
 		for index := range plan.Units {
 			unit := &plan.Units[index]
-			if !unit.RequiresMedia || unit.Status != ProductionUnitPlanned || !unitMatchesScene(unit, search.SegmentID) {
+			if !unit.RequiresMedia || unit.Status != contract.ProductionUnitPlanned || !unitMatchesScene(unit, search.SegmentID) {
 				continue
 			}
-			if unit.SearchStatus != ProductionSearchPending {
+			if unit.SearchStatus != contract.ProductionSearchPending {
 				late = true
 				continue
 			}
@@ -523,7 +485,7 @@ func unitHasCallerQuery(unit *generationcontract.SemanticProductionUnit) bool {
 // before spending a scarce media slot. An isolated one-word identity remains
 // available as a fallback, but does not beat a well-grounded composition just
 // because its identity score was slightly higher.
-func semanticPlannerPriority(candidate SemanticProductionCandidate, identities map[string]SemanticIdentity) float64 {
+func semanticPlannerPriority(candidate contract.SemanticProductionCandidate, identities map[string]contract.SemanticIdentity) float64 {
 	priority := candidate.Priority
 	if slices.Contains(candidate.Rationale, "global_document_anchor") {
 		return priority
@@ -550,82 +512,4 @@ func semanticPlannerPriority(candidate SemanticProductionCandidate, identities m
 		return priority * 0.82
 	}
 	return priority
-}
-
-// revokeSkippedUnit keeps coverage and identity admission honest after a
-// retrieval ladder exhausted: the facts the composition represented become
-// deferred with that reason, and an identity loses its image admission unless
-// another admitted media composition still searches it.
-func (p *SemanticProductionPlan) revokeSkippedUnit(unit *generationcontract.SemanticProductionUnit, reason string) {
-	if unit == nil {
-		return
-	}
-	for _, factID := range p.factsByCandidate[unit.CandidateID] {
-		if !p.coveredFacts[factID] {
-			continue
-		}
-		delete(p.coveredFacts, factID)
-		p.Coverage.CoveredFacts--
-		p.Coverage.DeferredFacts++
-		p.Coverage.Deferred = append(p.Coverage.Deferred, generationcontract.SemanticDeferredFact{FactID: factID, Reason: reason})
-	}
-	p.Metrics.CoveredFacts = p.Coverage.CoveredFacts
-	p.Metrics.DeferredFacts = p.Coverage.DeferredFacts
-	for _, entityID := range unit.EntityIDs {
-		shared := false
-		for index := range p.Units {
-			other := &p.Units[index]
-			if other.CandidateID == unit.CandidateID || !other.RequiresMedia {
-				continue
-			}
-			if other.Status != ProductionUnitPlanned && other.Status != ProductionUnitReuse {
-				continue
-			}
-			if !slices.Contains(other.EntityIDs, entityID) {
-				continue
-			}
-			shared = true
-			break
-		}
-		if shared {
-			continue
-		}
-		for index := range p.Identity {
-			if p.Identity[index].ID == entityID {
-				p.Identity[index].Media = false
-				p.Identity[index].AssetKey = ""
-			}
-		}
-	}
-}
-
-// IdentitiesAdmittedForMedia returns the canonical surfaces the plan admitted
-// for an identity image. The overlay planner reads exactly this set.
-func (p *SemanticProductionPlan) IdentitiesAdmittedForMedia() map[string]struct{} {
-	admitted := make(map[string]struct{})
-	if p == nil {
-		return admitted
-	}
-	for _, identity := range p.Identity {
-		if !identity.Media {
-			continue
-		}
-		if surface := normalizeIdentitySurface(identity.Surface); surface != "" {
-			admitted[surface] = struct{}{}
-		}
-	}
-	return admitted
-}
-
-// AdmitsIdentity reports whether an identity surface may become an image.
-func (p *SemanticProductionPlan) AdmitsIdentity(surface string) bool {
-	if p == nil {
-		return true
-	}
-	_, ok := p.IdentitiesAdmittedForMedia()[normalizeIdentitySurface(surface)]
-	return ok
-}
-
-func normalizeIdentitySurface(surface string) string {
-	return strings.ToLower(strings.Join(strings.Fields(surface), " "))
 }

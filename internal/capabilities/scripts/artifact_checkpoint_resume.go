@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
@@ -40,9 +41,16 @@ func (r *Runner) SetArtifactCheckpointVerifier(verifier capcheckpoint.ArtifactVe
 // prepareLocalizedRenderInput attaches the input fingerprint to the sinks and,
 // when resume is enabled, restores a reusable checkpoint into ResumeFrom. The
 // envelope value already present on the input wins over the store.
-func (r *Runner) prepareLocalizedRenderInput(ctx context.Context, in LocalizedRenderInput) (LocalizedRenderInput, error) {
+func (r *Runner) prepareLocalizedRenderInput(ctx context.Context, in LocalizedRenderInput, finalJob bool) (LocalizedRenderInput, error) {
 	fingerprint := localizedRenderCheckpointFingerprint(in)
 	in = attachLocalizedRenderCheckpointFingerprint(in, fingerprint)
+
+	// A final job whose assets travel through the object store does not read
+	// a Drive identity for its localized clips. Keep the render local and
+	// skip the Drive publication (and its folder creation) entirely.
+	if r != nil && localizedRenderSkipsDrive(finalJob || in.FinalJob) {
+		in.SkipDrivePublication = true
+	}
 
 	// A staged envelope result is the legacy recovery path and stays
 	// authoritative. It still receives the fingerprint so the writer records
@@ -66,15 +74,23 @@ func (r *Runner) prepareLocalizedRenderInput(ctx context.Context, in LocalizedRe
 	return in, nil
 }
 
+// localizedRenderSkipsDrive reports whether a localized render is consumed
+// only through the object store. A final job whose assets travel through
+// OBJECTSTORE_PUBLIC_URL never reads a Drive identity for its clips, so both
+// the upload and the Drive folder resolution are pure latency.
+func localizedRenderSkipsDrive(finalJob bool) bool {
+	return finalJob && finalJobObjectStoreConfigured()
+}
+
 func attachLocalizedRenderCheckpointFingerprint(in LocalizedRenderInput, fingerprint string) LocalizedRenderInput {
 	if ready := in.OnRenderReady; ready != nil {
-		in.OnRenderReady = func(rendered LocalizedRenderResult) error {
+		in.OnRenderReady = func(rendered contract.LocalizedRenderResult) error {
 			rendered.CheckpointFingerprint = fingerprint
 			return ready(rendered)
 		}
 	}
 	if renderedSink := in.OnRendered; renderedSink != nil {
-		in.OnRendered = func(rendered LocalizedRenderResult) error {
+		in.OnRendered = func(rendered contract.LocalizedRenderResult) error {
 			rendered.CheckpointFingerprint = fingerprint
 			return renderedSink(rendered)
 		}
@@ -86,7 +102,7 @@ func attachLocalizedRenderCheckpointFingerprint(in LocalizedRenderInput, fingerp
 // the unit must execute. Definitive staleness (changed inputs, corrupt body,
 // missing artifact) invalidates the row; an unjudgeable artifact (verifier
 // error or not wired) returns nil WITHOUT deleting the row.
-func (r *Runner) loadLocalizedRenderCheckpoint(ctx context.Context, in LocalizedRenderInput, fingerprint string) (*LocalizedRenderResult, error) {
+func (r *Runner) loadLocalizedRenderCheckpoint(ctx context.Context, in LocalizedRenderInput, fingerprint string) (*contract.LocalizedRenderResult, error) {
 	key, err := ArtifactCheckpointKey(in.SceneID, in.ClipID, string(in.Language))
 	if err != nil {
 		return nil, fmt.Errorf("localized render resume: artifact checkpoint key: %w", err)
@@ -112,7 +128,7 @@ func (r *Runner) loadLocalizedRenderCheckpoint(ctx context.Context, in Localized
 		r.invalidateLocalizedRenderCheckpoint(ctx, in.RunID, key, reason)
 		return nil, nil
 	}
-	var payload LocalizedRenderResult
+	var payload contract.LocalizedRenderResult
 	if err := json.Unmarshal(checkpoint.Payload, &payload); err != nil {
 		r.invalidateLocalizedRenderCheckpoint(ctx, in.RunID, key, "payload is not a localized render result")
 		return nil, nil
@@ -171,7 +187,7 @@ func (r *Runner) loadLocalizedRenderCheckpoint(ctx context.Context, in Localized
 	return &payload, nil
 }
 
-func localizedRenderStagedBytesStillMatch(rendered LocalizedRenderResult) bool {
+func localizedRenderStagedBytesStillMatch(rendered contract.LocalizedRenderResult) bool {
 	path := strings.TrimSpace(rendered.LocalPath)
 	if path == "" {
 		return false

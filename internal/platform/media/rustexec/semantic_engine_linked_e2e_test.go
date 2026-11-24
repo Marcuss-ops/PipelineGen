@@ -41,3 +41,37 @@ func TestSemanticEngineRealBinaryProjectsLinkedEntities(t *testing.T) {
 		t.Fatalf("v3 linked identities missing: %+v", bundle.Identities)
 	}
 }
+
+func TestSemanticEngineRealBinaryKeepsPolishInflectedSurfaceGrounded(t *testing.T) {
+	binary := resolveSemanticEngineBinary()
+	if binary == "" {
+		t.Skip("semantic-engine binary not installed; set VELOX_RUST_SEMANTIC_ENGINE_PATH")
+	}
+	adapter, err := NewSemanticEngineAdapter(NewExecutor(binary, resolveFFmpegBinary(), zap.NewNop()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundles, err := adapter.SemanticBundles(context.Background(), "pl", []scriptgen.SemanticSceneInput{{
+		SceneID: "pokoju",
+		Text:    "Proszę zamknąć drzwi w pokoju po zakończeniu nagrania.",
+	}})
+	if err != nil {
+		t.Fatalf("Polish inflected identity projection failed: %v", err)
+	}
+	bundle := bundles["pokoju"]
+	if bundle == nil || len(bundle.Identities) == 0 {
+		t.Fatalf("expected Polish scene identities, got %+v", bundle)
+	}
+	for _, identity := range bundle.Identities {
+		grounded := false
+		for _, mention := range identity.Mentions {
+			if mention.Surface == identity.CanonicalSurface {
+				grounded = true
+				break
+			}
+		}
+		if !grounded {
+			t.Errorf("canonical surface %q has no grounded mention: %+v", identity.CanonicalSurface, identity.Mentions)
+		}
+	}
+}

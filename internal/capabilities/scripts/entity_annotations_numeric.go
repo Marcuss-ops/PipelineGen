@@ -3,7 +3,6 @@ package scriptgeneration
 import (
 	"regexp"
 	"strings"
-	"unicode/utf8"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -28,24 +27,6 @@ func normalizeEntityImageName(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.TrimSuffix(strings.TrimSuffix(value, "'s"), "’s")
 	return strings.Join(strings.Fields(value), " ")
-}
-
-// advanceRunes returns the byte offset n runes after start, or -1 when the
-// string ends first. It lets a caller compare a fixed-rune-length window
-// without allocating a rune slice for the text.
-func advanceRunes(text string, start, n int) int {
-	offset := start
-	for i := 0; i < n; i++ {
-		if offset >= len(text) {
-			return -1
-		}
-		_, size := utf8.DecodeRuneInString(text[offset:])
-		if size <= 0 {
-			return -1
-		}
-		offset += size
-	}
-	return offset
 }
 
 func appendGroundedNumberEntities(ann *scriptpkg.SceneAnnotations, text string) {

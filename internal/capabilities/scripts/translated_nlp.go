@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/semantics"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -13,7 +15,7 @@ import (
 
 type translatedNLPWork struct {
 	sceneIndex int
-	lang       Language
+	lang       contract.Language
 	text       string
 }
 
@@ -28,15 +30,15 @@ type translatedNLPOutcome struct {
 // localizedNLPSnapshot freezes only the scene identity, text, and source
 // annotations consumed by computeLocalizedAnnotations. It is created before
 // the parallel TTS branch begins writing voiceover/timing fields.
-func localizedNLPSnapshot(result *GenerateResult) *GenerateResult {
+func localizedNLPSnapshot(result *contract.GenerateResult) *contract.GenerateResult {
 	if result == nil {
 		return nil
 	}
-	snapshot := &GenerateResult{Scenes: make([]Scene, len(result.Scenes))}
+	snapshot := &contract.GenerateResult{Scenes: make([]contract.Scene, len(result.Scenes))}
 	for index := range result.Scenes {
 		scene := result.Scenes[index]
-		snapshot.Scenes[index] = Scene{
-			ID: scene.ID, Index: scene.Index, Text: make(map[Language]string, len(scene.Text)),
+		snapshot.Scenes[index] = contract.Scene{
+			ID: scene.ID, Index: scene.Index, Text: make(map[contract.Language]string, len(scene.Text)),
 			Annotations: scene.Annotations, Entities: scene.Entities,
 			LocalizedAnnotations: scene.LocalizedAnnotations,
 		}
@@ -69,7 +71,7 @@ func (c *sceneReadyCoordinator) translatedNLPRequested() bool {
 // computes one translated annotation value. It deliberately runs outside the
 // translation/TTS worker: the scene's voiceover can continue while source NER
 // finishes, and the final pass reuses this value instead of calling NER again.
-func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language, text string) (*scriptpkg.SceneAnnotations, error) {
+func (c *sceneReadyCoordinator) localizedNLPForScene(scene contract.Scene, lang contract.Language, text string) (*scriptpkg.SceneAnnotations, error) {
 	if !c.translatedNLPRequested() || sceneExtractionToggle(c.req, scene) == scriptpkg.ToggleDisabled || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
@@ -105,9 +107,9 @@ func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language,
 		source = computed[0]
 	}
 
-	mini := &GenerateResult{Scenes: []Scene{{
+	mini := &contract.GenerateResult{Scenes: []contract.Scene{{
 		ID: scene.ID, Index: 0,
-		Text:        map[Language]string{lang: text},
+		Text:        map[contract.Language]string{lang: text},
 		Annotations: source,
 	}}}
 	localized, err := c.runner.computeLocalizedAnnotations(c.ctx, c.req, mini, map[int]*scriptpkg.SceneAnnotations{0: source})
@@ -120,7 +122,7 @@ func (c *sceneReadyCoordinator) localizedNLPForScene(scene Scene, lang Language,
 	return nil, nil
 }
 
-func (c *sceneReadyCoordinator) launchLocalizedNLP(scene Scene, lang Language, text string) {
+func (c *sceneReadyCoordinator) launchLocalizedNLP(scene contract.Scene, lang contract.Language, text string) {
 	if !c.translatedNLPRequested() || sceneExtractionToggle(c.req, scene) == scriptpkg.ToggleDisabled || lang == c.req.SourceLanguage || strings.TrimSpace(text) == "" {
 		return
 	}
@@ -136,7 +138,7 @@ func (c *sceneReadyCoordinator) launchLocalizedNLP(scene Scene, lang Language, t
 		}
 		if annotation != nil {
 			if c.localized[scene.Index] == nil {
-				c.localized[scene.Index] = make(map[Language]*scriptpkg.SceneAnnotations)
+				c.localized[scene.Index] = make(map[contract.Language]*scriptpkg.SceneAnnotations)
 			}
 			c.localized[scene.Index][lang] = annotation
 		}
@@ -153,7 +155,7 @@ func (c *sceneReadyCoordinator) launchLocalizedNLP(scene Scene, lang Language, t
 // concurrently with a TTS writer — which mutates the scenes' voiceover fields —
 // must instead pass the annotations they computed, via
 // runTranslatedNLPWithSourceAnnotations.
-func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, result *GenerateResult) error {
+func (r *Runner) runTranslatedNLP(ctx context.Context, req contract.GenerateRequest, result *contract.GenerateResult) error {
 	return r.runTranslatedNLPWithSourceAnnotations(ctx, req, result, nil)
 }
 
@@ -169,7 +171,7 @@ func (r *Runner) runTranslatedNLP(ctx context.Context, req GenerateRequest, resu
 // its voiceover fields.
 //
 // A nil map keeps the historical behaviour: read result.Scenes[i].Annotations.
-func (r *Runner) runTranslatedNLPWithSourceAnnotations(ctx context.Context, req GenerateRequest, result *GenerateResult, sourceAnnotations map[int]*scriptpkg.SceneAnnotations) error {
+func (r *Runner) runTranslatedNLPWithSourceAnnotations(ctx context.Context, req contract.GenerateRequest, result *contract.GenerateResult, sourceAnnotations map[int]*scriptpkg.SceneAnnotations) error {
 	localized, err := r.computeLocalizedAnnotations(ctx, req, result, sourceAnnotations)
 	if err != nil {
 		return err
@@ -188,280 +190,295 @@ func (r *Runner) runTranslatedNLPWithSourceAnnotations(ctx context.Context, req 
 // result.Scenes while TTS runs is a data race — not only a write to the field
 // being written. Computing into a detached value and applying it on the owning
 // goroutine keeps the overlap without a shared write.
-func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRequest, result *GenerateResult, sourceAnnotations map[int]*scriptpkg.SceneAnnotations) (map[int]map[Language]*scriptpkg.SceneAnnotations, error) {
-	if r == nil || result == nil || r.vidRushPipeline == nil {
+func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req contract.GenerateRequest, result *contract.GenerateResult, sourceAnnotations map[int]*scriptpkg.SceneAnnotations) (map[int]map[contract.Language]*scriptpkg.SceneAnnotations, error) {
+	batch, ok, err := r.prepareLocalizedNLPBatch(req, result, sourceAnnotations)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, nil
 	}
-	// In the parallel SceneTextReady path result is a detached NLP snapshot;
-	// mutation after this read cannot race with voiceover scene updates.
+	sourceMatches, outcomes, err := r.resolveTranslatedNLPOutcomes(ctx, result, batch.work, batch.settings, batch.sourceAnnotationsFor)
+	if err != nil {
+		return nil, err
+	}
+	return r.projectTranslatedNLPOutcomes(ctx, result, batch.work, outcomes, sourceMatches, batch.settings, batch.sourceAnnotationsFor, batch.documentCorpus)
+}
+
+func (r *Runner) projectTranslatedNLPOutcomes(ctx context.Context, result *contract.GenerateResult, work []translatedNLPWork, outcomes []translatedNLPOutcome, sourceMatches [][]localizedSourceMatch, settings translatedNLPSettings, sourceAnnotationsFor func(int) *scriptpkg.SceneAnnotations, documentCorpus map[contract.Language][]string) (map[int]map[contract.Language]*scriptpkg.SceneAnnotations, error) {
+	localized := make(map[int]map[contract.Language]*scriptpkg.SceneAnnotations)
+	for index, item := range work {
+		if outcomes[index].cached != nil {
+			setLocalizedAnnotation(localized, item.sceneIndex, item.lang, outcomes[index].cached)
+			continue
+		}
+		entities, completed, err := r.translatedEntitiesForProjection(ctx, result, item, outcomes[index].entities, sourceMatches[index], sourceAnnotationsFor(item.sceneIndex), settings)
+		if err != nil {
+			return nil, err
+		}
+		sourceMatches[index] = completed
+		insights, err := buildTranslatedInsights(ctx, result.Scenes[item.sceneIndex].ID, item, entities, settings, documentCorpus[item.lang])
+		if err != nil {
+			return nil, fmt.Errorf("translated phrase selection for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
+		}
+		annotation := projectEntityAnnotations(item.text, string(item.lang), scriptpkg.VidRushSegmentResult{
+			SegmentID: result.Scenes[item.sceneIndex].ID, SceneID: result.Scenes[item.sceneIndex].ID,
+			Position: result.Scenes[item.sceneIndex].Index, Text: item.text,
+			TextHash: SceneTextHash(item.text), Insights: insights,
+		})
+		if annotation == nil {
+			continue
+		}
+		if err := stampLocalizedSourceIdentity(annotation, completed); err != nil {
+			return nil, fmt.Errorf("stamp localized identity for scene %s/%s: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
+		}
+		annotation.Language = string(item.lang)
+		setLocalizedAnnotation(localized, item.sceneIndex, item.lang, annotation)
+	}
+	return localized, nil
+}
+
+func setLocalizedAnnotation(localized map[int]map[contract.Language]*scriptpkg.SceneAnnotations, sceneIndex int, language contract.Language, annotation *scriptpkg.SceneAnnotations) {
+	if localized[sceneIndex] == nil {
+		localized[sceneIndex] = make(map[contract.Language]*scriptpkg.SceneAnnotations)
+	}
+	localized[sceneIndex][language] = annotation
+}
+
+func (r *Runner) translatedEntitiesForProjection(ctx context.Context, result *contract.GenerateResult, item translatedNLPWork, entities []VisualEntity, sourceMatches []localizedSourceMatch, sourceAnnotations *scriptpkg.SceneAnnotations, settings translatedNLPSettings) ([]VisualEntity, []localizedSourceMatch, error) {
+	completed, err := r.completeLocalizedPersonMatches(ctx, item.text, string(item.lang), sourceAnnotations, entities, sourceMatches)
+	if err != nil {
+		return nil, nil, fmt.Errorf("localized identity completion for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
+	}
+	entities = mergeTranslatedNamedEntities(entities, localizedSourceVisualEntities(completed))
+	if settings.categoryOnly {
+		filtered := make([]VisualEntity, 0, len(entities))
+		for _, entity := range entities {
+			if settings.extraction.IncludesEntityType(string(entity.Type)) {
+				filtered = append(filtered, entity)
+			}
+		}
+		entities = limitTranslatedVisualEntities(filtered, settings.entityLimit)
+	} else if settings.includeEntities && settings.extraction.Includes(mediadomain.ExtractionIncludeEntities) && hasAdditionalEntityCategory(settings.extraction) {
+		entities = limitVisualIdentityEntities(entities, settings.entityLimit)
+	} else if settings.includeEntities {
+		entities = limitTranslatedVisualEntities(entities, settings.entityLimit)
+	} else {
+		entities = nil
+	}
+	return entities, completed, nil
+}
+
+func buildTranslatedInsights(ctx context.Context, sceneID string, item translatedNLPWork, entities []VisualEntity, settings translatedNLPSettings, corpus []string) (scriptpkg.SegmentInsights, error) {
+	var phraseCandidates []string
+	if settings.includePhrases || settings.includeWords {
+		selected, err := settings.phraseSelector.SelectPhrases(ctx, PhraseSelectionRequest{
+			Text: item.text, BlockedRuneSpans: entityRuneSpans(item.text, entities),
+			Limit: settings.phraseLimit, Corpus: corpus,
+			Profile: phraseSelectionProfileForLanguage(string(item.lang)),
+		})
+		if err != nil {
+			return scriptpkg.SegmentInsights{}, err
+		}
+		phraseCandidates = make([]string, 0, len(selected))
+		for _, phrase := range selected {
+			phraseCandidates = append(phraseCandidates, phrase.Text)
+		}
+	}
+	var importantPhrases []string
+	if settings.includePhrases {
+		importantPhrases = groundImportantPhrases(item.text, entities, phraseCandidates, settings.phraseLimit)
+	}
+	var importantWords []string
+	if settings.includeWords {
+		importantWords = importantWordsFromPhrases(phraseCandidates, settings.wordLimit, phraseSelectionProfileForLanguage(string(item.lang)))
+	}
+	var specialNames []string
+	if settings.includeEntities && (settings.extraction.Includes(mediadomain.ExtractionIncludeEntities) && !hasAdditionalEntityCategory(settings.extraction) || settings.extraction.Includes(mediadomain.ExtractionIncludeSpecialNames)) {
+		specialNames = translatedSpecialNames(item.text, nil, entities, settings.entityLimit)
+	}
+	insights := scriptpkg.SegmentInsights{
+		SegmentID: sceneID, TextHash: SceneTextHash(item.text),
+		ImportantPhrases: importantPhrases, ImportantWords: importantWords, SpecialNames: specialNames,
+	}
+	for _, entity := range entities {
+		entityType := entity.Type
+		if strings.TrimSpace(string(entityType)) == "" {
+			entityType = scriptpkg.EntityTypeVisualConcept
+		}
+		insights.Entities = append(insights.Entities, scriptpkg.ExtractedEntity{
+			Value: entity.Text, Type: string(entityType), Confidence: float64(entity.Score), Role: entity.Role,
+			EditorialDecision: entity.EditorialDecision, EditorialSurface: entity.EditorialSurface,
+			EditorialType: entity.EditorialType, PromptEcho: entity.PromptEcho, VisualAdmission: entity.VisualAdmission,
+		})
+	}
+	return insights, nil
+}
+
+type translatedNLPSettings struct {
+	extraction      mediadomain.MediaExtractionPolicy
+	includeEntities bool
+	categoryOnly    bool
+	includePhrases  bool
+	includeWords    bool
+	phraseSelector  PhraseSelector
+	entityLimit     int
+	nerLimit        int
+	phraseLimit     int
+	wordLimit       int
+	workers         int
+}
+
+type translatedNLPBatch struct {
+	settings             translatedNLPSettings
+	work                 []translatedNLPWork
+	sourceAnnotationsFor func(int) *scriptpkg.SceneAnnotations
+	documentCorpus       map[contract.Language][]string
+}
+
+func (r *Runner) prepareLocalizedNLPBatch(req contract.GenerateRequest, result *contract.GenerateResult, sourceAnnotations map[int]*scriptpkg.SceneAnnotations) (translatedNLPBatch, bool, error) {
+	if r == nil || result == nil || r.vidRushPipeline == nil {
+		return translatedNLPBatch{}, false, nil
+	}
+	policy := req.MediaPlan.Extraction
+	settings, active, err := r.translatedNLPSettings(policy)
+	if err != nil || !active {
+		return translatedNLPBatch{}, false, err
+	}
+	work, corpus := translatedNLPWorkForRequest(req, result)
+	if len(work) == 0 {
+		return translatedNLPBatch{}, false, nil
+	}
+	// A detached SceneTextReady snapshot carries the source annotations needed
+	// here; nil retains the historical lookup from the result itself.
 	sourceAnnotationsFor := func(sceneIndex int) *scriptpkg.SceneAnnotations {
 		if sourceAnnotations == nil {
 			return result.Scenes[sceneIndex].Annotations
 		}
 		return sourceAnnotations[sceneIndex]
 	}
-	extraction := req.MediaPlan.Extraction
-	includeEntities := extraction.EntityExtractionRequested()
-	includePhrases := extraction.Includes(mediadomain.ExtractionIncludeImportantPhrases)
-	includeWords := extraction.Includes(mediadomain.ExtractionIncludeImportantWords)
-	if !includeEntities && !includePhrases && !includeWords {
-		return nil, nil
-	}
-	var phraseSelector PhraseSelector
-	if includePhrases || includeWords {
-		if r.vidRushPipeline == nil || r.vidRushPipeline.PhraseSelector == nil {
-			return nil, fmt.Errorf("translated NLP: phrase selector is required when important phrases or words are requested")
-		}
-		phraseSelector = r.vidRushPipeline.PhraseSelector
-	}
+	return translatedNLPBatch{settings: settings, work: work, sourceAnnotationsFor: sourceAnnotationsFor, documentCorpus: corpus}, true, nil
+}
 
-	langs := make([]Language, 0, len(req.Languages)+1)
-	seenLang := make(map[Language]struct{}, len(req.Languages)+1)
-	for _, lang := range append([]Language{req.SourceLanguage}, req.Languages...) {
+func (r *Runner) translatedNLPSettings(policy mediadomain.MediaExtractionPolicy) (translatedNLPSettings, bool, error) {
+	settings := translatedNLPSettings{
+		extraction:      policy,
+		includeEntities: policy.EntityExtractionRequested(),
+		includePhrases:  policy.Includes(mediadomain.ExtractionIncludeImportantPhrases),
+		includeWords:    policy.Includes(mediadomain.ExtractionIncludeImportantWords),
+	}
+	if !settings.includeEntities && !settings.includePhrases && !settings.includeWords {
+		return settings, false, nil
+	}
+	if settings.includePhrases || settings.includeWords {
+		if r.vidRushPipeline == nil || r.vidRushPipeline.PhraseSelector == nil {
+			return translatedNLPSettings{}, false, fmt.Errorf("translated NLP: phrase selector is required when important phrases or words are requested")
+		}
+		settings.phraseSelector = r.vidRushPipeline.PhraseSelector
+	}
+	settings.entityLimit = policy.MaxEntitiesPerSegment
+	if settings.entityLimit <= 0 {
+		settings.entityLimit = 3
+	}
+	settings.categoryOnly = policy.HasCategoryOnlyIncludes()
+	settings.nerLimit = settings.entityLimit
+	if settings.categoryOnly || hasAdditionalEntityCategory(policy) {
+		settings.nerLimit = min(max(settings.entityLimit*8, 12), 100)
+	}
+	settings.phraseLimit = policy.MaxImportantPhrasesPerSegment
+	if settings.phraseLimit <= 0 {
+		settings.phraseLimit = 3
+	}
+	settings.wordLimit = policy.MaxImportantWordsPerSegment
+	if settings.wordLimit <= 0 {
+		settings.wordLimit = 3
+	}
+	settings.workers = poolSize(r.nlpConcurrency, DefaultNLPConcurrency)
+	if limit := r.vidRushPipeline.Backpressure.ExtractionLimit; limit > 0 && limit < settings.workers {
+		settings.workers = limit
+	}
+	return settings, true, nil
+}
+
+func translatedNLPWorkForRequest(req contract.GenerateRequest, result *contract.GenerateResult) ([]translatedNLPWork, map[contract.Language][]string) {
+	langs := make([]contract.Language, 0, len(req.Languages)+1)
+	seen := make(map[contract.Language]struct{}, len(req.Languages)+1)
+	for _, lang := range append([]contract.Language{req.SourceLanguage}, req.Languages...) {
 		if lang != "" {
-			if _, exists := seenLang[lang]; !exists {
-				seenLang[lang] = struct{}{}
+			if _, exists := seen[lang]; !exists {
+				seen[lang] = struct{}{}
 				langs = append(langs, lang)
 			}
 		}
 	}
-
 	work := make([]translatedNLPWork, 0)
 	for sceneIndex := range result.Scenes {
-		if sceneExtractionToggle(req, result.Scenes[sceneIndex]) == scriptpkg.ToggleDisabled {
+		scene := result.Scenes[sceneIndex]
+		if sceneExtractionToggle(req, scene) == scriptpkg.ToggleDisabled {
 			continue
 		}
 		for _, lang := range langs {
 			if lang == req.SourceLanguage {
 				continue
 			}
-			text := strings.TrimSpace(result.Scenes[sceneIndex].Text[lang])
+			text := strings.TrimSpace(scene.Text[lang])
 			if text != "" {
 				work = append(work, translatedNLPWork{sceneIndex: sceneIndex, lang: lang, text: text})
 			}
 		}
 	}
-	if len(work) == 0 {
-		return nil, nil
-	}
-
-	// Document-wide phrase frequency: group the scene texts by language so the
-	// selector can boost a phrase that recurs across the document (all scenes)
-	// over an otherwise-equal one-shot surface. Pure and deterministic.
-	documentCorpus := make(map[Language][]string, len(langs))
+	corpus := make(map[contract.Language][]string, len(langs))
 	for _, item := range work {
-		documentCorpus[item.lang] = append(documentCorpus[item.lang], item.text)
+		corpus[item.lang] = append(corpus[item.lang], item.text)
 	}
+	return work, corpus
+}
 
-	entityLimit := extraction.MaxEntitiesPerSegment
-	if entityLimit <= 0 {
-		entityLimit = 3
-	}
-	// EntityImages.Enabled is also an explicit entity-surface opt-in for
-	// legacy payloads; don't discard a candidate window when that policy is
-	// combined with a phrase selector.
-	categoryOnly := extraction.HasCategoryOnlyIncludes()
-	nerLimit := entityLimit
-	if categoryOnly || hasAdditionalEntityCategory(extraction) {
-		// As on the source-language path, scan beyond the final per-segment
-		// result limit before filtering to a selected category. Otherwise
-		// unrelated high-ranked names can crowd out translated values/places.
-		nerLimit = min(max(entityLimit*8, 12), 100)
-	}
-	phraseLimit := extraction.MaxImportantPhrasesPerSegment
-	if phraseLimit <= 0 {
-		phraseLimit = 3
-	}
-	wordLimit := extraction.MaxImportantWordsPerSegment
-	if wordLimit <= 0 {
-		wordLimit = 3
-	}
-	workers := poolSize(r.nlpConcurrency, DefaultNLPConcurrency)
-	if r.vidRushPipeline != nil {
-		if limit := r.vidRushPipeline.Backpressure.ExtractionLimit; limit > 0 && limit < workers {
-			workers = limit
-		}
-	}
-
-	// Ground every SOURCE annotation entity in its translation BEFORE the NER
-	// fan-out. Matching is pure CPU over already-final text, and its result is
-	// both (a) the identity hint the projection consumes below and (b) the
-	// input of the redundant-call gate: when the source annotations already
-	// ground `entityLimit` entities here, a translated NER call can only
-	// produce candidates the limit window discards.
+func (r *Runner) resolveTranslatedNLPOutcomes(ctx context.Context, result *contract.GenerateResult, work []translatedNLPWork, settings translatedNLPSettings, sourceAnnotationsFor func(int) *scriptpkg.SceneAnnotations) ([][]localizedSourceMatch, []translatedNLPOutcome, error) {
 	sourceMatches := make([][]localizedSourceMatch, len(work))
 	for index, item := range work {
-		matches, matchErr := r.matchLocalizedSources(ctx, item.text, string(item.lang), sourceAnnotationsFor(item.sceneIndex))
-		if matchErr != nil {
-			return nil, fmt.Errorf("localized identity matching for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, matchErr)
+		matches, err := r.matchLocalizedSources(ctx, item.text, string(item.lang), sourceAnnotationsFor(item.sceneIndex))
+		if err != nil {
+			return nil, nil, fmt.Errorf("localized identity matching for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
 		}
 		sourceMatches[index] = matches
 	}
-
-	outcomes, err := concurrent.Map(ctx, work, workers, func(opCtx context.Context, idx int, item translatedNLPWork) (translatedNLPOutcome, error) {
-		var outcome translatedNLPOutcome
+	outcomes, err := concurrent.Map(ctx, work, settings.workers, func(opCtx context.Context, idx int, item translatedNLPWork) (translatedNLPOutcome, error) {
 		if cached := result.Scenes[item.sceneIndex].LocalizedAnnotations[item.lang]; cached != nil {
-			// SceneTextReady may already have computed this exact scene/language
-			// surface. Reuse it instead of issuing a second translated NER call.
 			return translatedNLPOutcome{cached: cached}, nil
 		}
-		// The translated NER call is SKIPPED when the source annotations
-		// already cover the entity limit for this language. Skipping is
-		// output-equivalent, not an approximation: mergeTranslatedNamedEntities
-		// drops VisualNER's typed named entities as soon as source matches
-		// exist, and limitTranslatedVisualEntities orders PERSON first, so with
-		// `entityLimit` grounded PERSON matches every model entity falls outside
-		// the window anyway. ``sourceMatchesCoverEntityLimit`` encodes exactly
-		// that precondition (and refuses to skip for any other entity kind).
-		if includeEntities && r.vidRushPipeline != nil && r.vidRushPipeline.NERPort != nil &&
-			(categoryOnly || hasAdditionalEntityCategory(extraction) || !sourceMatchesCoverEntityLimit(sourceMatches[idx], entityLimit)) {
-			err := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
-				Stage: kernobs.StageSceneAnalysis, Component: kernobs.ComponentNLP, Operation: kernobs.OperationExtract,
-				Provider: string(item.lang), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q,\"surface\":\"translation\"}", result.Scenes[item.sceneIndex].ID, item.lang),
-			}, func(measureCtx context.Context) error {
-				var extractErr error
-				outcome.entities, extractErr = r.vidRushPipeline.NERPort.Extract(measureCtx, string(item.lang), item.text, nerLimit)
-				return extractErr
-			})
-			if err != nil {
-				return translatedNLPOutcome{}, fmt.Errorf("translated NER for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
-			}
+		// Skip translated NER only when grounded source identities already fill
+		// the output limit; this matches the later merge and top-N behavior.
+		shouldExtract := settings.includeEntities && r.vidRushPipeline != nil && r.vidRushPipeline.NERPort != nil &&
+			(settings.categoryOnly || hasAdditionalEntityCategory(settings.extraction) || !sourceMatchesCoverEntityLimit(sourceMatches[idx], settings.entityLimit))
+		if !shouldExtract {
+			return translatedNLPOutcome{}, nil
+		}
+		var outcome translatedNLPOutcome
+		err := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
+			Stage: kernobs.StageSceneAnalysis, Component: kernobs.ComponentNLP, Operation: kernobs.OperationExtract,
+			Provider: string(item.lang), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q,\"surface\":\"translation\"}", result.Scenes[item.sceneIndex].ID, item.lang),
+		}, func(measureCtx context.Context) error {
+			var extractErr error
+			outcome.entities, extractErr = r.vidRushPipeline.NERPort.Extract(measureCtx, string(item.lang), item.text, settings.nerLimit)
+			return extractErr
+		})
+		if err != nil {
+			return translatedNLPOutcome{}, fmt.Errorf("translated NER for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
 		}
 		return outcome, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-
-	localized := make(map[int]map[Language]*scriptpkg.SceneAnnotations)
-	// Grounding and annotation projection are pure CPU work over each
-	// translation's own text. Source entity matches carry stable identity only;
-	// phrase surfaces are always selected from the localized narration.
-	for index, item := range work {
-		if outcomes[index].cached != nil {
-			if localized[item.sceneIndex] == nil {
-				localized[item.sceneIndex] = make(map[Language]*scriptpkg.SceneAnnotations)
-			}
-			localized[item.sceneIndex][item.lang] = outcomes[index].cached
-			continue
-		}
-		completed, completeErr := r.completeLocalizedPersonMatches(
-			ctx, item.text, string(item.lang), sourceAnnotationsFor(item.sceneIndex),
-			outcomes[index].entities, sourceMatches[index],
-		)
-		if completeErr != nil {
-			return nil, fmt.Errorf("localized identity completion for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, completeErr)
-		}
-		sourceMatches[index] = completed
-		// Already-extracted source names act as identity hints only. A hint is
-		// copied into the localized annotations only when its name can be found
-		// in this translated scene, so it cannot invent a mention or a phrase.
-		// The SAME matches also carry the source identity, which the localized
-		// annotation inherits below instead of re-minting one from the
-		// translated surface.
-		outcomes[index].entities = mergeTranslatedNamedEntities(outcomes[index].entities, localizedSourceVisualEntities(sourceMatches[index]))
-		if categoryOnly {
-			filtered := make([]VisualEntity, 0, len(outcomes[index].entities))
-			for _, entity := range outcomes[index].entities {
-				if extraction.IncludesEntityType(string(entity.Type)) {
-					filtered = append(filtered, entity)
-				}
-			}
-			outcomes[index].entities = limitTranslatedVisualEntities(filtered, entityLimit)
-		} else if includeEntities && extraction.Includes(mediadomain.ExtractionIncludeEntities) {
-			if hasAdditionalEntityCategory(extraction) {
-				outcomes[index].entities = limitVisualIdentityEntities(outcomes[index].entities, entityLimit)
-			} else {
-				outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
-			}
-		} else if includeEntities {
-			outcomes[index].entities = limitTranslatedVisualEntities(outcomes[index].entities, entityLimit)
-		} else {
-			outcomes[index].entities = nil
-		}
-		var phraseCandidates []string
-		var selectedPhrases []SelectedPhrase
-		if includePhrases || includeWords {
-			var selectErr error
-			selectedPhrases, selectErr = phraseSelector.SelectPhrases(ctx, PhraseSelectionRequest{
-				Text:             item.text,
-				BlockedRuneSpans: entityRuneSpans(item.text, outcomes[index].entities),
-				Limit:            phraseLimit,
-				Corpus:           documentCorpus[item.lang],
-				Profile:          phraseSelectionProfileForLanguage(string(item.lang)),
-			})
-			if selectErr != nil {
-				return nil, fmt.Errorf("translated phrase selection for scene %s/%s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, selectErr)
-			}
-			phraseCandidates = make([]string, 0, len(selectedPhrases))
-			for _, phrase := range selectedPhrases {
-				phraseCandidates = append(phraseCandidates, phrase.Text)
-			}
-		}
-		var groundedPhrases []string
-		if includePhrases {
-			groundedPhrases = groundImportantPhrases(item.text, outcomes[index].entities, phraseCandidates, phraseLimit)
-		}
-		var importantWords []string
-		if includeWords {
-			importantWords = importantWordsFromPhrases(phraseCandidates, wordLimit, phraseSelectionProfileForLanguage(string(item.lang)))
-		}
-		var specialNames []string
-		if includeEntities && extraction.Includes(mediadomain.ExtractionIncludeEntities) && !hasAdditionalEntityCategory(extraction) {
-			specialNames = translatedSpecialNames(item.text, nil, outcomes[index].entities, entityLimit)
-		} else if includeEntities && extraction.Includes(mediadomain.ExtractionIncludeSpecialNames) {
-			specialNames = translatedSpecialNames(item.text, nil, outcomes[index].entities, entityLimit)
-		}
-		insights := scriptpkg.SegmentInsights{
-			SegmentID:        result.Scenes[item.sceneIndex].ID,
-			TextHash:         SceneTextHash(item.text),
-			ImportantPhrases: groundedPhrases,
-			ImportantWords:   importantWords,
-			SpecialNames:     specialNames,
-		}
-		for _, entity := range outcomes[index].entities {
-			entityType := entity.Type
-			if strings.TrimSpace(string(entityType)) == "" {
-				entityType = scriptpkg.EntityTypeVisualConcept
-			}
-			insights.Entities = append(insights.Entities, scriptpkg.ExtractedEntity{
-				Value: entity.Text, Type: string(entityType), Confidence: float64(entity.Score),
-				Role:              entity.Role,
-				EditorialDecision: entity.EditorialDecision,
-				EditorialSurface:  entity.EditorialSurface,
-				EditorialType:     entity.EditorialType,
-				PromptEcho:        entity.PromptEcho,
-				VisualAdmission:   entity.VisualAdmission,
-			})
-		}
-		annotation := projectEntityAnnotations(item.text, string(item.lang), scriptpkg.VidRushSegmentResult{
-			SegmentID: result.Scenes[item.sceneIndex].ID,
-			SceneID:   result.Scenes[item.sceneIndex].ID,
-			Position:  result.Scenes[item.sceneIndex].Index,
-			Text:      item.text,
-			TextHash:  SceneTextHash(item.text),
-			Insights:  insights,
-		})
-		if annotation == nil {
-			continue
-		}
-		if err := stampLocalizedSourceIdentity(annotation, sourceMatches[index]); err != nil {
-			return nil, fmt.Errorf("stamp localized identity for scene %s/%s: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
-		}
-		annotation.Language = string(item.lang)
-		if localized[item.sceneIndex] == nil {
-			localized[item.sceneIndex] = make(map[Language]*scriptpkg.SceneAnnotations)
-		}
-		localized[item.sceneIndex][item.lang] = annotation
-	}
-	return localized, nil
+	return sourceMatches, outcomes, nil
 }
 
 // applyLocalizedAnnotations projects the computed per-(scene, language)
 // annotations onto the durable result. It is the ONLY writer of
 // Scene.LocalizedAnnotations, so it always runs on the goroutine that owns the
 // result (the phase goroutine, after the fan-out join).
-func applyLocalizedAnnotations(result *GenerateResult, localized map[int]map[Language]*scriptpkg.SceneAnnotations) {
+func applyLocalizedAnnotations(result *contract.GenerateResult, localized map[int]map[contract.Language]*scriptpkg.SceneAnnotations) {
 	if result == nil || len(localized) == 0 {
 		return
 	}
@@ -470,7 +487,7 @@ func applyLocalizedAnnotations(result *GenerateResult, localized map[int]map[Lan
 			continue
 		}
 		if result.Scenes[sceneIndex].LocalizedAnnotations == nil {
-			result.Scenes[sceneIndex].LocalizedAnnotations = make(map[Language]*scriptpkg.SceneAnnotations, len(byLanguage))
+			result.Scenes[sceneIndex].LocalizedAnnotations = make(map[contract.Language]*scriptpkg.SceneAnnotations, len(byLanguage))
 		}
 		for language, annotation := range byLanguage {
 			result.Scenes[sceneIndex].LocalizedAnnotations[language] = annotation
@@ -529,11 +546,5 @@ func mergeTranslatedNamedEntities(visual, named []VisualEntity) []VisualEntity {
 }
 
 func limitTranslatedNLPStrings(values []string, limit int) []string {
-	if limit <= 0 || len(values) == 0 {
-		return nil
-	}
-	if len(values) > limit {
-		values = values[:limit]
-	}
-	return append([]string(nil), values...)
+	return semantics.LimitStrings(values, limit)
 }

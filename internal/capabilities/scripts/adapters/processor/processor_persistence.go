@@ -45,13 +45,82 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	artifactstore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/artifacts"
+	reconciliation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/reconciliation"
+	voiceoverprocessor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	voiceoversvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
 )
+
+// Compatibility aliases keep the public processor surface stable while the
+// artifact persistence and normalization implementation lives in the
+// processor/artifacts subpackage. New callers should import that package
+// directly; existing callers keep compiling without a second wrapper file.
+type NormalizationConfig = artifactstore.NormalizationConfig
+
+var (
+	NormalizeItem             = artifactstore.NormalizeItem
+	ApplyPreset               = artifactstore.ApplyPreset
+	BuildItemIdentity         = artifactstore.BuildItemIdentity
+	BuildEnvelopeIdentity     = artifactstore.BuildEnvelopeIdentity
+	BuildManifestV2           = artifactstore.BuildManifestV2
+	PersistGeneratedArtifacts = artifactstore.PersistGeneratedArtifacts
+)
+
+// Compatibility aliases for the reconciliation and voiceover families. The
+// implementations live in their subpackages; these wrappers keep the existing
+// processor API stable for composition roots and callers that have not
+// migrated yet.
+type AssetLocationReconciliationProcessor = reconciliation.AssetLocationReconciliationProcessor
+type VoiceoverProcessor = voiceoverprocessor.VoiceoverProcessor
+type ClipBindingsProcessor = voiceoverprocessor.ClipBindingsProcessor
+type NarrationSanitizer = voiceoverprocessor.NarrationSanitizer
+type VoiceoverSceneInput = voiceoverprocessor.VoiceoverSceneInput
+type SceneOutcome = voiceoverprocessor.SceneOutcome
+
+func NewAssetLocationReconciliationProcessor(
+	verifier scriptpkg.AssetLocationVerifier,
+) *reconciliation.AssetLocationReconciliationProcessor {
+	return reconciliation.NewAssetLocationReconciliationProcessor(verifier)
+}
+
+func NewDurableAssetLocationReconciliationProcessor(
+	verifier scriptpkg.AssetLocationVerifier,
+	mutator assetspersistence.AssetMutator,
+) *reconciliation.AssetLocationReconciliationProcessor {
+	return reconciliation.NewDurableAssetLocationReconciliationProcessor(verifier, mutator)
+}
+
+func NewVoiceoverProcessor(
+	gen voiceoversvc.VoiceoverItemExecutor,
+	log *zap.Logger,
+) *voiceoverprocessor.VoiceoverProcessor {
+	return voiceoverprocessor.NewVoiceoverProcessor(gen, log)
+}
+
+func NewClipBindingsProcessor(log *zap.Logger) *voiceoverprocessor.ClipBindingsProcessor {
+	return voiceoverprocessor.NewClipBindingsProcessor(log)
+}
+
+func NewNarrationSanitizer() *voiceoverprocessor.NarrationSanitizer {
+	return voiceoverprocessor.NewNarrationSanitizer()
+}
+
+func RunVoiceoverSceneFanout(
+	ctx context.Context,
+	executor voiceoversvc.VoiceoverItemExecutor,
+	language string,
+	items []voiceoverprocessor.VoiceoverSceneInput,
+	concurrency int,
+) []*voiceoverprocessor.SceneOutcome {
+	return voiceoverprocessor.RunVoiceoverSceneFanout(ctx, executor, language, items, concurrency)
+}
 
 // PersistenceProcessor writes the canonical script row. Single
 // owner of SQLite scripts-table writes (PR 5, June 2026).
@@ -235,7 +304,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	// dispatcher's fan-out). The typed-error contract is
 	// preserved: callers can errors.Is(err, ports.ErrSaveManifestV2NilManifest)
 	// to surface a typed diagnostic at composition time.
-	manifest := buildManifestV2(persistPlan, input)
+	manifest := artifactstore.BuildManifestV2(persistPlan, input)
 	manifestBytes, marshalErr := json.Marshal(manifest)
 	if marshalErr != nil {
 		return nil, fmt.Errorf("%w: persistence processor: manifest_v2 marshal failed: %w", scriptpkg.ErrPostprocessFailed, marshalErr)

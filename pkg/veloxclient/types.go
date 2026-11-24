@@ -58,9 +58,45 @@ func (a *AsyncResponse) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// M2MJobType is a runnable job type exposed to remote clients. Older Masters
+// returned bare strings; current Masters include the registered version.
+type M2MJobType struct {
+	Type    string `json:"type"`
+	Version string `json:"version,omitempty"`
+}
+
 // M2MJobTypesResponse is the runnable job catalog exposed to remote clients.
 type M2MJobTypesResponse struct {
-	Types []string `json:"types"`
+	Types []M2MJobType `json:"types"`
+}
+
+// UnmarshalJSON accepts both the legacy string list and the versioned object
+// list returned by current Masters.
+func (r *M2MJobTypesResponse) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Types json.RawMessage `json:"types"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if len(raw.Types) == 0 || string(raw.Types) == "null" {
+		r.Types = nil
+		return nil
+	}
+	var objects []M2MJobType
+	if err := json.Unmarshal(raw.Types, &objects); err == nil {
+		r.Types = objects
+		return nil
+	}
+	var names []string
+	if err := json.Unmarshal(raw.Types, &names); err != nil {
+		return err
+	}
+	r.Types = make([]M2MJobType, 0, len(names))
+	for _, name := range names {
+		r.Types = append(r.Types, M2MJobType{Type: name})
+	}
+	return nil
 }
 
 // JobStatusResponse mirrors the enriched status response returned by both

@@ -353,6 +353,87 @@ func TestRequestedEntityImageContractStillAuditsPlannedUnadmittedImage(t *testin
 // the entity timeline emits: the card carries EntityID + Text, not an
 // EntityRef. Once the reviewed registry binds bytes, the audit must report the
 // card as planned/bound instead of a zero-image false negative.
+// TICKET-49: the entity card is reused across scenes, so an intent authored in
+// a scene without the card is resolved by the same canonical identity in
+// another scene. The audit must not report a planned portrait and an
+// unplanned intent for the same person; that was the R30 contradiction.
+func TestOverlayIntentLineageCoversIdentityReusedAcrossScenes(t *testing.T) {
+	const canonical = "person:corrado-augias"
+	items := []capmodel.OverlayItem{{
+		ID: "entity-card-augias", SceneID: "scene-5", Kind: "entity_image", TemplateID: "image_popup",
+		EntityID: canonical, StartMs: 1000, EndMs: 3500,
+		EntityRef: &capmodel.OverlayEntityRef{
+			CanonicalEntityID: canonical, Type: "PERSON", Name: "Corrado Augias", SurfaceText: "Corrado Augias",
+		},
+		AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "portrait-augias"}},
+	}}
+	intents := []capmodel.OverlayIntent{
+		{
+			Version: capmodel.OverlayIntentVersion, IntentID: "intent-scene-1-corrado-augias", SceneID: "scene-1",
+			Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Corrado Augias", CanonicalEntityID: canonical},
+			Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+			Payload: capmodel.IntentPayload{Name: "Corrado Augias"}, TimingState: capmodel.TimingStatePending,
+		},
+		{
+			Version: capmodel.OverlayIntentVersion, IntentID: "intent-scene-1-rai", SceneID: "scene-1",
+			Entity: capmodel.EntityBinding{Type: "ORG", CanonicalName: "Rai", CanonicalEntityID: "org:rai"},
+			Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "org_default",
+			Payload: capmodel.IntentPayload{Name: "Rai"}, TimingState: capmodel.TimingStatePending,
+		},
+	}
+	lineage := freezeOverlayIntents(intents, items)
+	require.Equal(t, 2, lineage.Authored)
+	require.Equal(t, 0, lineage.Frozen)
+	require.Equal(t, 2, lineage.Covered, "PERSON and ORG are both entity-card lanes; reuse resolves both")
+	require.Equal(t, 0, lineage.Unresolved)
+	require.Equal(t, lineage.Authored, lineage.Frozen+lineage.Covered+lineage.Unresolved)
+
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{
+		Entities: []capabilityoverlay.ResolvedEntity{{
+			EntityID: canonical, CanonicalEntityID: canonical, Type: "PERSON",
+			Text: "Corrado Augias", CanonicalText: "Corrado Augias", SceneID: "scene-1", Confidence: 1,
+		}},
+		Assets: []capabilityoverlay.BoundAsset{{
+			EntityID: canonical, AssetID: "portrait-augias", Verified: true,
+		}},
+	}
+	audit := buildOverlayAuditWithLineage(bundle, &capmodel.OverlayPlan{Items: items}, lineage)
+	require.NotNil(t, audit.OverlayTiming)
+	require.Equal(t, 1, audit.OverlayTiming.Covered)
+	require.Equal(t, 0, audit.OverlayTiming.Unresolved)
+	require.NotNil(t, audit.EntityConcordance)
+	require.Equal(t, 1, audit.EntityConcordance.Checked, "one identity, one checked promise")
+	require.Equal(t, 0, audit.EntityConcordance.Mismatched,
+		"a planned portrait and an unresolved identity intent must not coexist")
+}
+
+// The concordance detector itself: an unresolved entity intent that names the
+// same identity as a planned image is the contradiction, independently of how
+// the lineage computed the resolution.
+func TestEntityConcordanceFlagsPlannedImageWithUnplannedIntent(t *testing.T) {
+	audit := &OverlayAudit{
+		DetectedEntities: []OverlayAuditEntity{{
+			ID: "ent-augias", CanonicalEntityID: "person:corrado-augias", Type: "PERSON",
+			Text: "Corrado Augias", CanonicalText: "Corrado Augias", SceneID: "scene-1", ImageStatus: "planned",
+		}},
+		OverlayTiming: &OverlayAuditOverlayTiming{
+			Authored: 1, Unresolved: 1,
+			UnresolvedItems: []OverlayAuditTimingItem{{
+				IntentID: "intent-scene-1-corrado-augias", SceneID: "scene-1",
+				Entity: "Corrado Augias", EntityID: "ent-augias", CanonicalEntityID: "person:corrado-augias",
+				Reason: OverlayIntentReasonEntityNotPlanned,
+			}},
+		},
+	}
+	concordance := buildOverlayAuditEntityConcordance(audit)
+	require.NotNil(t, concordance)
+	require.Equal(t, 1, concordance.Checked)
+	require.Equal(t, 1, concordance.Mismatched)
+	require.Len(t, concordance.Mismatches, 1)
+	require.Equal(t, "ent-augias", concordance.Mismatches[0].EntityID)
+	require.Equal(t, OverlayIntentReasonEntityNotPlanned, concordance.Mismatches[0].Reason)
+}
+
 func TestOverlayAuditBindsEntityCardImageWithoutEntityRef(t *testing.T) {
 	entity := capabilityoverlay.ResolvedEntity{
 		EntityID: "ent-villa", Type: "GPE", Text: "Villa Pamphili",

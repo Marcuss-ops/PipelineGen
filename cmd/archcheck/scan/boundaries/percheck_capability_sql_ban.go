@@ -58,7 +58,7 @@ var capabilitySQLInventory = map[string]string{
 	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go": "owner=stock-enrichment; removal_trigger=handler repository moves to platform",
 	"internal/capabilities/assets/providers/stock/enrichment/outbox_emitter.go":     "owner=stock-enrichment; removal_trigger=outbox emitter uses a domain port",
 	"internal/capabilities/assets/texttracks/materializer.go":                       "owner=texttracks; removal_trigger=materializer store moves to platform/sqlite",
-	"internal/capabilities/jobs/delivery.go":                                        "owner=jobs; removal_trigger=delivery persistence moves to platform",
+	"internal/capabilities/jobs/handlers/delivery.go":                               "owner=jobs; removal_trigger=delivery persistence moves to platform",
 	"internal/capabilities/jobs/finalize/artifact_writer.go":                        "owner=jobs-finalize; removal_trigger=artifact writer moves to platform/sqlite",
 	"internal/capabilities/jobs/finalize/job_completion_writer.go":                  "owner=jobs-finalize; removal_trigger=completion writer moves to platform/sqlite",
 	"internal/capabilities/jobs/finalize/job_finalizer.go":                          "owner=jobs-finalize; removal_trigger=finalizer tx ownership moves to platform",

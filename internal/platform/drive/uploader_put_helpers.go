@@ -48,6 +48,27 @@ func setAppProperties(file *driveapi.File, idemKey string) {
 	}
 }
 
+// driveWriteMeta projects the WRITE response onto the verifier envelope
+// (WST-01). It returns nil when the response does not carry enough identity to
+// stand in for a Files.Get, so the caller falls back to the live read instead
+// of verifying against a partial answer: the optimisation must never weaken the
+// post-upload gate.
+func driveWriteMeta(file *driveapi.File) *FileMeta {
+	if file == nil || strings.TrimSpace(file.Id) == "" || strings.TrimSpace(file.Name) == "" {
+		return nil
+	}
+	if len(file.Parents) == 0 || file.Size <= 0 {
+		return nil
+	}
+	return &FileMeta{
+		ID:          file.Id,
+		Name:        file.Name,
+		Size:        file.Size,
+		Parents:     append([]string(nil), file.Parents...),
+		WebViewLink: file.WebViewLink,
+	}
+}
+
 // truncate16 returns the first 16 characters of s, or s itself if shorter.
 // Used for error-message prefixes to avoid leaking full idempotency keys.
 func truncate16(s string) string {

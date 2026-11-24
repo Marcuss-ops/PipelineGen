@@ -115,7 +115,7 @@ func (r *Runner) ensureFinalJobFixedMediaSubtitles(ctx context.Context, runID st
 			if staged := r.stagedLocalizedRender(result, scene.ID, Language(language), clipID); staged != nil {
 				input.ResumeFrom = staged
 			}
-			prepared, err := r.prepareLocalizedRenderInput(ctx, input)
+			prepared, err := r.prepareLocalizedRenderInput(ctx, input, true)
 			if err != nil {
 				return fmt.Errorf("final_job subtitles: prepare resume for scene %q clip %q: %w", scene.ID, clipID, err)
 			}

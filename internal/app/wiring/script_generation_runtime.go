@@ -79,6 +79,63 @@ func (a *scriptGenerationTranslator) Translate(ctx context.Context, input script
 	return result.TranslatedText, nil
 }
 
+// TranslateBatch is the batched variant of Translate (WST-04): one provider
+// request per scene chunk instead of one per scene. It is OPTIONAL, exactly
+// like the application port it adapts — a chain without the batched capability
+// reports the missing capability and the runner keeps the per-scene fan-out.
+func (a *scriptGenerationTranslator) TranslateBatch(ctx context.Context, input scriptgen.TranslationBatchInput) ([]string, error) {
+	if a == nil || a.port == nil {
+		return nil, fmt.Errorf("script generation translator is not configured")
+	}
+	port := a.port
+	if strings.EqualFold(strings.TrimSpace(input.Provider), "ollama") {
+		port = a.ollama
+		if port == nil {
+			return nil, fmt.Errorf("script generation Ollama translator is not configured")
+		}
+	}
+	if port == nil {
+		return nil, fmt.Errorf("script generation translator provider %q is not configured", input.Provider)
+	}
+	batcher, ok := port.(translation.BatchTranslationPort)
+	if !ok {
+		return nil, fmt.Errorf("script generation translator provider %q does not support batched translation", input.Provider)
+	}
+	segments := make([]translation.BatchTranslationSegment, 0, len(input.Items))
+	for _, item := range input.Items {
+		segments = append(segments, translation.BatchTranslationSegment{ID: item.SceneID, Text: item.Text})
+	}
+	command := translation.BatchTranslationCommand{
+		SourceLang: string(input.SourceLanguage),
+		TargetLang: string(input.TargetLanguage),
+		Segments:   segments,
+		// The runner already sized the chunk; the provider must not split it
+		// again or the 1:1 correlation with the scene ids would be lost.
+		ChunkSize: len(segments),
+	}
+	if input.Model != "" || input.Provider != "" {
+		command.ModelPolicy = &translation.ModelPolicy{Provider: input.Provider, Model: input.Model}
+	}
+	result, err := batcher.TranslateBatch(ctx, command)
+	if err != nil {
+		return nil, err
+	}
+	if len(result.Segments) != len(input.Items) {
+		return nil, fmt.Errorf("batched translation returned %d segments for %d scenes", len(result.Segments), len(input.Items))
+	}
+	out := make([]string, len(result.Segments))
+	for i, segment := range result.Segments {
+		if segment.ID != input.Items[i].SceneID {
+			return nil, fmt.Errorf("batched translation misaligned at %d: got %q want %q", i, segment.ID, input.Items[i].SceneID)
+		}
+		if strings.TrimSpace(segment.Text) == "" {
+			return nil, fmt.Errorf("batched translation returned empty text for scene %q", segment.ID)
+		}
+		out[i] = segment.Text
+	}
+	return out, nil
+}
+
 // scriptGenerationTranslationPort uses the provider chain selected by the
 // canonical text-track bundle (Argos with Ollama fallback by default). The
 // direct Ollama port remains the fallback for compositions that predate or

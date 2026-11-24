@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processorvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -166,7 +167,7 @@ func TestSceneAssetBinder_BindClips_ClearsExtraStaleClipBindings(t *testing.T) {
 // get their Bindings.Clip explicitly nil-ed.
 func TestClipBindingsProcessor_ClearsStaleBindings(t *testing.T) {
 	t.Parallel()
-	p := NewClipBindingsProcessor(zap.NewNop())
+	p := processorvoiceover.NewClipBindingsProcessor(zap.NewNop())
 
 	scenes := makeBinderScenes(5)
 	// Pre-populate scenes 2-4 with stale bindings.

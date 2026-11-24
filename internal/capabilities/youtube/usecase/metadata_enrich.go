@@ -103,115 +103,19 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 	}
 
 	if ym == nil {
-		s.log.Debug("no YouTube metadata available, building fallback search_text",
-			zap.String("clip_id", clipID))
-		s.buildFallbackSearchText(existing)
-		ytLang := existing.YouTubeLanguage()
-		if ytLang != "" {
-			existing.SetLanguage(ytLang)
-		}
-		if err := s.assetRepo.Upsert(ctx, existing); err != nil {
-			s.log.Warn("failed to save fallback search_text", zap.String("clip_id", clipID), zap.Error(err))
-		}
+		s.enrichClipFallback(ctx, existing)
 		return
 	}
 
 	cleanedDescription := tagutil.CleanYouTubeDescription(ym.Description)
 
-	// Read transcript via Pattern 0 port (P1.3).
-	var clipTranscript string
-	if s.transcriptReader != nil {
-		if text, err := s.transcriptReader.ReadTranscript(existing); err == nil && text != "" {
-			clipTranscript = text
-		}
-	}
-	cleanedTranscript := tagutil.CleanClipTranscript(clipTranscript)
+	clipTranscript, cleanedTranscript := s.readCleanTranscript(existing)
 
 	// Build clip metadata from user-provided fields or Ollama.
 	// P0.3: the legacy GenerateClipMetadata stub always returned nil,
 	// so we skip the Ollama call and fall through to fallback fields.
 	clipMetadata := s.resolveExistingMetadata(existing, cleanedTranscript)
-
-	// Fill gaps with fallback semantic fields
-	if clipMetadata != nil {
-		fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook :=
-			tagutil.DeriveFallbackSemanticFields(ym.Title, cleanedTranscript, cleanedDescription, clipMetadata.CleanTitle)
-		if len(clipMetadata.Topics) == 0 {
-			clipMetadata.Topics = fallbackTopics
-		}
-		if len(clipMetadata.Speakers) == 0 {
-			clipMetadata.Speakers = fallbackSpeakers
-		}
-		if len(clipMetadata.MentionedPeople) == 0 {
-			clipMetadata.MentionedPeople = fallbackMentionedPeople
-		}
-		if len(clipMetadata.People) == 0 && len(clipMetadata.MentionedPeople) > 0 {
-			clipMetadata.People = append([]string(nil), clipMetadata.MentionedPeople...)
-		}
-		if len(clipMetadata.SourceTags) == 0 {
-			clipMetadata.SourceTags = fallbackSourceTags
-		}
-		if len(clipMetadata.ClipTags) == 0 {
-			clipMetadata.ClipTags = fallbackClipTags
-		}
-		if len(clipMetadata.SearchKeywords) == 0 {
-			clipMetadata.SearchKeywords = fallbackSearchKeywords
-		}
-		if clipMetadata.Hook == "" {
-			clipMetadata.Hook = fallbackHook
-		}
-		if clipMetadata.CleanTranscript == "" {
-			clipMetadata.CleanTranscript = cleanedTranscript
-		}
-		if clipMetadata.EmbeddingText == "" {
-			clipMetadata.EmbeddingText = tagutil.BuildEmbeddingText(
-				clipMetadata.CleanTitle, clipMetadata.Summary, clipMetadata.Hook,
-				clipMetadata.Topics, clipMetadata.Speakers, clipMetadata.MentionedPeople,
-				clipMetadata.SourceTags, clipMetadata.ClipTags, clipMetadata.SearchKeywords,
-				cleanedTranscript,
-			)
-		}
-	}
-
-	embeddingText := tagutil.BuildEmbeddingText(ym.Title, "", "", nil, nil, nil, nil, nil, nil, cleanedTranscript)
-	if clipMetadata != nil {
-		if clipMetadata.EmbeddingText != "" {
-			embeddingText = clipMetadata.EmbeddingText
-		} else {
-			embeddingText = tagutil.BuildEmbeddingText(
-				clipMetadata.CleanTitle, clipMetadata.Summary, clipMetadata.Hook,
-				clipMetadata.Topics, clipMetadata.Speakers, clipMetadata.MentionedPeople,
-				clipMetadata.SourceTags, clipMetadata.ClipTags, clipMetadata.SearchKeywords,
-				cleanedTranscript,
-			)
-		}
-	}
-
-	existing.SearchText = embeddingText
-	existing.Tags = tagutil.MergeYouTubeClipTags(existing.Tags, ym.Tags, clipMetadata)
-
-	if clipMetadata != nil {
-		existing.SetClipSummary(clipMetadata.Summary)
-		existing.SetTopics(clipMetadata.Topics)
-		existing.SetSpeakers(clipMetadata.Speakers)
-		existing.SetMentionedPeople(clipMetadata.MentionedPeople)
-		existing.SetPeople(tagutil.MergeTagLists(clipMetadata.Speakers, clipMetadata.MentionedPeople, clipMetadata.People))
-		existing.SetSourceTags(clipMetadata.SourceTags)
-		existing.SetClipTags(clipMetadata.ClipTags)
-		existing.SetSearchKeywords(clipMetadata.SearchKeywords)
-		existing.SetHook(clipMetadata.Hook)
-		existing.SetCleanTitle(clipMetadata.CleanTitle)
-		existing.SetShortTitle(clipMetadata.ShortTitle)
-		existing.SetEmbeddingText(clipMetadata.EmbeddingText)
-		existing.SetSemanticTags(clipMetadata.Tags)
-		existing.SetQualityScore(clipMetadata.QualityScore)
-	}
-	if cleanedTranscript != "" {
-		existing.SetCleanTranscript(cleanedTranscript)
-	}
-	if ym.Language != "" {
-		existing.SetLanguage(ym.Language)
-	}
+	embeddingText := applyClipMetadata(existing, clipMetadata, ym, cleanedDescription, cleanedTranscript)
 
 	existing.SetYouTubeTitle(ym.Title)
 	existing.SetYouTubeDescription(ym.Description)
@@ -268,6 +172,127 @@ func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.Dow
 		zap.Int("categories", len(ym.Categories)),
 		zap.Int("semantic_text_len", len(embeddingText)),
 	)
+}
+
+// enrichClipFallback is the no-metadata path: assemble search text from the
+// clip's own fields and persist it without starting a second yt-dlp
+// subprocess.
+func (s *Service) enrichClipFallback(ctx context.Context, existing *asset.Asset) {
+	s.log.Debug("no YouTube metadata available, building fallback search_text",
+		zap.String("clip_id", existing.ID))
+	s.buildFallbackSearchText(existing)
+	if ytLang := existing.YouTubeLanguage(); ytLang != "" {
+		existing.SetLanguage(ytLang)
+	}
+	if err := s.assetRepo.Upsert(ctx, existing); err != nil {
+		s.log.Warn("failed to save fallback search_text", zap.String("clip_id", existing.ID), zap.Error(err))
+	}
+}
+
+// readCleanTranscript reads the on-disk transcript through the Pattern 0 port
+// and returns both the raw text (sponsor detection) and the cleaned text
+// (semantic fields).
+func (s *Service) readCleanTranscript(existing *asset.Asset) (raw, cleaned string) {
+	if s.transcriptReader == nil {
+		return "", ""
+	}
+	text, err := s.transcriptReader.ReadTranscript(existing)
+	if err != nil || text == "" {
+		return "", ""
+	}
+	return text, tagutil.CleanClipTranscript(text)
+}
+
+// applyClipMetadata fills the semantic gaps, composes the embedding text,
+// applies every metadata setter and returns the embedding text for the final
+// log. Behaviour is the pre-split inline block.
+func applyClipMetadata(existing *asset.Asset, clipMetadata *tagutil.CanonicalClipMetadata, ym *ports.DownloaderMetadata, cleanedDescription, cleanedTranscript string) string {
+	if clipMetadata != nil {
+		fillClipMetadataFallbacks(clipMetadata, ym, cleanedDescription, cleanedTranscript)
+	}
+
+	embeddingText := tagutil.BuildEmbeddingText(ym.Title, "", "", nil, nil, nil, nil, nil, nil, cleanedTranscript)
+	if clipMetadata != nil {
+		if clipMetadata.EmbeddingText != "" {
+			embeddingText = clipMetadata.EmbeddingText
+		} else {
+			embeddingText = tagutil.BuildEmbeddingText(
+				clipMetadata.CleanTitle, clipMetadata.Summary, clipMetadata.Hook,
+				clipMetadata.Topics, clipMetadata.Speakers, clipMetadata.MentionedPeople,
+				clipMetadata.SourceTags, clipMetadata.ClipTags, clipMetadata.SearchKeywords,
+				cleanedTranscript,
+			)
+		}
+	}
+
+	existing.SearchText = embeddingText
+	existing.Tags = tagutil.MergeYouTubeClipTags(existing.Tags, ym.Tags, clipMetadata)
+
+	if clipMetadata != nil {
+		existing.SetClipSummary(clipMetadata.Summary)
+		existing.SetTopics(clipMetadata.Topics)
+		existing.SetSpeakers(clipMetadata.Speakers)
+		existing.SetMentionedPeople(clipMetadata.MentionedPeople)
+		existing.SetPeople(tagutil.MergeTagLists(clipMetadata.Speakers, clipMetadata.MentionedPeople, clipMetadata.People))
+		existing.SetSourceTags(clipMetadata.SourceTags)
+		existing.SetClipTags(clipMetadata.ClipTags)
+		existing.SetSearchKeywords(clipMetadata.SearchKeywords)
+		existing.SetHook(clipMetadata.Hook)
+		existing.SetCleanTitle(clipMetadata.CleanTitle)
+		existing.SetShortTitle(clipMetadata.ShortTitle)
+		existing.SetEmbeddingText(clipMetadata.EmbeddingText)
+		existing.SetSemanticTags(clipMetadata.Tags)
+		existing.SetQualityScore(clipMetadata.QualityScore)
+	}
+	if cleanedTranscript != "" {
+		existing.SetCleanTranscript(cleanedTranscript)
+	}
+	if ym.Language != "" {
+		existing.SetLanguage(ym.Language)
+	}
+	return embeddingText
+}
+
+// fillClipMetadataFallbacks fills only the empty semantic fields from the
+// deterministic fallback derivation. Existing values always win.
+func fillClipMetadataFallbacks(clipMetadata *tagutil.CanonicalClipMetadata, ym *ports.DownloaderMetadata, cleanedDescription, cleanedTranscript string) {
+	fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook :=
+		tagutil.DeriveFallbackSemanticFields(ym.Title, cleanedTranscript, cleanedDescription, clipMetadata.CleanTitle)
+	if len(clipMetadata.Topics) == 0 {
+		clipMetadata.Topics = fallbackTopics
+	}
+	if len(clipMetadata.Speakers) == 0 {
+		clipMetadata.Speakers = fallbackSpeakers
+	}
+	if len(clipMetadata.MentionedPeople) == 0 {
+		clipMetadata.MentionedPeople = fallbackMentionedPeople
+	}
+	if len(clipMetadata.People) == 0 && len(clipMetadata.MentionedPeople) > 0 {
+		clipMetadata.People = append([]string(nil), clipMetadata.MentionedPeople...)
+	}
+	if len(clipMetadata.SourceTags) == 0 {
+		clipMetadata.SourceTags = fallbackSourceTags
+	}
+	if len(clipMetadata.ClipTags) == 0 {
+		clipMetadata.ClipTags = fallbackClipTags
+	}
+	if len(clipMetadata.SearchKeywords) == 0 {
+		clipMetadata.SearchKeywords = fallbackSearchKeywords
+	}
+	if clipMetadata.Hook == "" {
+		clipMetadata.Hook = fallbackHook
+	}
+	if clipMetadata.CleanTranscript == "" {
+		clipMetadata.CleanTranscript = cleanedTranscript
+	}
+	if clipMetadata.EmbeddingText == "" {
+		clipMetadata.EmbeddingText = tagutil.BuildEmbeddingText(
+			clipMetadata.CleanTitle, clipMetadata.Summary, clipMetadata.Hook,
+			clipMetadata.Topics, clipMetadata.Speakers, clipMetadata.MentionedPeople,
+			clipMetadata.SourceTags, clipMetadata.ClipTags, clipMetadata.SearchKeywords,
+			cleanedTranscript,
+		)
+	}
 }
 
 // resolveExistingMetadata builds a CanonicalClipMetadata from user-provided

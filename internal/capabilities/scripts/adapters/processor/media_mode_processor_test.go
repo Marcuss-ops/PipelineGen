@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processorvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -35,7 +36,7 @@ func TestMediaModeClipOnlyClearsOppositeStockBinding(t *testing.T) {
 			ID: "scene-0", Bindings: scriptpkg.SceneBindings{Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}},
 		}}},
 	}
-	result, err := NewClipBindingsProcessor(nil).Process(context.Background(), &scriptpkg.ResolvedGenerationPlan{
+	result, err := processorvoiceover.NewClipBindingsProcessor(nil).Process(context.Background(), &scriptpkg.ResolvedGenerationPlan{
 		MediaMode:    scriptpkg.MediaModeClipOnly,
 		ClipEvidence: &scriptpkg.ClipEvidence{AcceptedClipIDs: []string{"clip-1"}, DriveLinks: map[string]string{"clip-1": "https://drive.google.com/file/d/clip-1/view"}},
 	}, input)

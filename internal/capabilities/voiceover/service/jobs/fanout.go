@@ -22,6 +22,11 @@
 // concrete and the use case stays free of any `internal/jobs`
 // carrier. Future BACKFILL stages (idempotency, audit) layer onto
 // this struct without touching the dispatcher.
+//
+// GOP-11 (November 2026): Execute is now the orchestration only.
+// Per-item enqueue lives in enqueueFanoutItem and the stage-progress
+// projection in buildFanoutStageProgress; wire shape and counts are
+// unchanged.
 package jobs
 
 import (
@@ -154,19 +159,49 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		return nil, fmt.Errorf("FanoutVoiceoversUseCase.Execute: validate (parent_job_id=%s): %w", parentJobID, err)
 	}
 
-	total := len(cmd.Items)
-	// P0.6 request_id threading: use the caller-supplied request_id
-	// when available (threaded from API → CorrelationID by
-	// GenerateJobHandler). Fall back to parentJobID (the only stable
-	// identifier always available). Never call BuildRequestID() —
-	// generating a new random ID at every layer is the root cause of
-	// the audit finding: "API request_id (A) → correlation (A) →
-	// fanout generates B → child ignores B → GenerateBatch generates C".
+	result := newFanoutResult(parentJobID, cmd)
+	for idx, itemSpec := range cmd.Items {
+		childID, ok := u.enqueueFanoutItem(ctx, parentJobID, result.RequestID, idx, itemSpec, cmd)
+		result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
+		result.ChildJobIDs = append(result.ChildJobIDs, childID)
+		if ok {
+			result.EnqueuedCount++
+			continue
+		}
+		result.FailedEnqueueCount++
+		result.OK = false
+	}
+
+	u.deps.Logger.Info("FanoutUseCase: enqueue done",
+		zap.String("parent_job_id", parentJobID),
+		zap.String("request_id", result.RequestID),
+		zap.Int("total", result.TotalOutputs),
+		zap.Int("enqueued", result.EnqueuedCount),
+		zap.Int("failed", result.FailedEnqueueCount))
+
+	result.StageProgress = buildFanoutStageProgress(result)
+	if !result.OK {
+		err := fmt.Errorf("FanoutVoiceoversUseCase.Execute: parent_job_id=%s partial fan-out (%d/%d failed)",
+			parentJobID, result.FailedEnqueueCount, result.TotalOutputs)
+		return result, err
+	}
+	return result, nil
+}
+
+// newFanoutResult initialises the canonical parent result and resolves the
+// P0.6 request_id: the caller-supplied request_id when available (threaded
+// from API → CorrelationID by GenerateJobHandler), otherwise parentJobID (the
+// only stable identifier always available). Never call BuildRequestID() —
+// generating a new random ID at every layer is the root cause of the audit
+// finding: "API request_id (A) → correlation (A) → fanout generates B → child
+// ignores B → GenerateBatch generates C".
+func newFanoutResult(parentJobID string, cmd *voiceover.GenerateVoiceoversCommand) *FanoutResult {
 	requestID := cmd.RequestID
 	if requestID == "" {
 		requestID = parentJobID
 	}
-	result := &FanoutResult{
+	total := len(cmd.Items)
+	return &FanoutResult{
 		OK:           true,
 		ParentJobID:  parentJobID,
 		RequestID:    requestID,
@@ -174,127 +209,121 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		ChildJobIDs:  make([]string, 0, total),
 		PerLanguage:  make([]string, 0, total),
 	}
+}
 
-	for idx, itemSpec := range cmd.Items {
-		// Per-item textHash: each item may have a different text so the
-		// hash is NOT shared across siblings. This protects per-item
-		// dedupe (Step 5 invariant: never merge items with different
-		// texts into the same ActiveKey footprint).
-		//
-		// PR-VO-TYPED-PRIMITIVES (July 2026): the canonical impl is
-		// voiceover.ComputeTextHash (the pre-refactor textHashSHA256
-		// helper here was a byte-equivalent duplicate, now collapsed).
-		itemTextHash := voiceover.ComputeTextHash(itemSpec.Text)
+// enqueueFanoutItem builds and enqueues one per-item child. It returns the
+// enqueued child ID and true on success; a filename/validation/enqueue
+// failure is logged and degraded to a failed fan-out entry (never panics the
+// parent job), returning ("", false).
+func (u *FanoutVoiceoversUseCase) enqueueFanoutItem(
+	ctx context.Context,
+	parentJobID, requestID string,
+	idx int,
+	itemSpec voiceover.VoiceoverItem,
+	cmd *voiceover.GenerateVoiceoversCommand,
+) (string, bool) {
+	// Per-item textHash: each item may have a different text so the
+	// hash is NOT shared across siblings. This protects per-item
+	// dedupe (Step 5 invariant: never merge items with different
+	// texts into the same ActiveKey footprint).
+	//
+	// PR-VO-TYPED-PRIMITIVES (July 2026): the canonical impl is
+	// voiceover.ComputeTextHash (the pre-refactor textHashSHA256
+	// helper here was a byte-equivalent duplicate, now collapsed).
+	itemTextHash := voiceover.ComputeTextHash(itemSpec.Text)
 
-		// E4: per-item filename via canonical BuildVoiceoverFilename with
-		// the per-item textHash threaded into the {hash} token slot (so
-		// two items with same lang+voice but different text get different
-		// filenames, no sibling collision). cmd.Validate already gates
-		// Text/Language non-empty above, so the error path is unreachable
-		// in production.
-		//
-		// Graceful degradation (godlike/07 minimal-blast-radius): a
-		// filename build failure is a SECONDARY concern — it must degrade
-		// this single item to a failed fan-out entry, never panic the
-		// whole parent job/worker.
-		filename := itemSpec.Filename
-		var ferr error
-		if filename == "" {
-			filename, ferr = voiceover.BuildVoiceoverFilename(voiceover.FilenameSpec{
-				Text:     itemSpec.Text,
-				Language: itemSpec.Language,
-				TextHash: string(itemTextHash),
-			})
-		}
-		if ferr != nil {
-			u.deps.Logger.Warn("FanoutUseCase: child filename build failed",
-				zap.String("parent_job_id", parentJobID),
-				zap.Int("item_index", idx),
-				zap.String("language", string(itemSpec.Language)),
-				zap.Error(ferr))
-			result.FailedEnqueueCount++
-			result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
-			result.ChildJobIDs = append(result.ChildJobIDs, "")
-			result.OK = false
-			continue
-		}
-
-		item := voiceover.GenerateVoiceoverItemCommand{
-			ParentJobID:   parentJobID,
-			RequestID:     requestID,
-			Text:          itemSpec.Text,
-			TextHash:      itemTextHash,
-			Language:      itemSpec.Language,
-			Voice:         itemSpec.Voice,
-			Filename:      filename,
-			Required:      itemSpec.Required,
-			Destination:   cmd.Destination,
-			Strategy:      cmd.Strategy,
-			RemoveSilence: cmd.RemoveSilence,
-			Timing:        cmd.Timing,
-			Metadata:      cmd.Metadata,
-			// ThreadingCampaign 2026-07-08: propagate the parent's
-			// Project field down to every child so the
-			// delivery.Publisher path builder sees `cmd.Project` per
-			// per-item payload. Without this line, the child struct's
-			// fallback (per its goddoc) kicks in: pre-PR-12 FolderID
-			// OR canonical voiceover ID — neither surfaces the
-			// canonical `{project}/{language}/` Drive subdir layout.
-			Project: cmd.Project,
-		}
-		if err := item.Validate(); err != nil {
-			u.deps.Logger.Warn("FanoutUseCase: child command validation failed",
-				zap.String("parent_job_id", parentJobID),
-				zap.Int("item_index", idx),
-				zap.String("language", string(itemSpec.Language)),
-				zap.Error(err))
-			result.FailedEnqueueCount++
-			result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
-			result.ChildJobIDs = append(result.ChildJobIDs, "")
-			result.OK = false
-			continue
-		}
-
-		// P0.5 idempotency: child ActiveKey covers parentJobID + index +
-		// item textHash + item language + item voice so the broker's
-		// FindActiveByKey returns the existing child instead of enqueuing
-		// a duplicate when the parent is retried after a partial fan-out.
-		// Per-item text hash means two items with identical (lang, voice)
-		// but different texts are NOT folded into one key (Step 5 fix).
-		childActiveKey := fmt.Sprintf("voiceover:item:%s:%d:%s:%s:%s",
-			parentJobID, idx, itemTextHash, itemSpec.Language, itemSpec.Voice)
-
-		enqueued, err := u.deps.Enqueuer.Enqueue(ctx, &job.EnqueueRequest{
-			Type:          jobvoiceover.TypeGenerateItem,
-			Payload:       item,
-			CorrelationID: fmt.Sprintf("%s:item:%d", requestID, idx),
-			ActiveKey:     childActiveKey,
+	// E4: per-item filename via canonical BuildVoiceoverFilename with
+	// the per-item textHash threaded into the {hash} token slot (so
+	// two items with same lang+voice but different text get different
+	// filenames, no sibling collision). cmd.Validate already gates
+	// Text/Language non-empty above, so the error path is unreachable
+	// in production.
+	//
+	// Graceful degradation (godlike/07 minimal-blast-radius): a
+	// filename build failure is a SECONDARY concern — it must degrade
+	// this single item to a failed fan-out entry, never panic the
+	// whole parent job/worker.
+	filename := itemSpec.Filename
+	var ferr error
+	if filename == "" {
+		filename, ferr = voiceover.BuildVoiceoverFilename(voiceover.FilenameSpec{
+			Text:     itemSpec.Text,
+			Language: itemSpec.Language,
+			TextHash: string(itemTextHash),
 		})
-		if err != nil {
-			u.deps.Logger.Warn("FanoutUseCase: enqueue child failed",
-				zap.String("parent_job_id", parentJobID),
-				zap.Int("item_index", idx),
-				zap.String("language", string(itemSpec.Language)),
-				zap.Error(err))
-			result.FailedEnqueueCount++
-			result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
-			result.ChildJobIDs = append(result.ChildJobIDs, "")
-			result.OK = false
-			continue
-		}
-		result.EnqueuedCount++
-		result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
-		result.ChildJobIDs = append(result.ChildJobIDs, enqueued.ID)
+	}
+	if ferr != nil {
+		u.deps.Logger.Warn("FanoutUseCase: child filename build failed",
+			zap.String("parent_job_id", parentJobID),
+			zap.Int("item_index", idx),
+			zap.String("language", string(itemSpec.Language)),
+			zap.Error(ferr))
+		return "", false
 	}
 
-	u.deps.Logger.Info("FanoutUseCase: enqueue done",
-		zap.String("parent_job_id", parentJobID),
-		zap.String("request_id", requestID),
-		zap.Int("total", total),
-		zap.Int("enqueued", result.EnqueuedCount),
-		zap.Int("failed", result.FailedEnqueueCount))
+	item := voiceover.GenerateVoiceoverItemCommand{
+		ParentJobID:   parentJobID,
+		RequestID:     requestID,
+		Text:          itemSpec.Text,
+		TextHash:      itemTextHash,
+		Language:      itemSpec.Language,
+		Voice:         itemSpec.Voice,
+		Filename:      filename,
+		Required:      itemSpec.Required,
+		Destination:   cmd.Destination,
+		Strategy:      cmd.Strategy,
+		RemoveSilence: cmd.RemoveSilence,
+		Timing:        cmd.Timing,
+		Metadata:      cmd.Metadata,
+		// ThreadingCampaign 2026-07-08: propagate the parent's
+		// Project field down to every child so the
+		// delivery.Publisher path builder sees `cmd.Project` per
+		// per-item payload. Without this line, the child struct's
+		// fallback (per its goddoc) kicks in: pre-PR-12 FolderID
+		// OR canonical voiceover ID — neither surfaces the
+		// canonical `{project}/{language}/` Drive subdir layout.
+		Project: cmd.Project,
+	}
+	if err := item.Validate(); err != nil {
+		u.deps.Logger.Warn("FanoutUseCase: child command validation failed",
+			zap.String("parent_job_id", parentJobID),
+			zap.Int("item_index", idx),
+			zap.String("language", string(itemSpec.Language)),
+			zap.Error(err))
+		return "", false
+	}
 
-	stageStatuses := make([]job.StageLanguageStatus, 0, total)
+	// P0.5 idempotency: child ActiveKey covers parentJobID + index +
+	// item textHash + item language + item voice so the broker's
+	// FindActiveByKey returns the existing child instead of enqueuing
+	// a duplicate when the parent is retried after a partial fan-out.
+	// Per-item text hash means two items with identical (lang, voice)
+	// but different texts are NOT folded into one key (Step 5 fix).
+	childActiveKey := fmt.Sprintf("voiceover:item:%s:%d:%s:%s:%s",
+		parentJobID, idx, itemTextHash, itemSpec.Language, itemSpec.Voice)
+
+	enqueued, err := u.deps.Enqueuer.Enqueue(ctx, &job.EnqueueRequest{
+		Type:          jobvoiceover.TypeGenerateItem,
+		Payload:       item,
+		CorrelationID: fmt.Sprintf("%s:item:%d", requestID, idx),
+		ActiveKey:     childActiveKey,
+	})
+	if err != nil {
+		u.deps.Logger.Warn("FanoutUseCase: enqueue child failed",
+			zap.String("parent_job_id", parentJobID),
+			zap.Int("item_index", idx),
+			zap.String("language", string(itemSpec.Language)),
+			zap.Error(err))
+		return "", false
+	}
+	return enqueued.ID, true
+}
+
+// buildFanoutStageProgress projects the per-item enqueue outcome into the
+// canonical stage_progress map (queued when a child ID exists, failed
+// otherwise), in item order.
+func buildFanoutStageProgress(result *FanoutResult) map[string]job.StageProgress {
+	stageStatuses := make([]job.StageLanguageStatus, 0, result.TotalOutputs)
 	for i, language := range result.PerLanguage {
 		status := job.StageQueued
 		childJobID := ""
@@ -308,13 +337,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			Stage: job.StageVoiceover, Language: language, Status: status, JobID: childJobID,
 		})
 	}
-	result.StageProgress = job.AggregateStageProgressByStage(stageStatuses)
-	if !result.OK {
-		err := fmt.Errorf("FanoutVoiceoversUseCase.Execute: parent_job_id=%s partial fan-out (%d/%d failed)",
-			parentJobID, result.FailedEnqueueCount, total)
-		return result, err
-	}
-	return result, nil
+	return job.AggregateStageProgressByStage(stageStatuses)
 }
 
 // buildItemFilenameCanonical — REMOVED in E4 (June 2026). The
@@ -323,11 +346,3 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 // threaded into the {hash} token slot. The one-line canonical call
 // absorbs both the previous buildItemFilename+slug pair AND the
 // per-item uniqueness invariant (text+lang+hash triplet).
-
-// textHashSHA256 — REMOVED in PR-VO-TYPED-PRIMITIVES (July 2026).
-// The canonical impl is now voiceover.ComputeTextHash
-// (internal/capabilities/voiceover/texthash.go). The pre-refactor
-// helper was a byte-equivalent duplicate of
-// voiceover.ComputeTextHash (per the audit-pin in the canonical
-// impl's package doc) and the consolidation collapses both
-// into the typed envelope + canonical impl.

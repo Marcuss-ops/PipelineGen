@@ -178,7 +178,11 @@ type LocalizeInput struct {
 	FolderID               string
 	SubtitleFolderID       string
 	UploadSubtitleArtifact bool
-	OnRendered             func(localization.LocalizedClipArtifact) error
+	// SkipDrivePublication renders and certifies locally without uploading:
+	// the final-job object-store path consumes the local bytes and never reads
+	// a Drive identity for this clip.
+	SkipDrivePublication bool
+	OnRendered           func(localization.LocalizedClipArtifact) error
 }
 
 func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*localization.LocalizeResult, error) {
@@ -246,6 +250,7 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		FolderID:               in.FolderID,
 		SubtitleFolderID:       in.SubtitleFolderID,
 		UploadSubtitleArtifact: in.UploadSubtitleArtifact,
+		SkipDrivePublication:   in.SkipDrivePublication,
 		Plans:                  plans,
 	})
 }

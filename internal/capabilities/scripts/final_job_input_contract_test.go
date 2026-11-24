@@ -48,16 +48,16 @@ func TestFinalJobAssemblyReadsOnlyTheProjection(t *testing.T) {
 	}
 	root := filepath.Dir(filename)
 
-	resultFields := structFieldNames(t, filepath.Join(root, "model_result.go"), "GenerateResult")
+	resultFields := structFieldNames(t, filepath.Join(root, "contract", "model_result.go"), "GenerateResult")
 	if len(resultFields) == 0 {
 		t.Fatal("could not read the GenerateResult field list")
 	}
-	allowed := finalJobProjectionFields(t, filepath.Join(root, "final_job_payload.go"))
+	allowed := finalJobProjectionFields(t, filepath.Join(root, "finaljob", "final_job_payload.go"))
 	if len(allowed) == 0 {
 		t.Fatal("could not read the finalJobInputFor projection")
 	}
 
-	entries, err := os.ReadDir(root)
+	entries, err := os.ReadDir(filepath.Join(root, "finaljob"))
 	if err != nil {
 		t.Fatalf("read package dir: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestFinalJobAssemblyReadsOnlyTheProjection(t *testing.T) {
 		if _, exempt := finalJobResultFullReaderFiles[name]; exempt {
 			continue
 		}
-		read := finalJobResultReads(t, filepath.Join(root, name))
+		read := finalJobResultReads(t, filepath.Join(root, "finaljob", name))
 		for _, field := range read {
 			if !resultFields[field] || allowed[field] {
 				continue

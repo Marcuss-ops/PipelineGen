@@ -167,6 +167,26 @@ func buildVoiceoverPipeline(
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := imagesregistry.NewVoiceoversRepository(dbs.DualPool.Writer)
 
+	deps, err := buildVoiceoverPersistence(cfg, dbs, log, voRepo, driveUploader, publisher, assetIndexService, clipIndexerService, outboxDispatcher, committer)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	executor, audioProcessor, err := buildVoiceoverItemUseCase(cfg, log, mediaConfig, destResolver, voDir, deps)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	log.Info("Voiceover canonical pipeline initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
+	return voRepo, executor, audioProcessor, deps.publishPool, nil
+}
+
+type voiceoverPersistence struct {
+	voRepoAdapter  *vowiring.UseCaseRepoAdapter
+	voCacheAdapter *vowiring.VoiceoverCacheAdapter
+	publishPool    voiceover.AsyncPublishPool
+	finalizer      voiceover.VoiceoverFinalizer
+}
+
+func buildVoiceoverPersistence(cfg *config.Config, dbs *Databases, log *zap.Logger, voRepo *assets.VoiceoversRepository, driveUploader *drive.Uploader, publisher delivery.Publisher, assetIndexService *assetindex.Service, clipIndexerService *capindexing.ReindexRequesterHolder, outboxDispatcher *outbox.Dispatcher, committer assetspersistence.AssetCommitter) (*voiceoverPersistence, error) {
 	// P1-2 (June 2026): persistence.Repository adapter — wraps the
 	// production *sqassets.VoiceoversRepository + *sql.DB so the
 	// voiceover.Service can thread the PR-VO-A2 atomic swap tx
@@ -255,6 +275,20 @@ func buildVoiceoverPipeline(
 		log,               // *zap.Logger
 	)
 
+	return &voiceoverPersistence{
+		voRepoAdapter:  voRepoAdapter,
+		voCacheAdapter: voCacheAdapter,
+		publishPool:    publishPool,
+		finalizer:      finalizer,
+	}, nil
+}
+
+func buildVoiceoverItemUseCase(cfg *config.Config, log *zap.Logger, mediaConfig mediaexec.ExecutionConfig, destResolver asset.Resolver, voDir string, deps *voiceoverPersistence) (voiceover.VoiceoverItemExecutor, *audioasset.Processor, error) {
+	voRepoAdapter := deps.voRepoAdapter
+	voCacheAdapter := deps.voCacheAdapter
+	publishPool := deps.publishPool
+	finalizer := deps.finalizer
+
 	// TTS chain — raw processor → use-case adapter → retryable → rate-limited.
 	// Extracted to build_voiceover_tts.go (shared by the legacy batch
 	// service and the canonical per-item use case).
@@ -340,7 +374,7 @@ func buildVoiceoverPipeline(
 		rustexec.NewSemanticEngineExecutor(cfg.External.RustSemanticEnginePath, cfg.External.FfmpegPath, log),
 	)
 	if phraseErr != nil {
-		return nil, nil, nil, nil, fmt.Errorf("voiceover phrase aligner: %w", phraseErr)
+		return nil, nil, fmt.Errorf("voiceover phrase aligner: %w", phraseErr)
 	}
 
 	// The use case satisfies voiceover.VoiceoverItemExecutor
@@ -388,7 +422,7 @@ func buildVoiceoverPipeline(
 	// per godlike/07 NO-FAKE-AVAILABILITY.
 	log.Info("Voiceover canonical pipeline initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
-	return voRepo, processItemUseCase, audioProcessor, publishPool, nil
+	return processItemUseCase, audioProcessor, nil
 }
 
 // wireVoiceoverJobBindings registers voiceover.generate (Catena A P0) +

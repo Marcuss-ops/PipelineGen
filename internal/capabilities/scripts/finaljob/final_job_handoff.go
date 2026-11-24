@@ -1,0 +1,169 @@
+// Package scriptgeneration — final_job_handoff.go: the certified rendered-clip
+// handoff identities (video name + run suffix), runtime/audio asset appends
+// and Drive link/id helpers for the final job payload.
+//
+// Split out of final_job_payload.go to respect max_lines_per_file_strict
+// (same package, no behavior change).
+package finaljob
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
+)
+
+// ── Certified rendered-clip handoff ───────────────────────────────────
+//
+// FinalJobVideoName derives the Master submission identity from the run, never
+// from the caller's title/project. Two runs of the same topic share a title
+// (OutputName defaults to the title), and an identical video_name made the
+// second submission collide on the Master's replace_overlap guard (HTTP 422).
+// A run-scoped suffix keeps the readable title prefix while guaranteeing the
+// identity is unique per run and stable across retries of the same run.
+//
+// The readable prefix is ASCII-only. The Master's artifact commit path must not
+// depend on UTF-8: a 2026-11-14 live run whose title contained an em dash
+// stalled the worker's artifact-upload ack for 300 s, while the same plan with
+// an ASCII prefix completed in 1.37 s. Non-ASCII runes are replaced by '-' so
+// the identity stays filesystem- and URL-safe.
+func FinalJobVideoName(req contract.GenerateRequest, runID string) string {
+	base := finalJobSafeBase(firstFinalJobValue(req.OutputName, req.Title, "final-job"))
+	suffix := FinalJobIdentitySuffix(runID)
+	if suffix == "" {
+		return base
+	}
+	return base + " [" + suffix + "]"
+}
+
+// finalJobSafeBase keeps printable ASCII in the readable Master identity and
+// replaces every other rune with '-'. A base with nothing safe left falls back
+// to the constant so the identity can never be empty.
+func finalJobSafeBase(base string) string {
+	var b strings.Builder
+	b.Grow(len(base))
+	for _, r := range base {
+		if r >= 0x20 && r <= 0x7e {
+			b.WriteRune(r)
+			continue
+		}
+		b.WriteByte('-')
+	}
+	safe := strings.TrimSpace(b.String())
+	if strings.Trim(safe, "-") == "" {
+		return "final-job"
+	}
+	return safe
+}
+
+// FinalJobIdentitySuffix reduces the run id to a deterministic, filesystem- and
+// URL-safe token. It keeps the trailing segment (the run's unique uuid tail)
+// and drops anything that would need escaping in an identity field.
+func FinalJobIdentitySuffix(runID string) string {
+	id := strings.TrimSpace(runID)
+	if id == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(id))
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	suffix := strings.Trim(b.String(), "-")
+	if len(suffix) > 16 {
+		suffix = suffix[len(suffix)-16:]
+	}
+	return suffix
+}
+
+func firstFinalJobValue(values ...string) string {
+	for _, v := range values {
+		if v = strings.TrimSpace(v); v != "" {
+			return v
+		}
+	}
+	return "final-job"
+}
+
+func AppendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, ref map[string]any) {
+	if ref == nil {
+		return
+	}
+	id := FinalJobStringValue(ref["drive_file_id"])
+	if id == "" {
+		id = FinalJobStringValue(ref["asset_id"])
+	}
+	if id == "" || seen[role+":"+id] {
+		return
+	}
+	seen[role+":"+id] = true
+	item := make(map[string]any, len(ref)+1)
+	for key, value := range ref {
+		// Keep worker-local cache and stock paths out of the remote FINALIZE
+		// contract. Stock travels as its Drive identity, never as a local file.
+		if key == "local_path" || key == "local_source_path" || key == "local_only" {
+			continue
+		}
+		item[key] = value
+	}
+	if driveID := FinalJobStringValue(ref["drive_file_id"]); driveID != "" {
+		item["url"] = driveFileWebLink(driveID)
+	}
+	item["role"] = role
+	*dst = append(*dst, item)
+}
+
+func FinalJobAudioAsset(ctx context.Context, audio contract.FinalAudioReference) (map[string]any, error) {
+	driveID, _ := urlutil.FileIDFromDriveLink(audio.DriveLink)
+	if (!FinalJobObjectStoreConfigured() && driveID == "") || len(strings.TrimSpace(audio.FinalAudioSHA256)) != 64 || audio.SizeBytes <= 0 || audio.DurationMS <= 0 || !audio.FinalMix || !audio.CopyEligible {
+		return nil, fmt.Errorf("final_job requires a published, certified FINAL_AUDIO_COPY mix with source identity, SHA-256, size, and duration")
+	}
+	if !strings.EqualFold(strings.TrimSpace(audio.Codec), "aac") || !strings.EqualFold(strings.TrimSpace(audio.Profile), "LC") || audio.SampleRate != 48000 || audio.Channels != 2 || !strings.EqualFold(strings.TrimSpace(audio.ChannelLayout), "stereo") {
+		return nil, fmt.Errorf("final_job final audio is not canonical AAC-LC 48 kHz stereo")
+	}
+	if FinalJobObjectStoreConfigured() {
+		// Publish returns the signed reference after the single availability
+		// check/upload it already performed. Requesting the reference
+		// separately repeated the same HEAD for every final-job audio asset.
+		asset, err := PublishFinalJobLocalObject(ctx, audio.AssetID, audio.Path, audio.FinalAudioSHA256, audio.SizeBytes)
+		if err != nil {
+			return nil, fmt.Errorf("publish final audio to Objectstore: %w", err)
+		}
+		asset["duration_ms"] = audio.DurationMS
+		asset["codec"] = audio.Codec
+		asset["profile"] = audio.Profile
+		asset["sample_rate"] = audio.SampleRate
+		asset["channels"] = audio.Channels
+		asset["channel_layout"] = audio.ChannelLayout
+		asset["strategy"] = "FINAL_AUDIO_COPY"
+		asset["copy_eligible"] = audio.CopyEligible
+		asset["audio_contract_version"] = audio.AudioContractVersion
+		asset["audio_plan_version"] = audio.AudioPlanVersion
+		asset["audio_plan_sha256"] = audio.PlanSHA256
+		asset["final_mix"] = audio.FinalMix
+		return asset, nil
+	}
+	return map[string]any{
+		"asset_id": audio.AssetID, "drive_file_id": driveID,
+		"url": driveFileWebLink(driveID), "sha256": strings.TrimSpace(audio.FinalAudioSHA256),
+		"size_bytes": audio.SizeBytes, "duration_ms": audio.DurationMS,
+		"codec": audio.Codec, "profile": audio.Profile, "sample_rate": audio.SampleRate,
+		"channels": audio.Channels, "channel_layout": audio.ChannelLayout,
+		"strategy": "FINAL_AUDIO_COPY", "copy_eligible": audio.CopyEligible,
+		"audio_contract_version": audio.AudioContractVersion, "audio_plan_version": audio.AudioPlanVersion,
+		"audio_plan_sha256": audio.PlanSHA256, "final_mix": audio.FinalMix,
+	}, nil
+}
+
+func driveFileWebLink(driveID string) string {
+	// The Master resolver accepts the canonical deferred-Drive locator, which
+	// carries the exact Drive file ID without making the 77 fetch the asset.
+	return "velox-drive://" + strings.TrimSpace(driveID)
+}

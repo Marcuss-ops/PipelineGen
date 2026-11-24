@@ -14,9 +14,12 @@ import (
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
@@ -118,58 +121,12 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		log.Warn("wireScriptFlow: ScriptVoiceoverGenerator NOT wired (no voiceover pipeline) — voiceover stage will be skipped")
 	}
 
-	// Source resolvers.
-	normCfg, sourceReg, clipSourceBuilder, clipSearchPort := buildScriptSourceResolvers(cfg, root, log)
-	if root.AI != nil && root.AI.SceneTextGenerator != nil {
-		root.AI.SceneTextGenerator.SetSourceRegistry(sourceReg)
-		if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
-			prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-			root.AI.SceneTextGenerator.SetClipProber(prober)
-			log.Info("wireScriptFlow: SceneTextGenerator clip prober wired")
-		} else {
-			log.Warn("wireScriptFlow: Rust media executor path empty; SceneTextGenerator duration probe unavailable")
-		}
+	setup := buildScriptSourceSetup(cfg, root, log)
+	ppReg, vidRushProviders, vidRushFinalizer, vidRushCache, err := buildScriptPostProcessors(cfg, root, log, setup.sourceReg, setup.metaModel, searchFanOut)
+	if err != nil {
+		return err
 	}
-
-	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
-	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
-		metaModel = mm
-	}
-	// P0-3 (anti-muda): with OLLAMA_MAX_LOADED_MODELS=1 every model switch
-	// evicts the resident runner (tens of seconds). The default above keeps
-	// a single resident model; only an explicit distinct metadata model
-	// opts into the eviction cost.
-	if metaModel != "" && strings.TrimSpace(cfg.External.OllamaModel) != "" && metaModel != strings.TrimSpace(cfg.External.OllamaModel) {
-		log.Warn("wireScriptFlow: distinct metadata model opts into runner eviction (single-resident Ollama); set OLLAMA_METADATA_MODEL empty to reuse the script model")
-	}
-
-	// Post-processors.
-	scriptsRepoAdapter := sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
-	ppReg := adapters.NewPostProcessorRegistry(log)
-	ppReg.SetCanonicalTimingAdapter(&adapters.CanonicalTimingAdapter{})
-	vidRushProviders, vidRushFinalizer := (*adapters.VidRushAssetProviderRegistry)(nil), scriptports.VidRushArtifactFinalizer(nil)
-	if root.Drive != nil && root.Drive.Publisher != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		vidRushDeps := vidrushwiring.VidRushMaterializationDeps{
-			MediaPG: root.MediaPostgres,
-			Delivery: vidrushwiring.VidRushDeliveryPorts{
-				Publisher:  root.Drive.Publisher,
-				EventsRepo: root.Outbox.EventsRepo,
-			},
-			ImageSearcher: vidrushInternetImageSearcher(root, log),
-			MediaExec:     root.MediaExec,
-		}
-		vidRushProviders, vidRushFinalizer = vidrushwiring.BuildVidRushMaterialization(cfg, vidRushDeps, log)
-	}
-	vidRushCache := vidrushCachePort(root, log)
-	if err := registerScriptPostProcessors(ppReg, root, cfg, log, scriptsRepoAdapter, metaModel, searchFanOut, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
-		return fmt.Errorf("wireScriptFlow: %w", err)
-	}
-	sourceReg.Freeze()
-	ppReg.Freeze()
-	if err := validateRequiredProcessors(ppReg); err != nil {
-		return fmt.Errorf("wireScriptFlow: %w", err)
-	}
-
+	normCfg, sourceReg, clipSourceBuilder, clipSearchPort, metaModel := setup.normCfg, setup.sourceReg, setup.clipSourceBuilder, setup.clipSearchPort, setup.metaModel
 	// Use cases and job registration.
 	oneUC, manyUC, genJobHandler, useCaseErr := buildScriptUseCases(
 		cfg, root, normCfg, sourceReg, ppReg, clipSearchPort, clipSourceBuilder, log,
@@ -195,6 +152,98 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		root.AI.ScriptGen.SetMetadataModel(metaModel)
 	}
 
+	runtime, err := buildScriptFlowRuntime(cfg, root, log, oneUC, genJobHandler, vidRushProviders, vidRushFinalizer, vidRushCache)
+	if err != nil {
+		return err
+	}
+	return buildScriptFlowDescriptor(registry, log, cfg, root, oneUC, genJobHandler, runtime)
+}
+
+type scriptSourceSetup struct {
+	normCfg           processor.NormalizationConfig
+	sourceReg         *processor.SourceRegistry
+	clipSourceBuilder *usecase.ClipSourceBuilder
+	clipSearchPort    scriptports.AssetSearchPort
+	metaModel         string
+}
+
+func buildScriptSourceSetup(cfg *config.Config, root *ComposeRoot, log *zap.Logger) *scriptSourceSetup {
+	// Source resolvers.
+	normCfg, sourceReg, clipSourceBuilder, clipSearchPort := buildScriptSourceResolvers(cfg, root, log)
+	if root.AI != nil && root.AI.SceneTextGenerator != nil {
+		root.AI.SceneTextGenerator.SetSourceRegistry(sourceReg)
+		if strings.TrimSpace(cfg.External.RustMusclesPath) != "" {
+			prober := rustexec.NewVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
+			root.AI.SceneTextGenerator.SetClipProber(prober)
+			log.Info("wireScriptFlow: SceneTextGenerator clip prober wired")
+		} else {
+			log.Warn("wireScriptFlow: Rust media executor path empty; SceneTextGenerator duration probe unavailable")
+		}
+	}
+
+	metaModel := strings.TrimSpace(cfg.External.OllamaModel)
+	if mm := strings.TrimSpace(cfg.External.OllamaMetadataModel); mm != "" {
+		metaModel = mm
+	}
+	// P0-3/WST-02 (anti-muda): with OLLAMA_MAX_LOADED_MODELS=1 every model
+	// switch evicts the resident runner (tens of seconds). The residency policy
+	// is now ENFORCED, not logged: the generator maps every per-call model onto
+	// cfg.External.OllamaModel, so a distinct metadata model no longer buys an
+	// eviction — it is collapsed onto the resident one and the operator is told.
+	if metaModel != "" && strings.TrimSpace(cfg.External.OllamaModel) != "" && metaModel != strings.TrimSpace(cfg.External.OllamaModel) {
+		log.Warn("wireScriptFlow: distinct metadata model collapsed onto the single resident model (WST-02); set OLLAMA_METADATA_MODEL empty to silence this",
+			zap.String("resident_model", cfg.External.OllamaModel), zap.String("metadata_model", metaModel))
+	}
+
+	return &scriptSourceSetup{
+		normCfg:           normCfg,
+		sourceReg:         sourceReg,
+		clipSourceBuilder: clipSourceBuilder,
+		clipSearchPort:    clipSearchPort,
+		metaModel:         metaModel,
+	}
+}
+
+func buildScriptPostProcessors(cfg *config.Config, root *ComposeRoot, log *zap.Logger, sourceReg *processor.SourceRegistry, metaModel string, searchFanOut assetsearch.SearchFanOut) (*adapters.PostProcessorRegistry, *adapters.VidRushAssetProviderRegistry, scriptports.VidRushArtifactFinalizer, scriptports.VidRushCachePort, error) {
+	// Post-processors.
+	scriptsRepoAdapter := sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo)
+	ppReg := adapters.NewPostProcessorRegistry(log)
+	ppReg.SetCanonicalTimingAdapter(&adapters.CanonicalTimingAdapter{})
+	vidRushProviders, vidRushFinalizer := (*adapters.VidRushAssetProviderRegistry)(nil), scriptports.VidRushArtifactFinalizer(nil)
+	if root.Drive != nil && root.Drive.Publisher != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		vidRushDeps := vidrushwiring.VidRushMaterializationDeps{
+			MediaPG: root.MediaPostgres,
+			Delivery: vidrushwiring.VidRushDeliveryPorts{
+				Publisher:  root.Drive.Publisher,
+				EventsRepo: root.Outbox.EventsRepo,
+			},
+			ImageSearcher: vidrushInternetImageSearcher(root, log),
+			MediaExec:     root.MediaExec,
+		}
+		vidRushProviders, vidRushFinalizer = vidrushwiring.BuildVidRushMaterialization(cfg, vidRushDeps, log)
+	}
+	vidRushCache := vidrushCachePort(root, log)
+	if err := registerScriptPostProcessors(ppReg, root, cfg, log, scriptsRepoAdapter, metaModel, searchFanOut, vidRushProviders, vidRushFinalizer, vidRushCache); err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("wireScriptFlow: %w", err)
+	}
+	sourceReg.Freeze()
+	ppReg.Freeze()
+	if err := validateRequiredProcessors(ppReg); err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("wireScriptFlow: %w", err)
+	}
+
+	return ppReg, vidRushProviders, vidRushFinalizer, vidRushCache, nil
+}
+
+type scriptFlowRuntime struct {
+	runRepo         scriptgen.RunRepository
+	submissionSvc   *opsapp.Service
+	clipsSearcher   scriptapi.ClipSearcher
+	preflightAssets scriptapi.AssetPreflightReader
+	adminToken      string
+}
+
+func buildScriptFlowRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logger, oneUC *gencore.GenerateOneUseCase, genJobHandler *scriptjobs.GenerateJobHandler, vidRushProviders *adapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort) (*scriptFlowRuntime, error) {
 	var clipsSearcher scriptapi.ClipSearcher
 	if root.MediaPostgres != nil {
 		clipsSearcher = scriptwiring.NewClipsNameSearchAdapter(root.MediaPostgres)
@@ -217,7 +266,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	submissionSvc, err := buildScriptSubmissionService(root, log)
 	if err != nil {
-		return fmt.Errorf("wireScriptFlow: build script submission service: %w", err)
+		return nil, fmt.Errorf("wireScriptFlow: build script submission service: %w", err)
 	}
 
 	// The run repository belongs to generation submission + durable runtime.
@@ -227,7 +276,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if root.ObservabilityDB != nil {
 		repo, err := sqlitescripts.NewSQLiteRunRepository(root.ObservabilityDB.DB, log)
 		if err != nil {
-			return fmt.Errorf("wireScriptFlow: build script generation run repository: %w", err)
+			return nil, fmt.Errorf("wireScriptFlow: build script generation run repository: %w", err)
 		}
 		runRepo = repo
 		log.Info("wireScriptFlow: script generation run repository wired")
@@ -235,7 +284,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		log.Warn("wireScriptFlow: root.DB is nil — script generation run repository not wired")
 	}
 	if runRepo == nil {
-		return fmt.Errorf("wireScriptFlow: script generation run repository is required for POST /api/script/generate")
+		return nil, fmt.Errorf("wireScriptFlow: script generation run repository is required for POST /api/script/generate")
 	}
 	genJobHandler.SetRunRepository(runRepo)
 
@@ -243,14 +292,14 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		var finalAudioCommitter assetspersistence.AssetCommitter
 		if root.Outbox != nil && root.Outbox.EventsRepo != nil {
 			if w, werr := newCanonicalAssetCommitter(root.MediaPostgres, log); werr != nil {
-				return fmt.Errorf("wireScriptFlow: canonical media writer: %w", werr)
+				return nil, fmt.Errorf("wireScriptFlow: canonical media writer: %w", werr)
 			} else if w != nil {
 				finalAudioCommitter = w
 			}
 		}
 		durableRunner, runtimeErr := BuildScriptGenerationRuntime(cfg, root, runRepo, finalAudioCommitter, log, vidRushProviders, vidRushFinalizer, vidRushCache)
 		if runtimeErr != nil {
-			return fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
+			return nil, fmt.Errorf("wireScriptFlow: build durable script generation runtime: %w", runtimeErr)
 		}
 		genJobHandler.SetDurableRunner(durableRunner)
 		if root.Jobs != nil && root.Jobs.Repo != nil {
@@ -271,6 +320,22 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	} else {
 		log.Warn("wireScriptFlow: Rust media executor path is empty; durable RenderPlan runtime is unavailable")
 	}
+
+	return &scriptFlowRuntime{
+		runRepo:         runRepo,
+		submissionSvc:   submissionSvc,
+		clipsSearcher:   clipsSearcher,
+		preflightAssets: preflightAssets,
+		adminToken:      adminToken,
+	}, nil
+}
+
+func buildScriptFlowDescriptor(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, oneUC *gencore.GenerateOneUseCase, genJobHandler *scriptjobs.GenerateJobHandler, runtime *scriptFlowRuntime) error {
+	runRepo := runtime.runRepo
+	submissionSvc := runtime.submissionSvc
+	clipsSearcher := runtime.clipsSearcher
+	preflightAssets := runtime.preflightAssets
+	adminToken := runtime.adminToken
 
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{

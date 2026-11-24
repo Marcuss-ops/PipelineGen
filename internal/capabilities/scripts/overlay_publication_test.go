@@ -55,7 +55,7 @@ func TestScheduleFinalJobOverlayFramesUsesFreeGapBeforePlannedStart(t *testing.T
 		StartUS: 5_000_000, DurationUS: 5_000_000,
 	}
 	occupied := map[string]finalJobFrameWindow{
-		"map-late": {start: 120, end: 240, sceneID: "scene-1"},
+		"map-late": {Start: 120, End: 240, SceneID: "scene-1"},
 	}
 
 	start, end, err := scheduleFinalJobOverlayFrames(result, item, 120, 240, 24, 1, occupied)
@@ -80,8 +80,8 @@ func TestScheduleFinalJobImageOverlayShrinksToFreeSceneGap(t *testing.T) {
 		StartUS: 5_000_000, DurationUS: 5_000_000,
 	}
 	occupied := map[string]finalJobFrameWindow{
-		"text-a": {start: 0, end: 96, sceneID: "scene-1"},
-		"text-b": {start: 96, end: 180, sceneID: "scene-1"},
+		"text-a": {Start: 0, End: 96, SceneID: "scene-1"},
+		"text-b": {Start: 96, End: 180, SceneID: "scene-1"},
 	}
 
 	start, end, err := scheduleFinalJobOverlayFrames(result, item, 120, 240, 24, 1, occupied)
@@ -106,7 +106,7 @@ func TestScheduleFinalJobNumberOverlayShrinksToFreeSceneGap(t *testing.T) {
 		StartUS: 5_000_000, DurationUS: 5_000_000,
 	}
 	occupied := map[string]finalJobFrameWindow{
-		"text-a": {start: 0, end: 180, sceneID: "scene-1"},
+		"text-a": {Start: 0, End: 180, SceneID: "scene-1"},
 	}
 
 	start, end, err := scheduleFinalJobOverlayFrames(result, item, 120, 240, 24, 1, occupied)
@@ -131,7 +131,7 @@ func TestScheduleFinalJobImageOverlayCanBeOmittedWhenSceneHasNoGap(t *testing.T)
 		StartUS: 5_000_000, DurationUS: 5_000_000,
 	}
 	occupied := map[string]finalJobFrameWindow{
-		"full-scene": {start: 0, end: 240, sceneID: "scene-1"},
+		"full-scene": {Start: 0, End: 240, SceneID: "scene-1"},
 	}
 
 	_, _, err := scheduleFinalJobOverlayFrames(result, item, 120, 240, 24, 1, occupied)

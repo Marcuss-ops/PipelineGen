@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -286,51 +286,6 @@ func normalizeEntityAnnotationType(raw string) string {
 	return scriptpkg.NormalizeAnnotationType(raw)
 }
 
-// findEntitySpan locates the first case-sensitive (then case-insensitive)
-// occurrence of value in text and returns its rune span.
-//
-// The exact pass is delegated to the stdlib. The case-insensitive pass walks
-// rune-aligned byte offsets and compares zero-copy substrings with
-// strings.EqualFold: the previous implementation materialised a []rune copy of
-// the WHOLE text and built a fresh string per candidate position, which on a
-// per-scene call path was an O(len(text)) allocation storm (and is invoked
-// once per phrase and once per entity by the phrase grounding gate below).
-func findEntitySpan(text, value string) (scriptpkg.AnnotationSpan, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" || text == "" {
-		return scriptpkg.AnnotationSpan{}, false
-	}
-	if idx := strings.Index(text, value); idx >= 0 {
-		startRune := utf8.RuneCountInString(text[:idx])
-		return scriptpkg.AnnotationSpan{
-			Text:      text[idx : idx+len(value)],
-			StartRune: startRune,
-			EndRune:   startRune + utf8.RuneCountInString(value),
-		}, true
-	}
-	wantRunes := utf8.RuneCountInString(value)
-	if wantRunes == 0 {
-		return scriptpkg.AnnotationSpan{}, false
-	}
-	startRune := 0
-	for start := 0; start < len(text); {
-		if end := advanceRunes(text, start, wantRunes); end > start && strings.EqualFold(text[start:end], value) {
-			return scriptpkg.AnnotationSpan{
-				Text:      text[start:end],
-				StartRune: startRune,
-				EndRune:   startRune + wantRunes,
-			}, true
-		}
-		_, size := utf8.DecodeRuneInString(text[start:])
-		if size <= 0 {
-			break
-		}
-		start += size
-		startRune++
-	}
-	return scriptpkg.AnnotationSpan{}, false
-}
-
 // findAllEntitySpans returns every case-insensitive occurrence of value in
 // text as rune spans.
 func findAllEntitySpans(text, value string) []scriptpkg.AnnotationSpan {
@@ -472,7 +427,7 @@ func normalizePersonToken(token string) string {
 // precedence (SceneID, then Position); scenes without a matching segment keep
 // their nil Annotations. It mutates result.Scenes in place and never invents
 // annotations for a segment whose entities do not occur in the scene text.
-func applySegmentEntityAnnotations(result *GenerateResult, language Language, segments []scriptpkg.VidRushSegmentResult) {
+func applySegmentEntityAnnotations(result *contract.GenerateResult, language contract.Language, segments []scriptpkg.VidRushSegmentResult) {
 	if result == nil {
 		return
 	}
@@ -506,7 +461,7 @@ func applySegmentEntityAnnotations(result *GenerateResult, language Language, se
 // a SpecScene envelope. It is used by the batch postprocessor before artifact
 // publication so overlay planning and the final API all observe the same
 // entity/important-phrase surface.
-func ProjectSegmentAnnotations(spec *scriptpkg.SpecSceneOutput, language Language, segments []scriptpkg.VidRushSegmentResult) {
+func ProjectSegmentAnnotations(spec *scriptpkg.SpecSceneOutput, language contract.Language, segments []scriptpkg.VidRushSegmentResult) {
 	if spec == nil {
 		return
 	}
@@ -536,7 +491,7 @@ func ProjectSegmentAnnotations(spec *scriptpkg.SpecSceneOutput, language Languag
 // matching scene's canonical per-scene EntityResult surface (no second entity
 // model), mirroring applySegmentEntityAnnotations matching (SceneID, then
 // Position). An empty scene stays explicit; an entity is never invented.
-func applySegmentEntityResults(result *GenerateResult, segments []scriptpkg.VidRushSegmentResult) {
+func applySegmentEntityResults(result *contract.GenerateResult, segments []scriptpkg.VidRushSegmentResult) {
 	if result == nil {
 		return
 	}

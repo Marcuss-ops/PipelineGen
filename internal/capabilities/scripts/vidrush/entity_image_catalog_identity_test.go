@@ -1,0 +1,402 @@
+package vidrush
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
+
+func TestPersonImageSourceNameMismatchRejectsConflictingNamedImage(t *testing.T) {
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		url     string
+		wantBad bool
+	}{
+		{"https://example.test/2020/Angela-Tuccia-1.jpg", true},
+		{"https://example.test/angela%2520taccia.jpg", false},
+		{"https://example.test/IMG_6075-1-scaled.jpeg", false},
+		{"https://example.test/angela-taccia-avvocata.jpg", false},
+	}
+	for _, tc := range cases {
+		got := personImageSourceNameMismatch(identity.CanonicalName, tc.url)
+		if (got != "") != tc.wantBad {
+			t.Errorf("personImageSourceNameMismatch(%q) = %q, want mismatch=%v", tc.url, got, tc.wantBad)
+		}
+	}
+}
+
+func TestPersonImageSourceIdentityAllowsGenericFilenameForVisualVerification(t *testing.T) {
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name          string
+		sourceURL     string
+		sourcePageURL string
+		wantRejected  bool
+	}{
+		{name: "generic materialized filename", sourceURL: "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg", wantRejected: false},
+		{name: "explicitly different person", sourceURL: "https://www.aobmagazine.it/Angela-Tuccia-1.jpg", wantRejected: true},
+		{name: "double escaped canonical filename", sourceURL: "https://media.example/angela%2520taccia.jpg"},
+		{name: "canonical source page without durable image URL provenance", sourceURL: "https://cdn.example/IMG_6075.jpeg", sourcePageURL: "https://news.example/angela-taccia-avvocata-sempio"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := personImageSourceIdentityFailure(identity.CanonicalName, tc.sourceURL, tc.sourcePageURL)
+			if (got != "") != tc.wantRejected {
+				t.Fatalf("identity failure = %q, want rejected=%v", got, tc.wantRejected)
+			}
+		})
+	}
+}
+
+func TestEntityImageCatalogAcceptsCachedGenericFilenameWithVisualVerdict(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertEntity(context.Background(), entitycatalog.Entity{CanonicalEntityID: identity.CanonicalEntityID, EntityType: entitycatalog.EntityTypePerson, CanonicalName: identity.CanonicalName}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		Provider:          "duckduckgo",
+		Rank:              1,
+		SourceURL:         "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg",
+		Status:            entitycatalog.CandidateStatusFresh,
+		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
+		VerifierVersion:   entitycatalog.CandidateVerifierVersion,
+		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pool.Candidates) != 1 {
+		t.Fatalf("cached generic source returned %d person image candidates, want 1", len(pool.Candidates))
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("catalog rows=%d err=%v, want original candidate retained", len(rows), err)
+	}
+	if rows[0].SemanticStatus != entitycatalog.CandidateSemanticAccepted {
+		t.Fatalf("cached candidate verdict = %q, want the visual acceptance preserved", rows[0].SemanticStatus)
+	}
+}
+
+func TestDurableEntityImagePoolForSegmentAttachesVerifiedRows(t *testing.T) {
+	ctx := context.Background()
+	repo := newIntegrationEntityImageCatalog()
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertEntity(ctx, entitycatalog.Entity{CanonicalEntityID: identity.CanonicalEntityID, EntityType: entitycatalog.EntityTypePerson, CanonicalName: identity.CanonicalName}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		Provider:          "duckduckgo",
+		Rank:              1,
+		SourceURL:         "https://www.newspeople.it/wp-content/uploads/2026/05/angela-taccia-ritratto.jpeg",
+		SourcePageURL:     "https://www.newspeople.it/angela-taccia-avvocata-sempio",
+		Status:            entitycatalog.CandidateStatusFresh,
+		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
+		SemanticScore:     0.9,
+		VerifierVersion:   entitycatalog.CandidateVerifierVersion,
+		QualityReason:     "Ollama visual identity verification confirmed one dominant subject",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	segment := scriptpkg.VidRushSegmentResult{SegmentID: "seg-1"}
+	segment.Assets.Candidates = []scriptpkg.SegmentAssetCandidate{{
+		AssetID:  "search-1",
+		Provider: scriptpkg.VidRushProviderInternetImages,
+		Query:    "Angela Taccia",
+		Entity:   "Angela Taccia",
+	}}
+	segment.Insights.Entities = []scriptpkg.ExtractedEntity{{Value: "Angela Taccia", Type: "PERSON"}}
+	pooled := durableEntityImagePoolForSegment(ctx, repo, segment, nil)
+	if len(pooled) != 1 {
+		t.Fatalf("durable pool attached %d candidates, want 1 verified row", len(pooled))
+	}
+	if !strings.HasPrefix(pooled[0].AssetID, "entity-image-") {
+		t.Fatalf("pooled candidate id = %q, want the durable catalog shape", pooled[0].AssetID)
+	}
+	// A segment without person queries attaches nothing; nil repo is safe.
+	other := scriptpkg.VidRushSegmentResult{SegmentID: "seg-2"}
+	if got := durableEntityImagePoolForSegment(ctx, repo, other, nil); len(got) != 0 {
+		t.Fatalf("query-less segment attached %d candidates, want none", len(got))
+	}
+	if got := durableEntityImagePoolForSegment(ctx, nil, segment, nil); len(got) != 0 {
+		t.Fatalf("nil repo attached %d candidates, want none", len(got))
+	}
+}
+
+func TestEntityImageCatalogReopensLegacyHeadshotOnlyVerdictForCurrentScorer(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertEntity(context.Background(), entitycatalog.Entity{CanonicalEntityID: identity.CanonicalEntityID, EntityType: entitycatalog.EntityTypePerson, CanonicalName: identity.CanonicalName}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		Provider:          "duckduckgo",
+		Rank:              1,
+		SourceURL:         "https://media-assets.vanityfair.it/photos/angela%2520taccia.jpg",
+		Status:            entitycatalog.CandidateStatusFresh,
+		SemanticStatus:    entitycatalog.CandidateSemanticRejected,
+		QualityReason:     "Ollama visual verification did not find one clear person",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pool.Candidates) != 1 || pool.Candidates[0].SemanticStatus != entitycatalog.CandidateSemanticUnknown {
+		t.Fatalf("legacy headshot-only row = %+v, want one unresolved candidate for current pixel recheck", pool.Candidates)
+	}
+}
+
+type rankedIdentitySearcher struct {
+	calls atomic.Int32
+}
+
+func (s *rankedIdentitySearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.calls.Add(1)
+	results := make([]scriptpkg.SegmentAssetCandidate, 0, 10)
+	for rank := 1; rank <= 10; rank++ {
+		results = append(results, scriptpkg.SegmentAssetCandidate{
+			AssetID:   fmt.Sprintf("%s-%02d", strings.ToLower(strings.ReplaceAll(req.Query, " ", "-")), rank),
+			Provider:  scriptpkg.VidRushProviderInternetImages,
+			Query:     req.Query,
+			Entity:    req.Query,
+			Score:     1.0 / float64(rank),
+			SourceURL: fmt.Sprintf("https://images.example/catalog/%s/%02d.jpg", strings.ToLower(strings.ReplaceAll(req.Query, " ", "-")), rank),
+		})
+	}
+	return results, nil
+}
+
+func TestEntityImageCatalogSamplePersonIdentitiesHaveUniquePoolsAndRanks(t *testing.T) {
+	resetEntityImageCatalogCaches()
+	repo := newIntegrationEntityImageCatalog()
+	searcher := &rankedIdentitySearcher{}
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+
+	samples := []struct {
+		name string
+		id   string
+	}{
+		{name: "Michael Jordan", id: "person:michael-jordan"},
+		{name: "Michael B. Jordan", id: "person:michael-b--jordan"},
+		{name: "Elon Musk", id: "person:elon-musk"},
+		{name: "Cristiano Ronaldo", id: "person:cristiano-ronaldo"},
+		{name: "Mike Tyson", id: "person:mike-tyson"},
+		{name: "Taylor Swift", id: "person:taylor-swift"},
+		{name: "LeBron James", id: "person:lebron-james"},
+		{name: "Tom Cruise", id: "person:tom-cruise"},
+	}
+
+	seenIDs := make(map[string]string, len(samples))
+	for i, sample := range samples {
+		identity, err := entitycatalog.CanonicalizePersonName(sample.name)
+		if err != nil {
+			t.Fatalf("canonicalize %q: %v", sample.name, err)
+		}
+		if identity.CanonicalEntityID != sample.id {
+			t.Fatalf("%q canonical ID = %q, want %q", sample.name, identity.CanonicalEntityID, sample.id)
+		}
+		if previous, exists := seenIDs[identity.CanonicalEntityID]; exists {
+			t.Fatalf("identity collision: %q and %q both map to %q", previous, sample.name, identity.CanonicalEntityID)
+		}
+		seenIDs[identity.CanonicalEntityID] = sample.name
+
+		result, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput(
+			fmt.Sprintf("sample-%02d", i), sample.name,
+		))
+		if err != nil {
+			t.Fatalf("process %q: %v", sample.name, err)
+		}
+		images := result.VidRushSegments[0].Assets.SecondaryImages
+		if len(images) != 10 {
+			t.Fatalf("%q returned %d images, want 10", sample.name, len(images))
+		}
+
+		rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 20)
+		if err != nil {
+			t.Fatalf("list %q candidates: %v", sample.name, err)
+		}
+		if len(rows) != 10 {
+			t.Fatalf("%q catalog rows = %d, want 10", sample.name, len(rows))
+		}
+		urls := make(map[string]struct{}, len(rows))
+		for rank, row := range rows {
+			if row.Rank != rank+1 {
+				t.Fatalf("%q row %d has rank %d, want %d", sample.name, rank, row.Rank, rank+1)
+			}
+			if _, exists := urls[row.SourceURL]; exists {
+				t.Fatalf("%q contains duplicate URL %q", sample.name, row.SourceURL)
+			}
+			urls[row.SourceURL] = struct{}{}
+			if !strings.Contains(row.SourceURL, fmt.Sprintf("/%02d.jpg", rank+1)) {
+				t.Fatalf("%q rank %d URL = %q, does not match ranked result", sample.name, row.Rank, row.SourceURL)
+			}
+		}
+
+		for rank := 0; rank < len(images)-1; rank++ {
+			if images[rank].Score < images[rank+1].Score {
+				t.Fatalf("%q output ranking is not descending at %d/%d: %.3f < %.3f", sample.name, rank+1, rank+2, images[rank].Score, images[rank+1].Score)
+			}
+		}
+	}
+
+	if got := searcher.calls.Load(); got != int32(len(samples)) {
+		t.Fatalf("sample provider calls = %d, want one initial search per identity (%d)", got, len(samples))
+	}
+}
+
+func TestEntityImageCatalogNormalizesPersonVariantsWithoutCreatingAnotherPool(t *testing.T) {
+	resetEntityImageCatalogCaches()
+	repo := newIntegrationEntityImageCatalog()
+	searcher := &rankedIdentitySearcher{}
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(acceptingPersonImageScorer{})
+	plan := catalogPersonPlan()
+
+	first, err := processor.Process(context.Background(), plan, catalogPersonInput("jordan-original", "Michael Jordan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := processor.Process(context.Background(), plan, catalogPersonInput("jordan-variant", " Michael   Jordan "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := searcher.calls.Load(); got != 1 {
+		t.Fatalf("normalized variant provider calls = %d, want 1", got)
+	}
+	if len(first.VidRushSegments[0].Assets.SecondaryImages) != 10 || len(second.VidRushSegments[0].Assets.SecondaryImages) != 10 {
+		t.Fatalf("normalized variant image counts = %d/%d, want 10/10", len(first.VidRushSegments[0].Assets.SecondaryImages), len(second.VidRushSegments[0].Assets.SecondaryImages))
+	}
+	identity, _ := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 10 {
+		t.Fatalf("normalized variant pool size = %d, want 10", len(rows))
+	}
+}
+
+type discoveryBudgetSearcher struct {
+	requestedLimit int
+}
+
+func (s *discoveryBudgetSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.requestedLimit = req.Limit
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, req.Limit)
+	for i := 0; i < req.Limit; i++ {
+		out = append(out, scriptpkg.SegmentAssetCandidate{
+			AssetID:   fmt.Sprintf("budget-%02d", i),
+			Provider:  scriptpkg.VidRushProviderInternetImages,
+			Query:     req.Query,
+			Entity:    req.Entity,
+			SourceURL: fmt.Sprintf("https://images.example/budget/%02d.jpg", i),
+		})
+	}
+	return out, nil
+}
+
+func TestEntityImageCatalogDiscoveryBudgetExceedsDurablePool(t *testing.T) {
+	resetEntityImageCatalogCaches()
+	repo := newIntegrationEntityImageCatalog()
+	searcher := &discoveryBudgetSearcher{}
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(acceptingPersonImageScorer{})
+	plan := catalogPersonPlan()
+
+	result, err := processor.Process(context.Background(), plan, catalogPersonInput("budget-cold", "Michael Jordan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searcher.requestedLimit != entityImageCatalogDiscoveryLimit {
+		t.Fatalf("provider request limit = %d, want %d", searcher.requestedLimit, entityImageCatalogDiscoveryLimit)
+	}
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != entityImageCatalogDiscoveryLimit {
+		t.Fatalf("catalog rows = %d, want %d discovered candidates", len(rows), entityImageCatalogDiscoveryLimit)
+	}
+
+	// The durable pool remains bounded: a warm run serves at most pool size,
+	// even though the catalog kept the wider discovery set.
+	warm, err := processor.Process(context.Background(), plan, catalogPersonInput("budget-warm", "Michael Jordan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(warm.VidRushSegments[0].Assets.SecondaryImages); got != entityImageCatalogPoolSize {
+		t.Fatalf("warm pool = %d, want %d", got, entityImageCatalogPoolSize)
+	}
+	if got := len(result.VidRushSegments[0].Assets.SecondaryImages); got == 0 {
+		t.Fatal("cold discovery returned no candidates")
+	}
+}
+
+func TestEntityImageCatalogMiddleNameCreatesDistinctURLPool(t *testing.T) {
+	resetEntityImageCatalogCaches()
+	repo := newIntegrationEntityImageCatalog()
+	searcher := &rankedIdentitySearcher{}
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	plan := catalogPersonPlan()
+
+	if _, err := processor.Process(context.Background(), plan, catalogPersonInput("jordan", "Michael Jordan")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := processor.Process(context.Background(), plan, catalogPersonInput("b-jordan", "Michael B. Jordan")); err != nil {
+		t.Fatal(err)
+	}
+	if got := searcher.calls.Load(); got != 2 {
+		t.Fatalf("distinct identity provider calls = %d, want 2", got)
+	}
+	jordan, _ := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	bJordan, _ := entitycatalog.CanonicalizePersonName("Michael B. Jordan")
+	jordanRows, err := repo.ListCandidates(context.Background(), jordan.CanonicalEntityID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bJordanRows, err := repo.ListCandidates(context.Background(), bJordan.CanonicalEntityID, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jordanRows) != 10 || len(bJordanRows) != 10 {
+		t.Fatalf("distinct pools = %d/%d, want 10/10", len(jordanRows), len(bJordanRows))
+	}
+	for _, jordanRow := range jordanRows {
+		for _, bJordanRow := range bJordanRows {
+			if jordanRow.SourceURL == bJordanRow.SourceURL {
+				t.Fatalf("distinct identities share URL %q", jordanRow.SourceURL)
+			}
+		}
+	}
+}

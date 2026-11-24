@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"go.uber.org/zap"
 )
 
@@ -21,7 +22,7 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 	if r == nil || r.localizedRenderEnqueuer == nil {
 		return nil
 	}
-	prepared, err := r.prepareLocalizedRenderInput(ctx, input)
+	prepared, err := r.prepareLocalizedRenderInput(ctx, input, false)
 	if err != nil {
 		return err
 	}
@@ -38,7 +39,7 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 // service; the remote final worker only assembles and publishes the timeline.
 const sceneRenderDispatchSealed = false
 
-func (r *Runner) stagedLocalizedRender(result *GenerateResult, sceneID string, lang Language, clipID string) *LocalizedRenderResult {
+func (r *Runner) stagedLocalizedRender(result *contract.GenerateResult, sceneID string, lang contract.Language, clipID string) *contract.LocalizedRenderResult {
 	if result == nil {
 		return nil
 	}
@@ -54,7 +55,7 @@ func (r *Runner) stagedLocalizedRender(result *GenerateResult, sceneID string, l
 	return nil
 }
 
-func (r *Runner) recordLocalizedRenderReady(ctx context.Context, runID string, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
+func (r *Runner) recordLocalizedRenderReady(ctx context.Context, runID string, exec ExecutionContext, result *contract.GenerateResult, rendered contract.LocalizedRenderResult) error {
 	if result == nil || strings.TrimSpace(rendered.LocalPath) == "" || strings.TrimSpace(rendered.SHA256) == "" {
 		return fmt.Errorf("localized render ready: local path and sha256 are required")
 	}
@@ -97,7 +98,7 @@ func (r *Runner) recordLocalizedRenderReady(ctx context.Context, runID string, e
 // already certified on the run result. The streaming coordinator and the
 // voiceover backfill are two owners of the same render matrix; this predicate
 // is how the later one knows the MP4 exists instead of asking Chronon again.
-func (r *Runner) localizedRenderProduced(result *GenerateResult, sceneID string, lang Language, clipID string) bool {
+func (r *Runner) localizedRenderProduced(result *contract.GenerateResult, sceneID string, lang contract.Language, clipID string) bool {
 	if result == nil {
 		return false
 	}
@@ -117,7 +118,7 @@ func (r *Runner) localizedRenderProduced(result *GenerateResult, sceneID string,
 // — the produced video is never orphaned from the run that produced it.
 // Fail-closed: the recorder and the result append must both succeed, and
 // concurrent fan-out workers are fenced by localizedRenderMu.
-func (r *Runner) recordLocalizedRender(ctx context.Context, runID string, exec ExecutionContext, result *GenerateResult, rendered LocalizedRenderResult) error {
+func (r *Runner) recordLocalizedRender(ctx context.Context, runID string, exec ExecutionContext, result *contract.GenerateResult, rendered contract.LocalizedRenderResult) error {
 	// The localization artifact is certified by its Drive identity, while
 	// older clip-render paths also provide a registry AssetID. Do not discard
 	// a successfully uploaded MP4 merely because the localization adapter did
@@ -129,7 +130,7 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, runID string, exec E
 		rendered.AssetID = "drive:" + strings.TrimSpace(rendered.DriveFileID)
 	}
 	// Snapshot in-memory mutation under lock, release before durable I/O.
-	var snapshot *GenerateResult
+	var snapshot *contract.GenerateResult
 	if result != nil {
 		r.localizedRenderMu.Lock()
 		removeStagedLocalizedRenderLocked(result, rendered)
@@ -185,7 +186,7 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, runID string, exec E
 	return nil
 }
 
-func removeStagedLocalizedRenderLocked(result *GenerateResult, rendered LocalizedRenderResult) {
+func removeStagedLocalizedRenderLocked(result *contract.GenerateResult, rendered contract.LocalizedRenderResult) {
 	if result == nil {
 		return
 	}
@@ -209,7 +210,7 @@ func removeStagedLocalizedRenderLocked(result *GenerateResult, rendered Localize
 // (2026-11-16 Obama runs: 35 cache-hit clips reported work_ms=1.351.641 and
 // wall_ms=175.821 against 0,62 s of real spans). Recomputing at the single
 // completion point makes the numbers describe the delivered clips.
-func recomputeLocalizedRenderMetrics(result *GenerateResult) {
+func recomputeLocalizedRenderMetrics(result *contract.GenerateResult) {
 	if result == nil || result.RenderMetrics == nil {
 		return
 	}
@@ -231,8 +232,8 @@ func recomputeLocalizedRenderMetrics(result *GenerateResult) {
 	}
 	result.RenderMetrics.WorkMS = work
 	result.RenderMetrics.QueueWaitMS = queueWait
-	result.renderFirstStartedAt = first
-	result.renderLastFinishedAt = last
+	result.RenderFirstStartedAt = first
+	result.RenderLastFinishedAt = last
 	if !first.IsZero() && !last.IsZero() {
 		result.RenderMetrics.WallMS = last.Sub(first).Milliseconds()
 		return
@@ -240,7 +241,7 @@ func recomputeLocalizedRenderMetrics(result *GenerateResult) {
 	result.RenderMetrics.WallMS = 0
 }
 
-func accumulateLocalizedRenderMetrics(result *GenerateResult, rendered LocalizedRenderResult) {
+func accumulateLocalizedRenderMetrics(result *contract.GenerateResult, rendered contract.LocalizedRenderResult) {
 	if result == nil || result.RenderMetrics == nil {
 		return
 	}
@@ -250,14 +251,14 @@ func accumulateLocalizedRenderMetrics(result *GenerateResult, rendered Localized
 	if rendered.QueueWaitMS > 0 {
 		result.RenderMetrics.QueueWaitMS += rendered.QueueWaitMS
 	}
-	if !rendered.StartedAt.IsZero() && (result.renderFirstStartedAt.IsZero() || rendered.StartedAt.Before(result.renderFirstStartedAt)) {
-		result.renderFirstStartedAt = rendered.StartedAt
+	if !rendered.StartedAt.IsZero() && (result.RenderFirstStartedAt.IsZero() || rendered.StartedAt.Before(result.RenderFirstStartedAt)) {
+		result.RenderFirstStartedAt = rendered.StartedAt
 	}
-	if !rendered.FinishedAt.IsZero() && rendered.FinishedAt.After(result.renderLastFinishedAt) {
-		result.renderLastFinishedAt = rendered.FinishedAt
+	if !rendered.FinishedAt.IsZero() && rendered.FinishedAt.After(result.RenderLastFinishedAt) {
+		result.RenderLastFinishedAt = rendered.FinishedAt
 	}
-	if !result.renderFirstStartedAt.IsZero() && !result.renderLastFinishedAt.IsZero() {
-		result.RenderMetrics.WallMS = result.renderLastFinishedAt.Sub(result.renderFirstStartedAt).Milliseconds()
+	if !result.RenderFirstStartedAt.IsZero() && !result.RenderLastFinishedAt.IsZero() {
+		result.RenderMetrics.WallMS = result.RenderLastFinishedAt.Sub(result.RenderFirstStartedAt).Milliseconds()
 	}
 }
 
@@ -276,7 +277,7 @@ func accumulateLocalizedRenderMetrics(result *GenerateResult, rendered Localized
 //
 // A run whose source language is unknown (restored legacy checkpoints) keeps
 // the accept-any-render behaviour so those results are not silently dropped.
-func applyLocalizedRenderLinkLocked(result *GenerateResult, rendered LocalizedRenderResult) {
+func applyLocalizedRenderLinkLocked(result *contract.GenerateResult, rendered contract.LocalizedRenderResult) {
 	if result == nil || strings.TrimSpace(rendered.DriveLink) == "" {
 		return
 	}

@@ -1246,3 +1246,103 @@ func folderIDs(inputs []LocalizeInput) []string {
 	}
 	return out
 }
+
+// TestLocalizedRenderEnqueuer_SkipDrivePublicationSkipsFolders pins the
+// final-job object-store path: the adapter must not resolve (and create) the
+// Drive folder hierarchy and must forward the skip flag to the service.
+func TestLocalizedRenderEnqueuer_SkipDrivePublicationSkipsFolders(t *testing.T) {
+	l := &recordingLocalizer{}
+	admin := &localizedRenderFolderAdmin{}
+	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
+
+	in := testEnqueuerInput()
+	in.SkipDrivePublication = true
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+	got := l.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("Localize calls = %d, want 1", len(got))
+	}
+	if !got[0].SkipDrivePublication {
+		t.Fatal("SkipDrivePublication must reach the localization service")
+	}
+	if got[0].FolderID != "" || got[0].SubtitleFolderID != "" {
+		t.Fatalf("skip-drive render resolved Drive folders: folder=%q subtitle=%q", got[0].FolderID, got[0].SubtitleFolderID)
+	}
+	if got[0].UploadSubtitleArtifact {
+		t.Fatal("skip-drive render must not request a subtitle upload")
+	}
+	if calls := admin.snapshot(); len(calls) != 0 {
+		t.Fatalf("Drive folder creation ran for a skip-drive render: %+v", calls)
+	}
+}
+
+// TestLocalizedRenderEnqueuer_SkipDrivePublicationRecoveryDoesNotUpload pins
+// that a durable RENDERED checkpoint on the object-store path is projected back
+// without a Drive retry or destination resolution.
+func TestLocalizedRenderEnqueuer_SkipDrivePublicationRecoveryDoesNotUpload(t *testing.T) {
+	l := &recordingLocalizer{}
+	a := newTestEnqueuerAdapter(l, &recordingTrackRepo{}, &recordingCueWriter{})
+
+	var projected scriptgeneration.LocalizedRenderResult
+	in := testEnqueuerInput()
+	in.SkipDrivePublication = true
+	in.OnRendered = func(rendered scriptgeneration.LocalizedRenderResult) error {
+		projected = rendered
+		return nil
+	}
+	staged := scriptgeneration.LocalizedRenderResult{
+		SceneID: "scene-1", Language: "es", ClipID: "clip-1",
+		LocalPath: "/tmp/renders/clip-1.es.mp4", SHA256: strings.Repeat("a", 64),
+		DurationMS: 6500, Status: string(localization.LocalizedClipRendered),
+	}
+	if err := a.UploadRendered(context.Background(), in, staged); err != nil {
+		t.Fatalf("UploadRendered: %v", err)
+	}
+	if calls := l.uploadedFolderSnapshot(); len(calls) != 0 {
+		t.Fatalf("recovery uploaded a skip-drive render: %v", calls)
+	}
+	if projected.SHA256 != staged.SHA256 || projected.Status != staged.Status {
+		t.Fatalf("projected checkpoint = %+v, want the staged result", projected)
+	}
+}
+
+// TestLocalizedRenderEnqueuer_SkipDrivePublicationCommitsObjectStoreLocation
+// pins the media-SSOT half: no Drive file exists, so the committed location is
+// the content address, never an empty google_drive row.
+func TestLocalizedRenderEnqueuer_SkipDrivePublicationCommitsObjectStoreLocation(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	l := &recordingLocalizer{result: &localization.LocalizeResult{
+		Artifacts: []localization.LocalizedClipArtifact{{
+			SceneID: "scene-1", Language: "es", ClipID: "clip-1", AssetID: "vid-123",
+			SHA256: sha, SizeBytes: 4096, DurationMS: 6500,
+			LocalPath: "/tmp/renders/clip-1.es.mp4",
+			Status:    localization.LocalizedClipRendered,
+		}},
+	}}
+	committer := &recordingAssetCommitter{}
+	a := newTestEnqueuerAdapterWithCommitter(l, &recordingTrackRepo{}, &recordingCueWriter{}, committer)
+
+	in := testEnqueuerInput()
+	in.SkipDrivePublication = true
+	in.OnRendered = func(scriptgeneration.LocalizedRenderResult) error { return nil }
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+	reqs := committer.snapshot()
+	if len(reqs) != 1 {
+		t.Fatalf("canonical commits = %d, want 1", len(reqs))
+	}
+	req := reqs[0]
+	if req.FolderID != "" {
+		t.Fatalf("skip-drive commit must not name a Drive folder: %q", req.FolderID)
+	}
+	if len(req.Locations) != 1 {
+		t.Fatalf("locations = %+v, want one object-store location", req.Locations)
+	}
+	loc := req.Locations[0]
+	if loc.Kind != "object_storage" || loc.Provider != "objectstore" || loc.ExternalID != sha || loc.ContentSHA256 != sha || !loc.IsPrimary {
+		t.Fatalf("object-storage location = %+v, want the content address as primary location", loc)
+	}
+}

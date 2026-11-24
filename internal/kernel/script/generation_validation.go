@@ -19,154 +19,186 @@ func (e *GenerationEnvelopeV2) Validate() error {
 			Details: []string{"at least one item is required"},
 		}
 	}
-	for i, item := range e.Items {
-		ref := item.ID
-		if ref == "" {
-			ref = "item " + strconv.Itoa(i)
-		}
-		if item.Source.Type == "" {
-			return &PlanInvalidError{
-				ItemID: item.ID,
-				Details: []string{
-					ref + ": source.type is required",
-				},
-			}
-		}
-		if !isKnownSourceType(item.Source.Type) {
-			return &PlanInvalidError{
-				ItemID: item.ID,
-				Details: []string{
-					ref + ": unknown source type " + string(item.Source.Type),
-				},
-			}
-		}
-		// final_job hands the item to the remote render boundary. Accepting
-		// it with render disabled only fails after generation, when the
-		// operator has already paid for the script; reject it at ingress.
-		if e.FinalJob && !item.Output.Render.Enabled {
-			return &PlanInvalidError{
-				ItemID:  item.ID,
-				Details: []string{ref + ": output.render.enabled must be true when final_job=true"},
-			}
-		}
-
-		// Deprecated-field fence: source.intro_clip_ids is removed from the
-		// contract, so any payload still carrying it fails closed here —
-		// before media-mode/source-type dispatch — regardless of the item's
-		// source type.
-		if err := rejectDeprecatedIntroClipIDs(item, ref); err != nil {
+	for i := range e.Items {
+		if err := validateEnvelopeItem(&e.Items[i], i, e.FinalJob); err != nil {
 			return err
 		}
+	}
+	return nil
+}
 
-		// Expand the public per-segment Drive-folder shorthand before media
-		// validation so stock_only sees the same canonical internal bindings
-		// as legacy callers. The envelope is intentionally mutated once at
-		// ingress; the resulting bindings travel through the durable request.
-		if err := ExpandSegmentStockFolders(&e.Items[i]); err != nil {
+func validateEnvelopeItem(item *GenerationItemV2, index int, finalJob bool) error {
+	ref := item.ID
+	if ref == "" {
+		ref = "item " + strconv.Itoa(index)
+	}
+	if err := validateEnvelopeSource(item, ref, finalJob); err != nil {
+		return err
+	}
+	if err := validateEnvelopeOutput(item, ref); err != nil {
+		return err
+	}
+	if err := validateEnvelopeOverlays(item, ref); err != nil {
+		return err
+	}
+	if err := validateEnvelopeScriptParams(item, ref); err != nil {
+		return err
+	}
+	if err := validateEnvelopeMedia(item, ref); err != nil {
+		return err
+	}
+	return validateEnvelopePolicy(item, ref)
+}
+
+func validateEnvelopeSource(item *GenerationItemV2, ref string, finalJob bool) error {
+	if item.Source.Type == "" {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": source.type is required",
+			},
+		}
+	}
+	if !isKnownSourceType(item.Source.Type) {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": unknown source type " + string(item.Source.Type),
+			},
+		}
+	}
+	// final_job hands the item to the remote render boundary. Accepting it
+	// with render disabled only fails after generation, when the operator has
+	// already paid for the script; reject it at ingress.
+	if finalJob && !item.Output.Render.Enabled {
+		return &PlanInvalidError{
+			ItemID:  item.ID,
+			Details: []string{ref + ": output.render.enabled must be true when final_job=true"},
+		}
+	}
+
+	// Deprecated-field fence: source.intro_clip_ids is removed from the
+	// contract, so any payload still carrying it fails closed here.
+	if err := rejectDeprecatedIntroClipIDs(*item, ref); err != nil {
+		return err
+	}
+
+	// Expand the public per-segment Drive-folder shorthand before media
+	// validation so stock_only sees the same canonical internal bindings as
+	// legacy callers. The envelope is intentionally mutated once at ingress.
+	return ExpandSegmentStockFolders(item)
+}
+
+func validateEnvelopeOutput(item *GenerationItemV2, ref string) error {
+	// Validate tri-state output and segment overrides at the structural
+	// boundary so unknown toggles never degrade into an implicit default.
+	if !validEntityExtractionToggle(item.Output.ExtractEntities) {
+		return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": output.extract_entities must be default, enabled, or disabled"}}
+	}
+	if details := validateSegmentEntityExtractionToggles(item.ScriptParams.Segments, ref); len(details) > 0 {
+		return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	// The narration word floor is a deterministic copy contract, not a
+	// runtime surprise: a verbatim narration below the floor used to pass
+	// the ingress and fail at GENERATING_SCENE_TEXT.
+	if details := ValidateAuthoredNarration(item.ScriptParams); len(details) > 0 {
+		return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	return nil
+}
+
+func validateEnvelopeOverlays(item *GenerationItemV2, ref string) error {
+	if err := ValidateOverlayCategories(item.OverlayCategories); err != nil {
+		return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": " + err.Error()}}
+	}
+	if details := validateOverlayImageSFX(item.OverlayImages, ref); len(details) > 0 {
+		return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	for index, segment := range item.ScriptParams.Segments {
+		if err := ValidateOverlayCategories(segment.OverlayCategories); err != nil {
+			return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": script_params.segments[" + strconv.Itoa(index) + "]: " + err.Error()}}
+		}
+	}
+	return nil
+}
+
+func validateEnvelopeScriptParams(item *GenerationItemV2, ref string) error {
+	// Universal numeric invariants — every payload must satisfy these
+	// regardless of config, caller, or installation.
+	if details := validateGenerationScriptParams(item.ScriptParams, ref); len(details) > 0 {
+		return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	return nil
+}
+
+func validateEnvelopeMedia(item *GenerationItemV2, ref string) error {
+	if err := validateMediaMode(*item, ref); err != nil {
+		return err
+	}
+	if details := validateAudioMode(*item, ref); len(details) > 0 {
+		return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	if details := validateAudioIntentBlock(*item, ref); len(details) > 0 {
+		return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	if details := validateIntroHookStock(item.ScriptParams.Segments, item.Output.StockBindings, ref); len(details) > 0 {
+		return &PlanInvalidError{
+			ItemID:  item.ID,
+			Details: details,
+		}
+	}
+	if details := validateFixedSections(*item, ref); len(details) > 0 {
+		return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	// Per-SourceType validation via map dispatch (bypasses C2-C
+	// AST gate switch-case detection).
+	if handler, ok := sourceTypeHandlers[item.Source.Type]; ok {
+		if err := handler(*item, ref); err != nil {
 			return err
 		}
-		item = e.Items[i]
+	}
+	if item.Language != "" && !IsValidGenerationLanguage(item.Language) {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": unsupported language " + item.Language,
+			},
+		}
+	}
+	return nil
+}
 
-		// Validate tri-state output and segment overrides at the structural
-		// boundary so unknown toggles never degrade into an implicit default.
-		if !validEntityExtractionToggle(item.Output.ExtractEntities) {
-			return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": output.extract_entities must be default, enabled, or disabled"}}
+func validateEnvelopePolicy(item *GenerationItemV2, ref string) error {
+	if item.Source.GroundingPolicy != "" && !isValidGroundingPolicy(item.Source.GroundingPolicy) {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": invalid grounding_policy " + item.Source.GroundingPolicy,
+			},
 		}
-		if details := validateSegmentEntityExtractionToggles(item.ScriptParams.Segments, ref); len(details) > 0 {
-			return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	if item.Source.FallbackPolicy != "" && !isValidFallbackPolicy(item.Source.FallbackPolicy) {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": invalid fallback_policy " + item.Source.FallbackPolicy,
+			},
 		}
-		// The narration word floor is a deterministic copy contract, not a
-		// runtime surprise: a verbatim narration below the floor used to pass
-		// the ingress and fail at GENERATING_SCENE_TEXT after the expensive
-		// stages had been scheduled. Same function as the runner and the CLI
-		// preflight (narration_contract.go).
-		if details := ValidateAuthoredNarration(item.ScriptParams); len(details) > 0 {
-			return &PlanInvalidError{ItemID: item.ID, Details: details}
+	}
+	if item.Source.GroundingPolicy != "" && !IsClipSourceType(item.Source.Type) && item.Source.Type != SourceResearch && item.MediaMode != MediaModeStockOnly {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": grounding_policy is only compatible with clip-based sources",
+			},
 		}
-		if err := ValidateOverlayCategories(item.OverlayCategories); err != nil {
-			return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": " + err.Error()}}
-		}
-		if details := validateOverlayImageSFX(item.OverlayImages, ref); len(details) > 0 {
-			return &PlanInvalidError{ItemID: item.ID, Details: details}
-		}
-		for index, segment := range item.ScriptParams.Segments {
-			if err := ValidateOverlayCategories(segment.OverlayCategories); err != nil {
-				return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": script_params.segments[" + strconv.Itoa(index) + "]: " + err.Error()}}
-			}
-		}
-		// Universal numeric invariants — every payload must satisfy these
-		// regardless of config, caller, or installation.
-		if details := validateGenerationScriptParams(item.ScriptParams, ref); len(details) > 0 {
-			return &PlanInvalidError{ItemID: item.ID, Details: details}
-		}
-
-		if err := validateMediaMode(item, ref); err != nil {
-			return err
-		}
-		if details := validateAudioMode(item, ref); len(details) > 0 {
-			return &PlanInvalidError{ItemID: item.ID, Details: details}
-		}
-		if details := validateAudioIntentBlock(item, ref); len(details) > 0 {
-			return &PlanInvalidError{ItemID: item.ID, Details: details}
-		}
-		if details := validateIntroHookStock(item.ScriptParams.Segments, item.Output.StockBindings, ref); len(details) > 0 {
-			return &PlanInvalidError{
-				ItemID:  item.ID,
-				Details: details,
-			}
-		}
-		if details := validateFixedSections(item, ref); len(details) > 0 {
-			return &PlanInvalidError{ItemID: item.ID, Details: details}
-		}
-		// Per-SourceType validation via map dispatch (bypasses C2-C
-		// AST gate switch-case detection).
-		if handler, ok := sourceTypeHandlers[item.Source.Type]; ok {
-			if err := handler(item, ref); err != nil {
-				return err
-			}
-		}
-
-		if item.Language != "" && !IsValidGenerationLanguage(item.Language) {
-			return &PlanInvalidError{
-				ItemID: item.ID,
-				Details: []string{
-					ref + ": unsupported language " + item.Language,
-				},
-			}
-		}
-
-		if item.Source.GroundingPolicy != "" && !isValidGroundingPolicy(item.Source.GroundingPolicy) {
-			return &PlanInvalidError{
-				ItemID: item.ID,
-				Details: []string{
-					ref + ": invalid grounding_policy " + item.Source.GroundingPolicy,
-				},
-			}
-		}
-		if item.Source.FallbackPolicy != "" && !isValidFallbackPolicy(item.Source.FallbackPolicy) {
-			return &PlanInvalidError{
-				ItemID: item.ID,
-				Details: []string{
-					ref + ": invalid fallback_policy " + item.Source.FallbackPolicy,
-				},
-			}
-		}
-
-		if item.Source.GroundingPolicy != "" && !IsClipSourceType(item.Source.Type) && item.Source.Type != SourceResearch && item.MediaMode != MediaModeStockOnly {
-			return &PlanInvalidError{
-				ItemID: item.ID,
-				Details: []string{
-					ref + ": grounding_policy is only compatible with clip-based sources",
-				},
-			}
-		}
-		if item.Source.FallbackPolicy != "" && item.Source.Type != SourceClips && item.Source.Type != SourceResearch && item.MediaMode != MediaModeStockOnly {
-			return &PlanInvalidError{
-				ItemID: item.ID,
-				Details: []string{
-					ref + ": fallback_policy is only compatible with source.type=clips",
-				},
-			}
+	}
+	if item.Source.FallbackPolicy != "" && item.Source.Type != SourceClips && item.Source.Type != SourceResearch && item.MediaMode != MediaModeStockOnly {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": fallback_policy is only compatible with source.type=clips",
+			},
 		}
 	}
 	return nil

@@ -219,6 +219,10 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	}
 
 	scriptGen := ollama.NewGenerator(ollamaClient)
+	// WST-02: ONE resident model. The server runs a single loaded runner, so a
+	// payload asking another size used to evict it and pay a full reload; the
+	// policy maps every per-call model onto the configured one.
+	scriptGen.SetResidentModel(cfg.External.OllamaModel)
 	if dbs.Cache != nil && dbs.Cache.DB != nil {
 		translationCache := sqlitescripts.NewCache(dbs.Cache.DB)
 		scriptGen.SetTranslationCache(translationCache)

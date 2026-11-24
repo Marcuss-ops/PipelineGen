@@ -264,7 +264,7 @@ func TestCallerImageSearchesEnterTheSceneLadderAndRespectLockedAssignments(t *te
 	if !ok || attempt.QueryOrigin != "caller_media_plan" || attempt.Query != "Stasi processo Milano" {
 		t.Fatalf("caller query must pass through unchanged and run first: %+v ok=%v", attempt, ok)
 	}
-	locked := &SemanticProductionPlan{Units: append([]generationcontract.SemanticProductionUnit(nil), plan.Units...), identityByID: plan.identityByID}
+	locked := &SemanticProductionPlan{Units: append([]generationcontract.SemanticProductionUnit(nil), plan.Units...), IdentityByID: plan.IdentityByID}
 	locked.Metrics.PlannedQueries = plan.Metrics.PlannedQueries
 	added = ApplyCallerImageSearches(locked, searches, []mediadomain.SegmentMediaAssignment{{SegmentID: "segment_01", Slot: mediadomain.SlotSecondaryImage, Locked: true}})
 	if added != 0 || locked.Metrics.PlannedQueries != plan.Metrics.PlannedQueries {

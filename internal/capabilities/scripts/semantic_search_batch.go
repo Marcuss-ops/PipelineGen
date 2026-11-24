@@ -9,9 +9,8 @@ import (
 	"sync"
 	"time"
 
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/providerbudget"
 )
@@ -94,7 +93,7 @@ type SemanticAssetSearchPort interface {
 // permit on a lane that cannot serve them (a Commons-only probe, for example,
 // cannot answer person queries).
 type SemanticSearchRouteSupport interface {
-	SupportsClass(SemanticSearchClass) bool
+	SupportsClass(contract.SemanticSearchClass) bool
 }
 
 // SemanticSearchBatchConfig bounds one planned search batch.
@@ -198,85 +197,6 @@ func (c SemanticSearchBatchConfig) normalized() SemanticSearchBatchConfig {
 	return c
 }
 
-// SemanticSearchAttemptResult is one measured provider attempt.
-type SemanticSearchAttemptResult struct {
-	CandidateID  string
-	SceneID      string
-	Query        string
-	QueryKind    string
-	QueryOrigin  string
-	TemplateID   string
-	Illustrative bool
-	Rung         int
-	Rank         int
-	Class        SemanticSearchClass
-	Entity       string
-	// Status is `hit`, `miss`, `error` or `skipped`.
-	Status    string
-	LatencyMS int64
-	// RecallMS and VerifyMS separate the two stages of LatencyMS. They are
-	// zero for cache hits: no provider recall or pixel verification ran.
-	RecallMS int64
-	VerifyMS int64
-	Hits     int
-	Provider string
-	Error    string
-	// RetryAction is the planner decision this attempt produced (`broaden`,
-	// `skip_visual` or empty on a hit).
-	RetryAction string
-	AssetIDs    []string
-	// Cached reports a plan-cache hit: no provider call was made.
-	Cached bool
-	// RateLimited reports that the attempt met at least one 429 refusal.
-	RateLimited bool
-	// RouteSkip reports a composition settled without a provider call because
-	// the wired port does not serve its query class.
-	RouteSkip bool
-	// ProviderError distinguishes a failed provider call from a provider that
-	// answered with no candidates. The two are never the same empty result.
-	ProviderError bool
-}
-
-// SemanticSearchBatchMetrics are measured counts and latencies for one batch.
-type SemanticSearchBatchMetrics struct {
-	PlannedSearches  int
-	Queries          int
-	Hits             int
-	Misses           int
-	Errors           int
-	Skipped          int
-	Broadens         int
-	CacheHits        int
-	ProviderQueries  int
-	RateLimitRetries int
-	RouteSkips       int
-	HitRate          float64
-	MeanMS           float64
-	P50MS            int64
-	P95MS            int64
-	TotalMS          int64
-	// RecallMS/VerifyMS are the accumulated stage costs. The P50 variants are
-	// nearest-rank over provider attempts, matching P50MS's population.
-	RecallMS    int64
-	VerifyMS    int64
-	RecallP50MS int64
-	VerifyP50MS int64
-}
-
-// SemanticSearchBatchReport is the durable measurement of one executed batch:
-// every attempt with its latency and outcome, the aggregates, and the plan's
-// feedback after the batch.
-type SemanticSearchBatchReport struct {
-	Schema         string
-	Metrics        SemanticSearchBatchMetrics
-	Attempts       []SemanticSearchAttemptResult
-	Feedback       *SemanticSearchFeedback
-	PlanMetrics    generationcontract.SemanticProductionMetrics
-	AbortedError   string
-	ProviderErrors int
-	ProviderError  string
-}
-
 // SemanticSearchProviderError is a failed retrieval, not an empty result. It
 // keeps a run with no usable hit out of the green path while preserving the
 // measured report for the operator.
@@ -334,7 +254,7 @@ func NewSemanticSearchBatchPlanner(port SemanticAssetSearchPort, config ...Seman
 // Run executes every pending media ladder of the plan, records each outcome and
 // returns the measured report. A provider error is a miss, never a failed run;
 // only cancellation of the parent context or the query budget aborts the batch.
-func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProductionPlan, language string, forceRefresh bool) (*SemanticSearchBatchReport, error) {
+func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *contract.SemanticProductionPlan, language string, forceRefresh bool) (*contract.SemanticSearchBatchReport, error) {
 	bypassCache := forceRefresh
 	if p == nil || p.port == nil {
 		return nil, fmt.Errorf("semantic search batch: planner is not configured")
@@ -342,9 +262,9 @@ func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProd
 	if plan == nil {
 		return nil, fmt.Errorf("semantic search batch: plan is required")
 	}
-	report := &SemanticSearchBatchReport{
+	report := &contract.SemanticSearchBatchReport{
 		Schema:   SemanticSearchBatchSchema,
-		Attempts: make([]SemanticSearchAttemptResult, 0, plan.Metrics.PlannedQueries),
+		Attempts: make([]contract.SemanticSearchAttemptResult, 0, plan.Metrics.PlannedQueries),
 	}
 	report.Metrics.PlannedSearches = plan.Metrics.PlannedQueries
 	if err := ctx.Err(); err != nil {
@@ -408,13 +328,13 @@ func (p *SemanticSearchBatchPlanner) Run(ctx context.Context, plan *SemanticProd
 // recorded on the plan with the same skip_visual policy a failed ladder uses,
 // so coverage and identity admission cannot claim an image that was never
 // searched.
-func (p *SemanticSearchBatchPlanner) routeAttempts(plan *SemanticProductionPlan, attempts []SemanticSearchAttempt) ([]SemanticSearchAttempt, []SemanticSearchAttemptResult) {
+func (p *SemanticSearchBatchPlanner) routeAttempts(plan *contract.SemanticProductionPlan, attempts []contract.SemanticSearchAttempt) ([]contract.SemanticSearchAttempt, []contract.SemanticSearchAttemptResult) {
 	support, ok := p.port.(SemanticSearchRouteSupport)
 	if !ok {
 		return attempts, nil
 	}
-	supported := make([]SemanticSearchAttempt, 0, len(attempts))
-	rows := make([]SemanticSearchAttemptResult, 0)
+	supported := make([]contract.SemanticSearchAttempt, 0, len(attempts))
+	rows := make([]contract.SemanticSearchAttemptResult, 0)
 	for _, attempt := range attempts {
 		if support.SupportsClass(attempt.Class) {
 			supported = append(supported, attempt)
@@ -424,7 +344,7 @@ func (p *SemanticSearchBatchPlanner) routeAttempts(plan *SemanticProductionPlan,
 		p.planMu.Lock()
 		err := plan.SkipUnsupportedUnit(attempt.CandidateID, reason)
 		p.planMu.Unlock()
-		row := SemanticSearchAttemptResult{
+		row := contract.SemanticSearchAttemptResult{
 			CandidateID: attempt.CandidateID, SceneID: attempt.SceneID,
 			Query: attempt.Query, QueryKind: attempt.QueryKind, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
 			Illustrative: attempt.Illustrative, Rung: attempt.Rung,
@@ -453,7 +373,7 @@ func (p *SemanticSearchBatchPlanner) nowTime() time.Time {
 
 // sortAttemptRows restores plan order after concurrent completion. The report
 // is a measurement, so it must not depend on scheduling luck.
-func sortAttemptRows(rows []SemanticSearchAttemptResult) {
+func sortAttemptRows(rows []contract.SemanticSearchAttemptResult) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Rank != rows[j].Rank {
 			return rows[i].Rank < rows[j].Rank
@@ -475,7 +395,7 @@ const semanticSearchCacheModel = "semantic-ranker-v1"
 // version, query limit and plan fingerprint are part of the identity: a cache
 // entry produced by another provider, model configuration or plan shape must
 // never be served as if it were this run's evidence.
-func cacheKey(attempt SemanticSearchAttempt, language, provider string, limit int, planFingerprint string) string {
+func cacheKey(attempt contract.SemanticSearchAttempt, language, provider string, limit int, planFingerprint string) string {
 	subject := normalizeIdentitySurface(attempt.Entity)
 	if subject == "" {
 		subject = normalizeIdentitySurface(attempt.Query)
@@ -500,7 +420,7 @@ func cacheKey(attempt SemanticSearchAttempt, language, provider string, limit in
 // distribution from the measured rows. Percentiles are nearest-rank over real
 // provider calls: a cache hit has no provider latency and a route skip has no
 // call at all, so neither may move P50/P95.
-func summarizeSemanticSearchBatch(report *SemanticSearchBatchReport) {
+func summarizeSemanticSearchBatch(report *contract.SemanticSearchBatchReport) {
 	if report == nil {
 		return
 	}

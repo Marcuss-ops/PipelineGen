@@ -201,6 +201,16 @@ type VerificationParams struct {
 	// implemented; callers that want only the cheaper
 	// size-match leave ExpectedSHA256 empty.
 	ExpectedSHA256 string
+
+	// WriteMeta (WST-01, 2026-11-23) is the metadata the WRITE call already
+	// returned (Files.Create / Files.Update with `name,parents,size` in the
+	// requested fields). When present, Verify validates the upload against it
+	// and SKIPS the Files.Get round-trip: the response of the write is live
+	// Drive truth, and re-reading it only adds a call per artifact (5.724 in
+	// the audit window). A just-written file cannot be in the trash, so the
+	// Trashed check is satisfied by construction. SHA-256, when requested,
+	// still downloads the content because no write response carries it.
+	WriteMeta *FileMeta
 }
 
 // UploadVerification is the per-check result envelope returned
@@ -337,7 +347,13 @@ func (v *UploadVerifier) computeSHA256(ctx context.Context, fileID string) (stri
 // retry semantics, they can wrap PutFile in their own retry
 // loop.
 func (v *UploadVerifier) Verify(ctx context.Context, fileID string, params VerificationParams) (*UploadVerification, error) {
-	if v == nil || v.reader == nil {
+	if v == nil {
+		return nil, fmt.Errorf("drive verifier: nil verifier (composition-root wiring misconfig)")
+	}
+	// A write response removes the only reason this verifier needs a Reader
+	// (the Files.Get below): with WriteMeta set, the checks run on metadata the
+	// caller already owns.
+	if params.WriteMeta == nil && v.reader == nil {
 		return nil, fmt.Errorf("drive verifier: nil reader (composition-root wiring misconfig)")
 	}
 	if strings.TrimSpace(fileID) == "" {
@@ -348,33 +364,37 @@ func (v *UploadVerifier) Verify(ctx context.Context, fileID string, params Verif
 		return &UploadVerification{FileID: fileID}, ErrDriveFileNotFound
 	}
 
-	// Single Files.Get call via the canonical Reader port.
-	// Reader.GetFileMeta (uploader_file.go) requests
-	// (id, name, mimeType, size, webViewLink, parents, trashed)
-	// — Commit 1 reads id + trashed; future commits read
-	// name + mimeType + size + parents + webContentLink from
-	// the same response.
-	meta, err := v.reader.GetFileMeta(ctx, fileID)
-	if err != nil {
-		// 404 from Files.Get → ErrDriveFileNotFound. The
-		// DriveIsNotFound classifier (errors.go:125) is the
-		// canonical typed-path detector — it checks for
-		// *googleapi.Error with Code==404. Pre-Commit-1 a
-		// 404 would surface as a generic error and confuse
-		// retry/observability layers.
-		if DriveIsNotFound(err) {
-			return &UploadVerification{
-				FileID:         fileID,
-				FileIDPresent:  false,
-				FileNotInTrash: false,
-			}, ErrDriveFileNotFound
+	// The write response, when the caller supplies it, IS the metadata source:
+	// no Files.Get is issued for this upload (WST-01). All the checks below
+	// (id, name, parents, size) run unchanged against it, so trusting the
+	// write response is a wire optimisation and not a weaker gate.
+	var meta *FileMeta
+	if params.WriteMeta != nil {
+		meta = params.WriteMeta
+	} else {
+		fetched, err := v.reader.GetFileMeta(ctx, fileID)
+		if err != nil {
+			// 404 from Files.Get → ErrDriveFileNotFound. The
+			// DriveIsNotFound classifier (errors.go:125) is the
+			// canonical typed-path detector — it checks for
+			// *googleapi.Error with Code==404. Pre-Commit-1 a
+			// 404 would surface as a generic error and confuse
+			// retry/observability layers.
+			if DriveIsNotFound(err) {
+				return &UploadVerification{
+					FileID:         fileID,
+					FileIDPresent:  false,
+					FileNotInTrash: false,
+				}, ErrDriveFileNotFound
+			}
+			// Other API errors (500, 503, network blip, ctx
+			// cancellation) propagate wrapped. PutFile's outer
+			// retry does NOT cover this path; a 503 surfaces
+			// immediately. The caller can layer its own retry
+			// if it wants.
+			return nil, fmt.Errorf("drive verifier: Files.Get %q: %w", fileID, err)
 		}
-		// Other API errors (500, 503, network blip, ctx
-		// cancellation) propagate wrapped. PutFile's outer
-		// retry does NOT cover this path; a 503 surfaces
-		// immediately. The caller can layer its own retry
-		// if it wants.
-		return nil, fmt.Errorf("drive verifier: Files.Get %q: %w", fileID, err)
+		meta = fetched
 	}
 
 	if meta == nil || strings.TrimSpace(meta.ID) == "" {

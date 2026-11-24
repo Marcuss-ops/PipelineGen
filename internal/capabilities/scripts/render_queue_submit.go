@@ -13,6 +13,7 @@ import (
 	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 
@@ -26,12 +27,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan, metadata *overlayItemPublicationMetadata) (RenderReference, error) {
+func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan, metadata *overlayItemPublicationMetadata) (contract.RenderReference, error) {
 	if e == nil || e.client == nil {
-		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
+		return contract.RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
 	}
 	if plan.RequireDriveBeforeReturn && e.publisher == nil {
-		return RenderReference{}, fmt.Errorf("render plan requires Drive delivery but no overlay publisher is configured")
+		return contract.RenderReference{}, fmt.Errorf("render plan requires Drive delivery but no overlay publisher is configured")
 	}
 	// A dynamic-map import attests both PlanID and VideoID. Plans built by the
 	// single-item path already fall back to PlanID; normalizeDynamicMapFoldPlan
@@ -41,7 +42,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 	// (PreMaterializeDynamicMapVideo), so both sides resolve one cache key.
 	semanticPlan, dynamicMapImportSpec, dynamicMapImportSHA, cleanupDynamicMap, err := e.foldDynamicMapBackground(ctx, plan)
 	if err != nil {
-		return RenderReference{}, err
+		return contract.RenderReference{}, err
 	}
 	defer cleanupDynamicMap()
 	// Drive routing belongs to PipelineGen's publication boundary, not to
@@ -60,12 +61,12 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 	} else {
 		spec, err = marshalRenderingGenOverlayPlan(wirePlan)
 		if err != nil {
-			return RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)
+			return contract.RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)
 		}
 	}
 	assets, err := e.stageChrononPlanAssets(plan, semanticPlan, dynamicMapImportSpec, dynamicMapImportSHA)
 	if err != nil {
-		return RenderReference{}, err
+		return contract.RenderReference{}, err
 	}
 	jobID := plan.PlanID
 	jobType := capmodel.JobTypeRender
@@ -132,7 +133,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 			if existing, getErr := e.client.Get(ctx, jobID); getErr == nil && overlaySpecEquivalent(existing.OverlaySpec, spec) {
 				if rearmErr := RearmFailedRenderJob(ctx, e.client, jobID); rearmErr != nil {
 					recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
-					return RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
+					return contract.RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
 				}
 				submitErr = nil
 			}
@@ -144,14 +145,14 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 					message = "chronon queue fresh render submit failed"
 				}
 				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
-				return RenderReference{}, errors.Join(fmt.Errorf("%s: %w", message, submitErr), recordErr)
+				return contract.RenderReference{}, errors.Join(fmt.Errorf("%s: %w", message, submitErr), recordErr)
 			}
 			// The re-arm decision is owned by RearmFailedRenderJob (the same
 			// helper the clip.render executor uses), and it fails closed when the
 			// job is FAILED and cannot be re-armed.
 			if rearmErr := RearmFailedRenderJob(ctx, e.client, jobID); rearmErr != nil {
 				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
-				return RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
+				return contract.RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
 			}
 		}
 		submitAcceptedAt = time.Now()
@@ -161,7 +162,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 		if err != nil {
 			observeCompletionWait(wait, renderOutcomeFailure)
 			recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, submitAcceptedAt, &done, time.Time{}, "failure")
-			return RenderReference{}, errors.Join(err, recordErr)
+			return contract.RenderReference{}, errors.Join(err, recordErr)
 		}
 		// Store BEFORE publication: the render is already certified, and a Drive
 		// failure must not throw away the GPU work that produced it. Only a
@@ -236,7 +237,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 			}
 		}()
 	} else if err := postRender(ctx); err != nil {
-		return RenderReference{}, err
+		return contract.RenderReference{}, err
 	}
 	// Map the RenderingGen worker's own phase timings into the canonical
 	// run model instead of a new timing family: each reported phase becomes
@@ -250,7 +251,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 	if cacheHit {
 		cacheHits, renderedItems = 1, 0
 	}
-	return RenderReference{
+	return contract.RenderReference{
 		JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact,
 		CacheHits: cacheHits, RenderedItems: renderedItems,
 	}, nil
@@ -344,7 +345,7 @@ func (e *QueueRenderEnqueuer) publishChrononArtifacts(
 			publication.OverlayBatchItemIDs = append([]string(nil), metadata.BatchItemIDs...)
 			publication.OverlayBatchEndUS = metadata.BatchEndUS
 		}
-		outputs := []OverlayItemRenderReference{{Artifact: done.Artifact}}
+		outputs := []contract.OverlayItemRenderReference{{Artifact: done.Artifact}}
 		for _, output := range outputs {
 			spec := publication
 			if output.ItemID != "" {

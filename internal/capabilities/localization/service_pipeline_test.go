@@ -345,3 +345,52 @@ func TestRenderWidth(t *testing.T) {
 		})
 	}
 }
+
+// TestService_SkipDrivePublicationKeepsRenderedArtifact pins the optimization's
+// contract: when a caller consumes the local/object-store bytes, the fan-out
+// still renders and certifies the artifact, but never calls the Drive uploader
+// and never fabricates UPLOADED/Drive fields.
+func TestService_SkipDrivePublicationKeepsRenderedArtifact(t *testing.T) {
+	executor := &pipelineRenderExecutor{third: make(chan struct{})}
+	renderer := newTestRenderer(t,
+		pipelineCompiler{},
+		newTestWire(t, pipelineSubtitleResolver{}, pipelineSubtitleCompiler{}),
+		executor,
+	)
+	uploader := &fakeDriveUploader{result: &DriveUploadResult{FileID: "must-not-upload", Link: "https://drive/must-not-upload"}}
+	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := validPlan()
+	plan.TargetLanguage = "es"
+	plan.SubtitleTrackID = pipelineTrackIDForLanguage(t, "es")
+	plan.Fingerprint = Fingerprint(plan)
+
+	result, err := service.Localize(context.Background(), LocalizeInput{
+		SkipDrivePublication: true,
+		Plans:                []LocalizedClipPlan{plan},
+	})
+	if err != nil {
+		t.Fatalf("Localize: %v", err)
+	}
+	if len(result.Failures) != 0 {
+		t.Fatalf("failures: %+v", result.Failures)
+	}
+	if len(result.Artifacts) != 1 {
+		t.Fatalf("artifacts: got %d, want 1", len(result.Artifacts))
+	}
+	artifact := result.Artifacts[0]
+	if artifact.Status != LocalizedClipRendered {
+		t.Fatalf("status = %q, want RENDERED (no Drive publication ran)", artifact.Status)
+	}
+	if artifact.DriveFileID != "" || artifact.DriveLink != "" {
+		t.Fatalf("skip-drive artifact must not carry a Drive identity: %+v", artifact)
+	}
+	if artifact.AdmittedAt.IsZero() || artifact.FinishedAt.IsZero() {
+		t.Fatalf("skip-drive artifact must still carry its certified timing: %+v", artifact)
+	}
+	if uploader.calls != 0 {
+		t.Fatalf("Drive uploader called %d time(s) despite SkipDrivePublication", uploader.calls)
+	}
+}

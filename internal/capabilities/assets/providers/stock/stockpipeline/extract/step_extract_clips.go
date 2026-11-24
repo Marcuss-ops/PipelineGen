@@ -12,15 +12,20 @@
 //	writeTimestampGroups → step_extract_clips_metadata.go
 //	validateAndProbeSourceDuration → step_extract_clips_validation.go
 //	buildRichStockAsset → step_extract_clips_assets.go
+//
+// GOP-16 (November 2026): Run is now the ordered orchestration only;
+// durable preparation, the publish sweep, the duration contract and the
+// final state write live in the helpers below.
 package extract
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/publish"
-	"sync"
 
 	"go.uber.org/zap"
 
@@ -219,7 +224,6 @@ func boundedSourceCuts(ctx context.Context, runner core.StepRunner, groups []sto
 
 func (s StockExtractClipsStep) Run(ctx context.Context, runner core.StepRunner) error {
 	cutter := runner.Cutter()
-
 	plans := runner.State().Plan
 
 	if runner.Log() != nil {
@@ -247,14 +251,7 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner core.StepRunner) 
 		return nil
 	}
 
-	// Build sourceID → *StagedAsset map.
-	stagedBySource := make(map[string]*assets.StagedAsset)
-	for _, sa := range runner.State().StagedAssets {
-		if sa.SourceID != "" && sa.LocalPath != "" {
-			stagedBySource[sa.SourceID] = sa
-		}
-	}
-
+	stagedBySource := stagedAssetMap(runner.State().StagedAssets)
 	in := runner.RunInput()
 	// Staging is source-scoped, and each source is downloaded once. The plan
 	// keeps ABSOLUTE timestamps (they are the published clip identity: titles,
@@ -274,10 +271,52 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner core.StepRunner) 
 		timestampGroupName = publish.RunInputTimestampParentGroupName(in)
 	}
 
-	// Create all durable batch/group/artifact rows before fan-out. This keeps
-	// parent creation deterministic and prevents concurrent SQLite writers from
-	// racing on the one batch row. Per-artifact lifecycle updates still happen
-	// in the existing publication path and retain their idempotent keys.
+	preparedGroups, err := prepareDurableGroups(ctx, runner, groups, stagedBySource, batchID)
+	if err != nil {
+		return err
+	}
+
+	cutResults, cutErr := boundedSourceCuts(ctx, runner, groups, stagedBySource, noAudio)
+	if cutErr != nil {
+		// The fan-out marks artifacts EXTRACTING before any cutter starts.
+		// Reconcile that durable state on both internal failures and caller
+		// cancellation so retries do not inherit stranded in-flight rows.
+		return reconcileRetryable(ctx, runner, batchID, preparedGroups, cutErr)
+	}
+
+	// Merge and publish strictly in plan order. This is deliberate: it keeps
+	// segment filenames and timestamp metadata deterministic, and avoids
+	// requiring every transactional writer/metadata buffer implementation to
+	// become concurrently mutable. The expensive FFmpeg work already ran in
+	// the bounded fan-out above.
+	cutPaths, publishedChunks, contractCounts, contractDurations, groupBuckets, err :=
+		publishSourceGroups(ctx, runner, cutResults, preparedGroups, batchID,
+			rootFolderName, resolvedFolderID, timestampGroupName, in)
+	if err != nil {
+		return err
+	}
+
+	if err := validateProducedDurationContract(in, plans, contractCounts, contractDurations); err != nil {
+		return err
+	}
+	return finalizeExtractRun(ctx, runner, in, groups, cutPaths, publishedChunks, groupBuckets, rootFolderName, resolvedFolderID)
+}
+
+// stagedAssetMap indexes staged sources by their non-empty SourceID.
+func stagedAssetMap(stagedAssets []*assets.StagedAsset) map[string]*assets.StagedAsset {
+	stagedBySource := make(map[string]*assets.StagedAsset)
+	for _, sa := range stagedAssets {
+		if sa.SourceID != "" && sa.LocalPath != "" {
+			stagedBySource[sa.SourceID] = sa
+		}
+	}
+	return stagedBySource
+}
+
+// prepareDurableGroups creates all durable batch/group/artifact rows before
+// fan-out and marks the group's artifacts EXTRACTING. Durable errors are
+// reconciled to RETRY_WAIT for every group already prepared.
+func prepareDurableGroups(ctx context.Context, runner core.StepRunner, groups []stockSourceGroup, stagedBySource map[string]*assets.StagedAsset, batchID string) ([]stockSourceGroup, error) {
 	batchEnsured := false
 	preparedGroups := make([]stockSourceGroup, 0, len(groups))
 	for _, group := range groups {
@@ -294,39 +333,33 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner core.StepRunner) 
 		// Include the group before preparation so a partially-created
 		// group/artifact set is also eligible for retry reconciliation.
 		preparedGroups = append(preparedGroups, group)
-		batchEnsured, err = prepareBatchState(ctx, runner, DurableSourceIDForGroup(group.sourceID, group.plans), group.plans, len(groups), len(plans), batchID, batchEnsured)
+		batchEnsured, err = prepareBatchState(ctx, runner, DurableSourceIDForGroup(group.sourceID, group.plans), group.plans, len(groups), len(runner.State().Plan), batchID, batchEnsured)
 		if err != nil {
-			reconcileCtx := context.WithoutCancel(ctx)
-			if reconcileErr := markGroupsRetryable(reconcileCtx, runner, batchID, preparedGroups, err.Error()); reconcileErr != nil {
-				return fmt.Errorf("%w; durable extraction reconciliation failed: %v", err, reconcileErr)
-			}
-			return err
+			return nil, reconcileRetryable(ctx, runner, batchID, preparedGroups, err)
 		}
 		if err := markArtifactsExtracting(ctx, runner, batchID, DurableSourceIDForGroup(group.sourceID, group.plans), group.plans); err != nil {
-			reconcileCtx := context.WithoutCancel(ctx)
-			if reconcileErr := markGroupsRetryable(reconcileCtx, runner, batchID, preparedGroups, err.Error()); reconcileErr != nil {
-				return fmt.Errorf("%w; durable extraction reconciliation failed: %v", err, reconcileErr)
-			}
-			return err
+			return nil, reconcileRetryable(ctx, runner, batchID, preparedGroups, err)
 		}
 	}
+	return preparedGroups, nil
+}
 
-	cutResults, cutErr := boundedSourceCuts(ctx, runner, groups, stagedBySource, noAudio)
-	if cutErr != nil {
-		// The fan-out marks artifacts EXTRACTING before any cutter starts.
-		// Reconcile that durable state on both internal failures and caller
-		// cancellation so retries do not inherit stranded in-flight rows.
-		reconcileCtx := context.WithoutCancel(ctx)
-		if reconcileErr := markGroupsRetryable(reconcileCtx, runner, batchID, preparedGroups, cutErr.Error()); reconcileErr != nil {
-			return fmt.Errorf("%w; durable extraction reconciliation failed: %v", cutErr, reconcileErr)
-		}
-		return cutErr
+// reconcileRetryable marks the prepared groups RETRY_WAIT and returns the
+// original cause (or a combined error when reconciliation itself fails).
+func reconcileRetryable(ctx context.Context, runner core.StepRunner, batchID string, groups []stockSourceGroup, cause error) error {
+	reconcileCtx := context.WithoutCancel(ctx)
+	if reconcileErr := markGroupsRetryable(reconcileCtx, runner, batchID, groups, cause.Error()); reconcileErr != nil {
+		return fmt.Errorf("%w; durable extraction reconciliation failed: %v", cause, reconcileErr)
 	}
-	// Merge and publish strictly in plan order. This is deliberate: it keeps
-	// segment filenames and timestamp metadata deterministic, and avoids
-	// requiring every transactional writer/metadata buffer implementation to
-	// become concurrently mutable. The expensive FFmpeg work already ran in
-	// the bounded fan-out above.
+	return cause
+}
+
+// publishSourceGroups publishes each processed source group in plan order,
+// accumulating cut paths, chunks and the produced-duration contract counters.
+func publishSourceGroups(ctx context.Context, runner core.StepRunner, cutResults []stockSourceCutResult,
+	preparedGroups []stockSourceGroup, batchID, rootFolderName, resolvedFolderID, timestampGroupName string,
+	in *core.RunInput) ([]string, []core.ChunkState, map[string]int, map[string]float64, map[string]*timestampGroupBuffer, error) {
+
 	var cutPaths []string
 	var publishedChunks []core.ChunkState
 	groupBuckets := make(map[string]*timestampGroupBuffer)
@@ -353,11 +386,7 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner core.StepRunner) 
 		sourceCutPaths, sourceChunks, pubErr := publishCuts(ctx, runner, durableSourceID, group.index, group.plans,
 			result, segmentCounts, groupBuckets, rootFolderName, resolvedFolderID, timestampGroupName, in, batchID)
 		if pubErr != nil {
-			reconcileCtx := context.WithoutCancel(ctx)
-			if reconcileErr := markGroupsRetryable(reconcileCtx, runner, batchID, preparedGroups, pubErr.Error()); reconcileErr != nil {
-				return fmt.Errorf("%w; durable extraction reconciliation failed: %v", pubErr, reconcileErr)
-			}
-			return pubErr
+			return nil, nil, nil, nil, nil, reconcileRetryable(ctx, runner, batchID, preparedGroups, pubErr)
 		}
 		cutPaths = append(cutPaths, sourceCutPaths...)
 		publishedChunks = append(publishedChunks, sourceChunks...)
@@ -371,15 +400,30 @@ func (s StockExtractClipsStep) Run(ctx context.Context, runner core.StepRunner) 
 		}
 	}
 
-	if in != nil && in.ClipsPerSource > 0 {
-		for source := range core.UniquePlanSources(plans) {
-			count := contractCounts[source]
-			duration := contractDurations[source]
-			if count != in.ClipsPerSource || duration < float64(in.TargetDurationPerSourceSeconds-3) || duration > float64(in.TargetDurationPerSourceSeconds+3) {
-				return fmt.Errorf("orchestrator: stock.extract_clips: source %q violates produced duration contract: clips=%d duration=%.3fs", source, count, duration)
-			}
+	return cutPaths, publishedChunks, contractCounts, contractDurations, groupBuckets, nil
+}
+
+// validateProducedDurationContract enforces clips-per-source and target
+// duration (±3s) when the run declares them.
+func validateProducedDurationContract(in *core.RunInput, plans []core.ClipPlan, counts map[string]int, durations map[string]float64) error {
+	if in == nil || in.ClipsPerSource <= 0 {
+		return nil
+	}
+	for source := range core.UniquePlanSources(plans) {
+		count := counts[source]
+		duration := durations[source]
+		if count != in.ClipsPerSource || duration < float64(in.TargetDurationPerSourceSeconds-3) || duration > float64(in.TargetDurationPerSourceSeconds+3) {
+			return fmt.Errorf("orchestrator: stock.extract_clips: source %q violates produced duration contract: clips=%d duration=%.3fs", source, count, duration)
 		}
 	}
+	return nil
+}
+
+// finalizeExtractRun writes the timestamp groups, enforces the zero-cut
+// production gate and publishes the successful state to the runner.
+func finalizeExtractRun(ctx context.Context, runner core.StepRunner, in *core.RunInput, groups []stockSourceGroup,
+	cutPaths []string, publishedChunks []core.ChunkState, groupBuckets map[string]*timestampGroupBuffer,
+	rootFolderName, resolvedFolderID string) error {
 
 	// Publish group metadata.
 	if err := writeTimestampGroups(ctx, runner, in, rootFolderName, resolvedFolderID, groupBuckets, runner.ArtifactPreparation()); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 
@@ -12,6 +13,7 @@ import (
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	runnerpolicy "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
@@ -216,7 +218,7 @@ func (r *Runner) SetCheckpointResolver(resolver *capcheckpoint.Resolver) {
 // duration resolver port. Nil-safe; nil means the audio intent block cannot
 // be resolved and a run carrying BGM/SFX intents fails closed in the
 // audio-compile phase.
-func (r *Runner) SetAudioAssetSource(source AudioAssetSource) {
+func (r *Runner) SetAudioAssetSource(source contract.AudioAssetSource) {
 	if r != nil {
 		r.audioAssetSource = source
 	}
@@ -283,15 +285,15 @@ func finalAudioCacheAllRunsFromEnv() bool {
 // finalAudioCacheApplies reports whether this run may read and write the
 // plan-keyed master cache. A hit still passes ValidateFinalAudioReference, so
 // widening the gate changes cost, not correctness.
-func (r *Runner) finalAudioCacheApplies(req GenerateRequest) bool {
+func (r *Runner) finalAudioCacheApplies(req contract.GenerateRequest) bool {
 	if r == nil || r.finalAudioCache == nil || !r.finalAudioCache.Enabled() {
 		return false
 	}
 	return req.FinalJob || r.finalAudioCacheAllRuns
 }
 
-func finalAudioReferenceFromCache(ref scriptaudio.CachedFinalAudioReference) FinalAudioReference {
-	return FinalAudioReference{
+func finalAudioReferenceFromCache(ref scriptaudio.CachedFinalAudioReference) contract.FinalAudioReference {
+	return contract.FinalAudioReference{
 		AssetID: ref.AssetID, Path: ref.Path, Container: ref.Container,
 		AudioContractVersion: ref.AudioContractVersion, AudioPlanVersion: ref.AudioPlanVersion,
 		PlanSHA256: ref.PlanSHA256, FinalAudioSHA256: ref.FinalAudioSHA256,
@@ -302,7 +304,7 @@ func finalAudioReferenceFromCache(ref scriptaudio.CachedFinalAudioReference) Fin
 	}
 }
 
-func finalAudioCacheReference(ref FinalAudioReference) scriptaudio.CachedFinalAudioReference {
+func finalAudioCacheReference(ref contract.FinalAudioReference) scriptaudio.CachedFinalAudioReference {
 	return scriptaudio.CachedFinalAudioReference{
 		AssetID: ref.AssetID, Path: ref.Path, Container: ref.Container,
 		AudioContractVersion: ref.AudioContractVersion, AudioPlanVersion: ref.AudioPlanVersion,
@@ -422,6 +424,19 @@ func (r *Runner) SetTranslationConcurrency(concurrency int) {
 	r.translationConcurrency = concurrency
 }
 
+// SetTranslationTimeout bounds ONE translation request (batched or per-scene).
+// A non-positive value restores DefaultTranslationTimeout; the timeout is not
+// allowed to exceed the generation budget a translation never needs.
+func (r *Runner) SetTranslationTimeout(timeout time.Duration) {
+	if r == nil {
+		return
+	}
+	if timeout <= 0 {
+		timeout = DefaultTranslationTimeout
+	}
+	r.translationTimeout = timeout
+}
+
 // SetVidRushTimingRecorder wires the recorder that receives the scene-
 // generation wall-clock window, enabling the generation↔VidRush overlap
 // metric. A nil recorder is safe and disables timing. This is the injection
@@ -436,7 +451,7 @@ func (r *Runner) SetVidRushTimingRecorder(recorder VidRushTimingRecorder) {
 // SetPhraseAligner wires the Rust phrase/word alignment boundary. Nil means a
 // run that carries certified timing fails closed instead of falling back to a
 // Go matcher.
-func (r *Runner) SetPhraseAligner(aligner PhraseAligner) {
+func (r *Runner) SetPhraseAligner(aligner contract.PhraseAligner) {
 	if r != nil {
 		r.phraseAligner = aligner
 	}
@@ -461,7 +476,7 @@ func (r *Runner) LocalizedIdentityMatcher() LocalizedIdentityMatcher {
 
 // PhraseAligner returns the run-scoped Rust alignment seam so the batch path
 // can share the exact worker the durable runner uses.
-func (r *Runner) PhraseAligner() PhraseAligner {
+func (r *Runner) PhraseAligner() contract.PhraseAligner {
 	if r == nil {
 		return nil
 	}

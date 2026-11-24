@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -33,7 +34,7 @@ import (
 type TextGenerator interface {
 	// GenerateSceneText produces the scene text for the given request.
 	// Returns the English (or primary-language) text for each scene.
-	GenerateSceneText(ctx context.Context, request GenerateRequest) ([]Scene, error)
+	GenerateSceneText(ctx context.Context, request contract.GenerateRequest) ([]contract.Scene, error)
 }
 
 // SceneTextTraceGenerator is implemented by generators that resolve an
@@ -42,7 +43,7 @@ type TextGenerator interface {
 // can successfully generate narration while silently dropping provenance.
 type SceneTextTraceGenerator interface {
 	TextGenerator
-	GenerateSceneTextWithTrace(context.Context, GenerateRequest) ([]Scene, scriptpkg.SourceTrace, error)
+	GenerateSceneTextWithTrace(context.Context, contract.GenerateRequest) ([]contract.Scene, scriptpkg.SourceTrace, error)
 }
 
 // SceneTextStreamer is the optional streaming variant of TextGenerator. A
@@ -60,14 +61,14 @@ type SceneTextTraceGenerator interface {
 // batch TextGenerator.GenerateSceneText when the generator does not implement
 // this interface.
 type SceneTextStreamer interface {
-	GenerateSceneTextStream(ctx context.Context, request GenerateRequest, emit func(Scene) error) error
+	GenerateSceneTextStream(ctx context.Context, request contract.GenerateRequest, emit func(contract.Scene) error) error
 }
 
 // SceneTextTraceStreamer preserves research provenance across the streaming
 // boundary. It emits the same immutable scenes as SceneTextStreamer.
 type SceneTextTraceStreamer interface {
 	SceneTextStreamer
-	GenerateSceneTextStreamWithTrace(context.Context, GenerateRequest, func(Scene) error) (scriptpkg.SourceTrace, error)
+	GenerateSceneTextStreamWithTrace(context.Context, contract.GenerateRequest, func(contract.Scene) error) (scriptpkg.SourceTrace, error)
 }
 
 // ScriptPersistenceInput is the typed handoff to the canonical SQLite
@@ -75,8 +76,8 @@ type SceneTextTraceStreamer interface {
 // the adapter owns storage details and idempotency.
 type ScriptPersistenceInput struct {
 	RunID   string
-	Request GenerateRequest
-	Result  *GenerateResult
+	Request contract.GenerateRequest
+	Result  *contract.GenerateResult
 }
 
 // ScriptPersistence writes one canonical script row and returns its durable
@@ -91,8 +92,8 @@ type ScriptPersistence interface {
 // TranslationInput carries the data needed to translate a single scene.
 type TranslationInput struct {
 	SceneID        string
-	SourceLanguage Language
-	TargetLanguage Language
+	SourceLanguage contract.Language
+	TargetLanguage contract.Language
 	SourceText     string
 	Provider       string
 	Model          string
@@ -138,7 +139,7 @@ type VoiceoverInput struct {
 	// A canceled prior attempt may still be cleaning up a TTS subprocess when
 	// the next attempt starts, so project+scene alone is not a safe filename.
 	RunID    string
-	Language Language
+	Language contract.Language
 	Text     string
 	// Project is the semantic project namespace for the voiceover publish
 	// (PR-P12-VOICEOVER-SEMANTIC-FIELDS / PR-VOICEOVER-DRIVE-DRIFT). The
@@ -175,7 +176,7 @@ type VoiceoverInput struct {
 // not just a copier of existing voiceover_paths / audio_path fields.
 type VoiceoverGenerator interface {
 	// Generate produces a voiceover audio asset for the given text.
-	Generate(ctx context.Context, input VoiceoverInput) (AudioReference, error)
+	Generate(ctx context.Context, input VoiceoverInput) (contract.AudioReference, error)
 }
 
 // ── FailRunInput ────────────────────────────────────────────────────
@@ -246,7 +247,7 @@ type RunRepository interface {
 
 	// SavePartialResult persists intermediate result data (e.g. after
 	// each translated scene) so a retry can resume from the checkpoint.
-	SavePartialResult(ctx context.Context, runID string, result *GenerateResult) error
+	SavePartialResult(ctx context.Context, runID string, result *contract.GenerateResult) error
 }
 
 // StaleSubmissionRun is a durable nonterminal submission whose last update is

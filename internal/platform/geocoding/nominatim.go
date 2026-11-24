@@ -29,6 +29,12 @@ import (
 const (
 	defaultNominatimURL = "https://nominatim.openstreetmap.org/search"
 	maxResponseBytes    = 1 << 20
+	// negativeCacheTTL bounds how long a certified no-result is reused. Places
+	// are static, but a provider outage or a name the extractor will never fix
+	// must not poison the cache forever; 15 minutes absorbs the retry frames of
+	// one run and back-to-back jobs without delaying a corrected lookup by a
+	// day.
+	negativeCacheTTL = 15 * time.Minute
 )
 
 // NominatimConfig controls the replaceable Nominatim-compatible endpoint.
@@ -116,10 +122,12 @@ var _ capgeocoding.Geocoder = (*Nominatim)(nil)
 
 // Geocode searches one grounded place name. Ambiguous names are resolved
 // against the request's grounded geographic context and refused (ErrNoResult)
-// when no candidate passes the disambiguation criteria. Only validated
-// positive hits are cached, keyed by normalized (language, query, context);
-// retries after an outage remain possible, while repeated successful
-// generation jobs do not hit the service.
+// when no candidate passes the disambiguation criteria. Validated positive
+// hits and certified no-results are cached, keyed by normalized (language,
+// query, context, level); transport/HTTP failures are never cached, so a
+// retry after an outage remains possible. A no-result entry expires after
+// negativeCacheTTL because it is an answer about the provider's data, not a
+// permanent fact about the name.
 func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (capgeocoding.Result, error) {
 	if n == nil {
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: adapter is nil")
@@ -129,15 +137,20 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 		return capgeocoding.Result{}, err
 	}
 	cachePath := n.cachePath(req)
-	if result, classified, ok, err := readCached(cachePath); err != nil {
+	cached, classified, noResult, ok, err := readCached(cachePath)
+	if err != nil {
 		return capgeocoding.Result{}, err
-	} else if ok && (result.Scope != "" || classified) && !(result.Scope == "city" && strings.TrimSpace(result.AdminRegion) == "") {
+	}
+	if ok && noResult {
+		return capgeocoding.Result{}, fmt.Errorf("nominatim: cached no-result for %q: %w", req.Query, capgeocoding.ErrNoResult)
+	}
+	if ok && (cached.Scope != "" || classified) && !(cached.Scope == "city" && strings.TrimSpace(cached.AdminRegion) == "") {
 		// A cached answer that contradicts the grounded country is a stale
 		// homonym ("Pavia" cached as the Stockholm locality in an Italian
 		// scene). Treat it as a miss and re-resolve instead of pinning the
 		// map on the wrong country forever.
-		if !contextCountryContradicts(req.Context, result.CountryCode) {
-			return result, nil
+		if !contextCountryContradicts(req.Context, cached.CountryCode) {
+			return cached, nil
 		}
 	}
 	// Pre-scope cache entries predate geographic-level zooms. Refresh them
@@ -188,12 +201,18 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: decode response: %w", err)
 	}
 	if len(hits) == 0 {
+		if cacheErr := writeNegativeCached(cachePath, req.Context); cacheErr != nil {
+			return capgeocoding.Result{}, cacheErr
+		}
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: no result for grounded place %q: %w", req.Query, capgeocoding.ErrNoResult)
 	}
 	best, score, rationale, ok := selectCandidate(req.Query, req.Context, hits)
 	if !ok {
 		// Ambiguous and no grounded context resolves it: refuse rather than
 		// silently pin the map on an arbitrary namesake.
+		if cacheErr := writeNegativeCached(cachePath, req.Context); cacheErr != nil {
+			return capgeocoding.Result{}, cacheErr
+		}
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: grounded place %q is ambiguous across %d candidates and no grounded context resolves it: %w",
 			req.Query, len(hits), capgeocoding.ErrNoResult)
 	}
@@ -210,6 +229,9 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	// compatible proxies differ): an answer at another scale is not a usable
 	// pin, and it must not be cached as one either.
 	if req.Level != "" && !capgeocoding.ScopeFitsLevel(result.Scope, req.Level) {
+		if cacheErr := writeNegativeCached(cachePath, req.Context); cacheErr != nil {
+			return capgeocoding.Result{}, cacheErr
+		}
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: grounded place %q resolves at scope %q, outside the requested %s level: %w",
 			req.Query, result.Scope, req.Level, capgeocoding.ErrNoResult)
 	}
@@ -608,22 +630,39 @@ func (n *Nominatim) cachePath(req capgeocoding.Request) string {
 	return filepath.Join(n.cacheDir, digest.SHA256String(key)+".json")
 }
 
-func readCached(path string) (capgeocoding.Result, bool, bool, error) {
+// readCached returns the cached answer, whether the scope was classified, and
+// whether the entry is a certified no-result. A stale no-result is a miss: it
+// is re-asked rather than served past its TTL.
+func writeNegativeCached(path string, ctx capgeocoding.Context) error {
+	data, err := json.Marshal(cacheEntry{NoResult: true, ContextKey: ctx.Key(), CachedAt: time.Now()})
+	if err != nil {
+		return fmt.Errorf("nominatim: encode negative cache: %w", err)
+	}
+	return writeAtomic(path, data)
+}
+
+func readCached(path string) (capgeocoding.Result, bool, bool, bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return capgeocoding.Result{}, false, false, nil
+		return capgeocoding.Result{}, false, false, false, nil
 	}
 	if err != nil {
-		return capgeocoding.Result{}, false, false, fmt.Errorf("nominatim: read cache: %w", err)
+		return capgeocoding.Result{}, false, false, false, fmt.Errorf("nominatim: read cache: %w", err)
 	}
 	var entry cacheEntry
 	if err := json.Unmarshal(data, &entry); err != nil {
-		return capgeocoding.Result{}, false, false, fmt.Errorf("nominatim: decode cache %q: %w", path, err)
+		return capgeocoding.Result{}, false, false, false, fmt.Errorf("nominatim: decode cache %q: %w", path, err)
+	}
+	if entry.NoResult {
+		if entry.CachedAt.IsZero() || time.Since(entry.CachedAt) > negativeCacheTTL {
+			return capgeocoding.Result{}, false, false, false, nil
+		}
+		return capgeocoding.Result{}, false, true, true, nil
 	}
 	if err := entry.Validate(); err != nil {
-		return capgeocoding.Result{}, false, false, fmt.Errorf("nominatim: invalid cached result: %w", err)
+		return capgeocoding.Result{}, false, false, false, fmt.Errorf("nominatim: invalid cached result: %w", err)
 	}
-	return entry.Result, entry.ScopeClassified, true, nil
+	return entry.Result, entry.ScopeClassified, false, true, nil
 }
 
 // cacheEntry is the on-disk cache record. ScopeClassified records that
@@ -635,6 +674,11 @@ func readCached(path string) (capgeocoding.Result, bool, bool, error) {
 type cacheEntry struct {
 	capgeocoding.Result
 	ScopeClassified bool `json:"scope_classified,omitempty"`
+	// NoResult marks a certified refusal (no hit, unresolved ambiguity, or a
+	// hit outside the requested level). It is stored instead of a Result so a
+	// repeated lookup is answered locally; CachedAt bounds its lifetime.
+	NoResult bool      `json:"no_result,omitempty"`
+	CachedAt time.Time `json:"cached_at,omitempty"`
 	// ContextKey is the grounded geographic context the answer was selected
 	// under. A cache file is only ever keyed by that context (see cachePath);
 	// recording it makes the provenance auditable from the entry itself.
@@ -642,10 +686,16 @@ type cacheEntry struct {
 }
 
 func writeCached(path string, result capgeocoding.Result, ctx capgeocoding.Context) error {
-	data, err := json.Marshal(cacheEntry{Result: result, ScopeClassified: true, ContextKey: ctx.Key()})
+	data, err := json.Marshal(cacheEntry{Result: result, ScopeClassified: true, ContextKey: ctx.Key(), CachedAt: time.Now()})
 	if err != nil {
 		return fmt.Errorf("nominatim: encode cache: %w", err)
 	}
+	return writeAtomic(path, data)
+}
+
+// writeAtomic writes one cache record through a synced temp file so a reader
+// never sees a half-written entry. Both positive and negative records share it.
+func writeAtomic(path string, data []byte) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".nominatim-*.tmp")
 	if err != nil {
 		return fmt.Errorf("nominatim: create cache temp file: %w", err)

@@ -181,212 +181,214 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 	}
 	segments := append([]scriptpkg.ScriptSegment(nil), plan.Segments...)
 	if len(segments) == 0 {
-		scenes, trace, batchErr := g.GenerateSceneTextWithTrace(ctx, req)
-		if batchErr != nil {
-			return scriptpkg.SourceTrace{}, batchErr
-		}
-		for _, scene := range scenes {
-			if err := emit(scene); err != nil {
-				return scriptpkg.SourceTrace{}, err
-			}
-		}
-		return trace, nil
+		return g.emitBatchScenes(ctx, req, emit)
 	}
 	// Probe liveness before scheduling segment calls. The probe does not
 	// consume an inference slot and reports an unavailable model distinctly.
-	healthCtx, healthCancel := context.WithTimeout(ctx, 3*time.Second)
-	healthErr := g.Engine.CheckGenerationHealth(healthCtx)
-	healthCancel()
-	if healthErr != nil {
-		return scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: model unavailable before generation: %w", healthErr)
+	if err := g.checkGenerationHealth(ctx); err != nil {
+		return scriptpkg.SourceTrace{}, err
 	}
 
-	type sceneResult struct {
-		index int
-		scene scriptgen.Scene
-		err   error
+	generateOne := func(index int, segment scriptpkg.ScriptSegment) sceneSegmentResult {
+		return g.generateStreamSegment(ctx, req, plan, segments, index, segment)
 	}
-	generateOne := func(index int, segment scriptpkg.ScriptSegment) sceneResult {
-		segmentReq := req
-		// Each provider call owns exactly one topic. Keep it on the legacy
-		// single-topic surface so the multi-segment paragraph validator does
-		// not expect a five-paragraph envelope inside one call.
-		segmentReq.ScriptParams.Segments = nil
-		segmentReq.ScriptParams.SingleScene = true
-		segmentTarget := segment.TargetWords
-		if segmentTarget <= 0 {
-			segmentTarget = req.ScriptParams.SegmentWords
+	results := g.runSceneSegmentWorkers(ctx, segments, g.resolveSceneWorkers(req, len(segments)), generateOne)
+	for output := range results {
+		if output.err != nil {
+			return scriptpkg.SourceTrace{}, output.err
 		}
-		if segmentTarget <= 0 && req.ScriptParams.TargetWords > 0 && len(segments) > 0 {
-			segmentTarget = req.ScriptParams.TargetWords / len(segments)
+		if err := emit(output.scene); err != nil {
+			return scriptpkg.SourceTrace{}, err
 		}
-		// The live Mike Tyson run measured 14% under the requested whole-script
-		// target with this local model. For generated text with a near-target
-		// minimum and no explicit maximum, use a modestly larger writing aim to
-		// compensate. The requested target remains unchanged and this adds no cap.
-		if plan.ClipEvidence == nil && segment.MaxWords <= 0 && segment.MinWords > 0 &&
-			segmentTarget >= 100 && segment.MinWords*100 >= segmentTarget*90 {
-			segmentTarget = (segmentTarget*115 + 99) / 100
-		}
-		if segmentTarget > 0 {
-			segmentReq.ScriptParams.TargetWords = segmentTarget
-			segment.TargetWords = segmentTarget
-		}
-		// Text-backed segments own their own editorial brief. Passing the
-		// whole-script source_text into every model call repeats other scenes'
-		// cities and phrases, dilutes the per-scene prompt, and can shorten the
-		// generated narration. Keep global style/guidelines, but isolate source.
-		if plan.ClipEvidence == nil && req.Source.Type == scriptgen.SourceText && strings.TrimSpace(segment.SourceText) != "" {
-			segmentReq.Source.Topic = textutil.FirstNonEmpty(segment.Topic, segmentReq.Source.Topic)
-			segmentReq.Source.SourceText = segment.SourceText
-			segmentReq.Source.Query = ""
-		}
+	}
+	return researchTrace(plan), nil
+}
 
-		if len(segment.ClipIDs) == 0 {
-			segmentReq.Source.Type = scriptgen.SourceText
-			segmentReq.Source.Topic = textutil.FirstNonEmpty(segment.Topic, segmentReq.Source.Topic)
-			segmentReq.Source.SourceText = segment.SourceText
-			segmentReq.Source.Query = ""
-		}
-		segmentPlan := scopeSegmentPlan(plan, segment, index)
-		if plan.ClipEvidence == nil && req.Source.Type == scriptgen.SourceText && strings.TrimSpace(segmentReq.Source.SourceText) != "" {
-			segmentPlan.SourceText = segmentReq.Source.SourceText
-			segmentPlan.SourceFingerprint = scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(genSourceToSourceSpec(segmentReq.Source), nil))
-		}
-		// Isolate the model context to this segment. The resolver keeps the
-		// complete evidence pack for provenance, but a per-clip generation call
-		// must not expose other segments' transcripts or narrative text; small
-		// models otherwise merge the intro clips or drift into unrelated facts.
-		// Keep the segment on the Engine plan so its word-budget validator is
-		// active. The old nil value silently routed this call through the
-		// unvalidated whole-script path, which is why 500-word targets could
-		// become 900+ words.
-		if segment.TargetWords > 0 || segment.MinWords > 0 || segment.MaxWords > 0 || segmentReq.ScriptParams.SegmentWords > 0 || segmentReq.ScriptParams.TargetWords > 0 {
-			segmentPlan.Segments = []scriptpkg.ScriptSegment{segment}
-		} else {
-			segmentPlan.Segments = nil
-		}
-		segmentPlan.SingleScene = true
-		segmentPlan.Topic = strings.TrimSpace(segment.Topic)
-		segmentPlan.TargetWords = segmentReq.ScriptParams.TargetWords
-		// The aggregate key is not safe for a segment replay, but the segment
-		// plan now carries its own topic/source/target fingerprint. Reuse the
-		// caller's memory policy so warm multi-segment runs do not regenerate
-		// identical narration; force_refresh still bypasses the gate.
-		segmentPlan.UseMemory = plan.UseMemory
-		segmentPlan.RenderedPrompt = buildEditorialPromptFromGenReq(segmentReq)
-		segmentPlan.CacheKey = scriptpkg.BuildCacheKey(&segmentPlan)
-		// An explicitly authored intro is already the final editorial line.
-		// Sending it through a generative model repeatedly expanded short clip
-		// cues into long explanations (or failed the one-paragraph word gate).
-		// Preserve the caller's concise sentence exactly; downstream translation,
-		// voiceover, stock binding, and rendering still run through the normal path.
-		if strings.EqualFold(strings.TrimSpace(segment.Kind), "intro") {
-			intro := strings.TrimSpace(segment.SourceText)
-			if intro != "" {
-				sceneID := strings.TrimSpace(segment.ID)
-				if sceneID == "" {
-					sceneID = fmt.Sprintf("scene-%d", index)
-				}
-				return sceneResult{index: index, scene: scriptgen.Scene{
-					ID:         sceneID,
-					Index:      index,
-					DurationMS: segment.DurationMS,
-					Text:       map[scriptgen.Language]string{req.SourceLanguage: intro},
-				}}
-			}
-		}
+// sceneSegmentResult is one completed (or failed) streaming segment.
+type sceneSegmentResult struct {
+	index int
+	scene scriptgen.Scene
+	err   error
+}
 
-		segmentCtx, cancelSegment := context.WithTimeout(ctx, defaultSceneGenerationTimeout)
-		defer cancelSegment()
-		result, genErr := g.Engine.Generate(segmentCtx, &segmentPlan)
-		if genErr != nil {
-			if errors.Is(genErr, context.DeadlineExceeded) {
-				return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d generation timed out after %s (model request or admission queue): %w", index, defaultSceneGenerationTimeout, genErr)}
+// generateStreamSegment builds and runs the isolated generation plan for one
+// explicit segment. It is the body previously inlined in the streaming worker
+// closure: same prompt isolation, same word-budget aim, same intro shortcut.
+func (g *SceneTextGenerator) generateStreamSegment(
+	ctx context.Context,
+	req scriptgen.GenerateRequest,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	segments []scriptpkg.ScriptSegment,
+	index int,
+	segment scriptpkg.ScriptSegment,
+) sceneSegmentResult {
+	segmentReq := req
+	// Each provider call owns exactly one topic. Keep it on the legacy
+	// single-topic surface so the multi-segment paragraph validator does
+	// not expect a five-paragraph envelope inside one call.
+	segmentReq.ScriptParams.Segments = nil
+	segmentReq.ScriptParams.SingleScene = true
+	segmentTarget := segment.TargetWords
+	if segmentTarget <= 0 {
+		segmentTarget = req.ScriptParams.SegmentWords
+	}
+	if segmentTarget <= 0 && req.ScriptParams.TargetWords > 0 && len(segments) > 0 {
+		segmentTarget = req.ScriptParams.TargetWords / len(segments)
+	}
+	// The live Mike Tyson run measured 14% under the requested whole-script
+	// target with this local model. For generated text with a near-target
+	// minimum and no explicit maximum, use a modestly larger writing aim to
+	// compensate. The requested target remains unchanged and this adds no cap.
+	if plan.ClipEvidence == nil && segment.MaxWords <= 0 && segment.MinWords > 0 &&
+		segmentTarget >= 100 && segment.MinWords*100 >= segmentTarget*90 {
+		segmentTarget = (segmentTarget*115 + 99) / 100
+	}
+	if segmentTarget > 0 {
+		segmentReq.ScriptParams.TargetWords = segmentTarget
+		segment.TargetWords = segmentTarget
+	}
+	// Text-backed segments own their own editorial brief. Passing the
+	// whole-script source_text into every model call repeats other scenes'
+	// cities and phrases, dilutes the per-scene prompt, and can shorten the
+	// generated narration. Keep global style/guidelines, but isolate source.
+	if plan.ClipEvidence == nil && req.Source.Type == scriptgen.SourceText && strings.TrimSpace(segment.SourceText) != "" {
+		segmentReq.Source.Topic = textutil.FirstNonEmpty(segment.Topic, segmentReq.Source.Topic)
+		segmentReq.Source.SourceText = segment.SourceText
+		segmentReq.Source.Query = ""
+	}
+
+	if len(segment.ClipIDs) == 0 {
+		segmentReq.Source.Type = scriptgen.SourceText
+		segmentReq.Source.Topic = textutil.FirstNonEmpty(segment.Topic, segmentReq.Source.Topic)
+		segmentReq.Source.SourceText = segment.SourceText
+		segmentReq.Source.Query = ""
+	}
+	segmentPlan := scopeSegmentPlan(plan, segment, index)
+	if plan.ClipEvidence == nil && req.Source.Type == scriptgen.SourceText && strings.TrimSpace(segmentReq.Source.SourceText) != "" {
+		segmentPlan.SourceText = segmentReq.Source.SourceText
+		segmentPlan.SourceFingerprint = scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(genSourceToSourceSpec(segmentReq.Source), nil))
+	}
+	// Isolate the model context to this segment. The resolver keeps the
+	// complete evidence pack for provenance, but a per-clip generation call
+	// must not expose other segments' transcripts or narrative text; small
+	// models otherwise merge the intro clips or drift into unrelated facts.
+	// Keep the segment on the Engine plan so its word-budget validator is
+	// active. The old nil value silently routed this call through the
+	// unvalidated whole-script path, which is why 500-word targets could
+	// become 900+ words.
+	if segment.TargetWords > 0 || segment.MinWords > 0 || segment.MaxWords > 0 || segmentReq.ScriptParams.SegmentWords > 0 || segmentReq.ScriptParams.TargetWords > 0 {
+		segmentPlan.Segments = []scriptpkg.ScriptSegment{segment}
+	} else {
+		segmentPlan.Segments = nil
+	}
+	segmentPlan.SingleScene = true
+	segmentPlan.Topic = strings.TrimSpace(segment.Topic)
+	segmentPlan.TargetWords = segmentReq.ScriptParams.TargetWords
+	// The aggregate key is not safe for a segment replay, but the segment
+	// plan now carries its own topic/source/target fingerprint. Reuse the
+	// caller's memory policy so warm multi-segment runs do not regenerate
+	// identical narration; force_refresh still bypasses the gate.
+	segmentPlan.UseMemory = plan.UseMemory
+	segmentPlan.RenderedPrompt = buildEditorialPromptFromGenReq(segmentReq)
+	segmentPlan.CacheKey = scriptpkg.BuildCacheKey(&segmentPlan)
+	// An explicitly authored intro is already the final editorial line.
+	// Sending it through a generative model repeatedly expanded short clip
+	// cues into long explanations (or failed the one-paragraph word gate).
+	// Preserve the caller's concise sentence exactly; downstream translation,
+	// voiceover, stock binding, and rendering still run through the normal path.
+	if strings.EqualFold(strings.TrimSpace(segment.Kind), "intro") {
+		intro := strings.TrimSpace(segment.SourceText)
+		if intro != "" {
+			sceneID := strings.TrimSpace(segment.ID)
+			if sceneID == "" {
+				sceneID = fmt.Sprintf("scene-%d", index)
 			}
-			return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d generate failed: %w", index, genErr)}
+			return sceneSegmentResult{index: index, scene: scriptgen.Scene{
+				ID:         sceneID,
+				Index:      index,
+				DurationMS: segment.DurationMS,
+				Text:       map[scriptgen.Language]string{req.SourceLanguage: intro},
+			}}
 		}
-		if g.Memory != nil && segmentPlan.UseMemory && result.CacheStatus == "generated" && result.Output.Text != "" {
-			if _, saveErr := g.Memory.SaveAfterGeneration(ctx, processor.SaveGenerationInput{
-				ChannelID: "default",
-				Mode:      segmentPlan.Mode,
-				Language:  segmentPlan.Language,
-				Title:     segmentPlan.Title,
-				Prompt:    segmentPlan.RenderedPrompt,
-				Model:     result.Model,
-				WordCount: result.WordCount,
-				CacheKey:  segmentPlan.CacheKey,
-			}, result.Output.Text); saveErr != nil && g.Log != nil {
-				g.Log.Warn("scenetext: failed to save segment script cache",
-					zap.String("segment_id", segment.ID), zap.Error(saveErr))
-			}
+	}
+
+	segmentCtx, cancelSegment := context.WithTimeout(ctx, defaultSceneGenerationTimeout)
+	defer cancelSegment()
+	result, genErr := g.Engine.Generate(segmentCtx, &segmentPlan)
+	if genErr != nil {
+		if errors.Is(genErr, context.DeadlineExceeded) {
+			return sceneSegmentResult{index: index, err: fmt.Errorf("scenetext: segment %d generation timed out after %s (model request or admission queue): %w", index, defaultSceneGenerationTimeout, genErr)}
 		}
-		scenes, convertErr := g.convertScenes(ctx, result, req.SourceLanguage, req.Audio, false)
+		return sceneSegmentResult{index: index, err: fmt.Errorf("scenetext: segment %d generate failed: %w", index, genErr)}
+	}
+	if g.Memory != nil && segmentPlan.UseMemory && result.CacheStatus == "generated" && result.Output.Text != "" {
+		if _, saveErr := g.Memory.SaveAfterGeneration(ctx, processor.SaveGenerationInput{
+			ChannelID: "default",
+			Mode:      segmentPlan.Mode,
+			Language:  segmentPlan.Language,
+			Title:     segmentPlan.Title,
+			Prompt:    segmentPlan.RenderedPrompt,
+			Model:     result.Model,
+			WordCount: result.WordCount,
+			CacheKey:  segmentPlan.CacheKey,
+		}, result.Output.Text); saveErr != nil && g.Log != nil {
+			g.Log.Warn("scenetext: failed to save segment script cache",
+				zap.String("segment_id", segment.ID), zap.Error(saveErr))
+		}
+	}
+	scenes, convertErr := g.convertScenes(ctx, result, req.SourceLanguage, req.Audio, false)
+	if convertErr != nil {
+		return sceneSegmentResult{index: index, err: convertErr}
+	}
+	if len(scenes) == 0 && strings.TrimSpace(result.Output.Text) != "" {
+		// Single-topic calls may legitimately return plain prose without a
+		// structured SpecScene envelope. Reuse the canonical prose planner
+		// instead of treating that valid narration as an empty segment.
+		scenes, convertErr = g.convertClipProseScenes(ctx, &segmentPlan, result.Output.Text, segmentReq)
 		if convertErr != nil {
-			return sceneResult{index: index, err: convertErr}
+			return sceneSegmentResult{index: index, err: fmt.Errorf("scenetext: segment %d prose planning failed: %w", index, convertErr)}
 		}
-		if len(scenes) == 0 && strings.TrimSpace(result.Output.Text) != "" {
-			// Single-topic calls may legitimately return plain prose without a
-			// structured SpecScene envelope. Reuse the canonical prose planner
-			// instead of treating that valid narration as an empty segment.
-			scenes, convertErr = g.convertClipProseScenes(ctx, &segmentPlan, result.Output.Text, segmentReq)
-			if convertErr != nil {
-				return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d prose planning failed: %w", index, convertErr)}
+	}
+	if len(scenes) != 1 {
+		return sceneSegmentResult{index: index, err: fmt.Errorf("scenetext: segment %d produced %d scenes; want exactly one", index, len(scenes))}
+	}
+	scenes[0].Index = index
+	sceneID := strings.TrimSpace(segment.ID)
+	if sceneID == "" {
+		sceneID = fmt.Sprintf("scene-%d", index)
+	}
+	scenes[0].ID = sceneID
+	if len(scenes[0].Clips) == 0 && scenes[0].Clip == nil && len(segment.ClipIDs) > 0 {
+		for _, clipID := range segment.ClipIDs {
+			clip, err := g.resolveEvidenceClip(ctx, &segmentPlan, clipID, true)
+			if err != nil {
+				return sceneSegmentResult{index: index, err: err}
+			}
+			ensureClipPlanningDuration(clip, scenes[0].DurationMS)
+			scenes[0].Clips = append(scenes[0].Clips, clip)
+			if scenes[0].Clip == nil {
+				scenes[0].Clip = clip
 			}
 		}
-		if len(scenes) != 1 {
-			return sceneResult{index: index, err: fmt.Errorf("scenetext: segment %d produced %d scenes; want exactly one", index, len(scenes))}
-		}
-		scenes[0].Index = index
-		sceneID := strings.TrimSpace(segment.ID)
-		if sceneID == "" {
-			sceneID = fmt.Sprintf("scene-%d", index)
-		}
-		scenes[0].ID = sceneID
-		if len(scenes[0].Clips) == 0 && scenes[0].Clip == nil && len(segment.ClipIDs) > 0 {
-			for _, clipID := range segment.ClipIDs {
-				clip, err := g.resolveEvidenceClip(ctx, &segmentPlan, clipID, true)
-				if err != nil {
-					return sceneResult{index: index, err: err}
-				}
-				ensureClipPlanningDuration(clip, scenes[0].DurationMS)
-				scenes[0].Clips = append(scenes[0].Clips, clip)
-				if scenes[0].Clip == nil {
-					scenes[0].Clip = clip
-				}
-			}
-		}
-		// Apply the caller's per-clip stock marking to every attached clip
-		// (streaming path: one segment, one scene).
-		markSegmentStockClips(scenes[0].Clips, segment)
-		return sceneResult{index: index, scene: scenes[0]}
 	}
-	workers := g.segmentConcurrency
-	if workers <= 0 {
-		workers = 1
-	}
-	// An explicit request concurrency is also the ceiling for the outer
-	// segment fan-out. Without this cap, each streaming scene starts its own
-	// Engine call before the Engine's internal concurrency gate can apply the
-	// requested limit, causing avoidable model contention on long scripts.
-	if requested := req.ScriptParams.Concurrency; requested > 0 && workers > requested {
-		workers = requested
-	}
-	if g.Engine != nil && g.Engine.GenerationConcurrency() > 0 && workers > g.Engine.GenerationConcurrency() {
-		workers = g.Engine.GenerationConcurrency()
-	}
-	if workers > len(segments) {
-		workers = len(segments)
-	}
+	// Apply the caller's per-clip stock marking to every attached clip
+	// (streaming path: one segment, one scene).
+	markSegmentStockClips(scenes[0].Clips, segment)
+	return sceneSegmentResult{index: index, scene: scenes[0]}
+}
+
+// runSceneSegmentWorkers runs the bounded segment fan-out. Results are
+// delivered in completion order, exactly as the previous inline pool did.
+func (g *SceneTextGenerator) runSceneSegmentWorkers(ctx context.Context, segments []scriptpkg.ScriptSegment, workers int, generate func(int, scriptpkg.ScriptSegment) sceneSegmentResult) <-chan sceneSegmentResult {
 	jobs := make(chan int)
-	results := make(chan sceneResult, len(segments))
+	results := make(chan sceneSegmentResult, len(segments))
 	var wg sync.WaitGroup
 	for worker := 0; worker < workers; worker++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for index := range jobs {
-				results <- generateOne(index, segments[index])
+				results <- generate(index, segments[index])
 			}
 		}()
 	}
@@ -405,15 +407,168 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		wg.Wait()
 		close(results)
 	}()
-	for output := range results {
-		if output.err != nil {
-			return scriptpkg.SourceTrace{}, output.err
-		}
-		if err := emit(output.scene); err != nil {
+	return results
+}
+
+// resolveSceneWorkers applies the request and Engine concurrency ceilings.
+func (g *SceneTextGenerator) resolveSceneWorkers(req scriptgen.GenerateRequest, segmentCount int) int {
+	workers := g.segmentConcurrency
+	if workers <= 0 {
+		workers = 1
+	}
+	// An explicit request concurrency is also the ceiling for the outer
+	// segment fan-out. Without this cap, each streaming scene starts its own
+	// Engine call before the Engine's internal concurrency gate can apply the
+	// requested limit, causing avoidable model contention on long scripts.
+	if requested := req.ScriptParams.Concurrency; requested > 0 && workers > requested {
+		workers = requested
+	}
+	if g.Engine != nil && g.Engine.GenerationConcurrency() > 0 && workers > g.Engine.GenerationConcurrency() {
+		workers = g.Engine.GenerationConcurrency()
+	}
+	if workers > segmentCount {
+		workers = segmentCount
+	}
+	return workers
+}
+
+// checkGenerationHealth reports an unavailable model before scheduling calls.
+func (g *SceneTextGenerator) checkGenerationHealth(ctx context.Context) error {
+	healthCtx, healthCancel := context.WithTimeout(ctx, 3*time.Second)
+	healthErr := g.Engine.CheckGenerationHealth(healthCtx)
+	healthCancel()
+	if healthErr != nil {
+		return fmt.Errorf("scenetext: model unavailable before generation: %w", healthErr)
+	}
+	return nil
+}
+
+// emitBatchScenes runs the batch path for requests without explicit segments
+// and emits every generated scene.
+func (g *SceneTextGenerator) emitBatchScenes(ctx context.Context, req scriptgen.GenerateRequest, emit func(scriptgen.Scene) error) (scriptpkg.SourceTrace, error) {
+	scenes, trace, batchErr := g.GenerateSceneTextWithTrace(ctx, req)
+	if batchErr != nil {
+		return scriptpkg.SourceTrace{}, batchErr
+	}
+	for _, scene := range scenes {
+		if err := emit(scene); err != nil {
 			return scriptpkg.SourceTrace{}, err
 		}
 	}
-	return researchTrace(plan), nil
+	return trace, nil
+}
+
+// runEngineGeneration probes the model and runs the whole-plan generation.
+func (g *SceneTextGenerator) runEngineGeneration(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan) (*gencore.EngineResult, error) {
+	healthCtx, healthCancel := context.WithTimeout(ctx, 3*time.Second)
+	healthErr := g.Engine.CheckGenerationHealth(healthCtx)
+	healthCancel()
+	if healthErr != nil {
+		return nil, fmt.Errorf("scenetext: model unavailable before generation: %w", healthErr)
+	}
+	generationCtx, cancelGeneration := context.WithTimeout(ctx, defaultSceneGenerationTimeout)
+	defer cancelGeneration()
+	engineResult, err := g.Engine.Generate(generationCtx, plan)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("scenetext: generation timed out after %s (model request or admission queue): %w", defaultSceneGenerationTimeout, err)
+		}
+		return nil, fmt.Errorf("scenetext: engine generate failed: %w", err)
+	}
+	return engineResult, nil
+}
+
+// persistGeneratedScript saves fresh output to the canonical memory gate so an
+// identical replay is served from cache. Exact hits are never re-persisted.
+func (g *SceneTextGenerator) persistGeneratedScript(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, engineResult *gencore.EngineResult) {
+	if g.Memory == nil || !plan.UseMemory || engineResult.CacheStatus != "generated" || engineResult.Output.Text == "" {
+		return
+	}
+	if _, saveErr := g.Memory.SaveAfterGeneration(ctx, processor.SaveGenerationInput{
+		ChannelID: "default",
+		Mode:      plan.Mode,
+		Language:  plan.Language,
+		Title:     plan.Title,
+		Prompt:    plan.RenderedPrompt,
+		Model:     engineResult.Model,
+		WordCount: engineResult.WordCount,
+		CacheKey:  plan.CacheKey,
+	}, engineResult.Output.Text); saveErr != nil && g.Log != nil {
+		g.Log.Warn("scenetext: failed to save script cache",
+			zap.String("title", plan.Title),
+			zap.Error(saveErr))
+	}
+}
+
+// resolveGeneratedScenes converts structured output, falling back to the
+// canonical prose planner for the plain-text clip contract.
+func (g *SceneTextGenerator) resolveGeneratedScenes(ctx context.Context, req scriptgen.GenerateRequest, plan *scriptpkg.ResolvedGenerationPlan, engineResult *gencore.EngineResult) ([]scriptgen.Scene, error) {
+	scenes, err := g.convertScenes(ctx, engineResult, req.SourceLanguage, req.Audio, false)
+	if err != nil {
+		return nil, fmt.Errorf("scenetext: enrich generated scenes: %w", err)
+	}
+	if len(scenes) == 0 {
+		// Fresh clip generation uses a plain-text model contract. The
+		// canonical scene planner/postprocessor is responsible for
+		// partitioning that prose and binding the resolved clips; failing
+		// here would discard the valid model output before that boundary.
+		prose := strings.TrimSpace(engineResult.Output.Text)
+		if req.Source.Type == scriptgen.SourceClips && len(strings.Fields(prose)) < 35*req.Source.NumClips {
+			if grounded := explicitClipBriefProse(plan.SourceText, req.Source.NumClips); grounded != "" {
+				prose = grounded
+				if g.Log != nil {
+					g.Log.Warn("scenetext: model prose below clip contract; using explicit grounded clip briefs")
+				}
+			}
+		}
+		if prose == "" {
+			return nil, fmt.Errorf("scenetext: engine returned zero scenes and empty prose")
+		}
+		scenes, err = g.convertClipProseScenes(ctx, plan, prose, req)
+		if err != nil {
+			return nil, fmt.Errorf("scenetext: resolve prose scenes: %w", err)
+		}
+		if len(scenes) == 0 {
+			return nil, fmt.Errorf("scenetext: prose scene planner returned zero scenes")
+		}
+		if g.Log != nil {
+			g.Log.Info("scenetext: passing prose to canonical scene planner",
+				zap.Int("prose_words", len(strings.Fields(prose))))
+		}
+	}
+	return scenes, nil
+}
+
+// applyPlanSegmentBindings attaches plan-owned clips and the caller's stock
+// marking when the engine returned one scene per planned segment.
+func (g *SceneTextGenerator) applyPlanSegmentBindings(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptgen.Scene) error {
+	if len(scenes) == 0 || len(plan.Segments) != len(scenes) {
+		return nil
+	}
+	for i := range scenes {
+		scenes[i].Index = i
+		if segmentID := strings.TrimSpace(plan.Segments[i].ID); segmentID != "" {
+			scenes[i].ID = segmentID
+		}
+		if len(scenes[i].Clips) == 0 && scenes[i].Clip == nil && len(plan.Segments[i].ClipIDs) > 0 {
+			for _, clipID := range plan.Segments[i].ClipIDs {
+				clip, err := g.resolveEvidenceClip(ctx, plan, clipID, true)
+				if err != nil {
+					return err
+				}
+				ensureClipPlanningDuration(clip, scenes[i].DurationMS)
+				scenes[i].Clips = append(scenes[i].Clips, clip)
+				if scenes[i].Clip == nil {
+					scenes[i].Clip = clip
+				}
+			}
+		}
+		// Apply the caller's per-clip stock marking to every clip of this
+		// segment's scene, whether it was attached here or resolved from
+		// the model's own bindings.
+		markSegmentStockClips(scenes[i].Clips, plan.Segments[i])
+	}
+	return nil
 }
 
 // GenerateSceneTextStream is the no-trace compatibility surface.
@@ -442,103 +597,20 @@ func (g *SceneTextGenerator) GenerateSceneTextWithTrace(
 		)
 	}
 
-	healthCtx, healthCancel := context.WithTimeout(ctx, 3*time.Second)
-	healthErr := g.Engine.CheckGenerationHealth(healthCtx)
-	healthCancel()
-	if healthErr != nil {
-		return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: model unavailable before generation: %w", healthErr)
-	}
-	generationCtx, cancelGeneration := context.WithTimeout(ctx, defaultSceneGenerationTimeout)
-	defer cancelGeneration()
-	engineResult, err := g.Engine.Generate(generationCtx, plan)
+	engineResult, err := g.runEngineGeneration(ctx, plan)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: generation timed out after %s (model request or admission queue): %w", defaultSceneGenerationTimeout, err)
-		}
-		return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: engine generate failed: %w", err)
+		return nil, scriptpkg.SourceTrace{}, err
 	}
 
-	// Persist the fresh output to the canonical script memory gate so an
-	// identical replay (same source, same plan) is served from cache and the
-	// downstream per-segment caches (keyed on the deterministic scene text
-	// hash) hit exactly. Exact hits are never re-persisted.
-	if g.Memory != nil && plan.UseMemory && engineResult.CacheStatus == "generated" && engineResult.Output.Text != "" {
-		if _, saveErr := g.Memory.SaveAfterGeneration(ctx, processor.SaveGenerationInput{
-			ChannelID: "default",
-			Mode:      plan.Mode,
-			Language:  plan.Language,
-			Title:     plan.Title,
-			Prompt:    plan.RenderedPrompt,
-			Model:     engineResult.Model,
-			WordCount: engineResult.WordCount,
-			CacheKey:  plan.CacheKey,
-		}, engineResult.Output.Text); saveErr != nil && g.Log != nil {
-			g.Log.Warn("scenetext: failed to save script cache",
-				zap.String("title", plan.Title),
-				zap.Error(saveErr))
-		}
-	}
+	g.persistGeneratedScript(ctx, plan, engineResult)
 
-	scenes, err := g.convertScenes(ctx, engineResult, req.SourceLanguage, req.Audio, false)
+	scenes, err := g.resolveGeneratedScenes(ctx, req, plan, engineResult)
 	if err != nil {
-		return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: enrich generated scenes: %w", err)
-	}
-	if len(scenes) == 0 {
-		// Fresh clip generation uses a plain-text model contract.  The
-		// canonical scene planner/postprocessor is responsible for
-		// partitioning that prose and binding the resolved clips; failing
-		// here would discard the valid model output before that boundary.
-		// Keep this envelope deliberately provisional: it is replaced by
-		// the planner before timeline/audio compilation.
-		prose := strings.TrimSpace(engineResult.Output.Text)
-		if req.Source.Type == scriptgen.SourceClips && len(strings.Fields(prose)) < 35*req.Source.NumClips {
-			if grounded := explicitClipBriefProse(plan.SourceText, req.Source.NumClips); grounded != "" {
-				prose = grounded
-				if g.Log != nil {
-					g.Log.Warn("scenetext: model prose below clip contract; using explicit grounded clip briefs")
-				}
-			}
-		}
-		if prose == "" {
-			return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: engine returned zero scenes and empty prose")
-		}
-		scenes, err = g.convertClipProseScenes(ctx, plan, prose, req)
-		if err != nil {
-			return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: resolve prose scenes: %w", err)
-		}
-		if len(scenes) == 0 {
-			return nil, scriptpkg.SourceTrace{}, fmt.Errorf("scenetext: prose scene planner returned zero scenes")
-		}
-		if g.Log != nil {
-			g.Log.Info("scenetext: passing prose to canonical scene planner",
-				zap.Int("prose_words", len(strings.Fields(prose))))
-		}
+		return nil, scriptpkg.SourceTrace{}, err
 	}
 
-	if len(scenes) > 0 && len(plan.Segments) == len(scenes) {
-		for i := range scenes {
-			scenes[i].Index = i
-			if segmentID := strings.TrimSpace(plan.Segments[i].ID); segmentID != "" {
-				scenes[i].ID = segmentID
-			}
-			if len(scenes[i].Clips) == 0 && scenes[i].Clip == nil && len(plan.Segments[i].ClipIDs) > 0 {
-				for _, clipID := range plan.Segments[i].ClipIDs {
-					clip, err := g.resolveEvidenceClip(ctx, plan, clipID, true)
-					if err != nil {
-						return nil, scriptpkg.SourceTrace{}, err
-					}
-					ensureClipPlanningDuration(clip, scenes[i].DurationMS)
-					scenes[i].Clips = append(scenes[i].Clips, clip)
-					if scenes[i].Clip == nil {
-						scenes[i].Clip = clip
-					}
-				}
-			}
-			// Apply the caller's per-clip stock marking to every clip of this
-			// segment's scene, whether it was attached here or resolved from
-			// the model's own bindings.
-			markSegmentStockClips(scenes[i].Clips, plan.Segments[i])
-		}
+	if err := g.applyPlanSegmentBindings(ctx, plan, scenes); err != nil {
+		return nil, scriptpkg.SourceTrace{}, err
 	}
 
 	if g.Log != nil {

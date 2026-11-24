@@ -74,6 +74,7 @@ import (
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+	processorvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/jobs"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
@@ -218,6 +219,10 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 
 	// Script engine ─────────────────────────────────
 	scriptGen := ollama.NewGenerator(ollamaClient)
+	// WST-02: the creator lane shares the single-resident policy with the
+	// worker lane, so an explicit item model cannot evict the runner there
+	// either.
+	scriptGen.SetResidentModel(cfg.External.OllamaModel)
 	engine := gencore.NewEngine(ollamaadapters.NewScriptGeneratorAdapter(scriptGen), nil, log)
 	engine.ConfigureScriptDefaults(cfg.Scripts.DefaultLanguage, cfg.Scripts.DefaultTone, cfg.Scripts.Defaults.WordsPerMinute)
 	engine.ConfigureSegmentValidation(cfg.Scripts.SegmentWordsTolerancePercent, cfg.Scripts.TotalWordsTolerancePercent, cfg.Scripts.MaxSegmentRegenerationAttempts)
@@ -429,7 +434,7 @@ func registerCreatorPostProcessors(log *zap.Logger) *adapters.PostProcessorRegis
 	}
 
 	// clip_bindings -> canonical processor (in-memory, no external deps).
-	if !ppReg.Register(processor.NewClipBindingsProcessor(log)) {
+	if !ppReg.Register(processorvoiceover.NewClipBindingsProcessor(log)) {
 		if log != nil {
 			log.Warn("creator: failed to register clip_bindings processor")
 		}

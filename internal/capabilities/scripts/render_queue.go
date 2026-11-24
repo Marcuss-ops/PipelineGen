@@ -48,6 +48,12 @@ type QueueRenderEnqueuer struct {
 	// fresh queue identity. It replaces the former package-level global so
 	// concurrent enqueuers (and tests) cannot interfere with one another.
 	freshSeq atomic.Uint64
+	// stallAfter is the progress-watchdog window of the completion wait. A
+	// render that reports no new frame for this long is cancelled instead of
+	// parking the pipeline on it (see renderqueue.DefaultRenderStallAfter).
+	// Zero selects the default; tests set it small to exercise the watchdog
+	// without waiting three minutes.
+	stallAfter time.Duration
 	// recorder optionally persists one analytics row per completed attempt.
 	// Nil means analytics are not recorded (no-op, not a failure).
 	recorder RenderAttemptRecorder

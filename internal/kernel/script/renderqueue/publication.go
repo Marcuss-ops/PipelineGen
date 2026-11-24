@@ -24,8 +24,9 @@ type OverlayPublicationSpec struct {
 	// creates/reuses its deterministic overlay child and only falls back to
 	// its configured root when this is empty.
 	DriveFolderID string
-	// RequireObjectStoreBeforeReturn marks artifacts consumed by the final-job
-	// HTTPS payload. These remain in Objectstore and are not published to Drive.
+	// RequireObjectStoreBeforeReturn marks intermediate render artifacts (every
+	// overlay render, and the final-job HTTPS payload) that stay in Objectstore
+	// and are not published to Drive.
 	RequireObjectStoreBeforeReturn bool
 	RequireDriveBeforeReturn       bool
 

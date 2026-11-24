@@ -32,6 +32,7 @@ import (
 	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
@@ -89,8 +90,8 @@ func (k OverlayRenderCacheKey) Digest() string {
 // best-effort: a row that cannot be invalidated is reported to the caller,
 // which logs it and continues with the render.
 type OverlayRenderCache interface {
-	Lookup(ctx context.Context, key OverlayRenderCacheKey) (*RenderArtifact, bool, error)
-	Store(ctx context.Context, key OverlayRenderCacheKey, artifact RenderArtifact) error
+	Lookup(ctx context.Context, key OverlayRenderCacheKey) (*contract.RenderArtifact, bool, error)
+	Store(ctx context.Context, key OverlayRenderCacheKey, artifact contract.RenderArtifact) error
 	Invalidate(ctx context.Context, key OverlayRenderCacheKey, reason string) error
 }
 
@@ -432,7 +433,7 @@ func canonicalJSONString(value any) string {
 // be returned as a completed render. A locator without a content address, a
 // non-http URL or a non-positive size is not certifiable and is treated as a
 // miss (and invalidated by the caller).
-func validCachedOverlayArtifact(artifact *RenderArtifact) bool {
+func validCachedOverlayArtifact(artifact *contract.RenderArtifact) bool {
 	if artifact == nil {
 		return false
 	}
@@ -472,7 +473,7 @@ func applyOverlayRenderCacheTiming(wait *RenderCompletionMetrics, timing overlay
 	wait.CacheOutcome = timing.outcome
 }
 
-func (e *QueueRenderEnqueuer) lookupOverlayRenderCacheTimed(ctx context.Context, key OverlayRenderCacheKey) (*RenderArtifact, bool, overlayRenderCacheTiming) {
+func (e *QueueRenderEnqueuer) lookupOverlayRenderCacheTimed(ctx context.Context, key OverlayRenderCacheKey) (*contract.RenderArtifact, bool, overlayRenderCacheTiming) {
 	timing := overlayRenderCacheTiming{outcome: "miss"}
 	if e == nil || e.renderCache == nil || !OverlayRenderCacheEnabled() {
 		timing.outcome = "disabled"
@@ -521,7 +522,7 @@ func (e *QueueRenderEnqueuer) lookupOverlayRenderCacheTimed(ctx context.Context,
 	return artifact, true, timing
 }
 
-func (e *QueueRenderEnqueuer) storeOverlayRenderCacheTimed(ctx context.Context, key OverlayRenderCacheKey, artifact *RenderArtifact) (time.Duration, string) {
+func (e *QueueRenderEnqueuer) storeOverlayRenderCacheTimed(ctx context.Context, key OverlayRenderCacheKey, artifact *contract.RenderArtifact) (time.Duration, string) {
 	started := time.Now()
 	if e == nil || e.renderCache == nil || !OverlayRenderCacheEnabled() || !validCachedOverlayArtifact(artifact) {
 		return time.Since(started), "skipped"
@@ -549,7 +550,7 @@ func (e *QueueRenderEnqueuer) invalidateOverlayRenderCache(ctx context.Context, 
 // job identity from a reused artifact. Those measurements belong to the run
 // that produced the bytes; recording them again would attribute another run's
 // render service to this one.
-func sanitizeCachedOverlayArtifact(artifact *RenderArtifact) *RenderArtifact {
+func sanitizeCachedOverlayArtifact(artifact *contract.RenderArtifact) *contract.RenderArtifact {
 	if artifact == nil {
 		return nil
 	}

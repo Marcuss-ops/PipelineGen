@@ -2,12 +2,12 @@ package extract
 
 import (
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/publish"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/publish"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -31,36 +31,15 @@ import (
 // Metadata carries title, description, round, start_sec, end_sec, slug,
 // local_path, sha256, and file_hash so downstream consumers (pgvector indexer,
 // asset search, media_assets projection) see the full rich surface.
+//
+// GOP-16 (November 2026): identity construction (this function) and metadata
+// projection (applyStockAssetMetadata) are separate; every field is set
+// exactly as before.
 func buildRichStockAsset(plan core.ClipPlan, sourceIdx, clipIdx int, outputPath, hash string) *asset.Asset {
 	_, _ = sourceIdx, clipIdx
-	slug := publish.PerClipLeafName(plan)
-	if slug == "" {
-		slug = publish.SlugifyTitle(plan.Title)
-	}
+	slug := stockAssetSlug(plan)
+	provider := stockAssetProvider(plan)
 
-	name := slug
-	filename := filepath.Base(outputPath)
-
-	searchText := fmt.Sprintf("Stock video clip title: %s", plan.Title)
-	if plan.Description != "" {
-		searchText += fmt.Sprintf(" description: %s", plan.Description)
-	}
-	if plan.Round > 0 {
-		searchText += fmt.Sprintf(" round %d", plan.Round)
-	}
-	if plan.Category != "" {
-		searchText += fmt.Sprintf(" category: %s", plan.Category)
-	}
-	if len(plan.Tags) > 0 {
-		searchText += fmt.Sprintf(" tags: %s", strings.Join(plan.Tags, ", "))
-	}
-	searchText += fmt.Sprintf(" start_sec: %.0f", plan.StartSec)
-	searchText += fmt.Sprintf(" end_sec: %.0f", plan.EndSec)
-
-	provider := plan.SourceProvider
-	if provider == "" {
-		provider = "stock"
-	}
 	// Migration 189 canonical state constraints: media_assets writes MUST
 	// carry a valid lifecycle_state (the SQLite trigger
 	// trg_media_assets_state_valid_insert aborts on the zero value "").
@@ -76,6 +55,7 @@ func buildRichStockAsset(plan core.ClipPlan, sourceIdx, clipIdx int, outputPath,
 	if provider == core.SourceProviderYouTube {
 		lifecycleState = asset.StateActive
 	}
+
 	a := &asset.Asset{
 		ID: plan.OutputLogicalID,
 		// Preserve the provider identity of the source URL. YouTube stock
@@ -83,14 +63,14 @@ func buildRichStockAsset(plan core.ClipPlan, sourceIdx, clipIdx int, outputPath,
 		// labelling them only as "stock" loses source_video_id and makes the
 		// resulting row unusable for subject/role validation.
 		Source:     asset.Source(provider),
-		Name:       name,
-		Filename:   filename,
+		Name:       slug,
+		Filename:   filepath.Base(outputPath),
 		MediaType:  "video",
 		Category:   plan.Category,
 		SourceURL:  plan.SourceID,
 		Duration:   time.Duration(plan.EndSec-plan.StartSec) * time.Second,
 		Tags:       append([]string(nil), plan.Tags...),
-		SearchText: searchText,
+		SearchText: stockAssetSearchText(plan),
 		Metadata:   make(map[string]any),
 		// CreatedAt MUST be stamped by the producer: UpsertClipTx persists
 		// clip.CreatedAt verbatim, and a zero time writes an empty
@@ -100,13 +80,59 @@ func buildRichStockAsset(plan core.ClipPlan, sourceIdx, clipIdx int, outputPath,
 		LifecycleState: lifecycleState,
 		CreatedAt:      time.Now().UTC(),
 	}
+
+	applyStockAssetMetadata(a, plan, outputPath, hash, slug)
+	return a
+}
+
+// stockAssetSlug returns the canonical slug (leaf name, then title fallback).
+func stockAssetSlug(plan core.ClipPlan) string {
+	slug := publish.PerClipLeafName(plan)
+	if slug == "" {
+		slug = publish.SlugifyTitle(plan.Title)
+	}
+	return slug
+}
+
+// stockAssetProvider preserves the acquisition provider; "stock" is only the
+// fallback when the plan carries no provider.
+func stockAssetProvider(plan core.ClipPlan) string {
+	if plan.SourceProvider != "" {
+		return plan.SourceProvider
+	}
+	return "stock"
+}
+
+// stockAssetSearchText composes the searchable projection. Unchanged from the
+// pre-split implementation.
+func stockAssetSearchText(plan core.ClipPlan) string {
+	searchText := fmt.Sprintf("Stock video clip title: %s", plan.Title)
+	if plan.Description != "" {
+		searchText += fmt.Sprintf(" description: %s", plan.Description)
+	}
+	if plan.Round > 0 {
+		searchText += fmt.Sprintf(" round %d", plan.Round)
+	}
+	if plan.Category != "" {
+		searchText += fmt.Sprintf(" category: %s", plan.Category)
+	}
+	if len(plan.Tags) > 0 {
+		searchText += fmt.Sprintf(" tags: %s", strings.Join(plan.Tags, ", "))
+	}
+	searchText += fmt.Sprintf(" start_sec: %.0f", plan.StartSec)
+	searchText += fmt.Sprintf(" end_sec: %.0f", plan.EndSec)
+	return searchText
+}
+
+// applyStockAssetMetadata writes the taxonomy plus the rich metadata surface.
+func applyStockAssetMetadata(a *asset.Asset, plan core.ClipPlan, outputPath, hash, slug string) {
 	// Every clip produced by the stock pipeline is a stock USAGE intent, even
 	// when the physical provenance is YouTube. `source` / `source_type` keep
-	// the acquisition provider (see above), while the searchable taxonomy
-	// discriminates stock acquisition from ordinary discovery clips. Declared
-	// for every provider, not only YouTube: the stock job finalizer declares
-	// the same family on its spine write, and the two commits must agree so
-	// that whichever lands second cannot restamp the row.
+	// the acquisition provider (see buildRichStockAsset), while the searchable
+	// taxonomy discriminates stock acquisition from ordinary discovery clips.
+	// Declared for every provider, not only YouTube: the stock job finalizer
+	// declares the same family on its spine write, and the two commits must
+	// agree so that whichever lands second cannot restamp the row.
 	a.Metadata["asset_kind"] = core.StockAssetKind
 	a.Metadata["semantic_role"] = core.StockSemanticRole
 
@@ -144,6 +170,4 @@ func buildRichStockAsset(plan core.ClipPlan, sourceIdx, clipIdx int, outputPath,
 		// in sync (godlike/06 source_url convergence).
 		a.SetMetadataSourceURL(plan.SourceID)
 	}
-
-	return a
 }

@@ -6,8 +6,11 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/semantics"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/vidrush"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/sceneir"
@@ -192,7 +195,7 @@ func TestValidateVisualEntitiesRejectsInvalidOffsetsAndEvidence(t *testing.T) {
 		{Text: "Tesla", Start: 0, End: 5, Evidence: "Elon!"},
 		{Text: "Elon", Start: 0, End: 5, Evidence: "Elon!"},
 	} {
-		require.Error(t, validateVisualEntities("Tesla", []VisualEntity{entity}), "entity must be rejected: %+v", entity)
+		require.Error(t, vidrush.ValidateVisualEntities("Tesla", []VisualEntity{entity}), "entity must be rejected: %+v", entity)
 	}
 }
 
@@ -200,7 +203,7 @@ func TestValidateVisualEntitiesAllowsUTF8ByteOffsets(t *testing.T) {
 	source := "😀 Tesla."
 	start := strings.Index(source, "Tesla")
 	entity := VisualEntity{Text: "Tesla", Start: start, End: start + len("Tesla"), Evidence: "Tesla"}
-	require.NoError(t, validateVisualEntities(source, []VisualEntity{entity}))
+	require.NoError(t, vidrush.ValidateVisualEntities(source, []VisualEntity{entity}))
 }
 
 func TestNormalizeVisualPersonNameRemovesSentenceContext(t *testing.T) {
@@ -209,8 +212,8 @@ func TestNormalizeVisualPersonNameRemovesSentenceContext(t *testing.T) {
 		"Dolly Parton's":       "Dolly Parton",
 		"Michael Jordan":       "Michael Jordan",
 	} {
-		if got := normalizeVisualPersonName(input); got != want {
-			t.Fatalf("normalizeVisualPersonName(%q) = %q, want %q", input, got, want)
+		if got := semantics.NormalizeVisualPersonName(input); got != want {
+			t.Fatalf("semantics.NormalizeVisualPersonName(%q) = %q, want %q", input, got, want)
 		}
 	}
 }
@@ -390,7 +393,7 @@ func TestSceneIRSegmentEnricherFencesNarrationWhileKeepingSourceEvidence(t *test
 func TestMediaCertProjectionKeepsSourceAndNarrationSeparate(t *testing.T) {
 	const source = "Mike Tyson was born in Brooklyn in 1966."
 	const narration = "The celebrated boxer began life in Brooklyn."
-	segments := toMediaResultSegments([]scriptpkg.VidRushSegmentResult{{
+	segments := vidrush.ToMediaResultSegments([]scriptpkg.VidRushSegmentResult{{
 		SegmentID:      "brooklyn-origins",
 		Text:           narration,
 		TextHash:       scriptpkg.ComputeCanonicalSegmentTextHash(narration),
@@ -610,7 +613,7 @@ func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testin
 		},
 	}}
 
-	got := filterEntityRenderSurface(segments)
+	got := vidrush.FilterEntityRenderSurface(segments)
 	if len(got) != 1 {
 		t.Fatalf("segments = %d, want 1", len(got))
 	}
@@ -636,7 +639,7 @@ func TestFilterEntityRenderSurfaceKeepsAllNamedPeople(t *testing.T) {
 		},
 	}}
 
-	got := filterEntityRenderSurface(segments)
+	got := vidrush.FilterEntityRenderSurface(segments)
 	if len(got[0].Insights.Entities) != 2 || got[0].Insights.Entities[0].Value != "Ada Lovelace" || got[0].Insights.Entities[1].Value != "Analytical Engine" {
 		t.Fatalf("entities = %+v, want all named entities", got[0].Insights.Entities)
 	}

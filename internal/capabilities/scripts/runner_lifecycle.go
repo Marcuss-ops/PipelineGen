@@ -11,6 +11,7 @@ import (
 	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -20,7 +21,7 @@ import (
 
 // settleFinalJob is the SINGLE interpretation of a remote final-job outcome.
 // Both submit and attach paths share receipt persistence and retry semantics.
-func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *GenerateResult, remote RemoteFinalJobResult, yields int, err error) bool {
+func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *contract.GenerateResult, remote contract.RemoteFinalJobResult, yields int, err error) bool {
 	// Project the newest receipt into the ONE report owner before any branch
 	// below can return. The checkpoint in workflow_payload_json remains the
 	// resumable copy, but run_observability.report_json is the reporting
@@ -112,7 +113,7 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 // recordFinalJobReport projects the capability receipt into the kernel report.
 // The kernel receives opaque JSON so observability never imports the scripts
 // capability. Empty receipts are ignored: a PREPARE intent is not a job handle.
-func recordFinalJobReport(ctx context.Context, receipt *RemoteFinalJobResult) {
+func recordFinalJobReport(ctx context.Context, receipt *contract.RemoteFinalJobResult) {
 	if receipt == nil || strings.TrimSpace(receipt.JobID) == "" || strings.TrimSpace(receipt.Status) == "" {
 		return
 	}
@@ -143,7 +144,7 @@ func (r *Runner) updateStage(ctx context.Context, runID string, status RunStatus
 // observed. The byte counter is recorded where the payload is actually produced
 // (the repository marshal), so it measures what SQLite received rather than an
 // estimate.
-func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateResult) error {
+func (r *Runner) checkpoint(ctx context.Context, runID string, result *contract.GenerateResult) error {
 	observability.ScriptCheckpointAttemptTotal.Inc()
 	started := time.Now()
 	saveErr := r.repo.SavePartialResult(ctx, runID, result)
@@ -221,7 +222,7 @@ var snapshotBufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 // while the pool avoids a fresh allocation per debounced unit. The remaining
 // full-copy cost is the race-safety price; payload bytes stay measurable via
 // ScriptCheckpointBytesTotal at the repository write.
-func snapshotGenerateResult(result *GenerateResult) (*GenerateResult, error) {
+func snapshotGenerateResult(result *contract.GenerateResult) (*contract.GenerateResult, error) {
 	if result == nil {
 		return nil, nil
 	}
@@ -233,7 +234,7 @@ func snapshotGenerateResult(result *GenerateResult) (*GenerateResult, error) {
 	if err := enc.Encode(result); err != nil {
 		return nil, fmt.Errorf("marshal checkpoint snapshot: %w", err)
 	}
-	var snapshot GenerateResult
+	var snapshot contract.GenerateResult
 	if err := json.Unmarshal(buf.Bytes(), &snapshot); err != nil {
 		return nil, fmt.Errorf("unmarshal checkpoint snapshot: %w", err)
 	}
@@ -397,7 +398,7 @@ func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage
 // the persistence error instead of swallowing it: a run whose checkpoint or
 // COMPLETED transition did not land is not complete, and the caller must
 // surface that as a durable failure rather than report success.
-func (r *Runner) completeRun(ctx context.Context, runID string, result *GenerateResult) error {
+func (r *Runner) completeRun(ctx context.Context, runID string, result *contract.GenerateResult) error {
 	if result != nil && result.ExpectedRenderCount > 0 {
 		// A resumed durable attempt may load a checkpoint containing render
 		// receipts written before an earlier attempt failed. Collapse those
@@ -499,11 +500,11 @@ func renderSetSatisfiesExpectation(expected, successful, failed int) bool {
 	return successful == expected && failed == 0
 }
 
-func dedupeLocalizedRenders(renders []LocalizedRenderResult) []LocalizedRenderResult {
+func dedupeLocalizedRenders(renders []contract.LocalizedRenderResult) []contract.LocalizedRenderResult {
 	if len(renders) < 2 {
 		return renders
 	}
-	unique := make([]LocalizedRenderResult, 0, len(renders))
+	unique := make([]contract.LocalizedRenderResult, 0, len(renders))
 	indices := make(map[string]int, len(renders))
 	for _, rendered := range renders {
 		key := string(rendered.Language) + "\x00" + rendered.SceneID + "\x00" + rendered.ClipID

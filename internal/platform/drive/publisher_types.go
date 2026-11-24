@@ -109,6 +109,13 @@ type PutFileResult struct {
 	DownloadLink string
 	MD5Checksum  string
 	Action       PutAction
+	// WriteMeta is the metadata the WRITE call itself returned (name, parents,
+	// size, id) for Created/Updated/Renamed actions. The post-upload verifier
+	// consumes it instead of issuing a second Files.Get round-trip (WST-01):
+	// the API already told us where the bytes landed, and asking again only
+	// spends a Drive call and a semaphore slot. Nil on the Skipped path (no
+	// write happened, so the live metadata must still be read).
+	WriteMeta *FileMeta
 }
 
 // FileUploaderPort is the narrow port for uploading files to Drive.

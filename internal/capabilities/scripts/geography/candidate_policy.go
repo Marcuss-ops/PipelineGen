@@ -143,7 +143,11 @@ func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Ge
 				// Unresolvable, ambiguous-without-context, or malformed generated
 				// labels stay visible as ordinary entities, but cannot produce a
 				// map pin. Provider, transport, cancellation, and validation
-				// errors still fail closed.
+				// errors still fail closed. The refusal is run-scoped for THIS
+				// key: retry frames reusing the same name+context would otherwise
+				// pay the same failed lookup again, and the grounded-name pass
+				// would ask a third time.
+				state.refuse(cacheKey)
 				return nil
 			}
 			return fmt.Errorf("geocode grounded place %q in scene annotation %d: %w", name, sceneIndex, err)

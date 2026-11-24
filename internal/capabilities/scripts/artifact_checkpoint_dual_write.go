@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -93,7 +94,7 @@ func (r *Runner) localizedRenderCutoverActive() bool {
 // authority and this write is deliberately skipped; stage boundaries and the
 // final completion path still call checkpoint/SavePartialResult, so the
 // envelope catches up before the run advances.
-func (r *Runner) saveLocalizedRenderUnitEnvelope(ctx context.Context, runID string, snapshot *GenerateResult) error {
+func (r *Runner) saveLocalizedRenderUnitEnvelope(ctx context.Context, runID string, snapshot *contract.GenerateResult) error {
 	if r == nil || r.repo == nil || snapshot == nil {
 		return nil
 	}
@@ -109,7 +110,7 @@ func (r *Runner) saveLocalizedRenderUnitEnvelope(ctx context.Context, runID stri
 // before the envelope save at each call site: a checkpoint
 // failure fails the unit instead of leaving the per-artifact row silently
 // missing behind a successful envelope.
-func (r *Runner) saveLocalizedRenderArtifactCheckpoint(ctx context.Context, runID string, attempt int, rendered LocalizedRenderResult) error {
+func (r *Runner) saveLocalizedRenderArtifactCheckpoint(ctx context.Context, runID string, attempt int, rendered contract.LocalizedRenderResult) error {
 	if r == nil || !r.artifactCheckpointDualWrite || r.artifactCheckpoints == nil {
 		return nil
 	}
@@ -168,16 +169,16 @@ func localizedRenderCheckpointFingerprint(in LocalizedRenderInput) string {
 		Duration: in.Voiceover.Duration,
 	}
 	input := struct {
-		SceneID        string   `json:"scene_id"`
-		SceneIndex     int      `json:"scene_index"`
-		Language       Language `json:"language"`
-		Text           string   `json:"text"`
-		SourceLanguage Language `json:"source_language"`
-		SourceText     string   `json:"source_text"`
-		ClipID         string   `json:"clip_id"`
-		ClipAssetID    string   `json:"clip_asset_id"`
-		ClipSHA256     string   `json:"clip_sha256"`
-		ClipDurationMS int64    `json:"clip_duration_ms"`
+		SceneID        string            `json:"scene_id"`
+		SceneIndex     int               `json:"scene_index"`
+		Language       contract.Language `json:"language"`
+		Text           string            `json:"text"`
+		SourceLanguage contract.Language `json:"source_language"`
+		SourceText     string            `json:"source_text"`
+		ClipID         string            `json:"clip_id"`
+		ClipAssetID    string            `json:"clip_asset_id"`
+		ClipSHA256     string            `json:"clip_sha256"`
+		ClipDurationMS int64             `json:"clip_duration_ms"`
 		Voiceover      struct {
 			ID       string  `json:"id"`
 			Duration float64 `json:"duration,omitempty"`
@@ -212,7 +213,7 @@ func localizedRenderCheckpointFingerprint(in LocalizedRenderInput) string {
 // localizedRenderCheckpointURI prefers the durable object-store URL, then the
 // Drive URL, then the producer-local path (the only identity available at the
 // RENDERED stage). The SHA is the byte authority in every case.
-func localizedRenderCheckpointURI(rendered LocalizedRenderResult) string {
+func localizedRenderCheckpointURI(rendered contract.LocalizedRenderResult) string {
 	for _, candidate := range []string{rendered.ArtifactURL, rendered.DriveLink, rendered.LocalPath} {
 		if strings.TrimSpace(candidate) != "" {
 			return candidate

@@ -117,13 +117,23 @@ func BuildVoiceoverTTSProvider(
 	// per-call timeouts, and Drive-upload retry. The voiceover package
 	// stays unaware of rate-limiting; the composition root swaps the
 	// raw adapters with these wrappers in-place.
-	ttsProvider = NewRateLimitedTTSProvider(ttsProvider, cfg.Voiceover, log) // Keep each provider request below the speech-service limit. The
-	// wrapper merges ordered chunks back into one track per language.
+	// The wrapper merges ordered chunks back into one track per language.
+	//
+	// WST-07 (2026-11-23): the CHUNKER now sits INSIDE the rate limiter. Before
+	// this swap the gate was acquired once per sentence chunk (24 words), so one
+	// scene paid the TTS queue ~4 times — measured 20.034 acquisitions for 4.919
+	// synthesize calls, 4,57 h of `semaphore_wait/tts`. The unit is the thing
+	// that must be admitted once: it now holds ONE slot for its whole fan-out,
+	// while the speech-service ceiling is still enforced by the processor's own
+	// request slots (audioasset.Processor.requestSlots, sized by
+	// voiceover.max_concurrent_tts) — the gate bounds units in flight, the
+	// processor bounds HTTP requests in flight.
 	ttsProvider = &chunkedTTSProvider{
 		inner:       ttsProvider,
 		merger:      mediaProcessor,
 		concurrency: cfg.Voiceover.Defaults.ChunkConcurrency,
 	}
+	ttsProvider = NewRateLimitedTTSProvider(ttsProvider, cfg.Voiceover, log)
 
 	return audioProcessor, ttsProvider
 }

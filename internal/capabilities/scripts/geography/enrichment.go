@@ -683,6 +683,10 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 			var err error
 			result, err = geocoder.Geocode(ctx, capabilitygeocoding.Request{Query: name, Language: language, Context: lookupContext, Level: level})
 			if errors.Is(err, capabilitygeocoding.ErrNoResult) {
+				// The same normalized span appears in every scene that names the
+				// place; refuse the key for the rest of the run instead of asking
+				// the provider once per scene.
+				state.refuse(cacheKey)
 				continue
 			}
 			if err != nil {

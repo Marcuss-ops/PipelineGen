@@ -135,10 +135,10 @@ func TestBuildSceneLanguageWork_SourceHasNoTranslationDependency(t *testing.T) {
 
 	work := buildSceneLanguageWork([]Language{"en", "es", "fr"}, text, "en")
 	require.Len(t, work, 3)
-	require.Equal(t, Language("en"), work[0].lang)
-	require.False(t, work[0].needsTranslation, "the source language must never carry a translation dependency")
-	require.Equal(t, Language("es"), work[1].lang)
-	require.True(t, work[1].needsTranslation, "an empty target text must be translated")
-	require.Equal(t, Language("fr"), work[2].lang)
-	require.False(t, work[2].needsTranslation, "an existing target text must not be re-translated")
+	require.Equal(t, Language("en"), work[0].Lang)
+	require.False(t, work[0].NeedsTranslation, "the source language must never carry a translation dependency")
+	require.Equal(t, Language("es"), work[1].Lang)
+	require.True(t, work[1].NeedsTranslation, "an empty target text must be translated")
+	require.Equal(t, Language("fr"), work[2].Lang)
+	require.False(t, work[2].NeedsTranslation, "an existing target text must not be re-translated")
 }

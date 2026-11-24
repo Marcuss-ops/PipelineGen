@@ -46,6 +46,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"go.uber.org/zap"
 )
 
@@ -66,7 +67,7 @@ func overlayLanguageBarrierEnabled() bool {
 type overlayLanguageBarrier struct {
 	r         *Runner
 	runID     string
-	req       GenerateRequest
+	req       contract.GenerateRequest
 	resumeIdx int
 	jobID     string
 
@@ -87,7 +88,7 @@ type overlayLanguageBarrier struct {
 // nil — and starts nothing — for every configuration where the master fork
 // must keep today's semantics: overlap path not active, final jobs, no render
 // requested, no enqueuer, stage already resumed past, or the gate off.
-func (r *Runner) startOverlayRenderBarrier(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, branch *overlayPlanBranch) *overlayLanguageBarrier {
+func (r *Runner) startOverlayRenderBarrier(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, resumeIdx int, branch *overlayPlanBranch) *overlayLanguageBarrier {
 	if branch == nil || !overlayLanguageBarrierEnabled() || req.FinalJob {
 		return nil
 	}
@@ -169,7 +170,7 @@ func (b *overlayLanguageBarrier) run() {
 // the barrier was composing. A barrier error is never a run failure from here:
 // the fork's render path keeps the fail-closed surface it had before this file
 // existed.
-func (b *overlayLanguageBarrier) applyToSnapshot(snapshot *GenerateResult) []overlayRenderOutcome {
+func (b *overlayLanguageBarrier) applyToSnapshot(snapshot *contract.GenerateResult) []overlayRenderOutcome {
 	if b == nil || snapshot == nil {
 		return nil
 	}

@@ -3,13 +3,10 @@ package extract
 import (
 	"context"
 	"fmt"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/core"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline/publish"
-	"sync"
-
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -52,286 +49,244 @@ type stockPendingCommit struct {
 // are), so a resumed run re-drives publishCuts for it, and the Drive upload is
 // idempotent by construction (VerifiedArtifact.IdempotencyKey).
 //
+// GOP-16 (November 2026): the phases are explicit — scanGroupItems (state,
+// hash, resume, assets without Drive identity), runUploadPool (publication,
+// no commit), mergePublishedChunks, commitPendingGroup (the only commit
+// caller). The ordering invariant follows from publishCuts calling the commit
+// pass last, not from statement order inside one 330-line body.
+//
 // Returns the cut paths and published chunks for this source.
 func publishCuts(ctx context.Context, runner core.StepRunner, sourceID string, sourceIdx int,
 	groupPlans []core.ClipPlan, result core.CutBatchResult,
 	segmentCounts map[string]int, groupBuckets map[string]*timestampGroupBuffer,
 	rootFolderName, resolvedFolderID, timestampGroupName string, in *core.RunInput, batchID string) ([]string, []core.ChunkState, error) {
 
+	scan, err := scanGroupItems(ctx, runner, sourceID, sourceIdx, groupPlans, result,
+		segmentCounts, rootFolderName, resolvedFolderID, timestampGroupName, in, batchID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// GATE: Drive publication. A failure here returns before the commit pass,
+	// so the media SSOT keeps no asset — and no indexing request — for an
+	// unpublished clip.
+	uploaded, err := runUploadPool(ctx, runner, scan.uploadTasks, batchID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Uploaded chunks first, then resumed ones, merged into the same buckets
+	// in plan order; the canonical commit upserts the same deterministic rows
+	// again instead of duplicating Drive files.
+	publishedChunks := mergePublishedChunks(uploaded, scan.resumedResults, groupBuckets)
+
+	// GATE: canonical media commit. media_assets + the media index outbox
+	// event are written atomically by the canonical dispatcher — after every
+	// published artifact of this group carries a real Drive location.
+	if err := commitPendingGroup(ctx, runner, scan.pending); err != nil {
+		return nil, nil, err
+	}
+
+	return scan.cutPaths, publishedChunks, nil
+}
+
+// publishScan is the result of the per-group scan: cut paths, assets awaiting
+// commit (no Drive identity yet), fresh upload tasks and already-published
+// rows reused by resume.
+type publishScan struct {
+	cutPaths       []string
+	pending        []stockPendingCommit
+	uploadTasks    []clipUploadTask
+	resumedResults []clipUploadResult
+}
+
+// scanGroupItems walks the group in plan order: failed cuts are marked
+// FAILED_PERMANENT, successful ones hashed, resumed rows inspected and
+// reattached, extracted rows marked durably, and assets built WITHOUT their
+// Drive identity. It performs no Drive upload and no media commit.
+func scanGroupItems(ctx context.Context, runner core.StepRunner, sourceID string, sourceIdx int,
+	groupPlans []core.ClipPlan, result core.CutBatchResult, segmentCounts map[string]int,
+	rootFolderName, resolvedFolderID, timestampGroupName string, in *core.RunInput, batchID string) (publishScan, error) {
+
 	writer := runner.Writer()
 	artifactPrep := runner.ArtifactPreparation()
 	batchRepo := runner.BatchRepository()
 
-	var cutPaths []string
-	var publishedChunks []core.ChunkState
-	pending := make([]stockPendingCommit, 0, len(groupPlans))
-	var uploadTasks []clipUploadTask
-	var resumedResults []clipUploadResult
-
+	var scan publishScan
 	for clipIdx, plan := range groupPlans {
 		item := result.Items[clipIdx]
 		artifactID := core.StockArtifactID(batchID, sourceID, clipIdx)
 
 		if item.Status == core.CutItemStatusFailed || item.OutputPath == "" {
-			if runner.Log() != nil {
-				runner.Log().Warn("orchestrator: stock.extract_clips: no playable clip produced",
-					zap.String("source_id", sourceID),
-					zap.Int("clip_index", clipIdx),
-					zap.Error(item.Err))
-			}
-			if batchRepo != nil {
-				if err := batchRepo.MarkArtifactFailed(ctx, artifactID, core.ArtifactStateFailedPermanent, "cut failed or empty output"); err != nil {
-					return nil, nil, fmt.Errorf("%w: mark artifact %s failed after cut failure: %w", core.ErrStockExtractClipsDurableStateFailed, artifactID, err)
-				}
+			if err := markUnplayableClip(ctx, runner, batchRepo, artifactID, sourceID, clipIdx, item); err != nil {
+				return publishScan{}, err
 			}
 			continue
 		}
 
-		// Compute hash.
-		hash := item.SHA256Hex
-		if hash == "" {
-			var hashErr error
-			hash, hashErr = job.ComputeSHA256(runner.LocalFS(), item.OutputPath)
-			if hashErr != nil {
-				if batchRepo != nil {
-					if stateErr := batchRepo.MarkArtifactFailed(ctx, artifactID, core.ArtifactStateFailedPermanent, "SHA256: "+hashErr.Error()); stateErr != nil {
-						return nil, nil, fmt.Errorf("%w: mark artifact %s failed after SHA256 error: %w", core.ErrStockExtractClipsDurableStateFailed, artifactID, stateErr)
-					}
-				}
-				return nil, nil, fmt.Errorf("orchestrator: stock.extract_clips: chunk %d SHA256: %w", clipIdx, hashErr)
-			}
+		hash, err := resolveClipHash(ctx, runner, batchRepo, artifactID, item, clipIdx)
+		if err != nil {
+			return publishScan{}, err
 		}
 
-		actualDurationMs := int(item.DurationSec * 1000)
 		// Resume: an artifact already PUBLISHED/VERIFIED by a dead attempt
 		// must not be re-uploaded (that would publish a duplicate Drive
 		// file). Its persisted Drive identity is reused for the commit
 		// below; the upload pool only ever sees fresh artifacts.
-		resumedFileID, resumedFolderID, resumedLink, resumed, resumedErr := publishedRowReusable(ctx, batchRepo, artifactID)
-		if resumedErr != nil {
-			return nil, nil, fmt.Errorf("%w: inspect artifact %s for resume: %w", core.ErrStockExtractClipsDurableStateFailed, artifactID, resumedErr)
+		resumedFileID, resumedFolderID, resumedLink, resumed, err := reusablePublication(ctx, batchRepo, artifactID)
+		if err != nil {
+			return publishScan{}, err
 		}
 		if batchRepo != nil && !resumed {
-			if err := batchRepo.MarkArtifactExtracted(ctx, artifactID, item.OutputPath, hash, actualDurationMs); err != nil {
-				return nil, nil, fmt.Errorf("%w: mark artifact %s extracted: %w", core.ErrStockExtractClipsDurableStateFailed, artifactID, err)
+			if err := batchRepo.MarkArtifactExtracted(ctx, artifactID, item.OutputPath, hash, int(item.DurationSec*1000)); err != nil {
+				return publishScan{}, fmt.Errorf("%w: mark artifact %s extracted: %w", core.ErrStockExtractClipsDurableStateFailed, artifactID, err)
 			}
 		}
-		cutPaths = append(cutPaths, item.OutputPath)
+		scan.cutPaths = append(scan.cutPaths, item.OutputPath)
 
 		if writer == nil {
 			continue
 		}
 
 		// The asset is built WITHOUT its Drive identity: the publication
-		// phase below attaches it, immediately before the commit. Nothing
-		// is written to the media SSOT (and no indexing request is emitted)
+		// phase attaches it, immediately before the commit. Nothing is
+		// written to the media SSOT (and no indexing request is emitted)
 		// until that publication has returned successfully.
 		clip := buildRichStockAsset(plan, sourceIdx, clipIdx, item.OutputPath, hash)
-		pending = append(pending, stockPendingCommit{
+		scan.pending = append(scan.pending, stockPendingCommit{
 			clip:      clip,
 			hash:      hash,
 			plan:      plan,
 			sizeBytes: item.SizeBytes,
 		})
 
-		if artifactPrep != nil {
-			leafName := timestampGroupName
-			if in != nil && len(in.Clips) > 0 {
-				leafName = publish.RunInputClipFolderName(in, plan, timestampGroupName)
-			}
-			segmentCount := segmentCounts[leafName] + 1
-			segmentCounts[leafName] = segmentCount
-
-			segmentFilename := fmt.Sprintf("clip_%03d.mp4", segmentCount)
-			clipVA := finalization.VerifiedArtifact{
-				ArtifactID:         plan.OutputLogicalID,
-				Kind:               finalization.KindVideo,
-				Filename:           segmentFilename,
-				MIMEType:           "video/mp4",
-				LocalPath:          item.OutputPath,
-				SizeBytes:          item.SizeBytes,
-				SHA256:             hash,
-				Requirement:        finalization.ArtifactRequirementRequired,
-				IdempotencyKey:     clip.ID + ":" + hash,
-				Description:        plan.Description,
-				RootFolderName:     rootFolderName,
-				ResolvedFolderID:   resolvedFolderID,
-				RootFolderResolved: in != nil && in.DriveFolderResolved,
-				PathLeafName:       leafName,
-			}
-
-			if resumed {
-				// Reattach the persisted Drive identity (the commit below
-				// persists it as the row's primary location) and record
-				// the chunk without touching the upload pool.
-				downloadLink := "https://drive.google.com/uc?id=" + resumedFileID
-				if clip != nil {
-					clip.SetDriveFileID(resumedFileID)
-					clip.SetDriveLink(resumedLink)
-					clip.SetDownloadLink(downloadLink)
-					clip.SetFolderID(resumedFolderID)
-				}
-				resumedResults = append(resumedResults, clipUploadResult{
-					chunk: core.ChunkState{
-						Index:              clipIdx,
-						ArtifactID:         plan.OutputLogicalID,
-						Filename:           segmentFilename,
-						LocalPath:          item.OutputPath,
-						SizeBytes:          item.SizeBytes,
-						SHA256:             hash,
-						Description:        plan.Description,
-						Title:              plan.Title,
-						SourceURL:          plan.SourceID,
-						SourceProvider:     plan.SourceProvider,
-						SourceVideoID:      plan.SourceVideoID,
-						StartSec:           plan.StartSec,
-						EndSec:             plan.EndSec,
-						Round:              plan.Round,
-						Tags:               append([]string(nil), plan.Tags...),
-						Category:           plan.Category,
-						Slug:               plan.Slug,
-						RemoteFileID:       resumedFileID,
-						RemoteWebViewLink:  resumedLink,
-						DrivePath:          resumedLink,
-						RemoteDownloadLink: downloadLink,
-						TimestampFolderID:  resumedFolderID,
-					},
-					leafName: leafName,
-				})
-				continue
-			}
-			uploadTasks = append(uploadTasks, clipUploadTask{
-				clipIdx:         clipIdx,
-				plan:            plan,
-				cVA:             clipVA,
-				segmentFilename: segmentFilename,
-				leafName:        leafName,
-				clip:            clip,
-			})
+		if artifactPrep == nil {
+			continue
 		}
+
+		task, resumedResult := prepareClipPublication(clip, plan, clipIdx, item, hash,
+			timestampGroupName, in, segmentCounts, rootFolderName, resolvedFolderID,
+			resumed, resumedFileID, resumedFolderID, resumedLink)
+		if resumedResult != nil {
+			scan.resumedResults = append(scan.resumedResults, *resumedResult)
+			continue
+		}
+		scan.uploadTasks = append(scan.uploadTasks, *task)
 	}
 
-	// GATE: Drive publication. Concurrent upload with bounded worker pool.
-	// A failure here returns before the commit pass, so the media SSOT keeps
-	// no asset — and no indexing request — for an unpublished clip.
-	if artifactPrep != nil && len(uploadTasks) > 0 {
-		uploadResults := make([]clipUploadResult, len(uploadTasks))
-		taskCh := make(chan int, len(uploadTasks))
-		for i := range uploadTasks {
-			taskCh <- i
-		}
-		close(taskCh)
+	return scan, nil
+}
 
-		numWorkers := maxDriveUploadWorkers
-		if len(uploadTasks) < numWorkers {
-			numWorkers = len(uploadTasks)
-		}
+// markUnplayableClip records a clip that produced no playable output.
+func markUnplayableClip(ctx context.Context, runner core.StepRunner, batchRepo core.StockBatchRepository, artifactID, sourceID string, clipIdx int, item core.CutItemResult) error {
+	if runner.Log() != nil {
+		runner.Log().Warn("orchestrator: stock.extract_clips: no playable clip produced",
+			zap.String("source_id", sourceID),
+			zap.Int("clip_index", clipIdx),
+			zap.Error(item.Err))
+	}
+	if batchRepo == nil {
+		return nil
+	}
+	if err := batchRepo.MarkArtifactFailed(ctx, artifactID, core.ArtifactStateFailedPermanent, "cut failed or empty output"); err != nil {
+		return fmt.Errorf("%w: mark artifact %s failed after cut failure: %w", core.ErrStockExtractClipsDurableStateFailed, artifactID, err)
+	}
+	return nil
+}
 
-		var wg sync.WaitGroup
-		for w := 0; w < numWorkers; w++ {
-			wg.Add(1)
-			concurrent.SafeGo("stock-publish-cut", func() {
-				defer wg.Done()
-				for taskIdx := range taskCh {
-					task := uploadTasks[taskIdx]
-					clipPublished, clipPrepErr := core.PrepareStockDriveArtifact(ctx, runner, task.cVA, map[string]any{
-						"assets_generated":        1,
-						"output_duration_seconds": task.plan.EndSec - task.plan.StartSec,
-					})
-					if clipPrepErr != nil {
-						uploadResults[taskIdx] = clipUploadResult{
-							err: fmt.Errorf("%w: chunk %d (artifact=%s): %w",
-								core.ErrStockPublishArtifactFailed, task.clipIdx, task.plan.OutputLogicalID, clipPrepErr),
-						}
-						continue
-					}
-
-					if batchRepo != nil {
-						artifactID := core.StockArtifactID(batchID, task.plan.SourceID, task.clipIdx)
-						pubErr := batchRepo.MarkArtifactPublished(ctx, artifactID,
-							clipPublished.Location.FileID,
-							clipPublished.Location.FolderID,
-							clipPublished.Location.WebViewLink)
-						if pubErr != nil {
-							uploadResults[taskIdx] = clipUploadResult{
-								err: fmt.Errorf("%w: durable state save for chunk %d: %w",
-									core.ErrStockPublishArtifactFailed, task.clipIdx, pubErr),
-							}
-							continue
-						}
-					}
-
-					// Attach the published Drive identity to the asset so the
-					// canonical commit below persists the Drive location as
-					// the primary location of the row.
-					if task.clip != nil {
-						task.clip.SetDriveFileID(clipPublished.Location.FileID)
-						task.clip.SetDriveLink(clipPublished.Location.WebViewLink)
-						task.clip.SetDownloadLink(clipPublished.Location.DownloadLink)
-						task.clip.SetFolderID(clipPublished.Location.FolderID)
-					}
-
-					publishedChunk := core.ChunkState{
-						Index:              task.clipIdx,
-						ArtifactID:         task.plan.OutputLogicalID,
-						Filename:           task.segmentFilename,
-						LocalPath:          task.cVA.LocalPath,
-						SizeBytes:          task.cVA.SizeBytes,
-						SHA256:             task.cVA.SHA256,
-						Description:        task.plan.Description,
-						Title:              task.plan.Title,
-						SourceURL:          task.plan.SourceID,
-						SourceProvider:     task.plan.SourceProvider,
-						SourceVideoID:      task.plan.SourceVideoID,
-						StartSec:           task.plan.StartSec,
-						EndSec:             task.plan.EndSec,
-						Round:              task.plan.Round,
-						Tags:               append([]string(nil), task.plan.Tags...),
-						Category:           task.plan.Category,
-						Slug:               task.plan.Slug,
-						RemoteFileID:       clipPublished.Location.FileID,
-						RemoteWebViewLink:  clipPublished.Location.WebViewLink,
-						DrivePath:          clipPublished.Location.WebViewLink,
-						RemoteDownloadLink: clipPublished.Location.DownloadLink,
-						// The parent Drive folder of the published chunk. Carried on
-						// the chunk so the stock job finalizer's spine write can
-						// persist the same media_assets.folder_id this commit does:
-						// the media upsert writes folder_id unconditionally, so a
-						// spine write without the folder would blank it. Before this
-						// the field was never populated, so every stock row kept
-						// folder_id="".
-						TimestampFolderID: clipPublished.Location.FolderID,
-					}
-
-					uploadResults[taskIdx] = clipUploadResult{
-						chunk:    publishedChunk,
-						leafName: task.leafName,
-					}
-				}
-			})
-		}
-		wg.Wait()
-
-		for _, res := range uploadResults {
-			if res.err != nil {
-				return nil, nil, res.err
-			}
-			publishedChunks = append(publishedChunks, res.chunk)
-			bucket := groupBuckets[res.leafName]
-			if bucket == nil {
-				bucket = &timestampGroupBuffer{leafName: res.leafName, firstIndex: res.chunk.Index}
-				groupBuckets[res.leafName] = bucket
-			}
-			bucket.chunks = append(bucket.chunks, res.chunk)
+// resolveClipHash returns the cut's SHA256, computing it when the cutter did
+// not supply one. A hashing failure marks the artifact FAILED_PERMANENT and
+// aborts the group.
+func resolveClipHash(ctx context.Context, runner core.StepRunner, batchRepo core.StockBatchRepository, artifactID string, item core.CutItemResult, clipIdx int) (string, error) {
+	hash := item.SHA256Hex
+	if hash != "" {
+		return hash, nil
+	}
+	hash, hashErr := job.ComputeSHA256(runner.LocalFS(), item.OutputPath)
+	if hashErr == nil {
+		return hash, nil
+	}
+	if batchRepo != nil {
+		if stateErr := batchRepo.MarkArtifactFailed(ctx, artifactID, core.ArtifactStateFailedPermanent, "SHA256: "+hashErr.Error()); stateErr != nil {
+			return "", fmt.Errorf("%w: mark artifact %s failed after SHA256 error: %w", core.ErrStockExtractClipsDurableStateFailed, artifactID, stateErr)
 		}
 	}
+	return "", fmt.Errorf("orchestrator: stock.extract_clips: chunk %d SHA256: %w", clipIdx, hashErr)
+}
 
-	// Resumed chunks (already published by a dead attempt) merge into
-	// the same buckets in plan order; the canonical commit below
-	// upserts the same deterministic rows again instead of duplicating
-	// Drive files. This runs even when every clip resumed (uploadTasks
-	// empty) so a fully-resumed group still reports its chunks.
-	for _, res := range resumedResults {
+// reusablePublication inspects the artifact row for a publication left by a
+// dead attempt. ok=false means "upload normally"; an error is fail-closed
+// (the row could not be inspected, so a duplicate upload must not be risked).
+func reusablePublication(ctx context.Context, batchRepo core.StockBatchRepository, artifactID string) (fileID, folderID, webLink string, ok bool, err error) {
+	fileID, folderID, webLink, ok, err = publishedRowReusable(ctx, batchRepo, artifactID)
+	if err != nil {
+		return "", "", "", false, fmt.Errorf("%w: inspect artifact %s for resume: %w", core.ErrStockExtractClipsDurableStateFailed, artifactID, err)
+	}
+	return fileID, folderID, webLink, ok, nil
+}
+
+// prepareClipPublication builds the verified artifact and either a fresh
+// upload task or, for a resumed row, the already-published result with the
+// persisted Drive identity reattached to the asset.
+func prepareClipPublication(clip *asset.Asset, plan core.ClipPlan, clipIdx int, item core.CutItemResult, hash, timestampGroupName string, in *core.RunInput, segmentCounts map[string]int, rootFolderName, resolvedFolderID string, resumed bool, resumedFileID, resumedFolderID, resumedLink string) (*clipUploadTask, *clipUploadResult) {
+	leafName := timestampGroupName
+	if in != nil && len(in.Clips) > 0 {
+		leafName = publish.RunInputClipFolderName(in, plan, timestampGroupName)
+	}
+	segmentCount := segmentCounts[leafName] + 1
+	segmentCounts[leafName] = segmentCount
+
+	segmentFilename := fmt.Sprintf("clip_%03d.mp4", segmentCount)
+	clipVA := finalization.VerifiedArtifact{
+		ArtifactID:         plan.OutputLogicalID,
+		Kind:               finalization.KindVideo,
+		Filename:           segmentFilename,
+		MIMEType:           "video/mp4",
+		LocalPath:          item.OutputPath,
+		SizeBytes:          item.SizeBytes,
+		SHA256:             hash,
+		Requirement:        finalization.ArtifactRequirementRequired,
+		IdempotencyKey:     clip.ID + ":" + hash,
+		Description:        plan.Description,
+		RootFolderName:     rootFolderName,
+		ResolvedFolderID:   resolvedFolderID,
+		RootFolderResolved: in != nil && in.DriveFolderResolved,
+		PathLeafName:       leafName,
+	}
+
+	chunk := stockChunkState(plan, clipIdx, item.OutputPath, segmentFilename, hash, item.SizeBytes)
+	if resumed {
+		// Reattach the persisted Drive identity (the commit below
+		// persists it as the row's primary location) and record the
+		// chunk without touching the upload pool.
+		downloadLink := "https://drive.google.com/uc?id=" + resumedFileID
+		clip.SetDriveFileID(resumedFileID)
+		clip.SetDriveLink(resumedLink)
+		clip.SetDownloadLink(downloadLink)
+		clip.SetFolderID(resumedFolderID)
+		chunk.RemoteFileID = resumedFileID
+		chunk.RemoteWebViewLink = resumedLink
+		chunk.DrivePath = resumedLink
+		chunk.RemoteDownloadLink = downloadLink
+		chunk.TimestampFolderID = resumedFolderID
+		return nil, &clipUploadResult{chunk: chunk, leafName: leafName}
+	}
+
+	return &clipUploadTask{
+		clipIdx:         clipIdx,
+		plan:            plan,
+		cVA:             clipVA,
+		segmentFilename: segmentFilename,
+		leafName:        leafName,
+		clip:            clip,
+	}, nil
+}
+
+// mergePublishedChunks merges fresh upload results and resumed results into
+// the group buckets (in that order, preserving plan order inside each list).
+func mergePublishedChunks(uploaded, resumed []clipUploadResult, groupBuckets map[string]*timestampGroupBuffer) []core.ChunkState {
+	publishedChunks := make([]core.ChunkState, 0, len(uploaded)+len(resumed))
+	appendResult := func(res clipUploadResult) {
 		publishedChunks = append(publishedChunks, res.chunk)
 		bucket := groupBuckets[res.leafName]
 		if bucket == nil {
@@ -340,16 +295,23 @@ func publishCuts(ctx context.Context, runner core.StepRunner, sourceID string, s
 		}
 		bucket.chunks = append(bucket.chunks, res.chunk)
 	}
+	for _, res := range uploaded {
+		appendResult(res)
+	}
+	for _, res := range resumed {
+		appendResult(res)
+	}
+	return publishedChunks
+}
 
-	// GATE: canonical media commit. media_assets + the media index outbox
-	// event are written atomically by the canonical dispatcher below — after
-	// every published artifact of this group carries a real Drive location.
+// commitPendingGroup is the ONLY caller of the canonical commit. It writes
+// media_assets + the index outbox event atomically per asset and records the
+// semantic phases around that one operation.
+func commitPendingGroup(ctx context.Context, runner core.StepRunner, pending []stockPendingCommit) error {
+	writer := runner.Writer()
 	for i := range pending {
 		c := &pending[i]
 
-		// Asset write + outbox. The canonical dispatcher performs the
-		// database save and index-outbox enqueue atomically; record both
-		// semantic phases around that one operation without duplicating it.
 		databaseMetric := core.StartStockPhase(ctx, runner, "stock.database_save")
 		writeErr := writer.WriteAndEnqueue(ctx, c.clip, c.hash)
 		if databaseMetric != nil {
@@ -377,9 +339,8 @@ func publishCuts(ctx context.Context, runner core.StepRunner, sourceID string, s
 					zap.String("logical_id", c.plan.OutputLogicalID),
 					zap.Error(writeErr))
 			}
-			return nil, nil, fmt.Errorf("%w: %w", core.ErrAtomicDispatchFailed, writeErr)
+			return fmt.Errorf("%w: %w", core.ErrAtomicDispatchFailed, writeErr)
 		}
 	}
-
-	return cutPaths, publishedChunks, nil
+	return nil
 }

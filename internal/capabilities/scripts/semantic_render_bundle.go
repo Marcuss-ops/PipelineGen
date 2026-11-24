@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
@@ -15,7 +16,7 @@ import (
 // surfaces into the single cross-stage bundle. It intentionally consumes the
 // existing EntityTimeline, OverlayIntents and OverlayPlan; it never reruns
 // extraction, asset search or timing.
-func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Language, runID, videoID string, perSceneImages ...overlayPlanImageOptions) (*capabilityoverlay.SemanticRenderBundleV1, error) {
+func BuildSemanticRenderBundleFromResult(result *contract.GenerateResult, language contract.Language, runID, videoID string, perSceneImages ...overlayPlanImageOptions) (*capabilityoverlay.SemanticRenderBundleV1, error) {
 	if result == nil || result.EntityTimeline == nil {
 		return nil, nil
 	}
@@ -174,7 +175,7 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 	return bundle, nil
 }
 
-func semanticEntityImageBinding(scenes []Scene, sceneID, entityID string) *scriptpkg.EntityImageBinding {
+func semanticEntityImageBinding(scenes []contract.Scene, sceneID, entityID string) *scriptpkg.EntityImageBinding {
 	for _, scene := range scenes {
 		if scene.ID != sceneID || scene.Annotations == nil {
 			continue
@@ -189,7 +190,7 @@ func semanticEntityImageBinding(scenes []Scene, sceneID, entityID string) *scrip
 	return nil
 }
 
-func semanticEntityCanonicalID(scenes []Scene, sceneID, entityID string) string {
+func semanticEntityCanonicalID(scenes []contract.Scene, sceneID, entityID string) string {
 	for _, scene := range scenes {
 		if scene.ID != sceneID || scene.Annotations == nil {
 			continue

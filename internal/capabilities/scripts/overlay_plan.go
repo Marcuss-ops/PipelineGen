@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -35,7 +36,7 @@ import (
 // CompileOverlayPlanWithRustResolver compiles and seals a plan using the
 // configured BrainRust compiler. There is no Go planner and no per-phase
 // fallback: the v2 compiler is the only plan authority.
-func CompileOverlayPlanWithRustResolver(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
+func CompileOverlayPlanWithRustResolver(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
 	return compileOverlayPlanWithMotionOffset(ctx, result, language, canvas, planID, videoID, projectID, plates, compiler, perSceneImages...)
 }
 

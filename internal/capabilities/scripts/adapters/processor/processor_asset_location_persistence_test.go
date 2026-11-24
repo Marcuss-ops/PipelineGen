@@ -8,11 +8,42 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processorreconciliation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/reconciliation"
 
 	"go.uber.org/zap"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+type persistenceVerifierStub struct {
+	byLink  map[string]*scriptpkg.VerifiedLocation
+	byError map[string]error
+}
+
+func newStubVerifier() *persistenceVerifierStub {
+	return &persistenceVerifierStub{
+		byLink:  make(map[string]*scriptpkg.VerifiedLocation),
+		byError: make(map[string]error),
+	}
+}
+
+func (s *persistenceVerifierStub) stubResult(link string, result *scriptpkg.VerifiedLocation) {
+	s.byLink[link] = result
+}
+
+func (s *persistenceVerifierStub) stubError(link string, err error) {
+	s.byError[link] = err
+}
+
+func (s *persistenceVerifierStub) Verify(_ context.Context, _, _, link string) (*scriptpkg.VerifiedLocation, error) {
+	if err, ok := s.byError[link]; ok {
+		return nil, err
+	}
+	if result, ok := s.byLink[link]; ok {
+		return result, nil
+	}
+	return nil, nil
+}
 
 func TestAssetLocationReconciliation_PersistedSpecSceneAndManifestContainNoUnusableLinks(t *testing.T) {
 	const (
@@ -52,7 +83,7 @@ func TestAssetLocationReconciliation_PersistedSpecSceneAndManifestContainNoUnusa
 	// every unverified output link, allowing persistence to serialize only
 	// the fail-closed scene. Durable mode would correctly stop on the
 	// transport error before persistence.
-	reconciler := NewAssetLocationReconciliationProcessor(verifier)
+	reconciler := processorreconciliation.NewAssetLocationReconciliationProcessor(verifier)
 	reconciled, err := reconciler.Process(context.Background(), nil, adapters.ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{
 			Version: 1,

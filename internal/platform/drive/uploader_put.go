@@ -232,6 +232,16 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	if err != nil {
 		return nil, fmt.Errorf("drive put failed after 5 attempts: %w", err)
 	}
+	// WST-01: fold our own write into the fresh folder index so the next
+	// artifact of the same run is found without another listing.
+	if result.Action != PutActionSkipped {
+		u.rememberFolderFile(req.FolderID, RemoteFile{
+			FileID:      result.FileID,
+			Name:        result.Filename,
+			WebViewLink: result.WebViewLink,
+			MD5Checksum: result.MD5Checksum,
+		})
+	}
 	// FASE 10 / Commit 1 (July 2026): post-upload verification
 	// runs for actual uploads (Created / Updated / Renamed).
 	// PutActionSkipped is intentionally excluded because no upload
@@ -272,14 +282,86 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 		}
 	}
 	if req.PublicRead {
-		if err := u.ensurePublicRead(ctx, result.FileID); err != nil {
+		if err := u.ensurePublicRead(ctx, result.FileID, req.FolderID); err != nil {
 			return nil, fmt.Errorf("drive public-read permission for %q: %w", result.FileID, err)
 		}
 	}
 	return result, nil
 }
 
-func (u *Uploader) ensurePublicRead(ctx context.Context, fileID string) error {
+// folderPublicReadTTL bounds how long an in-process folder grant is trusted
+// before it is re-checked against Drive.
+const folderPublicReadTTL = 30 * time.Minute
+
+// ensurePublicRead makes an upload readable by "anyone with the link".
+//
+// WST-01: when the upload has a destination folder, the ONE grant that matters
+// is on the folder — Drive permissions are inherited by children — so a run
+// issues a single Permissions.List (+ at most one Create) per folder instead of
+// two calls per artifact, and every later upload into the same folder costs no
+// permission call at all. Without a folder (a caller that bypassed the
+// publisher) the historical per-file check is preserved.
+func (u *Uploader) ensurePublicRead(ctx context.Context, fileID, folderID string) error {
+	if strings.TrimSpace(folderID) != "" {
+		if u.folderPublicReadFresh(folderID) {
+			return nil
+		}
+		if err := u.ensureFolderPublicRead(ctx, folderID); err != nil {
+			return err
+		}
+		u.markFolderPublicRead(folderID)
+		return nil
+	}
+	return u.ensureFilePublicRead(ctx, fileID)
+}
+
+// folderPublicReadFresh reports whether this process already granted public
+// read on the folder within folderPublicReadTTL.
+func (u *Uploader) folderPublicReadFresh(folderID string) bool {
+	u.publicMu.Lock()
+	defer u.publicMu.Unlock()
+	grantedAt, ok := u.publicFolders[folderID]
+	return ok && time.Since(grantedAt) < folderPublicReadTTL
+}
+
+// markFolderPublicRead records a successful folder grant.
+func (u *Uploader) markFolderPublicRead(folderID string) {
+	u.publicMu.Lock()
+	defer u.publicMu.Unlock()
+	if u.publicFolders == nil {
+		u.publicFolders = make(map[string]time.Time)
+	}
+	u.publicFolders[folderID] = time.Now()
+}
+
+// ensureFolderPublicRead grants anyone/reader on the folder once. Fail-closed:
+// a List or Create error is returned to the caller.
+func (u *Uploader) ensureFolderPublicRead(ctx context.Context, folderID string) error {
+	if u.Service == nil {
+		return fmt.Errorf("drive not configured")
+	}
+	permissions, err := u.Service.Permissions.List(folderID).Fields("permissions(type,role)").Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	for _, permission := range permissions.Permissions {
+		if permission.Type == "anyone" && permission.Role == "reader" {
+			return nil
+		}
+	}
+	_, err = u.Service.Permissions.Create(folderID, &driveapi.Permission{Type: "anyone", Role: "reader"}).Fields("id").Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	if u.Log != nil {
+		u.Log.Info("drive folder granted anyone/reader once for the run", zap.String("folder_id", folderID))
+	}
+	return nil
+}
+
+// ensureFilePublicRead is the historical per-file grant, kept for callers that
+// upload into no folder (or bypass the publisher).
+func (u *Uploader) ensureFilePublicRead(ctx context.Context, fileID string) error {
 	permissions, err := u.Service.Permissions.List(fileID).Fields("permissions(type,role)").Context(ctx).Do()
 	if err != nil {
 		return err
@@ -320,6 +402,10 @@ func (u *Uploader) verifyUploadedFile(ctx context.Context, result *PutFileResult
 		ExpectedFolderID: req.FolderID,
 		ExpectedSize:     req.ExpectedSize,
 		ExpectedSHA256:   req.ExpectedSHA256,
+		// WST-01: the write response is the metadata source when the write
+		// path produced one, so the verifier does not re-read the file it just
+		// wrote. A nil WriteMeta (Skipped: no write) keeps the Files.Get path.
+		WriteMeta: result.WriteMeta,
 	}
 	verifyCtx := ctx
 	var cancel context.CancelFunc
@@ -369,7 +455,7 @@ func (u *Uploader) renameExistingFile(ctx context.Context, fileID, filename stri
 		return nil, fmt.Errorf("drive not configured")
 	}
 	updated, err := u.Service.Files.Update(fileID, &driveapi.File{Name: filename}).
-		Fields("id,name,webViewLink,md5Checksum").
+		Fields("id,name,parents,size,webViewLink,md5Checksum").
 		Context(ctx).
 		Do()
 	if err != nil {
@@ -415,6 +501,9 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			}
 			result.Filename = req.Filename
 			result.Action = PutActionUpdated
+			// The rename IS the write: its response carries name/parents/size,
+			// so the verifier needs no extra Files.Get (WST-01).
+			result.WriteMeta = driveWriteMeta(renamed)
 			if renamed != nil {
 				if renamed.Name != "" {
 					result.Filename = renamed.Name
@@ -482,7 +571,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			}
 		}
 		updated, err := withUpdateMedia(u.Service.Files.Update(existing.FileID, updateFile).
-			Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
+			Fields("id,name,parents,size,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 		if err != nil {
 			return nil, fmt.Errorf("drive put (update %q): %w", req.Filename, classifyDriveUploadError(err))
 		}
@@ -493,6 +582,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			DownloadLink: "https://drive.google.com/uc?id=" + updated.Id,
 			MD5Checksum:  updated.Md5Checksum,
 			Action:       PutActionUpdated,
+			WriteMeta:    driveWriteMeta(updated),
 		}, nil
 	}
 
@@ -530,7 +620,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		file.Parents = []string{req.FolderID}
 		setAppProperties(file, req.IdempotencyKey)
 		created, err := withCreateMedia(u.Service.Files.Create(file).
-			Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
+			Fields("id,name,parents,size,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 		if err != nil {
 			return nil, fmt.Errorf("drive put (rename-create %q): %w", newName, classifyDriveUploadError(err))
 		}
@@ -546,6 +636,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 			DownloadLink: "https://drive.google.com/uc?id=" + created.Id,
 			MD5Checksum:  created.Md5Checksum,
 			Action:       PutActionRenamed,
+			WriteMeta:    driveWriteMeta(created),
 		}, nil
 	}
 
@@ -558,7 +649,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	file.Parents = []string{req.FolderID}
 	setAppProperties(file, req.IdempotencyKey)
 	created, err := withCreateMedia(u.Service.Files.Create(file).
-		Fields("id,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
+		Fields("id,name,parents,size,webViewLink,md5Checksum"), ctx, source, size, mediaType).Do()
 	if err != nil {
 		return nil, fmt.Errorf("drive put (create %q): %w", req.Filename, classifyDriveUploadError(err))
 	}
@@ -569,6 +660,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		DownloadLink: "https://drive.google.com/uc?id=" + created.Id,
 		MD5Checksum:  created.Md5Checksum,
 		Action:       PutActionCreated,
+		WriteMeta:    driveWriteMeta(created),
 	}, nil
 }
 

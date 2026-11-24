@@ -17,12 +17,114 @@ import (
 	"go.uber.org/zap"
 )
 
+// ingestDirect persists one downloaded image through the canonical commit
+// transaction. The body reads as the ordered phases (subject inputs, file
+// placement, metadata, delivery intent, commit, local index); each phase lives
+// in a helper so the invariants below stay visible instead of buried.
+//
+// Invariants preserved from the pre-split body:
+//   - subject/tag extraction and metadata tagging are fail-open (warn + continue);
+//   - a nil committer is a typed fail-closed error, never a silent write;
+//   - Drive delivery is an outbox intent, never an inline upload;
+//   - CommitAsset is the single atomic writer (the old GetImageByHash fallback
+//     survives only for the outbox-terminal recovery path).
 func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, genID string, content []byte, filename, source, description string, tags []string, hash string, skipDrive, skipMetadata bool) (*detail.ImageAsset, error) {
-	// PR C9 (July 2026): replace silent-fake `extractSubjectAndTags` stub
-	// with the typed SubjectTagsService port. On error we log a warning
-	// and fall back to empty values (the caller still has its own
-	// slug + tags from upstream), preserving the pre-existing fail-open
-	// behavior but with explicit visibility (godlike/07 no-fake-availability).
+	slug, tags = s.resolveIngestSubjectInputs(ctx, slug, source, description, tags)
+	if err := s.ensureIngestSubject(ctx, slug); err != nil {
+		return nil, err
+	}
+
+	localPath, relativePath, err := s.placeIngestFile(ctx, slug, source, filename, content)
+	if err != nil {
+		return nil, err
+	}
+
+	generator := imageGeneratorLabel(source)
+	provider := resolveIngestProvider(ctx, source, generator)
+	width, height := decodeImageDimensions(content)
+	metaResult := s.tagIngestMetadata(ctx, description, style, generator, hash, localPath, width, height)
+
+	overrideRoot, deliveryStatus, err := s.resolveIngestDelivery(skipDrive, source, style)
+	if err != nil {
+		return nil, err
+	}
+
+	metaJSON, tags, origin, provider := buildIngestMetadata(metaResult, slug, description, style, hash, tags, width, height, generator, source, provider)
+
+	driveFileID := ""
+	result := &detail.ImageAsset{
+		SubjectID:    slug,
+		Hash:         hash,
+		PathRel:      relativePath,
+		LocalPath:    localPath,
+		SourceURL:    source,
+		Description:  description,
+		DriveFileID:  driveFileID,
+		Width:        width,
+		Height:       height,
+		SizeBytes:    int64(len(content)),
+		Status:       deliveryStatus,
+		MetadataJSON: string(metaJSON),
+		Tags:         tags,
+		Origin:       origin,
+		Provider:     provider,
+	}
+
+	if s.committer == nil {
+		return nil, fmt.Errorf("%w: image ingest atomic commit refused", errImageIngestCommitterNil)
+	}
+	commitReq := s.newImageCommitRequest(imageCommitInput{
+		slug: slug, style: style, genID: genID,
+		filename: filename, source: source, desc: description,
+		hash: hash, localPath: localPath, rel: relativePath,
+		tags:  tags,
+		width: width, height: height, sizeBytes: int64(len(content)),
+		generator: generator, origin: origin, provider: provider,
+		driveFileID: driveFileID, deliveryStatus: deliveryStatus,
+	})
+	if !skipDrive {
+		event, err := imageDriveDeliveryEvent(imageDeliveryInput{hash: hash, localPath: localPath, filename: filename, style: style, slug: slug, overrideRoot: overrideRoot})
+		if err != nil {
+			return nil, err
+		}
+		commitReq.AdditionalOutboxEvents = append(commitReq.AdditionalOutboxEvents, event)
+	}
+
+	recovered, err := s.commitIngestedImage(ctx, commitReq, hash, source)
+	if err != nil {
+		return nil, err
+	}
+	if recovered != nil {
+		return recovered, nil
+	}
+	s.indexIngestedImage(ctx, hash, description, slug, tags)
+	return result, nil
+}
+
+// imageCommitInput carries the resolved per-ingest values into the canonical
+// CommitRequest. Keeping it a struct avoids a twelve-argument builder whose
+// positional order is the kind of thing a silent swap can break.
+type imageCommitInput struct {
+	slug, style, genID     string
+	filename, source, desc string
+	hash, localPath, rel   string
+	tags                   []string
+	width, height          int
+	sizeBytes              int64
+	generator              string
+	origin                 asset.ImageOrigin
+	provider               asset.ImageProvider
+	driveFileID            string
+	deliveryStatus         string
+}
+
+type imageDeliveryInput struct {
+	hash, localPath, filename, style, slug, overrideRoot string
+}
+
+// resolveIngestSubjectInputs owns the fail-open extraction contract: a broken
+// SubjectTagsService must not abort an ingest that already has a slug or tags.
+func (s *ImageStorageService) resolveIngestSubjectInputs(ctx context.Context, slug, source, description string, tags []string) (string, []string) {
 	promptSubject, promptTags, err := s.subjectTags.ExtractSubjectAndTags(ctx, description)
 	if err != nil {
 		if s.log != nil {
@@ -40,111 +142,95 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	if len(tags) == 0 {
 		tags = promptTags
 	}
+	return slug, tags
+}
 
-	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
-	if err != nil || subject == nil {
-		subject = &asset.Subject{Slug: slug, DisplayName: slug}
-		if _, err := s.repo.CreateSubject(ctx, subject); err != nil {
-			return nil, fmt.Errorf("create subject %q: %w", slug, err)
-		}
+func (s *ImageStorageService) ensureIngestSubject(ctx context.Context, slug string) error {
+	if subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug); err == nil && subject != nil {
+		return nil
 	}
+	if _, err := s.repo.CreateSubject(ctx, &asset.Subject{Slug: slug, DisplayName: slug}); err != nil {
+		return fmt.Errorf("create subject %q: %w", slug, err)
+	}
+	return nil
+}
 
+func (s *ImageStorageService) placeIngestFile(ctx context.Context, slug, source, filename string, content []byte) (string, string, error) {
 	ext := filepath.Ext(filename)
 	if ext == "" {
 		ext = ".jpg"
 	}
-
-	// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
-	// Local path is computed inline via LocalPathFor.
-	// The path computation has migrated into the destinations
-	// package as LocalPathFor (PR-IMAGES-REMOVE-DRIVE-STORE
-	// follow-up, July 2026) so the destinationResolver package
-	// owns the canonical image-path shape (source-prefixed
-	// `<source>/<slug>.<ext>`). The images package imports it
-	// without taking a destination-resolver interface change.
-	// `source` is also the persisted source URL for retrieved images. Never
-	// use that URL as a filesystem directory (it produces paths such as
-	// `images/https:/...`). Keep the URL for provenance, but derive the path
-	// segment from the canonical retrieval provider.
-	pathSource := source
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(pathSource)), "http://") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(pathSource)), "https://") {
-		pathSource = "retrieved"
-		if retriever, ok := ctx.Value(RetrieverKey).(string); ok && strings.TrimSpace(retriever) != "" {
-			pathSource = strings.TrimSpace(retriever)
-		}
-	}
-	localPath, relativePath := LocalPathFor(s.imagesDir, slug, pathSource, ext)
+	localPath, relativePath := LocalPathFor(s.imagesDir, slug, ingestPathSource(ctx, source), ext)
 	if err := persistImageBytes(localPath, content); err != nil {
-		return nil, err
+		return "", "", err
 	}
+	return localPath, relativePath, nil
+}
 
-	generator := imageGeneratorLabel(source)
+// ingestPathSource maps a source URL to the on-disk segment. A URL must never
+// become a directory (`images/https:/...`): the retrieval provider is the
+// canonical segment, with "retrieved" as the fallback.
+func ingestPathSource(ctx context.Context, source string) string {
+	lower := strings.ToLower(strings.TrimSpace(source))
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") {
+		return source
+	}
+	if retriever, ok := ctx.Value(RetrieverKey).(string); ok && strings.TrimSpace(retriever) != "" {
+		return strings.TrimSpace(retriever)
+	}
+	return "retrieved"
+}
+
+func resolveIngestProvider(ctx context.Context, source, generator string) asset.ImageProvider {
 	provider := detail.ClassifyImageProvider(source, generator)
-	// PR-IMG-RETRIEVER-PROVIDER-FIX (July 2026): when source is a
-	// URL (imageGeneratorLabel returns "web-download") the canonical
-	// classifier cannot resolve a concrete provider (provider =
-	// ProviderUnknown). The retrieval-chain orchestrator
-	// (searchAndDownloadInnerDetailed) sets provCtx[RetrieverKey]
-	// to the canonical provider name ("wikipedia" | "duckduckgo" |
-	// "searxng" | ...) on the URL it routes through. Honouring that
-	// canonical provenance here closes the silent-fallback signature
-	// godlike/07 forbids (would otherwise land
-	// retrieved_image_details.provider = "unknown" for every retrieved
-	// row whose source URL does not match the provider-name table).
-	// Scope is intentionally narrow: only override when the
-	// classifier returned Unknown AND RetrieverKey is set to a
-	// canonical non-"unknown" provider. AI-generated, upload-origin,
-	// and Drive short-circuit callers are unaffected because their
-	// initial classification already returns a concrete provider.
-	if provider == detail.ProviderUnknown {
-		if v, ok := ctx.Value(RetrieverKey).(string); ok {
-			retriever := strings.TrimSpace(v)
-			if retriever != "" && retriever != string(detail.ProviderUnknown) {
-				provider = detail.ClassifyImageProvider(retriever, imageGeneratorLabel(retriever))
-			}
-		}
+	if provider != detail.ProviderUnknown {
+		return provider
 	}
-	width, height := decodeImageDimensions(content)
+	v, ok := ctx.Value(RetrieverKey).(string)
+	if !ok {
+		return provider
+	}
+	retriever := strings.TrimSpace(v)
+	if retriever == "" || retriever == string(detail.ProviderUnknown) {
+		return provider
+	}
+	return detail.ClassifyImageProvider(retriever, imageGeneratorLabel(retriever))
+}
 
-	// PR-VECTOR-IMAGES-INDEX (July 2026): tagImageMetadata failure is
-	// now non-fatal. On error we log a warning and continue with
-	// metaResult=nil — the image is still downloaded to disk, uploaded
-	// to Drive, and persisted in SQLite. The caller still gets a valid
-	// *detail.ImageAsset back. Pre-PR this was a hard failure that
-	// deleted the downloaded file and aborted the entire ingest.
+// tagIngestMetadata is non-fatal by contract: the image is already on disk and
+// the caller still gets a valid asset, just with minimal metadata.
+func (s *ImageStorageService) tagIngestMetadata(ctx context.Context, description, style, generator, hash, localPath string, width, height int) *SemanticWriteResult {
 	metaResult, err := s.meta.tagImageMetadata(ctx, description, style, generator, hash, localPath, width, height)
 	if err != nil {
 		if s.log != nil {
 			s.log.Warn("tagImageMetadata failed; continuing with minimal metadata",
 				zap.Error(err),
 				zap.String("hash", hash),
-				zap.String("source", source))
+				zap.String("source", localPath))
 		}
-		metaResult = nil
+		return nil
 	}
+	return metaResult
+}
 
-	// Drive is deliberately not called from ingestDirect. When delivery is
-	// requested, this transaction emits an image.drive_delivery.requested
-	// intent and the outbox worker performs the external publish later.
-	// This keeps SQLite ownership ahead of every durable Drive side effect.
-	var driveFileID string
-	storedSourceURL := source
-	overrideRoot := ""
-	if !skipDrive && s.publisher == nil {
-		return nil, fmt.Errorf("image ingest: Drive delivery publisher is unavailable")
+// resolveIngestDelivery derives the delivery intent without touching Drive.
+// A delivery-requested ingest with no publisher is a hard error: the intent
+// would otherwise be lost silently.
+func (s *ImageStorageService) resolveIngestDelivery(skipDrive bool, source, style string) (string, string, error) {
+	if skipDrive {
+		return "", "ready", nil
 	}
-	if !skipDrive {
-		// AI sources may provide a style-specific root override. Retrieved
-		// images intentionally leave this empty so the image destination
-		// registry remains the authority for the Drive root.
-		overrideRoot = s.aiImageDriveRootForSource(source, style)
+	if s.publisher == nil {
+		return "", "", fmt.Errorf("image ingest: Drive delivery publisher is unavailable")
 	}
+	return s.aiImageDriveRootForSource(source, style), "delivery_pending", nil
+}
 
+func buildIngestMetadata(metaResult *SemanticWriteResult, slug, description, style, hash string, tags []string, width, height int, generator, source string, provider asset.ImageProvider) ([]byte, []string, asset.ImageOrigin, asset.ImageProvider) {
 	// A retrieved download has a URL as its source, so classifying the URL
 	// alone cannot recover the concrete registry provider. Feed the resolved
-	// provider into the canonical builder when available; this keeps the
-	// metadata JSON and media_assets.provider aligned for DDG, Wikipedia,
-	// SearXNG and the other retrieved providers.
+	// provider into the canonical builder so metadata JSON and
+	// media_assets.provider stay aligned.
 	builderSource := source
 	if provider != detail.ProviderUnknown {
 		builderSource = string(provider)
@@ -158,133 +244,89 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		builder.WithExtra(semanticPayloadToMap(&payload))
 		tags = uniqueAppend(tags, payload.Tags...)
 	}
-	metaJSONStr, builtOrigin, builtProvider := builder.Build()
-	// Ensure the subject slug survives in metadata_json so that
-	// ListImagesBySubject can find cached images by subject_id.
-	metaJSONStr = detail.AppendImageMetadataField(metaJSONStr, "subject_id", slug)
-	metaJSON := []byte(metaJSONStr)
-	// The builder is the SSOT for origin/provider; align the asset
-	// record so that MetadataJSON.origin matches asset.Origin.
-	origin := builtOrigin
-	provider = builtProvider
+	metaJSON, origin, builtProvider := builder.Build()
+	// Keep the subject slug in metadata_json so ListImagesBySubject can find
+	// cached images by subject_id.
+	metaJSON = detail.AppendImageMetadataField(metaJSON, "subject_id", slug)
+	return []byte(metaJSON), tags, origin, builtProvider
+}
 
-	deliveryStatus := "ready"
-	if !skipDrive {
-		deliveryStatus = "delivery_pending"
-	}
-	result := &detail.ImageAsset{
-		SubjectID:    slug,
-		Hash:         hash,
-		PathRel:      relativePath,
-		LocalPath:    localPath,
-		SourceURL:    storedSourceURL,
-		Description:  description,
-		DriveFileID:  driveFileID,
-		Width:        width,
-		Height:       height,
-		SizeBytes:    int64(len(content)),
-		Status:       deliveryStatus,
-		MetadataJSON: string(metaJSON),
-		Tags:         tags,
-		Origin:       origin,
-		Provider:     provider,
-	}
-
-	// ingestDirect uses a single atomic CommitAsset transaction so a
-	// crash leaves zero rows in both stores. The previous
-	// "unique constraint" handling is delegated to CommitAsset's
-	// canonical idempotent upsert contract.
-	if s.committer == nil {
-		return nil, fmt.Errorf("%w: image ingest atomic commit refused", errImageIngestCommitterNil)
-	}
-
-	// Build the canonical CommitRequest from the resolved assets +
-	// collected metadata. AssetID and ContentHash both equal `hash`
-	// so the generated outbox event keeps its legacy aggregate_id ==
-	// hash wire identity (preserves the downstream job handler's
-	// dedup contract).
+// newImageCommitRequest builds the canonical CommitRequest. AssetID and
+// ContentHash both equal `hash`: the generated outbox event keeps its legacy
+// aggregate_id == hash wire identity (the downstream dedup contract).
+func (s *ImageStorageService) newImageCommitRequest(in imageCommitInput) persistence.CommitRequest {
 	initLifecycle, initIndex := asset.NewIndexableAssetState()
-	commitReq := persistence.CommitRequest{
-		AssetID:        hash,
+	return persistence.CommitRequest{
+		AssetID:        in.hash,
 		Source:         "image",
-		Filename:       filename,
+		Filename:       in.filename,
 		MediaType:      string(asset.MediaTypeImage),
-		ContentHash:    hash,
+		ContentHash:    in.hash,
 		LifecycleState: string(initLifecycle),
 		IndexState:     string(initIndex),
-		LocalPath:      localPath,
+		LocalPath:      in.localPath,
 		FolderID:       s.driveFolderID,
-		Title:          textutil.Truncate(description, 500),
-		Description:    description,
-		SourceURL:      storedSourceURL,
+		Title:          textutil.Truncate(in.desc, 500),
+		Description:    in.desc,
+		SourceURL:      in.source,
 		Metadata: persistence.TypedMetadata{
-			Title:       textutil.Truncate(description, 500),
-			Origin:      string(origin),
-			Description: description,
+			Title:       textutil.Truncate(in.desc, 500),
+			Origin:      string(in.origin),
+			Description: in.desc,
 			// The outbox supersede gate compares this value with the
-			// canonical metadata_json.content_hash. Keep both on the
-			// same asset fingerprint; the embedding model version is
-			// recorded separately below.
-			SourceVersion: hash,
-			Tags:          tags,
-			Slug:          slug,
-			SizeBytes:     int64(len(content)),
-			// width + height live in Extra because TypedMetadata has no
-			// typed slots for them — mirror the JSON keys produced by
-			// the metaJSON fallback above.
-			SourceProvider: string(provider),
+			// canonical metadata_json.content_hash. Keep both on the same
+			// asset fingerprint; the embedding model version is separate.
+			SourceVersion:  in.hash,
+			Tags:           in.tags,
+			Slug:           in.slug,
+			SizeBytes:      in.sizeBytes,
+			SourceProvider: string(in.provider),
+			// width + height live in Extra because TypedMetadata has no typed
+			// slots for them: mirror the JSON keys produced above.
 			Extra: map[string]any{
-				"path_rel":                 result.PathRel,
-				"width":                    width,
-				"height":                   height,
-				"origin":                   origin,
-				"provider":                 provider,
-				"generator":                generator,
-				"style":                    style,
-				"gen_id":                   genID,
-				"drive_file_id":            driveFileID,
-				"delivery_status":          deliveryStatus,
-				"content_hash":             hash,
+				"path_rel":                 in.rel,
+				"width":                    in.width,
+				"height":                   in.height,
+				"origin":                   in.origin,
+				"provider":                 in.provider,
+				"generator":                in.generator,
+				"style":                    in.style,
+				"gen_id":                   in.genID,
+				"drive_file_id":            in.driveFileID,
+				"delivery_status":          in.deliveryStatus,
+				"content_hash":             in.hash,
 				"embedding_version_visual": coreembedding.VisualEmbeddingModelVersion,
-				"subject_id":               slug,
+				"subject_id":               in.slug,
 			},
 		},
-		Origin:         string(origin),
-		Provider:       string(provider),
-		Locations:      buildImageIngestLocations(localPath, driveFileID, s.FormatDriveLink(driveFileID), hash, int64(len(content))),
+		Origin:         string(in.origin),
+		Provider:       string(in.provider),
+		Locations:      buildImageIngestLocations(in.localPath, in.driveFileID, s.FormatDriveLink(in.driveFileID), in.hash, in.sizeBytes),
 		EmitIndexEvent: true,
 	}
-	if !skipDrive {
-		payload, marshalErr := json.Marshal(ImageDriveDeliveryPayload{
-			AssetID: hash, ContentHash: hash, LocalPath: localPath,
-			Filename: filepath.Base(localPath), DestinationFolderID: overrideRoot,
-			Style: style, Subject: slug, Group: slug, SourceVersion: 1,
-		})
-		if marshalErr != nil {
-			return nil, fmt.Errorf("image ingest: build Drive delivery outbox payload: %w", marshalErr)
-		}
-		commitReq.AdditionalOutboxEvents = []persistence.OutboxEvent{{
-			EventType:   EventTypeImageDriveDeliveryRequested,
-			AggregateID: hash, AggregateType: "media_asset", PayloadJSON: string(payload),
-			EventKey: "image-drive-delivery:" + hash + ":" + style + ":" + overrideRoot,
-		}}
-	}
+}
 
-	if _, err := s.committer.CommitAsset(ctx, commitReq); err != nil {
-		// CommitAsset is idempotent: a unique-collision on a
-		// previously-committed (AssetID, ContentHash) row returns
-		// a successful CommitResult with zero new RowsAffected, NOT
-		// an error. If we DO see an error here, surface it as-is —
-		// the caller can decide whether to retry. The previous
-		// GetImageByHash fallback path was retired because the new
-		// canonical writer handles dedup atomically.
-		//
-		// PR-IMAGES-OUTBOX-TERMINAL-FALLBACK (July 2026): when the
-		// outbox event is suppressed by an existing terminal row
-		// (e.g. superseded by a newer aggregate version), the asset
-		// write has already succeeded inside the transaction. Recover
-		// the already-persisted asset by hash so the caller can treat
-		// the ingest as an idempotent cache hit rather than a 500.
+func imageDriveDeliveryEvent(in imageDeliveryInput) (persistence.OutboxEvent, error) {
+	payload, err := json.Marshal(ImageDriveDeliveryPayload{
+		AssetID: in.hash, ContentHash: in.hash, LocalPath: in.localPath,
+		Filename: filepath.Base(in.localPath), DestinationFolderID: in.overrideRoot,
+		Style: in.style, Subject: in.slug, Group: in.slug, SourceVersion: 1,
+	})
+	if err != nil {
+		return persistence.OutboxEvent{}, fmt.Errorf("image ingest: build Drive delivery outbox payload: %w", err)
+	}
+	return persistence.OutboxEvent{
+		EventType:   EventTypeImageDriveDeliveryRequested,
+		AggregateID: in.hash, AggregateType: "media_asset", PayloadJSON: string(payload),
+		EventKey: "image-drive-delivery:" + in.hash + ":" + in.style + ":" + in.overrideRoot,
+	}, nil
+}
+
+// commitIngestedImage returns the already-persisted asset when the outbox
+// terminal gate suppresses the event (the transaction succeeded anyway), and
+// nil,nil on a normal commit. Any other error is surfaced as-is.
+func (s *ImageStorageService) commitIngestedImage(ctx context.Context, req persistence.CommitRequest, hash, source string) (*detail.ImageAsset, error) {
+	if _, err := s.committer.CommitAsset(ctx, req); err != nil {
 		if errors.Is(err, persistence.ErrAssetCommitOutboxTerminal) {
 			if existing, getErr := s.repo.GetImageByHash(ctx, hash); getErr == nil && existing != nil {
 				if s.log != nil {
@@ -298,30 +340,24 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		}
 		return nil, fmt.Errorf("image ingest atomic commit: %w", err)
 	}
-	// Origin and provider are now written atomically inside the same
-	// CommitAsset transaction (via CommitRequest.Origin/Provider →
-	// media_assets.origin/provider columns). The post-commit UpdateOrigin
-	// second write has been removed so a CommitAsset success followed by
-	// an origin-provider write failure can never leave persisted rows
-	// with empty origin/provider.
-	//
-	// Drive identity and delivery status are written only by the post-commit
-	// worker; provenance needed by indexing is already part of the committed
-	// metadata and the image projection above.
-	if s.localIndex != nil {
-		searchQuery, _ := ctx.Value(SearchQueryKey).(string)
-		indexDocument := strings.Join([]string{
-			description,
-			searchQuery,
-			slug,
-			strings.Join(tags, " "),
-		}, " ")
-		if indexErr := s.localIndex.Index(ctx, hash, indexDocument); indexErr != nil && s.log != nil {
-			s.log.Warn("resolved image persisted but local semantic indexing failed; live providers remain available",
-				zap.String("asset_id", hash), zap.Error(indexErr))
-		}
+	return nil, nil
+}
+
+func (s *ImageStorageService) indexIngestedImage(ctx context.Context, hash, description, slug string, tags []string) {
+	if s.localIndex == nil {
+		return
 	}
-	return result, nil
+	searchQuery, _ := ctx.Value(SearchQueryKey).(string)
+	indexDocument := strings.Join([]string{
+		description,
+		searchQuery,
+		slug,
+		strings.Join(tags, " "),
+	}, " ")
+	if indexErr := s.localIndex.Index(ctx, hash, indexDocument); indexErr != nil && s.log != nil {
+		s.log.Warn("resolved image persisted but local semantic indexing failed; live providers remain available",
+			zap.String("asset_id", hash), zap.Error(indexErr))
+	}
 }
 
 func imageGeneratorLabel(source string) string {

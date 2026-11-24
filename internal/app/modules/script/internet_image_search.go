@@ -66,108 +66,118 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	return candidates, nil
 }
 
+// searchImagesUncached is the orchestration: reuse durable rows when allowed,
+// otherwise run the provider cascade and project the results.
 func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, req adapters.InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	if a == nil || a.resolver == nil {
 		return nil, fmt.Errorf("internetImageSearchAdapter: resolver not wired")
 	}
-	var searcher imagesrouting.ImageSearcher
-	var err error
-	toCandidate := func(r imagesrouting.ImageSearchResult) scriptpkg.SegmentAssetCandidate {
-		// Preserve the provider that actually answered (duckduckgo,
-		// wikimedia_commons, searxng): the class-routing report and the durable
-		// plan cache invalidate per provider, so flattening every hit into the
-		// generic "internet_images" label would make both impossible.
-		provider := strings.TrimSpace(string(r.Provider))
-		if provider == "" {
-			provider = "internet_images"
-		}
-		assetID := strings.TrimSpace(r.AssetID)
-		if assetID == "" {
-			assetID = strings.TrimSpace(r.Name)
-		}
-		if assetID == "" {
-			sum := digest.SHA256Bytes([]byte(req.SegmentID + "\x00" + req.Query + "\x00" + r.PreviewURL))
-			assetID = sum
-		}
-		return scriptpkg.SegmentAssetCandidate{
-			AssetID: assetID, Provider: provider, Query: strings.TrimSpace(req.Query),
-			Entity: strings.TrimSpace(req.Entity), SourceURL: strings.TrimSpace(r.PreviewURL),
-			SourcePageURL: strings.TrimSpace(r.SourcePageURL), PreviewURL: strings.TrimSpace(r.PreviewURL),
-			DriveLink: strings.TrimSpace(r.DriveLink), ContentSHA256: strings.TrimSpace(r.ContentSHA256),
-			Score: r.Score, Width: r.Width, Height: r.Height,
-			RightsStatus: retrievedImageRightsStatus(r.License), RightsBasis: retrievedImageRightsBasis(r.License, r.Author),
-		}
+	if candidates, ok := a.reusePersistedImageCandidates(ctx, req); ok {
+		return candidates, nil
 	}
-	// Reuse durable retrieved images first — unless the run asked for a force
-	// refresh. The bytes behind a stored URL can change upstream (source
-	// re-encode), and a recorded hash is only a claim until bytes are
-	// re-downloaded and re-hashed in-run. Refresh runs always take the live
-	// provider path below so overlay hashes stay content-addressed; a stale
-	// recorded hash reaching the render lane fails the whole job at L3.
-	if lookup, ok := a.resolver.(interface {
+
+	results, err := a.searchImageProviders(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Keep provider diagnostics at the VidRush boundary. The downstream
+	// materializer deliberately drops candidates that cannot be acquired,
+	// verified and persisted, so without this count an empty final binding
+	// cannot distinguish an empty search from an acquisition rejection.
+	if len(results) == 0 {
+		a.log.Info("VidRush internet image search returned no candidates", zap.String("query", req.Query))
+		return nil, nil
+	}
+	a.log.Info("VidRush internet image search returned candidates", zap.String("query", req.Query), zap.Int("count", len(results)))
+	return a.buildImageCandidates(req, results), nil
+}
+
+// reusePersistedImageCandidates tries the durable retrieved-image rows first.
+// The bytes behind a stored URL can change upstream, and a recorded hash is
+// only a claim until bytes are re-downloaded and re-hashed in-run, so refresh
+// runs always take the live provider path.
+func (a *internetImageSearchAdapter) reusePersistedImageCandidates(ctx context.Context, req adapters.InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, bool) {
+	lookup, ok := a.resolver.(interface {
 		ExistingImages(context.Context, string, int) ([]imagesrouting.ImageSearchResult, error)
-	}); ok && !req.ForceRefresh {
-		// The durable row is keyed by the ENTITY, while the provider query can
-		// carry retrieval qualifiers ("Corrado Augias portrait"). Resolving the
-		// entity first is what makes a warm reuse hit regardless of the query
-		// variant; the raw query remains the fallback for contextual searches.
-		subjects := make([]string, 0, 2)
-		for _, subject := range []string{req.Entity, req.Query} {
-			subject = strings.TrimSpace(subject)
-			if subject == "" || slices.Contains(subjects, subject) {
-				continue
-			}
-			subjects = append(subjects, subject)
+	})
+	if !ok || req.ForceRefresh {
+		return nil, false
+	}
+	// The durable row is keyed by the ENTITY, while the provider query can
+	// carry retrieval qualifiers ("Corrado Augias portrait"). Resolving the
+	// entity first is what makes a warm reuse hit regardless of the query
+	// variant; the raw query remains the fallback for contextual searches.
+	subjects := make([]string, 0, 2)
+	for _, subject := range []string{req.Entity, req.Query} {
+		subject = strings.TrimSpace(subject)
+		if subject == "" || slices.Contains(subjects, subject) {
+			continue
 		}
-		var cached []imagesrouting.ImageSearchResult
-		seenCached := make(map[string]struct{})
-		for _, subject := range subjects {
-			rows, lookupErr := lookup.ExistingImages(ctx, subject, req.Limit)
-			if lookupErr != nil {
-				a.log.Warn("VidRush existing image lookup failed; falling back to DuckDuckGo", zap.String("subject", subject), zap.Error(lookupErr))
-				continue
-			}
-			for _, row := range rows {
-				key := strings.TrimSpace(row.AssetID)
-				if key == "" {
-					key = strings.TrimSpace(row.DriveLink)
-				}
-				if key != "" {
-					if _, dup := seenCached[key]; dup {
-						continue
-					}
-					seenCached[key] = struct{}{}
-				}
-				cached = append(cached, row)
-			}
-			if req.Limit > 0 && len(cached) >= req.Limit {
-				break
-			}
+		subjects = append(subjects, subject)
+	}
+	var cached []imagesrouting.ImageSearchResult
+	seenCached := make(map[string]struct{})
+	for _, subject := range subjects {
+		rows, lookupErr := lookup.ExistingImages(ctx, subject, req.Limit)
+		if lookupErr != nil {
+			a.log.Warn("VidRush existing image lookup failed; falling back to DuckDuckGo", zap.String("subject", subject), zap.Error(lookupErr))
+			continue
 		}
-		if len(cached) > 0 {
-			// A time-seeded shuffle made the same plan bind different images on
-			// every run. The seed is now the retrieval subject, and the rows are
-			// sorted by content identity first, so a warm catalog replay is
-			// reproducible without giving up variety across different subjects.
-			cached = orderExistingImageResults(cached, imageSearchShuffleSeed(req))
-			out := make([]scriptpkg.SegmentAssetCandidate, 0, len(cached))
-			for _, row := range cached {
-				if strings.TrimSpace(row.DriveLink) == "" || strings.TrimSpace(row.ContentSHA256) == "" {
+		for _, row := range rows {
+			key := strings.TrimSpace(row.AssetID)
+			if key == "" {
+				key = strings.TrimSpace(row.DriveLink)
+			}
+			if key != "" {
+				if _, dup := seenCached[key]; dup {
 					continue
 				}
-				candidate := toCandidate(row)
-				candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-				candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
-				candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
-				candidate.IndexStatus = "pending"
-				out = append(out, candidate)
+				seenCached[key] = struct{}{}
 			}
-			if len(out) > 0 {
-				a.log.Info("VidRush reused persisted image candidates", zap.String("query", req.Query), zap.Int("count", len(out)))
-				return out, nil
-			}
+			cached = append(cached, row)
+		}
+		if req.Limit > 0 && len(cached) >= req.Limit {
+			break
 		}
 	}
+	if len(cached) == 0 {
+		return nil, false
+	}
+
+	// A time-seeded shuffle made the same plan bind different images on every
+	// run. The seed is now the retrieval subject, and the rows are sorted by
+	// content identity first, so a warm catalog replay is reproducible without
+	// giving up variety across different subjects.
+	cached = orderExistingImageResults(cached, imageSearchShuffleSeed(req))
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(cached))
+	for _, row := range cached {
+		if strings.TrimSpace(row.DriveLink) == "" || strings.TrimSpace(row.ContentSHA256) == "" {
+			continue
+		}
+		candidate := internetImageCandidate(req, row)
+		candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
+		candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
+		candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
+		candidate.IndexStatus = "pending"
+		out = append(out, candidate)
+	}
+	if len(out) == 0 {
+		return nil, false
+	}
+	a.log.Info("VidRush reused persisted image candidates", zap.String("query", req.Query), zap.Int("count", len(out)))
+	return out, true
+}
+
+// searchImageProviders runs the provider cascade: Commons for editorial
+// subjects, DuckDuckGo as the primary web provider, encyclopedic/portrait
+// supplements for short identity queries and SearXNG for long context
+// queries. A provider refusal is not an empty result: independent fallbacks
+// still run unless the parent context is cancelled.
+func (a *internetImageSearchAdapter) searchImageProviders(ctx context.Context, req adapters.InternetImageSearchRequest) ([]imagesrouting.ImageSearchResult, error) {
+	var searcher imagesrouting.ImageSearcher
+	var err error
+
 	// Query-class routing: an institution, place or object has a licensed
 	// encyclopedic asset, so Commons is asked first and a hit avoids the broad
 	// web provider entirely. A person also benefits from Wikipedia/Commons
@@ -311,15 +321,12 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 			}
 		}
 	}
-	// Keep provider diagnostics at the VidRush boundary. The downstream
-	// materializer deliberately drops candidates that cannot be acquired,
-	// verified and persisted, so without this count an empty final binding
-	// cannot distinguish an empty search from an acquisition rejection.
-	if len(results) == 0 {
-		a.log.Info("VidRush internet image search returned no candidates", zap.String("query", req.Query))
-		return nil, nil
-	}
-	a.log.Info("VidRush internet image search returned candidates", zap.String("query", req.Query), zap.Int("count", len(results)))
+	return results, nil
+}
+
+// buildImageCandidates projects provider rows, dropping empty URLs, duplicates
+// and candidates already below the pixel floor.
+func (a *internetImageSearchAdapter) buildImageCandidates(req adapters.InternetImageSearchRequest, results []imagesrouting.ImageSearchResult) []scriptpkg.SegmentAssetCandidate {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(results))
 	seen := make(map[string]struct{}, len(results))
 	metadataRejected := 0
@@ -331,7 +338,7 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 		if _, duplicate := seen[key]; duplicate {
 			continue
 		}
-		candidate := toCandidate(r)
+		candidate := internetImageCandidate(req, r)
 		if !imageCandidateMeetsMinimumMetadata(candidate.Width, candidate.Height) {
 			metadataRejected++
 			continue
@@ -343,7 +350,34 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 		a.log.Debug("VidRush image search skipped candidates below the pixel floor",
 			zap.String("query", req.Query), zap.Int("rejected", metadataRejected))
 	}
-	return out, nil
+	return out
+}
+
+// internetImageCandidate preserves the provider that actually answered
+// (duckduckgo, wikimedia_commons, searxng): the class-routing report and the
+// durable plan cache invalidate per provider, so flattening every hit into the
+// generic "internet_images" label would make both impossible.
+func internetImageCandidate(req adapters.InternetImageSearchRequest, r imagesrouting.ImageSearchResult) scriptpkg.SegmentAssetCandidate {
+	provider := strings.TrimSpace(string(r.Provider))
+	if provider == "" {
+		provider = "internet_images"
+	}
+	assetID := strings.TrimSpace(r.AssetID)
+	if assetID == "" {
+		assetID = strings.TrimSpace(r.Name)
+	}
+	if assetID == "" {
+		sum := digest.SHA256Bytes([]byte(req.SegmentID + "\x00" + req.Query + "\x00" + r.PreviewURL))
+		assetID = sum
+	}
+	return scriptpkg.SegmentAssetCandidate{
+		AssetID: assetID, Provider: provider, Query: strings.TrimSpace(req.Query),
+		Entity: strings.TrimSpace(req.Entity), SourceURL: strings.TrimSpace(r.PreviewURL),
+		SourcePageURL: strings.TrimSpace(r.SourcePageURL), PreviewURL: strings.TrimSpace(r.PreviewURL),
+		DriveLink: strings.TrimSpace(r.DriveLink), ContentSHA256: strings.TrimSpace(r.ContentSHA256),
+		Score: r.Score, Width: r.Width, Height: r.Height,
+		RightsStatus: retrievedImageRightsStatus(r.License), RightsBasis: retrievedImageRightsBasis(r.License, r.Author),
+	}
 }
 
 // imageCandidateMeetsMinimumMetadata avoids spending a network request on a

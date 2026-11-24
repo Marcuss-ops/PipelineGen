@@ -12,9 +12,11 @@ type fakeDriveUploader struct {
 	result *DriveUploadResult
 	err    error
 	got    DriveUploadInput
+	calls  int
 }
 
 func (f *fakeDriveUploader) Upload(_ context.Context, in DriveUploadInput) (*DriveUploadResult, error) {
+	f.calls++
 	f.got = in
 	if f.err != nil {
 		return nil, f.err

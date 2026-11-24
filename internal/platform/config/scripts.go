@@ -263,6 +263,13 @@ type ScriptsConfig struct {
 	// (scriptgeneration.DefaultTranslationConcurrency).
 	TranslationConcurrency int `yaml:"translation_concurrency" env:"VELOX_SCRIPTS_TRANSLATION_CONCURRENCY" default:"4"`
 
+	// TranslationTimeoutSeconds bounds ONE translation request (batched or
+	// per-scene). It is deliberately its own budget: inheriting the generation
+	// client's 600 s let a single poisoned scene hold the phase for ten minutes
+	// per attempt, which is how 49 failed translations cost more wall time than
+	// the 251 successful ones. Default 60, the certified short-request budget.
+	TranslationTimeoutSeconds int `yaml:"translation_timeout_seconds" env:"VELOX_SCRIPTS_TRANSLATION_TIMEOUT_SECONDS" default:"60"`
+
 	// OverlayRenderConcurrency bounds the multilingual overlay render
 	// fan-out: how many per-language OverlayPlans the overlay_render phase
 	// may have in flight against RenderingGen at once. It replaces the
@@ -303,6 +310,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.TranslationConcurrency <= 0 {
 		s.TranslationConcurrency = 4
+	}
+	if s.TranslationTimeoutSeconds <= 0 {
+		s.TranslationTimeoutSeconds = 60
 	}
 	// The overlay render fan-out must never resolve to 0: a zero-slot pool
 	// would render nothing at all instead of falling back to the certified

@@ -17,6 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -37,7 +38,7 @@ type Runner struct {
 	// local paths + certified durations before the audio plan is compiled.
 	// Nil means the audio intent block is not resolvable — a run that
 	// carries BGM/SFX intents fails closed in the audio-compile phase.
-	audioAssetSource        AudioAssetSource
+	audioAssetSource        contract.AudioAssetSource
 	overlayBackgroundSource OverlayBackgroundSource
 	// overlayClipFetcher materializes the certified per-item overlay renders
 	// that the local final-video join places on the plan timeline. Nil keeps
@@ -54,7 +55,7 @@ type Runner struct {
 	jobStageSink          job.JobStageStatusStore
 	jobStages             sync.Map
 	vidRushPipeline       *VidRushPipeline
-	phraseAligner         PhraseAligner
+	phraseAligner         contract.PhraseAligner
 	localizedIdentity     LocalizedIdentityMatcher
 	finalJobSubmitter     FinalJobSubmitter
 	sceneSemanticAnalyzer SceneSemanticAnalyzer
@@ -75,6 +76,11 @@ type Runner struct {
 	nlpConcurrency int
 	// translationConcurrency bounds concurrent scene×language translation calls.
 	translationConcurrency int
+	// translationTimeout bounds ONE translation request, batched or per-scene.
+	// Zero means DefaultTranslationTimeout; SetTranslationTimeout overrides it.
+	// It is deliberately separate from the generation client's timeout: the
+	// generation budget is minutes, a translation is a short round-trip.
+	translationTimeout time.Duration
 	// overlayRenderConcurrency bounds the multilingual overlay render fan-out:
 	// how many per-language OverlayPlans the overlay_render phase may have in
 	// flight against RenderingGen at once. It defaults to
@@ -242,7 +248,7 @@ func NewRunner(
 	}
 }
 
-func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateRequest) (*VidRushIncrementalCoordinator, error) {
+func (r *Runner) beginVidRush(ctx context.Context, runID string, req contract.GenerateRequest) (*VidRushIncrementalCoordinator, error) {
 	// Request-level semantic gate: plain text/audio runs have no consumer
 	// for per-scene VidRush enrichment, so they skip extraction, provider
 	// search, and materialization entirely. Explicit entities/images/media
@@ -470,13 +476,13 @@ func (r *Runner) waitForVidRushScene(ctx context.Context, runID string, sceneInd
 //
 // The handler must NOT wait for Execute to complete. This method
 // is intended to be launched as a goroutine.
-func (r *Runner) Execute(ctx context.Context, runID string, req GenerateRequest) {
+func (r *Runner) Execute(ctx context.Context, runID string, req contract.GenerateRequest) {
 	r.ExecuteWithContext(ctx, runID, req, NewExecutionContext(runID, req.IdempotencyKey))
 }
 
 // ExecuteWithContext is the worker-facing entry point that preserves the
 // broker's root/parent/project/video correlation across every stage.
-func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext) {
+func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext) {
 	if !r.prepareExecution(ctx, runID, req, &exec) {
 		return
 	}
@@ -490,7 +496,7 @@ func (r *Runner) ExecuteWithContext(ctx context.Context, runID string, req Gener
 // prepareExecution normalizes and validates the correlation context before any
 // workflow I/O. Keeping this boundary separate makes the public entry point
 // intentionally small without changing failure handling.
-func (r *Runner) prepareExecution(ctx context.Context, runID string, req GenerateRequest, exec *ExecutionContext) bool {
+func (r *Runner) prepareExecution(ctx context.Context, runID string, req contract.GenerateRequest, exec *ExecutionContext) bool {
 	if exec.JobID == "" {
 		exec.JobID = runID
 	}
@@ -516,6 +522,6 @@ func (r *Runner) prepareExecution(ctx context.Context, runID string, req Generat
 // checkpoint, error-classification and logging concerns a single time. Each
 // phase is an explicit named step below; a phase returning false stops the
 // run (a terminal error was already classified and persisted).
-func (r *Runner) runExecution(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext) {
+func (r *Runner) runExecution(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext) {
 	r.runExecutionPhases(ctx, runID, req, exec)
 }

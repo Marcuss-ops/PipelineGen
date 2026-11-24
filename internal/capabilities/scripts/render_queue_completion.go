@@ -21,6 +21,7 @@ import (
 	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -164,7 +165,7 @@ func (e *QueueRenderEnqueuer) itemRenderWorkers() int {
 // be joined to a stage wall time, so the breakdown reported the render's cost
 // under the enclosing audio stage and gave that stage a dominant operation
 // from another subsystem.
-func recordRenderingGenPhases(ctx context.Context, artifact *RenderArtifact) {
+func recordRenderingGenPhases(ctx context.Context, artifact *contract.RenderArtifact) {
 	if artifact == nil {
 		return
 	}
@@ -230,8 +231,11 @@ func recordQueueBoundaryPhases(ctx context.Context, submitMS, waitMS int64) {
 // (RunReport.Waits), never as a stage: it is time spent waiting on the render
 // queue, not pipeline CPU work.
 //
-// The wait itself is owned by WaitRenderQueueTerminal, so this path and the
-// clip.render settle continuation cannot drift apart.
+// WST-05: the wait carries the SAME progress watchdog as the clip.render
+// settle path. The measured window contains a 1.264 s single completion wait on
+// this path — the unwatched long poll parked a worker lane on a render whose
+// frames never moved, with no stall deadline. WaitRenderQueueTerminalWatched
+// cancels a render that stops advancing and reports the typed stall instead.
 func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) (RenderQueueJob, RenderCompletionMetrics, error) {
 	waitStarted := time.Now()
 	defer func() {
@@ -243,10 +247,19 @@ func (e *QueueRenderEnqueuer) waitForCompletion(ctx context.Context, id string) 
 			FinishedAt: finishedAt,
 		})
 	}()
-	job, metrics, err := WaitRenderQueueTerminal(ctx, e.client, id, e.pollInterval)
+	job, metrics, err := renderqueue.WaitRenderQueueTerminalWatched(
+		ctx, e.client, id, e.pollInterval, 0, e.renderStallAfter())
 	metrics.WaitStartedAt = waitStarted
 	metrics.WaitFinishedAt = time.Now()
 	return job, metrics, err
+}
+
+// renderStallAfter resolves the effective progress-watchdog window.
+func (e *QueueRenderEnqueuer) renderStallAfter() time.Duration {
+	if e != nil && e.stallAfter > 0 {
+		return e.stallAfter
+	}
+	return renderqueue.DefaultRenderStallAfter
 }
 
 // WaitRenderQueueTerminal blocks until the queue reports a TERMINAL state for id
@@ -392,7 +405,7 @@ func (e *QueueRenderEnqueuer) recordQueueAttempt(
 	if e == nil || e.recorder == nil {
 		return nil
 	}
-	var artifact *RenderArtifact
+	var artifact *contract.RenderArtifact
 	if job != nil {
 		artifact = job.Artifact
 	}

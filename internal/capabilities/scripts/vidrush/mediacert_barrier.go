@@ -1,0 +1,214 @@
+// Package vidrush — mediacert_barrier.go: the run-scoped
+// final barrier that turns the certified media result into the job's
+// terminal verdict.
+//
+// MediaCertBarrier wraps a VidRushBarrier so a SUCCEEDED run with
+// CERTIFIED=false fails the job — the explicit rejection of the count-only
+// test that declared success at a semantically broken pipeline (e.g. a boxing
+// clip bound to Greek Salad). The port contracts it implements live in
+// semantic_ports.go.
+//
+// Extracted 2026-09-12 from semantic_chain.go to keep every file under
+// max_lines_per_file_strict=600 (godlike/08 forward-prevention cap).
+package vidrush
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
+
+// MediaCertBarrier wraps a VidRushBarrier and runs mediacert.Certify on the
+// completed results before returning them. A CERTIFIED=false report fails the
+// job even when the underlying barrier returned no error. This is the explicit
+// rejection of the count-only test that declared success at a semantically
+// broken pipeline (e.g. a boxing clip bound to Greek Salad).
+type MediaCertBarrier struct {
+	inner     VidRushBarrier
+	certifier MediaCertifierPort
+	spec      mediacert.Spec
+}
+
+// NewMediaCertBarrier wraps a barrier with a MediaCertifierPort + Spec. The
+// spec is the golden Mediterranean fixture's expected contract in production;
+// tests pass a synthetic spec. inner and certifier must be non-nil.
+func NewMediaCertBarrier(inner VidRushBarrier, certifier MediaCertifierPort, spec mediacert.Spec) (*MediaCertBarrier, error) {
+	if inner == nil {
+		return nil, fmt.Errorf("scriptgeneration: inner VidRushBarrier is required for MediaCertBarrier")
+	}
+	if certifier == nil {
+		return nil, fmt.Errorf("scriptgeneration: MediaCertifierPort is required for MediaCertBarrier")
+	}
+	return &MediaCertBarrier{inner: inner, certifier: certifier, spec: spec}, nil
+}
+
+// WaitForVidRush delegates to the inner barrier, then certifies the result.
+// A CERTIFIED=false report returns an error so the runner fails the job.
+func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error) {
+	segments, err := b.inner.WaitForVidRush(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	// A barrier must not turn a partially committed run into a successful one.
+	// The inner coordinator only knows the scenes it observed; the spec owns
+	// the expected count, so a missing scene is a hard error here instead of a
+	// silently shorter result set. An unknown/zero count keeps the historical
+	// best-effort behavior for callers that cannot declare one.
+	if expected := b.spec.Segments; expected > 0 && len(segments) != expected {
+		return nil, fmt.Errorf("scriptgeneration: VidRush barrier expected %d committed scene(s), got %d", expected, len(segments))
+	}
+	// Per-scene entity overlays may reuse their catalog candidates when the
+	// entity's distinct image pool is exhausted. The binder prefers unused
+	// images, but certification must not erase repeated candidates and then
+	// reject scenes that should keep their overlay visible.
+	if !b.spec.AllowCrossSceneAssetReuse {
+		segments = scriptpkg.RemoveCrossSceneImageCandidateReuse(segments)
+	}
+	segments = FilterEntityRenderSurface(segments)
+	result := mediacert.MediaResult{
+		JobStatus: "SUCCEEDED",
+		Segments:  ToMediaResultSegments(segments),
+	}
+	report, err := b.certifier.Certify(ctx, b.spec, result)
+	if err != nil {
+		return nil, fmt.Errorf("mediacert certify: %w", err)
+	}
+	if !report.Certified {
+		var violations []string
+		for _, c := range report.Checks {
+			if !c.Passed {
+				detail := string(c.Name)
+				if len(c.Violations) > 0 {
+					detail += ": " + c.Violations[0].Detail
+				}
+				violations = append(violations, detail)
+			}
+		}
+		return nil, fmt.Errorf("vidrush semantic certification failed: CERTIFIED=false (%s)", strings.Join(violations, ", "))
+	}
+	return segments, nil
+}
+
+// FilterEntityRenderSurface is the explicit product policy for the entity
+// render path: only imageable named entities and important phrases cross the
+// VidRush→render boundary. Value entities, concepts, keywords and important
+// words remain useful to other editorial paths, but must not become entity
+// overlays or affect the entity certification counts.
+func FilterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
+	out := make([]scriptpkg.VidRushSegmentResult, len(segments))
+	for i, seg := range segments {
+		out[i] = seg
+		entities := make([]scriptpkg.ExtractedEntity, 0, len(seg.Insights.Entities))
+		values := make([]scriptpkg.ExtractedEntity, 0, len(seg.Insights.Entities))
+		for _, entity := range seg.Insights.Entities {
+			kind := scriptpkg.NormalizeAnnotationType(entity.Type)
+			entity.Type = kind
+			entity.Value = strings.TrimSpace(entity.Value)
+			if entity.Value == "" {
+				continue
+			}
+			if scriptpkg.IsAnnotationEntityKind(kind) {
+				entities = append(entities, entity)
+				continue
+			}
+			switch kind {
+			case "DATE", "TIME", "NUMBER", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
+				values = append(values, entity)
+			}
+		}
+		out[i].Insights.Entities = entities
+		out[i].Insights.ImportantWords = nil
+		// Preserve value annotations for the certified number-overlay path;
+		// they are not image queries and do not count against identity fanout.
+		out[i].Insights.Entities = append(out[i].Insights.Entities, values...)
+		// This render surface is intentionally narrower than the full media
+		// retrieval surface: no stock-video or YouTube query may leak into an
+		// entity-only run. The caller can run those providers in a separate
+		// clip path, but they are not extracted here.
+		out[i].Insights.YouTubeQueries = nil
+		// BrainRust owns image query intent. Preserve its primary query strings
+		// verbatim; this boundary only projects them to the render surface.
+		queries := make([]string, 0, len(entities))
+		seenQueries := make(map[string]struct{}, len(entities))
+		for _, entity := range entities {
+			if !scriptpkg.IsAnnotationEntityKind(entity.Type) {
+				continue
+			}
+			for _, query := range entity.SearchIntents {
+				key := strings.ToLower(strings.TrimSpace(query))
+				if key == "" || !imageQueryAnchoredToEntity(key, entity.Value) {
+					continue
+				}
+				if _, ok := seenQueries[key]; ok {
+					continue
+				}
+				seenQueries[key] = struct{}{}
+				queries = append(queries, query)
+			}
+		}
+		out[i].Insights.ImageQueries = queries
+	}
+	return out
+}
+
+// imageQueryAnchoredToEntity rejects a semantic search intent that drifted
+// away from the entity that owns it. Its phrase containment check mirrors the
+// lexical entity-term check in mediacert.queryOwnedBy; filtering an orphan
+// intent here keeps that strict contract useful without letting an unrelated
+// place or phrase (for example "Paris" on a Corrado Augias segment) poison
+// the whole scene's image fan-out.
+func imageQueryAnchoredToEntity(query, entity string) bool {
+	query = normalizeImageQueryAnchor(query)
+	entity = normalizeImageQueryAnchor(entity)
+	if query == "" || entity == "" {
+		return false
+	}
+	return strings.Contains(" "+query+" ", " "+entity+" ") ||
+		strings.Contains(" "+entity+" ", " "+query+" ")
+}
+
+func normalizeImageQueryAnchor(value string) string {
+	return strings.Join(strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}), " ")
+}
+
+// ToMediaResultSegments projects the VidRushSegmentResult slice into the
+// mediacert.ResultSegment shape so the certifier can check identity, profile,
+// grounding, ownership, relevance and fanout without depending on the full
+// VidRush wire shape.
+func ToMediaResultSegments(segments []scriptpkg.VidRushSegmentResult) []mediacert.ResultSegment {
+	out := make([]mediacert.ResultSegment, 0, len(segments))
+	for _, seg := range segments {
+		profile := seg.CanonicalSemanticProfile()
+		insights := seg.Insights
+		if insights.VisualProfile == nil {
+			visual := scriptpkg.BuildSegmentVisualProfile(profile)
+			insights.VisualProfile = &visual
+		}
+		out = append(out, mediacert.ResultSegment{
+			SegmentID:       seg.SegmentID,
+			Position:        seg.Position,
+			SourceText:      seg.SourceText,
+			SourceTextHash:  seg.SourceTextHash,
+			NarrationText:   seg.Text,
+			SemanticProfile: &profile,
+			Insights:        insights,
+			Assets:          seg.Assets,
+		})
+	}
+	return out
+}
+
+// Compile-time contract assertions: the new implementations satisfy the
+// existing port interfaces so VidRushPipeline can swap them in without the
+// coordinator knowing about the new chain.
+var (
+	_ SegmentEnricher         = (*SceneIRSegmentEnricher)(nil)
+	_ SegmentProviderResolver = (*SemanticProviderResolver)(nil)
+	_ VidRushBarrier          = (*MediaCertBarrier)(nil)
+)

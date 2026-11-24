@@ -16,6 +16,7 @@ import (
 	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	audiocontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/audio"
 
 	"github.com/google/uuid"
@@ -49,7 +50,7 @@ type OverlayPrepareEnqueuer interface {
 // The whole-timeline and per-scene canvas submissions were removed: local
 // rendering only produces independent overlay item clips.
 type OverlayRenderEnqueuer interface {
-	EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (RenderReference, error)
+	EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (contract.RenderReference, error)
 }
 
 // LocalizedRenderInput is one ready-to-render localized unit: a scene whose
@@ -68,9 +69,9 @@ type LocalizedRenderInput struct {
 
 	SceneID    string
 	SceneIndex int
-	Language   Language
+	Language   contract.Language
 	Text       string
-	Voiceover  AudioReference
+	Voiceover  contract.AudioReference
 
 	// SourceLanguage / SourceText carry the source-language scene text (the
 	// transcript the localized render's source plan references). They are
@@ -78,8 +79,8 @@ type LocalizedRenderInput struct {
 	// transcript track alongside the translated subtitle track without
 	// re-deriving them; SourceText is empty only for a scene whose source
 	// text was never produced.
-	SourceLanguage Language `json:"source_language,omitempty"`
-	SourceText     string   `json:"source_text,omitempty"`
+	SourceLanguage contract.Language `json:"source_language,omitempty"`
+	SourceText     string            `json:"source_text,omitempty"`
 
 	// ClipID / ClipAssetID / ClipSHA256 / ClipDurationMS carry the source
 	// clip the localized render burns subtitles onto. They are empty for
@@ -116,14 +117,23 @@ type LocalizedRenderInput struct {
 	// The runner records each produced localized clip (asset id, sha256,
 	// Drive link) on the run result. A non-nil sink is fail-closed: a sink
 	// error fails the enqueue. Nil means the caller does not need the outcome.
-	OnRendered func(LocalizedRenderResult) error `json:"-"`
+	OnRendered func(contract.LocalizedRenderResult) error `json:"-"`
 	// OnRenderReady is invoked after local render certification and before
 	// upload, allowing durable recovery to retry Drive without rerendering.
-	OnRenderReady func(LocalizedRenderResult) error `json:"-"`
+	OnRenderReady func(contract.LocalizedRenderResult) error `json:"-"`
+	// FinalJob marks a render whose consumer is the remote final compositor.
+	// It is the input fact used to decide whether the render may skip Drive.
+	FinalJob bool `json:"-"`
+	// SkipDrivePublication marks a final-job render whose bytes are consumed
+	// from the local/object-store path. The renderer still produces and
+	// certifies the local artifact; the Drive upload and destination-folder
+	// creation are skipped because no downstream reader of this run reads a
+	// Drive identity.
+	SkipDrivePublication bool `json:"-"`
 	// ResumeFrom, when set, identifies a locally certified RENDERED artifact
 	// restored from a partial result. The adapter may publish it directly.
-	ResumeFrom *LocalizedRenderResult             `json:"-"`
-	OnFailed   func(LocalizedRenderFailure) error `json:"-"`
+	ResumeFrom *contract.LocalizedRenderResult             `json:"-"`
+	OnFailed   func(contract.LocalizedRenderFailure) error `json:"-"`
 }
 
 // LocalizedOverlayLineage is the domain mirror of ONE clip.render overlay
@@ -149,83 +159,6 @@ type LocalizedOverlayLineage struct {
 	EndUS   int64 `json:"end_us"`
 }
 
-// LocalizedRenderResult is the certified outcome of one localized render
-// fan-out: the produced video artifact identity (asset id, sha256, Drive
-// link, duration) for the (scene, language) unit. It is projected verbatim
-// from the localization service's certified artifact — the run records the
-// produced MP4 instead of discarding it.
-type LocalizedRenderResult struct {
-	SceneID    string   `json:"scene_id"`
-	SceneIndex int      `json:"scene_index,omitempty"`
-	Language   Language `json:"language"`
-	ClipID     string   `json:"clip_id"`
-	// RenderJobID is the render-plan identity of the job that produced these
-	// bytes (localization's plan revision: `<clip>:<language>:overlay-v5:`
-	// + the plan fingerprint prefix — `:` separators because the revision IS
-	// the RenderingGen queue job id, which must be one valid filename
-	// component). It is projected here so the run result
-	// NAMES its render job: before this field existed a collector could only
-	// recover the id by scraping `plan_revision` out of the master log, which
-	// worked on a fresh run and returned "no queue record resolved" on a run
-	// that reused cached renders.
-	RenderJobID string `json:"render_job_id,omitempty"`
-	AssetID     string `json:"asset_id"`
-	SHA256      string `json:"sha256"`
-	DriveFileID string `json:"drive_file_id,omitempty"`
-	DriveLink   string `json:"drive_link,omitempty"`
-	// DriveFolderID is the RESOLVED destination folder the artifact was
-	// published into (<job>/<language> under the clips root). It is projected so
-	// the destination of a render is readable on the run result instead of
-	// only being inferable from the log — and so a gate can prove that two
-	// languages of the same clip did NOT land in one shared folder. Empty on
-	// the pre-upload (RENDERED) stage, which has no destination yet.
-	DriveFolderID string `json:"drive_folder_id,omitempty"`
-	DurationMS    int64  `json:"duration_ms,omitempty"`
-	// SizeBytes / StorageKey / ArtifactURL are the certified durable identity
-	// of the rendered MP4. They travel together so a final-job handoff can
-	// reference the bytes in the shared object store without a Producer-local
-	// os.Stat, re-hash or re-upload. LocalPath remains a runtime-only hint for
-	// consumers that genuinely need the file (Drive publication, muxing).
-	SizeBytes   int64  `json:"size_bytes,omitempty"`
-	StorageKey  string `json:"storage_key,omitempty"`
-	ArtifactURL string `json:"artifact_url,omitempty"`
-	LocalPath   string `json:"local_path,omitempty"`
-	Status      string `json:"status"`
-	Backend     string `json:"backend,omitempty"`
-	// Reused / RenderSource state WHERE these bytes came from: "fresh_gpu" for
-	// a render this run executed, "deterministic_render_cache" for a verified
-	// reuse of an identical plan. Without them a dedup run (metrics: null, a
-	// few seconds of Drive I/O per clip) is indistinguishable from a fresh
-	// render that reported no timings — the exact question "where did the time
-	// go?" the per-render report exists to answer.
-	Reused       bool               `json:"reused,omitempty"`
-	RenderSource string             `json:"render_source,omitempty"`
-	Metrics      map[string]float64 `json:"metrics,omitempty"`
-	// Boundary timestamps let the parent distinguish summed child work from
-	// actual fan-out wall time when localized renders overlap. StartedAt is
-	// ADMISSION (the render slot was granted), not the call's submission: the
-	// wait before it is QueueWaitMS, so WallMS describes the unit's own work
-	// (render + publication) and never the lane's queueing.
-	StartedAt   time.Time `json:"started_at,omitempty"`
-	FinishedAt  time.Time `json:"finished_at,omitempty"`
-	WallMS      int64     `json:"wall_ms,omitempty"`
-	QueueWaitMS int64     `json:"queue_wait_ms,omitempty"`
-
-	// CheckpointFingerprint is computed from the enqueue inputs that determine
-	// these bytes. It is in-process only (never serialized), so the envelope
-	// body stays byte-identical to the per-artifact checkpoint payload while
-	// the writer still records a meaningful resume identity.
-	CheckpointFingerprint string `json:"-"`
-}
-
-type LocalizedRenderFailure struct {
-	SceneID   string   `json:"scene_id"`
-	Language  Language `json:"language"`
-	ClipID    string   `json:"clip_id,omitempty"`
-	ErrorCode string   `json:"error_code"`
-	Error     string   `json:"error"`
-}
-
 // LocalizedRenderEnqueuer enqueues one localized render as soon as a scene's
 // translation + TTS for a language are ready, so Chronon can start on scene 1 ES
 // while scene 2 is still being translated/voiced. A nil enqueuer is a
@@ -238,24 +171,16 @@ type LocalizedRenderEnqueuer interface {
 // LocalizedRenderRecoveryEnqueuer is optional for backwards-compatible
 // adapters. It publishes a staged local artifact without rerendering it.
 type LocalizedRenderRecoveryEnqueuer interface {
-	UploadRendered(context.Context, LocalizedRenderInput, LocalizedRenderResult) error
+	UploadRendered(context.Context, LocalizedRenderInput, contract.LocalizedRenderResult) error
 }
 
 // CombinedAudioRenderer is required only for COMBINED_TIMELINE jobs. It must
 // return a probed, certified final audio artifact; the runner never falls
 // back to chunked mixing when this port is unavailable or fails.
 type CombinedAudioRenderer interface {
-	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (audiocontract.FinalAudioReference, AudioPipelineMetrics, error)
+	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (audiocontract.FinalAudioReference, contract.AudioPipelineMetrics, error)
 }
 
-// AudioAssetSource resolves ONE background-music or sound-effect asset_id
-// to its canonical ResolvedAudioAsset (verified local path + certified
-// source duration). The concrete adapter (composition root) reads the
-// canonical asset registry and materializes Drive sources into scratch;
-// the capability never imports Drive, SQLite, or the filesystem mechanics.
-// Fail-closed: an unknown asset_id or an asset with no usable local copy is
-// a typed error, never a silent empty path.
-type AudioAssetSource = scriptaudio.AssetSource
 type AudioAssetResolver = scriptaudio.AssetResolver
 
 var NewAudioAssetResolver = scriptaudio.NewAssetResolver
@@ -295,16 +220,9 @@ func CompileAudioWithIntents(
 	policy audio.AudioMixPolicy,
 	bgmIntents []scriptpkg.BackgroundMusicIntent,
 	sfxIntents []scriptpkg.SoundEffectIntent,
-	source AudioAssetSource,
+	source contract.AudioAssetSource,
 ) (AudioIntentCompileResult, error) {
 	return scriptaudio.CompileWithIntents(ctx, timeline, profile, policy, bgmIntents, sfxIntents, source)
-}
-
-// ClipAudioAssetSource is the optional production resolver for original clip
-// audio. It is deliberately separate from AudioAssetSource because BGM/SFX
-// resolution and clip-source materialization have different contracts.
-type ClipAudioAssetSource interface {
-	ResolveClipAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error)
 }
 
 // MediaPreflight is the optional fail-fast media requirement verification
@@ -313,7 +231,7 @@ type ClipAudioAssetSource interface {
 // before LLM, translation, or TTS. Nil is tolerated for requests without
 // fixed media; fixed-media requests fail closed when no preflight is wired.
 type MediaPreflight interface {
-	Run(ctx context.Context, req GenerateRequest) PreflightResult
+	Run(ctx context.Context, req contract.GenerateRequest) PreflightResult
 }
 
 // FinalAudioPublishResult is the canonical publication outcome: the canonical
@@ -334,7 +252,7 @@ type FinalAudioPublishResult struct {
 // Drive file ID, and public Drive link. voiceoverFolderID is the caller-explicit Drive folder
 // (output.voiceover_folder_id); empty means "use the configured default".
 type FinalAudioPublisher interface {
-	PublishFinalAudio(context.Context, string, Language, audiocontract.FinalAudioReference, string) (FinalAudioPublishResult, error)
+	PublishFinalAudio(context.Context, string, contract.Language, audiocontract.FinalAudioReference, string) (FinalAudioPublishResult, error)
 }
 
 // ExecutionContext is the immutable correlation envelope propagated through
@@ -405,7 +323,7 @@ type ArtifactOperation struct {
 	// SceneID is empty for run-scoped artifacts (final audio, document).
 	SceneID string `json:"scene_id,omitempty"`
 	// Language is empty for run-scoped artifacts.
-	Language Language `json:"language,omitempty"`
+	Language contract.Language `json:"language,omitempty"`
 	// AssetID is the produced artifact identity; empty for text-only
 	// operations (translation).
 	AssetID string `json:"asset_id,omitempty"`
@@ -470,10 +388,10 @@ func (noopExecutionRecorder) RecordOperation(context.Context, ExecutionContext, 
 // run never renders a partial or guessed layered plan.
 func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	ctx context.Context,
-	result GenerateResult,
-	language Language,
+	result contract.GenerateResult,
+	language contract.Language,
 	profile audio.CanonicalAudioProfile,
-	source AudioAssetSource,
+	source contract.AudioAssetSource,
 	policy audio.AudioMixPolicy,
 	bgm []scriptpkg.BackgroundMusicIntent,
 	sfx []scriptpkg.SoundEffectIntent,
@@ -487,10 +405,10 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 // empty pool keeps the built-in whoosh vocabulary.
 func CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(
 	ctx context.Context,
-	result GenerateResult,
-	language Language,
+	result contract.GenerateResult,
+	language contract.Language,
 	profile audio.CanonicalAudioProfile,
-	source AudioAssetSource,
+	source contract.AudioAssetSource,
 	policy audio.AudioMixPolicy,
 	bgm []scriptpkg.BackgroundMusicIntent,
 	sfx []scriptpkg.SoundEffectIntent,

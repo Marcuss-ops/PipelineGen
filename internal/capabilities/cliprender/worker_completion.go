@@ -32,38 +32,89 @@ func (w *Worker) completeRendered(
 	progress := safeProgress(tools)
 	emit := safeEvent(tools)
 
+	if err := validateCompletionInputs(req, prepared, outcome); err != nil {
+		return nil, err
+	}
+	applyCompletionMetrics(ctx, outcome, prepared, subtitleCompileMS, renderMS)
+	probe, err := certifyCompletionOutput(ctx, prepared, outcome, emit)
+	if err != nil {
+		return nil, err
+	}
+	// The render job id is the sealed plan RunID. In async mode j is the
+	// settle child, so publication/result identity must stay attached to the
+	// original render rather than the continuation job id.
+	resultJob := completionResultJob(j, plan)
+	publication, err := w.publishCompletion(ctx, req, prepared, plan, subtitleArtifact, outcome, publishFolderID, resultJob)
+	if err != nil {
+		return nil, err
+	}
+
+	emit("clip.render.completed", "Chronon render completed", map[string]any{
+		"output_path":  outcome.OutputPath,
+		"size_bytes":   outcome.SizeBytes,
+		"duration_sec": outcome.DurationSec,
+		"ffmpeg_ms":    outcome.FFmpegMS,
+		"backend":      outcome.Backend,
+	})
+	totalMS := time.Since(jobStart).Milliseconds()
+	finalizeMetrics(outcome.Metrics, totalMS, outcome.DurationSec)
+	w.logRenderCompletion(j, resultJob, req, publication, outcome, totalMS, renderMS)
+	// Populate deterministic cache for future identical POSTs. Best-effort:
+	// a cache put failure must never fail the render that already succeeded.
+	w.cacheCompletedRender(ctx, req, outcome, publication)
+	// Chronon phase projection from the raw `*.timing.json` sidecar the render
+	// outcome references. Best-effort by construction — metrics must never fail
+	// the render they measure — and the ONLY place those bytes are fetched and
+	// parsed (one parse, one canonical write into performance_operations).
+	w.publishChrononTiming(ctx, outcome, prepared, probe)
+	progress(100, "clip.render completed")
+	result := renderedResult(resultJob, req, prepared, plan, subtitleArtifact, outcome, publication)
+	addQueueWaitMS(result, j, jobStart)
+	return result, nil
+}
+
+// validateCompletionInputs is the fail-closed gate shared by the blocking and
+// async completion paths. It validates the renderer outcome, the request and
+// the preparation snapshot before any publication side effect can run.
+func validateCompletionInputs(req *RenderRequest, prepared *Prepared, outcome *RenderOutcome) error {
 	// Locator-first: the artifact is identified by its certified durable
 	// locator. A local path is optional and only present when a consumer
 	// materialized the bytes; at least one of the two must exist. (The
 	// certified digest is enforced by the publisher, which fails closed on an
 	// uncertified artifact.)
 	if outcome == nil || outcome.SizeBytes <= 0 {
-		return nil, fmt.Errorf("clip.render: renderer returned an invalid output")
+		return fmt.Errorf("clip.render: renderer returned an invalid output")
 	}
 	if outcome.OutputPath == "" && outcome.ArtifactURL == "" {
-		return nil, fmt.Errorf("clip.render: renderer returned neither a local output nor an artifact locator")
+		return fmt.Errorf("clip.render: renderer returned neither a local output nor an artifact locator")
 	}
 	if req == nil {
-		return nil, fmt.Errorf("clip.render: completion request is nil")
+		return fmt.Errorf("clip.render: completion request is nil")
 	}
 	if prepared == nil || prepared.Contract == nil || prepared.Source == nil {
-		return nil, fmt.Errorf("clip.render: completion preparation snapshot is incomplete")
+		return fmt.Errorf("clip.render: completion preparation snapshot is incomplete")
 	}
 
 	// Fail-closed GPU gate. RenderingGen/Chronon is the sole supported render
 	// authority; async completion must preserve exactly the same gate as the
 	// blocking path.
 	if req.Execution.RequireGPU && !outcome.Backend.IsGPUBackend() {
-		return nil, fmt.Errorf("clip.render: execution.require_gpu=true but resolved backend %q is not a GPU backend", outcome.Backend)
+		return fmt.Errorf("clip.render: execution.require_gpu=true but resolved backend %q is not a GPU backend", outcome.Backend)
 	}
 	if outcome.Backend != BackendChrononVulkan {
-		return nil, fmt.Errorf("clip.render: backend resolved to %q; only Chronon (%s) is permitted", outcome.Backend, BackendChrononVulkan)
+		return fmt.Errorf("clip.render: backend resolved to %q; only Chronon (%s) is permitted", outcome.Backend, BackendChrononVulkan)
 	}
 	// execution.require_zero_copy has NO post-render gate: it is unsatisfiable
 	// and therefore rejected at the request boundary (RenderRequest.Validate),
 	// long before a render can run. A demand that can only fail must never
 	// reach this path — the render would be burned first.
+	return nil
+}
 
+// applyCompletionMetrics fills the canonical V2 report from facts already
+// measured by the preparation and render boundaries. No value is re-timed
+// here: the report only projects what each owner measured.
+func applyCompletionMetrics(ctx context.Context, outcome *RenderOutcome, prepared *Prepared, subtitleCompileMS, renderMS int64) {
 	if outcome.Metrics == nil {
 		outcome.Metrics = NewRenderMetricsV2()
 	}
@@ -78,14 +129,14 @@ func (w *Worker) completeRendered(
 		outcome.Metrics.Frames = int(math.Round(outcome.DurationSec * float64(outcome.FPSNum) / float64(outcome.FPSDen)))
 	}
 	projectRendererPhases(ctx, outcome.Backend, outcome.Metrics)
+}
 
-	// Contract validation runs UNCONDITIONALLY against the facts RenderingGen
-	// certified on the artifact it produced. RenderingGen is the single
-	// certification owner of the output; the redundant local Rust probe (and
-	// the OutputProber port that existed only to feed it) was DELETED in the
-	// 2026-09-13 audit. The downloaded bytes are still verified: the async
-	// download hashes while streaming and checks the queue's certified digest,
-	// so a corrupt artifact fails before it can reach this gate.
+// certifyCompletionOutput validates the rendered bytes against the contract
+// RenderingGen certified on the artifact it produced. RenderingGen is the
+// single certification owner of the output; the downloaded bytes are still
+// verified because the async download hashes while streaming and checks the
+// queue's certified digest, so a corrupt artifact fails before this gate.
+func certifyCompletionOutput(ctx context.Context, prepared *Prepared, outcome *RenderOutcome, emit func(string, string, map[string]any)) (*OutputProbe, error) {
 	probeStart := time.Now()
 	probe, probeErr := OutputProbeFromCertified(outcome)
 	probeEnd := time.Now()
@@ -110,21 +161,31 @@ func (w *Worker) completeRendered(
 		"video_profile":   probe.VideoProfile,
 		"certified_facts": true,
 	})
+	return probe, nil
+}
 
-	// The render job id is the sealed plan RunID. In async mode j is the
-	// settle child, so publication/result identity must stay attached to the
-	// original render rather than the continuation job id.
+func completionResultJob(j *job.Job, plan ClipRenderPlanV1) *job.Job {
 	resultJob := &job.Job{ID: plan.RunID}
 	if plan.RunID == "" && j != nil {
 		resultJob.ID = j.ID
 	}
+	return resultJob
+}
 
-	// Fail closed: the publication boundary is mandatory at execution time. A
-	// render that produced certified bytes but was never published or committed
-	// is NOT a completed clip — the deliverable of this job type is the derived
-	// media asset plus its Drive location. Returning success here (the historical
-	// behaviour) reported a SUCCEEDED clip with no artifact for any composition
-	// root that exposed the job without WithRenderPublisher.
+// publishCompletion owns the mandatory publication boundary. A render that
+// produced certified bytes but was never published or committed is NOT a
+// completed clip — the deliverable of this job type is the derived media asset
+// plus its delivery location.
+func (w *Worker) publishCompletion(
+	ctx context.Context,
+	req *RenderRequest,
+	prepared *Prepared,
+	plan ClipRenderPlanV1,
+	subtitleArtifact *SubtitleArtifact,
+	outcome *RenderOutcome,
+	publishFolderID string,
+	resultJob *job.Job,
+) (*RenderPublishResult, error) {
 	if w.publisher == nil {
 		return nil, fmt.Errorf(
 			"%w: render_job_id=%s source_asset_id=%s output_path=%s size_bytes=%d",
@@ -163,19 +224,8 @@ func (w *Worker) completeRendered(
 	if publication == nil {
 		return nil, fmt.Errorf("clip.render: publisher returned a nil publication")
 	}
+	applyPublicationMetrics(outcome, publication)
 
-	logPublishMS := int64(NotInstrumented)
-	if outcome.Metrics != nil && publication != nil && publication.Publish != nil {
-		pm := publication.Publish
-		outcome.Metrics.PublicationTotalMS = Metric(pm.TotalMS)
-		outcome.Metrics.ArtifactPublishMS = Metric(pm.HashMS + pm.TaxonomyResolveMS + pm.AssetCommitMS)
-		driveMS := pm.VideoUploadMS
-		if pm.SidecarUploadMS > driveMS {
-			driveMS = pm.SidecarUploadMS
-		}
-		outcome.Metrics.DriveUploadMS = Metric(driveMS)
-		logPublishMS = pm.TotalMS
-	}
 	// A publication is valid when the asset was committed AND some delivery
 	// authority owns the bytes: a durable Drive intent (pending), a Drive file,
 	// or the object-store locator committed as the delivery itself (CR-19).
@@ -183,16 +233,28 @@ func (w *Worker) completeRendered(
 	if publication.AssetID == "" || !delivered {
 		return nil, fmt.Errorf("clip.render: publisher returned an invalid publication")
 	}
+	return publication, nil
+}
 
-	emit("clip.render.completed", "Chronon render completed", map[string]any{
-		"output_path":  outcome.OutputPath,
-		"size_bytes":   outcome.SizeBytes,
-		"duration_sec": outcome.DurationSec,
-		"ffmpeg_ms":    outcome.FFmpegMS,
-		"backend":      outcome.Backend,
-	})
-	totalMS := time.Since(jobStart).Milliseconds()
-	finalizeMetrics(outcome.Metrics, totalMS, outcome.DurationSec)
+func applyPublicationMetrics(outcome *RenderOutcome, publication *RenderPublishResult) {
+	if outcome.Metrics == nil || publication == nil || publication.Publish == nil {
+		return
+	}
+	pm := publication.Publish
+	outcome.Metrics.PublicationTotalMS = Metric(pm.TotalMS)
+	outcome.Metrics.ArtifactPublishMS = Metric(pm.HashMS + pm.TaxonomyResolveMS + pm.AssetCommitMS)
+	driveMS := pm.VideoUploadMS
+	if pm.SidecarUploadMS > driveMS {
+		driveMS = pm.SidecarUploadMS
+	}
+	outcome.Metrics.DriveUploadMS = Metric(driveMS)
+}
+
+func (w *Worker) logRenderCompletion(j, resultJob *job.Job, req *RenderRequest, publication *RenderPublishResult, outcome *RenderOutcome, totalMS, renderMS int64) {
+	logPublishMS := int64(NotInstrumented)
+	if publication != nil && publication.Publish != nil {
+		logPublishMS = publication.Publish.TotalMS
+	}
 	workerJobID := resultJob.ID
 	if j != nil {
 		workerJobID = j.ID
@@ -213,41 +275,36 @@ func (w *Worker) completeRendered(
 		zap.Int64("ffmpeg_ms", outcome.FFmpegMS),
 		zap.Int64("size_bytes", outcome.SizeBytes),
 	)
-	// Populate deterministic cache for future identical POSTs. Best-effort:
-	// a cache put failure must never fail the render that already succeeded.
-	if w.renderCache != nil && req != nil {
-		if fp, fpErr := req.Fingerprint(); fpErr == nil {
-			rec := &RenderCacheRecord{
-				Fingerprint:    fp,
-				AssetID:        publication.AssetID,
-				StorageKey:     outcome.StorageKey,
-				ArtifactURL:    outcome.ArtifactURL,
-				ContentType:    outcome.ContentType,
-				SHA256:         outcome.SHA256,
-				SizeBytes:      outcome.SizeBytes,
-				DurationSec:    outcome.DurationSec,
-				Width:          outcome.Width,
-				Height:         outcome.Height,
-				FPSNum:         outcome.FPSNum,
-				FPSDen:         outcome.FPSDen,
-				Backend:        outcome.Backend,
-				DeliveryStatus: publicationDeliveryStatus(publication),
-				DriveFileID:    publication.DriveFileID,
-			}
-			if err := w.renderCache.Put(ctx, rec); err != nil {
-				w.log.Warn("clip.render cache put failed",
-					zap.String("fingerprint", digestPrefix(fp)),
-					zap.Error(err))
-			}
-		}
+}
+
+func (w *Worker) cacheCompletedRender(ctx context.Context, req *RenderRequest, outcome *RenderOutcome, publication *RenderPublishResult) {
+	if w.renderCache == nil || req == nil {
+		return
 	}
-	// Chronon phase projection from the raw `*.timing.json` sidecar the render
-	// outcome references. Best-effort by construction — metrics must never fail
-	// the render they measure — and the ONLY place those bytes are fetched and
-	// parsed (one parse, one canonical write into performance_operations).
-	w.publishChrononTiming(ctx, outcome, prepared, probe)
-	progress(100, "clip.render completed")
-	result := renderedResult(resultJob, req, prepared, plan, subtitleArtifact, outcome, publication)
-	addQueueWaitMS(result, j, jobStart)
-	return result, nil
+	fp, fpErr := req.Fingerprint()
+	if fpErr != nil {
+		return
+	}
+	rec := &RenderCacheRecord{
+		Fingerprint:    fp,
+		AssetID:        publication.AssetID,
+		StorageKey:     outcome.StorageKey,
+		ArtifactURL:    outcome.ArtifactURL,
+		ContentType:    outcome.ContentType,
+		SHA256:         outcome.SHA256,
+		SizeBytes:      outcome.SizeBytes,
+		DurationSec:    outcome.DurationSec,
+		Width:          outcome.Width,
+		Height:         outcome.Height,
+		FPSNum:         outcome.FPSNum,
+		FPSDen:         outcome.FPSDen,
+		Backend:        outcome.Backend,
+		DeliveryStatus: publicationDeliveryStatus(publication),
+		DriveFileID:    publication.DriveFileID,
+	}
+	if err := w.renderCache.Put(ctx, rec); err != nil {
+		w.log.Warn("clip.render cache put failed",
+			zap.String("fingerprint", digestPrefix(fp)),
+			zap.Error(err))
+	}
 }

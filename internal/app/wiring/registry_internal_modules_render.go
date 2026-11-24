@@ -58,12 +58,53 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		return fmt.Errorf("registerClipRender: root.Jobs.Facade is required when ClipRenderEnabled=true (the POST /clips/render enqueue path needs the Master job service)")
 	}
 
+	preparer, err := buildClipRenderPreparer(cfg, root, log)
+	if err != nil {
+		return err
+	}
+	worker, mediaConfig, err := buildClipRenderWorker(cfg, root, log, preparer)
+	if err != nil {
+		return err
+	}
+	publisher, err := buildClipRenderPublisher(cfg, root, log, worker)
+	if err != nil {
+		return err
+	}
+	renderCache, err := wireClipRenderOutput(cfg, root, log, worker, preparer, publisher, mediaConfig)
+	if err != nil {
+		return err
+	}
+
+	descriptor, err := cliprender.Build(cliprender.Dependencies{
+		Jobs:        root.Jobs.Facade,
+		EnabledFunc: func() bool { return cfg.Features.ClipRenderEnabled },
+		Idempotency: idempotencyHandler,
+		RenderCache: renderCache,
+		Logger:      log,
+		ModuleOpts:  nil,
+	})
+	if err != nil {
+		return fmt.Errorf("registerClipRender: cliprender.Build: %w", err)
+	}
+
+	// Canonical worker binding: parallel preparation, asynchronous
+	// RenderingGen submission/settle, and parent aggregation are wired here;
+	// missing execution wiring still fails closed.
+	if err := root.Jobs.Facade.RegisterHandler(cliprender.TypeClipRender, appjobs.HandlerFunc(worker.Handle)); err != nil {
+		return fmt.Errorf("registerClipRender: bind clip.render handler: %w", err)
+	}
+
+	log.Info("created ClipRender module via cliprender.Build (canonical clip post-processing, parallel preparation wired)")
+	return tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.ClipRender"))
+}
+
+func buildClipRenderPreparer(cfg *config.Config, root *ComposeRoot, log *zap.Logger) (*cliprender.Preparer, error) {
 	// Parallel-preparation adapters (composition root owns mechanics,
 	// the capability owns the ports). Every adapter is fail-closed at
 	// call time when a dependency is missing.
 	resolver, err := clipswiring.NewClipRenderMediaResolver(root.MediaPostgres, log)
 	if err != nil {
-		return fmt.Errorf("registerClipRender: build asset resolver: %w", err)
+		return nil, fmt.Errorf("registerClipRender: build asset resolver: %w", err)
 	}
 	var driveReader drivepkg.Reader
 	if root.Drive != nil {
@@ -71,11 +112,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	}
 	materializer, err := clipadapters.NewClipRenderMaterializer(driveReader, clipswiring.AssetMaterializationRoot(cfg), log)
 	if err != nil {
-		return fmt.Errorf("registerClipRender: build asset materializer: %w", err)
+		return nil, fmt.Errorf("registerClipRender: build asset materializer: %w", err)
 	}
 	preparedResolver, err := cliprender.NewPreparedAssetResolver(clipswiring.AssetMaterializationResolverRoot(cfg), materializer)
 	if err != nil {
-		return fmt.Errorf("registerClipRender: build prepared asset resolver: %w", err)
+		return nil, fmt.Errorf("registerClipRender: build prepared asset resolver: %w", err)
 	}
 	materializerPort := cliprender.AssetMaterializer(preparedResolver)
 	transcriptResolver := clipadapters.NewClipRenderTranscriptResolver(log)
@@ -107,11 +148,15 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		log,
 	)
 	if err != nil {
-		return fmt.Errorf("registerClipRender: build preparer: %w", err)
+		return nil, fmt.Errorf("registerClipRender: build preparer: %w", err)
 	}
+	return preparer, nil
+}
+
+func buildClipRenderWorker(cfg *config.Config, root *ComposeRoot, log *zap.Logger, preparer *cliprender.Preparer) (*cliprender.Worker, mediaexec.ExecutionConfig, error) {
 	worker, err := cliprender.NewWorker(preparer, filepath.Join(cfg.Storage.TempPath(), "cliprender"), log)
 	if err != nil {
-		return fmt.Errorf("registerClipRender: build worker: %w", err)
+		return nil, mediaexec.ExecutionConfig{}, fmt.Errorf("registerClipRender: build worker: %w", err)
 	}
 	// Deferrable settle: one attempt waits at most the configured budget, then
 	// hands the attempt back as a deferral (a WAIT that spends no retry) and the
@@ -163,7 +208,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// Render form was deleted, so no compatibility lane exists.
 	mediaConfig := root.MediaExec
 	if mediaConfig == (mediaexec.ExecutionConfig{}) {
-		return fmt.Errorf("registerClipRender: resolved media execution config is required when ClipRenderEnabled=true (root.MediaExec)")
+		return nil, mediaexec.ExecutionConfig{}, fmt.Errorf("registerClipRender: resolved media execution config is required when ClipRenderEnabled=true (root.MediaExec)")
 	}
 	renderRuntime, runtimeErr := clipswiring.BuildClipRenderRuntime(clipswiring.ClipRenderRuntimeDeps{
 		Config:    cfg,
@@ -171,31 +216,54 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		Existing:  root.ClipRenderRuntime,
 	})
 	if runtimeErr != nil {
-		return fmt.Errorf("registerClipRender: build shared render runtime: %w", runtimeErr)
+		return nil, mediaexec.ExecutionConfig{}, fmt.Errorf("registerClipRender: build shared render runtime: %w", runtimeErr)
 	}
 	root.ClipRenderRuntime = renderRuntime
 	worker.WithRenderExecutor(renderRuntime.RenderingGenExecutor)
 	worker.WithContinuationStore(renderRuntime.ContinuationStore)
 	worker.WithContinuationEnqueuer(clipswiring.NewClipRenderContinuationEnqueuer(root.Jobs.Facade))
+	// Overlay hop (entity overlays): the segment resolver reads the SAME
+	// content cache the overlay.render handler writes (the
+	// RENDERINGGEN_CACHE_ROOT / default root BuildRenderingRuntime uses — a
+	// plain directory, so a second cache handle is harmless). The resolved
+	// segment is sealed into the plan and composited by Chronon INSIDE the
+	// single render pass; there is no post-render compositor (the FFmpeg
+	// second-transcode path was demolished and the CI gate rejects new
+	// callers). Fail-closed at call time: an overlay declared without the
+	// resolver is a typed worker error.
+	cacheRoot := os.Getenv("RENDERINGGEN_CACHE_ROOT")
+	if cacheRoot == "" {
+		cacheRoot = filepath.Join(os.TempDir(), "pipelinegen", "renderinggen", "cache")
+	}
+	overlayCache, cacheErr := infraoverlays.NewCache(cacheRoot)
+	if cacheErr != nil {
+		return nil, mediaexec.ExecutionConfig{}, fmt.Errorf("registerClipRender: build overlay cache: %w", cacheErr)
+	}
+	worker.WithOverlaySegmentResolver(clipadapters.NewOverlaySegmentResolver(overlayCache))
+
+	return worker, mediaConfig, nil
+}
+
+func buildClipRenderPublisher(cfg *config.Config, root *ComposeRoot, log *zap.Logger, worker *cliprender.Worker) (*clipadapters.ClipRenderPublisher, error) {
 	deliveryMode, modeErr := config.NormalizeClipRenderDeliveryMode(cfg.Jobs.ClipRenderDeliveryMode)
 	if modeErr != nil {
-		return fmt.Errorf("registerClipRender: %w", modeErr)
+		return nil, fmt.Errorf("registerClipRender: %w", modeErr)
 	}
 	needsDrive := deliveryMode != config.ClipRenderDeliveryObjectStore
 	if root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
-		return fmt.Errorf("registerClipRender: SQLite DB and outbox are required for rendered asset publication")
+		return nil, fmt.Errorf("registerClipRender: SQLite DB and outbox are required for rendered asset publication")
 	}
 	if needsDrive && (root.Drive == nil || root.Drive.Publisher == nil) {
-		return fmt.Errorf("registerClipRender: Drive publisher is required for %s delivery", deliveryMode)
+		return nil, fmt.Errorf("registerClipRender: Drive publisher is required for %s delivery", deliveryMode)
 	}
 	var committer assetspersistence.AssetCommitter
 	{
 		w, werr := newCanonicalAssetCommitter(root.MediaPostgres, log)
 		if werr != nil {
-			return fmt.Errorf("registerClipRender: canonical media writer: %w", werr)
+			return nil, fmt.Errorf("registerClipRender: canonical media writer: %w", werr)
 		}
 		if w == nil {
-			return fmt.Errorf("registerClipRender: canonical media writer unavailable (media PostgreSQL not deployed)")
+			return nil, fmt.Errorf("registerClipRender: canonical media writer unavailable (media PostgreSQL not deployed)")
 		}
 		committer = w
 	}
@@ -205,7 +273,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	}
 	publisher, publisherErr := clipadapters.NewClipRenderPublisherWithMode(drivePublisher, committer, deliveryMode, log)
 	if publisherErr != nil {
-		return fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)
+		return nil, fmt.Errorf("registerClipRender: build clip render publisher: %w", publisherErr)
 	}
 	publisher.SetSubtitleArtifactRepository(root.Repos.SubtitleArtifactRepo)
 	if needsDrive {
@@ -215,13 +283,25 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		// instead of silently publishing into a void.
 		publisher.SetAsyncDriveStagingRoot(filepath.Join(cfg.Storage.TempPath(), "cliprender", "staging"))
 		if root.Outbox == nil || root.Outbox.MediaIndexWorker == nil {
-			return fmt.Errorf("registerClipRender: PostgreSQL media outbox worker is required for asynchronous clip.render Drive delivery")
+			return nil, fmt.Errorf("registerClipRender: PostgreSQL media outbox worker is required for asynchronous clip.render Drive delivery")
 		}
 		log.Info("registerClipRender: PostgreSQL media outbox Drive delivery handler is available",
 			zap.String("event_type", cliprender.EventClipRenderDriveDeliveryRequested))
 	} else {
 		log.Info("registerClipRender: delivery_mode=object_store; Drive upload and outbox intent disabled (CR-19)")
 	}
+	if needsDrive {
+		destinationResolver, destinationResolverErr := clipadapters.NewClipRenderDestinationFolderResolver(root.Drive.Publisher, log)
+		if destinationResolverErr != nil {
+			return nil, fmt.Errorf("registerClipRender: build clip render destination resolver: %w", destinationResolverErr)
+		}
+		worker.WithDestinationFolderResolver(destinationResolver)
+	}
+
+	return publisher, nil
+}
+
+func wireClipRenderOutput(cfg *config.Config, root *ComposeRoot, log *zap.Logger, worker *cliprender.Worker, preparer *cliprender.Preparer, publisher *clipadapters.ClipRenderPublisher, mediaConfig mediaexec.ExecutionConfig) (cliprender.RenderCache, error) {
 	worker.WithRenderPublisher(publisher)
 	// Sequence assembly (batch joins): a sequence-phase clip.render job renders
 	// nothing, it waits for its sibling renders and runs the SAME kernel plan +
@@ -247,33 +327,6 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// root): routed through the SAME delivery.Publisher, so folder creation
 	// has one canonical owner and the ClipRenderPublisher stays dumb (it
 	// receives the fully-resolved leaf folder ID and never creates folders).
-	if needsDrive {
-		destinationResolver, destinationResolverErr := clipadapters.NewClipRenderDestinationFolderResolver(root.Drive.Publisher, log)
-		if destinationResolverErr != nil {
-			return fmt.Errorf("registerClipRender: build clip render destination resolver: %w", destinationResolverErr)
-		}
-		worker.WithDestinationFolderResolver(destinationResolver)
-	}
-
-	// Overlay hop (entity overlays): the segment resolver reads the SAME
-	// content cache the overlay.render handler writes (the
-	// RENDERINGGEN_CACHE_ROOT / default root BuildRenderingRuntime uses — a
-	// plain directory, so a second cache handle is harmless). The resolved
-	// segment is sealed into the plan and composited by Chronon INSIDE the
-	// single render pass; there is no post-render compositor (the FFmpeg
-	// second-transcode path was demolished and the CI gate rejects new
-	// callers). Fail-closed at call time: an overlay declared without the
-	// resolver is a typed worker error.
-	cacheRoot := os.Getenv("RENDERINGGEN_CACHE_ROOT")
-	if cacheRoot == "" {
-		cacheRoot = filepath.Join(os.TempDir(), "pipelinegen", "renderinggen", "cache")
-	}
-	overlayCache, cacheErr := infraoverlays.NewCache(cacheRoot)
-	if cacheErr != nil {
-		return fmt.Errorf("registerClipRender: build overlay cache: %w", cacheErr)
-	}
-	worker.WithOverlaySegmentResolver(clipadapters.NewOverlaySegmentResolver(overlayCache))
-
 	// Deterministic render cache (fingerprint → certified locator): reuses
 	// the same media PostgreSQL that backs the catalog. A repeated POST
 	// with identical semantics returns in milliseconds without touching the
@@ -305,25 +358,5 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		zap.Int("profile_fps_den", mediaConfig.Profile.FPSDen),
 	)
 
-	descriptor, err := cliprender.Build(cliprender.Dependencies{
-		Jobs:        root.Jobs.Facade,
-		EnabledFunc: func() bool { return cfg.Features.ClipRenderEnabled },
-		Idempotency: idempotencyHandler,
-		RenderCache: renderCache,
-		Logger:      log,
-		ModuleOpts:  nil,
-	})
-	if err != nil {
-		return fmt.Errorf("registerClipRender: cliprender.Build: %w", err)
-	}
-
-	// Canonical worker binding: parallel preparation, asynchronous
-	// RenderingGen submission/settle, and parent aggregation are wired here;
-	// missing execution wiring still fails closed.
-	if err := root.Jobs.Facade.RegisterHandler(cliprender.TypeClipRender, appjobs.HandlerFunc(worker.Handle)); err != nil {
-		return fmt.Errorf("registerClipRender: bind clip.render handler: %w", err)
-	}
-
-	log.Info("created ClipRender module via cliprender.Build (canonical clip post-processing, parallel preparation wired)")
-	return tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.ClipRender"))
+	return renderCache, nil
 }

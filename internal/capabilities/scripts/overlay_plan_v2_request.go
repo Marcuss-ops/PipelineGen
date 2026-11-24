@@ -14,6 +14,7 @@ import (
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 )
 
@@ -21,11 +22,11 @@ import (
 // manifests onto the versioned full-plan envelope. It fails closed on identity
 // or timing that the planner would otherwise have to guess.
 func buildOverlayPlanV2Request(
-	result *GenerateResult,
-	language Language,
+	result *contract.GenerateResult,
+	language contract.Language,
 	canvas OverlayCanvasSpec,
 	planID, videoID, projectID, motionSeed string,
-	timedScenes []Scene,
+	timedScenes []contract.Scene,
 	sceneInputs []capabilityoverlay.SceneInput,
 	rawScenes []overlayplan.RawScene,
 	imagePlan *overlayplan.ImagePlan,
@@ -37,7 +38,7 @@ func buildOverlayPlanV2Request(
 	if strings.TrimSpace(planID) == "" || strings.TrimSpace(videoID) == "" {
 		return overlayplan.V2Request{}, fmt.Errorf("overlay plan v2: plan_id and video_id are required")
 	}
-	canvas = canvas.withDefaults()
+	canvas = canvas.WithDefaults()
 	if err := validateOverlayEditorialDensity(canvas); err != nil {
 		return overlayplan.V2Request{}, err
 	}
@@ -259,11 +260,11 @@ type OverlayPlanCompiler interface {
 func compileOverlayPlanV2(
 	ctx context.Context,
 	compiler OverlayPlanCompiler,
-	result *GenerateResult,
-	language Language,
+	result *contract.GenerateResult,
+	language contract.Language,
 	canvas OverlayCanvasSpec,
 	planID, videoID, projectID, motionSeed string,
-	timedScenes []Scene,
+	timedScenes []contract.Scene,
 	scenes []capabilityoverlay.SceneInput,
 	rawScenes []overlayplan.RawScene,
 	imagePlan *overlayplan.ImagePlan,

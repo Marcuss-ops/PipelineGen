@@ -27,6 +27,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -128,7 +129,7 @@ type VidRushProviderAvailabilityProbe interface {
 // known-missing composition dependency merely because its asset checks already
 // completed in an earlier attempt.
 type VidRushProviderAvailabilityPreflight interface {
-	RunVidRushProviderAvailability(ctx context.Context, req GenerateRequest) PreflightResult
+	RunVidRushProviderAvailability(ctx context.Context, req contract.GenerateRequest) PreflightResult
 }
 
 // MediaPreflightInput carries everything needed to verify media
@@ -154,11 +155,11 @@ type MediaPreflightInput struct {
 	FixedClips        []FixedClipPreflight
 	FixedSections     []FixedSectionPreflight
 	ClipProber        ClipPreflighter
-	ClipAudioSource   ClipAudioAssetSource
+	ClipAudioSource   contract.ClipAudioAssetSource
 	MixPolicy         capabilityaudio.AudioMixPolicy
 	BGMIDs            []string
 	SFXIDs            []string
-	AudioAssetSource  AudioAssetSource
+	AudioAssetSource  contract.AudioAssetSource
 	RenderEnabled     bool
 	WatermarkAssetID  string
 	WatermarkResolver ClipPreflighter

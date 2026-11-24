@@ -132,6 +132,10 @@ func (r *WebResearchResolver) SetResearchPolicyVersion(v string) {
 	}
 }
 
+// Resolve runs the research flow as four phases: cache lookup, candidate
+// collection, bounded page fetch, and the source-quality gate plus cache write.
+// Each phase is a helper so the gates that decide whether a script gets sourced
+// facts are individually readable and testable.
 func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil || r.searcher == nil || r.fetcher == nil {
 		return nil, ErrResearchProviderNotConfigured
@@ -143,7 +147,54 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if topic == "" {
 		return nil, &scriptpkg.NoSourceError{ItemID: resCtx.ItemID, Reason: "research source requires topic or query"}
 	}
-	policy := src.Research
+	policy := normalizeResearchPolicy(src.Research)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(policy.TimeoutSeconds)*time.Second)
+	defer cancel()
+	ex := newResearchExecution(src, policy, topic, resCtx.Language, r.policyVersion)
+
+	cached, err := r.lookupResearchCache(ctx, src, ex, resCtx.Title)
+	if err != nil {
+		return nil, err
+	}
+	if cached != nil {
+		return cached, nil
+	}
+	if ex.cacheMode == scriptpkg.SourceCacheModeCacheOnly {
+		return nil, ErrResearchCacheMiss
+	}
+	if !ex.searchEnabled {
+		return nil, ErrResearchDisabledCacheMiss
+	}
+
+	ex.report.Status = "RUNNING"
+	ex.report.Mode = "web_research"
+	ex.report.Searched = true
+	candidates, err := r.collectResearchCandidates(ctx, ex)
+	if err != nil {
+		return nil, err
+	}
+	body, suspicious, lastFetchErr := r.fetchResearchSources(ctx, ex, candidates)
+	return r.finishResearch(ctx, src, resCtx, ex, body, suspicious, lastFetchErr)
+}
+
+// researchExecution is the per-call state that the phases share: resolved
+// policy, cache identity, and the report being accumulated.
+type researchExecution struct {
+	topic, lang, version, key, fingerprint, cacheMode string
+	searchEnabled, forceRefresh                       bool
+	policy                                            scriptpkg.ResearchPolicy
+	report                                            *scriptpkg.ResearchReport
+}
+
+type researchCandidate struct {
+	source scriptpkg.ResearchWebSource
+	query  string
+}
+
+// normalizeResearchPolicy fills the documented defaults. The evidence floor is
+// deliberately 0.7 × MinSources: three snippets alone cannot satisfy a
+// three-source financial gate, while one full page plus two snippets can.
+func normalizeResearchPolicy(policy scriptpkg.ResearchPolicy) scriptpkg.ResearchPolicy {
 	if policy.MaxQueries <= 0 {
 		policy.MaxQueries = researchDefaultMaxQueries
 	}
@@ -157,9 +208,6 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		policy.MinSources = researchDefaultMinSources
 	}
 	if policy.MinEvidenceScore <= 0 {
-		// A full page is weighted 1.0 and a search snippet 0.55. This
-		// default means three snippets alone do not satisfy a three-source
-		// financial research gate, while one full page plus two snippets does.
 		policy.MinEvidenceScore = float64(policy.MinSources) * 0.7
 	}
 	if policy.MinFullPageSources <= 0 && policy.MinSources >= 3 {
@@ -174,12 +222,10 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if policy.TimeoutSeconds <= 0 {
 		policy.TimeoutSeconds = researchDefaultTimeout
 	}
-	deadline := time.Duration(policy.TimeoutSeconds) * time.Second
-	ctx, cancel := context.WithTimeout(ctx, deadline)
-	defer cancel()
-	metric := resolveRankingMetric(src, topic)
-	queries := researchQueries(topic, src.Query, policy.MaxQueries, metric)
-	lang := resCtx.Language
+	return policy
+}
+
+func newResearchExecution(src scriptpkg.SourceSpec, policy scriptpkg.ResearchPolicy, topic, lang, policyVersion string) *researchExecution {
 	if lang == "" {
 		lang = "it"
 	}
@@ -188,67 +234,73 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if version == "" {
 		version = researchVersion
 	}
-	fingerprint := researchFingerprint(queries, policy, r.policyVersion)
+	queries := researchQueries(topic, src.Query, policy.MaxQueries, resolveRankingMetric(src, topic))
+	fingerprint := researchFingerprint(queries, policy, policyVersion)
 	key := scriptpkg.ComputeResearchCacheKey(hashResearch(topic), lang, version, fingerprint, policy.MaxPages)
 	searchEnabled := src.Search
-	forceRefresh := src.ForceRefresh || cacheMode == scriptpkg.SourceCacheModeForceRefresh
-	reportBase := scriptpkg.ResearchReport{SearchEnabled: searchEnabled, CacheKey: key, ResearchVersion: version, Queries: queries}
-	if !forceRefresh && cacheMode != scriptpkg.SourceCacheModeDisabled && r.cache != nil {
-		cached, err := r.cache.GetResearchCache(ctx, key)
-		if err == nil && strings.TrimSpace(cached) != "" {
-			report := reportBase
-			report.Status = "CACHE_HIT"
-			report.Mode = "cache_hit"
-			report.CacheHit = true
-			report.Queries = nil
-			report.Searched = false
-			report.CacheSaved = false
-			if recordReader, ok := r.cache.(interface {
-				GetResearchCacheRecord(context.Context, string) (scriptpkg.ResearchCacheRecord, error)
-			}); ok {
-				if saved, recordErr := recordReader.GetResearchCacheRecord(ctx, key); recordErr == nil && strings.TrimSpace(saved.ResearchReportJSON) != "" {
-					var savedReport scriptpkg.ResearchReport
-					if json.Unmarshal([]byte(saved.ResearchReportJSON), &savedReport) == nil {
-						savedReport.Status = "CACHE_HIT"
-						savedReport.Mode = "cache_hit"
-						savedReport.CacheHit = true
-						savedReport.SearchEnabled = searchEnabled
-						savedReport.Searched = false
-						savedReport.CacheSaved = false
-						savedReport.CacheKey = key
-						savedReport.ResearchVersion = version
-						savedReport.Queries = nil
-						report = savedReport
-					}
-				}
+	return &researchExecution{
+		topic: topic, lang: lang, version: version, key: key, fingerprint: fingerprint,
+		cacheMode:     cacheMode,
+		searchEnabled: searchEnabled,
+		forceRefresh:  src.ForceRefresh || cacheMode == scriptpkg.SourceCacheModeForceRefresh,
+		policy:        policy,
+		report:        &scriptpkg.ResearchReport{SearchEnabled: searchEnabled, CacheKey: key, ResearchVersion: version, Queries: queries},
+	}
+}
+
+// lookupResearchCache returns (nil, nil) when the flow must continue with a live
+// search, the stored resolution on a hit, and a typed cache-miss error when the
+// backend itself fails (the pre-existing contract).
+func (r *WebResearchResolver) lookupResearchCache(ctx context.Context, src scriptpkg.SourceSpec, ex *researchExecution, title string) (*scriptpkg.ResolvedSource, error) {
+	if ex.forceRefresh || ex.cacheMode == scriptpkg.SourceCacheModeDisabled || r.cache == nil {
+		return nil, nil
+	}
+	cached, err := r.cache.GetResearchCache(ctx, ex.key)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrResearchCacheMiss, err)
+	}
+	if strings.TrimSpace(cached) == "" {
+		return nil, nil
+	}
+	report := *ex.report
+	report.Status = "CACHE_HIT"
+	report.Mode = "cache_hit"
+	report.CacheHit = true
+	report.Queries = nil
+	report.Searched = false
+	report.CacheSaved = false
+	if recordReader, ok := r.cache.(interface {
+		GetResearchCacheRecord(context.Context, string) (scriptpkg.ResearchCacheRecord, error)
+	}); ok {
+		if saved, recordErr := recordReader.GetResearchCacheRecord(ctx, ex.key); recordErr == nil && strings.TrimSpace(saved.ResearchReportJSON) != "" {
+			var savedReport scriptpkg.ResearchReport
+			if json.Unmarshal([]byte(saved.ResearchReportJSON), &savedReport) == nil {
+				savedReport.Status = "CACHE_HIT"
+				savedReport.Mode = "cache_hit"
+				savedReport.CacheHit = true
+				savedReport.SearchEnabled = ex.searchEnabled
+				savedReport.Searched = false
+				savedReport.CacheSaved = false
+				savedReport.CacheKey = ex.key
+				savedReport.ResearchVersion = ex.version
+				savedReport.Queries = nil
+				report = savedReport
 			}
-			return &scriptpkg.ResolvedSource{Type: scriptpkg.SourceResearch, Topic: topic, Title: researchTitle(topic, resCtx.Title), SourceText: cached, Language: lang, GroundingPolicy: src.GroundingPolicy, Fingerprint: key, ResearchReport: &report}, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrResearchCacheMiss, err)
 		}
 	}
-	if cacheMode == scriptpkg.SourceCacheModeCacheOnly {
-		return nil, ErrResearchCacheMiss
-	}
-	if !searchEnabled {
-		return nil, ErrResearchDisabledCacheMiss
-	}
-	report := &reportBase
-	report.Status = "RUNNING"
-	report.Mode = "web_research"
-	report.Searched = true
-	seen := map[string]bool{}
-	type researchCandidate struct {
-		source scriptpkg.ResearchWebSource
-		query  string
-	}
-	var candidates []researchCandidate
-	// Search hits and page fetches have different failure modes: providers
-	// frequently return several URLs whose hosts answer 403. Do not stop
-	// collecting at MaxPages, or those blocked URLs consume the whole budget
-	// and make a well-known subject look undocumented. Keep a bounded retry
-	// pool and still cap accepted sources at MaxPages below.
+	return &scriptpkg.ResolvedSource{
+		Type: scriptpkg.SourceResearch, Topic: ex.topic, Title: researchTitle(ex.topic, title),
+		SourceText: cached, Language: ex.lang, GroundingPolicy: src.GroundingPolicy,
+		Fingerprint: ex.key, ResearchReport: &report,
+	}, nil
+}
+
+// collectResearchCandidates delegates to the subject-aware coordinator when it
+// is wired, otherwise queries the raw searcher. The candidate pool is larger
+// than MaxPages because providers routinely return URLs whose hosts answer 403:
+// blocked pages must not consume the whole fetch budget.
+func (r *WebResearchResolver) collectResearchCandidates(ctx context.Context, ex *researchExecution) ([]researchCandidate, error) {
+	policy := ex.policy
 	candidateLimit := policy.MaxPages * 3
 	if candidateLimit < policy.MaxPages+policy.MinSources*2 {
 		candidateLimit = policy.MaxPages + policy.MinSources*2
@@ -256,113 +308,100 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 	if candidateLimit > 48 {
 		candidateLimit = 48
 	}
-	// When the search coordinator is available, delegate the entire search
-	// phase to it. The coordinator handles identity resolution, query
-	// planning, multi-provider fallback, and subject filtering.
-	//
-	// targetPool 0 delegates to the coordinator's configured default
-	// (RESEARCH_TARGET_POOL_SIZE, default 8): the search stops as soon as
-	// the subject-valid pool is sufficient instead of burning every query ×
-	// provider. candidateLimit remains the fetch-phase budget for the
-	// non-coordinator fallback path below.
+	seen := map[string]bool{}
+	var candidates []researchCandidate
+
 	if r.coordinator != nil && r.subject != "" {
-		coordinatorResults := r.coordinator.SearchWithFallback(ctx, r.subject, queries, 0)
-		for _, cr := range coordinatorResults {
+		for _, cr := range r.coordinator.SearchWithFallback(ctx, r.subject, ex.report.Queries, 0) {
 			raw := strings.TrimSpace(cr.Hit.URL)
 			u, err := url.Parse(raw)
 			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || seen[raw] {
 				continue
 			}
 			seen[raw] = true
-			candidates = append(candidates, researchCandidate{source: scriptpkg.ResearchWebSource{Title: strings.TrimSpace(cr.Hit.Title), URL: raw, Excerpt: trimResearch(cr.Hit.Content, 600)}, query: cr.Hit.Title})
+			candidates = append(candidates, researchCandidate{
+				source: scriptpkg.ResearchWebSource{Title: strings.TrimSpace(cr.Hit.Title), URL: raw, Excerpt: trimResearch(cr.Hit.Content, 600)},
+				query:  cr.Hit.Title,
+			})
 			if len(candidates) >= candidateLimit {
 				break
 			}
 		}
-	} else {
-		var lastSearchErr error
-		for _, query := range queries {
-			hits, err := r.searcher.Search(ctx, query, policy.ResultsPerQuery)
-			if err != nil {
-				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-					return nil, fmt.Errorf("%w: %v", ErrResearchTimeout, ctx.Err())
-				}
-				lastSearchErr = err
-				continue
-			}
-			for _, hit := range hits {
-				if r.subject != "" && !researchHitMatchesSubject(r.subject, hit.Title+" "+hit.Content) {
-					continue
-				}
-				raw := strings.TrimSpace(hit.URL)
-				u, err := url.Parse(raw)
-				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || seen[raw] {
-					continue
-				}
-				seen[raw] = true
-				candidates = append(candidates, researchCandidate{source: scriptpkg.ResearchWebSource{Title: strings.TrimSpace(hit.Title), URL: raw, Excerpt: trimResearch(hit.Content, 600)}, query: query})
-				if len(candidates) >= candidateLimit {
-					break
-				}
-			}
-			if len(candidates) >= candidateLimit {
-				break
-			}
-		}
-		if len(candidates) == 0 && lastSearchErr != nil {
-			return nil, fmt.Errorf("%w: %v", ErrResearchSearchFailed, lastSearchErr)
-		}
+		return candidates, nil
 	}
-	var source strings.Builder
-	suspiciousPages := 0
-	var lastFetchErr error
-	for _, candidate := range candidates {
-		if len(report.Sources) >= policy.MaxPages {
-			break
-		}
-		report.PagesRequested++
-		page, err := r.fetcher.Fetch(ctx, candidate.source.URL, 2000)
+
+	var lastSearchErr error
+	for _, query := range ex.report.Queries {
+		hits, err := r.searcher.Search(ctx, query, policy.ResultsPerQuery)
 		if err != nil {
-			report.PagesFailed++
-			lastFetchErr = fmt.Errorf("%s: %w", candidate.source.URL, err)
-			// A search result already contains a provider-supplied title and
-			// excerpt. When the target page blocks automated fetching (403,
-			// HTTP/2 peer errors, robots), retain that bounded result only if
-			// it independently passes the same relevance and injection checks.
-			// This keeps the URL provenance while avoiding a false cache miss
-			// for subjects whose authoritative pages are temporarily blocked.
-			if strings.TrimSpace(candidate.source.Excerpt) != "" {
-				snippetPage := scriptports.WebPage{
-					Title: candidate.source.Title,
-					Text:  candidate.source.Excerpt,
-				}
-				if valid, _ := r.validateResearchSource(topic, candidate.query, lang, policy.FreshnessDays, snippetPage); valid {
-					s := candidate.source
-					s.ID = fmt.Sprintf("S%d", len(report.Sources)+1)
-					s.AccessMode = scriptpkg.EvidenceAccessSnippet
-					s.Confidence = 0.55
-					s.Excerpt = trimResearch(s.Excerpt, 2000)
-					report.Sources = append(report.Sources, s)
-					report.Claims = append(report.Claims, scriptpkg.ResearchClaim{Text: s.Excerpt, SourceIDs: []string{s.ID}, Verified: true})
-					fmt.Fprintf(&source, "[%s] %s\n", s.ID, s.Excerpt)
-				}
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return nil, fmt.Errorf("%w: %v", ErrResearchTimeout, ctx.Err())
 			}
+			lastSearchErr = err
 			continue
 		}
-		report.PagesFetched++
+		for _, hit := range hits {
+			if r.subject != "" && !researchHitMatchesSubject(r.subject, hit.Title+" "+hit.Content) {
+				continue
+			}
+			raw := strings.TrimSpace(hit.URL)
+			u, err := url.Parse(raw)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || seen[raw] {
+				continue
+			}
+			seen[raw] = true
+			candidates = append(candidates, researchCandidate{
+				source: scriptpkg.ResearchWebSource{Title: strings.TrimSpace(hit.Title), URL: raw, Excerpt: trimResearch(hit.Content, 600)},
+				query:  query,
+			})
+			if len(candidates) >= candidateLimit {
+				break
+			}
+		}
+		if len(candidates) >= candidateLimit {
+			break
+		}
+	}
+	if len(candidates) == 0 && lastSearchErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrResearchSearchFailed, lastSearchErr)
+	}
+	return candidates, nil
+}
+
+// fetchResearchSources fetches at most MaxPages accepted pages. A blocked page
+// keeps its bounded search snippet only when the snippet itself passes the same
+// relevance and injection checks; this preserves provenance without a false
+// cache miss for subjects whose authoritative pages are temporarily down.
+func (r *WebResearchResolver) fetchResearchSources(ctx context.Context, ex *researchExecution, candidates []researchCandidate) (string, int, error) {
+	var body strings.Builder
+	suspicious := 0
+	var lastFetchErr error
+	for _, candidate := range candidates {
+		if len(ex.report.Sources) >= ex.policy.MaxPages {
+			break
+		}
+		ex.report.PagesRequested++
+		page, err := r.fetcher.Fetch(ctx, candidate.source.URL, 2000)
+		if err != nil {
+			ex.report.PagesFailed++
+			lastFetchErr = fmt.Errorf("%s: %w", candidate.source.URL, err)
+			r.acceptResearchSnippet(ex, candidate, &body, &suspicious)
+			continue
+		}
+		ex.report.PagesFetched++
 		if strings.TrimSpace(page.Title) == "" {
 			page.Title = candidate.source.Title
 		}
-		valid, reason := r.validateResearchSource(topic, candidate.query, lang, policy.FreshnessDays, page)
+		valid, reason := r.validateResearchSource(ex.topic, candidate.query, ex.lang, ex.policy.FreshnessDays, page)
 		if !valid {
-			report.RejectedSources++
+			ex.report.RejectedSources++
 			if strings.Contains(reason, "prompt injection") {
-				suspiciousPages++
+				suspicious++
 			}
 			continue
 		}
 		s := candidate.source
-		s.ID = fmt.Sprintf("S%d", len(report.Sources)+1)
+		s.ID = fmt.Sprintf("S%d", len(ex.report.Sources)+1)
 		s.AccessMode = scriptpkg.EvidenceAccessFullPage
 		s.Confidence = 1.0
 		if page.Title != "" {
@@ -378,11 +417,41 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 			s.Excerpt = text
 		}
 		if strings.TrimSpace(s.Excerpt) != "" {
-			fmt.Fprintf(&source, "[%s] %s\n", s.ID, s.Excerpt)
-			report.Claims = append(report.Claims, scriptpkg.ResearchClaim{Text: s.Excerpt, SourceIDs: []string{s.ID}, Verified: true})
+			fmt.Fprintf(&body, "[%s] %s\n", s.ID, s.Excerpt)
+			ex.report.Claims = append(ex.report.Claims, scriptpkg.ResearchClaim{Text: s.Excerpt, SourceIDs: []string{s.ID}, Verified: true})
 		}
-		report.Sources = append(report.Sources, s)
+		ex.report.Sources = append(ex.report.Sources, s)
 	}
+	return body.String(), suspicious, lastFetchErr
+}
+
+func (r *WebResearchResolver) acceptResearchSnippet(ex *researchExecution, candidate researchCandidate, body *strings.Builder, suspicious *int) {
+	if strings.TrimSpace(candidate.source.Excerpt) == "" {
+		return
+	}
+	snippetPage := scriptports.WebPage{Title: candidate.source.Title, Text: candidate.source.Excerpt}
+	valid, reason := r.validateResearchSource(ex.topic, candidate.query, ex.lang, ex.policy.FreshnessDays, snippetPage)
+	if !valid {
+		if strings.Contains(reason, "prompt injection") {
+			*suspicious++
+		}
+		return
+	}
+	s := candidate.source
+	s.ID = fmt.Sprintf("S%d", len(ex.report.Sources)+1)
+	s.AccessMode = scriptpkg.EvidenceAccessSnippet
+	s.Confidence = 0.55
+	s.Excerpt = trimResearch(s.Excerpt, 2000)
+	ex.report.Sources = append(ex.report.Sources, s)
+	ex.report.Claims = append(ex.report.Claims, scriptpkg.ResearchClaim{Text: s.Excerpt, SourceIDs: []string{s.ID}, Verified: true})
+	fmt.Fprintf(body, "[%s] %s\n", s.ID, s.Excerpt)
+}
+
+// finishResearch applies the evidence gate, assembles the sourced prompt
+// fragment and writes the cache entry. Every error here is one of the typed
+// research sentinels already part of the resolver contract.
+func (r *WebResearchResolver) finishResearch(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext, ex *researchExecution, body string, suspicious int, lastFetchErr error) (*scriptpkg.ResolvedSource, error) {
+	report := ex.report
 	report.AcceptedSources = len(report.Sources)
 	for _, accepted := range report.Sources {
 		if accepted.AccessMode == scriptpkg.EvidenceAccessSnippet {
@@ -393,49 +462,61 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 		report.FullPageSources++
 		report.EvidenceScore += 1.0
 	}
-	if report.AcceptedSources < policy.MinSources ||
-		report.FullPageSources < policy.MinFullPageSources ||
-		report.EvidenceScore < policy.MinEvidenceScore {
-		if suspiciousPages > 0 {
-			return nil, fmt.Errorf("%w: %d suspicious pages", ErrResearchPromptInjection, suspiciousPages)
+	if report.AcceptedSources < ex.policy.MinSources ||
+		report.FullPageSources < ex.policy.MinFullPageSources ||
+		report.EvidenceScore < ex.policy.MinEvidenceScore {
+		if suspicious > 0 {
+			return nil, fmt.Errorf("%w: %d suspicious pages", ErrResearchPromptInjection, suspicious)
 		}
 		if lastFetchErr != nil {
-			return nil, fmt.Errorf("%w: accepted %d/%d sources, full pages %d/%d, evidence score %.2f/%.2f: %v", ErrResearchInsufficientSources, report.AcceptedSources, policy.MinSources, report.FullPageSources, policy.MinFullPageSources, report.EvidenceScore, policy.MinEvidenceScore, lastFetchErr)
+			return nil, fmt.Errorf("%w: accepted %d/%d sources, full pages %d/%d, evidence score %.2f/%.2f: %v", ErrResearchInsufficientSources, report.AcceptedSources, ex.policy.MinSources, report.FullPageSources, ex.policy.MinFullPageSources, report.EvidenceScore, ex.policy.MinEvidenceScore, lastFetchErr)
 		}
-		return nil, fmt.Errorf("%w: accepted %d/%d sources, full pages %d/%d, evidence score %.2f/%.2f", ErrResearchInsufficientSources, report.AcceptedSources, policy.MinSources, report.FullPageSources, policy.MinFullPageSources, report.EvidenceScore, policy.MinEvidenceScore)
+		return nil, fmt.Errorf("%w: accepted %d/%d sources, full pages %d/%d, evidence score %.2f/%.2f", ErrResearchInsufficientSources, report.AcceptedSources, ex.policy.MinSources, report.FullPageSources, ex.policy.MinFullPageSources, report.EvidenceScore, ex.policy.MinEvidenceScore)
 	}
 	report.QualityGatePassed = true
 	if report.PagesFetched == 0 && report.AcceptedSources == 0 {
 		return nil, ErrResearchFetchFailed
 	}
 	seed := strings.TrimSpace(src.SourceText)
-	sourceText := fmt.Sprintf("Topic: %s\nSeed context:\n%s\nResearch sources:\n%s\nUse only these sourced facts. Preserve source markers such as [S1]. Do not invent unsupported claims.", topic, seed, strings.TrimSpace(source.String()))
+	sourceText := fmt.Sprintf("Topic: %s\nSeed context:\n%s\nResearch sources:\n%s\nUse only these sourced facts. Preserve source markers such as [S1]. Do not invent unsupported claims.", ex.topic, seed, strings.TrimSpace(body))
 	report.Status = "SUCCEEDED"
-	if r.cache != nil && cacheMode != scriptpkg.SourceCacheModeDisabled {
-		now := time.Now()
-		ttlHours := src.CachePolicy.TTLHours
-		if ttlHours <= 0 {
-			ttlHours = researchDefaultCacheTTLHour
-		}
-		report.CacheSaved = true
-		reportJSON, err := json.Marshal(report)
-		if err != nil {
-			report.CacheSaved = false
-			return nil, fmt.Errorf("%w: report encode: %v", ErrResearchCacheMiss, err)
-		}
-		if err := r.cache.SaveResearchCache(ctx, scriptpkg.ResearchCacheRecord{
-			Key: key, Topic: topic, Language: lang, MaxSteps: policy.MaxPages, SourceText: sourceText,
-			SourceTextHash: hashResearch(sourceText), ResearchReportJSON: string(reportJSON),
-			SourcesCount: len(report.Sources), ClaimsVerified: countVerifiedClaims(report.Claims),
-			ClaimsRejected: countRejectedClaims(report.Claims), SearchQueryCount: len(report.Queries), PagesFetched: report.PagesFetched,
-			TopicFingerprint: hashResearch(topic), SourceFingerprint: fingerprint, ResolverVersion: "webresearch", ResearchVersion: version,
-			ExpiresAt: now.Add(time.Duration(ttlHours) * time.Hour), CreatedAt: now, UpdatedAt: now,
-		}); err != nil {
-			report.CacheSaved = false
-			return nil, fmt.Errorf("%w: cache save: %v", ErrResearchCacheMiss, err)
-		}
+	if err := r.saveResearchCache(ctx, src, ex, sourceText); err != nil {
+		return nil, err
 	}
-	return &scriptpkg.ResolvedSource{Type: scriptpkg.SourceResearch, Topic: topic, Title: researchTitle(topic, resCtx.Title), SourceText: sourceText, Language: lang, GroundingPolicy: src.GroundingPolicy, Fingerprint: key, ResearchReport: report}, nil
+	return &scriptpkg.ResolvedSource{
+		Type: scriptpkg.SourceResearch, Topic: ex.topic, Title: researchTitle(ex.topic, resCtx.Title),
+		SourceText: sourceText, Language: ex.lang, GroundingPolicy: src.GroundingPolicy,
+		Fingerprint: ex.key, ResearchReport: report,
+	}, nil
+}
+
+func (r *WebResearchResolver) saveResearchCache(ctx context.Context, src scriptpkg.SourceSpec, ex *researchExecution, sourceText string) error {
+	if r.cache == nil || ex.cacheMode == scriptpkg.SourceCacheModeDisabled {
+		return nil
+	}
+	now := time.Now()
+	ttlHours := src.CachePolicy.TTLHours
+	if ttlHours <= 0 {
+		ttlHours = researchDefaultCacheTTLHour
+	}
+	ex.report.CacheSaved = true
+	reportJSON, err := json.Marshal(ex.report)
+	if err != nil {
+		ex.report.CacheSaved = false
+		return fmt.Errorf("%w: report encode: %v", ErrResearchCacheMiss, err)
+	}
+	if err := r.cache.SaveResearchCache(ctx, scriptpkg.ResearchCacheRecord{
+		Key: ex.key, Topic: ex.topic, Language: ex.lang, MaxSteps: ex.policy.MaxPages, SourceText: sourceText,
+		SourceTextHash: hashResearch(sourceText), ResearchReportJSON: string(reportJSON),
+		SourcesCount: len(ex.report.Sources), ClaimsVerified: countVerifiedClaims(ex.report.Claims),
+		ClaimsRejected: countRejectedClaims(ex.report.Claims), SearchQueryCount: len(ex.report.Queries), PagesFetched: ex.report.PagesFetched,
+		TopicFingerprint: hashResearch(ex.topic), SourceFingerprint: ex.fingerprint, ResolverVersion: "webresearch", ResearchVersion: ex.version,
+		ExpiresAt: now.Add(time.Duration(ttlHours) * time.Hour), CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		ex.report.CacheSaved = false
+		return fmt.Errorf("%w: cache save: %v", ErrResearchCacheMiss, err)
+	}
+	return nil
 }
 
 func countVerifiedClaims(claims []scriptpkg.ResearchClaim) int {

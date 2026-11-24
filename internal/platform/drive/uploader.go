@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -56,6 +58,25 @@ type Uploader struct {
 	// helpers below, so existing callers that use `&Uploader{...}`\n	// struct literals without field overrides continue to behave as\n	// before (lazy default resolves to FindFileByName / os.Open).
 	lookupFunc LookupFunc
 	openFile   OpenFileFunc
+
+	// publicFolders memoizes the folders already granted anyone/reader. Drive
+	// permissions on a folder are inherited by its children, so ONE grant per
+	// folder reproduces N per-file grants while removing 2 API calls per
+	// artifact (WST-01: 5.724 uploads, 8,68 h of Drive semaphore wait). The
+	// timestamp bounds staleness: an externally revoked grant is re-checked
+	// after folderPublicReadTTL instead of being trusted forever.
+	publicMu      sync.Mutex
+	publicFolders map[string]time.Time
+
+	// folderIndexCache memoizes ONE folder listing per TTL so the per-file
+	// existence lookup stops being an API call per artifact (WST-01). The
+	// lookup is fail-closed (a listing error propagates), the cache is updated
+	// by our own writes, and the TTL bounds how long a sibling process's write
+	// can stay invisible; it never serves a stale >1-match ambiguity silently
+	// because the ambiguity decision is still made by the caller from the
+	// returned matches.
+	indexMu          sync.Mutex
+	folderIndexCache map[string]folderIndexEntry
 }
 
 // RemoteFile describes a file already present on Google Drive.

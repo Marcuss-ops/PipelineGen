@@ -32,7 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+	processorvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -148,7 +148,7 @@ func processInputFromModel(model *scriptpkg.ModelScriptOutputV1) adapterspkg.Pro
 
 func TestVoiceoverProcessorNilGen(t *testing.T) {
 	t.Parallel()
-	proc := processor.NewVoiceoverProcessor(nil, zap.NewNop())
+	proc := processorvoiceover.NewVoiceoverProcessor(nil, zap.NewNop())
 	_, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nScenesModel(2)))
 	if err == nil {
 		t.Fatal("expected error when VoiceoverService is nil")
@@ -158,7 +158,7 @@ func TestVoiceoverProcessorNilGen(t *testing.T) {
 func TestVoiceoverProcessorNoScenes(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{}
-	proc := processor.NewVoiceoverProcessor(gen, zap.NewNop())
+	proc := processorvoiceover.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(0)
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(model))
 	if err != nil {
@@ -171,7 +171,7 @@ func TestVoiceoverProcessorNoScenes(t *testing.T) {
 func TestVoiceoverProcessorNilModel(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{}
-	proc := processor.NewVoiceoverProcessor(gen, zap.NewNop())
+	proc := processorvoiceover.NewVoiceoverProcessor(gen, zap.NewNop())
 	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nil))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -194,7 +194,7 @@ func TestVoiceoverProcessorSuccess(t *testing.T) {
 			}, nil
 		},
 	}
-	proc := processor.NewVoiceoverProcessor(gen, zap.NewNop())
+	proc := processorvoiceover.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(1)
 	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
 	if err != nil {
@@ -223,7 +223,7 @@ func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 			}, nil
 		},
 	}
-	proc := processor.NewVoiceoverProcessor(gen, zap.NewNop())
+	proc := processorvoiceover.NewVoiceoverProcessor(gen, zap.NewNop())
 	model := nScenesModel(2)
 	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
 	if err != nil {
@@ -240,7 +240,7 @@ func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 // ── Test: processor names ─────────────────────────────────────────
 
 func TestVoiceoverProcessorName(t *testing.T) {
-	proc := processor.NewVoiceoverProcessor(&fakeVoiceoverGen{}, zap.NewNop())
+	proc := processorvoiceover.NewVoiceoverProcessor(&fakeVoiceoverGen{}, zap.NewNop())
 	if proc.Name() != adapterspkg.ProcessorVoiceover {
 		t.Errorf("expected name \"voiceover\", got %q", proc.Name())
 	}

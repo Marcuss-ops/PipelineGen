@@ -13,6 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/overlayjoin"
@@ -23,28 +24,7 @@ import (
 // artifact is the certified source, so a re-encode from anything else would
 // ship different bytes than the renderer certified.
 type OverlayClipFetcher interface {
-	FetchOverlayClip(ctx context.Context, artifact RenderArtifact, destPath string) error
-}
-
-// LocalFinalVideoArtifact is the job-owned final MP4 assembled from the
-// certified per-item overlay renders. It is distinct from RemoteFinalVideo:
-// that one is a Master render receipt, this one was joined on the job's own
-// timeline from the clips this run rendered.
-type LocalFinalVideoArtifact struct {
-	Path       string
-	SizeBytes  int64
-	SHA256     string
-	DurationUS int64
-	Width      int
-	Height     int
-	FPS        int
-	// JoinedItems is how many certified item renders were placed on the
-	// timeline; PlanItems is how many the plan carried. They differ when an
-	// item produced no render (cache miss, unsupported item), and the pair is
-	// the observable difference between "joined everything" and "joined what
-	// exists".
-	JoinedItems int
-	PlanItems   int
+	FetchOverlayClip(ctx context.Context, artifact contract.RenderArtifact, destPath string) error
 }
 
 // SetOverlayClipFetcher wires the artifact fetcher used by the local final
@@ -76,7 +56,7 @@ func (r *Runner) SetOverlayJoinEncoder(policy mediaexec.EncoderPolicy) {
 // rendered, or when no fetcher is wired. When the join IS possible and fails,
 // the caller fails the run: shipping audio plus a script for a render-enabled
 // job while claiming success is the exact silent gap this join closes.
-func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult) error {
+func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult) error {
 	if r == nil || result == nil {
 		return nil
 	}
@@ -187,7 +167,7 @@ func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req Gener
 		joinMS:  joinMS,
 		hashMS:  hashMS,
 	})
-	result.LocalFinalVideo = &LocalFinalVideoArtifact{
+	result.LocalFinalVideo = &contract.LocalFinalVideoArtifact{
 		Path:        joined.Path,
 		SizeBytes:   joined.SizeBytes,
 		SHA256:      digest,

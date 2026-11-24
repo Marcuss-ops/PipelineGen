@@ -14,6 +14,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"go.uber.org/zap"
 )
 
@@ -24,8 +25,8 @@ import (
 func (r *Runner) extendAudioPlanWithOverlaySFX(
 	ctx context.Context,
 	runID string,
-	req GenerateRequest,
-	result *GenerateResult,
+	req contract.GenerateRequest,
+	result *contract.GenerateResult,
 	timeline capabilityaudio.CanonicalTimeline,
 	plan capabilityaudio.CompiledAudioPlan,
 	assets capabilityaudio.ResolvedAudioAssets,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -20,7 +21,7 @@ import (
 // runner's fail-closed audio-compile semantics on the caller's goroutine.
 // The overlap path (runner_overlay_plan_branch.go) computes the exact same
 // projection on a detached snapshot and applies it at the join.
-func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, step ExecutionStep, result *GenerateResult) bool {
+func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, step ExecutionStep, result *contract.GenerateResult) bool {
 	if err := r.computeOverlayPlanProjection(ctx, runID, req, exec.JobID, result); err != nil {
 		return r.failAudioCompileStep(ctx, runID, exec, step, err)
 	}
@@ -58,7 +59,7 @@ func (e *executionRun) audioCompile() bool {
 		return false
 	}
 	var done chan audioOverlayOutcome
-	state.OnPlanReady = func(result *GenerateResult) bool {
+	state.OnPlanReady = func(result *contract.GenerateResult) bool {
 		// Freeze the plan on the DURABLE result before the snapshot exists. The
 		// snapshot is what the renderer receives; freezing first is what makes
 		// the persisted plan and the rendered plan the same document (and
@@ -100,8 +101,10 @@ func (e *executionRun) audioCompile() bool {
 				if err == nil && e.req.FinalJob && e.r.overlayPublicationDrainer != nil {
 					// All child renders are now submitted; join their bounded Drive
 					// publications before closing the measured overlay stage. The
-					// final master consumes these certified Drive IDs.
+					// final master consumes the certified object-store locators.
+					drainStarted := time.Now()
 					err = e.r.overlayPublicationDrainer.Wait(c)
+					recordPublicationDrainWait(c, drainStarted)
 				}
 				return err
 			})

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptRunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -16,15 +16,15 @@ import (
 
 type translationWork struct {
 	sceneIndex int
-	lang       Language
+	lang       contract.Language
 	text       string
 }
 
-func sortTranslationWork(work []translationWork, source Language, targets []Language) {
+func sortTranslationWork(work []translationWork, source contract.Language, targets []contract.Language) {
 	scriptRunner.SortBySceneAndLanguage(work, func(item translationWork) int { return item.sceneIndex }, func(item translationWork) string { return string(item.lang) }, string(source), languageStrings(targets))
 }
 
-func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
+func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, resumeIdx int, result *contract.GenerateResult) bool {
 	// ── Stage 3: Translate Scenes (scene-level idempotent) ───────
 	translationStep, startErr := r.startExecutionStep(ctx, exec, "TRANSLATION", "generation")
 	if startErr != nil {
@@ -62,7 +62,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 				// the per-artifact row restores it without a translator call.
 				if restored, ok := r.loadTranslationCheckpoint(ctx, runID, result.Scenes[i].ID, req.SourceLanguage, lang, sourceText); ok {
 					if result.Scenes[i].Text == nil {
-						result.Scenes[i].Text = make(map[Language]string)
+						result.Scenes[i].Text = make(map[contract.Language]string)
 					}
 					result.Scenes[i].Text[lang] = restored
 					continue
@@ -90,64 +90,27 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		// On restart the restored partial result makes those scenes REUSE, the
 		// in-flight scene RETRY, and the remaining scenes CONTINUE (resume
 		// reale: no full restart from scene 1).
-		var applyMu sync.Mutex
-		var checkpointDue checkpointGate
-		// §7.3 trace: the batch path has no per-scene ready boundary (every
+		applier := &translationApplier{runner: r, runID: runID, exec: exec, req: req, result: result}
+		// §7.3 trace: the translation path has no per-scene ready boundary (every
 		// scene becomes ready at once), so ReadyAt stays zero; the queue wait is
 		// the real dispatch→start interval inside the translation pool.
 		enqueuedAt := time.Now().UTC()
-		_, err := concurrent.Map(ctx, work, workers, func(opCtx context.Context, _ int, item translationWork) (struct{}, error) {
-			startedAt := time.Now().UTC()
-			var value string
-			translateErr := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
-				Stage: "translation", Component: "translator", Operation: "translate", Provider: string(item.lang),
-			}, func(measureCtx context.Context) error {
-				var err error
-				value, err = r.translator.Translate(measureCtx, TranslationInput{
-					SceneID: result.Scenes[item.sceneIndex].ID, SourceLanguage: req.SourceLanguage,
-					TargetLanguage: item.lang, SourceText: item.text,
-					Provider: req.TranslationProvider, Model: req.TranslationModel,
-				})
-				return err
-			})
-			recordSceneStage(opCtx, result.Scenes[item.sceneIndex].ID, kernobs.SceneStageTranslation, kernobs.SceneStageTimes{
-				EnqueuedAt: enqueuedAt, StartedAt: startedAt, CompletedAt: time.Now().UTC(),
-			}, string(item.lang), translateErr)
-			if translateErr != nil {
-				return struct{}{}, fmt.Errorf("translate scene %s to %s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, translateErr)
-			}
-			var snapshot *GenerateResult
-			applyMu.Lock()
-			if result.Scenes[item.sceneIndex].Text == nil {
-				result.Scenes[item.sceneIndex].Text = make(map[Language]string)
-			}
-			result.Scenes[item.sceneIndex].Text[item.lang] = value
-			if checkpointDue.due(time.Now()) {
-				var snapshotErr error
-				snapshot, snapshotErr = snapshotGenerateResult(result)
-				if snapshotErr != nil {
-					r.log.Warn("translation checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
-					checkpointDue.complete()
+		var err error
+		if batcher, ok := r.translator.(BatchTranslator); ok && len(work) > 1 {
+			// WST-04: one provider request per (language, chunk) instead of one
+			// per scene. The per-scene path below remains the fallback for a
+			// translator without the batched capability and for a chunk the
+			// provider answers unusably.
+			err = r.runTranslationBatches(ctx, applier, batcher, work, workers, enqueuedAt)
+		} else {
+			_, err = concurrent.Map(ctx, work, workers, func(opCtx context.Context, _ int, item translationWork) (struct{}, error) {
+				value, translateErr := r.translateUnit(opCtx, applier, item, result.Scenes[item.sceneIndex].ID, enqueuedAt)
+				if translateErr != nil {
+					return struct{}{}, translateErr
 				}
-			}
-			applyMu.Unlock()
-			// The per-artifact row is written before the envelope. During
-			// cutover it is the only durable copy of this unit; a write failure
-			// fails the worker instead of leaving a silent gap.
-			if err := r.saveTranslationArtifactCheckpoint(ctx, runID, exec.Attempt, result.Scenes[item.sceneIndex].ID, req.SourceLanguage, item.lang, item.text, value); err != nil {
-				return struct{}{}, fmt.Errorf("checkpoint translation scene %s to %s: %w", result.Scenes[item.sceneIndex].ID, item.lang, err)
-			}
-			// The expensive repository write is deliberately outside applyMu:
-			// other translation workers may apply their completed values while
-			// SQLite persists this immutable snapshot.
-			if snapshot != nil {
-				func() {
-					defer checkpointDue.complete()
-					r.saveTranslationUnitEnvelope(ctx, runID, snapshot)
-				}()
-			}
-			return struct{}{}, nil
-		})
+				return struct{}{}, applier.apply(opCtx, item, value)
+			})
+		}
 		// Flush the newest complete result after all workers have joined. This
 		// closes the debounce window for normal completion and preserves all
 		// successful units even when another worker failed.
@@ -156,7 +119,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		} else if snapshot != nil {
 			recordCheckpointFlush()
 			func() {
-				defer checkpointDue.complete()
+				defer applier.gate.complete()
 				r.checkpoint(ctx, runID, snapshot)
 			}()
 		}
@@ -171,11 +134,15 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		}
 		if summary.Calls == 0 {
 			// A runner without a bound observability run is a supported test and
-			// dry-run mode. Preserve the count projection without creating a
-			// second timer; the authoritative wall time remains zero.
-			summary.Calls = int64(len(work))
+			// dry-run mode. The phase's own counter still reports the provider
+			// round-trips actually issued (batches + per-scene fallbacks), so a
+			// batched run does not inflate the count back to scene×language.
+			summary.Calls = applier.calls.Load()
+			if summary.Calls == 0 {
+				summary.Calls = int64(len(work))
+			}
 		}
-		result.TranslationMetrics = &TranslationPipelineMetrics{Calls: int(summary.Calls), Concurrency: workers, WallMS: summary.WallMs}
+		result.TranslationMetrics = &contract.TranslationPipelineMetrics{Calls: int(summary.Calls), Concurrency: workers, WallMS: summary.WallMs}
 		if err := validateTranslationCoverage(result, req); err != nil {
 			r.failExecutionStepBestEffort(ctx, exec, translationStep, err)
 			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
@@ -229,7 +196,7 @@ var ErrTranslationIncomplete = errors.New("scriptgeneration: translation coverag
 // scene carries a non-empty target text that differs from the source text.
 // Fixed-display scenes are included because their display text is translated
 // for subtitle/caption burn.
-func validateTranslationCoverage(result *GenerateResult, req GenerateRequest) error {
+func validateTranslationCoverage(result *contract.GenerateResult, req contract.GenerateRequest) error {
 	if result == nil || len(req.Languages) == 0 {
 		return nil
 	}

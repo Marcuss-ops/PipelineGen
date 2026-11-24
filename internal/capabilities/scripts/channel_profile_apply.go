@@ -25,12 +25,14 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ApplyChannelProfile fills the blanks of req from p. An empty profile is a
 // no-op; a nil request fails closed.
-func ApplyChannelProfile(req *GenerateRequest, p channelprofile.Profile) error {
+func ApplyChannelProfile(req *contract.GenerateRequest, p channelprofile.Profile) error {
 	if req == nil {
 		return fmt.Errorf("apply channel profile: request is required")
 	}
@@ -122,7 +124,7 @@ func channelWantsSubtitles(s *channelprofile.SubtitlesProfile) bool {
 // audioRunsLayers mirrors the ApplyEditingAssetPolicy gate: BGM/SFX layer
 // intents only reach the canonical pipeline on the combined-timeline mode,
 // so injecting them anywhere else would be inert payload.
-func audioRunsLayers(req *GenerateRequest) bool {
+func audioRunsLayers(req *contract.GenerateRequest) bool {
 	return req.Audio == capabilityaudio.AudioModeCombinedTimeline
 }
 
@@ -138,7 +140,7 @@ func audioRunsLayers(req *GenerateRequest) bool {
 // An explicit caller selection is preserved untouched — including kind "color",
 // which is how a caller deliberately asks for the black canvas this default
 // would otherwise replace.
-func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
+func applyOverlayBackgroundSelection(req *contract.GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
 	if req == nil {
 		return nil
 	}
@@ -190,7 +192,7 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 			return fmt.Errorf("apply editing asset policy: overlay background: render background asset %q requires kind=image or kind=video", assetID)
 		}
 		req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
-			Kind: kind, AssetID: assetID, Fit: overlayBackgroundPlateFit, Loop: kind == "video",
+			Kind: kind, AssetID: assetID, Fit: clips.OverlayBackgroundPlateFit, Loop: kind == "video",
 		}
 		return nil
 	}
@@ -204,7 +206,7 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 	req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
 		Kind:    overlayBackgroundPlateKind,
 		AssetID: plate.ID,
-		Fit:     overlayBackgroundPlateFit,
+		Fit:     clips.OverlayBackgroundPlateFit,
 		Loop:    true,
 	}
 	return nil
@@ -230,7 +232,7 @@ func overlayBackgroundSelectionIsBlank(spec *scriptpkg.OverlayBackgroundSpec) bo
 // side of the clip_only overlay-canvas decision: only a run whose whole
 // picture is one clip can use that clip as the single global overlay
 // background.
-func clipOnlySingleClipID(req *GenerateRequest) string {
+func clipOnlySingleClipID(req *contract.GenerateRequest) string {
 	if req == nil || req.MediaMode != scriptpkg.MediaModeClipOnly {
 		return ""
 	}

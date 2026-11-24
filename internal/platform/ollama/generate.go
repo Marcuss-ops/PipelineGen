@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
@@ -34,6 +35,21 @@ type Generator struct {
 	client           *client.Client
 	translationCache TranslationCache
 	metadataModel    string // lighter model for entity extraction, metadata, translations
+
+	// residentModel is the SINGLE model this generator may keep loaded
+	// (WST-02). The server runs with OLLAMA_MAX_LOADED_MODELS=1, so every
+	// request naming another model evicts the resident runner and pays a full
+	// reload (measured: 1,78 h of warm calls in one window, p50 16,4 s, max
+	// 1.803,8 s). When set, ANY per-call model is mapped to this one before it
+	// reaches the wire, which is the only place that can guarantee the
+	// residency contract for every call path (generation, metadata, single and
+	// batched translation). Empty preserves the historical per-call override
+	// (used by tests and by compositions that pin their own model).
+	residentModel string
+	// residentPinned counts requests whose model was mapped to residentModel.
+	// Exposed read-only so a run can prove the policy engaged instead of
+	// inferring it from warm latency.
+	residentPinned atomic.Int64
 
 	// P0-2 (anti-muda): per-query web-context cache. All segments of one
 	// job derive the same SearXNG query from the title, so without sharing
@@ -117,8 +133,53 @@ func (g *Generator) MetadataModel() string {
 	return g.metadataModel
 }
 
-// resolveModel returns the effective model: explicit > g.metadataModel > client default.
+// SetResidentModel pins the ONE model this generator may keep loaded. It is
+// the residency policy seam (WST-02): once set, every per-call model is mapped
+// to it, so a payload asking for another size cannot evict the resident runner.
+func (g *Generator) SetResidentModel(model string) {
+	if g == nil {
+		return
+	}
+	g.residentModel = strings.TrimSpace(model)
+}
+
+// ResidentModel reports the pinned resident model (empty = no pin).
+func (g *Generator) ResidentModel() string {
+	if g == nil {
+		return ""
+	}
+	return g.residentModel
+}
+
+// ResidentPinnedRequests reports how many requests were mapped onto the
+// resident model by the policy.
+func (g *Generator) ResidentPinnedRequests() int64 {
+	if g == nil {
+		return 0
+	}
+	return g.residentPinned.Load()
+}
+
+// pinToResident maps a requested model onto the resident one, recording the
+// substitution. It is the single enforcement point of the residency policy.
+func (g *Generator) pinToResident(requested string) string {
+	requested = strings.TrimSpace(requested)
+	resident := g.ResidentModel()
+	if resident == "" {
+		return requested
+	}
+	if requested != "" && requested != resident {
+		g.residentPinned.Add(1)
+	}
+	return resident
+}
+
+// resolveModel returns the effective model: resident pin > explicit >
+// g.metadataModel > client default.
 func (g *Generator) resolveModel(model string) string {
+	if resident := g.ResidentModel(); resident != "" {
+		return g.pinToResident(model)
+	}
 	if model != "" {
 		return model
 	}
@@ -216,13 +277,14 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 	if options == nil {
 		options = make(map[string]any)
 	}
-	// The request-level model is part of the canonical generation plan. The
-	// Ollama client accepts per-call model selection through options; without
-	// forwarding it, every explicit item model was silently replaced by the
-	// process-wide OLLAMA_MODEL, making controlled runs and retries use the
-	// wrong model.
-	if strings.TrimSpace(req.Model) != "" {
-		options["model"] = strings.TrimSpace(req.Model)
+	// The request-level model is part of the canonical generation plan, but it
+	// is resolved through the residency policy first: with a pinned resident
+	// model an explicit item model is mapped onto it instead of forcing a
+	// runner reload (WST-02). With no pin the historical override is forwarded
+	// verbatim.
+	effectiveModel := g.pinToResident(req.Model)
+	if effectiveModel != "" {
+		options["model"] = effectiveModel
 	}
 	if req.MaxChars > 0 {
 		options["num_predict"] = ResolveOutputBudget(req)
@@ -335,7 +397,7 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		Script:           result,
 		WordCount:        wordCount,
 		EstDuration:      estimateDurationSecondsWithWPM(wordCount, req.WordsPerMinute),
-		Model:            req.Model,
+		Model:            effectiveModel,
 		Prompt:           prompts.BuildTextPrompt(&req),
 		GenerationSource: "ollama",
 	}, nil

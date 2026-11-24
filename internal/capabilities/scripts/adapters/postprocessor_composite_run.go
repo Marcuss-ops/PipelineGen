@@ -7,7 +7,7 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"go.uber.org/zap"
@@ -68,6 +68,13 @@ func (r *PostProcessorRegistry) run(
 	if r == nil {
 		return &PipelineResult{}, nil
 	}
+	procs, policies := r.snapshotProcessors()
+	return r.runSnapshot(ctx, plan, input, reporter, procs, policies)
+}
+
+// snapshotProcessors freezes registry membership for one run. Registrations
+// made concurrently apply to the next run, never halfway through this one.
+func (r *PostProcessorRegistry) snapshotProcessors() (map[ProcessorName]PostProcessor, map[ProcessorName]ProcessorPolicy) {
 	r.mu.RLock()
 	procs := make(map[ProcessorName]PostProcessor, len(r.processors))
 	for k, v := range r.processors {
@@ -78,7 +85,17 @@ func (r *PostProcessorRegistry) run(
 		policies[k] = v
 	}
 	r.mu.RUnlock()
+	return procs, policies
+}
 
+func (r *PostProcessorRegistry) runSnapshot(
+	ctx context.Context,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	input ProcessInput,
+	reporter ProcessorProgressReporter,
+	procs map[ProcessorName]PostProcessor,
+	policies map[ProcessorName]ProcessorPolicy,
+) (*PipelineResult, error) {
 	// Concurrency safety: the caller's ProcessInput may share
 	// SpecScene slices with other goroutines (e.g. a cached
 	// engineResult.Output). Deep-clone before MergePostProcessResult
@@ -112,161 +129,181 @@ func (r *PostProcessorRegistry) run(
 			return nil, err
 		}
 	}
-	var (
-		warnings          []string
-		requiredRequested int
-		requiredSucceeded int
-		requiredFails     []string
-	)
-
+	state := &processorRunState{}
 	for index, rawName := range plan.Postprocessors {
-		name := ProcessorName(rawName)
-		proc, ok := procs[name]
-		policy := policies[name]
-		// A processor may require a stronger policy only for plans that
-		// explicitly activate its capability. Keep the registered default as
-		// the compatibility fallback for inactive plans.
-		if proc != nil {
-			if runtimePolicy := proc.Policy(plan); runtimePolicy != "" {
-				policy = runtimePolicy
-			}
-		}
-		if policy == "" {
-			policy = DefaultPolicyFor(name)
-		}
-
-		if !ok || proc == nil {
-			reportProcessorProgress(reporter, ProcessorProgressEvent{
-				Index: index, Total: len(plan.Postprocessors), Name: name,
-				Status: "failed", Err: fmt.Errorf("postprocessor not registered"),
-			})
-			warn := fmt.Sprintf("postprocessor %q not registered", string(name))
-			warnings = append(warnings, warn)
-			if policy == ProcessorRequired {
-				requiredRequested++
-				requiredFails = append(requiredFails, string(name)+" (not registered)")
-			} else if r.log != nil {
-				r.log.Warn("postprocessor not registered, skipping (best-effort)",
-					zap.String("name", string(name)),
-					zap.String("item_id", plan.ID))
-			}
-			continue
-		}
-		reportProcessorProgress(reporter, ProcessorProgressEvent{
-			Index: index, Total: len(plan.Postprocessors), Name: name, Status: "started",
-		})
-
-		// Restore the translated scene surface before the next processor
-		// consumes it. This is deliberately before Process, never after the
-		// merge: the final entities pass must be able to annotate the exact
-		// text that will be persisted without being overwritten by an older
-		// translated snapshot.
-		reapplyTranslatedSceneText(&input)
-		if sanitizer := procs[ProcessorNarrationSanitizer]; sanitizer != nil && name != ProcessorNarrationSanitizer {
-			if err := runNarrationSanitizer(ctx, plan, sanitizer, &input, result); err != nil {
-				return nil, err
-			}
-		}
-		// The canonical Run owns timing whenever the worker has bound one to
-		// the context. The no-run branch is retained only for legacy callers
-		// and unit fixtures that execute the registry standalone.
-		stageReport, ppResult, err := r.invokePostProcessor(ctx, plan, input, name, proc, result)
-		if err != nil {
-			reportProcessorProgress(reporter, ProcessorProgressEvent{
-				Index: index, Total: len(plan.Postprocessors), Name: name,
-				Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond, Err: err,
-			})
-			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, err.Error())
-			warn := fmt.Sprintf("postprocessor %q failed: %v", string(name), err)
-			warnings = append(warnings, warn)
-			if ppResult != nil && !ppResult.IsEmpty() {
-				// A processor may return a fail-closed UpdatedSpecScene
-				// together with its error. Merge that safe surface before
-				// deciding whether the walk can continue.
-				MergePostProcessResult(result, ppResult, &input)
-				if len(ppResult.Warnings) > 0 {
-					warnings = append(warnings, ppResult.Warnings...)
-				}
-			}
-			if policy == ProcessorRequired {
-				requiredRequested++
-				requiredFails = append(requiredFails, string(name)+" (failed: "+err.Error()+")")
-				if name == ProcessorAssetLocationReconciliation {
-					// A failed location gate must never allow document or
-					// persistence to publish the pre-gate bindings. The
-					// processor has already supplied the fail-closed scene;
-					// return immediately with the typed error.
-					result.Warnings = warnings
-					return result, fmt.Errorf("%w: required postprocessor failure: %s",
-						scriptpkg.ErrPostprocessFailed, strings.Join(requiredFails, "; "))
-				}
-			}
-			if r.log != nil {
-				r.log.Warn("postprocessor outcome",
-					zap.String("name", string(name)),
-					zap.Error(err))
-			}
-			continue
-		}
-
-		if ppResult == nil {
-			reportProcessorProgress(reporter, ProcessorProgressEvent{
-				Index: index, Total: len(plan.Postprocessors), Name: name,
-				Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond,
-				Err: fmt.Errorf("nil result"),
-			})
-			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "nil result")
-			warn := fmt.Sprintf("postprocessor %q returned nil result", string(name))
-			warnings = append(warnings, warn)
-			if policy == ProcessorRequired {
-				requiredRequested++
-				requiredFails = append(requiredFails, string(name)+" (nil result)")
-			}
-			continue
-		}
-
-		if ppResult.IsEmpty() {
-			reportProcessorProgress(reporter, ProcessorProgressEvent{
-				Index: index, Total: len(plan.Postprocessors), Name: name,
-				Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond,
-				Err: fmt.Errorf("empty output"),
-			})
-			recordProcessorProgress(result, name, plan, input, job.StageFailed, plan.ID, "empty output")
-			warn := fmt.Sprintf("postprocessor %q returned empty output", string(name))
-			warnings = append(warnings, warn)
-			if policy == ProcessorRequired {
-				requiredRequested++
-				requiredFails = append(requiredFails, string(name)+" (empty output)")
-			}
-			continue
-		}
-
-		recordProcessorProgress(result, name, plan, input, job.StageCompleted, plan.ID, "")
-		reportProcessorProgress(reporter, ProcessorProgressEvent{
-			Index: index, Total: len(plan.Postprocessors), Name: name,
-			Status: "completed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond,
-		})
-		if policy == ProcessorRequired {
-			requiredRequested++
-			requiredSucceeded++
-		}
-
-		MergePostProcessResult(result, ppResult, &input)
-		if r.log != nil {
-			segments, candidates := vidRushPipelineCounts(input.VidRushSegments)
-			r.log.Debug("postprocessor VidRush scene surface",
-				zap.String("name", string(name)),
-				zap.Int("segments", segments),
-				zap.Int("candidates", candidates),
-				zap.String("segment_details", vidRushPipelineSegmentDetails(input.VidRushSegments)),
-			)
-		}
-
-		if len(ppResult.Warnings) > 0 {
-			warnings = append(warnings, ppResult.Warnings...)
+		if err := r.runOneProcessor(ctx, plan, &input, result, procs, policies, reporter, index, rawName, state); err != nil {
+			result.Warnings = state.warnings
+			return result, err
 		}
 	}
+	warnings := finalizeRunWarnings(plan, result, state.warnings)
+	result.Warnings = warnings
+	if len(state.requiredFails) > 0 {
+		return result, fmt.Errorf("%w: required postprocessor failure: %s",
+			scriptpkg.ErrPostprocessFailed, strings.Join(state.requiredFails, "; "))
+	}
+	return result, nil
+}
 
+// processorRunState carries the per-walk warnings and Required-processor
+// outcomes that outlive one processor invocation.
+type processorRunState struct {
+	warnings          []string
+	requiredRequested int
+	requiredSucceeded int
+	requiredFails     []string
+}
+
+// runOneProcessor executes one postprocessor and records its outcome in state.
+func (r *PostProcessorRegistry) runOneProcessor(
+	ctx context.Context,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	input *ProcessInput,
+	result *PipelineResult,
+	procs map[ProcessorName]PostProcessor,
+	policies map[ProcessorName]ProcessorPolicy,
+	reporter ProcessorProgressReporter,
+	index int,
+	rawName string,
+	state *processorRunState,
+) error {
+	name := ProcessorName(rawName)
+	proc, ok := procs[name]
+	policy := processorPolicyFor(name, proc, policies[name], plan)
+	if !ok || proc == nil {
+		return r.recordUnregisteredProcessor(plan, reporter, index, name, policy, state)
+	}
+	reportProcessorProgress(reporter, ProcessorProgressEvent{
+		Index: index, Total: len(plan.Postprocessors), Name: name, Status: "started",
+	})
+
+	// Restore the translated scene surface before the next processor
+	// consumes it. This is deliberately before Process, never after the
+	// merge: the final entities pass must be able to annotate the exact
+	// text that will be persisted without being overwritten by an older
+	// translated snapshot.
+	reapplyTranslatedSceneText(input)
+	if sanitizer := procs[ProcessorNarrationSanitizer]; sanitizer != nil && name != ProcessorNarrationSanitizer {
+		if err := runNarrationSanitizer(ctx, plan, sanitizer, input, result); err != nil {
+			return err
+		}
+	}
+	stageReport, ppResult, err := r.invokePostProcessor(ctx, plan, *input, name, proc, result)
+	return r.recordProcessorOutcome(plan, input, result, reporter, index, name, policy, stageReport, ppResult, err, state)
+}
+
+func processorPolicyFor(name ProcessorName, proc PostProcessor, registered ProcessorPolicy, plan *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
+	policy := registered
+	// A processor may require a stronger policy only for plans that
+	// explicitly activate its capability. Keep the registered default as
+	// the compatibility fallback for inactive plans.
+	if proc != nil {
+		if runtimePolicy := proc.Policy(plan); runtimePolicy != "" {
+			policy = runtimePolicy
+		}
+	}
+	if policy == "" {
+		policy = DefaultPolicyFor(name)
+	}
+	return policy
+}
+
+func (r *PostProcessorRegistry) recordUnregisteredProcessor(plan *scriptpkg.ResolvedGenerationPlan, reporter ProcessorProgressReporter, index int, name ProcessorName, policy ProcessorPolicy, state *processorRunState) error {
+	reportProcessorProgress(reporter, ProcessorProgressEvent{
+		Index: index, Total: len(plan.Postprocessors), Name: name,
+		Status: "failed", Err: fmt.Errorf("postprocessor not registered"),
+	})
+	state.warnings = append(state.warnings, fmt.Sprintf("postprocessor %q not registered", string(name)))
+	if policy == ProcessorRequired {
+		state.requiredRequested++
+		state.requiredFails = append(state.requiredFails, string(name)+" (not registered)")
+	} else if r.log != nil {
+		r.log.Warn("postprocessor not registered, skipping (best-effort)",
+			zap.String("name", string(name)), zap.String("item_id", plan.ID))
+	}
+	return nil
+}
+
+func (r *PostProcessorRegistry) recordProcessorOutcome(plan *scriptpkg.ResolvedGenerationPlan, input *ProcessInput, result *PipelineResult, reporter ProcessorProgressReporter, index int, name ProcessorName, policy ProcessorPolicy, stageReport kernobs.StageReport, ppResult *PostProcessResult, err error, state *processorRunState) error {
+	if err != nil {
+		return r.recordProcessorFailure(plan, input, result, reporter, index, name, policy, stageReport, ppResult, err, state)
+	}
+	if ppResult == nil || ppResult.IsEmpty() {
+		reason := "empty output"
+		if ppResult == nil {
+			reason = "nil result"
+		}
+		return r.recordEmptyProcessorResult(plan, input, result, reporter, index, name, policy, stageReport, reason, state)
+	}
+	return r.recordSuccessfulProcessor(plan, input, result, reporter, index, name, policy, stageReport, ppResult, state)
+}
+
+func (r *PostProcessorRegistry) recordProcessorFailure(plan *scriptpkg.ResolvedGenerationPlan, input *ProcessInput, result *PipelineResult, reporter ProcessorProgressReporter, index int, name ProcessorName, policy ProcessorPolicy, stageReport kernobs.StageReport, ppResult *PostProcessResult, err error, state *processorRunState) error {
+	reportProcessorProgress(reporter, ProcessorProgressEvent{Index: index, Total: len(plan.Postprocessors), Name: name, Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond, Err: err})
+	recordProcessorProgress(result, name, plan, *input, job.StageFailed, plan.ID, err.Error())
+	state.warnings = append(state.warnings, fmt.Sprintf("postprocessor %q failed: %v", string(name), err))
+	if ppResult != nil && !ppResult.IsEmpty() {
+		// Preserve a fail-closed scene returned together with an error.
+		MergePostProcessResult(result, ppResult, input)
+		state.warnings = append(state.warnings, ppResult.Warnings...)
+	}
+	if policy == ProcessorRequired {
+		state.requiredRequested++
+		state.requiredFails = append(state.requiredFails, string(name)+" (failed: "+err.Error()+")")
+		if name == ProcessorAssetLocationReconciliation {
+			result.Warnings = state.warnings
+			return fmt.Errorf("%w: required postprocessor failure: %s", scriptpkg.ErrPostprocessFailed, strings.Join(state.requiredFails, "; "))
+		}
+	}
+	if r.log != nil {
+		r.log.Warn("postprocessor outcome", zap.String("name", string(name)), zap.Error(err))
+	}
+	return nil
+}
+
+func (r *PostProcessorRegistry) recordEmptyProcessorResult(plan *scriptpkg.ResolvedGenerationPlan, input *ProcessInput, result *PipelineResult, reporter ProcessorProgressReporter, index int, name ProcessorName, policy ProcessorPolicy, stageReport kernobs.StageReport, reason string, state *processorRunState) error {
+	reportProcessorProgress(reporter, ProcessorProgressEvent{Index: index, Total: len(plan.Postprocessors), Name: name, Status: "failed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond, Err: fmt.Errorf("%s", reason)})
+	recordProcessorProgress(result, name, plan, *input, job.StageFailed, plan.ID, reason)
+	state.warnings = append(state.warnings, fmt.Sprintf("postprocessor %q returned %s", string(name), reason))
+	if policy == ProcessorRequired {
+		state.requiredRequested++
+		state.requiredFails = append(state.requiredFails, string(name)+" ("+reason+")")
+	}
+	return nil
+}
+
+func (r *PostProcessorRegistry) recordSuccessfulProcessor(plan *scriptpkg.ResolvedGenerationPlan, input *ProcessInput, result *PipelineResult, reporter ProcessorProgressReporter, index int, name ProcessorName, policy ProcessorPolicy, stageReport kernobs.StageReport, ppResult *PostProcessResult, state *processorRunState) error {
+	recordProcessorProgress(result, name, plan, *input, job.StageCompleted, plan.ID, "")
+	reportProcessorProgress(reporter, ProcessorProgressEvent{
+		Index: index, Total: len(plan.Postprocessors), Name: name,
+		Status: "completed", Duration: time.Duration(stageReport.DurationMs) * time.Millisecond,
+	})
+	if policy == ProcessorRequired {
+		state.requiredRequested++
+		state.requiredSucceeded++
+	}
+
+	MergePostProcessResult(result, ppResult, input)
+	if r.log != nil {
+		segments, candidates := vidRushPipelineCounts(input.VidRushSegments)
+		r.log.Debug("postprocessor VidRush scene surface",
+			zap.String("name", string(name)),
+			zap.Int("segments", segments),
+			zap.Int("candidates", candidates),
+			zap.String("segment_details", vidRushPipelineSegmentDetails(input.VidRushSegments)),
+		)
+	}
+
+	if len(ppResult.Warnings) > 0 {
+		state.warnings = append(state.warnings, ppResult.Warnings...)
+	}
+
+	return nil
+}
+
+// finalizeRunWarnings applies the documentary and stock-binding warning
+// filters that cannot change the processor walk itself.
+func finalizeRunWarnings(plan *scriptpkg.ResolvedGenerationPlan, result *PipelineResult, warnings []string) []string {
 	// Single-segment documentary prose: best-effort post-processors
 	// (clip_bindings / stock_bindings / visual / voiceover) commonly
 	// emit a "returned empty output" / "not registered" / "returned
@@ -318,11 +355,7 @@ func (r *PostProcessorRegistry) run(
 	// scriptpkg.ErrPostprocessFailed. The pre-fix "all required
 	// failed" semantic is preserved as a strict subset (k-of-n
 	// failures now fire the gate just as well as n-of-n failures).
-	if len(requiredFails) > 0 {
-		return result, fmt.Errorf("%w: required postprocessor failure: %s",
-			scriptpkg.ErrPostprocessFailed, strings.Join(requiredFails, "; "))
-	}
-	return result, nil
+	return warnings
 }
 
 func vidRushPipelineCounts(segments []scriptpkg.VidRushSegmentResult) (int, int) {
@@ -358,106 +391,6 @@ func runNarrationSanitizer(ctx context.Context, plan *scriptpkg.ResolvedGenerati
 	}
 	MergePostProcessResult(result, ppResult, input)
 	return nil
-}
-
-// cloneSpecSceneOutput returns a deep copy of the specscene envelope.
-// Run() needs an independent copy because MergePostProcessResult
-// mutates Scenes and Bindings in place; without cloning, concurrent
-// Runs operating on the same cached engine output would race on the
-// same underlying slices and pointer fields.
-func cloneSpecSceneOutput(s scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
-	if len(s.Scenes) == 0 {
-		return s
-	}
-	out := scriptpkg.SpecSceneOutput{
-		Version:           s.Version,
-		Scenes:            make([]scriptpkg.SpecScene, len(s.Scenes)),
-		VisualAssignments: append([]mediadomain.VisualAssignment(nil), s.VisualAssignments...),
-	}
-	for i, sc := range s.Scenes {
-		out.Scenes[i] = sc
-		if sc.Metadata != nil {
-			meta := *sc.Metadata
-			meta.Tags = append([]string(nil), sc.Metadata.Tags...)
-			meta.Keywords = append([]string(nil), sc.Metadata.Keywords...)
-			meta.Sources = append([]scriptpkg.SourceReference(nil), sc.Metadata.Sources...)
-			out.Scenes[i].Metadata = &meta
-		}
-		if sc.Annotations != nil {
-			ann := *sc.Annotations
-			ann.ImportantPhrases = append([]scriptpkg.AnnotationSpan(nil), sc.Annotations.ImportantPhrases...)
-			ann.SpecialNames = append([]scriptpkg.AnnotationSpan(nil), sc.Annotations.SpecialNames...)
-			ann.ImportantWords = append([]scriptpkg.AnnotationSpan(nil), sc.Annotations.ImportantWords...)
-			ann.Warnings = append([]string(nil), sc.Annotations.Warnings...)
-			ann.PrimaryEntities = cloneAnnotatedEntities(sc.Annotations.PrimaryEntities)
-			ann.SecondaryEntities = cloneAnnotatedEntities(sc.Annotations.SecondaryEntities)
-			out.Scenes[i].Annotations = &ann
-		}
-		out.Scenes[i].Bindings = CloneSceneBindings(sc.Bindings)
-	}
-	return out
-}
-
-func cloneAnnotatedEntities(in []scriptpkg.AnnotatedEntity) []scriptpkg.AnnotatedEntity {
-	if in == nil {
-		return nil
-	}
-	out := make([]scriptpkg.AnnotatedEntity, len(in))
-	for i := range in {
-		out[i] = in[i]
-		out[i].Mentions = append([]scriptpkg.AnnotationSpan(nil), in[i].Mentions...)
-		if in[i].Image != nil {
-			image := *in[i].Image
-			out[i].Image = &image
-		}
-	}
-	return out
-}
-
-// CloneSceneBindings returns a deep copy of bindings so that in-place
-// mutations of Image / Voiceover / Clip / Stock pointers in one Run
-// do not affect another Run sharing the same underlying scene.
-func CloneSceneBindings(b scriptpkg.SceneBindings) scriptpkg.SceneBindings {
-	out := scriptpkg.SceneBindings{}
-	if len(b.Media) > 0 {
-		out.Media = make([]scriptpkg.ResolvedMediaBinding, len(b.Media))
-		copy(out.Media, b.Media)
-	}
-	if len(b.Clips) > 0 {
-		out.Clips = make([]scriptpkg.ClipBinding, len(b.Clips))
-		copy(out.Clips, b.Clips)
-		// Keep the legacy alias pointing at the canonical first entry,
-		// rather than cloning a second divergent binding.
-		out.Clip = &out.Clips[0]
-	} else if b.Clip != nil {
-		c := *b.Clip
-		out.Clip = &c
-	}
-	if b.Image != nil {
-		img := *b.Image
-		out.Image = &img
-	}
-	if b.Voiceover != nil {
-		v := *b.Voiceover
-		if b.Voiceover.Links != nil {
-			v.Links = make(map[string]string, len(b.Voiceover.Links))
-			for language, link := range b.Voiceover.Links {
-				v.Links[language] = link
-			}
-		}
-		if b.Voiceover.Timing != nil {
-			v.Timing = make(map[string]scriptpkg.VoiceoverTimingBinding, len(b.Voiceover.Timing))
-			for language, timing := range b.Voiceover.Timing {
-				v.Timing[language] = timing
-			}
-		}
-		out.Voiceover = &v
-	}
-	if b.Stock != nil {
-		s := *b.Stock
-		out.Stock = &s
-	}
-	return out
 }
 
 // clonePostProcessResult returns a shallow copy of r. It is nil-safe

@@ -28,14 +28,15 @@ import (
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // AssetSource resolves one canonical audio asset ID to verified local bytes.
 // The composition adapter owns registry and Drive materialization details.
-type AssetSource interface {
-	ResolveAudioAsset(ctx context.Context, assetID string) (capabilityaudio.ResolvedAudioAsset, error)
-}
+// The port is declared in scripts/contract (its consumer owns the interface)
+// and aliased here so the resolver keeps naming it unqualified.
+type AssetSource = contract.AudioAssetSource
 
 // AudioAssetResolver resolves the asset_ids referenced by the audio
 // intent block into a deduplicated, deterministically ordered

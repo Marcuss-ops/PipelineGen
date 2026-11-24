@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
@@ -16,7 +17,7 @@ import (
 )
 
 func buildSceneImageProjection(
-	timedScenes []Scene,
+	timedScenes []contract.Scene,
 	imagesByScene map[string][]capabilityoverlay.ImageCandidate,
 	timelineEndUS map[string]int64,
 ) []capabilityoverlay.SceneInput {
@@ -34,9 +35,9 @@ func buildSceneImageProjection(
 // buildRawOverlayScenes is the WP4 producer boundary: it copies grounded
 // annotation data and media facts, never a selected/timed overlay candidate.
 func buildRawOverlayScenes(
-	result *GenerateResult,
-	language Language,
-	timedScenes []Scene,
+	result *contract.GenerateResult,
+	language contract.Language,
+	timedScenes []contract.Scene,
 	plates capabilityoverlay.PlateResolver,
 ) []overlayplan.RawScene {
 	out := make([]overlayplan.RawScene, 0, len(timedScenes))
@@ -95,7 +96,7 @@ var overlayVisualRecipes = map[string]bool{
 // that it is a JSON object and never chooses a layout: the planner applies each
 // recipe once. Duplicate `(recipe, payload)` pairs are dropped so the same fact
 // does not travel twice.
-func visualRecipesForScene(result *GenerateResult, sceneID string) []overlayplan.VisualRecipeSpec {
+func visualRecipesForScene(result *contract.GenerateResult, sceneID string) []overlayplan.VisualRecipeSpec {
 	if result == nil || result.SemanticConsolidation == nil {
 		return nil
 	}
@@ -186,7 +187,7 @@ func rawEntities(entities []scriptpkg.AnnotatedEntity, plates capabilityoverlay.
 	return out
 }
 
-func sourceNumericValuesForScene(scene Scene, result *GenerateResult, language Language) []string {
+func sourceNumericValuesForScene(scene contract.Scene, result *contract.GenerateResult, language contract.Language) []string {
 	if result == nil || result.SourceLanguage == "" || result.SourceLanguage == language {
 		return nil
 	}

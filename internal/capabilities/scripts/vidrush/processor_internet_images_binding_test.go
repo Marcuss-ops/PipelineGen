@@ -1,0 +1,542 @@
+package vidrush
+
+import (
+	"strings"
+	"testing"
+
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
+
+func TestEntityImagePreviewURLPrefersDriveDownload(t *testing.T) {
+	candidate := readyEntityImageCandidate("manny-pacquiao", "Manny Pacquiao", "Manny Pacquiao")
+	candidate.SourceURL = "https://cdn.example/volatile.jpg"
+	want := "https://drive.google.com/uc?export=download&id=manny-pacquiao"
+	if got := entityImagePreviewURL(candidate); got != want {
+		t.Fatalf("entityImagePreviewURL() = %q, want durable Drive URL %q", got, want)
+	}
+}
+
+func TestProjectEntityImageBindings_StripsPromptPrefixFromEntity(t *testing.T) {
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "scene-0", SegmentID: "john-cena", Index: 0,
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Describe John Cena", Text: "Describe John Cena", Type: "PERSON",
+		}}},
+	}}}
+	segments := []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "john-cena", SceneID: "scene-0",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "asset-john-cena", Provider: scriptpkg.VidRushProviderInternetImages,
+			Entity: "John Cena", Query: "John Cena", SourceURL: "https://images.example/john-cena.jpg", Score: 1,
+			DriveLink:     "https://drive.google.com/file/d/john-cena/view",
+			ContentSHA256: "hash-john-cena", RightsStatus: "unknown_allowed",
+			AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
+			VerificationStatus: scriptpkg.VidRushStatusVerified,
+			PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+			SemanticStatus:     "accepted",
+			IndexStatus:        scriptpkg.VidRushStatusIndexed,
+		}}},
+	}}
+
+	got := projectEntityImageBindings(spec, segments, entityImagePolicyForTest())
+	image := got.Scenes[0].Annotations.PrimaryEntities[0].Image
+	if image == nil || image.Status != "resolved" || image.AssetID != "asset-john-cena" || image.DriveLink == "" || image.DriveFileID != "john-cena" {
+		t.Fatalf("entity image binding = %+v, want resolved persisted Drive image with canonical file id", image)
+	}
+}
+
+func TestProjectEntityImageBindingsPerSceneKeepsRepeatedPersonAssetsDistinct(t *testing.T) {
+	person := func() *scriptpkg.SceneAnnotations {
+		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
+	}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-2", SegmentID: "segment-2", Index: 2, Annotations: person()},
+		{ID: "scene-3", SegmentID: "segment-3", Index: 3, Annotations: person()},
+	}}
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "segment-2", SceneID: "scene-2", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("milton-court", "Milton Leite tribunal audiência cena 2", "Milton Leite")}}},
+		{SegmentID: "segment-3", SceneID: "scene-3", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("milton-stj", "Milton Leite decisão STJ cena 3", "Milton Leite")}}},
+	}
+	policy := entityImagePolicyForTest()
+	policy.Scope = "per_scene"
+	got := projectEntityImageBindings(spec, segments, policy)
+	first := got.Scenes[0].Annotations.PrimaryEntities[0].Image
+	second := got.Scenes[1].Annotations.PrimaryEntities[0].Image
+	if first == nil || first.AssetID != "milton-court" || second == nil || second.AssetID != "milton-stj" {
+		t.Fatalf("per-scene repeated entity bindings = first:%+v second:%+v", first, second)
+	}
+}
+
+// TestProjectEntityImageBindings_RepeatedEntityGetsDistinctCandidates certifies
+// the cross-scene distribution contract: when the same entity appears in two
+// scenes of ONE run and its candidate pool holds two usable images, the second
+// scene must bind a DIFFERENT candidate — the warm shared library must not
+// rebind the same image twice within a single run.
+func TestProjectEntityImageBindings_RepeatedEntityGetsDistinctCandidates(t *testing.T) {
+	person := func() *scriptpkg.SceneAnnotations {
+		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
+	}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-0", SegmentID: "scene-0", Index: 0, Annotations: person()},
+		{ID: "scene-1", SegmentID: "scene-1", Index: 1, Annotations: person()},
+	}}
+	// Both scenes carry the SAME two-candidate pool for the entity (the shape a
+	// shared catalog produces).
+	pool := []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("milton-a", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-b", "Milton Leite", "Milton Leite"),
+	}
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", SceneID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: append([]scriptpkg.SegmentAssetCandidate(nil), pool...)}},
+		{SegmentID: "scene-1", SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: append([]scriptpkg.SegmentAssetCandidate(nil), pool...)}},
+	}
+
+	out := projectEntityImageBindings(spec, segments, entityImagePolicyForTest())
+	first := out.Scenes[0].Annotations.PrimaryEntities[0].Image
+	second := out.Scenes[1].Annotations.PrimaryEntities[0].Image
+	if first == nil || second == nil || first.Status != "resolved" || second.Status != "resolved" {
+		t.Fatalf("bindings = first:%+v second:%+v, want both resolved", first, second)
+	}
+	if first.AssetID == second.AssetID {
+		t.Fatalf("same candidate %q rebound across scenes; want distinct candidates", first.AssetID)
+	}
+}
+
+// TestProjectEntityImageBindings_PerSceneScopeReusesSingleCandidate pins the
+// corrected contract: per_scene chooses where the overlay sits, it does not
+// require a different photograph of the same person in every scene. A single
+// verified portrait is reused rather than degrading later scenes to text-only.
+func TestProjectEntityImageBindings_PerSceneScopeReusesSingleCandidate(t *testing.T) {
+	person := func() *scriptpkg.SceneAnnotations {
+		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
+	}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-0", SegmentID: "scene-0", Index: 0, Annotations: person()},
+		{ID: "scene-1", SegmentID: "scene-1", Index: 1, Annotations: person()},
+	}}
+	candidate := readyEntityImageCandidate("milton-only", "Milton Leite", "Milton Leite")
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", SceneID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{candidate}}},
+		{SegmentID: "scene-1", SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{candidate}}},
+	}
+	policy := entityImagePolicyForTest()
+	policy.Scope = "per_scene"
+
+	out := projectEntityImageBindings(spec, segments, policy)
+	first := out.Scenes[0].Annotations.PrimaryEntities[0].Image
+	second := out.Scenes[1].Annotations.PrimaryEntities[0].Image
+	if first == nil || first.Status != "resolved" || first.AssetID != "milton-only" {
+		t.Fatalf("first per-scene binding = %+v, want resolved candidate", first)
+	}
+	if second == nil || second.Status != "resolved" || second.AssetID != "milton-only" {
+		t.Fatalf("second per-scene binding = %+v, want the same verified portrait reused", second)
+	}
+}
+
+func TestRemoveCrossSceneImageCandidateReuseKeepsLaterDistinctImages(t *testing.T) {
+	shared := readyEntityImageCandidate("shared", "Milton Leite", "Milton Leite")
+	firstOnly := readyEntityImageCandidate("first-only", "Milton Leite", "Milton Leite")
+	secondOnly := readyEntityImageCandidate("second-only", "Milton Leite", "Milton Leite")
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{shared, firstOnly}, SecondaryImages: []scriptpkg.SegmentAssetCandidate{shared, firstOnly}}},
+		{SegmentID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{shared, secondOnly}, SecondaryImages: []scriptpkg.SegmentAssetCandidate{shared, secondOnly}}},
+	}
+
+	out := scriptpkg.RemoveCrossSceneImageCandidateReuse(segments)
+	if len(out[0].Assets.SecondaryImages) != 2 || len(out[1].Assets.SecondaryImages) != 1 {
+		t.Fatalf("secondary images = first:%v second:%v, want shared image only in first scene", out[0].Assets.SecondaryImages, out[1].Assets.SecondaryImages)
+	}
+	if out[1].Assets.SecondaryImages[0].AssetID != "second-only" {
+		t.Fatalf("later scene image = %q, want second-only", out[1].Assets.SecondaryImages[0].AssetID)
+	}
+	if len(out[1].Assets.Candidates) != 1 || out[1].Assets.Candidates[0].AssetID != "second-only" {
+		t.Fatalf("later scene candidates = %v, want only second-only", out[1].Assets.Candidates)
+	}
+}
+
+// TestProjectEntityImageBindings_SingleCandidatePoolStillBinds certifies the
+// availability fallback: a pool with only one usable image still binds it to
+// every occurrence rather than degrading a later scene to text-only.
+func TestProjectEntityImageBindings_SingleCandidatePoolStillBinds(t *testing.T) {
+	person := func() *scriptpkg.SceneAnnotations {
+		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
+	}
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-0", SegmentID: "scene-0", Index: 0, Annotations: person()},
+		{ID: "scene-1", SegmentID: "scene-1", Index: 1, Annotations: person()},
+	}}
+	pool := []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("only-image", "Milton Leite", "Milton Leite")}
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-0", SceneID: "scene-0", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: append([]scriptpkg.SegmentAssetCandidate(nil), pool...)}},
+		{SegmentID: "scene-1", SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: append([]scriptpkg.SegmentAssetCandidate(nil), pool...)}},
+	}
+
+	out := projectEntityImageBindings(spec, segments, entityImagePolicyForTest())
+	first := out.Scenes[0].Annotations.PrimaryEntities[0].Image
+	second := out.Scenes[1].Annotations.PrimaryEntities[0].Image
+	if first == nil || second == nil || first.AssetID != "only-image" || second.AssetID != "only-image" {
+		t.Fatalf("single-candidate bindings = first:%+v second:%+v, want both only-image", first, second)
+	}
+}
+
+func TestEntityVariantOffset_DeterministicAndInRange(t *testing.T) {
+	for _, seed := range []string{"scene-0|PERSON|MILTON LEITE", "scene-1|PERSON|MILTON LEITE", "scene-9|PERSON|ANNA", ""} {
+		first := entityVariantOffset(seed, 4)
+		second := entityVariantOffset(seed, 4)
+		if first != second {
+			t.Fatalf("offset for seed %q changed between calls: %d vs %d", seed, first, second)
+		}
+		if first < 0 || first >= 4 {
+			t.Fatalf("offset for seed %q = %d, want in [0,4)", seed, first)
+		}
+	}
+	if got := entityVariantOffset("any", 1); got != 0 {
+		t.Fatalf("single-candidate offset = %d, want 0", got)
+	}
+	if got := entityVariantOffset("any", 0); got != 0 {
+		t.Fatalf("empty-pool offset = %d, want 0", got)
+	}
+}
+
+func TestFindEntityImageCandidateFrom_RotatesPoolDeterministically(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Milton Leite", Text: "Milton Leite", Type: "PERSON"}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("milton-a", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-b", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-c", "Milton Leite", "Milton Leite"),
+	}}}
+	seed := "scene-x|PERSON|MILTON LEITE"
+	wantOffset := entityVariantOffset(seed, 3)
+
+	got, ok := findEntityImageCandidateFrom(entity, seg, seed)
+	if !ok {
+		t.Fatal("expected a candidate")
+	}
+	want := []string{"milton-a", "milton-b", "milton-c"}[wantOffset]
+	if got.AssetID != want {
+		t.Fatalf("rotated pick = %q, want pool[%d]=%q", got.AssetID, wantOffset, want)
+	}
+	again, _ := findEntityImageCandidateFrom(entity, seg, seed)
+	if again.AssetID != got.AssetID {
+		t.Fatalf("variant selection not deterministic: %q then %q", got.AssetID, again.AssetID)
+	}
+}
+
+func TestFindEntityImageCandidateFrom_SkipsUsedFromRotatedStart(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Milton Leite", Text: "Milton Leite", Type: "PERSON"}
+	pool := []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("milton-a", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-b", "Milton Leite", "Milton Leite"),
+		readyEntityImageCandidate("milton-c", "Milton Leite", "Milton Leite"),
+	}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: pool}}
+	seed := "scene-y|PERSON|MILTON LEITE"
+	offset := entityVariantOffset(seed, len(pool))
+	// Mark the rotated first match as already used elsewhere in the run.
+	used := map[string]struct{}{vidRushCandidateIdentity(pool[offset]): {}}
+
+	got, ok := findEntityImageCandidateFrom(entity, seg, seed, used)
+	if !ok {
+		t.Fatal("expected a fallback candidate")
+	}
+	if got.AssetID == pool[offset].AssetID {
+		t.Fatalf("picked already-used candidate %q from the rotated start", got.AssetID)
+	}
+}
+
+func TestFindEntityImageCandidate_PrefersDurableCandidate(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Describe John Cena", Type: "PERSON"}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+		{AssetID: "discovered", Provider: scriptpkg.VidRushProviderInternetImages, Query: "John Cena", SourceURL: "https://images.example/discovered.jpg", Score: 1},
+		{AssetID: "durable", Provider: scriptpkg.VidRushProviderInternetImages, Entity: "John Cena", Query: "John Cena", SourceURL: "https://images.example/durable.jpg", Score: 1, DriveLink: "https://drive.google.com/file/d/durable/view", ContentSHA256: "hash", RightsStatus: "unknown_allowed", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, SemanticStatus: "accepted", IndexStatus: scriptpkg.VidRushStatusIndexed},
+	}}}
+
+	got, ok := findEntityImageCandidate(entity, seg)
+	if !ok || got.AssetID != "durable" || got.DriveLink == "" {
+		t.Fatalf("candidate = %+v, ok=%v; want durable Drive-backed candidate", got, ok)
+	}
+}
+
+func TestFindEntityImageCandidate_NormalizesEnglishPossessive(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Dwayne Johnson's", Text: "Dwayne Johnson's", Type: "PERSON"}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("asset-dwayne", "Dwayne Johnson", "Dwayne Johnson"),
+	}}}
+	got, ok := findEntityImageCandidate(entity, seg)
+	if !ok || got.AssetID != "asset-dwayne" {
+		t.Fatalf("possessive entity did not bind canonical candidate: ok=%v asset=%q", ok, got.AssetID)
+	}
+}
+
+func entityImagePolicyForTest() (policy mediadomain.EntityImagePolicy) {
+	policy.Enabled = true
+	policy.EntityTypes = []string{"PERSON"}
+	return policy
+}
+
+// readyEntityImageCandidate builds a fully materialized internet_images
+// candidate (acquired → verified → persisted → indexed with a Drive link), the
+// minimum bar findEntityImageCandidate requires before it can bind an entity
+// image. The identity fields (query/entity) are supplied by each test.
+func readyEntityImageCandidate(assetID, query, entity string) scriptpkg.SegmentAssetCandidate {
+	return scriptpkg.SegmentAssetCandidate{
+		AssetID:            assetID,
+		Provider:           scriptpkg.VidRushProviderInternetImages,
+		Query:              query,
+		Entity:             entity,
+		Score:              1,
+		SourceURL:          "https://images.example/" + assetID + ".jpg",
+		DriveLink:          "https://drive.google.com/file/d/" + assetID + "/view",
+		ContentSHA256:      "hash-" + assetID,
+		RightsStatus:       "unknown_allowed",
+		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
+		VerificationStatus: scriptpkg.VidRushStatusVerified,
+		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		SemanticStatus:     "accepted",
+		IndexStatus:        scriptpkg.VidRushStatusIndexed,
+	}
+}
+
+// TestEntityImage_CandidateMustMatchPrimaryEntity certifies that only a
+// candidate whose query/entity is identity-scoped to the primary entity can be
+// bound. A candidate retrieved for a generic scene keyword is skipped even when
+// it is fully materialized.
+func TestEntityImage_CandidateMustMatchPrimaryEntity(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON"}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("asset-wrestling-ring", "wrestling", "wrestling"),
+		readyEntityImageCandidate("asset-dwayne", "Dwayne Johnson", "Dwayne Johnson"),
+	}}}
+
+	got, ok := findEntityImageCandidate(entity, seg)
+	if !ok {
+		t.Fatal("expected an identity-scoped candidate to bind")
+	}
+	if got.AssetID != "asset-dwayne" {
+		t.Fatalf("bound candidate = %q, want the Dwayne Johnson identity candidate", got.AssetID)
+	}
+}
+
+// TestEntityImage_GenericSceneCandidateCannotBecomePersonImage certifies the
+// dangerous case from the certification spec: a generic scene candidate (query
+// "wrestling") must never be presented as a person image, even when no
+// identity-scoped candidate exists.
+func TestEntityImage_GenericSceneCandidateCannotBecomePersonImage(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON"}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+		readyEntityImageCandidate("asset-wrestling-ring", "wrestling", "wrestling"),
+	}}}
+
+	if _, ok := findEntityImageCandidate(entity, seg); ok {
+		t.Fatal("generic scene candidate was incorrectly promoted to person image")
+	}
+}
+
+// TestEntityImage_PersonQueryPreservesEntityIdentity certifies that the
+// entity-image query derivation is identity-scoped: the person's canonical
+// name is the query, never a generic scene keyword.
+func TestEntityImage_PersonQueryPreservesEntityIdentity(t *testing.T) {
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "scene-dwayne", SegmentID: "scene-dwayne", Index: 0,
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON",
+		}}},
+	}}}
+	seg := scriptpkg.VidRushSegmentResult{SegmentID: "scene-dwayne", SceneID: "scene-dwayne",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{
+			Value: "Dwayne Johnson", Type: "PERSON", SearchIntents: []string{"Dwayne Johnson"},
+		}}},
+	}
+
+	queries := scenePrimaryEntityQueries(spec, buildSceneIdentityIndex(spec), seg)
+	if len(queries) != 1 || queries[0] != "Dwayne Johnson" {
+		t.Fatalf("primary entity queries = %v, want exactly [Dwayne Johnson]", queries)
+	}
+	if strings.Contains(strings.ToLower(queries[0]), "wrestling") {
+		t.Fatalf("person query %q must be identity-scoped, not a scene keyword", queries[0])
+	}
+}
+
+func TestEntityImage_SceneQueriesIncludeEntitiesMissingFromPartialAnnotations(t *testing.T) {
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "pair-01", SegmentID: "pair-01", Index: 0,
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Alberto Stasi", Text: "Alberto Stasi", Type: "PERSON",
+		}}},
+	}}}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "pair-01", SceneID: "pair-01",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+			{Value: "Alberto Stasi", Type: "PERSON", SearchIntents: []string{"Alberto Stasi"}},
+			{Value: "Giada Bocellari", Type: "PERSON", SearchIntents: []string{"Giada Bocellari"}},
+		}},
+	}
+	queries := scenePrimaryEntityQueries(spec, buildSceneIdentityIndex(spec), segment)
+	if len(queries) != 2 || queries[0] != "Alberto Stasi" || queries[1] != "Giada Bocellari" {
+		t.Fatalf("primary entity queries = %v, want both co-present people", queries)
+	}
+}
+
+// TestEntityImage_ProjectionBindsOnlyIdentityScopedCandidate certifies the
+// end-to-end binding projection: the matching identity candidate resolves,
+// while a scene carrying only a generic candidate stays not_found.
+func TestEntityImage_ProjectionBindsOnlyIdentityScopedCandidate(t *testing.T) {
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-a", SegmentID: "scene-a", Index: 0, Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON"}}}},
+		{ID: "scene-b", SegmentID: "scene-b", Index: 1, Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON"}}}},
+	}}
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-a", SceneID: "scene-a", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+			readyEntityImageCandidate("asset-dwayne", "Dwayne Johnson", "Dwayne Johnson"),
+		}}},
+		{SegmentID: "scene-b", SceneID: "scene-b", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
+			readyEntityImageCandidate("asset-wrestling-ring", "wrestling", "wrestling"),
+		}}},
+	}
+
+	out := projectEntityImageBindings(spec, segments, entityImagePolicyForTest())
+
+	if img := out.Scenes[0].Annotations.PrimaryEntities[0].Image; img == nil || img.Status != "resolved" || img.AssetID != "asset-dwayne" {
+		t.Fatalf("scene-a entity image = %+v, want resolved asset-dwayne", img)
+	}
+	if img := out.Scenes[1].Annotations.PrimaryEntities[0].Image; img == nil || img.Status != "not_found" {
+		t.Fatalf("scene-b entity image = %+v, want not_found (generic candidate must not bind)", img)
+	}
+}
+
+// TestInternetImages_NoResultDoesNotFabricateImage certifies that a scene with
+// no image candidates yields an honest not_found binding — never a fabricated
+// entity image with a fake asset id or Drive link.
+func TestInternetImages_NoResultDoesNotFabricateImage(t *testing.T) {
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+		ID: "scene-dwayne", SegmentID: "scene-dwayne", Index: 0,
+		Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON",
+		}}},
+	}}}
+	segments := []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "scene-dwayne", SceneID: "scene-dwayne",
+		Assets: scriptpkg.SegmentAssetSelection{}, // zero candidates
+	}}
+
+	out := projectEntityImageBindings(spec, segments, entityImagePolicyForTest())
+
+	img := out.Scenes[0].Annotations.PrimaryEntities[0].Image
+	if img == nil {
+		t.Fatal("expected an honest not_found binding, got nil")
+	}
+	if img.Status != "not_found" {
+		t.Fatalf("entity image status = %q, want not_found", img.Status)
+	}
+	if img.AssetID != "" || img.DriveLink != "" {
+		t.Fatalf("fabricated image: asset_id=%q drive_link=%q, want both empty", img.AssetID, img.DriveLink)
+	}
+}
+
+// TestInternetImages_OnlyAllowedProviderCanBind certifies that only an
+// internet_images candidate can become an entity image. A candidate from any
+// other provider is rejected at the binding gate even when its query matches
+// the entity and it is fully materialized.
+func TestInternetImages_OnlyAllowedProviderCanBind(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON"}
+
+	generation := readyEntityImageCandidate("asset-generation", "Dwayne Johnson", "Dwayne Johnson")
+	generation.Provider = scriptpkg.VidRushProviderImageGeneration
+	generation.RightsStatus = "verified"
+
+	youtube := readyEntityImageCandidate("asset-youtube", "Dwayne Johnson", "Dwayne Johnson")
+	youtube.Provider = scriptpkg.VidRushProviderYouTube
+	youtube.SourceURL = "https://youtube.com/watch?v=leaked"
+
+	for _, candidate := range []scriptpkg.SegmentAssetCandidate{generation, youtube} {
+		seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate}}}
+		if _, ok := findEntityImageCandidate(entity, seg); ok {
+			t.Fatalf("provider %q candidate was incorrectly bound as an entity image", candidate.Provider)
+		}
+	}
+}
+
+// TestMaterialization_UnverifiedImageCannotReachBinding certifies that a
+// discovered candidate that has not completed acquire→verify→persist can never
+// reach the entity-image binding, even when its query matches the person.
+func TestMaterialization_UnverifiedImageCannotReachBinding(t *testing.T) {
+	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON"}
+	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "asset-discovered", Provider: "internet_images", Query: "Dwayne Johnson",
+		SourceURL: "https://images.example/dwayne.jpg", Score: 1,
+		// No DriveLink/ContentSHA256/lifecycle states → still unverified.
+	}}}}
+
+	if _, ok := findEntityImageCandidate(entity, seg); ok {
+		t.Fatal("unverified candidate was incorrectly bound as an entity image")
+	}
+}
+
+func TestValidateVidRushSegmentAssetBindings_RequiresCompleteProvenance(t *testing.T) {
+	segment := scriptpkg.VidRushSegmentResult{SegmentID: "segment-a", Position: 2, TextHash: "hash-a"}
+	candidate := readyEntityImageCandidate("asset-a", "feta cheese", "feta cheese")
+	candidate.SegmentID = segment.SegmentID
+	candidate.Position = segment.Position
+	candidate.TextHash = segment.TextHash
+	candidate.EntityID = "entity:feta-cheese"
+	video := candidate
+	video.AssetID = "video-a"
+	video.Provider = scriptpkg.VidRushProviderYouTube
+	video.Query = "greek salad preparation"
+	video.EntityID = "entity:greek-salad"
+	segment.Assets = scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate, video}}
+
+	if err := ValidateVidRushSegmentAssetBindings([]scriptpkg.VidRushSegmentResult{segment}); err != nil {
+		t.Fatalf("complete asset provenance rejected: %v", err)
+	}
+	for _, asset := range segment.Assets.Candidates {
+		if asset.SegmentID != segment.SegmentID || asset.Position != segment.Position || asset.TextHash != segment.TextHash || asset.EntityID == "" || asset.Query == "" || asset.AssetID == "" || asset.Provider == "" {
+			t.Fatalf("asset provenance envelope incomplete: %+v", asset)
+		}
+	}
+
+	candidate.EntityID = ""
+	segment.Assets.Candidates[0] = candidate
+	if err := ValidateVidRushSegmentAssetBindings([]scriptpkg.VidRushSegmentResult{segment}); err == nil {
+		t.Fatal("missing entity_id was accepted by the provenance validator")
+	}
+}
+
+func TestFinalizeVidRushBindings_DropsCrossSegmentAssetReuse(t *testing.T) {
+	candidate := readyEntityImageCandidate("shared-image", "feta cheese", "feta cheese")
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "segment-a", Position: 0, TextHash: "hash-a", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate}}},
+		{SegmentID: "segment-b", Position: 1, TextHash: "hash-b", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate}}},
+	}
+
+	got := FinalizeVidRushBindings(segments, true)
+	if len(got) != 2 {
+		t.Fatalf("finalized segments = %d, want 2", len(got))
+	}
+	if len(got[0].Assets.Candidates) != 1 {
+		t.Fatalf("first segment candidates = %d, want 1", len(got[0].Assets.Candidates))
+	}
+	if len(got[1].Assets.Candidates) != 0 {
+		t.Fatalf("cross-segment asset reuse survived final binding: %+v", got[1].Assets.Candidates)
+	}
+	if err := ValidateVidRushSegmentAssetBindings(got); err != nil {
+		t.Fatalf("finalized provenance invalid: %v", err)
+	}
+}
+
+func TestFinalizeVidRushBindings_RejectsStampedForeignSegment(t *testing.T) {
+	foreign := readyEntityImageCandidate("foreign-image", "paella", "paella")
+	foreign.SegmentID = "segment-b"
+	foreign.Position = 1
+	foreign.TextHash = "hash-b"
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "segment-a", Position: 0, TextHash: "hash-a",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{foreign}},
+	}
+
+	got := FinalizeVidRushBindings([]scriptpkg.VidRushSegmentResult{segment}, true)
+	if len(got) != 1 || len(got[0].Assets.Candidates) != 0 {
+		t.Fatalf("foreign stamped candidate was rebound: %+v", got)
+	}
+}

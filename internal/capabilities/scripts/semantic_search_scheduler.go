@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -18,7 +19,7 @@ import (
 // pool. A worker owns its candidate's ladder end to end: after recording an
 // outcome it enqueues the next rung of the SAME candidate. Different candidates
 // are independent and may run at once.
-func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *SemanticProductionPlan, initial []SemanticSearchAttempt, language, planFingerprint string, forceRefresh bool) ([]SemanticSearchAttemptResult, string) {
+func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *contract.SemanticProductionPlan, initial []contract.SemanticSearchAttempt, language, planFingerprint string, forceRefresh bool) ([]contract.SemanticSearchAttemptResult, string) {
 	if len(initial) == 0 {
 		return nil, ""
 	}
@@ -26,8 +27,8 @@ func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *Semanti
 	if workers > len(initial) {
 		workers = len(initial)
 	}
-	jobs := make(chan SemanticSearchAttempt, p.cfg.MaxQueries)
-	results := make(chan SemanticSearchAttemptResult, p.cfg.MaxQueries)
+	jobs := make(chan contract.SemanticSearchAttempt, p.cfg.MaxQueries)
+	results := make(chan contract.SemanticSearchAttemptResult, p.cfg.MaxQueries)
 
 	var pending sync.WaitGroup
 	var workerWG sync.WaitGroup
@@ -43,7 +44,7 @@ func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *Semanti
 		abortMu.Unlock()
 	}
 
-	enqueue := func(attempt SemanticSearchAttempt) bool {
+	enqueue := func(attempt contract.SemanticSearchAttempt) bool {
 		if scheduled.Add(1) > int64(p.cfg.MaxQueries) {
 			abort(fmt.Sprintf("query budget of %d attempts exhausted", p.cfg.MaxQueries))
 			return false
@@ -84,7 +85,7 @@ func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *Semanti
 		close(results)
 	}()
 
-	rows := make([]SemanticSearchAttemptResult, 0, len(initial))
+	rows := make([]contract.SemanticSearchAttemptResult, 0, len(initial))
 	for row := range results {
 		rows = append(rows, row)
 	}
@@ -96,8 +97,8 @@ func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *Semanti
 
 // runAttempt executes exactly one rung, records its outcome on the plan and
 // returns the next rung of the same candidate, if the ladder has one.
-func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *SemanticProductionPlan, attempt SemanticSearchAttempt, language, planFingerprint string, forceRefresh bool) (SemanticSearchAttemptResult, *SemanticSearchAttempt) {
-	row := SemanticSearchAttemptResult{
+func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *contract.SemanticProductionPlan, attempt contract.SemanticSearchAttempt, language, planFingerprint string, forceRefresh bool) (contract.SemanticSearchAttemptResult, *contract.SemanticSearchAttempt) {
+	row := contract.SemanticSearchAttemptResult{
 		CandidateID: attempt.CandidateID, SceneID: attempt.SceneID,
 		Query: attempt.Query, QueryKind: attempt.QueryKind, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
 		Illustrative: attempt.Illustrative, Rung: attempt.Rung,
@@ -120,7 +121,7 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 	}
 
 	best, hasVerified := bestVerifiedSemanticHit(response.Hits)
-	outcome := SemanticSearchOutcome{CandidateID: attempt.CandidateID, Rung: attempt.Rung}
+	outcome := contract.SemanticSearchOutcome{CandidateID: attempt.CandidateID, Rung: attempt.Rung}
 	switch {
 	case searchErr != nil:
 		row.Status = "error"
@@ -238,7 +239,7 @@ func rankSemanticAssetHits(response SemanticAssetSearchResponse) SemanticAssetSe
 // fetch serves the answer from the plan cache when possible and otherwise
 // performs one budgeted provider call. The keyed lock collapses duplicate
 // same-entity fetches inside a single run; different entities stay independent.
-func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt SemanticSearchAttempt, language, key string, forceRefresh bool) (SemanticAssetSearchResponse, bool, int64, bool, error) {
+func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt contract.SemanticSearchAttempt, language, key string, forceRefresh bool) (SemanticAssetSearchResponse, bool, int64, bool, error) {
 	bypassCache := forceRefresh
 	if p.cfg.Cache == nil {
 		response, latency, rateLimited, err := p.searchWithBudget(ctx, attempt, language)
@@ -247,7 +248,7 @@ func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt Semantic
 	release := p.cacheLocks.Lock(key)
 	defer release()
 	cacheTTL := p.cfg.CacheTTL
-	if attempt.Class == SearchClassLocation || attempt.Class == SearchClassOrganization {
+	if attempt.Class == contract.SearchClassLocation || attempt.Class == contract.SearchClassOrganization {
 		cacheTTL = p.cfg.StableEntityCacheTTL
 	}
 	if !bypassCache {
@@ -339,7 +340,7 @@ func cacheAnswerProvider(response SemanticAssetSearchResponse) string {
 // the SAME rung after a 429. The retry is bounded: a persistent refusal becomes
 // a miss so the ladder can widen or drop, instead of spending the whole query
 // timeout on the same wall.
-func (p *SemanticSearchBatchPlanner) searchWithBudget(ctx context.Context, attempt SemanticSearchAttempt, language string) (SemanticAssetSearchResponse, int64, bool, error) {
+func (p *SemanticSearchBatchPlanner) searchWithBudget(ctx context.Context, attempt contract.SemanticSearchAttempt, language string) (SemanticAssetSearchResponse, int64, bool, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, p.cfg.QueryTimeout)
 	defer cancel()
 	lane := attempt.Class.ProviderLane()
@@ -384,7 +385,7 @@ func maxLatencyMS(a, b int64) int64 {
 // semanticPlanFingerprint hashes the immutable planning inputs. It is
 // computed once before dispatch: execution mutates unit status and resolved
 // images, and those runtime fields must not change a cache identity.
-func semanticPlanFingerprint(plan *SemanticProductionPlan) string {
+func semanticPlanFingerprint(plan *contract.SemanticProductionPlan) string {
 	if plan == nil {
 		return ""
 	}
@@ -402,7 +403,7 @@ func semanticPlanFingerprint(plan *SemanticProductionPlan) string {
 	return digest.SHA256Bytes([]byte(b.String()))[:16]
 }
 
-func planUnitByCandidate(plan *SemanticProductionPlan, candidateID string) *generationcontract.SemanticProductionUnit {
+func planUnitByCandidate(plan *contract.SemanticProductionPlan, candidateID string) *generationcontract.SemanticProductionUnit {
 	if plan == nil {
 		return nil
 	}

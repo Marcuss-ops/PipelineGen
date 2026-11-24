@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
@@ -19,7 +19,7 @@ import (
 // attachBuildIdentity stamps the durable result with the executable digest and
 // the BrainRust release it consumed. Both fields are observable in the job
 // report, so a result can never be attributed to an unknown binary.
-func attachBuildIdentity(result *GenerateResult) {
+func attachBuildIdentity(result *contract.GenerateResult) {
 	if result == nil {
 		return
 	}
@@ -119,63 +119,27 @@ func vidRushEntityImageOwnsDiscovery(plan mediadomain.MediaPlanSpec) bool {
 	return plan.Extraction.ImageSearchMode != mediadomain.ImageSearchModeDisabled
 }
 
-// EntityImageDecisionOwner names the single flow allowed to decide which
-// entity image is selected and bound for this run. The other flow may still
-// produce diagnostics, but it does not write a competing binding.
-type EntityImageDecisionOwner string
-
 const (
 	// EntityImageDecisionSemanticPlanner is the fallback owner when the media
 	// pipeline does not request an entity-image surface. The semantic plan may
 	// bind verified, content-addressed hits.
-	EntityImageDecisionSemanticPlanner EntityImageDecisionOwner = "semantic_planner"
+	EntityImageDecisionSemanticPlanner contract.EntityImageDecisionOwner = "semantic_planner"
 	// EntityImageDecisionMediaPipeline is the owner whenever the run requests
 	// an entity-image surface. Discovery, verdicts, selection and binding all
 	// belong to the media pipeline/catalog; the semantic plan is a diagnostic
 	// producer and must not bind a second image.
-	EntityImageDecisionMediaPipeline EntityImageDecisionOwner = "media_pipeline"
+	EntityImageDecisionMediaPipeline contract.EntityImageDecisionOwner = "media_pipeline"
 )
 
 // ResolveEntityImageDecisionOwner is the one ownership rule for a run. It is
 // deliberately based on the requested surface, not on whether a provider
 // happened to return a hit: a fallback must not become an owner merely because
 // the primary flow missed.
-func ResolveEntityImageDecisionOwner(plan mediadomain.MediaPlanSpec) EntityImageDecisionOwner {
+func ResolveEntityImageDecisionOwner(plan mediadomain.MediaPlanSpec) contract.EntityImageDecisionOwner {
 	if plan.Extraction.EntityImageSurfaceEnabled() {
 		return EntityImageDecisionMediaPipeline
 	}
 	return EntityImageDecisionSemanticPlanner
-}
-
-// freezeTailedVideoSegments returns the scene's visual segments, appending a
-// synthetic freeze tail when the canonical scene duration outlasts the real
-// clips (a narration longer than its clip). The tail holds the last clip's
-// final frame for the remaining window, so the canonical timeline's video
-// always covers the scene. This is the single owner of the freeze policy —
-// never an implicit black gap guessed by the renderer.
-func freezeTailedVideoSegments(scene ResolvedScene, durationUS int64) []audio.VideoSegment {
-	videos := scene.VideoSegments
-	if len(videos) == 0 && scene.Video.AssetID != "" {
-		videos = []audio.VideoSegment{scene.Video}
-	}
-	if len(videos) == 0 {
-		return nil
-	}
-	var visualEnd int64
-	for _, v := range videos {
-		visualEnd += v.TimelineDurationUS
-	}
-	if visualEnd >= durationUS {
-		return videos
-	}
-	last := videos[len(videos)-1]
-	return append(append([]audio.VideoSegment(nil), videos...), audio.VideoSegment{
-		AssetID:            last.AssetID,
-		SourceInUS:         last.SourceInUS + last.SourceDurationUS, // exclusive source end
-		TimelineOffsetUS:   visualEnd,
-		TimelineDurationUS: durationUS - visualEnd,
-		Freeze:             true,
-	})
 }
 
 // recordSceneStage records one owner-measured (scene, stage) lifecycle on the

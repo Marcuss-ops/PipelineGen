@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -61,7 +62,7 @@ type SceneCommitObserver interface {
 // NewSceneCommitted builds the commit event for a stable scene. Text is read
 // from the scene's source-language entry so the hash identity always reflects
 // the canonical narration, never a translation.
-func NewSceneCommitted(runID string, scene Scene, language Language, revision int64) SceneCommitted {
+func NewSceneCommitted(runID string, scene contract.Scene, language contract.Language, revision int64) SceneCommitted {
 	text := scene.Text[language]
 	return SceneCommitted{
 		RunID:         runID,
@@ -85,7 +86,7 @@ func SceneTextHash(text string) string {
 	return scriptpkg.ComputeCanonicalSegmentTextHash(text)
 }
 
-func (r *Runner) emitSceneCommits(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scenes []Scene) error {
+func (r *Runner) emitSceneCommits(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scenes []contract.Scene) error {
 	for _, scene := range scenes {
 		if err := r.emitSceneCommit(ctx, runID, req, exec, scene); err != nil {
 			return err
@@ -103,7 +104,7 @@ func (r *Runner) emitSceneCommits(ctx context.Context, runID string, req Generat
 // the observer gate: the text stage is a boundary anchor (the per-scene text
 // start is not observable at this seam, so it carries CompletedAt only) and it
 // belongs to the run even when no incremental observer is wired.
-func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scene Scene) error {
+func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scene contract.Scene) error {
 	event := NewSceneCommitted(runID, scene, req.SourceLanguage, int64(exec.Attempt))
 	event.SourceText = committedSegmentSourceText(req, scene)
 	event.ExtractEntities = sceneExtractionToggle(req, scene)

@@ -6,9 +6,10 @@ package jobs
 
 import (
 	"context"
-	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"sync/atomic"
 	"time"
+
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"

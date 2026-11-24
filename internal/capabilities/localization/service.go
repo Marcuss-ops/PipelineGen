@@ -46,13 +46,18 @@ type LocalizeInput struct {
 	// SubtitleFolderID is the per-clip Drive folder for the compiled ASS.
 	SubtitleFolderID       string
 	UploadSubtitleArtifact bool
+	// SkipDrivePublication renders and certifies the local artifact without
+	// uploading it. The result artifacts stay RENDERED; the caller must consume
+	// the local/object-store bytes. FolderID/SubtitleFolderID are not read.
+	SkipDrivePublication bool
 	// Plans are the fingerprinted plans, in priority (editorial) order.
 	Plans []LocalizedClipPlan
 }
 
-// LocalizeResult is the certified outcome of one fan-out: the UPLOADED
-// artifacts (priority order) and the per-language failures (a failed language
-// never aborts the others).
+// LocalizeResult is the certified outcome of one fan-out: the certified
+// artifacts (priority order; UPLOADED, or RENDERED when Drive publication was
+// skipped) and the per-language failures (a failed language never aborts the
+// others).
 type LocalizeResult struct {
 	Artifacts []LocalizedClipArtifact
 	Failures  []TaskResult
@@ -289,6 +294,16 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 					recordFailure(rendered, readyErr)
 					return
 				}
+			}
+			if in.SkipDrivePublication {
+				// The bytes are consumed from the local/object-store path. Keep
+				// the certified RENDERED artifact instead of inventing an
+				// UPLOADED status with no Drive identity.
+				rendered.AdmittedAt = admittedAt
+				rendered.FinishedAt = time.Now().UTC()
+				rendered.QueueWaitMS = admittedAt.Sub(submittedAt).Milliseconds()
+				recordFailure(rendered, nil)
+				return
 			}
 			published, publishErr := s.UploadRendered(ctx, rendered, in.FolderID)
 			finishedAt := time.Now().UTC()

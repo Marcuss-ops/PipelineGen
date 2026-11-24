@@ -5,111 +5,12 @@ import (
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
-
-// OverlayAudit is a compact user-facing projection of the semantic source
-// entities and the overlays selected for rendering. It distinguishes what was
-// detected from what survived planning, and describes phrase length and image
-// or map payloads explicitly.
-type OverlayAudit struct {
-	SchemaVersion       string               `json:"schema_version"`
-	DetectedEntityCount int                  `json:"detected_entity_count"`
-	UniqueEntityCount   int                  `json:"unique_entity_count"`
-	DetectedByType      map[string]int       `json:"detected_by_type"`
-	DetectedEntities    []OverlayAuditEntity `json:"detected_entities,omitempty"`
-	PlannedOverlayCount int                  `json:"planned_overlay_count"`
-	PlannedByKind       map[string]int       `json:"planned_by_kind"`
-	PlannedOverlays     []OverlayAuditItem   `json:"planned_overlays,omitempty"`
-	ImageBindings       []OverlayAuditImage  `json:"image_bindings,omitempty"`
-	Intake              *OverlayAuditIntake  `json:"intake,omitempty"`
-	// EntityImages answers the question the r20minuti report could not: the
-	// image budget was 3, zero images were planned, and nothing said why. It
-	// separates a selected entity that got its image from one that did not,
-	// with a reason derived from the plan and the verified-asset bundle.
-	EntityImages *OverlayAuditEntityImages `json:"entity_images,omitempty"`
-	// OverlayTiming records the intent→plan lineage: how many authored
-	// intents were frozen into a timed item and how many stayed PENDING. A
-	// PENDING intent is not a render instruction, and hiding it inside a
-	// 39-element array made it look like one.
-	OverlayTiming *OverlayAuditOverlayTiming `json:"overlay_timing,omitempty"`
-	// PlanSHA256 is the canonical digest of the sealed plan. Two runs that
-	// claim the same plan identity must publish the same digest; a difference
-	// is evidence of non-determinism, not a benchmark result.
-	PlanSHA256 string `json:"plan_sha256,omitempty"`
-	PlanID     string `json:"plan_id,omitempty"`
-	VideoID    string `json:"video_id,omitempty"`
-}
-
-// OverlayAuditIntake exposes admission limits and drop reasons beside the final plan.
-type OverlayAuditIntake struct {
-	CandidateCount   int            `json:"candidate_count"`
-	CandidatesByKind map[string]int `json:"candidates_by_kind,omitempty"`
-	DroppedByReason  map[string]int `json:"dropped_by_reason,omitempty"`
-	PhraseBudget     int            `json:"phrase_budget"`
-	ImageBudget      int            `json:"image_budget"`
-	MapBudget        int            `json:"map_budget"`
-}
-
-type OverlayAuditEntity struct {
-	ID                     string   `json:"id"`
-	CanonicalEntityID      string   `json:"canonical_entity_id,omitempty"`
-	OccurrenceID           string   `json:"occurrence_id,omitempty"`
-	Type                   string   `json:"type"`
-	Text                   string   `json:"text"`
-	CanonicalText          string   `json:"canonical_text,omitempty"`
-	SceneID                string   `json:"scene_id"`
-	Confidence             float64  `json:"confidence"`
-	SelectedForVideo       bool     `json:"selected_for_video"`
-	ImageRequired          bool     `json:"image_required"`
-	ImageDriveRequired     bool     `json:"image_drive_required,omitempty"`
-	ImageAcquisitionStatus string   `json:"image_acquisition_status,omitempty"`
-	HasVerifiedImage       bool     `json:"has_verified_image"`
-	ImageStatus            string   `json:"image_status,omitempty"`
-	ImageAssetIDs          []string `json:"image_asset_ids,omitempty"`
-	PlannedKinds           []string `json:"planned_kinds,omitempty"`
-	ImageQuery             string   `json:"image_query,omitempty"`
-	ImageCandidateID       string   `json:"image_candidate_id,omitempty"`
-	ImageSelectionReason   string   `json:"image_selection_reason,omitempty"`
-	ImageFailureReason     string   `json:"image_failure_reason,omitempty"`
-	ImageSHA256            string   `json:"image_sha256,omitempty"`
-	ImageDriveFileID       string   `json:"image_drive_file_id,omitempty"`
-	OverlayItemID          string   `json:"overlay_item_id,omitempty"`
-}
-
-// OverlayAuditImage makes the image decision auditable at the plan boundary:
-// which entity the item names, which bytes it would render, and whether the
-// bundle already carried a verified asset. It deliberately does not claim that
-// a frame was visible; that is a render-audit fact, not a plan fact.
-type OverlayAuditImage struct {
-	EntityID    string   `json:"entity_id,omitempty"`
-	Entity      string   `json:"entity,omitempty"`
-	EntityType  string   `json:"entity_type,omitempty"`
-	SceneID     string   `json:"scene_id,omitempty"`
-	OverlayID   string   `json:"overlay_id"`
-	AssetIDs    []string `json:"asset_ids,omitempty"`
-	Status      string   `json:"status"`
-	HasVerified bool     `json:"has_verified_asset"`
-}
-
-type OverlayAuditItem struct {
-	ID         string   `json:"id"`
-	SceneID    string   `json:"scene_id,omitempty"`
-	Kind       string   `json:"kind"`
-	Class      string   `json:"class"`
-	Entity     string   `json:"entity,omitempty"`
-	EntityType string   `json:"entity_type,omitempty"`
-	Text       string   `json:"text,omitempty"`
-	WordCount  int      `json:"word_count,omitempty"`
-	AssetIDs   []string `json:"asset_ids,omitempty"`
-	ImageCount int      `json:"image_count,omitempty"`
-	HasMap     bool     `json:"has_map,omitempty"`
-	StartMS    int64    `json:"start_ms"`
-	EndMS      int64    `json:"end_ms"`
-}
 
 // buildOverlayAuditWithLineage is the ONE entry point: the intent lineage is
 // computed by the same pass that freezes the intents, so the audit describes
@@ -118,11 +19,11 @@ type OverlayAuditItem struct {
 // overlay_timing, which reads as "every intent was fine" instead of "the
 // lineage was not measured". A caller that genuinely has no lineage passes
 // nil, and the field is then omitted rather than fabricated.
-func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan, lineage *overlayIntentLineage) *OverlayAudit {
+func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan, lineage *overlayIntentLineage) *contract.OverlayAudit {
 	if bundle == nil && plan == nil {
 		return nil
 	}
-	audit := &OverlayAudit{
+	audit := &contract.OverlayAudit{
 		SchemaVersion:  "pipelinegen.overlay-audit.v1",
 		DetectedByType: make(map[string]int),
 		PlannedByKind:  make(map[string]int),
@@ -135,7 +36,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 	selectedAssets := make(map[string][]string)
 	verifiedAssetIDs := make(map[string]bool)
 	plannedEntityImages := overlayPlanEntityImageIndex(plan)
-	imageBindings := make([]OverlayAuditImage, 0)
+	imageBindings := make([]contract.OverlayAuditImage, 0)
 	if plan != nil {
 		if encoded, err := json.Marshal(plan); err == nil {
 			audit.PlanSHA256 = digest.SHA256Bytes(encoded)
@@ -143,7 +44,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 		audit.PlanID = plan.PlanID
 		audit.VideoID = plan.VideoID
 		if intake := plan.Intake; intake != nil {
-			audit.Intake = &OverlayAuditIntake{
+			audit.Intake = &contract.OverlayAuditIntake{
 				CandidateCount:   intake.Candidates,
 				CandidatesByKind: intake.CandidatesByKind,
 				DroppedByReason:  intake.DroppedByReason,
@@ -152,14 +53,14 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 				MapBudget:        intake.Budget.MapOverlays,
 			}
 		}
-		audit.PlannedOverlays = make([]OverlayAuditItem, 0, len(plan.Items))
+		audit.PlannedOverlays = make([]contract.OverlayAuditItem, 0, len(plan.Items))
 		for _, item := range plan.Items {
 			kind := strings.ToLower(strings.TrimSpace(item.Kind))
 			if kind == "" {
 				kind = strings.ToLower(strings.TrimSpace(item.TemplateID))
 			}
 			class, words := overlayAuditClass(kind, item.Text)
-			entry := OverlayAuditItem{
+			entry := contract.OverlayAuditItem{
 				ID: item.ID, SceneID: item.SceneID, Kind: kind, Class: class,
 				Text: item.Text, WordCount: words, StartMS: item.StartMs, EndMS: item.EndMs,
 				HasMap: item.Map != nil || strings.Contains(kind, "map"),
@@ -222,7 +123,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 						selectedImageEntity[normalizedAuditSurface(surface)] = true
 					}
 				}
-				imageBindings = append(imageBindings, OverlayAuditImage{
+				imageBindings = append(imageBindings, contract.OverlayAuditImage{
 					EntityID:   entityID,
 					Entity:     firstNonEmptyAuditValue(entry.Entity, item.Text),
 					EntityType: entityType,
@@ -248,7 +149,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 				verifiedAssetIDs[asset.AssetID] = true
 			}
 		}
-		audit.DetectedEntities = make([]OverlayAuditEntity, 0, len(bundle.Entities))
+		audit.DetectedEntities = make([]contract.OverlayAuditEntity, 0, len(bundle.Entities))
 		for _, entity := range bundle.Entities {
 			entityType := strings.ToUpper(strings.TrimSpace(entity.Type))
 			audit.DetectedByType[entityType]++
@@ -299,7 +200,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 				imageSHA256 = planned.SHA256
 				assetIDs = appendUniqueAuditValue(assetIDs, firstNonEmptyAuditValue(planned.AssetID, planned.SHA256))
 			}
-			audit.DetectedEntities = append(audit.DetectedEntities, OverlayAuditEntity{
+			audit.DetectedEntities = append(audit.DetectedEntities, contract.OverlayAuditEntity{
 				ID: entity.EntityID, OccurrenceID: entity.OccurrenceID, Type: entityType,
 				CanonicalEntityID: entity.CanonicalEntityID,
 				Text:              entity.Text, CanonicalText: entity.CanonicalText, SceneID: entity.SceneID,
@@ -329,7 +230,81 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 	audit.PlannedOverlayCount = len(audit.PlannedOverlays)
 	audit.EntityImages = buildOverlayAuditEntityImages(audit, bundle, plan)
 	audit.OverlayTiming = buildOverlayAuditOverlayTiming(lineage)
+	audit.EntityConcordance = buildOverlayAuditEntityConcordance(audit)
 	return audit
+}
+
+// buildOverlayAuditEntityConcordance projects the one contradiction TICKET-49
+// measured: the image contract reported a planned portrait while the intent
+// lineage reported the same identity as never planned. Both sides join on the
+// entity id / canonical id first and fall back to the grounded surface only for
+// a legacy item that carries no identity.
+func buildOverlayAuditEntityConcordance(audit *contract.OverlayAudit) *contract.OverlayAuditEntityConcordance {
+	if audit == nil || audit.OverlayTiming == nil {
+		return nil
+	}
+	out := &contract.OverlayAuditEntityConcordance{}
+	unresolved := make([]contract.OverlayAuditTimingItem, 0, len(audit.OverlayTiming.UnresolvedItems))
+	for _, item := range audit.OverlayTiming.UnresolvedItems {
+		switch item.Reason {
+		case OverlayIntentReasonEntityNotPlanned, OverlayIntentReasonTemplateNotMaterialized:
+			unresolved = append(unresolved, item)
+		}
+	}
+	seen := make(map[string]struct{}, len(audit.DetectedEntities))
+	for _, entity := range audit.DetectedEntities {
+		if !strings.EqualFold(strings.TrimSpace(entity.ImageStatus), "planned") {
+			continue
+		}
+		key := auditEntityImageGroupKey(entity)
+		if key != "" {
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+		}
+		out.Checked++
+		for _, item := range unresolved {
+			if !auditIntentEntityMatches(item, entity) {
+				continue
+			}
+			out.Mismatched++
+			if len(out.Mismatches) < maxAuditMissingEntities {
+				out.Mismatches = append(out.Mismatches, contract.OverlayAuditEntityConflict{
+					EntityID: entity.ID,
+					Entity:   firstNonEmptyAuditValue(entity.Text, entity.CanonicalText),
+					SceneID:  entity.SceneID,
+					Reason:   item.Reason,
+				})
+			}
+			break
+		}
+	}
+	return out
+}
+
+// auditIntentEntityMatches joins an unresolved intent to a detected entity by
+// identity first, then by the grounded surface for legacy items without ids.
+func auditIntentEntityMatches(item contract.OverlayAuditTimingItem, entity contract.OverlayAuditEntity) bool {
+	entityKeys := map[string]struct{}{}
+	for _, key := range []string{entity.ID, entity.CanonicalEntityID, entity.OccurrenceID} {
+		if key = strings.TrimSpace(key); key != "" {
+			entityKeys[key] = struct{}{}
+		}
+	}
+	for _, key := range []string{item.EntityID, item.CanonicalEntityID} {
+		if key = strings.TrimSpace(key); key != "" {
+			if _, ok := entityKeys[key]; ok {
+				return true
+			}
+		}
+	}
+	surface := normalizedAuditSurface(item.Entity)
+	if surface == "" {
+		return false
+	}
+	return surface == normalizedAuditSurface(entity.Text) ||
+		surface == normalizedAuditSurface(entity.CanonicalText)
 }
 
 // overlayAuditIdentityKeys returns the stable keys an audit entry may join on:

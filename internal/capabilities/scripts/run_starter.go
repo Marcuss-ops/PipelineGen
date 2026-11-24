@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -54,7 +55,7 @@ func NewGenerationRunStarterWithRepo(runner *Runner, repo RunRepository) *Genera
 //
 // Returns the run so the handler can include current_stage in the
 // 202 Accepted response.
-func (s *GenerationRunStarter) Start(ctx context.Context, req GenerateRequest) (*GenerationRun, error) {
+func (s *GenerationRunStarter) Start(ctx context.Context, req contract.GenerateRequest) (*GenerationRun, error) {
 	// Replays must reuse the existing run just as the submission service
 	// reuses the existing operation/job. The optional interface keeps the
 	// domain port backwards-compatible with lightweight test repositories.
@@ -91,7 +92,7 @@ func (s *GenerationRunStarter) Start(ctx context.Context, req GenerateRequest) (
 	// The runner reads the run from repo, sets RUNNING status,
 	// and executes stages with checkpoint persistence after each.
 	if s.runner != nil {
-		go func(runID string, request GenerateRequest) {
+		go func(runID string, request contract.GenerateRequest) {
 			defer func() {
 				if rec := recover(); rec != nil {
 					if err := s.failRunOnPanic(runID, rec); err != nil && s.runner.log != nil {

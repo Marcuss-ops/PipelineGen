@@ -1,8 +1,9 @@
 package cliprender
 
 // worker_result.go contains the result projection helpers used by the
-// clip.render worker. Extracted from worker.go to keep the main handler
-// file under the 600-LOC strict gate.
+// clip.render worker. The projection is split by result block so each block
+// owns one contract: identity/materialization, contract, plan, preparation,
+// media, subtitles, render, overlay provenance and publication.
 
 import (
 	"context"
@@ -20,10 +21,20 @@ import (
 // Master. There is no composited-overlay projection: the overlay travels in
 // the sealed plan and is composited by the render boundary itself.
 func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1, subtitleArtifact *SubtitleArtifact, outcome *RenderOutcome, published *RenderPublishResult) job.Result {
-	jobID := ""
-	if j != nil {
-		jobID = j.ID
-	}
+	req, prepared = normalizeRenderedInputs(req, prepared)
+	result := baseRenderedResult(j, req, prepared, plan)
+	applyRenderedContract(result, prepared)
+	applyRenderedPlan(result, plan)
+	applyRenderedTimings(result, prepared)
+	applyRenderedMedia(result, prepared)
+	applyRenderedSubtitles(result, subtitleArtifact)
+	applyRenderedOutcome(result, outcome)
+	applyRenderedOverlay(result, req, plan)
+	applyRenderedPublication(result, published)
+	return result
+}
+
+func normalizeRenderedInputs(req *RenderRequest, prepared *Prepared) (*RenderRequest, *Prepared) {
 	if req == nil {
 		req = &RenderRequest{Transcript: &TranscriptSpec{}}
 	} else if req.Transcript == nil {
@@ -38,12 +49,15 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 	if prepared.Source == nil {
 		prepared.Source = &MaterializedAsset{}
 	}
-	// materializationResult is nil-safe; no watermark initialization needed.
-	backgroundMode := ""
-	if plan.Background != nil {
-		backgroundMode = plan.Background.Mode
+	return req, prepared
+}
+
+func baseRenderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan ClipRenderPlanV1) job.Result {
+	jobID := ""
+	if j != nil {
+		jobID = j.ID
 	}
-	result := job.Result{
+	return job.Result{
 		"job_id":          jobID,
 		"source_asset_id": req.SourceAssetID,
 		"phase":           "rendered",
@@ -63,172 +77,204 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 			"background": materializationResult(prepared.Background),
 		},
 	}
-	// The resolved contract is reported only when a contract was actually
-	// resolved. A deterministic cache hit renders nothing, so it has no
-	// contract of its own: the historical synthesis put the BACKEND NAME in
-	// contract_id and emitted an all-zero contract block, i.e. a wire shape
-	// that claims a media contract the renderer was never held to. The cached
-	// asset id is the only provenance this job can honestly report.
+}
+
+// The resolved contract is reported only when a contract was actually
+// resolved. A deterministic cache hit renders nothing, so it has no contract
+// of its own: the historical synthesis put the BACKEND NAME in contract_id and
+// emitted an all-zero contract block, i.e. a wire shape that claims a media
+// contract the renderer was never held to.
+func applyRenderedContract(result job.Result, prepared *Prepared) {
+	if prepared == nil {
+		return
+	}
 	if prepared.Contract != nil && prepared.Contract.ID != "" {
 		result["contract_id"] = prepared.Contract.ID
 		result["contract"] = ContractWireBlock(prepared.Contract)
 	}
-	// A sealed plan block is reported only when a plan was actually sealed. A
-	// deterministic cache hit reuses another render's artifact: it has no plan
-	// of its own, and the historical synthesis exposed a REQUEST fingerprint in
-	// the plan_sha256 slot, i.e. a digest that identifies no plan at all.
-	if plan.Version != "" || plan.PlanSHA256 != "" {
-		result["plan"] = map[string]any{
-			"version":     plan.Version,
-			"plan_sha256": plan.PlanSHA256,
-			"output_path": plan.OutputPath,
-			"audio_mode":  plan.Audio.Mode,
-			"background":  backgroundMode,
-		}
+}
+
+// A sealed plan block is reported only when a plan was actually sealed. A
+// deterministic cache hit reuses another render's artifact: it has no plan of
+// its own, and the historical synthesis exposed a REQUEST fingerprint in the
+// plan_sha256 slot, i.e. a digest that identifies no plan at all.
+func applyRenderedPlan(result job.Result, plan ClipRenderPlanV1) {
+	if plan.Version == "" && plan.PlanSHA256 == "" {
+		return
 	}
-	// Preparation timings are reported only when a preparation phase actually
-	// ran. A cache hit prepares nothing, and an all-zero block would report a
-	// measured zero for work nobody did (the package-wide rule is
-	// NOT_INSTRUMENTED, never a fabricated zero).
-	if len(prepared.Timings.Phases) > 0 || prepared.Timings.TotalWallMS != 0 || prepared.Timings.TotalWorkMS != 0 {
-		result["timings"] = map[string]any{
-			"total_wall_ms": prepared.Timings.TotalWallMS,
-			"total_work_ms": prepared.Timings.TotalWorkMS,
-			"parallel":      prepared.Timings.Parallel,
-			"phases":        prepared.Timings.Phases,
-		}
+	backgroundMode := ""
+	if plan.Background != nil {
+		backgroundMode = plan.Background.Mode
 	}
+	result["plan"] = map[string]any{
+		"version":     plan.Version,
+		"plan_sha256": plan.PlanSHA256,
+		"output_path": plan.OutputPath,
+		"audio_mode":  plan.Audio.Mode,
+		"background":  backgroundMode,
+	}
+}
+
+// Preparation timings are reported only when a preparation phase actually ran.
+// A cache hit prepares nothing, and an all-zero block would report a measured
+// zero for work nobody did (the package-wide rule is NOT_INSTRUMENTED, never a
+// fabricated zero).
+func applyRenderedTimings(result job.Result, prepared *Prepared) {
+	if len(prepared.Timings.Phases) == 0 && prepared.Timings.TotalWallMS == 0 && prepared.Timings.TotalWorkMS == 0 {
+		return
+	}
+	result["timings"] = map[string]any{
+		"total_wall_ms": prepared.Timings.TotalWallMS,
+		"total_work_ms": prepared.Timings.TotalWorkMS,
+		"parallel":      prepared.Timings.Parallel,
+		"phases":        prepared.Timings.Phases,
+	}
+}
+
+func applyRenderedMedia(result job.Result, prepared *Prepared) {
 	if prepared.Watermark != nil {
 		result["watermark"] = materializationResult(prepared.Watermark)
 	}
 	if prepared.Background != nil {
 		result["background"] = materializationResult(prepared.Background)
 	}
-	if subtitleArtifact != nil {
-		cacheFacts := subtitleCacheFactsFor(subtitleArtifact.LocalPath)
-		subtitles := map[string]any{
-			"path":               subtitleArtifact.LocalPath,
-			"sha256":             subtitleArtifact.SHA256,
-			"mode":               subtitleArtifact.Mode,
-			"content_cache_hit":  cacheFacts.ContentCacheHit,
-			"artifact_cache_hit": cacheFacts.ArtifactCacheHit,
-		}
-		if !cacheFacts.Measured {
-			delete(subtitles, "content_cache_hit")
-			delete(subtitles, "artifact_cache_hit")
-		}
-		result["subtitles"] = subtitles
-	}
-	if outcome != nil {
-		renderBlock := map[string]any{
-			"output_path":  outcome.OutputPath,
-			"size_bytes":   outcome.SizeBytes,
-			"duration_sec": outcome.DurationSec,
-			"width":        outcome.Width,
-			"height":       outcome.Height,
-			"fps_num":      outcome.FPSNum,
-			"fps_den":      outcome.FPSDen,
-			"backend":      outcome.Backend,
-			// Read-only compatibility projection of the canonical MetricsV2
-			// report — same measured values, never a second computation.
-			// ffmpeg_ms has no dedicated V2 field: it is the raw Rust boundary
-			// scalar (the FFmpeg-fallback backend maps it onto
-			// metrics_v2.composite_ms).
-			"ffmpeg_ms":           outcome.FFmpegMS,
-			"audio_copy_eligible": outcome.AudioCopyEligible,
-			"audio_encode_passes": outcome.AudioEncodePasses,
-			"subtitle_raster_cpu": outcome.SubtitleRasterCPU,
-		}
+}
 
-		if outcome.Metrics != nil {
-			// render_wall_ms lives only in the canonical metrics_v2 report.
-			// Mirroring it in render.* made one number look like two (CR-21).
-			renderBlock["metrics_v2"] = outcome.Metrics
-		}
-		// The raw deep-profile timing sidecar reference preserved by
-		// RenderingGen: a small content-addressed reference on the job result
-		// so post-mortems can fetch the full per-frame profile (the array
-		// itself is never inlined). Present only when the sidecar was
-		// preserved.
-		if outcome.ChrononTimingStorageKey != "" || outcome.ChrononTimingURL != "" {
-			renderBlock["chronon_timing"] = map[string]any{
-				"storage_key":  outcome.ChrononTimingStorageKey,
-				"url":          outcome.ChrononTimingURL,
-				"sha256":       outcome.ChrononTimingSHA256,
-				"size_bytes":   outcome.ChrononTimingSizeBytes,
-				"content_type": outcome.ChrononTimingContentType,
-				"source":       outcome.ChrononTimingSource,
-				"read_bytes":   outcome.ChrononTimingReadBytes,
-				"fetch_ms":     outcome.ChrononTimingFetchMS,
-			}
-		}
-		result["render"] = renderBlock
+func applyRenderedSubtitles(result job.Result, subtitleArtifact *SubtitleArtifact) {
+	if subtitleArtifact == nil {
+		return
 	}
-	if len(req.Overlays) > 0 {
-		// The overlay is composited inside the render, so the plan is the
-		// authority for WHERE every segment landed (each window is part of the
-		// plan digest) and the render block is the authority for the output
-		// bytes. One entry per declared lineage keeps the provenance of a
-		// multi-item clip auditable instead of collapsing it to the first.
-		provenance := make([]map[string]any, 0, len(req.Overlays))
-		for i, lineage := range req.Overlays {
-			entry := map[string]any{
-				"render_job_id":         lineage.RenderJobID,
-				"plan_fingerprint":      lineage.PlanFingerprint,
-				"render_key":            lineage.RenderKey,
-				"source_video_asset_id": lineage.SourceVideoAssetID,
-				"start_us":              lineage.StartUS,
-				"end_us":                lineage.EndUS,
-			}
-			if plan.Overlay != nil && i < len(plan.Overlay.Segments) {
-				seg := plan.Overlay.Segments[i]
-				entry["start_ms"] = seg.StartMS
-				entry["end_ms"] = seg.EndMS
-				entry["segment_sha256"] = seg.SHA256
-			}
-			provenance = append(provenance, entry)
-		}
-		// single_pass is a property of the composition, not of one segment: the
-		// clip is encoded once with every declared overlay inside it.
-		result["overlay"] = map[string]any{
-			"single_pass": true,
-			"segments":    provenance,
-		}
+	cacheFacts := subtitleCacheFactsFor(subtitleArtifact.LocalPath)
+	subtitles := map[string]any{
+		"path":               subtitleArtifact.LocalPath,
+		"sha256":             subtitleArtifact.SHA256,
+		"mode":               subtitleArtifact.Mode,
+		"content_cache_hit":  cacheFacts.ContentCacheHit,
+		"artifact_cache_hit": cacheFacts.ArtifactCacheHit,
 	}
-	if published != nil {
-		result["asset"] = map[string]any{
-			"asset_id":      published.AssetID,
-			"drive_file_id": published.DriveFileID,
-			"drive_link":    published.DriveLink,
-			"drive_pending": published.DrivePending,
-			"delivery_status": func() string {
-				if published.DeliveryStatus != "" {
-					return published.DeliveryStatus
-				}
-				if published.DrivePending {
-					return "pending"
-				}
-				return "completed"
-			}(),
-			"publication_status": func() string {
-				switch {
-				case published.Reused:
-					// A deterministic cache hit: another render published this
-					// asset and this job reused its certified locator, so it has
-					// no delivery outcome of its own to report.
-					return "REUSED"
-				case published.DrivePending:
-					return "PENDING"
-				default:
-					return "PUBLISHED"
-				}
-			}(),
-			"content_url":  published.ContentURL,
-			"size_bytes":   published.SizeBytes,
-			"sidecar_link": published.SidecarLink,
+	if !cacheFacts.Measured {
+		delete(subtitles, "content_cache_hit")
+		delete(subtitles, "artifact_cache_hit")
+	}
+	result["subtitles"] = subtitles
+}
+
+func applyRenderedOutcome(result job.Result, outcome *RenderOutcome) {
+	if outcome == nil {
+		return
+	}
+	renderBlock := map[string]any{
+		"output_path":  outcome.OutputPath,
+		"size_bytes":   outcome.SizeBytes,
+		"duration_sec": outcome.DurationSec,
+		"width":        outcome.Width,
+		"height":       outcome.Height,
+		"fps_num":      outcome.FPSNum,
+		"fps_den":      outcome.FPSDen,
+		"backend":      outcome.Backend,
+		// Read-only compatibility projection of the canonical MetricsV2
+		// report — same measured values, never a second computation.
+		// ffmpeg_ms has no dedicated V2 field: it is the raw Rust boundary
+		// scalar (the FFmpeg-fallback backend maps it onto
+		// metrics_v2.composite_ms).
+		"ffmpeg_ms":           outcome.FFmpegMS,
+		"audio_copy_eligible": outcome.AudioCopyEligible,
+		"audio_encode_passes": outcome.AudioEncodePasses,
+		"subtitle_raster_cpu": outcome.SubtitleRasterCPU,
+	}
+
+	if outcome.Metrics != nil {
+		// render_wall_ms lives only in the canonical metrics_v2 report.
+		// Mirroring it in render.* made one number look like two (CR-21).
+		renderBlock["metrics_v2"] = outcome.Metrics
+	}
+	// The raw deep-profile timing sidecar reference preserved by
+	// RenderingGen: a small content-addressed reference on the job result so
+	// post-mortems can fetch the full per-frame profile (the array itself is
+	// never inlined). Present only when the sidecar was preserved.
+	if outcome.ChrononTimingStorageKey != "" || outcome.ChrononTimingURL != "" {
+		renderBlock["chronon_timing"] = map[string]any{
+			"storage_key":  outcome.ChrononTimingStorageKey,
+			"url":          outcome.ChrononTimingURL,
+			"sha256":       outcome.ChrononTimingSHA256,
+			"size_bytes":   outcome.ChrononTimingSizeBytes,
+			"content_type": outcome.ChrononTimingContentType,
+			"source":       outcome.ChrononTimingSource,
+			"read_bytes":   outcome.ChrononTimingReadBytes,
+			"fetch_ms":     outcome.ChrononTimingFetchMS,
 		}
 	}
-	return result
+	result["render"] = renderBlock
+}
+
+func applyRenderedOverlay(result job.Result, req *RenderRequest, plan ClipRenderPlanV1) {
+	if len(req.Overlays) == 0 {
+		return
+	}
+	// The overlay is composited inside the render, so the plan is the
+	// authority for WHERE every segment landed (each window is part of the
+	// plan digest) and the render block is the authority for the output
+	// bytes. One entry per declared lineage keeps the provenance of a
+	// multi-item clip auditable instead of collapsing it to the first.
+	provenance := make([]map[string]any, 0, len(req.Overlays))
+	for i, lineage := range req.Overlays {
+		entry := map[string]any{
+			"render_job_id":         lineage.RenderJobID,
+			"plan_fingerprint":      lineage.PlanFingerprint,
+			"render_key":            lineage.RenderKey,
+			"source_video_asset_id": lineage.SourceVideoAssetID,
+			"start_us":              lineage.StartUS,
+			"end_us":                lineage.EndUS,
+		}
+		if plan.Overlay != nil && i < len(plan.Overlay.Segments) {
+			seg := plan.Overlay.Segments[i]
+			entry["start_ms"] = seg.StartMS
+			entry["end_ms"] = seg.EndMS
+			entry["segment_sha256"] = seg.SHA256
+		}
+		provenance = append(provenance, entry)
+	}
+	// single_pass is a property of the composition, not of one segment: the
+	// clip is encoded once with every declared overlay inside it.
+	result["overlay"] = map[string]any{
+		"single_pass": true,
+		"segments":    provenance,
+	}
+}
+
+func applyRenderedPublication(result job.Result, published *RenderPublishResult) {
+	if published == nil {
+		return
+	}
+	deliveryStatus := published.DeliveryStatus
+	if deliveryStatus == "" {
+		if published.DrivePending {
+			deliveryStatus = "pending"
+		} else {
+			deliveryStatus = "completed"
+		}
+	}
+	publicationStatus := "PUBLISHED"
+	switch {
+	case published.Reused:
+		// A deterministic cache hit: another render published this asset and
+		// this job reused its certified locator, so it has no delivery
+		// outcome of its own to report.
+		publicationStatus = "REUSED"
+	case published.DrivePending:
+		publicationStatus = "PENDING"
+	}
+	result["asset"] = map[string]any{
+		"asset_id":           published.AssetID,
+		"drive_file_id":      published.DriveFileID,
+		"drive_link":         published.DriveLink,
+		"drive_pending":      published.DrivePending,
+		"delivery_status":    deliveryStatus,
+		"publication_status": publicationStatus,
+		"content_url":        published.ContentURL,
+		"size_bytes":         published.SizeBytes,
+		"sidecar_link":       published.SidecarLink,
+	}
 }
 
 // SubtitleCacheFacts records cache ownership at both levels: generated ASS

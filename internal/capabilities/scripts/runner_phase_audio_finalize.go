@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -27,7 +28,7 @@ import (
 
 // runAudioFinalizePhase projects the editing timeline from the frozen result and
 // closes the execution step the compile phase opened.
-func (r *Runner) runAudioFinalizePhase(ctx context.Context, runID string, exec ExecutionContext, state audioCompileState, result *GenerateResult) bool {
+func (r *Runner) runAudioFinalizePhase(ctx context.Context, runID string, exec ExecutionContext, state audioCompileState, result *contract.GenerateResult) bool {
 	if state.AudioSkipped {
 		if err := r.skipExecutionStep(ctx, exec, state.Step); err != nil {
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
@@ -64,11 +65,11 @@ func (r *Runner) runAudioFinalizePhase(ctx context.Context, runID string, exec E
 // publishFinalAudioNeeded reports whether the legacy Drive audio publisher is
 // needed. Final jobs publish the certified local audio bytes directly to the
 // HTTPS Objectstore during handoff, so they never need this Drive round-trip.
-func publishFinalAudioNeeded(req GenerateRequest, r *Runner) bool {
+func publishFinalAudioNeeded(req contract.GenerateRequest, r *Runner) bool {
 	return false
 }
 
-func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, result *GenerateResult) bool {
+func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req contract.GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, result *contract.GenerateResult) bool {
 	if result == nil || result.FinalAudio == nil || r.finalAudioPublisher == nil {
 		return true
 	}
@@ -129,7 +130,7 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	return true
 }
 
-func audioOutputFilename(outputName string, language Language) string {
+func audioOutputFilename(outputName string, language contract.Language) string {
 	name := strings.TrimSpace(outputName)
 	if name == "" {
 		name = "voiceover"

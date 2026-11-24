@@ -3,13 +3,14 @@ package scriptgeneration
 import (
 	"context"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // runExecutionPhases owns the ordered business pipeline. Keeping the phase
 // sequence separate from Runner wiring makes the resume/stop contract visible
 // and keeps ExecuteWithContext small.
-func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext) {
+func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext) {
 	e := &executionRun{
 		r:     r,
 		ctx:   ctx,

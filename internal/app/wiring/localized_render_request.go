@@ -59,9 +59,15 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	if err != nil {
 		return localizedRenderRequest{}, err
 	}
-	destination, subtitle, err := a.resolveRenderFolders(ctx, in, identity.clipID, string(identity.targetLang))
-	if err != nil {
-		return localizedRenderRequest{}, err
+	// A final job on the object-store path never reads a Drive identity for
+	// this clip, so resolving (and creating) its Drive folder hierarchy is
+	// pure latency. The render still needs its local destination.
+	var destination, subtitle string
+	if !in.SkipDrivePublication {
+		destination, subtitle, err = a.resolveRenderFolders(ctx, in, identity.clipID, string(identity.targetLang))
+		if err != nil {
+			return localizedRenderRequest{}, err
+		}
 	}
 	request := localization.LocalizationRequest{RenderConcurrency: a.cfg.Concurrency, Languages: []localization.LanguageRequest{{Language: identity.targetLang, Priority: 0}}}
 	request.Normalize()
@@ -265,7 +271,8 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		AssetID: built.identity.assetID, JobID: in.RunID, SceneID: in.SceneID,
 		ClipID: built.identity.clipID, SourceLanguage: built.identity.sourceLang,
 		Request: built.request, FolderID: built.destinationFolder, SubtitleFolderID: built.subtitleFolder,
-		UploadSubtitleArtifact: built.generatedSubtitles,
+		UploadSubtitleArtifact: built.generatedSubtitles && !in.SkipDrivePublication,
+		SkipDrivePublication:   in.SkipDrivePublication,
 		Watermark:              built.watermark, WatermarkSpec: built.watermarkSpec,
 		Background: built.background, BackgroundMode: built.backgroundMode, BackgroundKind: built.backgroundKind,
 		Overlays:               built.overlays,
@@ -419,6 +426,23 @@ func (a *localizedRenderEnqueuerAdapter) commitLocalizedRenderAsset(ctx context.
 		return "", fmt.Errorf("resolve rendered localization taxonomy: %w", err)
 	}
 	searchText := strings.Join([]string{artifact.ClipID, artifact.Language, strings.TrimSpace(in.Text)}, " ")
+	location := asset.LocationCommit{
+		Kind: "drive", Provider: "google_drive", ExternalID: artifact.DriveFileID,
+		WebViewLink: artifact.DriveLink, MimeType: "video/mp4", FileSizeBytes: artifact.SizeBytes,
+		IsPrimary: true,
+	}
+	if in.SkipDrivePublication {
+		// No Drive publication happened: the content address is the address.
+		storageKey := strings.ToLower(strings.TrimSpace(artifact.StorageKey))
+		if storageKey == "" {
+			storageKey = sha
+		}
+		location = asset.LocationCommit{
+			Kind: string(asset.LocationKindObjectStorage), Provider: "objectstore", ExternalID: storageKey,
+			URI: artifact.ArtifactURL, MimeType: "video/mp4", FileSizeBytes: artifact.SizeBytes,
+			ContentSHA256: sha, IsPrimary: true,
+		}
+	}
 	_, err = a.committer.CommitAsset(ctx, persistence.AssetCommitRequest{
 		AssetID:        assetID,
 		Source:         "script.localized_render",
@@ -453,11 +477,7 @@ func (a *localizedRenderEnqueuerAdapter) commitLocalizedRenderAsset(ctx context.
 				"delivery_status": "completed",
 			},
 		},
-		Locations: []asset.LocationCommit{{
-			Kind: "drive", Provider: "google_drive", ExternalID: artifact.DriveFileID,
-			WebViewLink: artifact.DriveLink, MimeType: "video/mp4", FileSizeBytes: artifact.SizeBytes,
-			IsPrimary: true,
-		}},
+		Locations:      []asset.LocationCommit{location},
 		EmitIndexEvent: true,
 	})
 	if err != nil {

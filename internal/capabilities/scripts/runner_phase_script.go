@@ -8,13 +8,14 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 
-func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
+func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req contract.GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*contract.GenerateResult, bool) {
 	// Internal callers may construct GenerateRequest directly instead of using
 	// BuildGenerateRequest. Preserve the same Drive grouping contract there.
 	applyDefaultSceneRenderSubfolder(&req)
@@ -24,7 +25,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, startErr)
 		return nil, false
 	}
-	var result *GenerateResult
+	var result *contract.GenerateResult
 	scriptSkipped := stageSkipped(resumeIdx, StageGeneratingSceneText)
 	if !scriptSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingSceneText); err != nil {
@@ -35,12 +36,12 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		r.markGenerationStart(runID, time.Now())
 		hb := r.startStageHeartbeat(runID, StageGeneratingSceneText)
 		defer hb.close()
-		var scenes []Scene
+		var scenes []contract.Scene
 		var genErr error
 		var generatedTrace scriptpkg.SourceTrace
 		streamed := false
-		var streamTranslationMetrics *TranslationPipelineMetrics
-		var streamAudioMetrics *AudioPipelineMetrics
+		var streamTranslationMetrics *contract.TranslationPipelineMetrics
+		var streamAudioMetrics *contract.AudioPipelineMetrics
 		hb.setOp("prepare_scene_text_generation")
 		path := r.prepareSceneTextGeneration(ctx, runID, req, routing, exec)
 		ready := path.ready
@@ -132,7 +133,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return nil, false
 		}
-		result = &GenerateResult{
+		result = &contract.GenerateResult{
 			SourceLanguage:           req.SourceLanguage,
 			SourceTrace:              generatedTrace,
 			Render:                   req.Render,
@@ -251,14 +252,14 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 
 	// Nil guard: result must be non-nil before downstream stages.
 	if result == nil {
-		result = &GenerateResult{SourceLanguage: req.SourceLanguage, Scenes: []Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup, EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan)}
+		result = &contract.GenerateResult{SourceLanguage: req.SourceLanguage, Scenes: []contract.Scene{}, Title: req.Title, OutputName: req.OutputName, VoiceoverGroup: req.ScriptParams.VoiceoverGroup, EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan)}
 	}
 	attachBuildIdentity(result)
 
 	return result, true
 }
 
-func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, result *GenerateResult, scenes []Scene, hb *stageHeartbeat) bool {
+func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, result *contract.GenerateResult, scenes []contract.Scene, hb *stageHeartbeat) bool {
 	if req.Source.Type == SourceClips && req.Render.Enabled {
 		hb.setOp("localized_render_fanout")
 		renderBatchStarted := time.Now()
@@ -301,17 +302,17 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 							defer func() { <-sem }()
 							renderStarted := time.Now()
 							if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-								RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
+								RunID: runID, ParentJobID: exec.JobID, FinalJob: req.FinalJob, SceneID: scene.ID, SceneIndex: scene.Index,
 								JobID:    exec.JobID,
 								Language: lang, Text: text,
 								SourceLanguage: req.SourceLanguage, SourceText: sourceText,
 								ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
 								ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
 								ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
-								OnRenderReady: func(rendered LocalizedRenderResult) error {
+								OnRenderReady: func(rendered contract.LocalizedRenderResult) error {
 									return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
 								},
-								OnRendered: func(rendered LocalizedRenderResult) error {
+								OnRendered: func(rendered contract.LocalizedRenderResult) error {
 									r.localizedRenderMu.Lock()
 									applyLocalizedRenderLinkLocked(result, rendered)
 									result.LocalizedRenders = append(result.LocalizedRenders, rendered)
@@ -325,7 +326,7 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 									}
 									return nil
 								},
-								OnFailed: func(failure LocalizedRenderFailure) error {
+								OnFailed: func(failure contract.LocalizedRenderFailure) error {
 									result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
 									result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
 									result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
@@ -380,10 +381,10 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 							ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
 							ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
 							ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
-							OnRenderReady: func(rendered LocalizedRenderResult) error {
+							OnRenderReady: func(rendered contract.LocalizedRenderResult) error {
 								return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
 							},
-							OnRendered: func(rendered LocalizedRenderResult) error {
+							OnRendered: func(rendered contract.LocalizedRenderResult) error {
 								r.localizedRenderMu.Lock()
 								applyLocalizedRenderLinkLocked(result, rendered)
 								result.LocalizedRenders = append(result.LocalizedRenders, rendered)
@@ -400,7 +401,7 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 								}
 								return nil
 							},
-							OnFailed: func(failure LocalizedRenderFailure) error {
+							OnFailed: func(failure contract.LocalizedRenderFailure) error {
 								result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
 								result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
 								result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
@@ -433,7 +434,7 @@ func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, 
 	return true
 }
 
-func applyDefaultSceneRenderSubfolder(req *GenerateRequest) {
+func applyDefaultSceneRenderSubfolder(req *contract.GenerateRequest) {
 	if !req.Render.Enabled || strings.TrimSpace(req.Render.DriveSubfolderName) != "" {
 		return
 	}
@@ -442,11 +443,11 @@ func applyDefaultSceneRenderSubfolder(req *GenerateRequest) {
 
 // setSceneRenderExpectations records the canonical render-unit promise when
 // the local Chronon render lane is active.
-func setSceneRenderExpectations(req GenerateRequest, scenes []Scene, result *GenerateResult) {
+func setSceneRenderExpectations(req contract.GenerateRequest, scenes []contract.Scene, result *contract.GenerateResult) {
 	if req.Source.Type != SourceClips || !req.Render.Enabled {
 		return
 	}
-	result.RenderMetrics = &RenderMetrics{Concurrency: req.Render.RenderConcurrency}
+	result.RenderMetrics = &contract.RenderMetrics{Concurrency: req.Render.RenderConcurrency}
 	if sceneRenderDispatchSealed {
 		return
 	}
@@ -458,7 +459,7 @@ func setSceneRenderExpectations(req GenerateRequest, scenes []Scene, result *Gen
 // applySceneEditorialEnrichment computes the optional Rust editorial products
 // and applies them to the result. Failure is observable but never fatal: a
 // missing NLP worker must not cost the caller the video.
-func (r *Runner) applySceneEditorialEnrichment(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, scenes []Scene, text string, hb *stageHeartbeat) {
+func (r *Runner) applySceneEditorialEnrichment(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, scenes []contract.Scene, text string, hb *stageHeartbeat) {
 	if _, enabled := r.sceneSemanticAnalyzer.(SceneSemanticEditorialBatchAnalyzer); !enabled || strings.TrimSpace(text) == "" {
 		return
 	}
@@ -488,7 +489,7 @@ func (r *Runner) applySceneEditorialEnrichment(ctx context.Context, runID string
 	result.SemanticSearchFeedback = out.searchFeedback
 }
 
-func (r *Runner) attachSceneClipInputAssets(ctx context.Context, runID string, exec ExecutionContext, step ExecutionStep, result *GenerateResult) bool {
+func (r *Runner) attachSceneClipInputAssets(ctx context.Context, runID string, exec ExecutionContext, step ExecutionStep, result *contract.GenerateResult) bool {
 	ordinal := 0
 	for _, scene := range result.Scenes {
 		if scene.Clip == nil {
@@ -513,7 +514,7 @@ const semanticSearchBatchTimeout = 5 * time.Minute
 // records the measured outcomes and publishes the report on the result. It is
 // fail-soft: a provider outage degrades to `skip_visual` feedback (and a
 // warning), never to a failed generation.
-func (r *Runner) executeSemanticSearchBatch(ctx context.Context, language Language, result *GenerateResult, forceRefresh bool) {
+func (r *Runner) executeSemanticSearchBatch(ctx context.Context, language contract.Language, result *contract.GenerateResult, forceRefresh bool) {
 	bypassCache := forceRefresh
 	if r == nil || r.semanticSearchPlanner == nil || result == nil || result.SemanticProductionPlan == nil {
 		return

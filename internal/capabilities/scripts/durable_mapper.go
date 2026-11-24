@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -10,7 +11,7 @@ import (
 // when the durable runner returns the capability result shape.  The two
 // result types intentionally differ, so JSON round-tripping one into the
 // other silently loses scenes; keep this translation explicit.
-func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
+func DurableResultToDomain(in *contract.GenerateResult) *domain.GenerationResult {
 	if in == nil {
 		return nil
 	}
@@ -42,7 +43,7 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 	out.Output.SpecScene.Scenes = make([]domain.SpecScene, 0, len(in.Scenes))
 	lang := string(inLanguage(in))
 	for _, scene := range in.Scenes {
-		text := scene.Text[Language(lang)]
+		text := scene.Text[contract.Language(lang)]
 		if text == "" && !scene.ExecutionMode.IsFixedMedia() {
 			for _, candidate := range scene.Text {
 				text = candidate
@@ -65,7 +66,7 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 		}
 		clips := scene.Clips
 		if len(clips) == 0 && scene.Clip != nil {
-			clips = []*ClipReference{scene.Clip}
+			clips = []*contract.ClipReference{scene.Clip}
 		}
 		for _, clip := range clips {
 			if clip == nil {
@@ -81,7 +82,7 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 			stock := *scene.Stock
 			ds.Bindings.Stock = &stock
 		}
-		if vo, ok := scene.Voiceover[Language(lang)]; ok {
+		if vo, ok := scene.Voiceover[contract.Language(lang)]; ok {
 			ds.Bindings.Voiceover = durableVoiceoverBinding(lang, vo)
 		} else {
 			for _, vo := range scene.Voiceover {
@@ -147,7 +148,7 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 // SSOT + optional SRT/VTT links + hashes) is preserved per language so the
 // legacy domain envelope exposes the same timing references as the durable
 // capability result.
-func durableClipBinding(clip *ClipReference) domain.ClipBinding {
+func durableClipBinding(clip *contract.ClipReference) domain.ClipBinding {
 	if clip == nil {
 		return domain.ClipBinding{}
 	}
@@ -170,7 +171,7 @@ func durableClipBinding(clip *ClipReference) domain.ClipBinding {
 	}
 }
 
-func durableVoiceoverBinding(lang string, vo AudioReference) *domain.VoiceoverBinding {
+func durableVoiceoverBinding(lang string, vo contract.AudioReference) *domain.VoiceoverBinding {
 	binding := &domain.VoiceoverBinding{
 		Status:     "completed",
 		Link:       vo.URL,
@@ -184,7 +185,7 @@ func durableVoiceoverBinding(lang string, vo AudioReference) *domain.VoiceoverBi
 	return binding
 }
 
-func inLanguage(in *GenerateResult) Language {
+func inLanguage(in *contract.GenerateResult) contract.Language {
 	for _, scene := range in.Scenes {
 		for lang := range scene.Text {
 			return lang
@@ -193,7 +194,7 @@ func inLanguage(in *GenerateResult) Language {
 	return "it"
 }
 
-func sceneKind(scene Scene) domain.SceneKind {
+func sceneKind(scene contract.Scene) domain.SceneKind {
 	if scene.ExecutionMode.IsFixedMedia() {
 		return fixedSceneKind(scene)
 	}
@@ -206,7 +207,7 @@ func sceneKind(scene Scene) domain.SceneKind {
 	return domain.SceneNarration
 }
 
-func scenesText(r *GenerateResult) string {
+func scenesText(r *contract.GenerateResult) string {
 	parts := make([]string, 0, len(r.Scenes))
 	for _, scene := range r.Scenes {
 		for _, text := range scene.Text {

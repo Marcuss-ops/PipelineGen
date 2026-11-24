@@ -21,9 +21,6 @@ import (
 // VidRushBarrier is the run-scoped final barrier for incremental VidRush
 // enrichment. The runner awaits it after generation completes; it blocks only
 // for enrichments still running and never re-runs a whole-document extractor.
-type VidRushBarrier interface {
-	WaitForVidRush(ctx context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error)
-}
 
 // VidRushIncrementalCoordinator consumes SceneCommitted events and enriches
 // each scene concurrently with generation. It never mutates shared scene

@@ -28,6 +28,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
+	handlers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/handlers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -281,6 +282,13 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 			deps.DriveDelete.DriveDeleteHandler != nil),
 	)
 	return nil
+}
+
+// NewDeliveryHandlerWithOperations keeps the historical root constructor
+// while the implementation lives in jobs/handlers. The database/sql import
+// stays in this already-inventoried file, not in a new compatibility file.
+func NewDeliveryHandlerWithOperations(log *zap.Logger, client httpclient.Client, db *sql.DB, hmacSecrets [][]byte, insecureDev bool, operations DeliveryOperation) *DeliveryHandler {
+	return handlers.NewDeliveryHandlerWithOperations(log, client, db, hmacSecrets, insecureDev, operations)
 }
 
 func depsOrNil(d *Deps) *Deps {

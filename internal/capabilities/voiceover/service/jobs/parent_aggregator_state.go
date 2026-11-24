@@ -29,6 +29,12 @@
 // the JSON key reading in readers) are forward-pointers below.
 package jobs
 
+import (
+	"go.uber.org/zap"
+
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
+
 // JobParentStateColumn is the SQL column name for the typed
 // parent_state column added by PR-VO-PARENT-STATE-COLUMN (P1.2).
 // The column is TEXT, byte-equivalent with the voiceover.ParentState
@@ -91,3 +97,75 @@ const JobParentStateColumn = "parent_state_typed"
 // Note: JobParentStateColumn is exported (capital J), so Go's
 // compiler does NOT dead-code-eliminate it. No `var _ = ...`
 // pin is needed.
+
+// reconcileParentState applies the P1.2 READ-SIDE PREFERENCE to a decoded
+// parent result (GOP-11 extraction; logic and log keys preserved verbatim).
+//
+// The typed parent_state_typed column (added by migration 129,
+// populated atomically by repository_lifecycle.go::FinalizeAggregateParent)
+// is the AUTHORITATIVE source going forward. During the BACKFILL
+// window, override the JSON-derived parentResult.ParentState with
+// the typed-column value when it is non-empty AND well-formed.
+// The JSON fallback (parentResult.ParentState) covers pre-P1.2
+// rows + concurrent writes in flight (the typed column is empty
+// until the FinalizeAggregateParent UPDATE commits) + malformed
+// typed values (a writer bug or a backfill-CLI race that wrote
+// an unknown string).
+//
+// godlike/06 SSOT (one canonical owner per fact): the typed
+// column name lives ONLY in
+// internal/capabilities/voiceover/jobs/parent_aggregator_state.go::JobParentStateColumn
+// — the SQL mirror (internal/platform/sqlite/jobs/parentStateTypedColumn)
+// is package-private. Both must agree (per the cross-package
+// SSOT discipline; the explicit drift test was DROPPED per
+// godlike/07 minimum-blast-radius — see repository_lifecycle_dualwrite_test.go).
+//
+// godlike/07 no-fake-availability (MUST-FIX #1 from code-reviewer):
+// validate the typed-column value is a KNOWN voiceover.ParentState
+// constant before overriding. An unknown value (e.g. "garbage"
+// from a writer bug) would otherwise cause
+// IsParentAwaitingAggregation to silently return false, the
+// aggregator to silently skip the parent, and no log/counter to
+// surface the issue. The validation is a 4-value whitelist
+// (the canonical voiceover.ParentState value space) — anything
+// outside it falls back to the JSON value with a Warn log so
+// the operator dashboard can alert.
+//
+// godlike/07 NIT #1: when BOTH surfaces are populated AND
+// disagree (e.g. typed="failed", JSON="waiting_children" from a
+// concurrent writer or a stale reader view), the typed column
+// silently wins. This is the correct precedence per the
+// contract, but the disagreement is a diagnostic signal of a
+// racing writer or a backfill-CLI bug. Log a Warn (no error
+// return — the typed column is authoritative).
+//
+// Field-key convention (MUST-FIX #3 from code-reviewer, PR-P1.2-SQL-DUAL-WRITE):
+// the 2 new Warn field keys use `parent_state_typed` and
+// `parent_state_json` to match the existing aggregator log
+// format (`zap.String("parent_state", ...)` in finalizeParent).
+// Operator dashboards can group by field rather than by the
+// legacy ad-hoc `typed_column` / `json_field` / `json_fallback`
+// keys.
+func reconcileParentState(log *zap.Logger, j job.Job, parentResult *VoiceoverParentResult) {
+	if j.ParentStateTyped == "" {
+		return
+	}
+	if isKnownTypedParentState(j.ParentStateTyped) {
+		if parentResult.ParentState != "" && parentResult.ParentState != j.ParentStateTyped {
+			// Typed/JSON disagreement — log a Warn, then typed wins.
+			log.Warn("ParentAggregator: typed parent_state_typed and JSON parent_state disagree; typed column wins per BACKFILL contract",
+				zap.String("parent_job_id", j.ID),
+				zap.String("parent_state_typed", j.ParentStateTyped),
+				zap.String("parent_state_json", parentResult.ParentState))
+		}
+		parentResult.ParentState = j.ParentStateTyped
+		return
+	}
+	// Malformed typed column — log Warn + fall back to JSON
+	// (the existing parentResult.ParentState from the
+	// json.Unmarshal in decodeParentResult).
+	log.Warn("ParentAggregator: typed parent_state_typed has unknown value; falling back to JSON resultMap[parent_state]",
+		zap.String("parent_job_id", j.ID),
+		zap.String("parent_state_typed", j.ParentStateTyped),
+		zap.String("parent_state_json", parentResult.ParentState))
+}

@@ -1,5 +1,5 @@
 // Package scripts — processor_manifest_v2_test.go exercises the
-// canonical buildManifestV2 helper (PR 1, SCRIPT-DOWNSTREAM-CUTOVER
+// canonical BuildManifestV2 helper (PR 1, SCRIPT-DOWNSTREAM-CUTOVER
 // wave) plus the PersistenceProcessor's manifest emit seam.
 //
 // TDD surface (5 hermetic tests, package adapters, in-process):
@@ -37,7 +37,7 @@
 // PR-1 wave: this file is the canonical TDD surface for the
 // SCRIPT-DOWNSTREAM-CUTOVER wave's persistence + manifest emit
 // contract. The 5 tests lock the wire-shape + fail-closed + item
-// assembly contract. Future refactors that touch buildManifestV2
+// assembly contract. Future refactors that touch BuildManifestV2
 // MUST keep all 5 tests green.
 package processor
 
@@ -52,6 +52,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	artifactstore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/artifacts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -75,8 +76,8 @@ func planWithPostprocessors(plan *scriptpkg.ResolvedGenerationPlan, names ...ada
 // fan-out) sees a valid manifest shape.
 func TestBuildManifestV2_NilPlan_EmptyCanonicalMode(t *testing.T) {
 	t.Parallel()
-	m := buildManifestV2(nil, baseProcessInput())
-	require.NotNil(t, m, "buildManifestV2 must return a non-nil manifest for nil plan")
+	m := artifactstore.BuildManifestV2(nil, baseProcessInput())
+	require.NotNil(t, m, "BuildManifestV2 must return a non-nil manifest for nil plan")
 	assert.True(t, m.NoInlineAssets, "nil plan must yield canonical NEW-mode (NoInlineAssets=true), NOT legacy zero-value")
 	assert.Empty(t, m.Items, "nil plan must yield empty Items slice")
 }
@@ -87,12 +88,12 @@ func TestBuildManifestV2_NilPlan_EmptyCanonicalMode(t *testing.T) {
 // zero-value &ManifestV2{} (NoInlineAssets=false) which the
 // dispatcher's fail-closed branch rejects with
 // ErrLegacyManifestRejected. The canonical empty NEW-mode is
-// reachable via buildManifestV2 (no manual struct literal).
+// reachable via BuildManifestV2 (no manual struct literal).
 func TestBuildManifestV2_NoPostprocessors_EmptyCanonicalMode(t *testing.T) {
 	t.Parallel()
 	plan := basePlanForIdem()
 	plan.Postprocessors = nil // explicit: no postprocessors registered
-	m := buildManifestV2(plan, baseProcessInput())
+	m := artifactstore.BuildManifestV2(plan, baseProcessInput())
 	require.NotNil(t, m)
 	assert.True(t, m.NoInlineAssets, "empty postprocessor plan must yield canonical NEW-mode")
 	assert.Empty(t, m.Items, "empty postprocessor plan must yield empty Items slice")
@@ -112,7 +113,7 @@ func TestBuildManifestV2_NoPostprocessors_EmptyCanonicalMode(t *testing.T) {
 func TestBuildManifestV2_VoiceoverOnly(t *testing.T) {
 	t.Parallel()
 	plan := planWithPostprocessors(basePlanForIdem(), adapters.ProcessorVoiceover)
-	m := buildManifestV2(plan, baseProcessInput())
+	m := artifactstore.BuildManifestV2(plan, baseProcessInput())
 	require.NotNil(t, m)
 	require.Len(t, m.Items, 1, "voiceover-only plan must emit exactly 1 DownstreamRequest")
 	item := m.Items[0]
@@ -120,7 +121,7 @@ func TestBuildManifestV2_VoiceoverOnly(t *testing.T) {
 	assert.Equal(t, plan.ID, item.ItemRef)
 	assert.True(t, item.Required, "downstream siblings are Required=true (fail-closed at Step 11B)")
 	require.NotNil(t, item.AssetRequirements.Voiceover, "DownstreamVoiceover envelope MUST carry Voiceover != nil")
-	assert.Equal(t, canonicalDefaultVoiceID(plan.Language), item.AssetRequirements.Voiceover.VoiceID, "voiceover envelope MUST carry the canonical namespaced placeholder VoiceID (defense-in-depth against broken dispatcher override)")
+	assert.Equal(t, "__placeholder_voiceid__:"+plan.Language, item.AssetRequirements.Voiceover.VoiceID, "voiceover envelope MUST carry the canonical namespaced placeholder VoiceID (defense-in-depth against broken dispatcher override)")
 	assert.Nil(t, item.AssetRequirements.Images, "voiceover-only envelope MUST NOT carry Images")
 }
 
@@ -132,11 +133,11 @@ func TestBuildManifestV2_VoiceoverOnly(t *testing.T) {
 func TestBuildManifestV2_AllCapabilities(t *testing.T) {
 	t.Parallel()
 	plan := planWithPostprocessors(basePlanForIdem(), adapters.ProcessorVoiceover, adapters.ProcessorImages)
-	m := buildManifestV2(plan, baseProcessInput())
+	m := artifactstore.BuildManifestV2(plan, baseProcessInput())
 	require.NotNil(t, m)
 	require.Len(t, m.Items, 2, "all-capabilities plan must emit exactly 2 DownstreamRequests (voiceover + images; Sprint 1.0: document retired from script pipeline)")
 
-	// matching the buildManifestV2 implementation).
+	// matching the BuildManifestV2 implementation).
 	assert.Equal(t, scriptpkg.DownstreamVoiceover, m.Items[0].Kind)
 	require.NotNil(t, m.Items[0].AssetRequirements.Voiceover)
 
@@ -160,7 +161,7 @@ func TestBuildManifestV2_AllCapabilities(t *testing.T) {
 func TestBuildManifestV2_JSONRoundTrip(t *testing.T) {
 	t.Parallel()
 	plan := planWithPostprocessors(basePlanForIdem(), adapters.ProcessorVoiceover, adapters.ProcessorImages)
-	m := buildManifestV2(plan, baseProcessInput())
+	m := artifactstore.BuildManifestV2(plan, baseProcessInput())
 	require.NotNil(t, m)
 
 	bytes, err := json.Marshal(m)

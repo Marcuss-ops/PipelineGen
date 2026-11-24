@@ -24,6 +24,7 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	geography "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/geography"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -48,8 +49,8 @@ type sceneTextSnapshot struct {
 // annotations) of every scene into a lightweight read-only snapshot. It is
 // taken before the concurrent TTS and prepare branches start, so both branches
 // read stable text and the prepare branch never reads the mutable Scene struct.
-func snapshotSceneText(scenes []Scene, language Language, requests ...GenerateRequest) []sceneTextSnapshot {
-	var request GenerateRequest
+func snapshotSceneText(scenes []contract.Scene, language contract.Language, requests ...contract.GenerateRequest) []sceneTextSnapshot {
+	var request contract.GenerateRequest
 	if len(requests) > 0 {
 		request = requests[0]
 	}
@@ -92,13 +93,13 @@ type vidRushPrepareResult struct {
 // Folding them into one field would mislabel the failed stage.
 type vidRushPrepareOutcome struct {
 	result     vidRushPrepareResult
-	prefetched *AudioPrefetchResult
+	prefetched *contract.AudioPrefetchResult
 	err        error
 	// localizedAnnotations is the translated-NLP output COMPUTED on the
 	// semantic branch, to be applied to the durable result by the phase
 	// goroutine after the join. It rides the outcome as a value precisely so no
 	// worker writes onto result.Scenes while TTS is running.
-	localizedAnnotations map[int]map[Language]*scriptpkg.SceneAnnotations
+	localizedAnnotations map[int]map[contract.Language]*scriptpkg.SceneAnnotations
 	nlpErr               error
 	// completedAt is set by the producing goroutine at the instant it sends
 	// the outcome. The join uses it to attribute the wall to the branch that
@@ -110,7 +111,7 @@ type vidRushPrepareOutcome struct {
 // fan-out: it awaits the VidRush barrier, computes grounded annotations and
 // pre-timing OverlayIntents from the read-only scene snapshot, and enqueues
 // overlay.prepare. It never reads the mutable result while TTS is running.
-func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req GenerateRequest, snapshot []sceneTextSnapshot) (vidRushPrepareResult, error) {
+func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req contract.GenerateRequest, snapshot []sceneTextSnapshot) (vidRushPrepareResult, error) {
 	segments, err := r.waitForVidRush(ctx, runID)
 	if err != nil {
 		return vidRushPrepareResult{}, err
@@ -195,7 +196,7 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 
 // retainExplicitlyEnabledSegments keeps only incremental results for segments
 // whose explicit enabled override wins over the run-level opt-out.
-func retainExplicitlyEnabledSegments(_ GenerateRequest, snapshot []sceneTextSnapshot, segments []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
+func retainExplicitlyEnabledSegments(_ contract.GenerateRequest, snapshot []sceneTextSnapshot, segments []scriptpkg.VidRushSegmentResult) []scriptpkg.VidRushSegmentResult {
 	if len(segments) == 0 {
 		return nil
 	}
@@ -211,7 +212,7 @@ func retainExplicitlyEnabledSegments(_ GenerateRequest, snapshot []sceneTextSnap
 	return out
 }
 
-func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
+func sourceTraceFromResult(result *contract.GenerateResult) scriptpkg.SourceTrace {
 	trace := scriptpkg.SourceTrace{}
 	if result == nil {
 		return trace
@@ -221,7 +222,7 @@ func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
 	for _, scene := range result.Scenes {
 		refs := scene.Clips
 		if len(refs) == 0 && scene.Clip != nil {
-			refs = []*ClipReference{scene.Clip}
+			refs = []*contract.ClipReference{scene.Clip}
 		}
 		for _, ref := range refs {
 			if ref == nil || ref.ID == "" {
@@ -242,7 +243,7 @@ func sourceTraceFromResult(result *GenerateResult) scriptpkg.SourceTrace {
 // entity results, compatibility surfaces, and the pre-timing OverlayIntents.
 // It is shared by both the serial and parallel orchestration paths so the
 // projection contract has exactly one owner.
-func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrepareResult) {
+func applyVidRushPrepareProjections(result *contract.GenerateResult, prepared vidRushPrepareResult) {
 	if result == nil {
 		return
 	}
@@ -276,7 +277,7 @@ func applyVidRushPrepareProjections(result *GenerateResult, prepared vidRushPrep
 		if result.Entities == nil {
 			result.Artifacts = nil
 		} else {
-			result.Artifacts = &GenerateArtifacts{Entities: result.Entities}
+			result.Artifacts = &contract.GenerateArtifacts{Entities: result.Entities}
 		}
 		applySegmentEntityResults(result, segments)
 	}
@@ -338,7 +339,7 @@ func cloneSceneAnnotations(src *scriptpkg.SceneAnnotations) *scriptpkg.SceneAnno
 // Seeded annotations are detached copies: refining them in place here (phrase
 // displacement, surname dedupe) must not touch the live scene annotations the
 // TTS branch serializes into its checkpoint snapshot.
-func computeSegmentEntityAnnotations(ctx context.Context, selector PhraseSelector, snapshot []sceneTextSnapshot, language Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool, requestedPhraseSets ...[]string) (map[int]*scriptpkg.SceneAnnotations, error) {
+func computeSegmentEntityAnnotations(ctx context.Context, selector PhraseSelector, snapshot []sceneTextSnapshot, language contract.Language, segments []scriptpkg.VidRushSegmentResult, phraseLimit int, includePhrases bool, requestedPhraseSets ...[]string) (map[int]*scriptpkg.SceneAnnotations, error) {
 	annotations := make(map[int]*scriptpkg.SceneAnnotations)
 	for _, s := range snapshot {
 		if s.ExtractEntities == scriptpkg.ToggleDisabled {
@@ -474,7 +475,7 @@ func computeSegmentEntityAnnotations(ctx context.Context, selector PhraseSelecto
 // pre-timing OverlayIntents and submits it (fire-and-forget). The plan id is
 // the run id — the same idempotency key the overlay plan uses — so a retry
 // never double-prepares.
-func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req GenerateRequest, intents []capmodel.OverlayIntent) error {
+func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req contract.GenerateRequest, intents []capmodel.OverlayIntent) error {
 	if r.overlayPrepareEnqueuer == nil || len(intents) == 0 {
 		return nil
 	}
@@ -485,7 +486,7 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 		// add lease/IPC latency to the run.
 		return nil
 	}
-	canvas := r.overlayCanvas.withDefaults()
+	canvas := r.overlayCanvas.WithDefaults()
 	// overlay.prepare is a business stage boundary: the enqueue itself is
 	// measured on the canonical Run clock so the run's critical path shows
 	// the prepare submit wall time (which runs in parallel with TTS) instead
@@ -516,7 +517,7 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 // map_presentation is authoritative; the legacy map_level field is the
 // fallback for envelopes that predate it. Empty means "no level" and keeps the
 // historical level-agnostic lookup.
-func requestedMapLevel(req GenerateRequest) string {
+func requestedMapLevel(req contract.GenerateRequest) string {
 	if req.MapPresentation != nil {
 		if level := strings.TrimSpace(req.MapPresentation.Level); level != "" {
 			return level
@@ -525,7 +526,7 @@ func requestedMapLevel(req GenerateRequest) string {
 	return strings.TrimSpace(req.MapLevel)
 }
 
-func requestWantsMaps(req GenerateRequest) bool {
+func requestWantsMaps(req contract.GenerateRequest) bool {
 	if req.MapsOnly || req.MaxMapOverlays > 0 {
 		return true
 	}
@@ -549,7 +550,7 @@ func overlayPrepareNeedsAssetPrefetch(intents []capmodel.OverlayIntent) bool {
 // shouldGeocodeScriptLocations preserves the explicit compatibility opt-in and
 // activates automatic grounded geocoding only when adapters and extraction
 // policy are configured.
-func (r *Runner) shouldGeocodeScriptLocations(req GenerateRequest) bool {
+func (r *Runner) shouldGeocodeScriptLocations(req contract.GenerateRequest) bool {
 	if req.MediaPlan.ProviderPolicy.Geocoding == mediadomain.MediaToggleDisabled {
 		return false
 	}

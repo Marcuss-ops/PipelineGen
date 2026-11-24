@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processorvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
@@ -130,7 +131,7 @@ func TestPipeline_TranslationFeedsVoiceoverProcessor(t *testing.T) {
 		zap.NewNop(),
 	))
 	voStub := &pipelineVOStub{}
-	reg.Register(NewVoiceoverProcessor(voStub, zap.NewNop()))
+	reg.Register(processorvoiceover.NewVoiceoverProcessor(voStub, zap.NewNop()))
 	reg.Freeze()
 
 	// Input: English text with 2 scenes.

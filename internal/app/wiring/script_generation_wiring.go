@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	wiringaudio "github.com/Marcuss-ops/PipelineGen/internal/app/modules/audio"
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/modules/media"
@@ -302,8 +303,15 @@ func wireScriptGenerationConcurrency(runner *scriptgen.Runner, cfg *config.Confi
 	if translationConcurrency <= 0 {
 		translationConcurrency = scriptgen.DefaultTranslationConcurrency
 	}
+	// WST-04: one short budget per translation request. The generation client's
+	// 600 s timeout stays where it belongs (scene-text generation).
+	translationTimeout := cfg.Scripts.TranslationTimeoutSeconds
+	if translationTimeout <= 0 {
+		translationTimeout = int(scriptgen.DefaultTranslationTimeout / time.Second)
+	}
 	runner.SetTTSConcurrency(ttsConcurrency)
 	runner.SetTranslationConcurrency(translationConcurrency)
+	runner.SetTranslationTimeout(time.Duration(translationTimeout) * time.Second)
 	if root.Domains != nil && root.Domains.VoiceoverPublishPool != nil {
 		runner.SetVoiceoverPublishDrainer(root.Domains.VoiceoverPublishPool)
 	}
@@ -312,7 +320,8 @@ func wireScriptGenerationConcurrency(runner *scriptgen.Runner, cfg *config.Confi
 		zap.Int("script_generation_concurrency", scriptGenerationConcurrency),
 		zap.Int("tts_concurrency", ttsConcurrency),
 		zap.Int("voiceover_max_concurrent_tts", cfg.Voiceover.MaxConcurrentTTS),
-		zap.Int("translation_concurrency", translationConcurrency))
+		zap.Int("translation_concurrency", translationConcurrency),
+		zap.Int("translation_timeout_seconds", translationTimeout))
 }
 
 // mediaCheckpointArtifactVerifier resolves the durable checkpoint resume

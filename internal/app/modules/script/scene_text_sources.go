@@ -75,61 +75,7 @@ func (g *SceneTextGenerator) convertClipProseScenes(
 		return nil, fmt.Errorf("prose scene conversion requires a generation plan")
 	}
 	if plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
-		count := len(plan.Segments)
-		if count == 0 {
-			count = 1
-		}
-		// source_text is editorial context for generation, not the finished
-		// narration. The engine has already produced (or explicitly recovered)
-		// prose for this segment, so always materialize scenes from that prose.
-		if len(plan.Segments) > 0 {
-			generated := scenepkg.NewSceneSynthesizer().FromProse(prose, count)
-			if len(generated) != count {
-				return nil, fmt.Errorf("planned %d text scenes, synthesized %d from generated prose", count, len(generated))
-			}
-			scenes := make([]scriptgen.Scene, 0, count)
-			for i, seg := range plan.Segments {
-				text := strings.TrimSpace(generated[i].Text)
-				if text == "" {
-					return nil, fmt.Errorf("text scene %d has empty source_text/topic", i)
-				}
-				segID := strings.TrimSpace(seg.ID)
-				if segID == "" {
-					segID = fmt.Sprintf("scene-%d", i)
-				}
-				scenes = append(scenes, scriptgen.Scene{
-					ID:    segID,
-					Index: i,
-					Text:  map[scriptgen.Language]string{req.SourceLanguage: text},
-					Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
-					AudioIntents: []capabilityaudio.AudioIntent{{
-						Mode: capabilityaudio.AudioVoiceover,
-					}},
-				})
-			}
-			return scenes, nil
-		}
-		draft := scenepkg.NewSceneSynthesizer().FromProse(prose, count)
-		if len(draft) != count {
-			return nil, fmt.Errorf("planned %d text scenes, synthesized %d", count, len(draft))
-		}
-		scenes := make([]scriptgen.Scene, 0, count)
-		for i, raw := range draft {
-			text := strings.TrimSpace(raw.Text)
-			if text == "" {
-				return nil, fmt.Errorf("text scene %d has empty prose", i)
-			}
-			scenes = append(scenes, scriptgen.Scene{
-				ID:    fmt.Sprintf("scene-%d", i),
-				Index: i,
-				Text:  map[scriptgen.Language]string{req.SourceLanguage: text},
-				Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
-				AudioIntents: []capabilityaudio.AudioIntent{{
-					Mode: capabilityaudio.AudioVoiceover,
-				}},
-			})
-		}
-		return scenes, nil
+		return convertTextProseScenes(plan, prose, req)
 	}
 	clipIDs := plan.ClipEvidence.AcceptedClipIDs
 	count := len(clipIDs)
@@ -278,7 +224,70 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 	}
 
 	renderedPrompt := buildEditorialPromptFromGenReq(req)
+	plan := newResolvedGenerationPlan(req, topic, title, renderedPrompt)
 
+	// Non-text sources require source resolution to populate clip
+	// evidence and the canonical source text.
+	if req.Source.Type != scriptgen.SourceText {
+		if g.Registry == nil {
+			return nil, fmt.Errorf("scenetext: source registry not configured for source type %q", req.Source.Type)
+		}
+		resolved, err := g.Registry.Resolve(ctx, genSourceToSourceSpec(req.Source), genRequestToResolutionContext(req))
+		if err != nil {
+			return nil, fmt.Errorf("scenetext: source resolution failed for type %q: %w", req.Source.Type, err)
+		}
+		if resolved.Topic != "" {
+			plan.Topic = resolved.Topic
+		}
+		if resolved.Title != "" {
+			plan.Title = resolved.Title
+		}
+		// An explicit source_text is the caller's editorial brief for Gemma.
+		// Resolver evidence enriches the plan but must not replace that brief.
+		if plan.SourceText == "" && resolved.SourceText != "" {
+			plan.SourceText = resolved.SourceText
+		}
+		if resolved.Segments != nil {
+			plan.Segments = scriptpkg.CloneScriptSegments(resolved.Segments)
+		}
+		if resolved.ClipEvidence != nil {
+			plan.ClipEvidence = resolved.ClipEvidence
+		}
+		if resolved.ResearchEvidence != nil {
+			plan.ResearchEvidence = resolved.ResearchEvidence.Clone()
+		}
+		if resolved.ResearchReport != nil {
+			report := *resolved.ResearchReport
+			if report.Evidence != nil {
+				report.Evidence = report.Evidence.Clone()
+			}
+			plan.ResearchReport = &report
+		}
+		if resolved.Fingerprint != "" {
+			plan.SourceFingerprint = resolved.Fingerprint
+		}
+		if resolved.Type != "" {
+			plan.SourceKind = string(resolved.Type)
+		}
+		// Re-render the prompt from the resolved source text so the
+		// engine actually sees the clip evidence.
+		plan.RenderedPrompt = buildEditorialPrompt(plan.Topic, plan.SourceText, req.Title, req.Source.Query, req.ScriptParams.TargetWords, req.ScriptParams.MinWords, req.ScriptParams.Style, req.ScriptParams.Guidelines, string(req.SourceLanguage), req.ScriptParams.PromptVersion)
+	}
+
+	// Text sources do not go through a resolver; derive the canonical
+	// source fingerprint directly so the memory-gate cache key is
+	// content-aware and deterministic across COLD/WARM replays.
+	if plan.SourceFingerprint == "" && req.Source.Type == scriptgen.SourceText {
+		plan.SourceFingerprint = scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(genSourceToSourceSpec(req.Source), nil))
+	}
+	plan.CacheKey = scriptpkg.BuildCacheKey(plan)
+
+	return plan, nil
+}
+
+// newResolvedGenerationPlan builds the plan skeleton (including the media
+// requirements) before source resolution enriches it.
+func newResolvedGenerationPlan(req scriptgen.GenerateRequest, topic, title, renderedPrompt string) *scriptpkg.ResolvedGenerationPlan {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:    req.IdempotencyKey,
 		Title: title,
@@ -339,64 +348,67 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		req.OverlayCategories,
 		req.MediaPlan.Extraction.EntityImages,
 	)
+	return plan
+}
 
-	// Non-text sources require source resolution to populate clip
-	// evidence and the canonical source text.
-	if req.Source.Type != scriptgen.SourceText {
-		if g.Registry == nil {
-			return nil, fmt.Errorf("scenetext: source registry not configured for source type %q", req.Source.Type)
+// convertTextProseScenes handles plans without clip evidence: the model prose
+// is partitioned into the planned text scenes.
+func convertTextProseScenes(plan *scriptpkg.ResolvedGenerationPlan, prose string, req scriptgen.GenerateRequest) ([]scriptgen.Scene, error) {
+	count := len(plan.Segments)
+	if count == 0 {
+		count = 1
+	}
+	// source_text is editorial context for generation, not the finished
+	// narration. The engine has already produced (or explicitly recovered)
+	// prose for this segment, so always materialize scenes from that prose.
+	if len(plan.Segments) > 0 {
+		generated := scenepkg.NewSceneSynthesizer().FromProse(prose, count)
+		if len(generated) != count {
+			return nil, fmt.Errorf("planned %d text scenes, synthesized %d from generated prose", count, len(generated))
 		}
-		resolved, err := g.Registry.Resolve(ctx, genSourceToSourceSpec(req.Source), genRequestToResolutionContext(req))
-		if err != nil {
-			return nil, fmt.Errorf("scenetext: source resolution failed for type %q: %w", req.Source.Type, err)
-		}
-		if resolved.Topic != "" {
-			plan.Topic = resolved.Topic
-		}
-		if resolved.Title != "" {
-			plan.Title = resolved.Title
-		}
-		// An explicit source_text is the caller's editorial brief for Gemma.
-		// Resolver evidence enriches the plan but must not replace that brief.
-		if plan.SourceText == "" && resolved.SourceText != "" {
-			plan.SourceText = resolved.SourceText
-		}
-		if resolved.Segments != nil {
-			plan.Segments = scriptpkg.CloneScriptSegments(resolved.Segments)
-		}
-		if resolved.ClipEvidence != nil {
-			plan.ClipEvidence = resolved.ClipEvidence
-		}
-		if resolved.ResearchEvidence != nil {
-			plan.ResearchEvidence = resolved.ResearchEvidence.Clone()
-		}
-		if resolved.ResearchReport != nil {
-			report := *resolved.ResearchReport
-			if report.Evidence != nil {
-				report.Evidence = report.Evidence.Clone()
+		scenes := make([]scriptgen.Scene, 0, count)
+		for i, seg := range plan.Segments {
+			text := strings.TrimSpace(generated[i].Text)
+			if text == "" {
+				return nil, fmt.Errorf("text scene %d has empty source_text/topic", i)
 			}
-			plan.ResearchReport = &report
+			segID := strings.TrimSpace(seg.ID)
+			if segID == "" {
+				segID = fmt.Sprintf("scene-%d", i)
+			}
+			scenes = append(scenes, scriptgen.Scene{
+				ID:    segID,
+				Index: i,
+				Text:  map[scriptgen.Language]string{req.SourceLanguage: text},
+				Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+				AudioIntents: []capabilityaudio.AudioIntent{{
+					Mode: capabilityaudio.AudioVoiceover,
+				}},
+			})
 		}
-		if resolved.Fingerprint != "" {
-			plan.SourceFingerprint = resolved.Fingerprint
-		}
-		if resolved.Type != "" {
-			plan.SourceKind = string(resolved.Type)
-		}
-		// Re-render the prompt from the resolved source text so the
-		// engine actually sees the clip evidence.
-		plan.RenderedPrompt = buildEditorialPrompt(plan.Topic, plan.SourceText, req.Title, req.Source.Query, req.ScriptParams.TargetWords, req.ScriptParams.MinWords, req.ScriptParams.Style, req.ScriptParams.Guidelines, string(req.SourceLanguage), req.ScriptParams.PromptVersion)
+		return scenes, nil
 	}
-
-	// Text sources do not go through a resolver; derive the canonical
-	// source fingerprint directly so the memory-gate cache key is
-	// content-aware and deterministic across COLD/WARM replays.
-	if plan.SourceFingerprint == "" && req.Source.Type == scriptgen.SourceText {
-		plan.SourceFingerprint = scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(genSourceToSourceSpec(req.Source), nil))
+	draft := scenepkg.NewSceneSynthesizer().FromProse(prose, count)
+	if len(draft) != count {
+		return nil, fmt.Errorf("planned %d text scenes, synthesized %d", count, len(draft))
 	}
-	plan.CacheKey = scriptpkg.BuildCacheKey(plan)
-
-	return plan, nil
+	scenes := make([]scriptgen.Scene, 0, count)
+	for i, raw := range draft {
+		text := strings.TrimSpace(raw.Text)
+		if text == "" {
+			return nil, fmt.Errorf("text scene %d has empty prose", i)
+		}
+		scenes = append(scenes, scriptgen.Scene{
+			ID:    fmt.Sprintf("scene-%d", i),
+			Index: i,
+			Text:  map[scriptgen.Language]string{req.SourceLanguage: text},
+			Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+			AudioIntents: []capabilityaudio.AudioIntent{{
+				Mode: capabilityaudio.AudioVoiceover,
+			}},
+		})
+	}
+	return scenes, nil
 }
 
 // convertScenes maps the engine's structured SpecScene output into

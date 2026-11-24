@@ -19,6 +19,15 @@ func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in 
 	if a == nil || a.svc == nil {
 		return fmt.Errorf("localized render recovery: service is not wired")
 	}
+	if in.SkipDrivePublication {
+		// The render is certified locally and consumed through the object
+		// store: there is no Drive destination to resolve and no upload to
+		// retry. Project the durable checkpoint back to the runner as-is.
+		if in.OnRendered != nil {
+			return in.OnRendered(staged)
+		}
+		return nil
+	}
 	// A checkpoint written after publication names an already uploaded
 	// artifact. Re-publishing it would waste Drive work and can race a
 	// duplicate upload; project the recorded certified identity directly.

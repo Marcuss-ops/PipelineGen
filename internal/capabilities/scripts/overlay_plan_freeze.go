@@ -27,12 +27,13 @@ import (
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 )
 
 // compileResultOverlayPlan attaches the sealed source/localized plans and
 // freezes their semantic intent lineage without mutating the prepare input.
-func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) error {
+func compileResultOverlayPlan(ctx context.Context, result *contract.GenerateResult, language contract.Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) error {
 	if result == nil {
 		return nil
 	}
@@ -118,7 +119,7 @@ func compileResultOverlayPlan(ctx context.Context, result *GenerateResult, langu
 
 // setOverlayDriveJobID keeps public broker identity separate from semantic
 // idempotent plan identity; only the broker job owns the Drive tree.
-func setOverlayDriveJobID(result *GenerateResult, jobID string) {
+func setOverlayDriveJobID(result *contract.GenerateResult, jobID string) {
 	if result == nil {
 		return
 	}
@@ -200,8 +201,12 @@ func assetRefForImageLayer(item capmodel.OverlayItem, layer *capmodel.OverlayIma
 // authored, 31 stayed PENDING, and nothing said whether the entity lost
 // admission or the planner rewrote the text. Authored = Frozen + Unresolved.
 type overlayIntentLineage struct {
-	Authored   int
-	Frozen     int
+	Authored int
+	Frozen   int
+	// Covered counts an entity intent whose canonical identity has a card in
+	// another scene. The card is reused, so the intent is resolved run-level
+	// even though its own scene carries no timed item (TICKET-49).
+	Covered    int
 	Unresolved int
 	BySource   map[string]int
 	Reasons    map[string]int
@@ -209,12 +214,15 @@ type overlayIntentLineage struct {
 }
 
 type overlayIntentResolution struct {
-	IntentID string
-	SceneID  string
-	Source   string
-	Text     string
-	Entity   string
-	Reason   string
+	IntentID          string
+	SceneID           string
+	Source            string
+	Text              string
+	Entity            string
+	EntityID          string
+	CanonicalEntityID string
+	EntityType        string
+	Reason            string
 }
 
 // freezeOverlayIntents promotes the pre-timing authoring bindings to the
@@ -315,6 +323,13 @@ func (l *overlayIntentLineage) record(intent capmodel.OverlayIntent, items []cap
 		l.Frozen++
 		return
 	}
+	if entitySourceIntent(intent) && entityIntentCoveredByIdentity(intent, items) {
+		// The same identity is on screen elsewhere in the run. Counting this as
+		// unresolved made the audit contradict the image contract, which already
+		// reports the portrait as planned (R30: Augias in scene-05).
+		l.Covered++
+		return
+	}
 	l.Unresolved++
 	reason := overlayIntentUnresolvedReason(intent, items)
 	l.Reasons[reason]++
@@ -326,12 +341,15 @@ func (l *overlayIntentLineage) record(intent capmodel.OverlayIntent, items []cap
 		text = strings.TrimSpace(intent.Payload.Text)
 	}
 	l.Items = append(l.Items, overlayIntentResolution{
-		IntentID: intent.IntentID,
-		SceneID:  intent.SceneID,
-		Source:   source,
-		Text:     text,
-		Entity:   strings.TrimSpace(intent.Entity.CanonicalName),
-		Reason:   reason,
+		IntentID:          intent.IntentID,
+		SceneID:           intent.SceneID,
+		Source:            source,
+		Text:              text,
+		Entity:            strings.TrimSpace(intent.Entity.CanonicalName),
+		EntityID:          capabilityentities.StableEntityID(intent.Entity.Type, intent.Entity.CanonicalName),
+		CanonicalEntityID: strings.TrimSpace(intent.Entity.CanonicalEntityID),
+		EntityType:        strings.TrimSpace(intent.Entity.Type),
+		Reason:            reason,
 	})
 }
 
@@ -340,7 +358,7 @@ func (l *overlayIntentLineage) record(intent capmodel.OverlayIntent, items []cap
 // the join succeeded but the lowering did not freeze it (a defect, not a
 // normal outcome).
 func overlayIntentUnresolvedReason(intent capmodel.OverlayIntent, items []capmodel.OverlayItem) string {
-	entitySource := intent.Source == capmodel.IntentSourceEntity || intent.Source == capmodel.IntentSourceEntityImage
+	entitySource := entitySourceIntent(intent)
 	for _, item := range items {
 		if item.SceneID != intent.SceneID {
 			continue
@@ -361,6 +379,42 @@ func overlayIntentUnresolvedReason(intent capmodel.OverlayIntent, items []capmod
 	return OverlayIntentReasonSourceTextNotInPlan
 }
 
+func entitySourceIntent(intent capmodel.OverlayIntent) bool {
+	return intent.Source == capmodel.IntentSourceEntity || intent.Source == capmodel.IntentSourceEntityImage
+}
+
+// entityIntentCoveredByIdentity reports whether ANY plan item carries the same
+// canonical identity as the intent. It deliberately ignores the scene: the
+// entity card is reused across scenes, unlike the timed occurrence.
+func entityIntentCoveredByIdentity(intent capmodel.OverlayIntent, items []capmodel.OverlayItem) bool {
+	canonical := strings.TrimSpace(intent.Entity.CanonicalEntityID)
+	stable := capabilityentities.StableEntityID(intent.Entity.Type, intent.Entity.CanonicalName)
+	for _, item := range items {
+		if canonical != "" {
+			if strings.TrimSpace(item.EntityID) == canonical {
+				return true
+			}
+			if item.EntityRef != nil && strings.TrimSpace(item.EntityRef.CanonicalEntityID) == canonical {
+				return true
+			}
+		}
+		if stable != "" {
+			if strings.TrimSpace(item.EntityID) == stable {
+				return true
+			}
+			if item.EntityRef != nil && strings.TrimSpace(item.EntityRef.EntityID) == stable {
+				return true
+			}
+			for _, layer := range item.ImageLayers {
+				if strings.TrimSpace(layer.EntityID) == stable {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // entityTimelineLanguage returns the language an EntityTimeline was certified
 // for, or "" when there is no timeline.
 func entityTimelineLanguage(timeline *capabilityentities.EntityTimeline) string {
@@ -374,7 +428,7 @@ func entityTimelineLanguage(timeline *capabilityentities.EntityTimeline) string 
 // boundary shared by the source-language compatibility plan and translated
 // plans. Drive routing stays in the application-only plan field and never
 // crosses the RenderingGen queue contract.
-func compileOverlayPlanForLanguage(ctx context.Context, result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
+func compileOverlayPlanForLanguage(ctx context.Context, result *contract.GenerateResult, language contract.Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
 	plan, err := CompileOverlayPlanWithRustResolver(ctx, result, language, canvas, planID, planID, projectID, plates, compiler, perSceneImages...)
 	if err != nil {
 		return nil, err
@@ -389,12 +443,12 @@ func compileOverlayPlanForLanguage(ctx context.Context, result *GenerateResult, 
 // have translated voiceover timing. It never substitutes the source plan for
 // a missing translation: a language without its own annotations/timing has no
 // localized overlay artifact to publish.
-func buildLocalizedOverlayPlans(ctx context.Context, result *GenerateResult, sourceLanguage Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) error {
+func buildLocalizedOverlayPlans(ctx context.Context, result *contract.GenerateResult, sourceLanguage contract.Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) error {
 	if result == nil {
 		return nil
 	}
 	result.LocalizedOverlayPlans = nil
-	seen := map[Language]struct{}{sourceLanguage: {}}
+	seen := map[contract.Language]struct{}{sourceLanguage: {}}
 	for i := range result.Scenes {
 		for language := range result.Scenes[i].Voiceover {
 			if language == "" || language == sourceLanguage {
@@ -406,7 +460,7 @@ func buildLocalizedOverlayPlans(ctx context.Context, result *GenerateResult, sou
 	if len(seen) <= 1 {
 		return nil
 	}
-	result.LocalizedOverlayPlans = make(map[Language]*capmodel.OverlayPlan, len(seen)-1)
+	result.LocalizedOverlayPlans = make(map[contract.Language]*capmodel.OverlayPlan, len(seen)-1)
 	for language := range seen {
 		if language == sourceLanguage {
 			continue

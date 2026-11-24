@@ -8,6 +8,7 @@ import (
 	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -56,8 +57,8 @@ const (
 // result.LocalizedOverlayRenders, so the run record can never be raced or
 // reordered by render completion order.
 type overlayRenderOutcome struct {
-	language     Language
-	ref          RenderReference
+	language     contract.Language
+	ref          contract.RenderReference
 	boundaryWall time.Duration
 	planItems    int
 	// planDigest is the identity of the plan this render was produced from. It
@@ -66,7 +67,7 @@ type overlayRenderOutcome struct {
 	// preflight carries the digest-bound image verification performed before
 	// the first submission on the snapshot. The joined caller copies it onto
 	// the durable result so the late handoff does not repeat the downloads.
-	preflight *FinalJobPreflight
+	preflight *contract.FinalJobPreflight
 }
 
 // runOverlayRenderPhase renders the frozen semantic OverlayPlan and records the
@@ -91,7 +92,7 @@ type overlayRenderOutcome struct {
 // already carries a render, or a prior attempt was already resumed past the
 // audio stage (the render used to be part of that stage's work, so a resumed run
 // must not re-wait on it).
-func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, state audioCompileState, result *GenerateResult) bool {
+func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, resumeIdx int, state audioCompileState, result *contract.GenerateResult) bool {
 	outcomes, fanOutErr := r.renderOverlayPlans(ctx, req, resumeIdx, result)
 	if fanOutErr != nil {
 		r.failExecutionStepBestEffort(ctx, exec, state.Step, fanOutErr)
@@ -109,16 +110,16 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 // never encode a full timeline or a scene-wide composition. If the wired
 // enqueuer cannot render per item, the run fails closed instead of falling
 // back to a timeline render.
-func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, _ GenerateRequest, plan *capmodel.OverlayPlan) (RenderReference, error) {
+func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, _ contract.GenerateRequest, plan *capmodel.OverlayPlan) (contract.RenderReference, error) {
 	if plan == nil {
-		return RenderReference{}, nil
+		return contract.RenderReference{}, nil
 	}
 	return r.overlayRenderEnqueuer.EnqueueChrononPlanItems(ctx, *plan)
 }
 
 // renderOverlayPlans computes against a private snapshot. It never writes the
 // durable run or execution step; the joined caller owns failures and results.
-func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, resumeIdx int, result *GenerateResult) ([]overlayRenderOutcome, error) {
+func (r *Runner) renderOverlayPlans(ctx context.Context, req contract.GenerateRequest, resumeIdx int, result *contract.GenerateResult) ([]overlayRenderOutcome, error) {
 	if result == nil || (!req.Render.Enabled && !req.Render.OverlaysOnly) || r.overlayRenderEnqueuer == nil || stageSkipped(resumeIdx, StageCompilingAudio) {
 		return nil, nil
 	}
@@ -197,11 +198,11 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, re
 	return outcomes, nil
 }
 
-func (r *Runner) applyOverlayRenderOutcomes(runID string, result *GenerateResult, outcomes []overlayRenderOutcome) {
+func (r *Runner) applyOverlayRenderOutcomes(runID string, result *contract.GenerateResult, outcomes []overlayRenderOutcome) {
 	// Apply in PLAN ORDER on the caller goroutine. The result is keyed by
 	// language, so this is deterministic by construction rather than by
 	// accident of which render returned first.
-	sourceLanguage := result.overlayPlanLanguage()
+	sourceLanguage := result.OverlayPlanLanguage()
 	for _, outcome := range outcomes {
 		if outcome.preflight != nil {
 			result.FinalJobPreflight = outcome.preflight
@@ -212,7 +213,7 @@ func (r *Runner) applyOverlayRenderOutcomes(runID string, result *GenerateResult
 			result.OverlayRender = &ref
 		} else {
 			if result.LocalizedOverlayRenders == nil {
-				result.LocalizedOverlayRenders = make(map[Language]RenderReference)
+				result.LocalizedOverlayRenders = make(map[contract.Language]contract.RenderReference)
 			}
 			localized := outcome.ref
 			localized.PlanDigest = outcome.planDigest
@@ -236,12 +237,18 @@ func (r *Runner) applyOverlayRenderOutcomes(runID string, result *GenerateResult
 // overlayPlansToRender. It is the ONCE-ONLY resume/idempotency gate of the
 // render phase: a completed reference already on the result is reused instead
 // of re-submitting duplicate GPU work.
-func pendingOverlayPlans(result *GenerateResult, req GenerateRequest) []languageOverlayPlan {
+func pendingOverlayPlans(result *contract.GenerateResult, req contract.GenerateRequest) []languageOverlayPlan {
 	plans := overlayPlansToRender(result, req)
 	pending := make([]languageOverlayPlan, 0, len(plans))
-	sourceLanguage := result.overlayPlanLanguage()
+	sourceLanguage := result.OverlayPlanLanguage()
 	for _, item := range plans {
-		if req.FinalJob && item.plan != nil {
+		if item.plan != nil {
+			// Every overlay render is an INTERMEDIATE: the local join and the
+			// final-job handoff both consume the certified object-store locator
+			// (artifact.URL / StorageKey), never a Drive identity. Publishing it
+			// to Drive would copy bytes that already have a reader elsewhere,
+			// so the non-final path must not do it either. The final video is
+			// unaffected: the join fetches the same artifact.
 			item.plan.RequireObjectStoreBeforeReturn = true
 		}
 		// A script may deliberately disable every semantic overlay while still
@@ -274,33 +281,26 @@ func pendingOverlayPlans(result *GenerateResult, req GenerateRequest) []language
 }
 
 type languageOverlayPlan struct {
-	language Language
+	language contract.Language
 	plan     *capmodel.OverlayPlan
-}
-
-func (r *GenerateResult) overlayPlanLanguage() Language {
-	if r == nil || r.OverlayPlan == nil {
-		return ""
-	}
-	return Language(strings.TrimSpace(r.OverlayPlan.Language))
 }
 
 // overlayPlansToRender makes dispatch order deterministic: source language
 // first, then requested targets in caller order, followed by any persisted
 // target plan missing from a resumed request.
-func overlayPlansToRender(result *GenerateResult, req GenerateRequest) []languageOverlayPlan {
+func overlayPlansToRender(result *contract.GenerateResult, req contract.GenerateRequest) []languageOverlayPlan {
 	if result == nil {
 		return nil
 	}
 	var plans []languageOverlayPlan
-	seen := map[Language]struct{}{}
+	seen := map[contract.Language]struct{}{}
 	if result.OverlayPlan != nil {
-		language := result.overlayPlanLanguage()
+		language := result.OverlayPlanLanguage()
 		plans = append(plans, languageOverlayPlan{language: language, plan: result.OverlayPlan})
 		seen[language] = struct{}{}
 	}
 	for _, language := range req.Languages {
-		if language == "" || language == result.overlayPlanLanguage() {
+		if language == "" || language == result.OverlayPlanLanguage() {
 			continue
 		}
 		if plan := result.LocalizedOverlayPlans[language]; plan != nil {
@@ -316,7 +316,7 @@ func overlayPlansToRender(result *GenerateResult, req GenerateRequest) []languag
 	}
 	sort.Strings(remaining)
 	for _, raw := range remaining {
-		language := Language(raw)
+		language := contract.Language(raw)
 		plans = append(plans, languageOverlayPlan{language: language, plan: result.LocalizedOverlayPlans[language]})
 	}
 	return plans
@@ -336,7 +336,7 @@ func overlayPlansToRender(result *GenerateResult, req GenerateRequest) []languag
 // A phase the worker did not report is NOT observed. A zero would silently pull
 // the histogram down and hide a missing measurement, which is exactly the
 // regression this telemetry exists to expose.
-func recordChrononArtifactMetrics(ref RenderReference) {
+func recordChrononArtifactMetrics(ref contract.RenderReference) {
 	for _, artifact := range renderedArtifacts(ref) {
 		backend := strings.TrimSpace(artifact.Backend)
 		if backend == "" {
@@ -356,9 +356,9 @@ func recordChrononArtifactMetrics(ref RenderReference) {
 
 // renderedArtifacts returns the artifacts to certify for ONE render reference,
 // preferring the per-item lineage over the duplicated first-item Artifact.
-func renderedArtifacts(ref RenderReference) []*RenderArtifact {
+func renderedArtifacts(ref contract.RenderReference) []*contract.RenderArtifact {
 	if len(ref.Batches) > 0 || len(ref.Items) > 0 {
-		out := make([]*RenderArtifact, 0, len(ref.Batches)+len(ref.Items))
+		out := make([]*contract.RenderArtifact, 0, len(ref.Batches)+len(ref.Items))
 		seen := make(map[string]struct{}, len(ref.Batches)+len(ref.Items))
 		for i := range ref.Batches {
 			artifact := ref.Batches[i].Artifact
@@ -391,7 +391,7 @@ func renderedArtifacts(ref RenderReference) []*RenderArtifact {
 		return out
 	}
 	if ref.Artifact != nil {
-		return []*RenderArtifact{ref.Artifact}
+		return []*contract.RenderArtifact{ref.Artifact}
 	}
 	return nil
 }

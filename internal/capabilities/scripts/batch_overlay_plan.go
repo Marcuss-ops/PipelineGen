@@ -3,7 +3,6 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -50,7 +49,7 @@ func CompileOverlayPlanFromGenerationResult(
 		Title:          result.Title,
 		OutputName:     result.Title,
 		AudioMode:      capabilityaudio.AudioMode(strings.ToUpper(strings.TrimSpace(result.AudioMode))),
-		phraseAligner:  aligner,
+		Aligner:        aligner,
 	}
 	if capResult.AudioMode == "" {
 		capResult.AudioMode = capabilityaudio.AudioModeCombinedTimeline
@@ -142,54 +141,6 @@ func CompileOverlayPlanFromGenerationResult(
 // into the canonical master audio plan by overlay_sfx_projection.go. This file
 // keeps only the positional matcher the projection shares with the image-style
 // lane; it never writes item.sound_effect onto the RenderingGen payload.
-
-// groupImageSFXByScene keeps declaration order for scenes while grouping the
-// cue entries of the same scene. Scene keys are compared case-insensitively,
-// exactly like the planner's scene identity.
-func groupImageSFXByScene(pins []scriptpkg.OverlayImageAsset) (map[string][]scriptpkg.OverlayImageSoundEffect, []string) {
-	cues := make(map[string][]scriptpkg.OverlayImageSoundEffect)
-	order := make([]string, 0)
-	seen := make(map[string]struct{}, len(pins))
-	for _, pin := range pins {
-		if pin.SoundEffect == nil {
-			continue
-		}
-		scene := strings.ToLower(strings.TrimSpace(pin.SceneID))
-		if scene == "" {
-			continue
-		}
-		if _, ok := seen[scene]; !ok {
-			seen[scene] = struct{}{}
-			order = append(order, scene)
-		}
-		cues[scene] = append(cues[scene], *pin.SoundEffect)
-	}
-	return cues, order
-}
-
-// imageOverlayItemsBySceneWhere is the shared positional matcher: per scene,
-// the image items that satisfy eligible, ordered by start time (then id).
-func imageOverlayItemsBySceneWhere(plan *capmodel.OverlayPlan, eligible func(*capmodel.OverlayItem) bool) map[string][]*capmodel.OverlayItem {
-	out := make(map[string][]*capmodel.OverlayItem)
-	for index := range plan.Items {
-		item := &plan.Items[index]
-		if !eligible(item) || !capoverlay.IsImageOverlayItem(*item) {
-			continue
-		}
-		scene := strings.ToLower(strings.TrimSpace(item.SceneID))
-		out[scene] = append(out[scene], item)
-	}
-	for scene := range out {
-		items := out[scene]
-		sort.SliceStable(items, func(i, j int) bool {
-			if items[i].StartMs != items[j].StartMs {
-				return items[i].StartMs < items[j].StartMs
-			}
-			return items[i].ID < items[j].ID
-		})
-	}
-	return out
-}
 
 // imageSFXWindow mirrors the visible window the renderer and the plan seal use:
 // a single-layer image is visible for the whole item, a composite for its

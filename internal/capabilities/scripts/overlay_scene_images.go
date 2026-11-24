@@ -9,20 +9,22 @@ package scriptgeneration
 
 import (
 	"encoding/hex"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	cryptodigest "github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"log"
 	"net/url"
 	"os"
 	"strings"
+
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	cryptodigest "github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // sceneEntityImageHashes returns content hashes already used by entity cards.
 // Generic scene stills must use a different source image so the same portrait
 // is not replayed immediately after its captioned entity card.
-func sceneEntityImageHashes(result *GenerateResult) map[string]struct{} {
+func sceneEntityImageHashes(result *contract.GenerateResult) map[string]struct{} {
 	hashes := make(map[string]struct{})
 	if result == nil {
 		return hashes
@@ -49,7 +51,7 @@ func sceneEntityImageHashes(result *GenerateResult) map[string]struct{} {
 // can keep their canonical portrait while each scene gets its own contextual
 // visual. Timing is anchored at the certified scene start, never estimated
 // from the narration text.
-func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64) (capabilityoverlay.ImageCandidate, bool) {
+func sceneImageCandidate(result *contract.GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64) (capabilityoverlay.ImageCandidate, bool) {
 	candidates := sceneImageCandidates(result, sceneID, startUS, excludedHashes, sceneEndUS, 1)
 	if len(candidates) == 0 {
 		return capabilityoverlay.ImageCandidate{}, false
@@ -60,7 +62,7 @@ func sceneImageCandidate(result *GenerateResult, sceneID string, startUS int64, 
 // sceneImageCandidates projects distinct contextual stills onto one scene.
 // When a scene has enough certified duration, later stills run sequentially
 // after the first one, preserving the replace-only image timeline contract.
-func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64, limit int) []capabilityoverlay.ImageCandidate {
+func sceneImageCandidates(result *contract.GenerateResult, sceneID string, startUS int64, excludedHashes map[string]struct{}, sceneEndUS int64, limit int) []capabilityoverlay.ImageCandidate {
 	if result == nil || strings.TrimSpace(sceneID) == "" || startUS < 0 {
 		return nil
 	}
@@ -201,7 +203,7 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 // entity cards, so a scene full of generic stills silently loses every entity
 // image to the per-scene ceiling. Reserving their slots here keeps the generic
 // lane from consuming the budget the certified portraits need.
-func entityImageCardReservation(result *GenerateResult, sceneID string) int {
+func entityImageCardReservation(result *contract.GenerateResult, sceneID string) int {
 	if result == nil || strings.TrimSpace(sceneID) == "" {
 		return 0
 	}
@@ -237,7 +239,7 @@ func entityImageCardReservation(result *GenerateResult, sceneID string) int {
 // without evicting its certified entity images from the shared per-scene
 // overlay budget. With no image-bearing entities the certified generic limit
 // is unchanged.
-func genericSceneImageLimit(result *GenerateResult, sceneID string, maxOverlaysPerScene int) int {
+func genericSceneImageLimit(result *contract.GenerateResult, sceneID string, maxOverlaysPerScene int) int {
 	limit := maxGenericSceneImagesPerScene
 	if maxOverlaysPerScene <= 0 {
 		return limit
@@ -302,7 +304,7 @@ func canHydrateEntityImage(binding *scriptpkg.EntityImageBinding) bool {
 
 // hydrateLocalizedEntityImages returns the number of localized entities that
 // received a verified source binding.
-func hydrateLocalizedEntityImages(result *GenerateResult, language Language) int {
+func hydrateLocalizedEntityImages(result *contract.GenerateResult, language contract.Language) int {
 	if result == nil || strings.TrimSpace(string(language)) == "" ||
 		strings.EqualFold(strings.TrimSpace(string(result.SourceLanguage)), strings.TrimSpace(string(language))) {
 		return 0

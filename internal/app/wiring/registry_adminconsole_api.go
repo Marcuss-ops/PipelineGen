@@ -42,8 +42,23 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 
 	reg := adminconsole.NewRegistry()
 
-	// ── assets ───────────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	reg.Register(adminConsoleAssetsEntity(assetStore, versionStore, auditStore, log))
+	for _, entity := range adminConsoleSimpleEntities() {
+		reg.Register(entity)
+	}
+
+	svc := adminconsole.NewService(reg, auditStore, versionStore)
+	desc := adminconsole.Build(svc, log)
+
+	if err := tryRegisterModuleStrict(registry, log, desc, WithRegistrationPoint("register.AdminConsole")); err != nil {
+		return fmt.Errorf("wire registry: adminconsole-api module: %w", err)
+	}
+	return nil
+}
+
+func adminConsoleAssetsEntity(assetStore MediaAssetStore, versionStore adminconsole.EntityVersionStore, auditStore adminconsole.AuditLogger, log *zap.Logger) adminconsole.EntityDescriptor {
+	return adminconsole.EntityDescriptor{
+
 		Key:          "assets",
 		Label:        "Media Assets",
 		Readable:     true,
@@ -161,10 +176,13 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 				return nil, fmt.Errorf("action %q not yet implemented", action)
 			},
 		},
-	})
+	}
+}
 
+func adminConsoleSimpleEntities() []adminconsole.EntityDescriptor {
+	entities := []adminconsole.EntityDescriptor{}
 	// ── clips ────────────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	entities = append(entities, adminconsole.EntityDescriptor{
 		Key:        "clips",
 		Label:      "Clips",
 		Readable:   true,
@@ -179,7 +197,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	})
 
 	// ── images ─────────────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	entities = append(entities, adminconsole.EntityDescriptor{
 		Key:        "images",
 		Label:      "Images",
 		Readable:   true,
@@ -193,7 +211,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	})
 
 	// ── scripts ────────────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	entities = append(entities, adminconsole.EntityDescriptor{
 		Key:        "scripts",
 		Label:      "Scripts",
 		Readable:   true,
@@ -207,7 +225,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	})
 
 	// ── search_queries ─────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	entities = append(entities, adminconsole.EntityDescriptor{
 		Key:        "search_queries",
 		Label:      "Search Queries",
 		Readable:   true,
@@ -221,7 +239,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	})
 
 	// ── jobs ───────────────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	entities = append(entities, adminconsole.EntityDescriptor{
 		Key:        "jobs",
 		Label:      "Jobs",
 		Readable:   true,
@@ -240,7 +258,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	})
 
 	// ── outbox ─────────────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	entities = append(entities, adminconsole.EntityDescriptor{
 		Key:        "outbox",
 		Label:      "Outbox",
 		Readable:   true,
@@ -258,7 +276,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	})
 
 	// ── stock_batches ──────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	entities = append(entities, adminconsole.EntityDescriptor{
 		Key:        "stock_batches",
 		Label:      "Stock Batches",
 		Readable:   true,
@@ -272,7 +290,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	})
 
 	// ── stock_artifacts ────────────────────────────────────────────────────
-	reg.Register(adminconsole.EntityDescriptor{
+	entities = append(entities, adminconsole.EntityDescriptor{
 		Key:        "stock_artifacts",
 		Label:      "Stock Artifacts",
 		Readable:   true,
@@ -284,14 +302,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 		},
 		Repository: &adminconsole.Adapter{},
 	})
-
-	svc := adminconsole.NewService(reg, auditStore, versionStore)
-	desc := adminconsole.Build(svc, log)
-
-	if err := tryRegisterModuleStrict(registry, log, desc, WithRegistrationPoint("register.AdminConsole")); err != nil {
-		return fmt.Errorf("wire registry: adminconsole-api module: %w", err)
-	}
-	return nil
+	return entities
 }
 
 // snapshotAsset returns a JSON snapshot of the asset before and after

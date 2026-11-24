@@ -7,17 +7,19 @@
 package scriptgeneration
 
 import (
-	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
-	"go.uber.org/zap"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
+
+	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	logger "github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
+	"go.uber.org/zap"
 )
 
 // entityCardKind reports whether an overlay kind is an entity-card kind
@@ -48,7 +50,7 @@ func entityCardKind(kind capmodel.OverlayKind) bool {
 // The second return maps each annotated entity's StableEntityID to its
 // canonical id, so a resolver card item (keyed by the same StableEntityID)
 // can look up the identity to resolve.
-func entityCardMediaIndex(result *GenerateResult, perSceneImages ...overlayPlanImageOptions) (*capabilityentities.EntityMediaResolver, map[string]string) {
+func entityCardMediaIndex(result *contract.GenerateResult, perSceneImages ...overlayPlanImageOptions) (*capabilityentities.EntityMediaResolver, map[string]string) {
 	sceneScoped := len(perSceneImages) > 0 && perSceneImages[0].perSceneEntityCards()
 	index := capabilityentities.NewEntityMediaIndex()
 	media := capabilityentities.NewEntityMediaResolver()

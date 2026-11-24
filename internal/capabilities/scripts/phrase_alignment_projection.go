@@ -7,6 +7,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -23,7 +24,6 @@ type PhraseTimingSource struct {
 // Kept as aliases so the script projection and the Rust adapter share one
 // contract without a second definition.
 type PhraseAlignmentRequest = capabilityaudio.PhraseAlignmentRequest
-type PhraseAligner = capabilityaudio.PhraseAligner
 
 type timingProjectionSkip struct {
 	SceneID string
@@ -49,11 +49,11 @@ func reportTimingProjectionSkip(reporters []func(timingProjectionSkip), skip tim
 // a partial, plausible-but-wrong result. Output order is scene order
 // (ResolvedScene.Index), then phrase order within each scene. Scenes without
 // a source (no voiceover/timing) are skipped.
-func CompilePhraseTimings(ctx context.Context, aligner PhraseAligner, scenes []ResolvedScene, sources map[string]PhraseTimingSource) ([]capabilityaudio.PhraseTiming, error) {
+func CompilePhraseTimings(ctx context.Context, aligner contract.PhraseAligner, scenes []contract.ResolvedScene, sources map[string]PhraseTimingSource) ([]capabilityaudio.PhraseTiming, error) {
 	if aligner == nil {
 		return nil, fmt.Errorf("phrase timing: phrase aligner is required")
 	}
-	byID := make(map[string]ResolvedScene, len(scenes))
+	byID := make(map[string]contract.ResolvedScene, len(scenes))
 	for _, scene := range scenes {
 		byID[scene.ID] = scene
 	}
@@ -117,11 +117,11 @@ func projectPhraseTimings(sceneIndex int, timelineStartUS int64, phrases []strin
 // verbatim, or a source referencing an unknown scene aborts the whole
 // projection. Output order is scene order; scenes without a source are
 // skipped.
-func CompileSceneSpeechTimings(ctx context.Context, aligner PhraseAligner, scenes []ResolvedScene, sources map[string]PhraseTimingSource) ([]capabilityaudio.SceneSpeechTiming, error) {
+func CompileSceneSpeechTimings(ctx context.Context, aligner contract.PhraseAligner, scenes []contract.ResolvedScene, sources map[string]PhraseTimingSource) ([]capabilityaudio.SceneSpeechTiming, error) {
 	if aligner == nil {
 		return nil, fmt.Errorf("scene speech timing: phrase aligner is required")
 	}
-	byID := make(map[string]ResolvedScene, len(scenes))
+	byID := make(map[string]contract.ResolvedScene, len(scenes))
 	for _, scene := range scenes {
 		byID[scene.ID] = scene
 	}
@@ -173,14 +173,14 @@ func CompileSceneSpeechTimings(ctx context.Context, aligner PhraseAligner, scene
 // carries timing the projection stays nil — timing capture is opt-in at the
 // voiceover port, so a timing-less run is a legitimate no-op rather than a
 // failure.
-func compileResultPhraseTimings(ctx context.Context, aligner PhraseAligner, result *GenerateResult, language Language, reporters ...func(timingProjectionSkip)) error {
+func compileResultPhraseTimings(ctx context.Context, aligner contract.PhraseAligner, result *contract.GenerateResult, language contract.Language, reporters ...func(timingProjectionSkip)) error {
 	if result == nil {
 		return nil
 	}
 	if aligner == nil {
 		return fmt.Errorf("phrase timing: phrase aligner is required")
 	}
-	result.phraseAligner = aligner
+	result.Aligner = aligner
 	sources := make(map[string]PhraseTimingSource)
 	for _, scene := range result.Scenes {
 		ref, ok := scene.Voiceover[language]
@@ -241,7 +241,7 @@ type PhraseAnchoringDiagnostic struct {
 // overlay planner performs on every important-phrase candidate. It never
 // mutates the result and never fails the run; a candidate that does not occur
 // verbatim in the certified timing is reported as a skip with its reason.
-func DiagnosePhraseAnchoring(ctx context.Context, aligner PhraseAligner, result *GenerateResult, language Language) []PhraseAnchoringDiagnostic {
+func DiagnosePhraseAnchoring(ctx context.Context, aligner contract.PhraseAligner, result *contract.GenerateResult, language contract.Language) []PhraseAnchoringDiagnostic {
 	if result == nil || aligner == nil {
 		return nil
 	}

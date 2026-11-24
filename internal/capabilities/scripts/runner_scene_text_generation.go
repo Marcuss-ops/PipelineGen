@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
@@ -22,7 +23,7 @@ type sceneTextGenerationPath struct {
 	ready                        *sceneReadyCoordinator
 }
 
-func (r *Runner) prepareSceneTextGeneration(ctx context.Context, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext) sceneTextGenerationPath {
+func (r *Runner) prepareSceneTextGeneration(ctx context.Context, runID string, req contract.GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext) sceneTextGenerationPath {
 	path := sceneTextGenerationPath{
 		streamable:                   SceneStreamingEligibility(req),
 		topologyNeedsMaterialization: req.ScriptParams.SegmentWords > 0 && !req.ScriptParams.SingleScene && len(req.ScriptParams.Segments) == 0,
@@ -51,7 +52,7 @@ func (r *Runner) prepareSceneTextGeneration(ctx context.Context, runID string, r
 	return path
 }
 
-func (r *Runner) generateSceneText(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, path sceneTextGenerationPath) ([]Scene, scriptpkg.SourceTrace, bool, error) {
+func (r *Runner) generateSceneText(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, path sceneTextGenerationPath) ([]contract.Scene, scriptpkg.SourceTrace, bool, error) {
 	if req.ScriptParams.SourceTextVerbatim {
 		scenes, err := materializeVerbatimSourceTextScenes(req)
 		return scenes, scriptpkg.SourceTrace{}, false, err
@@ -89,7 +90,7 @@ func (r *Runner) generateSceneText(ctx context.Context, runID string, req Genera
 
 // sceneTextBatchResult carries the batch generate tuple through the retry engine.
 type sceneTextBatchResult struct {
-	scenes []Scene
+	scenes []contract.Scene
 	trace  scriptpkg.SourceTrace
 }
 
@@ -106,16 +107,16 @@ type phraseImpactEnrichment struct {
 	timings         []PhraseImpactTimings
 	// Semantic planner views from the same worker batch. They are optional
 	// products: a worker without the consolidation projection leaves them nil.
-	consolidation  *SemanticVisualConsolidation
-	productionPlan *SemanticProductionPlan
-	searchFeedback *SemanticSearchFeedback
+	consolidation  *contract.SemanticVisualConsolidation
+	productionPlan *contract.SemanticProductionPlan
+	searchFeedback *contract.SemanticSearchFeedback
 }
 
 // adoptSemanticPlannerView records the consolidated view, its executable plan
 // and the planner-owned feedback. A planning error is logged and withholds the
 // plan instead of failing the run: the editorial products already computed from
 // the same batch stay valid.
-func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles map[string]*SemanticCandidateBundle, req GenerateRequest) {
+func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles map[string]*SemanticCandidateBundle, req contract.GenerateRequest) {
 	if len(bundles) == 0 {
 		return
 	}
@@ -164,7 +165,7 @@ const maxVerbatimEditorialTranscriptRunes = 12000
 // skipped the batch unconditionally, so a verbatim payload with editorial
 // overlays enabled reached the planner without an `editorial` section and the
 // whole plan failed closed.
-func shouldComputeEditorialEnrichment(req GenerateRequest, transcript string) bool {
+func shouldComputeEditorialEnrichment(req contract.GenerateRequest, transcript string) bool {
 	if !req.ScriptParams.SourceTextVerbatim {
 		return true
 	}
@@ -174,14 +175,26 @@ func shouldComputeEditorialEnrichment(req GenerateRequest, transcript string) bo
 	return utf8.RuneCountInString(transcript) <= maxVerbatimEditorialTranscriptRunes
 }
 
-func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript string, scenes []Scene, req GenerateRequest) (*phraseImpactEnrichment, error) {
+func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript string, scenes []contract.Scene, req contract.GenerateRequest) (*phraseImpactEnrichment, error) {
 	// A verbatim source is already authored and must not be rewritten. The
 	// optional semantic/editorial batch still runs for a short verbatim script
 	// when automatic editorial overlays are enabled: without it the planner has
-	// no scene titles/bullets and the plan fails closed. Long narration keeps
-	// the historical skip so it cannot exceed the local embedder window.
+	// no scene titles/bullets and the plan fails closed. Long narration keeps the
+	// historical semantic skip so it cannot exceed the local embedder window,
+	// but still seals an explicit empty editorial section for the Rust contract.
 	if !shouldComputeEditorialEnrichment(req, transcript) {
-		return &phraseImpactEnrichment{}, nil
+		out := &phraseImpactEnrichment{}
+		inputs := buildSceneAnalysisInputs(transcript, scenes, req)
+		if len(inputs) > 0 {
+			// The plan schema requires an editorial section even when long
+			// verbatim narration intentionally skips semantic highlight analysis.
+			// This certified empty manifest says this pass contributes no titles
+			// or bullets; it does not invent or rewrite source content.
+			out.editorial = buildEditorialManifest(req, inputs, scriptpkg.PhraseImpactResult{
+				SceneHighlightsCertified: true,
+			})
+		}
+		return out, nil
 	}
 	chapterScenes, chapterTopics := make([]string, 0, len(scenes)), make([]string, 0, len(scenes))
 	for _, scene := range scenes {

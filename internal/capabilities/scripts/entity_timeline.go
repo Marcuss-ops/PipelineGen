@@ -161,30 +161,6 @@ func normalizeEntityPhrase(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
 }
 
-// annotationsForLanguage returns only semantic annotations grounded in the
-// requested language. The source annotation remains the compatibility surface
-// for its own language; a translated render never reuses source-language spans
-// when translated NLP is missing.
-func annotationsForLanguage(scene Scene, language Language, sourceLanguage ...Language) *scriptpkg.SceneAnnotations {
-	if localized := scene.LocalizedAnnotations[language]; localized != nil {
-		return localized
-	}
-	if scene.Annotations == nil {
-		return nil
-	}
-	annotationLanguage := strings.TrimSpace(scene.Annotations.Language)
-	if language == "" || strings.EqualFold(annotationLanguage, string(language)) {
-		return scene.Annotations
-	}
-	// An unlabelled annotation is legacy source-language data. It may be used
-	// for the source voiceover only; never project it onto a translated timing
-	// stream, where the source entity surface can be absent or translated.
-	if annotationLanguage == "" && len(sourceLanguage) > 0 && strings.EqualFold(string(sourceLanguage[0]), string(language)) {
-		return scene.Annotations
-	}
-	return nil
-}
-
 // entitySourcesFromAnnotations projects a scene's annotations onto the
 // neutral EntitySource inputs consumed by the capability builder. It emits
 // exactly ONE source per entity (entityRepeatPolicy = once_per_scene): the

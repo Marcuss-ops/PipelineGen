@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -34,5 +35,35 @@ func TestShouldComputeEditorialEnrichmentForVerbatimScripts(t *testing.T) {
 				t.Fatalf("shouldComputeEditorialEnrichment = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestLongVerbatimSkipStillBuildsCertifiedEditorialManifest(t *testing.T) {
+	req := defaultTestRequest()
+	req.ScriptParams.SourceTextVerbatim = true
+	transcript := strings.Repeat("narrazione authored. ", maxVerbatimEditorialTranscriptRunes/10)
+	scenes := []Scene{{
+		ID:   "scene-0",
+		Text: map[Language]string{"en": "narrazione authored."},
+	}}
+
+	out, err := (&Runner{}).computePhraseImpactEnrichment(context.Background(), transcript, scenes, req)
+	if err != nil {
+		t.Fatalf("computePhraseImpactEnrichment: %v", err)
+	}
+	if out.editorial == nil {
+		t.Fatal("long verbatim skip left the required editorial section nil")
+	}
+	if !out.editorial.Certified {
+		t.Fatal("empty editorial manifest is not certified")
+	}
+	if len(out.editorial.Scenes) != 0 {
+		t.Fatalf("expected no fabricated editorial scenes, got %d", len(out.editorial.Scenes))
+	}
+	if out.editorial.Fingerprint == "" {
+		t.Fatal("editorial manifest has no fingerprint")
+	}
+	if err := out.editorial.Validate(); err != nil {
+		t.Fatalf("editorial manifest is invalid: %v", err)
 	}
 }

@@ -4,7 +4,6 @@ internal/capabilities/assets/artifacts/local_blob.go
 internal/capabilities/assets/artifacts/service.go
 internal/capabilities/assets/voiceover/types.go
 internal/capabilities/delivery/types.go
-internal/capabilities/scripts/adapters/vidrush_helpers.go
 internal/capabilities/staging/service.go
 internal/capabilities/ai/autotag/autotag.go
 internal/platform/acquisition/filesystem_stager_prepare.go

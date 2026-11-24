@@ -13,6 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
 )
 
@@ -21,7 +22,9 @@ func (a *RemoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 	if err != nil {
 		return started, err
 	}
+	attachStarted := time.Now()
 	remote, waitErr := a.client.Attach(ctx, started.JobID, a.attachBudget)
+	recordRemoteFinalJobWait(ctx, attachStarted)
 	receipt := finalJobResult(started.JobID, remote)
 	// The attach result only knows Master-clock phases; the locally measured
 	// handoff belongs to the receipt the submission produced.
@@ -243,12 +246,37 @@ func (a *RemoteFinalJobAdapter) AttachFinalJob(ctx context.Context, jobID string
 	if waitToCompletion {
 		budget = 0
 	}
+	// The attach is the poll phase: while it runs, this run can make no
+	// progress on anything else. Record it as a child-dependency wait on the
+	// render-queue component (the same component the artifact download uses),
+	// so the interval stops landing in the run's unattributed bucket. The
+	// download that follows is a separate operation and is not double-counted.
+	attachStarted := time.Now()
 	remote, err := a.client.Attach(ctx, id, budget)
+	recordRemoteFinalJobWait(ctx, attachStarted)
 	receipt, downloadErr := a.withDownloadedArtifact(ctx, finalJobResult(id, remote))
 	if downloadErr != nil {
 		return receipt, errors.Join(finalJobWaitError(err), downloadErr)
 	}
 	return receipt, finalJobWaitError(err)
+}
+
+// recordRemoteFinalJobWait closes the poll interval opened before Attach. A
+// pending attach that consumed its whole budget is exactly the blocked period
+// the run report must show; a no-op when the run has no observability binding.
+func recordRemoteFinalJobWait(ctx context.Context, started time.Time) {
+	finished := time.Now()
+	// A non-blocking attach (waitToCompletion=false) returns immediately and
+	// is not a wait: recording it would flood the report with zero intervals.
+	if finished.Sub(started) < time.Millisecond {
+		return
+	}
+	kernobs.RecordWait(ctx, kernobs.WaitInfo{
+		Kind:       kernobs.WaitChildDependency,
+		Component:  kernobs.ComponentRenderQueue,
+		StartedAt:  started,
+		FinishedAt: finished,
+	})
 }
 
 // FinalJobStatus reads the Master state without waiting: the local-cancel

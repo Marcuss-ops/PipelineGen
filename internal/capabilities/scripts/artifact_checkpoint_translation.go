@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
@@ -23,9 +24,9 @@ import (
 const translationCheckpointProcessorVersion = "translation/v1"
 
 type translationCheckpointPayload struct {
-	SceneID  string   `json:"scene_id"`
-	Language Language `json:"language"`
-	Text     string   `json:"text"`
+	SceneID  string            `json:"scene_id"`
+	Language contract.Language `json:"language"`
+	Text     string            `json:"text"`
 }
 
 // translationCutoverActive removes the debounced per-unit envelope write. It
@@ -39,11 +40,11 @@ func (r *Runner) translationCutoverActive() bool {
 		r.artifactCheckpoints != nil
 }
 
-func translationCheckpointFingerprint(sourceLang, targetLang Language, sourceText string) string {
+func translationCheckpointFingerprint(sourceLang, targetLang contract.Language, sourceText string) string {
 	input := struct {
-		SourceLanguage Language `json:"source_language"`
-		TargetLanguage Language `json:"target_language"`
-		SourceText     string   `json:"source_text"`
+		SourceLanguage contract.Language `json:"source_language"`
+		TargetLanguage contract.Language `json:"target_language"`
+		SourceText     string            `json:"source_text"`
 	}{
 		SourceLanguage: sourceLang,
 		TargetLanguage: targetLang,
@@ -59,7 +60,7 @@ func translationCheckpointFingerprint(sourceLang, targetLang Language, sourceTex
 // saveTranslationArtifactCheckpoint records the certified translated text. A
 // failure is returned to the worker and fails the unit (the envelope must not
 // claim progress the artifact store does not have).
-func (r *Runner) saveTranslationArtifactCheckpoint(ctx context.Context, runID string, attempt int, sceneID string, sourceLang, targetLang Language, sourceText, translated string) error {
+func (r *Runner) saveTranslationArtifactCheckpoint(ctx context.Context, runID string, attempt int, sceneID string, sourceLang, targetLang contract.Language, sourceText, translated string) error {
 	if r == nil || !r.artifactCheckpointDualWrite || r.artifactCheckpoints == nil {
 		return nil
 	}
@@ -96,7 +97,7 @@ func (r *Runner) saveTranslationArtifactCheckpoint(ctx context.Context, runID st
 // loadTranslationCheckpoint restores one translated unit. The repository has
 // already verified the payload digest; this function additionally checks the
 // artifact digest against the text and refuses a changed input.
-func (r *Runner) loadTranslationCheckpoint(ctx context.Context, runID, sceneID string, sourceLang, targetLang Language, sourceText string) (string, bool) {
+func (r *Runner) loadTranslationCheckpoint(ctx context.Context, runID, sceneID string, sourceLang, targetLang contract.Language, sourceText string) (string, bool) {
 	if r == nil || !r.artifactCheckpointResume || r.artifactCheckpoints == nil {
 		return "", false
 	}
@@ -159,7 +160,7 @@ func (r *Runner) invalidateTranslationCheckpoint(ctx context.Context, runID, key
 // saveTranslationUnitEnvelope keeps the legacy debounced whole-result write
 // unless cutover is active. The post-fan-out flush remains a stage boundary and
 // is never skipped.
-func (r *Runner) saveTranslationUnitEnvelope(ctx context.Context, runID string, snapshot *GenerateResult) error {
+func (r *Runner) saveTranslationUnitEnvelope(ctx context.Context, runID string, snapshot *contract.GenerateResult) error {
 	if r == nil || r.repo == nil || snapshot == nil {
 		return nil
 	}

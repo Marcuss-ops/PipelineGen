@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
@@ -23,19 +24,19 @@ import (
 // processFixedDisplayText translates fixed-media display text into every
 // target language. Fixed media never enters TTS/narration, but its display
 // text remains a subtitle surface for localized renders.
-func (c *sceneReadyCoordinator) processFixedDisplayText(out Scene) (Scene, error) {
+func (c *sceneReadyCoordinator) processFixedDisplayText(out contract.Scene) (contract.Scene, error) {
 	if !out.ExecutionMode.AllowsDisplayTextTranslation() {
 		return out, nil
 	}
 	if out.Text == nil {
-		out.Text = make(map[Language]string)
+		out.Text = make(map[contract.Language]string)
 	}
 	sourceText := strings.TrimSpace(out.Text[c.req.SourceLanguage])
 	if sourceText == "" {
 		return out, nil
 	}
-	langs := make([]Language, 0, len(c.req.Languages))
-	seen := map[Language]bool{}
+	langs := make([]contract.Language, 0, len(c.req.Languages))
+	seen := map[contract.Language]bool{}
 	for _, lang := range c.req.Languages {
 		if lang == "" || lang == c.req.SourceLanguage || seen[lang] {
 			continue
@@ -48,17 +49,17 @@ func (c *sceneReadyCoordinator) processFixedDisplayText(out Scene) (Scene, error
 	}
 	work := make([]sceneLanguageWork, 0, len(langs))
 	for _, lang := range langs {
-		work = append(work, sceneLanguageWork{lang: lang, needsTranslation: true})
+		work = append(work, sceneLanguageWork{Lang: lang, NeedsTranslation: true})
 	}
 	outcomes, err := concurrent.Map(c.ctx, work, c.translationSlots.Cap(), func(ctx context.Context, itemIdx int, item sceneLanguageWork) (sceneLanguageOutcome, error) {
-		translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText, out.TextReadyAt)
+		translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.Lang, sourceText, out.TextReadyAt)
 		if err != nil {
 			return sceneLanguageOutcome{}, err
 		}
-		return sceneLanguageOutcome{lang: item.lang, text: translated, translated: true}, nil
+		return sceneLanguageOutcome{lang: item.Lang, text: translated, translated: true}, nil
 	})
 	if err != nil {
-		return Scene{}, err
+		return contract.Scene{}, err
 	}
 	for _, res := range outcomes {
 		if res.translated {
@@ -76,7 +77,7 @@ func (c *sceneReadyCoordinator) processFixedDisplayText(out Scene) (Scene, error
 			Language:    res.lang,
 			Status:      "COMPLETED",
 		}); err != nil {
-			return Scene{}, err
+			return contract.Scene{}, err
 		}
 	}
 	c.mu.Lock()
@@ -88,7 +89,7 @@ func (c *sceneReadyCoordinator) processFixedDisplayText(out Scene) (Scene, error
 // sceneTextPathReason names why a run took the streaming or batch scene-text
 // path. The runner owns the decision; this keeps the observability reason
 // independent from the coordinator implementation.
-func sceneTextPathReason(req GenerateRequest, streamed, topologyNeedsMaterialization bool, gen TextGenerator) string {
+func sceneTextPathReason(req contract.GenerateRequest, streamed, topologyNeedsMaterialization bool, gen TextGenerator) string {
 	switch {
 	case streamed:
 		return "streamed"
@@ -141,7 +142,7 @@ func fixedPlaybackDurationUS(playback scriptpkg.FixedPlaybackPolicy) int64 {
 // valid number of prose chunks while copying the last scene id/index onto
 // multiple chunks; enrichment must never collapse those chunks through an id
 // keyed map.
-func normalizeGeneratedSceneIdentity(scenes []Scene) {
+func normalizeGeneratedSceneIdentity(scenes []contract.Scene) {
 	seen := make(map[string]struct{}, len(scenes))
 	for i := range scenes {
 		id := strings.TrimSpace(scenes[i].ID)

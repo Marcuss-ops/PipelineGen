@@ -677,7 +677,7 @@ func TestFinalJobIntermediateClipWindowsNeverClassifiesStockAudio(t *testing.T) 
 		{ID: "scene-1", Index: 1, TimelineStartUS: 2_000_000, DurationUS: 2_000_000, AudioIntents: []capabilityaudio.AudioIntent{voiceover, ordinaryIntent}},
 	}}}
 	windows := finalJobIntermediateClipWindows(ordinaryResult)
-	if len(windows) != 1 || windows["scene-1"].startUS != 2_000_000 {
+	if len(windows) != 1 || windows["scene-1"].StartUS != 2_000_000 {
 		t.Fatalf("ordinary clip scene must stay classified, got %+v", windows)
 	}
 }

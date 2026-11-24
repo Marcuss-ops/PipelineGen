@@ -18,6 +18,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -33,7 +34,7 @@ type executionRun struct {
 	r     *Runner
 	ctx   context.Context
 	runID string
-	req   GenerateRequest
+	req   contract.GenerateRequest
 	exec  ExecutionContext
 
 	// routing is the canonical artifact routing context resolved ONCE at
@@ -51,7 +52,7 @@ type executionRun struct {
 	coordinator *VidRushIncrementalCoordinator
 
 	// result is the durable GenerateResult assembled across phases.
-	result *GenerateResult
+	result *contract.GenerateResult
 
 	// snapshot is the read-only scene-text projection taken before the
 	// concurrent TTS and VidRush-prepare branches start.
@@ -97,7 +98,7 @@ func (e *executionRun) start() bool {
 	)
 
 	// Resolve the canonical artifact routing context once before any I/O.
-	routing, resolveErr := e.req.resolveArtifactRoutingContext()
+	routing, resolveErr := e.req.ResolveArtifactRoutingContext()
 	if resolveErr != nil {
 		return e.fail(StagePublishingDocuments, resolveErr)
 	}
@@ -181,7 +182,7 @@ func (e *executionRun) start() bool {
 	return true
 }
 
-func missingUnpublishedFinalAudio(result *GenerateResult) bool {
+func missingUnpublishedFinalAudio(result *contract.GenerateResult) bool {
 	if result == nil || result.FinalAudio == nil || strings.TrimSpace(result.FinalAudio.DriveLink) != "" {
 		return false
 	}
@@ -299,7 +300,7 @@ func (e *executionRun) generate() bool {
 // ensureResult guarantees a non-nil result for runs that produced no scenes.
 func (e *executionRun) ensureResult() {
 	if e.result == nil {
-		e.result = &GenerateResult{Scenes: []Scene{}, Render: e.req.Render, Title: e.req.Title, OutputName: e.req.OutputName, VoiceoverGroup: e.req.ScriptParams.VoiceoverGroup}
+		e.result = &contract.GenerateResult{Scenes: []contract.Scene{}, Render: e.req.Render, Title: e.req.Title, OutputName: e.req.OutputName, VoiceoverGroup: e.req.ScriptParams.VoiceoverGroup}
 	}
 }
 
@@ -370,7 +371,7 @@ func (e *executionRun) parallelFanOut() bool {
 		// ── P1.1 Audio prefetch ──────────────────────────────
 		// Resolve BGM/SFX assets and materialize original clip audio in
 		// parallel with TTS. Best-effort: skip when the source is nil.
-		var prefetched *AudioPrefetchResult
+		var prefetched *contract.AudioPrefetchResult
 		if e.r.audioAssetSource != nil && (len(e.req.BackgroundMusic) > 0 || len(e.req.SoundEffects) > 0 || e.req.RandomSFXOnClipStart ||
 			e.req.MixPolicy.Normalize() == capabilityaudio.MixVoiceoverWithDuckedClip) {
 			bgmIDs := make([]string, len(e.req.BackgroundMusic))
@@ -397,8 +398,8 @@ func (e *executionRun) parallelFanOut() bool {
 					clipIDs = append(clipIDs, s.ClipIDs...)
 				}
 			}
-			var clipAudioSource ClipAudioAssetSource
-			if candidate, ok := e.r.audioAssetSource.(ClipAudioAssetSource); ok {
+			var clipAudioSource contract.ClipAudioAssetSource
+			if candidate, ok := e.r.audioAssetSource.(contract.ClipAudioAssetSource); ok {
 				clipAudioSource = candidate
 			}
 			// The prefetch is BOUNDED by its own budget: it overlaps TTS and
@@ -508,6 +509,24 @@ func (e *executionRun) finalJob() bool {
 	})
 }
 
+// recordPublicationDrainWait closes the interval spent joining the bounded
+// publication pools. Before this, the join sat between audio_render and
+// post_writer_finalize/objectstore_upload with no operation and no wait, so it
+// was counted as idle even when the pool was uploading. A drain with nothing
+// in flight returns immediately and is not recorded.
+func recordPublicationDrainWait(ctx context.Context, started time.Time) {
+	finished := time.Now()
+	if finished.Sub(started) < time.Millisecond {
+		return
+	}
+	kernobs.RecordWait(ctx, kernobs.WaitInfo{
+		Kind:       kernobs.WaitOutboxDelivery,
+		Component:  kernobs.ComponentDrive,
+		StartedAt:  started,
+		FinishedAt: finished,
+	})
+}
+
 // persist stores the canonical script. An explicitly requested remote final
 // render runs after persistence and before document publication.
 func (e *executionRun) persist() bool {
@@ -531,6 +550,7 @@ func (e *executionRun) complete() {
 	if e.r.voiceoverPublishDrainer != nil {
 		publishDrainStarted := time.Now()
 		e.r.voiceoverPublishDrainer.Wait()
+		recordPublicationDrainWait(e.ctx, publishDrainStarted)
 		voiceoverGenerated := 0
 		if e.result != nil && e.result.AudioMetrics != nil {
 			voiceoverGenerated = e.result.AudioMetrics.VoiceoverGenerated
@@ -541,7 +561,10 @@ func (e *executionRun) complete() {
 		// Run-scoped join: the pool is process-wide, so the drainer resolves
 		// this run's batch from the run context instead of joining whatever
 		// another concurrent run happens to have in flight.
-		if err := e.r.overlayPublicationDrainer.Wait(e.ctx); err != nil {
+		overlayDrainStarted := time.Now()
+		err := e.r.overlayPublicationDrainer.Wait(e.ctx)
+		recordPublicationDrainWait(e.ctx, overlayDrainStarted)
+		if err != nil {
 			e.r.failRunWithRetry(e.ctx, e.runID, StagePublishingDocuments,
 				fmt.Errorf("overlay publication pool: %w", err))
 			return

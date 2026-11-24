@@ -7,13 +7,14 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // buildSceneAnalysisInputs locates each body scene verbatim in the transcript
 // so the Rust worker can verify slice identity. Offsets stay nil when the
 // scene text is not found exactly once (repeated text => nil, local-only).
-func buildSceneAnalysisInputs(transcript string, scenes []Scene, req GenerateRequest) []scriptpkg.SceneAnalysisInput {
+func buildSceneAnalysisInputs(transcript string, scenes []contract.Scene, req contract.GenerateRequest) []scriptpkg.SceneAnalysisInput {
 	out := make([]scriptpkg.SceneAnalysisInput, 0, len(scenes))
 	for _, scene := range scenes {
 		if !scene.ExecutionMode.CountsTowardBodyWordBudget() {
@@ -51,7 +52,7 @@ func buildSceneAnalysisInputs(transcript string, scenes []Scene, req GenerateReq
 // a full fingerprint over everything influencing the result. Uncertified
 // worker output still produces a manifest with Certified=false, never a
 // fabricated certified one.
-func buildEditorialManifest(req GenerateRequest, inputs []scriptpkg.SceneAnalysisInput, res scriptpkg.PhraseImpactResult) *scriptpkg.EditorialManifest {
+func buildEditorialManifest(req contract.GenerateRequest, inputs []scriptpkg.SceneAnalysisInput, res scriptpkg.PhraseImpactResult) *scriptpkg.EditorialManifest {
 	ids := make([]string, len(inputs))
 	texts := make([]string, len(inputs))
 	topics := make([]string, len(inputs))
@@ -127,7 +128,7 @@ func buildEditorialManifest(req GenerateRequest, inputs []scriptpkg.SceneAnalysi
 // generators. Protected fixed-media scenes are deliberately excluded: their
 // DisplayText/text belongs to the timeline/document surface, never to the
 // generated BODY word budget or minimum-word gate.
-func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
+func outputFromScenes(scenes []contract.Scene, language contract.Language) contract.GenerateOutput {
 	parts := make([]string, 0, len(scenes))
 	fallbackUsed := false
 	for _, scene := range scenes {
@@ -157,7 +158,7 @@ func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
 		}
 	}
 	text := strings.Join(parts, "\n\n")
-	return GenerateOutput{
+	return contract.GenerateOutput{
 		Text:                       text,
 		WordCount:                  len(strings.Fields(text)),
 		SourceLanguageFallbackUsed: fallbackUsed,
@@ -170,7 +171,7 @@ func outputFromScenes(scenes []Scene, language Language) GenerateOutput {
 // or leave later clip scenes empty. The binding is intentionally limited to
 // the explicit marker format so free-form source text keeps its existing
 // generation behavior.
-func bindExplicitClipSceneText(req GenerateRequest, scenes []Scene) {
+func bindExplicitClipSceneText(req contract.GenerateRequest, scenes []contract.Scene) {
 	if req.Source.Type != SourceClips || len(req.Source.ClipIDs) == 0 || len(scenes) != len(req.Source.ClipIDs) {
 		return
 	}
@@ -191,7 +192,7 @@ func bindExplicitClipSceneText(req GenerateRequest, scenes []Scene) {
 	}
 	for i := range scenes {
 		if scenes[i].Text == nil {
-			scenes[i].Text = make(map[Language]string)
+			scenes[i].Text = make(map[contract.Language]string)
 		}
 		// The per-clip source line is evidence/instructions, not the final
 		// narration. Preserve a non-empty model answer; only use the supplied
@@ -242,7 +243,7 @@ func hasExplicitSceneMarkers(sourceText string) bool {
 // bindExplicitClipSceneText WILL fire and could overwrite already-emitted
 // scene text, corrupting downstream consumers (NLP, TTS, render) that
 // already started on stale text.
-func SceneStreamingEligibility(req GenerateRequest) bool {
+func SceneStreamingEligibility(req contract.GenerateRequest) bool {
 	if req.Source.Type != SourceClips || len(req.Source.ClipIDs) == 0 {
 		return false
 	}
@@ -258,7 +259,7 @@ func SceneStreamingEligibility(req GenerateRequest) bool {
 
 // validateMinimumGeneratedOutput only rejects empty narration. Target_words
 // and min_words remain generation guidance and never block a completed script.
-func validateMinimumGeneratedOutput(req GenerateRequest, output GenerateOutput) error {
+func validateMinimumGeneratedOutput(req contract.GenerateRequest, output contract.GenerateOutput) error {
 	actual := len(strings.Fields(strings.TrimSpace(output.Text)))
 	if actual == 0 {
 		return fmt.Errorf("%w: generated narration is empty", ErrEmptyGeneratedText)
@@ -307,7 +308,7 @@ func (r *Runner) runNormalizePhase(ctx context.Context, runID string, exec Execu
 // validateClipSceneOutput contains the source-specific safety checks for
 // clip-backed narration. It keeps runSceneTextPhase focused on generation and
 // leaves failure persistence at the same execution-step boundary.
-func (r *Runner) validateClipSceneOutput(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, scenes []Scene) bool {
+func (r *Runner) validateClipSceneOutput(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, scenes []contract.Scene) bool {
 	for i, scene := range scenes {
 		// no_voiceover cutaways are fixed media by design: their only text
 		// surface is the clip's own footage. They must never be checked against

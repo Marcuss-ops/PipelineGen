@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -21,13 +22,13 @@ import (
 // alpha-bearing clip through bounded pools (the map class at its own width, the
 // rest at the configured width). Overlaps are valid because these clips are
 // separate transparent layers.
-func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate) (RenderReference, error) {
+func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate) (contract.RenderReference, error) {
 	if len(candidates) == 0 {
-		return RenderReference{}, nil
+		return contract.RenderReference{}, nil
 	}
 	var mapCandidates, otherCandidates []overlayItemCandidate
 	for _, candidate := range candidates {
-		if candidate.source.Map != nil {
+		if candidate.Source.Map != nil {
 			mapCandidates = append(mapCandidates, candidate)
 		} else {
 			otherCandidates = append(otherCandidates, candidate)
@@ -39,7 +40,7 @@ func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context,
 		// depth actually achieved.
 		observability.OverlayItemRenderInFlight.Inc()
 		defer observability.OverlayItemRenderInFlight.Dec()
-		child, metadata, err := separateOverlayItemPlan(plan, candidate.source, candidate.index)
+		child, metadata, err := separateOverlayItemPlan(plan, candidate.Source, candidate.Index)
 		if err != nil {
 			return overlayItemRenderResult{}, err
 		}
@@ -51,7 +52,7 @@ func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context,
 		if child.RequireDriveBeforeReturn && e.asyncPublication && e.publisher != nil {
 			child.RequireDriveBeforeReturn = false
 		}
-		if candidate.source.Map != nil {
+		if candidate.Source.Map != nil {
 			// PREPARE (TICKET-OVERLAY-THROUGHPUT (c)): the dynamic map video is
 			// pre-materialized OUTSIDE the submission path. The enqueue below
 			// consumes the durable cache entry through the background fold, so
@@ -59,18 +60,18 @@ func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context,
 			// this phase. A prepare already running for the same map is JOINED,
 			// never doubled.
 			if err := e.PreMaterializeDynamicMapVideo(opCtx, child); err != nil {
-				return overlayItemRenderResult{}, fmt.Errorf("prepare overlay map item %q: %w", candidate.source.ID, err)
+				return overlayItemRenderResult{}, fmt.Errorf("prepare overlay map item %q: %w", candidate.Source.ID, err)
 			}
 		}
 		ref, err := e.enqueueChrononPlan(opCtx, child, metadata)
 		if err != nil {
-			return overlayItemRenderResult{}, fmt.Errorf("render overlay item %q: %w", candidate.source.ID, err)
+			return overlayItemRenderResult{}, fmt.Errorf("render overlay item %q: %w", candidate.Source.ID, err)
 		}
 		return overlayItemRenderResult{
 			full:  ref,
-			order: candidate.index,
-			item: OverlayItemRenderReference{
-				ItemID: candidate.source.ID, JobID: ref.JobID, Status: ref.Status, Artifact: ref.Artifact,
+			order: candidate.Index,
+			item: contract.OverlayItemRenderReference{
+				ItemID: candidate.Source.ID, JobID: ref.JobID, Status: ref.Status, Artifact: ref.Artifact,
 			},
 		}, nil
 	}
@@ -85,7 +86,7 @@ func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context,
 		go func() {
 			_, _ = concurrent.Map(ctx, mapCandidates, overlayMapRenderWidth,
 				func(opCtx context.Context, _ int, candidate overlayItemCandidate) (string, error) {
-					child, _, err := separateOverlayItemPlan(plan, candidate.source, candidate.index)
+					child, _, err := separateOverlayItemPlan(plan, candidate.Source, candidate.Index)
 					if err != nil {
 						return "", err
 					}
@@ -138,19 +139,19 @@ func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context,
 	close(errCh)
 	for err := range errCh {
 		if err != nil {
-			return RenderReference{}, err
+			return contract.RenderReference{}, err
 		}
 	}
 	// Ripristina l'ordine di piano (posizione originale), non alfabetico:
 	// l'identità child (<plan>:item:%03d:<id>) dipende dalla posizione.
 	sort.Slice(results, func(i, j int) bool { return results[i].order < results[j].order })
-	items := make([]OverlayItemRenderReference, 0, len(results))
+	items := make([]contract.OverlayItemRenderReference, 0, len(results))
 	for _, result := range results {
 		items = append(items, result.item)
 	}
 	order := make(map[string]int, len(candidates))
 	for _, candidate := range candidates {
-		order[candidate.source.ID] = candidate.index
+		order[candidate.Source.ID] = candidate.Index
 	}
 	sortRenderItemsByPlanOrder(items, order)
 	cacheHits := 0
@@ -166,7 +167,7 @@ func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context,
 
 // sortRenderItemsByPlanOrder restores the parent plan's editorial order (the
 // child plan identity depends on the original plan index).
-func sortRenderItemsByPlanOrder(items []OverlayItemRenderReference, order map[string]int) {
+func sortRenderItemsByPlanOrder(items []contract.OverlayItemRenderReference, order map[string]int) {
 	sort.SliceStable(items, func(i, j int) bool {
 		return order[items[i].ItemID] < order[items[j].ItemID]
 	})

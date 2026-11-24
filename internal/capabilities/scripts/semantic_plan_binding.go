@@ -12,24 +12,18 @@ package scriptgeneration
 import (
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-// SemanticBindingIssue reports a resolved retrieval hit that could not become
-// an annotation image. UNBOUND_REQUIRES_ACQUISITION is the overlay-only case:
-// the plan found a URL but has no verified content address yet.
-type SemanticBindingIssue struct {
-	UnitID, SceneID, EntityID, Reason string
-}
 
 // ApplySemanticResolvedImages projects the plan's resolved, content-addressed
 // hits onto the annotations of the scene each composition belongs to. It never
 // overwrites an already-bound asset: the durable media pipeline is the
 // authority, and the plan is a fallback for compositions that pipeline did not
 // reach. Returns the number of bindings written.
-func ApplySemanticResolvedImages(result *GenerateResult) int {
+func ApplySemanticResolvedImages(result *contract.GenerateResult) int {
 	if result == nil || result.SemanticProductionPlan == nil || len(result.Scenes) == 0 {
 		return 0
 	}
@@ -63,8 +57,8 @@ func ApplySemanticResolvedImages(result *GenerateResult) int {
 		if hit == nil {
 			continue
 		}
-		if strings.TrimSpace(hit.SHA256) == "" || unit.SearchStatus != ProductionSearchSatisfied {
-			result.SemanticBindingIssues = append(result.SemanticBindingIssues, SemanticBindingIssue{
+		if strings.TrimSpace(hit.SHA256) == "" || unit.SearchStatus != contract.ProductionSearchSatisfied {
+			result.SemanticBindingIssues = append(result.SemanticBindingIssues, contract.SemanticBindingIssue{
 				UnitID: unit.CandidateID, SceneID: unit.SceneID,
 				EntityID: firstString(unit.EntityIDs), Reason: "UNBOUND_REQUIRES_ACQUISITION",
 			})
@@ -99,7 +93,7 @@ func ApplySemanticResolvedImages(result *GenerateResult) int {
 // bindSemanticImageToScene writes the binding on the one annotation that names
 // the identity. It preserves a verified existing binding, which is the media
 // stage's output and must win over a plan fallback.
-func bindSemanticImageToScene(scene *Scene, surface string, hit *generationcontract.SemanticResolvedImage) bool {
+func bindSemanticImageToScene(scene *contract.Scene, surface string, hit *generationcontract.SemanticResolvedImage) bool {
 	if scene == nil || hit == nil || strings.TrimSpace(hit.SHA256) == "" {
 		return false
 	}

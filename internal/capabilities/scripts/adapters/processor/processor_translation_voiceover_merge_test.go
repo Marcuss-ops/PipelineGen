@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
+	processorvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -50,7 +51,7 @@ import (
 func TestTranslationMergeWriteback_VoiceoverReceivesItalianText(t *testing.T) {
 	// ── Arrange: build processors with canonical stubs ──
 	voStub := &pipelineVOStub{}
-	voProc := NewVoiceoverProcessor(voStub, zap.NewNop())
+	voProc := processorvoiceover.NewVoiceoverProcessor(voStub, zap.NewNop())
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:          "merge-writeback-test",
@@ -220,7 +221,7 @@ func TestTranslationMergeWriteback_VoiceoverReceivesItalianText(t *testing.T) {
 // language (e.g. when the plan does not request translation).
 func TestTranslationMergeWriteback_NoTranslationPreservesEnglish(t *testing.T) {
 	voStub := &pipelineVOStub{}
-	voProc := NewVoiceoverProcessor(voStub, zap.NewNop())
+	voProc := processorvoiceover.NewVoiceoverProcessor(voStub, zap.NewNop())
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:       "no-translation-test",
@@ -294,7 +295,7 @@ func TestTranslationMergeWriteback_NoTranslationPreservesEnglish(t *testing.T) {
 // src.TranslatedText is "").
 func TestTranslationMergeWriteback_PartialTranslationFailurePreservesEnglish(t *testing.T) {
 	voStub := &pipelineVOStub{}
-	voProc := NewVoiceoverProcessor(voStub, zap.NewNop())
+	voProc := processorvoiceover.NewVoiceoverProcessor(voStub, zap.NewNop())
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:          "tx-failure-test",

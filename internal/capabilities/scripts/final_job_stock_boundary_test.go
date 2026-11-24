@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,7 +79,7 @@ func TestFinalJobProducerDoesNotOwnStockPlanning(t *testing.T) {
 		"alignFinalJobStockSceneDurations",
 	}
 	for _, name := range files {
-		raw, err := os.ReadFile(name)
+		raw, err := os.ReadFile(filepath.Join("finaljob", name))
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}

@@ -3,12 +3,31 @@ package rustexec
 import (
 	"encoding/json"
 	"fmt"
-	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"sort"
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 )
+
+// consolidationScope is the immutable manifest index shared by every
+// consolidation check: known identities, group-to-scene ownership and the raw
+// proposal count.
+type consolidationScope struct {
+	knownEntities map[string]struct{}
+	groupScenes   map[string]map[string]struct{}
+	rawProposals  int
+}
+
+// consolidationCandidates is the candidate projection state. It owns the
+// duplicate indexes so every check sees the same identity map.
+type consolidationCandidates struct {
+	items             []scriptgen.SemanticProductionCandidate
+	byID              map[string]int
+	dedupKeys         map[string]struct{}
+	mediaAssets       map[string]struct{}
+	productionQueries int
+}
 
 // projectSemanticConsolidation validates and projects the script-level
 // selective production view. It fails closed: a candidate that points at an
@@ -24,15 +43,61 @@ func projectSemanticConsolidation(
 		// collections remain usable; only the new selective view is absent.
 		return nil, nil
 	}
-	if wire.Schema != "visual_consolidation.v1" {
-		return nil, fmt.Errorf("semantic consolidation: unsupported schema %q", wire.Schema)
+	if err := validateConsolidationSchema(wire); err != nil {
+		return nil, err
 	}
+	scope, err := indexConsolidationScope(bundles)
+	if err != nil {
+		return nil, err
+	}
+	canonicalFacts, err := validateCanonicalFacts(wire.Facts)
+	if err != nil {
+		return nil, err
+	}
+	scriptText := scriptGroundingText(texts)
+	candidates, err := validateProductionCandidates(wire.ProductionCandidates, texts, scriptText, scope, canonicalFacts)
+	if err != nil {
+		return nil, err
+	}
+	facts, err := projectConsolidatedFacts(wire.Facts, texts, candidates.items, candidates.byID)
+	if err != nil {
+		return nil, err
+	}
+	dates, err := projectConsolidatedDates(wire.Dates, texts)
+	if err != nil {
+		return nil, err
+	}
+	references, err := projectReferenceNumbers(wire.ReferenceNumbers, texts)
+	if err != nil {
+		return nil, err
+	}
+	links, err := projectEventLinks(wire.EventLinks, texts, scope.groupScenes)
+	if err != nil {
+		return nil, err
+	}
+	scenes, err := projectConsolidationScenes(wire.Scenes, texts)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateConsolidationCounts(wire, candidates, facts, scope); err != nil {
+		return nil, err
+	}
+	return projectConsolidationView(wire, candidates.items, facts, dates, references, links, scenes), nil
+}
 
-	knownEntities := make(map[string]struct{})
+func validateConsolidationSchema(wire *semanticEngineConsolidation) error {
+	if wire.Schema != "visual_consolidation.v1" {
+		return fmt.Errorf("semantic consolidation: unsupported schema %q", wire.Schema)
+	}
+	return nil
+}
+
+func indexConsolidationScope(bundles map[string]*scriptgen.SemanticCandidateBundle) (*consolidationScope, error) {
 	groupScenes, err := indexSemanticGroupScenes(bundles)
 	if err != nil {
 		return nil, err
 	}
+	knownEntities := make(map[string]struct{})
 	rawProposals := 0
 	for _, bundle := range bundles {
 		for _, identity := range bundle.Identities {
@@ -40,10 +105,12 @@ func projectSemanticConsolidation(
 		}
 		rawProposals += len(bundle.Proposals)
 	}
+	return &consolidationScope{knownEntities: knownEntities, groupScenes: groupScenes, rawProposals: rawProposals}, nil
+}
 
-	scriptText := scriptGroundingText(texts)
-	canonicalFacts := make(map[string]struct{}, len(wire.Facts))
-	for _, fact := range wire.Facts {
+func validateCanonicalFacts(wireFacts []semanticEngineConsolidatedFact) (map[string]struct{}, error) {
+	canonicalFacts := make(map[string]struct{}, len(wireFacts))
+	for _, fact := range wireFacts {
 		if fact.ID == "" {
 			return nil, fmt.Errorf("semantic consolidation: canonical fact without id")
 		}
@@ -52,201 +119,277 @@ func projectSemanticConsolidation(
 		}
 		canonicalFacts[fact.ID] = struct{}{}
 	}
+	return canonicalFacts, nil
+}
 
-	candidates := make([]scriptgen.SemanticProductionCandidate, 0, len(wire.ProductionCandidates))
-	candidateByID := make(map[string]int, len(wire.ProductionCandidates))
-	dedupKeys := make(map[string]struct{}, len(wire.ProductionCandidates))
-	mediaAssets := make(map[string]struct{})
-	productionQueries := 0
-	for _, wireCandidate := range wire.ProductionCandidates {
-		if wireCandidate.ID == "" || wireCandidate.Recipe == "" || wireCandidate.AssetKey == "" || wireCandidate.DedupKey == "" {
-			return nil, fmt.Errorf("semantic consolidation: candidate identity is incomplete: %+v", wireCandidate)
+func validateProductionCandidates(
+	wireCandidates []semanticEngineProductionCandidate,
+	texts map[string]string,
+	scriptText string,
+	scope *consolidationScope,
+	canonicalFacts map[string]struct{},
+) (*consolidationCandidates, error) {
+	out := &consolidationCandidates{
+		items:       make([]scriptgen.SemanticProductionCandidate, 0, len(wireCandidates)),
+		byID:        make(map[string]int, len(wireCandidates)),
+		dedupKeys:   make(map[string]struct{}, len(wireCandidates)),
+		mediaAssets: make(map[string]struct{}),
+	}
+	for _, wireCandidate := range wireCandidates {
+		queries, err := validateProductionCandidate(wireCandidate, out, texts, scriptText, scope, canonicalFacts)
+		if err != nil {
+			return nil, err
 		}
-		if wireCandidate.Rank <= 0 {
-			return nil, fmt.Errorf("semantic consolidation: candidate %q has invalid rank %d", wireCandidate.ID, wireCandidate.Rank)
-		}
-		if _, duplicate := candidateByID[wireCandidate.ID]; duplicate {
-			return nil, fmt.Errorf("semantic consolidation: duplicate candidate id %q", wireCandidate.ID)
-		}
-		if _, duplicate := dedupKeys[wireCandidate.DedupKey]; duplicate {
-			return nil, fmt.Errorf("semantic consolidation: duplicate candidate dedup key %q", wireCandidate.DedupKey)
-		}
-		dedupKeys[wireCandidate.DedupKey] = struct{}{}
-		source, ok := texts[wireCandidate.SceneID]
-		if !ok {
-			return nil, fmt.Errorf("semantic consolidation: candidate %q references unknown scene %q", wireCandidate.ID, wireCandidate.SceneID)
-		}
-		if !groundedSpan(source, wireCandidate.StartByte, wireCandidate.EndByte, wireCandidate.Evidence) {
-			return nil, fmt.Errorf("semantic consolidation: candidate %q evidence is not grounded in %q", wireCandidate.ID, wireCandidate.SceneID)
-		}
-		for _, entityID := range wireCandidate.EntityIDs {
-			if _, ok := knownEntities[entityID]; !ok {
-				return nil, fmt.Errorf("semantic consolidation: candidate %q references unknown identity %q", wireCandidate.ID, entityID)
-			}
-		}
-		for _, groupID := range wireCandidate.GroupIDs {
-			declaringScenes, ok := groupScenes[groupID]
-			if !ok {
-				return nil, fmt.Errorf("semantic consolidation: candidate %q references unknown group %q", wireCandidate.ID, groupID)
-			}
-			if !candidateOwnsGroupScene(wireCandidate, declaringScenes) {
-				return nil, fmt.Errorf("semantic consolidation: candidate %q references group %q of another scene", wireCandidate.ID, groupID)
-			}
-		}
-		for _, factID := range wireCandidate.CoveredFactIDs {
-			if _, ok := canonicalFacts[factID]; !ok {
-				return nil, fmt.Errorf("semantic consolidation: candidate %q covers unknown fact %q", wireCandidate.ID, factID)
-			}
-		}
-		queries := make([]generationcontract.SemanticSearchQuery, 0, len(wireCandidate.Queries))
-		seenQueries := make(map[string]struct{}, len(wireCandidate.Queries))
-		for _, query := range wireCandidate.Queries {
-			// Exact identity mentions are grounded against the whole script:
-			// the consolidation may anchor a composition in the scene that
-			// states the fact while the identity it searches is introduced by
-			// another scene. Source slices keep the stricter scene grounding.
-			grounding := source
-			if strings.TrimSpace(query.Origin) == "literal" || query.Origin == "" {
-				if strings.TrimSpace(query.Kind) == "exact_mention" {
-					grounding = scriptText
-				}
-				if strings.TrimSpace(query.Text) == "" || !groundedQuery(grounding, query.Text) {
-					return nil, fmt.Errorf("semantic consolidation: candidate %q query %q is not grounded", wireCandidate.ID, query.Text)
-				}
-			} else if !groundedContextQuery(source, query) {
-				return nil, fmt.Errorf("semantic consolidation: candidate %q query %q is not grounded", wireCandidate.ID, query.Text)
-			}
-			if _, duplicate := seenQueries[query.Text]; duplicate {
-				return nil, fmt.Errorf("semantic consolidation: candidate %q repeats query %q", wireCandidate.ID, query.Text)
-			}
-			seenQueries[query.Text] = struct{}{}
-			projectedQuery := generationcontract.SemanticSearchQuery{
-				Kind: query.Kind, Text: query.Text, Origin: query.Origin,
-				Illustrative: query.Illustrative,
-			}
-			if query.Evidence != nil {
-				projectedQuery.Evidence = *query.Evidence
-			}
-			if query.EvidenceStartByte != nil {
-				projectedQuery.EvidenceStartByte = *query.EvidenceStartByte
-			}
-			if query.EvidenceEndByte != nil {
-				projectedQuery.EvidenceEndByte = *query.EvidenceEndByte
-			}
-			if query.TemplateID != nil {
-				projectedQuery.TemplateID = *query.TemplateID
-			}
-			projectedQuery.DerivedTerms = append(projectedQuery.DerivedTerms, query.DerivedTerms...)
-			for _, component := range query.Components {
-				projectedQuery.Components = append(projectedQuery.Components, generationcontract.SemanticSearchQueryComponent{
-					Kind: component.Kind, ComponentType: component.ComponentType, Text: component.Text,
-					StartByte: component.StartByte, EndByte: component.EndByte,
-				})
-			}
-			queries = append(queries, projectedQuery)
-		}
-		if wireCandidate.RequiresMedia && len(queries) == 0 {
-			return nil, fmt.Errorf("semantic consolidation: media candidate %q has no query", wireCandidate.ID)
-		}
-		if !wireCandidate.RequiresMedia && len(queries) != 0 {
-			return nil, fmt.Errorf("semantic consolidation: non-media candidate %q carries external queries", wireCandidate.ID)
+		projected, err := projectProductionCandidate(wireCandidate, queries, texts[wireCandidate.SceneID])
+		if err != nil {
+			return nil, err
 		}
 		if wireCandidate.RequiresMedia {
-			mediaAssets[wireCandidate.AssetKey] = struct{}{}
+			out.mediaAssets[wireCandidate.AssetKey] = struct{}{}
 		}
-		productionQueries += len(queries)
-		projected := scriptgen.SemanticProductionCandidate{
-			ID: wireCandidate.ID, Recipe: wireCandidate.Recipe, Rank: wireCandidate.Rank,
-			Priority: wireCandidate.Priority, SceneID: wireCandidate.SceneID,
-			SceneIDs:  append([]string(nil), wireCandidate.SceneIDs...),
-			EntityIDs: append([]string(nil), wireCandidate.EntityIDs...),
-			FactIDs:   append([]string(nil), wireCandidate.FactIDs...),
-			GroupIDs:  append([]string(nil), wireCandidate.GroupIDs...),
-			Title:     wireCandidate.Title, Evidence: wireCandidate.Evidence,
-			Start: wireCandidate.StartByte, End: wireCandidate.EndByte,
-			VisualPayload:    append(json.RawMessage(nil), wireCandidate.VisualPayload...),
-			SuggestedVisual:  wireCandidate.SuggestedVisual,
-			TemporalSurfaces: append([]string(nil), wireCandidate.TemporalSurfaces...),
-			AssetKey:         wireCandidate.AssetKey, Queries: queries,
-			RequiresMedia: wireCandidate.RequiresMedia, DedupKey: wireCandidate.DedupKey,
-			CoveredFactIDs: append([]string(nil), wireCandidate.CoveredFactIDs...),
-			Rationale:      append([]string(nil), wireCandidate.Rationale...),
+		out.productionQueries += len(queries)
+		out.byID[projected.ID] = len(out.items)
+		out.items = append(out.items, projected)
+	}
+	return out, nil
+}
+
+func validateProductionCandidate(
+	wireCandidate semanticEngineProductionCandidate,
+	out *consolidationCandidates,
+	texts map[string]string,
+	scriptText string,
+	scope *consolidationScope,
+	canonicalFacts map[string]struct{},
+) ([]generationcontract.SemanticSearchQuery, error) {
+	if wireCandidate.ID == "" || wireCandidate.Recipe == "" || wireCandidate.AssetKey == "" || wireCandidate.DedupKey == "" {
+		return nil, fmt.Errorf("semantic consolidation: candidate identity is incomplete: %+v", wireCandidate)
+	}
+	if wireCandidate.Rank <= 0 {
+		return nil, fmt.Errorf("semantic consolidation: candidate %q has invalid rank %d", wireCandidate.ID, wireCandidate.Rank)
+	}
+	if _, duplicate := out.byID[wireCandidate.ID]; duplicate {
+		return nil, fmt.Errorf("semantic consolidation: duplicate candidate id %q", wireCandidate.ID)
+	}
+	if _, duplicate := out.dedupKeys[wireCandidate.DedupKey]; duplicate {
+		return nil, fmt.Errorf("semantic consolidation: duplicate candidate dedup key %q", wireCandidate.DedupKey)
+	}
+	out.dedupKeys[wireCandidate.DedupKey] = struct{}{}
+	source, ok := texts[wireCandidate.SceneID]
+	if !ok {
+		return nil, fmt.Errorf("semantic consolidation: candidate %q references unknown scene %q", wireCandidate.ID, wireCandidate.SceneID)
+	}
+	if !groundedSpan(source, wireCandidate.StartByte, wireCandidate.EndByte, wireCandidate.Evidence) {
+		return nil, fmt.Errorf("semantic consolidation: candidate %q evidence is not grounded in %q", wireCandidate.ID, wireCandidate.SceneID)
+	}
+	for _, entityID := range wireCandidate.EntityIDs {
+		if _, ok := scope.knownEntities[entityID]; !ok {
+			return nil, fmt.Errorf("semantic consolidation: candidate %q references unknown identity %q", wireCandidate.ID, entityID)
 		}
-		for _, item := range wireCandidate.ChartItems {
-			if !groundedSpan(source, item.StartByte, item.EndByte, item.Text) {
-				return nil, fmt.Errorf("semantic consolidation: candidate %q chart item is not grounded", wireCandidate.ID)
+	}
+	for _, groupID := range wireCandidate.GroupIDs {
+		declaringScenes, ok := scope.groupScenes[groupID]
+		if !ok {
+			return nil, fmt.Errorf("semantic consolidation: candidate %q references unknown group %q", wireCandidate.ID, groupID)
+		}
+		if !candidateOwnsGroupScene(wireCandidate, declaringScenes) {
+			return nil, fmt.Errorf("semantic consolidation: candidate %q references group %q of another scene", wireCandidate.ID, groupID)
+		}
+	}
+	for _, factID := range wireCandidate.CoveredFactIDs {
+		if _, ok := canonicalFacts[factID]; !ok {
+			return nil, fmt.Errorf("semantic consolidation: candidate %q covers unknown fact %q", wireCandidate.ID, factID)
+		}
+	}
+	queries, err := validateCandidateQueries(wireCandidate, source, scriptText)
+	if err != nil {
+		return nil, err
+	}
+	if wireCandidate.RequiresMedia && len(queries) == 0 {
+		return nil, fmt.Errorf("semantic consolidation: media candidate %q has no query", wireCandidate.ID)
+	}
+	if !wireCandidate.RequiresMedia && len(queries) != 0 {
+		return nil, fmt.Errorf("semantic consolidation: non-media candidate %q carries external queries", wireCandidate.ID)
+	}
+	return queries, nil
+}
+
+func validateCandidateQueries(
+	wireCandidate semanticEngineProductionCandidate,
+	source string,
+	scriptText string,
+) ([]generationcontract.SemanticSearchQuery, error) {
+	queries := make([]generationcontract.SemanticSearchQuery, 0, len(wireCandidate.Queries))
+	seenQueries := make(map[string]struct{}, len(wireCandidate.Queries))
+	for _, query := range wireCandidate.Queries {
+		// Exact identity mentions are grounded against the whole script:
+		// the consolidation may anchor a composition in the scene that
+		// states the fact while the identity it searches is introduced by
+		// another scene. Source slices keep the stricter scene grounding.
+		grounding := source
+		if strings.TrimSpace(query.Origin) == "literal" || query.Origin == "" {
+			if strings.TrimSpace(query.Kind) == "exact_mention" {
+				grounding = scriptText
 			}
-			projected.ChartItems = append(projected.ChartItems, scriptgen.SemanticChartItem{
-				Label: item.Label, Text: item.Text, Kind: item.Kind, Value: item.Value,
-				Start: item.StartByte, End: item.EndByte,
+			if strings.TrimSpace(query.Text) == "" || !groundedQuery(grounding, query.Text) {
+				return nil, fmt.Errorf("semantic consolidation: candidate %q query %q is not grounded", wireCandidate.ID, query.Text)
+			}
+		} else if !groundedContextQuery(source, query) {
+			return nil, fmt.Errorf("semantic consolidation: candidate %q query %q is not grounded", wireCandidate.ID, query.Text)
+		}
+		if _, duplicate := seenQueries[query.Text]; duplicate {
+			return nil, fmt.Errorf("semantic consolidation: candidate %q repeats query %q", wireCandidate.ID, query.Text)
+		}
+		seenQueries[query.Text] = struct{}{}
+		projectedQuery := generationcontract.SemanticSearchQuery{
+			Kind: query.Kind, Text: query.Text, Origin: query.Origin,
+			Illustrative: query.Illustrative,
+		}
+		if query.Evidence != nil {
+			projectedQuery.Evidence = *query.Evidence
+		}
+		if query.EvidenceStartByte != nil {
+			projectedQuery.EvidenceStartByte = *query.EvidenceStartByte
+		}
+		if query.EvidenceEndByte != nil {
+			projectedQuery.EvidenceEndByte = *query.EvidenceEndByte
+		}
+		if query.TemplateID != nil {
+			projectedQuery.TemplateID = *query.TemplateID
+		}
+		projectedQuery.DerivedTerms = append(projectedQuery.DerivedTerms, query.DerivedTerms...)
+		for _, component := range query.Components {
+			projectedQuery.Components = append(projectedQuery.Components, generationcontract.SemanticSearchQueryComponent{
+				Kind: component.Kind, ComponentType: component.ComponentType, Text: component.Text,
+				StartByte: component.StartByte, EndByte: component.EndByte,
 			})
 		}
-		candidateByID[projected.ID] = len(candidates)
-		candidates = append(candidates, projected)
+		queries = append(queries, projectedQuery)
 	}
+	return queries, nil
+}
 
-	facts := make([]scriptgen.SemanticConsolidatedFact, 0, len(wire.Facts))
-	for _, fact := range wire.Facts {
-		if fact.Evidence == "" {
-			return nil, fmt.Errorf("semantic consolidation: fact %q has no evidence", fact.ID)
-		}
-		grounded := false
-		for _, sceneID := range fact.SceneIDs {
-			source, ok := texts[sceneID]
-			if !ok {
-				return nil, fmt.Errorf("semantic consolidation: fact %q references unknown scene %q", fact.ID, sceneID)
-			}
-			if strings.Contains(source, fact.Evidence) {
-				grounded = true
-			}
-		}
-		if !grounded {
-			return nil, fmt.Errorf("semantic consolidation: fact %q evidence is not grounded in any of its scenes", fact.ID)
-		}
-		if fact.Representation == nil {
-			if strings.TrimSpace(derefString(fact.UncoveredReason)) == "" {
-				return nil, fmt.Errorf("semantic consolidation: fact %q is neither represented nor explained", fact.ID)
-			}
-		} else {
-			candidateIndex, ok := candidateByID[fact.Representation.CandidateID]
-			if !ok {
-				return nil, fmt.Errorf("semantic consolidation: fact %q references unknown candidate %q", fact.ID, fact.Representation.CandidateID)
-			}
-			candidate := &candidates[candidateIndex]
-			covered := false
-			for _, id := range candidate.CoveredFactIDs {
-				if id == fact.ID {
-					covered = true
-					break
-				}
-			}
-			if !covered {
-				return nil, fmt.Errorf("semantic consolidation: candidate %q does not declare fact %q", candidate.ID, fact.ID)
-			}
-		}
-		projected := scriptgen.SemanticConsolidatedFact{
-			ID: fact.ID, FactKey: fact.FactKey,
-			FactIDs:         append([]string(nil), fact.FactIDs...),
-			SubjectEntityID: fact.SubjectEntityID, Predicate: fact.Predicate,
-			NormalizedValue: derefString(fact.NormalizedValue),
-			NormalizedDate:  derefString(fact.NormalizedDate),
-			Status:          fact.Status, Importance: fact.Importance,
-			SceneIDs:      append([]string(nil), fact.SceneIDs...),
-			SentenceIndex: fact.SentenceIndex, Evidence: fact.Evidence,
-			Start: fact.StartByte, End: fact.EndByte,
-			EvidenceStart: fact.EvidenceStartByte, EvidenceEnd: fact.EvidenceEndByte,
-			UncoveredReason: derefString(fact.UncoveredReason),
-		}
-		if fact.Representation != nil {
-			projected.Representation = &scriptgen.SemanticFactRepresentation{
-				CandidateID: fact.Representation.CandidateID, Recipe: fact.Representation.Recipe,
-			}
-		}
-		facts = append(facts, projected)
+func projectProductionCandidate(
+	wireCandidate semanticEngineProductionCandidate,
+	queries []generationcontract.SemanticSearchQuery,
+	source string,
+) (scriptgen.SemanticProductionCandidate, error) {
+	projected := scriptgen.SemanticProductionCandidate{
+		ID: wireCandidate.ID, Recipe: wireCandidate.Recipe, Rank: wireCandidate.Rank,
+		Priority: wireCandidate.Priority, SceneID: wireCandidate.SceneID,
+		SceneIDs:  append([]string(nil), wireCandidate.SceneIDs...),
+		EntityIDs: append([]string(nil), wireCandidate.EntityIDs...),
+		FactIDs:   append([]string(nil), wireCandidate.FactIDs...),
+		GroupIDs:  append([]string(nil), wireCandidate.GroupIDs...),
+		Title:     wireCandidate.Title, Evidence: wireCandidate.Evidence,
+		Start: wireCandidate.StartByte, End: wireCandidate.EndByte,
+		VisualPayload:    append(json.RawMessage(nil), wireCandidate.VisualPayload...),
+		SuggestedVisual:  wireCandidate.SuggestedVisual,
+		TemporalSurfaces: append([]string(nil), wireCandidate.TemporalSurfaces...),
+		AssetKey:         wireCandidate.AssetKey, Queries: queries,
+		RequiresMedia: wireCandidate.RequiresMedia, DedupKey: wireCandidate.DedupKey,
+		CoveredFactIDs: append([]string(nil), wireCandidate.CoveredFactIDs...),
+		Rationale:      append([]string(nil), wireCandidate.Rationale...),
 	}
+	for _, item := range wireCandidate.ChartItems {
+		if !groundedSpan(source, item.StartByte, item.EndByte, item.Text) {
+			return scriptgen.SemanticProductionCandidate{}, fmt.Errorf("semantic consolidation: candidate %q chart item is not grounded", wireCandidate.ID)
+		}
+		projected.ChartItems = append(projected.ChartItems, scriptgen.SemanticChartItem{
+			Label: item.Label, Text: item.Text, Kind: item.Kind, Value: item.Value,
+			Start: item.StartByte, End: item.EndByte,
+		})
+	}
+	return projected, nil
+}
 
-	dates := make([]scriptgen.SemanticConsolidatedDate, 0, len(wire.Dates))
-	for _, date := range wire.Dates {
+func projectConsolidatedFacts(
+	wireFacts []semanticEngineConsolidatedFact,
+	texts map[string]string,
+	candidates []scriptgen.SemanticProductionCandidate,
+	candidateByID map[string]int,
+) ([]scriptgen.SemanticConsolidatedFact, error) {
+	facts := make([]scriptgen.SemanticConsolidatedFact, 0, len(wireFacts))
+	for _, fact := range wireFacts {
+		if err := validateConsolidatedFact(fact, texts, candidates, candidateByID); err != nil {
+			return nil, err
+		}
+		facts = append(facts, projectConsolidatedFact(fact))
+	}
+	return facts, nil
+}
+
+func validateConsolidatedFact(
+	fact semanticEngineConsolidatedFact,
+	texts map[string]string,
+	candidates []scriptgen.SemanticProductionCandidate,
+	candidateByID map[string]int,
+) error {
+	if fact.Evidence == "" {
+		return fmt.Errorf("semantic consolidation: fact %q has no evidence", fact.ID)
+	}
+	grounded := false
+	for _, sceneID := range fact.SceneIDs {
+		source, ok := texts[sceneID]
+		if !ok {
+			return fmt.Errorf("semantic consolidation: fact %q references unknown scene %q", fact.ID, sceneID)
+		}
+		if strings.Contains(source, fact.Evidence) {
+			grounded = true
+		}
+	}
+	if !grounded {
+		return fmt.Errorf("semantic consolidation: fact %q evidence is not grounded in any of its scenes", fact.ID)
+	}
+	if fact.Representation == nil {
+		if strings.TrimSpace(derefString(fact.UncoveredReason)) == "" {
+			return fmt.Errorf("semantic consolidation: fact %q is neither represented nor explained", fact.ID)
+		}
+		return nil
+	}
+	candidateIndex, ok := candidateByID[fact.Representation.CandidateID]
+	if !ok {
+		return fmt.Errorf("semantic consolidation: fact %q references unknown candidate %q", fact.ID, fact.Representation.CandidateID)
+	}
+	candidate := &candidates[candidateIndex]
+	covered := false
+	for _, id := range candidate.CoveredFactIDs {
+		if id == fact.ID {
+			covered = true
+			break
+		}
+	}
+	if !covered {
+		return fmt.Errorf("semantic consolidation: candidate %q does not declare fact %q", candidate.ID, fact.ID)
+	}
+	return nil
+}
+
+func projectConsolidatedFact(fact semanticEngineConsolidatedFact) scriptgen.SemanticConsolidatedFact {
+	projected := scriptgen.SemanticConsolidatedFact{
+		ID: fact.ID, FactKey: fact.FactKey,
+		FactIDs:         append([]string(nil), fact.FactIDs...),
+		SubjectEntityID: fact.SubjectEntityID, Predicate: fact.Predicate,
+		NormalizedValue: derefString(fact.NormalizedValue),
+		NormalizedDate:  derefString(fact.NormalizedDate),
+		Status:          fact.Status, Importance: fact.Importance,
+		SceneIDs:      append([]string(nil), fact.SceneIDs...),
+		SentenceIndex: fact.SentenceIndex, Evidence: fact.Evidence,
+		Start: fact.StartByte, End: fact.EndByte,
+		EvidenceStart: fact.EvidenceStartByte, EvidenceEnd: fact.EvidenceEndByte,
+		UncoveredReason: derefString(fact.UncoveredReason),
+	}
+	if fact.Representation != nil {
+		projected.Representation = &scriptgen.SemanticFactRepresentation{
+			CandidateID: fact.Representation.CandidateID, Recipe: fact.Representation.Recipe,
+		}
+	}
+	return projected
+}
+
+func projectConsolidatedDates(wireDates []semanticEngineConsolidatedDate, texts map[string]string) ([]scriptgen.SemanticConsolidatedDate, error) {
+	dates := make([]scriptgen.SemanticConsolidatedDate, 0, len(wireDates))
+	for _, date := range wireDates {
 		if date.NormalizedDate == "" {
 			return nil, fmt.Errorf("semantic consolidation: date without normalized value")
 		}
@@ -266,9 +409,12 @@ func projectSemanticConsolidation(
 		}
 		dates = append(dates, projected)
 	}
+	return dates, nil
+}
 
-	references := make([]scriptgen.SemanticReferenceNumber, 0, len(wire.ReferenceNumbers))
-	for _, reference := range wire.ReferenceNumbers {
+func projectReferenceNumbers(wireReferences []semanticEngineReferenceNumber, texts map[string]string) ([]scriptgen.SemanticReferenceNumber, error) {
+	references := make([]scriptgen.SemanticReferenceNumber, 0, len(wireReferences))
+	for _, reference := range wireReferences {
 		source, ok := texts[reference.SceneID]
 		if !ok || !groundedSpan(source, reference.StartByte, reference.EndByte, reference.Surface) {
 			return nil, fmt.Errorf("semantic consolidation: reference number %q is not grounded", reference.Surface)
@@ -278,9 +424,16 @@ func projectSemanticConsolidation(
 			Start: reference.StartByte, End: reference.EndByte,
 		})
 	}
+	return references, nil
+}
 
-	links := make([]scriptgen.SemanticEventLink, 0, len(wire.EventLinks))
-	for _, link := range wire.EventLinks {
+func projectEventLinks(
+	wireLinks []semanticEngineEventLink,
+	texts map[string]string,
+	groupScenes map[string]map[string]struct{},
+) ([]scriptgen.SemanticEventLink, error) {
+	links := make([]scriptgen.SemanticEventLink, 0, len(wireLinks))
+	for _, link := range wireLinks {
 		if link.Kind != "precedes" {
 			return nil, fmt.Errorf("semantic consolidation: unsupported event link kind %q", link.Kind)
 		}
@@ -301,9 +454,15 @@ func projectSemanticConsolidation(
 			Kind: link.Kind, Evidence: link.Evidence, Start: link.StartByte, End: link.EndByte,
 		})
 	}
+	return links, nil
+}
 
-	scenes := make([]scriptgen.SemanticConsolidationSceneStats, 0, len(wire.Scenes))
-	for _, scene := range wire.Scenes {
+func projectConsolidationScenes(
+	wireScenes []semanticEngineConsolidationSceneStats,
+	texts map[string]string,
+) ([]scriptgen.SemanticConsolidationSceneStats, error) {
+	scenes := make([]scriptgen.SemanticConsolidationSceneStats, 0, len(wireScenes))
+	for _, scene := range wireScenes {
 		if _, ok := texts[scene.SceneID]; !ok {
 			return nil, fmt.Errorf("semantic consolidation: scene stats reference unknown scene %q", scene.SceneID)
 		}
@@ -314,20 +473,39 @@ func projectSemanticConsolidation(
 			TimelineCandidates: scene.TimelineCandidates,
 		})
 	}
+	return scenes, nil
+}
 
-	if wire.Metrics.ProductionCandidates != len(candidates) ||
+func validateConsolidationCounts(
+	wire *semanticEngineConsolidation,
+	candidates *consolidationCandidates,
+	facts []scriptgen.SemanticConsolidatedFact,
+	scope *consolidationScope,
+) error {
+	if wire.Metrics.ProductionCandidates != len(candidates.items) ||
 		wire.Metrics.CanonicalFacts != len(facts) ||
 		wire.Metrics.CoveredFacts+wire.Metrics.UncoveredFacts != len(facts) ||
-		wire.Metrics.ProductionQueries != productionQueries ||
-		wire.Metrics.EstimatedSearchJobs != len(mediaAssets) ||
-		wire.Inventory.Proposals != rawProposals ||
-		wire.Metrics.RawProposals != rawProposals {
-		return nil, fmt.Errorf("semantic consolidation: metrics are inconsistent with the manifest")
+		wire.Metrics.ProductionQueries != candidates.productionQueries ||
+		wire.Metrics.EstimatedSearchJobs != len(candidates.mediaAssets) ||
+		wire.Inventory.Proposals != scope.rawProposals ||
+		wire.Metrics.RawProposals != scope.rawProposals {
+		return fmt.Errorf("semantic consolidation: metrics are inconsistent with the manifest")
 	}
-	if wire.Inventory.CanonicalFacts != len(facts) || wire.Inventory.Proposals != rawProposals {
-		return nil, fmt.Errorf("semantic consolidation: inventory is inconsistent with the manifest")
+	if wire.Inventory.CanonicalFacts != len(facts) || wire.Inventory.Proposals != scope.rawProposals {
+		return fmt.Errorf("semantic consolidation: inventory is inconsistent with the manifest")
 	}
+	return nil
+}
 
+func projectConsolidationView(
+	wire *semanticEngineConsolidation,
+	candidates []scriptgen.SemanticProductionCandidate,
+	facts []scriptgen.SemanticConsolidatedFact,
+	dates []scriptgen.SemanticConsolidatedDate,
+	references []scriptgen.SemanticReferenceNumber,
+	links []scriptgen.SemanticEventLink,
+	scenes []scriptgen.SemanticConsolidationSceneStats,
+) *scriptgen.SemanticVisualConsolidation {
 	return &scriptgen.SemanticVisualConsolidation{
 		Schema: wire.Schema,
 		Inventory: scriptgen.SemanticConsolidationInventory{
@@ -360,7 +538,7 @@ func projectSemanticConsolidation(
 			UncoveredFacts:            wire.Metrics.UncoveredFacts,
 			ReferenceNumbers:          wire.Metrics.ReferenceNumbers,
 		},
-	}, nil
+	}
 }
 
 // candidateOwnsGroupScene reports whether the candidate is anchored in the

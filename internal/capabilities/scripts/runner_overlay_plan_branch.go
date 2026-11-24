@@ -39,6 +39,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -52,14 +53,14 @@ import (
 // and keeps the empty profile that selects the alpha default. Keeping the
 // mapping in one function is what pins the wire `output_profile_id` to the
 // same answer the plan's media contract is derived from.
-func overlayOutputProfileID(req GenerateRequest) string {
+func overlayOutputProfileID(req contract.GenerateRequest) string {
 	if req.FinalJob || req.Render.OverlaysOnly {
 		return kernelmedia.OverlayVideoOnlyProfileID
 	}
 	return ""
 }
 
-func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string, req GenerateRequest, jobID string, result *GenerateResult) error {
+func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string, req contract.GenerateRequest, jobID string, result *contract.GenerateResult) error {
 	planLanguage := req.SourceLanguage
 	// Each final-job language child keeps SourceLanguage as the language of
 	// the supplied script (the translation source), while its only voiceover
@@ -283,7 +284,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 // is idempotent, so both call sites can request it without double work or a
 // double apply.
 type overlayPlanBranch struct {
-	input  *GenerateResult
+	input  *contract.GenerateResult
 	done   chan overlayPlanBranchOutcome
 	once   sync.Once
 	stored overlayPlanBranchOutcome
@@ -292,14 +293,14 @@ type overlayPlanBranch struct {
 // overlayPlanBranchOutcome is the branch's single outcome: the detached
 // projection (already carrying every overlay-facing field) and its error.
 type overlayPlanBranchOutcome struct {
-	input *GenerateResult
+	input *contract.GenerateResult
 	err   error
 }
 
 // startOverlayPlanBranch launches the P1 plan branch on a detached snapshot of
 // the durable result. Snapshot failure is delivered to the join so the run
 // still fails closed with the same attributed step.
-func (r *Runner) startOverlayPlanBranch(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, result *GenerateResult, mode capabilityaudio.AudioMode) *overlayPlanBranch {
+func (r *Runner) startOverlayPlanBranch(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, result *contract.GenerateResult, mode capabilityaudio.AudioMode) *overlayPlanBranch {
 	branch := &overlayPlanBranch{done: make(chan overlayPlanBranchOutcome, 1)}
 	if result == nil {
 		branch.done <- overlayPlanBranchOutcome{err: fmt.Errorf("overlay plan branch: no result")}
@@ -325,7 +326,7 @@ func (r *Runner) startOverlayPlanBranch(ctx context.Context, runID string, req G
 
 // computeOverlayPlanBranchProjection projects the certified scene windows on
 // the detached snapshot and then runs the SSOT plan projection on it.
-func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, runID string, req GenerateRequest, jobID string, mode capabilityaudio.AudioMode, input *GenerateResult) error {
+func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, runID string, req contract.GenerateRequest, jobID string, mode capabilityaudio.AudioMode, input *contract.GenerateResult) error {
 	// The master compute resolves the same projection right after the
 	// clip-audio prepare; a checkpointed run may already carry one.
 	if len(input.ResolvedScenes) == 0 {
@@ -338,8 +339,8 @@ func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, runID s
 	// Fixed-media timing is the one plan input the master-side prepare can
 	// still rebuild: reproduce the exact step on the detached copy.
 	if hasFixedMediaScene(input.Scenes) {
-		var clipAudioSource ClipAudioAssetSource
-		if candidate, ok := r.audioAssetSource.(ClipAudioAssetSource); ok {
+		var clipAudioSource contract.ClipAudioAssetSource
+		if candidate, ok := r.audioAssetSource.(contract.ClipAudioAssetSource); ok {
 			clipAudioSource = candidate
 		}
 		policy := req.MixPolicy
@@ -379,7 +380,7 @@ func (branch *overlayPlanBranch) outcome() overlayPlanBranchOutcome {
 // joinOverlayPlanProjection joins the branch, fails the run closed through the
 // owning audio-compile step on error, and applies the detached projection to
 // the durable result on this (single-writer) goroutine.
-func (r *Runner) joinOverlayPlanProjection(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, step ExecutionStep, result *GenerateResult, branch *overlayPlanBranch) bool {
+func (r *Runner) joinOverlayPlanProjection(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, step ExecutionStep, result *contract.GenerateResult, branch *overlayPlanBranch) bool {
 	outcome := branch.outcome()
 	if outcome.err != nil {
 		return r.failAudioCompileStep(ctx, runID, exec, step, outcome.err)
@@ -393,7 +394,7 @@ func (r *Runner) joinOverlayPlanProjection(ctx context.Context, runID string, re
 // Every field is what computeOverlayPlanProjection writes on its receiver;
 // the copies keep the durable result the only authoritative record while the
 // master compile kept mutating its own projection.
-func applyOverlayPlanProjection(result *GenerateResult, branchInput *GenerateResult) {
+func applyOverlayPlanProjection(result *contract.GenerateResult, branchInput *contract.GenerateResult) {
 	if result == nil || branchInput == nil {
 		return
 	}
@@ -412,7 +413,7 @@ func applyOverlayPlanProjection(result *GenerateResult, branchInput *GenerateRes
 // hasFixedMediaScene reports whether any scene is fixed media: the only case
 // where the master-side clip-audio prepare can change plan facts (the
 // fixed-media timing rebuild seals the scene duration).
-func hasFixedMediaScene(scenes []Scene) bool {
+func hasFixedMediaScene(scenes []contract.Scene) bool {
 	for i := range scenes {
 		if scenes[i].ExecutionMode.IsFixedMedia() {
 			return true

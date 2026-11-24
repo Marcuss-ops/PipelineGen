@@ -20,10 +20,10 @@ func TestSeparateDateCardPlanHonoursSceneCappedWindow(t *testing.T) {
 		StartUS: startUS, DurationUS: durationUS,
 	}}
 	candidates := overlayRenderableCandidates(plan)
-	if len(candidates) != 1 || candidates[0].source.ID != "date-01" {
+	if len(candidates) != 1 || candidates[0].Source.ID != "date-01" {
 		t.Fatalf("date candidates = %+v, want one date-01", candidates)
 	}
-	child, metadata, err := separateOverlayItemPlan(plan, candidates[0].source, candidates[0].index)
+	child, metadata, err := separateOverlayItemPlan(plan, candidates[0].Source, candidates[0].Index)
 	if err != nil {
 		t.Fatalf("date child plan: %v", err)
 	}

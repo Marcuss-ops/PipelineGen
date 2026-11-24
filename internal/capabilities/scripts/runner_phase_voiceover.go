@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -22,19 +23,19 @@ import (
 // this text — never on entities/phrases/words — so it fans out from the
 // SceneTextReady boundary in parallel with SceneAnalysis.
 type voiceoverWork struct {
-	scene   *Scene
+	scene   *contract.Scene
 	sceneID string
-	lang    Language
+	lang    contract.Language
 	text    string
 }
 
 // voiceoverResult is the per-item outcome of one TTS synthesis call.
 type voiceoverResult struct {
-	audioRef AudioReference
-	metric   TTSSSceneMetric
+	audioRef contract.AudioReference
+	metric   contract.TTSSSceneMetric
 }
 
-func buildVoiceoverWorkForLanguages(scenes []Scene, sourceLanguage Language, targetLanguages, voiceoverLanguages []Language) []voiceoverWork {
+func buildVoiceoverWorkForLanguages(scenes []contract.Scene, sourceLanguage contract.Language, targetLanguages, voiceoverLanguages []contract.Language) []voiceoverWork {
 	work := make([]voiceoverWork, 0)
 	for i := range scenes {
 		scene := &scenes[i]
@@ -42,26 +43,26 @@ func buildVoiceoverWorkForLanguages(scenes []Scene, sourceLanguage Language, tar
 			continue
 		}
 		for _, item := range buildVoiceoverLanguageWork(scene.Text, sourceLanguage, targetLanguages, voiceoverLanguages) {
-			if existing, ok := scene.Voiceover[item.lang]; ok && existing.ID != "" {
+			if existing, ok := scene.Voiceover[item.Lang]; ok && existing.ID != "" {
 				continue
 			}
-			work = append(work, voiceoverWork{scene: scene, sceneID: scene.ID, lang: item.lang, text: item.text})
+			work = append(work, voiceoverWork{scene: scene, sceneID: scene.ID, lang: item.Lang, text: item.Text})
 		}
 	}
 	return work
 }
 
-func (r *Runner) auditVoiceoverDispatch(runID string, req GenerateRequest, result *GenerateResult, work []voiceoverWork) (requested, reused int) {
+func (r *Runner) auditVoiceoverDispatch(runID string, req contract.GenerateRequest, result *contract.GenerateResult, work []voiceoverWork) (requested, reused int) {
 	for _, scene := range result.Scenes {
 		if !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
 			continue
 		}
 		for _, item := range buildVoiceoverLanguageWork(scene.Text, req.SourceLanguage, req.Languages, req.VoiceoverLanguages) {
-			if strings.TrimSpace(item.text) == "" {
+			if strings.TrimSpace(item.Text) == "" {
 				continue
 			}
 			requested++
-			if ref, ok := scene.Voiceover[item.lang]; ok && ref.ID != "" {
+			if ref, ok := scene.Voiceover[item.Lang]; ok && ref.ID != "" {
 				reused++
 			}
 		}
@@ -78,7 +79,7 @@ func (r *Runner) auditVoiceoverDispatch(runID string, req GenerateRequest, resul
 	return requested, reused
 }
 
-func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
+func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req contract.GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, resumeIdx int, result *contract.GenerateResult) bool {
 	// ── Stage 4: Generate Voiceovers (scene-level idempotent) ───
 	voiceoverStep, startErr := r.startExecutionStep(ctx, exec, "VOICEOVER", "audio")
 	if startErr != nil {
@@ -110,7 +111,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 			return false
 		}
 		if result.AudioMetrics == nil {
-			result.AudioMetrics = &AudioPipelineMetrics{}
+			result.AudioMetrics = &contract.AudioPipelineMetrics{}
 		}
 		// A streaming SceneReady coordinator may have completed TTS before
 		// this stage opened. Register those already-materialized assets here;
@@ -245,7 +246,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 // synthesizeVoiceoverWork owns the bounded TTS fan-out and the per-item
 // checkpoint/render handoff. Results retain the input order supplied by
 // concurrent.Map, so lineage is projected deterministically by the caller.
-func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, mode capabilityaudio.AudioMode, result *GenerateResult, work []voiceoverWork, renderWg *sync.WaitGroup, renderErrors chan<- error) ([]voiceoverResult, error) {
+func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req contract.GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, mode capabilityaudio.AudioMode, result *contract.GenerateResult, work []voiceoverWork, renderWg *sync.WaitGroup, renderErrors chan<- error) ([]voiceoverResult, error) {
 	// applyMu serializes per-unit result mutation + checkpoint so a
 	// crash mid-phase (kill -9) preserves already-completed scenes.
 	var applyMu sync.Mutex
@@ -263,7 +264,7 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 			}
 		})
 		startedAt := time.Now().UTC()
-		var audioRef AudioReference
+		var audioRef contract.AudioReference
 		ttsErr := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
 			Stage: "voiceover", Component: kernobs.ComponentTTS, Operation: kernobs.OperationSynthesize,
 			Provider: string(item.lang), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", item.sceneID, item.lang),
@@ -311,7 +312,7 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		if n := int(completed.Add(1)); n <= len(work) {
 			r.writeJobStageProgress(ctx, runID, job.StageVoiceover, n, len(work))
 		}
-		metric := TTSSSceneMetric{
+		metric := contract.TTSSSceneMetric{
 			SceneID:          item.sceneID,
 			Language:         item.lang,
 			DurationMS:       0,
@@ -325,13 +326,13 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		// measured because it is a real barrier between the scene×language
 		// workers that no stage timer covered.
 		waitStarted := time.Now()
-		var snapshot *GenerateResult
+		var snapshot *contract.GenerateResult
 		audioSealStarted := time.Now().UTC()
 		audioSealedAt := time.Time{}
 		applyMu.Lock()
 		observeCheckpointWait(waitStarted)
 		if item.scene.Voiceover == nil {
-			item.scene.Voiceover = make(map[Language]AudioReference)
+			item.scene.Voiceover = make(map[contract.Language]contract.AudioReference)
 		}
 		item.scene.Voiceover[item.lang] = audioRef
 		if item.lang == req.SourceLanguage && item.scene.Clip == nil && !item.scene.ExecutionMode.IsFixedMedia() {
@@ -416,10 +417,11 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 				}
 			})
 			renderWg.Add(1)
-			go func(item voiceoverWork, audioRef AudioReference) {
+			go func(item voiceoverWork, audioRef contract.AudioReference) {
 				defer renderWg.Done()
 				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 					RunID:          runID,
+					FinalJob:       req.FinalJob,
 					ParentJobID:    exec.JobID,
 					JobID:          exec.JobID,
 					SceneID:        item.sceneID,
@@ -435,13 +437,13 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 					ClipDurationMS: clipDurationMS,
 					Render:         renderSpec,
 					ResumeFrom:     r.stagedLocalizedRender(result, item.sceneID, item.lang, clipID),
-					OnRenderReady: func(rendered LocalizedRenderResult) error {
+					OnRenderReady: func(rendered contract.LocalizedRenderResult) error {
 						return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
 					},
-					OnRendered: func(rendered LocalizedRenderResult) error {
+					OnRendered: func(rendered contract.LocalizedRenderResult) error {
 						return r.recordLocalizedRender(ctx, runID, exec, result, rendered)
 					},
-					OnFailed: func(failure LocalizedRenderFailure) error {
+					OnFailed: func(failure contract.LocalizedRenderFailure) error {
 						r.localizedRenderMu.Lock()
 						result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
 						r.localizedRenderMu.Unlock()
@@ -461,7 +463,7 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 // ── Voiceover provider-call metrics + render join ──────────────────
 // projectVoiceoverMetrics records provider-call accounting only for work
 // dispatched by this phase and projects the authoritative run timing report.
-func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, mode capabilityaudio.AudioMode, result *GenerateResult, work []voiceoverWork, dbCacheHits int, renderWg *sync.WaitGroup, renderErrors chan error, voiceoverStep ExecutionStep) bool {
+func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req contract.GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, mode capabilityaudio.AudioMode, result *contract.GenerateResult, work []voiceoverWork, dbCacheHits int, renderWg *sync.WaitGroup, renderErrors chan error, voiceoverStep ExecutionStep) bool {
 	// Project TTS provider calls only for work dispatched by this phase; the
 	// streaming coordinator has already projected its own synthesis count.
 	phaseCalls := int64(len(work) - dbCacheHits)
@@ -532,22 +534,22 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 				sceneIndex := scene.Index
 				renderSpec := sceneRenderSpec(req, *scene)
 				renderWg.Add(1)
-				go func(sceneID string, lang Language, text, sourceText string, audioRef AudioReference, sceneIndex int, clipID, clipAssetID, clipSHA256 string, clipDurationMS int64, renderSpec kernelscript.VideoRenderSpec) {
+				go func(sceneID string, lang contract.Language, text, sourceText string, audioRef contract.AudioReference, sceneIndex int, clipID, clipAssetID, clipSHA256 string, clipDurationMS int64, renderSpec kernelscript.VideoRenderSpec) {
 					defer renderWg.Done()
 					if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-						RunID: runID, ParentJobID: exec.JobID, JobID: exec.JobID,
+						RunID: runID, ParentJobID: exec.JobID, JobID: exec.JobID, FinalJob: req.FinalJob,
 						SceneID: sceneID, SceneIndex: sceneIndex, Language: lang, Text: text,
 						Voiceover: audioRef, SourceLanguage: req.SourceLanguage, SourceText: sourceText,
 						ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
 						ClipDurationMS: clipDurationMS, Render: renderSpec,
 						ResumeFrom: r.stagedLocalizedRender(result, sceneID, lang, clipID),
-						OnRenderReady: func(rendered LocalizedRenderResult) error {
+						OnRenderReady: func(rendered contract.LocalizedRenderResult) error {
 							return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
 						},
-						OnRendered: func(rendered LocalizedRenderResult) error {
+						OnRendered: func(rendered contract.LocalizedRenderResult) error {
 							return r.recordLocalizedRender(ctx, runID, exec, result, rendered)
 						},
-						OnFailed: func(failure LocalizedRenderFailure) error {
+						OnFailed: func(failure contract.LocalizedRenderFailure) error {
 							r.localizedRenderMu.Lock()
 							result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
 							r.localizedRenderMu.Unlock()
@@ -568,10 +570,10 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 			continue
 		}
 		r.launchFixedMediaRenders(ctx, runID, req, routing, exec, result.Scenes[i], renderWg, renderErrors, fixedMediaRenderSink{
-			OnRendered: func(rendered LocalizedRenderResult) error {
+			OnRendered: func(rendered contract.LocalizedRenderResult) error {
 				return r.recordLocalizedRender(ctx, runID, exec, result, rendered)
 			},
-			OnFailed: func(failure LocalizedRenderFailure) error {
+			OnFailed: func(failure contract.LocalizedRenderFailure) error {
 				r.localizedRenderMu.Lock()
 				result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
 				r.localizedRenderMu.Unlock()

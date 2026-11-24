@@ -14,6 +14,7 @@ import (
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -139,7 +140,7 @@ func cloneStringSliceMap(in map[string][]string) map[string][]string {
 // clip is invented or retimed here. A timeline segment whose scene the request
 // did not include (fixed-media intro/outro) is not part of the editorial plan
 // and must not be projected, or the request contradicts itself.
-func overlayPlanClips(result *GenerateResult, planScenes map[string]struct{}) []overlayplan.Clip {
+func overlayPlanClips(result *contract.GenerateResult, planScenes map[string]struct{}) []overlayplan.Clip {
 	if result == nil || result.CanonicalTimeline == nil || len(planScenes) == 0 {
 		return nil
 	}
@@ -166,7 +167,7 @@ func overlayPlanClips(result *GenerateResult, planScenes map[string]struct{}) []
 	return out
 }
 
-func overlayPlanSeal(result *GenerateResult, canvas OverlayCanvasSpec, bounds map[string][2]int64) *overlayplan.Seal {
+func overlayPlanSeal(result *contract.GenerateResult, canvas OverlayCanvasSpec, bounds map[string][2]int64) *overlayplan.Seal {
 	durationUS := timelineDurationUS(bounds)
 	if result.CanonicalTimeline != nil && result.CanonicalTimeline.DurationUS > durationUS {
 		durationUS = result.CanonicalTimeline.DurationUS
@@ -227,7 +228,7 @@ func overlayPlanBudgets(canvas OverlayCanvasSpec) *overlayplan.Budgets {
 // authored identity, while the media entry only names the same identity through
 // a resolved portrait. An occurrence nobody resolved keeps an empty canonical
 // id instead of claiming its stable id is canonical.
-func overlayPlanCanonicalEntityIDs(result *GenerateResult, media *overlayplan.Media) map[string]string {
+func overlayPlanCanonicalEntityIDs(result *contract.GenerateResult, media *overlayplan.Media) map[string]string {
 	out := map[string]string{}
 	record := func(stable, canonical string) {
 		stable = strings.TrimSpace(stable)
@@ -264,7 +265,7 @@ func overlayPlanCanonicalEntityIDs(result *GenerateResult, media *overlayplan.Me
 	return out
 }
 
-func overlayPlanMedia(result *GenerateResult, language Language, sceneInputs []capabilityoverlay.SceneInput) *overlayplan.Media {
+func overlayPlanMedia(result *contract.GenerateResult, language contract.Language, sceneInputs []capabilityoverlay.SceneInput) *overlayplan.Media {
 	media := &overlayplan.Media{}
 	if result != nil {
 		seen := map[string]struct{}{}
@@ -320,7 +321,7 @@ func overlayPlanMedia(result *GenerateResult, language Language, sceneInputs []c
 // a record without a 64-char digest is skipped here instead of failing the whole
 // request in the Rust validator. Entries already named by the annotation pass
 // are not duplicated: the first entry for an identity wins.
-func resolvedEntityAssets(result *GenerateResult, existing []overlayplan.VerifiedEntityAsset) []overlayplan.VerifiedEntityAsset {
+func resolvedEntityAssets(result *contract.GenerateResult, existing []overlayplan.VerifiedEntityAsset) []overlayplan.VerifiedEntityAsset {
 	if result == nil || result.EntityTimeline == nil || len(result.EntityTimeline.Scenes) == 0 {
 		return nil
 	}
@@ -435,7 +436,7 @@ func entityAssetLookupIDs(occurrence capabilityentities.EntityOccurrence, canoni
 // scene images. It covers both the verified bundle and the annotation bindings:
 // the unified verified surface can resolve either, and the renderer must get
 // the same bytes without a second download.
-func entityAssetLocalPaths(result *GenerateResult) map[string]capmodel.OverlayAssetRef {
+func entityAssetLocalPaths(result *contract.GenerateResult) map[string]capmodel.OverlayAssetRef {
 	out := map[string]capmodel.OverlayAssetRef{}
 	if result == nil {
 		return out
@@ -496,7 +497,7 @@ func entityAssetLocalPaths(result *GenerateResult) map[string]capmodel.OverlayAs
 	return out
 }
 
-func overlayPlanEntityTimeline(result *GenerateResult, language Language, projectID string, bounds map[string][2]int64, canonicalByEntity map[string]string) *overlayplan.EntityTimeline {
+func overlayPlanEntityTimeline(result *contract.GenerateResult, language contract.Language, projectID string, bounds map[string][2]int64, canonicalByEntity map[string]string) *overlayplan.EntityTimeline {
 	durationUS := timelineDurationUS(bounds)
 	out := &overlayplan.EntityTimeline{Version: 1, ProjectID: projectID, Language: string(language), DurationUS: durationUS}
 	if result.EntityTimeline == nil {
@@ -537,7 +538,7 @@ func overlayPlanEntityTimeline(result *GenerateResult, language Language, projec
 // isLocalizedSourceEditorial reports whether a plan targets a language other
 // than the language the editorial manifest was extracted from. Equal or empty
 // source languages keep the historical behaviour and are not "localized".
-func isLocalizedSourceEditorial(manifest *scriptpkg.EditorialManifest, language Language) bool {
+func isLocalizedSourceEditorial(manifest *scriptpkg.EditorialManifest, language contract.Language) bool {
 	if manifest == nil {
 		return false
 	}

@@ -53,8 +53,8 @@ func TestRecomputeLocalizedRenderMetricsIgnoresDedupedReceipts(t *testing.T) {
 	if got, want := result.RenderMetrics.WallMS, int64(2400); got != want {
 		t.Errorf("wall_ms = %d, want %d (first start of the certified set to last finish)", got, want)
 	}
-	if !result.renderFirstStartedAt.Equal(base) {
-		t.Errorf("first start = %v, want %v", result.renderFirstStartedAt, base)
+	if !result.RenderFirstStartedAt.Equal(base) {
+		t.Errorf("first start = %v, want %v", result.RenderFirstStartedAt, base)
 	}
 }
 

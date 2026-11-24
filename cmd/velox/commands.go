@@ -614,7 +614,11 @@ func cmdTypes(args []string) int {
 		return emitJSON(resp)
 	}
 	for _, jobType := range resp.Types {
-		fmt.Println(jobType)
+		if jobType.Version == "" {
+			fmt.Println(jobType.Type)
+			continue
+		}
+		fmt.Printf("%s %s\n", jobType.Type, jobType.Version)
 	}
 	return exitOK
 }

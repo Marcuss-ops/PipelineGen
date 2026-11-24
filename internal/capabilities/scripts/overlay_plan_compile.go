@@ -8,13 +8,15 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	overlayplan "github.com/Marcuss-ops/PipelineGen/internal/kernel/overlayplan"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"strings"
 )
 
 // overlayPlanImageOptions is the named form of the two image-planning
@@ -38,7 +40,7 @@ func (o overlayPlanImageOptions) sceneImagesEnabled() bool { return !o.DisableSc
 // compileOverlayPlanWithMotionOffset is the production entry point. The
 // configured compiler is the only plan authority: there is no Go fallback and
 // no per-phase port invocation.
-func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
+func compileOverlayPlanWithMotionOffset(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, compiler OverlayPlanCompiler, perSceneImages ...overlayPlanImageOptions) (*capmodel.OverlayPlan, error) {
 	input, err := prepareOverlayPlanCompile(ctx, result, language, canvas, planID, videoID, projectID, plates, perSceneImages...)
 	if err != nil || input == nil {
 		return nil, err
@@ -62,8 +64,8 @@ func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateRes
 // overlayPlanCompileInput is the projection shared by the production entry
 // point and the v2 request builder.
 type overlayPlanCompileInput struct {
-	result            *GenerateResult
-	language          Language
+	result            *contract.GenerateResult
+	language          contract.Language
 	canvas            OverlayCanvasSpec
 	planID            string
 	videoID           string
@@ -71,22 +73,22 @@ type overlayPlanCompileInput struct {
 	motionSeed        string
 	imageMotionOffset int
 	entityTimeline    *capabilityentities.EntityTimeline
-	timedScenes       []Scene
+	timedScenes       []contract.Scene
 	scenes            []capabilityoverlay.SceneInput
 	rawScenes         []overlayplan.RawScene
 	imagePlan         *overlayplan.ImagePlan
-	resolved          []ResolvedScene
+	resolved          []contract.ResolvedScene
 	timelineBounds    map[string][2]int64
 }
 
 // prepareOverlayPlanCompile builds the certified scene projection. It does not
 // call any map/entity/cascade port; those remain legacy-only.
-func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...overlayPlanImageOptions) (*overlayPlanCompileInput, error) {
+func prepareOverlayPlanCompile(ctx context.Context, result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...overlayPlanImageOptions) (*overlayPlanCompileInput, error) {
 
 	if result == nil {
 		return nil, nil
 	}
-	canvas = canvas.withDefaults()
+	canvas = canvas.WithDefaults()
 	if err := validateOverlayEditorialDensity(canvas); err != nil {
 		return nil, err
 	}
@@ -115,7 +117,7 @@ func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, lang
 	}
 	imageMotionOffset := capabilityoverlay.ImageMotionOffsetForSeed(motionSeed)
 	entityTimeline := result.EntityTimeline
-	timelineLanguage := Language(strings.TrimSpace(entityTimelineLanguage(entityTimeline)))
+	timelineLanguage := contract.Language(strings.TrimSpace(entityTimelineLanguage(entityTimeline)))
 	timelineMatches := entityTimeline != nil && (strings.EqualFold(string(timelineLanguage), string(language)) ||
 		(timelineLanguage == "" && (result.SourceLanguage == "" || result.SourceLanguage == language)))
 	if !timelineMatches {
@@ -123,12 +125,12 @@ func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, lang
 		// translated scene text and that language's own certified word timing.
 		// Build into a shallow result copy so a localized plan does not replace
 		// the source-language EntityTimeline stored on GenerateResult.
-		localized := &GenerateResult{
+		localized := &contract.GenerateResult{
 			Scenes: result.Scenes, CanonicalTimeline: result.CanonicalTimeline,
 			SourceLanguage: result.SourceLanguage, AudioMode: result.AudioMode,
 			ResolvedScenes: result.ResolvedScenes,
 		}
-		if err := compileResultEntityTimeline(ctx, result.phraseAligner, localized, language); err != nil {
+		if err := compileResultEntityTimeline(ctx, result.Aligner, localized, language); err != nil {
 			return nil, fmt.Errorf("overlay plan: resolve %s entity timeline: %w", language, err)
 		}
 		entityTimeline = localized.EntityTimeline
@@ -137,7 +139,7 @@ func prepareOverlayPlanCompile(ctx context.Context, result *GenerateResult, lang
 	// items; everything else is a legitimate no-op. The canonical offsets are
 	// resolved lazily — a surfaceless result must never fail resolution.
 	var scenes []capabilityoverlay.SceneInput
-	var timedScenes []Scene
+	var timedScenes []contract.Scene
 	perSceneImageHashes := sceneEntityImageHashes(result)
 	// The image ceiling is one budget, owned by the Rust admission pass. It is
 	// never reduced here by an optional AnimationCounts["entities"] estimate:
@@ -328,7 +330,7 @@ const maxGenericSceneImagesPerScene = 10
 // owns only the derived render identity and the master extent, so the document
 // that reaches the bundle hash, audit, renderer and checkpoint is the same
 // sealed document.
-func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
+func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *contract.GenerateResult, language contract.Language, resolved []contract.ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
 	if plan == nil {
 		return nil, nil
 	}
@@ -340,7 +342,7 @@ func sealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult,
 // finalizeSealedOverlayPlan derives the master extent, resets provisional render
 // keys and stamps the one output identity before Validate computes the final
 // fingerprint. It is the only place a plan becomes wire-eligible.
-func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *GenerateResult, language Language, resolved []ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
+func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *contract.GenerateResult, language contract.Language, resolved []contract.ResolvedScene, canvas OverlayCanvasSpec) (*capmodel.OverlayPlan, error) {
 	// Explicit payload typography is projected after the planner's presentation
 	// defaults: the run-level style styles every text lane, while the dedicated
 	// overlay_style.bullet block styles bullet-point copy only and falls back to
@@ -375,7 +377,7 @@ func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *GenerateResult
 
 // overlayPlanDurationMS derives the master render extent from the authoritative
 // audio plan, with the scene and item tails as lower bounds.
-func overlayPlanDurationMS(result *GenerateResult, language Language, resolved []ResolvedScene, items []capmodel.OverlayItem) int64 {
+func overlayPlanDurationMS(result *contract.GenerateResult, language contract.Language, resolved []contract.ResolvedScene, items []capmodel.OverlayItem) int64 {
 	if result == nil {
 		return 0
 	}

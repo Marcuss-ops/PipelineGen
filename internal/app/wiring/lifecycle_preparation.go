@@ -292,10 +292,18 @@ func buildOllamaWarmStep(cfg *config.Config, root *ComposeRoot, log *zap.Logger)
 	if configured == "" {
 		configured = root.AI.OllamaClient.Model()
 	}
-	models := startupWarmModels(configured)
-	if len(models) == 0 {
-		return nil
+	// WST-02: single-resident policy. Warming more than one model against a
+	// server with ONE loaded runner is self-defeating — each load evicts the
+	// previous one, and the next job of the other size pays a third load. The
+	// boot step therefore warms exactly the resident model; a multi-model
+	// PIPELINEGEN_WARM_MODELS list is reported instead of executed.
+	if requested := startupWarmModels(configured); len(requested) > 1 {
+		if log != nil {
+			log.Warn("PIPELINEGEN_WARM_MODELS lists several models; the single-resident policy warms only the configured model",
+				zap.String("resident_model", configured), zap.Strings("ignored", requested))
+		}
 	}
+	models := []string{configured}
 	return &StartupStep{
 		Name:     "ollama-model-warm",
 		Required: false,

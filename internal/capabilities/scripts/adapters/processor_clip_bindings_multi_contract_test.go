@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+	processorvoiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -45,7 +45,7 @@ func TestClipBindings_ExplicitSegmentsPreserveZeroToManyOwnership(t *testing.T) 
 		},
 	}}
 
-	result, err := processor.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
+	result, err := processorvoiceover.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
@@ -91,7 +91,7 @@ func TestClipBindings_ExplicitReuseAcrossScenesIsPreserved(t *testing.T) {
 		{ID: "one", Index: 0, Text: "One"},
 		{ID: "two", Index: 1, Text: "Two"},
 	}}}
-	result, err := processor.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
+	result, err := processorvoiceover.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestClipBindings_SearchSingleNarrativeGetsTextForEveryClipScene(t *testing.
 		ID: "model-0", Text: "Prima frase narrativa. Seconda frase narrativa. Terza frase narrativa.", Kind: scriptpkg.SceneClip,
 	}}}}
 
-	result, err := processor.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
+	result, err := processorvoiceover.NewClipBindingsProcessor(zap.NewNop()).Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}

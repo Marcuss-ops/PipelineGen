@@ -6,6 +6,7 @@ import (
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
@@ -13,7 +14,7 @@ import (
 // persistScript is the capability-owned persistence decision. Storage details
 // stay behind ScriptPersistence; this phase only enforces the request flag,
 // positive-ID contract, and checkpoint ordering.
-func (r *Runner) persistScript(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, result *GenerateResult) bool {
+func (r *Runner) persistScript(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, resumeIdx int, result *contract.GenerateResult) bool {
 	step, startErr := r.startExecutionStep(ctx, exec, "PERSISTENCE", "storage")
 	if startErr != nil {
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, startErr)
@@ -79,7 +80,7 @@ func (r *Runner) persistScript(ctx context.Context, runID string, req GenerateRe
 
 // logLocationOverlayPlan preserves producer-boundary diagnostics for both the
 // serial and overlapping paths without compiling the immutable plan twice.
-func (r *Runner) logLocationOverlayPlan(req GenerateRequest, result *GenerateResult) {
+func (r *Runner) logLocationOverlayPlan(req contract.GenerateRequest, result *contract.GenerateResult) {
 	// Keep the location path observable at the producer boundary. A place
 	// may be extracted and geocoded successfully yet still disappear before
 	// the worker sees its immutable render plan; recording the two counts

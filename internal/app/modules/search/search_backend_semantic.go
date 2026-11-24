@@ -148,255 +148,42 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		return nil, nil
 	}
 
-	// ── 1. Text embedding via canonical EmbeddingChannelRegistry ──────
-	// PR-EMBEDDING-CHANNEL-REGISTRY (July 2026): we delegate the
-	// text-channel encoding to the registry instead of calling
-	// QueryEmbedder.Embed directly. Today's registry wires text+transcript
-	// both to the pgvector.TextEmbedder; future SigLIP-text/CLAP-text
-	// encoders plug in to the visual/audio channels at composition
-	// root without this backend knowing. The ChannelText constant is
-	// the canonical SSOT channel name (godlike/06) and matches the
-	// pgvector vector name "text" (semanticDenseVectorName) 1:1.
 	started := time.Now()
-	embedStarted := time.Now()
-	vec, err := b.embeddings.EmbedQuery(ctx, search.ChannelText, q.Text)
-	embedMS := time.Since(embedStarted).Milliseconds()
+	vec, embedMS, err := b.embedSearchQuery(ctx, q)
 	if err != nil {
-		return nil, fmt.Errorf("semantic backend: embed channel %q: %w", search.ChannelText, err)
+		return nil, err
 	}
 	if len(vec) == 0 {
-		b.warn("semantic backend: embedder returned zero-length vector",
-			zap.String("channel", search.ChannelText),
-			zap.String("text", q.Text))
 		return nil, nil
 	}
 
-	// ── 2. Compile filters ─────────────────────────────────────
-	scope, filter := compileSemanticFilters(q)
-
-	// ── 3. Resolve score floor ───────────────────────────────
-	// PR-MINSCORE-QUERY (July 2026): q.MinScore > 0 overrides the
-	// backend defaults. ANN (cosine) and hybrid (RRF) use different
-	// score scales, so each path resolves its own floor; a caller-set
-	// q.MinScore overrides BOTH so per-request tuning stays uniform.
-	annMinScore := semanticMinScore
-	hybridMinScore := semanticHybridMinScore
-	if q.MinScore > 0 {
-		annMinScore = q.MinScore
-		hybridMinScore = q.MinScore
-	}
-
-	// ── 4. Clamp limit ─────────────────────────────────────────
-	limit := q.Limit
-	if limit <= 0 {
-		limit = search.DefaultLimit
-	}
-	if limit > search.MaxLimit {
-		limit = search.MaxLimit
-	}
-
-	// ── 4b. Rerank fetch window ───────────────────────────────
-	// Canonical recipe (pgvector top_k → BGE → top 5): when the reranker
-	// is enabled, pgvector must return a wider candidate window than the
-	// final page so BGE can genuinely re-score the top_k window and the
-	// backend can return the top semanticRerankTopResults. The window
-	// is capped at MaxLimit so a pathological top_k cannot explode the
-	// fetch.
-	fetchLimit := limit
-	if b.reranker != nil && b.reranker.IsEnabled() {
-		if w := b.reranker.TopK(); w > fetchLimit {
-			fetchLimit = w
-		}
-		if fetchLimit > search.MaxLimit {
-			fetchLimit = search.MaxLimit
-		}
-	}
-
-	// ── 5. Execute vector search ───────────────────────────────
-	vectorStarted := time.Now()
-	var results []search.VectorSearchResult
-	switch q.Mode {
-	case search.RetrievalModeHybrid:
-		// TranscriptVector is intentionally absent: the
-		// orchestrator does NOT pass a transcript-channel
-		// vector today (passing the same dense vector would
-		// silently inflate pgvector RRF fusion). A dedicated
-		// transcript embedder is VECTOR-005 territory.
-		// See mediasearch/ports.go::ChannelTranscript comment.
-		results, err = b.vectorStore.HybridSearch(ctx, search.HybridSearchRequest{
-			DenseVector:      vec,
-			DenseVectorName:  semanticDenseVectorName,
-			SparseText:       q.Text,
-			SparseVectorName: semanticSparseVectorName,
-			Limit:            fetchLimit,
-			MinScore:         hybridMinScore,
-			Source:           filter.Source,
-			Category:         filter.Category,
-			MediaType:        filter.MediaType,
-			Language:         filter.Language,
-			AssetKind:        filter.AssetKind,
-			SemanticRole:     filter.SemanticRole,
-			LifecycleState:   filter.LifecycleState,
-			WorkspaceID:      scope.WorkspaceID,
-			IsSystem:         scope.IsSystem,
-		})
-	default: // SearchModeANN (or empty string → ANN)
-		results, err = b.vectorStore.Search(ctx, search.VectorSearchRequest{
-			QueryVector:    vec,
-			VectorName:     semanticDenseVectorName,
-			Limit:          fetchLimit,
-			MinScore:       annMinScore,
-			Source:         filter.Source,
-			Category:       filter.Category,
-			MediaType:      filter.MediaType,
-			Language:       filter.Language,
-			AssetKind:      filter.AssetKind,
-			SemanticRole:   filter.SemanticRole,
-			LifecycleState: filter.LifecycleState,
-			WorkspaceID:    scope.WorkspaceID,
-			IsSystem:       scope.IsSystem,
-		})
-	}
+	plan := buildSemanticQueryPlan(b, q, vec)
+	results, vectorMS, err := b.executeSemanticVectorSearch(ctx, q, plan)
 	if err != nil {
-		return nil, fmt.Errorf("semantic backend: vector search: %w", err)
+		return nil, err
 	}
-	// STK-09: the batch report used to expose only total_ms, so a 10s search
-	// could not distinguish the embedder from pgvector. These two fields make
-	// the split explicit for every semantic (stock) query.
-	if b.log != nil {
-		b.log.Info("semantic search latency",
-			zap.String("mode", string(q.Mode)),
-			zap.Int64("embed_ms", embedMS),
-			zap.Int64("pgvector_ms", time.Since(vectorStarted).Milliseconds()),
-			zap.Int64("total_ms", time.Since(started).Milliseconds()),
-			zap.Int("vector_hits", len(results)),
-			zap.Int("fetch_limit", fetchLimit))
-	}
-
-	// ── 6. No external vector store results → done ────────────────────────────
+	b.logSemanticSearchLatency(q, embedMS, vectorMS, started, len(results), plan.fetchLimit)
 	if len(results) == 0 {
 		return nil, nil
 	}
 
-	// ── 7. Extract asset IDs + scores ──────────────────────────
-	assetIDs := make([]string, 0, len(results))
-	scoreByID := make(map[string]float64, len(results))
-	for _, r := range results {
-		if r.AssetID == "" {
-			continue
-		}
-		// Deduplicate within the same result set: keep the
-		// highest score per asset (pgvector RRF fusion can
-		// return the same point via multiple vector channels).
-		if existing, ok := scoreByID[r.AssetID]; ok {
-			if r.Score > existing {
-				scoreByID[r.AssetID] = r.Score
-			}
-			continue
-		}
-		assetIDs = append(assetIDs, r.AssetID)
-		scoreByID[r.AssetID] = r.Score
-	}
-
+	assetIDs, scoreByID := dedupeSemanticVectorResults(results)
 	if len(assetIDs) == 0 {
 		return nil, nil
 	}
 
-	// ── 8. PostgreSQL hydration (canonical media_assets SSOT) ──
-	ws := search.Actor{WorkspaceID: scope.WorkspaceID}
-	// SEARCH-T07-LIFECYCLE-DEL (P0, 2026-07-15): the canonical ACTIVE-only
-	// filter is hardcoded at the MediaReadRepository impl. Caller no
-	// longer threads the allowStates parameter through the interface.
-	assets, err := b.mediaReader.GetMany(ctx, ws, assetIDs)
+	candidates, assetsByID, err := b.hydrateSemanticCandidates(ctx, q, plan.scope, assetIDs, scoreByID)
 	if err != nil {
-		return nil, fmt.Errorf("semantic backend: hydrate: %w", err)
+		return nil, err
 	}
-
-	// ── 9. Post-hydration filters + signed URLs ────────────────
-	candidates := make([]search.Candidate, 0, len(assets))
-	assetsByID := make(map[string]search.MediaAsset, len(assets))
-	for _, a := range assets {
-		// Defense in depth against pgvector/SQLite replication lag or a
-		// non-canonical MediaReadRepository implementation. Only the
-		// search capability's canonical searchable states may reach the
-		// API response; unavailable assets remain diagnosable in SQLite
-		// but never become candidates.
-		if !isSearchableLifecycleState(a.LifecycleState) {
-			continue
-		}
-
-		// Tag filter: AND semantics (every filter tag must
-		// be present on the asset).
-		if !matchesAllTags(a.Tags, q.Filters.Tags) {
-			continue
-		}
-
-		// Duration floor: enforced post-hydration because
-		// canonical duration lives in SQLite, not in the
-		// pgvector payload.
-		if q.Filters.DurationMsMin > 0 && a.DurationMs < q.Filters.DurationMsMin {
-			continue
-		}
-		assetsByID[a.ID] = a
-
-		// Signed delivery URL. Admin users access files directly
-		// and don't need signed URLs — the signer requires a
-		// non-empty workspace which admins don't have.
-		var url string
-		if !q.Actor.IsAdmin {
-			var urlErr error
-			url, urlErr = b.delivery.BuildAuthorizedURL(ctx, ws, a.ID)
-			if urlErr != nil {
-				b.warn("semantic backend: failed to build delivery URL",
-					zap.String("asset_id", a.ID),
-					zap.Error(urlErr))
-				continue
-			}
-		}
-
-		candidates = append(candidates, search.Candidate{
-			AssetID: a.ID,
-			// Source carries physical PROVENANCE, not the backend name. It used
-			// to be the constant "semantic", which made a server-side
-			// sources:["youtube"] filter impossible to enforce on this leg —
-			// every hit looked like provenance "semantic" and callers fell back
-			// to filtering asset ids with jq. The catalog row knows the real
-			// provenance; fall back to "semantic" only when the row is silent.
-			Source:    semanticSourceProvenance(a.Source),
-			SourceRef: a.ID,
-			// Taxonomy dimensions travel with the candidate so the caller can
-			// select the asset FAMILY (e.g. "youtube-native clip" vs
-			// "stock clip acquired from YouTube") without parsing the id.
-			AssetKind:    a.AssetKind,
-			SemanticRole: a.SemanticRole,
-			MediaType:    a.MediaType, // The semantic leg now shows the same label as the lexical leg:
-			// media_assets.title when the catalog has one (e.g. a Stock clip's
-			// source video title), else the canonical name. Without this the two
-			// legs disagreed — one returned "IRON MIKE TYSON IN ACTION" and the
-			// other "clip_010.mp4" for the same asset.
-			Title: semanticDisplayTitle(a.Title, a.Name),
-			Name:  a.Name,
-			// Raw Drive links are intentionally not copied into public
-			// semantic-search candidates. SQLite is canonical, but this
-			// adapter has no per-request Drive verification capability;
-			// exposing the field here could leak a stale URL after
-			// reconciliation lag. PreviewURL is the signed delivery
-			// surface and remains the only client-facing locator.
-			PreviewURL: url,
-			Score:      scoreByID[a.ID],
-		})
-	}
-
 	if len(candidates) == 0 {
 		return nil, nil
 	}
 
-	adjusted, err := b.rerankCandidates(ctx, q, candidates, assetsByID)
+	candidates, err = b.rerankCandidates(ctx, q, candidates, assetsByID)
 	if err != nil {
 		return nil, err
 	}
-	candidates = adjusted
-
 	return search.RankByScore(candidates), nil
 }
 

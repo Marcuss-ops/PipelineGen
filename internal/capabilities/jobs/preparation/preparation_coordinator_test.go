@@ -1,0 +1,166 @@
+package preparation
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
+
+// testActiveWorkFunc adapts a closure to the ActiveWorkGate port in tests.
+type testActiveWorkFunc func() bool
+
+func (f testActiveWorkFunc) ActiveWorkAvailable() bool { return f != nil && f() }
+
+type coordinatorNotifier struct {
+	mu         sync.Mutex
+	ch         chan struct{}
+	subscribed chan struct{}
+}
+
+func newCoordinatorNotifier() *coordinatorNotifier {
+	return &coordinatorNotifier{ch: make(chan struct{}), subscribed: make(chan struct{}, 1)}
+}
+
+func (n *coordinatorNotifier) Subscribe() <-chan struct{} {
+	n.mu.Lock()
+	ch := n.ch
+	n.mu.Unlock()
+	select {
+	case n.subscribed <- struct{}{}:
+	default:
+	}
+	return ch
+}
+
+func (n *coordinatorNotifier) Broadcast() {
+	n.mu.Lock()
+	close(n.ch)
+	n.ch = make(chan struct{})
+	n.mu.Unlock()
+}
+
+func (n *coordinatorNotifier) waitForSubscriber(t *testing.T) {
+	t.Helper()
+	select {
+	case <-n.subscribed:
+	case <-time.After(time.Second):
+		t.Fatal("coordinator did not subscribe to notifier")
+	}
+}
+
+type coordinatorReader struct {
+	jobs  []job.Job
+	calls atomic.Int32
+}
+
+func (r *coordinatorReader) PeekQueued(_ context.Context, _ int) ([]job.Job, error) {
+	r.calls.Add(1)
+	return r.jobs, nil
+}
+
+// fakeClaimSnapshotter records every SnapshotPreparationClaim call so the
+// coordinator's KPI wiring is observable without a real store.
+type fakeClaimSnapshotter struct {
+	calls atomic.Int32
+}
+
+// TestPreparationCoordinator_DoesNotCaptureClaimSnapshots pins the ownership
+// handoff: the claim-time KPI (prepared_at_claim_ratio) is captured by the
+// WORKER claim path on the real ClaimNext/Claim() instant, NOT by the
+// coordinator's queue peek (which is not a claim and would photograph a
+// stale/guessed readiness state). The coordinator must never invoke the
+// snapshotter during inspection.
+func TestPreparationCoordinator_DoesNotCaptureClaimSnapshots(t *testing.T) {
+	notifier := newCoordinatorNotifier()
+	reader := &coordinatorReader{jobs: []job.Job{{ID: "job-snap", Type: job.TypeScriptGenerate}}}
+	registry, err := ComposeJobPreparationRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := testActiveWorkFunc(func() bool { return true })
+	scheduler := NewSpeculationScheduler(DefaultSpeculationConfig(), gate)
+	snapshotter := &fakeClaimSnapshotter{}
+	coordinator, err := NewPreparationCoordinator(reader, notifier, registry, scheduler, 3, func(context.Context, SpeculationCandidate) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- coordinator.Start(ctx) }()
+	deadline := time.After(time.Second)
+	for reader.calls.Load() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("coordinator did not inspect initial queue")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	cancel()
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("coordinator stop: %v", err)
+	}
+	if snapshotter.calls.Load() != 0 {
+		t.Fatalf("coordinator captured %d claim snapshots during inspection; the worker claim path owns the snapshot", snapshotter.calls.Load())
+	}
+}
+
+func TestPreparationCoordinator_UsesNotifierInsteadOfPolling(t *testing.T) {
+	notifier := newCoordinatorNotifier()
+	reader := &coordinatorReader{jobs: []job.Job{{ID: "job-1", Type: job.TypeScriptGenerate}}}
+	registry, err := ComposeJobPreparationRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := testActiveWorkFunc(func() bool { return true })
+	scheduler := NewSpeculationScheduler(DefaultSpeculationConfig(), gate)
+	var executed atomic.Int32
+	coordinator, err := NewPreparationCoordinator(reader, notifier, registry, scheduler, 3, func(context.Context, SpeculationCandidate) error { executed.Add(1); return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- coordinator.Start(ctx) }()
+	deadline := time.After(time.Second)
+	for reader.calls.Load() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("coordinator did not inspect initial queue")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	if reader.calls.Load() != 1 {
+		t.Fatalf("initial peek calls=%d, want 1", reader.calls.Load())
+	}
+	notifier.waitForSubscriber(t)
+	notifier.Broadcast()
+	deadline = time.After(time.Second)
+	for reader.calls.Load() < 2 {
+		select {
+		case <-deadline:
+			t.Fatal("notifier did not trigger second inspection")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("coordinator stop: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("coordinator did not stop")
+	}
+	if executed.Load() == 0 {
+		t.Fatal("coordinator did not execute admitted preparation units")
+	}
+}

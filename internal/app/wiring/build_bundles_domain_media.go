@@ -84,6 +84,52 @@ func buildDomainMediaServices(
 	folderPathWriter texttracksport.FolderPathWriter,
 	err error,
 ) {
+	deps, err := buildDomainMediaYouTubeDeps(cfg, log, drive, repos, media, process, committer, mediaConfig)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	processSeg, err := buildDomainMediaYouTubeStages(cfg, dbs, log, repos, ai, outbox, bundle, mediaConfig, deps)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if err := buildDomainMediaYouTubeService(cfg, log, drive, repos, search, process, ai, outbox, committer, bundle, mediaConfig, deps, processSeg); err != nil {
+		return nil, nil, nil, err
+	}
+	return deps.writers.voMetaWriter, deps.writers.clipWriter, deps.writers.folderPathWriter, nil
+}
+
+type domainMediaYouTubeDeps struct {
+	execution  domainMediaYouTubeExecution
+	publishing domainMediaYouTubePublishing
+	writers    domainMediaYouTubeWriters
+	mlCfg      config.MultilingualConfig
+}
+
+type domainMediaYouTubeExecution struct {
+	clipProcessor        *rustexec.VideoProcessor
+	videoPipelineAdapter *ytinfra.VideoPipelineAdapter
+	hashAdapter          *ytinfra.HashAdapter
+	clipCache            youtubeports.ClipCachePort
+	searchRunnerAdapter  *ytinfra.SearchRunnerAdapter
+}
+
+type domainMediaYouTubePublishing struct {
+	folderMemSvc            *foldermemory.Service
+	metaFetcher             *ytinfra.MetadataFetcherAdapter
+	youtubePubAdapter       *ytadapters.YouTubePublisherDriveAdapter
+	youtubeCache            *ytcache.Service
+	clipIndexerAdapterValue youtubeports.ClipIndexerPort
+	subtitleFetcherAdapter  *ytinfra.SubtitleFetcherAdapter
+}
+
+type domainMediaYouTubeWriters struct {
+	voMetaWriter       semantic.MetadataWriterPort
+	clipWriter         canonicalClipWriter
+	clipMetadataWriter youtubeports.ClipMetadataWriter
+	folderPathWriter   texttracksport.FolderPathWriter
+}
+
+func buildDomainMediaYouTubeDeps(cfg *config.Config, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, media *MediaRepoBundle, process *ProcessBundle, committer persistence.AssetCommitter, mediaConfig mediaexec.ExecutionConfig) (*domainMediaYouTubeDeps, error) {
 	// P0-#2 (July 2026): the composition root no longer constructs
 	// semantic.NewMetadataWriter(...) (the retired fake concrete). The
 	// metadata writer capability is now wired ONLY via the
@@ -98,7 +144,9 @@ func buildDomainMediaServices(
 	// stub. The real implementation (P0.18 follow-up) will replace
 	// this nil with a real *ollama.TaggerAdapter that structurally
 	// satisfies semantic.MetadataWriterPort.
-	voMetaWriter = nil
+	var voMetaWriter semantic.MetadataWriterPort
+	var clipWriter canonicalClipWriter
+	var folderPathWriter texttracksport.FolderPathWriter
 
 	// ── Step 1: acquisition + execution ports ───────────────────────────
 	clipProcessor := rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log)
@@ -117,15 +165,15 @@ func buildDomainMediaServices(
 
 	searchRunnerAdapter := ytinfra.NewSearchRunnerAdapter(cfg, log)
 	if searchRunnerAdapter == nil {
-		return nil, nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort nil (cfg or log missing — fail-closed per PR2)")
+		return nil, fmt.Errorf("compose domains: youtube SearchRunnerPort nil (cfg or log missing — fail-closed per PR2)")
 	}
 	if portutil.IsNilPort(searchRunnerAdapter) {
-		return nil, nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
+		return nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
 	}
 
 	// ── Step 2: boot gate — cookie-jar format (fail loud) ───────────────
 	if err := validateYouTubeCookieBootGate(cfg, log); err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
 	hashAdapter := ytinfra.NewHashAdapter()
@@ -142,7 +190,7 @@ func buildDomainMediaServices(
 	// PostgreSQL committer).
 	canonicalWriter, clipMetadataWriter, writerErr := assertCanonicalMediaWriter(committer)
 	if writerErr != nil {
-		return nil, nil, nil, writerErr
+		return nil, writerErr
 	}
 	clipWriter = canonicalWriter
 	folderPathWriter = folderPathWriterFromCommitter(committer)
@@ -168,10 +216,47 @@ func buildDomainMediaServices(
 		}
 	}
 
+	return &domainMediaYouTubeDeps{
+		execution: domainMediaYouTubeExecution{
+			clipProcessor:        clipProcessor,
+			videoPipelineAdapter: videoPipelineAdapter,
+			hashAdapter:          hashAdapter,
+			clipCache:            clipCache,
+			searchRunnerAdapter:  searchRunnerAdapter,
+		},
+		publishing: domainMediaYouTubePublishing{
+			folderMemSvc:            folderMemSvc,
+			metaFetcher:             metaFetcher,
+			youtubePubAdapter:       youtubePubAdapter,
+			youtubeCache:            youtubeCache,
+			clipIndexerAdapterValue: clipIndexerAdapterValue,
+			subtitleFetcherAdapter:  subtitleFetcherAdapter,
+		},
+		writers: domainMediaYouTubeWriters{
+			voMetaWriter:       voMetaWriter,
+			clipWriter:         clipWriter,
+			clipMetadataWriter: clipMetadataWriter,
+			folderPathWriter:   folderPathWriter,
+		},
+		mlCfg: mlCfg,
+	}, nil
+}
+
+func buildDomainMediaYouTubeStages(cfg *config.Config, dbs *Databases, log *zap.Logger, repos *RepoBundle, ai *AIBundle, outbox *OutboxBundle, bundle *DomainBundle, mediaConfig mediaexec.ExecutionConfig, deps *domainMediaYouTubeDeps) (*youtube.ProcessYouTubeSegmentUseCase, error) {
+	mlCfg := deps.mlCfg
+	clipMetadataWriter := deps.writers.clipMetadataWriter
+	clipWriter := deps.writers.clipWriter
+	subtitleFetcherAdapter := deps.publishing.subtitleFetcherAdapter
+	clipProcessor := deps.execution.clipProcessor
+	videoPipelineAdapter := deps.execution.videoPipelineAdapter
+	hashAdapter := deps.execution.hashAdapter
+	clipCache := deps.execution.clipCache
+	youtubePubAdapter := deps.publishing.youtubePubAdapter
+
 	// ── Step 5: clip metadata service + async enrichment ────────────────
 	clipMetadataService, metaErr := buildClipMetadataService(cfg, dbs, ai, clipMetadataWriter, log)
 	if metaErr != nil {
-		return nil, nil, nil, metaErr
+		return nil, metaErr
 	}
 
 	// Async metadata enrichment (Sept 2026): register the durable consumer
@@ -182,7 +267,7 @@ func buildDomainMediaServices(
 	// explicitly enables the gate but the consumer cannot be wired, boot
 	// aborts instead of silently dropping every enrichment intent.
 	if enrichErr := registerClipMetadataEnrichment(outbox, clipMetadataService, log); enrichErr != nil {
-		return nil, nil, nil, enrichErr
+		return nil, enrichErr
 	}
 
 	// ── Step 6: text-track resolver ─────────────────────────────────────
@@ -231,6 +316,20 @@ func buildDomainMediaServices(
 		clipWriter, clipMetadataWriter, clipMetadataService,
 		log,
 	)
+
+	return processSeg, nil
+}
+
+func buildDomainMediaYouTubeService(cfg *config.Config, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle, committer persistence.AssetCommitter, bundle *DomainBundle, mediaConfig mediaexec.ExecutionConfig, deps *domainMediaYouTubeDeps, processSeg *youtube.ProcessYouTubeSegmentUseCase) error {
+	videoPipelineAdapter := deps.execution.videoPipelineAdapter
+	youtubeCache := deps.publishing.youtubeCache
+	clipIndexerAdapterValue := deps.publishing.clipIndexerAdapterValue
+	subtitleFetcherAdapter := deps.publishing.subtitleFetcherAdapter
+	searchRunnerAdapter := deps.execution.searchRunnerAdapter
+	hashAdapter := deps.execution.hashAdapter
+	metaFetcher := deps.publishing.metaFetcher
+	youtubePubAdapter := deps.publishing.youtubePubAdapter
+	folderMemSvc := deps.publishing.folderMemSvc
 
 	// ── Step 9: clip service assembly ───────────────────────────────────
 	// PR-GRUPOC-1 (July 2026): youtube.ServiceDeps (20 fields) is RETIRED.
@@ -299,7 +398,7 @@ func buildDomainMediaServices(
 		DriveFolderMgr:  youtubePubAdapter,
 	}
 	if err := youtube.ValidateServiceDepsFromSubBundles(youtubeCore, youtubeAsset, youtubeVideo, youtubeStorage, youtubeAdapter); err != nil {
-		return nil, nil, nil, fmt.Errorf("compose youtube: %w", err)
+		return fmt.Errorf("compose youtube: %w", err)
 	}
 	bundle.YoutubeClipService = youtube.NewServiceFromSubBundles(youtubeCore, youtubeAsset, youtubeVideo, youtubeStorage, youtubeAdapter)
 
@@ -312,7 +411,7 @@ func buildDomainMediaServices(
 	// no-op). Dead fake-availability surfaces are a godlike/07
 	// violation, so the stubs and their pins are deleted rather than
 	// kept as compile-time decoration.
-	return voMetaWriter, clipWriter, folderPathWriter, nil
+	return nil
 }
 
 // validateYouTubeCookieBootGate raises the cookie-jar FORMAT gate (fail loud,

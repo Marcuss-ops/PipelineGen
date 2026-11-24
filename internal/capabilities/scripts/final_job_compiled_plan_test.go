@@ -260,12 +260,12 @@ func TestFinalJobCompiledPlanClampsOverlayWindowsToArtifactDuration(t *testing.T
 
 func TestFinalJobComposePlanSegmentsOmitsFullyCoveredBaseVideo(t *testing.T) {
 	base := []finalJobBaseSegment{{
-		startUS: 0, endUS: 5_000_000, sourceInUS: 0, sourceDurationUS: 5_000_000,
-		assetID: "stock-base", sha256: strings.Repeat("a", 64),
+		StartUS: 0, EndUS: 5_000_000, SourceInUS: 0, SourceDurationUS: 5_000_000,
+		AssetID: "stock-base", SHA256: strings.Repeat("a", 64),
 	}}
 	overlays := []finalJobOverlayWindow{{
-		startUS: 0, endUS: 5_000_000, artifactInUS: 0, artifactDurationUS: 5_000_000,
-		assetID: "replacement", sha256: strings.Repeat("b", 64),
+		StartUS: 0, EndUS: 5_000_000, ArtifactInUS: 0, ArtifactDurationUS: 5_000_000,
+		AssetID: "replacement", SHA256: strings.Repeat("b", 64),
 	}}
 	segments, err := finalJobComposePlanSegments(base, overlays, 5_000_000, 24, 1)
 	if err != nil {

@@ -30,6 +30,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -47,17 +48,17 @@ import (
 // primary generation parameters. Multi-item envelopes are treated
 // as batch — the primary item configures the top-level parameters
 // and each item is handled independently downstream.
-func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey string) (GenerateRequest, error) {
+func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey string) (contract.GenerateRequest, error) {
 	if env == nil {
-		return GenerateRequest{}, fmt.Errorf("scriptgeneration: envelope is nil")
+		return contract.GenerateRequest{}, fmt.Errorf("scriptgeneration: envelope is nil")
 	}
 	if len(env.Items) == 0 {
-		return GenerateRequest{}, fmt.Errorf("scriptgeneration: envelope has no items")
+		return contract.GenerateRequest{}, fmt.Errorf("scriptgeneration: envelope has no items")
 	}
 
 	item, err := normalizeBuilderItem(env, idempotencyKey)
 	if err != nil {
-		return GenerateRequest{}, err
+		return contract.GenerateRequest{}, err
 	}
 	// SSOT: output.render.watermark / output.render.subtitles are the only
 	// spellings. The legacy top-level output.watermark/output.subtitles
@@ -68,17 +69,17 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 
 	languages, sourceLang, err := resolveBuilderTranslation(item)
 	if err != nil {
-		return GenerateRequest{}, err
+		return contract.GenerateRequest{}, err
 	}
 
 	generateTimeline, audio, err := resolveBuilderAudio(item, languages, sourceLang)
 	if err != nil {
-		return GenerateRequest{}, err
+		return contract.GenerateRequest{}, err
 	}
 
 	mapCfg, err := resolveBuilderMapConfig(item)
 	if err != nil {
-		return GenerateRequest{}, err
+		return contract.GenerateRequest{}, err
 	}
 
 	req := buildGenerateRequestCore(item, env, idempotencyKey, source, languages, sourceLang, mapCfg)
@@ -92,7 +93,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	// closed vocabulary.
 	if profile, ok := channelprofile.Lookup(item.ChannelID); ok {
 		if err := ApplyChannelProfile(&req, profile); err != nil {
-			return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply channel profile: %w", err)
+			return contract.GenerateRequest{}, fmt.Errorf("scriptgeneration: apply channel profile: %w", err)
 		}
 	}
 	// Background centralizzato ON (Intro V2): the canonical editorial
@@ -102,7 +103,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	// preserved — so this is a pure default-fill at the single ingress
 	// point both job handlers share.
 	if err := ApplyEditingAssetPolicy(&req, mediaregistry.DefaultEditingAssetsPolicy()); err != nil {
-		return GenerateRequest{}, fmt.Errorf("scriptgeneration: apply editing asset policy: %w", err)
+		return contract.GenerateRequest{}, fmt.Errorf("scriptgeneration: apply editing asset policy: %w", err)
 	}
 	// Every request carries the certified entity-image and caption pools. The
 	// Rust planner rejects an admitted entity image or caption when these pools
@@ -158,7 +159,7 @@ func normalizeBuilderItem(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 
 // resolveBuilderTranslation validates the translation contract and resolves
 // the deduplicated target languages plus the source language.
-func resolveBuilderTranslation(item scriptpkg.GenerationItemV2) ([]Language, Language, error) {
+func resolveBuilderTranslation(item scriptpkg.GenerationItemV2) ([]contract.Language, contract.Language, error) {
 	provider := strings.ToLower(strings.TrimSpace(item.Translation.Provider))
 	if provider != "" && provider != "ollama" && provider != "argos" {
 		return nil, "", fmt.Errorf("scriptgeneration: unsupported translation provider %q", item.Translation.Provider)
@@ -166,10 +167,10 @@ func resolveBuilderTranslation(item scriptpkg.GenerationItemV2) ([]Language, Lan
 	if item.Translation.Concurrency < 0 || item.Translation.Concurrency > 16 {
 		return nil, "", fmt.Errorf("scriptgeneration: translation concurrency must be between 0 and 16")
 	}
-	languages := make([]Language, 0, len(item.Output.Languages))
-	seenLanguages := make(map[Language]struct{}, len(item.Output.Languages))
+	languages := make([]contract.Language, 0, len(item.Output.Languages))
+	seenLanguages := make(map[contract.Language]struct{}, len(item.Output.Languages))
 	for _, raw := range item.Output.Languages {
-		lang := Language(strings.TrimSpace(raw))
+		lang := contract.Language(strings.TrimSpace(raw))
 		if lang == "" {
 			continue
 		}
@@ -179,7 +180,7 @@ func resolveBuilderTranslation(item scriptpkg.GenerationItemV2) ([]Language, Lan
 		seenLanguages[lang] = struct{}{}
 		languages = append(languages, lang)
 	}
-	sourceLang := Language(strings.TrimSpace(item.Language))
+	sourceLang := contract.Language(strings.TrimSpace(item.Language))
 	if sourceLang == "" {
 		sourceLang = "en"
 	}
@@ -199,9 +200,9 @@ func resolveBuilderTranslation(item scriptpkg.GenerationItemV2) ([]Language, Lan
 }
 
 // buildBuilderSource projects SourceSpec into the durable source contract.
-func buildBuilderSource(item scriptpkg.GenerationItemV2) Source {
-	return Source{
-		Type:               SourceType(item.Source.Type),
+func buildBuilderSource(item scriptpkg.GenerationItemV2) contract.Source {
+	return contract.Source{
+		Type:               contract.SourceType(item.Source.Type),
 		Topic:              item.Source.Topic,
 		SourceText:         item.Source.SourceText,
 		Guidelines:         item.Source.Guidelines,
@@ -236,12 +237,12 @@ type builderAudioIntent struct {
 	soundEffects            []scriptpkg.SoundEffectIntent
 	randomSFXOnClipStart    bool
 	randomSFXOnImageOverlay bool
-	voiceoverLanguages      []Language
+	voiceoverLanguages      []contract.Language
 }
 
 // resolveBuilderAudio validates the audio mode and resolves the canonical
 // audio intent, including the nested output.audio compatibility fallbacks.
-func resolveBuilderAudio(item scriptpkg.GenerationItemV2, languages []Language, sourceLang Language) (bool, builderAudioIntent, error) {
+func resolveBuilderAudio(item scriptpkg.GenerationItemV2, languages []contract.Language, sourceLang contract.Language) (bool, builderAudioIntent, error) {
 	audioModeInput := item.Audio.Mode
 	if audioModeInput == "" {
 		audioModeInput = item.Output.Audio.Mode
@@ -352,8 +353,8 @@ func resolveBuilderMapConfig(item scriptpkg.GenerationItemV2) (builderMapConfig,
 
 // buildGenerateRequestCore projects the identity, source, media and overlay
 // fields. Output/audio fields are applied by applyBuilderOutput.
-func buildGenerateRequestCore(item scriptpkg.GenerationItemV2, env *scriptpkg.GenerationEnvelopeV2, idempotencyKey string, source Source, languages []Language, sourceLang Language, mapCfg builderMapConfig) GenerateRequest {
-	req := GenerateRequest{
+func buildGenerateRequestCore(item scriptpkg.GenerationItemV2, env *scriptpkg.GenerationEnvelopeV2, idempotencyKey string, source contract.Source, languages []contract.Language, sourceLang contract.Language, mapCfg builderMapConfig) contract.GenerateRequest {
+	req := contract.GenerateRequest{
 		Model:                         item.Model,
 		TranslationProvider:           strings.ToLower(strings.TrimSpace(item.Translation.Provider)),
 		TranslationModel:              strings.TrimSpace(item.Translation.Model),
@@ -417,7 +418,7 @@ func buildGenerateRequestCore(item scriptpkg.GenerationItemV2, env *scriptpkg.Ge
 
 // applyBuilderOutput projects the output, project, documentation and audio
 // fields onto the request built from the envelope item.
-func applyBuilderOutput(req *GenerateRequest, item scriptpkg.GenerationItemV2, generateTimeline bool, audio builderAudioIntent) {
+func applyBuilderOutput(req *contract.GenerateRequest, item scriptpkg.GenerationItemV2, generateTimeline bool, audio builderAudioIntent) {
 	req.GenerateTimeline = generateTimeline
 	req.Timing = audio.timing
 	req.VoiceoverLanguages = audio.voiceoverLanguages
@@ -443,7 +444,7 @@ func applyBuilderOutput(req *GenerateRequest, item scriptpkg.GenerationItemV2, g
 // a zero budget. The entity-image lane is independent and keeps its budget.
 // A single disabled knob is not enough: the payload contract treats an omitted
 // value as "keep the certified default", so only both-at-once is an opt-out.
-func normalizeImageToggleCoherence(req *GenerateRequest) {
+func normalizeImageToggleCoherence(req *contract.GenerateRequest) {
 	if req == nil || req.GenerateSceneImages != scriptpkg.ToggleDisabled || req.ScriptParams.ImagesPerScene != 0 {
 		return
 	}
@@ -500,10 +501,6 @@ const (
 	// video-only MP4), so a plate selected for the overlay render carries the
 	// same kind as one selected for the clip render.
 	overlayBackgroundPlateKind = "video"
-	// overlayBackgroundPlateFit is the deterministic crop-to-fill the overlay
-	// compiler defaults to; it is spelled out here so the policy's selection is
-	// explicit instead of relying on the compiler's default.
-	overlayBackgroundPlateFit = "cover"
 )
 
 // resolveBackgroundReference converts a human channel label (or a friendly
@@ -576,7 +573,7 @@ func resolveBackgroundReference(render *scriptpkg.VideoRenderSpec) error {
 // request normalization) and is the same creative namespace the overlay style
 // sampling and the render-cache digest already use; the idempotency key stays
 // as the fallback for callers that declared no project.
-func ApplyEditingAssetPolicy(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy) error {
+func ApplyEditingAssetPolicy(req *contract.GenerateRequest, policy mediaregistry.EditingAssetsPolicy) error {
 	if req == nil {
 		return errors.New("apply editing asset policy: request is required")
 	}
@@ -596,7 +593,7 @@ func ApplyEditingAssetPolicy(req *GenerateRequest, policy mediaregistry.EditingA
 	return applyBackgroundMusicSelection(req, policy, seed)
 }
 
-func applyBackgroundSelection(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
+func applyBackgroundSelection(req *contract.GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
 	if !backgroundSelectionIsBlank(req.Render.Background) {
 		return nil
 	}
@@ -612,7 +609,7 @@ func applyBackgroundSelection(req *GenerateRequest, policy mediaregistry.Editing
 	return nil
 }
 
-func applyBackgroundMusicSelection(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
+func applyBackgroundMusicSelection(req *contract.GenerateRequest, policy mediaregistry.EditingAssetsPolicy, seed string) error {
 	if len(req.BackgroundMusic) > 0 {
 		return nil
 	}

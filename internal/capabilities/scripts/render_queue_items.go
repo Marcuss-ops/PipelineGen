@@ -7,6 +7,8 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	finaljob "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -41,21 +43,17 @@ func resolveOverlayItemWorkers(requested int) int {
 	return requested
 }
 
-// overlayItemCandidate is one renderable overlay item together with its
-// position in the parent plan. The position is preserved because it is part of
-// the child plan identity (`<plan>:item:%03d:<id>`), so concurrent work must not
-// renumber items.
-type overlayItemCandidate struct {
-	index  int
-	source capmodel.OverlayItem
-}
+// overlayItemCandidate is the finaljob-owned renderable overlay item: the
+// overlay manifest projection builds it, the queue consumes it. Aliased so
+// the value crosses the boundary without a conversion.
+type overlayItemCandidate = finaljob.OverlayItemCandidate
 
 // overlayItemRenderResult carries both the per-item reference the caller
 // publishes in `Items` and the full RenderReference the first item returns for
 // backwards compatibility.
 type overlayItemRenderResult struct {
-	full  RenderReference
-	item  OverlayItemRenderReference
+	full  contract.RenderReference
+	item  contract.OverlayItemRenderReference
 	order int
 }
 
@@ -327,15 +325,15 @@ func overlayItemChildPlanID(parentPlanID string, index int, itemID string) strin
 // alpha-bearing artifact. It is the only overlay render capability the local
 // runner accepts.
 type OverlayPlanItemEnqueuer interface {
-	EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (RenderReference, error)
+	EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (contract.RenderReference, error)
 }
 
 // EnqueueChrononPlanItems emits one short alpha-bearing artifact per semantic
 // overlay. No scene-wide or whole-timeline canvas is made.
-func (e *QueueRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+func (e *QueueRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (contract.RenderReference, error) {
 	candidates := overlayRenderableCandidates(plan)
 	if len(candidates) == 0 {
-		return RenderReference{}, fmt.Errorf("overlay plan %q has no renderable items", plan.PlanID)
+		return contract.RenderReference{}, fmt.Errorf("overlay plan %q has no renderable items", plan.PlanID)
 	}
 	return e.enqueueStandaloneOverlayItems(ctx, plan, candidates)
 }

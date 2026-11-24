@@ -99,10 +99,10 @@ func TestSingleMapPlanUsesDedicatedPreMaterializationAndFoldRoute(t *testing.T) 
 		StartMs: 1_000, EndMs: 3_000, StartUS: 1_000_000, DurationUS: 2_000_000, Map: mapOverlay,
 	}}
 	oneCandidates := overlayRenderableCandidates(one)
-	if len(oneCandidates) != 1 || oneCandidates[0].index != 0 || oneCandidates[0].source.ID != "map-01" {
+	if len(oneCandidates) != 1 || oneCandidates[0].Index != 0 || oneCandidates[0].Source.ID != "map-01" {
 		t.Fatalf("single-map candidates = %d, want one map-01 at index 0", len(oneCandidates))
 	}
-	oneChild, _, err := separateOverlayItemPlan(one, oneCandidates[0].source, oneCandidates[0].index)
+	oneChild, _, err := separateOverlayItemPlan(one, oneCandidates[0].Source, oneCandidates[0].Index)
 	if err != nil {
 		t.Fatalf("single-map child plan: %v", err)
 	}
@@ -124,15 +124,15 @@ func TestSingleMapPlanUsesDedicatedPreMaterializationAndFoldRoute(t *testing.T) 
 	})
 	var manyMap overlayItemCandidate
 	for _, candidate := range overlayRenderableCandidates(many) {
-		if candidate.source.ID == "map-01" {
+		if candidate.Source.ID == "map-01" {
 			manyMap = candidate
 			break
 		}
 	}
-	if manyMap.source.ID != "map-01" {
+	if manyMap.Source.ID != "map-01" {
 		t.Fatal("mixed map plan must still contain map-01")
 	}
-	manyChild, _, err := separateOverlayItemPlan(many, manyMap.source, manyMap.index)
+	manyChild, _, err := separateOverlayItemPlan(many, manyMap.Source, manyMap.Index)
 	if err != nil {
 		t.Fatalf("multi-item map child plan: %v", err)
 	}
