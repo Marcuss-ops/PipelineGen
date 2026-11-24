@@ -120,7 +120,11 @@ func closeRunningAttempt(ctx context.Context, tx *sql.Tx, res sql.Result, id, wo
 // tail (one artifact per job, artifact id defaults to the job id), so the shape
 // lives here rather than twice.
 func persistArtifactTx(ctx context.Context, tx *sql.Tx, jobID, attempt string, artifact model.Artifact) error {
-	if artifact.StorageKey != "" {
+	// A content hash makes an artifact real even when the producer did not
+	// provide a storage key: the conformance contract treats that artifact as
+	// published metadata. A truly empty artifact remains the explicit
+	// "nothing to persist" signal used by render-only completion paths.
+	if artifact.StorageKey != "" || artifact.ArtifactHash != "" {
 		if artifact.ID == "" {
 			artifact.ID = jobID
 		}

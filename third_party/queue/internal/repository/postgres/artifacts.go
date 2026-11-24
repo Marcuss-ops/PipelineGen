@@ -206,153 +206,17 @@ func metricUnit(name string) string {
 
 // getArtifact loads a single artifact by ID.
 func getArtifact(ctx context.Context, db *sql.DB, id string) (*model.Artifact, error) {
-	var a model.Artifact
-	var (
-		jobID                                          string
-		storageKey, url, sha256, mimeType              sql.NullString
-		profileID, codec, codecProfile                 sql.NullString
-		backend, chrononVersion                        sql.NullString
-		driveFileID, driveLink, container, pixelFormat sql.NullString
-		chrononTimingKey, chrononTimingURL             sql.NullString
-		chrononTimingSHA, chrononTimingContentType     sql.NullString
-		audioStreams                                   sql.NullInt64
-		outputFacts                                    []byte
-		provenance                                     []byte
-		sizeBytes, chrononTimingSize                   sql.NullInt64
-		width, height, fpsNum, fpsDen                  sql.NullInt64
-		frameCount, durationUS                         sql.NullInt64
-		copyEligible, closedGOP, firstFrameKey         sql.NullBool
-	)
-	err := db.QueryRowContext(ctx, `
-		SELECT id, job_id, kind, storage_key, artifact_url, sha256, mime_type, size_bytes,
-		       width, height, fps_num, fps_den, frame_count, duration_us,
-		       profile_id, copy_eligible, codec, codec_profile, closed_gop, first_frame_keyframe,
-		       backend, chronon_version, drive_file_id, drive_link, container, pixel_format, audio_streams,
-		       chronon_timing_storage_key, chronon_timing_url, chronon_timing_sha256,
-		       chronon_timing_size_bytes, chronon_timing_content_type, output_facts, provenance
-		FROM render_artifacts
-		WHERE id = $1`, id).Scan(
-		&a.ID, &jobID, &a.Kind, &storageKey, &url, &sha256, &mimeType, &sizeBytes,
-		&width, &height, &fpsNum, &fpsDen, &frameCount, &durationUS,
-		&profileID, &copyEligible, &codec, &codecProfile, &closedGOP, &firstFrameKey,
-		&backend, &chrononVersion, &driveFileID, &driveLink, &container, &pixelFormat, &audioStreams,
-		&chrononTimingKey, &chrononTimingURL, &chrononTimingSHA,
-		&chrononTimingSize, &chrononTimingContentType, &outputFacts, &provenance)
+	row, err := queryArtifactRow(ctx, db, id)
 	if err != nil {
 		return nil, err
 	}
-
-	a.StorageKey = storageKey.String
-	a.ArtifactURL = url.String
-	a.ArtifactHash = sha256.String
-	a.ContentType = mimeType.String
-	a.ProfileID = profileID.String
-	a.Codec = codec.String
-	a.CodecProfile = codecProfile.String
-	a.Backend = backend.String
-	a.ChrononVersion = chrononVersion.String
-	a.DriveFileID = driveFileID.String
-	a.DriveLink = driveLink.String
-	a.Container = container.String
-	a.PixelFormat = pixelFormat.String
-	if len(outputFacts) > 0 {
-		var facts model.OutputFacts
-		if err := json.Unmarshal(outputFacts, &facts); err == nil {
-			a.OutputFacts = &facts
-		}
-	}
-	if len(provenance) > 0 {
-		var value model.ArtifactProvenance
-		if err := json.Unmarshal(provenance, &value); err != nil {
-			return nil, fmt.Errorf("decode artifact provenance %s: %w", id, err)
-		}
-		a.Provenance = &value
-	}
-	a.ChrononTimingStorageKey = chrononTimingKey.String
-	a.ChrononTimingURL = chrononTimingURL.String
-	a.ChrononTimingSHA256 = chrononTimingSHA.String
-	a.ChrononTimingContentType = chrononTimingContentType.String
-	if chrononTimingSize.Valid {
-		a.ChrononTimingSizeBytes = chrononTimingSize.Int64
-	}
-	if audioStreams.Valid {
-		a.AudioStreams = int(audioStreams.Int64)
-	}
-	if sizeBytes.Valid {
-		a.SizeBytes = sizeBytes.Int64
-	}
-	if width.Valid {
-		a.Width = int(width.Int64)
-	}
-	if height.Valid {
-		a.Height = int(height.Int64)
-	}
-	if fpsNum.Valid {
-		a.FPSNum = int(fpsNum.Int64)
-	}
-	if fpsDen.Valid {
-		a.FPSDen = int(fpsDen.Int64)
-	}
-	if frameCount.Valid {
-		a.FrameCount = int(frameCount.Int64)
-	}
-	if durationUS.Valid {
-		a.DurationUS = durationUS.Int64
-	}
-	if copyEligible.Valid {
-		a.CopyEligible = copyEligible.Bool
-	}
-	if closedGOP.Valid {
-		a.ClosedGOP = closedGOP.Bool
-	}
-	if firstFrameKey.Valid {
-		a.FirstFrameKeyframe = firstFrameKey.Bool
-	}
-	// processing_metrics is the durable numeric projection of Chronon's
-	// timing sidecar. It must be read back with the artifact; otherwise the
-	// queue API exposes only media facts (for example frame_count) and silently
-	// drops FPS, render phases and GPU counters before PipelineGen can project
-	// them into localized_renders.metrics.
-	rows, err := db.QueryContext(ctx, `
-		SELECT metric_name, metric_value
-		FROM processing_metrics
-		WHERE job_id = $1
-		ORDER BY created_at ASC, id ASC`, jobID)
+	a, err := row.toModel(id)
 	if err != nil {
-		return nil, fmt.Errorf("load processing metrics for artifact %s: %w", id, err)
+		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		var value float64
-		if err := rows.Scan(&name, &value); err != nil {
-			return nil, fmt.Errorf("scan processing metric for artifact %s: %w", id, err)
-		}
-		if name != "" {
-			if a.Metrics == nil {
-				a.Metrics = make(map[string]float64)
-			}
-			// Later rows win, which is correct for a retried job where the
-			// newest attempt is appended after the previous attempt.
-			a.Metrics[name] = value
-		}
+	if err := loadArtifactMetrics(ctx, db, row.jobID, a, id); err != nil {
+		return nil, err
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate processing metrics for artifact %s: %w", id, err)
-	}
-	// render_telemetry is the BOUNDED Chronon ledger document (schema
-	// chronon3d.render-telemetry-summary.v1 or chronon3d.frame-timing.v2
-	// projected onto schema/version/summary/job, without the unbounded
-	// per-frame array). It is stored separately from processing_metrics so
-	// the queue API must rehydrate it here; without this the GET /jobs/{id}
-	// artifact silently drops chronon_telemetry even though the worker
-	// reported it and the ledger contains it (P0 per-overlay tracing
-	// completeness). Fail-open on missing row (legacy worker).
-	var telemetry []byte
-	if err := db.QueryRowContext(ctx, `
-		SELECT telemetry FROM render_telemetry
-		WHERE job_id = $1 ORDER BY created_at DESC LIMIT 1`, jobID).Scan(&telemetry); err == nil && len(telemetry) > 0 {
-		a.ChrononTelemetry = json.RawMessage(telemetry)
-	}
-	return &a, nil
+	loadArtifactTelemetry(ctx, db, row.jobID, a)
+	return a, nil
 }

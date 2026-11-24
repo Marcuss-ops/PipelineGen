@@ -589,171 +589,34 @@ func (r *Repository) claimN(ctx context.Context, workerID string, state model.St
 	now := time.Now()
 	leaseUntil := now.Add(r.lease)
 
-	// The claimable vocabulary is owned by model.ClaimableStates(), so adding
-	// a claimable state updates this query instead of leaving a hand-typed
-	// literal behind. A requested state is validated against the same
-	// vocabulary before it reaches the query text.
-	stateFilter := "state IN " + stateIn(model.ClaimableStates()...)
-	if state != "" {
-		if !model.IsClaimable(state) {
-			return nil, 0, fmt.Errorf("unsupported claim state %q", state)
-		}
-		stateFilter = "state = " + stateLiteral(state)
-	}
-
-	// Select the whole window first: database/sql forbids running another
-	// statement on the same connection while rows are still open, and the
-	// per-job attempt bookkeeping below needs exactly that.
-	rows, err := tx.QueryContext(ctx, `
-		SELECT id, job_type, publication_policy, daemon_admission_wait_ms, job_schema, job_schema_version, render_plan, input_manifest, attempt_count, lease_generation, queued_at, artifact_id, parent_job_id, chunk_index, frame_range
-		FROM render_jobs
-		WHERE `+stateFilter+`
-		  AND (not_before IS NULL OR not_before <= $1)
-		  AND NOT EXISTS (
-		      SELECT 1 FROM render_jobs AS child
-		      WHERE child.parent_job_id = render_jobs.id)
-		ORDER BY queued_at ASC
-		FOR UPDATE SKIP LOCKED
-		LIMIT $2`, now, limit)
+	stateFilter, err := claimStateFilter(state)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	type claimCandidate struct {
-		id                    string
-		jobType               string
-		publicationPolicy     string
-		daemonAdmissionWaitMS float64
-		schema                string
-		version               sql.NullInt64
-		plan                  []byte
-		manifest              []byte
-		attempts              int
-		generation            int64
-		queuedAt              time.Time
-		artifactID            sql.NullString
-		parentJobID           sql.NullString
-		chunkIndex            int
-		frameRange            []byte
-		frameRangeVal         *model.FrameRange
-		manifestVal           inputManifest
-	}
-
-	candidates := make([]claimCandidate, 0, limit)
-	poisoned := 0
-	for rows.Next() {
-		var c claimCandidate
-		if err := rows.Scan(&c.id, &c.jobType, &c.publicationPolicy, &c.daemonAdmissionWaitMS, &c.schema, &c.version, &c.plan, &c.manifest, &c.attempts, &c.generation, &c.queuedAt, &c.artifactID, &c.parentJobID, &c.chunkIndex, &c.frameRange); err != nil {
-			rows.Close()
-			return nil, 0, err
-		}
-		// Fail-closed JSONB: corrupt frame_range or input_manifest must poison
-		// the job (failed) rather than silently rendering full-plan with
-		// dropped SHA256. In a batch one corrupt row must not cost the healthy
-		// claims around it, so it is poisoned in this same transaction and
-		// simply left out of the returned window.
-		frameRangeVal, err := decodeFrameRange(c.frameRange)
-		if err != nil {
-			if err := poisonCorruptJob(ctx, tx, c.id, err.Error()); err != nil {
-				rows.Close()
-				return nil, 0, fmt.Errorf("postgres: corrupt job %s could not be poisoned: %w (decode: %v)", c.id, err, err)
-			}
-			poisoned++
-			continue
-		}
-		manifestVal, err := decodeInputManifest(c.manifest)
-		if err != nil {
-			if err := poisonCorruptJob(ctx, tx, c.id, err.Error()); err != nil {
-				rows.Close()
-				return nil, 0, fmt.Errorf("postgres: corrupt job %s could not be poisoned: %w (decode: %v)", c.id, err, err)
-			}
-			poisoned++
-			continue
-		}
-		c.frameRangeVal = frameRangeVal
-		c.manifestVal = manifestVal
-		candidates = append(candidates, c)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
+	candidates, poisoned, err := loadClaimCandidates(ctx, tx, stateFilter, now, limit)
+	if err != nil {
 		return nil, 0, err
 	}
-	rows.Close()
-
 	if len(candidates) == 0 && poisoned == 0 {
 		return nil, 0, nil
 	}
 
 	claimed := make([]*model.Job, 0, len(candidates))
 	for _, c := range candidates {
-		var maxRecordedAttempt int
-		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(attempt_number), 0) FROM render_attempts WHERE job_id = $1`, c.id).Scan(&maxRecordedAttempt); err != nil {
+		job, err := claimCandidateJob(ctx, tx, c, workerID, now, leaseUntil)
+		if err != nil {
 			return nil, 0, err
 		}
-		attemptNumber := c.attempts + 1
-		if maxRecordedAttempt >= attemptNumber {
-			attemptNumber = maxRecordedAttempt + 1
-		}
-		nextGeneration := c.generation + 1
-		if err := createAttempt(ctx, tx, c.id, attemptNumber, workerID, now); err != nil {
-			return nil, 0, err
-		}
-
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE render_jobs
-			SET state = `+stateLiteral(model.StateRunning)+`,
-			    current_worker_id = $2,
-			    lease_until = $3,
-			    started_at = $4,
-			    attempt_count = $5,
-			    lease_generation = $6
-			WHERE id = $1`, c.id, workerID, leaseUntil, now, attemptNumber, nextGeneration); err != nil {
-			return nil, 0, err
-		}
-
-		if err := recordEvent(ctx, tx, eventJobClaimed, c.id, attemptID(c.id, attemptNumber), workerID, nil); err != nil {
-			return nil, 0, err
-		}
-
-		claimed = append(claimed, &model.Job{ID: c.id,
-			ParentJobID:           c.parentJobID.String,
-			ChunkIndex:            c.chunkIndex,
-			FrameRange:            c.frameRangeVal,
-			JobType:               c.jobType,
-			PublicationPolicy:     c.publicationPolicy,
-			DaemonAdmissionWaitMS: c.daemonAdmissionWaitMS,
-			Schema:                c.schema,
-			Version:               schemaVersion(c.version),
-			RenderPlan:            json.RawMessage(c.plan),
-			Assets:                c.manifestVal.Assets,
-			PreparedRenderPackage: c.manifestVal.PreparedRenderPackage,
-			State:                 model.StateRunning,
-			Worker:                workerID,
-			Attempts:              attemptNumber,
-			QueuedAt:              c.queuedAt,
-			StartedAt:             now,
-			LeaseUntil:            leaseUntil,
-			LeaseGeneration:       nextGeneration,
-		})
+		claimed = append(claimed, job)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, 0, err
 	}
 
-	// A job re-claimed from the rendered state carries its already-stored
-	// artifact so the worker can skip rendering and only retry publication.
-	for _, job := range claimed {
-		for _, c := range candidates {
-			if c.id != job.ID || !c.artifactID.Valid {
-				continue
-			}
-			artifact, err := getArtifact(ctx, r.db, c.artifactID.String)
-			if err != nil {
-				return nil, 0, fmt.Errorf("job %s artifact %s: %w", job.ID, c.artifactID.String, err)
-			}
-			job.Artifact = artifact
-		}
+	if err := attachClaimArtifacts(ctx, r.db, claimed, candidates); err != nil {
+		return nil, 0, err
 	}
 	return claimed, r.lease, nil
 }
@@ -849,21 +712,37 @@ func (r *Repository) Get(ctx context.Context, id string) (*model.Job, error) {
 		job.FailReason = errorMsg.String
 	}
 
-	if pLastFrameAt.Valid {
-		job.Progress = &model.Progress{
-			FramesDone:  int(pFramesDone.Int64),
-			TotalFrames: int(pTotalFrames.Int64),
-			LastFrameAt: pLastFrameAt.Time,
-			Worker:      pWorker.String,
-		}
-	}
-
-	if artifactID.Valid {
-		artifact, err := getArtifact(ctx, r.db, artifactID.String)
-		if err != nil {
-			return nil, err
-		}
-		job.Artifact = artifact
+	applyJobProgress(&job, pLastFrameAt, pFramesDone, pTotalFrames, pWorker)
+	if err := attachJobArtifact(ctx, r.db, &job, artifactID); err != nil {
+		return nil, err
 	}
 	return &job, nil
+}
+
+// applyJobProgress projects the nullable progress columns only when the
+// worker has recorded a last-frame timestamp.
+func applyJobProgress(job *model.Job, lastFrameAt sql.NullTime, framesDone, totalFrames sql.NullInt64, worker sql.NullString) {
+	if !lastFrameAt.Valid {
+		return
+	}
+	job.Progress = &model.Progress{
+		FramesDone:  int(framesDone.Int64),
+		TotalFrames: int(totalFrames.Int64),
+		LastFrameAt: lastFrameAt.Time,
+		Worker:      worker.String,
+	}
+}
+
+// attachJobArtifact loads the artifact referenced by the job, if any. The
+// artifact query stays after the job row has been fully decoded.
+func attachJobArtifact(ctx context.Context, db *sql.DB, job *model.Job, artifactID sql.NullString) error {
+	if !artifactID.Valid {
+		return nil
+	}
+	artifact, err := getArtifact(ctx, db, artifactID.String)
+	if err != nil {
+		return err
+	}
+	job.Artifact = artifact
+	return nil
 }
