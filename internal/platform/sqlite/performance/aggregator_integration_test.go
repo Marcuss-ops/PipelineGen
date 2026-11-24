@@ -51,7 +51,7 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 	checkpoint := struct {
 		Result *scriptgeneration.GenerateResult `json:"result,omitempty"`
 	}{
-		Result: &scriptgeneration.GenerateResult{
+		Result: &scriptgeneration.GenerateResult{AudioOutput: scriptgeneration.AudioOutput{
 			AudioMetrics: &scriptgeneration.AudioPipelineMetrics{
 				TTSMS:              12410,
 				TimelineCompileMS:  900,
@@ -66,7 +66,7 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 				AudioRTF:           0.2,
 				TTSCalls:           14,
 			},
-		},
+		}},
 	}
 	payloadJSON, err := json.Marshal(checkpoint)
 	if err != nil {
@@ -157,7 +157,7 @@ func TestAggregatorComparesAcrossJobs(t *testing.T) {
 		}
 		cp := struct {
 			Result *scriptgeneration.GenerateResult `json:"result,omitempty"`
-		}{Result: &scriptgeneration.GenerateResult{AudioMetrics: &scriptgeneration.AudioPipelineMetrics{MixMS: mix}}}
+		}{Result: &scriptgeneration.GenerateResult{AudioOutput: scriptgeneration.AudioOutput{AudioMetrics: &scriptgeneration.AudioPipelineMetrics{MixMS: mix}}}}
 		payloadJSON, err := json.Marshal(cp)
 		if err != nil {
 			t.Fatal(err)

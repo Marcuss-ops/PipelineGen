@@ -164,7 +164,7 @@ func (r *Runner) assembleSceneTextResult(ctx context.Context, runID string, req 
 		OutputName:               req.OutputName,
 		VoiceoverGroup:           req.ScriptParams.VoiceoverGroup,
 		TranslationMetrics:       streamTranslationMetrics,
-		AudioMetrics:             streamAudioMetrics,
+		AudioOutput:              AudioOutput{AudioMetrics: streamAudioMetrics},
 		EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan),
 	}
 	setSceneRenderExpectations(req, scenes, result)

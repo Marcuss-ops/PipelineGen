@@ -236,7 +236,6 @@ type GenerateResult struct {
 	// pixels and this run joined them, so a render-enabled job is never
 	// delivered as audio only.
 	LocalFinalVideo    *LocalFinalVideoArtifact    `json:"local_final_video,omitempty"`
-	AudioMetrics       *AudioPipelineMetrics       `json:"audio_metrics,omitempty"`
 	TranslationMetrics *TranslationPipelineMetrics `json:"translation_metrics,omitempty"`
 
 	// LocalizedRenders are the certified produced videos of the localized
@@ -252,17 +251,6 @@ type GenerateResult struct {
 	LocalizedRenderFailures []LocalizedRenderFailure `json:"localized_render_failures,omitempty"`
 	RenderMetrics           *RenderMetrics           `json:"render_metrics,omitempty"`
 	ExpectedRenderCount     int                      `json:"expected_render_count,omitempty"`
-
-	// AudioPrefetch carries pre-resolved audio assets (BGM/SFX paths +
-	// clip audio materialization) populated by the P1.1 prefetch goroutine
-	// during TTS. Nil means prefetch was not needed or not wired.
-	//
-	// It IS serialized: the runtime carriers inside it (resolved paths and
-	// cache adapters) are json:"-", while the bounded summary (requested /
-	// cached counts, wall time, per-asset outcomes) is what the polling API
-	// and the evidence trail consume. Without it, a prefetch that silently
-	// delivered nothing looked exactly like one that was never attempted.
-	AudioPrefetch *AudioPrefetchResult `json:"audio_prefetch,omitempty"`
 
 	// StageProgress is the parent-facing workflow-progress projection of THIS
 	// run, keyed by job.StageName. It is the durable lane's counterpart of the

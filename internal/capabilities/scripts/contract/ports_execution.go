@@ -1,10 +1,9 @@
 package contract
 
 import (
-	"context"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	audiocontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/audio"
 )
 
 // LocalizedRenderResult is the certified outcome of one localized render
@@ -84,20 +83,8 @@ type LocalizedRenderFailure struct {
 	Error     string   `json:"error"`
 }
 
-// AudioAssetSource resolves ONE background-music or sound-effect asset_id
-// to its canonical ResolvedAudioAsset (verified local path + certified
-// source duration). The concrete adapter (composition root) reads the
-// canonical asset registry and materializes Drive sources into scratch;
-// the capability never imports Drive, SQLite, or the filesystem mechanics.
-// Fail-closed: an unknown asset_id or an asset with no usable local copy is
-// a typed error, never a silent empty path.
-type AudioAssetSource interface {
-	ResolveAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error)
-}
+// AudioAssetSource and ClipAudioAssetSource are owned by contracts/audio;
+// the aliases keep the root port surface stable.
+type AudioAssetSource = audiocontract.AudioAssetSource
 
-// ClipAudioAssetSource is the optional production resolver for original clip
-// audio. It is deliberately separate from AudioAssetSource because BGM/SFX
-// resolution and clip-source materialization have different contracts.
-type ClipAudioAssetSource interface {
-	ResolveClipAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error)
-}
+type ClipAudioAssetSource = audiocontract.ClipAudioAssetSource

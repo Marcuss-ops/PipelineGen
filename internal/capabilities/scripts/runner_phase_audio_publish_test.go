@@ -46,15 +46,15 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 	req.SourceLanguage = "en"
 	localAudio := filepath.Join(t.TempDir(), "final-audio.m4a")
 	require.NoError(t, os.WriteFile(localAudio, []byte("audio"), 0o600))
-	result := &GenerateResult{
-
-		AudioMetrics: &AudioPipelineMetrics{}, AudioOutput: AudioOutput{FinalAudio: &FinalAudioReference{
+	result := &GenerateResult{AudioOutput: AudioOutput{
+		AudioMetrics: &AudioPipelineMetrics{},
+		FinalAudio: &FinalAudioReference{
 			AssetID:          localAudio,
 			Path:             localAudio,
 			FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			DurationMS:       1000,
-		}},
-	}
+		},
+	}}
 
 	ok := runner.publishFinalAudio(context.Background(), "run-1", req, testRoutingContext(), NewExecutionContext("run-1", "corr-1"), result)
 	require.True(t, ok, "publish must succeed")

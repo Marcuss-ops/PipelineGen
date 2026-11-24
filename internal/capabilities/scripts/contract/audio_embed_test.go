@@ -45,6 +45,8 @@ func TestGenerateResultEmbedsAudioOutputWithFlatWireKeys(t *testing.T) {
 		AudioMode:     capabilityaudio.AudioModeCombinedTimeline,
 		AudioStrategy: capabilityaudio.FinalAudioCopy,
 		FinalAudio:    &FinalAudioReference{AssetID: "final-audio-1"},
+		AudioMetrics:  &AudioPipelineMetrics{MixMS: 12},
+		AudioPrefetch: &AudioPrefetchResult{BGMRequested: 1, BGMSFXResolved: 1, DurationMS: 7},
 	}}
 	raw, err := json.Marshal(result)
 	if err != nil {
@@ -54,7 +56,7 @@ func TestGenerateResultEmbedsAudioOutputWithFlatWireKeys(t *testing.T) {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"audio_mode", "audio_strategy", "final_audio"} {
+	for _, key := range []string{"audio_mode", "audio_strategy", "final_audio", "audio_metrics", "audio_prefetch"} {
 		if _, ok := fields[key]; !ok {
 			t.Fatalf("result JSON lost flat key %q: %s", key, raw)
 		}
@@ -68,5 +70,11 @@ func TestGenerateResultEmbedsAudioOutputWithFlatWireKeys(t *testing.T) {
 	}
 	if decoded.AudioMode != result.AudioMode || decoded.FinalAudio == nil || decoded.FinalAudio.AssetID != "final-audio-1" {
 		t.Fatalf("result round-trip lost audio fields: %+v", decoded.AudioOutput)
+	}
+	if decoded.AudioMetrics == nil || decoded.AudioMetrics.MixMS != 12 {
+		t.Fatalf("result round-trip lost audio metrics: %+v", decoded.AudioMetrics)
+	}
+	if decoded.AudioPrefetch == nil || decoded.AudioPrefetch.BGMSFXResolved != 1 {
+		t.Fatalf("result round-trip lost audio prefetch: %+v", decoded.AudioPrefetch)
 	}
 }

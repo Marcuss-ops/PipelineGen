@@ -68,7 +68,7 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 	checkpoint := struct {
 		Result *scriptgeneration.GenerateResult `json:"result,omitempty"`
 	}{
-		Result: &scriptgeneration.GenerateResult{
+		Result: &scriptgeneration.GenerateResult{AudioOutput: scriptgeneration.AudioOutput{
 			AudioMetrics: &scriptgeneration.AudioPipelineMetrics{
 				TTSMS:               12410,
 				TimelineCompileMS:   920,
@@ -83,7 +83,7 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 				AudioDurationMS:     93650,
 				TTSCalls:            14,
 			},
-		},
+		}},
 	}
 	payloadJSON, err := json.Marshal(checkpoint)
 	if err != nil {
