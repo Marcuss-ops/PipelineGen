@@ -142,7 +142,7 @@ modifiche e i check che chiudono la scheda. Un ticket si chiude solo con la sezi
 | [RA-09](09-GLOBAL-STATE-RACES.md) | Stato globale mutabile e race (`sync.Once`, `logSink`, registry, cache) | P1 | — | **DONE** — font, logSink, registry Ollama, clock seam e matcher atomici; cache VidRush già LRU thread-safe |
 | [RA-10](10-OVERLAYSTATUS-WRITE-LOCK.md) | `overlaystatus`: mutex globale su I/O disco | P1 | — | **DONE** |
 | [RA-11](11-CAPABILITY-PLATFORM-CYCLES.md) | Cicli `capabilities ↔ platform` e fan-out | P1 | RA-01 | **DONE** — coppie 19→18, `system ↔ httpserver` risolta, percheck attivo; fan-out wiring 217 |
-| [RA-12](12-SCRIPTS-SCC-SPLIT.md) | SCC di `scripts`: split contract-first di `GenerateRequest/Result` | P1 | RA-02 | **OPEN** — inventario 78+67 e contratti generation/audio fatti; SCC 118, migrazione lettori resta |
+| [RA-12](12-SCRIPTS-SCC-SPLIT.md) | SCC di `scripts`: split contract-first di `GenerateRequest/Result` | P1 | RA-02 | **CLOSED (SUPERSEDED 2026-11-24)** — root 63 file, SCC ≤63; il residuo dei campi piatti è in BON-01 §Riapertura |
 | [RA-13](13-SQL-IN-CAPABILITIES.md) | SQL/DDL dentro le capability (I/O binder) | P1 | — | **DONE** — tre adapter in `platform`, migrazioni 015/016, percheck `capability_sql_ban` con inventario 21 file |
 | [RA-14](14-PORT-BYPASS-DB.md) | Port bypass `interface{ DB() *sql.DB }` | P1 | — | **DONE** — porta `EngineHandle`, SQL media in `platform/postgres/media`, percheck `capability_db_bypass` |
 | [RA-15](15-WIRING-BUSINESS-LOGIC.md) | Logica media dentro `app/wiring` | P1 | RA-02 | **DONE** — pipeline in `platform/media/finaljob`, contratti kernel, wiring 66 file, gate `os/exec` |
@@ -231,12 +231,10 @@ state rifatte il 2026-11-21: dead code **229**, RA-18 misurato (top: `OverlaySty
 - **P0 bloccanti** — RA-01, RA-02, RA-03, RA-04, RA-05, RA-06 chiusi.
 - **Robustezza** — RA-07, RA-08, RA-09, RA-10: due chiusi, due parziali con la parte restante
   scritta in scheda e il perché.
-- **Architettura** — RA-11, RA-13, RA-14, RA-15 e RA-16 chiuse in questa wave; resta
-  OPEN RA-12: **22 chiuse su 23**. RA-12 (split contract-first di `scripts`, SCC 118) è una
-  migrazione multi-PR: richiede i contratti di fase, la migrazione dei lettori e solo dopo
-  il taglio dei file. Il tree contiene oltre 100 file non committati di lavoro concorrente:
-  avviare lo split ora mischierebbe due autori nello stesso diff, che è esattamente ciò che
-  RA-23 vuole impedire.
+- **Architettura** — RA-11, RA-13, RA-14, RA-15 e RA-16 chiuse in questa wave; RA-12 è
+  stato chiuso come SUPERSEDED il 2026-11-24 (root 63 file, SCC ≤63): **23 chiuse su 23**.
+  Il residuo non coperto — migrazione dei lettori dei campi piatti — è in BON-01
+  §Riapertura 2026-11-24, non in questa wave.
 - **Igiene e prestazioni** — RA-20, RA-21, RA-22, RA-23 chiusi.
 
 ### 8.2 Aggiornamento RA-19 (2026-11-21, sessione successiva)
@@ -267,8 +265,8 @@ punti 3 e 5.
 ### 8.3 Cosa manca per considerare chiusa l'intera wave
 
 1. Committare il working tree (RA-01/RA-02 sono verificate ma non ancora in un commit).
-2. RA-11…RA-15 e RA-18, una per sessione, ognuna con i check della §6. RA-17 resta PARTIAL
-   per il variadico e per i tipi valore; RA-19 è chiusa.
+2. RA-11…RA-15 e RA-18, una per sessione, ognuna con i check della §6. RA-17 è chiusa;
+   RA-12 è chiuso come SUPERSEDED e il residuo è in BON-01 §Riapertura.
 3. RA-09 §1.4 (hook/cache VidRush): iniezione delle deps in un tipo, migrazione incrementale.
 4. RA-06 §1.3: decisione di contratto sull'async voiceover (§7 della scheda).
 
@@ -361,10 +359,10 @@ migrazioni, seconda 0 applicate/13 skip, checksum tamper fail-closed
   dal wiring, che resta a 66 file prod e zero `os/exec` nel root; il nuovo
   `percheck_wiring_finaljob_process_exec` impedisce il ritorno. I due `os/exec`
   residui in `wiring/lifecycle` e `wiring/rendering` sono debito separato.
-- **RA-12 resta OPEN.** Lo split contract-first di `scripts` (117 file nella
-  closure, god model `GenerateRequest`/`GenerateResult`) è una migrazione
-  multi-PR: richiede di definire i contratti di fase, migrare i lettori e solo
-  dopo tagliare i file. Non è un move meccanico e non è stato dichiarato chiuso.
+- **RA-12 è CLOSED (SUPERSEDED, 2026-11-24).** Lo split contract-first di `scripts`
+  è stato superato da GOP-01: root 63 file, SCC ≤63, gate verdi. Il residuo dei
+  lettori dei campi piatti è in BON-01 §Riapertura 2026-11-24; non è un move
+  meccanico e non viene dichiarato chiuso da questa wave.
   **RA-16** viene chiuso in questa sessione con la separazione del builder in fasi
   e la rimozione delle mappe dai contratti.
 
@@ -372,3 +370,18 @@ Verifiche della sessione: `go build ./...` exit 0; `go vet ./...` exit 0;
 `gofmt -l` vuoto; test PASS su `boundaries`, `platform/httpserver`,
 `capabilities/system/...`, `app/wiring`, `platform/postgres/cliprender`,
 `capabilities/cliprender`; `archcheck --strict` exit 0, 0 violazioni, 67 warning.
+
+## 8.8 Chiusura RA-12 — 2026-11-24
+
+RA-12 è **CLOSED (SUPERSEDED)**. I criteri quantitativi sono superati da GOP-01:
+root `internal/capabilities/scripts` **63 file** (target ≤141, cap ≤65), quindi SCC
+file-level **≤63** (target <117). `regen_hotspots.py --check` è verde.
+
+Verifiche eseguite sul checkout principale il 2026-11-24: `go build ./...` RC 0;
+`go vet ./...` RC 0; `go test ./internal/capabilities/scripts/... -count=1` RC 0;
+`go run ./cmd/archcheck --strict` 0 violazioni; `git diff --check` RC 0. `app/wiring`
+misura **246** import (baseline 218 del 2026-11-21; la crescita non è attribuibile a RA-12).
+
+Il residuo non coperto — **78** campi di `GenerateRequest`, **69** di
+`GenerateResult`, **20** consumer generation + **3** audio, **462** riferimenti audio
+campione — è in **BON-01 §Riapertura 2026-11-24**, non in questa scheda.

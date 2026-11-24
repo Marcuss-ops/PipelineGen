@@ -3,6 +3,8 @@
 **Data:** 2026-11-24
 **Base misurata:** `refactored` @ `2a3ea0b2c` (working tree pulito, esclusi i ticket di questa wave)
 **Origine:** radiografia 2026-11-24, Ondata 1.
+**Stato aggiornato:** 2026-11-24 @ `e89a0a3dc` — Ondata 1 committata;
+Ondata 2 aperta (13 `rustexec` + 21 SQL + 11 platform rows).
 **Perimetro di questa wave:** **Ondata 1** — dead code, helper test-only,
 cinque cloni, `defer` nel loop — chiusa e verificata. I ticket esecutivi
 dell'**Ondata 2** sono aperti (CLEANUP-05/06/07); la migrazione è **OPEN** e non
@@ -59,13 +61,13 @@ sono corretti in §3.
 
 | ID | Area | Priorità | Stato |
 | --- | --- | --- | --- |
-| [CLEANUP-01](01-DEAD-CODE-ORPHANS.md) | 10 funzioni morte e import orfani | P1 | DONE (perimetro) |
-| [CLEANUP-02](02-TEST-ONLY-PRODUCTION-HELPERS.md) | 12 helper test-only fuori dai file di produzione | P1 | DONE (perimetro) |
-| [CLEANUP-03](03-DUPLICATE-HELPERS.md) | 5 cloni esatti verso i leaf package | P1 | DONE |
-| [CLEANUP-04](04-DEFER-IN-LOOP-REACHABILITY.md) | `defer` ridondante nel loop orphan | P2 | DONE (modifica) |
-| [CLEANUP-05](05-ONDATA-2-RUSTEXEC-PORTS.md) | 13 adapter `rustexec` → contratti nel kernel | P1 | OPEN |
-| [CLEANUP-06](06-ONDATA-2-SQL-PORTS.md) | 21 file capability con `database/sql` → porte tipizzate | P1 | OPEN |
-| [CLEANUP-07](07-ONDATA-2-PLATFORM-ROWS.md) | 2 `ollama` + 9 `sqlite` → row types nel kernel | P1 | OPEN |
+| [CLEANUP-01](01-DEAD-CODE-ORPHANS.md) | 10 funzioni morte e import orfani | P1 | DONE (`b7a7ca2ec`) |
+| [CLEANUP-02](02-TEST-ONLY-PRODUCTION-HELPERS.md) | 12 helper test-only fuori dai file di produzione | P1 | DONE (`d41dcdf52`) |
+| [CLEANUP-03](03-DUPLICATE-HELPERS.md) | 5 cloni esatti verso i leaf package | P1 | DONE (`c6126a4ef`) |
+| [CLEANUP-04](04-DEFER-IN-LOOP-REACHABILITY.md) | `defer` ridondante nel loop orphan | P2 | DONE (`d21cc4de9`) |
+| [CLEANUP-05](05-ONDATA-2-RUSTEXEC-PORTS.md) | 13 adapter `rustexec` → contratti nel kernel | P1 | OPEN — 13/13, pre-work `d9e973e76` |
+| [CLEANUP-06](06-ONDATA-2-SQL-PORTS.md) | 21 file capability con `database/sql` → porte tipizzate | P1 | OPEN — 21/21, nessuna slice avviata |
+| [CLEANUP-07](07-ONDATA-2-PLATFORM-ROWS.md) | 2 `ollama` + 9 `sqlite` → row types nel kernel | P1 | OPEN — 11/11, nessuna entry rimossa |
 
 ## 5. Fuori perimetro (misurato, non avviato)
 
@@ -74,10 +76,10 @@ sono corretti in §3.
   CLEANUP-06 (21 file SQL). La migrazione è **OPEN**: ogni slice sposta i
   contratti nel kernel e cancella l'entry di inventario nello stesso cambio;
   nessuna entry va rimossa senza codice migrato.
-- **Ondata 3 — RA-12.** `refactored/docs/tickets/refactor-audit-2026-11-21/12-SCRIPTS-SCC-SPLIT.md`
-  resta OPEN: la closure SCC era 118 e la migrazione dei lettori di
-  `GenerateRequest/GenerateResult` non è iniziata. Il root è a 87 file, non a
-  111: il numero del report va riallineato prima di fissare il target ≤65.
+- **Ondata 3 — BON-01.** RA-12 è stato chiuso come SUPERSEDED il 2026-11-24:
+  root `scripts` a **63 file**, SCC ≤63, gate verdi. Il residuo dei lettori di
+  `GenerateRequest/GenerateResult` è ora in BON-01 §Riapertura 2026-11-24; il
+  numero 87 del report è superato e non va usato come baseline.
 - **Ondata 4 — god function e deadcode "decisionale".** RA-18 ha misurato
   183/107/99/97/93/92 con `gocyclo`; il budget deadcode è 229 (RA-03). Sono
   interventi che cambiano semantica o decisioni di prodotto (cablaggio vs
@@ -114,31 +116,69 @@ separati.
 | `go vet` superficie stabile | rc 0 |
 | `go run ./cmd/archcheck --strict` | rc 0, `has_hard_gate_hits: false` |
 | Test root `scripts` | PASS (20,4 s); sottopackage cleanup PASS |
-| Commit | non eseguito: nessun commit richiesto; il tree resta condiviso |
+| Commit | 6 commit separati (docs + 5 aree); vedi §9 |
 
 Riverifica finale: `go build ./...` rc 0; `go test` su root `scripts` e sui
 package cleanup PASS; `go run ./cmd/archcheck --strict` rc 0;
 `python3 scripts/regen_hotspots.py --check` OK (root 63, target ≤65).
-CLEANUP-01..04 chiusi. Nessun commit.
+CLEANUP-01..04 chiusi e committati (vedi §9).
 
-## 9. Aggiornamento 2026-11-24 (move overlayplan e gate correnti)
+## 9. Chiusura wave e gate correnti (2026-11-24)
 
-- HEAD `3e0a9e3ae`: il move `scripts → overlayplan` è committato dalla
-  sessione concorrente; la bridge test-only `overlayplan_test_aliases_test.go`
-  è stata ripristinata e il root compila.
-- `go build ./...` rc 0; `go test ./internal/capabilities/scripts/... -count=1`
-  PASS (root 24,185 s + tutti i sottopackage);
-  `go vet ./internal/capabilities/scripts/...` rc 0;
-  `archcheck --strict` rc 0, `has_hard_gate_hits: false`.
-- `go test ./... -count=1`: unico FAIL
-  `TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` in
-  `internal/app/wiring` (174,4 ms vs budget 100 ms sotto carico parallelo).
-  Il package `wiring` da solo PASS (19,521 s); il test A1 passa 1× e 3× in
-  isolamento (38,1 ms). È un test di latenza flaky, non una regressione
-  funzionale.
-- Commit: i ticket sono committati separatamente; il codice della wave resta
-  **non committato** perché il working tree contiene modifiche concorrenti
-  (`overlayplan_facade.go`, `overlayplan_test_aliases_test.go`,
-  `jobs/extracted_compat.go`). Non si fa un commit selettivo che includa
-  lavoro altrui.
-- Ondata 2: CLEANUP-05/06/07 aperti; nessuna migrazione dichiarata chiusa.
+**HEAD riletto:** `e89a0a3dc` (include il commit concorrente sul final-job
+subtitles). L'ultimo commit di questa wave è `d9e973e76`.
+
+### 9.1 Commit
+
+| Commit | Area | Ticket |
+| --- | --- | --- |
+| `db2d06c8a` | docs: gate Ondata 1, apertura Ondata 2 | CLEANUP-00…07 |
+| `b7a7ca2ec` | dead code e helper morti | CLEANUP-01 |
+| `d41dcdf52` | helper test-only nei `_test.go` | CLEANUP-02 |
+| `c6126a4ef` | 5 cloni verso i leaf package | CLEANUP-03 |
+| `d21cc4de9` | `defer` fuori dal loop orphan | CLEANUP-04 |
+| `d9e973e76` | pre-work contratto frasi audio | CLEANUP-05 (non chiude) |
+
+Il move `scripts → overlayplan` è nel commit concorrente `3e0a9e3ae`; la
+bridge test-only `overlayplan_test_aliases_test.go` è committata e il root
+compila senza alias di produzione.
+
+### 9.2 Verifiche dopo i commit
+
+| Check | Esito |
+| --- | --- |
+| `go build ./...` | rc 0 |
+| `go test ./internal/capabilities/scripts/... -count=1` | PASS (root 20,038 s + tutti i sottopackage, incluso `runner/subtitles`) |
+| `go vet ./internal/capabilities/scripts/...` | rc 0 |
+| `go run ./cmd/archcheck --strict` | rc 0, `has_hard_gate_hits: false` |
+| `gofmt -l` file toccati / `git diff --check` | nessun output / rc 0 |
+| `go test ./... -count=1` | unico FAIL: `TestA1_ScaleBacklogInteractiveFirstClaimUnderBudget` (174,4 ms vs 100 ms sotto carico) |
+
+`TestA1` passa nel package `wiring` da solo (19,521 s) e in isolamento 1× e 3×
+(38,1 ms): è un test di latenza flaky sotto carico, non una regressione
+funzionale. La suite completa non è dichiarata verde.
+
+### 9.3 Ondata 2 — stato invariato
+
+| Inventario | Entry | Stato |
+| --- | ---: | --- |
+| `platformCapabilityScriptsInventory` | 24 | 13 `rustexec`, 2 `ollama`, 9 `sqlite` |
+| `capabilitySQLInventory` | 21 | 1 AI, 7 assets, 6 jobs, 1 operations, 6 voiceover |
+
+Nessuna entry è stata cancellata e nessun adapter è stato migrato.
+`d9e973e76` allinea solo il contratto delle frasi in `semantic_engine_phrases.go`:
+l'import `scriptgen` resta, quindi CLEANUP-05 resta OPEN. CLEANUP-06/07 non sono
+stati avviati. I ticket 05–07 hanno la sezione "Aggiornamento post-commit" con i
+conteggi riletti.
+
+### 9.4 Working tree
+
+Al termine dei commit della wave il codice era pulito; durante questo
+aggiornamento la sessione concorrente ha ripreso a modificare
+`contract/model.go`, `contract/model_render.go`, `contract/model_result.go`,
+`finaljob/final_job_payload.go`, `overlayplan/batch_overlay_plan.go` e
+`overlayplan/overlay_plan_compile.go`. Quelle modifiche non sono di questa
+sessione e non vengono toccate. Restano inoltre le modifiche concorrenti ai
+ticket `refactor-audit-2026-11-21` (`00-INDEX`, `06`, `12`); questo indice è
+aggiornato da questa sessione. `e89a0a3dc` è l'ultimo commit. Nessun push
+eseguito.

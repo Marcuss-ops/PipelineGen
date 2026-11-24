@@ -2,7 +2,13 @@
 
 **Data:** 2026-11-21
 **Priorità:** P1 (strutturale; abilita RA-02 e RA-16)
-**Stato:** OPEN — inventario 78+67 campi e contratti `generation`/`audio` consegnati; SCC 118, migrazione lettori e taglio file ancora da fare
+**Stato:** CLOSED (SUPERSEDED, 2026-11-24) — i criteri quantitativi sono superati: root
+`internal/capabilities/scripts` = **63 file di produzione** (target ≤141; cap di wave ≤65),
+quindi la SCC file-level è **≤63** (target <117). Il cap file e la SCC sono stati chiusi da
+GOP-01 (`3e0a9e3ae`). Il residuo non coperto — migrazione dei lettori dei campi piatti — è
+ora in **BON-01 §Riapertura 2026-11-24**
+(`bonifica-complessita-2026-11-23/01-SCRIPTS-RUNNER-FINALJOB-SCC.md`). Nessun lavoro di
+codice resta in questa scheda.
 **Owner:** scripts capability
 **Origine:** report esterno 2026-11-21 §1.1, §5.4
 **Verifica sul codice:** **CONFERMATO** il punto di partenza (146 file prod, 40.508 LOC secondo
@@ -129,4 +135,24 @@ sicuro e non viene dichiarato.
   tagliare i file quando la SCC scende. È una migrazione multi-PR ad alto churn; il working
   tree contiene già oltre 100 file non committati di lavoro concorrente su overlay/scripts,
   quindi avviarla ora mischierebbe due autori nello stesso diff (RA-23).
-- **Nessuna chiusura rivendicata**: RA-12 resta OPEN con la baseline misurata.
+- **Chiusura 2026-11-24**: RA-12 è CLOSED (SUPERSEDED); il residuo è BON-01 §Riapertura.
+
+## Chiusura 2026-11-24 — SUPERSEDED da GOP-01
+
+La scheda è chiusa perché i due criteri che la tenevano aperta sono stati superati da GOP-01,
+non perché la migrazione dei campi piatti sia stata completata.
+
+| Criterio | Misura 2026-11-24 | Esito |
+| --- | --- | --- |
+| File di produzione nella root `scripts` ≤141 | **63** (`find ... -maxdepth 1 -name '*.go' ! -name '*_test.go'`) | ✅ |
+| SCC file-level <117 | **≤63** per costruzione (una SCC non può contenere più file del package); la misura GOP-01 precedente all'estrazione `overlayplan` era 81 | ✅ |
+| `regen_hotspots.py --check` | `OK: hotspots fresh` | ✅ |
+| Contratti di fase esistenti | `contracts/generation`, `contracts/audio`, `kernel/script/finaljob`, `kernel/media/finaljob`; **12** file di produzione importano i contratti generation/audio | ✅ presenza |
+| Contratti come fonte di verità | I campi piatti di `GenerateRequest` (**78**) e `GenerateResult` (**69**) restano letti dai consumer; **18** file fuori `scripts` usano i tipi, **107** importano `contract` | ❌ trasferito a BON-01 |
+| `go build`, `go vet`, `go test ./internal/capabilities/scripts/...`, `archcheck --strict` | tutti RC 0 il 2026-11-24; `archcheck` 0 violazioni; hotspot freschi | ✅ |
+| Wiring non peggiorato | `go list -f '{{len .Imports}}' ./internal/app/wiring` = **246** (baseline 218 del 2026-11-21; crescita non attribuibile a RA-12) | ⚠️ baseline da riallineare in BON-01 |
+
+Il residuo è ora **BON-01**, riaperto il 2026-11-24 per il solo debito runner/campi piatti:
+la migrazione dei lettori, i contratti mancanti (source, submission, publication, final job,
+scene, overlay, render, semantic) e il residuo runner dichiarato da GOP-01. La chiusura di
+RA-12 non dichiara verde quel lavoro.

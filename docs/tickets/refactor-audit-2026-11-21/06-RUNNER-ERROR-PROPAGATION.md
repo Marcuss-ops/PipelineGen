@@ -2,8 +2,9 @@
 
 **Data:** 2026-11-21
 **Priorità:** P0 (integrità di stato: un run può risultare completato senza esserlo)
-**Stato:** PARTIAL — §1.1 e §1.2 DONE; §1.3 è una decisione di contratto documentata (§7), non
-un fix locale
+**Stato:** DONE (riconciliato 2026-11-24) — §1.1, §1.2 e §1.3 chiusi e verificati; il commit
+fallito dopo un upload riuscito accoda il cleanup dell'orfano ed è coperto da test. La vecchia
+riga PARTIAL era stale rispetto al §6.1 e all'indice della wave.
 **Owner:** scripts capability (runner) + voiceover service
 **Origine:** report esterno 2026-11-21 §4.1; verificato sul codice
 **Verifica sul codice:** **CONFERMATO** per `runner_execution.go` e `runner_lifecycle.go`;
@@ -187,7 +188,12 @@ simmetrico e compilato.
 
 §1.1, §1.2 e §1.3 sono chiusi: **RA-06 DONE**.
 
-## 7. Stato di §1.3 (2026-11-21, sessione successiva)
+## 7. Stato di §1.3 (2026-11-21, sessione successiva) — superato dal §6.1
+
+> **Riconciliazione 2026-11-24.** Questa sezione registra la domanda aperta *prima* della
+> decisione. La decisione è stata presa e il fix è in §6.1: `StatusGenerated` significa
+> "byte prodotti, non pubblicati"; il cleanup dell'orfano è accodato anche quando il commit
+> fallisce dopo un upload riuscito. RA-06 è DONE; questa sezione resta come traccia storica.
 
 **Non chiuso: richiede una decisione di contratto.** Il censimento dei lettori di
 `StatusGenerated` dà un solo consumatore di produzione:
@@ -212,3 +218,13 @@ definizione. La decisione richiesta è quindi di prodotto/contratto:
 
 Nessuna delle due è un fix locale, e la scheda non deve fingere che lo sia. §1.1 e §1.2 restano
 DONE con le verifiche già registrate.
+
+## 8. Verifica finale 2026-11-24
+
+- `go build ./...` → RC 0
+- `go vet ./...` → RC 0
+- `go test ./internal/capabilities/scripts/ -run 'CompleteRun|Completion|Resume|Checkpoint|Execute' -count=1` → ok (0,794 s)
+- `go test ./internal/capabilities/voiceover/service/ -run 'FASE4' -count=1` → ok (0,032 s)
+- `go test ./internal/capabilities/scripts/... -count=1` → ok (tutti i package)
+- `go run ./cmd/archcheck --strict` → 0 violazioni, `has_hard_gate_hits=false`
+- `python3 scripts/regen_hotspots.py --check` → OK
