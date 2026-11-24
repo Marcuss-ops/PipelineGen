@@ -1,8 +1,12 @@
 package clips
 
-import "testing"
+import (
+	"testing"
 
-func TestParseRangeHeader(t *testing.T) {
+	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
+)
+
+func TestParseByteRange(t *testing.T) {
 	tests := []struct {
 		name      string
 		raw       string
@@ -24,7 +28,7 @@ func TestParseRangeHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			start, end, ok := parseRangeHeader(tt.raw, tt.size)
+			start, end, ok := httpjson.ParseByteRange(tt.raw, tt.size)
 			if ok != tt.wantOK {
 				t.Fatalf("ok=%v, want %v", ok, tt.wantOK)
 			}

@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 const (
@@ -346,7 +347,7 @@ func (c *Client) createPost(ctx context.Context, req ports.YouTubeUploadRequest,
 		Description:   description,
 		PrivacyStatus: normalizePrivacy(req.PrivacyStatus),
 		MadeForKids:   req.MadeForKids,
-		Tags:          cleanTags(req.Tags),
+		Tags:          textutil.CleanTags(req.Tags),
 	}
 	payload := createPostRequest{
 		WorkspaceID: c.cfg.WorkspaceID,

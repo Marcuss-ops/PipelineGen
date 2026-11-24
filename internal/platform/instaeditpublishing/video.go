@@ -81,21 +81,3 @@ func targetIDFor(targets []postTarget, platformAccountID int64) int64 {
 	}
 	return 0
 }
-
-func cleanTags(tags []string) []string {
-	seen := make(map[string]struct{}, len(tags))
-	out := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" {
-			continue
-		}
-		key := strings.ToLower(tag)
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, tag)
-	}
-	return out
-}

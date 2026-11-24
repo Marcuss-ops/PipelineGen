@@ -26,9 +26,11 @@ package mediamemory
 import (
 	"context"
 	"errors"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -113,7 +115,7 @@ func (n *defaultNormalizer) Normalize(_ context.Context, text, language string) 
 		return MediaConcept{}, wrapInvalid("language is empty (required for fingerprint SSOT)")
 	}
 
-	normalized := canonicalizeWhitespace(lowercaseNFC(text))
+	normalized := textutil.CollapseWhitespace(lowercaseNFC(text))
 	normalized = stripTerminalPunctuation(normalized)
 
 	if normalized == "" {
@@ -154,26 +156,6 @@ func lowerRune(r rune) rune {
 		return unicode.To(unicode.LowerCase, r)
 	}
 	return r
-}
-
-// canonicalizeWhitespace collapses runs of whitespace to a single
-// ASCII space. Tabs, newlines, NBSP (U+00A0) are all collapsed.
-func canonicalizeWhitespace(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	lastSpace := false
-	for _, r := range s {
-		if unicode.IsSpace(r) {
-			if !lastSpace {
-				b.WriteRune(' ')
-				lastSpace = true
-			}
-			continue
-		}
-		b.WriteRune(r)
-		lastSpace = false
-	}
-	return b.String()
 }
 
 // stripTerminalPunctuation removes trailing ASCII punctuation

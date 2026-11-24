@@ -29,6 +29,7 @@ import (
 
 	mwm2m "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -178,7 +179,7 @@ func artifactReceiptFromResult(raw json.RawMessage) (artifactReceipt, error) {
 	// Prefer the canonical remote_final_job receipt; only then accept any
 	// nested {artifact_url, sha256} pair (older receipts stored it one level
 	// up). This mirrors the CLI's extraction order.
-	node, ok := findMapByKey(doc, "remote_final_job")
+	node, ok := jsonutil.FindMapByKey(doc, "remote_final_job")
 	if !ok {
 		node, ok = findReceiptMap(doc)
 	}
@@ -212,29 +213,6 @@ func artifactReceiptFromResult(raw json.RawMessage) (artifactReceipt, error) {
 type artifactError struct{ message string }
 
 func (e *artifactError) Error() string { return e.message }
-
-func findMapByKey(v any, key string) (map[string]any, bool) {
-	switch node := v.(type) {
-	case map[string]any:
-		if child, ok := node[key]; ok {
-			if m, ok := child.(map[string]any); ok {
-				return m, true
-			}
-		}
-		for _, child := range node {
-			if m, ok := findMapByKey(child, key); ok {
-				return m, true
-			}
-		}
-	case []any:
-		for _, child := range node {
-			if m, ok := findMapByKey(child, key); ok {
-				return m, true
-			}
-		}
-	}
-	return nil, false
-}
 
 func findReceiptMap(v any) (map[string]any, bool) {
 	switch node := v.(type) {

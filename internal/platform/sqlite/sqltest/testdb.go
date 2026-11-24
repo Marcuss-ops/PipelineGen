@@ -11,7 +11,6 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -137,7 +136,7 @@ func NewTestDBWithSchema(t *testing.T, schema string) *sql.DB {
 func NewMigratedTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
-	dir := testMigrationsDir()
+	dir := sqlite.MigrationsDir()
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("NewMigratedTestDB: migrations dir not found at %s: %v (run from project root)", dir, err)
 	}
@@ -151,28 +150,6 @@ func NewMigratedTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("NewMigratedTestDB: apply migrations: %v", err)
 	}
 	return db
-}
-
-// testMigrationsDir resolves the migrations directory by walking up from this
-// package directory until migrations/sqlite exists.
-func testMigrationsDir() string {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return filepath.Join("migrations", "sqlite")
-	}
-	dir := filepath.Dir(file)
-	for {
-		candidate := filepath.Join(dir, "migrations", "sqlite")
-		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {
-			return candidate
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return filepath.Join("migrations", "sqlite")
 }
 
 // MustExec is a test helper that runs a SQL statement and fails the test on error.

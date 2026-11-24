@@ -36,7 +36,7 @@ func TestStateMatrixMatchesLiveSchema(t *testing.T) {
 		db    string
 		dir   string
 	}{
-		{"sqlite", "primary", testMigrationsDir()},
+		{"sqlite", "primary", MigrationsDir()},
 		{"sqlite_jobs", "jobs", resolveJobsMigrationsDir()},
 	} {
 		db := NewTestDB(t, nil)
@@ -164,7 +164,7 @@ func loadStateMatrix(t *testing.T) []statematrix.Row {
 }
 
 // stateMatrixDocPath resolves docs/migrations/STATE_MATRIX.md by walking up
-// from this source file (mirrors testMigrationsDir).
+// from this source file (mirrors MigrationsDir).
 func stateMatrixDocPath(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)

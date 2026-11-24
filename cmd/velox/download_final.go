@@ -16,6 +16,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
+	"github.com/Marcuss-ops/PipelineGen/pkg/jsonutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 )
 
@@ -168,7 +169,7 @@ func finalArtifactFromJob(raw []byte) (finalArtifact, error) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return finalArtifact{}, fmt.Errorf("decode job response: %w", err)
 	}
-	if node, ok := findMapByKey(doc, "remote_final_job"); ok {
+	if node, ok := jsonutil.FindMapByKey(doc, "remote_final_job"); ok {
 		return finalArtifactFromMap(node)
 	}
 	if node, ok := findArtifactReceipt(doc); ok {
@@ -206,29 +207,6 @@ func finalArtifactFromMap(m map[string]any) (finalArtifact, error) {
 		URL:         artifactURL,
 		SHA256:      strings.ToLower(artifactSHA),
 	}, nil
-}
-
-func findMapByKey(v any, key string) (map[string]any, bool) {
-	switch node := v.(type) {
-	case map[string]any:
-		if child, ok := node[key]; ok {
-			if m, ok := child.(map[string]any); ok {
-				return m, true
-			}
-		}
-		for _, child := range node {
-			if m, ok := findMapByKey(child, key); ok {
-				return m, true
-			}
-		}
-	case []any:
-		for _, child := range node {
-			if m, ok := findMapByKey(child, key); ok {
-				return m, true
-			}
-		}
-	}
-	return nil, false
 }
 
 func findArtifactReceipt(v any) (map[string]any, bool) {

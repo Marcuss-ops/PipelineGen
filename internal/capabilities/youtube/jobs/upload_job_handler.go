@@ -10,6 +10,7 @@ import (
 	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"go.uber.org/zap"
 )
@@ -156,7 +157,7 @@ func (p UploadJobPayload) uploadRequest(jobID string) (youtubeports.YouTubeUploa
 		VideoURL:          strings.TrimSpace(p.VideoURL),
 		Title:             strings.TrimSpace(p.Title),
 		Description:       strings.TrimSpace(p.Description),
-		Tags:              cleanUploadTags(p.Tags),
+		Tags:              textutil.CleanTags(p.Tags),
 		PrivacyStatus:     p.PrivacyStatus,
 		MadeForKids:       p.MadeForKids,
 		IdempotencyKey:    jobID,
@@ -201,7 +202,7 @@ func (p UploadJobPayload) uploadRequest(jobID string) (youtubeports.YouTubeUploa
 			req.Description = description
 		}
 		if len(meta.Tags) > 0 {
-			req.Tags = cleanUploadTags(meta.Tags)
+			req.Tags = textutil.CleanTags(meta.Tags)
 		}
 		if privacy := strings.TrimSpace(meta.Privacy); privacy != "" {
 			req.PrivacyStatus = privacy
@@ -241,22 +242,4 @@ func normalizeUploadPrivacy(value string) string {
 	default:
 		return ""
 	}
-}
-
-func cleanUploadTags(tags []string) []string {
-	seen := make(map[string]struct{}, len(tags))
-	out := make([]string, 0, len(tags))
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" {
-			continue
-		}
-		key := strings.ToLower(tag)
-		if _, exists := seen[key]; exists {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, tag)
-	}
-	return out
 }

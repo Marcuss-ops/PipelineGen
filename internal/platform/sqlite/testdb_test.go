@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -72,25 +71,4 @@ func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 		}
 	}
 	return db
-}
-
-// testMigrationsDir resolves the migrations directory from this package dir.
-func testMigrationsDir() string {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return filepath.Join("migrations", "sqlite")
-	}
-	dir := filepath.Dir(file)
-	for {
-		candidate := filepath.Join(dir, "migrations", "sqlite")
-		if stat, err := os.Stat(candidate); err == nil && stat.IsDir() {
-			return candidate
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return filepath.Join("migrations", "sqlite")
 }

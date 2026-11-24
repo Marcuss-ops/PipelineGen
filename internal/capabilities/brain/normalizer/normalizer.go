@@ -10,9 +10,11 @@ package normalizer
 import (
 	"context"
 	"errors"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -94,7 +96,7 @@ func (n *defaultNormalizer) fingerprint(language, normalized string) string {
 func canonicalize(s string) string {
 	s = norm.NFC.String(s)
 	s = strings.Map(lowerRune, s)
-	s = collapseWhitespace(s)
+	s = textutil.CollapseWhitespace(s)
 	s = stripTrailingPunctuation(s)
 	return s
 }
@@ -104,24 +106,6 @@ func lowerRune(r rune) rune {
 		return unicode.To(unicode.LowerCase, r)
 	}
 	return r
-}
-
-func collapseWhitespace(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	lastSpace := false
-	for _, r := range s {
-		if unicode.IsSpace(r) {
-			if !lastSpace {
-				b.WriteRune(' ')
-				lastSpace = true
-			}
-			continue
-		}
-		b.WriteRune(r)
-		lastSpace = false
-	}
-	return b.String()
 }
 
 func stripTrailingPunctuation(s string) string {

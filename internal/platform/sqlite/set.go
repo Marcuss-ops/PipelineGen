@@ -220,7 +220,7 @@ func (s *DatabaseSet) Migrate(log *zap.Logger) error {
 	// skips out-of-scope migrations before the checksum check, so
 	// migration 109 (ALTER TABLE media_assets …) is never attempted
 	// against the observability DB.
-	migrationsDir := resolveMigrationsDir()
+	migrationsDir := MigrationsDir()
 	if err := s.Primary.RunMigrations(log, migrationsDir, "primary"); err != nil {
 		return fmt.Errorf("databaseset: migrate primary: %w", err)
 	}
@@ -282,7 +282,9 @@ func (s *DatabaseSet) ValidateControlPlaneIdentity(ctx context.Context) error {
 	return ValidateConfiguredControlPlaneWriters(databases)
 }
 
-func resolveMigrationsDir() string {
+// MigrationsDir resolves the primary SQLite migrations directory by walking
+// up from this source file until migrations/sqlite exists.
+func MigrationsDir() string {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		return filepath.Join("migrations", "sqlite")
