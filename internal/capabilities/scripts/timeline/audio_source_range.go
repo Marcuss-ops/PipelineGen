@@ -41,8 +41,18 @@ func ValidateAudioSourceRanges(scenes []contract.Scene) error {
 				intent.TimelineOffsetUS < 0 || intent.TimelineDurationUS < 0 {
 				return fmt.Errorf("%w: segment %d audio source range", audio.ErrInvalidTimeline, segment)
 			}
+			// The canonical audio-only builder clamps a placed clip to the
+			// VO-governed scene window (BuildCanonicalTimelineAndPrimaryAssets),
+			// so a timeline duration longer than the scene is legitimate evidence
+			// input, not an invalid range. Mirror that clamp before checking the
+			// window, otherwise a source clip longer than the scene fails here
+			// even though the timeline trims it.
+			timelineDurationUS := intent.TimelineDurationUS
+			if durationUS > 0 && (timelineDurationUS == 0 || timelineDurationUS > durationUS) {
+				timelineDurationUS = durationUS
+			}
 			if durationUS > 0 && (intent.TimelineOffsetUS > durationUS ||
-				intent.TimelineDurationUS > durationUS-intent.TimelineOffsetUS) {
+				timelineDurationUS > durationUS-intent.TimelineOffsetUS) {
 				return fmt.Errorf("%w: segment %d audio source range", audio.ErrInvalidTimeline, segment)
 			}
 			if intent.Mode == audio.AudioClip && intent.SourceDurationUS <= 0 {

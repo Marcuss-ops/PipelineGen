@@ -408,20 +408,43 @@ func (c *VidRushIncrementalCoordinator) recordResult(event SceneCommitted, resul
 		}
 		return
 	}
-	// Image fanout is asynchronous with semantic enrichment. At this point
-	// result.Assets may still be empty even though the provider search and
-	// materialization branches are about to attach images to the scene. Keep
-	// this coordinator responsible for enrichment errors; MediaCertBarrier
-	// validates the completed, joined image results after fanout has finished.
 	c.records[event.SceneIndex] = segmentResultRecord{
 		revision: event.Revision,
 		textHash: event.TextHash,
 		result:   result,
 		err:      err,
 	}
+	// enrichAndMaterialize has already run searchProviders and
+	// materializeSegment for this scene, so the asset selection is final here.
+	// The producer-side gate can therefore fail the run as soon as one scene
+	// cannot satisfy the image target; MediaCertBarrier still certifies the
+	// completed, joined results at the terminal barrier.
+	c.checkImageFanoutLocked(event, result, err)
 	if done := c.sceneDone[event.SceneIndex]; done != nil {
 		close(done)
 		delete(c.sceneDone, event.SceneIndex)
+	}
+}
+
+// checkImageFanoutLocked is the producer-side fail-fast gate: a scene that
+// cannot satisfy the run's image target sets earlyFailure and wakes the
+// barrier, instead of letting the remaining scenes, TTS and render run for a
+// job that can never certify. Called with c.mu held.
+func (c *VidRushIncrementalCoordinator) checkImageFanoutLocked(event SceneCommitted, result scriptpkg.VidRushSegmentResult, err error) {
+	if err != nil || c.imageFanoutSpec == nil || c.earlyFailure != nil {
+		return
+	}
+	violation := mediacert.CheckSegmentImageFanout(*c.imageFanoutSpec, mediacert.ResultSegment{
+		SegmentID: event.SceneID,
+		Position:  event.SceneIndex,
+		Assets:    result.Assets,
+	})
+	if violation == nil {
+		return
+	}
+	c.earlyFailure = fmt.Errorf("vidrush semantic certification failed: CERTIFIED=false (%s: %s)", violation.Rule, violation.Detail)
+	if c.failCh != nil {
+		close(c.failCh)
 	}
 }
 
