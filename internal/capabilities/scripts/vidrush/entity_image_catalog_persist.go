@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -283,11 +282,10 @@ func entityImageCatalogCandidateIDWithAliases(ctx context.Context, repo entityca
 	if repo == nil || !scriptpkg.IsInternetImageSourceProvider(candidate.Provider) {
 		return 0, nil
 	}
-	if rawID := strings.TrimPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-"); rawID != strings.TrimSpace(candidate.AssetID) {
-		if candidateID, err := strconv.ParseInt(rawID, 10, 64); err == nil && candidateID > 0 {
-			return candidateID, nil
-		}
-	}
+	// Asset IDs are cacheable, while catalog rows can be pruned. Never trust
+	// an `entity-image-<id>` value on its own: resolve the current row from the
+	// canonical PERSON identity and source URL below. This also repairs a stale
+	// cached ID when the same candidate was reinserted with a new row ID.
 	if strings.TrimSpace(candidate.Entity) == "" || strings.TrimSpace(candidate.SourceURL) == "" {
 		return 0, nil
 	}

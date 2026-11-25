@@ -130,9 +130,10 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	policy audio.AudioMixPolicy,
 	bgm []scriptpkg.BackgroundMusicIntent,
 	sfx []scriptpkg.SoundEffectIntent,
+	clipStartSFX []scriptpkg.ClipStartSoundEffectIntent,
 	randomSFXOnClipStart bool,
 ) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, audiocontract.CompileTimings, error) {
-	return CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(ctx, result, language, profile, source, policy, bgm, sfx, randomSFXOnClipStart, nil)
+	return CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(ctx, result, language, profile, source, policy, bgm, sfx, clipStartSFX, randomSFXOnClipStart, nil)
 }
 
 // CompileCanonicalAudioPlanAudioOnlyWithIntentsPool is the same compile with
@@ -147,6 +148,7 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(
 	policy audio.AudioMixPolicy,
 	bgm []scriptpkg.BackgroundMusicIntent,
 	sfx []scriptpkg.SoundEffectIntent,
+	clipStartSFX []scriptpkg.ClipStartSoundEffectIntent,
 	randomSFXOnClipStart bool,
 	sfxPool []string,
 ) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, audiocontract.CompileTimings, error) {
@@ -161,8 +163,19 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(
 	if err != nil {
 		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
 	}
+	if len(clipStartSFX) > 0 {
+		explicit, err := scriptaudio.ClipStartSFXIntents(timeline, clipStartSFX)
+		if err != nil {
+			return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+		}
+		sfx = append(append([]scriptpkg.SoundEffectIntent(nil), sfx...), explicit...)
+	}
 	if randomSFXOnClipStart {
-		sfx = append(append([]scriptpkg.SoundEffectIntent(nil), sfx...), scriptaudio.RandomClipStartSFXIntentsWithPool(timeline, sfxPool)...)
+		excluded := make([]string, 0, len(clipStartSFX))
+		for _, cue := range clipStartSFX {
+			excluded = append(excluded, cue.ClipID)
+		}
+		sfx = append(append([]scriptpkg.SoundEffectIntent(nil), sfx...), scriptaudio.RandomClipStartSFXIntentsWithPoolExcluding(timeline, sfxPool, excluded)...)
 	}
 	planStarted := time.Now()
 	compiled, err := CompileAudioWithIntents(ctx, timeline, profile, policy, bgm, sfx, source)

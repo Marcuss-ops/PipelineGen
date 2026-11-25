@@ -52,15 +52,15 @@ func TestSemanticCandidatesMapsSingleCallBundle(t *testing.T) {
 }
 
 func TestSemanticCandidatesMapsNumericFacts(t *testing.T) {
-	source := "Revenue hit $1,200 with 25% growth."
+	source := "Revenue hit $1,200 with 25% growth; it was one third."
 	const payload = `{"entities":[],"relations":[],"lower_thirds":[],"bullets":[],"chart_points":[],
-	 "numeric_facts":[{"surface":"$1,200","type":"MONEY","value":1200,"start_byte":12,"end_byte":18,"evidence":"$1,200"},{"surface":"25%","type":"PERCENT","value":25,"start_byte":24,"end_byte":27,"evidence":"25%"}]}`
+	 "numeric_facts":[{"surface":"$1,200","type":"MONEY","value":1200,"start_byte":12,"end_byte":18,"evidence":"$1,200"},{"surface":"25%","type":"PERCENT","value":25,"start_byte":24,"end_byte":27,"evidence":"25%"},{"surface":"one third","type":"FRACTION","value":0.3333333333333333,"start_byte":43,"end_byte":52,"evidence":"one third"}]}`
 	a, _ := NewVisualNERAdapter(executorForSemantic(&semanticRunner{output: []byte(payload)}))
 	bundle, err := a.SemanticCandidates(context.Background(), "en", source, 12)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(bundle.Numeric) != 2 {
+	if len(bundle.Numeric) != 3 {
 		t.Fatalf("numeric facts: %+v", bundle.Numeric)
 	}
 	if bundle.Numeric[0].Text != "$1,200" || !bundle.Numeric[0].HasValue || bundle.Numeric[0].Value != 1200 || bundle.Numeric[0].Kind != "MONEY" {
@@ -68,6 +68,9 @@ func TestSemanticCandidatesMapsNumericFacts(t *testing.T) {
 	}
 	if bundle.Numeric[1].Value != 25 || !bundle.Numeric[1].HasValue {
 		t.Fatalf("percent fact: %+v", bundle.Numeric[1])
+	}
+	if bundle.Numeric[2].Kind != "FRACTION" || bundle.Numeric[2].Text != "one third" || !bundle.Numeric[2].HasValue {
+		t.Fatalf("fraction fact: %+v", bundle.Numeric[2])
 	}
 }
 

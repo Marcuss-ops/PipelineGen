@@ -36,6 +36,20 @@ func (a *RemoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 	return receipt, finalJobWaitError(waitErr)
 }
 
+// CheckFinalJobCapabilities is called from the initial media-preflight stage,
+// before any scene generation or rendering. The Master must advertise the
+// runtime features a stock-bearing final-job request needs.
+func (a *RemoteFinalJobAdapter) CheckFinalJobCapabilities(ctx context.Context, req scriptgen.GenerateRequest) error {
+	if a == nil || a.client == nil {
+		return fmt.Errorf("remote final-job capability client is not configured")
+	}
+	needsStock := len(req.StockBindings) > 0 || strings.EqualFold(strings.TrimSpace(string(req.MediaMode)), "stock_only") || strings.EqualFold(strings.TrimSpace(string(req.MediaMode)), "mixed")
+	if !req.FinalJob || !needsStock {
+		return nil
+	}
+	return a.client.CheckCapabilities(ctx, "stock_window_preparation")
+}
+
 // StartFinalJob creates the Master job and returns its durable handle without
 // polling. The scripts runner checkpoints this receipt before it attaches.
 //
@@ -133,6 +147,7 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	prepared, err := a.client.PrepareJob(ctx, pre)
 	prepareMS = time.Since(prepareStarted).Milliseconds()
 	if err != nil {
+		err = finalJobCapabilityError(err)
 		if errors.Is(err, remotejob.ErrRemoteStaleJob) {
 			return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: staleReceiptStatus(prepared.Status), ReportOwner: scriptgen.FinalJobReportOwner, Timing: handoffTiming()},
 				fmt.Errorf("remote preparation %s is stale and must be replaced: %w: %w", prepared.JobID, scriptgen.ErrFinalJobStaleReceipt, err)
@@ -148,6 +163,7 @@ func (a *RemoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 			fmt.Errorf("remote job %s is already leased and %s: %w", prepared.JobID, prepared.Status, scriptgen.ErrFinalJobPending)
 	}
 	if err := a.client.Finalize(ctx, prepared.JobID, finalize); err != nil {
+		err = finalJobCapabilityError(err)
 		receipt := scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, ReportOwner: scriptgen.FinalJobReportOwner, Timing: handoffTiming()}
 		if errors.Is(err, remotejob.ErrRemoteStaleJob) {
 			receipt.Status = staleReceiptStatus("")
@@ -378,6 +394,16 @@ func mergeFinalJobTiming(base, extra *scriptgen.RemoteFinalJobTiming) *scriptgen
 	return base.Merge(extra)
 }
 
+// finalJobCapabilityError maps the transport's deterministic 422 capability
+// verdict onto the capability-owned sentinel. It is used on the PREPARE and
+// FINALIZE paths, where the wait mapper is not on the call stack.
+func finalJobCapabilityError(err error) error {
+	if errors.Is(err, remotejob.ErrRemoteCapabilityUnavailable) {
+		return fmt.Errorf("%w: %w", scriptgen.ErrFinalJobCapabilityMissing, err)
+	}
+	return err
+}
+
 // finalJobWaitError maps the transport's "not terminal yet" sentinel onto the
 // capability-owned one, so the runner branches on a typed error it owns without
 // importing the transport package. Both sentinels stay in the chain (`%w`
@@ -387,6 +413,9 @@ func mergeFinalJobTiming(base, extra *scriptgen.RemoteFinalJobTiming) *scriptgen
 func finalJobWaitError(err error) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, remotejob.ErrRemoteCapabilityUnavailable) {
+		return fmt.Errorf("%w: %w", scriptgen.ErrFinalJobCapabilityMissing, err)
 	}
 	if errors.Is(err, remotejob.ErrRemoteInvalidPlan) {
 		// A rejected plan is not a stale identity: report it as its own terminal

@@ -127,6 +127,85 @@ func TestOverlaySFXIntentsRandomUsesIndexedPool(t *testing.T) {
 	}
 }
 
+func TestOverlaySFXIntentsRandomImageLaneCoversEntityImageButNotPhrase(t *testing.T) {
+	plan := &capmodel.OverlayPlan{
+		PlanID: "plan-entity-sfx", VideoID: "video",
+		Items: []capmodel.OverlayItem{
+			{
+				ID: "entity:1", SceneID: "scene_1", Kind: "entity_image", TemplateID: "ENTITY_IMAGE",
+				Text: "Tim Cook", EntityCaption: "Tim Cook",
+				StartMs: 1500, EndMs: 3000,
+				AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "entity", SHA256: strings.Repeat("d", 64)}},
+			},
+			{ID: "phrase:1", SceneID: "scene_1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartMs: 3200, EndMs: 4000},
+		},
+	}
+	intents, err := overlaySFXIntentsForPlan(GenerateRequest{AudioConfig: AudioConfig{RandomSFXOnImageOverlay: true}}, plan, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intents) != 1 || intents[0].AtMS != 1500 {
+		t.Fatalf("image lane = %+v, want one cue on the entity image at 1500ms", intents)
+	}
+	if !isBuiltInWhoosh(intents[0].AssetID) {
+		t.Fatalf("asset %q is not a built-in whoosh alias", intents[0].AssetID)
+	}
+	if withoutOptIn, err := overlaySFXIntentsForPlan(GenerateRequest{}, plan, nil); err != nil || len(withoutOptIn) != 0 {
+		t.Fatalf("image SFX must remain opt-in: intents=%v err=%v", withoutOptIn, err)
+	}
+}
+
+func TestOverlaySFXIntentsRandomPhraseCuesFollowPhraseSegments(t *testing.T) {
+	plan := &capmodel.OverlayPlan{
+		PlanID: "plan-phrase-sfx", VideoID: "video",
+		Items: []capmodel.OverlayItem{
+			{ID: "phrase-one", SceneID: "scene_1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartMs: 500, EndMs: 1400},
+			{
+				ID: "phrase-chain", SceneID: "scene_1", Kind: "phrase_chain", TemplateID: "PHRASE_CHAIN",
+				StartMs: 2000, EndMs: 5000,
+				Params: map[string]any{"chain_segments": []any{
+					map[string]any{"kind": "text_phrase", "template_id": "IMPORTANT_PHRASE", "start_us": float64(2_000_000), "duration_us": float64(1_000_000)},
+					map[string]any{"kind": "text_phrase", "template_id": "IMPORTANT_PHRASE", "start_us": float64(3_300_000), "duration_us": float64(1_200_000)},
+				}},
+			},
+		},
+	}
+	request := GenerateRequest{AudioConfig: AudioConfig{RandomSFXOnPhraseOverlay: true}}
+	pool := []string{"phrase_sfx_a", "phrase_sfx_b", "phrase_sfx_c"}
+	intents, err := overlaySFXIntentsForPlan(request, plan, pool)
+	if err != nil {
+		t.Fatalf("project phrase SFX: %v", err)
+	}
+	if len(intents) != 3 {
+		t.Fatalf("intents = %d, want one per standalone phrase and phrase-chain segment", len(intents))
+	}
+	wantStarts := []int64{500, 2000, 3300}
+	for i, intent := range intents {
+		if intent.AtMS != wantStarts[i] {
+			t.Errorf("intent %d starts at %dms, want %dms", i, intent.AtMS, wantStarts[i])
+		}
+		if intent.DurationMS != overlaySFXCueDurationMS || intent.GainDB != overlaySFXCueGainDB {
+			t.Errorf("intent %d = %+v, want the editorial 250ms/-18dB cue", i, intent)
+		}
+		if !containsSFXTestString(pool, intent.AssetID) {
+			t.Errorf("intent %d asset %q is outside the indexed pool", i, intent.AssetID)
+		}
+	}
+	withoutOptIn, err := overlaySFXIntentsForPlan(GenerateRequest{}, plan, pool)
+	if err != nil || len(withoutOptIn) != 0 {
+		t.Fatalf("phrase SFX must remain opt-in: intents=%v err=%v", withoutOptIn, err)
+	}
+}
+
+func containsSFXTestString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func isBuiltInWhoosh(assetID string) bool {
 	for _, alias := range scriptpkg.BuiltInWhooshAliases() {
 		if alias == assetID {

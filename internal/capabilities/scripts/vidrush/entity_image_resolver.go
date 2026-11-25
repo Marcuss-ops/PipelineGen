@@ -152,7 +152,7 @@ func resolveEntityImageCatalogCache(
 	if !force && !resolution.CatalogRefreshRequired {
 		if cached, ok := cacheLoad(entityImageCache, entityCacheKey); ok {
 			if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok &&
-				(len(cachedCandidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
+				(len(cachedCandidates) > 0 || !entityImageSurfaceEnabled(plan)) {
 				resolution.Candidates = append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...)
 				resolution.FromCache = true
 			}
@@ -166,7 +166,7 @@ func resolveEntityImageCatalogCache(
 				if len(persisted) > 0 {
 					cacheStore(entityImageCache, entityCacheKey, persisted)
 				}
-				if len(persisted) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+				if len(persisted) > 0 || !entityImageSurfaceEnabled(plan) {
 					resolution.Candidates = persisted
 					resolution.FromCache = true
 				}

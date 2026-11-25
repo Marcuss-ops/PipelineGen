@@ -55,13 +55,111 @@ func TestSplitVoiceoverWordsPrefersSentenceBoundaries(t *testing.T) {
 	}
 }
 
-// Sentence-per-chunk sizing note (2026-10-29 paradigm): test scenes are built
-// from 24-word chunks (the sentence cap) so call counts stay deterministic.
+func TestSplitVoiceoverWordsKeepsSentencesWhole(t *testing.T) {
+	first := voiceoverTestSentence(100)
+	second := voiceoverTestSentence(50)
+	chunks := splitVoiceoverWords(first+" "+second, 120)
+	if len(chunks) != 2 {
+		t.Fatalf("got %d chunks, want 2", len(chunks))
+	}
+	if chunks[0] != first {
+		t.Fatalf("first chunk must be the whole first sentence, got %q", chunks[0])
+	}
+	if chunks[1] != second {
+		t.Fatalf("second chunk must be the whole second sentence, got %q", chunks[1])
+	}
+}
+
+func TestSplitVoiceoverWordsDoesNotTreatColonAsSentenceEnd(t *testing.T) {
+	const text = "Ecco: una due tre quattro cinque sei. Altra frase qui."
+	chunks := splitVoiceoverWords(text, 8)
+	if len(chunks) != 2 {
+		t.Fatalf("got %d chunks, want 2: %q", len(chunks), chunks)
+	}
+	if chunks[0] != "Ecco: una due tre quattro cinque sei." {
+		t.Fatalf("colon split the sentence: %q", chunks[0])
+	}
+	if chunks[1] != "Altra frase qui." {
+		t.Fatalf("second chunk=%q", chunks[1])
+	}
+}
+
+func TestSplitVoiceoverWordsBreaksOversizedSentenceOnClauses(t *testing.T) {
+	const text = "uno due tre quattro cinque sei sette otto nove, " +
+		"dieci undici dodici tredici quattordici quindici sedici diciassette diciotto; " +
+		"diciannove venti ventuno ventidue ventitré ventiquattro venticinque ventisei ventisette."
+	chunks := splitVoiceoverWords(text, 10)
+	if len(chunks) != 3 {
+		t.Fatalf("got %d chunks, want 3: %q", len(chunks), chunks)
+	}
+	wantEnd := []string{"nove,", "diciotto;", "ventisette."}
+	for i, chunk := range chunks {
+		fields := strings.Fields(chunk)
+		if len(fields) != 9 {
+			t.Fatalf("chunk %d has %d words, want 9: %q", i, len(fields), chunk)
+		}
+		if !strings.HasSuffix(chunk, wantEnd[i]) {
+			t.Fatalf("chunk %d must end at clause %q, got %q", i, wantEnd[i], chunk)
+		}
+	}
+}
+
+func TestSplitVoiceoverWordsHardSplitsUnpunctuatedSentence(t *testing.T) {
+	words := make([]string, 25)
+	for i := range words {
+		words[i] = "parola"
+	}
+	chunks := splitVoiceoverWords(strings.Join(words, " "), 10)
+	wantSizes := []int{10, 10, 5}
+	if len(chunks) != len(wantSizes) {
+		t.Fatalf("got %d chunks, want %d", len(chunks), len(wantSizes))
+	}
+	for i, chunk := range chunks {
+		if got := len(strings.Fields(chunk)); got != wantSizes[i] {
+			t.Fatalf("chunk %d has %d words, want %d", i, got, wantSizes[i])
+		}
+	}
+}
+
+func TestVoiceoverChunksAParagraphSceneWithoutSplittingSentences(t *testing.T) {
+	const sentences = 6
+	text := voiceoverTestSentences(sentences, 100)
+	chunks := splitVoiceoverWords(text, voiceoverChunkMaxWords)
+	if len(chunks) != sentences {
+		t.Fatalf("got %d chunks, want %d", len(chunks), sentences)
+	}
+	for i, chunk := range chunks {
+		if got := len(strings.Fields(chunk)); got != 100 {
+			t.Fatalf("chunk %d has %d words, want 100", i, got)
+		}
+		if !strings.HasSuffix(chunk, "fine.") {
+			t.Fatalf("chunk %d does not end on a sentence boundary: %q", i, chunk)
+		}
+	}
+}
+
+func voiceoverTestSentence(words int) string {
+	if words < 2 {
+		return "fine."
+	}
+	return strings.Repeat("parola ", words-1) + "fine."
+}
+
+func voiceoverTestSentences(sentences, words int) string {
+	parts := make([]string, sentences)
+	for i := range parts {
+		parts[i] = voiceoverTestSentence(words)
+	}
+	return strings.Join(parts, " ")
+}
+
+// Paragraph-sized chunks: test scenes are built from complete sentences at the
+// production cap so the fan-out count stays deterministic.
 func TestChunkedTTSProviderParallelismAndMergeOrder(t *testing.T) {
 	provider := &recordingTTS{delay: 20 * time.Millisecond}
 	merger := &recordingMerger{}
 	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 4}
-	text := strings.Repeat("parola ", 96) // 4 sentence-sized chunks of 24
+	text := voiceoverTestSentences(4, voiceoverChunkMaxWords) // 4 complete-sentence chunks
 	_, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
 		Text: text, Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
@@ -90,7 +188,7 @@ func TestChunkedTTSProviderKeepsConfiguredConcurrencyImmutable(t *testing.T) {
 	_, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
 		// Three chunks exercise the per-request cap without requiring the
 		// provider to rewrite its shared configured concurrency.
-		Text: strings.Repeat("parola ", 65), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
+		Text: voiceoverTestSentences(3, voiceoverChunkMaxWords), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +210,7 @@ func TestChunkedTTSProviderFailureDoesNotMerge(t *testing.T) {
 	merger := &recordingMerger{}
 	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 3}
 	_, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
-		Text: strings.Repeat("parola ", 65), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
+		Text: voiceoverTestSentences(3, voiceoverChunkMaxWords), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
 	if err == nil {
 		t.Fatal("expected failed synthesis")
@@ -132,7 +230,7 @@ func TestChunkedTTSProviderFallsBackToWholeSceneOnChunkFailure(t *testing.T) {
 	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 3}
 	outputDir := t.TempDir()
 	out, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
-		Text: strings.Repeat("parola ", 65), Filename: "final.mp3", OutputDir: outputDir, Language: "it",
+		Text: voiceoverTestSentences(3, voiceoverChunkMaxWords), Filename: "final.mp3", OutputDir: outputDir, Language: "it",
 	})
 	if err != nil {
 		t.Fatalf("fail-open fallback must succeed: %v", err)
@@ -168,7 +266,7 @@ func TestChunkedTTSProviderMergesWordBoundariesWithOffset(t *testing.T) {
 	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 2}
 
 	out, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
-		Text:     strings.Repeat("parola ", 65), // → 3 chunks of 24/24/17
+		Text:     voiceoverTestSentences(3, voiceoverChunkMaxWords), // → 3 complete-sentence chunks
 		Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
 	if err != nil {

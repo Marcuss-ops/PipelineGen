@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -82,7 +83,7 @@ func (h *Handler) SyncDriveFolder(c *gin.Context) {
 	})
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type:       "drive.folder.sync",
+		Type:       scheduling.TypeDriveFolderSync,
 		Payload:    payload,
 		MaxRetries: 2,
 	}, "Drive folder sync dispatched."); ok {

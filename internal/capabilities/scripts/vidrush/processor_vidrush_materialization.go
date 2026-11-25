@@ -193,7 +193,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 	var entityImagePolicy mediadomain.EntityImagePolicy
 	if plan != nil {
 		entityImagePolicy = plan.MediaPlan.Extraction.EntityImages
-		entityImagePolicy.Enabled = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()
+		entityImagePolicy.Enabled = entityImageSurfaceEnabled(plan)
 	}
 	if entityImagePolicy.PerScene() && p.catalog != nil {
 		// Materialization selects a bounded set independently for each scene.

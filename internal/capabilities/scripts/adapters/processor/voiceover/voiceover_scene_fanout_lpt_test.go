@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TestSceneFanout_LaunchesLongestFirst pins the P7a anti-muda contract: with
@@ -25,7 +27,10 @@ func TestSceneFanout_LaunchesLongestFirst(t *testing.T) {
 	if len(exec.calls) != 3 {
 		t.Fatalf("calls = %d, want 3", len(exec.calls))
 	}
-	if exec.calls[0].text != items[1].Text || exec.calls[1].text != items[2].Text || exec.calls[2].text != items[0].Text {
+	longest := scriptpkg.SanitizeForSpeech(items[1].Text)
+	medium := scriptpkg.SanitizeForSpeech(items[2].Text)
+	shortest := scriptpkg.SanitizeForSpeech(items[0].Text)
+	if exec.calls[0].text != longest || exec.calls[1].text != medium || exec.calls[2].text != shortest {
 		t.Fatalf("launch order is not longest-first: %q, %q, %q",
 			truncateForLog(exec.calls[0].text), truncateForLog(exec.calls[1].text), truncateForLog(exec.calls[2].text))
 	}

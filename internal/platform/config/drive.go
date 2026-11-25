@@ -71,6 +71,10 @@ type DriveConfig struct {
 	CopertineRootFolder string `yaml:"copertine_root_folder" env:"VELOX_DRIVE_COPERTINE_ROOT" default:""`
 	// Sound effects root folder
 	SoundEffectsRootFolder string `yaml:"sound_effects_root_folder" env:"VELOX_DRIVE_SOUND_EFFECTS_ROOT" default:""`
+	// Music/BGM root folder. Native catalog sync indexes this tree separately
+	// from sound effects so an audio.background_music asset_id is resolvable
+	// without a manual ffmpeg mix.
+	MusicRootFolder string `yaml:"music_root_folder" env:"VELOX_DRIVE_MUSIC_ROOT" default:""`
 	// Outro root folder
 	OutroRootFolder string `yaml:"outro_root_folder" env:"VELOX_DRIVE_OUTRO_ROOT" default:""`
 	// Avatar AI generated content root folder
@@ -162,5 +166,6 @@ func (d DriveConfig) ImagesFolder() string {
 
 func (d DriveConfig) CopertineFolder() string    { return d.ResolveFolder(d.CopertineRootFolder) }
 func (d DriveConfig) SoundEffectsFolder() string { return d.ResolveFolder(d.SoundEffectsRootFolder) }
+func (d DriveConfig) MusicFolder() string        { return d.ResolveFolder(d.MusicRootFolder) }
 func (d DriveConfig) DocumentsFolder() string    { return d.ResolveFolder(d.ScriptsRootFolder) } // Documents share the scripts root
 func (d DriveConfig) OutroFolder() string        { return d.ResolveFolder(d.OutroRootFolder) }

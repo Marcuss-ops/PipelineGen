@@ -3,12 +3,15 @@ package renderqueue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -215,17 +218,99 @@ func validateMapRenderWork(summary mapRenderTelemetry) error {
 
 // executeMapRenderer runs the native map lane over the prepared wire input.
 func executeMapRenderer(ctx context.Context, renderer string, workspace mapRenderWorkspace) error {
-	cmd := exec.CommandContext(ctx, renderer, "--input", workspace.input,
+	timeout := dynamicMapRenderTimeout()
+	jobCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(jobCtx, renderer, "--input", workspace.input,
 		"--output", workspace.output, "--summary-output", workspace.summary)
+	// The native map renderer starts FFmpeg for encoding. Give the renderer a
+	// process group so cancellation/timeout reaps FFmpeg too; CommandContext's
+	// default only signals the direct child and can leave an encoder consuming
+	// CPU after the job has already failed or been cancelled.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+		return err
+	}
+	cmd.WaitDelay = 3 * time.Second
 	var output boundedMapRenderOutput
 	cmd.Stdout, cmd.Stderr = &output, &output
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("dynamic map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
+	started := time.Now()
+	if err := cmd.Start(); err != nil {
+		reportMapRenderProgress(ctx, MapRenderProgress{Phase: "start_failed", Result: "start_failed", ExitCode: -1, Err: err})
+		return fmt.Errorf("dynamic map renderer start failed: %w", err)
 	}
+	pid := cmd.Process.Pid
+	reportMapRenderProgress(ctx, MapRenderProgress{Phase: "start", PID: pid, ExitCode: -1})
+	finished := make(chan struct{})
+	go func(pid int) {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-finished:
+				return
+			case <-ticker.C:
+				elapsed := time.Since(started)
+				log.Printf("Chronon dynamic map renderer heartbeat: pid=%d elapsed_s=%.0f timeout_s=%.0f",
+					pid, elapsed.Seconds(), timeout.Seconds())
+				reportMapRenderProgress(ctx, MapRenderProgress{Phase: "heartbeat", PID: pid, Elapsed: elapsed, ExitCode: -1})
+			}
+		}
+	}(pid)
+	runErr := cmd.Wait()
+	close(finished)
+	elapsed := time.Since(started)
+	exitCode := -1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
+	result := "ok"
+	if runErr != nil {
+		result = "error"
+	}
+	reportMapRenderProgress(ctx, MapRenderProgress{Phase: "exit", PID: pid, Elapsed: elapsed, Result: result, ExitCode: exitCode, Err: runErr})
+	if runErr != nil {
+		if errors.Is(jobCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+			return fmt.Errorf("dynamic map renderer timed out after %s (pid=%d): %w: %s",
+				elapsed.Round(time.Second), cmd.Process.Pid, jobCtx.Err(), strings.TrimSpace(output.String()))
+		}
+		if jobCtx.Err() != nil {
+			return fmt.Errorf("dynamic map renderer cancelled after %s (pid=%d): %w: %s",
+				elapsed.Round(time.Second), cmd.Process.Pid, jobCtx.Err(), strings.TrimSpace(output.String()))
+		}
+		return fmt.Errorf("dynamic map renderer failed after %s (pid=%d): %w: %s",
+			elapsed.Round(time.Second), cmd.Process.Pid, runErr, strings.TrimSpace(output.String()))
+	}
+	log.Printf("Chronon dynamic map renderer exited: pid=%d elapsed_s=%.3f result=ok",
+		cmd.Process.Pid, elapsed.Seconds())
 	if _, err := os.Stat(workspace.output); err != nil {
 		return fmt.Errorf("dynamic map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
 	}
 	return nil
+}
+
+const defaultDynamicMapRenderTimeout = 5 * time.Minute
+
+func dynamicMapRenderTimeout() time.Duration {
+	value := strings.TrimSpace(os.Getenv("PIPELINEGEN_DYNAMIC_MAP_TIMEOUT"))
+	if value == "" {
+		return defaultDynamicMapRenderTimeout
+	}
+	if duration, err := time.ParseDuration(value); err == nil && duration > 0 {
+		return duration
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	log.Printf("invalid PIPELINEGEN_DYNAMIC_MAP_TIMEOUT=%q; using %s", value, defaultDynamicMapRenderTimeout)
+	return defaultDynamicMapRenderTimeout
 }
 
 // scaleMapRenderVideo upscales a delivery-resolution render to the overlay

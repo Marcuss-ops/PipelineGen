@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	imagesrouting "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -40,6 +41,35 @@ type fakeImageSearcher struct {
 
 func (f *fakeImageSearcher) Search(context.Context, imagesrouting.ImageFilter) ([]imagesrouting.ImageSearchResult, error) {
 	return f.results, nil
+}
+
+type deadlineImageSearcher struct{}
+
+func (deadlineImageSearcher) Search(ctx context.Context, _ imagesrouting.ImageFilter) ([]imagesrouting.ImageSearchResult, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestImageSearchProviderTimeoutLeavesBudgetForFallback(t *testing.T) {
+	parent, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	_, err := searchImageProvider(parent, 10*time.Millisecond, deadlineImageSearcher{}, imagesrouting.ImageFilter{SubjectID: "slow provider"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("slow provider error = %v, want its child deadline", err)
+	}
+	if err := parent.Err(); err != nil {
+		t.Fatalf("provider timeout cancelled shared query context: %v", err)
+	}
+
+	want := []imagesrouting.ImageSearchResult{{AssetID: "fallback-hit"}}
+	got, err := searchImageProvider(parent, 50*time.Millisecond, &fakeImageSearcher{results: want}, imagesrouting.ImageFilter{SubjectID: "fallback"})
+	if err != nil {
+		t.Fatalf("fallback search: %v", err)
+	}
+	if len(got) != 1 || got[0].AssetID != "fallback-hit" {
+		t.Fatalf("fallback results = %#v, want %#v", got, want)
+	}
 }
 
 type fakeImageSearchResolver struct {

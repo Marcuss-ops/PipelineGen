@@ -216,6 +216,18 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 		return
 	}
 
+	// PR-BATCH-URL-PREFLIGHT (2026-11-25): validate every URL BEFORE
+	// enqueueing. Without this gate an invalid URL becomes an accepted job
+	// that only fails asynchronously, after the caller has lost the request
+	// context. The single-clip endpoint has always rejected bad URLs with
+	// 400 before any I/O; the batch path must do the same per item.
+	for i := range req.Clips {
+		if _, err := urlutil.ExtractVideoID(req.Clips[i].URL); err != nil {
+			apiutil.BadRequest(c, fmt.Sprintf("clip index %d: invalid YouTube URL: %v", i, err))
+			return
+		}
+	}
+
 	// PR-YT-SECONDS-PER-SEGMENT-WIRE pre-flight: validate expansion
 	// semantics BEFORE the Drive-availability gate so a malformed
 	// seconds_per_segment doesn't burn the gate. The canonical
@@ -224,12 +236,17 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 	// surfaces the 400 BEFORE any downstream I/O.
 	for i := range req.Clips {
 		if req.Clips[i].SecondsPerSegment > 0 {
-			if req.Clips[i].Start == 0 && req.Clips[i].End == 0 {
-				apiutil.BadRequest(c, fmt.Sprintf("clip index %d: seconds_per_segment=%d requires explicit [start, end] (cannot derive bounds from 0,0)",
+			// A missing end used to pass this preflight and then fall through
+			// expandClipsBySegments unchanged: the caller asked for N-second
+			// children but received the original window with the field silently
+			// ignored. Fail closed at the input instead of pretending the
+			// fan-out happened.
+			if req.Clips[i].End == 0 {
+				apiutil.BadRequest(c, fmt.Sprintf("clip index %d: seconds_per_segment=%d requires an explicit end (cannot derive the window end from the video duration)",
 					i, req.Clips[i].SecondsPerSegment))
 				return
 			}
-			if req.Clips[i].Start != 0 && req.Clips[i].End != 0 && req.Clips[i].End <= req.Clips[i].Start {
+			if req.Clips[i].End <= req.Clips[i].Start {
 				apiutil.BadRequest(c, fmt.Sprintf("clip index %d: end (%v) must be greater than start (%v)",
 					i, req.Clips[i].End, req.Clips[i].Start))
 				return
@@ -390,11 +407,12 @@ func toRegisterClipCommand(req RegisterFromYouTubeRequest) sourcing.RegisterClip
 //
 // PR-YT-SECONDS-PER-SEGMENT-WIRE (July 2026) — godlike/07 fail-closed
 // contracts:
-//   - clip.SecondsPerSegment < 1 (when non-zero) → error
-//   - clip.SecondsPerSegment > 0 with start==0 AND end==0 → error
-//     (can't partition a window of unknown size)
-//   - clip.SecondsPerSegment > 0 with end < start (when both provided)
-//     → error
+//   - clip.SecondsPerSegment > 0 with end missing (0) → error
+//     (can't partition a window of unknown end)
+//   - clip.SecondsPerSegment > 0 with end <= start → error
+//   - clip.SecondsPerSegment > 0 with a window that is not an exact
+//     multiple of the segment size → error (a trailing remainder used to
+//     be dropped silently)
 //   - successful sons are appended in start-ascending partition
 //     order so the [start, end] trajectory is preserved per-clip
 //
@@ -410,34 +428,20 @@ func expandClipsBySegments(reqs []RegisterFromYouTubeRequest) ([]RegisterFromYou
 			out = append(out, r)
 			continue
 		}
-		if r.SecondsPerSegment < 1 {
-			return nil, fmt.Errorf("clip index %d: seconds_per_segment=%d must be >= 1", i, r.SecondsPerSegment)
+		if r.End == 0 {
+			return nil, fmt.Errorf("clip index %d: seconds_per_segment=%d requires an explicit end (cannot derive the window end from the video duration)", i, r.SecondsPerSegment)
 		}
-		if r.Start == 0 && r.End == 0 {
-			return nil, fmt.Errorf("clip index %d: seconds_per_segment=%d requires explicit [start, end] bounds (cannot derive from 0,0)", i, r.SecondsPerSegment)
-		}
-		// Effective window: use [start, end] when both provided;
-		// when end==0 use start..start+MaxWindowSec (forward-pointer:
-		// the canonical source of truth for video-end detection is
-		// the YouTube-Durationmetadata fetch the existing pipeline
-		// already does inside ProcessYouTubeSegmentUseCase; here
-		// we conservatively require an explicit end rather than
-		// guessing — a missing end falls back to a no-op pass-through).
-		effectiveEnd := r.End
-		if effectiveEnd == 0 {
-			out = append(out, r)
-			continue
-		}
-		if effectiveEnd <= r.Start {
-			return nil, fmt.Errorf("clip index %d: end (%v) must be greater than start (%v)", i, effectiveEnd, r.Start)
+		if r.End <= r.Start {
+			return nil, fmt.Errorf("clip index %d: end (%v) must be greater than start (%v)", i, r.End, r.Start)
 		}
 		segDur := float64(r.SecondsPerSegment)
 		partNum := 1
+		cur := r.Start
 		// Tiny epsilon (1e-3) on the upper bound to absorb
 		// floating-point drift when end-start is a whole-number
 		// multiple of segDur (e.g. [0..10] with 5s => exactly 2
 		// partitions, no spurious 1e-9-loss third).
-		for cur := r.Start; cur+segDur <= effectiveEnd+1e-3; cur += segDur {
+		for cur+segDur <= r.End+1e-3 {
 			child := r
 			child.Start = cur
 			child.End = cur + segDur
@@ -448,7 +452,16 @@ func expandClipsBySegments(reqs []RegisterFromYouTubeRequest) ([]RegisterFromYou
 				child.Name = fmt.Sprintf("%s (part %d)", child.Name, partNum)
 			}
 			out = append(out, child)
+			cur += segDur
 			partNum++
+		}
+		// A non-multiple window used to lose its trailing seconds without a
+		// diagnostic (e.g. [0,10] + 3s emitted [0,3],[3,6],[6,9] and dropped
+		// 9..10). Reject it so the operator can either align the window or
+		// choose a different segment size; silently dropping source seconds
+		// is never a valid fan-out.
+		if cur < r.End-1e-3 {
+			return nil, fmt.Errorf("clip index %d: window [%v,%v] is not an exact multiple of seconds_per_segment=%d (remainder %.3fs); align the window or change seconds_per_segment", i, r.Start, r.End, r.SecondsPerSegment, r.End-cur)
 		}
 	}
 	return out, nil

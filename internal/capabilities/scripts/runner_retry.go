@@ -49,11 +49,24 @@ func deriveErrorCode(err error, stage Stage) string {
 	if errors.Is(err, ErrFinalJobInvalidPlan) {
 		return "REMOTE_PLAN_REJECTED"
 	}
+	// A remote service missing a required capability is a configuration gap,
+	// not a provider outage: replaying the same final plan cannot add the
+	// capability. Keep the code stable so the retry gate and dashboards agree.
+	if errors.Is(err, ErrFinalJobCapabilityMissing) {
+		return "REMOTE_CAPABILITY_MISSING"
+	}
 	// A producer that offers bytes which do not hash to the content address it
 	// named has violated its contract; retrying the same payload cannot repair
 	// it. The code is stable so a retry bot stops instead of re-rendering.
 	if errors.Is(err, kernelasset.ErrContentAddressMismatch) {
 		return "ASSET_CONTENT_MISMATCH"
+	}
+	// A localized/fixed-media render failure is dispatched from the voiceover
+	// phase but is not a TTS failure. Its own code keeps the ledger honest and
+	// lets a retry bot distinguish a renderer/font/IPC defect from a provider
+	// outage.
+	if errors.Is(err, ErrLocalizedRenderFailure) {
+		return "LOCALIZED_RENDER_FAILED"
 	}
 
 	// Check for known error patterns in the error message.

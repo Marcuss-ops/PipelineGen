@@ -266,3 +266,24 @@ func TestImageGridExplicitDisableReachesPlan(t *testing.T) {
 		t.Fatalf("explicit grid disable not projected: %#v", items[0].Params)
 	}
 }
+
+func TestImageEffectsNoneSentinelValidatesAndReachesRenderer(t *testing.T) {
+	style := &scriptpkg.OverlayImageStyleSpec{Effects: []scriptpkg.ImageEffectSpec{{Type: "none"}}}
+	if err := (&scriptpkg.OverlayStyleSpec{Image: style}).Validate(); err != nil {
+		t.Fatalf("validate overlay style: %v", err)
+	}
+	if err := capabilityoverlay.ValidateImageTreatments(style); err != nil {
+		t.Fatalf("validate image treatments: %v", err)
+	}
+	items := []capmodel.OverlayItem{{ID: "image", Kind: "image", Params: map[string]any{}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset"}}}}
+	applyPayloadOverlayStyleToItems(items, OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{Image: style}})
+	effects, ok := items[0].Params["effects"].([]map[string]any)
+	if !ok || len(effects) != 1 || effects[0]["type"] != "none" {
+		t.Fatalf("none sentinel projection = %#v, want [{type:none}]", items[0].Params["effects"])
+	}
+
+	combined := &scriptpkg.OverlayImageStyleSpec{Effects: []scriptpkg.ImageEffectSpec{{Type: "none"}, {Type: "glitch", Amount: .3}}}
+	if err := capabilityoverlay.ValidateImageTreatments(combined); err == nil {
+		t.Fatal("none sentinel combined with a visible effect must fail")
+	}
+}

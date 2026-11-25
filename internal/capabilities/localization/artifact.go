@@ -76,7 +76,7 @@ type LocalizedClipArtifact struct {
 	// plan that produced this artifact — provenance, not recomputed here.
 	PlanFingerprint string `json:"plan_fingerprint"`
 	// PlanRevision is the sealed render plan's revision identity
-	// (`<clip>:<language>:overlay-v5:<fingerprint16>`, see localizedRevision).
+// (`<clip>:<language>:overlay-v6:<fingerprint16>`, see localizedRevision).
 	// It doubles as the RenderingGen queue job id, so the separators are `:`
 	// (never `/`): the id must survive as one workspace filename component.
 	// It is the id of the render that produced these bytes, projected so a

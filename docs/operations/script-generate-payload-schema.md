@@ -599,16 +599,35 @@ RenderingGen.
 overlay at the beginning of each real video clip (synthetic freeze tails are
 skipped). Light leaks on image overlays can be selected with an `image` motion
 directive and a `lightleak_*` motion ID. Pair clip-start accents with
-`audio.random_sfx_on_clip_start` for a deterministic cue at each clip start, or
-use explicit `audio.sound_effects` to place a chosen SFX; image overlay SFX are
-chosen per image with `overlay_images[].sound_effect`, while
-`audio.random_sfx_on_image_overlay` remains the deterministic random fallback
-for images the payload leaves unclaimed. Both random lanes select from the
+`audio.random_sfx_on_clip_start` for a deterministic random cue at every real
+clip start, or pin a chosen effect per clip with
+`audio.clip_start_sound_effects`. The cue is keyed by `clip_id`, fires once at
+that clip's start, and may target body, intro, or outro clips; explicit cues
+win over the random lane, which then covers the remaining clips. Omitted
+`gain_db` and `duration_ms` use the editorial `-6 dB` and `250 ms` defaults.
+A `clip_id` not declared in source, segments, intro, or outro fails at ingress.
+
+```json
+"audio": {
+  "clip_start_sound_effects": [
+    {"clip_id": "clip-1", "asset_id": "whoosh1", "gain_db": -6, "duration_ms": 250}
+  ]
+}
+```
+
+Image overlay SFX are chosen per image with `overlay_images[].sound_effect`,
+while `audio.random_sfx_on_image_overlay` remains the deterministic random
+fallback for image and entity-image cards the payload leaves unclaimed. The
+image lane does not apply to phrase, map, chart, number, or other overlay
+kinds. Random lanes select from the
 indexed effect families (`whoosh`, `transition`, `impact`, `riser`, `foley`,
 `photo`, `ui`) in `ops/jobs/sfx_index.json`, so a run no longer repeats the
 same three whooshes;
 the selection is content-addressed, therefore a retry picks the same cue. An
-unindexed deployment keeps the built-in whoosh aliases as the fallback. `random_image_effects: true` is the
+unindexed deployment keeps the built-in whoosh aliases as the fallback.
+`audio.random_sfx_on_phrase_overlay` adds one deterministic cue at each phrase
+overlay start, including each text segment in a fused phrase chain. It remains
+opt-in and uses the same indexed pool and built-in fallback. `random_image_effects: true` is the
 visual counterpart: each image overlay gets one deterministic yes/no draw and,
 when it says yes, one light EffectsPack-derived treatment (native effect type,
 light parameters, per-image grain seed) attached as that image's `effects`

@@ -45,6 +45,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -171,12 +172,23 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceoversvc.Voiceove
 			}
 		}()
 
+		// The batch fan-out is a direct caller of the per-item pipeline:
+		// sanitize ONCE here and use the same text for the hash and the
+		// provider command. Hashing the raw Markdown while the provider
+		// reads the sanitized form made cache identity and spoken words
+		// disagree.
+		text := scriptpkg.SanitizeForSpeech(item.Text)
+		if strings.TrimSpace(text) == "" {
+			out.Status = "failed"
+			out.Error = "voiceover text is empty after speech sanitization"
+			return out
+		}
 		// Per-item text fingerprint: 16-hex-char SHA-256 prefix per
 		// voiceover/texthash.go::ComputeTextHash. Pre-computed here so
 		// the per-item use case's finalizer writes the same value into
 		// the voiceovers.text_hash column — matches the canonical
 		// shape from the voiceoversvc.generate_item child job path.
-		textHash := voiceoversvc.ComputeTextHash(item.Text)
+		textHash := voiceoversvc.ComputeTextHash(text)
 
 		// Project is read verbatim from the canonical destination routing
 		// context. It never invents a "scene" fallback: an empty project
@@ -192,7 +204,7 @@ func RunVoiceoverSceneFanout(ctx context.Context, executor voiceoversvc.Voiceove
 		itemCmd := &voiceoversvc.GenerateVoiceoverItemCommand{
 			ParentJobID: requestID, // same as RequestID — sync path, no dispatcher
 			RequestID:   requestID,
-			Text:        item.Text,
+			Text:        text,
 			Language:    voiceoversvc.Language(language),
 			Voice:       item.Voice,
 			Filename:    item.Filename,

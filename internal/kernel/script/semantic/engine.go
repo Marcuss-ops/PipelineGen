@@ -24,9 +24,9 @@ type TemporalFactCandidate struct {
 
 // NumericFactCandidate is one source-grounded numeric occurrence projected
 // by the Rust worker: Text is the exact byte span (Start..End) of
-// sourceText. Kind is NUMBER, PERCENT or MONEY; Value carries the strict
-// parse when HasValue is set (a scaled quantity such as "2 million" ships
-// HasValue=false instead of a guessed value).
+// sourceText. Kind is NUMBER, PERCENT, MONEY or FRACTION; Value carries the
+// strict parse when HasValue is set (a scaled quantity such as "2 million"
+// ships HasValue=false instead of a guessed value).
 type NumericFactCandidate struct {
 	Text     string
 	Kind     string

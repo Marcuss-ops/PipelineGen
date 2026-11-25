@@ -53,8 +53,9 @@ type PlanSummary struct {
 
 // Preflight records the final-job gate outcome.
 type Preflight struct {
-	Passed bool   `json:"passed"`
-	Error  string `json:"error,omitempty"`
+	Passed   bool     `json:"passed"`
+	Error    string   `json:"error,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // Status is the durable document. Audit is intentionally an opaque value: the

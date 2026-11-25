@@ -13,7 +13,7 @@ func TestConfigRoundTripPreservesAudioFields(t *testing.T) {
 	config := Config{
 		Audio:                capabilityaudio.AudioMode("voiceover"),
 		VoiceoverLanguages:   []scenecontract.Language{"en", "it"},
-		RandomSFXOnClipStart: true, RandomSFXOnImageOverlay: true,
+		RandomSFXOnClipStart: true, RandomSFXOnImageOverlay: true, RandomSFXOnPhraseOverlay: true,
 		MixPolicy:         capabilityaudio.AudioMixPolicy("voiceover_ducked_clip"),
 		VoiceoverFolderID: "folder", TTSRate: "1.1",
 	}

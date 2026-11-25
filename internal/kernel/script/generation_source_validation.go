@@ -222,6 +222,12 @@ func validateSegmentNoVoiceover(segment ScriptSegment, index int, ref string) []
 	if len(segment.ClipIDs) == 0 {
 		d = append(d, prefix+"clip_ids must contain the clip shown for a no_voiceover cutaway")
 	}
+	// A no_voiceover cutaway has no narration surface. A positive target_words
+	// is a contradictory request that used to reach the TTS fan-out and could
+	// synthesize one word for a clip that must stay silent (R52).
+	if segment.TargetWords > 0 {
+		d = append(d, prefix+"target_words must be 0 for a no_voiceover cutaway")
+	}
 	return d
 }
 

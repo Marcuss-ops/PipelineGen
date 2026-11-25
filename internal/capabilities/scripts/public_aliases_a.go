@@ -184,6 +184,10 @@ type EditingTimelineV1 = contract.EditingTimelineV1
 type EntityImageDecisionOwner = contract.EntityImageDecisionOwner
 type FinalAudioReference = contract.FinalAudioReference
 type FinalJobPreflight = contract.FinalJobPreflight
+
+// TimingProjectionSkip is the durable diagnosis of one unanchored timing
+// surface; the projection and its runner both exchange the contract type.
+type TimingProjectionSkip = contract.TimingProjectionSkip
 type GenerateArtifacts = contract.GenerateArtifacts
 type GenerateOutput = contract.GenerateOutput
 type GenerateRequest = contract.GenerateRequest

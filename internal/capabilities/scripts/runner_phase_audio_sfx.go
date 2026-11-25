@@ -1,7 +1,7 @@
 package scriptgeneration
 
 // runner_phase_audio_sfx.go wires the overlay-SFX projection into the master
-// audio compile. The overlay plan is final at this point, so its image windows
+// audio compile. The overlay plan is final at this point, so its image/phrase windows
 // become absolute cues on the plan the Rust renderer receives. This is the ONE
 // place that resolves those cue assets: the same AudioAssetSource that serves
 // audio.sound_effects, so an overlay cue can never come from a private

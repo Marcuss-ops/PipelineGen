@@ -2,9 +2,17 @@ package assets
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
@@ -20,6 +28,9 @@ type catalogSyncDriveReader interface {
 
 type catalogSyncSourceReader struct {
 	reader catalogSyncDriveReader
+	probe  interface {
+		Probe(context.Context, string) (*mediaexec.MediaInfo, error)
+	}
 }
 
 // NewCatalogSyncSourceReader narrows a Drive reader to catalog-sync's read
@@ -28,11 +39,19 @@ type catalogSyncSourceReader struct {
 func NewCatalogSyncSourceReader(reader interface {
 	GetFileMeta(context.Context, string) (*drive.FileMeta, error)
 	ListFiles(context.Context, string) ([]drive.DriveFileInfo, error)
+}, probers ...interface {
+	Probe(context.Context, string) (*mediaexec.MediaInfo, error)
 }) catalogsync.SourceReader {
 	if reader == nil {
 		return nil
 	}
-	return catalogSyncSourceReader{reader: reader}
+	var probe interface {
+		Probe(context.Context, string) (*mediaexec.MediaInfo, error)
+	}
+	if len(probers) > 0 {
+		probe = probers[0]
+	}
+	return catalogSyncSourceReader{reader: reader, probe: probe}
 }
 
 func (a catalogSyncSourceReader) GetFileMeta(ctx context.Context, fileID string) (*catalogsync.RemoteFileMeta, error) {
@@ -69,9 +88,52 @@ func (a catalogSyncSourceReader) ListFiles(ctx context.Context, parentID string)
 	return result, nil
 }
 
+func (a catalogSyncSourceReader) InspectContent(ctx context.Context, fileID, filename string) (string, time.Duration, error) {
+	reader, ok := a.reader.(interface {
+		DownloadFile(context.Context, string) (io.ReadCloser, string, error)
+	})
+	if !ok {
+		return "", 0, fmt.Errorf("Drive reader does not support content downloads")
+	}
+	if a.probe == nil {
+		return "", 0, fmt.Errorf("media prober is not configured")
+	}
+	body, _, err := reader.DownloadFile(ctx, fileID)
+	if err != nil {
+		return "", 0, fmt.Errorf("download Drive file %s for content inspection: %w", fileID, err)
+	}
+	defer body.Close()
+	ext := filepath.Ext(filename)
+	if ext == "" {
+		ext = ".bin"
+	}
+	temp, err := os.CreateTemp("", "catalogsync-*"+ext)
+	if err != nil {
+		return "", 0, fmt.Errorf("create temporary file to inspect Drive file %s: %w", fileID, err)
+	}
+	defer os.Remove(temp.Name())
+	hasher := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(hasher, temp), body); err != nil {
+		_ = temp.Close()
+		return "", 0, fmt.Errorf("read Drive file %s for content inspection: %w", fileID, err)
+	}
+	if err := temp.Close(); err != nil {
+		return "", 0, fmt.Errorf("close temporary file for Drive file %s: %w", fileID, err)
+	}
+	info, err := a.probe.Probe(ctx, temp.Name())
+	if err != nil {
+		return "", 0, fmt.Errorf("probe Drive file %s: %w", fileID, err)
+	}
+	if info == nil || info.Duration <= 0 {
+		return "", 0, fmt.Errorf("probe Drive file %s returned no duration", fileID)
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), info.Duration, nil
+}
+
 var (
-	_ catalogsync.SourceReader = catalogSyncSourceReader{}
-	_ catalogSyncDriveReader   = (*drive.Uploader)(nil)
+	_ catalogsync.SourceReader     = catalogSyncSourceReader{}
+	_ catalogsync.ContentInspector = catalogSyncSourceReader{}
+	_ catalogSyncDriveReader       = (*drive.Uploader)(nil)
 )
 
 // The concrete SQLite repository implements the catalog storage ports that are

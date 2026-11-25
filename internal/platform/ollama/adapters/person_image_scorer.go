@@ -239,9 +239,9 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 		var verdict personImageVerdict
 		if entityClass == "person" {
 			if refBytes := refByIdentity[identityKey]; len(refBytes) > 0 {
-				verdict, err = s.classifyWithReference(callCtx, model, identityName, candidate.Query, refBytes, visionBytes)
+				verdict, err = s.classifyWithReference(callCtx, model, identityName, candidate.Query, candidate.EntityContext, refBytes, visionBytes)
 			} else {
-				verdict, err = s.classify(callCtx, model, identityName, candidate.Query, visionBytes)
+				verdict, err = s.classify(callCtx, model, identityName, candidate.Query, candidate.EntityContext, visionBytes)
 			}
 		} else {
 			verdict, err = s.classifyEntity(callCtx, model, identityName, entityClass, candidate.Query, candidate.EntityContext, candidate.SourcePageURL, visionBytes)
@@ -256,6 +256,17 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 			} else {
 				deferPersonImage(candidate, "visual verification unavailable; retryable: "+err.Error())
 			}
+			continue
+		}
+		if verdict.Watermarked {
+			const watermarkReason = "visual verification detected an embedded watermark or stock-agency stamp"
+			// Keep the explicit contract fields in sync with the rejection reason:
+			// a consumer that reads only HasWatermark must see the same verdict as
+			// one that reads QualityReason.
+			candidate.HasWatermark = true
+			candidate.WatermarkReason = watermarkReason
+			rejectPersonImage(candidate, watermarkReason)
+			candidate.VerifierVersion = entitycatalog.CandidateVerifierVersion
 			continue
 		}
 		// Identity and layout are separate judgments. A contextual or group
@@ -358,6 +369,7 @@ type personImageVerdict struct {
 	SinglePerson  bool    `json:"single_person_headshot"`
 	IdentityMatch bool    `json:"identity_match"`
 	Collage       bool    `json:"split_panel_or_collage"`
+	Watermarked   bool    `json:"watermarked_or_agency_stamp"`
 	Confidence    float64 `json:"confidence"`
 }
 
@@ -368,10 +380,10 @@ func (s *OllamaPersonImageScorer) chat(ctx context.Context, messages []types.Mes
 	return s.client.Chat(ctx, messages, options, format)
 }
 
-func (s *OllamaPersonImageScorer) classify(ctx context.Context, model, identity, query string, imageBytes []byte) (personImageVerdict, error) {
+func (s *OllamaPersonImageScorer) classify(ctx context.Context, model, identity, query, sceneContext string, imageBytes []byte) (personImageVerdict, error) {
 	var verdict personImageVerdict
-	prompt := fmt.Sprintf(`Inspect the attached image pixels for both identity and layout. The requested person is %q. The retrieval query %q is optional context only: never use it, the URL, the page title, or search metadata as proof of identity or layout. Set "identity_match" true only when the visible person is recognizable as the requested person from the pixels themselves; if you cannot confidently distinguish the person from another individual, set it false. Set "single_person_headshot" true when one clearly visible human is the dominant primary subject, including full-body or contextual editorial/news photographs; incidental background people do not disqualify it. Set "split_panel_or_collage" true when multiple photos or panels are combined. Confidence must reflect the weaker of the identity and layout judgments. If uncertain, use false and low confidence.
-Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.0}`, identity, query)
+	prompt := fmt.Sprintf(`Inspect the attached image pixels for identity, layout, and embedded marks. The requested person is %q. The retrieval query %q and story context %q help disambiguate the intended person but are not proof. Never use the URL, page title, or search metadata as proof of identity or layout. Set "identity_match" true only when the visible person is recognizable as the requested person from the pixels themselves; if you cannot confidently distinguish the person from another individual, set it false. Set "single_person_headshot" true when one clearly visible human is the dominant primary subject, including full-body or contextual editorial/news photographs; incidental background people do not disqualify it. Set "split_panel_or_collage" true when multiple photos or panels are combined. Set "watermarked_or_agency_stamp" true when visible text, logos, repeated translucent marks, or stock-agency stamps are overlaid on the image; ordinary scene signage and the subject's own branding do not count. Confidence must reflect the weaker of the identity and layout judgments. If uncertain about identity, use false and low confidence.
+Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"watermarked_or_agency_stamp":false,"confidence":0.0}`, identity, query, sceneContext)
 	messages := []types.Message{
 		{Role: "system", Content: "You are a conservative public-person image identity and layout verifier. Inspect the pixels; never infer identity from provider metadata. Return only the requested JSON object."},
 		{Role: "user", Content: prompt, Images: []string{base64.StdEncoding.EncodeToString(imageBytes)}},
@@ -393,9 +405,11 @@ Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"spl
 
 func (s *OllamaPersonImageScorer) classifyEntity(ctx context.Context, model, identity, class, retrievalQuery, sceneContext, sourcePage string, imageBytes []byte) (personImageVerdict, error) {
 	var verdict personImageVerdict
-	prompt := fmt.Sprintf(`Inspect the attached image pixels for the requested entity. Target type: %s. Target identity: %q. Retrieval query: %q. Source scene context: %q. Source page: %q.
+	prompt := fmt.Sprintf(`Inspect the attached image pixels for the requested entity and embedded marks. Target type: %s. Target identity: %q. Retrieval query: %q. Source scene context: %q. Source page: %q.
 The retrieval query, scene context, page, URL, and search metadata help disambiguate the intended meaning, but none of them alone proves that the pixels match. Set "identity_match" true only when the visible content clearly depicts, identifies, or is an official visual representation of the target identity in that context. For a location, the visible scene must match the named place. For an organization, accept a recognizable logo, clearly identified headquarters, or a uniquely attributable visual; generic activity such as a person at a conference, an astronaut in space, a laboratory, an aircraft, or an ordinary office is insufficient. For a brand, require a visible brand mark or a clearly identifiable official brand asset; reject literal homonyms and unrelated artwork, including mythological figures or statues when the target is a commercial brand. For a product, the product itself must be visible and distinguishable from similar products. Set "split_panel_or_collage" true when multiple photos or panels are combined. Confidence reflects how clearly the pixels support the target in context. If uncertain, use false and low confidence.
-Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.0}`, class, identity, retrievalQuery, sceneContext, sourcePage)
+
+Set "watermarked_or_agency_stamp" true when visible text, logos, repeated translucent marks, or stock-agency stamps are overlaid on the image; ordinary scene signage and the subject's own branding do not count.
+Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"watermarked_or_agency_stamp":false,"confidence":0.0}`, class, identity, retrievalQuery, sceneContext, sourcePage)
 	messages := []types.Message{
 		{Role: "system", Content: "You are a conservative visual entity verifier. Confirm the requested entity from pixels, not metadata. Return only the requested JSON object."},
 		{Role: "user", Content: prompt, Images: []string{base64.StdEncoding.EncodeToString(imageBytes)}},
@@ -414,11 +428,11 @@ Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"spl
 	return verdict, nil
 }
 
-func (s *OllamaPersonImageScorer) classifyWithReference(ctx context.Context, model, identity, query string, refBytes, candBytes []byte) (personImageVerdict, error) {
+func (s *OllamaPersonImageScorer) classifyWithReference(ctx context.Context, model, identity, query, sceneContext string, refBytes, candBytes []byte) (personImageVerdict, error) {
 	var verdict personImageVerdict
-	prompt := fmt.Sprintf(`Compare the two attached images. Image 1 is a verified reference portrait of %q. Image 2 is a candidate image retrieved for query %q.
-Set "identity_match" true only when the primary person visible in Image 2 is clearly the same individual shown in Image 1; if you cannot confidently match the face/person in Image 2 to Image 1, set it false. Set "single_person_headshot" true when one clearly visible human is the dominant primary subject in Image 2, including full-body or contextual editorial/news photographs. Set "split_panel_or_collage" true when Image 2 combines multiple photos or panels. Confidence must reflect the weaker of the identity and layout judgments. If uncertain, use false and low confidence.
-Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.0}`, identity, query)
+	prompt := fmt.Sprintf(`Compare the two attached images. Image 1 is a verified reference portrait of %q. Image 2 is a candidate image retrieved for query %q in story context %q.
+Set "identity_match" true only when the primary person visible in Image 2 is clearly the same individual shown in Image 1; if you cannot confidently match the face/person in Image 2 to Image 1, set it false. Set "single_person_headshot" true when one clearly visible human is the dominant primary subject in Image 2, including full-body or contextual editorial/news photographs. Set "split_panel_or_collage" true when Image 2 combines multiple photos or panels. Set "watermarked_or_agency_stamp" true when visible text, logos, repeated translucent marks, or stock-agency stamps are overlaid on Image 2; ordinary scene signage and the subject's own branding do not count. Confidence must reflect the weaker of the identity and layout judgments. If uncertain about identity, use false and low confidence.
+Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"watermarked_or_agency_stamp":false,"confidence":0.0}`, identity, query, sceneContext)
 	messages := []types.Message{
 		{Role: "system", Content: "You are a conservative public-person visual identity comparator. Compare Image 2 against the reference Image 1; never infer identity from metadata. Return only the requested JSON object."},
 		{Role: "user", Content: prompt, Images: []string{base64.StdEncoding.EncodeToString(refBytes), base64.StdEncoding.EncodeToString(candBytes)}},

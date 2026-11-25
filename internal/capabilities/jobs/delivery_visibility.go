@@ -38,6 +38,11 @@ type DeliveryVisibility struct {
 	DriveSubfolderName   string `json:"drive_subfolder_name,omitempty"`
 	RemoteFinalJobID     string `json:"remote_final_job_id,omitempty"`
 	RemoteFinalJobStatus string `json:"remote_final_job_status,omitempty"`
+	// RemoteFinalJobTiming is the Master's measured breakdown (queue,
+	// execution, handoff, wait, poll lag, artifact download) copied verbatim
+	// from the durable receipt. It is surfaced on /full so operators do not
+	// have to dig into result.remote_final_job.timing.
+	RemoteFinalJobTiming map[string]any `json:"remote_final_job_timing,omitempty"`
 }
 
 // ExtractDeliveryVisibility derives the routing projection from a job's
@@ -90,6 +95,9 @@ func ExtractDeliveryVisibility(payload, result json.RawMessage) DeliveryVisibili
 		if receipt, ok := remoteFinalJobReceipt(res); ok {
 			vis.RemoteFinalJobID = stringAt(receipt, "job_id")
 			vis.RemoteFinalJobStatus = stringAt(receipt, "status")
+			if timing, ok := receipt["timing"].(map[string]any); ok {
+				vis.RemoteFinalJobTiming = timing
+			}
 		}
 	}
 	if vis.FinalJob && vis.RemoteFinalJobStatus == "" {
@@ -120,6 +128,7 @@ func (v DeliveryVisibility) deliveryFields() map[string]any {
 		"drive_subfolder_name":    v.DriveSubfolderName,
 		"remote_final_job_id":     v.RemoteFinalJobID,
 		"remote_final_job_status": v.RemoteFinalJobStatus,
+		"remote_final_job_timing": v.RemoteFinalJobTiming,
 	}
 }
 

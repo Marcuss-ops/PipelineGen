@@ -1,6 +1,6 @@
 package overlayproject
 
-// overlay_sfx_projection.go owns the ONE projection of image-bound SFX cues
+// overlay_sfx_projection.go owns the ONE projection of overlay-bound SFX cues
 // onto the canonical master audio plan.
 //
 // The cue is no longer written into the RenderingGen payload
@@ -12,11 +12,12 @@ package overlayproject
 // voiceover, BGM and clip-start whooshes.
 //
 // Selection is deterministic: an explicit pin cue wins, otherwise the
-// random_sfx_on_image_overlay lane picks a bound whoosh alias from the plan /
-// item / content identity. Composite and chain items emit one cue per distinct
-// image-layer start, so a fused chain keeps one precise cue per photo.
+// random_sfx_on_image_overlay and random_sfx_on_phrase_overlay lanes pick a
+// bound alias from plan / item / content identity. Image chains emit one cue
+// at clip start; phrase chains emit one cue at each phrase segment start.
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -64,45 +65,58 @@ func OverlaySFXIntentsForPlan(req contract.GenerateRequest, plan *capmodel.Overl
 	intents := make([]scriptpkg.SoundEffectIntent, 0, len(plan.Items))
 	for index := range plan.Items {
 		item := &plan.Items[index]
-		if !capoverlay.IsImageOverlayItem(*item) {
+		isImage := capoverlay.IsImageOverlayItem(*item)
+		phraseWindows := []overlaySFXCueWindow(nil)
+		if req.RandomSFXOnPhraseOverlay && isPhraseSFXItem(*item) {
+			phraseWindows = phraseSFXCueWindows(*item)
+		}
+		if !isImage && len(phraseWindows) == 0 {
 			continue
 		}
-		windows := overlaySFXCueWindows(*item)
+		windows := phraseWindows
+		if isImage {
+			windows = overlaySFXCueWindows(*item)
+		}
 		if len(windows) == 0 {
 			continue
 		}
-		// The cue belongs to the clip start, not to every internal segment.
-		window := windows[0]
-		cue := explicit[item.ID]
-		durationMS := OverlaySFXCueDurationMS
-		gainDB := OverlaySFXCueGainDB
-		assetID := ""
-		if cue != nil {
-			assetID = strings.TrimSpace(cue.AssetID)
-			if cue.DurationMS != nil {
-				durationMS = *cue.DurationMS
+		// Image chains are one visual clip and keep one cue at their start;
+		// phrase chains emit one cue for each phrase segment that enters.
+		if isImage && len(windows) > 1 {
+			windows = windows[:1]
+		}
+		for _, window := range windows {
+			cue := explicit[item.ID]
+			durationMS := OverlaySFXCueDurationMS
+			gainDB := OverlaySFXCueGainDB
+			assetID := ""
+			if cue != nil && isImage {
+				assetID = strings.TrimSpace(cue.AssetID)
+				if cue.DurationMS != nil {
+					durationMS = *cue.DurationMS
+				}
+				if cue.GainDB != nil {
+					gainDB = *cue.GainDB
+				}
+			} else if (isImage && req.RandomSFXOnImageOverlay) || (!isImage && req.RandomSFXOnPhraseOverlay) {
+				assetID = selectOverlayWhoosh(pool, plan, *item, window.startOffsetMS)
 			}
-			if cue.GainDB != nil {
-				gainDB = *cue.GainDB
+			if assetID == "" {
+				continue
 			}
-		} else if req.RandomSFXOnImageOverlay {
-			assetID = selectOverlayWhoosh(pool, plan, *item, window.startOffsetMS)
+			if durationMS > window.durationMS {
+				durationMS = window.durationMS
+			}
+			if durationMS <= 0 {
+				return nil, fmt.Errorf("overlay SFX: item %q has no positive visible window for its cue", item.ID)
+			}
+			intents = append(intents, scriptpkg.SoundEffectIntent{
+				AssetID:    assetID,
+				AtMS:       item.StartMs + window.startOffsetMS,
+				DurationMS: durationMS,
+				GainDB:     gainDB,
+			})
 		}
-		if assetID == "" {
-			continue
-		}
-		if durationMS > window.durationMS {
-			durationMS = window.durationMS
-		}
-		if durationMS <= 0 {
-			return nil, fmt.Errorf("overlay SFX: item %q has no positive visible window for its cue", item.ID)
-		}
-		intents = append(intents, scriptpkg.SoundEffectIntent{
-			AssetID:    assetID,
-			AtMS:       item.StartMs + window.startOffsetMS,
-			DurationMS: durationMS,
-			GainDB:     gainDB,
-		})
 	}
 	// Chronological order keeps the master plan readable and makes event ids
 	// (overlay-sfx-N) stable for a given plan.
@@ -113,6 +127,77 @@ func OverlaySFXIntentsForPlan(req contract.GenerateRequest, plan *capmodel.Overl
 		return intents[i].AssetID < intents[j].AssetID
 	})
 	return intents, nil
+}
+
+func isPhraseSFXItem(item capmodel.OverlayItem) bool {
+	if strings.EqualFold(strings.TrimSpace(item.TemplateID), "IMPORTANT_PHRASE") {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(item.Kind)) {
+	case "text_phrase", "important_phrase", "phrase", "phrase_chain", "mixed_chain", "quote", "keyword", "brand_text":
+		return true
+	default:
+		return false
+	}
+}
+
+func phraseSFXCueWindows(item capmodel.OverlayItem) []overlaySFXCueWindow {
+	duration := item.EndMs - item.StartMs
+	if duration <= 0 {
+		return nil
+	}
+	if item.Kind != "phrase_chain" && item.Kind != "mixed_chain" {
+		return []overlaySFXCueWindow{{durationMS: duration}}
+	}
+	segments, ok := item.Params["chain_segments"].([]any)
+	if !ok {
+		return []overlaySFXCueWindow{{durationMS: duration}}
+	}
+	windows := make([]overlaySFXCueWindow, 0, len(segments))
+	baseUS := item.StartUS
+	if baseUS == 0 {
+		baseUS = item.StartMs * 1000
+	}
+	for _, raw := range segments {
+		segment, ok := raw.(map[string]any)
+		if !ok || !isPhraseSFXItem(capmodel.OverlayItem{Kind: stringValue(segment["kind"]), TemplateID: stringValue(segment["template_id"])}) {
+			continue
+		}
+		startMS := (numberInt64(segment["start_us"]) - baseUS) / 1000
+		durationMS := numberInt64(segment["duration_us"]) / 1000
+		if startMS < 0 {
+			startMS = 0
+		}
+		if durationMS <= 0 || startMS >= duration {
+			continue
+		}
+		if startMS+durationMS > duration {
+			durationMS = duration - startMS
+		}
+		windows = append(windows, overlaySFXCueWindow{startOffsetMS: startMS, durationMS: durationMS})
+	}
+	return windows
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func numberInt64(value any) int64 {
+	switch number := value.(type) {
+	case float64:
+		return int64(number)
+	case int64:
+		return number
+	case int:
+		return int64(number)
+	case json.Number:
+		parsed, _ := number.Int64()
+		return parsed
+	default:
+		return 0
+	}
 }
 
 // explicitImageSFXCues binds each scene's pin cues positionally, in start

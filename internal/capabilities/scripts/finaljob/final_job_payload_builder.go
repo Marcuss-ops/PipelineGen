@@ -102,7 +102,9 @@ func (b *finalJobSceneBuilder) appendSegment(segment capabilityaudio.TimelineSeg
 
 func (b *finalJobSceneBuilder) appendFixedSegment(segment capabilityaudio.TimelineSegment, localScene contract.Scene) error {
 	type fixedClip struct {
-		AssetID string
+		AssetID    string
+		SourceInUS int64
+		DurationUS int64
 	}
 	fixedClips := make([]fixedClip, 0)
 	// Keep the original clips in their declared order, but fit them inside the
@@ -114,7 +116,10 @@ func (b *finalJobSceneBuilder) appendFixedSegment(segment capabilityaudio.Timeli
 		if AssetID == "" {
 			continue
 		}
-		fixedClips = append(fixedClips, fixedClip{AssetID: AssetID})
+		fixedClips = append(fixedClips, fixedClip{
+			AssetID: AssetID, SourceInUS: intent.SourceInUS,
+			DurationUS: intent.TimelineDurationUS,
+		})
 	}
 	if len(fixedClips) == 0 {
 		for _, clip := range localScene.Clips {
@@ -146,6 +151,19 @@ func (b *finalJobSceneBuilder) appendFixedSegment(segment capabilityaudio.Timeli
 			return fmt.Errorf("fixed intro/outro clip %q has no certified physical duration", fixed.AssetID)
 		}
 		sceneMS := min(durationMS, remainingMS)
+		if fixed.DurationUS > 0 {
+			requestedMS := (fixed.DurationUS + 999) / 1000
+			sceneMS = min(sceneMS, requestedMS)
+		}
+		if fixed.SourceInUS > 0 {
+			asset["source_in_ms"] = fixed.SourceInUS / 1000
+		}
+		// The source clip file may cover a much longer archive window than its
+		// authored intro beat. Carry the exact clip window into the render
+		// contract; otherwise the first clip consumes the whole intro and later
+		// beats are silently omitted (or appear as overlapping source footage).
+		asset["source_out_ms"] = fixed.SourceInUS/1000 + sceneMS
+		asset["duration_ms"] = sceneMS
 		b.remoteScenes = append(b.remoteScenes, CompositeVideoScene(fmt.Sprintf("scene-%04d", b.clipOrdinal), b.clipOrdinal, "clip", asset, sceneMS, "Protected intro clip"))
 		AppendFinalJobRuntimeAsset(&b.runtimeAssets, b.seenRuntimeAssets, "clip", asset)
 		b.plannedDurationMS += sceneMS
@@ -325,6 +343,12 @@ func finalJobPreflight(ctx context.Context, runID string, req contract.GenerateR
 		return "", false, false, err
 	}
 	imageRequested := FinalJobImageRequested(req)
+	var preflightWarnings []string
+	if budget := result.PhraseOverlayBudget; budget != nil && budget.Shortfall > 0 {
+		preflightWarnings = append(preflightWarnings, fmt.Sprintf(
+			"phrase overlay shortfall: requested %d, materialized %d, missing %d",
+			budget.Requested, budget.Materialized, budget.Shortfall))
+	}
 	overlaystatus.Update(runID, func(status *overlaystatus.Status) {
 		status.Stage = "preflight"
 		status.Requested = OverlayStatusRequest(req)
@@ -352,7 +376,7 @@ func finalJobPreflight(ctx context.Context, runID string, req contract.GenerateR
 	overlaystatus.Update(runID, func(status *overlaystatus.Status) {
 		status.Stage = "preflight_passed"
 		status.Error = ""
-		status.Preflight = &overlaystatus.Preflight{Passed: true}
+		status.Preflight = &overlaystatus.Preflight{Passed: true, Warnings: preflightWarnings}
 	})
 	return stockPoolFolderID, hasFinalAudio, imageRequested, nil
 }

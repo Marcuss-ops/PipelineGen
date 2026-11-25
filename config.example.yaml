@@ -138,6 +138,10 @@ drive:
   video_ai_root_folder: ""
   copertine_root_folder: ""
   sound_effects_root_folder: ""
+  # Background-music catalog root. Required for source=music catalog sync and
+  # for audio.background_music to resolve an asset_id. Leave empty to disable
+  # native BGM. Without it the job fails explicitly instead of mixing manually.
+  music_root_folder: ""
   outro_root_folder: ""
 
 media:

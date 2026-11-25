@@ -9,6 +9,7 @@ import (
 // Root call sites keep the historical names.
 type (
 	TextGenerator           = portscript.TextGenerator
+	SceneTextRepairer       = portscript.SceneTextRepairer
 	SceneTextTraceGenerator = portscript.SceneTextTraceGenerator
 	SceneTextStreamer       = portscript.SceneTextStreamer
 	SceneTextTraceStreamer  = portscript.SceneTextTraceStreamer

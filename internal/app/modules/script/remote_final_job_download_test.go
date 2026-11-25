@@ -5,11 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,6 +32,10 @@ func TestDownloadFinalArtifactVerifiesAndReuses(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-admin-token" {
 			t.Errorf("Authorization=%q, want admin bearer", got)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 			return
 		}
 		hits.Add(1)
@@ -197,17 +204,13 @@ func TestDownloadFinalArtifactRemovesPartialOnFailure(t *testing.T) {
 	wantSHA := strings.Repeat("0", 64)
 	jobID := "job-part-cleanup"
 	seed := digest.SHA256Sum([]byte(jobID + "|" + wantSHA + "|" + server.URL))
-	prefix := filepath.Join(os.TempDir(), "pipelinegen-final-"+hex.EncodeToString(seed[:8])+".mp4.part-*")
+	partPath := filepath.Join(os.TempDir(), "pipelinegen-final-"+hex.EncodeToString(seed[:8])+".mp4.part")
 
 	if _, _, _, _, err := adapter.downloadFinalArtifact(context.Background(), server.URL, wantSHA, jobID); err == nil {
 		t.Fatal("expected sha256 mismatch to fail closed")
 	}
-	leftovers, err := filepath.Glob(prefix)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(leftovers) != 0 {
-		t.Fatalf("partial files left behind: %v", leftovers)
+	if _, err := os.Stat(partPath); !os.IsNotExist(err) {
+		t.Fatalf("partial file left behind at %s: %v", partPath, err)
 	}
 }
 
@@ -224,4 +227,144 @@ func TestDownloadFinalArtifactRejectsHashMismatch(t *testing.T) {
 	if _, _, _, _, err := adapter.downloadFinalArtifact(context.Background(), server.URL, wantSHA, "job-hash-mismatch"); err == nil {
 		t.Fatal("expected sha256 mismatch to fail closed")
 	}
+}
+
+func TestDownloadFinalArtifactUsesParallelRanges(t *testing.T) {
+	payload := make([]byte, 256<<10)
+	for i := range payload {
+		payload[i] = byte(i % 251)
+	}
+	sum := sha256.Sum256(payload)
+	wantSHA := hex.EncodeToString(sum[:])
+	var active, maxActive atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			w.Header().Set("Accept-Ranges", "bytes")
+			return
+		}
+		rangeHeader := r.Header.Get("Range")
+		if rangeHeader == "" {
+			http.Error(w, "range required", http.StatusBadRequest)
+			return
+		}
+		start, end, ok := parseTestRange(rangeHeader, len(payload))
+		if !ok {
+			http.Error(w, "bad range", http.StatusRequestedRangeNotSatisfiable)
+			return
+		}
+		current := active.Add(1)
+		for {
+			maximum := maxActive.Load()
+			if current <= maximum || maxActive.CompareAndSwap(maximum, current) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		active.Add(-1)
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(payload)))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(payload[start : end+1])
+	}))
+	defer server.Close()
+
+	t.Setenv("VELOX_ARTIFACT_DOWNLOAD_CONNECTIONS", "4")
+	t.Setenv("VELOX_ARTIFACT_DOWNLOAD_PARALLEL_MIN_BYTES", "1024")
+	adapter := &RemoteFinalJobAdapter{
+		artifactToken: "test-admin-token",
+		client:        &remotejob.Client{HTTP: server.Client()},
+	}
+	path, size, gotSHA, reused, err := adapter.downloadFinalArtifact(context.Background(), server.URL, wantSHA, "job-parallel-range")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(path) })
+	if size != int64(len(payload)) || gotSHA != wantSHA || reused {
+		t.Fatalf("size=%d sha=%s reused=%v, want %d/%s/false", size, gotSHA, reused, len(payload), wantSHA)
+	}
+	if got := maxActive.Load(); got < 2 {
+		t.Fatalf("max concurrent range requests = %d, want at least 2", got)
+	}
+}
+
+func TestDownloadFinalArtifactResumesPartialFile(t *testing.T) {
+	payload := make([]byte, 128<<10)
+	for i := range payload {
+		payload[i] = byte((i * 7) % 253)
+	}
+	sum := sha256.Sum256(payload)
+	wantSHA := hex.EncodeToString(sum[:])
+	var mu sync.Mutex
+	var ranges []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			w.Header().Set("Accept-Ranges", "bytes")
+			return
+		}
+		rangeHeader := r.Header.Get("Range")
+		mu.Lock()
+		ranges = append(ranges, rangeHeader)
+		mu.Unlock()
+		start, end, ok := parseTestRange(rangeHeader, len(payload))
+		if !ok {
+			http.Error(w, "bad range", http.StatusRequestedRangeNotSatisfiable)
+			return
+		}
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(payload)))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(payload[start : end+1])
+	}))
+	defer server.Close()
+
+	t.Setenv("VELOX_ARTIFACT_DOWNLOAD_CONNECTIONS", "1")
+	jobID := "job-resume-part"
+	seed := digest.SHA256Sum([]byte(jobID + "|" + wantSHA + "|" + server.URL))
+	path := filepath.Join(os.TempDir(), "pipelinegen-final-"+hex.EncodeToString(seed[:8])+".mp4")
+	partPath := path + ".part"
+	half := len(payload) / 2
+	if err := os.WriteFile(partPath, payload[:half], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(path); _ = os.Remove(partPath) })
+
+	adapter := &RemoteFinalJobAdapter{
+		artifactToken: "test-admin-token",
+		client:        &remotejob.Client{HTTP: server.Client()},
+	}
+	gotPath, size, gotSHA, reused, err := adapter.downloadFinalArtifact(context.Background(), server.URL, wantSHA, jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != path || size != int64(len(payload)) || gotSHA != wantSHA || reused {
+		t.Fatalf("path=%q size=%d sha=%s reused=%v", gotPath, size, gotSHA, reused)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(ranges) != 1 || ranges[0] != fmt.Sprintf("bytes=%d-", half) {
+		t.Fatalf("range requests = %v, want the resumed bytes=%d-", ranges, half)
+	}
+}
+
+func parseTestRange(header string, size int) (int, int, bool) {
+	header = strings.TrimSpace(strings.TrimPrefix(header, "bytes="))
+	parts := strings.SplitN(header, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	start, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || start < 0 || start >= size {
+		return 0, 0, false
+	}
+	end := size - 1
+	if strings.TrimSpace(parts[1]) != "" {
+		end, err = strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+	if end < start || end >= size {
+		return 0, 0, false
+	}
+	return start, end, true
 }

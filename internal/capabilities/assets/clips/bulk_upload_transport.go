@@ -87,7 +87,7 @@ func (bt *BulkUploadTransport) HandleBulkUploadYouTubeClipsJob(ctx context.Conte
 	return bt.bulkUploadWorker.HandleJob(ctx, j, tools)
 }
 
-// BulkUploadYouTubeClips handles POST /api/clips/:source/bulk-upload-youtube-clips.
+// BulkUploadYouTubeClips handles POST /api/media/clips/:source/clips/bulk-upload-youtube-clips.
 //
 //	202 — job enqueued; poll /api/jobs/{id}/full for progress.
 //	400 — invalid body, empty local_folder/drive_folder_id, folder not under allowed base path.

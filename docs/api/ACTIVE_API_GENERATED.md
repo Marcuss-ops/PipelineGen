@@ -106,7 +106,7 @@
 | POST | `/api/media/clips/:source/clips/:id/reupload` | Re-upload clip to Drive |
 | POST | `/api/media/clips/:source/clips/:id/status` | Get clip processing status |
 | POST | `/api/media/clips/:source/clips/:id/verify` | Verify clip integrity |
-| POST | `/api/media/clips/:source/clips/bulk-upload-youtube-clips` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/bulk-upload-youtube-clips` | Bulk upload local YouTube clips to Drive and enqueue indexing |
 | POST | `/api/media/clips/:source/folders/:id/manifest` | Get folder manifest |
 | POST | `/api/media/clips/:source/reconcile` | Reconcile source metadata |
 | POST | `/api/media/clips/enrich` | Enrich a media asset with AI metadata |

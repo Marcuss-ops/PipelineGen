@@ -54,6 +54,37 @@ func (e *StaleJobError) Unwrap() []error {
 // stale receipt (which would rotate the attempt and resubmit the same plan).
 var ErrRemoteInvalidPlan = errors.New("remote job rejected the submitted plan")
 
+// ErrRemoteCapabilityUnavailable reports a deterministic 422 from the Master:
+// the submitted plan is valid, but this remote service version does not expose
+// a runtime capability the plan requires. Replaying the same payload cannot
+// repair a missing capability; the caller must surface a configuration gap.
+var ErrRemoteCapabilityUnavailable = errors.New("remote job capability is unavailable")
+
+// CapabilityUnavailableError carries the Master's structured capability code
+// and message. It is not retryable: a changed service version, not another
+// attempt, is the only fix.
+type CapabilityUnavailableError struct {
+	StatusCode int
+	Code       string
+	Message    string
+}
+
+func (e *CapabilityUnavailableError) Error() string {
+	if e == nil {
+		return ErrRemoteCapabilityUnavailable.Error()
+	}
+	detail := strings.TrimSpace(e.Message)
+	if detail == "" {
+		detail = "no detail"
+	}
+	return fmt.Sprintf("remote job capability unavailable (HTTP %d, %s): %s", e.StatusCode, e.Code, detail)
+}
+
+func (e *CapabilityUnavailableError) Unwrap() error { return ErrRemoteCapabilityUnavailable }
+
+// IsRetryable makes the canonical retry classifier keep the run terminal.
+func (e *CapabilityUnavailableError) IsRetryable() bool { return false }
+
 // InvalidPlanError carries the Master code that proved the rejection.
 type InvalidPlanError struct {
 	JobID  string
@@ -167,6 +198,30 @@ func parsePlanValidationError(status int, body string) *PlanValidationError {
 	}
 	sort.Strings(segments)
 	return &PlanValidationError{StatusCode: status, Code: code, Message: message, Segments: segments}
+}
+
+// parseCapabilityUnavailableError recognizes the Master's deterministic 422
+// capability contract. It requires HTTP 422 and either the canonical code or
+// the capability phrase, so a generic 500 "unavailable" stays transient.
+func parseCapabilityUnavailableError(status int, body string) *CapabilityUnavailableError {
+	if status != 422 {
+		return nil
+	}
+	var envelope struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal([]byte(body), &envelope)
+	code := strings.TrimSpace(envelope.Error)
+	message := strings.TrimSpace(envelope.Message)
+	if message == "" {
+		message = strings.TrimSpace(body)
+	}
+	lowerMessage := strings.ToLower(message)
+	if !strings.EqualFold(code, "invalid_runtime_assets") && !strings.Contains(lowerMessage, "capability is unavailable") {
+		return nil
+	}
+	return &CapabilityUnavailableError{StatusCode: status, Code: code, Message: message}
 }
 
 // remoteTransientErrorHints mark a failure the Master may still recover from:

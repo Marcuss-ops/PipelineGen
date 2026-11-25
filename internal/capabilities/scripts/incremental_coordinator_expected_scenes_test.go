@@ -70,6 +70,28 @@ func TestWaitForVidRushCountsFixedIntroAndOutro(t *testing.T) {
 	}
 }
 
+func TestWaitForVidRushAllowsFixedIntroAndOutroWithVerbatimScenes(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceTextVerbatim: true,
+		Segments:           []scriptpkg.ScriptSegment{{}, {}, {}, {}, {}},
+		Intro:              &scriptpkg.FixedSection{ClipIDs: []string{"intro-clip"}},
+		Outro:              &scriptpkg.FixedSection{ClipIDs: []string{"outro-clip"}},
+	}
+	coordinator := NewVidRushIncrementalCoordinator(nil, plan, 1)
+	coordinator.optionalFixedScenes = 2
+	for index, id := range []string{"scene-0", "scene-1", "scene-2", "scene-3", "scene-4", "scene-intro", "scene-outro"} {
+		if err := coordinator.OnSceneCommitted(context.Background(), SceneCommitted{
+			RunID: "run-verbatim-fixed", SceneID: id, SceneIndex: index, TextHash: "hash-" + id,
+			ExtractEntities: scriptpkg.ToggleDisabled,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := coordinator.WaitForVidRush(context.Background(), "run-verbatim-fixed"); err != nil {
+		t.Fatalf("WaitForVidRush with verbatim fixed intro/outro = %v, want nil", err)
+	}
+}
+
 // TestWaitForVidRushKeepsDynamicCountWithoutExplicitSegments certifies the
 // other half of the contract: intro/outro alone do not invent an expected
 // count when the body is generated to a dynamic scene count.

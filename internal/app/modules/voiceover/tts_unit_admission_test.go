@@ -1,7 +1,6 @@
 package voiceover
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -13,11 +12,11 @@ import (
 )
 
 // TestTTSSlotIsGrantedOncePerUnitAcrossChunks certifies WST-07: the TTS gate
-// admits a UNIT (one scene × language), not each sentence chunk of it. Before
-// the wrapper swap the same unit acquired the slot once per 24-word chunk —
-// 20.034 acquisitions for 4.919 synthesize calls in the audit window, 4,57 h of
-// `semaphore_wait/tts` — so a scene paid the queue as many times as it had
-// sentences.
+// admits a UNIT (one scene × language), not each chunk of it. Before the
+// wrapper swap the same unit acquired the slot once per chunk (24 words at the
+// time) — 20.034 acquisitions for 4.919 synthesize calls in the audit window,
+// 4,57 h of `semaphore_wait/tts` — so a scene paid the queue as many times as
+// it had sentences.
 func TestTTSSlotIsGrantedOncePerUnitAcrossChunks(t *testing.T) {
 	provider := &recordingTTS{}
 	merger := &recordingMerger{}
@@ -28,7 +27,7 @@ func TestTTSSlotIsGrantedOncePerUnitAcrossChunks(t *testing.T) {
 	}, zap.NewNop())
 
 	ctx, run := boundFinalAudioRun(t, "run-tts-unit-admission")
-	text := strings.Repeat("parola ", 96) // 4 sentence-sized chunks of 24 words
+	text := voiceoverTestSentences(4, voiceoverChunkMaxWords) // 4 complete-sentence chunks
 	_, err := gate.Synthesize(ctx, voiceover.TTSInput{
 		Text: text, Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
@@ -62,12 +61,12 @@ func TestTTSSlotIsNotRequeuedWhenTheGateIsContented(t *testing.T) {
 	go func() {
 		defer close(firstDone)
 		_, _ = gate.Synthesize(ctx, voiceover.TTSInput{
-			Text: strings.Repeat("parola ", 96), Filename: "first.mp3", OutputDir: t.TempDir(), Language: "it",
+			Text: voiceoverTestSentences(4, voiceoverChunkMaxWords), Filename: "first.mp3", OutputDir: t.TempDir(), Language: "it",
 		})
 	}()
 	time.Sleep(10 * time.Millisecond) // let the first unit take the only slot
 	_, err := gate.Synthesize(ctx, voiceover.TTSInput{
-		Text: strings.Repeat("parola ", 96), Filename: "second.mp3", OutputDir: t.TempDir(), Language: "it",
+		Text: voiceoverTestSentences(4, voiceoverChunkMaxWords), Filename: "second.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
 	require.NoError(t, err)
 	<-firstDone

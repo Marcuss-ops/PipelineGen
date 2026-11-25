@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -320,6 +321,40 @@ func finalAudioCacheReference(ref contract.FinalAudioReference) scriptaudio.Cach
 func (r *Runner) SetFinalJobSubmitter(submitter FinalJobSubmitter) {
 	if r != nil {
 		r.finalJobSubmitter = submitter
+		if preflighter, ok := submitter.(interface {
+			CheckFinalJobCapabilities(context.Context, contract.GenerateRequest) error
+		}); ok {
+			r.finalJobCapabilityPreflight = preflighter
+		} else {
+			r.finalJobCapabilityPreflight = nil
+		}
+	}
+}
+
+// CheckFinalJobCapabilities runs the remote capability gate during the
+// initial media-preflight stage, before scene generation, TTS or overlay work.
+func (r *Runner) CheckFinalJobCapabilities(ctx context.Context, req contract.GenerateRequest) error {
+	if r == nil || !req.FinalJob || !needsStockWindowPreparation(req) {
+		return nil
+	}
+	if r.finalJobCapabilityPreflight == nil {
+		return fmt.Errorf("%w: remote capability preflight is not wired", ErrFinalJobCapabilityMissing)
+	}
+	if err := r.finalJobCapabilityPreflight.CheckFinalJobCapabilities(ctx, req); err != nil {
+		return fmt.Errorf("%w: %v", ErrFinalJobCapabilityMissing, err)
+	}
+	return nil
+}
+
+func needsStockWindowPreparation(req contract.GenerateRequest) bool {
+	if len(req.StockBindings) > 0 {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(string(req.MediaMode))) {
+	case "stock_only", "mixed":
+		return true
+	default:
+		return false
 	}
 }
 

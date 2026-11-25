@@ -435,8 +435,13 @@ func validSemanticGroupType(kind string) bool {
 
 func projectSemanticCharts(source string, proposals []semanticEngineProposal) ([]semantic.ChartValueCandidate, error) {
 	out := make([]semantic.ChartValueCandidate, 0)
+	seen := make(map[string]struct{})
 	for _, proposal := range proposals {
-		if proposal.ProposalType != "chart" {
+		// `delta_comparison` is a chart proposal too: the engine already
+		// grounds both quantities, and dropping it here forced the numeric
+		// lane to rediscover the same values. `ranking_bar` is produced as a
+		// group candidate, not as a proposal type.
+		if proposal.ProposalType != "chart" && proposal.ProposalType != "delta_comparison" {
 			continue
 		}
 		for _, item := range proposal.ChartItems {
@@ -445,6 +450,14 @@ func projectSemanticCharts(source string, proposals []semanticEngineProposal) ([
 			if item.Text == "" || !groundedSpan(source, item.StartByte, item.EndByte, item.Text) {
 				return nil, fmt.Errorf("chart item %q is not grounded in source_text", item.Text)
 			}
+			// A chart and its delta proposal can carry the same grounded
+			// quantities. The numeric lane wants the value set once, not one
+			// copy per proposal that names it.
+			key := fmt.Sprintf("%s\x00%g", item.Text, item.Value)
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
 			out = append(out, semantic.ChartValueCandidate{Text: item.Text, Value: item.Value})
 		}
 	}

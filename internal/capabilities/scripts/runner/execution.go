@@ -21,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	runport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/run"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runstate"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/timeline"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -208,6 +209,17 @@ func (e *Execution) normalize() bool {
 // must be certified before the LLM, translator, or TTS can start.
 func (e *Execution) mediaPreflightPhase() bool {
 	return e.measure(kernobs.StageRunMediaPreflight, func(c context.Context) bool {
+		if e.req.FinalJob && needsStockWindowPreparation(e.req) {
+			checker, ok := e.host.(interface {
+				CheckFinalJobCapabilities(context.Context, contract.GenerateRequest) error
+			})
+			if !ok {
+				return e.fail(runstate.StagePreflight, fmt.Errorf("REMOTE_CAPABILITY_MISSING: stock_window_preparation capability preflight is not wired"))
+			}
+			if err := checker.CheckFinalJobCapabilities(c, e.req); err != nil {
+				return e.fail(runstate.StagePreflight, err)
+			}
+		}
 		if stageSkipped(e.resumeIdx, runstate.StagePreflight) {
 			if err := e.validateEnabledVidRushProviders(c); err != nil {
 				return e.fail(runstate.StagePreflight, err)
@@ -249,6 +261,18 @@ func (e *Execution) mediaPreflightPhase() bool {
 	})
 }
 
+func needsStockWindowPreparation(req contract.GenerateRequest) bool {
+	if len(req.StockBindings) > 0 {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(string(req.MediaMode))) {
+	case "stock_only", "mixed":
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *Execution) validateEnabledVidRushProviders(ctx context.Context) error {
 	return e.host.ValidateEnabledVidRushProviders(ctx, e.req)
 }
@@ -276,7 +300,19 @@ func (e *Execution) generate() bool {
 	ok := e.measure(kernobs.StageGenerate, func(c context.Context) bool {
 		var phaseOK bool
 		e.result, phaseOK = e.host.RunSceneTextPhase(c, e.runID, e.req, e.routing, e.exec, e.run, e.resumeIdx)
-		return phaseOK
+		if !phaseOK || e.result == nil {
+			return phaseOK
+		}
+		// Fail-fast pre-TTS audio gate: the source ranges are already final in
+		// the generated scenes, so an impossible clip window (the r1 failure)
+		// must abort here instead of after translation, VidRush/scene analysis,
+		// TTS and audio compile. The canonical audio contract still validates
+		// the resolved timeline later; this is the cheap early mirror.
+		if err := timeline.ValidateAudioSourceRanges(e.result.Scenes); err != nil {
+			e.fail(runstate.StageGeneratingVoiceovers, fmt.Errorf("audio source range preflight: %w", err))
+			return false
+		}
+		return true
 	})
 	if !ok {
 		return false
@@ -370,31 +406,40 @@ func (e *Execution) parallelFanOut() bool {
 		// Resolve BGM/SFX assets and materialize original clip audio in
 		// parallel with TTS. Best-effort: skip when the source is nil.
 		var prefetched *contract.AudioPrefetchResult
-		if e.host.AudioAssetSource() != nil && (len(e.req.BackgroundMusic) > 0 || len(e.req.SoundEffects) > 0 || e.req.RandomSFXOnClipStart ||
+		if e.host.AudioAssetSource() != nil && (len(e.req.BackgroundMusic) > 0 || len(e.req.SoundEffects) > 0 || len(e.req.ClipStartSoundEffects) > 0 || e.req.RandomSFXOnClipStart ||
 			e.req.MixPolicy.Normalize() == capabilityaudio.MixVoiceoverWithDuckedClip) {
 			bgmIDs := make([]string, len(e.req.BackgroundMusic))
 			for i, b := range e.req.BackgroundMusic {
 				bgmIDs[i] = b.AssetID
 			}
-			sfxIDs := make([]string, len(e.req.SoundEffects))
-			for i, s := range e.req.SoundEffects {
-				sfxIDs[i] = s.AssetID
+			sfxIDs := make([]string, 0, len(e.req.SoundEffects)+len(e.req.ClipStartSoundEffects))
+			for _, s := range e.req.SoundEffects {
+				sfxIDs = append(sfxIDs, s.AssetID)
+			}
+			for _, cue := range e.req.ClipStartSoundEffects {
+				sfxIDs = append(sfxIDs, cue.AssetID)
 			}
 			if e.req.RandomSFXOnClipStart {
 				clipStartTimeline, timelineErr := scriptaudio.CompileCanonicalTimeline(*e.result)
 				if timelineErr != nil {
 					e.host.Logger().Warn("clip-start SFX prefetch timeline unavailable; compile will resolve assets synchronously", zap.String("run_id", e.runID), zap.Error(timelineErr))
 				} else {
-					for _, intent := range scriptaudio.RandomClipStartSFXIntentsWithPool(clipStartTimeline, e.host.SoundEffectPool(prepareCtx, e.runID)) {
+					excluded := make([]string, 0, len(e.req.ClipStartSoundEffects))
+					for _, cue := range e.req.ClipStartSoundEffects {
+						excluded = append(excluded, cue.ClipID)
+					}
+					for _, intent := range scriptaudio.RandomClipStartSFXIntentsWithPoolExcluding(clipStartTimeline, e.host.SoundEffectPool(prepareCtx, e.runID), excluded) {
 						sfxIDs = append(sfxIDs, intent.AssetID)
 					}
 				}
 			}
+			// Final jobs mix the original clip track too (the 2026-09-30
+			// final-job fix), so their clip audio belongs in the same
+			// TTS-overlap prefetch as every other lane. Skipping it here only
+			// moved the downloads into audio_compile after TTS had finished.
 			var clipIDs []string
-			if !e.req.FinalJob {
-				for _, s := range e.snapshot {
-					clipIDs = append(clipIDs, s.ClipIDs...)
-				}
+			for _, s := range e.snapshot {
+				clipIDs = append(clipIDs, s.ClipIDs...)
 			}
 			var clipAudioSource contract.ClipAudioAssetSource
 			if candidate, ok := e.host.AudioAssetSource().(contract.ClipAudioAssetSource); ok {

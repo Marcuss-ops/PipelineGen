@@ -16,10 +16,12 @@ package drive
 // (`BuildRepoBundle -> BuildSearchBundle -> drive.Provide -> BuildJobsBundle`).
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	platformdrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	legacyassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
@@ -51,13 +53,16 @@ func (d Deps) validate() error {
 // field is an already-composed port: the caller resolves them, the module does
 // not reach into the composition root.
 type CatalogSyncDeps struct {
-	Config     *config.Config
-	MediaDB    *sql.DB
-	Legacy     *legacyassets.ClipsRepository
-	Uploader   *platformdrive.Uploader
-	AssetTree  *assettree.Service
-	Dispatcher *outbox.Dispatcher
-	Log        *zap.Logger
+	Config      *config.Config
+	MediaDB     *sql.DB
+	Legacy      *legacyassets.ClipsRepository
+	Uploader    *platformdrive.Uploader
+	AssetTree   *assettree.Service
+	Dispatcher  *outbox.Dispatcher
+	MediaProber interface {
+		Probe(context.Context, string) (*mediaexec.MediaInfo, error)
+	}
+	Log *zap.Logger
 }
 
 // SystemAdminAdapterDeps is the input contract of NewSystemAdminAdapter. Admin

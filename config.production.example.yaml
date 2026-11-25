@@ -145,6 +145,10 @@ drive:
   video_ai_root_folder: ""
   copertine_root_folder: ""
   sound_effects_root_folder: "1vfZQHVNZab-pU2fBaj4qzR3iSz1sOVhW"
+  # Background-music catalog root (source=music). Fill with the Drive folder
+  # that owns BGM tracks; it must be synced once before audio.background_music
+  # can resolve an asset_id. Empty keeps native BGM disabled.
+  music_root_folder: ""
   outro_root_folder: "1MB9pTRjvHUdMXUtGOMBcvgRc-MZG2rA4"
 
 media:

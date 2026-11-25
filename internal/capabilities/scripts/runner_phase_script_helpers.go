@@ -305,42 +305,139 @@ func (r *Runner) runNormalizePhase(ctx context.Context, runID string, exec Execu
 	return true
 }
 
+const maxSceneTextRepairAttempts = 2
+
+// repairShortClipScenes expands only the clip-backed scenes that landed below
+// their narration floor. It runs before validation so the validator remains a
+// pure, deterministic verdict; a generator without RepairSceneText keeps the
+// historical fail-closed behavior. The returned map records the attempts spent
+// per scene so the terminal error can name them.
+func (r *Runner) repairShortClipScenes(ctx context.Context, runID string, req contract.GenerateRequest, scenes []contract.Scene, hb *stageHeartbeat) map[string]int {
+	if r == nil || req.Source.Type != SourceClips || req.ScriptParams.SourceTextVerbatim {
+		return nil
+	}
+	repairer, ok := r.textGen.(SceneTextRepairer)
+	if !ok {
+		return nil
+	}
+	attempts := make(map[string]int)
+	for i := range scenes {
+		if !clipSceneNeedsRepair(scenes[i], req, i) {
+			continue
+		}
+		minimumWords := scriptpkg.NarrationFloorForScene(req.ScriptParams.Segments, scenes[i].ID)
+		if minimumWords == 0 {
+			minimumWords = 1
+		}
+		wordsBefore := scriptpkg.WordCount(strings.TrimSpace(scenes[i].Text[req.SourceLanguage]))
+		if hb != nil {
+			hb.setOp("repair_clip_scene_text")
+		}
+		for attempt := 1; attempt <= maxSceneTextRepairAttempts; attempt++ {
+			attempts[scenes[i].ID] = attempt
+			repaired, err := repairer.RepairSceneText(ctx, req, scenes[i], minimumWords, attempt)
+			if err != nil {
+				if r.log != nil {
+					r.log.Warn("scene text repair failed",
+						zap.String("run_id", runID),
+						zap.String("scene_id", scenes[i].ID),
+						zap.Int("attempt", attempt),
+						zap.Error(err))
+				}
+				continue
+			}
+			repairedText := strings.TrimSpace(repaired.Text[req.SourceLanguage])
+			if repairedText == "" {
+				continue
+			}
+			if scenes[i].Text == nil {
+				scenes[i].Text = make(map[Language]string)
+			}
+			scenes[i].Text[req.SourceLanguage] = repairedText
+			wordsAfter := scriptpkg.WordCount(repairedText)
+			if r.log != nil {
+				r.log.Info("scene text repair applied",
+					zap.String("run_id", runID),
+					zap.String("scene_id", scenes[i].ID),
+					zap.Int("attempt", attempt),
+					zap.Int("words_before", wordsBefore),
+					zap.Int("words_after", wordsAfter),
+					zap.Int("minimum_words", minimumWords))
+			}
+			if !clipSceneNeedsRepair(scenes[i], req, i) {
+				break
+			}
+		}
+	}
+	return attempts
+}
+
+func clipSceneNeedsRepair(scene contract.Scene, req contract.GenerateRequest, index int) bool {
+	if scene.NativeClip || scene.ExecutionMode.IsFixedMedia() {
+		return false
+	}
+	minimumWords := scriptpkg.NarrationFloorForScene(req.ScriptParams.Segments, scene.ID)
+	if minimumWords == 0 {
+		minimumWords = 1
+	}
+	text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+	lower := strings.ToLower(text)
+	return text == "" || scriptpkg.WordCount(text) < minimumWords ||
+		lower == fmt.Sprintf("scene %d", index+1) || lower == "the" ||
+		contaminatedClipNarration(text)
+}
+
+// clipSceneValidationError is the pure verdict for one clip-backed scene. The
+// caller keeps failure persistence at the execution-step boundary; tests can
+// pin the stable code and repair attempts without a repository.
+func clipSceneValidationError(scene contract.Scene, req contract.GenerateRequest, index int, attempts map[string]int) error {
+	if scene.NativeClip || scene.ExecutionMode.IsFixedMedia() {
+		return nil
+	}
+	minimumWords := scriptpkg.NarrationFloorForScene(req.ScriptParams.Segments, scene.ID)
+	if minimumWords == 0 {
+		minimumWords = 1
+	}
+	text := strings.TrimSpace(scene.Text[req.SourceLanguage])
+	words := scriptpkg.WordCount(text)
+	lower := strings.ToLower(text)
+	short := text == "" || words < minimumWords
+	literalPlaceholder := lower == fmt.Sprintf("scene %d", index+1) || lower == "the"
+	contaminated := contaminatedClipNarration(text)
+	if !short && !literalPlaceholder && !contaminated {
+		return nil
+	}
+	code := "SCRIPT_SCENE_TEXT_INVALID"
+	if contaminated {
+		code = "SCRIPT_SCENE_TEXT_CONTAMINATED"
+	}
+	cause := fmt.Errorf("%s: scene=%d words=%d minimum=%d placeholder=%t", code, index, words, minimumWords, literalPlaceholder)
+	if attempts != nil {
+		if repaired := attempts[scene.ID]; repaired > 0 {
+			cause = fmt.Errorf("%w repair_attempts=%d", cause, repaired)
+		}
+	}
+	return cause
+}
+
 // validateClipSceneOutput contains the source-specific safety checks for
 // clip-backed narration. It keeps runSceneTextPhase focused on generation and
 // leaves failure persistence at the same execution-step boundary.
 func (r *Runner) validateClipSceneOutput(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, scenes []contract.Scene) bool {
+	return r.validateClipSceneOutputWithAttempts(ctx, runID, req, exec, scriptStep, scenes, nil)
+}
+
+func (r *Runner) validateClipSceneOutputWithAttempts(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, scenes []contract.Scene, attempts map[string]int) bool {
 	for i, scene := range scenes {
-		// no_voiceover cutaways are fixed media by design: their only text
-		// surface is the clip's own footage. They must never be checked against
-		// the narration word floor, whether or not Chronon will style the clip.
-		if scene.NativeClip || scene.ExecutionMode.IsFixedMedia() {
+		cause := clipSceneValidationError(scene, req, i, attempts)
+		if cause == nil {
 			continue
 		}
-		// Short authored intro lines intentionally use only a few words and
-		// no_voiceover cutaways have no narration surface: the kernel contract
-		// returns zero for both. Every other scene keeps the canonical floor.
-		minimumWords := scriptpkg.NarrationFloorForScene(req.ScriptParams.Segments, scene.ID)
-		if minimumWords == 0 {
-			// Exempt from the long-form floor, not from having copy at all:
-			// one word is enough for an intro, zero is still a placeholder.
-			minimumWords = 1
+		if stepErr := r.failExecutionStep(ctx, exec, scriptStep, cause); stepErr != nil {
+			r.log.Warn("failed to record execution step failure", zap.String("step", scriptStep.Name), zap.Error(stepErr))
 		}
-		text := strings.TrimSpace(scene.Text[req.SourceLanguage])
-		words := scriptpkg.WordCount(text)
-		lower := strings.ToLower(text)
-		placeholder := text == "" || words < minimumWords || lower == fmt.Sprintf("scene %d", i+1) || lower == "the"
-		if placeholder || contaminatedClipNarration(text) {
-			code := "SCRIPT_SCENE_TEXT_INVALID"
-			if contaminatedClipNarration(text) {
-				code = "SCRIPT_SCENE_TEXT_CONTAMINATED"
-			}
-			cause := fmt.Errorf("%s: scene=%d words=%d minimum=%d placeholder=%t", code, i, words, minimumWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
-			if stepErr := r.failExecutionStep(ctx, exec, scriptStep, cause); stepErr != nil {
-				r.log.Warn("failed to record execution step failure", zap.String("step", scriptStep.Name), zap.Error(stepErr))
-			}
-			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
-			return false
-		}
+		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+		return false
 	}
 	return true
 }

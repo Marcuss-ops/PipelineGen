@@ -440,7 +440,12 @@ type SegmentAssetCandidate struct {
 	ContentSHA256         string  `json:"content_sha256,omitempty"`
 	// VerifierVersion names the policy that produced SemanticStatus. Empty is
 	// a discovery-only candidate; a visual verdict always stamps it.
-	VerifierVersion    string `json:"verifier_version,omitempty"`
+	VerifierVersion string `json:"verifier_version,omitempty"`
+	// HasWatermark is the visual-verifier's explicit watermark verdict. A
+	// true value rejects the candidate from every slot; discovery metadata
+	// must never promote a stock preview into a final overlay.
+	HasWatermark       bool   `json:"has_watermark,omitempty"`
+	WatermarkReason    string `json:"watermark_reason,omitempty"`
 	MIMEType           string `json:"mime_type,omitempty"`
 	LocalPath          string `json:"local_path,omitempty"`
 	AcquisitionStatus  string `json:"acquisition_status,omitempty"`

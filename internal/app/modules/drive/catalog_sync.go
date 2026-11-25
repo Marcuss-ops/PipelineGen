@@ -26,13 +26,16 @@ func BuildCatalogSyncService(deps CatalogSyncDeps) (*catalogsync.Service, error)
 		{Name: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Source: "youtube", MediaType: "video", Repo: catalogRepo, Indexer: catalogIndexer},
 		// Artlist assets are reconciled from the stock root after migration.
 		{Name: "sound_effects", RootFolderID: cfg.Drive.SoundEffectsFolder(), Source: "sound_effect", MediaType: "audio", Repo: catalogRepo, Indexer: catalogIndexer},
+		// BGM is its own audio catalog. Without this target a drive.folder.sync
+		// with source=music had no repository and forced the manual ffmpeg mix.
+		{Name: "music", RootFolderID: cfg.Drive.MusicFolder(), Source: "music", MediaType: "audio", Repo: catalogRepo, Indexer: catalogIndexer},
 	}
 	reader := driveUploader
 	if reader == nil {
 		reader = &platformdrive.Uploader{Log: log}
 		log.Warn("catalog sync: Drive reader missing; using nil-service placeholder for disabled-Drive bootstrap")
 	}
-	catalogReader := assetswiring.NewCatalogSyncSourceReader(reader)
+	catalogReader := assetswiring.NewCatalogSyncSourceReader(reader, deps.MediaProber)
 	service, err := catalogsync.NewService(catalogsync.Deps{
 		Reader: catalogReader, Targets: targets, AssetTree: assetTree,
 		Dispatcher: dispatcher, Log: log,

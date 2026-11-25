@@ -1344,6 +1344,82 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 	}
 }
 
+// TestBuildFinalJobPayloadsSendsFinalAudioAndImageChainToWorker pins the
+// remote boundary for the image-SFX lane: the certified final-audio master and
+// an image chain's dedicated render artifact travel in the same payload. The
+// chain is one visual clip, so the compiled plan must contain its artifact
+// once beside the stock base.
+func TestBuildFinalJobPayloadsSendsFinalAudioAndImageChainToWorker(t *testing.T) {
+	chain := capmodel.OverlayItem{
+		ID: "chain-image", SceneID: "scene-1", Kind: "image_chain", TemplateID: "IMAGE_CHAIN",
+		StartMs: 1000, EndMs: 4000, Text: "Tim Cook",
+		AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "chain-asset", SHA256: strings.Repeat("e", 64)}},
+		ImageLayers: []capmodel.OverlayImageLayer{
+			{ID: "layer-a", AssetID: "layer-a", StartMS: 0, EndMS: 1000},
+			{ID: "layer-b", AssetID: "layer-b", StartMS: 1000, EndMS: 3000},
+		},
+	}
+	result := &GenerateResult{
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-chain", VideoID: "run-chain",
+			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+			Items: []capmodel.OverlayItem{chain},
+		},
+		OverlayRender: &RenderReference{
+			JobID: "chain-job", Status: "SUCCEEDED",
+			Items: []OverlayItemRenderReference{{
+				ItemID: chain.ID, JobID: "chain-job", Status: "SUCCEEDED",
+				Artifact: &RenderArtifact{
+					ID: "chain-render", Kind: "video", DriveFileID: "chain-drive",
+					SHA256: strings.Repeat("e", 64), SizeBytes: 50, FrameCount: 72,
+					DurationUS: 3_000_000, MimeType: "video/mp4", CopyEligible: true,
+				},
+			}},
+		},
+		AudioOutput: AudioOutput{
+			CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+				DurationUS: 5_000_000,
+				Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}},
+			},
+			FinalAudio: certifiedFinalAudio(5000),
+		},
+	}
+	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-chain", GenerateRequest{Title: "Chain", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
+	if err != nil {
+		t.Fatalf("BuildFinalJobPayloads: %v", err)
+	}
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if plan.FinalAudio.AssetID != "audio-1" || plan.FinalAudio.Mode != "FINAL_AUDIO_COPY" || plan.FinalAudio.DurationUS != 5_000_000 {
+		t.Fatalf("compiled final audio = %+v, want the certified 5s master", plan.FinalAudio)
+	}
+	chainSegments := 0
+	for _, segment := range plan.VideoTracks[0].Segments {
+		if segment.AssetID == "chain-render" {
+			chainSegments++
+		}
+	}
+	if chainSegments != 1 {
+		t.Fatalf("compiled chain segments = %d, want the image chain once beside the stock base: %+v", chainSegments, plan.VideoTracks[0].Segments)
+	}
+	roles := map[string]int{}
+	for _, raw := range finalize["runtime_assets"].([]any) {
+		roles[raw.(map[string]any)["role"].(string)]++
+	}
+	if roles["final_audio"] != 1 || roles["overlay"] != 1 {
+		t.Fatalf("runtime assets = %#v, want final audio and the chain artifact", finalize["runtime_assets"])
+	}
+	runtimePayload := finalize["runtime_payload"].(map[string]any)
+	overlays := runtimePayload["overlays"].([]any)
+	if len(overlays) != 1 || overlays[0].(map[string]any)["id"] != chain.ID {
+		t.Fatalf("finalize overlays = %#v, want the image chain row", overlays)
+	}
+	runtimeAudio := runtimePayload["runtime_audio"].(map[string]any)
+	if runtimeAudio["voiceover_asset_id"] != "audio-1" {
+		t.Fatalf("runtime audio = %#v, want the certified master identity", runtimeAudio)
+	}
+}
+
 func TestFinalJobIdempotencyKeyStableAcrossLocalRunRetries(t *testing.T) {
 	first := finalJobIdempotencyKey("milton-r8-request", "run-attempt-1")
 	retry := finalJobIdempotencyKey("milton-r8-request", "run-attempt-2")

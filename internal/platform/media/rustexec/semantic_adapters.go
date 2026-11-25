@@ -135,7 +135,7 @@ type visualNumericFact struct {
 }
 
 var visualNumericKinds = map[string]bool{
-	"NUMBER": true, "PERCENT": true, "MONEY": true,
+	"NUMBER": true, "PERCENT": true, "MONEY": true, "FRACTION": true,
 }
 
 type visualAnalyzeResponse struct {

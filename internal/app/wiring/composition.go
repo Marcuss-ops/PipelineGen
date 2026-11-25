@@ -12,6 +12,7 @@ import (
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	artifactsinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/artifacts"
 	historyinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/history"
@@ -122,13 +123,14 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 	}
 
 	catalogSync, err := drivewiring.BuildCatalogSyncService(drivewiring.CatalogSyncDeps{
-		Config:     cfg,
-		MediaDB:    mediaPG,
-		Legacy:     repos.ClipsRepo,
-		Uploader:   driveBundle.DriveUploader,
-		AssetTree:  search.AssetTreeService,
-		Dispatcher: outbox.Dispatcher,
-		Log:        log,
+		Config:      cfg,
+		MediaDB:     mediaPG,
+		Legacy:      repos.ClipsRepo,
+		Uploader:    driveBundle.DriveUploader,
+		AssetTree:   search.AssetTreeService,
+		Dispatcher:  outbox.Dispatcher,
+		MediaProber: rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, mediaConfig.Policy, mediaConfig.Profile, log),
+		Log:         log,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("compose sync: %w", err)

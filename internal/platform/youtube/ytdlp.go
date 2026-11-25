@@ -148,8 +148,10 @@ func (a *YTDLPAdapter) SearchLive(ctx context.Context, query string, limit int, 
 }
 
 // GetVideoInfo implements SearchRunner.GetVideoInfo. Mirrors the
-// previous application-side implementation. Cookies intentionally OFF
-// here (cookies disable the Android client and break n-challenge solving).
+// previous application-side implementation. Cookies follow the canonical
+// resolver: they are passed when a cookie file is configured, because the
+// android_creator client supports cookies (July 2026 cutover); no client
+// downgrade or n-challenge fallback is implied.
 func (a *YTDLPAdapter) GetVideoInfo(ctx context.Context, videoURL string) (VideoInfo, error) {
 	if videoURL == "" {
 		return VideoInfo{}, fmt.Errorf("url is required")
@@ -159,8 +161,9 @@ func (a *YTDLPAdapter) GetVideoInfo(ctx context.Context, videoURL string) (Video
 	}
 
 	// Blocco 5 (July 2026): BaseArgs centralizes cookies, JS runtime,
-	// --no-warnings, and --extractor-args. Cookies are intentionally OFF
-	// for info (disables the Android client and breaks n-challenge solving).
+	// --no-warnings, and --extractor-args. Cookies are passed when the
+	// canonical cookie file is configured (android_creator supports them);
+	// public videos work without any cookie jar.
 	args := append(a.cmdBuilder.BaseArgs(videoURL, a.cmdBuilder.YouTubeCookiesConfigured()),
 		videoURL,
 		"--dump-json",

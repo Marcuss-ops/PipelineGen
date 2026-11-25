@@ -179,7 +179,11 @@ func (c *Client) chatWithRetryAndFallbackDetailed(ctx context.Context, model str
 
 	for _, model := range modelChain {
 		breaker := c.breakerFor(model)
-		if !breaker.AllowRequest() {
+		allowed, admissionErr := breaker.AllowRequestContext(ctx)
+		if admissionErr != nil {
+			return ChatResult{}, admissionErr
+		}
+		if !allowed {
 			logger.Warn("Circuit breaker open, skipping model", zap.String("model", model))
 			continue
 		}
@@ -227,6 +231,13 @@ func (c *Client) chatWithRetryAndFallbackDetailed(ctx context.Context, model str
 			)
 			return ChatResult{}, err
 		}
+		if errors.Is(err, context.Canceled) {
+			// A sibling or caller canceled this request. In particular, a
+			// half-open probe canceled by fan-out teardown must release its slot
+			// without reopening the breaker as if the model had failed.
+			breaker.RecordCancellation()
+			return ChatResult{}, err
+		}
 		lastErr = err
 		breaker.RecordFailure()
 		logger.Warn("All retries failed for model, trying fallback", zap.String("model", model))
@@ -236,6 +247,9 @@ func (c *Client) chatWithRetryAndFallbackDetailed(ctx context.Context, model str
 		return ChatResult{}, fmt.Errorf("all models failed, last error: %w", lastErr)
 	}
 	if !attemptedAny {
+		if err := ctx.Err(); err != nil {
+			return ChatResult{}, err
+		}
 		return ChatResult{}, fmt.Errorf("all models skipped by circuit breaker")
 	}
 	return ChatResult{}, fmt.Errorf("all models failed without specific error")

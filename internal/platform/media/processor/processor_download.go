@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -65,11 +64,13 @@ func (p *Processor) downloadStep(ctx context.Context, input *detail.ProcessInput
 	}
 	if len(input.DownloadSections) > 0 {
 		// Section downloads use the bounded selector; full-source downloads
-		// retain the canonical 1080p selector.
+		// retain the canonical 1080p selector. Timeout stays unset so the
+		// downloader applies the configured
+		// VELOX_YOUTUBE_SECTION_DOWNLOAD_TIMEOUT_SECONDS bound instead of a
+		// hardcoded 10 minutes that would silently cap a long window.
 		dlReq.Format = ytdlp.DefaultYouTubeSectionFormatSelectors
 		dlReq.MergeFormat = "mp4"
 		dlReq.NoPlaylist = true
-		dlReq.Timeout = 10 * time.Minute
 	}
 
 	p.log.Info("downloading asset with yt-dlp", zap.String("id", input.ID), zap.String("url", input.SourceURL), zap.Strings("sections", input.DownloadSections))

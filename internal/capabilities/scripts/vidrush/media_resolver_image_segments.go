@@ -28,7 +28,17 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 
 func (p *MediaResolverImageStage) processInternetImageSegmentsPhase(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, options internetImageProcessOptions) (*PostProcessResult, error) {
 	cacheOnly := options.cacheOnly
-	entityImagesEnabled := options.entityImagesEnabled
+	imageSearchMode := ""
+	if plan != nil {
+		imageSearchMode = strings.TrimSpace(plan.MediaPlan.Extraction.ImageSearchMode)
+	}
+	// Image search policy applies to the entity-image resolver as well as to
+	// the initial VidRush fan-out. In explicit_only mode caller searches remain
+	// available through planSegmentInternetImageDiscovery, but inferred entity
+	// portrait queries must not open a second, broader retrieval channel.
+	entityImagesEnabled := options.entityImagesEnabled &&
+		imageSearchMode != mediadomain.ImageSearchModeExplicitOnly &&
+		imageSearchMode != mediadomain.ImageSearchModeDisabled
 	perQueryLimit := internetImageCandidateLimit(plan)
 
 	// Pre-index scenes by identity so each segment's entity-image query
@@ -43,6 +53,11 @@ func (p *MediaResolverImageStage) processInternetImageSegmentsPhase(ctx context.
 	var warnings []string
 	for _, seg := range input.VidRushSegments {
 		updated := CloneVidRushSegmentResult(seg)
+		if imageSearchMode == mediadomain.ImageSearchModeDisabled {
+			updated.Cache.InternetImages = "BYPASSED"
+			updatedSegments = append(updatedSegments, updated)
+			continue
+		}
 		stockBound := scriptpkg.SceneHasDirectStockBinding(input.SpecScene, input.StockBindings, seg.SceneID, seg.SegmentID, seg.Position)
 		if (stockBound && !stockBoundEntityImageMaterializationEnabled(plan)) ||
 			(!stockBound && !sceneAllowsMediaSearch(input.SpecScene, seg.SceneID, seg.SegmentID, seg.Position)) {
@@ -102,7 +117,7 @@ func (p *MediaResolverImageStage) processInternetImageSegmentsPhase(ctx context.
 		normalizeVidRushSegmentAssets(&updatedSegments[i])
 	}
 	entityImagePolicy := plan.MediaPlan.Extraction.EntityImages
-	entityImagePolicy.Enabled = plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()
+	entityImagePolicy.Enabled = entityImagesEnabled
 	// Entity-image overlays are authored per scene, but their candidate pool is
 	// shared by the entity catalog. Keep repeated catalog candidates attached
 	// here: the overlay binder prefers an unused variant and falls back to a
@@ -186,17 +201,47 @@ func (p *MediaResolverImageStage) resolveInternetImageSegmentQueries(ctx context
 	return updated, warnings, nil
 }
 
+// internetImageFinalizeConcurrency bounds the per-segment finalization pool.
+// Scoring/hydration is an independent per-query operation; the serial loop made
+// a segment pay the sum of its queries' VLM/catalog latency instead of the max.
+const internetImageFinalizeConcurrency = 4
+
 func (p *MediaResolverImageStage) finalizeInternetImageSegmentQueries(ctx context.Context, input ProcessInput, sceneIdx sceneIdentityIndex, updated scriptpkg.VidRushSegmentResult, queryResults []internetImageQueryResult, capacity int) ([]scriptpkg.SegmentAssetCandidate, []string, error) {
-	candidates := make([]scriptpkg.SegmentAssetCandidate, 0, capacity)
+	if len(queryResults) == 0 {
+		return make([]scriptpkg.SegmentAssetCandidate, 0, capacity), nil, nil
+	}
+	type finalizedQuery struct {
+		candidates []scriptpkg.SegmentAssetCandidate
+		warnings   []string
+		err        error
+	}
+	// Finalize the queries concurrently, but keep the result slice indexed by
+	// declaration order: candidate and warning order must not depend on which
+	// query's scorer replied first. The only shared state left is the dedupe
+	// below, which runs on this goroutine after the join.
+	finalized, mapErr := concurrent.Map(ctx, queryResults, internetImageFinalizeConcurrency,
+		func(ctx context.Context, _ int, queryResult internetImageQueryResult) (finalizedQuery, error) {
+			cands, queryWarnings, err := p.finalizeInternetImageQuery(ctx, input, sceneIdx, updated, queryResult)
+			return finalizedQuery{candidates: cands, warnings: queryWarnings, err: err}, err
+		})
 	var warnings []string
-	seen := make(map[string]struct{})
-	for _, queryResult := range queryResults {
-		cands, queryWarnings, err := p.finalizeInternetImageQuery(ctx, input, sceneIdx, updated, queryResult)
-		if err != nil {
-			return nil, warnings, err
+	if mapErr != nil {
+		// concurrent.Map reports the error that cancelled the pool; scan in
+		// declaration order so the caller sees the same first failure the
+		// serial loop would have returned.
+		for _, outcome := range finalized {
+			warnings = append(warnings, outcome.warnings...)
+			if outcome.err != nil {
+				return nil, warnings, outcome.err
+			}
 		}
-		warnings = append(warnings, queryWarnings...)
-		for _, candidate := range cands {
+		return nil, warnings, mapErr
+	}
+	candidates := make([]scriptpkg.SegmentAssetCandidate, 0, capacity)
+	seen := make(map[string]struct{})
+	for _, outcome := range finalized {
+		warnings = append(warnings, outcome.warnings...)
+		for _, candidate := range outcome.candidates {
 			key := vidRushCandidateIdentity(candidate)
 			if key == "" {
 				continue
@@ -283,7 +328,15 @@ func (p *MediaResolverImageStage) resolveInternetImageQueryPhase(
 	if identityErr != nil {
 		return internetImageQueryResult{}, identityErr
 	}
-	if personIdentityQuery && catalogIdentity.CanonicalEntityID != "" && (canonicalID == "" || strings.HasPrefix(canonicalID, "local:")) {
+	if personIdentityQuery {
+		// The topic now participates in person disambiguation, so fence old
+		// first-name-only discovery entries. Otherwise a cached result for
+		// "Natalia" could bypass the corrected "Natalia Augias + Corrado
+		// Augias" provider query.
+		cacheIdentity.IntentKey = normalizeEntityMatch(catalogIdentity.CanonicalName + " " + plan.Topic)
+	}
+	if personIdentityQuery && catalogIdentity.CanonicalEntityID != "" &&
+		(canonicalID == "" || strings.HasPrefix(canonicalID, "local:") || cacheIdentity.IntentKey != normalizeEntityMatch(query)) {
 		canonicalID = catalogIdentity.CanonicalEntityID
 		cacheIdentity.CanonicalEntityID = canonicalID
 		entityCacheKey = entityImageDiscoveryCacheKey(cacheIdentity, queryClass)

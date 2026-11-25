@@ -14,6 +14,23 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	imageSearchProviderTimeout = 6 * time.Second
+	searxImageSearchTimeout    = 8 * time.Second
+)
+
+// searchImageProvider gives one provider a bounded slice of the caller's
+// query budget. The child deadline is cancelled on return and never consumes
+// the parent context, so a slow provider cannot starve the next fallback.
+func searchImageProvider(ctx context.Context, timeout time.Duration, searcher imagesrouting.ImageSearcher, filter imagesrouting.ImageFilter) ([]imagesrouting.ImageSearchResult, error) {
+	if timeout <= 0 {
+		timeout = imageSearchProviderTimeout
+	}
+	providerCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return searcher.Search(providerCtx, filter)
+}
+
 // internetImageSearchAdapter wraps the canonical ImageSearchResolver
 // into the adapters.InternetImageSearcher port.
 type internetImageSearchAdapter struct {
@@ -203,7 +220,7 @@ func (a *internetImageSearchAdapter) searchImageProviders(ctx context.Context, r
 			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
 		}); ok {
 			if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
-				if commons, searchErr := commonsSearcher.Search(queryCtx, filter); searchErr == nil && len(commons) > 0 {
+				if commons, searchErr := searchImageProvider(queryCtx, imageSearchProviderTimeout, commonsSearcher, filter); searchErr == nil && len(commons) > 0 {
 					results = commons
 				}
 			}
@@ -224,7 +241,7 @@ func (a *internetImageSearchAdapter) searchImageProviders(ctx context.Context, r
 			return nil, err
 		}
 		var searchErr error
-		results, searchErr = searcher.Search(queryCtx, filter)
+		results, searchErr = searchImageProvider(queryCtx, imageSearchProviderTimeout, searcher, filter)
 		if searchErr != nil {
 			a.log.Warn("VidRush internet image search failed", zap.String("query", req.Query), zap.Error(searchErr))
 			// A provider refusal is not an empty result. The licensed fallbacks
@@ -254,7 +271,7 @@ func (a *internetImageSearchAdapter) searchImageProviders(ctx context.Context, r
 				commonsFilter.SubjectID = strings.TrimSpace(req.Entity)
 			}
 			if wikiSearcher, wikiErr := explicit.ResolveProvider(providerName); wikiErr == nil {
-				wikiResults, searchErr := wikiSearcher.Search(queryCtx, commonsFilter)
+				wikiResults, searchErr := searchImageProvider(queryCtx, imageSearchProviderTimeout, wikiSearcher, commonsFilter)
 				if searchErr != nil {
 					a.log.Warn("VidRush encyclopedic fallback failed", zap.String("provider", providerName), zap.String("query", commonsFilter.SubjectID), zap.Error(searchErr))
 				} else if len(wikiResults) > 0 && strings.EqualFold(strings.TrimSpace(string(wikiResults[0].Provider)), providerName) {
@@ -271,7 +288,7 @@ func (a *internetImageSearchAdapter) searchImageProviders(ctx context.Context, r
 		variant := strings.TrimSpace(req.Entity) + " portrait"
 		variantFilter := filter
 		variantFilter.SubjectID = variant
-		variantResults, variantErr := searcher.Search(queryCtx, variantFilter)
+		variantResults, variantErr := searchImageProvider(queryCtx, imageSearchProviderTimeout, searcher, variantFilter)
 		if variantErr != nil {
 			a.log.Warn("VidRush portrait image search failed", zap.String("query", variant), zap.Error(variantErr))
 		} else {
@@ -282,7 +299,7 @@ func (a *internetImageSearchAdapter) searchImageProviders(ctx context.Context, r
 				ResolveProvider(string) (imagesrouting.ImageSearcher, error)
 			}); ok {
 				if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
-					commons, searchErr := commonsSearcher.Search(queryCtx, variantFilter)
+					commons, searchErr := searchImageProvider(queryCtx, imageSearchProviderTimeout, commonsSearcher, variantFilter)
 					if searchErr != nil {
 						a.log.Warn("VidRush Wikimedia Commons portrait search failed", zap.String("query", variant), zap.Error(searchErr))
 					} else {
@@ -311,7 +328,7 @@ func (a *internetImageSearchAdapter) searchImageProviders(ctx context.Context, r
 			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
 		}); ok {
 			if fallback, fallbackErr := explicit.ResolveProvider("searxng"); fallbackErr == nil {
-				fallbackResults, searchErr := fallback.Search(queryCtx, filter)
+				fallbackResults, searchErr := searchImageProvider(queryCtx, searxImageSearchTimeout, fallback, filter)
 				if searchErr != nil {
 					a.log.Warn("VidRush SearXNG image fallback failed", zap.String("query", req.Query), zap.Error(searchErr))
 				} else if len(fallbackResults) > 0 {

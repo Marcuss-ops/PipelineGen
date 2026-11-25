@@ -114,8 +114,11 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req contra
 func (r *Runner) assembleSceneTextResult(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, scenes []contract.Scene, generatedTrace scriptpkg.SourceTrace, streamTranslationMetrics *contract.TranslationPipelineMetrics, streamAudioMetrics *contract.AudioPipelineMetrics, hb *stageHeartbeat) (*contract.GenerateResult, bool) {
 	hb.setOp("postprocess_scene_output")
 	bindExplicitClipSceneText(req, scenes)
-	if req.Source.Type == SourceClips && !r.validateClipSceneOutput(ctx, runID, req, exec, scriptStep, scenes) {
-		return nil, false
+	if req.Source.Type == SourceClips {
+		repairAttempts := r.repairShortClipScenes(ctx, runID, req, scenes, hb)
+		if !r.validateClipSceneOutputWithAttempts(ctx, runID, req, exec, scriptStep, scenes, repairAttempts) {
+			return nil, false
+		}
 	}
 	// Literal intro/outro: injected verbatim post-LLM, never rewritten.
 	// They are not part of the LLM prompt and bypass source_text.

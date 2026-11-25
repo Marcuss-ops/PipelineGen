@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ type CircuitBreaker struct {
 	maxFailures     int
 	timeout         time.Duration
 	probeInFlight   bool
+	probeDone       chan struct{}
 }
 
 func NewCircuitBreaker(maxFailures int, timeout time.Duration) *CircuitBreaker {
@@ -40,6 +42,7 @@ func (cb *CircuitBreaker) AllowRequest() bool {
 		if time.Since(cb.lastFailureTime) > cb.timeout {
 			cb.state = "half-open"
 			cb.probeInFlight = true
+			cb.probeDone = make(chan struct{})
 			return true
 		}
 		return false
@@ -48,9 +51,55 @@ func (cb *CircuitBreaker) AllowRequest() bool {
 			return false
 		}
 		cb.probeInFlight = true
+		cb.probeDone = make(chan struct{})
 		return true
 	}
 	return false
+}
+
+// AllowRequestContext admits a request or waits for the active half-open
+// probe to finish. Waiting callers re-check the state after the probe instead
+// of failing the surrounding fan-out while a healthy probe is still running.
+func (cb *CircuitBreaker) AllowRequestContext(ctx context.Context) (bool, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		cb.mu.Lock()
+		switch cb.state {
+		case "closed":
+			cb.mu.Unlock()
+			return true, nil
+		case "open":
+			if time.Since(cb.lastFailureTime) <= cb.timeout {
+				cb.mu.Unlock()
+				return false, nil
+			}
+			cb.state = "half-open"
+			cb.probeInFlight = true
+			cb.probeDone = make(chan struct{})
+			cb.mu.Unlock()
+			return true, nil
+		case "half-open":
+			if !cb.probeInFlight {
+				cb.probeInFlight = true
+				cb.probeDone = make(chan struct{})
+				cb.mu.Unlock()
+				return true, nil
+			}
+			done := cb.probeDone
+			cb.mu.Unlock()
+			select {
+			case <-done:
+				continue
+			case <-ctx.Done():
+				return false, ctx.Err()
+			}
+		default:
+			cb.mu.Unlock()
+			return false, nil
+		}
+	}
 }
 
 func (cb *CircuitBreaker) RecordSuccess() {
@@ -58,7 +107,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	defer cb.mu.Unlock()
 	cb.state = "closed"
 	cb.failureCount = 0
-	cb.probeInFlight = false
+	cb.finishProbeLocked()
 }
 
 func (cb *CircuitBreaker) RecordFailure() {
@@ -69,7 +118,27 @@ func (cb *CircuitBreaker) RecordFailure() {
 	if cb.state == "half-open" || cb.failureCount >= cb.maxFailures {
 		cb.state = "open"
 	}
+	cb.finishProbeLocked()
+}
+
+// RecordCancellation releases a half-open probe that was canceled by its
+// caller or a sibling in a shared fan-out. Cancellation is not evidence that
+// the model failed, so leave the breaker half-open and do not restart its
+// cooldown.
+func (cb *CircuitBreaker) RecordCancellation() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	if cb.state == "half-open" && cb.probeInFlight {
+		cb.finishProbeLocked()
+	}
+}
+
+func (cb *CircuitBreaker) finishProbeLocked() {
 	cb.probeInFlight = false
+	if cb.probeDone != nil {
+		close(cb.probeDone)
+		cb.probeDone = nil
+	}
 }
 
 // modelFallbackChains defines fallback model chains

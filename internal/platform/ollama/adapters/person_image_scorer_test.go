@@ -75,6 +75,32 @@ func TestOllamaPersonImageScorerRejectsCollageAndKeepsSinglePortrait(t *testing.
 	}
 }
 
+func TestOllamaPersonImageScorerWatermarkVerdictSetsExplicitFlag(t *testing.T) {
+	client := &personImageScorerFakeClient{responses: []string{
+		`{"identity_match":true,"single_person_headshot":true,"split_panel_or_collage":false,"watermarked_or_agency_stamp":true,"confidence":0.95}`,
+	}}
+	scorer := NewOllamaPersonImageScorer(client)
+	scorer.download = func(context.Context, scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		return testPersonScorerJPEG(t), "image/jpeg", nil
+	}
+	candidates := []scriptpkg.SegmentAssetCandidate{{
+		Provider:  scriptpkg.VidRushProviderInternetImages,
+		Entity:    "Chiara Poggi",
+		SourceURL: "https://images.example/chiara-poggi-watermarked.jpg",
+	}}
+
+	got, err := scorer.ScoreImageCandidates(context.Background(), "Chiara Poggi", candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].SemanticStatus != "rejected" || !got[0].HasWatermark {
+		t.Fatalf("watermark verdict = (%q, has_watermark=%t), want rejected with explicit flag", got[0].SemanticStatus, got[0].HasWatermark)
+	}
+	if !strings.Contains(got[0].WatermarkReason, "watermark") || !strings.Contains(got[0].QualityReason, "watermark") {
+		t.Fatalf("watermark reasons = (%q, %q), want both contract fields populated", got[0].WatermarkReason, got[0].QualityReason)
+	}
+}
+
 func TestOllamaPersonImageScorerSkipsDefinitiveVerdicts(t *testing.T) {
 	client := &personImageScorerFakeClient{}
 	scorer := NewOllamaPersonImageScorer(client)

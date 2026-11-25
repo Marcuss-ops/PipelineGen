@@ -54,12 +54,16 @@ type Runner struct {
 	vidRushTiming       VidRushTimingRecorder
 	// jobStageSink mirrors durable run stages into job_stage_status rows of
 	// the single-item job; jobStages maps runID -> open job stage state.
-	jobStageSink          job.JobStageStatusStore
-	jobStages             sync.Map
-	vidRushPipeline       *VidRushPipeline
-	phraseAligner         contract.PhraseAligner
-	localizedIdentity     LocalizedIdentityMatcher
-	finalJobSubmitter     FinalJobSubmitter
+	jobStageSink                job.JobStageStatusStore
+	jobProgressSink             JobProgressSink
+	jobStages                   sync.Map
+	vidRushPipeline             *VidRushPipeline
+	phraseAligner               contract.PhraseAligner
+	localizedIdentity           LocalizedIdentityMatcher
+	finalJobSubmitter           FinalJobSubmitter
+	finalJobCapabilityPreflight interface {
+		CheckFinalJobCapabilities(context.Context, contract.GenerateRequest) error
+	}
 	sceneSemanticAnalyzer SceneSemanticAnalyzer
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
@@ -312,22 +316,26 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req contract.Ge
 	backpressure := p.Backpressure
 	coordinatorPlan := plan
 	optionalFixedScenes := 0
-	if plan != nil && !req.ScriptParams.SourceTextVerbatim && (plan.Intro != nil || plan.Outro != nil) {
-		// The non-verbatim streamer commits generated body scenes first. Fixed
-		// intro/outro scenes are materialized in a later phase, after its
-		// VidRush barrier, so including them in this coordinator's required
-		// index set creates a false missing-scene failure. They are still
-		// accepted when the streamer has already committed them.
+	if plan != nil && (plan.Intro != nil || plan.Outro != nil) {
+		// Fixed intro/outro sections can be committed alongside authored
+		// verbatim scenes. Keep them optional at the barrier so its exact body
+		// count remains the authored segment count while allowing those fixed
+		// scene indexes when present.
 		if plan.Intro != nil {
 			optionalFixedScenes++
 		}
 		if plan.Outro != nil {
 			optionalFixedScenes++
 		}
-		streamPlan := *plan
-		streamPlan.Intro = nil
-		streamPlan.Outro = nil
-		coordinatorPlan = &streamPlan
+		if !req.ScriptParams.SourceTextVerbatim {
+			// The non-verbatim streamer commits generated body scenes first.
+			// Fixed sections are materialized later, after its VidRush barrier,
+			// so omit them from its required scene plan.
+			streamPlan := *plan
+			streamPlan.Intro = nil
+			streamPlan.Outro = nil
+			coordinatorPlan = &streamPlan
+		}
 	}
 	coordinator := NewVidRushIncrementalCoordinatorWithBackpressure(enricher, coordinatorPlan, backpressure)
 	coordinator.optionalFixedScenes = optionalFixedScenes
@@ -339,6 +347,9 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req contract.Ge
 	// when the inner barrier returned no error.
 	barrier := VidRushBarrier(coordinator)
 	if p.CertifierPort != nil && plan.HasVisualMediaPlan() {
+		// Fail the run at the first scene that cannot satisfy the image
+		// target instead of waiting for every scene, TTS and render.
+		coordinator.SetImageFanoutSpec(certSpec)
 		certBarrier, err := NewMediaCertBarrier(barrier, p.CertifierPort, certSpec)
 		if err != nil {
 			return nil, fmt.Errorf("vidrush pipeline: %w", err)

@@ -9,6 +9,8 @@ import (
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/renderqueue"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -93,6 +95,7 @@ type overlayRenderOutcome struct {
 // audio stage (the render used to be part of that stage's work, so a resumed run
 // must not re-wait on it).
 func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, resumeIdx int, state audioCompileState, result *contract.GenerateResult) bool {
+	ctx = r.withMapRenderProgress(ctx, runID)
 	outcomes, fanOutErr := r.renderOverlayPlans(ctx, req, resumeIdx, result)
 	if fanOutErr != nil {
 		r.failExecutionStepBestEffort(ctx, exec, state.Step, fanOutErr)
@@ -101,6 +104,60 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req co
 	}
 	r.applyOverlayRenderOutcomes(runID, result, outcomes)
 	return true
+}
+
+// withMapRenderProgress projects the native dynamic-map subprocess lifecycle
+// onto jobs.progress/current_detail. The map renderer reports its own PID and
+// elapsed time; the runner only relays those owner-measured facts. The coarse
+// job stage stays render because the canonical job vocabulary has no map stage;
+// current_detail carries the map-specific phase.
+func (r *Runner) withMapRenderProgress(ctx context.Context, runID string) context.Context {
+	if r == nil || runID == "" {
+		return ctx
+	}
+	// The callback is keyed by run, while jobs.progress is keyed by the
+	// broker job bound to that run. Resolve it once; a run without a bound
+	// job has no aggregate row to update.
+	jobID := r.jobIDForRun(runID)
+	if jobID == "" {
+		return ctx
+	}
+	// A renderer can report its exit after the job context was cancelled. Keep
+	// cancellation from hiding the terminal map event, but bound this best-
+	// effort database write so shutdown cannot block on telemetry.
+	baseCtx := context.WithoutCancel(ctx)
+	return renderqueue.WithMapRenderProgress(ctx, func(progress renderqueue.MapRenderProgress) {
+		detail := fmt.Sprintf("map_render %s pid=%d elapsed=%s",
+			progress.Phase, progress.PID, progress.Elapsed.Round(time.Second))
+		if progress.Result != "" {
+			detail += " result=" + progress.Result
+		}
+		if progress.Phase == "exit" && progress.ExitCode >= 0 {
+			detail += fmt.Sprintf(" exit_code=%d", progress.ExitCode)
+		}
+		if progress.Err != nil {
+			detail += ": " + progress.Err.Error()
+		}
+		aggregate := 72
+		if progress.Phase == "exit" {
+			aggregate = 74
+		}
+		writeCtx, cancel := context.WithTimeout(baseCtx, 2*time.Second)
+		defer cancel()
+		data := map[string]any{
+			"phase":      "map_render",
+			"map_phase":  progress.Phase,
+			"pid":        progress.PID,
+			"elapsed_ms": progress.Elapsed.Milliseconds(),
+		}
+		if progress.Result != "" {
+			data["result"] = progress.Result
+		}
+		if progress.Phase == "exit" && progress.ExitCode >= 0 {
+			data["exit_code"] = progress.ExitCode
+		}
+		r.writeJobProgress(writeCtx, jobID, job.StageRender, aggregate, detail, data)
+	})
 }
 
 // renderOverlayPlanAtBoundary is the ONLY local overlay submission shape.

@@ -12,9 +12,10 @@ package scriptgeneration
 //  3. (fail-closed surface) a barrier render error never fails the run from the
 //     barrier's own goroutine: the fork re-renders the unclaimed language and
 //     the run fails exactly like today's overlay failure does.
-//  4. (no authority) the barrier is nil for final jobs, serial render callers,
-//     missing enqueuers, disabled renders and resumed-past stages; a failing
-//     plan branch submits nothing and claims nothing.
+//  4. (no authority) the barrier is nil for serial render callers, missing
+//     enqueuers, disabled renders and resumed-past stages; a failing plan
+//     branch submits nothing and claims nothing. Final jobs ARE eligible: the
+//     barrier composes their render while the master audio is still encoding.
 
 import (
 	"context"
@@ -30,6 +31,7 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/renderqueue"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -268,6 +270,44 @@ func TestOverlayLanguageBarrier_ClaimsEveryLanguageAndMergesOntoSnapshot(t *test
 	require.Equal(t, 3, len(enqueuer.languages), "no re-submission on a second merge")
 }
 
+type mapProgressBarrierEnqueuer struct{}
+
+func (mapProgressBarrierEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	renderqueue.ReportMapRenderProgress(ctx, renderqueue.MapRenderProgress{Phase: "heartbeat", PID: 5678, Elapsed: 15 * time.Second})
+	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED"}, nil
+}
+
+func TestOverlayLanguageBarrierRelaysMapProgressToJob(t *testing.T) {
+	t.Setenv("OVERLAY_RENDER_LANG_BARRIER", "enabled")
+	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetPhraseAligner(testPhraseAligner{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
+	runner.SetLogger(zap.NewNop())
+	runner.SetOverlayRenderEnqueuer(mapProgressBarrierEnqueuer{})
+	progress := &recordingProgressSink{}
+	runner.SetJobStageSink(&recordingJobStageSink{})
+	runner.SetJobProgressSink(progress)
+	runID, jobID := "run-map-barrier", "job-map-barrier"
+	runner.bindJobStage(runID, jobID)
+
+	barrier := runner.startOverlayRenderBarrier(
+		context.Background(), runID, barrierOverlayBarrierRequest(), ExecutionContext{JobID: jobID},
+		0, barrierOverlaySeed(barrierOverlayLanguagePlans("en", "it", "fr"), nil),
+	)
+	require.NotNil(t, barrier)
+	require.Eventually(t, func() bool {
+		select {
+		case <-barrier.finished:
+			return true
+		default:
+			return false
+		}
+	}, 3*time.Second, time.Millisecond)
+	if progress.last["phase"] != "map_render" || progress.last["map_phase"] != "heartbeat" || progress.last["pid"] != 5678 {
+		t.Fatalf("job progress = %#v, want map heartbeat from overlay submit barrier", progress.last)
+	}
+}
+
 // TestOverlayLanguageBarrier_SkipsSubmissionOnBranchFailure: a failed branch
 // submits nothing and claims nothing; the fork re-renders everything.
 func TestOverlayLanguageBarrier_SkipsSubmissionOnBranchFailure(t *testing.T) {
@@ -301,14 +341,17 @@ func TestOverlayLanguageBarrier_SkipsSubmissionOnBranchFailure(t *testing.T) {
 
 // TestOverlayRenderBarrierInertOnSkipConditions pins the no-authority start
 // contract: the barrier never spawns where the master fork's semantics must
-// stay untouched (final jobs, missing enqueuer, render off, resumed-past).
+// stay untouched (missing enqueuer, render off, resumed-past). Final jobs are
+// explicitly eligible, because their fork keeps draining publications while
+// the barrier only moves the render submission earlier.
 func TestOverlayRenderBarrierInertOnSkipConditions(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_LANG_BARRIER", "enabled")
+	renderEnqueuer := newBarrierOverlayTestRenderer()
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetPhraseAligner(testPhraseAligner{})
 	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
 	runner.SetLogger(zap.NewNop())
-	runner.SetOverlayRenderEnqueuer(newBarrierOverlayTestRenderer())
+	runner.SetOverlayRenderEnqueuer(renderEnqueuer)
 	req := barrierOverlayBarrierRequest()
 	branch := barrierOverlaySeed(barrierOverlayLanguagePlans("en"), nil)
 	exec := ExecutionContext{JobID: "job-barrier-inert"}
@@ -317,7 +360,17 @@ func TestOverlayRenderBarrierInertOnSkipConditions(t *testing.T) {
 
 	finalReq := req
 	finalReq.FinalJob = true
-	require.Nil(t, runner.startOverlayRenderBarrier(context.Background(), "r2", finalReq, exec, 0, branch), "final jobs keep the OnPlanReady scheduling")
+	finalBarrier := runner.startOverlayRenderBarrier(context.Background(), "r2", finalReq, exec, 0, branch)
+	require.NotNil(t, finalBarrier, "final jobs compose their render at the barrier too")
+	close(renderEnqueuer.release)
+	require.Eventually(t, func() bool {
+		select {
+		case <-finalBarrier.finished:
+			return true
+		default:
+			return false
+		}
+	}, 3*time.Second, time.Millisecond)
 
 	noRenderReq := req
 	noRenderReq.Render.Enabled = false
@@ -335,9 +388,10 @@ func TestOverlayRenderBarrierInertOnSkipConditions(t *testing.T) {
 }
 
 // TestOverlayLanguageBarrier_FinalJobEndToEndWithPublish: a final-job run with
-// the gate on completes and certifies the render through the fork path (the
-// barrier is inert there by design), publishing the master audio while the
-// render join is still pending.
+// the gate on submits its overlay render while the master audio render is
+// still held, then lets the OnPlanReady fork apply that certified outcome and
+// publish the master audio. The single enqueuer call proves the barrier and the
+// fork still compose exactly once.
 func TestOverlayLanguageBarrier_FinalJobEndToEndWithPublish(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_LANG_BARRIER", "enabled")
 	e, _, audio, overlay := newOverlayBarrierFixture(t)
@@ -350,17 +404,19 @@ func TestOverlayLanguageBarrier_FinalJobEndToEndWithPublish(t *testing.T) {
 
 	finished := make(chan bool, 1)
 	go func() { finished <- e.audioCompile() }()
-	awaitAudioBarrier(t, audio.started)
-	close(audio.release)
+	// The final-job barrier must submit BEFORE the master render is released.
+	// Waiting for audio.started first would hide the regression this test
+	// exists to catch (a final job that only submits at OnPlanReady).
 	select {
 	case <-overlay.started:
 	case <-time.After(3 * time.Second):
-		t.Fatal("the fork render was never submitted")
+		t.Fatal("the final-job overlay barrier never submitted while the master render was held")
 	}
+	close(audio.release)
+	awaitAudioBarrier(t, audio.drained)
 	close(overlay.release)
-	awaitAudioBarrier(t, overlay.drained)
 	require.True(t, <-finished)
-	require.Equal(t, int32(1), overlay.calls.Load(), "final jobs keep today's single fork submission")
+	require.Equal(t, int32(1), overlay.calls.Load(), "the barrier-certified language is never re-submitted by the fork")
 	require.NotNil(t, e.result.OverlayRender)
 	require.Equal(t, audioPath, e.result.FinalAudio.Path)
 	require.Empty(t, e.result.FinalAudio.DriveFileID, "final-job audio is published through the HTTPS Objectstore handoff")

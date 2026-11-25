@@ -38,6 +38,7 @@ const (
 	StageGeneratingSceneText  = scriptpkg.StageGeneratingSceneText
 	StageTranslatingScenes    = scriptpkg.StageTranslatingScenes
 	StageGeneratingVoiceovers = scriptpkg.StageGeneratingVoiceovers
+	StageRenderingVideo       = scriptpkg.StageRenderingVideo
 	StageCompilingAudio       = scriptpkg.StageCompilingAudio
 	StagePublishingDocuments  = scriptpkg.StagePublishingDocuments
 	StageCompleted            = scriptpkg.StageCompleted

@@ -230,14 +230,16 @@ func buildBuilderSource(item scriptpkg.GenerationItemV2) contract.Source {
 // builderAudioIntent is the validated audio projection consumed by the
 // request builder. It keeps the compat fallbacks in one place.
 type builderAudioIntent struct {
-	mode                    audiocap.AudioMode
-	timing                  *audiocap.TimingRequest
-	mixPolicy               audiocap.AudioMixPolicy
-	backgroundMusic         []scriptpkg.BackgroundMusicIntent
-	soundEffects            []scriptpkg.SoundEffectIntent
-	randomSFXOnClipStart    bool
-	randomSFXOnImageOverlay bool
-	voiceoverLanguages      []contract.Language
+	mode                     audiocap.AudioMode
+	timing                   *audiocap.TimingRequest
+	mixPolicy                audiocap.AudioMixPolicy
+	backgroundMusic          []scriptpkg.BackgroundMusicIntent
+	soundEffects             []scriptpkg.SoundEffectIntent
+	clipStartSoundEffects    []scriptpkg.ClipStartSoundEffectIntent
+	randomSFXOnClipStart     bool
+	randomSFXOnImageOverlay  bool
+	randomSFXOnPhraseOverlay bool
+	voiceoverLanguages       []contract.Language
 }
 
 // resolveBuilderAudio validates the audio mode and resolves the canonical
@@ -271,6 +273,10 @@ func resolveBuilderAudio(item scriptpkg.GenerationItemV2, languages []contract.L
 	if soundEffects == nil {
 		soundEffects = item.Output.Audio.SoundEffects
 	}
+	clipStartSoundEffects := item.Audio.ClipStartSoundEffects
+	if clipStartSoundEffects == nil {
+		clipStartSoundEffects = item.Output.Audio.ClipStartSoundEffects
+	}
 	voiceoverLanguages := item.Audio.VoiceoverLanguages
 	if voiceoverLanguages == nil {
 		voiceoverLanguages = item.Output.Audio.VoiceoverLanguages
@@ -291,14 +297,16 @@ func resolveBuilderAudio(item scriptpkg.GenerationItemV2, languages []contract.L
 		}
 	}
 	return item.Output.GenerateTimeline, builderAudioIntent{
-		mode:                    audioMode,
-		timing:                  timing,
-		mixPolicy:               mixPolicy,
-		backgroundMusic:         backgroundMusic,
-		soundEffects:            soundEffects,
-		randomSFXOnClipStart:    item.Audio.RandomSFXOnClipStart || item.Output.Audio.RandomSFXOnClipStart,
-		randomSFXOnImageOverlay: item.Audio.RandomSFXOnImageOverlay || item.Output.Audio.RandomSFXOnImageOverlay,
-		voiceoverLanguages:      toLanguages(voiceoverLanguages),
+		mode:                     audioMode,
+		timing:                   timing,
+		mixPolicy:                mixPolicy,
+		backgroundMusic:          backgroundMusic,
+		soundEffects:             soundEffects,
+		clipStartSoundEffects:    clipStartSoundEffects,
+		randomSFXOnClipStart:     item.Audio.RandomSFXOnClipStart || item.Output.Audio.RandomSFXOnClipStart,
+		randomSFXOnImageOverlay:  item.Audio.RandomSFXOnImageOverlay || item.Output.Audio.RandomSFXOnImageOverlay,
+		randomSFXOnPhraseOverlay: item.Audio.RandomSFXOnPhraseOverlay || item.Output.Audio.RandomSFXOnPhraseOverlay,
+		voiceoverLanguages:       toLanguages(voiceoverLanguages),
 	}, nil
 }
 
@@ -436,8 +444,10 @@ func applyBuilderOutput(req *contract.GenerateRequest, item scriptpkg.Generation
 	req.MixPolicy = audio.mixPolicy
 	req.BackgroundMusic = audio.backgroundMusic
 	req.SoundEffects = audio.soundEffects
+	req.ClipStartSoundEffects = audio.clipStartSoundEffects
 	req.RandomSFXOnClipStart = audio.randomSFXOnClipStart
 	req.RandomSFXOnImageOverlay = audio.randomSFXOnImageOverlay
+	req.RandomSFXOnPhraseOverlay = audio.randomSFXOnPhraseOverlay
 }
 
 // normalizeImageToggleCoherence turns the explicit "no scene images" pair into

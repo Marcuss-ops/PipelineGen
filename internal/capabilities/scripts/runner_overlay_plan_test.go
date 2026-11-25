@@ -319,6 +319,7 @@ func overlayScene1Annotations() *scriptpkg.SceneAnnotations {
 // brand lanes, and the text-only named entity cards the entity resolver
 // derives from the certified timeline — with no invented phrase backfill.
 func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
+	t.Setenv("PIPELINEGEN_PHRASE_BUDGET_POLICY", capabilityoverlay.PhraseBudgetPolicyWarn)
 	repo := newInMemRunRepository()
 	textGen := newStubTextGenerator([]Scene{
 		{
@@ -438,11 +439,12 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.Equal(t, 0, brands, "verified Apple logo asset suppresses the brand-text fallback")
 	require.Equal(t, 1, namedCards, "Cupertino keeps its text-only place card")
 	require.Len(t, res.OverlayPlan.Items, 9)
-	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
-		Requested:    capabilityoverlay.MaxPhraseOverlaysPerRun,
-		Materialized: 2,
-		Shortfall:    capabilityoverlay.MaxPhraseOverlaysPerRun - 2,
-	}, *res.PhraseOverlayBudget)
+	budget := *res.PhraseOverlayBudget
+	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysPerRun, budget.Requested)
+	require.Equal(t, 2, budget.Materialized)
+	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysPerRun-2, budget.Shortfall)
+	require.Equal(t, capabilityoverlay.PhraseBudgetPolicyWarn, budget.Policy)
+	require.Contains(t, budget.Warning, "missing 3")
 
 	phrase := overlayItemByText(t, res.OverlayPlan.Items, "text_phrase", "Apple changed everything")
 	requireReviewName(t, phrase.ID, "apple-changed-everything", "phrase", "short_phrase")
@@ -718,14 +720,17 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 	require.Equal(t, RunStatusFailed, final.Status, "prepare enqueue failure must fail the run")
 }
 func TestCompileResultOverlayPlanPersistsPhraseBudgetEvenWhenNoPhraseIsGrounded(t *testing.T) {
+	t.Setenv("PIPELINEGEN_PHRASE_BUDGET_POLICY", capabilityoverlay.PhraseBudgetPolicyWarn)
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "A scene without certified timing."}},
 	}}
 	require.NoError(t, compileResultOverlayPlan(context.Background(), result, "en", "plan-1", "project-1", "", GoldenOverlayCanvas, nil, nil))
 	require.Nil(t, result.OverlayPlan)
 	require.NotNil(t, result.PhraseOverlayBudget)
-	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
-		Requested: capabilityoverlay.MaxPhraseOverlaysPerRun,
-		Shortfall: capabilityoverlay.MaxPhraseOverlaysPerRun,
-	}, *result.PhraseOverlayBudget)
+	budget := *result.PhraseOverlayBudget
+	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysPerRun, budget.Requested)
+	require.Zero(t, budget.Materialized)
+	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysPerRun, budget.Shortfall)
+	require.Equal(t, capabilityoverlay.PhraseBudgetPolicyWarn, budget.Policy)
+	require.Contains(t, budget.Warning, "requested 5")
 }

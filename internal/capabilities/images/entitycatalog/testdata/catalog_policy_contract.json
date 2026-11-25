@@ -1,6 +1,6 @@
 {
   "schema": "entity_image_catalog_policy.v1",
-  "verifier_version": "entity-image-visual/v3",
+  "verifier_version": "entity-image-visual/v4",
   "cases": [
     {
       "name": "accepted_current_verifier",

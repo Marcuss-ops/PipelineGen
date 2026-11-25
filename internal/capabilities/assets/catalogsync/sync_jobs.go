@@ -139,17 +139,24 @@ func (s *Service) HandleDriveFolderSyncJob(ctx context.Context, job *appjobs.Job
 	if source == "" {
 		source = "drive"
 	}
-	mediaType := payload.MediaType
+	mediaType := strings.ToLower(strings.TrimSpace(payload.MediaType))
 	if mediaType == "" {
-		mediaType = "clip"
+		mediaType = catalogMediaTypeFor(payload.Name, source)
+	}
+	// "music" is an editorial source/family label, not a canonical asset
+	// media_type. Persist audio tracks as audio so they pass the asset contract.
+	if mediaType == "music" || mediaType == "bgm" {
+		mediaType = "audio"
 	}
 
-	// Resolve the repository and index-state port for the given source.
-	repo := s.resolveRepo(source)
+	// Resolve the repository and index-state port for the given source. A
+	// music/BGM payload that defaulted to the generic "drive" source gets one
+	// deterministic fallback to the registered music aliases, so new bases are
+	// indexed natively instead of forcing the manual ffmpeg mix path.
+	source, repo, indexer := s.resolveMediaTarget(source, mediaType)
 	if repo == nil {
 		return nil, fmt.Errorf("no repository configured for source: %s", source)
 	}
-	indexer := s.resolveIndexer(source)
 	if indexer == nil {
 		return nil, fmt.Errorf("no asset indexer configured for source: %s", source)
 	}
@@ -204,4 +211,36 @@ func (s *Service) resolveIndexer(source string) AssetIndexer {
 		}
 	}
 	return nil
+}
+
+// catalogMediaTypeFor infers the media family when the job payload omits it.
+// The previous unconditional default of "clip" silently indexed music bases as
+// video clips; the name/source tokens are the only evidence the job carries.
+func catalogMediaTypeFor(name, source string) string {
+	for _, value := range []string{name, source} {
+		lowered := strings.ToLower(strings.TrimSpace(value))
+		if strings.Contains(lowered, "music") || strings.Contains(lowered, "bgm") || strings.Contains(lowered, "audio") {
+			return "audio"
+		}
+	}
+	return "clip"
+}
+
+// resolveMediaTarget resolves the repository/indexer pair and, for a music
+// payload that landed on the generic drive source, tries the canonical music
+// source aliases. It returns the source that actually matched so the job result
+// records the resolved identity.
+func (s *Service) resolveMediaTarget(source, mediaType string) (string, CatalogRepository, AssetIndexer) {
+	repo, indexer := s.resolveRepo(source), s.resolveIndexer(source)
+	if repo != nil && indexer != nil {
+		return source, repo, indexer
+	}
+	if strings.EqualFold(strings.TrimSpace(mediaType), "music") || strings.EqualFold(strings.TrimSpace(mediaType), "audio") {
+		for _, alias := range []string{"music", "bgm", "audio"} {
+			if candidateRepo, candidateIndexer := s.resolveRepo(alias), s.resolveIndexer(alias); candidateRepo != nil && candidateIndexer != nil {
+				return alias, candidateRepo, candidateIndexer
+			}
+		}
+	}
+	return source, repo, indexer
 }

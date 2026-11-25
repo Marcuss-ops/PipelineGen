@@ -319,11 +319,13 @@ type DownloadRequest struct {
 	ForceKeyframes      bool
 	StreamCopy          bool // If true, force stream copy (fast but less precise)
 	Timeout             time.Duration
-	// UseCookies enables passing YouTube cookies to yt-dlp.
-	// Cookies are needed for age-restricted or auth-required videos,
-	// but they disable the android client (which doesn't support cookies),
-	// falling back to web-only extraction that may fail n-challenge solving.
-	// Leave false for public/unrestricted videos to keep android+web clients active.
+	// UseCookies enables passing the configured YouTube cookie file to
+	// yt-dlp (--cookies) when one is set. Cookies are needed for
+	// age-restricted, members-only, or otherwise auth-required videos. The
+	// canonical android_creator client supports cookies (July 2026 cutover),
+	// so enabling them no longer disables the client or forces web-only
+	// extraction; the configured player-client ladder still applies. Leave
+	// false for public videos so account cookies are not sent unnecessarily.
 	UseCookies bool
 }
 

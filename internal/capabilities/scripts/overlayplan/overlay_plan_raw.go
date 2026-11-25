@@ -60,6 +60,14 @@ func buildRawOverlayScenes(
 				}
 			}
 		}
+		// `ranking_bar` and `delta_comparison` are production candidates, not
+		// proposal types, so their grounded values never entered the certified
+		// chart lane. Project them here without choosing a layout: the chart
+		// planner still decides whether the numbers form a readable chart.
+		raw.ChartValues = mergeProductionChartValues(
+			raw.ChartValues,
+			productionChartValuesForScene(result, scene.ID),
+		)
 		ann := annotationsForLanguage(scene, language, result.SourceLanguage)
 		if ann != nil {
 			for _, span := range ann.ImportantPhrases {
@@ -84,11 +92,14 @@ func buildRawOverlayScenes(
 // TICKET-48 kept those three validated-but-inert by decision, so this filter
 // stays; reopening it means certifying a layout first.
 var overlayVisualRecipes = map[string]bool{
-	"counter_odometer":  true,
-	"role_lower_third":  true,
-	"route_map":         true,
-	"quote_attribution": true,
-	"source_highlight":  true,
+	"counter_odometer":   true,
+	"role_lower_third":   true,
+	"route_map":          true,
+	"quote_attribution":  true,
+	"source_highlight":   true,
+	"relative_time_jump": true,
+	"cause_effect_card":  true,
+	"process_stepper":    true,
 }
 
 // VisualRecipesForScene forwards every supported grounded recipe of one scene,
@@ -183,6 +194,70 @@ func rawEntities(entities []scriptpkg.AnnotatedEntity, plates capabilityoverlay.
 			})
 		}
 		out = append(out, raw)
+	}
+	return out
+}
+
+// maxSemanticChartValues mirrors the editorial manifest limit: a chart with
+// more than six bars is not readable.
+const maxSemanticChartValues = 6
+
+// productionChartValuesForScene projects the grounded chart items of the
+// semantic production candidates into the certified chart lane. Only the two
+// recipes whose values are a real numeric series qualify; an entity card or a
+// phrase never contributes a chart value.
+func productionChartValuesForScene(result *contract.GenerateResult, sceneID string) []string {
+	if result == nil || result.SemanticConsolidation == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var out []string
+	for _, candidate := range result.SemanticConsolidation.ProductionCandidates {
+		if strings.TrimSpace(candidate.SceneID) != sceneID {
+			continue
+		}
+		if candidate.Recipe != "ranking_bar" && candidate.Recipe != "delta_comparison" {
+			continue
+		}
+		for _, item := range candidate.ChartItems {
+			text := strings.TrimSpace(item.Text)
+			if text == "" {
+				continue
+			}
+			if _, duplicate := seen[text]; duplicate {
+				continue
+			}
+			seen[text] = struct{}{}
+			out = append(out, text)
+			if len(out) >= maxSemanticChartValues {
+				return out
+			}
+		}
+	}
+	return out
+}
+
+// mergeProductionChartValues keeps the already-authorized highlight values and
+// appends the production values once, capped at the manifest limit.
+func mergeProductionChartValues(existing, extra []string) []string {
+	if len(existing) == 0 && len(extra) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(existing)+len(extra))
+	out := make([]string, 0, len(existing)+len(extra))
+	for _, value := range append(append([]string(nil), existing...), extra...) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+		if len(out) >= maxSemanticChartValues {
+			break
+		}
 	}
 	return out
 }

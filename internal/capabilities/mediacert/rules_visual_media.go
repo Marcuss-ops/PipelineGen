@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	script "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -30,13 +31,8 @@ func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 			continue
 		}
 		total++
-		n := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages) + len(seg.Assets.Candidates)
-		if spec.ImagesPerSegment > 0 && n == 0 {
-			violations = append(violations, Violation{
-				SegmentID: seg.SegmentID,
-				Rule:      string(CheckImageFanout),
-				Detail:    fmt.Sprintf("images available = 0, target at least %d", spec.ImagesPerSegment),
-			})
+		if violation := CheckSegmentImageFanout(spec, seg); violation != nil {
+			violations = append(violations, *violation)
 			continue
 		}
 		pass++
@@ -45,6 +41,79 @@ func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 		return passBool(CheckImageFanout, spec.ImagesPerSegment <= 0)
 	}
 	return passCount(CheckImageFanout, pass, total, violations...)
+}
+
+// CheckSegmentImageFanout reports the IMAGE FANOUT violation for one segment,
+// or nil when the segment satisfies the run's image target. It is the single
+// source of truth for both terminal certification and the producer's per-scene
+// fail-fast gate: a scene with zero usable images is rejected as soon as it
+// is materialized, instead of after the whole run has paid for TTS and render.
+func CheckSegmentImageFanout(spec Spec, segment ResultSegment) *Violation {
+	if spec.ImagesPerSegment <= 0 {
+		return nil
+	}
+	if expected, ok := segmentByID(spec)[segment.SegmentID]; ok && expected.StockBound {
+		return nil
+	}
+	if availableImageCount(segment.Assets) > 0 {
+		return nil
+	}
+	return &Violation{
+		SegmentID: segment.SegmentID,
+		Rule:      string(CheckImageFanout),
+		Detail:    fmt.Sprintf("images available = 0, target at least %d", spec.ImagesPerSegment),
+	}
+}
+
+// availableImageCount counts distinct, usable image assets. Candidates are
+// also mirrored in SecondaryImages/GeneratedImages, so summing slice lengths
+// counted the same provider result multiple times. The broad candidate pool
+// may also contain video candidates; only image providers or image MIME types
+// count there.
+func availableImageCount(assets script.SegmentAssetSelection) int {
+	seen := make(map[string]struct{})
+	count := 0
+	add := func(candidate script.SegmentAssetCandidate, imageBySlot bool) {
+		if candidate.LifecycleFailed() {
+			return
+		}
+		assetID := strings.TrimSpace(candidate.AssetID)
+		if assetID == "" {
+			return
+		}
+		if !imageBySlot {
+			provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+			mimeType := strings.ToLower(strings.TrimSpace(candidate.MIMEType))
+			if provider != script.VidRushProviderInternetImages &&
+				provider != script.VidRushProviderImageGeneration &&
+				!strings.HasPrefix(mimeType, "image/") {
+				return
+			}
+		}
+		key := strings.TrimSpace(candidate.ContentSHA256)
+		if key == "" {
+			key = strings.TrimSpace(candidate.SourceURL)
+		}
+		if key == "" {
+			key = assetID
+		}
+		key = strings.ToLower(key)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		count++
+	}
+	for _, candidate := range assets.SecondaryImages {
+		add(candidate, true)
+	}
+	for _, candidate := range assets.GeneratedImages {
+		add(candidate, true)
+	}
+	for _, candidate := range assets.Candidates {
+		add(candidate, false)
+	}
+	return count
 }
 
 // ruleStockIsolation certifies the clip/stock separation positively: a

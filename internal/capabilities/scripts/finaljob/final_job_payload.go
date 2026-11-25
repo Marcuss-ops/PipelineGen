@@ -214,13 +214,14 @@ func finalJobInputFor(result *contract.GenerateResult) *contract.GenerateResult 
 			CanonicalTimeline: result.CanonicalTimeline,
 			FinalAudio:        result.FinalAudio,
 		},
-		Scenes:            result.Scenes,
-		OverlayAudit:      result.OverlayAudit,
-		OverlayPlan:       result.OverlayPlan,
-		OverlayRender:     result.OverlayRender,
-		LocalizedRenders:  result.LocalizedRenders,
-		RemoteFinalJob:    result.RemoteFinalJob,
-		FinalJobPreflight: result.FinalJobPreflight,
+		Scenes:              result.Scenes,
+		OverlayAudit:        result.OverlayAudit,
+		OverlayPlan:         result.OverlayPlan,
+		OverlayRender:       result.OverlayRender,
+		LocalizedRenders:    result.LocalizedRenders,
+		RemoteFinalJob:      result.RemoteFinalJob,
+		FinalJobPreflight:   result.FinalJobPreflight,
+		PhraseOverlayBudget: result.PhraseOverlayBudget,
 	}
 }
 

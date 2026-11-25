@@ -35,9 +35,10 @@
 //   - Ready is not authority: any barrier error is logged and absorbed. The
 //     run is failed by the fork's normal render error path, exactly as it
 //     would fail without this file.
-//   - Off by default (OVERLAY_RENDER_LANG_BARRIER), non-final jobs only: the
-//     final-job publication-drainer and placement normalization keep their
-//     OnPlanReady scheduling untouched.
+//   - Off by default (OVERLAY_RENDER_LANG_BARRIER). It applies to final jobs
+//     too; the final-job publication-drainer and placement normalization still
+//     run in the OnPlanReady fork. The barrier only composes the render early,
+//     so the fork keeps the same output identity and fail-closed surface.
 package scriptgeneration
 
 import (
@@ -86,10 +87,12 @@ type overlayLanguageBarrier struct {
 // startOverlayRenderBarrier spawns the barrier render goroutine for a run on
 // the OnPlanReady overlap path whose plan branch already started. It returns
 // nil — and starts nothing — for every configuration where the master fork
-// must keep today's semantics: overlap path not active, final jobs, no render
-// requested, no enqueuer, stage already resumed past, or the gate off.
+// must keep today's semantics: overlap path not active, no render requested,
+// no enqueuer, stage already resumed past, or the gate off. Final jobs are
+// eligible: the fork still owns publication draining and placement
+// normalization, while the barrier only moves render submission earlier.
 func (r *Runner) startOverlayRenderBarrier(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, resumeIdx int, branch *overlayPlanBranch) *overlayLanguageBarrier {
-	if branch == nil || !overlayLanguageBarrierEnabled() || req.FinalJob {
+	if branch == nil || !overlayLanguageBarrierEnabled() {
 		return nil
 	}
 	if r.overlayRenderEnqueuer == nil || (!req.Render.Enabled && !req.Render.OverlaysOnly) {
@@ -107,7 +110,12 @@ func (r *Runner) startOverlayRenderBarrier(ctx context.Context, runID string, re
 		branch:    branch,
 		finished:  make(chan struct{}),
 	}
-	barrier.ctx, barrier.cancel = context.WithCancel(ctx)
+	// The submit barrier performs the real overlay render before the
+	// OnPlanReady fork. Give it the same job-progress observer as the fork so
+	// dynamic-map subprocess heartbeats are visible in /full regardless of
+	// which sibling wins the render race.
+	mapProgressCtx := r.withMapRenderProgress(ctx, runID)
+	barrier.ctx, barrier.cancel = context.WithCancel(mapProgressCtx)
 	go barrier.run()
 	return barrier
 }

@@ -16,6 +16,13 @@ type TextGenerator interface {
 	GenerateSceneText(ctx context.Context, request contract.GenerateRequest) ([]contract.Scene, error)
 }
 
+// SceneTextRepairer expands one scene that landed below its narration floor.
+// It is deliberately separate from TextGenerator: a generator that cannot
+// repair a single scene keeps the historical fail-closed validation path.
+type SceneTextRepairer interface {
+	RepairSceneText(ctx context.Context, request contract.GenerateRequest, scene contract.Scene, minimumWords int, attempt int) (contract.Scene, error)
+}
+
 type SceneTextTraceGenerator interface {
 	TextGenerator
 	GenerateSceneTextWithTrace(context.Context, contract.GenerateRequest) ([]contract.Scene, scriptpkg.SourceTrace, error)

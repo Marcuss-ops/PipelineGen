@@ -174,12 +174,25 @@ func ValidateImageTreatments(style *scriptpkg.OverlayImageStyleSpec) error {
 	if effects := ImageEffectParams(style.Effects); len(effects) > 0 {
 		specs := make([]cliprender.ClipEffectSpec, 0, len(effects))
 		for _, effect := range style.Effects {
+			// `none` is a wire-level reset sentinel, not an effect in the
+			// cliprender catalog. OverlayStyle.Validate enforces that it is the
+			// only entry and has no parameters; keep it in the projected payload
+			// for the renderer, but do not send it through the effect bounds table.
+			if strings.TrimSpace(effect.Type) == "none" {
+				if len(style.Effects) != 1 {
+					return fmt.Errorf("overlay_style.image.effects: type none cannot be combined with other effects")
+				}
+				continue
+			}
 			specs = append(specs, cliprender.ClipEffectSpec{
 				Type: effect.Type, Amount: effect.Amount, Radius: effect.Radius, Softness: effect.Softness,
 				BlockSize: effect.BlockSize, Size: effect.Size, Angle: effect.Angle, Intensity: effect.Intensity,
 				Amplitude: effect.Amplitude, Wavelength: effect.Wavelength, Seed: effect.Seed, Animated: effect.Animated,
 				Curvature: effect.Curvature, Scale: effect.Scale, Threshold: effect.Threshold, Speed: effect.Speed,
 			})
+		}
+		if len(specs) == 0 {
+			return nil
 		}
 		if err := cliprender.ValidateClipEffects(specs, nil); err != nil {
 			return fmt.Errorf("overlay_style.image.effects: %w", err)

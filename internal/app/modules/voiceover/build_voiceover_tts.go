@@ -120,7 +120,7 @@ func BuildVoiceoverTTSProvider(
 	// The wrapper merges ordered chunks back into one track per language.
 	//
 	// WST-07 (2026-11-23): the CHUNKER now sits INSIDE the rate limiter. Before
-	// this swap the gate was acquired once per sentence chunk (24 words), so one
+	// this swap the gate was acquired once per chunk (24 words at the time), so one
 	// scene paid the TTS queue ~4 times — measured 20.034 acquisitions for 4.919
 	// synthesize calls, 4,57 h of `semaphore_wait/tts`. The unit is the thing
 	// that must be admitted once: it now holds ONE slot for its whole fan-out,

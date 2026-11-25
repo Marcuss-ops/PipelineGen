@@ -64,4 +64,10 @@ type PhraseOverlayBudget struct {
 	Requested    int `json:"requested_phrase_overlays"`
 	Materialized int `json:"materialized_phrase_overlays"`
 	Shortfall    int `json:"phrase_overlay_shortfall"`
+	// Policy and Warning make a non-zero shortfall an explicit, durable fact
+	// instead of a number the operator has to notice. Strict runs fail before
+	// the GPU render; warn runs publish the reason on /full and in the receipt
+	// preflight warnings.
+	Policy  string `json:"phrase_budget_policy,omitempty"`
+	Warning string `json:"phrase_budget_warning,omitempty"`
 }

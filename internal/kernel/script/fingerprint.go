@@ -287,7 +287,7 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 	// pipeline) changes the compiled audio plan and must invalidate the
 	// item identity / cache key. A zero config stays nil so items without
 	// an audio block keep their legacy identity byte for byte.
-	if item.Audio.Mode != "" || item.Audio.Timing != nil || item.Audio.MixPolicy != "" || item.Audio.RandomSFXOnClipStart || item.Audio.RandomSFXOnImageOverlay || len(item.Audio.BackgroundMusic) > 0 || len(item.Audio.SoundEffects) > 0 {
+	if item.Audio.Mode != "" || item.Audio.Timing != nil || item.Audio.MixPolicy != "" || item.Audio.RandomSFXOnClipStart || item.Audio.RandomSFXOnImageOverlay || item.Audio.RandomSFXOnPhraseOverlay || len(item.Audio.BackgroundMusic) > 0 || len(item.Audio.SoundEffects) > 0 || len(item.Audio.ClipStartSoundEffects) > 0 {
 		audioCfg := item.Audio
 		input.AudioIntent = &audioCfg
 	}

@@ -68,6 +68,7 @@ const (
 	StageGeneratingSceneText  = scriptrun.StageGeneratingSceneText
 	StageTranslatingScenes    = scriptrun.StageTranslatingScenes
 	StageGeneratingVoiceovers = scriptrun.StageGeneratingVoiceovers
+	StageRenderingVideo       = scriptrun.StageRenderingVideo
 	StageCompilingAudio       = scriptrun.StageCompilingAudio
 	StagePublishingDocuments  = scriptrun.StagePublishingDocuments
 	StageCompleted            = scriptrun.StageCompleted
@@ -158,6 +159,13 @@ var StageOrder = []Stage{
 // canonical execution order, or -1 if the stage is not in the
 // order (e.g. terminal stages like COMPLETED/FAILED).
 func StageIndex(s Stage) int {
+	// The render fan-out is dispatched from the voiceover phase. Attribute a
+	// render failure to its own stage, but resume at the voiceover index so a
+	// retry re-enters the fan-out that owns the dispatch. Returning -1 would
+	// replay the whole run; a later index would skip the render fan-out.
+	if s == StageRenderingVideo {
+		return StageIndex(StageGeneratingVoiceovers)
+	}
 	for i, st := range StageOrder {
 		if st == s {
 			return i

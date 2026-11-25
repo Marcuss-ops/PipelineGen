@@ -91,6 +91,7 @@ type Canvas struct {
 	// It has no per-length buckets: the planner rotates this pool with the same
 	// deterministic sampler as the short lane, and the pin still wins.
 	LongPhraseMotions    []string `json:"long_phrase_motions,omitempty"`
+	PhraseMotionFamily   string   `json:"phrase_motion_family,omitempty"`
 	ImageMotions         []string `json:"image_motions,omitempty"`
 	ImageWithTextMotions []string `json:"image_with_text_motions,omitempty"`
 	// ImagePresets is the certified `preset.image` vocabulary. The planner's

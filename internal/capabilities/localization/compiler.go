@@ -220,7 +220,13 @@ func localizedRevision(localized LocalizedClipPlan) string {
 	// cliprender.Compile, after this revision is computed. Every cached v4
 	// artifact therefore collided with the new compiled plan and the submit
 	// failed closed with an identity conflict that no rerun could clear.
-	return localized.ClipID + ":" + localized.TargetLanguage + ":overlay-v5:" + fingerprint
+	//
+	// overlay-v6 (2026-11-25): RenderingGen may retain a completed queue row
+	// after its object-store artifact has expired. Such a row replays a valid
+	// certificate with an unusable URL, so localization fails during
+	// materialization and cannot recover by resubmitting the same idempotency
+	// key. Bump the render identity to force a fresh certified artifact.
+	return localized.ClipID + ":" + localized.TargetLanguage + ":overlay-v6:" + fingerprint
 }
 
 // canonicalSHA256 folds an opaque profile/style hash string into a canonical

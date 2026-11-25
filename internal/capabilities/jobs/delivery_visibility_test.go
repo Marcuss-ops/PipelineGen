@@ -39,7 +39,15 @@ const receiptResult = `{
       "job_id": "job_remote_42",
       "status": "SUCCEEDED",
       "worker_id": "worker-51",
-      "sha256": "deadbeef"
+      "sha256": "deadbeef",
+      "timing": {
+        "queue_ms": 12000,
+        "execution_ms": 240000,
+        "wait_ms": 243000,
+        "handoff_ms": 3500,
+        "poll_lag_ms": 1800,
+        "artifact_download_ms": 257400
+      }
     }
   }
 }`
@@ -80,6 +88,9 @@ func TestExtractDeliveryVisibility_ReceiptUnderOutputWrapper(t *testing.T) {
 		t.Fatalf("RemoteFinalJobStatus = %q, want %q (receipt status wins over the requested placeholder)",
 			vis.RemoteFinalJobStatus, "SUCCEEDED")
 	}
+	if vis.RemoteFinalJobTiming["artifact_download_ms"] != float64(257400) {
+		t.Fatalf("RemoteFinalJobTiming = %+v, want the receipt timing block verbatim", vis.RemoteFinalJobTiming)
+	}
 }
 
 func TestExtractDeliveryVisibility_ReceiptAtResultRootAndHistoryFallback(t *testing.T) {
@@ -103,7 +114,9 @@ func TestExtractDeliveryVisibility_NoFabricationOnEmptyInput(t *testing.T) {
 
 	for _, payload := range []string{``, `null`, `not-json`, `{}`, `{"items":[]}`} {
 		vis := ExtractDeliveryVisibility(json.RawMessage(payload), nil)
-		if vis != (DeliveryVisibility{}) {
+		if vis.ChannelID != "" || vis.FinalJob || vis.DriveFolderID != "" ||
+			vis.DriveSubfolderName != "" || vis.RemoteFinalJobID != "" ||
+			vis.RemoteFinalJobStatus != "" || len(vis.RemoteFinalJobTiming) != 0 {
 			t.Fatalf("payload %q: unexpected non-zero projection %+v", payload, vis)
 		}
 	}
@@ -128,7 +141,7 @@ func TestJobDeliveryFieldsStableKeySet(t *testing.T) {
 	fields := (DeliveryVisibility{}).deliveryFields()
 	want := []string{
 		"channel_id", "final_job", "drive_folder_id", "drive_subfolder_name",
-		"remote_final_job_id", "remote_final_job_status",
+		"remote_final_job_id", "remote_final_job_status", "remote_final_job_timing",
 	}
 	if len(fields) != len(want) {
 		t.Fatalf("deliveryFields key count = %d, want %d: %v", len(fields), len(want), fields)

@@ -21,6 +21,7 @@ package overlayplan
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -68,8 +69,18 @@ func CompileResultOverlayPlan(ctx context.Context, result *contract.GenerateResu
 		// that were actually admitted.
 		result.OverlayPlanIntake = plan.Intake
 	}
-	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudgetWithLimit(phraseItems, canvas.MaxPhraseOverlays)
+	phraseBudget, phraseBudgetErr := capabilityoverlay.ApplyPhraseBudgetPolicy(
+		capabilityoverlay.MeasurePhraseOverlayBudgetWithLimit(phraseItems, canvas.MaxPhraseOverlays),
+		phraseOverlayBudgetPolicy(),
+	)
 	result.PhraseOverlayBudget = &phraseBudget
+	if phraseBudgetErr != nil {
+		overlaystatus.Update(planID, func(status *overlaystatus.Status) {
+			status.Stage = "phrase_budget_failed"
+			status.Error = phraseBudgetErr.Error()
+		})
+		return phraseBudgetErr
+	}
 	if err := buildLocalizedOverlayPlans(ctx, result, language, planID, projectID, driveFolderID, canvas, plates, compiler, perSceneImages...); err != nil {
 		return err
 	}
@@ -114,6 +125,18 @@ func CompileResultOverlayPlan(ctx context.Context, result *contract.GenerateResu
 		return err
 	}
 	return nil
+}
+
+// phraseOverlayBudgetPolicy reads the operator policy. Strict fails closed in
+// CompileResultOverlayPlan before any render work; warn (default) publishes the
+// warning on the persisted budget.
+func phraseOverlayBudgetPolicy() string {
+	for _, key := range []string{"PIPELINEGEN_PHRASE_BUDGET_POLICY", "VELOX_PHRASE_BUDGET_POLICY"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return capabilityoverlay.PhraseBudgetPolicyWarn
 }
 
 // SetOverlayDriveJobID keeps public broker identity separate from semantic

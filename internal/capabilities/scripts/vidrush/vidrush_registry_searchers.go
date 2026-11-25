@@ -389,7 +389,11 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidatesForSegment(ctx contex
 		recordEntityImageVisualOutcomes(f.metrics, personCandidates, nil)
 		return append(filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(personCandidates, "person entity image"))), others...), nil
 	}
-	scored, err := resolveEntityVisualCandidates(ctx, f.semanticScorer, "person", "", personCandidates)
+	context := strings.TrimSpace(segment.Text)
+	if len([]rune(context)) > 1200 {
+		context = string([]rune(context)[:1200])
+	}
+	scored, err := resolveEntityVisualCandidates(ctx, f.semanticScorer, "person", context, personCandidates)
 	if err != nil {
 		verified := imagegate.FilterVerifiedPersonImageCandidates(personCandidates)
 		recordEntityImageVisualOutcomes(f.metrics, verified, err)

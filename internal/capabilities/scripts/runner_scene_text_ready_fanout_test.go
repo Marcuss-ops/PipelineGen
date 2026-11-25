@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -200,6 +201,67 @@ func (n *signalingTranslatedNER) Extract(_ context.Context, _ string, text strin
 		n.once.Do(func() { close(n.translatedCalled) })
 	}
 	return nil, nil
+}
+
+// combinedClipPrefetchSource implements both AudioAssetSource and
+// ClipAudioAssetSource, so the runner's prefetch branch sees the clip lane.
+type combinedClipPrefetchSource struct {
+	*prefetchAudioStub
+	*prefetchClipStub
+}
+
+// TestFinalJobPrefetchesClipAudioDuringTTS pins the final-job clip prefetch:
+// TTS is held open, and the original clip track must already be resolving on
+// the prepare branch. The old `if !FinalJob` guard moved every clip download
+// into audio_compile after TTS, which is exactly the serial tail this test
+// fails on.
+func TestFinalJobPrefetchesClipAudioDuringTTS(t *testing.T) {
+	scene := Scene{
+		ID: "scene-0", Index: 0, DurationMS: 1000,
+		Text:  map[Language]string{"en": "A final-job scene with an original clip."},
+		Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
+		Clip:  &ClipReference{ID: "clip-final"},
+	}
+	repo := newInMemRunRepository()
+	vo := newBlockingVoiceoverGenerator()
+	runner := NewRunner(repo, newStubTextGenerator([]Scene{scene}), newStubTranslator(), vo)
+	runner.SetPhraseAligner(testPhraseAligner{})
+	runner.SetOverlayPlanCompiler(passthroughOverlayPlanCompiler{})
+	runner.SetLogger(zap.NewNop())
+	source := &combinedClipPrefetchSource{prefetchAudioStub: &prefetchAudioStub{}, prefetchClipStub: &prefetchClipStub{}}
+	runner.SetAudioAssetSource(source)
+
+	req := defaultTestRequest()
+	req.FinalJob = true
+	req.Languages = []Language{"en"}
+	req.MixPolicy = capabilityaudio.MixVoiceoverWithDuckedClip
+	runID := "run-final-job-clip-prefetch"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runner.Execute(context.Background(), runID, req)
+	}()
+
+	select {
+	case <-vo.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("TTS never started")
+	}
+	require.Eventually(t, func() bool {
+		return source.prefetchClipStub.callCount() > 0
+	}, 2*time.Second, time.Millisecond,
+		"final-job clip audio was not prefetched while TTS was still blocked")
+
+	close(vo.release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not finish after releasing TTS")
+	}
 }
 
 // TestSceneTextReady_TranslatedNLPOverlapsTTS pins the overlap: with TTS held

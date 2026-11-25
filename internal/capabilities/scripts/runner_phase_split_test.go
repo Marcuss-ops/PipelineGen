@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/renderqueue"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -186,6 +187,7 @@ type barrierOverlayRenderer struct {
 	started, release, drained chan struct{}
 	err                       error
 	calls                     atomic.Int32
+	onEnqueue                 func(context.Context)
 }
 
 func (r *barrierOverlayRenderer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
@@ -194,6 +196,9 @@ func (r *barrierOverlayRenderer) EnqueueChrononPlanItems(ctx context.Context, pl
 
 func (r *barrierOverlayRenderer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	r.calls.Add(1)
+	if r.onEnqueue != nil {
+		r.onEnqueue(ctx)
+	}
 	// Mutate the private transport snapshot to prove no alias to the
 	// caller's result survives the launch boundary.
 	plan.Items[0].Text = "private worker mutation"
@@ -289,6 +294,32 @@ func TestAudioOverlayOverlapJoinsBeforeCheckpointAndResumes(t *testing.T) {
 			require.True(t, stage.Independent)
 		}
 	}
+}
+
+func TestAudioOverlapBranchRelaysMapProgressToJob(t *testing.T) {
+	e, _, audio, overlay, _ := newAudioOverlapFixture(t)
+	progress := &recordingProgressSink{}
+	e.r.SetJobStageSink(&recordingJobStageSink{})
+	e.r.SetJobProgressSink(progress)
+	e.r.bindJobStage(e.runID, e.exec.JobID)
+	overlay.onEnqueue = func(ctx context.Context) {
+		renderqueue.ReportMapRenderProgress(ctx, renderqueue.MapRenderProgress{
+			Phase: "heartbeat", PID: 1234, Elapsed: 15 * time.Second,
+		})
+	}
+
+	finished := make(chan bool, 1)
+	go func() { finished <- e.audioCompile() }()
+	awaitAudioBarrier(t, audio.started)
+	awaitAudioBarrier(t, overlay.started)
+	if len(progress.data) == 0 || progress.last["phase"] != "map_render" || progress.last["map_phase"] != "heartbeat" || progress.last["pid"] != 1234 {
+		t.Fatalf("job progress data = %#v, want live map heartbeat from the overlapped render branch", progress.last)
+	}
+	close(audio.release)
+	awaitAudioBarrier(t, audio.drained)
+	close(overlay.release)
+	require.True(t, <-finished)
+	awaitAudioBarrier(t, overlay.drained)
 }
 
 func TestFinalJobAudioSkipsDrivePublishAndFinalizesAfterOverlayJoin(t *testing.T) {

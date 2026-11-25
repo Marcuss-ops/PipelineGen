@@ -108,8 +108,16 @@ type AudioOutputConfig struct {
 	// of every real video clip in the generated timeline. It is opt-in.
 	RandomSFXOnClipStart bool `json:"random_sfx_on_clip_start,omitempty"`
 	// RandomSFXOnImageOverlay pairs an independently mixed cue with each
-	// image overlay. The producer selects concrete assets before queueing.
+	// image overlay (including entity-image cards with text). The producer
+	// selects concrete assets before queueing.
 	RandomSFXOnImageOverlay bool `json:"random_sfx_on_image_overlay,omitempty"`
+	// ClipStartSoundEffects pins one explicit cue at the start of each named
+	// clip. The random clip-start lane still covers every clip left
+	// unclaimed when RandomSFXOnClipStart is true.
+	ClipStartSoundEffects []ClipStartSoundEffectIntent `json:"clip_start_sound_effects,omitempty"`
+	// RandomSFXOnPhraseOverlay pairs a deterministic cue with each phrase
+	// overlay (including each text segment in a fused phrase chain).
+	RandomSFXOnPhraseOverlay bool `json:"random_sfx_on_phrase_overlay,omitempty"`
 	// VoiceoverLanguages limits speech synthesis independently from the
 	// translated output languages. Nil preserves legacy synthesis for the
 	// source and every requested translation; a non-nil list selects the

@@ -37,6 +37,13 @@ func TestClassifyRunFailure_MeasuredMessages(t *testing.T) {
 			want:    job.FailureDeterministic,
 		},
 		{
+			name:    "remote stock window capability is a configuration gap",
+			stage:   "PUBLISHING_DOCUMENTS",
+			code:    "PUBLISHING_DOCUMENTS_FAILED",
+			message: `remote final job: invalid_runtime_assets: stock window preparation capability is unavailable`,
+			want:    job.FailureConfiguration,
+		},
+		{
 			name:    "non-overlapping writer window is a contract verdict",
 			stage:   "PUBLISHING_DOCUMENTS",
 			code:    "PUBLISHING_DOCUMENTS_FAILED",

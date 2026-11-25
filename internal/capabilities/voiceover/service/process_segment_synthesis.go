@@ -19,6 +19,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
@@ -41,8 +42,12 @@ func (u *ProcessSegmentUseCase) synthesizeStage(
 	var ttsOut TTSOutput
 	err := kernobs.MeasureStage(ctx, canonicalStageTTS, func(stageCtx context.Context) error {
 		var synthErr error
+		// The runner already sanitizes before computing the text hash, but the
+		// provider boundary is the last line of defense for callers that build
+		// a command directly (postprocessors, replays). The spoken bytes are
+		// always the sanitized form.
 		ttsOut, synthErr = u.deps.TTSProvider.Synthesize(stageCtx, TTSInput{
-			Text:      cmd.Text,
+			Text:      scriptpkg.SanitizeForSpeech(cmd.Text),
 			Language:  cmd.Language,
 			Voice:     cmd.Voice,
 			Rate:      cmd.TTSRate,

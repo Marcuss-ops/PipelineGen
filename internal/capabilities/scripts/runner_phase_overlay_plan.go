@@ -85,11 +85,17 @@ func (r *Runner) audioCompilePhase(ctx context.Context, runID string, req contra
 		// The fork merges its outcomes before its pending capture, so a language
 		// the barrier composed is never re-submitted; only the fork writes.
 		barrier := state.Barrier
+		// The render overlaps audio compilation on this branch, so it does not
+		// pass through runOverlayRenderPhase (the serial path that normally adds
+		// the map subprocess observer). Attach the same observer here before the
+		// goroutine starts; otherwise map heartbeats reach the process log but
+		// `/api/jobs/{id}/full` stays at the generic "render running" detail.
+		mapProgressCtx := r.withMapRenderProgress(ctx, runID)
 		go func() {
 			var outcome audioOverlayOutcome
 			var barrierOutcomes []overlayRenderOutcome
 			// Explicit sibling ownership survives temporal containment.
-			_, outcome.err = kernobs.MeasureIndependentStageReport(ctx, StageOverlayRender, func(c context.Context) error {
+			_, outcome.err = kernobs.MeasureIndependentStageReport(mapProgressCtx, StageOverlayRender, func(c context.Context) error {
 				if barrier != nil {
 					// Carry the barrier's certified outcomes into the fork's join:
 					// they must reach the durable result exactly like the fork's

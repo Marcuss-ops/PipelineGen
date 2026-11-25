@@ -151,6 +151,11 @@ func (a *preflightAdapter) Run(ctx context.Context, req scriptgen.GenerateReques
 			sfxIDs = append(sfxIDs, s.AssetID)
 		}
 	}
+	for _, cue := range req.ClipStartSoundEffects {
+		if cue.AssetID != "" {
+			sfxIDs = append(sfxIDs, cue.AssetID)
+		}
+	}
 
 	var watermarkID string
 	if req.Render.Watermark != nil && req.Render.Watermark.Enabled {

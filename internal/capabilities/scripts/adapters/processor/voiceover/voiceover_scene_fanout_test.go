@@ -351,3 +351,47 @@ func TestSceneFanout_DefenseInDepth_StatusFailedEmptyError(t *testing.T) {
 		t.Errorf("SceneOutcome.Error: got %q, want substring containing %q (P0-#3: defense-in-depth MUST surface StatusFailed as failed outcome even when err == nil AND the use case drops the error string)", outcomes[0].Error, "StatusFailed")
 	}
 }
+
+// TestSceneFanoutSanitizesTextBeforeHashAndSynthesis pins the batch-path
+// contract: a direct caller that passes Markdown must reach the executor with
+// the same sanitized text whose hash is written to voiceovers.text_hash.
+func TestSceneFanoutSanitizesTextBeforeHashAndSynthesis(t *testing.T) {
+	exec := &fakeItemExecutor{}
+	raw := "**Bold** and [link](https://example.test) with `code`"
+	items := []VoiceoverSceneInput{{SceneIndex: 0, Text: raw, Filename: "scene-0.mp3"}}
+
+	outcomes := RunVoiceoverSceneFanout(context.Background(), exec, "en", items, 1)
+	if len(outcomes) != 1 || outcomes[0].Status != "completed" {
+		t.Fatalf("outcomes = %+v, want one completed scene", outcomes)
+	}
+	want := scriptpkg.SanitizeForSpeech(raw)
+	if len(exec.calls) != 1 {
+		t.Fatalf("executor calls = %d, want 1", len(exec.calls))
+	}
+	call := exec.calls[0]
+	if call.text != want {
+		t.Fatalf("executor text = %q, want sanitized %q", call.text, want)
+	}
+	if call.textHash != voiceoversvc.ComputeTextHash(want) {
+		t.Fatalf("text hash was not computed from the sanitized text")
+	}
+	if strings.Contains(call.text, "**") || strings.Contains(call.text, "](") {
+		t.Fatalf("Markdown reached the executor: %q", call.text)
+	}
+}
+
+func TestSceneFanoutRejectsFormattingOnlyText(t *testing.T) {
+	exec := &fakeItemExecutor{}
+	items := []VoiceoverSceneInput{{SceneIndex: 0, Text: "** ** ` ` ###", Filename: "scene-0.mp3"}}
+
+	outcomes := RunVoiceoverSceneFanout(context.Background(), exec, "en", items, 1)
+	if len(outcomes) != 1 || outcomes[0].Status != "failed" {
+		t.Fatalf("outcomes = %+v, want one failed scene", outcomes)
+	}
+	if !strings.Contains(outcomes[0].Error, "empty after speech sanitization") {
+		t.Fatalf("error = %q, want the sanitization failure", outcomes[0].Error)
+	}
+	if len(exec.calls) != 0 {
+		t.Fatalf("executor calls = %d, want 0 for formatting-only text", len(exec.calls))
+	}
+}

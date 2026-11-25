@@ -246,6 +246,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 
 	// ── 5. Drive: build params + publish via use case ───────────────
 	driveFilename, driveDesc, videoSlug, group := s.buildDriveParams(cmd, md)
+	driveFolderPath := buildDriveFolderPath(group, videoSlug)
 	var pubResult *usecase.PublishClipResult
 	var pubErr error
 	if s.publisher != nil {
@@ -330,7 +331,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	// that ordering opens is exactly why the atomic path exists; it is
 	// retained only so un-wired callers keep their historical behaviour.
 	if s.atomicWriter != nil {
-		if err := s.commitClipAtomically(ctx, cmd, clipID, md, driveFilename, fileHash, fetched.LocalPath, targetFolderID, uploadResult, track); err != nil {
+		if err := s.commitClipAtomically(ctx, cmd, clipID, md, driveFilename, driveFolderPath, fileHash, fetched.LocalPath, targetFolderID, uploadResult, track); err != nil {
 			return nil, err
 		}
 	} else {

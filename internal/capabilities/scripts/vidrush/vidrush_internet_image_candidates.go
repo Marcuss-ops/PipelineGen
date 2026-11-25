@@ -57,7 +57,7 @@ func (f *VidRushProviderFanout) replayInternetImageFanout(ctx context.Context, p
 		outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: nil, allCacheHits: true}
 		return true
 	}
-	if len(cached.Candidates) == 0 && plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	if len(cached.Candidates) == 0 && entityImageSurfaceEnabled(plan) {
 		return false
 	}
 	candidates, verifyErr := f.verifyPersonImageCandidatesForSegment(ctx, workerInput, cached.Candidates)
@@ -203,7 +203,7 @@ func (f *VidRushProviderFanout) searchVidRushImageQuery(ctx context.Context, pla
 	if results == nil {
 		results = []scriptpkg.SegmentAssetCandidate{}
 	}
-	if len(results) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	if len(results) > 0 || !entityImageSurfaceEnabled(plan) {
 		cacheResults := sanitizeVidRushDiscoveryCandidates(results)
 		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "entity_images", entityImageKey(workerInput, query), cacheResults); cacheErr != nil && f.log.Core() != nil {
 			f.log.Warn("VidRush image query cache write failed; retaining live candidates", zap.String("query", query), zap.Error(cacheErr))

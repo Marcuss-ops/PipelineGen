@@ -91,6 +91,11 @@ func TestAudioFingerprint_AudioMutationsChangeIdentity(t *testing.T) {
 			it.Audio.RandomSFXOnImageOverlay = true
 			return it
 		}()},
+		{name: "random_sfx_on_phrase_overlay_enabled", item: func() GenerationItemV2 {
+			it := audioFingerprintItem()
+			it.Audio.RandomSFXOnPhraseOverlay = true
+			return it
+		}()},
 		{name: "audio_mode_changed", item: func() GenerationItemV2 {
 			it := audioFingerprintItem()
 			it.Audio.Mode = "COMBINED_TIMELINE"

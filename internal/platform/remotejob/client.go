@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -39,6 +40,11 @@ type Result struct {
 	// never inferred from local wall time, because the render outlives any one
 	// attempt and a local clock cannot prove where the time went.
 	Timing Timing
+}
+
+// Capabilities is the live runtime inventory returned by the Master.
+type Capabilities struct {
+	Capabilities []string `json:"capabilities"`
 }
 
 // WorkerTiming is the worker-side split of one remote render, relayed by the
@@ -200,6 +206,43 @@ func (c *Client) Cancel(ctx context.Context, jobID string) error {
 func (c *Client) ready() error {
 	if c == nil || c.HTTP == nil || c.BaseURL == "" || c.Token == "" {
 		return fmt.Errorf("remote job client is not configured")
+	}
+	return nil
+}
+
+// CheckCapabilities verifies required runtime features before an expensive
+// local pipeline starts. The Master worker inventory is the source of truth;
+// unsupported features are never inferred from a successful HTTP response.
+func (c *Client) CheckCapabilities(ctx context.Context, required ...string) error {
+	if err := c.ready(); err != nil {
+		return err
+	}
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var response Capabilities
+	if err := c.request(checkCtx, http.MethodGet, "/api/v1/jobs/capabilities", nil, &response, http.StatusOK); err != nil {
+		return fmt.Errorf("read remote worker capability inventory: %w", err)
+	}
+	available := make(map[string]struct{}, len(response.Capabilities))
+	for _, capability := range response.Capabilities {
+		name := strings.TrimSpace(capability)
+		if name != "" {
+			available[name] = struct{}{}
+		}
+	}
+	missing := make([]string, 0, len(required))
+	for _, capability := range required {
+		name := strings.TrimSpace(capability)
+		if name == "" {
+			continue
+		}
+		if _, ok := available[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return &CapabilityUnavailableError{StatusCode: http.StatusOK, Code: "required_capability_missing", Message: strings.Join(missing, ", ")}
 	}
 	return nil
 }
@@ -515,6 +558,9 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 		body := strings.TrimSpace(string(data))
 		if planErr := parsePlanValidationError(resp.StatusCode, body); planErr != nil {
 			return planErr
+		}
+		if capabilityErr := parseCapabilityUnavailableError(resp.StatusCode, body); capabilityErr != nil {
+			return capabilityErr
 		}
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
 	}

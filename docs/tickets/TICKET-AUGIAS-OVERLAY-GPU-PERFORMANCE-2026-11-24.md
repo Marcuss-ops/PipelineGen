@@ -81,3 +81,27 @@ flow should report and handle deliberately.
   published run reports timings that reconcile with total worker duration.
 - A request for 45 short phrases either materializes 45 or returns an explicit
   shortfall before publication.
+
+## Remediation progress (2026-11-24)
+
+The main PipelineGen source now has these protections in place:
+
+- `effects: [{"type":"none"}]` is accepted as the explicit empty image-effect
+  stack by `internal/kernel/script/overlay_style_spec.go`; this fixes the
+  schema/validator mismatch in the current source tree.
+- Narration Markdown emphasis markers are stripped before voiceover work is
+  constructed in `internal/capabilities/scripts/runner_phase_voiceover.go`.
+- Phrase-budget shortfall is written as a preflight warning before final-job
+  handoff in `internal/capabilities/scripts/finaljob/final_job_payload_builder.go`.
+- The original-clip `no_voiceover` contract is materialized before voiceover
+  fan-out in `runner_scene_materialization.go`.
+- The remote final-job artifact download already records duration, byte count,
+  and cache hit; Drive upload uses the resumable uploader implementation.
+
+The ticket remains open. This review did not verify deployment parity, and the
+major GPU items remain: overlay child jobs do not yet carry the request's
+`require_gpu` policy into RenderingGen, the Go preflight does not validate the
+complete Chronon effect stack against the selected runtime capabilities, and
+VRAM admission is still per-process rather than coordinated across all
+Chronon/Ollama users of a device. A real two-run Augias GPU acceptance render
+is still required.

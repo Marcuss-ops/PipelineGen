@@ -66,6 +66,7 @@ func phraseCeilingFixture(t *testing.T) *GenerateResult {
 // TestCompileResultOverlayPlanBudgetEchoesCallerCeiling certifies the reported
 // phrase budget is measured against the caller's ceiling, not the default.
 func TestCompileResultOverlayPlanBudgetEchoesCallerCeiling(t *testing.T) {
+	t.Setenv("PIPELINEGEN_PHRASE_BUDGET_POLICY", capabilityoverlay.PhraseBudgetPolicyWarn)
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "A scene without certified timing."}},
 	}}
@@ -74,8 +75,10 @@ func TestCompileResultOverlayPlanBudgetEchoesCallerCeiling(t *testing.T) {
 	require.NoError(t, compileResultOverlayPlan(context.Background(), result, "en", "plan-budget", "project-budget", "", canvas, nil, nil))
 	require.Nil(t, result.OverlayPlan)
 	require.NotNil(t, result.PhraseOverlayBudget)
-	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{
-		Requested: capabilityoverlay.MaxPhraseOverlaysHardLimit,
-		Shortfall: capabilityoverlay.MaxPhraseOverlaysHardLimit,
-	}, *result.PhraseOverlayBudget)
+	budget := *result.PhraseOverlayBudget
+	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysHardLimit, budget.Requested)
+	require.Zero(t, budget.Materialized)
+	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysHardLimit, budget.Shortfall)
+	require.Equal(t, capabilityoverlay.PhraseBudgetPolicyWarn, budget.Policy)
+	require.Contains(t, budget.Warning, "requested 50")
 }

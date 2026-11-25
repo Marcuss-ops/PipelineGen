@@ -183,6 +183,9 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo CatalogRepositor
 			Source:    asset.Source(target.Source),
 			Category:  category,
 			Tags:      []string{},
+			SearchText: strings.TrimSpace(strings.Join([]string{
+				childName, target.Source, target.MediaType, childPath,
+			}, " ")),
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
@@ -217,6 +220,35 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo CatalogRepositor
 		clip.SetMetadataString("mime_type", child.MimeType)
 		if child.MimeType != folderMimeType {
 			clip.SetContentHash(remoteFileFingerprint(child))
+			if existing, getErr := repo.GetClip(ctx, clip.ID); getErr == nil && existing != nil {
+				if clip.ContentHash() == "" && existing.ContentHash() != "" {
+					clip.SetContentHash(existing.ContentHash())
+				}
+				if existing.Duration > 0 {
+					clip.Duration = existing.Duration
+				}
+			}
+			needsDuration := strings.EqualFold(childMediaType, "audio") && clip.Duration <= 0
+			if clip.ContentHash() == "" || needsDuration {
+				inspector, ok := s.reader.(ContentInspector)
+				if !ok {
+					s.log.Warn("new Drive asset needs content inspection but the source reader cannot inspect it", zap.String("id", child.ID))
+					failed++
+					continue
+				}
+				hash, duration, inspectErr := inspector.InspectContent(ctx, child.ID, childName)
+				if inspectErr != nil {
+					s.log.Warn("failed to inspect newly discovered Drive file", zap.String("id", child.ID), zap.Error(inspectErr))
+					failed++
+					continue
+				}
+				if clip.ContentHash() == "" {
+					clip.SetContentHash(hash)
+				}
+				if needsDuration {
+					clip.Duration = duration
+				}
+			}
 		}
 
 		if err := s.upsertPreservingExisting(ctx, repo, indexer, clip); err != nil {

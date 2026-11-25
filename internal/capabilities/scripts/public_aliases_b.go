@@ -37,6 +37,7 @@ const (
 )
 
 var (
+	ErrFinalJobCapabilityMissing    = finaljob.ErrFinalJobCapabilityMissing
 	ErrFinalJobInvalidPlan          = finaljob.ErrFinalJobInvalidPlan
 	ErrFinalJobPending              = finaljob.ErrFinalJobPending
 	ErrFinalJobReceiptCheckpoint    = finaljob.ErrFinalJobReceiptCheckpoint
@@ -341,6 +342,7 @@ const (
 	StageGeneratingSceneText  = runstate.StageGeneratingSceneText
 	StageTranslatingScenes    = runstate.StageTranslatingScenes
 	StageGeneratingVoiceovers = runstate.StageGeneratingVoiceovers
+	StageRenderingVideo       = runstate.StageRenderingVideo
 	StageCompilingAudio       = runstate.StageCompilingAudio
 	StagePublishingDocuments  = runstate.StagePublishingDocuments
 	StageCompleted            = runstate.StageCompleted

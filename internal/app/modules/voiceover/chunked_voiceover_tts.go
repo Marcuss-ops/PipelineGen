@@ -14,25 +14,25 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// voiceoverChunkMaxWords is the LATENCY granularity: each provider request
-// carries at most one sentence-sized chunk (~1 sentence, 24 words cap so a
-// long sentence still splits). This is a 2026-10-29 paradigm change: with the
-// former 400-word cap the split stayed inactive for every real scene
-// (20–40 words) and synthesis remained a single long streaming request
-// (measured p50 8s/call, wall p50 102s/run). Sentence-sized chunks fan out
-// concurrently and the critical wait becomes max(sentence) + merge instead
-// of sum(whole scene). The hard service request limit (400 words) is far
-// above this value, so the original protection is unaffected.
-const voiceoverChunkMaxWords = 24
+// voiceoverChunkMaxWords is the synthesis granularity: one provider request
+// carries a whole paragraph of complete sentences (about 4–5 sentences, up
+// to 120 words) so every chunk keeps enough prosodic context to sound
+// natural. The former 24-word cap cut sentences mid-clause and made the
+// voice choppy. A 600-word scene still fans out into 5–6 concurrent requests,
+// so the latency win of chunking is preserved; the hard service request limit
+// (400 words) stays comfortably above this value.
+const voiceoverChunkMaxWords = 120
 
 // chunkedTTSProvider keeps each provider request below the speech service's
-// request limit AND at sentence-level granularity (see
-// voiceoverChunkMaxWords: latency paradigm 2026-10-29), then joins the
-// resulting audio in source order. The outer voiceover use case still
-// performs silence removal and Drive publication once on the merged track.
-// A failed chunk fails OPEN to the whole-scene synthesis (single requesting
-// path with the full repair machinery), so the streaming-per-scene behaviour
-// always remains available as the safety net.
+// request limit AND at paragraph-level granularity (see
+// voiceoverChunkMaxWords), then joins the resulting audio in source order.
+// The splitter never cuts a sentence that fits the cap: a chunk boundary is
+// always a sentence boundary, and an oversized sentence is divided at
+// commas/semicolons before falling back to a word-boundary cut. The outer
+// voiceover use case still performs silence removal and Drive publication
+// once on the merged track. A failed chunk fails OPEN to the whole-scene
+// synthesis (single requesting path with the full repair machinery), so the
+// streaming-per-scene behaviour always remains available as the safety net.
 type chunkedTTSProvider struct {
 	inner       voiceover.TTSProvider
 	merger      audioChunkMerger
@@ -184,46 +184,115 @@ func splitVoiceoverWords(text string, maxWords int) []string {
 		return []string{""}
 	}
 
-	// Build sentence-sized units first. This keeps normal prose boundaries
-	// intact; oversized sentences are split by words in the packing step.
-	units := make([][]string, 0)
-	unit := make([]string, 0)
-	for _, word := range words {
-		unit = append(unit, word)
-		if strings.HasSuffix(word, ".") || strings.HasSuffix(word, "!") || strings.HasSuffix(word, "?") || strings.HasSuffix(word, ":") {
-			units = append(units, unit)
-			unit = nil
+	chunks := make([]string, 0)
+	current := make([]string, 0, maxWords)
+	flush := func() {
+		if len(current) == 0 {
+			return
 		}
-	}
-	if len(unit) > 0 {
-		units = append(units, unit)
+		chunks = append(chunks, strings.Join(current, " "))
+		current = make([]string, 0, maxWords)
 	}
 
-	var chunks []string
-	current := make([]string, 0, maxWords)
-	for _, wordsUnit := range units {
-		for len(wordsUnit) > 0 {
-			space := maxWords - len(current)
-			if space == 0 {
-				chunks = append(chunks, strings.Join(current, " "))
-				current = make([]string, 0, maxWords)
-				space = maxWords
+	for _, sentence := range voiceoverSentences(words) {
+		// Never let a sentence straddle two chunks: if it does not fit in
+		// the current chunk, close the chunk on the previous sentence.
+		if len(sentence) > maxWords {
+			flush()
+			for _, part := range splitVoiceoverSentence(sentence, maxWords) {
+				chunks = append(chunks, strings.Join(part, " "))
 			}
-			n := len(wordsUnit)
-			if n > space {
-				n = space
-			}
-			current = append(current, wordsUnit[:n]...)
-			wordsUnit = wordsUnit[n:]
-			if len(current) == maxWords {
-				chunks = append(chunks, strings.Join(current, " "))
-				current = make([]string, 0, maxWords)
-			}
+			continue
+		}
+		if len(current)+len(sentence) > maxWords {
+			flush()
+		}
+		current = append(current, sentence...)
+	}
+	flush()
+	return chunks
+}
+
+// voiceoverSentences groups words into sentences. Only ., ! and ? close a
+// sentence; a colon introduces a clause and must not become a chunk boundary.
+func voiceoverSentences(words []string) [][]string {
+	sentences := make([][]string, 0)
+	sentence := make([]string, 0)
+	for _, word := range words {
+		sentence = append(sentence, word)
+		if endsVoiceoverSentence(word) {
+			sentences = append(sentences, sentence)
+			sentence = nil
 		}
 	}
-	if len(current) > 0 {
-		chunks = append(chunks, strings.Join(current, " "))
+	if len(sentence) > 0 {
+		sentences = append(sentences, sentence)
 	}
+	return sentences
+}
+
+func endsVoiceoverSentence(word string) bool {
+	word = strings.TrimRight(word, `"'»”’)`)
+	if word == "" {
+		return false
+	}
+	switch word[len(word)-1] {
+	case '.', '!', '?':
+		return true
+	}
+	return false
+}
+
+func endsVoiceoverClause(word string) bool {
+	word = strings.TrimRight(word, `"'»”’)`)
+	if word == "" {
+		return false
+	}
+	return word[len(word)-1] == ',' || word[len(word)-1] == ';'
+}
+
+// splitVoiceoverSentence divides a sentence that exceeds maxWords. It keeps
+// clauses (comma/semicolon boundaries) intact wherever possible. A clause
+// that is itself over the cap has no punctuation left to respect, so it is
+// cut at the word limit: that fallback is the only way to honour the
+// provider request cap.
+func splitVoiceoverSentence(sentence []string, maxWords int) [][]string {
+	clauses := make([][]string, 0)
+	clause := make([]string, 0)
+	for _, word := range sentence {
+		clause = append(clause, word)
+		if endsVoiceoverClause(word) {
+			clauses = append(clauses, clause)
+			clause = nil
+		}
+	}
+	if len(clause) > 0 {
+		clauses = append(clauses, clause)
+	}
+
+	chunks := make([][]string, 0, len(clauses))
+	current := make([]string, 0, maxWords)
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		chunks = append(chunks, current)
+		current = make([]string, 0, maxWords)
+	}
+	for _, clause := range clauses {
+		for len(clause) > maxWords {
+			flush()
+			part := make([]string, maxWords)
+			copy(part, clause[:maxWords])
+			chunks = append(chunks, part)
+			clause = clause[maxWords:]
+		}
+		if len(current) > 0 && len(current)+len(clause) > maxWords {
+			flush()
+		}
+		current = append(current, clause...)
+	}
+	flush()
 	return chunks
 }
 

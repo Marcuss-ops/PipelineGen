@@ -191,10 +191,11 @@ func fitAudioIntentsToScene(intents []audio.AudioIntent, durationUS int64) []aud
 	if durationUS <= 0 || len(intents) == 0 {
 		return intents
 	}
-	out := append([]audio.AudioIntent(nil), intents...)
-	for i := range out {
-		intent := &out[i]
+	out := make([]audio.AudioIntent, 0, len(intents))
+	for _, original := range intents {
+		intent := original
 		if intent.Mode != audio.AudioClip {
+			out = append(out, intent)
 			continue
 		}
 		if intent.TimelineOffsetUS < 0 {
@@ -210,6 +211,7 @@ func fitAudioIntentsToScene(intents []audio.AudioIntent, durationUS int64) []aud
 		if intent.SourceDurationUS > intent.TimelineDurationUS {
 			intent.SourceDurationUS = intent.TimelineDurationUS
 		}
+		out = append(out, intent)
 	}
 	return out
 }

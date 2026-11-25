@@ -150,6 +150,11 @@ type GenerateResult struct {
 	// of unique grounded phrases materialized into OverlayPlan. It is result
 	// telemetry and is deliberately excluded from the renderer wire contract.
 	PhraseOverlayBudget *capabilityoverlay.PhraseOverlayBudget `json:"phrase_overlay_budget,omitempty"`
+	// TimingProjectionSkips records every surface whose word timing could not
+	// be projected onto the overlay plan. It used to exist only as a Zap line,
+	// so an operator could see fewer phrases than requested without seeing
+	// which scene/surface was discarded or why.
+	TimingProjectionSkips []TimingProjectionSkip `json:"timing_projection_skips,omitempty"`
 	// OverlayPlanIntake explains the sealed OverlayPlan against the run's
 	// request: the budgets the canvas allowed, how many candidate items each
 	// producer supplied, how many the plan kept, and which admission stage
@@ -257,6 +262,14 @@ type GenerateResult struct {
 	// without it the `render` stage would never reach a parent job or the run
 	// result. Persisted with the run and projected by DurableResultToDomain.
 	StageProgress map[string]job.StageProgress `json:"stage_progress,omitempty"`
+}
+
+// TimingProjectionSkip is the durable diagnosis of one unanchored timing
+// surface. Cause is the underlying error text; it is not a second error path.
+type TimingProjectionSkip struct {
+	SceneID string `json:"scene_id"`
+	Surface string `json:"surface"`
+	Cause   string `json:"cause,omitempty"`
 }
 
 // LanguageDeliveryResult is the parent-run index for one completed target.

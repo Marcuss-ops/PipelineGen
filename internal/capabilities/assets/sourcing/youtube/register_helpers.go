@@ -100,6 +100,29 @@ func (s *Service) warnNameCollision(ctx context.Context, name string) {
 	}
 }
 
+// youtubeUncategorizedGroup mirrors the delivery layer's technical fallback
+// (platform/delivery.YouTubeClipPath). The register path needs the same
+// fallback to persist a truthful folder_path when the caller supplied no
+// group/category, instead of writing the folder ID into the path column.
+const youtubeUncategorizedGroup = "youtube_uncategorized"
+
+// buildDriveFolderPath returns the clips-root-relative folder path the
+// publisher uses: <group>/<videoSlug>. It is the DB folder_path value, not
+// the Drive folder ID; the writer falls back to FolderID only when this is
+// empty. The group fallback matches YouTubeClipPath's Group → Category →
+// youtube_uncategorized chain.
+func buildDriveFolderPath(group, videoSlug string) string {
+	videoSlug = strings.Trim(strings.TrimSpace(videoSlug), "/")
+	if videoSlug == "" {
+		return ""
+	}
+	group = strings.Trim(strings.TrimSpace(group), "/")
+	if group == "" {
+		group = youtubeUncategorizedGroup
+	}
+	return group + "/" + videoSlug
+}
+
 // buildDriveParams derives the Drive filename, description, video slug, and
 // group from the resolved metadata and command.
 //
@@ -281,7 +304,7 @@ func (s *Service) commitClipAtomically(
 	cmd sourcing.RegisterClipCommand,
 	clipID string,
 	md *usecase.ResolvedMetadata,
-	driveFilename, fileHash, localPath, targetFolderID string,
+	driveFilename, driveFolderPath, fileHash, localPath, targetFolderID string,
 	uploadResult *sourcing.DriveUploadResult,
 	track detail.TextTrack,
 ) error {
@@ -335,7 +358,7 @@ func (s *Service) commitClipAtomically(
 	// location ONLY for a non-empty file id (a phantom primary location with an
 	// empty external_id used to hide exactly this case).
 	clipAsset.Drive.FolderID = targetFolderID
-	clipAsset.Drive.FolderPath = targetFolderID
+	clipAsset.Drive.FolderPath = driveFolderPath
 
 	superCmd := localized.CommitLocalizedClipCommand{
 		Clip:       clipAsset,
@@ -461,8 +484,10 @@ func (s *Service) buildResult(input buildResultInput) *sourcing.RegisterClipResu
 	// media_assets. targetFolderID comes from the Publisher (PublishClipToDrive
 	// returns the resolved folder_id).
 	res.DriveFolderID = input.TargetFolderID
-	if input.TargetFolderID != "" && input.Group != "" && input.VideoSlug != "" {
-		res.DrivePath = fmt.Sprintf("clips/%s/%s", input.Group, input.VideoSlug)
+	if input.TargetFolderID != "" {
+		if folderPath := buildDriveFolderPath(input.Group, input.VideoSlug); folderPath != "" {
+			res.DrivePath = "clips/" + folderPath
+		}
 	}
 	res.DeliveryStatus = input.DeliveryStatus
 	if input.DeliveryStatus == asset.AssetPublishFailed {

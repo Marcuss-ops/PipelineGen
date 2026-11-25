@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // MergeAudioCompileTimings re-asserts the subtimings that the compile
@@ -28,11 +30,23 @@ func MergeAudioCompileTimings(compiled scriptaudio.AudioCompileTimings, measured
 	return compiled
 }
 
+// clipAudioPrepareConcurrency bounds the clip-audio materialization pool. The
+// resolutions are object-store/network I/O, not CPU work, so the pool is
+// deliberately deeper than the former serial loop while still bounded: one
+// plan cannot open an unbounded number of streams at once.
+const clipAudioPrepareConcurrency = 8
+
 // PrepareClipAudioAssets seals the physical source audio contract before the
 // canonical timeline is compiled. VOICEOVER_DUCKED_CLIP cannot be compiled
 // from a Drive URL or a semantic clip ID: the renderer needs a verified local
 // file. Existing local paths are reused; missing paths are materialized once
 // through the optional clip resolver.
+//
+// Resolution runs as a bounded fan-out. The IDs are known before any TTS
+// finishes, so waiting for one clip before starting the next was pure latency:
+// every independent clip was serialized behind the previous download. The
+// scene/projection mutation below stays single-threaded and in declaration
+// order, so the compiled plan is byte-identical to the serial version.
 func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult, source contract.ClipAudioAssetSource, policy capabilityaudio.AudioMixPolicy) (int64, error) {
 	if result == nil {
 		return 0, nil
@@ -48,6 +62,16 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 		return 0, nil
 	}
 	started := time.Now()
+
+	// Collect the clips that actually need the resolver. The serial validation
+	// stays here, before any goroutine starts, so wiring errors keep failing
+	// before I/O is issued.
+	type clipAudioPrepareTask struct {
+		scene *contract.Scene
+		clip  *contract.ClipReference
+		fixed bool
+	}
+	var tasks []clipAudioPrepareTask
 	for i := range result.Scenes {
 		scene := &result.Scenes[i]
 		clips := scene.Clips
@@ -84,28 +108,96 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 			if source == nil {
 				return 0, fmt.Errorf("scene %s clip %s requires original audio, but clip materializer is not wired", scene.ID, clip.ID)
 			}
-			resolved, err := source.ResolveClipAudioAsset(ctx, clip.ID)
-			if err != nil {
-				return 0, fmt.Errorf("scene %s clip %s audio materialization failed: %w", scene.ID, clip.ID, err)
+			tasks = append(tasks, clipAudioPrepareTask{scene: scene, clip: clip, fixed: fixed})
+		}
+	}
+
+	if len(tasks) > 0 {
+		// Resolve each distinct clip once. A clip referenced by two scenes is
+		// one download; the first declaration supplies the error context.
+		unique := make([]string, 0, len(tasks))
+		firstTask := make(map[string]clipAudioPrepareTask, len(tasks))
+		for _, task := range tasks {
+			if _, exists := firstTask[task.clip.ID]; exists {
+				continue
 			}
-			if strings.TrimSpace(resolved.Path) == "" {
-				return 0, fmt.Errorf("scene %s clip %s audio materialized to an empty path", scene.ID, clip.ID)
-			}
-			if _, err := os.Stat(resolved.Path); err != nil {
-				return 0, fmt.Errorf("scene %s clip %s materialized audio is not readable: %w", scene.ID, clip.ID, err)
-			}
-			clip.AudioPath = resolved.Path
-			if fixed {
-				if err := ApplyFixedPlaybackWindow(scene, clip, resolved.DurationUS); err != nil {
-					return 0, fmt.Errorf("scene %s clip %s fixed playback validation failed: %w", scene.ID, clip.ID, err)
+			firstTask[task.clip.ID] = task
+			unique = append(unique, task.clip.ID)
+		}
+
+		type clipAudioResolution struct {
+			resolved capabilityaudio.ResolvedAudioAsset
+			err      error
+		}
+		resolutions := make([]clipAudioResolution, len(unique))
+		slots := make(chan struct{}, clipAudioPrepareConcurrency)
+		var wg sync.WaitGroup
+		for i, clipID := range unique {
+			i, clipID := i, clipID
+			wg.Add(1)
+			concurrent.SafeGo("prepare-clip-audio-"+clipID, func() {
+				defer wg.Done()
+				select {
+				case slots <- struct{}{}:
+					defer func() { <-slots }()
+				case <-ctx.Done():
+					resolutions[i].err = ctx.Err()
+					return
 				}
-			} else if err := ClampClipAudioRanges(scene, clip.ID, resolved.DurationUS); err != nil {
-				return 0, fmt.Errorf("scene %s clip %s audio duration validation failed: %w", scene.ID, clip.ID, err)
+				resolved, err := source.ResolveClipAudioAsset(ctx, clipID)
+				if err != nil {
+					task := firstTask[clipID]
+					resolutions[i].err = fmt.Errorf("scene %s clip %s audio materialization failed: %w", task.scene.ID, clipID, err)
+					return
+				}
+				if strings.TrimSpace(resolved.Path) == "" {
+					task := firstTask[clipID]
+					resolutions[i].err = fmt.Errorf("scene %s clip %s audio materialized to an empty path", task.scene.ID, clipID)
+					return
+				}
+				if _, statErr := os.Stat(resolved.Path); statErr != nil {
+					task := firstTask[clipID]
+					resolutions[i].err = fmt.Errorf("scene %s clip %s materialized audio is not readable: %w", task.scene.ID, clipID, statErr)
+					return
+				}
+				resolutions[i].resolved = resolved
+			})
+		}
+		wg.Wait()
+		// Report the first failure in scene/clip declaration order, exactly as
+		// the serial loop did, rather than the first goroutine to finish.
+		for _, resolution := range resolutions {
+			if resolution.err != nil {
+				return 0, resolution.err
 			}
 		}
-		if scene.ExecutionMode.IsFixedMedia() {
-			if err := RebuildFixedMediaTiming(scene); err != nil {
-				return 0, fmt.Errorf("scene %s fixed playback timing rebuild failed: %w", scene.ID, err)
+
+		resolvedByID := make(map[string]capabilityaudio.ResolvedAudioAsset, len(unique))
+		for i, clipID := range unique {
+			resolvedByID[clipID] = resolutions[i].resolved
+		}
+		for _, task := range tasks {
+			resolved := resolvedByID[task.clip.ID]
+			if strings.TrimSpace(resolved.Path) == "" {
+				// A SafeGo panic leaves the slot empty; fail closed instead of
+				// writing an unusable path into the plan.
+				return 0, fmt.Errorf("scene %s clip %s audio materialized to an empty path", task.scene.ID, task.clip.ID)
+			}
+			task.clip.AudioPath = resolved.Path
+			if task.fixed {
+				if err := ApplyFixedPlaybackWindow(task.scene, task.clip, resolved.DurationUS); err != nil {
+					return 0, fmt.Errorf("scene %s clip %s fixed playback validation failed: %w", task.scene.ID, task.clip.ID, err)
+				}
+			} else if err := ClampClipAudioRanges(task.scene, task.clip.ID, resolved.DurationUS); err != nil {
+				return 0, fmt.Errorf("scene %s clip %s audio duration validation failed: %w", task.scene.ID, task.clip.ID, err)
+			}
+		}
+	}
+
+	for i := range result.Scenes {
+		if result.Scenes[i].ExecutionMode.IsFixedMedia() {
+			if err := RebuildFixedMediaTiming(&result.Scenes[i]); err != nil {
+				return 0, fmt.Errorf("scene %s fixed playback timing rebuild failed: %w", result.Scenes[i].ID, err)
 			}
 		}
 	}

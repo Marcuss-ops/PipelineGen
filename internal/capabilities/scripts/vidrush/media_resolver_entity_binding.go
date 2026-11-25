@@ -219,7 +219,51 @@ func entityImageSearchQuery(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidR
 			return strings.TrimSpace(query)
 		}
 	}
-	return strings.TrimSpace(entity.CanonicalName)
+	query := strings.TrimSpace(entity.CanonicalName)
+	if query == "" {
+		query = strings.TrimSpace(entity.Text)
+	}
+	// A single-token PERSON without a linked canonical identity is ambiguous:
+	// "Natalia" alone matches Natalia Oreiro as easily as Natalia Augias. Use
+	// a full PERSON name from the same segment that contains the token when one
+	// exists; otherwise refuse to issue an unqualified image query. Returning
+	// empty makes the caller record NO_QUERY instead of binding an omonym.
+	if !strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON") || len(strings.Fields(query)) != 1 {
+		return query
+	}
+	if strings.TrimSpace(entity.CanonicalEntityID) != "" {
+		return query
+	}
+	token := normalizeEntityMatch(query)
+	for _, other := range seg.Insights.Entities {
+		if !strings.EqualFold(strings.TrimSpace(other.Type), "PERSON") {
+			continue
+		}
+		value := strings.TrimSpace(other.Value)
+		if len(strings.Fields(value)) > 1 && entityQueryContainsToken(value, token) {
+			return value
+		}
+	}
+	for candidateQuery := range seg.Insights.ImageEntityCanonicalIDs {
+		if len(strings.Fields(candidateQuery)) > 1 && entityQueryContainsToken(candidateQuery, token) {
+			return strings.TrimSpace(candidateQuery)
+		}
+	}
+	return ""
+}
+
+// entityQueryContainsToken compares whole normalized tokens, so "Natalia"
+// matches "Natalia Augias" but never "Natalia Oreiro"'s "Oreiro" or a substring.
+func entityQueryContainsToken(value, token string) bool {
+	if token == "" {
+		return false
+	}
+	for _, field := range strings.Fields(normalizeEntityMatch(value)) {
+		if field == token {
+			return true
+		}
+	}
+	return false
 }
 
 // entityImageFailureReason distinguishes why an entity image could not bind.

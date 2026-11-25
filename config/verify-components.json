@@ -162,6 +162,7 @@
   },
   "voiceover": {
     "paths": [
+      "internal/app/modules/voiceover/",
       "internal/capabilities/voiceover/service/",
       "internal/capabilities/voiceover/",
       "scripts/bridges/edge_tts_bridge/",
@@ -169,6 +170,7 @@
       "scripts/bridges/tts_edge_server.py"
     ],
     "go_packages": [
+      "./internal/app/modules/voiceover/...",
       "./internal/capabilities/voiceover/...",
       "./internal/capabilities/voiceover/service/..."
     ],
@@ -176,7 +178,8 @@
     "python_tests": [],
     "dependencies": [
       "database",
-      "drive"
+      "drive",
+      "script"
     ],
     "timeout_seconds": 600,
     "race_timeout_seconds": 900,

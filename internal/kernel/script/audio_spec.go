@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -144,6 +145,71 @@ type BackgroundMusicIntent struct {
 	DuckGainDB         float64 `json:"duck_gain_db,omitempty"`
 	DuckAttackMS       int64   `json:"duck_attack_ms,omitempty"`
 	DuckReleaseMS      int64   `json:"duck_release_ms,omitempty"`
+}
+
+// Defaults for an explicit clip-start cue. They match the deterministic
+// clip-start lane: one short whoosh at the cut, requested at -6 dB so the
+// canonical SFX bus places it clearly below voice and music.
+const (
+	DefaultClipStartSFXDurationMS int64   = 250
+	DefaultClipStartSFXGainDB     float64 = -6
+)
+
+// ClipStartSoundEffectIntent pins one chosen effect at the start of a named
+// clip. It is separate from SoundEffectIntent because a clip start is not a
+// scene anchor: the clip may be one of several videos inside a scene, an
+// intro/outro fixed section, or a reused asset with more than one start.
+type ClipStartSoundEffectIntent struct {
+	// ClipID is the canonical clip asset id exactly as declared in
+	// source.clip_ids, script_params.segments[].clip_ids, or intro/outro
+	// clip_ids. It is never a filesystem path.
+	ClipID string `json:"clip_id"`
+	// AssetID is the indexed SFX asset id, resolved by the same audio
+	// resolver as audio.sound_effects.
+	AssetID string `json:"asset_id"`
+	// GainDB defaults to -6 dB when omitted.
+	GainDB *float64 `json:"gain_db,omitempty"`
+	// DurationMS defaults to 250 ms when omitted. It is trimmed at the
+	// timeline end by the canonical SFX resolver.
+	DurationMS *int64 `json:"duration_ms,omitempty"`
+}
+
+// Validate checks the cue before it reaches the audio asset resolver.
+func (s *ClipStartSoundEffectIntent) Validate() error {
+	if s == nil {
+		return nil
+	}
+	if strings.TrimSpace(s.ClipID) == "" {
+		return fmt.Errorf("clip_id is required")
+	}
+	if strings.TrimSpace(s.AssetID) == "" {
+		return fmt.Errorf("asset_id is required")
+	}
+	if s.GainDB != nil {
+		if math.IsNaN(*s.GainDB) || math.IsInf(*s.GainDB, 0) || *s.GainDB < -96 || *s.GainDB > 24 {
+			return fmt.Errorf("gain_db must be between -96 and 24")
+		}
+	}
+	if s.DurationMS != nil && (*s.DurationMS <= 0 || *s.DurationMS > 60_000) {
+		return fmt.Errorf("duration_ms must be greater than 0 and at most 60000")
+	}
+	return nil
+}
+
+// EffectiveGainDB returns the explicit gain or the editorial default.
+func (s ClipStartSoundEffectIntent) EffectiveGainDB() float64 {
+	if s.GainDB == nil {
+		return DefaultClipStartSFXGainDB
+	}
+	return *s.GainDB
+}
+
+// EffectiveDurationMS returns the explicit duration or the editorial default.
+func (s ClipStartSoundEffectIntent) EffectiveDurationMS() int64 {
+	if s.DurationMS == nil {
+		return DefaultClipStartSFXDurationMS
+	}
+	return *s.DurationMS
 }
 
 // SoundEffectIntent is the caller's intent for one sound effect. The

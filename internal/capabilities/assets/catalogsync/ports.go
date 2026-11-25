@@ -3,6 +3,7 @@ package catalogsync
 import (
 	"context"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
@@ -36,6 +37,14 @@ type ProjectionDispatcher interface {
 type SourceReader interface {
 	GetFileMeta(ctx context.Context, fileID string) (*RemoteFileMeta, error)
 	ListFiles(ctx context.Context, parentID string) ([]RemoteFile, error)
+}
+
+// ContentInspector is an optional extension used when a newly discovered
+// Drive file lacks its canonical content descriptor. It must hash the
+// downloaded bytes and probe audio duration; Drive IDs, URLs and MD5 metadata
+// are not content identities or deterministic loop lengths.
+type ContentInspector interface {
+	InspectContent(ctx context.Context, fileID, filename string) (string, time.Duration, error)
 }
 
 // RemoteFileMeta is the source metadata needed for a catalog root.

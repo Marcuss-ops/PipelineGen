@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -161,6 +162,21 @@ func TestTransportAttemptsEnvOverrideAndClamp(t *testing.T) {
 	t.Setenv(EnvTransportRetries, "garbage")
 	if got := transportAttempts(false); got != transportRetryAttempts {
 		t.Fatalf("env garbage = %d, want default %d", got, transportRetryAttempts)
+	}
+}
+
+// TestFullSourceFormatSignaturePrefersHardwareDecodableCodecs pins that the
+// mirrored full source backing section cuts is fetched with the same avc1-first
+// preference as the network section path; otherwise the local cut decodes AV1
+// in software, the exact cost the section selector exists to avoid.
+func TestFullSourceFormatSignaturePrefersHardwareDecodableCodecs(t *testing.T) {
+	d := &YTDLPDownloader{cmdBuilder: ytdlp.NewCommandBuilder(&ytcfg.Config{})}
+	sig := d.fullSourceFormatSignature("", "mp4")
+	if !strings.Contains(sig, "vcodec^=avc1") {
+		t.Fatalf("mirror full-source signature must prefer avc1, got %q", sig)
+	}
+	if !strings.Contains(sig, "vcodec^=vp09") {
+		t.Fatalf("mirror full-source signature must keep the vp09 fallback, got %q", sig)
 	}
 }
 

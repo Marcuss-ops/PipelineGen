@@ -88,10 +88,9 @@ const (
 	// shortPhraseAnimationMinDurationUS is the shortest a phrase clip may be.
 	// A two-second annotation otherwise ends before its entrance is readable.
 	shortPhraseAnimationMinDurationUS int64 = 3_500_000
-	// maxPhraseOverlayDurationUS is deliberately zero: the certified spoken
-	// window is the authority for a phrase clip. A fixed 8s ceiling truncated
-	// a 20s narration card to half its reading time. Overlap protection stays
-	// in phraseWindowLimitUS, which never cuts below the spoken window.
+	// Phrase overlays follow their certified spoken window. Do not impose a
+	// fixed ceiling: the word-level phrase timing determines when the card
+	// appears and disappears.
 	maxPhraseOverlayDurationUS int64 = 0
 	maxOverlayItemDurationUS   int64 = 5_000_000
 )

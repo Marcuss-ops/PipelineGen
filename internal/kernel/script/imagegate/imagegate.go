@@ -14,6 +14,7 @@
 package imagegate
 
 import (
+	"net/url"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -62,7 +63,56 @@ func CandidateEligibleForSlot(candidate scriptpkg.SegmentAssetCandidate, require
 	if !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), scriptpkg.CandidateSemanticAccepted) {
 		return false
 	}
+	if CandidateHasWatermark(candidate) {
+		return false
+	}
 	return !requireVisualIdentity || ReusablePersonImageVerdict(candidate)
+}
+
+// watermarkHosts are the stock-agency domains whose public URLs normally
+// serve comp/preview images with a visible watermark. The deterministic gate
+// rejects them before acquisition; the visual verifier's HasWatermark flag is
+// the second layer for every other host.
+var watermarkHosts = []string{
+	"gettyimages.com",
+	"istockphoto.com",
+	"shutterstock.com",
+	"alamy.com",
+	"dreamstime.com",
+	"123rf.com",
+	"depositphotos.com",
+	"stock.adobe.com",
+}
+
+// CandidateHasWatermark reports whether the candidate carries a watermark
+// verdict or is served from a known watermarked stock-preview surface. It is a
+// pure, deterministic predicate: it never downloads pixels and never guesses
+// identity.
+func CandidateHasWatermark(candidate scriptpkg.SegmentAssetCandidate) bool {
+	if candidate.HasWatermark {
+		return true
+	}
+	reason := strings.ToLower(strings.TrimSpace(candidate.WatermarkReason + " " + candidate.QualityReason + " " + candidate.LifecycleFailureReason))
+	if strings.Contains(reason, "watermark") {
+		return true
+	}
+	for _, raw := range []string{candidate.SourceURL, candidate.SourcePageURL, candidate.PreviewURL} {
+		parsed, err := url.Parse(strings.TrimSpace(raw))
+		if err != nil || parsed.Host == "" {
+			continue
+		}
+		host := strings.ToLower(parsed.Hostname())
+		for _, domain := range watermarkHosts {
+			if host == domain || strings.HasSuffix(host, "."+domain) {
+				return true
+			}
+		}
+		path := strings.ToLower(parsed.Path)
+		if strings.Contains(path, "watermark") || strings.Contains(path, "/comp/") || strings.Contains(path, "comp-") {
+			return true
+		}
+	}
+	return false
 }
 
 // FilterVerifiedPersonImageCandidates is the fail-closed boundary for a

@@ -309,6 +309,7 @@ func buildScriptFlowRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 		genJobHandler.SetDurableRunner(durableRunner)
 		if root.Jobs != nil && root.Jobs.Repo != nil {
 			durableRunner.SetJobStageSink(root.Jobs.Repo)
+			durableRunner.SetJobProgressSink(root.Jobs.Repo)
 		}
 		root.ScriptGenerationRunner = durableRunner
 		oneUC.SetOverlayBackgroundSource(durableRunner.OverlayBackgroundSource())

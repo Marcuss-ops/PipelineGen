@@ -54,6 +54,11 @@ func (d *YTDLPDownloader) DownloadWithSourceWindow(ctx context.Context, req *Dow
 			}
 		}
 	}
+	if req.ReturnSourceWindows && len(req.DownloadSections) == 1 {
+		// The source-window probe above already exercised the mirror; do not
+		// repeat that full-source fetch on the fallback.
+		return nil, d.download(ctx, req, false)
+	}
 	return nil, d.Download(ctx, req)
 }
 
@@ -64,8 +69,19 @@ func (d *YTDLPDownloader) addExternalDownloaderArgs(args []string) []string {
 	return args
 }
 
-// Download downloads a full video.
+// Download downloads a full video. Mirror attempts are enabled: a
+// full-source request may be served from the per-video cache, and a
+// single-section request from a mirrored full source with a local cut.
 func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) error {
+	return d.download(ctx, req, true)
+}
+
+// download is Download with the mirror attempts under caller control.
+// DownloadWithSourceWindow already ran the source-window mirror probe, so it
+// calls this with tryMirror=false: a mirror failure must fall through to the
+// per-section network path, not repeat the full-source fetch that just
+// failed.
+func (d *YTDLPDownloader) download(ctx context.Context, req *DownloadRequest, tryMirror bool) error {
 	if err := security.ValidateDownloadURL(req.URL); err != nil {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
@@ -77,7 +93,7 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	// Section-via-mirror (October 2026 GPU cutover): a single-section
 	// request is cut locally from the mirrored full source when available.
 	// Fail-soft — any miss or cut failure falls through to the network path.
-	if len(req.DownloadSections) == 1 {
+	if tryMirror && len(req.DownloadSections) == 1 {
 		template := outputTemplateFor(req.OutputPath)
 		dest := strings.Replace(template, "%(ext)s", mirrorSectionExt(req.MergeFormat), 1)
 		if ok, _ := d.tryDownloadSectionsViaMirror(ctx, req, []string{dest}); ok {
@@ -92,7 +108,10 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 	// concurrent jobs share one download instead of racing YouTube. Sectioned
 	// requests keep the network path: their output is a cut, not the source.
 	videoID := youtubeVideoID(req.URL)
-	mirrorRootDir, mirroring := d.mirrorRoot()
+	mirrorRootDir, mirroring := "", false
+	if tryMirror {
+		mirrorRootDir, mirroring = d.mirrorRoot()
+	}
 	mirrorKeyStr := ""
 	if mirroring && videoID != "" && len(req.DownloadSections) == 0 {
 		mirrorKeyStr = mirrorKey(videoID, d.mirrorFormatSignature(req))

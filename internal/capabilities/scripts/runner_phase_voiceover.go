@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,11 +13,20 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/timeline"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
+
+// ErrLocalizedRenderFailure classifies a failed localized/fixed-media render
+// without pretending it was a TTS failure. The durable stage stays
+// GENERATING_VOICEOVERS because the render fan-out is dispatched from that
+// phase and resuming at a later stage would skip the fan-out entirely; the
+// stable error code is what separates a render defect from a TTS defect in the
+// ledger and in retry classification.
+var ErrLocalizedRenderFailure = errors.New("localized render failed")
 
 // voiceoverWork is one independent TTS work item: a (scene, language, text)
 // triple whose final scene text is immutable. The TTS branch depends only on
@@ -35,18 +45,18 @@ type voiceoverResult struct {
 	metric   contract.TTSSSceneMetric
 }
 
-// sanitizeNarrationForTTS removes Markdown emphasis markers from authored
-// narration. Asterisks are formatting syntax and must never be sent to a
-// speech provider as words or punctuation.
+// sanitizeNarrationForTTS is the runner-side entry point of the shared
+// Markdown-to-speech contract. Keeping the pure implementation in the kernel
+// lets the TTS provider boundary apply the exact same normalization.
 func sanitizeNarrationForTTS(text string) string {
-	return strings.TrimSpace(strings.ReplaceAll(text, "*", ""))
+	return kernelscript.SanitizeForSpeech(text)
 }
 
 func buildVoiceoverWorkForLanguages(scenes []contract.Scene, sourceLanguage contract.Language, targetLanguages, voiceoverLanguages []contract.Language) []voiceoverWork {
 	work := make([]voiceoverWork, 0)
 	for i := range scenes {
 		scene := &scenes[i]
-		if !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
+		if scene.NativeClip || !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
 			continue
 		}
 		for _, item := range buildVoiceoverLanguageWork(scene.Text, sourceLanguage, targetLanguages, voiceoverLanguages) {
@@ -65,7 +75,7 @@ func buildVoiceoverWorkForLanguages(scenes []contract.Scene, sourceLanguage cont
 
 func (r *Runner) auditVoiceoverDispatch(runID string, req contract.GenerateRequest, result *contract.GenerateResult, work []voiceoverWork) (requested, reused int) {
 	for _, scene := range result.Scenes {
-		if !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
+		if scene.NativeClip || !scene.ExecutionMode.AllowsTTS() || !scene.ExecutionMode.AllowsGeneratedAudio() {
 			continue
 		}
 		for _, item := range buildVoiceoverLanguageWork(scene.Text, req.SourceLanguage, req.Languages, req.VoiceoverLanguages) {
@@ -96,6 +106,17 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req contra
 	if startErr != nil {
 		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, startErr)
 		return false
+	}
+	// Safety net for direct-runner/resume paths that bypass the generate-phase
+	// gate: never start TTS on scenes whose source ranges cannot form a
+	// canonical timeline. The normal path already failed before translation.
+	if result != nil {
+		if err := timeline.ValidateAudioSourceRanges(result.Scenes); err != nil {
+			cause := fmt.Errorf("voiceover phase: audio source range preflight: %w", err)
+			r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
+			return false
+		}
 	}
 	// Voiceover generation is gated on the resolved audio mode: only
 	// CHUNKED_VOICEOVER and COMBINED_TIMELINE produce voiceover assets.
@@ -604,8 +625,12 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 	select {
 	case <-renderDone:
 		for renderErr := range renderErrors {
-			r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, renderErr)
-			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, renderErr)
+			classified := errors.Join(ErrLocalizedRenderFailure, renderErr)
+			r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, classified)
+			// Attribute the failure to the render fan-out, not to TTS. The
+			// stage index deliberately aliases the voiceover index so a retry
+			// still re-enters the phase that dispatches these renders.
+			r.failRunWithRetry(ctx, runID, StageRenderingVideo, classified)
 			return false
 		}
 		r.localizedRenderMu.Lock()

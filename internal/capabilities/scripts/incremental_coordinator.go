@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -57,6 +58,16 @@ type VidRushIncrementalCoordinator struct {
 	providerBudgetStart time.Time
 
 	metrics VidRushMetrics
+
+	// imageFanoutSpec is the per-run MediaCert contract used by the
+	// producer's fail-fast gate. nil keeps the gate disabled (tests and runs
+	// without a MediaCert spec).
+	imageFanoutSpec *mediacert.Spec
+	// earlyFailure is the first deterministic certification failure observed
+	// while a scene is still materializing. failCh wakes the barrier so it
+	// returns that failure without waiting for unrelated scenes.
+	earlyFailure error
+	failCh       chan struct{}
 
 	mu             sync.Mutex
 	runID          string
@@ -124,6 +135,7 @@ func NewVidRushIncrementalCoordinatorWithBackpressure(enricher SegmentEnricher, 
 		extractSem:     make(chan struct{}, bp.ExtractionLimit),
 		providerSem:    make(chan struct{}, bp.ProviderSearchLimit),
 		materializeSem: make(chan struct{}, bp.MaterializationLimit),
+		failCh:         make(chan struct{}),
 	}
 }
 
@@ -168,11 +180,38 @@ func (c *VidRushIncrementalCoordinator) SetSegmentMaterializer(materializer Segm
 	}
 }
 
+// SetImageFanoutSpec wires the per-run image contract into the producer's
+// fail-fast gate. The gate deliberately calls the same MediaCert helper as the
+// terminal check, so a zero-image scene cannot pass here and fail later.
+func (c *VidRushIncrementalCoordinator) SetImageFanoutSpec(spec mediacert.Spec) {
+	if c == nil || spec.ImagesPerSegment <= 0 {
+		return
+	}
+	c.mu.Lock()
+	c.imageFanoutSpec = &spec
+	c.mu.Unlock()
+}
+
+// EarlyFailure returns the first fail-fast certification failure, if any. It
+// lets the generation stream stop at the next scene commit instead of paying
+// for the remaining scenes, TTS and rendering.
+func (c *VidRushIncrementalCoordinator) EarlyFailure() error {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.earlyFailure
+}
+
 // OnSceneCommitted records the stable scene and launches its enrichment
 // asynchronously so generation can continue while VidRush works on the
 // previous scene. It fails closed on a missing enricher or an invalid event;
 // enrichment failures are attributed to their scene and surfaced at Wait.
 func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, event SceneCommitted) error {
+	if early := c.EarlyFailure(); early != nil {
+		return early
+	}
 	if event.SceneID == "" {
 		return fmt.Errorf("vidrush incremental coordinator: scene commit missing scene id")
 	}
@@ -369,6 +408,11 @@ func (c *VidRushIncrementalCoordinator) recordResult(event SceneCommitted, resul
 		}
 		return
 	}
+	// Image fanout is asynchronous with semantic enrichment. At this point
+	// result.Assets may still be empty even though the provider search and
+	// materialization branches are about to attach images to the scene. Keep
+	// this coordinator responsible for enrichment errors; MediaCertBarrier
+	// validates the completed, joined image results after fanout has finished.
 	c.records[event.SceneIndex] = segmentResultRecord{
 		revision: event.Revision,
 		textHash: event.TextHash,
@@ -454,6 +498,9 @@ func (c *VidRushIncrementalCoordinator) WaitForVidRush(ctx context.Context, runI
 // scene's enrichment has finished, then return the fenced, canonically ordered
 // results. Pending scenes only — no re-extraction of the full document.
 func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]scriptpkg.VidRushSegmentResult, error) {
+	if early := c.EarlyFailure(); early != nil {
+		return nil, early
+	}
 	barrierStart := time.Now()
 	done := make(chan struct{})
 	go func() {
@@ -462,6 +509,8 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 	}()
 	select {
 	case <-done:
+	case <-c.failCh:
+		return nil, c.EarlyFailure()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -480,11 +529,12 @@ func (c *VidRushIncrementalCoordinator) waitForVidRush(ctx context.Context) ([]s
 	if c.plan != nil {
 		expectedScenes = len(c.plan.Segments)
 		// Fixed intro/outro sections are committed as real SpecScenes with
-		// their own SceneIndex; they are not part of the generated body
-		// segments. Only an explicit body plan defines an exact expected
-		// count, so a run without explicit segments keeps the dynamic
-		// scene-count contract and skips this barrier.
-		if expectedScenes > 0 {
+		// their own SceneIndex on generated-script runs. Verbatim source
+		// scenes are materialized directly from ScriptParams.Segments and
+		// bypass those fixed sections, so their barrier must match the
+		// explicit segment count exactly. Only an explicit body plan defines
+		// an exact expected count; dynamic runs skip this barrier.
+		if expectedScenes > 0 && !c.plan.SourceTextVerbatim {
 			if c.plan.Intro != nil {
 				expectedScenes++
 			}

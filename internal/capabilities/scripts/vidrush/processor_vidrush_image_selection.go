@@ -49,7 +49,7 @@ func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 	// for 20 used images). The explicit ImagesPerScene cadence already reaches
 	// vidRushImageTarget; the entity contract below may still raise the target
 	// because it is an explicit per-entity promise.
-	if plan == nil || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	if plan == nil || !entityImageSurfaceEnabled(plan) {
 		return target
 	}
 	// The set is keyed by identity family, not by spelling: a policy that
@@ -237,7 +237,7 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 		return nil
 	}
 	selectionCandidates := preferSelectableVidRushImages(candidates)
-	if plan != nil && plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() && len(segments) > 0 {
+	if plan != nil && entityImageSurfaceEnabled(plan) && len(segments) > 0 {
 		selectionCandidates = filterEntityImageSelectionCandidates(selectionCandidates, segments[0], plan.MediaPlan.Extraction.EntityImages.EntityTypes)
 	}
 	images := dropPerceptualDuplicates(durableVidRushImages(selectionCandidates))
@@ -266,7 +266,7 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 	// that scene, and limiting it to one silently made images_per_scene=10
 	// behave like images_per_scene=1.
 	perGroupLimit := target
-	if plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	if entityImageSurfaceEnabled(plan) {
 		perGroupLimit = 1
 		if plan.MediaPlan.Extraction.EntityImages.MaxPerEntity > 1 {
 			perGroupLimit = plan.MediaPlan.Extraction.EntityImages.MaxPerEntity

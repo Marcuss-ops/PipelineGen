@@ -61,6 +61,13 @@ func classifyRunFailure(stage, code, message string) job.FailureClass {
 			// after the render, but still deterministic.
 			return job.FailureDeterministic
 		}
+		if has("invalid_runtime_assets", "stock window preparation capability is unavailable", "capability is unavailable") {
+			// Remote FINALIZE capability drift: the same plan cannot succeed on
+			// this service version. Retrying the durable job only burns another
+			// full render; surface it as a configuration gap, not a provider
+			// outage.
+			return job.FailureConfiguration
+		}
 	case "ENQUEUE_FAILED":
 		if has("plan compilation failed", "invalid plan", "unknown, retired", "compile v2", "seal:") {
 			return job.FailureDeterministic
@@ -94,6 +101,10 @@ func classifyRunFailure(stage, code, message string) job.FailureClass {
 		if has("all models ski", "no model", "model not available") {
 			return job.FailureConfiguration
 		}
+	case "REMOTE_CAPABILITY_MISSING":
+		// The remote service version, not the payload, is the cause. No retry
+		// of the same durable request can repair it.
+		return job.FailureConfiguration
 	case "PROVIDER_UNAVAILABLE", "PROVIDER_TIMEOUT":
 		return job.FailureProvider
 	case "VOICEOVER_FAILED", "PACKET_COPY_FAILED":

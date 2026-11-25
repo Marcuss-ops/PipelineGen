@@ -81,6 +81,27 @@ func validateAudioIntentBlock(item GenerationItemV2, ref string) []string {
 		}
 	}
 
+	declaredClips := declaredClipIDsForSFX(item)
+	seenClipCues := make(map[string]struct{}, len(cfg.ClipStartSoundEffects))
+	for i, cue := range cfg.ClipStartSoundEffects {
+		prefix := fmt.Sprintf("%s: audio.clip_start_sound_effects[%d]", ref, i)
+		if err := cue.Validate(); err != nil {
+			details = append(details, prefix+": "+err.Error())
+		}
+		clipID := strings.TrimSpace(cue.ClipID)
+		if clipID == "" {
+			continue
+		}
+		if _, ok := declaredClips[clipID]; !ok {
+			details = append(details, prefix+": clip_id "+clipID+" is not declared in source/segments/intro/outro")
+		}
+		if _, duplicate := seenClipCues[clipID]; duplicate {
+			details = append(details, prefix+": duplicate clip_id "+clipID)
+			continue
+		}
+		seenClipCues[clipID] = struct{}{}
+	}
+
 	for i, s := range cfg.SoundEffects {
 		prefix := fmt.Sprintf("%s: audio.sound_effects[%d]", ref, i)
 		if strings.TrimSpace(s.AssetID) == "" {
@@ -110,4 +131,25 @@ func validateAudioIntentBlock(item GenerationItemV2, ref string) []string {
 	}
 
 	return details
+}
+
+// declaredClipIDsForSFX is the set of clips this item actually binds. A cue
+// for any other id is rejected at ingress instead of becoming a cue that can
+// never fire on the canonical timeline.
+func declaredClipIDsForSFX(item GenerationItemV2) map[string]struct{} {
+	declared := make(map[string]struct{})
+	for _, id := range CollectRequestedClipIDs(item.Source, item.ScriptParams.Segments) {
+		if id = strings.TrimSpace(id); id != "" {
+			declared[id] = struct{}{}
+		}
+	}
+	for _, section := range []*FixedSection{item.Intro, item.Outro} {
+		if section == nil {
+			continue
+		}
+		for _, id := range section.NormalizedClipIDs() {
+			declared[id] = struct{}{}
+		}
+	}
+	return declared
 }

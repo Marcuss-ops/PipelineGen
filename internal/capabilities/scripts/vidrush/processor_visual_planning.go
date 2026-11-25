@@ -329,7 +329,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// assets.
 	imageTarget := vidRushImageTargetForSegment(plan, segment)
 	materializationImageTarget := imageTarget
-	if plan != nil && plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() && imageTarget > 0 {
+	if plan != nil && entityImageSurfaceEnabled(plan) && imageTarget > 0 {
 		// Materialize the current demand plus one alternate for later scenes.
 		// Discovery keeps its larger candidate pool; downloading a five-image
 		// library synchronously on every run delayed the current video.
@@ -347,7 +347,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	// legacy entity_images toggle, so reading the toggle here skipped the
 	// durable pool while the target was still multiplied for it. The pool must
 	// follow the surface, not the deprecated spelling.
-	if p.catalog != nil && plan != nil && plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	if p.catalog != nil && plan != nil && entityImageSurfaceEnabled(plan) {
 		// Attach the durable per-person pool before acquisition so
 		// verified-but-never-downloaded catalog rows get a real
 		// Acquire → Verify → Finalize attempt in-run instead of arriving

@@ -90,6 +90,7 @@ func OverlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 		ShortPhraseMotion:        canvas.ShortPhraseMotion,
 		ShortPhraseMotionsByWord: shortPhraseMotions,
 		LongPhraseMotions:        longPhraseMotions,
+		PhraseMotionFamily:       strings.TrimSpace(canvas.PhraseMotionFamily),
 		ImageMotions:             append([]string(nil), canvas.ImageMotions...),
 		ImageWithTextMotions:     append([]string(nil), canvas.ImageWithTextMotions...),
 		ImagePresets:             capabilityoverlay.ImagePresetCandidates(),

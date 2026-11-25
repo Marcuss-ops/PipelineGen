@@ -126,10 +126,26 @@ func RandomClipStartSFXIntents(timeline capabilityaudio.CanonicalTimeline) []scr
 // keeps the built-in whoosh vocabulary, so a deployment without an indexed
 // library behaves exactly as before.
 func RandomClipStartSFXIntentsWithPool(timeline capabilityaudio.CanonicalTimeline, pool []string) []scriptpkg.SoundEffectIntent {
+	return RandomClipStartSFXIntentsWithPoolExcluding(timeline, pool, nil)
+}
+
+// RandomClipStartSFXIntentsWithPoolExcluding is the random clip-start lane
+// with a set of clip IDs that already carry an explicit cue. It keeps the
+// explicit choice authoritative while still covering every other real clip.
+func RandomClipStartSFXIntentsWithPoolExcluding(timeline capabilityaudio.CanonicalTimeline, pool []string, excludedClipIDs []string) []scriptpkg.SoundEffectIntent {
+	excluded := make(map[string]struct{}, len(excludedClipIDs))
+	for _, clipID := range excludedClipIDs {
+		if clipID = strings.TrimSpace(clipID); clipID != "" {
+			excluded[clipID] = struct{}{}
+		}
+	}
 	intents := make([]scriptpkg.SoundEffectIntent, 0)
 	for _, scene := range timeline.Segments {
 		for _, clip := range scene.EffectiveVideoSegments() {
 			if clip.AssetID == "" || clip.Freeze {
+				continue
+			}
+			if _, skip := excluded[strings.TrimSpace(clip.AssetID)]; skip {
 				continue
 			}
 			startUS := scene.TimelineStartUS + clip.TimelineOffsetUS
@@ -145,4 +161,58 @@ func RandomClipStartSFXIntentsWithPool(timeline capabilityaudio.CanonicalTimelin
 		}
 	}
 	return intents
+}
+
+// ClipStartSFXIntents expands explicit per-clip cues into absolute SFX
+// intents at the canonical clip starts. A cue is fail-closed: a duplicate
+// clip_id, an invalid cue, or a clip that never appears as a real video
+// segment is a compile error, never a silent drop. The same clip used in two
+// scenes intentionally emits one cue at each start.
+func ClipStartSFXIntents(timeline capabilityaudio.CanonicalTimeline, cues []scriptpkg.ClipStartSoundEffectIntent) ([]scriptpkg.SoundEffectIntent, error) {
+	if len(cues) == 0 {
+		return nil, nil
+	}
+	byClip := make(map[string]scriptpkg.ClipStartSoundEffectIntent, len(cues))
+	for i := range cues {
+		cue := cues[i]
+		if err := cue.Validate(); err != nil {
+			return nil, fmt.Errorf("clip-start SFX cue %d: %w", i, err)
+		}
+		clipID := strings.TrimSpace(cue.ClipID)
+		if _, duplicate := byClip[clipID]; duplicate {
+			return nil, fmt.Errorf("clip-start SFX cue %d: duplicate clip_id %q", i, clipID)
+		}
+		byClip[clipID] = cue
+	}
+	intents := make([]scriptpkg.SoundEffectIntent, 0, len(cues))
+	seen := make(map[string]struct{}, len(cues))
+	for _, scene := range timeline.Segments {
+		for _, clip := range scene.EffectiveVideoSegments() {
+			if clip.AssetID == "" || clip.Freeze {
+				continue
+			}
+			clipID := strings.TrimSpace(clip.AssetID)
+			cue, ok := byClip[clipID]
+			if !ok {
+				continue
+			}
+			startUS := scene.TimelineStartUS + clip.TimelineOffsetUS
+			if startUS < 0 || startUS >= timeline.DurationUS {
+				return nil, fmt.Errorf("clip-start SFX: clip %q starts at %dus outside the %dus timeline", clipID, startUS, timeline.DurationUS)
+			}
+			intents = append(intents, scriptpkg.SoundEffectIntent{
+				AssetID:    strings.TrimSpace(cue.AssetID),
+				AtMS:       startUS / 1000,
+				DurationMS: cue.EffectiveDurationMS(),
+				GainDB:     cue.EffectiveGainDB(),
+			})
+			seen[clipID] = struct{}{}
+		}
+	}
+	for clipID := range byClip {
+		if _, ok := seen[clipID]; !ok {
+			return nil, fmt.Errorf("clip-start SFX: clip %q is not present as a real video segment in the canonical timeline", clipID)
+		}
+	}
+	return intents, nil
 }

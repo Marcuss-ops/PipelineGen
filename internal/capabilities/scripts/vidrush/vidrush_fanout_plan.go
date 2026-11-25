@@ -126,7 +126,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	// search only identities already grounded on this segment, then let the
 	// later image stage handle identities that become available after extraction.
 	if automaticImageSearch && !manualImageExclusive &&
-		(perSceneImages || plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
+		(perSceneImages || entityImageSurfaceEnabled(plan)) {
 		imageQueries = sceneScopedImageQueriesForTypes(segment, plan.MediaPlan.Extraction.EntityImages.EntityTypes)
 		imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
 	}
@@ -135,7 +135,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		limit = plan.MediaPlan.Planner.CandidateLimit
 	}
 	if automaticImageSearch && !manualImageExclusive &&
-		(perSceneImages || plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
+		(perSceneImages || entityImageSurfaceEnabled(plan)) {
 		limit = internetImagePerQueryLimit(limit, len(imageQueries))
 	}
 	if limit > 50 {

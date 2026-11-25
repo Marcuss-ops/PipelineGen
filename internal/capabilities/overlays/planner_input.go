@@ -146,7 +146,7 @@ type PlanInput struct {
 	// a word-count-specific recipe.
 	ShortPhraseMotion string
 	// PhraseMotionFamily optionally limits automatic phrase-motion selection
-	// to a certified family and applies the one sampled motion to every phrase.
+	// to a certified family while preserving per-phrase rotation within it.
 	PhraseMotionFamily string
 	// DateMotionFamily optionally narrows date-card motion selection to one
 	// certified ChrononTemplate date family: "date_v1", "didone"

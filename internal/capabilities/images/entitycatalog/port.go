@@ -55,7 +55,7 @@ const (
 	// accepted/rejected entity-image verdict. Bump this whenever the model, prompt, or
 	// scoring thresholds change: a verdict from another version is evidence
 	// about different pixels under different rules, so it is not reusable.
-	CandidateVerifierVersion = "entity-image-visual/v3"
+	CandidateVerifierVersion = "entity-image-visual/v4"
 	// CandidateVerifierVersionPinned is the offline media-manifest verifier.
 	// It is trusted for its exact content hash, but it is not a VLM verdict.
 	CandidateVerifierVersionPinned = "media-manifest.v1/pinned"

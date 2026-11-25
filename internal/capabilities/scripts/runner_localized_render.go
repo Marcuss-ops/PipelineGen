@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -77,9 +78,16 @@ func (r *Runner) recordLocalizedRenderReady(ctx context.Context, runID string, e
 	// parent-visible `render` stage is reported completed here too: the upload
 	// stage separately owns the publication that has not happened yet.
 	recordRenderStageProgress(result, rendered)
+	renderCompleted, renderTotal := localizedRenderProgressLocked(result)
 	// Copy for checkpoint outside lock.
 	snapshot := *result
 	r.localizedRenderMu.Unlock()
+	// The durable job row is the surface an operator polls while the run is
+	// silent. Project the same certified-unit counter onto it so a render
+	// fan-out is not stuck at the voiceover percentage until it finishes.
+	if renderTotal > 0 {
+		r.writeJobStageProgress(ctx, runID, job.StageRender, renderCompleted, renderTotal)
+	}
 
 	if err := r.saveLocalizedRenderArtifactCheckpoint(ctx, runID, exec.Attempt, rendered); err != nil {
 		return err
@@ -112,6 +120,15 @@ func (r *Runner) localizedRenderProduced(result *contract.GenerateResult, sceneI
 	return false
 }
 
+// localizedRenderProgressLocked returns the number of certified render units
+// and the expected total. The caller must hold localizedRenderMu.
+func localizedRenderProgressLocked(result *contract.GenerateResult) (int, int) {
+	if result == nil || result.ExpectedRenderCount <= 0 {
+		return 0, 0
+	}
+	return len(result.LocalizedRenders), result.ExpectedRenderCount
+}
+
 // recordLocalizedRender records one certified produced video of the
 // localized render fan-out onto the run result. It is the durable proof
 // that "this run produced this final MP4" (asset id, sha256, Drive link)
@@ -131,6 +148,7 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, runID string, exec E
 	}
 	// Snapshot in-memory mutation under lock, release before durable I/O.
 	var snapshot *contract.GenerateResult
+	renderCompleted, renderTotal := 0, 0
 	if result != nil {
 		r.localizedRenderMu.Lock()
 		removeStagedLocalizedRenderLocked(result, rendered)
@@ -152,9 +170,13 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, runID string, exec E
 		}
 		accumulateLocalizedRenderMetrics(result, rendered)
 		recordRenderStageProgress(result, rendered)
+		renderCompleted, renderTotal = localizedRenderProgressLocked(result)
 		snap := *result
 		snapshot = &snap
 		r.localizedRenderMu.Unlock()
+	}
+	if renderTotal > 0 {
+		r.writeJobStageProgress(ctx, runID, job.StageRender, renderCompleted, renderTotal)
 	}
 	// Durable lineage: the produced video is an OperationRender artifact
 	// joinable on (scene_id, language, asset_id) like every other produced

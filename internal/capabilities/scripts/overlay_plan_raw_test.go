@@ -78,6 +78,22 @@ func TestRawSceneCarriesEveryRecipeOnTheWire(t *testing.T) {
 	require.Equal(t, "Tim Cook", second["payload"].(map[string]any)["person_label"])
 }
 
+func TestVisualRecipesForSceneForwardsTheSemanticWiringRecipes(t *testing.T) {
+	result := &GenerateResult{SemanticConsolidation: &SemanticVisualConsolidation{
+		ProductionCandidates: []SemanticProductionCandidate{
+			recipeCandidate("s1", "relative_time_jump", 0.9, 1, `{"recipe":"relative_time_jump","resolved_date":"2018","delta_label":"+3 ANNI"}`),
+			recipeCandidate("s1", "cause_effect_card", 0.8, 2, `{"recipe":"cause_effect_card","cause_text":"A","effect_text":"B"}`),
+			recipeCandidate("s1", "process_stepper", 0.7, 3, `{"recipe":"process_stepper","steps":[{"index":1,"text":"A"}]}`),
+		},
+	}}
+
+	recipes := visualRecipesForScene(result, "s1")
+	require.Len(t, recipes, 3, "all three recipes must reach overlay-compiler")
+	require.Equal(t, "relative_time_jump", recipes[0].Recipe)
+	require.Equal(t, "cause_effect_card", recipes[1].Recipe)
+	require.Equal(t, "process_stepper", recipes[2].Recipe)
+}
+
 func TestVisualRecipesForSceneDropsTheSameFactTwice(t *testing.T) {
 	result := &GenerateResult{SemanticConsolidation: &SemanticVisualConsolidation{
 		ProductionCandidates: []SemanticProductionCandidate{

@@ -489,7 +489,7 @@ func TestBuildGenerateRequest_CombinedTimelineIsTheOnlyAudioGate(t *testing.T) {
 // []BackgroundMusicIntent.
 func TestBuildGenerateRequest_MapsAudioIntentBlock(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"audio-intents","project":"test-project","language":"en",		"source":{"type":"text","topic":"topic"},"random_light_leak_on_clip_start":true,"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","mix_policy":"voiceover_with_ducked_clip","random_sfx_on_clip_start":true,"random_sfx_on_image_overlay":true,"background_music":{"asset_id":"music_123","start_ms":0,"end":"video_end","loop":true,"gain_db":-24},"sound_effects":[{"asset_id":"whoosh","scene_id":"scene_2","anchor":"end","offset_ms":-300,"gain_db":-8}]}}]}`), &env); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"audio-intents","project":"test-project","language":"en",		"source":{"type":"text","topic":"topic"},"random_light_leak_on_clip_start":true,"output":{"voiceover_enabled":true},"audio":{"mode":"COMBINED_TIMELINE","mix_policy":"voiceover_with_ducked_clip","random_sfx_on_clip_start":true,"random_sfx_on_image_overlay":true,"random_sfx_on_phrase_overlay":true,"background_music":{"asset_id":"music_123","start_ms":0,"end":"video_end","loop":true,"gain_db":-24},"sound_effects":[{"asset_id":"whoosh","scene_id":"scene_2","anchor":"end","offset_ms":-300,"gain_db":-8}]}}]}`), &env); err != nil {
 		t.Fatal(err)
 	}
 	got, err := BuildGenerateRequest(&env, "audio-intents-key")
@@ -499,8 +499,8 @@ func TestBuildGenerateRequest_MapsAudioIntentBlock(t *testing.T) {
 	if got.MixPolicy != capabilityaudio.AudioMixPolicy("voiceover_with_ducked_clip") {
 		t.Fatalf("mix policy = %q", got.MixPolicy)
 	}
-	if !got.RandomSFXOnClipStart || !got.RandomSFXOnImageOverlay {
-		t.Fatalf("random SFX opt-ins were dropped from the payload: clip_start=%t image_overlay=%t", got.RandomSFXOnClipStart, got.RandomSFXOnImageOverlay)
+	if !got.RandomSFXOnClipStart || !got.RandomSFXOnImageOverlay || !got.RandomSFXOnPhraseOverlay {
+		t.Fatalf("random SFX opt-ins were dropped from the payload: clip_start=%t image_overlay=%t phrase_overlay=%t", got.RandomSFXOnClipStart, got.RandomSFXOnImageOverlay, got.RandomSFXOnPhraseOverlay)
 	}
 	if !got.RandomLightLeakOnClipStart {
 		t.Fatal("clip-start light-leak option was dropped from the payload")

@@ -341,6 +341,9 @@ func SealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *contract.Genera
 	}
 	plan.SchemaVersion = capmodel.SchemaVersionPlan
 	plan.Language = string(language)
+	if err := reanchorPhrasePlanItems(plan, result); err != nil {
+		return nil, err
+	}
 	return finalizeSealedOverlayPlan(*plan, result, language, resolved, canvas)
 }
 
@@ -362,6 +365,14 @@ func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *contract.Gener
 	// serialized render inputs.
 	for i := range plan.Items {
 		plan.Items[i].RenderKey = ""
+	}
+	// The compiler can return a valid chain whose segment list is not
+	// chronological after presentation transforms (r1c/r12c: mixed-chain seal
+	// failed at index 1). Adopt the same segments, ordered by their absolute
+	// start, before the fingerprint and render keys are computed. Window
+	// violations still fail closed in Validate; this only fixes list order.
+	for i := range plan.Items {
+		capmodel.NormalizeChainSegmentOrder(&plan.Items[i])
 	}
 	plan.RecapCards = countRecapItems(plan.Items)
 	plan.ChartCards = countChartItems(plan.Items)

@@ -8,11 +8,25 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"golang.org/x/text/unicode/norm"
 )
+
+// entityImageSurfaceEnabled applies both the entity-image policy and the
+// caller's retrieval mode. explicit_only grants the retrieval stage authority
+// only to the searches in the media plan; disabled grants no image search to
+// any stage. Without this shared guard, later materialization could launch a
+// second entity query after the fan-out had correctly honored the mode.
+func entityImageSurfaceEnabled(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	if plan == nil || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		return false
+	}
+	mode := strings.TrimSpace(plan.MediaPlan.Extraction.ImageSearchMode)
+	return mode != mediadomain.ImageSearchModeExplicitOnly && mode != mediadomain.ImageSearchModeDisabled
+}
 
 // normalizeEntityMatch is the identity join for entity-image candidates:
 // case-folded, accent-stripped and English-possessive-stripped.

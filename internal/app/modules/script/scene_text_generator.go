@@ -161,6 +161,100 @@ func (g *SceneTextGenerator) GenerateSceneText(
 	return scenes, err
 }
 
+// RepairSceneText expands one existing scene without regenerating the other
+// scenes. The source brief is deliberately explicit about preserving facts,
+// names, dates and quotations: the repair may lengthen the narration, never
+// invent a new claim. The runner owns the bounded attempt policy and the final
+// floor validation; this adapter only performs one focused model call.
+func (g *SceneTextGenerator) RepairSceneText(
+	ctx context.Context,
+	req scriptgen.GenerateRequest,
+	scene scriptgen.Scene,
+	minimumWords int,
+	attempt int,
+) (scriptgen.Scene, error) {
+	if g == nil || g.Engine == nil {
+		return scriptgen.Scene{}, fmt.Errorf("scenetext: repair requires a configured engine")
+	}
+	if minimumWords < 1 {
+		minimumWords = 1
+	}
+	if attempt < 1 {
+		attempt = 1
+	}
+	language := req.SourceLanguage
+	current := strings.TrimSpace(scene.Text[language])
+	if current == "" {
+		return scriptgen.Scene{}, fmt.Errorf("scenetext: scene %q has no source-language text to repair", scene.ID)
+	}
+	topic := strings.TrimSpace(req.Source.Topic)
+	for _, segment := range req.ScriptParams.Segments {
+		if strings.TrimSpace(segment.ID) != scene.ID {
+			continue
+		}
+		if candidate := strings.TrimSpace(segment.Topic); candidate != "" {
+			topic = candidate
+		}
+		break
+	}
+	if topic == "" {
+		topic = scene.ID
+	}
+	target := minimumWords + minimumWords/10
+	if target < minimumWords+25 {
+		target = minimumWords + 25
+	}
+	if req.ScriptParams.SegmentWords > target {
+		target = req.ScriptParams.SegmentWords
+	}
+	brief := fmt.Sprintf("Expand only the existing scene narration below. Keep every fact, name, date and quotation unchanged; do not add new facts. Attempt %d of 2 must reach at least %d words and should read as natural spoken prose. Existing narration:\n\n%s", attempt, minimumWords, current)
+	repairReq := req
+	repairReq.Source = scriptgen.Source{Type: scriptgen.SourceText, Topic: topic, SourceText: brief}
+	repairReq.Intro = nil
+	repairReq.Outro = nil
+	repairReq.ScriptParams.Segments = nil
+	repairReq.ScriptParams.SegmentTopics = nil
+	repairReq.ScriptParams.SingleScene = true
+	repairReq.ScriptParams.TargetWords = target
+	repairReq.ScriptParams.SegmentWords = target
+	repairReq.ScriptParams.MinWords = minimumWords
+	repairReq.ScriptParams.SourceTextVerbatim = false
+	repairReq.ScriptParams.UseMemory = false
+	repairReq.ScriptParams.ForceRefresh = true
+
+	scenes, err := g.GenerateSceneText(ctx, repairReq)
+	if err != nil {
+		return scriptgen.Scene{}, fmt.Errorf("scenetext: repair scene %q: %w", scene.ID, err)
+	}
+	var repaired *scriptgen.Scene
+	for i := range scenes {
+		if strings.TrimSpace(scenes[i].ID) == scene.ID {
+			repaired = &scenes[i]
+			break
+		}
+	}
+	if repaired == nil && len(scenes) > 0 {
+		repaired = &scenes[0]
+	}
+	if repaired == nil {
+		return scriptgen.Scene{}, fmt.Errorf("scenetext: repair scene %q returned no scenes", scene.ID)
+	}
+	newText := strings.TrimSpace(repaired.Text[language])
+	if newText == "" {
+		return scriptgen.Scene{}, fmt.Errorf("scenetext: repair scene %q returned empty text", scene.ID)
+	}
+	if words := scriptpkg.WordCount(newText); words < minimumWords {
+		return scriptgen.Scene{}, fmt.Errorf("scenetext: repair scene %q returned %d words, want at least %d", scene.ID, words, minimumWords)
+	}
+	out := scene
+	out.Text = make(map[scriptgen.Language]string, len(scene.Text)+1)
+	for key, value := range scene.Text {
+		out.Text[key] = value
+	}
+	out.Text[language] = newText
+	return out, nil
+}
+
 // GenerateSceneTextStreamWithTrace generates explicit editorial segments one
 // at a time. Each completed segment is emitted immediately, allowing the
 // runner's downstream SceneTextReady fan-out to begin while the next model

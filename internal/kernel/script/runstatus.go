@@ -19,7 +19,12 @@ const (
 	StageGeneratingSceneText  Stage = "GENERATING_SCENE_TEXT"
 	StageTranslatingScenes    Stage = "TRANSLATING_SCENES"
 	StageGeneratingVoiceovers Stage = "GENERATING_VOICEOVERS"
-	StageCompilingAudio       Stage = "COMPILING_AUDIO"
+	// StageRenderingVideo is the localized render fan-out dispatched from the
+	// voiceover phase. It is a distinct failure-attribution stage, but it
+	// deliberately resumes at the voiceover index so the retry re-enters the
+	// fan-out that owns the render dispatch.
+	StageRenderingVideo Stage = "RENDERING_VIDEO"
+	StageCompilingAudio Stage = "COMPILING_AUDIO"
 	// StagePublishingDocuments is the LEGACY publication stage. Document
 	// publication was removed with Google Docs; the stage value survives for
 	// persisted-run resume compatibility and as the failure stage the remote

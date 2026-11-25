@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -177,6 +178,38 @@ func RebaseChainSegments(params map[string]any, baseUS int64) ([]ChainSegment, b
 		rebased = append(rebased, seg)
 	}
 	return rebased, true
+}
+
+// NormalizeChainSegmentOrder stably sorts a chain's segments by absolute
+// start time. The Rust planner emits the segment list after several
+// presentation transforms; one of those can leave the list in a
+// non-chronological order even though every segment window is valid. The seal
+// boundary adopts the same segments (text, motion, assets and windows are
+// untouched) and makes the list chronological before validation and
+// fingerprinting. It reports whether the list changed.
+func NormalizeChainSegmentOrder(item *OverlayItem) bool {
+	if item == nil {
+		return false
+	}
+	segments, ok := item.Segments()
+	if !ok || len(segments) < 2 {
+		return false
+	}
+	ordered := true
+	for i := 1; i < len(segments); i++ {
+		if segments[i].StartUS < segments[i-1].StartUS {
+			ordered = false
+			break
+		}
+	}
+	if ordered {
+		return false
+	}
+	sort.SliceStable(segments, func(i, j int) bool {
+		return segments[i].StartUS < segments[j].StartUS
+	})
+	item.SetChainSegments(segments)
+	return true
 }
 
 // ValidateChainItem fails closed on a malformed chain: wrong template, fewer

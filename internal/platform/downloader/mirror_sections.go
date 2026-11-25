@@ -111,11 +111,13 @@ func parseSectionTimestamp(s string) (float64, bool) {
 }
 
 // fullSourceFormatSignature is the mirror-key signature for the canonical
-// full-source fetch backing section cuts: canonical format argument plus the
-// caller's format override and merge policy, so two requests that would
-// produce different bytes never share a full-source entry.
+// full-source fetch backing section cuts: the SECTION format argument (both
+// callers are section requests, so the avc1 → vp09 → any preference applies
+// to the mirrored source too) plus the caller's format override and merge
+// policy, so two requests that would produce different bytes never share a
+// full-source entry.
 func (d *YTDLPDownloader) fullSourceFormatSignature(formatOverride, mergeFormat string) string {
-	parts := append([]string{}, d.cmdBuilder.FormatArg(true)...)
+	parts := append([]string{}, d.cmdBuilder.SectionFormatArg(true)...)
 	parts = append(parts, formatOverride, mergeFormat)
 	return strings.Join(parts, "\x1f")
 }
@@ -185,10 +187,11 @@ func nvencPreset() string {
 
 // ensureFullSourceCached returns the local path of the mirrored full source
 // for videoID, fetching it once (single-flighted per key) on a miss. The
-// fetch reuses the full-source network argv — canonical format, fragment
-// concurrency, and aria2c acceleration — so a bulk fetch is not throttled
-// like a section fetch. Failures are returned; the caller degrades to the
-// per-section network path.
+// fetch reuses the SECTION path's argv — the avc1 → vp09 → any preference,
+// fragment concurrency, and aria2c acceleration — so the mirrored bytes do
+// not reintroduce the AV1 software decode the section selector exists to
+// avoid during the local cut. Failures are returned; the caller degrades to
+// the per-section network path.
 //
 // useCookies mirrors the caller's cookie policy (stock sets it on every
 // request): a cookie-gated video must fetch its full source WITH cookies,
@@ -218,7 +221,7 @@ func (d *YTDLPDownloader) ensureFullSourceCached(ctx context.Context, videoURL, 
 	buildArgs := func(playerClient string) []string {
 		args := []string{"--no-playlist", "--continue"}
 		args = append(args, d.cmdBuilder.BaseArgsForClient(videoURL, useCookies, playerClient)...)
-		args = append(args, d.cmdBuilder.FormatArg(true)...)
+		args = append(args, d.cmdBuilder.SectionFormatArg(true)...)
 		args = append(args, d.cmdBuilder.ConcurrentFragmentsArg()...)
 		args = d.addExternalDownloaderArgs(args)
 		if formatOverride != "" {

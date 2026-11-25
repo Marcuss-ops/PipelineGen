@@ -11,7 +11,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": true
     },
     {
@@ -23,7 +23,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": true
     },
     {
@@ -35,7 +35,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     },
     {
@@ -47,7 +47,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     },
     {
@@ -59,7 +59,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     },
     {
@@ -71,7 +71,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     },
     {
@@ -83,7 +83,7 @@
       "width": 640,
       "height": 480,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     },
     {
@@ -95,7 +95,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     },
     {
@@ -107,7 +107,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     },
     {
@@ -119,7 +119,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     },
     {
@@ -131,7 +131,7 @@
       "width": 1200,
       "height": 800,
       "quality_reason": "Ollama visual identity verification confirmed the requested person and one dominant subject",
-      "verifier_version": "entity-image-visual/v3",
+      "verifier_version": "entity-image-visual/v4",
       "want_eligible": false
     }
   ]

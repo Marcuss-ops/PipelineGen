@@ -83,6 +83,15 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	result.OverlayImages = append([]scriptpkg.OverlayImageAsset(nil), req.OverlayImages...)
 	reportTimingSkip := func(skip timingProjectionSkip) {
 		observability.ScriptTimingProjectionSkipTotal.WithLabelValues(skip.SceneID, skip.Surface).Inc()
+		if result != nil {
+			cause := ""
+			if skip.Cause != nil {
+				cause = skip.Cause.Error()
+			}
+			result.TimingProjectionSkips = append(result.TimingProjectionSkips, contract.TimingProjectionSkip{
+				SceneID: skip.SceneID, Surface: skip.Surface, Cause: cause,
+			})
+		}
 		r.log.Warn("voiceover timing projection skipped an unanchored surface",
 			zap.String("scene_id", skip.SceneID), zap.String("surface", skip.Surface), zap.Error(skip.Cause))
 	}
@@ -404,6 +413,7 @@ func applyOverlayPlanProjection(result *contract.GenerateResult, branchInput *co
 	result.OverlayPlan = branchInput.OverlayPlan
 	result.OverlayPlanIntake = branchInput.OverlayPlanIntake
 	result.PhraseOverlayBudget = branchInput.PhraseOverlayBudget
+	result.TimingProjectionSkips = branchInput.TimingProjectionSkips
 	result.LocalizedOverlayPlans = branchInput.LocalizedOverlayPlans
 	result.SemanticRenderBundle = branchInput.SemanticRenderBundle
 	result.OverlayAudit = branchInput.OverlayAudit

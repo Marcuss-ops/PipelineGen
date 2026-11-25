@@ -392,7 +392,11 @@ func applySemanticDocumentProjections(manifest *semanticEngineManifest, texts ma
 	}
 	discourse, err := projectSemanticDiscourse(texts, manifest.Entities, manifest.Discourse)
 	if err != nil {
-		return fmt.Errorf("semantic-engine: discourse: %w", err)
+		// Discourse links are an optional enrichment over the grounded entity
+		// and scene projections above. A malformed reference must not discard
+		// otherwise valid scene analysis (or fail the whole video job); omit the
+		// entire discourse surface so no ungrounded link can escape.
+		discourse = nil
 	}
 	for _, bundle := range bundles {
 		bundle.Discourse = discourse
