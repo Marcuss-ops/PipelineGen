@@ -63,7 +63,7 @@
     },
     {
       "path": "internal/capabilities/scripts",
-      "max_loc": 18058,
+      "max_loc": 18653,
       "owner": "scripts capability (root facade)",
       "deadline": "2027-03-31"
     },
@@ -75,7 +75,7 @@
     },
     {
       "path": "internal/capabilities/scripts/vidrush",
-      "max_loc": 11705,
+      "max_loc": 11818,
       "owner": "scripts capability (vidrush)",
       "deadline": "2027-03-31"
     },

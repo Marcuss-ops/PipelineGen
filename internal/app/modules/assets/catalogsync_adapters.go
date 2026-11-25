@@ -2,8 +2,6 @@ package assets
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
@@ -112,8 +111,8 @@ func (a catalogSyncSourceReader) InspectContent(ctx context.Context, fileID, fil
 		return "", 0, fmt.Errorf("create temporary file to inspect Drive file %s: %w", fileID, err)
 	}
 	defer os.Remove(temp.Name())
-	hasher := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(hasher, temp), body); err != nil {
+	contentSHA256, err := digest.SHA256Reader(io.TeeReader(body, temp))
+	if err != nil {
 		_ = temp.Close()
 		return "", 0, fmt.Errorf("read Drive file %s for content inspection: %w", fileID, err)
 	}
@@ -127,7 +126,7 @@ func (a catalogSyncSourceReader) InspectContent(ctx context.Context, fileID, fil
 	if info == nil || info.Duration <= 0 {
 		return "", 0, fmt.Errorf("probe Drive file %s returned no duration", fileID)
 	}
-	return hex.EncodeToString(hasher.Sum(nil)), info.Duration, nil
+	return contentSHA256, info.Duration, nil
 }
 
 var (
