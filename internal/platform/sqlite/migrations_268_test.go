@@ -2,22 +2,17 @@ package sqlite
 
 import "testing"
 
-// TestMigrations_268_MediaAuthorityRetirementMarkerIsApplied makes executable
-// the claim that migration 268 states in its own header: "a lightweight marker
-// table lets runtime and CI gates assert that the retirement has been applied".
-// Nothing asserted it before this test — the marker was written and never read.
+// TestMigrations_268_MediaAuthorityRetirementMarkerIsRetired makes executable
+// the retirement that migration 268 declared. 268 wrote a single
+// `_media_authority_retirement` marker so runtime/CI gates could assert the
+// SQLite media authority was gone; the only remaining reader was
+// cmd/gen_baseline, which seeded the marker into the baseline DB.
 //
-// Scope note (honest limitation, tracked in architecture/catalog.yaml under
-// DEMO-SQLITE-MEDIA-COMMITTER / P2-9 Phase 2): the marker does NOT mean the
-// quarantined media tables are gone from the schema. On the incremental
-// 001..268 path they are intentionally left in place for audit/recovery, and
-// the fresh-install baseline 000_baseline_268.sql also keeps them (only the
-// retired vector-index tables/columns are absent from the post-298 dump).
-// A media-free baseline would require rehoming the SQLite media-reader
-// fixtures first (boot_test.go, migrations_helpers_test.go::essentialTables,
-// migrations_152/157/158/197), so this test pins the marker (the applied
-// guard) and not the media-table removal (separate work).
-func TestMigrations_268_MediaAuthorityRetirementMarkerIsApplied(t *testing.T) {
+// DEMOL-13 removed that seed and migration 301 drops the marker table: the
+// PostgreSQL media plane is the sole authority, so carrying a second boolean
+// for "the cutover happened" is itself legacy weight. The end-state is that no
+// marker table and no SQLite media-authority table exist.
+func TestMigrations_268_MediaAuthorityRetirementMarkerIsRetired(t *testing.T) {
 	db, cleanup := applyFreshSmokeDB(t)
 	defer cleanup()
 
@@ -27,26 +22,7 @@ func TestMigrations_268_MediaAuthorityRetirementMarkerIsApplied(t *testing.T) {
 	).Scan(&count); err != nil {
 		t.Fatalf("inspect _media_authority_retirement: %v", err)
 	}
-	if count != 1 {
-		t.Fatal("migration 268 did not create the media-authority retirement marker")
-	}
-
-	// Exactly one row: the marker is a singleton guard (CHECK id = 1), so a
-	// second row would mean the migration ran in a non-idempotent way.
-	var rows int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM _media_authority_retirement`).Scan(&rows); err != nil {
-		t.Fatalf("count retirement marker rows: %v", err)
-	}
-	if rows != 1 {
-		t.Fatalf("retirement marker rows = %d, want exactly 1 (idempotent singleton)", rows)
-	}
-
-	var note string
-	if err := db.QueryRow(`SELECT note FROM _media_authority_retirement WHERE id = 1`).Scan(&note); err != nil {
-		t.Fatalf("read retirement marker note: %v", err)
-	}
-	const want = "SQLite media authority retired — PostgreSQL media SSOT (P2-9, September 2026)"
-	if note != want {
-		t.Fatalf("retirement marker note = %q, want %q", note, want)
+	if count != 0 {
+		t.Fatal("the media-authority retirement marker must be dropped by 301")
 	}
 }

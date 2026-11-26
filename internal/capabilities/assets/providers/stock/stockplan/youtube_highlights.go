@@ -1,7 +1,6 @@
 package stockplan
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -215,22 +214,6 @@ func (r YouTubeStockRequest) Validate() error {
 		if _, e := ParseYouTubeURL(u); e != nil {
 			return e
 		}
-	}
-	return nil
-}
-
-// UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,
-// the demolished "legacy_file_md5" key of plan payloads written before the
-// 281 contract migration. Only the canonical key is written back.
-func (s *SelectedSegment) UnmarshalJSON(data []byte) error {
-	type wire SelectedSegment
-	var v wire
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*s = SelectedSegment(v)
-	if s.ContentSHA256 == "" {
-		s.ContentSHA256 = digest.LegacyContentSHA256FromJSON(data)
 	}
 	return nil
 }

@@ -1,11 +1,9 @@
 package voiceover
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
@@ -222,22 +220,6 @@ type BatchResponse struct {
 	Items     []BatchItem `json:"items"`
 	Error     string      `json:"error,omitempty"`
 	ErrorCode string      `json:"error_code,omitempty"`
-}
-
-// UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,
-// the demolished "legacy_file_md5" key of payloads written before the 281
-// contract migration. Only the canonical key is written back.
-func (b *BatchItem) UnmarshalJSON(data []byte) error {
-	type wire BatchItem
-	var v wire
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*b = BatchItem(v)
-	if b.ContentSHA256 == "" {
-		b.ContentSHA256 = digest.LegacyContentSHA256FromJSON(data)
-	}
-	return nil
 }
 
 type BatchItem struct {

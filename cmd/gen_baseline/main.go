@@ -66,7 +66,9 @@ func main() {
 	}
 	seeds := []string{
 		"INSERT INTO control_plane_meta (singleton_id, database_id, schema_family, instance_role, canonical_version, created_at) SELECT 1, 'cp_baseline', 'pipelinegen-control-plane', 'CANONICAL', 1, datetime('now') WHERE NOT EXISTS (SELECT 1 FROM control_plane_meta);",
-		"INSERT OR IGNORE INTO _media_authority_retirement (id, note) VALUES (1, 'SQLite media authority retired — PostgreSQL media SSOT (P2-9, September 2026)');",
+		// The media-authority retirement marker was dropped by DEMOL-13/301: a
+		// baseline is a fresh schema, not a record of the retired SQLite media
+		// authority.
 	}
 	for _, s := range seeds {
 		k := "__seed__" + s

@@ -2,40 +2,29 @@ package sqlite
 
 import "testing"
 
-func TestMigrations_199_ArtifactCacheRegistryIsPreservedDuringCacheCutover(t *testing.T) {
+// TestMigrations_199_ArtifactCacheRegistryIsRetired pins the end-state of the
+// artifact-cache registry after DEMOL-13: migration 199 moved it into the cache
+// cutover and 264 quarantined it under legacy_cache_artifact_*; migration 301
+// drops those archives once the census certified zero runtime references and
+// zero rows. Neither generation may live in the schema.
+func TestMigrations_199_ArtifactCacheRegistryIsRetired(t *testing.T) {
 	db, cleanup := applyFreshSmokeDB(t)
 	defer cleanup()
 
-	entryCols := scanColumnNames(t, db, "legacy_cache_artifact_entries")
-	for _, want := range []string{
-		"cache_key", "source_sha256", "operation", "parameters_json",
-		"processor_version", "artifact_sha256", "size_bytes", "status",
-		"lease_id", "lease_until", "last_accessed_at",
+	for _, table := range []string{
+		"artifact_cache_entries",
+		"artifact_cache_metrics",
+		"legacy_cache_artifact_entries",
+		"legacy_cache_artifact_metrics",
 	} {
-		if _, ok := entryCols[want]; !ok {
-			t.Fatalf("legacy_cache_artifact_entries missing column %q (present: %v)", want, entryCols)
+		var count int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table,
+		).Scan(&count); err != nil {
+			t.Fatalf("inspect %s: %v", table, err)
 		}
-	}
-	metricCols := scanColumnNames(t, db, "legacy_cache_artifact_metrics")
-	for _, want := range []string{
-		"operation", "hit_count", "miss_count", "invalidation_count",
-		"avoided_bytes", "avoided_work_ms", "updated_at",
-	} {
-		if _, ok := metricCols[want]; !ok {
-			t.Fatalf("legacy_cache_artifact_metrics missing column %q (present: %v)", want, metricCols)
-		}
-	}
-	indexes := mustReadIndexNames(t, db, "legacy_cache_artifact_entries")
-	for _, want := range []string{"idx_artifact_cache_source_operation", "idx_artifact_cache_status_lease"} {
-		found := false
-		for _, got := range indexes {
-			if got == want {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("artifact_cache_entries missing index %q (present: %v)", want, indexes)
+		if count != 0 {
+			t.Fatalf("table %q must not exist after the 301 retirement drop", table)
 		}
 	}
 }

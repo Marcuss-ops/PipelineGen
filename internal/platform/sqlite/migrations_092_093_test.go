@@ -54,18 +54,37 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 			tmpDir := t.TempDir()
 			dbPath := filepath.Join(tmpDir, "fresh.sqlite")
 
-			// On observability, migration 267 quarantines the business tables
-			// that 092/093 created, so the post-migration surface carries the
-			// legacy_observability_* names instead of the plain business names.
+			// 092/093 apply on every scope, but observability is not a business
+			// registry: 267 quarantines these tables and DEMOL-13/301 drops the
+			// quarantine archives. The observability plane therefore carries
+			// neither the plain nor the legacy name.
 			outboxTable, clipTable := "outbox_events", "clip_folders"
-			if targetDB == "observability" {
-				outboxTable, clipTable = "legacy_observability_outbox_events", "legacy_observability_clip_folders"
-			}
 
 			t.Run("round1_apply_first_time", func(t *testing.T) {
 				log := zaptest.NewLogger(t)
 				err := RunMigrationsOnDB(dbPath, log, migrationsDir, targetDB)
 				require.NoError(t, err, "first RunMigrationsOnDB must succeed on fresh DB")
+
+				if targetDB == "observability" {
+					db, err := sql.Open("sqlite3", dbPath+"?_mode=ro")
+					require.NoError(t, err)
+					defer func() { _ = db.Close() }()
+					// 267 quarantines the business copies under legacy_observability_*
+					// and DEMOL-13/301 drops those archives. The plain business names
+					// can still exist on the baseline path (the consolidated baseline
+					// cannot encode a per-scope RENAME); that pre-existing schema
+					// overlap is outside this ticket.
+					for _, name := range []string{
+						"legacy_observability_outbox_events", "legacy_observability_clip_folders",
+					} {
+						require.Empty(t, mustReadColumnNames(t, db, name),
+							"%s must be dropped by 301", name)
+					}
+					// Idempotency still holds on the scope that owns no business table.
+					require.NoError(t, RunMigrationsOnDB(dbPath, zaptest.NewLogger(t), migrationsDir, targetDB),
+						"second RunMigrationsOnDB must be a clean no-op on observability")
+					return
+				}
 
 				db, err := sql.Open("sqlite3", dbPath+"?_mode=ro")
 				require.NoError(t, err)
@@ -154,29 +173,9 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 					clipIndexSource = plainClipIndexes
 				}
 				require.Contains(t, clipIndexSource, "idx_clip_folders_search_key",
-					"clip_folders.search_key index from 093 must exist") // 6. On observability the plain business names must be gone after
-				//    the 267 quarantine (observability is not a business registry).
-				//    Baseline-aware: on the consolidated-baseline path the
-				//    idempotent baseline file cannot encode the per-DB 267
-				//    RENAME (the same statements must apply to both scopes),
-				//    so the quarantined tables coexist with their plain-named
-				//    originals on observability. The legacy copies must still
-				//    exist with the canonical column shape.
-				if targetDB == "observability" {
-					if baselineCount > 0 {
-						legacyCols := mustReadColumnNames(t, db, "legacy_observability_outbox_events")
-						require.NotEmpty(t, legacyCols,
-							"legacy_observability_outbox_events must exist on observability (baseline path)")
-						legacyClipCols := mustReadColumnNames(t, db, "legacy_observability_clip_folders")
-						require.NotEmpty(t, legacyClipCols,
-							"legacy_observability_clip_folders must exist on observability (baseline path)")
-					} else {
-						require.Empty(t, mustReadColumnNames(t, db, "outbox_events"),
-							"outbox_events must be quarantined away on observability (267)")
-						require.Empty(t, mustReadColumnNames(t, db, "clip_folders"),
-							"clip_folders must be quarantined away on observability (267)")
-					}
-				} // 7. schema_migrations ledger row count sanity: should include
+					"clip_folders.search_key index from 093 must exist") 				// 6. The observability plane returns before this point (it owns no
+				//    business table), so this assertion only runs on primary.
+				// 7. schema_migrations ledger row count sanity: should include
 				//    every in-scope migration from 001 through 093 (plus any
 				//    later in-scope migrations). Hard floor: >= 93 if every
 				//    migration through to 093 is in scope for targetDB.

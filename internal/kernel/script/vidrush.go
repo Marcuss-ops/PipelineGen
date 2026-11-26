@@ -3,11 +3,9 @@
 package script
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 )
 
@@ -512,23 +510,6 @@ func (c *SegmentAssetCandidate) ClearLifecycleFailure() {
 // in run" from warning text or status strings.
 func (c SegmentAssetCandidate) LifecycleFailed() bool {
 	return strings.TrimSpace(c.LifecycleFailureReason) != "" || strings.TrimSpace(c.PersistenceStatus) == VidRushStatusFailed
-}
-
-// UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,
-// the demolished "legacy_file_md5" key of payloads written before the 281
-// contract migration (job payloads, checkpoints). Only the canonical key is
-// written back.
-func (c *SegmentAssetCandidate) UnmarshalJSON(data []byte) error {
-	type wire SegmentAssetCandidate
-	var v wire
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*c = SegmentAssetCandidate(v)
-	if c.ContentSHA256 == "" {
-		c.ContentSHA256 = digest.LegacyContentSHA256FromJSON(data)
-	}
-	return nil
 }
 
 // SegmentAssetSelection is the winning asset bundle for a segment.

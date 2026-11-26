@@ -71,9 +71,6 @@ Colonne rimosse (non riaggiungere):
 | artifact_stages | state | sqlite | STAGED | STAGED,PUBLISHED,SUCCEEDED,FAILED_PERMANENT | UPPER | SUCCEEDED,FAILED_PERMANENT |
 | artifact_stages | state | sqlite_jobs | STAGED | - | UPPER | SUCCEEDED,FAILED_PERMANENT |
 | artifacts | status | sqlite | STAGING | STAGING,VERIFYING,READY,FAILED,QUARANTINED,DELETED | UPPER | FAILED,QUARANTINED,DELETED |
-| artlist_download_audit | status | sqlite | pending | - | lower | - |
-| artlist_queries | sync_status | sqlite | never | never,running,succeeded,failed | lower | succeeded,failed |
-| artlist_runs | status | sqlite | queued | - | lower | - |
 | assembly_sessions | status | sqlite | - | - | - | - |
 | asset_artifacts | status | sqlite | pending | pending,uploaded,verified,deleted | lower | deleted |
 | asset_index | status | sqlite | ready | - | lower | - |

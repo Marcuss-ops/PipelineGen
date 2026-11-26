@@ -2,12 +2,6 @@
 // Code-motion split from internal/capabilities/finalization/types.go (674 LOC, LONG-FILES-DECOMPOSITION-2026-07-06 P0 critical band slice, 2026-07-06).
 package finalization
 
-import (
-	"encoding/json"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-)
-
 // AssetRenditionLocation describes a single technical variant of a
 // published artifact (master, mezzanine, proxy, thumbnail, storyboard,
 // etc.) so that AssetFinalizerTx can persist it as an asset_locations
@@ -160,20 +154,4 @@ type PublishedArtifact struct {
 	// ───────────────────────────────────────────────────────────────────
 	SourceTextHash string `json:"source_text_hash,omitempty"`
 	SourceLanguage string `json:"source_language,omitempty"`
-}
-
-// UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,
-// the demolished "legacy_file_md5" key of manifests written before the 281
-// contract migration. Only the canonical key is written back.
-func (a *AssetRenditionLocation) UnmarshalJSON(data []byte) error {
-	type wire AssetRenditionLocation
-	var v wire
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*a = AssetRenditionLocation(v)
-	if a.ContentSHA256 == "" {
-		a.ContentSHA256 = digest.LegacyContentSHA256FromJSON(data)
-	}
-	return nil
 }

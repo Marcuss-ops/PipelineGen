@@ -45,9 +45,9 @@ func RunCleanupAllOrphans(args []string) error {
 	driveReader := root.Drive.Reader
 	driveAdmin := root.Drive.Admin
 
-	// The retired Artlist root is intentionally absent: its assets are
-	// migrated into the stock root by `admin migrate-artlist-assets`, and
-	// nothing scans the retired folder any more.
+	// The retired Artlist root is intentionally absent. The one-shot
+	// `admin migrate-artlist-assets` was removed by DEMOL-13 after the live
+	// check proved that root empty, and nothing scans the retired folder.
 	targets := []struct {
 		name     string
 		rootID   string

@@ -23,9 +23,10 @@ func TestMigrations_299_CachePlaneRepair(t *testing.T) {
 	}
 	db := openMigrationTestDB(t, dbPath)
 
+	// artlist_search_cache is intentionally absent: the provider is retired and
+	// DEMOL-13/301 drops the table after the zero-reference census.
 	for _, table := range []string{
 		"research_cache",
-		"artlist_search_cache",
 		"transcript_cache",
 		"translation_cache",
 		"stock_source_cache",

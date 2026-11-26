@@ -19,6 +19,8 @@ func TestMigrations_264_QuarantinesLegacyCacheTables(t *testing.T) {
 			t.Fatalf("cache table %q must not remain in media.db.sqlite", table)
 		}
 	}
+	// The archive tables 264 created are dropped by DEMOL-13/301 after the
+	// census certified zero runtime references and zero rows.
 	for _, table := range []string{
 		"legacy_cache_artlist_search", "legacy_cache_research", "legacy_cache_transcript",
 		"legacy_cache_translation", "legacy_cache_stock_source", "legacy_cache_media_query",
@@ -28,8 +30,8 @@ func TestMigrations_264_QuarantinesLegacyCacheTables(t *testing.T) {
 		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
-		if count != 1 {
-			t.Fatalf("legacy cache archive %q missing", table)
+		if count != 0 {
+			t.Fatalf("legacy cache archive %q must be dropped by 301", table)
 		}
 	}
 }
