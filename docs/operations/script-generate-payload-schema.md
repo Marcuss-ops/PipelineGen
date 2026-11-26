@@ -419,9 +419,7 @@ or `style` name a different treatment, and when an `animation_pool` or
 `style_pool` excludes half of the preset pair. Preset ids in `animation`,
 `selection_mode: "exact"` and `mode: "manual"` behave like any explicit
 composition id. The five editorial presets keep their authored US bounds and
-reject Italian pins; the remaining seven cover Italy. `editorial_blueprint`
-is a composition, not an approved PNG preset, so request it through
-`animation` as before.
+reject Italian pins; the remaining seven cover Italy.
 
 `date_motion_family: "typewriter"` restricts date cards to the ten certified
 `date_typewriter_*` presets. With `animation_counts.dates` omitted or set to
@@ -447,8 +445,7 @@ the compile-path assignment.
     "style_pool": ["chronon_editorial", "esri_topo", "esri_sat"],
     "camera": "slow_approach",
     "country_feature": "Germany",
-    "timeline_label": "AUGUST 2007",
-    "mountain_overlay_asset": "showcases/assets/taurus_mountain_range.png"
+    "timeline_label": "AUGUST 2007"
   }
 }
 ```
@@ -456,15 +453,13 @@ the compile-path assignment.
 `animation` chooses the map composition and `style` chooses the underlying
 basemap independently. Both pools accept only registered choices certified by
 the active native renderer; unknown ids fail before rendering. The current
-The registry contains all 26 ChrononPlugin composition ids. Eighteen can be
-drawn automatically. `historic_location_timeline` and `mountain_ridge_callout`
-are exact-only because they need extra data. The six authored editorial
-scenes are also exact-only and enforce their Indiana/US geography. There are
-three renderer-backed basemaps.
+registry contains the 22 servable ChrononPlugin composition ids. Sixteen can
+be drawn automatically. `historic_location_timeline` is exact-only because it
+needs extra data. The five authored editorial scenes are also exact-only and
+enforce their Indiana/US geography. There are three renderer-backed basemaps.
 `country_feature` and `timeline_label` let an exact historical timeline carry
-its required data; `mountain_overlay_asset` must identify a readable RGBA
-overlay. `continental_atlas` can infer Italy from a grounded Italian pin;
-other countries must be named explicitly. Editorial scenes require the
+its required data. `continental_atlas` can infer Italy from a grounded Italian
+pin; other countries must be named explicitly. Editorial scenes require the
 `chronon_editorial` basemap and reject pins outside authored bounds. The
 connection-arc scene depicts a fixed Indianapolis–Washington route, so it
 cannot be used for unrelated routes.

@@ -83,6 +83,77 @@ raggruppamento per chi crea il video; non è un renderer, né implica un nuovo
 | Mappe | `map` | ChrononPlugin è l'unica fonte del rendering mappe. Il renderer nativo (`maps_dynamic_map_render`) pubblica il vocabolario in `ChrononPlugin/plugins/maps/maps-renderer-catalog.v1.json` (25 composizioni documentary + base flyover, camera `slow_approach`/`exponential_dive`, basemap `chronon_editorial`/`esri_sat`); RenderingGen incorpora quello stesso catalogo e rifiuta per nome ogni `map_animation` fuori da esso, incluse le vecchie famiglie Python (`region_zoom`, `pulse_marker`, `ed_*`). |
 | Altri elementi | `important_word`, `quote`, entità testuali, `product`, `logo`, `shape`, `video_overlay`, ecc. | Rimangono classi supportate dal compilatore; non vanno mescolate alle sezioni principali dell’editor. |
 
+Per i job generati da script che invocano il renderer dinamico nativo,
+`maps_dynamic_map_render` accetta il campo top-level `map_preset`. I 12 ID
+descrittivi sono elencati in
+[`ChrononPlugin/plugins/maps/map-presets-catalog.v1.json`](../ChrononPlugin/plugins/maps/map-presets-catalog.v1.json);
+il preset sceglie la composizione e la basemap abbinate, e usa Italy come
+`map_place` predefinito. Un esempio completo è
+[`map_preset_script_example.json`](../ChrononPlugin/plugins/maps/showcases/map_preset_script_example.json).
+La selezione è documentata anche in
+[`showcases/README.md`](../ChrononPlugin/plugins/maps/showcases/README.md).
+
+### ModernMap1 — placca editoriale vettoriale
+
+Un map item sceglie la famiglia con `params.map_type`: `classic` è il default
+(raster locale, pin, eventuale camera/LOD) e resta invariato; `ModernMap1` è la
+mappa vettoriale che mostra **solo il territorio richiesto**, senza raster e
+senza pin. Il payload dichiara `params.map_place` (nome Natural Earth, id paese
+o `admin1:<nome>`); il worker risolve la feature dal catalogo locale, proietta i
+ring nel canvas con `tacticalfill` e compone la placca editoriale: carta calda,
+reticolo leggero, confini di contesto, territorio in rosso con alone e contorno,
+nome in basso a sinistra, credito e logo opzionale dentro il territorio. Il
+riempimento è triangolato (ear clipping su un anello semplificato) e ancorato al
+bbox dell’intera regione, perché il fill nativo di Chronon scarta sia i path
+densi sia i triangoli con bbox proprio; contorno e alone coprono le giunture. Non
+c’è download, non c’è un secondo renderer: è lo stesso Chronon3D.
+
+```json
+{"kind":"map","template_id":"MAP","start_ms":0,"end_ms":8000,
+ "params":{"map_type":"ModernMap1","map_place":"Italy"},
+ "map":{"provider":"local","source_id":"natural-earth",
+   "source_license":"public-domain","center":{"latitude":0,"longitude":0},
+   "zoom":0,"width":1920,"height":1080,"attribution":"Natural Earth","pins":[]}}
+```
+
+ModernMap1 rifiuta `pins`, `routes`, `camera_move`, `lods`, `motion_id` e i
+parametri di presentazione della lane raster: mescolarli dichiarerebbe due
+mappe diverse sullo stesso item. Accetta al più un asset, il logo opzionale
+(`params.map_logo`, PNG già dichiarato in `asset_refs`): viene centrato dentro
+il territorio e scalato alla sua dimensione, e senza asset non disegna nulla e
+non scarica nulla. Le regioni sono disponibili
+solo per i dataset admin-1 presenti in `ChrononTemplate/catalog`
+(`ne_10m_admin_1_bahia.geojson`, `ne_10m_admin_1_gujarat.geojson`); per mostrare
+una provincia italiana serve aggiungere il relativo GeoJSON al catalogo. Con un
+piano `ModernMap1` si compila e si renderizza con
+`go run ./cmd/modernmap-demo -place Italy -out-dir /tmp/modernmap1`.
+
+### EditorialMap — sei stili vettoriali
+
+`cmd/editorial-map` porta in RenderingGen la lane vettoriale a sei stili
+(`editorial_vox`, `paper_cutout`, `dark_radar`, `blueprint`, `connection_arc`,
+`floating_island`). Il comando consuma un DTO
+`chrononplugin.editorial-map-scene.v1` già proiettato da ChrononPlugin, lo
+abbassa con `chronontemplate_emit_editorial_map` e, con `-render`, produce
+l'MP4 tramite Chronon3D. RenderingGen non legge GeoJSON e non proietta nulla:
+coordina soltanto i due binari nativi.
+
+```bash
+# connection_arc anima il trim dell'arco: prova animata della lane.
+go run ./cmd/editorial-map \
+  -scene ../../ChrononTemplate/tests/fixtures/editorial_map_connection_arc.scene.json \
+  -out-dir ../../.tmp/renderinggen-connection-arc \
+  -backend vulkan \
+  -render ../../.tmp/renderinggen-connection-arc/connection_arc.mp4
+```
+
+`-backend` accetta `software` (default) o `vulkan`; il backend software è
+utile come fallback ma può essere molto più lento su 240 frame 1080p.
+
+`-emit`, `-chronon` e `-assets-root` sovrascrivono i path dei binari e del root
+font; in alternativa si usano `CHRONONTEMPLATE_EMIT_EDITORIAL_MAP`,
+`CHRONON_BIN` e `CHRONON_TEMPLATE_ROOT`.
+
 Quindi la proposta editoriale parte da **7 sezioni principali** (le prime sette
 righe) più “Altri elementi”. Lo scenario concatenato già presente, invece, ha
 **6 atti runtime**: frasi, date, metriche, entità, luoghi+mappa, immagini. Date
@@ -102,23 +173,50 @@ schermo intero, `cover` e sfocata. Il default è zoom `1.15x` e blur `18 px`;
 il payload può scegliere `zoom` da `1x` a `10x` e `blur_px` da `6` a `48`.
 Questa opzione è rifiutata sui compositi e sui gruppi.
 
+`image_backdrop.grid` aggiunge una griglia chiara a schermo intero sopra il
+backdrop e la card, come nel pacchetto editoriale `image_backdrop_grid`.
+Il payload sceglie `enabled`, `style` (`lines` o `dots`), `color`
+(`#RRGGBB`, default `#7FA8C8`), `spacing_px` (`4..512`, default `120`),
+`opacity` (`0..1`, default `0.1`) e, per lo stile scelto, `line_width_px`
+(`0.25..32`, default `1`) oppure `dot_radius_px` (`0.5..64`, default `2`).
+Le due geometrie sono mutuamente esclusive: un `line_width_px` su uno stile
+a punti, o un `dot_radius_px` su uno a linee, viene rifiutato.
+
 Ombra e contorno sono selezionabili nel payload sia per una foto singola
 (`item.frame`) sia per ogni membro di un composito o gruppo
 (`image_layers[].frame`). `frame` espone `border` (spessore, colore e raggio),
-`shadow` (colore, opacità, blur e offset), `stroke` e `clip_radius_px` per il
-ritaglio arrotondato del bounding box. Le dimensioni e il fit di ciascun box
-restano in `params.width`, `params.height`, `params.fit` e `params.bounded`.
+`shadow` (colore, opacità, blur e offset), `shadows`, `stroke` e
+`clip_radius_px` per il ritaglio arrotondato del bounding box. Le dimensioni e
+il fit di ciascun box restano in `params.width`, `params.height`, `params.fit`
+e `params.bounded`.
+
+`shadows` è la forma multipla della stessa ombra: un array ordinato da 1 a 3
+voci con gli stessi campi di `shadow` (`color` obbligatorio, poi `opacity`
+`0..1`, `blur_px` `0..256`, `offset_x_px`/`offset_y_px` `±256`). Serve per
+ombre stratificate — un contatto scuro più due aloni colorati, per esempio — e
+arriva al renderer come `style.shadows`, dove ogni voce è un'ombra distinta.
+`shadow` e `shadows` sono **mutuamente esclusivi**: dichiararne entrambi è un
+errore di compilazione, non una precedenza silenziosa. I tasti piatti
+`shadow_*` restano la scorciatoia per l'ombra singola e vengono ignorati quando
+il frame dichiara già uno stack esplicito.
 
 Esempio di foto singola:
 
 ```json
 {
   "params": {"width": 600, "height": 800, "bounded": true, "fit": "contain",
-    "image_backdrop": {"zoom": 1.15, "blur_px": 18}},
+    "image_backdrop": {"zoom": 1.15, "blur_px": 18,
+      "grid": {"style": "lines", "color": "#7FA8C8", "spacing_px": 120,
+        "line_width_px": 1, "opacity": 0.1}}},
   "frame": {
     "border": {"width_px": 5, "color": "#FFFFFF", "radius_px": 24},
-    "shadow": {"color": "#000000", "opacity": 0.65, "blur_px": 16,
-      "offset_x_px": 0, "offset_y_px": 6},
+    "shadows": [
+      {"color": "#000000", "opacity": 0.6, "blur_px": 10, "offset_y_px": 14},
+      {"color": "#1040C0", "opacity": 0.5, "blur_px": 14, "offset_x_px": -22,
+        "offset_y_px": 8},
+      {"color": "#C04010", "opacity": 0.5, "blur_px": 14, "offset_x_px": 22,
+        "offset_y_px": 8}
+    ],
     "clip_radius_px": 19
   }
 }
@@ -142,17 +240,28 @@ Per un composito, spostare `frame` e le dimensioni dentro ciascun elemento di
 ]}
 ```
 
+`params.effects` è opzionale e il suo stato predefinito è **nessun effetto**:
+omletterlo, dichiarare `[]` oppure `[{"type":"none"}]` producono lo stesso
+risultato. `none` è un valore esplicito del contratto, non un tipo di effetto:
+deve essere l’unica voce dello stack e non accetta parametri; combinarlo con un
+effetto reale viene rifiutato, così il payload non può dire due cose diverse
+sullo stesso layer. Gli altri tipi restano quelli dell’enum `layer_effect`; un
+tipo sconosciuto o un parametro fuori scala è un errore di compilazione
+(fail-closed), mai uno scarto silenzioso.
+
 **Fotografia runtime verificata:** c’è **1 renderer** (Chronon3D); il worker
 RenderingGen compila il piano semantico, non è un secondo renderer. Il registry
-contiene **20 `ItemKind`**, **29 template**, **10 preset ufficiali** (2 testo +
-8 immagini) e **6 comportamenti di compilazione** (testo, entità, immagine,
-video, shape, mappa). Sono conteggi di livelli diversi: kind/template/preset non
-sono sinonimi di “sezione”. **Conteggio verificato il 2026-10-16** con
-`go run ./cmd/motion-catalog`: il runtime espone **438 motion ID**, **26 famiglie
-selezionabili** e **22 use case**. È una vista compilata: include l’artefatto
-ChrononTemplate incorporato, i pack C++ e i cataloghi metric/date/entity.
-Generala al momento del consumo per leggere la disponibilità corrente; i
-conteggi precedenti non descrivono più il registry compilato.
+contiene i `ItemKind`, i template e i preset definiti da `overlay/registry.go` e
+`overlay/official_presets.go`, e **6 comportamenti di compilazione** (testo,
+entità, immagine, video, shape, mappa). Sono livelli diversi: kind/template/
+preset non sono sinonimi di “sezione”.
+
+I **conteggi non sono ripetuti qui**: kind, template, preset, motion, famiglie e
+use case sono viste compilate che invecchiano a ogni famiglia aggiunta, e un
+numero scritto in prosa diventa una seconda fonte di verità che contraddice il
+codice. La vista autorevole è `go run ./cmd/motion-catalog`: include l’artefatto
+ChrononTemplate incorporato, i pack C++ e i cataloghi metric/date/entity, e va
+eseguita al momento del consumo per leggere la disponibilità corrente.
 
 Il comando scrive il catalogo su stdout; `go run ./cmd/motion-catalog -output
 catalog.json` lo salva su file.
@@ -168,10 +277,11 @@ immagini di entità riusa invece il pool immagine.
 
 Le composizioni selezionabili sono distinte dalle motion: immagini da 1 a 5,
 immagini con testo da 1 a 5 (da una a N caption), `one_map` e `two_maps`. Le
-dieci motion map obsolete restano registrate per la compatibilità del catalogo,
-ma non sono selezionabili; le 10 mappe correnti specifiche sono abbinate per
-renderer e hanno durata fissa di 150 frame. Il registry contiene una undicesima
-`map_image_v1` non deprecata (`map_middle_east_oil_focus`) esclusa dal picker
+dieci motion map obsolete (`map_image_*`, scadute il 2026-10-08) sono state
+rimosse dal catalogo: non erano più selezionabili e la data di rimozione era
+passata; le 10 mappe correnti specifiche sono abbinate per renderer e hanno
+durata fissa di 150 frame. Il registry contiene una undicesima `map_image_v1`
+non deprecata (`map_middle_east_oil_focus`) esclusa dal picker
 georeferenziato dalla regola track `centeredMapMotion`, quindi il picker resta a
 14 opzioni. Il producer automatico usa un sottoinsieme sicuro di 4 motion
 centrate, ruotandole deterministicamente tra mappe. Il pool automatico delle
@@ -417,8 +527,9 @@ certification.
 
 The checked runtime snapshot in `renderinggen/motion-certification/latest/`
 contains 108 phrase render logs and 20 software image logs; this is historical
-certification evidence, **not** a count of all motions currently registered
-(438 total). Do not infer GPU certification for newly registered IDs from
+certification evidence, **not** a count of all motions currently registered.
+The compiled runtime catalog is the authoritative count. Do not infer GPU
+certification for newly registered IDs from
 those older logs. Set
 `RENDERINGGEN_GPU_CERT_FAMILY=phrase` or `image` to run the current selected
 inventory; set `RENDERINGGEN_GPU_CERT_MOTION=<id>` to isolate a single motion.
@@ -598,8 +709,54 @@ chronon.ProgressTracker (per-job snapshot: frames_done/total, %, fps,
 ```
 
 A job whose `frames_done` stays flat while `last_frame_at` ages is a stalled
-render; the renderer's own stall watchdog aborts it. GPU memory growth alone
-is never treated as progress evidence.
+render; the renderer's own stall watchdog aborts it. GPU memory growth alone is
+never treated as progress evidence.
+
+The frame stream above is the CLI transport. The warm-daemon IPC transport runs
+the render job as one blocking call, and its `GET_JOB_STATUS` reply carries
+lifecycle state only (`prepared`/`running`/`completed`/`failed`), not frame
+counts. A daemon render therefore logs elapsed-time heartbeats instead of
+inventing a percentage.
+
+### Stato del job nel log (job_state)
+
+Ogni transizione scrive una riga con lo stesso prefisso stabile, sia nel log del
+processo sia nel log duraturo del job (`<jobs_root>/<job_id>/worker.log`):
+
+| `job_state=` | Quando | Dati utili |
+|---|---|---|
+| `claimed` | il worker ha preso il job dalla coda | tipo, tentativo, lease generation, scadenza del lease, chunk |
+| `preparing` | inizio del lowering semantico + materializzazione | tipo, tentativo, lease |
+| `prepared` | piano compilato e asset pronti per la GPU | layer, asset, item, durata prepare |
+| `waiting_gpu` | il job è in attesa di una lane GPU libera | `lane_wait_ms` |
+| `rendering` | Chronon ha iniziato a renderizzare | canvas, fps, frame totali, backend, encoder |
+| `rendering progress=…` | ogni milestone del renderer (max 1 riga/10s, più la prima e l'ultima) | percentuale, ETA, frame, fps |
+| `rendering state=in_progress …` | nessuna milestone da almeno 15 s, oppure trasporto daemon che non le emette | `elapsed`, ultimi frame noti (o `progress=unknown`), `note` |
+| `rendered` | il renderer ha restituito il file | durata, `frames` richiesti, `frames_done`/`frames_total` osservati, fps, `progress`, output |
+| `finalizing` | probe/hash/store/publish | segmenti |
+| `publishing` | retry di pubblicazione di un artefatto già durevole | artifact, policy |
+| `completed` | la coda ha accettato il completamento | artifact, byte, `durable` |
+| `failed` | qualunque path di errore | motivo |
+
+Per seguire un job: `grep 'job_state=' <jobs_root>/<job_id>/worker.log`. La
+sequenza attesa è `claimed → preparing → prepared → waiting_gpu → rendering →
+rendered → finalizing → completed` (oppure `failed` con il motivo).
+L'ETA è lineare sull'fps medio e va letta come stima, non come garanzia.
+
+La riga `rendered` riporta `frames=` (i frame che quella invocazione doveva
+produrre: piano intero oppure finestra del chunk) e i campi osservati
+`frames_done`/`frames_total`. Quando il renderer non ha emesso milestone,
+`progress=not_reported` sostituisce la percentuale: significa "nessuna
+posizione di frame riportata dal renderer", non 0%. Il job può comunque essere
+`completed` con un artifact valido, e `frames=` resta la quantità prodotta.
+Sul trasporto IPC del daemon è il caso normale, perché il daemon non inoltra i
+frame al worker.
+
+Se il renderer emette milestone ma si ferma per almeno 15 secondi, il worker
+aggiunge una riga `job_state=rendering state=in_progress elapsed=…` con
+`progress=…` dell'ultima posizione nota e `note=no_new_frames`. Il log continua
+quindi a dire "sono ancora qui, da quanto" anche nei tratti silenziosi; le
+righe con percentuale ed ETA compaiono solo quando arrivano nuove milestone.
 
 ## Database
 
@@ -715,33 +872,29 @@ make test-unit   # tutti i moduli, senza la certificazione runtime (gate veloce)
 CHRONON_BIN=/path/to/chronon3d_cli go test ./internal/overlay/ -count=1
 ```
 
-### Runtime certification in CI — manual, self-hosted GPU
+### Runtime certification — local GPU lane
 
-The certification suite has exactly one owner: the `runtime-certification` job
-in `.github/workflows/build.yaml`. It is **manual** and runs on a self-hosted
-runner labelled `gpu`. It deliberately does **not** set
-`RENDERINGGEN_SKIP_GPU_E2E`, so it renders for real or fails loudly — it can
-never report a green run in which every certification test skipped.
-
-Two prerequisites live on the runner side and cannot be created from this
-checkout, so the job stays dormant until they exist:
-
-| Requirement | Where it lives | Why |
-|---|---|---|
-| `CHRONON_BIN` | Repository **variable** (Settings → Secrets and variables → Actions → Variables) | Absolute path to a built `chronon3d_cli` on that runner. The job exits non-zero when it is unset or not executable. |
-| `gpu` label | A self-hosted runner registered with the `gpu` label | Gives the job a device; GitHub-hosted runners expose none, which is why the unit jobs cannot run the suite. |
-
-Dispatch it once both exist:
+The real-engine certification suite (real `chronon3d_cli` renders, decoded and
+pixel-compared) is **not** a CI job: this repository has no self-hosted GPU
+runner, and a job that can never run is not an owner. The lane is owned by the
+GPU host operator and runs from the checkout with the engine explicitly named:
 
 ```sh
-gh workflow run build -f certification=true
+CHRONON_BIN=/path/to/chronon3d_cli make test-certification
 ```
 
-`TestCIRuntimeCertificationHasAnOwner` (`internal/architecture`) parses the
-workflow and fails if the job loses any of the five properties above (overlay
-target, no skip variable, `CHRONON_BIN`, manual trigger, GPU runner). If no GPU
-runner is ever provisioned, delete the job **and this section together**: a
-documented "local only" is honest, an owner that can never run is not.
+`make test-certification` runs `-tags certification` over
+`renderinggen/internal/overlay/` and deliberately does **not** set
+`RENDERINGGEN_SKIP_GPU_E2E`, so every test that needs the engine runs for real.
+Without `CHRONON_BIN` those engine-dependent tests self-skip, so an unqualified
+run proves only the compile-level suites. CI still runs the tagged suites in
+`test-renderinggen` with `RENDERINGGEN_SKIP_GPU_E2E=1`; that keeps the tag from
+orphaning the compile-level corpus but is not runtime certification.
+
+If a self-hosted runner with the `gpu` label is ever provisioned, restore a
+manual `runtime-certification` job with the five properties (overlay target, no
+skip variable, `CHRONON_BIN`, manual trigger, GPU runner) and update
+`TestRuntimeCertificationHasAnOwner` accordingly.
 
 To exercise the loop over the real services, start the stack and run the
 smoke script (submits a self-contained color job, polls for completion,

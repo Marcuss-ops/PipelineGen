@@ -250,6 +250,21 @@ func ResolveMediaContract(id string) (OverlayMediaContract, error) {
 	}
 }
 
+// SupportsTransparency reports whether the named contract can carry a real
+// alpha channel. An unknown contract fails closed (error). An empty id means
+// the renderer default, which is the alpha-bearing overlay-v1.
+//
+// This is the single owner of "may this plan be transparent?". A compositor
+// request for alpha on `overlay-v1-noalpha` produced black artifacts in r80;
+// callers must ask this function instead of inferring alpha from a style value.
+func SupportsTransparency(contractID string) (bool, error) {
+	contract, err := ResolveMediaContract(contractID)
+	if err != nil {
+		return false, err
+	}
+	return contract.RequiresAlpha, nil
+}
+
 // ContractIDForCanvas returns the canonical contract ID for the given canvas
 // and alpha requirement. It is the single owner of canvas → contract-ID
 // selection; callers stamp it onto OverlayPlan.MediaContract so the render

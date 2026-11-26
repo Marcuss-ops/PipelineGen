@@ -126,6 +126,27 @@ func TestProjectSemanticEventsRejectsConflictingDuplicateFrames(t *testing.T) {
 	}
 }
 
+func TestProjectSemanticPersonRelationsDropsSelfReference(t *testing.T) {
+	source := "Marco is the father of Luca."
+	identities := []semanticEngineIdentity{{ID: "person_01"}, {ID: "person_02"}}
+	relations, err := projectSemanticPersonRelations(source, identities, []semanticEnginePersonRelation{
+		{
+			FromID: "person_02", ToID: "person_02", Kind: "parent_of", Status: "asserted",
+			StartByte: 0, EndByte: len(source), SentenceIndex: 0, Evidence: source,
+		},
+		{
+			FromID: "person_01", ToID: "person_02", Kind: "parent_of", Status: "asserted",
+			StartByte: 0, EndByte: len(source), SentenceIndex: 0, Evidence: source,
+		},
+	})
+	if err != nil {
+		t.Fatalf("self-referential relation must be dropped, not fatal: %v", err)
+	}
+	if len(relations) != 1 || relations[0].FromID != "person_01" || relations[0].ToID != "person_02" {
+		t.Fatalf("relations = %+v, want only the valid person_01 -> person_02", relations)
+	}
+}
+
 func TestProjectSemanticPersonRelationRejectsMissingIdentity(t *testing.T) {
 	source := "Marco is father of Luca."
 	_, err := projectSemanticPersonRelations(source, []semanticEngineIdentity{{ID: "person_01"}}, []semanticEnginePersonRelation{{

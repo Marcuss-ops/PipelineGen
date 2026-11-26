@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -233,8 +234,39 @@ func (c *VidRushIncrementalCoordinator) enrichAndMaterialize(ctx context.Context
 	if err == nil {
 		result, err = c.materializeSegment(ctx, result)
 	}
+	if err == nil {
+		result = c.annotateZeroImageReason(result)
+	}
 	recordSceneStage(ctx, event.SceneID, kernobs.SceneStageAsset, kernobs.SceneStageTimes{
 		ReadyAt: nlpCompletedAt, StartedAt: assetStartedAt, CompletedAt: time.Now().UTC(),
 	}, "", err)
 	return result, err
+}
+
+// annotateZeroImageReason records on the persisted segment WHY the image
+// target was missed. The fail-fast gate already carries the reason in its
+// error; writing it to Insights.ImageSearchNoImageReason puts the same stable
+// code in the run result (and therefore in /full), so one scene's zero does
+// not require a second investigation of provider logs.
+func (c *VidRushIncrementalCoordinator) annotateZeroImageReason(result scriptpkg.VidRushSegmentResult) scriptpkg.VidRushSegmentResult {
+	if c == nil {
+		return result
+	}
+	c.mu.Lock()
+	spec := c.imageFanoutSpec
+	c.mu.Unlock()
+	if spec == nil {
+		return result
+	}
+	violation := mediacert.CheckSegmentImageFanout(*spec, mediacert.ResultSegment{
+		SegmentID: result.SegmentID,
+		Position:  result.Position,
+		Assets:    result.Assets,
+		Warnings:  result.Warnings,
+	})
+	if violation == nil {
+		return result
+	}
+	result.Insights.ImageSearchNoImageReason = mediacert.ZeroImageReason(result.Assets, result.Warnings)
+	return result
 }

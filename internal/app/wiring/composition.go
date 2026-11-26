@@ -249,6 +249,15 @@ func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AI
 	if utility.ReadyChecker == nil || utility.HealthService == nil || !anyScriptFeatureEnabled(cfg) {
 		return
 	}
+	var listFolder func(context.Context, string) error
+	var notTrashed func(context.Context, string) (bool, error)
+	if driveBundle.Reader != nil {
+		listFolder = func(ctx context.Context, folderID string) error {
+			_, err := driveBundle.Reader.ListFiles(ctx, folderID)
+			return err
+		}
+		notTrashed = driveBundle.Reader.FileIsNotTrashed
+	}
 	scriptChecker := systemhealth.NewScriptGenerateChecker(
 		utility.HealthService,
 		systemhealth.NewOllamaCheckerWithResidency(
@@ -262,7 +271,7 @@ func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AI
 				return ai.OllamaClient.ModelResidency(ctx)
 			},
 		),
-		systemhealth.NewDriveFolderChecker(driveBundle.Publisher),
+		systemhealth.NewReadOnlyDriveFolderChecker(listFolder, notTrashed),
 		cfg.Drive.ScriptsGenFolder(),
 		systemhealth.NewPublisherChecker(driveBundle.Publisher),
 		func(jobType string) bool { return jobs.Service != nil && jobs.Service.HasHandler(jobType) },

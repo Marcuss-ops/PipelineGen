@@ -40,6 +40,8 @@ func TestScriptGenerationMasterDoesNotConcatOrPublishFinalVideo(t *testing.T) {
 			"SetFinalVideoPublisher",
 			"FinalVideoRequired",
 			"FinalVideoReference",
+			"LocalFinalRender",
+			"LocalFinalVideo",
 			"assemble_final",
 		} {
 			if strings.Contains(text, forbidden) {

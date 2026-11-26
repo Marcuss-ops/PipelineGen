@@ -10,6 +10,7 @@ import (
 
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
+	"go.uber.org/zap"
 )
 
 // PrepareFinalJobVideoSegments replaces source-video references with verified
@@ -85,6 +86,16 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 			},
 		})
 	}
+	// PERFLIVE-04: record why each compiled segment exists. The remote report
+	// counts encodes, but a count alone cannot answer "which of these had to be
+	// prepared and why". This summary is Producer-owned and is written before
+	// any fragment is prepared, so it survives a preparation failure.
+	reasons := finalJobSegmentReasonSummary(plan, refs)
+	zap.L().Info("final_job segment plan",
+		zap.Int("segments", len(plan.VideoTracks[0].Segments)),
+		zap.Int("prepared_locally", len(work)),
+		zap.Any("reasons", reasons))
+
 	// Phase 2 — prepare the fragments. They are independent, so they run on the
 	// preparer's lanes; the result is indexed by plan position, which keeps the
 	// binding deterministic whatever the completion order is.
@@ -242,6 +253,52 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		return "", nil, fmt.Errorf("marshal prepared final_job compiled plan: %w", err)
 	}
 	return string(canonicalPlan), preparedRefs, nil
+}
+
+// FinalJob segment reasons. They name the authority that owns a placement's
+// bytes, which is the only honest answer to "why is this an encode?": the
+// Producer prepares locally only what the Master cannot take as a stock
+// reference.
+const (
+	FinalJobSegmentReasonStockPool       = "stock_pool_slot"
+	FinalJobSegmentReasonStockBound      = "stock_bound"
+	FinalJobSegmentReasonOverlayTimeline = "overlay_timeline"
+	FinalJobSegmentReasonOverlay         = "overlay"
+	FinalJobSegmentReasonClip            = "clip"
+	FinalJobSegmentReasonScene           = "scene"
+)
+
+// finalJobSegmentReasonSummary groups the compiled plan's segments by the
+// reason they exist. It reads only plan positions and runtime refs, so it
+// never depends on how preparation scheduled or failed.
+func finalJobSegmentReasonSummary(plan FinalJobCompiledPlan, refs map[string]map[string]any) map[string]int {
+	summary := make(map[string]int)
+	if len(plan.VideoTracks) == 0 {
+		return summary
+	}
+	for _, segment := range plan.VideoTracks[0].Segments {
+		summary[finalJobSegmentReason(segment, refs)]++
+	}
+	return summary
+}
+
+func finalJobSegmentReason(segment FinalJobPlanSegment, refs map[string]map[string]any) string {
+	if segment.StockPoolSlot {
+		return FinalJobSegmentReasonStockPool
+	}
+	source := refs[segment.AssetID]
+	if strings.EqualFold(FinalJobStringValue(source["role"]), "stock") || boolValue(source["stock_pool_member"]) {
+		return FinalJobSegmentReasonStockBound
+	}
+	switch strings.ToLower(strings.TrimSpace(FinalJobStringValue(source["role"]))) {
+	case "overlay_timeline":
+		return FinalJobSegmentReasonOverlayTimeline
+	case "overlay":
+		return FinalJobSegmentReasonOverlay
+	case "clip":
+		return FinalJobSegmentReasonClip
+	}
+	return FinalJobSegmentReasonScene
 }
 
 func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegmentRequest) (FinalJobPlanAsset, map[string]any, error) {

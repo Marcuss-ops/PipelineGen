@@ -46,6 +46,12 @@ trasporta solo il binding (`asset_id`/`drive_link` + finestra
 - `TestBuildFinalJobPayloadsRejectsFolderOnlyStockBinding` (binding incompleto);
 - `TestBuildFinalJobPayloadsCarriesStockBindingWindow` (pass-through, anche
   parziale);
+- `TestNeedsStockWindowPreparationOwnsTheStockBoundary` (stock sempre del
+  Master);
+- `TestFinalJobWithoutStockAlwaysSubmitsRemotely` (handoff anche con un
+  `local_final_video` preesistente);
+- `TestAssembleFinalVideoSkipsLocalJoinForFinalJob` (nessun join locale per
+  `final_job`);
 - test di confine: nessun video finale locale, nessun path locale nel piano.
 
 ## Residui esterni

@@ -67,7 +67,7 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	// attributed/unattributed/bottleneck fields), never from job timestamps
 	// or a second clock. Best-effort: an absent reader/report yields a null
 	// `timing` field without changing the /full status response.
-	resp["timing"] = h.readTimingBreakdown(c.Request.Context(), id)
+	resp["timing"] = h.readTimingBreakdown(c.Request.Context(), id, j.Payload)
 
 	// Durable intermediate phases (job_stage_status). Written while the job
 	// runs, so polling /full shows the current phase before the job ends.
@@ -135,11 +135,22 @@ func (h *JobsHandler) readStageRows(ctx context.Context, id string) []job.JobSta
 	return rows
 }
 
+// TimingDiagnostics is the /full timing projection: the canonical RunReport
+// summary plus the request-derived run mode. RunMode is "cold" when the request
+// forced a refresh and "warm" when it stayed cache-eligible
+// (force_refresh=false). It describes the request, not proof of a cache hit;
+// an absent payload leaves RunMode empty instead of inventing a mode.
+type TimingDiagnostics struct {
+	kernobs.TimingSummary
+	RunMode      string `json:"run_mode,omitempty"`
+	ForceRefresh bool   `json:"force_refresh"`
+}
+
 // readTimingBreakdown returns the canonical timing summary for a job's most
 // recent run, or nil when the history reader is absent, no report exists, or
 // the report cannot be parsed. It is deliberately best-effort: timing
 // diagnostics must never fail or alter the /full status surface.
-func (h *JobsHandler) readTimingBreakdown(ctx context.Context, id string) any {
+func (h *JobsHandler) readTimingBreakdown(ctx context.Context, id string, payload json.RawMessage) *TimingDiagnostics {
 	if h.history == nil {
 		return nil
 	}
@@ -151,7 +162,46 @@ func (h *JobsHandler) readTimingBreakdown(ctx context.Context, id string) any {
 	if err := json.Unmarshal(raw, &report); err != nil {
 		return nil
 	}
-	return report.TimingSummary()
+	runMode, forceRefresh := timingRunMode(payload)
+	return &TimingDiagnostics{
+		TimingSummary: report.TimingSummary(),
+		RunMode:       runMode,
+		ForceRefresh:  forceRefresh,
+	}
+}
+
+// timingRunMode reads the request's force_refresh flag from the envelope root
+// or from an item's source/script_params. force_refresh=true bypasses caches,
+// so it is the cold-run marker; false is the warm/cache-eligible marker. A
+// missing or malformed payload returns an empty mode, never a guessed warm run.
+func timingRunMode(payload json.RawMessage) (string, bool) {
+	if len(payload) == 0 {
+		return "", false
+	}
+	var root map[string]any
+	if err := json.Unmarshal(payload, &root); err != nil || root == nil {
+		return "", false
+	}
+	forced := boolAt(root, "force_refresh")
+	if items, ok := root["items"].([]any); ok {
+		for _, raw := range items {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			forced = forced || boolAt(item, "force_refresh")
+			if source, ok := item["source"].(map[string]any); ok {
+				forced = forced || boolAt(source, "force_refresh")
+			}
+			if params, ok := item["script_params"].(map[string]any); ok {
+				forced = forced || boolAt(params, "force_refresh")
+			}
+		}
+	}
+	if forced {
+		return "cold", true
+	}
+	return "warm", false
 }
 
 // readScriptRunSnapshot returns the durable script checkpoint when the

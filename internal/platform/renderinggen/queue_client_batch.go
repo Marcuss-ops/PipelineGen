@@ -35,7 +35,7 @@ func (c *Client) SubmitBatch(ctx context.Context, jobs []renderqueue.RenderQueue
 			ChunkIndex: job.ChunkIndex, FrameRange: toQueueFrameRange(job.FrameRange),
 			PreparedRenderPackage: toQueuePreparedRenderPackage(job.PreparedRenderPackage),
 			RenderPlan:            job.OverlaySpec, Assets: toQueueAssets(job.Assets),
-			IdempotencyKey: identities[i].IdempotencyKey(job.ID),
+			RequireGPU: job.RequireGPU, IdempotencyKey: identities[i].IdempotencyKey(job.ID),
 		}
 	}
 	if err := c.q.SubmitBatch(ctx, wire); err != nil {

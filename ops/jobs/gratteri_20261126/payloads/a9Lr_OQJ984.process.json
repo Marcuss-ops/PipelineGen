@@ -1,0 +1,99 @@
+{
+  "url": "https://www.youtube.com/watch?v=a9Lr_OQJ984",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "require_transcript_ready": true,
+  "destination": {
+    "folder_id": "1oW6xyqgA9Q-vb2K0eucM4bwCiZrwDqFS",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "24:08",
+      "end": "24:17",
+      "name": "Cinque giorni di tempo per occultare le prove",
+      "category": "intervista",
+      "source_title": "CREDERE IN UN MONDO MIGLIORE! 💪🏼 NICOLA GRATTERI passa dal BSMT!",
+      "source_channel": "The BSMT by Gianluca Gazzoli",
+      "summary": "Oggi non troviamo nulla: tu alla fine dai cinque giorni di tempo a questa persona. Leggi che favoriscono indagati e criminali garantendo loro tempo per scappare o occultare prove.",
+      "topics": [
+        "Leggi che favoriscono indagati e criminali garantendo loro tempo per scappare o occultare prove."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "cinque giorni di tempo per occultare le prove"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "33:30",
+      "end": "33:41",
+      "name": "Mafie sempre meno violente e sempre più finanziarie",
+      "category": "intervista",
+      "source_title": "CREDERE IN UN MONDO MIGLIORE! 💪🏼 NICOLA GRATTERI passa dal BSMT!",
+      "source_channel": "The BSMT by Gianluca Gazzoli",
+      "summary": "Ci somigliano sempre più, sono sempre meno violente e riescono a mimetizzarsi facilmente nel mondo della finanza. Mafia dei colletti bianchi, finanza e infiltrazione nei piani alti dell'economia.",
+      "topics": [
+        "Mafia dei colletti bianchi, finanza e infiltrazione nei piani alti dell'economia."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "mafie sempre meno violente e sempre più finanziarie"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "34:30",
+      "end": "34:43",
+      "name": "L'avviluppamento dei potenti e le loro debolezze",
+      "category": "intervista",
+      "source_title": "CREDERE IN UN MONDO MIGLIORE! 💪🏼 NICOLA GRATTERI passa dal BSMT!",
+      "source_channel": "The BSMT by Gianluca Gazzoli",
+      "summary": "Inizia l'avviluppamento nei confronti della persona potente, specie se la persona potente ha delle debolezze. Ricatti ai potenti, lobby e aggancio mafioso delle figure chiave dello Stato.",
+      "topics": [
+        "Ricatti ai potenti, lobby e aggancio mafioso delle figure chiave dello Stato."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "l'avviluppamento dei potenti e le loro debolezze"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "34:57",
+      "end": "35:15",
+      "name": "La società si vende per cinque o diecimila euro",
+      "category": "intervista",
+      "source_title": "CREDERE IN UN MONDO MIGLIORE! 💪🏼 NICOLA GRATTERI passa dal BSMT!",
+      "source_channel": "The BSMT by Gianluca Gazzoli",
+      "summary": "Oggi non hanno bisogno di uccidere perché la società negli ultimi decenni si vende per cinque o diecimila euro. Corruzione sistemica di funzionari, professionisti e amministratori.",
+      "topics": [
+        "Corruzione sistemica di funzionari, professionisti e amministratori."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "la società si vende per cinque o diecimila euro"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    }
+  ]
+}

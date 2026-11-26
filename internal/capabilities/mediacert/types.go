@@ -102,6 +102,11 @@ type ResultSegment struct {
 	Insights script.SegmentInsights `json:"insights"`
 	// Assets is the selected asset bundle for the segment.
 	Assets script.SegmentAssetSelection `json:"assets"`
+	// Warnings is the segment's non-fatal provider/materialization diagnostic
+	// surface. IMAGE FANOUT uses it to name WHY a scene ended with zero usable
+	// images (provider outage, exhausted resolve budget, rejected candidates)
+	// instead of reporting only the count.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // MediaResult is the full run result submitted for certification. A run

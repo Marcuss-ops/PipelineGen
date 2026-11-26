@@ -63,9 +63,9 @@ func (r *Runner) assembleFinalVideo(ctx context.Context, runID string, req contr
 	if !req.Render.Enabled && !req.Render.OverlaysOnly {
 		return nil
 	}
-	// A final job hands delivery to the Master render; only the local lane
-	// owns its own join.
-	if req.FinalJob || result.LocalFinalVideo != nil {
+	// The complete final video is Master-owned: a final_job never joins here.
+	// This path only assembles the overlay deliverable of a non-final run.
+	if result.LocalFinalVideo != nil || req.FinalJob || req.FinalJobRemote {
 		return nil
 	}
 	if result.OverlayRender == nil || len(result.OverlayRender.Items) == 0 {

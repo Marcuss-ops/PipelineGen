@@ -438,6 +438,7 @@ func (c *VidRushIncrementalCoordinator) checkImageFanoutLocked(event SceneCommit
 		SegmentID: event.SceneID,
 		Position:  event.SceneIndex,
 		Assets:    result.Assets,
+		Warnings:  result.Warnings,
 	})
 	if violation == nil {
 		return

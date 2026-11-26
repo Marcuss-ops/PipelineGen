@@ -59,10 +59,17 @@ type OverlayPlan struct {
 	// RequireDriveBeforeReturn remains available for non-final-job workflows
 	// that explicitly consume a Drive identity.
 	RequireDriveBeforeReturn bool `json:"-"`
-	Width                    int  `json:"width"`
-	Height                   int  `json:"height"`
-	FPSNum                   int  `json:"fps_num"`
-	FPSDen                   int  `json:"fps_den"`
+	// RequireGPU is the request's explicit GPU demand propagated onto every
+	// render job this plan submits (the parent plan AND each per-item child
+	// plan). It is nil when the payload did not declare one, which keeps the
+	// renderer's own execution policy. It is execution metadata, not plan
+	// content: it rides the queue job envelope, never the overlay spec, so it
+	// cannot change the plan digest the worker compiles.
+	RequireGPU *bool `json:"-"`
+	Width      int   `json:"width"`
+	Height     int   `json:"height"`
+	FPSNum     int   `json:"fps_num"`
+	FPSDen     int   `json:"fps_den"`
 	// DurationMS is the canonical master-audio/timeline duration projected
 	// onto the overlay plan. It is a floor for the Chronon canvas duration:
 	// overlay items may extend it, but they can never truncate the master

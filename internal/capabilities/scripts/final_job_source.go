@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -71,6 +72,82 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		// A receipt without a job id is a durable PREPARE intent. Reuse its
 		// attempt key so a lost PREPARE response reconciles to the same lease.
 	}
+	if receipt != nil && strings.EqualFold(strings.TrimSpace(receipt.Status), "PREPARE_INTENT") && receipt.Split && strings.TrimSpace(receipt.JobID) == "" {
+		// The early PREPARE failed after a possible send. Replay the SAME base
+		// plan and attempt key once before falling back: if the Master accepted
+		// the first request, this reconciles to that job instead of creating a
+		// second remote render. A pre-send failure is safe to discard and lets
+		// the serial handoff own the attempt.
+		if preparer, ok := r.finalJobSubmitter.(FinalJobSplitPreparer); ok && result != nil {
+			remote, err := preparer.PrepareFinalJobSource(ctx, runID, req, result)
+			remote.Attempt = attempt
+			remote.Timing = receipt.Timing.Merge(remote.Timing)
+			if err != nil {
+				if errors.Is(err, ErrFinalJobSplitPrepareNotSent) {
+					if r.log != nil {
+						r.log.Warn("final_job split PREPARE replay was not sent; using the serial handoff",
+							zap.String("run_id", runID), zap.Error(err))
+					}
+					result.RemoteFinalJob = nil
+					if saveErr := r.repo.SavePartialResult(ctx, runID, result); saveErr != nil {
+						return r.settleFinalJob(ctx, runID, result, RemoteFinalJobResult{}, 0, fmt.Errorf("%w: clear unsent split intent: %w", ErrFinalJobReceiptCheckpoint, saveErr))
+					}
+					receipt = nil
+				} else {
+					// Still ambiguous: fail the attempt with the intent durable so
+					// the retry replays the same base plan/key again.
+					return r.settleFinalJob(ctx, runID, result, remote, 0, err)
+				}
+			} else if strings.TrimSpace(remote.JobID) == "" {
+				return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("remote final job split replay returned no job id"))
+			} else {
+				receipt = &remote
+				result.RemoteFinalJob = receipt
+				if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
+					return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("%w: checkpoint replayed split PREPARE: %w", ErrFinalJobReceiptCheckpoint, err))
+				}
+				if finalJobReceiptSucceeded(receipt) {
+					recordFinalJobReport(ctx, receipt)
+					return true
+				}
+				if finalJobReceiptTerminal(receipt) {
+					result.RemoteFinalJobHistory = append(result.RemoteFinalJobHistory, *receipt)
+					result.RemoteFinalJob = nil
+					receipt = nil
+					attempt++
+				}
+			}
+		}
+	}
+	if jobID := finalJobPreparedID(receipt); jobID != "" {
+		finalizer, ok := r.finalJobSubmitter.(FinalJobSplitFinalizer)
+		if !ok {
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf(
+				"remote final job %s was PREPARED with a split handoff but the wired submitter cannot FINALIZE it (%T does not implement FinalJobSplitFinalizer)", jobID, r.finalJobSubmitter))
+			return false
+		}
+		if result == nil {
+			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job %s was PREPARED but the run has no result to finalize it with", jobID))
+			return false
+		}
+		remote, err := finalizer.FinalizeFinalJobSource(ctx, jobID, runID, req, result)
+		remote.Attempt = attempt
+		if strings.TrimSpace(remote.JobID) == "" {
+			remote.JobID = jobID
+		}
+		// The PREPARE receipt owns the base payload/prepare timing; the
+		// FINALIZE receipt owns only its own overlay supplement. Merge keeps
+		// both sides instead of replacing the early handoff measurement.
+		remote.Timing = receipt.Timing.Merge(remote.Timing)
+		if err != nil {
+			return r.settleFinalJob(ctx, runID, result, remote, 0, err)
+		}
+		receipt = &remote
+		result.RemoteFinalJob = receipt
+		if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
+			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("%w: checkpoint split FINALIZE %s: %w", ErrFinalJobReceiptCheckpoint, jobID, err))
+		}
+	}
 	if jobID := finalJobPendingID(receipt); jobID != "" {
 		attacher, ok := r.finalJobSubmitter.(FinalJobAttacher)
 		if !ok {
@@ -95,7 +172,9 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		remote.Attempt = receipt.Attempt
 		// The durable receipt already carries the locally measured handoff (and,
 		// on a resumed job, possibly earlier Master phases); keep them when the
-		// attach result only reports its own side.
+		// attach result only reports its own side. Keep the split marker too: the
+		// post-FINALIZE attach receipt is the same late-overlay job.
+		remote.Split = remote.Split || receipt.Split
 		remote.Timing = receipt.Timing.Merge(remote.Timing)
 		if err == nil && ctx.Err() != nil {
 			settleCtx, settleCancel := finalJobSettleContext(ctx)

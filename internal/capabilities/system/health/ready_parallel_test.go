@@ -26,7 +26,7 @@ import (
 // budget).
 type slowCanary struct{}
 
-func (slowCanary) CanaryUpload(ctx context.Context, _ string) error {
+func (slowCanary) CheckCanaryReadOnly(ctx context.Context, _ string) error {
 	<-ctx.Done()
 	return ctx.Err()
 }

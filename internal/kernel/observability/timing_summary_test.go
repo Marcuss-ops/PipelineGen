@@ -3,6 +3,7 @@ package observability
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 // TestTimingSummary_WallAndBreakdown pins that the summary carries the
@@ -244,6 +245,37 @@ func TestTimingSummary_CarriesCriticalPathAndBottleneckPercent(t *testing.T) {
 	}
 	if len(s.CriticalPath) != 4 || s.CriticalPath[1].Name != "script.engine" {
 		t.Fatalf("CriticalPath = %+v, want 4 ordered stages with script.engine second", s.CriticalPath)
+	}
+}
+
+// TestTimingSummary_CarriesSceneCriticalPath pins that the per-scene DAG chain
+// reaches the same timing projection as the top-level stage path. The chain
+// must follow text → translation → tts, not sum the two parallel branches.
+func TestTimingSummary_CarriesSceneCriticalPath(t *testing.T) {
+	base := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	report := &RunReport{
+		WallTimeMs: 4000,
+		SceneTimeline: &SceneTimeline{Entries: []SceneStageEntry{
+			{SceneID: "scene-1", Stage: SceneStageText, StartedAt: base, CompletedAt: base.Add(time.Second), WorkMs: 1000},
+			{SceneID: "scene-1", Stage: SceneStageTranslation, StartedAt: base.Add(time.Second), CompletedAt: base.Add(time.Second + 100*time.Millisecond), WorkMs: 100},
+			{SceneID: "scene-1", Stage: SceneStageTTS, StartedAt: base.Add(time.Second + 100*time.Millisecond), CompletedAt: base.Add(3 * time.Second), WorkMs: 1900},
+		}},
+	}
+	s := report.TimingSummary()
+	if s.SceneCriticalPath == nil {
+		t.Fatal("SceneCriticalPath = nil, want the per-scene DAG chain")
+	}
+	if s.SceneCriticalPath.TotalMs != 3000 {
+		t.Fatalf("SceneCriticalPath.TotalMs = %d, want 3000 (text + translation + tts)", s.SceneCriticalPath.TotalMs)
+	}
+	want := []SceneStage{SceneStageText, SceneStageTranslation, SceneStageTTS}
+	if len(s.SceneCriticalPath.Chain) != len(want) {
+		t.Fatalf("SceneCriticalPath.Chain = %+v, want %v", s.SceneCriticalPath.Chain, want)
+	}
+	for i, stage := range want {
+		if s.SceneCriticalPath.Chain[i].Stage != stage {
+			t.Fatalf("SceneCriticalPath.Chain[%d] = %q, want %q", i, s.SceneCriticalPath.Chain[i].Stage, stage)
+		}
 	}
 }
 

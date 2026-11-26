@@ -3,6 +3,7 @@ package rustexec
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -121,9 +122,17 @@ func projectSemanticPersonRelations(source string, identities []semanticEngineId
 	}
 	out := make([]semanticscript.SemanticPersonRelation, 0, len(relations))
 	for _, relation := range relations {
+		// A self-loop is a generator artifact, not a semantic claim: there is
+		// no relationship between a person and themselves. Drop it with a
+		// warning instead of failing the whole run after audio and render have
+		// already succeeded (OVL-05).
+		if relation.FromID == relation.ToID {
+			log.Printf("[semantic-engine WARN] dropping self-referential person relation %q", relation.FromID)
+			continue
+		}
 		_, fromOK := identityIDs[relation.FromID]
 		_, toOK := identityIDs[relation.ToID]
-		if !fromOK || !toOK || relation.FromID == relation.ToID || relation.Kind == "" ||
+		if !fromOK || !toOK || relation.Kind == "" ||
 			!oneOf(relation.Status, "asserted", "negated", "uncertain") ||
 			!evidenceContainsSpan(source, relation.Evidence, relation.StartByte, relation.EndByte) {
 			return nil, fmt.Errorf("person relation %q -> %q is ungrounded or invalid", relation.FromID, relation.ToID)

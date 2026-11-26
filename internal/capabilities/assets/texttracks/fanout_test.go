@@ -40,6 +40,7 @@ import (
 	"testing"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
@@ -64,9 +65,10 @@ type stubEnqueuer struct {
 // marshals it once via Service.Enqueue). The probes inspect
 // fields directly + marshal locally for the wire-shape pin.
 type enqueueJob struct {
-	Type      string
-	Payload   any
-	ActiveKey string
+	Type          string
+	Payload       any
+	ActiveKey     string
+	CorrelationID string
 }
 
 func (s *stubEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*job.Job, error) {
@@ -96,9 +98,10 @@ func (s *stubEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*job
 		panic("stubEnqueuer.Enqueue: expected MaterializeJobPayload struct Payload (fanout producer contract regression: producer must hand the broker a typed struct, NOT pre-marshaled bytes — pre-marshal design caused base64 double-encoding regression on July 2026)")
 	}
 	s.recorded = append(s.recorded, enqueueJob{
-		Type:      req.Type,
-		Payload:   ps,
-		ActiveKey: req.ActiveKey,
+		Type:          req.Type,
+		Payload:       ps,
+		ActiveKey:     req.ActiveKey,
+		CorrelationID: req.CorrelationID,
 	})
 	if s.hookErr != nil {
 		return nil, s.hookErr
@@ -465,6 +468,61 @@ func TestFanOut_EnqueueMaterializeOne_ActiveKeyCollapsedAcrossKinds(t *testing.T
 	if stub.recorded[0].ActiveKey != wantPrefix {
 		t.Fatalf("ActiveKey[0] = %q, want literal shape %q (ActiveKey shape drift)",
 			stub.recorded[0].ActiveKey, wantPrefix)
+	}
+}
+
+// ── Probe 6: distinct assets must not share the broker correlation ───
+//
+// Regression pin for the 2026-11-26 Gratteri run: every segment of one
+// extraction inherits the parent correlation from ctx, and the broker
+// deduplicates on (type, correlation_id). Without a per-child id, four
+// clips produced ONE asset.text.materialize job and three clips kept a
+// single language. Distinct assets (or a different operation on the same
+// asset) MUST get distinct child correlations; an identical replay MUST
+// keep the same one.
+func TestFanOut_DistinctAssetsGetDistinctChildCorrelationIDs(t *testing.T) {
+	stub := &stubEnqueuer{}
+	f := NewMaterializeFanOut(stub, nil)
+	ctx := corid.WithCorrelationID(context.Background(), "parent-extraction-corr")
+	kinds := []detail.TextTrackKind{detail.TextTrackTranscript}
+
+	if err := f.EnqueueMaterializeOne(ctx, "asset-a", "it", "hash-a", kinds); err != nil {
+		t.Fatalf("asset-a enqueue: %v", err)
+	}
+	if err := f.EnqueueMaterializeOne(ctx, "asset-b", "it", "hash-b", kinds); err != nil {
+		t.Fatalf("asset-b enqueue: %v", err)
+	}
+	// Same tuple replayed: idempotent, same child correlation.
+	if err := f.EnqueueMaterializeOne(ctx, "asset-a", "it", "hash-a", kinds); err != nil {
+		t.Fatalf("asset-a replay: %v", err)
+	}
+	// Acquire is a different operation on the same asset: must not collide.
+	if err := f.EnqueueAcquireOne(ctx, "asset-a", "it", kinds); err != nil {
+		t.Fatalf("asset-a acquire: %v", err)
+	}
+
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	if len(stub.recorded) != 4 {
+		t.Fatalf("expected 4 enqueues, got %d", len(stub.recorded))
+	}
+	a, b, replay, acquire := stub.recorded[0], stub.recorded[1], stub.recorded[2], stub.recorded[3]
+	if a.CorrelationID == "" || b.CorrelationID == "" {
+		t.Fatalf("child correlation must be set when the parent is present: a=%q b=%q", a.CorrelationID, b.CorrelationID)
+	}
+	if a.CorrelationID == b.CorrelationID {
+		t.Fatalf("distinct assets collapsed onto the same correlation: %q", a.CorrelationID)
+	}
+	if a.CorrelationID != replay.CorrelationID {
+		t.Fatalf("identical replay must keep the same correlation: %q vs %q", a.CorrelationID, replay.CorrelationID)
+	}
+	if a.CorrelationID == acquire.CorrelationID {
+		t.Fatalf("materialize and acquire of the same asset collapsed: %q", a.CorrelationID)
+	}
+	for _, got := range []string{a.CorrelationID, b.CorrelationID, acquire.CorrelationID} {
+		if !strings.HasPrefix(got, "parent-extraction-corr:") {
+			t.Fatalf("child correlation %q must extend the parent correlation", got)
+		}
 	}
 }
 

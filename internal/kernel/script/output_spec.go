@@ -192,7 +192,26 @@ type VideoRenderSpec struct {
 	// DriveSubfolderName is set, the renderer creates/reuses that child.
 	DriveFolderID      string `json:"drive_folder_id,omitempty"`
 	DriveSubfolderName string `json:"drive_subfolder_name,omitempty"`
-	RequireGPU         bool   `json:"require_gpu,omitempty"`
+	// RequireGPU is the request's explicit GPU demand. It is tri-state on
+	// purpose: absent (nil) keeps the renderer's own execution policy, which is
+	// what every payload written before this field was honoured expects.
+	// true demands the GPU lane (a software backend fails the render) and
+	// false explicitly releases the demand, so a render may take the software
+	// lane instead of failing when the device cannot satisfy it. The value is
+	// propagated verbatim onto every overlay child render job.
+	RequireGPU *bool `json:"require_gpu,omitempty"`
+}
+
+// RequiresGPU reports whether the request EXPLICITLY demands the GPU lane.
+// An absent declaration is not a demand: the renderer keeps its own policy.
+func (s *VideoRenderSpec) RequiresGPU() bool {
+	return s != nil && s.RequireGPU != nil && *s.RequireGPU
+}
+
+// ReleasesGPU reports whether the request EXPLICITLY releases the GPU
+// requirement, so a render may use the software lane instead of failing.
+func (s *VideoRenderSpec) ReleasesGPU() bool {
+	return s != nil && s.RequireGPU != nil && !*s.RequireGPU
 }
 
 // VideoBackgroundSpec selects the rendered background behind the source

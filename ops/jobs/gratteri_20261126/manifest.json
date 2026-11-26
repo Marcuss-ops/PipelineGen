@@ -1,0 +1,79 @@
+{
+  "generated_for": "Saggezza/Gratteri",
+  "destination_folder_id": "1oW6xyqgA9Q-vb2K0eucM4bwCiZrwDqFS",
+  "generate": {
+    "strategy": "verify",
+    "require_transcript_ready": true,
+    "keep_audio": true,
+    "write_summary": true
+  },
+  "videos": [
+    {
+      "video_id": "WdbdwtO2v0E",
+      "title": "Gratteri: perché un capomafia resta pericoloso in carcere?",
+      "channel": "Grandi Lezioni su Crimine e Mafie",
+      "source_duration_seconds": 3410,
+      "clip_count": 6,
+      "clip_seconds": 75,
+      "expected_clip_ids": [
+        "yt_WdbdwtO2v0E_143_156_v1",
+        "yt_WdbdwtO2v0E_488_503_v1",
+        "yt_WdbdwtO2v0E_625_636_v1",
+        "yt_WdbdwtO2v0E_1943_1956_v1",
+        "yt_WdbdwtO2v0E_3163_3174_v1",
+        "yt_WdbdwtO2v0E_3373_3385_v1"
+      ],
+      "payload": "payloads/WdbdwtO2v0E.process.json"
+    },
+    {
+      "video_id": "CVUzdDyyPW8",
+      "title": "INTERVISTA A NICOLA GRATTERI",
+      "channel": "Pubble",
+      "source_duration_seconds": 2197,
+      "clip_count": 5,
+      "clip_seconds": 63,
+      "expected_clip_ids": [
+        "yt_CVUzdDyyPW8_615_625_v1",
+        "yt_CVUzdDyyPW8_873_883_v1",
+        "yt_CVUzdDyyPW8_884_896_v1",
+        "yt_CVUzdDyyPW8_1864_1875_v1",
+        "yt_CVUzdDyyPW8_1895_1915_v1"
+      ],
+      "payload": "payloads/CVUzdDyyPW8.process.json"
+    },
+    {
+      "video_id": "a9Lr_OQJ984",
+      "title": "CREDERE IN UN MONDO MIGLIORE! 💪🏼 NICOLA GRATTERI passa dal BSMT!",
+      "channel": "The BSMT by Gianluca Gazzoli",
+      "source_duration_seconds": 6488,
+      "clip_count": 4,
+      "clip_seconds": 51,
+      "expected_clip_ids": [
+        "yt_a9Lr_OQJ984_1448_1457_v1",
+        "yt_a9Lr_OQJ984_2010_2021_v1",
+        "yt_a9Lr_OQJ984_2070_2083_v1",
+        "yt_a9Lr_OQJ984_2097_2115_v1"
+      ],
+      "payload": "payloads/a9Lr_OQJ984.process.json"
+    },
+    {
+      "video_id": "NVtQAg7VK74",
+      "title": "Gratteri: violenza giovanile causata da analfabetismo",
+      "channel": "",
+      "source_duration_seconds": null,
+      "clip_count": 3,
+      "clip_seconds": 45,
+      "expected_clip_ids": [
+        "yt_NVtQAg7VK74_555_567_v1",
+        "yt_NVtQAg7VK74_1234_1254_v1",
+        "yt_NVtQAg7VK74_1311_1324_v1"
+      ],
+      "payload": "payloads/NVtQAg7VK74.process.json"
+    }
+  ],
+  "totals": {
+    "videos": 4,
+    "clips": 18,
+    "duration_seconds": 234
+  }
+}

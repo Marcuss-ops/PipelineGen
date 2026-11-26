@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
 )
@@ -45,6 +46,11 @@ type Config struct {
 	// Cooldown is the pause applied after a rate-limit response that carries
 	// no usable Retry-After. Zero falls back to DefaultCooldown.
 	Cooldown time.Duration
+	// Jitter is the upper bound of a random delay added to a cooldown. It
+	// spreads the wake-up of concurrent workers so they do not all hit the
+	// upstream in the same millisecond after a 429 (thundering herd). Zero
+	// keeps the historical deterministic cooldown.
+	Jitter time.Duration
 }
 
 func (c Config) normalized() Config {
@@ -197,6 +203,9 @@ func (r *Registry) ObserveRateLimit(provider string, retryAfter time.Duration) {
 	}
 	if retryAfter <= 0 {
 		retryAfter = DefaultCooldown
+	}
+	if st.cfg.Jitter > 0 {
+		retryAfter += time.Duration(rand.Int63n(int64(st.cfg.Jitter)))
 	}
 	until := r.now().Add(retryAfter)
 	if until.After(st.cooldownUntil) {

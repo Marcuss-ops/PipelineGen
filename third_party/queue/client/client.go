@@ -429,6 +429,13 @@ type Job struct {
 	RenderPlan json.RawMessage `json:"render_plan"`
 	Assets     []AssetRef      `json:"assets"`
 
+	// RequireGPU is the producer's explicit GPU demand for this render. It is
+	// tri-state: nil (absent) leaves the worker's execution policy untouched —
+	// every producer predating the field keeps its historical behaviour; true
+	// demands the GPU lane, and false releases the demand so the worker may run
+	// the software lane instead of failing when the device cannot satisfy it.
+	RequireGPU *bool `json:"require_gpu,omitempty"`
+
 	State       State     `json:"state"`
 	Worker      string    `json:"worker,omitempty"`
 	Attempts    int       `json:"attempts"`

@@ -43,6 +43,19 @@ func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 	return passCount(CheckImageFanout, pass, total, violations...)
 }
 
+// Stable zero-image reasons carried by IMAGE FANOUT and
+// SegmentInsights.ImageSearchNoImageReason. They name the stage that lost the
+// scene, so an operator does not have to re-read provider logs to tell an
+// outage from an empty catalog or a rejected candidate.
+const (
+	ZeroReasonProviderError        = "provider_error"
+	ZeroReasonProviderTimeout      = "provider_timeout"
+	ZeroReasonCatalogEmpty         = "catalog_empty"
+	ZeroReasonVerificationRejected = "verification_rejected"
+	ZeroReasonWatermarkDetected    = "watermark_detected"
+	ZeroReasonAcquisitionFailed    = "acquisition_failed"
+)
+
 // CheckSegmentImageFanout reports the IMAGE FANOUT violation for one segment,
 // or nil when the segment satisfies the run's image target. It is the single
 // source of truth for both terminal certification and the producer's per-scene
@@ -61,8 +74,65 @@ func CheckSegmentImageFanout(spec Spec, segment ResultSegment) *Violation {
 	return &Violation{
 		SegmentID: segment.SegmentID,
 		Rule:      string(CheckImageFanout),
-		Detail:    fmt.Sprintf("images available = 0, target at least %d", spec.ImagesPerSegment),
+		Detail: fmt.Sprintf("images available = 0, target at least %d (zero_reason=%s)",
+			spec.ImagesPerSegment, ZeroImageReason(segment.Assets, segment.Warnings)),
 	}
+}
+
+// AvailableImageCount exposes the fan-out admission count without exporting
+// the candidate internals. Callers that need the same definition (the producer
+// gate annotating a scene) must use this, never a second implementation.
+func AvailableImageCount(assets script.SegmentAssetSelection) int {
+	return availableImageCount(assets)
+}
+
+// ZeroImageReason classifies a scene that ended with zero usable images. The
+// reason is derived only from evidence the run already carries: provider
+// warnings and candidate lifecycle/watermark verdicts. It never guesses a
+// provider state that was not observed.
+func ZeroImageReason(assets script.SegmentAssetSelection, warnings []string) string {
+	for _, warning := range warnings {
+		if strings.Contains(strings.ToLower(warning), "provider degraded") {
+			return ZeroReasonProviderError
+		}
+	}
+	for _, warning := range warnings {
+		lower := strings.ToLower(warning)
+		if strings.Contains(lower, "provider resolve exceeded") || strings.Contains(lower, "resolve budget") {
+			return ZeroReasonProviderTimeout
+		}
+	}
+	total, watermark, verifyFailed, acquireFailed := 0, false, false, false
+	inspect := func(candidates []script.SegmentAssetCandidate) {
+		for _, candidate := range candidates {
+			total++
+			if candidate.HasWatermark {
+				watermark = true
+			}
+			switch strings.ToLower(strings.TrimSpace(candidate.LifecycleFailureStage)) {
+			case script.VidRushLifecycleStageVerify:
+				verifyFailed = true
+			case script.VidRushLifecycleStageAcquire, script.VidRushLifecycleStageFinalize:
+				acquireFailed = true
+			}
+		}
+	}
+	inspect(assets.SecondaryImages)
+	inspect(assets.GeneratedImages)
+	inspect(assets.Candidates)
+	if total == 0 {
+		return ZeroReasonCatalogEmpty
+	}
+	if watermark {
+		return ZeroReasonWatermarkDetected
+	}
+	if verifyFailed {
+		return ZeroReasonVerificationRejected
+	}
+	if acquireFailed {
+		return ZeroReasonAcquisitionFailed
+	}
+	return ZeroReasonVerificationRejected
 }
 
 // availableImageCount counts distinct, usable image assets. Candidates are

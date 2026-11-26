@@ -97,6 +97,12 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 		ParentJobID: corid.FromContext(ctx),
 		OverlaySpec: spec,
 		Assets:      assets,
+		// The request's GPU demand rides the job envelope, never the overlay
+		// spec: the worker applies it to its execution policy and the plan
+		// digest stays exactly the document the renderer compiles. Child plans
+		// are copies of the parent plan, so every per-item job carries the same
+		// declaration instead of defaulting to the worker's policy.
+		RequireGPU: plan.RequireGPU,
 	}
 
 	// Content-addressed reuse: a single-item plan whose render identity already

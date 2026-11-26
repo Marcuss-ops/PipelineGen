@@ -6,6 +6,7 @@ import (
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/editorialgate"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
@@ -166,6 +167,13 @@ type GenerateResult struct {
 	// the same certified surfaces as OverlayPlan. It is a projection, never a
 	// second extraction, resolver or timing source.
 	SemanticRenderBundle *capabilityoverlay.SemanticRenderBundleV1 `json:"semantic_render_bundle,omitempty"`
+	// EditorialQualityGate is the pre-render verdict of the automatic editorial
+	// QA gate: coverage, maximum uncovered interval, card overlaps, readable
+	// card duration, categories enabled with zero items, alpha-contract drift
+	// and imperative stage directions in source_text. Warn persists the report
+	// and lets the render proceed; strict fails before any GPU work, so a run
+	// that reaches rendering always carries a pass or an explicit warn.
+	EditorialQualityGate *editorialgate.Report `json:"editorial_quality_gate,omitempty"`
 	// OverlayAudit is the human-readable inventory of detected entities and
 	// the semantic overlays admitted to the render plan. It is derived from
 	// the same sealed bundle and plan; it does not perform a second extraction.

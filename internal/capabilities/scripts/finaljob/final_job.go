@@ -28,6 +28,25 @@ type FinalJobStarter interface {
 	StartFinalJob(context.Context, string, contract.GenerateRequest, *contract.GenerateResult) (contract.RemoteFinalJobResult, error)
 }
 
+// FinalJobSplitPreparer is the OPTIONAL early half of the split handoff. It
+// builds and sends the base PREPARE while the overlay render is still running.
+// A submitter that cannot defer overlays simply does not implement it, and the
+// runner keeps the serial PREPARE→FINALIZE path unchanged.
+type FinalJobSplitPreparer interface {
+	// FinalJobSplitEnabled is the deployment gate. It is deliberately explicit:
+	// the Master must advertise the late-overlay projection capability before a
+	// base-only PREPARE may be sent.
+	FinalJobSplitEnabled() bool
+	PrepareFinalJobSource(context.Context, string, contract.GenerateRequest, *contract.GenerateResult) (contract.RemoteFinalJobResult, error)
+}
+
+// FinalJobSplitFinalizer sends the overlay supplement for a job whose base
+// PREPARE already exists. It must not PREPARE again: the Master job id is the
+// identity of the render.
+type FinalJobSplitFinalizer interface {
+	FinalizeFinalJobSource(context.Context, string, string, contract.GenerateRequest, *contract.GenerateResult) (contract.RemoteFinalJobResult, error)
+}
+
 // ErrFinalJobPending is the capability-owned sentinel for a remote render that
 // EXISTS on the Master and is still running. It is a sentinel so the runner can
 // branch on it without importing the transport package, and it always travels
@@ -38,6 +57,23 @@ var ErrFinalJobPending = errors.New("remote final job is still rendering")
 // ErrFinalJobReceiptCheckpoint prevents an automatic retry when durable
 // receipt state could not be saved safely.
 var ErrFinalJobReceiptCheckpoint = errors.New("remote final job receipt checkpoint failed")
+
+// FinalJobOverlayProjectionCapability is the Master capability a split
+// PREPARE requires. The base plan is sealed before the overlay artifact exists,
+// so the worker must be able to project the FINALIZE overlay manifest onto the
+// assembled base after FINALIZE. A Master that does not advertise it keeps the
+// serial handoff; the Producer never assumes the capability from a successful
+// PREPARE.
+const FinalJobOverlayProjectionCapability = "overlay_projection_finalize"
+
+// ErrFinalJobSplitPrepareNotSent marks an early split PREPARE failure that
+// happened before the transport could send the request (disabled gate, missing
+// capability, local payload build, preflight). It is safe to discard the split
+// intent and fall back to the serial handoff. A failure WITHOUT this sentinel
+// and without a job id is ambiguous: the Master may have accepted the base
+// PREPARE, so the retry must replay the same base plan/key instead of
+// submitting a second render.
+var ErrFinalJobSplitPrepareNotSent = errors.New("remote final job split PREPARE was not sent")
 
 // FinalJobReportOwner names the ONE durable report that owns the final-job
 // projection: receipt, timing and boundary verdict. It is persisted in

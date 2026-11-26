@@ -54,6 +54,7 @@ var (
 	finalJobImageRequested          = finaljob.FinalJobImageRequested
 	finalJobObjectStoreConfigured   = finaljob.FinalJobObjectStoreConfigured
 	finalJobPendingID               = finaljob.FinalJobPendingID
+	finalJobPreparedID              = finaljob.FinalJobPreparedID
 	finalJobPreRenderPreflight      = finaljob.FinalJobPreRenderPreflight
 	finalJobReceiptSucceeded        = finaljob.FinalJobReceiptSucceeded
 	finalJobReceiptTerminal         = finaljob.FinalJobReceiptTerminal
@@ -72,8 +73,10 @@ var (
 )
 
 type (
-	FinalJobAttacher = finaljob.FinalJobAttacher
-	FinalJobStarter  = finaljob.FinalJobStarter
+	FinalJobAttacher       = finaljob.FinalJobAttacher
+	FinalJobStarter        = finaljob.FinalJobStarter
+	FinalJobSplitPreparer  = finaljob.FinalJobSplitPreparer
+	FinalJobSplitFinalizer = finaljob.FinalJobSplitFinalizer
 )
 
 const (
@@ -88,6 +91,7 @@ type (
 
 type (
 	FinalJobAssetResolver           = finaljob.FinalJobAssetResolver
+	FinalJobSourceHandoff           = finaljob.FinalJobSourceHandoff
 	FinalJobFinalizeV1              = finaljob.FinalJobFinalizeV1
 	FinalJobOverlayCheckpointRepair = finaljob.FinalJobOverlayCheckpointRepair
 	FinalJobRuntimeAssetV1          = finaljob.FinalJobRuntimeAssetV1
@@ -104,8 +108,9 @@ type (
 )
 
 const (
-	FinalJobEnvelopeSchemaV1 = finaljob.FinalJobEnvelopeSchemaV1
-	overlayGroupImages       = finaljob.OverlayGroupImages
+	FinalJobEnvelopeSchemaV1            = finaljob.FinalJobEnvelopeSchemaV1
+	FinalJobOverlayProjectionCapability = finaljob.FinalJobOverlayProjectionCapability
+	overlayGroupImages                  = finaljob.OverlayGroupImages
 )
 
 var finalJobStringValue = finaljob.FinalJobStringValue
@@ -113,7 +118,11 @@ var finalJobStringValue = finaljob.FinalJobStringValue
 var (
 	BuildFinalJobEnvelopeV1                  = finaljob.BuildFinalJobEnvelopeV1
 	BuildFinalJobPayloads                    = finaljob.BuildFinalJobPayloads
+	BuildFinalJobSourceHandoff               = finaljob.BuildFinalJobSourceHandoff
+	BuildFinalJobOverlayFinalize             = finaljob.BuildFinalJobOverlayFinalize
+	BuildFinalJobSplitEnvelopeV1             = finaljob.BuildFinalJobSplitEnvelopeV1
 	ErrFinalJobCancelRejected                = finaljob.ErrFinalJobCancelRejected
+	ErrFinalJobSplitPrepareNotSent           = finaljob.ErrFinalJobSplitPrepareNotSent
 	GoldenOverlayCanvas                      = finaljob.GoldenOverlayCanvas
 	NormalizeFinalJobHTTPSRuntimeAssets      = finaljob.NormalizeFinalJobHTTPSRuntimeAssets
 	PublishFinalJobLocalObject               = finaljob.PublishFinalJobLocalObject

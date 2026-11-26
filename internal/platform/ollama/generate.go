@@ -3,6 +3,7 @@ package ollama
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -29,6 +30,31 @@ import (
 // need a value that changes between calls.
 var randomSeed = func() int {
 	return int(rand.Int63())
+}
+
+// ErrDegenerateScriptOutput marks a provider reply that is technically
+// non-empty but cannot be a script (observed live 2026-11-25: gemma4:e4b
+// returned 5 characters / 1 word and poisoned the fan-out). The request is
+// retried by segment validation; the client breaker is notified so a model
+// that keeps doing this is not treated as healthy.
+var ErrDegenerateScriptOutput = errors.New("ollama: degenerate script output")
+
+const (
+	minScriptOutputWords = 2
+	minScriptOutputChars = 8
+)
+
+func validateGeneratedScript(content string) error {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return fmt.Errorf("%w: empty response", ErrDegenerateScriptOutput)
+	}
+	words := len(strings.Fields(trimmed))
+	chars := len([]rune(trimmed))
+	if words < minScriptOutputWords || chars < minScriptOutputChars {
+		return fmt.Errorf("%w: %d word(s), %d chars", ErrDegenerateScriptOutput, words, chars)
+	}
+	return nil
 }
 
 type Generator struct {
@@ -389,6 +415,19 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		return chatErr
 	})
 	if err != nil {
+		return nil, fmt.Errorf("script generation failed: %w", err)
+	}
+	if err := validateGeneratedScript(result); err != nil {
+		// The HTTP call succeeded, so ChatDetailed already recorded a success.
+		// The content contract belongs to the generator; record the failure at
+		// the same model so the breaker is not fooled by a 200 with junk.
+		g.client.RecordModelOutputFailure(effectiveModel)
+		logger.Warn("ollama script response rejected as degenerate",
+			zap.String("model", effectiveModel),
+			zap.Int("chars", len([]rune(strings.TrimSpace(result)))),
+			zap.Int("words", len(strings.Fields(strings.TrimSpace(result)))),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("script generation failed: %w", err)
 	}
 	genOutcome = "success"

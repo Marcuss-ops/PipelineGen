@@ -151,6 +151,13 @@ func (r *Runner) audioCompilePhase(ctx context.Context, runID string, req contra
 			}
 		}
 	}
+	var splitDone chan finalJobSplitOutcome
+	if compiled && audioPublished && done != nil {
+		// PREPARE the base timeline while the overlay sibling is still
+		// rendering. The join below waits for whichever sibling finishes last,
+		// so the handoff is overlapped instead of appended to the critical path.
+		splitDone = r.startFinalJobSplitPrepare(ctx, runID, req, result)
+	}
 	if done != nil {
 		// The join is QUEUE WAIT on the overlay sibling, not audio work: before
 		// this instrumentation the tail where audio had finished and the run was
@@ -162,12 +169,23 @@ func (r *Runner) audioCompilePhase(ctx context.Context, runID string, req contra
 		// blocked-interval UNION (overlapping waits count once).
 		joinStarted := time.Now()
 		outcome := <-done
-		if joinFinished := time.Now(); joinFinished.After(joinStarted) {
+		overlayFinishedAt := time.Now()
+		if splitDone != nil {
+			// Join the early PREPARE before inspecting the render outcome: even
+			// a failed render must leave a remote handle durable, otherwise the
+			// retry would ask the Master for a second render.
+			r.applyFinalJobSplitPrepare(ctx, runID, result, <-splitDone, overlayFinishedAt)
+		}
+		// Record only the overlay sibling's own wait. If the early PREPARE is
+		// slower, the extra join time is handoff work, not render-queue waiting;
+		// attributing it to render_queue would inflate the queue metric and hide
+		// the overlap the split is meant to create.
+		if overlayFinishedAt.After(joinStarted) {
 			kernobs.RecordWait(baseCtx, kernobs.WaitInfo{
 				Kind:       kernobs.WaitCompletion,
 				Component:  kernobs.ComponentRenderQueue,
 				StartedAt:  joinStarted,
-				FinishedAt: joinFinished,
+				FinishedAt: overlayFinishedAt,
 			})
 		}
 		if outcome.err != nil && (compiled || (!errors.Is(outcome.err, context.Canceled) && !errors.Is(outcome.err, context.DeadlineExceeded))) {

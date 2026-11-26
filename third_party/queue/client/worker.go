@@ -329,8 +329,15 @@ type Worker struct {
 	GPUBackend           string       `json:"gpu_backend,omitempty"`
 	GPUDevice            string       `json:"gpu_device,omitempty"`
 	GPUDriver            string       `json:"gpu_driver,omitempty"`
-	StartedAt            time.Time    `json:"started_at,omitempty"`
-	LastHeartbeatAt      time.Time    `json:"last_heartbeat_at,omitempty"`
+	// Capabilities is the renderer capability inventory this worker PROVES it
+	// supports (for example `overlay.effect.vignette`). It is what a producer
+	// validates a plan against before paying for a render, so it must be
+	// derived from the worker's own effect catalog rather than maintained by
+	// hand. An empty list advertises nothing; a producer must never read that
+	// as "supports nothing".
+	Capabilities    []string  `json:"capabilities,omitempty"`
+	StartedAt       time.Time `json:"started_at,omitempty"`
+	LastHeartbeatAt time.Time `json:"last_heartbeat_at,omitempty"`
 	// Liveness is DERIVED from LastHeartbeatAt and is therefore filled by the
 	// QUEUE, exactly like Progress.LastFrameAt: it is meaningful on the GET
 	// /workers projection and is ignored on POST /workers/register (the worker
@@ -411,6 +418,15 @@ func (c *Client) ListWorkers(ctx context.Context) ([]Worker, error) {
 // WorkerHealth queries the worker health stats.
 func (c *Client) WorkerHealth(ctx context.Context) (WorkerHealth, error) {
 	return getJSON[WorkerHealth](ctx, c, "/workers/health", "worker health")
+}
+
+// Capabilities reads the capability inventory the LIVE workers advertise: the
+// union of the registered workers that are still inside their liveness window.
+// It is the queue-side answer to "what can this render backend do right now?"
+// and the only source a producer may use for a render preflight. An empty list
+// is a real answer (no live worker advertises anything), never a default.
+func (c *Client) Capabilities(ctx context.Context) ([]string, error) {
+	return getJSON[[]string](ctx, c, "/capabilities", "capabilities")
 }
 
 // Retry resets a failed job back to pending state so it can be re-claimed.

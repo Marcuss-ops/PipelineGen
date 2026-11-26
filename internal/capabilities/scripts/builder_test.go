@@ -69,7 +69,7 @@ func TestMikeTyson1000WordManifestBuildsFiveSceneTenLanguageRuntimeRequest(t *te
 	if !request.ForceRefresh || !request.Source.ForceRefresh || !request.ScriptParams.ForceRefresh {
 		t.Fatalf("manifest must force regeneration on every surface: request=%t source=%t script=%t", request.ForceRefresh, request.Source.ForceRefresh, request.ScriptParams.ForceRefresh)
 	}
-	if !request.SaveToDB || !request.Render.Enabled || !request.Render.RequireGPU || request.Render.Subtitles == nil || !request.Render.Subtitles.Enabled {
+	if !request.SaveToDB || !request.Render.Enabled || !request.Render.RequiresGPU() || request.Render.Subtitles == nil || !request.Render.Subtitles.Enabled {
 		t.Fatalf("persistence/render/subtitle contract not enabled: save=%t render=%+v", request.SaveToDB, request.Render)
 	}
 	// The rehearsal manifest publishes no Docs artifacts. Google Docs is
@@ -94,6 +94,24 @@ func TestBuildGenerateRequest_PropagatesLLMIdentity(t *testing.T) {
 	}
 	if got.Model != "gemma4:e2b" || got.Tone != "playful" || got.Style != "short funny social narration" {
 		t.Fatalf("LLM identity = model %q tone %q style %q", got.Model, got.Tone, got.Style)
+	}
+}
+
+func TestBuildGenerateRequest_FinalJobRemoteForcesRemoteHandoff(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	err := json.Unmarshal([]byte(`{"version":2,"final_job_remote":true,"items":[{"title":"test","language":"en","tone":"playful","style":"short funny social narration","model":"gemma4:e2b","source":{"type":"text","topic":"topic"}}]}`), &env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := BuildGenerateRequest(&env, "remote-final-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.FinalJobRemote {
+		t.Fatal("final_job_remote was dropped by the builder")
+	}
+	if !got.FinalJob {
+		t.Fatal("final_job_remote must force the remote handoff so the local join never runs")
 	}
 }
 

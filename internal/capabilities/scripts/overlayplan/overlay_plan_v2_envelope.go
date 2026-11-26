@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
@@ -98,6 +99,10 @@ func OverlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 		MaxPhraseOverlays:        canvas.MaxPhraseOverlays,
 		MaxImageOverlays:         canvas.MaxImageOverlays,
 		MaxMapOverlays:           canvas.MaxMapOverlays,
+		MaxGapUS:                 canvas.MaxGapMS * int64(time.Millisecond/time.Microsecond),
+		GapCooldownUS:            canvas.GapCooldownMS * int64(time.Millisecond/time.Microsecond),
+		CoverageMinPercent:       canvas.CoverageMinPercent,
+		PhrasePerMinute:          canvas.PhrasePerMinute,
 		MapPresentation:          presentation,
 		AnimationCounts:          cloneIntMap(canvas.AnimationCounts),
 		ShortPhraseMotion:        canvas.ShortPhraseMotion,

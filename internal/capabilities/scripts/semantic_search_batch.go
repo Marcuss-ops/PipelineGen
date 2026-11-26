@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 
 	"fmt"
 	semanticscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
@@ -120,7 +121,7 @@ func DefaultSemanticSearchBatchConfig() SemanticSearchBatchConfig {
 // cost of every Commons query. A raw probe that bypasses the provider configures
 // its own Commons interval in the test.
 func defaultSemanticSearchBudget() *providerbudget.Registry {
-	registry := providerbudget.New(providerbudget.Config{Interval: 250 * time.Millisecond, Burst: 1, Cooldown: 30 * time.Second})
+	registry := providerbudget.New(providerbudget.Config{Interval: 250 * time.Millisecond, Burst: 1, Cooldown: 30 * time.Second, Jitter: 500 * time.Millisecond})
 	registry.Configure("wikimedia_commons", providerbudget.Config{Interval: 0, Burst: 1, Cooldown: 30 * time.Second})
 	registry.Configure("duckduckgo", providerbudget.Config{Interval: 300 * time.Millisecond, Burst: 1, Cooldown: 3 * time.Minute})
 	registry.Configure("searxng", providerbudget.Config{Interval: 250 * time.Millisecond, Burst: 2, Cooldown: 30 * time.Second})
@@ -162,6 +163,51 @@ func (c SemanticSearchBatchConfig) normalized() SemanticSearchBatchConfig {
 		c.Cache = defaults.Cache
 	}
 	return c
+}
+
+// ErrImageProviderUnavailable is the preflight verdict: every image provider
+// lane is cooling down, so a run that requires images cannot get a candidate
+// before paying for generation, TTS and render. It is distinct from a provider
+// that answered with zero results (catalog_empty).
+var ErrImageProviderUnavailable = errors.New("image provider unavailable")
+
+// imageProviderPreflightLanes are the upstream lanes that serve scene images.
+// They mirror DefaultSemanticSearchBatchConfig: a lane that does not serve
+// images must not be able to mask a total image outage.
+var imageProviderPreflightLanes = []string{"wikimedia_commons", "duckduckgo", "searxng"}
+
+// providerPreflightCooldown is the minimum pause for a lane to count as
+// cooling down. Ordinary token pacing is sub-second; a rate-limit cooldown is
+// seconds to minutes. The threshold keeps pacing from looking like an outage.
+const providerPreflightCooldown = time.Second
+
+// PreflightProviders fails closed when every image lane is still in cooldown.
+// One available lane is enough to continue: the fan-out can route around a
+// single throttled provider. A nil planner or budget has no provider state to
+// check and therefore cannot reject the run.
+func (p *SemanticSearchBatchPlanner) PreflightProviders(ctx context.Context) error {
+	if p == nil || p.cfg.Budget == nil {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	allCooling := true
+	var longest time.Duration
+	for _, lane := range imageProviderPreflightLanes {
+		remaining := p.cfg.Budget.Remaining(lane)
+		if remaining < providerPreflightCooldown {
+			allCooling = false
+			break
+		}
+		if remaining > longest {
+			longest = remaining
+		}
+	}
+	if !allCooling {
+		return nil
+	}
+	return fmt.Errorf("%w: every image provider lane is cooling down (longest %s)", ErrImageProviderUnavailable, longest)
 }
 
 // SemanticSearchProviderError is a failed retrieval, not an empty result. It

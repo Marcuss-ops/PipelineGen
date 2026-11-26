@@ -35,6 +35,7 @@ import (
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 
@@ -405,6 +406,9 @@ func wireScriptGenerationFinalJob(runner *scriptgen.Runner, cfg *config.Config, 
 	}
 	if cfg == nil || root == nil || strings.TrimSpace(cfg.External.FfmpegPath) == "" || strings.TrimSpace(cfg.External.RustMusclesPath) == "" {
 		return fmt.Errorf("remote final-job requires the Rust media preflight, local non-stock fragment certifier, and configured ffmpeg")
+	}
+	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
+		remoteFinalJob.SetRendererCapabilitySource(renderinggen.New(queueURL))
 	}
 	fragmentLanes, err := mediafinaljob.FragmentLanes()
 	if err != nil {

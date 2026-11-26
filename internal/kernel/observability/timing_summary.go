@@ -56,6 +56,11 @@ type TimingSummary struct {
 	// CriticalPath is the ordered chain of top-level (sequential) stages,
 	// ordered by wall-time start, each with its wall time and share of wall_ms.
 	CriticalPath []CriticalPathStage `json:"critical_path,omitempty"`
+	// SceneCriticalPath is the longest dependency chain through the per-scene
+	// lifecycle trace (text → translation/nlp/tts → asset → audio). Unlike
+	// CriticalPath it follows the declared scene DAG and never sums concurrent
+	// branches. Nil when the run did not record a scene timeline.
+	SceneCriticalPath *SceneCriticalPath `json:"scene_critical_path,omitempty"`
 	// Stages is the exhaustive per-stage wall-time list (nested stages
 	// included), aggregated by name and sorted by name.
 	Stages []TimingStage `json:"stages,omitempty"`
@@ -121,6 +126,7 @@ func (r *RunReport) timingSummaryWithWall(wallMs int64) TimingSummary {
 		BottleneckOperation: bd.BottleneckOperation,
 		BottleneckPercent:   bd.BottleneckPercent,
 		CriticalPath:        bd.CriticalPath,
+		SceneCriticalPath:   r.SceneTimeline.CriticalPath(),
 		Stages:              timingStages(r.Stages),
 		Operations:          timingOperations(r.Operations),
 		Fanout:              r.FanoutReports(),

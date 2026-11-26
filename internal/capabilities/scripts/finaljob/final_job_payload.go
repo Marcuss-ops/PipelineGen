@@ -40,6 +40,13 @@ func BuildFinalJobEnvelopeV1(ctx context.Context, runID string, req contract.Gen
 	return finaljob.BuildEnvelope(runID, prepareMap, finalizeMap)
 }
 
+// BuildFinalJobSplitEnvelopeV1 validates a split handoff before either phase
+// crosses the Master boundary. The PREPARE plan stays the sealed base plan;
+// the FINALIZE document is the base payload plus the late overlay supplement.
+func BuildFinalJobSplitEnvelopeV1(runID string, source FinalJobSourceHandoff, finalize map[string]any) (FinalJobEnvelopeV1, error) {
+	return finaljob.BuildEnvelope(runID, source.Prepare, finalize)
+}
+
 type FinalJobStockFile struct{ ID, Name string }
 
 type FinalJobAssetResolver interface {

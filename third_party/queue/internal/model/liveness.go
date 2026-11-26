@@ -115,6 +115,14 @@ func WithLiveness(w Worker, b WorkerLivenessBoundaries, now time.Time) Worker {
 	return w
 }
 
+// WorkerIsLive reports whether the worker is still inside its liveness window
+// (ready, busy, degraded or stale). Only a DEAD worker is excluded: what a
+// worker that stopped heartbeating advertised is history, not capacity, so a
+// capability preflight must not read it as a promise.
+func WorkerIsLive(w Worker, b WorkerLivenessBoundaries, now time.Time) bool {
+	return ClassifyWorkerLiveness(b, now, w.LastHeartbeatAt) != WorkerLivenessDead
+}
+
 // SummarizeWorkerHealth aggregates a worker snapshot into the health report.
 //
 // It is a pure function of the rows the store returned, so the aggregate and the

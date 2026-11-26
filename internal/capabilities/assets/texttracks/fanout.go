@@ -37,9 +37,24 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 
 	"go.uber.org/zap"
 )
+
+// childCorrelationID derives a per-child correlation id from the parent
+// carried by ctx. The broker deduplicates on (type, correlation_id), so N
+// siblings that inherit the same parent id collapse onto the first job (the
+// same P0 already fixed for the voiceover fan-out in
+// PR-VO-FANOUT-SIBLING-COLLAPSE-FIX). An empty parent yields an empty child:
+// the ActiveKey remains the sole idempotency surface in that case.
+func childCorrelationID(ctx context.Context, suffix string) string {
+	parent := corid.FromContext(ctx)
+	if parent == "" {
+		return ""
+	}
+	return parent + ":" + suffix
+}
 
 // MaterializeEnqueuer is the narrow consumer-side port for the
 // fanout helper. The fanout helper requires ONLY the Enqueue
@@ -192,9 +207,13 @@ func (f *MaterializeFanOut) EnqueueMaterializeOne(
 	)
 
 	_, err := f.jobs.Enqueue(ctx, &job.EnqueueRequest{
-		Type:      asset.TypeTextMaterialize,
-		Payload:   payload,
-		ActiveKey: activeKey,
+		Type:    asset.TypeTextMaterialize,
+		Payload: payload,
+		// Per-asset correlation: without it every clip of one extraction
+		// shares the parent correlation and the broker returns the FIRST
+		// materialize job for all the others.
+		CorrelationID: childCorrelationID(ctx, "texttracks:materialize:"+assetID+":"+sourceTextHash),
+		ActiveKey:     activeKey,
 	})
 	if err != nil {
 		f.log.Warn("texttracks.fanout.enqueue.failed",
@@ -242,9 +261,10 @@ func (f *MaterializeFanOut) EnqueueAcquireOne(
 		// service owns the single JSON marshal; pre-marshalling here would
 		// persist a JSON string (base64 in SQLite) and the worker would
 		// reject it as an invalid MaterializeJobPayload.
-		Payload:   payload,
-		Priority:  5,
-		ActiveKey: fmt.Sprintf("asset.text.acquire:%s:%s", assetID, sourceLanguage),
+		Payload:       payload,
+		Priority:      5,
+		CorrelationID: childCorrelationID(ctx, "texttracks:acquire:"+assetID+":"+sourceLanguage),
+		ActiveKey:     fmt.Sprintf("asset.text.acquire:%s:%s", assetID, sourceLanguage),
 	})
 	if err != nil {
 		return fmt.Errorf("texttracks.fanout.enqueue_acquire: %w", err)

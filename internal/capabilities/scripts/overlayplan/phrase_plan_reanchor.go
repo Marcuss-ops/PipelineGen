@@ -2,6 +2,7 @@ package overlayplan
 
 import (
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"unicode"
@@ -36,7 +37,8 @@ func reanchorPhrasePlanItems(plan *capmodel.OverlayPlan, result *contract.Genera
 		if isPhraseItem(*item) {
 			start, end, err := locateTimedSurface(timing.Words, item.Text, item.StartUSValue()-baseUS)
 			if err != nil {
-				return fmt.Errorf("overlay plan: phrase %q in scene %q: %w", item.ID, item.SceneID, err)
+				degradePhraseAnchor(item, err)
+				continue
 			}
 			setPhraseWindow(item, baseUS+start, end-start)
 			continue
@@ -59,7 +61,8 @@ func reanchorPhrasePlanItems(plan *capmodel.OverlayPlan, result *contract.Genera
 			if isPhraseSegment(*segment) {
 				start, end, err := locateTimedSurface(timing.Words, segment.Text, segment.StartUS-baseUS)
 				if err != nil {
-					return fmt.Errorf("overlay plan: phrase chain %q segment %d in scene %q: %w", item.ID, j, item.SceneID, err)
+					degradePhraseAnchor(item, err)
+					continue
 				}
 				segment.StartUS = baseUS + start
 				segment.DurationUS = end - start
@@ -84,6 +87,26 @@ func reanchorPhrasePlanItems(plan *capmodel.OverlayPlan, result *contract.Genera
 		}
 	}
 	return nil
+}
+
+// degradePhraseAnchor keeps the planner's own window when the certified
+// voiceover timing cannot locate the surface. Failing the entire generation is
+// the wrong contract: a replayed or cached plan can outlive the TTS transcript
+// that anchored it (the replay regenerates voiceover with a slightly different
+// normalization), and one unmatched phrase must not discard every other
+// overlay. The fallback is explicit on the item and in the process log, so a
+// genuinely wrong planner window is still diagnosable.
+func degradePhraseAnchor(item *capmodel.OverlayItem, cause error) {
+	if item == nil {
+		return
+	}
+	if item.Params == nil {
+		item.Params = make(map[string]any, 2)
+	}
+	item.Params["phrase_anchor"] = "planner_window"
+	item.Params["phrase_anchor_reason"] = "not_anchored"
+	log.Printf("overlay plan: phrase %q in scene %q kept on planner timing: %v",
+		item.ID, item.SceneID, cause)
 }
 
 // dedupeReanchoredPhrasePlanItems removes identical phrase surfaces that were

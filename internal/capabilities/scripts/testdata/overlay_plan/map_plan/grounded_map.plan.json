@@ -53,7 +53,7 @@
         "area_glow_radius_km": 3.5
       },
       "params": {
-        "map_animation": "territory_tactical_fill",
+        "map_animation": "volumetric_laser_scan",
         "map_group": {
           "count": 1,
           "index": 1,
@@ -68,9 +68,9 @@
         },
         "priority": 0.93
       },
-      "render_key": "3a9faaeac5e854cfc1642794f86aed2aec8fbe86216615ab5f5ed846dd1ba8da",
+      "render_key": "fa6e6a0ac6137ca41ff45478ec178d5fe77420f5e90974bf6f993d41ca31315a",
       "duration_ms": 400
     }
   ],
-  "fingerprint": "e401674749f74318b19d3640abc177d8fba44bdcd5dab21586c410b7c0247de3"
+  "fingerprint": "0417b33af34619fe2ffdc5a3afe302513f5b5f023720cdb0fa054a426beb41d2"
 }

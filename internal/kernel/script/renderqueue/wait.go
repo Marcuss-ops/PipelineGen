@@ -10,10 +10,29 @@ import (
 
 // RenderingGen queue job states are wire facts owned by the queue.
 const (
+	RenderQueueStatePending   = "pending"
+	RenderQueueStateRunning   = "running"
 	RenderQueueStateCompleted = "completed"
 	RenderQueueStateFailed    = "failed"
 	RenderQueueStateCancelled = "cancelled"
 )
+
+// renderStallEligible reports whether the progress watchdog may judge a job.
+// Only a job the queue has ADMITTED can stall: while it is still queued it is
+// waiting for lane capacity, which is a wait (governed by the budget and the
+// caller's deferral), never a fault. A queued item has produced no frames by
+// definition, so frames=0 says nothing about whether the render is advancing.
+//
+// An empty or unknown state stays eligible: an older deployment that omits the
+// field keeps the existing fail-closed watchdog rather than silently losing it.
+func renderStallEligible(state string) bool {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case RenderQueueStatePending:
+		return false
+	default:
+		return true
+	}
+}
 
 // terminalRenderState reports whether state is a terminal render state.
 func terminalRenderState(state string) bool {
@@ -189,11 +208,14 @@ func (e *RenderStalledError) Unwrap() error { return ErrRenderQueueStalled }
 // returns Progress with the current job; otherwise it samples with Get. It
 // aborts a render whose last recorded PROGRESS is older than stallAfter.
 //
-// Two rules keep it safe:
+// Three rules keep it safe:
+//   - only an ADMITTED job can stall: an item still queued (pending/queued
+//     state) is waiting for lane capacity, so frames=0 and its age say nothing
+//     about progress and it is left to the budget;
+//   - the window counts from admission — StartedAt, or the first RUNNING
+//     observation when the queue omits it — never from submit; and
 //   - only progress counts, never absolute age: a render that keeps reporting
-//     frames is never cancelled, however long it runs; and
-//   - a job that has not started (no StartedAt, no Progress) is an admission
-//     wait, not a stall, and is left to the budget.
+//     frames is never cancelled, however long it runs.
 //
 // A stall is reported as a typed RenderStalledError and the remote job is
 // cancelled when the client exposes RenderQueueCanceller, so the lane is freed
@@ -224,6 +246,11 @@ func WaitRenderQueueTerminalWatched(ctx context.Context, client RenderQueueClien
 	progressWaiter, canSampleProgress := client.(RenderQueueProgressWaiter)
 	progressSlice := watchedProgressSlice
 	var lastJob RenderQueueJob
+	// runningSince is the first observation of the job in RUNNING. It is the
+	// only honest anchor when the queue omits StartedAt: the stall threshold
+	// must count from lane admission, never from submit. It is cleared while
+	// the job is queued, so a requeued job starts a fresh wait.
+	var runningSince time.Time
 	for {
 		sampled := false
 		if canPark {
@@ -288,26 +315,39 @@ func WaitRenderQueueTerminalWatched(ctx context.Context, client RenderQueueClien
 			return terminalRenderResult(job, id, metrics)
 		}
 		now := time.Now()
-		lastProgress := job.StartedAt
-		framesDone, totalFrames := 0, 0
-		if job.Progress != nil {
-			if job.Progress.LastFrameAt.After(lastProgress) {
-				lastProgress = job.Progress.LastFrameAt
+		if !renderStallEligible(job.State) {
+			// QUEUED: the item is parked behind another render on the lane, so
+			// there is no progress to judge and the window has not started. The
+			// wait stays bounded by the budget/deferral, never by a stall.
+			runningSince = time.Time{}
+		} else {
+			if runningSince.IsZero() {
+				runningSince = now
 			}
-			framesDone, totalFrames = job.Progress.FramesDone, job.Progress.TotalFrames
-		}
-		if !lastProgress.IsZero() && now.Sub(lastProgress) >= stallAfter {
-			stalled := &RenderStalledError{
-				JobID: id, FramesDone: framesDone, TotalFrames: totalFrames,
-				LastProgressAt: lastProgress, StalledFor: now.Sub(lastProgress),
+			lastProgress := job.StartedAt
+			if lastProgress.IsZero() {
+				lastProgress = runningSince
 			}
-			if canceller, ok := client.(RenderQueueCanceller); ok {
-				if cancelErr := canceller.Cancel(ctx, id); cancelErr != nil {
-					stalled.CancelErr = cancelErr
+			framesDone, totalFrames := 0, 0
+			if job.Progress != nil {
+				if job.Progress.LastFrameAt.After(lastProgress) {
+					lastProgress = job.Progress.LastFrameAt
 				}
+				framesDone, totalFrames = job.Progress.FramesDone, job.Progress.TotalFrames
 			}
-			metrics.CompletionWait = time.Since(waitStarted)
-			return job, metrics, stalled
+			if now.Sub(lastProgress) >= stallAfter {
+				stalled := &RenderStalledError{
+					JobID: id, FramesDone: framesDone, TotalFrames: totalFrames,
+					LastProgressAt: lastProgress, StalledFor: now.Sub(lastProgress),
+				}
+				if canceller, ok := client.(RenderQueueCanceller); ok {
+					if cancelErr := canceller.Cancel(ctx, id); cancelErr != nil {
+						stalled.CancelErr = cancelErr
+					}
+				}
+				metrics.CompletionWait = time.Since(waitStarted)
+				return job, metrics, stalled
+			}
 		}
 		if !deadline.IsZero() && !now.Before(deadline) {
 			metrics.CompletionWait = time.Since(waitStarted)

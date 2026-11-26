@@ -79,6 +79,15 @@ func TestIncrementalCoordinator_FailsFastOnZeroImageScene(t *testing.T) {
 	early := coordinator.EarlyFailure()
 	require.Error(t, early)
 	assert.Contains(t, early.Error(), "IMAGE FANOUT")
+	// PERFLIVE-03: the failure must name WHY the scene had zero images, not
+	// only the count. This scene never reached a provider, so the evidence is
+	// an empty catalog, and the same code is persisted on the segment result
+	// for /full.
+	assert.Contains(t, early.Error(), "zero_reason="+mediacert.ZeroReasonCatalogEmpty)
+	coordinator.mu.Lock()
+	recorded := coordinator.records[0].result.Insights.ImageSearchNoImageReason
+	coordinator.mu.Unlock()
+	assert.Equal(t, mediacert.ZeroReasonCatalogEmpty, recorded)
 
 	// The next commit must stop the generation stream immediately.
 	err := coordinator.OnSceneCommitted(context.Background(), SceneCommitted{

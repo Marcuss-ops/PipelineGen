@@ -63,6 +63,34 @@ func TestLongPhraseClipKeepsFullSpokenWindow(t *testing.T) {
 	}
 }
 
+func TestSeparateOverlayItemPlanPreservesRequireGPU(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want *bool
+	}{
+		{name: "nil keeps worker policy"},
+		{name: "explicit false", want: boolPointer(false)},
+		{name: "explicit true", want: boolPointer(true)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := manifestTestPlan()
+			plan.RequireGPU = tc.want
+			child, _, err := separateOverlayItemPlan(plan, plan.Items[0], 0)
+			if err != nil {
+				t.Fatalf("child plan: %v", err)
+			}
+			if (child.RequireGPU == nil) != (tc.want == nil) {
+				t.Fatalf("child RequireGPU nil = %v, want nil = %v", child.RequireGPU == nil, tc.want == nil)
+			}
+			if tc.want != nil && *child.RequireGPU != *tc.want {
+				t.Fatalf("child RequireGPU = %v, want %v", *child.RequireGPU, *tc.want)
+			}
+		})
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }
+
 func TestEnqueueChrononPlanItemsRejectsBackgroundOnlyPlan(t *testing.T) {
 	e := &QueueRenderEnqueuer{}
 	plan := manifestTestPlan()

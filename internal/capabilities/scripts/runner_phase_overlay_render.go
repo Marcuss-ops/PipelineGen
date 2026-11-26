@@ -167,10 +167,17 @@ func (r *Runner) withMapRenderProgress(ctx context.Context, runID string) contex
 // never encode a full timeline or a scene-wide composition. If the wired
 // enqueuer cannot render per item, the run fails closed instead of falling
 // back to a timeline render.
-func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, _ contract.GenerateRequest, plan *capmodel.OverlayPlan) (contract.RenderReference, error) {
+func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req contract.GenerateRequest, plan *capmodel.OverlayPlan) (contract.RenderReference, error) {
 	if plan == nil {
 		return contract.RenderReference{}, nil
 	}
+	// Propagate the request's explicit GPU declaration to the overlay job and,
+	// through the child-plan copies built by the enqueuer, to every per-item
+	// render. Nil stays nil: a payload that declares nothing keeps the worker's
+	// execution policy untouched (the historical behaviour). The field is
+	// `json:"-"` on the plan, so the plan document — and its digest — never
+	// changes because of it.
+	plan.RequireGPU = req.Render.RequireGPU
 	return r.overlayRenderEnqueuer.EnqueueChrononPlanItems(ctx, *plan)
 }
 

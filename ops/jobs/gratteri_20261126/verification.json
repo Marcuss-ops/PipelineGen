@@ -1,0 +1,154 @@
+{
+  "run": "gratteri_20261126",
+  "destination": {
+    "path": "Clips/Saggezza/Gratteri",
+    "folder_id": "1oW6xyqgA9Q-vb2K0eucM4bwCiZrwDqFS"
+  },
+  "expected_clips": 18,
+  "published_clips": 15,
+  "failed_clips": 3,
+  "jobs": {
+    "a9Lr_OQJ984": "job_1795681891709299697_2c54fc3d",
+    "WdbdwtO2v0E": "job_1795682229664817792_8e35f312",
+    "CVUzdDyyPW8": "job_1795682229726725463_5ec01b46",
+    "NVtQAg7VK74": "job_1795682229810151977_a211cacf"
+  },
+  "published": [
+    {
+      "id": "yt_a9Lr_OQJ984_1448_1457_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1502,
+      "drive_file_id": "1E_NBjRO8xdVtckr0idEq-4lE96d9JdiW",
+      "file_size_bytes": 1589073
+    },
+    {
+      "id": "yt_a9Lr_OQJ984_2010_2021_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 2511,
+      "drive_file_id": "1hPgCe691K8Mwp4DtZ6iyf62DWuiza0Zk",
+      "file_size_bytes": 1307797
+    },
+    {
+      "id": "yt_a9Lr_OQJ984_2070_2083_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1962,
+      "drive_file_id": "10WjNboy9PMPjLP74qZulkHeWBosIceDa",
+      "file_size_bytes": 1466190
+    },
+    {
+      "id": "yt_a9Lr_OQJ984_2097_2115_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1727,
+      "drive_file_id": "1lOjADcWjt8nVPn6CLPTBTPC7YtJdqLQL",
+      "file_size_bytes": 2004610
+    },
+    {
+      "id": "yt_CVUzdDyyPW8_1864_1875_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1747,
+      "drive_file_id": "1e3ZzBGValPeNmYXzCEK0YnEEae7WpEbB",
+      "file_size_bytes": 890934
+    },
+    {
+      "id": "yt_CVUzdDyyPW8_1895_1915_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 2432,
+      "drive_file_id": "1maklhFhJHmS703UFfMVFGgIjdn5y4cOG",
+      "file_size_bytes": 2511973
+    },
+    {
+      "id": "yt_CVUzdDyyPW8_615_625_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1278,
+      "drive_file_id": "15ePqcKYxuFe-cxikXSGEeYm01aVZH3Zx",
+      "file_size_bytes": 2049879
+    },
+    {
+      "id": "yt_CVUzdDyyPW8_873_883_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1129,
+      "drive_file_id": "1GYLxij76rX5rhw0l_Kd1UBTSATcmRvTP",
+      "file_size_bytes": 1058133
+    },
+    {
+      "id": "yt_CVUzdDyyPW8_884_896_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1576,
+      "drive_file_id": "1UX74J7JM_Q_labE1fkWGWdELvwJHDeBj",
+      "file_size_bytes": 1756116
+    },
+    {
+      "id": "yt_WdbdwtO2v0E_143_156_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1560,
+      "drive_file_id": "1evQGFES_Z_J--YqjI13seRfKWFvCzNSo",
+      "file_size_bytes": 2430013
+    },
+    {
+      "id": "yt_WdbdwtO2v0E_1943_1956_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1994,
+      "drive_file_id": "1hiOftR7_gYuW1jc0m3-Ji3JbhfMfb4Es",
+      "file_size_bytes": 2395039
+    },
+    {
+      "id": "yt_WdbdwtO2v0E_3163_3174_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1863,
+      "drive_file_id": "1I9BseavUSlrmTWkmEsBmiZtHsh0EevjR",
+      "file_size_bytes": 2324274
+    },
+    {
+      "id": "yt_WdbdwtO2v0E_3373_3385_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 2045,
+      "drive_file_id": "1nh0lfx_RC4dLQDdV1bKW60HMM6J2AeFL",
+      "file_size_bytes": 2108822
+    },
+    {
+      "id": "yt_WdbdwtO2v0E_488_503_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1892,
+      "drive_file_id": "1z1sncuznLEdHmudHjM04NfTw_xO2wRBV",
+      "file_size_bytes": 2749849
+    },
+    {
+      "id": "yt_WdbdwtO2v0E_625_636_v1",
+      "ready_tracks": 10,
+      "index_state": "INDEXED",
+      "search_len": 1273,
+      "drive_file_id": "1FQstzGSlcz1Del8vuMRVkJVgeobU8nNQ",
+      "file_size_bytes": 1899106
+    }
+  ],
+  "blocked": {
+    "NVtQAg7VK74": {
+      "status": "FAILED",
+      "reason": "Video unavailable — geo-restricted to Italy; host not in IT",
+      "failure_code": "video_processing_failed"
+    }
+  },
+  "checks": {
+    "all_10_tracks_ready": true,
+    "all_indexed": true,
+    "all_have_drive_file": true
+  },
+  "platform_notes": [
+    "Stale YouTube cookie jar returned only storyboard formats; jar emptied (backup youtube.cookies.txt.bak-20261126-0835).",
+    "asset.text.materialize dedupes by (type, correlation_id): one materialize job per extraction job. Remaining clips completed with canonical text-tracks-backfill (idempotent)."
+  ]
+}

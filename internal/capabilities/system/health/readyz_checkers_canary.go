@@ -1,19 +1,26 @@
 // Package health — readyz_checkers_canary.go (sister file C).
 //
 // PR-SPLIT-READYZ-CHECKERS closure (2026-08-08): canonical owner
-// of two readiness probes: (i) Drive canary-upload via the
-// delivery.Publisher port, (ii) job-handler presence via a
-// HasHandler closure. Each capability is a complete "trio":
-// interface + concrete + NewX constructor — all stored under
-// their own godlike/06 SSOT owner-per-fact boundary.
+// of two readiness probes: (i) a READ-ONLY Drive canary probe,
+// (ii) job-handler presence via a HasHandler closure. Each
+// capability is a complete "trio": interface + concrete + NewX
+// constructor — all stored under their own godlike/06 SSOT
+// owner-per-fact boundary.
+//
+// LOCALJOBS-01 (2026-11-26): GET /ready must never mutate external
+// state. The readiness canary used to call delivery.Publisher.Publish,
+// which created readyz-canary.txt in the configured Drive folder on
+// every probe. The probe now only lists the target folder and checks
+// that it is not trashed. Writing the canary file is owned exclusively
+// by POST /canary-upload (internal/capabilities/admin).
 //
 // Type inventory (all private except NewX + RequiredHandlers):
 //   - DriveCanaryPort (interface, public)
-//   - publisherCanary (concrete, private)
+//   - readOnlyDriveProbe (concrete, private)
 //   - canaryErr (private typed-error)
-//   - errCanaryPublisherNotWired (sentinel)
-//   - errCanaryPublisherNilResult (sentinel)
-//   - NewPublisherCanary (public ctor)
+//   - errCanaryReaderNotWired (sentinel)
+//   - NewReadOnlyDriveCanary (public ctor)
+//   - NewReadOnlyDriveFolderChecker (public ctor)
 //   - HandlerRegChecker (interface, public)
 //   - HandlerPresenceChecker (concrete, public struct)
 //   - RequiredHandlers (public var, the canonical critical-handler list)
@@ -22,82 +29,84 @@ package system
 
 import (
 	"context"
-	"os"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"fmt"
 )
 
-// DriveCanaryPort performs a real Drive canary upload and returns
-// nil on success. nil-safe per the ReadyChecker aggregation
-// contract (orchestrator-runner nil-guards before invocation).
+// DriveCanaryPort performs a READ-ONLY Drive canary probe and returns
+// nil when the target folder is reachable and not trashed. It is
+// deliberately not backed by delivery.Publisher: a health probe may
+// not create files. nil-safe per the ReadyChecker aggregation contract
+// (orchestrator-runner nil-guards before invocation).
 type DriveCanaryPort interface {
-	CanaryUpload(ctx context.Context, folderID string) error
+	CheckCanaryReadOnly(ctx context.Context, folderID string) error
 }
 
-// publisherCanary wraps delivery.Publisher for the ReadyChecker
-// canary probe. The concrete implementation seeds a small temp
-// file with real content (NOT /dev/null, which has 0 bytes and
-// causes publisher-side hash-compute failures on some backends).
-type publisherCanary struct {
-	pub delivery.Publisher
+// readOnlyDriveProbe is the single read-only implementation shared by
+// the drive_canary and drive_folder readiness checks. reach must list
+// or stat the folder through the Drive Reader; notTrashed is optional
+// but recommended because a trashed folder still lists its children.
+type readOnlyDriveProbe struct {
+	reach      func(ctx context.Context, folderID string) error
+	notTrashed func(ctx context.Context, folderID string) (bool, error)
 }
 
-// CanaryUpload performs a real Drive upload of a small dummy
-// file. Returns errCanaryPublisherNotWired if pub is nil;
-// errCanaryPublisherNilResult if Publish returns nil result.
-func (c *publisherCanary) CanaryUpload(ctx context.Context, folderID string) error {
-	if c.pub == nil {
-		return errCanaryPublisherNotWired
+// check runs the read-only probes in fail-closed order: trashed state
+// first (when wired), then reachability. It never writes.
+func (p *readOnlyDriveProbe) check(ctx context.Context, folderID string) error {
+	if p == nil || p.reach == nil {
+		return errCanaryReaderNotWired
 	}
-	// Write a small temp file with real content so Publisher can
-	// compute SHA256 + upload successfully.
-	tmp, err := os.CreateTemp("", "readyz-canary-*.txt")
-	if err != nil {
-		return err
+	if p.notTrashed != nil {
+		ok, err := p.notTrashed(ctx, folderID)
+		if err != nil {
+			return fmt.Errorf("drive readiness trashed-state probe: %w", err)
+		}
+		if !ok {
+			return fmt.Errorf("drive readiness folder %s is TRASHED: published artifacts would be invisible in Drive", folderID)
+		}
 	}
-	defer func() { _ = os.Remove(tmp.Name()) }()
-	if _, err := tmp.WriteString("/readyz Drive canary probe\n"); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	_ = tmp.Close()
-	result, err := c.pub.Publish(ctx, delivery.PublishRequest{
-		Destination:    delivery.DestinationAdmin,
-		LocalPath:      tmp.Name(),
-		Filename:       "readyz-canary.txt",
-		Description:    "/readyz Drive canary probe",
-		ParentFolderID: folderID,
-	})
-	if err != nil {
-		return err
-	}
-	if result == nil {
-		return errCanaryPublisherNilResult
-	}
-	return nil
+	return p.reach(ctx, folderID)
 }
 
-// errCanaryPublisherNotWired is the canonical sentinel for an
-// unwired canary (composition root did not wire delivery.Publisher).
-var errCanaryPublisherNotWired = &canaryErr{msg: "publisher not wired"}
+func (p *readOnlyDriveProbe) CheckCanaryReadOnly(ctx context.Context, folderID string) error {
+	return p.check(ctx, folderID)
+}
 
-// errCanaryPublisherNilResult is the canonical sentinel for a
-// Publisher.Publish that returned nil result without error
-// (defensive guard against future publisher interface regressions).
-var errCanaryPublisherNilResult = &canaryErr{msg: "publish returned nil result"}
+func (p *readOnlyDriveProbe) CheckFolder(ctx context.Context, folderID string) error {
+	return p.check(ctx, folderID)
+}
 
-// canaryErr is the typed-error carrier for both canary sentinels.
+// errCanaryReaderNotWired is the canonical sentinel for an unwired
+// read-only Drive probe (composition root did not wire drive.Reader).
+var errCanaryReaderNotWired = &canaryErr{msg: "drive reader not wired"}
+
+// canaryErr is the typed-error carrier for the canary sentinel.
 // Implements error; field is unexported so callers must use the
-// two sense-bounded sentinels.
+// sense-bounded sentinel.
 type canaryErr struct{ msg string }
 
 func (e *canaryErr) Error() string { return e.msg }
 
-// NewPublisherCanary creates a Drive canary backed by
-// delivery.Publisher. Returns a nil-safe DriveCanaryPort that
-// returns errCanaryPublisherNotWired when pub is nil.
-func NewPublisherCanary(pub delivery.Publisher) DriveCanaryPort {
-	return &publisherCanary{pub: pub}
+// NewReadOnlyDriveCanary creates a read-only Drive canary probe from a
+// reachability closure (normally drive.Reader.ListFiles) and an optional
+// trashed-state closure (drive.Reader.FileIsNotTrashed). It returns a
+// nil-safe DriveCanaryPort that reports errCanaryReaderNotWired when
+// reach is nil. There is no write seam in this constructor.
+func NewReadOnlyDriveCanary(
+	reach func(ctx context.Context, folderID string) error,
+	notTrashed func(ctx context.Context, folderID string) (bool, error),
+) DriveCanaryPort {
+	return &readOnlyDriveProbe{reach: reach, notTrashed: notTrashed}
+}
+
+// NewReadOnlyDriveFolderChecker creates the folder-access readiness
+// probe with the same read-only semantics as NewReadOnlyDriveCanary.
+// It exists separately so each readiness fact keeps its own port.
+func NewReadOnlyDriveFolderChecker(
+	reach func(ctx context.Context, folderID string) error,
+	notTrashed func(ctx context.Context, folderID string) (bool, error),
+) DriveFolderChecker {
+	return &readOnlyDriveProbe{reach: reach, notTrashed: notTrashed}
 }
 
 // ── Handler presence (Step 7, July 2026 — readiness gating) ──────────

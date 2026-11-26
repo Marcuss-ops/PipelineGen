@@ -58,6 +58,20 @@ func New(baseURL string) *Client {
 	return &Client{q: queueclient.New(baseURL)}
 }
 
+// Capabilities returns the union of features advertised by currently live
+// RenderingGen workers. It is used by producer preflights so a plan is checked
+// against the active renderer inventory before any expensive work starts.
+func (c *Client) Capabilities(ctx context.Context) ([]string, error) {
+	if c == nil || c.q == nil {
+		return nil, fmt.Errorf("renderinggen capabilities: client is not configured")
+	}
+	capabilities, err := c.q.Capabilities(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("renderinggen capabilities: %w", err)
+	}
+	return capabilities, nil
+}
+
 // Submit enqueues a job. A 409 (job already exists) is surfaced as
 // renderqueue.ErrJobExists only after Queue atomically verified an exact replay.
 func (c *Client) Submit(ctx context.Context, job renderqueue.RenderQueueJob) error {
@@ -82,6 +96,7 @@ func (c *Client) Submit(ctx context.Context, job renderqueue.RenderQueueJob) err
 		PreparedRenderPackage: toQueuePreparedRenderPackage(job.PreparedRenderPackage),
 		RenderPlan:            job.OverlaySpec,
 		Assets:                toQueueAssets(job.Assets),
+		RequireGPU:            job.RequireGPU,
 		IdempotencyKey:        identity.IdempotencyKey(job.ID),
 	})
 	if err != nil {
@@ -160,6 +175,7 @@ func toScriptJob(job queueclient.Job) renderqueue.RenderQueueJob {
 		PreparedRenderPackage: fromQueuePreparedRenderPackage(job.PreparedRenderPackage),
 		OverlaySpec:           job.RenderPlan,
 		Assets:                fromQueueAssets(job.Assets),
+		RequireGPU:            job.RequireGPU,
 		State:                 string(job.State),
 		FailReason:            job.FailReason,
 		Artifact:              toScriptArtifact(job.Artifact),

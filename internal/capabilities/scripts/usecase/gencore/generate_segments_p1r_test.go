@@ -5,8 +5,8 @@
 //   - The engine's rendering-side functions (buildSegmentInstructions,
 //     buildClipGroundingInstructions) emit deterministic contracts.
 //   - The post-strip QA gate (SanitizeScriptOutput) enforces no-markup.
-//   - The word-budget gate (effectiveTargetForBudgetWords) follows
-//     the canonical fallback chain.
+//   - The word-budget helpers (effectiveSegmentTargetWords /
+//     effectiveScriptTargetWords) follow the canonical fallback chains.
 //   - The payload validator (ValidateEnvelope) rejects every
 //     malformed-shape input.
 //
@@ -247,23 +247,25 @@ func TestSegments_NoInvention_NoHallucinatedTopic(t *testing.T) {
 	}
 }
 
-// ── DoD #6 unit: budget fallback chain ──
+// ── DoD #6 unit: segment and script budget fallback chains ──
 
 func TestSegments_Budget_FallbackChain_OK(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name string
-		sp   scriptpkg.ScriptSpec
-		want int
+		name       string
+		sp         scriptpkg.ScriptSpec
+		wantScene  int
+		wantScript int
 	}{
 		{
-			name: "first_segment_target_wins",
+			name: "segment_target_wins_for_scene_and_script",
 			sp: scriptpkg.ScriptSpec{
 				Segments:     []scriptpkg.ScriptSegment{{Topic: "x", TargetWords: 50}},
 				SegmentWords: 200,
 				TargetWords:  1000,
 			},
-			want: 50,
+			wantScene:  50,
+			wantScript: 50,
 		},
 		{
 			name: "segment_words_when_no_segment_target",
@@ -272,7 +274,8 @@ func TestSegments_Budget_FallbackChain_OK(t *testing.T) {
 				SegmentWords: 200,
 				TargetWords:  1000,
 			},
-			want: 200,
+			wantScene:  200,
+			wantScript: 200,
 		},
 		{
 			name: "target_words_when_no_segment_target_or_segment_words",
@@ -280,26 +283,42 @@ func TestSegments_Budget_FallbackChain_OK(t *testing.T) {
 				Segments:    []scriptpkg.ScriptSegment{{Topic: "x", TargetWords: 0}},
 				TargetWords: 800,
 			},
-			want: 800,
+			wantScene:  800,
+			wantScript: 800,
 		},
 		{
 			name: "default_80_when_no_targets_at_all",
 			sp: scriptpkg.ScriptSpec{
 				Segments: []scriptpkg.ScriptSegment{{Topic: "x", TargetWords: 0}},
 			},
-			want: 80,
+			wantScene:  80,
+			wantScript: 80,
 		},
 		{
-			name: "first_segment_with_target_wins_over_segment_words",
+			name: "five_explicit_scene_targets_sum_for_script",
 			sp: scriptpkg.ScriptSpec{
 				Segments: []scriptpkg.ScriptSegment{
-					{Topic: "x", TargetWords: 0},
-					{Topic: "y", TargetWords: 75},
+					{Topic: "1", TargetWords: 700},
+					{Topic: "2", TargetWords: 700},
+					{Topic: "3", TargetWords: 700},
+					{Topic: "4", TargetWords: 700},
+					{Topic: "5", TargetWords: 700},
 				},
-				SegmentWords: 200,
-				TargetWords:  1000,
+				TargetWords: 3500,
 			},
-			want: 75, // first non-zero TargetWords in the slice
+			wantScene:  700,
+			wantScript: 3500,
+		},
+		{
+			name: "script_target_when_no_segment_declares_one",
+			sp: scriptpkg.ScriptSpec{
+				Segments: []scriptpkg.ScriptSegment{
+					{Topic: "1"}, {Topic: "2"}, {Topic: "3"},
+				},
+				TargetWords: 1200,
+			},
+			wantScene:  1200, // legacy per-segment chain: plan.TargetWords
+			wantScript: 1200, // aggregate fallback: plan.TargetWords
 		},
 	}
 	for _, tc := range cases {
@@ -309,9 +328,11 @@ func TestSegments_Budget_FallbackChain_OK(t *testing.T) {
 			plan := makePlanWithSegments(tc.sp.Segments)
 			plan.SegmentWords = tc.sp.SegmentWords
 			plan.TargetWords = tc.sp.TargetWords
-			got := effectiveTargetForBudgetWords(plan)
-			if got != tc.want {
-				t.Fatalf("effectiveTargetForBudgetWords want %d got %d (chain: per-seg > SegmentWords > TargetWords > 80)", tc.want, got)
+			if got := effectiveSegmentTargetWords(plan.Segments[0], plan); got != tc.wantScene {
+				t.Fatalf("effectiveSegmentTargetWords want %d got %d (chain: segment > SegmentWords > TargetWords > 80)", tc.wantScene, got)
+			}
+			if got := effectiveScriptTargetWords(plan); got != tc.wantScript {
+				t.Fatalf("effectiveScriptTargetWords want %d got %d (sum of segment targets > TargetWords > SegmentWords*N > 80*N)", tc.wantScript, got)
 			}
 		})
 	}

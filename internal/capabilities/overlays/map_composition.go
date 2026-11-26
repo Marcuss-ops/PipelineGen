@@ -223,9 +223,6 @@ func mapCompositionWireDataCompatible(id string, input MapCompositionInput) erro
 	if id == "historic_location_timeline" && strings.TrimSpace(input.TimelineLabel) == "" {
 		return fmt.Errorf("map_animation %q requires timeline_label", id)
 	}
-	if id == "mountain_ridge_callout" && strings.TrimSpace(input.MountainOverlayAsset) == "" {
-		return fmt.Errorf("map_animation %q requires mountain_overlay_asset", id)
-	}
 	return nil
 }
 

@@ -40,7 +40,7 @@ type ReadyChecker struct {
 	// Step 8 severe checks (July 2026).
 	tools        ToolsChecker
 	clipsPath    string            // data/media/clips/
-	canary       DriveCanaryPort   // publisher-backed canary upload
+	canary       DriveCanaryPort   // read-only canary probe (never writes)
 	canaryFolder string            // target folder for canary
 	handlerCheck HandlerRegChecker // job handler registration probe
 

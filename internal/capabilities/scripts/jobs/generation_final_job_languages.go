@@ -141,6 +141,9 @@ func finalJobLanguageRequest(parent scriptgen.GenerateRequest, language string) 
 	child.Languages = []scriptgen.Language{scriptgen.Language(language)}
 	child.VoiceoverLanguages = []scriptgen.Language{scriptgen.Language(language)}
 	child.FinalJob = true
+	// The parent delivery reads each child's remote receipt, so a language
+	// child is the one case that must not be downgraded to the local join.
+	child.FinalJobRemote = true
 	// A language child is a fresh video run, but the input source is already
 	// supplied and entity extraction is explicitly forced by MediaPlan. Do not
 	// let the envelope-wide force-refresh bit defeat shared identity-asset cache

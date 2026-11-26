@@ -1,0 +1,120 @@
+{
+  "url": "https://www.youtube.com/watch?v=CVUzdDyyPW8",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "require_transcript_ready": true,
+  "destination": {
+    "folder_id": "1oW6xyqgA9Q-vb2K0eucM4bwCiZrwDqFS",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "10:15",
+      "end": "10:25",
+      "name": "Le nomine sono una mezza truffa",
+      "category": "intervista",
+      "source_title": "INTERVISTA A NICOLA GRATTERI",
+      "source_channel": "Pubble",
+      "summary": "In realtà è una mezza truffa, perché loro prima scelgono i loro componenti di fiducia. Nomine truccate, controllo politico sugli organi di garanzia e potere.",
+      "topics": [
+        "Nomine truccate, controllo politico sugli organi di garanzia e potere."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "le nomine sono una mezza truffa"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "14:33",
+      "end": "14:43",
+      "name": "Il potere non vuole essere controllato",
+      "category": "intervista",
+      "source_title": "INTERVISTA A NICOLA GRATTERI",
+      "source_channel": "Pubble",
+      "summary": "Il potere non vuole essere controllato. Sentenza secca per aprire video su riforme, abuso d'ufficio o impunità.",
+      "topics": [
+        "Sentenza secca per aprire video su riforme, abuso d'ufficio o impunità."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "il potere non vuole essere controllato"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "14:44",
+      "end": "14:56",
+      "name": "Leggi e concorsi regalati ai raccomandati",
+      "category": "intervista",
+      "source_title": "INTERVISTA A NICOLA GRATTERI",
+      "source_channel": "Pubble",
+      "summary": "È un regalo fatto ai raccomandati. Favoritismi nella pubblica amministrazione, clientelismo e leggi ad personam.",
+      "topics": [
+        "Favoritismi nella pubblica amministrazione, clientelismo e leggi ad personam."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "leggi e concorsi regalati ai raccomandati"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "31:04",
+      "end": "31:15",
+      "name": "Altre cariche dello Stato hanno continuato in malafede",
+      "category": "intervista",
+      "source_title": "INTERVISTA A NICOLA GRATTERI",
+      "source_channel": "Pubble",
+      "summary": "Ho visto che altre cariche dello Stato hanno continuato in malafede. Scontro diretto con i vertici dello Stato senza citare nomi espliciti.",
+      "topics": [
+        "Scontro diretto con i vertici dello Stato senza citare nomi espliciti."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "altre cariche dello stato hanno continuato in malafede"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "31:35",
+      "end": "31:55",
+      "name": "Comportamenti scorretti da chi non te lo aspetti",
+      "category": "intervista",
+      "source_title": "INTERVISTA A NICOLA GRATTERI",
+      "source_channel": "Pubble",
+      "summary": "Io ricordo tutto il bene e il male, ho visto comportamenti scorretti da persone dalle quali non me l'aspettavo. Tradimenti interni alle istituzioni e retroscena personali.",
+      "topics": [
+        "Tradimenti interni alle istituzioni e retroscena personali."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "comportamenti scorretti da chi non te lo aspetti"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    }
+  ]
+}

@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -218,6 +219,22 @@ func (c *Client) SetWebSearcher(ws *WebSearcher) {
 // WebSearcher returns the configured web searcher, or nil if disabled.
 func (c *Client) WebSearcher() *WebSearcher {
 	return c.webSearcher
+}
+
+// RecordModelOutputFailure records an HTTP-200 response whose content the
+// caller rejected as unusable (for example a one-word script). The transport
+// succeeded, so the client cannot classify it on its own; the generator owns
+// the content contract and must report the failure here to keep the breaker
+// honest. A nil client or empty model is a safe no-op.
+func (c *Client) RecordModelOutputFailure(model string) {
+	if c == nil {
+		return
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = c.model
+	}
+	c.breakerFor(model).RecordFailure()
 }
 
 // ResetCircuitBreakers clears all circuit breakers, allowing requests

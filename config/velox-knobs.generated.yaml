@@ -109,6 +109,12 @@ knobs:
     safe_production: "180"
     owner: "internal/app/modules/script/remote_final_job_config.go"
     description: "How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget)."
+  VELOX_FINAL_JOB_SPLIT_PREPARE:
+    kind: env
+    default: ""
+    safe_production: "unset until the Master advertises overlay_projection_finalize"
+    owner: "internal/app/modules/script/remote_final_job_split.go"
+    description: "Enables the split base PREPARE that overlaps the final overlay render; requires the Master capability overlay_projection_finalize."
   VELOX_FINAL_JOB_WORKER_ID:
     kind: env
     default: ""

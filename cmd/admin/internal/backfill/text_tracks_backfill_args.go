@@ -16,9 +16,11 @@ func parseTextTracksBackfillArgs(args []string) (textTracksBackfillDeps, error) 
 		Progress: 50,
 		TextKind: "transcript",
 	}
-	for _, a := range args {
-		a = strings.TrimSpace(a)
+	for i := 0; i < len(args); i++ {
+		a := strings.TrimSpace(args[i])
 		switch {
+		case a == "":
+			continue
 		case a == "--apply":
 			deps.Apply = true
 		case a == "--dry-run":
@@ -33,6 +35,18 @@ func parseTextTracksBackfillArgs(args []string) (textTracksBackfillDeps, error) 
 			deps.Resume = true
 		case a == "--retry-failed":
 			deps.RetryFailed = true
+		// Value flags accept both the documented space form (`--source youtube`)
+		// and the `--source=youtube` form. Before this, the help text and the
+		// runbook used the space form while the parser only accepted `=`, so a
+		// copied command died with `unknown flag: --source`.
+		case a == "--source", a == "--languages", a == "--text-kind", a == "--asset-ids", a == "--limit", a == "--progress", a == "--checkpoint":
+			if i+1 >= len(args) || strings.HasPrefix(strings.TrimSpace(args[i+1]), "--") {
+				return deps, fmt.Errorf("%s requires a value", a)
+			}
+			i++
+			if err := assignTextTracksBackfillValue(&deps, a, args[i]); err != nil {
+				return deps, err
+			}
 		case strings.HasPrefix(a, "--source="):
 			deps.Source = strings.TrimPrefix(a, "--source=")
 		case strings.HasPrefix(a, "--languages="):
@@ -80,6 +94,40 @@ func parseTextTracksBackfillArgs(args []string) (textTracksBackfillDeps, error) 
 		deps.Progress = 50
 	}
 	return deps, nil
+}
+
+// assignTextTracksBackfillValue applies one value flag parsed in the
+// space-separated form. It shares the numeric validation with the `=` form so
+// the two spellings cannot drift.
+func assignTextTracksBackfillValue(deps *textTracksBackfillDeps, flag, raw string) error {
+	value := strings.TrimSpace(raw)
+	switch flag {
+	case "--source":
+		deps.Source = value
+	case "--languages":
+		deps.Languages = value
+	case "--text-kind":
+		deps.TextKind = value
+	case "--asset-ids":
+		deps.AssetIDs = value
+	case "--checkpoint":
+		deps.Checkpoint = value
+	case "--limit":
+		n, err := cli.ParsePositiveFlag(value, flag)
+		if err != nil {
+			return err
+		}
+		deps.Limit = n
+	case "--progress":
+		n, err := cli.ParsePositiveFlag(value, flag)
+		if err != nil {
+			return err
+		}
+		deps.Progress = n
+	default:
+		return fmt.Errorf("unknown flag: %s", flag)
+	}
+	return nil
 }
 
 // splitCSV splits a comma-separated list into trimmed non-empty values.

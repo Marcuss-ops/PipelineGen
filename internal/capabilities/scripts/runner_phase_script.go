@@ -36,6 +36,16 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req contra
 		r.markGenerationStart(runID, time.Now())
 		hb := r.startStageHeartbeat(runID, StageGeneratingSceneText)
 		defer hb.close()
+		// PERFLIVE-03: a run that requires images must not spend generation,
+		// TTS and render when every image provider lane is already cooling
+		// down. One available lane continues normally; only a total outage
+		// fails closed, before any provider call is attempted.
+		if preflightErr := r.preflightImageProviders(ctx, req); preflightErr != nil {
+			cause := fmt.Errorf("image provider preflight: %w", hb.annotate(preflightErr))
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+			return result, false
+		}
 		hb.setOp("prepare_scene_text_generation")
 		path := r.prepareSceneTextGeneration(ctx, runID, req, routing, exec)
 		hb.setOp("generate_scene_text")
@@ -472,6 +482,22 @@ func applyDefaultSceneRenderSubfolder(req *contract.GenerateRequest) {
 		return
 	}
 	req.Render.DriveSubfolderName = defaultRenderSubfolderName(req.Title, req.Source.Topic, req.IdempotencyKey)
+}
+
+// preflightImageProviders asks the wired retrieval planner whether any image
+// lane can serve the run. It is a no-op when the request does not ask for
+// images or no planner is wired, so text-only and entity-free runs are never
+// gated by provider state.
+func (r *Runner) preflightImageProviders(ctx context.Context, req contract.GenerateRequest) error {
+	if r == nil || r.semanticSearchPlanner == nil {
+		return nil
+	}
+	internetImages := req.MediaPlan.ProviderPolicy.InternetImages.AsBool()
+	entityImages := req.MediaPlan.Extraction.EntityImages.Enabled
+	if !internetImages && !entityImages {
+		return nil
+	}
+	return r.semanticSearchPlanner.PreflightProviders(ctx)
 }
 
 // setSceneRenderExpectations records the canonical render-unit promise when

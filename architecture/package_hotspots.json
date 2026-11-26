@@ -5,16 +5,16 @@
       "path": "internal/capabilities/scripts",
       "owner": "scripts capability (research/generation/runner surface)",
       "deadline": "2027-03-31",
-      "baseline_files": 62,
+      "baseline_files": 63,
       "baseline": {
-        "files": 62,
+        "files": 63,
         "max_loc": 0
       },
       "current": {
-        "files": 62,
+        "files": 63,
         "max_loc": 0
       },
-      "note": "Registered 2026-09-12: scripts capability surface beyond max_files_per_package=65. Contract-first split (2026-11-23/24) moved the shared vocabulary to scripts/contract and the phase families to scripts/{runner,audio,vidrush,overlayplan,finaljob,runstate,renderunits,workunits,clips,overlayproject,renderqueue}; the root fell from 141 files / 45,920 LOC to 62 files / 18,653 LOC and is now the compatibility facade. Current 2026-11-25: 62 files / 18,583 LOC (70 lines of headroom under the 18,653 line budget; a dead-code pass removed unused facade aliases and wrappers); file-level SCC 57/62 (AST; the repo's type-aware measurement was 61/63 before the last extractions), only 4 self-contained leaf files (186 LOC). The 26 runner*.go left in the root are the Host phase implementations by design - the orchestrator is scripts/runner.Execution - so moving them would create a ~64-file package and relocate the hotspot. No further package split is planned; the target subpackages already exist and the 65-file cap is met. Owner/deadline unchanged; any root growth still hard-fails.",
+      "note": "Registered 2026-09-12: scripts capability surface beyond max_files_per_package=65. Contract-first split (2026-11-23/24) moved the shared vocabulary to scripts/contract and the phase families to scripts/{runner,audio,vidrush,overlayplan,finaljob,runstate,renderunits,workunits,clips,overlayproject,renderqueue}; the root fell from 141 files / 45,920 LOC to 62 files / 18,653 LOC and is now the compatibility facade. Re-baselined 2026-11-26 after the split PREPARE/FINALIZE feature landed its runner half in the root (final_job_split.go, 157 LOC) and the provider-preflight / zero-image-reason WIP added the remaining tracked growth: the measured tree is 63 files / 18,957 LOC. This is a registered ratchet, not an exemption: owner and deadline are unchanged and any further root growth still hard-fails. The target subpackages remain runner/audio/vidrush; no new split is planned. The vidrush line budget is re-baselined separately because commit e7468c776 added 150 net LOC to the entity-image lane after the previous ratchet (11,705 -> 11,818 -> 11,889).",
       "target_packages": [
         "internal/capabilities/scripts/runner",
         "internal/capabilities/scripts/audio",
@@ -63,7 +63,7 @@
     },
     {
       "path": "internal/capabilities/scripts",
-      "max_loc": 18653,
+      "max_loc": 18957,
       "owner": "scripts capability (root facade)",
       "deadline": "2027-03-31"
     },
@@ -75,7 +75,7 @@
     },
     {
       "path": "internal/capabilities/scripts/vidrush",
-      "max_loc": 11818,
+      "max_loc": 11889,
       "owner": "scripts capability (vidrush)",
       "deadline": "2027-03-31"
     },

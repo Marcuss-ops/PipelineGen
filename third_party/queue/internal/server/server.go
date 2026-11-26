@@ -93,6 +93,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /workers/heartbeat", s.heartbeat)
 	mux.HandleFunc("GET /workers", s.listWorkers)
 	mux.HandleFunc("GET /workers/health", s.workerHealth)
+	// The renderer capability inventory a producer preflights against. It is
+	// NOT nested under /workers on purpose: the consumer asks "what can this
+	// backend do?", not "what is registered?", and the live-worker union is
+	// the only honest answer to that question.
+	mux.HandleFunc("GET /capabilities", s.workerCapabilities)
 	if s.metricsHandler != nil {
 		mux.Handle("GET /metrics", s.metricsHandler)
 	}

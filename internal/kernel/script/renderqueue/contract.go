@@ -210,9 +210,17 @@ type RenderQueueJob struct {
 	PreparedRenderPackage *RenderQueuePreparedPackageRef `json:"prepared_render_package,omitempty"`
 	OverlaySpec           json.RawMessage                `json:"overlay_spec"`
 	Assets                []RenderQueueAsset             `json:"assets"`
-	State                 string                         `json:"state"`
-	FailReason            string                         `json:"fail_reason,omitempty"`
-	Artifact              *RenderArtifact                `json:"artifact,omitempty"`
+	// RequireGPU is the producer's explicit GPU demand for THIS render. It is
+	// tri-state by design: absent (nil) leaves the worker's execution policy
+	// untouched, which is what every producer predating this field expects;
+	// true demands the GPU lane (a software backend fails the render) and
+	// false releases the demand so the worker may choose the software lane.
+	// It selects an execution lane, not the bytes the plan describes, so it is
+	// deliberately NOT part of the render request identity.
+	RequireGPU *bool           `json:"require_gpu,omitempty"`
+	State      string          `json:"state"`
+	FailReason string          `json:"fail_reason,omitempty"`
+	Artifact   *RenderArtifact `json:"artifact,omitempty"`
 
 	// Queue-owned lifecycle timestamps (GET /jobs/{id}). They are the ONLY
 	// measurement of where a remote render's wall went BEFORE the renderer

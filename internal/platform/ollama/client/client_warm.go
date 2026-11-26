@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -39,6 +42,26 @@ func residentRunnerOptions(options map[string]any) map[string]any {
 	return pinned
 }
 
+// EnvWarmTimeoutSeconds bounds the warm probe independently of the generation
+// timeout. A cold load that never reaches residency must fail the best-effort
+// warm instead of borrowing the 600-second generation budget and stalling the
+// job that triggered it.
+const EnvWarmTimeoutSeconds = "PIPELINEGEN_OLLAMA_WARM_TIMEOUT_SEC"
+
+const defaultWarmTimeout = 10 * time.Minute
+
+func resolveWarmTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(EnvWarmTimeoutSeconds))
+	if raw == "" {
+		return defaultWarmTimeout
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		return defaultWarmTimeout
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 // WarmModel makes model residency an explicit, singleflight operation. The
 // first caller pays the load; concurrent scene callers wait for that same
 // load instead of independently entering Ollama's cold-start window.
@@ -61,6 +84,11 @@ func (c *Client) WarmModel(ctx context.Context, model string) error {
 	}
 	if model == "" || c.useVLLM || c.useNvidiaForLLM {
 		return nil
+	}
+	if timeout := resolveWarmTimeout(); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
 
 	_, err, _ := c.warmModelGroup.Do(model, func() (any, error) {

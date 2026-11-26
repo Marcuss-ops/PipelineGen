@@ -36,7 +36,13 @@ type RemoteFinalJobResult struct {
 	// every wait after it runs to completion, so a render longer than the whole
 	// retry window still finishes instead of dying on an exhausted attempt
 	// budget. Only meaningful while the job is pending.
-	Yields int `json:"yields,omitempty"`
+	Yields int  `json:"yields,omitempty"`
+	Split  bool `json:"split,omitempty"`
+	// Split marks a receipt produced by the split handoff: PREPARE carried the
+	// base timeline only and FINALIZE still has to carry the certified overlay
+	// projection. A durable PREPARE_INTENT with Split=true may be replayed on a
+	// retry, so a lost PREPARE response reconciles to the same lease instead of
+	// creating a second base job.
 	// Timing decomposes the wait that `remote_final_job` reports as one stage.
 	// It is persisted with the receipt so the split survives the run and is
 	// readable from /full without re-running the render.
@@ -79,6 +85,20 @@ type RemoteFinalJobTiming struct {
 	// (handoff_ms − payload_ms − prepare_ms), so a phase can no longer hide in
 	// a single opaque number.
 	PrepareMS int64 `json:"prepare_ms,omitempty"`
+	// FinalizeMS is the FINALIZE round-trip of a split handoff; it is kept
+	// separate from PrepareMS because the two phases run on opposite sides of
+	// the overlay render and must not be folded into one opaque number.
+	FinalizeMS int64 `json:"finalize_ms,omitempty"`
+	// FinalizePayloadMS is the local overlay-supplement build that precedes
+	// that FINALIZE. The base payload build stays in PayloadMS.
+	FinalizePayloadMS int64 `json:"finalize_payload_ms,omitempty"`
+	// SplitPrepareMS is the wall time of the early PREPARE (base payload build
+	// plus the PREPARE round-trip).
+	SplitPrepareMS int64 `json:"split_prepare_ms,omitempty"`
+	// SplitOverlapMS is how much of that early PREPARE ran while the overlay
+	// render was still in flight. It is measured from the two sibling clocks,
+	// never inferred from the stage total.
+	SplitOverlapMS int64 `json:"split_overlap_ms,omitempty"`
 	// SegmentPrep is the Producer's own split of payload_ms for this handoff:
 	// download, encode/copy, verify and publish per fragment. It is the only
 	// attribution that can tell a slow transfer from a slow encode; nil means
@@ -143,7 +163,7 @@ func (t *RemoteFinalJobTiming) Merge(other *RemoteFinalJobTiming) *RemoteFinalJo
 	for _, phase := range []struct {
 		dst *int64
 		src int64
-	}{{&t.QueueMS, other.QueueMS}, {&t.ExecutionMS, other.ExecutionMS}, {&t.HandoffMS, other.HandoffMS}, {&t.HandoffResolveMS, other.HandoffResolveMS}, {&t.PayloadMS, other.PayloadMS}, {&t.PrepareMS, other.PrepareMS}, {&t.WaitMS, other.WaitMS}, {&t.PollLagMS, other.PollLagMS}, {&t.ArtifactDownloadMS, other.ArtifactDownloadMS}, {&t.ArtifactDownloadBytes, other.ArtifactDownloadBytes}} {
+	}{{&t.QueueMS, other.QueueMS}, {&t.ExecutionMS, other.ExecutionMS}, {&t.HandoffMS, other.HandoffMS}, {&t.HandoffResolveMS, other.HandoffResolveMS}, {&t.PayloadMS, other.PayloadMS}, {&t.PrepareMS, other.PrepareMS}, {&t.FinalizeMS, other.FinalizeMS}, {&t.FinalizePayloadMS, other.FinalizePayloadMS}, {&t.SplitPrepareMS, other.SplitPrepareMS}, {&t.SplitOverlapMS, other.SplitOverlapMS}, {&t.WaitMS, other.WaitMS}, {&t.PollLagMS, other.PollLagMS}, {&t.ArtifactDownloadMS, other.ArtifactDownloadMS}, {&t.ArtifactDownloadBytes, other.ArtifactDownloadBytes}} {
 		if phase.src > 0 {
 			*phase.dst = phase.src
 		}

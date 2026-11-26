@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/RenderingGen/queue/internal/model"
@@ -88,6 +90,49 @@ func (s *Service) ReadyWorkers(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return model.ReadyWorkerIDs(workers, s.livenessWindow(), s.now()), nil
+}
+
+// WorkerCapabilities returns the capability inventory the LIVE workers
+// advertise: the sorted union of every registered worker still inside its
+// liveness window.
+//
+// It is the render-preflight source. A producer asks what the backend can
+// actually do BEFORE paying for a render, so the answer must come from the
+// workers that are alive now — a dead worker's advertisement is not capacity,
+// and a hand-written list on the producer side would be a second, drifting
+// source of truth. An empty result means no live worker advertised anything
+// (an older worker build, or no worker at all); callers must treat that as
+// "cannot prove", never as "supports nothing".
+func (s *Service) WorkerCapabilities(ctx context.Context) ([]string, error) {
+	if s.workerRepo == nil {
+		return nil, fmt.Errorf("worker repository is not configured")
+	}
+	workers, err := s.workerRepo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	boundaries := s.livenessWindow()
+	now := s.now()
+	seen := make(map[string]struct{})
+	capabilities := make([]string, 0)
+	for _, worker := range workers {
+		if !model.WorkerIsLive(worker, boundaries, now) {
+			continue
+		}
+		for _, capability := range worker.Capabilities {
+			name := strings.TrimSpace(capability)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			capabilities = append(capabilities, name)
+		}
+	}
+	sort.Strings(capabilities)
+	return capabilities, nil
 }
 
 // RefreshWorkerHealth recomputes the worker-health metrics from the current

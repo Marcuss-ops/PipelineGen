@@ -342,7 +342,6 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return ChatResult{}, err
 	}
-
 	logger.Info("Ollama chat response received",
 		zap.String("model", model),
 		zap.Int("chars", len(result.Message.Content)),

@@ -531,25 +531,7 @@ func finalJobFinalizePayload(ctx context.Context, runID string, req contract.Gen
 	if err != nil {
 		return nil, nil, err
 	}
-	if overlayManifest != nil {
-		if asset, ok := overlayManifest["asset"].(map[string]any); ok {
-			AppendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "overlay_timeline", asset)
-		}
-		if manifests, ok := overlayManifest["manifests"].([]any); ok {
-			for _, raw := range manifests {
-				if manifest, ok := raw.(map[string]any); ok {
-					if asset, ok := manifest["asset"].(map[string]any); ok {
-						AppendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "overlay_timeline", asset)
-					}
-				}
-			}
-		}
-	}
-	for _, raw := range remoteOverlays {
-		if asset, ok := raw.(map[string]any); ok {
-			AppendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "overlay", asset)
-		}
-	}
+	appendFinalJobOverlayRuntimeAssets(&runtimeAssets, seenRuntimeAssets, remoteOverlays, overlayManifest)
 	// Master 51's deployed build may predate source_uri propagation in the
 	// future-asset plan. Keep the canonical field and mirror it into url for
 	// that worker path so assets do not fall back to master_asset_bridge.

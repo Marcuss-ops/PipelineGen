@@ -28,6 +28,7 @@ import (
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/editorialgate"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 )
 
@@ -81,6 +82,25 @@ func CompileResultOverlayPlan(ctx context.Context, result *contract.GenerateResu
 		})
 		return phraseBudgetErr
 	}
+	// Editorial QA gate: the plan is sealed here, before any render work. The
+	// criteria that used to be discovered on finished frames (coverage, gaps,
+	// overlaps, a 125 ms card, a category enabled with zero items, an
+	// imperative stage direction read aloud) become a typed report on the
+	// result. Warn is the default; strict refuses the render.
+	if plan != nil {
+		gateReport := editorialgate.Evaluate(editorialGateConfig(result, language, canvas, plan))
+		result.EditorialQualityGate = &gateReport
+		overlaystatus.Update(planID, func(status *overlaystatus.Status) {
+			status.QualityGate = &gateReport
+		})
+		if err := gateReport.Enforce(); err != nil {
+			overlaystatus.Update(planID, func(status *overlaystatus.Status) {
+				status.Stage = "editorial_gate_failed"
+				status.Error = err.Error()
+			})
+			return err
+		}
+	}
 	if err := buildLocalizedOverlayPlans(ctx, result, language, planID, projectID, driveFolderID, canvas, plates, compiler, perSceneImages...); err != nil {
 		return err
 	}
@@ -125,6 +145,43 @@ func CompileResultOverlayPlan(ctx context.Context, result *contract.GenerateResu
 		return err
 	}
 	return nil
+}
+
+// editorialGatePolicy reads the operator policy. Strict fails closed before any
+// render work; warn (default) publishes the report and continues.
+func editorialGatePolicy() string {
+	for _, key := range []string{"PIPELINEGEN_EDITORIAL_GATE_POLICY", "VELOX_EDITORIAL_GATE_POLICY"} {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return editorialgate.PolicyWarn
+}
+
+// editorialGateConfig gathers the certified facts the gate measures. Source
+// texts are the authored narration surfaces for this language: a directive
+// there would be spoken by the TTS, which is exactly the AUGRENDER-04 leak.
+func editorialGateConfig(result *contract.GenerateResult, language contract.Language, canvas OverlayCanvasSpec, plan *capmodel.OverlayPlan) editorialgate.Config {
+	categories := make(map[string]string, len(canvas.OverlayCategories))
+	for category, toggle := range canvas.OverlayCategories {
+		categories[string(category)] = string(toggle)
+	}
+	sourceTexts := make([]string, 0, len(result.Scenes))
+	for index := range result.Scenes {
+		text := strings.TrimSpace(result.Scenes[index].Text[language])
+		if text == "" {
+			continue
+		}
+		sourceTexts = append(sourceTexts, text)
+	}
+	return editorialgate.Config{
+		Policy:            editorialGatePolicy(),
+		DurationMS:        plan.DurationMS,
+		Items:             plan.Items,
+		EnabledCategories: categories,
+		SourceTexts:       sourceTexts,
+		MediaContract:     plan.MediaContract,
+	}
 }
 
 // phraseOverlayBudgetPolicy reads the operator policy. Strict fails closed in

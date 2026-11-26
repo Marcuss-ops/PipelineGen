@@ -1,0 +1,78 @@
+{
+  "url": "https://www.youtube.com/watch?v=NVtQAg7VK74",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "require_transcript_ready": true,
+  "destination": {
+    "folder_id": "1oW6xyqgA9Q-vb2K0eucM4bwCiZrwDqFS",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "09:15",
+      "end": "09:27",
+      "name": "Un decreto legge per sessanta minorenni",
+      "category": "intervista",
+      "source_title": "Gratteri: violenza giovanile causata da analfabetismo",
+      "source_channel": "",
+      "summary": "Per sessanta minorenni abbiamo fatto un decreto legge e l'abbiamo raccontato come la soluzione di tutti i problemi. Propaganda politica e leggi-spot inefficaci.",
+      "topics": [
+        "Propaganda politica e leggi-spot inefficaci."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "un decreto legge per sessanta minorenni"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "20:34",
+      "end": "20:54",
+      "name": "Il 51% crede nella magistratura, il 12% nella politica",
+      "category": "intervista",
+      "source_title": "Gratteri: violenza giovanile causata da analfabetismo",
+      "source_channel": "",
+      "summary": "Il 51% degli italiani ha fiducia nella magistratura, mentre il 12% ha fiducia nella politica: chi ha il 12% critica chi ha il 51%. Delegittimazione politica e crollo di credibilità delle istituzioni.",
+      "topics": [
+        "Delegittimazione politica e crollo di credibilità delle istituzioni."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "il 51% crede nella magistratura, il 12% nella politica"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "21:51",
+      "end": "22:04",
+      "name": "Pugno duro sui reati di strada, garantismo sui colletti bianchi",
+      "category": "intervista",
+      "source_title": "Gratteri: violenza giovanile causata da analfabetismo",
+      "source_channel": "",
+      "summary": "Usano il pugno duro per i reati di strada e poi diventano iper-garantisti nei confronti dei colletti bianchi e dei centri di potere. Doppio standard della giustizia: legge severa coi deboli e impunità per i centri di potere.",
+      "topics": [
+        "Doppio standard della giustizia: legge severa coi deboli e impunità per i centri di potere."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "pugno duro sui reati di strada, garantismo sui colletti bianchi"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,141 @@
+{
+  "url": "https://www.youtube.com/watch?v=WdbdwtO2v0E",
+  "strategy": "verify",
+  "concurrency": 3,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "require_transcript_ready": true,
+  "destination": {
+    "folder_id": "1oW6xyqgA9Q-vb2K0eucM4bwCiZrwDqFS",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "02:23",
+      "end": "02:36",
+      "name": "Le mafie esistono perché nutrite dalla classe dirigente",
+      "category": "intervista",
+      "source_title": "Gratteri: perché un capomafia resta pericoloso in carcere?",
+      "source_channel": "Grandi Lezioni su Crimine e Mafie",
+      "summary": "Le mafie esistono in Italia perché nutrite, volute o create dalla classe dirigente. Complicità storica e sistemica tra Stato, classe dirigente e organizzazioni criminali.",
+      "topics": [
+        "Complicità storica e sistemica tra Stato, classe dirigente e organizzazioni criminali."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "le mafie esistono perché nutrite dalla classe dirigente"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "08:08",
+      "end": "08:23",
+      "name": "La superficialità di chi gestisce il potere crea mostri",
+      "category": "intervista",
+      "source_title": "Gratteri: perché un capomafia resta pericoloso in carcere?",
+      "source_channel": "Grandi Lezioni su Crimine e Mafie",
+      "summary": "La superficialità e l'ignoranza di chi gestisce il potere crea mostri. Accusa trasversale a governi, leggi sbagliate e gestione delle emergenze.",
+      "topics": [
+        "Accusa trasversale a governi, leggi sbagliate e gestione delle emergenze."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "la superficialità di chi gestisce il potere crea mostri"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "10:25",
+      "end": "10:36",
+      "name": "I candidati vanno a casa dei mafiosi a chiedere voti",
+      "category": "intervista",
+      "source_title": "Gratteri: perché un capomafia resta pericoloso in carcere?",
+      "source_channel": "Grandi Lezioni su Crimine e Mafie",
+      "summary": "Sono i candidati alle elezioni che vanno a casa dei mafiosi e chiedono pacchetti di voti. Voto di scambio, campagna elettorale e sottomissione della politica ai boss.",
+      "topics": [
+        "Voto di scambio, campagna elettorale e sottomissione della politica ai boss."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "i candidati vanno a casa dei mafiosi a chiedere voti"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "32:23",
+      "end": "32:36",
+      "name": "Il generale dell'esercito nel libro paga dei narcos",
+      "category": "intervista",
+      "source_title": "Gratteri: perché un capomafia resta pericoloso in carcere?",
+      "source_channel": "Grandi Lezioni su Crimine e Mafie",
+      "summary": "Me l'ha data il generale dell'esercito... era nel mio libro paga. Corruzione ai vertici militari e istituzionali al servizio dei narcos, senza nomi.",
+      "topics": [
+        "Corruzione ai vertici militari e istituzionali al servizio dei narcos, senza nomi."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "il generale dell'esercito nel libro paga dei narcos"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "52:43",
+      "end": "52:54",
+      "name": "Chi discuteva con gente al di sopra delle nostre teste",
+      "category": "intervista",
+      "source_title": "Gratteri: perché un capomafia resta pericoloso in carcere?",
+      "source_channel": "Grandi Lezioni su Crimine e Mafie",
+      "summary": "Era uno che discuteva con gente al di sopra delle nostre... non vi dico chi, ma al di sopra delle nostre teste. Poteri occulti, intoccabili e rapporti tra criminalità e piani alti dello Stato.",
+      "topics": [
+        "Poteri occulti, intoccabili e rapporti tra criminalità e piani alti dello Stato."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "chi discuteva con gente al di sopra delle nostre teste"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    },
+    {
+      "start": "56:13",
+      "end": "56:25",
+      "name": "L'antimafia di facciata e l'ipocrisia dei talk show",
+      "category": "intervista",
+      "source_title": "Gratteri: perché un capomafia resta pericoloso in carcere?",
+      "source_channel": "Grandi Lezioni su Crimine e Mafie",
+      "summary": "Finiamola con questa ipocrisia, perché sono poi le stesse persone che si battono il petto e vanno nei talk show. Antimafia di facciata, ipocrisia mediatica e politica.",
+      "topics": [
+        "Antimafia di facciata, ipocrisia mediatica e politica."
+      ],
+      "tags": [
+        "Gratteri",
+        "mafia",
+        "politica",
+        "l'antimafia di facciata e l'ipocrisia dei talk show"
+      ],
+      "mentioned_people": [
+        "Nicola Gratteri"
+      ]
+    }
+  ]
+}

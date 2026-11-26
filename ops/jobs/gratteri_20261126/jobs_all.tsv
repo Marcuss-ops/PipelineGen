@@ -1,0 +1,21 @@
+{
+  "endpoint": "/api/clips/process",
+  "idempotency_key": "gratteri-20261126-r2-c68ad729ff15c6421d02c0975e138495",
+  "job_id": "job_1795682229664817792_8e35f312",
+  "status": "",
+  "store": "/home/pierone/freebuff_agents/profilo3/.velox/jobs.json"
+}
+{
+  "endpoint": "/api/clips/process",
+  "idempotency_key": "gratteri-20261126-r2-5118cfac951ce4e02c580c922de6256b",
+  "job_id": "job_1795682229726725463_5ec01b46",
+  "status": "",
+  "store": "/home/pierone/freebuff_agents/profilo3/.velox/jobs.json"
+}
+{
+  "endpoint": "/api/clips/process",
+  "idempotency_key": "gratteri-20261126-r2-f77dbd2f47ecd51e0d7c4a12091e5486",
+  "job_id": "job_1795682229810151977_a211cacf",
+  "status": "",
+  "store": "/home/pierone/freebuff_agents/profilo3/.velox/jobs.json"
+}

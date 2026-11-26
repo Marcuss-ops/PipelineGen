@@ -34,6 +34,7 @@ func (s *Repository) Register(_ context.Context, worker model.Worker) error {
 		existing.GPUBackend = worker.GPUBackend
 		existing.GPUDevice = worker.GPUDevice
 		existing.GPUDriver = worker.GPUDriver
+		existing.Capabilities = append([]string(nil), worker.Capabilities...)
 	}
 	existing.LastHeartbeatAt = now
 	s.workers[worker.ID] = existing

@@ -217,12 +217,20 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 	))
 
 	// Step 8: Drive canary + handler checks (wired when deps available).
-	if publisher != nil && cfg.Drive.ClipsFolder() != "" {
+	//
+	// LOCALJOBS-01: both probes are READ-ONLY. They list the configured
+	// folder and verify it is not trashed; they never publish. The canary
+	// file write is owned exclusively by POST /canary-upload.
+	if driveReader != nil && cfg.Drive.ClipsFolder() != "" {
+		listFolder := func(ctx context.Context, folderID string) error {
+			_, err := driveReader.ListFiles(ctx, folderID)
+			return err
+		}
 		rc = rc.WithDriveCanary(
-			systemhealth.NewPublisherCanary(publisher),
+			systemhealth.NewReadOnlyDriveCanary(listFolder, driveReader.FileIsNotTrashed),
 			cfg.Drive.ClipsFolder(),
 		).WithDriveFolder(
-			systemhealth.NewDriveFolderChecker(publisher),
+			systemhealth.NewReadOnlyDriveFolderChecker(listFolder, driveReader.FileIsNotTrashed),
 			cfg.Drive.ClipsFolder(),
 		)
 	}

@@ -47,6 +47,11 @@ type GenerationEnvelopeV2 struct {
 	// handoff. False preserves the existing local-only workflow.
 	FinalJob bool `json:"final_job,omitempty"`
 
+	// FinalJobRemote forces the Master handoff even when the local lane could
+	// assemble the complete video itself, so a render-enabled run can opt out of
+	// the local join and hand the complete video to the Master.
+	FinalJobRemote bool `json:"final_job_remote,omitempty"`
+
 	// Items is the list of generation items. Must contain at least
 	// one entry. For single-item generation, use one item. For
 	// batch generation, use multiple items — each is independently

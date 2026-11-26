@@ -99,13 +99,69 @@ func TestWatchedWaitNeverAbortsAProgressingRender(t *testing.T) {
 // TestWatchedWaitLeavesAdmissionWaitToTheBudget: a job that has not started is
 // queued, not stalled.
 func TestWatchedWaitLeavesAdmissionWaitToTheBudget(t *testing.T) {
-	client := &watchClient{jobs: []RenderQueueJob{{ID: "job_queued", State: "pending"}}}
+	client := &watchClient{jobs: []RenderQueueJob{{ID: "job_queued", State: RenderQueueStatePending}}}
 	_, _, err := WaitRenderQueueTerminalWatched(context.Background(), client, "job_queued", 5*time.Millisecond, 40*time.Millisecond, time.Minute)
 	if !errors.Is(err, ErrRenderQueuePending) {
 		t.Fatalf("error = %v, want ErrRenderQueuePending (the budget, not a stall)", err)
 	}
 	if len(client.cancelled) != 0 {
 		t.Fatalf("a queued job must never be cancelled, got %v", client.cancelled)
+	}
+}
+
+// TestWatchedWaitQueuedItemIsNotAStall is the OVL-01 case: an item waiting for
+// a free GPU lane reports frames=0 and an old timestamp, which is NOT a stall.
+// Its age carries no progress information, so the watchdog must leave it to the
+// budget and never cancel it.
+func TestWatchedWaitQueuedItemIsNotAStall(t *testing.T) {
+	old := time.Now().Add(-time.Hour)
+	client := &watchClient{jobs: []RenderQueueJob{{
+		ID:       "job_queued",
+		State:    RenderQueueStatePending,
+		QueuedAt: old,
+		Progress: &RenderQueueProgress{FramesDone: 0, TotalFrames: 120, LastFrameAt: old},
+	}}}
+	_, _, err := WaitRenderQueueTerminalWatched(context.Background(), client, "job_queued", 5*time.Millisecond, 40*time.Millisecond, time.Millisecond)
+	if !errors.Is(err, ErrRenderQueuePending) {
+		t.Fatalf("error = %v, want ErrRenderQueuePending (the budget, not a stall)", err)
+	}
+	if len(client.cancelled) != 0 {
+		t.Fatalf("a queued item must never be cancelled, got %v", client.cancelled)
+	}
+}
+
+// TestWatchedWaitRunningItemStallsPastTheThreshold keeps the safety half: once
+// the job is RUNNING and its last frame is older than the window, it is still
+// cancelled so a render that holds the lane without advancing frees it.
+func TestWatchedWaitRunningItemStallsPastTheThreshold(t *testing.T) {
+	client := &watchClient{jobs: []RenderQueueJob{runningJob(10*time.Minute, 10*time.Minute, 0, 120)}}
+	_, _, err := WaitRenderQueueTerminalWatched(context.Background(), client, "job_child", 5*time.Millisecond, time.Minute, 20*time.Millisecond)
+	if !errors.Is(err, ErrRenderQueueStalled) {
+		t.Fatalf("error = %v, want ErrRenderQueueStalled", err)
+	}
+	if len(client.cancelled) != 1 || client.cancelled[0] != "job_child" {
+		t.Fatalf("cancel calls = %v, want exactly one on job_child", client.cancelled)
+	}
+}
+
+// TestWatchedWaitStallClockStartsAtRunningAdmission pins "the threshold counts
+// from RUNNING, not from submit": the job is queued well past the window (no
+// StartedAt reported) and is then admitted; the window restarts at admission,
+// so the first RUNNING observation cannot be mistaken for a stall.
+func TestWatchedWaitStallClockStartsAtRunningAdmission(t *testing.T) {
+	queued := RenderQueueJob{ID: "job_admitted", State: RenderQueueStatePending}
+	running := RenderQueueJob{ID: "job_admitted", State: RenderQueueStateRunning}
+	done := RenderQueueJob{ID: "job_admitted", State: RenderQueueStateCompleted}
+	client := &watchClient{jobs: []RenderQueueJob{queued, queued, queued, queued, running, done}}
+	job, _, err := WaitRenderQueueTerminalWatched(context.Background(), client, "job_admitted", 5*time.Millisecond, time.Second, 20*time.Millisecond)
+	if err != nil {
+		t.Fatalf("an admitted render must not be judged on its queued wait, got %v", err)
+	}
+	if job.State != RenderQueueStateCompleted {
+		t.Fatalf("state = %q, want completed", job.State)
+	}
+	if len(client.cancelled) != 0 {
+		t.Fatalf("cancel calls = %v, want none", client.cancelled)
 	}
 }
 

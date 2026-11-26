@@ -91,6 +91,18 @@ func FinalJobPendingID(receipt *RemoteFinalJobResult) string {
 	return strings.TrimSpace(receipt.JobID)
 }
 
+// FinalJobPreparedID returns the Master job id of a split handoff whose base
+// PREPARE was accepted but whose overlay FINALIZE has not been sent yet. It is
+// deliberately distinct from FinalJobPendingID: a PREPARED job is waiting for
+// runtime assets, so ATTACHING would sit on it until the queue watchdog fires;
+// the only correct next step is FINALIZE.
+func FinalJobPreparedID(receipt *RemoteFinalJobResult) string {
+	if receipt == nil || !strings.EqualFold(strings.TrimSpace(receipt.Status), "PREPARED") {
+		return ""
+	}
+	return strings.TrimSpace(receipt.JobID)
+}
+
 // finalJobDurableReceipt reads the receipt the RUN has persisted, which is the
 // authoritative record of a remote render this run already started. The
 // in-memory result only carries it when the attempt ADOPTED the checkpoint (see

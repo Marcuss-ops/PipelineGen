@@ -7,11 +7,13 @@ plus the uncommitted queue-hardening changes). `README.md` is the upstream
 documentation (the tests read it to pin the live event and job state vocabulary);
 this file is the vendoring note and is the only local addition.
 
-Last sync: 2026-11-10. The copy includes migration
+Last sync: 2026-11-26. The copy includes migration
 `030_lease_generation.sql` and the contract-phase requirement that every worker
 transition (`complete`, `rendered`, `fail`, `fail-permanent`, `renew`,
 `progress`) carries `lease_generation`; the old generation-0 fallback and
-`*Owned`/`*WithLease` APIs are gone.
+`*Owned`/`*WithLease` APIs are gone. Migration `031_worker_capabilities.sql`
+adds the worker capability inventory (`capabilities` JSONB, empty array by
+default) that the dispatcher reads to route work.
 
 ## Why this copy exists (BUILD-01)
 

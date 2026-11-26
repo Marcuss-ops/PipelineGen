@@ -15,18 +15,17 @@
 //     internal/platform/process.
 //
 //   - (C) readyz_checkers_canary.go: DriveCanaryPort +
-//     HandlerRegChecker interfaces + publisherCanary concrete +
+//     HandlerRegChecker interfaces + readOnlyDriveProbe concrete +
 //     HandlerPresenceChecker concrete + RequiredHandlers var +
-//     canaryErr + errCanaryPublisherNotWired +
-//     errCanaryPublisherNilResult sentinels + NewPublisherCanary
-//
-//   - NewHandlerPresenceChecker. Owner of Drive canary-upload
+//     canaryErr + errCanaryReaderNotWired sentinel +
+//     NewReadOnlyDriveCanary + NewReadOnlyDriveFolderChecker +
+//     NewHandlerPresenceChecker. Owner of the READ-ONLY Drive canary
 //     probe + handler-presence probe (Section FileCanary).
 //
 //   - (D) readyz_checkers_fase6.go: 4 preflight interfaces
 //     (DriveCredentialsChecker + DriveFolderChecker +
 //     PublisherChecker + DestinationClipChecker) + their concretes
-//     (FileCredentialsChecker + publisherFolderChecker +
+//     (FileCredentialsChecker + readOnlyDriveProbe (shared) +
 //     wiredPublisherChecker + registryDestinationClipChecker) +
 //     their NewX constructors + 5 FASE 6 capability interfaces
 //     (TempWritableChecker + TTSChecker + DriveRootChecker +
@@ -38,10 +37,10 @@
 //
 // Lookup paths preserved (same package, no import edge change):
 //   - health.ReadyChecker (struct on *ReadyChecker — see ready.go)
-//   - NewPublisherCanary /
+//   - NewReadOnlyDriveCanary /
+//     NewReadOnlyDriveFolderChecker /
 //     NewHandlerPresenceChecker / NewDriveCredentialsChecker /
-//     NewDriveFolderChecker / NewPublisherChecker /
-//     NewDestinationClipChecker /
+//     NewPublisherChecker / NewDestinationClipChecker /
 //     NewDriveRootChecker / NewOllamaChecker / NewOutboxChecker
 //
 // godlike/07 minimum-blast-radius: zero behavior change. Every
@@ -83,8 +82,10 @@ func (r *ReadyChecker) WithClipsPath(path string) *ReadyChecker {
 	return r
 }
 
-// WithDriveCanary attaches the Drive canary port + target folder.
-// nil port OR empty folder means the canary is opted out.
+// WithDriveCanary attaches the read-only Drive canary port + target
+// folder. nil port OR empty folder means the canary is opted out. A
+// readiness probe must never publish: the canary write belongs to
+// POST /canary-upload.
 func (r *ReadyChecker) WithDriveCanary(canary DriveCanaryPort, folderID string) *ReadyChecker {
 	r.canary = canary
 	r.canaryFolder = folderID
@@ -284,8 +285,8 @@ func (r *ReadyChecker) runCanaryCheck(ctx context.Context, resp *HealthResponse)
 		resp.Checks["drive_canary"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
 		return
 	}
-	runProbe(resp, "drive_canary", func() error { return r.canary.CanaryUpload(ctx, r.canaryFolder) },
-		CheckResult{"folder": r.canaryFolder}, CheckResult{}, "drive canary upload failed: ")
+	runProbe(resp, "drive_canary", func() error { return r.canary.CheckCanaryReadOnly(ctx, r.canaryFolder) },
+		CheckResult{"folder": r.canaryFolder, "read_only": true}, CheckResult{"folder": r.canaryFolder}, "drive canary probe failed: ")
 }
 
 func (r *ReadyChecker) runHandlerCheck(ctx context.Context, resp *HealthResponse) {

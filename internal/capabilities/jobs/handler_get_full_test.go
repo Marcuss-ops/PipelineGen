@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -65,6 +66,10 @@ type stubServiceForGetFull struct {
 	// outResult is the canonical job.Result payload returned from Get()
 	// (surfaced verbatim as the /full `result` field).
 	outResult json.RawMessage
+
+	// outPayload is the original request payload. /full reads force_refresh
+	// from it to label the timing projection cold or warm.
+	outPayload json.RawMessage
 }
 
 func (s *stubServiceForGetFull) Enqueue(_ context.Context, _ *job.EnqueueRequest) (*job.Job, error) {
@@ -72,11 +77,12 @@ func (s *stubServiceForGetFull) Enqueue(_ context.Context, _ *job.EnqueueRequest
 }
 func (s *stubServiceForGetFull) Get(_ context.Context, _ string) (*job.Job, error) {
 	return &job.Job{
-		ID:     s.outID,
-		Type:   s.outType,
-		Status: s.outStatus,
-		Error:  s.outErr,
-		Result: s.outResult,
+		ID:      s.outID,
+		Type:    s.outType,
+		Status:  s.outStatus,
+		Error:   s.outErr,
+		Result:  s.outResult,
+		Payload: s.outPayload,
 	}, nil
 }
 func (s *stubServiceForGetFull) Cancel(_ context.Context, _ string) error { return nil }
@@ -413,6 +419,94 @@ func TestGetFull_ExposesTimingBreakdown(t *testing.T) {
 	assert.Equal(t, int64(690), opWork["sqlite.hydrate"], "sqlite.hydrate work must surface")
 	assert.Equal(t, int64(78910), opWork["ollama.generate"], "ollama.generate work must surface")
 	assert.Equal(t, int64(710), opWork["drive.upload"], "drive.upload work must surface")
+}
+
+// TestGetFull_ExposesSceneCriticalPathAndWarmRunMode pins that /full projects
+// the per-scene DAG chain and labels a force_refresh=false request as warm.
+func TestGetFull_ExposesSceneCriticalPathAndWarmRunMode(t *testing.T) {
+	base := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	report := kernobs.RunReport{
+		WallTimeMs: 4000,
+		SceneTimeline: &kernobs.SceneTimeline{Entries: []kernobs.SceneStageEntry{
+			{SceneID: "scene-1", Stage: kernobs.SceneStageText, StartedAt: base, CompletedAt: base.Add(time.Second), WorkMs: 1000},
+			{SceneID: "scene-1", Stage: kernobs.SceneStageTTS, StartedAt: base.Add(time.Second), CompletedAt: base.Add(3 * time.Second), WorkMs: 2000},
+		}},
+	}
+	raw, err := json.Marshal(&report)
+	require.NoError(t, err)
+	stub := &stubServiceForGetFull{
+		outID:      "job-dag-warm",
+		outType:    pushedType,
+		outStatus:  job.StatusSucceeded,
+		outPayload: json.RawMessage(`{"version":2,"preset":"custom","force_refresh":false,"items":[{"id":"item-1"}]}`),
+	}
+	body := runGetFullWithHistory(t, stub, &stubHistoryReader{report: raw})
+
+	var envelope struct {
+		Timing struct {
+			RunMode           string                     `json:"run_mode"`
+			ForceRefresh      bool                       `json:"force_refresh"`
+			SceneCriticalPath *kernobs.SceneCriticalPath `json:"scene_critical_path"`
+		} `json:"timing"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	assert.Equal(t, "warm", envelope.Timing.RunMode, "force_refresh=false must label a warm run")
+	assert.False(t, envelope.Timing.ForceRefresh)
+	require.NotNil(t, envelope.Timing.SceneCriticalPath, "timing must expose the scene DAG chain")
+	assert.Equal(t, int64(3000), envelope.Timing.SceneCriticalPath.TotalMs)
+	require.Len(t, envelope.Timing.SceneCriticalPath.Chain, 2)
+	assert.Equal(t, kernobs.SceneStageText, envelope.Timing.SceneCriticalPath.Chain[0].Stage)
+	assert.Equal(t, kernobs.SceneStageTTS, envelope.Timing.SceneCriticalPath.Chain[1].Stage)
+}
+
+// TestGetFull_ForceRefreshMarksColdRunMode pins that a forced refresh is not
+// confused with a warm run.
+func TestGetFull_ForceRefreshMarksColdRunMode(t *testing.T) {
+	report := kernobs.RunReport{WallTimeMs: 1000}
+	raw, err := json.Marshal(&report)
+	require.NoError(t, err)
+	stub := &stubServiceForGetFull{
+		outID:      "job-dag-cold",
+		outType:    pushedType,
+		outStatus:  job.StatusSucceeded,
+		outPayload: json.RawMessage(`{"version":2,"preset":"custom","force_refresh":true,"items":[]}`),
+	}
+	body := runGetFullWithHistory(t, stub, &stubHistoryReader{report: raw})
+
+	var envelope struct {
+		Timing struct {
+			RunMode      string `json:"run_mode"`
+			ForceRefresh bool   `json:"force_refresh"`
+		} `json:"timing"`
+	}
+	require.NoError(t, json.Unmarshal(body, &envelope))
+	assert.Equal(t, "cold", envelope.Timing.RunMode)
+	assert.True(t, envelope.Timing.ForceRefresh)
+}
+
+// TestTimingRunMode pins the accepted force_refresh locations and the
+// unknown-payload behavior (empty mode, never a guessed warm run).
+func TestTimingRunMode(t *testing.T) {
+	cases := []struct {
+		name       string
+		payload    string
+		wantMode   string
+		wantForced bool
+	}{
+		{name: "missing", payload: "", wantMode: "", wantForced: false},
+		{name: "invalid", payload: "{", wantMode: "", wantForced: false},
+		{name: "warm root", payload: `{"force_refresh":false}`, wantMode: "warm", wantForced: false},
+		{name: "cold root", payload: `{"force_refresh":true}`, wantMode: "cold", wantForced: true},
+		{name: "cold item source", payload: `{"items":[{"source":{"force_refresh":true}}]}`, wantMode: "cold", wantForced: true},
+		{name: "cold script params", payload: `{"items":[{"script_params":{"force_refresh":true}}]}`, wantMode: "cold", wantForced: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mode, forced := timingRunMode(json.RawMessage(tc.payload))
+			assert.Equal(t, tc.wantMode, mode)
+			assert.Equal(t, tc.wantForced, forced)
+		})
+	}
 }
 
 // TestGetFull_CoreReadyProjectsDurableScriptWithoutCompletingJob pins the

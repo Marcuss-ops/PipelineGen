@@ -10,8 +10,8 @@
 //	Step 4 preflight (July 2026):
 //	  - DriveCredentialsChecker + FileCredentialsChecker +
 //	    NewDriveCredentialsChecker
-//	  - DriveFolderChecker + publisherFolderChecker +
-//	    NewDriveFolderChecker
+//	  - DriveFolderChecker + readOnlyDriveProbe (shared with the
+//	    drive canary) + NewReadOnlyDriveFolderChecker
 //	  - PublisherChecker + wiredPublisherChecker +
 //	    NewPublisherChecker
 //	  - DestinationClipChecker + registryDestinationClipChecker +
@@ -84,39 +84,11 @@ func NewDriveCredentialsChecker(tokenPath, credentialsPath string) DriveCredenti
 }
 
 // DriveFolderChecker verifies that the configured Drive folder is
-// reachable (can list or stat). nil-safe.
+// reachable (can list or stat) without mutating it. nil-safe. The
+// concrete read-only implementation is shared with the drive canary
+// in sister file (C) via NewReadOnlyDriveFolderChecker.
 type DriveFolderChecker interface {
 	CheckFolder(ctx context.Context, folderID string) error
-}
-
-// publisherFolderChecker wraps delivery.Publisher for folder
-// access verification via the publisher's ResolveFolder seam.
-type publisherFolderChecker struct {
-	pub delivery.Publisher
-}
-
-// CheckFolder verifies the folder exists by attempting to
-// resolve it. Returns errCanaryPublisherNotWired if pub is nil
-// (defined in sister file (C); same sentinel — the publisher
-// unwired condition is the canonical failure mode for any
-// publisher-rooted probe).
-func (c *publisherFolderChecker) CheckFolder(ctx context.Context, folderID string) error {
-	if c.pub == nil {
-		return errCanaryPublisherNotWired
-	}
-	_, err := c.pub.ResolveFolder(ctx, delivery.PublishRequest{
-		Destination:    delivery.DestinationYouTubeClip,
-		ParentFolderID: folderID,
-	})
-	return err
-}
-
-// NewDriveFolderChecker creates a folder checker backed by
-// delivery.Publisher (the same publisher used by the canary
-// probe — the publisher unwired sentinel is shared across both
-// probes for diagnostic consistency).
-func NewDriveFolderChecker(pub delivery.Publisher) DriveFolderChecker {
-	return &publisherFolderChecker{pub: pub}
 }
 
 // PublisherChecker verifies that the canonical

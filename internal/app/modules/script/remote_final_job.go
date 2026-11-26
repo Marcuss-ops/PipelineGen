@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -40,14 +41,95 @@ func (a *RemoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 // before any scene generation or rendering. The Master must advertise the
 // runtime features a stock-bearing final-job request needs.
 func (a *RemoteFinalJobAdapter) CheckFinalJobCapabilities(ctx context.Context, req scriptgen.GenerateRequest) error {
-	if a == nil || a.client == nil {
-		return fmt.Errorf("remote final-job capability client is not configured")
-	}
 	needsStock := len(req.StockBindings) > 0 || strings.EqualFold(strings.TrimSpace(string(req.MediaMode)), "stock_only") || strings.EqualFold(strings.TrimSpace(string(req.MediaMode)), "mixed")
-	if !req.FinalJob || !needsStock {
+	effectCapabilities := requiredImageEffectCapabilities(req)
+	if len(effectCapabilities) == 0 && (!req.FinalJob || !needsStock) {
 		return nil
 	}
-	return a.client.CheckCapabilities(ctx, "stock_window_preparation")
+	if a == nil || a.client == nil {
+		if len(effectCapabilities) > 0 {
+			return fmt.Errorf("UNSUPPORTED_GPU_EFFECT: remote renderer capability client is not configured")
+		}
+		return fmt.Errorf("remote final-job capability client is not configured")
+	}
+	if len(effectCapabilities) > 0 {
+		if a.rendererCapabilities == nil {
+			return fmt.Errorf("UNSUPPORTED_GPU_EFFECT: live RenderingGen capability source is not configured")
+		}
+		available, err := a.rendererCapabilities.Capabilities(ctx)
+		if err != nil {
+			return fmt.Errorf("UNSUPPORTED_GPU_EFFECT: read live RenderingGen capabilities: %w", err)
+		}
+		availableSet := make(map[string]struct{}, len(available))
+		for _, capability := range available {
+			name := strings.TrimSpace(capability)
+			if name != "" {
+				availableSet[name] = struct{}{}
+			}
+		}
+		missing := make([]string, 0, len(effectCapabilities))
+		for _, capability := range effectCapabilities {
+			if _, ok := availableSet[capability]; !ok {
+				missing = append(missing, capability)
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			return fmt.Errorf("UNSUPPORTED_GPU_EFFECT: renderer is missing %s", strings.Join(missing, ", "))
+		}
+	}
+	if req.FinalJob && needsStock {
+		return a.client.CheckCapabilities(ctx, "stock_window_preparation")
+	}
+	return nil
+}
+
+func requiredImageEffectCapabilities(req scriptgen.GenerateRequest) []string {
+	if req.OverlayStyle == nil || req.OverlayStyle.Image == nil {
+		return nil
+	}
+	image := req.OverlayStyle.Image
+	required := make(map[string]struct{})
+	add := func(name string) {
+		if name != "" {
+			required["overlay.effect."+name] = struct{}{}
+		}
+	}
+	if image.Shadow != nil && image.Shadow.Enabled || image.Radius != nil && *image.Radius > 0 {
+		add("drop_shadow")
+	}
+	if image.Glow != nil {
+		add("glow")
+	}
+	for _, effect := range image.Effects {
+		typ := strings.TrimSpace(effect.Type)
+		switch typ {
+		case "", "none":
+		case "black_and_white":
+			add("saturation")
+		case "glitch":
+			add("wave_warp")
+			add("chromatic_aberration")
+			add("noise")
+		case "archive_print":
+			add("saturation")
+			add("noise")
+			add("vignette")
+		case "vintage_film_projection":
+			add("saturation")
+			add("noise")
+			add("vignette")
+			add("chromatic_aberration")
+		default:
+			add(typ)
+		}
+	}
+	capabilities := make([]string, 0, len(required))
+	for capability := range required {
+		capabilities = append(capabilities, capability)
+	}
+	sort.Strings(capabilities)
+	return capabilities
 }
 
 // StartFinalJob creates the Master job and returns its durable handle without

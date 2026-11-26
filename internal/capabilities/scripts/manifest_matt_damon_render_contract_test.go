@@ -180,7 +180,7 @@ func TestVerifyOneClipOneSceneTenLanguagesManifestPinsTheRuntimeContract(t *test
 	if !req.Render.Enabled {
 		t.Fatal("the render fan-out must be enabled")
 	}
-	if !req.Render.RequireGPU {
+	if !req.Render.RequiresGPU() {
 		t.Fatal("the certified lane is the GPU lane; a silent software fallback must fail the run")
 	}
 	if req.Render.Subtitles == nil || !req.Render.Subtitles.Enabled || req.Render.Subtitles.Mode != "burn" {

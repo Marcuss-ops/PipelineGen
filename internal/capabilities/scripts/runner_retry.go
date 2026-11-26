@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ErrFinalAudioLocalArtifactMissing marks the one deterministic local-file
@@ -67,6 +68,18 @@ func deriveErrorCode(err error, stage Stage) string {
 	// outage.
 	if errors.Is(err, ErrLocalizedRenderFailure) {
 		return "LOCALIZED_RENDER_FAILED"
+	}
+	// A fail-closed word-budget rejection is a deterministic editorial
+	// verdict: retrying the same provider/payload cannot repair it by
+	// transport luck. Keep a stable code for retry bots and dashboards.
+	if errors.Is(err, scriptpkg.ErrWordBudgetExceeded) {
+		return "WORD_BUDGET_FAILED"
+	}
+	// A total image-provider outage is a preflight verdict, distinct from the
+	// terminal certification failure. The stable code lets a retry bot wait
+	// for the cooldown instead of treating the run as unrenderable content.
+	if errors.Is(err, ErrImageProviderUnavailable) {
+		return "IMAGE_PROVIDER_UNAVAILABLE"
 	}
 
 	// Check for known error patterns in the error message.

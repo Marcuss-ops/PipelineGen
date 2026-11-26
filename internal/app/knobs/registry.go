@@ -193,6 +193,12 @@ var registry = []Knob{
 	},
 
 	{
+		Name: "VELOX_FINAL_JOB_SPLIT_PREPARE", Kind: KindEnv, Default: "",
+		Owner:          "internal/app/modules/script/remote_final_job_split.go",
+		SafeProduction: "unset until the Master advertises overlay_projection_finalize",
+		Description:    "Enables the split base PREPARE that overlaps the final overlay render; requires the Master capability overlay_projection_finalize.",
+	},
+	{
 		Name: "VELOX_FINAL_JOB_WORKER_ID", Kind: KindEnv, Default: "",
 		Owner:          "internal/app/modules/script/remote_final_job_config.go",
 		SafeProduction: "unset (Master places the job)",

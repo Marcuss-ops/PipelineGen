@@ -14,7 +14,7 @@ func TestWorkerRegisterHeartbeatList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := r.Register(context.Background(), model.Worker{ID: "w1", Hostname: "h1", Status: model.WorkerStatusReady, RenderingGenVersion: "v1"}); err != nil {
+	if err := r.Register(context.Background(), model.Worker{ID: "w1", Hostname: "h1", Status: model.WorkerStatusReady, RenderingGenVersion: "v1", Capabilities: []string{"overlay.effect.vignette", "overlay.effect.drop_shadow"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.Register(context.Background(), model.Worker{ID: "w2", Status: model.WorkerStatusBusy}); err != nil {
@@ -31,6 +31,9 @@ func TestWorkerRegisterHeartbeatList(t *testing.T) {
 	}
 	if workers[0].ID != "w1" || workers[0].Hostname != "h1" || workers[0].RenderingGenVersion != "v1" {
 		t.Fatalf("worker w1 not round-tripped: %+v", workers[0])
+	}
+	if len(workers[0].Capabilities) != 2 || workers[0].Capabilities[0] != "overlay.effect.vignette" || workers[0].Capabilities[1] != "overlay.effect.drop_shadow" {
+		t.Fatalf("worker capabilities not round-tripped: %v", workers[0].Capabilities)
 	}
 	if workers[0].LastHeartbeatAt.IsZero() {
 		t.Fatal("w1 should have a heartbeat timestamp")

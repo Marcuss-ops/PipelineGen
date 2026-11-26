@@ -10793,44 +10793,6 @@
       ]
     },
     {
-      "id": "dark_mirror_diorama",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "min_pin_count": 1,
-      "max_pin_count": 5,
-      "order": {
-        "map.composition": 34
-      },
-      "random": [
-        "map.composition"
-      ]
-    },
-    {
-      "id": "voronoi_heat_contours",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "min_pin_count": 1,
-      "max_pin_count": 5,
-      "order": {
-        "map.composition": 35
-      },
-      "random": [
-        "map.composition"
-      ]
-    },
-    {
       "id": "holographic_postfx",
       "families": [
         "map.composition"
@@ -10926,22 +10888,6 @@
       ]
     },
     {
-      "id": "mountain_ridge_callout",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "min_pin_count": 1,
-      "max_pin_count": 1,
-      "order": {
-        "map.composition": 751
-      }
-    },
-    {
       "id": "continental_atlas",
       "families": [
         "map.composition"
@@ -11010,22 +10956,6 @@
     },
     {
       "id": "editorial_dark_radar",
-      "families": [
-        "map.composition"
-      ],
-      "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [],
-      "kind": "map_animation",
-      "min_pin_count": 1,
-      "max_pin_count": 1,
-      "order": {
-        "map.composition": 1651
-      }
-    },
-    {
-      "id": "editorial_blueprint",
       "families": [
         "map.composition"
       ],

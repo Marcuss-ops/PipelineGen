@@ -78,9 +78,20 @@ type Canvas struct {
 	MaxPhraseOverlays   int               `json:"max_phrase_overlays"`
 	MaxImageOverlays    int               `json:"max_image_overlays"`
 	MaxMapOverlays      int               `json:"max_map_overlays"`
-	MapPresentation     MapPresentation   `json:"map_presentation"`
-	AnimationCounts     map[string]int    `json:"animation_counts,omitempty"`
-	ShortPhraseMotion   string            `json:"short_phrase_motion,omitempty"`
+	// Coverage pacing (ITCLOSE-05). MaxGapUS is the longest uncovered
+	// interval the planner may leave after its gap-aware pass; GapCooldownUS is
+	// the minimum distance between a promoted card and its neighbours;
+	// CoverageMinPercent is the editorial target the pre-render gate enforces;
+	// PhrasePerMinute derives the phrase ceiling from the plan duration instead
+	// of a fixed number a long video can never reach. Zero keeps the planner's
+	// editorial defaults, so an existing producer keeps its exact request.
+	MaxGapUS           int64           `json:"max_gap_us,omitempty"`
+	GapCooldownUS      int64           `json:"gap_cooldown_us,omitempty"`
+	CoverageMinPercent float64         `json:"coverage_min_percent,omitempty"`
+	PhrasePerMinute    float64         `json:"phrase_per_minute,omitempty"`
+	MapPresentation    MapPresentation `json:"map_presentation"`
+	AnimationCounts    map[string]int  `json:"animation_counts,omitempty"`
+	ShortPhraseMotion  string          `json:"short_phrase_motion,omitempty"`
 	// ShortPhraseMotionsByWord is the certified short-phrase entrance pool
 	// keyed by the phrase's word count ("1".."5"). With no pin the planner
 	// rotates the bucket for the item's own length, so two phrases of

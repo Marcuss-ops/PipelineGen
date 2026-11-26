@@ -20,6 +20,27 @@ import (
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
+func TestClientCapabilitiesReadsQueueInventory(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/capabilities" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`["overlay.effect.vignette"]`))
+	}))
+	defer server.Close()
+
+	got, err := New(server.URL).Capabilities(context.Background())
+	if err != nil {
+		t.Fatalf("Capabilities() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != "overlay.effect.vignette" {
+		t.Fatalf("Capabilities() = %v, want [overlay.effect.vignette]", got)
+	}
+}
+
 func TestToScriptArtifactKeepsSegmentCertificationIndependent(t *testing.T) {
 	in := &queueclient.Artifact{ArtifactHash: "mirror", DriveFileID: "mirror-drive",
 		OutputFacts: &queueclient.OutputFacts{BatchSegments: []queueclient.BatchSegmentFacts{{

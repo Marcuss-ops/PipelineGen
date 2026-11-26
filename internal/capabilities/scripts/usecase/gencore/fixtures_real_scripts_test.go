@@ -25,9 +25,8 @@
 //     (SEGMENT 1..N markers followed by their Topic).
 //  2. Each segment's source_text appears verbatim in the rendered
 //     prompt (no paraphrasing, no lossy rendering).
-//  3. The fallback-chain target resolves to a positive integer
-//     when the plan carries a per-segment TargetWords (FASE 5
-//     helper effectiveTargetForBudgetWords).
+//  3. The aggregate target resolves to the sum of the per-segment
+//     TargetWords (FASE 5 helper effectiveScriptTargetWords).
 //  4. The fingerprint is stable across two distinct calls with
 //     the same fixture — FASE 7 forward-pin.
 //
@@ -227,7 +226,7 @@ func TestFixture_Boxing_AllSegmentsPresentOrderedAndFactsPreserved(t *testing.T)
 	}
 	assertAllSegmentsPresentInOrder(t, "Pacquiao vs Broner", prompt, fixtureSportBoxing[:])
 	assertEachSourceTextVerbatim(t, "Pacquiao vs Broner", prompt, fixtureSportBoxing[:])
-	assertFallbackChainResolves(t, "Pacquiao vs Broner", plan, 90)
+	assertFallbackChainResolves(t, "Pacquiao vs Broner", plan, 570)
 	assertFingerprintStable(t, "Pacquiao vs Broner", plan)
 }
 
@@ -242,7 +241,7 @@ func TestFixture_News_AllSegmentsPresentOrderedAndFactsPreserved(t *testing.T) {
 	}
 	assertAllSegmentsPresentInOrder(t, "Apple Q1 FY2024 Earnings", prompt, fixtureNewsGossip[:])
 	assertEachSourceTextVerbatim(t, "Apple Q1 FY2024 Earnings", prompt, fixtureNewsGossip[:])
-	assertFallbackChainResolves(t, "Apple Q1 FY2024 Earnings", plan, 90)
+	assertFallbackChainResolves(t, "Apple Q1 FY2024 Earnings", plan, 470)
 	assertFingerprintStable(t, "Apple Q1 FY2024 Earnings", plan)
 }
 
@@ -257,7 +256,7 @@ func TestFixture_Biography_AllSegmentsPresentOrderedAndFactsPreserved(t *testing
 	}
 	assertAllSegmentsPresentInOrder(t, "Steve Jobs", prompt, fixtureBiography[:])
 	assertEachSourceTextVerbatim(t, "Steve Jobs", prompt, fixtureBiography[:])
-	assertFallbackChainResolves(t, "Steve Jobs", plan, 90)
+	assertFallbackChainResolves(t, "Steve Jobs", plan, 500)
 	assertFingerprintStable(t, "Steve Jobs", plan)
 }
 
@@ -272,7 +271,7 @@ func TestFixture_Tutorial_AllSegmentsPresentOrderedAndFactsPreserved(t *testing.
 	}
 	assertAllSegmentsPresentInOrder(t, "yt-dlp tutorial", prompt, fixtureTutorial[:])
 	assertEachSourceTextVerbatim(t, "yt-dlp tutorial", prompt, fixtureTutorial[:])
-	assertFallbackChainResolves(t, "yt-dlp tutorial", plan, 80)
+	assertFallbackChainResolves(t, "yt-dlp tutorial", plan, 580)
 	assertFingerprintStable(t, "yt-dlp tutorial", plan)
 }
 
@@ -323,20 +322,18 @@ func assertEachSourceTextVerbatim(t *testing.T, label string, prompt string, seg
 	}
 }
 
-// assertFallbackChainResolves pin axis 3: the per-segment target
-// resolves through effectiveTargetForBudgetWords. The canonical
-// chain is per-segment > SegmentWords > TargetWords > 80;
-// every fixture has segment[0].TargetWords > 0 so the first
-// branch wins. expected is the per-segment[0] value declared
-// in the fixture itself.
+// assertFallbackChainResolves pin axis 3: the aggregate target
+// resolves through effectiveScriptTargetWords to the SUM of the
+// per-segment TargetWords declared by the fixture. This is the
+// CODEX-02 contract: a five-scene 5×700 plan targets 3.500, not 700.
 func assertFallbackChainResolves(t *testing.T, label string, plan *scriptpkg.ResolvedGenerationPlan, expected int) {
 	t.Helper()
-	got := effectiveTargetForBudgetWords(plan)
+	got := effectiveScriptTargetWords(plan)
 	if got <= 0 {
-		t.Errorf("[%s] DoD #10 axis 3: fallback chain MUST resolve to a positive int; got %d", label, got)
+		t.Errorf("[%s] DoD #10 axis 3: script target MUST resolve to a positive int; got %d", label, got)
 	}
 	if got != expected {
-		t.Errorf("[%s] DoD #10 axis 3: first-segment target expected %d (per-segment chain wins), got %d", label, expected, got)
+		t.Errorf("[%s] DoD #10 axis 3: summed segment target expected %d, got %d", label, expected, got)
 	}
 }
 

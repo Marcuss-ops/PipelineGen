@@ -95,11 +95,12 @@ func finalJobAttachBudget() (time.Duration, error) {
 }
 
 type RemoteFinalJobAdapter struct {
-	media     *pgmedia.MediaSearcher
-	stock     drive.Reader
-	client    *remotejob.Client
-	segments  scriptgen.FinalJobVideoSegmentPreparer
-	preflight finalJobMediaPreflighter
+	media                *pgmedia.MediaSearcher
+	stock                drive.Reader
+	client               *remotejob.Client
+	rendererCapabilities finalJobRendererCapabilitySource
+	segments             scriptgen.FinalJobVideoSegmentPreparer
+	preflight            finalJobMediaPreflighter
 	// artifactToken is the Master admin bearer used only for the final
 	// artifact GET. It is deliberately separate from the M2M token in
 	// client.Token: the M2M credential submits jobs, while artifact download
@@ -136,10 +137,35 @@ type RemoteFinalJobAdapter struct {
 	// builder produced.
 	inflightMu sync.Mutex
 	inflight   map[string]*finalJobResolveCall
+	// splitHandoffs keeps the base PREPARE payload between the early PREPARE
+	// (which overlaps the overlay render) and the late FINALIZE (which carries
+	// the overlay projection). It is keyed by Master job id, so a resumed
+	// process can rebuild deterministically instead of trusting process state.
+	splitMu       sync.Mutex
+	splitHandoffs map[string]finalJobSplitCache
+}
+
+// finalJobSplitCache is process-local: it makes the common path avoid a second
+// base-plan build and segment preparation. The durable receipt remains the
+// authority; a cache miss rebuilds the same deterministic base handoff.
+type finalJobSplitCache struct {
+	handoff scriptgen.FinalJobSourceHandoff
 }
 
 type finalJobMediaPreflighter interface {
 	Preflight(context.Context, rustexec.PreflightRequest) (rustexec.PreflightDecision, error)
+}
+
+type finalJobRendererCapabilitySource interface {
+	Capabilities(context.Context) ([]string, error)
+}
+
+// SetRendererCapabilitySource wires the live RenderingGen queue inventory used
+// to gate explicit image effects before TTS/media work begins.
+func (a *RemoteFinalJobAdapter) SetRendererCapabilitySource(source finalJobRendererCapabilitySource) {
+	if a != nil {
+		a.rendererCapabilities = source
+	}
 }
 
 // SetMediaPreflighter installs the Rust mediaexec.v2 validator used before a

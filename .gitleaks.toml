@@ -46,4 +46,7 @@ regexes = [
   "abc123def456abc123def456abc123def456abc123def456abc123def4561234",  # internal/platform/drive/uploader_put_p0_6_test.go:30 — synthetic test idempotency key (abc1.. fixture literal)
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",  # internal/platform/process/runner_test.go:323 — canonical jwt.io demo JWT (public example token), not a credential
   "matt-damon-20-clips-profiling-20260826-v1",  # ops/jobs/matt_damon_20_clips_profiling.generate.json:46 — deterministic job idempotency key in an ops job payload, not a credential
+  "gratteri-20261126-r2-c68ad729ff15c6421d02c0975e138495",  # ops/jobs/gratteri_20261126/jobs_all.tsv:3 — deterministic job idempotency key in an ops job listing, not a credential
+  "gratteri-20261126-r2-5118cfac951ce4e02c580c922de6256b",  # ops/jobs/gratteri_20261126/jobs_all.tsv:10 — deterministic job idempotency key in an ops job listing, not a credential
+  "gratteri-20261126-r2-f77dbd2f47ecd51e0d7c4a12091e5486",  # ops/jobs/gratteri_20261126/jobs_all.tsv:17 — deterministic job idempotency key in an ops job listing, not a credential
 ]

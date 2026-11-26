@@ -62,18 +62,22 @@ type Preflight struct {
 // scripts package owns OverlayAudit and this recorder must not create a second,
 // drift-prone copy of that contract.
 type Status struct {
-	SchemaVersion string       `json:"schema_version"`
-	RunID         string       `json:"run_id"`
-	PlanID        string       `json:"plan_id,omitempty"`
-	JobID         string       `json:"job_id,omitempty"`
-	Stage         string       `json:"stage"`
-	UpdatedAt     time.Time    `json:"updated_at"`
-	Requested     *Request     `json:"requested,omitempty"`
-	Background    *Background  `json:"background,omitempty"`
-	Audit         any          `json:"audit,omitempty"`
-	Plan          *PlanSummary `json:"plan,omitempty"`
-	Preflight     *Preflight   `json:"preflight,omitempty"`
-	Error         string       `json:"error,omitempty"`
+	SchemaVersion string      `json:"schema_version"`
+	RunID         string      `json:"run_id"`
+	PlanID        string      `json:"plan_id,omitempty"`
+	JobID         string      `json:"job_id,omitempty"`
+	Stage         string      `json:"stage"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+	Requested     *Request    `json:"requested,omitempty"`
+	Background    *Background `json:"background,omitempty"`
+	Audit         any         `json:"audit,omitempty"`
+	// QualityGate is the editorial pre-render verdict. Like Audit it is an
+	// opaque value: the overlayplan package owns the report contract and this
+	// recorder must not grow a second, drift-prone copy.
+	QualityGate any          `json:"quality_gate,omitempty"`
+	Plan        *PlanSummary `json:"plan,omitempty"`
+	Preflight   *Preflight   `json:"preflight,omitempty"`
+	Error       string       `json:"error,omitempty"`
 }
 
 // runLocks serializes the read-modify-write of ONE run document. A single

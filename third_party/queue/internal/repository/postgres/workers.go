@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -25,16 +26,24 @@ func (r *Repository) Register(ctx context.Context, worker model.Worker) error {
 	if status == "" {
 		status = string(model.WorkerStatusReady)
 	}
+	capabilities := worker.Capabilities
+	if capabilities == nil {
+		capabilities = []string{}
+	}
+	encodedCapabilities, err := json.Marshal(capabilities)
+	if err != nil {
+		return fmt.Errorf("encode worker %s capabilities: %w", worker.ID, err)
+	}
 
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
-	_, err := r.db.ExecContext(ctx, `
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO rendering_workers
 		    (id, hostname, status, renderinggen_version, chronon_version,
 		     overlay_schema_version, gpu_backend, gpu_device, gpu_driver,
-		     started_at, last_heartbeat_at)
+		     capabilities, started_at, last_heartbeat_at)
 		VALUES
-		    ($1,$2,$3,$4,$5,$6,$7,$8,$9, now(), now())
+		    ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb, now(), now())
 		ON CONFLICT (id) DO UPDATE SET
 		    hostname = EXCLUDED.hostname,
 		    status = EXCLUDED.status,
@@ -44,11 +53,13 @@ func (r *Repository) Register(ctx context.Context, worker model.Worker) error {
 		    gpu_backend = EXCLUDED.gpu_backend,
 		    gpu_device = EXCLUDED.gpu_device,
 		    gpu_driver = EXCLUDED.gpu_driver,
+		    capabilities = EXCLUDED.capabilities,
 		    last_heartbeat_at = now()`,
 		worker.ID, nullIfEmpty(worker.Hostname), status,
 		nullIfEmpty(worker.RenderingGenVersion), nullIfEmpty(worker.ChrononVersion),
 		nullIfZero(worker.OverlaySchemaVersion),
-		nullIfEmpty(worker.GPUBackend), nullIfEmpty(worker.GPUDevice), nullIfEmpty(worker.GPUDriver))
+		nullIfEmpty(worker.GPUBackend), nullIfEmpty(worker.GPUDevice), nullIfEmpty(worker.GPUDriver),
+		string(encodedCapabilities))
 	if err != nil {
 		return fmt.Errorf("register worker %s: %w", worker.ID, err)
 	}
@@ -108,7 +119,7 @@ func (r *Repository) List(ctx context.Context) ([]model.Worker, error) {
 	defer cancel()
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, hostname, status, renderinggen_version, chronon_version,
-		       overlay_schema_version, gpu_backend, gpu_device, gpu_driver,
+		       overlay_schema_version, gpu_backend, gpu_device, gpu_driver, capabilities,
 		       started_at, last_heartbeat_at
 		FROM rendering_workers
 		ORDER BY id`)
@@ -146,11 +157,12 @@ func scanWorker(scanner interface{ Scan(...any) error }) (model.Worker, error) {
 		gpuBackend       sql.NullString
 		gpuDevice        sql.NullString
 		gpuDriver        sql.NullString
+		capabilities     []byte
 		startedAt        time.Time
 		lastHeartbeatAt  sql.NullTime
 	)
 	err := scanner.Scan(&w.ID, &hostname, &status, &rgVersion, &chrononVersion,
-		&overlaySchemaVer, &gpuBackend, &gpuDevice, &gpuDriver,
+		&overlaySchemaVer, &gpuBackend, &gpuDevice, &gpuDriver, &capabilities,
 		&startedAt, &lastHeartbeatAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Worker{}, err
@@ -166,6 +178,12 @@ func scanWorker(scanner interface{ Scan(...any) error }) (model.Worker, error) {
 	w.GPUBackend = gpuBackend.String
 	w.GPUDevice = gpuDevice.String
 	w.GPUDriver = gpuDriver.String
+	if err := json.Unmarshal(capabilities, &w.Capabilities); err != nil {
+		return model.Worker{}, fmt.Errorf("decode worker %s capabilities: %w", w.ID, err)
+	}
+	if w.Capabilities == nil {
+		w.Capabilities = []string{}
+	}
 	w.StartedAt = startedAt
 	if lastHeartbeatAt.Valid {
 		w.LastHeartbeatAt = lastHeartbeatAt.Time

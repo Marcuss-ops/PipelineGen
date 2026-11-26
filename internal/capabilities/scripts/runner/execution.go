@@ -19,6 +19,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	runport "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports/run"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runstate"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/timeline"
@@ -209,11 +210,14 @@ func (e *Execution) normalize() bool {
 // must be certified before the LLM, translator, or TTS can start.
 func (e *Execution) mediaPreflightPhase() bool {
 	return e.measure(kernobs.StageRunMediaPreflight, func(c context.Context) bool {
-		if e.req.FinalJob && needsStockWindowPreparation(e.req) {
+		if (e.req.FinalJob && needsStockWindowPreparation(e.req)) || e.req.NeedsGPUEffectCapabilityPreflight() {
 			checker, ok := e.host.(interface {
 				CheckFinalJobCapabilities(context.Context, contract.GenerateRequest) error
 			})
 			if !ok {
+				if e.req.NeedsGPUEffectCapabilityPreflight() {
+					return e.fail(runstate.StagePreflight, fmt.Errorf("UNSUPPORTED_GPU_EFFECT: renderer capability preflight is not wired"))
+				}
 				return e.fail(runstate.StagePreflight, fmt.Errorf("REMOTE_CAPABILITY_MISSING: stock_window_preparation capability preflight is not wired"))
 			}
 			if err := checker.CheckFinalJobCapabilities(c, e.req); err != nil {
@@ -262,15 +266,7 @@ func (e *Execution) mediaPreflightPhase() bool {
 }
 
 func needsStockWindowPreparation(req contract.GenerateRequest) bool {
-	if len(req.StockBindings) > 0 {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(string(req.MediaMode))) {
-	case "stock_only", "mixed":
-		return true
-	default:
-		return false
-	}
+	return finaljob.NeedsStockWindowPreparation(req)
 }
 
 func (e *Execution) validateEnabledVidRushProviders(ctx context.Context) error {
@@ -544,9 +540,13 @@ func (e *Execution) parallelFanOut() bool {
 }
 
 func (e *Execution) finalJob() bool {
-	if !e.req.FinalJob {
+	if !e.req.FinalJob && !e.req.FinalJobRemote {
 		return true
 	}
+	// The complete final video is Master-owned (PRODUCER-MASTER-BOUNDARY.md):
+	// the Producer renders clips, TTS and overlays and never concatenates the
+	// final master locally. Persistence may still join an overlay-only
+	// deliverable for a non-final run, but a final_job always hands off.
 	return e.measure(kernobs.StageRunFinalJob, func(c context.Context) bool {
 		return e.host.SubmitFinalJob(c, e.runID, e.req, e.result)
 	})
@@ -570,8 +570,8 @@ func recordPublicationDrainWait(ctx context.Context, started time.Time) {
 	})
 }
 
-// persist stores the canonical script. An explicitly requested remote final
-// render runs after persistence and before document publication.
+// persist stores the canonical script. The local final-video join runs here;
+// a remote final render (forced or used as fallback) runs after persistence.
 func (e *Execution) persist() bool {
 	if !e.measure(kernobs.StageName(kernobs.StageRunPersistence), func(c context.Context) bool {
 		e.checkpoint()

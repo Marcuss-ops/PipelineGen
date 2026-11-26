@@ -52,8 +52,6 @@ func MapTerritoryOverlayCompositions() []string {
 		"territory_extrusion",
 		"volumetric_laser_scan",
 		"vector_particle_flow",
-		"dark_mirror_diorama",
-		"voronoi_heat_contours",
 		"holographic_postfx",
 	}
 }

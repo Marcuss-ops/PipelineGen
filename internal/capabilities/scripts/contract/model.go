@@ -132,9 +132,16 @@ type GenerateRequest struct {
 	// has an associated run. It mirrors the submission-layer intent so
 	// the run ledger does not create duplicates on replay.
 	ForceRefresh bool `json:"force_refresh,omitempty"`
-	// FinalJob opts this run into the remote final-render handoff after the
-	// canonical media plan is available.
+	// FinalJob opts this run into the final-render handoff after the canonical
+	// media plan is available: the Master owns the complete video, so the local
+	// lane never assembles it. A run without FinalJob keeps the local lane.
 	FinalJob bool `json:"final_job,omitempty"`
+	// FinalJobRemote forces the handoff to the Master even when the local lane
+	// could assemble the complete video, so a render-enabled run can opt out of
+	// the local join and hand the complete video to the Master. Language fan-out
+	// children also set it because their parent delivery requires a remote
+	// receipt.
+	FinalJobRemote bool `json:"final_job_remote,omitempty"`
 
 	// Source describes the generation input source.
 	Source Source `json:"source"`

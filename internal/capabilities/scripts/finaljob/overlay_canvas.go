@@ -111,6 +111,16 @@ type OverlayCanvasSpec struct {
 	// keeps the certified default (capabilityoverlay.MaxPhraseOverlaysPerRun).
 	MaxPhraseOverlays   int
 	MaxOverlaysPerScene int
+	// Coverage pacing (ITCLOSE-05). MaxGapMS is the longest uncovered interval
+	// the planner may leave; GapCooldownMS is the minimum distance between a
+	// promoted card and its neighbours; CoverageMinPercent is the editorial
+	// target; PhrasePerMinute derives the phrase ceiling from the plan duration
+	// instead of a fixed number a long video cannot reach. Zero keeps the
+	// editorial defaults (25 s, 1.2 s, 25%, fixed budget).
+	MaxGapMS           int64
+	GapCooldownMS      int64
+	CoverageMinPercent float64
+	PhrasePerMinute    float64
 	// MaxMapOverlays is the caller-selected run-level cap; zero keeps the
 	// certified default.
 	MaxMapOverlays int

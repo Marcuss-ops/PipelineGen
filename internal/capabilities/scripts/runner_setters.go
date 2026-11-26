@@ -15,6 +15,7 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	runnerpolicy "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
@@ -334,28 +335,21 @@ func (r *Runner) SetFinalJobSubmitter(submitter FinalJobSubmitter) {
 // CheckFinalJobCapabilities runs the remote capability gate during the
 // initial media-preflight stage, before scene generation, TTS or overlay work.
 func (r *Runner) CheckFinalJobCapabilities(ctx context.Context, req contract.GenerateRequest) error {
-	if r == nil || !req.FinalJob || !needsStockWindowPreparation(req) {
+	if r == nil || (!req.FinalJob || !needsStockWindowPreparation(req)) &&
+		!req.NeedsGPUEffectCapabilityPreflight() {
 		return nil
 	}
 	if r.finalJobCapabilityPreflight == nil {
 		return fmt.Errorf("%w: remote capability preflight is not wired", ErrFinalJobCapabilityMissing)
 	}
 	if err := r.finalJobCapabilityPreflight.CheckFinalJobCapabilities(ctx, req); err != nil {
-		return fmt.Errorf("%w: %v", ErrFinalJobCapabilityMissing, err)
+		return fmt.Errorf("%w: %w", ErrFinalJobCapabilityMissing, err)
 	}
 	return nil
 }
 
 func needsStockWindowPreparation(req contract.GenerateRequest) bool {
-	if len(req.StockBindings) > 0 {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(string(req.MediaMode))) {
-	case "stock_only", "mixed":
-		return true
-	default:
-		return false
-	}
+	return finaljob.NeedsStockWindowPreparation(req)
 }
 
 // SetScriptPersistence wires the canonical SQLite script-row writer. The

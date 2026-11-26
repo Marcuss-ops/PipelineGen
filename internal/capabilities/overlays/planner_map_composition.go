@@ -40,13 +40,12 @@ func MapCompositionFamilyOf(id string) string {
 	switch strings.TrimSpace(id) {
 	case "territory_glow_reveal", "satellite_scan_reveal", "territory_flood_fill",
 		"territory_tactical_fill", "territory_extrusion", "volumetric_laser_scan",
-		"vector_particle_flow", "dark_mirror_diorama", "voronoi_heat_contours",
-		"holographic_postfx", "area_glow_pulse":
+		"vector_particle_flow", "holographic_postfx", "area_glow_pulse":
 		return MapFamilyRegion
 	case "route_line", "multi_leg_flight":
 		return MapFamilyJourney
 	case "editorial_vox", "editorial_paper_cutout", "editorial_dark_radar",
-		"editorial_blueprint", "editorial_connection_arc", "editorial_floating_island":
+		"editorial_connection_arc", "editorial_floating_island":
 		return MapFamilyEditorial
 	}
 	return MapFamilyLocationFocus
@@ -72,12 +71,9 @@ func PortedMapCompositions() []string {
 		"territory_extrusion",
 		"volumetric_laser_scan",
 		"vector_particle_flow",
-		"dark_mirror_diorama",
-		"voronoi_heat_contours",
 		"holographic_postfx",
 		"continental_atlas",
 		"historic_location_timeline",
-		"mountain_ridge_callout",
 		"radar_location_reveal",
 		"light_beam_drop",
 		"city_network_expansion",
@@ -85,7 +81,6 @@ func PortedMapCompositions() []string {
 		"editorial_vox",
 		"editorial_paper_cutout",
 		"editorial_dark_radar",
-		"editorial_blueprint",
 		"editorial_connection_arc",
 		"editorial_floating_island",
 		"area_glow_pulse",

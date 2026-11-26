@@ -43,6 +43,34 @@ var ErrGenerationFailed = errors.New("generation: engine failed")
 // regeneration attempts.
 var ErrSegmentValidationFailed = errors.New("generation: segment validation failed")
 
+// ErrWordBudgetExceeded means the post-generation word-budget gate found the
+// script outside the configured tolerance and the operator selected the
+// fail-closed "strict" policy. The default policy remains observational.
+var ErrWordBudgetExceeded = errors.New("generation: word budget exceeded")
+
+// WordBudgetError carries the aggregate facts behind ErrWordBudgetExceeded.
+type WordBudgetError struct {
+	ItemID           string
+	TargetWords      int
+	ActualWords      int
+	DeviationPercent float64
+	Details          []string
+}
+
+func (e *WordBudgetError) Error() string {
+	if e == nil {
+		return ErrWordBudgetExceeded.Error()
+	}
+	msg := fmt.Sprintf("%s: item=%q target=%d actual=%d deviation=%.1f%%",
+		ErrWordBudgetExceeded.Error(), e.ItemID, e.TargetWords, e.ActualWords, e.DeviationPercent)
+	if len(e.Details) > 0 {
+		msg += "; " + strings.Join(e.Details, "; ")
+	}
+	return msg
+}
+
+func (e *WordBudgetError) Unwrap() error { return ErrWordBudgetExceeded }
+
 // ErrPostprocessFailed wraps any failure from a postprocessor
 // (document creation, image generation, voiceover, entity extraction).
 var ErrPostprocessFailed = errors.New("generation: postprocess failed")

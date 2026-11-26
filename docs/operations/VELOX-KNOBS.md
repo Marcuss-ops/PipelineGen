@@ -26,6 +26,7 @@ a registry entry.
 | `VELOX_FINAL_JOB_MASTER_URL` | env |  | `internal/app/modules/script/remote_final_job_config.go` | https://<master-host> | Master URL for the remote final-job handoff; unset falls back to the configured base URL. |
 | `VELOX_FINAL_JOB_PREPARE_LANES` | env | 4 | `internal/app/wiring/final_job_segment_prepare.go` | 4 (1..16) | Number of final-job fragments prepared in parallel; 0 or malformed fails the job. |
 | `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/modules/script/remote_final_job_config.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
+| `VELOX_FINAL_JOB_SPLIT_PREPARE` | env |  | `internal/app/modules/script/remote_final_job_split.go` | unset until the Master advertises overlay_projection_finalize | Enables the split base PREPARE that overlaps the final overlay render; requires the Master capability overlay_projection_finalize. |
 | `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/modules/script/remote_final_job_config.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |
 | `VELOX_MASTER_ADMIN_TOKEN` | env |  | `internal/app/modules/script/remote_final_job.go` | unset (or Master admin token) | Fallback bearer token used by remote_final_job when VELOX_ARTIFACT_TOKEN is unset. |
 | `VELOX_MEDIA_MANIFEST_PATH` | env |  | `internal/capabilities/scripts/adapters/media_manifest_shim.go` | unset | Opt-in media_manifest fast-path used by the composition root. |
