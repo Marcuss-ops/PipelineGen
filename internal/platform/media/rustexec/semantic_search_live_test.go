@@ -130,11 +130,11 @@ func liveGarlascoPlan(t *testing.T) *scriptgen.SemanticProductionPlan {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundles, err := adapter.SemanticBundles(context.Background(), "it", scenes)
+	semanticScript, err := adapter.SemanticScript(context.Background(), "it", scenes)
 	if err != nil {
 		t.Fatalf("Garlasco semantic batch failed: %v", err)
 	}
-	_, plan, _, err := scriptgen.PlanScriptProduction(bundles)
+	_, plan, _, err := scriptgen.PlanScriptProduction(semanticScript)
 	if err != nil || plan == nil {
 		t.Fatalf("plan build failed: plan=%v err=%v", plan, err)
 	}

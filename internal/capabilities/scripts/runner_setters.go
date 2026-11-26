@@ -160,17 +160,6 @@ func (r *Runner) SetVoiceoverPublishDrainer(drainer interface{ Wait() }) {
 	}
 }
 
-// SetOverlayPublicationDrainer wires the bounded post-render publication pool.
-// The runner joins it immediately before completion so Drive failures remain
-// terminal even though they no longer occupy a RenderingGen render slot.
-// The drainer is handed the run's context, because the pool is process-wide
-// while the join must be scoped to the run that queued the work.
-func (r *Runner) SetOverlayPublicationDrainer(drainer interface{ Wait(context.Context) error }) {
-	if r != nil {
-		r.overlayPublicationDrainer = drainer
-	}
-}
-
 // SetMediaPreflight wires the fail-fast media requirement verification
 // (P0.5). When wired, the runner executes it synchronously after normalize
 // and before Gemma; any failure aborts the run before LLM, translation, or
@@ -195,8 +184,6 @@ const (
 )
 
 type GenerationGate = runnerpolicy.GenerationGate
-
-func NewGenerationGate() *GenerationGate { return runnerpolicy.NewGenerationGate() }
 
 func NewGenerationGateWithCapacity(capacity int) *GenerationGate {
 	return runnerpolicy.NewGenerationGateWithCapacity(capacity)

@@ -125,6 +125,14 @@ type LocalizedClipPlan struct {
 	// input, so it travels with the localized plan exactly like BackgroundMode;
 	// empty for the asset-less modes.
 	BackgroundKind string `json:"background_kind,omitempty"`
+	// BackgroundBlurPX / BackgroundZoom are the blurred-plate treatment of
+	// mode=blur_source, copied from output.render.background. Zero means "not
+	// declared" so the renderer's certified defaults (24 px, 1x cover) apply
+	// and an unset treatment stays byte-identical. They are validated and
+	// bounded by cliprender.ValidateBackgroundTreatment — the same owner the
+	// clip.render request and the sealed clip plan use.
+	BackgroundBlurPX float64 `json:"background_blur_px,omitempty"`
+	BackgroundZoom   float64 `json:"background_zoom,omitempty"`
 
 	// ForegroundScalePercent scales the foreground video clip (1..100).
 	ForegroundScalePercent int `json:"foreground_scale_percent,omitempty"`
@@ -262,6 +270,17 @@ func (p LocalizedClipPlan) Validate() error {
 		}
 	} else if p.BackgroundMode == cliprender.BackgroundModeAsset {
 		return fmt.Errorf("%w: background mode=asset requires background_kind (image | video)", ErrInvalidLocalizedClipPlan)
+	}
+	// The blurred-plate treatment belongs to blur_source alone; declaring it on
+	// none/asset used to be accepted and ignored, which made the payload read
+	// as "blur 28 px" while the render never received it. One validator owns
+	// the mode gate and the numeric bounds (cliprender).
+	treatmentMode := p.BackgroundMode
+	if treatmentMode == "" {
+		treatmentMode = cliprender.BackgroundModeNone
+	}
+	if err := cliprender.ValidateBackgroundTreatment(treatmentMode, p.BackgroundBlurPX, p.BackgroundZoom); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidLocalizedClipPlan, err)
 	}
 	// The card declaration shares its validator with the clip.render request
 	// and the sealed plan: a border with no inset would be rendered outside the

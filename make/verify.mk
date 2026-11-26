@@ -51,10 +51,19 @@ verify-rust-contract:
 verify-repository-integrity:
 	@bash scripts/ci/ci-submodule-integrity.sh
 
-# verify-queue-vendor — pin the vendored RenderingGen queue snapshot and,
-# when both repositories are checked out, prove byte-for-byte synchronization.
-verify-queue-vendor:
-	@python3 scripts/ci/check_queue_vendor.py --tests
+# DEMOL-05: there is no vendored queue snapshot to verify any more. The Queue
+# module is the sibling checkout RenderingGen/queue; `queue-module-check` proves
+# the go.mod replace points at it and that no third_party/queue copy exists.
+queue-module-check:
+	@test -f ../RenderingGen/queue/go.mod || { \
+		echo "missing sibling Queue module at ../RenderingGen/queue (check out RenderingGen next to PipelineGen)" >&2; \
+		exit 1; \
+	}
+	@grep -qx 'replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue' go.mod || { \
+		echo "go.mod must replace the Queue module with ../RenderingGen/queue" >&2; \
+		exit 1; \
+	}
+	@test ! -d third_party/queue || { echo "third_party/queue must not exist (DEMOL-05)" >&2; exit 1; }
 
 # verify-base — fail-closed base gate: toolchain version, secrets,
 # formatting, and module tidiness. Kept cheap so the most common failures
@@ -98,6 +107,14 @@ verify-static: go-version-check
 # binary; CI can call this target when the tool is installed.
 verify-deadcode:
 	@bash scripts/ci/check-deadcode-baseline.sh
+
+# verify-cyclo — Go-native cyclomatic-complexity ratchet. The AST counter,
+# baseline and comparison live in cmd/cyclo-budget; no external gocyclo
+# install is required. A new function above 40 or a baseline function that
+# grows fails. After a deliberate improvement, run
+# `go run ./cmd/cyclo-budget -write` in the same change.
+verify-cyclo:
+	$(GO) run ./cmd/cyclo-budget -check
 
 # verify-fast — dev-loop gate: foundation + static. On a warm dependency
 # cache it is the cheapest fail-closed chain that catches the most common
@@ -180,7 +197,7 @@ verify-integration: go-version-check
 
 # verify-architecture — governance and architecture checks. Kept separate
 # so architecture drift surfaces under its own target.
-verify-architecture: verify-queue-vendor
+verify-architecture: queue-module-check
 	@bash scripts/ci/check_clip_render_cutover.sh && \
 	$(GO) run ./cmd/architecture-aggregate --dry-run && \
 	$(GO) run ./cmd/archcheck && \

@@ -61,7 +61,7 @@ func (r *checkpointReplay) applyUnit(t *testing.T, result *GenerateResult, now t
 	}
 	// The snapshot is the immutable value handed to the writer; taking it here
 	// is the production contract (deep copy, so later mutation cannot tear it).
-	snapshot, err := snapshotGenerateResult(result)
+	snapshot, err := detachCheckpointResult(result)
 	require.NoError(t, err)
 	require.NotNil(t, snapshot)
 
@@ -262,7 +262,7 @@ func TestCheckpointCrashInEveryWindowKeepsTheLastCompleteSnapshot(t *testing.T) 
 }
 
 // TestCheckpointSnapshotIsADeepCopy pins the mechanism the previous case depends
-// on: snapshotGenerateResult round-trips through the durable JSON contract, so
+// on: detachCheckpointResult round-trips through the durable JSON contract, so
 // concurrent workers mutating the live result cannot reach a queued snapshot.
 func TestCheckpointSnapshotIsADeepCopy(t *testing.T) {
 	live := newCheckpointResult(2)
@@ -276,7 +276,7 @@ func TestCheckpointSnapshotIsADeepCopy(t *testing.T) {
 			SoundEffect: &capmodel.OverlaySoundEffect{AssetRef: capmodel.OverlayAssetRef{AssetID: "overlay-sfx:localized", LocalPath: "/cache/localized.m4a"}},
 		}}},
 	}
-	snapshot, err := snapshotGenerateResult(live)
+	snapshot, err := detachCheckpointResult(live)
 	require.NoError(t, err)
 	require.NotSame(t, live, snapshot)
 
@@ -301,7 +301,7 @@ func TestCheckpointSnapshotIsADeepCopy(t *testing.T) {
 
 func mustSnapshotNil(t *testing.T) *GenerateResult {
 	t.Helper()
-	snapshot, err := snapshotGenerateResult(nil)
+	snapshot, err := detachCheckpointResult(nil)
 	require.NoError(t, err)
 	return snapshot
 }

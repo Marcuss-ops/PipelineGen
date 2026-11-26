@@ -924,7 +924,7 @@ func TestLocalizedRenderEnqueuer_BlurSourceBackgroundCarriesNoAsset(t *testing.T
 	in := testEnqueuerInput()
 	in.Render = scriptpkg.VideoRenderSpec{
 		Enabled:    true,
-		Background: &scriptpkg.VideoBackgroundSpec{Mode: "blur_source"},
+		Background: &scriptpkg.VideoBackgroundSpec{Mode: "blur_source", BlurPX: 28, Zoom: 1.1},
 	}
 	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
 		t.Fatalf("EnqueueLocalizedRender: %v", err)
@@ -932,6 +932,11 @@ func TestLocalizedRenderEnqueuer_BlurSourceBackgroundCarriesNoAsset(t *testing.T
 	call := l.snapshot()[0]
 	if call.BackgroundMode != cliprender.BackgroundModeBlurSource || call.Background != nil {
 		t.Fatalf("blur_source must carry no asset: mode=%q asset=%+v", call.BackgroundMode, call.Background)
+	}
+	// The documented treatment must reach the sealed plan, not disappear at
+	// the script boundary.
+	if call.BackgroundBlurPX != 28 || call.BackgroundZoom != 1.1 {
+		t.Fatalf("blur treatment not propagated: blur=%v zoom=%v", call.BackgroundBlurPX, call.BackgroundZoom)
 	}
 }
 

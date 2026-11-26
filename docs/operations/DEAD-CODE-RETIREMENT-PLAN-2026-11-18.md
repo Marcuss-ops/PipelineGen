@@ -531,6 +531,13 @@ Per non inseguire un numero che non può scendere, il piano propone:
 `deadcode -test ./...` = **84**. Il guard scende per ratchet a **≤ 229**; la riduzione include
 la catena morta dei prompt config (`prompts.Get` senza writer).
 
+**Aggiornamento 2026-11-26 (P2-08):** il guard è stato ristretto ai package di
+produzione (le quattro famiglie di test-support `pgtest`, `sqltest`,
+`testsupport`, `mutationprobe` sono inventariate fuori dal guard) e
+re-baselinato a **219**. La vista completa `deadcode -test=false ./...` è
+**246**, i tre main **266**, la vista test-aware **82**. Frozen list:
+`docs/operations/deadcode-2026-11-26.txt`.
+
 ### Allowlist classificata — oracoli di test (2026-11-21)
 
 Due catene restano unreachable in produzione ma NON vanno ritirate: sono gli

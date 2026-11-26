@@ -183,6 +183,8 @@ func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req contract.G
 
 // renderOverlayPlans computes against a private snapshot. It never writes the
 // durable run or execution step; the joined caller owns failures and results.
+// renderOverlayPlans is the serial entry point: it freezes the durable plan
+// and renders it through the same typed core the overlap path uses.
 func (r *Runner) renderOverlayPlans(ctx context.Context, req contract.GenerateRequest, resumeIdx int, result *contract.GenerateResult) ([]overlayRenderOutcome, error) {
 	if result == nil || (!req.Render.Enabled && !req.Render.OverlaysOnly) || r.overlayRenderEnqueuer == nil || stageSkipped(resumeIdx, StageCompilingAudio) {
 		return nil, nil
@@ -195,8 +197,14 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req contract.GenerateRe
 	if err := FreezeFinalJobOverlayPlans(result, req.FinalJob); err != nil {
 		return nil, err
 	}
-	pending := pendingOverlayPlans(result, req)
-	if len(pending) == 0 {
+	return r.renderOverlayInput(ctx, req, newOverlayRenderInput(result, req, resumeIdx))
+}
+
+// renderOverlayInput is the render fan-out over a typed immutable input. It
+// never reads or writes the durable result: the plans, the scene clip windows
+// and the preflight marker were copied on the owner goroutine.
+func (r *Runner) renderOverlayInput(ctx context.Context, req contract.GenerateRequest, input overlayRenderInput) ([]overlayRenderOutcome, error) {
+	if len(input.Plans) == 0 || r.overlayRenderEnqueuer == nil {
 		return nil, nil
 	}
 	// Fail BEFORE paying for the first GPU render. A final job whose promised
@@ -204,8 +212,9 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req contract.GenerateRe
 	// reject it after the overlay stage had already charged the full render.
 	// The gate is digest-bound, so the late fail-closed checks still run when
 	// the plan changes but do not repeat the downloads when it does not.
+	document := input.document()
 	if req.FinalJob {
-		if err := finalJobPreRenderPreflight(ctx, req, result); err != nil {
+		if err := finalJobPreRenderPreflight(ctx, req, document); err != nil {
 			return nil, err
 		}
 	}
@@ -214,7 +223,7 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req contract.GenerateRe
 	// above), and the output identity (certification profile + derived media
 	// contract) is stamped once at the plan seal (OverlayPlan.StampOutputProfile).
 	// Restating either here is how the renderer and the checkpoint diverged.
-	outcomes, err := concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
+	outcomes, err := concurrent.Map(ctx, input.Plans, r.overlayRenderWorkers(),
 		func(renderCtx context.Context, _ int, item languageOverlayPlan) (overlayRenderOutcome, error) {
 			// The plan size and boundary wall time are measured HERE, at the only
 			// place that performs the blocking hand-off, so no consumer has to
@@ -254,9 +263,9 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req contract.GenerateRe
 	// outcomes so applyOverlayRenderOutcomes can publish it on the durable
 	// result: the late handoff then trusts the same verified plan instead of
 	// downloading its images a second time.
-	if result.FinalJobPreflight != nil {
+	if document.FinalJobPreflight != nil {
 		for i := range outcomes {
-			outcomes[i].preflight = result.FinalJobPreflight
+			outcomes[i].preflight = document.FinalJobPreflight
 		}
 	}
 	return outcomes, nil
@@ -458,4 +467,66 @@ func renderedArtifacts(ref contract.RenderReference) []*contract.RenderArtifact 
 		return []*contract.RenderArtifact{ref.Artifact}
 	}
 	return nil
+}
+
+// overlayRenderInput is the typed immutable input of the overlay render
+// fan-out (DEMOL-07). The render goroutine used to receive a JSON clone of the
+// whole durable result only to reach the frozen plans, the scene clip windows
+// and the image-preflight marker. Those facts are copied here on the caller
+// goroutine; the render branch then works on its own minimal document and
+// never touches the durable result.
+
+// overlayRenderInput is the render-side projection of a run: the detached
+// plans in deterministic dispatch order plus the read-only facts the
+// final-job image gate needs.
+type overlayRenderInput struct {
+	SourceLanguage contract.Language
+	Plans          []languageOverlayPlan
+	Scenes         []contract.Scene
+	OverlayAudit   *contract.OverlayAudit
+	Preflight      *contract.FinalJobPreflight
+}
+
+// newOverlayRenderInput copies the render facts out of the durable result.
+// Callers must invoke it on the result's owner goroutine.
+func newOverlayRenderInput(result *contract.GenerateResult, req contract.GenerateRequest, resumeIdx int) overlayRenderInput {
+	input := overlayRenderInput{}
+	if result == nil || (!req.Render.Enabled && !req.Render.OverlaysOnly) || stageSkipped(resumeIdx, StageCompilingAudio) {
+		return input
+	}
+	input.SourceLanguage = result.OverlayPlanLanguage()
+	input.Scenes = result.Scenes
+	input.OverlayAudit = result.OverlayAudit
+	input.Preflight = result.FinalJobPreflight
+	for _, item := range pendingOverlayPlans(result, req) {
+		// The renderer and the preflight may normalize their plan in place
+		// (RequireGPU, RequireObjectStoreBeforeReturn); the durable plan must
+		// stay the exact document the checkpoint names.
+		input.Plans = append(input.Plans, languageOverlayPlan{
+			language: item.language,
+			plan:     cloneOverlayPlan(item.plan),
+		})
+	}
+	return input
+}
+
+// document builds the branch-private result the image-preflight gate reads.
+// It carries only the frozen plans and their audit surfaces.
+func (in overlayRenderInput) document() *contract.GenerateResult {
+	document := &contract.GenerateResult{
+		Scenes:            in.Scenes,
+		OverlayAudit:      in.OverlayAudit,
+		FinalJobPreflight: in.Preflight,
+	}
+	for _, item := range in.Plans {
+		if item.language == in.SourceLanguage {
+			document.OverlayPlan = item.plan
+			continue
+		}
+		if document.LocalizedOverlayPlans == nil {
+			document.LocalizedOverlayPlans = make(map[contract.Language]*capmodel.OverlayPlan, len(in.Plans))
+		}
+		document.LocalizedOverlayPlans[item.language] = item.plan
+	}
+	return document
 }

@@ -4,9 +4,13 @@ import "encoding/json"
 
 // UnmarshalJSON decodes OutputSpec with Toggle tri-state support.
 // It performs a 2-pass decode:
-//  1. Alias-decode via Alias OutputSpec (recursion-safe) so standard
-//     json.Unmarshal handles struct field assignment via Toggle's
-//     UnmarshalJSON method (bool/string/null forms).
+//  1. Alias-decode via Alias OutputSpec (recursion-safe) so the strict
+//     decoder handles struct field assignment via Toggle's UnmarshalJSON
+//     method (bool/string/null forms) AND rejects every unknown key. The
+//     custom method receives the whole output subtree, so the outer
+//     DisallowUnknownFields gate cannot reach inside it; decodeStrictJSON
+//     re-establishes it here. Without that, a misplaced
+//     output.drive_subfolder_name vanished without an error.
 //  2. Raw-map pre-pass to default OMITTED Toggle keys to ToggleDefault.
 //     Go's default decode leaves absent Toggle fields at the zero value
 //     Toggle(""), which AsBool() would treat as true. This method fixes
@@ -18,7 +22,7 @@ func (o *OutputSpec) UnmarshalJSON(data []byte) error {
 	// UnmarshalJSON (handles string/bool/null forms correctly).
 	type Alias OutputSpec
 	var tmp Alias
-	if err := json.Unmarshal(data, &tmp); err != nil {
+	if err := decodeStrictJSON(data, &tmp); err != nil {
 		return err
 	}
 	*o = OutputSpec(tmp)

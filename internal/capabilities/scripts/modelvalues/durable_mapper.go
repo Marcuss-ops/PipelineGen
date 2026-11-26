@@ -1,0 +1,221 @@
+package modelvalues
+
+import (
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	domain "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
+
+// durableResultToDomain preserves the canonical SpecScene/voiceover surface
+// when the durable runner returns the capability result shape.  The two
+// result types intentionally differ, so JSON round-tripping one into the
+// other silently loses scenes; keep this translation explicit.
+func DurableResultToDomain(in *contract.GenerateResult) *domain.GenerationResult {
+	if in == nil {
+		return nil
+	}
+	outputText := strings.TrimSpace(in.Output.Text)
+	if outputText == "" {
+		outputText = scenesText(in)
+	}
+	wordCount := in.Output.WordCount
+	if wordCount <= 0 {
+		wordCount = in.WordCount
+	}
+	if wordCount <= 0 {
+		wordCount = len(strings.Fields(outputText))
+	}
+	out := &domain.GenerationResult{
+		Title: in.Title, Language: string(inLanguage(in)), VoiceoverGroup: in.VoiceoverGroup, AudioMode: string(in.AudioMode),
+		AudioStrategy: string(in.AudioStrategy),
+		Source:        in.SourceTrace,
+		// The durable lane's workflow-progress projection travels with the
+		// result: the localized render fan-out is the only producer of the
+		// `render` stage, and without this line it would stop at the capability
+		// boundary while the batch lane's postprocessor map reached the parent.
+		StageProgress: in.StageProgress,
+		Output:        domain.ScriptOutput{Text: outputText, WordCount: wordCount},
+	}
+	out.Output.SpecScene.Version = 1
+	out.Output.SpecScene.Render = in.Render
+	out.Output.SpecScene.Render.Normalize()
+	out.Output.SpecScene.Scenes = make([]domain.SpecScene, 0, len(in.Scenes))
+	lang := string(inLanguage(in))
+	for _, scene := range in.Scenes {
+		text := scene.Text[contract.Language(lang)]
+		if text == "" && !scene.ExecutionMode.IsFixedMedia() {
+			for _, candidate := range scene.Text {
+				text = candidate
+				break
+			}
+		}
+		displayText := ""
+		if scene.ExecutionMode.IsFixedMedia() {
+			displayText = text
+			text = ""
+		}
+		ds := domain.SpecScene{ID: scene.ID, Index: scene.Index, Text: text, DisplayText: displayText, Kind: sceneKind(scene), ExecutionMode: scene.ExecutionMode, FixedPlayback: CloneFixedPlayback(scene.FixedPlayback)}
+		ds.AudioMode = string(scene.Audio.Mode)
+		ds.AudioAssetID = scene.Audio.ClipAssetID
+		if scene.FixedPlayback != nil {
+			ds.AudioMode = "CLIP_AUDIO"
+			ds.AudioAssetID = scene.Audio.ClipAssetID
+			ds.AudioSourceInMS = scene.FixedPlayback.SourceInMS
+			ds.AudioSourceOutMS = scene.FixedPlayback.SourceOutMS
+		}
+		clips := scene.Clips
+		if len(clips) == 0 && scene.Clip != nil {
+			clips = []*contract.ClipReference{scene.Clip}
+		}
+		for _, clip := range clips {
+			if clip == nil {
+				continue
+			}
+			binding := durableClipBinding(clip)
+			ds.Bindings.Clips = append(ds.Bindings.Clips, binding)
+		}
+		if len(ds.Bindings.Clips) > 0 {
+			ds.Bindings.Clip = &ds.Bindings.Clips[0]
+		}
+		if scene.Stock != nil {
+			stock := *scene.Stock
+			ds.Bindings.Stock = &stock
+		}
+		if vo, ok := scene.Voiceover[contract.Language(lang)]; ok {
+			ds.Bindings.Voiceover = durableVoiceoverBinding(lang, vo)
+		} else {
+			for _, vo := range scene.Voiceover {
+				ds.Bindings.Voiceover = durableVoiceoverBinding(lang, vo)
+				break
+			}
+		}
+		out.Output.SpecScene.Scenes = append(out.Output.SpecScene.Scenes, ds)
+	}
+	if in.RemoteFinalJob != nil && strings.EqualFold(strings.TrimSpace(in.RemoteFinalJob.Status), "SUCCEEDED") {
+		out.RemoteFinalVideo = &domain.RemoteFinalVideoArtifact{
+			JobID:         in.RemoteFinalJob.JobID,
+			Path:          in.RemoteFinalJob.ArtifactPath,
+			SHA256:        in.RemoteFinalJob.SHA256,
+			SizeBytes:     in.RemoteFinalJob.ArtifactSizeBytes,
+			ArtifactURL:   in.RemoteFinalJob.ArtifactURL,
+			DriveFolderID: in.Render.DriveFolderID,
+		}
+	}
+	if in.LocalFinalVideo != nil {
+		out.LocalFinalVideo = &domain.LocalFinalVideoArtifact{
+			Path:        in.LocalFinalVideo.Path,
+			SHA256:      in.LocalFinalVideo.SHA256,
+			SizeBytes:   in.LocalFinalVideo.SizeBytes,
+			DurationUS:  in.LocalFinalVideo.DurationUS,
+			Width:       in.LocalFinalVideo.Width,
+			Height:      in.LocalFinalVideo.Height,
+			FPS:         in.LocalFinalVideo.FPS,
+			JoinedItems: in.LocalFinalVideo.JoinedItems,
+			PlanItems:   in.LocalFinalVideo.PlanItems,
+		}
+	}
+	if in.FinalAudio != nil {
+		fa := in.FinalAudio
+		out.FinalAudio = &domain.FinalAudioArtifact{AssetID: fa.AssetID, Path: fa.Path, DriveFileID: fa.DriveFileID, DriveLink: fa.DriveLink, Container: fa.Container,
+			AudioContractVersion: fa.AudioContractVersion, AudioPlanVersion: fa.AudioPlanVersion,
+			AudioPlanSHA256: fa.PlanSHA256, FinalAudioSHA256: fa.FinalAudioSHA256,
+			Codec: fa.Codec, Profile: fa.Profile, SampleRate: fa.SampleRate, Channels: fa.Channels,
+			ChannelLayout: fa.ChannelLayout, Bitrate: fa.Bitrate, DurationUS: fa.DurationUS, DurationMS: fa.DurationMS,
+			StartPTS: fa.StartPTS, SizeBytes: fa.SizeBytes, FinalMix: fa.FinalMix, CopyEligible: fa.CopyEligible}
+	}
+	// The durable entity aggregate mirrors the legacy Artifacts.Entities
+	// block so the persisted domain surface and the wire result agree on the
+	// same typed persons/places/concepts projection.
+	if in.Entities != nil {
+		out.Artifacts.Entities = in.Entities
+	}
+	// The extractive editorial data products (summary, bullets, heavy
+	// sentences) travel with the item so the persisted video payload exposes
+	// the same takeaways the capability computed. They never alter scenes or
+	// rendered captions.
+	out.Summary = in.Summary
+	out.BulletPoints = in.BulletPoints
+	out.HeavySentences = in.HeavySentences
+	out.ChapterManifest = in.ChapterManifest
+	out.SceneHighlights = in.SceneHighlights
+	out.Editorial = in.Editorial
+	return out
+}
+
+// durableVoiceoverBinding projects one durable AudioReference onto the legacy
+// domain VoiceoverBinding surface. The published timing bundle (timing.json
+// SSOT + optional SRT/VTT links + hashes) is preserved per language so the
+// legacy domain envelope exposes the same timing references as the durable
+// capability result.
+func durableClipBinding(clip *contract.ClipReference) domain.ClipBinding {
+	if clip == nil {
+		return domain.ClipBinding{}
+	}
+	durationMS := int64(0)
+	if clip.SourceOutMS > clip.SourceInMS {
+		durationMS = clip.SourceOutMS - clip.SourceInMS
+	} else if clip.DurationUS > 0 {
+		durationMS = clip.DurationUS / 1000
+	} else if clip.Duration > 0 {
+		durationMS = int64(clip.Duration * 1000)
+	}
+	return domain.ClipBinding{
+		ClipID:          clip.ID,
+		ClipTitle:       clip.Title,
+		DriveLink:       clip.DriveLink,
+		StartMs:         clip.SourceInMS,
+		EndMs:           clip.SourceOutMS,
+		DurationMs:      durationMS,
+		TotalDurationMs: int64(clip.Duration * 1000),
+	}
+}
+
+func durableVoiceoverBinding(lang string, vo contract.AudioReference) *domain.VoiceoverBinding {
+	binding := &domain.VoiceoverBinding{
+		Status:     "completed",
+		Link:       vo.URL,
+		Links:      map[string]string{lang: vo.URL},
+		LocalPath:  vo.FilePath,
+		DurationMs: int64(vo.Duration * 1000),
+	}
+	if vo.TimingBundle != nil {
+		binding.Timing = map[string]domain.VoiceoverTimingBinding{lang: *vo.TimingBundle}
+	}
+	return binding
+}
+
+func inLanguage(in *contract.GenerateResult) contract.Language {
+	for _, scene := range in.Scenes {
+		for lang := range scene.Text {
+			return lang
+		}
+	}
+	return "it"
+}
+
+func sceneKind(scene contract.Scene) domain.SceneKind {
+	if scene.ExecutionMode.IsFixedMedia() {
+		return FixedSceneKind(scene)
+	}
+	if scene.Clip != nil {
+		return domain.SceneClip
+	}
+	if scene.Index == 0 {
+		return domain.SceneIntro
+	}
+	return domain.SceneNarration
+}
+
+func scenesText(r *contract.GenerateResult) string {
+	parts := make([]string, 0, len(r.Scenes))
+	for _, scene := range r.Scenes {
+		for _, text := range scene.Text {
+			if strings.TrimSpace(text) != "" {
+				parts = append(parts, text)
+				break
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}

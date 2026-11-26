@@ -226,6 +226,16 @@ type VideoBackgroundSpec struct {
 	// "Discovery"). The script-generation boundary resolves it to AssetID
 	// before the request enters the durable pipeline.
 	Profile string `json:"profile,omitempty"`
+	// BlurPX and Zoom are the blurred-plate treatment of mode=blur_source:
+	// the gaussian radius of the plate DERIVED from the source clip and the
+	// scale of that plate. Zero means the renderer's certified default
+	// (cliprender.DefaultBackgroundBlurPX / cover). They are rejected on
+	// none/asset, which carry no derived plate, and both participate in the
+	// localized render fingerprint. The bounds are owned by
+	// cliprender.ValidateBackgroundTreatment; this struct only transports the
+	// caller's intent.
+	BlurPX float64 `json:"blur_px,omitempty"`
+	Zoom   float64 `json:"zoom,omitempty"`
 }
 
 // UnmarshalJSON keeps the payload ergonomic: `background: "Boxe"` is
@@ -245,7 +255,7 @@ func (s *VideoBackgroundSpec) UnmarshalJSON(data []byte) error {
 	}
 	type plainVideoBackgroundSpec VideoBackgroundSpec
 	var decoded plainVideoBackgroundSpec
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	if err := decodeStrictJSON(data, &decoded); err != nil {
 		return fmt.Errorf("video background object: %w", err)
 	}
 	*s = VideoBackgroundSpec(decoded)

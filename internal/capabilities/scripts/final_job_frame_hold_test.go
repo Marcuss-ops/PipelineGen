@@ -19,7 +19,7 @@ const (
 // absorb it, the producer must fail closed instead of emitting a plan the
 // remote will refuse.
 func TestFinalJobCompiledPlanRejectsUnabsorbableStockTail(t *testing.T) {
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"scene_id":         "closing-10",
 		"duration_seconds": 60.041667,
 		"kind":             "stock",
@@ -27,7 +27,7 @@ func TestFinalJobCompiledPlanRejectsUnabsorbableStockTail(t *testing.T) {
 			"asset_id": "base-video", "sha256": frameHoldVideoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(60000), "start_ms": int64(0),
 		},
-	}}
+	}})
 	audio := FinalAudioReference{DurationUS: 60_041_667, DurationMS: 60042, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
 	audioRef := map[string]any{"asset_id": "final-audio", "sha256": frameHoldAudioSHA, "size_bytes": int64(200), "duration_ms": int64(60042)}
 
@@ -141,7 +141,7 @@ func TestFinalJobCompleteVideoFrameCoverageRejectsTwoFramePreparedTail(t *testin
 // stock-pool placement can absorb it" at PUBLISHING_DOCUMENTS; it must now seal
 // a plan whose timeline covers the certified audio exactly.
 func TestFinalJobCompiledPlanCertifiesClipOnlyTail(t *testing.T) {
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 2.083,
 		"kind":             "clip",
 		"text":             "Una democrazia fragile",
@@ -149,7 +149,7 @@ func TestFinalJobCompiledPlanCertifiesClipOnlyTail(t *testing.T) {
 			"asset_id": "clip-1", "sha256": frameHoldVideoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(2083), "start_ms": int64(0),
 		},
-	}}
+	}})
 	audio := FinalAudioReference{
 		DurationUS: 2_090_000, DurationMS: 2090, CopyEligible: true, FinalMix: true,
 		PlanSHA256: strings.Repeat("d", 64),

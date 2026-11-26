@@ -135,13 +135,11 @@ type GenerateRequest struct {
 	// FinalJob opts this run into the final-render handoff after the canonical
 	// media plan is available: the Master owns the complete video, so the local
 	// lane never assembles it. A run without FinalJob keeps the local lane.
+	//
+	// There is exactly ONE final-render flag. The retired final_job_remote
+	// duplicate expressed the same decision and, when a payload set only the
+	// duplicate, was silently ignored; language fan-out children set FinalJob.
 	FinalJob bool `json:"final_job,omitempty"`
-	// FinalJobRemote forces the handoff to the Master even when the local lane
-	// could assemble the complete video, so a render-enabled run can opt out of
-	// the local join and hand the complete video to the Master. Language fan-out
-	// children also set it because their parent delivery requires a remote
-	// receipt.
-	FinalJobRemote bool `json:"final_job_remote,omitempty"`
 
 	// Source describes the generation input source.
 	Source Source `json:"source"`

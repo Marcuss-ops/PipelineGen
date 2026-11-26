@@ -48,25 +48,40 @@ type FinalJobOverlayWindow struct {
 	SHA256             string
 }
 
-func FinalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, overlayManifest map[string]any, audio contract.FinalAudioReference, audioRef map[string]any, timelineDurationUS int64) (string, string, error) {
+func FinalJobCompiledPlanPayload(scenes []FinalJobRemoteScene, overlayRows []any, overlayManifest map[string]any, audio contract.FinalAudioReference, audioRef map[string]any, timelineDurationUS int64) (string, string, error) {
 	return FinalJobCompiledPlanPayloadWithStockPool(scenes, overlayRows, overlayManifest, audio, audioRef, timelineDurationUS, "", nil)
 }
 
-// FinalJobCompiledPlanPayloadWithStockPool builds the sealed V2 plan. The
-// stock binding windows are keyed by scene id and stay Producer-local: the
-// remote Master only receives the compiled plan and runtime asset refs.
-func FinalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRows []any, overlayManifest map[string]any, audio contract.FinalAudioReference, audioRef map[string]any, timelineDurationUS int64, stockPoolFolderID string, stockBoundWindowsMS map[string]int64) (string, string, error) {
+// FinalJobCompiledPlanPayloadWithStockPool builds and seals the V2 plan, then
+// serializes it once. It is the string API; the hand-off chain uses
+// buildFinalJobCompiledPlan + finalJobSealCompiledPlan so the plan is sealed in
+// memory and marshaled exactly once, after every step has rewritten it.
+func FinalJobCompiledPlanPayloadWithStockPool(scenes []FinalJobRemoteScene, overlayRows []any, overlayManifest map[string]any, audio contract.FinalAudioReference, audioRef map[string]any, timelineDurationUS int64, stockPoolFolderID string, stockBoundWindowsMS map[string]int64) (string, string, error) {
+	plan, stockAssetIDs, err := buildFinalJobCompiledPlan(scenes, overlayRows, overlayManifest, audio, audioRef, timelineDurationUS, stockPoolFolderID, stockBoundWindowsMS)
+	if err != nil {
+		return "", "", err
+	}
+	if err := finalJobSealCompiledPlan(plan, scenes, stockAssetIDs); err != nil {
+		return "", "", err
+	}
+	return marshalFinalJobCompiledPlan(plan)
+}
+
+// buildFinalJobCompiledPlan builds the V2 plan. The stock binding windows are
+// keyed by scene id and stay Producer-local: the remote Master only receives
+// the compiled plan and runtime asset refs.
+func buildFinalJobCompiledPlan(scenes []FinalJobRemoteScene, overlayRows []any, overlayManifest map[string]any, audio contract.FinalAudioReference, audioRef map[string]any, timelineDurationUS int64, stockPoolFolderID string, stockBoundWindowsMS map[string]int64) (*FinalJobCompiledPlan, map[string]struct{}, error) {
 	if len(scenes) == 0 {
-		return "", "", fmt.Errorf("final_job V2 render plan requires at least one visual scene")
+		return nil, nil, fmt.Errorf("final_job V2 render plan requires at least one visual scene")
 	}
 	if audio.DurationUS <= 0 && audio.DurationMS > 0 {
 		audio.DurationUS = audio.DurationMS * 1000
 	}
 	if audio.DurationUS <= 0 || audio.DurationMS <= 0 || !audio.CopyEligible || !audio.FinalMix {
-		return "", "", fmt.Errorf("final_job V2 render plan requires certified final audio")
+		return nil, nil, fmt.Errorf("final_job V2 render plan requires certified final audio")
 	}
 	if timelineDurationUS <= 0 {
-		return "", "", fmt.Errorf("final_job V2 render plan requires a positive canonical duration")
+		return nil, nil, fmt.Errorf("final_job V2 render plan requires a positive canonical duration")
 	}
 	// The plan's output duration must match the certified media duration. The
 	// canonical scene/audio timeline can differ by a few milliseconds because
@@ -75,7 +90,7 @@ func FinalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRo
 	// audio duration as the worker timeline SSOT. Video coverage is completed
 	// on the output frame grid below without changing this certified duration.
 	if delta := audio.DurationUS - timelineDurationUS; delta < -capabilityaudio.FinalAudioDurationToleranceUS || delta > capabilityaudio.FinalAudioDurationToleranceUS {
-		return "", "", fmt.Errorf("final_job V2 final audio duration %dus does not match canonical timeline %dus", audio.DurationUS, timelineDurationUS)
+		return nil, nil, fmt.Errorf("final_job V2 final audio duration %dus does not match canonical timeline %dus", audio.DurationUS, timelineDurationUS)
 	}
 	timelineDurationUS = audio.DurationUS
 	delivery := finalJobPlanDelivery()
@@ -83,35 +98,35 @@ func FinalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRo
 	assets := &finalJobPlanAssets{}
 	base, err := finalJobPlanBaseSegments(scenes, assets, stockBoundWindowsMS)
 	if err != nil {
-		return "", "", err
+		return nil, nil, err
 	}
 	if err := assets.addRaw(audioRef, "final_audio", audio.DurationUS, 0, 0, 0); err != nil {
-		return "", "", fmt.Errorf("final_job V2 final audio: %w", err)
+		return nil, nil, fmt.Errorf("final_job V2 final audio: %w", err)
 	}
 	baseEnd := base[len(base)-1].EndUS
 	delta := timelineDurationUS - baseEnd
 	if delta < -capabilityaudio.FinalAudioDurationToleranceUS || delta > capabilityaudio.FinalAudioDurationToleranceUS {
-		return "", "", fmt.Errorf("final_job V2 scene duration %dus does not match certified final audio %dus", baseEnd, timelineDurationUS)
+		return nil, nil, fmt.Errorf("final_job V2 scene duration %dus does not match certified final audio %dus", baseEnd, timelineDurationUS)
 	}
 	base[len(base)-1].EndUS = timelineDurationUS
 	if base[len(base)-1].EndUS <= base[len(base)-1].StartUS {
-		return "", "", fmt.Errorf("final_job V2 final scene has no positive duration after audio alignment")
+		return nil, nil, fmt.Errorf("final_job V2 final scene has no positive duration after audio alignment")
 	}
 
 	windows, manifests, err := finalJobOverlayWindows(overlayManifest, overlayRows, assets, timelineDurationUS, fpsNum, fpsDen, delivery.Width, delivery.Height)
 	if err != nil {
-		return "", "", err
+		return nil, nil, err
 	}
 	windows, err = finalJobMergeOverlayWindows(windows)
 	if err != nil {
-		return "", "", err
+		return nil, nil, err
 	}
 	segments, err := FinalJobComposePlanSegments(base, windows, timelineDurationUS, fpsNum, fpsDen)
 	if err != nil {
-		return "", "", err
+		return nil, nil, err
 	}
 	if len(segments) == 0 {
-		return "", "", fmt.Errorf("final_job V2 render plan has no video segments")
+		return nil, nil, fmt.Errorf("final_job V2 render plan has no video segments")
 	}
 	// Producer deliberately keeps stock remote: it does not materialize Drive
 	// bytes just to probe duration. The scene references can describe several
@@ -123,7 +138,7 @@ func FinalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRo
 	timelineRevision := int64(1)
 	timelineSHA, err := finalJobTimelineIdentity(timelineDurationUS, audio.PlanSHA256, manifests)
 	if err != nil {
-		return "", "", err
+		return nil, nil, err
 	}
 	plan := FinalJobCompiledPlan{
 		PlanVersion: 2, TimelineRevision: timelineRevision, TimelineSHA256: timelineSHA,
@@ -142,7 +157,7 @@ func FinalJobCompiledPlanPayloadWithStockPool(scenes []map[string]any, overlayRo
 	if stockPoolFolderID = strings.TrimSpace(stockPoolFolderID); stockPoolFolderID != "" {
 		plan.StockPool = &finaljob.PlanStockPool{SourceKind: "drive", DriveFolderID: stockPoolFolderID, Selection: "shuffle"}
 	}
-	return finalJobEncodeCompiledPlan(&plan, scenes, stockAssetIDs, fpsNum, fpsDen)
+	return &plan, stockAssetIDs, nil
 }
 
 func finalJobTimelineIdentity(durationUS int64, audioPlanSHA string, manifests []map[string]any) (string, error) {
@@ -170,13 +185,11 @@ func finalJobTimelineIdentity(durationUS int64, audioPlanSHA string, manifests [
 	return digest.SHA256String(string(encoded)), nil
 }
 
-func finalJobRetainPlanAssets(scenes []map[string]any, segments []FinalJobPlanSegment, assets *finalJobPlanAssets, audioAssetID string) map[string]struct{} {
+func finalJobRetainPlanAssets(scenes []FinalJobRemoteScene, segments []FinalJobPlanSegment, assets *finalJobPlanAssets, audioAssetID string) map[string]struct{} {
 	stockAssetIDs := make(map[string]struct{}, len(scenes))
 	for _, scene := range scenes {
-		if stock, ok := scene["stock"].(map[string]any); ok {
-			if id := FinalJobStringValue(stock["asset_id"]); id != "" {
-				stockAssetIDs[id] = struct{}{}
-			}
+		if id := FinalJobStringValue(scene.Stock["asset_id"]); id != "" {
+			stockAssetIDs[id] = struct{}{}
 		}
 	}
 	for _, segment := range segments {
@@ -190,27 +203,37 @@ func finalJobRetainPlanAssets(scenes []map[string]any, segments []FinalJobPlanSe
 	return stockAssetIDs
 }
 
-func finalJobEncodeCompiledPlan(plan *FinalJobCompiledPlan, scenes []map[string]any, stockAssetIDs map[string]struct{}, fpsNum, fpsDen int64) (string, string, error) {
+// finalJobSealCompiledPlan aligns and validates the plan IN MEMORY. It is the
+// last step that may reorder or reject the plan; the caller serializes once
+// afterwards, so sealing a job never costs a JSON round-trip.
+func finalJobSealCompiledPlan(plan *FinalJobCompiledPlan, scenes []FinalJobRemoteScene, stockAssetIDs map[string]struct{}) error {
 	if err := AlignFinalJobSegmentSourceWindows(plan, stockAssetIDs); err != nil {
-		return "", "", fmt.Errorf("align final_job source windows to the output frame grid: %w", err)
+		return fmt.Errorf("align final_job source windows to the output frame grid: %w", err)
 	}
 	// The stock slot carries stock, clip and overlay scenes alike, so the
 	// frame-coverage pass needs the immutable subset: only a "stock" scene's
 	// bytes are packet-copied by the Master and cannot be padded locally.
+	fpsNum, fpsDen := int64(plan.Output.FPSNum), int64(plan.Output.FPSDen)
 	var err error
 	plan.VideoTracks[0].Segments, err = finalJobCompleteVideoFrameCoverageWithStockAssets(plan.VideoTracks[0].Segments, plan.Assets, plan.DurationUS, fpsNum, fpsDen, finalJobSourceLockedAssetIDs(scenes))
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	if err := AlignFinalJobSegmentSourceWindows(plan, stockAssetIDs); err != nil {
-		return "", "", fmt.Errorf("align final_job source windows after frame coverage: %w", err)
+		return fmt.Errorf("align final_job source windows after frame coverage: %w", err)
 	}
 	if err := FinalJobValidateVideoCoverage(*plan); err != nil {
-		return "", "", fmt.Errorf("final_job V2 compiled-plan video coverage: %w", err)
+		return fmt.Errorf("final_job V2 compiled-plan video coverage: %w", err)
 	}
 	if err := ValidateFinalJobPlanBindingRules(*plan); err != nil {
-		return "", "", fmt.Errorf("final_job V2 compiled-plan asset bindings: %w", err)
+		return fmt.Errorf("final_job V2 compiled-plan asset bindings: %w", err)
 	}
+	return nil
+}
+
+// marshalFinalJobCompiledPlan is the ONE serialization of a finished hand-off:
+// the canonical bytes and the digest the Master verifies are produced together.
+func marshalFinalJobCompiledPlan(plan *FinalJobCompiledPlan) (string, string, error) {
 	canonical, err := json.Marshal(plan)
 	if err != nil {
 		return "", "", fmt.Errorf("marshal final_job canonical V2 render plan: %w", err)
@@ -342,22 +365,22 @@ func finalJobDedicatedOverlayWindows(overlayRows []any, assets *finalJobPlanAsse
 
 // finalJobPlanBaseSegments describes one source segment per scene and types
 // every stock asset INTO the shared registry the caller already owns.
-func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAssets, stockBoundWindowsMS map[string]int64) ([]FinalJobBaseSegment, error) {
+func finalJobPlanBaseSegments(scenes []FinalJobRemoteScene, assets *finalJobPlanAssets, stockBoundWindowsMS map[string]int64) ([]FinalJobBaseSegment, error) {
 	base := make([]FinalJobBaseSegment, 0, len(scenes))
 	var cursorUS int64
 	for i, scene := range scenes {
-		durationSeconds, ok := scene["duration_seconds"].(float64)
-		if !ok || math.IsNaN(durationSeconds) || math.IsInf(durationSeconds, 0) || durationSeconds <= 0 {
+		durationSeconds := scene.DurationSeconds
+		if math.IsNaN(durationSeconds) || math.IsInf(durationSeconds, 0) || durationSeconds <= 0 {
 			return nil, fmt.Errorf("final_job scene %d has an invalid duration", i)
 		}
 		durationUS := int64(math.Round(durationSeconds * 1_000_000))
-		if poolSlot, _ := scene["stock_pool_slot"].(bool); poolSlot {
+		if scene.StockPoolSlot {
 			base = append(base, FinalJobBaseSegment{StartUS: cursorUS, EndUS: cursorUS + durationUS, StockPool: true})
 			cursorUS += durationUS
 			continue
 		}
-		asset, ok := scene["stock"].(map[string]any)
-		if !ok {
+		asset := scene.Stock
+		if asset == nil {
 			return nil, fmt.Errorf("final_job scene %d has no video asset", i)
 		}
 		// Keep the actual saved-file duration in the asset registry. The source
@@ -372,12 +395,12 @@ func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAsset
 		}
 		SourceInUS := finalJobInt64(asset["start_ms"]) * 1000
 		SourceDurationUS := assetDurationUS
-		SourceLocked := strings.EqualFold(FinalJobStringValue(scene["kind"]), "stock")
+		SourceLocked := strings.EqualFold(scene.Kind, "stock")
 		if SourceLocked {
 			// The stockpipeline owns and selects this exact source window. Keep it
 			// unchanged here; the scene timeline is allowed to be longer because
 			// the remote renderer loops the bound stock window.
-			if boundMS := stockBoundWindowsMS[FinalJobStringValue(scene["scene_id"])]; boundMS > 0 {
+			if boundMS := stockBoundWindowsMS[scene.SceneID]; boundMS > 0 {
 				SourceDurationUS = boundMS * 1000
 			} else {
 				SourceDurationUS = assetDurationUS - SourceInUS

@@ -4,6 +4,7 @@ package script
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -264,21 +265,25 @@ func TestBackgroundMusicIntent_EndOmittedDefaultsToVideoEnd(t *testing.T) {
 
 // TestSoundEffectIntent_NoFilesystemPaths certifies that the wire DTOs
 // expose no path field at all: asset resolution must happen downstream.
+//
+// The caller trying to smuggle a filesystem path is REJECTED at decode. The
+// previous contract dropped the key in silence, which made a path-bearing
+// payload look accepted while the operator's intent was discarded.
 func TestSoundEffectIntent_NoFilesystemPaths(t *testing.T) {
 	var intent SoundEffectIntent
-	// A caller attempting to smuggle a path gets it silently dropped on
-	// decode; the canonical field set is asset_id + placement only.
 	err := json.Unmarshal([]byte(`{"asset_id": "whoosh", "path": "/data/sfx/boom.mp3", "at_ms": 5000}`), &intent)
-	if err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	if err == nil {
+		t.Fatal("a path key must fail closed: the wire DTO never accepts filesystem paths")
+	}
+	if !strings.Contains(err.Error(), `json: unknown field "path"`) {
+		t.Fatalf("error must name the offending key, got %q", err.Error())
+	}
+
+	if err := json.Unmarshal([]byte(`{"asset_id": "whoosh", "at_ms": 5000}`), &intent); err != nil {
+		t.Fatalf("canonical sfx intent must decode: %v", err)
 	}
 	if intent.AssetID != "whoosh" || intent.AtMS != 5000 {
 		t.Fatalf("intent = %+v", intent)
-	}
-	if got, marshalErr := json.Marshal(intent); marshalErr != nil {
-		t.Fatalf("marshal: %v", marshalErr)
-	} else if len(got) > 200 {
-		t.Fatalf("unexpected marshal output: %s", got)
 	}
 }
 

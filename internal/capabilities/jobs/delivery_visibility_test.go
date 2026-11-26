@@ -116,7 +116,8 @@ func TestExtractDeliveryVisibility_NoFabricationOnEmptyInput(t *testing.T) {
 		vis := ExtractDeliveryVisibility(json.RawMessage(payload), nil)
 		if vis.ChannelID != "" || vis.FinalJob || vis.DriveFolderID != "" ||
 			vis.DriveSubfolderName != "" || vis.RemoteFinalJobID != "" ||
-			vis.RemoteFinalJobStatus != "" || len(vis.RemoteFinalJobTiming) != 0 {
+			vis.RemoteFinalJobStatus != "" || len(vis.RemoteFinalJobTiming) != 0 ||
+			vis.RenderStatus != "" || vis.DrivePublication != "" || vis.DriveFileID != "" {
 			t.Fatalf("payload %q: unexpected non-zero projection %+v", payload, vis)
 		}
 	}
@@ -142,6 +143,7 @@ func TestJobDeliveryFieldsStableKeySet(t *testing.T) {
 	want := []string{
 		"channel_id", "final_job", "drive_folder_id", "drive_subfolder_name",
 		"remote_final_job_id", "remote_final_job_status", "remote_final_job_timing",
+		"render_status", "drive_publication", "drive_file_id",
 	}
 	if len(fields) != len(want) {
 		t.Fatalf("deliveryFields key count = %d, want %d: %v", len(fields), len(want), fields)
@@ -150,6 +152,149 @@ func TestJobDeliveryFieldsStableKeySet(t *testing.T) {
 		if _, ok := fields[k]; !ok {
 			t.Fatalf("deliveryFields missing stable key %q", k)
 		}
+	}
+}
+
+// TestExtractDeliveryVisibility_RenderedIsNotDelivered pins the DEMOL-03
+// split: a SUCCEEDED render receipt with a certified digest makes the job
+// rendered, but with no Drive delivery receipt it stays drive_publication
+// pending and exposes no file id.
+func TestExtractDeliveryVisibility_RenderedIsNotDelivered(t *testing.T) {
+	t.Parallel()
+
+	result := json.RawMessage(`{
+		"version": 2,
+		"ok": true,
+		"items": [{"item_id": "item-1", "result": {
+			"remote_final_job": {"job_id": "master-1", "status": "SUCCEEDED", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+			"overlay_render": {"job_id": "overlay-1", "status": "COMPLETED", "artifact": {
+				"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"storage_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"url": "https://objects.example/objects/aaaa"
+			}}
+		}}],
+		"summary": {"total": 1, "succeeded": 1, "failed": 0}
+	}`)
+	vis := ExtractDeliveryVisibility(json.RawMessage(realShapePayload), result)
+	if vis.RenderStatus != RenderStatusRendered {
+		t.Fatalf("RenderStatus = %q, want %q", vis.RenderStatus, RenderStatusRendered)
+	}
+	if vis.DrivePublication != DrivePublicationPending {
+		t.Fatalf("DrivePublication = %q, want %q (no confirmed upload yet)", vis.DrivePublication, DrivePublicationPending)
+	}
+	if vis.DriveFileID != "" {
+		t.Fatalf("DriveFileID = %q, want empty until the outbox confirms it", vis.DriveFileID)
+	}
+}
+
+// TestExtractDeliveryVisibility_OverlayOnlyRunIsRendered pins the non-final
+// lane: a certified overlay artifact is the deliverable, so it renders and
+// still awaits its (optional) Drive copy.
+func TestExtractDeliveryVisibility_OverlayOnlyRunIsRendered(t *testing.T) {
+	t.Parallel()
+
+	result := json.RawMessage(`{
+		"result": {"overlay_render": {"job_id": "overlay-1", "status": "COMPLETED", "artifact": {
+			"sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+			"storage_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+			"url": "https://objects.example/objects/eeee"
+		}}}
+	}`)
+	vis := ExtractDeliveryVisibility(json.RawMessage(`{}`), result)
+	if vis.RenderStatus != RenderStatusRendered || vis.DrivePublication != DrivePublicationPending {
+		t.Fatalf("overlay-only projection = %q/%q, want rendered/pending", vis.RenderStatus, vis.DrivePublication)
+	}
+}
+
+// TestExtractDeliveryVisibility_TerminalRemoteFinalVideoIsRendered pins the
+// real terminal shape: the domain result projects the verified master as
+// remote_final_video, not remote_final_job. It must still count as rendered
+// and stay pending until the delivery receipt lands.
+func TestExtractDeliveryVisibility_TerminalRemoteFinalVideoIsRendered(t *testing.T) {
+	t.Parallel()
+
+	result := json.RawMessage(`{
+		"version": 2, "ok": true,
+		"items": [{"item_id": "item-1", "result": {
+			"remote_final_video": {"job_id": "master-1", "sha256": "9999999999999999999999999999999999999999999999999999999999999999", "artifact_url": "https://objects.example/objects/9999"}
+		}}]
+	}`)
+	vis := ExtractDeliveryVisibility(json.RawMessage(realShapePayload), result)
+	if vis.RenderStatus != RenderStatusRendered {
+		t.Fatalf("RenderStatus = %q, want rendered from remote_final_video", vis.RenderStatus)
+	}
+	if vis.DrivePublication != DrivePublicationPending {
+		t.Fatalf("DrivePublication = %q, want pending", vis.DrivePublication)
+	}
+}
+
+// TestExtractDeliveryVisibility_SidecarDeliveryDoesNotMaskTheFinalVideo pins
+// that a confirmed script/audio sidecar upload is not the final job's
+// delivery: the master video itself must be confirmed before /full reports
+// published.
+func TestExtractDeliveryVisibility_SidecarDeliveryDoesNotMaskTheFinalVideo(t *testing.T) {
+	t.Parallel()
+
+	result := json.RawMessage(`{
+		"result": {
+			"remote_final_job": {"job_id": "master-1", "status": "SUCCEEDED", "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+			"drive_deliveries": {
+				"job-1:script_json": {"artifact_id": "job-1:script_json", "kind": "script", "drive_file_id": "drive-script-1", "delivery_status": "completed"}
+			}
+		}
+	}`)
+	vis := ExtractDeliveryVisibility(json.RawMessage(realShapePayload), result)
+	if vis.RenderStatus != RenderStatusRendered {
+		t.Fatalf("RenderStatus = %q, want rendered", vis.RenderStatus)
+	}
+	if vis.DrivePublication != DrivePublicationPending || vis.DriveFileID != "" {
+		t.Fatalf("delivery = %q/%q, want pending with no file id (sidecar is not the video)", vis.DrivePublication, vis.DriveFileID)
+	}
+}
+
+// TestExtractDeliveryVisibility_DeliveredNeedsTheOutboxReceipt pins that an
+// empty status on a receipt is not a render: only a SUCCEEDED receipt with a
+// certified digest (or the delivery receipt itself) proves the bytes exist.
+func TestExtractDeliveryVisibility_DeliveredNeedsTheOutboxReceipt(t *testing.T) {
+	t.Parallel()
+
+	noBytes := json.RawMessage(`{"result":{"remote_final_job":{"job_id":"master-1","status":"SUCCEEDED"}}}`)
+	if vis := ExtractDeliveryVisibility(json.RawMessage(realShapePayload), noBytes); vis.RenderStatus != "" {
+		t.Fatalf("RenderStatus = %q, want empty without a certified digest: %+v", vis.RenderStatus, vis)
+	}
+
+	delivered := json.RawMessage(`{
+		"result": {
+			"remote_final_job": {"job_id": "master-1", "status": "SUCCEEDED", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+			"drive_deliveries": {
+				"job-1:final_video": {"artifact_id": "job-1:final_video", "kind": "video", "drive_file_id": "drive-video-1", "drive_link": "https://drive/file/video-1", "delivery_status": "completed"}
+			}
+		}
+	}`)
+	vis := ExtractDeliveryVisibility(json.RawMessage(realShapePayload), delivered)
+	if vis.RenderStatus != RenderStatusRendered {
+		t.Fatalf("RenderStatus = %q, want %q", vis.RenderStatus, RenderStatusRendered)
+	}
+	if vis.DrivePublication != DrivePublicationPublished || vis.DriveFileID != "drive-video-1" {
+		t.Fatalf("delivery projection = %q/%q, want %q/drive-video-1", vis.DrivePublication, vis.DriveFileID, DrivePublicationPublished)
+	}
+}
+
+// TestExtractDeliveryVisibility_NeverInventsDeliveryFromARender keeps the
+// pending state explicit when the render exists but the item-scoped receipt
+// carries no file id.
+func TestExtractDeliveryVisibility_NeverInventsDeliveryFromARender(t *testing.T) {
+	t.Parallel()
+
+	result := json.RawMessage(`{
+		"items": [{"item_id": "item-1", "result": {
+			"remote_final_job": {"job_id": "master-1", "status": "SUCCEEDED", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+			"drive_deliveries": {"job-1:final_video": {"artifact_id": "job-1:final_video", "kind": "video", "drive_file_id": "", "delivery_status": "pending"}}
+		}}]
+	}`)
+	vis := ExtractDeliveryVisibility(json.RawMessage(realShapePayload), result)
+	if vis.DrivePublication != DrivePublicationPending || vis.DriveFileID != "" {
+		t.Fatalf("delivery projection = %q/%q, want pending with no file id", vis.DrivePublication, vis.DriveFileID)
 	}
 }
 

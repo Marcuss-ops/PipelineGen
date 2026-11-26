@@ -15,11 +15,29 @@ import (
 // final-fragment-* work id. The copy-only assembler certifies the segment
 // against the plan asset, so both the asset and every segment must carry the
 // same canonical id and the asset's full prepared-fragment metadata.
+// AlignFinalJobCompiledPlanAssetIDs is the string entry point: callers that
+// only hold the sealed JSON (tests, diagnostics) still get a re-encoded plan.
+// The payload path uses alignFinalJobCompiledPlanAssetIDs directly, so sealing
+// a job never pays for a decode/encode per step.
 func AlignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (string, error) {
 	var plan FinalJobCompiledPlan
 	if err := json.Unmarshal([]byte(rawPlan), &plan); err != nil {
 		return "", fmt.Errorf("decode final_job plan for runtime alignment: %w", err)
 	}
+	if err := alignFinalJobCompiledPlanAssetIDs(&plan, runtimeAssets); err != nil {
+		return "", err
+	}
+	aligned, err := json.Marshal(plan)
+	if err != nil {
+		return "", fmt.Errorf("marshal aligned final_job plan: %w", err)
+	}
+	return string(aligned), nil
+}
+
+// alignFinalJobCompiledPlanAssetIDs binds the runtime identities to the plan
+// IN MEMORY and mutates it: the caller serializes once, at the end of the
+// hand-off chain.
+func alignFinalJobCompiledPlanAssetIDs(plan *FinalJobCompiledPlan, runtimeAssets []any) error {
 	refs := make(map[string]map[string]any, len(runtimeAssets))
 	stockSHAs := make(map[string]struct{}, len(runtimeAssets))
 	for _, raw := range runtimeAssets {
@@ -36,7 +54,7 @@ func AlignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 		}
 	}
 	if len(refs) == 0 {
-		return rawPlan, nil
+		return nil
 	}
 	seen := make(map[string]bool, len(plan.Assets))
 	for i := range plan.Assets {
@@ -47,10 +65,10 @@ func AlignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 		}
 		id := strings.TrimSpace(FinalJobStringValue(ref["asset_id"]))
 		if id == "" {
-			return "", fmt.Errorf("final_job runtime asset %s has no canonical id", asset.SHA256)
+			return fmt.Errorf("final_job runtime asset %s has no canonical id", asset.SHA256)
 		}
 		if seen[id] {
-			return "", fmt.Errorf("final_job runtime asset id %q is repeated", id)
+			return fmt.Errorf("final_job runtime asset id %q is repeated", id)
 		}
 		seen[id] = true
 		asset.AssetID = id
@@ -119,7 +137,7 @@ func AlignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 			sha := strings.ToLower(strings.TrimSpace(segment.SHA256))
 			ref := refs[sha]
 			if ref == nil {
-				return "", fmt.Errorf("final_job segment %q has no runtime asset for sha %s", segment.SegmentID, sha)
+				return fmt.Errorf("final_job segment %q has no runtime asset for sha %s", segment.SegmentID, sha)
 			}
 			segment.AssetID = strings.TrimSpace(FinalJobStringValue(ref["asset_id"]))
 			segment.SHA256 = strings.ToLower(FinalJobStringValue(ref["sha256"]))
@@ -171,10 +189,10 @@ func AlignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 			}
 			asset, ok := assetsByID[segment.AssetID]
 			if !ok {
-				return "", fmt.Errorf("final_job stock segment %q has no aligned plan asset %q", segment.SegmentID, segment.AssetID)
+				return fmt.Errorf("final_job stock segment %q has no aligned plan asset %q", segment.SegmentID, segment.AssetID)
 			}
 			if asset.DurationUS <= 0 || segment.SourceInUS < 0 || segment.SourceDurationUS <= 0 || segment.SourceInUS+segment.SourceDurationUS > asset.DurationUS {
-				return "", fmt.Errorf("final_job stock segment %q source window %d+%d exceeds saved file duration %d", segment.SegmentID, segment.SourceInUS, segment.SourceDurationUS, asset.DurationUS)
+				return fmt.Errorf("final_job stock segment %q source window %d+%d exceeds saved file duration %d", segment.SegmentID, segment.SourceInUS, segment.SourceDurationUS, asset.DurationUS)
 			}
 		}
 	}
@@ -187,18 +205,14 @@ func AlignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 			plan.FinalAudio.SizeBytes = size
 		}
 	}
-	if err := clampFinalJobRuntimeSourceWindows(&plan); err != nil {
-		return "", fmt.Errorf("align final_job runtime source windows: %w", err)
+	if err := clampFinalJobRuntimeSourceWindows(plan); err != nil {
+		return fmt.Errorf("align final_job runtime source windows: %w", err)
 	}
-	if err := ValidateFinalJobPlanBindingRules(plan); err != nil {
-		return "", fmt.Errorf("validate final_job runtime plan bindings: %w", err)
+	if err := ValidateFinalJobPlanBindingRules(*plan); err != nil {
+		return fmt.Errorf("validate final_job runtime plan bindings: %w", err)
 	}
 	sort.Slice(plan.Assets, func(i, j int) bool { return plan.Assets[i].AssetID < plan.Assets[j].AssetID })
-	aligned, err := json.Marshal(plan)
-	if err != nil {
-		return "", fmt.Errorf("marshal aligned final_job plan: %w", err)
-	}
-	return string(aligned), nil
+	return nil
 }
 
 // --- the asset registry both plan builders share ---
@@ -353,11 +367,19 @@ func (a *finalJobPlanAssets) retainReferenced(segments []FinalJobPlanSegment, fi
 // compiled plan. The Master includes runtime_assets in its queue dependency
 // set, so leaving an unused source there would still cause a prefetch even if
 // the plan no longer contains a segment for it.
+// RetainFinalJobRuntimeAssets is the string entry point; the payload path calls
+// retainFinalJobRuntimeAssets with the in-memory plan so no step re-encodes it.
 func RetainFinalJobRuntimeAssets(planJSON string, runtimeAssets []any) ([]any, error) {
 	var plan FinalJobCompiledPlan
 	if err := json.Unmarshal([]byte(planJSON), &plan); err != nil {
 		return nil, fmt.Errorf("decode final_job plan while pruning runtime bindings: %w", err)
 	}
+	return retainFinalJobRuntimeAssets(&plan, runtimeAssets)
+}
+
+// retainFinalJobRuntimeAssets prunes the runtime refs to the assets the sealed
+// plan actually names. It only reads the plan, so it takes it by pointer.
+func retainFinalJobRuntimeAssets(plan *FinalJobCompiledPlan, runtimeAssets []any) ([]any, error) {
 	used := make(map[string]struct{}, len(plan.Assets)*5+1)
 	add := func(values ...string) {
 		for _, value := range values {

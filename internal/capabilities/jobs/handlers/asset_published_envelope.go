@@ -5,7 +5,7 @@
 // godlike/06 SSOT (one canonical owner per fact):
 //
 //   - AssetPublishedSchemaVersion lives ONLY in this file. The
-//     PARALLEL canonical constant outboxevents.SchemaVersionAssetPublished
+//     PARALLEL canonical constant outbox.SchemaVersionAssetPublished
 //     at internal/platform/sqlite/outboxevents/registry.go
 //     is the registry's sole owner of the wire-shape string; this
 //     local re-export lets the handler's body reference the constant

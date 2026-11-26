@@ -82,14 +82,14 @@ func StartResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 // property of the parameter's type — the operational SQLite store — and that is
 // how a media read got wired to the mirror in the first place.
 type MediaYouTubeIDDuplicateReader interface {
-	// DuplicateYouTubeIDGroups returns up to limit youtube_video_id groups
-	// holding more than one live media asset.
+	// DuplicateYouTubeIDGroups returns up to limit clip identities (video +
+	// source window) holding more than one live media asset.
 	DuplicateYouTubeIDGroups(ctx context.Context, limit int) ([]pgmedia.YouTubeIDDuplicateGroup, error)
 
-	// DuplicateAssetIDsByYouTubeID returns the live ids sharing videoID,
-	// newest first, excluding excludeID. The ORDER is load-bearing: the sweep
-	// keeps index 0 and retires the rest.
-	DuplicateAssetIDsByYouTubeID(ctx context.Context, videoID, excludeID string) ([]string, error)
+	// DuplicateAssetIDsByYouTubeID returns the live ids sharing the clip
+	// identity (videoID + startMs/endMs), newest first, excluding excludeID.
+	// The ORDER is load-bearing: the sweep keeps index 0 and retires the rest.
+	DuplicateAssetIDsByYouTubeID(ctx context.Context, videoID string, startMs, endMs int64, excludeID string) ([]string, error)
 }
 
 // dedupGroupLimit is the per-tick safety valve on how many duplicate groups one
@@ -136,7 +136,11 @@ func StartClipDedupSweeper(ctx context.Context, reader MediaYouTubeIDDuplicateRe
 }
 
 // runDedupSweep retires the redundant copies of every live media asset that
-// shares a youtube_video_id with another, keeping the newest of each group.
+// shares a CLIP IDENTITY with another, keeping the newest of each group.
+//
+// The identity is (youtube_video_id, start_ms, end_ms): a YouTube video owns
+// many clips that all share its video id, so a video-level group would retire
+// every clip but one (OVL-06, 2026-11-26).
 //
 // MEDIA-SSOT (P2-9 read side, final entry). This function used to scan
 // media_assets and soft-delete through *imagesregistry.ClipsRepository — the
@@ -182,7 +186,7 @@ func runDedupSweep(ctx context.Context, reader MediaYouTubeIDDuplicateReader, re
 		// excludeID is empty because the sweep retires from the whole group,
 		// not relative to a caller-held asset: index 0 is the newest row, which
 		// is the one kept.
-		dupIDs, err := reader.DuplicateAssetIDsByYouTubeID(ctx, g.YouTubeVideoID, "")
+		dupIDs, err := reader.DuplicateAssetIDsByYouTubeID(ctx, g.YouTubeVideoID, g.StartMs, g.EndMs, "")
 		if err != nil {
 			log.Warn("Duplicate asset id lookup failed", zap.String("video_id", g.YouTubeVideoID), zap.Error(err))
 			continue

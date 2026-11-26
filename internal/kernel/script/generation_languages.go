@@ -94,7 +94,11 @@ func DecodeEnvelopeV2(raw json.RawMessage) (*GenerationEnvelopeV2, error) {
 		}
 	}
 	var env GenerationEnvelopeV2
-	if err := json.Unmarshal(raw, &env); err != nil {
+	// The top-level key check above is deliberately only the first gate. The
+	// strict decoder also rejects unknown keys inside nested plain structs and
+	// inside the custom UnmarshalJSON blocks (output/audio/media_plan), so the
+	// replay path applies the same contract as POST /api/script/generate.
+	if err := decodeStrictJSON(raw, &env); err != nil {
 		return nil, err
 	}
 	if err := env.Validate(); err != nil {

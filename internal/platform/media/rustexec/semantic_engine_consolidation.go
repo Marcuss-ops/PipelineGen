@@ -99,8 +99,8 @@ func indexConsolidationScope(bundles map[string]*semantic.SemanticCandidateBundl
 	knownEntities := make(map[string]struct{})
 	rawProposals := 0
 	for _, bundle := range bundles {
-		for _, identity := range bundle.Identities {
-			knownEntities[identity.ID] = struct{}{}
+		for _, id := range bundle.IdentityIDs {
+			knownEntities[id] = struct{}{}
 		}
 		rawProposals += len(bundle.Proposals)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	kernelrenderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
 )
 
@@ -43,21 +44,37 @@ func (a *RemoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 func (a *RemoteFinalJobAdapter) CheckFinalJobCapabilities(ctx context.Context, req scriptgen.GenerateRequest) error {
 	needsStock := len(req.StockBindings) > 0 || strings.EqualFold(strings.TrimSpace(string(req.MediaMode)), "stock_only") || strings.EqualFold(strings.TrimSpace(string(req.MediaMode)), "mixed")
 	effectCapabilities := requiredImageEffectCapabilities(req)
-	if len(effectCapabilities) == 0 && (!req.FinalJob || !needsStock) {
+	// require_gpu: true means the queue will store the job as gpu_only and
+	// hand it only to a worker that proves the GPU lane. Proving that here,
+	// before TTS and media work, turns a job that can never be served into an
+	// immediate, readable rejection instead of a run that waits in the queue.
+	requiresGPULane := req.Render.RequiresGPU()
+	needsLiveInventory := len(effectCapabilities) > 0 || requiresGPULane
+	if !needsLiveInventory && (!req.FinalJob || !needsStock) {
 		return nil
 	}
 	if a == nil || a.client == nil {
+		if requiresGPULane {
+			return fmt.Errorf("EXECUTION_POLICY_INCOMPATIBLE: require_gpu is set but the remote renderer capability client is not configured")
+		}
 		if len(effectCapabilities) > 0 {
 			return fmt.Errorf("UNSUPPORTED_GPU_EFFECT: remote renderer capability client is not configured")
 		}
 		return fmt.Errorf("remote final-job capability client is not configured")
 	}
-	if len(effectCapabilities) > 0 {
+	if needsLiveInventory {
+		missingEffect := ""
 		if a.rendererCapabilities == nil {
+			if requiresGPULane {
+				return fmt.Errorf("EXECUTION_POLICY_INCOMPATIBLE: require_gpu is set but the live RenderingGen capability source is not configured")
+			}
 			return fmt.Errorf("UNSUPPORTED_GPU_EFFECT: live RenderingGen capability source is not configured")
 		}
 		available, err := a.rendererCapabilities.Capabilities(ctx)
 		if err != nil {
+			if requiresGPULane {
+				return fmt.Errorf("EXECUTION_POLICY_INCOMPATIBLE: read live RenderingGen capabilities: %w", err)
+			}
 			return fmt.Errorf("UNSUPPORTED_GPU_EFFECT: read live RenderingGen capabilities: %w", err)
 		}
 		availableSet := make(map[string]struct{}, len(available))
@@ -67,15 +84,28 @@ func (a *RemoteFinalJobAdapter) CheckFinalJobCapabilities(ctx context.Context, r
 				availableSet[name] = struct{}{}
 			}
 		}
-		missing := make([]string, 0, len(effectCapabilities))
-		for _, capability := range effectCapabilities {
-			if _, ok := availableSet[capability]; !ok {
-				missing = append(missing, capability)
+		// An empty inventory means no live worker advertised anything (an
+		// older worker build, or no worker at all): it is "cannot prove",
+		// never "supports nothing", so a GPU-demanding request fails closed.
+		if requiresGPULane {
+			if _, ok := availableSet[kernelrenderqueue.CapabilityGPU]; !ok {
+				return fmt.Errorf("EXECUTION_POLICY_INCOMPATIBLE: require_gpu is set (gpu_only) but no live RenderingGen worker advertises the %q capability", kernelrenderqueue.CapabilityGPU)
 			}
 		}
-		if len(missing) > 0 {
-			sort.Strings(missing)
-			return fmt.Errorf("UNSUPPORTED_GPU_EFFECT: renderer is missing %s", strings.Join(missing, ", "))
+		if len(effectCapabilities) > 0 {
+			missing := make([]string, 0, len(effectCapabilities))
+			for _, capability := range effectCapabilities {
+				if _, ok := availableSet[capability]; !ok {
+					missing = append(missing, capability)
+				}
+			}
+			if len(missing) > 0 {
+				sort.Strings(missing)
+				missingEffect = "UNSUPPORTED_GPU_EFFECT: renderer is missing " + strings.Join(missing, ", ")
+			}
+		}
+		if missingEffect != "" {
+			return fmt.Errorf("%s", missingEffect)
 		}
 	}
 	if req.FinalJob && needsStock {

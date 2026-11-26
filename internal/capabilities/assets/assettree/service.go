@@ -5,7 +5,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/driveurl"
 	repo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"go.uber.org/zap"
 )
@@ -61,9 +61,9 @@ func (s *Service) NormalizeDriveNode(
 
 	if link == "" {
 		if isFolder {
-			link = drive.FolderURLFromID(id)
+			link = driveurl.FolderURLFromID(id)
 		} else {
-			link = drive.FileURLFromID(id)
+			link = driveurl.FileURLFromID(id)
 		}
 	}
 

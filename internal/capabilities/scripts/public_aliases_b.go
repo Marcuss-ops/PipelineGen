@@ -3,6 +3,8 @@ package scriptgeneration
 
 import (
 	"context"
+	"time"
+
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	finaljob "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
@@ -11,8 +13,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runstate"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/vidrush"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/workunits"
-	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"time"
 )
 
 // finaljob_aliases.go — facade for the remote final-job stage.
@@ -206,10 +206,6 @@ var ErrRenderRequestConflict = renderqueue.ErrRenderRequestConflict
 
 const defaultQueuePollInterval = renderqueue.DefaultQueuePollInterval
 
-func NewRenderQueueAsset(ref kernelasset.Ref, logicalPath, sourceURL string) RenderQueueAsset {
-	return renderqueue.NewRenderQueueAsset(ref, logicalPath, sourceURL)
-}
-
 func marshalRenderingGenOverlayPlan(plan capmodel.OverlayPlan) ([]byte, error) {
 	return renderqueue.MarshalRenderingGenOverlayPlan(plan)
 }
@@ -227,10 +223,6 @@ func RenderRunID(jobID string) string {
 
 func BuildRenderAttemptAnalytics(attemptID string, plan capmodel.OverlayPlan, artifact *contract.RenderArtifact) RenderAttemptAnalytics {
 	return renderqueue.BuildRenderAttemptAnalytics(attemptID, plan, artifact)
-}
-
-func BuildRenderAttemptAnalyticsWithWait(attemptID string, plan capmodel.OverlayPlan, artifact *contract.RenderArtifact, wait RenderCompletionMetrics) RenderAttemptAnalytics {
-	return renderqueue.BuildRenderAttemptAnalyticsWithWait(attemptID, plan, artifact, wait)
 }
 
 // Queue adapter, cache and identity surfaces are phase-owned; the root keeps
@@ -263,20 +255,8 @@ func NewDynamicMapGPUAdmission() (DynamicMapGPUAdmission, error) {
 	return renderqueue.NewDynamicMapGPUAdmission()
 }
 
-func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id string, interval time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
-	return renderqueue.WaitRenderQueueTerminal(ctx, client, id, interval)
-}
-
 func WaitRenderQueueTerminalBounded(ctx context.Context, client RenderQueueClient, id string, interval, budget time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
 	return renderqueue.WaitRenderQueueTerminalBounded(ctx, client, id, interval, budget)
-}
-
-func RearmFailedRenderJob(ctx context.Context, client RenderQueueClient, id string) error {
-	return renderqueue.RearmFailedRenderJob(ctx, client, id)
-}
-
-func RenderRequestIdentityFor(job RenderQueueJob) (RenderRequestIdentity, error) {
-	return renderqueue.RenderRequestIdentityFor(job)
 }
 
 func OverlayRenderCacheEnabled() bool { return renderqueue.OverlayRenderCacheEnabled() }
@@ -320,6 +300,16 @@ var (
 	recordRenderStageProgress      = renderunits.RecordRenderStageProgress
 	recordRenderStageFailure       = renderunits.RecordRenderStageFailure
 	renderUnitKey                  = renderunits.RenderUnitKey
+
+	// Render expectations and identity are render-unit semantics, not runner
+	// state: the sentinel, the preflight, the exact-set gate and the fan-out
+	// dedupe live in renderunits. The historical names stay here so no call
+	// site or test moved.
+	ErrLocalizedRendererNotWired  = renderunits.ErrRendererNotWired
+	localizedRenderRequested      = renderunits.LocalizedRenderRequested
+	recordRenderExpectations      = renderunits.RecordExpectations
+	renderSetSatisfiesExpectation = renderunits.RenderSetSatisfiesExpectation
+	dedupeLocalizedRenders        = renderunits.DedupeLocalizedRenders
 )
 
 // runstate_aliases.go — facade for the durable run aggregate.

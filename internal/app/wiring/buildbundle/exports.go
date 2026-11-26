@@ -10,7 +10,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	client "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
@@ -30,10 +29,6 @@ func MediaDetailsReaderFromCommitter(committer persistence.AssetCommitter) *pgme
 
 func MediaEngineHandle(committer persistence.AssetCommitter) pgmedia.EngineHandle {
 	return mediaEngineHandle(committer)
-}
-
-func NewYouTubeAssetWriter(outbox *OutboxBundle, repos *RepoBundle, committer persistence.AssetCommitter) youtube.AssetWriter {
-	return newYouTubeAssetWriter(outbox, repos, committer)
 }
 
 func WhisperBridgeVersion(scriptPath string) string {

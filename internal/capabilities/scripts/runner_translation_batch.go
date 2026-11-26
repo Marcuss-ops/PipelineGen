@@ -145,7 +145,7 @@ func (a *translationApplier) apply(ctx context.Context, item translationWork, va
 	}
 	a.result.Scenes[item.sceneIndex].Text[item.lang] = value
 	if a.gate.due(time.Now()) {
-		snapped, snapshotErr := snapshotGenerateResult(a.result)
+		snapped, snapshotErr := detachCheckpointResult(a.result)
 		if snapshotErr != nil {
 			a.runner.log.Warn("translation checkpoint snapshot failed", zap.String("run_id", a.runID), zap.Error(snapshotErr))
 			a.gate.complete()

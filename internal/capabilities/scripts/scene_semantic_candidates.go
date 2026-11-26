@@ -11,6 +11,7 @@ import (
 type TemporalFactCandidate = semanticscript.TemporalFactCandidate
 type NumericFactCandidate = semanticscript.NumericFactCandidate
 type SemanticCandidateBundle = semanticscript.SemanticCandidateBundle
+type ScriptSemanticResult = semanticscript.ScriptSemanticResult
 type SemanticImportantSegment = semanticscript.SemanticImportantSegment
 type SemanticQueryComponent = semanticscript.SemanticQueryComponent
 type SemanticComposedImageQuery = semanticscript.SemanticComposedImageQuery

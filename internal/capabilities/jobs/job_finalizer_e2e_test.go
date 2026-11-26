@@ -13,6 +13,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	finalize "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
@@ -130,7 +131,7 @@ func TestE2E_FingerprintPersistedInResultJSON(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalize.New(sqlport.WrapDB(db), nil, noopAssetTx{}, zap.NewNop())
+	f := finalize.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTx{}, zap.NewNop())
 	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, expiry), json.RawMessage(`{"status":"ok"}`), "abc")
 	res, err := f.CompleteWithArtifacts(context.Background(), req)
 	if err != nil {
@@ -162,7 +163,7 @@ func TestE2E_DoubleCompleteSameFingerprintIsIdempotent(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalize.New(sqlport.WrapDB(db), nil, noopAssetTx{}, zap.NewNop())
+	f := finalize.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTx{}, zap.NewNop())
 	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, expiry), json.RawMessage(`{"status":"ok"}`), "abc")
 	if _, err := f.CompleteWithArtifacts(context.Background(), req); err != nil {
 		t.Fatalf("first completion: %v", err)
@@ -191,7 +192,7 @@ func TestE2E_DoubleCompleteDifferentResultReturnsConflict(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalize.New(sqlport.WrapDB(db), nil, noopAssetTx{}, zap.NewNop())
+	f := finalize.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTx{}, zap.NewNop())
 	lease := validLease(jobID, workerID, leaseID, expiry)
 	if _, err := f.CompleteWithArtifacts(context.Background(), finalizationRequestWithArtifact(lease, json.RawMessage(`{"status":"ok"}`), "abc")); err != nil {
 		t.Fatalf("first completion: %v", err)
@@ -208,7 +209,7 @@ func TestE2E_DoubleCompleteDifferentArtifactsReturnsConflict(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalize.New(sqlport.WrapDB(db), nil, noopAssetTx{}, zap.NewNop())
+	f := finalize.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTx{}, zap.NewNop())
 	lease := validLease(jobID, workerID, leaseID, expiry)
 	if _, err := f.CompleteWithArtifacts(context.Background(), finalizationRequestWithArtifact(lease, json.RawMessage(`{"status":"ok"}`), "abc")); err != nil {
 		t.Fatalf("first completion: %v", err)
@@ -225,7 +226,7 @@ func TestE2E_LeaseExpiryFenceSQLGated(t *testing.T) {
 	pastExpiry := time.Now().Add(-10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, pastExpiry)
 
-	f := finalize.New(sqlport.WrapDB(db), nil, noopAssetTx{}, zap.NewNop())
+	f := finalize.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTx{}, zap.NewNop())
 	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, pastExpiry), json.RawMessage(`{"status":"ok"}`), "abc")
 	_, err := f.CompleteWithArtifacts(context.Background(), req)
 	if !errors.Is(err, finalization.ErrLeaseExpired) {
@@ -246,7 +247,7 @@ func TestE2E_LeaseExpiryNullIsAcceptedBySQLGated(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
 
-	f := finalize.New(sqlport.WrapDB(db), nil, noopAssetTx{}, zap.NewNop())
+	f := finalize.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTx{}, zap.NewNop())
 	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, expiry), json.RawMessage(`{"status":"ok"}`), "abc")
 	if _, err := f.CompleteWithArtifacts(context.Background(), req); err != nil {
 		t.Fatalf("first completion: %v", err)

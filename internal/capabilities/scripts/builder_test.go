@@ -97,9 +97,12 @@ func TestBuildGenerateRequest_PropagatesLLMIdentity(t *testing.T) {
 	}
 }
 
-func TestBuildGenerateRequest_FinalJobRemoteForcesRemoteHandoff(t *testing.T) {
+// The envelope has ONE final-render flag: final_job. The retired
+// final_job_remote duplicate must be rejected at decode, and final_job alone
+// must reach the durable request so the Master owns the complete video.
+func TestBuildGenerateRequest_FinalJobForcesRemoteHandoff(t *testing.T) {
 	var env scriptpkg.GenerationEnvelopeV2
-	err := json.Unmarshal([]byte(`{"version":2,"final_job_remote":true,"items":[{"title":"test","language":"en","tone":"playful","style":"short funny social narration","model":"gemma4:e2b","source":{"type":"text","topic":"topic"}}]}`), &env)
+	err := json.Unmarshal([]byte(`{"version":2,"final_job":true,"items":[{"title":"test","language":"en","tone":"playful","style":"short funny social narration","model":"gemma4:e2b","source":{"type":"text","topic":"topic"}}]}`), &env)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,11 +110,12 @@ func TestBuildGenerateRequest_FinalJobRemoteForcesRemoteHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.FinalJobRemote {
-		t.Fatal("final_job_remote was dropped by the builder")
-	}
 	if !got.FinalJob {
-		t.Fatal("final_job_remote must force the remote handoff so the local join never runs")
+		t.Fatal("final_job was dropped by the builder")
+	}
+
+	if _, err := scriptpkg.DecodeGenerationEnvelopeStrict([]byte(`{"version":2,"final_job_remote":true,"items":[]}`)); err == nil {
+		t.Fatal("final_job_remote was retired; a payload still carrying it must fail closed")
 	}
 }
 

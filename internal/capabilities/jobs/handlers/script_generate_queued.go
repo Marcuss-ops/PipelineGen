@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // JobLookup is the narrow read port used to validate that a queued script
@@ -27,14 +27,14 @@ func NewScriptGenerateQueuedHandler(jobs JobLookup) (*ScriptGenerateQueuedHandle
 }
 
 func (h *ScriptGenerateQueuedHandler) EventType() string {
-	return outboxevents.EventScriptGenerateQueued
+	return outbox.EventScriptGenerateQueued
 }
 
 func (h *ScriptGenerateQueuedHandler) IdempotencyKey() string {
-	return outboxevents.EventScriptGenerateQueued + ".job-validate.v1"
+	return outbox.EventScriptGenerateQueued + ".job-validate.v1"
 }
 
-func (h *ScriptGenerateQueuedHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *ScriptGenerateQueuedHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	var payload struct {
 		OperationID string `json:"operation_id"`
 		JobID       string `json:"job_id"`

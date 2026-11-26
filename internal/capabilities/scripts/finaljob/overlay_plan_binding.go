@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -277,7 +278,7 @@ func CloneOverlayPlan(plan *capmodel.OverlayPlan) *capmodel.OverlayPlan {
 //
 // finalJob=false returns a plain copy, so a non-final run binds to the identity
 // of the plan it actually rendered without gaining placement rules it never had.
-func FrozenFinalJobOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResult, finalJob bool) (*capmodel.OverlayPlan, error) {
+func FrozenFinalJobOverlayPlan(plan *capmodel.OverlayPlan, result *contract.GenerateResult, finalJob bool) (*capmodel.OverlayPlan, error) {
 	if plan == nil {
 		return nil, nil
 	}
@@ -312,7 +313,7 @@ func FrozenFinalJobOverlayPlan(plan *capmodel.OverlayPlan, result *GenerateResul
 // and the 3D motion rule assigns a fixed preset, so re-running it (a resumed
 // run, or the plan branch followed by the direct render path) reproduces the
 // same plan and therefore the same digest.
-func FreezeFinalJobOverlayPlans(result *GenerateResult, finalJob bool) error {
+func FreezeFinalJobOverlayPlans(result *contract.GenerateResult, finalJob bool) error {
 	if result == nil {
 		return nil
 	}
@@ -338,7 +339,7 @@ func FreezeFinalJobOverlayPlans(result *GenerateResult, finalJob bool) error {
 
 // OverlayRenderBindsPlan reports whether a persisted reference provably belongs
 // to this plan version. It is the single reuse predicate.
-func OverlayRenderBindsPlan(plan *capmodel.OverlayPlan, ref *RenderReference) bool {
+func OverlayRenderBindsPlan(plan *capmodel.OverlayPlan, ref *contract.RenderReference) bool {
 	return ValidateOverlayPlanRenderBinding(plan, ref) == nil
 }
 
@@ -354,7 +355,7 @@ func OverlayRenderBindsPlan(plan *capmodel.OverlayPlan, ref *RenderReference) bo
 //
 // It never mutates either argument and never repairs silently: repair belongs to
 // RepairFinalJobOverlayCheckpoint, which archives the incompatible reference.
-func ValidateOverlayPlanRenderBinding(plan *capmodel.OverlayPlan, ref *RenderReference) error {
+func ValidateOverlayPlanRenderBinding(plan *capmodel.OverlayPlan, ref *contract.RenderReference) error {
 	if ref == nil {
 		return nil
 	}
@@ -386,7 +387,7 @@ func ValidateOverlayPlanRenderBinding(plan *capmodel.OverlayPlan, ref *RenderRef
 // already fail closed on missing coverage (the final-job handoff and the phrase
 // clip) use it so a legacy, digest-less reference keeps its precise downstream
 // rejection instead of being re-reported as an identity failure.
-func validateOverlayPlanRenderDigest(plan *capmodel.OverlayPlan, ref *RenderReference) error {
+func validateOverlayPlanRenderDigest(plan *capmodel.OverlayPlan, ref *contract.RenderReference) error {
 	if ref == nil {
 		return nil
 	}
@@ -415,7 +416,7 @@ func validateOverlayPlanRenderDigest(plan *capmodel.OverlayPlan, ref *RenderRefe
 
 // overlayRenderManifestEntries projects the reference's manifest entries, or
 // nil when the reference was produced by the per-item / batch paths.
-func overlayRenderManifestEntries(ref *RenderReference) []capmodel.OverlayManifestEntry {
+func overlayRenderManifestEntries(ref *contract.RenderReference) []capmodel.OverlayManifestEntry {
 	if ref == nil || ref.Manifest == nil {
 		return nil
 	}
@@ -430,7 +431,7 @@ func overlayRenderManifestEntries(ref *RenderReference) []capmodel.OverlayManife
 // The second half is the Kaufmann class: renders carried items the plan no
 // longer had, and an ID present in one surface but not the other is proof that
 // the two documents diverged.
-func validateOverlayRenderCoverage(plan *capmodel.OverlayPlan, ref *RenderReference) error {
+func validateOverlayRenderCoverage(plan *capmodel.OverlayPlan, ref *contract.RenderReference) error {
 	if plan == nil || ref == nil {
 		return nil
 	}

@@ -14,8 +14,8 @@ func validConsolidationWire() (*semanticEngineConsolidation, map[string]string, 
 	texts := map[string]string{"s1": "Alpha beta gamma."}
 	bundles := map[string]*scriptgen.SemanticCandidateBundle{
 		"s1": {
-			Identities: []scriptgen.SemanticIdentity{{ID: "ent_alpha"}},
-			Groups:     []scriptgen.SemanticGroup{{ID: "g1", Type: "chronological"}},
+			IdentityIDs: []string{"ent_alpha"},
+			Groups:      []scriptgen.SemanticGroup{{ID: "g1", Type: "chronological"}},
 		},
 	}
 	wire := &semanticEngineConsolidation{

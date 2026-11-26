@@ -2,7 +2,7 @@
 //
 // Publisher worker for the FASE 3 Promote→Publish step of the
 // saga. Drains `artifact.publish_requested.v1` events from the
-// outbox_events table (via outboxevents.HandlerRegistry) and
+// outbox_events table (via outbox.HandlerRegistry) and
 // forwards each event to staging.Store.Stage (the application's
 // canonical staging port). Store.Stage internally performs the
 // TX-aware Repository.InsertWithOutbox (Push 3.1c primitive)
@@ -11,7 +11,7 @@
 //
 // godlike/06 SSOT: this handler is the SOLE canonical consumer
 // of `artifact.publish_requested.v1` events. The composition
-// root registers it exactly once via outboxevents.HandlerRegistry
+// root registers it exactly once via outbox.HandlerRegistry
 // inside BuildOutboxBundle.
 //
 // godlike/07 fail-closed: every failure mode surfaces a typed
@@ -32,7 +32,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	"go.uber.org/zap"
 )
 
@@ -116,10 +116,10 @@ type PublishRequestPayload struct {
 	EventKey string `json:"event_key,omitempty"`
 }
 
-// ── Handler — canonical outboxevents.Handler implementation ─────────────
+// ── Handler — canonical outbox.Handler implementation ─────────────
 
-// Compile-time assertion: *Handler satisfies outboxevents.Handler.
-var _ outboxevents.Handler = (*Handler)(nil)
+// Compile-time assertion: *Handler satisfies outbox.Handler.
+var _ outbox.Handler = (*Handler)(nil)
 
 // Handler is the canonical Promote→Publish worker that
 // drains `artifact.publish_requested.v1` events from the
@@ -185,7 +185,7 @@ func (h *Handler) IdempotencyKey() string {
 // godlike/07 fail-closed: every failure mode surfaces a typed
 // sentinel — the handler does NOT swallow errors. The outbox
 // pool decides retry-vs-drop based on the typed chain.
-func (h *Handler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *Handler) Handle(ctx context.Context, evt outbox.Event) error {
 	var req PublishRequestPayload
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
 		return fmt.Errorf("%w: json decode (raw=%q): %v", ErrInvalidPayload, evt.PayloadJSON, err)

@@ -5,9 +5,10 @@
 // `admin db rotate` (which only covers the observability `api_requests`
 // table, today empty in production):
 //
-//	jobs DB          job_registry_metrics, job_registry_events, job_events
+//	jobs DB          job_registry_metrics, job_registry_events, job_events,
+//	                 job_payloads (terminal jobs only)
 //	observability DB run_observability (cascade → run_*_observations),
-//	                 api_requests
+//	                 run_report_snapshots, replay_bundles, api_requests
 //	media DB         resource_observations, api_requests
 //
 // Two windows are applied:
@@ -97,6 +98,9 @@ func RunDBRetention(ctx context.Context, args []string) error {
 				{Table: "job_registry_metrics", TimeColumn: "created_at", Cutoff: telemetryCutoff},
 				{Table: "job_registry_events", TimeColumn: "created_at", Cutoff: historyCutoff},
 				{Table: "job_events", TimeColumn: "created_at", Cutoff: historyCutoff},
+				// Payloads are pruned only for terminal jobs; an old queued/running
+				// job must keep its request body.
+				{Table: "job_payloads", TimeColumn: "created_at", Cutoff: historyCutoff, TerminalJobOnly: true},
 			},
 		},
 		{
@@ -104,6 +108,8 @@ func RunDBRetention(ctx context.Context, args []string) error {
 			Path: fullCfg.Storage.ObservabilityDBFullPath(),
 			Ops: []storage.RetentionOp{
 				{Table: "run_observability", TimeColumn: "created_at", Cutoff: telemetryCutoff},
+				{Table: "run_report_snapshots", TimeColumn: "captured_at", Cutoff: telemetryCutoff},
+				{Table: "replay_bundles", TimeColumn: "created_at", Cutoff: historyCutoff},
 				{Table: "api_requests", TimeColumn: "ts", Cutoff: telemetryCutoff, TimeFormat: storage.SQLiteTimestampFormat},
 			},
 		},

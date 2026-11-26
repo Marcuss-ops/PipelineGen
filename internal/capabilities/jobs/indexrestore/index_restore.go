@@ -25,7 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // IndexRestoreEventType is the outbox event consumed by IndexRestoreHandler.
@@ -94,14 +94,14 @@ func (h *IndexRestoreHandler) IdempotencyKey() string {
 // Envelope problems are TERMINAL (retrying cannot conjure a missing field);
 // a re-emit failure is retryable, because a transient media-SSOT error is
 // exactly the case the outbox retry budget exists for.
-func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	log := h.log
 	if log == nil {
 		log = zap.NewNop()
 	}
 
 	var req indexRestoreRequestV1
-	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+	if err := outbox.DecodeV1(outbox.DecodePolicy{
 		EventName:         "asset.index.restore_requested",
 		WantSchemaVersion: IndexRestoreRequestSchemaVersion,
 		Log:               log,
@@ -118,11 +118,11 @@ func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outboxevents.Event
 	}
 	if assetID == "" {
 		log.Warn("asset.index.restore_requested: empty asset_id (terminal)", zap.Int64("event_id", evt.ID))
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: asset_id is required", errIndexRestoreTerminal))
+		return outbox.NewTerminalError(fmt.Errorf("%w: asset_id is required", errIndexRestoreTerminal))
 	}
 
 	if h.restorer == nil {
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: restore port is not wired", errIndexRestoreTerminal))
+		return outbox.NewTerminalError(fmt.Errorf("%w: restore port is not wired", errIndexRestoreTerminal))
 	}
 	if err := h.restorer.RestoreIndexedAsset(ctx, assetID); err != nil {
 		log.Warn("asset.index.restore_requested: re-emit index request failed (retryable)",
@@ -138,21 +138,21 @@ func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outboxevents.Event
 	return nil
 }
 
-var _ outboxevents.Handler = (*IndexRestoreHandler)(nil)
+var _ outbox.Handler = (*IndexRestoreHandler)(nil)
 
 // indexRestoreViolation preserves this handler's terminal sentinel while the
-// envelope CHECKS live in outboxevents.DecodeV1.
-func indexRestoreViolation(v outboxevents.Violation) error {
+// envelope CHECKS live in outbox.DecodeV1.
+func indexRestoreViolation(v outbox.Violation) error {
 	switch v.Kind {
-	case outboxevents.ViolationParse:
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: payload parse: %v", errIndexRestoreTerminal, v.Err))
-	case outboxevents.ViolationSchemaVersion:
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: schema_version %q != %q", errIndexRestoreTerminal, v.Got, v.Want))
-	case outboxevents.ViolationEventID:
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: event_id is required", errIndexRestoreTerminal))
-	case outboxevents.ViolationIdempotencyKey:
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: idempotency_key is required", errIndexRestoreTerminal))
+	case outbox.ViolationParse:
+		return outbox.NewTerminalError(fmt.Errorf("%w: payload parse: %v", errIndexRestoreTerminal, v.Err))
+	case outbox.ViolationSchemaVersion:
+		return outbox.NewTerminalError(fmt.Errorf("%w: schema_version %q != %q", errIndexRestoreTerminal, v.Got, v.Want))
+	case outbox.ViolationEventID:
+		return outbox.NewTerminalError(fmt.Errorf("%w: event_id is required", errIndexRestoreTerminal))
+	case outbox.ViolationIdempotencyKey:
+		return outbox.NewTerminalError(fmt.Errorf("%w: idempotency_key is required", errIndexRestoreTerminal))
 	default:
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: %s envelope violation", errIndexRestoreTerminal, v.Kind))
+		return outbox.NewTerminalError(fmt.Errorf("%w: %s envelope violation", errIndexRestoreTerminal, v.Kind))
 	}
 }

@@ -19,6 +19,7 @@ import (
 	segmentcontract "github.com/Marcuss-ops/PipelineGen/internal/kernel/media/finaljob"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	scriptfinaljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
+	kernelrenderqueue "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 )
@@ -104,6 +105,44 @@ func TestImageEffectPreflightUsesLiveRendererCapabilities(t *testing.T) {
 	ready := splitTestAdapter(t, want)
 	if err := ready.CheckFinalJobCapabilities(context.Background(), request); err != nil {
 		t.Fatalf("supported image effect stack failed preflight: %v", err)
+	}
+}
+
+// TestPreflightRejectsGPUOnlyWithoutLiveGPUWorker pins the PipelineGen half of
+// the execution-policy contract: require_gpu: true becomes gpu_only in the
+// queue, and the queue will only hand that job to a worker that advertises the
+// gpu capability. Proving it here — before TTS and media work — turns a job
+// that can never be claimed into an immediate, readable rejection.
+func TestPreflightRejectsGPUOnlyWithoutLiveGPUWorker(t *testing.T) {
+	ctx := context.Background()
+	requireGPU := true
+	request := scriptgen.GenerateRequest{Render: scriptpkg.VideoRenderSpec{RequireGPU: &requireGPU}}
+
+	// A live inventory that advertises renderer effects but no GPU lane is not
+	// proof: the job would sit in the queue forever.
+	withoutGPU := splitTestAdapter(t, []string{"overlay.effect.vignette"})
+	err := withoutGPU.CheckFinalJobCapabilities(ctx, request)
+	if err == nil || !strings.Contains(err.Error(), "EXECUTION_POLICY_INCOMPATIBLE") || !strings.Contains(err.Error(), kernelrenderqueue.CapabilityGPU) {
+		t.Fatalf("gpu_only without a GPU worker error = %v, want EXECUTION_POLICY_INCOMPATIBLE naming the capability", err)
+	}
+
+	// No live capability source at all is "cannot prove", never a pass.
+	unwired := &RemoteFinalJobAdapter{client: remotejob.New("http://127.0.0.1:1", "test-token")}
+	if err := unwired.CheckFinalJobCapabilities(ctx, request); err == nil || !strings.Contains(err.Error(), "EXECUTION_POLICY_INCOMPATIBLE") {
+		t.Fatalf("gpu_only without a capability source error = %v, want EXECUTION_POLICY_INCOMPATIBLE", err)
+	}
+
+	withGPU := splitTestAdapter(t, []string{kernelrenderqueue.CapabilityGPU})
+	if err := withGPU.CheckFinalJobCapabilities(ctx, request); err != nil {
+		t.Fatalf("gpu_only with a GPU worker was rejected: %v", err)
+	}
+
+	// Omitting require_gpu is the historical gpu_preferred behaviour: the
+	// gate must not touch the inventory at all, so an unwired capability
+	// source stays a pass.
+	preferred := scriptgen.GenerateRequest{}
+	if err := unwired.CheckFinalJobCapabilities(ctx, preferred); err != nil {
+		t.Fatalf("gpu_preferred request touched the capability inventory: %v", err)
 	}
 }
 

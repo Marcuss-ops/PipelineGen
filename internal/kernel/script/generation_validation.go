@@ -9,9 +9,24 @@ import (
 // Returns a PlanInvalidError with structured details on failure,
 // or nil when the envelope is structurally valid.
 func (e *GenerationEnvelopeV2) Validate() error {
-	if e.Version != 2 {
+	// Version selects the wire contract: 2 keeps the legacy duplicate
+	// spellings readable (the recorded job corpus replays unchanged), 3 is
+	// the canonical wire where every fact has one owner. Any other value is
+	// rejected instead of being accepted as a decoration nothing reads.
+	if !IsSupportedEnvelopeVersion(e.Version) {
 		return &PlanInvalidError{
-			Details: []string{"version must be 2"},
+			Details: []string{"version must be 2 (legacy) or 3 (canonical); got " + strconv.Itoa(e.Version)},
+		}
+	}
+	// Preset is the endpoint-variant selector. An unknown value used to be
+	// accepted and silently did nothing (61 real job payloads carried
+	// "news", which no build ever implemented), so it is validated here —
+	// the same place version and item shape are.
+	if !e.Preset.IsKnown() {
+		return &PlanInvalidError{
+			Details: []string{
+				"preset " + strconv.Quote(string(e.Preset)) + " is unknown (canonical: " + strings.Join(CanonicalPresets(), ", ") + ", or omit it)",
+			},
 		}
 	}
 	if len(e.Items) == 0 {

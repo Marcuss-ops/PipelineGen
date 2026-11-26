@@ -353,6 +353,8 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		Background:             opts.Background,
 		BackgroundMode:         opts.BackgroundMode,
 		BackgroundKind:         opts.BackgroundKind,
+		BackgroundBlurPX:       opts.BackgroundBlurPX,
+		BackgroundZoom:         opts.BackgroundZoom,
 		ForegroundScalePercent: opts.ForegroundScalePercent,
 		SourceFrame:            opts.SourceFrame,
 		Effects:                opts.Effects,

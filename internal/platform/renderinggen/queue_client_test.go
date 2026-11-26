@@ -545,3 +545,42 @@ func TestToScriptJobCarriesQueueLifecycleTimestamps(t *testing.T) {
 		t.Fatalf("absent timestamps became %v/%v/%v", blank.QueuedAt, blank.StartedAt, blank.CompletedAt)
 	}
 }
+
+// BenchmarkClientSubmit measures the submit path over a loopback queue:
+// request encoding, HTTP POST, and the 201 response classification.
+func BenchmarkClientSubmit(b *testing.B) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"job-1"}`))
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL)
+	job := renderqueue.RenderQueueJob{ID: "job-1", JobType: "overlay.render"}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := client.Submit(context.Background(), job); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkClientGet measures the poll primitive: GET /jobs/{id} and the
+// queue-to-script projection of a completed artifact.
+func BenchmarkClientGet(b *testing.B) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"job-1","state":"completed","artifact":{"id":"art-1","copy_eligible":true}}`))
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := client.Get(context.Background(), "job-1"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

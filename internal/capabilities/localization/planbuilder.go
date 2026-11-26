@@ -59,6 +59,11 @@ type SourceInput struct {
 	Background     *cliprender.MaterializedAsset
 	BackgroundMode string
 	BackgroundKind string
+	// BackgroundBlurPX / BackgroundZoom are the blur_source treatment of the
+	// derived plate. They are explicit only for mode=blur_source; zero keeps
+	// the renderer's certified default.
+	BackgroundBlurPX float64
+	BackgroundZoom   float64
 
 	// ForegroundScalePercent scales the foreground video clip (1..100).
 	ForegroundScalePercent int
@@ -210,6 +215,8 @@ func (b *LocalizationPlanBuilder) Build(ctx context.Context, source SourceInput,
 			Background:             source.Background,
 			BackgroundMode:         source.BackgroundMode,
 			BackgroundKind:         source.BackgroundKind,
+			BackgroundBlurPX:       source.BackgroundBlurPX,
+			BackgroundZoom:         source.BackgroundZoom,
 			ForegroundScalePercent: source.ForegroundScalePercent,
 			SourceFrame:            source.SourceFrame,
 			Effects:                source.Effects,

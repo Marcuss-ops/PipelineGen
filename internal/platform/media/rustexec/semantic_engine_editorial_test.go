@@ -77,15 +77,15 @@ func TestSemanticEngineEditorialUsesOneManifestRequestAndPreservesProducts(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundles, result, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "en", scenes)
+	semanticScript, result, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "en", scenes)
 	if err != nil {
 		t.Fatalf("combined semantic/editorial request failed: %v", err)
 	}
 	if runner.calls != 1 {
 		t.Fatalf("worker calls=%d, want one analyze_script request", runner.calls)
 	}
-	if len(bundles) != 2 || result.Summary != "Grounded summary." || len(result.BulletPoints) != 1 || result.BulletPoints[0] != "Marco Rossi founded the studio." {
-		t.Fatalf("combined result lost semantic or editorial products: bundles=%d result=%+v", len(bundles), result)
+	if len(semanticScript.Scenes) != 2 || result.Summary != "Grounded summary." || len(result.BulletPoints) != 1 || result.BulletPoints[0] != "Marco Rossi founded the studio." {
+		t.Fatalf("combined result lost semantic or editorial products: bundles=%d result=%+v", len(semanticScript.Scenes), result)
 	}
 	if !result.SceneHighlightsCertified || result.Timings.TotalMS != 8 || result.ChapterManifest.SchemaVersion != "chapter_manifest.v1" {
 		t.Fatalf("editorial metadata was not preserved: %+v", result)

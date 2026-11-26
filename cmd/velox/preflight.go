@@ -28,9 +28,7 @@ package main
 // structural-only behaviour when no server is reachable.
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -39,6 +37,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/payloadcheck"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -89,16 +88,27 @@ func cmdPreflight(args []string) int {
 		return emitPreflight(preflightReport{Payload: payloadPath, Bytes: len(raw), Errors: []string{err.Error()}}, fs.has("json"))
 	}
 
-	var env scriptpkg.GenerationEnvelopeV2
-	dec := json.NewDecoder(bytes.NewReader(payload))
-	// Same strictness as POST /api/script/generate: a removed/typoed field is
-	// a 400 at ingress, never silently ignored.
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&env); err != nil {
+	// Same strictness as POST /api/script/generate, through the SAME decoder:
+	// a removed or typoed field is a 400 at ingress, never silently ignored.
+	// The kernel decoder also reaches inside the custom UnmarshalJSON blocks
+	// (output, audio, media_plan), which a plain DisallowUnknownFields decoder
+	// cannot see.
+	env, err := scriptpkg.DecodeGenerationEnvelopeStrict(payload)
+	if err != nil {
 		return emitPreflight(preflightReport{Payload: payloadPath, Bytes: len(payload), Errors: []string{"invalid payload: " + err.Error()}}, fs.has("json"))
 	}
 	report := preflightReport{Payload: payloadPath, Bytes: len(payload), Items: len(env.Items), FinalJob: env.FinalJob}
-	report.Errors = envelopeErrors(&env)
+	report.Errors = envelopeErrors(env)
+	// Version 3 refuses the V2-only duplicate spellings, exactly as the
+	// ingress does; version 2 keeps them readable for the recorded corpus.
+	if reason := scriptpkg.RetiredContractFieldReason(payload, env.Version); reason != "" {
+		report.Errors = append(report.Errors, reason)
+	}
+	// Structural validation cannot see two blocks disagreeing with each
+	// other (explicit_only + entity images, two audio.mode owners, an
+	// oversized phrase budget). Apply the same semantic gate payloadlint
+	// uses, before any Stage 0 asset work.
+	report.Errors = append(report.Errors, payloadcheck.SemanticErrors(env)...)
 	report.structural = len(report.Errors) > 0
 	if len(report.Errors) == 0 {
 		// Stage 0: the body is admissible, now prove the run has what it needs
@@ -110,7 +120,7 @@ func cmdPreflight(args []string) int {
 		if !disk.OK {
 			report.Errors = append(report.Errors, "disk: "+disk.Message)
 		}
-		if reqs := scriptpkg.CollectClipRequirements(&env); len(reqs) > 0 {
+		if reqs := scriptpkg.CollectClipRequirements(env); len(reqs) > 0 {
 			report.Clips = len(reqs)
 			token := strings.TrimSpace(os.Getenv("VELOX_ADMIN_TOKEN"))
 			switch {

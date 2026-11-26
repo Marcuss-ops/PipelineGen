@@ -259,14 +259,6 @@ func (a *ollamaHealthAdapter) CheckOllama(ctx context.Context) error {
 	return nil
 }
 
-// NewOllamaChecker creates an Ollama reachability probe from a
-// CheckHealth-style closure. The composition root wraps the
-// concrete Ollama client health-check method in a closure
-// adapter that matches this signature.
-func NewOllamaChecker(check func(ctx context.Context) bool) OllamaChecker {
-	return &ollamaHealthAdapter{check: check}
-}
-
 // OllamaResidencyReporter is the optional half of the Ollama probe that
 // answers "is the CONFIGURED model actually loaded?". Reachability alone was
 // not enough: the service reported ready and the first job paid a full model

@@ -3,18 +3,18 @@ package assetop
 import (
 	"context"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/driveurl"
 	"go.uber.org/zap"
 )
 
 // ReconcileService provides Drive reconciliation for asset records.
 //
 // FASE 9 Step 7 (June 2026): migrated from *gdrive.Service + *drive.Uploader
-// to drive.Reader port. Uses FileIsNotTrashed (semantically better: a trashed
-// file IS effectively missing from the user's perspective).
+// to the DriveFileState port. Uses FileIsNotTrashed (semantically better: a
+// trashed file IS effectively missing from the user's perspective).
 type ReconcileService struct {
 	store  AssetRecordStore
-	reader drive.Reader
+	reader DriveFileState
 	policy ReconcilePolicy
 	log    *zap.Logger
 }
@@ -22,7 +22,7 @@ type ReconcileService struct {
 // NewReconcileService creates a new ReconcileService.
 func NewReconcileService(
 	store AssetRecordStore,
-	reader drive.Reader,
+	reader DriveFileState,
 	policy ReconcilePolicy,
 	log *zap.Logger,
 ) *ReconcileService {
@@ -141,5 +141,5 @@ func (s *ReconcileService) SyncDriveFileID(ctx context.Context, source string) (
 
 // extractFileIDFromLink extracts the file ID from a Google Drive link.
 func extractFileIDFromLink(link string) string {
-	return drive.FileIDFromLink(link)
+	return driveurl.FileIDFromLink(link)
 }

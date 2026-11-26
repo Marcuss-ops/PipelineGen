@@ -35,7 +35,6 @@
 package script
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -98,10 +97,23 @@ func bindGenerateEnvelope(c *gin.Context, validator *gencore.PayloadValidator) (
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + reason})
 		return nil, false
 	}
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&env); err != nil {
+	// The kernel owns the strict decode (unknown keys INCLUDING those inside
+	// custom UnmarshalJSON blocks), so the API and cmd/payloadlint share one
+	// gate. A key the handler rejects can never pass offline validation.
+	decoded, err := scriptpkg.DecodeGenerationEnvelopeStrict(body)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + friendlyGenerateJSONError(err)})
+		return nil, false
+	}
+	env = *decoded
+
+	// Version 3 is the canonical wire: the V2-only duplicate spellings are
+	// rejected instead of being reinterpreted, so a payload can never carry a
+	// value the runtime silently discards. Version 2 keeps them readable, so
+	// the recorded job corpus still replays byte-identically. The rule lives in
+	// the kernel so payloadlint and velox preflight reach the same verdict.
+	if reason := scriptpkg.RetiredContractFieldReason(body, env.Version); reason != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + reason})
 		return nil, false
 	}
 
@@ -146,6 +158,12 @@ func friendlyGenerateJSONError(err error) string {
 	message := err.Error()
 	if strings.Contains(message, `unknown field "render"`) {
 		return message + `; use items[].output.render`
+	}
+	// drive_subfolder_name is an output.render key. Callers put it directly on
+	// output (62 of the recorded job payloads did), which is now a 400, so name
+	// the canonical path instead of leaving them to diff the schema doc.
+	if strings.Contains(message, `unknown field "drive_subfolder_name"`) {
+		return message + `; use items[].output.render.drive_subfolder_name`
 	}
 	return message
 }

@@ -44,33 +44,19 @@ func (c SemanticProductionPlanConfig) normalized() SemanticProductionPlanConfig 
 	return c
 }
 
-// ScriptConsolidationFromBundles returns the shared script-level consolidation
-// projection carried by every scene bundle, or nil when the worker predates it.
-func ScriptConsolidationFromBundles(bundles map[string]*SemanticCandidateBundle) *contract.SemanticVisualConsolidation {
-	for _, bundle := range bundles {
-		if bundle != nil && bundle.Consolidation != nil {
-			return bundle.Consolidation
-		}
-	}
-	return nil
-}
-
-// ScriptSearchFeedbackFromBundles returns the shared engine handshake.
-func ScriptSearchFeedbackFromBundles(bundles map[string]*SemanticCandidateBundle) *contract.SemanticSearchFeedback {
-	for _, bundle := range bundles {
-		if bundle != nil && bundle.SearchFeedback != nil {
-			return bundle.SearchFeedback
-		}
-	}
-	return nil
-}
-
 // PlanScriptProduction turns one analysed batch into the planner-owned view:
 // the consolidated projection, its executable plan and the search feedback the
 // plan currently reports. A worker without the consolidation projection yields
 // nils, so older deployments keep their existing planning unchanged.
-func PlanScriptProduction(bundles map[string]*SemanticCandidateBundle, configs ...SemanticProductionPlanConfig) (*contract.SemanticVisualConsolidation, *contract.SemanticProductionPlan, *contract.SemanticSearchFeedback, error) {
-	consolidation := ScriptConsolidationFromBundles(bundles)
+//
+// The script-level identity registry is read exactly once from the result. It
+// is never re-merged from the scene bundles, which now carry only referenced
+// ids.
+func PlanScriptProduction(result *ScriptSemanticResult, configs ...SemanticProductionPlanConfig) (*contract.SemanticVisualConsolidation, *contract.SemanticProductionPlan, *contract.SemanticSearchFeedback, error) {
+	if result == nil {
+		return nil, nil, nil, nil
+	}
+	consolidation := result.Consolidation
 	if consolidation == nil {
 		return nil, nil, nil, nil
 	}
@@ -78,37 +64,13 @@ func PlanScriptProduction(bundles map[string]*SemanticCandidateBundle, configs .
 	if len(configs) > 0 {
 		config = configs[0]
 	}
-	plan, err := BuildSemanticProductionPlan(consolidation, SemanticIdentitiesFromBundles(bundles), config)
+	plan, err := BuildSemanticProductionPlan(consolidation, result.Identities, config)
 	if err != nil {
 		// The consolidation itself stays visible for audit; only the executable
 		// plan is withheld, because a broken plan must never drive a render.
 		return consolidation, nil, nil, err
 	}
 	return consolidation, plan, plan.SearchFeedback(), nil
-}
-
-// SemanticIdentitiesFromBundles merges the cross-scene identity registry. Every
-// scene bundle carries the registry as known at that scene, so the merge is
-// idempotent and the last occurrence wins.
-func SemanticIdentitiesFromBundles(bundles map[string]*SemanticCandidateBundle) []contract.SemanticIdentity {
-	byID := make(map[string]contract.SemanticIdentity)
-	for _, bundle := range bundles {
-		if bundle == nil {
-			continue
-		}
-		for _, identity := range bundle.Identities {
-			if strings.TrimSpace(identity.ID) == "" {
-				continue
-			}
-			byID[identity.ID] = identity
-		}
-	}
-	out := make([]contract.SemanticIdentity, 0, len(byID))
-	for _, identity := range byID {
-		out = append(out, identity)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
 }
 
 // BuildSemanticProductionPlan applies the run budget to the consolidated view.
@@ -127,21 +89,10 @@ func BuildSemanticProductionPlan(consolidation *contract.SemanticVisualConsolida
 	for _, identity := range identities {
 		knownIdentities[identity.ID] = identity
 	}
+	// BrainRust already ranked and ordered the candidates editorially. Go owns
+	// availability and budget only: it must never rewrite semantic importance,
+	// so the engine order is preserved verbatim.
 	candidates := append([]contract.SemanticProductionCandidate(nil), consolidation.ProductionCandidates...)
-	sort.SliceStable(candidates, func(i, j int) bool {
-		leftScore := semanticPlannerPriority(candidates[i], knownIdentities)
-		rightScore := semanticPlannerPriority(candidates[j], knownIdentities)
-		if leftScore != rightScore {
-			return leftScore > rightScore
-		}
-		if candidates[i].Rank != candidates[j].Rank {
-			return candidates[i].Rank < candidates[j].Rank
-		}
-		if candidates[i].SceneID != candidates[j].SceneID {
-			return candidates[i].SceneID < candidates[j].SceneID
-		}
-		return candidates[i].ID < candidates[j].ID
-	})
 
 	plan := &contract.SemanticProductionPlan{
 		Schema:           SemanticProductionPlanSchema,
@@ -177,7 +128,7 @@ func BuildSemanticProductionPlan(consolidation *contract.SemanticVisualConsolida
 		}
 		unit := generationcontract.SemanticProductionUnit{
 			CandidateID: candidate.ID, Recipe: candidate.Recipe, Rank: candidate.Rank,
-			Priority:  semanticPlannerPriority(candidate, knownIdentities),
+			Priority:  candidate.Priority,
 			SceneID:   candidate.SceneID,
 			SceneIDs:  append([]string(nil), candidate.SceneIDs...),
 			EntityIDs: append([]string(nil), candidate.EntityIDs...),
@@ -477,39 +428,4 @@ func unitHasCallerQuery(unit *generationcontract.SemanticProductionUnit) bool {
 		}
 	}
 	return false
-}
-
-// semanticPlannerPriority gives a source-grounded composed query a chance to
-// compete as the visual event it describes. Rust assigns a base priority to
-// the owning identity; this final planner pass considers the actual query rung
-// before spending a scarce media slot. An isolated one-word identity remains
-// available as a fallback, but does not beat a well-grounded composition just
-// because its identity score was slightly higher.
-func semanticPlannerPriority(candidate contract.SemanticProductionCandidate, identities map[string]contract.SemanticIdentity) float64 {
-	priority := candidate.Priority
-	if slices.Contains(candidate.Rationale, "global_document_anchor") {
-		return priority
-	}
-	if candidate.Recipe != "entity_search" || len(candidate.Queries) == 0 {
-		return priority
-	}
-	query := candidate.Queries[0]
-	if query.Origin == "derived_from_source_context" && strings.TrimSpace(query.Evidence) != "" && len(query.Components) >= 2 {
-		owner := normalizeIdentitySurface(candidate.Title)
-		for _, entityID := range candidate.EntityIDs {
-			if identity, ok := identities[entityID]; ok && normalizeIdentitySurface(identity.CanonicalSurface) != "" {
-				owner = normalizeIdentitySurface(identity.CanonicalSurface)
-				break
-			}
-		}
-		for _, component := range query.Components {
-			if normalizeIdentitySurface(component.Text) == owner {
-				return min(priority+0.2, 0.97)
-			}
-		}
-	}
-	if len(strings.Fields(strings.TrimSpace(query.Text))) == 1 {
-		return priority * 0.82
-	}
-	return priority
 }

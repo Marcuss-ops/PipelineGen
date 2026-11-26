@@ -35,10 +35,12 @@ func planConsolidation(candidates []SemanticProductionCandidate, facts []Semanti
 func TestSemanticProductionPlanAppliesTheRunBudgetDeterministically(t *testing.T) {
 	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	sempio := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Andrea Sempio"}
+	// The engine emits candidates already ranked and ordered; Go preserves that
+	// order and only applies the media budget.
 	consolidation := planConsolidation([]SemanticProductionCandidate{
-		planCandidate("vc_0003", "entity_search", "s03", 3, []string{"person_02"}, "entity:person_02", sempio),
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 		planCandidate("vc_0002", "timeline", "s02", 2, nil, "timeline:g1"),
+		planCandidate("vc_0003", "entity_search", "s03", 3, []string{"person_02"}, "entity:person_02", sempio),
 	}, nil)
 	plan, err := BuildSemanticProductionPlan(consolidation, planIdentities(), SemanticProductionPlanConfig{MaxMediaUnits: 1, MaxMediaUnitsPerScene: 2})
 	if err != nil {
@@ -68,7 +70,7 @@ func TestSemanticProductionPlanAppliesTheRunBudgetDeterministically(t *testing.T
 	}
 }
 
-func TestGroundedContextQueryWinsScarceSlotOverBareEntity(t *testing.T) {
+func TestGoPreservesTheEngineEditorialOrder(t *testing.T) {
 	contextual := generationcontract.SemanticSearchQuery{
 		Kind: "context_phrase", Text: "Andrea Sempio treatment plant Toledo",
 		Origin: "derived_from_source_context", Evidence: "Andrea Sempio described a treatment plant in Toledo.",
@@ -91,11 +93,16 @@ func TestGroundedContextQueryWinsScarceSlotOverBareEntity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan build failed: %v", err)
 	}
-	if got := plan.Units[0].CandidateID; got != "vc_context" {
-		t.Fatalf("grounded context should take the only media slot, got %s", got)
+	// BrainRust owns editorial ranking. Even though the second candidate is a
+	// well-grounded composition, Go must not promote it over the engine order.
+	if got := plan.Units[0].CandidateID; got != "vc_bare" {
+		t.Fatalf("Go must keep the engine order, got first unit %s", got)
+	}
+	if got := plan.Units[0].Priority; got != 0.82 {
+		t.Fatalf("Go must carry the engine priority verbatim, got %v", got)
 	}
 	if plan.Units[1].Status != ProductionUnitDroppedBudget {
-		t.Fatalf("bare identity should remain available after the slot is spent: %+v", plan.Units[1])
+		t.Fatalf("the second engine candidate waits for the next slot: %+v", plan.Units[1])
 	}
 }
 
@@ -136,8 +143,12 @@ func TestDocumentAnchorKeepsItsCrossScenePriority(t *testing.T) {
 		generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Toledo", Origin: "literal"})
 	anchor.Priority = 0.93
 	anchor.Rationale = []string{"global_document_anchor"}
-	if got := semanticPlannerPriority(anchor, nil); got != 0.93 {
-		t.Fatalf("document anchor priority was changed: %v", got)
+	plan, err := BuildSemanticProductionPlan(planConsolidation([]SemanticProductionCandidate{anchor}, nil), nil, DefaultSemanticProductionPlanConfig())
+	if err != nil {
+		t.Fatalf("plan build failed: %v", err)
+	}
+	if len(plan.Units) != 1 || plan.Units[0].Priority != 0.93 {
+		t.Fatalf("document anchor priority was changed: %+v", plan.Units)
 	}
 }
 
@@ -223,11 +234,12 @@ func TestPlanScriptProductionCarriesTheConsolidatedViewAndFeedback(t *testing.T)
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 	}, nil)
-	bundles := map[string]*SemanticCandidateBundle{
-		"s01": {Identities: planIdentities(), Consolidation: consolidation},
-		"s02": {Identities: planIdentities(), Consolidation: consolidation},
+	result := &ScriptSemanticResult{
+		Identities:    planIdentities(),
+		Consolidation: consolidation,
+		Scenes:        map[string]*SemanticCandidateBundle{"s01": {}, "s02": {}},
 	}
-	view, plan, feedback, err := PlanScriptProduction(bundles)
+	view, plan, feedback, err := PlanScriptProduction(result)
 	if err != nil {
 		t.Fatalf("script planning failed: %v", err)
 	}
@@ -240,7 +252,7 @@ func TestPlanScriptProductionCarriesTheConsolidatedViewAndFeedback(t *testing.T)
 	if len(feedback.Entries) != 1 || feedback.Entries[0].ProposalID != "vc_0001" || feedback.Entries[0].Status != "pending" {
 		t.Fatalf("planner feedback must stay in the engine contract: %+v", feedback.Entries)
 	}
-	if view, plan, feedback, err := PlanScriptProduction(map[string]*SemanticCandidateBundle{"s01": {}}); err != nil || view != nil || plan != nil || feedback != nil {
+	if view, plan, feedback, err := PlanScriptProduction(&ScriptSemanticResult{Scenes: map[string]*SemanticCandidateBundle{"s01": {}}}); err != nil || view != nil || plan != nil || feedback != nil {
 		t.Fatalf("a worker without the projection must keep planning unchanged: %v %v %v %v", view, plan, feedback, err)
 	}
 }
@@ -277,13 +289,17 @@ func TestAdoptSemanticPlannerViewRecordsThePlan(t *testing.T) {
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 	}, nil)
-	bundles := map[string]*SemanticCandidateBundle{"s01": {Identities: planIdentities(), Consolidation: consolidation}}
+	result := &ScriptSemanticResult{
+		Identities:    planIdentities(),
+		Consolidation: consolidation,
+		Scenes:        map[string]*SemanticCandidateBundle{"s01": {}},
+	}
 	runner := &Runner{}
 	out := &phraseImpactEnrichment{}
 	req := GenerateRequest{MediaPlan: mediadomain.MediaPlanSpec{Searches: []mediadomain.SegmentMediaSearch{{
 		SegmentID: "s01", Slot: mediadomain.SlotSecondaryImage, Query: "Alberto Stasi trial Milan",
 	}}}}
-	runner.adoptSemanticPlannerView(out, bundles, req)
+	runner.adoptSemanticPlannerView(out, result, req)
 	if out.consolidation != consolidation || out.productionPlan == nil || out.searchFeedback == nil {
 		t.Fatalf("the enrichment must carry the planner view: %+v", out)
 	}

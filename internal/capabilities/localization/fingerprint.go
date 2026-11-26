@@ -129,9 +129,11 @@ func watermarkFingerprint(plan LocalizedClipPlan) string {
 	}, "\x1f")
 }
 
-// backgroundFingerprint folds the background selection: the mode plus (for
-// mode=asset) the content-addressed asset identity. It is part of the digest
-// because the rendered bytes change with the background.
+// backgroundFingerprint folds the background selection: the mode, (for
+// mode=asset) the content-addressed asset identity, and (for mode=blur_source)
+// the blurred-plate treatment. It is part of the digest because the rendered
+// bytes change with every one of them: a changed blur radius must address a
+// different render instead of reusing the plate rendered with the old one.
 func backgroundFingerprint(plan LocalizedClipPlan) string {
 	mode := strings.TrimSpace(plan.BackgroundMode)
 	if mode == "" {
@@ -141,11 +143,20 @@ func backgroundFingerprint(plan LocalizedClipPlan) string {
 	if plan.Background != nil {
 		assetID, sha = plan.Background.AssetID, plan.Background.SHA256
 	}
-	return strings.Join([]string{
+	parts := []string{
 		mode,
 		strings.TrimSpace(assetID),
 		strings.TrimSpace(sha),
-	}, "\x1f")
+	}
+	// Only the derived plate has a treatment. Folding zeros for none/asset
+	// would change every existing fingerprint without changing any pixel.
+	if mode == cliprender.BackgroundModeBlurSource {
+		parts = append(parts,
+			fmt.Sprintf("blur:%.6f", plan.BackgroundBlurPX),
+			fmt.Sprintf("zoom:%.6f", plan.BackgroundZoom),
+		)
+	}
+	return strings.Join(parts, "\x1f")
 }
 
 // sourceFrameFingerprint folds the clip card declaration. The frame changes

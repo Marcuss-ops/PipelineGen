@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // WorkflowStepCompletedHandler logs every workflow step completion as a
@@ -28,15 +28,15 @@ func NewWorkflowStepCompletedHandler(log *zap.Logger) *WorkflowStepCompletedHand
 
 // EventType returns "workflow.step.completed".
 func (h *WorkflowStepCompletedHandler) EventType() string {
-	return outboxevents.EventWorkflowStepCompleted
+	return outbox.EventWorkflowStepCompleted
 }
 
-// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2).
+// IdempotencyKey implements outbox.Handler (Fase 6(c) Push 6.2).
 // Static canonical form: `<event_type>.audit.v1` — schema_version literal
 // is implicit (audit-only payload shape, not versioned). Operator can
 // identify the handler class by the shape.
 func (h *WorkflowStepCompletedHandler) IdempotencyKey() string {
-	return outboxevents.EventWorkflowStepCompleted + ".audit.v1"
+	return outbox.EventWorkflowStepCompleted + ".audit.v1"
 }
 
 // workflowStepPayload is the schema of workflow.step.* payloads.
@@ -54,7 +54,7 @@ type workflowStepPayload struct {
 // Handle parses the event payload and emits a structured audit log.
 // Returns nil on parse success — the event is MarkedCompleted. Returns
 // an error on malformed JSON so the event goes through retry/dead_letter.
-func (h *WorkflowStepCompletedHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *WorkflowStepCompletedHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	var p workflowStepPayload
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &p); err != nil {
 		h.log.Warn("workflow.step.completed payload parse failed — sending to retry",

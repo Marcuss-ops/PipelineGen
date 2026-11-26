@@ -187,18 +187,6 @@ func (a *ScriptParentAggregator) Start(ctx context.Context) {
 // Tick performs one aggregation sweep. Errors on individual parents are
 // logged and skipped — a failed parent is retried on the next tick.
 func (a *ScriptParentAggregator) Tick(ctx context.Context) {
-	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, jobscheduling.TypeScriptGenerate, 100)
-	if err != nil {
-		a.deps.Logger.Error("ScriptParentAggregator.Tick: ListAwaitingAggregation failed", zap.Error(err))
-		return
-	}
-	if len(jobs) == 0 {
-		return
-	}
-	for _, j := range jobs {
-		if err := a.aggregateOne(ctx, j); err != nil {
-			a.deps.Logger.Warn("ScriptParentAggregator.Tick: aggregateOne failed",
-				zap.String("parent_job_id", j.ID), zap.Error(err))
-		}
-	}
+	jobscheduling.RunParentAggregationSweep(ctx, a.deps.Logger, "ScriptParentAggregator",
+		jobscheduling.TypeScriptGenerate, a.deps.JobsSvc.ListAwaitingAggregation, a.aggregateOne)
 }

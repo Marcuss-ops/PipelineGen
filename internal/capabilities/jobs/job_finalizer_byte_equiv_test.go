@@ -50,6 +50,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	fin "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
@@ -192,7 +193,7 @@ func TestByteEquiv_HappyPath_SingleRequiredArtifact(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJobIdempotent(t, db, jobID, workerID, leaseID, expiry, 0)
 
-	f := fin.New(sqlport.WrapDB(db), nil, noopAssetTxByteEquiv{}, nil)
+	f := fin.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTxByteEquiv{}, nil)
 
 	res, err := f.CompleteWithArtifacts(context.Background(), finalization.FinalizationRequest{
 		Lease: finalization.Lease{
@@ -302,7 +303,7 @@ func TestByteEquiv_MultiArtifact_RequiredPlusOptional(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJobIdempotent(t, db, jobID, workerID, leaseID, expiry, 0)
 
-	f := fin.New(sqlport.WrapDB(db), nil, noopAssetTxByteEquiv{}, nil)
+	f := fin.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTxByteEquiv{}, nil)
 
 	res, err := f.CompleteWithArtifacts(context.Background(), finalization.FinalizationRequest{
 		Lease: finalization.Lease{
@@ -382,7 +383,7 @@ func TestByteEquiv_IdempotentReplay_NoRewrite(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJobIdempotent(t, db, jobID, workerID, leaseID, expiry, 0)
 
-	f := fin.New(sqlport.WrapDB(db), nil, noopAssetTxByteEquiv{}, nil)
+	f := fin.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTxByteEquiv{}, nil)
 	req := finalization.FinalizationRequest{
 		Lease: finalization.Lease{
 			LeaseID: leaseID, JobID: jobID, WorkerID: workerID,
@@ -444,7 +445,7 @@ func TestByteEquiv_ConflictDifferentResult(t *testing.T) {
 	expiry := time.Now().Add(10 * time.Minute)
 	insertRunningJobIdempotent(t, db, jobID, workerID, leaseID, expiry, 0)
 
-	f := fin.New(sqlport.WrapDB(db), nil, noopAssetTxByteEquiv{}, nil)
+	f := fin.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTxByteEquiv{}, nil)
 
 	reqA := finalization.FinalizationRequest{
 		Lease: finalization.Lease{
@@ -505,7 +506,7 @@ func TestByteEquiv_LeaseExpiredPreValidation(t *testing.T) {
 	pastExpiry := time.Now().Add(-10 * time.Minute)
 	insertRunningJobIdempotent(t, db, jobID, workerID, leaseID, pastExpiry, 0)
 
-	f := fin.New(sqlport.WrapDB(db), nil, noopAssetTxByteEquiv{}, nil)
+	f := fin.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTxByteEquiv{}, nil)
 
 	_, err := f.CompleteWithArtifacts(context.Background(), finalization.FinalizationRequest{
 		Lease: finalization.Lease{
@@ -551,7 +552,7 @@ func TestByteEquiv_StaleAttempt(t *testing.T) {
 	// retry_count = 2 → expected attempt is 3. Send attempt=1 (stale).
 	insertRunningJobIdempotent(t, db, jobID, workerID, leaseID, expiry, 2)
 
-	f := fin.New(sqlport.WrapDB(db), nil, noopAssetTxByteEquiv{}, nil)
+	f := fin.New(sqlport.WrapDB(db), outboxevents.NewRepository(sqlport.WrapDB(db)), noopAssetTxByteEquiv{}, nil)
 
 	_, err := f.CompleteWithArtifacts(context.Background(), finalization.FinalizationRequest{
 		Lease: finalization.Lease{

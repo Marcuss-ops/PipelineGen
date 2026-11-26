@@ -12,6 +12,7 @@ import (
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,6 +51,9 @@ func localizedResumeInput(runID, sceneID, clipID string, lang Language) Localize
 		Text: "caption for " + string(lang), SourceLanguage: "en", SourceText: "source caption",
 		ClipID: clipID, ClipAssetID: clipID, ClipSHA256: strings.Repeat("c", 64), ClipDurationMS: 5000,
 		Voiceover: AudioReference{ID: "vo-" + sceneID + "-" + string(lang), Duration: 5},
+		// A resume fixture is a requested local render: the enqueue helper
+		// must not treat it as the audio-only/timeline no-op path.
+		Render: scriptpkg.VideoRenderSpec{Enabled: true},
 	}
 }
 

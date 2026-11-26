@@ -3,9 +3,12 @@ package finaljob
 import (
 	"fmt"
 	"sort"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runstate"
 )
 
-const OverlayRepairStage = StageCompilingAudio
+const OverlayRepairStage = runstate.StageCompilingAudio
 
 // FinalJobOverlayCheckpointRepair is the audit record of one repair. It is
 // deliberately explicit: an operator must be able to see WHICH identity broke
@@ -14,7 +17,7 @@ type FinalJobOverlayCheckpointRepair struct {
 	// Repaired reports that an incompatible reference was archived and cleared.
 	Repaired bool
 	// Archived is the reference that was moved to OverlayRenderHistory.
-	Archived *RenderReference
+	Archived *contract.RenderReference
 	// Reasons are the binding violations that justified the repair.
 	Reasons []string
 	// DroppedLocalized lists the target languages whose render was also
@@ -22,7 +25,7 @@ type FinalJobOverlayCheckpointRepair struct {
 	DroppedLocalized []string
 	// ResumeStage is the stage the caller must replay so the cleared languages
 	// are actually rendered again.
-	ResumeStage Stage
+	ResumeStage runstate.Stage
 }
 
 // RepairFinalJobOverlayCheckpoint archives overlay renders that do not bind to
@@ -37,7 +40,7 @@ type FinalJobOverlayCheckpointRepair struct {
 //     valid translation render survives a source-language repair;
 //   - every other field of the result (scenes, segments, FinalAudio, TTS and
 //     the certified segment renders) is untouched by construction.
-func RepairFinalJobOverlayCheckpoint(result *GenerateResult) FinalJobOverlayCheckpointRepair {
+func RepairFinalJobOverlayCheckpoint(result *contract.GenerateResult) FinalJobOverlayCheckpointRepair {
 	report := FinalJobOverlayCheckpointRepair{ResumeStage: OverlayRepairStage}
 	if result == nil {
 		return report
@@ -70,7 +73,7 @@ func RepairFinalJobOverlayCheckpoint(result *GenerateResult) FinalJobOverlayChec
 	sort.Strings(languages)
 	dropped := make([]string, 0, len(languages))
 	for _, raw := range languages {
-		language := Language(raw)
+		language := contract.Language(raw)
 		ref := result.LocalizedOverlayRenders[language]
 		plan := result.LocalizedOverlayPlans[language]
 		reason := ""
@@ -106,12 +109,12 @@ func RepairFinalJobOverlayCheckpoint(result *GenerateResult) FinalJobOverlayChec
 // stage is kept; a run that failed later (Kaufmann failed at
 // PUBLISHING_DOCUMENTS) must be moved back, because no phase after
 // COMPILING_AUDIO ever re-enters the overlay render.
-func OverlayResumeStageAfterRepair(resumeStage Stage, report FinalJobOverlayCheckpointRepair) Stage {
+func OverlayResumeStageAfterRepair(resumeStage runstate.Stage, report FinalJobOverlayCheckpointRepair) runstate.Stage {
 	if !report.Repaired {
 		return resumeStage
 	}
-	replay := StageIndex(report.ResumeStage)
-	current := StageIndex(resumeStage)
+	replay := runstate.StageIndex(report.ResumeStage)
+	current := runstate.StageIndex(resumeStage)
 	if current >= 0 && current <= replay {
 		return resumeStage
 	}

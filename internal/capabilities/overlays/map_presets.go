@@ -63,12 +63,3 @@ func LookupMapPreset(id string) (MapPreset, bool) {
 	}
 	return MapPreset{}, false
 }
-
-// MapPresetIDs lists the certified preset ids in catalog order.
-func MapPresetIDs() []string {
-	ids := make([]string, 0, len(mapPresets))
-	for _, preset := range mapPresets {
-		ids = append(ids, preset.ID)
-	}
-	return ids
-}

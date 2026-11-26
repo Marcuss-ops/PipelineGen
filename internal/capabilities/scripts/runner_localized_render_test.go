@@ -102,6 +102,7 @@ func TestRunner_LocalizedRenderResumePublishesStagedChrononOutput(t *testing.T) 
 	err := runner.enqueueLocalizedRender(context.Background(), LocalizedRenderInput{
 		RunID: "run-recovery", SceneID: staged.SceneID, Language: staged.Language,
 		ClipID: staged.ClipID, ClipAssetID: staged.ClipID,
+		Render:     scriptpkg.VideoRenderSpec{Enabled: true},
 		ResumeFrom: &staged,
 	})
 	require.NoError(t, err)
@@ -316,4 +317,44 @@ func TestRunner_LocalizedRenderFanout_RecordsLocalVideo(t *testing.T) {
 	require.NotNil(t, final.Result, "run result must be populated")
 	require.GreaterOrEqual(t, len(final.Result.LocalizedRenders), 3, "local Chronon renders should be recorded")
 	require.Empty(t, final.Result.LocalizedRenderFailures, "the local render lane must record no render failures")
+}
+
+// TestEnqueueLocalizedRenderFailsClosedWithoutEnqueuer pins the wiring
+// contract: a missing enqueuer is a typed composition error, not a silent
+// no-op that only surfaces as INCOMPLETE_RENDER_SET at the end of the run.
+func TestEnqueueLocalizedRenderFailsClosedWithoutEnqueuer(t *testing.T) {
+	runner, _, _, _, _, _ := newTestRunner()
+	err := runner.enqueueLocalizedRender(context.Background(), LocalizedRenderInput{
+		Render: scriptpkg.VideoRenderSpec{Enabled: true},
+	})
+	require.ErrorIs(t, err, ErrLocalizedRendererNotWired)
+}
+
+// TestEnqueueLocalizedRenderSkipsNonRenderRuns pins the complement: an
+// audio-only/timeline scene may own a clip, but it never asked for a video,
+// so the absent renderer is not an error.
+func TestEnqueueLocalizedRenderSkipsNonRenderRuns(t *testing.T) {
+	runner, _, _, _, _, _ := newTestRunner()
+	require.NoError(t, runner.enqueueLocalizedRender(context.Background(), LocalizedRenderInput{}))
+}
+
+// TestSetSceneRenderExpectationsRequiresEnqueuer pins the preflight: a
+// render-enabled source-clip run with an expected render unit must refuse to
+// start the fan-out when the localized renderer is not wired.
+func TestSetSceneRenderExpectationsRequiresEnqueuer(t *testing.T) {
+	runner, _, _, _, _, _ := newTestRunner()
+	req := defaultTestRequest()
+	req.Source.Type = SourceClips
+	req.Source.ClipIDs = []string{"clip-0"}
+	req.Render.Enabled = true
+	scenes := []Scene{{ID: "scene-0", Index: 0, Clip: &ClipReference{ID: "clip-0"}}}
+	result := &GenerateResult{}
+
+	err := runner.setSceneRenderExpectations(req, scenes, result)
+	require.ErrorIs(t, err, ErrLocalizedRendererNotWired)
+	require.Equal(t, 1, result.ExpectedRenderCount, "the preflight must still record the expected unit")
+
+	runner.SetLocalizedRenderEnqueuer(&recordingLocalizedRenderEnqueuer{})
+	require.NoError(t, runner.setSceneRenderExpectations(req, scenes, result))
+	require.Equal(t, 1, result.ExpectedRenderCount)
 }

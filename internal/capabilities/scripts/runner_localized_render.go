@@ -17,11 +17,17 @@ import (
 // the input with the values they already hold (under the per-unit lock when
 // the unit's maps are shared across workers) so this helper performs no map
 // reads of its own.
-// enqueueLocalizedRender emits one localized render for a ready (scene,
-// language) unit.
 func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRenderInput) error {
-	if r == nil || r.localizedRenderEnqueuer == nil {
+	if r == nil {
+		return fmt.Errorf("localized render: runner is nil")
+	}
+	// A run that did not request a render is a no-op; the preflight already
+	// rejects a render-enabled clip run whose enqueuer is absent.
+	if !localizedRenderRequested(input.Render) {
 		return nil
+	}
+	if r.localizedRenderEnqueuer == nil {
+		return ErrLocalizedRendererNotWired
 	}
 	prepared, err := r.prepareLocalizedRenderInput(ctx, input, false)
 	if err != nil {

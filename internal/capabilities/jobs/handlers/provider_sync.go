@@ -55,7 +55,7 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 const (
@@ -134,9 +134,9 @@ func NewProviderSyncHandler(log *zap.Logger, jobs JobsEnqueuer) *ProviderSyncHan
 	return &ProviderSyncHandler{log: log.Named("provider_sync"), jobs: jobs}
 }
 
-// EventType implements outboxevents.Handler.
+// EventType implements outbox.Handler.
 func (h *ProviderSyncHandler) EventType() string {
-	return outboxevents.EventProviderSyncRequested
+	return outbox.EventProviderSyncRequested
 }
 
 // IdempotencyKey declares the canonical handler-level idempotency
@@ -146,7 +146,7 @@ func (h *ProviderSyncHandler) EventType() string {
 // forgets the declaration. Mirrors IndexingHandler.IdempotencyKey
 // (godlike/06 SSOT — one canonical owner per fact).
 func (h *ProviderSyncHandler) IdempotencyKey() string {
-	return outboxevents.EventProviderSyncRequested + "." + providerSyncSchemaVersion
+	return outbox.EventProviderSyncRequested + "." + providerSyncSchemaVersion
 }
 
 func (h *ProviderSyncHandler) validate(r *providerSyncRequest) error {
@@ -191,7 +191,7 @@ func (h *ProviderSyncHandler) validate(r *providerSyncRequest) error {
 
 // Handle parses the v1 envelope, dispatches by provider, and returns
 // nil only when the per-provider action has completed.
-func (h *ProviderSyncHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *ProviderSyncHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	var req providerSyncRequest
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
 		h.log.Warn("provider.sync.requested payload parse failed (terminal)",
@@ -249,7 +249,7 @@ func (h *ProviderSyncHandler) Handle(ctx context.Context, evt outboxevents.Event
 // the outbox pool retries per its backoff. NEVER mark Completed when
 // we don't know whether the work actually started — that's how sync
 // requests silently disappear in production.
-func (h *ProviderSyncHandler) dispatchToJobs(ctx context.Context, evt outboxevents.Event, req *providerSyncRequest) error {
+func (h *ProviderSyncHandler) dispatchToJobs(ctx context.Context, evt outbox.Event, req *providerSyncRequest) error {
 	if h.jobs == nil {
 		h.log.Warn("provider.sync.requested has no jobs.Service wired — refusing as retryable",
 			zap.String("provider", req.Provider),

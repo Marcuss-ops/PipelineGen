@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -89,14 +89,14 @@ func (h *DriveDeleteHandler) advanceDriveDelete(
 
 	nextEventKey := "delete:" + req.AssetID
 	log.Info("drive_delete: advancing to DRIVE_DELETED + emitting index.delete_requested event",
-		append(reqLog, zap.String("next_event_type", outboxevents.EventAssetIndexDeleteRequested))...,
+		append(reqLog, zap.String("next_event_type", outbox.EventAssetIndexDeleteRequested))...,
 	)
 	if err := h.advancer.AdvanceAndEmit(
 		ctx,
 		req.AssetID,
 		asset.StateDriveDeletePending,
 		asset.StateDriveDeleted,
-		outboxevents.EventAssetIndexDeleteRequested,
+		outbox.EventAssetIndexDeleteRequested,
 		nextPayload,
 		nextEventKey,
 	); err != nil {

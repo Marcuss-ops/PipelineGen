@@ -262,28 +262,6 @@ func (e *QueueRenderEnqueuer) renderStallAfter() time.Duration {
 	return renderqueue.DefaultRenderStallAfter
 }
 
-// WaitRenderQueueTerminal blocks until the queue reports a TERMINAL state for id
-// and returns the terminal job together with the wait it cost.
-//
-// It is the ONE implementation of "wait for a RenderingGen job to finish": the
-// overlay enqueue path (QueueRenderEnqueuer.waitForCompletion) and the
-// clip.render settle continuation (renderinggen.ClipRenderExecutor.Settle) both
-// call it, so the two can neither disagree about what terminal means nor about
-// which states count as success — terminalRenderResult is the single classifier.
-// Before this function existed, the platform layer carried its own copy of the
-// loop with its own jitter and its own clamps, so the same question had two
-// answers that could drift independently.
-//
-// A client exposing RenderQueueWaiter parks server-side on the state transition
-// (the queue's GET /jobs/{id}/wait) and spends no client-side polling sleep; a
-// client without it (older deployment, test double) falls back to the bounded
-// poll loop, whose sleeps and poll count are measured rather than guessed.
-// interval <= 0 selects DefaultQueuePollInterval, and only the fallback loop
-// uses it.
-func WaitRenderQueueTerminal(ctx context.Context, client RenderQueueClient, id string, interval time.Duration) (RenderQueueJob, RenderCompletionMetrics, error) {
-	return renderqueue.WaitRenderQueueTerminal(ctx, client, id, interval)
-}
-
 // ErrRenderQueuePending marks a bounded wait that ended because its BUDGET ran
 // out while the remote render is still running. It is a WAIT, not a failure:
 // the caller can hand its attempt back (job.DeferredAfter — a deferral spends no

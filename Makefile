@@ -28,13 +28,13 @@
 	test test-all test-unit coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
-	verify-rust-muscles verify-rust-fetch verify-rust-contract verify-queue-vendor verify-no-secrets verify-repository-integrity verify-base verify-foundation verify-static verify-deadcode verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
+	verify-rust-muscles verify-rust-fetch verify-rust-contract verify-no-secrets verify-repository-integrity verify-base verify-foundation verify-static verify-deadcode verify-cyclo verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
 	verify-integration verify-architecture \
 	verify-images verify-script verify-research verify-clips	verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-kernel verify-main test-main-stock verify-main-clip verify-release \
 	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-kernel \
 	whisper-preflight \
 	verify-component-coverage verify-reconciliation-contracts verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity \
-	regen-routes-yaml archcheck-strict audit-plan \
+	regen-routes-yaml archcheck-strict audit-plan queue-module-check \
 	test-youtube-url test-youtube-metadata test-youtube-transcript test-highlight-selection \
 	verify-stock-unit verify-stock-integration \
 	test-stock-component test-stock-download test-stock-cut test-stock-cache test-stock-dedupe test-stock-index \

@@ -17,6 +17,10 @@ import (
 // assembly-ready fragments. It keeps audio as a single copy asset and drops
 // every unused source video from FINALIZE, so the remote worker's work is only
 // packet-copy placement plus final audio mux.
+// PrepareFinalJobVideoSegments is the string entry point kept for callers that
+// only hold the sealed plan JSON. The payload path calls
+// prepareFinalJobVideoSegments on the in-memory plan and serializes once, after
+// this step, so preparation never pays for a decode/encode round-trip.
 func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAssets []any, preparer FinalJobVideoSegmentPreparer) (string, []any, error) {
 	if preparer == nil {
 		return "", nil, fmt.Errorf("final_job requires a local video-segment preparer; refusing to send unprepared sources")
@@ -25,21 +29,38 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	if err := json.Unmarshal([]byte(rawPlan), &plan); err != nil {
 		return "", nil, fmt.Errorf("decode final_job compiled plan before segment preparation: %w", err)
 	}
+	refs, err := prepareFinalJobVideoSegments(ctx, &plan, runtimeAssets, preparer)
+	if err != nil {
+		return "", nil, err
+	}
+	canonicalPlan, err := json.Marshal(plan)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal prepared final_job compiled plan: %w", err)
+	}
+	return string(canonicalPlan), refs, nil
+}
+
+// prepareFinalJobVideoSegments rewrites the plan's segments to the certified
+// local fragments IN MEMORY and returns the runtime refs that survive.
+func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPlan, runtimeAssets []any, preparer FinalJobVideoSegmentPreparer) ([]any, error) {
+	if preparer == nil {
+		return nil, fmt.Errorf("final_job requires a local video-segment preparer; refusing to send unprepared sources")
+	}
 	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) == 0 {
-		return "", nil, fmt.Errorf("final_job segment preparation requires one non-empty video track")
+		return nil, fmt.Errorf("final_job segment preparation requires one non-empty video track")
 	}
 	refs := make(map[string]map[string]any, len(runtimeAssets))
 	for index, raw := range runtimeAssets {
 		asset, ok := raw.(map[string]any)
 		if !ok {
-			return "", nil, fmt.Errorf("final_job runtime asset %d has an invalid shape", index)
+			return nil, fmt.Errorf("final_job runtime asset %d has an invalid shape", index)
 		}
 		id := FinalJobStringValue(asset["asset_id"])
 		if id == "" {
 			continue
 		}
 		if prior := refs[id]; prior != nil && !sameFinalJobAssetIdentity(prior, asset) {
-			return "", nil, fmt.Errorf("final_job runtime asset %q has conflicting source references", id)
+			return nil, fmt.Errorf("final_job runtime asset %q has conflicting source references", id)
 		}
 		refs[id] = asset
 	}
@@ -66,14 +87,14 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		}
 		source := refs[segment.AssetID]
 		if source == nil {
-			return "", nil, fmt.Errorf("final_job segment %q has no runtime source asset %q", segment.SegmentID, segment.AssetID)
+			return nil, fmt.Errorf("final_job segment %q has no runtime source asset %q", segment.SegmentID, segment.AssetID)
 		}
 		if strings.EqualFold(FinalJobStringValue(source["role"]), "stock") || boolValue(source["stock_pool_member"]) {
 			stockBacked[index] = true
 			continue
 		}
 		if !strings.EqualFold(FinalJobStringValue(source["sha256"]), segment.SHA256) {
-			return "", nil, fmt.Errorf("final_job segment %q source SHA-256 does not match the compiled plan", segment.SegmentID)
+			return nil, fmt.Errorf("final_job segment %q source SHA-256 does not match the compiled plan", segment.SegmentID)
 		}
 		work = append(work, finalJobSegmentWork{
 			index:  index,
@@ -90,7 +111,7 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	// counts encodes, but a count alone cannot answer "which of these had to be
 	// prepared and why". This summary is Producer-owned and is written before
 	// any fragment is prepared, so it survives a preparation failure.
-	reasons := finalJobSegmentReasonSummary(plan, refs)
+	reasons := finalJobSegmentReasonSummary(*plan, refs)
 	zap.L().Info("final_job segment plan",
 		zap.Int("segments", len(plan.VideoTracks[0].Segments)),
 		zap.Int("prepared_locally", len(work)),
@@ -101,7 +122,7 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	// binding deterministic whatever the completion order is.
 	prepared, err := finalJobPrepareSegments(ctx, preparer, work)
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	// Phase 3 — bind in plan order, ONE asset per placement. The assembler
 	// certifies each placement against the manifest of its OWN asset
@@ -118,7 +139,7 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		source := item.source
 		asset, ref, err := finalJobPreparedSegmentAsset(prepared[item.index], item.request)
 		if err != nil {
-			return "", nil, fmt.Errorf("prepared final_job segment %q: %w", segment.SegmentID, err)
+			return nil, fmt.Errorf("prepared final_job segment %q: %w", segment.SegmentID, err)
 		}
 		if _, exists := usedSHA[asset.SHA256]; exists {
 			// Identical bytes for a second placement. Derive THIS placement from
@@ -132,14 +153,14 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 			item.request.ReuseFromURI = usedURI[asset.SHA256]
 			tagged, tagErr := prepareFinalJobSegmentMap(ctx, preparer, source, item.request)
 			if tagErr != nil {
-				return "", nil, finalJobSegmentPrepareError(item, tagErr)
+				return nil, finalJobSegmentPrepareError(item, tagErr)
 			}
 			asset, ref, err = finalJobPreparedSegmentAsset(tagged, item.request)
 			if err != nil {
-				return "", nil, fmt.Errorf("prepared final_job segment %q: %w", segment.SegmentID, err)
+				return nil, fmt.Errorf("prepared final_job segment %q: %w", segment.SegmentID, err)
 			}
 			if other, stillShared := usedSHA[asset.SHA256]; stillShared {
-				return "", nil, fmt.Errorf("final_job segment %q still certifies the bytes of another placement (%q); refusing to send a plan the assembler must reject", segment.SegmentID, other)
+				return nil, fmt.Errorf("final_job segment %q still certifies the bytes of another placement (%q); refusing to send a plan the assembler must reject", segment.SegmentID, other)
 			}
 		}
 		usedSHA[asset.SHA256] = segment.SegmentID
@@ -155,7 +176,7 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		case "clip", "overlay":
 			ref["role"] = strings.ToLower(strings.TrimSpace(FinalJobStringValue(source["role"])))
 		default:
-			return "", nil, fmt.Errorf("final_job segment %q has unsupported source role %q", segment.SegmentID, FinalJobStringValue(source["role"]))
+			return nil, fmt.Errorf("final_job segment %q has unsupported source role %q", segment.SegmentID, FinalJobStringValue(source["role"]))
 		}
 		// One runtime reference per asset: every placement owns its own object,
 		// so FINALIZE receives unique ids without duplicating work.
@@ -178,7 +199,7 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		}
 	}
 	if audioAsset == nil {
-		return "", nil, fmt.Errorf("final_job compiled plan has no final audio asset")
+		return nil, fmt.Errorf("final_job compiled plan has no final audio asset")
 	}
 	// The producer re-binds the plan through the SAME asset registry the
 	// payload builder filled: one identity rule, one dedupe rule, one order.
@@ -190,11 +211,11 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	}
 	assets := &finalJobPlanAssets{}
 	if err := assets.set([]FinalJobPlanAsset{*audioAsset}); err != nil {
-		return "", nil, fmt.Errorf("final_job compiled plan final audio: %w", err)
+		return nil, fmt.Errorf("final_job compiled plan final audio: %w", err)
 	}
 	for _, asset := range preparedAssets {
 		if err := assets.add(asset); err != nil {
-			return "", nil, fmt.Errorf("prepared final_job asset: %w", err)
+			return nil, fmt.Errorf("prepared final_job asset: %w", err)
 		}
 	}
 	seenStockRef := make(map[string]bool, len(stockBacked))
@@ -205,10 +226,10 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		segment := plan.VideoTracks[0].Segments[index]
 		asset, ok := originalAssets[segment.AssetID]
 		if !ok {
-			return "", nil, fmt.Errorf("final_job stock segment %q has no plan asset %q", segment.SegmentID, segment.AssetID)
+			return nil, fmt.Errorf("final_job stock segment %q has no plan asset %q", segment.SegmentID, segment.AssetID)
 		}
 		if err := assets.add(asset); err != nil {
-			return "", nil, fmt.Errorf("final_job stock asset %q: %w", asset.AssetID, err)
+			return nil, fmt.Errorf("final_job stock asset %q: %w", asset.AssetID, err)
 		}
 		if ref := refs[asset.AssetID]; ref != nil && !seenStockRef[asset.AssetID] {
 			seenStockRef[asset.AssetID] = true
@@ -226,7 +247,7 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		}
 		asset, ok := preparedAssets[segment.AssetID]
 		if !ok || asset.SHA256 != segment.SHA256 || asset.FrameCount != segment.FrameCount {
-			return "", nil, fmt.Errorf("final_job prepared segment %q lost its exact manifest binding", segment.SegmentID)
+			return nil, fmt.Errorf("final_job prepared segment %q lost its exact manifest binding", segment.SegmentID)
 		}
 	}
 
@@ -245,14 +266,10 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 
 	// The remote applies these exact rules; running them here means a plan that
 	// cannot be accepted dies in this process, not in a live run.
-	if err := ValidateFinalJobPlanBindingRules(plan); err != nil {
-		return "", nil, err
+	if err := ValidateFinalJobPlanBindingRules(*plan); err != nil {
+		return nil, err
 	}
-	canonicalPlan, err := json.Marshal(plan)
-	if err != nil {
-		return "", nil, fmt.Errorf("marshal prepared final_job compiled plan: %w", err)
-	}
-	return string(canonicalPlan), preparedRefs, nil
+	return preparedRefs, nil
 }
 
 // FinalJob segment reasons. They name the authority that owns a placement's

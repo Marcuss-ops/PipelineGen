@@ -84,11 +84,11 @@ func TestLiveSemanticProductionBlendRoutesRealProviders(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	bundles, err := engine.SemanticBundles(ctx, "it", scenes)
+	semanticScript, err := engine.SemanticScript(ctx, "it", scenes)
 	if err != nil {
 		t.Fatalf("real semantic analysis failed: %v", err)
 	}
-	_, coldPlan, _, err := scriptgen.PlanScriptProduction(bundles)
+	_, coldPlan, _, err := scriptgen.PlanScriptProduction(semanticScript)
 	if err != nil {
 		t.Fatalf("production plan failed: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestLiveSemanticProductionBlendRoutesRealProviders(t *testing.T) {
 
 	// Rebuild the plan (the first run mutated its units) and reuse the same
 	// durable cache: the warm pass must reuse provider answers.
-	_, warmPlan, _, err := scriptgen.PlanScriptProduction(bundles)
+	_, warmPlan, _, err := scriptgen.PlanScriptProduction(semanticScript)
 	if err != nil {
 		t.Fatalf("rebuild production plan: %v", err)
 	}

@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // WorkflowStepFailedHandler logs every workflow step failure at ERROR
@@ -30,20 +30,20 @@ func NewWorkflowStepFailedHandler(log *zap.Logger, hookFn func(workflowID, stepI
 
 // EventType returns "workflow.step.failed".
 func (h *WorkflowStepFailedHandler) EventType() string {
-	return outboxevents.EventWorkflowStepFailed
+	return outbox.EventWorkflowStepFailed
 }
 
-// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2).
+// IdempotencyKey implements outbox.Handler (Fase 6(c) Push 6.2).
 // Static canonical form: `<event_type>.audit.v1`. mirror of
 // WorkflowStepCompletedHandler; both share the audit-only shape.
 func (h *WorkflowStepFailedHandler) IdempotencyKey() string {
-	return outboxevents.EventWorkflowStepFailed + ".audit.v1"
+	return outbox.EventWorkflowStepFailed + ".audit.v1"
 }
 
 // Handle parses the payload and emits an ERROR-level audit log.
 // Returns nil on parse success — the failure itself is a terminal
 // outbox event, not a handler failure.
-func (h *WorkflowStepFailedHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *WorkflowStepFailedHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	var p workflowStepPayload
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &p); err != nil {
 		h.log.Warn("workflow.step.failed payload parse failed — sending to retry",

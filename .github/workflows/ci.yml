@@ -30,6 +30,9 @@ jobs:
         with:
           submodules: false
 
+      - name: Check out the sibling Queue module
+        uses: ./.github/actions/checkout-renderinggen
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -60,6 +63,9 @@ jobs:
       with:
         go-version: '1.26.11'
         cache: true
+
+    - name: Check out the sibling Queue module
+      uses: ./.github/actions/checkout-renderinggen
 
     - name: Set up Node
       uses: actions/setup-node@v4
@@ -152,6 +158,9 @@ jobs:
     - name: Verify Go toolchain contract
       run: make go-version-check
 
+    - name: Check out the sibling Queue module
+      uses: ./.github/actions/checkout-renderinggen
+
     - name: Install golangci-lint
       uses: golangci/golangci-lint-action@v9
       with:
@@ -177,6 +186,9 @@ jobs:
 
     - name: Verify Go toolchain contract
       run: make go-version-check
+
+    - name: Check out the sibling Queue module
+      uses: ./.github/actions/checkout-renderinggen
 
     - name: Install govulncheck
       run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4

@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // DriveDeleteEventType is the outbox event consumed by DriveDeleteHandler.
@@ -31,7 +31,7 @@ type driveDeleteRequestV1 struct {
 var errDriveLifecycleTerminal = errors.New("drive_delete: terminal envelope error")
 
 func terminalWrap(err error) error {
-	return outboxevents.NewTerminalError(err)
+	return outbox.NewTerminalError(err)
 }
 
 // DriveDeleteHandler advances the deletion state machine through the Drive hop.
@@ -79,11 +79,11 @@ func (h *DriveDeleteHandler) IdempotencyKey() string {
 // parseDriveDeleteRequest owns JSON decoding, strict envelope validation and
 // the canonical structured fields shared by the remaining handler stages.
 func parseDriveDeleteRequest(
-	evt outboxevents.Event,
+	evt outbox.Event,
 	log *zap.Logger,
 ) (driveDeleteRequestV1, []zap.Field, error) {
 	var req driveDeleteRequestV1
-	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+	if err := outbox.DecodeV1(outbox.DecodePolicy{
 		EventName:         "drive_delete",
 		WantSchemaVersion: DriveDeleteRequestSchemaVersion,
 		Log:               log,
@@ -109,14 +109,14 @@ func parseDriveDeleteRequest(
 
 // driveDeleteViolation keeps the handler's single terminal sentinel
 // (errDriveLifecycleTerminal) while the envelope CHECKS live in
-// outboxevents.DecodeV1.
-func driveDeleteViolation(v outboxevents.Violation) error {
+// outbox.DecodeV1.
+func driveDeleteViolation(v outbox.Violation) error {
 	switch v.Kind {
-	case outboxevents.ViolationParse:
+	case outbox.ViolationParse:
 		return terminalWrap(fmt.Errorf("%w: %v", errDriveLifecycleTerminal, v.Err))
-	case outboxevents.ViolationSchemaVersion:
+	case outbox.ViolationSchemaVersion:
 		return terminalWrap(fmt.Errorf("%w: schema_version %q != %q", errDriveLifecycleTerminal, v.Got, v.Want))
-	case outboxevents.ViolationIdempotencyKey:
+	case outbox.ViolationIdempotencyKey:
 		return terminalWrap(fmt.Errorf("%w: idempotency_key is required", errDriveLifecycleTerminal))
 	default:
 		return terminalWrap(fmt.Errorf("%w: %s envelope violation", errDriveLifecycleTerminal, v.Kind))
@@ -126,7 +126,7 @@ func driveDeleteViolation(v outboxevents.Violation) error {
 // Handle preserves the canonical sequence:
 // parse/validate -> preflight -> DRIVE_DELETE_PENDING -> Drive side effect ->
 // DRIVE_DELETED + index-delete event.
-func (h *DriveDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *DriveDeleteHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	log := h.log
 	if log == nil {
 		log = zap.NewNop()
@@ -159,5 +159,5 @@ func (h *DriveDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 	return nil
 }
 
-var _ outboxevents.Handler = (*DriveDeleteHandler)(nil)
-var _ = outboxevents.EventAssetDriveDeleteRequested == DriveDeleteEventType
+var _ outbox.Handler = (*DriveDeleteHandler)(nil)
+var _ = outbox.EventAssetDriveDeleteRequested == DriveDeleteEventType

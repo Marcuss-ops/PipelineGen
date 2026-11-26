@@ -97,6 +97,20 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 				for k, v := range vis.deliveryFields() {
 					resp[k] = v
 				}
+				// The durable checkpoint carries the live remote handle but not
+				// the post-completion Drive receipts. The terminal result owns
+				// the delivery state: never let a RUNNING checkpoint overwrite a
+				// confirmed drive_publication=published.
+				terminal := JobDeliveryVisibility(j)
+				if terminal.RenderStatus != "" {
+					resp["render_status"] = terminal.RenderStatus
+				}
+				if terminal.DrivePublication != "" {
+					resp["drive_publication"] = terminal.DrivePublication
+				}
+				if terminal.DriveFileID != "" {
+					resp["drive_file_id"] = terminal.DriveFileID
+				}
 			}
 			if snapshot.CurrentStage == "CORE_READY" && len(snapshot.Result) > 0 {
 				var result struct {

@@ -26,7 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // SetIndexRequester wires the canonical media index-plane request port
@@ -135,7 +135,7 @@ func (m *Materializer) emitAssetIndexRequested(
 	}
 	_, err = m.outbox.Enqueue(
 		ctx, nil,
-		outboxevents.EventAssetIndexRequested,
+		outbox.EventAssetIndexRequested,
 		assetID,
 		"asset",
 		string(payload),

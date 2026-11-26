@@ -593,6 +593,43 @@ func TestGetFull_ProjectsRemoteFinalJobFromRunCheckpoint(t *testing.T) {
 		"/full must expose the measured queue phase with the live handle")
 }
 
+// TestGetFull_KeepsPublishedDeliveryOverALiveCheckpoint pins the DEMOL-03
+// split on the mixed view: the checkpoint still reports the remote handle as
+// RUNNING, but the terminal result already carries the outbox delivery
+// receipt. /full must not regress drive_publication back to pending.
+func TestGetFull_KeepsPublishedDeliveryOverALiveCheckpoint(t *testing.T) {
+	snapshot := &ScriptRunSnapshot{
+		RunID: "run-1", Status: "RUNNING", CurrentStage: "FINAL_JOB",
+		RemoteFinalJob: json.RawMessage(`{"job_id":"master-1","status":"RUNNING"}`),
+	}
+	result := json.RawMessage(`{
+		"items": [{"item_id": "item-1", "result": {
+			"remote_final_job": {"job_id": "master-1", "status": "SUCCEEDED", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+			"drive_deliveries": {
+				"job-1:final_video": {"artifact_id": "job-1:final_video", "kind": "video", "drive_file_id": "drive-video-1", "drive_link": "https://drive/file/video-1", "delivery_status": "completed"}
+			}
+		}}]
+	}`)
+	stub := &stubServiceForGetFull{
+		outID:     "job-1",
+		outType:   pushedType,
+		outStatus: job.StatusSucceeded,
+		outResult: result,
+	}
+	body := runGetFullWithHistory(t, stub, &stubHistoryReader{scriptRun: snapshot})
+
+	var response struct {
+		RenderStatus     string `json:"render_status"`
+		DrivePublication string `json:"drive_publication"`
+		DriveFileID      string `json:"drive_file_id"`
+	}
+	require.NoError(t, json.Unmarshal(body, &response))
+	assert.Equal(t, "rendered", response.RenderStatus)
+	assert.Equal(t, "published", response.DrivePublication,
+		"a live checkpoint must not overwrite the outbox-confirmed delivery")
+	assert.Equal(t, "drive-video-1", response.DriveFileID)
+}
+
 // TestGetFull_TimingNullWithoutReport pins the shape-stability contract: the
 // `timing` key is always present on /full (null when no history reader or no
 // report exists) so polling clients never see a missing field.

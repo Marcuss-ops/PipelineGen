@@ -19,7 +19,7 @@ import (
 	"context"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
@@ -53,7 +53,7 @@ type JobEnqueuer interface {
 // OutboxEmitter is the canonical narrow port for emitting a
 // single outbox event inside a caller-owned transaction. The
 // canonical concrete adapter is
-// `internal/platform/sqlite/outboxevents.Repository`
+// `internal/platform/sqlite/outbox.Repository`
 // (the existing typed Repository satisfies the port natively
 // — no adapter wrap is needed at the composition root).
 //
@@ -74,7 +74,7 @@ type OutboxEmitter interface {
 		ctx context.Context,
 		tx sqlport.Tx,
 		eventType, aggregateID, aggregateType, payloadJSON, eventKey string,
-	) (*outboxevents.EnqueueResult, error)
+	) (*outbox.EnqueueResult, error)
 }
 
 // OperationsRepository is the canonical port for the operations

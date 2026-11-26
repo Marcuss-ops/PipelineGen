@@ -26,7 +26,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	"go.uber.org/zap"
 )
@@ -38,7 +38,7 @@ type OutboxEnqueuer interface {
 		ctx context.Context,
 		tx sqlport.Tx,
 		eventType, aggregateID, aggregateType, payloadJSON, eventKey string,
-	) (*outboxevents.EnqueueResult, error)
+	) (*outbox.EnqueueResult, error)
 }
 
 // MaterializationReport is the canonical return value.

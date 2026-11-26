@@ -57,28 +57,14 @@ func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Publication == nil {
 		return nil, submodule.MissingDependencyError("clips-publication", "Publication")
 	}
-	if deps.EnabledFunc == nil {
-		return nil, submodule.MissingDependencyError("clips-publication", "EnabledFunc")
-	}
-	idem := deps.Idempotency
-	if idem == nil {
-		idem = func(c *gin.Context) { c.Next() }
-	}
+	idem := submodule.DefaultIdempotency(deps.Idempotency)
 
 	// The 2 publication routes are mounted by LAMBDA inside this
 	// sub-descriptor (godlike/06 SSOT one-canonical-owner:
 	// publication owns its slice-route table).
-	return submodule.Build(submodule.Deps{
-		Name: "clips-publication",
-		Handler: &publicationRoutesRegistrar{
-			publication: deps.Publication,
-			idem:        idem,
-		},
-		EnabledFunc: deps.EnabledFunc,
-		Idempotency: idem,
-		Logger:      deps.Logger,
-		ModuleOpts:  deps.ModuleOpts,
-	})
+	return submodule.BuildWithHandler("clips-publication",
+		&publicationRoutesRegistrar{publication: deps.Publication, idem: idem},
+		deps.EnabledFunc, idem, deps.Logger, deps.ModuleOpts)
 }
 
 // publicationRoutesRegistrar is the typed-narrow RoutesRegistrar the

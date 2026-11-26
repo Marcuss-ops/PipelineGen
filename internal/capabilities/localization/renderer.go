@@ -72,11 +72,15 @@ type RenderPlanExecutor interface {
 // background (mode + materialized asset for mode=asset), and the subtitle
 // visual overrides. All fields are optional; nil/empty means "no such layer".
 type RenderOptions struct {
-	Watermark              *cliprender.MaterializedAsset
-	WatermarkSpec          *cliprender.WatermarkSpec
-	Background             *cliprender.MaterializedAsset
-	BackgroundMode         string
-	BackgroundKind         string
+	Watermark      *cliprender.MaterializedAsset
+	WatermarkSpec  *cliprender.WatermarkSpec
+	Background     *cliprender.MaterializedAsset
+	BackgroundMode string
+	BackgroundKind string
+	// BackgroundBlurPX / BackgroundZoom are the blur_source treatment and
+	// reach the sealed clip plan verbatim; zero keeps the renderer default.
+	BackgroundBlurPX       float64
+	BackgroundZoom         float64
 	ForegroundScalePercent int
 	SourceFrame            *cliprender.PlanSourceFrame
 	Effects                []cliprender.ClipEffectSpec
@@ -188,6 +192,8 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		Background:             plan.Background,
 		BackgroundMode:         plan.BackgroundMode,
 		BackgroundKind:         plan.BackgroundKind,
+		BackgroundBlurPX:       plan.BackgroundBlurPX,
+		BackgroundZoom:         plan.BackgroundZoom,
 		ForegroundScalePercent: plan.ForegroundScalePercent,
 		SourceFrame:            plan.SourceFrame,
 		Effects:                plan.Effects,

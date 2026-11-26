@@ -7,23 +7,23 @@ import (
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/renderunits"
 	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func EnforceFinalJobPreflight(scenes []map[string]any, certifiedAudioMS int64) error {
+func EnforceFinalJobPreflight(scenes []FinalJobRemoteScene, certifiedAudioMS int64) error {
 	if certifiedAudioMS <= 0 {
 		return fmt.Errorf("final_job preflight: certified audio duration must be positive")
 	}
 	for i, scene := range scenes {
-		seconds, ok := scene["duration_seconds"].(float64)
-		if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0 {
+		seconds := scene.DurationSeconds
+		if math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0 {
 			return fmt.Errorf("final_job preflight: scene %d has an invalid duration %v", i, seconds)
 		}
-		poolSlot, _ := scene["stock_pool_slot"].(bool)
-		if !poolSlot && finalJobSceneMediaLocator(scene) == "" {
-			id, _ := scene["scene_id"].(string)
-			return fmt.Errorf("final_job preflight: scene %q carries no resolvable media locator (predicted remote prefetch rejection)", id)
+		if !scene.StockPoolSlot && finalJobSceneMediaLocator(scene) == "" {
+			return fmt.Errorf("final_job preflight: scene %q carries no resolvable media locator (predicted remote prefetch rejection)", scene.SceneID)
 		}
 	}
 	return nil
@@ -31,9 +31,9 @@ func EnforceFinalJobPreflight(scenes []map[string]any, certifiedAudioMS int64) e
 
 // finalJobSceneMediaLocator extracts the resolvable Drive locator from a
 // remote scene's media slot ("stock" for both stock and caller-clip kinds).
-func finalJobSceneMediaLocator(scene map[string]any) string {
-	slot, ok := scene["stock"].(map[string]any)
-	if !ok {
+func finalJobSceneMediaLocator(scene FinalJobRemoteScene) string {
+	slot := scene.Stock
+	if slot == nil {
 		return ""
 	}
 	if link := strings.TrimSpace(fmt.Sprint(slot["url"])); link != "" && link != "<nil>" {
@@ -49,7 +49,7 @@ func finalJobSceneMediaLocator(scene map[string]any) string {
 // original generated scenes after the audio-only projection rewrites fixed
 // intro/outro audio to silence or narration. The remote payload still needs to
 // resolve those clips from Drive as fixed media, not as generated body clips.
-func RestoreFinalJobFixedMedia(result *GenerateResult, timeline *capabilityaudio.CanonicalTimeline) {
+func RestoreFinalJobFixedMedia(result *contract.GenerateResult, timeline *capabilityaudio.CanonicalTimeline) {
 	if result == nil || timeline == nil {
 		return
 	}
@@ -66,11 +66,11 @@ func RestoreFinalJobFixedMedia(result *GenerateResult, timeline *capabilityaudio
 
 // FinalJobReceiptSucceeded reports whether the durable receipt already records
 // a COMPLETED remote render.
-func FinalJobReceiptSucceeded(receipt *RemoteFinalJobResult) bool {
+func FinalJobReceiptSucceeded(receipt *contract.RemoteFinalJobResult) bool {
 	return receipt != nil && strings.EqualFold(strings.TrimSpace(receipt.Status), "SUCCEEDED")
 }
 
-func FinalJobReceiptTerminal(receipt *RemoteFinalJobResult) bool {
+func FinalJobReceiptTerminal(receipt *contract.RemoteFinalJobResult) bool {
 	if receipt == nil {
 		return false
 	}
@@ -84,7 +84,7 @@ func FinalJobReceiptTerminal(receipt *RemoteFinalJobResult) bool {
 
 // FinalJobPendingID returns the Master job id a previous attempt left in
 // flight, or "" when there is nothing to resume.
-func FinalJobPendingID(receipt *RemoteFinalJobResult) string {
+func FinalJobPendingID(receipt *contract.RemoteFinalJobResult) string {
 	if receipt == nil || FinalJobReceiptSucceeded(receipt) || FinalJobReceiptTerminal(receipt) {
 		return ""
 	}
@@ -96,7 +96,7 @@ func FinalJobPendingID(receipt *RemoteFinalJobResult) string {
 // deliberately distinct from FinalJobPendingID: a PREPARED job is waiting for
 // runtime assets, so ATTACHING would sit on it until the queue watchdog fires;
 // the only correct next step is FINALIZE.
-func FinalJobPreparedID(receipt *RemoteFinalJobResult) string {
+func FinalJobPreparedID(receipt *contract.RemoteFinalJobResult) string {
 	if receipt == nil || !strings.EqualFold(strings.TrimSpace(receipt.Status), "PREPARED") {
 		return ""
 	}
@@ -129,8 +129,8 @@ var ErrFinalJobCapabilityMissing = errors.New("remote final job is missing a req
 // artifacts earlier attempts produced instead of regenerating them; these are
 // the exact counts the handoff reuses, so an operator can tell a reuse from a
 // regeneration (and a stuck run from a slow one) from the run log alone.
-func FinalJobAudioInput(result GenerateResult, language Language) GenerateResult {
-	result.Scenes = append([]Scene(nil), result.Scenes...)
+func FinalJobAudioInput(result contract.GenerateResult, language contract.Language) contract.GenerateResult {
+	result.Scenes = append([]contract.Scene(nil), result.Scenes...)
 	for i := range result.Scenes {
 		scene := &result.Scenes[i]
 		fixedMedia := scene.ExecutionMode.IsFixedMedia()
@@ -153,7 +153,7 @@ func FinalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		// Stock-selected scenes remain visual-only, EXCEPT for clips the caller
 		// explicitly marked as used-as-stock: those keep the clip audio at full
 		// original volume because the caller asked for that clip to be HEARD.
-		stockClipIDs := sceneStockClipIDs(*scene)
+		stockClipIDs := renderunits.SceneStockClipIDs(*scene)
 		if !fixedMedia && scene.Stock == nil && scene.Clip != nil && !hasClipAudioIntent(intents, scene.Clip.ID) {
 			if SourceInUS, SourceDurationUS, ok := finalJobClipAudioWindow(scene.Clip); ok {
 				intents = append(intents, capabilityaudio.AudioIntent{
@@ -168,7 +168,7 @@ func FinalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		// clip: its original audio joins the master at full volume even when
 		// the scene's visual comes from a stock folder and even when the run's
 		// global policy is VOICEOVER_ONLY.
-		for _, clip := range sceneClips(*scene) {
+		for _, clip := range renderunits.SceneClips(*scene) {
 			if !clip.UsedAsStock() || hasClipAudioIntent(intents, clip.ID) {
 				continue
 			}
@@ -236,7 +236,7 @@ func hasClipAudioIntent(intents []capabilityaudio.AudioIntent, clipID string) bo
 	return false
 }
 
-func finalJobClipAudioWindow(clip *ClipReference) (SourceInUS, durationUS int64, ok bool) {
+func finalJobClipAudioWindow(clip *contract.ClipReference) (SourceInUS, durationUS int64, ok bool) {
 	if clip == nil || strings.TrimSpace(clip.ID) == "" || clip.SourceInMS < 0 {
 		return 0, 0, false
 	}

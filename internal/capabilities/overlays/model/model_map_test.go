@@ -18,7 +18,7 @@ import (
 // writeMapRaster encodes a real, minimal PNG to disk and returns a matching
 // content-addressed asset ref plus its path. The map contract is exercised
 // against actual bytes, never a mocked digest.
-func writeMapRaster(t *testing.T) (OverlayAssetRef, string) {
+func writeMapRaster(t testing.TB) (OverlayAssetRef, string) {
 	t.Helper()
 	var buf bytes.Buffer
 	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
@@ -55,6 +55,90 @@ func validMapOverlay(canvasWidth, canvasHeight int) MapOverlay {
 			ID: "rome", Label: "Rome", Latitude: 41.9028, Longitude: 12.4964,
 			Color: "#FF0000", RadiusPX: 8,
 		}},
+	}
+}
+
+func TestValidateCameraMoveEndpoints(t *testing.T) {
+	base := func() (MapCameraMove, []MapOverlayLOD) {
+		return MapCameraMove{
+			From:         MapCenter{Latitude: 41.9028, Longitude: 12.4964},
+			To:           MapCenter{Latitude: 41.9028, Longitude: 12.4964},
+			StartZoom:    6,
+			EndZoom:      8,
+			StartTiltDeg: 0,
+			EndTiltDeg:   45,
+			BearingDeg:   15,
+		}, []MapOverlayLOD{{Zoom: 6}, {Zoom: 7}, {Zoom: 8}}
+	}
+	cases := []struct {
+		name    string
+		mutate  func(*MapCameraMove, []MapOverlayLOD)
+		wantSub string
+	}{
+		{name: "valid", mutate: func(*MapCameraMove, []MapOverlayLOD) {}},
+		{name: "invalid from", mutate: func(m *MapCameraMove, _ []MapOverlayLOD) { m.From.Latitude = 91 }, wantSub: "camera from"},
+		{name: "negative start zoom", mutate: func(m *MapCameraMove, _ []MapOverlayLOD) { m.StartZoom = -1 }, wantSub: "start_zoom"},
+		{name: "non increasing zoom", mutate: func(m *MapCameraMove, _ []MapOverlayLOD) { m.EndZoom = m.StartZoom }, wantSub: "zoom must increase"},
+		{name: "first lod mismatch", mutate: func(_ *MapCameraMove, l []MapOverlayLOD) { l[0].Zoom = 5 }, wantSub: "first and last"},
+		{name: "last lod mismatch", mutate: func(_ *MapCameraMove, l []MapOverlayLOD) { l[len(l)-1].Zoom = 9 }, wantSub: "first and last"},
+		{name: "tilt out of range", mutate: func(m *MapCameraMove, _ []MapOverlayLOD) { m.EndTiltDeg = 81 }, wantSub: "end_tilt_deg"},
+		{name: "bearing out of range", mutate: func(m *MapCameraMove, _ []MapOverlayLOD) { m.BearingDeg = 361 }, wantSub: "bearing_deg"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			move, lods := base()
+			tc.mutate(&move, lods)
+			err := validateCameraMoveEndpoints(&move, lods)
+			if tc.wantSub == "" {
+				if err != nil {
+					t.Fatalf("valid camera move rejected: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantSub) {
+				t.Fatalf("expected error containing %q, got %v", tc.wantSub, err)
+			}
+		})
+	}
+}
+
+func TestValidateCameraMoveLODSet(t *testing.T) {
+	lods := func(n int) []MapOverlayLOD {
+		out := make([]MapOverlayLOD, n)
+		for i := range out {
+			out[i] = MapOverlayLOD{Zoom: 6 + i}
+		}
+		return out
+	}
+	assets := func(n int) []OverlayAssetRef {
+		out := make([]OverlayAssetRef, n)
+		for i := range out {
+			out[i] = OverlayAssetRef{AssetID: fmt.Sprintf("lod-%d", i)}
+		}
+		return out
+	}
+	cases := []struct {
+		name    string
+		lods    int
+		assets  int
+		dynamic bool
+		wantErr bool
+	}{
+		{name: "static two lods two assets", lods: 2, assets: 2},
+		{name: "dynamic two lods no assets", lods: 2, assets: 0, dynamic: true},
+		{name: "single lod", lods: 1, assets: 1, wantErr: true},
+		{name: "nine lods", lods: 9, assets: 9, wantErr: true},
+		{name: "static asset count mismatch", lods: 2, assets: 1, wantErr: true},
+		{name: "dynamic with assets", lods: 2, assets: 1, dynamic: true, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := MapOverlay{CameraMove: &MapCameraMove{}, LODs: lods(tc.lods), DynamicRendererOnly: tc.dynamic}
+			err := m.validateCameraMoveLODSet(assets(tc.assets))
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("wantErr=%v, got %v", tc.wantErr, err)
+			}
+		})
 	}
 }
 
@@ -393,7 +477,7 @@ func TestOverlayPlanValidateRejectsCameraMapWithoutCompleteLODProvenance(t *test
 	}
 }
 
-func writeMapRasterSized(t *testing.T, dir, name string, width, height int, assetID string) OverlayAssetRef {
+func writeMapRasterSized(t testing.TB, dir, name string, width, height int, assetID string) OverlayAssetRef {
 	t.Helper()
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
@@ -423,5 +507,21 @@ func TestOverlayPlanValidateRejectsMapItemWithoutDeclaration(t *testing.T) {
 
 	if err := plan.Validate(); err == nil {
 		t.Fatal("expected a map item without a declaration to be rejected")
+	}
+}
+
+// BenchmarkMapOverlayValidate measures the full map declaration validation
+// (base fields, camera move, basemap counts/provenance, pins) on a valid
+// overlay with a real PNG asset.
+func BenchmarkMapOverlayValidate(b *testing.B) {
+	asset, _ := writeMapRaster(b)
+	overlay := validMapOverlay(1280, 720)
+	assets := []OverlayAssetRef{asset}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := overlay.Validate(1280, 720, assets); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

@@ -674,6 +674,12 @@ render del fork parte solo a `OnPlanReady`, cioè dopo il join della
 proiezione P1 sul master (clip prepare + compile audio canonico + resolve
 persistence).
 
+> **Stato 2026-11-26:** il P2 descritto in questa sezione è stato **rimosso**.
+> Il flag `OVERLAY_RENDER_LANG_BARRIER` e `runner_overlay_render_barrier.go`
+> non esistono più: restava codice opt-in (200 righe di claim/merge/re-render)
+> che introduceva un secondo submitter concorrente da riconciliare. Il testo
+> che segue è conservato come storia del design.
+
 **Il P2 chiude quel gap con un gate opt-in:** `OVERLAY_RENDER_LANG_BARRIER`
 (default OFF) spawn la barriera (`runner_overlay_render_barrier.go`) subito
 dopo l'avvio del branch P1: rendersi in attesa dell'outcome detached, poi

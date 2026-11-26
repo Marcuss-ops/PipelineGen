@@ -81,6 +81,36 @@ func MissingDependencyError(moduleName, dependency string) error {
 	return fmt.Errorf("%s.Build: %s is required (godlike/07 fail-closed)", moduleName, dependency)
 }
 
+// DefaultIdempotency returns a pass-through middleware when idem is nil.
+// Sub-descriptors capture the middleware in their registrar, so the
+// default must be applied once, at construction time.
+func DefaultIdempotency(idem gin.HandlerFunc) gin.HandlerFunc {
+	if idem != nil {
+		return idem
+	}
+	return func(c *gin.Context) { c.Next() }
+}
+
+// BuildWithHandler is the shared Build path for the clips sub-descriptors.
+// It validates the common infrastructure and delegates to Build, so a
+// sub-descriptor only owns its typed dependency check and its registrar.
+func BuildWithHandler(name string, handler RouteRegistrar, enabled func() bool, idem gin.HandlerFunc, log *zap.Logger, opts []api.RouteModuleOption) (*Descriptor, error) {
+	if handler == nil {
+		return nil, MissingDependencyError(name, "Handler")
+	}
+	if enabled == nil {
+		return nil, MissingDependencyError(name, "EnabledFunc")
+	}
+	return Build(Deps{
+		Name:        name,
+		Handler:     handler,
+		EnabledFunc: enabled,
+		Idempotency: DefaultIdempotency(idem),
+		Logger:      log,
+		ModuleOpts:  opts,
+	})
+}
+
 // Build wraps the supplied RouteRegistrar in a canonical *Descriptor.
 // Missing mandatory deps fail closed (godlike/07 NO-FAKE-AVAILABILITY).
 func Build(d Deps) (*Descriptor, error) {

@@ -107,10 +107,20 @@ func (l *MediaYouTubeClipLister) ListYouTubeClipIDsForSearchText(ctx context.Con
 
 // ── absorbed from dedup_group_reader.go ──
 
-// YouTubeIDDuplicateGroup is one youtube_video_id shared by more than one live
-// media asset.
+// YouTubeIDDuplicateGroup is one YouTube CLIP identity shared by more than one
+// live media asset.
+//
+// The identity is the window, never the video: a YouTube video legitimately
+// produces dozens of clips that all carry the same youtube_video_id, so
+// grouping by the video alone retires every clip but the newest on each sweep
+// (observed 2026-11-26: 15 clips soft-deleted right after a successful run, and
+// the same wipe had already destroyed the Ilary batch at 13:07 — OVL-06).
+// The canonical clip identity is (video, start_ms, end_ms); policy_version is
+// excluded on purpose so a re-extraction under a new policy is still one clip.
 type YouTubeIDDuplicateGroup struct {
 	YouTubeVideoID string
+	StartMs        int64
+	EndMs          int64
 	Count          int
 }
 
@@ -159,14 +169,14 @@ func (r *MediaDuplicateGroupReader) DuplicateYouTubeIDGroups(ctx context.Context
 		return nil, err
 	}
 	query := `
-		SELECT ` + youtubeIDExpr + ` AS vid, COUNT(*) AS n
+		SELECT ` + youtubeIDExpr + ` AS vid, COALESCE(start_ms, 0), COALESCE(end_ms, 0), COUNT(*) AS n
 		FROM media_assets
 		WHERE lifecycle_state <> 'DELETED'
 		  AND ` + youtubeIDExpr + ` IS NOT NULL
 		  AND ` + youtubeIDExpr + ` <> ''
-		GROUP BY 1
+		GROUP BY 1, 2, 3
 		HAVING COUNT(*) > 1
-		ORDER BY 1`
+		ORDER BY 1, 2, 3`
 	args := []any{}
 	if limit > 0 {
 		query += ` LIMIT $1`
@@ -182,7 +192,7 @@ func (r *MediaDuplicateGroupReader) DuplicateYouTubeIDGroups(ctx context.Context
 	var groups []YouTubeIDDuplicateGroup
 	for rows.Next() {
 		var g YouTubeIDDuplicateGroup
-		if err := rows.Scan(&g.YouTubeVideoID, &g.Count); err != nil {
+		if err := rows.Scan(&g.YouTubeVideoID, &g.StartMs, &g.EndMs, &g.Count); err != nil {
 			return nil, fmt.Errorf("media duplicate group reader: duplicate group scan: %w", err)
 		}
 		groups = append(groups, g)
@@ -194,11 +204,16 @@ func (r *MediaDuplicateGroupReader) DuplicateYouTubeIDGroups(ctx context.Context
 }
 
 // DuplicateAssetIDsByYouTubeID returns the ids of the live media assets that
-// share videoID, newest first, excluding excludeID.
+// share the same clip identity (videoID + source window), newest first,
+// excluding excludeID.
+//
+// The window is part of the key: two clips of the same video are distinct
+// assets, not duplicates (OVL-06). Only a re-extraction of the SAME window is a
+// duplicate.
 //
 // Ordering is load-bearing, not cosmetic: the sweeper keeps the FIRST id and
 // retires the rest, so the ordering is what makes "keep the newest copy" true.
-func (r *MediaDuplicateGroupReader) DuplicateAssetIDsByYouTubeID(ctx context.Context, videoID, excludeID string) ([]string, error) {
+func (r *MediaDuplicateGroupReader) DuplicateAssetIDsByYouTubeID(ctx context.Context, videoID string, startMs, endMs int64, excludeID string) ([]string, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("media duplicate group reader: media SSOT handle is not configured")
 	}
@@ -211,10 +226,12 @@ func (r *MediaDuplicateGroupReader) DuplicateAssetIDsByYouTubeID(ctx context.Con
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id FROM media_assets
 		WHERE `+youtubeIDExpr+` = $1
+		  AND COALESCE(start_ms, 0) = $2
+		  AND COALESCE(end_ms, 0) = $3
 		  AND lifecycle_state <> 'DELETED'
-		  AND id <> $2
+		  AND id <> $4
 		ORDER BY `+TimestampExpr("created_at")+` DESC, id DESC
-	`, videoID, excludeID)
+	`, videoID, startMs, endMs, excludeID)
 	if err != nil {
 		return nil, fmt.Errorf("media duplicate group reader: duplicate id query: %w", err)
 	}

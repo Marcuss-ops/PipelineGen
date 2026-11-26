@@ -21,6 +21,7 @@ package jobs
 
 import (
 	"encoding/json"
+	"strings"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -28,6 +29,17 @@ import (
 // RemoteFinalJobRequested is the operator-facing state of a job that
 // flagged final_job but has no durable remote_final_job receipt yet.
 const RemoteFinalJobRequested = "requested"
+
+// Render/delivery states. "Rendered" means the deliverable bytes exist and
+// carry a certified locator (the object store); it never implies that Drive
+// has a copy. Delivery is a separate, asynchronous fact: it stays "pending"
+// until the outbox consumer confirms a drive_file_id, and only then becomes
+// "published". A view must never report delivered from a render alone.
+const (
+	RenderStatusRendered      = "rendered"
+	DrivePublicationPending   = "pending"
+	DrivePublicationPublished = "published"
+)
 
 // DeliveryVisibility is the flattened routing projection surfaced on
 // enqueue responses, job snapshots and the queue view.
@@ -43,6 +55,17 @@ type DeliveryVisibility struct {
 	// from the durable receipt. It is surfaced on /full so operators do not
 	// have to dig into result.remote_final_job.timing.
 	RemoteFinalJobTiming map[string]any `json:"remote_final_job_timing,omitempty"`
+
+	// RenderStatus answers "does the deliverable exist?": "rendered" when a
+	// certified render locator is present, empty when the result proves no
+	// render (never invented).
+	RenderStatus string `json:"render_status,omitempty"`
+	// DrivePublication answers "has delivery completed?": "pending" while the
+	// asynchronous outbox has no confirmed file id, "published" once it has.
+	DrivePublication string `json:"drive_publication,omitempty"`
+	// DriveFileID is the confirmed Drive identity of the final deliverable.
+	// Empty until the delivery outbox reports it; never a placeholder.
+	DriveFileID string `json:"drive_file_id,omitempty"`
 }
 
 // ExtractDeliveryVisibility derives the routing projection from a job's
@@ -99,6 +122,7 @@ func ExtractDeliveryVisibility(payload, result json.RawMessage) DeliveryVisibili
 				vis.RemoteFinalJobTiming = timing
 			}
 		}
+		projectRenderDelivery(&vis, res)
 	}
 	if vis.FinalJob && vis.RemoteFinalJobStatus == "" {
 		// Honest request-time state: the handoff was explicitly flagged
@@ -129,7 +153,170 @@ func (v DeliveryVisibility) deliveryFields() map[string]any {
 		"remote_final_job_id":     v.RemoteFinalJobID,
 		"remote_final_job_status": v.RemoteFinalJobStatus,
 		"remote_final_job_timing": v.RemoteFinalJobTiming,
+		"render_status":           v.RenderStatus,
+		"drive_publication":       v.DrivePublication,
+		"drive_file_id":           v.DriveFileID,
 	}
+}
+
+// projectRenderDelivery separates the render from the delivery. The render
+// side is read from the durable result (remote receipt, local final video or
+// a certified overlay artifact). The delivery side is read from the
+// drive_deliveries receipt the asynchronous outbox writes after a real
+// upload. Both are evidence-only: an absent value stays absent instead of
+// being inferred from the job status.
+func projectRenderDelivery(vis *DeliveryVisibility, result map[string]any) {
+	if vis == nil || result == nil {
+		return
+	}
+	rendered := false
+	driveID := ""
+	for _, scope := range deliveryScopes(result) {
+		if renderProvesDeliverable(scope, vis.FinalJob) {
+			rendered = true
+		}
+		if driveID == "" {
+			if id, _ := scopeDriveDelivery(scope, !vis.FinalJob); id != "" {
+				driveID = id
+			}
+		}
+	}
+	if driveID != "" {
+		// A confirmed upload is itself proof that certified bytes existed.
+		rendered = true
+	}
+	if !rendered {
+		return
+	}
+	vis.RenderStatus = RenderStatusRendered
+	if driveID == "" {
+		vis.DrivePublication = DrivePublicationPending
+		return
+	}
+	vis.DrivePublication = DrivePublicationPublished
+	vis.DriveFileID = driveID
+}
+
+// renderProvesDeliverable reports whether one result scope carries a
+// certified deliverable locator. Status alone is not enough: a RUNNING
+// receipt names no bytes. A final job's deliverable is the master video, so
+// its overlay intermediates are not render evidence for the job; an ordinary
+// overlay-only run is proven by its certified overlay artifact.
+func renderProvesDeliverable(scope map[string]any, finalJob bool) bool {
+	if receipt, ok := scope["remote_final_job"].(map[string]any); ok && receipt != nil {
+		if strings.EqualFold(stringAt(receipt, "status"), "SUCCEEDED") && stringAt(receipt, "sha256") != "" {
+			return true
+		}
+	}
+	// The terminal script result projects the verified download as
+	// remote_final_video (kernel/script domain shape); the live run checkpoint
+	// still carries remote_final_job (capability contract shape). Both are
+	// evidence, neither is delivery.
+	if remote, ok := scope["remote_final_video"].(map[string]any); ok && remote != nil {
+		if stringAt(remote, "sha256") != "" {
+			return true
+		}
+	}
+	if local, ok := scope["local_final_video"].(map[string]any); ok && local != nil {
+		if stringAt(local, "SHA256") != "" || stringAt(local, "sha256") != "" {
+			return true
+		}
+	}
+	return !finalJob && certifiedOverlayArtifact(scope)
+}
+
+// certifiedOverlayArtifact recognizes the object-store locator of an overlay
+// render (URL + digest). It is the render evidence for an overlay-only run.
+func certifiedOverlayArtifact(scope map[string]any) bool {
+	render, ok := scope["overlay_render"].(map[string]any)
+	if !ok || render == nil {
+		return false
+	}
+	if artifact, ok := render["artifact"].(map[string]any); ok && artifact != nil {
+		if stringAt(artifact, "sha256") != "" && (stringAt(artifact, "url") != "" || stringAt(artifact, "storage_key") != "") {
+			return true
+		}
+	}
+	if items, ok := render["items"].([]any); ok {
+		for _, raw := range items {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if artifact, ok := item["artifact"].(map[string]any); ok && artifact != nil {
+				if stringAt(artifact, "sha256") != "" && (stringAt(artifact, "url") != "" || stringAt(artifact, "storage_key") != "") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// scopeDriveDelivery reads one confirmed Drive identity from a result scope:
+// the asynchronous receipt (drive_deliveries) first, then — only when the
+// overlay links are the deliverable (ordinary runs) — the legacy overlay_links
+// projection. A final job's delivery is its master video, never a sidecar.
+func scopeDriveDelivery(scope map[string]any, allowOverlayLinks bool) (string, string) {
+	anyID, anyLink := "", ""
+	if deliveries, ok := scope["drive_deliveries"].(map[string]any); ok {
+		for _, raw := range deliveries {
+			delivery, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			id := stringAt(delivery, "drive_file_id")
+			if id == "" {
+				continue
+			}
+			// The final video is the deliverable the render status describes;
+			// its receipt wins over any sidecar (script/audio) delivery.
+			if stringAt(delivery, "kind") == "video" {
+				return id, stringAt(delivery, "drive_link")
+			}
+			if anyID == "" {
+				anyID, anyLink = id, stringAt(delivery, "drive_link")
+			}
+		}
+	}
+	if !allowOverlayLinks {
+		// A final job is delivered only when the VIDEO receipt lands; a
+		// script/audio sidecar upload must not mask a pending master.
+		return "", ""
+	}
+	if anyID != "" {
+		return anyID, anyLink
+	}
+	if links, ok := scope["overlay_links"].([]any); ok {
+		for _, raw := range links {
+			link, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			if id := stringAt(link, "drive_file_id"); id != "" {
+				return id, stringAt(link, "drive_link")
+			}
+		}
+	}
+	return "", ""
+}
+
+// deliveryScopes enumerates every result scope that may hold render/delivery
+// evidence: the result root, its output/result wrappers and each envelope
+// item's own result.
+func deliveryScopes(root map[string]any) []map[string]any {
+	scopes := resultScopes(root)
+	items, _ := root["items"].([]any)
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if result, ok := item["result"].(map[string]any); ok && result != nil {
+			scopes = append(scopes, result)
+		}
+	}
+	return scopes
 }
 
 // jobQueueView projects one Job row as the queue-view element: the

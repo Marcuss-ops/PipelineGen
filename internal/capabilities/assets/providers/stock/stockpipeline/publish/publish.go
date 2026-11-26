@@ -3,7 +3,6 @@ package publish
 
 import (
 	"fmt"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -119,23 +118,9 @@ func SlugifyTitle(title string) string { return slug.SlugifyTitle(title) }
 // SafeName is the neutral trim-only naming primitive; empty stays empty.
 
 // URLBasename strips URL query/fragment and extension, then sanitizes it.
-func URLBasename(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	if i := strings.IndexByte(raw, '?'); i >= 0 {
-		raw = raw[:i]
-	}
-	if i := strings.IndexByte(raw, '#'); i >= 0 {
-		raw = raw[:i]
-	}
-	if parsed, err := url.Parse(raw); err == nil && parsed.Path != "" {
-		raw = parsed.Path
-	}
-	base := filepath.Base(raw)
-	return sanitized(strings.TrimSuffix(base, filepath.Ext(base)))
-}
+// The parsing rule is owned by naming.go; this entry point keeps the
+// historical publish name without a second implementation.
+func URLBasename(raw string) string { return SanitizedURLBasename(raw) }
 
 func sanitized(value string) string {
 	value = strings.TrimSpace(value)

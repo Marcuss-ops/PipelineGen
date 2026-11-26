@@ -9,7 +9,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/renderunits"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -27,7 +27,7 @@ type finalJobSceneBuilder struct {
 	renderLanguage         string
 	renderLanguageErr      error
 	scenesByID             map[string]contract.Scene
-	remoteScenes           []map[string]any
+	remoteScenes           []FinalJobRemoteScene
 	runtimeAssets          []any
 	seenRuntimeAssets      map[string]bool
 	stockBoundWindowsMS    map[string]int64
@@ -52,7 +52,7 @@ func newFinalJobSceneBuilder(ctx context.Context, req contract.GenerateRequest, 
 		stockPoolFolderID: stockPoolFolderID,
 		renderLanguage:    renderLanguage, renderLanguageErr: renderLanguageErr,
 		scenesByID:             scenesByID,
-		remoteScenes:           make([]map[string]any, 0, len(result.CanonicalTimeline.Segments)),
+		remoteScenes:           make([]FinalJobRemoteScene, 0, len(result.CanonicalTimeline.Segments)),
 		runtimeAssets:          make([]any, 0),
 		seenRuntimeAssets:      make(map[string]bool),
 		stockBoundWindowsMS:    make(map[string]int64),
@@ -201,7 +201,7 @@ func (b *finalJobSceneBuilder) appendSegment(segment capabilityaudio.TimelineSeg
 	if b.req.MediaMode == scriptpkg.MediaModeStockOnly && !hasFinalJobStockBinding(localScene.Stock) {
 		return fmt.Errorf("final_job stock_only scene %q has no stock binding (folder or concrete); refusing to route it through the clip path", segment.ID)
 	}
-	if sceneVisualClipsAreStockOnly(localScene) && !hasFinalJobStockBinding(localScene.Stock) {
+	if renderunits.SceneVisualClipsAreStockOnly(localScene) && !hasFinalJobStockBinding(localScene.Stock) {
 		return fmt.Errorf("final_job scene %q has only stock-marked clips and no stock binding (folder or concrete)", segment.ID)
 	}
 	if !hasFinalJobStockBinding(localScene.Stock) {
@@ -290,7 +290,7 @@ func (b *finalJobSceneBuilder) appendStockPoolScene(segment capabilityaudio.Time
 	sceneText := firstFinalJobValue(localScene.Text[b.req.SourceLanguage], b.req.Title, localScene.ID)
 	sceneMS := (segment.DurationUS + 999) / 1000
 	scene := CompositeVideoScene(fmt.Sprintf("scene-%04d", b.clipOrdinal), b.clipOrdinal, "stock", nil, sceneMS, sceneText)
-	scene["stock_pool_slot"] = true
+	scene.StockPoolSlot = true
 	b.remoteScenes = append(b.remoteScenes, scene)
 	b.plannedDurationMS += sceneMS
 	b.clipOrdinal++
@@ -378,7 +378,7 @@ func (b *finalJobSceneBuilder) nextCertifiedClipVisual(scene contract.Scene) (ma
 		if candidate.Index <= scene.Index || !candidate.ExecutionMode.IsFixedMedia() {
 			continue
 		}
-		for _, unit := range RenderUnitsForScene(candidate) {
+		for _, unit := range renderunits.RenderUnitsForScene(candidate) {
 			if unit.Clip == nil {
 				continue
 			}
@@ -539,8 +539,15 @@ func finalJobFinalizePayload(ctx context.Context, runID string, req contract.Gen
 	if audioRef == nil {
 		return nil, nil, fmt.Errorf("final_job V2 worker submission requires certified final audio")
 	}
-	compiledPlan, _, err := FinalJobCompiledPlanPayloadWithStockPool(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS, builder.stockPoolFolderID, stockBoundWindowsMS)
+	// Build, align, prune and prepare the plan IN MEMORY. Every step mutates the
+	// same *FinalJobCompiledPlan; the payload is serialized exactly once at the
+	// end, together with the digest the Master verifies. Re-encoding between
+	// steps used to make the hand-off pay three json.Marshal calls per job.
+	compiledPlanObject, stockAssetIDs, err := buildFinalJobCompiledPlan(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS, builder.stockPoolFolderID, stockBoundWindowsMS)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := finalJobSealCompiledPlan(compiledPlanObject, remoteScenes, stockAssetIDs); err != nil {
 		return nil, nil, err
 	}
 	// The runtime refs are content-addressed (SHA), while the plan may still
@@ -548,22 +555,24 @@ func finalJobFinalizePayload(ctx context.Context, runID string, req contract.Gen
 	// same canonical identities before the Master sees the plan; otherwise the
 	// copy-only assembler rejects segment-0000 with "manifest binding is not
 	// exact" even though the prefetched bytes are correct.
-	compiledPlan, err = AlignFinalJobCompiledPlanAssetIDs(compiledPlan, runtimeAssets)
-	if err != nil {
+	if err := alignFinalJobCompiledPlanAssetIDs(compiledPlanObject, runtimeAssets); err != nil {
 		return nil, nil, err
 	}
-	retainedRuntimeAssets, err := RetainFinalJobRuntimeAssets(compiledPlan, runtimeAssets)
+	retainedRuntimeAssets, err := retainFinalJobRuntimeAssets(compiledPlanObject, runtimeAssets)
 	if err != nil {
 		return nil, nil, err
 	}
 	runtimeAssets = retainedRuntimeAssets
 	if len(preparers) > 0 && preparers[0] != nil {
-		compiledPlan, runtimeAssets, err = PrepareFinalJobVideoSegments(ctx, compiledPlan, runtimeAssets, preparers[0])
+		runtimeAssets, err = prepareFinalJobVideoSegments(ctx, compiledPlanObject, runtimeAssets, preparers[0])
 		if err != nil {
 			return nil, nil, fmt.Errorf("prepare non-stock final_job segments: %w", err)
 		}
 	}
-	compiledPlanSHA := digest.SHA256String(compiledPlan)
+	compiledPlan, compiledPlanSHA, err := marshalFinalJobCompiledPlan(compiledPlanObject)
+	if err != nil {
+		return nil, nil, err
+	}
 	attempt := 1
 	if result.RemoteFinalJob != nil && result.RemoteFinalJob.Attempt > 0 {
 		attempt = result.RemoteFinalJob.Attempt

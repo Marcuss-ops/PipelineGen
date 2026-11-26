@@ -26,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -37,6 +38,11 @@ type finalizeDriveDeliveryHandler struct {
 	preparation finalization.ArtifactPreparationService
 	mutator     persistence.AssetMutator
 	objects     *cas.Store
+	// deliveries is the job-result projection the confirmed Drive identity is
+	// written back to, so /full can report drive_publication=published and the
+	// real drive_file_id. Nil degrades to the asset-only reconcile: the
+	// publication still succeeds, only the job-view projection is absent.
+	deliveries *sqljobs.SQLiteStore
 	// observer binds a delivery run so the real Drive upload lands in
 	// run_operation_observations (the overlay/clip outbox precedent). Nil
 	// degrades to the unmeasured pass-through: instrumentation must never
@@ -57,6 +63,7 @@ func newFinalizeDriveDeliveryHandler(
 	preparation finalization.ArtifactPreparationService,
 	mutator persistence.AssetMutator,
 	objects *cas.Store,
+	deliveries *sqljobs.SQLiteStore,
 	observer *kernobs.RunObserver,
 	log *zap.Logger,
 ) (*finalizeDriveDeliveryHandler, error) {
@@ -72,7 +79,7 @@ func newFinalizeDriveDeliveryHandler(
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &finalizeDriveDeliveryHandler{preparation: preparation, mutator: mutator, objects: objects, observer: observer, log: log}, nil
+	return &finalizeDriveDeliveryHandler{preparation: preparation, mutator: mutator, objects: objects, deliveries: deliveries, observer: observer, log: log}, nil
 }
 
 func (h *finalizeDriveDeliveryHandler) EventType() string {
@@ -180,6 +187,21 @@ func (h *finalizeDriveDeliveryHandler) Handle(ctx context.Context, evt outboxeve
 	if err := h.mutator.PatchAsset(ctx, persistence.AssetPatch{AssetID: req.AssetID, MetadataPatchJSON: &patchJSON}); err != nil {
 		return fmt.Errorf("finalize Drive delivery %s: mark delivery complete: %w", req.ArtifactID, err)
 	}
+	// Project the confirmed identity onto the job result as well. The render is
+	// already COMPLETED at this point; this receipt is what flips /full from
+	// drive_publication=pending to published. A failure here retries the
+	// idempotent delivery instead of silently leaving the view pending.
+	if h.deliveries != nil {
+		if err := h.deliveries.RecordArtifactDriveDelivery(ctx, req.JobID, sqljobs.DriveDelivery{
+			ArtifactID:  req.ArtifactID,
+			Kind:        string(req.Kind),
+			DriveFileID: published.Location.FileID,
+			DriveLink:   published.Location.WebViewLink,
+			Status:      "completed",
+		}); err != nil {
+			return fmt.Errorf("finalize Drive delivery %s: project delivery into job result: %w", req.ArtifactID, err)
+		}
+	}
 	// No staged-copy cleanup: the artifact bytes live in the content-addressed
 	// object store, where reuse dedupes and lifecycle is the store's own.
 	h.log.Info("finalize artifact Drive delivery completed",
@@ -199,13 +221,14 @@ func RegisterFinalizeDriveDeliveryHandler(
 	preparation finalization.ArtifactPreparationService,
 	mutator persistence.AssetMutator,
 	objects *cas.Store,
+	deliveries *sqljobs.SQLiteStore,
 	observer *kernobs.RunObserver,
 	log *zap.Logger,
 ) error {
 	if registry == nil {
 		return fmt.Errorf("register finalize Drive delivery handler: outbox registry is required")
 	}
-	handler, err := newFinalizeDriveDeliveryHandler(preparation, mutator, objects, observer, log)
+	handler, err := newFinalizeDriveDeliveryHandler(preparation, mutator, objects, deliveries, observer, log)
 	if err != nil {
 		return err
 	}

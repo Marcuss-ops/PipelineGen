@@ -540,7 +540,7 @@ func (e *Execution) parallelFanOut() bool {
 }
 
 func (e *Execution) finalJob() bool {
-	if !e.req.FinalJob && !e.req.FinalJobRemote {
+	if !e.req.FinalJob {
 		return true
 	}
 	// The complete final video is Master-owned (PRODUCER-MASTER-BOUNDARY.md):
@@ -600,23 +600,12 @@ func (e *Execution) complete() {
 		}
 		kernobs.RecordStage(e.ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(voiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
 	}
-	if e.host.OverlayPublicationDrainer() != nil {
-		// Run-scoped join: the pool is process-wide, so the drainer resolves
-		// this run's batch from the run context instead of joining whatever
-		// another concurrent run happens to have in flight.
-		overlayDrainStarted := time.Now()
-		err := e.host.OverlayPublicationDrainer().Wait(e.ctx)
-		recordPublicationDrainWait(e.ctx, overlayDrainStarted)
-		if err != nil {
-			e.host.FailRunWithRetry(e.ctx, e.runID, runstate.StagePublishingDocuments,
-				fmt.Errorf("overlay publication pool: %w", err))
-			return
-		}
-		// Drive identity is written onto the certified artifact by the
-		// publisher. Persist the final projection before marking the run
-		// complete so a restart never loses a successful upload.
-		e.host.Checkpoint(e.ctx, e.runID, e.result)
-	}
+	// Overlay Drive publication is NOT joined here: it is a delivery concern.
+	// The render is complete once every artifact has a certified object-store
+	// locator, and the durable outbox owns the upload + retry that may land
+	// after this run is COMPLETED. A pending or failing Drive copy therefore
+	// cannot delay or fail a rendered run; /full distinguishes the two states
+	// through render_status and drive_publication.
 	if err := e.host.CompleteRun(e.ctx, e.runID, e.result); err != nil {
 		// Completion persistence is part of the run's contract: without the
 		// checkpoint and the COMPLETED transition the run is not done. Mark it

@@ -409,18 +409,20 @@ func buildGenerateRequestCore(item scriptpkg.GenerationItemV2, env *scriptpkg.Ge
 		OverlayImages:                 append([]scriptpkg.OverlayImageAsset(nil), item.OverlayImages...),
 		IdempotencyKey:                idempotencyKey,
 		ForceRefresh:                  env.ForceRefresh,
-		FinalJob:                      env.FinalJob || env.FinalJobRemote,
-		FinalJobRemote:                env.FinalJobRemote,
-		Source:                        source,
-		MediaMode:                     item.MediaMode,
-		StockBindings:                 append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...),
-		ScriptParams:                  item.ScriptParams,
-		MediaPlan:                     item.MediaPlan.Clone(),
-		ExtractEntities:               item.Output.ExtractEntities,
-		GenerateSceneImages:           item.Output.GenerateSceneImages,
-		SourceLanguage:                sourceLang,
-		Languages:                     languages,
-		ChannelID:                     item.ChannelID,
+		// One flag at the envelope and one in the durable request. Language
+		// fan-out children set FinalJob directly; there is no second
+		// "force remote" spelling for the same Master handoff.
+		FinalJob:            env.FinalJob,
+		Source:              source,
+		MediaMode:           item.MediaMode,
+		StockBindings:       append([]scriptpkg.StockBindingInput(nil), item.Output.StockBindings...),
+		ScriptParams:        item.ScriptParams,
+		MediaPlan:           item.MediaPlan.Clone(),
+		ExtractEntities:     item.Output.ExtractEntities,
+		GenerateSceneImages: item.Output.GenerateSceneImages,
+		SourceLanguage:      sourceLang,
+		Languages:           languages,
+		ChannelID:           item.ChannelID,
 	}
 	return req
 }

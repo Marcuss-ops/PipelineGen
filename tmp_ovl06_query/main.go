@@ -5,38 +5,20 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
-	dsn := os.Getenv("PIPELINEGEN_MEDIA_POSTGRES_DSN")
-	if dsn == "" {
-		fmt.Println("PIPELINEGEN_MEDIA_POSTGRES_DSN is not set")
-		os.Exit(2)
-	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		fmt.Println("open:", err)
-		os.Exit(1)
-	}
+	db, _ := sql.Open("pgx", os.Getenv("PIPELINEGEN_MEDIA_POSTGRES_DSN"))
 	defer db.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-
-	for _, id := range strings.Split(os.Getenv("OVL06_IDS"), ",") {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		var localPath, driveFileID string
-		err := db.QueryRowContext(ctx, `SELECT COALESCE(local_path,''), COALESCE(drive_file_id,'') FROM media_assets WHERE id=$1`, id).Scan(&localPath, &driveFileID)
-		if err != nil {
-			fmt.Printf("%s ERR %v\n", id, err)
-			continue
-		}
-		fmt.Printf("%s | local=%s | drive=%s\n", id, localPath, driveFileID)
+	for _, id := range []string{"yt_k9FS4UZPVVI_259_309_v1", "yt_rLccejx00HA_0_59_v1", "yt_J7GpwFrGsiU_105_157_v1", "yt_JP6BrYSa_yw_0_58_v1"} {
+		var lp, lk, uri string
+		_ = db.QueryRowContext(ctx, `select COALESCE(metadata_json->>'local_path','') from media_assets where id=$1`, id).Scan(&lp)
+		_ = db.QueryRowContext(ctx, `select COALESCE(location_kind,''), COALESCE(uri,'') from asset_locations where asset_id=$1 order by location_kind limit 1`, id).Scan(&lk, &uri)
+		fmt.Printf("%s | local_path=%q | first_loc=%s:%s\n", id, lp, lk, uri)
 	}
 }

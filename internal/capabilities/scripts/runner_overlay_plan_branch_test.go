@@ -15,12 +15,25 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/stretchr/testify/require"
 )
+
+// cloneResultForTest is a test-fixture copy. Production phase code never
+// clones the full result (DEMOL-07); tests still need an independent document
+// to compare pipelines on.
+func cloneResultForTest(t *testing.T, res *GenerateResult) *GenerateResult {
+	t.Helper()
+	raw, err := json.Marshal(res)
+	require.NoError(t, err)
+	var out GenerateResult
+	require.NoError(t, json.Unmarshal(raw, &out))
+	return &out
+}
 
 // overlayPlanBranchScenes returns the overlay-cert fixture: real semantic
 // annotations on both scenes so the compiled plan is non-nil and every
@@ -119,8 +132,7 @@ func TestOverlayPlanBranch_ProjectionEquivalence(t *testing.T) {
 	require.NotNil(t, res.OverlayPlan, "the branch-produced overlay plan must reach the durable result")
 
 	strip := func() *GenerateResult {
-		snapshot, err := snapshotGenerateResult(res)
-		require.NoError(t, err)
+		snapshot := cloneResultForTest(t, res)
 		snapshot.ResolvedScenes = nil
 		snapshot.CanonicalTimeline = nil
 		return snapshot
@@ -129,8 +141,10 @@ func TestOverlayPlanBranch_ProjectionEquivalence(t *testing.T) {
 	serialInput := strip()
 	require.NoError(t, projectionTestRunner().computeOverlayPlanProjection(context.Background(), "run-overlay-plan-branch-equivalence", req, "", serialInput))
 
-	branchInput := strip()
-	require.NoError(t, projectionTestRunner().computeOverlayPlanBranchProjection(context.Background(), "run-overlay-plan-branch-equivalence", req, "", capabilityaudio.AudioModeCombinedTimeline, branchInput))
+	planning := newOverlayPlanningInput("run-overlay-plan-branch-equivalence", "", req.Project, strip())
+	branchInput, err := projectionTestRunner().computeOverlayPlanBranchProjection(context.Background(), req, capabilityaudio.AudioModeCombinedTimeline, planning)
+	require.NoError(t, err)
+	require.NotNil(t, branchInput)
 
 	require.Equal(t, serialInput.PhraseTimings, branchInput.PhraseTimings, "phrase timings must be field-identical between the serial and detached projections")
 	require.Equal(t, serialInput.SceneSpeechTimings, branchInput.SceneSpeechTimings, "scene speech timings must be field-identical")
@@ -150,8 +164,7 @@ func TestOverlayPlanBranch_JoinIsIdempotent(t *testing.T) {
 	_, req, res := runOverlayPlanBranchRun(t, "run-overlay-plan-branch-idempotent-join")
 	require.NotNil(t, res.OverlayPlan)
 
-	stripped, err := snapshotGenerateResult(res)
-	require.NoError(t, err)
+	stripped := cloneResultForTest(t, res)
 	stripped.ResolvedScenes = nil
 	stripped.CanonicalTimeline = nil
 	// The join asserted the real broker job identity on the applied plan; the

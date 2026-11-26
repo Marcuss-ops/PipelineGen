@@ -29,12 +29,12 @@ func (s *stubCombinedSemanticAnalyzer) SemanticCandidates(context.Context, strin
 	return &SemanticCandidateBundle{}, nil
 }
 
-func (s *stubCombinedSemanticAnalyzer) AnalyzeSemanticEditorial(_ context.Context, _, _ string, _ []scriptpkg.SceneAnalysisInput) (map[string]*SemanticCandidateBundle, scriptpkg.PhraseImpactResult, error) {
+func (s *stubCombinedSemanticAnalyzer) AnalyzeSemanticEditorial(_ context.Context, _, _ string, _ []scriptpkg.SceneAnalysisInput) (*ScriptSemanticResult, scriptpkg.PhraseImpactResult, error) {
 	s.calls++
 	if s.err != nil {
 		return nil, scriptpkg.PhraseImpactResult{}, s.err
 	}
-	return map[string]*SemanticCandidateBundle{}, s.result, nil
+	return &ScriptSemanticResult{Scenes: map[string]*SemanticCandidateBundle{}}, s.result, nil
 }
 
 func TestRunnerConsumesEditorialProductsFromTheUnifiedSemanticBatch(t *testing.T) {

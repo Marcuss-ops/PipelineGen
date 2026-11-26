@@ -211,7 +211,7 @@ func initCompositionMinimalWithContext(_ context.Context, cfg *config.Config, lo
 						if root.ObservabilityDB != nil {
 							observer = finalizedrive.FinalizeDriveDeliveryObserver(root.ObservabilityDB.DB)
 						}
-						if regErr := finalizedrive.RegisterFinalizeDriveDeliveryHandler(outboxRegistry, preparation, mutator, objectStore, observer, log); regErr != nil {
+						if regErr := finalizedrive.RegisterFinalizeDriveDeliveryHandler(outboxRegistry, preparation, mutator, objectStore, root.Jobs.Repo, observer, log); regErr != nil {
 							partialCleanup()
 							return nil, nil, nil, fmt.Errorf("wire services composition: %w", regErr)
 						}

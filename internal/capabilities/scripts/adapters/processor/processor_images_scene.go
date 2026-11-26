@@ -37,28 +37,3 @@
 // owned by processor_images_contracts.go. This file references the
 // constants; it does NOT redeclare them.
 package processor
-
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-)
-
-// specScenesFromInput returns the canonical scene list from the
-// adapters.ProcessInput envelope (typed MSOV1 output). Commit 6b (July 2026):
-// relocated from processor_images.go to honor the spec literal
-// 5-method-only constraint on processor_images.go.
-//
-// PR 9 contract: post-processors consume scenes through this lens;
-// any attempt to re-derive scenes via text-splitting is a regression
-// caught by ci-architectural-checks Check 15. The function is
-// same-package-private (lowercase, no export) and is called only
-// from (*ImageProcessor).Process to read the engineResult's
-// SpecScene.Scenes. godlike/06 SSOT-correct location: scene.go
-// owns all per-scene-lens helpers (resolveSceneQuery is the
-// other lens helper in this file).
-func specScenesFromInput(input adapters.ProcessInput) []scriptpkg.SpecScene {
-	if len(input.SpecScene.Scenes) == 0 {
-		return nil
-	}
-	return input.SpecScene.Scenes
-}

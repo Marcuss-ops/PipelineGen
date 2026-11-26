@@ -29,8 +29,14 @@ type GenerationEnvelopeV2 struct {
 
 	// Preset records the endpoint variant for default application:
 	//   "custom"       — caller filled every flag explicitly
-	//   "with_images"  — force scene_images+voiceover ON, entities+metadata OFF
-	//   "batch"        — batch generation (multiple items)
+	//   "with_images"  — scene-image sizing defaults
+	//   "full_media"   — voiceover ON when the caller left it unset
+	//   "catalog"      — source.kind=catalog
+	//   "search"       — source.kind=search
+	//
+	// Empty is accepted and behaves like custom. Every other value fails
+	// closed (see Validate): an unknown variant used to be accepted and did
+	// nothing at all. Batch generation is a multi-item envelope, not a preset.
 	Preset Preset `json:"preset"`
 
 	// CorrelationID is an optional tracing identifier propagated
@@ -43,14 +49,15 @@ type GenerationEnvelopeV2 struct {
 	// an active or completed record.
 	ForceRefresh bool `json:"force_refresh,omitempty"`
 
-	// FinalJob marks this generation as requesting the remote final-render
-	// handoff. False preserves the existing local-only workflow.
+	// FinalJob marks this generation as requesting the final-render handoff.
+	// The complete final video is Master-owned, so a final job ALWAYS hands off
+	// and the local join never runs; false keeps the local-only workflow.
+	//
+	// There is deliberately ONE flag. The former final_job_remote duplicate
+	// expressed "hand off even though the local lane could", which is already
+	// what final_job=true does — two booleans for one decision, where a payload
+	// setting only the duplicate behaved like neither.
 	FinalJob bool `json:"final_job,omitempty"`
-
-	// FinalJobRemote forces the Master handoff even when the local lane could
-	// assemble the complete video itself, so a render-enabled run can opt out of
-	// the local join and hand the complete video to the Master.
-	FinalJobRemote bool `json:"final_job_remote,omitempty"`
 
 	// Items is the list of generation items. Must contain at least
 	// one entry. For single-item generation, use one item. For

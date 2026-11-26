@@ -292,11 +292,6 @@ var registryByName = func() map[string]Knob {
 	return byName
 }()
 
-// Registry returns a copy of the whole table (declaration order).
-func Registry() []Knob {
-	return append([]Knob(nil), registry...)
-}
-
 // Lookup returns the entry for an exact env name.
 func Lookup(name string) (Knob, bool) {
 	knob, ok := registryByName[strings.TrimSpace(name)]
@@ -319,18 +314,6 @@ func String(name string) string {
 		return knob.Default
 	}
 	return ""
-}
-
-// Bool parses a knob with the truthy vocabulary the final-job gates already
-// use ("1", "true", "on", "enabled", "yes"). An unset variable yields the
-// registry default parsed the same way; a malformed value is false.
-func Bool(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(String(name))) {
-	case "1", "true", "on", "enabled", "yes":
-		return true
-	default:
-		return false
-	}
 }
 
 // Setting is one overridden knob as observed on a running process.

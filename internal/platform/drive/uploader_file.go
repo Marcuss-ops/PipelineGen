@@ -16,22 +16,27 @@ import (
 //
 // Deprecated: use FileLifecycle.Trash instead.
 func (u *Uploader) TrashFile(ctx context.Context, fileID string) error {
+	return u.trash(ctx, fileID, "file")
+}
+
+// trash is the shared trash implementation for files and folders.
+func (u *Uploader) trash(ctx context.Context, id, kind string) error {
 	if u.Service == nil {
 		return fmt.Errorf("drive service not configured")
 	}
-	if strings.TrimSpace(fileID) == "" {
-		return fmt.Errorf("file id is required")
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("%s id is required", kind)
 	}
 
-	_, err := u.Service.Files.Update(fileID, &driveapi.File{
+	_, err := u.Service.Files.Update(id, &driveapi.File{
 		Trashed: true,
 	}).Fields("id", "trashed").Context(ctx).Do()
 	if err != nil {
-		return fmt.Errorf("failed to trash drive file: %w", err)
+		return fmt.Errorf("failed to trash drive %s: %w", kind, err)
 	}
 
 	if u.Log != nil {
-		u.Log.Info("drive file moved to trash", zap.String("file_id", fileID))
+		u.Log.Info("drive "+kind+" moved to trash", zap.String(kind+"_id", id))
 	}
 	return nil
 }
@@ -41,18 +46,23 @@ func (u *Uploader) TrashFile(ctx context.Context, fileID string) error {
 //
 // Deprecated: use FileLifecycle.Delete instead.
 func (u *Uploader) DeleteFile(ctx context.Context, fileID string) error {
+	return u.delete(ctx, fileID, "file")
+}
+
+// delete is the shared permanent-delete implementation for files and folders.
+func (u *Uploader) delete(ctx context.Context, id, kind string) error {
 	if u.Service == nil {
 		return fmt.Errorf("drive service not configured")
 	}
-	if strings.TrimSpace(fileID) == "" {
-		return fmt.Errorf("file id is required")
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("%s id is required", kind)
 	}
-	if err := u.Service.Files.Delete(fileID).Context(ctx).Do(); err != nil {
-		return fmt.Errorf("failed to delete drive file: %w", err)
+	if err := u.Service.Files.Delete(id).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("failed to delete drive %s: %w", kind, err)
 	}
 
 	if u.Log != nil {
-		u.Log.Info("drive file deleted", zap.String("file_id", fileID))
+		u.Log.Info("drive "+kind+" deleted", zap.String(kind+"_id", id))
 	}
 	return nil
 }

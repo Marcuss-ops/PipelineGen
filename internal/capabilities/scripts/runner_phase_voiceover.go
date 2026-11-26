@@ -197,7 +197,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req contra
 				// Join them before taking the failure snapshot so the partial
 				// result is race-free and includes every completed sibling.
 				renderWg.Wait()
-				if snapshot, snapshotErr := snapshotGenerateResult(result); snapshotErr != nil {
+				if snapshot, snapshotErr := detachCheckpointResult(result); snapshotErr != nil {
 					r.log.Warn("voiceover failure checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
 				} else if snapshot != nil {
 					r.checkpoint(ctx, runID, snapshot)
@@ -413,7 +413,7 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 			(item.lang == req.SourceLanguage || (req.Render.Subtitles != nil && req.Render.Subtitles.Enabled))
 		if checkpointDue.due(time.Now()) {
 			var snapshotErr error
-			snapshot, snapshotErr = snapshotGenerateResult(result)
+			snapshot, snapshotErr = detachCheckpointResult(result)
 			if snapshotErr != nil {
 				r.log.Warn("voiceover checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
 				checkpointDue.complete()
@@ -638,7 +638,7 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 			applyLocalizedRenderLinkLocked(result, rendered)
 		}
 		r.localizedRenderMu.Unlock()
-		if snapshot, snapshotErr := snapshotGenerateResult(result); snapshotErr != nil {
+		if snapshot, snapshotErr := detachCheckpointResult(result); snapshotErr != nil {
 			r.log.Warn("voiceover final checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
 		} else if snapshot != nil {
 			recordCheckpointFlush()

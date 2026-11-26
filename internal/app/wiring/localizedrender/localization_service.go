@@ -144,16 +144,21 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 }
 
 type LocalizeInput struct {
-	AssetID                string
-	JobID                  string
-	SceneID                string
-	ClipID                 string
-	SourceLanguage         string
-	Watermark              *cliprender.MaterializedAsset
-	WatermarkSpec          *cliprender.WatermarkSpec
-	Background             *cliprender.MaterializedAsset
-	BackgroundMode         string
-	BackgroundKind         string
+	AssetID        string
+	JobID          string
+	SceneID        string
+	ClipID         string
+	SourceLanguage string
+	Watermark      *cliprender.MaterializedAsset
+	WatermarkSpec  *cliprender.WatermarkSpec
+	Background     *cliprender.MaterializedAsset
+	BackgroundMode string
+	BackgroundKind string
+	// BackgroundBlurPX / BackgroundZoom are the blur_source treatment of the
+	// derived plate. They travel beside the mode so the sealed plan can
+	// validate them and fold them into its fingerprint.
+	BackgroundBlurPX       float64
+	BackgroundZoom         float64
 	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 	ForegroundScalePercent int
 	// SourceFrame is the clip card treatment (bounding frame, shadow, stroke,
@@ -212,6 +217,8 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		Background:             in.Background,
 		BackgroundMode:         in.BackgroundMode,
 		BackgroundKind:         in.BackgroundKind,
+		BackgroundBlurPX:       in.BackgroundBlurPX,
+		BackgroundZoom:         in.BackgroundZoom,
 		ForegroundScalePercent: in.ForegroundScalePercent,
 		SourceFrame:            in.SourceFrame,
 		Effects:                in.Effects,

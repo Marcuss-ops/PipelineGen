@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // ErrAssetPublishedTerminalEnvelope aggregates every payload-validation
@@ -51,11 +51,11 @@ func NewAssetPublishedHandler(log *zap.Logger) *AssetPublishedHandler {
 }
 
 func (h *AssetPublishedHandler) EventType() string {
-	return outboxevents.EventAssetPublished
+	return outbox.EventAssetPublished
 }
 
 func (h *AssetPublishedHandler) IdempotencyKey() string {
-	return outboxevents.EventAssetPublished + "." + outboxevents.SchemaVersionAssetPublished
+	return outbox.EventAssetPublished + "." + outbox.SchemaVersionAssetPublished
 }
 
 // ComposeSearchText remains the canonical informational representation used
@@ -100,7 +100,7 @@ func ComposeSearchText(destination, origin, subject, category, provider string, 
 
 // Handle validates asset.published.v1 and records receipt. It deliberately
 // performs no external vector store write and no media_assets.index_state transition.
-func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	_ = ctx
 	start := time.Now()
 	outcome := "parse_err"
@@ -114,7 +114,7 @@ func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Eve
 	}()
 
 	var payload AssetPublishedRequestV1
-	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+	if err := outbox.DecodeV1(outbox.DecodePolicy{
 		EventName:         "asset.published",
 		WantSchemaVersion: AssetPublishedSchemaVersion,
 		Log:               h.log,
@@ -124,12 +124,12 @@ func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Eve
 	}
 	// Resource-level validation: only this handler knows which fields identify
 	// its aggregate. The envelope checks (parse, version, event_id,
-	// idempotency_key) live in outboxevents.DecodeV1.
+	// idempotency_key) live in outbox.DecodeV1.
 	if payload.AssetID == "" {
-		return outboxevents.NewTerminalError(ErrAssetPublishedAssetIDMissing)
+		return outbox.NewTerminalError(ErrAssetPublishedAssetIDMissing)
 	}
 	if payload.Destination == "" {
-		return outboxevents.NewTerminalError(ErrAssetPublishedDestinationMissing)
+		return outbox.NewTerminalError(ErrAssetPublishedDestinationMissing)
 	}
 
 	searchText := ComposeSearchText(payload.Destination, payload.Origin, payload.Subject, payload.Category, payload.Provider, payload.Tags, payload.DrivePath, payload.ContentType)
@@ -145,19 +145,19 @@ func (h *AssetPublishedHandler) Handle(ctx context.Context, evt outboxevents.Eve
 
 // assetPublishedViolation keeps this handler's exported sentinel identities
 // (operators and tests branch on them) while the CHECKS themselves live in
-// outboxevents.DecodeV1. The mapping is mechanical by design: one switch per
+// outbox.DecodeV1. The mapping is mechanical by design: one switch per
 // handler, one place that decides what an envelope violation is.
-func assetPublishedViolation(v outboxevents.Violation) error {
+func assetPublishedViolation(v outbox.Violation) error {
 	switch v.Kind {
-	case outboxevents.ViolationParse:
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: %v", ErrAssetPublishedPayloadParse, v.Err))
-	case outboxevents.ViolationSchemaVersion:
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: got %q, want %q", ErrAssetPublishedSchemaVersionMismatch, v.Got, v.Want))
-	case outboxevents.ViolationEventID:
-		return outboxevents.NewTerminalError(ErrAssetPublishedEventIDMissing)
-	case outboxevents.ViolationIdempotencyKey:
-		return outboxevents.NewTerminalError(ErrAssetPublishedIdempotencyKeyMissing)
+	case outbox.ViolationParse:
+		return outbox.NewTerminalError(fmt.Errorf("%w: %v", ErrAssetPublishedPayloadParse, v.Err))
+	case outbox.ViolationSchemaVersion:
+		return outbox.NewTerminalError(fmt.Errorf("%w: got %q, want %q", ErrAssetPublishedSchemaVersionMismatch, v.Got, v.Want))
+	case outbox.ViolationEventID:
+		return outbox.NewTerminalError(ErrAssetPublishedEventIDMissing)
+	case outbox.ViolationIdempotencyKey:
+		return outbox.NewTerminalError(ErrAssetPublishedIdempotencyKeyMissing)
 	default:
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: %s", ErrAssetPublishedPayloadParse, v.Kind))
+		return outbox.NewTerminalError(fmt.Errorf("%w: %s", ErrAssetPublishedPayloadParse, v.Kind))
 	}
 }

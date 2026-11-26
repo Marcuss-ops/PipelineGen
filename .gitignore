@@ -141,6 +141,8 @@ docs/screenshots/
 # the cmd/ner-eval/ DIRECTORY, so every source file split out of main.go there
 # was silently untracked and a fresh clone could not build the package.
 /ner-eval
+# admin rehydrate binary built locally (60 MB); rebuilt from cmd/admin.
+/rehydrate_ovl06
 *.bak
 pipelinegen.bak
 config.yaml.server.bak
@@ -154,6 +156,7 @@ server.log
 # ============================================
 # Generated Assets / Scratch
 # ============================================
+tmp_asset_read/
 Crociata/
 Epica Medievale/
 Notte Gotica/

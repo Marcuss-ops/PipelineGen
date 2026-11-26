@@ -37,9 +37,12 @@ func TestOverlaysOnlyProjectionDeclaresCanonicalV3PayloadProfile(t *testing.T) {
 	runner := projectionTestRunner()
 	runner.SetOverlayCanvas(OverlayCanvasSpec{Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1})
 	result := &GenerateResult{SourceLanguage: "en", Scenes: scenes}
-	require.NoError(t, runner.computeOverlayPlanBranchProjection(
-		context.Background(), "run-overlays-only-v3", req, "",
-		capabilityaudio.AudioModeChunkedVoiceover, result))
+	planning := newOverlayPlanningInput("run-overlays-only-v3", "", req.Project, result)
+	projected, err := runner.computeOverlayPlanBranchProjection(
+		context.Background(), req, capabilityaudio.AudioModeChunkedVoiceover, planning)
+	require.NoError(t, err)
+	require.NotNil(t, projected, "the overlays-only projection must produce a document")
+	result = projected
 	require.NotNil(t, result.OverlayPlan, "the overlays-only projection must produce a plan")
 
 	plan := result.OverlayPlan

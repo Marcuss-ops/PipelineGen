@@ -172,6 +172,10 @@ con 35% wall reale.
   scelta della forma di submission (gate `OVERLAY_RENDER_PER_SCENE`, mai per
   FinalJob, mai per piani single-scene, capability-check
   `OverlayPlanSplitEnqueuer`); fallback fail-closed al path singolo su errore.
+- **RIMOSSA il 2026-11-26:** la barrier a livello lingua è stata cancellata
+  insieme al flag `OVERLAY_RENDER_LANG_BARRIER`; la sottomissione dei piani
+  resta una sola unità nel fork `OnPlanReady`, senza due submitter concorrenti
+  da riconciliare. Il resto di questa sezione è storico.
 - `runner_overlay_render_barrier.go`: barrier a livello LINGUA
   (`OVERLAY_RENDER_LANG_BARRIER`, default off) che lancia il rendering delle
   piante dalla P1 branch mentre il master audio compile è ancora in volo; il

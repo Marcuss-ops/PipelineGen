@@ -114,7 +114,12 @@ func scanOutboxEnvelopeFile(root, path string, seen map[string]bool, r *report.R
 // outboxEnvelopeDecodeOwnerFile is the ONE implementation the gate protects.
 // It is excluded by path because its own bodies necessarily contain every
 // signal the detector looks for.
-const outboxEnvelopeDecodeOwnerFile = "internal/platform/sqlite/outboxevents/envelope_decode.go"
+//
+// 2026-11-26: the envelope contract moved from the SQLite adapter to
+// internal/kernel/outbox so a capability can consume it without importing a
+// storage backend. outboxevents/envelope_decode.go is now a thin alias; the
+// gate must follow the implementation, not the historical adapter path.
+const outboxEnvelopeDecodeOwnerFile = "internal/kernel/outbox/envelope.go"
 
 // envelopeSchemaComparison / envelopeIdempotencyComparison match a CHECK, not a
 // mention: a handler that merely logs or forwards req.IdempotencyKey (delivery,

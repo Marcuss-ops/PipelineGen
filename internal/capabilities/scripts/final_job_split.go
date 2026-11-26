@@ -11,6 +11,10 @@ import (
 	"strings"
 	"time"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"go.uber.org/zap"
 )
 
@@ -26,7 +30,7 @@ type finalJobSplitOutcome struct {
 // startFinalJobSplitPrepare launches the early base PREPARE. It returns nil
 // whenever the serial handoff must stay authoritative: final job disabled,
 // adapter without the split contract, no overlay sibling to overlap, a
-// non-replayable receipt, or a result that cannot be snapshotted.
+// non-replayable receipt, or a missing result.
 func (r *Runner) startFinalJobSplitPrepare(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult) chan finalJobSplitOutcome {
 	if r == nil || !req.FinalJob || result == nil || result.FinalAudio == nil {
 		return nil
@@ -46,14 +50,10 @@ func (r *Runner) startFinalJobSplitPrepare(ctx context.Context, runID string, re
 			return nil
 		}
 	}
-	snapshot, err := snapshotGenerateResult(result)
-	if err != nil {
-		if r.log != nil {
-			r.log.Warn("final_job split PREPARE skipped: result snapshot failed",
-				zap.String("run_id", runID), zap.Error(err))
-		}
-		return nil
-	}
+	// The base handoff receives a typed immutable projection: only the facts
+	// the PREPARE payload reads are copied, and the overlay-only fields stay
+	// out of the detached document by construction.
+	snapshot := newFinalJobSplitInput(runID, "", result).document()
 	if result.RemoteFinalJob == nil {
 		// Durable intent before the network: a process restart can replay the
 		// SAME base plan (and therefore the same idempotency key) instead of
@@ -154,4 +154,67 @@ func finalJobSplitAttempt(result *GenerateResult) int {
 		return 1
 	}
 	return result.RemoteFinalJob.Attempt
+}
+
+// FinalJobSplitInput is the typed immutable input of the early split
+// PREPARE (DEMOL-07). The base handoff never reads the overlay projection: it
+// needs the base timeline, its certified audio and the base scene projections.
+// Copying exactly those facts replaces the former full-result JSON clone and
+// mirrors the payload package's own finalJobInputFor projection.
+
+// FinalJobSplitInput is the immutable input of the split PREPARE goroutine.
+type FinalJobSplitInput struct {
+	RunID string
+	JobID string
+
+	Scenes            []contract.Scene
+	CanonicalTimeline *capabilityaudio.CanonicalTimeline
+	FinalAudio        *contract.FinalAudioReference
+
+	OverlayPlan         *capmodel.OverlayPlan
+	OverlayAudit        *contract.OverlayAudit
+	OverlayRender       *contract.RenderReference
+	LocalizedRenders    []contract.LocalizedRenderResult
+	RemoteFinalJob      *contract.RemoteFinalJobResult
+	FinalJobPreflight   *contract.FinalJobPreflight
+	PhraseOverlayBudget *capabilityoverlay.PhraseOverlayBudget
+}
+
+// newFinalJobSplitInput copies the base-handoff facts on the phase goroutine.
+func newFinalJobSplitInput(runID, jobID string, result *contract.GenerateResult) FinalJobSplitInput {
+	input := FinalJobSplitInput{RunID: runID, JobID: jobID}
+	if result == nil {
+		return input
+	}
+	input.Scenes = result.Scenes
+	input.CanonicalTimeline = result.CanonicalTimeline
+	input.FinalAudio = result.FinalAudio
+	input.OverlayPlan = result.OverlayPlan
+	input.OverlayAudit = result.OverlayAudit
+	input.OverlayRender = result.OverlayRender
+	input.LocalizedRenders = result.LocalizedRenders
+	input.RemoteFinalJob = result.RemoteFinalJob
+	input.FinalJobPreflight = result.FinalJobPreflight
+	input.PhraseOverlayBudget = result.PhraseOverlayBudget
+	return input
+}
+
+// document returns the branch-private base projection. It matches the
+// finaljob package's own input projection field for field, so the payload the
+// early PREPARE builds is byte-identical to the serial handoff's.
+func (in FinalJobSplitInput) document() *contract.GenerateResult {
+	return &contract.GenerateResult{
+		AudioOutput: contract.AudioOutput{
+			CanonicalTimeline: in.CanonicalTimeline,
+			FinalAudio:        in.FinalAudio,
+		},
+		Scenes:              in.Scenes,
+		OverlayPlan:         in.OverlayPlan,
+		OverlayAudit:        in.OverlayAudit,
+		OverlayRender:       in.OverlayRender,
+		LocalizedRenders:    in.LocalizedRenders,
+		RemoteFinalJob:      in.RemoteFinalJob,
+		FinalJobPreflight:   in.FinalJobPreflight,
+		PhraseOverlayBudget: in.PhraseOverlayBudget,
+	}
 }

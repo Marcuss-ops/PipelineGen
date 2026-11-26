@@ -31,6 +31,18 @@ type OverlayDriveLink struct {
 	FolderID    string `json:"drive_folder_id,omitempty"`
 }
 
+// DriveDelivery is the operator-facing receipt of one deferred Drive
+// publication. The outbox consumer writes it after the real upload lands, so
+// /full can report delivery from evidence instead of guessing it from the
+// render. Only artifacts whose publication was deferred appear here.
+type DriveDelivery struct {
+	ArtifactID  string `json:"artifact_id,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	DriveFileID string `json:"drive_file_id"`
+	DriveLink   string `json:"drive_link,omitempty"`
+	Status      string `json:"delivery_status"`
+}
+
 // OverlayDriveLinkIsCurrent reports whether link belongs to the plan retained
 // in the terminal job result. Overlay renders may finish after a failed run
 // attempt has already been replaced by a retry; those old publication events
@@ -218,6 +230,100 @@ func (r *SQLiteStore) RecordOverlayDriveLink(ctx context.Context, jobID string, 
 		}
 	}
 	return fmt.Errorf("record overlay Drive link: result for job %s kept changing", jobID)
+}
+
+// RecordArtifactDriveDelivery merges a confirmed Drive publication into the
+// terminal job result. It is the write half of the rendered/delivered split:
+// the run may already be COMPLETED (rendered) while this receipt is still
+// pending, and /full must show drive_publication=pending until it exists.
+// Compare-and-swap preserves concurrent deliveries of different artifacts.
+func (r *SQLiteStore) RecordArtifactDriveDelivery(ctx context.Context, jobID string, delivery DriveDelivery) error {
+	if r == nil || r.db == nil || strings.TrimSpace(jobID) == "" ||
+		strings.TrimSpace(delivery.ArtifactID) == "" || strings.TrimSpace(delivery.DriveFileID) == "" {
+		return fmt.Errorf("record Drive delivery: job id, artifact id and Drive file id are required")
+	}
+	if strings.TrimSpace(delivery.Status) == "" {
+		delivery.Status = "completed"
+	}
+	for attempt := 0; attempt < 12; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("record Drive delivery: %w", err)
+		}
+		var status string
+		if err := r.db.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id = ?`, jobID).Scan(&status); err != nil {
+			return fmt.Errorf("record Drive delivery: read job status: %w", err)
+		}
+		if !job.Status(status).IsTerminal() {
+			return fmt.Errorf("record Drive delivery: job %s is not terminal (status %s)", jobID, status)
+		}
+		var rowID int64
+		var oldPayload string
+		if err := r.db.QueryRowContext(ctx, `SELECT id, result_payload FROM job_results WHERE job_id = ? ORDER BY attempt DESC, id DESC LIMIT 1`, jobID).Scan(&rowID, &oldPayload); err != nil {
+			return fmt.Errorf("record Drive delivery: read job result: %w", err)
+		}
+		var result map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(oldPayload), &result); err != nil {
+			return fmt.Errorf("record Drive delivery: decode job result: %w", err)
+		}
+		if result == nil {
+			return fmt.Errorf("record Drive delivery: job result is not a JSON object")
+		}
+		projection := result
+		nestedResult := false
+		if nested := result["result"]; len(nested) != 0 {
+			var decoded map[string]json.RawMessage
+			if err := json.Unmarshal(nested, &decoded); err != nil {
+				return fmt.Errorf("record Drive delivery: decode nested result: %w", err)
+			}
+			if decoded != nil {
+				projection = decoded
+				nestedResult = true
+			}
+		}
+		deliveries := map[string]DriveDelivery{}
+		if raw := projection["drive_deliveries"]; len(raw) != 0 {
+			if err := json.Unmarshal(raw, &deliveries); err != nil {
+				return fmt.Errorf("record Drive delivery: decode existing deliveries: %w", err)
+			}
+			if deliveries == nil {
+				deliveries = map[string]DriveDelivery{}
+			}
+		}
+		deliveries[delivery.ArtifactID] = delivery
+		encodedDeliveries, err := json.Marshal(deliveries)
+		if err != nil {
+			return fmt.Errorf("record Drive delivery: encode deliveries: %w", err)
+		}
+		projection["drive_deliveries"] = encodedDeliveries
+		if nestedResult {
+			nested, err := json.Marshal(projection)
+			if err != nil {
+				return fmt.Errorf("record Drive delivery: encode nested result: %w", err)
+			}
+			result["result"] = nested
+		}
+		updatedPayload, err := json.Marshal(result)
+		if err != nil {
+			return fmt.Errorf("record Drive delivery: encode result: %w", err)
+		}
+		res, err := r.db.ExecContext(ctx, `UPDATE job_results SET result_payload = ?, result_hash = ? WHERE id = ? AND result_payload = ?`, string(updatedPayload), digest.SHA256String(string(updatedPayload)), rowID, oldPayload)
+		if err != nil {
+			return fmt.Errorf("record Drive delivery: update result: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("record Drive delivery: inspect update: %w", err)
+		}
+		if n == 1 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("record Drive delivery: %w", ctx.Err())
+		case <-time.After(time.Duration(attempt+1) * 3 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("record Drive delivery: result for job %s kept changing", jobID)
 }
 
 // persistJobResult is the sole write path for durable job results. The hot

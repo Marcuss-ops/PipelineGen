@@ -52,7 +52,7 @@ import (
 	"google.golang.org/api/googleapi"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // VoiceoverCleanupSchemaVersion is the canonical, EXACT string the
@@ -120,8 +120,8 @@ type VoiceoverCleanupDriver interface {
 type voiceoverCleanupRequestV1 struct {
 	// Envelope carries schema_version/event_id/idempotency_key/requested_at;
 	// the v1 envelope contract is decoded and validated once, in
-	// outboxevents.DecodeV1, not once per handler.
-	outboxevents.Envelope
+	// outbox.DecodeV1, not once per handler.
+	outbox.Envelope
 	VoiceoverID    string   `json:"voiceover_id"`
 	OldDriveFileID string   `json:"old_drive_file_id"`
 	NewDriveFileID string   `json:"new_drive_file_id"`
@@ -160,22 +160,22 @@ func NewVoiceoverCleanupHandler(driver VoiceoverCleanupDriver, log *zap.Logger) 
 
 // EventType returns the canonical outboxevents constant.
 func (h *VoiceoverCleanupHandler) EventType() string {
-	return outboxevents.EventVoiceoverCleanupRequested
+	return outbox.EventVoiceoverCleanupRequested
 }
 
-// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2).
+// IdempotencyKey implements outbox.Handler (Fase 6(c) Push 6.2).
 // Static canonical form: `<event_type>.<schema_version>` so the
 // HandlerRegistry.Register fail-closed panic fires at init time if
 // a future refactor forgets the declaration.
 func (h *VoiceoverCleanupHandler) IdempotencyKey() string {
-	return outboxevents.EventVoiceoverCleanupRequested + "." + VoiceoverCleanupSchemaVersion
+	return outbox.EventVoiceoverCleanupRequested + "." + VoiceoverCleanupSchemaVersion
 }
 
 // Handle parses the v1 envelope, performs the no-op gate
 // (old==new|both-empty), then deletes the OLD/target Drive file (only
 // when old != new AND old != "") and removes the OLD local audio paths.
 // The pool retries transient errors per its exponential backoff.
-// Terminal schema errors dead-letter via outboxevents.NewTerminalError
+// Terminal schema errors dead-letter via outbox.NewTerminalError
 // (godlike/07 — retry cannot conjure a missing field).
 //
 // Idempotency contract:
@@ -197,7 +197,7 @@ func (h *VoiceoverCleanupHandler) IdempotencyKey() string {
 // `outcome` string is reassigned in each branch and captured by the
 // deferred audit-log closure.
 
-func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	log := h.log
 	req, reqLog, err := decodeVoiceoverCleanupRequest(evt, log)
 	if err != nil {
@@ -218,10 +218,10 @@ func (h *VoiceoverCleanupHandler) Handle(ctx context.Context, evt outboxevents.E
 	return nil
 }
 
-func decodeVoiceoverCleanupRequest(evt outboxevents.Event, log *zap.Logger) (voiceoverCleanupRequestV1, []zap.Field, error) {
+func decodeVoiceoverCleanupRequest(evt outbox.Event, log *zap.Logger) (voiceoverCleanupRequestV1, []zap.Field, error) {
 	var req voiceoverCleanupRequestV1
-	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
-		EventName:         outboxevents.EventVoiceoverCleanupRequested,
+	if err := outbox.DecodeV1(outbox.DecodePolicy{
+		EventName:         outbox.EventVoiceoverCleanupRequested,
 		WantSchemaVersion: VoiceoverCleanupSchemaVersion,
 		Log:               log,
 	}, evt, &req); err != nil {
@@ -232,7 +232,7 @@ func decodeVoiceoverCleanupRequest(evt outboxevents.Event, log *zap.Logger) (voi
 			zap.Int64("event_id", evt.ID),
 			zap.String("aggregate_id", evt.AggregateID),
 		)
-		return voiceoverCleanupRequestV1{}, nil, outboxevents.NewTerminalError(
+		return voiceoverCleanupRequestV1{}, nil, outbox.NewTerminalError(
 			fmt.Errorf("voiceover.cleanup.requested: voiceover_id is required (terminal — retry cannot conjure an id)"),
 		)
 	}
@@ -267,7 +267,7 @@ func (h *VoiceoverCleanupHandler) cleanupDriveOrphan(ctx context.Context, req vo
 		log.Warn("voiceover.cleanup.requested: Drive driver not wired — local cleanup runs, Drive orphan remains (composition root misconfig)",
 			append(reqLog, zap.String("orphan_drive_file_id", req.OldDriveFileID))...,
 		)
-		return outboxevents.NewTerminalError(fmt.Errorf(
+		return outbox.NewTerminalError(fmt.Errorf(
 			"voiceover.cleanup.requested: Drive driver not wired; orphan file %s not deleted",
 			req.OldDriveFileID)), nil
 	}

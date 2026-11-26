@@ -197,6 +197,13 @@ func NewRenderQueueAsset(ref kernelasset.Ref, logicalPath, sourceURL string) Ren
 	return RenderQueueAsset{SHA256: canonical.SHA256, URL: logicalPath, SourceURL: sourceURL}
 }
 
+// CapabilityGPU is the capability a live RenderingGen worker advertises when
+// it can execute the GPU lane. The queue's claim path uses the same name to
+// hide a gpu_only job from a worker that cannot prove one, and PipelineGen's
+// pre-TTS capability gate uses it to reject such a request before any work is
+// spent. It is pinned to queue/client.CapabilityGPU by test.
+const CapabilityGPU = "gpu"
+
 // RenderQueueJob is the queue-side view of a submitted render job. It is the
 // wire contract with the central RenderingGen queue (POST /jobs and
 // GET /jobs/{id}). JobType is the canonical overlay job type

@@ -116,8 +116,8 @@ type phraseImpactEnrichment struct {
 // and the planner-owned feedback. A planning error is logged and withholds the
 // plan instead of failing the run: the editorial products already computed from
 // the same batch stay valid.
-func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles map[string]*SemanticCandidateBundle, req contract.GenerateRequest) {
-	if len(bundles) == 0 {
+func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, result *ScriptSemanticResult, req contract.GenerateRequest) {
+	if result == nil || len(result.Scenes) == 0 {
 		return
 	}
 	config := DefaultSemanticProductionPlanConfig()
@@ -127,7 +127,7 @@ func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles m
 	if req.MediaPlan.Planner.MaxImagesPerScene > 0 {
 		config.MaxMediaUnitsPerScene = req.MediaPlan.Planner.MaxImagesPerScene
 	}
-	consolidation, plan, feedback, err := PlanScriptProduction(bundles, config)
+	consolidation, plan, feedback, err := PlanScriptProduction(result, config)
 	out.consolidation = consolidation
 	if err != nil {
 		if r.log != nil {
@@ -229,9 +229,9 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 		if len(sceneInputs) == 0 {
 			return out, nil
 		}
-		semanticBundles, impactRes, err := batch.AnalyzeSemanticEditorial(ctx, transcript, language, sceneInputs)
+		semanticResult, impactRes, err := batch.AnalyzeSemanticEditorial(ctx, transcript, language, sceneInputs)
 		if err == nil {
-			r.adoptSemanticPlannerView(out, semanticBundles, req)
+			r.adoptSemanticPlannerView(out, semanticResult, req)
 			out.summary = impactRes.Summary
 			out.bullets = impactRes.BulletPoints
 			out.heavy = impactRes.HeavySentences
@@ -240,8 +240,8 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 				out.chapterManifest = &manifest
 			}
 			chartsEnabled := req.EnableCharts && !req.DisableChartOverlays
-			impactRes.SceneHighlights = r.mergeSemanticCharts(sceneInputs, impactRes.SceneHighlights, semanticBundles, chartsEnabled)
-			impactRes.SceneHighlights = mergeSemanticMicroSummaries(sceneInputs, impactRes.SceneHighlights, semanticBundles)
+			impactRes.SceneHighlights = r.mergeSemanticCharts(sceneInputs, impactRes.SceneHighlights, semanticResult.Scenes, chartsEnabled)
+			impactRes.SceneHighlights = mergeSemanticMicroSummaries(sceneInputs, impactRes.SceneHighlights, semanticResult.Scenes)
 			if !chartsEnabled {
 				for i := range impactRes.SceneHighlights {
 					impactRes.SceneHighlights[i].ChartValues = nil

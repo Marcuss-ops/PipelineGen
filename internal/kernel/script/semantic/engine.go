@@ -39,16 +39,20 @@ type NumericFactCandidate struct {
 // SemanticCandidateBundle carries the grounded projections from one analyze
 // call.
 type SemanticCandidateBundle struct {
-	SchemaVersion          string
-	Language               string
-	Fingerprint            string
-	Analyzers              SemanticAnalyzerVersions
-	Status                 string
-	Reason                 string
-	RejectedItems          int
-	Entities               []SemanticEntityCandidate
-	EntityFacts            []SemanticEntityFact
-	Identities             []SemanticIdentity
+	SchemaVersion string
+	Language      string
+	Fingerprint   string
+	Analyzers     SemanticAnalyzerVersions
+	Status        string
+	Reason        string
+	RejectedItems int
+	Entities      []SemanticEntityCandidate
+	EntityFacts   []SemanticEntityFact
+	// IdentityIDs lists only the canonical identities this scene references.
+	// The full script registry lives ONCE on ScriptSemanticResult.Identities;
+	// copying it into every scene made the projection O(scenes × identities)
+	// in both memory and JSON payload size.
+	IdentityIDs            []string
 	Relations              SemanticRelationView
 	Bullets                []BulletCandidate
 	ShortPhrases           []SemanticTextCandidate
@@ -87,6 +91,29 @@ type SemanticCandidateBundle struct {
 	// Whole-script views are shared and read-only, like Consolidation.
 	StoryGraph     *SemanticStoryGraph
 	VisualCoverage *SemanticVisualCoverage
+}
+
+// ScriptSemanticResult is the whole-script semantic projection. The identity
+// registry is projected exactly once here; each scene carries only the ids it
+// references. Consolidation and search feedback are script-level values too,
+// so they are carried once instead of being repeated on every bundle.
+type ScriptSemanticResult struct {
+	Identities     []SemanticIdentity
+	Consolidation  *SemanticVisualConsolidation
+	SearchFeedback *SemanticSearchFeedback
+	Scenes         map[string]*SemanticCandidateBundle
+}
+
+// IdentityByID indexes the script registry for scene-local id resolution.
+func (r *ScriptSemanticResult) IdentityByID() map[string]SemanticIdentity {
+	if r == nil {
+		return nil
+	}
+	byID := make(map[string]SemanticIdentity, len(r.Identities))
+	for _, identity := range r.Identities {
+		byID[identity.ID] = identity
+	}
+	return byID
 }
 
 // SemanticImportantSegment is a complete, source-grounded passage. Sentence
@@ -270,5 +297,5 @@ type SceneSemanticBatchAnalyzer interface {
 // SceneSemanticEditorialBatchAnalyzer returns semantic candidates and
 // extractive editorial products from the same whole-script worker request.
 type SceneSemanticEditorialBatchAnalyzer interface {
-	AnalyzeSemanticEditorial(context.Context, string, string, []scriptpkg.SceneAnalysisInput) (map[string]*SemanticCandidateBundle, scriptpkg.PhraseImpactResult, error)
+	AnalyzeSemanticEditorial(context.Context, string, string, []scriptpkg.SceneAnalysisInput) (*ScriptSemanticResult, scriptpkg.PhraseImpactResult, error)
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
@@ -33,7 +32,6 @@ type Service struct {
 	dedupe        *assetop.DedupeService
 	reconcile     *assetop.ReconcileService
 	publisher     delivery.Publisher
-	driveReader   drive.Reader
 	finalizer     Finalizer
 	uploadPolicy  assetop.UploadPolicy
 	persistPolicy assetop.PersistPolicy
@@ -52,7 +50,7 @@ type Config struct {
 type ServiceDeps struct {
 	Store       AssetRecordStore
 	Publisher   delivery.Publisher
-	DriveReader drive.Reader
+	DriveReader assetop.DriveFileState
 	Registry    artifacts.Registry
 	AssetIndex  *assetindex.Service
 	Finalizer   Finalizer
@@ -68,7 +66,7 @@ func NewService(deps ServiceDeps, cfg Config) *Service {
 	if cfg.ReconcilePolicy.Enabled && deps.DriveReader != nil {
 		reconcile = assetop.NewReconcileService(deps.Store, deps.DriveReader, cfg.ReconcilePolicy, deps.Log)
 	}
-	return &Service{store: deps.Store, dedupe: dedupe, reconcile: reconcile, publisher: deps.Publisher, driveReader: deps.DriveReader, finalizer: deps.Finalizer, uploadPolicy: cfg.UploadPolicy, persistPolicy: cfg.PersistPolicy, registry: deps.Registry, assetIndex: deps.AssetIndex, log: deps.Log}
+	return &Service{store: deps.Store, dedupe: dedupe, reconcile: reconcile, publisher: deps.Publisher, finalizer: deps.Finalizer, uploadPolicy: cfg.UploadPolicy, persistPolicy: cfg.PersistPolicy, registry: deps.Registry, assetIndex: deps.AssetIndex, log: deps.Log}
 }
 
 // byteIdentity returns the canonical SHA-256 of the artifact bytes plus the

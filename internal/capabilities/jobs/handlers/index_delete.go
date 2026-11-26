@@ -42,16 +42,16 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // errIndexLifecycleTerminal is the typed-terminal error sentinel
 // raised on envelope failures. The wrap path stamps every string
 // with a recognisable prefix so the production pool's
-// IsTerminal classifier (outboxevents.NewTerminalError consumer)
+// IsTerminal classifier (outbox.NewTerminalError consumer)
 // dead-letters immediately rather than spinning through
 // max_attempts. Every Handle-returned terminal error wraps this
-// via outboxevents.NewTerminalError.
+// via outbox.NewTerminalError.
 //
 // Blocco 3.1 commit 2/3 invariant: any return path that detects a
 // malformed envelope, schema mismatch, missing field, or
@@ -134,8 +134,8 @@ type AssetDeleter interface {
 type indexDeleteRequestV1 struct {
 	// Envelope carries schema_version/event_id/idempotency_key/requested_at;
 	// the v1 envelope contract is decoded and validated once, in
-	// outboxevents.DecodeV1, not once per handler.
-	outboxevents.Envelope
+	// outbox.DecodeV1, not once per handler.
+	outbox.Envelope
 	AssetID string `json:"asset_id"`
 }
 
@@ -176,7 +176,7 @@ func NewIndexDeleteHandler(log *zap.Logger, vectorDeleter VectorPointDeleter, as
 
 // EventType returns the canonical outboxevents constant.
 func (h *IndexDeleteHandler) EventType() string {
-	return outboxevents.EventAssetIndexDeleteRequested
+	return outbox.EventAssetIndexDeleteRequested
 }
 
 // IdempotencyKey declares the canonical handler-level idempotency
@@ -186,24 +186,24 @@ func (h *IndexDeleteHandler) EventType() string {
 // forgets the declaration. See IndexingHandler.IdempotencyKey for the
 // SSOT rationale (godlike/06 SSOT — one canonical owner per fact).
 func (h *IndexDeleteHandler) IdempotencyKey() string {
-	return outboxevents.EventAssetIndexDeleteRequested + "." + DeleteRequestSchemaVersion
+	return outbox.EventAssetIndexDeleteRequested + "." + DeleteRequestSchemaVersion
 }
 
 // Handle parses the v1 envelope, performs the idempotent delete
 // (pgvector + SQLite soft-delete), and returns nil on success. Validation
 // failures and unsatisfiable payloads return typed terminal errors
-// (PR1's outboxevents.NewTerminalError) so the pool's IsTerminal
+// (PR1's outbox.NewTerminalError) so the pool's IsTerminal
 // classifier dead-letters them immediately rather than burning
 // max_attempts in a repair loop. Transient pgvector failures return
 // non-terminal errors so the pool retries per its backoff.
 
-func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	log := h.log
 	if log == nil {
 		log = zap.NewNop()
 	}
 	if h.vectorDeleter == nil || h.assetDeleter == nil {
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: index delete dependencies are not wired", errIndexLifecycleTerminal))
+		return outbox.NewTerminalError(fmt.Errorf("%w: index delete dependencies are not wired", errIndexLifecycleTerminal))
 	}
 
 	req, reqLog, err := decodeIndexDeleteRequest(evt, log)
@@ -227,10 +227,10 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 	return nil
 }
 
-func decodeIndexDeleteRequest(evt outboxevents.Event, log *zap.Logger) (indexDeleteRequestV1, []zap.Field, error) {
+func decodeIndexDeleteRequest(evt outbox.Event, log *zap.Logger) (indexDeleteRequestV1, []zap.Field, error) {
 	var req indexDeleteRequestV1
-	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
-		EventName:         outboxevents.EventAssetIndexDeleteRequested,
+	if err := outbox.DecodeV1(outbox.DecodePolicy{
+		EventName:         outbox.EventAssetIndexDeleteRequested,
 		WantSchemaVersion: DeleteRequestSchemaVersion,
 		Log:               log,
 	}, evt, &req); err != nil {
@@ -241,7 +241,7 @@ func decodeIndexDeleteRequest(evt outboxevents.Event, log *zap.Logger) (indexDel
 			zap.Int64("event_id", evt.ID),
 			zap.String("aggregate_id", evt.AggregateID),
 		)
-		return indexDeleteRequestV1{}, nil, outboxevents.NewTerminalError(
+		return indexDeleteRequestV1{}, nil, outbox.NewTerminalError(
 			fmt.Errorf("asset.index.delete_requested: empty asset_id (terminal — retry cannot conjure an id)"),
 		)
 	}

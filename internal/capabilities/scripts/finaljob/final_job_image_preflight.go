@@ -350,7 +350,7 @@ func FinalJobEntityImageGate(audit *contract.OverlayAudit, imageRequested bool) 
 	}
 	reasons := make([]string, 0, len(info.Reasons))
 	for reason, count := range info.Reasons {
-		if reason == EntityImageReasonBound || count == 0 {
+		if reason == "bound" || count == 0 {
 			continue
 		}
 		reasons = append(reasons, fmt.Sprintf("%s=%d", reason, count))

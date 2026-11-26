@@ -66,10 +66,11 @@ func wireScriptGenerationOverlayQueue(runner *scriptgen.Runner, cfg *config.Conf
 			renderEnqueuer.SetArtifactPublisher(publicationPublisher)
 			// RenderingGen has already certified immutable bytes when the
 			// enqueuer returns. Drive publication and analytics therefore run on
-			// the bounded post-render pool; the runner joins it before COMPLETE.
+			// the bounded post-render pool, and the durable outbox owns the
+			// delivery after the run is COMPLETED. The runner never joins the
+			// pool: rendered is not delivered.
 			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
 			renderEnqueuer.SetAsyncPublication(true)
-			runner.SetOverlayPublicationDrainer(renderEnqueuer)
 			log.Info("overlay artifact Drive publisher wired",
 				zap.String("parent_folder_id", overlayParentFolderID),
 				zap.String("child_folder", "overlay"),
@@ -81,10 +82,10 @@ func wireScriptGenerationOverlayQueue(runner *scriptgen.Runner, cfg *config.Conf
 			// ARCHITECTURE §9.3.3 punto 5): the bounded post-render pool owns
 			// any publication work in EVERY configuration — Drive-backed or
 			// analytics-only — so no submit-side wait can ever serialize a
-			// render lane behind Drive/analytics latency.
+			// render lane behind Drive/analytics latency, and completion does
+			// not wait for the delivery pool either.
 			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
 			renderEnqueuer.SetAsyncPublication(true)
-			runner.SetOverlayPublicationDrainer(renderEnqueuer)
 			log.Info("overlay Drive publisher unavailable; local certified renders remain enabled",
 				zap.Int("publication_workers", cfg.Scripts.OverlayPublicationWorkers))
 		}

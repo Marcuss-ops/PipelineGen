@@ -132,10 +132,11 @@ func TestSemanticEngineAnalysesEverySceneInOneBatchCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundles, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes())
+	semanticScript, err := adapter.SemanticScript(context.Background(), "en", semanticScenes())
 	if err != nil {
 		t.Fatalf("batch analysis failed: %v", err)
 	}
+	bundles := semanticScript.Scenes
 	if len(bundles) != 2 {
 		t.Fatalf("bundles=%d, want 2", len(bundles))
 	}
@@ -164,8 +165,9 @@ func TestSemanticEngineAnalysesEverySceneInOneBatchCall(t *testing.T) {
 		t.Fatalf("numeric facts: %+v", first.Numeric)
 	}
 	if len(first.Entities) != 1 || first.Entities[0].IdentityID != "person_01" ||
-		len(first.Identities) != 1 || first.Identities[0].Mentions[0].Surface != "Marco Rossi" {
-		t.Fatalf("entities/identities were not preserved: entities=%+v identities=%+v", first.Entities, first.Identities)
+		len(first.IdentityIDs) != 1 || first.IdentityIDs[0] != "person_01" ||
+		len(semanticScript.Identities) != 1 || semanticScript.Identities[0].Mentions[0].Surface != "Marco Rossi" {
+		t.Fatalf("entities/identities were not preserved: entities=%+v identity_ids=%+v identities=%+v", first.Entities, first.IdentityIDs, semanticScript.Identities)
 	}
 	if len(first.ShortPhrases) != 1 || first.ShortPhrases[0].Evidence != "founded" {
 		t.Fatalf("short phrase was not preserved: %+v", first.ShortPhrases)
@@ -343,12 +345,15 @@ func TestSemanticEngineAllowsCrossSceneIdentityReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: raw}))
-	bundles, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes())
+	semanticScript, err := adapter.SemanticScript(context.Background(), "en", semanticScenes())
 	if err != nil {
 		t.Fatalf("cross-scene identity reference was rejected: %v", err)
 	}
-	if len(bundles["scene_01"].Identities) != 1 || bundles["scene_01"].Identities[0].ID != "person_01" {
-		t.Fatalf("scene_01 identities = %+v, want the document-level person_01", bundles["scene_01"].Identities)
+	if ids := semanticScript.Scenes["scene_01"].IdentityIDs; len(ids) != 1 || ids[0] != "person_01" {
+		t.Fatalf("scene_01 identity ids = %+v, want the document-level person_01", ids)
+	}
+	if len(semanticScript.Identities) != 1 || semanticScript.Identities[0].ID != "person_01" {
+		t.Fatalf("script identities = %+v, want the document-level person_01", semanticScript.Identities)
 	}
 }
 

@@ -26,6 +26,8 @@ type localizedRenderRequest struct {
 	background         *cliprender.MaterializedAsset
 	backgroundMode     string
 	backgroundKind     string
+	backgroundBlurPX   float64
+	backgroundZoom     float64
 	overlays           []cliprender.OverlayRefSpec
 	destinationFolder  string
 	subtitleFolder     string
@@ -37,6 +39,13 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	// incompatible schema must fail at the planning boundary, not after the
 	// expensive fan-out has already started.
 	if err := validateLocalizedRenderEffects(in); err != nil {
+		return localizedRenderRequest{}, err
+	}
+	// The blurred-plate treatment is a closed numeric contract owned by
+	// cliprender. Reject it here — before subtitle/watermark/background
+	// resolution or any enqueue — so "blur 80 px on mode=asset" fails at
+	// planning instead of rendering the wrong plate.
+	if err := validateLocalizedRenderBackground(in); err != nil {
 		return localizedRenderRequest{}, err
 	}
 	identity, err := a.resolveRenderIdentity(ctx, in)
@@ -51,7 +60,7 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	if err != nil {
 		return localizedRenderRequest{}, err
 	}
-	background, backgroundMode, backgroundKind, err := a.resolveBackground(ctx, in)
+	background, backgroundMode, backgroundKind, backgroundBlurPX, backgroundZoom, err := a.resolveBackground(ctx, in)
 	if err != nil {
 		return localizedRenderRequest{}, err
 	}
@@ -74,7 +83,9 @@ func (a *localizedRenderEnqueuerAdapter) buildLocalizedRenderRequest(ctx context
 	return localizedRenderRequest{
 		identity: identity, request: request, generatedSubtitles: generated,
 		watermark: watermark, watermarkSpec: watermarkSpec, background: background,
-		backgroundMode: backgroundMode, backgroundKind: backgroundKind, overlays: overlays,
+		backgroundMode: backgroundMode, backgroundKind: backgroundKind,
+		backgroundBlurPX: backgroundBlurPX, backgroundZoom: backgroundZoom,
+		overlays:          overlays,
 		destinationFolder: destination, subtitleFolder: subtitle,
 	}, nil
 }
@@ -148,34 +159,37 @@ func (a *localizedRenderEnqueuerAdapter) resolveWatermark(ctx context.Context, i
 // plate and a video plate are different render layers), so it is resolved once
 // here from the asset's canonical MediaType; a plate that cannot be classified
 // fails closed instead of reaching a renderer that would have to guess.
-func (a *localizedRenderEnqueuerAdapter) resolveBackground(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (*cliprender.MaterializedAsset, string, string, error) {
+func (a *localizedRenderEnqueuerAdapter) resolveBackground(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (*cliprender.MaterializedAsset, string, string, float64, float64, error) {
 	background := in.Render.Background
 	if background == nil {
-		return nil, "", "", nil
+		return nil, "", "", 0, 0, nil
 	}
 	mode := background.Mode
 	if mode == "" {
 		mode = cliprender.BackgroundModeNone
 	}
+	// The blurred-plate treatment belongs to blur_source only. It travels with
+	// the mode (not only with the materialized asset) so the plan can validate
+	// the pair and the fingerprint can include it. cliprender owns the bounds.
 	if mode != cliprender.BackgroundModeAsset {
-		return nil, mode, "", nil
+		return nil, mode, "", background.BlurPX, background.Zoom, nil
 	}
 	if strings.TrimSpace(background.AssetID) == "" || a.assets == nil || a.material == nil {
-		return nil, "", "", fmt.Errorf("localized render: background requested but its asset resolver is not wired")
+		return nil, "", "", 0, 0, fmt.Errorf("localized render: background requested but its asset resolver is not wired")
 	}
 	ref, err := a.assets.ResolveAsset(ctx, background.AssetID)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("localized render: resolve background %q: %w", background.AssetID, err)
+		return nil, "", "", 0, 0, fmt.Errorf("localized render: resolve background %q: %w", background.AssetID, err)
 	}
 	kind, ok := cliprender.BackgroundKindFromMediaType(ref.MediaType)
 	if !ok {
-		return nil, "", "", fmt.Errorf("localized render: background asset %q has media_type %q, which is not a renderable background plate (need %s or %s)", background.AssetID, ref.MediaType, cliprender.BackgroundKindImage, cliprender.BackgroundKindVideo)
+		return nil, "", "", 0, 0, fmt.Errorf("localized render: background asset %q has media_type %q, which is not a renderable background plate (need %s or %s)", background.AssetID, ref.MediaType, cliprender.BackgroundKindImage, cliprender.BackgroundKindVideo)
 	}
 	materialized, err := a.material.Materialize(ctx, *ref)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("localized render: materialize background %q: %w", background.AssetID, err)
+		return nil, "", "", 0, 0, fmt.Errorf("localized render: materialize background %q: %w", background.AssetID, err)
 	}
-	return materialized, mode, kind, nil
+	return materialized, mode, kind, 0, 0, nil
 }
 
 // resolveRenderFolders resolves the Drive destination of ONE localized render
@@ -275,6 +289,7 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		SkipDrivePublication:   in.SkipDrivePublication,
 		Watermark:              built.watermark, WatermarkSpec: built.watermarkSpec,
 		Background: built.background, BackgroundMode: built.backgroundMode, BackgroundKind: built.backgroundKind,
+		BackgroundBlurPX: built.backgroundBlurPX, BackgroundZoom: built.backgroundZoom,
 		Overlays:               built.overlays,
 		ForegroundScalePercent: in.Render.ForegroundScalePercent,
 		SourceFrame:            renderSourceFrame(in.Render.SourceFrame),
@@ -303,6 +318,25 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 func validateLocalizedRenderEffects(in scriptgeneration.LocalizedRenderInput) error {
 	if err := cliprender.ValidateClipEffects(renderClipEffects(in.Render.Effects), renderClipGrid(in.Render.Grid)); err != nil {
 		return fmt.Errorf("localized render: invalid effects/grid: %w", err)
+	}
+	return nil
+}
+
+// validateLocalizedRenderBackground applies cliprender's blurred-plate
+// contract to the caller's output.render.background: the treatment is legal
+// only for mode=blur_source and only inside the certified bounds. The numbers
+// live in cliprender so script.generate and clip.render cannot disagree.
+func validateLocalizedRenderBackground(in scriptgeneration.LocalizedRenderInput) error {
+	bg := in.Render.Background
+	if bg == nil {
+		return nil
+	}
+	mode := bg.Mode
+	if mode == "" {
+		mode = cliprender.BackgroundModeNone
+	}
+	if err := cliprender.ValidateBackgroundTreatment(mode, bg.BlurPX, bg.Zoom); err != nil {
+		return fmt.Errorf("localized render: background: %w", err)
 	}
 	return nil
 }

@@ -65,13 +65,7 @@ func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Transport == nil {
 		return nil, submodule.MissingDependencyError("clips-bulk", "Transport")
 	}
-	if deps.EnabledFunc == nil {
-		return nil, submodule.MissingDependencyError("clips-bulk", "EnabledFunc")
-	}
-	idem := deps.Idempotency
-	if idem == nil {
-		idem = func(c *gin.Context) { c.Next() }
-	}
+	idem := submodule.DefaultIdempotency(deps.Idempotency)
 
 	// The single bulk route is owned by the parent's
 	// *clips.BulkUploadTransport -- this sub-module's registrar
@@ -79,14 +73,9 @@ func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	// per-cluster route-installer is the canonical owner of the
 	// cluster's gin routing -- the sub-module is a thin
 	// aggregator.
-	return submodule.Build(submodule.Deps{
-		Name:        "clips-bulk",
-		Handler:     &bulkRoutesRegistrar{transport: deps.Transport, idem: idem},
-		EnabledFunc: deps.EnabledFunc,
-		Idempotency: idem,
-		Logger:      deps.Logger,
-		ModuleOpts:  deps.ModuleOpts,
-	})
+	return submodule.BuildWithHandler("clips-bulk",
+		&bulkRoutesRegistrar{transport: deps.Transport, idem: idem},
+		deps.EnabledFunc, idem, deps.Logger, deps.ModuleOpts)
 }
 
 // bulkRoutesRegistrar is the typed-narrow RoutesRegistrar the bulk

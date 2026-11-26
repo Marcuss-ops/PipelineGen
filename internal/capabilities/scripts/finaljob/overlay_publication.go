@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
@@ -40,7 +41,7 @@ type (
 // publicationBatch is the per-run join handle for the async publication pool.
 // It owns its own WaitGroup (so a run joins only its own publications) and its
 // own first-error slot (so a run is failed only by its own failure).
-func ScheduleFinalJobOverlayFrames(result *GenerateResult, item capmodel.OverlayItem, startFrame, endFrame int64, fpsNum, fpsDen int, occupied map[string]FinalJobFrameWindow) (int64, int64, error) {
+func ScheduleFinalJobOverlayFrames(result *contract.GenerateResult, item capmodel.OverlayItem, startFrame, endFrame int64, fpsNum, fpsDen int, occupied map[string]FinalJobFrameWindow) (int64, int64, error) {
 	if fpsNum <= 0 || fpsDen <= 0 || endFrame <= startFrame {
 		return 0, 0, fmt.Errorf("final_job overlay %q has an invalid frame window [%d,%d)", item.ID, startFrame, endFrame)
 	}
@@ -217,7 +218,7 @@ type finalJobClipWindow struct {
 // original clip audio with generated narration. Replace-mode overlays on
 // those windows hide the clip, so their phrase callouts are scheduled just
 // before the clip instead.
-func FinalJobIntermediateClipWindows(result *GenerateResult) map[string]finalJobClipWindow {
+func FinalJobIntermediateClipWindows(result *contract.GenerateResult) map[string]finalJobClipWindow {
 	out := make(map[string]finalJobClipWindow)
 	if result == nil || result.CanonicalTimeline == nil {
 		return out

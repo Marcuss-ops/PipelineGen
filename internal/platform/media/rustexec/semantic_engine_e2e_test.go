@@ -313,16 +313,19 @@ func TestSemanticEngineRealBinaryPlansGarlascoProduction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundles, err := adapter.SemanticBundles(context.Background(), "it", scenes)
+	semanticScript, err := adapter.SemanticScript(context.Background(), "it", scenes)
 	if err != nil {
 		t.Fatalf("Garlasco semantic batch failed: %v", err)
 	}
-	feedback := scriptgen.ScriptSearchFeedbackFromBundles(bundles)
+	feedback := semanticScript.SearchFeedback
 	if feedback == nil {
 		t.Fatal("the real worker omitted search_feedback")
 	}
-	if len(feedback.Entries) != bundles["s01"].Consolidation.Inventory.SearchEntries {
-		t.Fatalf("transport lost search entries: %d vs %d", len(feedback.Entries), bundles["s01"].Consolidation.Inventory.SearchEntries)
+	if semanticScript.Consolidation == nil {
+		t.Fatal("the real worker omitted visual_consolidation")
+	}
+	if len(feedback.Entries) != semanticScript.Consolidation.Inventory.SearchEntries {
+		t.Fatalf("transport lost search entries: %d vs %d", len(feedback.Entries), semanticScript.Consolidation.Inventory.SearchEntries)
 	}
 	for _, entry := range feedback.Entries {
 		if entry.Status != "pending" || len(entry.Queries) == 0 {
@@ -330,7 +333,7 @@ func TestSemanticEngineRealBinaryPlansGarlascoProduction(t *testing.T) {
 		}
 	}
 
-	view, plan, plannerFeedback, err := scriptgen.PlanScriptProduction(bundles)
+	view, plan, plannerFeedback, err := scriptgen.PlanScriptProduction(semanticScript)
 	if err != nil {
 		t.Fatalf("planner rejected the consolidated view: %v", err)
 	}
@@ -473,11 +476,11 @@ func TestSemanticEngineRealBinaryPlansPlannerVolumes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			bundles, err := adapter.SemanticBundles(context.Background(), "it", scenes)
+			semanticScript, err := adapter.SemanticScript(context.Background(), "it", scenes)
 			if err != nil {
 				t.Fatalf("semantic batch failed: %v", err)
 			}
-			view, plan, feedback, err := scriptgen.PlanScriptProduction(bundles)
+			view, plan, feedback, err := scriptgen.PlanScriptProduction(semanticScript)
 			if err != nil || view == nil || plan == nil || feedback == nil {
 				t.Fatalf("planner view failed: view=%v plan=%v feedback=%v err=%v", view, plan, feedback, err)
 			}

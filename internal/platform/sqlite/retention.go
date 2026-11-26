@@ -5,8 +5,10 @@
 // rotation.go already bounds the legacy observability `api_requests`
 // table. The same unbounded-growth problem exists in three more places:
 //
-//   - jobs DB:          job_registry_metrics, job_registry_events, job_events
-//   - observability DB:  run_observability (+ cascaded run_*_observations)
+//   - jobs DB:          job_registry_metrics, job_registry_events, job_events,
+//     job_payloads (terminal jobs only)
+//   - observability DB:  run_observability (+ cascaded run_*_observations),
+//     run_report_snapshots, replay_bundles, api_requests
 //   - media DB:          resource_observations, api_requests
 //
 // ApplyRetentionPlan generalises the rotation idea: DELETE the rows
@@ -52,6 +54,10 @@ type RetentionOp struct {
 	// TimeFormat is the layout used to render Cutoff as a string. Empty
 	// means DefaultRetentionTimeFormat.
 	TimeFormat string `json:"-"`
+	// TerminalJobOnly is set for job_payloads: an old payload must not be
+	// deleted while its job is still queued/running. The predicate is a
+	// fixed SQL fragment, not caller/user input.
+	TerminalJobOnly bool `json:"-"`
 }
 
 // RetentionPlan is the full set of ops to apply to one database file.
@@ -124,8 +130,9 @@ func ApplyRetentionPlan(ctx context.Context, db *sql.DB, plan RetentionPlan, dry
 		cutoff := retentionCutoffLiteral(op)
 		table := TableRetentionResult{Table: op.Table, TimeColumn: op.TimeColumn, Cutoff: cutoff}
 
+		where := retentionWhereClause(op)
 		if dryRun {
-			n, err := countRetentionRows(ctx, db, op, cutoff)
+			n, err := countRetentionRows(ctx, db, op, where, cutoff)
 			if err != nil {
 				return nil, fmt.Errorf("retention: count %s.%s: %w", plan.Name, op.Table, err)
 			}
@@ -135,7 +142,7 @@ func ApplyRetentionPlan(ctx context.Context, db *sql.DB, plan RetentionPlan, dry
 		}
 
 		res, err := execRetentionWithRetry(ctx, db,
-			fmt.Sprintf(`DELETE FROM "%s" WHERE "%s" < ?`, op.Table, op.TimeColumn),
+			fmt.Sprintf(`DELETE FROM "%s" WHERE %s`, op.Table, where),
 			cutoff,
 		)
 		if err != nil {
@@ -194,13 +201,23 @@ func retentionCutoffLiteral(op RetentionOp) string {
 	return op.Cutoff.UTC().Format(format)
 }
 
-func countRetentionRows(ctx context.Context, db *sql.DB, op RetentionOp, cutoff string) (int64, error) {
+func countRetentionRows(ctx context.Context, db *sql.DB, op RetentionOp, where, cutoff string) (int64, error) {
 	var n int64
 	err := db.QueryRowContext(ctx,
-		fmt.Sprintf(`SELECT COUNT(*) FROM "%s" WHERE "%s" < ?`, op.Table, op.TimeColumn),
+		fmt.Sprintf(`SELECT COUNT(*) FROM "%s" WHERE %s`, op.Table, where),
 		cutoff,
 	).Scan(&n)
 	return n, err
+}
+
+// retentionWhereClause is the single predicate used by both COUNT and
+// DELETE, so a dry-run can never report a different row set than the real run.
+func retentionWhereClause(op RetentionOp) string {
+	where := fmt.Sprintf(`"%s" < ?`, op.TimeColumn)
+	if op.TerminalJobOnly {
+		where += ` AND "job_id" IN (SELECT "id" FROM "jobs" WHERE "status" IN ('SUCCEEDED','FAILED','CANCELLED'))`
+	}
+	return where
 }
 
 // execRetentionWithRetry retries on SQLITE_BUSY: the runtime keeps these

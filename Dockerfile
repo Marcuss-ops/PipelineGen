@@ -37,12 +37,14 @@ RUN apt-get update \
 
 WORKDIR /src
 
-# Layer-cache friendly: copy go.mod/go.sum first, download deps, then copy
-# the local queue replacement's module manifest, then download deps. The full
-# queue source is copied with the application below so Docker and local builds
-# use the exact vendored contract from third_party/queue.
+# Layer-cache friendly: copy go.mod/go.sum first, then materialize the sibling
+# Queue module supplied by the `renderinggen-queue` named build context. The
+# go.mod replace points at ../RenderingGen/queue, so the module must exist at
+# that path in the build filesystem before `go mod download` runs. Callers pass
+# `--build-context renderinggen-queue=../RenderingGen/queue` (make/docker.mk
+# already does); there is no vendored copy in the repository.
 COPY go.mod go.sum ./
-COPY third_party/queue/go.mod ./third_party/queue/go.mod
+COPY --from=renderinggen-queue . /RenderingGen/queue/
 RUN go mod download
 
 COPY . .

@@ -49,5 +49,4 @@ type Host interface {
 	ApplyLocalizedAnnotations(result *contract.GenerateResult, localized map[int]map[contract.Language]*scriptpkg.SceneAnnotations)
 
 	VoiceoverPublishDrainer() interface{ Wait() }
-	OverlayPublicationDrainer() interface{ Wait(context.Context) error }
 }

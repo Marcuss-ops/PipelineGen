@@ -69,29 +69,15 @@ func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Ops == nil {
 		return nil, submodule.MissingDependencyError("clips-operations", "Ops")
 	}
-	if deps.EnabledFunc == nil {
-		return nil, submodule.MissingDependencyError("clips-operations", "EnabledFunc")
-	}
-	idem := deps.Idempotency
-	if idem == nil {
-		idem = func(c *gin.Context) { c.Next() }
-	}
+	idem := submodule.DefaultIdempotency(deps.Idempotency)
 
 	// All 7 operations routes are mounted by LAMBDA inside this
 	// sub-descriptor (godlike/06 SSOT one-canonical-owner:
 	// operations owns its slice-route table). The Ops field
 	// supplies 7 method values for the ops-only routes.
-	return submodule.Build(submodule.Deps{
-		Name: "clips-operations",
-		Handler: &operationsRoutesRegistrar{
-			ops:  deps.Ops,
-			idem: idem,
-		},
-		EnabledFunc: deps.EnabledFunc,
-		Idempotency: idem,
-		Logger:      deps.Logger,
-		ModuleOpts:  deps.ModuleOpts,
-	})
+	return submodule.BuildWithHandler("clips-operations",
+		&operationsRoutesRegistrar{ops: deps.Ops, idem: idem},
+		deps.EnabledFunc, idem, deps.Logger, deps.ModuleOpts)
 }
 
 // operationsRoutesRegistrar is the typed-narrow RoutesRegistrar the

@@ -97,6 +97,8 @@ var defaultRules = []rule{
 	{"percheck_overlay_catalog_parity", simple(boundaries.ScanOverlayCatalogParity)},
 	{"percheck_pg_dual_write_contract", simple(boundaries.ScanPGDualWriteContract)},
 	{"percheck_media_write_bridge_ban", simple(boundaries.ScanMediaWriteBridgeBan)},
+	{"percheck_deprecation_registry", simple(governance.ScanDeprecationRegistry)},
+	{"percheck_queue_single_module", simple(governance.ScanQueueSingleModule)},
 	{"percheck_asset_state_no_shadow_enum", simple(governance.ScanAssetStateNoShadowEnum)},
 	{"percheck_157_asset_state_migration_default_wire", simple(migrations.ScanAssetStateMigration157DefaultWire)},
 	{"percheck_state_matrix", simple(migrations.ScanStateMatrix)},

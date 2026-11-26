@@ -18,7 +18,6 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -106,14 +105,6 @@ func BuildLanguageRegistry(ml config.MultilingualConfig) (asset.LanguageRegistry
 	return buildbundle.BuildLanguageRegistry(ml)
 }
 
-func SubtitleAcquisitionLanguages(ml config.MultilingualConfig) string {
-	return buildbundle.SubtitleAcquisitionLanguages(ml)
-}
-
-func BuildMultilingualLanguageCSV(ml config.MultilingualConfig, filter func(asset.LanguageSpec) bool) (string, error) {
-	return buildbundle.BuildMultilingualLanguageCSV(ml, filter)
-}
-
 func ActiveMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
 	return buildbundle.ActiveMultilingualConfig(cfg)
 }
@@ -182,10 +173,6 @@ func mediaEngineHandle(committer persistence.AssetCommitter) pgmedia.EngineHandl
 
 func newClipsRegistry(querySvc artifacts.AssetDetailsReader, processing persistence.AssetProcessingWriter, committer persistence.AssetCommitter, log *zap.Logger) *artifacts.ClipsRegistry {
 	return buildbundle.NewClipsRegistry(querySvc, processing, committer, log)
-}
-
-func newYouTubeAssetWriter(outbox *OutboxBundle, repos *RepoBundle, committer persistence.AssetCommitter) youtube.AssetWriter {
-	return buildbundle.NewYouTubeAssetWriter(outbox, repos, committer)
 }
 
 func NewLifecycleFromDeps(deps *AssetLifecycleDeps, log *zap.Logger) *lifecycle.Service {

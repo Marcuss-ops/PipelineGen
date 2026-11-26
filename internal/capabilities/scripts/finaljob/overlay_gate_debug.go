@@ -8,6 +8,7 @@ import (
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -17,15 +18,15 @@ import (
 // the audit rows, the semantic production plan, the raw scene bindings, the
 // compiled items and the render bundle. It is diagnostic-only and runs only
 // after the gate has already failed.
-func DumpOverlayGateDebug(result *GenerateResult, planID string) {
+func DumpOverlayGateDebug(result *contract.GenerateResult, planID string) {
 	if result == nil {
 		return
 	}
 	payload := struct {
 		PlanID         string                                    `json:"plan_id"`
-		EntityImages   *OverlayAuditEntityImages                 `json:"entity_images,omitempty"`
-		ProductionPlan *SemanticProductionPlan                   `json:"semantic_production_plan,omitempty"`
-		Scenes         []Scene                                   `json:"scenes,omitempty"`
+		EntityImages   *contract.OverlayAuditEntityImages        `json:"entity_images,omitempty"`
+		ProductionPlan *contract.SemanticProductionPlan          `json:"semantic_production_plan,omitempty"`
+		Scenes         []contract.Scene                          `json:"scenes,omitempty"`
 		Items          []capmodel.OverlayItem                    `json:"overlay_items,omitempty"`
 		Bundle         *capabilityoverlay.SemanticRenderBundleV1 `json:"bundle,omitempty"`
 	}{
@@ -66,7 +67,7 @@ func DumpOverlayGateDebug(result *GenerateResult, planID string) {
 
 // OverlayStatusRequest copies the caller-visible overlay contract before
 // planning, so a failed run still explains what was asked for.
-func OverlayStatusRequest(req GenerateRequest) *overlaystatus.Request {
+func OverlayStatusRequest(req contract.GenerateRequest) *overlaystatus.Request {
 	status := &overlaystatus.Request{
 		EntityImages:     req.MediaPlan.Extraction.EntityImages.Enabled,
 		EntityTypes:      append([]string(nil), req.MediaPlan.Extraction.EntityImages.EntityTypes...),

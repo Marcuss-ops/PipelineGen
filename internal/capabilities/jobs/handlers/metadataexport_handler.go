@@ -2,7 +2,7 @@
 //
 // The metadata export capability itself lives in
 // internal/capabilities/assets/metadataexport. This file is deliberately
-// limited to the outboxevents.Handler contract: decode and validate the
+// limited to the outbox.Handler contract: decode and validate the
 // event, resolve its scope through the capability port, then dispatch to
 // the capability service. It is kept here because outboxevents is a
 // technical transport concern, not an asset capability concern.
@@ -16,7 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	assetmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // MetadataExportRequestSchemaVersion is retained at the outbox boundary as
@@ -55,17 +55,17 @@ func NewMetadataExportHandler(deps MetadataExportHandlerDeps) *MetadataExportHan
 }
 
 func (h *MetadataExportHandler) EventType() string {
-	return outboxevents.EventAssetMetadataExportRequested
+	return outbox.EventAssetMetadataExportRequested
 }
 
 func (h *MetadataExportHandler) IdempotencyKey() string {
-	return outboxevents.EventAssetMetadataExportRequested + "." + MetadataExportRequestSchemaVersion
+	return outbox.EventAssetMetadataExportRequested + "." + MetadataExportRequestSchemaVersion
 }
 
 // Handle processes one durable outbox event. Envelope failures are terminal;
 // resolver/service failures are returned unchanged so the outbox retry policy
 // can classify them correctly.
-func (h *MetadataExportHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *MetadataExportHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	log := h.log
 	if log == nil {
 		log = zap.NewNop()

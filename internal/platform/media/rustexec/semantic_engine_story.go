@@ -6,17 +6,16 @@ import (
 	semantic "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/semantic"
 )
 
-func validateSemanticScriptViews(texts map[string]string, graph *semantic.SemanticStoryGraph, coverage *semantic.SemanticVisualCoverage, bundles map[string]*semantic.SemanticCandidateBundle) error {
+func validateSemanticScriptViews(texts map[string]string, graph *semantic.SemanticStoryGraph, coverage *semantic.SemanticVisualCoverage, result *semantic.ScriptSemanticResult) error {
 	identities := map[string]bool{}
-	for _, bundle := range bundles {
-		for _, identity := range bundle.Identities {
-			identities[identity.ID] = true
-		}
+	identityByID := result.IdentityByID()
+	for id := range identityByID {
+		identities[id] = true
 	}
-	if err := validateStoryGraph(texts, graph, bundles, identities); err != nil {
+	if err := validateStoryGraph(texts, graph, result.Scenes, identityByID, identities); err != nil {
 		return err
 	}
-	return validateVisualCoverage(coverage, bundles)
+	return validateVisualCoverage(coverage, result.Scenes)
 }
 
 func semanticFactFor(bundles map[string]*semantic.SemanticCandidateBundle, sceneID, factID string) *semantic.SemanticEntityFact {
@@ -34,6 +33,7 @@ func validateStoryGraph(
 	texts map[string]string,
 	graph *semantic.SemanticStoryGraph,
 	bundles map[string]*semantic.SemanticCandidateBundle,
+	identityByID map[string]semantic.SemanticIdentity,
 	identities map[string]bool,
 ) error {
 	if graph == nil {
@@ -64,13 +64,12 @@ func validateStoryGraph(
 		switch node.Kind {
 		case "identity":
 			groundedMention := false
-			for _, identity := range bundles[node.SceneID].Identities {
-				if identity.ID != *node.EntityID {
-					continue
-				}
-				for _, mention := range identity.Mentions {
-					groundedMention = groundedMention || (mention.SceneID == node.SceneID && mention.Start == node.StartByte && mention.End == node.EndByte && mention.Surface == node.Evidence)
-				}
+			identity, ok := identityByID[*node.EntityID]
+			if !ok {
+				return fmt.Errorf("story identity %q is not a source mention", node.ID)
+			}
+			for _, mention := range identity.Mentions {
+				groundedMention = groundedMention || (mention.SceneID == node.SceneID && mention.Start == node.StartByte && mention.End == node.EndByte && mention.Surface == node.Evidence)
 			}
 			if !groundedMention {
 				return fmt.Errorf("story identity %q is not a source mention", node.ID)

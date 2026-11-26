@@ -176,11 +176,15 @@ const OverlayCategoryTitles = spec.OverlayCategoryTitles
 
 type Preset = spec.Preset
 
+const PresetBatch = spec.PresetBatch
 const PresetCatalog = spec.PresetCatalog
 const PresetCustom = spec.PresetCustom
 const PresetFullMedia = spec.PresetFullMedia
 const PresetSearch = spec.PresetSearch
 const PresetWithImages = spec.PresetWithImages
+
+var CanonicalPresets = spec.CanonicalPresets
+
 const RandomWhooshDirective = spec.RandomWhooshDirective
 
 type Repository = spec.Repository

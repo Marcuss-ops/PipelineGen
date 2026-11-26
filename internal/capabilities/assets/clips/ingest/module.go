@@ -67,27 +67,16 @@ func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Ingest == nil {
 		return nil, submodule.MissingDependencyError("clips-ingest", "Ingest")
 	}
-	if deps.EnabledFunc == nil {
-		return nil, submodule.MissingDependencyError("clips-ingest", "EnabledFunc")
-	}
-	idem := deps.Idempotency
-	if idem == nil {
-		idem = func(c *gin.Context) { c.Next() }
-	}
+	idem := submodule.DefaultIdempotency(deps.Idempotency)
 
 	// Ingest routes are owned by the parent's *clips.IngestHandler
 	// — this sub-module's registrar delegates RegisterRoutes to
 	// it. godlike/06 SSOT: the per-cluster route-installer is the
 	// canonical owner of the cluster's gin routing — the
 	// sub-module is a thin aggregator.
-	return submodule.Build(submodule.Deps{
-		Name:        "clips-ingest",
-		Handler:     &ingestRoutesRegistrar{ingest: deps.Ingest, idem: idem},
-		EnabledFunc: deps.EnabledFunc,
-		Idempotency: idem,
-		Logger:      deps.Logger,
-		ModuleOpts:  deps.ModuleOpts,
-	})
+	return submodule.BuildWithHandler("clips-ingest",
+		&ingestRoutesRegistrar{ingest: deps.Ingest, idem: idem},
+		deps.EnabledFunc, idem, deps.Logger, deps.ModuleOpts)
 }
 
 // ingestRoutesRegistrar is the typed-narrow RoutesRegistrar the

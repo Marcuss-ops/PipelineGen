@@ -1,0 +1,25 @@
+name: Check out RenderingGen (Queue module owner)
+description: >-
+  Materializes the sibling checkout that go.mod resolves through
+  `replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue`.
+  The Queue module has one owner (DEMOL-05); PipelineGen does not vendor a copy.
+inputs:
+  ref:
+    description: Git ref of RenderingGen to check out
+    required: false
+    default: main
+runs:
+  using: composite
+  steps:
+    - name: Clone the sibling Queue module
+      shell: bash
+      run: |
+        set -euo pipefail
+        target="${GITHUB_WORKSPACE}/../RenderingGen"
+        if [ -f "$target/queue/go.mod" ]; then
+          echo "RenderingGen already present at $target"
+          exit 0
+        fi
+        repo="${RENDERINGGEN_REPO:-https://github.com/Marcuss-ops/RenderingGen.git}"
+        git clone --depth 1 --branch "${{ inputs.ref }}" "$repo" "$target"
+        test -f "$target/queue/go.mod"

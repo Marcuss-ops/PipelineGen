@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/jsonwire"
 )
 
 const (
@@ -128,6 +129,11 @@ type MediaPlanSpec struct {
 
 // UnmarshalJSON accepts the retired providers wire shape only at the JSON
 // boundary, then folds it into the single canonical ProviderPolicy field.
+//
+// The decode is strict: this method owns the whole media_plan subtree, so the
+// envelope's DisallowUnknownFields gate cannot reach inside it. A media_plan
+// key that this struct does not declare is a payload bug (typo or a field
+// moved to another block) and must fail closed rather than disappear.
 func (m *MediaPlanSpec) UnmarshalJSON(data []byte) error {
 	type mediaPlanAlias MediaPlanSpec
 	var fields map[string]json.RawMessage
@@ -141,7 +147,7 @@ func (m *MediaPlanSpec) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*m = MediaPlanSpec{}
-	if err := json.Unmarshal(canonical, (*mediaPlanAlias)(m)); err != nil {
+	if err := jsonwire.DecodeStrict(canonical, (*mediaPlanAlias)(m)); err != nil {
 		return err
 	}
 	if len(legacyProviders) == 0 || len(m.ProviderPolicy.Artlist) > 0 || len(m.ProviderPolicy.InternetImages) > 0 {

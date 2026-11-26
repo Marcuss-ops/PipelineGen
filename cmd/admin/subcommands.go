@@ -83,6 +83,7 @@ var commandRegistry = map[string]commandHandler{
 	"folder-path-backfill":           backfill.RunFolderPathBackfill,
 	"gen-api-docs":                   rendering.RunGenAPIDocs,
 	"index-drive-clip":               drive.RunIndexDriveClip,
+	"rehydrate-clip":                 drive.RunRehydrateClip,
 	"index-provided-sound-effects":   soundeffects.RunIndexProvidedSoundEffects,
 	"index-sound-effects-drive":      soundeffects.RunIndexSoundEffectsDrive,
 	"keep-drive-folder-files":        drive.RunKeepDriveFolderFiles,

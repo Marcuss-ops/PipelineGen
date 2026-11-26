@@ -134,6 +134,10 @@ func TestFingerprint_StyleDeltaChangesDigest(t *testing.T) {
 		{"subtitle color", func(p *LocalizedClipPlan) { p.SubtitlesStyle.Color = "#FF0000" }},
 		{"subtitle shadow blur", func(p *LocalizedClipPlan) { p.SubtitlesStyle.Shadow.BlurPX = 12 }},
 		{"background mode", func(p *LocalizedClipPlan) { p.BackgroundMode = "asset" }},
+		// The blurred-plate treatment changes the rendered pixels, so a changed
+		// blur radius or zoom must never reuse the previous clip bytes.
+		{"background blur", func(p *LocalizedClipPlan) { p.BackgroundBlurPX = 28 }},
+		{"background zoom", func(p *LocalizedClipPlan) { p.BackgroundZoom = 1.1 }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

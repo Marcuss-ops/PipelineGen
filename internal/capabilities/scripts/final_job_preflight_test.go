@@ -23,7 +23,7 @@ func locatorScene(id string, slot map[string]any) map[string]any {
 // locator is rejected BEFORE the remote job exists, so the failure costs a
 // local validation instead of a 184s-average worker attempt.
 func TestFinalJobPreflight_MissingMediaLocatorFailsClosed(t *testing.T) {
-	scenes := []map[string]any{locatorScene("scene-1", map[string]any{"drive_file_id": nil, "url": ""})}
+	scenes := typedRemoteScenes([]map[string]any{locatorScene("scene-1", map[string]any{"drive_file_id": nil, "url": ""})})
 	err := enforceFinalJobPreflight(scenes, 5000)
 	if err == nil {
 		t.Fatal("expected preflight failure for a scene without a media locator")
@@ -40,7 +40,7 @@ func TestFinalJobPreflight_MissingMediaLocatorFailsClosed(t *testing.T) {
 // resolution: a scene whose media slot carries only the canonical
 // deferred-Drive locator (drive_file_id, no url) is admitted.
 func TestFinalJobPreflight_DriveFileIDLocatorIsAccepted(t *testing.T) {
-	scenes := []map[string]any{locatorScene("scene-1", map[string]any{"drive_file_id": "drive-1"})}
+	scenes := typedRemoteScenes([]map[string]any{locatorScene("scene-1", map[string]any{"drive_file_id": "drive-1"})})
 	if err := enforceFinalJobPreflight(scenes, 5000); err != nil {
 		t.Fatalf("preflight rejected a drive_file_id locator: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestFinalJobPreflight_InvalidDurationFailsClosed(t *testing.T) {
 		"missing":  {"scene_id": "s", "stock": map[string]any{"drive_file_id": "d"}},
 	}
 	for name, scene := range cases {
-		if err := enforceFinalJobPreflight([]map[string]any{scene}, 5000); err == nil {
+		if err := enforceFinalJobPreflight(typedRemoteScenes([]map[string]any{scene}), 5000); err == nil {
 			t.Fatalf("%s: expected preflight failure for an invalid scene duration", name)
 		} else if !strings.Contains(err.Error(), "invalid duration") {
 			t.Fatalf("%s: error must name the invalid duration, got: %v", name, err)
@@ -68,7 +68,7 @@ func TestFinalJobPreflight_InvalidDurationFailsClosed(t *testing.T) {
 // contract on the run projection itself: a run without certified audio never
 // reaches the remote handoff.
 func TestFinalJobPreflight_CertifiedAudioMustBePositive(t *testing.T) {
-	scenes := []map[string]any{locatorScene("scene-1", map[string]any{"drive_file_id": "d"})}
+	scenes := typedRemoteScenes([]map[string]any{locatorScene("scene-1", map[string]any{"drive_file_id": "d"})})
 	if err := enforceFinalJobPreflight(scenes, 0); err == nil {
 		t.Fatal("expected preflight failure for non-positive certified audio")
 	}
@@ -77,10 +77,10 @@ func TestFinalJobPreflight_CertifiedAudioMustBePositive(t *testing.T) {
 // TestFinalJobPreflight_ValidPayloadAdmitted pins the no-false-positive
 // contract: a well-formed scene set with the canonical wire fields passes.
 func TestFinalJobPreflight_ValidPayloadAdmitted(t *testing.T) {
-	scenes := []map[string]any{
+	scenes := typedRemoteScenes([]map[string]any{
 		locatorScene("scene-1", map[string]any{"drive_file_id": "d1", "url": "velox-drive://d1"}),
 		locatorScene("scene-2", map[string]any{"url": "velox-drive://d2"}),
-	}
+	})
 	if err := enforceFinalJobPreflight(scenes, 10000); err != nil {
 		t.Fatalf("preflight rejected a valid payload: %v", err)
 	}

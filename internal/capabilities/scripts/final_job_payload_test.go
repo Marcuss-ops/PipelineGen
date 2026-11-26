@@ -377,34 +377,34 @@ func TestFinalJobOverlayHandoffStillRejectsUncoveredItems(t *testing.T) {
 }
 
 func TestEnforceFinalJobMinimumSceneDurationBorrowsFromEarlierScene(t *testing.T) {
-	scenes := []map[string]any{
+	scenes := typedRemoteScenes([]map[string]any{
 		{"duration_seconds": 2.0},
 		{"duration_seconds": 0.016},
-	}
+	})
 
 	if err := enforceFinalJobMinimumSceneDuration(scenes, 100); err != nil {
 		t.Fatalf("enforceFinalJobMinimumSceneDuration: %v", err)
 	}
-	if got := scenes[0]["duration_seconds"]; got != 1.916 {
+	if got := scenes[0].DurationSeconds; got != 1.916 {
 		t.Fatalf("preceding scene duration = %v, want 1.916", got)
 	}
-	if got := scenes[1]["duration_seconds"]; got != 0.1 {
+	if got := scenes[1].DurationSeconds; got != 0.1 {
 		t.Fatalf("short scene duration = %v, want 0.1", got)
 	}
-	if got := scenes[0]["duration_seconds"].(float64) + scenes[1]["duration_seconds"].(float64); got != 2.016 {
+	if got := scenes[0].DurationSeconds + scenes[1].DurationSeconds; got != 2.016 {
 		t.Fatalf("adjusted total duration = %v, want 2.016", got)
 	}
 }
 
 func TestTrimFinalJobSceneTailFitsVideoWithinFinalAudio(t *testing.T) {
-	scenes := []map[string]any{{"duration_seconds": 1.0}, {"duration_seconds": 0.5}}
+	scenes := typedRemoteScenes([]map[string]any{{"duration_seconds": 1.0}, {"duration_seconds": 0.5}})
 	if err := trimFinalJobSceneTail(scenes, 8, 100); err != nil {
 		t.Fatalf("trimFinalJobSceneTail: %v", err)
 	}
 	if got := finalJobSceneDurationMS(scenes); got != 1492 {
 		t.Fatalf("video duration = %dms, want 1492ms after trimming the 8ms surplus", got)
 	}
-	if got := scenes[1]["duration_seconds"]; got != 0.492 {
+	if got := scenes[1].DurationSeconds; got != 0.492 {
 		t.Fatalf("last scene duration = %v, want 0.492s", got)
 	}
 }
@@ -492,7 +492,7 @@ func TestFinalJobRejectsDedicatedRowsThatCannotFitBesideComposition(t *testing.T
 }
 
 func TestEnforceFinalJobMinimumSceneDurationFailsWhenNoTimeCanBeBorrowed(t *testing.T) {
-	scenes := []map[string]any{{"duration_seconds": 0.016}}
+	scenes := typedRemoteScenes([]map[string]any{{"duration_seconds": 0.016}})
 	if err := enforceFinalJobMinimumSceneDuration(scenes, 100); err == nil {
 		t.Fatal("expected a short single-scene timeline to be rejected")
 	}
@@ -1539,7 +1539,7 @@ func TestFinalJobRemoteAssetReferencesOmitWorkerLocalPaths(t *testing.T) {
 		"local_path": "/tmp/worker-only.mp4",
 	}
 	scene := compositeVideoScene("scene-1", 0, "stock", ref, 5000, "scene")
-	stock := scene["stock"].(map[string]any)
+	stock := scene.Stock
 	if _, ok := stock["local_path"]; ok {
 		t.Fatalf("remote scene stock contains worker-local path: %#v", stock)
 	}

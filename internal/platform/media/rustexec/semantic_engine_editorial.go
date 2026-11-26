@@ -74,7 +74,7 @@ func (a *SemanticEngineAdapter) AnalyzeSemanticEditorial(
 	transcript string,
 	language string,
 	scenes []scriptpkg.SceneAnalysisInput,
-) (map[string]*semantic.SemanticCandidateBundle, scriptpkg.PhraseImpactResult, error) {
+) (*semantic.ScriptSemanticResult, scriptpkg.PhraseImpactResult, error) {
 	language = strings.TrimSpace(language)
 	transcript = strings.TrimSpace(transcript)
 	if transcript == "" {
@@ -91,14 +91,14 @@ func (a *SemanticEngineAdapter) AnalyzeSemanticEditorial(
 	for _, scene := range scenes {
 		semanticScenes = append(semanticScenes, semantic.SemanticSceneInput{SceneID: scene.SceneID, Text: scene.Text})
 	}
-	bundles, result, err := a.semanticBundles(ctx, language, semanticScenes, editorial)
+	script, result, err := a.semanticBundles(ctx, language, semanticScenes, editorial)
 	if err != nil {
 		return nil, scriptpkg.PhraseImpactResult{}, err
 	}
 	if result == nil {
 		return nil, scriptpkg.PhraseImpactResult{}, fmt.Errorf("semantic-engine: editorial result missing")
 	}
-	return bundles, *result, nil
+	return script, *result, nil
 }
 
 func (a *SemanticEngineAdapter) prepareEditorialRequest(

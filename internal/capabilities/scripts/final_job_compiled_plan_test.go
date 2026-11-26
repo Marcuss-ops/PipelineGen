@@ -13,7 +13,7 @@ import (
 func TestFinalJobCompiledPlanRejectsStockWindowPastSavedFile(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"scene_id":         "scene-0000",
 		"duration_seconds": 5.0,
 		"kind":             "stock",
@@ -21,7 +21,7 @@ func TestFinalJobCompiledPlanRejectsStockWindowPastSavedFile(t *testing.T) {
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(4979), "start_ms": int64(0),
 		},
-	}}
+	}})
 	audio := FinalAudioReference{DurationUS: 5_000_000, DurationMS: 5000, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
 	audioRef := map[string]any{"asset_id": "final-audio", "sha256": audioSHA, "size_bytes": int64(200), "duration_ms": int64(5000)}
 	_, _, err := finalJobCompiledPlanPayloadWithStockPool(scenes, nil, nil, audio, audioRef, 5_000_000, "", map[string]int64{"scene-0000": 5000})
@@ -36,14 +36,14 @@ func TestFinalJobCompiledPlanRejectsStockWindowPastSavedFile(t *testing.T) {
 func TestFinalJobCompiledPlanKeepsAWholeStockFileExact(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 5.0,
 		"kind":             "stock",
 		"stock": map[string]any{
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(5000), "start_ms": int64(0),
 		},
-	}}
+	}})
 	audio := FinalAudioReference{DurationUS: 5_000_000, DurationMS: 5000, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
 	audioRef := map[string]any{"asset_id": "final-audio", "sha256": audioSHA, "size_bytes": int64(200), "duration_ms": int64(5000)}
 	raw, _, err := finalJobCompiledPlanPayload(scenes, nil, nil, audio, audioRef, 5_000_000)
@@ -83,7 +83,7 @@ func TestFinalJobCompiledPlanKeepsAWholeStockFileExact(t *testing.T) {
 func TestFinalJobCompiledPlanRendersOnlyTheBoundIntroWindow(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"scene_id":         "scene-0000",
 		"duration_seconds": 5.0,
 		"kind":             "stock",
@@ -91,7 +91,7 @@ func TestFinalJobCompiledPlanRendersOnlyTheBoundIntroWindow(t *testing.T) {
 			"asset_id": "intro-60s", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(60_000), "start_ms": int64(0),
 		},
-	}}
+	}})
 	audio := FinalAudioReference{DurationUS: 5_000_000, DurationMS: 5000, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
 	audioRef := map[string]any{"asset_id": "final-audio", "sha256": audioSHA, "size_bytes": int64(200), "duration_ms": int64(5000)}
 	raw, _, err := finalJobCompiledPlanPayloadWithStockPool(scenes, nil, nil, audio, audioRef, 5_000_000, "", map[string]int64{"scene-0000": 5000})
@@ -129,13 +129,13 @@ func TestFinalJobCompiledPlanSplitsOverlayWindowsOnThe24FPSGrid(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const overlaySHA = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 5.0,
 		"stock": map[string]any{
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(5000), "start_ms": int64(0),
 		},
-	}}
+	}})
 	overlayManifest := map[string]any{
 		"asset": map[string]any{
 			"asset_id": "overlay-timeline", "sha256": overlaySHA, "size_bytes": int64(500),
@@ -200,13 +200,13 @@ func TestFinalJobCompiledPlanClampsOverlayWindowsToArtifactDuration(t *testing.T
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const overlaySHA = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 20.0,
 		"stock": map[string]any{
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(20000), "start_ms": int64(0),
 		},
-	}}
+	}})
 	overlayManifest := map[string]any{
 		"asset": map[string]any{
 			"asset_id": "overlay-15s", "sha256": overlaySHA, "size_bytes": int64(500),
@@ -280,14 +280,14 @@ func TestFinalJobCompiledPlanDropsFullyReplacedBaseFromAssetManifest(t *testing.
 	const baseSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const replacementSHA = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 5.0,
 		"kind":             "stock",
 		"stock": map[string]any{
 			"asset_id": "stock-base", "sha256": baseSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(5000), "start_ms": int64(0),
 		},
-	}}
+	}})
 	manifest := map[string]any{
 		"asset": map[string]any{
 			"asset_id": "replacement", "sha256": replacementSHA, "size_bytes": int64(900),
@@ -354,13 +354,13 @@ func TestRetainFinalJobRuntimeAssetsDropsBindingsUnusedByCompiledPlan(t *testing
 func TestFinalJobCompiledPlanClampsTheThreeR36Windows(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 1200.0,
 		"stock": map[string]any{
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(1_200_000), "start_ms": int64(0),
 		},
-	}}
+	}})
 	cases := []struct {
 		id       string
 		sha      string
@@ -429,13 +429,13 @@ func TestFinalJobCompiledPlanDerivesOverlayDurationFromEntryTiming(t *testing.T)
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	const overlaySHA = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 5.0,
 		"stock": map[string]any{
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(5000), "start_ms": int64(0),
 		},
-	}}
+	}})
 	overlayManifest := map[string]any{
 		"asset":   map[string]any{"asset_id": "overlay-legacy", "sha256": overlaySHA, "size_bytes": int64(500)},
 		"entries": []any{map[string]any{"item_id": "phrase", "in_us": int64(1_000_000), "out_us": int64(2_000_000)}},
@@ -474,14 +474,14 @@ func TestFinalJobCompiledPlanDerivesOverlayDurationFromEntryTiming(t *testing.T)
 func TestFinalJobCompiledPlanHoldsLastFrameWhenAudioOutlastsStock(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 4.979,
 		"kind":             "stock",
 		"stock": map[string]any{
 			"asset_id": "stock-4979", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(4979), "start_ms": int64(0),
 		},
-	}}
+	}})
 	audio := FinalAudioReference{
 		DurationUS: 4_991_000, DurationMS: 4991, CopyEligible: true, FinalMix: true,
 		PlanSHA256: strings.Repeat("d", 64),
@@ -518,13 +518,13 @@ func TestFinalJobCompiledPlanHoldsLastFrameWhenAudioOutlastsStock(t *testing.T) 
 func TestFinalJobCompiledPlanAlignsDurationToCertifiedAudio(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	scenes := []map[string]any{{
+	scenes := typedRemoteScenes([]map[string]any{{
 		"duration_seconds": 19.704,
 		"stock": map[string]any{
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(19800), "start_ms": int64(0),
 		},
-	}}
+	}})
 	audio := FinalAudioReference{
 		DurationUS: 19_709_000, DurationMS: 19_709, CopyEligible: true, FinalMix: true,
 		PlanSHA256: strings.Repeat("d", 64),

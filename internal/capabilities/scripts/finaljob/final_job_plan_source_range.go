@@ -204,16 +204,14 @@ func FinalJobCompleteVideoFrameCoverage(segments []FinalJobPlanSegment, assets [
 // Master packet-copies the whole file. Clip and overlay scenes also travel in
 // the `stock` media slot of the remote contract, so the slot alone cannot
 // decide this — the scene kind does.
-func finalJobSourceLockedAssetIDs(scenes []map[string]any) map[string]struct{} {
+func finalJobSourceLockedAssetIDs(scenes []FinalJobRemoteScene) map[string]struct{} {
 	locked := make(map[string]struct{}, len(scenes))
 	for _, scene := range scenes {
-		if !strings.EqualFold(FinalJobStringValue(scene["kind"]), "stock") {
+		if !strings.EqualFold(scene.Kind, "stock") {
 			continue
 		}
-		if stock, ok := scene["stock"].(map[string]any); ok {
-			if id := FinalJobStringValue(stock["asset_id"]); id != "" {
-				locked[id] = struct{}{}
-			}
+		if id := FinalJobStringValue(scene.Stock["asset_id"]); id != "" {
+			locked[id] = struct{}{}
 		}
 	}
 	return locked

@@ -35,25 +35,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
-// Compile-time assertion (AGENTS.md Pattern 0): the concrete
-// satisfies the application-layer port that lives in
-// internal/capabilities/voiceover/upload_intent.go. The interface
-// lives in the application package (consumer declares), so the
-// concrete cannot reference the interface directly (would import
-// cycle). Instead, this structural assertion pins the public
-// method count + signatures against the same interface that the
-// application package declares (the application-side `var _`
-// assertion in upload_intent_test.go goes through the same
-// interface). Drift here surfaces as a vet error.
-var _ interface {
-	BeginTx(ctx context.Context) (sqlport.Tx, error)
-	InsertTx(ctx context.Context, tx sqlport.Tx, opts *InsertUploadIntentOptions) (int64, error)
-	MarkUploaded(ctx context.Context, voiceoverID, driveFileID string) error
-	MarkFinalized(ctx context.Context, voiceoverID string) error
-	MarkCompleted(ctx context.Context, voiceoverID string) error
-	MarkFailed(ctx context.Context, voiceoverID, reason string) error
-	ListPending(ctx context.Context, olderThan time.Time) ([]UploadIntent, error)
-} = (*UploadIntentsRepository)(nil)
+// The application-layer port lives in
+// internal/capabilities/voiceover/upload_intent.go. The concrete cannot
+// reference it directly without an import cycle; the composition adapter
+// (`NewUploadIntentsAdapter`) returns that port and its return statement is
+// the compile-time proof that this concrete still satisfies it. The former
+// inline `var _ interface { ... }` duplicated the same signature list and
+// was removed (P2-06).
 
 // ErrUploadIntentNotFound is the typed sentinel surfaced by every
 // Mark* method when the WHERE voiceover_id match returns 0 rows.

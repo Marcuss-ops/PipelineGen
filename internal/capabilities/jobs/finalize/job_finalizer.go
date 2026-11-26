@@ -59,14 +59,14 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
 // Finalizer is the concrete implementation of finalization.JobFinalizer.
 //
-// It holds a *sql.DB (to open transactions), an *outboxevents.Repository
+// It holds a *sql.DB (to open transactions), an OutboxEnqueuer
 // (to enqueue outbox events), and an *AssetTxFinalizer (to write canonical
 // asset records inside the transaction).
 //
@@ -82,7 +82,7 @@ import (
 // channel, not part of the SQLite canonical state.
 type Finalizer struct {
 	db              sqlport.Beginner
-	outbox          *outboxevents.Repository
+	outbox          OutboxEnqueuer
 	assetTx         finalization.AssetFinalizerTx
 	log             *zap.Logger
 	bus             JobCompletionBus
@@ -95,7 +95,7 @@ type Finalizer struct {
 // and asset-finalizer port (Pattern-0 port abstraction). Production
 // callers pass *assetfinalizer.AssetTxFinalizer which satisfies the
 // interface.
-func New(db sqlport.Beginner, outbox *outboxevents.Repository, assetTx finalization.AssetFinalizerTx, log *zap.Logger) *Finalizer {
+func New(db sqlport.Beginner, outbox OutboxEnqueuer, assetTx finalization.AssetFinalizerTx, log *zap.Logger) *Finalizer {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -235,9 +235,9 @@ func (f *Finalizer) CompleteWithArtifacts(
 	// SUCCEEDED flip so the outbox pool's performance-projection handler
 	// rebuilds performance_runs / performance_steps for every new job.
 	allEvents = append(allEvents, finalization.OutboxEvent{
-		EventType:   outboxevents.EventJobCompleted,
+		EventType:   outbox.EventJobCompleted,
 		AggregateID: req.Result.JobID,
-		EventKey:    outboxevents.JobCompletedEventKey(req.Result.JobID),
+		EventKey:    outbox.JobCompletedEventKey(req.Result.JobID),
 		Payload:     []byte(`{"job_id":"` + req.Result.JobID + `"}`),
 	})
 	allEvents = append(allEvents, req.Events...)

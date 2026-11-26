@@ -572,14 +572,19 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 	}
 	if resp.StatusCode != wantStatus {
 		body := strings.TrimSpace(string(data))
-		if resp.StatusCode >= http.StatusInternalServerError {
-			return fmt.Errorf("%w: HTTP %d: %s", ErrRemoteTransient, resp.StatusCode, body)
-		}
+		// The Master reports an invalid compiled plan as HTTP 500 with a
+		// misleading `m2m_quota_failure` envelope, so the typed parsers must run
+		// BEFORE the generic 5xx transient branch. Both parsers require an exact
+		// code AND a plan/capability token, so a genuine infrastructure 500 still
+		// stays transient.
 		if planErr := parsePlanValidationError(resp.StatusCode, body); planErr != nil {
 			return planErr
 		}
 		if capabilityErr := parseCapabilityUnavailableError(resp.StatusCode, body); capabilityErr != nil {
 			return capabilityErr
+		}
+		if resp.StatusCode >= http.StatusInternalServerError {
+			return fmt.Errorf("%w: HTTP %d: %s", ErrRemoteTransient, resp.StatusCode, body)
 		}
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
 	}

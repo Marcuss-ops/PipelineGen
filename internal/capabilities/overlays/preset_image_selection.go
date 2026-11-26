@@ -6,17 +6,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-func selectImagePreset(jobID, sceneID, itemID string) string {
-	return selectPreset(jobID, sceneID, itemID, "entity_image", imagePresetCandidates)
-}
-
-// SelectEntityImagePreset chooses the image motion independently from the
-// entity name treatment. Both choices are made by the shared sampler so the
-// renderer never has to infer or invent a preset.
-func SelectEntityImagePreset(jobID, sceneID, itemID string) string {
-	return selectImagePreset(jobID, sceneID, itemID)
-}
-
 // ImagePresetCandidates returns the certified `preset.image` vocabulary the
 // seeded entity-image sampler selects from. It travels in the v2 request so the
 // Rust planner can promote a card with the same entrance preset the Go sampler

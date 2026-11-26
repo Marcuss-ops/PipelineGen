@@ -183,31 +183,6 @@ func projectSemanticContextualImageQueries(source string, items []semanticEngine
 	return out, nil
 }
 
-func projectSemanticIdentities(texts map[string]string, identities []semanticEngineIdentity) ([]semantic.SemanticIdentity, error) {
-	out := make([]semantic.SemanticIdentity, 0, len(identities))
-	for _, identity := range identities {
-		if identity.ID == "" || identity.Kind == "" || identity.CanonicalSurface == "" {
-			return nil, fmt.Errorf("identity has missing id, type, or canonical surface")
-		}
-		canonicalID := ""
-		if identity.CanonicalID != nil {
-			canonicalID = strings.TrimSpace(*identity.CanonicalID)
-		}
-		projected := semantic.SemanticIdentity{ID: identity.ID, CanonicalSurface: identity.CanonicalSurface, Kind: identity.Kind, CanonicalID: canonicalID}
-		for _, mention := range identity.Mentions {
-			source, ok := texts[mention.SceneID]
-			if !ok || mention.Surface == "" || !groundedSpan(source, mention.StartByte, mention.EndByte, mention.Surface) {
-				return nil, fmt.Errorf("identity %q mention %q is not grounded in requested scenes", identity.ID, mention.Surface)
-			}
-			projected.Mentions = append(projected.Mentions, semantic.SemanticIdentityMention{
-				SceneID: mention.SceneID, Surface: mention.Surface, Start: mention.StartByte, End: mention.EndByte,
-			})
-		}
-		out = append(out, projected)
-	}
-	return out, nil
-}
-
 func projectSemanticRelations(source string, relations semanticEngineRelationView) (semantic.SemanticRelationView, error) {
 	out := semantic.SemanticRelationView{
 		CoMentions:        make([]semantic.SemanticCoMention, 0, len(relations.CoMentions)),

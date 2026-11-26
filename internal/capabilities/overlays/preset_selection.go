@@ -40,13 +40,3 @@ func registryShortPhraseGroups() map[int][]string {
 	}
 	return groups
 }
-
-func selectPreset(jobID, sceneID, itemID, family string, candidates []string) string {
-	return DefaultDeterministicPresetSampler.Sample(PresetSampleInput{
-		JobFingerprint: jobID,
-		SceneID:        sceneID,
-		SemanticID:     itemID,
-		PresetFamily:   family,
-		Presets:        candidates,
-	}).Preset
-}

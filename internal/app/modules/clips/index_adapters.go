@@ -8,7 +8,6 @@ import (
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
-	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
 // hashAdapter exposes the legacy file checksum through the clips port.
@@ -38,26 +37,7 @@ func (a *assetTreeAdapter) UpsertFromAsset(ctx context.Context, clip *asset.Asse
 	if a.inner == nil || clip == nil {
 		return nil
 	}
-	return a.inner.UpsertNode(ctx, clipToAssetNode(clip))
-}
-
-func clipToAssetNode(clip *asset.Asset) *assets.AssetNode {
-	if clip == nil {
-		return nil
-	}
-	nodeType := "file"
-	if clip.IsFolder() {
-		nodeType = "folder"
-	} else if clip.MediaType != "" {
-		nodeType = string(clip.MediaType)
-	}
-	return &assets.AssetNode{
-		ID: clip.ID, Source: string(clip.Source), AssetID: clip.ID, Name: clip.Name,
-		Type: nodeType, ParentID: clip.ParentFolderID(), Path: clip.FolderPath(),
-		Depth: clip.Depth(), IsFolder: clip.IsFolder(), DriveFileID: clip.DriveFileID(),
-		DriveLink: clip.DriveLink(), Metadata: clip.MetadataJSON(),
-		CreatedAt: clip.CreatedAt, UpdatedAt: clip.UpdatedAt, ChildCount: clip.ChildCount(),
-	}
+	return a.inner.UpsertNode(ctx, clips.ClipToAssetNode(clip))
 }
 
 // OpsPorts contains the narrow typed dependencies consumed by ClipOpsService.

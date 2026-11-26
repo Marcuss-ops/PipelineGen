@@ -146,7 +146,3 @@ func (r *Runner) ApplyLocalizedAnnotations(result *contract.GenerateResult, loca
 }
 
 func (r *Runner) VoiceoverPublishDrainer() interface{ Wait() } { return r.voiceoverPublishDrainer }
-
-func (r *Runner) OverlayPublicationDrainer() interface{ Wait(context.Context) error } {
-	return r.overlayPublicationDrainer
-}

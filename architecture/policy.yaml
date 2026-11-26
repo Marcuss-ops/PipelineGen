@@ -95,7 +95,12 @@ forbidden_top_level_dirs: service, repository, models, utils, helpers
 # sentinel) were deleted by docs/operations/TICKET-ORPHAN-PACKAGES-2026-11-18.md;
 # re-declaring them without a package would demand an empty module, and
 # keeping them declared makes the layout gate fail on the deleted tree.
-kernel_subzones: asset, job, script, event, observability, embedding, entitytype, digest, color, media, assembly, delivery, primitives, transcript, idempotency, models, audio, sceneir, geodesy, overlayplan
+# `jsonwire` owns the strict JSON decode primitive (DisallowUnknownFields +
+# single top-level value) shared by kernel/script and kernel/media. It is a
+# kernel zone, not a capability: both request contracts must reject unknown
+# keys with identical taxonomy, and encoding/json hands a custom
+# UnmarshalJSON its whole subtree, so each custom decoder needs the same gate.
+kernel_subzones: asset, job, script, event, observability, embedding, entitytype, digest, color, media, assembly, delivery, primitives, transcript, idempotency, models, audio, sceneir, geodesy, overlayplan, jsonwire, outbox, driveurl, outbox, driveurl
 
 # Canonical data/config ownership doc (path relative to project root) — the
 # single source of truth for the data+config ownership axis (DB rules,

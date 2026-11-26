@@ -205,87 +205,6 @@ func recordCheckpointFlush() {
 	observability.ScriptCheckpointFlushTotal.Inc()
 }
 
-// snapshotBufferPool reuses marshal buffers across per-unit checkpoints so
-// the full-result copy does not allocate a fresh byte slice per debounced
-// unit (P1-D: less allocation amplification; the copy itself is retained
-// for race safety, see below).
-var snapshotBufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
-
-// snapshotGenerateResult creates an immutable checkpoint value. JSON is the
-// durable result contract, so round-tripping it also deep-copies every map and
-// slice that concurrent scene workers may otherwise mutate after the apply
-// lock is released. Callers must create this snapshot while holding the
-// phase's result-apply mutex; the actual repository write happens later.
-//
-// P1-D note: per-unit callers are already debounced (500ms + inFlight) and
-// final flushes are the durable DAG boundaries, so this keeps crash-resume
-// while the pool avoids a fresh allocation per debounced unit. The remaining
-// full-copy cost is the race-safety price; payload bytes stay measurable via
-// ScriptCheckpointBytesTotal at the repository write.
-func snapshotGenerateResult(result *contract.GenerateResult) (*contract.GenerateResult, error) {
-	if result == nil {
-		return nil, nil
-	}
-	buf := snapshotBufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer snapshotBufferPool.Put(buf)
-	enc := json.NewEncoder(buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(result); err != nil {
-		return nil, fmt.Errorf("marshal checkpoint snapshot: %w", err)
-	}
-	var snapshot contract.GenerateResult
-	if err := json.Unmarshal(buf.Bytes(), &snapshot); err != nil {
-		return nil, fmt.Errorf("unmarshal checkpoint snapshot: %w", err)
-	}
-	// LocalPath is deliberately producer-only (`json:"-"`): it must never
-	// enter the durable result, but the parallel render branch still needs the
-	// verified local files while validating and staging the semantic plan.
-	// Restore those transient locations onto the detached JSON snapshot.
-	restoreOverlayPlanRuntimeAssetLocations(result.OverlayPlan, snapshot.OverlayPlan)
-	for language, sourcePlan := range result.LocalizedOverlayPlans {
-		restoreOverlayPlanRuntimeAssetLocations(sourcePlan, snapshot.LocalizedOverlayPlans[language])
-	}
-	return &snapshot, nil
-}
-
-func restoreOverlayPlanRuntimeAssetLocations(source, target *capmodel.OverlayPlan) {
-	if source == nil || target == nil {
-		return
-	}
-	// These application-only fields are excluded from the RenderingGen JSON
-	// contract, but the detached PipelineGen render snapshot still needs them
-	// to publish the finished artifact under its owning broker job.
-	target.DriveJobID = source.DriveJobID
-	target.ResultJobID = source.ResultJobID
-	target.RequireObjectStoreBeforeReturn = source.RequireObjectStoreBeforeReturn
-	target.RequireDriveBeforeReturn = source.RequireDriveBeforeReturn
-	if source.Source != nil && target.Source != nil {
-		target.Source.LocalPath = source.Source.LocalPath
-	}
-	if source.Background != nil && target.Background != nil {
-		for i := range source.Background.AssetRefs {
-			if i < len(target.Background.AssetRefs) && source.Background.AssetRefs[i].AssetID == target.Background.AssetRefs[i].AssetID {
-				target.Background.AssetRefs[i].LocalPath = source.Background.AssetRefs[i].LocalPath
-			}
-		}
-	}
-	for i := range source.Items {
-		if i >= len(target.Items) || source.Items[i].ID != target.Items[i].ID {
-			continue
-		}
-		for j := range source.Items[i].AssetRefs {
-			if j < len(target.Items[i].AssetRefs) && source.Items[i].AssetRefs[j].AssetID == target.Items[i].AssetRefs[j].AssetID {
-				target.Items[i].AssetRefs[j].LocalPath = source.Items[i].AssetRefs[j].LocalPath
-			}
-		}
-		if source.Items[i].SoundEffect != nil && target.Items[i].SoundEffect != nil &&
-			source.Items[i].SoundEffect.AssetRef.AssetID == target.Items[i].SoundEffect.AssetRef.AssetID {
-			target.Items[i].SoundEffect.AssetRef.LocalPath = source.Items[i].SoundEffect.AssetRef.LocalPath
-		}
-	}
-}
-
 // observeCheckpointWait records how long a worker waited for the per-unit apply
 // lock before checkpointing. The stage timer never covered this wait, so
 // contention between the scene×language workers was invisible in every report;
@@ -493,33 +412,6 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *contract
 	return nil
 }
 
-// renderSetSatisfiesExpectation enforces the exact render-unit contract.
-// Additional renders indicate a dispatch/planning mismatch and must not be
-// silently certified as a complete run.
-func renderSetSatisfiesExpectation(expected, successful, failed int) bool {
-	return successful == expected && failed == 0
-}
-
-func dedupeLocalizedRenders(renders []contract.LocalizedRenderResult) []contract.LocalizedRenderResult {
-	if len(renders) < 2 {
-		return renders
-	}
-	unique := make([]contract.LocalizedRenderResult, 0, len(renders))
-	indices := make(map[string]int, len(renders))
-	for _, rendered := range renders {
-		key := string(rendered.Language) + "\x00" + rendered.SceneID + "\x00" + rendered.ClipID
-		if index, ok := indices[key]; ok {
-			// Prefer the newest receipt while keeping the first-seen ordering,
-			// which is also the order used to assemble the final timeline.
-			unique[index] = rendered
-			continue
-		}
-		indices[key] = len(unique)
-		unique = append(unique, rendered)
-	}
-	return unique
-}
-
 // stageSkipped reports whether a stage is already behind the resume point.
 //
 // It lives with the other resume/lifecycle semantics (ResumeFrom, StageIndex,
@@ -528,4 +420,94 @@ func dedupeLocalizedRenders(renders []contract.LocalizedRenderResult) []contract
 // the resume rule has one home.
 func stageSkipped(resumeIdx int, stage Stage) bool {
 	return resumeIdx >= 0 && StageIndex(stage) < resumeIdx
+}
+
+// The checkpoint detach below is the ONE durable-checkpoint detachment. A
+// checkpoint must survive the caller releasing its result-apply mutex while
+// other scene workers keep writing, so the persisted value has to be detached
+// from the live graph. That copy belongs to the persistence boundary and
+// nowhere else: phase branches never clone the full result (they receive typed
+// immutable inputs, see OverlayPlanningInput).
+//
+// The JSON round-trip is deliberate: JSON is the durable result contract, so
+// the detached value is exactly what a resumed run would decode — no field can
+// drift between the in-memory copy and the persisted one.
+
+// checkpointBufferPool reuses marshal buffers across per-unit checkpoints so
+// the durable copy does not allocate a fresh byte slice per debounced unit
+// (P1-D: less allocation amplification; the copy itself is retained for race
+// safety).
+var checkpointBufferPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
+
+// detachCheckpointResult creates an immutable checkpoint value. Callers must
+// invoke it while holding the phase's result-apply mutex; the actual
+// repository write happens later, outside the lock.
+//
+// P1-D note: per-unit callers are already debounced (500ms + inFlight) and
+// final flushes are the durable DAG boundaries, so this keeps crash-resume
+// while the pool avoids a fresh allocation per debounced unit. The remaining
+// full-copy cost is the race-safety price; payload bytes stay measurable via
+// ScriptCheckpointBytesTotal at the repository write.
+func detachCheckpointResult(result *contract.GenerateResult) (*contract.GenerateResult, error) {
+	if result == nil {
+		return nil, nil
+	}
+	buf := checkpointBufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer checkpointBufferPool.Put(buf)
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(result); err != nil {
+		return nil, fmt.Errorf("marshal checkpoint snapshot: %w", err)
+	}
+	var snapshot contract.GenerateResult
+	if err := json.Unmarshal(buf.Bytes(), &snapshot); err != nil {
+		return nil, fmt.Errorf("unmarshal checkpoint snapshot: %w", err)
+	}
+	// LocalPath is deliberately producer-only (`json:"-"`): it must never
+	// enter the durable result, but the in-memory checkpoint consumer still
+	// needs the verified local files. Restore those transient locations onto
+	// the detached snapshot.
+	restoreOverlayPlanRuntimeAssetLocations(result.OverlayPlan, snapshot.OverlayPlan)
+	for language, sourcePlan := range result.LocalizedOverlayPlans {
+		restoreOverlayPlanRuntimeAssetLocations(sourcePlan, snapshot.LocalizedOverlayPlans[language])
+	}
+	return &snapshot, nil
+}
+
+func restoreOverlayPlanRuntimeAssetLocations(source, target *capmodel.OverlayPlan) {
+	if source == nil || target == nil {
+		return
+	}
+	// These application-only fields are excluded from the RenderingGen JSON
+	// contract, but the detached PipelineGen render snapshot still needs them
+	// to publish the finished artifact under its owning broker job.
+	target.DriveJobID = source.DriveJobID
+	target.ResultJobID = source.ResultJobID
+	target.RequireObjectStoreBeforeReturn = source.RequireObjectStoreBeforeReturn
+	target.RequireDriveBeforeReturn = source.RequireDriveBeforeReturn
+	if source.Source != nil && target.Source != nil {
+		target.Source.LocalPath = source.Source.LocalPath
+	}
+	if source.Background != nil && target.Background != nil {
+		for i := range source.Background.AssetRefs {
+			if i < len(target.Background.AssetRefs) && source.Background.AssetRefs[i].AssetID == target.Background.AssetRefs[i].AssetID {
+				target.Background.AssetRefs[i].LocalPath = source.Background.AssetRefs[i].LocalPath
+			}
+		}
+	}
+	for i := range source.Items {
+		if i >= len(target.Items) || source.Items[i].ID != target.Items[i].ID {
+			continue
+		}
+		for j := range source.Items[i].AssetRefs {
+			if j < len(target.Items[i].AssetRefs) && source.Items[i].AssetRefs[j].AssetID == target.Items[i].AssetRefs[j].AssetID {
+				target.Items[i].AssetRefs[j].LocalPath = source.Items[i].AssetRefs[j].LocalPath
+			}
+		}
+		if source.Items[i].SoundEffect != nil && target.Items[i].SoundEffect != nil &&
+			source.Items[i].SoundEffect.AssetRef.AssetID == target.Items[i].SoundEffect.AssetRef.AssetID {
+			target.Items[i].SoundEffect.AssetRef.LocalPath = source.Items[i].SoundEffect.AssetRef.LocalPath
+		}
+	}
 }

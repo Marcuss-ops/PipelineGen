@@ -241,12 +241,6 @@ func DefaultAssemblyMediaContractV2() AssemblyMediaContract {
 	return c
 }
 
-// DefaultAssemblyReadyVideoContract returns the frozen v1 contract.
-// Deprecated: use DefaultAssemblyMediaContract().
-func DefaultAssemblyReadyVideoContract() AssemblyMediaContract {
-	return DefaultAssemblyMediaContract()
-}
-
 // ValidateExact checks every dimension exactly (no float epsilon for FPS).
 func (c AssemblyMediaContract) ValidateExact() error {
 	if c.ID != AssemblyMediaContractID && c.ID != AssemblyMediaContractV2ID {

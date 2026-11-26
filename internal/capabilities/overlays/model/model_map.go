@@ -1,21 +1,11 @@
 package model
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"image"
-	_ "image/png"
-	"io"
 	"math"
-	"os"
 	"strings"
-	"unicode/utf8"
 
-	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/color"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
 )
 
@@ -120,132 +110,17 @@ type MapCameraMove struct {
 const maxCameraMapZoom = 18
 
 func (m *MapOverlay) validateCameraMove(canvasWidth, canvasHeight int, assets []OverlayAssetRef) error {
-	if m.CameraMove == nil {
-		if len(m.LODs) != 0 {
-			return fmt.Errorf("map LODs require camera_move")
-		}
-		if !m.DynamicRendererOnly && len(assets) != 1 {
-			return fmt.Errorf("map requires exactly one basemap asset")
-		}
-		if m.DynamicRendererOnly && len(assets) != 0 {
-			return fmt.Errorf("dynamic-renderer map must not carry unused basemap assets")
-		}
-		return nil
-	}
 	move := m.CameraMove
-	if len(m.LODs) < 2 || len(m.LODs) > 8 ||
-		(!m.DynamicRendererOnly && len(m.LODs) != len(assets)) ||
-		(m.DynamicRendererOnly && len(assets) != 0) {
-		return fmt.Errorf("camera map requires 2..8 LODs and one matching asset per LOD")
+	if move == nil {
+		return m.validateCameraMovePresence(assets)
 	}
-	for name, point := range map[string]MapCenter{"camera from": move.From, "camera to": move.To} {
-		if err := (geodesy.Point{Latitude: point.Latitude, Longitude: point.Longitude}).Validate(); err != nil {
-			return fmt.Errorf("%s: %w", name, err)
-		}
+	if err := m.validateCameraMoveLODSet(assets); err != nil {
+		return err
 	}
-	for name, zoom := range map[string]float64{"start_zoom": move.StartZoom, "end_zoom": move.EndZoom} {
-		if math.IsNaN(zoom) || math.IsInf(zoom, 0) || zoom < 0 || zoom > maxCameraMapZoom {
-			return fmt.Errorf("camera %s must be finite and in [0,%d]", name, maxCameraMapZoom)
-		}
+	if err := validateCameraMoveEndpoints(move, m.LODs); err != nil {
+		return err
 	}
-	if move.EndZoom <= move.StartZoom ||
-		math.Abs(move.StartZoom-float64(m.LODs[0].Zoom)) > 1e-9 ||
-		math.Abs(move.EndZoom-float64(m.LODs[len(m.LODs)-1].Zoom)) > 1e-9 {
-		return fmt.Errorf("camera zoom must increase and match the first and last map LOD")
-	}
-
-	for name, tilt := range map[string]float64{"start_tilt_deg": move.StartTiltDeg, "end_tilt_deg": move.EndTiltDeg} {
-		if math.IsNaN(tilt) || math.IsInf(tilt, 0) || math.Abs(tilt) > 80 {
-			return fmt.Errorf("camera %s must be finite and within ±80 degrees", name)
-		}
-	}
-	if math.IsNaN(move.BearingDeg) || math.IsInf(move.BearingDeg, 0) || math.Abs(move.BearingDeg) > 360 {
-		return fmt.Errorf("camera bearing_deg must be finite and within ±360 degrees")
-	}
-	seenAssets := make(map[string]struct{}, len(m.LODs))
-	seenZooms := make(map[int]struct{}, len(m.LODs))
-	for index, lod := range m.LODs {
-		if (!m.DynamicRendererOnly && strings.TrimSpace(lod.AssetID) == "") || strings.TrimSpace(lod.SourceID) == "" ||
-			strings.TrimSpace(lod.SourceLicense) == "" || !isSingleLineVisibleText(lod.Attribution) ||
-			lod.SourceLicense != m.SourceLicense || lod.Attribution != m.Attribution {
-			return fmt.Errorf("map LOD[%d] requires source provenance and attribution matching the basemap", index)
-		}
-		if lod.Zoom < 0 || lod.Zoom > maxCameraMapZoom {
-			return fmt.Errorf("map LOD[%d] zoom must be in [0,%d]", index, maxCameraMapZoom)
-		}
-		if lod.Width < 1 || lod.Height < 1 || lod.Width > MaxMapRasterWidth || lod.Height > MaxMapRasterHeight {
-			return fmt.Errorf("map LOD[%d] raster %dx%d must be positive and stay within %dx%d", index, lod.Width, lod.Height, MaxMapRasterWidth, MaxMapRasterHeight)
-		}
-		if !m.DynamicRendererOnly && (index >= len(assets) || assets[index].AssetID != lod.AssetID) {
-			return fmt.Errorf("map LOD[%d] asset must match asset_refs[%d]", index, index)
-		}
-		if index > 0 && lod.Zoom <= m.LODs[index-1].Zoom {
-			return fmt.Errorf("map LODs must be in strictly ascending zoom order")
-		}
-		if !m.DynamicRendererOnly {
-			if _, duplicate := seenAssets[lod.AssetID]; duplicate {
-				return fmt.Errorf("map LOD[%d] duplicates asset_id %q", index, lod.AssetID)
-			}
-			seenAssets[lod.AssetID] = struct{}{}
-		}
-		if _, duplicate := seenZooms[lod.Zoom]; duplicate {
-			return fmt.Errorf("map LODs duplicate zoom %d", lod.Zoom)
-		}
-		seenZooms[lod.Zoom] = struct{}{}
-		if err := (geodesy.Point{Latitude: lod.Center.Latitude, Longitude: lod.Center.Longitude}).Validate(); err != nil {
-			return fmt.Errorf("map LOD[%d] center: %w", index, err)
-		}
-		if index == 0 && (lod.Zoom != m.Zoom || lod.Center != m.Center || m.Width != lod.Width || m.Height != lod.Height) {
-			return fmt.Errorf("first map LOD must match the declared coarse basemap")
-		}
-		lodWindow := geodesy.CenteredOn(lod.Center.Latitude, lod.Center.Longitude, lod.Zoom, lod.Width, lod.Height)
-		lowZoom, highZoom := mapLODActiveZoomRange(index, m.LODs, move)
-		if !mapLODWindowCoversMove(lodWindow, move, lowZoom, highZoom, canvasWidth, canvasHeight) {
-			return fmt.Errorf("map LOD[%d] does not cover its active camera viewport and cross-fade interval", index)
-		}
-		for pinIndex, pin := range m.Pins {
-			if !lodWindow.Contains(pin.Latitude, pin.Longitude) {
-				return fmt.Errorf("map LOD[%d] does not cover pin[%d] %q", index, pinIndex, pin.ID)
-			}
-		}
-		if m.DynamicRendererOnly {
-			continue
-		}
-		assetFound := false
-		for _, asset := range assets {
-			if asset.AssetID == lod.AssetID {
-				assetFound = true
-				if !digest.IsSHA256(strings.TrimSpace(asset.SHA256)) || strings.ToLower(strings.TrimSpace(strings.SplitN(asset.MediaType, ";", 2)[0])) != "image/png" ||
-					strings.TrimSpace(asset.LocalPath) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "http://") ||
-					strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "https://") {
-					return fmt.Errorf("map LOD[%d] must reference a verified local image/png asset", index)
-				}
-				actualHash, _, err := digest.SHA256File(asset.LocalPath)
-				if err != nil {
-					return fmt.Errorf("map LOD[%d] raster: %w", index, err)
-				}
-				if !strings.EqualFold(actualHash, asset.SHA256) {
-					return fmt.Errorf("map LOD[%d] raster SHA-256 mismatch", index)
-				}
-				width, height, err := verifyPNGRasterDimensions(asset.LocalPath)
-				if err != nil {
-					return fmt.Errorf("map LOD[%d] raster integrity: %w", index, err)
-				}
-				// The map's declared dimensions describe its projected world
-				// plane. A 2:1 raster is also valid: it keeps camera bleed and
-				// georeferencing while limiting the source image to 1920x1080.
-				if (width != lod.Width || height != lod.Height) &&
-					(width*2 != lod.Width || height*2 != lod.Height) {
-					return fmt.Errorf("map LOD[%d] declares projected size %dx%d but raster is %dx%d (expected full or half resolution)", index, lod.Width, lod.Height, width, height)
-				}
-				break
-			}
-		}
-		if !assetFound {
-			return fmt.Errorf("map LOD[%d] references undeclared asset %q", index, lod.AssetID)
-		}
-	}
-	return nil
+	return m.validateMapLODs(move, canvasWidth, canvasHeight, assets)
 }
 
 // MapCenter is the georeference anchor of a map item: a WGS84 point and
@@ -355,154 +230,17 @@ func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAss
 	if m == nil {
 		return fmt.Errorf("map declaration is required")
 	}
-	if math.IsNaN(m.AreaGlowRadiusKM) || math.IsInf(m.AreaGlowRadiusKM, 0) || m.AreaGlowRadiusKM < 0 || m.AreaGlowRadiusKM > 1000 {
-		return fmt.Errorf("map area_glow_radius_km must be finite and in [0,1000]")
-	}
-	provider := strings.ToLower(strings.TrimSpace(m.Provider))
-	if provider != "local" {
-		return fmt.Errorf("unsupported map provider %q: only explicitly supplied local rasters are accepted", m.Provider)
-	}
-	if strings.TrimSpace(m.SourceID) == "" || strings.TrimSpace(m.SourceLicense) == "" {
-		return fmt.Errorf("local map requires source_id and source_license")
-	}
-	if len(m.Attribution) > maxMapAttributionBytes || !isSingleLineVisibleText(m.Attribution) {
-		return fmt.Errorf("local map requires a single-line visible attribution of at most %d bytes", maxMapAttributionBytes)
-	}
-	if (m.CameraMove == nil && (m.Width != canvasWidth || m.Height != canvasHeight)) || m.Width <= 0 || m.Height <= 0 {
-		return fmt.Errorf("map raster dimensions %dx%d must match canvas %dx%d (static) and be positive", m.Width, m.Height, canvasWidth, canvasHeight)
-	}
-
-	if m.Width > MaxMapRasterWidth || m.Height > MaxMapRasterHeight {
-		return fmt.Errorf("map raster %dx%d exceeds the published contract maximum %dx%d", m.Width, m.Height, MaxMapRasterWidth, MaxMapRasterHeight)
-	}
-	if m.Zoom < 0 || m.Zoom > 22 {
-		return fmt.Errorf("map zoom %d outside [0,22]", m.Zoom)
-	}
-	if err := (geodesy.Point{Latitude: m.Center.Latitude, Longitude: m.Center.Longitude}).Validate(); err != nil {
-		return fmt.Errorf("invalid map center: %w", err)
-	}
-	// An empty motion is the certified stable runtime map treatment: the map
-	// camera owns the movement while its georeferenced raster, pin and label
-	// remain still relative to one another.
-	if strings.TrimSpace(m.MotionID) != "" && !isAllowedMapMotion(m.MotionID) {
-		return fmt.Errorf("unsupported or missing map motion %q", m.MotionID)
+	if err := m.validateMapBaseFields(canvasWidth, canvasHeight); err != nil {
+		return err
 	}
 	if err := m.validateCameraMove(canvasWidth, canvasHeight, assets); err != nil {
 		return err
 	}
-	if m.DynamicRendererOnly && len(assets) != 0 {
-		return fmt.Errorf("dynamic-renderer map must not carry unused basemap assets")
+	if err := m.validateMapBasemapCounts(assets); err != nil {
+		return err
 	}
-	if !m.DynamicRendererOnly && len(assets) == 0 {
-		return fmt.Errorf("map requires at least one basemap asset")
+	if err := m.validateMapBasemapAsset(assets); err != nil {
+		return err
 	}
-	if !m.DynamicRendererOnly && m.CameraMove != nil && (len(m.LODs) == 0 || assets[0].AssetID != m.LODs[0].AssetID || m.Width != m.LODs[0].Width || m.Height != m.LODs[0].Height) {
-		return fmt.Errorf("camera map base raster must match its first LOD")
-	}
-	if !m.DynamicRendererOnly {
-		asset := assets[0]
-		if strings.TrimSpace(asset.AssetID) == "" || !digest.IsSHA256(strings.TrimSpace(asset.SHA256)) || strings.ToLower(strings.TrimSpace(strings.SplitN(asset.MediaType, ";", 2)[0])) != "image/png" {
-			return fmt.Errorf("map basemap requires a 64-hex content-addressed image/png asset")
-		}
-		if strings.TrimSpace(asset.LocalPath) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "http://") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "https://") {
-			return fmt.Errorf("map basemap must be a verified local file; network references are forbidden")
-		}
-		actualHash, _, err := digest.SHA256File(asset.LocalPath)
-		if err != nil {
-			return fmt.Errorf("read local map raster: %w", err)
-		}
-		if !strings.EqualFold(actualHash, asset.SHA256) {
-			return fmt.Errorf("local map raster SHA-256 mismatch: declared %s, got %s", asset.SHA256, actualHash)
-		}
-		if err := verifyPNGRaster(asset.LocalPath); err != nil {
-			return fmt.Errorf("local map raster integrity: %w", err)
-		}
-	}
-
-	if len(m.Pins) > maxMapPins {
-		return fmt.Errorf("map declares %d pins; the published contract allows at most %d", len(m.Pins), maxMapPins)
-	}
-	window := geodesy.CenteredOn(m.Center.Latitude, m.Center.Longitude, m.Zoom, m.Width, m.Height)
-	seenPins := make(map[string]struct{}, len(m.Pins))
-	for index, pin := range m.Pins {
-		if strings.TrimSpace(pin.ID) != pin.ID || !isSingleLineVisibleText(pin.ID) {
-			return fmt.Errorf("map pin[%d] id must be a non-blank trimmed single-line identifier", index)
-		}
-		if !isSingleLineVisibleText(pin.Label) || len(pin.Label) > maxMapPinLabelBytes {
-			return fmt.Errorf("map pin[%d] label must be a single-line value of at most %d bytes", index, maxMapPinLabelBytes)
-		}
-		if _, exists := seenPins[pin.ID]; exists {
-			return fmt.Errorf("map pin[%d] duplicates id %q", index, pin.ID)
-		}
-		seenPins[pin.ID] = struct{}{}
-		if pin.RadiusPX <= 0 || pin.RadiusPX > 128 || math.IsNaN(pin.RadiusPX) || math.IsInf(pin.RadiusPX, 0) {
-			return fmt.Errorf("map pin[%d] radius_px must be finite and in (0,128]", index)
-		}
-		if !color.IsHexRGB(pin.Color) {
-			return fmt.Errorf("map pin[%d] color must be #RRGGBB", index)
-		}
-		point := geodesy.Point{Latitude: pin.Latitude, Longitude: pin.Longitude}
-		if err := point.Validate(); err != nil {
-			return fmt.Errorf("map pin[%d]: %w", index, err)
-		}
-		if !window.Contains(pin.Latitude, pin.Longitude) {
-			return fmt.Errorf("map pin[%d] falls outside the basemap window", index)
-		}
-	}
-	return nil
-}
-
-func isAllowedMapMotion(id string) bool {
-	return capanimreg.AnimationSelectable(id, "image.map_centered")
-}
-
-// isSingleLineVisibleText reports whether value is non-blank valid UTF-8 with
-// no control characters — the shape every value that reaches a rendered text
-// surface must have. It is the single owner of the "single line, no control
-// characters" rule shared by the visible attribution and the pin labels.
-func isSingleLineVisibleText(value string) bool {
-	if strings.TrimSpace(value) == "" || !utf8.ValidString(value) {
-		return false
-	}
-	for _, r := range value {
-		if r < 0x20 || r == 0x7f {
-			return false
-		}
-	}
-	return true
-}
-
-// verifyPNGRaster fails closed unless the content-addressed basemap is really
-// a PNG. The declared media type is producer-supplied metadata; the plate the
-// renderer paints and georeferences is the bytes on disk, so the bytes are
-// what gets checked.
-func verifyPNGRaster(path string) error {
-	_, _, err := verifyPNGRasterDimensions(path)
-	return err
-}
-
-func verifyPNGRasterDimensions(path string) (int, int, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer func() { _ = file.Close() }()
-	header := make([]byte, len(pngSignature))
-	if _, err := io.ReadFull(file, header); err != nil {
-		return 0, 0, fmt.Errorf("not a PNG raster: %w", err)
-	}
-	if !bytes.Equal(header, pngSignature) {
-		return 0, 0, fmt.Errorf("not a PNG raster: unexpected magic")
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return 0, 0, err
-	}
-	config, format, err := image.DecodeConfig(file)
-	if err != nil {
-		return 0, 0, err
-	}
-	if format != "png" || config.Width <= 0 || config.Height <= 0 {
-		return 0, 0, fmt.Errorf("invalid PNG raster configuration")
-	}
-	return config.Width, config.Height, nil
+	return m.validateMapPins()
 }

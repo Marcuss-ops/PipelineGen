@@ -37,7 +37,7 @@
 //   - 5xx / network error → non-nil error → outbox retries up to
 //     max_attempts, then dead_letter.
 //
-// Concurrency: outboxevents.Pool calls Handle from N goroutines. The
+// Concurrency: outbox.Pool calls Handle from N goroutines. The
 // handler is concurrency-safe (http.Client documented safe for
 // concurrent use; DB writes via ON CONFLICT keyed by idempotency_key).
 package handlers
@@ -54,9 +54,9 @@ import (
 
 	"go.uber.org/zap"
 
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	assetdelivery "github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/hmacsign"
 )
 
@@ -251,12 +251,12 @@ type DeliveryOperation struct {
 	Materializer    assetdelivery.Materializer
 }
 
-// EventType implements outboxevents.Handler.
+// EventType implements outbox.Handler.
 func (h *DeliveryHandler) EventType() string {
-	return outboxevents.EventDeliveryRequested
+	return outbox.EventDeliveryRequested
 }
 
-// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2).
+// IdempotencyKey implements outbox.Handler (Fase 6(c) Push 6.2).
 // Static canonical form: `<event_type>.<delivery_schema_version>` so
 // the HandlerRegistry.Register fail-closed panic fires at init
 // time if a future refactor forgets the declaration. per-event
@@ -264,7 +264,7 @@ func (h *DeliveryHandler) EventType() string {
 // field (the receiver's dedup key) and do NOT substitute this
 // static declaration.
 func (h *DeliveryHandler) IdempotencyKey() string {
-	return outboxevents.EventDeliveryRequested + "." + deliverySchemaVersion
+	return outbox.EventDeliveryRequested + "." + deliverySchemaVersion
 }
 
 // Validates the v1 envelope strictly. Returns nil on success; ONE of
@@ -311,7 +311,7 @@ func validateDeliveryRequest(r *deliveryRequest) error {
 // nil only for terminal-success (2xx) or unrecoverable client-error
 // (4xx). 5xx / network errors and unknown providers return terminal
 // errors so the outbox pool can map them to retry vs dead_letter.
-func (h *DeliveryHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *DeliveryHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	var req deliveryRequest
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
 		h.log.Warn("delivery.requested payload parse failed (terminal: shape mismatch)",
@@ -334,7 +334,7 @@ func (h *DeliveryHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		// already carry the legacy "(terminal)" breadcrumb; the plain
 		// "missing required field" errors did not, so they burned the whole
 		// attempt budget before dead-lettering. Wrapping is idempotent.
-		return outboxevents.NewTerminalError(err)
+		return outbox.NewTerminalError(err)
 	}
 
 	if req.Operation != "" {
@@ -396,7 +396,7 @@ func (h *DeliveryHandler) handleAssetOperation(ctx context.Context, req *deliver
 // over the canonical string <event_timestamp>.<event_id>.<raw_body>.
 // 2xx → ok; 4xx → terminal ack; 5xx/network → retry.
 
-func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.Event, req *deliveryRequest) error {
+func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outbox.Event, req *deliveryRequest) error {
 	if h.client == nil {
 		h.log.Error("delivery.requested has no HTTP client configured — refusing as terminal",
 			zap.String("idempotency_key", req.IdempotencyKey),
@@ -444,7 +444,7 @@ func webhookBody(req *deliveryRequest) []byte {
 	return body
 }
 
-func (h *DeliveryHandler) buildWebhookRequest(ctx context.Context, evt outboxevents.Event, req *deliveryRequest, body []byte) (*http.Request, error) {
+func (h *DeliveryHandler) buildWebhookRequest(ctx context.Context, evt outbox.Event, req *deliveryRequest, body []byte) (*http.Request, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, req.Destination.DestinationID, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("delivery.requested build request: %w", err)
@@ -486,7 +486,7 @@ func (h *DeliveryHandler) signWebhookRequest(ctx context.Context, httpReq *http.
 	return nil
 }
 
-func (h *DeliveryHandler) recordWebhookFailure(ctx context.Context, evt outboxevents.Event, req *deliveryRequest, err error) error {
+func (h *DeliveryHandler) recordWebhookFailure(ctx context.Context, evt outbox.Event, req *deliveryRequest, err error) error {
 	h.log.Warn("delivery.requested POST failed (network) — will retry",
 		zap.String("idempotency_key", req.IdempotencyKey),
 		zap.String("endpoint", req.Destination.DestinationID),
@@ -502,7 +502,7 @@ func (h *DeliveryHandler) recordWebhookFailure(ctx context.Context, evt outboxev
 	return fmt.Errorf("delivery.requested POST %s: %w", req.Destination.DestinationID, err)
 }
 
-func (h *DeliveryHandler) classifyWebhookResponse(req *deliveryRequest, evt outboxevents.Event, statusCode int, responseBody []byte) error {
+func (h *DeliveryHandler) classifyWebhookResponse(req *deliveryRequest, evt outbox.Event, statusCode int, responseBody []byte) error {
 	switch {
 	case statusCode >= 200 && statusCode < 300:
 		h.log.Info("delivery.requested succeeded",

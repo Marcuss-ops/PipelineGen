@@ -61,30 +61,16 @@ func (r *Runner) audioCompilePhase(ctx context.Context, runID string, req contra
 	}
 	var done chan audioOverlayOutcome
 	state.OnPlanReady = func(result *contract.GenerateResult) bool {
-		// Freeze the plan on the DURABLE result before the snapshot exists. The
-		// snapshot is what the renderer receives; freezing first is what makes
-		// the persisted plan and the rendered plan the same document (and
-		// therefore the same digest). Doing it on the snapshot instead was the
-		// divergence this hand-off used to create.
+		// Freeze the plan ONCE on the durable result; the renderer then receives
+		// a typed immutable input copied from it. Freezing before the copy is
+		// what makes the persisted plan and the rendered plan the same document
+		// (and therefore the same digest).
 		if err := FreezeFinalJobOverlayPlans(result, req.FinalJob); err != nil {
 			failure.cause = fmt.Errorf("freeze overlay plan: %w", err)
 			return false
 		}
-		snapshot, err := snapshotGenerateResult(result)
-		if err != nil {
-			failure.cause = fmt.Errorf("snapshot overlay plan: %w", err)
-			return false
-		}
-		// The overlay branch runs from a detached snapshot. Reassert the
-		// broker job identity at this hand-off so publication cannot fall back
-		// to the internal run/plan ID after JSON checkpointing.
-		setOverlayDriveJobID(snapshot, exec.JobID)
+		renderInput := newOverlayRenderInput(result, req, resumeIdx)
 		done = make(chan audioOverlayOutcome, 1)
-		// The P2 barrier (spun in runAudioCompilePhase off the P1 plan branch)
-		// may already have certified some languages while the master compiled.
-		// The fork merges its outcomes before its pending capture, so a language
-		// the barrier composed is never re-submitted; only the fork writes.
-		barrier := state.Barrier
 		// The render overlaps audio compilation on this branch, so it does not
 		// pass through runOverlayRenderPhase (the serial path that normally adds
 		// the map subprocess observer). Attach the same observer here before the
@@ -93,29 +79,18 @@ func (r *Runner) audioCompilePhase(ctx context.Context, runID string, req contra
 		mapProgressCtx := r.withMapRenderProgress(ctx, runID)
 		go func() {
 			var outcome audioOverlayOutcome
-			var barrierOutcomes []overlayRenderOutcome
 			// Explicit sibling ownership survives temporal containment.
 			_, outcome.err = kernobs.MeasureIndependentStageReport(mapProgressCtx, StageOverlayRender, func(c context.Context) error {
-				if barrier != nil {
-					// Carry the barrier's certified outcomes into the fork's join:
-					// they must reach the durable result exactly like the fork's
-					// own submissions do, and no language composed by the barrier
-					// is re-submitted because applyToSnapshot claimed it first.
-					barrierOutcomes = barrier.applyToSnapshot(snapshot)
-				}
+				// The final-job handoff consumes the certified object-store locators,
+				// so the Drive publication is NOT on this critical path: it belongs to
+				// the outbox, which projects drive_file_id onto the /full view when the
+				// upload lands. Waiting here made "rendered" and "delivered" one
+				// stage, so a slow Drive upload stretched the overlay stage even though
+				// the master never read the Drive copy.
 				var err error
-				outcome.outcomes, err = r.renderOverlayPlans(c, req, resumeIdx, snapshot)
-				if err == nil && req.FinalJob && r.overlayPublicationDrainer != nil {
-					// All child renders are now submitted; join their bounded Drive
-					// publications before closing the measured overlay stage. The
-					// final master consumes the certified object-store locators.
-					drainStarted := time.Now()
-					err = r.overlayPublicationDrainer.Wait(c)
-					recordPublicationDrainWait(c, drainStarted)
-				}
+				outcome.outcomes, err = r.renderOverlayInput(c, req, renderInput)
 				return err
 			})
-			outcome.outcomes = append(barrierOutcomes, outcome.outcomes...)
 			if outcome.err != nil {
 				cancel()
 			}
@@ -242,19 +217,4 @@ func (r *Runner) resolveOverlayBackground(ctx context.Context, src *scriptpkg.Ov
 		return nil, fmt.Errorf("visual background asset cannot be resolved: runner is nil")
 	}
 	return ResolveOverlayBackground(ctx, r.overlayBackgroundSource, src)
-}
-
-// recordPublicationDrainWait closes the interval spent joining the bounded
-// publication pools.
-func recordPublicationDrainWait(ctx context.Context, started time.Time) {
-	finished := time.Now()
-	if finished.Sub(started) < time.Millisecond {
-		return
-	}
-	kernobs.RecordWait(ctx, kernobs.WaitInfo{
-		Kind:       kernobs.WaitOutboxDelivery,
-		Component:  kernobs.ComponentDrive,
-		StartedAt:  started,
-		FinishedAt: finished,
-	})
 }

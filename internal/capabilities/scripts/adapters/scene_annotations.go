@@ -236,14 +236,6 @@ func foldAnnotationRune(r rune) rune {
 	return unicode.ToLower(r)
 }
 
-// normalizeAnnotationType maps an extracted entity type onto the canonical
-// annotation kind through the single kernel registry
-// (script.NormalizeAnnotationType). It is a thin alias so the batch merger
-// and the runner projection share one taxonomy owner.
-func normalizeAnnotationType(raw string) string {
-	return scriptpkg.NormalizeAnnotationType(raw)
-}
-
 func safeAnnotationID(value string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(value) {

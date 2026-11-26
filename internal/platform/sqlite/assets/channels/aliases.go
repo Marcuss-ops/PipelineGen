@@ -15,3 +15,6 @@ type Record = imagesregistry.Record
 
 // VoiceoverRecordToAsset is an alias for imagesregistry.VoiceoverRecordToAsset.
 var VoiceoverRecordToAsset = imagesregistry.VoiceoverRecordToAsset
+
+// ImageAssetToAsset is an alias for imagesregistry.ImageAssetToAsset.
+var ImageAssetToAsset = imagesregistry.ImageAssetToAsset

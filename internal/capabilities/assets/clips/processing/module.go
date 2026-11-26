@@ -58,30 +58,16 @@ func Build(deps Dependencies) (*submodule.Descriptor, error) {
 	if deps.Processing == nil {
 		return nil, submodule.MissingDependencyError("clips-processing", "Processing")
 	}
-	if deps.EnabledFunc == nil {
-		return nil, submodule.MissingDependencyError("clips-processing", "EnabledFunc")
-	}
-	idem := deps.Idempotency
-	if idem == nil {
-		idem = func(c *gin.Context) { c.Next() }
-	}
+	idem := submodule.DefaultIdempotency(deps.Idempotency)
 
 	// The 2 processing routes are mounted by LAMBDA inside this
 	// sub-descriptor (catalog-style local mounting, godlike/06
 	// SSOT one-canonical-owner: processing owns its slice-route
 	// table). The parent's *nonops.NonOpsHandler is the typed
 	// narrow dep supplying the 2 method values.
-	return submodule.Build(submodule.Deps{
-		Name: "clips-processing",
-		Handler: &processingRoutesRegistrar{
-			processing: deps.Processing,
-			idem:       idem,
-		},
-		EnabledFunc: deps.EnabledFunc,
-		Idempotency: idem,
-		Logger:      deps.Logger,
-		ModuleOpts:  deps.ModuleOpts,
-	})
+	return submodule.BuildWithHandler("clips-processing",
+		&processingRoutesRegistrar{processing: deps.Processing, idem: idem},
+		deps.EnabledFunc, idem, deps.Logger, deps.ModuleOpts)
 }
 
 // processingRoutesRegistrar is the typed-narrow RoutesRegistrar the

@@ -114,7 +114,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req cont
 		// Flush the newest complete result after all workers have joined. This
 		// closes the debounce window for normal completion and preserves all
 		// successful units even when another worker failed.
-		if snapshot, snapshotErr := snapshotGenerateResult(result); snapshotErr != nil {
+		if snapshot, snapshotErr := detachCheckpointResult(result); snapshotErr != nil {
 			r.log.Warn("translation final checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
 		} else if snapshot != nil {
 			recordCheckpointFlush()

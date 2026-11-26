@@ -45,13 +45,11 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
-	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	artifactstore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/artifacts"
 	reconciliation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/reconciliation"
 	voiceoverprocessor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	voiceoversvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -84,42 +82,8 @@ type NarrationSanitizer = voiceoverprocessor.NarrationSanitizer
 type VoiceoverSceneInput = voiceoverprocessor.VoiceoverSceneInput
 type SceneOutcome = voiceoverprocessor.SceneOutcome
 
-func NewAssetLocationReconciliationProcessor(
-	verifier scriptpkg.AssetLocationVerifier,
-) *reconciliation.AssetLocationReconciliationProcessor {
-	return reconciliation.NewAssetLocationReconciliationProcessor(verifier)
-}
-
-func NewDurableAssetLocationReconciliationProcessor(
-	verifier scriptpkg.AssetLocationVerifier,
-	mutator assetspersistence.AssetMutator,
-) *reconciliation.AssetLocationReconciliationProcessor {
-	return reconciliation.NewDurableAssetLocationReconciliationProcessor(verifier, mutator)
-}
-
-func NewVoiceoverProcessor(
-	gen voiceoversvc.VoiceoverItemExecutor,
-	log *zap.Logger,
-) *voiceoverprocessor.VoiceoverProcessor {
-	return voiceoverprocessor.NewVoiceoverProcessor(gen, log)
-}
-
 func NewClipBindingsProcessor(log *zap.Logger) *voiceoverprocessor.ClipBindingsProcessor {
 	return voiceoverprocessor.NewClipBindingsProcessor(log)
-}
-
-func NewNarrationSanitizer() *voiceoverprocessor.NarrationSanitizer {
-	return voiceoverprocessor.NewNarrationSanitizer()
-}
-
-func RunVoiceoverSceneFanout(
-	ctx context.Context,
-	executor voiceoversvc.VoiceoverItemExecutor,
-	language string,
-	items []voiceoverprocessor.VoiceoverSceneInput,
-	concurrency int,
-) []*voiceoverprocessor.SceneOutcome {
-	return voiceoverprocessor.RunVoiceoverSceneFanout(ctx, executor, language, items, concurrency)
 }
 
 // PersistenceProcessor writes the canonical script row. Single

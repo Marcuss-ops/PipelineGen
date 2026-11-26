@@ -180,7 +180,12 @@ func (r *Runner) assembleSceneTextResult(ctx context.Context, runID string, req 
 		AudioOutput:              AudioOutput{AudioMetrics: streamAudioMetrics},
 		EntityImageDecisionOwner: ResolveEntityImageDecisionOwner(req.MediaPlan),
 	}
-	setSceneRenderExpectations(req, scenes, result)
+	if renderErr := r.setSceneRenderExpectations(req, scenes, result); renderErr != nil {
+		cause := fmt.Errorf("localized render preflight: %w", hb.annotate(renderErr))
+		r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
+		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
+		return nil, false
+	}
 	r.applySceneEditorialEnrichment(ctx, runID, req, result, scenes, output.Text, hb)
 	return result, true
 }
@@ -501,18 +506,11 @@ func (r *Runner) preflightImageProviders(ctx context.Context, req contract.Gener
 }
 
 // setSceneRenderExpectations records the canonical render-unit promise when
-// the local Chronon render lane is active.
-func setSceneRenderExpectations(req contract.GenerateRequest, scenes []contract.Scene, result *contract.GenerateResult) {
-	if req.Source.Type != SourceClips || !req.Render.Enabled {
-		return
-	}
-	result.RenderMetrics = &contract.RenderMetrics{Concurrency: req.Render.RenderConcurrency}
-	if sceneRenderDispatchSealed {
-		return
-	}
-	expectedUnits := expectedRenderUnits(req, scenes)
-	result.ExpectedRenderCount = expectedUnits
-	result.RenderMetrics.Expected = expectedUnits
+// the local Chronon render lane is active, and fails closed when a
+// render-enabled clip run has expected units but no renderer (see
+// renderunits.RecordExpectations).
+func (r *Runner) setSceneRenderExpectations(req contract.GenerateRequest, scenes []contract.Scene, result *contract.GenerateResult) error {
+	return recordRenderExpectations(req, scenes, result, sceneRenderDispatchSealed, r != nil && r.localizedRenderEnqueuer != nil)
 }
 
 // applySceneEditorialEnrichment computes the optional Rust editorial products

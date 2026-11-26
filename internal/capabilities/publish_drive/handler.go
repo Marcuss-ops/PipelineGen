@@ -3,7 +3,7 @@
 // Drive-upload consumer for the FASE 3 Publish step of the
 // saga. Drains `artifact.staged.v1` events (atomically
 // co-emitted by Repository.InsertWithOutbox in Push 3.1c) from
-// the outbox_events table (via outboxevents.HandlerRegistry),
+// the outbox_events table (via outbox.HandlerRegistry),
 // forwards each event to delivery.Publisher.Publish (the
 // canonical Drive upload canal), and on success records the
 // canonical JSON PublishedLocation via Repository.MarkPublished
@@ -11,7 +11,7 @@
 //
 // godlike/06 SSOT: this handler is the SOLE canonical consumer
 // of `artifact.staged.v1` events. The composition root
-// registers it exactly once via outboxevents.HandlerRegistry
+// registers it exactly once via outbox.HandlerRegistry
 // inside BuildOutboxBundle. No other code path may bypass
 // delivery.Publisher (the `ParentFolderID` ban per
 // godlike/06 SSOT — see cmd/archcheck/scan/percheck_root_override.go).
@@ -44,8 +44,8 @@ import (
 	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"go.uber.org/zap"
 )
 
@@ -115,10 +115,10 @@ type TypedStageEventPayload struct {
 	EmittedAt   string `json:"emitted_at"`
 }
 
-// ── Handler — canonical outboxevents.Handler implementation ─────────────
+// ── Handler — canonical outbox.Handler implementation ─────────────
 
-// Compile-time assertion: *Handler satisfies outboxevents.Handler.
-var _ outboxevents.Handler = (*Handler)(nil)
+// Compile-time assertion: *Handler satisfies outbox.Handler.
+var _ outbox.Handler = (*Handler)(nil)
 
 // Handler is the canonical Stage→Publish worker that drains
 // `artifact.staged.v1` events from the outbox_events table and
@@ -203,7 +203,7 @@ func (h *Handler) now() time.Time { return h.nowFn().UTC() }
 // a row in PUBLISHED or SUCCEEDED state IS the desired
 // end-state, so re-delivery is a no-op (the pool must NOT retry
 // or it would loop indefinitely).
-func (h *Handler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *Handler) Handle(ctx context.Context, evt outbox.Event) error {
 	var payload TypedStageEventPayload
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &payload); err != nil {
 		return fmt.Errorf("%w: json decode (raw=%q): %v", ErrInvalidPayload, evt.PayloadJSON, err)

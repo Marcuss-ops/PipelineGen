@@ -9,8 +9,8 @@
 //     word timings arrive per TTS unit on the AudioReference, scene durations
 //     are applied per unit by the voiceover workers, and the SceneTextReady
 //     annotations were applied at the prepare join.
-//   - The branch consumes a JSON-detached snapshot (snapshotGenerateResult),
-//     so it shares no field with the master compile. Its projections are
+//   - The branch consumes a typed immutable OverlayPlanningInput, so it
+//     shares no writable field with the master compile. Its projections are
 //     copied onto the durable result at the join, which keeps the durable
 //     result single-writer (the phase goroutine).
 //   - The only master-side mutation that changes plan inputs is the
@@ -39,7 +39,9 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/editorialgate"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -306,42 +308,39 @@ type overlayPlanBranchOutcome struct {
 	err   error
 }
 
-// startOverlayPlanBranch launches the P1 plan branch on a detached snapshot of
-// the durable result. Snapshot failure is delivered to the join so the run
-// still fails closed with the same attributed step.
+// startOverlayPlanBranch launches the P1 plan branch on a typed immutable
+// input copied from the durable result. The copy is taken on the phase
+// goroutine before the master clip-audio prepare starts mutating scenes.
 func (r *Runner) startOverlayPlanBranch(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, result *contract.GenerateResult, mode capabilityaudio.AudioMode) *overlayPlanBranch {
 	branch := &overlayPlanBranch{done: make(chan overlayPlanBranchOutcome, 1)}
 	if result == nil {
 		branch.done <- overlayPlanBranchOutcome{err: fmt.Errorf("overlay plan branch: no result")}
 		return branch
 	}
-	snapshot, snapshotErr := snapshotGenerateResult(result)
-	if snapshotErr != nil {
-		branch.done <- overlayPlanBranchOutcome{err: fmt.Errorf("overlay plan branch snapshot: %w", snapshotErr)}
-		return branch
-	}
-	// The JSON snapshot drops the in-memory audio-prefetch adapters (interface
-	// fields). Reattach the run's prefetch: the fixed-media rebuild resolves
-	// clip audio through exactly the adapters the master would use, the same
-	// cache adapters already shared across the SceneTextReady fan-out.
-	snapshot.AudioPrefetch = result.AudioPrefetch
-	branch.input = snapshot
+	input := newOverlayPlanningInput(runID, exec.JobID, req.Project, result)
+	branch.input = input.document()
 	go func() {
-		err := r.computeOverlayPlanBranchProjection(ctx, runID, req, exec.JobID, mode, branch.input)
+		document, err := r.computeOverlayPlanBranchProjection(ctx, req, mode, input)
+		if document != nil {
+			branch.input = document
+		}
 		branch.done <- overlayPlanBranchOutcome{input: branch.input, err: err}
 	}()
 	return branch
 }
 
 // computeOverlayPlanBranchProjection projects the certified scene windows on
-// the detached snapshot and then runs the SSOT plan projection on it.
-func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, runID string, req contract.GenerateRequest, jobID string, mode capabilityaudio.AudioMode, input *contract.GenerateResult) error {
+// the typed immutable input and then runs the SSOT plan projection on the
+// branch-private document built from it.
+func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, req contract.GenerateRequest, mode capabilityaudio.AudioMode, planning OverlayPlanningInput) (*contract.GenerateResult, error) {
+	runID, jobID := planning.RunID, planning.JobID
+	input := planning.document()
 	// The master compute resolves the same projection right after the
 	// clip-audio prepare; a checkpointed run may already carry one.
 	if len(input.ResolvedScenes) == 0 {
 		resolved, err := ResolveScenes(input.Scenes, primaryVoiceoverLanguage(req), mode, false)
 		if err != nil {
-			return fmt.Errorf("resolve scenes for the plan branch failed: %w", err)
+			return nil, fmt.Errorf("resolve scenes for the plan branch failed: %w", err)
 		}
 		input.ResolvedScenes = resolved
 	}
@@ -357,11 +356,11 @@ func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, runID s
 			policy = capabilityaudio.MixVoiceoverWithDuckedClip
 		}
 		if _, err := prepareClipAudioAssets(ctx, input, clipAudioSource, policy); err != nil {
-			return fmt.Errorf("plan branch fixed-media timing rebuild: %w", err)
+			return nil, fmt.Errorf("plan branch fixed-media timing rebuild: %w", err)
 		}
 		resolved, err := ResolveScenes(input.Scenes, primaryVoiceoverLanguage(req), mode, false)
 		if err != nil {
-			return fmt.Errorf("resolve scenes for the plan branch failed: %w", err)
+			return nil, fmt.Errorf("resolve scenes for the plan branch failed: %w", err)
 		}
 		input.ResolvedScenes = resolved
 	}
@@ -369,10 +368,13 @@ func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, runID s
 	// same pure compile the master's canonical timeline comes from.
 	timeline, err := compileResolvedSceneTimeline(input.ResolvedScenes)
 	if err != nil {
-		return fmt.Errorf("compile canonical timeline for the plan branch: %w", err)
+		return nil, fmt.Errorf("compile canonical timeline for the plan branch: %w", err)
 	}
 	input.CanonicalTimeline = &timeline
-	return r.computeOverlayPlanProjection(ctx, runID, req, jobID, input)
+	if err := r.computeOverlayPlanProjection(ctx, runID, req, jobID, input); err != nil {
+		return nil, err
+	}
+	return input, nil
 }
 
 // outcome delivers the branch's single outcome (projection input + error),
@@ -438,3 +440,185 @@ var _ = scriptpkg.CloneOverlayCategories
 var _ = observability.ScriptTimingProjectionSkipTotal
 var _ = zap.String
 var _ = capabilityaudio.MixVoiceoverWithDuckedClip
+
+// OverlayPlanningInput is the immutable input of the detached overlay-plan
+// branch (DEMOL-07). It replaces the former full-result JSON clone with the
+// exact plan facts the projection reads: the branch owns this value, works on
+// its own GenerateResult document built from it, and never touches the
+// durable result.
+//
+// The fields are copied on the phase goroutine at audio-phase entry, before
+// the master clip-audio prepare starts mutating clip/audio-intent state. Every
+// slice/map that the projection can write through is freshly allocated here;
+// read-only pointer documents (plans, bundles, annotations) are shared because
+// nothing mutates them during the audio phase.
+type OverlayPlanningInput struct {
+	RunID   string
+	JobID   string
+	Project string
+
+	Scenes         []contract.Scene
+	ResolvedScenes []contract.ResolvedScene
+	Audio          contract.AudioOutput
+
+	Title                    string
+	SourceLanguage           contract.Language
+	Output                   contract.GenerateOutput
+	Summary                  string
+	BulletPoints             []string
+	HeavySentences           []scriptpkg.ImportantSentence
+	ChapterManifest          *scriptpkg.ChapterManifest
+	SceneHighlights          []scriptpkg.SceneHighlight
+	Editorial                *scriptpkg.EditorialManifest
+	EditorialQualityGate     *editorialgate.Report
+	SemanticBindingIssues    []contract.SemanticBindingIssue
+	EntityImageDecisionOwner contract.EntityImageDecisionOwner
+	Segments                 []scriptpkg.VidRushSegmentResult
+	OverlayImages            []scriptpkg.OverlayImageAsset
+	Artifacts                *contract.GenerateArtifacts
+	Entities                 *scriptpkg.EntityResult
+
+	SemanticConsolidation  *contract.SemanticVisualConsolidation
+	SemanticProductionPlan *contract.SemanticProductionPlan
+	SemanticRenderBundle   *capabilityoverlay.SemanticRenderBundleV1
+
+	OverlayPlan            *capmodel.OverlayPlan
+	LocalizedOverlayPlans  map[contract.Language]*capmodel.OverlayPlan
+	OverlayPlanIntake      *capmodel.OverlayPlanIntake
+	PhraseOverlayBudget    *capabilityoverlay.PhraseOverlayBudget
+	TimingProjectionSkips  []contract.TimingProjectionSkip
+	OverlayAudit           *contract.OverlayAudit
+	OverlayIntents         []capmodel.OverlayIntent
+	ResolvedOverlayIntents []capmodel.OverlayIntent
+}
+
+// newOverlayPlanningInput copies the plan facts out of the durable result.
+// Callers must invoke it on the single-writer phase goroutine.
+func newOverlayPlanningInput(runID, jobID, project string, result *contract.GenerateResult) OverlayPlanningInput {
+	in := OverlayPlanningInput{RunID: runID, JobID: jobID, Project: project}
+	if result == nil {
+		return in
+	}
+	in.Scenes = cloneScenesForPlanning(result.Scenes)
+	in.ResolvedScenes = append([]contract.ResolvedScene(nil), result.ResolvedScenes...)
+	in.Audio = cloneAudioOutputForPlanning(result.AudioOutput)
+	in.Title = result.Title
+	in.SourceLanguage = result.SourceLanguage
+	in.Output = result.Output
+	in.Summary = result.Summary
+	in.BulletPoints = append([]string(nil), result.BulletPoints...)
+	in.HeavySentences = append([]scriptpkg.ImportantSentence(nil), result.HeavySentences...)
+	in.ChapterManifest = result.ChapterManifest
+	in.SceneHighlights = append([]scriptpkg.SceneHighlight(nil), result.SceneHighlights...)
+	in.Editorial = result.Editorial
+	in.EditorialQualityGate = result.EditorialQualityGate
+	in.SemanticBindingIssues = append([]contract.SemanticBindingIssue(nil), result.SemanticBindingIssues...)
+	in.EntityImageDecisionOwner = result.EntityImageDecisionOwner
+	in.Segments = append([]scriptpkg.VidRushSegmentResult(nil), result.Segments...)
+	in.OverlayImages = append([]scriptpkg.OverlayImageAsset(nil), result.OverlayImages...)
+	in.Artifacts = result.Artifacts
+	in.Entities = result.Entities
+	in.SemanticConsolidation = result.SemanticConsolidation
+	in.SemanticProductionPlan = result.SemanticProductionPlan
+	in.SemanticRenderBundle = result.SemanticRenderBundle
+	in.OverlayPlan = result.OverlayPlan
+	in.OverlayPlanIntake = result.OverlayPlanIntake
+	in.PhraseOverlayBudget = result.PhraseOverlayBudget
+	in.TimingProjectionSkips = append([]contract.TimingProjectionSkip(nil), result.TimingProjectionSkips...)
+	in.OverlayAudit = result.OverlayAudit
+	in.OverlayIntents = append([]capmodel.OverlayIntent(nil), result.OverlayIntents...)
+	in.ResolvedOverlayIntents = append([]capmodel.OverlayIntent(nil), result.ResolvedOverlayIntents...)
+	if result.LocalizedOverlayPlans != nil {
+		in.LocalizedOverlayPlans = make(map[contract.Language]*capmodel.OverlayPlan, len(result.LocalizedOverlayPlans))
+		for language, plan := range result.LocalizedOverlayPlans {
+			in.LocalizedOverlayPlans[language] = plan
+		}
+	}
+	return in
+}
+
+// document returns the branch-private working result. The scratch document is
+// never the durable result: the join copies the projection back on the
+// single-writer goroutine (applyOverlayPlanProjection).
+func (in OverlayPlanningInput) document() *contract.GenerateResult {
+	return &contract.GenerateResult{
+		Scenes:                   in.Scenes,
+		ResolvedScenes:           in.ResolvedScenes,
+		AudioOutput:              in.Audio,
+		Title:                    in.Title,
+		SourceLanguage:           in.SourceLanguage,
+		Output:                   in.Output,
+		Summary:                  in.Summary,
+		BulletPoints:             in.BulletPoints,
+		HeavySentences:           in.HeavySentences,
+		ChapterManifest:          in.ChapterManifest,
+		SceneHighlights:          in.SceneHighlights,
+		Editorial:                in.Editorial,
+		EditorialQualityGate:     in.EditorialQualityGate,
+		SemanticBindingIssues:    in.SemanticBindingIssues,
+		EntityImageDecisionOwner: in.EntityImageDecisionOwner,
+		Segments:                 in.Segments,
+		OverlayImages:            in.OverlayImages,
+		Artifacts:                in.Artifacts,
+		Entities:                 in.Entities,
+		SemanticConsolidation:    in.SemanticConsolidation,
+		SemanticProductionPlan:   in.SemanticProductionPlan,
+		SemanticRenderBundle:     in.SemanticRenderBundle,
+		OverlayPlan:              in.OverlayPlan,
+		LocalizedOverlayPlans:    in.LocalizedOverlayPlans,
+		OverlayPlanIntake:        in.OverlayPlanIntake,
+		PhraseOverlayBudget:      in.PhraseOverlayBudget,
+		TimingProjectionSkips:    in.TimingProjectionSkips,
+		OverlayAudit:             in.OverlayAudit,
+		OverlayIntents:           in.OverlayIntents,
+		ResolvedOverlayIntents:   in.ResolvedOverlayIntents,
+	}
+}
+
+func cloneAudioOutputForPlanning(in contract.AudioOutput) contract.AudioOutput {
+	out := in
+	out.PhraseTimings = append([]capabilityaudio.PhraseTiming(nil), in.PhraseTimings...)
+	out.SceneSpeechTimings = append([]capabilityaudio.SceneSpeechTiming(nil), in.SceneSpeechTimings...)
+	return out
+}
+
+// cloneScenesForPlanning detaches exactly the scene state the audio phase can
+// mutate: the scene slice itself, its clip references (clip-audio preparation
+// writes audio paths and source windows) and its audio-intent slice (fixed
+// media rewrites offsets and clamps durations). Annotations, entities and
+// booking maps are read-only for the duration of the plan projection.
+func cloneScenesForPlanning(in []contract.Scene) []contract.Scene {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]contract.Scene, len(in))
+	for i := range in {
+		out[i] = in[i]
+		out[i].AudioIntents = append([]capabilityaudio.AudioIntent(nil), in[i].AudioIntents...)
+		out[i].Clip = cloneClipReferenceForPlanning(in[i].Clip)
+		if in[i].Clips != nil {
+			out[i].Clips = make([]*contract.ClipReference, len(in[i].Clips))
+			for j := range in[i].Clips {
+				out[i].Clips[j] = cloneClipReferenceForPlanning(in[i].Clips[j])
+			}
+		}
+		if in[i].Text != nil {
+			out[i].Text = make(map[contract.Language]string, len(in[i].Text))
+			for language, text := range in[i].Text {
+				out[i].Text[language] = text
+			}
+		}
+	}
+	return out
+}
+
+func cloneClipReferenceForPlanning(in *contract.ClipReference) *contract.ClipReference {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.Tags = append([]string(nil), in.Tags...)
+	out.Speakers = append([]string(nil), in.Speakers...)
+	out.MentionedPeople = append([]string(nil), in.MentionedPeople...)
+	return &out
+}

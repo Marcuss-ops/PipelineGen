@@ -172,6 +172,71 @@ func TestApplyRetentionPlanCascadesChildren(t *testing.T) {
 	}
 }
 
+func TestApplyRetentionPlanTerminalJobPayloadsOnly(t *testing.T) {
+	db := openRetentionTestDB(t)
+	ctx := context.Background()
+	ddl := []string{
+		`CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL)`,
+		`CREATE TABLE job_payloads (job_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, payload TEXT NOT NULL)`,
+	}
+	for _, stmt := range ddl {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("ddl: %v", err)
+		}
+	}
+	old := "2026-01-01T00:00:00Z"
+	recent := "2026-10-20T00:00:00Z"
+	rows := []struct {
+		jobID  string
+		status string
+		at     string
+	}{
+		{"old-terminal", "SUCCEEDED", old},
+		{"old-running", "RUNNING", old},
+		{"recent-terminal", "FAILED", recent},
+	}
+	for _, row := range rows {
+		if _, err := db.Exec(`INSERT INTO jobs (id, status) VALUES (?, ?)`, row.jobID, row.status); err != nil {
+			t.Fatalf("insert job %s: %v", row.jobID, err)
+		}
+		if _, err := db.Exec(`INSERT INTO job_payloads (job_id, created_at, payload) VALUES (?, ?, '{}')`, row.jobID, row.at); err != nil {
+			t.Fatalf("insert payload %s: %v", row.jobID, err)
+		}
+	}
+
+	plan := RetentionPlan{
+		Name: "jobs",
+		Path: filepath.Join(t.TempDir(), "retention.db.sqlite"),
+		Ops: []RetentionOp{{
+			Table:           "job_payloads",
+			TimeColumn:      "created_at",
+			Cutoff:          time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+			TerminalJobOnly: true,
+		}},
+	}
+	res, err := ApplyRetentionPlan(ctx, db, plan, false, false)
+	if err != nil {
+		t.Fatalf("apply retention: %v", err)
+	}
+	if len(res.Tables) != 1 || res.Tables[0].DeletedRows != 1 {
+		t.Fatalf("deleted rows = %+v, want 1", res.Tables)
+	}
+	var remaining int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM job_payloads`).Scan(&remaining); err != nil {
+		t.Fatalf("count remaining: %v", err)
+	}
+	if remaining != 2 {
+		t.Fatalf("remaining payloads = %d, want 2 (running + recent terminal)", remaining)
+	}
+	var deleted int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM job_payloads WHERE job_id = 'old-terminal'`).Scan(&deleted); err != nil {
+		t.Fatalf("count old terminal: %v", err)
+	}
+	if deleted != 0 {
+		t.Fatal("old terminal payload must be deleted")
+	}
+}
+
 func TestApplyRetentionPlanRejectsInvalidIdentifier(t *testing.T) {
 	db := openRetentionTestDB(t)
 	plan := RetentionPlan{

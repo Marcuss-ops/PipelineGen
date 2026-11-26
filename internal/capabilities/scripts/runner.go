@@ -189,16 +189,6 @@ type Runner struct {
 	// audio compile and docs stages read the results. Nil means
 	// synchronous publish (backward compat).
 	voiceoverPublishDrainer interface{ Wait() }
-	// overlayPublicationDrainer joins the bounded Drive/analytics pool after
-	// all renders have certified their bytes and before the run is COMPLETE.
-	// Keeping this separate from the render enqueuer releases RenderingGen
-	// capacity while preserving fail-closed publication semantics.
-	//
-	// The join is RUN-SCOPED: the pool is process-wide (one enqueuer for the
-	// whole process) while a publication belongs to one run, so the drainer is
-	// handed THIS run's ctx and joins only this run's batch. A run must never
-	// block on, or inherit the failure of, another concurrent run.
-	overlayPublicationDrainer interface{ Wait(context.Context) error }
 
 	// mediaPreflight runs the fail-fast asset verification after normalize
 	// and before scene-text generation (P0.5). When wired, it verifies clip

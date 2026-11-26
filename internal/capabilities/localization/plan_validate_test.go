@@ -89,6 +89,28 @@ func TestValidate_RejectsEachViolation(t *testing.T) {
 			p.BackgroundKind = "png"
 			p.Background = &cliprender.MaterializedAsset{AssetID: "bg", LocalPath: "/x.mp4", SHA256: strings.Repeat("f", 64)}
 		}},
+		// The blurred-plate treatment belongs to blur_source alone, and its
+		// bounds are cliprender's (6..48 px, 1..10x). A declared treatment on
+		// an asset-less/asset mode used to be dropped in silence.
+		{"background treatment on mode=none", func(p *LocalizedClipPlan) { p.BackgroundBlurPX = 28 }},
+		{"background treatment on mode=asset", func(p *LocalizedClipPlan) {
+			p.BackgroundMode = cliprender.BackgroundModeAsset
+			p.BackgroundKind = cliprender.BackgroundKindVideo
+			p.Background = &cliprender.MaterializedAsset{AssetID: "bg", LocalPath: "/x.mp4", SHA256: strings.Repeat("f", 64)}
+			p.BackgroundZoom = 1.1
+		}},
+		{"background blur below the certified minimum", func(p *LocalizedClipPlan) {
+			p.BackgroundMode = cliprender.BackgroundModeBlurSource
+			p.BackgroundBlurPX = 4
+		}},
+		{"background blur above the certified maximum", func(p *LocalizedClipPlan) {
+			p.BackgroundMode = cliprender.BackgroundModeBlurSource
+			p.BackgroundBlurPX = 80
+		}},
+		{"background zoom above the certified maximum", func(p *LocalizedClipPlan) {
+			p.BackgroundMode = cliprender.BackgroundModeBlurSource
+			p.BackgroundZoom = 11
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,6 +128,19 @@ func TestValidate_RejectsEachViolation(t *testing.T) {
 				t.Fatalf("error must wrap ErrInvalidLocalizedClipPlan, got %v", err)
 			}
 		})
+	}
+}
+
+// TestValidate_AcceptsBlurSourceTreatment certifies the treatment the payload
+// documents: a blur_source plate with an in-bounds radius and zoom seals.
+func TestValidate_AcceptsBlurSourceTreatment(t *testing.T) {
+	p := validPlan()
+	p.BackgroundMode = cliprender.BackgroundModeBlurSource
+	p.BackgroundBlurPX = 28
+	p.BackgroundZoom = 1.1
+	p.Fingerprint = Fingerprint(p)
+	if err := p.Validate(); err != nil {
+		t.Fatalf("blur_source treatment must validate: %v", err)
 	}
 }
 

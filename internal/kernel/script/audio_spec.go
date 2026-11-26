@@ -47,9 +47,13 @@ func (a *AudioOutputConfig) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	// Strict decode: this method receives the whole audio subtree, so the
+	// outer DisallowUnknownFields gate cannot reach inside it. A misspelled
+	// mix_policy or a key that only exists on a sibling block must fail
+	// closed instead of being dropped.
 	type Alias AudioOutputConfig
 	var tmp Alias
-	if err := json.Unmarshal(normalized, &tmp); err != nil {
+	if err := decodeStrictJSON(normalized, &tmp); err != nil {
 		return err
 	}
 	*a = AudioOutputConfig(tmp)
@@ -67,11 +71,14 @@ func (b *BackgroundMusicIntent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if _, hasEnd := raw["end"]; !hasEnd {
-		if endMS, ok := raw["end_ms"]; ok {
-			raw["end"] = endMS
-			delete(raw, "end_ms")
-		}
+	if _, hasEnd := raw["end"]; hasEnd {
+		// The canonical key wins. Drop the alias BEFORE the strict decode:
+		// the alias is not a struct field, so leaving it in the map would
+		// turn an accepted legacy payload into an unknown-field error.
+		delete(raw, "end_ms")
+	} else if endMS, ok := raw["end_ms"]; ok {
+		raw["end"] = endMS
+		delete(raw, "end_ms")
 	}
 	normalized, err := json.Marshal(raw)
 	if err != nil {
@@ -79,7 +86,7 @@ func (b *BackgroundMusicIntent) UnmarshalJSON(data []byte) error {
 	}
 	type Alias BackgroundMusicIntent
 	var tmp Alias
-	if err := json.Unmarshal(normalized, &tmp); err != nil {
+	if err := decodeStrictJSON(normalized, &tmp); err != nil {
 		return err
 	}
 	if isBuiltInBGM(tmp.AssetID) {
@@ -249,7 +256,7 @@ func (s *SoundEffectIntent) UnmarshalJSON(data []byte) error {
 	}
 	type Alias SoundEffectIntent
 	var tmp Alias
-	if err := json.Unmarshal(data, &tmp); err != nil {
+	if err := decodeStrictJSON(data, &tmp); err != nil {
 		return err
 	}
 	if _, present := raw["gain_db"]; !present && isBuiltInOneShotSFX(tmp.AssetID) {

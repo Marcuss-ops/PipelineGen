@@ -109,7 +109,7 @@ func TestFinalizeDriveDeliveryHandler_PublishesAndReconciles(t *testing.T) {
 	store, sha, content := stagedDeliveryFixture(t)
 	preparation := &stubPreparation{}
 	mutator := &stubAssetMutator{}
-	handler, err := newFinalizeDriveDeliveryHandler(preparation, mutator, store, nil, zap.NewNop())
+	handler, err := newFinalizeDriveDeliveryHandler(preparation, mutator, store, nil, nil, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestFinalizeDriveDeliveryHandler_FailsClosedOnInvalidPayload(t *testing.T) 
 	store, sha, content := stagedDeliveryFixture(t)
 	preparation := &stubPreparation{}
 	mutator := &stubAssetMutator{}
-	handler, err := newFinalizeDriveDeliveryHandler(preparation, mutator, store, nil, zap.NewNop())
+	handler, err := newFinalizeDriveDeliveryHandler(preparation, mutator, store, nil, nil, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestFinalizeDriveDeliveryHandler_MissingObjectFails(t *testing.T) {
 	store, sha, content := stagedDeliveryFixture(t)
 	preparation := &stubPreparation{}
 	mutator := &stubAssetMutator{}
-	handler, err := newFinalizeDriveDeliveryHandler(preparation, mutator, store, nil, zap.NewNop())
+	handler, err := newFinalizeDriveDeliveryHandler(preparation, mutator, store, nil, nil, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestFinalizeDriveDeliveryHandler_MissingObjectFails(t *testing.T) {
 
 func TestRegisterFinalizeDriveDeliveryHandler_RequiresRegistry(t *testing.T) {
 	store, _, _ := stagedDeliveryFixture(t)
-	if err := RegisterFinalizeDriveDeliveryHandler(nil, &stubPreparation{}, &stubAssetMutator{}, store, nil, zap.NewNop()); err == nil {
+	if err := RegisterFinalizeDriveDeliveryHandler(nil, &stubPreparation{}, &stubAssetMutator{}, store, nil, nil, zap.NewNop()); err == nil {
 		t.Fatal("nil registry must fail closed at composition time")
 	}
 }
@@ -226,7 +226,7 @@ func TestFinalizeDriveOutboxRegistry_SplitJobsPlane(t *testing.T) {
 	// registry — the exact lookup the pool performs at dispatch time.
 	store, _, _ := stagedDeliveryFixture(t)
 	selected := FinalizeDriveOutboxRegistry(eventsRegistry, jobsRegistry, true)
-	if err := RegisterFinalizeDriveDeliveryHandler(selected, &stubPreparation{}, &stubAssetMutator{}, store, nil, zap.NewNop()); err != nil {
+	if err := RegisterFinalizeDriveDeliveryHandler(selected, &stubPreparation{}, &stubAssetMutator{}, store, nil, nil, zap.NewNop()); err != nil {
 		t.Fatalf("register on selected registry: %v", err)
 	}
 	if _, ok := selected.Get(finalization.EventFinalizeDriveDeliveryRequested); !ok {

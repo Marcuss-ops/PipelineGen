@@ -17,7 +17,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 )
 
 // BindingIndexRequestSchemaVersion is the only schema version this
@@ -71,25 +71,25 @@ func NewBindingIndexingHandler(indexer BindingIndexer, concepts BindingConceptRe
 
 // EventType returns the canonical outboxevents constant.
 func (h *BindingIndexingHandler) EventType() string {
-	return outboxevents.EventBindingIndexRequested
+	return outbox.EventBindingIndexRequested
 }
 
 // IdempotencyKey returns the static idempotency key for this handler.
 func (h *BindingIndexingHandler) IdempotencyKey() string {
-	return outboxevents.EventBindingIndexRequested + "." + BindingIndexRequestSchemaVersion
+	return outbox.EventBindingIndexRequested + "." + BindingIndexRequestSchemaVersion
 }
 
 // Handle parses the v1 envelope, resolves the concept, and reindexes it
 // in pgvector. A missing concept is terminal (retrying will not help).
 // Transient pgvector/embedding failures are returned as retryable
 // errors so the outbox pool retries them.
-func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
+func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outbox.Event) error {
 	var p bindingIndexRequestV1
 	// SkipIdempotencyKey: the PRODUCER of binding.index.requested
 	// (platform/sqlite/mediamemory.BindingDispatcher) does not emit an
 	// idempotency_key — its dedupe key is the outbox event_key. Requiring a
 	// field the producer never writes would dead-letter every real event.
-	if err := outboxevents.DecodeV1(outboxevents.DecodePolicy{
+	if err := outbox.DecodeV1(outbox.DecodePolicy{
 		EventName:          "binding.index.requested",
 		WantSchemaVersion:  BindingIndexRequestSchemaVersion,
 		SkipIdempotencyKey: true,
@@ -100,7 +100,7 @@ func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Ev
 	}
 	// Resource-level validation (the aggregate is a binding, not an asset).
 	if p.BindingID == "" {
-		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: missing binding_id"))
+		return outbox.NewTerminalError(fmt.Errorf("binding.index.requested: missing binding_id"))
 	}
 
 	log := h.log.With(
@@ -111,7 +111,7 @@ func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Ev
 	)
 
 	if p.ConceptID == "" {
-		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: missing concept_id"))
+		return outbox.NewTerminalError(fmt.Errorf("binding.index.requested: missing concept_id"))
 	}
 
 	if h.indexer == nil {
@@ -124,7 +124,7 @@ func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Ev
 	concept, err := h.concepts.FindByID(ctx, p.ConceptID)
 	if err != nil {
 		if errors.Is(err, mediamemory.ErrConceptNotFound) {
-			return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: concept %q not found", p.ConceptID))
+			return outbox.NewTerminalError(fmt.Errorf("binding.index.requested: concept %q not found", p.ConceptID))
 		}
 		return fmt.Errorf("binding.index.requested: find concept %q: %w", p.ConceptID, err)
 	}
@@ -138,16 +138,16 @@ func (h *BindingIndexingHandler) Handle(ctx context.Context, evt outboxevents.Ev
 }
 
 // bindingIndexViolation preserves this handler's diagnostics while the envelope
-// CHECKS live in outboxevents.DecodeV1.
-func bindingIndexViolation(v outboxevents.Violation) error {
+// CHECKS live in outbox.DecodeV1.
+func bindingIndexViolation(v outbox.Violation) error {
 	switch v.Kind {
-	case outboxevents.ViolationParse:
-		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: unmarshal payload: %w", v.Err))
-	case outboxevents.ViolationSchemaVersion:
-		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: unsupported schema version %q (want %q)", v.Got, v.Want))
-	case outboxevents.ViolationEventID:
-		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: missing event_id"))
+	case outbox.ViolationParse:
+		return outbox.NewTerminalError(fmt.Errorf("binding.index.requested: unmarshal payload: %w", v.Err))
+	case outbox.ViolationSchemaVersion:
+		return outbox.NewTerminalError(fmt.Errorf("binding.index.requested: unsupported schema version %q (want %q)", v.Got, v.Want))
+	case outbox.ViolationEventID:
+		return outbox.NewTerminalError(fmt.Errorf("binding.index.requested: missing event_id"))
 	default:
-		return outboxevents.NewTerminalError(fmt.Errorf("binding.index.requested: %s envelope violation", v.Kind))
+		return outbox.NewTerminalError(fmt.Errorf("binding.index.requested: %s envelope violation", v.Kind))
 	}
 }

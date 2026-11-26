@@ -19,26 +19,26 @@ func TestSemanticEngineRealBinaryProjectsLinkedEntities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundles, err := adapter.SemanticBundles(context.Background(), "it", []scriptgen.SemanticSceneInput{
+	semanticScript, err := adapter.SemanticScript(context.Background(), "it", []scriptgen.SemanticSceneInput{
 		{SceneID: "s1", Text: "Nike ha presentato la nuova collezione sportiva. La statua di Nike è esposta al museo."},
 		{SceneID: "s2", Text: "L'ESA ha lanciato un nuovo software per l'analisi dei dati."},
 	})
 	if err != nil {
 		t.Fatalf("real semantic-engine v3 batch failed: %v", err)
 	}
-	bundle := bundles["s1"]
+	bundle := semanticScript.Scenes["s1"]
 	if bundle == nil || bundle.SchemaVersion != semanticManifestV3 || strings.TrimSpace(bundle.Analyzers.EntityIndex) == "" {
 		t.Fatalf("v3 provenance missing: %+v", bundle)
 	}
 	var linked bool
-	for _, identity := range bundle.Identities {
+	for _, identity := range semanticScript.Identities {
 		if identity.CanonicalID != "" && identity.LinkStatus == "linked" && len(identity.SearchIntents) > 0 {
 			linked = true
 			break
 		}
 	}
 	if !linked {
-		t.Fatalf("v3 linked identities missing: %+v", bundle.Identities)
+		t.Fatalf("v3 linked identities missing: %+v", semanticScript.Identities)
 	}
 }
 
@@ -51,18 +51,18 @@ func TestSemanticEngineRealBinaryKeepsPolishInflectedSurfaceGrounded(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundles, err := adapter.SemanticBundles(context.Background(), "pl", []scriptgen.SemanticSceneInput{{
+	semanticScript, err := adapter.SemanticScript(context.Background(), "pl", []scriptgen.SemanticSceneInput{{
 		SceneID: "pokoju",
 		Text:    "Proszę zamknąć drzwi w pokoju po zakończeniu nagrania.",
 	}})
 	if err != nil {
 		t.Fatalf("Polish inflected identity projection failed: %v", err)
 	}
-	bundle := bundles["pokoju"]
-	if bundle == nil || len(bundle.Identities) == 0 {
+	bundle := semanticScript.Scenes["pokoju"]
+	if bundle == nil || len(semanticScript.Identities) == 0 {
 		t.Fatalf("expected Polish scene identities, got %+v", bundle)
 	}
-	for _, identity := range bundle.Identities {
+	for _, identity := range semanticScript.Identities {
 		grounded := false
 		for _, mention := range identity.Mentions {
 			if mention.Surface == identity.CanonicalSurface {

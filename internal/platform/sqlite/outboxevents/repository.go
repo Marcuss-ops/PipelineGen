@@ -36,10 +36,11 @@ import (
 	"database/sql"
 
 	"errors"
+
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -49,28 +50,10 @@ import (
 // lease expiry, or has progressed to a terminal status.
 var ErrLeaseLost = errors.New("outbox lease lost")
 
-// Event represents a single outbox event row.
-type Event struct {
-	ID            int64
-	EventType     string
-	AggregateID   string
-	AggregateType string
-	PayloadJSON   string
-	Status        string
-	AttemptCount  int
-	MaxAttempts   int
-	LastError     string
-	EventKey      string
-	WorkerID      string
-	LeaseID       string
-	LeaseExpiry   *time.Time
-	CompletedAt   *time.Time
-	CreatedAt     string
-	UpdatedAt     string
-	// Priority is the scheduling priority stamped by the producer
-	// (migration 186). ClaimNext claims higher values first; default 5.
-	Priority int
-}
+// Event represents a single outbox event row. It is the engine-independent
+// DTO owned by internal/kernel/outbox; this alias keeps the adapter's public
+// surface stable.
+type Event = outbox.Event
 
 // Priority constants for outbox event scheduling (migration 186). OWNED by
 // internal/kernel/event/outbox_status.go (godlike/06 one owner per fact);
@@ -88,25 +71,10 @@ type Claim struct {
 	LeaseID  string
 }
 
-// EnqueueResult is the typed feedback from Enqueue. Before Blocco 2.0,
-// ON CONFLICT(event_key) DO NOTHING silently suppressed duplicate
-// inserts with zero feedback — the producer had no way to know
-// whether the event was freshly inserted or silently ignored
-// (potentially because a completed/dead_letter/superseded row
-// already existed with the same event_key).
-//
-// Inserted=true means the INSERT landed (no conflict existed).
-// Inserted=false means ON CONFLICT fired; ExistingStatus carries
-// the existing row's status so the producer can decide whether
-// to retry with a new event_key, surface a warning, or move on.
-type EnqueueResult struct {
-	EventID               int64  // ID of the row (new or existing)
-	Inserted              bool   // true if INSERT landed, false if ON CONFLICT suppressed
-	ExistingStatus        string // existing row's status when Inserted=false; empty when Inserted=true
-	ExistingEventType     string // existing event type when Inserted=false
-	ExistingAggregateType string // existing aggregate type when Inserted=false
-	ExistingAggregateID   string // existing aggregate ID when Inserted=false
-}
+// EnqueueResult is the typed feedback from Enqueue, owned by
+// internal/kernel/outbox so producers can consume it without importing this
+// adapter.
+type EnqueueResult = outbox.EnqueueResult
 
 // Repository wraps SQL access to the outbox_events table.
 type Repository struct {

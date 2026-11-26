@@ -1,5 +1,5 @@
 // Package outboxhandlers wires concrete handlers into an
-// outboxevents.HandlerRegistry. Each handler is responsible for one
+// outbox.HandlerRegistry. Each handler is responsible for one
 // event type (registered by EventType()).
 //
 // Conventions (Operational Readiness PR, 2026-06-20):
@@ -28,8 +28,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
 	handlers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/handlers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	outbox "github.com/Marcuss-ops/PipelineGen/internal/kernel/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpclient"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
 // Deps bundles the dependencies consumed by the outbox event handlers.
@@ -193,11 +193,11 @@ type Deps struct {
 // Returns: the first registration error. The handler list is NOT
 // registered on failure; this keeps semantics compatible across the
 // handler families.
-func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, deps *Deps, metadataExportHandler outboxevents.Handler) error {
+func RegisterOptionalHandlers(registry *outbox.HandlerRegistry, log *zap.Logger, deps *Deps, metadataExportHandler outbox.Handler) error {
 	if registry == nil {
 		return fmtError("outbox RegisterOptionalHandlers: registry is nil")
 	}
-	optional := []outboxevents.Handler{
+	optional := []outbox.Handler{
 		finalize.NewWorkflowStepCompletedHandler(log),
 		finalize.NewWorkflowStepFailedHandler(log, nil),
 		NewAssetPublishedHandler(log),

@@ -18,10 +18,47 @@ is fixed on the first try instead of costing a 400 round-trip.
 
 Any field rename or move MUST update this page in lockstep.
 
+## Contract versions
+
+`version` selects the wire contract and is no longer decorative:
+
+| version | meaning |
+|---|---|
+| `2` (legacy) | the historical wire, still accepted in full. The duplicate spellings listed below are reconciled with `payloadlint` warnings, so every recorded job file and replay keeps working. |
+| `3` (canonical) | the same wire shape with **one owner per fact**: those duplicate keys are rejected with a `400` naming the JSON path and the surviving owner. |
+
+Any other value is rejected (`version must be 2 (legacy) or 3 (canonical)`).
+New payloads should declare `3`; the drift-free template is
+`ops/jobs/canonical/script-generate-reference-v3-20261126.json`.
+
+Version 3 retires three V2 spellings. Each one carries a fact that another
+block already owns authoritatively:
+
+| V2 key | version 3 owner | why |
+|---|---|---|
+| `items[].script_params.force_refresh` | envelope `force_refresh` | the item-level flag never bypassed the idempotency store; it was silently ignored. |
+| `items[].script_params.voiceover_group` | `items[].output.voiceover_group` | the voiceover router resolves only the output value. |
+| `items[].output.audio` | `items[].audio` | the same `AudioOutputConfig` shape in two places; the runner reads the item-level block. |
+| `items[].map_type` | `items[].map_presentation.style` | one basemap fact; the legacy scalar also accepted a narrower alias vocabulary than the registry. |
+| `items[].map_camera_animation` | `items[].map_presentation.camera` | the same camera move, resolved by the presentation contract. |
+| `items[].map_label_animation` | — (omit the key) | retained compositions draw their own text; the legacy field was fixed to `none` and only existed to say nothing. |
+
+Everything else is unchanged in version 3: same nesting, same fields, same
+validators. `script_params.images_per_scene` and
+`media_plan.planner.max_images_per_scene` both stay because they are not the
+same fact (a cadence and a ceiling); `payloadlint` still reports them when they
+disagree. `map_animation` also stays accepted in both versions: it is the
+legacy composition vocabulary, not a duplicate of a single `map_presentation`
+field.
+
 ## Nesting
 
 The body is an **envelope** with an `items` array. Every generation option
 lives **inside an item**; there are no top-level shortcut keys.
+
+`preset` is the endpoint variant: `custom`, `with_images`, `full_media`,
+`catalog`, `search`, `batch`, or omitted (pass-through). Any other value is
+rejected at ingress instead of silently doing nothing.
 
 ```json
 {
@@ -56,7 +93,6 @@ lives **inside an item**; there are no top-level shortcut keys.
       "image_motions": ["image_fade_reveal", "image_focus_reveal"],
       "entity_image_motions": ["image_fade_reveal", "image_scale_reveal"],
       "output":       { "...": "opt-in post-generation artifacts" },
-      "docs":         { "enabled": true, "languages": ["en", "it"] },
       "audio":        { "...": "audio.mode + editorial audio intent" },
       "media_plan":   { "...": "visual media selection" }
     }
@@ -284,8 +320,13 @@ watermark box. The watermark travels in the same sealed Chronon render plan.
 `background.mode` is `none`, `blur_source`, or `asset` (with `asset_id` for an
 asset). For `blur_source`, `background.blur_px` sets the gaussian radius of the
 derived plate (6–48 px, default 24) and `background.zoom` scales it (1–10×,
-default 1 = cover). Both are rejected on `none`/`asset`, which carry no derived
-plate, and both participate in the render fingerprint. `effects` uses the
+default 1 = cover). An omitted (zero) value keeps the renderer default. Both are
+rejected on `none`/`asset`, which carry no derived plate, and both participate
+in the render fingerprint. They travel all the way into the sealed clip.render
+plan (`CompileInput.BackgroundBlurPX/BackgroundZoom`); the mode gate and the
+numeric bounds are enforced when the localized render is planned, by
+`cliprender.ValidateBackgroundTreatment` — one validator for script.generate and
+clip.render alike. `effects` uses the
 closed Chronon effect allowlist from
 `POST /api/clips/render`; `grid.scope` may be `full_canvas` (the default) or
 `foreground`, which confines it to the scaled source clip. Subtitle `font`, `color`, `stroke` and `shadow` use
@@ -302,10 +343,18 @@ canonical media duration; provide `duration_ms` only when an editorial trim is
 intended. The fixed-media intro/outro playback policy still uses an explicit
 source window.
 
-- `version` is always `2`. `items` must contain **at least one** entry.
+- `version` is `2` (legacy) or `3` (canonical) — see
+  [Contract versions](#contract-versions). Any other value is rejected.
+  `items` must contain **at least one** entry.
+- `preset` is one of `custom`, `with_images`, `full_media`, `catalog`,
+  `search`, `batch`. An omitted/empty preset behaves like `custom`. Anything
+  else is rejected at ingress: the earlier `"news"` value that 61 recorded job
+  files carried never existed in the runtime and silently applied nothing.
+- `docs` is **retired**: `docs.enabled=true` fails closed, and the block is
+  omitted from every example. Document publication no longer exists.
 - A single-item envelope maps to the unified `/generate` flow; multiple
   items map to batch generation.
-- Every per-item block (`source`, `script_params`, `output`, `docs`,
+- Every per-item block (`source`, `script_params`, `output`,
   `audio`, `media_plan`, `overlay_background`, `overlay_style`,
   `map_type`, `map_camera_animation`, `map_label_animation`,
   `map_animation`,
@@ -378,7 +427,10 @@ rotates through it. `short_phrase_motion` is a scalar pin and takes precedence
 over the seeded short-phrase rotation.
 `map_presentation` cannot be mixed with the legacy `map_type`,
 `map_camera_animation`, `map_label_animation` or `map_animation` fields: the
-mixture fails closed instead of guessing a winner.
+mixture fails closed instead of guessing a winner. Version 3 goes further and
+rejects `map_type`, `map_camera_animation` and `map_label_animation` outright
+(see [Contract versions](#contract-versions)); `map_animation` stays accepted
+as the legacy composition lane.
 
 ### Map presets
 
@@ -521,29 +573,36 @@ Visual overlay categories can also be selected with the item-level
 matching uses an explicit scene ID first, then its position when the segment
 has no ID (or the same ID as the generated scene).
 
-`map_type` selects one basemap for the run. The single map renderer is the
+`map_type` selects one basemap for the run. It is a version-2 spelling:
+version 3 rejects it in favour of `map_presentation.style`. The single map
+renderer is the
 native renderer of ChrononPlugin (the Python renderer is retired), which
-draws the **editorial vector basemap only**:
+draws three renderer-backed basemaps:
 
-- `chronon_editorial` (aliases `chronon`, `editorial`) — **default** when the
-  field is omitted; the certified editorial look.
-- `random` — a seeded draw over the servable styles (today the editorial
-  basemap; never a decorative canvas).
-- `satellite`, `roadmap`, `terrain` — the Esri raster tile families. They are
-  **demolition debt** (TICKET-MAPS-NATIVE-PORT): rejected with a typed error
-  until their bit-exact parity gates land — never silently swapped for a
-  different look.
+- `chronon_editorial` (aliases `chronon`, `editorial`, `classic`) — the
+  certified editorial look; `applyMapPresentationToItems` writes it as the
+  concrete default when the field is omitted.
+- `esri_topo` (aliases `modern`, `modern_map_1`, `modernmap1`, `topo`,
+  `terrain`) — the Esri World Topo tile pyramid.
+- `esri_sat` (alias `satellite`) — the Esri World Imagery tile pyramid.
+- `random` — a seeded draw over the three servable styles; never a decorative
+  canvas.
+
+`roadmap` still maps to the retired `esri_light` style and is rejected by name;
+unknown styles fail closed.
 
 `map_camera_animation` currently allows only `slow_approach`; omission and
 `random` resolve to that deterministic camera move. `map_label_animation` is
-fixed to `none` because retained maps draw their own text. The catalog has
-exactly ten animations: six Saudi/Middle East scenes (`ed_saudi_base`,
-`ed_iran_glow`, `ed_yemen_fill`, `ed_yemen_markers`, `ed_hormuz_routes`,
-`ed_mocha_tactical`), three ordinary glow maps (`region_zoom`, `pulse_marker`,
-`spotlight`), and `slow_approach`.
+fixed to `none` because retained maps draw their own text. The legacy
+`map_animation` compatibility vocabulary has ten ids: six Saudi/Middle East
+scenes (`ed_saudi_base`, `ed_iran_glow`, `ed_yemen_fill`, `ed_yemen_markers`,
+`ed_hormuz_routes`, `ed_mocha_tactical`), three ordinary glow maps
+(`region_zoom`, `pulse_marker`, `spotlight`), and `slow_approach`.
 `map_animation` accepts those nine compositions as its vocabulary and fails
 closed on other IDs — but the native renderer serves the certified **base
-flyover only** until each composed family lands its parity gate. An explicitly
+flyover only** for that legacy path until each composed family lands its parity
+gate. New payloads should use `map_presentation.animation`, whose registry
+contains the 22 servable composition ids above. An explicitly
 requested composition therefore fails closed with a typed error naming the
 unported family (never approximated); omission and `random` resolve to the
 base flyover: one anchor, the `slow_approach` dive, every grounded place
@@ -644,10 +703,12 @@ re-deriving the same plan replays the same decorations.
 `max_phrase_overlays` requests the **run-level ceiling** for grounded phrase
 overlays. Zero or omission keeps the certified default of five. Positive values
 may lower or raise that default, but the runtime clamps the effective ceiling to
-**15 phrases per run**. Candidates are deduplicated and ranked before admission,
-so the highest-ranked 15 survive an oversized request; the effective limit is
-reported in `phrase_overlay_budget.requested_phrase_overlays`. The image ceiling
-is unaffected.
+**50 phrases per run** (`overlays.MaxPhraseOverlaysHardLimit`; the old "15" in
+this page was stale). Candidates are deduplicated and ranked before admission,
+so the highest-ranked 50 survive an oversized request; the effective limit is
+reported in `phrase_overlay_budget.requested_phrase_overlays`. A request above
+the hard limit is reported by `payloadlint` because the clamp is silent. The
+image ceiling is unaffected.
 
 `max_overlays_per_scene` caps selected overlay items in each scene before
 composition. For example, `2` retains at most two items per scene. Nearby
@@ -758,18 +819,80 @@ silently ignored field:
   config-aware `PayloadValidator` runs second (structural → semantic →
   config-aware order is intentional).
 
-## The two mistakes that produce the expensive 400s
+## Checking a job file before submitting it
+
+`cmd/payloadlint` decodes and validates job files with the same gates as the
+endpoint: the strict decoder (`GenerationEnvelopeV2` through
+`DecodeGenerationEnvelopeStrict`, unknown keys inside
+`output`/`audio`/`media_plan` included) and the same `PayloadValidator`
+(`gencore`, so the retired `docs`, segment caps and source_text limits apply),
+then adds the contradictions the struct shape cannot express. The rules live in
+`internal/capabilities/scripts/payloadcheck` and are shared with the `velox`
+preflight:
+
+- `IMAGE_SEARCH_DISABLED_WITH_ENTITY_IMAGES` — `image_search_mode=disabled`
+  forbids every image search, but `entity_images.enabled=true` requests
+  portraits. (`explicit_only` is **not** a contradiction: it restricts inferred
+  contextual queries, not the direct identity lane.)
+- `AUDIO_MODE_CONFLICT` — `items[].audio.mode` and
+  `items[].output.audio.mode` are both set; the runtime takes `item.audio` and
+  discards the other value without a trace. (Version 2 only: version 3 rejects
+  `output.audio` outright.)
+- `PHRASE_BUDGET_CLAMPED` — `max_phrase_overlays` above the hard limit is
+  clamped in silence.
+- `IMAGES_PER_SCENE_CONFLICT` — `script_params.images_per_scene` disagrees with
+  `media_plan.planner.max_images_per_scene` while both are explicit.
+- `TARGET_WORDS_MISMATCH` — `script_params.target_words` disagrees with the sum
+  of the explicit segment targets.
+- `VOICEOVER_GROUP_CONFLICT` — `script_params.voiceover_group` and
+  `output.voiceover_group` disagree; the builder prefers one and drops the
+  other. (Version 2 only.)
+- `FORCE_REFRESH_DUPLICATE` (warning) — `script_params.force_refresh=true` does
+  not bypass the idempotency store; only the envelope-level `force_refresh`
+  does. (Version 2 only: version 3 rejects the key.)
+- `TARGET_WORDS_WIDE` (warning) — `target_words` is more than twice the words in
+  the supplied segments.
+
+```bash
+go run ./cmd/payloadlint ../ops/jobs            # every recorded job envelope
+go run ./cmd/payloadlint -strict ../ops/jobs   # warnings fail too
+go run ./cmd/payloadlint ../ops/jobs/canonical # the reference payload
+```
+
+A `version: 3` body also runs the canonical-owner gate, the same one the
+endpoint applies: a V2-only duplicate key fails with its JSON path (for
+example `items[0].output.audio`) instead of the semantic warning version 2
+would print.
+
+Exit code `1` means at least one error. The canonical, drift-free examples are
+`ops/jobs/canonical/script-generate-reference-20261126.json` (legacy) and
+`ops/jobs/canonical/script-generate-reference-v3-20261126.json` (canonical);
+both are asserted by `cmd/payloadlint`'s test suite when the outer workspace is
+present.
+
+## The mistakes that produce the expensive 400s
 
 1. **`script_params` at the wrong level or in the wrong case.** It is a
    key **inside each object of `items[]`** — not at the envelope root,
    and not `scriptParams`. The Go field is `ScriptParams` with json tag
    `script_params`.
-2. **`docs` vs `output` at the wrong level.** Post-generation artifact
-   selection is **per item**: `docs` is its own item key (document
-   publication) and `output` is the item's opt-in artifact block. The
-   **result** envelope is where `items` reappears
-   (`GenerationEnvelopeResult.items`); there is no top-level `output`
-   key in the request or the result.
+2. **A render key on `output` instead of `output.render`.** Render
+   delivery is `output.render.drive_subfolder_name`; `output` itself only
+   carries the postprocessor toggles, `save_to_db`, `generate_timeline`,
+   `languages` and `drive_folder_id`. A key placed one level too high is a
+   `400` (unknown field) — never a silent drop. The **result** envelope is
+   where `items` reappears (`GenerationEnvelopeResult.items`); there is no
+   top-level `output` key in the request or the result.
+3. **The retired `docs` block.** `docs` is no longer an artifact selector:
+   an item that still sends `docs.enabled=true` is rejected.
+4. **`final_job_remote`.** Retired: `final_job=true` already hands the
+   complete video to the Master, which owns the final render. Declaring only
+   the removed duplicate is a `400`.
+5. **A V2 duplicate in a version-3 body.** `output.audio`,
+   `script_params.force_refresh`, `script_params.voiceover_group`,
+   `map_type`, `map_camera_animation` and `map_label_animation` are rejected
+   by path in version 3 (see [Contract versions](#contract-versions)); the
+   same body still decodes under `version: 2`.
 
 ## Related
 

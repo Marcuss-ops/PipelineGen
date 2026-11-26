@@ -81,14 +81,6 @@ const (
 
 var ErrPreparationLeaseBusy = preparation.ErrPreparationLeaseBusy
 
-func NewJobPreparationRegistry() *JobPreparationRegistry {
-	return preparation.NewJobPreparationRegistry()
-}
-
-func RegisterPreparationPlanner(registry *JobPreparationRegistry, jobType string, planner PreparationPlanner) error {
-	return preparation.RegisterPreparationPlanner(registry, jobType, planner)
-}
-
 func ComposeJobPreparationRegistry() (*JobPreparationRegistry, error) {
 	return preparation.ComposeJobPreparationRegistry()
 }
@@ -105,10 +97,6 @@ func NewPreparationWorkEstimator(alpha float64) *PreparationWorkEstimator {
 	return preparation.NewPreparationWorkEstimator(alpha)
 }
 
-func BuildPreparationFingerprint(input PreparationFingerprintInput) (string, error) {
-	return preparation.BuildPreparationFingerprint(input)
-}
-
 func PreparationUnitFingerprint(kind, jobType string, payload []byte, inputs map[string]string, dependsOn []string, processorVersion string) (string, error) {
 	return preparation.PreparationUnitFingerprint(kind, jobType, payload, inputs, dependsOn, processorVersion)
 }
@@ -119,10 +107,6 @@ func DefaultSpeculationConfig() SpeculationConfig {
 
 func NewSpeculationScheduler(config SpeculationConfig, gate ActiveWorkGate) *ResourceScheduler {
 	return preparation.NewSpeculationScheduler(config, gate)
-}
-
-func NewScriptPreparationPlanner() *preparation.ScriptPreparationPlanner {
-	return preparation.NewScriptPreparationPlanner()
 }
 
 // Compatibility surface for the outbox handlers extracted to

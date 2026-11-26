@@ -2,12 +2,10 @@ package artifactsinfra
 
 import (
 	"context"
-	"path/filepath"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
 )
@@ -48,7 +46,7 @@ func (a *artifactVoiceoverSourceAdapter) Get(ctx context.Context, id string) (*a
 	if err != nil || rec == nil {
 		return nil, err
 	}
-	return voiceoverRecordToAsset(rec), nil
+	return assets.VoiceoverRecordToAsset(rec), nil
 }
 func (a *artifactVoiceoverSourceAdapter) GetByDriveFileID(ctx context.Context, id string) (*asset.Asset, error) {
 	if a.inner == nil {
@@ -58,7 +56,7 @@ func (a *artifactVoiceoverSourceAdapter) GetByDriveFileID(ctx context.Context, i
 	if err != nil || rec == nil {
 		return nil, err
 	}
-	return voiceoverRecordToAsset(rec), nil
+	return assets.VoiceoverRecordToAsset(rec), nil
 }
 func (a *artifactVoiceoverSourceAdapter) Delete(ctx context.Context, id string) error {
 	if a.inner == nil {
@@ -77,7 +75,7 @@ func (a *artifactImagesSourceAdapter) Get(ctx context.Context, id string) (*asse
 	if err != nil || img == nil {
 		return nil, err
 	}
-	return imageAssetToAsset(img), nil
+	return assets.ImageAssetToAsset(img), nil
 }
 func (a *artifactImagesSourceAdapter) GetByDriveFileID(ctx context.Context, id string) (*asset.Asset, error) {
 	if a.inner == nil {
@@ -87,7 +85,7 @@ func (a *artifactImagesSourceAdapter) GetByDriveFileID(ctx context.Context, id s
 	if err != nil || img == nil {
 		return nil, err
 	}
-	return imageAssetToAsset(img), nil
+	return assets.ImageAssetToAsset(img), nil
 }
 func (a *artifactImagesSourceAdapter) Delete(ctx context.Context, id string) error {
 	if a.inner == nil {
@@ -110,49 +108,6 @@ func NewArtifactSourceCatalog(artlist, clips, stock *assets.ClipsRepository, voi
 		&artifactVoiceoverSourceAdapter{inner: voiceover},
 		&artifactImagesSourceAdapter{inner: images},
 	)
-}
-
-func voiceoverRecordToAsset(rec *assets.Record) *asset.Asset {
-	if rec == nil {
-		return nil
-	}
-	name := rec.Filename
-	if name == "" {
-		name = rec.TextPreview
-		if len(name) > 50 {
-			name = name[:50]
-		}
-	}
-	clip := &asset.Asset{ID: rec.ID, Name: name, Filename: rec.Filename, Source: "voiceover", MediaType: "audio", SearchTerms: []string{rec.TextPreview}, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt}
-	clip.SetFolderID(rec.FolderID)
-	clip.SetFolderPath(rec.FolderPath)
-	clip.SetDriveLink(rec.DriveLink)
-	clip.SetDriveFileID(rec.DriveFileID)
-	clip.SetDownloadLink(rec.DownloadLink)
-	clip.SetContentHash(rec.ContentSHA256)
-	clip.SetLocalPath(rec.LocalPath)
-	clip.SetMetadataJSON(rec.Metadata)
-	return clip
-}
-
-func imageAssetToAsset(item *detail.ImageAsset) *asset.Asset {
-	if item == nil {
-		return nil
-	}
-	name := item.Description
-	if name == "" {
-		name = filepath.Base(item.PathRel)
-	}
-	id := item.SlugID
-	if id == "" {
-		id = item.Hash
-	}
-	clip := &asset.Asset{ID: id, Name: name, Filename: filepath.Base(item.PathRel), Source: "images", MediaType: "image", Tags: item.Tags, SearchTerms: []string{item.Description}, CreatedAt: item.CreatedAt, UpdatedAt: item.CreatedAt}
-	clip.SetDriveLink(item.SourceURL)
-	clip.SetDriveFileID(item.DriveFileID)
-	clip.SetContentHash(item.Hash)
-	clip.SetLocalPath(item.PathRel)
-	return clip
 }
 
 var _ artifacts.SourceRepo = (*artifactClipsSourceAdapter)(nil)

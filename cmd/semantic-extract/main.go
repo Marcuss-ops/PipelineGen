@@ -59,15 +59,15 @@ func main() {
 	if err != nil {
 		fatal("create semantic engine adapter: %v", err)
 	}
-	bundles, err := adapter.SemanticBundles(context.Background(), req.Language, semanticScenes)
+	semanticScript, err := adapter.SemanticScript(context.Background(), req.Language, semanticScenes)
 	if err != nil {
 		fatal("run semantic engine: %v", err)
 	}
-	consolidation, plan, _, err := scriptgen.PlanScriptProduction(bundles)
+	consolidation, plan, _, err := scriptgen.PlanScriptProduction(semanticScript)
 	if err != nil {
 		fatal("build production plan: %v", err)
 	}
-	report := buildReport(*inputPath, req.Language, text, *sceneWords, semanticScenes, bundles, consolidation, plan)
+	report := buildReport(*inputPath, req.Language, text, *sceneWords, semanticScenes, semanticScript.Scenes, consolidation, plan)
 	result, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		fatal("encode output JSON: %v", err)

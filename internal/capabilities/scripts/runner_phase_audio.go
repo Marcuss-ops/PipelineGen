@@ -33,12 +33,6 @@ type audioCompileState struct {
 	// non-nil is also what marks the overlap path: NULL callers render through
 	// the serial overlay render phase instead.
 	OnPlanReady func(*contract.GenerateResult) bool
-	// Barrier is the P2 overlay-language submit-barrier (running_on the detached
-	// P1 plan-branch outcome while this master compile runs). The OnPlanReady
-	// render fork applies its certified outcomes onto its own snapshot before
-	// rendering, so a barrier-composed language is never re-submitted. nil keeps
-	// serial behavior (final jobs, serial render callers, gate off).
-	Barrier *overlayLanguageBarrier
 }
 
 // runAudioCompilePhase compiles the canonical timeline and the semantic
@@ -124,13 +118,6 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req con
 			// projection on this goroutine, which stays the durable result's
 			// single writer (runner_overlay_plan_branch.go).
 			planBranch = r.startOverlayPlanBranch(ctx, runID, req, exec, result, mode)
-			// P2: the overlay-language submit-barrier renders every pending plan
-			// off the detached branch outcome while the master composition below
-			// runs. The OnPlanReady render fork merges it onto its own snapshot
-			// before capturing its pending set (see runner_phase_overlay_plan.go).
-			if out != nil && out.OnPlanReady != nil {
-				out.Barrier = r.startOverlayRenderBarrier(ctx, runID, req, exec, resumeIdx, planBranch)
-			}
 			var compileTimings AudioCompileTimings
 			policy, clipAudioSource := r.combinedAudioInputs(result, req)
 			// Clip audio is materialized in EVERY lane since the 2026-09-30

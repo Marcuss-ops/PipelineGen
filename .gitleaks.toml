@@ -38,6 +38,8 @@ regexes = [
   "d95b4617ff8783aa7ed17e000888597f26a0738b1cb55e8269664eac2b4656f1",  # internal/capabilities/cliprender/chronon_timing_result_test.go:19 — synthetic test storage key (SHA-256-shaped fixture literal)
   "jobID+attempt+artifactID",  # internal/capabilities/jobs/completion/complete_job_service_test.go:57 — Go expression in a test (key: jobID+attempt+artifactID), not a literal
   "idem-p2a-conc-same-key",  # internal/capabilities/script/handler_envelope_concurrency_p2a_test.go:280 — synthetic test idempotency key (idem-p2a-conc-same-key)
+  "v3-duplicate-owner",  # internal/capabilities/script/handler_unknown_fields_test.go:63 — synthetic test idempotency key (v3 duplicate-owner case)
+  "v2-duplicate-owner",  # internal/capabilities/script/handler_unknown_fields_test.go:73 — synthetic test idempotency key (v2 duplicate-owner case)
   "vo-idem-match-001",  # internal/capabilities/voiceover/service/finalizer_contract_test.go:190 — synthetic test idempotency key (vo-idem-match-001)
   "0123456789abcdef0123456789abcdef",  # internal/platform/delivery/signer_test.go:25 — synthetic test HMAC secret (0123.. sequential fixture literal)
   "0123456789abcdef0123456789abcdef",  # internal/platform/config/config_test.go:346 — synthetic test HMAC secret (0123.. sequential fixture literal)

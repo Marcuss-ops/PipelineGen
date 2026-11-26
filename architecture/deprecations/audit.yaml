@@ -14,23 +14,23 @@
 # Both were part of the legacy-burndown binary `scripts/archcheck`, which NO
 # make target or workflow ever invoked; it was demolished 2026-09-12.
 #
-# CONSEQUENCE: the counts below can no longer be regenerated automatically and
-# the deprecation-record validator (duplicate ids, expired removal_date,
-# required keys across records/*.yaml) is WITHDRAWN — nothing validates these
-# records today. Treat the shards as documentation until the validator is
-# re-implemented (e.g. as a cmd/archcheck scanner). Hand-edit the counts only
-# together with the records they summarise.
+# RESTORED 2026-11-26: the validator now lives in
+# cmd/archcheck/scan/governance/percheck_deprecation_registry.go and runs as
+# `percheck_deprecation_registry`. It re-derives every count below from
+# records/*.yaml and fails when they drift; an expired removal_date is reported
+# as a warning on every archcheck run. Hand-edit the counts only together with
+# the records they summarise.
 audit:
     manifest_version: sharded-migration-v1
-    total_records: 7
+    total_records: 6
     by_status:
         removed: 0
-        in_progress: 5
+        in_progress: 4
         keep: 1
         other: 1
     by_migration_phase:
         BACKFILL: 2
-        CONTRACT: 2
+        CONTRACT: 1
         CUTOVER: 0
         EXPAND: 2
         not applicable: 1
