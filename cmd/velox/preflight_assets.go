@@ -41,6 +41,9 @@ type assetCheck struct {
 	Scenes   []string `json:"scenes,omitempty"`
 	Duration int64    `json:"duration_ms,omitempty"`
 	Problems []string `json:"problems,omitempty"`
+	// Warnings are degradations the run can still survive (a Drive-only
+	// clip). They never flip OK, exactly like the server-side route.
+	Warnings []string `json:"warnings,omitempty"`
 
 	// authRejected marks a 401/403 from the catalog. It is not part of the
 	// JSON report: it exists so the caller can replace N identical credential
@@ -66,6 +69,11 @@ type operatorAsset struct {
 	TextTracks     []struct {
 		LanguageCode string `json:"language_code"`
 	} `json:"text_tracks"`
+	// Reachability facts (OVL-06): the location projection plus the two
+	// metadata keys the resolver actually reads.
+	HasLocalFile bool           `json:"has_local_file"`
+	HasDriveFile bool           `json:"has_drive_file"`
+	Metadata     map[string]any `json:"metadata"`
 }
 
 // checkAssets queries the running server for every bound clip. A request
@@ -141,8 +149,30 @@ func checkOneAsset(ctx context.Context, client *http.Client, baseURL, token stri
 	if req.NeedSpeech && len(asset.TextTracks) == 0 {
 		check.Problems = append(check.Problems, "NO_SPEECH: nessuna traccia testo (il render sottotitoli fallirà dopo l'ASR)")
 	}
+	// Same reachability verdict as the server route (OVL-06): the kernel owns
+	// the text so the CLI and POST /api/script/preflight cannot diverge.
+	reachProblems, reachWarnings := scriptpkg.ClipMediaProblems(scriptpkg.ClipMediaReachability{
+		ClipID:       req.ClipID,
+		LocalPath:    operatorMetadataString(asset.Metadata, "local_path"),
+		DriveLink:    operatorMetadataString(asset.Metadata, "drive_link"),
+		HasLocalFile: asset.HasLocalFile,
+		HasDriveFile: asset.HasDriveFile,
+	})
+	check.Problems = append(check.Problems, reachProblems...)
+	check.Warnings = append(check.Warnings, reachWarnings...)
 	check.OK = len(check.Problems) == 0
 	return check
+}
+
+// operatorMetadataString reads one string entry from the operator asset's raw
+// metadata map. The read model is untyped by design, so this is the only
+// coercion the gate performs.
+func operatorMetadataString(metadata map[string]any, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	text, _ := metadata[key].(string)
+	return strings.TrimSpace(text)
 }
 
 // assetAuthRejection collapses the per-clip credential verdict into one line.

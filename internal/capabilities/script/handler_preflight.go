@@ -45,6 +45,16 @@ type AssetPreflightFact struct {
 	AssetState     string
 	DurationMS     int64
 	TextTracks     int
+
+	// Reachability facts (OVL-06): the resolver needs a local binary, or a
+	// Drive reference when the segment allows a drive-only clip. Without
+	// these the preflight could only say "asset non trovato" and leave the
+	// operator without the path the resolver expects or the reason it is
+	// unreachable.
+	LocalPath    string
+	DriveLink    string
+	HasLocalFile bool
+	HasDriveFile bool
 }
 
 // AssetPreflightReader resolves one clip's catalog facts. found=false means the
@@ -68,6 +78,10 @@ type assetPreflightCheck struct {
 	Scenes     []string `json:"scenes,omitempty"`
 	DurationMS int64    `json:"duration_ms,omitempty"`
 	Problems   []string `json:"problems,omitempty"`
+	// Warnings are degradations the render can still survive (a clip with a
+	// Drive copy but no local binary). They never flip ok, so a warning is
+	// never read as a pass either: the two lists stay distinct in the JSON.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // preflightReport is the JSON body of the route.
@@ -172,7 +186,7 @@ func preflightAssetCheck(ctx context.Context, reader AssetPreflightReader, req s
 		return check
 	}
 	if !found {
-		check.Problems = []string{"asset non trovato nel catalogo"}
+		check.Problems = []string{"asset non trovato nel catalogo: nessuna riga in media_assets per l'id (atteso local_path o drive_link)"}
 		return check
 	}
 	check.DurationMS = fact.DurationMS
@@ -188,6 +202,19 @@ func preflightAssetCheck(ctx context.Context, reader AssetPreflightReader, req s
 	if req.NeedSpeech && fact.TextTracks == 0 {
 		check.Problems = append(check.Problems, "NO_SPEECH: nessuna traccia testo (il render sottotitoli fallirà dopo l'ASR)")
 	}
+	// Reachability is the OVL-06 verdict: a clip with neither a local binary
+	// nor a Drive copy is a fatal preflight failure, named with the path the
+	// resolver expects; a Drive-only clip is a warning, not a pass and not a
+	// block.
+	reachProblems, reachWarnings := scriptpkg.ClipMediaProblems(scriptpkg.ClipMediaReachability{
+		ClipID:       req.ClipID,
+		LocalPath:    fact.LocalPath,
+		DriveLink:    fact.DriveLink,
+		HasLocalFile: fact.HasLocalFile,
+		HasDriveFile: fact.HasDriveFile,
+	})
+	check.Problems = append(check.Problems, reachProblems...)
+	check.Warnings = append(check.Warnings, reachWarnings...)
 	check.OK = len(check.Problems) == 0
 	return check
 }

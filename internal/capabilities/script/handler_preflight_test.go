@@ -68,8 +68,10 @@ func postPreflight(t *testing.T, reader AssetPreflightReader, body string) *http
 // text track because its segment is no_voiceover.
 func TestScriptPreflightAcceptsHealthyCatalog(t *testing.T) {
 	reader := fakeAssetReader{facts: map[string]AssetPreflightFact{
-		"clip-ok":   {ClipID: "clip-ok", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 12000, TextTracks: 1},
-		"clip-mute": {ClipID: "clip-mute", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 8000},
+		"clip-ok": {ClipID: "clip-ok", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 12000, TextTracks: 1,
+			LocalPath: "data/media/clips/general/clip-ok.mp4", HasLocalFile: true},
+		"clip-mute": {ClipID: "clip-mute", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 8000,
+			LocalPath: "data/media/clips/general/clip-mute.mp4", HasLocalFile: true},
 	}}
 	rec := postPreflight(t, reader, preflightRoutePayload)
 	if rec.Code != http.StatusOK {
@@ -87,9 +89,11 @@ func TestScriptPreflightReports422WithPerClipProblems(t *testing.T) {
 	reader := fakeAssetReader{
 		facts: map[string]AssetPreflightFact{
 			// READY but not ACTIVE and without a text track.
-			"clip-ok": {ClipID: "clip-ok", LifecycleState: "STAGING", AssetState: "READY", DurationMS: 12000},
+			"clip-ok": {ClipID: "clip-ok", LifecycleState: "STAGING", AssetState: "READY", DurationMS: 12000,
+				LocalPath: "data/media/clips/general/clip-ok.mp4", HasLocalFile: true},
 			// Present but not READY and with no duration.
-			"clip-mute": {ClipID: "clip-mute", LifecycleState: "ACTIVE", AssetState: "PROCESSING"},
+			"clip-mute": {ClipID: "clip-mute", LifecycleState: "ACTIVE", AssetState: "PROCESSING",
+				LocalPath: "data/media/clips/general/clip-mute.mp4", HasLocalFile: true},
 		},
 	}
 	rec := postPreflight(t, reader, preflightRoutePayload)
@@ -119,7 +123,8 @@ func TestScriptPreflightReports422WithPerClipProblems(t *testing.T) {
 // catalog is a failure, never an empty pass.
 func TestScriptPreflightUnknownClipIsAFailure(t *testing.T) {
 	reader := fakeAssetReader{facts: map[string]AssetPreflightFact{
-		"clip-mute": {ClipID: "clip-mute", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 8000},
+		"clip-mute": {ClipID: "clip-mute", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 8000,
+			LocalPath: "data/media/clips/general/clip-mute.mp4", HasLocalFile: true},
 	}}
 	rec := postPreflight(t, reader, preflightRoutePayload)
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "asset clip-ok (scene-1): asset non trovato nel catalogo") {
@@ -156,6 +161,61 @@ func TestScriptPreflightRejectsUnknownField(t *testing.T) {
 	rec := postPreflight(t, nil, body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestScriptPreflightMissingMediaWithoutDriveIsFatal pins the OVL-06 verdict:
+// a clip whose local binary is gone AND whose catalog row carries no Drive copy
+// can never render, so the preflight fails and names the path the resolver
+// expected instead of the old "has no Drive link" shrug.
+func TestScriptPreflightMissingMediaWithoutDriveIsFatal(t *testing.T) {
+	reader := fakeAssetReader{facts: map[string]AssetPreflightFact{
+		"clip-ok": {ClipID: "clip-ok", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 12000, TextTracks: 1,
+			LocalPath: "data/media/clips/general/yt_video_0_58_v1.mp4"},
+		"clip-mute": {ClipID: "clip-mute", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 8000,
+			LocalPath: "data/media/clips/general/clip-mute.mp4", HasLocalFile: true},
+	}}
+	rec := postPreflight(t, reader, preflightRoutePayload)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"media locale non risolvibile",
+		"data/media/clips/general/yt_video_0_58_v1.mp4",
+		"il clip non è reidratabile",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q: %s", want, body)
+		}
+	}
+}
+
+// TestScriptPreflightDriveOnlyClipIsAWarning pins the other half of the
+// distinction: local media missing but a Drive copy registered is a degraded
+// path, reported as a warning that never turns the verdict green and never
+// blocks the submit.
+func TestScriptPreflightDriveOnlyClipIsAWarning(t *testing.T) {
+	reader := fakeAssetReader{facts: map[string]AssetPreflightFact{
+		"clip-ok": {ClipID: "clip-ok", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 12000, TextTracks: 1,
+			LocalPath: "data/media/clips/general/yt_video_0_58_v1.mp4",
+			DriveLink: "https://drive.google.com/file/d/abc/view", HasDriveFile: true},
+		"clip-mute": {ClipID: "clip-mute", LifecycleState: "ACTIVE", AssetState: "READY", DurationMS: 8000,
+			LocalPath: "data/media/clips/general/clip-mute.mp4", HasLocalFile: true},
+	}}
+	rec := postPreflight(t, reader, preflightRoutePayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`"ok":true`,
+		`"warnings":`,
+		"copia Drive disponibile: https://drive.google.com/file/d/abc/view",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %q: %s", want, body)
+		}
 	}
 }
 

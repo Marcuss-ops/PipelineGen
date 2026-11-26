@@ -78,7 +78,10 @@ func (g *SceneTextGenerator) resolveEvidenceClip(ctx context.Context, plan *scri
 		driveLink = plan.ClipEvidence.DriveLinks[clipID]
 	}
 	if driveLink == "" {
-		return nil, fmt.Errorf("clip %s has no Drive link", clipID)
+		// Never mask why the local resolution failed (OVL-06): "has no Drive
+		// link" alone hid the real cause — a missing catalog row / local
+		// binary — and pointed the operator at the wrong subsystem.
+		return nil, fmt.Errorf("clip %s has no local media and no Drive link: %w", clipID, err)
 	}
 	return &scriptgen.ClipReference{ID: clipID, Title: detail.Name, DriveLink: driveLink, SourceInMS: detail.StartMs, SourceOutMS: detail.EndMs}, nil
 }

@@ -52,6 +52,9 @@ type preflightReport struct {
 	Assets   []assetCheck `json:"assets,omitempty"`
 	Disk     *diskCheck   `json:"disk,omitempty"`
 	Errors   []string     `json:"errors,omitempty"`
+	// Warnings are non-fatal asset degradations (a Drive-only clip). They are
+	// reported so a green preflight is never silent about them.
+	Warnings []string `json:"warnings,omitempty"`
 
 	// structural records whether the failures are ingress-contract failures
 	// (HTTP 400) or Stage 0 asset/disk failures (the body is fine, the run is
@@ -125,6 +128,9 @@ func cmdPreflight(args []string) int {
 				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 				report.Assets = checkAssets(ctx, checkAssetsServerURL(fs.get("server", "")), token, reqs)
 				cancel()
+				for _, check := range report.Assets {
+					report.Warnings = append(report.Warnings, check.Warnings...)
+				}
 				if rejected := assetAuthRejection(report.Assets); rejected != "" {
 					// The token reached the server and was refused: the catalog
 					// verdict per clip is meaningless, so report the credential
@@ -213,6 +219,9 @@ func emitPreflight(report preflightReport, asJSON bool) int {
 			return exitFailure
 		}
 		return exitOK
+	}
+	for _, warning := range report.Warnings {
+		fmt.Fprintf(os.Stderr, "  warning: %s\n", warning)
 	}
 	if report.OK {
 		clips := fmt.Sprintf("%d clip(s) verificati", report.Clips)

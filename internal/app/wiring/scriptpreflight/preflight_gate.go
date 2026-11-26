@@ -11,6 +11,7 @@ package scriptpreflight
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
@@ -46,5 +47,29 @@ func (g scriptAssetPreflightGate) PreflightAssetFacts(ctx context.Context, clipI
 		AssetState:     string(inspection.AssetState),
 		DurationMS:     inspection.DurationMS,
 		TextTracks:     len(inspection.TextTracks),
+		// The 360-degree inspection carries both the location projection
+		// (has_local_file / has_drive_file, derived from the same CTE the
+		// operator list uses) and the raw metadata (local_path / drive_link).
+		// Reading both here is what lets the preflight separate "media
+		// assente" from "drive link assente" instead of collapsing them.
+		HasLocalFile: inspection.HasLocalFile,
+		HasDriveFile: inspection.HasDriveFile,
+		LocalPath:    metadataString(inspection.Metadata, "local_path"),
+		DriveLink:    metadataString(inspection.Metadata, "drive_link"),
 	}, true, nil
+}
+
+// metadataString reads one string entry from the raw metadata_json map. The
+// projection is untyped by design (asset.SetMetadataString writes strings), so
+// this is the only coercion the gate needs.
+func metadataString(metadata map[string]any, key string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, ok := metadata[key]
+	if !ok {
+		return ""
+	}
+	text, _ := value.(string)
+	return strings.TrimSpace(text)
 }
