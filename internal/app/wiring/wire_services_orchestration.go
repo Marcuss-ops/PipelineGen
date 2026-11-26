@@ -48,6 +48,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/lifecycle"
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/modules/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
@@ -150,11 +151,14 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}
 	broker := lb // *localbroker.Broker satisfies appjobs.Broker
 
+	// The capability owns the ports; these adapters are the only place that
+	// knows the SQLite projections behind them (see
+	// app/modules/registry/asset_transfer_adapters.go).
 	assetSvc := jobsapi.NewAssetTransferService(
-		root.Search.AssetIndexService,
+		registrywiring.NewWorkerOutputStore(root.Search.AssetIndexService),
 		root.MediaAssetDetailsLookup(),
-		root.Repos.ImageRepo,
-		root.Repos.VoiceoverRepo,
+		registrywiring.NewImageAssetLookup(root.Repos.ImageRepo),
+		registrywiring.NewVoiceoverLookup(root.Repos.VoiceoverRepo),
 		log,
 	)
 	// PR-SOURCESTAGER-CONSOLIDATE (July 2026): wire the canonical

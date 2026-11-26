@@ -50,16 +50,3 @@ func TestPersonImageSourceIdentityPenaltyKeepsMultiPersonCandidateRankable(t *te
 		t.Fatalf("expected negative score and ranking reason, got score=%v reason=%q", score, reason)
 	}
 }
-
-func TestPersonImageFilenameQualifiersAreEvidenceBased(t *testing.T) {
-	for _, token := range []string{"foto", "photo", "portrait", "headshot", "image", "img", "profile", "ritratto"} {
-		if !personImageFilenameQualifier(token) {
-			t.Errorf("expected %q to be a known filename qualifier", token)
-		}
-	}
-	for _, token := range []string{"avvocato", "avvocata", "ansa", "ipa"} {
-		if personImageFilenameQualifier(token) {
-			t.Errorf("%q is a broad editorial word, not a filename qualifier", token)
-		}
-	}
-}

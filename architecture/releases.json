@@ -1,0 +1,13 @@
+{
+  "_comment": "Single owner of the external revision pins consumed by the build, the container image and CI. brainrust.git_sha is a PUBLISHED commit (tag v0.3.8): CI fetches it by SHA, so it must be reachable from a remote ref. bin/BRAINRUST_RELEASE.json is a build ARTIFACT that records the binaries actually installed on this host and is never a CI input; a `source: worktree` artifact legitimately runs ahead of this pin. Keep Dockerfile ARG defaults in lockstep through `make verify-release-pin`.",
+  "brainrust": {
+    "version": "v0.3.8",
+    "git_sha": "a4ab4cb65af0fffd93966f27738ae58626fce2a9",
+    "icu_major": 72,
+    "mediaexec_schema": "mediaexec.v2",
+    "semantic_schema": "semantic_manifest.v3"
+  },
+  "renderinggen": {
+    "git_sha": "e8fec015d28167b84ccd94ba6e002de43518fc6f"
+  }
+}

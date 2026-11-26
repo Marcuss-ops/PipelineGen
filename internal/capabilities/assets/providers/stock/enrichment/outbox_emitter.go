@@ -34,8 +34,13 @@
 //     at the SQLite level via ON CONFLICT DO NOTHING).
 //   - tx.Commit error → ErrEnrichmentEmitFailed (retryable).
 //   - EnqueueResult.Inserted=false (ON CONFLICT suppressed) →
-//     log Info (idempotency contract honored) + return nil.
-//     This is the EXPECTED behavior on retry: same
+//     log Info (idempotency contract honored) + return nil,
+//     EXCEPT when the existing row is a terminal failure
+//     (dead_letter / legacy dead): that returns
+//     ErrEnrichmentEmitFailed, because a successful emit there
+//     would report a publication that never happened. A completed
+//     or superseded row stays a success (the contract was met).
+//     Inserted=false is the EXPECTED behavior on retry: same
 //     (chunkID, fileHash, version) triple → same idempotency_key
 //     → ON CONFLICT suppresses the second insert → no fake event.
 //
@@ -63,6 +68,7 @@ import (
 	"go.uber.org/zap"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
@@ -190,6 +196,17 @@ func (e *outboxBackedAssetPublishedEmitter) EmitAssetPublished(ctx context.Conte
 	// will NOT be in outbox_events).
 	if err := tx.Commit(); err != nil {
 		return WrapEmitFailed(fmt.Errorf("outboxBackedAssetPublishedEmitter.EmitAssetPublished: Commit: %w", err))
+	}
+
+	// An idempotent re-emit is only a success when the pre-existing row is a
+	// SUCCESS terminal. A row already parked in dead_letter was never
+	// delivered, and the same event_key can never deliver it, so returning nil
+	// would report a publication that did not happen (godlike/07
+	// NO-FAKE-AVAILABILITY). The classification lives in kernel/event.
+	if !result.Inserted && event.IsFailedOutboxStatus(result.ExistingStatus) {
+		return WrapEmitFailed(fmt.Errorf(
+			"outboxBackedAssetPublishedEmitter.EmitAssetPublished: event_key %s already exists in terminal failure state %q; the asset was not published and the same key cannot deliver it",
+			payload.IdempotencyKey, result.ExistingStatus))
 	}
 
 	// Step 5: log the canonical payload summary for audit.

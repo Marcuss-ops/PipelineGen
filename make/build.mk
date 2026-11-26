@@ -39,9 +39,14 @@ GO_LINKER_FLAGS := $(shell if command -v $(GO_LINKER) >/dev/null 2>&1; then prin
 
 # Rust execution plane: BrainRust owns the toolchain, ICU linkage, tests and
 # release artifacts. PipelineGen consumes only checksum-verified binaries.
-# Read the canonical release ABI pin, not pkg-config's possibly different
-# development-header major. rust-fetch separately checks the runtime sonames.
-BRAINRUST_VERSION ?= v0.3.8
+# The release, its published commit and the ICU ABI major are read from the
+# tracked pin (architecture/releases.json), never restated here: the stale
+# Dockerfile default v0.3.0 and the v0.3.8 Makefile default used to disagree.
+# The pin is the release ABI, not pkg-config's development-header major;
+# rust-fetch separately checks the runtime sonames.
+RELEASE_PIN ?= architecture/releases.json
+RELEASE_PIN_READER ?= scripts/ci/release_pin.py
+BRAINRUST_VERSION ?= $(shell python3 $(RELEASE_PIN_READER) brainrust.version $(RELEASE_PIN))
 RUST_FETCH_BASE_URL ?= https://github.com/Marcuss-ops/BrainRust/releases/download
 # Optional checksum-verified local copy of the same release assets (offline/CI
 # cache). v0.3.8 adds multilingual overlay planning, relative dates, spoken
@@ -49,8 +54,7 @@ RUST_FETCH_BASE_URL ?= https://github.com/Marcuss-ops/BrainRust/releases/downloa
 # v0.3.0 was the first bundle carrying the mediaexec.v2 cut-checksum contract.
 RUST_ARTIFACTS_DIR ?=
 RUST_BIN_DIR ?= $(CURDIR)/bin
-RUST_ICU_MAJOR_FILE ?= $(abspath ../BrainRust/ICU_MAJOR)
-ICU_MAJOR ?= $(shell if [ -r "$(RUST_ICU_MAJOR_FILE)" ]; then tr -dc '0-9' < "$(RUST_ICU_MAJOR_FILE)"; else pkg-config --modversion icu-i18n 2>/dev/null | cut -d. -f1; fi)
+ICU_MAJOR ?= $(shell python3 $(RELEASE_PIN_READER) brainrust.icu_major $(RELEASE_PIN))
 
 # Canonical token-file SSOT (AGENTS.md "Authentication SSOT (Velox admin token)").
 # Agents normally load via scripts/with-velox-auth; exporting TOKEN_FILE here is a
@@ -102,7 +106,7 @@ go-version-check:
 # copy of the release assets for offline installs; it is still a release bundle,
 # not source.
 rust-fetch:
-	@test -n "$(ICU_MAJOR)" || (echo "BrainRust ICU ABI pin is missing at $(RUST_ICU_MAJOR_FILE), and pkg-config cannot provide a fallback" >&2; exit 1)
+	@test -n "$(ICU_MAJOR)" || (echo "BrainRust ICU ABI pin is missing from $(RELEASE_PIN) (make verify-release-pin)" >&2; exit 1)
 	@BRAINRUST_VERSION="$(BRAINRUST_VERSION)" \
 	 RUST_FETCH_BASE_URL="$(RUST_FETCH_BASE_URL)" \
 	 RUST_ARTIFACTS_DIR="$(RUST_ARTIFACTS_DIR)" \

@@ -256,9 +256,11 @@ jobs:
 
   # ── lexicon parity (Go embedded projection ↔ Rust packs) ─────────────
   # Cross-repo gate: refactored embeds the Go projection and BrainRust owns
-  # the packs. The job checks out BrainRust at the release SHA recorded in
-  # bin/BRAINRUST_RELEASE.json, so the gate compares the exact pair the
-  # binaries were built from (no floating branch, no submodule init).
+  # the packs. The job checks out BrainRust at the PUBLISHED release SHA
+  # recorded in architecture/releases.json. It must not read
+  # bin/BRAINRUST_RELEASE.json: bin/ is a build artifact, absent from a fresh
+  # checkout, and a locally built `source: worktree` manifest names a commit
+  # that CI cannot fetch.
   lexicon-parity:
     name: lexicon parity (Go projection vs Rust packs)
     runs-on: ubuntu-latest
@@ -272,7 +274,7 @@ jobs:
     - name: Resolve pinned BrainRust commit
       id: brainrust
       run: |
-        sha=$(python3 -c 'import json;print(json.load(open("refactored/bin/BRAINRUST_RELEASE.json"))["git_sha"])')
+        sha=$(python3 -c 'import json;print(json.load(open("refactored/architecture/releases.json"))["brainrust"]["git_sha"])')
         test -n "$sha"
         echo "sha=$sha" >> "$GITHUB_OUTPUT"
 

@@ -86,6 +86,24 @@ func IsTerminalOutboxStatus(status string) bool {
 	}
 }
 
+// IsFailedOutboxStatus reports whether status is a terminal FAILURE.
+//
+// It exists because the terminal set mixes outcomes: `completed` and
+// `superseded` are success terminals, `dead_letter` (and the legacy `dead`
+// spelling) mean the event was never delivered. A producer answering an
+// idempotent re-emit must treat the first pair as success and the second as an
+// error, so folding this distinction into IsTerminalOutboxStatus would make the
+// producer report a delivery that never happened. This is the single owner of
+// that classification; callers must not re-spell the dead-letter statuses.
+func IsFailedOutboxStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case OutboxStatusDeadLetter, OutboxStatusDeadLegacy:
+		return true
+	default:
+		return false
+	}
+}
+
 // Canonical outbox scheduling priorities (migration 186).
 //
 // The claim query orders by (priority DESC, next_attempt_at ASC, id ASC).

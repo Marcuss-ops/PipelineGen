@@ -73,9 +73,11 @@ RUN mkdir -p /out \
 # with ICU 72. This stage downloads the pinned release bundle and verifies its
 # checksums and ICU ABI; no cargo, rustup or submodule build runs in the image.
 # Override BRAINRUST_VERSION / RUST_FETCH_BASE_URL to consume a different release
-# or a mirror. The release tag must exist on BrainRust before building.
+# or a mirror. The release tag must exist on BrainRust before building. The two
+# ARG defaults below mirror architecture/releases.json; `make verify-release-pin`
+# fails when they drift, so bump all three together.
 FROM debian:bookworm-slim AS rust-artifacts
-ARG BRAINRUST_VERSION=v0.3.0
+ARG BRAINRUST_VERSION=v0.3.8
 ARG RUST_FETCH_BASE_URL=https://github.com/Marcuss-ops/BrainRust/releases/download
 ARG RUST_ICU_MAJOR_VERSION_NUMBER=72
 ARG TARGETARCH=amd64

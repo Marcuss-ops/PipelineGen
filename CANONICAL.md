@@ -1,6 +1,6 @@
 # PipelineGen — Canonical Sources
 
-Only current, executable information belongs in the working tree. Historical plans and closure evidence belong in Git history.
+Only current, executable information belongs in the working tree. Historical plans and closure evidence belong in Git history. The single exception is the ticket register under `docs/tickets/**` (see Documentation policy): it is the durable decision record, not a diary.
 
 | Concern | Canonical source |
 |---|---|
@@ -44,4 +44,8 @@ violation enforced forward by `percheck_legacy_root_new_code`,
 
 ## Documentation policy
 
-Do not add action-plan diaries, completed wave reports, snapshots, evidence dumps, future-dated completion reports, or duplicate architecture explanations. Use issues for active work and Git history for completed work.
+Do not add action-plan diaries, completed wave reports, snapshots, evidence dumps, future-dated completion reports, or duplicate architecture explanations.
+
+The ticket register under `docs/tickets/**` is the one sanctioned exception, and it is a register, not a diary: one card per campaign carrying its perimeter, its measurable acceptance criteria, the checks that actually ran, and a `Stato:` line. Wave indexes (`docs/tickets/<wave>/00-INDEX.md`) are the registry view, and a closed card stays in place because open work cites it by section and because deleting it loses the record of what was accepted and why. Anything that is not a decision record — timing maps, raw logs, one-off measurement dumps — still belongs in `ops/` artifacts or Git history.
+
+Use issues for active work, Git history for superseded analysis, and the ticket register for the decision record.

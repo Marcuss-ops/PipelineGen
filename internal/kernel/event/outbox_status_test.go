@@ -36,6 +36,29 @@ func TestOutboxLifecycleStatuses_NotAliased(t *testing.T) {
 	}
 }
 
+// TestIsFailedOutboxStatus pins the failure half of the terminal set: a
+// producer answering an idempotent re-emit must not treat a dead-lettered row
+// as a delivered event, while completed/superseded stay success terminals.
+func TestIsFailedOutboxStatus(t *testing.T) {
+	failed := []string{"dead_letter", "dead", " DEAD_LETTER ", "Dead"}
+	for _, status := range failed {
+		if !event.IsFailedOutboxStatus(status) {
+			t.Errorf("IsFailedOutboxStatus(%q) = false, want true", status)
+		}
+	}
+	for _, status := range []string{"", "pending", "processing", "completed", "superseded"} {
+		if event.IsFailedOutboxStatus(status) {
+			t.Errorf("IsFailedOutboxStatus(%q) = true, want false", status)
+		}
+	}
+	// The two predicates must agree on the failure subset being terminal.
+	for _, status := range failed {
+		if !event.IsTerminalOutboxStatus(status) {
+			t.Errorf("%q is a failed status but not terminal", status)
+		}
+	}
+}
+
 // TestIsTerminalOutboxStatus pins the single predicate. Before the
 // consolidation four copies existed and two disagreed on the legacy `dead`
 // spelling.

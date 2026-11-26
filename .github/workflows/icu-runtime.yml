@@ -18,14 +18,47 @@ jobs:
         with:
           submodules: false
 
-      - name: Install the pinned ICU 72 runtime
+      - name: Resolve the pinned BrainRust release
+        id: pin
+        # architecture/releases.json is the only owner of the release/ABI fact.
+        # bin/BRAINRUST_RELEASE.json is a build artifact and is absent here.
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          pin = json.load(open("architecture/releases.json"))["brainrust"]
+          assert pin["mediaexec_schema"] == "mediaexec.v2", pin
+          assert isinstance(pin["icu_major"], int), pin
+          assert len(pin["git_sha"]) == 40, pin
+          print(f'sha={pin["git_sha"]}')
+          print(f'icu={pin["icu_major"]}')
+          print(f'version={pin["version"]}')
+          PY
+
+      - name: Check out BrainRust at the pinned commit
+        # The release annotation (ICU_MAJOR) lives in BrainRust. Checking it out
+        # at the pin is what makes this job reproducible; the previous step read
+        # BrainRust/ICU_MAJOR from a directory this job never created.
+        uses: actions/checkout@v7
+        with:
+          repository: Marcuss-ops/BrainRust
+          ref: ${{ steps.pin.outputs.sha }}
+          path: BrainRust
+          submodules: false
+
+      - name: Install the pinned ICU ${{ steps.pin.outputs.icu }} runtime
         run: sudo scripts/deploy/install_icu72_runtime.sh
 
       - name: Verify the Rust fetch ABI checks
         run: scripts/ci/test-rust-fetch.sh
 
       - name: Verify the container runtime pin
-        run: grep -q 'RUST_ICU_MAJOR_VERSION_NUMBER=72' Dockerfile
+        run: |
+          grep -q "^ARG BRAINRUST_VERSION=${{ steps.pin.outputs.version }}$" Dockerfile
+          grep -q "^ARG RUST_ICU_MAJOR_VERSION_NUMBER=${{ steps.pin.outputs.icu }}$" Dockerfile
 
-      - name: Verify the release annotation pin
-        run: test -r BrainRust/ICU_MAJOR && test "$(tr -dc '0-9' < BrainRust/ICU_MAJOR)" = "72"
+      - name: Verify the release annotation matches the pin
+        run: |
+          test -r BrainRust/ICU_MAJOR
+          annotated="$(tr -dc '0-9' < BrainRust/ICU_MAJOR)"
+          test "$annotated" = "${{ steps.pin.outputs.icu }}"
+          echo "BrainRust ICU_MAJOR=$annotated matches the pin"

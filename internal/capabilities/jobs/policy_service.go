@@ -2,21 +2,19 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
-	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesrepo"
-
-	driveutil "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/driveurl"
 )
 
 // AssetDetailsLookup is the consumer-owned detail lookup for the asset transfer
@@ -29,10 +27,12 @@ type AssetDetailsLookup interface {
 }
 
 type AssetTransferServiceImpl struct {
-	assetIndex    *assetindex.Service
+	// workerOutputs, images and voiceovers are consumer-owned ports (see
+	// asset_transfer_ports.go). The capability no longer names a SQLite type.
+	workerOutputs WorkerOutputStore
 	querySvc      AssetDetailsLookup
-	imagesRepo    *imagesrepo.ImagesRepository
-	voiceoverRepo *sqliteassets.VoiceoversRepository
+	images        ImageAssetLookup
+	voiceovers    VoiceoverLookup
 	uploadRoot    string
 	// sourceStager is the canonical port for staging remote URLs
 	// into deterministic local files (PR-SOURCESTAGER-CONSOLIDATE,
@@ -58,19 +58,19 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewAssetTransferService(assetIndex *assetindex.Service, querySvc AssetDetailsLookup, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *AssetTransferServiceImpl {
-	return NewAssetTransferServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
+func NewAssetTransferService(workerOutputs WorkerOutputStore, querySvc AssetDetailsLookup, images ImageAssetLookup, voiceovers VoiceoverLookup, log *zap.Logger) *AssetTransferServiceImpl {
+	return NewAssetTransferServiceWithUploadRoot(workerOutputs, querySvc, images, voiceovers, "", log)
 }
 
-func NewAssetTransferServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc AssetDetailsLookup, imagesRepo *imagesrepo.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *AssetTransferServiceImpl {
+func NewAssetTransferServiceWithUploadRoot(workerOutputs WorkerOutputStore, querySvc AssetDetailsLookup, images ImageAssetLookup, voiceovers VoiceoverLookup, uploadRoot string, log *zap.Logger) *AssetTransferServiceImpl {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}
 	return &AssetTransferServiceImpl{
-		assetIndex:    assetIndex,
+		workerOutputs: workerOutputs,
 		querySvc:      querySvc,
-		imagesRepo:    imagesRepo,
-		voiceoverRepo: voiceoverRepo,
+		images:        images,
+		voiceovers:    voiceovers,
 		uploadRoot:    uploadRoot,
 		log:           log,
 	}
@@ -128,32 +128,10 @@ func (s *AssetTransferServiceImpl) Download(ctx context.Context, assetID string)
 }
 
 func (s *AssetTransferServiceImpl) InitiateUpload(ctx context.Context, assetID string) (*UploadResponse, error) {
-	if s.assetIndex == nil {
-		return nil, fmt.Errorf("asset index service not configured")
+	if s.workerOutputs == nil {
+		return nil, fmt.Errorf("worker-output store not configured")
 	}
-	rec, err := s.assetIndex.GetByID(ctx, assetID)
-	if err != nil {
-		return nil, err
-	}
-	if rec == nil {
-		rec = &assetindex.AssetRecord{
-			AssetID:   assetID,
-			AssetType: "worker-output",
-			Source:    "worker",
-			SourceID:  assetID,
-		}
-	}
-	rec.Status = "uploading"
-	if rec.AssetType == "" {
-		rec.AssetType = "worker-output"
-	}
-	if rec.Source == "" {
-		rec.Source = "worker"
-	}
-	if rec.SourceID == "" {
-		rec.SourceID = assetID
-	}
-	if err := s.assetIndex.Upsert(ctx, rec); err != nil {
+	if err := s.workerOutputs.MarkUploading(ctx, assetID); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Join(s.uploadRoot, assetID), 0o755); err != nil {
@@ -166,8 +144,8 @@ func (s *AssetTransferServiceImpl) InitiateUpload(ctx context.Context, assetID s
 }
 
 func (s *AssetTransferServiceImpl) Upload(ctx context.Context, assetID, filename string, content io.Reader) error {
-	if s.assetIndex == nil {
-		return fmt.Errorf("asset index service not configured")
+	if s.workerOutputs == nil {
+		return fmt.Errorf("worker-output store not configured")
 	}
 	if strings.TrimSpace(assetID) == "" {
 		return fmt.Errorf("asset id is required")
@@ -195,80 +173,55 @@ func (s *AssetTransferServiceImpl) Upload(ctx context.Context, assetID, filename
 		return err
 	}
 
-	rec, err := s.assetIndex.GetByID(ctx, assetID)
-	if err != nil {
-		return err
-	}
-	if rec == nil {
-		rec = &assetindex.AssetRecord{
-			AssetID:   assetID,
-			AssetType: "worker-output",
-			Source:    "worker",
-			SourceID:  assetID,
-		}
-	}
-	if rec.AssetType == "" {
-		rec.AssetType = "worker-output"
-	}
-	if rec.Source == "" {
-		rec.Source = "worker"
-	}
-	if rec.SourceID == "" {
-		rec.SourceID = assetID
-	}
-	rec.LocalPath = dst
-	rec.Status = "uploaded"
-	return s.assetIndex.Upsert(ctx, rec)
+	return s.workerOutputs.MarkUploaded(ctx, assetID, dst)
 }
 
 func (s *AssetTransferServiceImpl) FinalizeUpload(ctx context.Context, assetID string) error {
-	if s.assetIndex == nil {
-		return fmt.Errorf("asset index service not configured")
+	if s.workerOutputs == nil {
+		return fmt.Errorf("worker-output store not configured")
 	}
-	rec, err := s.assetIndex.GetByID(ctx, assetID)
-	if err != nil {
-		return err
-	}
-	if rec == nil {
-		rec = &assetindex.AssetRecord{
-			AssetID:   assetID,
-			AssetType: "worker-output",
-			Source:    "worker",
-			SourceID:  assetID,
-		}
-	}
-	if rec.AssetType == "" {
-		rec.AssetType = "worker-output"
-	}
-	if rec.Source == "" {
-		rec.Source = "worker"
-	}
-	if rec.SourceID == "" {
-		rec.SourceID = assetID
-	}
-	rec.Status = "ready"
-	return s.assetIndex.Upsert(ctx, rec)
+	return s.workerOutputs.MarkReady(ctx, assetID)
 }
 
+// resolve finds the canonical source for an asset.
+//
+// Precedence is the architecture's, not convenience: PostgreSQL is the media
+// SSOT (ARCHITECTURE.md), so the canonical media lookup runs FIRST. The SQLite
+// asset index is a worker-output projection that can lag a committed media row,
+// and the image/voiceover lookups are further projections; answering from the
+// index first could serve stale data for an asset the SSOT already owns.
+//
+// Every port follows the (nil, nil) = absent contract, so an infrastructure
+// error is RETURNED instead of being mistaken for "not found". The previous
+// implementation discarded every lookup error and returned (nil, nil), which
+// made an unreachable database indistinguishable from a missing asset.
 func (s *AssetTransferServiceImpl) resolve(ctx context.Context, assetID string) (*resolvedAsset, error) {
-	if s.assetIndex != nil {
-		if rec, err := s.assetIndex.GetByID(ctx, assetID); err != nil {
-			if s.log != nil {
-				s.log.Warn("asset_index lookup failed", zap.String("asset_id", assetID), zap.Error(err))
-			}
-		} else if rec != nil {
-			return convertAssetRecord(rec.AssetID, rec.LocalPath, rec.DriveLink, rec.DownloadLink, assetID), nil
-		}
-	}
-
 	if s.querySvc != nil {
-		if details, err := s.querySvc.Get(ctx, assetID); err == nil && details != nil && details.Asset != nil {
+		details, err := s.querySvc.Get(ctx, assetID)
+		switch {
+		case err != nil && !errors.Is(err, asset.ErrNotFound):
+			return nil, fmt.Errorf("resolve asset %s: canonical media lookup: %w", assetID, err)
+		case err == nil && details != nil && details.Asset != nil:
 			return convertMediaAsset(details), nil
 		}
 	}
 
-	if s.imagesRepo != nil {
-		if img, err := s.imagesRepo.GetByID(ctx, assetID); err == nil && img != nil {
+	if s.workerOutputs != nil {
+		rec, err := s.workerOutputs.GetByID(ctx, assetID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve asset %s: worker-output lookup: %w", assetID, err)
+		}
+		if rec != nil {
+			return convertWorkerOutput(rec, assetID), nil
+		}
+	}
+
+	if s.images != nil {
+		img, err := s.images.GetByID(ctx, assetID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve asset %s: image lookup: %w", assetID, err)
+		}
+		if img != nil {
 			return &resolvedAsset{
 				AssetID:      assetID,
 				Filename:     filepath.Base(img.PathRel),
@@ -278,8 +231,12 @@ func (s *AssetTransferServiceImpl) resolve(ctx context.Context, assetID string) 
 		}
 	}
 
-	if s.voiceoverRepo != nil {
-		if rec, err := s.voiceoverRepo.GetByID(ctx, assetID); err == nil && rec != nil {
+	if s.voiceovers != nil {
+		rec, err := s.voiceovers.GetByID(ctx, assetID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve asset %s: voiceover lookup: %w", assetID, err)
+		}
+		if rec != nil {
 			return &resolvedAsset{
 				AssetID:      assetID,
 				Filename:     rec.Filename,
@@ -326,7 +283,7 @@ func (s *AssetTransferServiceImpl) fetch(ctx context.Context, rawURL, filename s
 	f, openErr := os.Open(prepared.LocalPath)
 	if openErr != nil {
 		// Best-effort release of the staged file; do not leak it.
-		_ = s.sourceStager.Release(context.Background(), prepared.CleanupToken)
+		_ = releaseStaging(s.sourceStager, prepared.CleanupToken)
 		return nil, "", fmt.Errorf("jobs/assets.fetch: open staged source %q: %w", prepared.LocalPath, openErr)
 	}
 	return &stagedSourceReadCloser{
@@ -359,9 +316,11 @@ type stagedSourceReadCloser struct {
 
 func (r *stagedSourceReadCloser) Close() error {
 	closeErr := r.ReadCloser.Close()
-	// Use a fresh context for release so a cancelled request context
-	// does not prevent staging release. The release is best-effort.
-	releaseErr := r.stager.Release(context.Background(), r.prepared.CleanupToken)
+	// Use a fresh, BOUNDED context for release: a cancelled request context
+	// must not prevent staging release, but detaching it without a deadline
+	// (context.Background()) lets a hung adapter keep the goroutine and the
+	// temp file alive forever. The release stays best-effort.
+	releaseErr := releaseStaging(r.stager, r.prepared.CleanupToken)
 	if releaseErr != nil && r.log != nil {
 		r.log.Warn("stagedSourceReadCloser: release failed (best-effort)",
 			zap.String("local_path", r.prepared.LocalPath),
@@ -374,17 +333,31 @@ func (r *stagedSourceReadCloser) Close() error {
 	return releaseErr
 }
 
-func convertAssetRecord(assetID, localPath, driveLink, downloadLink, fallbackID string) *resolvedAsset {
-	filename := filepath.Base(localPath)
+// stagingReleaseTimeout bounds the detached staging cleanup. Long enough for a
+// local unlink or a registry delete, short enough that a broken adapter cannot
+// pin a goroutine (and the staged bytes) indefinitely.
+const stagingReleaseTimeout = 30 * time.Second
+
+func releaseStaging(stager acquisition.SourceStager, cleanupToken string) error {
+	if stager == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), stagingReleaseTimeout)
+	defer cancel()
+	return stager.Release(ctx, cleanupToken)
+}
+
+func convertWorkerOutput(rec *WorkerOutputRecord, fallbackID string) *resolvedAsset {
+	filename := filepath.Base(rec.LocalPath)
 	if filename == "." || filename == string(filepath.Separator) || filename == "" {
 		filename = fallbackID
 	}
 	return &resolvedAsset{
-		AssetID:      assetID,
+		AssetID:      fallbackID,
 		Filename:     filename,
-		LocalPath:    localPath,
-		DriveLink:    driveLink,
-		DownloadLink: downloadLink,
+		LocalPath:    rec.LocalPath,
+		DriveLink:    rec.DriveLink,
+		DownloadLink: rec.DownloadLink,
 	}
 }
 
@@ -428,7 +401,9 @@ func normalizeDownloadURL(rawURL string) string {
 		return ""
 	}
 	if strings.Contains(rawURL, "drive.google.com") && !strings.Contains(rawURL, "/uc?") {
-		if fileID := driveutil.FileIDFromLink(rawURL); fileID != "" {
+		// kernel/driveurl, not platform/drive: the capability needs the URL
+		// parse, not the Drive client.
+		if fileID := driveurl.FileIDFromLink(rawURL); fileID != "" {
 			return "https://drive.google.com/uc?export=download&id=" + fileID
 		}
 	}

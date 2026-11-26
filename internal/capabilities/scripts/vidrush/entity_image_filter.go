@@ -15,12 +15,12 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/imagegate"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/imageverify"
 )
 
 // if the provider supplies an explicit entity, it must resolve to the exact
@@ -263,78 +263,12 @@ func personImageEncyclopediaPageMismatch(canonicalName, sourcePageURL string) st
 // adapters label results with the search query, so Entity alone is not proof
 // of image identity. Generic filenames remain eligible for the pixel/layout
 // verifier and later source checks.
+//
+// Single owner: the rule lives in internal/kernel/script/imageverify
+// (PersonImageSourceIdentityFailure). VidRush used to carry a byte-identical
+// 61-line copy; only the encyclopedia-page half below is local.
 func personImageSourceNameMismatch(canonicalName, sourceURL string) string {
-	name := strings.Fields(normalizeEntityMatch(canonicalName))
-	if len(name) < 2 || strings.TrimSpace(sourceURL) == "" {
-		return ""
-	}
-	parsed, err := url.Parse(strings.TrimSpace(sourceURL))
-	if err != nil {
-		return ""
-	}
-	basename := path.Base(parsed.Path)
-	for i := 0; i < 2; i++ {
-		if decoded, decodeErr := url.PathUnescape(basename); decodeErr == nil && decoded != basename {
-			basename = decoded
-		}
-	}
-	basename = strings.TrimSuffix(basename, path.Ext(basename))
-	tokens := strings.FieldsFunc(strings.ToLower(basename), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
-	if len(tokens) < 2 || tokens[0] != name[0] {
-		return ""
-	}
-	second := tokens[1]
-	joinedSurname := strings.NewReplacer("'", "", "’", "", "-", "").Replace(strings.Join(name[1:], ""))
-	matchesFullName := len(tokens) >= len(name)
-	if matchesFullName {
-		for i := range name {
-			if tokens[i] != name[i] {
-				matchesFullName = false
-				break
-			}
-		}
-	}
-	matchesJoinedSurname := second == joinedSurname
-	if !matchesFullName && !matchesJoinedSurname && second != name[len(name)-1] && (len([]rune(second)) < 3 || personImageFilenameQualifier(second)) {
-		return ""
-	}
-	// A filename may contain one canonical surname plus generic qualifiers
-	// ("john-gotti-photo-2020"). Two additional name-like tokens are not a
-	// qualifier: "john-gotti-sammy-gravano" names a second person and must not
-	// be reusable as John Gotti's portrait.
-	consumed := 1
-	for consumed < len(name) && consumed < len(tokens) && tokens[consumed] == name[consumed] {
-		consumed++
-	}
-	if consumed < len(name) && (second == name[len(name)-1] || matchesJoinedSurname) {
-		consumed = 2
-	}
-	extraNames := 0
-	for _, token := range tokens[consumed:] {
-		if len([]rune(token)) < 3 || personImageFilenameQualifier(token) || isASCIIDigits(token) {
-			continue
-		}
-		extraNames++
-	}
-	if extraNames >= 2 {
-		return fmt.Sprintf("image source filename names multiple people, not only requested person %s", canonicalName)
-	}
-	if !matchesFullName && !matchesJoinedSurname && second != name[len(name)-1] {
-		return fmt.Sprintf("image source filename names %s %s, not requested person %s", name[0], second, canonicalName)
-	}
-	return ""
-}
-
-func isASCIIDigits(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
+	return imageverify.PersonImageSourceIdentityFailure(canonicalName, sourceURL, "")
 }
 
 // PersonImageSourceIdentityFailure exposes the fail-closed source-provenance
@@ -354,20 +288,6 @@ func PersonImageSourceIdentityPenalty(canonicalName, sourceURL string) float64 {
 		return 0.25
 	}
 	return 0
-}
-
-func personImageFilenameQualifier(token string) bool {
-	switch token {
-	case "foto", "photo", "portrait", "headshot", "image", "img", "profile", "person", "persona", "ritratto",
-		"di", "della", "de", "del", "la", "il", "e", "the", "for", "case", "news", "ufficiale", "ufficiali",
-		"commencement", "speech", "address", "interview", "press", "conference", "event", "stage",
-		"face", "tattoo", "boxer", "boxing", "actor", "actress", "director", "investor", "president",
-		"movie", "film", "martial", "arts", "legendary", "wallpaper", "cover", "hero", "banner",
-		"mugshot", "arrest", "trial", "processo", "cropped", "scaled", "original", "full", "large":
-		return true
-	default:
-		return false
-	}
 }
 
 func personQueryContainsCanonicalName(query, canonicalName string) bool {

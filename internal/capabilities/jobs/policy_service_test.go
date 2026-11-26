@@ -18,6 +18,60 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 )
 
+// testWorkerOutputStore is the SQLite-backed WorkerOutputStore used by these
+// tests. The production adapter lives in the registry module
+// (app/modules/registry) and has its own test there; this one keeps the suite
+// on a real asset_index table.
+type testWorkerOutputStore struct{ svc *assetindex.Service }
+
+func (s testWorkerOutputStore) GetByID(ctx context.Context, assetID string) (*WorkerOutputRecord, error) {
+	rec, err := s.svc.GetByID(ctx, assetID)
+	if err != nil || rec == nil {
+		return nil, err
+	}
+	return &WorkerOutputRecord{
+		LocalPath:    rec.LocalPath,
+		DriveLink:    rec.DriveLink,
+		DownloadLink: rec.DownloadLink,
+	}, nil
+}
+
+func (s testWorkerOutputStore) mutate(ctx context.Context, assetID string, apply func(*assetindex.AssetRecord)) error {
+	rec, err := s.svc.GetByID(ctx, assetID)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		rec = &assetindex.AssetRecord{AssetID: assetID}
+	}
+	if rec.AssetType == "" {
+		rec.AssetType = "worker-output"
+	}
+	if rec.Source == "" {
+		rec.Source = "worker"
+	}
+	if rec.SourceID == "" {
+		rec.SourceID = assetID
+	}
+	apply(rec)
+	return s.svc.Upsert(ctx, rec)
+}
+
+func (s testWorkerOutputStore) MarkUploading(ctx context.Context, assetID string) error {
+	return s.mutate(ctx, assetID, func(r *assetindex.AssetRecord) { r.Status = "uploading" })
+}
+
+func (s testWorkerOutputStore) MarkUploaded(ctx context.Context, assetID, localPath string) error {
+	return s.mutate(ctx, assetID, func(r *assetindex.AssetRecord) {
+		r.LocalPath = localPath
+		r.Status = "uploaded"
+	})
+}
+
+func (s testWorkerOutputStore) MarkReady(ctx context.Context, assetID string) error {
+	return s.mutate(ctx, assetID, func(r *assetindex.AssetRecord) { r.Status = "ready" })
+}
+
 func setupWorkerAssetsTest(t *testing.T) (*AssetTransferServiceImpl, *assetindex.Service, func()) {
 	t.Helper()
 
@@ -45,7 +99,7 @@ func setupWorkerAssetsTest(t *testing.T) (*AssetTransferServiceImpl, *assetindex
 	db := database.NewTestDBWithSchema(t, schema)
 	repo := assetindex.NewRepository(db)
 	svc := assetindex.NewService(repo)
-	workerSvc := NewAssetTransferService(svc, nil, nil, nil, zap.NewNop())
+	workerSvc := NewAssetTransferService(testWorkerOutputStore{svc: svc}, nil, nil, nil, zap.NewNop())
 	// PR-SOURCESTAGER-CONSOLIDATE (July 2026): wire the canonical
 	// HTTPSourceStager so the URL download path in fetch routes
 	// through the port instead of the retired inline

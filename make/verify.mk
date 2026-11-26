@@ -23,19 +23,40 @@ verify-rust-fetch:
 # (`internal/capabilities/linguistics/profiles.generated.json`) must match the
 # Rust language packs word for word. Needs both checkouts; the local agent
 # loop and the pre-deploy gate call this target, while CI runs the same script
-# in the `lexicon-parity` job after checking out BrainRust at the release SHA
-# recorded in bin/BRAINRUST_RELEASE.json.
+# in the `lexicon-parity` job after checking out BrainRust at the published SHA
+# recorded in architecture/releases.json.
 verify-lexicon-parity:
 	@test -d ../BrainRust/lexicon/packs || { echo "❌ BrainRust submodule missing: run 'git submodule update --init BrainRust'" >&2; exit 1; }
 	@python3 ../BrainRust/lexicon/tools/check_go_stopword_parity.py --repo-root ..
 	@echo "✅ Lexicon parity verified"
 
-# verify-rust-contract — check consumer goldens against the exact BrainRust
-# revision pinned in the gitlink, without initializing or building the submodule.
+# verify-release-pin — the tracked external revision pin is well formed and the
+# container ARG defaults are in lockstep with it. This is the one gate that
+# catches a stale Dockerfile default (v0.3.0 vs v0.3.8) before a build pulls a
+# release whose semantic-engine predates the current wire contract.
+RELEASE_PIN ?= architecture/releases.json
+RELEASE_PIN_READER ?= scripts/ci/release_pin.py
+PIN_BRAINRUST_VERSION := $(shell python3 $(RELEASE_PIN_READER) brainrust.version $(RELEASE_PIN))
+PIN_BRAINRUST_SHA := $(shell python3 $(RELEASE_PIN_READER) brainrust.git_sha $(RELEASE_PIN))
+PIN_BRAINRUST_ICU := $(shell python3 $(RELEASE_PIN_READER) brainrust.icu_major $(RELEASE_PIN))
+PIN_BRAINRUST_MEDIASEXEC := $(shell python3 $(RELEASE_PIN_READER) brainrust.mediaexec_schema $(RELEASE_PIN))
+verify-release-pin:
+	@test -f "$(RELEASE_PIN)" || { echo "missing release pin $(RELEASE_PIN)" >&2; exit 1; }
+	@printf '%s' "$(PIN_BRAINRUST_SHA)" | grep -Eq '^[0-9a-f]{40}$$' || { echo "brainrust.git_sha must be a full commit SHA (got '$(PIN_BRAINRUST_SHA)')" >&2; exit 1; }
+	@printf '%s' "$(PIN_BRAINRUST_VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "brainrust.version must be a vX.Y.Z tag (got '$(PIN_BRAINRUST_VERSION)')" >&2; exit 1; }
+	@test "$(PIN_BRAINRUST_MEDIASEXEC)" = "mediaexec.v2" || { echo "brainrust.mediaexec_schema must be mediaexec.v2" >&2; exit 1; }
+	@grep -q "^ARG BRAINRUST_VERSION=$(PIN_BRAINRUST_VERSION)$$" Dockerfile || { echo "Dockerfile ARG BRAINRUST_VERSION is not $(PIN_BRAINRUST_VERSION) (make verify-release-pin)" >&2; exit 1; }
+	@grep -q "^ARG RUST_ICU_MAJOR_VERSION_NUMBER=$(PIN_BRAINRUST_ICU)$$" Dockerfile || { echo "Dockerfile ARG RUST_ICU_MAJOR_VERSION_NUMBER is not $(PIN_BRAINRUST_ICU) (make verify-release-pin)" >&2; exit 1; }
+	@echo "✅ Release pin verified ($(PIN_BRAINRUST_VERSION) @ $(PIN_BRAINRUST_SHA), ICU $(PIN_BRAINRUST_ICU))"
+
+# verify-rust-contract — check consumer goldens against the exact PUBLISHED
+# BrainRust revision recorded in architecture/releases.json, without
+# initializing or building the submodule. It used to read a `rust` gitlink that
+# does not exist in this repository, so the gate could only fail.
 RUST_CONTRACT_REPO ?= https://github.com/Marcuss-ops/BrainRust.git
-RUST_CONTRACT_COMMIT ?= $(shell git ls-tree HEAD rust | awk '{print $$3}')
-verify-rust-contract:
-	@test -n "$(RUST_CONTRACT_COMMIT)" || (echo "Cannot resolve pinned BrainRust gitlink commit" >&2; exit 1)
+RUST_CONTRACT_COMMIT ?= $(PIN_BRAINRUST_SHA)
+verify-rust-contract: verify-release-pin
+	@test -n "$(RUST_CONTRACT_COMMIT)" || (echo "Cannot resolve the pinned BrainRust commit from $(RELEASE_PIN)" >&2; exit 1)
 	@tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
 	 git clone --quiet --no-checkout --filter=blob:none "$(RUST_CONTRACT_REPO)" "$$tmp/brainrust" && \
 	 git -C "$$tmp/brainrust" checkout --quiet --detach "$(RUST_CONTRACT_COMMIT)" && \

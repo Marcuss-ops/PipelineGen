@@ -3,23 +3,49 @@ description: >-
   Materializes the sibling checkout that go.mod resolves through
   `replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue`.
   The Queue module has one owner (DEMOL-05); PipelineGen does not vendor a copy.
+
+  The repository is published as `Marcuss-ops/RenderginGen` (lower-case "g"),
+  NOT `Marcuss-ops/RenderingGen`: the latter does not exist and made every
+  shallow clone fail with a credential prompt (HTTP 404), which took down
+  verify-main, the architecture gate and the ICU contract job. The revision is
+  read from `architecture/releases.json` (a published commit SHA), so a moving
+  upstream branch cannot change the module under a green build.
 inputs:
   ref:
-    description: Git ref of RenderingGen to check out
+    description: Git ref override; empty means architecture/releases.json renderinggen.git_sha
     required: false
-    default: main
+    default: ''
 runs:
   using: composite
   steps:
-    - name: Clone the sibling Queue module
+    - name: Clone the sibling Queue module at the pinned revision
       shell: bash
       run: |
         set -euo pipefail
         target="${GITHUB_WORKSPACE}/../RenderingGen"
         if [ -f "$target/queue/go.mod" ]; then
-          echo "RenderingGen already present at $target"
+          echo "RenderingGen already present at $target ($(git -C "$target" rev-parse HEAD))"
           exit 0
         fi
-        repo="${RENDERINGGEN_REPO:-https://github.com/Marcuss-ops/RenderingGen.git}"
-        git clone --depth 1 --branch "${{ inputs.ref }}" "$repo" "$target"
+        repo="${RENDERINGGEN_REPO:-https://github.com/Marcuss-ops/RenderginGen.git}"
+        ref="${{ inputs.ref }}"
+        if [ -z "$ref" ]; then
+          pin="${GITHUB_WORKSPACE}/architecture/releases.json"
+          test -f "$pin" || { echo "::error::missing release pin $pin"; exit 1; }
+          ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["renderinggen"]["git_sha"])' "$pin")"
+        fi
+        git init --quiet "$target"
+        git -C "$target" remote add origin "$repo"
+        # Prefer a shallow fetch of the exact revision; fall back to the full
+        # history when the server refuses a by-SHA fetch.
+        if ! git -C "$target" fetch --quiet --depth 1 origin "$ref"; then
+          git -C "$target" fetch --quiet origin
+        fi
+        git -C "$target" checkout --quiet --detach FETCH_HEAD
+        actual="$(git -C "$target" rev-parse HEAD)"
+        echo "RenderingGen checkout: $actual (requested $ref)"
+        if [[ "$ref" =~ ^[0-9a-f]{40}$ ]] && [ "$actual" != "$ref" ]; then
+          echo "::error::RenderingGen resolved to $actual, expected pinned $ref"
+          exit 1
+        fi
         test -f "$target/queue/go.mod"

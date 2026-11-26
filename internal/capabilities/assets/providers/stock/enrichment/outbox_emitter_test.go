@@ -46,6 +46,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -373,5 +374,67 @@ func TestOutboxBackedAssetPublishedEmitter_PayloadJSON_PersistedAtomically(t *te
 		if got.Tags[i] != payload.Tags[i] {
 			t.Errorf("Tags[%d]: got %q, want %q", i, got.Tags[i], payload.Tags[i])
 		}
+	}
+}
+
+// seedOutboxEvent inserts one row carrying eventKey, mirroring a previous
+// producer attempt that already reached status.
+func seedOutboxEvent(t *testing.T, db *sql.DB, eventKey, status string) {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at, updated_at)
+		VALUES ('asset.published', 'stock:run_abc:chunk:0', 'media_asset', '{}', ?, ?, ?, ?)
+	`, eventKey, status, now, now); err != nil {
+		t.Fatalf("seed outbox_events row (%s): %v", status, err)
+	}
+}
+
+// Fault injection: the pre-existing row for this event_key is a terminal
+// FAILURE, so the event was never delivered. A nil return here would be a fake
+// success; the producer must see a retryable emit error instead.
+func TestOutboxBackedAssetPublishedEmitter_DeadLetterReplayIsAnError(t *testing.T) {
+	for _, status := range []string{"dead_letter", "dead"} {
+		t.Run(status, func(t *testing.T) {
+			db := outboxEmitterDB(t)
+			emitter, err := NewOutboxBackedAssetPublishedEmitter(sqlport.WrapDB(db), nil)
+			if err != nil {
+				t.Fatalf("NewOutboxBackedAssetPublishedEmitter: %v", err)
+			}
+			payload := validV1Payload()
+			seedOutboxEvent(t, db, payload.IdempotencyKey, status)
+
+			err = emitter.EmitAssetPublished(context.Background(), payload)
+			if err == nil {
+				t.Fatalf("expected an error for a %s event_key, got nil", status)
+			}
+			if !errors.Is(err, ErrEnrichmentEmitFailed) {
+				t.Fatalf("expected ErrEnrichmentEmitFailed, got %v", err)
+			}
+
+			var count int
+			if err := db.QueryRow("SELECT COUNT(*) FROM outbox_events").Scan(&count); err != nil {
+				t.Fatalf("count outbox_events: %v", err)
+			}
+			if count != 1 {
+				t.Fatalf("expected the existing row to be untouched, got %d rows", count)
+			}
+		})
+	}
+}
+
+// A success terminal is a genuine idempotent replay: the event WAS delivered, so
+// the same key is a no-op success.
+func TestOutboxBackedAssetPublishedEmitter_CompletedReplayIsSuccess(t *testing.T) {
+	db := outboxEmitterDB(t)
+	emitter, err := NewOutboxBackedAssetPublishedEmitter(sqlport.WrapDB(db), nil)
+	if err != nil {
+		t.Fatalf("NewOutboxBackedAssetPublishedEmitter: %v", err)
+	}
+	payload := validV1Payload()
+	seedOutboxEvent(t, db, payload.IdempotencyKey, "completed")
+
+	if err := emitter.EmitAssetPublished(context.Background(), payload); err != nil {
+		t.Fatalf("completed replay must stay a success: %v", err)
 	}
 }
