@@ -40,6 +40,7 @@ var (
 	compileOverlayPlanV2               = overlayplan.CompileOverlayPlanV2
 	compileOverlayPlanWithMotionOffset = overlayplan.CompileOverlayPlanWithMotionOffset
 	enforceEntityImageGate             = overlayplan.EnforceEntityImageGate
+	ErrEntityImageGate                 = overlayplan.ErrEntityImageGate
 	entityAssetLocalPaths              = overlayplan.EntityAssetLocalPaths
 	entityAssetLookupIDs               = overlayplan.EntityAssetLookupIDs
 	entityCardMediaIndex               = overlayplan.EntityCardMediaIndex

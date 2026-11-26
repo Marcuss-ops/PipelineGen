@@ -244,10 +244,20 @@ func planInternetImageDiscovery(contextual, entity, manual []string, entityMode,
 	// lets generic fragments (for example a month or a court label) consume the
 	// image budget with unrelated results.
 	if explicit := imageQueryList(manual); len(explicit) > 0 {
-		if fanoutOwned {
-			return internetImageDiscoveryPlan{Mode: internetImageDiscoveryReuse, Queries: explicit}
+		// In entity mode the explicit context pin and the identity portrait
+		// queries are independent contracts: keep both, identity first. The
+		// old early return made a manual pin erase every portrait request
+		// (ITCLOSE-07) even when entity_images.enabled asked for them.
+		queries := explicit
+		if entityMode {
+			if identity := imageQueryList(entity); len(identity) > 0 {
+				queries = imageQueryList(append(identity, explicit...))
+			}
 		}
-		return internetImageDiscoveryPlan{Mode: internetImageDiscoverySearch, Queries: explicit}
+		if fanoutOwned && discoveryCovers(entityMode, covers, queries) {
+			return internetImageDiscoveryPlan{Mode: internetImageDiscoveryReuse, Queries: queries}
+		}
+		return internetImageDiscoveryPlan{Mode: internetImageDiscoverySearch, Queries: queries}
 	}
 	base := imageQueryList(contextual)
 	if entityMode {
@@ -259,19 +269,25 @@ func planInternetImageDiscovery(contextual, entity, manual []string, entityMode,
 	if len(queries) == 0 {
 		return internetImageDiscoveryPlan{Mode: internetImageDiscoveryBypass}
 	}
-	covered := true
-	if entityMode && covers != nil {
-		for _, query := range queries {
-			if !covers(query) {
-				covered = false
-				break
-			}
-		}
-	}
-	if fanoutOwned && covered {
+	if fanoutOwned && discoveryCovers(entityMode, covers, queries) {
 		return internetImageDiscoveryPlan{Mode: internetImageDiscoveryReuse, Queries: queries}
 	}
 	return internetImageDiscoveryPlan{Mode: internetImageDiscoverySearch, Queries: queries}
+}
+
+// discoveryCovers reports whether the warm fan-out already holds a candidate
+// for every query that matters. Contextual mode trusts the segment hit; entity
+// mode must see every requested identity covered, or the segment searches.
+func discoveryCovers(entityMode bool, covers func(string) bool, queries []string) bool {
+	if !entityMode || covers == nil {
+		return true
+	}
+	for _, query := range queries {
+		if !covers(query) {
+			return false
+		}
+	}
+	return true
 }
 
 // imageQueryList trims, drops empties and dedupes while preserving the order,

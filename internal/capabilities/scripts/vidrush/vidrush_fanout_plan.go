@@ -54,7 +54,10 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	if plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && imageSearchMode != mediadomain.ImageSearchModeDisabled {
 		switch imageSearchMode {
 		case mediadomain.ImageSearchModeExplicitOnly:
-			imageSidecarRequested = len(manualImageQueries) > 0
+			// A per-scene entity-image contract is a sidecar request even when
+			// the caller authored no contextual query: it must not be dismissed
+			// by the canonical-source shortcut below.
+			imageSidecarRequested = len(manualImageQueries) > 0 || perSceneImages
 		case mediadomain.ImageSearchModeAutomatic:
 			imageSidecarRequested = perSceneImages || len(segment.Insights.ImageQueries) > 0
 		default:
@@ -84,7 +87,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	// searches. A courthouse/town query cannot retrieve a verified portrait,
 	// and replacing the identity queries here silently removed every entity
 	// image whenever a caller also supplied contextual image searches.
-	if entityImageLaneRequested(perSceneImages, automaticImageSearch, manualImageExclusive) {
+	if entityImageLaneRequested(perSceneImages, imageSearchMode != mediadomain.ImageSearchModeDisabled) {
 		// Entity-image searches use the canonical person identity. Adding the
 		// scene's opening prose created queries like "Chiara Poggi Presenta ..."
 		// and let collages/news cards bind as identity portraits. Variant
@@ -103,13 +106,16 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		imageQueries = nil
 	case imageSearchMode == mediadomain.ImageSearchModeExplicitOnly,
 		imageSearchMode == "" && len(manualImageQueries) > 0:
-		// Manual searches are the caller's complete retrieval contract. No
-		// inferred entity query, semantic ladder or scene-sentence fallback
-		// may widen that scope: doing so retrieves unrelated people or
-		// places under the authority of an explicit pin. The per-segment
-		// budget does not truncate an explicit list either; the caller
-		// authorized every entry.
-		imageQueries = append([]string(nil), manualImageQueries...)
+		// Manual searches are the caller's complete contract for CONTEXTUAL
+		// retrieval. Identity portraits are a separate, explicit contract
+		// (entity_images.enabled + entity_types): when it is on, the identity
+		// queries stay and the manual context searches are appended. Without
+		// it, no inferred query may widen the explicit scope.
+		if entityImageLaneRequested(perSceneImages, imageSearchMode != mediadomain.ImageSearchModeDisabled) {
+			imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
+		} else {
+			imageQueries = append([]string(nil), manualImageQueries...)
+		}
 	default:
 		// Automatic identity/context discovery and caller-authored context
 		// searches are independent lanes. Only explicit_only grants the caller
@@ -159,8 +165,8 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 // picture: a one-character token (an article such as the Italian "I") and
 // overlay metadata echoed back by the LLM ("Overlay 25 100 1 2"). Both were
 // observed retrieving unrelated stock photos that consumed the scene budget.
-func entityImageLaneRequested(perSceneImages, automaticImageSearch, manualImageExclusive bool) bool {
-	return perSceneImages && automaticImageSearch && !manualImageExclusive
+func entityImageLaneRequested(perSceneImages, searchEnabled bool) bool {
+	return perSceneImages && searchEnabled
 }
 
 func plausibleSceneImageQueries(queries []string) []string {

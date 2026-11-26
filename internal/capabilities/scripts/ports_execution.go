@@ -109,33 +109,6 @@ func (noopExecutionRecorder) RecordOperation(context.Context, ExecutionContext, 
 	return nil
 }
 
-// CompileCanonicalAudioPlanAudioOnlyWithIntents is the audio-compile entry
-// point when a run carries a BGM/SFX intent block. It builds the same
-// VO-governed canonical timeline + primary (voiceover/original-clip) assets
-// as CompileCanonicalAudioPlanAudioOnly, then funnels the intents through
-// the canonical pipeline — AudioAssetResolver → BackgroundMusicResolver →
-// AudioLoopExpander → AudioIntentResolver → AudioAutomationCompiler — into
-// audio.CompileWithLayers (via CompileAudioWithIntents). The primary and
-// BGM/SFX asset tables are merged into one renderer input.
-//
-// Fail-closed: a nil source, an unresolved asset, a BGM without a certified
-// duration, or an SFX that overruns its source fails the whole compile — the
-// run never renders a partial or guessed layered plan.
-func CompileCanonicalAudioPlanAudioOnlyWithIntents(
-	ctx context.Context,
-	result contract.GenerateResult,
-	language contract.Language,
-	profile audio.CanonicalAudioProfile,
-	source contract.AudioAssetSource,
-	policy audio.AudioMixPolicy,
-	bgm []scriptpkg.BackgroundMusicIntent,
-	sfx []scriptpkg.SoundEffectIntent,
-	clipStartSFX []scriptpkg.ClipStartSoundEffectIntent,
-	randomSFXOnClipStart bool,
-) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, audiocontract.CompileTimings, error) {
-	return CompileCanonicalAudioPlanAudioOnlyWithIntentsPool(ctx, result, language, profile, source, policy, bgm, sfx, clipStartSFX, randomSFXOnClipStart, nil)
-}
-
 // CompileCanonicalAudioPlanAudioOnlyWithIntentsPool is the same compile with
 // an explicit clip-start SFX selection pool (the indexed SFX library). An
 // empty pool keeps the built-in whoosh vocabulary.

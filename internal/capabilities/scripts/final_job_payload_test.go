@@ -20,6 +20,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
@@ -1457,6 +1458,77 @@ func TestFinalJobAttemptIdempotencyKeyChangesOnlyForANewAttempt(t *testing.T) {
 	}
 	if !strings.Contains(first, plan[:12]) {
 		t.Fatalf("attempt key %q does not carry the plan digest", first)
+	}
+}
+
+func TestBuildFinalJobPayloadsPlacesPostSegmentAtSceneEnd(t *testing.T) {
+	result := &GenerateResult{
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-1000", 0, 1000)}},
+		AudioOutput: AudioOutput{
+			CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+				DurationUS: 5_000_000,
+				Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}},
+			},
+			FinalAudio: certifiedFinalAudio(5000),
+		},
+	}
+	req := GenerateRequest{
+		Title: "A story", SourceLanguage: "pt",
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Mode: mediadomain.MediaPlanModeManual,
+			PostSegments: []mediadomain.PostSegmentVisualPlan{{
+				SegmentID: "scene-1",
+				VisualSlotPlan: mediadomain.VisualSlotPlan{
+					Mode:  mediadomain.VisualSelectionManual,
+					Clips: []mediadomain.VisualClip{{AssetID: "post-clip", DurationMs: 2000}},
+				},
+			}},
+		},
+	}
+	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-post", req, result, finalJobPayloadResolver{})
+	if err != nil {
+		t.Fatalf("BuildFinalJobPayloads: %v", err)
+	}
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 2 {
+		t.Fatalf("video segments = %+v, want the scene and its post coda", plan.VideoTracks)
+	}
+	segments := plan.VideoTracks[0].Segments
+	if segments[0].AssetID != "drive-asset-1000" || segments[1].AssetID != "drive-asset" {
+		t.Fatalf("segment assets = %q, %q; want the stock base then the post clip", segments[0].AssetID, segments[1].AssetID)
+	}
+	if plan.FinalAudio.DurationUS != 5_000_000 {
+		t.Fatalf("final audio duration = %dus, want the immutable 5s master", plan.FinalAudio.DurationUS)
+	}
+}
+
+func TestBuildFinalJobPayloadsRejectsPostSegmentThatDoesNotFit(t *testing.T) {
+	result := &GenerateResult{
+		Scenes: []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-1000", 0, 1000)}},
+		AudioOutput: AudioOutput{
+			CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+				DurationUS: 1_000_000,
+				Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}},
+			},
+			FinalAudio: certifiedFinalAudio(1000),
+		},
+	}
+	req := GenerateRequest{
+		Title: "A story", SourceLanguage: "pt",
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Mode: mediadomain.MediaPlanModeManual,
+			PostSegments: []mediadomain.PostSegmentVisualPlan{{
+				SegmentID: "scene-1",
+				VisualSlotPlan: mediadomain.VisualSlotPlan{
+					Mode:  mediadomain.VisualSelectionManual,
+					Clips: []mediadomain.VisualClip{{AssetID: "post-clip", DurationMs: 2000}},
+				},
+			}},
+		},
+	}
+	_, _, err := BuildFinalJobPayloads(context.Background(), "run-post", req, result, finalJobPayloadResolver{})
+	if err == nil || !strings.Contains(err.Error(), "need 2000ms") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want a fail-closed post_segment duration error", err)
 	}
 }
 

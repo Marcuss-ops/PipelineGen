@@ -293,27 +293,24 @@ var (
 
 // Internal seams kept under their historical names.
 var (
-	sceneClips                         = renderunits.SceneClips
-	sceneStockClipIDs                  = renderunits.SceneStockClipIDs
-	primaryVisualClip                  = renderunits.PrimaryVisualClip
-	sceneVisualClipsAreStockOnly       = renderunits.SceneVisualClipsAreStockOnly
-	sceneRenderSpec                    = renderunits.SceneRenderSpec
-	sceneClipOwnsCaption               = renderunits.SceneClipOwnsCaption
-	localizedRenderClipFields          = renderunits.LocalizedRenderClipFields
-	localizedRenderUnitClipFields      = renderunits.LocalizedRenderUnitClipFields
-	localizedRenderCaptionText         = renderunits.LocalizedRenderCaptionText
-	renderLanguages                    = renderunits.RenderLanguages
-	fixedRenderLanguages               = renderunits.FixedRenderLanguages
-	localizedRenderErrorCapacity       = renderunits.LocalizedRenderErrorCapacity
-	fixedCaptionText                   = renderunits.FixedCaptionText
-	fixedMediaNeedsLocalizedRender     = renderunits.FixedMediaNeedsLocalizedRender
-	fixedMediaVisualTreatmentRequested = renderunits.FixedMediaVisualTreatmentRequested
-	expectedRenderUnits                = renderunits.ExpectedRenderUnits
-	fixedMediaRenderUnits              = renderunits.FixedMediaRenderUnits
-	recordRenderStageProgress          = renderunits.RecordRenderStageProgress
-	recordRenderStageFailure           = renderunits.RecordRenderStageFailure
-	recordRenderStageStatus            = renderunits.RecordRenderStageStatus
-	renderUnitKey                      = renderunits.RenderUnitKey
+	sceneClips                     = renderunits.SceneClips
+	sceneStockClipIDs              = renderunits.SceneStockClipIDs
+	primaryVisualClip              = renderunits.PrimaryVisualClip
+	sceneVisualClipsAreStockOnly   = renderunits.SceneVisualClipsAreStockOnly
+	sceneRenderSpec                = renderunits.SceneRenderSpec
+	localizedRenderClipFields      = renderunits.LocalizedRenderClipFields
+	localizedRenderUnitClipFields  = renderunits.LocalizedRenderUnitClipFields
+	localizedRenderCaptionText     = renderunits.LocalizedRenderCaptionText
+	renderLanguages                = renderunits.RenderLanguages
+	fixedRenderLanguages           = renderunits.FixedRenderLanguages
+	localizedRenderErrorCapacity   = renderunits.LocalizedRenderErrorCapacity
+	fixedCaptionText               = renderunits.FixedCaptionText
+	fixedMediaNeedsLocalizedRender = renderunits.FixedMediaNeedsLocalizedRender
+	expectedRenderUnits            = renderunits.ExpectedRenderUnits
+	fixedMediaRenderUnits          = renderunits.FixedMediaRenderUnits
+	recordRenderStageProgress      = renderunits.RecordRenderStageProgress
+	recordRenderStageFailure       = renderunits.RecordRenderStageFailure
+	renderUnitKey                  = renderunits.RenderUnitKey
 )
 
 // runstate_aliases.go — facade for the durable run aggregate.

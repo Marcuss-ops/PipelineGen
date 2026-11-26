@@ -72,6 +72,12 @@ type ScriptRunSnapshot struct {
 	Status       string          `json:"status"`
 	CurrentStage string          `json:"current_stage"`
 	Result       json.RawMessage `json:"result,omitempty"`
+	// RemoteFinalJob is the durable receipt projected from the checkpoint's
+	// result.remote_final_job. It is exposed separately because the broker
+	// result is only written at completion: without this projection
+	// /full reports an empty remote_final_job_id while the Master render is
+	// still running, even though the Producer persisted the handle.
+	RemoteFinalJob json.RawMessage `json:"remote_final_job,omitempty"`
 }
 
 // ScriptRunReader is an optional extension implemented by history readers

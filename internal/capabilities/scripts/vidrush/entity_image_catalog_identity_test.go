@@ -48,6 +48,9 @@ func TestPersonImageSourceIdentityAllowsGenericFilenameForVisualVerification(t *
 		{name: "explicitly different person", sourceURL: "https://www.aobmagazine.it/Angela-Tuccia-1.jpg", wantRejected: true},
 		{name: "double escaped canonical filename", sourceURL: "https://media.example/angela%2520taccia.jpg"},
 		{name: "canonical source page without durable image URL provenance", sourceURL: "https://cdn.example/IMG_6075.jpeg", sourcePageURL: "https://news.example/angela-taccia-avvocata-sempio"},
+		{name: "unrelated Wikipedia article cannot certify a trusted portrait", sourceURL: "https://upload.wikimedia.org/wikipedia/commons/Mike_Tyson_Photo.jpg", sourcePageURL: "https://en.wikipedia.org/wiki/Mike_Tyson", wantRejected: true},
+		{name: "matching Wikipedia article preserves a trusted portrait", sourceURL: "https://upload.wikimedia.org/wikipedia/commons/portrait.jpg", sourcePageURL: "https://en.wikipedia.org/wiki/Angela_Taccia", wantRejected: false},
+		{name: "generic Wikipedia topic remains eligible for visual verification", sourceURL: "https://upload.wikimedia.org/wikipedia/commons/portrait.jpg", sourcePageURL: "https://en.wikipedia.org/wiki/Miss_Black_America", wantRejected: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -39,34 +39,3 @@ func (a *artifactAssetIndexAdapter) Upsert(ctx context.Context, rec *artifacts.A
 		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
 	})
 }
-
-type artifactAssetIndexPort struct{ service *assetindex.Service }
-
-func newArtifactAssetIndexPort(service *assetindex.Service) artifacts.AssetIndexPort {
-	if service == nil {
-		return nil
-	}
-	return &artifactAssetIndexPort{service: service}
-}
-
-func (a *artifactAssetIndexPort) Upsert(ctx context.Context, rec *artifacts.AssetIndexRecord) error {
-	if a == nil || a.service == nil {
-		return errors.New("artifacts: asset index adapter unavailable")
-	}
-	if rec == nil {
-		return errors.New("artifacts: asset index record is nil")
-	}
-	contentHash := rec.ContentHash
-	if contentHash == "" {
-		contentHash = rec.ContentSHA256
-	}
-	return a.service.Upsert(ctx, &assetindex.AssetRecord{
-		AssetID: rec.AssetID, AssetType: rec.AssetType, Source: rec.Source, SourceID: rec.SourceID,
-		GroupName: rec.GroupName, Subfolder: rec.Subfolder, LocalPath: rec.LocalPath,
-		DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink,
-		ContentHash: contentHash, Status: rec.Status, Metadata: rec.Metadata,
-		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
-	})
-}
-
-var _ artifacts.AssetIndexPort = (*artifactAssetIndexPort)(nil)

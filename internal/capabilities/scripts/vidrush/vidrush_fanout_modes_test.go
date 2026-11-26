@@ -52,6 +52,26 @@ func TestImageSearchModeExplicitOnlyIsExclusive(t *testing.T) {
 	}
 }
 
+func TestExplicitOnlyKeepsIdentityPortraitsAlongsideContextPins(t *testing.T) {
+	plan := imageModePlan(mediadomain.ImageSearchModeExplicitOnly)
+	plan.MediaPlan.Searches = []mediadomain.SegmentMediaSearch{
+		{SegmentID: "scene-1", Slot: mediadomain.SlotSecondaryImage, Query: "Garlasco piazza"},
+	}
+	fanout := buildVidRushFanoutPlan(plan, imageModeSegment(), &gatedImageSearcher{}, nil)
+	want := []string{"Alberto Stasi portrait", "Garlasco piazza"}
+	if len(fanout.imageQueries) != len(want) {
+		t.Fatalf("explicit_only queries = %#v, want %#v", fanout.imageQueries, want)
+	}
+	for i := range want {
+		if fanout.imageQueries[i] != want[i] {
+			t.Fatalf("explicit_only queries = %#v, want %#v", fanout.imageQueries, want)
+		}
+	}
+	if !fanout.imagesEnabled {
+		t.Fatal("explicit_only with entity_images per_scene must enable image retrieval")
+	}
+}
+
 func TestImageSearchModeAutomaticKeepsIdentityAndContextLanes(t *testing.T) {
 	plan := imageModePlan(mediadomain.ImageSearchModeAutomatic)
 	plan.MediaPlan.Extraction.MaxImageQueriesPerSegment = 10

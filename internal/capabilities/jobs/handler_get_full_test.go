@@ -466,6 +466,39 @@ func TestGetFull_CoreReadyProjectsDurableScriptWithoutCompletingJob(t *testing.T
 	assert.JSONEq(t, `{"text":"Script already available"}`, string(response.Script), "the canonical durable output.text is available while artifacts are pending")
 }
 
+// TestGetFull_ProjectsRemoteFinalJobFromRunCheckpoint pins PERFLIVE-13: while
+// the Master render is in flight the broker result is still empty, so the
+// durable run checkpoint is the only place holding the remote handle. /full
+// must project it instead of reporting an empty remote_final_job_id until the
+// job completes.
+func TestGetFull_ProjectsRemoteFinalJobFromRunCheckpoint(t *testing.T) {
+	snapshot := &ScriptRunSnapshot{
+		RunID:          "run-final-job",
+		Status:         "RUNNING",
+		CurrentStage:   "FINAL_JOB",
+		Result:         json.RawMessage(`{"remote_final_job":{"job_id":"master-live","status":"RUNNING","timing":{"queue_ms":588000}}}`),
+		RemoteFinalJob: json.RawMessage(`{"job_id":"master-live","status":"RUNNING","timing":{"queue_ms":588000}}`),
+	}
+	stub := &stubServiceForGetFull{
+		outID:     "job-final-job-live",
+		outType:   pushedType,
+		outStatus: job.StatusRunning,
+	}
+	body := runGetFullWithHistory(t, stub, &stubHistoryReader{scriptRun: snapshot})
+
+	var response struct {
+		RemoteFinalJobID     string         `json:"remote_final_job_id"`
+		RemoteFinalJobStatus string         `json:"remote_final_job_status"`
+		RemoteFinalJobTiming map[string]any `json:"remote_final_job_timing"`
+	}
+	require.NoError(t, json.Unmarshal(body, &response))
+	assert.Equal(t, "master-live", response.RemoteFinalJobID,
+		"/full must expose the handle persisted in the run checkpoint, not only the terminal broker result")
+	assert.Equal(t, "RUNNING", response.RemoteFinalJobStatus)
+	assert.EqualValues(t, 588000, response.RemoteFinalJobTiming["queue_ms"],
+		"/full must expose the measured queue phase with the live handle")
+}
+
 // TestGetFull_TimingNullWithoutReport pins the shape-stability contract: the
 // `timing` key is always present on /full (null when no history reader or no
 // report exists) so polling clients never see a missing field.

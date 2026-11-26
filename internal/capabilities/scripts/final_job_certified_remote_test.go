@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -101,12 +102,27 @@ func TestCertifiedRemoteClipSignsWithoutLocalBytesOrHead(t *testing.T) {
 // publishing a local certified clip and building its reference is one
 // availability check, not two.
 func TestRenderedClipLocalPublicationUsesOneHead(t *testing.T) {
-	body := []byte("local certified clip bytes")
-	probe := newObjectStoreProbe(t, body)
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
 	path := filepath.Join(t.TempDir(), "clip.mp4")
-	if err := os.WriteFile(path, body, 0o600); err != nil {
+	// The publication path now validates the clip's video timebase before it
+	// signs the bytes, so the fixture must be a real canonical MP4 rather than
+	// arbitrary bytes in a .mp4-named file.
+	generate := exec.Command("ffmpeg",
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=160x120:rate=24",
+		"-t", "0.5", "-c:v", "libx264", "-preset", "ultrafast",
+		"-pix_fmt", "yuv420p", "-video_track_timescale", "90000", path,
+	)
+	if output, err := generate.CombinedOutput(); err != nil {
+		t.Fatalf("generate clip fixture: %v: %s", err, output)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
 		t.Fatal(err)
 	}
+	probe := newObjectStoreProbe(t, body)
 	rendered := LocalizedRenderResult{
 		SceneID: "scene-1", Language: "it", ClipID: "clip-1", AssetID: "derived-render-1",
 		SHA256: probe.sha, SizeBytes: int64(len(body)), DurationMS: 4600, LocalPath: path,

@@ -78,6 +78,19 @@ func OverlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 	if len(longPhraseMotions) == 0 {
 		longPhraseMotions = capabilityoverlay.LongPhraseMotions()
 	}
+	// Same rule for standalone images: the request may narrow the pool, but an
+	// omitted pool means "rotate the certified catalog", not "use one fallback
+	// entrance for every still". Without this the planner saw an empty pool and
+	// stamped image_focus_reveal on 12/12 images (ITCLOSE-06).
+	imageMotions := append([]string(nil), canvas.ImageMotions...)
+	if len(imageMotions) == 0 {
+		imageMotions = capabilityoverlay.CertifiedSingleImageMotions()
+	}
+	// The entity lanes follow the same rule. A verified portrait admitted by
+	// the planner requires a non-empty pool; an omitted pool must inherit the
+	// certified catalog instead of failing the whole plan.
+	entityImageMotions := append([]string(nil), ResolveEntityImageMotionPool(canvas.EntityImageMotions)...)
+	entityCaptionMotions := append([]string(nil), ResolveEntityCaptionMotionPool(canvas.EntityCaptionMotions)...)
 	return overlayplan.Canvas{
 		OverlayCategories:        overlayCategoriesToWire(canvas.OverlayCategories),
 		GroupLimits:              cloneIntMap(canvas.OverlayGroupLimits),
@@ -91,11 +104,11 @@ func OverlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 		ShortPhraseMotionsByWord: shortPhraseMotions,
 		LongPhraseMotions:        longPhraseMotions,
 		PhraseMotionFamily:       strings.TrimSpace(canvas.PhraseMotionFamily),
-		ImageMotions:             append([]string(nil), canvas.ImageMotions...),
+		ImageMotions:             imageMotions,
 		ImageWithTextMotions:     append([]string(nil), canvas.ImageWithTextMotions...),
 		ImagePresets:             capabilityoverlay.ImagePresetCandidates(),
-		EntityImageMotions:       append([]string(nil), canvas.EntityImageMotions...),
-		EntityCaptionMotions:     append([]string(nil), canvas.EntityCaptionMotions...),
+		EntityImageMotions:       entityImageMotions,
+		EntityCaptionMotions:     entityCaptionMotions,
 		EntityStyleID:            canvas.EntityStyleID,
 		EntityBadgeColor:         entityBadgeColor,
 		AnimationDirectives:      directives,

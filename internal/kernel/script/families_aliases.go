@@ -163,6 +163,8 @@ type OverlayCategory = spec.OverlayCategory
 
 const OverlayCategoryBrandText = spec.OverlayCategoryBrandText
 const OverlayCategoryBullets = spec.OverlayCategoryBullets
+
+const OverlayCategoryEntities = spec.OverlayCategoryEntities
 const OverlayCategoryCharts = spec.OverlayCategoryCharts
 const OverlayCategoryImages = spec.OverlayCategoryImages
 const OverlayCategoryMaps = spec.OverlayCategoryMaps

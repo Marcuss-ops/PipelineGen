@@ -2,6 +2,7 @@ package overlayplan
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -85,9 +86,252 @@ func reanchorPhrasePlanItems(plan *capmodel.OverlayPlan, result *contract.Genera
 	return nil
 }
 
+// dedupeReanchoredPhrasePlanItems removes identical phrase surfaces that were
+// anchored to the same spoken words by the Go seal boundary. Rust deduplicates
+// before sealing, but chapter bullets and extracted phrases can be projected
+// onto the same certified word window after that pass.
+func dedupeReanchoredPhrasePlanItems(plan *capmodel.OverlayPlan) {
+	if plan == nil || len(plan.Items) < 2 {
+		return
+	}
+	indices := make([]int, 0, len(plan.Items))
+	for i := range plan.Items {
+		if isPhraseItem(plan.Items[i]) {
+			indices = append(indices, i)
+		}
+	}
+	// Prefer the more intentional editorial surface when the same phrase is
+	// projected twice: chapter bullet, scene bullet, then extracted phrase.
+	phraseRank := func(item capmodel.OverlayItem) int {
+		role, _ := item.Params["editorial_role"].(string)
+		switch role {
+		case "chapter_bullet":
+			return 3
+		case "scene_bullet":
+			return 2
+		default:
+			return 1
+		}
+	}
+	priority := func(item capmodel.OverlayItem) float64 {
+		value, _ := item.Params["priority"].(float64)
+		return value
+	}
+	for i := 0; i < len(indices); i++ {
+		for j := i + 1; j < len(indices); j++ {
+			a, b := plan.Items[indices[i]], plan.Items[indices[j]]
+			if phraseRank(b) > phraseRank(a) || (phraseRank(b) == phraseRank(a) && priority(b) > priority(a)) {
+				indices[i], indices[j] = indices[j], indices[i]
+			}
+		}
+	}
+	dropped := make(map[int]struct{})
+	kept := make([]int, 0, len(indices))
+	for _, index := range indices {
+		item := plan.Items[index]
+		normalized := strings.Join(phraseTokens(item.Text), " ")
+		if normalized == "" {
+			kept = append(kept, index)
+			continue
+		}
+		start, end := item.StartUSValue(), item.EndUSValue()
+		duplicate := false
+		for chainIndex := range plan.Items {
+			chain := &plan.Items[chainIndex]
+			if chainIndex == index || chain.SceneID != item.SceneID || !isPhraseChain(*chain) {
+				continue
+			}
+			segments, ok := chain.Segments()
+			if !ok {
+				continue
+			}
+			for _, segment := range segments {
+				if !isPhraseSegment(segment) || strings.Join(phraseTokens(segment.Text), " ") != normalized {
+					continue
+				}
+				if start < segment.StartUS+segment.DurationUS && segment.StartUS < end {
+					duplicate = true
+					break
+				}
+			}
+			if duplicate {
+				break
+			}
+		}
+		if !duplicate {
+			for _, keptIndex := range kept {
+				previous := plan.Items[keptIndex]
+				if previous.SceneID == item.SceneID &&
+					strings.Join(phraseTokens(previous.Text), " ") == normalized &&
+					start < previous.EndUSValue() && previous.StartUSValue() < end {
+					duplicate = true
+					break
+				}
+			}
+		}
+		if duplicate {
+			dropped[index] = struct{}{}
+		} else {
+			kept = append(kept, index)
+		}
+	}
+	if len(dropped) == 0 {
+		return
+	}
+	items := make([]capmodel.OverlayItem, 0, len(plan.Items)-len(dropped))
+	for i, item := range plan.Items {
+		if _, ok := dropped[i]; !ok {
+			items = append(items, item)
+		}
+	}
+	plan.Items = items
+}
+
+func isPhraseChain(item capmodel.OverlayItem) bool {
+	return strings.EqualFold(strings.TrimSpace(item.Kind), capmodel.KindPhraseChain) ||
+		strings.EqualFold(strings.TrimSpace(item.TemplateID), capmodel.TemplatePhraseChain) ||
+		strings.EqualFold(strings.TrimSpace(item.Kind), capmodel.KindMixedChain) ||
+		strings.EqualFold(strings.TrimSpace(item.TemplateID), capmodel.TemplateMixedChain)
+}
+
 func isPhraseItem(item capmodel.OverlayItem) bool {
 	return strings.EqualFold(strings.TrimSpace(item.Kind), "text_phrase") ||
 		strings.EqualFold(strings.TrimSpace(item.TemplateID), "IMPORTANT_PHRASE")
+}
+
+func isNumericFactItem(item capmodel.OverlayItem) bool {
+	switch strings.ToUpper(strings.TrimSpace(item.TemplateID)) {
+	case "TIMELINE_DATE_CARD", "METRIC_STAT_CARD":
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(item.Kind), "number")
+}
+
+// isVisualImageItem reports asset-driven overlays. They are not centered text
+// cards: an image deliberately shares the canvas with a phrase caption, so the
+// text-card collision pass must not treat that overlap as a conflict.
+func isVisualImageItem(item capmodel.OverlayItem) bool {
+	switch strings.TrimSpace(item.Kind) {
+	case "image", string(capmodel.KindEntityImage), string(capmodel.KindImagePopup), string(capmodel.KindProduct), string(capmodel.KindLogo):
+		return true
+	}
+	return false
+}
+
+// resolveReanchoredPhraseOverlaps repairs visual collisions introduced when
+// phrase windows are moved from the planner's provisional schedule onto the
+// certified speech-word boundaries. Rust already resolves provisional item
+// windows; this second pass is needed because certified reanchoring happens in
+// Go after the Rust overlap phase.
+func resolveReanchoredPhraseOverlaps(plan *capmodel.OverlayPlan) {
+	if plan == nil || len(plan.Items) < 2 {
+		return
+	}
+	items := plan.Items
+	// A numeric fact can keep its original timing when its tail merely touches a
+	// phrase's certified speech window. Trim that tail to the next phrase start
+	// if at least 600 ms remains readable; otherwise normal priority admission
+	// keeps the numeric fact and drops the colliding phrase.
+	for i := range items {
+		if !isNumericFactItem(items[i]) {
+			continue
+		}
+		start, end := items[i].StartUSValue(), items[i].EndUSValue()
+		for j := range items {
+			if i == j || !isPhraseItem(items[j]) || (items[i].SceneID != "" && items[j].SceneID != items[i].SceneID) {
+				continue
+			}
+			phraseStart, phraseEnd := items[j].StartUSValue(), items[j].EndUSValue()
+			if start < phraseStart && phraseStart < end && phraseEnd > start {
+				trimmed := phraseStart - start
+				if trimmed >= 600_000 {
+					setPhraseWindow(&items[i], start, trimmed)
+					end = phraseStart
+				}
+			}
+			if phraseStart < start && start < phraseEnd && phraseEnd > end {
+				trimmed := start - phraseStart
+				if trimmed >= 600_000 {
+					setPhraseWindow(&items[j], phraseStart, trimmed)
+				}
+			}
+		}
+	}
+
+	priority := func(item capmodel.OverlayItem) (int, float64, int64, string) {
+		if isNumericFactItem(item) {
+			return 500, 0, item.EndUSValue() - item.StartUSValue(), item.ID
+		}
+		role, _ := item.Params["editorial_role"].(string)
+		rank := 200
+		switch strings.TrimSpace(role) {
+		case "scene_title":
+			rank = 400
+		case "chapter_bullet":
+			rank = 350
+		case "scene_bullet":
+			rank = 300
+		}
+		score, _ := item.Params["priority"].(float64)
+		return rank, score, item.EndUSValue() - item.StartUSValue(), item.ID
+	}
+	indices := make([]int, len(items))
+	for i := range indices {
+		indices[i] = i
+	}
+	sort.SliceStable(indices, func(i, j int) bool {
+		a, b := items[indices[i]], items[indices[j]]
+		ar, as, ad, aid := priority(a)
+		br, bs, bd, bid := priority(b)
+		if ar != br {
+			return ar > br
+		}
+		if as != bs {
+			return as > bs
+		}
+		if ad != bd {
+			return ad > bd
+		}
+		if a.StartUSValue() != b.StartUSValue() {
+			return a.StartUSValue() < b.StartUSValue()
+		}
+		return aid < bid
+	})
+	keep := make(map[int]bool, len(items))
+	accepted := make([]int, 0, len(items))
+	for _, index := range indices {
+		item := items[index]
+		conflict := false
+		for _, priorIndex := range accepted {
+			prior := items[priorIndex]
+			if isVisualImageItem(item) || isVisualImageItem(prior) {
+				continue
+			}
+			if !isPhraseItem(item) && !isPhraseItem(prior) {
+				continue
+			}
+			if item.StartUSValue() < prior.EndUSValue() && prior.StartUSValue() < item.EndUSValue() {
+				conflict = true
+				break
+			}
+		}
+		if conflict {
+			continue
+		}
+		keep[index] = true
+		accepted = append(accepted, index)
+	}
+	if len(keep) == len(items) {
+		return
+	}
+	filtered := make([]capmodel.OverlayItem, 0, len(keep))
+	for i, item := range items {
+		if keep[i] {
+			filtered = append(filtered, item)
+		}
+	}
+	plan.Items = filtered
+	plan.Intake.RecordStage("reanchored_overlap", len(items), len(filtered))
 }
 
 func isPhraseSegment(segment capmodel.ChainSegment) bool {

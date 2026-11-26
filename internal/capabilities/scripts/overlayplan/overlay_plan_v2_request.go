@@ -56,6 +56,10 @@ func BuildOverlayPlanV2Request(
 	if err != nil {
 		return overlayplan.V2Request{}, err
 	}
+	// The offset is derived from the same motion seed that rotates the other
+	// lanes. It used to be computed by PrepareOverlayPlanCompile and then
+	// dropped before the wire, so every plan started its image rotation at 0.
+	canvasWire.ImageMotionOffset = capabilityoverlay.ImageMotionOffsetForSeed(motionSeed)
 	media := OverlayPlanMedia(result, language, sceneInputs)
 	request := overlayplan.V2Request{
 		Operation:      "compile_editorial_plan",

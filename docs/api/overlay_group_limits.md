@@ -9,6 +9,7 @@ item level, next to `max_map_overlays`, `max_image_overlays` and
 | Key                  | Overlays counted                                              |
 | -------------------- | ------------------------------------------------------------- |
 | `maps`               | Location map overlays                                         |
+| `numbers`            | Grounded date and metric cards                                |
 | `short_phrases`      | Short grounded phrases (short-phrase motion recipes)          |
 | `long_phrases`       | All other grounded phrases                                    |
 | `entities_with_text` | Entity cards that carry text                                  |

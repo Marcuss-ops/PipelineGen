@@ -26,19 +26,24 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 	return p.processInternetImageSegmentsPhase(ctx, plan, input, options)
 }
 
+// entityImageLaneEnabled is the policy boundary shared by the resolver and its
+// tests. `entity_images.enabled` is a direct operator request for portraits;
+// explicit_only restricts inferred CONTEXTUAL queries, not this lane. Only an
+// explicit `disabled` image-search mode turns the identity lane off.
+func entityImageLaneEnabled(requested bool, imageSearchMode string) bool {
+	return requested && imageSearchMode != mediadomain.ImageSearchModeDisabled
+}
+
 func (p *MediaResolverImageStage) processInternetImageSegmentsPhase(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput, options internetImageProcessOptions) (*PostProcessResult, error) {
 	cacheOnly := options.cacheOnly
 	imageSearchMode := ""
 	if plan != nil {
 		imageSearchMode = strings.TrimSpace(plan.MediaPlan.Extraction.ImageSearchMode)
 	}
-	// Image search policy applies to the entity-image resolver as well as to
-	// the initial VidRush fan-out. In explicit_only mode caller searches remain
-	// available through planSegmentInternetImageDiscovery, but inferred entity
-	// portrait queries must not open a second, broader retrieval channel.
-	entityImagesEnabled := options.entityImagesEnabled &&
-		imageSearchMode != mediadomain.ImageSearchModeExplicitOnly &&
-		imageSearchMode != mediadomain.ImageSearchModeDisabled
+	// entity_images.enabled is itself the operator's explicit authorization for
+	// identity portraits, so explicit_only must not switch the lane off. The
+	// mode still governs contextual queries; only "disabled" suppresses both.
+	entityImagesEnabled := entityImageLaneEnabled(options.entityImagesEnabled, imageSearchMode)
 	perQueryLimit := internetImageCandidateLimit(plan)
 
 	// Pre-index scenes by identity so each segment's entity-image query

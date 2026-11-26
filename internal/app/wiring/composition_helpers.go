@@ -7,17 +7,11 @@ import (
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring/creatorruntime"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
-	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	stockbatches "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/stockbatches"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	api "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assetindex"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -98,40 +92,6 @@ var ErrStageDriveInsufficientForCompletion = errors.New(
 	"stage-drive bundle: forward-pointer components (ArtifactPreparation + WithArtifactsService) require P0-COMPL-5-SINGLE-BACKBONE (deadline 2026-08-15) to ship",
 )
 
-type artifactAssetIndexAdapter struct{ service *assetindex.Service }
-
-func newArtifactAssetIndexAdapter(service *assetindex.Service) artifacts.AssetIndexPort {
-	if service == nil {
-		return nil
-	}
-	return &artifactAssetIndexAdapter{service: service}
-}
-
-func (a *artifactAssetIndexAdapter) Upsert(ctx context.Context, rec *artifacts.AssetIndexRecord) error {
-	if a == nil || a.service == nil {
-		return errors.New("artifacts: asset index adapter unavailable")
-	}
-	if rec == nil {
-		return errors.New("artifacts: asset index record is nil")
-	}
-	// asset_index carries ONE content-address slot (content_hash); the
-	// compatibility bucket is gone (migration 281), so the canonical value
-	// wins and the legacy spelling is only a fallback for unpromoted rows.
-	contentHash := rec.ContentHash
-	if contentHash == "" {
-		contentHash = rec.ContentSHA256
-	}
-	return a.service.Upsert(ctx, &assetindex.AssetRecord{
-		AssetID: rec.AssetID, AssetType: rec.AssetType, Source: rec.Source, SourceID: rec.SourceID,
-		GroupName: rec.GroupName, Subfolder: rec.Subfolder, LocalPath: rec.LocalPath,
-		DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink,
-		ContentHash: contentHash, Status: rec.Status, Metadata: rec.Metadata,
-		CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt,
-	})
-}
-
-var _ artifacts.AssetIndexPort = (*artifactAssetIndexAdapter)(nil)
-
 // POSTGRES-MEDIA-CUTOVER (2026-09-12): the `media.reindex` job binding is
 // REMOVED. It was the last reachable path from the job broker into the retired
 // clipindexer batch reindex (clipindexer.Service.RegisterJobHandler →
@@ -210,39 +170,6 @@ func appendImagesCriticalValidator(domains *DomainBundle, jobs *JobsBundle, vali
 //
 // Production wiring sites: internal/app/build_bundles_voiceover.go
 // (BuildVoiceoverBundle + VoiceoverUseCaseDeps construction).
-
-// build_stock_batches.go — Gate 5 of BuildStockBundle: the stock
-// batch coordinator + /stock-batches module construction. Extracted
-// so the BuildStockBundle orchestrator stays a thin gate dispatcher.
-// buildStockBatchModule constructs the stock batch coordinator and the
-// /stock-batches module. Returns (nil, nil) when no BatchRepository is
-// wired (backcompat/test mode — the batch surface is simply absent).
-// Error wrapping follows the BuildStockBundle preamble convention
-// (`stock.BuildStockBundle: stockbatches.Build: %w`).
-func buildStockBatchModule(deps StockBundleDeps, svc *stockpipeline.Service) (api.Module, error) {
-	var batchModule api.Module
-	if deps.Acquisition.BatchRepository != nil {
-		coordinator := stockplan.NewCoordinator(stockplan.CoordinatorDeps{
-			Repo:     deps.Acquisition.BatchRepository,
-			Enqueuer: deps.Orchestration.Jobs,
-			Resolver: nil,
-			Stager:   svc,
-			Log:      deps.Runtime.Log,
-		})
-		batchDescriptor, batchErr := stockbatches.Build(stockbatches.Dependencies{
-			Coordinator: coordinator,
-			EnabledFunc: deps.Feature.StockPipelineEnabled,
-			Logger:      deps.Runtime.Log,
-		})
-		if batchErr != nil {
-			return nil, fmt.Errorf("stock.BuildStockBundle: stockbatches.Build: %w", batchErr)
-		}
-		if d, ok := batchDescriptor.(*stockbatches.StockBatchesDescriptor); ok && d != nil {
-			batchModule = d.Module
-		}
-	}
-	return batchModule, nil
-}
 
 type sqliteTxManager struct {
 	db *sql.DB

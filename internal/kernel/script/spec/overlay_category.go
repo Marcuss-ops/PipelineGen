@@ -18,13 +18,15 @@ const (
 	OverlayCategoryRecaps    OverlayCategory = "recaps"
 	OverlayCategoryTitles    OverlayCategory = "titles"
 	OverlayCategoryBullets   OverlayCategory = "bullets"
+	OverlayCategoryEntities  OverlayCategory = "entities"
 )
 
 var overlayCategorySet = map[OverlayCategory]struct{}{
 	OverlayCategoryPhrases: {}, OverlayCategoryImages: {}, OverlayCategoryNumbers: {},
 	OverlayCategoryQuotes: {}, OverlayCategoryBrandText: {}, OverlayCategoryMaps: {},
 	OverlayCategoryCharts: {}, OverlayCategoryRecaps: {}, OverlayCategoryTitles: {},
-	OverlayCategoryBullets: {},
+	OverlayCategoryBullets:  {},
+	OverlayCategoryEntities: {},
 }
 
 // CloneOverlayCategories preserves nil and owns its mutable map.

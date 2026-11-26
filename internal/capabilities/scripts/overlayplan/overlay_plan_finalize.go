@@ -131,6 +131,18 @@ func bulletBaseParamsForScene(sceneID string, pins map[string]scriptpkg.Editoria
 	return params
 }
 
+// plannerPhraseFamilyLocked reports a plain phrase whose visible family was
+// chosen by the planner: short display copy uses Oswald, long editorial copy
+// keeps Playfair. The run-level overlay_style must not flatten the two
+// families back into one look (ITCLOSE-06).
+func plannerPhraseFamilyLocked(params map[string]any) bool {
+	if params == nil {
+		return false
+	}
+	family, _ := params["phrase_family"].(string)
+	return strings.TrimSpace(family) != ""
+}
+
 // editorialBulletParams reports whether an item/segment is bullet-point copy.
 // Chapter bullets ride the same lane and share the look.
 func editorialBulletParams(params map[string]any) bool {
@@ -271,8 +283,10 @@ func ApplyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas Overla
 					continue
 				}
 				if capabilityoverlay.IsTextOverlayKind(segment.Kind) || chainSegmentHasCaption(*segment) {
-					applyTextStyleToChainSegment(segment, runStyle)
-					changed = true
+					if !plannerPhraseFamilyLocked(segment.Params) {
+						applyTextStyleToChainSegment(segment, runStyle)
+						changed = true
+					}
 				}
 			}
 			if changed {
@@ -286,7 +300,9 @@ func ApplyPayloadOverlayStyleToItems(items []capmodel.OverlayItem, canvas Overla
 			continue
 		}
 		if capabilityoverlay.IsTextOverlayKind(item.Kind) || overlayItemHasCaption(*item) {
-			applyTextStyleToItem(item, runStyle)
+			if !plannerPhraseFamilyLocked(item.Params) {
+				applyTextStyleToItem(item, runStyle)
+			}
 		}
 	}
 }

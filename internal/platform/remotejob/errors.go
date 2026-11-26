@@ -16,6 +16,11 @@ import (
 // carries the job id — the handle a caller must keep in order to come back.
 var ErrRemotePending = errors.New("remote job is not terminal yet")
 
+// ErrRemoteTransient identifies a temporary Master transport response (5xx).
+// Polling such an error must not be mistaken for a terminal render failure:
+// the Master job may still be running and can be resumed by its durable id.
+var ErrRemoteTransient = errors.New("remote Master is temporarily unavailable")
+
 // ErrRemoteStaleJob reports a Master job identity that must never take another
 // FINALIZE: its preparation was canceled, it already ended terminal, or its
 // lease is held elsewhere (`job_already_leased`). The identity lives on the

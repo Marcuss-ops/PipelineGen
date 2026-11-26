@@ -202,15 +202,59 @@ func personImageSourceNotRaster(sourceURL string) string {
 	}
 }
 
-// personImageSourceIdentityFailure rejects only a high-confidence provenance
-// conflict: an image filename that explicitly names the requested person with
-// a different surname (for example Angela-Tuccia for Angela Taccia). A generic
-// editorial filename (IMG_6075.jpeg) is NOT proof of a wrong identity — the
+// personImageSourceIdentityFailure rejects high-confidence provenance
+// conflicts in either the image filename or an encyclopedia article URL. A
+// generic editorial filename/page is not proof of a wrong identity — the
 // pixel/visual verifier owns that decision. Requiring the canonical name in
 // every URL made the catalog drop valid portraits before the VLM could see
 // them, which is the Kaufmann zero-image failure mode.
-func personImageSourceIdentityFailure(canonicalName, sourceURL, _ string) string {
-	return personImageSourceNameMismatch(canonicalName, sourceURL)
+func personImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL string) string {
+	if reason := personImageSourceNameMismatch(canonicalName, sourceURL); reason != "" {
+		return reason
+	}
+	return personImageEncyclopediaPageMismatch(canonicalName, sourcePageURL)
+}
+
+// personImageEncyclopediaPageMismatch prevents a result from an unrelated
+// Wikipedia article (for example a Mike Tyson portrait returned for Desiree
+// Washington) from being auto-accepted solely because Wikimedia is trusted.
+// Non-article and generic source pages remain eligible for visual verification.
+func personImageEncyclopediaPageMismatch(canonicalName, sourcePageURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(sourcePageURL))
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host != "wikipedia.org" && !strings.HasSuffix(host, ".wikipedia.org") {
+		return ""
+	}
+	const articlePrefix = "/wiki/"
+	if !strings.HasPrefix(parsed.Path, articlePrefix) {
+		return ""
+	}
+	title, err := url.PathUnescape(strings.TrimPrefix(parsed.Path, articlePrefix))
+	if err != nil || title == "" || strings.Contains(title, ":") {
+		return ""
+	}
+	title = strings.ReplaceAll(title, "_", " ")
+	want := strings.Fields(normalizeEntityMatch(canonicalName))
+	got := strings.Fields(normalizeEntityMatch(title))
+	if len(want) == 0 || len(got) == 0 {
+		return ""
+	}
+	for start := 0; start+len(want) <= len(got); start++ {
+		match := true
+		for i := range want {
+			if got[start+i] != want[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return ""
+		}
+	}
+	return fmt.Sprintf("encyclopedia source page names %q, not requested person %s", title, canonicalName)
 }
 
 // personImageSourceNameMismatch catches a high-confidence provenance conflict

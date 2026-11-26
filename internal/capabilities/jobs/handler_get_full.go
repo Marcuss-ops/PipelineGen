@@ -89,6 +89,15 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 				"status":        snapshot.Status,
 				"current_stage": snapshot.CurrentStage,
 			}
+			// The broker result is written only at completion. Merge the
+			// durable checkpoint receipt so remote_final_job_id/status/timing
+			// are observable while the Master render is still in flight.
+			if receipt := snapshotRemoteFinalJobResult(snapshot.RemoteFinalJob); len(receipt) > 0 {
+				vis := ExtractDeliveryVisibility(j.Payload, receipt)
+				for k, v := range vis.deliveryFields() {
+					resp[k] = v
+				}
+			}
 			if snapshot.CurrentStage == "CORE_READY" && len(snapshot.Result) > 0 {
 				var result struct {
 					Output json.RawMessage `json:"output"`
@@ -162,4 +171,23 @@ func (h *JobsHandler) readScriptRunSnapshot(ctx context.Context, id string) *Scr
 		return nil
 	}
 	return snapshot
+}
+
+// snapshotRemoteFinalJobResult wraps the checkpoint's remote_final_job receipt
+// in the result-root shape ExtractDeliveryVisibility reads. An absent or
+// malformed receipt yields nil, so the broker result remains the only source
+// and no value is invented.
+func snapshotRemoteFinalJobResult(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	var receipt map[string]any
+	if err := json.Unmarshal(raw, &receipt); err != nil || receipt == nil {
+		return nil
+	}
+	wrapped, err := json.Marshal(map[string]any{"remote_final_job": receipt})
+	if err != nil {
+		return nil
+	}
+	return wrapped
 }

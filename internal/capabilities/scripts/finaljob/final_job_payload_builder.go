@@ -3,12 +3,14 @@ package finaljob
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -59,12 +61,120 @@ func newFinalJobSceneBuilder(ctx context.Context, req contract.GenerateRequest, 
 }
 
 func (b *finalJobSceneBuilder) appendSegments() error {
+	matchedPostSegments := make(map[string]bool, len(b.req.MediaPlan.PostSegments))
 	for _, segment := range b.result.CanonicalTimeline.Segments {
+		postClips, postMS, err := b.resolvePostSegmentClips(segment.ID)
+		if err != nil {
+			return err
+		}
+		if postMS > 0 {
+			matchedPostSegments[strings.TrimSpace(segment.ID)] = true
+			sceneMS := segment.DurationUS / 1000
+			if sceneMS <= 0 {
+				return fmt.Errorf("final_job scene %q has no positive duration for its post_segments", segment.ID)
+			}
+			if postMS >= sceneMS || sceneMS-postMS < 100 {
+				return fmt.Errorf("final_job post_segments for scene %q need %dms but the scene is only %dms", segment.ID, postMS, sceneMS)
+			}
+			shortened := segment
+			shortened.DurationUS = (sceneMS - postMS) * 1000
+			if err := b.appendSegment(shortened); err != nil {
+				return err
+			}
+			b.appendPostSegmentClips(postClips)
+			continue
+		}
 		if err := b.appendSegment(segment); err != nil {
 			return err
 		}
 	}
+	for _, post := range b.req.MediaPlan.PostSegments {
+		segmentID := strings.TrimSpace(post.SegmentID)
+		if segmentID == "" {
+			return fmt.Errorf("final_job post_segments entry has no segment_id")
+		}
+		if !matchedPostSegments[segmentID] {
+			return fmt.Errorf("final_job post_segments reference %q, which has no canonical timeline segment", segmentID)
+		}
+	}
 	return nil
+}
+
+type finalJobPostClip struct {
+	asset      map[string]any
+	durationMS int64
+}
+
+// resolvePostSegmentClips resolves the requested timeline codas before the
+// scene is shortened. A coda keeps the canonical duration: the scene gives up
+// its last N milliseconds and the post clip occupies them, so final audio and
+// the global overlay clock never move.
+func (b *finalJobSceneBuilder) resolvePostSegmentClips(segmentID string) ([]finalJobPostClip, int64, error) {
+	var clips []finalJobPostClip
+	var totalMS int64
+	for _, post := range b.req.MediaPlan.PostSegments {
+		if strings.TrimSpace(post.SegmentID) != strings.TrimSpace(segmentID) {
+			continue
+		}
+		if len(post.Clips) == 0 {
+			return nil, 0, fmt.Errorf("final_job post_segments for scene %q has no clips", segmentID)
+		}
+		ordered := append([]mediadomain.VisualClip(nil), post.Clips...)
+		sort.SliceStable(ordered, func(i, j int) bool {
+			left, right := ordered[i].Position, ordered[j].Position
+			switch {
+			case left == nil && right == nil:
+				return false
+			case left == nil:
+				return false
+			case right == nil:
+				return true
+			default:
+				return *left < *right
+			}
+		})
+		for _, clip := range ordered {
+			assetID := strings.TrimSpace(clip.AssetID)
+			if assetID == "" {
+				return nil, 0, fmt.Errorf("final_job post_segments for scene %q contains a clip without asset_id", segmentID)
+			}
+			asset, err := resolveFinalJobFixedMediaAsset(b.ctx, b.resolver, b.result, segmentID, assetID, b.renderLanguage)
+			if err != nil {
+				return nil, 0, fmt.Errorf("resolve post_segment clip %q for scene %q: %w", assetID, segmentID, err)
+			}
+			sourceMS := finalJobInt64(asset["duration_ms"])
+			if sourceMS <= 0 {
+				return nil, 0, fmt.Errorf("post_segment clip %q for scene %q has no certified duration", assetID, segmentID)
+			}
+			durationMS := clip.DurationMs
+			if durationMS <= 0 {
+				durationMS = sourceMS
+			}
+			if durationMS > sourceMS {
+				return nil, 0, fmt.Errorf("post_segment clip %q requests %dms but the source is %dms", assetID, durationMS, sourceMS)
+			}
+			startMS := clip.StartMs
+			if startMS < 0 || startMS+durationMS > sourceMS {
+				return nil, 0, fmt.Errorf("post_segment clip %q window [%d,%d] exceeds source duration %dms", assetID, startMS, startMS+durationMS, sourceMS)
+			}
+			asset["source_in_ms"] = startMS
+			asset["source_out_ms"] = startMS + durationMS
+			asset["duration_ms"] = durationMS
+			clips = append(clips, finalJobPostClip{asset: asset, durationMS: durationMS})
+			totalMS += durationMS
+		}
+	}
+	return clips, totalMS, nil
+}
+
+func (b *finalJobSceneBuilder) appendPostSegmentClips(clips []finalJobPostClip) {
+	for _, clip := range clips {
+		b.remoteScenes = append(b.remoteScenes, CompositeVideoScene(
+			fmt.Sprintf("scene-%04d", b.clipOrdinal), b.clipOrdinal, "clip", clip.asset, clip.durationMS, ""))
+		AppendFinalJobRuntimeAsset(&b.runtimeAssets, b.seenRuntimeAssets, "clip", clip.asset)
+		b.plannedDurationMS += clip.durationMS
+		b.clipOrdinal++
+	}
 }
 
 func (b *finalJobSceneBuilder) appendSegment(segment capabilityaudio.TimelineSegment) error {

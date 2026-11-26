@@ -103,7 +103,7 @@ func TestOverlayAuditEntityImagesExplainsEveryMissingImage(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestGateCountsPlannedEntityImageCardsOnly(t *testing.T) {
+func TestGateCountsEligibleEntityImagesEvenWhenTheCardIsTextOnly(t *testing.T) {
 	t.Setenv(requireEntityImagesEnv, "")
 	bundle := &capabilityoverlay.SemanticRenderBundleV1{Entities: []capabilityoverlay.ResolvedEntity{
 		auditTestEntity("Ana Rossi"), auditTestEntity("Marco Bianchi"),
@@ -111,21 +111,29 @@ func TestGateCountsPlannedEntityImageCardsOnly(t *testing.T) {
 	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{auditTestEntityCard("card-1", "scene-1", "Ana Rossi")}}
 	audit := buildOverlayAuditWithLineage(bundle, plan, nil)
 	applyRequestedEntityImageContract(audit, bundle, plan, true, false, []string{"PERSON"})
-	if audit.EntityImages == nil || audit.EntityImages.Required || audit.EntityImages.Selected != 0 || audit.EntityImages.Missing != 0 {
-		t.Fatalf("requested person-image audit = %+v; a text fallback is not an image promise", audit.EntityImages)
+	// Ana has a (text) card and is selected; Marco is only mentioned and is not
+	// a promise. The audit must count the text card without inflating the
+	// denominator with unplanned mentions.
+	if audit.EntityImages == nil || audit.EntityImages.Required || audit.EntityImages.Selected != 1 || audit.EntityImages.Missing != 1 {
+		t.Fatalf("requested person-image audit = %+v; the selected text card must be visible as missing", audit.EntityImages)
 	}
-	if len(audit.EntityImages.Reasons) != 0 {
-		t.Fatalf("text fallback reasons = %+v, want no image promise", audit.EntityImages.Reasons)
+	if len(audit.EntityImages.Reasons) == 0 {
+		t.Fatalf("text fallback reasons = %+v, want at least one missing reason", audit.EntityImages.Reasons)
 	}
-	if audit.DetectedEntities[0].ImageRequired || audit.DetectedEntities[1].ImageRequired {
-		t.Fatal("neither a text fallback nor an unplanned mention may inflate the image denominator")
+	if !audit.DetectedEntities[0].ImageRequired {
+		t.Fatal("a selected text card must carry the image expectation")
 	}
+	if audit.DetectedEntities[1].ImageRequired {
+		t.Fatal("an unplanned mention is not an image promise")
+	}
+	require.NoError(t, enforceEntityImageGate(audit), "without the strict env the audit records the gap but does not fail")
 
 	t.Setenv(requireEntityImagesEnv, "1")
 	strict := buildOverlayAuditWithLineage(bundle, plan, nil)
 	applyRequestedEntityImageContract(strict, bundle, plan, true, false, []string{"PERSON"})
 	require.True(t, strict.EntityImages.Required)
-	require.NoError(t, enforceEntityImageGate(strict), "a planned text fallback must not fail the strict gate")
+	require.ErrorIs(t, enforceEntityImageGate(strict), ErrEntityImageGate,
+		"the strict gate must fail on an expected identity with no portrait")
 }
 
 func TestEntityImageGateDeduplicatesRepeatedIdentityOccurrences(t *testing.T) {

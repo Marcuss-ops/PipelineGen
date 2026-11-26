@@ -3,7 +3,6 @@ package finaljob
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -211,23 +210,20 @@ func RenderedClipAssetRef(ctx context.Context, resolver FinalJobAssetResolver, r
 			return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q has storage key %q, want its SHA-256", SceneID, rendered.AssetID, storageKey)
 		}
 		if localPath := strings.TrimSpace(rendered.LocalPath); localPath != "" {
+			// A localized render may carry the x264 1/12288 track timebase. The
+			// remote final-job packet-copy lane cannot mix it with the 1/90000
+			// stock/intro sources, so rewrite the container timescale before the
+			// bytes become a final-job asset. The SHA-256/size therefore describe
+			// the normalized file, not the render certificate's original bytes.
+			localSHA, localSize, _, err := canonicalizeFinalJobRenderedClipTimeBase(ctx, localPath)
+			if err != nil {
+				return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q: %w", SceneID, rendered.AssetID, err)
+			}
 			// The Producer still owns the bytes: publish them once and use the
 			// returned reference. Publish already verified the object it
 			// uploaded, so asking for a second signature/HEAD here was a
 			// duplicate round-trip on every clip.
-			if size <= 0 {
-				info, err := os.Stat(localPath)
-				if err != nil {
-					return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q has no Creator-local source for Objectstore publication: %w", SceneID, rendered.AssetID, err)
-				}
-				size = info.Size()
-			}
-			// The SHA-256 and size come from the render certificate for these
-			// exact bytes (a fresh render or a cache hit that was re-hashed on
-			// entry). Re-hashing the local file here would read the whole
-			// fragment a second time; the verified publication keeps the
-			// availability probe and lets the store reject a bad upload.
-			asset, err := PublishFinalJobLocalObjectVerified(ctx, rendered.AssetID, localPath, sha, size)
+			asset, err := PublishFinalJobLocalObjectVerified(ctx, rendered.AssetID, localPath, localSHA, localSize)
 			if err != nil {
 				return nil, 0, fmt.Errorf("publish final_job scene %q rendered clip to Objectstore: %w", SceneID, err)
 			}

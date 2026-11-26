@@ -40,13 +40,15 @@
         "glow_color": "#FFFFFF",
         "glow_size": 10,
         "height": 600,
+        "phrase_family": "long_phrase",
         "position": "center",
         "priority": 1,
+        "timing_anchor": "word_timing",
         "width": 1700
       },
-      "render_key": "06c59fc7df80dcd8d9d7fd9c405c091669f1acca78af3b03fbbc8ebe976d6dd2",
+      "render_key": "e53931c02b564fd56bbe89d9c918ab38e1d31d3f1d160d2d7e5e5cf7f83d3a9a",
       "duration_ms": 900
     }
   ],
-  "fingerprint": "d91e7cf2daed0eae8e057dd4e6f54e4e2d8d89957b9c63fdb3e0108bbb2a6f4b"
+  "fingerprint": "fc5a104e1f99ff78a8f7e716ac289e6e59736cd6f8d593c68bc3323d304d3581"
 }

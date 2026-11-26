@@ -26,3 +26,14 @@ func TestGenerationEnvelopeRejectsInvalidOverlayCategoryToggle(t *testing.T) {
 		t.Fatal("invalid segment category toggle passed envelope validation")
 	}
 }
+
+func TestGenerationEnvelopeAcceptsEntitiesOverlayCategory(t *testing.T) {
+	envelope := script.GenerationEnvelopeV2{Version: 2, Items: []script.GenerationItemV2{{
+		ID: "item", Source: script.SourceSpec{Type: script.SourceText, Topic: "topic"},
+		ScriptParams:      script.ScriptSpec{TargetWords: 100},
+		OverlayCategories: map[script.OverlayCategory]script.Toggle{script.OverlayCategoryEntities: script.ToggleDisabled},
+	}}}
+	if err := envelope.Validate(); err != nil {
+		t.Fatalf("entities overlay category rejected: %v", err)
+	}
+}

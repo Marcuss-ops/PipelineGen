@@ -54,6 +54,7 @@ func CompileOverlayPlanWithMotionOffset(ctx context.Context, result *contract.Ge
 	if err != nil || compiled == nil {
 		return compiled, err
 	}
+	appendFixedIntroHook(compiled, input.Result, input.Language)
 	// Adoption is the Go seal boundary: the plan the Rust compiler returned is
 	// not wire-eligible until its derived render identity and master extent are
 	// stamped. Doing this here (not later in the render phase) keeps the bundle
@@ -344,6 +345,8 @@ func SealCompiledOverlayPlan(plan *capmodel.OverlayPlan, result *contract.Genera
 	if err := reanchorPhrasePlanItems(plan, result); err != nil {
 		return nil, err
 	}
+	dedupeReanchoredPhrasePlanItems(plan)
+	resolveReanchoredPhraseOverlaps(plan)
 	return finalizeSealedOverlayPlan(*plan, result, language, resolved, canvas)
 }
 

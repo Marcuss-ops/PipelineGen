@@ -250,6 +250,9 @@ func entityExpectsImage(entity contract.OverlayAuditEntity) bool {
 	if strings.EqualFold(strings.TrimSpace(entity.ImageStatus), "planned") {
 		return true
 	}
+	// Selection is the eligibility boundary: an identity the planner did not
+	// select is not a promise. A selected text card IS counted, because
+	// `ImageRequired` now survives the text degradation (ITCLOSE-07).
 	if !entity.SelectedForVideo {
 		return false
 	}
@@ -306,24 +309,6 @@ func auditImageEntityRank(entity contract.OverlayAuditEntity) int {
 	}
 }
 
-// auditEntityHasPlannedImageCard reports whether the planner emitted an
-// image-bearing card for this identity. A text-only entity card is the
-// fallback the planner chose when no image was available, so it is not an
-// image promise and must never fail the strict image gate. Only a planned
-// image (top-level or nested in a chain) is a promise to bind verified bytes.
-func auditEntityHasPlannedImageCard(entity contract.OverlayAuditEntity) bool {
-	if strings.EqualFold(strings.TrimSpace(entity.ImageStatus), "planned") {
-		return true
-	}
-	for _, kind := range entity.PlannedKinds {
-		kind = strings.ToLower(strings.TrimSpace(kind))
-		if kind == "entity_image" || strings.Contains(kind, "image") {
-			return true
-		}
-	}
-	return false
-}
-
 // ApplyRequestedEntityImageContract derives the audit denominator from the
 // request's eligible entity types, not from overlays that happened to survive
 // planning. It preserves SelectedForVideo separately so a missing selection
@@ -349,13 +334,12 @@ func ApplyRequestedEntityImageContract(audit *contract.OverlayAudit, bundle *cap
 		entity := &audit.DetectedEntities[i]
 		entityType := strings.ToUpper(strings.TrimSpace(entity.Type))
 		_, imageRequired := wanted[entityType]
-		// Only an image card the planner actually emitted is an image promise.
-		// A text card is the deliberate degradation path, not a missing image;
-		// counting it here made the gate demand bytes for a fallback the plan
-		// chose and turned every unverified identity into a false failure.
-		if imageRequired && !auditEntityHasPlannedImageCard(*entity) {
-			imageRequired = false
-		}
+		// `entity_images.enabled` is the expectation contract: every eligible
+		// identity is an expected portrait, even when the planner had to
+		// degrade to a text card. `required` (the strict env gate) decides
+		// whether the job fails; it must not decide whether the gap is visible.
+		// The old planned-card filter made r38 report 0/0 while six cards had
+		// no portrait (ITCLOSE-07).
 		// The semantic production plan is the run-level admission decision for
 		// identity imagery. When it deliberately excluded an identity from
 		// media, the resolver drops its image card and the audit must not turn
@@ -367,8 +351,12 @@ func ApplyRequestedEntityImageContract(audit *contract.OverlayAudit, bundle *cap
 				imageRequired = false
 			}
 		}
-		entity.ImageRequired = imageRequired
-		entity.ImageDriveRequired = requireDrive && imageRequired
+		// Only a selected (or explicitly planned) identity is a promise. The
+		// audit groups by canonical identity, so unplanned mentions must not
+		// inflate the denominator.
+		promised := imageRequired && (entity.SelectedForVideo || strings.EqualFold(strings.TrimSpace(entity.ImageStatus), "planned"))
+		entity.ImageRequired = promised
+		entity.ImageDriveRequired = requireDrive && promised
 	}
 	audit.EntityImages = buildOverlayAuditEntityImages(audit, bundle, plan)
 }

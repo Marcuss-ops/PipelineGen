@@ -177,8 +177,18 @@ func (r *Reader) GetScriptRunSnapshot(ctx context.Context, jobID string) (*appjo
 	if strings.TrimSpace(jobID) == "" {
 		return nil, fmt.Errorf("get script run snapshot: job id is required")
 	}
+	// job_id is not unique in run_observability: the worker records its own
+	// attempt row after the submission row. The worker row is newer but does
+	// not carry the submission checkpoint (its workflow_payload_json has no
+	// request/result), so "latest row" returned an empty snapshot and hid a
+	// remote_final_job handle that was already durable. Select the submission
+	// row first, then keep the historical fallback for jobs that were never
+	// started through the HTTP starter.
 	var runID, payload string
-	err := r.obs.QueryRowContext(ctx, `SELECT run_id,workflow_payload_json FROM run_observability WHERE job_id=? AND job_type='script.generate' ORDER BY created_at DESC LIMIT 1`, jobID).Scan(&runID, &payload)
+	err := r.obs.QueryRowContext(ctx, `SELECT run_id,workflow_payload_json FROM run_observability WHERE job_id=? AND job_type='script.generate' AND attempt_id=run_id||':script' ORDER BY created_at DESC LIMIT 1`, jobID).Scan(&runID, &payload)
+	if err == sql.ErrNoRows {
+		err = r.obs.QueryRowContext(ctx, `SELECT run_id,workflow_payload_json FROM run_observability WHERE job_id=? AND job_type='script.generate' ORDER BY created_at DESC LIMIT 1`, jobID).Scan(&runID, &payload)
+	}
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -193,11 +203,20 @@ func (r *Reader) GetScriptRunSnapshot(ctx context.Context, jobID string) (*appjo
 	if err := json.Unmarshal([]byte(payload), &checkpoint); err != nil {
 		return nil, fmt.Errorf("decode script run snapshot %s: %w", jobID, err)
 	}
+	// The remote handle lives inside the checkpointed GenerateResult. Project
+	// it while the run is still RUNNING: the broker result is not written
+	// until completion, so without this read the job appears to have no
+	// remote_final_job_id for the whole render.
+	var result struct {
+		RemoteFinalJob json.RawMessage `json:"remote_final_job"`
+	}
+	_ = json.Unmarshal(checkpoint.Result, &result)
 	return &appjobs.ScriptRunSnapshot{
-		RunID:        runID,
-		Status:       string(checkpoint.Status),
-		CurrentStage: string(checkpoint.CurrentStage),
-		Result:       checkpoint.Result,
+		RunID:          runID,
+		Status:         string(checkpoint.Status),
+		CurrentStage:   string(checkpoint.CurrentStage),
+		Result:         checkpoint.Result,
+		RemoteFinalJob: result.RemoteFinalJob,
 	}, nil
 }
 

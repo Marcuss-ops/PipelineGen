@@ -139,32 +139,6 @@ func CompileOverlayPlanFromGenerationResult(
 	return CompileOverlayPlanWithRustResolver(ctx, capResult, language, canvas, planID, planID, projectID, nil, compiler)
 }
 
-// ── overlay_image_sfx.go (merged to respect the package file cap) ──
-// The explicit per-image cues (overlay_images[].sound_effect) are projected
-// into the canonical master audio plan by overlay_sfx_projection.go. This file
-// keeps only the positional matcher the projection shares with the image-style
-// lane; it never writes item.sound_effect onto the RenderingGen payload.
-
-// imageSFXWindow mirrors the visible window the renderer and the plan seal use:
-// a single-layer image is visible for the whole item, a composite for its
-// first visible layer (earliest start, widest on a tie).
-func imageSFXWindow(item capmodel.OverlayItem) (startOffsetMS, visibleEndMS int64) {
-	visibleEndMS = item.EndMs - item.StartMs
-	if len(item.ImageLayers) == 0 {
-		return 0, visibleEndMS
-	}
-	first := item.ImageLayers[0]
-	for _, layer := range item.ImageLayers[1:] {
-		if layer.StartMS < first.StartMS || layer.StartMS == first.StartMS && layer.EndMS > first.EndMS {
-			first = layer
-		}
-	}
-	if first.EndMS < visibleEndMS {
-		visibleEndMS = first.EndMS
-	}
-	return first.StartMS, visibleEndMS
-}
-
 // ApplyImageAssetStylesForResult applies the per-pin styles to the source plan
 // and every localized plan: translation never changes the stills, so a pin's
 // look belongs to the same scene in each language.

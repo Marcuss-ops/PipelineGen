@@ -87,7 +87,7 @@ type GenerateRequest struct {
 	// balanced, dynamic). It derives unset per-kind caps; explicit caps win.
 	EditorialDensity string         `json:"editorial_density,omitempty"`
 	AnimationCounts  map[string]int `json:"animation_counts,omitempty"`
-	// OverlayGroupLimits caps overlays per group (maps, short_phrases,
+	// OverlayGroupLimits caps overlays per group (maps, numbers, short_phrases,
 	// long_phrases, entities_with_text, images). Present 0 disables a group.
 	OverlayGroupLimits map[string]int `json:"overlay_group_limits,omitempty"`
 	// EntityStyleID pins the entity-card composition family for generated

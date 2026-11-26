@@ -197,6 +197,39 @@ func TestPollSeparatesTerminalFailureFromPending(t *testing.T) {
 	}
 }
 
+func TestAttachRetriesTransientMasterPollFailure(t *testing.T) {
+	polls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/jobs/master-job-1" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		polls++
+		if polls == 1 {
+			http.Error(w, `{"error":"temporary gateway failure"}`, http.StatusBadGateway)
+			return
+		}
+		_, _ = w.Write([]byte(`{"job_id":"master-job-1","status":"SUCCEEDED"}`))
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "test-token")
+	client.PollInterval = 20 * time.Millisecond
+	client.PollTimeout = time.Second
+
+	result, err := client.Attach(context.Background(), "master-job-1", time.Second)
+	if err != nil {
+		t.Fatalf("Attach after transient 502 = %v", err)
+	}
+	if result.Status != "SUCCEEDED" {
+		t.Fatalf("Attach status = %q, want SUCCEEDED", result.Status)
+	}
+	if polls != 2 {
+		t.Fatalf("poll requests = %d, want 2 (one transient 502, one successful poll)", polls)
+	}
+}
+
 // TestAttachDecomposesQueueExecutionAndPollLag pins the phase decomposition the
 // remote-final-job stage relies on: the Master's created_at/started_at/
 // completed_at produce queue and execution, while the attach loop reports its

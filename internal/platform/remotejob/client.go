@@ -422,6 +422,22 @@ func (c *Client) Attach(ctx context.Context, jobID string, budget time.Duration)
 		if err == nil {
 			return finish(result, nil)
 		}
+		if errors.Is(err, ErrRemoteTransient) {
+			// A transient status endpoint failure says nothing about the render's
+			// state. Keep the same durable job id and retry with the normal bounded
+			// backoff until the attach budget or caller context expires.
+			select {
+			case <-ctx.Done():
+				return finish(last, ctx.Err())
+			case <-deadline.C:
+				return finish(last, fmt.Errorf("remote job %s status unavailable after %s: %w", jobID, wait, ErrRemotePending))
+			case <-time.After(next):
+			}
+			if next *= 2; next > interval {
+				next = interval
+			}
+			continue
+		}
 		if !errors.Is(err, ErrRemotePending) {
 			// Terminal failure or a transport fault: the wait is over either way.
 			return finish(result, err)
@@ -556,6 +572,9 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 	}
 	if resp.StatusCode != wantStatus {
 		body := strings.TrimSpace(string(data))
+		if resp.StatusCode >= http.StatusInternalServerError {
+			return fmt.Errorf("%w: HTTP %d: %s", ErrRemoteTransient, resp.StatusCode, body)
+		}
 		if planErr := parsePlanValidationError(resp.StatusCode, body); planErr != nil {
 			return planErr
 		}
