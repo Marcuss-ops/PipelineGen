@@ -173,7 +173,7 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 					clipIndexSource = plainClipIndexes
 				}
 				require.Contains(t, clipIndexSource, "idx_clip_folders_search_key",
-					"clip_folders.search_key index from 093 must exist") 				// 6. The observability plane returns before this point (it owns no
+					"clip_folders.search_key index from 093 must exist") // 6. The observability plane returns before this point (it owns no
 				//    business table), so this assertion only runs on primary.
 				// 7. schema_migrations ledger row count sanity: should include
 				//    every in-scope migration from 001 through 093 (plus any
