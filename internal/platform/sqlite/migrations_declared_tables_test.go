@@ -97,7 +97,7 @@ func assertDriftIsReported(t *testing.T, dbPath, migrationsRelPath, scope, table
 
 	// Recomputed from the tree, so the assertion follows the history instead of
 	// hard-coding a filename that the next migration would invalidate.
-	baselineThreshold := baselineThresholdForMigrations(migrations)
+	baselineThreshold := baselineThresholdForMigrations(migrations, scope)
 	baselineIsApplied := baselineApplied(applied)
 	newestDeclaringVersion, declaringFiles := 0, map[int]string{}
 	for _, m := range migrations {

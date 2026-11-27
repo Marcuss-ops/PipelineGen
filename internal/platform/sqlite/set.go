@@ -304,6 +304,10 @@ func MigrationsDir() string {
 	return filepath.Join("migrations", "sqlite")
 }
 
+// JobsMigrationsDir is the exported half of resolveJobsMigrationsDir for admin
+// tooling that must locate the jobs-plane corpus from any working directory.
+func JobsMigrationsDir() string { return resolveJobsMigrationsDir() }
+
 func resolveJobsMigrationsDir() string {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {

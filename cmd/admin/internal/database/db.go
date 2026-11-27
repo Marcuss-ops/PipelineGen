@@ -1,10 +1,11 @@
 // cmd/admin/db.go (June 2026 codex/db-doctor-restore):
 //
-// Dispatcher for the admin db {status,check,migrations,backup,restore,rotate,retention}
+// Dispatcher for the admin db {status,check,migrations,migrate,backup,restore,rotate,retention}
 // subsystem. Each subcommand is implemented in its own file:
 //   - cmd/admin/db_status.go     → db status
 //   - cmd/admin/db_check.go      → db check  (SQLite integrity only)
-//   - cmd/admin/db_migrations.go → db migrations
+//   - cmd/admin/db_migrations.go → db migrations (read-only status)
+//   - cmd/admin/db_migrate.go    → db migrate (apply the ledger)
 //   - cmd/admin/db_backup.go     → db backup
 //   - cmd/admin/db_restore.go    → db restore --verify
 //   - cmd/admin/db_rotate.go     → db rotate (observability retention, branch 2)
@@ -28,7 +29,7 @@ import (
 
 func RunDB(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: admin db <subcmd> [args]\n  subcommands: status, check, migrations, backup, restore, rotate, retention")
+		return fmt.Errorf("usage: admin db <subcmd> [args]\n  subcommands: status, check, doctor, migrations, migrate, backup, restore, rotate, retention")
 	}
 
 	// AGENTS.md §7 post-write save ctx — admin `db` composition root;
@@ -49,8 +50,12 @@ func RunDB(args []string) error {
 		return RunDBStatus(ctx, rest)
 	case "check":
 		return RunDBCheck(ctx, rest)
+	case "doctor":
+		return RunDBDoctor(ctx, rest)
 	case "migrations":
 		return RunDBMigrations(ctx, rest)
+	case "migrate":
+		return RunDBMigrate(ctx, rest)
 	case "backup":
 		return RunDBBackup(ctx, rest)
 	case "restore":
@@ -60,6 +65,6 @@ func RunDB(args []string) error {
 	case "retention":
 		return RunDBRetention(ctx, rest)
 	default:
-		return fmt.Errorf("unknown db subcommand: %s (expected: status, check, migrations, backup, restore, rotate, retention)", sub)
+		return fmt.Errorf("unknown db subcommand: %s (expected: status, check, doctor, migrations, migrate, backup, restore, rotate, retention)", sub)
 	}
 }

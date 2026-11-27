@@ -1,0 +1,60 @@
+{
+  "tag": "t0930",
+  "lanes_configured": 2,
+  "concurrent_requests": 4,
+  "batch_wall_s": 17.938,
+  "rows": [
+    {
+      "i": 0,
+      "cache_hit": false,
+      "job": "job_1795771692922552156_4d6052ba",
+      "child": "job_1795771694084279721_cf1bafb0",
+      "done": 8.203859806060791,
+      "render_wall_ms": 6520,
+      "queue_ms": 5,
+      "service_ms": 2920,
+      "total_ms": 6569,
+      "render_fps": 167.3894721019232,
+      "status": "SUCCEEDED"
+    },
+    {
+      "i": 1,
+      "cache_hit": false,
+      "job": "job_1795771692943064882_644dcf09",
+      "child": "job_1795771694365963744_197138d0",
+      "done": 15.0879807472229,
+      "render_wall_ms": 13145,
+      "queue_ms": 7462,
+      "service_ms": 2859,
+      "total_ms": 13181,
+      "render_fps": 171.21381529031515,
+      "status": "SUCCEEDED"
+    },
+    {
+      "i": 2,
+      "cache_hit": false,
+      "job": "job_1795771692921419010_ad969002",
+      "child": "job_1795771694913265667_a00e9f37",
+      "done": 17.93139624595642,
+      "render_wall_ms": 15787,
+      "queue_ms": 10473,
+      "service_ms": 2678,
+      "total_ms": 15817,
+      "render_fps": 183.65696454551912,
+      "status": "SUCCEEDED"
+    },
+    {
+      "i": 3,
+      "cache_hit": false,
+      "job": "job_1795771692921824103_e9917cbd",
+      "child": "job_1795771694136914373_cef4f0d7",
+      "done": 11.022603988647461,
+      "render_wall_ms": 9315,
+      "queue_ms": 3574,
+      "service_ms": 3432,
+      "total_ms": 9366,
+      "render_fps": 139.40814825065738,
+      "status": "SUCCEEDED"
+    }
+  ]
+}

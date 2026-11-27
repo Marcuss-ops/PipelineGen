@@ -119,9 +119,9 @@ var ErrFinalJobStaleReceipt = errors.New("remote final job identity is stale and
 var ErrFinalJobInvalidPlan = errors.New("remote final job rejected the overlay plan")
 
 // ErrFinalJobCapabilityMissing marks a remote service that does not expose a
-// capability required by an otherwise valid final-job plan (the r17b 422
-// stock_window_preparation drift). The payload is not at fault; retrying cannot
-// change the service version, so the run must fail as a configuration gap.
+// capability required by an otherwise valid final-job plan. The payload is not
+// at fault; retrying cannot change the remote capability inventory, so the run
+// must fail as a configuration gap.
 var ErrFinalJobCapabilityMissing = errors.New("remote final job is missing a required capability")
 
 // auditFinalJobArtifactReuse makes the retry path's artifact reuse auditable.

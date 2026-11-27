@@ -1,0 +1,32 @@
+{
+  "job_id": "job_1795771473620280008_555ea13b",
+  "status": "SUCCEEDED",
+  "created_at": "2026-11-27T09:24:33Z",
+  "error": "",
+  "payload": {
+    "source_asset_id": "yt_T6x-kDiQsWM_203_252_v1",
+    "watermark": {
+      "enabled": false
+    },
+    "subtitles": {
+      "enabled": false
+    },
+    "background": {
+      "mode": "none"
+    },
+    "output": {
+      "width": 1920,
+      "height": 1080,
+      "fps_num": 24,
+      "fps_den": 1,
+      "foreground_scale_percent": 80
+    },
+    "execution": {
+      "require_gpu": true
+    },
+    "destination": {
+      "drive_folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
+    }
+  },
+  "note": "September 2026 canonical source asset is no longer downloadable; cold benchmark cannot reuse it."
+}

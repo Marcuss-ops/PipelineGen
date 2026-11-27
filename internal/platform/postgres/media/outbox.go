@@ -93,6 +93,10 @@ func NewOutboxRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// DB exposes the shared handle so operational surfaces (mediaops retention
+// sweep) run against the same connection the repository owns.
+func (r *Repository) DB() *sql.DB { return r.db }
+
 // compile-time assertion: *Repository satisfies the narrow surface the
 // committer consumes.
 var _ outboxRepository = (*Repository)(nil)

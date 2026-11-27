@@ -93,9 +93,12 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 		return cliprender.ChunkSet{}, err
 	}
 	family := make([]renderqueue.RenderQueueJob, 0, len(set.Chunks)+1)
+	// Every job in the family renders on Chronon Vulkan, so every one carries
+	// the explicit GPU demand. The anchor muxes the assembled video and the
+	// children encode segments; a CPU-only lane cannot complete either.
 	family = append(family, renderqueue.RenderQueueJob{
 		ID: anchorID, JobType: queueclient.JobTypeRenderSegment,
-		OverlaySpec: rawPlan, Assets: assets,
+		OverlaySpec: rawPlan, Assets: assets, RequireGPU: boolPtr(true),
 	})
 	for _, chunk := range set.Chunks {
 		family = append(family, renderqueue.RenderQueueJob{
@@ -103,6 +106,7 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 			ParentJobID: anchorID, ChunkIndex: chunk.Index,
 			FrameRange:  &renderqueue.RenderFrameRange{Start: chunk.StartFrame, End: chunk.EndFrame},
 			OverlaySpec: childPlan, Assets: assets, PreparedRenderPackage: preparedRef,
+			RequireGPU: boolPtr(true),
 		})
 	}
 	if err := p.submitter.SubmitBatch(ctx, family); err != nil {

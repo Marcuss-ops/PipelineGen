@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -13,6 +14,13 @@ import (
 type SubtitleArtifactRepositorySQLite struct {
 	db  *sql.DB
 	log *zap.Logger
+	// validateParent is the optional cross-plane check. Subtitle artifacts live
+	// on SQLite while media_assets/asset_text_tracks live on PostgreSQL after
+	// the media cutover (audit DB-02), so the repository cannot rely on SQLite
+	// FKs. When a PostgreSQL handle is available the wiring installs a
+	// validator that proves the referenced track exists and belongs to the
+	// asset before the row is written.
+	validateParent func(ctx context.Context, assetID string, textTrackID int64) error
 }
 
 func NewSubtitleArtifactRepository(db *sql.DB, log *zap.Logger) (*SubtitleArtifactRepositorySQLite, error) {
@@ -27,7 +35,27 @@ func NewSubtitleArtifactRepository(db *sql.DB, log *zap.Logger) (*SubtitleArtifa
 
 var _ detail.SubtitleArtifactRepository = (*SubtitleArtifactRepositorySQLite)(nil)
 
+// SetParentValidator installs the optional PostgreSQL-backed parent check.
+// A nil validator keeps the SQLite-only (model-free) mode working, where no
+// PostgreSQL parent exists to validate against.
+func (r *SubtitleArtifactRepositorySQLite) SetParentValidator(
+	validate func(ctx context.Context, assetID string, textTrackID int64) error,
+) {
+	r.validateParent = validate
+}
+
 func (r *SubtitleArtifactRepositorySQLite) Upsert(ctx context.Context, art *detail.SubtitleArtifact) error {
+	if art.AssetID == "" {
+		return errors.New("subtitle artifact: asset_id is required")
+	}
+	if art.TextTrackID <= 0 {
+		return fmt.Errorf("subtitle artifact: text_track_id must be positive, got %d", art.TextTrackID)
+	}
+	if r.validateParent != nil {
+		if err := r.validateParent(ctx, art.AssetID, art.TextTrackID); err != nil {
+			return fmt.Errorf("subtitle artifact: parent validation: %w", err)
+		}
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

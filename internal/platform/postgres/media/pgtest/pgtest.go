@@ -38,6 +38,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgmediaops "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/mediaops"
 	pgmigration "github.com/Marcuss-ops/PipelineGen/migrations/postgres"
 )
 
@@ -108,7 +109,7 @@ func DatabaseNameFromDSN(dsn string) string {
 // ApplyMigrations applies the canonical ORDERED media migration sequence
 // through its checksum-verified ledger.
 func ApplyMigrations(db *sql.DB) error {
-	_, err := pgmedia.RunMediaMigrations(context.Background(), db)
+	_, err := pgmediaops.RunMediaMigrations(context.Background(), db)
 	return err
 }
 

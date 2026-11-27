@@ -19,6 +19,10 @@ import (
 type BackgroundSpec struct {
 	Mode    string `json:"mode,omitempty"`
 	AssetID string `json:"asset_id,omitempty"` // required when mode == "asset"
+	// Revision is the optional content revision (SHA-256 hex) of the
+	// background asset. It enters the render fingerprint and is verified
+	// against the resolved bytes; see fingerprint.go for the identity rule.
+	Revision string `json:"revision,omitempty"`
 	// Kind is one of image|video (BackgroundKindImage / BackgroundKindVideo);
 	// empty means "derive from the resolved asset media type".
 	Kind string `json:"kind,omitempty"`
@@ -44,9 +48,13 @@ type BackgroundSpec struct {
 // With omitempty an explicit 0 was dropped on marshal and re-defaulted by the
 // next Normalize(), which silently changed what the caller asked for.
 type WatermarkSpec struct {
-	Enabled  bool    `json:"enabled,omitempty"`
-	Text     string  `json:"text,omitempty"`
-	AssetID  string  `json:"asset_id,omitempty"` // required when enabled
+	Enabled bool   `json:"enabled,omitempty"`
+	Text    string `json:"text,omitempty"`
+	AssetID string `json:"asset_id,omitempty"` // required when enabled
+	// Revision is the optional content revision (SHA-256 hex) of the
+	// watermark asset. It enters the render fingerprint and is verified
+	// against the resolved bytes; see fingerprint.go for the identity rule.
+	Revision string  `json:"revision,omitempty"`
 	Position string  `json:"position,omitempty"` // default top_right
 	Opacity  float64 `json:"opacity"`            // 0.0–1.0, default 1.0 when absent
 	MarginPX int     `json:"margin_px"`          // >= 0, default 100 when absent
@@ -78,7 +86,7 @@ func (w *WatermarkSpec) UnmarshalJSON(data []byte) error {
 	// UNKNOWN_FIELD error, not a silently ignored key that applies defaults.
 	for key := range present {
 		switch key {
-		case "enabled", "text", "asset_id", "position", "opacity", "margin_px", "style":
+		case "enabled", "text", "asset_id", "revision", "position", "opacity", "margin_px", "style":
 		default:
 			return fmt.Errorf("json: unknown field %q", key)
 		}
@@ -109,6 +117,12 @@ func (w *WatermarkSpec) UnmarshalJSON(data []byte) error {
 type TranscriptSpec struct {
 	Mode     string `json:"mode,omitempty"` // default auto
 	Language string `json:"language,omitempty"`
+	// Revision is the optional canonical transcript revision (the text track
+	// SHA-256). It enters the render fingerprint and is verified against the
+	// resolved transcript, so changing the transcript while mode/language/
+	// persist stay identical is a cache miss instead of stale subtitles. See
+	// fingerprint.go for the identity rule.
+	Revision string `json:"revision,omitempty"`
 	// Persist deliberately has NO omitempty: an explicit false must survive the
 	// persisted job payload, otherwise the worker's re-decode would see an
 	// absent key and re-apply the true default (the same trap the watermark
@@ -134,7 +148,7 @@ func (t *TranscriptSpec) UnmarshalJSON(data []byte) error {
 	}
 	for key := range present {
 		switch key {
-		case "mode", "language", "persist":
+		case "mode", "language", "persist", "revision":
 		default:
 			return fmt.Errorf("json: unknown field %q", key)
 		}

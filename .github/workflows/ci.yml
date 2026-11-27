@@ -112,6 +112,11 @@ jobs:
         go build -o /dev/null ./cmd/worker/
         go build -o /dev/null ./cmd/admin/
 
+    - name: DB doctor fixture gate (DB-08)
+      # Fails when the doctor stops detecting an injected orphan, when the
+      # DB-07 indexes regress, or when a new migration omits `-- database:`.
+      run: go test ./internal/platform/sqlite -run 'TestSQLiteDoctor|TestMigrations_DB07|TestMigrationScopeHeadersNewFilesRequireDirective' -count=1
+
     - name: Generate API docs
       # `admin gen-api-docs` writes the canonical markdown snapshot of the
       # currently-registered HTTP routes. CI then diffs the snapshot to

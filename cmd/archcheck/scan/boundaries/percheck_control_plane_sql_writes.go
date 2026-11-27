@@ -33,6 +33,10 @@ var controlPlaneSQLCanonicalPrefixes = []string{
 	// September 2026): the staged successor of the SQLite media surfaces,
 	// implementing the identical persistence.AssetCommitter port.
 	"internal/platform/postgres/media/",
+	// Operator surfaces over the media SSOT (DB-05 retention, DB-08 health):
+	// the retention sweep is the owner of the outbox/heartbeat history DELETE,
+	// so it lives beside the repository rather than inside the domain package.
+	"internal/platform/postgres/mediaops/",
 	"internal/capabilities/assets/providers/stock/enrichment/handler_repository.go",
 	"internal/capabilities/assets/lifecycle/service_voiceover.go",
 	"internal/capabilities/jobs/policy/job_completion_writer.go",

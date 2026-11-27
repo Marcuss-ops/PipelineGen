@@ -366,17 +366,52 @@ func addQueueWaitMS(result job.Result, j *job.Job, startedAt time.Time) {
 	result["queue_wait_ms"] = startedAt.Sub(j.CreatedAt).Milliseconds()
 }
 
-// finalizeMetrics sets the job-level total wall time on the V2 report and
+// finalizeMetrics sets THIS handler's wall time on the V2 report and
 // recomputes the derived aggregates (unaccounted_ms, FPS, realtime factor).
-// The job total is the authoritative total_ms of the report — it spans
-// preparation + selection + render + publish, so unaccounted_ms surfaces the
-// "time outside the render phases" question exactly like the benchmark asks.
+//
+// On the async path total_ms belongs to the settle job, so it does NOT span
+// the request: preparation and submit happened in the parent job. The
+// end-to-end measures are request_to_artifact_ms / request_to_delivery_ms,
+// applied separately by applyRequestTimings when the continuation carries the
+// original acceptance timestamp (CRA-01). Do not describe total_ms as the
+// endpoint latency.
 func finalizeMetrics(m *RenderMetricsV2, jobTotalMS int64, durationSec float64) {
 	if m == nil {
 		return
 	}
 	m.TotalMS = Metric(jobTotalMS)
 	m.Compute(durationSec)
+}
+
+// applyRequestTimings projects the acceptance-relative walls that the async
+// split otherwise hides. Every input is optional: a job written before
+// AcceptedAt existed (or a cache hit in the submit phase, where the request
+// acceptance is the submit job's own CreatedAt) leaves the corresponding
+// metric NOT_INSTRUMENTED instead of guessing.
+//
+// Clock skew is clamped, not fail-closed: a negative interval is not a
+// measurement, and a render must not fail because two processes disagree.
+func applyRequestTimings(m *RenderMetricsV2, acceptedAt, submittedAt, jobStart, completedAt time.Time, deliveryStatus string) {
+	if m == nil {
+		return
+	}
+	if !jobStart.IsZero() && !completedAt.IsZero() && !completedAt.Before(jobStart) {
+		m.SettleWallMS = Metric(completedAt.Sub(jobStart).Milliseconds())
+	}
+	if acceptedAt.IsZero() || completedAt.IsZero() || completedAt.Before(acceptedAt) {
+		return
+	}
+	artifactMS := completedAt.Sub(acceptedAt).Milliseconds()
+	m.RequestToArtifactMS = Metric(artifactMS)
+	if !submittedAt.IsZero() && !submittedAt.Before(acceptedAt) {
+		m.SubmitWallMS = Metric(submittedAt.Sub(acceptedAt).Milliseconds())
+	}
+	switch deliveryStatus {
+	case "completed", "not_required":
+		// The render job observed a terminal delivery: the artifact and the
+		// delivery completed inside the same measured interval.
+		m.RequestToDeliveryMS = Metric(artifactMS)
+	}
 }
 
 // projectRendererPhases projects the renderer-owned phase timings from the

@@ -6,10 +6,11 @@
 // table, today empty in production):
 //
 //	jobs DB          job_registry_metrics, job_registry_events, job_events,
-//	                 job_payloads (terminal jobs only)
+//	                 job_payloads and job_results (terminal jobs only)
 //	observability DB run_observability (cascade → run_*_observations),
 //	                 run_report_snapshots, replay_bundles, api_requests
-//	media DB         resource_observations, api_requests
+//	media DB         resource_observations, render_attempt_analytics,
+//	                 api_requests
 //
 // Two windows are applied:
 //
@@ -90,38 +91,7 @@ func RunDBRetention(ctx context.Context, args []string) error {
 	historyCutoff := now.AddDate(0, 0, -*historyDays)
 
 	dataRoot := fullCfg.Storage.AbsDataDir()
-	plans := []storage.RetentionPlan{
-		{
-			Name: "jobs",
-			Path: filepath.Join(dataRoot, "jobs", "jobs.db.sqlite"),
-			Ops: []storage.RetentionOp{
-				{Table: "job_registry_metrics", TimeColumn: "created_at", Cutoff: telemetryCutoff},
-				{Table: "job_registry_events", TimeColumn: "created_at", Cutoff: historyCutoff},
-				{Table: "job_events", TimeColumn: "created_at", Cutoff: historyCutoff},
-				// Payloads are pruned only for terminal jobs; an old queued/running
-				// job must keep its request body.
-				{Table: "job_payloads", TimeColumn: "created_at", Cutoff: historyCutoff, TerminalJobOnly: true},
-			},
-		},
-		{
-			Name: "observability",
-			Path: fullCfg.Storage.ObservabilityDBFullPath(),
-			Ops: []storage.RetentionOp{
-				{Table: "run_observability", TimeColumn: "created_at", Cutoff: telemetryCutoff},
-				{Table: "run_report_snapshots", TimeColumn: "captured_at", Cutoff: telemetryCutoff},
-				{Table: "replay_bundles", TimeColumn: "created_at", Cutoff: historyCutoff},
-				{Table: "api_requests", TimeColumn: "ts", Cutoff: telemetryCutoff, TimeFormat: storage.SQLiteTimestampFormat},
-			},
-		},
-		{
-			Name: "media",
-			Path: filepath.Join(dataRoot, "media", "media.db.sqlite"),
-			Ops: []storage.RetentionOp{
-				{Table: "resource_observations", TimeColumn: "observed_at", Cutoff: telemetryCutoff},
-				{Table: "api_requests", TimeColumn: "ts", Cutoff: telemetryCutoff, TimeFormat: storage.SQLiteTimestampFormat},
-			},
-		},
-	}
+	plans := buildRetentionPlans(dataRoot, fullCfg.Storage.ObservabilityDBFullPath(), telemetryCutoff, historyCutoff)
 
 	report := retentionReport{
 		DryRun:          *dryRun,
@@ -160,4 +130,43 @@ func RunDBRetention(ctx context.Context, args []string) error {
 
 	enc := json.NewEncoder(os.Stdout)
 	return enc.Encode(report)
+}
+
+// buildRetentionPlans is the single definition of the retention windows. It
+// lives apart from the CLI so a unit test can pin every table (audit DB-04).
+func buildRetentionPlans(dataRoot, observabilityPath string, telemetryCutoff, historyCutoff time.Time) []storage.RetentionPlan {
+	return []storage.RetentionPlan{
+		{
+			Name: "jobs",
+			Path: filepath.Join(dataRoot, "jobs", "jobs.db.sqlite"),
+			Ops: []storage.RetentionOp{
+				{Table: "job_registry_metrics", TimeColumn: "created_at", Cutoff: telemetryCutoff},
+				{Table: "job_registry_events", TimeColumn: "created_at", Cutoff: historyCutoff},
+				{Table: "job_events", TimeColumn: "created_at", Cutoff: historyCutoff},
+				// Payloads and results are pruned only for terminal jobs; an old
+				// queued/running job must keep its request body and result.
+				{Table: "job_payloads", TimeColumn: "created_at", Cutoff: historyCutoff, TerminalJobOnly: true},
+				{Table: "job_results", TimeColumn: "created_at", Cutoff: historyCutoff, TerminalJobOnly: true},
+			},
+		},
+		{
+			Name: "observability",
+			Path: observabilityPath,
+			Ops: []storage.RetentionOp{
+				{Table: "run_observability", TimeColumn: "created_at", Cutoff: telemetryCutoff},
+				{Table: "run_report_snapshots", TimeColumn: "captured_at", Cutoff: telemetryCutoff},
+				{Table: "replay_bundles", TimeColumn: "created_at", Cutoff: historyCutoff},
+				{Table: "api_requests", TimeColumn: "ts", Cutoff: telemetryCutoff, TimeFormat: storage.SQLiteTimestampFormat},
+			},
+		},
+		{
+			Name: "media",
+			Path: filepath.Join(dataRoot, "media", "media.db.sqlite"),
+			Ops: []storage.RetentionOp{
+				{Table: "resource_observations", TimeColumn: "observed_at", Cutoff: telemetryCutoff},
+				{Table: "render_attempt_analytics", TimeColumn: "recorded_at", Cutoff: telemetryCutoff},
+				{Table: "api_requests", TimeColumn: "ts", Cutoff: telemetryCutoff, TimeFormat: storage.SQLiteTimestampFormat},
+			},
+		},
+	}
 }

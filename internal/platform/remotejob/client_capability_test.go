@@ -60,12 +60,12 @@ func TestCheckCapabilitiesAcceptsAdvertisedStockWindowPreparation(t *testing.T) 
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Errorf("authorization = %q", r.Header.Get("Authorization"))
 		}
-		_, _ = w.Write([]byte(`{"capabilities":["stock_window_preparation"]}`))
+		_, _ = w.Write([]byte(`{"capabilities":["video_source_certification.v1"]}`))
 	}))
 	defer server.Close()
 
 	client := New(server.URL, "test-token")
-	if err := client.CheckCapabilities(context.Background(), "stock_window_preparation"); err != nil {
+	if err := client.CheckCapabilities(context.Background(), "video_source_certification.v1"); err != nil {
 		t.Fatalf("CheckCapabilities() error = %v", err)
 	}
 }
@@ -76,7 +76,7 @@ func TestCheckCapabilitiesFailsClosedWhenRequiredCapabilityIsAbsent(t *testing.T
 	}))
 	defer server.Close()
 
-	err := New(server.URL, "test-token").CheckCapabilities(context.Background(), "stock_window_preparation")
+	err := New(server.URL, "test-token").CheckCapabilities(context.Background(), "video_source_certification.v1")
 	if err == nil {
 		t.Fatal("CheckCapabilities() must reject an unadvertised required feature")
 	}
@@ -89,7 +89,7 @@ func TestCheckCapabilitiesFailsClosedWhenWorkerInventoryIsUnavailable(t *testing
 	server := httptest.NewServer(http.NotFoundHandler())
 	defer server.Close()
 
-	err := New(server.URL, "test-token").CheckCapabilities(context.Background(), "stock_window_preparation")
+	err := New(server.URL, "test-token").CheckCapabilities(context.Background(), "video_source_certification.v1")
 	if err == nil {
 		t.Fatal("CheckCapabilities() must reject an unsupported capability endpoint")
 	}

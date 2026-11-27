@@ -66,6 +66,11 @@ var ErrFinalJobReceiptCheckpoint = errors.New("remote final job receipt checkpoi
 // PREPARE.
 const FinalJobOverlayProjectionCapability = "overlay_projection_finalize"
 
+// FinalJobStockSourceCertificationCapability is the Master capability used by
+// the copy-only stock path. The Master certifies stock sources and assembles
+// certified packets directly; it no longer prepares stock windows as MP4s.
+const FinalJobStockSourceCertificationCapability = "video_source_certification.v1"
+
 // ErrFinalJobSplitPrepareNotSent marks an early split PREPARE failure that
 // happened before the transport could send the request (disabled gate, missing
 // capability, local payload build, preflight). It is safe to discard the split

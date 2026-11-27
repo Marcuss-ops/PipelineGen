@@ -218,7 +218,7 @@ func (e *Execution) mediaPreflightPhase() bool {
 				if e.req.NeedsGPUEffectCapabilityPreflight() {
 					return e.fail(runstate.StagePreflight, fmt.Errorf("UNSUPPORTED_GPU_EFFECT: renderer capability preflight is not wired"))
 				}
-				return e.fail(runstate.StagePreflight, fmt.Errorf("REMOTE_CAPABILITY_MISSING: stock_window_preparation capability preflight is not wired"))
+				return e.fail(runstate.StagePreflight, fmt.Errorf("REMOTE_CAPABILITY_MISSING: %s capability preflight is not wired", finaljob.FinalJobStockSourceCertificationCapability))
 			}
 			if err := checker.CheckFinalJobCapabilities(c, e.req); err != nil {
 				return e.fail(runstate.StagePreflight, err)

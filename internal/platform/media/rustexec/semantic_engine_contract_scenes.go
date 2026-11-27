@@ -49,13 +49,16 @@ type semanticEngineSearchIntent struct {
 }
 
 type semanticEngineSceneManifest struct {
-	SceneID                string                               `json:"scene_id"`
-	Status                 string                               `json:"status"`
-	Reason                 *string                              `json:"reason"`
-	RejectedItems          int                                  `json:"rejected_items"`
-	Entities               []semanticEngineCandidate            `json:"entities"`
-	EntityFacts            []semanticEngineEntityFact           `json:"entity_facts"`
-	Identities             []semanticEngineIdentity             `json:"identities"`
+	SceneID       string                     `json:"scene_id"`
+	Status        string                     `json:"status"`
+	Reason        *string                    `json:"reason"`
+	RejectedItems int                        `json:"rejected_items"`
+	Entities      []semanticEngineCandidate  `json:"entities"`
+	EntityFacts   []semanticEngineEntityFact `json:"entity_facts"`
+	Identities    []semanticEngineIdentity   `json:"identities"`
+	// IdentityIDs is the v4 reference list into the document-level identity
+	// table. v3 omits it and keeps the cumulative Identities list instead.
+	IdentityIDs            []string                             `json:"identity_ids,omitempty"`
 	Relations              semanticEngineRelationView           `json:"relations"`
 	NumericFacts           []semanticEngineNumeric              `json:"numeric_facts"`
 	Quantities             []semanticEngineQuantity             `json:"quantities,omitempty"`

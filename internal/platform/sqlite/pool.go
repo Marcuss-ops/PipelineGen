@@ -179,20 +179,6 @@ func NewDualPool(ctx context.Context, fileUri string, numReaders int) (*DualPool
 	return &DualPool{Writer: writer, Reader: reader, sourcePath: walUri, ownsHandles: true}, nil
 }
 
-func applyCanonicalPragmas(ctx context.Context, db *sql.DB) error {
-	var journalMode string
-	if err := db.QueryRowContext(ctx, "PRAGMA journal_mode = WAL").Scan(&journalMode); err != nil {
-		return fmt.Errorf("set journal_mode=WAL: %w", err)
-	}
-	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout = 5000"); err != nil {
-		return fmt.Errorf("set busy_timeout=5000: %w", err)
-	}
-	if _, err := db.ExecContext(ctx, "PRAGMA synchronous = NORMAL"); err != nil {
-		return fmt.Errorf("set synchronous=NORMAL: %w", err)
-	}
-	return nil
-}
-
 // Close releases both writer and reader pool resources. Idempotent
 // (calls Close twice without panicking — db.Close returns nil on
 // already-closed DB). Returns the first error encountered; subsequent
@@ -256,9 +242,9 @@ func walPragmas(fileUri string) (string, error) {
 	q := u.Query()
 	// Idempotent union: a pre-existing _pragma=X is preserved by
 	// url.Values.Set replacing the same key.
-	q.Add("_pragma", "journal_mode(WAL)")
-	q.Add("_pragma", "busy_timeout(5000)")
-	q.Add("_pragma", "synchronous(NORMAL)")
+	for _, pragma := range pragmaURIParams() {
+		q.Add("_pragma", pragma)
+	}
 	// _busy_timeout param is honoured at the driver level too;
 	// redundant with `_pragma=busy_timeout(5000)` but exposes the
 	// value to driver-level code paths that read it directly.

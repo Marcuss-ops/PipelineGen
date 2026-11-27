@@ -88,6 +88,11 @@ func InitDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*D
 	}
 	dbs.DualPool = dualPool
 
+	// DB-08: read-only health gate in warning mode. Asynchronous by design so
+	// a large primary DB cannot delay startup; findings go to the log and to
+	// the db_health_findings metric.
+	runBootDoctor(log, dbs)
+
 	return dbs, nil
 }
 

@@ -72,6 +72,16 @@ func NewStore(cfg Config) (*Store, error) {
 	return &Store{root: filepath.Clean(cfg.Root), stager: cfg.Stager}, nil
 }
 
+// Root returns the canonical CAS root directory. Index/sidecar stores use it
+// to live beside the objects without becoming content-addressed themselves;
+// callers must never treat the path as a stable object address.
+func (s *Store) Root() string {
+	if s == nil {
+		return ""
+	}
+	return s.root
+}
+
 // OpenReader opens the store for READ-ONLY inspection: audits and reuse paths
 // need to ask where an address lives without owning a staging workspace.
 //

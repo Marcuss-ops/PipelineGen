@@ -93,6 +93,17 @@ func (h *Handler) applyBatchCacheHits(ctx context.Context, f *batchFanout) {
 			}
 		}
 		if rec != nil {
+			// Same CRA-03 guard as the single-item path: a batch hit must
+			// prove the inputs, not only the request identity.
+			if !cacheInputMatches(ctx, h.inputRevisions, &f.items[pos], rec) {
+				h.log.Info("clip.render batch cache entry stale: input revision changed",
+					zap.String("batch_id", f.batchID),
+					zap.Int("position", pos),
+					zap.String("asset_id", rec.AssetID))
+				rec = nil
+			}
+		}
+		if rec != nil {
 			f.perPosCacheHit[pos] = true
 			f.perPosAssetID[pos] = rec.AssetID
 			f.perPosDeliveryStatus[pos] = rec.DeliveryStatus

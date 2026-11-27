@@ -73,9 +73,17 @@ func (f *blockingRenderExecutor) SettleWithJobID(context.Context, ClipRenderPlan
 // creation time the test controls (the deferral window is measured from it).
 func runSettle(t *testing.T, renderer RenderExecutor, createdAt time.Time) (map[string]any, error) {
 	t.Helper()
+	return runSettleWith(t, renderer, createdAt, nil)
+}
+
+func runSettleWith(t *testing.T, renderer RenderExecutor, createdAt time.Time, configure func(*Worker)) (map[string]any, error) {
+	t.Helper()
 	ctx := context.Background()
 	w, _, _ := newTestWorker(t)
 	w.WithRenderExecutor(renderer)
+	if configure != nil {
+		configure(w)
+	}
 
 	_, enqueuer, err := handleSubmitted(t, ctx, w, "clip-settle-defer", baseRenderRequest())
 	if err != nil {
@@ -102,8 +110,8 @@ func TestSettleDefersInsteadOfHoldingTheLane(t *testing.T) {
 	if !ok {
 		t.Fatalf("err = %v, want a job.Deferral (a wait, not a failure)", err)
 	}
-	if deferral.Delay != DefaultSettleWait {
-		t.Fatalf("deferral delay = %s, want the settle wait budget %s", deferral.Delay, DefaultSettleWait)
+	if deferral.Delay != DefaultSettleRetryDelay {
+		t.Fatalf("deferral delay = %s, want the short retry delay %s (not the full attempt budget)", deferral.Delay, DefaultSettleRetryDelay)
 	}
 	if !errors.Is(err, job.ErrDeferred) {
 		t.Fatalf("err = %v does not match job.ErrDeferred", err)
@@ -113,13 +121,138 @@ func TestSettleDefersInsteadOfHoldingTheLane(t *testing.T) {
 	}
 }
 
+// TestSettleDeferralDelayPolicy pins the retry delay independently of the
+// attempt budget: the budget stays what bounds lane occupancy, while the
+// re-dispatch delay is shorter, configurable, and never negative.
+func TestSettleDeferralDelayPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  time.Duration
+		want time.Duration
+	}{
+		{name: "default is the short retry delay", set: DefaultSettleRetryDelay, want: DefaultSettleRetryDelay},
+		{name: "operator can shorten it", set: 250 * time.Millisecond, want: 250 * time.Millisecond},
+		{name: "never longer than the attempt budget", set: 2 * DefaultSettleWait, want: DefaultSettleWait},
+		{name: "zero keeps the historical budget delay", set: 0, want: DefaultSettleWait},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			renderer := &deferringRenderExecutor{pending: true, outcome: fullRenderOutcome()}
+			_, err := runSettleWith(t, renderer, time.Now().UTC(), func(w *Worker) {
+				w.WithSettleRetry(tc.set)
+			})
+			deferral, ok := job.AsDeferral(err)
+			if !ok {
+				t.Fatalf("err = %v, want a job.Deferral", err)
+			}
+			if deferral.Delay != tc.want {
+				t.Fatalf("deferral delay = %s, want %s", deferral.Delay, tc.want)
+			}
+			if len(renderer.budgets) != 1 || renderer.budgets[0] != DefaultSettleWait {
+				t.Fatalf("attempt budgets = %v, want one %s attempt (the delay must not change the budget)", renderer.budgets, DefaultSettleWait)
+			}
+		})
+	}
+}
+
+// pendingOnceExecutor returns a pending render on the FIRST bounded settle and
+// a certified outcome on the next dispatch. It models the concrete CRA-08 case:
+// the render finished just after the attempt budget, so the next cheap attempt
+// collects it.
+type pendingOnceExecutor struct {
+	budgets []time.Duration
+	calls   int
+	outcome *RenderOutcome
+}
+
+func (f *pendingOnceExecutor) Submit(context.Context, ClipRenderPlanV1) error { return nil }
+
+func (f *pendingOnceExecutor) Settle(context.Context, ClipRenderPlanV1) (*RenderOutcome, error) {
+	return certifiedTestOutcome(f.outcome), nil
+}
+
+func (f *pendingOnceExecutor) SettleWithin(_ context.Context, _ ClipRenderPlanV1, _ string, budget time.Duration) (*RenderOutcome, error) {
+	f.budgets = append(f.budgets, budget)
+	f.calls++
+	if f.calls == 1 {
+		return nil, ErrRenderPending
+	}
+	return certifiedTestOutcome(f.outcome), nil
+}
+
+// TestSettleRenderEndingAt61sUsesTheShortRetry pins the ticket's 61-second
+// case: a job that has already outlived one full 60 s budget still asks for a
+// 60 s attempt, but the next dispatch is only the short retry away — not
+// another full budget.
+func TestSettleRenderEndingAt61sUsesTheShortRetry(t *testing.T) {
+	renderer := &deferringRenderExecutor{pending: true, outcome: fullRenderOutcome()}
+	_, err := runSettle(t, renderer, time.Now().UTC().Add(-61*time.Second))
+	deferral, ok := job.AsDeferral(err)
+	if !ok {
+		t.Fatalf("err = %v, want a job.Deferral", err)
+	}
+	if len(renderer.budgets) != 1 || renderer.budgets[0] != DefaultSettleWait {
+		t.Fatalf("budgets = %v, want one %s attempt", renderer.budgets, DefaultSettleWait)
+	}
+	if deferral.Delay != DefaultSettleRetryDelay {
+		t.Fatalf("deferral delay = %s, want %s (not the full budget)", deferral.Delay, DefaultSettleRetryDelay)
+	}
+	if deferral.Delay >= DefaultSettleWait {
+		t.Fatalf("deferral delay %s is not measurably shorter than the budget %s", deferral.Delay, DefaultSettleWait)
+	}
+}
+
+// TestSettleCollectsOnTheNextShortAttempt drives the two dispatches the short
+// delay enables: the first returns pending and counts one deferral, the second
+// collects the certified artifact. It also pins the explicit deferral metrics.
+func TestSettleCollectsOnTheNextShortAttempt(t *testing.T) {
+	ctx := context.Background()
+	w, _, _ := newTestWorker(t)
+	renderer := &pendingOnceExecutor{outcome: fullRenderOutcome()}
+	w.WithRenderExecutor(renderer).WithSettleWait(25 * time.Millisecond).WithSettleRetry(5 * time.Millisecond)
+
+	_, enqueuer, err := handleSubmitted(t, ctx, w, "clip-settle-after-budget", baseRenderRequest())
+	if err != nil {
+		t.Fatalf("submit half: %v", err)
+	}
+	payload, err := encodeContinuationPayload(enqueuer.req.Continuation)
+	if err != nil {
+		t.Fatalf("encode continuation: %v", err)
+	}
+	settleJob := &job.Job{ID: "clip-settle-after-budget-settle", Payload: payload, CreatedAt: time.Now().UTC().Add(-61 * time.Second)}
+
+	_, err = w.Handle(ctx, settleJob, nil)
+	deferral, ok := job.AsDeferral(err)
+	if !ok {
+		t.Fatalf("first attempt err = %v, want a deferral", err)
+	}
+	if deferral.Delay != 5*time.Millisecond {
+		t.Fatalf("first deferral delay = %s, want the configured short retry 5ms", deferral.Delay)
+	}
+	if count, added := w.SettleDeferralStats(); count != 1 || added != 5 {
+		t.Fatalf("deferral metrics = (%d, %d ms), want (1, 5 ms)", count, added)
+	}
+
+	result, err := w.Handle(ctx, settleJob, nil)
+	if err != nil {
+		t.Fatalf("second attempt must collect the render: %v", err)
+	}
+	if result["phase"] != "rendered" {
+		t.Fatalf("second attempt phase = %v, want rendered", result["phase"])
+	}
+	if renderer.calls != 2 {
+		t.Fatalf("settle calls = %d, want 2 (budget then short retry)", renderer.calls)
+	}
+}
+
 // TestSettleStopsAskingOnceTheWindowCloses: past the window the attempt asks for
 // the blocking wait (budget 0) instead of deferring again, so a render that never
 // reports terminal degrades to the historical behaviour rather than looping.
 func TestSettleStopsAskingOnceTheWindowCloses(t *testing.T) {
 	renderer := &deferringRenderExecutor{pending: true, outcome: fullRenderOutcome()}
 
-	if _, err := runSettle(t, renderer, time.Now().UTC().Add(-DefaultSettleWindow-time.Minute)); err != nil {
+	// 21 minutes: one minute past the 20-minute window, the ticket's second
+	// simulated case. The settle must wait the render out, not defer again.
+	if _, err := runSettle(t, renderer, time.Now().UTC().Add(-21*time.Minute)); err != nil {
 		t.Fatalf("past the window the settle must wait the render out: %v", err)
 	}
 	if len(renderer.budgets) != 1 || renderer.budgets[0] != 0 {

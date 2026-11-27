@@ -442,6 +442,42 @@ func (s *distinctIDStub) Retry(_ context.Context, _ string) (*job.Job, error) { 
 // change; otherwise a cache hit serves bytes rendered by the previous code for
 // an identical payload, which is exactly the intermittency the version exists to
 // remove.
+// TestRenderFingerprint_IgnoresDestination pins the CRA-04 split: the
+// destination-aware key stays distinct (a cache hit must answer with the right
+// folder's locator), while the render identity is shared (one GPU artifact can
+// be delivered to both).
+func TestRenderFingerprint_IgnoresDestination(t *testing.T) {
+	a := &RenderRequest{SourceAssetID: "asset-render-identity"}
+	a.Normalize()
+	a.Destination.DriveFolderID = "folder-A"
+	b := &RenderRequest{SourceAssetID: "asset-render-identity"}
+	b.Normalize()
+	b.Destination.DriveFolderID = "folder-B"
+
+	fpA, err := a.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint(A): %v", err)
+	}
+	fpB, err := b.Fingerprint()
+	if err != nil {
+		t.Fatalf("Fingerprint(B): %v", err)
+	}
+	if fpA == fpB {
+		t.Fatal("delivery-aware fingerprints collide across destinations")
+	}
+	renderA, err := a.RenderFingerprint()
+	if err != nil {
+		t.Fatalf("RenderFingerprint(A): %v", err)
+	}
+	renderB, err := b.RenderFingerprint()
+	if err != nil {
+		t.Fatalf("RenderFingerprint(B): %v", err)
+	}
+	if renderA != renderB {
+		t.Fatalf("render identity differs by destination: %q != %q", renderA, renderB)
+	}
+}
+
 func TestFingerprint_PinsTheLoweringVersion(t *testing.T) {
 	if RendererLoweringVersion == "" {
 		t.Fatal("RendererLoweringVersion must never be empty: the fingerprint would stop tracking the lowering")
@@ -452,7 +488,7 @@ func TestFingerprint_PinsTheLoweringVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fingerprint: %v", err)
 	}
-	const golden = "abd56d5f35817ab0b65fd7ab39749d58feeab193c3679d91ebc91fdd2d665c29"
+	const golden = "e5264c95b85df772748763abffa3efaf9cca40ab356c7cc21da345df0204d882"
 	if fp != golden {
 		t.Fatalf("render identity = %q, want %q; update the golden together with RendererLoweringVersion", fp, golden)
 	}

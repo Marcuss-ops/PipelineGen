@@ -1,0 +1,28 @@
+{
+  "measured_at": "2026-11-27T09:25:00Z",
+  "pipelinegen": {
+    "git_commit": "df04e0e476694f3a692099aaacab2106422bef91",
+    "git_commit_short": "df04e0e47669",
+    "build_time": "2026-11-27T08:49:14+00:00",
+    "binary_sha256": "9ba3ff166469240c4bcaffbf67eb2967f8e9276a3f5eaee5edb416ea042cd359",
+    "mode": "all",
+    "config": "config.yaml"
+  },
+  "gpu": {
+    "name": "NVIDIA RTX A4000",
+    "driver": "595.99.02",
+    "memory_mib": 16376,
+    "compute_cap": "8.6"
+  },
+  "host": {
+    "cpu": "Intel Xeon E3-12xx v2 (Ivy Bridge, IBRS)",
+    "cpus": 24,
+    "mem_total_gib": 29
+  },
+  "lanes_configured": 2,
+  "verification_policy": "fast (1)",
+  "queue": {
+    "addr": "127.0.0.1:8081",
+    "lease": "10m"
+  }
+}

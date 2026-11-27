@@ -109,12 +109,14 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	}
 
 	var textTrackRepo detail.TextTrackRepository
+	var pgTextTracks *pgmedia.TextTrackRepositoryPG
 	if len(mediaPostgres) > 0 && mediaPostgres[0] != nil {
 		var textTrackErr error
-		textTrackRepo, textTrackErr = pgmedia.NewTextTrackRepositoryPG(mediaPostgres[0])
+		pgTextTracks, textTrackErr = pgmedia.NewTextTrackRepositoryPG(mediaPostgres[0])
 		if textTrackErr != nil {
 			return nil, fmt.Errorf("init postgres text track repository: %w", textTrackErr)
 		}
+		textTrackRepo = pgTextTracks
 	} else {
 		var textTrackErr error
 		textTrackRepo, textTrackErr = texttracks.NewTextTrackRepository(dbs.DualPool.Writer, log)
@@ -126,6 +128,24 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	subArtRepo, err := texttracks.NewSubtitleArtifactRepository(dbs.DualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("init subtitle artifact repository: %w", err)
+	}
+	// DB-02: subtitle artifacts stay on SQLite while their parents live on
+	// PostgreSQL. Validate the opaque references at the boundary instead of
+	// declaring FKs against tables that are empty on the SQLite plane.
+	if pgTextTracks != nil {
+		subArtRepo.SetParentValidator(func(ctx context.Context, assetID string, textTrackID int64) error {
+			track, _, findErr := pgTextTracks.FindByID(ctx, textTrackID)
+			if findErr != nil {
+				return fmt.Errorf("find text track %d: %w", textTrackID, findErr)
+			}
+			if track == nil {
+				return fmt.Errorf("text track %d does not exist", textTrackID)
+			}
+			if track.AssetID != assetID {
+				return fmt.Errorf("text track %d belongs to asset %q, not %q", textTrackID, track.AssetID, assetID)
+			}
+			return nil
+		})
 	}
 	return &RepoBundle{
 		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, AssetsStore: assetsStore, VoiceoverRepo: voiceoverRepo,

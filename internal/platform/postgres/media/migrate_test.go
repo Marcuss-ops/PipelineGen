@@ -11,7 +11,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgmediaops "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/mediaops"
+	pgmigration "github.com/Marcuss-ops/PipelineGen/migrations/postgres"
 )
 
 // TestRunMediaMigrations_LedgerIsChecksumPinned proves D2 end to end against a
@@ -53,21 +54,23 @@ func TestRunMediaMigrations_LedgerIsChecksumPinned(t *testing.T) {
 		t.Fatalf("create vector extension: %v", err)
 	}
 
-	report, err := pgmedia.RunMediaMigrations(ctx, db)
+	report, err := pgmediaops.RunMediaMigrations(ctx, db)
 	if err != nil {
 		t.Fatalf("RunMediaMigrations first run: %v", err)
 	}
-	// 014 (ledger) + 12 ordered media migrations = 13 (015/016 added by RA-13).
-	if len(report.Applied) != 13 {
-		t.Fatalf("first run applied %d migrations, want 13: %v", len(report.Applied), report.Applied)
+	// 014 (ledger) + every ordered media migration. Derived from the registry
+	// so adding a migration does not need a second, easily forgotten edit here.
+	want := len(pgmigration.MediaSelfBootstrapMigrations) + 1
+	if len(report.Applied) != want {
+		t.Fatalf("first run applied %d migrations, want %d: %v", len(report.Applied), want, report.Applied)
 	}
 
 	var rows int
 	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("count ledger rows: %v", err)
 	}
-	if rows != 13 {
-		t.Fatalf("ledger rows = %d, want 13", rows)
+	if rows != want {
+		t.Fatalf("ledger rows = %d, want %d", rows, want)
 	}
 	var filename, checksum string
 	if err := db.QueryRowContext(ctx, `SELECT filename, checksum_sha256 FROM schema_migrations WHERE version = 1`).Scan(&filename, &checksum); err != nil {
@@ -77,21 +80,21 @@ func TestRunMediaMigrations_LedgerIsChecksumPinned(t *testing.T) {
 		t.Fatalf("version 1 ledger row = filename %q checksum %q, want 001_media_schema.sql and a SHA-256", filename, checksum)
 	}
 
-	second, err := pgmedia.RunMediaMigrations(ctx, db)
+	second, err := pgmediaops.RunMediaMigrations(ctx, db)
 	if err != nil {
 		t.Fatalf("RunMediaMigrations second run: %v", err)
 	}
 	if len(second.Applied) != 0 {
 		t.Fatalf("second run applied %d migrations, want 0: %v", len(second.Applied), second.Applied)
 	}
-	if len(second.Skipped) != 13 {
-		t.Fatalf("second run skipped %d migrations, want 13", len(second.Skipped))
+	if len(second.Skipped) != want {
+		t.Fatalf("second run skipped %d migrations, want %d", len(second.Skipped), want)
 	}
 
 	if _, err := db.ExecContext(ctx, `UPDATE schema_migrations SET checksum_sha256 = 'deadbeef' WHERE version = 1`); err != nil {
 		t.Fatalf("tamper ledger checksum: %v", err)
 	}
-	if _, err := pgmedia.RunMediaMigrations(ctx, db); err == nil {
+	if _, err := pgmediaops.RunMediaMigrations(ctx, db); err == nil {
 		t.Fatal("RunMediaMigrations accepted a tampered ledger checksum; want fail-closed error")
 	} else if !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("RunMediaMigrations error = %v, want a checksum mismatch", err)

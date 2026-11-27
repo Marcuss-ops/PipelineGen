@@ -77,10 +77,48 @@ func validateRequestEnvelope(r *RenderRequest) error {
 	// spent on it. The historical gate sat in the completion path, AFTER
 	// Chronon had rendered the whole clip: a full GPU render burned to fail a
 	// request that was already doomed at decode time.
+	for _, pin := range []struct {
+		label    string
+		revision string
+	}{
+		{"source_revision", r.SourceRevision},
+		{"background.revision", revisionOrEmpty(r.Background)},
+		{"watermark.revision", revisionOrEmptyWatermark(r.Watermark)},
+		{"transcript.revision", revisionOrEmptyTranscript(r.Transcript)},
+	} {
+		if pin.revision == "" {
+			continue
+		}
+		if normalizeSHA256(pin.revision) == "" {
+			return fmt.Errorf("%w: %s must be a SHA-256 hex digest when present (got %q)", ErrInvalidRequest, pin.label, pin.revision)
+		}
+	}
+
 	if r.Execution != nil && r.Execution.RequireZeroCopy {
 		return fmt.Errorf("%w: execution.require_zero_copy=true is unsatisfiable: no backend certifies video_zero_copy (GPU compositing is Chronon-only via the RenderingGen queue)", ErrInvalidRequest)
 	}
 	return nil
+}
+
+func revisionOrEmpty(b *BackgroundSpec) string {
+	if b == nil {
+		return ""
+	}
+	return b.Revision
+}
+
+func revisionOrEmptyWatermark(w *WatermarkSpec) string {
+	if w == nil {
+		return ""
+	}
+	return w.Revision
+}
+
+func revisionOrEmptyTranscript(t *TranscriptSpec) string {
+	if t == nil {
+		return ""
+	}
+	return t.Revision
 }
 
 func validateBackgroundSpec(background *BackgroundSpec) error {

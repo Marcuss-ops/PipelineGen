@@ -23,6 +23,11 @@ type phaseInputs struct {
 	subtitles         *SubtitleArtifact
 	resumeFolder      string
 	subtitleCompileMS int64
+	// fromCheckpoint records that preparation was NOT re-run on this attempt:
+	// the sealed plan and its preparation results were loaded from the durable
+	// job → resume index. It is projected into the submit result so the saving
+	// is observable instead of inferred (CRA-07).
+	fromCheckpoint bool
 }
 
 // loadPhaseInputs decodes the payload for the phase: a submit job decodes the
@@ -68,6 +73,60 @@ func (w *Worker) loadPhaseInputs(ctx context.Context, j *job.Job, phase RenderPh
 		return nil, fmt.Errorf("%w: %v", ErrInvalidJobPayload, err)
 	}
 	return inputs, nil
+}
+
+// loadSubmitCheckpoint resolves a previously sealed plan for THIS job, so a
+// broker retry after the seal can skip resolution/materialization/compilation.
+//
+// Fail-open by design: a missing index, a corrupt entry, a drifted document or
+// a different request all mean "prepare again", never "fail the render". The
+// index is an accelerator; correctness still comes from the sealed plan and
+// the content-addressed resume document.
+func (w *Worker) loadSubmitCheckpoint(ctx context.Context, j *job.Job, req *RenderRequest) (*phaseInputs, bool) {
+	store, ok := w.continuationStore.(SubmitCheckpointStore)
+	if !ok || w.continuationStore == nil || j == nil || req == nil {
+		return nil, false
+	}
+	ref, found, err := store.GetSubmitCheckpoint(ctx, j.ID)
+	if err != nil {
+		w.log.Warn("clip.render.submit_checkpoint_unreadable",
+			zap.String("job_id", j.ID), zap.Error(err))
+		return nil, false
+	}
+	if !found {
+		return nil, false
+	}
+	doc, err := w.continuationStore.GetResumeDocument(ctx, ref)
+	if err != nil {
+		w.log.Warn("clip.render.submit_checkpoint_invalid",
+			zap.String("job_id", j.ID), zap.Error(err))
+		return nil, false
+	}
+	if doc.Plan.RunID != j.ID {
+		w.log.Warn("clip.render.submit_checkpoint_foreign_plan",
+			zap.String("job_id", j.ID), zap.String("plan_run_id", doc.Plan.RunID))
+		return nil, false
+	}
+	docFP, docErr := doc.Request.Fingerprint()
+	reqFP, reqErr := req.Fingerprint()
+	if docErr != nil || reqErr != nil || docFP != reqFP {
+		w.log.Warn("clip.render.submit_checkpoint_request_drift",
+			zap.String("job_id", j.ID), zap.String("checkpoint_fingerprint", digestPrefix(docFP)))
+		return nil, false
+	}
+	inputs := &phaseInputs{
+		request:           *req,
+		prepared:          preparedFromResume(doc),
+		plan:              doc.Plan,
+		subtitles:         doc.Subtitles,
+		resumeFolder:      doc.PublishFolderID,
+		subtitleCompileMS: -1,
+		fromCheckpoint:    true,
+	}
+	if doc.SubtitleCompileMS != nil {
+		inputs.subtitleCompileMS = *doc.SubtitleCompileMS
+	}
+	return inputs, true
 }
 
 // resolvePublishFolder resolves the leaf Drive folder ONCE per job, never in
@@ -139,6 +198,16 @@ func (w *Worker) tryCachedCompletion(ctx context.Context, j *job.Job, req *Rende
 	if err != nil || rec == nil {
 		return nil, false
 	}
+	// The key proves the request is identical; the input digest proves the
+	// BYTES behind its asset ids still are (CRA-03). A record from before the
+	// digest existed ("") is not certified either.
+	if !cacheInputMatches(ctx, w.inputRevisions, req, rec) {
+		w.log.Info("clip.render cache entry stale: input revision changed",
+			zap.String("job_id", j.ID),
+			zap.String("fingerprint", digestPrefix(fp)),
+			zap.String("asset_id", rec.AssetID))
+		return nil, false
+	}
 	w.log.Info("clip.render cache hit (worker)",
 		zap.String("job_id", j.ID),
 		zap.String("fingerprint", digestPrefix(fp)),
@@ -192,8 +261,16 @@ func (w *Worker) tryCachedCompletion(ctx context.Context, j *job.Job, req *Rende
 	res := renderedResult(j, req, synthPrepared, ClipRenderPlanV1{}, nil, cached, publication)
 	// The job wall IS measured even on a cache hit, so it is reported; the
 	// render phases stay NotInstrumented because no render ran, and Compute()
-	// never derives a value from an uninstrumented input.
-	finalizeMetrics(cached.Metrics, time.Since(jobStart).Milliseconds(), cached.DurationSec)
+	// never derives a value from an uninstrumented input. A cache hit in the
+	// submit phase has no continuation yet, so the request acceptance is this
+	// job's own durable creation time.
+	completedAt := time.Now()
+	acceptedAt := time.Time{}
+	if j != nil {
+		acceptedAt = j.CreatedAt
+	}
+	finalizeMetrics(cached.Metrics, completedAt.Sub(jobStart).Milliseconds(), cached.DurationSec)
+	applyRequestTimings(cached.Metrics, acceptedAt, time.Time{}, jobStart, completedAt, rec.DeliveryStatus)
 	res["cache_hit"] = true
 	res["fingerprint"] = fp
 	res["phase"] = "cached"
@@ -202,6 +279,168 @@ func (w *Worker) tryCachedCompletion(ctx context.Context, j *job.Job, req *Rende
 	addQueueWaitMS(res, j, jobStart)
 	progress(100, "clip.render cache hit")
 	return res, true
+}
+
+// tryRenderReuse is the CRA-04 delivery-only fast path: the full (destination-
+// aware) fingerprint missed, but another destination already certified the SAME
+// render. The artifact is published to the requested folder from its durable
+// locator and the new destination gets its OWN cache row; no preparation, no
+// GPU, no second render.
+//
+// Pre-condition failures deliberately fall back to a full render: a cache port
+// without the destination-independent lookup, an uncertified input digest, a
+// changed input revision, sidecar subtitles (the bundle is not in the cache
+// record) and an artifact with no locator to stream from. A PUBLISH failure is
+// different and is returned: the delivery may already be partially committed,
+// so re-rendering would duplicate it.
+func (w *Worker) tryRenderReuse(ctx context.Context, j *job.Job, req *RenderRequest, publishFolderID string, jobStart time.Time, progress func(int, string)) (job.Result, bool, error) {
+	if w.renderCache == nil || w.publisher == nil || req == nil {
+		return nil, false, nil
+	}
+	if req.Subtitles != nil && req.Subtitles.Enabled && req.Subtitles.Mode == SubtitlesModeSidecar {
+		return nil, false, nil
+	}
+	byRender, ok := w.renderCache.(RenderCacheByRender)
+	if !ok {
+		return nil, false, nil
+	}
+	renderFP, err := req.RenderFingerprint()
+	if err != nil {
+		return nil, false, nil
+	}
+	rec, err := byRender.GetByRender(ctx, renderFP)
+	if err != nil || rec == nil {
+		return nil, false, nil
+	}
+	if rec.ArtifactURL == "" && rec.StorageKey == "" {
+		return nil, false, nil
+	}
+	// A reused artifact has no fresh render behind it to prove the inputs: the
+	// digest recorded at publish time is the ONLY certification available.
+	if strings.TrimSpace(rec.InputSHA256) == "" {
+		return nil, false, nil
+	}
+	if !cacheInputMatches(ctx, w.inputRevisions, req, rec) {
+		w.log.Info("clip.render reuse rejected: input revision changed",
+			zap.String("job_id", j.ID), zap.String("render_fingerprint", digestPrefix(renderFP)))
+		return nil, false, nil
+	}
+	// An empty title+language would make the publisher commit an empty
+	// search_text, which the index worker dead-letters. Fall back to a render
+	// (whose preparation owns the real title) instead of poisoning the index.
+	if strings.TrimSpace(rec.SourceTitle) == "" && strings.TrimSpace(rec.Language) == "" {
+		return nil, false, nil
+	}
+
+	outcome := &RenderOutcome{
+		StorageKey:  rec.StorageKey,
+		ArtifactURL: rec.ArtifactURL,
+		ContentType: rec.ContentType,
+		SHA256:      rec.SHA256,
+		SizeBytes:   rec.SizeBytes,
+		DurationSec: rec.DurationSec,
+		Width:       rec.Width,
+		Height:      rec.Height,
+		FPSNum:      rec.FPSNum,
+		FPSDen:      rec.FPSDen,
+		Backend:     rec.Backend,
+		Metrics:     NewRenderMetricsV2(),
+	}
+	if outcome.Metrics != nil {
+		outcome.Metrics.BackendSelected = rec.Backend
+	}
+	progress(20, "render already certified; delivering to the requested destination")
+	publication, pubErr := w.publisher.Publish(ctx, RenderPublishInput{
+		RunID:               j.ID,
+		SourceAssetID:       req.SourceAssetID,
+		SourceTitle:         rec.SourceTitle,
+		DriveFolderID:       publishFolderID,
+		Outcome:             outcome,
+		CertifiedSHA256:     rec.SHA256,
+		CertifiedSizeBytes:  rec.SizeBytes,
+		ArtifactURL:         rec.ArtifactURL,
+		ArtifactStorageKey:  rec.StorageKey,
+		ArtifactContentType: rec.ContentType,
+		Transcript:          &TranscriptResult{Language: rec.Language},
+	})
+	if pubErr != nil {
+		// The artifact may already be committed: re-rendering would duplicate the
+		// delivery. Surface the failure so the job retries the delivery instead.
+		return nil, false, fmt.Errorf("clip.render: deliver reused render to %q: %w", publishFolderID, pubErr)
+	}
+
+	// Independent delivery row: the new destination gets its own full-fingerprint
+	// cache entry, so a later hit for B returns B's locator and a re-delivery to
+	// A cannot touch it.
+	if fp, fpErr := req.Fingerprint(); fpErr == nil {
+		recB := &RenderCacheRecord{
+			Fingerprint:       fp,
+			RenderFingerprint: renderFP,
+			InputSHA256:       rec.InputSHA256,
+			SourceTitle:       rec.SourceTitle,
+			Language:          rec.Language,
+			AssetID:           publication.AssetID,
+			StorageKey:        outcome.StorageKey,
+			ArtifactURL:       outcome.ArtifactURL,
+			ContentType:       outcome.ContentType,
+			SHA256:            outcome.SHA256,
+			SizeBytes:         outcome.SizeBytes,
+			DurationSec:       outcome.DurationSec,
+			Width:             outcome.Width,
+			Height:            outcome.Height,
+			FPSNum:            outcome.FPSNum,
+			FPSDen:            outcome.FPSDen,
+			Backend:           outcome.Backend,
+			DeliveryStatus:    publication.DeliveryStatus,
+			DriveFileID:       publication.DriveFileID,
+		}
+		if putErr := w.renderCache.Put(ctx, recB); putErr != nil {
+			w.log.Warn("clip.render cache put failed for reused delivery",
+				zap.String("fingerprint", digestPrefix(fp)), zap.Error(putErr))
+		}
+	}
+
+	synthPrepared := &Prepared{
+		RunID:      j.ID,
+		Source:     &MaterializedAsset{AssetID: req.SourceAssetID, Title: rec.SourceTitle, SHA256: rec.SHA256},
+		Transcript: &TranscriptResult{Language: rec.Language},
+	}
+	res := renderedResult(j, req, synthPrepared, ClipRenderPlanV1{}, nil, outcome, publication)
+	completedAt := time.Now()
+	acceptedAt := time.Time{}
+	if j != nil {
+		acceptedAt = j.CreatedAt
+	}
+	finalizeMetrics(outcome.Metrics, completedAt.Sub(jobStart).Milliseconds(), outcome.DurationSec)
+	applyRequestTimings(outcome.Metrics, acceptedAt, time.Time{}, jobStart, completedAt, publication.DeliveryStatus)
+	res["cache_hit"] = true
+	res["render_reused"] = true
+	res["reused_from_asset_id"] = rec.AssetID
+	res["render_fingerprint"] = renderFP
+	res["fingerprint"] = reqFingerprintOrEmpty(req)
+	res["phase"] = "delivery_reuse"
+	res["delivery_status"] = publication.DeliveryStatus
+	res["drive_file_id"] = publication.DriveFileID
+	addQueueWaitMS(res, j, jobStart)
+	w.log.Info("clip.render render reused for new destination",
+		zap.String("job_id", j.ID),
+		zap.String("render_fingerprint", digestPrefix(renderFP)),
+		zap.String("source_asset_id", rec.AssetID),
+		zap.String("published_asset_id", publication.AssetID),
+		zap.String("drive_folder_id", publishFolderID))
+	progress(100, "clip.render delivered from certified cache")
+	return res, true, nil
+}
+
+func reqFingerprintOrEmpty(req *RenderRequest) string {
+	if req == nil {
+		return ""
+	}
+	fp, err := req.Fingerprint()
+	if err != nil {
+		return ""
+	}
+	return fp
 }
 
 // runSubmitPhase performs the first half of the async boundary: persist the
@@ -244,6 +483,17 @@ func (w *Worker) runSubmitPhase(ctx context.Context, j *job.Job, req *RenderRequ
 	if storeErr != nil {
 		return nil, fmt.Errorf("clip.render: persist continuation: %w", storeErr)
 	}
+	// Index the resume address by job id BEFORE the remote submit, so a retry
+	// caused by a failed submit can reuse this sealed plan. The write is
+	// best-effort: losing the accelerator must not fail a render.
+	checkpointStore, checkpointed := w.continuationStore.(SubmitCheckpointStore)
+	if checkpointed {
+		if cpErr := checkpointStore.PutSubmitCheckpoint(ctx, j.ID, resumeRef); cpErr != nil {
+			w.log.Warn("clip.render.submit_checkpoint_write_failed",
+				zap.String("job_id", j.ID), zap.Error(cpErr))
+			checkpointed = false
+		}
+	}
 	submission := Submission{
 		RenderJobID:   remoteRenderID,
 		PlanSHA256:    plan.PlanSHA256,
@@ -251,9 +501,18 @@ func (w *Worker) runSubmitPhase(ctx context.Context, j *job.Job, req *RenderRequ
 		State:         RemoteRenderSubmitted,
 		Attempt:       1,
 	}
+	// The submit job's durable creation is the request acceptance. Carrying it
+	// into the continuation is what lets the settle report measure
+	// request_to_artifact_ms across the job split (CRA-01).
+	if !j.CreatedAt.IsZero() {
+		accepted := j.CreatedAt
+		submission.AcceptedAt = &accepted
+	}
 	if submitErr := w.renderer.Submit(ctx, plan); submitErr != nil {
 		return nil, fmt.Errorf("clip.render: submit remote render: %w", submitErr)
 	}
+	submitted := time.Now().UTC()
+	submission.SubmittedAt = &submitted
 	continuation := Continuation{Submission: submission, Resume: resumeRef}
 	childID, enqueueErr := w.continuationEnqueuer.EnqueueContinuation(ctx, ContinuationRequest{
 		ParentJobID:  j.ID,
@@ -270,6 +529,15 @@ func (w *Worker) runSubmitPhase(ctx context.Context, j *job.Job, req *RenderRequ
 	result["child_job_id"] = childID
 	result["render_submission"] = submission
 	result["continuation"] = continuation
+	result["prepared_from_checkpoint"] = inputs.fromCheckpoint
+	// The index has served its purpose once the settle continuation is
+	// durable: a retry from here on would re-address the same submission.
+	if checkpointed {
+		if delErr := checkpointStore.DeleteSubmitCheckpoint(ctx, j.ID); delErr != nil {
+			w.log.Debug("clip.render.submit_checkpoint_delete_failed",
+				zap.String("job_id", j.ID), zap.Error(delErr))
+		}
+	}
 	progress(100, "remote render submitted; Master slot released")
 	return result, nil
 }
@@ -345,17 +613,29 @@ func (w *Worker) settleAndComplete(
 	// spends no retry budget) instead of ending as clip.render: FAILED.
 	if errors.Is(err, ErrRenderPending) {
 		kernobs.RecordClipPhase(ctx, kernobs.ClipPhaseRenderSlot, renderSlotStart, renderEnd, kernobs.StageStatusCompleted, nil)
+		// The attempt budget bounds lane occupancy; it is NOT how long a finished
+		// render should wait to be collected. Re-dispatch after the shorter
+		// retry delay so a render that ends just past the budget is picked up on
+		// the next attempt instead of waiting another full budget (CRA-08).
+		// A zero budget cannot reach here (a budget of zero waits to
+		// completion), so the delay is always positive.
+		delay := waitBudget
+		if w.settleRetry > 0 && w.settleRetry < delay {
+			delay = w.settleRetry
+		}
+		deferrals := w.settleDeferrals.Add(1)
+		addedLatencyMS := w.settleDeferredMS.Add(delay.Milliseconds())
 		w.log.Info("clip.render.job.settle_deferred",
 			zap.String("subsystem", "clip_render_worker"),
 			zap.String("job_id", j.ID),
 			zap.String("render_job_id", continuation.Submission.RenderJobID),
 			zap.Duration("wait_budget", waitBudget),
+			zap.Duration("deferral_delay", delay),
+			zap.Int64("deferrals_total", deferrals),
+			zap.Int64("added_latency_ms_total", addedLatencyMS),
 			zap.Int64("elapsed_ms", renderMS),
 		)
-		// The deferral delay IS the budget this attempt was willing to wait:
-		// one poll cadence, one owner. A zero budget cannot reach here (a
-		// budget of zero waits to completion), so the delay is always positive.
-		return nil, job.DeferredAfter(waitBudget, fmt.Sprintf(
+		return nil, job.DeferredAfter(delay, fmt.Sprintf(
 			"remote render %s is still running after %s", continuation.Submission.RenderJobID, waitBudget))
 	}
 	if errors.Is(err, ErrRenderStalled) {
@@ -398,5 +678,6 @@ func (w *Worker) settleAndComplete(
 	// settle (worker_completion.go::completeRendered). There is no second,
 	// inline completion body in this file: its removal is what keeps the submit
 	// and settle halves from drifting apart.
-	return w.completeRendered(ctx, j, tools, jobStart, req, inputs.prepared, plan, inputs.subtitles, publishFolderID, inputs.subtitleCompileMS, outcome, renderMS)
+	acceptedAt, submittedAt := continuationTimings(continuation)
+	return w.completeRendered(ctx, j, tools, jobStart, acceptedAt, submittedAt, req, inputs.prepared, plan, inputs.subtitles, publishFolderID, inputs.subtitleCompileMS, outcome, renderMS)
 }

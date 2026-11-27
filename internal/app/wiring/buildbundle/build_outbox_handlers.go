@@ -305,10 +305,14 @@ func registerPostgresMediaOutboxHandlers(
 	if err := worker.RegisterHandler(cliprender.EventClipRenderDriveDeliveryRequested, clipHandler); err != nil {
 		return fmt.Errorf("register clip.render PostgreSQL Drive delivery handler: %w", err)
 	}
+	// One adapter backs both the outbox-status gauges and the DB-05 retention
+	// projections; the worker's two ports stay narrow and separately nil-safe.
+	outboxMetrics := observability.NewMediaOutboxStatusCountAdapter()
 	worker.WithOutboxStatusMetrics(
-		observability.NewMediaOutboxStatusCountAdapter(),
+		outboxMetrics,
 		cliprender.EventClipRenderDriveDeliveryRequested,
 	)
+	worker.WithRetentionMetrics(outboxMetrics)
 	imageHandler, imageErr := assetswiring.NewImageDriveDeliveryPGHandler(mutator, drivePublisher, log)
 	if imageErr != nil {
 		return fmt.Errorf("image PostgreSQL Drive delivery handler: %w", imageErr)

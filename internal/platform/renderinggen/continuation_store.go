@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -40,8 +42,116 @@ func NewCASContinuationStore(store *cas.Store) (*CASContinuationStore, error) {
 	return &CASContinuationStore{store: store}, nil
 }
 
-// Compile-time assertion: the adapter satisfies the capability-owned port.
+// Compile-time assertions: the adapter satisfies the capability-owned ports.
 var _ cliprender.ContinuationStore = (*CASContinuationStore)(nil)
+var _ cliprender.SubmitCheckpointStore = (*CASContinuationStore)(nil)
+
+// submitCheckpointDir is the job-id → resume-address index. It lives beside
+// the content-addressed objects, NOT inside the address space: the key is a
+// job id (mutable identity), not a content digest.
+const submitCheckpointDir = "cliprender-submit-index"
+
+// submitCheckpoint is the tiny durable value behind a retry: the address of
+// the resume document the submit half already wrote. The document itself is
+// content-addressed and verified by GetResumeDocument.
+type submitCheckpoint struct {
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+func (s *CASContinuationStore) checkpointPath(jobID string) (string, error) {
+	id := strings.TrimSpace(jobID)
+	if id == "" {
+		return "", fmt.Errorf("renderinggen continuation store: job id is required")
+	}
+	if id == "." || id == ".." || strings.ContainsAny(id, `/\\`) {
+		return "", fmt.Errorf("renderinggen continuation store: unsafe job id %q", jobID)
+	}
+	if s == nil || s.store == nil || s.store.Root() == "" {
+		return "", fmt.Errorf("renderinggen continuation store: not wired")
+	}
+	return filepath.Join(s.store.Root(), submitCheckpointDir, id+".json"), nil
+}
+
+// PutSubmitCheckpoint writes the job → resume address atomically. It is
+// best-effort at the worker call site: failing to accelerate a retry must not
+// fail a render.
+func (s *CASContinuationStore) PutSubmitCheckpoint(_ context.Context, jobID string, ref cliprender.ContinuationRef) error {
+	if err := ref.Validate(); err != nil {
+		return err
+	}
+	path, err := s.checkpointPath(jobID)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("renderinggen continuation store: create checkpoint dir: %w", err)
+	}
+	raw, err := json.Marshal(submitCheckpoint{SHA256: ref.SHA256, SizeBytes: ref.SizeBytes})
+	if err != nil {
+		return fmt.Errorf("renderinggen continuation store: encode checkpoint: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".checkpoint-*")
+	if err != nil {
+		return fmt.Errorf("renderinggen continuation store: create checkpoint temp: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("renderinggen continuation store: write checkpoint: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("renderinggen continuation store: sync checkpoint: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("renderinggen continuation store: close checkpoint: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("renderinggen continuation store: commit checkpoint: %w", err)
+	}
+	return nil
+}
+
+// GetSubmitCheckpoint returns the indexed resume address. A missing file is
+// the normal "never checkpointed" answer, not an error.
+func (s *CASContinuationStore) GetSubmitCheckpoint(_ context.Context, jobID string) (cliprender.ContinuationRef, bool, error) {
+	path, err := s.checkpointPath(jobID)
+	if err != nil {
+		return cliprender.ContinuationRef{}, false, err
+	}
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return cliprender.ContinuationRef{}, false, nil
+	}
+	if err != nil {
+		return cliprender.ContinuationRef{}, false, fmt.Errorf("renderinggen continuation store: read checkpoint: %w", err)
+	}
+	var cp submitCheckpoint
+	if err := json.Unmarshal(raw, &cp); err != nil {
+		return cliprender.ContinuationRef{}, false, fmt.Errorf("renderinggen continuation store: decode checkpoint: %w", err)
+	}
+	ref := cliprender.ContinuationRef{SHA256: cp.SHA256, SizeBytes: cp.SizeBytes}
+	if err := ref.Validate(); err != nil {
+		return cliprender.ContinuationRef{}, false, err
+	}
+	return ref, true, nil
+}
+
+// DeleteSubmitCheckpoint removes the entry after a successful submit. A
+// missing entry is not an error.
+func (s *CASContinuationStore) DeleteSubmitCheckpoint(_ context.Context, jobID string) error {
+	path, err := s.checkpointPath(jobID)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("renderinggen continuation store: delete checkpoint: %w", err)
+	}
+	return nil
+}
 
 // PutResumeDocument stores the document and returns its content address.
 // Fail-closed: an invalid document is rejected BEFORE anything is written, so

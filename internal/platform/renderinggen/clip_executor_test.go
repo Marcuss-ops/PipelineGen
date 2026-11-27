@@ -25,7 +25,10 @@ import (
 
 type fakeClipQueue struct {
 	submitted queueclient.Job
-	result    queueclient.Job
+	// submittedRequireGPU records the tri-state policy the executor produced.
+	// The queueclient.Job used by the older assertions does not carry it.
+	submittedRequireGPU *bool
+	result              queueclient.Job
 
 	// Optional failure injection: when submitErr is set, Submit returns it
 	// (e.g. renderqueue.ErrJobExists for a replayed job); when retryErr is set,
@@ -37,6 +40,7 @@ type fakeClipQueue struct {
 
 func (f *fakeClipQueue) Submit(_ context.Context, job renderqueue.RenderQueueJob) error {
 	f.submitted = queueclient.Job{ID: job.ID, JobType: job.JobType, RenderPlan: job.OverlaySpec}
+	f.submittedRequireGPU = job.RequireGPU
 	return f.submitErr
 }
 

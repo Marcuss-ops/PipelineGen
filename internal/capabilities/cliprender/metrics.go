@@ -183,7 +183,26 @@ type RenderMetricsV2 struct {
 	VRAMUsedPeakMB          Metric `json:"vram_used_peak_mb"`
 	SubtitleRasterCPU       bool   `json:"subtitle_raster_cpu"`
 
+	// TotalMS is THIS handler's wall: for a settle continuation it starts when
+	// the settle job starts, not when the request was accepted. It is the
+	// enclosing wall Compute reconciles phases against, and it is deliberately
+	// NOT the end-to-end latency. The end-to-end measures are the four fields
+	// below (CRA-01).
 	TotalMS Metric `json:"total_ms"`
+	// RequestToArtifactMS is acceptance → certified artifact. It is measured
+	// only when the continuation carries the original AcceptedAt; otherwise it
+	// stays NOT_INSTRUMENTED.
+	RequestToArtifactMS Metric `json:"request_to_artifact_ms"`
+	// RequestToDeliveryMS is acceptance → delivery observed terminal. On the
+	// asynchronous Drive path the render job ends at a durable `pending`
+	// intent, so this stays NOT_INSTRUMENTED until a transport that observes
+	// the delivery completion reports it.
+	RequestToDeliveryMS Metric `json:"request_to_delivery_ms"`
+	// SubmitWallMS is acceptance → remote render accepted (the submit half).
+	SubmitWallMS Metric `json:"submit_wall_ms"`
+	// SettleWallMS is this settle handler's own wall. It is the diagnostic
+	// that makes the difference between the two halves visible.
+	SettleWallMS Metric `json:"settle_wall_ms"`
 	// Deprecated: UnaccountedMS is the compatibility spelling. UnattributedMS
 	// is the explicit name for new consumers; the two are always identical.
 	UnaccountedMS  Metric `json:"unaccounted_ms"`
@@ -211,7 +230,8 @@ func NewRenderMetricsV2() *RenderMetricsV2 {
 		&m.NV12ToRGBAFrames, &m.RGBAToNV12Frames, &m.CUDACompositeFrames,
 		&m.GPUUtilizationAvg, &m.GPUUtilizationPeak, &m.NVENCUtilizationAvg,
 		&m.NVDECUtilizationAvg, &m.VRAMUsedPeakMB,
-		&m.TotalMS, &m.UnaccountedMS, &m.UnattributedMS,
+		&m.TotalMS, &m.RequestToArtifactMS, &m.RequestToDeliveryMS, &m.SubmitWallMS, &m.SettleWallMS,
+		&m.UnaccountedMS, &m.UnattributedMS,
 	} {
 		*p = Metric(NotInstrumented)
 	}
@@ -398,6 +418,13 @@ func (m *RenderMetricsV2) Compute(durationSec float64) {
 			m.SpeedFactor = durationSec / totalSec
 			m.RealtimeFactor = m.SpeedFactor
 		}
+	}
+	// RealtimeFactor is the USER-FACING speed: media duration over the
+	// end-to-end request wall, when that wall was measured. TotalFPS above
+	// remains the throughput of THIS job wall (labelled as such); the two
+	// measures are not interchangeable on the async path.
+	if v, ok := measured(m.RequestToArtifactMS); ok && v > 0 && durationSec > 0 {
+		m.RealtimeFactor = durationSec / (float64(v) / 1000.0)
 	}
 	if int64(m.RenderWallMS) != NotInstrumented && int64(m.RenderWallMS) >= 0 && durationSec > 0 {
 		renderSec := float64(int64(m.RenderWallMS)) / 1000.0

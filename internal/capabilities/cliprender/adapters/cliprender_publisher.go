@@ -201,7 +201,7 @@ func (p *ClipRenderPublisher) Publish(ctx context.Context, in cliprender.RenderP
 	// (a real zero, not NOT_INSTRUMENTED): the certified digest replaced the
 	// read instead of hiding it.
 	metrics.HashMS = 0
-	assetID := "cliprender_" + contentHash[:24]
+	assetID := cliprenderAssetID(contentHash, in.DriveFolderID)
 
 	ext := artifactExtension(in.OutputPath, in.ArtifactContentType, in.ArtifactURL)
 	base := assetID
@@ -270,6 +270,23 @@ func objectStorageLocation(in cliprender.RenderPublishInput, contentHash string,
 		ContentSHA256: contentHash,
 		IsPrimary:     primary,
 	}
+}
+
+// cliprenderAssetID scopes the derived asset identity by DELIVERY DESTINATION
+// (CRA-05). The bytes are content-addressed, but the delivery row is not: the
+// Drive outbox later patches drive_file_id/link/status by AssetID, so two
+// destinations sharing one id would overwrite each other's locator. Scoping the
+// id gives each destination its own media row and makes re-delivery to A
+// invisible to B. An empty destination (object_store delivery) keeps the
+// historical content-only id.
+func cliprenderAssetID(contentHash, driveFolderID string) string {
+	hash := strings.ToLower(strings.TrimSpace(contentHash))
+	folder := strings.TrimSpace(driveFolderID)
+	if folder == "" {
+		return "cliprender_" + hash[:24]
+	}
+	scoped := digest.SHA256Bytes([]byte("cliprender-asset-v1|" + hash + "|drive:" + folder))
+	return "cliprender_" + scoped[:24]
 }
 
 // languageFilenameTag returns the filename discriminator for a render's

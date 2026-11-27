@@ -16,6 +16,11 @@ migrations/postgres/006_media_asset_versions.sql
 migrations/postgres/007_media_clip_folders.sql
 migrations/postgres/008_media_asset_processing.sql
 migrations/sqlite/000_baseline_268.sql
+# I dump per piano (DB-03) sono fotografie generate degli stessi DEFAULT
+# storici già dichiarati dalle migrazioni qui sotto: nessuna forma nuova,
+# rigenerati con `go run ./cmd/gen_baseline`.
+migrations/sqlite/000_baseline_268_cache.sql
+migrations/sqlite/000_baseline_268_observability.sql
 migrations/sqlite/001_velox_core.sql
 migrations/sqlite/011_create_characters.sql
 migrations/sqlite/012_create_search_cache.sql

@@ -49,6 +49,20 @@ func (c *memoryRenderCache) GetMany(_ context.Context, fingerprints []string) (m
 	return out, nil
 }
 
+func (c *memoryRenderCache) GetByRender(_ context.Context, renderFingerprint string) (*RenderCacheRecord, error) {
+	renderFingerprint = strings.ToLower(strings.TrimSpace(renderFingerprint))
+	if renderFingerprint == "" {
+		return nil, fmt.Errorf("clip.render cache: render fingerprint is required")
+	}
+	for _, rec := range c.m {
+		if strings.EqualFold(rec.RenderFingerprint, renderFingerprint) {
+			cp := *rec
+			return &cp, nil
+		}
+	}
+	return nil, ErrCacheMiss
+}
+
 func (c *memoryRenderCache) Put(_ context.Context, rec *RenderCacheRecord) error {
 	if rec == nil || strings.TrimSpace(rec.Fingerprint) == "" {
 		return fmt.Errorf("clip.render cache: record/fingerprint is required")

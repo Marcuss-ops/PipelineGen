@@ -108,9 +108,10 @@ type (
 )
 
 const (
-	FinalJobEnvelopeSchemaV1            = finaljob.FinalJobEnvelopeSchemaV1
-	FinalJobOverlayProjectionCapability = finaljob.FinalJobOverlayProjectionCapability
-	overlayGroupImages                  = finaljob.OverlayGroupImages
+	FinalJobEnvelopeSchemaV1                   = finaljob.FinalJobEnvelopeSchemaV1
+	FinalJobOverlayProjectionCapability        = finaljob.FinalJobOverlayProjectionCapability
+	FinalJobStockSourceCertificationCapability = finaljob.FinalJobStockSourceCertificationCapability
+	overlayGroupImages                         = finaljob.OverlayGroupImages
 )
 
 var finalJobStringValue = finaljob.FinalJobStringValue

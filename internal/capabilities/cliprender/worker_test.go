@@ -135,6 +135,15 @@ func (f *fakeAsyncRenderExecutor) Settle(_ context.Context, plan ClipRenderPlanV
 type fakeContinuationStore struct {
 	doc      ResumeDocument
 	putCalls int
+
+	// CRA-07 checkpoint index. A nil map means the store still satisfies the
+	// optional interface but never remembers an entry (the pre-checkpoint
+	// behaviour).
+	checkpoints       map[string]ContinuationRef
+	checkpointPuts    int
+	checkpointDeletes int
+	getCheckpointErr  error
+	getDocErr         error
 }
 
 func (s *fakeContinuationStore) PutResumeDocument(_ context.Context, doc ResumeDocument) (ContinuationRef, error) {
@@ -144,7 +153,33 @@ func (s *fakeContinuationStore) PutResumeDocument(_ context.Context, doc ResumeD
 }
 
 func (s *fakeContinuationStore) GetResumeDocument(_ context.Context, _ ContinuationRef) (ResumeDocument, error) {
+	if s.getDocErr != nil {
+		return ResumeDocument{}, s.getDocErr
+	}
 	return s.doc, nil
+}
+
+func (s *fakeContinuationStore) PutSubmitCheckpoint(_ context.Context, jobID string, ref ContinuationRef) error {
+	s.checkpointPuts++
+	if s.checkpoints == nil {
+		s.checkpoints = make(map[string]ContinuationRef)
+	}
+	s.checkpoints[jobID] = ref
+	return nil
+}
+
+func (s *fakeContinuationStore) GetSubmitCheckpoint(_ context.Context, jobID string) (ContinuationRef, bool, error) {
+	if s.getCheckpointErr != nil {
+		return ContinuationRef{}, false, s.getCheckpointErr
+	}
+	ref, ok := s.checkpoints[jobID]
+	return ref, ok, nil
+}
+
+func (s *fakeContinuationStore) DeleteSubmitCheckpoint(_ context.Context, jobID string) error {
+	s.checkpointDeletes++
+	delete(s.checkpoints, jobID)
+	return nil
 }
 
 type fakeContinuationEnqueuer struct {
@@ -838,11 +873,15 @@ type fakeRenderPublisher struct {
 	called int
 	input  RenderPublishInput
 	out    RenderPublishResult
+	err    error
 }
 
 func (f *fakeRenderPublisher) Publish(_ context.Context, in RenderPublishInput) (*RenderPublishResult, error) {
 	f.called++
 	f.input = in
+	if f.err != nil {
+		return nil, f.err
+	}
 	out := f.out
 	if out.AssetID == "" {
 		out = RenderPublishResult{

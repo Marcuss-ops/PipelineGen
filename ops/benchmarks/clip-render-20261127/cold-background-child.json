@@ -1,0 +1,1308 @@
+{
+  "channel_id": "",
+  "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+  "created_at": "2026-11-27T09:25:59Z",
+  "current_attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+  "current_correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+  "current_detail": "job completed successfully",
+  "current_kind": "clip.render",
+  "current_micro_kind": "job.complete",
+  "current_parent_run_id": "job_1795771558519195954_c0916122",
+  "current_payload": {},
+  "current_run_id": "run_1795771559979996482_e11142c4350c",
+  "current_sequence": 9,
+  "current_stage": "job_completed",
+  "current_status": "completed",
+  "current_step": "SUCCEEDED",
+  "current_sub_kind": "job.complete",
+  "current_trace": {
+    "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+    "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+    "parent_run_id": "job_1795771558519195954_c0916122",
+    "run_id": "run_1795771559979996482_e11142c4350c",
+    "sequence": 9
+  },
+  "drive_file_id": "",
+  "drive_folder_id": "",
+  "drive_publication": "",
+  "drive_subfolder_name": "",
+  "error": "",
+  "events": [
+    {
+      "id": "evt_1795771559945773897_f26b2c",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "job_queued",
+      "message": "job queued",
+      "data": {
+        "attempt_id": "attempt_1795771558539202290_1a9d0a60d243155a",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b",
+        "detail": "job queued",
+        "kind": "clip.render",
+        "micro_kind": "job.queue",
+        "payload": {
+          "status": "QUEUED"
+        },
+        "run_id": "run_1795771558539236156_c370674530d4",
+        "sequence": 5,
+        "status": "queued",
+        "sub_kind": "job.queue",
+        "trace": {
+          "attempt_id": "attempt_1795771558539202290_1a9d0a60d243155a",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b",
+          "parent_run_id": "",
+          "run_id": "run_1795771558539236156_c370674530d4",
+          "sequence": 5
+        }
+      },
+      "created_at": "2026-11-27T09:25:59Z"
+    },
+    {
+      "id": "evt_1795771559960185420_b1f7e4",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "job_running",
+      "message": "job started",
+      "data": {
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "job started",
+        "kind": "clip.render",
+        "lease_id": "lease_1795771559950592872_b8acc65d",
+        "micro_kind": "worker.execute",
+        "payload": {
+          "lease_id": "lease_1795771559950592872_b8acc65d",
+          "revision": 2,
+          "status": "RUNNING",
+          "worker_id": "YOutube_383216_6"
+        },
+        "revision": 2,
+        "status": "running",
+        "sub_kind": "worker.execute",
+        "trace": {
+          "attempt_id": "",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "",
+          "run_id": "",
+          "sequence": 0
+        },
+        "worker_id": "YOutube_383216_6"
+      },
+      "created_at": "2026-11-27T09:25:59Z"
+    },
+    {
+      "id": "evt_1795771559982727028_892e9a",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "leased",
+      "message": "job claimed by worker YOutube_383216_6",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "job lease acquired",
+        "kind": "clip.render",
+        "lease_id": "lease_1795771559950592872_b8acc65d",
+        "micro_kind": "worker.claim",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "lease_id": "lease_1795771559950592872_b8acc65d",
+          "revision": 2,
+          "worker_id": "YOutube_383216_6"
+        },
+        "revision": 2,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 1,
+        "status": "running",
+        "sub_kind": "worker.claim",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 1
+        },
+        "worker_id": "YOutube_383216_6"
+      },
+      "created_at": "2026-11-27T09:25:59Z"
+    },
+    {
+      "id": "evt_1795771559992897423_501b30",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "progress",
+      "message": "clip.render started",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "clip.render started",
+        "kind": "clip.render",
+        "message": "clip.render started",
+        "micro_kind": "clip_render",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "message": "clip.render started",
+          "progress": 0
+        },
+        "progress": 0,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 2,
+        "status": "running",
+        "sub_kind": "clip_render",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 2
+        }
+      },
+      "created_at": "2026-11-27T09:25:59Z"
+    },
+    {
+      "id": "evt_1795771560002705974_3972d3",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "progress",
+      "message": "remote render submitted; settling certified artifact",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "remote render submitted; settling certified artifact",
+        "kind": "clip.render",
+        "message": "remote render submitted; settling certified artifact",
+        "micro_kind": "remote_render",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "message": "remote render submitted; settling certified artifact",
+          "progress": 90
+        },
+        "progress": 90,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 3,
+        "status": "running",
+        "sub_kind": "remote_render",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 3
+        }
+      },
+      "created_at": "2026-11-27T09:26:00Z"
+    },
+    {
+      "id": "evt_1795771560009700070_712371",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "clip.render.plan.sealed",
+      "message": "ClipRenderPlanV1 sealed \u2014 fully resolved before Chronon",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "background": "asset",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "ClipRenderPlanV1 sealed \u2014 fully resolved before Chronon",
+        "kind": "clip.render",
+        "micro_kind": "clip.render.plan.sealed",
+        "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1795771558519195954_c0916122/rendered-clip.mp4",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "background": "asset",
+          "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1795771558519195954_c0916122/rendered-clip.mp4",
+          "plan_sha256": "8d7baa45834e1a9be556455e0fd6630e048335643ea2694915c886e6b9178f92",
+          "plan_version": "clip-render-plan.v1",
+          "source": "data/media/clips/general/yt_a9Lr_OQJ984/yt_a9Lr_OQJ984_2097_2115_v1_la-societ\u00e0-si-vende-per-cinque-o-diecimi.mp4",
+          "subtitles": false,
+          "watermark": false
+        },
+        "plan_sha256": "8d7baa45834e1a9be556455e0fd6630e048335643ea2694915c886e6b9178f92",
+        "plan_version": "clip-render-plan.v1",
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 4,
+        "source": "data/media/clips/general/yt_a9Lr_OQJ984/yt_a9Lr_OQJ984_2097_2115_v1_la-societ\u00e0-si-vende-per-cinque-o-diecimi.mp4",
+        "status": "running",
+        "sub_kind": "clip.render.plan.sealed",
+        "subtitles": false,
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 4
+        },
+        "watermark": false
+      },
+      "created_at": "2026-11-27T09:26:00Z"
+    },
+    {
+      "id": "evt_1795771560010288545_7c6869",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "progress",
+      "message": "plan sealed; rendering with Chronon",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "plan sealed; rendering with Chronon",
+        "kind": "clip.render",
+        "message": "plan sealed; rendering with Chronon",
+        "micro_kind": "plan_sealed",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "message": "plan sealed; rendering with Chronon",
+          "progress": 90
+        },
+        "progress": 90,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 5,
+        "status": "running",
+        "sub_kind": "plan_sealed",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 5
+        }
+      },
+      "created_at": "2026-11-27T09:26:00Z"
+    },
+    {
+      "id": "evt_1795771567782763961_906534",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "clip.render.probe.certified",
+      "message": "rendered bytes certified exact",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "certified_facts": true,
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "rendered bytes certified exact",
+        "fps_den": 1,
+        "fps_num": 24,
+        "height": 1080,
+        "kind": "clip.render",
+        "micro_kind": "clip.render.probe.certified",
+        "output_path": "",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "certified_facts": true,
+          "fps_den": 1,
+          "fps_num": 24,
+          "height": 1080,
+          "output_path": "",
+          "video_profile": "high",
+          "width": 1920
+        },
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 6,
+        "status": "running",
+        "sub_kind": "clip.render.probe.certified",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 6
+        },
+        "video_profile": "high",
+        "width": 1920
+      },
+      "created_at": "2026-11-27T09:26:07Z"
+    },
+    {
+      "id": "evt_1795771567809496153_078000",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "clip.render.completed",
+      "message": "Chronon render completed",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "backend": "chronon_vulkan",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "Chronon render completed",
+        "duration_sec": 18,
+        "ffmpeg_ms": 0,
+        "kind": "clip.render",
+        "micro_kind": "clip.render.completed",
+        "output_path": "",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "backend": "chronon_vulkan",
+          "duration_sec": 18,
+          "ffmpeg_ms": 0,
+          "output_path": "",
+          "size_bytes": 4769064
+        },
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 7,
+        "size_bytes": 4769064,
+        "status": "completed",
+        "sub_kind": "clip.render.completed",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 7
+        }
+      },
+      "created_at": "2026-11-27T09:26:07Z"
+    },
+    {
+      "id": "evt_1795771567817978229_c3ab2a",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "progress",
+      "message": "clip.render completed",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "clip.render completed",
+        "kind": "clip.render",
+        "message": "clip.render completed",
+        "micro_kind": "clip_render",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "message": "clip.render completed",
+          "progress": 100
+        },
+        "progress": 100,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 8,
+        "status": "completed",
+        "sub_kind": "clip_render",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 8
+        }
+      },
+      "created_at": "2026-11-27T09:26:07Z"
+    },
+    {
+      "id": "evt_1795771567825840248_8e0cc2",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "job_completed",
+      "message": "job completed successfully",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "job completed successfully",
+        "kind": "clip.render",
+        "micro_kind": "job.complete",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {},
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 9,
+        "status": "completed",
+        "sub_kind": "job.complete",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 9
+        }
+      },
+      "created_at": "2026-11-27T09:26:07Z"
+    }
+  ],
+  "final_job": false,
+  "id": "job_1795771559945808832_ca20857b",
+  "job": {
+    "id": "job_1795771559945808832_ca20857b",
+    "type": "clip.render",
+    "status": "SUCCEEDED",
+    "priority": 0,
+    "active_key": "clip.render.settle:job_1795771558519195954_c0916122:1",
+    "payload": {
+      "continuation": {
+        "resume": {
+          "sha256": "292bb37788772205f6800b94e1a21edce48e9d668905e17de4261d62b34888b8",
+          "size_bytes": 4422
+        },
+        "submission": {
+          "attempt": 1,
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b",
+          "plan_sha256": "8d7baa45834e1a9be556455e0fd6630e048335643ea2694915c886e6b9178f92",
+          "remote_state": "SUBMITTED",
+          "render_job_id": "job_1795771558519195954_c0916122"
+        }
+      },
+      "parent_job_id": "job_1795771558519195954_c0916122",
+      "parent_run_id": "job_1795771558519195954_c0916122",
+      "render_phase": "settle"
+    },
+    "result": {
+      "asset": {
+        "asset_id": "cliprender_c611eedd8ebc691cc554217f",
+        "content_url": "",
+        "delivery_status": "pending",
+        "drive_file_id": "",
+        "drive_link": "",
+        "drive_pending": true,
+        "publication_status": "PENDING",
+        "sidecar_link": "",
+        "size_bytes": 4769064
+      },
+      "background": {
+        "asset_id": "classic1",
+        "download_bytes": 0,
+        "from_cache": true,
+        "materialized": true,
+        "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/materialized/assets/8fdf404d5eb34effdea1283d3baa825a5349fa911edda6464796a55c3e20b32f/source.mp4",
+        "sha256": "8fdf404d5eb34effdea1283d3baa825a5349fa911edda6464796a55c3e20b32f",
+        "size_bytes": 0
+      },
+      "contract": {
+        "audio_codec": "aac",
+        "fps_den": 1,
+        "fps_num": 24,
+        "height": 1080,
+        "pixel_format": "yuv420p",
+        "video_codec": "h264",
+        "video_extradata_sha256": "7201ce80a2b2b32a0c1a89501851099f267c1767d59ff799db744f72032aae5a",
+        "width": 1920
+      },
+      "contract_id": "VELOX_ASSEMBLY_READY_V1",
+      "job_id": "job_1795771558519195954_c0916122",
+      "materialization": {
+        "background": {
+          "asset_id": "classic1",
+          "download_bytes": 0,
+          "from_cache": true,
+          "materialized": true,
+          "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/materialized/assets/8fdf404d5eb34effdea1283d3baa825a5349fa911edda6464796a55c3e20b32f/source.mp4",
+          "sha256": "8fdf404d5eb34effdea1283d3baa825a5349fa911edda6464796a55c3e20b32f",
+          "size_bytes": 0
+        },
+        "source": {
+          "asset_id": "yt_a9Lr_OQJ984_2097_2115_v1",
+          "download_bytes": 0,
+          "from_cache": true,
+          "materialized": true,
+          "path": "data/media/clips/general/yt_a9Lr_OQJ984/yt_a9Lr_OQJ984_2097_2115_v1_la-societ\u00e0-si-vende-per-cinque-o-diecimi.mp4",
+          "sha256": "5582097d1ed195da25b96e2e4b5b288fce41b2eeb56efb629fdc9ac2bed0d305",
+          "size_bytes": 2004610
+        },
+        "watermark": null
+      },
+      "phase": "rendered",
+      "plan": {
+        "audio_mode": "copy_if_compatible",
+        "background": "asset",
+        "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1795771558519195954_c0916122/rendered-clip.mp4",
+        "plan_sha256": "8d7baa45834e1a9be556455e0fd6630e048335643ea2694915c886e6b9178f92",
+        "version": "clip-render-plan.v1"
+      },
+      "queue_wait_ms": 1001,
+      "render": {
+        "audio_copy_eligible": true,
+        "audio_encode_passes": null,
+        "backend": "chronon_vulkan",
+        "chronon_timing": {
+          "content_type": "application/vnd.chronon.timing+json",
+          "fetch_ms": 0,
+          "read_bytes": 0,
+          "sha256": "6ea52ffafe9e66c97a78dd8e4531d7f46be1a1c25db805a9dfa0dab5d689a949",
+          "size_bytes": 1721388,
+          "source": "",
+          "storage_key": "6ea52ffafe9e66c97a78dd8e4531d7f46be1a1c25db805a9dfa0dab5d689a949",
+          "url": "http://localhost:9000/objects/6ea52ffafe9e66c97a78dd8e4531d7f46be1a1c25db805a9dfa0dab5d689a949"
+        },
+        "duration_sec": 18,
+        "ffmpeg_ms": 0,
+        "fps_den": 1,
+        "fps_num": 24,
+        "height": 1080,
+        "metrics_v2": {
+          "backend_probe_ms": "NOT_INSTRUMENTED",
+          "backend_resolve_ms": "NOT_INSTRUMENTED",
+          "backend_selected": "",
+          "backend_attempts": 0,
+          "fallback_count": 0,
+          "failed_backend_ms": "NOT_INSTRUMENTED",
+          "asset_materialize_ms": 1253,
+          "subtitle_compile_ms": "NOT_INSTRUMENTED",
+          "renderer_startup_ms": "NOT_INSTRUMENTED",
+          "probe_ms": 161,
+          "chronon_queue_wait_ms": 4,
+          "chronon_service_ms": 3395,
+          "decode_ms": "NOT_INSTRUMENTED",
+          "composite_ms": "NOT_INSTRUMENTED",
+          "subtitle_raster_ms": "NOT_INSTRUMENTED",
+          "watermark_raster_ms": "NOT_INSTRUMENTED",
+          "frame_conversion_ms": "NOT_INSTRUMENTED",
+          "encode_ms": 191,
+          "audio_mux_ms": "NOT_INSTRUMENTED",
+          "prepare_ms": 246,
+          "render_loop_ms": 2931,
+          "mux_finalize_ms": 0,
+          "validation_ms": 111,
+          "frame_slot_wait_ms": "NOT_INSTRUMENTED",
+          "cuda_vulkan_wait_ms": "NOT_INSTRUMENTED",
+          "decoder_wait_ms": 2,
+          "encoder_backpressure_ms": 0,
+          "receipt_sha256_ms": 21,
+          "receipt_probe_ms": 90,
+          "receipt_count_frames_ms": "NOT_INSTRUMENTED",
+          "receipt_decode_ms": "NOT_INSTRUMENTED",
+          "receipt_total_ms": 0,
+          "verification_policy": 1,
+          "verification_passed": 1,
+          "renderer_finalize_ms": 0,
+          "artifact_publish_ms": 25,
+          "drive_upload_ms": 0,
+          "publication_total_ms": 25,
+          "publish_ms": "NOT_INSTRUMENTED",
+          "render_wall_ms": 7764,
+          "frames": 432,
+          "render_fps": 147.40604867344996,
+          "total_fps": 55.32786885245902,
+          "realtime_factor": 2.305327868852459,
+          "speed_factor": 2.3183925811437405,
+          "processing_xrt": 0.43133333333333335,
+          "gpu_upload_bytes": 19013932,
+          "gpu_readback_bytes": 0,
+          "peak_rss_bytes": "NOT_INSTRUMENTED",
+          "disk_read_bytes": "NOT_INSTRUMENTED",
+          "disk_write_bytes": "NOT_INSTRUMENTED",
+          "network_rx_bytes": "NOT_INSTRUMENTED",
+          "network_tx_bytes": "NOT_INSTRUMENTED",
+          "encoder_staging_copy_bytes": "NOT_INSTRUMENTED",
+          "nv12_to_rgba_frames": 974,
+          "rgba_to_nv12_frames": 432,
+          "cuda_composite_frames": "NOT_INSTRUMENTED",
+          "gpu_utilization_avg": "NOT_INSTRUMENTED",
+          "gpu_utilization_peak": "NOT_INSTRUMENTED",
+          "nvenc_utilization_avg": "NOT_INSTRUMENTED",
+          "nvdec_utilization_avg": "NOT_INSTRUMENTED",
+          "vram_used_peak_mb": "NOT_INSTRUMENTED",
+          "subtitle_raster_cpu": false,
+          "total_ms": 7808,
+          "unaccounted_ms": 0,
+          "unattributed_ms": 0
+        },
+        "output_path": "",
+        "size_bytes": 4769064,
+        "subtitle_raster_cpu": null,
+        "width": 1920
+      },
+      "source_asset_id": "yt_a9Lr_OQJ984_2097_2115_v1",
+      "timings": {
+        "parallel": true,
+        "phases": [
+          {
+            "phase": "resolve_contract",
+            "wall_ms": 0,
+            "work_ms": 0,
+            "notes": {
+              "audio_codec": "aac",
+              "contract_id": "VELOX_ASSEMBLY_READY_V1",
+              "fps_den": 1,
+              "fps_num": 24,
+              "height": 1080,
+              "video_codec": "h264",
+              "width": 1920
+            }
+          },
+          {
+            "phase": "resolve_background",
+            "wall_ms": 1,
+            "work_ms": 1,
+            "notes": {
+              "asset_id": "classic1",
+              "has_drive": true,
+              "has_local": true,
+              "media_type": "video"
+            }
+          },
+          {
+            "phase": "transcript_resolve",
+            "wall_ms": 3,
+            "work_ms": 3,
+            "notes": {
+              "found": true,
+              "language": "en"
+            }
+          },
+          {
+            "phase": "resolve_source",
+            "wall_ms": 19,
+            "work_ms": 19,
+            "notes": {
+              "asset_id": "yt_a9Lr_OQJ984_2097_2115_v1",
+              "duration_ms": 18000,
+              "has_drive": true,
+              "has_local": true,
+              "media_type": "video"
+            }
+          },
+          {
+            "phase": "materialize_source",
+            "wall_ms": 0,
+            "work_ms": 0,
+            "notes": {
+              "asset_id": "yt_a9Lr_OQJ984_2097_2115_v1",
+              "from_cache": true,
+              "size_bytes": 2004610
+            }
+          },
+          {
+            "phase": "materialize_background",
+            "wall_ms": 1253,
+            "work_ms": 1253,
+            "notes": {
+              "asset_id": "classic1",
+              "from_cache": false,
+              "size_bytes": 3105669
+            }
+          }
+        ],
+        "total_wall_ms": 1272,
+        "total_work_ms": 1276
+      },
+      "transcript": {
+        "cues": 1,
+        "language": "en",
+        "reused": true,
+        "source_audio_sha256": "",
+        "text_sha256": "f38a1ae30e468b7b00980e01fdce2af5ffc980cfd50ec295e7fc63b693012320"
+      },
+      "transcript_mode": "auto"
+    },
+    "progress": 100,
+    "retry_count": 0,
+    "max_retries": 2,
+    "worker_id": "YOutube_383216_6",
+    "revision": 3,
+    "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+    "created_at": "2026-11-27T09:25:59Z",
+    "updated_at": "2026-11-27T09:26:07.836932893Z",
+    "started_at": "2026-11-27T09:25:59.979994648Z",
+    "completed_at": "2026-11-27T09:26:07.836932893Z",
+    "scheduling": {
+      "job_type": "clip.render",
+      "resource_class": "render",
+      "execution_lane": "settle",
+      "available_at": "2026-11-27T09:25:59Z",
+      "priority": 0
+    },
+    "parent_job_id": "job_1795771558519195954_c0916122"
+  },
+  "lease_expiry": null,
+  "progress": 100,
+  "remote_final_job_id": "",
+  "remote_final_job_status": "",
+  "remote_final_job_timing": null,
+  "render_status": "",
+  "result": {
+    "asset": {
+      "asset_id": "cliprender_c611eedd8ebc691cc554217f",
+      "content_url": "",
+      "delivery_status": "pending",
+      "drive_file_id": "",
+      "drive_link": "",
+      "drive_pending": true,
+      "publication_status": "PENDING",
+      "sidecar_link": "",
+      "size_bytes": 4769064
+    },
+    "background": {
+      "asset_id": "classic1",
+      "download_bytes": 0,
+      "from_cache": true,
+      "materialized": true,
+      "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/materialized/assets/8fdf404d5eb34effdea1283d3baa825a5349fa911edda6464796a55c3e20b32f/source.mp4",
+      "sha256": "8fdf404d5eb34effdea1283d3baa825a5349fa911edda6464796a55c3e20b32f",
+      "size_bytes": 0
+    },
+    "contract": {
+      "audio_codec": "aac",
+      "fps_den": 1,
+      "fps_num": 24,
+      "height": 1080,
+      "pixel_format": "yuv420p",
+      "video_codec": "h264",
+      "video_extradata_sha256": "7201ce80a2b2b32a0c1a89501851099f267c1767d59ff799db744f72032aae5a",
+      "width": 1920
+    },
+    "contract_id": "VELOX_ASSEMBLY_READY_V1",
+    "job_id": "job_1795771558519195954_c0916122",
+    "materialization": {
+      "background": {
+        "asset_id": "classic1",
+        "download_bytes": 0,
+        "from_cache": true,
+        "materialized": true,
+        "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/materialized/assets/8fdf404d5eb34effdea1283d3baa825a5349fa911edda6464796a55c3e20b32f/source.mp4",
+        "sha256": "8fdf404d5eb34effdea1283d3baa825a5349fa911edda6464796a55c3e20b32f",
+        "size_bytes": 0
+      },
+      "source": {
+        "asset_id": "yt_a9Lr_OQJ984_2097_2115_v1",
+        "download_bytes": 0,
+        "from_cache": true,
+        "materialized": true,
+        "path": "data/media/clips/general/yt_a9Lr_OQJ984/yt_a9Lr_OQJ984_2097_2115_v1_la-societ\u00e0-si-vende-per-cinque-o-diecimi.mp4",
+        "sha256": "5582097d1ed195da25b96e2e4b5b288fce41b2eeb56efb629fdc9ac2bed0d305",
+        "size_bytes": 2004610
+      },
+      "watermark": null
+    },
+    "phase": "rendered",
+    "plan": {
+      "audio_mode": "copy_if_compatible",
+      "background": "asset",
+      "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1795771558519195954_c0916122/rendered-clip.mp4",
+      "plan_sha256": "8d7baa45834e1a9be556455e0fd6630e048335643ea2694915c886e6b9178f92",
+      "version": "clip-render-plan.v1"
+    },
+    "queue_wait_ms": 1001,
+    "render": {
+      "audio_copy_eligible": true,
+      "audio_encode_passes": null,
+      "backend": "chronon_vulkan",
+      "chronon_timing": {
+        "content_type": "application/vnd.chronon.timing+json",
+        "fetch_ms": 0,
+        "read_bytes": 0,
+        "sha256": "6ea52ffafe9e66c97a78dd8e4531d7f46be1a1c25db805a9dfa0dab5d689a949",
+        "size_bytes": 1721388,
+        "source": "",
+        "storage_key": "6ea52ffafe9e66c97a78dd8e4531d7f46be1a1c25db805a9dfa0dab5d689a949",
+        "url": "http://localhost:9000/objects/6ea52ffafe9e66c97a78dd8e4531d7f46be1a1c25db805a9dfa0dab5d689a949"
+      },
+      "duration_sec": 18,
+      "ffmpeg_ms": 0,
+      "fps_den": 1,
+      "fps_num": 24,
+      "height": 1080,
+      "metrics_v2": {
+        "backend_probe_ms": "NOT_INSTRUMENTED",
+        "backend_resolve_ms": "NOT_INSTRUMENTED",
+        "backend_selected": "",
+        "backend_attempts": 0,
+        "fallback_count": 0,
+        "failed_backend_ms": "NOT_INSTRUMENTED",
+        "asset_materialize_ms": 1253,
+        "subtitle_compile_ms": "NOT_INSTRUMENTED",
+        "renderer_startup_ms": "NOT_INSTRUMENTED",
+        "probe_ms": 161,
+        "chronon_queue_wait_ms": 4,
+        "chronon_service_ms": 3395,
+        "decode_ms": "NOT_INSTRUMENTED",
+        "composite_ms": "NOT_INSTRUMENTED",
+        "subtitle_raster_ms": "NOT_INSTRUMENTED",
+        "watermark_raster_ms": "NOT_INSTRUMENTED",
+        "frame_conversion_ms": "NOT_INSTRUMENTED",
+        "encode_ms": 191,
+        "audio_mux_ms": "NOT_INSTRUMENTED",
+        "prepare_ms": 246,
+        "render_loop_ms": 2931,
+        "mux_finalize_ms": 0,
+        "validation_ms": 111,
+        "frame_slot_wait_ms": "NOT_INSTRUMENTED",
+        "cuda_vulkan_wait_ms": "NOT_INSTRUMENTED",
+        "decoder_wait_ms": 2,
+        "encoder_backpressure_ms": 0,
+        "receipt_sha256_ms": 21,
+        "receipt_probe_ms": 90,
+        "receipt_count_frames_ms": "NOT_INSTRUMENTED",
+        "receipt_decode_ms": "NOT_INSTRUMENTED",
+        "receipt_total_ms": 0,
+        "verification_policy": 1,
+        "verification_passed": 1,
+        "renderer_finalize_ms": 0,
+        "artifact_publish_ms": 25,
+        "drive_upload_ms": 0,
+        "publication_total_ms": 25,
+        "publish_ms": "NOT_INSTRUMENTED",
+        "render_wall_ms": 7764,
+        "frames": 432,
+        "render_fps": 147.40604867344996,
+        "total_fps": 55.32786885245902,
+        "realtime_factor": 2.305327868852459,
+        "speed_factor": 2.3183925811437405,
+        "processing_xrt": 0.43133333333333335,
+        "gpu_upload_bytes": 19013932,
+        "gpu_readback_bytes": 0,
+        "peak_rss_bytes": "NOT_INSTRUMENTED",
+        "disk_read_bytes": "NOT_INSTRUMENTED",
+        "disk_write_bytes": "NOT_INSTRUMENTED",
+        "network_rx_bytes": "NOT_INSTRUMENTED",
+        "network_tx_bytes": "NOT_INSTRUMENTED",
+        "encoder_staging_copy_bytes": "NOT_INSTRUMENTED",
+        "nv12_to_rgba_frames": 974,
+        "rgba_to_nv12_frames": 432,
+        "cuda_composite_frames": "NOT_INSTRUMENTED",
+        "gpu_utilization_avg": "NOT_INSTRUMENTED",
+        "gpu_utilization_peak": "NOT_INSTRUMENTED",
+        "nvenc_utilization_avg": "NOT_INSTRUMENTED",
+        "nvdec_utilization_avg": "NOT_INSTRUMENTED",
+        "vram_used_peak_mb": "NOT_INSTRUMENTED",
+        "subtitle_raster_cpu": false,
+        "total_ms": 7808,
+        "unaccounted_ms": 0,
+        "unattributed_ms": 0
+      },
+      "output_path": "",
+      "size_bytes": 4769064,
+      "subtitle_raster_cpu": null,
+      "width": 1920
+    },
+    "source_asset_id": "yt_a9Lr_OQJ984_2097_2115_v1",
+    "timings": {
+      "parallel": true,
+      "phases": [
+        {
+          "phase": "resolve_contract",
+          "wall_ms": 0,
+          "work_ms": 0,
+          "notes": {
+            "audio_codec": "aac",
+            "contract_id": "VELOX_ASSEMBLY_READY_V1",
+            "fps_den": 1,
+            "fps_num": 24,
+            "height": 1080,
+            "video_codec": "h264",
+            "width": 1920
+          }
+        },
+        {
+          "phase": "resolve_background",
+          "wall_ms": 1,
+          "work_ms": 1,
+          "notes": {
+            "asset_id": "classic1",
+            "has_drive": true,
+            "has_local": true,
+            "media_type": "video"
+          }
+        },
+        {
+          "phase": "transcript_resolve",
+          "wall_ms": 3,
+          "work_ms": 3,
+          "notes": {
+            "found": true,
+            "language": "en"
+          }
+        },
+        {
+          "phase": "resolve_source",
+          "wall_ms": 19,
+          "work_ms": 19,
+          "notes": {
+            "asset_id": "yt_a9Lr_OQJ984_2097_2115_v1",
+            "duration_ms": 18000,
+            "has_drive": true,
+            "has_local": true,
+            "media_type": "video"
+          }
+        },
+        {
+          "phase": "materialize_source",
+          "wall_ms": 0,
+          "work_ms": 0,
+          "notes": {
+            "asset_id": "yt_a9Lr_OQJ984_2097_2115_v1",
+            "from_cache": true,
+            "size_bytes": 2004610
+          }
+        },
+        {
+          "phase": "materialize_background",
+          "wall_ms": 1253,
+          "work_ms": 1253,
+          "notes": {
+            "asset_id": "classic1",
+            "from_cache": false,
+            "size_bytes": 3105669
+          }
+        }
+      ],
+      "total_wall_ms": 1272,
+      "total_work_ms": 1276
+    },
+    "transcript": {
+      "cues": 1,
+      "language": "en",
+      "reused": true,
+      "source_audio_sha256": "",
+      "text_sha256": "f38a1ae30e468b7b00980e01fdce2af5ffc980cfd50ec295e7fc63b693012320"
+    },
+    "transcript_mode": "auto"
+  },
+  "retryable": false,
+  "started_at": "2026-11-27T09:25:59.979994648Z",
+  "status": "SUCCEEDED",
+  "timeline": [
+    {
+      "id": "evt_1795771559945773897_f26b2c",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "job_queued",
+      "message": "job queued",
+      "data": {
+        "attempt_id": "attempt_1795771558539202290_1a9d0a60d243155a",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b",
+        "detail": "job queued",
+        "kind": "clip.render",
+        "micro_kind": "job.queue",
+        "payload": {
+          "status": "QUEUED"
+        },
+        "run_id": "run_1795771558539236156_c370674530d4",
+        "sequence": 5,
+        "status": "queued",
+        "sub_kind": "job.queue",
+        "trace": {
+          "attempt_id": "attempt_1795771558539202290_1a9d0a60d243155a",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b",
+          "parent_run_id": "",
+          "run_id": "run_1795771558539236156_c370674530d4",
+          "sequence": 5
+        }
+      },
+      "created_at": "2026-11-27T09:25:59Z"
+    },
+    {
+      "id": "evt_1795771559960185420_b1f7e4",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "job_running",
+      "message": "job started",
+      "data": {
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "job started",
+        "kind": "clip.render",
+        "lease_id": "lease_1795771559950592872_b8acc65d",
+        "micro_kind": "worker.execute",
+        "payload": {
+          "lease_id": "lease_1795771559950592872_b8acc65d",
+          "revision": 2,
+          "status": "RUNNING",
+          "worker_id": "YOutube_383216_6"
+        },
+        "revision": 2,
+        "status": "running",
+        "sub_kind": "worker.execute",
+        "trace": {
+          "attempt_id": "",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "",
+          "run_id": "",
+          "sequence": 0
+        },
+        "worker_id": "YOutube_383216_6"
+      },
+      "created_at": "2026-11-27T09:25:59Z"
+    },
+    {
+      "id": "evt_1795771559982727028_892e9a",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "leased",
+      "message": "job claimed by worker YOutube_383216_6",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "job lease acquired",
+        "kind": "clip.render",
+        "lease_id": "lease_1795771559950592872_b8acc65d",
+        "micro_kind": "worker.claim",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "lease_id": "lease_1795771559950592872_b8acc65d",
+          "revision": 2,
+          "worker_id": "YOutube_383216_6"
+        },
+        "revision": 2,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 1,
+        "status": "running",
+        "sub_kind": "worker.claim",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 1
+        },
+        "worker_id": "YOutube_383216_6"
+      },
+      "created_at": "2026-11-27T09:25:59Z"
+    },
+    {
+      "id": "evt_1795771559992897423_501b30",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "progress",
+      "message": "clip.render started",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "clip.render started",
+        "kind": "clip.render",
+        "message": "clip.render started",
+        "micro_kind": "clip_render",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "message": "clip.render started",
+          "progress": 0
+        },
+        "progress": 0,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 2,
+        "status": "running",
+        "sub_kind": "clip_render",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 2
+        }
+      },
+      "created_at": "2026-11-27T09:25:59Z"
+    },
+    {
+      "id": "evt_1795771560002705974_3972d3",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "progress",
+      "message": "remote render submitted; settling certified artifact",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "remote render submitted; settling certified artifact",
+        "kind": "clip.render",
+        "message": "remote render submitted; settling certified artifact",
+        "micro_kind": "remote_render",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "message": "remote render submitted; settling certified artifact",
+          "progress": 90
+        },
+        "progress": 90,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 3,
+        "status": "running",
+        "sub_kind": "remote_render",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 3
+        }
+      },
+      "created_at": "2026-11-27T09:26:00Z"
+    },
+    {
+      "id": "evt_1795771560009700070_712371",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "clip.render.plan.sealed",
+      "message": "ClipRenderPlanV1 sealed \u2014 fully resolved before Chronon",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "background": "asset",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "ClipRenderPlanV1 sealed \u2014 fully resolved before Chronon",
+        "kind": "clip.render",
+        "micro_kind": "clip.render.plan.sealed",
+        "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1795771558519195954_c0916122/rendered-clip.mp4",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "background": "asset",
+          "output_path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/cliprender/runs/job_1795771558519195954_c0916122/rendered-clip.mp4",
+          "plan_sha256": "8d7baa45834e1a9be556455e0fd6630e048335643ea2694915c886e6b9178f92",
+          "plan_version": "clip-render-plan.v1",
+          "source": "data/media/clips/general/yt_a9Lr_OQJ984/yt_a9Lr_OQJ984_2097_2115_v1_la-societ\u00e0-si-vende-per-cinque-o-diecimi.mp4",
+          "subtitles": false,
+          "watermark": false
+        },
+        "plan_sha256": "8d7baa45834e1a9be556455e0fd6630e048335643ea2694915c886e6b9178f92",
+        "plan_version": "clip-render-plan.v1",
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 4,
+        "source": "data/media/clips/general/yt_a9Lr_OQJ984/yt_a9Lr_OQJ984_2097_2115_v1_la-societ\u00e0-si-vende-per-cinque-o-diecimi.mp4",
+        "status": "running",
+        "sub_kind": "clip.render.plan.sealed",
+        "subtitles": false,
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 4
+        },
+        "watermark": false
+      },
+      "created_at": "2026-11-27T09:26:00Z"
+    },
+    {
+      "id": "evt_1795771560010288545_7c6869",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "progress",
+      "message": "plan sealed; rendering with Chronon",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "plan sealed; rendering with Chronon",
+        "kind": "clip.render",
+        "message": "plan sealed; rendering with Chronon",
+        "micro_kind": "plan_sealed",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "message": "plan sealed; rendering with Chronon",
+          "progress": 90
+        },
+        "progress": 90,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 5,
+        "status": "running",
+        "sub_kind": "plan_sealed",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 5
+        }
+      },
+      "created_at": "2026-11-27T09:26:00Z"
+    },
+    {
+      "id": "evt_1795771567782763961_906534",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "clip.render.probe.certified",
+      "message": "rendered bytes certified exact",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "certified_facts": true,
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "rendered bytes certified exact",
+        "fps_den": 1,
+        "fps_num": 24,
+        "height": 1080,
+        "kind": "clip.render",
+        "micro_kind": "clip.render.probe.certified",
+        "output_path": "",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "certified_facts": true,
+          "fps_den": 1,
+          "fps_num": 24,
+          "height": 1080,
+          "output_path": "",
+          "video_profile": "high",
+          "width": 1920
+        },
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 6,
+        "status": "running",
+        "sub_kind": "clip.render.probe.certified",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 6
+        },
+        "video_profile": "high",
+        "width": 1920
+      },
+      "created_at": "2026-11-27T09:26:07Z"
+    },
+    {
+      "id": "evt_1795771567809496153_078000",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "clip.render.completed",
+      "message": "Chronon render completed",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "backend": "chronon_vulkan",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "Chronon render completed",
+        "duration_sec": 18,
+        "ffmpeg_ms": 0,
+        "kind": "clip.render",
+        "micro_kind": "clip.render.completed",
+        "output_path": "",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "backend": "chronon_vulkan",
+          "duration_sec": 18,
+          "ffmpeg_ms": 0,
+          "output_path": "",
+          "size_bytes": 4769064
+        },
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 7,
+        "size_bytes": 4769064,
+        "status": "completed",
+        "sub_kind": "clip.render.completed",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 7
+        }
+      },
+      "created_at": "2026-11-27T09:26:07Z"
+    },
+    {
+      "id": "evt_1795771567817978229_c3ab2a",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "progress",
+      "message": "clip.render completed",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "clip.render completed",
+        "kind": "clip.render",
+        "message": "clip.render completed",
+        "micro_kind": "clip_render",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {
+          "message": "clip.render completed",
+          "progress": 100
+        },
+        "progress": 100,
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 8,
+        "status": "completed",
+        "sub_kind": "clip_render",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 8
+        }
+      },
+      "created_at": "2026-11-27T09:26:07Z"
+    },
+    {
+      "id": "evt_1795771567825840248_8e0cc2",
+      "job_id": "job_1795771559945808832_ca20857b",
+      "type": "job_completed",
+      "message": "job completed successfully",
+      "data": {
+        "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+        "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+        "detail": "job completed successfully",
+        "kind": "clip.render",
+        "micro_kind": "job.complete",
+        "parent_run_id": "job_1795771558519195954_c0916122",
+        "payload": {},
+        "run_id": "run_1795771559979996482_e11142c4350c",
+        "sequence": 9,
+        "status": "completed",
+        "sub_kind": "job.complete",
+        "trace": {
+          "attempt_id": "attempt_1795771559979966660_aa5be0bbcc720240",
+          "correlation_id": "cliprender:cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b:settle:job_1795771558519195954_c0916122:1",
+          "parent_run_id": "job_1795771558519195954_c0916122",
+          "run_id": "run_1795771559979996482_e11142c4350c",
+          "sequence": 9
+        }
+      },
+      "created_at": "2026-11-27T09:26:07Z"
+    }
+  ],
+  "type": "clip.render",
+  "updated_at": "2026-11-27T09:26:07.836932893Z",
+  "warnings": [],
+  "worker_id": "YOutube_383216_6"
+}

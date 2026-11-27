@@ -289,16 +289,30 @@ func extractExpectedSchema(t *testing.T, migrationsDir, targetDB string) map[str
 	// expectation would list vector_points_before/after twice and fail against
 	// the 17-column live schema. Mirror the runner: baseline + version > N.
 	baselineCoverage := 0
+	selectedBaseline, hasSelectedBaseline := migrationFile{}, false
 	if discovered, err := discoverMigrations(migrationsDir); err == nil {
-		baselineCoverage = baselineThresholdForMigrations(discovered)
+		baselineCoverage = baselineThresholdForMigrations(discovered, targetDB)
+		selectedBaseline, hasSelectedBaseline = selectBaselineForPlane(discovered, targetDB)
 	}
 
 	schema := make(map[string]*expectedTable)
 
 	for _, path := range files {
 		filename := filepath.Base(path)
-		if version, err := parseMigrationVersion(filename); err == nil && version > 0 && baselineCoverage > 0 && version <= baselineCoverage {
-			continue
+		if version, err := parseMigrationVersion(filename); err == nil {
+			if version == 0 {
+				// A fresh database applies exactly ONE consolidated baseline,
+				// and a plane with its own dump never sees the shared one. The
+				// corpus carries the frozen shared dump plus the operational
+				// planes' dumps; only the selected one may contribute
+				// expectations, or every plane would be expected to carry the
+				// business schema DB-03 removed.
+				if !hasSelectedBaseline || filename != selectedBaseline.filename {
+					continue
+				}
+			} else if baselineCoverage > 0 && version <= baselineCoverage {
+				continue
+			}
 		}
 		contentBytes, err := os.ReadFile(path)
 		require.NoError(t, err, "read %s", filename)

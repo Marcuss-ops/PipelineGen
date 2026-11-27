@@ -20,6 +20,8 @@ func (w *Worker) completeRendered(
 	j *job.Job,
 	tools *job.JobExecutionTools,
 	jobStart time.Time,
+	acceptedAt time.Time,
+	submittedAt time.Time,
 	req *RenderRequest,
 	prepared *Prepared,
 	plan ClipRenderPlanV1,
@@ -56,12 +58,14 @@ func (w *Worker) completeRendered(
 		"ffmpeg_ms":    outcome.FFmpegMS,
 		"backend":      outcome.Backend,
 	})
-	totalMS := time.Since(jobStart).Milliseconds()
+	completedAt := time.Now()
+	totalMS := completedAt.Sub(jobStart).Milliseconds()
 	finalizeMetrics(outcome.Metrics, totalMS, outcome.DurationSec)
+	applyRequestTimings(outcome.Metrics, acceptedAt, submittedAt, jobStart, completedAt, publication.DeliveryStatus)
 	w.logRenderCompletion(j, resultJob, req, publication, outcome, totalMS, renderMS)
 	// Populate deterministic cache for future identical POSTs. Best-effort:
 	// a cache put failure must never fail the render that already succeeded.
-	w.cacheCompletedRender(ctx, req, outcome, publication)
+	w.cacheCompletedRender(ctx, req, prepared, outcome, publication)
 	// Chronon phase projection from the raw `*.timing.json` sidecar the render
 	// outcome references. Best-effort by construction — metrics must never fail
 	// the render they measure — and the ONLY place those bytes are fetched and
@@ -277,7 +281,7 @@ func (w *Worker) logRenderCompletion(j, resultJob *job.Job, req *RenderRequest, 
 	)
 }
 
-func (w *Worker) cacheCompletedRender(ctx context.Context, req *RenderRequest, outcome *RenderOutcome, publication *RenderPublishResult) {
+func (w *Worker) cacheCompletedRender(ctx context.Context, req *RenderRequest, prepared *Prepared, outcome *RenderOutcome, publication *RenderPublishResult) {
 	if w.renderCache == nil || req == nil {
 		return
 	}
@@ -285,22 +289,30 @@ func (w *Worker) cacheCompletedRender(ctx context.Context, req *RenderRequest, o
 	if fpErr != nil {
 		return
 	}
+	renderFP, renderFPErr := req.RenderFingerprint()
+	if renderFPErr != nil {
+		return
+	}
 	rec := &RenderCacheRecord{
-		Fingerprint:    fp,
-		AssetID:        publication.AssetID,
-		StorageKey:     outcome.StorageKey,
-		ArtifactURL:    outcome.ArtifactURL,
-		ContentType:    outcome.ContentType,
-		SHA256:         outcome.SHA256,
-		SizeBytes:      outcome.SizeBytes,
-		DurationSec:    outcome.DurationSec,
-		Width:          outcome.Width,
-		Height:         outcome.Height,
-		FPSNum:         outcome.FPSNum,
-		FPSDen:         outcome.FPSDen,
-		Backend:        outcome.Backend,
-		DeliveryStatus: publicationDeliveryStatus(publication),
-		DriveFileID:    publication.DriveFileID,
+		Fingerprint:       fp,
+		RenderFingerprint: renderFP,
+		InputSHA256:       InputDigestFromPrepared(req, prepared),
+		SourceTitle:       preparedSourceTitle(prepared),
+		Language:          preparedLanguage(prepared),
+		AssetID:           publication.AssetID,
+		StorageKey:        outcome.StorageKey,
+		ArtifactURL:       outcome.ArtifactURL,
+		ContentType:       outcome.ContentType,
+		SHA256:            outcome.SHA256,
+		SizeBytes:         outcome.SizeBytes,
+		DurationSec:       outcome.DurationSec,
+		Width:             outcome.Width,
+		Height:            outcome.Height,
+		FPSNum:            outcome.FPSNum,
+		FPSDen:            outcome.FPSDen,
+		Backend:           outcome.Backend,
+		DeliveryStatus:    publicationDeliveryStatus(publication),
+		DriveFileID:       publication.DriveFileID,
 	}
 	if err := w.renderCache.Put(ctx, rec); err != nil {
 		w.log.Warn("clip.render cache put failed",

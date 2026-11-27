@@ -10,6 +10,7 @@ import (
 	"time"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/payloadcap"
 	"go.uber.org/zap"
 )
 
@@ -65,7 +66,10 @@ func (r *SQLiteRecorder) StartReport(ctx context.Context, p *kernobs.RunReport) 
 	if err != nil {
 		return r.fail(p.RunID, "marshal_start", err)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,parent_run_id,worker_id,lease_id,lease_expires_at,status,created_at,started_at,queue_wait_ms,report_json,observability_degraded,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO NOTHING`, p.RunID, p.JobID, p.JobType, p.AttemptID, nullable(p.ParentRunID), nullable(p.WorkerID), nullable(p.LeaseID), nullableTime(p.LeaseExpiresAt), p.Status, timeValue(created), timeValue(started), p.QueueWaitMs, string(body), boolInt(p.ObservabilityDegraded), timeValue(now))
+	// DB-04: bound the report blob stored on the row; the run keeps its full
+	// in-memory report, and a capped row is explicitly marked truncated.
+	storedBody, _ := payloadcap.EnforceReport(string(body))
+	_, err = tx.ExecContext(ctx, `INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,parent_run_id,worker_id,lease_id,lease_expires_at,status,created_at,started_at,queue_wait_ms,report_json,observability_degraded,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO NOTHING`, p.RunID, p.JobID, p.JobType, p.AttemptID, nullable(p.ParentRunID), nullable(p.WorkerID), nullable(p.LeaseID), nullableTime(p.LeaseExpiresAt), p.Status, timeValue(created), timeValue(started), p.QueueWaitMs, storedBody, boolInt(p.ObservabilityDegraded), timeValue(now))
 	if err != nil {
 		return r.fail(p.RunID, "start_run", err)
 	}
@@ -208,6 +212,7 @@ func (r *SQLiteRecorder) SaveReport(ctx context.Context, p *kernobs.RunReport) e
 	if err != nil {
 		return r.fail(p.RunID, "marshal_save", err)
 	}
+	storedBody, _ := payloadcap.EnforceReport(string(body))
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return r.fail(p.RunID, "save_begin", err)
@@ -225,7 +230,7 @@ func (r *SQLiteRecorder) SaveReport(ctx context.Context, p *kernobs.RunReport) e
 	if activeMS < 0 {
 		activeMS = 0
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE run_observability SET status=?,finished_at=?,queue_wait_ms=?,wall_time_ms=?,active_ms=?,blocked_ms=?,accumulated_operation_ms=?,error_code=?,error=?,counters_json=?,children_json=?,report_json=?,observability_degraded=?,updated_at=? WHERE run_id=?`, p.Status, nullableTime(p.FinishedAt), p.QueueWaitMs, p.WallTimeMs, activeMS, p.BlockedMs, p.AccumulatedOperationMs, nullable(p.ErrorCode), nullable(p.Error), jsonValue(p.Counters), jsonValue(p.Children), string(body), boolInt(p.ObservabilityDegraded), timeValue(now), p.RunID)
+	res, err := tx.ExecContext(ctx, `UPDATE run_observability SET status=?,finished_at=?,queue_wait_ms=?,wall_time_ms=?,active_ms=?,blocked_ms=?,accumulated_operation_ms=?,error_code=?,error=?,counters_json=?,children_json=?,report_json=?,observability_degraded=?,updated_at=? WHERE run_id=?`, p.Status, nullableTime(p.FinishedAt), p.QueueWaitMs, p.WallTimeMs, activeMS, p.BlockedMs, p.AccumulatedOperationMs, nullable(p.ErrorCode), nullable(p.Error), jsonValue(p.Counters), jsonValue(p.Children), storedBody, boolInt(p.ObservabilityDegraded), timeValue(now), p.RunID)
 	if err != nil {
 		return r.fail(p.RunID, "finish_run", err)
 	}

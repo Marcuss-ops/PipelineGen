@@ -232,10 +232,16 @@ func baselineApplied(applied map[int]appliedRecord) bool {
 }
 
 // validateNoDuplicateVersions returns an error if two migration files share
-// the same version number.
+// the same version number. Consolidated baselines are exempt: every baseline
+// uses the version-0 sentinel because the ledger keys "1..N already covered"
+// on version 0, and a plane may only be bootstrapped by its own dump. Their
+// uniqueness is enforced per plane by validateBaselineScopes instead.
 func validateNoDuplicateVersions(migrations []migrationFile, log *zap.Logger) error {
 	seen := make(map[int]string)
 	for _, m := range migrations {
+		if isBaselineMigrationFile(m) {
+			continue
+		}
 		if prev, ok := seen[m.version]; ok {
 			return fmt.Errorf(
 				"storage: duplicate migration version %03d: %s and %s",
@@ -244,7 +250,73 @@ func validateNoDuplicateVersions(migrations []migrationFile, log *zap.Logger) er
 		}
 		seen[m.version] = m.filename
 	}
+	return validateBaselineScopes(migrations)
+}
+
+// validateBaselineScopes fails closed when the baseline corpus is ambiguous.
+// A plane can only be bootstrapped by one dump, so two plane-specific baselines
+// naming the same plane are an error rather than a silent "first file wins".
+// The shared `all` dump may exist alongside plane dumps: it is the frozen
+// legacy baseline kept byte-identical for existing ledgers, and
+// selectBaselineForPlane gives the plane-specific dump precedence.
+func validateBaselineScopes(migrations []migrationFile) error {
+	shared := ""
+	perPlane := map[string]string{}
+	for _, m := range migrations {
+		if !isBaselineMigrationFile(m) {
+			continue
+		}
+		if m.scope == "" || m.scope == "all" {
+			if shared != "" {
+				return fmt.Errorf("storage: two baseline files target every database: %s and %s", shared, m.filename)
+			}
+			shared = m.filename
+			continue
+		}
+		for _, plane := range strings.Split(m.scope, ",") {
+			plane = strings.TrimSpace(plane)
+			if plane == "" || plane == "all" {
+				continue
+			}
+			if prev, ok := perPlane[plane]; ok {
+				return fmt.Errorf("storage: duplicate %s baseline: %s and %s", plane, prev, m.filename)
+			}
+			perPlane[plane] = m.filename
+		}
+	}
 	return nil
+}
+
+// baselineFilesForPlane returns the consolidated baselines whose `-- database:`
+// scope covers targetDB.
+func baselineFilesForPlane(migrations []migrationFile, targetDB string) []migrationFile {
+	var out []migrationFile
+	for _, m := range migrations {
+		if isBaselineMigrationFile(m) && migrationAppliesToTargetDB(m.scope, targetDB) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// selectBaselineForPlane picks the single consolidated baseline a plane must
+// apply. A plane-specific dump (`-- database: observability`) wins over the
+// shared `all` dump: the shared dump is the frozen legacy baseline and still
+// contains the business schema, while the plane dump is the DB-03 fix — a fresh
+// operational database must be built from the objects its own plane owns. The
+// shared dump sorts first, so without this precedence rule it would be applied
+// and the plane dump skipped, reinstating the leak.
+func selectBaselineForPlane(migrations []migrationFile, targetDB string) (migrationFile, bool) {
+	candidates := baselineFilesForPlane(migrations, targetDB)
+	if len(candidates) == 0 {
+		return migrationFile{}, false
+	}
+	for _, m := range candidates {
+		if m.scope != "" && m.scope != "all" {
+			return m, true
+		}
+	}
+	return candidates[0], true
 }
 
 // baselineCoverageFromFile returns the highest migration version whose schema
@@ -278,16 +350,17 @@ func baselineThresholdForAppliedRecord(record appliedRecord, migrations []migrat
 }
 
 // baselineThresholdForMigrations returns the frozen window N from the
-// consolidated baseline file (000_baseline_<N>.sql) if present, else 0.
-func baselineThresholdForMigrations(migrations []migrationFile) int {
-	for _, m := range migrations {
-		if isBaselineMigrationFile(m) {
-			if v := baselineCoverageFromFile(m); v > 0 {
-				return v
-			}
-		}
+// consolidated baseline the target plane would apply, else 0. It is
+// plane-aware because the corpus can carry one baseline per plane: the
+// observability dump covers a different window than the cache dump, and using
+// the wrong file's window would both skip real migrations and strand the
+// schema.
+func baselineThresholdForMigrations(migrations []migrationFile, targetDB string) int {
+	m, ok := selectBaselineForPlane(migrations, targetDB)
+	if !ok {
+		return 0
 	}
-	return 0
+	return baselineCoverageFromFile(m)
 }
 
 // hasAnyHistory reports whether the ledger already contains any
@@ -335,6 +408,12 @@ func isHistoricalWindowCovered(applied map[int]appliedRecord, migrations []migra
 func validateAppliedMigrationSet(db queryable, applied map[int]appliedRecord, migrations []migrationFile, targetDB string) error {
 	known := make(map[int]migrationFile, len(migrations))
 	for _, migration := range migrations {
+		// Baselines share the version-0 sentinel across planes, so the map is
+		// only meaningful for real migrations; the ledger's version-0 row is
+		// validated separately below.
+		if isBaselineMigrationFile(migration) {
+			continue
+		}
 		known[migration.version] = migration
 		if !migrationAppliesToTargetDB(migration.scope, targetDB) {
 			if _, ok := applied[migration.version]; ok {
@@ -343,6 +422,15 @@ func validateAppliedMigrationSet(db queryable, applied map[int]appliedRecord, mi
 		}
 	}
 	for version := range applied {
+		if version == 0 {
+			// A ledger that reached a plane from the shared `all` dump records
+			// that dump's filename even when this plane now has its own
+			// baseline; the sentinel is plane-independent and valid.
+			if !strings.HasPrefix(applied[version].filename, "000_baseline") {
+				return fmt.Errorf("storage: migration ledger version 000 is not a consolidated baseline (%s)", applied[version].filename)
+			}
+			continue
+		}
 		if _, ok := known[version]; !ok {
 			// Migration 253 was a historical cleanup migration that was
 			// deployed to the operational DB but was not retained in this
@@ -361,7 +449,7 @@ func validateAppliedMigrationSet(db queryable, applied map[int]appliedRecord, mi
 			return fmt.Errorf("storage: migration ledger contains version %03d but no migration file exists on disk", version)
 		}
 	}
-	baselineThreshold := baselineThresholdForMigrations(migrations)
+	baselineThreshold := baselineThresholdForMigrations(migrations, targetDB)
 	baselineIsApplied := baselineApplied(applied)
 	for index, migration := range migrations {
 		if !migrationAppliesToTargetDB(migration.scope, targetDB) {
@@ -447,11 +535,15 @@ func warnOnGaps(migrations []migrationFile, log *zap.Logger) {
 	if len(migrations) == 0 {
 		return
 	}
-	// Exclude the baseline sentinel (version 0) from gap accounting — it
-	// represents the consolidated historical window 1..N.
-	filtered := migrations
-	if len(migrations) > 0 && migrations[0].version == 0 && isBaselineMigrationFile(migrations[0]) {
-		filtered = migrations[1:]
+	// Exclude every baseline sentinel (version 0) from gap accounting — each
+	// one represents the consolidated historical window 1..N, and a corpus can
+	// carry one baseline per plane.
+	filtered := make([]migrationFile, 0, len(migrations))
+	for _, m := range migrations {
+		if isBaselineMigrationFile(m) {
+			continue
+		}
+		filtered = append(filtered, m)
 	}
 	if len(filtered) == 0 {
 		return

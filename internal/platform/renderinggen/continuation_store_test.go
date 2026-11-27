@@ -49,6 +49,46 @@ func resumeDocumentFixture(t *testing.T) cliprender.ResumeDocument {
 // TestCASContinuationStoreRoundTrips certifies the store half of the boundary:
 // the resume document survives a put/get cycle through the canonical CAS and
 // the settle phase can verify it against the address it was handed.
+// TestCASContinuationStoreSubmitCheckpointRoundTrip certifies the CRA-07
+// index: the job id → resume address entry is durable, readable, deletable,
+// and cannot escape the index directory.
+func TestCASContinuationStoreSubmitCheckpointRoundTrip(t *testing.T) {
+	store := newContinuationStoreFixture(t)
+	ref, err := store.PutResumeDocument(context.Background(), resumeDocumentFixture(t))
+	if err != nil {
+		t.Fatalf("PutResumeDocument: %v", err)
+	}
+	ctx := context.Background()
+
+	if _, found, err := store.GetSubmitCheckpoint(ctx, "job-1"); err != nil || found {
+		t.Fatalf("GetSubmitCheckpoint before write = (found=%v, err=%v), want (false, nil)", found, err)
+	}
+	if err := store.PutSubmitCheckpoint(ctx, "job-1", ref); err != nil {
+		t.Fatalf("PutSubmitCheckpoint: %v", err)
+	}
+	got, found, err := store.GetSubmitCheckpoint(ctx, "job-1")
+	if err != nil || !found {
+		t.Fatalf("GetSubmitCheckpoint after write = (found=%v, err=%v), want (true, nil)", found, err)
+	}
+	if got != ref {
+		t.Fatalf("checkpoint = %+v, want %+v", got, ref)
+	}
+
+	if err := store.DeleteSubmitCheckpoint(ctx, "job-1"); err != nil {
+		t.Fatalf("DeleteSubmitCheckpoint: %v", err)
+	}
+	if _, found, err := store.GetSubmitCheckpoint(ctx, "job-1"); err != nil || found {
+		t.Fatalf("GetSubmitCheckpoint after delete = (found=%v, err=%v), want (false, nil)", found, err)
+	}
+	if err := store.DeleteSubmitCheckpoint(ctx, "job-1"); err != nil {
+		t.Fatalf("deleting a missing checkpoint must be a no-op: %v", err)
+	}
+
+	if err := store.PutSubmitCheckpoint(ctx, "../escape", ref); err == nil {
+		t.Fatal("unsafe job id was accepted into the index path")
+	}
+}
+
 func TestCASContinuationStoreRoundTrips(t *testing.T) {
 	store := newContinuationStoreFixture(t)
 	doc := resumeDocumentFixture(t)

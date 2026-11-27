@@ -151,3 +151,45 @@ jobs:
       - name: Record the deliberate skip
         if: env.PERSON_CATALOG_LIVE != '1'
         run: echo "::notice::PERSON_CATALOG_LIVE secret is not set; the live lane was not exercised."
+
+  db-doctor:
+    name: Database health gate (nightly, secret-gated)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: read
+    env:
+      # Repository secret holding the media PostgreSQL DSN. Without it the
+      # gate has nothing to check: the runner has no production SQLite data
+      # directory, so --skip-sqlite runs the PostgreSQL checks only.
+      PIPELINEGEN_MEDIA_POSTGRES_DSN: ${{ secrets.PIPELINEGEN_MEDIA_POSTGRES_DSN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.11'
+      - name: Verify Go toolchain contract
+        run: make go-version-check
+      - name: Run db doctor against the media PostgreSQL
+        if: env.PIPELINEGEN_MEDIA_POSTGRES_DSN != ''
+        run: |
+          go build -o /tmp/admin ./cmd/admin
+          /tmp/admin db doctor \
+            --skip-sqlite \
+            --postgres-dsn "$PIPELINEGEN_MEDIA_POSTGRES_DSN" \
+            --metrics-out db-doctor.prometheus
+      # The snapshot is uploaded even when the gate fails: the failing run is
+      # exactly when db_fk_violations and db_dead_tuples are most useful.
+      - name: Upload Prometheus health snapshot
+        if: env.PIPELINEGEN_MEDIA_POSTGRES_DSN != '' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-doctor-metrics
+          path: db-doctor.prometheus
+          if-no-files-found: warn
+      - name: Record the deliberate skip
+        if: env.PIPELINEGEN_MEDIA_POSTGRES_DSN == ''
+        run: echo "::warning::PIPELINEGEN_MEDIA_POSTGRES_DSN secret is not set; the database health gate did not run."

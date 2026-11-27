@@ -67,6 +67,10 @@ func NewSemanticEngineAdapter(executor *Executor) (*SemanticEngineAdapter, error
 
 const (
 	semanticManifestV3 = "semantic_manifest.v3"
+	// semanticManifestV4 normalizes the identity registry: one document table
+	// plus per-scene `identity_ids`. It is the opt-in cutover version; v3 stays
+	// the default until every consumer reads the table.
+	semanticManifestV4 = "semantic_manifest.v4"
 )
 
 // workerFailure renders a worker failure for operators. The machine-stable
@@ -185,7 +189,20 @@ func (a *SemanticEngineAdapter) executeSemanticEngineRequest(ctx context.Context
 	if manifest == nil {
 		return nil, fmt.Errorf("semantic-engine: response carries no manifest")
 	}
-	if manifest.SchemaVersion != semanticManifestV3 {
+	switch manifest.SchemaVersion {
+	case semanticManifestV3:
+		// Historical shape: every scene carries the cumulative registry.
+	case semanticManifestV4:
+		// Normalized shape: expand the document table into the per-scene view
+		// the existing projection consumes. This is a bounded cutover shim:
+		// each scene receives only the ids it references, never the cumulative
+		// registry. Remove it when projectSemanticScene* reads the table directly.
+		if err := hydrateNormalizedIdentities(manifest); err != nil {
+			return nil, err
+		}
+	default:
+		// Version routing is explicit: an unknown version is never decoded as
+		// v3 just because the fields happen to be present.
 		return nil, fmt.Errorf("semantic-engine: unsupported schema_version %q", manifest.SchemaVersion)
 	}
 	if manifest.Language != request.Language || manifest.Fingerprint == "" || manifest.Analyzers.VisualNER == "" ||
@@ -202,6 +219,57 @@ func (a *SemanticEngineAdapter) executeSemanticEngineRequest(ctx context.Context
 		return nil, fmt.Errorf("semantic-engine: manifest has %d scenes, request had %d", len(manifest.Scenes), len(request.Scenes))
 	}
 	return manifest, nil
+}
+
+// hydrateNormalizedIdentities validates a v4 document table and expands it
+// into the per-scene identity list the projection consumes. The checks are
+// fail-closed: a v4 manifest with a dangling id, a duplicate identity, a
+// per-scene copy or an unreferenced identity is a contract violation, not a
+// value to guess.
+func hydrateNormalizedIdentities(manifest *semanticEngineManifest) error {
+	if manifest.Identities == nil {
+		return fmt.Errorf("semantic-engine: v4 manifest omits the global identities table")
+	}
+	byID := make(map[string]semanticEngineIdentity, len(manifest.Identities))
+	for _, identity := range manifest.Identities {
+		if strings.TrimSpace(identity.ID) == "" {
+			return fmt.Errorf("semantic-engine: v4 manifest carries an identity with an empty id")
+		}
+		if _, duplicate := byID[identity.ID]; duplicate {
+			return fmt.Errorf("semantic-engine: v4 manifest duplicates identity %q", identity.ID)
+		}
+		byID[identity.ID] = identity
+	}
+	referenced := make(map[string]struct{}, len(byID))
+	for index := range manifest.Scenes {
+		scene := &manifest.Scenes[index]
+		if scene.Identities != nil {
+			return fmt.Errorf("semantic-engine: v4 scene %q carries a per-scene identity copy", scene.SceneID)
+		}
+		if scene.IdentityIDs == nil {
+			return fmt.Errorf("semantic-engine: v4 scene %q omits identity_ids", scene.SceneID)
+		}
+		seen := make(map[string]struct{}, len(scene.IdentityIDs))
+		scene.Identities = make([]semanticEngineIdentity, 0, len(scene.IdentityIDs))
+		for _, id := range scene.IdentityIDs {
+			identity, ok := byID[id]
+			if !ok {
+				return fmt.Errorf("semantic-engine: v4 scene %q references unknown identity %q", scene.SceneID, id)
+			}
+			if _, duplicate := seen[id]; duplicate {
+				return fmt.Errorf("semantic-engine: v4 scene %q repeats identity %q", scene.SceneID, id)
+			}
+			seen[id] = struct{}{}
+			referenced[id] = struct{}{}
+			scene.Identities = append(scene.Identities, identity)
+		}
+	}
+	for id := range byID {
+		if _, ok := referenced[id]; !ok {
+			return fmt.Errorf("semantic-engine: v4 identity %q is not referenced by any scene", id)
+		}
+	}
+	return nil
 }
 
 func buildSemanticCandidateBundles(manifest *semanticEngineManifest, request semanticEngineRequest, texts map[string]string) (*semantic.ScriptSemanticResult, error) {

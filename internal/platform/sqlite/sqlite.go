@@ -91,7 +91,7 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 	fullPath := filepath.Join(dataDir, dbName)
 	// Keep the write lock acquisition eager (see OpenSQLiteDB): read-then-write
 	// deferred transactions must not fail with "database is locked".
-	dsn := fullPath + "?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate"
+	dsn := sqliteDSN(fullPath, true)
 
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {

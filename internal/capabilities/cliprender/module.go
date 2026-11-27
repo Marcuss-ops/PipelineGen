@@ -54,6 +54,11 @@ type Dependencies struct {
 	// handler-level hit path (fingerprint → certified locator).
 	RenderCache RenderCache
 
+	// InputRevisions is the optional CRA-03 guard: it recomputes the resolved
+	// input digest a cache hit must match. The Preparer implements it; nil
+	// preserves the legacy key-only hit path.
+	InputRevisions InputDigestResolver
+
 	// Logger is the structured logger. Optional (nil → zap.NewNop()).
 	Logger *zap.Logger
 
@@ -102,7 +107,9 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log = zap.NewNop()
 	}
 
-	handler := NewHandler(deps.Jobs, log).WithRenderCache(deps.RenderCache)
+	handler := NewHandler(deps.Jobs, log).
+		WithRenderCache(deps.RenderCache).
+		WithInputDigestResolver(deps.InputRevisions)
 	handler.Idempotency = deps.Idempotency
 
 	mod := api.NewRouteModule(

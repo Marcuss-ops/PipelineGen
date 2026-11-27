@@ -14,6 +14,7 @@ import (
 
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	pgbackfill "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media/backfill"
+	pgmediaops "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/mediaops"
 )
 
 // RunMediaEnrichmentBackfill implements the `backfill-media-enrichment`
@@ -72,7 +73,7 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	// RunMediaMigrations (audit points 9 + D2): this runner previously
 	// applied only 001–003+009, leaving a fresh database without the 004 _ts
 	// columns the dual-writers write and without the 006–008 surfaces.
-	if _, err := pgmedia.RunMediaMigrations(ctx, db); err != nil {
+	if _, err := pgmediaops.RunMediaMigrations(ctx, db); err != nil {
 		return fmt.Errorf("apply media migrations: %w", err)
 	}
 

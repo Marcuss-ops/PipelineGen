@@ -21,6 +21,7 @@ type PostgresRenderCache struct {
 }
 
 var _ kernelmedia.RenderCache = (*PostgresRenderCache)(nil)
+var _ kernelmedia.RenderCacheByRender = (*PostgresRenderCache)(nil)
 
 // NewPostgresRenderCache constructs the cache. db is the PostgreSQL media
 // *sql.DB (nil → fail-closed at ensure time, never a silent SQLite fallback).
@@ -39,6 +40,10 @@ func NewPostgresRenderCache(db *sql.DB) kernelmedia.RenderCache {
 const renderCacheDDL = `
 		CREATE TABLE IF NOT EXISTS clip_render_cache (
 			fingerprint  TEXT PRIMARY KEY,
+			render_fingerprint TEXT NOT NULL DEFAULT '',
+			input_sha256 TEXT NOT NULL DEFAULT '',
+			source_title TEXT NOT NULL DEFAULT '',
+			language     TEXT NOT NULL DEFAULT '',
 			asset_id     TEXT NOT NULL,
 			storage_key  TEXT NOT NULL DEFAULT '',
 			artifact_url TEXT NOT NULL DEFAULT '',
@@ -53,8 +58,14 @@ const renderCacheDDL = `
 			backend      TEXT NOT NULL DEFAULT '',
 			created_at   TEXT NOT NULL
 		);
+		ALTER TABLE clip_render_cache ADD COLUMN IF NOT EXISTS render_fingerprint TEXT NOT NULL DEFAULT '';
+		ALTER TABLE clip_render_cache ADD COLUMN IF NOT EXISTS input_sha256 TEXT NOT NULL DEFAULT '';
+		ALTER TABLE clip_render_cache ADD COLUMN IF NOT EXISTS source_title TEXT NOT NULL DEFAULT '';
+		ALTER TABLE clip_render_cache ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT '';
 		CREATE INDEX IF NOT EXISTS idx_clip_render_cache_asset
 			ON clip_render_cache (asset_id);
+		CREATE INDEX IF NOT EXISTS idx_clip_render_cache_render_fp
+			ON clip_render_cache (render_fingerprint);
 	`
 
 // EnsureRenderCacheTable ensures the cache table exists. Called once at boot
@@ -72,7 +83,8 @@ func EnsureRenderCacheTable(ctx context.Context, db *sql.DB) error {
 // renderCacheGetQuery resolves a fingerprint to a certified locator, but only
 // while the media row it references still carries the same bytes.
 const renderCacheGetQuery = `
-		SELECT c.fingerprint, c.asset_id, c.storage_key, c.artifact_url, c.content_type,
+		SELECT c.fingerprint, c.render_fingerprint, c.input_sha256, c.source_title, c.language,
+		       c.asset_id, c.storage_key, c.artifact_url, c.content_type,
 		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend,
 		       COALESCE(a.drive_file_id, ''),
 		       COALESCE(NULLIF(a.metadata_json, '')::jsonb->>'delivery_status', '')
@@ -96,13 +108,58 @@ func (c *PostgresRenderCache) Get(ctx context.Context, fingerprint string) (*ker
 	row := c.db.QueryRowContext(ctx, renderCacheGetQuery, fingerprint)
 	var r kernelmedia.RenderCacheRecord
 	var backend string
-	if err := row.Scan(&r.Fingerprint, &r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
+	if err := row.Scan(&r.Fingerprint, &r.RenderFingerprint, &r.InputSHA256, &r.SourceTitle, &r.Language,
+		&r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
 		&r.SHA256, &r.SizeBytes, &r.DurationSec, &r.Width, &r.Height, &r.FPSNum, &r.FPSDen, &backend,
 		&r.DriveFileID, &r.DeliveryStatus); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, kernelmedia.ErrCacheMiss
 		}
 		return nil, fmt.Errorf("clip.render cache: get %q: %w", fingerprint, err)
+	}
+	r.Backend = kernelmedia.RenderBackend(backend)
+	return &r, nil
+}
+
+// GetByRender resolves the destination-independent render identity to a
+// certified artifact. Any row sharing it describes the SAME bytes, so the
+// oldest/first is as good as the newest; created_at DESC keeps the choice
+// deterministic if a re-render somehow wrote two different artifacts.
+func (c *PostgresRenderCache) GetByRender(ctx context.Context, renderFingerprint string) (*kernelmedia.RenderCacheRecord, error) {
+	renderFingerprint = strings.ToLower(strings.TrimSpace(renderFingerprint))
+	if renderFingerprint == "" {
+		return nil, fmt.Errorf("clip.render cache: render fingerprint is required")
+	}
+	if c == nil || c.db == nil {
+		return nil, fmt.Errorf("clip.render cache: not wired (media DB nil)")
+	}
+	const q = `
+		SELECT c.fingerprint, c.render_fingerprint, c.input_sha256, c.source_title, c.language,
+		       c.asset_id, c.storage_key, c.artifact_url, c.content_type,
+		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend,
+		       COALESCE(a.drive_file_id, ''),
+		       COALESCE(NULLIF(a.metadata_json, '')::jsonb->>'delivery_status', '')
+		FROM clip_render_cache c
+		JOIN media_assets a
+		  ON a.id = c.asset_id
+		 AND a.content_sha256 = c.sha256
+		WHERE c.render_fingerprint = $1
+		  AND c.render_fingerprint <> ''
+		  AND a.lifecycle_state = 'ACTIVE'
+		  AND a.deleted_at = ''
+		ORDER BY c.created_at DESC
+		LIMIT 1`
+	row := c.db.QueryRowContext(ctx, q, renderFingerprint)
+	var r kernelmedia.RenderCacheRecord
+	var backend string
+	if err := row.Scan(&r.Fingerprint, &r.RenderFingerprint, &r.InputSHA256, &r.SourceTitle, &r.Language,
+		&r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
+		&r.SHA256, &r.SizeBytes, &r.DurationSec, &r.Width, &r.Height, &r.FPSNum, &r.FPSDen, &backend,
+		&r.DriveFileID, &r.DeliveryStatus); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kernelmedia.ErrCacheMiss
+		}
+		return nil, fmt.Errorf("clip.render cache: get by render %q: %w", renderFingerprint, err)
 	}
 	r.Backend = kernelmedia.RenderBackend(backend)
 	return &r, nil
@@ -139,7 +196,8 @@ func (c *PostgresRenderCache) GetMany(ctx context.Context, fingerprints []string
 		args[i] = fp
 	}
 	query := fmt.Sprintf(`
-		SELECT c.fingerprint, c.asset_id, c.storage_key, c.artifact_url, c.content_type,
+		SELECT c.fingerprint, c.render_fingerprint, c.input_sha256, c.source_title, c.language,
+		       c.asset_id, c.storage_key, c.artifact_url, c.content_type,
 		       c.sha256, c.size_bytes, c.duration_sec, c.width, c.height, c.fps_num, c.fps_den, c.backend,
 		       COALESCE(a.drive_file_id, ''),
 		       COALESCE(NULLIF(a.metadata_json, '')::jsonb->>'delivery_status', '')
@@ -158,7 +216,8 @@ func (c *PostgresRenderCache) GetMany(ctx context.Context, fingerprints []string
 	for rows.Next() {
 		var r kernelmedia.RenderCacheRecord
 		var backend string
-		if err := rows.Scan(&r.Fingerprint, &r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
+		if err := rows.Scan(&r.Fingerprint, &r.RenderFingerprint, &r.InputSHA256, &r.SourceTitle, &r.Language,
+			&r.AssetID, &r.StorageKey, &r.ArtifactURL, &r.ContentType,
 			&r.SHA256, &r.SizeBytes, &r.DurationSec, &r.Width, &r.Height, &r.FPSNum, &r.FPSDen, &backend,
 			&r.DriveFileID, &r.DeliveryStatus); err != nil {
 			return nil, fmt.Errorf("clip.render cache: get many scan: %w", err)
@@ -185,10 +244,15 @@ func (c *PostgresRenderCache) Put(ctx context.Context, rec *kernelmedia.RenderCa
 	}
 	const q = `
 		INSERT INTO clip_render_cache
-			(fingerprint, asset_id, storage_key, artifact_url, content_type,
+			(fingerprint, render_fingerprint, input_sha256, source_title, language,
+			 asset_id, storage_key, artifact_url, content_type,
 			 sha256, size_bytes, duration_sec, width, height, fps_num, fps_den, backend, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, NOW()::text)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, NOW()::text)
 		ON CONFLICT (fingerprint) DO UPDATE SET
+			render_fingerprint = EXCLUDED.render_fingerprint,
+			input_sha256 = EXCLUDED.input_sha256,
+			source_title = EXCLUDED.source_title,
+			language     = EXCLUDED.language,
 			asset_id     = EXCLUDED.asset_id,
 			storage_key  = EXCLUDED.storage_key,
 			artifact_url = EXCLUDED.artifact_url,
@@ -204,7 +268,9 @@ func (c *PostgresRenderCache) Put(ctx context.Context, rec *kernelmedia.RenderCa
 			created_at   = NOW()::text
 	`
 	_, err := c.db.ExecContext(ctx, q,
-		strings.ToLower(rec.Fingerprint), rec.AssetID, rec.StorageKey, rec.ArtifactURL, rec.ContentType,
+		strings.ToLower(rec.Fingerprint), strings.ToLower(rec.RenderFingerprint), strings.ToLower(rec.InputSHA256),
+		rec.SourceTitle, rec.Language,
+		rec.AssetID, rec.StorageKey, rec.ArtifactURL, rec.ContentType,
 		strings.ToLower(rec.SHA256), rec.SizeBytes, rec.DurationSec,
 		rec.Width, rec.Height, rec.FPSNum, rec.FPSDen, string(rec.Backend))
 	if err != nil {

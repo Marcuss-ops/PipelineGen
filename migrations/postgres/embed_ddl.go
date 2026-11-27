@@ -148,6 +148,18 @@ var MediaClipRenderCacheDDL string
 //go:embed 016_localized_render_reuse.sql
 var MediaLocalizedRenderReuseDDL string
 
+// MediaAutovacuumDDL is the verbatim DDL of 017_media_autovacuum.sql —
+// per-table autovacuum thresholds for the high-churn media surfaces.
+//
+//go:embed 017_media_autovacuum.sql
+var MediaAutovacuumDDL string
+
+// MediaDuplicateIndexCleanupDDL is the verbatim DDL of
+// 018_duplicate_index_cleanup.sql — guarded drops of redundant media indexes.
+//
+//go:embed 018_duplicate_index_cleanup.sql
+var MediaDuplicateIndexCleanupDDL string
+
 // MediaSchemaMigrationsDDL is the verbatim DDL of
 // migrations/postgres/014_media_schema_migrations.sql — the PostgreSQL media
 // migration ledger (PLANE_INVENTORY.md D2). RunMediaMigrations creates this
@@ -203,6 +215,8 @@ var MediaSelfBootstrapMigrations = []MediaMigration{
 	{Version: 13, Filename: "013_media_thumb_url_contract.sql", DDL: MediaThumbURLContractDDL},
 	{Version: 15, Filename: "015_clip_render_cache.sql", DDL: MediaClipRenderCacheDDL},
 	{Version: 16, Filename: "016_localized_render_reuse.sql", DDL: MediaLocalizedRenderReuseDDL},
+	{Version: 17, Filename: "017_media_autovacuum.sql", DDL: MediaAutovacuumDDL},
+	{Version: 18, Filename: "018_duplicate_index_cleanup.sql", DDL: MediaDuplicateIndexCleanupDDL},
 }
 
 // MediaSelfBootstrapDDL is the canonical ORDERED self-bootstrap sequence for

@@ -93,7 +93,7 @@ func RunMigrationsOnDB(dbPath string, log *zap.Logger, targetDir, targetDB strin
 	if log == nil {
 		log = zap.NewNop()
 	}
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000")
+	db, err := sql.Open("sqlite3", sqliteDSN(dbPath, false))
 	if err != nil {
 		return fmt.Errorf("storage: open %s: %w", dbPath, err)
 	}
@@ -198,6 +198,11 @@ type migrationRunState struct {
 	applied            map[int]appliedRecord
 	baselineThreshold  int
 	baselineAppliedNow bool
+	// baselineFilename is the single consolidated baseline this run may apply.
+	// The corpus can carry one dump per plane plus the frozen shared dump, and
+	// only the plane-specific one may run: the shared dump still contains the
+	// business schema DB-03 removes from operational planes.
+	baselineFilename string
 }
 
 // prepareMigrationRun bootstraps and expands the ledger, discovers and
@@ -257,7 +262,11 @@ func prepareMigrationRun(db queryable, log *zap.Logger, targetDir, targetDB stri
 	// a mutable flag tracks whether the baseline was already present or
 	// was just applied in this run so subsequent 1..N files are skipped
 	// on fresh bootstraps without needing to re-query the ledger.
-	baselineThreshold := baselineThresholdForMigrations(migrations)
+	baselineThreshold := baselineThresholdForMigrations(migrations, targetDB)
+	baselineFilename := ""
+	if selected, ok := selectBaselineForPlane(migrations, targetDB); ok {
+		baselineFilename = selected.filename
+	}
 	// A database bootstrapped from an older consolidated baseline (e.g. the
 	// shipped 000_baseline_267.sql) must keep applying every migration the
 	// OLD dump did not contain. The sentinel row names the file that was
@@ -275,6 +284,7 @@ func prepareMigrationRun(db queryable, log *zap.Logger, targetDir, targetDB stri
 		applied:            applied,
 		baselineThreshold:  baselineThreshold,
 		baselineAppliedNow: baselineApplied(applied),
+		baselineFilename:   baselineFilename,
 	}, migrations, nil
 }
 
@@ -325,6 +335,19 @@ func skipMigrationForLedgerState(db queryable, log *zap.Logger, m migrationFile,
 				zap.Int("version", m.version),
 				zap.String("filename", m.filename),
 				zap.String("scope", m.scope),
+				zap.String("target_db", targetDB),
+			)
+		}
+		return true
+	}
+	// Another in-scope dump exists but this plane's own baseline wins: applying
+	// the shared `all` dump first would build the business schema on an
+	// operational plane and then leave the plane dump skipped.
+	if state.baselineFilename != "" && m.filename != state.baselineFilename {
+		if log != nil {
+			log.Debug("skipping baseline (superseded by the plane baseline)",
+				zap.String("filename", m.filename),
+				zap.String("selected", state.baselineFilename),
 				zap.String("target_db", targetDB),
 			)
 		}

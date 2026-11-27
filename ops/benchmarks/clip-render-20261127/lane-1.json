@@ -1,0 +1,21 @@
+{
+  "tag": "t0930",
+  "lanes_configured": 2,
+  "concurrent_requests": 1,
+  "batch_wall_s": 7.328,
+  "rows": [
+    {
+      "i": 0,
+      "cache_hit": false,
+      "job": "job_1795771673893120791_48e708ca",
+      "child": "job_1795771675050459071_a6c78edc",
+      "done": 7.3252832889556885,
+      "render_wall_ms": 5762,
+      "queue_ms": 7,
+      "service_ms": 2924,
+      "total_ms": 5814,
+      "render_fps": 168.97786202645426,
+      "status": "SUCCEEDED"
+    }
+  ]
+}

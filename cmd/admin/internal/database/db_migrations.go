@@ -6,6 +6,12 @@
 // DB handle through DatabaseSet.OpenSet rather than a raw sql.Open,
 // so the Check 17 baseline can shrink over time as direct
 // `database/sql` calls in cmd/admin/ get migrated.
+//
+// The status is scoped and baseline-aware (GetMigrationStatusForPlane): the
+// primary ledger never records observability/cache-only files, and the
+// versions satisfied by the consolidated baseline sentinel never get their own
+// row, so the raw on-disk comparison reported hundreds of phantom "pending"
+// migrations on a healthy database.
 package database
 
 import (
@@ -45,7 +51,7 @@ func RunDBMigrations(ctx context.Context, args []string) error {
 	}
 	defer func() { _ = ds.Close() }()
 
-	report, err := storage.GetMigrationStatus(ds.Primary.DB, "migrations/sqlite")
+	report, err := storage.GetMigrationStatusForPlane(ds.Primary.DB, storage.MigrationsDir(), "primary")
 	if err != nil {
 		return fmt.Errorf("migration status: %w", err)
 	}

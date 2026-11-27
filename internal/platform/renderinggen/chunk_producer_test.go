@@ -137,6 +137,9 @@ func TestChunkProducerChildrenAreVideoOnlyAndAnchorOwnsAudio(t *testing.T) {
 	if anchor.FrameRange != nil {
 		t.Fatalf("anchor must be assembly-only (no frame range): %+v", anchor.FrameRange)
 	}
+	if anchor.RequireGPU == nil || !*anchor.RequireGPU {
+		t.Fatalf("anchor RequireGPU = %v, want true (gpu_only): the anchor muxes on Chronon Vulkan", anchor.RequireGPU)
+	}
 	var anchorPlan struct {
 		Audio *struct {
 			Mode string `json:"mode"`
@@ -159,6 +162,9 @@ func TestChunkProducerChildrenAreVideoOnlyAndAnchorOwnsAudio(t *testing.T) {
 	// Every child is video-only: the audio block is ABSENT, the source travels,
 	// and the window is anchor-owned and frame-ranged.
 	for i, child := range submitter.family[1:] {
+		if child.RequireGPU == nil || !*child.RequireGPU {
+			t.Fatalf("chunk %d RequireGPU = %v, want true (gpu_only)", i, child.RequireGPU)
+		}
 		if child.PreparedRenderPackage == nil || child.PreparedRenderPackage.PackageID != strings.Repeat("a", 64) {
 			t.Fatalf("chunk %d package reference = %+v, want the shared prepared package", i, child.PreparedRenderPackage)
 		}

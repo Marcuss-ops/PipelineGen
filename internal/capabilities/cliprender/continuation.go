@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // ── Async submission/completion boundary (Wave B) ──────────────────────
@@ -187,12 +188,24 @@ const ParentStateWaitingChildren = "waiting_children"
 //   - CorrelationID ties the remote render to the originating request.
 //   - State is the explicit remote-render state (never inferred).
 //   - Attempt guards against an unbounded submit→settle loop.
+//   - AcceptedAt is the ORIGINAL request's acceptance time. The async path
+//     splits the render into two jobs, so the settle handler's own start is
+//     not the request start. Carrying the durable acceptance here is what
+//     makes request_to_artifact_ms a real end-to-end measure instead of the
+//     settle job's wall wearing a total_ms label (CRA-01).
+//   - SubmittedAt is when the remote render was accepted, which is the other
+//     boundary the end-to-end split needs (submit_wall_ms).
+//
+// Both are optional so a payload written before this field keeps validating:
+// absent means "not instrumented", never a fabricated zero.
 type Submission struct {
 	RenderJobID   string            `json:"render_job_id"`
 	PlanSHA256    string            `json:"plan_sha256"`
 	CorrelationID string            `json:"correlation_id,omitempty"`
 	State         RemoteRenderState `json:"remote_state"`
 	Attempt       int               `json:"attempt"`
+	AcceptedAt    *time.Time        `json:"accepted_at,omitempty"`
+	SubmittedAt   *time.Time        `json:"submitted_at,omitempty"`
 }
 
 // Validate fails closed on an incomplete or drifted submission record.
@@ -238,6 +251,22 @@ func (r ContinuationRef) Validate() error {
 type Continuation struct {
 	Submission Submission      `json:"submission"`
 	Resume     ContinuationRef `json:"resume"`
+}
+
+// continuationTimings returns the acceptance/submit timestamps carried by the
+// continuation. A payload written before the fields existed returns zero
+// times, which the metrics projection reports as NOT_INSTRUMENTED.
+func continuationTimings(c *Continuation) (acceptedAt, submittedAt time.Time) {
+	if c == nil {
+		return time.Time{}, time.Time{}
+	}
+	if c.Submission.AcceptedAt != nil {
+		acceptedAt = *c.Submission.AcceptedAt
+	}
+	if c.Submission.SubmittedAt != nil {
+		submittedAt = *c.Submission.SubmittedAt
+	}
+	return acceptedAt, submittedAt
 }
 
 // Validate fails closed before a continuation is enqueued or resumed.
@@ -364,6 +393,25 @@ type ContinuationStore interface {
 	PutResumeDocument(ctx context.Context, doc ResumeDocument) (ContinuationRef, error)
 	// GetResumeDocument loads the document at ref, verifying its digest.
 	GetResumeDocument(ctx context.Context, ref ContinuationRef) (ResumeDocument, error)
+}
+
+// SubmitCheckpointStore is the OPTIONAL durable index from a submit job id to
+// its resume document. The resume address is the document's content digest,
+// which cannot be derived from the job id; without this index a broker retry
+// has no way to ask "has this job already sealed a plan?" and re-runs local
+// preparation (CRA-07).
+//
+// It is an extension of ContinuationStore, not a second store: an
+// implementation that cannot index simply omits the methods and the retry
+// keeps the historical full-prepare behaviour.
+type SubmitCheckpointStore interface {
+	// PutSubmitCheckpoint records/overwrites the resume address for a job.
+	PutSubmitCheckpoint(ctx context.Context, jobID string, ref ContinuationRef) error
+	// GetSubmitCheckpoint returns found=false when the job never checkpointed.
+	GetSubmitCheckpoint(ctx context.Context, jobID string) (ref ContinuationRef, found bool, err error)
+	// DeleteSubmitCheckpoint removes the entry after a successful submit;
+	// deleting a missing entry is not an error.
+	DeleteSubmitCheckpoint(ctx context.Context, jobID string) error
 }
 
 // ActiveKeyFor is the canonical idempotency key for a submission's settle job.

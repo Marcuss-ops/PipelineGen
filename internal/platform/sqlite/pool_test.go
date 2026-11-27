@@ -8,6 +8,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,60 @@ func TestNewDualPool_WALModeApplied(t *testing.T) {
 	require.NoError(t, pool.Writer.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout))
 	assert.Equal(t, 5000, busyTimeout,
 		"DualPool writer must apply busy_timeout=5000 (canonical Cut 6.2 invariant)")
+}
+
+// TestNewDualPool_ForeignKeysEnabled pins the audit DB-01 invariant: both
+// handles of the canonical pool enforce the FKs declared in the schema.
+// SQLite defaults foreign_keys to OFF, so a writer without this pragma
+// silently accepts orphan children.
+func TestNewDualPool_ForeignKeysEnabled(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "db01_fk.db")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pool, err := NewDualPool(ctx, tmpFile, 2)
+	require.NoError(t, err)
+	defer func() { _ = pool.Close() }()
+
+	for name, db := range map[string]*sql.DB{"writer": pool.Writer, "reader": pool.Reader} {
+		var foreignKeys int
+		require.NoError(t, db.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&foreignKeys))
+		assert.Equal(t, 1, foreignKeys, "DualPool %s must enforce foreign_keys=1", name)
+	}
+}
+
+// TestNewDualPool_ForeignKeyViolationIsRejected proves the pragma is not
+// merely reported: an orphan child insert fails at the pool boundary.
+func TestNewDualPool_ForeignKeyViolationIsRejected(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "db01_fk_violation.db")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	pool, err := NewDualPool(ctx, tmpFile, 2)
+	require.NoError(t, err)
+	defer func() { _ = pool.Close() }()
+
+	_, err = pool.Writer.ExecContext(ctx, `CREATE TABLE parent (id TEXT PRIMARY KEY)`)
+	require.NoError(t, err)
+	_, err = pool.Writer.ExecContext(ctx, `CREATE TABLE child (id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, FOREIGN KEY (parent_id) REFERENCES parent(id) ON DELETE CASCADE)`)
+	require.NoError(t, err)
+
+	_, err = pool.Writer.ExecContext(ctx, `INSERT INTO child (id, parent_id) VALUES ('c1', 'missing')`)
+	require.Error(t, err, "an orphan child insert must fail with foreign_keys=ON")
+	assert.Contains(t, strings.ToUpper(err.Error()), "FOREIGN KEY")
+
+	// The same insert succeeds once the parent exists, and the cascade
+	// removes the child when the parent is deleted.
+	_, err = pool.Writer.ExecContext(ctx, `INSERT INTO parent (id) VALUES ('p1')`)
+	require.NoError(t, err)
+	_, err = pool.Writer.ExecContext(ctx, `INSERT INTO child (id, parent_id) VALUES ('c1', 'p1')`)
+	require.NoError(t, err)
+	_, err = pool.Writer.ExecContext(ctx, `DELETE FROM parent WHERE id = 'p1'`)
+	require.NoError(t, err)
+
+	var children int
+	require.NoError(t, pool.Writer.QueryRowContext(ctx, `SELECT COUNT(*) FROM child`).Scan(&children))
+	assert.Zero(t, children, "ON DELETE CASCADE must remove the child")
 }
 
 // TestNewDualPool_MaxOpenConns_PerPool pins the per-pool sizing
@@ -130,6 +185,8 @@ func TestWalPragmas_PreservesAllThreePragmas(t *testing.T) {
 		"synchronous pragma MUST survive encoding (WAL-safe durability)")
 	assert.Contains(t, unescapedOut, "_busy_timeout=5000",
 		"_busy_timeout parameter MUST survive encoding (legacy driver-level pendant)")
+	assert.Contains(t, unescapedOut, "_pragma=foreign_keys(1)",
+		"foreign_keys pragma MUST survive encoding (audit DB-01 integrity invariant)")
 
 	// Count=1 invariant preserved across the unescape: each pragma
 	// was added exactly once via q.Add in walPragmas(); url.Values.Encode

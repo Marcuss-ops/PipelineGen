@@ -90,6 +90,15 @@ func (w *Worker) WithOverlaySegmentResolver(r OverlaySegmentResolver) *Worker {
 	return w
 }
 
+// WithInputDigestResolver overrides the CRA-03 input-revision resolver. The
+// Preparer is the production implementation; tests inject a fixed digest.
+func (w *Worker) WithInputDigestResolver(r InputDigestResolver) *Worker {
+	if w != nil {
+		w.inputRevisions = r
+	}
+	return w
+}
+
 // WithRenderCache attaches the deterministic render cache (fingerprint →
 // certified artifact locator). When wired, a submit-phase cache hit
 // short-circuits Chronon entirely (zero GPU) and a successful render

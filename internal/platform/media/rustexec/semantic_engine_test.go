@@ -3,6 +3,7 @@ package rustexec
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -96,6 +97,61 @@ func semanticExtractionFixture(t *testing.T) []byte {
 	// Move the projection and every mention onto that id so the linked-entity
 	// coverage check sees the same scene set the worker was asked to analyze.
 	return []byte(strings.ReplaceAll(raw, `"scene_id":"scene_01"`, `"scene_id":"scene"`))
+}
+
+// semanticFixtureV4 projects the v3 fixture onto the normalized v4 wire: the
+// identity registry moves to one document table and every scene keeps only the
+// ids it references. It is the same transformation the Rust producer performs,
+// so the Go boundary is tested against the real cutover shape.
+func semanticFixtureV4(t *testing.T) []byte {
+	t.Helper()
+	var response map[string]any
+	if err := json.Unmarshal([]byte(semanticFixture), &response); err != nil {
+		t.Fatal(err)
+	}
+	manifest, ok := response["manifest"].(map[string]any)
+	if !ok {
+		t.Fatal("fixture manifest is not an object")
+	}
+	manifest["schema_version"] = "semantic_manifest.v4"
+	scenes, ok := manifest["scenes"].([]any)
+	if !ok {
+		t.Fatal("fixture scenes are not an array")
+	}
+	global := make([]any, 0, 1)
+	globalIndex := make(map[string]int)
+	for _, rawScene := range scenes {
+		scene, ok := rawScene.(map[string]any)
+		if !ok {
+			t.Fatal("fixture scene is not an object")
+		}
+		identities, _ := scene["identities"].([]any)
+		ids := make([]any, 0, len(identities))
+		for _, rawIdentity := range identities {
+			identity, ok := rawIdentity.(map[string]any)
+			if !ok {
+				t.Fatal("fixture identity is not an object")
+			}
+			id, _ := identity["id"].(string)
+			ids = append(ids, id)
+			// Last occurrence wins: later v3 scenes carry the complete mention
+			// list, exactly like the Rust normalization.
+			if index, seen := globalIndex[id]; seen {
+				global[index] = identity
+			} else {
+				globalIndex[id] = len(global)
+				global = append(global, identity)
+			}
+		}
+		delete(scene, "identities")
+		scene["identity_ids"] = ids
+	}
+	manifest["identities"] = global
+	raw, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func semanticFixtureWithScenes(t *testing.T, count int) []byte {
@@ -301,6 +357,120 @@ func TestSemanticEngineRejectsWrongSchemaAndBadInputs(t *testing.T) {
 	}
 	if _, err := NewSemanticEngineAdapter(nil); err == nil {
 		t.Fatal("expected nil-executor error")
+	}
+}
+
+// BR-AUDIT-08 cutover: the Go boundary accepts the normalized v4 manifest and
+// hydrates each scene from the document table, so every existing projection
+// keeps working while the wire carries the registry once.
+func TestSemanticEngineAcceptsNormalizedV4Manifest(t *testing.T) {
+	v3Adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(semanticFixture)}))
+	v3Script, err := v3Adapter.SemanticScript(context.Background(), "en", semanticScenes())
+	if err != nil {
+		t.Fatalf("v3 analysis failed: %v", err)
+	}
+	v4Adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: semanticFixtureV4(t)}))
+	v4Script, err := v4Adapter.SemanticScript(context.Background(), "en", semanticScenes())
+	if err != nil {
+		t.Fatalf("v4 analysis failed: %v", err)
+	}
+	if len(v4Script.Scenes) != len(v3Script.Scenes) {
+		t.Fatalf("v4 scenes=%d, want %d", len(v4Script.Scenes), len(v3Script.Scenes))
+	}
+	first := v4Script.Scenes["scene_01"]
+	if first == nil || len(first.Bullets) != 2 || first.Bullets[0].Text != "Marco Rossi founded the studio." {
+		t.Fatalf("v4 bullets were not projected: %+v", first)
+	}
+	if len(first.Entities) != 1 || first.Entities[0].IdentityID != "person_01" ||
+		len(first.IdentityIDs) != 1 || first.IdentityIDs[0] != "person_01" {
+		t.Fatalf("v4 entities/identity refs were not projected: %+v", first)
+	}
+	if len(v4Script.Identities) != 1 || v4Script.Identities[0].ID != "person_01" ||
+		v4Script.Identities[0].Mentions[0].Surface != "Marco Rossi" {
+		t.Fatalf("v4 document identities were not projected: %+v", v4Script.Identities)
+	}
+	second := v4Script.Scenes["scene_02"]
+	if second == nil || len(second.Temporal) != 1 || second.Temporal[0].NormalizedDate != "2008-03-15" {
+		t.Fatalf("v4 second scene was not projected: %+v", second)
+	}
+}
+
+func TestSemanticEngineRejectsMalformedV4Manifests(t *testing.T) {
+	v4 := string(semanticFixtureV4(t))
+	cases := []struct {
+		name    string
+		payload string
+		want    string
+	}{
+		{
+			name:    "unknown version is never decoded as v3",
+			payload: strings.Replace(v4, `"schema_version":"semantic_manifest.v4"`, `"schema_version":"semantic_manifest.v5"`, 1),
+			want:    "unsupported schema_version",
+		},
+		{
+			name:    "dangling scene identity id",
+			payload: strings.Replace(v4, `"identity_ids":["person_01"]`, `"identity_ids":["missing"]`, 1),
+			want:    "unknown identity",
+		},
+		{
+			name:    "per-scene identity copy",
+			payload: strings.Replace(v4, `"identity_ids":[]`, `"identities":[],"identity_ids":[]`, 1),
+			want:    "per-scene identity copy",
+		},
+		{
+			name:    "missing document table",
+			payload: removeManifestKey(t, v4, "identities"),
+			want:    "omits the global identities table",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(testCase.payload)}))
+			_, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes())
+			if err == nil || !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("expected %q, got %v", testCase.want, err)
+			}
+		})
+	}
+}
+
+func removeManifestKey(t *testing.T, raw, key string) string {
+	t.Helper()
+	var response map[string]any
+	if err := json.Unmarshal([]byte(raw), &response); err != nil {
+		t.Fatal(err)
+	}
+	manifest, ok := response["manifest"].(map[string]any)
+	if !ok {
+		t.Fatal("fixture manifest is not an object")
+	}
+	delete(manifest, key)
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
+// TestSemanticEngineReadsSharedV4ContractGolden pins the Go consumer to the
+// canonical contract golden shared with BrainRust. The file is a byte-identical
+// copy of contract/semantic-manifest.v4/goldens/manifest-v4.json.
+func TestSemanticEngineReadsSharedV4ContractGolden(t *testing.T) {
+	manifest, err := os.ReadFile("testdata/semantic-manifest/v4/manifest-v4.json")
+	if err != nil {
+		t.Fatalf("shared v4 golden: %v", err)
+	}
+	response := append([]byte(`{"ok":true,"manifest":`), manifest...)
+	response = append(response, '}')
+	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: response}))
+	script, err := adapter.SemanticScript(context.Background(), "en", semanticScenes())
+	if err != nil {
+		t.Fatalf("shared v4 golden failed to project: %v", err)
+	}
+	first := script.Scenes["scene_01"]
+	if first == nil || len(first.Entities) != 1 || first.Entities[0].IdentityID != "person_01" ||
+		len(script.Identities) != 1 || script.Identities[0].ID != "person_01" {
+		t.Fatalf("shared v4 golden lost the identity contract: %+v %+v", first, script.Identities)
 	}
 }
 

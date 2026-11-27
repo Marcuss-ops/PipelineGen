@@ -76,12 +76,13 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	}
 
 	descriptor, err := cliprender.Build(cliprender.Dependencies{
-		Jobs:        root.Jobs.Facade,
-		EnabledFunc: func() bool { return cfg.Features.ClipRenderEnabled },
-		Idempotency: idempotencyHandler,
-		RenderCache: renderCache,
-		Logger:      log,
-		ModuleOpts:  nil,
+		Jobs:           root.Jobs.Facade,
+		EnabledFunc:    func() bool { return cfg.Features.ClipRenderEnabled },
+		Idempotency:    idempotencyHandler,
+		RenderCache:    renderCache,
+		InputRevisions: preparer,
+		Logger:         log,
+		ModuleOpts:     nil,
 	})
 	if err != nil {
 		return fmt.Errorf("registerClipRender: cliprender.Build: %w", err)

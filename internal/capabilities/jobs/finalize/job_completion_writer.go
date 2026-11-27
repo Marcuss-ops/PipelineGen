@@ -37,6 +37,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/payloadcap"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
@@ -79,12 +80,15 @@ func (f *Finalizer) markSucceeded(
 		return fmt.Errorf("finalizer: marshal wrapped result: %w", err)
 	}
 	resultJSON := string(wrapped)
+	// DB-04: result_hash identifies the ORIGINAL result; the row payload is
+	// bounded. A normal result is far below the cap and is stored verbatim.
+	storedResult, _ := payloadcap.EnforceResult(string(req.Result.Data))
 	resultHash := digest.SHA256Bytes(req.Result.Data)
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO job_results (job_id, attempt, result_hash, codec_id, result_payload, created_at)
 		VALUES (?, ?, ?, 'json', ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 		ON CONFLICT(job_id, attempt, result_hash) DO NOTHING`,
-		req.Result.JobID, req.Result.Attempt, resultHash, string(req.Result.Data)); err != nil {
+		req.Result.JobID, req.Result.Attempt, resultHash, storedResult); err != nil {
 		// Minimal/legacy fixtures can predate the normalized result table.
 		// Production migrated jobs DBs always take the canonical branch;
 		// retaining this schema-gated fallback keeps the terminal transition

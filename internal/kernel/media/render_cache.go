@@ -30,6 +30,20 @@ func (b RenderBackend) IsGPUBackend() bool {
 // RenderCacheRecord is the durable cache value addressed by fingerprint.
 type RenderCacheRecord struct {
 	Fingerprint string
+	// RenderFingerprint is the DESTINATION-INDEPENDENT identity of the same
+	// render. It lets a different destination reuse the certified artifact
+	// (one GPU render, N deliveries) without letting a cache hit return the
+	// wrong folder's locator: Fingerprint stays the delivery-aware key.
+	RenderFingerprint string
+	// InputSHA256 is the revision digest of the RESOLVED inputs (source,
+	// background, watermark, transcript, overlays). It is what proves that the
+	// artifact still corresponds to the current bytes, not merely to the same
+	// asset ids (CRA-03). Empty means not instrumented.
+	InputSHA256 string
+	// SourceTitle/Language are carried so a delivery-only reuse can name the
+	// file and build search_text without re-running preparation.
+	SourceTitle string
+	Language    string
 	AssetID     string
 	StorageKey  string
 	ArtifactURL string
@@ -53,6 +67,13 @@ type RenderCacheRecord struct {
 type RenderCache interface {
 	Get(ctx context.Context, fingerprint string) (*RenderCacheRecord, error)
 	Put(ctx context.Context, rec *RenderCacheRecord) error
+}
+
+// RenderCacheByRender is the OPTIONAL destination-independent lookup used to
+// reuse a certified render for another delivery. A cache that cannot answer it
+// keeps the delivery-aware Get path only.
+type RenderCacheByRender interface {
+	GetByRender(ctx context.Context, renderFingerprint string) (*RenderCacheRecord, error)
 }
 
 // ErrCacheMiss is returned when no cache entry exists for a fingerprint.

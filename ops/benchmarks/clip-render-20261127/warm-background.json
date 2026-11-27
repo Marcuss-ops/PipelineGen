@@ -1,0 +1,18 @@
+{
+  "http": 200,
+  "time": 1795771576.5904796,
+  "body": {
+    "artifact": {
+      "artifact_url": "http://localhost:9000/objects/c611eedd8ebc691cc554217f9358bd5a85db1c0b95d87320d7a599f2b0d4de51",
+      "sha256": "c611eedd8ebc691cc554217f9358bd5a85db1c0b95d87320d7a599f2b0d4de51",
+      "size_bytes": 4769064,
+      "storage_key": "c611eedd8ebc691cc554217f9358bd5a85db1c0b95d87320d7a599f2b0d4de51"
+    },
+    "asset_id": "cliprender_c611eedd8ebc691cc554217f",
+    "delivery_pending": false,
+    "delivery_status": "completed",
+    "drive_file_id": "1Tube9_K7PyqMajRHu8cCGrjZt2sjwOTU",
+    "fingerprint": "cdb04511119fdc0fcecfb61b6c06966e0a55bbf90f8d0416b5e73b81b961743b",
+    "status": "CACHED"
+  }
+}

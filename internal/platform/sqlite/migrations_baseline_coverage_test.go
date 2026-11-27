@@ -28,12 +28,12 @@ func TestBaselineThresholdUsesCoverageDirective(t *testing.T) {
 		filename:       "000_baseline_268.sql",
 		baselineCovers: 298,
 	}
-	if got := baselineThresholdForMigrations([]migrationFile{baseline}); got != 298 {
+	if got := baselineThresholdForMigrations([]migrationFile{baseline}, "primary"); got != 298 {
 		t.Fatalf("baseline threshold = %d, want 298 (coverage directive wins over filename 268)", got)
 	}
 
 	filenameOnly := migrationFile{version: 0, filename: "000_baseline_267.sql"}
-	if got := baselineThresholdForMigrations([]migrationFile{filenameOnly}); got != 267 {
+	if got := baselineThresholdForMigrations([]migrationFile{filenameOnly}, "primary"); got != 267 {
 		t.Fatalf("baseline threshold without directive = %d, want 267", got)
 	}
 }

@@ -177,6 +177,57 @@ func TestMigrationScopeHeadersRuntimeParserAgreement(t *testing.T) {
 	}
 }
 
+// TestMigrationScopeHeadersNewFilesRequireDirective is the DB-03 fail-closed
+// gate for new migrations. The ledger pins the checksum of every migration
+// already applied, so the legacy unscoped files cannot be edited to add a
+// header without breaking existing databases. They are frozen in
+// legacy_unscoped_allowlist.txt; every other file must declare its scope.
+func TestMigrationScopeHeadersNewFilesRequireDirective(t *testing.T) {
+	root := scopeAuditRepoRoot(t)
+	dir := filepath.Join(root, "migrations", "sqlite")
+	allowPath := filepath.Join(dir, "legacy_unscoped_allowlist.txt")
+	raw, err := os.ReadFile(allowPath)
+	if err != nil {
+		t.Fatalf("DB-03 gate: read %s: %v (the freeze list is required)", allowPath, err)
+	}
+	allowed := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		allowed[line] = true
+	}
+	if len(allowed) == 0 {
+		t.Fatal("DB-03 gate: the legacy allowlist is empty")
+	}
+
+	seen := map[string]bool{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("DB-03 gate: read dir: %v", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		directives := parseScopeHeaderDirective(t, filepath.Join(dir, e.Name()))
+		if len(directives) > 0 {
+			continue
+		}
+		if !allowed[e.Name()] {
+			t.Errorf("%s: new migration has no `-- database:` directive. Add one (primary|observability|cache|jobs|all); do NOT extend legacy_unscoped_allowlist.txt", e.Name())
+			continue
+		}
+		seen[e.Name()] = true
+	}
+	for name := range allowed {
+		if !seen[name] {
+			t.Errorf("legacy_unscoped_allowlist.txt lists %s, but it is missing or now declares a scope; remove it from the freeze list", name)
+		}
+	}
+}
+
 // TestMigrationJobsPlaneScopeSelfDocumentation keeps the standalone jobs
 // plane honest: its files may scope themselves only to "jobs" (that is
 // literally the DB that store wires in internal/platform/config), so a file

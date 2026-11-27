@@ -11,16 +11,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
-)
-
-const (
-	baselineFilename = "000_baseline_268.sql"
-	baselineCovers   = 298
 )
 
 func mustRunMigrations(dbPath, targetDir, targetDB string) {
@@ -99,14 +95,70 @@ func objectKey(sqlStr string) string {
 	return s
 }
 
-func removeExistingBaselines(targetDir string) {
-	matches, err := filepath.Glob(filepath.Join(targetDir, "000_baseline_*.sql"))
+// corpusWithoutPlaneBaselines copies the migration corpus into a temporary
+// directory, leaving out the plane dumps this command generates. The frozen
+// shared dump (`000_baseline_268.sql`) stays in the copy on purpose: a plane
+// dump is the state a fresh plane database reaches TODAY, and that path runs
+// the shared dump first under its version-0 sentinel. The historical path alone
+// is not self-consistent per plane — 267 quarantines
+// `asset_subtitle_artifacts` on observability while 302 (scoped
+// primary,observability,cache) rebuilds it unconditionally, a gap the shared
+// dump masks and which a plane dump must preserve the final effect of (307
+// drops the table anyway).
+func corpusWithoutPlaneBaselines(targetDir string, planeFiles map[string]bool) string {
+	entries, err := os.ReadDir(targetDir)
 	if err != nil {
 		panic(err)
 	}
-	for _, path := range matches {
-		if err := os.Remove(path); err != nil {
+	tmpDir, err := os.MkdirTemp("", "baseline-corpus-*")
+	if err != nil {
+		panic(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		if planeFiles[e.Name()] {
+			continue
+		}
+		src := filepath.Join(targetDir, e.Name())
+		dst := filepath.Join(tmpDir, e.Name())
+		data, err := os.ReadFile(src)
+		if err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
 			panic(err)
 		}
 	}
+	return tmpDir
+}
+
+// maxMigrationVersion returns the highest numbered migration in the corpus
+// (ignoring baselines). A plane dump is taken after the whole corpus ran, so
+// every in-scope migration up to that version is already inside it — and an
+// out-of-scope one would have been skipped anyway.
+func maxMigrationVersion(targetDir string) int {
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		panic(err)
+	}
+	max := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") || strings.HasPrefix(e.Name(), "000_baseline") {
+			continue
+		}
+		idx := strings.IndexByte(e.Name(), '_')
+		if idx <= 0 {
+			continue
+		}
+		v, err := strconv.Atoi(e.Name()[:idx])
+		if err != nil {
+			continue
+		}
+		if v > max {
+			max = v
+		}
+	}
+	return max
 }

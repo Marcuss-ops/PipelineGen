@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -55,6 +56,7 @@ var ErrRenderPublisherNotWired = errors.New("clip.render: render publisher is no
 // job.Service.RegisterHandler(TypeClipRender, job.HandlerFunc(worker.Handle)).
 type Worker struct {
 	preparer             *Preparer
+	inputRevisions       InputDigestResolver // CRA-03 guard; defaults to preparer
 	workspaceDir         string
 	subtitles            SubtitleCompiler          // optional until the ASS-compiler step wires it
 	renderer             RenderExecutor            // optional until the render-phase step consumes it
@@ -75,6 +77,17 @@ type Worker struct {
 	// only the transport. See settleWaitBudget.
 	settleWait   time.Duration
 	settleWindow time.Duration
+	// settleRetry is the re-dispatch delay AFTER a bounded attempt expires. It
+	// is deliberately shorter than settleWait: the attempt budget bounds how
+	// long a lane is held, not how long a finished render may wait to be
+	// collected (CRA-08).
+	settleRetry time.Duration
+	// settleDeferrals/settleDeferredMS are the explicit CRA-08 counters: how
+	// many times a settle handed its attempt back and how much extra collection
+	// latency those deferrals announced. They are process-local observability,
+	// not the durable job state (the scheduler owns DeferredUntil).
+	settleDeferrals  atomic.Int64
+	settleDeferredMS atomic.Int64
 	// sequence is the assembly phase (sequence.go). Nil means the phase is not
 	// wired and a sequence job fails closed instead of rendering silently.
 	sequence *sequenceAssembly
@@ -91,11 +104,13 @@ func NewWorker(preparer *Preparer, workspaceDir string, log *zap.Logger) (*Worke
 		log = zap.NewNop()
 	}
 	return &Worker{
-		preparer:     preparer,
-		workspaceDir: workspaceDir,
-		log:          log,
-		settleWait:   DefaultSettleWait,
-		settleWindow: DefaultSettleWindow,
+		preparer:       preparer,
+		inputRevisions: preparer,
+		workspaceDir:   workspaceDir,
+		log:            log,
+		settleWait:     DefaultSettleWait,
+		settleWindow:   DefaultSettleWindow,
+		settleRetry:    DefaultSettleRetryDelay,
 	}, nil
 }
 
@@ -113,12 +128,39 @@ const DefaultSettleWait = 60 * time.Second
 // to the historical blocking behaviour instead of looping.
 const DefaultSettleWindow = 20 * time.Minute
 
+// DefaultSettleRetryDelay is the re-dispatch delay after one bounded settle
+// attempt expires. It is intentionally much shorter than DefaultSettleWait: a
+// render that finishes just after the budget must not wait another full budget
+// before it is collected. The attempt budget still bounds lane occupancy; this
+// only sets how soon the next (cheap) attempt asks again.
+const DefaultSettleRetryDelay = 2 * time.Second
+
 // WithSettleWait sets the per-attempt bounded wait. 0 (or negative) disables
 // the deferral entirely: every settle waits the render out, exactly the
 // pre-deferral behaviour.
 func (w *Worker) WithSettleWait(wait time.Duration) *Worker {
 	if w != nil {
 		w.settleWait = wait
+	}
+	return w
+}
+
+// SettleDeferralStats reports the explicit CRA-08 counters: the number of
+// deferrals this worker produced and the total re-dispatch delay it asked for.
+// A nil worker reports zeroes.
+func (w *Worker) SettleDeferralStats() (count, addedLatencyMS int64) {
+	if w == nil {
+		return 0, 0
+	}
+	return w.settleDeferrals.Load(), w.settleDeferredMS.Load()
+}
+
+// WithSettleRetry sets the re-dispatch delay after a bounded attempt expires.
+// 0 (or negative) keeps the historical behaviour and reuses the attempt budget
+// as the delay.
+func (w *Worker) WithSettleRetry(delay time.Duration) *Worker {
+	if w != nil {
+		w.settleRetry = delay
 	}
 	return w
 }
@@ -226,27 +268,41 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 		return nil, err
 	}
 
+	// Destination-independent reuse: another folder already certified this
+	// render, so this job only delivers it. Placed after the folder resolution
+	// and before preparation, which is the expensive part it removes.
+	if phase != RenderPhaseSettle {
+		result, reused, reuseErr := w.tryRenderReuse(ctx, j, &req, publishFolderID, jobStart, progress)
+		if reuseErr != nil {
+			return nil, reuseErr
+		}
+		if reused {
+			return result, nil
+		}
+	}
+
 	if phase == RenderPhaseSettle {
 		progress(90, "remote render submitted; settling certified artifact")
 	} else {
 		progress(10, "request validated; running parallel preparation")
-		// A broker RETRY of this job re-enters here and re-runs preparation,
-		// because a retry re-executes the whole payload from the top.
-		//
-		// That is a deliberate, bounded cost, not an oversight. The remote job id
-		// IS derivable before preparation (plan.RunID == j.ID), but the resume
-		// document's ADDRESS is its own content digest, so "has this job already
-		// submitted?" cannot be asked without a durable index from job id to
-		// resume digest — a second owner for a fact the continuation payload
-		// already carries. Until such an index is justified, a retry re-does
-		// LOCAL work only: every durable step is idempotent (Prepare re-resolves
-		// the same assets, the content-addressed resume document re-puts under
-		// the same digest, Submit re-addresses the same remote job and answers
-		// ErrJobExists, the settle enqueue dedupes on ActiveKey), so a retry can
-		// never duplicate a render, an artifact or a delivery.
-		inputs.prepared, inputs.plan, inputs.subtitles, inputs.subtitleCompileMS, err = w.preparePlan(ctx, &req, j.ID, emit)
-		if err != nil {
-			return nil, err
+		// A broker RETRY re-enters here. The durable job → resume index lets a
+		// retry that happens after the seal load the prepared plan instead of
+		// repeating asset resolution, materialization, subtitle compilation and
+		// sealing (CRA-07). The index is an accelerator: a missing/corrupt entry,
+		// a different request or a foreign plan falls back to full preparation,
+		// and every durable step remains idempotent either way.
+		if reused, ok := w.loadSubmitCheckpoint(ctx, j, &req); ok {
+			inputs.prepared = reused.prepared
+			inputs.plan = reused.plan
+			inputs.subtitles = reused.subtitles
+			inputs.subtitleCompileMS = reused.subtitleCompileMS
+			inputs.fromCheckpoint = true
+			progress(15, "prepared plan resumed from checkpoint")
+		} else {
+			inputs.prepared, inputs.plan, inputs.subtitles, inputs.subtitleCompileMS, err = w.preparePlan(ctx, &req, j.ID, emit)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

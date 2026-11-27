@@ -71,9 +71,10 @@ func decodeStrictBody[T any](c *gin.Context, limit int64, bodyLabel string) (T, 
 // logic lives in the cliprender capability (and, in the follow-up
 // steps, its worker).
 type Handler struct {
-	jobsSvc     job.Service
-	renderCache RenderCache
-	log         *zap.Logger
+	jobsSvc        job.Service
+	renderCache    RenderCache
+	inputRevisions InputDigestResolver
+	log            *zap.Logger
 
 	// Idempotency is the reusable Gin idempotency middleware applied
 	// to POST /clips/render. nil disables (test fixtures).
@@ -94,6 +95,16 @@ func NewHandler(jobsSvc job.Service, log *zap.Logger) *Handler {
 func (h *Handler) WithRenderCache(c RenderCache) *Handler {
 	if h != nil {
 		h.renderCache = c
+	}
+	return h
+}
+
+// WithInputDigestResolver attaches the CRA-03 cache guard. When wired, a cache
+// record is served only while the resolved input revisions still match the
+// digest recorded at publish time; a record without a digest is a miss.
+func (h *Handler) WithInputDigestResolver(r InputDigestResolver) *Handler {
+	if h != nil {
+		h.inputRevisions = r
 	}
 	return h
 }
@@ -172,6 +183,12 @@ func (h *Handler) Render(c *gin.Context) {
 	if h.renderCache != nil {
 		rec, cacheErr := h.renderCache.Get(c.Request.Context(), fp)
 		logCacheLookupFailure(h.log, "handler", fp, cacheErr)
+		if cacheErr == nil && rec != nil && !cacheInputMatches(c.Request.Context(), h.inputRevisions, &req, rec) {
+			h.log.Info("clip.render cache entry stale: input revision changed",
+				zap.String("fingerprint", digestPrefix(fp)),
+				zap.String("asset_id", rec.AssetID))
+			rec = nil
+		}
 		if cacheErr == nil && rec != nil {
 			h.log.Info("clip.render cache hit (handler)",
 				zap.String("fingerprint", digestPrefix(fp)),

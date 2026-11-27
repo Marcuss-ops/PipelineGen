@@ -268,10 +268,49 @@ func fromQueueAssets(in []queueclient.AssetRef) []renderqueue.RenderQueueAsset {
 // local renderer and fails closed on missing or non-Chronon artifacts.
 type ClipRenderExecutor struct {
 	queue          renderqueue.RenderQueueClient
+	capabilities   RenderCapabilitySource
 	interval       time.Duration
 	chunkDuration  time.Duration
 	chunkAlignment int64
 	chunkMax       int
+}
+
+// RenderCapabilitySource is the live worker inventory used by the producer
+// preflight. *Client satisfies it; a composition root must attach it so a
+// clip render is refused before enqueue when no worker proves the GPU lane.
+// The type is deliberately narrow: the executor must not reach through the
+// queue client for anything else.
+type RenderCapabilitySource interface {
+	Capabilities(ctx context.Context) ([]string, error)
+}
+
+// SetCapabilitySource attaches the live inventory used by the GPU preflight.
+// Nil disables the preflight (unit-test seams); production wiring must set it.
+func (e *ClipRenderExecutor) SetCapabilitySource(source RenderCapabilitySource) *ClipRenderExecutor {
+	if e != nil {
+		e.capabilities = source
+	}
+	return e
+}
+
+// requireGPUInventory fails closed when the source is attached and no live
+// worker advertises the GPU capability. clip.render is Chronon-Vulkan only
+// (the completion gate rejects every other backend), so enqueueing it as
+// gpu_preferred only wastes a claim on a lane that cannot finish it.
+func (e *ClipRenderExecutor) requireGPUInventory(ctx context.Context) error {
+	if e == nil || e.capabilities == nil {
+		return nil
+	}
+	available, err := e.capabilities.Capabilities(ctx)
+	if err != nil {
+		return fmt.Errorf("EXECUTION_POLICY_INCOMPATIBLE: read live RenderingGen capabilities: %w", err)
+	}
+	for _, capability := range available {
+		if strings.TrimSpace(capability) == renderqueue.CapabilityGPU {
+			return nil
+		}
+	}
+	return fmt.Errorf("EXECUTION_POLICY_INCOMPATIBLE: clip render requires the %q capability but no live RenderingGen worker advertises it", renderqueue.CapabilityGPU)
 }
 
 func NewClipRenderExecutor(queue renderqueue.RenderQueueClient) (*ClipRenderExecutor, error) {
@@ -343,6 +382,9 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 	if err := plan.Validate(); err != nil {
 		return fmt.Errorf("renderinggen clip executor: validate plan: %w", err)
 	}
+	if err := e.requireGPUInventory(ctx); err != nil {
+		return fmt.Errorf("renderinggen clip executor: %w", err)
+	}
 	if requested, alignment, ok := e.chunkPolicy(plan); ok {
 		if _, err := e.SubmitChunked(ctx, plan, requested, alignment); err != nil {
 			return fmt.Errorf("renderinggen clip executor: submit chunk family: %w", err)
@@ -383,6 +425,10 @@ func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRen
 		ParentJobID: corid.FromContext(ctx),
 		OverlaySpec: rawPlan,
 		Assets:      scriptAssets(assets),
+		// Chronon Vulkan is the only permitted backend. The tri-state field
+		// must be TRUE: nil derives gpu_preferred, which lets a worker without
+		// the GPU capability claim the job and only fail at completion.
+		RequireGPU: boolPtr(true),
 	})
 	if submitErr != nil && errors.Is(submitErr, renderqueue.ErrRenderRequestConflict) {
 		// The queue's immutable request includes parent_job_id (the producing

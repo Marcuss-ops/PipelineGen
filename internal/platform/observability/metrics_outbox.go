@@ -172,6 +172,45 @@ var (
 	}, []string{"event_type"})
 )
 
+// DB-05 retention projections. The media worker sweeps completed outbox
+// events and stale heartbeats; these collectors make the sweep observable
+// instead of log-only.
+var (
+	// MediaRetentionDeletedRowsTotal counts rows physically removed per table.
+	MediaRetentionDeletedRowsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "media_retention_deleted_rows_total",
+		Help: "Cumulative rows deleted by the PostgreSQL media retention sweeps, by table.",
+	}, []string{"table"})
+
+	// MediaRetentionBacklogRows is what is still older than the cutoff after a
+	// sweep: dead-letter events awaiting review, or a sweep that cannot keep up.
+	MediaRetentionBacklogRows = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "media_retention_backlog_rows",
+		Help: "Rows older than the retention cutoff remaining after a sweep, by table.",
+	}, []string{"table"})
+
+	// MediaRetentionDurationSeconds measures one sweep per table; a rising value
+	// means the DELETE batches are competing with live traffic.
+	MediaRetentionDurationSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "media_retention_duration_seconds",
+		Help:    "Wall time of one PostgreSQL media retention sweep, by table.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"table"})
+)
+
+// ObserveRetention is the DB-05 composition adapter: the worker owns the SQL,
+// this only projects the result onto Prometheus.
+func (m *MediaOutboxStatusCountAdapter) ObserveRetention(table string, deleted, backlog int64, durationSeconds float64) {
+	if m == nil || table == "" {
+		return
+	}
+	if deleted > 0 {
+		MediaRetentionDeletedRowsTotal.WithLabelValues(table).Add(float64(deleted))
+	}
+	MediaRetentionBacklogRows.WithLabelValues(table).Set(float64(backlog))
+	MediaRetentionDurationSeconds.WithLabelValues(table).Observe(durationSeconds)
+}
+
 // ObserveOutboxStatus is the composition adapter consumed by the media
 // worker. It deliberately exposes only the projection operation; SQL remains
 // owned by internal/platform/postgres/media.

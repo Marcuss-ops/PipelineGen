@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/payloadcap"
 
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -74,7 +75,10 @@ func (r *Registry) persistPayloadResult(ctx context.Context, j capregistry.Job) 
 		}
 	}
 	if j.ResultJSON != "" && j.ResultJSON != "null" {
-		if _, err := r.db.ExecContext(ctx, `INSERT INTO job_results (job_id,attempt,result_hash,codec_id,result_payload,created_at) VALUES (?,0,?,'json',?,?) ON CONFLICT(job_id,attempt,result_hash) DO NOTHING`, j.JobID, hashPayload(j.ResultJSON), j.ResultJSON, defaults.String(j.CompletedAt, defaults.String(j.CreatedAt, "1970-01-01T00:00:00Z"))); err != nil {
+		// DB-04: hash the original result for idempotency, store the bounded
+		// blob (identity and storage are separate concerns).
+		storedResult, _ := payloadcap.EnforceResult(j.ResultJSON)
+		if _, err := r.db.ExecContext(ctx, `INSERT INTO job_results (job_id,attempt,result_hash,codec_id,result_payload,created_at) VALUES (?,0,?,'json',?,?) ON CONFLICT(job_id,attempt,result_hash) DO NOTHING`, j.JobID, hashPayload(j.ResultJSON), storedResult, defaults.String(j.CompletedAt, defaults.String(j.CreatedAt, "1970-01-01T00:00:00Z"))); err != nil {
 			if _, legacyErr := r.db.ExecContext(ctx, `UPDATE jobs SET result_json=? WHERE id=?`, j.ResultJSON, j.JobID); legacyErr != nil {
 				return fmt.Errorf("persist result %q: %w", j.JobID, err)
 			}

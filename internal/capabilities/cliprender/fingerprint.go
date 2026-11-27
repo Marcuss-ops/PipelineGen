@@ -13,6 +13,28 @@
 // hashing). Unknown fields are rejected before hashing (strict decode),
 // so the fingerprint is never taken over drifted input.
 //
+// ── Input revisions (CRA-03) ──────────────────────────────────────────
+//
+// The identity carries the OPTIONAL revision pins of the inputs that decide
+// the pixels: source_revision, background.revision, watermark.revision and
+// transcript.revision. The rule, stated once here and enforced by Prepare:
+//
+//   - a request that pins a revision is addressed by that revision. Changing
+//     the pinned revision changes the fingerprint (cache miss, new render);
+//   - a pinned revision is verified against the bytes actually resolved
+//     (asset content_sha256, transcript text hash). A mismatch or an
+//     unverifiable pin fails closed with ErrInputRevisionMismatch — the
+//     render never silently runs on different bytes;
+//   - a request that pins nothing keeps the historical ID-only identity,
+//     which REQUIRES the referenced asset to be immutable per ID. The
+//     PostgreSQL cache still verifies the OUTPUT sha256; the pin is what
+//     extends that verification to the inputs.
+//
+// Revisions stay optional on purpose: making them mandatory would break every
+// existing payload and every caller that cannot resolve a digest before the
+// first render. An unpinned caller keeps its hit rate; a caller that wants
+// revision-safe identity opts in without a second endpoint.
+//
 // ── Cache-bypass controls are NOT part of the identity ────────────────
 //
 // RenderRequest deliberately carries no force_refresh field, and the
@@ -48,14 +70,29 @@ import (
 // produced by the previous code: same payload, different pixels, stale bytes.
 // Bump this string in the same change that alters what a request renders; the
 // golden in TestFingerprint_PinsTheLoweringVersion fails until it is updated.
-const RendererLoweringVersion = "cliprender-lowering-2026-11-19"
+const RendererLoweringVersion = "cliprender-lowering-2026-11-27"
 
 // Fingerprint returns the canonical SHA-256 hex digest of the normalized
-// request. The receiver is normalized idempotently before hashing so
-// callers do not need to pre-normalize; the hash is stable regardless of
-// field ordering on the wire because it is taken over the marshaled
-// canonical struct, not the raw body.
+// request, destination included. It is the DELIVERY-AWARE cache key: a hit
+// returns the asset previously published to that exact destination.
 func (r *RenderRequest) Fingerprint() (string, error) {
+	return r.fingerprintCanonical(true)
+}
+
+// RenderFingerprint returns the DESTINATION-INDEPENDENT identity of the same
+// render (CRA-04). Two requests that differ only in drive_folder_id/subfolder
+// produce the same render fingerprint: the pixels are identical, so the
+// certified artifact may be reused and published to the second destination
+// without another GPU pass. It is deliberately NOT the cache key a hit may
+// answer with — that stays Fingerprint.
+func (r *RenderRequest) RenderFingerprint() (string, error) {
+	return r.fingerprintCanonical(false)
+}
+
+// fingerprintCanonical projects the request onto the fields that decide the
+// rendered bytes (and, when includeDestination is true, where they are
+// delivered), then hashes the canonical JSON.
+func (r *RenderRequest) fingerprintCanonical(includeDestination bool) (string, error) {
 	if r == nil {
 		return "", fmt.Errorf("clip.render fingerprint: request is nil")
 	}
@@ -65,6 +102,20 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 	// change the request it measures.
 	cp := r.cloneForFingerprint()
 	cp.Normalize()
+	// Revision pins are digests: a sha256: prefix or uppercase spelling is the
+	// same revision, so canonicalize before hashing. Validation still rejects a
+	// malformed pin at the request boundary; this only removes spelling drift
+	// from the identity.
+	cp.SourceRevision = normalizeSHA256(cp.SourceRevision)
+	if cp.Background != nil {
+		cp.Background.Revision = normalizeSHA256(cp.Background.Revision)
+	}
+	if cp.Watermark != nil {
+		cp.Watermark.Revision = normalizeSHA256(cp.Watermark.Revision)
+	}
+	if cp.Transcript != nil {
+		cp.Transcript.Revision = normalizeSHA256(cp.Transcript.Revision)
+	}
 	// Fingerprint deliberately does NOT Validate. Callers validate at their own
 	// boundary (HTTP handler, worker payload, batch item) and then reuse this
 	// digest; validating here repeated the contract resolver and made one cold
@@ -106,6 +157,7 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 	type fp struct {
 		RendererVersion string           `json:"renderer_version"`
 		SourceAssetID   string           `json:"source_asset_id"`
+		SourceRevision  string           `json:"source_revision,omitempty"`
 		Background      *BackgroundSpec  `json:"background,omitempty"`
 		Watermark       *WatermarkSpec   `json:"watermark,omitempty"`
 		Transcript      *TranscriptSpec  `json:"transcript"`
@@ -119,6 +171,7 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 	canonical := fp{
 		RendererVersion: RendererLoweringVersion,
 		SourceAssetID:   cp.SourceAssetID,
+		SourceRevision:  normalizeSHA256(cp.SourceRevision),
 		Background:      background,
 		Watermark:       watermark,
 		Transcript:      cp.Transcript,
@@ -126,8 +179,10 @@ func (r *RenderRequest) Fingerprint() (string, error) {
 		Output:          cp.Output,
 		Audio:           cp.Audio,
 		Overlays:        cp.Overlays,
-		DriveFolderID:   cp.Destination.DriveFolderID,
-		SubfolderName:   cp.Destination.SubfolderName,
+	}
+	if includeDestination {
+		canonical.DriveFolderID = cp.Destination.DriveFolderID
+		canonical.SubfolderName = cp.Destination.SubfolderName
 	}
 	b, err := json.Marshal(canonical)
 	if err != nil {

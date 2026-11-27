@@ -40,10 +40,15 @@ type semanticEngineResponse struct {
 	Manifest *semanticEngineManifest `json:"manifest,omitempty"`
 }
 
-// The wire structs mirror semantic-core::manifest.v3. Source offsets are
+// The wire structs mirror semantic-core::manifest. v3 is the default shape;
+// v4 moves the identity registry to the document-level `identities` table and
+// leaves each scene with `identity_ids` references. Source offsets are
 // re-verified before a candidate is exposed to planning.
 type semanticEngineManifest struct {
-	SchemaVersion       string                             `json:"schema_version"`
+	SchemaVersion string `json:"schema_version"`
+	// Identities is the normalized v4 document table. v3 leaves it nil; v4
+	// carries every CanonicalIdentity once, in registration order.
+	Identities          []semanticEngineIdentity           `json:"identities,omitempty"`
 	Language            string                             `json:"language"`
 	Fingerprint         string                             `json:"fingerprint"`
 	Discourse           *semanticEngineDiscourseProjection `json:"discourse,omitempty"`

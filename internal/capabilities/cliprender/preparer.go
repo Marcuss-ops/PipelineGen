@@ -69,6 +69,11 @@ var (
 	// AssetMaterializer that returns (nil, nil). The port promises a verified
 	// artifact on success; a nil result is a defect, never a valid empty asset.
 	ErrMaterializerReturnedNoArtifact = errors.New("clip.render: asset materializer returned no artifact")
+	// ErrInputRevisionMismatch is the fail-closed gate for a request that pins
+	// an input revision the resolved bytes do not satisfy. It is a correctness
+	// error, not a transient one: retrying the same payload over the same
+	// bytes cannot succeed, and rendering anyway would publish stale pixels.
+	ErrInputRevisionMismatch = errors.New("clip.render: input revision mismatch")
 )
 
 // Preparer is the canonical parallel-preparation orchestrator. It is
@@ -172,6 +177,12 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	if err != nil {
 		return nil, err
 	}
+	// A revision pin that the RESOLVED identity already disproves fails before
+	// a byte is downloaded. A ref with no content hash cannot disprove anything;
+	// the materialized digest is checked after wave 2 instead.
+	if err := validateResolvedRefRevisions(req, refs); err != nil {
+		return nil, err
+	}
 
 	// Fail-fast: a strict `reuse` request whose READY track is absent is
 	// already decided after wave 1. Starting wave 2 would download source,
@@ -205,6 +216,9 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	}
 	if transcript == nil || !transcript.HasText() {
 		return nil, fmt.Errorf("%w: asset %q language %q", ErrTranscriptGenerationUnavailable, req.SourceAssetID, req.Transcript.Language)
+	}
+	if err := validateInputRevisions(req, mats, transcript); err != nil {
+		return nil, err
 	}
 
 	timings := tracker.finish(time.Since(start))
@@ -349,6 +363,89 @@ func (p *Preparer) materializePrepareInputs(ctx context.Context, runID string, r
 		return nil, err
 	}
 	return mats, nil
+}
+
+// validateResolvedRefRevisions is the wave-1 half of the pin gate: the asset
+// registry hash and the existing transcript hash are already known, so a
+// mismatch can fail before any download or ASR. An absent actual hash is not a
+// mismatch here — the verified bytes are checked after materialization.
+func validateResolvedRefRevisions(req *RenderRequest, refs *prepareRefs) error {
+	if req == nil || refs == nil {
+		return nil
+	}
+	checks := []struct {
+		label  string
+		pinned string
+		actual string
+	}{
+		{"source", req.SourceRevision, refRevision(refs.source)},
+		{"background", revisionOrEmpty(req.Background), refRevision(refs.background)},
+		{"watermark", revisionOrEmptyWatermark(req.Watermark), refRevision(refs.watermark)},
+		{"transcript", revisionOrEmptyTranscript(req.Transcript), transcriptRevision(refs.existing)},
+	}
+	for _, check := range checks {
+		pinned := normalizeSHA256(check.pinned)
+		actual := normalizeSHA256(check.actual)
+		if pinned == "" || actual == "" {
+			continue
+		}
+		if actual != pinned {
+			return fmt.Errorf("%w: %s pinned %s but resolved %s", ErrInputRevisionMismatch, check.label, pinned, actual)
+		}
+	}
+	return nil
+}
+
+func refRevision(ref *AssetRef) string {
+	if ref == nil {
+		return ""
+	}
+	return ref.ContentSHA256
+}
+
+// validateInputRevisions enforces the CRA-03 identity rule: a pin is a claim
+// about the BYTES, so it is checked against the materialized/verified digest,
+// not merely against the asset ID. A pin that cannot be verified (empty actual
+// digest) fails closed rather than being treated as satisfied.
+func validateInputRevisions(req *RenderRequest, mats *prepareMaterialized, transcript *TranscriptResult) error {
+	if req == nil || mats == nil {
+		return nil
+	}
+	checks := []struct {
+		label  string
+		pinned string
+		actual string
+	}{
+		{"source", req.SourceRevision, materializedRevision(mats.source)},
+		{"background", revisionOrEmpty(req.Background), materializedRevision(mats.background)},
+		{"watermark", revisionOrEmptyWatermark(req.Watermark), materializedRevision(mats.watermark)},
+		{"transcript", revisionOrEmptyTranscript(req.Transcript), transcriptRevision(transcript)},
+	}
+	for _, check := range checks {
+		pinned := normalizeSHA256(check.pinned)
+		if pinned == "" {
+			continue
+		}
+		actual := normalizeSHA256(check.actual)
+		if actual == "" || actual != pinned {
+			return fmt.Errorf("%w: %s pinned %s but resolved %q", ErrInputRevisionMismatch, check.label, pinned, check.actual)
+		}
+	}
+	return nil
+}
+
+func materializedRevision(asset *MaterializedAsset) string {
+	if asset == nil {
+		return ""
+	}
+	return asset.SHA256
+}
+
+func transcriptRevision(transcript *TranscriptResult) string {
+	if transcript == nil {
+		return ""
+	}
+	return transcript.TextSHA256
 }
 
 func resolvePreparedBackgroundKind(req *RenderRequest, ref *AssetRef) (string, error) {

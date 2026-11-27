@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/event"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/mediaops"
 )
 
 // ErrLeaseLost is returned when a lifecycle mutator's lease fence fails:
@@ -78,6 +79,7 @@ type PostgresIndexWorker struct {
 	handlersMu  sync.RWMutex
 	handlers    map[string]OutboxHandler
 	metrics     OutboxStatusMetrics
+	retention   mediaops.RetentionMetrics
 	metricTypes map[string]struct{}
 }
 
@@ -109,6 +111,13 @@ func NewPostgresIndexWorker(repo *Repository, vectors *VectorSurfaceWriter, embe
 // WithOutboxStatusMetrics enables status projection for the supplied event
 // types. A nil metrics port disables the projection without affecting the
 // delivery worker. Event types are bounded by composition-time registration.
+// WithRetentionMetrics enables the optional DB-05 retention projection. A nil
+// port is a no-op, so callers predating the metric keep working.
+func (w *PostgresIndexWorker) WithRetentionMetrics(metrics mediaops.RetentionMetrics) *PostgresIndexWorker {
+	w.retention = metrics
+	return w
+}
+
 func (w *PostgresIndexWorker) WithOutboxStatusMetrics(metrics OutboxStatusMetrics, eventTypes ...string) *PostgresIndexWorker {
 	if w == nil {
 		return w
@@ -491,11 +500,16 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 	defer metricsTicker.Stop()
 	reclaimTicker := time.NewTicker(DefaultReclaimInterval)
 	defer reclaimTicker.Stop()
+	retentionTicker := time.NewTicker(mediaops.RetentionSweepInterval)
+	defer retentionTicker.Stop()
 
 	workerID := "pg-media-index-worker:" + w.ModelID
 	if err := w.RefreshOutboxStatusMetrics(ctx); err != nil {
 		w.logf(log, "media outbox: status metrics refresh failed", err)
 	}
+	// DB-05: bound the completed-outbox and heartbeat history at startup and
+	// then on the retention cadence. Dead-letter rows stay for review.
+	w.pruneRetention(ctx, log)
 	for {
 		// Opportunistic metrics refresh while work is flowing (non-blocking).
 		select {
@@ -517,6 +531,11 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 			}
 		default:
 		}
+		select {
+		case <-retentionTicker.C:
+			w.pruneRetention(ctx, log)
+		default:
+		}
 		claims, err := w.repo.ClaimBatch(ctx, workerID, leaseTTL, outboxDrainBatchSize)
 		if err != nil {
 			w.logf(log, "media index worker: claim failed", err)
@@ -534,6 +553,21 @@ func (w *PostgresIndexWorker) Run(ctx context.Context, pollInterval, leaseTTL ti
 		}
 		w.processClaims(ctx, claims, log)
 	}
+}
+
+// pruneRetention runs both retention windows once (DB-05). The sweep itself
+// lives in mediaops: it is an operational surface over the media schema, not
+// media domain logic, and keeping it there keeps this package within its line
+// budget. Dead-letter rows stay for review.
+func (w *PostgresIndexWorker) pruneRetention(ctx context.Context, log Logger) {
+	if w.repo == nil {
+		return
+	}
+	mediaops.Sweep(ctx, w.repo.DB(), mediaops.Ports{
+		Metrics: w.retention,
+		Logf:    func(msg string, err error) { w.logf(log, msg, err) },
+		Infof:   func(msg string, n int) { w.infof(log, msg, n) },
+	})
 }
 
 // waitForNextTick blocks until the next poll interval (refreshing the outbox

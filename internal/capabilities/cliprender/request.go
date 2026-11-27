@@ -117,15 +117,23 @@ var ErrInvalidRequest = errors.New("invalid clip.render request")
 // by the Master queue — one shape, no drift between transport and
 // worker.
 type RenderRequest struct {
-	SourceAssetID string           `json:"source_asset_id"`
-	Background    *BackgroundSpec  `json:"background,omitempty"`
-	Watermark     *WatermarkSpec   `json:"watermark,omitempty"`
-	Transcript    *TranscriptSpec  `json:"transcript,omitempty"`
-	Subtitles     *SubtitlesSpec   `json:"subtitles,omitempty"`
-	Output        *OutputSpec      `json:"output,omitempty"`
-	Audio         *AudioSpec       `json:"audio,omitempty"`
-	Destination   *DestinationSpec `json:"destination,omitempty"`
-	Execution     *ExecutionSpec   `json:"execution,omitempty"`
+	SourceAssetID string `json:"source_asset_id"`
+	// SourceRevision is the optional content revision (SHA-256 hex) of the
+	// source bytes this render was requested against. It enters the render
+	// fingerprint, so changing the revision is a different cache identity.
+	// When omitted, the source is addressed by ID only: that is the historical
+	// contract and it assumes the asset is immutable per ID. A pinned revision
+	// that does not match the resolved bytes fails closed in preparation
+	// (ErrInputRevisionMismatch). See fingerprint.go for the rule.
+	SourceRevision string           `json:"source_revision,omitempty"`
+	Background     *BackgroundSpec  `json:"background,omitempty"`
+	Watermark      *WatermarkSpec   `json:"watermark,omitempty"`
+	Transcript     *TranscriptSpec  `json:"transcript,omitempty"`
+	Subtitles      *SubtitlesSpec   `json:"subtitles,omitempty"`
+	Output         *OutputSpec      `json:"output,omitempty"`
+	Audio          *AudioSpec       `json:"audio,omitempty"`
+	Destination    *DestinationSpec `json:"destination,omitempty"`
+	Execution      *ExecutionSpec   `json:"execution,omitempty"`
 	// Overlays is the set of entity-overlay lineages this final video
 	// composites: ONE lineage per certified overlay.render artifact. Empty for
 	// subtitles/watermark-only clips. Production renders one short video per

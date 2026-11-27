@@ -154,6 +154,111 @@ func TestRenderCacheHitRequiresTheReferencedAssetToStillMatch(t *testing.T) {
 	}
 }
 
+// TestRenderCacheDestinationRowsAreIndependent is the live-PostgreSQL half of
+// CRA-05: two destinations of the SAME render share a render_fingerprint but
+// must expose their OWN asset locator and delivery status. Re-delivering one
+// destination must not move the other's drive_file_id. This is also the
+// CRA-04 delivery-only lookup: GetByRender resolves the shared artifact.
+func TestRenderCacheDestinationRowsAreIndependent(t *testing.T) {
+	db := requireRenderCachePostgres(t)
+	ctx := context.Background()
+	const (
+		sha      = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+		renderFP = "ddddddddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		fpA      = "aaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		fpB      = "bbbbbbbbcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+		assetA   = "cache-dest-asset-a"
+		assetB   = "cache-dest-asset-b"
+	)
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx, `DELETE FROM clip_render_cache WHERE fingerprint IN ($1,$2)`, fpA, fpB)
+		_, _ = db.ExecContext(ctx, `DELETE FROM media_assets WHERE id IN ($1,$2)`, assetA, assetB)
+	})
+
+	for id, delivery := range map[string][2]string{
+		assetA: {"drive-file-A", "completed"},
+		assetB: {"drive-file-B", "pending"},
+	} {
+		driveID, status := delivery[0], delivery[1]
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO media_assets (id, content_sha256, lifecycle_state, deleted_at, drive_file_id, metadata_json)
+			VALUES ($1, $2, 'ACTIVE', '', $3, $4)
+			ON CONFLICT (id) DO UPDATE SET
+				content_sha256 = EXCLUDED.content_sha256,
+				lifecycle_state = 'ACTIVE',
+				deleted_at = '',
+				drive_file_id = EXCLUDED.drive_file_id,
+				metadata_json = EXCLUDED.metadata_json`,
+			id, sha, driveID, `{"delivery_status":"`+status+`"}`); err != nil {
+			t.Fatalf("insert asset %s: %v", id, err)
+		}
+	}
+
+	cache := pgcliprender.NewPostgresRenderCache(db)
+	for _, rec := range []*capcliprender.RenderCacheRecord{
+		{Fingerprint: fpA, RenderFingerprint: renderFP, InputSHA256: "input-digest", SourceTitle: "Clip", Language: "it",
+			AssetID: assetA, StorageKey: "renders/shared.mp4", ArtifactURL: "https://example.test/shared.mp4",
+			ContentType: "video/mp4", SHA256: sha, SizeBytes: 4096, DurationSec: 18, Width: 1920, Height: 1080,
+			FPSNum: 24, FPSDen: 1, Backend: capcliprender.BackendChrononVulkan},
+		{Fingerprint: fpB, RenderFingerprint: renderFP, InputSHA256: "input-digest", SourceTitle: "Clip", Language: "it",
+			AssetID: assetB, StorageKey: "renders/shared.mp4", ArtifactURL: "https://example.test/shared.mp4",
+			ContentType: "video/mp4", SHA256: sha, SizeBytes: 4096, DurationSec: 18, Width: 1920, Height: 1080,
+			FPSNum: 24, FPSDen: 1, Backend: capcliprender.BackendChrononVulkan},
+	} {
+		if err := cache.Put(ctx, rec); err != nil {
+			t.Fatalf("put %s: %v", rec.Fingerprint, err)
+		}
+	}
+
+	a, err := cache.Get(ctx, fpA)
+	if err != nil {
+		t.Fatalf("Get(A): %v", err)
+	}
+	b, err := cache.Get(ctx, fpB)
+	if err != nil {
+		t.Fatalf("Get(B): %v", err)
+	}
+	if a.AssetID != assetA || a.DriveFileID != "drive-file-A" || a.DeliveryStatus != "completed" {
+		t.Fatalf("A locator = %+v, want its own asset/drive/status", a)
+	}
+	if b.AssetID != assetB || b.DriveFileID != "drive-file-B" || b.DeliveryStatus != "pending" {
+		t.Fatalf("B locator = %+v, want its own asset/drive/status", b)
+	}
+	if a.InputSHA256 != "input-digest" || a.SourceTitle != "Clip" || a.Language != "it" {
+		t.Fatalf("A lost the recorded input digest/title/language: %+v", a)
+	}
+
+	byRender, err := cache.(interface {
+		GetByRender(context.Context, string) (*capcliprender.RenderCacheRecord, error)
+	}).GetByRender(ctx, renderFP)
+	if err != nil {
+		t.Fatalf("GetByRender: %v", err)
+	}
+	if byRender.AssetID != assetA && byRender.AssetID != assetB {
+		t.Fatalf("GetByRender returned unexpected asset %q", byRender.AssetID)
+	}
+
+	// Re-deliver B: only B's row moves. A must still expose its own locator.
+	if _, err := db.ExecContext(ctx, `UPDATE media_assets SET drive_file_id = $1, metadata_json = $2 WHERE id = $3`,
+		"drive-file-B2", `{"delivery_status":"completed"}`, assetB); err != nil {
+		t.Fatalf("re-deliver B: %v", err)
+	}
+	a2, err := cache.Get(ctx, fpA)
+	if err != nil {
+		t.Fatalf("Get(A) after B re-delivery: %v", err)
+	}
+	b2, err := cache.Get(ctx, fpB)
+	if err != nil {
+		t.Fatalf("Get(B) after re-delivery: %v", err)
+	}
+	if a2.DriveFileID != "drive-file-A" || a2.DeliveryStatus != "completed" {
+		t.Fatalf("A was contaminated by B's delivery: %+v", a2)
+	}
+	if b2.DriveFileID != "drive-file-B2" || b2.DeliveryStatus != "completed" {
+		t.Fatalf("B re-delivery not reflected on B: %+v", b2)
+	}
+}
+
 func TestRenderCacheIgnoresEntriesWhoseAssetWasNeverCommitted(t *testing.T) {
 	db := requireRenderCachePostgres(t)
 	ctx := context.Background()

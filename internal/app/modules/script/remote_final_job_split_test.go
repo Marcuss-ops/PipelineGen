@@ -186,6 +186,20 @@ func TestImageNoneSentinelDoesNotRequireRendererCapability(t *testing.T) {
 	}
 }
 
+func TestStockFinalJobPreflightUsesSourceCertificationCapability(t *testing.T) {
+	request := scriptgen.GenerateRequest{FinalJob: true, MediaMode: "mixed"}
+	ready := splitTestAdapter(t, []string{scriptgen.FinalJobStockSourceCertificationCapability})
+	if err := ready.CheckFinalJobCapabilities(context.Background(), request); err != nil {
+		t.Fatalf("advertised stock source certification capability was rejected: %v", err)
+	}
+
+	missing := splitTestAdapter(t, []string{"video.assemble.copy.v1"})
+	err := missing.CheckFinalJobCapabilities(context.Background(), request)
+	if err == nil || !strings.Contains(err.Error(), scriptgen.FinalJobStockSourceCertificationCapability) {
+		t.Fatalf("missing stock source certification capability error = %v, want %q", err, scriptgen.FinalJobStockSourceCertificationCapability)
+	}
+}
+
 func TestFinalJobSplitGateHonorsTheOptInEnvironment(t *testing.T) {
 	adapter := splitTestAdapter(t, []string{scriptgen.FinalJobOverlayProjectionCapability})
 

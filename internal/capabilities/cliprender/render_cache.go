@@ -25,6 +25,15 @@
 // A MISS is the fail-safe direction: the worker renders a fresh artifact
 // instead of advertising a stale locator.
 //
+// INPUT REVISIONS (CRA-03). The JOIN proves the OUTPUT bytes have not changed;
+// it says nothing about the inputs. The identity rule lives in fingerprint.go:
+// a request may pin source/background/watermark/transcript revisions, those
+// pins are part of the fingerprint, and Prepare verifies each pin against the
+// bytes it actually resolved (ErrInputRevisionMismatch on disagreement). An
+// unpinned request keeps the historical ID-only key and therefore requires the
+// referenced asset to be immutable per ID — that is the documented contract,
+// not an assumption this cache can check on its own.
+//
 // Lookup key: fingerprint hex (64 chars, lower hex). Value is the
 // certified locator and the committed asset id, so the worker can
 // fabricate a valid completion without touching the GPU.
@@ -59,6 +68,10 @@ type RenderCacheRecord = kernelmedia.RenderCacheRecord
 
 // RenderCache is the port for the deterministic render cache.
 type RenderCache = kernelmedia.RenderCache
+
+// RenderCacheByRender is the optional destination-independent lookup used to
+// reuse a certified render for a different delivery folder (CRA-04).
+type RenderCacheByRender = kernelmedia.RenderCacheByRender
 
 // RenderCacheBatch is the optional one-round-trip extension for batch
 // lookups. A cache that implements it lets POST /render/batch resolve N

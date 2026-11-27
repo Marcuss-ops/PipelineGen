@@ -34,7 +34,7 @@ import (
 	"fmt"
 	"strings"
 
-	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	pgmediaops "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/mediaops"
 	_ "github.com/jackc/pgx/v5/stdlib" // register the "pgx" database/sql driver
 	_ "github.com/mattn/go-sqlite3"    // register the "sqlite3" database/sql driver
 )
@@ -123,7 +123,7 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	// 009 last) and its checksum-verified schema_migrations ledger live in
 	// RunMediaMigrations, so no runner can apply a silent prefix of it and
 	// every applied version is recorded (audit points 9 + D2).
-	if _, err := pgmedia.RunMediaMigrations(ctx, pg); err != nil {
+	if _, err := pgmediaops.RunMediaMigrations(ctx, pg); err != nil {
 		return nil, fmt.Errorf("media backfill: apply media migrations: %w", err)
 	}
 

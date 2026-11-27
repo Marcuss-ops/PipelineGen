@@ -1,4 +1,4 @@
-// Package media — migrate.go: the canonical PostgreSQL media migration runner
+// migrate.go — the canonical PostgreSQL media migration runner
 // and ledger (PLANE_INVENTORY.md divergence D2).
 //
 // The media plane previously applied the ordered MediaSelfBootstrapDDL without
@@ -16,7 +16,7 @@
 // 010/011 remain deployment-managed one-shots and are intentionally absent
 // from the registry (BASELINE_PLAN.md §4); their convergence twins 012/013 are
 // in the registry and therefore ledgered.
-package media
+package mediaops
 
 import (
 	"context"

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/payloadcap"
 	"github.com/Marcuss-ops/PipelineGen/pkg/sqlport"
 )
 
@@ -336,12 +337,16 @@ func persistJobResult(ctx context.Context, tx sqlport.Tx, jobID string, attempt 
 	if payload == "" || payload == "null" {
 		payload = "{}"
 	}
+	// DB-04: result_hash identifies the ORIGINAL result (the idempotency
+	// contract compares hashes), while the stored blob is bounded. The cap
+	// only fires on a pathological payload; a normal result is stored verbatim.
 	resultHash := digest.SHA256String(payload)
+	storedPayload, _ := payloadcap.EnforceResult(payload)
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO job_results (job_id, attempt, result_hash, codec_id, result_payload, created_at)
 		VALUES (?, ?, ?, 'json', ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 		ON CONFLICT(job_id, attempt, result_hash) DO NOTHING`,
-		jobID, attempt, resultHash, payload)
+		jobID, attempt, resultHash, storedPayload)
 	if err != nil {
 		// Legacy/minimal fixtures may predate migration 119. This fallback is
 		// intentionally schema-gated; migrated production databases never

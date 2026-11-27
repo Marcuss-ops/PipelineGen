@@ -57,10 +57,15 @@ func BuildClipRenderRuntime(deps ClipRenderRuntimeDeps) (*ClipRenderRuntime, err
 	if queueURL == "" {
 		return nil, fmt.Errorf("clip render runtime: RENDERINGGEN_QUEUE_URL is required; clip rendering fails closed")
 	}
-	executor, err := renderinggen.NewClipRenderExecutor(renderinggen.New(queueURL))
+	queueClient := renderinggen.New(queueURL)
+	executor, err := renderinggen.NewClipRenderExecutor(queueClient)
 	if err != nil {
 		return nil, fmt.Errorf("clip render runtime: build RenderingGen executor: %w", err)
 	}
+	// The clip lane is Chronon-Vulkan only. Attach the live inventory so the
+	// producer refuses a submission when no worker proves the GPU capability,
+	// instead of enqueueing work a CPU-only lane would claim and then fail.
+	executor.SetCapabilitySource(queueClient)
 	// CR-18: chunking is a measured NO-GO (2 chunks = 31.51 s vs 18.66 s for
 	// one job), so production must opt in explicitly. The historical wiring
 	// enabled it unconditionally and armed the slower path for every eligible

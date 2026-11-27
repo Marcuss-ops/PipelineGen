@@ -473,6 +473,89 @@ func TestClipRenderPublisher_WithoutTitle_UsesAssetIDFilename(t *testing.T) {
 	}
 }
 
+// TestClipRenderPublisher_AssetIDScopedByDestination pins CRA-05: the same
+// certified bytes delivered to two folders must NOT share a media asset id,
+// because the Drive outbox patches drive_file_id/status by AssetID. Re-delivery
+// to the same folder stays idempotent (same id).
+func TestClipRenderPublisher_AssetIDScopedByDestination(t *testing.T) {
+	drive := &fakeDeliveryPublisher{}
+	committer := &fakeAssetCommitter{}
+	p := newAsyncPublisher(t, drive, committer)
+	// Each publish gets a fresh file with the SAME bytes: the first publish
+	// stages/moves its artifact, so reusing one path would starve the next.
+	a, err := p.Publish(context.Background(), publishInput(writeFakeVideo(t), "Same Clip", cliprender.SubtitlesModeBurn, "folder-A"))
+	if err != nil {
+		t.Fatalf("Publish(A) error = %v", err)
+	}
+	b, err := p.Publish(context.Background(), publishInput(writeFakeVideo(t), "Same Clip", cliprender.SubtitlesModeBurn, "folder-B"))
+	if err != nil {
+		t.Fatalf("Publish(B) error = %v", err)
+	}
+	if a.AssetID == b.AssetID {
+		t.Fatalf("folders A and B share asset id %q: the second delivery would overwrite the first locator", a.AssetID)
+	}
+	// Same destination → same id (deterministic, so the outbox keeps patching
+	// the one row that belongs to that destination).
+	if got, want := cliprenderAssetID(a.AssetID, "folder-A"), cliprenderAssetID(a.AssetID, "folder-A"); got != want {
+		t.Fatalf("asset id is not deterministic: %q != %q", got, want)
+	}
+	reqs := committer.commitRequests()
+	if len(reqs) != 2 {
+		t.Fatalf("commit requests = %d, want 2", len(reqs))
+	}
+	seen := map[string]string{}
+	for _, req := range reqs {
+		if prev, ok := seen[req.AssetID]; ok && prev != req.FolderID {
+			t.Fatalf("asset %q committed to both %q and %q", req.AssetID, prev, req.FolderID)
+		}
+		seen[req.AssetID] = req.FolderID
+	}
+	if seen[a.AssetID] != "folder-A" || seen[b.AssetID] != "folder-B" {
+		t.Fatalf("asset/folder mapping = %v, want A/B isolated", seen)
+	}
+}
+
+// TestClipRenderPublisher_SameTitleSameFolderStillCollides documents the
+// SEPARATE defect CRA-05 does not fix: destination scoping separates the media
+// rows, but the Drive filename is still derived from the human title, so two
+// DIFFERENT renders with the same title in the same folder overwrite each
+// other. The namespace for that case is destination.subfolder_name; this test
+// pins the limitation so it cannot be mistaken for fixed.
+func TestClipRenderPublisher_SameTitleSameFolderStillCollides(t *testing.T) {
+	drive := &fakeDeliveryPublisher{}
+	committer := &fakeAssetCommitter{}
+	p := newAsyncPublisher(t, drive, committer)
+
+	write := func(body string) string {
+		path := filepath.Join(t.TempDir(), "rendered-clip.mp4")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatalf("write fake video: %v", err)
+		}
+		return path
+	}
+	a, err := p.Publish(context.Background(), publishInput(write("first-render-bytes"), "Same Title", cliprender.SubtitlesModeBurn, "same-folder"))
+	if err != nil {
+		t.Fatalf("Publish(first) error = %v", err)
+	}
+	b, err := p.Publish(context.Background(), publishInput(write("second-render-bytes"), "Same Title", cliprender.SubtitlesModeBurn, "same-folder"))
+	if err != nil {
+		t.Fatalf("Publish(second) error = %v", err)
+	}
+	if a.AssetID == b.AssetID {
+		t.Fatal("different bytes must not share an asset id")
+	}
+	reqs := committer.commitRequests()
+	if len(reqs) != 2 {
+		t.Fatalf("commit requests = %d, want 2", len(reqs))
+	}
+	if reqs[0].Filename == "" || reqs[0].Filename != reqs[1].Filename {
+		t.Fatalf("same-title filenames = %q / %q, want the documented collision", reqs[0].Filename, reqs[1].Filename)
+	}
+	if reqs[0].FolderID != "same-folder" || reqs[1].FolderID != "same-folder" {
+		t.Fatalf("fixture folders = %q / %q", reqs[0].FolderID, reqs[1].FolderID)
+	}
+}
+
 // TestClipRenderPublisher_CommitCarriesSearchText pins the index contract: the
 // derived clip asset MUST be committed with a non-empty search_text, otherwise
 // the media index worker's embedder fails closed ("search_text is empty") and

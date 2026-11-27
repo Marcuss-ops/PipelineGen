@@ -109,7 +109,7 @@ func (a *RemoteFinalJobAdapter) CheckFinalJobCapabilities(ctx context.Context, r
 		}
 	}
 	if req.FinalJob && needsStock {
-		return a.client.CheckCapabilities(ctx, "stock_window_preparation")
+		return a.client.CheckCapabilities(ctx, scriptgen.FinalJobStockSourceCertificationCapability)
 	}
 	return nil
 }
