@@ -24,7 +24,8 @@ func TestMediaSelfBootstrapDDLOrderContract(t *testing.T) {
 		MediaClipRenderCacheDDL,       // 015_clip_render_cache.sql
 		MediaLocalizedRenderReuseDDL,  // 016_localized_render_reuse.sql
 		MediaAutovacuumDDL,            // 017_media_autovacuum.sql
-		MediaDuplicateIndexCleanupDDL, // 018_duplicate_index_cleanup.sql — LAST (indexes must exist)
+		MediaDuplicateIndexCleanupDDL, // 018_duplicate_index_cleanup.sql — after every index-creating migration
+		MediaAutovacuumHotTablesDDL,   // 019_media_autovacuum_hot_tables.sql — storage tuning, order-independent
 	}
 	if len(MediaSelfBootstrapDDL) != len(want) {
 		t.Fatalf("MediaSelfBootstrapDDL has %d entries, want %d — new PG media migrations must be embedded AND appended here (010/011-style deployment-managed one-shots excepted, see the var's doc comment)",
@@ -36,16 +37,19 @@ func TestMediaSelfBootstrapDDLOrderContract(t *testing.T) {
 		}
 	}
 	last := len(MediaSelfBootstrapDDL) - 1
-	if MediaSelfBootstrapDDL[last] != MediaDuplicateIndexCleanupDDL {
-		t.Fatalf("MediaDuplicateIndexCleanupDDL must be the LAST self-bootstrap entry: it drops indexes created by the earlier migrations")
+	if MediaSelfBootstrapDDL[last] != MediaAutovacuumHotTablesDDL {
+		t.Fatalf("MediaAutovacuumHotTablesDDL must be the LAST self-bootstrap entry (storage tuning only, so it never races a schema change)")
 	}
-	if MediaSelfBootstrapDDL[last-1] != MediaAutovacuumDDL {
+	if MediaSelfBootstrapDDL[last-1] != MediaDuplicateIndexCleanupDDL {
+		t.Fatalf("MediaDuplicateIndexCleanupDDL must run after every index-creating migration and directly before the storage tuning")
+	}
+	if MediaSelfBootstrapDDL[last-2] != MediaAutovacuumDDL {
 		t.Fatalf("MediaAutovacuumDDL must run directly before the duplicate-index cleanup")
 	}
-	if MediaSelfBootstrapDDL[last-2] != MediaLocalizedRenderReuseDDL {
+	if MediaSelfBootstrapDDL[last-3] != MediaLocalizedRenderReuseDDL {
 		t.Fatalf("MediaLocalizedRenderReuseDDL must run directly before the autovacuum tuning")
 	}
-	if MediaSelfBootstrapDDL[last-3] != MediaClipRenderCacheDDL {
+	if MediaSelfBootstrapDDL[last-4] != MediaClipRenderCacheDDL {
 		t.Fatalf("MediaClipRenderCacheDDL must run directly before the localized reuse cache")
 	}
 	thumb := -1

@@ -160,6 +160,14 @@ var MediaAutovacuumDDL string
 //go:embed 018_duplicate_index_cleanup.sql
 var MediaDuplicateIndexCleanupDDL string
 
+// MediaAutovacuumHotTablesDDL is the verbatim DDL of
+// 019_media_autovacuum_hot_tables.sql — the same per-table autovacuum
+// thresholds as 017, applied to the remaining high-churn media surfaces the
+// live database showed accumulating dead tuples.
+//
+//go:embed 019_media_autovacuum_hot_tables.sql
+var MediaAutovacuumHotTablesDDL string
+
 // MediaSchemaMigrationsDDL is the verbatim DDL of
 // migrations/postgres/014_media_schema_migrations.sql — the PostgreSQL media
 // migration ledger (PLANE_INVENTORY.md D2). RunMediaMigrations creates this
@@ -217,6 +225,7 @@ var MediaSelfBootstrapMigrations = []MediaMigration{
 	{Version: 16, Filename: "016_localized_render_reuse.sql", DDL: MediaLocalizedRenderReuseDDL},
 	{Version: 17, Filename: "017_media_autovacuum.sql", DDL: MediaAutovacuumDDL},
 	{Version: 18, Filename: "018_duplicate_index_cleanup.sql", DDL: MediaDuplicateIndexCleanupDDL},
+	{Version: 19, Filename: "019_media_autovacuum_hot_tables.sql", DDL: MediaAutovacuumHotTablesDDL},
 }
 
 // MediaSelfBootstrapDDL is the canonical ORDERED self-bootstrap sequence for
