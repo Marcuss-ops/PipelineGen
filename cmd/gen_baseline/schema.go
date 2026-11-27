@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
@@ -127,7 +128,7 @@ func corpusWithoutPlaneBaselines(targetDir string, planeFiles map[string]bool) s
 		if err != nil {
 			panic(err)
 		}
-		if err := os.WriteFile(dst, data, 0o644); err != nil {
+		if err := atomicwrite.WriteFile(dst, data, 0o644); err != nil {
 			panic(err)
 		}
 	}
