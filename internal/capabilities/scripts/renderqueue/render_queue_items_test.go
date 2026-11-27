@@ -7,7 +7,20 @@ import (
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+func TestResolveOverlayItemWorkersUsesSharedDefaultAndCap(t *testing.T) {
+	if got := resolveOverlayItemWorkers(0); got != config.DefaultSeparateItemRenderWorkers {
+		t.Fatalf("zero requested width = %d, want shared default %d", got, config.DefaultSeparateItemRenderWorkers)
+	}
+	if got := resolveOverlayItemWorkers(4); got != config.DefaultSeparateItemRenderWorkers {
+		t.Fatalf("configured width = %d, want explicit default width %d", got, config.DefaultSeparateItemRenderWorkers)
+	}
+	if got := resolveOverlayItemWorkers(100); got != overlayItemMaxWidth {
+		t.Fatalf("oversized requested width = %d, want cap %d", got, overlayItemMaxWidth)
+	}
+}
 
 func manifestTestPlan() capmodel.OverlayPlan {
 	return capmodel.OverlayPlan{

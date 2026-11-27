@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"reflect"
+	"strconv"
+	"testing"
+)
 
 // TestScriptsConcurrencyEnvResolution pins the dedicated NLP/TTS concurrency
 // env vars introduced for the script-generation worker pools:
@@ -59,9 +63,16 @@ func TestScriptsConcurrencyEnvResolution(t *testing.T) {
 // and it can never resolve to 0 — a zero-slot pool would render no per-item
 // overlay at all instead of failing.
 func TestScriptsSeparateItemRenderWorkersResolution(t *testing.T) {
+	field, ok := reflect.TypeOf(ScriptsConfig{}).FieldByName("SeparateItemRenderWorkers")
+	if !ok {
+		t.Fatal("SeparateItemRenderWorkers config field is missing")
+	}
+	if got := field.Tag.Get("default"); got != strconv.Itoa(DefaultSeparateItemRenderWorkers) {
+		t.Fatalf("SeparateItemRenderWorkers struct-tag default = %q, want shared constant value %d", got, DefaultSeparateItemRenderWorkers)
+	}
 	cfg := &Config{}
 	applyDefaults(cfg)
-	if got := cfg.Scripts.SeparateItemRenderWorkers; got != 4 {
+	if got := cfg.Scripts.SeparateItemRenderWorkers; got != DefaultSeparateItemRenderWorkers {
 		t.Fatalf("SeparateItemRenderWorkers default = %d, want 4 (feed width, retuned 2026-10-23)", got)
 	}
 
@@ -73,7 +84,7 @@ func TestScriptsSeparateItemRenderWorkersResolution(t *testing.T) {
 
 	// A zero value is not a documented "disable" — it is clamped to the
 	// default so the pool is never the reason no overlay is rendered.
-	if got := (ScriptsConfig{}).WithDefaults().SeparateItemRenderWorkers; got != 4 {
+	if got := (ScriptsConfig{}).WithDefaults().SeparateItemRenderWorkers; got != DefaultSeparateItemRenderWorkers {
 		t.Fatalf("WithDefaults SeparateItemRenderWorkers = %d, want 4", got)
 	}
 	if got := (ScriptsConfig{SeparateItemRenderWorkers: 7}).WithDefaults().SeparateItemRenderWorkers; got != 7 {

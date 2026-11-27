@@ -10,19 +10,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	finaljob "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// defaultSeparateItemRenderWorkers is how many per-item overlay renders may be
-// in flight at once when the caller does not tune the pool. 4 (was 2, tuned
-// 2026-09-27 from a live queue-wait audit): retuned 2026-10-23 together with
+// Per-item overlay renders use the config package's default when the caller
+// does not tune the pool. The queue fallback was 12 before 2026-11-27; it now
+// matches the certified config default of 4.
+// 4 (tuned 2026-09-27 from a live queue-wait audit): retuned 2026-10-23 together with
 // TICKET-OVERLAY-THROUGHPUT fix 1, which moved the receipt verification (probe + sha256 + full-decode gate, ~0,9 s per item) OFF the render lane.
 // One lane then needs ≈1,6 in-flight children to stay fed through the
 // off-lane receipt+post tail (golden v12 mix: ~1,7 s of lane service + ~1,0 s
 // of tail per item), so the dual-lane topology needs 3,2 → 4. The worker's
 // gpu_lanes remains the sole GPU authority: this width pipelines the per-item pre/post chain, it does not raise GPU load.
-const defaultSeparateItemRenderWorkers = 4
-
 // overlayItemMaxWidth caps an operator-tuned pool (config.Scripts.SeparateItemRenderWorkers /
 // VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS). 16: pipelining width ensuring all 3 GPU lanes
 // stay continuously pre-buffered with in-flight batches without starvation gaps.
@@ -37,6 +37,9 @@ const overlayMapRenderWidth = 2
 // it is testable without a queue and cannot drift from what the enqueue path
 // applies.
 func resolveOverlayItemWorkers(requested int) int {
+	if requested <= 0 {
+		requested = config.DefaultSeparateItemRenderWorkers
+	}
 	if requested > overlayItemMaxWidth {
 		return overlayItemMaxWidth
 	}

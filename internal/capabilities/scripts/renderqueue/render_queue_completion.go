@@ -24,6 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/renderqueue"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
@@ -148,7 +149,7 @@ func (e *QueueRenderEnqueuer) itemRenderWorkers() int {
 	if e != nil && e.itemRenderPool > 0 {
 		return e.itemRenderPool
 	}
-	return defaultSeparateItemRenderWorkers
+	return config.DefaultSeparateItemRenderWorkers
 }
 
 // recordRenderingGenPhases projects the worker-reported RenderingGen phase

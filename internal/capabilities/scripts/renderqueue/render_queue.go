@@ -41,7 +41,7 @@ type QueueRenderEnqueuer struct {
 	// child plan and block on its terminal state before submitting the next
 	// one, so exactly one render was ever in flight and the GPU lane could
 	// not overlap the per-item pre/post chain (materialize, upload, probe,
-	// publish). Zero selects defaultSeparateItemRenderWorkers. The worker
+	// publish). Zero selects config.DefaultSeparateItemRenderWorkers. The worker
 	// remains the sole authority on how many of those renders touch the GPU
 	// at once (worker.gpu_lanes), so this raises pipelining, not GPU load.
 	itemRenderPool int

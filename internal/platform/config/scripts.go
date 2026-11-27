@@ -1,5 +1,10 @@
 package config
 
+// DefaultSeparateItemRenderWorkers is the certified fallback width for the
+// per-item overlay render queue. Keep the struct-tag default pinned to this
+// value by TestScriptsSeparateItemRenderWorkersResolution.
+const DefaultSeparateItemRenderWorkers = 4
+
 // ScriptCapabilityConfig gates the ScriptFlow module wiring. In production
 // (DeliveryInsecureDev=false) a required dependency that is missing aborts
 // the boot. In development mode the module is disabled explicitly and no
@@ -126,11 +131,12 @@ type ScriptsConfig struct {
 	// owns worker.gpu_lanes and stays the only authority on concurrent GPU
 	// work, so raising this overlaps the per-item pre/post chain (materialize,
 	// upload, ffprobe contract, Drive publish) without touching GPU load.
-	// Default 4 (was 2, tuned 2026-09-27): retuned 2026-10-23 with
+	// Default 4 (config default was 2; queue fallback was 12 before 2026-11-27):
+	// retuned 2026-10-23 with
 	// TICKET-OVERLAY-THROUGHPUT fix 1 — the receipt verification (~0,9 s/item)
 	// runs OFF the render lane, so one lane needs ≈1,6 in-flight children to
 	// stay fed through the off-lane tail and the dual-lane topology needs 3,2
-	// → 4. Capped at 6 by the capability boundary (3-lane topology ≈5). 0 falls
+	// → 4. Capped at 16 by the capability boundary for up to three lanes. 0 falls
 	// back to the same default at the capability boundary.
 	SeparateItemRenderWorkers int `yaml:"separate_item_render_workers" env:"VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS" default:"4"`
 
@@ -324,7 +330,7 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	// render nothing, so an unset/invalid value is clamped to the certified
 	// default rather than silently disabling per-item overlay output.
 	if s.SeparateItemRenderWorkers <= 0 {
-		s.SeparateItemRenderWorkers = 4
+		s.SeparateItemRenderWorkers = DefaultSeparateItemRenderWorkers
 	}
 	if s.OverlayPublicationWorkers <= 0 {
 		s.OverlayPublicationWorkers = 6
