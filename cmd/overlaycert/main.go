@@ -18,6 +18,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/certification"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 func main() {
@@ -130,7 +131,7 @@ func run() int {
 		return 2
 	}
 	if *outPath != "" {
-		if err := os.WriteFile(*outPath, encoded, 0o644); err != nil {
+		if err := atomicwrite.WriteFile(*outPath, encoded, 0o644); err != nil {
 			fmt.Fprintf(os.Stderr, "overlaycert: write report: %v\n", err)
 			return 2
 		}
