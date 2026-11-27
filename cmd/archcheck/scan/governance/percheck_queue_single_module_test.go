@@ -9,11 +9,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-func TestScanQueueSingleModule_CanonicalReplacePasses(t *testing.T) {
+func TestScanQueueSingleModule_PublishedVersionPasses(t *testing.T) {
 	root := t.TempDir()
 	writeDeprecationFile(t, root, "go.mod",
 		"module example.test/pipeline\n\ngo 1.26.0\n\n"+
-			"replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue\n")
+			"require github.com/Marcuss-ops/RenderingGen/queue v0.1.0\n")
 
 	r := &report.Report{}
 	ScanQueueSingleModule(root, &policy.Policy{}, r)
@@ -27,7 +27,7 @@ func TestScanQueueSingleModule_VendoredCopyViolates(t *testing.T) {
 	root := t.TempDir()
 	writeDeprecationFile(t, root, "go.mod",
 		"module example.test/pipeline\n\n"+
-			"replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue\n")
+			"require github.com/Marcuss-ops/RenderingGen/queue v0.1.0\n")
 	writeDeprecationFile(t, root, "third_party/queue/go.mod", "module queue\n")
 
 	r := &report.Report{}
@@ -42,7 +42,7 @@ func TestScanQueueSingleModule_SnapshotLockViolates(t *testing.T) {
 	root := t.TempDir()
 	writeDeprecationFile(t, root, "go.mod",
 		"module example.test/pipeline\n\n"+
-			"replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue\n")
+			"require github.com/Marcuss-ops/RenderingGen/queue v0.1.0\n")
 	writeDeprecationFile(t, root, "third_party/queue.sync.json", "{}")
 
 	r := &report.Report{}
@@ -53,7 +53,7 @@ func TestScanQueueSingleModule_SnapshotLockViolates(t *testing.T) {
 	}
 }
 
-func TestScanQueueSingleModule_PathReplacementViolates(t *testing.T) {
+func TestScanQueueSingleModule_LocalReplacementViolates(t *testing.T) {
 	root := t.TempDir()
 	writeDeprecationFile(t, root, "go.mod",
 		"module example.test/pipeline\n\n"+
@@ -62,19 +62,32 @@ func TestScanQueueSingleModule_PathReplacementViolates(t *testing.T) {
 	r := &report.Report{}
 	ScanQueueSingleModule(root, &policy.Policy{}, r)
 
-	if !strings.Contains(violationNotes(r), "must be exactly") {
-		t.Fatalf("expected replacement violation, got %+v", r.Violations)
+	if !strings.Contains(violationNotes(r), "local replacements are forbidden") {
+		t.Fatalf("expected local replacement violation, got %+v", r.Violations)
 	}
 }
 
-func TestScanQueueSingleModule_MissingReplacementViolates(t *testing.T) {
+func TestScanQueueSingleModule_MissingPublishedDependencyViolates(t *testing.T) {
 	root := t.TempDir()
 	writeDeprecationFile(t, root, "go.mod", "module example.test/pipeline\n")
 
 	r := &report.Report{}
 	ScanQueueSingleModule(root, &policy.Policy{}, r)
 
-	if !strings.Contains(violationNotes(r), "missing canonical replacement") {
-		t.Fatalf("expected missing-replacement violation, got %+v", r.Violations)
+	if !strings.Contains(violationNotes(r), "missing published Queue dependency") {
+		t.Fatalf("expected missing dependency violation, got %+v", r.Violations)
+	}
+}
+
+func TestScanQueueSingleModule_UnpinnedVersionViolates(t *testing.T) {
+	root := t.TempDir()
+	writeDeprecationFile(t, root, "go.mod", "module example.test/pipeline\n\n"+
+		"require github.com/Marcuss-ops/RenderingGen/queue v0.1.1\n")
+
+	r := &report.Report{}
+	ScanQueueSingleModule(root, &policy.Policy{}, r)
+
+	if !strings.Contains(violationNotes(r), "must be pinned to v0.1.0") {
+		t.Fatalf("expected version pin violation, got %+v", r.Violations)
 	}
 }

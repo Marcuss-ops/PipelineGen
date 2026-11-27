@@ -11,7 +11,6 @@ docker-build:
 	@test -f Dockerfile || { echo "❌ Dockerfile not found"; exit 1; }
 	docker build \
 		--target $${TARGET:-server-runtime} \
-		--build-context renderinggen-queue=../RenderingGen/queue \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		-t pipelinegen:latest .
@@ -22,7 +21,6 @@ docker-build-worker:
 	@test -f Dockerfile || { echo "❌ Dockerfile not found"; exit 1; }
 	docker build \
 		--target worker-runtime \
-		--build-context renderinggen-queue=../RenderingGen/queue \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		-t pipelinegen-worker:latest .

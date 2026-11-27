@@ -4,18 +4,8 @@ go 1.26.0
 
 toolchain go1.26.11
 
-// DEMOL-05 (2026-11-26): one Queue module, one source of truth. The module is
-// the sibling checkout RenderingGen/queue, resolved by path. The upstream
-// module path github.com/Marcuss-ops/RenderingGen/queue is not resolvable on
-// GitHub (the repository is published as Marcuss-ops/RenderginGen, which is
-// also the URL .github/actions/checkout-renderinggen clones), so a versioned
-// require cannot fetch it. The vendored copy under third_party/queue was
-// removed; CI materializes the sibling checkout at ../RenderingGen and Docker
-// supplies it through the `renderinggen-queue` build context.
-replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue
-
 require (
-	github.com/Marcuss-ops/RenderingGen/queue v0.0.0-20260902155112-fb4938103f42
+	github.com/Marcuss-ops/RenderingGen/queue v0.1.0
 	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-gonic/gin v1.12.0

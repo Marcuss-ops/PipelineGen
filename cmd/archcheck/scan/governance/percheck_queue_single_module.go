@@ -1,6 +1,6 @@
-// Package scan — percheck_queue_single_module.go enforces DEMOL-05: the Queue
-// module has exactly one owner (`RenderingGen/queue`) and PipelineGen consumes
-// it through a sibling path replacement.
+// Package scan — percheck_queue_single_module.go enforces DEMOL-05/RGA-02:
+// the Queue module has exactly one owner and PipelineGen consumes the
+// published, versioned module.
 //
 // BACKGROUND. Until 2026-11-26 `refactored/third_party/queue/` was a
 // byte-for-byte copy of `RenderingGen/queue`, kept in sync by
@@ -13,12 +13,8 @@
 //   - `third_party/queue/` does not exist;
 //   - no `third_party/queue.sync.json` / `queue.compatibility.json` snapshot
 //     lock reappears;
-//   - `go.mod` replaces the Queue module with exactly `../RenderingGen/queue`;
-//   - no other path (vendored or network) is used for that module.
-//
-// The replacement is required because the published repository name does not
-// match the historical module path, so a versioned require cannot resolve it.
-// A sibling checkout is the only resolvable form inside this workspace.
+//   - `go.mod` requires the reviewed Queue module version;
+//   - no local replace can mask an unavailable or mismatched publication.
 //
 // matched rule_id: `percheck_queue_single_module`.
 package governance
@@ -36,7 +32,8 @@ const queueSingleModuleRule = "percheck_queue_single_module"
 
 const queueModulePath = "github.com/Marcuss-ops/RenderingGen/queue"
 
-const queueSiblingReplace = "replace " + queueModulePath + " => ../RenderingGen/queue"
+const queueModuleVersion = "v0.1.0"
+const queueCanonicalRequire = queueModulePath + " " + queueModuleVersion
 
 func queueSingleModuleViolation(r *report.Report, file, note string) {
 	r.Violations = append(r.Violations, report.Violation{
@@ -48,7 +45,8 @@ func queueSingleModuleViolation(r *report.Report, file, note string) {
 	})
 }
 
-// ScanQueueSingleModule validates that the vendored Queue copy stays dead.
+// ScanQueueSingleModule validates the published Queue dependency and ensures
+// that a sibling checkout or vendored copy cannot mask a broken release.
 func ScanQueueSingleModule(root string, _ *policy.Policy, r *report.Report) {
 	if _, err := os.Stat(filepath.Join(root, "third_party", "queue")); err == nil {
 		queueSingleModuleViolation(r, "third_party/queue",
@@ -75,18 +73,22 @@ func ScanQueueSingleModule(root string, _ *policy.Policy, r *report.Report) {
 		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
 			continue
 		}
-		if !strings.HasPrefix(trimmed, "replace "+queueModulePath) {
+		if strings.HasPrefix(trimmed, "replace "+queueModulePath) {
+			queueSingleModuleViolation(r, "go.mod",
+				"Queue module must be consumed from the published version; local replacements are forbidden")
 			continue
 		}
-		if trimmed == queueSiblingReplace {
-			foundCanonical = true
-			continue
+		if strings.HasPrefix(trimmed, "require "+queueModulePath+" ") || strings.HasPrefix(trimmed, queueModulePath+" ") {
+			if trimmed == "require "+queueCanonicalRequire || trimmed == queueCanonicalRequire {
+				foundCanonical = true
+			} else {
+				queueSingleModuleViolation(r, "go.mod",
+					"Queue dependency must be pinned to "+queueModuleVersion)
+			}
 		}
-		queueSingleModuleViolation(r, "go.mod",
-			"Queue module replacement must be exactly "+queueSiblingReplace)
 	}
 	if !foundCanonical {
 		queueSingleModuleViolation(r, "go.mod",
-			"missing canonical replacement: "+queueSiblingReplace)
+			"missing published Queue dependency: "+queueCanonicalRequire)
 	}
 }

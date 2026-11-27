@@ -37,14 +37,9 @@ RUN apt-get update \
 
 WORKDIR /src
 
-# Layer-cache friendly: copy go.mod/go.sum first, then materialize the sibling
-# Queue module supplied by the `renderinggen-queue` named build context. The
-# go.mod replace points at ../RenderingGen/queue, so the module must exist at
-# that path in the build filesystem before `go mod download` runs. Callers pass
-# `--build-context renderinggen-queue=../RenderingGen/queue` (make/docker.mk
-# already does); there is no vendored copy in the repository.
+# Layer-cache friendly: copy go.mod/go.sum first, then download the pinned
+# published Queue module before adding the application source.
 COPY go.mod go.sum ./
-COPY --from=renderinggen-queue . /RenderingGen/queue/
 RUN go mod download
 
 COPY . .

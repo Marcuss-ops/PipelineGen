@@ -135,3 +135,17 @@ al pin.
 - **`bin/BRAINRUST_RELEASE.json` resta un artefatto** (non tracciato). È
   corretto: registra i binari installati su questo host, non la revisione del
   contratto.
+
+## 6. Aggiornamento RGA-02 (2026-11-27): consumo del modulo pubblicato
+
+La diagnosi del §2 era storica: il nome canonico `RenderingGen` ora reindirizza
+al repository e il tag Queue `v0.1.0` è pubblicato. Il consumer non usa più
+l'action di checkout, il pin Git SHA o il sibling `../RenderingGen/queue`.
+`go.mod` richiede `github.com/Marcuss-ops/RenderingGen/queue v0.1.0`; il gate
+architetturale e `make queue-module-check` rifiutano versioni diverse e
+replacement locali. CI e Docker risolvono il modulo pubblicato direttamente.
+
+La migrazione consumer è proposta nel PR PipelineGen (evidenza e run CI da
+registrare dopo la pubblicazione). Le verifiche locali isolate: test del
+percheck Queue, `go mod verify`, `make queue-module-check` e `go build ./...`.
+La CI GitHub resta il criterio finale dopo il merge.

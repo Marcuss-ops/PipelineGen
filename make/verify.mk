@@ -72,16 +72,16 @@ verify-rust-contract: verify-release-pin
 verify-repository-integrity:
 	@bash scripts/ci/ci-submodule-integrity.sh
 
-# DEMOL-05: there is no vendored queue snapshot to verify any more. The Queue
-# module is the sibling checkout RenderingGen/queue; `queue-module-check` proves
-# the go.mod replace points at it and that no third_party/queue copy exists.
+# DEMOL-05/RGA-02: consume the reviewed, published Queue module directly.
+# This check prevents a local replacement or vendored copy from hiding a
+# missing release in clean CI and remote worker builds.
 queue-module-check:
-	@test -f ../RenderingGen/queue/go.mod || { \
-		echo "missing sibling Queue module at ../RenderingGen/queue (check out RenderingGen next to PipelineGen)" >&2; \
+	@grep -Eq '^[[:space:]]*github.com/Marcuss-ops/RenderingGen/queue v0\.1\.0$$' go.mod || { \
+		echo "go.mod must require published Queue module v0.1.0" >&2; \
 		exit 1; \
 	}
-	@grep -qx 'replace github.com/Marcuss-ops/RenderingGen/queue => ../RenderingGen/queue' go.mod || { \
-		echo "go.mod must replace the Queue module with ../RenderingGen/queue" >&2; \
+	@! grep -Eq '^[[:space:]]*replace[[:space:]]+github.com/Marcuss-ops/RenderingGen/queue([[:space:]]|$$)' go.mod || { \
+		echo "go.mod must not locally replace the published Queue module" >&2; \
 		exit 1; \
 	}
 	@test ! -d third_party/queue || { echo "third_party/queue must not exist (DEMOL-05)" >&2; exit 1; }

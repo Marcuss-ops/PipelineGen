@@ -6,8 +6,5 @@
     "icu_major": 72,
     "mediaexec_schema": "mediaexec.v2",
     "semantic_schema": "semantic_manifest.v3"
-  },
-  "renderinggen": {
-    "git_sha": "e8fec015d28167b84ccd94ba6e002de43518fc6f"
   }
 }

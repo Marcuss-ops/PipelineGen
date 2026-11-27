@@ -27,8 +27,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # Weekly drift check: the Queue module is the sibling RenderingGen checkout
-  # (DEMOL-05), so an upstream contract change can move under us.
+  # Weekly check also verifies the pinned, published Queue module resolves.
   schedule:
     - cron: "0 6 * * 1"
 
@@ -46,19 +45,14 @@ jobs:
         with:
           submodules: false
 
-      - name: Check out the sibling Queue module
-        uses: ./.github/actions/checkout-renderinggen
-
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: '1.26.11'
           cache: true
 
-      - name: Build Docker Go binaries with the sibling Queue module
-        run: |
-          docker buildx build --target builder --progress=plain \
-            --build-context renderinggen-queue=../RenderingGen/queue .
+      - name: Build Docker Go binaries
+        run: docker buildx build --target builder --progress=plain .
 
       - name: Regenerate active architecture catalogs
         run: |

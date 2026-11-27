@@ -12,7 +12,7 @@ il motivo, non `DONE`.
 
 | # | Pri | Item | Stato | Evidenza |
 |---|---|---|---|---|
-| 1 | P0 | Ripristinare CI e checkout Queue | **DONE** | [01](01-CI-REPRODUCIBILITY.md) §2 |
+| 1 | P0 | Ripristinare CI e consumo Queue pubblicato | **PARTIAL** | [01](01-CI-REPRODUCIBILITY.md) §2 e §6 |
 | 2 | P0 | Contratti BrainRust/mediaexec riproducibili | **DONE** | [01](01-CI-REPRODUCIBILITY.md) §3 |
 | 3 | P0 | `verify-main` sul commit effettivo | **DONE (locale)** | §4 sotto; la CI si prova solo con una push |
 | 4 | P1 | Eliminare error swallowing nella risoluzione asset | **DONE** | [02](02-ASSET-TRANSFER-PORTS-AND-OUTBOX.md) §1 |
@@ -29,6 +29,12 @@ il motivo, non `DONE`.
 | 15 | P3 | Ottimizzare le allocazioni sulla base dei benchmark | **DONE (misura)** | §9 sotto |
 
 ## 2. Le tre cause reali della CI rossa (non erano tre sintomi)
+
+Nota aggiornamento 2026-11-27: i dettagli Queue qui sotto descrivono lo stato
+storico. La repository identity è stata corretta e il modulo `v0.1.0` è
+pubblicato; la migrazione di questo consumer a `require` versionato è in corso
+nel §6 di [01](01-CI-REPRODUCIBILITY.md). Lo stato resta PARTIAL finché il PR
+PipelineGen e la CI non risultano verdi.
 
 1. `go.mod` risolve la Queue dal sibling `../RenderingGen/queue`, e l'action CI
    clonava `github.com/Marcuss-ops/RenderingGen.git`: quel repository **non
