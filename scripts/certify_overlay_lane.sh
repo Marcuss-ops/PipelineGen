@@ -29,8 +29,13 @@
 #   5. identity   — /health and /ready must report the exact binaries just built
 #   6. canary     — submit the tracked payload with a deterministic idempotency key
 #   7. verify     — overlays, motions, content addresses and timing in the result
-#   8. bundle     — a portable artefact set (payload, plan, timing, verdict)
-#                   that can be copied to another machine to extend the chain
+#   8. certify    — ONE verdict for every planned overlay (PASS/FAIL/SKIPPED/
+#                   UNVERIFIABLE), joined from the plan, the worker receipt and
+#                   the artifact hash. The script does not re-check these facts
+#                   with jq: cmd/overlaycert owns the policy.
+#   9. bundle     — a portable artefact set (payload, plan, timing, verdict,
+#                   overlay certification) that can be copied to another
+#                   machine to extend the chain
 #
 # Usage
 # -----
@@ -39,7 +44,7 @@
 #   scripts/certify_overlay_lane.sh --skip-deploy        # certify the running build
 #   scripts/certify_overlay_lane.sh --dry-run            # preflight + plan only
 #
-# Stages, in order: preflight test build deploy identity canary verify bundle
+# Stages, in order: preflight test build deploy identity canary verify certify bundle
 # `--stage=X` runs everything up to and including X. `--skip-deploy` keeps the
 # currently installed binaries and skips `identity`'s digest match (it still
 # reports the identity it found).
@@ -58,6 +63,17 @@
 #   CERT_SKIP_WORKER               default 0   (1 → PipelineGen-only run)
 #   CERT_INSTALL_RENDERINGGEN      default 0   (1 → also install the worker)
 #   CERT_RESTART_RENDERINGGEN      command to restart the worker (optional)
+#   CERT_OVERLAY_MODE              fast|normal|certify (default fast)
+#   CERT_EXECUTION_EVIDENCE        optional pipelinegen.overlay-execution-evidence.v1 JSON
+#   CERT_ARTIFACT_PATH             optional artifact file; hashed and bound to the report
+#   CERT_ARTIFACT_SHA256           optional artifact hash when the bytes are remote
+#   CERT_ARTIFACT_KIND             overlay_artifact|final_video (default overlay_artifact)
+#   CERT_ARTIFACT_FRAMES           default 0 (unknown)
+#   CERT_ARTIFACT_FPS_NUM          default 24
+#   CERT_ARTIFACT_FPS_DEN          default 1
+#   CERT_VARIETY_MIN_ITEMS         default 4
+#   CERT_VARIETY_MIN_DISTINCT      default 2
+#   CERT_VARIETY_MAX_SHARE         default 0.75
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,6 +91,17 @@ EXPECT_ENTITY_OVERLAYS="${CERT_EXPECT_ENTITY_OVERLAYS:-5}"
 SKIP_WORKER="${CERT_SKIP_WORKER:-0}"
 INSTALL_RENDERINGGEN="${CERT_INSTALL_RENDERINGGEN:-0}"
 RESTART_RENDERINGGEN="${CERT_RESTART_RENDERINGGEN:-}"
+OVERLAY_MODE="${CERT_OVERLAY_MODE:-fast}"
+EXECUTION_EVIDENCE="${CERT_EXECUTION_EVIDENCE:-}"
+ARTIFACT_PATH="${CERT_ARTIFACT_PATH:-}"
+ARTIFACT_SHA256="${CERT_ARTIFACT_SHA256:-}"
+ARTIFACT_KIND="${CERT_ARTIFACT_KIND:-overlay_artifact}"
+ARTIFACT_FRAMES="${CERT_ARTIFACT_FRAMES:-0}"
+ARTIFACT_FPS_NUM="${CERT_ARTIFACT_FPS_NUM:-24}"
+ARTIFACT_FPS_DEN="${CERT_ARTIFACT_FPS_DEN:-1}"
+VARIETY_MIN_ITEMS="${CERT_VARIETY_MIN_ITEMS:-4}"
+VARIETY_MIN_DISTINCT="${CERT_VARIETY_MIN_DISTINCT:-2}"
+VARIETY_MAX_SHARE="${CERT_VARIETY_MAX_SHARE:-0.75}"
 BUILDINFO_PKG="github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 RG_BUILDINFO_PKG="github.com/Marcuss-ops/RenderingGen/renderinggen/internal/buildinfo"
 
@@ -86,12 +113,12 @@ for arg in "$@"; do
     --stage=*)      STAGE="${arg#--stage=}" ;;
     --skip-deploy)  SKIP_DEPLOY=1 ;;
     --dry-run)      DRY_RUN=1 ;;
-    -h|--help)      sed -n '2,60p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help)      sed -n '2,95p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
 
-STAGE_ORDER=(preflight test build deploy identity canary verify bundle)
+STAGE_ORDER=(preflight test build deploy identity canary verify certify bundle)
 stage_index() {
   local i=0
   for s in "${STAGE_ORDER[@]}"; do
@@ -189,6 +216,7 @@ fi
 # ── 3. build ──────────────────────────────────────────────────────────
 PIPELINEGEN_BIN=""
 RENDERINGGEN_BIN=""
+OVERLAYCERT_BIN=""
 if should_run build && [ "$DRY_RUN" = "0" ]; then
   step "build"
   BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -202,6 +230,13 @@ if should_run build && [ "$DRY_RUN" = "0" ]; then
     check "pipelinegen built" 0 "$(sha256sum "$PIPELINEGEN_BIN" | cut -d' ' -f1)"
   else
     check "pipelinegen built" 1 "go build ./cmd/server"
+  fi
+
+  OVERLAYCERT_BIN="$BUNDLE_DIR/overlaycert-$RUN_ID"
+  if (cd "$ROOT_DIR" && go build -trimpath -o "$OVERLAYCERT_BIN" ./cmd/overlaycert); then
+    check "overlaycert built" 0 "$(sha256sum "$OVERLAYCERT_BIN" | cut -d' ' -f1)"
+  else
+    check "overlaycert built" 1 "go build ./cmd/overlaycert"
   fi
 
   if [ "$SKIP_WORKER" = "0" ] && [ -n "$RG_REPO" ]; then
@@ -417,17 +452,68 @@ if should_run verify && [ "$DRY_RUN" = "0" ] && [ -n "$JOB_ID" ] && [ -f "$BUNDL
   check "timing envelope present" "$([ "$timing_keys" -gt 0 ] && echo 0 || echo 1)" "$timing_keys keys"
 fi
 
-# ── 8. bundle ─────────────────────────────────────────────────────────
+# ── 8. certify ────────────────────────────────────────────────────────
+# The plan says what should appear; the report says what is proven. Fast
+# certifies the contract, normal adds sampled visibility, certify requires
+# interval coverage. A missing proof is never reported as PASS.
+if should_run certify && [ "$DRY_RUN" = "0" ]; then
+  step "certify"
+  OVERLAY_PLAN="$BUNDLE_DIR/overlay_plan.json"
+  CERT_REPORT="$BUNDLE_DIR/overlay_certification.json"
+  if [ ! -s "$OVERLAY_PLAN" ]; then
+    check "overlay certification PASS" 1 "overlay_plan.json missing or empty"
+  else
+    if [ -z "$OVERLAYCERT_BIN" ] || [ ! -x "$OVERLAYCERT_BIN" ]; then
+      OVERLAYCERT_BIN="$BUNDLE_DIR/overlaycert-$RUN_ID"
+      (cd "$ROOT_DIR" && go build -trimpath -o "$OVERLAYCERT_BIN" ./cmd/overlaycert) || true
+    fi
+    CERT_ARGS=(
+      -plan "$OVERLAY_PLAN"
+      -mode "$OVERLAY_MODE"
+      -out "$CERT_REPORT"
+      -artifact-kind "$ARTIFACT_KIND"
+      -artifact-frames "$ARTIFACT_FRAMES"
+      -artifact-fps-num "$ARTIFACT_FPS_NUM"
+      -artifact-fps-den "$ARTIFACT_FPS_DEN"
+      -variety-min-items "$VARIETY_MIN_ITEMS"
+      -variety-min-distinct "$VARIETY_MIN_DISTINCT"
+      -variety-max-share "$VARIETY_MAX_SHARE"
+    )
+    if [ -n "$EXECUTION_EVIDENCE" ]; then
+      CERT_ARGS+=(-execution "$EXECUTION_EVIDENCE")
+    fi
+    if [ -n "$ARTIFACT_PATH" ]; then
+      CERT_ARGS+=(-artifact "$ARTIFACT_PATH")
+    fi
+    if [ -n "$ARTIFACT_SHA256" ]; then
+      CERT_ARGS+=(-artifact-sha256 "$ARTIFACT_SHA256")
+    fi
+    if "$OVERLAYCERT_BIN" "${CERT_ARGS[@]}" >"$BUNDLE_DIR/overlay_certification.log" 2>&1; then
+      cert_detail="$(jq -r '"verdict=\(.verdict) planned=\(.counts.planned) rendered=\(.counts.rendered) verified=\(.counts.verified)"' "$CERT_REPORT" 2>/dev/null || echo "report unreadable")"
+      check "overlay certification PASS" 0 "$cert_detail"
+    else
+      cert_rc=$?
+      cert_detail="$(jq -r '"verdict=\(.verdict) planned=\(.counts.planned) verified=\(.counts.verified) failed=\(.counts.failed) unverifiable=\(.counts.unverifiable)"' "$CERT_REPORT" 2>/dev/null || tail -n 1 "$BUNDLE_DIR/overlay_certification.log")"
+      check "overlay certification PASS" 1 "exit=$cert_rc $cert_detail"
+    fi
+  fi
+fi
+
+# ── 9. verdict + bundle ───────────────────────────────────────────────
+# verdict.json is written even when --stage stops before bundle: a partial run
+# must still say which checks it actually performed, not leave the operator
+# with an empty file and a misleading FAIL.
+jq -s '{verdict: (if (map(select(.ok == false)) | length) == 0 then "PASS" else "FAIL" end),
+        run_id: $run_id,
+        stage: $stage,
+        base_url: $base_url,
+        job_id: $job_id,
+        checks: .}' \
+  --arg run_id "$RUN_ID" --arg stage "$STAGE" --arg base_url "$BASE_URL" --arg job_id "$JOB_ID" \
+  "$CHECKS_FILE" > "$BUNDLE_DIR/verdict.json"
+
 if should_run bundle; then
   step "bundle"
-  jq -s '{verdict: (if (map(select(.ok == false)) | length) == 0 then "PASS" else "FAIL" end),
-          run_id: $run_id,
-          stage: $stage,
-          base_url: $base_url,
-          job_id: $job_id,
-          checks: .}' \
-    --arg run_id "$RUN_ID" --arg stage "$STAGE" --arg base_url "$BASE_URL" --arg job_id "$JOB_ID" \
-    "$CHECKS_FILE" > "$BUNDLE_DIR/verdict.json"
 
   [ -f "$BUNDLE_DIR/ready.json" ] && cp -f "$BUNDLE_DIR/ready.json" "$BUNDLE_DIR/identity-pipelinegen.json"
   [ -n "$PIPELINEGEN_BIN" ] && sha256sum "$PIPELINEGEN_BIN" | cut -d' ' -f1 > "$BUNDLE_DIR/pipelinegen.sha256"
@@ -447,15 +533,24 @@ if should_run bundle; then
     echo
     echo "## Files"
     echo
-    for f in canary-payload.json identity-pipelinegen.json worker-health.json overlay_plan.json timing.json verdict.json; do
+    for f in canary-payload.json identity-pipelinegen.json worker-health.json overlay_plan.json timing.json overlay_certification.json verdict.json; do
       [ -f "$BUNDLE_DIR/$f" ] && echo "- \`$f\`"
     done
     echo
+    if [ -f "$BUNDLE_DIR/overlay_certification.json" ]; then
+      echo "## Overlay certification"
+      echo
+      jq -r '"- verdict: **\(.verdict)** (mode \(.mode))"' "$BUNDLE_DIR/overlay_certification.json"
+      jq -r '"- planned \(.counts.planned), rendered \(.counts.rendered), verified \(.counts.verified), failed \(.counts.failed), unverifiable \(.counts.unverifiable)"' "$BUNDLE_DIR/overlay_certification.json"
+      jq -r '.checks[] | select(.verdict != "PASS") | "- \(.name): \(.verdict) — \(.detail)"' "$BUNDLE_DIR/overlay_certification.json"
+      echo
+    fi
     echo "## Replay on another machine"
     echo
     echo '```bash'
     echo "scripts/certify_overlay_lane.sh --skip-deploy \\"
     echo "  CERT_CANARY_PAYLOAD=bundle/canary-payload.json"
+    echo "  CERT_OVERLAY_MODE=fast"
     echo '```'
     echo
     echo "## Checks"
