@@ -27,6 +27,11 @@ paths = [
   # SHA-256 over the plan identity, not a credential. Path-scoped so the
   # generic-api-key rule stays active for every source file.
   '''internal/capabilities/scripts/testdata/overlay_plan/map_plan/.*\.plan\.json''',
+  # Clip-render benchmark captures (2026-11-27): every flagged `storage_key` is
+  # the SHA-256 of the stored object identity, i.e. the same value the API
+  # returns as `sha256`. Machine output, path-scoped so the generic-api-key
+  # rule stays active for every source file.
+  '''ops/benchmarks/clip-render-20261127/.*\.json''',
 ]
 regexes = [
   "1Qatr7H-NoKiolIFh6SIrhM19nlYWdOPj",  # cmd/admin/internal/cleanup/cleanup_delete_folders.go:76 — Google Drive folder IDs (resource identifiers in the cleanup allowlist), not credentials
