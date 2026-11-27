@@ -581,6 +581,18 @@ func buildSemanticEditorialResult(editorial *semanticEngineEditorial, manifest *
 	}
 	result.HeavySentences = manifest.Editorial.HeavySentences
 	result.SceneHighlights, result.SceneHighlightsCertified = validateSceneHighlights(transcript, manifest.Editorial.SceneHighlights)
+	if len(manifest.Editorial.IntroAgenda) > 0 {
+		if len(manifest.Editorial.IntroAgenda) < 3 || len(manifest.Editorial.IntroAgenda) > 5 {
+			return nil, fmt.Errorf("semantic-engine: intro_agenda has %d topics, want 3-5", len(manifest.Editorial.IntroAgenda))
+		}
+		result.IntroAgenda = append([]scriptpkg.IntroTopic(nil), manifest.Editorial.IntroAgenda...)
+		for _, topic := range result.IntroAgenda {
+			if strings.TrimSpace(topic.Text) == "" || topic.SentenceIndex < 0 ||
+				!groundedSpan(transcript, topic.StartByte, topic.EndByte, topic.Text) {
+				return nil, fmt.Errorf("semantic-engine: intro topic %q is not grounded in the transcript", topic.Text)
+			}
+		}
+	}
 	result.Timings = manifest.Editorial.Timings
 	return &result, nil
 }

@@ -10,6 +10,7 @@ type semanticEngineEditorialResult struct {
 	HeavySentences  []scriptpkg.ImportantSentence    `json:"heavy_sentences"`
 	ChapterManifest scriptpkg.ChapterManifest        `json:"chapter_manifest"`
 	SceneHighlights []scriptpkg.SceneHighlight       `json:"scene_highlights"`
+	IntroAgenda     []scriptpkg.IntroTopic           `json:"intro_agenda,omitempty"`
 	Timings         scriptpkg.PhraseImpactTimings    `json:"timings"`
 }
 
@@ -24,22 +25,23 @@ type semanticEngineSplitResponse struct {
 }
 
 type semanticEngineAnalyzerVersions struct {
-	VisualNER       string `json:"visualner"`
-	SemanticCore    string `json:"semantic_core"`
-	PhraseImpact    string `json:"phrase_impact"`
-	Lexicon         string `json:"lexicon"`
-	EntityIndex     string `json:"entity_index,omitempty"`
-	Linker          string `json:"linker,omitempty"`
-	Numbers         string `json:"numbers,omitempty"`
-	Dates           string `json:"dates,omitempty"`
-	Quantities      string `json:"quantities,omitempty"`
-	Places          string `json:"places,omitempty"`
-	Routes          string `json:"routes,omitempty"`
-	Roles           string `json:"roles,omitempty"`
-	AgeFacts        string `json:"age_facts,omitempty"`
-	PersonRelations string `json:"person_relations,omitempty"`
-	Events          string `json:"events,omitempty"`
-	Discourse       string `json:"discourse,omitempty"`
+	VisualNER        string `json:"visualner"`
+	SemanticCore     string `json:"semantic_core"`
+	PhraseImpact     string `json:"phrase_impact"`
+	Lexicon          string `json:"lexicon"`
+	EntityIndex      string `json:"entity_index,omitempty"`
+	Linker           string `json:"linker,omitempty"`
+	Numbers          string `json:"numbers,omitempty"`
+	Dates            string `json:"dates,omitempty"`
+	Quantities       string `json:"quantities,omitempty"`
+	Places           string `json:"places,omitempty"`
+	Routes           string `json:"routes,omitempty"`
+	Roles            string `json:"roles,omitempty"`
+	AgeFacts         string `json:"age_facts,omitempty"`
+	PersonRelations  string `json:"person_relations,omitempty"`
+	Events           string `json:"events,omitempty"`
+	Discourse        string `json:"discourse,omitempty"`
+	PersonAttributes string `json:"person_attributes,omitempty"`
 }
 
 type semanticEngineSearchIntent struct {

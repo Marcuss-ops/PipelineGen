@@ -19,7 +19,7 @@ il motivo, non `DONE`.
 | 5 | P1 | Atomicità e recovery dell'outbox enrichment | **DONE** | [02](02-ASSET-TRANSFER-PORTS-AND-OUTBOX.md) §2 |
 | 6 | P1 | Disaccoppiare `AssetTransferServiceImpl` da SQLite e Drive | **DONE** | [02](02-ASSET-TRANSFER-PORTS-AND-OUTBOX.md) §3 |
 | 7 | P1 | Precedenze delle fonti media rispetto alla SSOT | **DONE** | [02](02-ASSET-TRANSFER-PORTS-AND-OUTBOX.md) §4 |
-| 8 | P1 | Tipizzare gli envelope FinalJob | **VERIFICATO — residuo in `DEMOL-08`** | [03](03-FINALJOB-TYPING-STATE.md) |
+| 8 | P1 | Tipizzare gli envelope FinalJob | **DONE** (2026-11-27) | [04](04-FINALJOB-TYPED-ENVELOPE.md) — [03](03-FINALJOB-TYPING-STATE.md) è lo stato pre-refactor |
 | 9 | P1 | Idempotenza e stati terminali con fault injection | **DONE** | [02](02-ASSET-TRANSFER-PORTS-AND-OUTBOX.md) §2 |
 | 10 | P2 | Churn, fan-in, fan-out e complessità per hotspot | **DONE** | §5 sotto |
 | 11 | P2 | Ridurre le funzioni oltre il budget ciclomatico | **DONE (ratchet)** | §6 sotto |
@@ -56,7 +56,7 @@ il motivo, non `DONE`.
 | Contratto ICU | `make verify-rust-fetch` | ✅ (self-test sintetico) |
 | Governance architetturale | `make verify-architecture` | exit 0, `has_hard_gate_hits=false` |
 | Cyclo ratchet | `go run ./cmd/cyclo-budget -check` | ✅ 39 funzioni >40, baseline 39 |
-| Dead code | `scripts/ci/check-deadcode-baseline.sh` | ✅ 219 / max 219 (zero headroom) |
+| Dead code | `scripts/ci/check-deadcode-baseline.sh` | ✅ 219 / max 219 al 2026-11-26; **214 / max 214** dal 2026-11-27 ([05](05-CLIPRENDER-BUDGET-AND-DEADCODE.md) §4) |
 | Duplicazione | `dupl -t 100 internal cmd pkg` | 149 gruppi; **47** produzione; **20** cross-file |
 | Archi capability→platform | `go list` + `Imports` | **142** (era 146 documentato) |
 | Archi kernel→platform | `go list` + `Imports` | **0** |
@@ -154,11 +154,16 @@ check eseguiti, `Stato:`) e non un diario; timing map, log e dump restano in
 
 ## 9. Allocazioni (P3)
 
-`BenchmarkFinalJobDemolition/PayloadBuild` misura oggi **2286 allocs/op** e
+`BenchmarkFinalJobDemolition/PayloadBuild` misurava **2286 allocs/op** e
 **193.417 B/op**, contro **2538 / 223.145 B** documentati in
-`refactor-p0-2026-11-26/07`: il costo è già sceso con la rimozione degli
-snapshot integrali (DEMOL-07) e non c'è un'allocazione da ottimizzare senza un
-profilo che la indichi. Nessuna modifica ai loop.
+`refactor-p0-2026-11-26/07`: il costo era già sceso con la rimozione degli
+snapshot integrali (DEMOL-07) e non c'era un'allocazione da ottimizzare senza
+un profilo che la indicasse. Nessuna modifica ai loop.
+
+Dopo DEMOL-08 (2026-11-27) la proiezione a mappa misura **2323 allocs/op** e
+**226.150 B/op** (+1,6% allocs, +16,9% byte): i byte extra sono la copia della
+stringa del piano nella proiezione PREPARE, che il percorso di produzione non
+paga. Dettaglio e misure in [04](04-FINALJOB-TYPED-ENVELOPE.md) §4.
 
 ## 10. Residui dichiarati (non nascosti)
 
@@ -169,11 +174,19 @@ profilo che la indichi. Nessuna modifica ai loop.
    `b9135bf`) e `BrainRust` ha un worktree sporco e `644f1ce` non pubblicato.
    I pin di questa wave puntano alle revisioni **pubblicate** (`e8fec015`,
    `v0.3.8` @ `a4ab4cb`) perché sono le uniche fetchabili da un runner.
-3. **`DEMOL-08`**: gli envelope stabili sono tipizzati e validati, ma il builder
-   compone ancora `map[string]any`. Vedi la scheda 03.
-4. **Dead code guard a 219/219**: verde, ma senza headroom. La prossima funzione
-   irraggiungibile va o resa raggiungibile o compensata da uno sweep.
+3. **`DEMOL-08`** (chiuso il 2026-11-27): il builder componeva ancora
+   `map[string]any`; ora costruisce `PrepareV1`/`FinalizeEnvelopeV1` e la mappa
+   esiste solo in `MasterPayloadsOf`. Vedi [04](04-FINALJOB-TYPED-ENVELOPE.md).
+4. ~~**Dead code guard a 219/219**~~: risolto il 2026-11-27 con lo sweep
+   dell'orphan package `voiceover/verbatimcheck` e di due helper senza
+   chiamanti. Misura **214/214**, `MAX` abbassato 219 → 214
+   ([05](05-CLIPRENDER-BUDGET-AND-DEADCODE.md) §4).
 5. **39 funzioni sopra complessità 40**, baselinate (§6).
+6. **`archcheck --strict` è rosso su `internal/capabilities/scripts`** (63 file
+   contro 62, 18.786 righe contro 18.696): la crescita è il file non tracciato
+   `runner_clip_audio_latch.go` di un altro attore. Il budget di `cliprender`
+   (11.600 / 10.629) è invece chiuso: 10.583 / 10.629
+   ([05](05-CLIPRENDER-BUDGET-AND-DEADCODE.md) §5).
 
 ## 11. Esito sul commit effettivo
 

@@ -45,11 +45,8 @@ var (
 	FreezeFinalJobOverlayPlans      = finaljob.FreezeFinalJobOverlayPlans
 	OverlayPlanRenderDigest         = finaljob.OverlayPlanRenderDigest
 	RepairFinalJobOverlayCheckpoint = finaljob.RepairFinalJobOverlayCheckpoint
-	applyOverlayImageStyle          = finaljob.ApplyOverlayImageStyle
 	certifiedLocalizedRenderForClip = finaljob.CertifiedLocalizedRenderForClip
 	cloneOverlayGroupLimits         = finaljob.CloneOverlayGroupLimits
-	dumpOverlayGateDebug            = finaljob.DumpOverlayGateDebug
-	effectiveImageStyle             = finaljob.EffectiveImageStyle
 	finalJobAudioInput              = finaljob.FinalJobAudioInput
 	finalJobImageRequested          = finaljob.FinalJobImageRequested
 	finalJobObjectStoreConfigured   = finaljob.FinalJobObjectStoreConfigured
@@ -60,13 +57,11 @@ var (
 	finalJobReceiptTerminal         = finaljob.FinalJobReceiptTerminal
 	finalJobRenderLanguage          = finaljob.FinalJobRenderLanguage
 	finalJobSettleContext           = finaljob.FinalJobSettleContext
-	isImageOverlayItem              = finaljob.IsImageOverlayItem
 	overlayBackgroundFromPayload    = finaljob.OverlayBackgroundFromPayload
 	overlayRenderBindsPlan          = finaljob.OverlayRenderBindsPlan
 	overlayRenderableCandidates     = finaljob.OverlayRenderableCandidates
 	overlayResumeStageAfterRepair   = finaljob.OverlayResumeStageAfterRepair
 	overlayStatusBackground         = finaljob.OverlayStatusBackground
-	overlayStatusPlanSummary        = finaljob.OverlayStatusPlanSummary
 	overlayStatusRequest            = finaljob.OverlayStatusRequest
 	reconcileInterruptedFinalJob    = finaljob.ReconcileInterruptedFinalJob
 	validateOverlayEditorialDensity = finaljob.ValidateOverlayEditorialDensity
@@ -79,10 +74,7 @@ type (
 	FinalJobSplitFinalizer = finaljob.FinalJobSplitFinalizer
 )
 
-const (
-	overlayGroupLongPhrases  = finaljob.OverlayGroupLongPhrases
-	overlayGroupShortPhrases = finaljob.OverlayGroupShortPhrases
-)
+const ()
 
 type (
 	OverlayArtifactPublisher = finaljob.OverlayArtifactPublisher
@@ -205,8 +197,6 @@ type (
 var ErrJobExists = renderqueue.ErrJobExists
 var ErrRenderRequestConflict = renderqueue.ErrRenderRequestConflict
 
-const defaultQueuePollInterval = renderqueue.DefaultQueuePollInterval
-
 func marshalRenderingGenOverlayPlan(plan capmodel.OverlayPlan) ([]byte, error) {
 	return renderqueue.MarshalRenderingGenOverlayPlan(plan)
 }
@@ -283,7 +273,6 @@ var (
 
 // Internal seams kept under their historical names.
 var (
-	sceneClips                     = renderunits.SceneClips
 	sceneStockClipIDs              = renderunits.SceneStockClipIDs
 	primaryVisualClip              = renderunits.PrimaryVisualClip
 	sceneVisualClipsAreStockOnly   = renderunits.SceneVisualClipsAreStockOnly

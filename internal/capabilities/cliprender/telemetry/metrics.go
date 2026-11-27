@@ -1,4 +1,4 @@
-package cliprender
+package telemetry
 
 // metrics.go owns the canonical V2 execution report for a sealed
 // ClipRenderPlanV1 render. One shape serves every backend (Chronon Vulkan,
@@ -20,7 +20,16 @@ package cliprender
 // second, independent value for a field this report owns, and no new
 // instrumentation may land in a parallel contract.
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+)
+
+// RenderBackend identifies the execution backend that rendered a sealed
+// plan. The type lives in the kernel (one owner); this alias keeps the report
+// contract readable in this package.
+type RenderBackend = kernelmedia.RenderBackend
 
 // NotInstrumented is the sentinel for a phase/counter with no real
 // instrumentation yet. It serializes as the string "NOT_INSTRUMENTED".

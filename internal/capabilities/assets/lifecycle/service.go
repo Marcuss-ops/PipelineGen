@@ -190,14 +190,18 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 		if err != nil {
 			return out, fmt.Errorf("%w: duplicate check: %w", ErrFinalizationFailed, err)
 		}
-		switch {
-		case match != nil && match.Kind == assetop.DuplicateSameAsset && match.SameContent && s.dedupe.Policy().SkipIfExists:
-			existing := match.Record
+		switch decision := assetop.DecideDedupe(match, s.dedupe.Policy(), needsDelivery); {
+		case decision.SkipID:
+			existing := decision.Record
+			// Published is reported ONLY because the decision certified the
+			// matched row's delivery (state AND external identity). A row that
+			// failed to publish never reaches this branch: it falls through to
+			// the normal publish path below and is retried.
 			out.OK, out.Status, out.DeliveryStatus = true, "skipped_duplicate", asset.AssetPublishPublished
 			out.DriveLink, out.DriveFileID, out.DownloadLink, out.ContentSHA256 = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.ContentSHA256
 			out.ContentHash = contentHash
 			return out, nil
-		case match != nil && match.Kind == assetop.DuplicateSameContent && match.Record != nil:
+		case decision.ReuseStorage:
 			// These bytes are already stored under ANOTHER logical asset. The
 			// record is still created: the two assets share one physical
 			// content identity (same ContentHash, therefore the same blob),
@@ -206,7 +210,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			// the asset that published it, so pointing a second asset at it
 			// would report a success whose bytes are not in that asset's
 			// folder. Reusing the physical blob is the storage layer's job.
-			out.ReusedAssetID = match.Record.ID
+			out.ReusedAssetID = decision.Record.ID
 		}
 	}
 
@@ -368,15 +372,15 @@ func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, file
 	if err != nil {
 		return out, fmt.Errorf("%w: duplicate check: %w", ErrFinalizationFailed, err)
 	}
-	switch {
-	case match != nil && match.Kind == assetop.DuplicateSameAsset && match.SameContent && s.dedupe.Policy().SkipIfExists:
-		existing := match.Record
+	switch decision := assetop.DecideDedupe(match, s.dedupe.Policy(), input.RequireDrive || (s.uploadPolicy.Enabled && input.LocalPath != "")); {
+	case decision.SkipID:
+		existing := decision.Record
 		out.OK, out.Status = true, "would_skip_duplicate"
 		out.DriveLink, out.DriveFileID, out.DownloadLink, out.ContentSHA256 = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.ContentSHA256
 		return out, nil
-	case match != nil && match.Kind == assetop.DuplicateSameContent && match.Record != nil:
+	case decision.ReuseStorage:
 		out.OK, out.Status = true, "would_reuse_storage"
-		out.ReusedAssetID = match.Record.ID
+		out.ReusedAssetID = decision.Record.ID
 		return out, nil
 	}
 	out.OK, out.Status = true, "would_process"

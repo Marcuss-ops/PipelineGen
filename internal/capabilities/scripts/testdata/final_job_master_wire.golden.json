@@ -1,0 +1,113 @@
+{
+  "prepare": {
+    "compiled_render_plan_json": "{\"plan_version\":2,\"timeline_revision\":1,\"timeline_sha256\":\"f8e1aadd5cd25f14731e0f5e94d57681c8b06aa23cd0900ab511d8e25d345e15\",\"duration_us\":5000000,\"output\":{\"container\":\"mp4\",\"video_codec\":\"h264\",\"width\":1920,\"height\":1080,\"fps_num\":24,\"fps_den\":1,\"pixel_format\":\"yuv420p\",\"profile_id\":\"VELOX_ASSEMBLY_READY_V1\",\"codec_profile\":\"high\",\"codec_level\":\"4.0\",\"gop_size\":48,\"b_frames\":0,\"closed_gop\":true,\"time_base_num\":1,\"time_base_den\":90000},\"final_audio\":{\"mode\":\"FINAL_AUDIO_COPY\",\"asset_id\":\"audio-1\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size_bytes\":12,\"codec\":\"aac\",\"sample_rate_hz\":48000,\"channels\":2,\"duration_us\":5000000,\"timeline_revision\":1,\"timeline_sha256\":\"f8e1aadd5cd25f14731e0f5e94d57681c8b06aa23cd0900ab511d8e25d345e15\"},\"video_tracks\":[{\"track_id\":\"main-video\",\"segments\":[{\"segment_id\":\"segment-0000\",\"asset_id\":\"phrase-video\",\"sha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"timeline_start_frame\":0,\"frame_count\":120,\"source_in_us\":0,\"source_duration_us\":5000000}]}],\"assets\":[{\"asset_id\":\"audio-1\",\"asset_key\":\"audio-1\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size_bytes\":12,\"kind\":\"final_audio\",\"mime\":\"audio/mp4\",\"duration_us\":5000000,\"first_frame_keyframe\":true,\"closed_gop\":true},{\"asset_id\":\"phrase-video\",\"asset_key\":\"phrase-video\",\"sha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"size_bytes\":500,\"kind\":\"video\",\"mime\":\"video/mp4\",\"duration_us\":5000000,\"profile_id\":\"VELOX_ASSEMBLY_READY_V1\",\"frame_count\":120,\"timeline_revision\":1,\"timeline_sha256\":\"f8e1aadd5cd25f14731e0f5e94d57681c8b06aa23cd0900ab511d8e25d345e15\",\"first_frame_keyframe\":true,\"closed_gop\":true}]}",
+    "compiled_render_plan_sha256": "9ad2071014c58b378c897aae0cea475ec520d96b89b49e70e81cb09d9d68c09a",
+    "idempotency_key": "creator-77-run-phrase-attempt-1-9ad2071014c5",
+    "job_type": "video.render.v2",
+    "render_only": true,
+    "script_text": "Garlasco, provincia di Pavia.",
+    "video_name": "Garlasco [run-phrase]"
+  },
+  "finalize": {
+    "idempotency_key": "creator-77-run-phrase-attempt-1-9ad2071014c5-finalize",
+    "runtime_assets": [
+      {
+        "asset_id": "phrase-video",
+        "copy_eligible": true,
+        "drive_file_id": "phrase-drive-id",
+        "duration_ms": 5000,
+        "duration_us": 5000000,
+        "end_ms": 5000,
+        "fps_den": 1,
+        "fps_num": 24,
+        "frame_count": 120,
+        "role": "clip",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "size_bytes": 500,
+        "start_ms": 0,
+        "url": "velox-drive://phrase-drive-id"
+      },
+      {
+        "asset_id": "audio-1",
+        "audio_contract_version": "",
+        "audio_plan_sha256": "",
+        "audio_plan_version": "",
+        "channel_layout": "stereo",
+        "channels": 2,
+        "codec": "aac",
+        "copy_eligible": true,
+        "drive_file_id": "audio-drive-id",
+        "duration_ms": 5000,
+        "final_mix": true,
+        "profile": "LC",
+        "role": "final_audio",
+        "sample_rate": 48000,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size_bytes": 12,
+        "strategy": "FINAL_AUDIO_COPY",
+        "url": "velox-drive://audio-drive-id"
+      },
+      {
+        "asset_id": "phrase-video",
+        "audio_mode": "preserve_final_audio",
+        "audio_streams": 0,
+        "codec": "",
+        "container": "",
+        "copy_eligible": true,
+        "drive_file_id": "phrase-drive-id",
+        "duration_ms": 5000,
+        "duration_us": 5000000,
+        "fps_den": 1,
+        "fps_num": 24,
+        "frame_count": 120,
+        "height": 0,
+        "mode": "replace",
+        "pixel_format": "",
+        "role": "overlay_timeline",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "size_bytes": 500,
+        "url": "velox-drive://phrase-drive-id",
+        "width": 0
+      }
+    ],
+    "runtime_payload": {
+      "overlay_manifest": {
+        "asset": {
+          "asset_id": "phrase-video",
+          "audio_mode": "preserve_final_audio",
+          "audio_streams": 0,
+          "codec": "",
+          "container": "",
+          "copy_eligible": true,
+          "drive_file_id": "phrase-drive-id",
+          "duration_ms": 5000,
+          "duration_us": 5000000,
+          "fps_den": 1,
+          "fps_num": 24,
+          "frame_count": 120,
+          "height": 0,
+          "mode": "replace",
+          "pixel_format": "",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "size_bytes": 500,
+          "url": "velox-drive://phrase-drive-id",
+          "width": 0
+        },
+        "entries": [],
+        "mode": "replace",
+        "plan_id": "plan-manifest",
+        "schema_version": "pipelinegen.overlay-manifest.v1",
+        "timeline_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "video_id": "run-manifest"
+      },
+      "overlays": [],
+      "runtime_audio": {
+        "voiceover_asset_id": "audio-1",
+        "voiceover_duration_seconds": 5,
+        "voiceover_volume": 1
+      },
+      "script_text": "Garlasco, provincia di Pavia.",
+      "video_name": "Garlasco [run-phrase]"
+    }
+  }
+}

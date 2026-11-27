@@ -74,8 +74,6 @@ type (
 	TransactionalAssetWriter = core.TransactionalAssetWriter
 	ProjectionPort           = core.ProjectionPort
 	stockManifestBuilder     = core.StockManifestBuilder
-	noopWriter               = core.NoopWriter
-	noopProjection           = core.NoopProjection
 
 	StockPlanStep         = plan.StockPlanStep
 	StockStageSourcesStep = ingest.StockStageSourcesStep
@@ -256,5 +254,3 @@ type (
 func projectManifestToPipelineResult(manifest *job.ArtifactManifest) (*PipelineResult, error) {
 	return pipeline.ProjectManifestToPipelineResult(manifest)
 }
-
-type stockDispatcherWriter = core.StockDispatcherWriter

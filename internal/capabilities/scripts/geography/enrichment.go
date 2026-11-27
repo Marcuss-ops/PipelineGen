@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"unicode"
 
@@ -113,121 +112,41 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 	if geocoder == nil {
 		return fmt.Errorf("geocoding is enabled but no geocoder adapter is wired")
 	}
-	indices := make([]int, 0, len(annotations))
-	for index := range annotations {
-		indices = append(indices, index)
-	}
-	sort.Ints(indices)
-	state := &enrichState{resolved: make(map[string]capabilitygeocoding.Result)}
-	personTokens := personNameTokens(annotations)
-	level := ""
+	indices := sortedSceneIndexes(annotations)
+	request := enrichRequest{geocoder: geocoder, language: language, personTokens: personNameTokens(annotations)}
 	if len(options) > 0 {
 		constraint, err := capabilitygeocoding.ConstraintLevel(options[0].MapLevel)
 		if err != nil {
 			return fmt.Errorf("map level: %w", err)
 		}
-		level = constraint
-	}
-	var mapExclusions *MapCandidateExclusions
-	if len(options) > 0 && options[0].MapsOnly {
-		var err error
-		mapExclusions, err = MapCandidateExclusionsFor(linguistics.DefaultProfilesOrNil(), language)
-		if err != nil {
-			return fmt.Errorf("load map candidate exclusion lexicon: %w", err)
+		request.level = constraint
+		request.mapsOnly = options[0].MapsOnly
+		request.sceneTexts = options[0].SceneTexts
+		if request.mapsOnly {
+			request.exclusions, err = MapCandidateExclusionsFor(linguistics.DefaultProfilesOrNil(), language)
+			if err != nil {
+				return fmt.Errorf("load map candidate exclusion lexicon: %w", err)
+			}
 		}
 	}
+	state := &enrichState{resolved: make(map[string]capabilitygeocoding.Result)}
 	for _, index := range indices {
 		annotation := annotations[index]
 		if annotation == nil {
 			continue
 		}
-		if len(options) > 0 && options[0].MapsOnly {
-			// A generic noun can arrive pre-geocoded from an earlier enrichment
-			// surface (for example Italian "Paese" resolving to the town in
-			// Treviso). It is not a grounded proper name and must not become a
-			// map stop, regardless of whether Geo was already attached.
-			for entityIndex := range annotation.PrimaryEntities {
-				if isPlaceEntityType(annotation.PrimaryEntities[entityIndex].Type) &&
-					isGenericPlaceLabel(annotation.PrimaryEntities[entityIndex].CanonicalName, language) {
-					annotation.PrimaryEntities[entityIndex].Geo = nil
-					continue
-				}
-				if outOfMapLevel(annotation.PrimaryEntities[entityIndex].Geo, level) {
-					// The scope is already certified: this is not a lookup
-					// to retry, so record the refusal for the retry gate.
-					state.refuseName(annotation.PrimaryEntities[entityIndex].CanonicalName)
-					state.refuseName(normalizeGeocodePlaceQuery(annotation.PrimaryEntities[entityIndex].CanonicalName, language))
-					annotation.PrimaryEntities[entityIndex].Geo = nil
-				}
-			}
-			for entityIndex := range annotation.SecondaryEntities {
-				if isPlaceEntityType(annotation.SecondaryEntities[entityIndex].Type) &&
-					isGenericPlaceLabel(annotation.SecondaryEntities[entityIndex].CanonicalName, language) {
-					annotation.SecondaryEntities[entityIndex].Geo = nil
-					continue
-				}
-				if outOfMapLevel(annotation.SecondaryEntities[entityIndex].Geo, level) {
-					state.refuseName(annotation.SecondaryEntities[entityIndex].CanonicalName)
-					state.refuseName(normalizeGeocodePlaceQuery(annotation.SecondaryEntities[entityIndex].CanonicalName, language))
-					annotation.SecondaryEntities[entityIndex].Geo = nil
-				}
-			}
-		}
+		policy := request.policy(state, annotation, index)
+		policy.prefilterOutOfLevel(annotation)
 		// The scene's own already-grounded places are the lookup context: a
 		// homonymous name is disambiguated by the country/region the scene has
 		// already certified, never by invented geography. The context grows as
 		// coarse places resolve, so a later city lookup sees them.
 		geoContext := sceneGeoContext(annotation)
-		for entityIndex := range annotation.PrimaryEntities {
-			if len(options) > 0 && options[0].MapsOnly && IgnoredMapCandidate(mapExclusions, annotation.PrimaryEntities[entityIndex].CanonicalName, language) {
-				annotation.PrimaryEntities[entityIndex].Geo = nil
-				continue
-			}
-			if len(options) > 0 && options[0].MapsOnly && (personNameFragment(annotation, annotation.PrimaryEntities[entityIndex].CanonicalName) || personNameToken(personTokens, annotation.PrimaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].SceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName)) {
-				// A one-token LOCATION/GPE annotation can be the first or last
-				// name of a separately grounded person (e.g. "Chiara" from
-				// "Chiara Poggi"). Never send that homonym to the geocoder.
-				annotation.PrimaryEntities[entityIndex].Geo = nil
-				continue
-			}
-			if len(options) > 0 && options[0].MapsOnly && !containsGroundedPlaceName(options[0].SceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName) {
-				continue
-			}
-			if err := geocodeAnnotatedEntity(ctx, geocoder, state, &annotation.PrimaryEntities[entityIndex], index, language, level, &geoContext); err != nil {
-				return err
-			}
+		if err := request.enrichEntities(ctx, state, policy, annotation.PrimaryEntities, index, &geoContext); err != nil {
+			return err
 		}
-		for entityIndex := range annotation.SecondaryEntities {
-			if len(options) > 0 && options[0].MapsOnly && IgnoredMapCandidate(mapExclusions, annotation.SecondaryEntities[entityIndex].CanonicalName, language) {
-				annotation.SecondaryEntities[entityIndex].Geo = nil
-				continue
-			}
-			if len(options) > 0 && options[0].MapsOnly && (personNameFragment(annotation, annotation.SecondaryEntities[entityIndex].CanonicalName) || personNameToken(personTokens, annotation.SecondaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].SceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName)) {
-				annotation.SecondaryEntities[entityIndex].Geo = nil
-				continue
-			}
-			if len(options) > 0 && options[0].MapsOnly && !containsGroundedPlaceName(options[0].SceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName) {
-				continue
-			}
-			if err := geocodeAnnotatedEntity(ctx, geocoder, state, &annotation.SecondaryEntities[entityIndex], index, language, level, &geoContext); err != nil {
-				return err
-			}
-		}
-		shouldRetry := func(entity scriptpkg.AnnotatedEntity) bool {
-			if !isPlaceEntityType(entity.Type) || entity.Geo != nil {
-				return false
-			}
-			if state.nameRefused(entity.CanonicalName) {
-				return false
-			}
-			if len(options) == 0 || !options[0].MapsOnly {
-				return true
-			}
-			return !IgnoredMapCandidate(mapExclusions, entity.CanonicalName, language) &&
-				!personNameFragment(annotation, entity.CanonicalName) &&
-				!personNameToken(personTokens, entity.CanonicalName) &&
-				!capitalizedNameFragment(options[0].SceneTexts[index], entity.CanonicalName) &&
-				containsGroundedPlaceName(options[0].SceneTexts[index], entity.CanonicalName)
+		if err := request.enrichEntities(ctx, state, policy, annotation.SecondaryEntities, index, &geoContext); err != nil {
+			return err
 		}
 		// A scene that grounds more than one country has no single correct
 		// frame: "Roma, Torino e Parigi ... Italia ... Francia" resolves Italy
@@ -242,24 +161,14 @@ func Enrich(ctx context.Context, geocoder capabilitygeocoding.Geocoder, annotati
 		// Portogallo"). Its first lookup has no grounded context and may
 		// correctly return ErrNoResult. Retry unresolved place annotations
 		// after the full pass has adopted any country/region coordinates.
-		for entityIndex := range annotation.PrimaryEntities {
-			if !shouldRetry(annotation.PrimaryEntities[entityIndex]) {
-				continue
-			}
-			if err := geocodeWithSceneFrames(ctx, geocoder, state, &annotation.PrimaryEntities[entityIndex], index, language, level, retryFrames, &geoContext); err != nil {
-				return err
-			}
+		if err := request.retryEntities(ctx, state, policy, annotation.PrimaryEntities, index, retryFrames, &geoContext); err != nil {
+			return err
 		}
-		for entityIndex := range annotation.SecondaryEntities {
-			if !shouldRetry(annotation.SecondaryEntities[entityIndex]) {
-				continue
-			}
-			if err := geocodeWithSceneFrames(ctx, geocoder, state, &annotation.SecondaryEntities[entityIndex], index, language, level, retryFrames, &geoContext); err != nil {
-				return err
-			}
+		if err := request.retryEntities(ctx, state, policy, annotation.SecondaryEntities, index, retryFrames, &geoContext); err != nil {
+			return err
 		}
-		if len(options) > 0 && options[0].MapsOnly {
-			if err := geocodeGroundedPlaceNames(ctx, geocoder, state, annotation, options[0].SceneTexts[index], language, level, index, &geoContext, personTokens); err != nil {
+		if request.mapsOnly {
+			if err := geocodeGroundedPlaceNames(ctx, geocoder, state, annotation, request.sceneTexts[index], language, request.level, index, &geoContext, request.personTokens); err != nil {
 				return err
 			}
 		}

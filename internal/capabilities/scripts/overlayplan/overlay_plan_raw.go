@@ -92,14 +92,15 @@ func buildRawOverlayScenes(
 // TICKET-48 kept those three validated-but-inert by decision, so this filter
 // stays; reopening it means certifying a layout first.
 var overlayVisualRecipes = map[string]bool{
-	"counter_odometer":   true,
-	"role_lower_third":   true,
-	"route_map":          true,
-	"quote_attribution":  true,
-	"source_highlight":   true,
-	"relative_time_jump": true,
-	"cause_effect_card":  true,
-	"process_stepper":    true,
+	"counter_odometer":      true,
+	"role_lower_third":      true,
+	"route_map":             true,
+	"quote_attribution":     true,
+	"source_highlight":      true,
+	"relative_time_jump":    true,
+	"cause_effect_card":     true,
+	"process_stepper":       true,
+	"entity_attribute_list": true,
 }
 
 // VisualRecipesForScene forwards every supported grounded recipe of one scene,

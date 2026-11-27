@@ -101,10 +101,28 @@ type Canvas struct {
 	// LongPhraseMotions is the certified long-phrase (6+ words) entrance pool.
 	// It has no per-length buckets: the planner rotates this pool with the same
 	// deterministic sampler as the short lane, and the pin still wins.
-	LongPhraseMotions    []string `json:"long_phrase_motions,omitempty"`
-	PhraseMotionFamily   string   `json:"phrase_motion_family,omitempty"`
-	ImageMotions         []string `json:"image_motions,omitempty"`
-	ImageWithTextMotions []string `json:"image_with_text_motions,omitempty"`
+	LongPhraseMotions  []string `json:"long_phrase_motions,omitempty"`
+	PhraseMotionFamily string   `json:"phrase_motion_family,omitempty"`
+	// DateMotions and MetricMotions are the certified `entity.date` and
+	// `entity.metric` registry groups. They travel in the request so the Rust
+	// planner selects from the catalog instead of its own copied id list
+	// (ANIMRAND-08). An empty pool leaves the lane on the presentation default;
+	// production always fills them from the animation registry.
+	DateMotions   []string `json:"date_motions,omitempty"`
+	MetricMotions []string `json:"metric_motions,omitempty"`
+	// MotionFamilies maps every numeric motion id to its registry family
+	// ("classic", "didone", "typewriter"). The planner classifies with this
+	// metadata instead of an id prefix (ANIMRAND-12).
+	MotionFamilies map[string]string `json:"motion_families,omitempty"`
+	// LightLeakMotions is the certified `image.lightleak` registry group. Same
+	// rule: the catalog is the single owner, the planner never keeps a copy.
+	LightLeakMotions []string `json:"light_leak_motions,omitempty"`
+	// SourceHighlightMotions is the certified `phrase.documentary` group: the
+	// compatible pool a source-highlight recipe selects from instead of pinning
+	// `doc_04_archival_source_highlight` on every hit (ANIMRAND-05).
+	SourceHighlightMotions []string `json:"source_highlight_motions,omitempty"`
+	ImageMotions           []string `json:"image_motions,omitempty"`
+	ImageWithTextMotions   []string `json:"image_with_text_motions,omitempty"`
 	// ImagePresets is the certified `preset.image` vocabulary. The planner's
 	// seeded sampler selects from it when it promotes an entity card to an
 	// image, so the Rust side never hardcodes a Chronon-owned preset id.

@@ -22,7 +22,6 @@
 package overlays
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 
@@ -80,9 +79,10 @@ type DeterministicPresetSampler struct{}
 
 // Sample returns the deterministic (preset, animation) pair for the given
 // input. The selection is derived by hashing the 4-component seed
-// (fingerprint, scene, semantic id, family) and mapping independent slices of
-// the digest onto the candidate lists — the preset index and the animation
-// index are decoupled, so the two never collapse to the same position.
+// (fingerprint, scene, semantic id, family) and mapping independent RAW digest
+// windows onto the candidate lists — the preset index and the animation index
+// are decoupled, so the two never collapse to the same position. The mapping
+// is SeededIndex (uniform, rejection sampled): SelectionAlgorithmV2.
 //
 // Empty candidate lists yield an empty selection (no error): the caller
 // validates family existence upstream.
@@ -99,14 +99,16 @@ func (DeterministicPresetSampler) Sample(in PresetSampleInput) PresetSample {
 	if err != nil {
 		panic(fmt.Sprintf("overlays: preset sampler seed marshal: %v", err))
 	}
-	sum := digest.SHA256Bytes(b)
-
+	// The digest is the raw 32-byte form: reading the hexadecimal text as an
+	// integer biased the modulo (ANIMRAND-02). Independent windows keep the
+	// preset and the animation decoupled.
+	raw := digest.SHA256Sum(b)
 	var out PresetSample
 	if n := len(in.Presets); n > 0 {
-		out.Preset = in.Presets[int(binary.BigEndian.Uint64([]byte(sum[0:8]))%uint64(n))]
+		out.Preset = in.Presets[SeededIndex(raw, 0, n)]
 	}
 	if n := len(in.Animations); n > 0 {
-		out.Animation = in.Animations[int(binary.BigEndian.Uint64([]byte(sum[8:16]))%uint64(n))]
+		out.Animation = in.Animations[SeededIndex(raw, 1, n)]
 	}
 	return out
 }

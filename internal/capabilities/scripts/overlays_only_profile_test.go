@@ -7,6 +7,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/clips"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +40,7 @@ func TestOverlaysOnlyProjectionDeclaresCanonicalV3PayloadProfile(t *testing.T) {
 	result := &GenerateResult{SourceLanguage: "en", Scenes: scenes}
 	planning := newOverlayPlanningInput("run-overlays-only-v3", "", req.Project, result)
 	projected, err := runner.computeOverlayPlanBranchProjection(
-		context.Background(), req, capabilityaudio.AudioModeChunkedVoiceover, planning)
+		context.Background(), req, capabilityaudio.AudioModeChunkedVoiceover, planning, clips.NewClipAudioLatch())
 	require.NoError(t, err)
 	require.NotNil(t, projected, "the overlays-only projection must produce a document")
 	result = projected

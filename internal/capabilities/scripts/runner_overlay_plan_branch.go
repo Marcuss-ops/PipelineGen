@@ -40,8 +40,10 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/editorialgate"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlayplan"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -295,10 +297,14 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 // is idempotent, so both call sites can request it without double work or a
 // double apply.
 type overlayPlanBranch struct {
-	input  *contract.GenerateResult
-	done   chan overlayPlanBranchOutcome
-	once   sync.Once
-	stored overlayPlanBranchOutcome
+	input *contract.GenerateResult
+	// clipAudio is the single producer/consumer join for physical clip audio.
+	// The phase goroutine produces the facts once; this branch applies the same
+	// facts to its detached document instead of resolving them again.
+	clipAudio *clips.ClipAudioLatch
+	done      chan overlayPlanBranchOutcome
+	once      sync.Once
+	stored    overlayPlanBranchOutcome
 }
 
 // overlayPlanBranchOutcome is the branch's single outcome: the detached
@@ -312,7 +318,7 @@ type overlayPlanBranchOutcome struct {
 // input copied from the durable result. The copy is taken on the phase
 // goroutine before the master clip-audio prepare starts mutating scenes.
 func (r *Runner) startOverlayPlanBranch(ctx context.Context, runID string, req contract.GenerateRequest, exec ExecutionContext, result *contract.GenerateResult, mode capabilityaudio.AudioMode) *overlayPlanBranch {
-	branch := &overlayPlanBranch{done: make(chan overlayPlanBranchOutcome, 1)}
+	branch := &overlayPlanBranch{done: make(chan overlayPlanBranchOutcome, 1), clipAudio: clips.NewClipAudioLatch()}
 	if result == nil {
 		branch.done <- overlayPlanBranchOutcome{err: fmt.Errorf("overlay plan branch: no result")}
 		return branch
@@ -320,7 +326,7 @@ func (r *Runner) startOverlayPlanBranch(ctx context.Context, runID string, req c
 	input := newOverlayPlanningInput(runID, exec.JobID, req.Project, result)
 	branch.input = input.document()
 	go func() {
-		document, err := r.computeOverlayPlanBranchProjection(ctx, req, mode, input)
+		document, err := r.computeOverlayPlanBranchProjection(ctx, req, mode, input, branch.clipAudio)
 		if document != nil {
 			branch.input = document
 		}
@@ -332,7 +338,7 @@ func (r *Runner) startOverlayPlanBranch(ctx context.Context, runID string, req c
 // computeOverlayPlanBranchProjection projects the certified scene windows on
 // the typed immutable input and then runs the SSOT plan projection on the
 // branch-private document built from it.
-func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, req contract.GenerateRequest, mode capabilityaudio.AudioMode, planning OverlayPlanningInput) (*contract.GenerateResult, error) {
+func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, req contract.GenerateRequest, mode capabilityaudio.AudioMode, planning OverlayPlanningInput, clipAudio *clips.ClipAudioLatch) (*contract.GenerateResult, error) {
 	runID, jobID := planning.RunID, planning.JobID
 	input := planning.document()
 	// The master compute resolves the same projection right after the
@@ -345,18 +351,11 @@ func (r *Runner) computeOverlayPlanBranchProjection(ctx context.Context, req con
 		input.ResolvedScenes = resolved
 	}
 	// Fixed-media timing is the one plan input the master-side prepare can
-	// still rebuild: reproduce the exact step on the detached copy.
+	// still rebuild: consume the SAME facts the master resolved instead of
+	// materializing and probing every clip a second time.
 	if hasFixedMediaScene(input.Scenes) {
-		var clipAudioSource contract.ClipAudioAssetSource
-		if candidate, ok := r.audioAssetSource.(contract.ClipAudioAssetSource); ok {
-			clipAudioSource = candidate
-		}
-		policy := req.MixPolicy
-		if policy == "" {
-			policy = capabilityaudio.MixVoiceoverWithDuckedClip
-		}
-		if _, err := prepareClipAudioAssets(ctx, input, clipAudioSource, policy); err != nil {
-			return nil, fmt.Errorf("plan branch fixed-media timing rebuild: %w", err)
+		if err := clipAudio.ApplyTo(input); err != nil {
+			return nil, fmt.Errorf("plan branch fixed-media timing: %w", err)
 		}
 		resolved, err := ResolveScenes(input.Scenes, primaryVoiceoverLanguage(req), mode, false)
 		if err != nil {
@@ -433,13 +432,6 @@ func hasFixedMediaScene(scenes []contract.Scene) bool {
 	}
 	return false
 }
-
-// keep the wire vocabulary referenced so unused-import cleanups stay visible.
-var _ capabilityoverlay.PlateResolver
-var _ = scriptpkg.CloneOverlayCategories
-var _ = observability.ScriptTimingProjectionSkipTotal
-var _ = zap.String
-var _ = capabilityaudio.MixVoiceoverWithDuckedClip
 
 // OverlayPlanningInput is the immutable input of the detached overlay-plan
 // branch (DEMOL-07). It replaces the former full-result JSON clone with the
@@ -520,10 +512,14 @@ func newOverlayPlanningInput(runID, jobID, project string, result *contract.Gene
 	in.Entities = result.Entities
 	in.SemanticConsolidation = result.SemanticConsolidation
 	in.SemanticProductionPlan = result.SemanticProductionPlan
-	in.SemanticRenderBundle = result.SemanticRenderBundle
-	in.OverlayPlan = result.OverlayPlan
-	in.OverlayPlanIntake = result.OverlayPlanIntake
-	in.PhraseOverlayBudget = result.PhraseOverlayBudget
+	// The freeze pass writes these documents (bundle hash, plan job ids).
+	// Value-copying them keeps those writes in the branch instead of reaching
+	// the durable result through a shared pointer — the immutability the
+	// branch depends on is now guaranteed for every field it actually writes.
+	in.SemanticRenderBundle = overlayplan.ClonePlanningBundle(result.SemanticRenderBundle)
+	in.OverlayPlan = overlayplan.ClonePlanningPlan(result.OverlayPlan)
+	in.OverlayPlanIntake = overlayplan.ClonePlanningIntake(result.OverlayPlanIntake)
+	in.PhraseOverlayBudget = overlayplan.ClonePlanningBudget(result.PhraseOverlayBudget)
 	in.TimingProjectionSkips = append([]contract.TimingProjectionSkip(nil), result.TimingProjectionSkips...)
 	in.OverlayAudit = result.OverlayAudit
 	in.OverlayIntents = append([]capmodel.OverlayIntent(nil), result.OverlayIntents...)

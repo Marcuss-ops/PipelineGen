@@ -542,3 +542,103 @@ func TestProcessAssetNeverStoresALegacyMD5AsTheContentAddress(t *testing.T) {
 		})
 	}
 }
+
+// A duplicate hit on a row whose Drive upload FAILED must not be reported as a
+// successful duplicate: the bytes exist, the delivery does not. The asset has
+// to be retried through the normal publish path.
+func TestProcessAsset_DuplicateWithFailedDeliveryIsRepublished(t *testing.T) {
+	store := &lifecycleStoreStub{existing: &assetop.AssetRecord{
+		ID:            "asset-retry",
+		ContentHash:   lifecycleTestAssetHash(),
+		ContentSHA256: "hash",
+		PublishStatus: string(asset.AssetPublishFailed),
+	}}
+	calls := []string{}
+	finalizer := &lifecycleFinalizerStub{}
+	svc := NewService(ServiceDeps{
+		Store:     store,
+		Publisher: &lifecyclePublisherStub{calls: &calls},
+		Finalizer: finalizer,
+	}, Config{
+		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByContentHash: true, SkipIfExists: true},
+		UploadPolicy:    assetop.UploadPolicy{Enabled: true},
+		PersistPolicy:   assetop.PersistPolicy{SaveToAssetRegistry: true},
+	})
+
+	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
+		ID: "asset-retry", LocalPath: lifecycleTestAsset(t), RequireDrive: true,
+	}, "hash")
+	if err != nil {
+		t.Fatalf("err = %v, want the failed delivery retried", err)
+	}
+	if result == nil || result.Status != "processed" || result.DeliveryStatus != asset.AssetPublishPublished {
+		t.Fatalf("result = %#v, want a real publish after the failed delivery", result)
+	}
+	if len(calls) != 1 || calls[0] != "publisher" {
+		t.Fatalf("publisher calls = %#v, want exactly one retry", calls)
+	}
+	if len(finalizer.records) == 0 || finalizer.records[len(finalizer.records)-1].PublishStatus != asset.AssetPublishPublished {
+		t.Fatalf("finalizer records = %#v, want the terminal PUBLISHED commit", finalizer.records)
+	}
+}
+
+// Same rows, but the existing delivery is certified: the idempotent retry is
+// skipped and no second upload is issued.
+func TestProcessAsset_DuplicateWithCertifiedDeliveryIsSkipped(t *testing.T) {
+	store := &lifecycleStoreStub{existing: &assetop.AssetRecord{
+		ID:            "asset-published",
+		ContentHash:   lifecycleTestAssetHash(),
+		ContentSHA256: "hash",
+		PublishStatus: string(asset.AssetPublishPublished),
+		DriveFileID:   "drive-published",
+		DriveLink:     "https://drive.test/published",
+	}}
+	calls := []string{}
+	svc := NewService(ServiceDeps{
+		Store:     store,
+		Publisher: &lifecyclePublisherStub{calls: &calls},
+		Finalizer: &lifecycleFinalizerStub{},
+	}, Config{
+		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByContentHash: true, SkipIfExists: true},
+		UploadPolicy:    assetop.UploadPolicy{Enabled: true},
+		PersistPolicy:   assetop.PersistPolicy{SaveToAssetRegistry: true},
+	})
+
+	result, err := svc.ProcessAsset(context.Background(), &FinalizeInput{
+		ID: "asset-published", LocalPath: lifecycleTestAsset(t), RequireDrive: true,
+	}, "hash")
+	if err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if result == nil || result.Status != "skipped_duplicate" || result.DriveFileID != "drive-published" {
+		t.Fatalf("result = %#v, want the certified duplicate skipped", result)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("publisher calls = %#v, want none for a certified delivery", calls)
+	}
+}
+
+// The read-only preview must apply the same rule: a failed delivery is not a
+// skip, so the caller is told the asset would be processed.
+func TestCheckDuplicate_FailedDeliveryDoesNotPreviewSkip(t *testing.T) {
+	store := &lifecycleStoreStub{existing: &assetop.AssetRecord{
+		ID:            "asset-preview",
+		ContentHash:   lifecycleTestAssetHash(),
+		ContentSHA256: "hash",
+		PublishStatus: string(asset.AssetPublishFailed),
+	}}
+	svc := NewService(ServiceDeps{Store: store}, Config{
+		DuplicatePolicy: assetop.DuplicatePolicy{Enabled: true, CheckByContentHash: true, SkipIfExists: true},
+		UploadPolicy:    assetop.UploadPolicy{Enabled: true},
+	})
+
+	result, err := svc.CheckDuplicate(context.Background(), &FinalizeInput{
+		ID: "asset-preview", LocalPath: lifecycleTestAsset(t), RequireDrive: true,
+	}, "hash")
+	if err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if result == nil || result.Status != "would_process" {
+		t.Fatalf("result = %#v, want would_process for an uncertified delivery", result)
+	}
+}

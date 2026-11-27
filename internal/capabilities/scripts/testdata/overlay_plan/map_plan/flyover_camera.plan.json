@@ -3,6 +3,7 @@
   "plan_id": "map-flyover-plan",
   "video_id": "map-flyover-video",
   "project_id": "map-project",
+  "entity_variation_seed": "9497a2a607f4b55cedc1757923697abedb636212e2e4cc413c0205dfad541a6f",
   "language": "en",
   "width": 640,
   "height": 360,
@@ -119,5 +120,5 @@
       "duration_ms": 400
     }
   ],
-  "fingerprint": "df1f2523f4a1bc2cb8cb6b46bc0ff9a874fa805f93ca703bad67a831b15c5c37"
+  "fingerprint": "adc9f06df519befad9401b88fae5a9de74e624dccfaf27af1677c678d6be54bf"
 }

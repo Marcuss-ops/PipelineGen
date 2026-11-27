@@ -141,6 +141,50 @@ func TestSemanticEngineEditorialPreservesE5PassagesAndStillAnalyzesOnce(t *testi
 	}
 }
 
+func TestSemanticEngineEditorialCarriesOnlyAGroundedIntroAgenda(t *testing.T) {
+	transcript := "Marco Rossi founded the studio in 2005. The first album followed two years later. A long tour reached twenty cities. The final film closed the trilogy."
+	sentences := []string{
+		"Marco Rossi founded the studio in 2005.",
+		"The first album followed two years later.",
+		"A long tour reached twenty cities.",
+	}
+	manifest := &semanticEngineManifest{
+		Editorial: &semanticEngineEditorialResult{
+			Summary: "Grounded summary.",
+			ChapterManifest: scriptpkg.ChapterManifest{
+				SchemaVersion: "chapter_manifest.v1",
+			},
+		},
+	}
+	for index, sentence := range sentences {
+		start := strings.Index(transcript, sentence)
+		if start < 0 {
+			t.Fatalf("fixture sentence %q not in transcript", sentence)
+		}
+		manifest.Editorial.IntroAgenda = append(manifest.Editorial.IntroAgenda, scriptpkg.IntroTopic{
+			Text: sentence, SentenceIndex: index, StartByte: start, EndByte: start + len(sentence), Importance: 1 - float64(index)*0.1,
+		})
+	}
+	editorial := &semanticEngineEditorial{Request: map[string]any{"transcript": transcript}}
+	result, err := buildSemanticEditorialResult(editorial, manifest)
+	if err != nil {
+		t.Fatalf("grounded intro agenda rejected: %v", err)
+	}
+	if len(result.IntroAgenda) != 3 || result.IntroAgenda[0].Text != sentences[0] || result.IntroAgenda[2].EndByte != strings.Index(transcript, sentences[2])+len(sentences[2]) {
+		t.Fatalf("intro agenda was not preserved: %+v", result.IntroAgenda)
+	}
+
+	manifest.Editorial.IntroAgenda[1].Text = "A sentence that is not in the transcript."
+	if _, err := buildSemanticEditorialResult(editorial, manifest); err == nil {
+		t.Fatal("an intro topic outside the transcript must be rejected")
+	}
+
+	manifest.Editorial.IntroAgenda = manifest.Editorial.IntroAgenda[:2]
+	if _, err := buildSemanticEditorialResult(editorial, manifest); err == nil {
+		t.Fatal("an intro agenda with fewer than three topics must be rejected")
+	}
+}
+
 func ptrInt(value int) *int { return &value }
 
 type phraseImpactFakeEmbedder struct {

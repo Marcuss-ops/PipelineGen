@@ -1351,6 +1351,7 @@ func TestWorker_CacheHitReusesCertifiedRenderWithoutPublishing(t *testing.T) {
 	cache := newMemoryRenderCache()
 	if err := cache.Put(ctx, &RenderCacheRecord{
 		Fingerprint: fp,
+		InputSHA256: "cache-hit-inputs",
 		AssetID:     "reused-asset-001",
 		StorageKey:  "derived/reused.mp4",
 		ArtifactURL: "https://store/derived/reused.mp4",
@@ -1362,6 +1363,7 @@ func TestWorker_CacheHitReusesCertifiedRenderWithoutPublishing(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed cache: %v", err)
 	}
+	w.inputRevisions = fixedInputDigest("cache-hit-inputs")
 	w.WithRenderCache(cache)
 
 	result, err := w.Handle(ctx, &job.Job{ID: "job-cache", Payload: payload}, nil)
@@ -1429,6 +1431,7 @@ func TestWorker_CacheHitSkipsDestinationResolution(t *testing.T) {
 	cache := newMemoryRenderCache()
 	if err := cache.Put(ctx, &RenderCacheRecord{
 		Fingerprint: fp,
+		InputSHA256: "cache-hit-inputs",
 		AssetID:     "reused-asset-002",
 		StorageKey:  "derived/reused-002.mp4",
 		ArtifactURL: "https://store/derived/reused-002.mp4",
@@ -1440,6 +1443,7 @@ func TestWorker_CacheHitSkipsDestinationResolution(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed cache: %v", err)
 	}
+	w.inputRevisions = fixedInputDigest("cache-hit-inputs")
 	w.WithRenderCache(cache)
 
 	// Fail closed if Drive is touched: the only correct call count is zero.

@@ -170,14 +170,6 @@ func (s RemoteRenderState) IsValid() bool {
 	return s == RemoteRenderSubmitted
 }
 
-// ParentStateWaitingChildren is the application-level parent_state the submit
-// phase writes to its job result. It is the SAME wire value the scripts and
-// voiceover fan-out handlers use, so the existing
-// jobs.Service.ListAwaitingAggregation / FinalizeAggregateParent machinery can
-// find and re-finalise a clip.render parent without a new mechanism and
-// without a migration.
-const ParentStateWaitingChildren = "waiting_children"
-
 // Submission is the durable record the submit phase persists and the settle
 // phase resumes from:
 //

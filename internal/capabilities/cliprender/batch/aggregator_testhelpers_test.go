@@ -1,4 +1,4 @@
-package cliprender
+package batch
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func (s *benchJobsService) Register(parent *job.Job, childID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.parents[parent.ID] = parent
-	s.children[childID] = &job.Job{ID: childID, Type: TypeClipRender, Status: job.StatusRunning}
+	s.children[childID] = &job.Job{ID: childID, Type: job.TypeClipRender, Status: job.StatusRunning}
 }
 
 func (s *benchJobsService) CompleteChild(childID string, status job.Status) {

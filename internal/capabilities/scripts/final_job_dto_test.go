@@ -1,7 +1,6 @@
 package scriptgeneration
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -52,13 +51,9 @@ func TestBuildFinalJobEnvelopeV1TypesPlanAndSerializesDeployedWire(t *testing.T)
 	}
 }
 
-func TestFinalJobEnvelopeV1PreservesCurrentMasterWireBytes(t *testing.T) {
+func TestFinalJobEnvelopeV1PreservesCommittedMasterWireBytes(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
 	req := GenerateRequest{Title: "Garlasco", SourceLanguage: "it"}
-	legacyPrepare, legacyFinalize, err := BuildFinalJobPayloads(context.Background(), "run-phrase", req, result, finalJobPayloadResolver{})
-	if err != nil {
-		t.Fatalf("legacy payload builder: %v", err)
-	}
 	envelope, err := BuildFinalJobEnvelopeV1(context.Background(), "run-phrase", req, result, finalJobPayloadResolver{})
 	if err != nil {
 		t.Fatalf("typed payload builder: %v", err)
@@ -67,23 +62,12 @@ func TestFinalJobEnvelopeV1PreservesCurrentMasterWireBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MasterPayloads: %v", err)
 	}
-	for _, pair := range []struct {
-		name string
-		old  any
-		new  any
-	}{{"PREPARE", legacyPrepare, typedPrepare}, {"FINALIZE", legacyFinalize, typedFinalize}} {
-		oldJSON, err := json.Marshal(pair.old)
-		if err != nil {
-			t.Fatal(err)
-		}
-		newJSON, err := json.Marshal(pair.new)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(oldJSON, newJSON) {
-			t.Fatalf("typed %s wire changed\nlegacy: %s\ntyped:  %s", pair.name, oldJSON, newJSON)
-		}
-	}
+	// The committed golden was captured from the hand-built map builder before
+	// the typed construction replaced it; comparing the typed projection with
+	// those bytes proves the refactor did not move the deployed wire.
+	golden := readFinalJobWireGolden(t)
+	assertFinalJobWirePart(t, "PREPARE", typedPrepare, golden.Prepare)
+	assertFinalJobWirePart(t, "FINALIZE", typedFinalize, golden.Finalize)
 }
 
 func TestFinalJobEnvelopeV1RejectsPlanOrIdentityDrift(t *testing.T) {

@@ -1,10 +1,10 @@
 // Package overlays — selection_seed.go: single owner for deterministic seeding.
 //
-// P1-2: un unico helper di seeding/ordinamento/rotazione/no-repeat.
-// Tutti i sampler (planner, animation_policy legacy)
-// usano queste primitive: stesso hash SHA256, stesso walk no-repeat.
-// I piani sigillati storici restano byte-identici perché l'algoritmo è
-// estratto verbatim, non reinventato.
+// Every sampler (preset sampler, map composition, group draw) goes through
+// SeededIndex: one SHA-256, one raw-byte mapping, one no-modulo-bias rule.
+// Plans sealed before SelectionAlgorithmV2 carry concrete motion ids on the
+// wire, so a replay never re-samples; the change only affects newly compiled
+// plans, which is what a selection algorithm version is for.
 package overlays
 
 import (
@@ -12,23 +12,11 @@ import (
 )
 
 // SeededGroupIndex è l'unico hash seed→indice per i draw seeded di gruppo.
-// Verbatim dell'ex seededGroupMotion: SHA256(seed\x00target\x00groupID),
-// primi 16 hex come uint64, modulo len(pool). n<=0 → 0.
+// Seed = SHA256(seed\x00target\x00groupID) mapped with SeededIndex. n<=0 → 0.
 func SeededGroupIndex(seed, target, groupID string, n int) int {
 	if n <= 1 {
 		return 0
 	}
-	digestValue := digest.SHA256String(seed + "\x00" + target + "\x00" + groupID)
-	var index uint64
-	for _, digit := range []byte(digestValue[:16]) {
-		index = index*16 + uint64(hexNibbleValue(digit))
-	}
-	return int(index % uint64(n))
-}
-
-func hexNibbleValue(digit byte) byte {
-	if digit >= '0' && digit <= '9' {
-		return digit - '0'
-	}
-	return digit - 'a' + 10
+	sum := digest.SHA256Sum([]byte(seed + "\x00" + target + "\x00" + groupID))
+	return SeededIndex(sum, 0, n)
 }

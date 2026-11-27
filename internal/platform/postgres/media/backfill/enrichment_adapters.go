@@ -5,7 +5,6 @@
 package backfill
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -269,6 +268,3 @@ func strconvParseFloat(s string) (float64, error) {
 	_, err := fmt.Sscanf(strings.TrimSpace(s), "%g", &f)
 	return f, err
 }
-
-// bufio keeps the import set honest for future streaming decode helpers.
-var _ = bufio.NewReader

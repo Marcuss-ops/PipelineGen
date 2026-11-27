@@ -109,8 +109,12 @@ func TestDeterministicPresetSampler_SeedComponentsMatter(t *testing.T) {
 // TestDeterministicPresetSampler_Golden pins the exact (preset, animation)
 // pair for a fixed seed, so any change to the hash/selection math breaks this
 // test loudly — the replay-stability guarantee encoded as a golden.
+//
+// The values were re-pinned for SelectionAlgorithmV2 (raw digest bytes +
+// rejection sampling). SEALED plans are untouched: they carry the concrete ids
+// chosen at compile time and are never re-sampled.
 func TestDeterministicPresetSampler_Golden(t *testing.T) {
 	got := DefaultDeterministicPresetSampler.Sample(sampleInput())
-	require.Equal(t, "portrait_card_right", got.Preset)
-	require.Equal(t, "fade_in", got.Animation)
+	require.Equal(t, "portrait_card_left", got.Preset)
+	require.Equal(t, "slide_left", got.Animation)
 }

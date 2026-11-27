@@ -71,8 +71,6 @@ const (
 var (
 	CloneAnimationCounts = modelvalues.CloneAnimationCounts
 	CloneFixedPlayback   = modelvalues.CloneFixedPlayback
-	cloneAnimationCounts = modelvalues.CloneAnimationCounts
-	cloneFixedPlayback   = modelvalues.CloneFixedPlayback
 )
 
 // Final-job leaf: the canvas value and the pure style/group projections.

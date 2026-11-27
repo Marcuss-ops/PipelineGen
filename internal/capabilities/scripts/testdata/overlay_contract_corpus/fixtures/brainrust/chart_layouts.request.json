@@ -1,0 +1,1091 @@
+{
+  "operation": "compile_editorial_plan",
+  "schema_version": "editorial_plan.v2",
+  "plan": {
+    "plan_id": "contract-chart_layouts",
+    "video_id": "contract-video-chart_layouts",
+    "project_id": "contract-project-chart_layouts",
+    "motion_seed": "contract-seed-chart_layouts",
+    "width": 1920,
+    "height": 1080,
+    "fps_num": 24,
+    "fps_den": 1
+  },
+  "language": "it",
+  "source_language": "it",
+  "seal": {
+    "audio_duration_us": 30000000,
+    "output_profile_id": "assemblyready.alpha.v1",
+    "background": null
+  },
+  "canvas": {
+    "overlay_categories": {},
+    "group_limits": {},
+    "max_phrase_overlays": 8,
+    "max_image_overlays": 5,
+    "max_map_overlays": 3,
+    "max_overlays_per_scene": 3,
+    "map_presentation": {},
+    "animation_counts": {},
+    "phrase_motions": [],
+    "short_phrase_motion": "",
+    "long_phrase_motion": "",
+    "image_motions": [],
+    "image_with_text_motions": [],
+    "entity_style_id": "random",
+    "animation_directives": [],
+    "animation_contract_version": 2,
+    "animation_catalog_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "entity_image_motions": [
+      "entity_reveal_push",
+      "entity_soft_rise"
+    ],
+    "entity_caption_motions": [
+      "caption_rise",
+      "caption_fade"
+    ]
+  },
+  "editorial": {
+    "schema_version": "editorial.v1",
+    "source_language": "it",
+    "profile_version": "highlights.v1",
+    "certified": true,
+    "fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "scenes": [
+      {
+        "scene_id": "s1",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s2",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s3",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s4",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s5",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s6",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s7",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s8",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s9",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      },
+      {
+        "scene_id": "s10",
+        "title": "Nike corre",
+        "title_status": "resolved",
+        "title_source": "extractive_keyphrase",
+        "globally_indexed": false,
+        "bullets": [
+          {
+            "sentence_start": 0,
+            "sentence_end": 1,
+            "text": "Nike corre al museo."
+          }
+        ]
+      }
+    ]
+  },
+  "chapters": null,
+  "scenes": [
+    {
+      "id": "s1",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 0,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "timeline_growth"
+      }
+    },
+    {
+      "id": "s2",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 3000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "qualified_growth"
+      }
+    },
+    {
+      "id": "s3",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 6000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "missing_data_timeline"
+      }
+    },
+    {
+      "id": "s4",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 9000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "segmented_total_bar"
+      }
+    },
+    {
+      "id": "s5",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 12000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "scenario_split"
+      }
+    },
+    {
+      "id": "s6",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 15000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "bounded_range_comparison"
+      }
+    },
+    {
+      "id": "s7",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 18000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "dual_comparison_bars"
+      }
+    },
+    {
+      "id": "s8",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 21000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "bar_comparison"
+      }
+    },
+    {
+      "id": "s9",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 24000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "ranking_bar"
+      }
+    },
+    {
+      "id": "s10",
+      "text": "Nike corre al museo.",
+      "duration_ms": 3000,
+      "execution_mode": "generated",
+      "short_phrase_overlay": false,
+      "overlay_categories": {},
+      "voiceover": {
+        "timing": {
+          "duration_us": 3000000,
+          "words": [
+            {
+              "index": 0,
+              "text": "Nike",
+              "start_us": 100000,
+              "end_us": 400000
+            },
+            {
+              "index": 1,
+              "text": "corre",
+              "start_us": 400000,
+              "end_us": 800000
+            },
+            {
+              "index": 2,
+              "text": "al",
+              "start_us": 800000,
+              "end_us": 1000000
+            },
+            {
+              "index": 3,
+              "text": "museo",
+              "start_us": 1000000,
+              "end_us": 1300000
+            }
+          ]
+        }
+      },
+      "timeline_start_us": 27000000,
+      "duration_us": 3000000,
+      "raw": {
+        "important_phrases": [
+          {
+            "text": "Nike corre",
+            "score": 0.9
+          }
+        ]
+      },
+      "annotations": {
+        "chart_layout": "before_after_metric"
+      }
+    }
+  ],
+  "entity_timeline": {
+    "version": 1,
+    "project_id": "project-fixture",
+    "language": "it",
+    "duration_us": 30000000,
+    "scenes": [
+      {
+        "scene_id": "s1",
+        "scene_index": 0,
+        "timeline_start_us": 0,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s1",
+            "scene_index": 0,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 0,
+            "audio_start_us": 100000,
+            "audio_end_us": 400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s2",
+        "scene_index": 1,
+        "timeline_start_us": 3000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s2",
+            "scene_index": 1,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 3000000,
+            "audio_start_us": 3100000,
+            "audio_end_us": 3400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s3",
+        "scene_index": 2,
+        "timeline_start_us": 6000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s3",
+            "scene_index": 2,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 6000000,
+            "audio_start_us": 6100000,
+            "audio_end_us": 6400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s4",
+        "scene_index": 3,
+        "timeline_start_us": 9000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s4",
+            "scene_index": 3,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 9000000,
+            "audio_start_us": 9100000,
+            "audio_end_us": 9400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s5",
+        "scene_index": 4,
+        "timeline_start_us": 12000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s5",
+            "scene_index": 4,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 12000000,
+            "audio_start_us": 12100000,
+            "audio_end_us": 12400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s6",
+        "scene_index": 5,
+        "timeline_start_us": 15000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s6",
+            "scene_index": 5,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 15000000,
+            "audio_start_us": 15100000,
+            "audio_end_us": 15400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s7",
+        "scene_index": 6,
+        "timeline_start_us": 18000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s7",
+            "scene_index": 6,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 18000000,
+            "audio_start_us": 18100000,
+            "audio_end_us": 18400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s8",
+        "scene_index": 7,
+        "timeline_start_us": 21000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s8",
+            "scene_index": 7,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 21000000,
+            "audio_start_us": 21100000,
+            "audio_end_us": 21400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s9",
+        "scene_index": 8,
+        "timeline_start_us": 24000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s9",
+            "scene_index": 8,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 24000000,
+            "audio_start_us": 24100000,
+            "audio_end_us": 24400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      },
+      {
+        "scene_id": "s10",
+        "scene_index": 9,
+        "timeline_start_us": 27000000,
+        "voiceover_asset_id": "vo-s1",
+        "entities": [
+          {
+            "entity_id": "org:nike",
+            "name": "Nike",
+            "type": "ORG",
+            "scene_id": "s10",
+            "scene_index": 9,
+            "text_start": 0,
+            "text_end": 4,
+            "word_start": 0,
+            "word_end": 0,
+            "local_start_us": 100000,
+            "local_end_us": 400000,
+            "timeline_start_us": 27000000,
+            "audio_start_us": 27100000,
+            "audio_end_us": 27400000,
+            "confidence": 0.95,
+            "role": "named_entity",
+            "canonical_entity_id": "org:nike"
+          }
+        ]
+      }
+    ]
+  },
+  "media": {
+    "materialized_assets": [
+      {
+        "asset_id": "asset-nike",
+        "url": "https://cdn.example/nike.png",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "media_type": "image/png"
+      }
+    ],
+    "verified_entity_assets": [
+      {
+        "entity_id": "org:nike",
+        "canonical_entity_id": "org:nike",
+        "assets": [
+          {
+            "asset_id": "asset-nike",
+            "url": "https://cdn.example/nike.png",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "media_type": "image/png"
+          }
+        ]
+      }
+    ],
+    "scene_image_candidates": [
+      {
+        "scene_id": "s1",
+        "candidates": [
+          {
+            "asset_id": "asset-scene-1",
+            "url": "https://cdn.example/scene-1.jpg",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "media_type": "image/jpeg",
+            "start_ms": 0,
+            "end_ms": 2500,
+            "start_us": 0,
+            "duration_us": 2500000,
+            "score": 0.7
+          }
+        ]
+      }
+    ]
+  },
+  "budgets": {
+    "phrase_overlays": 8,
+    "image_overlays": 5,
+    "map_overlays": 3,
+    "max_per_scene": 3,
+    "short_phrase": 3,
+    "long_phrase": 5,
+    "bullet": 2
+  },
+  "scene_windows": {
+    "s1": [
+      0,
+      3000000
+    ],
+    "s2": [
+      3000000,
+      6000000
+    ],
+    "s3": [
+      6000000,
+      9000000
+    ],
+    "s4": [
+      9000000,
+      12000000
+    ],
+    "s5": [
+      12000000,
+      15000000
+    ],
+    "s6": [
+      15000000,
+      18000000
+    ],
+    "s7": [
+      18000000,
+      21000000
+    ],
+    "s8": [
+      21000000,
+      24000000
+    ],
+    "s9": [
+      24000000,
+      27000000
+    ],
+    "s10": [
+      27000000,
+      30000000
+    ]
+  }
+}

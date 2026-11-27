@@ -1,0 +1,237 @@
+package scriptgeneration
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"go.uber.org/zap"
+
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+)
+
+func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req contract.GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, mode capabilityaudio.AudioMode, result *contract.GenerateResult, work []voiceoverWork, renderWg *sync.WaitGroup, renderErrors chan<- error) ([]voiceoverResult, error) {
+	// applyMu serializes per-unit result mutation + checkpoint so a
+	// crash mid-phase (kill -9) preserves already-completed scenes.
+	var applyMu sync.Mutex
+	var checkpointDue checkpointGate
+	var ttsStartedOnce, renderStartedOnce sync.Once
+	// §7.3 trace: the batch path has no per-scene ready boundary, so the TTS
+	// entry carries the dispatch→start interval as its real queue wait.
+	enqueuedAt := time.Now().UTC()
+	var completed atomic.Int64
+	results, err := concurrent.Map(ctx, work, r.ttsConcurrency, func(opCtx context.Context, idx int, item voiceoverWork) (voiceoverResult, error) {
+		// ── Pipeline KPI: first TTS dispatch ───────────────
+		ttsStartedOnce.Do(func() {
+			if run := kernobs.FromContext(opCtx); run != nil {
+				kernobs.RecordKPIMilestone(opCtx, "tts_first_started_ms", run.ElapsedMs())
+			}
+		})
+		startedAt := time.Now().UTC()
+		var audioRef contract.AudioReference
+		ttsErr := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
+			Stage: "voiceover", Component: kernobs.ComponentTTS, Operation: kernobs.OperationSynthesize,
+			Provider: string(item.lang), MetadataJSON: fmt.Sprintf("{\"scene_id\":%q,\"language\":%q}", item.sceneID, item.lang),
+		}, func(measureCtx context.Context) error {
+			var err error
+			audioRef, err = r.voiceoverGen.Generate(measureCtx, VoiceoverInput{
+				RunID:    runID,
+				SceneID:  item.sceneID,
+				Language: item.lang,
+				Text:     item.text,
+				// Project is the canonical semantic project namespace
+				// resolved ONCE by resolveArtifactRoutingContext at
+				// generation start and propagated verbatim to the
+				// per-item pipeline so the voiceover publish satisfies
+				// the semantic publish contract
+				// (PR-VOICEOVER-DRIVE-DRIFT: Project is required). It is
+				// guaranteed non-empty here by the phase-level fail-fast
+				// gate above.
+				Project: routing.Project,
+				// VoiceoverFolderID is the caller-explicit Drive folder for
+				// voiceover artifacts, resolved ONCE by
+				// resolveArtifactRoutingContext (output.voiceover_folder_id;
+				// empty falls back to the configured default). Forwarded
+				// verbatim so the per-scene TTS command never replaces a
+				// caller-explicit destination with the default folder.
+				VoiceoverFolderID: routing.VoiceoverFolderID,
+				TTSRate:           req.TTSRate,
+				// Forward the request-level timing policy so the per-item
+				// pipeline can honour required/best-effort fail-closed
+				// semantics (missing/invalid timing fails the job instead of
+				// producing plausible-but-wrong timestamps).
+				Timing:         req.Timing,
+				ForceSynthesis: req.ForceRefresh,
+			})
+			return err
+		})
+		recordSceneStage(opCtx, item.sceneID, kernobs.SceneStageTTS, kernobs.SceneStageTimes{
+			EnqueuedAt: enqueuedAt, StartedAt: startedAt, CompletedAt: time.Now().UTC(),
+		}, string(item.lang), ttsErr)
+		if ttsErr != nil {
+			return voiceoverResult{}, fmt.Errorf("scene %s lang %s: %w", item.sceneID, item.lang, ttsErr)
+		}
+		// Project the live fan-out counter: the durable stage row now moves
+		// while the pool drains instead of staying at 0 until the stage closes.
+		if n := int(completed.Add(1)); n <= len(work) {
+			r.writeJobStageProgress(ctx, runID, job.StageVoiceover, n, len(work))
+		}
+		metric := contract.TTSSSceneMetric{
+			SceneID:          item.sceneID,
+			Language:         item.lang,
+			DurationMS:       0,
+			Characters:       len([]rune(item.text)),
+			Words:            len(strings.Fields(item.text)),
+			OutputDurationMS: time.Duration(audioRef.Duration * float64(time.Second)).Milliseconds(),
+		}
+		// Apply + checkpoint per unit (guarded): the completed voiceover
+		// is durable before the worker returns, so a crash mid-phase
+		// preserves it and the restart REUSEs it. The wait for the lock is
+		// measured because it is a real barrier between the scene×language
+		// workers that no stage timer covered.
+		waitStarted := time.Now()
+		var snapshot *contract.GenerateResult
+		audioSealStarted := time.Now().UTC()
+		audioSealedAt := time.Time{}
+		applyMu.Lock()
+		observeCheckpointWait(waitStarted)
+		if item.scene.Voiceover == nil {
+			item.scene.Voiceover = make(map[contract.Language]contract.AudioReference)
+		}
+		item.scene.Voiceover[item.lang] = audioRef
+		if item.lang == req.SourceLanguage && item.scene.Clip == nil && !item.scene.ExecutionMode.IsFixedMedia() {
+			item.scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: audioRef.ID}
+			item.scene.AudioIntents = []capabilityaudio.AudioIntent{item.scene.Audio}
+			// §7.3 trace: this clip-less scene's audio intents are final here.
+			audioSealedAt = time.Now().UTC()
+		}
+		// A multi-language fan-out writes several references into this shared
+		// scene. Only the source-language voiceover owns the canonical scene
+		// window; letting whichever translated TTS finishes last set DurationUS
+		// makes final-job stock windows nondeterministic across languages.
+		// A caller-provided segment duration owns the editorial window. In a
+		// combined timeline the voiceover is mixed over that window; replacing
+		// it with the (usually much shorter) TTS duration truncates both the
+		// source clip and the canonical master. Only infer a scene duration
+		// from TTS when no duration was supplied by the source/segment.
+		if item.lang == req.SourceLanguage && (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && audioRef.Duration > 0 && item.scene.DurationUS <= 0 && item.scene.DurationMS <= 0 {
+			item.scene.DurationMS = int64(audioRef.Duration*1000 + 0.5)
+			item.scene.DurationUS = int64(audioRef.Duration*1_000_000 + 0.5)
+		}
+		// Snapshot the render facts under the lock: the Voiceover map
+		// is shared across a scene's language workers, so its reads
+		// must be fenced by applyMu.
+		renderText := item.scene.Text[item.lang]
+		if strings.TrimSpace(renderText) == "" {
+			renderText = item.scene.Text[req.SourceLanguage]
+		}
+		sourceText := item.scene.Text[req.SourceLanguage]
+		if strings.TrimSpace(sourceText) == "" {
+			sourceText = renderText
+		}
+		if strings.TrimSpace(sourceText) == "" {
+			sourceText = req.Source.SourceText
+			renderText = sourceText
+		}
+		// Clip bindings are read from the shared scene while applyMu is
+		// held; the render goroutine must receive a value snapshot, never
+		// dereference the mutable scene after this lock is released.
+		clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderClipFields(*item.scene)
+		renderSpec := sceneRenderSpec(req, *item.scene)
+		sceneIndex := item.scene.Index
+		// Only scenes with a visual source clip enter Chronon. Selected stock
+		// bindings and stock-marked clips remain source media for final assembly.
+		needsRender := len(RenderUnitsForScene(*item.scene)) > 0 &&
+			(item.lang == req.SourceLanguage || (req.Render.Subtitles != nil && req.Render.Subtitles.Enabled))
+		if checkpointDue.due(time.Now()) {
+			var snapshotErr error
+			snapshot, snapshotErr = detachCheckpointResult(result)
+			if snapshotErr != nil {
+				r.log.Warn("voiceover checkpoint snapshot failed", zap.String("run_id", runID), zap.Error(snapshotErr))
+				checkpointDue.complete()
+			}
+		}
+		applyMu.Unlock()
+		if !audioSealedAt.IsZero() {
+			recordSceneStage(opCtx, item.sceneID, kernobs.SceneStageAudio, kernobs.SceneStageTimes{
+				StartedAt: audioSealStarted, CompletedAt: audioSealedAt,
+			}, string(item.lang), nil)
+		}
+		// Persist the immutable copy after releasing applyMu. Other TTS
+		// workers can now apply their audio refs while SQLite performs
+		// the full-result write.
+		if snapshot != nil {
+			func() {
+				defer checkpointDue.complete()
+				r.checkpoint(ctx, runID, snapshot)
+			}()
+		}
+
+		if needsRender {
+			// Localized render fan-out: fire the render in a separate
+			// goroutine the moment this language's TTS is final, so the
+			// TTS worker slot is freed immediately instead of being held
+			// for the entire render duration. The renderGate inside the
+			// adapter already bounds render concurrency; OnRendered /
+			// OnFailed capture the certified result asynchronously.
+			// ── Pipeline KPI: first render enqueue ───────────
+			renderStartedOnce.Do(func() {
+				if run := kernobs.FromContext(ctx); run != nil {
+					kernobs.RecordKPIMilestone(ctx, "render_first_started_ms", run.ElapsedMs())
+				}
+			})
+			renderWg.Add(1)
+			go func(item voiceoverWork, audioRef contract.AudioReference) {
+				defer renderWg.Done()
+				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+					RunID:          runID,
+					FinalJob:       req.FinalJob,
+					ParentJobID:    exec.JobID,
+					JobID:          exec.JobID,
+					SceneID:        item.sceneID,
+					SceneIndex:     sceneIndex,
+					Language:       item.lang,
+					Text:           renderText,
+					Voiceover:      audioRef,
+					SourceLanguage: req.SourceLanguage,
+					SourceText:     sourceText,
+					ClipID:         clipID,
+					ClipAssetID:    clipAssetID,
+					ClipSHA256:     clipSHA256,
+					ClipDurationMS: clipDurationMS,
+					Render:         renderSpec,
+					ResumeFrom:     r.stagedLocalizedRender(result, item.sceneID, item.lang, clipID),
+					OnRenderReady: func(rendered contract.LocalizedRenderResult) error {
+						return r.recordLocalizedRenderReady(ctx, runID, exec, result, rendered)
+					},
+					OnRendered: func(rendered contract.LocalizedRenderResult) error {
+						return r.recordLocalizedRender(ctx, runID, exec, result, rendered)
+					},
+					OnFailed: func(failure contract.LocalizedRenderFailure) error {
+						r.localizedRenderMu.Lock()
+						result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+						r.localizedRenderMu.Unlock()
+						return nil
+					},
+				}); err != nil {
+					renderErrors <- fmt.Errorf("localized render scene %s language %s failed: %w", item.sceneID, item.lang, err)
+				}
+
+			}(item, audioRef)
+		}
+		return voiceoverResult{audioRef: audioRef, metric: metric}, nil
+	})
+	return results, err
+}
+
+// ── Voiceover provider-call metrics + render join ──────────────────
+// projectVoiceoverMetrics records provider-call accounting only for work
+// dispatched by this phase and projects the authoritative run timing report.

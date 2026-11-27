@@ -20,6 +20,9 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/clips"
 	"github.com/stretchr/testify/require"
 )
 
@@ -142,7 +145,7 @@ func TestOverlayPlanBranch_ProjectionEquivalence(t *testing.T) {
 	require.NoError(t, projectionTestRunner().computeOverlayPlanProjection(context.Background(), "run-overlay-plan-branch-equivalence", req, "", serialInput))
 
 	planning := newOverlayPlanningInput("run-overlay-plan-branch-equivalence", "", req.Project, strip())
-	branchInput, err := projectionTestRunner().computeOverlayPlanBranchProjection(context.Background(), req, capabilityaudio.AudioModeCombinedTimeline, planning)
+	branchInput, err := projectionTestRunner().computeOverlayPlanBranchProjection(context.Background(), req, capabilityaudio.AudioModeCombinedTimeline, planning, clips.NewClipAudioLatch())
 	require.NoError(t, err)
 	require.NotNil(t, branchInput)
 
@@ -175,4 +178,25 @@ func TestOverlayPlanBranch_JoinIsIdempotent(t *testing.T) {
 	// so RenderKey/Fingerprint are derived from the replayed document too.
 	require.NoError(t, FreezeFinalJobOverlayPlans(stripped, req.FinalJob))
 	require.Equal(t, res.OverlayPlan, stripped.OverlayPlan, "the serial projection must reproduce the branch-applied plan")
+}
+
+// The branch works on a snapshot. The freeze pass writes the bundle hash and
+// the plan job ids; those writes must not reach the durable result through a
+// shared pointer before the join.
+func TestOverlayPlanningInput_IsolatesWrittenDocuments(t *testing.T) {
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{RunID: "run", OverlayPlanHash: "before"}
+	plan := &capmodel.OverlayPlan{PlanID: "plan", Items: []capmodel.OverlayItem{{}}}
+	result := &GenerateResult{SemanticRenderBundle: bundle, OverlayPlan: plan}
+
+	in := newOverlayPlanningInput("run", "job", "project", result)
+	if in.SemanticRenderBundle == nil || in.SemanticRenderBundle == bundle {
+		t.Fatal("the planning snapshot must own its bundle copy")
+	}
+	in.SemanticRenderBundle.OverlayPlanHash = "after"
+	in.OverlayPlan.PlanID = "mutated"
+	in.OverlayPlan.Items[0].ID = "mutated"
+	if bundle.OverlayPlanHash != "before" || plan.PlanID != "plan" || plan.Items[0].ID != "" {
+		t.Fatalf("snapshot mutation leaked into the durable result: bundle=%q plan=%q item=%q",
+			bundle.OverlayPlanHash, plan.PlanID, plan.Items[0].ID)
+	}
 }

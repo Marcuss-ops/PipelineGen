@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -92,6 +93,14 @@ func OverlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 	// certified catalog instead of failing the whole plan.
 	entityImageMotions := append([]string(nil), ResolveEntityImageMotionPool(canvas.EntityImageMotions)...)
 	entityCaptionMotions := append([]string(nil), ResolveEntityCaptionMotionPool(canvas.EntityCaptionMotions)...)
+	// The numeric and light-leak lanes are registry groups, not a second list
+	// copied into the planner. Rust selects from exactly what the catalog
+	// certifies (ANIMRAND-08); the earlier Rust copies had already drifted
+	// (39 date ids against the registry's 41).
+	dateMotions := animreg.AnimationCandidates("entity.date")
+	metricMotions := animreg.AnimationCandidates("entity.metric")
+	lightLeakMotions := animreg.AnimationCandidates("image.lightleak")
+	sourceHighlightMotions := animreg.AnimationCandidates("phrase.documentary")
 	return overlayplan.Canvas{
 		OverlayCategories:        overlayCategoriesToWire(canvas.OverlayCategories),
 		GroupLimits:              cloneIntMap(canvas.OverlayGroupLimits),
@@ -109,6 +118,11 @@ func OverlayPlanCanvas(canvas OverlayCanvasSpec) (overlayplan.Canvas, error) {
 		ShortPhraseMotionsByWord: shortPhraseMotions,
 		LongPhraseMotions:        longPhraseMotions,
 		PhraseMotionFamily:       strings.TrimSpace(canvas.PhraseMotionFamily),
+		DateMotions:              dateMotions,
+		MetricMotions:            metricMotions,
+		MotionFamilies:           animreg.MotionFamilies(),
+		LightLeakMotions:         lightLeakMotions,
+		SourceHighlightMotions:   sourceHighlightMotions,
 		ImageMotions:             imageMotions,
 		ImageWithTextMotions:     append([]string(nil), canvas.ImageWithTextMotions...),
 		ImagePresets:             capabilityoverlay.ImagePresetCandidates(),

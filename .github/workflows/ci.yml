@@ -169,7 +169,12 @@ jobs:
     - name: Install golangci-lint
       uses: golangci/golangci-lint-action@v9
       with:
-        version: v2.13.2
+        # v2.15.0 is the first release in this line that bundles
+        # honnef.co/go/tools v0.8.2; v2.13.2/v2.14.0 ship v0.8.1, where
+        # staticcheck's SA4023 analyzer panics (nil *ir.Function source) on
+        # package artifactsinfra. Bumping the analyzer bundle fixes the crash;
+        # suppressing SA4023 would have hidden the check instead.
+        version: v2.15.0
 
     - name: Run golangci-lint
       run: golangci-lint run --timeout=5m

@@ -126,7 +126,10 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req con
 			// old skip left AudioClip intents unresolvable here; the compile then
 			// failed (or the projection dropped the track entirely).
 			var clipPrepareMS int64
-			clipPrepareMS, prepareErr := prepareClipAudioAssets(ctx, result, clipAudioSource, policy)
+			// ONE producer: this call resolves and probes every clip once and
+			// publishes the immutable snapshot; the overlay plan branch applies
+			// the same facts instead of re-materializing them.
+			clipPrepareMS, prepareErr := planBranch.clipAudio.Produce(ctx, result, clipAudioSource, policy)
 			if prepareErr != nil {
 				cause := fmt.Errorf("prepare original clip audio failed: %w", prepareErr)
 				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)

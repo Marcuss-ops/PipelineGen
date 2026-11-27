@@ -82,7 +82,7 @@ func TestEnvelopeV1RoundTripKeepsPlanBytesAndHash(t *testing.T) {
 				},
 			}},
 			RuntimePayload: RuntimePayloadV1{
-				VideoName: "golden", ScriptText: "A golden handoff.", Overlays: json.RawMessage(`[]`),
+				VideoName: "golden", ScriptText: "A golden handoff.", Overlays: []any{},
 			},
 		},
 		Plan: plan,

@@ -237,3 +237,30 @@ func TestVisualIntentsTableIsRegistryAuthored(t *testing.T) {
 		t.Error("VisualIntents handed out the registry table itself")
 	}
 }
+
+// TestMotionFamiliesClassifiesEveryNumericCandidate pins ANIMRAND-12: every
+// date/metric motion the planner can select carries a registry-derived family,
+// so the planner never has to read the id prefix.
+func TestMotionFamiliesClassifiesEveryNumericCandidate(t *testing.T) {
+	families := MotionFamilies()
+	for _, group := range []string{"entity.date", "entity.metric"} {
+		candidates := AnimationCandidates(group)
+		if len(candidates) == 0 {
+			t.Fatalf("%s has no candidates", group)
+		}
+		for _, id := range candidates {
+			if _, ok := families[id]; !ok {
+				t.Fatalf("%s candidate %q has no registry family", group, id)
+			}
+		}
+	}
+	if got := families["date_fade_rise"]; got != "classic" {
+		t.Fatalf("date_fade_rise family=%q, want classic", got)
+	}
+	if got := families["date_didone_era_settle"]; got != "didone" {
+		t.Fatalf("date_didone_era_settle family=%q, want didone", got)
+	}
+	if got := families["metric_typewriter_key_strike"]; got != "typewriter" {
+		t.Fatalf("metric_typewriter_key_strike family=%q, want typewriter", got)
+	}
+}

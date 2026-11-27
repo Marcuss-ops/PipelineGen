@@ -45,8 +45,6 @@ var (
 	cloneFloat64         = modelvalues.CloneFloat64
 	cloneInt             = modelvalues.CloneInt
 	cloneAnimationCounts = modelvalues.CloneAnimationCounts
-	cloneFixedPlayback   = modelvalues.CloneFixedPlayback
-	fixedSceneKind       = modelvalues.FixedSceneKind
 )
 
 // Types owned by the timeline projection.
@@ -64,8 +62,7 @@ const sceneEditorialSilenceAllowanceUS = timeline.SceneEditorialSilenceAllowance
 
 // Timeline projection: scene → ResolvedScene and the freeze tail.
 var (
-	ResolveScenes             = timeline.ResolveScenes
-	freezeTailedVideoSegments = timeline.FreezeTailedVideoSegments
+	ResolveScenes = timeline.ResolveScenes
 )
 
 // Audio compile and validation.
@@ -86,8 +83,6 @@ var (
 // keeps the original unexported names so no call site moved.
 var (
 	compileResolvedSceneTimeline           = audio.CompileResolvedSceneTimeline
-	resolvedScenesFor                      = audio.ResolvedScenesFor
-	overlayResolvedScenesFor               = audio.OverlayResolvedScenesFor
 	buildCanonicalTimelineAndPrimaryAssets = audio.BuildCanonicalTimelineAndPrimaryAssets
 )
 
@@ -276,14 +271,13 @@ func SearchClassFromQuery(query string) contract.SemanticSearchClass {
 // in scripts/overlayproject and the root keeps the historical names.
 
 var (
-	annotationsForLanguage        = overlayproject.AnnotationsForLanguage
-	imageOverlayItemsBySceneWhere = overlayproject.ImageOverlayItemsBySceneWhere
-	isNumericOverlayValue         = overlayproject.IsNumericOverlayValue
-	overlaySFXIntentsForPlan      = overlayproject.OverlaySFXIntentsForPlan
-	recoverNumericSuffix          = overlayproject.RecoverNumericSuffix
-	overlaySFXCueGainDB           = overlayproject.OverlaySFXCueGainDB
-	overlaySFXCueDurationMS       = overlayproject.OverlaySFXCueDurationMS
-	cleanNumericOverlayValue      = overlayproject.CleanNumericOverlayValue
+	annotationsForLanguage   = overlayproject.AnnotationsForLanguage
+	isNumericOverlayValue    = overlayproject.IsNumericOverlayValue
+	overlaySFXIntentsForPlan = overlayproject.OverlaySFXIntentsForPlan
+	recoverNumericSuffix     = overlayproject.RecoverNumericSuffix
+	overlaySFXCueGainDB      = overlayproject.OverlaySFXCueGainDB
+	overlaySFXCueDurationMS  = overlayproject.OverlaySFXCueDurationMS
+	cleanNumericOverlayValue = overlayproject.CleanNumericOverlayValue
 )
 
 // Package scriptgeneration — phrases_aliases.go is the facade over
@@ -339,7 +333,6 @@ var (
 	// occurrence of value in text and returns its rune span.
 	findEntitySpan = semantics.FindEntitySpan
 	// advanceRunes returns the byte offset n runes after start.
-	advanceRunes = semantics.AdvanceRunes
 	// groundImportantPhrases keeps only selected phrases that are grounded in
 	// the source and do not overlap a named entity.
 	groundImportantPhrases = semantics.GroundImportantPhrases
@@ -351,15 +344,12 @@ var (
 	// limitTranslatedVisualEntities ranks entities for translation.
 	limitTranslatedVisualEntities = semantics.LimitTranslatedVisualEntities
 	// isNamedVisualEntity reports whether a type is a named entity surface.
-	isNamedVisualEntity = semantics.IsNamedVisualEntity
 	// normalizeVisualEntityTypes folds each entity type onto the canonical kind.
 	normalizeVisualEntityTypes = semantics.NormalizeVisualEntityTypes
 	// limitVisualIdentityEntities caps only imageable named identities.
 	limitVisualIdentityEntities = semantics.LimitVisualIdentityEntities
 	// deduplicateVisualEntities keeps the first span of each grounded surface.
-	deduplicateVisualEntities = semantics.DeduplicateVisualEntities
 	// filterOverlayCategoryEntities drops entities the overlay lane cannot use.
-	filterOverlayCategoryEntities = semantics.FilterOverlayCategoryEntities
 	// hasAdditionalEntityCategory reports whether the policy selected value
 	// categories beside the generic entity surface.
 	hasAdditionalEntityCategory = semantics.HasAdditionalEntityCategory

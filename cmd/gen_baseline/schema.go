@@ -76,26 +76,6 @@ func schemaFromDB(dbPath string) []string {
 	return stmts
 }
 
-func objectKey(sqlStr string) string {
-	s := strings.TrimSpace(sqlStr)
-	u := strings.ToUpper(s)
-	parts := strings.Fields(u)
-	if len(parts) < 3 {
-		return s
-	}
-	idx := 2
-	if len(parts) > 1 && parts[1] == "UNIQUE" {
-		idx++
-	}
-	if idx < len(parts) && parts[idx] == "IF" {
-		idx += 3
-	}
-	if idx < len(parts) {
-		return parts[idx]
-	}
-	return s
-}
-
 // corpusWithoutPlaneBaselines copies the migration corpus into a temporary
 // directory, leaving out the plane dumps this command generates. The frozen
 // shared dump (`000_baseline_268.sql`) stays in the copy on purpose: a plane

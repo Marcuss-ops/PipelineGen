@@ -25,11 +25,6 @@ const (
 	EnvelopeVersionCanonical = 3
 )
 
-// SupportedEnvelopeVersions lists every accepted version for error messages.
-func SupportedEnvelopeVersions() []int {
-	return []int{EnvelopeVersionLegacy, EnvelopeVersionCanonical}
-}
-
 // IsSupportedEnvelopeVersion reports whether the envelope version is one this
 // build implements.
 func IsSupportedEnvelopeVersion(version int) bool {

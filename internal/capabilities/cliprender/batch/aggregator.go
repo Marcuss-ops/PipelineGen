@@ -1,4 +1,4 @@
-package cliprender
+package batch
 
 import (
 	"context"
@@ -33,6 +33,15 @@ type AggregatorJobsService interface {
 // 30s matches the voiceover/script aggregators: their children are
 // long-running, and a stranded parent there is equally a crash-recovery case.
 const DefaultParentAggregationInterval = 30 * time.Second
+
+// ParentStateWaitingChildren is the application-level parent_state the submit
+// phase writes to its job result. It is the SAME wire value the scripts and
+// voiceover fan-out handlers use, so the existing
+// jobs.Service.ListAwaitingAggregation / FinalizeAggregateParent machinery can
+// find and re-finalise a clip.render parent without a new mechanism and
+// without a migration. The aggregator consumes it, so it is owned here; the
+// capability root re-exports it for the submit phase.
+const ParentStateWaitingChildren = "waiting_children"
 
 // ParentAggregator finalizes clip.render parents whose single settle child is
 // terminal. It is intentionally small and durable: every lookup is recovered
@@ -76,7 +85,7 @@ func (a *ParentAggregator) Tick(ctx context.Context) {
 	if a == nil || a.jobs == nil {
 		return
 	}
-	parents, err := a.jobs.ListAwaitingAggregation(ctx, TypeClipRender, 100)
+	parents, err := a.jobs.ListAwaitingAggregation(ctx, job.TypeClipRender, 100)
 	if err != nil {
 		a.log.Warn("clip render parent aggregation list failed", zap.Error(err))
 		return
@@ -111,7 +120,7 @@ func (a *ParentAggregator) FinalizeParent(ctx context.Context, parentJobID strin
 	// Other capabilities own their own aggregators; a terminal child of a
 	// voiceover/script parent must not be finalised through this path, whose
 	// aggregate semantics (a single settle child) are clip.render-specific.
-	if parent.Type != TypeClipRender {
+	if parent.Type != job.TypeClipRender {
 		return nil
 	}
 	if err := a.aggregateOne(ctx, parent); err != nil {

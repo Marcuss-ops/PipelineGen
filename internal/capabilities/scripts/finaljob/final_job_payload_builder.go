@@ -12,6 +12,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/renderunits"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 // finalJobSceneBuilder owns one pass over the canonical timeline. It keeps the
@@ -494,7 +495,7 @@ func finalJobPreflight(ctx context.Context, runID string, req contract.GenerateR
 // finalJobFinalizePayload turns the scene plan into the two Master payloads.
 // It is the only place that serializes the compiled plan and the runtime
 // assets; the scene builder never sees the wire DTO.
-func finalJobFinalizePayload(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, builder *finalJobSceneBuilder, preparers []FinalJobVideoSegmentPreparer, hasFinalAudio, imageRequested bool) (map[string]any, map[string]any, error) {
+func finalJobFinalizeEnvelope(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, builder *finalJobSceneBuilder, preparers []FinalJobVideoSegmentPreparer, hasFinalAudio, imageRequested bool) (finaljob.PrepareV1, finaljob.FinalizeEnvelopeV1, error) {
 	remoteScenes := builder.remoteScenes
 	runtimeAssets := builder.runtimeAssets
 	seenRuntimeAssets := builder.seenRuntimeAssets
@@ -505,31 +506,31 @@ func finalJobFinalizePayload(ctx context.Context, runID string, req contract.Gen
 	scriptText := builder.scriptText
 	consumedPhraseOverlays := builder.consumedPhraseOverlays
 	if clipOrdinal == 0 {
-		return nil, nil, fmt.Errorf("final_job produced no remote scenes")
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job produced no remote scenes")
 	}
 	if err := EnforceFinalJobMinimumSceneDuration(remoteScenes, 100); err != nil {
-		return nil, nil, err
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
 	plannedDurationMS = FinalJobSceneDurationMS(remoteScenes)
 	if hasFinalAudio {
 		if delta := plannedDurationMS - result.FinalAudio.DurationMS; delta < -capabilityaudio.FinalAudioDurationToleranceMS || delta > capabilityaudio.FinalAudioDurationToleranceMS {
-			return nil, nil, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance %dms)", plannedDurationMS, result.FinalAudio.DurationMS, capabilityaudio.FinalAudioDurationToleranceMS)
+			return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance %dms)", plannedDurationMS, result.FinalAudio.DurationMS, capabilityaudio.FinalAudioDurationToleranceMS)
 		}
 		if err := EnforceFinalJobPreflight(remoteScenes, result.FinalAudio.DurationMS); err != nil {
-			return nil, nil, err
+			return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 		}
 		var err error
 		audioRef, err = FinalJobAudioAsset(ctx, *result.FinalAudio)
 		if err != nil {
-			return nil, nil, err
+			return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 		}
 		AppendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "final_audio", audioRef)
 	} else if delta := plannedDurationMS*1000 - result.CanonicalTimeline.DurationUS; delta < -capabilityaudio.FinalAudioDurationToleranceUS || delta > capabilityaudio.FinalAudioDurationToleranceUS {
-		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match canonical timeline %dus", plannedDurationMS, result.CanonicalTimeline.DurationUS)
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job scene duration %dms does not match canonical timeline %dus", plannedDurationMS, result.CanonicalTimeline.DurationUS)
 	}
 	remoteOverlays, overlayManifest, err := FinalJobOverlayHandoff(ctx, result, consumedPhraseOverlays, imageRequested)
 	if err != nil {
-		return nil, nil, err
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
 	appendFinalJobOverlayRuntimeAssets(&runtimeAssets, seenRuntimeAssets, remoteOverlays, overlayManifest)
 	// Master 51's deployed build may predate source_uri propagation in the
@@ -537,7 +538,7 @@ func finalJobFinalizePayload(ctx context.Context, runID string, req contract.Gen
 	// that worker path so assets do not fall back to master_asset_bridge.
 	exposeFinalJobSourceURLs(runtimeAssets)
 	if audioRef == nil {
-		return nil, nil, fmt.Errorf("final_job V2 worker submission requires certified final audio")
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job V2 worker submission requires certified final audio")
 	}
 	// Build, align, prune and prepare the plan IN MEMORY. Every step mutates the
 	// same *FinalJobCompiledPlan; the payload is serialized exactly once at the
@@ -545,10 +546,10 @@ func finalJobFinalizePayload(ctx context.Context, runID string, req contract.Gen
 	// steps used to make the hand-off pay three json.Marshal calls per job.
 	compiledPlanObject, stockAssetIDs, err := buildFinalJobCompiledPlan(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS, builder.stockPoolFolderID, stockBoundWindowsMS)
 	if err != nil {
-		return nil, nil, err
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
 	if err := finalJobSealCompiledPlan(compiledPlanObject, remoteScenes, stockAssetIDs); err != nil {
-		return nil, nil, err
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
 	// The runtime refs are content-addressed (SHA), while the plan may still
 	// carry the fragment work ids used while building it. Bind both to the
@@ -556,62 +557,80 @@ func finalJobFinalizePayload(ctx context.Context, runID string, req contract.Gen
 	// copy-only assembler rejects segment-0000 with "manifest binding is not
 	// exact" even though the prefetched bytes are correct.
 	if err := alignFinalJobCompiledPlanAssetIDs(compiledPlanObject, runtimeAssets); err != nil {
-		return nil, nil, err
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
 	retainedRuntimeAssets, err := retainFinalJobRuntimeAssets(compiledPlanObject, runtimeAssets)
 	if err != nil {
-		return nil, nil, err
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
 	runtimeAssets = retainedRuntimeAssets
 	if len(preparers) > 0 && preparers[0] != nil {
 		runtimeAssets, err = prepareFinalJobVideoSegments(ctx, compiledPlanObject, runtimeAssets, preparers[0])
 		if err != nil {
-			return nil, nil, fmt.Errorf("prepare non-stock final_job segments: %w", err)
+			return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("prepare non-stock final_job segments: %w", err)
 		}
 	}
 	compiledPlan, compiledPlanSHA, err := marshalFinalJobCompiledPlan(compiledPlanObject)
 	if err != nil {
-		return nil, nil, err
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
 	attempt := 1
 	if result.RemoteFinalJob != nil && result.RemoteFinalJob.Attempt > 0 {
 		attempt = result.RemoteFinalJob.Attempt
 	}
 	key := FinalJobAttemptIdempotencyKey(req.IdempotencyKey, runID, attempt, compiledPlanSHA)
-	pre := map[string]any{
-		"idempotency_key":             key,
-		"job_type":                    "video.render.v2",
-		"render_only":                 true,
-		"video_name":                  FinalJobVideoName(req, runID),
-		"script_text":                 strings.TrimSpace(scriptText.String()),
-		"compiled_render_plan_json":   compiledPlan,
-		"compiled_render_plan_sha256": compiledPlanSHA,
-	}
-	finalize := map[string]any{
-		"idempotency_key": key + "-finalize",
-		"runtime_assets":  runtimeAssets,
+	videoName := FinalJobVideoName(req, runID)
+	script := strings.TrimSpace(scriptText.String())
+	// The stable PREPARE keys are assembled from the typed contract, never from
+	// a hand-built map: a renamed or misspelled field is a compile error, not a
+	// Master 422 discovered in production.
+	prepare := finaljob.PrepareV1{
+		IdempotencyKey:           key,
+		JobType:                  "video.render.v2",
+		RenderOnly:               true,
+		VideoName:                videoName,
+		ScriptText:               script,
+		CompiledRenderPlanJSON:   compiledPlan,
+		CompiledRenderPlanSHA256: compiledPlanSHA,
 	}
 	// The Master has a strict FINALIZE DTO. Overlay and legacy runtime hints
 	// stay inside its opaque runtime_payload; the worker's executable timing
 	// source is compiled_render_plan_json above.
-	runtimePayload := map[string]any{
-		"video_name":  FinalJobVideoName(req, runID),
-		"script_text": strings.TrimSpace(scriptText.String()),
-		"overlays":    remoteOverlays,
+	runtimePayload := finaljob.RuntimePayloadV1{
+		VideoName:  videoName,
+		ScriptText: script,
+		Overlays:   remoteOverlays,
 	}
 	if overlayManifest != nil {
-		runtimePayload["overlay_manifest"] = overlayManifest
+		runtimePayload.OverlayManifest = overlayManifest
 	}
 	if hasFinalAudio {
-		runtimePayload["runtime_audio"] = map[string]any{
-			"voiceover_asset_id":         strings.TrimSpace(result.FinalAudio.AssetID),
-			"voiceover_volume":           1.0,
-			"voiceover_duration_seconds": float64(result.FinalAudio.DurationMS) / 1000,
+		runtimePayload.RuntimeAudio = &finaljob.RuntimeAudioV1{
+			VoiceoverAssetID:         strings.TrimSpace(result.FinalAudio.AssetID),
+			VoiceoverVolume:          1.0,
+			VoiceoverDurationSeconds: float64(result.FinalAudio.DurationMS) / 1000,
 		}
 	}
-	finalize["runtime_payload"] = runtimePayload
+	// The runtime asset list stays the dynamic transport document: each entry
+	// carries Master-forward-compatible metadata that a typed struct would drop
+	// when empty. Its typed view is produced by BuildEnvelope/Validate.
+	finalize := finaljob.FinalizeEnvelopeV1{
+		IdempotencyKey: key + "-finalize",
+		RuntimeAssets:  runtimeAssets,
+		RuntimePayload: runtimePayload,
+	}
 	// The submitted envelope IS the durable diagnostic surface. Writing a
 	// second copy under /tmp made a temporary path look authoritative and
 	// lost the evidence whenever the host cleaned it up.
-	return pre, finalize, nil
+	return prepare, finalize, nil
+}
+
+// finalJobFinalizePayload adapts the typed envelope to the deployed Master
+// map contract for the callers that still carry the split handoff documents.
+func finalJobFinalizePayload(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, builder *finalJobSceneBuilder, preparers []FinalJobVideoSegmentPreparer, hasFinalAudio, imageRequested bool) (map[string]any, map[string]any, error) {
+	prepare, finalize, err := finalJobFinalizeEnvelope(ctx, runID, req, result, builder, preparers, hasFinalAudio, imageRequested)
+	if err != nil {
+		return nil, nil, err
+	}
+	return finaljob.MasterPayloadsOf(prepare, finalize)
 }

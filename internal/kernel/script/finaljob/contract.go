@@ -75,6 +75,94 @@ type FinalizeV1 struct {
 	RuntimePayload RuntimePayloadV1 `json:"runtime_payload"`
 }
 
+// FinalizeEnvelopeV1 is the typed stable shell of the FINALIZE document the
+// Producer builds. It differs from FinalizeV1 in exactly one place: the
+// runtime asset list stays a transport list because every entry is a
+// Master-forward-compatible document (RuntimeAssetV1.Additional) that the split
+// handoff appends to after PREPARE. Typing that list would drop empty-valued
+// optional keys, which is a wire change this contract does not authorize; the
+// typed view of each entry is still produced by BuildEnvelope/Validate at the
+// boundary.
+type FinalizeEnvelopeV1 struct {
+	IdempotencyKey string           `json:"idempotency_key"`
+	RuntimeAssets  []any            `json:"runtime_assets"`
+	RuntimePayload RuntimePayloadV1 `json:"runtime_payload"`
+}
+
+// MasterPayloadsOf adapts typed producer envelopes to the deployed Master map
+// contract. It is the ONE serialization boundary for the stable keys: the
+// builder never writes idempotency_key, job_type, video_name, script_text or
+// runtime_payload by hand, and the dynamic runtime asset entries pass through
+// untouched. Validation stays in BuildEnvelope, so a split FINALIZE can be
+// adapted before its overlay supplement is final.
+func MasterPayloadsOf(prepare PrepareV1, finalize FinalizeEnvelopeV1) (map[string]any, map[string]any, error) {
+	prepareRaw, err := json.Marshal(prepare)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode final_job PREPARE: %w", err)
+	}
+	prepareMap, err := decodeMasterPayload(prepareRaw)
+	if err != nil {
+		return nil, nil, err
+	}
+	// The asset list and the two opaque overlay documents are already in their
+	// deployed shape; only the typed scalar fields are projected here, so the
+	// adapter adds no encode/decode pass over the payload.
+	runtimePayload := map[string]any{
+		"video_name":  finalize.RuntimePayload.VideoName,
+		"script_text": finalize.RuntimePayload.ScriptText,
+		"overlays":    finalize.RuntimePayload.Overlays,
+	}
+	if finalize.RuntimePayload.OverlayManifest != nil {
+		runtimePayload["overlay_manifest"] = finalize.RuntimePayload.OverlayManifest
+	}
+	if audio := finalize.RuntimePayload.RuntimeAudio; audio != nil {
+		runtimePayload["runtime_audio"] = map[string]any{
+			"voiceover_asset_id":         audio.VoiceoverAssetID,
+			"voiceover_volume":           audio.VoiceoverVolume,
+			"voiceover_duration_seconds": audio.VoiceoverDurationSeconds,
+		}
+	}
+	finalizeMap := map[string]any{
+		"idempotency_key": finalize.IdempotencyKey,
+		"runtime_assets":  finalize.RuntimeAssets,
+		"runtime_payload": runtimePayload,
+	}
+	// PREPARE is decoded from JSON, so restore the Go number shapes the
+	// transport has always carried (integral numbers as int64, fractions as
+	// float64): a downstream reader must not start seeing json.Number because
+	// the construction became typed. FINALIZE needs no walk: its assets and
+	// opaque documents already hold concrete Go values.
+	normalizeMasterPayloadNumbers(prepareMap)
+	return prepareMap, finalizeMap, nil
+}
+
+// normalizeMasterPayloadNumbers walks the decoded map and replaces every
+// json.Number with the concrete int64/float64 the legacy builder produced.
+func normalizeMasterPayloadNumbers(value any) any {
+	switch typed := value.(type) {
+	case json.Number:
+		if i, err := typed.Int64(); err == nil {
+			return i
+		}
+		if f, err := typed.Float64(); err == nil {
+			return f
+		}
+		return typed
+	case map[string]any:
+		for key, item := range typed {
+			typed[key] = normalizeMasterPayloadNumbers(item)
+		}
+		return typed
+	case []any:
+		for i, item := range typed {
+			typed[i] = normalizeMasterPayloadNumbers(item)
+		}
+		return typed
+	default:
+		return value
+	}
+}
+
 // RuntimeAssetV1 types the immutable asset identity separately from
 // its transport locator. Additional preserves forward-compatible Master
 // metadata while the stable identity fields remain statically checked.
@@ -91,10 +179,14 @@ type RuntimeAssetV1 struct {
 }
 
 type RuntimePayloadV1 struct {
-	VideoName       string          `json:"video_name"`
-	ScriptText      string          `json:"script_text"`
-	Overlays        json.RawMessage `json:"overlays"`
-	OverlayManifest json.RawMessage `json:"overlay_manifest,omitempty"`
+	VideoName  string `json:"video_name"`
+	ScriptText string `json:"script_text"`
+	// Overlays and OverlayManifest are the two legitimately dynamic documents
+	// of the FINALIZE contract (the Master treats them as opaque). They carry
+	// the value the Producer already built, so the transport adapter can hand
+	// them to the deployed map without a second encode/decode round trip.
+	Overlays        any             `json:"overlays"`
+	OverlayManifest any             `json:"overlay_manifest,omitempty"`
 	RuntimeAudio    *RuntimeAudioV1 `json:"runtime_audio,omitempty"`
 }
 
@@ -258,23 +350,19 @@ func (e EnvelopeV1) MasterPayloads() (map[string]any, map[string]any, error) {
 	if err := e.Validate(); err != nil {
 		return nil, nil, err
 	}
-	prepareRaw, err := json.Marshal(e.Prepare)
-	if err != nil {
-		return nil, nil, fmt.Errorf("encode final_job PREPARE: %w", err)
+	finalizeAssets := make([]any, 0, len(e.Finalize.RuntimeAssets))
+	for i, asset := range e.Finalize.RuntimeAssets {
+		mapped, err := asset.Map()
+		if err != nil {
+			return nil, nil, fmt.Errorf("encode final_job runtime asset %d: %w", i, err)
+		}
+		finalizeAssets = append(finalizeAssets, mapped)
 	}
-	finalizeRaw, err := json.Marshal(e.Finalize)
-	if err != nil {
-		return nil, nil, fmt.Errorf("encode final_job FINALIZE: %w", err)
-	}
-	prepare, err := decodeMasterPayload(prepareRaw)
-	if err != nil {
-		return nil, nil, err
-	}
-	finalize, err := decodeMasterPayload(finalizeRaw)
-	if err != nil {
-		return nil, nil, err
-	}
-	return prepare, finalize, nil
+	return MasterPayloadsOf(e.Prepare, FinalizeEnvelopeV1{
+		IdempotencyKey: e.Finalize.IdempotencyKey,
+		RuntimeAssets:  finalizeAssets,
+		RuntimePayload: e.Finalize.RuntimePayload,
+	})
 }
 
 func decodeMasterPayload(raw []byte) (map[string]any, error) {

@@ -212,6 +212,3 @@ func segmentAssignmentBlock(assignment string) string {
 		"Write ONLY the single segment described by the CURRENT SEGMENT ASSIGNMENT above. " +
 		"Ignore any other segment count or multi-paragraph requirement stated in the template."
 }
-
-// unused import guard
-var _ = strings.TrimSpace

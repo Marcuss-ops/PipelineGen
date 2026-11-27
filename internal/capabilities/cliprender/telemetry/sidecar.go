@@ -1,4 +1,4 @@
-package cliprender
+package telemetry
 
 // chronon_sidecar.go owns the typed projection of Chronon's canonical
 // *.timing.json sidecar (the frame-timing document the video pipe exporter

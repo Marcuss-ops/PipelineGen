@@ -3,6 +3,7 @@
   "plan_id": "maps-only-plan",
   "video_id": "maps-only-video",
   "project_id": "map-project",
+  "entity_variation_seed": "483d75d026db478f90427a34f6b66b275a3b0d2fbbaba676626f1548cf608ff5",
   "language": "en",
   "width": 1280,
   "height": 720,
@@ -72,5 +73,5 @@
       "duration_ms": 400
     }
   ],
-  "fingerprint": "9c18a17f2f2a955c11ac6714cdccb0f69f58367bef6013eb9743f14309f2e6dc"
+  "fingerprint": "333b409edc0320a0e75915257594e8bec342b14544600499aaaa6cf4148c70db"
 }

@@ -1,4 +1,4 @@
-package cliprender
+package telemetry
 
 // chronon_metrics_adapter.go — the Chronon Metrics Adapter. It promotes the
 // fine-grained phases of Chronon's timing sidecar into the canonical durable

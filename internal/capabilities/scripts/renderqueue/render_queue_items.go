@@ -21,7 +21,7 @@ import (
 // off-lane receipt+post tail (golden v12 mix: ~1,7 s of lane service + ~1,0 s
 // of tail per item), so the dual-lane topology needs 3,2 → 4. The worker's
 // gpu_lanes remains the sole GPU authority: this width pipelines the per-item pre/post chain, it does not raise GPU load.
-const defaultSeparateItemRenderWorkers = 12
+const defaultSeparateItemRenderWorkers = 4
 
 // overlayItemMaxWidth caps an operator-tuned pool (config.Scripts.SeparateItemRenderWorkers /
 // VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS). 16: pipelining width ensuring all 3 GPU lanes

@@ -33,11 +33,15 @@ const FinalJobEnvelopeSchemaV1 = finaljob.EnvelopeSchemaV1
 // BuildFinalJobEnvelopeV1 builds and validates the typed handoff before the
 // wiring adapter serializes it for the deployed Master contract.
 func BuildFinalJobEnvelopeV1(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (FinalJobEnvelopeV1, error) {
-	prepareMap, finalizeMap, err := buildFinalJobPayloads(ctx, runID, req, result, resolver, preparers...)
+	prepare, finalize, err := buildFinalJobTypedEnvelope(ctx, runID, req, result, resolver, preparers...)
 	if err != nil {
 		return FinalJobEnvelopeV1{}, err
 	}
-	return finaljob.BuildEnvelope(runID, prepareMap, finalizeMap)
+	// The typed envelopes go straight to the versioned contract: the builder no
+	// longer pays one map conversion on the production path. BuildEnvelope still
+	// decodes with DisallowUnknownFields, so a key the contract does not own
+	// fails closed instead of reaching the Master.
+	return finaljob.BuildEnvelope(runID, prepare, finalize)
 }
 
 // BuildFinalJobSplitEnvelopeV1 validates a split handoff before either phase
@@ -233,22 +237,33 @@ func finalJobInputFor(result *contract.GenerateResult) *contract.GenerateResult 
 }
 
 func buildFinalJobPayloads(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
-	input := finalJobInputFor(result)
-	stockPoolFolderID, hasFinalAudio, imageRequested, err := finalJobPreflight(ctx, runID, req, input)
+	prepare, finalize, err := buildFinalJobTypedEnvelope(ctx, runID, req, result, resolver, preparers...)
 	if err != nil {
 		return nil, nil, err
 	}
+	return finaljob.MasterPayloadsOf(prepare, finalize)
+}
+
+// buildFinalJobTypedEnvelope is the single assembly path. Both the typed
+// production envelope and the map-shaped split documents are projections of
+// this result, so the two callers cannot drift apart.
+func buildFinalJobTypedEnvelope(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (finaljob.PrepareV1, finaljob.FinalizeEnvelopeV1, error) {
+	input := finalJobInputFor(result)
+	stockPoolFolderID, hasFinalAudio, imageRequested, err := finalJobPreflight(ctx, runID, req, input)
+	if err != nil {
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
+	}
 	builder := newFinalJobSceneBuilder(ctx, req, input, resolver, stockPoolFolderID)
 	if err := builder.appendSegments(); err != nil {
-		return nil, nil, err
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
-	prepareMap, finalizeMap, err := finalJobFinalizePayload(ctx, runID, req, input, builder, preparers, hasFinalAudio, imageRequested)
+	prepare, finalize, err := finalJobFinalizeEnvelope(ctx, runID, req, input, builder, preparers, hasFinalAudio, imageRequested)
 	if result != nil {
 		// The image-preflight marker is the only write the projection may make;
 		// forward it to the durable run result after the handoff is assembled.
 		result.FinalJobPreflight = input.FinalJobPreflight
 	}
-	return prepareMap, finalizeMap, err
+	return prepare, finalize, err
 }
 
 // Package-local aliases over the one coercion family. They keep the existing

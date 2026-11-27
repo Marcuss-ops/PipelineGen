@@ -47,9 +47,92 @@ const clipAudioPrepareConcurrency = 8
 // every independent clip was serialized behind the previous download. The
 // scene/projection mutation below stays single-threaded and in declaration
 // order, so the compiled plan is byte-identical to the serial version.
-func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult, source contract.ClipAudioAssetSource, policy capabilityaudio.AudioMixPolicy) (int64, error) {
+// ClipAudioFact is the immutable, per-clip outcome of materialization: the
+// verified local path and the original-audio duration the renderer will use.
+// It carries facts only — never scene state — so the owner of a scene can apply
+// them without sharing the document that produced them.
+type ClipAudioFact struct {
+	AudioPath  string
+	DurationUS int64
+	// ApplyWindow marks a fact produced by the resolver: its duration must be
+	// validated against the scene window. A caller-supplied path that already
+	// existed is a path fact only and must not be re-windowed.
+	ApplyWindow bool
+}
+
+// ClipAudioSnapshot is the single producer's output. The master audio phase
+// and the overlay plan branch each consume the same snapshot and apply it to
+// their own document, so clips are resolved and probed ONCE per run while both
+// branches keep byte-identical timing.
+type ClipAudioSnapshot struct {
+	facts map[string]ClipAudioFact
+}
+
+// Facts returns the number of materialized clip facts (diagnostics/tests).
+func (s *ClipAudioSnapshot) Facts() int {
+	if s == nil {
+		return 0
+	}
+	return len(s.facts)
+}
+
+// ApplyTo projects the snapshot onto one document. It performs no I/O and
+// consults no resolver: every value comes from the facts already resolved.
+func (s *ClipAudioSnapshot) ApplyTo(result *contract.GenerateResult) error {
+	if s == nil || result == nil {
+		return nil
+	}
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		clips := scene.Clips
+		if len(clips) == 0 && scene.Clip != nil {
+			clips = []*contract.ClipReference{scene.Clip}
+		}
+		for _, clip := range clips {
+			if clip == nil || strings.TrimSpace(clip.ID) == "" || !SceneUsesClipAudio(*scene, clip.ID) {
+				continue
+			}
+			fact, ok := s.facts[clip.ID]
+			if !ok {
+				continue
+			}
+			switch {
+			case fact.AudioPath == "":
+				return fmt.Errorf("scene %s clip %s audio materialized to an empty path", scene.ID, clip.ID)
+			case !fact.ApplyWindow:
+				clip.AudioPath = fact.AudioPath
+			case scene.ExecutionMode.IsFixedMedia():
+				clip.AudioPath = fact.AudioPath
+				if err := ApplyFixedPlaybackWindow(scene, clip, fact.DurationUS); err != nil {
+					return fmt.Errorf("scene %s clip %s fixed playback validation failed: %w", scene.ID, clip.ID, err)
+				}
+			default:
+				clip.AudioPath = fact.AudioPath
+				if err := ClampClipAudioRanges(scene, clip.ID, fact.DurationUS); err != nil {
+					return fmt.Errorf("scene %s clip %s audio duration validation failed: %w", scene.ID, clip.ID, err)
+				}
+			}
+		}
+	}
+	for i := range result.Scenes {
+		if result.Scenes[i].ExecutionMode.IsFixedMedia() {
+			if err := RebuildFixedMediaTiming(&result.Scenes[i]); err != nil {
+				return fmt.Errorf("scene %s fixed playback timing rebuild failed: %w", result.Scenes[i].ID, err)
+			}
+		}
+	}
+	return nil
+}
+
+// PrepareClipAudioSnapshot resolves and probes the physical clip audio exactly
+// once and returns the immutable facts. It never mutates the document.
+//
+// Resolution runs as a bounded fan-out. The IDs are known before any TTS
+// finishes, so waiting for one clip before starting the next was pure latency:
+// every independent clip was serialized behind the previous download.
+func PrepareClipAudioSnapshot(ctx context.Context, result *contract.GenerateResult, source contract.ClipAudioAssetSource, policy capabilityaudio.AudioMixPolicy) (*ClipAudioSnapshot, int64, error) {
 	if result == nil {
-		return 0, nil
+		return nil, 0, nil
 	}
 	needsFixedAudio := false
 	for i := range result.Scenes {
@@ -59,7 +142,7 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 		}
 	}
 	if policy.Normalize() != capabilityaudio.MixVoiceoverWithDuckedClip && !needsFixedAudio {
-		return 0, nil
+		return nil, 0, nil
 	}
 	started := time.Now()
 
@@ -71,6 +154,7 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 		clip  *contract.ClipReference
 		fixed bool
 	}
+	snapshot := &ClipAudioSnapshot{facts: make(map[string]ClipAudioFact)}
 	var tasks []clipAudioPrepareTask
 	for i := range result.Scenes {
 		scene := &result.Scenes[i]
@@ -84,7 +168,7 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 			}
 			fixed := scene.ExecutionMode.IsFixedMedia()
 			if fixed && source == nil {
-				return 0, fmt.Errorf("scene %s fixed media clip %s requires an original audio source", scene.ID, clip.ID)
+				return nil, 0, fmt.Errorf("scene %s fixed media clip %s requires an original audio source", scene.ID, clip.ID)
 			}
 			path := strings.TrimSpace(clip.AudioPath)
 			if path == "" {
@@ -92,7 +176,7 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 			}
 			if path != "" && !fixed {
 				if _, err := os.Stat(path); err == nil {
-					clip.AudioPath = path
+					snapshot.facts[clip.ID] = ClipAudioFact{AudioPath: path}
 					continue
 				}
 				// A caller may already have supplied the canonical path while
@@ -101,12 +185,12 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 				// resolver-backed production flows still materialize and verify
 				// missing files below.
 				if source == nil {
-					clip.AudioPath = path
+					snapshot.facts[clip.ID] = ClipAudioFact{AudioPath: path}
 					continue
 				}
 			}
 			if source == nil {
-				return 0, fmt.Errorf("scene %s clip %s requires original audio, but clip materializer is not wired", scene.ID, clip.ID)
+				return nil, 0, fmt.Errorf("scene %s clip %s requires original audio, but clip materializer is not wired", scene.ID, clip.ID)
 			}
 			tasks = append(tasks, clipAudioPrepareTask{scene: scene, clip: clip, fixed: fixed})
 		}
@@ -168,7 +252,7 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 		// the serial loop did, rather than the first goroutine to finish.
 		for _, resolution := range resolutions {
 			if resolution.err != nil {
-				return 0, resolution.err
+				return nil, 0, resolution.err
 			}
 		}
 
@@ -181,27 +265,32 @@ func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult
 			if strings.TrimSpace(resolved.Path) == "" {
 				// A SafeGo panic leaves the slot empty; fail closed instead of
 				// writing an unusable path into the plan.
-				return 0, fmt.Errorf("scene %s clip %s audio materialized to an empty path", task.scene.ID, task.clip.ID)
+				return nil, 0, fmt.Errorf("scene %s clip %s audio materialized to an empty path", task.scene.ID, task.clip.ID)
 			}
-			task.clip.AudioPath = resolved.Path
-			if task.fixed {
-				if err := ApplyFixedPlaybackWindow(task.scene, task.clip, resolved.DurationUS); err != nil {
-					return 0, fmt.Errorf("scene %s clip %s fixed playback validation failed: %w", task.scene.ID, task.clip.ID, err)
-				}
-			} else if err := ClampClipAudioRanges(task.scene, task.clip.ID, resolved.DurationUS); err != nil {
-				return 0, fmt.Errorf("scene %s clip %s audio duration validation failed: %w", task.scene.ID, task.clip.ID, err)
+			snapshot.facts[task.clip.ID] = ClipAudioFact{
+				AudioPath:   resolved.Path,
+				DurationUS:  resolved.DurationUS,
+				ApplyWindow: true,
 			}
 		}
 	}
+	return snapshot, time.Since(started).Milliseconds(), nil
+}
 
-	for i := range result.Scenes {
-		if result.Scenes[i].ExecutionMode.IsFixedMedia() {
-			if err := RebuildFixedMediaTiming(&result.Scenes[i]); err != nil {
-				return 0, fmt.Errorf("scene %s fixed playback timing rebuild failed: %w", result.Scenes[i].ID, err)
-			}
-		}
+// PrepareClipAudioAssets seals the physical source audio contract before the
+// canonical timeline is compiled. VOICEOVER_DUCKED_CLIP cannot be compiled
+// from a Drive URL or a semantic clip ID: the renderer needs a verified local
+// file. Existing local paths are reused; missing paths are materialized once
+// through the optional clip resolver, then projected onto the document.
+func PrepareClipAudioAssets(ctx context.Context, result *contract.GenerateResult, source contract.ClipAudioAssetSource, policy capabilityaudio.AudioMixPolicy) (int64, error) {
+	snapshot, elapsedMS, err := PrepareClipAudioSnapshot(ctx, result, source, policy)
+	if err != nil {
+		return 0, err
 	}
-	return time.Since(started).Milliseconds(), nil
+	if err := snapshot.ApplyTo(result); err != nil {
+		return 0, err
+	}
+	return elapsedMS, nil
 }
 
 // ClampClipAudioRanges reconciles provider metadata with the bytes actually

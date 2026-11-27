@@ -2,7 +2,9 @@
 
 **Data:** 2026-11-26
 **Priorità:** P1 (verifica, nessuna modifica)
-**Stato:** **VERIFICATO** — residuo tracciato in `DEMOL-08`
+**Stato:** **SUPERATO** — residuo chiuso da
+[04](04-FINALJOB-TYPED-ENVELOPE.md) il 2026-11-27. Questa scheda resta come
+fotografia dello stato **pre-refactor**.
 **Area:** `internal/capabilities/scripts/finaljob`, `internal/kernel/script/finaljob`
 
 ## 1. Cosa è tipizzato (verificato nel codice)
@@ -45,7 +47,13 @@ che l'audit concede ("lasciando l'eventuale conversione dinamica esclusivamente
 al confine di serializzazione"). Il problema residuo è la costruzione delle
 chiavi stabili via mappa, non la presenza di campi dinamici.
 
-## 3. Perché non è stato riscritto qui
+## 3. Perché non è stato riscritto qui (decisione del 2026-11-26, poi superata)
+
+> Aggiornamento 2026-11-27: la riscrittura è stata eseguita con un golden sul
+> wire catturato prima del cambio e con la firma interna cambiata; i call site
+> split continuano a ricevere mappe tramite `MasterPayloadsOf`. Vedi
+> [04](04-FINALJOB-TYPED-ENVELOPE.md).
+
 
 Riscrivere il builder per costruire direttamente `PrepareV1`/`FinalizeV1`
 significa:

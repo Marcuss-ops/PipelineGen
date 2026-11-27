@@ -9,6 +9,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/clips"
 )
 
 type clipAudioPrepareStub struct{ path string }
@@ -98,5 +99,44 @@ func TestPrepareClipAudioAssetsResolvesIndependentClipsConcurrently(t *testing.T
 		if result.Scenes[i].Clip.AudioPath == "" {
 			t.Fatalf("scene %s clip %s was left without a materialized path", result.Scenes[i].ID, result.Scenes[i].Clip.ID)
 		}
+	}
+}
+
+// One producer, two consumers: the master audio phase materializes the clip
+// once and the overlay branch reuses the same facts. The resolver call counter
+// is the proof — a second materialization would increment it.
+func TestClipAudioLatch_ResolvesClipsOnceForBothBranches(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clip-1.m4a")
+	if err := os.WriteFile(path, []byte("clip-audio"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	source := clipAudioPrepareFunc(func(context.Context, string) (capabilityaudio.ResolvedAudioAsset, error) {
+		calls++
+		return capabilityaudio.ResolvedAudioAsset{Path: path, DurationUS: 1_000_000}, nil
+	})
+	newDocument := func() *GenerateResult {
+		return &GenerateResult{Scenes: []Scene{{
+			ID:    "scene-0",
+			Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioClip, ClipAssetID: "clip-1"},
+			Clip:  &ClipReference{ID: "clip-1"},
+		}}}
+	}
+	master, branch := newDocument(), newDocument()
+
+	latch := clips.NewClipAudioLatch()
+	if _, err := latch.Produce(context.Background(), master, source, capabilityaudio.MixVoiceoverWithDuckedClip); err != nil {
+		t.Fatalf("produce: %v", err)
+	}
+	if err := latch.ApplyTo(branch); err != nil {
+		t.Fatalf("branch apply: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("resolver calls = %d, want 1 (the branch must reuse the snapshot)", calls)
+	}
+	if master.Scenes[0].Clip.AudioPath != path || branch.Scenes[0].Clip.AudioPath != path {
+		t.Fatalf("audio paths = %q / %q, want the same materialized path %q",
+			master.Scenes[0].Clip.AudioPath, branch.Scenes[0].Clip.AudioPath, path)
 	}
 }

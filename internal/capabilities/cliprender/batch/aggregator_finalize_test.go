@@ -1,4 +1,4 @@
-package cliprender
+package batch
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func clipParentFixture(t *testing.T, parentJobID, parentType, childID string) *j
 func TestParentAggregator_FinalizeParentFlipsTerminalParent(t *testing.T) {
 	jobs := newBenchJobsService()
 	childID := "settle-child-1"
-	jobs.Register(clipParentFixture(t, "parent-1", TypeClipRender, childID), childID)
+	jobs.Register(clipParentFixture(t, "parent-1", job.TypeClipRender, childID), childID)
 	jobs.CompleteChild(childID, job.StatusSucceeded)
 
 	agg := NewParentAggregator(jobs, zap.NewNop(), time.Second)
@@ -50,7 +50,7 @@ func TestParentAggregator_FinalizeParentFlipsTerminalParent(t *testing.T) {
 func TestParentAggregator_FinalizeParentFlipsFailedChildToFailedParent(t *testing.T) {
 	jobs := newBenchJobsService()
 	childID := "settle-child-2"
-	jobs.Register(clipParentFixture(t, "parent-2", TypeClipRender, childID), childID)
+	jobs.Register(clipParentFixture(t, "parent-2", job.TypeClipRender, childID), childID)
 	jobs.CompleteChild(childID, job.StatusFailed)
 
 	agg := NewParentAggregator(jobs, zap.NewNop(), time.Second)
@@ -69,7 +69,7 @@ func TestParentAggregator_FinalizeParentFlipsFailedChildToFailedParent(t *testin
 func TestParentAggregator_FinalizeParentWaitsForRunningChild(t *testing.T) {
 	jobs := newBenchJobsService()
 	childID := "settle-child-3"
-	jobs.Register(clipParentFixture(t, "parent-3", TypeClipRender, childID), childID)
+	jobs.Register(clipParentFixture(t, "parent-3", job.TypeClipRender, childID), childID)
 
 	agg := NewParentAggregator(jobs, zap.NewNop(), time.Second)
 	if err := agg.FinalizeParent(context.Background(), "parent-3"); err != nil {
@@ -117,7 +117,7 @@ func TestParentAggregator_FinalizeParentIgnoresEmptyID(t *testing.T) {
 func TestParentAggregator_RecoveryTickStillFinalisesStrandedParent(t *testing.T) {
 	jobs := newBenchJobsService()
 	childID := "settle-child-5"
-	jobs.Register(clipParentFixture(t, "parent-5", TypeClipRender, childID), childID)
+	jobs.Register(clipParentFixture(t, "parent-5", job.TypeClipRender, childID), childID)
 	jobs.CompleteChild(childID, job.StatusSucceeded)
 
 	// No notification: only the sweeper runs.

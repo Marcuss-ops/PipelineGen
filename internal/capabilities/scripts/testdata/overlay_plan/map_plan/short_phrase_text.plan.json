@@ -3,6 +3,7 @@
   "plan_id": "short-phrase-plan",
   "video_id": "short-phrase-video",
   "project_id": "phrase-project",
+  "entity_variation_seed": "366560fb89dc2ec40ed1130f16023f530e1923f8b9af17e248024125d1ad8626",
   "language": "en",
   "width": 1280,
   "height": 720,
@@ -12,7 +13,7 @@
   "media_contract": "overlay-v1",
   "items": [
     {
-      "id": "doc-14-dual-highlight-sequence__we-drove-into-new-orleans-today__phrase__01",
+      "id": "short-phrase-web-card-stack__we-drove-into-new-orleans-today__short_phrase__01",
       "scene_id": "scene-0",
       "kind": "text_phrase",
       "start_ms": 0,
@@ -20,7 +21,7 @@
       "duration_us": 900000,
       "template_id": "IMPORTANT_PHRASE",
       "preset_id": "phrase_default",
-      "motion_id": "doc_14_dual_highlight_sequence",
+      "motion_id": "short_phrase_web_card_stack",
       "motion_params": {
         "enter_frames": 8
       },
@@ -40,15 +41,16 @@
         "glow_color": "#FFFFFF",
         "glow_size": 10,
         "height": 600,
+        "motion_origin": "auto",
         "phrase_family": "long_phrase",
         "position": "center",
         "priority": 1,
         "timing_anchor": "word_timing",
         "width": 1700
       },
-      "render_key": "e53931c02b564fd56bbe89d9c918ab38e1d31d3f1d160d2d7e5e5cf7f83d3a9a",
+      "render_key": "083858add106f3ff3699eb02f018132569924ab884fa9ee7eabe79940ed8f2a8",
       "duration_ms": 900
     }
   ],
-  "fingerprint": "fc5a104e1f99ff78a8f7e716ac289e6e59736cd6f8d593c68bc3323d304d3581"
+  "fingerprint": "4b42cbf1eb97ebf46d7235aa9b6b675e20cbf2ca858d6029eeee6ae9211e9012"
 }

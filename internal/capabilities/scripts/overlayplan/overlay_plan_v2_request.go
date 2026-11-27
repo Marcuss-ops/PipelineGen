@@ -290,6 +290,14 @@ func CompileOverlayPlanV2(
 	if plan == nil {
 		return nil, fmt.Errorf("overlay plan: v2 compiler returned no plan")
 	}
+	// The creative seed is decided ONCE, here, and travels with the plan to
+	// RenderingGen: it is the same entropy that rotated every planner lane, so a
+	// new render resamples the entity styles and a replay keeps them. Before
+	// this stamp the field was never written, so RenderingGen silently fell back
+	// to the stable project identity and every run of the same content looked
+	// identical (ANIMRAND-01). It is render content and participates in the
+	// fingerprint.
+	plan.EntityVariationSeed = strings.TrimSpace(motionSeed)
 	// LocalPath is intentionally producer-only and omitted from the Rust wire.
 	// Reattach the already verified cache location by content identity so the
 	// local renderer and final-job preflight can use the exact selected bytes

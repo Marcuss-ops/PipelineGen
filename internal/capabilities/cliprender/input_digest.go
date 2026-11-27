@@ -220,20 +220,26 @@ func refContentSHA(ref *AssetRef) string {
 }
 
 // cacheInputMatches reports whether a cache record still describes the current
-// inputs. A record written before the digest existed ("") cannot be certified
-// and is treated as stale when a resolver is available — the fail-closed
-// migration that pairs with the RendererLoweringVersion bump.
+// inputs.
+//
+// Fail-closed rules:
+//   - no record: nothing to serve
+//   - record without a digest: UNPROVEN, therefore a miss. The
+//     RendererLoweringVersion bump already makes pre-digest fingerprints
+//     unreachable, so this branch cannot strand live rows; every production
+//     write path records a digest.
+//   - resolver error or empty revision: miss (the bytes cannot be certified)
+//   - resolver nil: the explicit legacy key-only mode, preserved for callers
+//     that have not wired the port yet (see InputDigestResolver).
 func cacheInputMatches(ctx context.Context, resolver InputDigestResolver, req *RenderRequest, rec *RenderCacheRecord) bool {
-	if resolver == nil || rec == nil {
+	if rec == nil {
+		return false
+	}
+	if resolver == nil {
 		return true
 	}
-	// An empty digest is a LEGACY/uninstrumented record. It cannot be
-	// stale-certified, but the RendererLoweringVersion bump changed every
-	// fingerprint, so no pre-digest row is reachable through this key; both
-	// production write paths (publish and delivery-only reuse) always record
-	// one. Treating it as a miss would only break older cache implementations.
 	if strings.TrimSpace(rec.InputSHA256) == "" {
-		return true
+		return false
 	}
 	digestNow, err := resolver.InputDigest(ctx, req)
 	if err != nil || digestNow == "" {

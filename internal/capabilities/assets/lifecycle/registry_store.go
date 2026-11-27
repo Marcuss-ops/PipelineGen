@@ -127,6 +127,7 @@ func mediaRecordToAssetRecord(rec *artifacts.MediaRecord) *AssetRecord {
 		ContentSHA256: rec.ContentSHA256,
 		LocalPath:     rec.LocalPath,
 		Status:        rec.Status,
+		PublishStatus: string(rec.PublishStatus),
 		Error:         rec.Error,
 		Metadata:      rec.Metadata,
 		CreatedAt:     time.Now(),

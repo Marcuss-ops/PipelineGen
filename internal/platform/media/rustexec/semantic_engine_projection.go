@@ -52,7 +52,7 @@ func projectSemanticEntityFacts(source string, facts []semanticEngineEntityFact)
 		if fact.ID == "" || fact.SubjectEntityID == "" || fact.Predicate == "" || fact.Value == "" ||
 			fact.Evidence == "" || !groundedSpan(source, fact.StartByte, fact.EndByte, fact.Value) ||
 			!groundedSpan(source, fact.EvidenceStartByte, fact.EvidenceEndByte, fact.Evidence) {
-			return nil, fmt.Errorf("entity fact %q is not grounded in source_text", fact.ID)
+			return nil, fmt.Errorf("entity fact %q (value %q, span %d:%d) is not grounded in source_text", fact.ID, fact.Value, fact.StartByte, fact.EndByte)
 		}
 		if fact.Status != "asserted" && fact.Status != "negated" && fact.Status != "uncertain" {
 			return nil, fmt.Errorf("entity fact %q has invalid status %q", fact.ID, fact.Status)
@@ -392,7 +392,8 @@ func projectSemanticMicroSummaries(source string, summaries []semanticEngineMicr
 
 func validMicroSummaryKind(kind string) bool {
 	switch kind {
-	case "micro_summary", "fact_comparison", "step_sequence", "timeline_summary":
+	case "micro_summary", "fact_comparison", "step_sequence", "timeline_summary",
+		"attribute_summary", "metric_summary":
 		return true
 	default:
 		return false

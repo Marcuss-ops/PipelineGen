@@ -99,3 +99,34 @@ func VisualIntents() map[string]VisualIntentSpec {
 
 // Canonical returns the process-wide registry loaded from the embedded JSON.
 func Canonical() *AnimationRegistry { return canonicalAnimationRegistry }
+
+// MotionFamilies returns the planner family tag ("classic", "didone",
+// "typewriter") for every active numeric motion, derived from the registry's
+// chronontemplate_family. The Rust planner uses this map instead of inferring a
+// family from an id prefix, so a renamed or newly registered motion is
+// classified correctly without touching the planner (ANIMRAND-12).
+func MotionFamilies() map[string]string {
+	out := make(map[string]string, len(canonicalAnimationRegistry.entries))
+	for _, entry := range canonicalAnimationRegistry.entries {
+		if entry.Status != "active" || !entry.RendererSupported {
+			continue
+		}
+		if family, ok := numericFamilyTag(entry.ChrononTemplateFamily); ok {
+			out[entry.ID] = family
+		}
+	}
+	return out
+}
+
+func numericFamilyTag(templateFamily string) (string, bool) {
+	switch templateFamily {
+	case "date_v1", "metric_v1":
+		return "classic", true
+	case "date_didone_v1", "metric_didone_v1":
+		return "didone", true
+	case "date_typewriter_v1", "metric_typewriter_v1":
+		return "typewriter", true
+	default:
+		return "", false
+	}
+}

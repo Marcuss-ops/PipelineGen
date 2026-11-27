@@ -3,6 +3,7 @@
   "plan_id": "short-map-plan",
   "video_id": "short-map-video",
   "project_id": "map-project",
+  "entity_variation_seed": "786add024d934c94a226b18e3f5523c29024ffdceb1801d5df9bc281e8df7785",
   "language": "en",
   "width": 1280,
   "height": 720,
@@ -72,5 +73,5 @@
       "duration_ms": 400
     }
   ],
-  "fingerprint": "85cb72fbcca19ee3532a643a921b21765824255c9743e8fff535e09dd2d4210b"
+  "fingerprint": "e4ed312502e5128cd05e6b34cee08cb79951c2090db9b3e64413d5406db65324"
 }

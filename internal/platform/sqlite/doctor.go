@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 )
 
 // IntegrityCheck runs `PRAGMA integrity_check` returning the status
@@ -258,6 +257,3 @@ func OpenWritable(path string) (*sql.DB, error) {
 	}
 	return db, nil
 }
-
-// ensure time is referenced (test helper, may be used by future callers)
-var _ = time.Now

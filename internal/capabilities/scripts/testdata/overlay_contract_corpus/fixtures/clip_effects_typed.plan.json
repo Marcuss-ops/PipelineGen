@@ -1,0 +1,54 @@
+{
+  "schema_version": "renderinggen.overlay-plan.v1",
+  "plan_id": "contract-clip-effects",
+  "video_id": "contract-video",
+  "project_id": "contract-project",
+  "language": "en",
+  "width": 1280,
+  "height": 720,
+  "fps_num": 30,
+  "fps_den": 1,
+  "duration_ms": 900,
+  "media_contract": "overlay-v1",
+  "clip_effects": [
+    {"type": "glitch", "amount": 0.2, "seed": 7},
+    {"type": "vignette", "amount": 0.4, "radius": 0.8, "softness": 0.3}
+  ],
+  "clip_grid": {
+    "scope": "full_canvas",
+    "style": "dots",
+    "spacing_px": 64,
+    "color": "#FFFFFF",
+    "opacity": 0.15
+  },
+  "items": [
+    {
+      "id": "static__contract__location__01",
+      "scene_id": "scene-0",
+      "entity_id": "ent_contract",
+      "kind": "location",
+      "start_ms": 500,
+      "end_ms": 900,
+      "start_us": 500000,
+      "duration_us": 400000,
+      "template_id": "gpe_default",
+      "preset_id": "phrase_default",
+      "text": "Contract City",
+      "style": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size": 96
+      },
+      "params": {
+        "fill": "#000000",
+        "font_family": "playfair_display_italic",
+        "font_size_px": 96,
+        "height": 600,
+        "position": "center",
+        "priority": 0.93,
+        "width": 1700
+      }
+    }
+  ],
+  "fingerprint": "contract-clip-effects"
+}

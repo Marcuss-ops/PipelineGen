@@ -556,6 +556,17 @@ type EditorialBulletPoint struct {
 	EndSec        *float64 `json:"end,omitempty"`
 }
 
+// IntroTopic is one ranked, non-spoiler sentence offered for the opening.
+// The span is verbatim so a consumer never re-segments the transcript.
+type IntroTopic struct {
+	Text          string  `json:"text"`
+	SentenceIndex int     `json:"sentence_index"`
+	StartByte     int     `json:"start_byte"`
+	EndByte       int     `json:"end_byte"`
+	SceneIndex    *int    `json:"scene_index,omitempty"`
+	Importance    float64 `json:"importance"`
+}
+
 type PhraseImpactResult struct {
 	Summary         string                 `json:"summary"`
 	BulletPoints    []string               `json:"bullet_points"`
@@ -563,6 +574,9 @@ type PhraseImpactResult struct {
 	HeavySentences  []ImportantSentence    `json:"heavy_sentences"`
 	ChapterManifest ChapterManifest        `json:"chapter_manifest,omitempty"`
 	SceneHighlights []SceneHighlight       `json:"scene_highlights,omitempty"`
+	// IntroAgenda carries 3–5 non-spoiler topics for the opening; absent when
+	// fewer than three remain.
+	IntroAgenda []IntroTopic `json:"intro_agenda,omitempty"`
 	// SceneHighlightsCertified is false when scene identity was incoherent:
 	// the manifest must not be treated as certified (video still continues).
 	SceneHighlightsCertified bool `json:"scene_highlights_certified,omitempty"`

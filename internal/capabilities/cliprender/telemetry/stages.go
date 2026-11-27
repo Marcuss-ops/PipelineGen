@@ -17,7 +17,7 @@
 // Stages are recorded with kernobs.RecordStage using the worker's own
 // measured anchors (the worker owns the clock for its phases — the same
 // anchors already feed metrics_v2), never with a second ad-hoc timer.
-package cliprender
+package telemetry
 
 import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"

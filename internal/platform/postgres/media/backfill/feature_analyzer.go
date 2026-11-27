@@ -34,7 +34,6 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -313,8 +312,3 @@ func clamp01(v float64) float64 {
 func analyzedAtRFC3339() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
-
-// FrameCleanup is a no-op convenience: the analyzer owns temp-dir cleanup
-// via defer (documented for callers that inject their own outDir through
-// custom samplers).
-var _ = filepath.Join

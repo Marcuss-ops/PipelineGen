@@ -1,4 +1,4 @@
-package cliprender
+package batch
 
 import (
 	"context"
@@ -60,7 +60,7 @@ func settlingStub(t *testing.T, childStatus job.Status) *aggregatorJobsStub {
 		t.Fatal(err)
 	}
 	return &aggregatorJobsStub{
-		parent: job.Job{ID: "parent-1", Type: TypeClipRender, Result: parentResult, Revision: 7},
+		parent: job.Job{ID: "parent-1", Type: job.TypeClipRender, Result: parentResult, Revision: 7},
 		child:  &job.Job{ID: "settle-1", Status: childStatus},
 	}
 }
@@ -105,7 +105,7 @@ func TestParentAggregatorFinalizesOrphanParentOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	stub := &aggregatorJobsStub{
-		parent: job.Job{ID: "parent-orphan", Type: TypeClipRender, Result: raw, Revision: 3},
+		parent: job.Job{ID: "parent-orphan", Type: job.TypeClipRender, Result: raw, Revision: 3},
 	}
 	agg := NewParentAggregator(stub, zap.NewNop(), 0)
 

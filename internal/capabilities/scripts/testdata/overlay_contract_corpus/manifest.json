@@ -1,0 +1,136 @@
+{
+  "schema_version": "overlay-contract-corpus.v1",
+  "description": "Cross-repo overlay plan corpus. Each fixture is either a PipelineGen post-materialization semantic plan or a RenderingGen synthetic boundary case. Every compiled entry is pinned to the exact Chronon layer digest.",
+  "fixtures": [
+    {
+      "id": "flyover_camera",
+      "source": "refactored/internal/capabilities/scripts/testdata/overlay_plan/map_plan/flyover_camera.plan.json",
+      "kind": "pipelinegen_plan",
+      "expect": "compiled",
+      "layers": 4,
+      "layers_sha256": "00ea488ccfd3a70dea374538d39447b6d47b1b7f22257306e674998a0a25a7fb"
+    },
+    {
+      "id": "grounded_map",
+      "source": "refactored/internal/capabilities/scripts/testdata/overlay_plan/map_plan/grounded_map.plan.json",
+      "kind": "pipelinegen_plan",
+      "expect": "compiled",
+      "layers": 4,
+      "layers_sha256": "1147d81c73f47be67c0a597111a7ade85957b18a7a93bbfc7350e4d6e97dd47a"
+    },
+    {
+      "id": "maps_only",
+      "source": "refactored/internal/capabilities/scripts/testdata/overlay_plan/map_plan/maps_only.plan.json",
+      "kind": "pipelinegen_plan",
+      "expect": "compiled",
+      "layers": 4,
+      "layers_sha256": "1147d81c73f47be67c0a597111a7ade85957b18a7a93bbfc7350e4d6e97dd47a"
+    },
+    {
+      "id": "no_plates",
+      "source": "refactored/internal/capabilities/scripts/testdata/overlay_plan/map_plan/no_plates.plan.json",
+      "kind": "pipelinegen_plan",
+      "expect": "compiled",
+      "layers": 1,
+      "layers_sha256": "c509447700ed575c964271304c5c97e0d0e60f8c65291c41cfa4924bb70391df"
+    },
+    {
+      "id": "short_phrase_map",
+      "source": "refactored/internal/capabilities/scripts/testdata/overlay_plan/map_plan/short_phrase_map.plan.json",
+      "kind": "pipelinegen_plan",
+      "expect": "compiled",
+      "layers": 4,
+      "layers_sha256": "1147d81c73f47be67c0a597111a7ade85957b18a7a93bbfc7350e4d6e97dd47a"
+    },
+    {
+      "id": "short_phrase_text",
+      "source": "refactored/internal/capabilities/scripts/testdata/overlay_plan/map_plan/short_phrase_text.plan.json",
+      "kind": "pipelinegen_plan",
+      "expect": "compiled",
+      "layers": 3,
+      "layers_sha256": "d89efe750f8adb1378f8fb4409931ab78e82e84990a1146f0f0f404caecfb979"
+    },
+    {
+      "id": "uncovered_plate",
+      "source": "refactored/internal/capabilities/scripts/testdata/overlay_plan/map_plan/uncovered_plate.plan.json",
+      "kind": "pipelinegen_plan",
+      "expect": "compiled",
+      "layers": 1,
+      "layers_sha256": "c509447700ed575c964271304c5c97e0d0e60f8c65291c41cfa4924bb70391df"
+    },
+    {
+      "id": "entity_ref_correlation",
+      "source": "contracts/overlay-v2/fixtures/entity_ref_correlation.plan.json",
+      "kind": "synthetic_boundary",
+      "expect": "compiled",
+      "layers": 1,
+      "layers_sha256": "a1cfc238562f9d42aafdeb5c42df164bfcc752eacce1eedbf7e200f8c6972092"
+    },
+    {
+      "id": "clip_effects_typed",
+      "source": "contracts/overlay-v2/fixtures/clip_effects_typed.plan.json",
+      "kind": "synthetic_boundary",
+      "expect": "compiled",
+      "layers": 3,
+      "layers_sha256": "f24a0d857cbdc3387a34a45751a4944db1f5c8415dfc4b6647a82c28485ea6f1"
+    },
+    {
+      "id": "unknown_top_level_field",
+      "source": "contracts/overlay-v2/fixtures/unknown_top_level_field.plan.json",
+      "kind": "synthetic_boundary",
+      "expect": "rejected",
+      "error_contains": "unknown field \"future_contract_field\""
+    }
+  ],
+  "protocol_fixtures": [
+    {
+      "id": "brainrust_chart_layouts",
+      "source": "contracts/overlay-v2/fixtures/brainrust/chart_layouts.request.json",
+      "kind": "brainrust_request",
+      "expect": "compiled",
+      "values": [
+        "timeline_growth",
+        "qualified_growth",
+        "missing_data_timeline",
+        "segmented_total_bar",
+        "scenario_split",
+        "bounded_range_comparison",
+        "dual_comparison_bars",
+        "bar_comparison",
+        "ranking_bar",
+        "before_after_metric"
+      ]
+    },
+    {
+      "id": "brainrust_visual_recipes",
+      "source": "contracts/overlay-v2/fixtures/brainrust/visual_recipes.request.json",
+      "kind": "brainrust_request",
+      "expect": "compiled",
+      "values": [
+        "relationship_graph",
+        "role_lower_third",
+        "route_map",
+        "choropleth_value_map",
+        "lifespan_timeline",
+        "counter_odometer",
+        "quote_attribution",
+        "role_lower_third",
+        "source_highlight"
+      ]
+    },
+    {
+      "id": "brainrust_unsupported_chart_layout",
+      "source": "contracts/overlay-v2/fixtures/brainrust/unsupported_chart_layout.request.json",
+      "kind": "brainrust_request",
+      "expect": "rejected",
+      "error_contains": "unsupported grounded chart layout"
+    },
+    {
+      "id": "brainrust_unsupported_visual_recipe",
+      "source": "contracts/overlay-v2/fixtures/brainrust/unsupported_visual_recipe.request.json",
+      "kind": "brainrust_request",
+      "expect": "rejected",
+      "error_contains": "unsupported grounded visual recipe"
+    }
+  ]
+}

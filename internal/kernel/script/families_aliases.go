@@ -264,9 +264,6 @@ var (
 	isKnownSourceType       = spec.IsKnownSourceType
 	isValidGroundingPolicy  = spec.IsValidGroundingPolicy
 	isValidFallbackPolicy   = spec.IsValidFallbackPolicy
-	clipSourceTypes         = spec.ClipSourceTypes
-	validGroundingPolicies  = spec.ValidGroundingPolicies
-	validFallbackPolicies   = spec.ValidFallbackPolicies
 	knownSourceTypes        = spec.KnownSourceTypes
 	builtInCanonicalAliases = spec.BuiltInCanonicalAliases
 	builtInCompatAliases    = spec.BuiltInCompatAliases

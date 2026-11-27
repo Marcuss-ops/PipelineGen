@@ -115,11 +115,14 @@ func TestCacheInputMatches(t *testing.T) {
 	if cacheInputMatches(context.Background(), fixedInputDigest("def"), req, rec) {
 		t.Fatal("changed input revision must reject the cache hit")
 	}
-	// A record without a digest is a legacy/uninstrumented row. The lowering
-	// version bump makes its fingerprint unreachable, so it stays compatible
-	// instead of failing every pre-digest cache implementation.
-	if !cacheInputMatches(context.Background(), fixedInputDigest("abc"), req, &RenderCacheRecord{}) {
-		t.Fatal("a legacy record without a digest must keep the previous behaviour")
+	// A record without a digest cannot certify its inputs. The lowering version
+	// bump makes pre-digest rows unreachable, so the fail-closed answer is a
+	// miss rather than a legacy compatibility hit.
+	if cacheInputMatches(context.Background(), fixedInputDigest("abc"), req, &RenderCacheRecord{}) {
+		t.Fatal("a record without an input digest must miss, not serve unproven bytes")
+	}
+	if cacheInputMatches(context.Background(), fixedInputDigest("abc"), req, nil) {
+		t.Fatal("a missing cache record must miss")
 	}
 	if cacheInputMatches(context.Background(), failingInputDigest{errors.New("lookup failed")}, req, rec) {
 		t.Fatal("an unresolvable revision must fail closed (miss), not serve stale bytes")

@@ -5,16 +5,16 @@
       "path": "internal/capabilities/scripts",
       "owner": "scripts capability (research/generation/runner surface)",
       "deadline": "2027-03-31",
-      "baseline_files": 62,
+      "baseline_files": 65,
       "baseline": {
-        "files": 63,
+        "files": 65,
         "max_loc": 0
       },
       "current": {
-        "files": 62,
+        "files": 65,
         "max_loc": 0
       },
-      "note": "Registered 2026-09-12: scripts capability surface beyond max_files_per_package=65. Contract-first split (2026-11-23/24) moved the shared vocabulary to scripts/contract and the phase families to scripts/{runner,audio,vidrush,overlayplan,finaljob,runstate,renderunits,workunits,clips,overlayproject,renderqueue}; the root is now the compatibility facade. Ratcheted down 2026-11-26 with DEMOL-06: the single overlay orchestrator removed runner_overlay_render_barrier.go and its test, so the measured root is 62 production files / 18,418 LOC and the line budget follows at 18,418 (160 LOC below the previous 18,957). 2026-11-26 DEMOL-07 added the typed immutable phase inputs (OverlayPlanningInput, overlayRenderInput, FinalJobSplitInput) and the checkpoint-boundary detachment inside the existing owner files, so the measured root is 62 production files / 18,696 LOC and the line budget follows at 18,696; the file count did not grow. This is a registered ratchet, not an exemption: owner and deadline are unchanged and any further root growth still hard-fails. The target subpackages remain runner/audio/vidrush; no new split is planned. The vidrush line budget is re-baselined separately because commit e7468c776 added 150 net LOC to the entity-image lane after the previous ratchet (11,705 -> 11,818 -> 11,889).",
+      "note": "Registered 2026-09-12: scripts capability surface beyond max_files_per_package=65. Contract-first split (2026-11-23/24) moved the shared vocabulary to scripts/contract and the phase families to scripts/{runner,audio,vidrush,overlayplan,finaljob,runstate,renderunits,workunits,clips,overlayproject,renderqueue}; the root is now the compatibility facade. Ratcheted down 2026-11-26 with DEMOL-06: the single overlay orchestrator removed runner_overlay_render_barrier.go and its test, so the measured root is 62 production files / 18,418 LOC and the line budget follows at 18,418 (160 LOC below the previous 18,957). 2026-11-26 DEMOL-07 added the typed immutable phase inputs (OverlayPlanningInput, overlayRenderInput, FinalJobSplitInput) and the checkpoint-boundary detachment inside the existing owner files, so the measured root is 62 production files / 18,696 LOC and the line budget follows at 18,696; the file count did not grow. This is a registered ratchet, not an exemption: owner and deadline are unchanged and any further root growth still hard-fails. The target subpackages remain runner/audio/vidrush; no new split is planned. 2026-11-27 (second audit, P1-11): runner_phase_voiceover.go was split by responsibility into the phase, synthesis and metrics owners; the root therefore measures 65 production files / 18,715 LOC and both the file baseline and the line budget move with the split (62->65 files, 18,696->18,715 LOC). No logic changed and no subpackage was added. The vidrush line budget is re-baselined separately because commit e7468c776 added 150 net LOC to the entity-image lane after the previous ratchet (11,705 -> 11,818 -> 11,889).",
       "target_packages": [
         "internal/capabilities/scripts/runner",
         "internal/capabilities/scripts/audio",
@@ -63,7 +63,7 @@
     },
     {
       "path": "internal/capabilities/scripts",
-      "max_loc": 18696,
+      "max_loc": 18715,
       "owner": "scripts capability (root facade)",
       "deadline": "2027-03-31"
     },

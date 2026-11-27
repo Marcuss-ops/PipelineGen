@@ -52,6 +52,10 @@ type AssetRecord struct {
 	ContentSHA256 string `json:"-"`
 	LocalPath     string `json:"-"`
 	Status        string
+	// PublishStatus is the canonical delivery state (kernel/asset
+	// AssetPublishStatus). The duplicate decision reads it to decide whether
+	// an existing row certifies a completed delivery.
+	PublishStatus string
 	Error         string
 	Metadata      string
 	CreatedAt     time.Time

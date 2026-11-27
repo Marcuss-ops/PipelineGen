@@ -9,9 +9,13 @@
 # code. They are inventoried by the ticket and excluded from the production
 # guard; counting them made test helpers look like dead production functions.
 # The re-baseline is downward: 229 -> 219.
+#
+# 2026-11-27 (audit residue): sweep of the orphaned verbatimcheck package
+# (8 unreachable functions, zero importers) and two definition-only helpers.
+# The re-baseline is downward: 219 -> 214.
 set -euo pipefail
 
-MAX=219
+MAX=214
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 

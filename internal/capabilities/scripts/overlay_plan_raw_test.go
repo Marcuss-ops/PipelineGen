@@ -24,15 +24,17 @@ func TestVisualRecipesForSceneForwardsEverySupportedRecipeInPriorityOrder(t *tes
 			recipeCandidate("s1", "relationship_graph", 0.99, 1, `{"recipe":"relationship_graph"}`),
 			recipeCandidate("s1", "counter_odometer", 0.8, 3, `{"recipe":"counter_odometer","value":12,"subject_label":"Debito"}`),
 			recipeCandidate("s1", "role_lower_third", 0.7, 4, `{"recipe":"role_lower_third"}`),
+			recipeCandidate("s1", "entity_attribute_list", 0.6, 5, `{"recipe":"entity_attribute_list","entity_label":"Andrea","lines":["Età 45 anni","Altezza 188 cm"]}`),
 			recipeCandidate("s2", "counter_odometer", 1, 2, `{"recipe":"counter_odometer","value":7}`),
 		},
 	}}
 
 	recipes := visualRecipesForScene(result, "s1")
-	require.Len(t, recipes, 2, "the unsupported graph is not shipped")
+	require.Len(t, recipes, 3, "the unsupported graph is not shipped")
 	require.Equal(t, "counter_odometer", recipes[0].Recipe, "priority decides the first element")
 	require.JSONEq(t, `{"recipe":"counter_odometer","value":12,"subject_label":"Debito"}`, string(recipes[0].Payload))
 	require.Equal(t, "role_lower_third", recipes[1].Recipe)
+	require.Equal(t, "entity_attribute_list", recipes[2].Recipe)
 }
 
 func TestVisualRecipesForSceneSkipsUnsupportedAndMalformedPayloads(t *testing.T) {
