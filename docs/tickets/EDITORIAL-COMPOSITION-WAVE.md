@@ -69,8 +69,10 @@ Check a box only after the code path and its named verification both exist.
 - [x] Implement and unit-test the geometry resolver using measured child sizes,
   final parent bounds, safe inset, requested/automatic positions, and occupied
   rectangles; reject layouts that cannot fit.
-- [ ] Invoke the resolver from the final sized composition lowering and write
-  the returned positions into the actual Chronon layers.
+- [x] Invoke the resolver from the final sized composite-image caption lowering
+  and write the returned position into the actual Chronon text layer.
+- [ ] Lower typed date/metric attachments through the same resolver, including
+  caption-plus-date parent/child placement.
 - [ ] Cover image-only, caption-plus-date, full-screen, badge, safe-area edge,
   obstacle, and no-fit cases in lowered-plan fixtures.
 - [ ] Render a canary and certify attachment bounds against the final frame
@@ -157,6 +159,7 @@ callouts are documented in
 - 2026-11-28: The complete RenderingGen overlay test packages pass after seeded motion selection and camera-aware callout geometry (`go test ./internal/overlay/... -count=1`); `git diff --check` is clean.
 - 2026-11-28: Chronon host probe found an NVIDIA RTX A4000 and Vulkan support. The current checkout still has `CHRONON3D_BUILD_CONTENT=OFF` and no canonical editorial benchmark pack. A local Vulkan CLI build is underway to determine whether a dedicated fixture can provide ED-26 evidence without conflating it with the official 17-scene corpus.
 - 2026-11-28: ED-13's layout tests now also exercise each supported side, safe-area edge fallback, badge placement, obstacle avoidance, full-safe-area parent rejection, and fail-closed no-fit behavior. The package test passes; these tests still target the editorial-layer resolver because no production `editorial_layers.v1` lowering is wired into the semantic compiler yet.
+- 2026-11-28: ED-13's shared safe-area resolver is now called by the active sized composite-image caption lowering. It consumes the final image bounds and measured caption box, and the resolved safe placement is written into the Chronon caption layer. Existing entity-caption and safe-area tests pass. Typed date/metric attachment siblings and their lowered fixtures remain open.
 - 2026-11-28: RenderingGen's full `go test ./internal/overlay/... -count=1` suite passes after the ED-13 geometry matrix and ED-21 camera projection coverage (`overlay`, `editoriallayers`, and `mapcatalog`).
 - 2026-11-28: Chronon now exposes image decode count/time in its execution reports. A repeatable Vulkan-only ED-26 runner and paired fixture generator are in `Chronon3d/scripts/benchmark_editorial_background_reuse.py`; its measurements remain pending the CLI build and successful native runs.
 - 2026-11-28: ED-26 completed on the RTX A4000 with the Vulkan `chronon3d_cli`. Nine serial cold-process renders emitted six independent one-frame outputs and three persistent two-frame outputs (six frames per variant). Every run reports `effective_backend=vulkan`, positive GPU submissions, and zero execution downgrades. At equal output-frame counts, persistent composition reduced measured image uploads from 31,522,816 to 15,761,408 bytes/frame and image decodes from 1 to 0.5/frame. The evidence includes per-run timing sidecars, GPU residency/allocation, source/build/fixture hashes, and host/driver identity. The official content-pack corpus remains a separate ticket. Artifact: `Chronon3d/docs/evidence/editorial-background-reuse-20261128-r2/report.json`.
