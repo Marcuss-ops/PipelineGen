@@ -137,3 +137,75 @@ func TestCoreReadyScriptIsAvailableOnCanonicalJobPollingEndpoint(t *testing.T) {
 	require.Equal(t, scriptgen.RunStatusRunning, savedRun.Status,
 		"HTTP polling must not transition the durable run to completed")
 }
+
+// TestFailedLocalizedRenderAttributionAppearsOnCanonicalJobPollingEndpoint
+// exercises the persisted run checkpoint, SQLite history reader and actual
+// /full route together. The Runner fault path is injected separately by
+// TestLocalizedRenderIPCFailureIsAttributedAndRetried.
+func TestFailedLocalizedRenderAttributionAppearsOnCanonicalJobPollingEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx := context.Background()
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = db.Exec(`CREATE TABLE job_attempts (
+		attempt_id TEXT PRIMARY KEY, job_id TEXT NOT NULL DEFAULT '', run_id TEXT NOT NULL DEFAULT '',
+		attempt_number INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT ''
+	);
+	CREATE TABLE run_observability (
+		run_id TEXT PRIMARY KEY, job_id TEXT NOT NULL DEFAULT '', job_type TEXT NOT NULL DEFAULT '',
+		attempt_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '',
+		started_at TEXT, finished_at TEXT, report_json TEXT NOT NULL DEFAULT '{}',
+		workflow_payload_json TEXT NOT NULL DEFAULT '', error_code TEXT NOT NULL DEFAULT '',
+		error TEXT NOT NULL DEFAULT ''
+	)`)
+	require.NoError(t, err)
+
+	runs, err := runrepo.NewSQLiteRunRepository(db, zap.NewNop())
+	require.NoError(t, err)
+	const runID, jobID = "run-render-failure", "job-render-failure"
+	run := &scriptgen.GenerationRun{
+		ID: runID, Request: scriptgen.GenerateRequest{IdempotencyKey: "render-failure-http-e2e"},
+		Status: scriptgen.RunStatusRunning, CurrentStage: scriptgen.StageGeneratingVoiceovers,
+	}
+	require.NoError(t, runs.Create(ctx, run))
+	require.NoError(t, runs.SetJobID(ctx, runID, jobID))
+	require.NoError(t, runs.FailRun(ctx, scriptgen.FailRunInput{
+		RunID: runID, FailedStage: scriptgen.StageRenderingVideo,
+		ErrorCode: "LOCALIZED_RENDER_FAILED", ErrorMessage: "localized render IPC timeout",
+		AttemptCount: 1,
+	}))
+
+	history, err := historyinfra.NewReader(db, db)
+	require.NoError(t, err)
+	service := &coreReadyJobService{current: &job.Job{
+		ID: jobID, Type: scriptpkg.TypeGenerate, Status: job.StatusFailed,
+		Error: "generate job handler: durable run failed: stage=RENDERING_VIDEO code=LOCALIZED_RENDER_FAILED",
+	}}
+	handler := capjobs.NewJobsHandler(service, nil, zap.NewNop())
+	handler.SetHistoryReader(history)
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/jobs"))
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/jobs/"+jobID+"/full", nil))
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+
+	var response struct {
+		Error     string `json:"error"`
+		ScriptRun struct {
+			Status       string `json:"status"`
+			CurrentStage string `json:"current_stage"`
+			FailedStage  string `json:"failed_stage"`
+			ErrorCode    string `json:"error_code"`
+		} `json:"script_run"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response), recorder.Body.String())
+	require.Contains(t, response.Error, "stage=RENDERING_VIDEO")
+	require.Contains(t, response.Error, "code=LOCALIZED_RENDER_FAILED")
+	require.Equal(t, "FAILED", response.ScriptRun.Status)
+	require.Equal(t, "FAILED", response.ScriptRun.CurrentStage)
+	require.Equal(t, "RENDERING_VIDEO", response.ScriptRun.FailedStage)
+	require.Equal(t, "LOCALIZED_RENDER_FAILED", response.ScriptRun.ErrorCode)
+}

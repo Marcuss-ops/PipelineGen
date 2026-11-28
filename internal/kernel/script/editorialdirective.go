@@ -36,8 +36,8 @@ var editorialDirectiveRE = regexp.MustCompile(
 		`(ricostruisci|apri con|chiudi con|non leggere|evita di|` +
 		`scrivi (?:un|una|il|la|lo|le|gli|i|tre|due|quattro|cinque)|` +
 		`inserisci|descrivi|narra|parti da|concludi con|` +
-		`open with|start with|end with|do not read|avoid |` +
-		`insert |write (?:a|an|the|one|two|three)|describe )`,
+		`open with|start with|end with|do not read|avoid|` +
+		`insert|write (?:a|an|the|one|two|three)|describe)\b`,
 )
 
 // FindEditorialDirectives returns the directive clauses in text, in reading

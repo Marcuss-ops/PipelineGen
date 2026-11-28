@@ -14,7 +14,9 @@ package finaljob
 // certified artifact all fail the whole handoff before any remote attempt.
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -23,7 +25,45 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
+
+// FinalJobOverlayRuntimeDTO converts the Producer's existing overlay wire
+// projection into the versioned FINALIZE DTO. Unknown fields fail closed here
+// so the adapter cannot silently drop a new wire field before it reaches the
+// Master.
+func FinalJobOverlayRuntimeDTO(overlays []any, manifest map[string]any) ([]kerneljob.OverlayRowV1, *kerneljob.OverlayManifestV1, error) {
+	if overlays == nil {
+		overlays = []any{}
+	}
+	overlayRaw, err := json.Marshal(overlays)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode final_job overlay rows: %w", err)
+	}
+	var typedOverlays []kerneljob.OverlayRowV1
+	decoder := json.NewDecoder(bytes.NewReader(overlayRaw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&typedOverlays); err != nil {
+		return nil, nil, fmt.Errorf("final_job overlay rows DTO: %w", err)
+	}
+	if typedOverlays == nil {
+		typedOverlays = []kerneljob.OverlayRowV1{}
+	}
+	if manifest == nil {
+		return typedOverlays, nil, nil
+	}
+	manifestRaw, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode final_job overlay manifest: %w", err)
+	}
+	var typedManifest kerneljob.OverlayManifestV1
+	decoder = json.NewDecoder(bytes.NewReader(manifestRaw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&typedManifest); err != nil {
+		return nil, nil, fmt.Errorf("final_job overlay manifest DTO: %w", err)
+	}
+	return typedOverlays, &typedManifest, nil
+}
 
 // applyFinalJobOverlayWindowPolicy applies the final-job placement policy to a
 // plan the caller already OWNS (see FrozenFinalJobOverlayPlan, which applies it
@@ -170,13 +210,32 @@ func manifestEntryArtifactWindow(entry capmodel.OverlayManifestEntry) (int64, in
 	return entry.InUS, entry.OutUS
 }
 
-// FinalJobOverlayHandoff returns the replace rows for dedicated-path items
-// and the overlay_manifest wire document for the composition. Either side
-// may be empty (a plan with no maps/chain emits no rows; a plan with only
-// maps/chain emits no manifest), but never both when semantic overlays exist.
+// FinalJobOverlayHandoff is the compatibility map boundary for callers which
+// still consume the deployed Master map. The production builder uses the typed
+// variant below and converts only at MasterPayloadsOf.
 func FinalJobOverlayHandoff(ctx context.Context, result *contract.GenerateResult, consumed map[string]struct{}, imageRequested bool) ([]any, map[string]any, error) {
+	rows, manifest, err := FinalJobOverlayHandoffTyped(ctx, result, consumed, imageRequested)
+	if err != nil {
+		return nil, nil, err
+	}
+	legacyRows, err := finalJobOverlayRowsToLegacy(rows)
+	if err != nil {
+		return nil, nil, err
+	}
+	legacyManifest, err := finalJobOverlayManifestToLegacy(manifest)
+	if err != nil {
+		return nil, nil, err
+	}
+	return legacyRows, legacyManifest, nil
+}
+
+// FinalJobOverlayHandoffTyped returns typed replace rows and a typed overlay
+// manifest. Either side may be empty (a plan with no maps/chain emits no rows;
+// a plan with only maps/chain emits no manifest), but never both when semantic
+// overlays exist.
+func FinalJobOverlayHandoffTyped(ctx context.Context, result *contract.GenerateResult, consumed map[string]struct{}, imageRequested bool) ([]kerneljob.OverlayRowV1, *kerneljob.OverlayManifestV1, error) {
 	if result == nil || result.OverlayPlan == nil || len(result.OverlayPlan.Items) == 0 {
-		return []any{}, nil, nil
+		return []kerneljob.OverlayRowV1{}, nil, nil
 	}
 	if result.OverlayRender == nil || (result.OverlayRender.Manifest == nil && len(result.OverlayRender.Items) == 0) {
 		return nil, nil, fmt.Errorf("final_job has semantic overlays but no published overlay render artifacts")
@@ -225,7 +284,7 @@ func FinalJobOverlayHandoff(ctx context.Context, result *contract.GenerateResult
 	// must still reject C against A even though B is the most recent owner.
 	admittedContent := make(map[string][]string)
 	admittedFrames := make(map[string]FinalJobFrameWindow)
-	var manifestWire map[string]any
+	var manifestWire *kerneljob.OverlayManifestV1
 	manifestItems := make(map[string]struct{})
 	if result.OverlayRender.Manifest != nil {
 		for _, entry := range result.OverlayRender.Manifest.Entries {
@@ -237,7 +296,7 @@ func FinalJobOverlayHandoff(ctx context.Context, result *contract.GenerateResult
 			return nil, nil, err
 		}
 	} else if len(result.OverlayRender.Batches) > 0 {
-		batchWires := make([]any, 0, len(result.OverlayRender.Batches))
+		batchWires := make([]kerneljob.OverlayManifestV1, 0, len(result.OverlayRender.Batches))
 		owners := make(map[string]string)
 		contentOwners := make(map[string]string)
 		batchFrames := make(map[string]FinalJobFrameWindow)
@@ -281,11 +340,11 @@ func FinalJobOverlayHandoff(ctx context.Context, result *contract.GenerateResult
 			if err != nil {
 				return nil, nil, err
 			}
-			batchWires = append(batchWires, wire)
+			batchWires = append(batchWires, *wire)
 		}
-		manifestWire = map[string]any{"schema_version": "pipelinegen.overlay-manifest-set.v1", "manifests": batchWires}
+		manifestWire = &kerneljob.OverlayManifestV1{SchemaVersion: "pipelinegen.overlay-manifest-set.v1", Manifests: batchWires}
 	}
-	rows, err := FinalJobDedicatedOverlayRows(ctx, result, consumed, manifestItems, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
+	rows, err := finalJobDedicatedOverlayRowsTyped(ctx, result, consumed, manifestItems, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -306,7 +365,7 @@ func FinalJobOverlayHandoff(ctx context.Context, result *contract.GenerateResult
 // instead of a standalone Drive clip); image-style cards on intermediate clip
 // scenes are dropped for the same reason the per-item handoff dropped them —
 // mode=replace would cover the source clip that must stay visible.
-func finalJobManifestWire(ctx context.Context, result *contract.GenerateResult, consumed map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string][]string, admittedFrames map[string]FinalJobFrameWindow) (map[string]any, error) {
+func finalJobManifestWire(ctx context.Context, result *contract.GenerateResult, consumed map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string][]string, admittedFrames map[string]FinalJobFrameWindow) (*kerneljob.OverlayManifestV1, error) {
 	manifest := result.OverlayRender.Manifest
 	if manifest == nil {
 		return nil, fmt.Errorf("final_job overlays are not on the manifest wire (missing overlay_manifest)")
@@ -348,7 +407,7 @@ func finalJobManifestWire(ctx context.Context, result *contract.GenerateResult, 
 	}
 	clipWindows := FinalJobIntermediateClipWindows(result)
 	frameDenominator := int64(1_000_000 * fpsDen)
-	entries := make([]any, 0, len(manifest.Entries))
+	entries := make([]kerneljob.OverlayRowV1, 0, len(manifest.Entries))
 	for _, entry := range manifest.Entries {
 		item, exists := itemsByID[strings.TrimSpace(entry.ItemID)]
 		if !exists {
@@ -412,55 +471,28 @@ func finalJobManifestWire(ctx context.Context, result *contract.GenerateResult, 
 		if entry.Placement != nil {
 			return nil, fmt.Errorf("final_job overlay %q requires unsupported spatial placement", entry.ItemID)
 		}
-		wireEntry := map[string]any{
-			"item_id": entry.ItemID, "track": entry.Track,
-			"in_us": entry.InUS, "out_us": entry.OutUS,
-			"content_hash": entry.ContentHash,
-		}
-		if entry.ArtifactInUS != nil && entry.ArtifactOutUS != nil {
-			wireEntry["artifact_in_us"] = *entry.ArtifactInUS
-			wireEntry["artifact_out_us"] = *entry.ArtifactOutUS
+		track := entry.Track
+		wireEntry := kerneljob.OverlayRowV1{
+			ItemID: entry.ItemID, Track: &track, InUS: entry.InUS, OutUS: entry.OutUS,
+			ContentHash: entry.ContentHash, ArtifactInUS: entry.ArtifactInUS,
+			ArtifactOutUS: entry.ArtifactOutUS,
 		}
 		entries = append(entries, wireEntry)
 	}
 	mode := manifest.OverlayMode()
-	asset := map[string]any{
-		"asset_id": assetRef["asset_id"], "sha256": sha,
-		"size_bytes": artifact.SizeBytes, "frame_count": assetFrames,
-		"duration_ms": (artifact.DurationUS + 999) / 1000,
-		"mode":        mode, "audio_mode": "preserve_final_audio",
-		"codec": artifact.Codec, "container": artifact.Container,
-		"pixel_format": artifact.PixelFormat, "audio_streams": artifact.AudioStreams,
-		"width": artifact.Width, "height": artifact.Height,
-		"fps_num": artifact.FPSNum, "fps_den": artifact.FPSDen,
-	}
 	stream := FinalJobOverlayStreamWire(manifest, artifact)
-	if stream != nil {
-		asset["stream"] = stream
-	}
-	for key, value := range assetRef {
-		asset[key] = value
-	}
-	// The ref carries the render receipt's facts, including the -1 a packed
-	// canvas reports for frame_count. The handoff keeps the DERIVED count:
-	// the worker both validates (a set needs a positive count) and projects
-	// with it, and the derived grid is the one it probes on the same file.
+	asset := finalJobOverlayAssetFromReference(assetRef, artifact, assetFrames, mode, stream)
+	// Keep the derived frame count on packed canvases, where the render receipt
+	// reports -1 and the worker requires a positive frame grid.
 	if assetFrames > 0 {
-		asset["frame_count"] = assetFrames
+		asset.FrameCount = assetFrames
 	}
-	wire := map[string]any{
-		"schema_version":  manifest.SchemaVersion,
-		"plan_id":         manifest.PlanID,
-		"video_id":        manifest.VideoID,
-		"mode":            mode,
-		"timeline_sha256": strings.ToLower(strings.TrimSpace(manifest.TimelineSHA256)),
-		"asset":           asset,
-		"entries":         entries,
-	}
-	if stream != nil {
-		wire["stream"] = stream
-	}
-	return wire, nil
+	return &kerneljob.OverlayManifestV1{
+		SchemaVersion: manifest.SchemaVersion, PlanID: manifest.PlanID,
+		VideoID: manifest.VideoID, Mode: mode,
+		TimelineSHA256: strings.ToLower(strings.TrimSpace(manifest.TimelineSHA256)),
+		Asset:          &asset, Entries: entries, Stream: stream,
+	}, nil
 }
 
 // FinalJobDedicatedOverlayRows builds the independent replace rows for the
@@ -469,6 +501,14 @@ func finalJobManifestWire(ctx context.Context, result *contract.GenerateResult, 
 // a time. Every other plan item must be covered by the manifest — a regular
 // item without a manifest entry is a broken handoff, not a fallback.
 func FinalJobDedicatedOverlayRows(ctx context.Context, result *contract.GenerateResult, consumed, manifestItems map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string][]string, admittedFrames map[string]FinalJobFrameWindow) ([]any, error) {
+	rows, err := finalJobDedicatedOverlayRowsTyped(ctx, result, consumed, manifestItems, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
+	if err != nil {
+		return nil, err
+	}
+	return finalJobOverlayRowsToLegacy(rows)
+}
+
+func finalJobDedicatedOverlayRowsTyped(ctx context.Context, result *contract.GenerateResult, consumed, manifestItems map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string][]string, admittedFrames map[string]FinalJobFrameWindow) ([]kerneljob.OverlayRowV1, error) {
 	plan := result.OverlayPlan
 	artifacts := make(map[string]contract.RenderArtifact, len(result.OverlayRender.Items))
 	for _, rendered := range result.OverlayRender.Items {
@@ -476,7 +516,7 @@ func FinalJobDedicatedOverlayRows(ctx context.Context, result *contract.Generate
 			artifacts[strings.TrimSpace(rendered.ItemID)] = *rendered.Artifact
 		}
 	}
-	rows := make([]any, 0, len(plan.Items))
+	rows := make([]kerneljob.OverlayRowV1, 0, len(plan.Items))
 	itemsByID := make(map[string]capmodel.OverlayItem, len(plan.Items))
 	for _, item := range plan.Items {
 		itemsByID[strings.TrimSpace(item.ID)] = item
@@ -567,16 +607,122 @@ func FinalJobDedicatedOverlayRows(ctx context.Context, result *contract.Generate
 		}
 		admittedContent[sha] = append(admittedContent[sha], id)
 		admittedFrames[id] = FinalJobFrameWindow{Start: startFrame, End: endFrame, SceneID: item.SceneID}
-		row := map[string]any{
-			"id": id, "asset_id": assetRef["asset_id"],
-			"sha256": sha, "size_bytes": artifact.SizeBytes,
-			"start_frame": startFrame, "end_frame": endFrame, "frame_count": endFrame - startFrame,
-			"mode": "replace", "z_index": index + 1, "audio_mode": "preserve_final_audio",
-		}
-		for key, value := range assetRef {
-			row[key] = value
-		}
+		row := finalJobOverlayRowFromReference(id, assetRef, artifact, startFrame, endFrame, index+1)
 		rows = append(rows, row)
 	}
 	return rows, nil
+}
+
+func finalJobOverlayAssetFromReference(ref map[string]any, artifact *contract.RenderArtifact, frameCount int64, mode string, stream *kerneljob.OverlayStreamV1) kerneljob.OverlayAssetV1 {
+	asset := kerneljob.OverlayAssetV1{
+		AssetID:     FinalJobStringValue(ref["asset_id"]),
+		DriveFileID: FinalJobStringValue(ref["drive_file_id"]),
+		URL:         FinalJobStringValue(ref["url"]), SourceURI: FinalJobStringValue(ref["source_uri"]),
+		SHA256: FinalJobStringValue(ref["sha256"]), SizeBytes: finalJobInt64(ref["size_bytes"]),
+		DurationMS: (artifact.DurationUS + 999) / 1000, FrameCount: frameCount,
+		Mode: mode, AudioMode: "preserve_final_audio",
+		Codec: artifact.Codec, Container: artifact.Container,
+		PixelFormat: artifact.PixelFormat, AudioStreams: artifact.AudioStreams,
+		Width: artifact.Width, Height: artifact.Height,
+		FPSNum: artifact.FPSNum, FPSDen: artifact.FPSDen, Stream: stream,
+		ProfileID:          FinalJobStringValue(ref["profile_id"]),
+		CopyEligible:       boolValue(ref["copy_eligible"]),
+		FirstFrameKeyframe: boolValue(ref["first_frame_keyframe"]),
+		ClosedGOP:          boolValue(ref["closed_gop"]),
+	}
+	asset.DurationUS = finalJobInt64(ref["duration_us"])
+	return asset
+}
+
+func finalJobOverlayRowFromReference(id string, ref map[string]any, artifact contract.RenderArtifact, startFrame, endFrame int64, zIndex int) kerneljob.OverlayRowV1 {
+	frameCount := endFrame - startFrame
+	if refFrameCount := finalJobInt64(ref["frame_count"]); refFrameCount != 0 {
+		frameCount = refFrameCount
+	}
+	return kerneljob.OverlayRowV1{
+		ID: id, AssetID: FinalJobStringValue(ref["asset_id"]),
+		DriveFileID: FinalJobStringValue(ref["drive_file_id"]),
+		URL:         FinalJobStringValue(ref["url"]), SourceURI: FinalJobStringValue(ref["source_uri"]),
+		SHA256: FinalJobStringValue(ref["sha256"]), SizeBytes: finalJobInt64(ref["size_bytes"]),
+		DurationUS: finalJobInt64(ref["duration_us"]),
+		StartFrame: startFrame, EndFrame: endFrame, FrameCount: frameCount,
+		Width: finalJobInt(ref["width"]), Height: finalJobInt(ref["height"]),
+		FPSNum: finalJobInt(ref["fps_num"]), FPSDen: finalJobInt(ref["fps_den"]),
+		ProfileID:          FinalJobStringValue(ref["profile_id"]),
+		CopyEligible:       boolValue(ref["copy_eligible"]),
+		FirstFrameKeyframe: boolValue(ref["first_frame_keyframe"]),
+		ClosedGOP:          boolValue(ref["closed_gop"]),
+		Mode:               "replace", ZIndex: zIndex, AudioMode: "preserve_final_audio",
+	}
+}
+
+func finalJobOverlayRowsToLegacy(rows []kerneljob.OverlayRowV1) ([]any, error) {
+	value, err := finalJobOverlayDTOToLegacy(rows)
+	if err != nil {
+		return nil, err
+	}
+	legacy, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("final_job overlay DTO rows have an invalid wire shape")
+	}
+	return legacy, nil
+}
+
+func finalJobOverlayManifestToLegacy(manifest *kerneljob.OverlayManifestV1) (map[string]any, error) {
+	if manifest == nil {
+		return nil, nil
+	}
+	value, err := finalJobOverlayDTOToLegacy(manifest)
+	if err != nil {
+		return nil, err
+	}
+	legacy, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("final_job overlay manifest DTO has an invalid wire shape")
+	}
+	return legacy, nil
+}
+
+func finalJobOverlayDTOToLegacy(value any) (any, error) {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode final_job overlay compatibility DTO: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var legacy any
+	if err := decoder.Decode(&legacy); err != nil {
+		return nil, fmt.Errorf("decode final_job overlay compatibility DTO: %w", err)
+	}
+	normalizeOverlayLegacyNumbers(legacy)
+	return legacy, nil
+}
+
+func normalizeOverlayLegacyNumbers(value any) {
+	switch typed := value.(type) {
+	case json.Number:
+		return
+	case map[string]any:
+		for key, item := range typed {
+			if number, ok := item.(json.Number); ok {
+				if integer, err := number.Int64(); err == nil {
+					if key == "track" || key == "z_index" || key == "audio_streams" || key == "width" || key == "height" || key == "fps_num" || key == "fps_den" {
+						typed[key] = int(integer)
+					} else {
+						typed[key] = integer
+					}
+					continue
+				}
+				if decimal, err := number.Float64(); err == nil {
+					typed[key] = decimal
+					continue
+				}
+			}
+			normalizeOverlayLegacyNumbers(item)
+		}
+	case []any:
+		for _, item := range typed {
+			normalizeOverlayLegacyNumbers(item)
+		}
+	}
 }

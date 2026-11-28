@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -65,10 +66,13 @@ func TestBuildFinalJobSourceHandoffSealsTheBasePlanWithoutOverlayWindows(t *test
 	if err != nil {
 		t.Fatalf("BuildFinalJobSourceHandoff: %v", err)
 	}
-	if source.PlanSHA256 == "" || source.Prepare["compiled_render_plan_sha256"] != source.PlanSHA256 {
-		t.Fatalf("source plan digest = %q / %#v, want a stable PREPARE digest", source.PlanSHA256, source.Prepare["compiled_render_plan_sha256"])
+	if source.PlanSHA256 == "" || source.Prepare.CompiledRenderPlanSHA256 != source.PlanSHA256 {
+		t.Fatalf("source plan digest = %q / %#v, want a stable PREPARE digest", source.PlanSHA256, source.Prepare.CompiledRenderPlanSHA256)
 	}
-	basePlan := decodeFinalJobPlanForTest(t, source.Prepare)
+	var basePlan finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(source.Prepare.CompiledRenderPlanJSON), &basePlan); err != nil {
+		t.Fatalf("decode split base plan: %v", err)
+	}
 	for _, segment := range basePlan.VideoTracks[0].Segments {
 		if segment.AssetID == "timeline-artifact" {
 			t.Fatalf("base plan contains an overlay window: %+v", segment)
@@ -79,20 +83,15 @@ func TestBuildFinalJobSourceHandoffSealsTheBasePlanWithoutOverlayWindows(t *test
 			t.Fatalf("base plan contains the overlay timeline asset: %+v", asset)
 		}
 	}
-	basePayload, _ := source.Finalize["runtime_payload"].(map[string]any)
-	if basePayload == nil {
-		t.Fatal("source FINALIZE has no runtime_payload")
-	}
-	if _, present := basePayload["overlay_manifest"]; present {
+	if source.Finalize.RuntimePayload.OverlayManifest != nil {
 		t.Fatal("source FINALIZE must not carry an overlay manifest")
 	}
-	if overlays, present := basePayload["overlays"].([]any); present && len(overlays) != 0 {
-		t.Fatalf("source FINALIZE overlays = %#v, want none", overlays)
+	if len(source.Finalize.RuntimePayload.Overlays) != 0 {
+		t.Fatalf("source FINALIZE overlays = %#v, want none", source.Finalize.RuntimePayload.Overlays)
 	}
-	for _, raw := range source.Finalize["runtime_assets"].([]any) {
-		role := finalJobStringValue(raw.(map[string]any)["role"])
-		if role == "overlay" || role == "overlay_timeline" {
-			t.Fatalf("source FINALIZE prefetches overlay asset role %q: %#v", role, raw)
+	for _, asset := range source.Finalize.RuntimeAssets {
+		if asset.Role == "overlay" || asset.Role == "overlay_timeline" {
+			t.Fatalf("source FINALIZE prefetches overlay asset role %q: %+v", asset.Role, asset)
 		}
 	}
 
@@ -111,25 +110,43 @@ func TestBuildFinalJobSourceHandoffSealsTheBasePlanWithoutOverlayWindows(t *test
 	if err != nil {
 		t.Fatalf("BuildFinalJobOverlayFinalize: %v", err)
 	}
-	runtimePayload := finalize["runtime_payload"].(map[string]any)
-	manifest, ok := runtimePayload["overlay_manifest"].(map[string]any)
-	if !ok || manifest["schema_version"] != "pipelinegen.overlay-manifest.v1" {
-		t.Fatalf("late FINALIZE overlay_manifest = %#v, want the typed manifest document", runtimePayload["overlay_manifest"])
+	manifest := finalize.RuntimePayload.OverlayManifest
+	if manifest == nil || manifest.SchemaVersion != "pipelinegen.overlay-manifest.v1" {
+		t.Fatalf("late FINALIZE overlay_manifest = %#v, want the typed manifest document", finalize.RuntimePayload.OverlayManifest)
 	}
 	overlayAssets := 0
-	for _, raw := range finalize["runtime_assets"].([]any) {
-		if finalJobStringValue(raw.(map[string]any)["role"]) == "overlay_timeline" {
+	for _, asset := range finalize.RuntimeAssets {
+		if asset.Role == "overlay_timeline" {
 			overlayAssets++
 		}
 	}
 	if overlayAssets != 1 {
 		t.Fatalf("late FINALIZE overlay_timeline assets = %d, want 1", overlayAssets)
 	}
-	if got, want := finalize["idempotency_key"], source.Prepare["idempotency_key"].(string)+"-finalize"; got != want {
-		t.Fatalf("late FINALIZE idempotency_key = %v, want %q", got, want)
+	if got, want := finalize.IdempotencyKey, source.Prepare.IdempotencyKey+"-finalize"; got != want {
+		t.Fatalf("late FINALIZE idempotency_key = %q, want %q", got, want)
 	}
-	if got := finalize["runtime_assets"].([]any); len(got) <= len(source.Finalize["runtime_assets"].([]any)) {
+	if got := finalize.RuntimeAssets; len(got) <= len(source.Finalize.RuntimeAssets) {
 		t.Fatalf("late FINALIZE runtime_assets = %d, want the base set plus the overlay supplement", len(got))
+	}
+	envelope, err := BuildFinalJobSplitEnvelopeV1("run-split", source, finalize)
+	if err != nil {
+		t.Fatalf("BuildFinalJobSplitEnvelopeV1: %v", err)
+	}
+	prepareMap, finalizeMap, err := envelope.MasterPayloads()
+	if err != nil {
+		t.Fatalf("split envelope MasterPayloads: %v", err)
+	}
+	if prepareMap["compiled_render_plan_json"] != source.Prepare.CompiledRenderPlanJSON {
+		t.Fatal("Master PREPARE changed the sealed split plan bytes")
+	}
+	wireAssets, ok := finalizeMap["runtime_assets"].([]any)
+	if !ok || len(wireAssets) != len(finalize.RuntimeAssets) {
+		t.Fatalf("Master FINALIZE runtime_assets = %#v, want %d wire entries", finalizeMap["runtime_assets"], len(finalize.RuntimeAssets))
+	}
+	wirePayload, ok := finalizeMap["runtime_payload"].(map[string]any)
+	if !ok || wirePayload["overlay_manifest"] == nil {
+		t.Fatalf("Master FINALIZE runtime_payload = %#v, want overlay manifest", finalizeMap["runtime_payload"])
 	}
 }
 
@@ -163,21 +180,19 @@ func TestBuildFinalJobOverlayFinalizeKeepsTheBaseRuntimeAssetSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildFinalJobOverlayFinalize: %v", err)
 	}
-	base := source.Finalize["runtime_assets"].([]any)
-	late := finalize["runtime_assets"].([]any)
+	base := source.Finalize.RuntimeAssets
+	late := finalize.RuntimeAssets
 	seen := make(map[string]bool, len(late))
-	for _, raw := range late {
-		asset := raw.(map[string]any)
-		id := finalJobStringValue(asset["asset_id"])
+	for _, asset := range late {
+		id := asset.AssetID
 		if seen[id] {
 			t.Fatalf("late FINALIZE duplicated runtime asset %q", id)
 		}
 		seen[id] = true
 	}
-	for _, raw := range base {
-		asset := raw.(map[string]any)
-		if !seen[finalJobStringValue(asset["asset_id"])] {
-			t.Fatalf("late FINALIZE dropped base runtime asset %q", asset["asset_id"])
+	for _, asset := range base {
+		if !seen[asset.AssetID] {
+			t.Fatalf("late FINALIZE dropped base runtime asset %q", asset.AssetID)
 		}
 	}
 }

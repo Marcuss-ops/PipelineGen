@@ -31,6 +31,8 @@ trap cleanup EXIT
 BIN="$TMP/pipelinegen"
 cp "$(command -v sleep)" "$BIN"
 chmod 0755 "$BIN"
+RUST_MANIFEST="$TMP/BRAINRUST_RELEASE.json"
+printf '{"source":"release"}\n' > "$RUST_MANIFEST"
 
 # Fake pipelinegenctl: records the restart and can be made to fail.
 RESTART_LOG="$TMP/restart.log"
@@ -78,6 +80,7 @@ chmod 0755 "$TMP/curl"
 run_deploy() {
   env \
     DEPLOY_BIN_PATH="$BIN" \
+    DEPLOY_BRAINRUST_MANIFEST="$RUST_MANIFEST" \
     DEPLOY_SYSTEMCTL_BIN="$TMP/systemctl" \
     DEPLOY_PIPELINEGENCTL_BIN="$TMP/pipelinegenctl" \
     DEPLOY_SUDO_BIN=true \
@@ -109,6 +112,11 @@ if grep -q 'running IS the built binary' "$TMP/c1.out"; then
   pass "identity gate confirms running == built"
 else
   fail "identity gate confirms running == built"
+fi
+if grep -q 'source=release is release-pinned' "$TMP/c1.out"; then
+  pass "release-pinned BrainRust ignores unrelated checkout freshness"
+else
+  fail "release-pinned BrainRust ignores unrelated checkout freshness"
 fi
 
 # ── Case 2: identity mismatch must fail ───────────────────────────────

@@ -81,6 +81,10 @@ var (
 	// BinarySHA256 lets a build system pre-compute the executable digest when
 	// the binary is cross-built and cannot hash itself.
 	BinarySHA256 = ""
+	// GitDirtyOverride is set by release builds that intentionally disable
+	// Go's VCS stamping and have already checked the owning module's worktree.
+	// Empty means use the embedded vcs.modified value as before.
+	GitDirtyOverride = ""
 )
 
 // shortCommitLen is the conventional short-revision length used by git, so
@@ -196,11 +200,17 @@ func (i Identity) Digest() string {
 // call from a per-request health handler.
 func Current() Identity {
 	vcsRevision, vcsTime, vcsModified := vcsStamp()
+	gitDirty := vcsModified
+	if override := strings.TrimSpace(GitDirtyOverride); override != "" {
+		if parsed, err := strconv.ParseBool(override); err == nil {
+			gitDirty = parsed
+		}
+	}
 
 	identity := Identity{
 		Version:       nonEmpty(Version, "dev"),
 		GitCommitFull: nonEmpty(GitCommit, vcsRevision),
-		GitDirty:      vcsModified,
+		GitDirty:      gitDirty,
 		BuildTime:     nonEmpty(BuildTime, vcsTime),
 		BinarySHA256:  nonEmpty(BinarySHA256, executableDigest()),
 		BinaryPath:    executablePath(),

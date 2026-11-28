@@ -75,3 +75,32 @@ func TestStageHeartbeatCloseIsIdempotent(t *testing.T) {
 	hb.close()
 	hb.close()
 }
+
+func TestJobStageForRunStageCoversEveryDurableStage(t *testing.T) {
+	tests := []struct {
+		name  string
+		stage Stage
+		want  string
+		ok    bool
+	}{
+		{name: "normalizing", stage: StageNormalizing, want: "script", ok: true},
+		{name: "preflight", stage: StagePreflight, want: "script", ok: true},
+		{name: "scene text", stage: StageGeneratingSceneText, want: "script", ok: true},
+		{name: "translation", stage: StageTranslatingScenes, want: "translation", ok: true},
+		{name: "voiceover", stage: StageGeneratingVoiceovers, want: "voiceover", ok: true},
+		{name: "localized render", stage: StageRenderingVideo, want: "render", ok: true},
+		{name: "audio compile", stage: StageCompilingAudio, want: "render", ok: true},
+		{name: "publishing and delivery", stage: StagePublishingDocuments, want: "upload", ok: true},
+		{name: "core ready milestone", stage: StageCoreReady},
+		{name: "completed terminal", stage: StageCompleted},
+		{name: "failed terminal", stage: StageFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := jobStageForRunStage(tt.stage)
+			if string(got) != tt.want || ok != tt.ok {
+				t.Fatalf("jobStageForRunStage(%q) = (%q, %t), want (%q, %t)", tt.stage, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}

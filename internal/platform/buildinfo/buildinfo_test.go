@@ -26,6 +26,28 @@ func TestCurrent_IsAlwaysAssembled(t *testing.T) {
 	}
 }
 
+func TestCurrentHonorsExplicitGitDirtyStampWhenVCSBuildInfoIsDisabled(t *testing.T) {
+	previous := GitDirtyOverride
+	t.Cleanup(func() { GitDirtyOverride = previous })
+	GitDirtyOverride = "false"
+	if got := Current().GitDirty; got {
+		t.Fatal("GitDirty = true, want the explicit clean-module build stamp")
+	}
+	GitDirtyOverride = "true"
+	if got := Current().GitDirty; !got {
+		t.Fatal("GitDirty = false, want the explicit dirty-module build stamp")
+	}
+	GitDirtyOverride = "invalid"
+	if got := Current().GitDirty; got != vcsStampModifiedForTest() {
+		t.Fatalf("invalid override changed the embedded VCS value: got %v", got)
+	}
+}
+
+func vcsStampModifiedForTest() bool {
+	_, _, modified := vcsStamp()
+	return modified
+}
+
 // TestSetRuntime_FeedsIdentity is the bootstrap contract: whatever the
 // composition root declares (config file, mode, instance id) is what /health
 // publishes, so "which config is this process reading?" stops being a manual

@@ -75,26 +75,20 @@ type FinalizeV1 struct {
 	RuntimePayload RuntimePayloadV1 `json:"runtime_payload"`
 }
 
-// FinalizeEnvelopeV1 is the typed stable shell of the FINALIZE document the
-// Producer builds. It differs from FinalizeV1 in exactly one place: the
-// runtime asset list stays a transport list because every entry is a
-// Master-forward-compatible document (RuntimeAssetV1.Additional) that the split
-// handoff appends to after PREPARE. Typing that list would drop empty-valued
-// optional keys, which is a wire change this contract does not authorize; the
-// typed view of each entry is still produced by BuildEnvelope/Validate at the
-// boundary.
+// FinalizeEnvelopeV1 is the typed FINALIZE document the Producer builds.
+// Runtime assets preserve Master-forward-compatible fields through
+// RuntimeAssetV1.Additional; overlay rows and manifests use versioned DTOs.
 type FinalizeEnvelopeV1 struct {
 	IdempotencyKey string           `json:"idempotency_key"`
-	RuntimeAssets  []any            `json:"runtime_assets"`
+	RuntimeAssets  []RuntimeAssetV1 `json:"runtime_assets"`
 	RuntimePayload RuntimePayloadV1 `json:"runtime_payload"`
 }
 
 // MasterPayloadsOf adapts typed producer envelopes to the deployed Master map
-// contract. It is the ONE serialization boundary for the stable keys: the
-// builder never writes idempotency_key, job_type, video_name, script_text or
-// runtime_payload by hand, and the dynamic runtime asset entries pass through
-// untouched. Validation stays in BuildEnvelope, so a split FINALIZE can be
-// adapted before its overlay supplement is final.
+// contract. It is the ONE serialization boundary for stable PREPARE/FINALIZE
+// fields; only this adapter creates transport maps. Validation stays in
+// BuildEnvelope, so a split FINALIZE can be adapted after its overlay
+// supplement is final.
 func MasterPayloadsOf(prepare PrepareV1, finalize FinalizeEnvelopeV1) (map[string]any, map[string]any, error) {
 	prepareRaw, err := json.Marshal(prepare)
 	if err != nil {
@@ -104,16 +98,31 @@ func MasterPayloadsOf(prepare PrepareV1, finalize FinalizeEnvelopeV1) (map[strin
 	if err != nil {
 		return nil, nil, err
 	}
-	// The asset list and the two opaque overlay documents are already in their
-	// deployed shape; only the typed scalar fields are projected here, so the
-	// adapter adds no encode/decode pass over the payload.
+	// Runtime assets and overlay documents stay typed until this transport edge.
+	// Convert overlay DTOs into the deployed map/list shapes only here.
+	assets := make([]any, 0, len(finalize.RuntimeAssets))
+	for i, asset := range finalize.RuntimeAssets {
+		mapped, err := asset.Map()
+		if err != nil {
+			return nil, nil, fmt.Errorf("encode final_job runtime asset %d: %w", i, err)
+		}
+		assets = append(assets, mapped)
+	}
+	overlays, err := decodeMasterValue(finalize.RuntimePayload.Overlays)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode final_job overlays: %w", err)
+	}
 	runtimePayload := map[string]any{
 		"video_name":  finalize.RuntimePayload.VideoName,
 		"script_text": finalize.RuntimePayload.ScriptText,
-		"overlays":    finalize.RuntimePayload.Overlays,
+		"overlays":    overlays,
 	}
 	if finalize.RuntimePayload.OverlayManifest != nil {
-		runtimePayload["overlay_manifest"] = finalize.RuntimePayload.OverlayManifest
+		manifest, err := decodeMasterValue(finalize.RuntimePayload.OverlayManifest)
+		if err != nil {
+			return nil, nil, fmt.Errorf("encode final_job overlay manifest: %w", err)
+		}
+		runtimePayload["overlay_manifest"] = manifest
 	}
 	if audio := finalize.RuntimePayload.RuntimeAudio; audio != nil {
 		runtimePayload["runtime_audio"] = map[string]any{
@@ -124,15 +133,17 @@ func MasterPayloadsOf(prepare PrepareV1, finalize FinalizeEnvelopeV1) (map[strin
 	}
 	finalizeMap := map[string]any{
 		"idempotency_key": finalize.IdempotencyKey,
-		"runtime_assets":  finalize.RuntimeAssets,
+		"runtime_assets":  assets,
 		"runtime_payload": runtimePayload,
 	}
 	// PREPARE is decoded from JSON, so restore the Go number shapes the
 	// transport has always carried (integral numbers as int64, fractions as
 	// float64): a downstream reader must not start seeing json.Number because
-	// the construction became typed. FINALIZE needs no walk: its assets and
-	// opaque documents already hold concrete Go values.
+	// the construction became typed. Normalize the overlay values for the same
+	// concrete numeric types the legacy map builder returned.
 	normalizeMasterPayloadNumbers(prepareMap)
+	normalizeMasterPayloadNumbers(runtimePayload)
+	normalizeOverlayPayloadNumberKinds(runtimePayload)
 	return prepareMap, finalizeMap, nil
 }
 
@@ -163,6 +174,29 @@ func normalizeMasterPayloadNumbers(value any) any {
 	}
 }
 
+// These fields were Go ints in the legacy overlay map builder. Preserve their
+// concrete map types at the transport adapter while leaving frame/time values
+// as int64.
+func normalizeOverlayPayloadNumberKinds(value any) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, item := range typed {
+			switch key {
+			case "track", "z_index", "audio_streams", "width", "height", "fps_num", "fps_den":
+				if integral, ok := item.(int64); ok {
+					typed[key] = int(integral)
+					continue
+				}
+			}
+			normalizeOverlayPayloadNumberKinds(item)
+		}
+	case []any:
+		for _, item := range typed {
+			normalizeOverlayPayloadNumberKinds(item)
+		}
+	}
+}
+
 // RuntimeAssetV1 types the immutable asset identity separately from
 // its transport locator. Additional preserves forward-compatible Master
 // metadata while the stable identity fields remain statically checked.
@@ -179,15 +213,116 @@ type RuntimeAssetV1 struct {
 }
 
 type RuntimePayloadV1 struct {
-	VideoName  string `json:"video_name"`
-	ScriptText string `json:"script_text"`
-	// Overlays and OverlayManifest are the two legitimately dynamic documents
-	// of the FINALIZE contract (the Master treats them as opaque). They carry
-	// the value the Producer already built, so the transport adapter can hand
-	// them to the deployed map without a second encode/decode round trip.
-	Overlays        any             `json:"overlays"`
-	OverlayManifest any             `json:"overlay_manifest,omitempty"`
-	RuntimeAudio    *RuntimeAudioV1 `json:"runtime_audio,omitempty"`
+	VideoName       string             `json:"video_name"`
+	ScriptText      string             `json:"script_text"`
+	Overlays        []OverlayRowV1     `json:"overlays"`
+	OverlayManifest *OverlayManifestV1 `json:"overlay_manifest,omitempty"`
+	RuntimeAudio    *RuntimeAudioV1    `json:"runtime_audio,omitempty"`
+}
+
+// OverlayRowV1 is either a dedicated replace row or a manifest entry. The
+// optional fields keep both deployed shapes in one DTO while their stable
+// fields are compile-time checked by the Producer.
+type OverlayRowV1 struct {
+	ID                 string           `json:"id,omitempty"`
+	ItemID             string           `json:"item_id,omitempty"`
+	Track              *int             `json:"track,omitempty"`
+	InUS               int64            `json:"in_us,omitempty"`
+	OutUS              int64            `json:"out_us,omitempty"`
+	ContentHash        string           `json:"content_hash,omitempty"`
+	ArtifactInUS       *int64           `json:"artifact_in_us,omitempty"`
+	ArtifactOutUS      *int64           `json:"artifact_out_us,omitempty"`
+	AssetID            string           `json:"asset_id,omitempty"`
+	DriveFileID        string           `json:"drive_file_id,omitempty"`
+	URL                string           `json:"url,omitempty"`
+	SourceURI          string           `json:"source_uri,omitempty"`
+	SHA256             string           `json:"sha256,omitempty"`
+	SizeBytes          int64            `json:"size_bytes,omitempty"`
+	DurationUS         int64            `json:"duration_us,omitempty"`
+	DurationMS         int64            `json:"duration_ms,omitempty"`
+	StartFrame         int64            `json:"start_frame,omitempty"`
+	EndFrame           int64            `json:"end_frame,omitempty"`
+	FrameCount         int64            `json:"frame_count,omitempty"`
+	Width              int              `json:"width,omitempty"`
+	Height             int              `json:"height,omitempty"`
+	FPSNum             int              `json:"fps_num,omitempty"`
+	FPSDen             int              `json:"fps_den,omitempty"`
+	ProfileID          string           `json:"profile_id,omitempty"`
+	CopyEligible       bool             `json:"copy_eligible,omitempty"`
+	FirstFrameKeyframe bool             `json:"first_frame_keyframe,omitempty"`
+	ClosedGOP          bool             `json:"closed_gop,omitempty"`
+	Mode               string           `json:"mode,omitempty"`
+	ZIndex             int              `json:"z_index,omitempty"`
+	AudioMode          string           `json:"audio_mode,omitempty"`
+	Codec              string           `json:"codec,omitempty"`
+	Container          string           `json:"container,omitempty"`
+	PixelFormat        string           `json:"pixel_format,omitempty"`
+	AudioStreams       int              `json:"audio_streams,omitempty"`
+	Stream             *OverlayStreamV1 `json:"stream,omitempty"`
+}
+
+// OverlayManifestV1 carries either one certified timeline document or a
+// manifest set. A set populates only SchemaVersion and Manifests.
+type OverlayManifestV1 struct {
+	SchemaVersion  string              `json:"schema_version"`
+	PlanID         string              `json:"plan_id,omitempty"`
+	VideoID        string              `json:"video_id,omitempty"`
+	Mode           string              `json:"mode,omitempty"`
+	TimelineSHA256 string              `json:"timeline_sha256,omitempty"`
+	Asset          *OverlayAssetV1     `json:"asset,omitempty"`
+	Entries        []OverlayRowV1      `json:"entries"`
+	Stream         *OverlayStreamV1    `json:"stream,omitempty"`
+	Manifests      []OverlayManifestV1 `json:"manifests,omitempty"`
+}
+
+func (m OverlayManifestV1) MarshalJSON() ([]byte, error) {
+	if m.SchemaVersion == "pipelinegen.overlay-manifest-set.v1" {
+		return json.Marshal(struct {
+			SchemaVersion string              `json:"schema_version"`
+			Manifests     []OverlayManifestV1 `json:"manifests"`
+		}{SchemaVersion: m.SchemaVersion, Manifests: m.Manifests})
+	}
+	type wire OverlayManifestV1
+	return json.Marshal(wire(m))
+}
+
+// OverlayAssetV1 is the nested certified artifact block in the timeline
+// manifest. Several zero-valued fields are deliberately serialized because
+// the deployed Master wire has historically emitted them explicitly.
+type OverlayAssetV1 struct {
+	AssetID            string           `json:"asset_id"`
+	DriveFileID        string           `json:"drive_file_id,omitempty"`
+	URL                string           `json:"url,omitempty"`
+	SourceURI          string           `json:"source_uri,omitempty"`
+	SHA256             string           `json:"sha256"`
+	SizeBytes          int64            `json:"size_bytes"`
+	DurationUS         int64            `json:"duration_us,omitempty"`
+	DurationMS         int64            `json:"duration_ms"`
+	FrameCount         int64            `json:"frame_count"`
+	Mode               string           `json:"mode"`
+	AudioMode          string           `json:"audio_mode"`
+	Codec              string           `json:"codec"`
+	Container          string           `json:"container"`
+	PixelFormat        string           `json:"pixel_format"`
+	AudioStreams       int              `json:"audio_streams"`
+	Width              int              `json:"width"`
+	Height             int              `json:"height"`
+	FPSNum             int              `json:"fps_num"`
+	FPSDen             int              `json:"fps_den"`
+	ProfileID          string           `json:"profile_id,omitempty"`
+	CopyEligible       bool             `json:"copy_eligible,omitempty"`
+	FirstFrameKeyframe bool             `json:"first_frame_keyframe,omitempty"`
+	ClosedGOP          bool             `json:"closed_gop,omitempty"`
+	Stream             *OverlayStreamV1 `json:"stream,omitempty"`
+}
+
+type OverlayStreamV1 struct {
+	ProfileID       string `json:"profile_id"`
+	ExtradataSHA256 string `json:"extradata_sha256,omitempty"`
+	TimeBaseNum     int    `json:"time_base_num,omitempty"`
+	TimeBaseDen     int    `json:"time_base_den,omitempty"`
+	EncoderRevision string `json:"encoder_revision,omitempty"`
+	CopyReady       bool   `json:"copy_ready"`
 }
 
 type RuntimeAudioV1 struct {
@@ -350,17 +485,9 @@ func (e EnvelopeV1) MasterPayloads() (map[string]any, map[string]any, error) {
 	if err := e.Validate(); err != nil {
 		return nil, nil, err
 	}
-	finalizeAssets := make([]any, 0, len(e.Finalize.RuntimeAssets))
-	for i, asset := range e.Finalize.RuntimeAssets {
-		mapped, err := asset.Map()
-		if err != nil {
-			return nil, nil, fmt.Errorf("encode final_job runtime asset %d: %w", i, err)
-		}
-		finalizeAssets = append(finalizeAssets, mapped)
-	}
 	return MasterPayloadsOf(e.Prepare, FinalizeEnvelopeV1{
 		IdempotencyKey: e.Finalize.IdempotencyKey,
-		RuntimeAssets:  finalizeAssets,
+		RuntimeAssets:  e.Finalize.RuntimeAssets,
 		RuntimePayload: e.Finalize.RuntimePayload,
 	})
 }
@@ -371,6 +498,20 @@ func decodeMasterPayload(raw []byte) (map[string]any, error) {
 	var result map[string]any
 	if err := decoder.Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode final_job Master payload: %w", err)
+	}
+	return result, nil
+}
+
+func decodeMasterValue(value any) (any, error) {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("marshal typed final_job value: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var result any
+	if err := decoder.Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode typed final_job value: %w", err)
 	}
 	return result, nil
 }

@@ -67,7 +67,7 @@ func (a *RemoteFinalJobAdapter) PrepareFinalJobSource(ctx context.Context, runID
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, splitPrepareNotSent(err)
 	}
-	plan, err := finalJobSplitPlan(handoff.Prepare)
+	plan, err := finalJobSplitPlan(handoff)
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, splitPrepareNotSent(err)
 	}
@@ -82,7 +82,7 @@ func (a *RemoteFinalJobAdapter) PrepareFinalJobSource(ctx context.Context, runID
 		return scriptgen.RemoteFinalJobResult{}, splitPrepareNotSent(err)
 	}
 	if workerID != "" {
-		handoff.Prepare["placement_pin_worker_id"] = workerID
+		handoff.Prepare.PlacementPinWorkerID = workerID
 	}
 	envelope, err := scriptgen.BuildFinalJobSplitEnvelopeV1(runID, handoff, handoff.Finalize)
 	if err != nil {
@@ -170,11 +170,11 @@ func (a *RemoteFinalJobAdapter) FinalizeFinalJobSource(ctx context.Context, jobI
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{JobID: id, Status: "PREPARED", ReportOwner: scriptgen.FinalJobReportOwner, Split: true}, err
 	}
-	_, finalizeMap, err := envelope.MasterPayloads()
+	prepareMap, finalizeMap, err := envelope.MasterPayloads()
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{JobID: id, Status: "PREPARED", ReportOwner: scriptgen.FinalJobReportOwner, Split: true}, fmt.Errorf("serialize split FINALIZE: %w", err)
 	}
-	keepFinalJobEnvelopes(runID, handoff.Prepare, finalizeMap)
+	keepFinalJobEnvelopes(runID, prepareMap, finalizeMap)
 	finalizeStarted := time.Now()
 	err = a.client.Finalize(ctx, id, finalizeMap)
 	timing := &scriptgen.RemoteFinalJobTiming{
@@ -203,13 +203,12 @@ func splitPrepareNotSent(err error) error {
 	return fmt.Errorf("%w: %w", scriptgen.ErrFinalJobSplitPrepareNotSent, err)
 }
 
-func finalJobSplitPlan(prepare map[string]any) (scriptgen.FinalJobCompiledPlanV2, error) {
-	raw, _ := prepare["compiled_render_plan_json"].(string)
-	if strings.TrimSpace(raw) == "" {
+func finalJobSplitPlan(handoff scriptgen.FinalJobSourceHandoff) (scriptgen.FinalJobCompiledPlanV2, error) {
+	if strings.TrimSpace(handoff.Prepare.CompiledRenderPlanJSON) == "" {
 		return scriptgen.FinalJobCompiledPlanV2{}, fmt.Errorf("split final-job PREPARE has no compiled plan")
 	}
 	var plan scriptgen.FinalJobCompiledPlanV2
-	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+	if err := json.Unmarshal([]byte(handoff.Prepare.CompiledRenderPlanJSON), &plan); err != nil {
 		return scriptgen.FinalJobCompiledPlanV2{}, fmt.Errorf("decode split final-job compiled plan: %w", err)
 	}
 	return plan, nil

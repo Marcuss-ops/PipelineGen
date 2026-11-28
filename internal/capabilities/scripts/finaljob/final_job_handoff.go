@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
@@ -118,6 +119,65 @@ func AppendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, r
 	}
 	item["role"] = role
 	*dst = append(*dst, item)
+}
+
+func appendFinalJobRuntimeAssetTyped(dst *[]finaljob.RuntimeAssetV1, seen map[string]bool, role string, ref map[string]any) error {
+	if ref == nil {
+		return nil
+	}
+	id := FinalJobStringValue(ref["drive_file_id"])
+	if id == "" {
+		id = FinalJobStringValue(ref["asset_id"])
+	}
+	if id == "" || seen[role+":"+id] {
+		return nil
+	}
+	item := make(map[string]any, len(ref)+1)
+	for key, value := range ref {
+		if key == "local_path" || key == "local_source_path" || key == "local_only" {
+			continue
+		}
+		item[key] = value
+	}
+	if driveID := FinalJobStringValue(ref["drive_file_id"]); driveID != "" {
+		item["url"] = driveFileWebLink(driveID)
+	}
+	item["role"] = role
+	asset, err := finaljob.RuntimeAssetFromMap(item)
+	if err != nil {
+		return fmt.Errorf("encode final_job runtime asset %q: %w", id, err)
+	}
+	seen[role+":"+id] = true
+	*dst = append(*dst, asset)
+	return nil
+}
+
+func finalJobRuntimeAssetsFromValues(values []any) ([]finaljob.RuntimeAssetV1, error) {
+	assets := make([]finaljob.RuntimeAssetV1, 0, len(values))
+	for index, value := range values {
+		fields, ok := value.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("final_job runtime asset %d has an invalid shape", index)
+		}
+		asset, err := finaljob.RuntimeAssetFromMap(fields)
+		if err != nil {
+			return nil, fmt.Errorf("final_job runtime asset %d: %w", index, err)
+		}
+		assets = append(assets, asset)
+	}
+	return assets, nil
+}
+
+func finalJobRuntimeAssetsToValues(assets []finaljob.RuntimeAssetV1) ([]any, error) {
+	values := make([]any, 0, len(assets))
+	for index, asset := range assets {
+		fields, err := asset.Map()
+		if err != nil {
+			return nil, fmt.Errorf("final_job runtime asset %d: %w", index, err)
+		}
+		values = append(values, fields)
+	}
+	return values, nil
 }
 
 func FinalJobAudioAsset(ctx context.Context, audio contract.FinalAudioReference) (map[string]any, error) {

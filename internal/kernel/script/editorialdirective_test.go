@@ -29,6 +29,7 @@ func TestFindEditorialDirectivesKeepsNarrationQuiet(t *testing.T) {
 		"La scena descrive il matrimonio di settembre.",
 		"Totti non legge il comunicato, lo commenta.",
 		"Mostra il volto della coppia al pubblico.",
+		"Le grandi narrazioni politiche globali hanno cominciato a toccare la vita quotidiana.",
 	}
 	for _, text := range cases {
 		if directives := FindEditorialDirectives(text); len(directives) != 0 {

@@ -1,6 +1,7 @@
 package finaljob
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -53,14 +54,17 @@ func ValidatePlanBindingRules(plan CompiledPlanV2) error {
 		}
 	}
 	seenSegment := make(map[string]struct{}, len(plan.Assets))
+	var violations []error
 	for trackIndex, track := range plan.VideoTracks {
 		for segmentIndex, segment := range track.Segments {
 			id := strings.TrimSpace(segment.SegmentID)
 			if id == "" {
-				return fmt.Errorf("final_job plan segment without an id")
+				violations = append(violations, fmt.Errorf("final_job plan segment without an id at video_tracks[%d].segments[%d]", trackIndex, segmentIndex))
+				continue
 			}
 			if _, exists := seenSegment[id]; exists {
-				return fmt.Errorf("final_job plan segments repeat id %q", id)
+				violations = append(violations, fmt.Errorf("final_job plan segments repeat id %q", id))
+				continue
 			}
 			seenSegment[id] = struct{}{}
 			if segment.StockPoolSlot {
@@ -74,20 +78,44 @@ func ValidatePlanBindingRules(plan CompiledPlanV2) error {
 			}
 			asset, ok := byID[segment.AssetID]
 			if !ok {
-				return fmt.Errorf("final_job plan segment %q references unknown asset %q", id, segment.AssetID)
+				violations = append(violations, fmt.Errorf("final_job plan segment %q references unknown asset %q", id, segment.AssetID))
+				continue
 			}
 			if !strings.EqualFold(strings.TrimSpace(asset.SHA256), strings.TrimSpace(segment.SHA256)) {
-				return fmt.Errorf("final_job plan segment %q does not certify its asset %q", id, asset.AssetID)
+				violations = append(violations, fmt.Errorf("final_job plan segment %q does not certify its asset %q", id, asset.AssetID))
+				continue
 			}
 			if segment.FrameCount <= 0 {
-				return fmt.Errorf("final_job plan segment %q has no frame span", id)
+				violations = append(violations, fmt.Errorf("final_job plan segment %q has no frame span", id))
+				continue
 			}
 			if violation := sourceRangeViolation(trackIndex, segmentIndex, segment, asset); violation != "" {
-				return fmt.Errorf("invalid_compiled_render_plan: %s", violation)
+				violations = append(violations, fmt.Errorf("invalid_compiled_render_plan: %s", violation))
+			}
+			if plan.Output.FPSNum > 0 && plan.Output.FPSDen > 0 {
+				expectedUS := FrameDurationUSAtFPS(segment.FrameCount, int64(plan.Output.FPSNum), int64(plan.Output.FPSDen))
+				if segment.SourceDurationUS != expectedUS {
+					violations = append(violations, fmt.Errorf(
+						"invalid_compiled_render_plan: segment %q video_tracks[%d].segments[%d] asset %q: source_duration_us=%d does not match frame_count=%d at %d/%d fps (expected %d)",
+						id, trackIndex, segmentIndex, segment.AssetID, segment.SourceDurationUS,
+						segment.FrameCount, plan.Output.FPSNum, plan.Output.FPSDen, expectedUS,
+					))
+				}
 			}
 		}
 	}
-	return nil
+	return errors.Join(violations...)
+}
+
+// FrameDurationUSAtFPS is the wire contract used by video.assemble.copy.v1:
+// a frame span is the integer-microsecond floor of frame_count / fps. Keep the
+// Producer validator on the same arithmetic so invalid plans fail before
+// PREPARE instead of after the remote worker claims them.
+func FrameDurationUSAtFPS(frameCount, fpsNum, fpsDen int64) int64 {
+	if frameCount <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return 0
+	}
+	return frameCount * 1_000_000 * fpsDen / fpsNum
 }
 
 // finalJobSourceRangeViolation mirrors the Master's source_range_out_of_bounds

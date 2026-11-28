@@ -10,13 +10,13 @@ import (
 
 func TestFinalJobOverlayStreamWireSeparatesCanonicalFromLegacy(t *testing.T) {
 	canonical := finalJobOverlayStreamWire(nil, &RenderArtifact{ProfileID: kernelmedia.OverlayVideoOnlyAssemblyProfileID})
-	if canonical == nil || canonical["copy_ready"] != true ||
-		canonical["extradata_sha256"] != kernelmedia.CanonicalVideoExtradataSHA256 ||
-		canonical["time_base_den"] != 90000 {
+	if canonical == nil || !canonical.CopyReady ||
+		canonical.ExtradataSHA256 != kernelmedia.CanonicalVideoExtradataSHA256 ||
+		canonical.TimeBaseDen != 90000 {
 		t.Fatalf("canonical V3 stream = %+v", canonical)
 	}
 	legacy := finalJobOverlayStreamWire(nil, &RenderArtifact{ProfileID: kernelmedia.OverlayVideoOnlyPreviousID})
-	if legacy == nil || legacy["copy_ready"] != false {
+	if legacy == nil || legacy.CopyReady {
 		t.Fatalf("legacy V2 stream = %+v", legacy)
 	}
 	if kernelmedia.OverlayVideoOnlyProfileID != kernelmedia.OverlayVideoOnlyAssemblyProfileID {
@@ -25,7 +25,7 @@ func TestFinalJobOverlayStreamWireSeparatesCanonicalFromLegacy(t *testing.T) {
 	if kernelmedia.OverlayVideoOnlyPreviousID == kernelmedia.OverlayVideoOnlyAssemblyProfileID {
 		t.Fatal("the V2 previous lane must remain distinct from V3")
 	}
-	if _, claimed := legacy["extradata_sha256"]; claimed {
+	if legacy.ExtradataSHA256 != "" {
 		t.Fatalf("legacy V2 must not claim canonical avcC: %+v", legacy)
 	}
 	if got := finalJobOverlayStreamWire(nil, &RenderArtifact{}); got != nil {
@@ -39,7 +39,7 @@ func TestFinalJobOverlayStreamWireRefusesUnprovenCanonicalClaims(t *testing.T) {
 		TimeBaseNum: 1, TimeBaseDen: 90000, EncoderRevision: kernelmedia.CanonicalVideoProfileRevision,
 	}
 	ok := finalJobOverlayStreamWire(&capmodel.OverlayManifest{Stream: canonicalStream}, &RenderArtifact{ProfileID: kernelmedia.OverlayVideoOnlyAssemblyProfileID})
-	if ok == nil || ok["copy_ready"] != true || ok["extradata_sha256"] != kernelmedia.CanonicalVideoExtradataSHA256 {
+	if ok == nil || !ok.CopyReady || ok.ExtradataSHA256 != kernelmedia.CanonicalVideoExtradataSHA256 {
 		t.Fatalf("canonical declared stream = %+v", ok)
 	}
 
@@ -54,10 +54,10 @@ func TestFinalJobOverlayStreamWireRefusesUnprovenCanonicalClaims(t *testing.T) {
 		"stream/artifact mismatch": {stream: canonicalStream, artifact: kernelmedia.OverlayVideoOnlyPreviousID},
 	} {
 		got := finalJobOverlayStreamWire(&capmodel.OverlayManifest{Stream: tc.stream}, &RenderArtifact{ProfileID: tc.artifact})
-		if got == nil || got["copy_ready"] != false {
+		if got == nil || got.CopyReady {
 			t.Fatalf("%s: got %+v, want copy_ready=false", name, got)
 		}
-		if _, claimed := got["extradata_sha256"]; claimed {
+		if got.ExtradataSHA256 != "" {
 			t.Fatalf("%s: must not transport an unproven extradata: %+v", name, got)
 		}
 	}

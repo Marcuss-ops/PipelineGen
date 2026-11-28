@@ -47,6 +47,15 @@ func TestFinalJobStockDriveReference(t *testing.T) {
 	if got, want := ref["duration_ms"], int64(3500); got != want {
 		t.Fatalf("duration_ms = %v, want %d", got, want)
 	}
+	if got, want := ref["duration_us"], int64(3_500_000); got != want {
+		t.Fatalf("duration_us = %v, want %d", got, want)
+	}
+
+	saved.Duration = 7457*time.Millisecond + 900*time.Microsecond
+	ref = finalJobStockDriveReference(driveID, saved, size)
+	if got, want := ref["duration_us"], int64(7_457_900); got != want {
+		t.Fatalf("sub-millisecond duration_us = %v, want %d", got, want)
+	}
 
 	source, ok := ref["source_uri"].(string)
 	if !ok || source == "" {

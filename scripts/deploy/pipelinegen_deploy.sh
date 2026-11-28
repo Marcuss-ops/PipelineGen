@@ -59,6 +59,7 @@ PIPELINEGENCTL_BIN="${DEPLOY_PIPELINEGENCTL_BIN:-$ROOT_DIR/scripts/systemd/pipel
 PROC_ROOT="${DEPLOY_PROC_ROOT:-/proc}"
 
 BIN_PATH="${DEPLOY_BIN_PATH:-$ROOT_DIR/bin/pipelinegen}"
+BRAINRUST_MANIFEST="${DEPLOY_BRAINRUST_MANIFEST:-$ROOT_DIR/bin/BRAINRUST_RELEASE.json}"
 
 DRY_RUN=0
 SKIP_BUILD=0
@@ -101,11 +102,26 @@ sudo_can_restart() {
 
 step_rust_freshness() {
   local brainrust="$ROOT_DIR/../BrainRust" out
-  # Release-only hosts have no BrainRust checkout: rust-fetch owns the binary
-  # and there is no worktree to compare against.
-  if [ ! -d "$brainrust/.git" ] && [ ! -f "$brainrust/.git" ]; then
-    log "rust: no BrainRust checkout at $brainrust; release binary freshness not checked"
+  local source
+  # rust-fetch installs a checksum-pinned release. A sibling checkout is
+  # unrelated to those bytes and must not make a release deploy fail merely
+  # because that checkout has local edits.
+  [ -s "$BRAINRUST_MANIFEST" ] || die "missing BrainRust release manifest: $BRAINRUST_MANIFEST"
+  source="$(python3 - "$BRAINRUST_MANIFEST" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    data = json.load(f)
+print(data.get("source", "release"))
+PY
+)"
+  if [ "$source" != "worktree" ]; then
+    log "rust: installed source=$source is release-pinned; sibling checkout freshness is not applicable"
     return 0
+  fi
+  # Locally-built binaries are attributable to the BrainRust worktree and need
+  # a freshness check against that exact checkout.
+  if [ ! -d "$brainrust/.git" ] && [ ! -f "$brainrust/.git" ]; then
+    die "semantic-engine source=worktree but BrainRust checkout is missing at $brainrust"
   fi
   if [ "${DEPLOY_SKIP_RUST_FRESHNESS:-0}" = "1" ]; then
     log "rust: freshness check skipped (DEPLOY_SKIP_RUST_FRESHNESS=1)"

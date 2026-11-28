@@ -198,6 +198,8 @@ func (r *Reader) GetScriptRunSnapshot(ctx context.Context, jobID string) (*appjo
 	var checkpoint struct {
 		Status       scriptpkg.RunStatus `json:"status"`
 		CurrentStage scriptpkg.Stage     `json:"current_stage"`
+		FailedStage  scriptpkg.Stage     `json:"failed_stage"`
+		ErrorCode    string              `json:"error_code"`
 		Result       json.RawMessage     `json:"result"`
 	}
 	if err := json.Unmarshal([]byte(payload), &checkpoint); err != nil {
@@ -215,6 +217,8 @@ func (r *Reader) GetScriptRunSnapshot(ctx context.Context, jobID string) (*appjo
 		RunID:          runID,
 		Status:         string(checkpoint.Status),
 		CurrentStage:   string(checkpoint.CurrentStage),
+		FailedStage:    string(checkpoint.FailedStage),
+		ErrorCode:      checkpoint.ErrorCode,
 		Result:         checkpoint.Result,
 		RemoteFinalJob: result.RemoteFinalJob,
 	}, nil

@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 // These wire structs mirror the strict CompiledRenderPlanV2 contract owned by
@@ -71,6 +72,14 @@ func FinalJobCompiledPlanPayloadWithStockPool(scenes []FinalJobRemoteScene, over
 // keyed by scene id and stay Producer-local: the remote Master only receives
 // the compiled plan and runtime asset refs.
 func buildFinalJobCompiledPlan(scenes []FinalJobRemoteScene, overlayRows []any, overlayManifest map[string]any, audio contract.FinalAudioReference, audioRef map[string]any, timelineDurationUS int64, stockPoolFolderID string, stockBoundWindowsMS map[string]int64) (*FinalJobCompiledPlan, map[string]struct{}, error) {
+	typedRows, typedManifest, err := FinalJobOverlayRuntimeDTO(overlayRows, overlayManifest)
+	if err != nil {
+		return nil, nil, err
+	}
+	return buildFinalJobCompiledPlanTyped(scenes, typedRows, typedManifest, audio, audioRef, timelineDurationUS, stockPoolFolderID, stockBoundWindowsMS)
+}
+
+func buildFinalJobCompiledPlanTyped(scenes []FinalJobRemoteScene, overlayRows []kerneljob.OverlayRowV1, overlayManifest *kerneljob.OverlayManifestV1, audio contract.FinalAudioReference, audioRef map[string]any, timelineDurationUS int64, stockPoolFolderID string, stockBoundWindowsMS map[string]int64) (*FinalJobCompiledPlan, map[string]struct{}, error) {
 	if len(scenes) == 0 {
 		return nil, nil, fmt.Errorf("final_job V2 render plan requires at least one visual scene")
 	}
@@ -160,21 +169,23 @@ func buildFinalJobCompiledPlan(scenes []FinalJobRemoteScene, overlayRows []any, 
 	return &plan, stockAssetIDs, nil
 }
 
-func finalJobTimelineIdentity(durationUS int64, audioPlanSHA string, manifests []map[string]any) (string, error) {
+func finalJobTimelineIdentity(durationUS int64, audioPlanSHA string, manifests []kerneljob.OverlayManifestV1) (string, error) {
 	material := map[string]any{
 		"duration_us":             durationUS,
 		"audio_plan_sha256":       strings.ToLower(strings.TrimSpace(audioPlanSHA)),
 		"overlay_timeline_sha256": "",
 	}
 	if len(manifests) == 1 {
-		if asset, ok := manifests[0]["asset"].(map[string]any); ok {
-			material["overlay_timeline_sha256"] = strings.ToLower(FinalJobStringValue(asset["sha256"]))
+		if asset := manifests[0].Asset; asset != nil {
+			material["overlay_timeline_sha256"] = strings.ToLower(asset.SHA256)
 		}
 	} else if len(manifests) > 1 {
 		hashes := make([]string, 0, len(manifests))
 		for _, manifest := range manifests {
-			asset := manifest["asset"].(map[string]any)
-			hashes = append(hashes, strings.ToLower(FinalJobStringValue(asset["sha256"])))
+			if manifest.Asset == nil {
+				return "", fmt.Errorf("final_job overlay manifest has no typed asset")
+			}
+			hashes = append(hashes, strings.ToLower(manifest.Asset.SHA256))
 		}
 		material["overlay_timeline_sha256"] = digest.SHA256String(strings.Join(hashes, "\x00"))
 	}
@@ -186,12 +197,7 @@ func finalJobTimelineIdentity(durationUS int64, audioPlanSHA string, manifests [
 }
 
 func finalJobRetainPlanAssets(scenes []FinalJobRemoteScene, segments []FinalJobPlanSegment, assets *finalJobPlanAssets, audioAssetID string) map[string]struct{} {
-	stockAssetIDs := make(map[string]struct{}, len(scenes))
-	for _, scene := range scenes {
-		if id := FinalJobStringValue(scene.Stock["asset_id"]); id != "" {
-			stockAssetIDs[id] = struct{}{}
-		}
-	}
+	stockAssetIDs := finalJobSourceLockedAssetIDs(scenes)
 	for _, segment := range segments {
 		if _, stock := stockAssetIDs[segment.AssetID]; stock {
 			assets.extendSourceExtent(segment.AssetID, segment.SourceInUS+segment.SourceDurationUS)
@@ -241,56 +247,46 @@ func marshalFinalJobCompiledPlan(plan *FinalJobCompiledPlan) (string, string, er
 	return string(canonical), digest.SHA256String(string(canonical)), nil
 }
 
-func finalJobOverlayWindows(overlayManifest map[string]any, overlayRows []any, assets *finalJobPlanAssets, timelineDurationUS, fpsNum, fpsDen int64, width, height int) ([]FinalJobOverlayWindow, []map[string]any, error) {
-	manifests := make([]map[string]any, 0, 1)
+func finalJobOverlayWindows(overlayManifest *kerneljob.OverlayManifestV1, overlayRows []kerneljob.OverlayRowV1, assets *finalJobPlanAssets, timelineDurationUS, fpsNum, fpsDen int64, width, height int) ([]FinalJobOverlayWindow, []kerneljob.OverlayManifestV1, error) {
+	manifests := make([]kerneljob.OverlayManifestV1, 0, 1)
 	if overlayManifest != nil {
-		if overlayManifest["schema_version"] == "pipelinegen.overlay-manifest-set.v1" {
-			rawManifests, ok := overlayManifest["manifests"].([]any)
-			if !ok || len(rawManifests) == 0 {
+		if overlayManifest.SchemaVersion == "pipelinegen.overlay-manifest-set.v1" {
+			if len(overlayManifest.Manifests) == 0 {
 				return nil, nil, fmt.Errorf("final_job overlay manifest set has no manifests")
 			}
-			for _, raw := range rawManifests {
-				manifest, ok := raw.(map[string]any)
-				if !ok {
-					return nil, nil, fmt.Errorf("final_job overlay manifest set contains an invalid manifest")
-				}
-				manifests = append(manifests, manifest)
-			}
+			manifests = append(manifests, overlayManifest.Manifests...)
 		} else {
-			manifests = append(manifests, overlayManifest)
+			manifests = append(manifests, *overlayManifest)
 		}
 	}
 	windows := make([]FinalJobOverlayWindow, 0)
 	for _, manifest := range manifests {
-		asset, ok := manifest["asset"].(map[string]any)
-		if !ok {
+		asset := manifest.Asset
+		if asset == nil {
 			return nil, nil, fmt.Errorf("final_job overlay manifest has no typed asset")
 		}
-		assetID := FinalJobStringValue(asset["asset_id"])
-		sha := strings.ToLower(FinalJobStringValue(asset["sha256"]))
-		entries, ok := manifest["entries"].([]any)
-		if !ok {
-			return nil, nil, fmt.Errorf("final_job overlay manifest entries have an invalid shape")
-		}
+		assetID := asset.AssetID
+		sha := strings.ToLower(asset.SHA256)
+		entries := manifest.Entries
 		durationUS := finalJobOverlayAssetDurationUS(asset, entries, fpsNum, fpsDen)
 		if durationUS <= 0 {
 			return nil, nil, fmt.Errorf("final_job overlay manifest asset %q has no certifiable duration", assetID)
 		}
-		if err := assets.addRaw(asset, "video", durationUS, width, height, finalJobInt64(asset["frame_count"])); err != nil {
+		if err := assets.add(FinalJobPlanAsset{
+			AssetID: assetID, SHA256: sha, SizeBytes: asset.SizeBytes,
+			Kind: "video", MIME: finalJobPlanAssetMIME("video"), DurationUS: durationUS,
+			Width: width, Height: height, FrameCount: asset.FrameCount,
+		}); err != nil {
 			return nil, nil, fmt.Errorf("final_job overlay timeline asset: %w", err)
 		}
-		for i, raw := range entries {
-			entry, ok := raw.(map[string]any)
-			if !ok {
-				return nil, nil, fmt.Errorf("final_job overlay manifest entry %d has an invalid shape", i)
-			}
-			startUS, endUS := finalJobInt64(entry["in_us"]), finalJobInt64(entry["out_us"])
+		for i, entry := range entries {
+			startUS, endUS := entry.InUS, entry.OutUS
 			artifactInUS, artifactOutUS := startUS, endUS
-			if value, present := entry["artifact_in_us"]; present {
-				artifactInUS = finalJobInt64(value)
+			if entry.ArtifactInUS != nil {
+				artifactInUS = *entry.ArtifactInUS
 			}
-			if value, present := entry["artifact_out_us"]; present {
-				artifactOutUS = finalJobInt64(value)
+			if entry.ArtifactOutUS != nil {
+				artifactOutUS = *entry.ArtifactOutUS
 			}
 			if startUS < 0 || endUS <= startUS || artifactInUS < 0 || artifactOutUS-artifactInUS != endUS-startUS {
 				return nil, nil, fmt.Errorf("final_job overlay manifest entry %d has a non-projectable timing window", i)
@@ -324,16 +320,12 @@ func finalJobOverlayWindows(overlayManifest map[string]any, overlayRows []any, a
 	return windows, manifests, nil
 }
 
-func finalJobDedicatedOverlayWindows(overlayRows []any, assets *finalJobPlanAssets, timelineDurationUS, fpsNum, fpsDen int64, width, height int) ([]FinalJobOverlayWindow, error) {
+func finalJobDedicatedOverlayWindows(overlayRows []kerneljob.OverlayRowV1, assets *finalJobPlanAssets, timelineDurationUS, fpsNum, fpsDen int64, width, height int) ([]FinalJobOverlayWindow, error) {
 	windows := make([]FinalJobOverlayWindow, 0, len(overlayRows))
-	for i, raw := range overlayRows {
-		row, ok := raw.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("final_job dedicated overlay row %d has an invalid shape", i)
-		}
-		assetID := FinalJobStringValue(row["asset_id"])
-		sha := strings.ToLower(FinalJobStringValue(row["sha256"]))
-		startFrame, endFrame := finalJobInt64(row["start_frame"]), finalJobInt64(row["end_frame"])
+	for i, row := range overlayRows {
+		assetID := row.AssetID
+		sha := strings.ToLower(row.SHA256)
+		startFrame, endFrame := row.StartFrame, row.EndFrame
 		if startFrame < 0 || endFrame <= startFrame {
 			return nil, fmt.Errorf("final_job dedicated overlay row %d has an invalid frame window", i)
 		}
@@ -345,7 +337,7 @@ func finalJobDedicatedOverlayWindows(overlayRows []any, assets *finalJobPlanAsse
 		if endUS > timelineDurationUS {
 			endUS = timelineDurationUS
 		}
-		durationUS := finalJobInt64(row["duration_ms"]) * 1000
+		durationUS := row.DurationMS * 1000
 		if durationUS <= 0 {
 			durationUS = endUS - startUS
 		}
@@ -355,7 +347,11 @@ func finalJobDedicatedOverlayWindows(overlayRows []any, assets *finalJobPlanAsse
 		if endUS <= startUS {
 			continue
 		}
-		if err := assets.addRaw(row, "video", durationUS, width, height, finalJobInt64(row["frame_count"])); err != nil {
+		if err := assets.add(FinalJobPlanAsset{
+			AssetID: assetID, SHA256: sha, SizeBytes: row.SizeBytes,
+			Kind: "video", MIME: finalJobPlanAssetMIME("video"), DurationUS: durationUS,
+			Width: width, Height: height, FrameCount: row.FrameCount,
+		}); err != nil {
 			return nil, fmt.Errorf("final_job dedicated overlay row %d: %w", i, err)
 		}
 		windows = append(windows, FinalJobOverlayWindow{StartUS: startUS, EndUS: endUS, ArtifactInUS: 0, ArtifactDurationUS: durationUS, AssetID: assetID, SHA256: sha})
@@ -383,10 +379,13 @@ func finalJobPlanBaseSegments(scenes []FinalJobRemoteScene, assets *finalJobPlan
 		if asset == nil {
 			return nil, fmt.Errorf("final_job scene %d has no video asset", i)
 		}
-		// Keep the actual saved-file duration in the asset registry. The source
-		// segment below may reference a shorter binding window; the worker loops
-		// that window to cover the full scene timeline.
-		assetDurationUS := finalJobInt64(asset["duration_ms"]) * 1000
+		// Keep the actual saved-file duration in the asset registry. Stock refs
+		// may carry a microsecond value because rounding a saved Drive duration
+		// down to milliseconds can make a valid final millisecond disappear.
+		assetDurationUS := finalJobInt64(asset["duration_us"])
+		if assetDurationUS <= 0 {
+			assetDurationUS = finalJobInt64(asset["duration_ms"]) * 1000
+		}
 		if assetDurationUS <= 0 {
 			return nil, fmt.Errorf("final_job scene %d stock asset has no positive saved duration", i)
 		}
@@ -397,12 +396,17 @@ func finalJobPlanBaseSegments(scenes []FinalJobRemoteScene, assets *finalJobPlan
 		SourceDurationUS := assetDurationUS
 		SourceLocked := strings.EqualFold(scene.Kind, "stock")
 		if SourceLocked {
-			// The stockpipeline owns and selects this exact source window. Keep it
-			// unchanged here; the scene timeline is allowed to be longer because
-			// the remote renderer loops the bound stock window.
+			// The stockpipeline owns and selects this source window. The Producer
+			// may describe its frame boundaries, but never opens or alters bytes.
 			if boundMS := stockBoundWindowsMS[scene.SceneID]; boundMS > 0 {
 				SourceDurationUS = boundMS * 1000
 			} else {
+				SourceDurationUS = assetDurationUS - SourceInUS
+			}
+			if overrun := SourceInUS + SourceDurationUS - assetDurationUS; overrun > 0 && overrun <= 1_000 {
+				// Some saved-file durations were serialized to whole milliseconds.
+				// Preserve the exact microsecond extent and trim only that rounding
+				// residue; a larger overrun is a real invalid source window.
 				SourceDurationUS = assetDurationUS - SourceInUS
 			}
 			if SourceInUS < 0 || SourceDurationUS <= 0 || SourceInUS+SourceDurationUS > assetDurationUS {
@@ -517,6 +521,9 @@ func finalJobAppendBaseSegments(base []FinalJobBaseSegment, startUS, endUS int64
 	if endUS <= startUS {
 		return segments, nextFrame, nil
 	}
+	if fpsNum <= 0 || fpsDen <= 0 {
+		return nil, nextFrame, fmt.Errorf("final_job base segments require a positive output frame rate")
+	}
 	for _, source := range base {
 		inUS, outUS := max(startUS, source.StartUS), min(endUS, source.EndUS)
 		if outUS <= inUS {
@@ -534,6 +541,40 @@ func finalJobAppendBaseSegments(base []FinalJobBaseSegment, startUS, endUS int64
 				SegmentID: fmt.Sprintf("segment-%04d", len(segments)), StockPoolSlot: true,
 				TimelineStartFrame: startFrame, FrameCount: endFrame - startFrame,
 			})
+			nextFrame = endFrame
+			continue
+		}
+		if source.SourceLocked {
+			// video.assemble.copy.v1 accepts only frame-exact source windows.
+			// Emit one packet-copy placement per pass over the selected window;
+			// when speech outlasts the stock window, repeat that same immutable
+			// window declaratively in the plan for the Master to materialize.
+			windowFrames := source.SourceDurationUS * fpsNum / (1_000_000 * fpsDen)
+			// FrameDurationUSAtFPS floors to integer microseconds. Its exact
+			// frame span can therefore be one microsecond tick shorter than the
+			// source duration; recover that frame when the encoded source window
+			// still contains its complete floored span.
+			if kerneljob.FrameDurationUSAtFPS(windowFrames+1, fpsNum, fpsDen) <= source.SourceDurationUS {
+				windowFrames++
+			}
+			if windowFrames <= 0 {
+				return nil, nextFrame, fmt.Errorf("final_job stock segment %q has no complete source frame in its bound window", source.AssetID)
+			}
+			remaining := endFrame - startFrame
+			for remaining > 0 {
+				chunkFrames := min(remaining, windowFrames)
+				chunkDurationUS := kerneljob.FrameDurationUSAtFPS(chunkFrames, fpsNum, fpsDen)
+				if source.SourceInUS < 0 || source.SourceInUS+chunkDurationUS > source.SourceInUS+source.SourceDurationUS {
+					return nil, nextFrame, fmt.Errorf("final_job stock segment %q frame-exact window exceeds the selected stock range", source.AssetID)
+				}
+				segments = append(segments, FinalJobPlanSegment{
+					SegmentID: fmt.Sprintf("segment-%04d", len(segments)), AssetID: source.AssetID, SHA256: source.SHA256,
+					TimelineStartFrame: startFrame, FrameCount: chunkFrames,
+					SourceInUS: source.SourceInUS, SourceDurationUS: chunkDurationUS,
+				})
+				startFrame += chunkFrames
+				remaining -= chunkFrames
+			}
 			nextFrame = endFrame
 			continue
 		}
@@ -609,11 +650,14 @@ func finalJobMergeContiguousSegments(segments []FinalJobPlanSegment) []FinalJobP
 // furthest point any entry claims inside the artifact: still the artifact's
 // own evidence, never the whole timeline. A manifest that carries none of the
 // three yields 0, which the caller rejects.
-func finalJobOverlayAssetDurationUS(asset map[string]any, entries []any, fpsNum, fpsDen int64) int64 {
-	if durationUS := finalJobInt64(asset["duration_ms"]) * 1000; durationUS > 0 {
+func finalJobOverlayAssetDurationUS(asset *kerneljob.OverlayAssetV1, entries []kerneljob.OverlayRowV1, fpsNum, fpsDen int64) int64 {
+	if asset == nil {
+		return 0
+	}
+	if durationUS := asset.DurationMS * 1000; durationUS > 0 {
 		return durationUS
 	}
-	if frames := finalJobInt64(asset["frame_count"]); frames > 0 && fpsNum > 0 && fpsDen > 0 {
+	if frames := asset.FrameCount; frames > 0 && fpsNum > 0 && fpsDen > 0 {
 		numerator := frames * 1_000_000 * fpsDen
 		if remainder := numerator % fpsNum; remainder != 0 {
 			numerator += fpsNum - remainder
@@ -623,14 +667,13 @@ func finalJobOverlayAssetDurationUS(asset map[string]any, entries []any, fpsNum,
 		}
 	}
 	var maxOutUS int64
-	for _, raw := range entries {
-		entry, ok := raw.(map[string]any)
-		if !ok {
-			continue
+	for _, entry := range entries {
+		var outUS int64
+		if entry.ArtifactOutUS != nil {
+			outUS = *entry.ArtifactOutUS
 		}
-		outUS := finalJobInt64(entry["artifact_out_us"])
 		if outUS <= 0 {
-			outUS = finalJobInt64(entry["out_us"])
+			outUS = entry.OutUS
 		}
 		if outUS > maxOutUS {
 			maxOutUS = outUS

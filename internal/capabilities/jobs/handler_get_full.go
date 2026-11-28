@@ -84,11 +84,18 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 		snapshot := h.readScriptRunSnapshot(c.Request.Context(), id)
 		resp["core_ready"] = snapshot != nil && snapshot.CurrentStage == "CORE_READY"
 		if snapshot != nil {
-			resp["script_run"] = gin.H{
+			scriptRun := gin.H{
 				"run_id":        snapshot.RunID,
 				"status":        snapshot.Status,
 				"current_stage": snapshot.CurrentStage,
 			}
+			if snapshot.FailedStage != "" {
+				scriptRun["failed_stage"] = snapshot.FailedStage
+			}
+			if snapshot.ErrorCode != "" {
+				scriptRun["error_code"] = snapshot.ErrorCode
+			}
+			resp["script_run"] = scriptRun
 			// The broker result is written only at completion. Merge the
 			// durable checkpoint receipt so remote_final_job_id/status/timing
 			// are observable while the Master render is still in flight.

@@ -23,7 +23,8 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 # port owners and binary mtimes by hand.
 BUILDINFO_PKG := github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo
 BUILD_TIME   := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS  = -X $(BUILDINFO_PKG).Version=$(VERSION) -X $(BUILDINFO_PKG).GitCommit=$(COMMIT) -X $(BUILDINFO_PKG).BuildTime=$(BUILD_TIME)
+BUILD_GIT_DIRTY := $(shell if [ -n "$$(git -C $(CURDIR) status --porcelain --untracked-files=normal 2>/dev/null)" ]; then printf true; else printf false; fi)
+LDFLAGS  = -X $(BUILDINFO_PKG).Version=$(VERSION) -X $(BUILDINFO_PKG).GitCommit=$(COMMIT) -X $(BUILDINFO_PKG).BuildTime=$(BUILD_TIME) -X $(BUILDINFO_PKG).GitDirtyOverride=$(BUILD_GIT_DIRTY)
 
 # Go binary (overridable from the environment).
 # Use: make build GO=/opt/go-1.25/bin/go
@@ -133,7 +134,9 @@ check-clean-tree:
 # requires a clean tree: a dirty binary cannot be attributed to a revision.
 build-server: check-clean-tree go-version-check rust-fetch
 	@mkdir -p bin
-	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/pipelinegen ./cmd/server
+	@set -eu; tmp=bin/pipelinegen.new; trap 'rm -f "$$tmp"' EXIT; \
+	  GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -buildvcs=false -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o "$$tmp" ./cmd/server; \
+	  chmod 0755 "$$tmp"; mv -f "$$tmp" bin/pipelinegen; trap - EXIT
 
 # Build semantic-engine from the BrainRust worktree, not from the pinned
 # release, and stamp bin/BRAINRUST_RELEASE.json + bin/.rust-release with the

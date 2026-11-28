@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 // final_job_plan_source_windows.go — source-window quantization and video
@@ -12,16 +13,16 @@ import (
 // bytes it names and proves the track still covers the audio timeline.
 
 // AlignFinalJobSegmentSourceWindows performs metadata-only frame quantization
-// for prepared/non-stock assets. Raw stock ranges are already selected by the
-// stockpipeline and remain immutable; the remote renderer may loop such a
-// range for a longer timeline segment.
-func AlignFinalJobSegmentSourceWindows(plan *FinalJobCompiledPlan, loopableStockIDs ...map[string]struct{}) error {
+// for prepared/non-stock assets. Stock ranges are immutable inputs selected by
+// the stockpipeline; the compiled plan has already split/repeated them into
+// frame-exact placements for the Master to packet-copy.
+func AlignFinalJobSegmentSourceWindows(plan *FinalJobCompiledPlan, sourceLockedStockIDs ...map[string]struct{}) error {
 	if plan == nil || len(plan.VideoTracks) == 0 {
 		return nil
 	}
 	stockIDs := map[string]struct{}{}
-	if len(loopableStockIDs) > 0 && loopableStockIDs[0] != nil {
-		stockIDs = loopableStockIDs[0]
+	if len(sourceLockedStockIDs) > 0 && sourceLockedStockIDs[0] != nil {
+		stockIDs = sourceLockedStockIDs[0]
 	}
 	assets := make(map[string]FinalJobPlanAsset, len(plan.Assets))
 	for _, asset := range plan.Assets {
@@ -45,10 +46,14 @@ func AlignFinalJobSegmentSourceWindows(plan *FinalJobCompiledPlan, loopableStock
 			if !ok {
 				return fmt.Errorf("segment %q has no plan asset %q", segment.SegmentID, segment.AssetID)
 			}
-			if _, loopable := stockIDs[segment.AssetID]; loopable {
-				// Keep the stockpipeline's exact source start and duration. These
-				// source frames may be fewer than the timeline FrameCount by design;
-				// looping the bound range to fill the scene belongs to Master/worker.
+			if _, sourceLocked := stockIDs[segment.AssetID]; sourceLocked {
+				expectedUS := kerneljob.FrameDurationUSAtFPS(segment.FrameCount, fpsNum, fpsDen)
+				if segment.SourceDurationUS != expectedUS {
+					return fmt.Errorf("stock segment %q source_duration_us=%d does not match frame_count=%d at %d/%d fps (expected %d)", segment.SegmentID, segment.SourceDurationUS, segment.FrameCount, fpsNum, fpsDen, expectedUS)
+				}
+				if segment.SourceInUS < 0 || segment.SourceInUS+segment.SourceDurationUS > asset.DurationUS {
+					return fmt.Errorf("stock segment %q frame-exact source window %d+%d exceeds asset %q duration %d", segment.SegmentID, segment.SourceInUS, segment.SourceDurationUS, asset.AssetID, asset.DurationUS)
+				}
 				continue
 			}
 			totalFrames := asset.FrameCount

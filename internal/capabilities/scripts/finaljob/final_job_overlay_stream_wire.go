@@ -6,6 +6,7 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 // FinalJobOverlayStreamWire transports the certified video-stream identity
@@ -55,7 +56,7 @@ func finalJobOverlayIdentity(item capmodel.OverlayItem) string {
 	return ""
 }
 
-func FinalJobOverlayStreamWire(manifest *capmodel.OverlayManifest, artifact *contract.RenderArtifact) map[string]any {
+func FinalJobOverlayStreamWire(manifest *capmodel.OverlayManifest, artifact *contract.RenderArtifact) *kerneljob.OverlayStreamV1 {
 	if artifact == nil {
 		return nil
 	}
@@ -74,20 +75,20 @@ func FinalJobOverlayStreamWire(manifest *capmodel.OverlayManifest, artifact *con
 			declared.ExtradataSHA256 == kernelmedia.CanonicalVideoExtradataSHA256 &&
 			declared.TimeBaseNum == 1 && declared.TimeBaseDen == 90000 &&
 			declared.EncoderRevision == kernelmedia.CanonicalVideoProfileRevision {
-			return map[string]any{
-				"profile_id": declared.ProfileID, "extradata_sha256": declared.ExtradataSHA256,
-				"time_base_num": declared.TimeBaseNum, "time_base_den": declared.TimeBaseDen,
-				"encoder_revision": declared.EncoderRevision, "copy_ready": true,
+			return &kerneljob.OverlayStreamV1{
+				ProfileID: declared.ProfileID, ExtradataSHA256: declared.ExtradataSHA256,
+				TimeBaseNum: declared.TimeBaseNum, TimeBaseDen: declared.TimeBaseDen,
+				EncoderRevision: declared.EncoderRevision, CopyReady: true,
 			}
 		}
-		return map[string]any{"profile_id": profileID, "copy_ready": false}
+		return &kerneljob.OverlayStreamV1{ProfileID: profileID, CopyReady: false}
 	}
 	if profileID != kernelmedia.OverlayVideoOnlyAssemblyProfileID {
-		return map[string]any{"profile_id": profileID, "copy_ready": false}
+		return &kerneljob.OverlayStreamV1{ProfileID: profileID, CopyReady: false}
 	}
-	return map[string]any{
-		"profile_id": profileID, "extradata_sha256": kernelmedia.CanonicalVideoExtradataSHA256,
-		"time_base_num": 1, "time_base_den": 90000,
-		"encoder_revision": kernelmedia.CanonicalVideoProfileRevision, "copy_ready": true,
+	return &kerneljob.OverlayStreamV1{
+		ProfileID: profileID, ExtradataSHA256: kernelmedia.CanonicalVideoExtradataSHA256,
+		TimeBaseNum: 1, TimeBaseDen: 90000,
+		EncoderRevision: kernelmedia.CanonicalVideoProfileRevision, CopyReady: true,
 	}
 }

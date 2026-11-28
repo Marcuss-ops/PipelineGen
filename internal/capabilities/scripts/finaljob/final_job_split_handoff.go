@@ -14,11 +14,11 @@ package finaljob
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 // FinalJobSourceHandoff is the durable half of a split handoff. Prepare is the
@@ -27,8 +27,8 @@ import (
 // overlay artifact. BuildFinalJobOverlayFinalize decorates it once the overlay
 // render is complete.
 type FinalJobSourceHandoff struct {
-	Prepare    map[string]any
-	Finalize   map[string]any
+	Prepare    finaljob.PrepareV1
+	Finalize   finaljob.FinalizeEnvelopeV1
 	PlanSHA256 string
 }
 
@@ -55,11 +55,11 @@ func BuildFinalJobSourceHandoff(ctx context.Context, runID string, req contract.
 	if err := builder.appendSegments(); err != nil {
 		return FinalJobSourceHandoff{}, err
 	}
-	prepare, finalize, err := finalJobFinalizePayload(ctx, runID, req, source, builder, preparers, hasFinalAudio, false)
+	prepare, finalize, err := finalJobFinalizeEnvelope(ctx, runID, req, source, builder, preparers, hasFinalAudio, false)
 	if err != nil {
 		return FinalJobSourceHandoff{}, err
 	}
-	planSHA := FinalJobStringValue(prepare["compiled_render_plan_sha256"])
+	planSHA := prepare.CompiledRenderPlanSHA256
 	if planSHA == "" {
 		return FinalJobSourceHandoff{}, fmt.Errorf("final_job split PREPARE has no compiled plan digest")
 	}
@@ -71,50 +71,45 @@ func BuildFinalJobSourceHandoff(ctx context.Context, runID string, req contract.
 // split is active: the PREPARE plan stays immutable and contains only the base
 // timeline, while the overlay artifact, manifest and dedicated rows travel
 // here and are projected by the worker after assembly.
-func BuildFinalJobOverlayFinalize(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, source FinalJobSourceHandoff) (map[string]any, error) {
-	if source.Finalize == nil {
-		return nil, fmt.Errorf("final_job split FINALIZE has no source payload")
+func BuildFinalJobOverlayFinalize(ctx context.Context, runID string, req contract.GenerateRequest, result *contract.GenerateResult, source FinalJobSourceHandoff) (finaljob.FinalizeEnvelopeV1, error) {
+	if strings.TrimSpace(runID) == "" || source.Finalize.IdempotencyKey == "" {
+		return finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job split FINALIZE has no run id or source payload")
 	}
-	finalize, err := cloneFinalJobPayload(source.Finalize)
-	if err != nil {
-		return nil, fmt.Errorf("clone final_job source FINALIZE: %w", err)
-	}
+	finalize := source.Finalize
+	finalize.RuntimeAssets = append([]finaljob.RuntimeAssetV1(nil), source.Finalize.RuntimeAssets...)
 	// The source PREPARE intentionally skips the overlay image gate: the audit
 	// and the promised-image checks belong to the finished render. Re-run the
 	// audit gate here, before the late FINALIZE describes a projection the
 	// worker must be able to produce.
 	if result == nil {
-		return nil, fmt.Errorf("final_job split FINALIZE has no result")
+		return finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job split FINALIZE has no result")
 	}
 	imageRequested := FinalJobImageRequested(req)
 	if err := FinalJobEntityImageGate(result.OverlayAudit, imageRequested); err != nil {
-		return nil, err
+		return finaljob.FinalizeEnvelopeV1{}, err
 	}
-	remoteOverlays, overlayManifest, err := FinalJobOverlayHandoff(ctx, result, nil, imageRequested)
+	typedOverlays, typedOverlayManifest, err := FinalJobOverlayHandoffTyped(ctx, result, nil, imageRequested)
 	if err != nil {
-		return nil, err
+		return finaljob.FinalizeEnvelopeV1{}, err
 	}
-	if remoteOverlays == nil {
-		remoteOverlays = []any{}
+	if len(finalize.RuntimeAssets) == 0 {
+		return finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job split FINALIZE has no base runtime assets")
 	}
-	runtimeAssets, ok := finalize["runtime_assets"].([]any)
-	if !ok || len(runtimeAssets) == 0 {
-		return nil, fmt.Errorf("final_job split FINALIZE has no base runtime assets")
+	seen := finalJobTypedRuntimeAssetSeen(finalize.RuntimeAssets)
+	assets, err := appendFinalJobTypedOverlayRuntimeAssets(finalize.RuntimeAssets, seen, typedOverlays, typedOverlayManifest)
+	if err != nil {
+		return finaljob.FinalizeEnvelopeV1{}, err
 	}
-	seen := finalJobRuntimeAssetSeen(runtimeAssets)
-	appendFinalJobOverlayRuntimeAssets(&runtimeAssets, seen, remoteOverlays, overlayManifest)
-	finalize["runtime_assets"] = runtimeAssets
+	finalize.RuntimeAssets = assets
 
-	runtimePayload, ok := finalize["runtime_payload"].(map[string]any)
-	if !ok || runtimePayload == nil {
-		return nil, fmt.Errorf("final_job split FINALIZE has no runtime_payload")
-	}
-	runtimePayload["overlays"] = remoteOverlays
-	if overlayManifest != nil {
-		runtimePayload["overlay_manifest"] = overlayManifest
+	runtimePayload := finalize.RuntimePayload
+	runtimePayload.Overlays = typedOverlays
+	if typedOverlayManifest != nil {
+		runtimePayload.OverlayManifest = typedOverlayManifest
 	} else {
-		delete(runtimePayload, "overlay_manifest")
+		runtimePayload.OverlayManifest = nil
 	}
+	finalize.RuntimePayload = runtimePayload
 	return finalize, nil
 }
 
@@ -158,61 +153,68 @@ func finalJobSourcePreflight(req contract.GenerateRequest, result *contract.Gene
 	return stockPoolFolderID, hasFinalAudio, nil
 }
 
-// appendFinalJobOverlayRuntimeAssets is the single overlay transport append
-// shared by the serial and split handoffs. The manifest's timeline artifact is
-// role overlay_timeline; dedicated rows are role overlay. Existing base assets
-// are kept, and an identity already present is not duplicated.
-func appendFinalJobOverlayRuntimeAssets(runtimeAssets *[]any, seen map[string]bool, overlays []any, manifest map[string]any) {
-	if manifest != nil {
-		if asset, ok := manifest["asset"].(map[string]any); ok {
-			AppendFinalJobRuntimeAsset(runtimeAssets, seen, "overlay_timeline", asset)
-		}
-		if manifests, ok := manifest["manifests"].([]any); ok {
-			for _, raw := range manifests {
-				if item, ok := raw.(map[string]any); ok {
-					if asset, ok := item["asset"].(map[string]any); ok {
-						AppendFinalJobRuntimeAsset(runtimeAssets, seen, "overlay_timeline", asset)
-					}
-				}
-			}
-		}
-	}
-	for _, raw := range overlays {
-		if asset, ok := raw.(map[string]any); ok {
-			AppendFinalJobRuntimeAsset(runtimeAssets, seen, "overlay", asset)
-		}
-	}
-}
-
-func finalJobRuntimeAssetSeen(assets []any) map[string]bool {
+func finalJobTypedRuntimeAssetSeen(assets []finaljob.RuntimeAssetV1) map[string]bool {
 	seen := make(map[string]bool, len(assets))
-	for _, raw := range assets {
-		asset, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		id := FinalJobStringValue(asset["drive_file_id"])
+	for _, asset := range assets {
+		id := strings.TrimSpace(asset.DriveFileID)
 		if id == "" {
-			id = FinalJobStringValue(asset["asset_id"])
+			id = strings.TrimSpace(asset.AssetID)
 		}
-		if id == "" {
-			continue
+		if id != "" {
+			seen[strings.TrimSpace(asset.Role)+":"+id] = true
 		}
-		seen[FinalJobStringValue(asset["role"])+":"+id] = true
 	}
 	return seen
 }
 
-func cloneFinalJobPayload(payload map[string]any) (map[string]any, error) {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
+func appendFinalJobTypedOverlayRuntimeAssets(assets []finaljob.RuntimeAssetV1, seen map[string]bool, overlays []finaljob.OverlayRowV1, manifest *finaljob.OverlayManifestV1) ([]finaljob.RuntimeAssetV1, error) {
+	appendAsset := func(asset finaljob.RuntimeAssetV1) error {
+		id := strings.TrimSpace(asset.DriveFileID)
+		if id == "" {
+			id = strings.TrimSpace(asset.AssetID)
+		}
+		if id == "" {
+			return fmt.Errorf("final_job overlay runtime asset has no identity")
+		}
+		key := strings.TrimSpace(asset.Role) + ":" + id
+		if !seen[key] {
+			seen[key] = true
+			assets = append(assets, asset)
+		}
+		return nil
 	}
-	var cloned map[string]any
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.UseNumber()
-	if err := decoder.Decode(&cloned); err != nil {
-		return nil, err
+	appendManifestAsset := func(manifest finaljob.OverlayManifestV1) error {
+		if manifest.Asset == nil {
+			return fmt.Errorf("final_job overlay manifest has no asset")
+		}
+		asset, err := finaljob.RuntimeAssetFromOverlayAsset(*manifest.Asset, "overlay_timeline")
+		if err != nil {
+			return err
+		}
+		if err := appendAsset(asset); err != nil {
+			return fmt.Errorf("final_job overlay timeline runtime asset: %w", err)
+		}
+		return nil
 	}
-	return cloned, nil
+	if manifest != nil {
+		if manifest.SchemaVersion == "pipelinegen.overlay-manifest-set.v1" {
+			for _, item := range manifest.Manifests {
+				if err := appendManifestAsset(item); err != nil {
+					return nil, fmt.Errorf("final_job overlay manifest runtime asset: %w", err)
+				}
+			}
+		} else if err := appendManifestAsset(*manifest); err != nil {
+			return nil, err
+		}
+	}
+	for _, row := range overlays {
+		asset, err := finaljob.RuntimeAssetFromOverlayRow(row, "overlay")
+		if err != nil {
+			return nil, fmt.Errorf("final_job overlay runtime asset: %w", err)
+		}
+		if err := appendAsset(asset); err != nil {
+			return nil, fmt.Errorf("final_job overlay runtime asset: %w", err)
+		}
+	}
+	return assets, nil
 }

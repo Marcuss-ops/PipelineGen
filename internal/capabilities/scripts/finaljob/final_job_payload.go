@@ -2,7 +2,9 @@ package finaljob
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
@@ -47,8 +49,34 @@ func BuildFinalJobEnvelopeV1(ctx context.Context, runID string, req contract.Gen
 // BuildFinalJobSplitEnvelopeV1 validates a split handoff before either phase
 // crosses the Master boundary. The PREPARE plan stays the sealed base plan;
 // the FINALIZE document is the base payload plus the late overlay supplement.
-func BuildFinalJobSplitEnvelopeV1(runID string, source FinalJobSourceHandoff, finalize map[string]any) (FinalJobEnvelopeV1, error) {
-	return finaljob.BuildEnvelope(runID, source.Prepare, finalize)
+func BuildFinalJobSplitEnvelopeV1(runID string, source FinalJobSourceHandoff, finalize finaljob.FinalizeEnvelopeV1) (FinalJobEnvelopeV1, error) {
+	if strings.TrimSpace(runID) == "" {
+		return FinalJobEnvelopeV1{}, fmt.Errorf("final_job split envelope requires a run id")
+	}
+	var plan FinalJobCompiledPlanV2
+	decoder := json.NewDecoder(strings.NewReader(source.Prepare.CompiledRenderPlanJSON))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&plan); err != nil {
+		return FinalJobEnvelopeV1{}, fmt.Errorf("final_job split compiled plan DTO: %w", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return FinalJobEnvelopeV1{}, fmt.Errorf("final_job split compiled plan DTO: trailing JSON data")
+	}
+	envelope := FinalJobEnvelopeV1{
+		SchemaVersion: finaljob.EnvelopeSchemaV1,
+		RunID:         runID,
+		Prepare:       source.Prepare,
+		Finalize: finaljob.FinalizeV1{
+			IdempotencyKey: finalize.IdempotencyKey,
+			RuntimeAssets:  finalize.RuntimeAssets,
+			RuntimePayload: finalize.RuntimePayload,
+		},
+		Plan: plan,
+	}
+	if err := envelope.Validate(); err != nil {
+		return FinalJobEnvelopeV1{}, err
+	}
+	return envelope, nil
 }
 
 type FinalJobStockFile struct{ ID, Name string }
@@ -114,7 +142,11 @@ func finalJobStockBindingAsset(ctx context.Context, resolver FinalJobAssetResolv
 		return nil, 0, fmt.Errorf("stock binding %q resolved no metadata", driveID)
 	}
 	if windowMS <= 0 {
-		windowMS = finalJobInt64(asset["duration_ms"])
+		if durationUS := finalJobInt64(asset["duration_us"]); durationUS > 0 {
+			windowMS = (durationUS + 999) / 1000
+		} else {
+			windowMS = finalJobInt64(asset["duration_ms"])
+		}
 	}
 	if windowMS <= 0 {
 		return nil, 0, fmt.Errorf("stock binding %q has no positive window duration", driveID)
@@ -199,15 +231,11 @@ func NormalizeFinalJobHTTPSRuntimeAssets(assets []any) error {
 // Master 51 deployments resolve worker sources from url and otherwise fall
 // back to their local asset bridge; the newer source_uri field remains present
 // as the canonical transport field.
-func exposeFinalJobSourceURLs(assets []any) {
-	for _, raw := range assets {
-		asset, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		source := strings.TrimSpace(FinalJobStringValue(asset["source_uri"]))
+func exposeFinalJobTypedSourceURLs(assets []finaljob.RuntimeAssetV1) {
+	for index := range assets {
+		source := strings.TrimSpace(assets[index].SourceURI)
 		if strings.HasPrefix(strings.ToLower(source), "https://") {
-			asset["url"] = source
+			assets[index].URL = source
 		}
 	}
 }

@@ -98,6 +98,40 @@ func TestGetScriptRunSnapshotPrefersTheSubmissionRow(t *testing.T) {
 	}
 }
 
+func TestGetScriptRunSnapshotPreservesFailureAttribution(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "obs.db.sqlite"))
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`CREATE TABLE run_observability (
+		run_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, job_type TEXT NOT NULL,
+		attempt_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL,
+		workflow_payload_json TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	const payload = `{"status":"FAILED","current_stage":"FAILED","failed_stage":"RENDERING_VIDEO","error_code":"LOCALIZED_RENDER_FAILED"}`
+	if _, err := db.Exec(`INSERT INTO run_observability
+		(run_id,job_id,job_type,attempt_id,status,created_at,workflow_payload_json) VALUES (?,?,?,?,?,?,?)`,
+		"run-render-failure", "job-render-failure", "script.generate", "run-render-failure:script", "FAILED", "2026-11-27T17:00:00Z", payload); err != nil {
+		t.Fatalf("insert script run: %v", err)
+	}
+	reader, err := NewReader(db, db)
+	if err != nil {
+		t.Fatalf("new reader: %v", err)
+	}
+	snapshot, err := reader.GetScriptRunSnapshot(context.Background(), "job-render-failure")
+	if err != nil {
+		t.Fatalf("get script run snapshot: %v", err)
+	}
+	if snapshot == nil {
+		t.Fatal("snapshot is nil")
+	}
+	if snapshot.CurrentStage != "FAILED" || snapshot.FailedStage != "RENDERING_VIDEO" || snapshot.ErrorCode != "LOCALIZED_RENDER_FAILED" {
+		t.Fatalf("snapshot failure attribution = current=%q failed=%q code=%q", snapshot.CurrentStage, snapshot.FailedStage, snapshot.ErrorCode)
+	}
+}
+
 // TestGetRunReportFallsBackToTheLatestRunWithoutAJobBody pins that the filter
 // is a preference, not a requirement: a job with only finalize children still
 // exposes its most recent report.

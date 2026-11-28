@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script/finaljob"
 )
 
 // AlignFinalJobCompiledPlanAssetIDs binds the compiled plan to the exact
@@ -24,7 +25,11 @@ func AlignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 	if err := json.Unmarshal([]byte(rawPlan), &plan); err != nil {
 		return "", fmt.Errorf("decode final_job plan for runtime alignment: %w", err)
 	}
-	if err := alignFinalJobCompiledPlanAssetIDs(&plan, runtimeAssets); err != nil {
+	typedAssets, err := finalJobRuntimeAssetsFromValues(runtimeAssets)
+	if err != nil {
+		return "", err
+	}
+	if err := alignFinalJobCompiledPlanAssetIDs(&plan, typedAssets); err != nil {
 		return "", err
 	}
 	aligned, err := json.Marshal(plan)
@@ -37,13 +42,13 @@ func AlignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 // alignFinalJobCompiledPlanAssetIDs binds the runtime identities to the plan
 // IN MEMORY and mutates it: the caller serializes once, at the end of the
 // hand-off chain.
-func alignFinalJobCompiledPlanAssetIDs(plan *FinalJobCompiledPlan, runtimeAssets []any) error {
+func alignFinalJobCompiledPlanAssetIDs(plan *FinalJobCompiledPlan, runtimeAssets []finaljob.RuntimeAssetV1) error {
 	refs := make(map[string]map[string]any, len(runtimeAssets))
 	stockSHAs := make(map[string]struct{}, len(runtimeAssets))
-	for _, raw := range runtimeAssets {
-		ref, ok := raw.(map[string]any)
-		if !ok {
-			continue
+	for index, runtimeAsset := range runtimeAssets {
+		ref, err := runtimeAsset.Map()
+		if err != nil {
+			return fmt.Errorf("encode final_job runtime asset %d for plan alignment: %w", index, err)
 		}
 		sha := strings.ToLower(strings.TrimSpace(FinalJobStringValue(ref["sha256"])))
 		if len(sha) == 64 {
@@ -87,9 +92,9 @@ func alignFinalJobCompiledPlanAssetIDs(plan *FinalJobCompiledPlan, runtimeAssets
 			asset.MIME = mimeType
 		}
 		isStock := strings.EqualFold(FinalJobStringValue(ref["role"]), "stock")
-		// Stock Drive references carry duration_ms; prepared fragments carry
-		// duration_us. Read both; the physical source extent remains authoritative
-		// even when the scene timeline loops a shorter stock binding.
+		// Stock Drive references carry duration_us (with duration_ms retained for
+		// compatibility); prepared fragments also carry duration_us. Read the
+		// precise source extent even when the plan repeats a shorter stock window.
 		duration := finalJobInt64(ref["duration_us"])
 		if duration <= 0 {
 			duration = finalJobInt64(ref["duration_ms"]) * 1000
@@ -374,12 +379,20 @@ func RetainFinalJobRuntimeAssets(planJSON string, runtimeAssets []any) ([]any, e
 	if err := json.Unmarshal([]byte(planJSON), &plan); err != nil {
 		return nil, fmt.Errorf("decode final_job plan while pruning runtime bindings: %w", err)
 	}
-	return retainFinalJobRuntimeAssets(&plan, runtimeAssets)
+	typedAssets, err := finalJobRuntimeAssetsFromValues(runtimeAssets)
+	if err != nil {
+		return nil, err
+	}
+	retained, err := retainFinalJobRuntimeAssets(&plan, typedAssets)
+	if err != nil {
+		return nil, err
+	}
+	return finalJobRuntimeAssetsToValues(retained)
 }
 
 // retainFinalJobRuntimeAssets prunes the runtime refs to the assets the sealed
 // plan actually names. It only reads the plan, so it takes it by pointer.
-func retainFinalJobRuntimeAssets(plan *FinalJobCompiledPlan, runtimeAssets []any) ([]any, error) {
+func retainFinalJobRuntimeAssets(plan *FinalJobCompiledPlan, runtimeAssets []finaljob.RuntimeAssetV1) ([]finaljob.RuntimeAssetV1, error) {
 	used := make(map[string]struct{}, len(plan.Assets)*5+1)
 	add := func(values ...string) {
 		for _, value := range values {
@@ -393,22 +406,22 @@ func retainFinalJobRuntimeAssets(plan *FinalJobCompiledPlan, runtimeAssets []any
 	}
 	add(plan.FinalAudio.AssetID, plan.FinalAudio.SHA256)
 
-	filtered := make([]any, 0, len(runtimeAssets))
-	for _, raw := range runtimeAssets {
-		asset, ok := raw.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("final_job runtime asset has unexpected type %T", raw)
+	filtered := make([]finaljob.RuntimeAssetV1, 0, len(runtimeAssets))
+	for index, asset := range runtimeAssets {
+		fields, err := asset.Map()
+		if err != nil {
+			return nil, fmt.Errorf("encode final_job runtime asset %d while pruning bindings: %w", index, err)
 		}
 		keep := false
 		for _, key := range []string{"asset_id", "asset_key", "sha256", "asset_sha256", "drive_file_id", "master_asset_id", "master_reference", "reference"} {
-			value := strings.TrimSpace(FinalJobStringValue(asset[key]))
+			value := strings.TrimSpace(FinalJobStringValue(fields[key]))
 			if _, ok := used[value]; value != "" && ok {
 				keep = true
 				break
 			}
 		}
 		if keep {
-			filtered = append(filtered, raw)
+			filtered = append(filtered, asset)
 		}
 	}
 	return filtered, nil

@@ -29,7 +29,7 @@ type finalJobSceneBuilder struct {
 	renderLanguageErr      error
 	scenesByID             map[string]contract.Scene
 	remoteScenes           []FinalJobRemoteScene
-	runtimeAssets          []any
+	runtimeAssets          []finaljob.RuntimeAssetV1
 	seenRuntimeAssets      map[string]bool
 	stockBoundWindowsMS    map[string]int64
 	consumedPhraseOverlays map[string]struct{}
@@ -54,7 +54,7 @@ func newFinalJobSceneBuilder(ctx context.Context, req contract.GenerateRequest, 
 		renderLanguage:    renderLanguage, renderLanguageErr: renderLanguageErr,
 		scenesByID:             scenesByID,
 		remoteScenes:           make([]FinalJobRemoteScene, 0, len(result.CanonicalTimeline.Segments)),
-		runtimeAssets:          make([]any, 0),
+		runtimeAssets:          make([]finaljob.RuntimeAssetV1, 0),
 		seenRuntimeAssets:      make(map[string]bool),
 		stockBoundWindowsMS:    make(map[string]int64),
 		consumedPhraseOverlays: make(map[string]struct{}),
@@ -82,7 +82,9 @@ func (b *finalJobSceneBuilder) appendSegments() error {
 			if err := b.appendSegment(shortened); err != nil {
 				return err
 			}
-			b.appendPostSegmentClips(postClips)
+			if err := b.appendPostSegmentClips(postClips); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := b.appendSegment(segment); err != nil {
@@ -168,14 +170,17 @@ func (b *finalJobSceneBuilder) resolvePostSegmentClips(segmentID string) ([]fina
 	return clips, totalMS, nil
 }
 
-func (b *finalJobSceneBuilder) appendPostSegmentClips(clips []finalJobPostClip) {
+func (b *finalJobSceneBuilder) appendPostSegmentClips(clips []finalJobPostClip) error {
 	for _, clip := range clips {
 		b.remoteScenes = append(b.remoteScenes, CompositeVideoScene(
 			fmt.Sprintf("scene-%04d", b.clipOrdinal), b.clipOrdinal, "clip", clip.asset, clip.durationMS, ""))
-		AppendFinalJobRuntimeAsset(&b.runtimeAssets, b.seenRuntimeAssets, "clip", clip.asset)
+		if err := appendFinalJobRuntimeAssetTyped(&b.runtimeAssets, b.seenRuntimeAssets, "clip", clip.asset); err != nil {
+			return err
+		}
 		b.plannedDurationMS += clip.durationMS
 		b.clipOrdinal++
 	}
+	return nil
 }
 
 func (b *finalJobSceneBuilder) appendSegment(segment capabilityaudio.TimelineSegment) error {
@@ -276,7 +281,9 @@ func (b *finalJobSceneBuilder) appendFixedSegment(segment capabilityaudio.Timeli
 		asset["source_out_ms"] = fixed.SourceInUS/1000 + sceneMS
 		asset["duration_ms"] = sceneMS
 		b.remoteScenes = append(b.remoteScenes, CompositeVideoScene(fmt.Sprintf("scene-%04d", b.clipOrdinal), b.clipOrdinal, "clip", asset, sceneMS, "Protected intro clip"))
-		AppendFinalJobRuntimeAsset(&b.runtimeAssets, b.seenRuntimeAssets, "clip", asset)
+		if err := appendFinalJobRuntimeAssetTyped(&b.runtimeAssets, b.seenRuntimeAssets, "clip", asset); err != nil {
+			return err
+		}
 		b.plannedDurationMS += sceneMS
 		remainingMS -= sceneMS
 		b.clipOrdinal++
@@ -359,7 +366,9 @@ func (b *finalJobSceneBuilder) appendClipScene(segment capabilityaudio.TimelineS
 		b.clipOrdinal++
 		remainingMS -= chunkMS
 	}
-	AppendFinalJobRuntimeAsset(&b.runtimeAssets, b.seenRuntimeAssets, "clip", asset)
+	if err := appendFinalJobRuntimeAssetTyped(&b.runtimeAssets, b.seenRuntimeAssets, "clip", asset); err != nil {
+		return err
+	}
 	if text := localScene.Text[b.req.SourceLanguage]; text != "" {
 		b.scriptText.WriteString(text)
 		b.scriptText.WriteByte('\n')
@@ -411,14 +420,16 @@ func (b *finalJobSceneBuilder) appendConcreteStockScene(segment capabilityaudio.
 	}
 	// The binding window is Producer-local metadata: it is keyed by the
 	// generated scene id and never added to the asset the Master receives.
-	// The remote renderer loops that source window over the canonical
-	// voiceover duration.
+	// The compiled plan repeats this immutable range as contiguous, frame-exact
+	// placements when the canonical voiceover runs longer than the window.
 	SceneID := fmt.Sprintf("scene-%04d", b.clipOrdinal)
 	b.stockBoundWindowsMS[SceneID] = stockWindowMS
-	// A concrete stock window is Master-owned: the Drive bytes are
-	// downloaded, cut and looped by the Master. The Producer never certifies,
-	// cuts or re-encodes stock windows locally.
-	AppendFinalJobRuntimeAsset(&b.runtimeAssets, b.seenRuntimeAssets, "stock", stockAsset)
+	// The Master owns the Drive bytes and materializes the frame-exact source
+	// windows declared by the compiled plan. The Producer never downloads,
+	// cuts or re-encodes stock locally.
+	if err := appendFinalJobRuntimeAssetTyped(&b.runtimeAssets, b.seenRuntimeAssets, "stock", stockAsset); err != nil {
+		return err
+	}
 	b.remoteScenes = append(b.remoteScenes, CompositeVideoScene(SceneID, b.clipOrdinal, "stock", stockAsset, sceneMS, sceneText))
 	b.plannedDurationMS += sceneMS
 	b.clipOrdinal++
@@ -524,19 +535,24 @@ func finalJobFinalizeEnvelope(ctx context.Context, runID string, req contract.Ge
 		if err != nil {
 			return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 		}
-		AppendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "final_audio", audioRef)
+		if err := appendFinalJobRuntimeAssetTyped(&runtimeAssets, seenRuntimeAssets, "final_audio", audioRef); err != nil {
+			return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
+		}
 	} else if delta := plannedDurationMS*1000 - result.CanonicalTimeline.DurationUS; delta < -capabilityaudio.FinalAudioDurationToleranceUS || delta > capabilityaudio.FinalAudioDurationToleranceUS {
 		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job scene duration %dms does not match canonical timeline %dus", plannedDurationMS, result.CanonicalTimeline.DurationUS)
 	}
-	remoteOverlays, overlayManifest, err := FinalJobOverlayHandoff(ctx, result, consumedPhraseOverlays, imageRequested)
+	typedOverlays, typedOverlayManifest, err := FinalJobOverlayHandoffTyped(ctx, result, consumedPhraseOverlays, imageRequested)
 	if err != nil {
 		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
-	appendFinalJobOverlayRuntimeAssets(&runtimeAssets, seenRuntimeAssets, remoteOverlays, overlayManifest)
+	runtimeAssets, err = appendFinalJobTypedOverlayRuntimeAssets(runtimeAssets, seenRuntimeAssets, typedOverlays, typedOverlayManifest)
+	if err != nil {
+		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
+	}
 	// Master 51's deployed build may predate source_uri propagation in the
 	// future-asset plan. Keep the canonical field and mirror it into url for
 	// that worker path so assets do not fall back to master_asset_bridge.
-	exposeFinalJobSourceURLs(runtimeAssets)
+	exposeFinalJobTypedSourceURLs(runtimeAssets)
 	if audioRef == nil {
 		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, fmt.Errorf("final_job V2 worker submission requires certified final audio")
 	}
@@ -544,7 +560,7 @@ func finalJobFinalizeEnvelope(ctx context.Context, runID string, req contract.Ge
 	// same *FinalJobCompiledPlan; the payload is serialized exactly once at the
 	// end, together with the digest the Master verifies. Re-encoding between
 	// steps used to make the hand-off pay three json.Marshal calls per job.
-	compiledPlanObject, stockAssetIDs, err := buildFinalJobCompiledPlan(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS, builder.stockPoolFolderID, stockBoundWindowsMS)
+	compiledPlanObject, stockAssetIDs, err := buildFinalJobCompiledPlanTyped(remoteScenes, typedOverlays, typedOverlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS, builder.stockPoolFolderID, stockBoundWindowsMS)
 	if err != nil {
 		return finaljob.PrepareV1{}, finaljob.FinalizeEnvelopeV1{}, err
 	}
@@ -599,10 +615,10 @@ func finalJobFinalizeEnvelope(ctx context.Context, runID string, req contract.Ge
 	runtimePayload := finaljob.RuntimePayloadV1{
 		VideoName:  videoName,
 		ScriptText: script,
-		Overlays:   remoteOverlays,
+		Overlays:   typedOverlays,
 	}
-	if overlayManifest != nil {
-		runtimePayload.OverlayManifest = overlayManifest
+	if typedOverlayManifest != nil {
+		runtimePayload.OverlayManifest = typedOverlayManifest
 	}
 	if hasFinalAudio {
 		runtimePayload.RuntimeAudio = &finaljob.RuntimeAudioV1{
@@ -612,8 +628,8 @@ func finalJobFinalizeEnvelope(ctx context.Context, runID string, req contract.Ge
 		}
 	}
 	// The runtime asset list stays the dynamic transport document: each entry
-	// carries Master-forward-compatible metadata that a typed struct would drop
-	// when empty. Its typed view is produced by BuildEnvelope/Validate.
+	// carries Master-forward-compatible metadata in RuntimeAssetV1.Additional.
+	// It remains typed until MasterPayloadsOf crosses the transport boundary.
 	finalize := finaljob.FinalizeEnvelopeV1{
 		IdempotencyKey: key + "-finalize",
 		RuntimeAssets:  runtimeAssets,

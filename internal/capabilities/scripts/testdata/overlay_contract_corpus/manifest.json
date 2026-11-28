@@ -47,8 +47,8 @@
       "source": "refactored/internal/capabilities/scripts/testdata/overlay_plan/map_plan/short_phrase_text.plan.json",
       "kind": "pipelinegen_plan",
       "expect": "compiled",
-      "layers": 3,
-      "layers_sha256": "d89efe750f8adb1378f8fb4409931ab78e82e84990a1146f0f0f404caecfb979"
+      "layers": 1,
+      "layers_sha256": "ba1aa877bf3dfcde5c7926d84d046681e49c6212dce446307413ef015171ca0b"
     },
     {
       "id": "uncovered_plate",

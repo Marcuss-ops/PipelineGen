@@ -71,6 +71,8 @@ type ScriptRunSnapshot struct {
 	RunID        string          `json:"run_id"`
 	Status       string          `json:"status"`
 	CurrentStage string          `json:"current_stage"`
+	FailedStage  string          `json:"failed_stage,omitempty"`
+	ErrorCode    string          `json:"error_code,omitempty"`
 	Result       json.RawMessage `json:"result,omitempty"`
 	// RemoteFinalJob is the durable receipt projected from the checkpoint's
 	// result.remote_final_job. It is exposed separately because the broker

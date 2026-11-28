@@ -223,6 +223,7 @@ func finalJobStockDriveReference(id string, saved *asset.Asset, size int64) map[
 		"source_uri": driveStockDownloadURL(id),
 		"sha256":     sha, "kind": "video", "mime": "video/mp4",
 		"size_bytes": size, "duration_ms": saved.Duration.Milliseconds(),
+		"duration_us": saved.Duration.Microseconds(),
 	}
 }
 

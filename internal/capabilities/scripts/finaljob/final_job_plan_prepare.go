@@ -29,7 +29,11 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	if err := json.Unmarshal([]byte(rawPlan), &plan); err != nil {
 		return "", nil, fmt.Errorf("decode final_job compiled plan before segment preparation: %w", err)
 	}
-	refs, err := prepareFinalJobVideoSegments(ctx, &plan, runtimeAssets, preparer)
+	typedAssets, err := finalJobRuntimeAssetsFromValues(runtimeAssets)
+	if err != nil {
+		return "", nil, err
+	}
+	refs, err := prepareFinalJobVideoSegments(ctx, &plan, typedAssets, preparer)
 	if err != nil {
 		return "", nil, err
 	}
@@ -37,12 +41,16 @@ func PrepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal prepared final_job compiled plan: %w", err)
 	}
-	return string(canonicalPlan), refs, nil
+	values, err := finalJobRuntimeAssetsToValues(refs)
+	if err != nil {
+		return "", nil, err
+	}
+	return string(canonicalPlan), values, nil
 }
 
 // prepareFinalJobVideoSegments rewrites the plan's segments to the certified
 // local fragments IN MEMORY and returns the runtime refs that survive.
-func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPlan, runtimeAssets []any, preparer FinalJobVideoSegmentPreparer) ([]any, error) {
+func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPlan, runtimeAssets []finaljob.RuntimeAssetV1, preparer FinalJobVideoSegmentPreparer) ([]finaljob.RuntimeAssetV1, error) {
 	if preparer == nil {
 		return nil, fmt.Errorf("final_job requires a local video-segment preparer; refusing to send unprepared sources")
 	}
@@ -50,10 +58,10 @@ func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPla
 		return nil, fmt.Errorf("final_job segment preparation requires one non-empty video track")
 	}
 	refs := make(map[string]map[string]any, len(runtimeAssets))
-	for index, raw := range runtimeAssets {
-		asset, ok := raw.(map[string]any)
-		if !ok {
-			return nil, fmt.Errorf("final_job runtime asset %d has an invalid shape", index)
+	for index, runtimeAsset := range runtimeAssets {
+		asset, err := runtimeAsset.Map()
+		if err != nil {
+			return nil, fmt.Errorf("encode final_job runtime asset %d for segment preparation: %w", index, err)
 		}
 		id := FinalJobStringValue(asset["asset_id"])
 		if id == "" {
@@ -66,7 +74,7 @@ func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPla
 	}
 
 	preparedAssets := make(map[string]FinalJobPlanAsset, len(plan.VideoTracks[0].Segments)+1)
-	preparedRefs := make([]any, 0, len(plan.VideoTracks[0].Segments)+1)
+	preparedRefs := make([]finaljob.RuntimeAssetV1, 0, len(plan.VideoTracks[0].Segments)+1)
 	// Phase 1 — validate every binding and describe the work. This is cheap and
 	// sequential, and it fails before any expensive preparation starts.
 	work := make([]finalJobSegmentWork, 0, len(plan.VideoTracks[0].Segments))
@@ -180,7 +188,11 @@ func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPla
 		}
 		// One runtime reference per asset: every placement owns its own object,
 		// so FINALIZE receives unique ids without duplicating work.
-		preparedRefs = append(preparedRefs, ref)
+		typedRef, err := finaljob.RuntimeAssetFromMap(ref)
+		if err != nil {
+			return nil, fmt.Errorf("encode prepared final_job segment %q runtime asset: %w", segment.SegmentID, err)
+		}
+		preparedRefs = append(preparedRefs, typedRef)
 		segment.AssetID = asset.AssetID
 		segment.SHA256 = asset.SHA256
 		segment.SourceInUS = 0
@@ -233,7 +245,11 @@ func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPla
 		}
 		if ref := refs[asset.AssetID]; ref != nil && !seenStockRef[asset.AssetID] {
 			seenStockRef[asset.AssetID] = true
-			preparedRefs = append(preparedRefs, ref)
+			typedRef, err := finaljob.RuntimeAssetFromMap(ref)
+			if err != nil {
+				return nil, fmt.Errorf("encode final_job stock asset %q: %w", asset.AssetID, err)
+			}
+			preparedRefs = append(preparedRefs, typedRef)
 		}
 	}
 	plan.Assets = assets.sorted()
@@ -253,9 +269,8 @@ func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPla
 
 	// Keep FINALIZE minimal: prepared video fragments and the certified master
 	// audio. Timeline/overlay placement is represented by the compiled plan.
-	for _, raw := range runtimeAssets {
-		asset, _ := raw.(map[string]any)
-		if asset == nil || !strings.EqualFold(FinalJobStringValue(asset["role"]), "final_audio") {
+	for _, asset := range runtimeAssets {
+		if !strings.EqualFold(asset.Role, "final_audio") {
 			continue
 		}
 		preparedRefs = append(preparedRefs, asset)

@@ -560,6 +560,32 @@ func TestGetFull_CoreReadyProjectsDurableScriptWithoutCompletingJob(t *testing.T
 	assert.JSONEq(t, `{"text":"Script already available"}`, string(response.Script), "the canonical durable output.text is available while artifacts are pending")
 }
 
+func TestGetFull_ProjectsDurableScriptFailureStageAndCode(t *testing.T) {
+	stub := &stubServiceForGetFull{
+		outID:     "job-render-failure",
+		outType:   pushedType,
+		outStatus: job.StatusFailed,
+		outErr:    "generate job handler: durable run failed: stage=RENDERING_VIDEO code=LOCALIZED_RENDER_FAILED",
+	}
+	snapshot := &ScriptRunSnapshot{
+		RunID: "run-render-failure", Status: "FAILED", CurrentStage: "FAILED",
+		FailedStage: "RENDERING_VIDEO", ErrorCode: "LOCALIZED_RENDER_FAILED",
+	}
+	body := runGetFullWithHistory(t, stub, &stubHistoryReader{scriptRun: snapshot})
+	var response struct {
+		ScriptRun struct {
+			CurrentStage string `json:"current_stage"`
+			FailedStage  string `json:"failed_stage"`
+			ErrorCode    string `json:"error_code"`
+		} `json:"script_run"`
+	}
+	require.NoError(t, json.Unmarshal(body, &response))
+	assert.Equal(t, "FAILED", response.ScriptRun.CurrentStage,
+		"the terminal run stage remains distinct from the stage that failed")
+	assert.Equal(t, "RENDERING_VIDEO", response.ScriptRun.FailedStage)
+	assert.Equal(t, "LOCALIZED_RENDER_FAILED", response.ScriptRun.ErrorCode)
+}
+
 // TestGetFull_ProjectsRemoteFinalJobFromRunCheckpoint pins PERFLIVE-13: while
 // the Master render is in flight the broker result is still empty, so the
 // durable run checkpoint is the only place holding the remote handle. /full
