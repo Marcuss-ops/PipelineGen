@@ -130,6 +130,34 @@ func TestFinalizeAggregateParent_DualWrite_HappyPath(t *testing.T) {
 	}
 }
 
+func TestFinalizeAggregateParent_CASFenceReadsNormalizedResult(t *testing.T) {
+	db := newBrokerTestDB(t)
+	ctx := context.Background()
+	store := NewSQLiteStore(db, zap.NewNop())
+	jobID := seedParentJobForFinalize(t, db, `{"parent_state":"waiting_children","ok":true}`, 7)
+	if _, err := db.ExecContext(ctx, `ALTER TABLE jobs DROP COLUMN result_json`); err != nil {
+		t.Fatalf("drop legacy inline result column: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE job_results (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, attempt INTEGER NOT NULL DEFAULT 0,
+		result_hash TEXT NOT NULL DEFAULT '', codec_id TEXT NOT NULL DEFAULT '',
+		result_payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create normalized result table: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO job_results (job_id, attempt, result_payload, created_at)
+		VALUES (?, 1, ?, ?)`, jobID, `{"parent_state":"waiting_children","ok":true}`, "2026-11-28T00:00:00Z"); err != nil {
+		t.Fatalf("seed normalized waiting parent result: %v", err)
+	}
+	newResult := []byte(`{"parent_state":"failed","ok":false,"succeeded_count":0,"failed_count":2}`)
+	if err := store.FinalizeAggregateParent(ctx, jobID, "FAILED", newResult, "all children failed", 7); err != nil {
+		t.Fatalf("FinalizeAggregateParent rejected normalized waiting state: %v", err)
+	}
+	if got := readParentStateTyped(t, db, jobID); got != "failed" {
+		t.Fatalf("typed parent state=%q, want failed after normalized-result CAS", got)
+	}
+}
+
 // Test 2: Back-compat — valid JSON without the `parent_state` key
 // (legacy aggregator writes that pre-date the P1.2 typed-column
 // migration). The typed column should stay empty (matches the

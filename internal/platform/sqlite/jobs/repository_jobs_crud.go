@@ -468,6 +468,16 @@ func (r *SQLiteStore) ListAwaitingAggregation(ctx context.Context, parentType st
 			json_extract(result_json,'$.parent_state') = 'waiting_children'
 			OR json_extract(result_json,'$.data.parent_state') = 'waiting_children'
 		))`
+	} else if hasSQLiteTable(ctx, r.db, "job_results") {
+		// Newer schemas keep results in job_results instead of jobs.result_json.
+		// Fan-out parents are initially written before the aggregator's typed
+		// state transition, so the latest saved result is the durable source for
+		// discovering waiting_children rows until that first aggregation.
+		parentStateClause += ` OR (parent_state_typed = '' AND EXISTS (
+			SELECT 1 FROM job_results jr
+			WHERE jr.job_id = jobs.id
+			  AND json_extract(jr.result_payload,'$.parent_state') = 'waiting_children'
+		))`
 	}
 	query := `SELECT ` + jobColumns + ` FROM jobs
 WHERE type = ?

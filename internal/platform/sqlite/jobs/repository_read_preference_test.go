@@ -183,6 +183,37 @@ func TestListAwaitingAggregation_FallsBackToJSONKey(t *testing.T) {
 	}
 }
 
+func TestListAwaitingAggregation_FindsNormalizedJobResult(t *testing.T) {
+	db := newBrokerTestDB(t)
+	store := NewSQLiteStore(db, zap.NewNop())
+	jobID := seedParentStateTypedJob(t, db, "", "waiting_children")
+	if _, err := db.ExecContext(context.Background(), `ALTER TABLE jobs DROP COLUMN result_json`); err != nil {
+		t.Fatalf("drop legacy inline result column: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `CREATE TABLE job_results (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, attempt INTEGER NOT NULL DEFAULT 0,
+		result_hash TEXT NOT NULL DEFAULT '', codec_id TEXT NOT NULL DEFAULT '',
+		result_payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create normalized result table: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `INSERT INTO job_results (job_id, attempt, result_payload, created_at)
+		VALUES (?, 1, ?, ?)`, jobID, `{"parent_state":"waiting_children"}`, "2026-11-28T00:00:00Z"); err != nil {
+		t.Fatalf("seed normalized parent result: %v", err)
+	}
+
+	got, err := store.ListAwaitingAggregation(context.Background(), "test.voiceover.generate", 10)
+	if err != nil {
+		t.Fatalf("ListAwaitingAggregation: %v", err)
+	}
+	for _, parent := range got {
+		if parent.ID == jobID {
+			return
+		}
+	}
+	t.Fatalf("normalized-result parent %q was not returned for aggregation", jobID)
+}
+
 // TestListAwaitingAggregation_ExcludesNonMatching pins the
 // WHERE-clause scope: only rows with parent_state = 'waiting_children'
 // are matched (NOT succeeded/failed/partial_success). The typed

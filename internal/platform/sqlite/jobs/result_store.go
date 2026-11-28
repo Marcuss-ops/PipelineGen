@@ -465,6 +465,14 @@ func hasJobsColumn(ctx context.Context, q rowQueryer, column string) bool {
 	return err == nil && present == 1
 }
 
+func hasSQLiteTable(ctx context.Context, q rowQueryer, table string) bool {
+	var present int
+	err := q.QueryRowContext(ctx,
+		`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1`, table,
+	).Scan(&present)
+	return err == nil && present == 1
+}
+
 func (r *SQLiteStore) hydrateJob(ctx context.Context, j *job.Job) error {
 	if err := r.hydrateLatestPayload(ctx, j); err != nil {
 		return err

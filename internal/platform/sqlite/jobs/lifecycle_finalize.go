@@ -135,6 +135,15 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 			json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')
 			OR json_extract(result_json,'$.data.parent_state') IN ('waiting_children','partial_success')
 		))`
+	} else if hasSQLiteTable(ctx, tx, "job_results") {
+		// With normalized result storage, the initial worker completion has
+		// not populated parent_state_typed yet. Use the durable result row for
+		// the first aggregate CAS, then atomically dual-write the typed state.
+		parentStatePredicate += ` OR (` + parentStateTypedColumn + ` = '' AND EXISTS (
+			SELECT 1 FROM job_results jr
+			WHERE jr.job_id = jobs.id
+			  AND json_extract(jr.result_payload,'$.parent_state') IN ('waiting_children','partial_success')
+		))`
 	}
 	query := `UPDATE jobs SET status = ?,
 		completed_at = COALESCE(completed_at, ?),
