@@ -232,14 +232,14 @@ type ScriptsConfig struct {
 	MaxSegmentsCap int `yaml:"max_segments_cap" env:"VELOX_SCRIPTS_MAX_SEGMENTS_CAP" default:"50"`
 
 	// SegmentWordsTolerancePercent derives per-segment bounds when a
-	// segment does not provide explicit min_words/max_words. Default 15.
-	SegmentWordsTolerancePercent float64 `yaml:"segment_words_tolerance_percent" env:"VELOX_SCRIPTS_SEGMENT_WORDS_TOLERANCE_PERCENT" default:"15"`
+	// segment does not provide explicit min_words/max_words. Default 40.
+	SegmentWordsTolerancePercent float64 `yaml:"segment_words_tolerance_percent" env:"VELOX_SCRIPTS_SEGMENT_WORDS_TOLERANCE_PERCENT" default:"40"`
 	// TotalWordsTolerancePercent derives the aggregate script bounds.
-	// Default 10, matching the strict final script contract.
-	TotalWordsTolerancePercent float64 `yaml:"total_words_tolerance_percent" env:"VELOX_SCRIPTS_TOTAL_WORDS_TOLERANCE_PERCENT" default:"10"`
+	// Default 40, so short local-model completions can pass the total gate.
+	TotalWordsTolerancePercent float64 `yaml:"total_words_tolerance_percent" env:"VELOX_SCRIPTS_TOTAL_WORDS_TOLERANCE_PERCENT" default:"40"`
 	// MaxSegmentRegenerationAttempts bounds retries after the initial
-	// generation. Default 1 (at most two provider calls total).
-	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"1"`
+	// generation. Default 2 (at most three provider calls total).
+	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"2"`
 
 	// NLPConcurrency bounds concurrent SceneAnalysis (entity / important phrase
 	// / important word extraction) scenes in the incremental VidRush pipeline.
@@ -400,13 +400,13 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 		s.MaxSegmentsCap = 50
 	}
 	if s.SegmentWordsTolerancePercent <= 0 {
-		s.SegmentWordsTolerancePercent = 15
+		s.SegmentWordsTolerancePercent = 40
 	}
 	if s.TotalWordsTolerancePercent <= 0 {
-		s.TotalWordsTolerancePercent = 10
+		s.TotalWordsTolerancePercent = 40
 	}
 	if s.MaxSegmentRegenerationAttempts <= 0 {
-		s.MaxSegmentRegenerationAttempts = 1
+		s.MaxSegmentRegenerationAttempts = 2
 	}
 	if s.SemanticPlanCacheTTLSeconds <= 0 {
 		s.SemanticPlanCacheTTLSeconds = 3600

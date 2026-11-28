@@ -184,6 +184,32 @@ func TestValidateSegmentTexts_BoundsAndTotal(t *testing.T) {
 	}
 }
 
+func TestDefaultSegmentValidationAllowsFortyPercentUndershoot(t *testing.T) {
+	engine := &Engine{}
+	settings := engine.segmentSettings()
+	if settings.segmentTolerancePercent != 40 || settings.totalTolerancePercent != 40 {
+		t.Fatalf("default tolerances = segment %.1f%% / total %.1f%%, want 40%% / 40%%", settings.segmentTolerancePercent, settings.totalTolerancePercent)
+	}
+	if settings.maxRegenerationAttempts != 2 {
+		t.Fatalf("default regeneration attempts = %d, want 2", settings.maxRegenerationAttempts)
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		TargetWords: 1000,
+		Segments: []scriptpkg.ScriptSegment{
+			{Topic: "one", TargetWords: 200},
+			{Topic: "two", TargetWords: 200},
+			{Topic: "three", TargetWords: 200},
+			{Topic: "four", TargetWords: 200},
+			{Topic: "five", TargetWords: 200},
+		},
+	}
+	texts := []string{textOfNWords(120), textOfNWords(120), textOfNWords(120), textOfNWords(120), textOfNWords(120)}
+	report := validateSegmentTexts(plan, texts, settings)
+	if !report.Valid || report.TotalMin != 600 || report.ActualTotal != 600 {
+		t.Fatalf("40%% undershoot should pass both segment and total gates: %+v", report)
+	}
+}
+
 func TestValidateSegmentTexts_ExplicitMinimumAllowsSmallShortfall(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		TargetWords: 280,

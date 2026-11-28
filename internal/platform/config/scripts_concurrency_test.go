@@ -158,6 +158,27 @@ func TestScriptsConfigWithDefaults_DoesNotFakeTTSDefault(t *testing.T) {
 	}
 }
 
+func TestScriptsConfigWordValidationDefaults(t *testing.T) {
+	s := ScriptsConfig{}.WithDefaults()
+	if s.SegmentWordsTolerancePercent != 40 {
+		t.Fatalf("SegmentWordsTolerancePercent default = %.1f, want 40", s.SegmentWordsTolerancePercent)
+	}
+	if s.TotalWordsTolerancePercent != 40 {
+		t.Fatalf("TotalWordsTolerancePercent default = %.1f, want 40", s.TotalWordsTolerancePercent)
+	}
+	if s.MaxSegmentRegenerationAttempts != 2 {
+		t.Fatalf("MaxSegmentRegenerationAttempts default = %d, want 2", s.MaxSegmentRegenerationAttempts)
+	}
+	configured := (ScriptsConfig{
+		SegmentWordsTolerancePercent:   30,
+		TotalWordsTolerancePercent:     25,
+		MaxSegmentRegenerationAttempts: 4,
+	}).WithDefaults()
+	if configured.SegmentWordsTolerancePercent != 30 || configured.TotalWordsTolerancePercent != 25 || configured.MaxSegmentRegenerationAttempts != 4 {
+		t.Fatalf("WithDefaults overwrote operator values: %+v", configured)
+	}
+}
+
 // TestScriptsConfigGateCapacitiesAreOperatorVisible pins the Pipeline Waste
 // Audit §6.2 acceptance criterion: the SceneTextReady fan-out gate capacities
 // must exist as an operator-visible configuration surface (config.yaml /

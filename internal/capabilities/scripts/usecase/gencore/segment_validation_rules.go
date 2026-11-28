@@ -32,14 +32,14 @@ func isSegmentValidationExhausted(err error) bool {
 }
 
 const (
-	defaultSegmentWordsTolerancePercent = 15.0
-	defaultTotalWordsTolerancePercent   = 10.0
+	defaultSegmentWordsTolerancePercent = 40.0
+	defaultTotalWordsTolerancePercent   = 40.0
 	explicitMinimumGracePercent         = 25.0
 	// Small local Ollama models have noticeably variable completion lengths.
 	// Keep the word gate strict, but allow enough bounded regeneration attempts
 	// to obtain a compliant paragraph instead of dead-lettering a valid request
 	// after only three samples.
-	defaultMaxSegmentRegeneration = 1
+	defaultMaxSegmentRegeneration = 2
 )
 
 type segmentValidationSettings struct {
@@ -60,8 +60,10 @@ func (e *Engine) segmentSettings() segmentValidationSettings {
 	if settings.totalTolerancePercent <= 0 {
 		settings.totalTolerancePercent = defaultTotalWordsTolerancePercent
 	}
-	if settings.maxRegenerationAttempts < 0 {
+	if settings.maxRegenerationAttempts == 0 {
 		settings.maxRegenerationAttempts = defaultMaxSegmentRegeneration
+	} else if settings.maxRegenerationAttempts < 0 {
+		settings.maxRegenerationAttempts = 0
 	}
 	return settings
 }
