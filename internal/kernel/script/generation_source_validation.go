@@ -67,11 +67,6 @@ func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 	// of the same segment's clip_ids. Validate it independently of the
 	// legacy root shape so a bad marking never reaches the runtime.
 	for i, segment := range item.ScriptParams.Segments {
-		if strings.EqualFold(strings.TrimSpace(segment.Kind), "narration") && len(segment.ClipIDs) == 0 {
-			return &PlanInvalidError{ItemID: item.ID, Details: []string{
-				ref + ": script_params.segments[" + strconv.Itoa(i) + "].clip_ids is required for kind=narration when source.type=clips",
-			}}
-		}
 		if details := validateSegmentStockClipIDs(segment, i, ref); len(details) > 0 {
 			return &PlanInvalidError{ItemID: item.ID, Details: details}
 		}

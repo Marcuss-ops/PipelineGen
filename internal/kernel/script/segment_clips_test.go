@@ -242,6 +242,27 @@ func TestGenerationEnvelopeValidate_AllowsAdvancedOwnershipMixedWithRoot(t *test
 	}
 }
 
+func TestGenerationEnvelopeValidate_AllowsLegacyRootClipsForNarrationSegments(t *testing.T) {
+	envelope := GenerationEnvelopeV2{
+		Version: 2,
+		Items: []GenerationItemV2{{
+			ID:     "legacy-narration",
+			Source: SourceSpec{Type: SourceClips, ClipIDs: []string{"clip-a", "clip-b"}},
+			ScriptParams: ScriptSpec{Segments: []ScriptSegment{
+				{ID: "scene-1", Kind: "narration", Topic: "First scene"},
+				{ID: "scene-2", Kind: "narration", Topic: "Second scene"},
+			}},
+		}},
+	}
+	if err := envelope.Validate(); err != nil {
+		t.Fatalf("legacy root clip IDs should remain valid for narration segments: %v", err)
+	}
+	got := CollectRequestedClipIDs(envelope.Items[0].Source, envelope.Items[0].ScriptParams.Segments)
+	if len(got) != 2 || got[0] != "clip-a" || got[1] != "clip-b" {
+		t.Fatalf("root clip IDs were not retained for legacy ownership: %v", got)
+	}
+}
+
 func TestGenerationEnvelopeValidate_AllowsSegmentOnlyClipSource(t *testing.T) {
 	envelope := GenerationEnvelopeV2{
 		Version: 2,
