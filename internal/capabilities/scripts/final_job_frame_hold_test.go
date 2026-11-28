@@ -11,14 +11,15 @@ const (
 	frameHoldAudioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 )
 
-// TestFinalJobCompiledPlanRejectsUnabsorbableStockTail pins the remote
-// constraint discovered by E2E-04: a 60s stock tail whose frame-aligned master
-// needs one frame more than the file contains cannot be sent as a 1440-frame
-// timeline, because the Master validates the timeline against the plan duration
-// and rejects the one-frame hold. With no earlier stock-pool placement to
-// absorb it, the producer must fail closed instead of emitting a plan the
-// remote will refuse.
-func TestFinalJobCompiledPlanRejectsUnabsorbableStockTail(t *testing.T) {
+// TestFinalJobCompiledPlanRepeatsUnabsorbableStockTail pins the CS27-05
+// contract that replaced the old one-frame hold: a 60s stock tail whose
+// frame-aligned master needs one frame more than the file contains used to fail
+// closed, because the Master validates the timeline against the plan duration
+// and refuses the hold. The plan now declares the repetition itself — one
+// frame-exact pass over the whole window plus a single repeated frame — and the
+// Master materializes it. The Producer still never downloads, cuts or re-encodes
+// the stock bytes.
+func TestFinalJobCompiledPlanRepeatsUnabsorbableStockTail(t *testing.T) {
 	scenes := typedRemoteScenes([]map[string]any{{
 		"scene_id":         "closing-10",
 		"duration_seconds": 60.041667,
@@ -32,11 +33,25 @@ func TestFinalJobCompiledPlanRejectsUnabsorbableStockTail(t *testing.T) {
 	audioRef := map[string]any{"asset_id": "final-audio", "sha256": frameHoldAudioSHA, "size_bytes": int64(200), "duration_ms": int64(60042)}
 
 	raw, _, err := finalJobCompiledPlanPayload(scenes, nil, nil, audio, audioRef, 60_041_667)
-	if err == nil {
-		t.Fatalf("an unabsorbable one-frame stock tail must fail closed, got plan %s", raw)
+	if err != nil {
+		t.Fatalf("a one-frame stock tail must be declared as a repetition: %v", err)
 	}
-	if !strings.Contains(err.Error(), "no earlier stock-pool placement can absorb it") {
-		t.Fatalf("unexpected error: %v", err)
+	var plan finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.DurationUS != 60_041_667 {
+		t.Fatalf("plan duration = %d, want the certified 60041667", plan.DurationUS)
+	}
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 2 {
+		t.Fatalf("video segments = %+v, want the whole-file pass and the one-frame repeat", plan.VideoTracks)
+	}
+	base, tail := plan.VideoTracks[0].Segments[0], plan.VideoTracks[0].Segments[1]
+	if base.FrameCount != 1440 || base.TimelineStartFrame != 0 || base.SourceInUS != 0 || base.SourceDurationUS != 60_000_000 {
+		t.Fatalf("whole-file pass = %+v, want 1440 frames over 0 + 60000000", base)
+	}
+	if tail.FrameCount != 1 || tail.TimelineStartFrame != 1440 || tail.SourceInUS != 0 || tail.SourceDurationUS != 41_666 {
+		t.Fatalf("repeated frame = %+v, want one frame-exact repeat at timeline 1440", tail)
 	}
 }
 

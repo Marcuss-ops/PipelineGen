@@ -59,7 +59,11 @@ func AlignFinalJobSegmentSourceWindows(plan *FinalJobCompiledPlan, sourceLockedS
 			totalFrames := asset.FrameCount
 			if totalFrames <= 0 && asset.DurationUS > 0 {
 				totalFrames = FinalJobFrameAtUS(asset.DurationUS, fpsNum, fpsDen)
-				if totalFrames > 0 && FinalJobFrameStartUS(totalFrames, fpsNum, fpsDen) > asset.DurationUS {
+				// A container rounds its duration on a different timebase, so the
+				// last complete frame can start up to one tick past the reported
+				// extent (a 2,083,000us clip still carries frame 49 at 24 fps). Only
+				// an overrun larger than one frame means the frame is not there.
+				if totalFrames > 0 && FinalJobFrameStartUS(totalFrames, fpsNum, fpsDen) > asset.DurationUS+FinalJobFrameStartUS(1, fpsNum, fpsDen) {
 					totalFrames--
 				}
 			}

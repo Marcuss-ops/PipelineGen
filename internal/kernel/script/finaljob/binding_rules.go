@@ -93,13 +93,8 @@ func ValidatePlanBindingRules(plan CompiledPlanV2) error {
 				violations = append(violations, fmt.Errorf("invalid_compiled_render_plan: %s", violation))
 			}
 			if plan.Output.FPSNum > 0 && plan.Output.FPSDen > 0 {
-				expectedUS := FrameDurationUSAtFPS(segment.FrameCount, int64(plan.Output.FPSNum), int64(plan.Output.FPSDen))
-				if segment.SourceDurationUS != expectedUS {
-					violations = append(violations, fmt.Errorf(
-						"invalid_compiled_render_plan: segment %q video_tracks[%d].segments[%d] asset %q: source_duration_us=%d does not match frame_count=%d at %d/%d fps (expected %d)",
-						id, trackIndex, segmentIndex, segment.AssetID, segment.SourceDurationUS,
-						segment.FrameCount, plan.Output.FPSNum, plan.Output.FPSDen, expectedUS,
-					))
+				if violation := frameDurationViolation(id, trackIndex, segmentIndex, track.Segments, segment, int64(plan.Output.FPSNum), int64(plan.Output.FPSDen)); violation != "" {
+					violations = append(violations, fmt.Errorf("invalid_compiled_render_plan: %s", violation))
 				}
 			}
 		}
@@ -116,6 +111,48 @@ func FrameDurationUSAtFPS(frameCount, fpsNum, fpsDen int64) int64 {
 		return 0
 	}
 	return frameCount * 1_000_000 * fpsDen / fpsNum
+}
+
+// frameDurationViolation mirrors the packet-copy rule the Master applies to a
+// segment: source_duration_us must describe exactly the frames the placement
+// consumes. Two shapes are admissible on top of the floored span:
+//
+//   - one microsecond of slack, because a window quantized on the frame grid
+//     (source_in_us + n frames) and the floored frame span differ by that tick
+//     whenever frames/fps is not a whole number of microseconds;
+//   - one cloned frame on the trailing placement of a track. The compiled plan
+//     certifies the final <1/24s of the audio master on the last prepared
+//     fragment and the local muxer clones that frame, so the source window is a
+//     full frame shorter than the timeline placement.
+//
+// Anything else is a real source/timeline mismatch: the r15 (179 frames over
+// 5,000,000us) and r22/r28 (a window longer than its frame count) failures stay
+// fail-closed here, before PREPARE.
+func frameDurationViolation(segmentID string, trackIndex, segmentIndex int, trackSegments []PlanSegment, segment PlanSegment, fpsNum, fpsDen int64) string {
+	expectedUS := FrameDurationUSAtFPS(segment.FrameCount, fpsNum, fpsDen)
+	delta := segment.SourceDurationUS - expectedUS
+	if delta >= -1 && delta <= 1 {
+		return ""
+	}
+	if delta < 0 && segmentIndex == len(trackSegments)-1 {
+		if windowFrames := framesCoveringUS(segment.SourceDurationUS, fpsNum, fpsDen); segment.FrameCount-windowFrames == 1 {
+			return ""
+		}
+	}
+	return fmt.Sprintf(
+		"segment %q video_tracks[%d].segments[%d] asset %q: source_duration_us=%d does not match frame_count=%d at %d/%d fps (expected %d)",
+		segmentID, trackIndex, segmentIndex, segment.AssetID, segment.SourceDurationUS,
+		segment.FrameCount, fpsNum, fpsDen, expectedUS,
+	)
+}
+
+// framesCoveringUS rounds a microsecond window UP onto the output frame grid.
+func framesCoveringUS(durationUS, fpsNum, fpsDen int64) int64 {
+	if durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return 0
+	}
+	denominator := int64(1_000_000) * fpsDen
+	return (durationUS*fpsNum + denominator - 1) / denominator
 }
 
 // finalJobSourceRangeViolation mirrors the Master's source_range_out_of_bounds

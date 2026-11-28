@@ -465,13 +465,15 @@ func TestFinalJobCompiledPlanDerivesOverlayDurationFromEntryTiming(t *testing.T)
 	t.Fatal("compiled plan has no legacy overlay segment")
 }
 
-// TestFinalJobCompiledPlanHoldsLastFrameWhenAudioOutlastsStock pins the case
-// where AAC packet rounding makes the certified final audio one frame longer
-// than a stock timeline that already consumes the whole source file. The plan
-// must keep ONE whole-file stock segment and let the worker hold its last
-// displayed frame for the extra output frame; it must not invent a sub-window
-// stock segment (the Master only packet-copies whole stock files).
-func TestFinalJobCompiledPlanHoldsLastFrameWhenAudioOutlastsStock(t *testing.T) {
+// TestFinalJobCompiledPlanRepeatsWholeFileStockForTheAacTail pins the CS27-05
+// contract where AAC packet rounding makes the certified final audio one frame
+// longer than a stock timeline that already consumes the whole source file. The
+// Master loops nothing implicitly, so the plan declares the repetition: one
+// frame-exact pass over the window the file carries plus one frame-exact
+// repetition of that same window for the held frame. The Producer still never
+// downloads, cuts or re-encodes the bytes, and no segment may ask for source
+// outside the saved file.
+func TestFinalJobCompiledPlanRepeatsWholeFileStockForTheAacTail(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	scenes := typedRemoteScenes([]map[string]any{{
@@ -498,19 +500,31 @@ func TestFinalJobCompiledPlanHoldsLastFrameWhenAudioOutlastsStock(t *testing.T) 
 	if plan.DurationUS != 4_991_000 {
 		t.Fatalf("plan duration = %d, want the certified audio duration 4991000", plan.DurationUS)
 	}
-	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 {
-		t.Fatalf("video segments = %+v, want exactly one whole-file stock segment", plan.VideoTracks)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 2 {
+		t.Fatalf("video segments = %+v, want the whole-file pass and the one-frame repeat", plan.VideoTracks)
 	}
 	base := plan.VideoTracks[0].Segments[0]
-	if base.FrameCount != 120 || base.TimelineStartFrame != 0 {
-		t.Fatalf("stock segment = %+v, want 120 output frames at timeline 0 (last frame held)", base)
+	if base.FrameCount != 119 || base.TimelineStartFrame != 0 {
+		t.Fatalf("stock segment = %+v, want the 119 frames the file carries", base)
 	}
-	if base.SourceInUS != 0 || base.SourceDurationUS != 4_979_000 {
-		t.Fatalf("stock source window = %d + %d, want the whole file 0 + 4979000", base.SourceInUS, base.SourceDurationUS)
+	if base.SourceInUS != 0 || base.SourceDurationUS != 4_958_333 {
+		t.Fatalf("stock source window = %d + %d, want the frame-exact 0 + 4958333", base.SourceInUS, base.SourceDurationUS)
 	}
-	for _, asset := range plan.Assets {
-		if asset.AssetID == "stock-4979" && base.SourceInUS+base.SourceDurationUS > asset.DurationUS {
-			t.Fatalf("stock window %d + %d exceeds stock duration %d", base.SourceInUS, base.SourceDurationUS, asset.DurationUS)
+	tail := plan.VideoTracks[0].Segments[1]
+	if tail.FrameCount != 1 || tail.TimelineStartFrame != 119 {
+		t.Fatalf("held frame = %+v, want one frame at timeline 119", tail)
+	}
+	if tail.AssetID != base.AssetID || tail.SourceInUS != 0 || tail.SourceDurationUS != 41_666 {
+		t.Fatalf("held frame = %+v, want a frame-exact repetition of the bound window", tail)
+	}
+	if covered := base.FrameCount + tail.FrameCount; covered != 120 {
+		t.Fatalf("video covers %d frames, want the 120-frame audio timeline", covered)
+	}
+	for _, segment := range plan.VideoTracks[0].Segments {
+		for _, asset := range plan.Assets {
+			if asset.AssetID == "stock-4979" && segment.SourceInUS+segment.SourceDurationUS > asset.DurationUS {
+				t.Fatalf("stock window %d + %d exceeds stock duration %d", segment.SourceInUS, segment.SourceDurationUS, asset.DurationUS)
+			}
 		}
 	}
 }

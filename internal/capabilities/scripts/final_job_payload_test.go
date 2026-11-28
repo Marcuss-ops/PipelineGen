@@ -578,9 +578,10 @@ func TestBuildFinalJobPayloadsKeepsTruncatedWholeFileWindowMasterOwned(t *testin
 }
 
 // TestBuildFinalJobPayloadsSendsLongerStockSceneToMaster pins the ownership
-// boundary: a stock scene longer than its clip stays ONE Master-owned plan
-// segment; the Master loops the Drive source. The Producer never certifies or
-// re-encodes the window locally.
+// boundary under the CS27-05 contract: a stock scene longer than its clip stays
+// Master-owned, declared as contiguous frame-exact repetitions of the bound
+// window. The Master loops nothing implicitly; the Producer never downloads,
+// cuts or re-encodes the window locally.
 func TestBuildFinalJobPayloadsSendsLongerStockSceneToMaster(t *testing.T) {
 	result := &GenerateResult{
 
@@ -593,11 +594,23 @@ func TestBuildFinalJobPayloadsSendsLongerStockSceneToMaster(t *testing.T) {
 	}
 	plan := decodeFinalJobPlanForTest(t, pre)
 	segments := plan.VideoTracks[0].Segments
-	if len(segments) != 1 {
-		t.Fatalf("stock segments = %d (%+v), want one Master-owned segment for the 3s scene", len(segments), segments)
+	if len(segments) != 2 {
+		t.Fatalf("stock segments = %d (%+v), want the bound window repeated over the 3s scene", len(segments), segments)
 	}
-	if segments[0].FrameCount != 72 {
-		t.Fatalf("stock segment frames = %d, want 72", segments[0].FrameCount)
+	wantFrames := []int64{48, 24}
+	wantSourceUS := []int64{2_000_000, 1_000_000}
+	var covered int64
+	for i, segment := range segments {
+		if segment.AssetID != "drive-asset-2000" || segment.FrameCount != wantFrames[i] || segment.SourceDurationUS != wantSourceUS[i] {
+			t.Fatalf("stock segment %d = %+v, want %d frame-exact frames over %dus", i, segment, wantFrames[i], wantSourceUS[i])
+		}
+		if segment.TimelineStartFrame != covered {
+			t.Fatalf("stock segment %d starts at frame %d, want the contiguous %d", i, segment.TimelineStartFrame, covered)
+		}
+		covered += segment.FrameCount
+	}
+	if covered != 72 {
+		t.Fatalf("stock segments cover %d frames, want the 72-frame 3s scene", covered)
 	}
 	roles := map[string]int{}
 	for _, raw := range finalize["runtime_assets"].([]any) {
@@ -1490,12 +1503,26 @@ func TestBuildFinalJobPayloadsPlacesPostSegmentAtSceneEnd(t *testing.T) {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
 	plan := decodeFinalJobPlanForTest(t, pre)
-	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 2 {
-		t.Fatalf("video segments = %+v, want the scene and its post coda", plan.VideoTracks)
+	if len(plan.VideoTracks) != 1 {
+		t.Fatalf("video tracks = %+v, want the single main track", plan.VideoTracks)
 	}
 	segments := plan.VideoTracks[0].Segments
-	if segments[0].AssetID != "drive-asset-1000" || segments[1].AssetID != "drive-asset" {
-		t.Fatalf("segment assets = %q, %q; want the stock base then the post clip", segments[0].AssetID, segments[1].AssetID)
+	// The 1s stock binding covers a 3s scene, so the CS27-05 contract repeats
+	// it declaratively: three contiguous frame-exact passes, then the coda.
+	if len(segments) != 4 {
+		t.Fatalf("video segments = %+v, want three stock passes and the post coda", segments)
+	}
+	for i, segment := range segments[:3] {
+		if segment.AssetID != "drive-asset-1000" || segment.FrameCount != 24 || segment.SourceDurationUS != 1_000_000 {
+			t.Fatalf("stock pass %d = %+v, want 24 frame-exact frames over 1000000us", i, segment)
+		}
+		if segment.TimelineStartFrame != int64(i*24) {
+			t.Fatalf("stock pass %d starts at frame %d, want the contiguous %d", i, segment.TimelineStartFrame, i*24)
+		}
+	}
+	post := segments[3]
+	if post.AssetID != "drive-asset" || post.TimelineStartFrame != 72 || post.FrameCount != 48 || post.SourceDurationUS != 2_000_000 {
+		t.Fatalf("post coda = %+v, want the 48-frame clip at the scene end (frame 72)", post)
 	}
 	if plan.FinalAudio.DurationUS != 5_000_000 {
 		t.Fatalf("final audio duration = %dus, want the immutable 5s master", plan.FinalAudio.DurationUS)
