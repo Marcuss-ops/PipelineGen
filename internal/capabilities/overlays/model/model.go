@@ -26,18 +26,18 @@ const (
 
 type OverlayPlan struct {
 	// EditorialCompositions are planner-owned sidecars preserved from the
-	// BrainRust response for composition-aware consumers. They deliberately do
-	// not enter the current overlay-plan.v1 renderer wire until that boundary
-	// adopts editorial_layers.v1.
+	// BrainRust response for composition-aware consumers. They stay off the
+	// public overlay-plan.v1 JSON; the renderer queue forwards supported
+	// compositions only when EditorialCompositionsEnabled is explicitly set.
 	EditorialCompositions []json.RawMessage `json:"-"`
 	// EditorialCompositionsEnabled is the explicit request-level opt-in. The
 	// planner may preserve sidecars for audit, but the renderer wire stays free
 	// of them unless this flag is true.
-	EditorialCompositionsEnabled bool `json:"-"`
-	SchemaVersion         string            `json:"schema_version"`
-	PlanID                string            `json:"plan_id"`
-	VideoID               string            `json:"video_id"`
-	ProjectID             string            `json:"project_id,omitempty"`
+	EditorialCompositionsEnabled bool   `json:"-"`
+	SchemaVersion                string `json:"schema_version"`
+	PlanID                       string `json:"plan_id"`
+	VideoID                      string `json:"video_id"`
+	ProjectID                    string `json:"project_id,omitempty"`
 	// EntityVariationSeed salts the worker's "random" entity-style sampling
 	// (renderinggen.overlay-plan.v1 `entity_variation_seed`). Empty keeps the
 	// historical plan-identity sampling; a per-render value resamples every

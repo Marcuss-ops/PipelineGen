@@ -64,6 +64,15 @@ func overlayOutputProfileID(req contract.GenerateRequest) string {
 	return ""
 }
 
+func enableEditorialCompositions(plan *capmodel.OverlayPlan) error {
+	if plan == nil {
+		return nil
+	}
+	plan.EditorialCompositionsEnabled = true
+	plan.Fingerprint = ""
+	return plan.Validate()
+}
+
 func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string, req contract.GenerateRequest, jobID string, result *contract.GenerateResult) error {
 	planLanguage := req.SourceLanguage
 	// Each final-job language child keeps SourceLanguage as the language of
@@ -226,11 +235,15 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	}
 	if req.EnableEditorialCompositions {
 		if result.OverlayPlan != nil {
-			result.OverlayPlan.EditorialCompositionsEnabled = true
+			if err := enableEditorialCompositions(result.OverlayPlan); err != nil {
+				return fmt.Errorf("enable editorial compositions on overlay plan: %w", err)
+			}
 		}
 		for _, localized := range result.LocalizedOverlayPlans {
 			if localized != nil {
-				localized.EditorialCompositionsEnabled = true
+				if err := enableEditorialCompositions(localized); err != nil {
+					return fmt.Errorf("enable editorial compositions on localized overlay plan: %w", err)
+				}
 			}
 		}
 	}

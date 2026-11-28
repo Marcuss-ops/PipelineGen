@@ -37,31 +37,31 @@ type Request struct {
 	OverlayCategories             map[scriptpkg.OverlayCategory]scriptpkg.Toggle `json:"overlay_categories,omitempty"`
 	OverlayImages                 []scriptpkg.OverlayImageAsset                  `json:"overlay_images,omitempty"`
 
-	MapType                  string                           `json:"map_type,omitempty"`
-	MapCameraAnimation       string                           `json:"map_camera_animation,omitempty"`
-	MapLabelAnimation        string                           `json:"map_label_animation,omitempty"`
-	MapAnimation             string                           `json:"map_animation,omitempty"`
-	MapLevel                 string                           `json:"map_level,omitempty"`
-	MapPresentation          *scriptpkg.MapPresentation       `json:"map_presentation,omitempty"`
-	MaxPhraseOverlays        int                              `json:"max_phrase_overlays,omitempty"`
-	MaxOverlaysPerScene      int                              `json:"max_overlays_per_scene,omitempty"`
-	MapsOnly                 bool                             `json:"maps_only,omitempty"`
-	MaxMapOverlays           int                              `json:"max_map_overlays,omitempty"`
-	MaxImageOverlays         int                              `json:"max_image_overlays,omitempty"`
-	EditorialDensity         string                           `json:"editorial_density,omitempty"`
-	AnimationCounts          map[string]int                   `json:"animation_counts,omitempty"`
-	OverlayGroupLimits       map[string]int                   `json:"overlay_group_limits,omitempty"`
-	EntityStyleID            string                           `json:"entity_style_id,omitempty"`
-	EntityBadgeColor         string                           `json:"entity_badge_color,omitempty"`
-	DisableNumberOverlays    bool                             `json:"disable_number_overlays,omitempty"`
-	DisableRecapOverlays     bool                             `json:"disable_recap_overlays,omitempty"`
-	DisableChartOverlays     bool                             `json:"disable_chart_overlays,omitempty"`
-	DisableEditorialOverlays bool                             `json:"disable_editorial_overlays,omitempty"`
-	EnableCharts             bool                             `json:"enable_charts,omitempty"`
-	EnableEditorialCompositions bool                         `json:"enable_editorial_compositions,omitempty"`
-	HeavyPhrasePriority      float64                          `json:"heavy_phrase_priority,omitempty"`
-	OverlayBackground        *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
-	OverlayStyle             *scriptpkg.OverlayStyleSpec      `json:"overlay_style,omitempty"`
+	MapType                     string                           `json:"map_type,omitempty"`
+	MapCameraAnimation          string                           `json:"map_camera_animation,omitempty"`
+	MapLabelAnimation           string                           `json:"map_label_animation,omitempty"`
+	MapAnimation                string                           `json:"map_animation,omitempty"`
+	MapLevel                    string                           `json:"map_level,omitempty"`
+	MapPresentation             *scriptpkg.MapPresentation       `json:"map_presentation,omitempty"`
+	MaxPhraseOverlays           int                              `json:"max_phrase_overlays,omitempty"`
+	MaxOverlaysPerScene         int                              `json:"max_overlays_per_scene,omitempty"`
+	MapsOnly                    bool                             `json:"maps_only,omitempty"`
+	MaxMapOverlays              int                              `json:"max_map_overlays,omitempty"`
+	MaxImageOverlays            int                              `json:"max_image_overlays,omitempty"`
+	EditorialDensity            string                           `json:"editorial_density,omitempty"`
+	AnimationCounts             map[string]int                   `json:"animation_counts,omitempty"`
+	OverlayGroupLimits          map[string]int                   `json:"overlay_group_limits,omitempty"`
+	EntityStyleID               string                           `json:"entity_style_id,omitempty"`
+	EntityBadgeColor            string                           `json:"entity_badge_color,omitempty"`
+	DisableNumberOverlays       bool                             `json:"disable_number_overlays,omitempty"`
+	DisableRecapOverlays        bool                             `json:"disable_recap_overlays,omitempty"`
+	DisableChartOverlays        bool                             `json:"disable_chart_overlays,omitempty"`
+	DisableEditorialOverlays    bool                             `json:"disable_editorial_overlays,omitempty"`
+	EnableCharts                bool                             `json:"enable_charts,omitempty"`
+	EnableEditorialCompositions bool                             `json:"enable_editorial_compositions,omitempty"`
+	HeavyPhrasePriority         float64                          `json:"heavy_phrase_priority,omitempty"`
+	OverlayBackground           *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
+	OverlayStyle                *scriptpkg.OverlayStyleSpec      `json:"overlay_style,omitempty"`
 
 	ScriptParams        scriptpkg.ScriptSpec     `json:"script_params,omitempty"`
 	SourceLanguage      scenecontract.Language   `json:"source_language"`

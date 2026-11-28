@@ -574,6 +574,30 @@ Visual overlay categories can also be selected with the item-level
 matching uses an explicit scene ID first, then its position when the segment
 has no ID (or the same ID as the generated scene).
 
+### Editorial composition opt-in
+
+Planner-generated micro-summary compositions are preserved for audit but are
+not sent to the renderer by default. Set `enable_editorial_compositions` on an
+item to opt that render into the certified progressive summary group:
+
+```json
+{
+  "version": 3,
+  "items": [{
+    "source": { "type": "text", "topic": "..." },
+    "enable_editorial_compositions": true
+  }]
+}
+```
+
+When enabled, RenderingGen accepts the current `summary` + `progressive`
+composition shape, verifies the scene window and every source point, then
+lowers the phrases into `progressive_reveal`. Unsupported composition kinds
+fail closed. This flag does not turn on charts, chapters, date attachments, or
+map photo callouts; those retain their own explicit selectors and are listed
+with their current activation status in
+[`editorial-composition-groups.md`](editorial-composition-groups.md).
+
 ### Source and intro compatibility
 
 These intro fields have different jobs and are not interchangeable:

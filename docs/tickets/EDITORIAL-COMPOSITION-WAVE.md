@@ -11,7 +11,7 @@ end-to-end integration those repositories must provide.
 - [x] **ED-02** Persistent inherited-background policy and source-member validation/lowering.
 - [x] **ED-03** `previous_snapshot` requires an asset ID and canonical SHA-256.
 - [x] **ED-04** The new PipelineGen contract path uses layers and snapshot references; it adds no intermediate video encode/decode path.
-- [x] **ED-05** BrainRust selects locally grouped, semantically related micro-summary phrases and emits a validated `editorial_composition.v1` sidecar with exact source text and timing; PipelineGen preserves the sidecar in its internal plan model.
+- [x] **ED-05** BrainRust selects locally grouped, semantically related micro-summary phrases and emits a validated `editorial_composition.v1` sidecar with exact source text and timing; PipelineGen preserves it, and an explicit request opt-in forwards it to RenderingGen's `progressive_reveal` lowering.
 - [x] **ED-06** Progressive summary points have ordered, bounded timing and duplicate-text rejection; RenderingGen also compiles `progressive_reveal` with strictly increasing phrase entrances and cumulative holds through the group end.
 - [x] **ED-07** Short/long phrase lanes can join typed shared choreography groups.
 - [x] **ED-08** Chain/hold participation is declared by motion capability, not inferred from a motion ID prefix.
@@ -32,14 +32,14 @@ end-to-end integration those repositories must provide.
 - [x] **ED-23** BrainRust legacy-branch reachability audit is complete: no dead quantity/parser or planner branch was identified for removal. The chart quantity fallback, prefix fallback, legacy chain handoff, and `playfair_display` alias are reachable compatibility paths with tests and dated removal tickets; the typed-quantity fallback is intentionally retained until bare numeric chart points are typed.
 - [x] **ED-24** Capability catalog is sent with the v2 plan and checked against active renderer-supported registry entries.
 - [ ] **ED-25** Renderer frame and synchronization certification is implemented by RenderingGen/Chronon.
-- [ ] **ED-26** GPU-native background reuse benchmarks are measured and certified by Chronon.
+- [x] **ED-26** GPU-native background reuse benchmarks are measured and certified by Chronon; evidence is linked below.
 - [x] **ED-27** BrainRust and RenderingGen have deterministic replay checks; each selector also has seeded 10,000-draw pool-coverage, frequency-tolerance, and normalized-entropy acceptance tests.
 - [x] **PG-TEST** Contract, scripts, and rustexec package tests pass; `make verify-agent` passes.
 
 ## External next steps
 
 1. BrainRust: support ED-09–10 chapter behavior and connect the existing ED-16/17 chart planner to typed cross-scene composition output.
-2. RenderingGen: consume the preserved BrainRust summary sidecar; wire the ED-13 resolver into final composition lowering; adopt the ED-21 camera-projected pin/photo placement and leader samples in actual Chronon layers; expand ED-25 frame/synchronization checks beyond the current canary.
+2. RenderingGen: ED-05 summary sidecar lowering is available only with the explicit PipelineGen opt-in. Remaining runtime work: wire ED-13 attachment placement into final layers; emit ED-21 map/photo callouts as synchronized Chronon layers; expand ED-25 decoded-frame boundary checks.
 3. PipelineGen + asset provider: connect verified geographic media to ED-18–20 callouts when the worker emits them.
 4. ED-26 is measured and filed; use its Chronon host/backend evidence when ED-25 receives real composition lowering and decoded-frame pixel assertions.
 
@@ -57,6 +57,9 @@ Check a box only after the code path and its named verification both exist.
   spans and certified timing for every summary point.
 - [x] Emit the selected summary as the shared composition contract and carry it
   through the PipelineGen response without reconstructing editorial meaning.
+- [x] Keep renderer activation off by default; add the request-level
+  `enable_editorial_compositions` opt-in and verify it reaches the sealed plan,
+  renderer queue, and progressive summary compiler.
 - [x] Add positive/negative multilingual tests for related vs unrelated,
   duplicate, long, distant, and insufficient-window phrases; assert deterministic
   selection and budget accounting.
@@ -93,8 +96,11 @@ Check a box only after the code path and its named verification both exist.
   exit boundaries, with explicit allowed frame tolerance.
 - [ ] Certify progressive summary, attached date, and camera-following callout
   once their composition lowering is active.
-- [ ] Connect BrainRust's progressive-summary sidecar to the certified
-  `progressive_reveal` animation group and render its canary.
+- [x] Connect BrainRust's progressive-summary sidecar to the certified
+  `progressive_reveal` animation group; unit-test exact text, ordered source
+  starts, cumulative holds, strict decoding, and scene-window rejection.
+- [ ] Render the opt-in progressive-summary sidecar through Vulkan and certify
+  its decoded pixels at each member's entrance/hold/exit boundary.
 - [x] Store a reproducible evidence report with source/build identity, backend,
   frame metrics, and certification result.
 
@@ -116,6 +122,16 @@ Evidence: [Vulkan canary report](../../../RenderingGen/docs/evidence/editorial-c
 
 Evidence: [Chronon benchmark runner](../../../Chronon3d/scripts/benchmark_editorial_background_reuse.py) and [measured report](../../../Chronon3d/docs/evidence/editorial-background-reuse-20261128-r2/report.json).
 
+## Animation group guide and opt-in
+
+`enable_editorial_compositions` is intentionally `false` by default. It
+activates the BrainRust progressive micro-summary sidecar for the requested
+render and localized plans. It does not enable every proposed composition.
+Supported group choreographies, what enters when, and the activation status of
+chapters, charts, date attachments, persistent backgrounds, and map photo
+callouts are documented in
+[`../operations/editorial-composition-groups.md`](../operations/editorial-composition-groups.md).
+
 ## Progress log
 
 - 2026-11-28: RenderingGen added and published the `progressive_reveal` animation-group choreography. It accepts phrase members only, requires strictly increasing entrance offsets, rejects early exits, and holds every member to the group end. Targeted group and catalog tests pass.
@@ -133,7 +149,9 @@ Evidence: [Chronon benchmark runner](../../../Chronon3d/scripts/benchmark_editor
 - 2026-11-28: BrainRust ED-23 reachability audit found the chart unit parser is still called by both sentence-local and cross-sentence chart construction, and its tested fallback handles numeric spans without a typed `Quantity`; the owning hygiene ticket explicitly schedules removal for 2027-03-31 after all points are typed. Removing it now would drop supported bare-number charts, so the branch is reachable and retained. The current audit found no evidence that this fallback is dead code.
 - 2026-11-28: Completed ED-23's requested reachability audit across BrainRust planner/semantic-engine legacy markers. The typed-quantity chart fallback, catalog-absent motion-prefix fallback, chain timing/camera fallbacks, and `playfair_display` normalization each have active call paths and compatibility tests; there was no verified dead branch to delete. Marked complete as an audit/removal criterion, with the live quantity fallback's later removal date retained in its owning hygiene ticket.
 - 2026-11-28: ED-05 is implemented in BrainRust's production plan seal. It groups 2–3 adjacent grounded phrase candidates in one scene with shared content, bounded gaps/span, positive scores, duplicate rejection, and concise-text limits; it emits `editorial_composition.v1` with exact source text/timing. Contract and request-backed tests cover English, Italian, and German, unrelated/distant/duplicate/oversized/insufficient-window cases, deterministic replay, and forged-point rejection. PipelineGen preserves the sidecar internally while keeping it out of the legacy renderer wire; RenderingGen adoption remains open.
-- 2026-11-28: PipelineGen's BrainRust response adapter now preserves `editorial_compositions` in the in-memory `OverlayPlan`; a focused adapter test verifies identity retention and confirms the sidecar does not leak into `overlay-plan.v1`. The focused Rust adapter and model package tests pass. The broader rustexec package test did not finish within four minutes and was interrupted, so it is not recorded as passing.
+- 2026-11-28: The sidecar is now lowered by RenderingGen into `progressive_reveal`; PipelineGen forwards it only when `enable_editorial_compositions: true` is requested. Omitted/false stays off the renderer wire and retains the previous render fingerprint. Focused tests pass at request projection, sealed-plan fingerprint, queue marshalling, schema parity, and compiler lowering boundaries. A real Vulkan summary pixel canary remains open.
+- 2026-11-28: Added the operator animation-group guide. It distinguishes `sequence_v1` (heterogeneous staggered scene beat) from `progressive_reveal` (phrase points accumulate and hold), lists when each composition appears, and labels not-yet-wired date attachment, persistent background, and map/photo callout paths as pending rather than selectable runtime features.
+- 2026-11-28: PipelineGen's BrainRust response adapter preserves `editorial_compositions` in the in-memory `OverlayPlan`; by default the sidecar stays off the renderer wire, and the new request opt-in is required before forwarding. The legacy `overlay-plan.v1` JSON never contains the sidecar. Focused Rust adapter and model package tests pass. The broader rustexec package test did not finish within four minutes and was interrupted, so it is not recorded as passing.
 - 2026-11-28: After adding Italian/German positive cases, insufficient-window and deterministic-replay checks, BrainRust's full `overlay-compiler` suite passes: 235 unit tests, 5 shared-composition corpus tests, 34 plan-contract tests, and doc tests. The additive summary sidecar required regenerating the affected frozen planner output fixtures; the complete fixture matrix is green again.
 - 2026-11-28: RenderingGen added camera-aware map callout geometry from ordered, per-frame projected pin samples. It reserves one photo-card safe-area box outside the pin's camera track and returns leader endpoints following each sample; tests cover safe placement, camera following, collapsed lines, missing projections, and invalid ordering. The active map compiler still does not consume this lowered editorial-layer contract, so ED-21 remains open for runtime layer emission.
 - 2026-11-28: The complete RenderingGen overlay test packages pass after seeded motion selection and camera-aware callout geometry (`go test ./internal/overlay/... -count=1`); `git diff --check` is clean.
