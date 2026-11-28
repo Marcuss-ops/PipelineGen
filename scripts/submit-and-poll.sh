@@ -150,7 +150,7 @@ fi
         child_count=$(printf "%s" "$body" | jq -r "(.result.child_job_ids // .result.result.child_job_ids // []) | length")
         if [[ "$parent_state" == "waiting_children" || ( "$child_count" -gt 0 && -z "$parent_state" ) ]]; then
           if (( waiting_for_children_reported == 0 )); then
-            printf 'parent job %s accepted its envelope; waiting for %s child jobs to reach terminal status\n' "$job_id" "$child_count" >&2
+            printf "parent job %s accepted its envelope; waiting for %s child jobs to reach terminal status\n" "$job_id" "$child_count" >&2
             waiting_for_children_reported=1
           fi
           sleep "$6"
