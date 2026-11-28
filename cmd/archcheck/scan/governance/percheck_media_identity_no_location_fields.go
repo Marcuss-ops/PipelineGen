@@ -173,6 +173,15 @@ var mediaIdentityLocationFields = map[string]bool{
 var mediaIdentityNoLocationExemptFiles = map[string]bool{
 	"internal/capabilities/finalization/types_asset_location.go":    true,
 	"internal/capabilities/finalization/types_verified_artifact.go": true,
+	// The overlay wire DTOs are the canonical OWNER of the deployed Master
+	// overlay contract (2026-11-27, CS27-01): the manifest's asset block and
+	// entries carry the provider file id next to the content address because
+	// the wire has always carried both, and the Producer must read that exact
+	// shape (OverlayAssetV1/OverlayRowV1) instead of a map it could not check.
+	// Typing the wire here did not create a second source of truth; it made the
+	// one the Master already sends inspectable. The location fields stay owned
+	// by the wire owner and never feed a decision on identity.
+	"internal/kernel/script/finaljob/contract.go": true,
 }
 
 // mediaIdentityNoLocationStructRe matches a struct type declaration opener.

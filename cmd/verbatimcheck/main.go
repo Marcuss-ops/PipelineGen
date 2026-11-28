@@ -3,18 +3,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"strconv"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/verbatimcheck"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 )
 
 type durationProbe func(audioPath string) (time.Duration, error)
@@ -78,20 +81,35 @@ func run(args []string, stdout, stderr io.Writer, probe durationProbe) int {
 	return 0
 }
 
+// probeAudioDuration measures the audio through the canonical media probe port.
+// percheck_duration_probe_ssot forbids a raw ffprobe/ffmpeg spawn outside
+// internal/platform/media: the media engine owns media-binary execution and the
+// kernel duration contract owns the value, so this tool asks the same prober the
+// pipeline uses instead of shelling out on its own.
 func probeAudioDuration(audioPath string) (time.Duration, error) {
 	if strings.TrimSpace(audioPath) == "" {
 		return 0, fmt.Errorf("audio path is empty")
 	}
-	output, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", audioPath).CombinedOutput()
+	probe := rustexec.NewVideoProcessor(
+		envOrDefault("VELOX_RUST_MUSCLES_PATH", filepath.Join("bin", "pipelinegen-muscles")),
+		envOrDefault("FFMPEG_PATH", "ffmpeg"),
+		zap.NewNop(),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	info, err := probe.Probe(ctx, audioPath)
 	if err != nil {
-		return 0, fmt.Errorf("ffprobe %q: %w: %s", audioPath, err, strings.TrimSpace(string(output)))
+		return 0, fmt.Errorf("probe %q through the media engine: %w", audioPath, err)
 	}
-	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(output)), 64)
-	if err != nil || seconds <= 0 {
-		if err == nil {
-			err = fmt.Errorf("duration must be positive")
-		}
-		return 0, fmt.Errorf("invalid ffprobe duration %q: %w", strings.TrimSpace(string(output)), err)
+	if info == nil || info.Duration <= 0 {
+		return 0, fmt.Errorf("media engine returned no positive duration for %q", audioPath)
 	}
-	return time.Duration(seconds * float64(time.Second)), nil
+	return info.Duration, nil
+}
+
+func envOrDefault(key, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+	return fallback
 }
