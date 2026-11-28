@@ -26,6 +26,11 @@ type ClipRequirement struct {
 	// Scenes lists the segment ids that bind the clip, in binding order, so a
 	// failure can name where the clip is used instead of only its id.
 	Scenes []string
+	// DurationMS is the longest editorial duration the payload asks the clip
+	// to fill, or 0 when no binding declares one. It is the requested window,
+	// never the catalog duration: the preflight compares the two so a clip cut
+	// for 52,01 s is rejected before a render uses it as 53,01 s.
+	DurationMS int64
 }
 
 // CollectClipRequirements walks every place an envelope binds media and
@@ -46,7 +51,7 @@ func CollectClipRequirements(env *GenerationEnvelopeV2) []ClipRequirement {
 	byID := make(map[string]*ClipRequirement)
 	order := make([]string, 0, len(env.Items))
 
-	add := func(clipID string, needSpeech bool, sceneID string) {
+	add := func(clipID string, needSpeech bool, sceneID string, durationMS int64) {
 		clipID = strings.TrimSpace(clipID)
 		if clipID == "" {
 			return
@@ -61,6 +66,11 @@ func CollectClipRequirements(env *GenerationEnvelopeV2) []ClipRequirement {
 		// subtitles for that scene whatever the others allow.
 		if needSpeech {
 			req.NeedSpeech = true
+		}
+		// The clip must satisfy every window that binds it, so the longest
+		// declared duration is the one worth comparing against the catalog.
+		if durationMS > req.DurationMS {
+			req.DurationMS = durationMS
 		}
 		sceneID = strings.TrimSpace(sceneID)
 		if sceneID == "" {
@@ -77,11 +87,11 @@ func CollectClipRequirements(env *GenerationEnvelopeV2) []ClipRequirement {
 	for i := range env.Items {
 		item := &env.Items[i]
 		for _, clipID := range item.Source.ClipIDs {
-			add(clipID, true, "")
+			add(clipID, true, "", 0)
 		}
 		for _, segment := range item.ScriptParams.Segments {
 			for _, clipID := range segment.ClipIDs {
-				add(clipID, !segment.NoVoiceover, segment.ID)
+				add(clipID, !segment.NoVoiceover, segment.ID, segment.DurationMS)
 			}
 		}
 		for _, section := range []*FixedSection{item.Intro, item.Outro} {
@@ -89,7 +99,7 @@ func CollectClipRequirements(env *GenerationEnvelopeV2) []ClipRequirement {
 				continue
 			}
 			for _, clipID := range section.ClipIDs {
-				add(clipID, false, "")
+				add(clipID, false, "", 0)
 			}
 		}
 	}

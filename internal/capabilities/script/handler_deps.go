@@ -73,8 +73,8 @@ type ScriptFlowDeps struct {
 	AdminToken string
 
 	// Preflight is the optional dep bag for POST /preflight. A nil
-	// Assets reader keeps the route mounted (contract-only) and makes
-	// it answer unverified=true instead of a false green.
+	// Assets/Stock reader keeps the route mounted (contract-only) and
+	// makes it answer unverified=true instead of a false green.
 	Preflight PreflightDeps
 }
 
@@ -94,6 +94,7 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		deps.Generate.ResearchPreflight,
 	)
 	gen.SetAssetPreflight(deps.Preflight.Assets)
+	gen.SetStockPreflight(deps.Preflight.Stock, deps.Preflight.Folders)
 
 	return &ScriptFlowHandler{
 		log:           log,

@@ -105,6 +105,9 @@ func validateEnvelopeSource(item *GenerationItemV2, ref string, finalJob bool) e
 }
 
 func validateEnvelopeOutput(item *GenerationItemV2, ref string) error {
+	if err := ValidateVideoClipEffects(item.Output.Render.Effects, item.Output.Render.Grid); err != nil {
+		return &PlanInvalidError{ItemID: item.ID, Details: []string{ref + ": output.render." + err.Error()}}
+	}
 	// Validate tri-state output and segment overrides at the structural
 	// boundary so unknown toggles never degrade into an implicit default.
 	if !validEntityExtractionToggle(item.Output.ExtractEntities) {

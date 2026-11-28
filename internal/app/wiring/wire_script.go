@@ -242,11 +242,13 @@ func buildScriptPostProcessors(cfg *config.Config, root *ComposeRoot, log *zap.L
 }
 
 type scriptFlowRuntime struct {
-	runRepo         scriptgen.RunRepository
-	submissionSvc   *opsapp.Service
-	clipsSearcher   scriptapi.ClipSearcher
-	preflightAssets scriptapi.AssetPreflightReader
-	adminToken      string
+	runRepo               scriptgen.RunRepository
+	submissionSvc         *opsapp.Service
+	clipsSearcher         scriptapi.ClipSearcher
+	preflightAssets       scriptapi.AssetPreflightReader
+	preflightStock        scriptapi.StockPreflightReader
+	preflightStockFolders scriptapi.StockFolderPreflightReader
+	adminToken            string
 }
 
 func buildScriptFlowRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logger, oneUC *gencore.GenerateOneUseCase, genJobHandler *scriptjobs.GenerateJobHandler, vidRushProviders *adapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort) (*scriptFlowRuntime, error) {
@@ -263,6 +265,19 @@ func buildScriptFlowRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	var preflightAssets scriptapi.AssetPreflightReader
 	if root.MediaPostgres != nil {
 		preflightAssets = scriptpreflight.NewScriptAssetPreflightGate(pgmedia.NewOperatorInventoryReader(root.MediaPostgres, log))
+	}
+
+	// CS27-06: the stock sources a body binds are part of the same Stage 0
+	// verdict. The registry reader is the one the remote handoff resolves, so
+	// the preflight and the run can never disagree about whether a Drive file
+	// was ingested; the folder reader is the Drive admin surface, so a folder
+	// from another project is named here instead of being discovered at 85%.
+	var preflightStock scriptapi.StockPreflightReader
+	var preflightStockFolders scriptapi.StockFolderPreflightReader
+	if root.MediaPostgres != nil {
+		searcher := pgmedia.NewMediaSearcher(root.MediaPostgres)
+		preflightStock = scriptpreflight.NewScriptStockPreflightGate(searcher, driveFolderNamer(root))
+		preflightStockFolders = scriptpreflight.NewScriptStockFoldersGate(driveFolderNamer(root))
 	}
 
 	adminToken := ""
@@ -329,12 +344,24 @@ func buildScriptFlowRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	}
 
 	return &scriptFlowRuntime{
-		runRepo:         runRepo,
-		submissionSvc:   submissionSvc,
-		clipsSearcher:   clipsSearcher,
-		preflightAssets: preflightAssets,
-		adminToken:      adminToken,
+		runRepo:               runRepo,
+		submissionSvc:         submissionSvc,
+		clipsSearcher:         clipsSearcher,
+		preflightAssets:       preflightAssets,
+		preflightStock:        preflightStock,
+		preflightStockFolders: preflightStockFolders,
+		adminToken:            adminToken,
 	}, nil
+}
+
+// driveFolderNamer returns the Drive admin surface when it is wired, else nil so
+// the gate skips the best-effort folder check on a degraded deployment instead
+// of failing the whole preflight.
+func driveFolderNamer(root *ComposeRoot) scriptpreflight.StockFolderNamer {
+	if root == nil || root.Drive == nil || root.Drive.Admin == nil {
+		return nil
+	}
+	return root.Drive.Admin
 }
 
 func buildScriptFlowDescriptor(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, oneUC *gencore.GenerateOneUseCase, genJobHandler *scriptjobs.GenerateJobHandler, runtime *scriptFlowRuntime) error {
@@ -342,6 +369,8 @@ func buildScriptFlowDescriptor(registry *module.Registry, log *zap.Logger, cfg *
 	submissionSvc := runtime.submissionSvc
 	clipsSearcher := runtime.clipsSearcher
 	preflightAssets := runtime.preflightAssets
+	preflightStock := runtime.preflightStock
+	preflightStockFolders := runtime.preflightStockFolders
 	adminToken := runtime.adminToken
 
 	scriptDeps := scriptapi.Dependencies{
@@ -365,9 +394,13 @@ func buildScriptFlowDescriptor(registry *module.Registry, log *zap.Logger, cfg *
 			Log:  log,
 		},
 		ClipsSearcher: clipsSearcher,
-		Preflight:     scriptapi.PreflightDeps{Assets: preflightAssets},
-		AdminToken:    adminToken,
-		EnabledFunc:   func() bool { return scriptGenerationEnabled(cfg) },
+		Preflight: scriptapi.PreflightDeps{
+			Assets:  preflightAssets,
+			Stock:   preflightStock,
+			Folders: preflightStockFolders,
+		},
+		AdminToken:  adminToken,
+		EnabledFunc: func() bool { return scriptGenerationEnabled(cfg) },
 		ModuleOpts: []module.RouteModuleOption{
 			module.WithMiddleware(middleware.RequireAdminToken(cfg, log)),
 		},

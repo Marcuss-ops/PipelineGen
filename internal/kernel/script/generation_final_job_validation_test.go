@@ -24,3 +24,13 @@ func TestValidateRejectsFinalJobWithDisabledRender(t *testing.T) {
 		t.Fatalf("details = %v, want field-level toggle diagnostic", invalid.Details)
 	}
 }
+
+func TestValidateAcceptsFinalJobImagesForClipSource(t *testing.T) {
+	item := clipOnlyItem()
+	item.Output.Render.Enabled = true
+	item.OverlayCategories = map[OverlayCategory]Toggle{OverlayCategoryImages: ToggleEnabled}
+	env := &GenerationEnvelopeV2{Version: 2, FinalJob: true, Items: []GenerationItemV2{item}}
+	if err := env.Validate(); err != nil {
+		t.Fatalf("clip-only final job with image overlays should reach per-scene plate rendering: %v", err)
+	}
+}

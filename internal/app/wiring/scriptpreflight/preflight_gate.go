@@ -15,6 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // scriptAssetPreflightGate projects operator.AssetInspection onto the facts the
@@ -41,6 +42,10 @@ func (g scriptAssetPreflightGate) PreflightAssetFacts(ctx context.Context, clipI
 	if inspection == nil {
 		return scriptapi.AssetPreflightFact{}, false, nil
 	}
+	driveLink := metadataString(inspection.Metadata, "drive_link")
+	if driveLink == "" {
+		driveLink = urlutil.DriveFileURL(metadataString(inspection.Metadata, "drive_file_id"))
+	}
 	return scriptapi.AssetPreflightFact{
 		ClipID:         inspection.ID,
 		LifecycleState: string(inspection.LifecycleState),
@@ -55,7 +60,7 @@ func (g scriptAssetPreflightGate) PreflightAssetFacts(ctx context.Context, clipI
 		HasLocalFile: inspection.HasLocalFile,
 		HasDriveFile: inspection.HasDriveFile,
 		LocalPath:    metadataString(inspection.Metadata, "local_path"),
-		DriveLink:    metadataString(inspection.Metadata, "drive_link"),
+		DriveLink:    driveLink,
 	}, true, nil
 }
 

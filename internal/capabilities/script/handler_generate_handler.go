@@ -94,6 +94,13 @@ type HandlerGenerate struct {
 	// segment burns subtitles). Optional: nil keeps the route contract-only
 	// and reports unverified=true.
 	preflightAssets AssetPreflightReader
+	// preflightStock is the media-registry reader for the stock sources the
+	// body binds (CS27-06). Optional like preflightAssets: nil reports the
+	// stock section as unverified instead of a false green.
+	preflightStock StockPreflightReader
+	// preflightFolders resolves Drive folder names so a folder from another
+	// project can be named in a warning (r12). Optional: nil skips the check.
+	preflightFolders StockFolderPreflightReader
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
