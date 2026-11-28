@@ -141,7 +141,8 @@ func TestFinalizeAggregateParent_CASFenceReadsNormalizedResult(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE job_results (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL, attempt INTEGER NOT NULL DEFAULT 0,
 		result_hash TEXT NOT NULL DEFAULT '', codec_id TEXT NOT NULL DEFAULT '',
-		result_payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+		result_payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL,
+		UNIQUE(job_id, attempt, result_hash)
 	)`); err != nil {
 		t.Fatalf("create normalized result table: %v", err)
 	}
