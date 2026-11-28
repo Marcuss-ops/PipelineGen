@@ -296,6 +296,8 @@ type SceneSemanticBatchAnalyzer interface {
 
 // SceneSemanticEditorialBatchAnalyzer returns semantic candidates and
 // extractive editorial products from the same whole-script worker request.
+// The chapter directive is the caller's `chapter_overlay`; nil keeps the
+// automatic, transcript-grounded chapter extraction.
 type SceneSemanticEditorialBatchAnalyzer interface {
-	AnalyzeSemanticEditorial(context.Context, string, string, []scriptpkg.SceneAnalysisInput) (*ScriptSemanticResult, scriptpkg.PhraseImpactResult, error)
+	AnalyzeSemanticEditorial(context.Context, string, string, []scriptpkg.SceneAnalysisInput, *scriptpkg.ChapterOverlaySpec) (*ScriptSemanticResult, scriptpkg.PhraseImpactResult, error)
 }
