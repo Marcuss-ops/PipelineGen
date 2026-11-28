@@ -58,13 +58,11 @@ const (
 	// compensate for incompatible embedding spaces with a score hack.
 	semanticMinScore = 0.01
 
-	// semanticHybridMinScore is the hybrid (RRF) floor. pgvector's RRF
-	// fusion (rank constant k=1) scores a point that appears in a single
-	// prefetch list as 1/(1+rank): rank 9 → 0.1. Raising the floor above
-	// 0.1 rejects the rank-9+ single-list tail so irrelevant points (the
-	// multi-term "0.1 collapse" noise) never surface pre-hydration.
-	// PR-MINSCORE-HYBRID (August 2026).
-	semanticHybridMinScore = 0.11
+	// RRF scores are rank positions, not cosine similarity. A fixed floor
+	// discarded every hit in some narrow source/media-type searches, even
+	// when ANN found valid assets. Let the ranking order decide; callers can
+	// still apply an explicit min_score.
+	semanticHybridMinScore float64 = 0
 
 	// semanticRerankTopResults is the final precision limit of the
 	// enabled reranker recipe (pgvector top_k window → BGE re-score →

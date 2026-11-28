@@ -278,13 +278,14 @@ func TestSemanticBackendHybrid(t *testing.T) {
 	}
 }
 
-// TestSemanticBackendHybridMinScoreFloor pins the PR-MINSCORE-HYBRID
-// contract: the hybrid (RRF) path uses its own floor (above 0.1) so
-// pgvector's 0.1 rank-9 single-list tail hits never surface, while the
-// ANN path keeps the cosine-similarity floor. A caller-set q.MinScore
-// overrides both.
+// TestSemanticBackendHybridMinScoreFloor pins the hybrid/ANN score-floor
+// split: the hybrid (RRF) leg carries no synthetic floor, because RRF scores
+// are rank positions rather than cosine similarity and a fixed cut discarded
+// every hit in some narrow source/media-type searches even when ANN found
+// valid assets. The ANN path keeps the cosine-similarity floor. A caller-set
+// q.MinScore overrides both.
 func TestSemanticBackendHybridMinScoreFloor(t *testing.T) {
-	// Hybrid path: floor must be the RRF-tail floor (> 0.1).
+	// Hybrid path: no synthetic floor — the ranking order decides.
 	vs := &mockVectorStore{}
 	b := newSemanticBackend(&mockEmbeddingRegistry{vec: []float32{0.5}}, vs, &mockMediaReader{}, &mockDelivery{})
 	_, err := b.Search(context.Background(), search.Query{
@@ -299,10 +300,10 @@ func TestSemanticBackendHybridMinScoreFloor(t *testing.T) {
 		t.Fatal("expected HybridSearch to be called")
 	}
 	if vs.lastHybridReq.MinScore != semanticHybridMinScore {
-		t.Errorf("hybrid MinScore = %v, want %v (RRF tail floor)", vs.lastHybridReq.MinScore, semanticHybridMinScore)
+		t.Errorf("hybrid MinScore = %v, want %v (no synthetic RRF floor)", vs.lastHybridReq.MinScore, semanticHybridMinScore)
 	}
-	if vs.lastHybridReq.MinScore <= 0.1 {
-		t.Errorf("hybrid MinScore = %v must be > 0.1 to reject the 0.1 RRF tail", vs.lastHybridReq.MinScore)
+	if vs.lastHybridReq.MinScore != 0 {
+		t.Errorf("hybrid MinScore = %v, want 0 so a fixed rank cut cannot drop valid hits", vs.lastHybridReq.MinScore)
 	}
 
 	// ANN path: floor stays the cosine-similarity floor (separate scale).
