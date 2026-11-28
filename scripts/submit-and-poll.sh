@@ -121,6 +121,7 @@ fi
   deadline=$(( $(date +%s) + $5 ))
   misses=0
   polling_unavailable=0
+  waiting_for_children_reported=0
   while (( $(date +%s) < deadline )); do
     # POLLING_UNAVAILABLE is an observation of the transport, not a verdict on
     # the remote job. A long render can outlive a transient master/network
@@ -143,10 +144,25 @@ fi
     fi
     misses=0
     status=$(printf "%s" "$body" | jq -r ".status // .job.status // \"UNKNOWN\"")
+    parent_state=$(printf "%s" "$body" | jq -r ".result.parent_state // .result.result.parent_state // \"\"")
     case "$status" in
       SUCCEEDED|COMPLETED|SUCCESS|DONE)
+        child_count=$(printf "%s" "$body" | jq -r "(.result.child_job_ids // .result.result.child_job_ids // []) | length")
+        if [[ "$parent_state" == "waiting_children" || ( "$child_count" -gt 0 && -z "$parent_state" ) ]]; then
+          if (( waiting_for_children_reported == 0 )); then
+            printf 'parent job %s accepted its envelope; waiting for %s child jobs to reach terminal status\n' "$job_id" "$child_count" >&2
+            waiting_for_children_reported=1
+          fi
+          sleep "$6"
+          continue
+        fi
+        if [[ "$parent_state" == "partial_success" || "$parent_state" == "failed_terminal" ]]; then
+          printf "%s\n" "$body" | jq --arg job_id "$job_id" \
+            "{job_id: \$job_id, status, parent_state: .result.parent_state, total_items: .result.total_items, succeeded_count: .result.succeeded_count, failed_count: .result.failed_count, child_job_ids: .result.child_job_ids, stage_progress: .result.stage_progress}"
+          exit 1
+        fi
         printf "%s\n" "$body" | jq --arg job_id "$job_id" \
-          "{job_id: \$job_id, status, current_stage,
+          "{job_id: \$job_id, status, parent_state: (.result.parent_state // null), current_stage,
             expected: (.result.result.render_metrics.expected // null),
             successful: (.result.result.render_metrics.successful // null),
             failed: (.result.result.render_metrics.failed // null),

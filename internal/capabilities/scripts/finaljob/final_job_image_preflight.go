@@ -317,10 +317,8 @@ func FinalJobImageRequested(req contract.GenerateRequest) bool {
 }
 
 // FinalJobImagePreflight errors when the plan promises entity-image overlays
-// but none carries a verified asset. Items scheduled on intermediate clip
-// scenes are excluded through clipScenes: image-style cards there are
-// dropped by the final-job handoff by design, so promising them is not a
-// broken run.
+// but none carries a verified asset. Clip-scene image cards are verified too:
+// their isolated render carries that scene's clip as its background.
 // FinalJobEntityImageGate is the strict counterpart of the opt-in
 // VELOX_REQUIRE_ENTITY_IMAGES gate: a final job that requested images must not
 // ship text-only cards for some of its selected entities. Partial coverage is
@@ -363,7 +361,7 @@ func FinalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]
 	return finalJobImagePreflightContext(context.Background(), items, clipScenes, imageRequested)
 }
 
-func finalJobImagePreflightContext(ctx context.Context, items []capmodel.OverlayItem, clipScenes map[string]struct{}, imageRequested bool) error {
+func finalJobImagePreflightContext(ctx context.Context, items []capmodel.OverlayItem, _ map[string]struct{}, imageRequested bool) error {
 	candidates := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
 		kind := strings.ToLower(strings.TrimSpace(item.Kind))
@@ -371,9 +369,6 @@ func finalJobImagePreflightContext(ctx context.Context, items []capmodel.Overlay
 		// item with an image binding is part of the image contract and must be
 		// validated; only truly image-free items are skipped.
 		if !strings.Contains(kind, "image") && len(item.ImageLayers) == 0 && len(item.AssetRefs) == 0 {
-			continue
-		}
-		if _, dropped := clipScenes[strings.TrimSpace(item.SceneID)]; dropped {
 			continue
 		}
 		candidates = append(candidates, item)

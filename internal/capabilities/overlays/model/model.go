@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -24,10 +25,19 @@ const (
 )
 
 type OverlayPlan struct {
-	SchemaVersion string `json:"schema_version"`
-	PlanID        string `json:"plan_id"`
-	VideoID       string `json:"video_id"`
-	ProjectID     string `json:"project_id,omitempty"`
+	// EditorialCompositions are planner-owned sidecars preserved from the
+	// BrainRust response for composition-aware consumers. They deliberately do
+	// not enter the current overlay-plan.v1 renderer wire until that boundary
+	// adopts editorial_layers.v1.
+	EditorialCompositions []json.RawMessage `json:"-"`
+	// EditorialCompositionsEnabled is the explicit request-level opt-in. The
+	// planner may preserve sidecars for audit, but the renderer wire stays free
+	// of them unless this flag is true.
+	EditorialCompositionsEnabled bool `json:"-"`
+	SchemaVersion         string            `json:"schema_version"`
+	PlanID                string            `json:"plan_id"`
+	VideoID               string            `json:"video_id"`
+	ProjectID             string            `json:"project_id,omitempty"`
 	// EntityVariationSeed salts the worker's "random" entity-style sampling
 	// (renderinggen.overlay-plan.v1 `entity_variation_seed`). Empty keeps the
 	// historical plan-identity sampling; a per-render value resamples every
@@ -451,6 +461,11 @@ func (p *OverlayPlan) validateBackground() error {
 
 // validateItems walks the item list once, then pins the fingerprint.
 func (p *OverlayPlan) validateItems() error {
+	for i, composition := range p.EditorialCompositions {
+		if !json.Valid(composition) {
+			return fmt.Errorf("overlay plan: editorial_compositions[%d] is not valid JSON", i)
+		}
+	}
 	seenIDs := make(map[string]struct{}, len(p.Items))
 	for i := range p.Items {
 		if err := p.validateItem(i, seenIDs); err != nil {

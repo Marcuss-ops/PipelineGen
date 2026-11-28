@@ -22,8 +22,14 @@ func TestResolveOutputBudgetDoesNotReserveThinkingOverhead(t *testing.T) {
 
 func TestResolveOutputBudgetAllowsLongNaturalCompletionForGemma(t *testing.T) {
 	got := ResolveOutputBudget(types.TextGenerationRequest{Model: "gemma4:e4b", MinWords: 200})
-	if got < 432 {
-		t.Fatalf("200-word narration output budget = %d tokens, want at least 432 so prose is not truncated", got)
+	if got != 664 {
+		t.Fatalf("200-word narration output budget = %d tokens, want 664 for multilingual headroom", got)
+	}
+}
+
+func TestResolveOutputBudgetLongSceneHeadroom(t *testing.T) {
+	if got := ResolveOutputBudget(types.TextGenerationRequest{MinWords: 500}); got != 1564 {
+		t.Fatalf("500-word narration output budget = %d, want 1564", got)
 	}
 }
 

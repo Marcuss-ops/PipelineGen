@@ -411,6 +411,7 @@ func buildGenerateRequestCore(item scriptpkg.GenerationItemV2, env *scriptpkg.Ge
 		DisableChartOverlays:          item.DisableChartOverlays,
 		DisableEditorialOverlays:      item.DisableEditorialOverlays,
 		EnableCharts:                  item.EnableCharts,
+		EnableEditorialCompositions:   item.EnableEditorialCompositions,
 		HeavyPhrasePriority:           item.HeavyPhrasePriority,
 		OverlayCategories:             scriptpkg.CloneOverlayCategories(item.OverlayCategories),
 		OverlayImages:                 append([]scriptpkg.OverlayImageAsset(nil), item.OverlayImages...),

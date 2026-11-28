@@ -286,6 +286,9 @@ type GenerationItemV2 struct {
 	// only when this is true and DisableChartOverlays is false; the default
 	// (false) means no chart is ever planned.
 	EnableCharts bool `json:"enable_charts,omitempty"`
+	// EnableEditorialCompositions explicitly opts this render into planner
+	// composition sidecars. They remain off by default.
+	EnableEditorialCompositions bool `json:"enable_editorial_compositions,omitempty"`
 	// HeavyPhrasePriority overrides the editorial-weight threshold that splits
 	// the phrase lane: items at or above it take the prominent-motion lane
 	// instead of the caller-pool rotation. Zero keeps the certified default.

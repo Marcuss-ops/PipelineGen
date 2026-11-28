@@ -214,10 +214,10 @@ type finalJobClipWindow struct {
 	previousStartUS int64
 }
 
-// FinalJobIntermediateClipWindows identifies short clip scenes that combine
-// original clip audio with generated narration. Replace-mode overlays on
-// those windows hide the clip, so their phrase callouts are scheduled just
-// before the clip instead.
+// FinalJobIntermediateClipWindows identifies clip scenes that combine
+// original clip audio with generated narration. Final-job overlay renders
+// use the scene's verified clip as their background, so overlays can retain
+// their canonical scene windows without hiding the source picture.
 func FinalJobIntermediateClipWindows(result *contract.GenerateResult) map[string]finalJobClipWindow {
 	out := make(map[string]finalJobClipWindow)
 	if result == nil || result.CanonicalTimeline == nil {

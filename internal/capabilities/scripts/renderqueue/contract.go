@@ -154,5 +154,12 @@ func MarshalRenderingGenOverlayPlan(plan capmodel.OverlayPlan) ([]byte, error) {
 		return nil, err
 	}
 	wire["items"] = wireItems
+	if plan.EditorialCompositionsEnabled && len(plan.EditorialCompositions) > 0 {
+		compositions, err := json.Marshal(plan.EditorialCompositions)
+		if err != nil {
+			return nil, fmt.Errorf("encode editorial compositions: %w", err)
+		}
+		wire["editorial_compositions"] = compositions
+	}
 	return json.Marshal(wire)
 }

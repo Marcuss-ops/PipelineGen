@@ -50,6 +50,42 @@ func TestResidentModelPinsGenerationRequest(t *testing.T) {
 	}
 }
 
+func TestWarmModelUsesPinnedResidentModel(t *testing.T) {
+	var seen string
+	warmed := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/ps" {
+			w.Header().Set("Content-Type", "application/json")
+			if warmed {
+				_, _ = w.Write([]byte(`{"models":[{"name":"gemma4:e2b","context_length":8192}]}`))
+			} else {
+				_, _ = w.Write([]byte(`{"models":[]}`))
+			}
+			return
+		}
+		var body struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode warm request: %v", err)
+		}
+		seen = body.Model
+		warmed = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"done":true}`))
+	}))
+	defer server.Close()
+
+	gen := NewGenerator(client.NewClient(server.URL, "gemma4:e2b", 5))
+	gen.SetResidentModel("gemma4:e2b")
+	if err := gen.WarmModel(context.Background(), "gemma4:e4b"); err != nil {
+		t.Fatal(err)
+	}
+	if seen != "gemma4:e2b" {
+		t.Fatalf("warm model=%q, want pinned resident gemma4:e2b", seen)
+	}
+}
+
 // TestResidentModelPinsTranslationRequest proves the policy covers the
 // translation leg too: a per-request translation model cannot evict the runner.
 func TestResidentModelPinsTranslationRequest(t *testing.T) {

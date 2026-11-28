@@ -53,7 +53,24 @@ const editorialPlanEntityRefResponse = `{
         "template_id": "IMPORTANT_PHRASE",
         "text": "ciao"
       }
-    ]
+    ],
+    "editorial_compositions": [{
+      "schema_version": "editorial_composition.v1",
+      "composition_id": "plan-projection:s1:micro-summary",
+      "scene_id": "s1",
+      "window": {"start_us": 0, "duration_us": 2000000},
+      "members": [{
+        "member_id": "s1-micro-summary",
+        "kind": "summary",
+        "start_us": 0,
+        "duration_us": 1800000,
+        "reveal": "progressive",
+        "points": [
+          {"text": "The evidence compounds", "start_us": 0, "duration_us": 800000},
+          {"text": "The same network crossed borders", "start_us": 900000, "duration_us": 900000}
+        ]
+      }]
+    }]
   }
 }`
 
@@ -75,6 +92,19 @@ func TestCompileOverlayPlanV2ProjectsPlannerEntityRef(t *testing.T) {
 	if len(plan.Items) != 2 {
 		t.Fatalf("items = %d, want 2", len(plan.Items))
 	}
+	if len(plan.EditorialCompositions) != 1 {
+		t.Fatalf("editorial compositions = %d, want 1", len(plan.EditorialCompositions))
+	}
+	var composition struct {
+		SchemaVersion string `json:"schema_version"`
+		CompositionID string `json:"composition_id"`
+	}
+	if err := json.Unmarshal(plan.EditorialCompositions[0], &composition); err != nil {
+		t.Fatalf("decode preserved editorial composition: %v", err)
+	}
+	if composition.SchemaVersion != "editorial_composition.v1" || composition.CompositionID != "plan-projection:s1:micro-summary" {
+		t.Fatalf("editorial composition was changed: %+v", composition)
+	}
 	card := plan.Items[0]
 	if card.EntityRef == nil {
 		t.Fatal("entity_ref was dropped during projection")
@@ -92,7 +122,7 @@ func TestCompileOverlayPlanV2ProjectsPlannerEntityRef(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(wire), "entity_ref") || strings.Contains(string(wire), "Ada Lovelace") {
+	if strings.Contains(string(wire), "entity_ref") || strings.Contains(string(wire), "Ada Lovelace") || strings.Contains(string(wire), "editorial_compositions") {
 		t.Fatalf("overlay-plan.v1 item leaked the producer-only identity: %s", wire)
 	}
 }

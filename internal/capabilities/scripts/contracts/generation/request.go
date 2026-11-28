@@ -58,6 +58,7 @@ type Request struct {
 	DisableChartOverlays     bool                             `json:"disable_chart_overlays,omitempty"`
 	DisableEditorialOverlays bool                             `json:"disable_editorial_overlays,omitempty"`
 	EnableCharts             bool                             `json:"enable_charts,omitempty"`
+	EnableEditorialCompositions bool                         `json:"enable_editorial_compositions,omitempty"`
 	HeavyPhrasePriority      float64                          `json:"heavy_phrase_priority,omitempty"`
 	OverlayBackground        *scriptpkg.OverlayBackgroundSpec `json:"overlay_background,omitempty"`
 	OverlayStyle             *scriptpkg.OverlayStyleSpec      `json:"overlay_style,omitempty"`

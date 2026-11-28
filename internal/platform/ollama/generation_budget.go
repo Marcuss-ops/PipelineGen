@@ -31,10 +31,13 @@ func ResolveOutputBudget(req types.TextGenerationRequest) int {
 	if words <= 0 {
 		words = 32
 	}
-	// num_predict is a provider safety limit, not a word-count target. Reserve
-	// enough tokens for natural tokenization and longer-than-requested answers;
-	// a tight model-specific multiplier can truncate otherwise valid prose.
-	budget := words*2 + 32
+	if words <= 32 {
+		return 96
+	}
+	// Multilingual scripts can use substantially more tokens per word than
+	// English, especially in languages with dense morphology. Leave enough room
+	// for the requested prose plus natural tokenization and sentence endings.
+	budget := words*3 + 64
 	if budget < 96 {
 		budget = 96
 	}

@@ -45,24 +45,25 @@ func (item *compiledOverlayItemV2) UnmarshalJSON(data []byte) error {
 // renderer DTO plus that identity; the planner counts stay explicit because
 // OverlayPlan keeps them application-only (json:"-").
 type compiledOverlayPlanV2 struct {
-	SchemaVersion   string                  `json:"schema_version"`
-	PlanID          string                  `json:"plan_id"`
-	VideoID         string                  `json:"video_id"`
-	ProjectID       string                  `json:"project_id,omitempty"`
-	Language        string                  `json:"language"`
-	Width           int                     `json:"width"`
-	Height          int                     `json:"height"`
-	FPSNum          int                     `json:"fps_num"`
-	FPSDen          int                     `json:"fps_den"`
-	DurationMS      int64                   `json:"duration_ms"`
-	Background      json.RawMessage         `json:"background,omitempty"`
-	Items           []compiledOverlayItemV2 `json:"items"`
-	RecapPlacements int                     `json:"recap_placements"`
-	RecapCards      int                     `json:"recap_cards"`
-	ChartPlacements int                     `json:"chart_placements"`
-	ChartCards      int                     `json:"chart_cards"`
-	TimedScenes     int                     `json:"timed_scenes"`
-	OutputProfileID string                  `json:"output_profile_id,omitempty"`
+	SchemaVersion         string                  `json:"schema_version"`
+	PlanID                string                  `json:"plan_id"`
+	VideoID               string                  `json:"video_id"`
+	ProjectID             string                  `json:"project_id,omitempty"`
+	Language              string                  `json:"language"`
+	Width                 int                     `json:"width"`
+	Height                int                     `json:"height"`
+	FPSNum                int                     `json:"fps_num"`
+	FPSDen                int                     `json:"fps_den"`
+	DurationMS            int64                   `json:"duration_ms"`
+	Background            json.RawMessage         `json:"background,omitempty"`
+	Items                 []compiledOverlayItemV2 `json:"items"`
+	EditorialCompositions []json.RawMessage       `json:"editorial_compositions,omitempty"`
+	RecapPlacements       int                     `json:"recap_placements"`
+	RecapCards            int                     `json:"recap_cards"`
+	ChartPlacements       int                     `json:"chart_placements"`
+	ChartCards            int                     `json:"chart_cards"`
+	TimedScenes           int                     `json:"timed_scenes"`
+	OutputProfileID       string                  `json:"output_profile_id,omitempty"`
 }
 
 type compileOverlayPlanV2Response struct {
@@ -122,23 +123,24 @@ func (a *SemanticEngineAdapter) CompileOverlayPlanV2(ctx context.Context, reques
 		// editorial_plan.v2 is the Rust compiler's request/response contract.
 		// Its compiled result is projected into the Go renderer model, whose
 		// public plan contract remains overlay-plan.v1.
-		SchemaVersion:   capmodel.SchemaVersionPlan,
-		PlanID:          plan.PlanID,
-		VideoID:         plan.VideoID,
-		ProjectID:       plan.ProjectID,
-		Language:        plan.Language,
-		Width:           plan.Width,
-		Height:          plan.Height,
-		FPSNum:          plan.FPSNum,
-		FPSDen:          plan.FPSDen,
-		DurationMS:      plan.DurationMS,
-		Items:           items,
-		RecapPlacements: plan.RecapPlacements,
-		RecapCards:      plan.RecapCards,
-		ChartPlacements: plan.ChartPlacements,
-		ChartCards:      plan.ChartCards,
-		TimedScenes:     plan.TimedScenes,
-		OutputProfileID: plan.OutputProfileID,
+		SchemaVersion:         capmodel.SchemaVersionPlan,
+		PlanID:                plan.PlanID,
+		VideoID:               plan.VideoID,
+		ProjectID:             plan.ProjectID,
+		Language:              plan.Language,
+		Width:                 plan.Width,
+		Height:                plan.Height,
+		FPSNum:                plan.FPSNum,
+		FPSDen:                plan.FPSDen,
+		DurationMS:            plan.DurationMS,
+		Items:                 items,
+		EditorialCompositions: plan.EditorialCompositions,
+		RecapPlacements:       plan.RecapPlacements,
+		RecapCards:            plan.RecapCards,
+		ChartPlacements:       plan.ChartPlacements,
+		ChartCards:            plan.ChartCards,
+		TimedScenes:           plan.TimedScenes,
+		OutputProfileID:       plan.OutputProfileID,
 	}
 	if background := strings.TrimSpace(string(plan.Background)); background != "" && background != "null" {
 		var decoded capmodel.OverlayBackground

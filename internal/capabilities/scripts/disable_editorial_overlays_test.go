@@ -44,3 +44,28 @@ func TestBuildGenerateRequestCarriesDisableEditorialOverlays(t *testing.T) {
 		t.Fatal("editorial projection must stay enabled by default")
 	}
 }
+
+func TestBuildGenerateRequestKeepsEditorialCompositionsOptIn(t *testing.T) {
+	var env scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"summary","language":"it","source":{"type":"text","topic":"topic"},"enable_editorial_compositions":true}]}`), &env); err != nil {
+		t.Fatal(err)
+	}
+	request, err := BuildGenerateRequest(&env, "editorial-composition-opt-in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !request.EnableEditorialCompositions {
+		t.Fatal("request lost explicit editorial composition opt-in")
+	}
+	var plain scriptpkg.GenerationEnvelopeV2
+	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"title":"plain","language":"it","source":{"type":"text","topic":"topic"}}]}`), &plain); err != nil {
+		t.Fatal(err)
+	}
+	plainRequest, err := BuildGenerateRequest(&plain, "editorial-composition-default-off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plainRequest.EnableEditorialCompositions {
+		t.Fatal("editorial compositions must be disabled unless explicitly requested")
+	}
+}

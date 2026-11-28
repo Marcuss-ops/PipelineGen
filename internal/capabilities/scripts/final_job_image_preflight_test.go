@@ -26,7 +26,8 @@ import (
 // text-only, and the silent-empty visual was detected only after a full
 // remote render. The image preflight must reject that class before any
 // remote attempt, without introducing false positives for the documented
-// fail-open (partial miss) and clip-window (dropped by design) behaviors.
+// fail-open (partial miss) and clip-scene (verified source-clip background)
+// behaviors.
 
 func imagePreflightItem(id, kind, sha, url string) capmodel.OverlayItem {
 	item := capmodel.OverlayItem{ID: id, Kind: kind, SceneID: "scene-1"}
@@ -214,13 +215,15 @@ func TestFinalJobImagePreflight_CompositeRequiresEveryLayerVerified(t *testing.T
 	}
 }
 
-func TestFinalJobImagePreflight_ClipSceneCardsExcluded(t *testing.T) {
-	// Image-style cards on intermediate clip scenes are dropped by the
-	// final-job handoff by design; promising one there is not a broken run.
-	items := []capmodel.OverlayItem{imagePreflightItem("img-1", "entity_image", "", "")}
+func TestFinalJobImagePreflight_VerifiesClipSceneCards(t *testing.T) {
+	// Clip-scene cards are rendered over the verified scene clip, so their
+	// image bytes are part of the promised visual and must pass preflight.
+	path, sha := preflightPNGFile(t)
+	items := []capmodel.OverlayItem{imagePreflightItem("img-1", "entity_image", sha, "")}
+	items[0].AssetRefs[0].LocalPath = path
 	items[0].SceneID = "scene-clip"
-	if err := finalJobImagePreflight(items, map[string]struct{}{"scene-clip": {}}, false); err != nil {
-		t.Fatalf("clip-scene image cards are dropped by design, got: %v", err)
+	if err := finalJobImagePreflight(items, map[string]struct{}{"scene-clip": {}}, true); err != nil {
+		t.Fatalf("verified clip-scene image card must pass preflight, got: %v", err)
 	}
 }
 

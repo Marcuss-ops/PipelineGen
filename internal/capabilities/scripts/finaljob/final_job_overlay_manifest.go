@@ -77,11 +77,9 @@ func FinalJobOverlayRuntimeDTO(overlays []any, manifest map[string]any) ([]kerne
 // sits. Idempotent — the moved window is computed absolutely from the clip
 // scene's certified start — so resumed runs can re-apply it safely.
 //
-// The one placement rule that survives: a phrase callout on an intermediate
-// clip scene (original clip audio + generated narration) must sit JUST BEFORE
-// the clip, never over it — replace-mode frames would cover the source video
-// that has to stay visible. Image-style cards on those scenes are dropped at
-// handoff time instead (their frames are simply never placed).
+// Clip-scene overlays retain their planned windows. Each isolated overlay
+// render carries the source clip for its scene as a full-canvas background,
+// so replacement windows preserve the clip while placing the card above it.
 func applyFinalJobOverlayWindowPolicy(plan *capmodel.OverlayPlan, result *contract.GenerateResult) error {
 	if plan == nil {
 		return nil
@@ -98,36 +96,6 @@ func applyFinalJobOverlayWindowPolicy(plan *capmodel.OverlayPlan, result *contra
 			item.MotionParams = nil
 			item.RenderKey = ""
 		}
-	}
-	clipWindows := FinalJobIntermediateClipWindows(result)
-	if len(clipWindows) == 0 {
-		return nil
-	}
-	fpsNum, fpsDen := plan.FPSNum, plan.FPSDen
-	if fpsNum <= 0 || fpsDen <= 0 {
-		fpsNum, fpsDen = 24, 1
-	}
-	frameGuardUS := (1_000_000*int64(fpsDen) + int64(fpsNum) - 1) / int64(fpsNum)
-	for index := range plan.Items {
-		item := &plan.Items[index]
-		clipWindow, isIntermediateClip := clipWindows[item.SceneID]
-		if !isIntermediateClip || item.Kind != "text_phrase" {
-			continue
-		}
-		durationUS := item.EndUSValue() - item.StartUSValue()
-		if durationUS <= 0 {
-			return fmt.Errorf("final_job clip-scene phrase %q has an empty timing window", item.ID)
-		}
-		EndUS := clipWindow.StartUS - frameGuardUS
-		StartUS := EndUS - durationUS
-		if StartUS < clipWindow.previousStartUS {
-			return fmt.Errorf("final_job clip-scene phrase %q cannot fit before clip scene %q", item.ID, item.SceneID)
-		}
-		item.StartUS = StartUS
-		item.DurationUS = durationUS
-		item.StartMs = StartUS / 1000
-		item.EndMs = (EndUS + 999) / 1000
-		item.RenderKey = ""
 	}
 	return nil
 }
@@ -405,7 +373,6 @@ func finalJobManifestWire(ctx context.Context, result *contract.GenerateResult, 
 	for _, item := range result.OverlayPlan.Items {
 		itemsByID[strings.TrimSpace(item.ID)] = item
 	}
-	clipWindows := FinalJobIntermediateClipWindows(result)
 	frameDenominator := int64(1_000_000 * fpsDen)
 	entries := make([]kerneljob.OverlayRowV1, 0, len(manifest.Entries))
 	for _, entry := range manifest.Entries {
@@ -462,11 +429,6 @@ func finalJobManifestWire(ctx context.Context, result *contract.GenerateResult, 
 		admittedFrames[entry.ItemID] = FinalJobFrameWindow{Start: startFrame, End: endFrame, SceneID: item.SceneID}
 		if _, isConsumed := consumed[strings.TrimSpace(entry.ItemID)]; isConsumed {
 			continue
-		}
-		if finalJobOverlayCanShrink(item) {
-			if _, isClip := clipWindows[item.SceneID]; isClip {
-				continue
-			}
 		}
 		if entry.Placement != nil {
 			return nil, fmt.Errorf("final_job overlay %q requires unsupported spatial placement", entry.ItemID)

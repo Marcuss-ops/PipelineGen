@@ -8,6 +8,29 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 )
 
+func resolvedNarrationLength(req *types.TextGenerationRequest) (seconds, minutes, words int) {
+	wpm := resolvedWordsPerMinute(req.WordsPerMinute)
+	words = req.MinWords
+	seconds = req.Duration
+	minutes = req.DurationMinutes
+	if seconds <= 0 && minutes > 0 {
+		seconds = minutes * 60
+	}
+	if words > 0 {
+		seconds = (words*60 + wpm - 1) / wpm
+		minutes = (seconds + 59) / 60
+		return seconds, minutes, words
+	}
+	if seconds <= 0 {
+		seconds = 60
+	}
+	if minutes <= 0 {
+		minutes = (seconds + 59) / 60
+	}
+	words = minutes * wpm
+	return seconds, minutes, words
+}
+
 // BuildChatMessages builds the message list for the chat API.
 // If req.WebContext is non-empty, it is prepended as RAG context.
 func BuildChatMessages(req *types.TextGenerationRequest) []types.Message {
@@ -21,25 +44,14 @@ func BuildChatMessages(req *types.TextGenerationRequest) []types.Message {
 	// instruction appended below and can make Gemma return no content.
 	isStructured := maxChars > 0 && req.OutputMode == types.OutputModeScriptV1
 
-	durationMinutes := req.DurationMinutes
-	if durationMinutes == 0 && req.Duration > 0 {
-		durationMinutes = req.Duration / 60
-	}
-	if durationMinutes == 0 {
-		durationMinutes = 1
-	}
-
-	targetWords := durationMinutes * resolvedWordsPerMinute(req.WordsPerMinute)
-	if req.MinWords > 0 {
-		targetWords = req.MinWords
-	}
+	durationSeconds, durationMinutes, targetWords := resolvedNarrationLength(req)
 
 	sanitizedSource := types.SanitizeInput(req.SourceText)
 	sanitizedTitle := types.SanitizeInput(req.Title)
 
 	var userContent string
 	if !isStructured {
-		userContent = fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
+		userContent = fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY scene of about %d words (%d seconds, about %d minutes).
 
 VIDEO TITLE: %s
 NARRATIVE STYLE: %s
@@ -48,7 +60,7 @@ REFERENCE INPUT / INSTRUCTIONS:
 "%s"
 
 STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
-1. LENGTH: This video lasts %d minutes. You MUST write at least %d words.
+1. LENGTH: This scene is about %d minutes of narration. You MUST write at least %d words.
 2. STYLE: Cinematic and immersive.
 3. FORMAT: Write as straight continuous prose only.
 4. NO META-TEXT: Write ONLY the spoken script.
@@ -56,7 +68,7 @@ STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
 6. NO SPEAKER LABELS: Do NOT write "Narrator:", "Narratore:", "Voice:", "Voce:", or any other label. Start directly with the story.
 7. NO STAGE DIRECTIONS: Do not include descriptions of shots, music, or tone in brackets.
 
-SCRIPT:`, req.Duration, durationMinutes, sanitizedTitle, req.Tone, sanitizedSource, durationMinutes, targetWords)
+SCRIPT:`, targetWords, durationSeconds, durationMinutes, sanitizedTitle, req.Tone, sanitizedSource, durationMinutes, targetWords)
 	}
 	if isStructured {
 		// Build per-clip JSON prompt with actual clip IDs
@@ -120,23 +132,12 @@ Rules:
 
 // BuildTextPrompt builds the prompt for text generation (no chat messages wrapper).
 func BuildTextPrompt(req *types.TextGenerationRequest) string {
-	durationMinutes := req.DurationMinutes
-	if durationMinutes == 0 && req.Duration > 0 {
-		durationMinutes = req.Duration / 60
-	}
-	if durationMinutes == 0 {
-		durationMinutes = 1
-	}
-
-	targetWords := durationMinutes * resolvedWordsPerMinute(req.WordsPerMinute)
-	if req.MinWords > 0 {
-		targetWords = req.MinWords
-	}
+	durationSeconds, durationMinutes, targetWords := resolvedNarrationLength(req)
 
 	sanitizedSource := types.SanitizeInput(req.SourceText)
 	sanitizedTitle := types.SanitizeInput(req.Title)
 
-	taskBody := fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
+	taskBody := fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY scene of about %d words (%d seconds, about %d minutes).
 
 VIDEO TITLE: %s
 NARRATIVE STYLE: %s
@@ -145,7 +146,7 @@ REFERENCE INPUT / INSTRUCTIONS:
 "%s"
 
 STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
-1. LENGTH: This video lasts %d minutes. You MUST write at least %d words.
+1. LENGTH: This scene is about %d minutes of narration. You MUST write at least %d words.
 2. STYLE: Cinematic and immersive.
 3. FORMAT: Write as straight continuous prose only.
 4. NO META-TEXT: Write ONLY the spoken script.
@@ -154,7 +155,7 @@ STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
 7. NO STAGE DIRECTIONS: Do not include descriptions of shots, music, or tone in brackets.
 
 SCRIPT:`,
-		req.Duration, durationMinutes, sanitizedTitle, req.Tone,
+		targetWords, durationSeconds, durationMinutes, sanitizedTitle, req.Tone,
 		sanitizedSource, durationMinutes, targetWords,
 	)
 

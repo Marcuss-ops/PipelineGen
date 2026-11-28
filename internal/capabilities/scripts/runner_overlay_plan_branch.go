@@ -224,6 +224,16 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 		return cause
 	}
+	if req.EnableEditorialCompositions {
+		if result.OverlayPlan != nil {
+			result.OverlayPlan.EditorialCompositionsEnabled = true
+		}
+		for _, localized := range result.LocalizedOverlayPlans {
+			if localized != nil {
+				localized.EditorialCompositionsEnabled = true
+			}
+		}
+	}
 	// Per-pin styles are applied before the random draw: a pin that declares
 	// its own effect stack has authored that photo's look, and the draw must
 	// leave it alone.

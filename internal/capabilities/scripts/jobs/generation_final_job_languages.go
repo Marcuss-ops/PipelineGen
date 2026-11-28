@@ -10,6 +10,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // executeFinalJobLanguageRuns turns one multi-language final_job request into
@@ -33,6 +34,11 @@ func (h *GenerateJobHandler) executeFinalJobLanguageRuns(
 	event := appjobs.SafeEventFn(tools)
 	results := make([]scriptgen.LanguageDeliveryResult, 0, len(languages))
 	artifacts := make([]job.Artifact, 0, len(languages)*3)
+	// The first completed child owns the one master script generation. Every
+	// later language reuses its scene text and translates that exact source,
+	// keeping scene identities, phrase anchors and image bindings stable.
+	languages = sourceLanguageFirst(languages, parent.Request.SourceLanguage)
+	var masterResult *scriptgen.GenerateResult
 
 	for index, language := range languages {
 		if err := ctx.Err(); err != nil {
@@ -40,6 +46,11 @@ func (h *GenerateJobHandler) executeFinalJobLanguageRuns(
 		}
 		childID := finalJobLanguageRunID(parent.ID, language)
 		request := finalJobLanguageRequest(parent.Request, language)
+		if masterResult != nil {
+			if err := seedFinalJobLanguageRequest(&request, masterResult); err != nil {
+				return h.failLanguageParent(ctx, parent.ID, language, err)
+			}
+		}
 		child, err := h.getOrCreateLanguageRun(ctx, childID, request)
 		if err != nil {
 			return h.failLanguageParent(ctx, parent.ID, language, err)
@@ -73,6 +84,12 @@ func (h *GenerateJobHandler) executeFinalJobLanguageRuns(
 			err := fmt.Errorf("language %s run %s did not complete (status=%s, stage=%s, error=%s)",
 				language, childID, child.Status, child.CurrentStage, child.ErrorMessage)
 			return h.failLanguageParent(ctx, parent.ID, language, err)
+		}
+		if masterResult == nil {
+			masterResult = child.Result
+			if _, err := masterSceneSourceText(masterResult, parent.Request); err != nil {
+				return h.failLanguageParent(ctx, parent.ID, language, err)
+			}
 		}
 
 		remote := child.Result.RemoteFinalJob
@@ -136,13 +153,104 @@ func uniqueTargetLanguages(in []scriptgen.Language) []string {
 	return out
 }
 
+func sourceLanguageFirst(languages []string, source scriptgen.Language) []string {
+	want := strings.ToLower(strings.TrimSpace(string(source)))
+	if want == "" {
+		return languages
+	}
+	for index, language := range languages {
+		if strings.EqualFold(strings.TrimSpace(language), want) {
+			if index == 0 {
+				return languages
+			}
+			out := append([]string(nil), languages...)
+			copy(out[1:index+1], out[0:index])
+			out[0] = language
+			return out
+		}
+	}
+	return languages
+}
+
+func masterSceneSourceText(result *scriptgen.GenerateResult, parent scriptgen.GenerateRequest) (map[string]string, error) {
+	if result == nil {
+		return nil, fmt.Errorf("multilingual final job: master script result is missing")
+	}
+	sourceLanguage := strings.ToLower(strings.TrimSpace(string(parent.SourceLanguage)))
+	if sourceLanguage == "" {
+		return nil, fmt.Errorf("multilingual final job: source language is required to lock the master script")
+	}
+	byID := make(map[string]string, len(result.Scenes))
+	for _, scene := range result.Scenes {
+		if text := strings.TrimSpace(scene.Text[scriptgen.Language(sourceLanguage)]); text != "" {
+			byID[strings.TrimSpace(scene.ID)] = text
+		}
+	}
+	segments := parent.ScriptParams.Segments
+	if len(segments) == 0 {
+		return nil, fmt.Errorf("multilingual final job: explicit script segments are required to reuse master scene text")
+	}
+	texts := make(map[string]string, len(segments))
+	for index, segment := range segments {
+		id := strings.TrimSpace(segment.ID)
+		text := byID[id]
+		if text == "" && index < len(result.Scenes) && (id == "" || strings.TrimSpace(result.Scenes[index].ID) == id) {
+			text = strings.TrimSpace(result.Scenes[index].Text[scriptgen.Language(sourceLanguage)])
+		}
+		if text == "" {
+			return nil, fmt.Errorf("multilingual final job: master script has no %s text for segment %q", sourceLanguage, id)
+		}
+		if id == "" {
+			return nil, fmt.Errorf("multilingual final job: segment %d has no stable ID for master-text reuse", index)
+		}
+		texts[id] = text
+	}
+	return texts, nil
+}
+
+func seedFinalJobLanguageRequest(request *scriptgen.GenerateRequest, master *scriptgen.GenerateResult) error {
+	if request == nil {
+		return fmt.Errorf("multilingual final job: target request is missing")
+	}
+	texts, err := masterSceneSourceText(master, *request)
+	if err != nil {
+		return err
+	}
+	segments := append([]scriptpkg.ScriptSegment(nil), request.ScriptParams.Segments...)
+	orderedText := make([]string, 0, len(segments))
+	for index := range segments {
+		id := strings.TrimSpace(segments[index].ID)
+		text := strings.TrimSpace(texts[id])
+		if text == "" {
+			return fmt.Errorf("multilingual final job: master script has no source text for segment %q", id)
+		}
+		segments[index].SourceText = text
+		orderedText = append(orderedText, text)
+	}
+	request.ScriptParams.Segments = segments
+	request.ScriptParams.SourceTextVerbatim = true
+	request.Source.SourceText = strings.Join(orderedText, "\n\n")
+	// The source-language run already produced this extraction. Reuse its
+	// deterministic cache entries and the same explicit overlay image pins.
+	request.MediaPlan.ForceRefreshExtraction = false
+	return nil
+}
+
 func finalJobLanguageRunID(parentID, language string) string {
 	return strings.TrimSpace(parentID) + "-language-" + strings.ToLower(strings.TrimSpace(language))
 }
 
 func finalJobLanguageRequest(parent scriptgen.GenerateRequest, language string) scriptgen.GenerateRequest {
 	child := parent
-	child.Languages = []scriptgen.Language{scriptgen.Language(language)}
+	if strings.EqualFold(strings.TrimSpace(language), strings.TrimSpace(string(parent.SourceLanguage))) {
+		// The source-language delivery is the master generation itself; asking
+		// the translator to translate en -> en is rejected by its contract.
+		child.Languages = nil
+		child.TranslationProvider = ""
+		child.TranslationModel = ""
+	} else {
+		child.Languages = []scriptgen.Language{scriptgen.Language(language)}
+	}
 	child.VoiceoverLanguages = []scriptgen.Language{scriptgen.Language(language)}
 	// The parent delivery reads each child's remote receipt, so a language
 	// child is always a final job: final_job=true is the one flag that keeps

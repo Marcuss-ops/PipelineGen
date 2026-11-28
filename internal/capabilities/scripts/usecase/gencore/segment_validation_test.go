@@ -14,21 +14,29 @@ import (
 )
 
 type sequentialSegmentGenerator struct {
-	mu      sync.Mutex
-	results []*scriptports.GenerationResult
-	prompts []string
+	mu       sync.Mutex
+	results  []*scriptports.GenerationResult
+	prompts  []string
+	requests []scriptports.TextGenerationRequest
 }
 
 func (g *sequentialSegmentGenerator) GenerateScript(_ context.Context, req scriptports.TextGenerationRequest) (*scriptports.GenerationResult, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.prompts = append(g.prompts, req.Prompt)
+	g.requests = append(g.requests, req)
 	if len(g.results) == 0 {
 		return nil, errors.New("no scripted result")
 	}
 	result := g.results[0]
 	g.results = g.results[1:]
 	return result, nil
+}
+
+func (g *sequentialSegmentGenerator) requestSnapshot() []scriptports.TextGenerationRequest {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]scriptports.TextGenerationRequest(nil), g.requests...)
 }
 
 func (g *sequentialSegmentGenerator) promptSnapshot() []string {
@@ -168,8 +176,8 @@ func TestValidateSegmentTexts_BoundsAndTotal(t *testing.T) {
 		t.Fatalf("valid segments rejected: %+v", valid)
 	}
 	nearMiss := validateSegmentTexts(plan, []string{textOfNWords(7), textOfNWords(11)}, settings)
-	if !nearMiss.Valid {
-		t.Fatalf("a one-word shortfall below the explicit minimum should fit the small tolerance: %+v", nearMiss)
+	if nearMiss.Valid {
+		t.Fatalf("an explicit per-scene minimum must be enforced without a shortfall tolerance: %+v", nearMiss)
 	}
 	invalid := validateSegmentTexts(plan, []string{textOfNWords(5), textOfNWords(13)}, settings)
 	if invalid.Valid || len(invalid.InvalidIndexes) != 1 || invalid.InvalidIndexes[0] != 0 {
@@ -210,19 +218,19 @@ func TestDefaultSegmentValidationAllowsFortyPercentUndershoot(t *testing.T) {
 	}
 }
 
-func TestValidateSegmentTexts_ExplicitMinimumAllowsSmallShortfall(t *testing.T) {
+func TestValidateSegmentTexts_ExplicitMinimumIsHard(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		TargetWords: 280,
 		Segments:    []scriptpkg.ScriptSegment{{Topic: "one", TargetWords: 280, MinWords: 190}},
 	}
 	settings := segmentValidationSettings{segmentTolerancePercent: 15, totalTolerancePercent: 10}
-	nearMiss := validateSegmentTexts(plan, []string{textOfNWords(164)}, settings)
-	if !nearMiss.Valid {
-		t.Fatalf("164 words should satisfy the small grace below requested minimum 190: %+v", nearMiss)
+	nearMiss := validateSegmentTexts(plan, []string{textOfNWords(189)}, settings)
+	if nearMiss.Valid {
+		t.Fatalf("189 words must fail an explicit minimum of 190: %+v", nearMiss)
 	}
-	short := validateSegmentTexts(plan, []string{textOfNWords(120)}, settings)
-	if short.Valid {
-		t.Fatalf("120 words is outside the grace below requested minimum 190: %+v", short)
+	valid := validateSegmentTexts(plan, []string{textOfNWords(190)}, settings)
+	if !valid.Valid {
+		t.Fatalf("the exact explicit minimum should pass: %+v", valid)
 	}
 }
 
@@ -362,6 +370,36 @@ func TestEngineGenerate_SegmentRegenerationStopsAtRetryLimit(t *testing.T) {
 	prompts := gen.promptSnapshot()
 	if len(prompts) < 2 || len(prompts) > 4 {
 		t.Fatalf("provider calls = %d, want bounded initial calls plus bounded repairs", len(prompts))
+	}
+}
+
+func TestEngineGenerate_RepairPromptReportsShortfallAndContinuesDraft(t *testing.T) {
+	draft := textOfNWords(300)
+	gen := &sequentialSegmentGenerator{results: []*scriptports.GenerationResult{
+		proseResult(draft), proseResult(textOfNWords(450)),
+	}}
+	engine := &Engine{ollamaGen: gen, log: zap.NewNop()}
+	engine.ConfigureSegmentValidation(40, 40, 1)
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		TargetWords: 500,
+		SourceText:  "grounded source facts for this scene",
+		Segments: []scriptpkg.ScriptSegment{{
+			ID: "long-scene", Topic: "A long documentary scene", SourceText: "grounded scene facts",
+			TargetWords: 500, MinWords: 450, MaxWords: 750,
+		}},
+	}
+	if _, err := engine.Generate(context.Background(), plan); err != nil {
+		t.Fatalf("repaired 450-word scene should pass: %v", err)
+	}
+	requests := gen.requestSnapshot()
+	if len(requests) != 2 {
+		t.Fatalf("generation calls=%d, want initial draft and one repair", len(requests))
+	}
+	repair := requests[1].SegmentAssignment + "\n" + requests[1].Prompt
+	for _, required := range []string{"300 words", "short by 150 words", "Existing draft to continue", draft} {
+		if !strings.Contains(repair, required) {
+			t.Errorf("repair prompt missing %q: %s", required, repair)
+		}
 	}
 }
 

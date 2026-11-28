@@ -93,6 +93,31 @@ func TestBuildChatMessages_PlainTextMaxCharsDoesNotSelectJSONPrompt(t *testing.T
 	}
 }
 
+func TestBuildChatMessages_LongSceneUsesWordDerivedDuration(t *testing.T) {
+	req := &types.TextGenerationRequest{Language: "it", Title: "Scena", MinWords: 500}
+	messages := BuildChatMessages(req)
+	user := messages[len(messages)-1].Content
+	if strings.Contains(user, "of 0 seconds") {
+		t.Fatalf("long-scene prompt contains a zero duration:\n%s", user)
+	}
+	if !strings.Contains(user, "about 500 words") || !strings.Contains(user, "seconds, about 4 minutes") {
+		t.Fatalf("long-scene prompt does not describe the requested narration length:\n%s", user)
+	}
+}
+
+func TestBuildSystemPromptSupportsAllTenNarrationLanguages(t *testing.T) {
+	for _, tc := range []struct{ code, name string }{
+		{"en", "English"}, {"it", "Italian"}, {"es", "Spanish"}, {"fr", "French"},
+		{"de", "German"}, {"pt-BR", "Brazilian Portuguese"}, {"pl", "Polish"},
+		{"ru", "Russian"}, {"tr", "Turkish"}, {"id", "Indonesian"},
+	} {
+		prompt := BuildSystemPrompt(tc.code, "documentary")
+		if !strings.Contains(prompt, "in "+tc.name) || !strings.Contains(prompt, "Do not default to English") {
+			t.Errorf("system prompt for %q does not force %s: %s", tc.code, tc.name, prompt)
+		}
+	}
+}
+
 func TestBuildChatMessages_LegacyScriptV1StillSelectsJSONPrompt(t *testing.T) {
 	req := &types.TextGenerationRequest{
 		Language:   "it",

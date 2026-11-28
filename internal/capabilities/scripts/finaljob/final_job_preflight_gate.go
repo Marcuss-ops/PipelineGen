@@ -34,11 +34,7 @@ func FinalJobImagePreflightOnce(ctx context.Context, imageRequested bool, result
 	if FinalJobPreflightCoversPlan(result) {
 		return nil
 	}
-	clipScenes := make(map[string]struct{})
-	for SceneID := range FinalJobIntermediateClipWindows(result) {
-		clipScenes[SceneID] = struct{}{}
-	}
-	if err := finalJobImagePreflightContext(ctx, result.OverlayPlan.Items, clipScenes, true); err != nil {
+	if err := finalJobImagePreflightContext(ctx, result.OverlayPlan.Items, nil, true); err != nil {
 		// A failed verification leaves no marker: a retry must re-check the
 		// bytes instead of inheriting an unproven pass.
 		return err

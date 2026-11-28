@@ -141,7 +141,7 @@ func (g *Generator) WarmModel(ctx context.Context, model string) error {
 	if g == nil || g.client == nil {
 		return fmt.Errorf("ollama client not initialized")
 	}
-	return g.client.WarmModel(ctx, model)
+	return g.client.WarmModel(ctx, g.pinToResident(model))
 }
 
 // SetMetadataModel sets a lighter model for post-generation phases

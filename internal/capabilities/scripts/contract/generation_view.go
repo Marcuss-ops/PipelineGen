@@ -54,6 +54,7 @@ func (r GenerateRequest) Generation() generation.Request {
 		DisableChartOverlays:          r.DisableChartOverlays,
 		DisableEditorialOverlays:      r.DisableEditorialOverlays,
 		EnableCharts:                  r.EnableCharts,
+		EnableEditorialCompositions:   r.EnableEditorialCompositions,
 		HeavyPhrasePriority:           r.HeavyPhrasePriority,
 		OverlayBackground:             r.OverlayBackground,
 		OverlayStyle:                  r.OverlayStyle,

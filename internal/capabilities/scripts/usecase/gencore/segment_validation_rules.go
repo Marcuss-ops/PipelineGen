@@ -34,7 +34,6 @@ func isSegmentValidationExhausted(err error) bool {
 const (
 	defaultSegmentWordsTolerancePercent = 40.0
 	defaultTotalWordsTolerancePercent   = 40.0
-	explicitMinimumGracePercent         = 25.0
 	// Small local Ollama models have noticeably variable completion lengths.
 	// Keep the word gate strict, but allow enough bounded regeneration attempts
 	// to obtain a compliant paragraph instead of dead-lettering a valid request
@@ -105,18 +104,10 @@ func segmentBudgetFor(plan *scriptpkg.ResolvedGenerationPlan, index int, toleran
 	if requestedMinWords <= 0 {
 		requestedMinWords = int(math.Floor(float64(target) * (1 - tolerancePercent/100)))
 	}
+	// An explicit per-scene minimum is a hard contract (for example,
+	// 450–750-word documentary scenes); tolerance applies only when the caller
+	// did not provide min_words.
 	minWords := requestedMinWords
-	if segment.MinWords > 0 {
-		// A small model can miss an explicitly requested minimum even after a
-		// targeted retry. Keep the requested number in the prompt, while
-		// allowing a wider local QA grace so a near-complete scene does not
-		// fail the whole script. The aggregate minimum is informational only.
-		grace := int(math.Ceil(float64(requestedMinWords) * explicitMinimumGracePercent / 100))
-		minWords -= grace
-		if minWords < 1 {
-			minWords = 1
-		}
-	}
 	// A target is a writing aim, not a hidden word ceiling. Only an
 	// explicitly supplied max_words field may cap the generated segment.
 	maxWords := segment.MaxWords
@@ -148,10 +139,18 @@ func validateSegmentTexts(plan *scriptpkg.ResolvedGenerationPlan, texts []string
 		return report
 	}
 	// Clip introductions have a natural length and must never be padded with
-	// repeated source text just to satisfy a documentary word budget. Their
-	// deterministic checks are non-empty output plus the copy/instruction gate
-	// performed by generateOne below.
-	if plan.ClipEvidence != nil {
+	// repeated source text just to satisfy a documentary word budget. Apply
+	// that relaxed contract only when every generated segment is clip-bound;
+	// a fixed intro clip can also precede ordinary long-form narration and must
+	// not disable word-count validation for those scenes.
+	clipOnlySegments := plan.ClipEvidence != nil
+	for _, segment := range plan.Segments {
+		if len(segment.ClipIDs) == 0 {
+			clipOnlySegments = false
+			break
+		}
+	}
+	if clipOnlySegments {
 		for i, text := range texts {
 			budget := segmentBudgetFor(plan, i, settings.segmentTolerancePercent)
 			actual := textutil.CountWords(text)

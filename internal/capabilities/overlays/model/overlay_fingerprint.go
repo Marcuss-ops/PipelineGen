@@ -23,6 +23,16 @@ func (p OverlayPlan) FingerprintValue() string {
 		copyPlan.Items[i].Params = canonicalParamsMap(copyPlan.Items[i].Params)
 	}
 	b, _ := json.Marshal(copyPlan)
+	if copyPlan.EditorialCompositionsEnabled && len(copyPlan.EditorialCompositions) > 0 {
+		var wire map[string]json.RawMessage
+		if json.Unmarshal(b, &wire) == nil {
+			if compositions, err := json.Marshal(copyPlan.EditorialCompositions); err == nil {
+				wire["editorial_compositions"] = compositions
+				wire["editorial_compositions_enabled"] = json.RawMessage("true")
+				b, _ = json.Marshal(wire)
+			}
+		}
+	}
 	h := digest.SHA256Bytes(b)
 	return h
 }

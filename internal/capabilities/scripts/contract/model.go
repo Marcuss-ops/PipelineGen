@@ -116,6 +116,10 @@ type GenerateRequest struct {
 	// EnableCharts is the explicit opt-in for chart overlays. Charts render
 	// only when this is true and DisableChartOverlays is false.
 	EnableCharts bool `json:"enable_charts,omitempty"`
+	// EnableEditorialCompositions opts this render into planner-produced
+	// editorial composition sidecars. The default is off; unsupported
+	// composition members still fail closed in the renderer.
+	EnableEditorialCompositions bool `json:"enable_editorial_compositions,omitempty"`
 	// HeavyPhrasePriority optionally overrides the editorial-weight threshold
 	// for the prominent-motion lane. Zero keeps the certified default.
 	HeavyPhrasePriority float64 `json:"heavy_phrase_priority,omitempty"`

@@ -1,0 +1,832 @@
+{
+  "version": 3,
+  "preset": "custom",
+  "correlation_id": "mike-tyson-stage0-stock-en-it-500w-20261128-v2",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "mike-tyson-stage0-en",
+      "overlay_categories": {
+        "images": "disabled",
+        "maps": "disabled",
+        "phrases": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "title": "Mike Tyson — origins, rise and reversal",
+      "project": "mike-tyson-stage0-2lang",
+      "channel_id": "boxe",
+      "language": "en",
+      "tone": "playful, energetic, accurate documentary rap",
+      "style": "Write the narration in English with Gemma. Every scene must contain 450–750 words, target about 500. Use only the facts supplied in the scene and global source. Do not invent dialogue, quotations, dates, statistics, motives, inner states, or biography. Do not pad with repetition. Preserve chronology and distinguish fact from interpretation.",
+      "model": "gemma4:e4b",
+      "translation": {},
+      "media_mode": "stock_only",
+      "source": {
+        "type": "text",
+        "topic": "Mike Tyson’s life and boxing career, from Brooklyn through his final fights",
+        "source_text": "Mike Tyson was born in Brooklyn, New York, on June 30, 1966. The Sony Pictures TYSON press-kit timeline records that, at age twelve, he was sent to Tryon School for Boys after a purse-snatching arrest. A boxing instructor at the New York State facility brought him to the attention of Cus D’Amato in 1979. Keep the account to those dated public facts; do not invent private scenes, dialogue, motives, or quotations.\n\nCus D’Amato had guided Floyd Patterson to the heavyweight title. He became Tyson’s legal guardian in 1984. Tyson trained in Catskill, New York, under D’Amato’s guidance. D’Amato died of pneumonia on November 4, 1985, before Tyson won a world title. Explain the chronology of the mentor and guardian relationship without inventing training routines or private conversations.\n\nTyson made his professional debut on March 6, 1985, against Hector Mercedes and won in the first round. On November 22, 1986, he defeated WBC champion Trevor Berbick by second-round knockout. At age twenty, he became the youngest heavyweight champion in history. Preserve the dates, opponent, result, title, and age; do not invent round-by-round action or private feelings.\n\nIn 1987 Tyson added the WBA title by defeating James Smith, defended against Pinklon Thomas, then defeated Tony Tucker on August 1 to win the IBF title. The Sony Pictures timeline identifies him as the first heavyweight to hold WBA, WBC, and IBF belts at the same time. He defended against Tyrell Biggs in Atlantic City in October. Keep the title sequence distinct from title defenses.\n\nTyson defended the heavyweight title against Larry Holmes in January 1988 and Tony Tubbs in March. On June 27, 1988, he fought Michael Spinks and won in 91 seconds, retaining the world heavyweight title. Focus on the public sporting record and the place of the Spinks fight in the title chronology. Avoid invented tactics or dialogue.\n\nOn February 11, 1990, James Buster Douglas knocked Tyson out in the tenth round and took the world heavyweight title in Tokyo. Tyson later won first-round knockouts over Henry Tillman in June and Alex Stewart in December 1990. He fought Donovan Ruddock in 1991. Describe Douglas’s victory as his own achievement and as a major reversal in Tyson’s career; do not speculate about Tyson’s condition or motives.\n\nIn 1992 Tyson was convicted in Indiana of rape and two counts of deviate sexual conduct and sentenced to ten years, with four years suspended. The timeline records that the conviction was upheld on appeal in 1993 and that Tyson was released from prison on March 25, 1995. State the conviction and sentence accurately and neutrally. Do not imply the conviction was overturned or minimize the offense.\n\nAfter his release, Tyson returned to boxing in 1995. In 1996 he won the WBC title from Frank Bruno and the WBA title from Bruce Seldon. Evander Holyfield defeated him in November 1996. In their June 1997 rematch, Tyson was disqualified in the third round after biting Holyfield’s ears; the Nevada commission revoked Tyson’s license and fined him. Tyson later resumed fighting. On June 11, 2005, he did not come out for the seventh round against Kevin McBride and said he would not fight again.",
+        "cache": {
+          "mode": "disabled"
+        }
+      },
+      "script_params": {
+        "target_words": 4000,
+        "concurrency": 1,
+        "segment_words": 500,
+        "segments": [
+          {
+            "id": "brooklyn-origins",
+            "kind": "narration",
+            "topic": "Brooklyn, childhood and first contact with boxing",
+            "source_text": "Mike Tyson was born in Brooklyn, New York, on June 30, 1966. The Sony Pictures TYSON press-kit timeline records that, at age twelve, he was sent to Tryon School for Boys after a purse-snatching arrest. A boxing instructor at the New York State facility brought him to the attention of Cus D’Amato in 1979. Keep the account to those dated public facts; do not invent private scenes, dialogue, motives, or quotations.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "cus-damato",
+            "kind": "narration",
+            "topic": "Cus D’Amato, Catskill and the training relationship",
+            "source_text": "Cus D’Amato had guided Floyd Patterson to the heavyweight title. He became Tyson’s legal guardian in 1984. Tyson trained in Catskill, New York, under D’Amato’s guidance. D’Amato died of pneumonia on November 4, 1985, before Tyson won a world title. Explain the chronology of the mentor and guardian relationship without inventing training routines or private conversations.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "professional-debut",
+            "kind": "narration",
+            "topic": "Professional debut and rapid rise",
+            "source_text": "Tyson made his professional debut on March 6, 1985, against Hector Mercedes and won in the first round. On November 22, 1986, he defeated WBC champion Trevor Berbick by second-round knockout. At age twenty, he became the youngest heavyweight champion in history. Preserve the dates, opponent, result, title, and age; do not invent round-by-round action or private feelings.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "unifying-titles",
+            "kind": "narration",
+            "topic": "Winning and unifying heavyweight titles",
+            "source_text": "In 1987 Tyson added the WBA title by defeating James Smith, defended against Pinklon Thomas, then defeated Tony Tucker on August 1 to win the IBF title. The Sony Pictures timeline identifies him as the first heavyweight to hold WBA, WBC, and IBF belts at the same time. He defended against Tyrell Biggs in Atlantic City in October. Keep the title sequence distinct from title defenses.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "spinks-peak",
+            "kind": "narration",
+            "topic": "The 1988 title defenses and Michael Spinks fight",
+            "source_text": "Tyson defended the heavyweight title against Larry Holmes in January 1988 and Tony Tubbs in March. On June 27, 1988, he fought Michael Spinks and won in 91 seconds, retaining the world heavyweight title. Focus on the public sporting record and the place of the Spinks fight in the title chronology. Avoid invented tactics or dialogue.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "tokyo-loss",
+            "kind": "narration",
+            "topic": "The Tokyo defeat and return to competition",
+            "source_text": "On February 11, 1990, James Buster Douglas knocked Tyson out in the tenth round and took the world heavyweight title in Tokyo. Tyson later won first-round knockouts over Henry Tillman in June and Alex Stewart in December 1990. He fought Donovan Ruddock in 1991. Describe Douglas’s victory as his own achievement and as a major reversal in Tyson’s career; do not speculate about Tyson’s condition or motives.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "legal-consequences",
+            "kind": "narration",
+            "topic": "Legal case, conviction and return after prison",
+            "source_text": "In 1992 Tyson was convicted in Indiana of rape and two counts of deviate sexual conduct and sentenced to ten years, with four years suspended. The timeline records that the conviction was upheld on appeal in 1993 and that Tyson was released from prison on March 25, 1995. State the conviction and sentence accurately and neutrally. Do not imply the conviction was overturned or minimize the offense.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "comeback-later-career",
+            "kind": "narration",
+            "topic": "The comeback, Holyfield fights and end of the boxing career",
+            "source_text": "After his release, Tyson returned to boxing in 1995. In 1996 he won the WBC title from Frank Bruno and the WBA title from Bruce Seldon. Evander Holyfield defeated him in November 1996. In their June 1997 rematch, Tyson was disqualified in the third round after biting Holyfield’s ears; the Nevada commission revoked Tyson’s license and fined him. Tyson later resumed fighting. On June 11, 2005, he did not come out for the seventh round against Kevin McBride and said he would not fight again.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          }
+        ],
+        "style": "Documentary narration, clear and measured. Every scene must contain 450–750 words, target about 500. Use only facts in the sources and scene brief; add no undocumented biography, dialogue, quotations, numbers, dates, or private motives.",
+        "guidelines": "Write one complete paragraph for each scene in the supplied order. Keep each scene between 450 and 750 words, around 500. Use fluent English. Do not repeat content to reach the length; if sources are insufficient, state the limit without inventing facts.",
+        "min_words": 3600
+      },
+      "output": {
+        "render": {
+          "enabled": true,
+          "background": {
+            "mode": "none"
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "style_id": "subs-young"
+          },
+          "effects": [
+            {
+              "type": "scanlines",
+              "amount": 0.12,
+              "wavelength": 0.025
+            }
+          ],
+          "render_concurrency": 1,
+          "drive_folder_id": "1ZmAX9JyizG1hnuYWxlj73mYxvjFI8gqE",
+          "drive_subfolder_name": "Mike Tyson stage0 500w stock intro en 2026-11-28"
+        },
+        "extract_entities": "enabled",
+        "generate_metadata": "disabled",
+        "stock_enabled": "enabled",
+        "save_to_db": true,
+        "generate_timeline": true,
+        "voiceover_enabled": "enabled",
+        "voiceover_group": "Velox Max",
+        "voiceover_folder_id": "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A",
+        "languages": [
+          "en"
+        ],
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "brooklyn-origins",
+            "asset_id": "yt_LkWU9lB2zEQ_2550_2610_v1",
+            "name": "Brooklyn, childhood and first contact with boxing",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "cus-damato",
+            "asset_id": "yt_LkWU9lB2zEQ_2433_2493_v1",
+            "name": "Cus D’Amato, Catskill and the training relationship",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "professional-debut",
+            "asset_id": "yt_X9G7Md8QI4k_145_200_v1",
+            "name": "Professional debut and rapid rise",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 55000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "unifying-titles",
+            "asset_id": "yt_TkDjL0y2v9M_225_270_v1",
+            "name": "Winning and unifying heavyweight titles",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 45000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "spinks-peak",
+            "asset_id": "yt_hd3YpR-BlfQ_995_1009_v1",
+            "name": "The 1988 title defenses and Michael Spinks fight",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 14000
+          },
+          {
+            "index": 5,
+            "scene_id": "scene-5",
+            "segment_id": "tokyo-loss",
+            "asset_id": "yt_hd3YpR-BlfQ_1052_1112_v1",
+            "name": "The Tokyo defeat and return to competition",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          },
+          {
+            "index": 6,
+            "scene_id": "scene-6",
+            "segment_id": "legal-consequences",
+            "asset_id": "yt_6VtSrG1hs9U_183_243_v1",
+            "name": "Legal case, conviction and return after prison",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          },
+          {
+            "index": 7,
+            "scene_id": "scene-7",
+            "segment_id": "comeback-later-career",
+            "asset_id": "yt_bLYl0zdRl3Y_151_211_v1",
+            "name": "The comeback, Holyfield fights and end of the boxing career",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          }
+        ]
+      },
+      "overlay_style": {
+        "font_family": "oswald",
+        "stroke_size": 3
+      },
+      "map_presentation": {
+        "enabled": false
+      },
+      "max_phrase_overlays": 18,
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "voiceover_languages": [
+          "en"
+        ],
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "mix_policy": "VOICEOVER_ONLY",
+        "background_music": [
+          {
+            "asset_id": "bgm6",
+            "end": "video_end",
+            "loop": true,
+            "gain_db": -30,
+            "fade_in_ms": 800,
+            "fade_out_ms": 1200,
+            "duck_under_voiceover": true,
+            "duck_gain_db": -34,
+            "duck_attack_ms": 120,
+            "duck_release_ms": 500
+          }
+        ]
+      },
+      "docs": {
+        "enabled": false
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "locations",
+            "dates",
+            "important_phrases",
+            "important_words"
+          ],
+          "max_important_phrases_per_segment": 8,
+          "max_important_words_per_segment": 8,
+          "image_search_mode": "disabled",
+          "entity_images": {},
+          "max_entities_per_segment": 0
+        },
+        "force_refresh_assets": true,
+        "planner": {
+          "candidate_limit": 16,
+          "max_images_per_scene": 2
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true
+      },
+      "intro": {
+        "clip_ids": [
+          "yt_X9G7Md8QI4k_80_135_v1"
+        ],
+        "title": "Iron Mike: one presence, one ring",
+        "display_text": "One name. One ring. Iron Mike.",
+        "playback": {
+          "audio_mode": "silence"
+        }
+      }
+    },
+    {
+      "id": "mike-tyson-stage0-it",
+      "overlay_categories": {
+        "images": "disabled",
+        "maps": "disabled",
+        "phrases": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "titles": "disabled",
+        "bullets": "disabled"
+      },
+      "title": "Mike Tyson — origini, ascesa e svolta",
+      "project": "mike-tyson-stage0-2lang",
+      "channel_id": "boxe",
+      "language": "it",
+      "tone": "playful, energetic, accurate documentary rap",
+      "style": "Scrivi la narrazione in italiano con Gemma. Ogni scena deve avere 450–750 parole, obiettivo circa 500. Usa solo i fatti forniti nella scena e nella fonte generale. Non inventare dialoghi, citazioni, date, statistiche, motivazioni, stati interiori o dettagli biografici. Non riempire con ripetizioni. Mantieni la cronologia e distingui i fatti dalle interpretazioni.",
+      "model": "gemma4:e4b",
+      "translation": {},
+      "media_mode": "stock_only",
+      "source": {
+        "type": "text",
+        "topic": "La vita e la carriera pugilistica di Mike Tyson, da Brooklyn agli ultimi incontri",
+        "source_text": "Mike Tyson nacque a Brooklyn, New York, il 30 giugno 1966. La cronologia del press kit Sony Pictures per TYSON riferisce che, a dodici anni, fu mandato alla Tryon School for Boys dopo un arresto per furto di una borsa. Nel 1979 un istruttore di boxe della struttura dello Stato di New York lo fece conoscere a Cus D’Amato. Attieniti a questi fatti pubblici e datati: non inventare scene private, dialoghi, motivazioni o citazioni.\n\nCus D’Amato aveva guidato Floyd Patterson al titolo dei pesi massimi. Nel 1984 divenne tutore legale di Tyson. Tyson si allenò a Catskill, nello Stato di New York, sotto la sua guida. D’Amato morì di polmonite il 4 novembre 1985, prima che Tyson conquistasse un titolo mondiale. Spiega la sequenza documentata del rapporto tra allenatore e tutore senza inventare routine di allenamento o conversazioni private.\n\nTyson debuttò da professionista il 6 marzo 1985 contro Hector Mercedes e vinse al primo round. Il 22 novembre 1986 sconfisse il campione WBC Trevor Berbick per KO al secondo round. A vent’anni diventò il più giovane campione dei pesi massimi della storia. Mantieni corretti date, avversario, risultato, titolo ed età; non inventare azioni round per round o stati d’animo privati.\n\nNel 1987 Tyson aggiunse il titolo WBA sconfiggendo James Smith, difese contro Pinklon Thomas e poi batté Tony Tucker il 1º agosto per conquistare il titolo IBF. La cronologia Sony Pictures lo indica come il primo peso massimo a detenere contemporaneamente le cinture WBA, WBC e IBF. In ottobre difese il titolo contro Tyrell Biggs ad Atlantic City. Distingui chiaramente le vittorie per un nuovo titolo dalle difese.\n\nTyson difese il titolo dei pesi massimi contro Larry Holmes nel gennaio 1988 e Tony Tubbs a marzo. Il 27 giugno 1988 affrontò Michael Spinks e vinse in 91 secondi, mantenendo il titolo mondiale. Concentrati sui fatti sportivi pubblici e sul posto dell’incontro con Spinks nella cronologia dei titoli. Evita tattiche o dialoghi inventati.\n\nL’11 febbraio 1990 James Buster Douglas mise Tyson KO al decimo round e conquistò il titolo mondiale dei pesi massimi a Tokyo. In seguito Tyson vinse al primo round contro Henry Tillman a giugno e Alex Stewart a dicembre 1990. Nel 1991 affrontò Donovan Ruddock. Descrivi la vittoria di Douglas come un suo risultato e come una svolta importante nella carriera di Tyson; non fare supposizioni sulle condizioni o sulle motivazioni di Tyson.\n\nNel 1992 Tyson fu riconosciuto colpevole in Indiana di stupro e di due capi di condotta sessuale deviante e condannato a dieci anni, di cui quattro sospesi. La cronologia riferisce che la condanna fu confermata in appello nel 1993 e che Tyson uscì dal carcere il 25 marzo 1995. Riporta con precisione e neutralità la condanna e la pena. Non suggerire che la condanna sia stata annullata né minimizzare il reato.\n\nDopo la scarcerazione, Tyson tornò a combattere nel 1995. Nel 1996 conquistò il titolo WBC contro Frank Bruno e il titolo WBA contro Bruce Seldon. Evander Holyfield lo sconfisse nel novembre 1996. Nella rivincita del giugno 1997 Tyson fu squalificato al terzo round dopo aver morso le orecchie di Holyfield; la commissione del Nevada gli revocò la licenza e gli impose una multa. Tyson tornò poi a combattere. L’11 giugno 2005 non uscì per il settimo round contro Kevin McBride e disse che non avrebbe più combattuto.",
+        "cache": {
+          "mode": "disabled"
+        }
+      },
+      "script_params": {
+        "target_words": 4000,
+        "concurrency": 1,
+        "segment_words": 500,
+        "segments": [
+          {
+            "id": "brooklyn-origins",
+            "kind": "narration",
+            "topic": "Brooklyn, infanzia e primo incontro con la boxe",
+            "source_text": "Mike Tyson nacque a Brooklyn, New York, il 30 giugno 1966. La cronologia del press kit Sony Pictures per TYSON riferisce che, a dodici anni, fu mandato alla Tryon School for Boys dopo un arresto per furto di una borsa. Nel 1979 un istruttore di boxe della struttura dello Stato di New York lo fece conoscere a Cus D’Amato. Attieniti a questi fatti pubblici e datati: non inventare scene private, dialoghi, motivazioni o citazioni.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "cus-damato",
+            "kind": "narration",
+            "topic": "Cus D’Amato, Catskill e il rapporto di allenamento",
+            "source_text": "Cus D’Amato aveva guidato Floyd Patterson al titolo dei pesi massimi. Nel 1984 divenne tutore legale di Tyson. Tyson si allenò a Catskill, nello Stato di New York, sotto la sua guida. D’Amato morì di polmonite il 4 novembre 1985, prima che Tyson conquistasse un titolo mondiale. Spiega la sequenza documentata del rapporto tra allenatore e tutore senza inventare routine di allenamento o conversazioni private.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "professional-debut",
+            "kind": "narration",
+            "topic": "Debutto da professionista e rapida ascesa",
+            "source_text": "Tyson debuttò da professionista il 6 marzo 1985 contro Hector Mercedes e vinse al primo round. Il 22 novembre 1986 sconfisse il campione WBC Trevor Berbick per KO al secondo round. A vent’anni diventò il più giovane campione dei pesi massimi della storia. Mantieni corretti date, avversario, risultato, titolo ed età; non inventare azioni round per round o stati d’animo privati.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "unifying-titles",
+            "kind": "narration",
+            "topic": "Conquista e unificazione dei titoli dei pesi massimi",
+            "source_text": "Nel 1987 Tyson aggiunse il titolo WBA sconfiggendo James Smith, difese contro Pinklon Thomas e poi batté Tony Tucker il 1º agosto per conquistare il titolo IBF. La cronologia Sony Pictures lo indica come il primo peso massimo a detenere contemporaneamente le cinture WBA, WBC e IBF. In ottobre difese il titolo contro Tyrell Biggs ad Atlantic City. Distingui chiaramente le vittorie per un nuovo titolo dalle difese.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "spinks-peak",
+            "kind": "narration",
+            "topic": "Le difese del titolo nel 1988 e l’incontro con Michael Spinks",
+            "source_text": "Tyson difese il titolo dei pesi massimi contro Larry Holmes nel gennaio 1988 e Tony Tubbs a marzo. Il 27 giugno 1988 affrontò Michael Spinks e vinse in 91 secondi, mantenendo il titolo mondiale. Concentrati sui fatti sportivi pubblici e sul posto dell’incontro con Spinks nella cronologia dei titoli. Evita tattiche o dialoghi inventati.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "tokyo-loss",
+            "kind": "narration",
+            "topic": "La sconfitta a Tokyo e il ritorno alle gare",
+            "source_text": "L’11 febbraio 1990 James Buster Douglas mise Tyson KO al decimo round e conquistò il titolo mondiale dei pesi massimi a Tokyo. In seguito Tyson vinse al primo round contro Henry Tillman a giugno e Alex Stewart a dicembre 1990. Nel 1991 affrontò Donovan Ruddock. Descrivi la vittoria di Douglas come un suo risultato e come una svolta importante nella carriera di Tyson; non fare supposizioni sulle condizioni o sulle motivazioni di Tyson.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "legal-consequences",
+            "kind": "narration",
+            "topic": "Il caso giudiziario, la condanna e il rientro dopo il carcere",
+            "source_text": "Nel 1992 Tyson fu riconosciuto colpevole in Indiana di stupro e di due capi di condotta sessuale deviante e condannato a dieci anni, di cui quattro sospesi. La cronologia riferisce che la condanna fu confermata in appello nel 1993 e che Tyson uscì dal carcere il 25 marzo 1995. Riporta con precisione e neutralità la condanna e la pena. Non suggerire che la condanna sia stata annullata né minimizzare il reato.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          },
+          {
+            "id": "comeback-later-career",
+            "kind": "narration",
+            "topic": "Il ritorno, gli incontri con Holyfield e la fine della carriera pugilistica",
+            "source_text": "Dopo la scarcerazione, Tyson tornò a combattere nel 1995. Nel 1996 conquistò il titolo WBC contro Frank Bruno e il titolo WBA contro Bruce Seldon. Evander Holyfield lo sconfisse nel novembre 1996. Nella rivincita del giugno 1997 Tyson fu squalificato al terzo round dopo aver morso le orecchie di Holyfield; la commissione del Nevada gli revocò la licenza e gli impose una multa. Tyson tornò poi a combattere. L’11 giugno 2005 non uscì per il settimo round contro Kevin McBride e disse che non avrebbe più combattuto.",
+            "target_words": 500,
+            "min_words": 450,
+            "max_words": 750,
+            "extract_entities": "enabled",
+            "overlay_categories": {
+              "images": "disabled",
+              "maps": "disabled",
+              "phrases": "disabled",
+              "numbers": "disabled",
+              "quotes": "disabled",
+              "titles": "disabled",
+              "bullets": "disabled"
+            }
+          }
+        ],
+        "style": "Narrazione documentaria, chiara e misurata. Ogni scena deve avere 450–750 parole, obiettivo circa 500. Usa solo fatti contenuti nelle fonti e nel brief della scena; non aggiungere dettagli biografici, dialoghi, citazioni, numeri, date o motivazioni private non documentati.",
+        "guidelines": "Scrivi un paragrafo completo per ciascuna scena, nell’ordine dato. Mantieni ogni scena tra 450 e 750 parole, intorno a 500. Usa un italiano fluido. Non aggiungere testo ripetitivo per raggiungere la lunghezza; se le fonti non bastano, segnala il limite senza inventare fatti.",
+        "min_words": 3600
+      },
+      "output": {
+        "render": {
+          "enabled": true,
+          "background": {
+            "mode": "none"
+          },
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "style_id": "subs-young"
+          },
+          "effects": [
+            {
+              "type": "scanlines",
+              "amount": 0.12,
+              "wavelength": 0.025
+            }
+          ],
+          "render_concurrency": 1,
+          "drive_folder_id": "1ZmAX9JyizG1hnuYWxlj73mYxvjFI8gqE",
+          "drive_subfolder_name": "Mike Tyson stage0 500w stock intro it 2026-11-28"
+        },
+        "extract_entities": "enabled",
+        "generate_metadata": "disabled",
+        "stock_enabled": "enabled",
+        "save_to_db": true,
+        "generate_timeline": true,
+        "voiceover_enabled": "enabled",
+        "voiceover_group": "Velox Max",
+        "voiceover_folder_id": "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A",
+        "languages": [
+          "it"
+        ],
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "brooklyn-origins",
+            "asset_id": "yt_LkWU9lB2zEQ_2550_2610_v1",
+            "name": "Brooklyn, childhood and first contact with boxing",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          },
+          {
+            "index": 1,
+            "scene_id": "scene-1",
+            "segment_id": "cus-damato",
+            "asset_id": "yt_LkWU9lB2zEQ_2433_2493_v1",
+            "name": "Cus D’Amato, Catskill and the training relationship",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          },
+          {
+            "index": 2,
+            "scene_id": "scene-2",
+            "segment_id": "professional-debut",
+            "asset_id": "yt_X9G7Md8QI4k_145_200_v1",
+            "name": "Professional debut and rapid rise",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 55000
+          },
+          {
+            "index": 3,
+            "scene_id": "scene-3",
+            "segment_id": "unifying-titles",
+            "asset_id": "yt_TkDjL0y2v9M_225_270_v1",
+            "name": "Winning and unifying heavyweight titles",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 45000
+          },
+          {
+            "index": 4,
+            "scene_id": "scene-4",
+            "segment_id": "spinks-peak",
+            "asset_id": "yt_hd3YpR-BlfQ_995_1009_v1",
+            "name": "The 1988 title defenses and Michael Spinks fight",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 14000
+          },
+          {
+            "index": 5,
+            "scene_id": "scene-5",
+            "segment_id": "tokyo-loss",
+            "asset_id": "yt_hd3YpR-BlfQ_1052_1112_v1",
+            "name": "The Tokyo defeat and return to competition",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          },
+          {
+            "index": 6,
+            "scene_id": "scene-6",
+            "segment_id": "legal-consequences",
+            "asset_id": "yt_6VtSrG1hs9U_183_243_v1",
+            "name": "Legal case, conviction and return after prison",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          },
+          {
+            "index": 7,
+            "scene_id": "scene-7",
+            "segment_id": "comeback-later-career",
+            "asset_id": "yt_bLYl0zdRl3Y_151_211_v1",
+            "name": "The comeback, Holyfield fights and end of the boxing career",
+            "source": "youtube",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "end_ms": 60000
+          }
+        ]
+      },
+      "overlay_style": {
+        "font_family": "oswald",
+        "stroke_size": 3
+      },
+      "map_presentation": {
+        "enabled": false
+      },
+      "max_phrase_overlays": 18,
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "voiceover_languages": [
+          "it"
+        ],
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        },
+        "mix_policy": "VOICEOVER_ONLY",
+        "background_music": [
+          {
+            "asset_id": "bgm6",
+            "end": "video_end",
+            "loop": true,
+            "gain_db": -30,
+            "fade_in_ms": 800,
+            "fade_out_ms": 1200,
+            "duck_under_voiceover": true,
+            "duck_gain_db": -34,
+            "duck_attack_ms": 120,
+            "duck_release_ms": 500
+          }
+        ]
+      },
+      "docs": {
+        "enabled": false
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "internet_images": "disabled",
+          "image_generation": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "include": [
+            "locations",
+            "dates",
+            "important_phrases",
+            "important_words"
+          ],
+          "max_important_phrases_per_segment": 8,
+          "max_important_words_per_segment": 8,
+          "image_search_mode": "disabled",
+          "entity_images": {},
+          "max_entities_per_segment": 0
+        },
+        "force_refresh_assets": true,
+        "planner": {
+          "candidate_limit": 16,
+          "max_images_per_scene": 2
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true
+      },
+      "intro": {
+        "clip_ids": [
+          "yt_X9G7Md8QI4k_80_135_v1"
+        ],
+        "title": "Iron Mike: una presenza, un ring",
+        "display_text": "Un nome. Un ring. Iron Mike.",
+        "playback": {
+          "audio_mode": "silence"
+        }
+      }
+    }
+  ]
+}

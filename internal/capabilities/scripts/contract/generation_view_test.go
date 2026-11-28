@@ -32,6 +32,7 @@ func TestGenerationViewProjectsRequest(t *testing.T) {
 		EntityBadgeColor:       "#ffffff",
 		DisableChartOverlays:   true,
 		EnableCharts:           true,
+		EnableEditorialCompositions: true,
 		HeavyPhrasePriority:    0.8,
 		ScriptParams:           scriptpkg.ScriptSpec{TargetWords: 900},
 		SourceLanguage:         "it",
@@ -61,6 +62,7 @@ func TestGenerationViewProjectsRequest(t *testing.T) {
 		got.EntityBadgeColor != req.EntityBadgeColor ||
 		got.DisableChartOverlays != req.DisableChartOverlays ||
 		got.EnableCharts != req.EnableCharts ||
+		got.EnableEditorialCompositions != req.EnableEditorialCompositions ||
 		got.HeavyPhrasePriority != req.HeavyPhrasePriority ||
 		got.SourceLanguage != req.SourceLanguage ||
 		!reflect.DeepEqual(got.Languages, req.Languages) ||

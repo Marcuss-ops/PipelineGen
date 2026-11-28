@@ -339,7 +339,11 @@ func (e *Engine) generateSegment(
 		if len(candidate) > 1 {
 			candidate = []string{strings.Join(candidate, " ")}
 		}
+		actualWords := 0
+		draft := ""
 		if len(candidate) == 1 {
+			draft = candidate[0]
+			actualWords = textutil.CountWords(draft)
 			acceptedText = candidate[0]
 			// Short clip narrations on e2b are intentionally latency-first:
 			// a non-empty answer is useful even when it misses the editorial
@@ -388,11 +392,21 @@ func (e *Engine) generateSegment(
 		// is ignored (rendered from SharedPrefix/SegmentAssignment), so
 		// the repair was silent. Route it to the layout in use and
 		// rebuild from the base instead of accumulating.
+		missingWords := budget.RequestedMin - actualWords
+		if missingWords < 0 {
+			missingWords = 0
+		}
 		var repairSuffix string
-		if budget.Max > 0 {
-			repairSuffix = fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target %d) and no more than the explicitly requested %d words. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target, budget.Max)
+		if draft != "" && actualWords >= budget.RequestedMin/2 && actualWords < budget.RequestedMin {
+			maxInstruction := "There is no maximum word count."
+			if budget.Max > 0 {
+				maxInstruction = fmt.Sprintf("Do not exceed %d words.", budget.Max)
+			}
+			repairSuffix = fmt.Sprintf("\n\nThe previous draft has %d words and is short by %d words. Expand and improve this existing draft into one paragraph of at least %d words (target about %d), preserving its accurate content. Add only supported context from the scene and global source; do not invent facts, repeat ideas, or add filler. %s Return only the completed paragraph, with no heading or second paragraph.\n\nExisting draft to continue:\n%s", actualWords, missingWords, budget.RequestedMin, budget.Target, maxInstruction, draft)
+		} else if budget.Max > 0 {
+			repairSuffix = fmt.Sprintf("\n\nThe previous attempt produced %d words and is short by %d words. Regenerate only this segment as one paragraph with at least %d words (target %d) and no more than %d words. Use only supported source facts; do not invent, repeat, or add filler. Do not add headings or a second paragraph.", actualWords, missingWords, budget.RequestedMin, budget.Target, budget.Max)
 		} else {
-			repairSuffix = fmt.Sprintf("\n\nRegenerate only this segment. Return one paragraph of at least %d words (target about %d). There is no maximum word count. Do not add headings or a second paragraph.", budget.RequestedMin, budget.Target)
+			repairSuffix = fmt.Sprintf("\n\nThe previous attempt produced %d words and is short by %d words. Regenerate only this segment as one paragraph with at least %d words (target about %d). There is no maximum word count. Use only supported source facts; do not invent, repeat, or add filler. Do not add headings or a second paragraph.", actualWords, missingWords, budget.RequestedMin, budget.Target)
 		}
 		if useSharedPrefix {
 			segmentReq.SegmentAssignment = baseRepairAssignment + repairSuffix
@@ -538,14 +552,12 @@ func relaxedShortClipQuality(plan *scriptpkg.ResolvedGenerationPlan) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(plan.Model)), "e2b")
 }
 
-// relaxedStockOnlyQuality keeps folder-backed stock jobs available when a
-// small local model returns a short but non-empty narration. Stock-only
-// generation has no clip-evidence rewrite contract to protect; rejecting the
-// whole job for a soft word-budget miss would also prevent the independent
-// stock prefetch and render stages from running. Explicit max_words remains a
+// relaxedStockOnlyQuality keeps short stock-only jobs available when a small
+// local model returns a short but non-empty narration. Long-form scene targets
+// remain subject to their requested word budget. Explicit max_words remains a
 // hard safety boundary.
 func relaxedStockOnlyQuality(plan *scriptpkg.ResolvedGenerationPlan, text string, budget segmentBudget) bool {
-	if plan == nil || plan.MediaMode != scriptpkg.MediaModeStockOnly || strings.TrimSpace(text) == "" {
+	if plan == nil || plan.MediaMode != scriptpkg.MediaModeStockOnly || budget.Target > 300 || strings.TrimSpace(text) == "" {
 		return false
 	}
 	return budget.Max <= 0 || textutil.CountWords(text) <= budget.Max
