@@ -12,14 +12,36 @@ import (
 // result types intentionally differ, so JSON round-tripping one into the
 // other silently loses scenes; keep this translation explicit.
 func DurableResultToDomain(in *contract.GenerateResult) *domain.GenerationResult {
+	return DurableResultToDomainForLanguage(in, "")
+}
+
+// DurableResultToDomainForLanguage projects one language child using its
+// explicit target language. Scene text is the localized source of truth; the
+// top-level output is rebuilt from that same projection when it is available.
+func DurableResultToDomainForLanguage(in *contract.GenerateResult, language string) *domain.GenerationResult {
 	if in == nil {
 		return nil
 	}
-	outputText := strings.TrimSpace(in.Output.Text)
-	if outputText == "" {
+	explicitLanguage := strings.TrimSpace(language) != ""
+	lang := strings.ToLower(strings.TrimSpace(language))
+	if lang == "" {
+		lang = string(inLanguage(in))
+	}
+	localizedText := ""
+	if explicitLanguage {
+		localizedText = strings.TrimSpace(localizedScenesText(in, contract.Language(lang)))
+	}
+	outputText := localizedText
+	if outputText == "" && (!explicitLanguage || len(in.Scenes) == 0) {
+		outputText = strings.TrimSpace(in.Output.Text)
+	}
+	if outputText == "" && !explicitLanguage {
 		outputText = scenesText(in)
 	}
 	wordCount := in.Output.WordCount
+	if localizedText != "" || (explicitLanguage && len(in.Scenes) > 0) {
+		wordCount = len(strings.Fields(outputText))
+	}
 	if wordCount <= 0 {
 		wordCount = in.WordCount
 	}
@@ -27,7 +49,7 @@ func DurableResultToDomain(in *contract.GenerateResult) *domain.GenerationResult
 		wordCount = len(strings.Fields(outputText))
 	}
 	out := &domain.GenerationResult{
-		Title: in.Title, Language: string(inLanguage(in)), VoiceoverGroup: in.VoiceoverGroup, AudioMode: string(in.AudioMode),
+		Title: in.Title, Language: lang, VoiceoverGroup: in.VoiceoverGroup, AudioMode: string(in.AudioMode),
 		AudioStrategy: string(in.AudioStrategy),
 		Source:        in.SourceTrace,
 		// The durable lane's workflow-progress projection travels with the
@@ -41,10 +63,9 @@ func DurableResultToDomain(in *contract.GenerateResult) *domain.GenerationResult
 	out.Output.SpecScene.Render = in.Render
 	out.Output.SpecScene.Render.Normalize()
 	out.Output.SpecScene.Scenes = make([]domain.SpecScene, 0, len(in.Scenes))
-	lang := string(inLanguage(in))
 	for _, scene := range in.Scenes {
 		text := scene.Text[contract.Language(lang)]
-		if text == "" && !scene.ExecutionMode.IsFixedMedia() {
+		if text == "" && !explicitLanguage && !scene.ExecutionMode.IsFixedMedia() {
 			for _, candidate := range scene.Text {
 				text = candidate
 				break
@@ -141,6 +162,24 @@ func DurableResultToDomain(in *contract.GenerateResult) *domain.GenerationResult
 	out.SceneHighlights = in.SceneHighlights
 	out.Editorial = in.Editorial
 	return out
+}
+
+func localizedScenesText(in *contract.GenerateResult, language contract.Language) string {
+	if in == nil || language == "" {
+		return ""
+	}
+	parts := make([]string, 0, len(in.Scenes))
+	for _, scene := range in.Scenes {
+		if scene.ExecutionMode.IsFixedMedia() {
+			continue
+		}
+		text := strings.TrimSpace(scene.Text[language])
+		if text == "" {
+			return ""
+		}
+		parts = append(parts, text)
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // durableVoiceoverBinding projects one durable AudioReference onto the legacy

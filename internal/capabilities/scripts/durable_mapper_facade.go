@@ -13,3 +13,9 @@ import (
 func DurableResultToDomain(in *contract.GenerateResult) *domain.GenerationResult {
 	return modelvalues.DurableResultToDomain(in)
 }
+
+// DurableResultToDomainForLanguage selects an explicit localized child
+// projection instead of relying on map iteration order.
+func DurableResultToDomainForLanguage(in *contract.GenerateResult, language string) *domain.GenerationResult {
+	return modelvalues.DurableResultToDomainForLanguage(in, language)
+}

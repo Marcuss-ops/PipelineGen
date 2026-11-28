@@ -80,7 +80,11 @@ func (h *GenerateJobHandler) executeFinalJobLanguageRuns(
 			err := fmt.Errorf("language %s run completed without a successful final video receipt", language)
 			return h.failLanguageParent(ctx, parent.ID, language, err)
 		}
-		domainResult := scriptgen.DurableResultToDomain(child.Result)
+		domainResult := scriptgen.DurableResultToDomainForLanguage(child.Result, language)
+		if strings.TrimSpace(child.Result.Output.Text) != "" && strings.TrimSpace(domainResult.Output.Text) == "" {
+			return h.failLanguageParent(ctx, parent.ID, language,
+				fmt.Errorf("language %s run %s has no complete scene-text projection", language, childID))
+		}
 		languageArtifacts, persistErr := processor.PersistGeneratedArtifacts(ctx, j.ID+"-"+language, domainResult, h.log)
 		if persistErr != nil {
 			return h.failLanguageParent(ctx, parent.ID, language, fmt.Errorf("persist language artifacts: %w", persistErr))
