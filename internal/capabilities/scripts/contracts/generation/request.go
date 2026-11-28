@@ -23,6 +23,7 @@ type Request struct {
 
 	ShortPhraseMotion             string                                         `json:"short_phrase_motion,omitempty"`
 	PhraseMotionFamily            string                                         `json:"phrase_motion_family,omitempty"`
+	ChapterOverlay                *scriptpkg.ChapterOverlaySpec                  `json:"chapter_overlay,omitempty"`
 	EditorialBulletStyles         []scriptpkg.EditorialBulletStyle               `json:"editorial_bullet_styles,omitempty"`
 	DateMotionFamily              string                                         `json:"date_motion_family,omitempty"`
 	MotionSeed                    string                                         `json:"motion_seed,omitempty"`

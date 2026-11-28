@@ -99,9 +99,14 @@ type OverlayPlan struct {
 	// Background is an optional full-canvas layer rendered below every
 	// semantic overlay. When omitted, the source video remains visible below
 	// the overlays (the legacy behaviour).
-	Background  *OverlayBackground `json:"background,omitempty"`
-	Items       []OverlayItem      `json:"items"`
-	Fingerprint string             `json:"fingerprint,omitempty"`
+	Background *OverlayBackground `json:"background,omitempty"`
+	// SceneBackgrounds carries producer-local video plates for isolated child
+	// renders. It is deliberately excluded from the RenderingGen wire plan:
+	// separateOverlayItemPlan selects the one scene-specific plate and projects
+	// it into the child Background field before dispatch.
+	SceneBackgrounds map[string]*OverlayBackground `json:"-"`
+	Items            []OverlayItem                 `json:"items"`
+	Fingerprint      string                        `json:"fingerprint,omitempty"`
 	// RecapPlacements counts the recap slots BuildPlan attempted; RecapCards
 	// counts recap items surviving in Items after overlap degradation.
 	// Application-only observability (like DriveJobID below): excluded from

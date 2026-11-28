@@ -996,5 +996,122 @@
       "year",
       "years"
     ]
+  },
+  "motion_capabilities": {
+    "schema_version": "motion_capabilities.v1",
+    "catalog_revision": "editorial-composition-2026-11-28",
+    "description": "Declared motion capabilities for linked editorial compositions. Every motion_id is an animation_registry.v1 id (active, renderer_supported); participation in a chain or a persistent hold is declared here and never inferred from an id prefix. The Chronon registry remains the owner of the definitions.",
+    "motions": [
+      {
+        "motion_id": "short_phrase_burst",
+        "family": "text_phrase",
+        "target": "phrase",
+        "supports_chain": false,
+        "supports_shared_canvas": false,
+        "supports_persistent_hold": false
+      },
+      {
+        "motion_id": "short_phrase_editorial_focus_resolve",
+        "family": "text_phrase",
+        "target": "phrase",
+        "supports_chain": true,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": true,
+        "max_hold_us": 9000000
+      },
+      {
+        "motion_id": "short_phrase_editorial_contrast_sweep",
+        "family": "text_phrase",
+        "target": "phrase",
+        "supports_chain": true,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": true,
+        "max_hold_us": 9000000
+      },
+      {
+        "motion_id": "typewriter_glyph_square_short",
+        "family": "text_phrase",
+        "target": "phrase",
+        "supports_chain": false,
+        "supports_shared_canvas": false,
+        "supports_persistent_hold": false
+      },
+      {
+        "motion_id": "doc_04_archival_source_highlight",
+        "family": "phrase_documentary",
+        "target": "phrase",
+        "supports_chain": true,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": false
+      },
+      {
+        "motion_id": "doc_05_selective_phrase_tracking",
+        "family": "phrase_documentary",
+        "target": "phrase",
+        "supports_chain": true,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": true,
+        "max_hold_us": 9000000
+      },
+      {
+        "motion_id": "image_focus_reveal",
+        "family": "image",
+        "target": "image",
+        "supports_chain": true,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": true,
+        "max_hold_us": 12000000
+      },
+      {
+        "motion_id": "image_scale_reveal",
+        "family": "image",
+        "target": "map_callout",
+        "supports_chain": false,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": false
+      },
+      {
+        "motion_id": "date_didone_era_settle",
+        "family": "date",
+        "target": "date",
+        "supports_chain": false,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": true,
+        "max_hold_us": 8000000
+      },
+      {
+        "motion_id": "date_typewriter_year_type",
+        "family": "date",
+        "target": "date",
+        "supports_chain": false,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": false
+      },
+      {
+        "motion_id": "metric_odometer_vertical",
+        "family": "metric",
+        "target": "metric",
+        "supports_chain": false,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": false
+      },
+      {
+        "motion_id": "text_word_rise",
+        "family": "caption",
+        "target": "caption",
+        "supports_chain": false,
+        "supports_shared_canvas": true,
+        "supports_persistent_hold": true,
+        "max_hold_us": 12000000
+      },
+      {
+        "motion_id": "map_image_dark_map_italy_radar_lock",
+        "family": "map",
+        "target": "map",
+        "supports_chain": false,
+        "supports_shared_canvas": false,
+        "supports_persistent_hold": false
+      }
+    ]
   }
 }

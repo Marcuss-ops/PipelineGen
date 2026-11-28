@@ -1,0 +1,50 @@
+{
+  "schema_version": "editorial_layers.v1",
+  "composition_id": "comp_fixture",
+  "scene_id": "scene_01",
+  "window": {
+    "start_us": 0,
+    "duration_us": 10000000
+  },
+  "layers": [
+    {
+      "layer_id": "chart_01",
+      "member_id": "chart_01",
+      "role": "chart",
+      "start_us": 1000000,
+      "duration_us": 5000000,
+      "z": 10,
+      "text": "Giappone",
+      "chart": {
+        "member_id": "chart_01",
+        "kind": "chart",
+        "start_us": 1000000,
+        "duration_us": 5000000,
+        "subject": "Giappone",
+        "metric": "population",
+        "unit": "persons",
+        "layout": "animated_bar_comparison",
+        "points": [
+          {
+            "period": "2005",
+            "value": 56000000,
+            "unit": "persons",
+            "scene_id": "scene_01",
+            "evidence": {
+              "text": "56 milioni nel 2005"
+            }
+          },
+          {
+            "period": "2015",
+            "value": 70000000,
+            "unit": "persons",
+            "scene_id": "scene_01",
+            "evidence": {
+              "text": "70 milioni nel 2015"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

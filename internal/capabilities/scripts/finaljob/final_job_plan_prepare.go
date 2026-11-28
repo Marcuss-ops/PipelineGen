@@ -178,14 +178,11 @@ func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPla
 		// producer role. Keep the source's worker-facing role when replacing the
 		// source bytes; otherwise Master defaults the new video fragment to its
 		// audio asset namespace (and copy-only mux rejects the decoder config).
-		switch strings.ToLower(strings.TrimSpace(FinalJobStringValue(source["role"]))) {
-		case "overlay_timeline":
-			ref["role"] = "overlay"
-		case "clip", "overlay":
-			ref["role"] = strings.ToLower(strings.TrimSpace(FinalJobStringValue(source["role"])))
-		default:
-			return nil, fmt.Errorf("final_job segment %q has unsupported source role %q", segment.SegmentID, FinalJobStringValue(source["role"]))
+		role, roleErr := finalJobPreparedSegmentRole(segment.SegmentID, source)
+		if roleErr != nil {
+			return nil, roleErr
 		}
+		ref["role"] = role
 		// One runtime reference per asset: every placement owns its own object,
 		// so FINALIZE receives unique ids without duplicating work.
 		typedRef, err := finaljob.RuntimeAssetFromMap(ref)
@@ -285,6 +282,22 @@ func prepareFinalJobVideoSegments(ctx context.Context, plan *FinalJobCompiledPla
 		return nil, err
 	}
 	return preparedRefs, nil
+}
+
+// finalJobPreparedSegmentRole maps the source role onto the role the Master
+// expects on a prepared video fragment. The vocabulary is closed: an unknown
+// role would leave the fragment in the audio asset namespace, where the
+// copy-only mux rejects it.
+func finalJobPreparedSegmentRole(segmentID string, source map[string]any) (string, error) {
+	role := strings.ToLower(strings.TrimSpace(FinalJobStringValue(source["role"])))
+	switch role {
+	case "overlay_timeline":
+		return "overlay", nil
+	case "clip", "overlay":
+		return role, nil
+	default:
+		return "", fmt.Errorf("final_job segment %q has unsupported source role %q", segmentID, FinalJobStringValue(source["role"]))
+	}
 }
 
 // FinalJob segment reasons. They name the authority that owns a placement's

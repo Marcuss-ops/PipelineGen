@@ -1,0 +1,31 @@
+{
+  "schema_version": "editorial_layers.v1",
+  "composition_id": "comp_fixture",
+  "scene_id": "scene_01",
+  "window": {
+    "start_us": 0,
+    "duration_us": 10000000
+  },
+  "layers": [
+    {
+      "layer_id": "chapter:comp_fixture",
+      "role": "chapter",
+      "start_us": 0,
+      "duration_us": 3500000,
+      "z": 40,
+      "chapter": {
+        "mode": "explicit",
+        "style_family": "documentary",
+        "duration_ms": 3500,
+        "grounding": "authored",
+        "titles": [
+          {
+            "scene_id": "scene_01",
+            "title": "La storia",
+            "chapter_number": 1
+          }
+        ]
+      }
+    }
+  ]
+}

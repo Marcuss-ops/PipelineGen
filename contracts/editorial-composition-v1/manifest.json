@@ -1,0 +1,90 @@
+{
+  "schema_version": "editorial-composition-corpus.v1",
+  "capabilities": "contracts/editorial-composition-v1/capabilities/motion_capabilities.json",
+  "fixtures": [
+    {
+      "id": "linked-persistent-background",
+      "source": "contracts/editorial-composition-v1/fixtures/linked-persistent-background.json",
+      "expect": "compiled",
+      "lowered": "contracts/editorial-composition-v1/lowered/linked-persistent-background.json",
+      "layers": 4
+    },
+    {
+      "id": "typed-chart-points",
+      "source": "contracts/editorial-composition-v1/fixtures/typed-chart-points.json",
+      "expect": "compiled",
+      "lowered": "contracts/editorial-composition-v1/lowered/typed-chart-points.json",
+      "layers": 1
+    },
+    {
+      "id": "map-photo-callout",
+      "source": "contracts/editorial-composition-v1/fixtures/map-photo-callout.json",
+      "expect": "compiled",
+      "lowered": "contracts/editorial-composition-v1/lowered/map-photo-callout.json",
+      "layers": 2
+    },
+    {
+      "id": "date-attached-to-image",
+      "source": "contracts/editorial-composition-v1/fixtures/date-attached-to-image.json",
+      "expect": "compiled",
+      "lowered": "contracts/editorial-composition-v1/lowered/date-attached-to-image.json",
+      "layers": 2
+    },
+    {
+      "id": "progressive-summary",
+      "source": "contracts/editorial-composition-v1/fixtures/progressive-summary.json",
+      "expect": "compiled",
+      "lowered": "contracts/editorial-composition-v1/lowered/progressive-summary.json",
+      "layers": 1
+    },
+    {
+      "id": "explicit-chapter-only",
+      "source": "contracts/editorial-composition-v1/fixtures/explicit-chapter-only.json",
+      "expect": "compiled",
+      "lowered": "contracts/editorial-composition-v1/lowered/explicit-chapter-only.json",
+      "layers": 1
+    },
+    {
+      "id": "standalone-date",
+      "source": "contracts/editorial-composition-v1/fixtures/standalone-date.json",
+      "expect": "compiled",
+      "lowered": "contracts/editorial-composition-v1/lowered/standalone-date.json",
+      "layers": 1
+    },
+    {
+      "id": "snapshot-without-digest",
+      "source": "contracts/editorial-composition-v1/fixtures/snapshot-without-digest.json",
+      "expect": "rejected",
+      "code": "snapshot_not_content_addressed",
+      "error_contains": "background.snapshot"
+    },
+    {
+      "id": "chart-without-points",
+      "source": "contracts/editorial-composition-v1/fixtures/chart-without-points.json",
+      "expect": "rejected",
+      "code": "chart_points_missing",
+      "error_contains": "members[0].points"
+    },
+    {
+      "id": "unverified-map-photo",
+      "source": "contracts/editorial-composition-v1/fixtures/unverified-map-photo.json",
+      "expect": "rejected",
+      "code": "map_callout_asset_unverified",
+      "error_contains": "callout.asset.sha256"
+    },
+    {
+      "id": "duplicate-attached-standalone-date",
+      "source": "contracts/editorial-composition-v1/fixtures/duplicate-attached-standalone-date.json",
+      "expect": "rejected",
+      "code": "duplicate_date_overlay",
+      "error_contains": "a date is attached"
+    },
+    {
+      "id": "non-chain-capable-motion",
+      "source": "contracts/editorial-composition-v1/fixtures/non-chain-capable-motion.json",
+      "expect": "rejected",
+      "code": "motion_not_chain_capable",
+      "error_contains": "short_phrase_burst"
+    }
+  ]
+}

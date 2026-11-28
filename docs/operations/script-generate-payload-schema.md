@@ -184,11 +184,12 @@ no pins; a pin `style` overrides it field by field. The `glow` block is
 image-only: it lowers to Chronon's native media glow effect and never changes
 caption text. `effects` attaches the same
 bounded native effect stack `output.render.effects` accepts (same type
-vocabulary, same parameter bounds, max 12 entries; `[{ "type": "none" }]`
-clears it). Each entry must supply the parameter that makes it visible —
-`amount` for `glitch`, `scanlines`, `chromatic_aberration`, `vignette`,
-`noise`, `sharpen`; `radius` for `gaussian_blur`; `block_size` for `mosaic`;
-`size` for `halftone`; `intensity` for `banded_grain`; one of
+vocabulary, same parameter bounds, max 12 entries; an empty array clears it).
+Each entry must supply the parameter that makes it visible —
+`amount` for `glitch`, `chromatic_aberration`, `vignette`, `sharpen`;
+both `amount` and `wavelength` for `scanlines`; both `amount` and `size` for
+`noise`; `radius` for `gaussian_blur`; `block_size` for `mosaic`; both `size`
+and `amount` for `halftone`; `intensity` for `banded_grain`; one of
 `radius`/`intensity` for `glow` and `bloom`; one of `curvature`/`scale` for
 `lens_distortion`. A type without it would render nothing, so it is rejected
 rather than shipped as decoration. Effects decorate the photographic surface
@@ -572,6 +573,24 @@ Visual overlay categories can also be selected with the item-level
 `default`; with no item setting the existing runtime defaults apply. Segment
 matching uses an explicit scene ID first, then its position when the segment
 has no ID (or the same ID as the generated scene).
+
+### Source and intro compatibility
+
+These intro fields have different jobs and are not interchangeable:
+
+| Payload field | Purpose | Compatible source shape |
+|---|---|---|
+| `items[].intro` | Fixed, non-narrated clip section with `clip_ids` and original-clip or silence playback. | Clip-bearing source (`clips`, `catalog`, `search`, `curate`) or `stock_only`. |
+| `items[].media_plan.intro` | Visual timeline slot (`mode`, optional ordered `clips`, duration/candidate limits). Manual clips can precede generated narrative scenes. | Also works with `source.type=text`; it does not turn the source into a clip-only script. |
+| `items[].overlay_categories` | Defaults for scene overlays such as images, maps and phrases; segments may override them. | Any source, subject to the scene and final-job constraints below. |
+
+For `source.type=clips`, bind every `kind=narration` segment to its own
+`clip_ids`; root `source.clip_ids` does not give a generated narration segment
+scene ownership. A clip-only `final_job` cannot fulfill
+`overlay_categories.images=enabled`, because final-job image overlays are
+compiled only for narrative scenes. Use `source.type=text` with narrative
+segments and `media_plan.intro` when the final job needs both intro clips and
+image/map overlays.
 
 `map_type` selects one basemap for the run. It is a version-2 spelling:
 version 3 rejects it in favour of `map_presentation.style`. The single map

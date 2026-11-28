@@ -229,7 +229,7 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 		if len(sceneInputs) == 0 {
 			return out, nil
 		}
-		semanticResult, impactRes, err := batch.AnalyzeSemanticEditorial(ctx, transcript, language, sceneInputs)
+		semanticResult, impactRes, err := batch.AnalyzeSemanticEditorial(ctx, transcript, language, sceneInputs, req.ChapterOverlay)
 		if err == nil {
 			r.adoptSemanticPlannerView(out, semanticResult, req)
 			out.summary = impactRes.Summary

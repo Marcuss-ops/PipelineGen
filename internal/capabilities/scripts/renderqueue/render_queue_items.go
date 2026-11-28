@@ -262,6 +262,12 @@ func separateOverlayItemPlan(parent capmodel.OverlayPlan, source capmodel.Overla
 	child.DurationMS = (targetUS + 999) / 1000
 	child.Fingerprint = ""
 	child.Items = []capmodel.OverlayItem{source}
+	if source.Map == nil && child.SceneBackgrounds != nil {
+		if background := child.SceneBackgrounds[strings.TrimSpace(source.SceneID)]; background != nil {
+			child.Background = cloneOverlayBackground(background)
+		}
+	}
+	child.SceneBackgrounds = nil
 	child.Items[0].StartUS = 0
 	child.Items[0].DurationUS = targetUS
 	child.Items[0].StartMs = 0
@@ -299,6 +305,26 @@ func separateOverlayItemPlan(parent capmodel.OverlayPlan, source capmodel.Overla
 		metadata.EntityIDs, metadata.EntityLabels = mapEntityLineage(source.Map)
 	}
 	return child, metadata, nil
+}
+
+func cloneOverlayBackground(source *capmodel.OverlayBackground) *capmodel.OverlayBackground {
+	if source == nil {
+		return nil
+	}
+	clone := *source
+	clone.Color = append([]float64(nil), source.Color...)
+	clone.AssetRefs = append([]capmodel.OverlayAssetRef(nil), source.AssetRefs...)
+	if source.Opacity != nil {
+		opacity := *source.Opacity
+		clone.Opacity = &opacity
+	}
+	if source.Style != nil {
+		clone.Style = make(map[string]any, len(source.Style))
+		for key, value := range source.Style {
+			clone.Style[key] = value
+		}
+	}
+	return &clone
 }
 
 func overlayItemChildPlanID(parentPlanID string, index int, itemID string) string {

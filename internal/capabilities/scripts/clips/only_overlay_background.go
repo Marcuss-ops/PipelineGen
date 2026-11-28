@@ -14,6 +14,7 @@ package clips
 import (
 	"strings"
 
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -57,6 +58,43 @@ func SingleClipOverlayBackground(req contract.GenerateRequest, result *contract.
 		Fit:       OverlayBackgroundPlateFit,
 		Loop:      true,
 	}
+}
+
+// SceneOverlayBackgrounds projects each verified source clip into a
+// producer-local background map for isolated final-job overlay renders. A
+// child render consumes only the plate matching its OverlayItem.SceneID.
+// Multi-clip scenes are accepted only when the scene has an authoritative
+// Clip pointer; a plural-only scene must have exactly one clip.
+func SceneOverlayBackgrounds(req contract.GenerateRequest, result *contract.GenerateResult) map[string]*capmodel.OverlayBackground {
+	if !req.FinalJob || req.MediaMode != scriptpkg.MediaModeClipOnly || result == nil {
+		return nil
+	}
+	backgrounds := make(map[string]*capmodel.OverlayBackground, len(result.Scenes))
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		sceneID := strings.TrimSpace(scene.ID)
+		clip := OverlaySceneClip(scene)
+		if sceneID == "" || clip == nil {
+			continue
+		}
+		assetID := strings.TrimSpace(clip.ID)
+		localPath := strings.TrimSpace(clip.Path)
+		sha256 := strings.TrimSpace(clip.SHA256)
+		if assetID == "" || localPath == "" || sha256 == "" {
+			continue
+		}
+		backgrounds[sceneID] = &capmodel.OverlayBackground{
+			Kind: "video",
+			AssetRefs: []capmodel.OverlayAssetRef{{
+				AssetID: assetID, LocalPath: localPath, SHA256: sha256, MediaType: "video/mp4",
+			}},
+			Fit: OverlayBackgroundPlateFit, Loop: true,
+		}
+	}
+	if len(backgrounds) == 0 {
+		return nil
+	}
+	return backgrounds
 }
 
 // OverlaySceneClip returns the scene's main clip, falling back to the sole

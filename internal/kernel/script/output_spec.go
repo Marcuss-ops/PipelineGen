@@ -351,7 +351,7 @@ type VideoFrameStrokeSpec struct {
 }
 
 // VideoClipEffectSpec selects a bounded native Chronon effect for the clip
-// composite. Validation is delegated to the cliprender contract at planning.
+// composite. Its shared kernel validator is also used by cliprender planning.
 type VideoClipEffectSpec struct {
 	Type       string  `json:"type" yaml:"type"`
 	Amount     float64 `json:"amount,omitempty" yaml:"amount,omitempty"`

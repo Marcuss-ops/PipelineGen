@@ -594,13 +594,19 @@ type PhraseImpactResult struct {
 // into the original sentence sequence. Timestamps remain absent until speech
 // alignment supplies certified timing for those sentence ranges.
 type ChapterManifestEntry struct {
-	Title         string          `json:"title"`
-	TitleSource   string          `json:"title_source"`
+	Title       string `json:"title"`
+	TitleSource string `json:"title_source"`
+	// An authored title is editorial authorship, not a transcript quote, so a
+	// consumer must not require it to ground verbatim in the narration.
 	StartSentence int             `json:"start_sentence"`
 	EndSentence   int             `json:"end_sentence"`
 	StartMS       *int64          `json:"start_ms,omitempty"`
 	EndMS         *int64          `json:"end_ms,omitempty"`
 	Bullets       []ChapterBullet `json:"bullets"`
+	// OpeningSceneID is the scene holding the chapter's first sentence. The
+	// chapter card opens there, never on the first scene that happens to quote
+	// a bullet.
+	OpeningSceneID string `json:"opening_scene_id,omitempty"`
 }
 
 // ChapterBullet is a contiguous extractive sentence span within one chapter.
@@ -613,6 +619,17 @@ type ChapterBullet struct {
 type ChapterManifest struct {
 	SchemaVersion string                 `json:"schema_version"`
 	Chapters      []ChapterManifestEntry `json:"chapters"`
+	// Mode, StyleFamily and DurationMS are the chapter policy the worker
+	// applied to this manifest. They are echoed from the request directive so
+	// the overlay planner sees the same chapter layer the manifest was built
+	// with; empty/zero means the producer declared no policy and the automatic
+	// transcript-grounded chapter applies.
+	Mode        string `json:"mode,omitempty"`
+	StyleFamily string `json:"style_family,omitempty"`
+	DurationMS  int64  `json:"duration_ms,omitempty"`
+	// ChapterOnlySceneIDs names the scenes that admit the chapter and nothing
+	// else (`chapter_only`). Sorted and de-duplicated by the worker.
+	ChapterOnlySceneIDs []string `json:"chapter_only_scene_ids,omitempty"`
 }
 
 // PhraseImpactTimings mirrors the Rust worker's StageTimings contract.

@@ -1,0 +1,55 @@
+{
+  "schema_version": "editorial_composition.v1",
+  "composition_id": "comp_fixture",
+  "scene_id": "scene_01",
+  "window": {
+    "start_us": 0,
+    "duration_us": 10000000
+  },
+  "members": [
+    {
+      "member_id": "image_01",
+      "kind": "entity",
+      "start_us": 0,
+      "duration_us": 5000000,
+      "persistent": true,
+      "entity_id": "e1",
+      "label": "Titolo",
+      "asset": {
+        "asset_id": "asset-1",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "media_type": "image"
+      },
+      "attachments": [
+        {
+          "attachment_id": "date1",
+          "role": "date",
+          "value": "2025",
+          "position": "badge",
+          "evidence": {
+            "text": "nel 2025"
+          }
+        }
+      ]
+    },
+    {
+      "member_id": "phrase_01",
+      "kind": "phrase",
+      "start_us": 1000000,
+      "duration_us": 2000000,
+      "motion_id": "short_phrase_editorial_focus_resolve",
+      "link": {
+        "group_id": "g1",
+        "order": 1,
+        "hold": "persist"
+      },
+      "text": "La frase importante",
+      "lane": "short"
+    }
+  ],
+  "background": {
+    "mode": "inherit_visual_state",
+    "source_member_id": "image_01",
+    "persist": true
+  }
+}

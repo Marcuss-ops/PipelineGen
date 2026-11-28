@@ -252,6 +252,29 @@ func CloneOverlayPlan(plan *capmodel.OverlayPlan) *capmodel.OverlayPlan {
 		return nil
 	}
 	frozen := *plan
+	if plan.SceneBackgrounds != nil {
+		frozen.SceneBackgrounds = make(map[string]*capmodel.OverlayBackground, len(plan.SceneBackgrounds))
+		for sceneID, background := range plan.SceneBackgrounds {
+			if background == nil {
+				frozen.SceneBackgrounds[sceneID] = nil
+				continue
+			}
+			copy := *background
+			copy.Color = append([]float64(nil), background.Color...)
+			copy.AssetRefs = append([]capmodel.OverlayAssetRef(nil), background.AssetRefs...)
+			if background.Opacity != nil {
+				opacity := *background.Opacity
+				copy.Opacity = &opacity
+			}
+			if background.Style != nil {
+				copy.Style = make(map[string]any, len(background.Style))
+				for key, value := range background.Style {
+					copy.Style[key] = value
+				}
+			}
+			frozen.SceneBackgrounds[sceneID] = &copy
+		}
+	}
 	frozen.Items = append([]capmodel.OverlayItem(nil), plan.Items...)
 	for i := range frozen.Items {
 		source := plan.Items[i]

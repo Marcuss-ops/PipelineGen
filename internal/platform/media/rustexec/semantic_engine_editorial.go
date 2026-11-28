@@ -74,6 +74,7 @@ func (a *SemanticEngineAdapter) AnalyzeSemanticEditorial(
 	transcript string,
 	language string,
 	scenes []scriptpkg.SceneAnalysisInput,
+	chapter *scriptpkg.ChapterOverlaySpec,
 ) (*semantic.ScriptSemanticResult, scriptpkg.PhraseImpactResult, error) {
 	language = strings.TrimSpace(language)
 	transcript = strings.TrimSpace(transcript)
@@ -83,7 +84,7 @@ func (a *SemanticEngineAdapter) AnalyzeSemanticEditorial(
 	if len(scenes) == 0 {
 		return nil, scriptpkg.PhraseImpactResult{}, fmt.Errorf("semantic-engine: editorial scenes are required")
 	}
-	editorial, err := a.prepareEditorialRequest(ctx, transcript, language, scenes)
+	editorial, err := a.prepareEditorialRequest(ctx, transcript, language, scenes, chapter)
 	if err != nil {
 		return nil, scriptpkg.PhraseImpactResult{}, err
 	}
@@ -98,7 +99,92 @@ func (a *SemanticEngineAdapter) AnalyzeSemanticEditorial(
 	if result == nil {
 		return nil, scriptpkg.PhraseImpactResult{}, fmt.Errorf("semantic-engine: editorial result missing")
 	}
+	if err := validateChapterOverlayResult(chapter, result.ChapterManifest, scenes); err != nil {
+		return nil, scriptpkg.PhraseImpactResult{}, err
+	}
 	return script, *result, nil
+}
+
+// validateChapterOverlayResult prevents a worker that silently ignores an
+// explicit producer directive from returning a successful extractive chapter
+// manifest. The worker owns segmentation, but the producer owns the request;
+// an unsupported or stale worker must fail closed at this adapter boundary.
+func validateChapterOverlayResult(
+	requested *scriptpkg.ChapterOverlaySpec,
+	manifest scriptpkg.ChapterManifest,
+	scenes []scriptpkg.SceneAnalysisInput,
+) error {
+	if requested == nil {
+		return nil
+	}
+	if manifest.Mode != requested.Mode {
+		return fmt.Errorf("semantic-engine: chapter overlay mode was not honored: got %q want %q", manifest.Mode, requested.Mode)
+	}
+	wantStyle := requested.StyleFamily
+	if wantStyle == "" {
+		wantStyle = scriptpkg.ChapterStyleDocumentary
+	}
+	if manifest.StyleFamily != wantStyle {
+		return fmt.Errorf("semantic-engine: chapter overlay style was not honored: got %q want %q", manifest.StyleFamily, wantStyle)
+	}
+	if requested.Mode != scriptpkg.ChapterOverlayOff && manifest.DurationMS != requested.DurationMS {
+		return fmt.Errorf("semantic-engine: chapter overlay duration was not honored: got %d want %d", manifest.DurationMS, requested.DurationMS)
+	}
+	if requested.Mode == scriptpkg.ChapterOverlayOff {
+		if len(manifest.Chapters) != 0 || len(manifest.ChapterOnlySceneIDs) != 0 {
+			return fmt.Errorf("semantic-engine: chapter overlay off returned chapter layers")
+		}
+		return nil
+	}
+	if requested.Mode == scriptpkg.ChapterOverlayExplicit ||
+		(requested.Mode == scriptpkg.ChapterOverlayChapterOnly && requested.Grounding == scriptpkg.ChapterGroundingAuthored) {
+		if len(manifest.Chapters) != len(requested.Titles) {
+			return fmt.Errorf("semantic-engine: authored chapter count was not honored: got %d want %d", len(manifest.Chapters), len(requested.Titles))
+		}
+		byScene := make(map[string]scriptpkg.ChapterOverlayTitle, len(requested.Titles))
+		for _, title := range requested.Titles {
+			byScene[title.SceneID] = title
+		}
+		for _, chapter := range manifest.Chapters {
+			title, ok := byScene[chapter.OpeningSceneID]
+			if !ok || chapter.TitleSource != "authored" || chapter.Title != title.Title {
+				return fmt.Errorf("semantic-engine: authored chapter for opening scene %q was not honored", chapter.OpeningSceneID)
+			}
+			delete(byScene, chapter.OpeningSceneID)
+		}
+		if len(byScene) != 0 {
+			return fmt.Errorf("semantic-engine: authored chapter titles were omitted")
+		}
+	}
+	if requested.Mode == scriptpkg.ChapterOverlayChapterOnly {
+		knownScenes := make(map[string]struct{}, len(scenes))
+		for _, scene := range scenes {
+			knownScenes[scene.SceneID] = struct{}{}
+		}
+		if len(manifest.ChapterOnlySceneIDs) == 0 {
+			return fmt.Errorf("semantic-engine: chapter_only returned no chapter-only scenes")
+		}
+		for _, sceneID := range manifest.ChapterOnlySceneIDs {
+			if _, ok := knownScenes[sceneID]; !ok {
+				return fmt.Errorf("semantic-engine: chapter_only referenced unknown scene %q", sceneID)
+			}
+		}
+		if requested.Grounding == scriptpkg.ChapterGroundingAuthored {
+			if len(manifest.ChapterOnlySceneIDs) != len(requested.Titles) {
+				return fmt.Errorf("semantic-engine: authored chapter_only scene count was not honored: got %d want %d", len(manifest.ChapterOnlySceneIDs), len(requested.Titles))
+			}
+			got := make(map[string]struct{}, len(manifest.ChapterOnlySceneIDs))
+			for _, sceneID := range manifest.ChapterOnlySceneIDs {
+				got[sceneID] = struct{}{}
+			}
+			for _, title := range requested.Titles {
+				if _, ok := got[title.SceneID]; !ok {
+					return fmt.Errorf("semantic-engine: authored chapter_only scene %q was omitted", title.SceneID)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (a *SemanticEngineAdapter) prepareEditorialRequest(
@@ -106,6 +192,7 @@ func (a *SemanticEngineAdapter) prepareEditorialRequest(
 	transcript string,
 	language string,
 	scenes []scriptpkg.SceneAnalysisInput,
+	chapter *scriptpkg.ChapterOverlaySpec,
 ) (*semanticEngineEditorial, error) {
 	if a == nil || a.executor == nil {
 		return nil, fmt.Errorf("semantic-engine: executor is not configured")
@@ -161,8 +248,19 @@ func (a *SemanticEngineAdapter) prepareEditorialRequest(
 		request["embeddings"], request["lexical_only"] = vectors, false
 		request["embedding_ms"] = float64(time.Since(started).Microseconds()) / 1000
 	}
+	// The chapter directive travels with the segmentation profile: the worker
+	// owns the partition and therefore the decision of which chapter an authored
+	// title belongs to. Omitting it keeps the automatic extraction.
+	chapterOptions := semanticEditorialChapterOptions
+	if chapter != nil {
+		chapterOptions = make(map[string]any, len(semanticEditorialChapterOptions)+1)
+		for key, value := range semanticEditorialChapterOptions {
+			chapterOptions[key] = value
+		}
+		chapterOptions["chapter_overlay"] = chapter
+	}
 	return &semanticEngineEditorial{
-		Request: request, Scenes: scenes, ChapterOptions: semanticEditorialChapterOptions,
+		Request: request, Scenes: scenes, ChapterOptions: chapterOptions,
 	}, nil
 }
 

@@ -137,6 +137,12 @@ type GenerationItemV2 struct {
 	// phrase/word/image overlays. It is transport-only; Chronon's preset
 	// registry remains the source of defaults.
 	OverlayStyle *OverlayStyleSpec `json:"overlay_style,omitempty"`
+	// ChapterOverlay declares the scene-opening chapter policy: mode
+	// (off/auto/explicit/chapter_only), style family, card duration, grounding
+	// and the authored titles. Omitting it keeps the automatic, transcript-
+	// grounded chapter extraction. The rules are the shared
+	// `editorial_composition.v1` chapter rules and are validated at ingress.
+	ChapterOverlay *ChapterOverlaySpec `json:"chapter_overlay,omitempty"`
 	// EditorialBulletStyles pins the font and entrance motion of individual
 	// projected editorial bullets, keyed by scene (a scene keeps at most one
 	// bullet). Entries are validated fail-closed at the compile boundary;

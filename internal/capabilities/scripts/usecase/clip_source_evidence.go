@@ -15,21 +15,23 @@ func canonicalClipDriveLink(clip *asset.Asset) string {
 	if clip == nil {
 		return ""
 	}
+	fileID := strings.TrimSpace(clip.DriveFileID())
 	if link := strings.TrimSpace(clip.DriveLink()); link != "" {
 		if strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://") {
 			return link
 		}
 		// Some live catalog rows expose the Drive file ID in the legacy
 		// drive_link field. Normalize that representation below.
-		if fileID := strings.TrimSpace(clip.DriveFileID()); fileID != "" {
+		if fileID != "" {
 			return urlutil.DriveFileURL(fileID)
 		}
 		return urlutil.DriveFileURL(link)
 	}
-	// The internal asset ID is never a Drive locator. If the registry has no
-	// verified Drive location, keep the link absent and let downstream policy
-	// surface the unavailable location explicitly.
-	return ""
+	// The location projection can prove a Drive copy exists even when older
+	// media_assets rows omitted metadata.drive_link. The Drive file ID is the
+	// location identity, so derive the canonical share URL from it instead of
+	// dropping a reachable clip at the final-job resolver boundary.
+	return urlutil.DriveFileURL(fileID)
 }
 
 // appendClipSourceText writes the legacy technical per-clip source

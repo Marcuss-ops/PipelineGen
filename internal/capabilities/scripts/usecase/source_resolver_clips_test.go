@@ -166,6 +166,15 @@ func TestClipSourceBuilder_HydratesAssetTimingAndSubtitleWithoutSearch(t *testin
 	}
 }
 
+func TestCanonicalClipDriveLinkFallsBackToVerifiedDriveFileID(t *testing.T) {
+	clip := makeTestClip("clip-drive-only", "Drive-only clip", 2*time.Second)
+	clip.SetDriveFileID("drive-file-123")
+	clip.SetDriveLink("")
+	if got, want := canonicalClipDriveLink(clip), "https://drive.google.com/file/d/drive-file-123/view"; got != want {
+		t.Fatalf("canonicalClipDriveLink() = %q, want %q", got, want)
+	}
+}
+
 func TestClipSourceBuilder_StrictTranscriptPolicyRejectsMissingTranscript(t *testing.T) {
 	resolver := newFakeClipResolver()
 	resolver.AddClip(makeTestClip("clip-strict", "Strict", time.Second))

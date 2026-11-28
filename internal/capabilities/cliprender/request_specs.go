@@ -175,37 +175,10 @@ type SubtitlesSpec struct {
 	Style *scriptpkg.VideoVisualStyleSpec `json:"style,omitempty"`
 }
 
-// ClipEffectSpec selects one native Chronon effect on the complete clip composite.
-// The allowlist and parameter bounds are intentionally closed at the HTTP edge.
-type ClipEffectSpec struct {
-	Type       string  `json:"type"`
-	Amount     float64 `json:"amount,omitempty"`
-	Radius     float64 `json:"radius,omitempty"`
-	Softness   float64 `json:"softness,omitempty"`
-	BlockSize  int     `json:"block_size,omitempty"`
-	Size       int     `json:"size,omitempty"`
-	Angle      float64 `json:"angle,omitempty"`
-	Intensity  float64 `json:"intensity,omitempty"`
-	Amplitude  float64 `json:"amplitude,omitempty"`
-	Wavelength float64 `json:"wavelength,omitempty"`
-	Seed       uint32  `json:"seed,omitempty"`
-	Animated   bool    `json:"animated,omitempty"`
-	Curvature  float64 `json:"curvature,omitempty"`
-	Scale      float64 `json:"scale,omitempty"`
-	Threshold  float64 `json:"threshold,omitempty"`
-	Speed      float64 `json:"speed,omitempty"`
-}
-
-// ClipGridSpec draws a full-canvas technical grid over the final composite.
-type ClipGridSpec struct {
-	Scope       string  `json:"scope,omitempty"`
-	Style       string  `json:"style,omitempty"`
-	SpacingPX   float64 `json:"spacing_px"`
-	LineWidthPX float64 `json:"line_width_px,omitempty"`
-	DotRadiusPX float64 `json:"dot_radius_px,omitempty"`
-	Color       string  `json:"color"`
-	Opacity     float64 `json:"opacity"`
-}
+// Effect and grid shapes are kernel-owned so generation ingress and clip.render
+// share the same wire contract and validator.
+type ClipEffectSpec = scriptpkg.VideoClipEffectSpec
+type ClipGridSpec = scriptpkg.VideoClipGridSpec
 
 // OutputSpec pins the VeloxEditing-compatible output contract. The
 // precise codec/pixel/timebase values are owned by the contract

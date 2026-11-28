@@ -20,6 +20,7 @@ func (r GenerateRequest) Generation() generation.Request {
 		ChannelID:                     r.ChannelID,
 		ShortPhraseMotion:             r.ShortPhraseMotion,
 		PhraseMotionFamily:            r.PhraseMotionFamily,
+		ChapterOverlay:                r.ChapterOverlay,
 		EditorialBulletStyles:         r.EditorialBulletStyles,
 		DateMotionFamily:              r.DateMotionFamily,
 		MotionSeed:                    r.MotionSeed,

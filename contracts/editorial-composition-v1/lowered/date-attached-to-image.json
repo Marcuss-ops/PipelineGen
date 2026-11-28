@@ -1,0 +1,38 @@
+{
+  "schema_version": "editorial_layers.v1",
+  "composition_id": "comp_fixture",
+  "scene_id": "scene_01",
+  "window": {
+    "start_us": 0,
+    "duration_us": 10000000
+  },
+  "layers": [
+    {
+      "layer_id": "image_01",
+      "member_id": "image_01",
+      "role": "image",
+      "start_us": 0,
+      "duration_us": 5000000,
+      "z": 0,
+      "persistent": true,
+      "asset": {
+        "asset_id": "asset-1",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "media_type": "image"
+      },
+      "text": "Titolo"
+    },
+    {
+      "layer_id": "image_01#date1",
+      "member_id": "image_01",
+      "role": "date",
+      "start_us": 0,
+      "duration_us": 5000000,
+      "z": 10,
+      "parent_layer_id": "image_01",
+      "text": "2025",
+      "position": "badge",
+      "date_value": "2025"
+    }
+  ]
+}

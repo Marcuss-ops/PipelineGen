@@ -302,11 +302,21 @@ func chapterManifestToWire(in *scriptpkg.ChapterManifest) *overlayplan.ChapterMa
 		return nil
 	}
 	out := &overlayplan.ChapterManifest{
-		SchemaVersion: in.SchemaVersion,
-		Chapters:      make([]overlayplan.Chapter, 0, len(in.Chapters)),
+		SchemaVersion:       in.SchemaVersion,
+		Mode:                in.Mode,
+		StyleFamily:         in.StyleFamily,
+		DurationMS:          in.DurationMS,
+		ChapterOnlySceneIDs: in.ChapterOnlySceneIDs,
+		Chapters:            make([]overlayplan.Chapter, 0, len(in.Chapters)),
 	}
-	for _, chapter := range in.Chapters {
-		wire := overlayplan.Chapter{Bullets: make([]overlayplan.ChapterBullet, 0, len(chapter.Bullets))}
+	for index, chapter := range in.Chapters {
+		wire := overlayplan.Chapter{
+			Title:          chapter.Title,
+			TitleSource:    chapter.TitleSource,
+			ChapterNumber:  index + 1,
+			OpeningSceneID: chapter.OpeningSceneID,
+			Bullets:        make([]overlayplan.ChapterBullet, 0, len(chapter.Bullets)),
+		}
 		for _, bullet := range chapter.Bullets {
 			wire.Bullets = append(wire.Bullets, overlayplan.ChapterBullet{
 				Text:          bullet.Text,
@@ -376,6 +386,7 @@ func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *contract.Gener
 	// violations still fail closed in Validate; this only fixes list order.
 	for i := range plan.Items {
 		capmodel.NormalizeChainSegmentOrder(&plan.Items[i])
+		normalizeLegacyChainSegmentTemplates(&plan.Items[i])
 	}
 	plan.RecapCards = countRecapItems(plan.Items)
 	plan.ChartCards = countChartItems(plan.Items)
@@ -392,6 +403,38 @@ func finalizeSealedOverlayPlan(plan capmodel.OverlayPlan, result *contract.Gener
 		return nil, fmt.Errorf("overlay plan: seal: %w", err)
 	}
 	return &plan, nil
+}
+
+// normalizeLegacyChainSegmentTemplates maps the legacy logo_default alias to
+// the canonical phrase template accepted by RenderingGen. Brand text is a
+// phrase semantically; normalize it both as a standalone item and inside a
+// chain, where nested segments pass through a stricter template registry.
+func normalizeLegacyChainSegmentTemplates(item *capmodel.OverlayItem) {
+	if item == nil {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(item.Kind), string(capmodel.KindBrandText)) && strings.EqualFold(strings.TrimSpace(item.TemplateID), "logo_default") {
+		item.TemplateID = "IMPORTANT_PHRASE"
+		item.RenderKey = ""
+	}
+	if item.Kind != capmodel.KindMixedChain && item.Kind != capmodel.KindPhraseChain && item.Kind != capmodel.KindImageChain {
+		return
+	}
+	segments, ok := item.Segments()
+	if !ok {
+		return
+	}
+	changed := false
+	for i := range segments {
+		if strings.EqualFold(strings.TrimSpace(segments[i].TemplateID), "logo_default") {
+			segments[i].TemplateID = "IMPORTANT_PHRASE"
+			changed = true
+		}
+	}
+	if changed {
+		item.SetChainSegments(segments)
+		item.RenderKey = ""
+	}
 }
 
 // overlayPlanDurationMS derives the master render extent from the authoritative

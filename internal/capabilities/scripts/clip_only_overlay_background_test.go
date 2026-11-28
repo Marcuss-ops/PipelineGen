@@ -50,3 +50,25 @@ func TestSingleClipOverlayBackgroundRequiresFinalClipOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestSceneOverlayBackgroundsMapsVerifiedMultiClipScenesIndependently(t *testing.T) {
+	req := GenerateRequest{FinalJob: true, MediaMode: scriptpkg.MediaModeClipOnly}
+	result := &GenerateResult{Scenes: []Scene{
+		{ID: "scene-01", Clip: &ClipReference{ID: "yt-1", Path: "/clips/one.mp4", SHA256: "sha-one"}},
+		{ID: "scene-02", Clips: []*ClipReference{{ID: "yt-2", Path: "/clips/two.mp4", SHA256: "sha-two"}}},
+		{ID: "scene-03", Clip: &ClipReference{ID: "unverified", Path: "/clips/three.mp4"}},
+	}}
+	got := SceneOverlayBackgrounds(req, result)
+	if len(got) != 2 {
+		t.Fatalf("background scene count = %d, want 2 verified scenes", len(got))
+	}
+	for sceneID, wantAsset := range map[string]string{"scene-01": "yt-1", "scene-02": "yt-2"} {
+		background := got[sceneID]
+		if background == nil || background.Kind != "video" || len(background.AssetRefs) != 1 || background.AssetRefs[0].AssetID != wantAsset {
+			t.Fatalf("background[%q] = %+v, want video asset %q", sceneID, background, wantAsset)
+		}
+	}
+	if _, exists := got["scene-03"]; exists {
+		t.Fatal("unverified clip must not become a scene background")
+	}
+}

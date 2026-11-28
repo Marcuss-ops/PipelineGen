@@ -77,7 +77,7 @@ func TestSemanticEngineEditorialUsesOneManifestRequestAndPreservesProducts(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	semanticScript, result, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "en", scenes)
+	semanticScript, result, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "en", scenes, nil)
 	if err != nil {
 		t.Fatalf("combined semantic/editorial request failed: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestSemanticEngineEditorialPreservesE5PassagesAndStillAnalyzesOnce(t *testi
 		return vectors
 	}}
 	adapter.SetPassageEmbedder(embedder)
-	if _, _, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "en", scenes); err != nil {
+	if _, _, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "en", scenes, nil); err != nil {
 		t.Fatalf("combined E5 editorial analysis failed: %v", err)
 	}
 	if len(runner.operations) != 2 || runner.operations[0] != "split_sentences" || runner.operations[1] != "analyze_script" {
@@ -182,6 +182,31 @@ func TestSemanticEngineEditorialCarriesOnlyAGroundedIntroAgenda(t *testing.T) {
 	manifest.Editorial.IntroAgenda = manifest.Editorial.IntroAgenda[:2]
 	if _, err := buildSemanticEditorialResult(editorial, manifest); err == nil {
 		t.Fatal("an intro agenda with fewer than three topics must be rejected")
+	}
+}
+
+func TestChapterOverlayResultFailsClosedWhenWorkerIgnoresDirective(t *testing.T) {
+	requested := &scriptpkg.ChapterOverlaySpec{
+		Mode: scriptpkg.ChapterOverlayExplicit, StyleFamily: scriptpkg.ChapterStyleDocumentary,
+		DurationMS: 3500, Grounding: scriptpkg.ChapterGroundingAuthored,
+		Titles: []scriptpkg.ChapterOverlayTitle{{SceneID: "scene_02", Title: "Parte seconda", ChapterNumber: 1}},
+	}
+	scenes := []scriptpkg.SceneAnalysisInput{{SceneID: "scene_01"}, {SceneID: "scene_02"}}
+	ignored := scriptpkg.ChapterManifest{SchemaVersion: "chapter_manifest.v1", Chapters: []scriptpkg.ChapterManifestEntry{{
+		Title: "Titolo estratto", TitleSource: "extractive_keyphrase", OpeningSceneID: "scene_01",
+	}}}
+	if err := validateChapterOverlayResult(requested, ignored, scenes); err == nil || !strings.Contains(err.Error(), "mode was not honored") {
+		t.Fatalf("an ignored explicit directive must fail closed, got %v", err)
+	}
+	honored := scriptpkg.ChapterManifest{
+		SchemaVersion: "chapter_manifest.v1", Mode: scriptpkg.ChapterOverlayExplicit,
+		StyleFamily: scriptpkg.ChapterStyleDocumentary, DurationMS: 3500,
+		Chapters: []scriptpkg.ChapterManifestEntry{{
+			Title: "Parte seconda", TitleSource: "authored", OpeningSceneID: "scene_02",
+		}},
+	}
+	if err := validateChapterOverlayResult(requested, honored, scenes); err != nil {
+		t.Fatalf("honored explicit directive rejected: %v", err)
 	}
 }
 

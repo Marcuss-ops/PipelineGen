@@ -1,0 +1,19 @@
+{
+  "schema_version": "editorial_composition.v1",
+  "composition_id": "comp_fixture",
+  "scene_id": "scene_01",
+  "window": {
+    "start_us": 0,
+    "duration_us": 10000000
+  },
+  "members": [
+    {
+      "member_id": "date_01",
+      "kind": "date",
+      "start_us": 1000000,
+      "duration_us": 2000000,
+      "value": "2025",
+      "position": "below"
+    }
+  ]
+}

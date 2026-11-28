@@ -102,6 +102,59 @@ func TestSeparateOverlayItemPlanPreservesRequireGPU(t *testing.T) {
 	}
 }
 
+func TestSeparateOverlayItemPlanUsesOnlyMatchingSceneBackground(t *testing.T) {
+	plan := manifestTestPlan()
+	plan.SceneBackgrounds = map[string]*capmodel.OverlayBackground{
+		"scene-01": {Kind: "video", Fit: "cover", Loop: true, AssetRefs: []capmodel.OverlayAssetRef{{
+			AssetID: "clip-one", LocalPath: "/clips/one.mp4", SHA256: "sha-one", MediaType: "video/mp4",
+		}}},
+		"scene-02": {Kind: "video", Fit: "cover", Loop: true, AssetRefs: []capmodel.OverlayAssetRef{{
+			AssetID: "clip-two", LocalPath: "/clips/two.mp4", SHA256: "sha-two", MediaType: "video/mp4",
+		}}},
+	}
+	child, _, err := separateOverlayItemPlan(plan, plan.Items[2], 2)
+	if err != nil {
+		t.Fatalf("child plan: %v", err)
+	}
+	if child.Background == nil || child.Background.Kind != "video" || len(child.Background.AssetRefs) != 1 {
+		t.Fatalf("child background = %+v, want scene-02 video plate", child.Background)
+	}
+	if got := child.Background.AssetRefs[0].AssetID; got != "clip-two" {
+		t.Fatalf("background asset = %q, want scene-02 clip-two", got)
+	}
+	if child.Background.AssetRefs[0].LocalPath != "/clips/two.mp4" {
+		t.Fatalf("background local path = %q, want verified scene-02 path", child.Background.AssetRefs[0].LocalPath)
+	}
+	if child.SceneBackgrounds != nil {
+		t.Fatal("producer-local scene map leaked into the child plan")
+	}
+}
+
+func TestSeparateOverlayItemPlanDoesNotUseSceneBackgroundForMap(t *testing.T) {
+	plan := manifestTestPlan()
+	plan.SceneBackgrounds = map[string]*capmodel.OverlayBackground{
+		"scene-01": {Kind: "video", Fit: "cover", Loop: true, AssetRefs: []capmodel.OverlayAssetRef{{
+			AssetID: "clip-one", LocalPath: "/clips/one.mp4", SHA256: "sha-one", MediaType: "video/mp4",
+		}}},
+	}
+	item := plan.Items[0]
+	item.Kind = string(capmodel.KindMap)
+	item.TemplateID = "MAP"
+	item.Map = &capmodel.MapOverlay{
+		Provider: "local", SourceID: "test-map", SourceLicense: "operator-supplied",
+		Center: capmodel.MapCenter{Latitude: 0, Longitude: 0}, Zoom: 8,
+		Width: 1920, Height: 1080, Attribution: "Map data supplied by operator",
+		DynamicRendererOnly: true,
+	}
+	child, _, err := separateOverlayItemPlan(plan, item, 0)
+	if err != nil {
+		t.Fatalf("map child plan: %v", err)
+	}
+	if child.Background != nil {
+		t.Fatalf("map background = %+v, want nil", child.Background)
+	}
+}
+
 func boolPointer(value bool) *bool { return &value }
 
 func TestEnqueueChrononPlanItemsRejectsBackgroundOnlyPlan(t *testing.T) {

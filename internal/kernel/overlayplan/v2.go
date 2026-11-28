@@ -54,6 +54,11 @@ type V2Request struct {
 	// to decide whether a raw NLP surface is a number or date context. It is
 	// vocabulary, not a pre-selected candidate.
 	NumericLexicon *NumericLexicon `json:"numeric_lexicon,omitempty"`
+	// MotionCapabilities is the declared capability catalog. Rust admits a
+	// motion into a shared-canvas chain from `supports_chain` instead of the
+	// `short_phrase_` id prefix (ED-08). It is additive: when absent the planner
+	// keeps its legacy prefix rule, so an older producer is unchanged.
+	MotionCapabilities *MotionCapabilities `json:"motion_capabilities,omitempty"`
 }
 
 // PlanIdentity is the immutable plan identity. Motion entropy is derived from
@@ -375,15 +380,37 @@ type EditorialBullet struct {
 	Text          string `json:"text"`
 }
 
-// ChapterManifest is the extractive chapter projection of the transcript.
+// ChapterManifest is the chapter projection of the transcript plus the policy
+// the worker applied to it.
 type ChapterManifest struct {
 	SchemaVersion string    `json:"schema_version"`
 	Chapters      []Chapter `json:"chapters"`
+	// Mode is off, auto, explicit or chapter_only. Empty keeps the historical
+	// automatic extraction.
+	Mode string `json:"mode,omitempty"`
+	// StyleFamily is the declared chapter style family (documentary or
+	// editorial_minimal).
+	StyleFamily string `json:"style_family,omitempty"`
+	// DurationMS is the fixed readable beat of the chapter card.
+	DurationMS int64 `json:"duration_ms,omitempty"`
+	// ChapterOnlySceneIDs names the scenes that admit the chapter and nothing
+	// else.
+	ChapterOnlySceneIDs []string `json:"chapter_only_scene_ids,omitempty"`
 }
 
-// Chapter is one chapter; only its bullets participate in the projection.
+// Chapter is one chapter. Its bullets participate in the editorial projection;
+// an authored title opens the chapter with its own card.
 type Chapter struct {
-	Bullets []ChapterBullet `json:"bullets"`
+	// Title is the chapter title. TitleSource says who authored it: an
+	// `authored` title is editorial authorship and is exempt from verbatim
+	// grounding.
+	Title         string `json:"title,omitempty"`
+	TitleSource   string `json:"title_source,omitempty"`
+	ChapterNumber int    `json:"chapter_number,omitempty"`
+	// OpeningSceneID is the scene the chapter opens on; the card is placed
+	// there.
+	OpeningSceneID string          `json:"opening_scene_id,omitempty"`
+	Bullets        []ChapterBullet `json:"bullets"`
 }
 
 // ChapterBullet is one extractive chapter bullet.

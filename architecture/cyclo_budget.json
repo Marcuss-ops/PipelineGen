@@ -20,7 +20,7 @@
     "internal/capabilities/scripts/finaljob.ScheduleFinalJobOverlayFrames": 45,
     "internal/capabilities/scripts/finaljob.alignFinalJobCompiledPlanAssetIDs": 47,
     "internal/capabilities/scripts/finaljob.finalJobCompleteVideoFrameCoverageWithStockAssets": 43,
-    "internal/capabilities/scripts/finaljob.prepareFinalJobVideoSegments": 48,
+    "internal/capabilities/scripts/finaljob.prepareFinalJobVideoSegments": 47,
     "internal/capabilities/scripts/jobs.(*GenerateJobHandler).Handle": 45,
     "internal/capabilities/scripts/overlayplan.BuildOverlayAuditWithLineage": 53,
     "internal/capabilities/scripts/overlayplan.SupplementSourceImportantPhrases": 53,

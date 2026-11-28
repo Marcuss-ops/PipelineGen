@@ -1,0 +1,66 @@
+{
+  "schema_version": "editorial_layers.v1",
+  "composition_id": "comp_fixture",
+  "scene_id": "scene_01",
+  "window": {
+    "start_us": 0,
+    "duration_us": 10000000
+  },
+  "background": {
+    "mode": "inherit_visual_state",
+    "source_member_id": "image_01",
+    "persist": true
+  },
+  "layers": [
+    {
+      "layer_id": "background:comp_fixture",
+      "role": "background",
+      "start_us": 0,
+      "duration_us": 10000000,
+      "z": -100,
+      "persistent": true,
+      "parent_layer_id": "image_01"
+    },
+    {
+      "layer_id": "image_01",
+      "member_id": "image_01",
+      "role": "image",
+      "start_us": 0,
+      "duration_us": 5000000,
+      "z": 0,
+      "persistent": true,
+      "asset": {
+        "asset_id": "asset-1",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "media_type": "image"
+      },
+      "text": "Titolo"
+    },
+    {
+      "layer_id": "image_01#date1",
+      "member_id": "image_01",
+      "role": "date",
+      "start_us": 0,
+      "duration_us": 5000000,
+      "z": 10,
+      "parent_layer_id": "image_01",
+      "text": "2025",
+      "position": "badge",
+      "date_value": "2025"
+    },
+    {
+      "layer_id": "phrase_01",
+      "member_id": "phrase_01",
+      "role": "phrase",
+      "start_us": 1000000,
+      "duration_us": 2000000,
+      "z": 10,
+      "motion_id": "short_phrase_editorial_focus_resolve",
+      "link_group": "g1",
+      "link_order": 1,
+      "hold": "persist",
+      "text": "La frase importante",
+      "lane": "short"
+    }
+  ]
+}

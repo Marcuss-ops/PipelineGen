@@ -41,6 +41,9 @@ type GenerateRequest struct {
 	// buckets. Validation happens at plan compilation.
 	ShortPhraseMotion  string `json:"short_phrase_motion,omitempty"`
 	PhraseMotionFamily string `json:"phrase_motion_family,omitempty"`
+	// ChapterOverlay is the scene-opening chapter policy carried from the
+	// envelope. Nil keeps the automatic transcript-grounded chapters.
+	ChapterOverlay *scriptpkg.ChapterOverlaySpec `json:"chapter_overlay,omitempty"`
 	// EditorialBulletStyles pins font and entrance motion per editorial
 	// bullet (one bullet per scene). Empty keeps the presentation defaults.
 	EditorialBulletStyles []scriptpkg.EditorialBulletStyle `json:"editorial_bullet_styles,omitempty"`

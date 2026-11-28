@@ -122,6 +122,7 @@ var (
 	OverlaySceneClip             = clips.OverlaySceneClip
 	PrepareClipAudioAssets       = clips.PrepareClipAudioAssets
 	RebuildFixedMediaTiming      = clips.RebuildFixedMediaTiming
+	SceneOverlayBackgrounds      = clips.SceneOverlayBackgrounds
 	SceneClipsForIdentity        = clips.SceneClipsForIdentity
 	ScenePersonEntities          = clips.ScenePersonEntities
 	SceneUsesClipAudio           = clips.SceneUsesClipAudio

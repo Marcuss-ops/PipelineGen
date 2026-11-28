@@ -1,0 +1,67 @@
+{
+  "schema_version": "editorial_layers.v1",
+  "composition_id": "comp_fixture",
+  "scene_id": "scene_01",
+  "window": {
+    "start_us": 0,
+    "duration_us": 10000000
+  },
+  "layers": [
+    {
+      "layer_id": "map_01",
+      "member_id": "map_01",
+      "role": "map",
+      "start_us": 0,
+      "duration_us": 7000000,
+      "z": 0,
+      "motion_id": "map_image_dark_map_italy_radar_lock",
+      "text": "regional",
+      "map": {
+        "member_id": "map_01",
+        "kind": "map",
+        "start_us": 0,
+        "duration_us": 7000000,
+        "motion_id": "map_image_dark_map_italy_radar_lock",
+        "map_type": "regional",
+        "pins": [
+          {
+            "pin_id": "milano",
+            "label": "Milano",
+            "latitude": 45.4642,
+            "longitude": 9.19,
+            "callout": {
+              "kind": "photo",
+              "asset": {
+                "asset_id": "milan-photo",
+                "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "media_type": "image"
+              },
+              "connector": "leader_line",
+              "placement": "auto",
+              "choreography": "image_scale_reveal",
+              "evidence": {
+                "text": "Milano"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "layer_id": "map_01#pin:milano",
+      "member_id": "map_01",
+      "role": "map_callout",
+      "start_us": 0,
+      "duration_us": 7000000,
+      "z": 10,
+      "motion_id": "image_scale_reveal",
+      "anchor_pin_id": "milano",
+      "asset": {
+        "asset_id": "milan-photo",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "media_type": "image"
+      },
+      "position": "auto"
+    }
+  ]
+}

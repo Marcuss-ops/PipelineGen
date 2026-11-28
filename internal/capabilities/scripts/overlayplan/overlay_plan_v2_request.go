@@ -60,25 +60,35 @@ func BuildOverlayPlanV2Request(
 	// lanes. It used to be computed by PrepareOverlayPlanCompile and then
 	// dropped before the wire, so every plan started its image rotation at 0.
 	canvasWire.ImageMotionOffset = capabilityoverlay.ImageMotionOffsetForSeed(motionSeed)
+	// The declared motion capabilities travel with every request. The Rust
+	// planner admits a motion into a shared-canvas chain from `supports_chain`
+	// instead of the `short_phrase_` id prefix (ED-08); the embedded catalog is
+	// the same file the contract corpus owns, and a drift test blocks the
+	// divergence (ED-24).
+	motionCapabilities, err := overlayplan.CanonicalMotionCapabilities()
+	if err != nil {
+		return overlayplan.V2Request{}, fmt.Errorf("overlay plan v2: %w", err)
+	}
 	media := OverlayPlanMedia(result, language, sceneInputs)
 	request := overlayplan.V2Request{
-		Operation:      "compile_editorial_plan",
-		SchemaVersion:  overlayplan.SchemaVersionV2,
-		Plan:           overlayPlanIdentity(planID, videoID, projectID, motionSeed, canvas),
-		Language:       string(language),
-		SourceLanguage: string(result.SourceLanguage),
-		Seal:           overlayPlanSeal(result, canvas, timelineBounds),
-		Canvas:         canvasWire,
-		Scenes:         make([]overlayplan.Scene, 0, len(timedScenes)),
-		EntityTimeline: OverlayPlanEntityTimeline(result, language, projectID, timelineBounds, OverlayPlanCanonicalEntityIDs(result, media)),
-		Media:          media,
-		ImagePlan:      imagePlan,
-		Budgets:        overlayPlanBudgets(canvas),
-		SceneWindows:   make(map[string][2]int64, len(timedScenes)),
-		Editorial:      editorialManifestToWire(result.Editorial),
-		Chapters:       chapterManifestToWire(result.ChapterManifest),
-		HeavySentences: heavySentencesToWire(result.HeavySentences),
-		NumericLexicon: numericLexiconToWire(),
+		Operation:          "compile_editorial_plan",
+		SchemaVersion:      overlayplan.SchemaVersionV2,
+		Plan:               overlayPlanIdentity(planID, videoID, projectID, motionSeed, canvas),
+		Language:           string(language),
+		SourceLanguage:     string(result.SourceLanguage),
+		Seal:               overlayPlanSeal(result, canvas, timelineBounds),
+		Canvas:             canvasWire,
+		Scenes:             make([]overlayplan.Scene, 0, len(timedScenes)),
+		EntityTimeline:     OverlayPlanEntityTimeline(result, language, projectID, timelineBounds, OverlayPlanCanonicalEntityIDs(result, media)),
+		Media:              media,
+		ImagePlan:          imagePlan,
+		Budgets:            overlayPlanBudgets(canvas),
+		SceneWindows:       make(map[string][2]int64, len(timedScenes)),
+		Editorial:          editorialManifestToWire(result.Editorial),
+		Chapters:           chapterManifestToWire(result.ChapterManifest),
+		HeavySentences:     heavySentencesToWire(result.HeavySentences),
+		NumericLexicon:     numericLexiconToWire(),
+		MotionCapabilities: motionCapabilities,
 	}
 	seen := make(map[string]struct{}, len(timedScenes))
 	inputsByScene := make(map[string]capabilityoverlay.SceneInput, len(sceneInputs))

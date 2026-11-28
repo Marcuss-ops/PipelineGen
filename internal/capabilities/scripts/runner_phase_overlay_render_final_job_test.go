@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"strings"
 	"testing"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -24,5 +25,25 @@ func TestPendingOverlayPlansKeepEveryOverlayInTheObjectStore(t *testing.T) {
 	pendingOverlayPlans(result, contract.GenerateRequest{})
 	if !plan.RequireObjectStoreBeforeReturn {
 		t.Fatal("ordinary overlay plan is an intermediate too: it must stay in Objectstore, not be published to Drive")
+	}
+}
+
+func TestClipImageBackgroundCoverageRequiresEveryImageScene(t *testing.T) {
+	plans := []languageOverlayPlan{{plan: &capmodel.OverlayPlan{
+		SceneBackgrounds: map[string]*capmodel.OverlayBackground{
+			"scene-01": {Kind: "video", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "clip-1", LocalPath: "/clips/one.mp4", SHA256: "sha-1"}}},
+		},
+		Items: []capmodel.OverlayItem{
+			{ID: "image-01", SceneID: "scene-01", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "image-1", SHA256: "image-sha"}}},
+			{ID: "image-02", SceneID: "scene-02", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "image-2", SHA256: "image-sha-2"}}},
+		},
+	}}}
+	err := validateClipImageBackgroundCoverage(plans)
+	if err == nil || !strings.Contains(err.Error(), `image overlay "image-02"`) || !strings.Contains(err.Error(), `scene "scene-02"`) {
+		t.Fatalf("coverage error = %v, want missing scene-02 source background", err)
+	}
+	plans[0].plan.SceneBackgrounds["scene-02"] = &capmodel.OverlayBackground{Kind: "video", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "clip-2", LocalPath: "/clips/two.mp4", SHA256: "sha-2"}}}
+	if err := validateClipImageBackgroundCoverage(plans); err != nil {
+		t.Fatalf("complete scene background coverage: %v", err)
 	}
 }

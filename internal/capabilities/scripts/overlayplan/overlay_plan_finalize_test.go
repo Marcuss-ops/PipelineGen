@@ -8,6 +8,33 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestNormalizeLegacyChainSegmentTemplates(t *testing.T) {
+	brand := capmodel.OverlayItem{
+		ID: "brand", Kind: string(capmodel.KindBrandText), TemplateID: "logo_default",
+	}
+	normalizeLegacyChainSegmentTemplates(&brand)
+	if brand.TemplateID != "IMPORTANT_PHRASE" {
+		t.Fatalf("legacy standalone brand template = %q, want IMPORTANT_PHRASE", brand.TemplateID)
+	}
+
+	chain := capmodel.OverlayItem{
+		ID: "mixed", Kind: capmodel.KindMixedChain, TemplateID: capmodel.TemplateMixedChain,
+	}
+	chain.SetChainSegments([]capmodel.ChainSegment{
+		{Kind: "brand_text", TemplateID: "logo_default", Text: "Tyson", StartUS: 0, DurationUS: 1_000_000},
+		{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Phrase", StartUS: 1_000_000, DurationUS: 1_000_000},
+	})
+
+	normalizeLegacyChainSegmentTemplates(&chain)
+	segments, ok := chain.Segments()
+	if !ok || segments[0].TemplateID != "IMPORTANT_PHRASE" {
+		t.Fatalf("legacy brand template was not normalized: ok=%v segments=%+v", ok, segments)
+	}
+	if segments[1].TemplateID != "IMPORTANT_PHRASE" {
+		t.Fatalf("canonical phrase template changed unexpectedly: %+v", segments[1])
+	}
+}
+
 // ITCLOSE-06: the planner chooses a visible family for plain phrase cards
 // (short = Oswald, long = Playfair) and marks the item with phrase_family.
 // The run-level overlay_style projection runs after the seal and must leave

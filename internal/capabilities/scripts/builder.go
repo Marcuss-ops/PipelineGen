@@ -60,6 +60,12 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	if err != nil {
 		return contract.GenerateRequest{}, err
 	}
+	// The chapter directive is validated here, once, against the shared
+	// `editorial_composition.v1` chapter rules: the worker re-checks it, but a
+	// payload the contract rejects never reaches a run.
+	if err := validateChapterOverlay(item.ChapterOverlay); err != nil {
+		return contract.GenerateRequest{}, err
+	}
 	// SSOT: output.render.watermark / output.render.subtitles are the only
 	// spellings. The legacy top-level output.watermark/output.subtitles
 	// compatibility blocks were removed; requests carrying them fail at the
@@ -380,6 +386,7 @@ func buildGenerateRequestCore(item scriptpkg.GenerationItemV2, env *scriptpkg.Ge
 		MapPresentation:               mapCfg.presentation,
 		ShortPhraseMotion:             strings.TrimSpace(item.ShortPhraseMotion),
 		PhraseMotionFamily:            item.PhraseMotionFamily,
+		ChapterOverlay:                item.ChapterOverlay,
 		EditorialBulletStyles:         append([]scriptpkg.EditorialBulletStyle(nil), item.EditorialBulletStyles...),
 		DateMotionFamily:              item.DateMotionFamily,
 		MotionSeed:                    strings.TrimSpace(item.MotionSeed),

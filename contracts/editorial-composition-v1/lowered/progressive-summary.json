@@ -1,0 +1,38 @@
+{
+  "schema_version": "editorial_layers.v1",
+  "composition_id": "comp_fixture",
+  "scene_id": "scene_01",
+  "window": {
+    "start_us": 0,
+    "duration_us": 10000000
+  },
+  "layers": [
+    {
+      "layer_id": "summary_01",
+      "member_id": "summary_01",
+      "role": "summary",
+      "start_us": 1000000,
+      "duration_us": 6000000,
+      "z": 10,
+      "summary": {
+        "member_id": "summary_01",
+        "kind": "summary",
+        "start_us": 1000000,
+        "duration_us": 6000000,
+        "reveal": "progressive",
+        "points": [
+          {
+            "text": "Primo fatto",
+            "start_us": 1000000,
+            "duration_us": 2000000
+          },
+          {
+            "text": "Secondo fatto",
+            "start_us": 3000000,
+            "duration_us": 2000000
+          }
+        ]
+      }
+    }
+  ]
+}

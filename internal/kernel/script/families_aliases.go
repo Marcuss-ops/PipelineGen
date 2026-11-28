@@ -97,6 +97,18 @@ type DownstreamRequest = spec.DownstreamRequest
 
 const DownstreamVoiceover = spec.DownstreamVoiceover
 
+type ChapterOverlaySpec = spec.ChapterOverlaySpec
+type ChapterOverlayTitle = spec.ChapterOverlayTitle
+
+const ChapterGroundingAuthored = spec.ChapterGroundingAuthored
+const ChapterGroundingTranscript = spec.ChapterGroundingTranscript
+const ChapterOverlayAuto = spec.ChapterOverlayAuto
+const ChapterOverlayChapterOnly = spec.ChapterOverlayChapterOnly
+const ChapterOverlayExplicit = spec.ChapterOverlayExplicit
+const ChapterOverlayOff = spec.ChapterOverlayOff
+const ChapterStyleDocumentary = spec.ChapterStyleDocumentary
+const ChapterStyleEditorialMinimal = spec.ChapterStyleEditorialMinimal
+
 type EditorialBulletStyle = spec.EditorialBulletStyle
 type EditorialFingerprintInput = spec.EditorialFingerprintInput
 type EditorialHighlight = spec.EditorialHighlight

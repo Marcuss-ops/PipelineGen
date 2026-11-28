@@ -7,10 +7,13 @@ import (
 	"strings"
 	"time"
 
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	scriptclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contract"
 	renderqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/renderqueue"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -207,6 +210,11 @@ func (r *Runner) renderOverlayInput(ctx context.Context, req contract.GenerateRe
 	if len(input.Plans) == 0 || r.overlayRenderEnqueuer == nil {
 		return nil, nil
 	}
+	if req.FinalJob && req.MediaMode == scriptpkg.MediaModeClipOnly {
+		if err := validateClipImageBackgroundCoverage(input.Plans); err != nil {
+			return nil, err
+		}
+	}
 	// Fail BEFORE paying for the first GPU render. A final job whose promised
 	// images are not verifiable can never ship them: the late handoff would
 	// reject it after the overlay stage had already charged the full render.
@@ -269,6 +277,25 @@ func (r *Runner) renderOverlayInput(ctx context.Context, req contract.GenerateRe
 		}
 	}
 	return outcomes, nil
+}
+
+// validateClipImageBackgroundCoverage prevents a clip-only final job from
+// producing opaque image artifacts over a renderer default canvas when its
+// source clip could not be resolved. It runs before any remote render is paid.
+func validateClipImageBackgroundCoverage(plans []languageOverlayPlan) error {
+	for _, localized := range plans {
+		for _, item := range localized.plan.Items {
+			if !capabilityoverlay.IsAssetImageOverlayItem(item) {
+				continue
+			}
+			background := localized.plan.SceneBackgrounds[strings.TrimSpace(item.SceneID)]
+			if background == nil || background.Kind != "video" || len(background.AssetRefs) != 1 ||
+				strings.TrimSpace(background.AssetRefs[0].AssetID) == "" || strings.TrimSpace(background.AssetRefs[0].SHA256) == "" {
+				return fmt.Errorf("clip-only final_job image overlay %q has no verified source-clip background for scene %q", item.ID, item.SceneID)
+			}
+		}
+	}
+	return nil
 }
 
 func (r *Runner) applyOverlayRenderOutcomes(runID string, result *contract.GenerateResult, outcomes []overlayRenderOutcome) {
@@ -498,13 +525,16 @@ func newOverlayRenderInput(result *contract.GenerateResult, req contract.Generat
 	input.Scenes = result.Scenes
 	input.OverlayAudit = result.OverlayAudit
 	input.Preflight = result.FinalJobPreflight
+	sceneBackgrounds := scriptclips.SceneOverlayBackgrounds(req, result)
 	for _, item := range pendingOverlayPlans(result, req) {
 		// The renderer and the preflight may normalize their plan in place
 		// (RequireGPU, RequireObjectStoreBeforeReturn); the durable plan must
 		// stay the exact document the checkpoint names.
+		plan := cloneOverlayPlan(item.plan)
+		plan.SceneBackgrounds = sceneBackgrounds
 		input.Plans = append(input.Plans, languageOverlayPlan{
 			language: item.language,
-			plan:     cloneOverlayPlan(item.plan),
+			plan:     plan,
 		})
 	}
 	return input

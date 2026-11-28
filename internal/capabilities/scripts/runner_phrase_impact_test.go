@@ -29,7 +29,7 @@ func (s *stubCombinedSemanticAnalyzer) SemanticCandidates(context.Context, strin
 	return &SemanticCandidateBundle{}, nil
 }
 
-func (s *stubCombinedSemanticAnalyzer) AnalyzeSemanticEditorial(_ context.Context, _, _ string, _ []scriptpkg.SceneAnalysisInput) (*ScriptSemanticResult, scriptpkg.PhraseImpactResult, error) {
+func (s *stubCombinedSemanticAnalyzer) AnalyzeSemanticEditorial(_ context.Context, _, _ string, _ []scriptpkg.SceneAnalysisInput, _ *scriptpkg.ChapterOverlaySpec) (*ScriptSemanticResult, scriptpkg.PhraseImpactResult, error) {
 	s.calls++
 	if s.err != nil {
 		return nil, scriptpkg.PhraseImpactResult{}, s.err
