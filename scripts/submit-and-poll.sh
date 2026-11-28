@@ -81,11 +81,39 @@ fi
   project="$2"
   idem="$3"
   base="$4"
-  response=$("$CURL_BIN" -fsS --retry 3 --retry-delay 2 --max-time 30 -X POST "$base/api/script/generate" \
-    -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" \
-    -H "Content-Type: application/json" \
-    -H "Idempotency-Key: $idem" \
-    --data-binary "@$payload")
+  request_json() {
+    local url="$1" response status body rc
+    shift
+    if response=$("$CURL_BIN" -sS --retry 3 --retry-delay 2 --max-time 30 \
+      -w "%{http_code}" -X POST "$url" \
+      -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" \
+      -H "Content-Type: application/json" "$@"); then
+      rc=0
+    else
+      rc=$?
+    fi
+    status="${response: -3}"
+    body="$response"
+    if [[ "$status" =~ ^[0-9][0-9][0-9]$ ]]; then
+      body="${response:0:${#response}-3}"
+    else
+      status=""
+    fi
+    if (( rc != 0 )) || [[ ! "$status" =~ ^2[0-9][0-9]$ ]]; then
+      printf "HTTP request failed (status=%s, curl=%s): %s\\n" "$status" "$rc" "$url" >&2
+      [[ -z "$body" ]] || printf "%s\\n" "$body" >&2
+      return 1
+    fi
+    printf "%s" "$body"
+  }
+  preflight=$(request_json "$base/api/script/preflight" --data-binary "@$payload")
+  if ! printf "%s" "$preflight" | jq -e ".ok == true" >/dev/null; then
+    printf "preflight non ammesso; non invio il job:\\n%s\\n" "$preflight" >&2
+    exit 1
+  fi
+  printf "%s\\n" "$preflight" | jq -c "{ok, items, clips, unverified, errors}"
+  response=$(request_json "$base/api/script/generate" \
+    -H "Idempotency-Key: $idem" --data-binary "@$payload")
   job_id=$(printf "%s" "$response" | jq -r ".job_id // empty")
   [[ -n "$job_id" ]] || { printf "%s\n" "$response"; exit 1; }
   printf "%s\n" "$response" | jq --arg project "$project" --arg key "$idem" \

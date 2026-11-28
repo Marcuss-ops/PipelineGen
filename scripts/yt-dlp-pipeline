@@ -66,4 +66,16 @@ if [[ -x "$NVM_NODE_DIR/node" && ":$PATH:" != *":$NVM_NODE_DIR:"* ]]; then
   export PATH="$NVM_NODE_DIR:$PATH"
 fi
 
+# yt-dlp resolves its ffmpeg subprocess from PATH (it does not consume the
+# application's FFMPEG_PATH setting). Honor that same configured binary here
+# so section downloads and the local cutter do not silently use different
+# ffmpeg builds. In this deployment /usr/bin/ffmpeg is the stable distro build;
+# /usr/local/bin/ffmpeg 7.0.2 segfaulted on YouTube HLS section cuts.
+if [[ -n "${FFMPEG_PATH:-}" && "$FFMPEG_PATH" == */* ]]; then
+  FFMPEG_BIN_DIR="${FFMPEG_PATH%/*}"
+  if [[ -x "$FFMPEG_PATH" && "$PATH" != "$FFMPEG_BIN_DIR:"* ]]; then
+    export PATH="$FFMPEG_BIN_DIR:$PATH"
+  fi
+fi
+
 exec "$REAL_BIN" "$@"

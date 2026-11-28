@@ -144,3 +144,7 @@ Explicit exception (decided 2026-09-13): the operational E2E artifacts under `te
 Second explicit exception (closed 2026-10-11): the four dated audit snapshots at `docs/` root (`CLIP-RENDER-DEMOLITION-2026-09-12.md`, `MUDA-CODEBASE-AUDIT-2026-09-12.md`, `PIPELINE-ORCHESTRATION-AUDIT-2026-09-12.md`, `PIPELINE-WASTE-AUDIT-2026-09-12.md`) and the six `docs/tickets/*` files they fed were removed when those tickets closed (code-landed: async-completion, clip-render critical path, core-ready durable DAG, pipeline critical path; wont-fix: I1 chunk producer, measured micro-optimisation). Rationale lives in git history from here on. Do not add new dated snapshot docs.
 
 See `CANONICAL.md` for the authoritative source map.
+
+For YouTube clip extraction and Drive delivery, follow the endpoint contract,
+serial job workflow, payload mapping, and FFmpeg troubleshooting in
+[`internal/capabilities/assets/youtube/AGENTS.md`](internal/capabilities/assets/youtube/AGENTS.md).
